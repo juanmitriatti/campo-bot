@@ -1,0 +1,1301 @@
+import { describe, it, expect } from "vitest";
+import {
+  normalizarMonto,
+  parseCommand,
+  detectarCategoria,
+  detectarCategoriaIngreso,
+  parseMensaje,
+  parseMensajeIngreso,
+  parseMilimetros,
+  detectarCampoLote,
+  detectarCampo,
+  detectarLote,
+  detectarCultivo,
+  normalizeText,
+  parseSpanishDate,
+  detectarProducto,
+  parseQuantityUnit,
+  parseFechaRelativa,
+  detectarImplemento,
+} from "./parser.js";
+
+// ============================================================================
+// normalizarMonto
+// ============================================================================
+
+describe("normalizarMonto", () => {
+  describe("dígitos + sufijo mil", () => {
+    it("50mil → 50000", () => expect(normalizarMonto("50mil")).toBe(50000));
+    it("100mil → 100000", () => expect(normalizarMonto("100mil")).toBe(100000));
+    it("50 mil → 50000", () => expect(normalizarMonto("50 mil")).toBe(50000));
+    it("30mil → 30000", () => expect(normalizarMonto("30mil")).toBe(30000));
+  });
+
+  describe("signo pesos", () => {
+    it("$150000 → 150000", () => expect(normalizarMonto("$150000")).toBe(150000));
+    it("$50000 → 50000", () => expect(normalizarMonto("$50000")).toBe(50000));
+    it("$ 200000 → 200000", () => expect(normalizarMonto("$ 200000")).toBe(200000));
+  });
+
+  describe("sufijo k / lucas", () => {
+    it("200k → 200000", () => expect(normalizarMonto("200k")).toBe(200000));
+    it("50 lucas → 50000", () => expect(normalizarMonto("50 lucas")).toBe(50000));
+    it("100lucas → 100000", () => expect(normalizarMonto("100lucas")).toBe(100000));
+  });
+
+  describe("millones / palos", () => {
+    // NOTE: dots are stripped for thousand separators, so "1.5" becomes "15"
+    it("1,5 millones → 1500000", () => expect(normalizarMonto("1,5 millones")).toBe(1500000));
+    it("1.5 millones → 15000000 (dot stripped as thousand sep)", () => expect(normalizarMonto("1.5 millones")).toBe(15000000));
+    it("2 palos → 2000000", () => expect(normalizarMonto("2 palos")).toBe(2000000));
+    it("1 millon → 1000000", () => expect(normalizarMonto("1 millon")).toBe(1000000));
+  });
+
+  describe("números escritos en español", () => {
+    it("quinientos mil → 500000", () => expect(normalizarMonto("quinientos mil")).toBe(500000));
+    it("medio millon → 500000", () => expect(normalizarMonto("medio millon")).toBe(500000));
+    it("un millon → 1000000", () => expect(normalizarMonto("un millon")).toBe(1000000));
+    it("dos millones → 2000000", () => expect(normalizarMonto("dos millones")).toBe(2000000));
+    it("cien mil → 100000", () => expect(normalizarMonto("cien mil")).toBe(100000));
+    it("doscientos mil → 200000", () => expect(normalizarMonto("doscientos mil")).toBe(200000));
+  });
+
+  describe("número directo con verbo", () => {
+    it("gaste 150000 → 150000", () => expect(normalizarMonto("gaste 150000")).toBe(150000));
+    it("gaste 5000 → 5000", () => expect(normalizarMonto("gaste 5000")).toBe(5000));
+    it("pague 200000 → 200000", () => expect(normalizarMonto("pague 200000")).toBe(200000));
+  });
+
+  describe("sin contexto suficiente → null", () => {
+    it("número suelto 500 → null", () => expect(normalizarMonto("gaste 500")).toBeNull());
+    it("150000 sin verbo → null", () => expect(normalizarMonto("150000")).toBeNull());
+  });
+
+  describe("BUG FIX: dígitos+sufijo prioriza sobre parseWrittenNumber", () => {
+    it("gaste 50mil en un herbicida → 50000 (no 1)", () => {
+      expect(normalizarMonto("gaste 50mil en un herbicida")).toBe(50000);
+    });
+    it("pague 100mil en un repuesto → 100000", () => {
+      expect(normalizarMonto("pague 100mil en un repuesto")).toBe(100000);
+    });
+    it("compre por 30mil un fungicida → 30000", () => {
+      expect(normalizarMonto("compre por 30mil un fungicida")).toBe(30000);
+    });
+    it("vendi 200mil de soja → 200000", () => {
+      expect(normalizarMonto("vendi 200mil de soja")).toBe(200000);
+    });
+    it("50mil en gasoil → 50000", () => {
+      expect(normalizarMonto("50mil en gasoil")).toBe(50000);
+    });
+  });
+});
+
+// ============================================================================
+// parseCommand
+// ============================================================================
+
+describe("parseCommand", () => {
+  describe("confirm / cancel", () => {
+    it.each(["si", "dale", "confirmo", "va"])("'%s' → confirm", (t) => {
+      expect(parseCommand(t)).toMatchObject({ command: "confirm" });
+    });
+    it.each(["no", "cancelar", "cancelo", "nah"])("'%s' → cancel", (t) => {
+      expect(parseCommand(t)).toMatchObject({ command: "cancel" });
+    });
+  });
+
+  describe("greeting / thanks / ack / help", () => {
+    it.each(["hola", "buenas", "buen dia", "buenas tardes"])("'%s' → greeting", (t) => {
+      expect(parseCommand(t)).toMatchObject({ command: "greeting" });
+    });
+    it.each(["gracias", "genial", "joya"])("'%s' → thanks", (t) => {
+      expect(parseCommand(t)).toMatchObject({ command: "thanks" });
+    });
+    it.each(["ok", "listo", "perfecto"])("'%s' → ack", (t) => {
+      expect(parseCommand(t)).toMatchObject({ command: "ack" });
+    });
+    it.each(["ayuda", "help", "?"])("'%s' → help", (t) => {
+      expect(parseCommand(t)).toMatchObject({ command: "help" });
+    });
+  });
+
+  describe("dollar", () => {
+    it.each(["dolar", "cotizacion dolar", "dolares"])("'%s' → dollar", (t) => {
+      expect(parseCommand(t)).toMatchObject({ command: "dollar" });
+    });
+  });
+
+  describe("alertas", () => {
+    it("mis alertas → show_alerts", () => {
+      expect(parseCommand("mis alertas")).toMatchObject({ command: "show_alerts" });
+    });
+    it("ver alertas → show_alerts", () => {
+      expect(parseCommand("ver alertas")).toMatchObject({ command: "show_alerts" });
+    });
+    it("alerta lluvia 15mm → set_rain_threshold mm:15", () => {
+      expect(parseCommand("alerta lluvia 15mm")).toMatchObject({ command: "set_rain_threshold", mm: 15 });
+    });
+    it("alerta lluvia 20 → set_rain_threshold mm:20", () => {
+      expect(parseCommand("alerta lluvia 20")).toMatchObject({ command: "set_rain_threshold", mm: 20 });
+    });
+  });
+
+  describe("toggle alert", () => {
+    it("activar lluvia → enable_rain_alerts", () => {
+      expect(parseCommand("activar lluvia")).toMatchObject({ command: "enable_rain_alerts" });
+    });
+    it("desactivar lluvia → disable_rain_alerts", () => {
+      expect(parseCommand("desactivar lluvia")).toMatchObject({ command: "disable_rain_alerts" });
+    });
+    it("activar presupuesto → enable_budget_alerts", () => {
+      expect(parseCommand("activar presupuesto")).toMatchObject({ command: "enable_budget_alerts" });
+    });
+    it("desactivar resumen semanal → disable_weekly_summary", () => {
+      expect(parseCommand("desactivar resumen semanal")).toMatchObject({ command: "disable_weekly_summary" });
+    });
+  });
+
+  describe("weather", () => {
+    it("clima → weather_full", () => {
+      expect(parseCommand("clima")).toMatchObject({ command: "weather_full" });
+    });
+    it("clima en junin → weather_full city:junin", () => {
+      const r = parseCommand("clima en junin");
+      expect(r.command).toBe("weather_full");
+      expect(r.city).toBe("junin");
+    });
+    it("va a llover en alberdi mañana? → weather_forecast city:alberdi", () => {
+      const r = parseCommand("va a llover en alberdi mañana?");
+      expect(r.command).toBe("weather_forecast");
+      expect(r.city).toBe("alberdi");
+    });
+    it("clima esta semana → weather_forecast", () => {
+      const r = parseCommand("clima esta semana");
+      expect(r.command).toBe("weather_forecast");
+    });
+  });
+
+  describe("weather_field", () => {
+    it("clima lote general → weather_field fieldName:general", () => {
+      expect(parseCommand("clima lote general")).toMatchObject({ command: "weather_field", fieldName: "general" });
+    });
+    it("va a llover en el lote test → weather_field fieldName:test", () => {
+      // "va a llover" + "lote test" should match weather_field
+      const r = parseCommand("va a llover en el lote test");
+      expect(r).not.toBeNull();
+      expect(r.fieldName).toBe("test");
+    });
+  });
+
+  describe("log_rainfall", () => {
+    it("llovio 30mm → log_rainfall mm:30", () => {
+      expect(parseCommand("llovio 30mm")).toMatchObject({ command: "log_rainfall", mm: 30 });
+    });
+    it("cayeron 15mm en lote general → log_rainfall mm:15 plotName:general", () => {
+      expect(parseCommand("cayeron 15mm en lote general")).toMatchObject({
+        command: "log_rainfall", mm: 15, plotName: "general",
+      });
+    });
+    it("llovieron 20mm → log_rainfall mm:20", () => {
+      expect(parseCommand("llovieron 20mm")).toMatchObject({ command: "log_rainfall", mm: 20 });
+    });
+  });
+
+  describe("rainfall_query", () => {
+    it("cuanto llovio esta semana? → rainfall_report period:week", () => {
+      const r = parseCommand("cuanto llovio esta semana?");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("rainfall_report");
+      expect(r.period).toBe("week");
+    });
+    it("cuanto llovio ayer? → rainfall_range", () => {
+      const r = parseCommand("cuanto llovio ayer?");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("rainfall_range");
+    });
+    it("cuando llovio esta semana en el lote test? → rainfall_report period:week plotName:test", () => {
+      const r = parseCommand("cuando llovio esta semana en el lote test?");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("rainfall_report");
+      expect(r.period).toBe("week");
+      expect(r.plotName).toBe("test");
+    });
+  });
+
+  describe("list_fields", () => {
+    it.each(["ver campos", "mis campos"])("'%s' → list_fields", (t) => {
+      expect(parseCommand(t)).toMatchObject({ command: "list_fields" });
+    });
+    it.each(["mis lotes", "ver lotes"])("'%s' → list_plots", (t) => {
+      expect(parseCommand(t)).toMatchObject({ command: "list_plots" });
+    });
+    it("que campos tengo? → list_fields", () => {
+      expect(parseCommand("que campos tengo?")).toMatchObject({ command: "list_fields" });
+    });
+    it("mostrar lotes → list_fields", () => {
+      expect(parseCommand("mostrar lotes")).toMatchObject({ command: "list_fields" });
+    });
+  });
+
+  describe("delete_field", () => {
+    it("borrar lote test → delete_field fieldName:test", () => {
+      expect(parseCommand("borrar lote test")).toMatchObject({ command: "delete_field", fieldName: "test" });
+    });
+    it("eliminar campo norte → delete_field fieldName:norte", () => {
+      expect(parseCommand("eliminar campo norte")).toMatchObject({ command: "delete_field", fieldName: "norte" });
+    });
+  });
+
+  describe("set_field_city", () => {
+    it("el lote general esta en Vedia → set_field_city", () => {
+      const r = parseCommand("el lote general esta en Vedia");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("set_field_city");
+      expect(r.fieldName).toBe("general");
+      expect(r.city).toBe("Vedia");
+    });
+    it("el lote general esta ubicado en Vedia → set_field_city", () => {
+      const r = parseCommand("el lote general esta ubicado en Vedia");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("set_field_city");
+      expect(r.fieldName).toBe("general");
+    });
+  });
+
+  describe("add_field", () => {
+    it("agregar lote norte en junin → add_field", () => {
+      const r = parseCommand("agregar lote norte en junin");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("add_field");
+      expect(r.fieldName).toBe("norte");
+      expect(r.city).toBe("Junin");
+    });
+    it("agregar lote sur → add_field sin city", () => {
+      const r = parseCommand("agregar lote sur");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("add_field");
+      expect(r.fieldName).toBe("sur");
+    });
+  });
+
+  describe("list_plots", () => {
+    it("lotes del campo norte → list_plots fieldName:norte", () => {
+      expect(parseCommand("lotes del campo norte")).toMatchObject({ command: "list_plots", fieldName: "norte" });
+    });
+    it("mis lotes del campo sur → list_plots fieldName:sur", () => {
+      expect(parseCommand("mis lotes del campo sur")).toMatchObject({ command: "list_plots", fieldName: "sur" });
+    });
+    it("que lotes tiene el campo norte → list_plots", () => {
+      expect(parseCommand("que lotes tiene el campo norte")).toMatchObject({ command: "list_plots", fieldName: "norte" });
+    });
+  });
+
+  describe("add_plot", () => {
+    it("agregar lote 3 en campo norte → add_plot", () => {
+      const r = parseCommand("agregar lote 3 en campo norte");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("add_plot");
+      expect(r.plotName).toBe("3");
+      expect(r.fieldName).toBe("norte");
+    });
+    it("crear lote sur de campo este → add_plot", () => {
+      const r = parseCommand("crear lote sur de campo este");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("add_plot");
+      expect(r.plotName).toBe("sur");
+      expect(r.fieldName).toBe("este");
+    });
+  });
+
+  describe("plot_info", () => {
+    it("info lote 3 del campo norte → plot_info", () => {
+      const r = parseCommand("info lote 3 del campo norte");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("plot_info");
+      expect(r.plotName).toBe("3");
+      expect(r.fieldName).toBe("norte");
+    });
+    it("info lote 3 → plot_info (no campo)", () => {
+      const r = parseCommand("info lote 3");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("plot_info");
+      expect(r.plotName).toBe("3");
+    });
+    it("lote z → plot_info (bare name)", () => {
+      const r = parseCommand("lote z");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("plot_info");
+      expect(r.plotName).toBe("z");
+    });
+    it("lote norte → plot_info (bare name)", () => {
+      const r = parseCommand("lote norte");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("plot_info");
+      expect(r.plotName).toBe("norte");
+    });
+    it("lote san antonio → plot_info (multi-word)", () => {
+      const r = parseCommand("lote san antonio");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("plot_info");
+      expect(r.plotName).toBe("san antonio");
+    });
+    it("lote z? → plot_info (with question mark)", () => {
+      const r = parseCommand("lote z?");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("plot_info");
+      expect(r.plotName).toBe("z");
+    });
+    it("campo general → field_info (not plot_info)", () => {
+      const r = parseCommand("campo general");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("field_info");
+      expect(r.fieldName).toBe("general");
+    });
+    it("info campo general → field_info", () => {
+      const r = parseCommand("info campo general");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("field_info");
+      expect(r.fieldName).toBe("general");
+    });
+  });
+
+  describe("delete_plot", () => {
+    it("borrar lote 3 del campo norte → delete_plot", () => {
+      const r = parseCommand("borrar lote 3 del campo norte");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("delete_plot");
+      expect(r.plotName).toBe("3");
+      expect(r.fieldName).toBe("norte");
+    });
+  });
+
+  describe("set_plot_area", () => {
+    it("lote 3 tiene 50 hectareas → set_plot_area", () => {
+      const r = parseCommand("lote 3 tiene 50 hectareas");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("set_plot_area");
+      expect(r.plotName).toBe("3");
+      expect(r.hectares).toBe(50);
+    });
+    it("lote norte tiene 120,5 has → set_plot_area", () => {
+      const r = parseCommand("lote norte tiene 120,5 has");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("set_plot_area");
+      expect(r.plotName).toBe("norte");
+      expect(r.hectares).toBe(120.5);
+    });
+  });
+
+  describe("set_city", () => {
+    it("mi ciudad es Vedia → set_city", () => {
+      expect(parseCommand("mi ciudad es Vedia")).toMatchObject({ command: "set_city" });
+    });
+    it("estoy en Junin → set_city", () => {
+      expect(parseCommand("estoy en Junin")).toMatchObject({ command: "set_city" });
+    });
+  });
+
+  describe("set_name", () => {
+    it("soy Juan → set_name", () => {
+      expect(parseCommand("soy Juan")).toMatchObject({ command: "set_name", name: "Juan" });
+    });
+    it("me llamo Pedro → set_name", () => {
+      expect(parseCommand("me llamo Pedro")).toMatchObject({ command: "set_name", name: "Pedro" });
+    });
+  });
+
+  describe("date_range_report", () => {
+    it("cuanto gaste en los ultimos 7 dias → date_range_report", () => {
+      const r = parseCommand("cuanto gaste en los ultimos 7 dias");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("date_range_report");
+      expect(r.desde).toBeInstanceOf(Date);
+      expect(r.hasta).toBeInstanceOf(Date);
+    });
+  });
+
+  describe("cuanto_gaste", () => {
+    it("cuanto gaste esta semana → weekly_report", () => {
+      expect(parseCommand("cuanto gaste esta semana")).toMatchObject({ command: "weekly_report" });
+    });
+    it("cuanto gaste hoy → date_range_report", () => {
+      expect(parseCommand("cuanto gaste hoy")).toMatchObject({ command: "date_range_report" });
+    });
+    it("cuanto gaste → monthly_report (default)", () => {
+      // "cuanto gaste" without period → monthly_result via the monthly_result pattern
+      const r = parseCommand("cuanto gaste");
+      expect(r).not.toBeNull();
+    });
+  });
+
+  describe("result_dispatch / monthly_result", () => {
+    it("resultado del mes en lote test → field_result fieldName:test", () => {
+      const r = parseCommand("resultado del mes en lote test");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("field_result");
+      expect(r.fieldName).toBe("test");
+    });
+    it("resultado lote general → field_result fieldName:general", () => {
+      expect(parseCommand("resultado lote general")).toMatchObject({ command: "field_result", fieldName: "general" });
+    });
+    it("resultado del mes → monthly_result", () => {
+      expect(parseCommand("resultado del mes")).toMatchObject({ command: "monthly_result" });
+    });
+    it("rentabilidad → monthly_result", () => {
+      expect(parseCommand("rentabilidad")).toMatchObject({ command: "monthly_result" });
+    });
+    it("balance → monthly_result", () => {
+      expect(parseCommand("balance")).toMatchObject({ command: "monthly_result" });
+    });
+  });
+
+  describe("compare_months", () => {
+    it("comparar enero con febrero → compare_months", () => {
+      const r = parseCommand("comparar enero con febrero");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("compare_months");
+      expect(r.mes1).toBe(0);
+      expect(r.mes2).toBe(1);
+    });
+  });
+
+  describe("weekly_report / monthly_report", () => {
+    it("resumen de la semana → weekly_report", () => {
+      expect(parseCommand("resumen de la semana")).toMatchObject({ command: "weekly_report" });
+    });
+    it("resumen semanal → weekly_report", () => {
+      expect(parseCommand("resumen semanal")).toMatchObject({ command: "weekly_report" });
+    });
+    it("resumen del mes → monthly_report", () => {
+      expect(parseCommand("resumen del mes")).toMatchObject({ command: "monthly_report" });
+    });
+  });
+
+  describe("plot_report", () => {
+    it("resumen lote z → plot_report", () => {
+      const r = parseCommand("resumen lote z");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("plot_report");
+      expect(r.plotName).toBe("z");
+    });
+    it("reporte lote z → plot_report", () => {
+      const r = parseCommand("reporte lote z");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("plot_report");
+      expect(r.plotName).toBe("z");
+    });
+    it("resumen del lote norte → plot_report", () => {
+      const r = parseCommand("resumen del lote norte");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("plot_report");
+      expect(r.plotName).toBe("norte");
+    });
+    it("reporte de lote z → plot_report", () => {
+      const r = parseCommand("reporte de lote z");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("plot_report");
+      expect(r.plotName).toBe("z");
+    });
+    it("resumen lote general → plot_report (not field_report)", () => {
+      const r = parseCommand("resumen lote general");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("plot_report");
+      expect(r.plotName).toBe("general");
+    });
+  });
+
+  describe("field_report", () => {
+    it("resumen campo general → field_report", () => {
+      expect(parseCommand("resumen campo general")).toMatchObject({ command: "field_report", fieldName: "general" });
+    });
+    it("resumen parcela norte → field_report", () => {
+      expect(parseCommand("resumen parcela norte")).toMatchObject({ command: "field_report", fieldName: "norte" });
+    });
+  });
+
+  describe("set_budget", () => {
+    it("presupuesto combustible 500mil → set_budget", () => {
+      const r = parseCommand("presupuesto combustible 500mil");
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("set_budget");
+      expect(r.amount).toBe(500000);
+    });
+  });
+
+  describe("delete_last / edit_last", () => {
+    it("borrar ultimo gasto → delete_last", () => {
+      expect(parseCommand("borrar ultimo gasto")).toMatchObject({ command: "delete_last" });
+    });
+    it("eliminar ultimo gasto → delete_last", () => {
+      expect(parseCommand("eliminar ultimo gasto")).toMatchObject({ command: "delete_last" });
+    });
+    it("editar ultimo gasto a 50mil → edit_last amount:50000", () => {
+      expect(parseCommand("editar ultimo gasto a 50mil")).toMatchObject({ command: "edit_last", amount: 50000 });
+    });
+  });
+
+  describe("export", () => {
+    it("exportar csv → export_csv", () => {
+      expect(parseCommand("exportar csv")).toMatchObject({ command: "export_csv" });
+    });
+    it("exportar gastos → export_csv", () => {
+      expect(parseCommand("exportar gastos")).toMatchObject({ command: "export_csv" });
+    });
+  });
+});
+
+// ============================================================================
+// detectarCategoria
+// ============================================================================
+
+describe("detectarCategoria", () => {
+  describe("exactas", () => {
+    it("gasoil → Combustible", () => expect(detectarCategoria("gasoil")).toBe("Combustible"));
+    it("diesel → Combustible", () => expect(detectarCategoria("diesel")).toBe("Combustible"));
+    it("nafta → Combustible", () => expect(detectarCategoria("nafta")).toBe("Combustible"));
+    it("herbicida → Agroquímicos", () => expect(detectarCategoria("herbicida")).toBe("Agroquímicos"));
+    it("insecticida → Agroquímicos", () => expect(detectarCategoria("insecticida")).toBe("Agroquímicos"));
+    it("fungicida → Agroquímicos", () => expect(detectarCategoria("fungicida")).toBe("Agroquímicos"));
+    it("semillas → Semillas", () => expect(detectarCategoria("semillas")).toBe("Semillas"));
+    it("fertilizante → Fertilizantes", () => expect(detectarCategoria("fertilizante")).toBe("Fertilizantes"));
+    it("urea → Fertilizantes", () => expect(detectarCategoria("urea")).toBe("Fertilizantes"));
+    it("tractor → Maquinaria", () => expect(detectarCategoria("tractor")).toBe("Maquinaria"));
+    it("repuesto → Maquinaria", () => expect(detectarCategoria("repuesto")).toBe("Maquinaria"));
+    it("alquiler → Arrendamiento", () => expect(detectarCategoria("alquiler")).toBe("Arrendamiento"));
+    it("sueldo → Sueldos", () => expect(detectarCategoria("sueldo")).toBe("Sueldos"));
+    it("impuesto → Impuestos", () => expect(detectarCategoria("impuesto")).toBe("Impuestos"));
+  });
+
+  describe("fuzzy matching", () => {
+    it("gasoill (typo) → Combustible", () => expect(detectarCategoria("gasoill")).toBe("Combustible"));
+    it("fertlizante (typo) → Fertilizantes", () => expect(detectarCategoria("fertlizante")).toBe("Fertilizantes"));
+    it("naftaa (typo) → Combustible", () => expect(detectarCategoria("naftaa")).toBe("Combustible"));
+    it("herbicid (truncado) → Agroquímicos", () => expect(detectarCategoria("herbicid")).toBe("Agroquímicos"));
+  });
+
+  describe("no match", () => {
+    it("algo random → null", () => expect(detectarCategoria("algo random")).toBeNull());
+    it("hola → null", () => expect(detectarCategoria("hola")).toBeNull());
+  });
+});
+
+// ============================================================================
+// detectarCategoriaIngreso
+// ============================================================================
+
+describe("detectarCategoriaIngreso", () => {
+  it("soja → Soja", () => expect(detectarCategoriaIngreso("soja")).toBe("Soja"));
+  it("maiz → Maíz", () => expect(detectarCategoriaIngreso("maiz")).toBe("Maíz"));
+  it("trigo → Trigo", () => expect(detectarCategoriaIngreso("trigo")).toBe("Trigo"));
+  it("girasol → Girasol", () => expect(detectarCategoriaIngreso("girasol")).toBe("Girasol"));
+  it("novillo → Hacienda", () => expect(detectarCategoriaIngreso("novillo")).toBe("Hacienda"));
+  it("ganado → Hacienda", () => expect(detectarCategoriaIngreso("ganado")).toBe("Hacienda"));
+  it("vaca → Hacienda", () => expect(detectarCategoriaIngreso("vaca")).toBe("Hacienda"));
+  it("sorgo → Sorgo", () => expect(detectarCategoriaIngreso("sorgo")).toBe("Sorgo"));
+  it("cebada → Cebada", () => expect(detectarCategoriaIngreso("cebada")).toBe("Cebada"));
+  it("algo random → null", () => expect(detectarCategoriaIngreso("algo random")).toBeNull());
+});
+
+// ============================================================================
+// parseMensaje (gastos)
+// ============================================================================
+
+describe("parseMensaje", () => {
+  it("gaste 50mil en gasoil → expense 50000 Combustible", () => {
+    const r = parseMensaje("gaste 50mil en gasoil");
+    expect(r).not.toBeNull();
+    expect(r.type).toBe("expense");
+    expect(r.amount).toBe(50000);
+    expect(r.category).toBe("Combustible");
+  });
+
+  it("pague 100mil en un herbicida → expense 100000 Agroquímicos", () => {
+    const r = parseMensaje("pague 100mil en un herbicida");
+    expect(r).not.toBeNull();
+    expect(r.type).toBe("expense");
+    expect(r.amount).toBe(100000);
+    expect(r.category).toBe("Agroquímicos");
+  });
+
+  it("gaste 50mil en un herbicida → expense 50000 Agroquímicos (BUG FIX)", () => {
+    const r = parseMensaje("gaste 50mil en un herbicida");
+    expect(r).not.toBeNull();
+    expect(r.type).toBe("expense");
+    expect(r.amount).toBe(50000);
+    expect(r.category).toBe("Agroquímicos");
+  });
+
+  it("$200000 en fertilizante → expense 200000 Fertilizantes", () => {
+    const r = parseMensaje("$200000 en fertilizante");
+    expect(r).not.toBeNull();
+    expect(r.amount).toBe(200000);
+    expect(r.category).toBe("Fertilizantes");
+  });
+
+  it("quinientos mil en semillas → expense 500000 Semillas", () => {
+    const r = parseMensaje("quinientos mil en semillas");
+    expect(r).not.toBeNull();
+    expect(r.amount).toBe(500000);
+    expect(r.category).toBe("Semillas");
+  });
+
+  it("sin categoría → null", () => {
+    expect(parseMensaje("gaste 50mil")).toBeNull();
+  });
+
+  it("50 bolsas a 100mil cada una → null (complejo)", () => {
+    expect(parseMensaje("50 bolsas a 100mil cada una")).toBeNull();
+  });
+
+  it("sin monto → null", () => {
+    expect(parseMensaje("compre gasoil")).toBeNull();
+  });
+});
+
+// ============================================================================
+// parseMensajeIngreso (ingresos)
+// ============================================================================
+
+describe("parseMensajeIngreso", () => {
+  it("vendi 200mil de soja → income 200000 Soja", () => {
+    const r = parseMensajeIngreso("vendi 200mil de soja");
+    expect(r).not.toBeNull();
+    expect(r.type).toBe("income");
+    expect(r.amount).toBe(200000);
+    expect(r.category).toBe("Soja");
+  });
+
+  it("cobre 1,5 millones de trigo → income 1500000 Trigo", () => {
+    const r = parseMensajeIngreso("cobre 1,5 millones de trigo");
+    expect(r).not.toBeNull();
+    expect(r.type).toBe("income");
+    expect(r.amount).toBe(1500000);
+    expect(r.category).toBe("Trigo");
+  });
+
+  it("vendi 500mil de maiz → income 500000 Maíz", () => {
+    const r = parseMensajeIngreso("vendi 500mil de maiz");
+    expect(r).not.toBeNull();
+    expect(r.type).toBe("income");
+    expect(r.amount).toBe(500000);
+    expect(r.category).toBe("Maíz");
+  });
+
+  it("sin verbo de ingreso → null", () => {
+    expect(parseMensajeIngreso("gaste 50mil en gasoil")).toBeNull();
+  });
+
+  it("vendi sin monto → null", () => {
+    expect(parseMensajeIngreso("vendi soja")).toBeNull();
+  });
+
+  it("USD: vendi 100mil de soja en dolares → currency USD", () => {
+    const r = parseMensajeIngreso("vendi 100mil de soja en dolar");
+    expect(r).not.toBeNull();
+    expect(r.currency).toBe("USD");
+  });
+});
+
+// ============================================================================
+// parseMilimetros
+// ============================================================================
+
+describe("parseMilimetros", () => {
+  it("30mm → 30", () => expect(parseMilimetros("30mm")).toBe(30));
+  it("15.5mm → 15.5", () => expect(parseMilimetros("15.5mm")).toBe(15.5));
+  it("llovio 15.5 → 15.5", () => expect(parseMilimetros("llovio 15.5")).toBe(15.5));
+  it("cayeron 20mm → 20", () => expect(parseMilimetros("cayeron 20mm")).toBe(20));
+  it("sin milimetros → null", () => expect(parseMilimetros("hola")).toBeNull());
+});
+
+// ============================================================================
+// detectarCampo
+// ============================================================================
+
+describe("detectarCampo", () => {
+  it("campo norte → norte", () => expect(detectarCampo("campo norte")).toBe("norte"));
+  it("parcela sur → sur", () => expect(detectarCampo("parcela sur")).toBe("sur"));
+  it("lote 3 → null (lote is not a campo)", () => expect(detectarCampo("lote 3")).toBeNull());
+  it("algo sin campo → null", () => expect(detectarCampo("algo random")).toBeNull());
+});
+
+// ============================================================================
+// detectarLote
+// ============================================================================
+
+describe("detectarLote", () => {
+  // Original simple patterns
+  it("lote 3 → 3", () => expect(detectarLote("lote 3")).toBe("3"));
+  it("lote general → general", () => expect(detectarLote("lote general")).toBe("general"));
+  it("campo norte → null (campo is not a lote)", () => expect(detectarLote("campo norte")).toBeNull());
+  it("algo sin lote → null", () => expect(detectarLote("algo random")).toBeNull());
+
+  // Enhanced: "lote del/de la X"
+  it("lote del fondo → del fondo", () => expect(detectarLote("lote del fondo")).toBe("del fondo"));
+  it("lote de la loma → de la loma", () => expect(detectarLote("lote de la loma")).toBe("de la loma"));
+
+  // Enhanced: "en el/la X"
+  it("en el bajo → bajo", () => expect(detectarLote("llovieron 20mm en el bajo")).toBe("bajo"));
+  it("en la loma → loma", () => expect(detectarLote("gasté 50mil en la loma")).toBe("loma"));
+  it("en el 3 → 3", () => expect(detectarLote("pagué gasoil en el 3")).toBe("3"));
+
+  // Pronoun references → __last__ sentinel
+  it("ese lote → __last__", () => expect(detectarLote("cuánto gasté en ese lote")).toBe("__last__"));
+  it("el mismo → __last__", () => expect(detectarLote("registrar lluvia el mismo")).toBe("__last__"));
+  it("ahi mismo → __last__", () => expect(detectarLote("llovió 10mm ahi mismo")).toBe("__last__"));
+  it("mismo lote → __last__", () => expect(detectarLote("gasté 20mil en el mismo lote")).toBe("__last__"));
+
+  // Exclusion list: "en el" false positive prevention
+  it("en el mes → null", () => expect(detectarLote("gastos en el mes")).toBeNull());
+  it("en el banco → null", () => expect(detectarLote("pagué en el banco")).toBeNull());
+  it("en el campo → null (excluded)", () => expect(detectarLote("gasté en el campo")).toBeNull());
+  it("en el total → null", () => expect(detectarLote("incluido en el total")).toBeNull());
+
+  // normalizeText export works
+  it("normalizeText removes accents", () => expect(normalizeText("café")).toBe("cafe"));
+  it("normalizeText lowercases", () => expect(normalizeText("LOTE")).toBe("lote"));
+});
+
+// ============================================================================
+// detectarCampoLote (backward compat)
+// ============================================================================
+
+describe("detectarCampoLote", () => {
+  it("lote general → general", () => expect(detectarCampoLote("lote general")).toBe("general"));
+  it("campo norte → norte", () => expect(detectarCampoLote("campo norte")).toBe("norte"));
+  it("parcela sur → sur", () => expect(detectarCampoLote("parcela sur")).toBe("sur"));
+  it("algo sin lote → null", () => expect(detectarCampoLote("algo sin campo")).toBeNull());
+  it("el lote test tiene → test", () => expect(detectarCampoLote("el lote test tiene")).toBe("test"));
+});
+
+// ============================================================================
+// parseSpanishDate
+// ============================================================================
+
+describe("parseSpanishDate", () => {
+  it("15 de marzo → March 15 current year", () => {
+    const d = parseSpanishDate("15 de marzo");
+    expect(d).not.toBeNull();
+    expect(d.getMonth()).toBe(2); // marzo = 2
+    expect(d.getDate()).toBe(15);
+  });
+
+  it("1/6 → June 1 current year", () => {
+    const d = parseSpanishDate("1/6");
+    expect(d).not.toBeNull();
+    expect(d.getMonth()).toBe(5); // junio = 5
+    expect(d.getDate()).toBe(1);
+  });
+
+  it("25 diciembre → December 25", () => {
+    const d = parseSpanishDate("25 diciembre");
+    expect(d).not.toBeNull();
+    expect(d.getMonth()).toBe(11);
+    expect(d.getDate()).toBe(25);
+  });
+
+  it("texto sin fecha → null", () => {
+    expect(parseSpanishDate("hola mundo")).toBeNull();
+  });
+
+  it("31/12 → December 31", () => {
+    const d = parseSpanishDate("31/12");
+    expect(d).not.toBeNull();
+    expect(d.getMonth()).toBe(11);
+    expect(d.getDate()).toBe(31);
+  });
+});
+
+// ============================================================================
+// Edge cases / bugs reales
+// ============================================================================
+
+describe("Edge cases y bugs reales", () => {
+  it("BUG: gaste 50mil en un herbicida → amount 50000, NO 1", () => {
+    const r = parseMensaje("gaste 50mil en un herbicida");
+    expect(r).not.toBeNull();
+    expect(r.amount).toBe(50000);
+    expect(r.amount).not.toBe(1);
+  });
+
+  it("resultado del mes en lote test → field_result fieldName:test", () => {
+    const r = parseCommand("resultado del mes en lote test");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("field_result");
+    expect(r.fieldName).toBe("test");
+  });
+
+  it("va a llover en alberdi mañana? → city:alberdi (no default)", () => {
+    const r = parseCommand("va a llover en alberdi mañana?");
+    expect(r).not.toBeNull();
+    expect(r.city).toBe("alberdi");
+  });
+
+  it("cuanto llovio ayer? → rainfall_range (no monthly)", () => {
+    const r = parseCommand("cuanto llovio ayer?");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("rainfall_range");
+  });
+
+  it("cuando llovio esta semana en el lote test? → rainfall_report week plotName:test", () => {
+    const r = parseCommand("cuando llovio esta semana en el lote test?");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("rainfall_report");
+    expect(r.period).toBe("week");
+    expect(r.plotName).toBe("test");
+  });
+
+  it("el lote general esta ubicado en Vedia → set_field_city", () => {
+    const r = parseCommand("el lote general esta ubicado en Vedia");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("set_field_city");
+  });
+
+  it("texto con acentos: cuánto gasté → funciona igual", () => {
+    const r = parseCommand("cuánto gasté");
+    expect(r).not.toBeNull();
+  });
+
+  it("texto con acentos: cuánto gasté esta semana → weekly_report", () => {
+    expect(parseCommand("cuánto gasté esta semana")).toMatchObject({ command: "weekly_report" });
+  });
+
+  it("pague 100mil en un repuesto → Maquinaria", () => {
+    const r = parseMensaje("pague 100mil en un repuesto");
+    expect(r).not.toBeNull();
+    expect(r.amount).toBe(100000);
+    expect(r.category).toBe("Maquinaria");
+  });
+
+  it("$50000 en gasoil → 50000 Combustible", () => {
+    const r = parseMensaje("$50000 en gasoil");
+    expect(r).not.toBeNull();
+    expect(r.amount).toBe(50000);
+    expect(r.category).toBe("Combustible");
+  });
+});
+
+// ============================================================================
+// detectarCultivo
+// ============================================================================
+
+describe("detectarCultivo", () => {
+  it("soja → Soja", () => expect(detectarCultivo("soja")).toBe("Soja"));
+  it("maiz → Maíz", () => expect(detectarCultivo("maiz")).toBe("Maíz"));
+  it("trigo → Trigo", () => expect(detectarCultivo("trigo")).toBe("Trigo"));
+  it("girasol → Girasol", () => expect(detectarCultivo("girasol")).toBe("Girasol"));
+  it("cebada → Cebada", () => expect(detectarCultivo("cebada")).toBe("Cebada"));
+  it("avena → Avena", () => expect(detectarCultivo("avena")).toBe("Avena"));
+  it("alfalfa → Alfalfa", () => expect(detectarCultivo("alfalfa")).toBe("Alfalfa"));
+  it("soya → Soja", () => expect(detectarCultivo("soya")).toBe("Soja"));
+  it("gasoil → null (not a crop)", () => expect(detectarCultivo("gasoil")).toBeNull());
+  it("hola → null", () => expect(detectarCultivo("hola")).toBeNull());
+  it("sembramos soja en el lote 3 → Soja", () => expect(detectarCultivo("sembramos soja en el lote 3")).toBe("Soja"));
+});
+
+// ============================================================================
+// Crop commands (sow_crop, harvest_crop, active_crop, crop_history)
+// ============================================================================
+
+describe("sow_crop command", () => {
+  it("sembre soja en el lote 3 → sow_crop", () => {
+    const r = parseCommand("sembre soja en el lote 3");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("sow_crop");
+    expect(r.crop).toBe("Soja");
+    expect(r.plotName).toBe("3");
+  });
+
+  it("siembra de maiz en campo norte → sow_crop", () => {
+    const r = parseCommand("siembra de maiz en campo norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("sow_crop");
+    expect(r.crop).toBe("Maíz");
+    expect(r.fieldName).toBe("norte");
+  });
+
+  it("arrancamos con la soja → sow_crop", () => {
+    const r = parseCommand("arrancamos con la soja");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("sow_crop");
+    expect(r.crop).toBe("Soja");
+  });
+
+  it("plantamos trigo en el lote norte → sow_crop", () => {
+    const r = parseCommand("plantamos trigo en el lote norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("sow_crop");
+    expect(r.crop).toBe("Trigo");
+    expect(r.plotName).toBe("norte");
+  });
+
+  it("sembre gasoil → NOT sow_crop (gasoil is not a crop)", () => {
+    const r = parseCommand("sembre gasoil en el lote 3");
+    expect(r === null || r.command !== "sow_crop").toBe(true);
+  });
+});
+
+describe("harvest_crop command", () => {
+  it("cosechamos maiz en el lote norte → harvest_crop", () => {
+    const r = parseCommand("cosechamos maiz en el lote norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("harvest_crop");
+    expect(r.crop).toBe("Maíz");
+    expect(r.plotName).toBe("norte");
+  });
+
+  it("levantamos la soja → harvest_crop", () => {
+    const r = parseCommand("levantamos la soja");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("harvest_crop");
+    expect(r.crop).toBe("Soja");
+  });
+
+  it("terminamos cosecha de trigo en el lote 3 → harvest_crop", () => {
+    const r = parseCommand("terminamos cosecha de trigo en el lote 3");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("harvest_crop");
+    expect(r.crop).toBe("Trigo");
+    expect(r.plotName).toBe("3");
+  });
+});
+
+describe("active_crop command", () => {
+  it("que hay sembrado en el lote 3 → active_crop", () => {
+    const r = parseCommand("que hay sembrado en el lote 3");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("active_crop");
+    expect(r.plotName).toBe("3");
+  });
+
+  it("que cultivo tiene el lote norte → active_crop", () => {
+    const r = parseCommand("que cultivo tiene el lote norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("active_crop");
+    expect(r.plotName).toBe("norte");
+  });
+});
+
+describe("crop_history command", () => {
+  it("historial lote 3 → crop_history", () => {
+    const r = parseCommand("historial lote 3");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("crop_history");
+    expect(r.plotName).toBe("3");
+  });
+
+  it("campañas del lote norte → crop_history", () => {
+    const r = parseCommand("campañas del lote norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("crop_history");
+    expect(r.plotName).toBe("norte");
+  });
+});
+
+// ============================================================================
+// detectarProducto
+// ============================================================================
+
+describe("detectarProducto", () => {
+  it("glifosato → { Glifosato, herbicida }", () => {
+    const r = detectarProducto("glifosato");
+    expect(r).not.toBeNull();
+    expect(r.name).toBe("Glifosato");
+    expect(r.type).toBe("herbicida");
+  });
+
+  it("urea → { Urea, fertilizante }", () => {
+    const r = detectarProducto("urea");
+    expect(r).not.toBeNull();
+    expect(r.name).toBe("Urea");
+    expect(r.type).toBe("fertilizante");
+  });
+
+  it("atrazina → { Atrazina, herbicida }", () => {
+    const r = detectarProducto("atrazina");
+    expect(r).not.toBeNull();
+    expect(r.name).toBe("Atrazina");
+    expect(r.type).toBe("herbicida");
+  });
+
+  it("cipermetrina → { Cipermetrina, insecticida }", () => {
+    const r = detectarProducto("cipermetrina");
+    expect(r).not.toBeNull();
+    expect(r.name).toBe("Cipermetrina");
+    expect(r.type).toBe("insecticida");
+  });
+
+  it("sulfato de amonio → { Sulfato de Amonio, fertilizante } (multi-word)", () => {
+    const r = detectarProducto("sulfato de amonio");
+    expect(r).not.toBeNull();
+    expect(r.name).toBe("Sulfato de Amonio");
+    expect(r.type).toBe("fertilizante");
+  });
+
+  it("gasoil → null (not a product)", () => {
+    expect(detectarProducto("gasoil")).toBeNull();
+  });
+
+  it("hola → null", () => {
+    expect(detectarProducto("hola")).toBeNull();
+  });
+
+  it("roundup → Glifosato (alias)", () => {
+    const r = detectarProducto("roundup");
+    expect(r).not.toBeNull();
+    expect(r.name).toBe("Glifosato");
+  });
+
+  it("dap → DAP (fertilizante)", () => {
+    const r = detectarProducto("dap");
+    expect(r).not.toBeNull();
+    expect(r.name).toBe("DAP");
+    expect(r.type).toBe("fertilizante");
+  });
+});
+
+// ============================================================================
+// parseQuantityUnit
+// ============================================================================
+
+describe("parseQuantityUnit", () => {
+  it("150 kg → { 150, 'kg' }", () => {
+    const r = parseQuantityUnit("150 kg");
+    expect(r).not.toBeNull();
+    expect(r.quantity).toBe(150);
+    expect(r.unit).toBe("kg");
+  });
+
+  it("200 litros → { 200, 'lt' }", () => {
+    const r = parseQuantityUnit("200 litros");
+    expect(r).not.toBeNull();
+    expect(r.quantity).toBe(200);
+    expect(r.unit).toBe("lt");
+  });
+
+  it("3 bolsas → { 3, 'bolsas' }", () => {
+    const r = parseQuantityUnit("3 bolsas");
+    expect(r).not.toBeNull();
+    expect(r.quantity).toBe(3);
+    expect(r.unit).toBe("bolsas");
+  });
+
+  it("2,5 lts → { 2.5, 'lt' }", () => {
+    const r = parseQuantityUnit("2,5 lts");
+    expect(r).not.toBeNull();
+    expect(r.quantity).toBe(2.5);
+    expect(r.unit).toBe("lt");
+  });
+
+  it("50 cc → { 50, 'cc' }", () => {
+    const r = parseQuantityUnit("50 cc");
+    expect(r).not.toBeNull();
+    expect(r.quantity).toBe(50);
+    expect(r.unit).toBe("cc");
+  });
+
+  it("no unit → null", () => {
+    expect(parseQuantityUnit("hola mundo")).toBeNull();
+  });
+
+  it("in context: tiramos 150 kg de urea → { 150, 'kg' }", () => {
+    const r = parseQuantityUnit("tiramos 150 kg de urea");
+    expect(r).not.toBeNull();
+    expect(r.quantity).toBe(150);
+    expect(r.unit).toBe("kg");
+  });
+});
+
+// ============================================================================
+// detectarImplemento
+// ============================================================================
+
+describe("detectarImplemento", () => {
+  it("cincel → Cincel", () => expect(detectarImplemento("cincel")).toBe("Cincel"));
+  it("rastra → Rastra", () => expect(detectarImplemento("rastra")).toBe("Rastra"));
+  it("arado → Arado", () => expect(detectarImplemento("arado")).toBe("Arado"));
+  it("disco → Disco", () => expect(detectarImplemento("disco")).toBe("Disco"));
+  it("cincelada → Cincel", () => expect(detectarImplemento("cincelada")).toBe("Cincel"));
+  it("hola → null", () => expect(detectarImplemento("hola")).toBeNull());
+});
+
+// ============================================================================
+// parseFechaRelativa
+// ============================================================================
+
+describe("parseFechaRelativa", () => {
+  it("hoy → today", () => {
+    const r = parseFechaRelativa("hoy");
+    expect(r).not.toBeNull();
+    const today = new Date();
+    expect(r.getDate()).toBe(today.getDate());
+  });
+
+  it("ayer → yesterday", () => {
+    const r = parseFechaRelativa("ayer");
+    expect(r).not.toBeNull();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    expect(r.getDate()).toBe(yesterday.getDate());
+  });
+
+  it("anteayer → day before yesterday", () => {
+    const r = parseFechaRelativa("anteayer");
+    expect(r).not.toBeNull();
+    const d = new Date();
+    d.setDate(d.getDate() - 2);
+    expect(r.getDate()).toBe(d.getDate());
+  });
+
+  it("no date → null", () => {
+    expect(parseFechaRelativa("algo random")).toBeNull();
+  });
+});
+
+// ============================================================================
+// Activity command patterns (log_spraying, log_fertilization, log_tillage, log_irrigation, plot_activities)
+// ============================================================================
+
+describe("log_spraying command", () => {
+  it("aplicamos glifosato en el lote 3 → log_spraying", () => {
+    const r = parseCommand("aplicamos glifosato en el lote 3");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_spraying");
+    expect(r.product).toBe("Glifosato");
+    expect(r.plotName).toBe("3");
+  });
+
+  it("tiramos 200 lts de glifosato en el lote norte → log_spraying with qty", () => {
+    const r = parseCommand("tiramos 200 lts de glifosato en el lote norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_spraying");
+    expect(r.product).toBe("Glifosato");
+    expect(r.quantity).toBe(200);
+    expect(r.unit).toBe("lt");
+    expect(r.plotName).toBe("norte");
+  });
+
+  it("fumigamos con atrazina → log_spraying", () => {
+    const r = parseCommand("fumigamos con atrazina en el lote 3");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_spraying");
+    expect(r.product).toBe("Atrazina");
+  });
+
+  it("echamos cipermetrina en el lote 2 → log_spraying", () => {
+    const r = parseCommand("echamos cipermetrina en el lote 2");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_spraying");
+    expect(r.product).toBe("Cipermetrina");
+  });
+});
+
+describe("log_fertilization command", () => {
+  it("tiramos 150 kg de urea en el lote 2 → log_fertilization", () => {
+    const r = parseCommand("tiramos 150 kg de urea en el lote 2");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_fertilization");
+    expect(r.product).toBe("Urea");
+    expect(r.quantity).toBe(150);
+    expect(r.unit).toBe("kg");
+    expect(r.plotName).toBe("2");
+  });
+
+  it("fertilizamos el lote 3 → log_fertilization (verb only)", () => {
+    const r = parseCommand("fertilizamos el lote 3");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_fertilization");
+    expect(r.plotName).toBe("3");
+  });
+
+  it("echamos fosfato en el lote norte → log_fertilization", () => {
+    const r = parseCommand("echamos fosfato en el lote norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_fertilization");
+    expect(r.product).toBe("Fosfato");
+  });
+
+  it("pusimos dap en el lote 2 → log_fertilization", () => {
+    const r = parseCommand("pusimos dap en el lote 2");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_fertilization");
+    expect(r.product).toBe("DAP");
+  });
+
+  it("NEGATIVE: tiramos urea en el lote 3 → must be log_fertilization, NOT log_spraying", () => {
+    const r = parseCommand("tiramos urea en el lote 3");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_fertilization");
+    expect(r.command).not.toBe("log_spraying");
+  });
+});
+
+describe("log_tillage command", () => {
+  it("hicimos labranza en el lote 3 → log_tillage", () => {
+    const r = parseCommand("hicimos labranza en el lote 3");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_tillage");
+    expect(r.plotName).toBe("3");
+  });
+
+  it("pasamos el cincel en el lote norte → log_tillage", () => {
+    const r = parseCommand("pasamos el cincel en el lote norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_tillage");
+    expect(r.implement).toBe("Cincel");
+    expect(r.plotName).toBe("norte");
+  });
+
+  it("aramos el lote 2 → log_tillage", () => {
+    const r = parseCommand("aramos el lote 2");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_tillage");
+    expect(r.plotName).toBe("2");
+  });
+});
+
+describe("log_irrigation command", () => {
+  it("regamos el lote norte → log_irrigation", () => {
+    const r = parseCommand("regamos el lote norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_irrigation");
+    expect(r.plotName).toBe("norte");
+  });
+
+  it("prendimos el riego en el lote 3 → log_irrigation", () => {
+    const r = parseCommand("prendimos el riego en el lote 3");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_irrigation");
+    expect(r.plotName).toBe("3");
+  });
+
+  it("hicimos riego en el lote 2 → log_irrigation", () => {
+    const r = parseCommand("hicimos riego en el lote 2");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("log_irrigation");
+    expect(r.plotName).toBe("2");
+  });
+});
+
+describe("plot_activities command", () => {
+  it("actividades lote 3 → plot_activities", () => {
+    const r = parseCommand("actividades lote 3");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("plot_activities");
+    expect(r.plotName).toBe("3");
+  });
+
+  it("que hicimos en el lote norte → plot_activities", () => {
+    const r = parseCommand("que hicimos en el lote norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("plot_activities");
+    expect(r.plotName).toBe("norte");
+  });
+
+  it("labores lote 2 → plot_activities", () => {
+    const r = parseCommand("labores lote 2");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("plot_activities");
+    expect(r.plotName).toBe("2");
+  });
+});

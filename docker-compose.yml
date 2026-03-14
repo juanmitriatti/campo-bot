@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: campo-bot-db
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: campo
+      POSTGRES_PASSWORD: campo123
+      POSTGRES_DB: campo_bot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  app:
+    build: .
+    container_name: campo-bot-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://campo:campo123@db:5432/campo_bot
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      VERIFY_TOKEN: ${VERIFY_TOKEN}
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SPEECH_PROVIDER: ${SPEECH_PROVIDER:-openai}
+      OPENAI_WHISPER_MODEL: ${OPENAI_WHISPER_MODEL:-whisper-1}
+
+volumes:
+  pgdata:
