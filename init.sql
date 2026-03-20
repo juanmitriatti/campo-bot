@@ -153,7 +153,11 @@ CREATE TABLE conversation_state (
   flow_step INT DEFAULT 0,
   flow_data JSONB DEFAULT '{}',
   flow_started_at TIMESTAMP DEFAULT NULL,
-  flow_expires_at TIMESTAMP DEFAULT NULL
+  flow_expires_at TIMESTAMP DEFAULT NULL,
+  last_intent TEXT,
+  last_activity_type TEXT,
+  last_query_type TEXT,
+  last_time_reference TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_conversation_state_expires

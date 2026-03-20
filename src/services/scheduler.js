@@ -3,6 +3,7 @@ import { pool } from "../config/db.js";
 import { sendMessage } from "./whatsapp.js";
 import { getUsersWithRainAlerts, getGlobalSettings } from "./expenses.js";
 import { getForecast } from "./weather.js";
+import { sendAlertWithRetry, isDuplicate, recordDeduped } from "./alert.service.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,6 +29,12 @@ function getWeekNumber(date) {
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+}
+
+function getISOWeekString(date) {
+  const year = date.getFullYear();
+  const week = getWeekNumber(date);
+  return `${year}-W${String(week).padStart(2, '0')}`;
 }
 
 function getMonthName(date) {
@@ -239,12 +246,12 @@ async function tick() {
 }
 
 // ---------------------------------------------------------------------------
-// Daily Weather Alert
+// Daily Weather Alert (with dedup + retry)
 // ---------------------------------------------------------------------------
 
 async function getUserFieldCities(userId) {
   const { rows } = await pool.query(
-    `SELECT DISTINCT city FROM fields WHERE user_id = $1 AND city IS NOT NULL`,
+    `SELECT DISTINCT city FROM fields WHERE user_id = $1 AND city IS NOT NULL AND deleted_at IS NULL`,
     [userId]
   );
   return rows.map(r => r.city);
@@ -270,11 +277,22 @@ async function checkWeatherForUser(user) {
       const forecastData = await getForecast(city, 2);
       for (const day of forecastData.forecast) {
         if (day.rain >= threshold) {
+          const resolvedCity = forecastData.city || city;
+          const dedupKey = `${resolvedCity}_${day.dayName}`;
+
+          // Check deduplication
+          const dup = await isDuplicate(user.id, 'weather', dedupKey, 24);
+          if (dup) {
+            await recordDeduped(user.id, 'weather', dedupKey);
+            continue;
+          }
+
           alerts.push({
-            city: forecastData.city || city,
+            city: resolvedCity,
             dayName: day.dayName,
             rain: day.rain,
             icon: day.icon,
+            dedupKey,
           });
         }
       }
@@ -291,11 +309,18 @@ async function checkWeatherForUser(user) {
   }
   msg += `\n\n_Umbral configurado: ${threshold}mm_`;
 
-  try {
-    await sendMessage(user.phone_number, msg);
+  // Use first alert's dedupKey as representative
+  const dedupKey = alerts[0].dedupKey;
+
+  const result = await sendAlertWithRetry(user.id, user.phone_number, msg, 'weather', {
+    dedupKey,
+    payload: { cities: alerts.map(a => a.city), threshold },
+  });
+
+  if (result.sent) {
     console.log(`[weather-alert] Rain alert sent to user ${user.id} (${user.phone_number})`);
-  } catch (err) {
-    console.error(`[weather-alert] Error sending to user ${user.id}:`, err.message);
+  } else {
+    console.error(`[weather-alert] Failed to send to user ${user.id} after retries`);
   }
 }
 
@@ -322,6 +347,140 @@ async function weatherAlertTick() {
 }
 
 // ---------------------------------------------------------------------------
+// Monitoring Reminder (daily)
+// ---------------------------------------------------------------------------
+
+async function monitoringReminderTick() {
+  try {
+    const argTime = getArgentinaTime();
+    const weekStr = getISOWeekString(argTime.date);
+
+    // Find plots with sanidad/malezas observations in last 7 days
+    // that have NO newer observation or treatment activity
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (ao.plot_id)
+         ao.user_id, ao.plot_id, ao.category, ao.created_at AS obs_date,
+         p.name AS plot_name, f.name AS field_name,
+         u.phone_number,
+         EXTRACT(DAY FROM NOW() - ao.created_at)::int AS days_ago
+       FROM agro_observations ao
+       JOIN plots p ON ao.plot_id = p.id
+       JOIN fields f ON p.field_id = f.id
+       JOIN users u ON ao.user_id = u.id
+       WHERE ao.category IN ('sanidad', 'malezas')
+         AND ao.created_at >= NOW() - INTERVAL '7 days'
+         AND p.deleted_at IS NULL AND f.deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM agro_observations ao2
+           WHERE ao2.plot_id = ao.plot_id
+             AND ao2.created_at > ao.created_at
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM domain_events de
+           WHERE de.plot_id = ao.plot_id
+             AND de.event_type IN ('fumigacion', 'pulverizacion', 'aplicacion')
+             AND de.created_at > ao.created_at
+         )
+       ORDER BY ao.plot_id, ao.created_at DESC`
+    );
+
+    for (const row of rows) {
+      const dedupKey = `${row.plot_id}_${weekStr}`;
+      const dup = await isDuplicate(row.user_id, 'monitoring_reminder', dedupKey, 168); // 7 days
+      if (dup) continue;
+
+      const msg = `📋 *Recordatorio de monitoreo*\nHace ${row.days_ago} día${row.days_ago !== 1 ? 's' : ''} registraste ${row.category} en lote *${row.plot_name}* (campo ${row.field_name}). ¿Cómo está la situación?`;
+
+      const result = await sendAlertWithRetry(row.user_id, row.phone_number, msg, 'monitoring_reminder', {
+        plotId: row.plot_id,
+        dedupKey,
+        payload: { category: row.category, daysAgo: row.days_ago },
+      });
+
+      if (result.sent) {
+        console.log(`[monitoring] Reminder sent to user ${row.user_id} for plot ${row.plot_name}`);
+      }
+    }
+  } catch (err) {
+    console.error("[monitoring] Unexpected error:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pest Escalation Alert (daily)
+// ---------------------------------------------------------------------------
+
+async function pestEscalationTick() {
+  try {
+    const argTime = getArgentinaTime();
+    const weekStr = getISOWeekString(argTime.date);
+
+    // Find plots with 3+ sanidad observations in last 14 days
+    // without an intervening treatment
+    const { rows } = await pool.query(
+      `SELECT
+         ao.user_id, ao.plot_id,
+         COUNT(*) AS obs_count,
+         p.name AS plot_name, f.name AS field_name,
+         u.phone_number
+       FROM agro_observations ao
+       JOIN plots p ON ao.plot_id = p.id
+       JOIN fields f ON p.field_id = f.id
+       JOIN users u ON ao.user_id = u.id
+       WHERE ao.category = 'sanidad'
+         AND ao.created_at >= NOW() - INTERVAL '14 days'
+         AND p.deleted_at IS NULL AND f.deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM domain_events de
+           WHERE de.plot_id = ao.plot_id
+             AND de.event_type IN ('fumigacion', 'pulverizacion', 'aplicacion')
+             AND de.created_at >= NOW() - INTERVAL '14 days'
+         )
+       GROUP BY ao.user_id, ao.plot_id, p.name, f.name, u.phone_number
+       HAVING COUNT(*) >= 3`
+    );
+
+    for (const row of rows) {
+      const dedupKey = `${row.plot_id}_${weekStr}`;
+      const dup = await isDuplicate(row.user_id, 'pest_escalation', dedupKey, 168); // 7 days
+      if (dup) continue;
+
+      const msg = `🚨 *Alerta de plaga*\nEl lote *${row.plot_name}* (campo ${row.field_name}) tiene ${row.obs_count} reportes de sanidad en las últimas 2 semanas sin tratamiento registrado.`;
+
+      const result = await sendAlertWithRetry(row.user_id, row.phone_number, msg, 'pest_escalation', {
+        plotId: row.plot_id,
+        dedupKey,
+        payload: { obsCount: parseInt(row.obs_count) },
+      });
+
+      if (result.sent) {
+        console.log(`[pest-alert] Escalation sent to user ${row.user_id} for plot ${row.plot_name}`);
+      }
+    }
+  } catch (err) {
+    console.error("[pest-alert] Unexpected error:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Proactive Alerts Tick (monitoring + pest combined)
+// ---------------------------------------------------------------------------
+
+async function proactiveAlertsTick() {
+  try {
+    const { hour } = getArgentinaTime();
+    // Run at 8 AM Argentina time (configurable via global settings in future)
+    if (hour !== 8) return;
+
+    console.log(`[proactive-alerts] Running monitoring + pest escalation checks`);
+    await monitoringReminderTick();
+    await pestEscalationTick();
+  } catch (err) {
+    console.error("[proactive-alerts] Unexpected error:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -336,5 +495,10 @@ export function startScheduler() {
     weatherAlertTick();
   });
 
-  console.log("[scheduler] Cron jobs started — weekly summary + daily weather alerts (hourly tick)");
+  // Proactive alerts (monitoring reminders + pest escalation) — every hour at :00 (checks hour internally)
+  cron.schedule("0 * * * *", () => {
+    proactiveAlertsTick();
+  });
+
+  console.log("[scheduler] Cron jobs started — weekly summary + daily weather alerts + proactive alerts (hourly tick)");
 }

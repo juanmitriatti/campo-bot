@@ -31,7 +31,9 @@ import { fieldFlow } from '../middleware/flows/field.flow.js';
 import { rainfallFlow } from '../middleware/flows/rainfall.flow.js';
 import { activityFlow } from '../middleware/flows/activity.flow.js';
 import { EntityValidator } from '../services/entity-validator.js';
-import { getSuggestions } from '../middleware/contextual-suggestions.js';
+import { getSuggestions, resolveSuggestionKey, getDefaultSuggestion } from '../middleware/contextual-suggestions.js';
+import { enrichWithContext } from '../middleware/context-reuse.js';
+import { updateConversationMiniMemory } from '../services/expenses.js';
 import { ConversationObserver } from '../middleware/conversation-observer.js';
 import { IntentExtractor } from '../ai/intent-extractor.js';
 import { PromptBuilder } from '../ai/prompt-builder.js';
@@ -130,8 +132,10 @@ async function sendResponse(phone: string, response: HandlerResponse): Promise<v
     }
   }
   // Send contextual suggestions after action completion (only if no interactive already sent)
-  if (response.suggestionKey && !response.interactive) {
-    const suggestion = getSuggestions(response.suggestionKey);
+  if (!response.interactive) {
+    const suggestion = response.suggestionKey
+      ? getSuggestions(response.suggestionKey)
+      : null;
     if (suggestion && suggestion.type === 'buttons') {
       await sendInteractiveButtons(phone, suggestion.body, suggestion.buttons);
     }
@@ -554,6 +558,9 @@ router.post('/', async (req: Request, res: Response) => {
     const lowConfidenceThreshold = (await getSettingNumber('CONFIDENCE_LOW_CONFIRM')) ?? 0.70;
     const unknownFallbackThreshold = (await getSettingNumber('CONFIDENCE_UNKNOWN_FALLBACK')) ?? 0.50;
 
+    // Check for follow-up context before classification
+    const enriched = await enrichWithContext(text, userId);
+
     // Classify intent (now returns ParseResult with confidence)
     const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings);
     const { intent: rawIntent, aiUsed, confidence } = parseResult;
@@ -565,6 +572,21 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Enrich intent with learned vocabulary (fills gaps, never overwrites)
     const intent: Intent = await contextResolver.enrichIntent(userId, text, rawIntent);
+
+    // If follow-up detected and we have memory, inject context into command data
+    if (enriched.enriched && enriched.memory && intent.type === 'command') {
+      const mem = enriched.memory;
+      const data = intent.data as Record<string, unknown>;
+      // Fill missing plot/field context from memory
+      if (!data.plotName && mem.plotName) data.plotName = mem.plotName;
+      if (!data.fieldName && mem.fieldName) data.fieldName = mem.fieldName;
+      // Fill missing activity filter from last conversation
+      if (!data.activityFilter && mem.lastActivityType) data.activityFilter = mem.lastActivityType;
+      // Fill missing time reference from last conversation
+      if (!data.timeRef && mem.lastTimeReference) {
+        data._inheritedTimeLabel = mem.lastTimeReference;
+      }
+    }
 
     // Handle confirm/cancel for pending transactions
     if (intent.type === 'command' && intent.data.command === 'confirm') {
@@ -687,9 +709,18 @@ router.post('/', async (req: Request, res: Response) => {
           console.warn(`[SILENT_FAILURE] Command "${intent.data.command}" returned empty response for user ${userId}`);
           response.messages = ['No pude procesar ese comando. Escribí *ayuda* para ver las opciones.'];
         }
+        // Ensure every command gets a suggestion (no dead ends)
+        response.suggestionKey = resolveSuggestionKey(intent.data.command, response.suggestionKey);
         // Learn from successful command (fire-and-forget)
         learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
         conversationObserver.logCommandExecuted(userId, intent.data.command, { aiUsed, confidence });
+        // Save mini conversational memory (fire-and-forget)
+        updateConversationMiniMemory(userId, {
+          lastIntent: intent.data.command,
+          lastActivityType: (intent.data.activityFilter as string) ?? (intent.data.activityType as string) ?? null,
+          lastQueryType: intent.data.command.startsWith('query_') ? intent.data.command : null,
+          lastTimeReference: (intent.data.timeLabel as string) ?? null,
+        }).catch(() => {});
         await sendResponse(phone, response);
         conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive).catch(() => {});
         res.sendStatus(200);

@@ -451,8 +451,10 @@ export function detectarLote(texto) {
   const lower = texto.toLowerCase();
 
   // Pronoun references → sentinel
-  if (/(?:ese|este|aquel)\s+lote/.test(lower)) return "__last__";
-  if (/(?:el\s+mismo|ahi\s+mismo|mismo\s+lote)/.test(lower)) return "__last__";
+  if (/(?:ese|este|aquel)\s+(?:lote|campo)/.test(lower)) return "__last__";
+  if (/(?:el\s+mismo|ah[ií]\s+mismo|mismo\s+lote|^ah[ií]$)/.test(lower)) return "__last__";
+  if (/(?:^|\s)(?:y\s+)?ah[ií](?:\s|$)/.test(lower)) return "__last__";
+  if (/en\s+(?:ese|ése)(?:\s|$)/.test(lower)) return "__last__";
 
   // "lote del/de la X" (multi-word: "lote del fondo")
   const matchLoteDel = lower.match(/lote\s+((?:del?|de\s+la)\s+\w+(?:\s+\w+)?)/);
@@ -495,6 +497,123 @@ function parseMesNombre(str) {
   const norm = normalizeText(str);
   if (MESES[norm] !== undefined) return MESES[norm];
   if (MESES[str] !== undefined) return MESES[str];
+  return null;
+}
+
+// --- Time reference parsing for history queries ---
+
+export function parseTimeReference(text) {
+  const lower = text.toLowerCase();
+  const now = new Date();
+
+  // "última vez" / "la última" → null (caller queries most recent 1)
+  if (/(?:ultima|última)\s+vez/.test(lower) || /la\s+(?:ultima|última)/.test(lower)) {
+    return null;
+  }
+
+  // "hoy"
+  if (/\bhoy\b/.test(lower)) {
+    const desde = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return { desde, hasta: now };
+  }
+
+  // "ayer"
+  if (/\bayer\b/.test(lower)) {
+    const desde = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const hasta = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
+    return { desde, hasta };
+  }
+
+  // "esta semana"
+  if (/esta\s+semana/.test(lower)) {
+    const day = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((day + 6) % 7));
+    monday.setHours(0, 0, 0, 0);
+    return { desde: monday, hasta: now };
+  }
+
+  // "este mes"
+  if (/este\s+mes/.test(lower)) {
+    const desde = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { desde, hasta: now };
+  }
+
+  // "la semana pasada"
+  if (/(?:la\s+)?semana\s+pasada/.test(lower)) {
+    const day = now.getDay();
+    const thisMonday = new Date(now);
+    thisMonday.setDate(now.getDate() - ((day + 6) % 7));
+    thisMonday.setHours(0, 0, 0, 0);
+    const prevMonday = new Date(thisMonday);
+    prevMonday.setDate(thisMonday.getDate() - 7);
+    const prevSunday = new Date(thisMonday);
+    prevSunday.setDate(thisMonday.getDate() - 1);
+    prevSunday.setHours(23, 59, 59, 999);
+    return { desde: prevMonday, hasta: prevSunday };
+  }
+
+  // "el mes pasado"
+  if (/(?:el\s+)?mes\s+pasado/.test(lower)) {
+    const desde = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const hasta = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+    return { desde, hasta };
+  }
+
+  // "últimos N días"
+  const matchDias = lower.match(/(?:ultimos|últimos)\s+(\d+)\s+d[ií]as?/);
+  if (matchDias) {
+    const n = parseInt(matchDias[1]);
+    const desde = new Date(now);
+    desde.setDate(now.getDate() - n);
+    desde.setHours(0, 0, 0, 0);
+    return { desde, hasta: now };
+  }
+
+  // "últimas N semanas"
+  const matchSemanas = lower.match(/(?:ultimas|últimas)\s+(\d+)\s+semanas?/);
+  if (matchSemanas) {
+    const n = parseInt(matchSemanas[1]);
+    const desde = new Date(now);
+    desde.setDate(now.getDate() - n * 7);
+    desde.setHours(0, 0, 0, 0);
+    return { desde, hasta: now };
+  }
+
+  // "en marzo", "en enero", etc.
+  const matchMes = lower.match(/en\s+(\w+)/);
+  if (matchMes) {
+    const mesIdx = MESES[matchMes[1]];
+    if (mesIdx !== undefined) {
+      let year = now.getFullYear();
+      if (mesIdx > now.getMonth()) year--;
+      const desde = new Date(year, mesIdx, 1);
+      const hasta = new Date(year, mesIdx + 1, 0, 23, 59, 59);
+      return { desde, hasta };
+    }
+  }
+
+  return null;
+}
+
+// --- Activity filter parsing for history queries ---
+
+const ACTIVITY_FILTER_MAP = [
+  { pattern: /fumig|pulveriz/, type: 'spraying' },
+  { pattern: /fertil|abono/, type: 'fertilization' },
+  { pattern: /labran|arar|cincel|disco/, type: 'tillage' },
+  { pattern: /riego|regar/, type: 'irrigation' },
+  { pattern: /siembr|sembr/, type: 'planting' },
+  { pattern: /cosech/, type: 'harvest' },
+  { pattern: /lluvia|precipit/, type: 'rainfall' },
+  { pattern: /observ|monitoreo|nota/, type: 'observation' },
+];
+
+export function parseActivityFilter(text) {
+  const lower = text.toLowerCase();
+  for (const { pattern, type } of ACTIVITY_FILTER_MAP) {
+    if (pattern.test(lower)) return type;
+  }
   return null;
 }
 
@@ -835,6 +954,39 @@ const COMMAND_PATTERNS = [
   },
 
   {
+    command: "query_plot_history",
+    patterns: [
+      /(?:cuando|cuándo)\s+(?:fue|hicimos|hice)\s+(?:la\s+)?(?:ultima|última)\s+(.+?)(?:\s+(?:en|del?)\s+(?:(?:el\s+)?lote)\s+|$)/,
+      /(?:ultima|última)\s+(?:vez\s+que\s+)?(.+?)(?:\s+(?:en|del?)\s+(?:(?:el\s+)?lote)\s+|$)/,
+      /(?:que|qué)\s+(?:hicimos|hice|se\s+hizo|paso|pasó)\s+(?:en\s+)?(?:(?:el\s+)?lote)\s+/,
+      /(?:historial|historia)\s+(?:de\s+)?(?:actividad(?:es)?)\s+(?:del?\s+)?(?:(?:el\s+)?lote)\s+/,
+      /(?:que|qué)\s+(?:hicimos|hice|se\s+hizo|paso|pasó)\s+(?:esta\s+semana|este\s+mes|ayer|hoy)/,
+      // Binary questions: "¿se fumigó?", "¿hubo lluvia?", "¿se fertilizó el lote 3?"
+      /(?:se\s+)?(?:fumig[oó]|pulveriz[oó]|fertiliz[oó]|sembr[oó]|cosech[oó]|reg[oó]|ar[oó]|labr[oó])/,
+      /(?:hubo|hay|cay[oó]|llov[ií][oó]?)\s+(?:lluvias?|precipitacion(?:es)?|agua)/,
+    ],
+    extract: (_m, normalized, original) => {
+      const plotName = detectarLote(normalized);
+      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
+      const timeRef = parseTimeReference(original);
+      const activityFilter = parseActivityFilter(original);
+      // Detect binary question pattern: "¿se fumigó?", "¿hubo lluvia?"
+      const lower = original.toLowerCase();
+      const isBinaryQuestion = /(?:se\s+)?(?:fumig[oó]|pulveriz[oó]|fertiliz[oó]|sembr[oó]|cosech[oó]|reg[oó]|ar[oó]|labr[oó])\b/.test(lower)
+        || /(?:hubo|hay|cay[oó]|llov[ií][oó]?)\s+(?:lluvias?|precipitacion|agua)/.test(lower);
+      return {
+        plotName,
+        fieldName: campoMatch?.[1] || null,
+        timeRef,
+        activityFilter,
+        isBinaryQuestion,
+        _originalText: original,
+      };
+    },
+    condition: (n) => /(?:cuando|cuándo|ultima|última|que\s+(?:hicimos|hice|se\s+hizo|paso|pasó)|historial\s+de\s+actividad|se\s+(?:fumig|pulveriz|fertiliz|sembr|cosech|reg[oó]|ar[oó]|labr)|hubo\s+(?:lluvia|precipitacion|agua)|llov[ií])/.test(n),
+  },
+
+  {
     command: "active_crop",
     patterns: [
       /(?:que\s+hay\s+sembrado|que\s+cultivo\s+tiene|que\s+tiene\s+sembrado|que\s+esta\s+sembrado)/,
@@ -955,7 +1107,7 @@ const COMMAND_PATTERNS = [
     command: "field_info",
     patterns: [
       /(?:info|detalle|datos?|informacion)\s+(?:del?\s+)?(lote|campo|parcela)\s+((?:\w+)(?:\s+\w+){0,3})/,
-      /(?:estado|informe|como\s+viene)\s+(?:(?:el|del?)\s+)?(lote|campo|parcela)\s+((?:\w+)(?:\s+\w+){0,3})/,
+      /(?:estado|como\s+viene)\s+(?:(?:el|del?)\s+)?(lote|campo|parcela)\s+((?:\w+)(?:\s+\w+){0,3})/,
       /^(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!esta\s|queda\s|en\s|tiene\s)\w+){0,3})\s*\??$/,
     ],
     extract: (m) => ({ entityKeyword: m[1], fieldName: m[2].trim() }),
@@ -1092,6 +1244,8 @@ const COMMAND_PATTERNS = [
       /generar\s+reporte\s+(?:(?:del?\s+)?campo\s+)?((?:\w+)(?:\s+\w+){0,3})/,
       /reporte\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
       /reporte\s+agron[oó]mico\s+(?:(?:del?\s+)?campo\s+)?((?:\w+)(?:\s+\w+){0,3})/,
+      /informe\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
+      /informe\s+(?:agron[oó]mico\s+)?(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
     ],
     extract: (m) => ({ fieldName: m[1].trim() }),
   },

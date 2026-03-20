@@ -25,7 +25,7 @@ const AGRONOMY_COMMANDS = new Set([
   'compare_rainfall_months', 'compare_rainfall_years',
   'sow_crop', 'harvest_crop', 'active_crop', 'crop_history',
   'log_spraying', 'log_fertilization', 'log_tillage', 'log_irrigation', 'plot_activities',
-  'log_observation', 'generate_agro_report',
+  'query_plot_history', 'log_observation', 'generate_agro_report',
 ]);
 
 const SYSTEM_COMMANDS = new Set([

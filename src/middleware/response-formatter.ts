@@ -101,10 +101,9 @@ const MAX_ACTIVITIES = 5;
 export function formatAgroReportResponse(data: AgroReportResponseData): string {
   const lines: string[] = [];
 
-  lines.push('\ud83d\udccb *Reporte Agron\u00f3mico*');
-  lines.push(`Campo: ${data.fieldName} \u2014 Semana ${data.weekNumber}`);
+  lines.push(`🌱 *Reporte agronómico — ${data.fieldName}* (semana ${data.weekNumber})`);
   lines.push('');
-  lines.push(`\ud83d\udcca Observaciones: ${data.observationCount}`);
+  lines.push(`📊 Observaciones: ${data.observationCount}`);
 
   const plots = data.plotSummaries.slice(0, MAX_PLOTS);
   if (plots.length > 0) {
@@ -112,9 +111,9 @@ export function formatAgroReportResponse(data: AgroReportResponseData): string {
     lines.push('*Detalle por lote*');
     for (const plot of plots) {
       lines.push('');
-      lines.push(`\ud83c\udf31 ${plot.plotName}`);
+      lines.push(`🌱 ${plot.plotName}`);
       for (const obs of plot.observations) {
-        lines.push(`\u2022 ${obs}`);
+        lines.push(`• ${obs}`);
       }
     }
   }
@@ -125,9 +124,12 @@ export function formatAgroReportResponse(data: AgroReportResponseData): string {
     lines.push('*Actividad reciente*');
     for (const act of activities) {
       const detail = act.detail ? `: ${act.detail}` : '';
-      lines.push(`\u2022 ${act.label}${detail} (${act.plotName})`);
+      lines.push(`• ${act.label}${detail} (${act.plotName})`);
     }
   }
+
+  lines.push('');
+  lines.push('Te adjunto el PDF completo 👇');
 
   return lines.join('\n');
 }

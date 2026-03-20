@@ -2,7 +2,10 @@ import { normalizarMonto, parseMilimetros } from '../../utils/parser.js';
 import {
   saveRainfall as dbSaveRainfall,
   getOrCreateField as dbGetOrCreateField,
+  getUserSettings,
+  getDailyRainfallTotal,
 } from '../../services/expenses.js';
+import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
 import { getSuggestions } from '../contextual-suggestions.js';
 import { buildFieldPrompt, buildFieldInteractive, validateFieldAsync } from './field-step-helpers.js';
 import { EntityValidator } from '../../services/entity-validator.js';
@@ -93,6 +96,32 @@ export const rainfallFlow: FlowDefinition = {
 
     let msg = `\ud83c\udf27\ufe0f Lluvia registrada: *${mm}mm*`;
     if (fieldName) msg += `\n\ud83d\udccd ${fieldName}`;
+
+    // Check cumulative daily rain threshold alert
+    try {
+      const settings = await getUserSettings(userId);
+      if (settings?.rain_alerts !== false) {
+        const threshold = settings?.rain_alert_mm ?? 10;
+        const dailyTotal = await getDailyRainfallTotal(userId, fieldId);
+        if (dailyTotal >= threshold) {
+          const today = new Date().toISOString().slice(0, 10);
+          const dedupKey = `field_${fieldId ?? 0}_${today}`;
+          const dup = await isDuplicate(userId, 'rain_observed', dedupKey, 24);
+          if (!dup) {
+            msg += `\n\n\u26a0\ufe0f *Alerta:* Acumulado hoy *${dailyTotal}mm* \u2265 umbral configurado (${threshold}mm)`;
+            recordAlert(userId, 'rain_observed', msg, {
+              fieldId,
+              dedupKey,
+              payload: { mm, dailyTotal, threshold, fieldName },
+            }).catch(() => {});
+          } else {
+            recordDeduped(userId, 'rain_observed', dedupKey, msg).catch(() => {});
+          }
+        }
+      }
+    } catch {
+      // Don't let alert check failure break rain registration
+    }
 
     const suggestions = getSuggestions('rainfall_logged');
     return {

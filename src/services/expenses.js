@@ -138,7 +138,8 @@ export async function updateGlobalSettings(settings) {
 
 export async function getUsersWithRainAlerts() {
   const { rows } = await pool.query(
-    `SELECT u.id, u.phone_number, u.city, COALESCE(s.rain_alert_mm, 10) AS rain_alert_mm
+    `SELECT u.id, u.phone_number, u.city,
+            COALESCE(s.rain_alert_mm, (SELECT default_rain_alert_mm FROM global_settings WHERE id = 1), 10) AS rain_alert_mm
      FROM users u
      JOIN user_settings s ON s.user_id = u.id
      WHERE s.rain_alerts = true`
@@ -469,7 +470,7 @@ export async function getPreviousMonthCategoryTotal(userId, category) {
   return Number(result.rows[0].total);
 }
 
-export async function checkBudgetAlert(total, limit, category, userName, userId) {
+export async function checkBudgetAlert(total, limit, category, userName, userId, globalSettings = null) {
   const pct = total / limit;
   const nombre = userName ? ` ${userName}` : "";
 
@@ -487,10 +488,14 @@ export async function checkBudgetAlert(total, limit, category, userName, userId)
   }
 
   if (pct > 1) {
+    // Check global toggle for 100% alerts
+    if (globalSettings && globalSettings.budget_alert_100 === false) return null;
     const exceso = total - limit;
     return `🔴 Atención${nombre}:\nSuperaste el presupuesto mensual de *${category}*.\n\nPresupuesto: $${limit.toLocaleString("es-AR")}\nActual: $${total.toLocaleString("es-AR")}\nExceso: $${exceso.toLocaleString("es-AR")}${prevInsight}`;
   }
   if (pct > 0.8) {
+    // Check global toggle for 80% alerts
+    if (globalSettings && globalSettings.budget_alert_80 === false) return null;
     const restante = limit - total;
     return `⚠️ Atención${nombre}:\nVas al ${Math.round(pct * 100)}% del presupuesto de *${category}*.\n\nPresupuesto: $${limit.toLocaleString("es-AR")}\nActual: $${total.toLocaleString("es-AR")}\nRestante: $${restante.toLocaleString("es-AR")}${prevInsight}`;
   }
@@ -897,8 +902,8 @@ export async function getConversationState(userId) {
   const result = await pool.query(
     `SELECT cs.*, p.name as plot_name, f.name as field_name
      FROM conversation_state cs
-     LEFT JOIN plots p ON cs.last_plot_id = p.id
-     LEFT JOIN fields f ON cs.last_field_id = f.id
+     LEFT JOIN plots p ON cs.last_plot_id = p.id AND p.deleted_at IS NULL
+     LEFT JOIN fields f ON cs.last_field_id = f.id AND f.deleted_at IS NULL
      WHERE cs.user_id = $1`,
     [userId]
   );
@@ -912,6 +917,20 @@ export async function updateConversationState(userId, fieldId, plotId) {
      ON CONFLICT (user_id) DO UPDATE SET
        last_field_id = $2, last_plot_id = $3, updated_at = NOW()`,
     [userId, fieldId, plotId]
+  );
+}
+
+export async function updateConversationMiniMemory(userId, { lastIntent, lastActivityType, lastQueryType, lastTimeReference }) {
+  await pool.query(
+    `INSERT INTO conversation_state (user_id, last_intent, last_activity_type, last_query_type, last_time_reference, updated_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (user_id) DO UPDATE SET
+       last_intent = COALESCE($2, conversation_state.last_intent),
+       last_activity_type = COALESCE($3, conversation_state.last_activity_type),
+       last_query_type = COALESCE($4, conversation_state.last_query_type),
+       last_time_reference = COALESCE($5, conversation_state.last_time_reference),
+       updated_at = NOW()`,
+    [userId, lastIntent || null, lastActivityType || null, lastQueryType || null, lastTimeReference || null]
   );
 }
 
@@ -1016,6 +1035,18 @@ export async function saveRainfall(userId, mm, fieldId = null, plotId = null) {
     [userId, fieldId, plotId, mm]
   );
   return result.rows[0];
+}
+
+export async function getDailyRainfallTotal(userId, fieldId = null) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(millimeters), 0) AS total
+     FROM rainfall
+     WHERE user_id = $1
+       AND COALESCE(field_id, 0) = COALESCE($2, 0)
+       AND created_at::date = CURRENT_DATE`,
+    [userId, fieldId]
+  );
+  return parseFloat(rows[0].total);
 }
 
 export async function deleteLastRainfall(userId) {
@@ -1279,4 +1310,144 @@ export async function getParseMetrics() {
     unparsedTotal: parseInt(unparsedTotalR.rows[0].count),
     claudeFallbacksWeek: parseInt(aiWeekR.rows[0].count),
   };
+}
+
+// --- Plot history query ---
+
+export async function queryPlotHistory(userId, { plotId = null, fieldId = null, desde = null, hasta = null, activityFilter = null, limit = 20 } = {}) {
+  const params = [userId];
+  let idx = 2;
+
+  // Build shared conditions
+  let locationFilter = '';
+  if (plotId) {
+    locationFilter = `AND de.plot_id = $${idx}`;
+    params.push(plotId);
+    idx++;
+  } else if (fieldId) {
+    locationFilter = `AND p.field_id = $${idx}`;
+    params.push(fieldId);
+    idx++;
+  }
+
+  let dateFilter = '';
+  const desdeIdx = idx;
+  if (desde && hasta) {
+    dateFilter = `AND event_date BETWEEN $${idx} AND $${idx + 1}`;
+    params.push(desde, hasta);
+    idx += 2;
+  }
+
+  let actFilter = '';
+  if (activityFilter && activityFilter !== 'observation' && activityFilter !== 'rainfall') {
+    actFilter = `AND de.event_type = $${idx}`;
+    params.push(activityFilter);
+    idx++;
+  }
+
+  // Build observation location filter using same param refs
+  let obsLocationFilter = '';
+  if (plotId) {
+    obsLocationFilter = `AND o.plot_id = $${plotId === params[1] ? 2 : 2}`;
+  } else if (fieldId) {
+    obsLocationFilter = `AND COALESCE(p2.field_id, o.field_id) = $${fieldId === params[1] ? 2 : 2}`;
+  }
+
+  // Build rainfall location filter
+  let rainLocationFilter = '';
+  if (fieldId) {
+    rainLocationFilter = `AND r.field_id = $${fieldId === params[1] ? 2 : 2}`;
+  }
+
+  // Rebuild with clean positional params to avoid confusion
+  // Use a simpler approach: build each subquery with its own conditions
+  const qParams = [userId];
+  let qIdx = 2;
+
+  // Location param
+  let locParam = null;
+  if (plotId) { locParam = plotId; qParams.push(plotId); qIdx++; }
+  else if (fieldId) { locParam = fieldId; qParams.push(fieldId); qIdx++; }
+  const locParamRef = locParam ? `$2` : null;
+
+  // Date params
+  let dateParamRefs = null;
+  if (desde && hasta) {
+    qParams.push(desde, hasta);
+    dateParamRefs = { desde: `$${qIdx}`, hasta: `$${qIdx + 1}` };
+    qIdx += 2;
+  }
+
+  // Activity param
+  let actParamRef = null;
+  if (activityFilter) {
+    qParams.push(activityFilter);
+    actParamRef = `$${qIdx}`;
+    qIdx++;
+  }
+
+  // Domain events subquery
+  const deLoc = plotId ? `AND de.plot_id = ${locParamRef}` : (fieldId ? `AND p.field_id = ${locParamRef}` : '');
+  const deDate = dateParamRefs ? `AND de.event_date BETWEEN ${dateParamRefs.desde} AND ${dateParamRefs.hasta}` : '';
+  const deAct = (activityFilter && activityFilter !== 'observation' && activityFilter !== 'rainfall')
+    ? `AND de.event_type = ${actParamRef}` : '';
+  const skipDe = (activityFilter === 'observation' || activityFilter === 'rainfall');
+
+  // Observations subquery
+  const obsLoc = plotId ? `AND o.plot_id = ${locParamRef}` : (fieldId ? `AND COALESCE(p2.field_id, o.field_id) = ${locParamRef}` : '');
+  const obsDate = dateParamRefs ? `AND o.created_at::date BETWEEN ${dateParamRefs.desde} AND ${dateParamRefs.hasta}` : '';
+  const skipObs = (activityFilter && activityFilter !== 'observation');
+
+  // Rainfall subquery
+  const rainLoc = fieldId ? `AND r.field_id = ${locParamRef}` : '';
+  const rainDate = dateParamRefs ? `AND r.rainfall_date BETWEEN ${dateParamRefs.desde} AND ${dateParamRefs.hasta}` : '';
+  const skipRain = (activityFilter && activityFilter !== 'rainfall');
+
+  const parts = [];
+
+  if (!skipDe) {
+    parts.push(`
+      SELECT 'activity' as source, de.id, de.event_type as type, de.event_date as date,
+             de.product as detail, de.quantity, de.unit, de.crop, de.plot_id,
+             p.name as plot_name, f.name as field_name
+      FROM domain_events de
+      LEFT JOIN plots p ON de.plot_id = p.id
+      LEFT JOIN fields f ON p.field_id = f.id
+      WHERE de.user_id = $1 ${deLoc} ${deDate} ${deAct}
+    `);
+  }
+
+  if (!skipObs) {
+    parts.push(`
+      SELECT 'observation' as source, o.id, o.category as type, o.created_at::date as date,
+             o.observation_text as detail, NULL::numeric as quantity, NULL::text as unit, NULL::text as crop, o.plot_id,
+             p2.name as plot_name, f2.name as field_name
+      FROM agro_observations o
+      LEFT JOIN plots p2 ON o.plot_id = p2.id
+      LEFT JOIN fields f2 ON COALESCE(p2.field_id, o.field_id) = f2.id
+      WHERE o.user_id = $1 ${obsLoc} ${obsDate}
+    `);
+  }
+
+  if (!skipRain) {
+    parts.push(`
+      SELECT 'rainfall' as source, r.id, 'rainfall' as type, r.rainfall_date as date,
+             r.millimeters::text as detail, r.millimeters as quantity, 'mm'::text as unit, NULL::text as crop, NULL::integer as plot_id,
+             NULL::text as plot_name, f3.name as field_name
+      FROM rainfall r
+      LEFT JOIN fields f3 ON r.field_id = f3.id
+      WHERE r.user_id = $1 ${rainLoc} ${rainDate}
+    `);
+  }
+
+  if (parts.length === 0) {
+    return [];
+  }
+
+  // Priority: activities (0) > rainfall (1) > observations (2), then by date DESC
+  // Wrap in subquery so we can reference the 'source' alias in ORDER BY
+  const inner = parts.join('\nUNION ALL\n');
+  const sql = `SELECT * FROM (${inner}) AS h ORDER BY CASE h.source WHEN 'activity' THEN 0 WHEN 'rainfall' THEN 1 ELSE 2 END, h.date DESC LIMIT ${parseInt(limit)}`;
+  const result = await pool.query(sql, qParams);
+  return result.rows;
 }

@@ -40,7 +40,7 @@ export function stripFillerPhrases(text) {
   // BUT preserve "info lote 3", "info del campo norte", "datos del lote 5"
   // Lookahead includes optional de(l)? to prevent backtracking from stripping it
   cleaned = cleaned.replace(
-    /^(?:(?:mostrame|dame|decime|pasame|quiero)\s+)?(?:(?:la\s+)?informaci[oó]n|info|datos?)\s+(?!(?:de(?:l)?\s+)?(?:(?:el|la)\s+)?(?:lote|campo|parcela)\b)(?:de(?:l)?\s+)?/i,
+    /^(?:(?:mostrame|dame|decime|pasame|quiero)\s+)?(?:(?:la\s+)?informaci[oó]n|info|datos?)\s+(?!(?:de(?:l)?\s+)?(?:(?:el|la)\s+)?(?:lot[e]?|campo|parcela)\b)(?:de(?:l)?\s+)?/i,
     ''
   );
 

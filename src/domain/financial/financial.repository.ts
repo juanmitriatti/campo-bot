@@ -160,8 +160,8 @@ export class FinancialRepository {
     return _getCategoryMonthlyTotal(userId, category);
   }
 
-  async checkBudgetAlert(total: number, limit: number, category: string, userName: string | null, userId: UserId): Promise<string | null> {
-    return _checkBudgetAlert(total, limit, category, userName, userId);
+  async checkBudgetAlert(total: number, limit: number, category: string, userName: string | null, userId: UserId, globalSettings?: { budget_alert_80?: boolean; budget_alert_100?: boolean } | null): Promise<string | null> {
+    return _checkBudgetAlert(total, limit, category, userName, userId, globalSettings);
   }
 
   // --- Fields (delegated to PlotRepository) ---

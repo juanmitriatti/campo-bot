@@ -1,5 +1,6 @@
 import { FinancialService } from './financial.service.js';
 import { generateCSV } from '../../utils/csv.js';
+import { recordAlert } from '../../services/alert.service.js';
 import type {
   UserId,
   User,
@@ -14,6 +15,20 @@ import type {
 } from '../../types/index.js';
 
 // --- Formatting helpers ---
+
+const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+function currentMonthLabel(): string {
+  const now = new Date();
+  return `${MESES_ES[now.getMonth()]} ${now.getFullYear()}`;
+}
+
+function currentWeekLabel(): string {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const weekNum = Math.ceil(((now.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+  return `semana ${weekNum}, ${now.getFullYear()}`;
+}
 
 function buildLocationLabel(fieldName: string | null, plotName: string | null): string {
   if (fieldName && plotName) return `${fieldName} > ${plotName}`;
@@ -128,7 +143,16 @@ export class FinancialHandler {
 
     if (settings.budget_alerts) {
       const alert = await this.service.checkBudgetAlert(userId, data.category, user.name);
-      if (alert) messages.push(alert);
+      if (alert) {
+        messages.push(alert);
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const alertType = alert.startsWith('\u{1F534}') ? 'budget_100' : 'budget_80';
+        recordAlert(userId, alertType, alert, {
+          dedupKey: `${data.category}_${monthKey}`,
+          payload: { category: data.category },
+        }).catch(() => {});
+      }
     }
 
     return { messages, suggestionKey: 'expense_saved' };
@@ -186,7 +210,16 @@ export class FinancialHandler {
       const messages = [buildExpenseConfirmation(pending.data as ParsedExpense, pending.fieldName, pending.plotName)];
       if (settings.budget_alerts) {
         const alert = await this.service.checkBudgetAlert(userId, pending.data.category, user.name);
-        if (alert) messages.push(alert);
+        if (alert) {
+          messages.push(alert);
+          const now = new Date();
+          const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+          const alertType = alert.startsWith('\u{1F534}') ? 'budget_100' : 'budget_80';
+          recordAlert(userId, alertType, alert, {
+            dedupKey: `${pending.data.category}_${monthKey}`,
+            payload: { category: pending.data.category },
+          }).catch(() => {});
+        }
       }
       return { messages };
     }
@@ -200,17 +233,17 @@ export class FinancialHandler {
       case 'monthly_result': {
         const { ingresos, gastos } = await this.service.getMonthlyResult(userId);
         if (ingresos === 0 && gastos === 0) {
-          return { messages: ['No hay movimientos este mes.'] };
+          return { messages: ['No hay movimientos este mes.'], suggestionKey: 'report_shown' };
         }
-        return { messages: [formatResult(ingresos, gastos, 'Resultado del mes')] };
+        return { messages: [formatResult(ingresos, gastos, `📊 Resultado financiero (${currentMonthLabel()})`)], suggestionKey: 'report_shown' };
       }
 
       case 'field_result': {
         const { ingresos, gastos } = await this.service.getFieldResult(userId, cmd.fieldName as string);
         if (ingresos === 0 && gastos === 0) {
-          return { messages: [`No hay movimientos para ${cmd.fieldName} este mes.`] };
+          return { messages: [`No hay movimientos para ${cmd.fieldName} este mes.`], suggestionKey: 'report_shown' };
         }
-        return { messages: [formatResult(ingresos, gastos, `Resultado ${cmd.fieldName}`)] };
+        return { messages: [formatResult(ingresos, gastos, `📊 Resultado financiero — ${cmd.fieldName} (${currentMonthLabel()})`)], suggestionKey: 'report_shown' };
       }
 
       // --- Compare months ---
@@ -232,7 +265,7 @@ export class FinancialHandler {
         let total1 = 0, total2 = 0;
         const mes1Name = cmd.mes1Name as string;
         const mes2Name = cmd.mes2Name as string;
-        let msg = `\ud83d\udcca ${mes1Name.charAt(0).toUpperCase() + mes1Name.slice(1)} vs ${mes2Name.charAt(0).toUpperCase() + mes2Name.slice(1)}:\n\n`;
+        let msg = `📊 Comparación financiera — ${mes1Name.charAt(0).toUpperCase() + mes1Name.slice(1)} vs ${mes2Name.charAt(0).toUpperCase() + mes2Name.slice(1)} (${year})\n\n`;
         for (const cat of allCats) {
           const v1 = map1[cat] || 0;
           const v2 = map2[cat] || 0;
@@ -253,27 +286,27 @@ export class FinancialHandler {
         }
         msg += `\n\n${mes1Name}: $${total1.toLocaleString('es-AR')}`;
         msg += `\n${mes2Name}: $${total2.toLocaleString('es-AR')}`;
-        return { messages: [msg] };
+        return { messages: [msg], suggestionKey: 'report_shown' };
       }
 
       // --- Weekly report ---
       case 'weekly_report': {
         const rows = await this.service.getWeeklyReport(userId);
         if (rows.length === 0) {
-          return { messages: ['No hay gastos registrados esta semana.'] };
+          return { messages: ['No hay gastos registrados esta semana.'], suggestionKey: 'report_shown' };
         }
         const { lines, total } = formatReportRows(rows);
-        return { messages: [`\ud83d\udcca Resumen de la semana:\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}`] };
+        return { messages: [`📊 *Resumen financiero* (${currentWeekLabel()})\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}\n\n_Pedí "resumen mes" para ver el mes completo._`], suggestionKey: 'report_shown' };
       }
 
       // --- Monthly report ---
       case 'monthly_report': {
         const rows = await this.service.getMonthlyReport(userId);
         if (rows.length === 0) {
-          return { messages: ['No hay gastos registrados este mes.'] };
+          return { messages: ['No hay gastos registrados este mes.'], suggestionKey: 'report_shown' };
         }
         const { lines, total } = formatReportRows(rows);
-        return { messages: [`\ud83d\udcca Resumen del mes:\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}`] };
+        return { messages: [`📊 *Resumen financiero* (${currentMonthLabel()})\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}\n\n_Pedí "resultado mes" para ver ingresos vs gastos._`], suggestionKey: 'report_shown' };
       }
 
       // --- Plot report ---
@@ -289,10 +322,10 @@ export class FinancialHandler {
           return { messages: [msg.trimEnd()] };
         }
         if (report.rows.length === 0) {
-          return { messages: [`No hay gastos registrados para lote *${report.plotName}* este mes.`] };
+          return { messages: [`No hay gastos registrados para lote *${report.plotName}* (${currentMonthLabel()}).\n\n_Para ver actividades agronómicas: "qué pasó en el lote ${report.plotName}"_`], suggestionKey: 'report_shown' };
         }
         const { lines: plotLines, total: plotTotal } = formatReportRows(report.rows);
-        return { messages: [`\ud83d\udcca Resumen lote *${report.plotName}* (campo ${report.fieldName}):\n\n${plotLines}\nTotal: $${plotTotal.toLocaleString('es-AR')}`] };
+        return { messages: [`📊 *Resumen financiero — lote ${report.plotName}* (${report.fieldName}, ${currentMonthLabel()})\n\n${plotLines}\nTotal: $${plotTotal.toLocaleString('es-AR')}\n\n_Para actividades agronómicas: "qué pasó en el lote ${report.plotName}"_`], suggestionKey: 'report_shown' };
       }
 
       // --- Field report ---
@@ -302,18 +335,18 @@ export class FinancialHandler {
           const plotReport = await this.service.getPlotReport(userId, cmd.fieldName as string);
           if (plotReport) {
             if (plotReport.rows.length === 0) {
-              return { messages: [`No hay gastos registrados para lote *${plotReport.plotName}* este mes.`] };
+              return { messages: [`No hay gastos registrados para lote *${plotReport.plotName}* (${currentMonthLabel()}).\n\n_Para actividades agronómicas: "qué pasó en el lote ${plotReport.plotName}"_`], suggestionKey: 'report_shown' };
             }
             const { lines: pLines, total: pTotal } = formatReportRows(plotReport.rows);
-            return { messages: [`\ud83d\udcca Resumen lote *${plotReport.plotName}* (campo ${plotReport.fieldName}):\n\n${pLines}\nTotal: $${pTotal.toLocaleString('es-AR')}`] };
+            return { messages: [`📊 *Resumen financiero — lote ${plotReport.plotName}* (${plotReport.fieldName}, ${currentMonthLabel()})\n\n${pLines}\nTotal: $${pTotal.toLocaleString('es-AR')}\n\n_Para actividades agronómicas: "qué pasó en el lote ${plotReport.plotName}"_`], suggestionKey: 'report_shown' };
           }
         }
         const rows = await this.service.getFieldReport(userId, cmd.fieldName as string);
         if (rows.length === 0) {
-          return { messages: [`No hay gastos registrados para ${cmd.fieldName} este mes.`] };
+          return { messages: [`No hay gastos registrados para ${cmd.fieldName} (${currentMonthLabel()}).\n\n_Para reporte agronómico: "reporte campo ${cmd.fieldName}"_`], suggestionKey: 'report_shown' };
         }
         const { lines, total } = formatReportRows(rows);
-        return { messages: [`\ud83d\udcca Resumen ${cmd.fieldName}:\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}`] };
+        return { messages: [`📊 *Resumen financiero — ${cmd.fieldName}* (${currentMonthLabel()})\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}\n\n_Para reporte agronómico: "reporte campo ${cmd.fieldName}"_`], suggestionKey: 'report_shown' };
       }
 
       // --- Date range report ---
@@ -324,10 +357,10 @@ export class FinancialHandler {
         const desdeStr = desde.toLocaleDateString('es-AR');
         const hastaStr = hasta.toLocaleDateString('es-AR');
         if (rows.length === 0) {
-          return { messages: [`No hay gastos entre ${desdeStr} y ${hastaStr}.`] };
+          return { messages: [`No hay gastos entre ${desdeStr} y ${hastaStr}.`], suggestionKey: 'report_shown' };
         }
         const { lines, total } = formatReportRows(rows);
-        return { messages: [`\ud83d\udcca Resumen ${desdeStr} - ${hastaStr}:\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}`] };
+        return { messages: [`📊 *Resumen financiero* (${desdeStr} — ${hastaStr})\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}`], suggestionKey: 'report_shown' };
       }
 
       // --- Budget ---
@@ -559,7 +592,7 @@ export class FinancialHandler {
         if (cmd.entityKeyword === 'lote') {
           const plotInfo = await this.service.getPlotInfo(userId, cmd.fieldName as string);
           if (plotInfo) {
-            return { messages: [this.formatPlotInfo(plotInfo)] };
+            return { messages: [this.formatPlotInfo(plotInfo)], suggestionKey: 'field_info_shown' };
           }
           // Fall through to field lookup
         }
@@ -581,7 +614,7 @@ export class FinancialHandler {
         if (info.rainfall.count > 0) {
           msg += `\ud83c\udf27\ufe0f Lluvia: ${info.rainfall.total}mm (${info.rainfall.count} reg.)`;
         }
-        return { messages: [msg] };
+        return { messages: [msg], suggestionKey: 'field_info_shown' };
       }
 
       // --- Plots ---
@@ -671,7 +704,7 @@ export class FinancialHandler {
           }
           return { messages: [notFoundMsg.trimEnd()] };
         }
-        return { messages: [this.formatPlotInfo(plotInfo)] };
+        return { messages: [this.formatPlotInfo(plotInfo)], suggestionKey: 'field_info_shown' };
       }
 
       case 'set_plot_area': {

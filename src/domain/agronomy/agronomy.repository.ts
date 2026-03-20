@@ -1,5 +1,6 @@
 import {
   saveRainfall as _saveRainfall,
+  getDailyRainfallTotal as _getDailyRainfallTotal,
   deleteLastRainfall as _deleteLastRainfall,
   getRainfallPeriod as _getRainfallPeriod,
   getRainfallAllLocations as _getRainfallAllLocations,
@@ -16,9 +17,10 @@ import {
   getDomainEventsByUser as _getDomainEventsByUser,
   getLastDomainEvent as _getLastDomainEvent,
   deleteDomainEvent as _deleteDomainEvent,
+  queryPlotHistory as _queryPlotHistory,
 } from '../../services/expenses.js';
 import { PlotRepository } from '../plots/plot.repository.js';
-import type { UserId, FieldRow, PlotRow, PlotCropRow, DomainEventRow } from '../../types/index.js';
+import type { UserId, FieldRow, PlotRow, PlotCropRow, DomainEventRow, PlotHistoryRow } from '../../types/index.js';
 
 export interface RainfallSummary {
   total: number;
@@ -40,6 +42,10 @@ export class AgronomyRepository {
 
   async saveRainfall(userId: UserId, mm: number, fieldId: number | null, plotId: number | null = null): Promise<void> {
     await _saveRainfall(userId, mm, fieldId, plotId);
+  }
+
+  async getDailyRainfallTotal(userId: UserId, fieldId: number | null): Promise<number> {
+    return _getDailyRainfallTotal(userId, fieldId);
   }
 
   async deleteLastRainfall(userId: UserId): Promise<{ millimeters: number } | null> {
@@ -163,5 +169,18 @@ export class AgronomyRepository {
 
   async deleteDomainEvent(eventId: number): Promise<DomainEventRow | null> {
     return _deleteDomainEvent(eventId) as Promise<DomainEventRow | null>;
+  }
+
+  // --- Plot history query ---
+
+  async queryPlotHistory(userId: UserId, opts: {
+    plotId?: number | null;
+    fieldId?: number | null;
+    desde?: Date | null;
+    hasta?: Date | null;
+    activityFilter?: string | null;
+    limit?: number;
+  }): Promise<PlotHistoryRow[]> {
+    return _queryPlotHistory(userId, opts) as Promise<PlotHistoryRow[]>;
   }
 }

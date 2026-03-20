@@ -246,6 +246,22 @@ export interface DomainEventRow {
   created_at: Date;
 }
 
+// --- Plot History (unified timeline) ---
+
+export interface PlotHistoryRow {
+  source: 'activity' | 'observation' | 'rainfall';
+  id: number;
+  type: string;
+  date: Date;
+  detail: string | null;
+  quantity: number | null;
+  unit: string | null;
+  crop: string | null;
+  plot_id: number | null;
+  plot_name: string | null;
+  field_name: string | null;
+}
+
 // --- Agro Observations ---
 
 export type ObservationCategory = 'sanidad' | 'malezas' | 'nutricion' | 'fenologia' | 'clima' | 'general';

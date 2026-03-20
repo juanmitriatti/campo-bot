@@ -13,7 +13,38 @@ import {
 import { generateWeeklyReport } from '../../services/agro-report.js';
 import { saveObservation, detectObservationCategory, getCurrentWeekObservations } from '../../services/observations.js';
 import { formatObservationResponse, formatAgroReportResponse } from '../../middleware/response-formatter.js';
+import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
+import { formatHistoryResponse } from './plot-query.service.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType } from '../../types/index.js';
+
+// --- Observation safety guard ---
+// Prevents accidental persistence of questions/follow-ups as observations.
+
+const QUESTION_STARTS = /^(?:que|qué|cuando|cuándo|donde|dónde|como|cómo|cual|cuál|cuanto|cuánto|por\s+que|por\s+qué|quien|quién)/i;
+const FOLLOWUP_STARTS = /^(?:y\s|en\s|del\s|la\s|el\s|eso|ese|esa|ah[ií])/i;
+const STRONG_OBS_SIGNALS = /(?:observaci[oó]n|hay\s|se\s+detect|se\s+observ|presencia\s+de|se\s+ve|plaga|maleza|hongo|roya|helada|granizo|chinche|oruga)/i;
+
+function isLikelyQuestionOrFollowUp(text: string): boolean {
+  const trimmed = text.trim();
+
+  // Question marks → ALWAYS block, no exceptions (highest priority)
+  if (trimmed.includes('?') || trimmed.includes('¿')) return true;
+
+  // Strong observation signals → allow persistence
+  if (STRONG_OBS_SIGNALS.test(trimmed)) return false;
+
+  // Very short messages (3 words or fewer)
+  const wordCount = trimmed.split(/\s+/).length;
+  if (wordCount <= 3) return true;
+
+  // Starts with question words
+  if (QUESTION_STARTS.test(trimmed)) return true;
+
+  // Starts with follow-up connectors
+  if (FOLLOWUP_STARTS.test(trimmed)) return true;
+
+  return false;
+}
 
 export class AgronomyHandler {
   private plotDiscovery = new PlotDiscoveryService();
@@ -41,7 +72,7 @@ export class AgronomyHandler {
           let msg = formatCurrentWeather(current) + '\n\n' + formatForecast(forecastData);
           const rainAlert = checkRainAlert(forecastData);
           if (rainAlert) msg += '\n\n' + rainAlert;
-          return { messages: [msg] };
+          return { messages: [msg], suggestionKey: 'weather_shown' };
         } catch (e: unknown) {
           console.error('WEATHER ERROR:', (e as Error).message);
           return { messages: ['No pude obtener el clima. Verific\u00e1 la ciudad o intent\u00e1 m\u00e1s tarde.'] };
@@ -61,7 +92,7 @@ export class AgronomyHandler {
           let msg = formatForecast(forecastData);
           const rainAlert = checkRainAlert(forecastData);
           if (rainAlert) msg += '\n\n' + rainAlert;
-          return { messages: [msg] };
+          return { messages: [msg], suggestionKey: 'weather_shown' };
         } catch (e: unknown) {
           console.error('WEATHER ERROR:', (e as Error).message);
           return { messages: ['No pude obtener el pron\u00f3stico. Verific\u00e1 la ciudad o intent\u00e1 m\u00e1s tarde.'] };
@@ -86,7 +117,7 @@ export class AgronomyHandler {
           msg += formatCurrentWeather(current) + '\n\n' + formatForecast(forecastData);
           const rainAlert = checkRainAlert(forecastData);
           if (rainAlert) msg += '\n\n' + rainAlert;
-          return { messages: [msg] };
+          return { messages: [msg], suggestionKey: 'weather_shown' };
         } catch (e: unknown) {
           console.error('WEATHER ERROR:', (e as Error).message);
           return { messages: ['No pude obtener el clima. Verific\u00e1 la ciudad o intent\u00e1 m\u00e1s tarde.'] };
@@ -137,7 +168,7 @@ export class AgronomyHandler {
             msg += '\n\u26a0\ufe0f *Alertas de lluvia:*\n' + alerts.join('\n');
           }
 
-          return { messages: [msg] };
+          return { messages: [msg], suggestionKey: 'weather_shown' };
         } catch (e: unknown) {
           console.error('WEATHER ERROR:', (e as Error).message);
           return { messages: ['No pude obtener el clima. Intent\u00e1 m\u00e1s tarde.'] };
@@ -160,8 +191,34 @@ export class AgronomyHandler {
           fieldLabel = resolved.fieldName;
         }
 
-        await this.repo.saveRainfall(userId, cmd.mm as number, resolved.fieldId, resolved.plotId);
-        return { messages: [`\ud83c\udf27\ufe0f Lluvia registrada: *${cmd.mm}mm*\n\ud83d\udccd ${fieldLabel}`] };
+        const mm = cmd.mm as number;
+        await this.repo.saveRainfall(userId, mm, resolved.fieldId, resolved.plotId);
+
+        let msg = `\ud83c\udf27\ufe0f Lluvia registrada: *${mm}mm*\n\ud83d\udccd ${fieldLabel}`;
+
+        // Check cumulative daily rain threshold alert
+        if (settings.rain_alerts !== false) {
+          const threshold = settings.rain_alert_mm ?? 10;
+          const dailyTotal = await this.repo.getDailyRainfallTotal(userId, resolved.fieldId);
+          if (dailyTotal >= threshold) {
+            const today = new Date().toISOString().slice(0, 10);
+            const dedupKey = `field_${resolved.fieldId ?? 0}_${today}`;
+            const dup = await isDuplicate(userId, 'rain_observed', dedupKey, 24);
+            if (!dup) {
+              msg += `\n\n\u26a0\ufe0f *Alerta:* Acumulado hoy *${dailyTotal}mm* \u2265 umbral configurado (${threshold}mm)`;
+              recordAlert(userId, 'rain_observed', msg, {
+                fieldId: resolved.fieldId,
+                plotId: resolved.plotId,
+                dedupKey,
+                payload: { mm, dailyTotal, threshold, fieldLabel },
+              }).catch(() => {});
+            } else {
+              recordDeduped(userId, 'rain_observed', dedupKey, msg).catch(() => {});
+            }
+          }
+        }
+
+        return { messages: [msg] };
       }
 
       case 'delete_last_rainfall': {
@@ -173,7 +230,7 @@ export class AgronomyHandler {
       }
 
       case 'rainfall_report': {
-        const periodLabel: Record<string, string> = { week: 'la semana', month: 'el mes', year: 'el a\u00f1o' };
+        const periodLabel: Record<string, string> = { week: 'esta semana', month: 'este mes', year: 'este año' };
         const period = cmd.period as string;
 
         if (cmd.fieldName) {
@@ -184,24 +241,24 @@ export class AgronomyHandler {
             if (nullData.registros > 0) data = nullData;
           }
           if (data.registros === 0) {
-            return { messages: [`No hay registros de lluvia en lote ${cmd.fieldName} para ${periodLabel[period]}.`] };
+            return { messages: [`No hay registros de lluvia en ${cmd.fieldName} (${periodLabel[period]}).`], suggestionKey: 'rainfall_logged' };
           }
-          return { messages: [`\ud83c\udf27\ufe0f *Lluvia lote ${cmd.fieldName} \u2014 ${periodLabel[period]}*\n\nTotal: *${data.total}mm*\nRegistros: ${data.registros}`] };
+          return { messages: [`🌧️ *Resumen de lluvias — ${cmd.fieldName}* (${periodLabel[period]})\n\nTotal: *${data.total}mm*\nRegistros: ${data.registros}`], suggestionKey: 'rainfall_logged' };
         }
 
         const allData = await this.repo.getRainfallAllLocations(userId, period);
         if (allData.length === 0) {
-          return { messages: [`No hay registros de lluvia para ${periodLabel[period]}.`] };
+          return { messages: [`No hay registros de lluvia (${periodLabel[period]}).`], suggestionKey: 'rainfall_logged' };
         }
         let totalGlobal = 0;
-        let msg = `\ud83c\udf27\ufe0f *Lluvias \u2014 ${periodLabel[period]}*\n`;
+        let msg = `🌧️ *Resumen de lluvias* (${periodLabel[period]})\n`;
         for (const row of allData) {
           const label = row.field_name || 'General';
           totalGlobal += row.total;
-          msg += `\n\ud83d\udccd ${label}: *${row.total}mm* (${row.registros} reg.)`;
+          msg += `\n📍 ${label}: *${row.total}mm* (${row.registros} reg.)`;
         }
-        if (allData.length > 1) msg += `\n\n\ud83d\udca7 Total: *${totalGlobal}mm*`;
-        return { messages: [msg] };
+        if (allData.length > 1) msg += `\n\n💧 Total: *${totalGlobal}mm*`;
+        return { messages: [msg], suggestionKey: 'rainfall_logged' };
       }
 
       case 'rainfall_range': {
@@ -211,9 +268,9 @@ export class AgronomyHandler {
         const hastaStr = hasta.toLocaleDateString('es-AR');
         const data = await this.repo.getRainfallRange(userId, desde, hasta);
         if (data.registros === 0) {
-          return { messages: [`No hay registros de lluvia entre ${desdeStr} y ${hastaStr}.`] };
+          return { messages: [`No hay registros de lluvia (${desdeStr} — ${hastaStr}).`], suggestionKey: 'rainfall_logged' };
         }
-        return { messages: [`\ud83c\udf27\ufe0f *Lluvias ${desdeStr} \u2014 ${hastaStr}*\n\nTotal: *${data.total}mm*\nRegistros: ${data.registros}`] };
+        return { messages: [`🌧️ *Resumen de lluvias* (${desdeStr} — ${hastaStr})\n\nTotal: *${data.total}mm*\nRegistros: ${data.registros}`], suggestionKey: 'rainfall_logged' };
       }
 
       case 'compare_rainfall_months': {
@@ -226,7 +283,7 @@ export class AgronomyHandler {
         const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
         const mes1Name = cmd.mes1Name as string;
         const mes2Name = cmd.mes2Name as string;
-        let msg = `\ud83c\udf27\ufe0f *${cap(mes1Name)} vs ${cap(mes2Name)}*\n\n`;
+        let msg = `🌧️ *Comparación de lluvias — ${cap(mes1Name)} vs ${cap(mes2Name)}* (${year})\n\n`;
         msg += `${cap(mes1Name)}: *${d1.total}mm* (${d1.registros} reg.)\n`;
         msg += `${cap(mes2Name)}: *${d2.total}mm* (${d2.registros} reg.)\n`;
         if (d2.total > 0) {
@@ -235,7 +292,7 @@ export class AgronomyHandler {
           const pct = Math.round((diff / d2.total) * 100);
           msg += `\nDiferencia: ${sign}${diff}mm (${sign}${pct}%)`;
         }
-        return { messages: [msg] };
+        return { messages: [msg], suggestionKey: 'rainfall_logged' };
       }
 
       case 'compare_rainfall_years': {
@@ -243,7 +300,7 @@ export class AgronomyHandler {
           this.repo.getRainfallForYear(userId, cmd.year1 as number),
           this.repo.getRainfallForYear(userId, cmd.year2 as number),
         ]);
-        let msg = `\ud83c\udf27\ufe0f *${cmd.year1} vs ${cmd.year2}*\n\n`;
+        let msg = `🌧️ *Comparación de lluvias — ${cmd.year1} vs ${cmd.year2}*\n\n`;
         msg += `${cmd.year1}: *${d1.total}mm* (${d1.registros} reg.)\n`;
         msg += `${cmd.year2}: *${d2.total}mm* (${d2.registros} reg.)\n`;
         if (d2.total > 0) {
@@ -252,7 +309,7 @@ export class AgronomyHandler {
           const pct = Math.round((diff / d2.total) * 100);
           msg += `\nDiferencia: ${sign}${diff}mm (${sign}${pct}%)`;
         }
-        return { messages: [msg] };
+        return { messages: [msg], suggestionKey: 'rainfall_logged' };
       }
 
       // --- Crops ---
@@ -465,7 +522,74 @@ export class AgronomyHandler {
           if (ev.implement) line += ` — ${ev.implement}`;
           msg += line;
         }
-        return { messages: [msg] };
+        return { messages: [msg], suggestionKey: 'activity_logged' };
+      }
+
+      case 'query_plot_history': {
+        const resolved = await this.plotDiscovery.resolveFromNames(
+          userId,
+          cmd.fieldName as string | null,
+          cmd.plotName as string | null
+        );
+
+        const timeRef = cmd.timeRef as { desde: Date; hasta: Date } | null;
+        const activityFilter = cmd.activityFilter as string | null;
+        const isBinaryQuestion = !!(cmd.isBinaryQuestion);
+        const originalText = String(cmd._originalText || '');
+        const lower = originalText.toLowerCase();
+        const isUltimaVez = !isBinaryQuestion && (
+          /(?:ultima|última)\s+vez/.test(lower)
+          || /(?:cuando|cuándo)\s+fue\s+(?:la\s+)?(?:ultima|última)/.test(lower)
+        );
+        const hasNoFilters = !timeRef && !activityFilter && !isUltimaVez && !isBinaryQuestion;
+
+        // Smart limits: binary/última→small, no filters→recent, filtered→moderate
+        const limit = (isBinaryQuestion || isUltimaVez) ? 5
+          : hasNoFilters ? 10
+          : 20;
+
+        const rows = await this.repo.queryPlotHistory(userId, {
+          plotId: resolved.plotId ?? null,
+          fieldId: resolved.fieldId ?? null,
+          desde: timeRef?.desde ?? null,
+          hasta: timeRef?.hasta ?? null,
+          activityFilter,
+          limit,
+        });
+
+        const plotLabel = resolved.plotName
+          ? (resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName)
+          : 'general';
+
+        // Derive time label from original text
+        let timeLabel = '';
+        if (timeRef) {
+          if (/esta\s+semana/.test(lower)) timeLabel = 'esta semana';
+          else if (/este\s+mes/.test(lower)) timeLabel = 'este mes';
+          else if (/\bayer\b/.test(lower)) timeLabel = 'ayer';
+          else if (/\bhoy\b/.test(lower)) timeLabel = 'hoy';
+          else if (/semana\s+pasada/.test(lower)) timeLabel = 'la semana pasada';
+          else if (/mes\s+pasado/.test(lower)) timeLabel = 'el mes pasado';
+          else {
+            const matchDias = lower.match(/(?:ultimos|últimos)\s+(\d+)\s+d[ií]as?/);
+            if (matchDias) timeLabel = `últimos ${matchDias[1]} días`;
+            const matchSemanas = lower.match(/(?:ultimas|últimas)\s+(\d+)\s+semanas?/);
+            if (matchSemanas) timeLabel = `últimas ${matchSemanas[1]} semanas`;
+            const matchMes = lower.match(/en\s+(\w+)/);
+            if (matchMes) timeLabel = `en ${matchMes[1]}`;
+          }
+        }
+
+        const msg = formatHistoryResponse(rows, {
+          plotLabel,
+          timeLabel,
+          isUltimaVez,
+          isBinaryQuestion,
+          hasNoFilters,
+          activityFilter,
+        });
+
+        return { messages: [msg], suggestionKey: 'query_result' };
       }
 
       // --- Agro Reports ---
@@ -522,6 +646,7 @@ export class AgronomyHandler {
               mime: 'application/pdf',
               caption: `Reporte Agronómico — ${field.name} — Semana ${report.weekNumber}`,
             },
+            suggestionKey: 'report_shown',
           };
         } catch (err: unknown) {
           console.error('AGRO REPORT ERROR:', (err as Error).message);
@@ -538,6 +663,20 @@ export class AgronomyHandler {
 
         if (!obsText) {
           return { messages: ['No pude detectar la observación. Ejemplo:\n🔍 *observación lote 3: hay presencia de rama negra*'] };
+        }
+
+        // Safety guard: don't persist questions or follow-ups as observations
+        if (isLikelyQuestionOrFollowUp(obsText)) {
+          return {
+            messages: [
+              'No entendí si querías registrar una observación o consultar algo.\n\n' +
+              'Podés escribir por ejemplo:\n' +
+              '👉 "observación lote 3: malezas"\n\n' +
+              'O preguntarme algo como:\n' +
+              '👉 "qué pasó en el lote 3?"',
+            ],
+            suggestionKey: 'default_menu',
+          };
         }
 
         const resolved = await this.plotDiscovery.resolveFromNames(userId, obsFieldName, obsPlotName);

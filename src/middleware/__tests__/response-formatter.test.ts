@@ -100,8 +100,8 @@ describe('formatAgroReportResponse', () => {
       ],
     });
 
-    expect(result).toContain('\ud83d\udccb *Reporte Agron\u00f3mico*');
-    expect(result).toContain('Campo: general \u2014 Semana 11');
+    expect(result).toContain('Reporte agronómico — general');
+    expect(result).toContain('semana 11');
     expect(result).toContain('Observaciones: 3');
     expect(result).toContain('*Detalle por lote*');
     expect(result).toContain('\ud83c\udf31 Lote 3');

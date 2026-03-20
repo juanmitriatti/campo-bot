@@ -1,5 +1,6 @@
 import { FinancialRepository } from './financial.repository.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
+import { getGlobalSettings } from '../../services/expenses.js';
 import type {
   UserId,
   ParsedExpense,
@@ -87,7 +88,8 @@ export class FinancialService {
     const budget = await this.repo.getBudget(userId, category);
     if (!budget) return null;
     const total = await this.repo.getCategoryMonthlyTotal(userId, category);
-    return this.repo.checkBudgetAlert(total, Number(budget.monthly_limit), category, userName, userId);
+    const globalSettings = await getGlobalSettings();
+    return this.repo.checkBudgetAlert(total, Number(budget.monthly_limit), category, userName, userId, globalSettings);
   }
 
   // --- Reports (delegating to repository) ---

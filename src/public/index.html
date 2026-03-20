@@ -1142,6 +1142,64 @@
           </table>
         </div>
       </div>
+
+      <!-- Alert History -->
+      <div class="detail-section">
+        <h3>Historial de Alertas</h3>
+        <div id="alert-stats-row" class="stats-grid" style="margin-bottom:16px;">
+          <div class="stat-card"><div class="stat-number" id="alert-stat-total">-</div><div class="stat-label">Total enviadas</div></div>
+          <div class="stat-card"><div class="stat-number" id="alert-stat-failed">-</div><div class="stat-label">Fallidas</div></div>
+          <div class="stat-card"><div class="stat-number" id="alert-stat-rate">-</div><div class="stat-label">Tasa de entrega</div></div>
+        </div>
+        <div class="form-grid" style="margin-bottom:12px;">
+          <div class="form-group">
+            <label for="alert-filter-type">Tipo</label>
+            <select id="alert-filter-type" onchange="loadAlertHistory()">
+              <option value="">Todos</option>
+              <option value="weather">Clima</option>
+              <option value="budget_80">Presupuesto 80%</option>
+              <option value="budget_100">Presupuesto 100%</option>
+              <option value="monitoring_reminder">Monitoreo</option>
+              <option value="pest_escalation">Plaga</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="alert-filter-status">Estado</label>
+            <select id="alert-filter-status" onchange="loadAlertHistory()">
+              <option value="">Todos</option>
+              <option value="sent">Enviada</option>
+              <option value="failed">Fallida</option>
+              <option value="deduped">Deduplicada</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Usuario</th>
+                <th>Tipo</th>
+                <th>Estado</th>
+                <th>Mensaje</th>
+                <th>Reintentos</th>
+              </tr>
+            </thead>
+            <tbody id="alert-history-table-body">
+              <tr>
+                <td colspan="6">
+                  <div class="loading"><div class="spinner"></div> Cargando historial...</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn btn-sm" id="alert-history-prev" onclick="changeAlertHistoryPage(-1)" disabled>&larr; Anterior</button>
+          <span id="alert-history-page-info" style="padding:0 12px;font-size:13px;color:#888;">P&aacute;gina 1</span>
+          <button class="btn btn-sm" id="alert-history-next" onclick="changeAlertHistoryPage(1)" disabled>Siguiente &rarr;</button>
+        </div>
+      </div>
     </div>
 
     <!-- ===== Plans Page ===== -->
@@ -1746,6 +1804,87 @@
             + '</tr>';
         }
         tbody.innerHTML = html;
+      });
+
+      // Load alert history
+      loadAlertHistory();
+      loadAlertStats();
+    }
+
+    var alertHistoryPage = 0;
+    var alertHistoryLimit = 50;
+
+    function loadAlertHistory() {
+      var type = document.getElementById('alert-filter-type').value;
+      var status = document.getElementById('alert-filter-status').value;
+      var offset = alertHistoryPage * alertHistoryLimit;
+      var url = '/dashboard/api/alert-history?limit=' + alertHistoryLimit + '&offset=' + offset;
+      if (type) url += '&type=' + type;
+      if (status) url += '&status=' + status;
+
+      var tbody = document.getElementById('alert-history-table-body');
+      tbody.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando historial...</div></td></tr>';
+
+      apiFetch(url).then(function(data) {
+        if (!data || !data.rows || data.rows.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">No hay alertas registradas</div></td></tr>';
+          document.getElementById('alert-history-prev').disabled = true;
+          document.getElementById('alert-history-next').disabled = true;
+          document.getElementById('alert-history-page-info').textContent = 'Sin resultados';
+          return;
+        }
+
+        var alertTypeBadge = function(t) {
+          var labels = { weather: 'Clima', budget_80: 'Pres. 80%', budget_100: 'Pres. 100%', monitoring_reminder: 'Monitoreo', pest_escalation: 'Plaga' };
+          return labels[t] || t;
+        };
+        var statusBadge = function(s) {
+          var colors = { sent: 'badge-green', failed: 'badge-red', retrying: 'badge-yellow', deduped: 'badge-gray' };
+          var labels = { sent: 'Enviada', failed: 'Fallida', retrying: 'Reintentando', deduped: 'Dedup' };
+          return '<span class="badge ' + (colors[s] || '') + '">' + (labels[s] || s) + '</span>';
+        };
+
+        var html = '';
+        for (var i = 0; i < data.rows.length; i++) {
+          var r = data.rows[i];
+          var date = r.createdAt ? new Date(r.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+          var msgPreview = r.message ? escapeHtml(r.message.substring(0, 60)) + (r.message.length > 60 ? '...' : '') : '';
+          html += '<tr>'
+            + '<td style="white-space:nowrap">' + date + '</td>'
+            + '<td>' + escapeHtml(r.userName || 'Sin nombre') + '</td>'
+            + '<td>' + alertTypeBadge(r.alertType) + '</td>'
+            + '<td>' + statusBadge(r.status) + '</td>'
+            + '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(r.message || '') + '">' + msgPreview + '</td>'
+            + '<td>' + (r.retryCount || 0) + '</td>'
+            + '</tr>';
+        }
+        tbody.innerHTML = html;
+
+        // Pagination
+        document.getElementById('alert-history-prev').disabled = alertHistoryPage === 0;
+        document.getElementById('alert-history-next').disabled = data.rows.length < alertHistoryLimit;
+        document.getElementById('alert-history-page-info').textContent = 'P\u00e1gina ' + (alertHistoryPage + 1);
+      });
+    }
+
+    function changeAlertHistoryPage(delta) {
+      alertHistoryPage = Math.max(0, alertHistoryPage + delta);
+      loadAlertHistory();
+    }
+
+    function loadAlertStats() {
+      apiFetch('/dashboard/api/alert-stats').then(function(data) {
+        if (!data) return;
+        var sent = 0, failed = 0;
+        if (data.byStatus) {
+          for (var i = 0; i < data.byStatus.length; i++) {
+            if (data.byStatus[i].status === 'sent') sent = data.byStatus[i].count;
+            if (data.byStatus[i].status === 'failed') failed = data.byStatus[i].count;
+          }
+        }
+        document.getElementById('alert-stat-total').textContent = sent;
+        document.getElementById('alert-stat-failed').textContent = failed;
+        document.getElementById('alert-stat-rate').textContent = data.deliveryRate + '%';
       });
     }
 

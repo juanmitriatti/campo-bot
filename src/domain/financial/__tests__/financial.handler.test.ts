@@ -191,7 +191,7 @@ describe('FinancialHandler.handleCommand', () => {
     });
     const handler = new FinancialHandler(service);
     const response = await handler.handleCommand({ command: 'monthly_report' }, userId, defaultUser, defaultSettings);
-    expect(response.messages[0]).toContain('Resumen del mes');
+    expect(response.messages[0]).toContain('Resumen financiero');
     expect(response.messages[0]).toContain('Combustible');
     expect(response.messages[0]).toContain('Semillas');
   });

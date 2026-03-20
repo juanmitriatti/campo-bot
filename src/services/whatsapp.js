@@ -152,6 +152,22 @@ export async function sendInteractiveList(to, body, buttonText, sections) {
   }
 }
 
+export async function sendMessageWithRetry(to, text, maxRetries = 3) {
+  const delays = [1000, 5000, 15000];
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await sendMessage(to, text);
+      return { success: true, attempts: attempt + 1 };
+    } catch (err) {
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, delays[attempt]));
+      } else {
+        return { success: false, attempts: attempt + 1, error: err.message };
+      }
+    }
+  }
+}
+
 export async function sendDocument(to, mediaId, filename, caption) {
   to = formatArgNumber(to);
   try {

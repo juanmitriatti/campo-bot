@@ -6,6 +6,7 @@ import { getObservationsByField, getWeekObservationCount } from "../services/obs
 import { generateWeeklyReport, getReportsByField, getAllReports, getReportById } from "../services/agro-report.js";
 import { getAllSettings, setSetting, SECRET_KEYS, SETTING_DEFINITIONS } from "../services/settings.service.js";
 import { getErrorLogs, getErrorById, getErrorStats } from "../services/error-logger.js";
+import { getAlertHistory, getAlertStats } from "../services/alert.service.js";
 
 const router = Router();
 
@@ -465,6 +466,55 @@ router.get("/api/alerts-overview", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching alerts overview:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── GET /dashboard/api/alert-history ─────────────────────────────────────────
+
+router.get("/api/alert-history", async (req, res) => {
+  try {
+    const type = req.query.type || null;
+    const status = req.query.status || null;
+    const userId = req.query.userId ? parseInt(req.query.userId) : null;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+
+    const result = await getAlertHistory({ type, status, userId, limit, offset });
+
+    res.json({
+      rows: result.rows.map(r => ({
+        id: r.id,
+        userId: r.user_id,
+        userName: r.user_name,
+        phone: r.phone_number,
+        alertType: r.alert_type,
+        fieldId: r.field_id,
+        plotId: r.plot_id,
+        message: r.message,
+        payload: r.payload,
+        status: r.status,
+        retryCount: r.retry_count,
+        dedupKey: r.dedup_key,
+        createdAt: r.created_at,
+        deliveredAt: r.delivered_at,
+      })),
+      total: result.total,
+    });
+  } catch (error) {
+    console.error("Error fetching alert history:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── GET /dashboard/api/alert-stats ──────────────────────────────────────────
+
+router.get("/api/alert-stats", async (req, res) => {
+  try {
+    const stats = await getAlertStats();
+    res.json(stats);
+  } catch (error) {
+    console.error("Error fetching alert stats:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

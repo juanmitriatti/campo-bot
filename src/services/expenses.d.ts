@@ -42,7 +42,7 @@ export function getPlotReport(userId: number, plotName: string): Promise<{ rows:
 export function setBudget(userId: number, category: string, amount: number): Promise<void>;
 export function getBudget(userId: number, category: string): Promise<{ monthly_limit: string } | null>;
 export function getCategoryMonthlyTotal(userId: number, category: string): Promise<number>;
-export function checkBudgetAlert(total: number, limit: number, category: string, userName: string | null, userId: number): Promise<string | null>;
+export function checkBudgetAlert(total: number, limit: number, category: string, userName: string | null, userId: number, globalSettings?: { budget_alert_80?: boolean; budget_alert_100?: boolean } | null): Promise<string | null>;
 export function getOrCreateField(userId: number, name: string): Promise<{ id: number; user_id: number; name: string; city: string | null }>;
 export function setFieldCity(userId: number, fieldName: string, city: string): Promise<void>;
 export function getFieldByName(userId: number, fieldName: string): Promise<{ id: number; user_id: number; name: string; city: string | null } | null>;
@@ -59,6 +59,7 @@ export function saveAiUsage(userId: number, usage: { input_tokens: number; outpu
 export function saveAiFallbackLog(userId: number, inputText: string, claudeResponse: unknown, usage: unknown): Promise<void>;
 export function saveAudioTranscriptionLog(userId: number, data: { durationSeconds: number; provider: string; model: string; costUsd: number }): Promise<void>;
 export function getHourlyAudioCount(userId: number): Promise<number>;
+export function getDailyRainfallTotal(userId: number, fieldId?: number | null): Promise<number>;
 export function deleteLastRainfall(userId: number): Promise<{ millimeters: string | number } | null>;
 export function getRainfallAllLocations(userId: number, period: string): Promise<Array<{ field_name: string | null; total: string | number; registros: string | number }>>;
 export function getRainfallForMonth(userId: number, month: number, year: number): Promise<{ total: string | number; registros: string | number }>;
@@ -68,8 +69,14 @@ export function getRainfallRange(userId: number, desde: Date, hasta: Date): Prom
 // --- Plot aliases & conversation state ---
 export function findPlotByAlias(userId: number, normalizedAlias: string): Promise<{ id: number; field_id: number; name: string; field_name: string; area_hectares: number | null; soil_type: string | null; lat: number | null; lng: number | null; created_at: Date } | null>;
 export function addPlotAlias(plotId: number, normalizedAlias: string): Promise<void>;
-export function getConversationState(userId: number): Promise<{ user_id: number; last_plot_id: number | null; last_field_id: number | null; updated_at: Date; plot_name: string | null; field_name: string | null } | null>;
+export function getConversationState(userId: number): Promise<{ user_id: number; last_plot_id: number | null; last_field_id: number | null; updated_at: Date; plot_name: string | null; field_name: string | null; last_intent: string | null; last_activity_type: string | null; last_query_type: string | null; last_time_reference: string | null } | null>;
 export function updateConversationState(userId: number, fieldId: number | null, plotId: number | null): Promise<void>;
+export function updateConversationMiniMemory(userId: number, data: {
+  lastIntent?: string | null;
+  lastActivityType?: string | null;
+  lastQueryType?: string | null;
+  lastTimeReference?: string | null;
+}): Promise<void>;
 export function getUserSingleField(userId: number): Promise<{ id: number; user_id: number; name: string; city: string | null } | null>;
 export function getPlotById(plotId: number): Promise<{ id: number; field_id: number; name: string; field_name: string; area_hectares: number | null; soil_type: string | null; lat: number | null; lng: number | null; created_at: Date } | null>;
 
@@ -114,3 +121,25 @@ export function restorePlot(userId: number, plotName: string, fieldName: string)
 export function setPlotArea(plotId: number, hectares: number): Promise<void>;
 export function setPlotCoords(plotId: number, lat: number, lng: number): Promise<void>;
 export function getPlotInfo(userId: number, plotName: string): Promise<{ name: string; field_name: string; area_hectares: number | null; soil_type: string | null; expenses: { total: number; count: number }; incomes: { total: number; count: number }; rainfall: { total: number; count: number } } | null>;
+
+// --- Plot history query ---
+export function queryPlotHistory(userId: number, opts?: {
+  plotId?: number | null;
+  fieldId?: number | null;
+  desde?: Date | null;
+  hasta?: Date | null;
+  activityFilter?: string | null;
+  limit?: number;
+}): Promise<Array<{
+  source: 'activity' | 'observation' | 'rainfall';
+  id: number;
+  type: string;
+  date: Date;
+  detail: string | null;
+  quantity: number | null;
+  unit: string | null;
+  crop: string | null;
+  plot_id: number | null;
+  plot_name: string | null;
+  field_name: string | null;
+}>>;
