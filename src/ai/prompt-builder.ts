@@ -28,7 +28,7 @@ sow_crop: crop,plot?,field?
 harvest_crop: crop,quantity?,unit?,plot?,field?
 log_observation: observation,crop?,field?,plot?
 generate_agro_report: field?,plot?,date_range?
-log_rainfall: quantity(mm),field?,plot?
+log_rainfall: quantity(mm),field?
 unknown: no encaja en ninguna`;
   }
 

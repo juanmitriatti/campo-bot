@@ -1,6 +1,7 @@
 import { normalizarMonto, parseMilimetros } from '../../utils/parser.js';
 import {
   saveRainfall as dbSaveRainfall,
+  RAINFALL_REJECTED_DUPLICATE,
   getOrCreateField as dbGetOrCreateField,
   getUserSettings,
   getDailyRainfallTotal,
@@ -92,7 +93,14 @@ export const rainfallFlow: FlowDefinition = {
       fieldId = field.id;
     }
 
-    await dbSaveRainfall(userId, mm, fieldId);
+    const saved = await dbSaveRainfall(userId, mm, fieldId);
+
+    if (saved === RAINFALL_REJECTED_DUPLICATE) {
+      const label = fieldName || 'General';
+      return {
+        messages: [`Ya hay un registro de lluvia hoy para *${label}*. Si querés corregirlo, borrá el anterior con *borrar lluvia* y registrá de nuevo.`],
+      };
+    }
 
     let msg = `\ud83c\udf27\ufe0f Lluvia registrada: *${mm}mm*`;
     if (fieldName) msg += `\n\ud83d\udccd ${fieldName}`;

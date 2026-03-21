@@ -1,5 +1,6 @@
 import {
   saveRainfall as _saveRainfall,
+  RAINFALL_REJECTED_DUPLICATE as _RAINFALL_REJECTED_DUPLICATE,
   getDailyRainfallTotal as _getDailyRainfallTotal,
   deleteLastRainfall as _deleteLastRainfall,
   getRainfallPeriod as _getRainfallPeriod,
@@ -7,6 +8,7 @@ import {
   getRainfallForMonth as _getRainfallForMonth,
   getRainfallForYear as _getRainfallForYear,
   getRainfallRange as _getRainfallRange,
+  getConversationState as _getConversationState,
   createPlotCrop as _createPlotCrop,
   closePlotCrop as _closePlotCrop,
   getActiveCrop as _getActiveCrop,
@@ -21,6 +23,8 @@ import {
 } from '../../services/expenses.js';
 import { PlotRepository } from '../plots/plot.repository.js';
 import type { UserId, FieldRow, PlotRow, PlotCropRow, DomainEventRow, PlotHistoryRow } from '../../types/index.js';
+
+export const RAINFALL_REJECTED_DUPLICATE = _RAINFALL_REJECTED_DUPLICATE;
 
 export interface RainfallSummary {
   total: number;
@@ -40,8 +44,12 @@ export class AgronomyRepository {
     this.plots = plotRepo ?? new PlotRepository();
   }
 
-  async saveRainfall(userId: UserId, mm: number, fieldId: number | null, plotId: number | null = null): Promise<void> {
-    await _saveRainfall(userId, mm, fieldId, plotId);
+  async saveRainfall(userId: UserId, mm: number, fieldId: number | null): Promise<unknown> {
+    return _saveRainfall(userId, mm, fieldId);
+  }
+
+  async getConversationState(userId: UserId): Promise<{ last_field_id: number | null; field_name: string | null } | null> {
+    return _getConversationState(userId) as Promise<{ last_field_id: number | null; field_name: string | null } | null>;
   }
 
   async getDailyRainfallTotal(userId: UserId, fieldId: number | null): Promise<number> {

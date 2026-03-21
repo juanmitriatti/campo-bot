@@ -3,7 +3,8 @@
 
 export function saveExpense(userId: number, data: Record<string, unknown> | { amount: number; category: string; description: string; currency: string; type?: string }, fieldId?: number | null, plotId?: number | null): Promise<{ id: number }>;
 export function saveIncome(userId: number, data: Record<string, unknown> | { amount: number; category: string; description: string; currency: string; type?: string; quantity?: number | null; unit?: string | null; unit_price?: number | null }, fieldId?: number | null, plotId?: number | null): Promise<{ id: number }>;
-export function saveRainfall(userId: number, mm: number, fieldId?: number | null, plotId?: number | null): Promise<void>;
+export const RAINFALL_REJECTED_DUPLICATE: { _rejected: string };
+export function saveRainfall(userId: number, mm: number, fieldId?: number | null): Promise<unknown>;
 export function getRainfallPeriod(userId: number, period: string, fieldId?: number | null): Promise<{ total: string | number; registros: string | number }>;
 
 // Re-declare the rest so the .d.ts doesn't shadow them — let TS infer from .js

@@ -594,7 +594,6 @@ export async function deleteField(userId, fieldName) {
   for (const plot of plots.rows) {
     await pool.query(`UPDATE expenses SET plot_id = NULL WHERE plot_id = $1`, [plot.id]);
     await pool.query(`UPDATE incomes SET plot_id = NULL WHERE plot_id = $1`, [plot.id]);
-    await pool.query(`UPDATE rainfall SET plot_id = NULL WHERE plot_id = $1`, [plot.id]);
   }
   await pool.query(`UPDATE expenses SET field_id = NULL WHERE field_id = $1`, [field.id]);
   await pool.query(`UPDATE incomes SET field_id = NULL WHERE field_id = $1`, [field.id]);
@@ -823,10 +822,9 @@ export async function deletePlot(plotId, userId = null) {
     [plotId]
   );
 
-  // Unlink expenses/incomes/rainfall
+  // Unlink expenses/incomes
   await pool.query(`UPDATE expenses SET plot_id = NULL WHERE plot_id = $1`, [plotId]);
   await pool.query(`UPDATE incomes SET plot_id = NULL WHERE plot_id = $1`, [plotId]);
-  await pool.query(`UPDATE rainfall SET plot_id = NULL WHERE plot_id = $1`, [plotId]);
 
   // Log deletion if userId provided
   if (userId) {
@@ -901,9 +899,9 @@ export async function getPlotInfo(userId, plotName) {
     ),
     pool.query(
       `SELECT COALESCE(SUM(millimeters), 0) as total, COUNT(*) as count
-       FROM rainfall WHERE user_id = $1 AND plot_id = $2
+       FROM rainfall WHERE user_id = $1 AND field_id = $2
        AND date_trunc('month', rainfall_date) = date_trunc('month', NOW())`,
-      [userId, plot.id]
+      [userId, plot.field_id]
     ),
   ]);
 
@@ -1070,12 +1068,22 @@ export async function getMonthlyExpenses(userId) {
 
 // --- Rainfall ---
 
-export async function saveRainfall(userId, mm, fieldId = null, plotId = null) {
+export const RAINFALL_REJECTED_DUPLICATE = { _rejected: 'duplicate_rainfall' };
+
+export async function saveRainfall(userId, mm, fieldId = null) {
+  const existing = await pool.query(
+    `SELECT id FROM rainfall
+     WHERE user_id = $1 AND COALESCE(field_id, 0) = COALESCE($2, 0)
+       AND rainfall_date = CURRENT_DATE`,
+    [userId, fieldId]
+  );
+  if (existing.rows.length > 0) return RAINFALL_REJECTED_DUPLICATE;
+
   const result = await pool.query(
-    `INSERT INTO rainfall (user_id, field_id, plot_id, millimeters)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO rainfall (user_id, field_id, millimeters)
+     VALUES ($1, $2, $3)
      RETURNING *`,
-    [userId, fieldId, plotId, mm]
+    [userId, fieldId, mm]
   );
   return result.rows[0];
 }
@@ -1103,7 +1111,7 @@ export async function deleteLastRainfall(userId) {
 }
 
 export async function getRainfallPeriod(userId, period, fieldId = null) {
-  const fieldCond = fieldId !== null ? "AND r.field_id = $2" : "AND r.field_id IS NULL";
+  const fieldCond = fieldId !== null ? "AND r.field_id = $2" : "";
   const params = fieldId !== null ? [userId, fieldId] : [userId];
 
   let dateCond;
@@ -1137,7 +1145,7 @@ export async function getRainfallAllLocations(userId, period = "month") {
   const result = await pool.query(
     `SELECT f.name as field_name, COALESCE(SUM(r.millimeters), 0) as total, COUNT(*) as registros
      FROM rainfall r
-     LEFT JOIN fields f ON r.field_id = f.id
+     LEFT JOIN fields f ON r.field_id = f.id AND f.deleted_at IS NULL
      WHERE r.user_id = $1 ${dateCond}
      GROUP BY f.name
      ORDER BY total DESC`,

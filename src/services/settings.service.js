@@ -70,7 +70,6 @@ const SETTING_DEFINITIONS = {
 
   // Scheduler & weather
   SCHEDULER_CRON_EXPRESSION: { default: '0 * * * *', type: 'string', group: 'system', label: 'Expresión cron del scheduler' },
-  WEATHER_FORECAST_DAYS: { default: '3', type: 'number', group: 'system', label: 'Días de pronóstico' },
   DEFAULT_RAIN_ALERT_MM: { default: '10', type: 'number', group: 'system', label: 'Umbral lluvia por defecto (mm)' },
 
   // Domain defaults

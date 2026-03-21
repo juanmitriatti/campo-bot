@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS plot_crops (
 CREATE INDEX IF NOT EXISTS idx_plots_field_id ON plots(field_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_plot_id ON expenses(plot_id);
 CREATE INDEX IF NOT EXISTS idx_incomes_plot_id ON incomes(plot_id);
-CREATE INDEX IF NOT EXISTS idx_rainfall_plot_id ON rainfall(plot_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rainfall_user_field_date ON rainfall (user_id, COALESCE(field_id, 0), rainfall_date);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_plot_aliases_unique ON plot_aliases (plot_id, alias);
 CREATE INDEX IF NOT EXISTS idx_plot_aliases_alias ON plot_aliases (alias);
 CREATE INDEX IF NOT EXISTS idx_plot_crops_plot_id ON plot_crops(plot_id);

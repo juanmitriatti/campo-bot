@@ -121,7 +121,7 @@ async function getRainfallByField(userId) {
   const { rows } = await pool.query(
     `SELECT f.name AS field_name, SUM(r.millimeters) AS total
        FROM rainfall r
-       LEFT JOIN fields f ON r.field_id = f.id
+       LEFT JOIN fields f ON r.field_id = f.id AND f.deleted_at IS NULL
       WHERE r.user_id = $1
         AND r.rainfall_date >= date_trunc('week', NOW())
       GROUP BY f.name

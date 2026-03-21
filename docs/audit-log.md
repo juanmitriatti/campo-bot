@@ -523,4 +523,172 @@ While `pendingObservation` exists, the system is in **RESOLUTION MODE**:
 
 ---
 
+## 2026-03-21 — Rain & Weather System Full Architecture Audit
+
+**Scope:** Full audit of rain/weather data model, associations, insert flow, auto-assign, configuration, querying, soft-delete consistency, UX behavior, edge cases, and domain model.
+
+### Verdict Summary
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Data Model | PASS (with issues) | Schema sound. Nullable FKs appropriate but inconsistent with observation plot enforcement |
+| Association | PASS | FK structure correct |
+| Insert Flow | PASS (with issues) | Two paths (handler + flow) with inconsistent plot handling |
+| Auto-Assign | GAP | No hybrid plot logic for rainfall (unlike observations) |
+| Configuration | PASS | Per-user + global settings well-structured. One dead setting. |
+| Querying | PASS (with issues) | `getRainfallPeriod(null)` shows only NULL-field records, not all-fields total |
+| Soft Delete | PARTIAL | `getUserFieldCities` filtered, rainfall queries not filtered |
+| UX | PASS | All commands route correctly |
+| Edge Cases | PASS (with issues) | No insert dedup, no max-mm validation in handler |
+| Domain Model | PASS | Field-level default is correct for Argentine farming domain |
+
+### Open Bugs (10)
+
+| ID | Severity | Summary |
+|----|----------|---------|
+| BUG-R01 | MEDIUM | `rainfall` allows `plot_id=NULL` — no enforcement like observations have |
+| BUG-R02 | LOW | `rainfall.user_id` nullable in schema but always populated in code |
+| BUG-R03 | MEDIUM | `rainfall.flow.ts` only asks for field, never for plot — always stores `plot_id=NULL` |
+| BUG-R04 | LOW | No hybrid auto-assign for rainfall (observations auto-assign when user has 1 plot) |
+| BUG-R05 | LOW | `WEATHER_FORECAST_DAYS` setting in `system_settings` is never read by code |
+| BUG-R06 | MEDIUM | `getRainfallPeriod(userId, period, null)` returns only NULL-field records via `AND r.field_id IS NULL`, not all-fields total. "reporte lluvia" without field silently hides field-assigned rainfall |
+| BUG-R07 | LOW | No plot-level rainfall report — no parser pattern for "reporte lluvia lote X" |
+| BUG-R08 | LOW | Rainfall queries join fields without `deleted_at IS NULL` filter — soft-deleted fields still appear in reports |
+| BUG-R09 | LOW | No rainfall insert dedup — user can log same mm/field/date twice creating duplicates |
+| BUG-R10 | LOW | No max-mm validation in direct `log_rainfall` handler — flow validates 1-500mm, handler accepts any positive number |
+
+### Insert Flow Analysis
+
+Two paths with inconsistent behavior:
+
+| Feature | Handler (log_rainfall) | Flow (rainfall_flow) |
+|---------|----------------------|---------------------|
+| Plot resolution | PlotDiscoveryService | None |
+| Field resolution | PlotDiscoveryService | getOrCreateField |
+| Max mm validation | No | 1-500mm |
+| Alert check | Yes | Yes |
+| Confirmation step | No | Yes (flow confirm) |
+
+### Configuration
+
+| Setting | Location | Default | Scope |
+|---------|----------|---------|-------|
+| `rain_alert_mm` | user_settings | 10 | Per-user |
+| `rain_alerts` | user_settings | true | Per-user |
+| `default_rain_alert_mm` | global_settings | 10 | System |
+| `daily_weather_enabled` | global_settings | true | System |
+| `daily_weather_hour` | global_settings | 6 | System |
+| `WEATHER_FORECAST_DAYS` | system_settings | 3 | DEAD — never read |
+| `WEATHER_CITY` | env var | "Buenos Aires" | System |
+
+### Files Analyzed (12)
+
+`weather.js`, `expenses.js`, `scheduler.js`, `alert.service.js`, `parser.js`, `rainfall.flow.ts`, `agronomy.handler.ts`, `system.handler.ts`, `whatsapp.controller.ts`, `interactive.router.ts`, `intent-classifier.ts`, `init.sql`
+
+### Tests: 1115 passing
+
+---
+
+## 2026-03-21 — Plot Resolution Cross-Field Ambiguity Audit
+
+**Scope:** Audit how plots are resolved when user specifies only plot name without field. Focus on cross-field collisions, disambiguation, and conversation context usage.
+
+### Verdict: FAIL — No disambiguation, silent data corruption possible
+
+### Findings
+
+| ID | Severity | Summary |
+|----|----------|---------|
+| BUG-P01 | HIGH | `_resolvePlotOnly`: when 2+ plots match across fields, falls through to auto-create a DUPLICATE plot under "General" field — data corruption |
+| BUG-P02 | HIGH | No disambiguation UX — system never asks "¿En qué campo?" when multiple same-name plots exist |
+| BUG-P03 | MEDIUM | `last_field_id` from conversation state never used to scope plot search — global search always |
+| BUG-P04 | MEDIUM | `findPlotByAlias` returns arbitrary `rows[0]` when multiple aliases match — silent wrong assignment |
+| BUG-P05 | MEDIUM | `resolveExisting` also affected — returns null on ambiguity instead of disambiguating |
+
+### Root Cause
+
+`findPlotByNameAcrossFields()` returns all matches globally. Both `_resolvePlotOnly` and `resolveExisting` only handle `length === 1`. When `length > 1`, there is NO disambiguation step:
+- `_resolvePlotOnly`: falls through alias → field name → auto-create (creates duplicate)
+- `resolveExisting`: falls through alias → returns null (silent failure)
+
+### Conversation context (`last_field_id`) is available but never consulted.
+
+### Fix Proposal
+
+1. When `plots.length > 1`, check `conversation_state.last_field_id` and filter to that field
+2. If filtered to 1 → return it (context-scoped resolution)
+3. If still ambiguous → return new `ambiguousPlots` field in `PlotDiscoveryResult`
+4. Handler/controller renders: "¿En qué campo? Tenés lote 1 en: norte, sur"
+5. Apply to both `_resolvePlotOnly` and `resolveExisting`
+
+### Files Analyzed (4)
+
+`plot-discovery.service.ts`, `expenses.js` (findPlotByNameAcrossFields, findPlotByAlias, getConversationState), `plot-discovery.service.test.ts`, `whatsapp.controller.ts`
+
+### Tests: 1115 passing — no test covers `plots.length > 1` scenario
+
+---
+
+## 2026-03-21 — Rainfall System Refactor: Field-Level Only, Dedup, Soft-Delete, Reporting Fix
+
+**Scope:** Refactor rainfall system to be field-level only (no `plot_id`), add insert dedup, fix reporting queries, add soft-delete filters, mm validation. Resolves 8 of 10 bugs from Rain & Weather audit (BUG-R01, R03, R04, R05, R06, R08, R09, R10).
+
+### Decision
+
+**Rainfall is field-level only.** Argentine farmers measure rain per field (campo), not per plot (lote). When user says "lote X", resolve to parent field. `plot_id` column in `rainfall` table is no longer used.
+
+### Bugs Resolved
+
+| ID | Severity | Summary | Fix |
+|----|----------|---------|-----|
+| BUG-R01 | MEDIUM | `rainfall` allows `plot_id=NULL` — no enforcement | Removed `plot_id` usage entirely. Rainfall is field-level by design. Migration 030 nulls all existing `plot_id` values. |
+| BUG-R03 | MEDIUM | `rainfall.flow.ts` only asks for field, never for plot | Correct behavior now — rainfall is field-level. Flow handles dedup sentinel. |
+| BUG-R04 | LOW | No hybrid auto-assign for rainfall | Not needed — field resolution chain: explicit fieldName → plotName→parent field → conversation state `last_field_id` → null (General). |
+| BUG-R05 | LOW | `WEATHER_FORECAST_DAYS` setting never read by code | Removed from `settings.service.js` definitions and deleted from `system_settings` table (migration 030). |
+| BUG-R06 | MEDIUM | `getRainfallPeriod(null)` shows only NULL-field records | Fixed: when `fieldId=null`, query now omits field filter (aggregates ALL fields). |
+| BUG-R08 | LOW | Rainfall queries join fields without `deleted_at IS NULL` | Fixed in `getRainfallAllLocations` and scheduler `getRainfallByField`. |
+| BUG-R09 | LOW | No rainfall insert dedup | `saveRainfall` checks existing record per (user, field, date). Returns `RAINFALL_REJECTED_DUPLICATE` sentinel. Unique index enforces at DB level. |
+| BUG-R10 | LOW | No max-mm validation in handler | Handler now validates 1-500mm range before insert. |
+
+### Bugs NOT Fixed (2)
+
+| ID | Severity | Summary | Reason |
+|----|----------|---------|--------|
+| BUG-R02 | LOW | `rainfall.user_id` nullable in schema | Always populated in code. Schema change would require migration + FK audit. Low risk. |
+| BUG-R07 | LOW | No plot-level rainfall report | By design — rainfall is now field-level only. "reporte lluvia lote X" would resolve to parent field report. |
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `src/migrations/030_rainfall_field_only.sql` | NEW — backfill `field_id` from `plot_id`, null out `plot_id`, dedup existing data, unique index `idx_rainfall_user_field_date`, drop `idx_rainfall_plot_id`, remove dead `WEATHER_FORECAST_DAYS` setting |
+| `src/services/expenses.js` | `saveRainfall`: removed `plotId` param, added dedup check + `RAINFALL_REJECTED_DUPLICATE` sentinel. `getRainfallPeriod`: `fieldId=null` now aggregates all fields (was `AND field_id IS NULL`). `getRainfallAllLocations`: added `f.deleted_at IS NULL` to fields join. `getPlotInfo`: rainfall query uses `field_id` (parent field) not `plot_id`. `deleteField`/`deletePlot`: removed `UPDATE rainfall SET plot_id = NULL` lines. |
+| `src/services/expenses.d.ts` | Updated `saveRainfall` signature (removed `plotId`, return `Promise<unknown>`), exported `RAINFALL_REJECTED_DUPLICATE` |
+| `src/domain/agronomy/agronomy.repository.ts` | Updated `saveRainfall` proxy (no `plotId`), added `getConversationState` proxy, exported `RAINFALL_REJECTED_DUPLICATE` |
+| `src/domain/agronomy/agronomy.handler.ts` | Rewrote `log_rainfall`: mm validation (1-500), field-only resolution chain (fieldName → plotName→parent field → conversation state → null), dedup handling with user-friendly message |
+| `src/middleware/flows/rainfall.flow.ts` | Handles `RAINFALL_REJECTED_DUPLICATE` sentinel from `saveRainfall` |
+| `src/services/scheduler.js` | Added `f.deleted_at IS NULL` to `getRainfallByField` join |
+| `src/ai/prompt-builder.ts` | Removed `plot?` from `log_rainfall` intent definition |
+| `src/services/settings.service.js` | Removed `WEATHER_FORECAST_DAYS` from `SETTING_DEFINITIONS` |
+| `init.sql` | Replaced `idx_rainfall_plot_id` with dedup unique index `idx_rainfall_user_field_date` |
+
+### Field Resolution Chain (log_rainfall handler)
+
+```
+1. cmd.fieldName → getFieldByName || getOrCreateField
+2. cmd.plotName ("lote X") → findPlotByNameAcrossFields → use plots[0].field_id
+3. Fallback → getConversationState → last_field_id (if not deleted)
+4. None → fieldId=null, label="General"
+```
+
+### Dedup Architecture
+
+- **Application layer:** `saveRainfall` checks existing record per (user_id, COALESCE(field_id,0), CURRENT_DATE) before INSERT
+- **DB layer:** Unique index `idx_rainfall_user_field_date` on `(user_id, COALESCE(field_id, 0), rainfall_date)` as safety net
+- **Sentinel pattern:** `RAINFALL_REJECTED_DUPLICATE = { _rejected: 'duplicate_rainfall' }` — same pattern as `SAVE_REJECTED_*` in observations
+
+### Tests: 1115 passing (no regressions)
+
+---
+
 <!-- Add future audits above this line -->

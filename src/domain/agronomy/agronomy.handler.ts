@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { AgronomyRepository } from './agronomy.repository.js';
+import { AgronomyRepository, RAINFALL_REJECTED_DUPLICATE } from './agronomy.repository.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { CropService, formatSeasonLabel, getSeasonTypeForCrop } from '../plots/crop.service.js';
 import { inferCrop, getActivityLabel, formatActivityConfirmation } from './activity.service.js';
@@ -181,37 +181,65 @@ export class AgronomyHandler {
       // --- Rainfall ---
 
       case 'log_rainfall': {
-        const resolved = await this.plotDiscovery.resolveFromNames(
-          userId,
-          cmd.fieldName as string | null,
-          cmd.plotName as string | null
-        );
+        const mm = cmd.mm as number;
 
-        let fieldLabel = 'General';
-        if (resolved.plotName && resolved.fieldName) {
-          fieldLabel = `${resolved.fieldName} > ${resolved.plotName}`;
-        } else if (resolved.fieldName) {
-          fieldLabel = resolved.fieldName;
+        // Validate mm range
+        if (mm <= 0 || mm > 500) {
+          return { messages: ['El valor debe estar entre 1 y 500mm.'] };
         }
 
-        const mm = cmd.mm as number;
-        await this.repo.saveRainfall(userId, mm, resolved.fieldId, resolved.plotId);
+        // Resolve field (field-level only, no plot_id)
+        let fieldId: number | null = null;
+        let fieldLabel = 'General';
+
+        if (cmd.fieldName) {
+          // Explicit field name
+          const field = await this.repo.getFieldByName(userId, cmd.fieldName as string);
+          if (field) {
+            fieldId = field.id;
+            fieldLabel = field.name;
+          } else {
+            const created = await this.repo.getOrCreateField(userId, cmd.fieldName as string);
+            fieldId = created.id;
+            fieldLabel = created.name;
+          }
+        } else if (cmd.plotName) {
+          // "lote X" → resolve to parent field
+          const plots = await this.repo.findPlotByNameAcrossFields(userId, cmd.plotName as string);
+          if (plots.length > 0) {
+            fieldId = plots[0].field_id;
+            fieldLabel = plots[0].field_name;
+          }
+        } else {
+          // Fallback: conversation state last_field_id
+          const convState = await this.repo.getConversationState(userId);
+          if (convState?.last_field_id && convState.field_name) {
+            fieldId = convState.last_field_id;
+            fieldLabel = convState.field_name;
+          }
+        }
+
+        const saved = await this.repo.saveRainfall(userId, mm, fieldId);
+
+        // Handle dedup rejection
+        if (saved === RAINFALL_REJECTED_DUPLICATE) {
+          return { messages: [`Ya hay un registro de lluvia hoy para *${fieldLabel}*. Si querés corregirlo, borrá el anterior con *borrar lluvia* y registrá de nuevo.`] };
+        }
 
         let msg = `\ud83c\udf27\ufe0f Lluvia registrada: *${mm}mm*\n\ud83d\udccd ${fieldLabel}`;
 
         // Check cumulative daily rain threshold alert
         if (settings.rain_alerts !== false) {
           const threshold = settings.rain_alert_mm ?? 10;
-          const dailyTotal = await this.repo.getDailyRainfallTotal(userId, resolved.fieldId);
+          const dailyTotal = await this.repo.getDailyRainfallTotal(userId, fieldId);
           if (dailyTotal >= threshold) {
             const today = new Date().toISOString().slice(0, 10);
-            const dedupKey = `field_${resolved.fieldId ?? 0}_${today}`;
+            const dedupKey = `field_${fieldId ?? 0}_${today}`;
             const dup = await isDuplicate(userId, 'rain_observed', dedupKey, 24);
             if (!dup) {
               msg += `\n\n\u26a0\ufe0f *Alerta:* Acumulado hoy *${dailyTotal}mm* \u2265 umbral configurado (${threshold}mm)`;
               recordAlert(userId, 'rain_observed', msg, {
-                fieldId: resolved.fieldId,
-                plotId: resolved.plotId,
+                fieldId,
                 dedupKey,
                 payload: { mm, dailyTotal, threshold, fieldLabel },
               }).catch(() => {});
