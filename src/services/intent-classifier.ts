@@ -19,6 +19,12 @@ const TRIVIAL_COMMANDS = new Set([
   'show_fields_menu', 'show_rain_menu', 'show_reports_menu',
 ]);
 
+/**
+ * Observation prefix pattern — matches "observación:", "obs:", "nota:" etc.
+ * Supports with or without colon/dash, case-insensitive.
+ */
+const OBSERVATION_PREFIX = /^(?:observaci[oó]n|obs|nota)\s*[:\-\u2014]?\s+/i;
+
 export class IntentClassifier {
   private parser: ParserService;
   private userRepo: UserRepository;
@@ -49,11 +55,61 @@ export class IntentClassifier {
     const cleaned = stripFillerPhrases(text);
     const preprocessed = this.parser.preprocess(cleaned);
 
-    // 1. Trivial command bypass — cheap regex, no API call needed
+    // =========================================================================
+    // STEP 1 — HARD RULE: Observation prefix ALWAYS wins, bypasses everything
+    // =========================================================================
+    if (OBSERVATION_PREFIX.test(cleaned)) {
+      const obs = this.parser.parseObservation(cleaned) || this.parser.parseObservation(preprocessed);
+      if (obs) {
+        return {
+          intent: {
+            type: 'command',
+            data: {
+              command: 'log_observation',
+              fieldName: obs.fieldName,
+              plotName: obs.plotName,
+              observation: obs.observationText,
+              prefixDetected: true,  // signals handler to skip question guard
+            },
+          },
+          confidence: 0.95,
+          aiUsed: false,
+          source: 'command',
+          missingFields: [],
+        };
+      }
+      // Prefix found but parser couldn't extract → treat as bare observation with full text
+      const strippedText = cleaned.replace(OBSERVATION_PREFIX, '').trim();
+      if (strippedText.length >= 3) {
+        const plotName = this.parser.detectPlot(strippedText);
+        return {
+          intent: {
+            type: 'command',
+            data: {
+              command: 'log_observation',
+              fieldName: null,
+              plotName: plotName || null,
+              observation: strippedText,
+              prefixDetected: true,
+            },
+          },
+          confidence: 0.95,
+          aiUsed: false,
+          source: 'command',
+          missingFields: [],
+        };
+      }
+    }
+
+    // =========================================================================
+    // STEP 2 — Trivial command bypass (cheap regex, no API call needed)
+    // =========================================================================
     const trivialCmd = this.classifyTrivial(cleaned, preprocessed);
     if (trivialCmd) return trivialCmd;
 
-    // 2. Full regex chain — handles commands, income, expense
+    // =========================================================================
+    // STEP 3 — Full regex chain: commands → income → expense
+    // =========================================================================
     const regexResult = await this.classifyWithRegex(text, cleaned, preprocessed, userId);
 
     // If regex matched with high confidence, skip AI entirely
@@ -62,7 +118,9 @@ export class IntentClassifier {
       return regexResult;
     }
 
-    // 3. AI extraction — only for partial (0.60) or unknown (0.0)
+    // =========================================================================
+    // STEP 4 — AI extraction (only for partial/unknown with low confidence)
+    // =========================================================================
     if (this.extractor) {
       try {
         const minConfidence = (await getSettingNumber('AI_INTENT_MIN_CONFIDENCE')) ?? 0.70;
@@ -76,7 +134,7 @@ export class IntentClassifier {
       }
     }
 
-    // 4. Return regex result (partial or unknown)
+    // 5. Return regex result (partial or unknown)
     return regexResult;
   }
 
@@ -98,8 +156,8 @@ export class IntentClassifier {
   }
 
   /**
-   * Full regex chain: commands → income → expense → partial detection.
-   * No Claude fallback — that's now handled by the AI extractor.
+   * Full regex chain: commands → income → expense → observation (structural).
+   * Observation detection runs unconditionally after financial/command checks.
    */
   private async classifyWithRegex(
     text: string,
@@ -145,19 +203,52 @@ export class IntentClassifier {
       };
     }
 
-    // Partial parse detection
+    // Financial intent guard — prevent financial messages from becoming observations
+    const financialIntent = this.parser.hasFinancialIntent(cleaned);
+    if (financialIntent) {
+      const finAmount = this.parser.extractAmount(cleaned);
+      if (finAmount) {
+        const finCategory = this.parser.detectExpenseCategory(cleaned);
+        if (finCategory) {
+          return {
+            intent: { type: 'expense', data: { type: 'expense', amount: finAmount, category: finCategory, description: text, currency: 'ARS' } },
+            confidence: 0.85,
+            aiUsed: false,
+            source: 'expense_parser',
+            missingFields: [],
+          };
+        } else {
+          return {
+            intent: {
+              type: 'expense_partial',
+              data: { type: 'expense', amount: finAmount, currency: (cleaned.includes('dolar') || cleaned.includes('usd') ? 'USD' : 'ARS') as 'ARS' | 'USD' },
+            },
+            confidence: 0.60,
+            aiUsed: false,
+            source: 'expense_parser',
+            missingFields: ['category'],
+          };
+        }
+      }
+    }
+
+    // Partial parse detection (financial signals without full parse)
     const partial = this.detectPartialParse(preprocessed, cleaned);
     if (partial) {
       this.logParserError(userId, text, preprocessed, partial, partial.confidence, 'partial').catch(() => {});
       return partial;
     }
 
-    // Try observation — message references a plot/field but isn't expense/income/command
-    // Skip if message has agronomic activity keywords that should go to AI for structured extraction
-    const hasAgroActivity = /fumig|pulveriz|aplic[aóo]|herbicid|insecticid|fungicid|glifosato|fertiliz|nutri(?:mos|r|eron)|abono|urea|fósfor|fosforo|sembr|siembr|cosech|labran|arar|rastr|riego|reg[aué]/i.test(cleaned);
-    const hasReportIntent = /(?:^|\s)(?:reporte|informe|resumen|estado|info(?:rmacion)?|datos|como\s+viene|actividad(?:es)?)\b/i.test(cleaned);
-    const obs = (hasAgroActivity || hasReportIntent) ? null : (this.parser.parseObservation(cleaned) || this.parser.parseObservation(preprocessed));
+    // =========================================================================
+    // OBSERVATION DETECTION — runs after command/financial checks
+    // Only guard: agronomic ACTIVITY keywords (spraying, fertilization, etc.)
+    // that need AI for structured extraction. Observation/report keywords
+    // are NOT guarded — they already had a chance to match as commands above.
+    // =========================================================================
+    const hasAgroActivity = /fumig|pulveriz|aplic[aóo]|herbicid|insecticid|fungicid|glifosato|fertiliz|nutri(?:mos|r|eron)|abono|urea|fósfor|fosforo|sembr|siembr|cosech|labran|arar|rastr/i.test(cleaned);
+    const obs = hasAgroActivity ? null : (this.parser.parseObservation(cleaned) || this.parser.parseObservation(preprocessed));
     if (obs) {
+      const obsConfidence = obs.type === 'bare' ? 0.78 : 0.85;
       return {
         intent: {
           type: 'command',
@@ -165,10 +256,10 @@ export class IntentClassifier {
             command: 'log_observation',
             fieldName: obs.fieldName,
             plotName: obs.plotName,
-            observation: text,
+            observation: obs.observationText,
           },
         },
-        confidence: 0.80,
+        confidence: obsConfidence,
         aiUsed: false,
         source: 'command',
         missingFields: [],
@@ -216,13 +307,13 @@ export class IntentClassifier {
   private detectPartialParse(preprocessed: string, cleaned: string): ParseResult | null {
     const textToCheck = preprocessed || cleaned;
 
-    // Check for expense signals
-    const amount = this.parser.normalizeAmount(textToCheck);
+    // Check for expense signals (verb-independent)
+    const amount = this.parser.extractAmount(textToCheck);
     const expenseCategory = this.parser.detectExpenseCategory(textToCheck);
-    const hasExpenseVerb = /(?:pagu[eé]|gast[eé]|compr[eé]|pague|gaste|compre)\b/.test(textToCheck);
+    const hasFinancial = this.parser.hasFinancialIntent(textToCheck);
 
-    // Has amount + verb but no category → expense partial
-    if (amount && hasExpenseVerb && !expenseCategory) {
+    // Has amount + financial intent but no category → expense partial
+    if (amount && hasFinancial && !expenseCategory) {
       return {
         intent: {
           type: 'expense_partial',
@@ -235,8 +326,8 @@ export class IntentClassifier {
       };
     }
 
-    // Has category + verb but no amount → expense partial
-    if (!amount && expenseCategory && hasExpenseVerb) {
+    // Has category + financial intent but no amount → expense partial
+    if (!amount && expenseCategory && hasFinancial) {
       return {
         intent: {
           type: 'expense_partial',

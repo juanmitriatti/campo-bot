@@ -112,6 +112,10 @@ export class AgronomyRepository {
     return this.plots.findPlotByNameAcrossFields(userId, plotName);
   }
 
+  async findAllUserPlots(userId: UserId): Promise<Array<{ id: number; name: string; field_name: string }>> {
+    return this.plots.findAllUserPlots(userId);
+  }
+
   // --- Plot crops ---
 
   async createPlotCrop(plotId: number, crop: string, seasonYear: number, seasonType: string, startDate?: Date | null): Promise<PlotCropRow> {

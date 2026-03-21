@@ -6,6 +6,8 @@ import {
   detectarCampo,
   detectarLote,
   normalizarMonto,
+  extractAmount as _extractAmount,
+  hasFinancialIntent as _hasFinancialIntent,
   detectarCategoria,
   detectarCategoriaIngreso,
   parseMilimetros,
@@ -76,7 +78,15 @@ export class ParserService {
     return parseSpanishDate(text);
   }
 
-  parseObservation(text: string): { plotName: string | null; fieldName: string | null; category: string } | null {
+  parseObservation(text: string): { plotName: string | null; fieldName: string | null; category: string; observationText: string } | null {
     return parsearObservacion(text);
+  }
+
+  extractAmount(text: string): number | null {
+    return _extractAmount(text);
+  }
+
+  hasFinancialIntent(text: string): boolean {
+    return _hasFinancialIntent(text);
   }
 }

@@ -1,6 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import {
   normalizarMonto,
+  extractAmount,
+  hasFinancialIntent,
   parseCommand,
   detectarCategoria,
   detectarCategoriaIngreso,
@@ -17,6 +19,7 @@ import {
   parseQuantityUnit,
   parseFechaRelativa,
   detectarImplemento,
+  parsearObservacion,
 } from "./parser.js";
 
 // ============================================================================
@@ -60,16 +63,49 @@ describe("normalizarMonto", () => {
     it("doscientos mil → 200000", () => expect(normalizarMonto("doscientos mil")).toBe(200000));
   });
 
-  describe("número directo con verbo", () => {
-    it("gaste 150000 → 150000", () => expect(normalizarMonto("gaste 150000")).toBe(150000));
-    it("gaste 5000 → 5000", () => expect(normalizarMonto("gaste 5000")).toBe(5000));
-    it("pague 200000 → 200000", () => expect(normalizarMonto("pague 200000")).toBe(200000));
+  describe("standalone numbers", () => {
+    it("500 → 500 (standalone)", () => expect(normalizarMonto("500")).toBe(500));
+    it("150000 → 150000 (standalone)", () => expect(normalizarMonto("150000")).toBe(150000));
   });
 
-  describe("sin contexto suficiente → null", () => {
-    it("número suelto 500 → null", () => expect(normalizarMonto("gaste 500")).toBeNull());
-    it("150000 sin verbo → null", () => expect(normalizarMonto("150000")).toBeNull());
+  describe("number in sentence → null (normalizarMonto is structured-only)", () => {
+    it("gaste 5000 → null (no structured format)", () => expect(normalizarMonto("gaste 5000")).toBeNull());
+    it("gaste 500 → null", () => expect(normalizarMonto("gaste 500")).toBeNull());
   });
+});
+
+describe("extractAmount (number-first)", () => {
+  it("gaste 150000 → 150000", () => expect(extractAmount("gaste 150000")).toBe(150000));
+  it("gaste 5000 → 5000", () => expect(extractAmount("gaste 5000")).toBe(5000));
+  it("pague 200000 → 200000", () => expect(extractAmount("pague 200000")).toBe(200000));
+  it("gaste 500 → 500", () => expect(extractAmount("gaste 500")).toBe(500));
+  it("gasto de 100 en semillas → 100", () => expect(extractAmount("gasto de 100 en semillas")).toBe(100));
+  it("cargué gasto de 100 en semillas en lote 1 → 100", () => expect(extractAmount("cargué gasto de 100 en semillas en lote 1")).toBe(100));
+  it("ingreso de 500 → 500", () => expect(extractAmount("ingreso de 500")).toBe(500));
+  it("gasto 200 lote 1 → 200", () => expect(extractAmount("gasto 200 lote 1")).toBe(200));
+
+  describe("safety: location numbers excluded", () => {
+    it("en lote 1 → null", () => expect(extractAmount("en lote 1")).toBeNull());
+    it("lote 10 → null", () => expect(extractAmount("lote 10")).toBeNull());
+    it("campo 25 → null", () => expect(extractAmount("campo 25")).toBeNull());
+  });
+
+  describe("structured formats pass through", () => {
+    it("50mil → 50000", () => expect(extractAmount("50mil")).toBe(50000));
+    it("$100 → 100", () => expect(extractAmount("$100")).toBe(100));
+    it("200k → 200000", () => expect(extractAmount("200k")).toBe(200000));
+  });
+});
+
+describe("hasFinancialIntent", () => {
+  it("gasto → true", () => expect(hasFinancialIntent("gasto")).toBe(true));
+  it("gasté → true", () => expect(hasFinancialIntent("gasté")).toBe(true));
+  it("cargué → true", () => expect(hasFinancialIntent("cargué")).toBe(true));
+  it("ingreso → true", () => expect(hasFinancialIntent("ingreso")).toBe(true));
+  it("compra → true", () => expect(hasFinancialIntent("compra")).toBe(true));
+  it("lote 3 → false", () => expect(hasFinancialIntent("lote 3")).toBe(false));
+  it("malezas → false", () => expect(hasFinancialIntent("malezas")).toBe(false));
+  it("lluvia 20mm → false", () => expect(hasFinancialIntent("lluvia 20mm")).toBe(false));
 
   describe("BUG FIX: dígitos+sufijo prioriza sobre parseWrittenNumber", () => {
     it("gaste 50mil en un herbicida → 50000 (no 1)", () => {
@@ -478,10 +514,10 @@ describe("parseCommand", () => {
       expect(r.command).toBe("plot_report");
       expect(r.plotName).toBe("z");
     });
-    it("reporte lote z → plot_report", () => {
+    it("reporte lote z → generate_agro_report (unified routing)", () => {
       const r = parseCommand("reporte lote z");
       expect(r).not.toBeNull();
-      expect(r.command).toBe("plot_report");
+      expect(r.command).toBe("generate_agro_report");
       expect(r.plotName).toBe("z");
     });
     it("resumen del lote norte → plot_report", () => {
@@ -490,10 +526,10 @@ describe("parseCommand", () => {
       expect(r.command).toBe("plot_report");
       expect(r.plotName).toBe("norte");
     });
-    it("reporte de lote z → plot_report", () => {
+    it("reporte de lote z → generate_agro_report (unified routing)", () => {
       const r = parseCommand("reporte de lote z");
       expect(r).not.toBeNull();
-      expect(r.command).toBe("plot_report");
+      expect(r.command).toBe("generate_agro_report");
       expect(r.plotName).toBe("z");
     });
     it("resumen lote general → plot_report (not field_report)", () => {
@@ -1297,5 +1333,510 @@ describe("plot_activities command", () => {
     expect(r).not.toBeNull();
     expect(r.command).toBe("plot_activities");
     expect(r.plotName).toBe("2");
+  });
+});
+
+// ============================================================================
+// generate_agro_report lote patterns
+// ============================================================================
+
+describe("generate_agro_report lote patterns", () => {
+  it('"reporte agronómico lote 1" → plotName: "1"', () => {
+    expect(parseCommand("reporte agronomico lote 1")).toMatchObject({ command: "generate_agro_report", plotName: "1" });
+  });
+
+  it('"informe agronómico lote norte" → plotName: "norte"', () => {
+    expect(parseCommand("informe agronomico lote norte")).toMatchObject({ command: "generate_agro_report", plotName: "norte" });
+  });
+
+  it('"reporte agronómico del lote 3" → plotName: "3"', () => {
+    expect(parseCommand("reporte agronomico del lote 3")).toMatchObject({ command: "generate_agro_report", plotName: "3" });
+  });
+
+  it('"reporte agronómico campo norte" → fieldName: "norte" (unchanged)', () => {
+    expect(parseCommand("reporte agronomico campo norte")).toMatchObject({ command: "generate_agro_report", fieldName: "norte" });
+  });
+
+  it('"reporte del campo norte" → fieldName: "norte" (unchanged)', () => {
+    expect(parseCommand("reporte del campo norte")).toMatchObject({ command: "generate_agro_report", fieldName: "norte" });
+  });
+});
+
+// ============================================================================
+// parsearObservacion with observation prefix
+// ============================================================================
+
+describe("parsearObservacion with agro keywords", () => {
+  it('"observación: riego en lote 1" → detects plotName', () => {
+    const obs = parsearObservacion("observación: riego en lote 1");
+    expect(obs).not.toBeNull();
+    expect(obs.plotName).toBe("1");
+  });
+
+  it('"observación lote 3: hay malezas" → detects plotName', () => {
+    const obs = parsearObservacion("observación lote 3: hay malezas");
+    expect(obs).not.toBeNull();
+    expect(obs.plotName).toBe("3");
+  });
+});
+
+// ============================================================================
+// Unified agro report routing — all phrasings → same command
+// ============================================================================
+
+describe("agro report routing unification", () => {
+  const phrasings = [
+    "reporte agronomico lote 1",
+    "informe agronomico lote 1",
+    "reporte agronomico del lote 1",
+    "reporte agronomico semanal lote 1",
+    "reporte agronomico el lote 1",
+    "reporte agronomico para lote 1",
+  ];
+
+  for (const phrase of phrasings) {
+    it(`"${phrase}" → generate_agro_report with plotName "1"`, () => {
+      const r = parseCommand(phrase);
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("generate_agro_report");
+      expect(r.plotName).toBe("1");
+    });
+  }
+
+  // BUG-006 fix: "reporte lote X" now unified to generate_agro_report
+  it('"reporte lote 1" (without agronómico) → generate_agro_report (unified)', () => {
+    const r = parseCommand("reporte lote 1");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("generate_agro_report");
+    expect(r.plotName).toBe("1");
+  });
+
+  it('"informe lote norte" (without agronómico) → generate_agro_report (unified)', () => {
+    const r = parseCommand("informe lote norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("generate_agro_report");
+    expect(r.plotName).toBe("norte");
+  });
+
+  it('"reporte del lote 1" → generate_agro_report (unified)', () => {
+    const r = parseCommand("reporte del lote 1");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("generate_agro_report");
+    expect(r.plotName).toBe("1");
+  });
+
+  // "resumen lote X" still goes to plot_report (financial summary)
+  it('"resumen lote 1" → plot_report (financial summary, not agro)', () => {
+    const r = parseCommand("resumen lote 1");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("plot_report");
+    expect(r.plotName).toBe("1");
+  });
+});
+
+// ============================================================================
+// normalizeObservationText — dedup normalization
+// ============================================================================
+
+describe("normalizeObservationText", () => {
+  // Import inline since it's from observations.js, not parser.js
+  let normalize;
+  beforeAll(async () => {
+    const mod = await import("../services/observations.js");
+    normalize = mod.normalizeObservationText;
+  });
+
+  it("identical after normalization for same observation with/without location", () => {
+    expect(normalize("hojas amarillas en lote 1")).toBe(normalize("hojas amarillas"));
+  });
+
+  it("strips accents", () => {
+    expect(normalize("observación")).toBe(normalize("observacion"));
+  });
+
+  it("strips punctuation", () => {
+    expect(normalize("hojas amarillas!")).toBe(normalize("hojas amarillas"));
+  });
+
+  it("collapses whitespace", () => {
+    expect(normalize("hojas   amarillas")).toBe(normalize("hojas amarillas"));
+  });
+
+  it("trailing 'en' is removed", () => {
+    expect(normalize("hojas amarillas en")).toBe("hojas amarillas");
+  });
+
+  it("trailing 'en el' is removed", () => {
+    expect(normalize("hojas amarillas en el")).toBe("hojas amarillas");
+  });
+});
+
+// ============================================================================
+// deduplicateObservations — output-level dedup
+// ============================================================================
+
+describe("deduplicateObservations", () => {
+  let dedup;
+  beforeAll(async () => {
+    const mod = await import("../services/observations.js");
+    dedup = mod.deduplicateObservations;
+  });
+
+  it("removes exact duplicates", () => {
+    const obs = [
+      { observation_text: "hojas amarillas", plot_id: 1 },
+      { observation_text: "hojas amarillas", plot_id: 1 },
+    ];
+    expect(dedup(obs)).toHaveLength(1);
+  });
+
+  it("removes normalized duplicates", () => {
+    const obs = [
+      { observation_text: "hojas amarillas en lote 1", plot_id: 1 },
+      { observation_text: "hojas amarillas", plot_id: 1 },
+    ];
+    expect(dedup(obs)).toHaveLength(1);
+  });
+
+  it("keeps observations from different plots", () => {
+    const obs = [
+      { observation_text: "hojas amarillas", plot_id: 1 },
+      { observation_text: "hojas amarillas", plot_id: 2 },
+    ];
+    expect(dedup(obs)).toHaveLength(2);
+  });
+
+  it("keeps different observations on same plot", () => {
+    const obs = [
+      { observation_text: "hojas amarillas", plot_id: 1 },
+      { observation_text: "presencia de roya", plot_id: 1 },
+    ];
+    expect(dedup(obs)).toHaveLength(2);
+  });
+});
+
+// ============================================================================
+// QA: saveObservation typed return values (BUG-001, BUG-002)
+// ============================================================================
+
+describe("saveObservation return sentinel values", () => {
+  let SAVE_REJECTED_FINANCIAL, SAVE_REJECTED_DUPLICATE;
+  beforeAll(async () => {
+    const mod = await import("../services/observations.js");
+    SAVE_REJECTED_FINANCIAL = mod.SAVE_REJECTED_FINANCIAL;
+    SAVE_REJECTED_DUPLICATE = mod.SAVE_REJECTED_DUPLICATE;
+  });
+
+  it("SAVE_REJECTED_FINANCIAL is a distinct object", () => {
+    expect(SAVE_REJECTED_FINANCIAL).toBeDefined();
+    expect(SAVE_REJECTED_FINANCIAL._rejected).toBe("financial");
+  });
+
+  it("SAVE_REJECTED_DUPLICATE is a distinct object", () => {
+    expect(SAVE_REJECTED_DUPLICATE).toBeDefined();
+    expect(SAVE_REJECTED_DUPLICATE._rejected).toBe("duplicate");
+  });
+
+  it("sentinels are different from each other", () => {
+    expect(SAVE_REJECTED_FINANCIAL).not.toBe(SAVE_REJECTED_DUPLICATE);
+  });
+
+  it("sentinels are truthy (not null/undefined)", () => {
+    expect(SAVE_REJECTED_FINANCIAL).toBeTruthy();
+    expect(SAVE_REJECTED_DUPLICATE).toBeTruthy();
+  });
+});
+
+// ============================================================================
+// QA: Unified routing — all lote phrasings → generate_agro_report (BUG-006)
+// ============================================================================
+
+describe("QA: all lote report phrasings route to generate_agro_report", () => {
+  const lotePhrases = [
+    "reporte lote 1",
+    "reporte del lote 1",
+    "reporte para lote 1",
+    "informe lote 1",
+    "informe del lote 1",
+    "reporte agronomico lote 1",
+    "informe agronomico lote 1",
+    "reporte agronomico del lote 1",
+    "reporte agronomico para lote 1",
+    "reporte agronomico semanal lote 1",
+    "reporte agronomico el lote 1",
+  ];
+
+  for (const phrase of lotePhrases) {
+    it(`"${phrase}" → generate_agro_report`, () => {
+      const r = parseCommand(phrase);
+      expect(r).not.toBeNull();
+      expect(r.command).toBe("generate_agro_report");
+      expect(r.plotName).toBe("1");
+    });
+  }
+
+  // "resumen lote X" stays as plot_report (financial)
+  it('"resumen lote 1" → plot_report (financial, not agro)', () => {
+    const r = parseCommand("resumen lote 1");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("plot_report");
+  });
+
+  // Campo patterns still work
+  it('"reporte campo norte" → generate_agro_report with fieldName', () => {
+    const r = parseCommand("reporte campo norte");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("generate_agro_report");
+    expect(r.fieldName).toBe("norte");
+    expect(r.plotName).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// QA: Financial content never stored as observation
+// ============================================================================
+
+describe("QA: financial content guard in observations", () => {
+  let hasFinancialContent;
+  beforeAll(async () => {
+    // Import the private function indirectly by testing normalizeObservationText behavior
+    // Actually we test via the public hasFinancialIntent from parser
+  });
+
+  it('"gasté 5000 en gasoil" is detected as financial by parser', () => {
+    expect(hasFinancialIntent("gaste 5000 en gasoil")).toBe(true);
+  });
+
+  it('"gasté 500 en semillas" is detected as financial by parser', () => {
+    expect(hasFinancialIntent("gaste 500 en semillas")).toBe(true);
+  });
+
+  it('"hojas amarillas en lote 1" is NOT financial', () => {
+    expect(hasFinancialIntent("hojas amarillas en lote 1")).toBe(false);
+  });
+
+  it('"hay presencia de chinches" is NOT financial', () => {
+    expect(hasFinancialIntent("hay presencia de chinches")).toBe(false);
+  });
+
+  it('"riego en lote 1" is NOT financial', () => {
+    expect(hasFinancialIntent("riego en lote 1")).toBe(false);
+  });
+});
+
+// ============================================================================
+// QA: Prefix stripping — "observación:" removed before storage
+// ============================================================================
+
+describe("QA: observation prefix stripping", () => {
+  it('"observación: hay rama negra en lote 1" → observationText has no prefix', () => {
+    const obs = parsearObservacion("observación: hay rama negra en lote 1");
+    expect(obs).not.toBeNull();
+    expect(obs.observationText).not.toMatch(/^observaci[oó]n/i);
+    expect(obs.plotName).toBe("1");
+  });
+
+  it('"obs: hojas amarillas en lote 3" → observationText has no prefix', () => {
+    const obs = parsearObservacion("obs: hojas amarillas en lote 3");
+    expect(obs).not.toBeNull();
+    expect(obs.observationText).not.toMatch(/^obs[:\s]/i);
+    expect(obs.plotName).toBe("3");
+  });
+
+  it('"nota: plaga en campo norte" → observationText has no prefix', () => {
+    const obs = parsearObservacion("nota: plaga en campo norte");
+    expect(obs).not.toBeNull();
+    expect(obs.observationText).not.toMatch(/^nota/i);
+  });
+
+  it('prefix-free message unchanged: "hay malezas en lote 1"', () => {
+    const obs = parsearObservacion("hay malezas en lote 1");
+    expect(obs).not.toBeNull();
+    expect(obs.plotName).toBe("1");
+    expect(obs.category).toBe("malezas");
+  });
+});
+
+// ============================================================================
+// QA: normalizeObservationText cross-variant dedup
+// ============================================================================
+
+describe("QA: normalizeObservationText cross-variant dedup", () => {
+  let normalize;
+  beforeAll(async () => {
+    const mod = await import("../services/observations.js");
+    normalize = mod.normalizeObservationText;
+  });
+
+  it('"observación: hojas amarillas" normalizes same as "hojas amarillas"', () => {
+    expect(normalize("observación: hojas amarillas")).toBe(normalize("hojas amarillas"));
+  });
+
+  it('"obs: hay rama negra" normalizes same as "hay rama negra"', () => {
+    expect(normalize("obs: hay rama negra")).toBe(normalize("hay rama negra"));
+  });
+
+  it('"Hojas Amarillas en lote 1" normalizes same as "hojas amarillas"', () => {
+    expect(normalize("Hojas Amarillas en lote 1")).toBe(normalize("hojas amarillas"));
+  });
+
+  it('"HOJAS AMARILLAS" normalizes same as "hojas amarillas"', () => {
+    expect(normalize("HOJAS AMARILLAS")).toBe(normalize("hojas amarillas"));
+  });
+});
+
+// ============================================================================
+// QA: Bare observation auto-detection (no lote/campo reference)
+// ============================================================================
+
+describe("QA: bare observation auto-detection", () => {
+  it('"hay rama negra" → detected as bare observation (malezas)', () => {
+    const obs = parsearObservacion("hay rama negra");
+    expect(obs).not.toBeNull();
+    expect(obs.type).toBe("bare");
+    expect(obs.category).toBe("malezas");
+    expect(obs.plotName).toBeNull();
+    expect(obs.fieldName).toBeNull();
+  });
+
+  it('"hojas amarillas" → detected as bare observation (nutricion)', () => {
+    const obs = parsearObservacion("hojas amarillas");
+    expect(obs).not.toBeNull();
+    expect(obs.type).toBe("bare");
+    expect(obs.category).toBe("nutricion");
+  });
+
+  it('"presencia de roya" → detected as bare observation (sanidad)', () => {
+    const obs = parsearObservacion("presencia de roya");
+    expect(obs).not.toBeNull();
+    expect(obs.type).toBe("bare");
+    expect(obs.category).toBe("sanidad");
+  });
+
+  it('"helada fuerte" → detected as bare observation (clima)', () => {
+    const obs = parsearObservacion("helada fuerte");
+    expect(obs).not.toBeNull();
+    expect(obs.type).toBe("bare");
+    expect(obs.category).toBe("clima");
+  });
+
+  it('"hola como estas" → NOT detected (general category, no agro keywords)', () => {
+    const obs = parsearObservacion("hola como estas");
+    expect(obs).toBeNull();
+  });
+
+  it('"buen día" → NOT detected (too short / general)', () => {
+    const obs = parsearObservacion("buen dia");
+    expect(obs).toBeNull();
+  });
+});
+
+// ============================================================================
+// QA BLACK-BOX: All 8 test cases from 2026-03-20 QA session
+// ============================================================================
+
+describe("QA BLACK-BOX: trailing 'en' removal", () => {
+  it('"hay gramilla en lote 1" → observationText is "hay gramilla" (no trailing en)', () => {
+    const obs = parsearObservacion("hay gramilla en lote 1");
+    expect(obs).not.toBeNull();
+    expect(obs.observationText).toBe("hay gramilla");
+    expect(obs.plotName).toBe("1");
+  });
+
+  it('"plagas visibles en lote 1" → "plagas visibles"', () => {
+    const obs = parsearObservacion("plagas visibles en lote 1");
+    expect(obs).not.toBeNull();
+    expect(obs.observationText).toBe("plagas visibles");
+  });
+
+  it('"hojas amarillas en lote 1" → "hojas amarillas"', () => {
+    const obs = parsearObservacion("hojas amarillas en lote 1");
+    expect(obs).not.toBeNull();
+    expect(obs.observationText).toBe("hojas amarillas");
+  });
+
+  it('"suelo seco en el lote 2" → "suelo seco"', () => {
+    const obs = parsearObservacion("suelo seco en el lote 2");
+    expect(obs).not.toBeNull();
+    expect(obs.observationText).toBe("suelo seco");
+    expect(obs.plotName).toBe("2");
+  });
+});
+
+describe("QA BLACK-BOX: prefix + trailing en combined", () => {
+  it('"observación: hojas amarillas en lote 1" → "hojas amarillas"', () => {
+    const obs = parsearObservacion("observación: hojas amarillas en lote 1");
+    expect(obs).not.toBeNull();
+    expect(obs.observationText).toBe("hojas amarillas");
+    expect(obs.plotName).toBe("1");
+  });
+
+  it('"nota: suelo seco en lote 1" → "suelo seco"', () => {
+    const obs = parsearObservacion("nota: suelo seco en lote 1");
+    expect(obs).not.toBeNull();
+    expect(obs.observationText).toBe("suelo seco");
+    expect(obs.plotName).toBe("1");
+  });
+
+  it('"observación hojas amarillas en lote 1" (no colon) → "hojas amarillas"', () => {
+    const obs = parsearObservacion("observación hojas amarillas en lote 1");
+    expect(obs).not.toBeNull();
+    expect(obs.observationText).toBe("hojas amarillas");
+  });
+});
+
+describe("QA BLACK-BOX: auto-detect consistency", () => {
+  const messages = [
+    { input: "hay gramilla en lote 1", plot: "1", cat: "malezas" },
+    { input: "hojas amarillas en lote 1", plot: "1", cat: "nutricion" },
+    { input: "plagas visibles en lote 1", plot: "1", cat: "sanidad" },
+    { input: "helada en lote 1", plot: "1", cat: "clima" },
+    { input: "roya en lote 1", plot: "1", cat: "sanidad" },
+    { input: "malezas en lote 1", plot: "1", cat: "malezas" },
+  ];
+
+  for (const { input, plot, cat } of messages) {
+    it("\"" + input + "\" → detected as observation (not null)", () => {
+      const obs = parsearObservacion(input);
+      expect(obs).not.toBeNull();
+      expect(obs.plotName).toBe(plot);
+      expect(obs.category).toBe(cat);
+    });
+  }
+});
+
+describe("QA BLACK-BOX: dedup normalization cross-variants", () => {
+  let normalize;
+  beforeAll(async () => {
+    const mod = await import("../services/observations.js");
+    normalize = mod.normalizeObservationText;
+  });
+
+  it("all variants normalize to 'hojas amarillas'", () => {
+    const variants = [
+      "observación: hojas amarillas en lote 1",
+      "hojas amarillas en lote 1",
+      "HOJAS AMARILLAS EN LOTE 1",
+      "hojas amarillas",
+      "observación hojas amarillas en lote 1",
+    ];
+    const normalized = variants.map(v => normalize(v));
+    const unique = new Set(normalized);
+    expect(unique.size).toBe(1);
+    expect(normalized[0]).toBe("hojas amarillas");
+  });
+});
+
+describe("QA BLACK-BOX: financial report routing", () => {
+  it('"reporte financiero" → monthly_report (NOT agro)', () => {
+    const r = parseCommand("reporte financiero");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("monthly_report");
+  });
+
+  it('"resumen financiero" → monthly_report (NOT agro)', () => {
+    const r = parseCommand("resumen financiero");
+    expect(r).not.toBeNull();
+    expect(r.command).toBe("monthly_report");
   });
 });

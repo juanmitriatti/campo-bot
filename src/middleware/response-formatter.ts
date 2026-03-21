@@ -89,6 +89,7 @@ export interface RecentActivity {
 
 export interface AgroReportResponseData {
   fieldName: string;
+  filterPlotName?: string | null;
   weekNumber: number;
   observationCount: number;
   plotSummaries: PlotObservationSummary[];
@@ -101,7 +102,10 @@ const MAX_ACTIVITIES = 5;
 export function formatAgroReportResponse(data: AgroReportResponseData): string {
   const lines: string[] = [];
 
-  lines.push(`🌱 *Reporte agronómico — ${data.fieldName}* (semana ${data.weekNumber})`);
+  const titleScope = data.filterPlotName
+    ? `${data.fieldName} > ${data.filterPlotName}`
+    : data.fieldName;
+  lines.push(`🌱 *Reporte agronómico — ${titleScope}* (semana ${data.weekNumber})`);
   lines.push('');
   lines.push(`📊 Observaciones: ${data.observationCount}`);
 

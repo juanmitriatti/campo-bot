@@ -19,6 +19,7 @@ import {
   setPlotCoords as _setPlotCoords,
   getPlotInfo as _getPlotInfo,
   getPlotReport as _getPlotReport,
+  getPlotResult as _getPlotResult,
 } from '../../services/expenses.js';
 import type { UserId, FieldRow, PlotRow, CategoryTotal, FieldInfoData, PlotInfoData } from '../../types/index.js';
 
@@ -108,13 +109,18 @@ export class PlotRepository {
     return _getPlotInfo(userId, plotName) as Promise<PlotInfoData | null>;
   }
 
-  async getPlotReport(userId: UserId, plotName: string): Promise<{ rows: CategoryTotal[]; plotName: string; fieldName: string } | null> {
+  async getPlotReport(userId: UserId, plotName: string): Promise<{ rows: CategoryTotal[]; plotName: string; fieldName: string; incomeTotal: number } | null> {
     const result = await _getPlotReport(userId, plotName);
     if (!result) return null;
     return {
       rows: result.rows.map((r: CategoryTotal) => ({ category: r.category, total: Number(r.total) })),
       plotName: result.plotName,
       fieldName: result.fieldName,
+      incomeTotal: result.incomeTotal,
     };
+  }
+
+  async getPlotResult(userId: UserId, plotName: string): Promise<{ ingresos: number; gastos: number; plotName: string; fieldName: string } | null> {
+    return _getPlotResult(userId, plotName);
   }
 }

@@ -38,7 +38,8 @@ export function getMonthlyIncomeForMonth(userId: number, month: number, year: nu
 export function getMonthlyResult(userId: number): Promise<{ ingresos: string | number; gastos: string | number }>;
 export function getFieldResult(userId: number, fieldName: string): Promise<{ ingresos: string | number; gastos: string | number }>;
 export function getFieldReport(userId: number, fieldName: string): Promise<Array<{ category: string; total: string | number }>>;
-export function getPlotReport(userId: number, plotName: string): Promise<{ rows: Array<{ category: string; total: string | number }>; plotName: string; fieldName: string } | null>;
+export function getPlotReport(userId: number, plotName: string): Promise<{ rows: Array<{ category: string; total: string | number }>; plotName: string; fieldName: string; incomeTotal: number } | null>;
+export function getPlotResult(userId: number, plotName: string): Promise<{ ingresos: number; gastos: number; plotName: string; fieldName: string } | null>;
 export function setBudget(userId: number, category: string, amount: number): Promise<void>;
 export function getBudget(userId: number, category: string): Promise<{ monthly_limit: string } | null>;
 export function getCategoryMonthlyTotal(userId: number, category: string): Promise<number>;

@@ -114,7 +114,7 @@ export class FinancialService {
     return this.repo.getFieldReport(userId, fieldName);
   }
 
-  async getPlotReport(userId: UserId, plotName: string): Promise<{ rows: CategoryTotal[]; plotName: string; fieldName: string } | null> {
+  async getPlotReport(userId: UserId, plotName: string): Promise<{ rows: CategoryTotal[]; plotName: string; fieldName: string; incomeTotal: number } | null> {
     return this.repo.getPlotReport(userId, plotName);
   }
 
@@ -124,6 +124,10 @@ export class FinancialService {
 
   async getFieldResult(userId: UserId, fieldName: string): Promise<MonthlyResult> {
     return this.repo.getFieldResult(userId, fieldName);
+  }
+
+  async getPlotResult(userId: UserId, plotName: string): Promise<{ ingresos: number; gastos: number; plotName: string; fieldName: string } | null> {
+    return this.repo.getPlotResult(userId, plotName);
   }
 
   async getMonthlyExpenses(userId: UserId) {

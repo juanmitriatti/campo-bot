@@ -244,8 +244,12 @@ export class FinancialRepository {
     return this.plots.getPlotInfo(userId, plotName);
   }
 
-  async getPlotReport(userId: UserId, plotName: string): Promise<{ rows: CategoryTotal[]; plotName: string; fieldName: string } | null> {
+  async getPlotReport(userId: UserId, plotName: string): Promise<{ rows: CategoryTotal[]; plotName: string; fieldName: string; incomeTotal: number } | null> {
     return this.plots.getPlotReport(userId, plotName);
+  }
+
+  async getPlotResult(userId: UserId, plotName: string): Promise<{ ingresos: number; gastos: number; plotName: string; fieldName: string } | null> {
+    return this.plots.getPlotResult(userId, plotName);
   }
 
   // --- Unparsed ---

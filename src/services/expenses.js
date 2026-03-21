@@ -706,16 +706,59 @@ export async function getPlotReport(userId, plotName) {
   const plots = await findPlotByNameAcrossFields(userId, plotName);
   if (plots.length === 0) return null;
   const plot = plots[0];
-  const result = await pool.query(
-    `SELECT e.category, SUM(e.amount) as total
+  const [expenseResult, incomeResult] = await Promise.all([
+    pool.query(
+      `SELECT e.category, SUM(e.amount) as total
+       FROM expenses e
+       WHERE e.user_id = $1 AND e.plot_id = $2
+       AND e.deleted_at IS NULL
+       AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())
+       GROUP BY e.category ORDER BY total DESC`,
+      [userId, plot.id]
+    ),
+    pool.query(
+      `SELECT COALESCE(SUM(i.amount), 0) as total
+       FROM incomes i
+       WHERE i.user_id = $1 AND i.plot_id = $2
+       AND i.deleted_at IS NULL
+       AND date_trunc('month', i.income_date) = date_trunc('month', NOW())`,
+      [userId, plot.id]
+    ),
+  ]);
+  return {
+    rows: expenseResult.rows,
+    plotName: plot.name,
+    fieldName: plot.field_name,
+    incomeTotal: Number(incomeResult.rows[0].total),
+  };
+}
+
+export async function getPlotResult(userId, plotName) {
+  const plots = await findPlotByNameAcrossFields(userId, plotName);
+  if (plots.length === 0) return null;
+  const plot = plots[0];
+  const incomes = await pool.query(
+    `SELECT COALESCE(SUM(i.amount), 0) as total
+     FROM incomes i
+     WHERE i.user_id = $1 AND i.plot_id = $2
+     AND i.deleted_at IS NULL
+     AND date_trunc('month', i.income_date) = date_trunc('month', NOW())`,
+    [userId, plot.id]
+  );
+  const expenses = await pool.query(
+    `SELECT COALESCE(SUM(e.amount), 0) as total
      FROM expenses e
      WHERE e.user_id = $1 AND e.plot_id = $2
      AND e.deleted_at IS NULL
-     AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())
-     GROUP BY e.category ORDER BY total DESC`,
+     AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())`,
     [userId, plot.id]
   );
-  return { rows: result.rows, plotName: plot.name, fieldName: plot.field_name };
+  return {
+    ingresos: Number(incomes.rows[0].total),
+    gastos: Number(expenses.rows[0].total),
+    plotName: plot.name,
+    fieldName: plot.field_name,
+  };
 }
 
 // --- Plots ---

@@ -145,11 +145,47 @@ export function normalizarMonto(texto) {
   const matchLucas = lower.match(/(\d+)\s?lucas/);
   if (matchLucas) return parseInt(matchLucas[1]) * 1000;
 
-  // Solo aceptar número suelto si viene después de verbos de gasto/ingreso
-  const matchDirecto = lower.match(/(?:pagu[eé]|gast[eé]|compr[eé] por|vend[ií]|cobr[eé]|en)\s+(\d{4,})/);
-  if (matchDirecto) return parseInt(matchDirecto[1]);
+  // Standalone number (for flows and direct amount input like "500")
+  if (/^\d+$/.test(lower)) return parseInt(lower);
 
   return null;
+}
+
+// --- Number-first amount extraction (verb-independent) ---
+
+const AMOUNT_LOCATION_PREFIX = /(?:lote|campo|parcela|semana|dia|mes)\s*$/;
+
+/**
+ * Extract amount using number-first strategy.
+ * Tries structured formats ($, mil, k, etc) first, then plain 2+ digit numbers.
+ * Skips numbers preceded by location words (lote, campo, etc).
+ */
+export function extractAmount(texto) {
+  // 1. Try structured formats first (covers $, mil, k, lucas, millones, written numbers)
+  const structured = normalizarMonto(texto);
+  if (structured !== null) return structured;
+
+  // 2. Plain number extraction (2+ digits, skip location-prefixed numbers)
+  const lower = texto.toLowerCase().replace(/\./g, "");
+  const matches = [...lower.matchAll(/\b(\d{2,})\b/g)];
+  for (const m of matches) {
+    const before = lower.slice(0, m.index).trimEnd();
+    if (AMOUNT_LOCATION_PREFIX.test(before)) continue;
+    return parseInt(m[1]);
+  }
+
+  return null;
+}
+
+// --- Financial intent detection (verb-independent) ---
+
+const FINANCIAL_KEYWORDS = /(?:gast[oéea]|ingres[oéea]|pagu[eé]|cobr[eé]|compr[eé]|vend[ií]|cargu[eé]|registr[eéa]|anot[eéa]|pago|venta|compra|cost[oó]|factur)/i;
+
+/**
+ * Detect financial intent via keywords. Verb-independent — matches nouns and all conjugations.
+ */
+export function hasFinancialIntent(texto) {
+  return FINANCIAL_KEYWORDS.test(texto);
 }
 
 // --- Complejidad ---
@@ -1037,7 +1073,7 @@ const COMMAND_PATTERNS = [
     patterns: [
       /(?:info|detalle|datos?|informacion)\s+(?:del?\s+)?lote\s+(\w+)\s+(?:del?\s+)?campo\s+(\w+)/,
       /(?:info|detalle|datos?|informacion)\s+(?:del?\s+)?lote\s+(\w+)/,
-      /(?:estado|informe|como\s+viene)\s+(?:(?:el|del?)\s+)?lote\s+(\w+)/,
+      /(?:estado|como\s+viene)\s+(?:(?:el|del?)\s+)?lote\s+(\w+)/,
       /^lote\s+((?:\w+)(?:\s+(?!esta\s|queda\s|en\s|tiene\s)\w+){0,3})\s*\??$/,
     ],
     extract: (m) => ({ plotName: m[1], fieldName: m[2] || null }),
@@ -1206,7 +1242,7 @@ const COMMAND_PATTERNS = [
   {
     command: "_result_dispatch",
     patterns: [
-      /resultado.*(lote|campo|parcela)\s+((?:\w+)(?:\s+\w+){0,3})/,
+      /resultado.*?(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!est[ea]\b|del?\b|en\b|hoy\b|ayer\b|semana\b|mes\b|ultimo\b|última?\b)\w+){0,3})/,
     ],
     extract: (m) => ({ command: "field_result", entityKeyword: m[1], fieldName: m[2].trim() }),
   },
@@ -1240,27 +1276,36 @@ const COMMAND_PATTERNS = [
   {
     command: "generate_agro_report",
     patterns: [
-      /reporte\s+(?:agron[oó]mico\s+)?semanal\s+(?:(?:del?\s+)?campo\s+)?((?:\w+)(?:\s+\w+){0,3})/,
-      /generar\s+reporte\s+(?:(?:del?\s+)?campo\s+)?((?:\w+)(?:\s+\w+){0,3})/,
+      // Lote-specific (MUST be first — prevents campo-optional from capturing "lote X" as fieldName)
+      /(?:reporte|informe)\s+agron[oó]mico\s+(?:(?:del?|para|el)\s+)?(?:el\s+)?lote\s+((?:\w+)(?:\s+\w+){0,3})/,
+      /(?:reporte|informe)\s+(?:agron[oó]mico\s+)?semanal\s+(?:(?:del?|para)\s+)?lote\s+((?:\w+)(?:\s+\w+){0,3})/,
+      // Bare "reporte lote X" / "informe lote X" (without agronomico) — unified routing
+      /(?:reporte|informe)\s+(?:(?:del?|para|el)\s+)?(?:el\s+)?lote\s+((?:\w+)(?:\s+(?!est[ea]\b|del?\b|en\b|hoy\b|ayer\b|semana\b|mes\b|ultimo\b|última?\b)\w+){0,3})/,
+      // Campo-specific (campo REQUIRED in each pattern)
+      /reporte\s+(?:agron[oó]mico\s+)?semanal\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
+      /generar\s+reporte\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
       /reporte\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
-      /reporte\s+agron[oó]mico\s+(?:(?:del?\s+)?campo\s+)?((?:\w+)(?:\s+\w+){0,3})/,
+      /reporte\s+agron[oó]mico\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
       /informe\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
       /informe\s+(?:agron[oó]mico\s+)?(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
     ],
-    extract: (m) => ({ fieldName: m[1].trim() }),
+    extract: (m) => {
+      if (/\blote\b/.test(m[0].toLowerCase())) return { plotName: m[1].trim() };
+      return { fieldName: m[1].trim() };
+    },
   },
 
   // --- Resumen semanal ---
   { command: "weekly_report", patterns: [/resumen\s+(?:de\s+la\s+)?semana/, /resumen\s+semanal/] },
 
-  // --- Resumen mensual ---
-  { command: "monthly_report", patterns: [/resumen\s+(?:del?\s+)?mes/] },
+  // --- Resumen / reporte financiero ---
+  { command: "monthly_report", patterns: [/resumen\s+(?:del?\s+)?mes/, /(?:reporte|resumen)\s+financiero/] },
 
   // --- Resumen por lote ---
   {
     command: "plot_report",
     patterns: [
-      /(?:resumen|reporte)\s+(?:del?\s+)?lote\s+((?:\w+)(?:\s+\w+){0,3})/,
+      /(?:resumen|reporte)\s+(?:del?\s+)?lote\s+((?:\w+)(?:\s+(?!est[ea]\b|del?\b|en\b|hoy\b|ayer\b|semana\b|mes\b|ultimo\b|última?\b)\w+){0,3})/,
     ],
     extract: (m) => ({ plotName: m[1].trim() }),
   },
@@ -1427,7 +1472,8 @@ export function parseMensajeIngreso(texto) {
   if (!/(?:vend[ií]|cobr[eé]|ingres[eéo]|entr[oó]|factur[eé])/.test(lower)) return null;
   if (esComplejo(texto)) return null;
 
-  const amount = normalizarMonto(texto);
+  // Number-first: income verb check already gates entry, use extractAmount
+  const amount = extractAmount(texto);
   const category = detectarCategoriaIngreso(texto);
 
   if (!amount) return null;
@@ -1444,10 +1490,12 @@ export function parseMensajeIngreso(texto) {
 export function parseMensaje(texto) {
   if (esComplejo(texto)) return null;
 
-  const amount = normalizarMonto(texto);
   const category = detectarCategoria(texto);
+  if (!category) return null;
 
-  if (!amount || !category) return null;
+  // Number-first: for financial context use extractAmount, otherwise structured only
+  const amount = hasFinancialIntent(texto) ? extractAmount(texto) : normalizarMonto(texto);
+  if (!amount) return null;
 
   return {
     type: "expense",
@@ -1464,6 +1512,9 @@ export function parseMensaje(texto) {
  * Returns null if neither lot nor field reference is found.
  */
 export function parsearObservacion(texto) {
+  // Strip observation prefix before any processing (with or without colon/dash)
+  texto = texto.replace(/^(?:observaci[oó]n|obs|nota)\s*[:\-\u2014]?\s*/i, '').trim();
+
   const plotName = detectarLote(texto);
   const lower = texto.toLowerCase();
 
@@ -1475,11 +1526,13 @@ export function parsearObservacion(texto) {
     }
 
     let observationText = texto;
-    // Remove "lote X" or "lote del X" from the text
-    observationText = observationText.replace(/(?:lote\s+(?:del?\s+la?\s*)?)\w+(?:\s+\w+)?/i, '').trim();
-    // Also remove "campo X" if present alongside the lot
-    observationText = observationText.replace(/(?:campo|parcela)\s+[\w\s]+?(?=\s+(?:presencia|estado|estres|estrés|helada|granizo|maleza|plaga|oruga|chinche|deficiencia|clorosis|floración|floracion|nutrici|hongo|roya|enfermedad|sequía|sequia|encharcamiento|viento|llenado|emergencia|macollaje|panojamiento|buen|mal|mucha|poca|alta|baja|hay|se\s+observ|se\s+detect))/i, '').trim();
-    observationText = observationText.replace(/(?:campo|parcela)\s+\w+/i, '').trim();
+    // Remove "en [el] lote X" or bare "lote X" — MUST remove preposition to avoid trailing "en"
+    observationText = observationText.replace(/\s*(?:en\s+(?:el\s+)?)?(?:lote\s+(?:del?\s+la?\s*)?)\w+(?:\s+\w+)?/i, '').trim();
+    // Also remove "en [el] campo X" if present alongside the lot
+    observationText = observationText.replace(/\s*(?:en\s+(?:el\s+)?)?(?:campo|parcela)\s+[\w\s]+?(?=\s+(?:presencia|estado|estres|estrés|helada|granizo|maleza|plaga|oruga|chinche|deficiencia|clorosis|floración|floracion|nutrici|hongo|roya|enfermedad|sequía|sequia|encharcamiento|viento|llenado|emergencia|macollaje|panojamiento|buen|mal|mucha|poca|alta|baja|hay|se\s+observ|se\s+detect))/i, '').trim();
+    observationText = observationText.replace(/\s*(?:en\s+(?:el\s+)?)?(?:campo|parcela)\s+\w+/i, '').trim();
+    // Remove trailing bare prepositions left over
+    observationText = observationText.replace(/\s+(?:en|en\s+el|del?)\s*$/i, '').trim();
     // Remove leading dashes, colons, commas
     observationText = observationText.replace(/^[\s,:\-—]+/, '').trim();
 
@@ -1492,19 +1545,31 @@ export function parsearObservacion(texto) {
 
   // 2. Field observation (no lot, but field reference found)
   const fieldName = _detectCampoMultiWord(lower);
-  if (!fieldName) return null;
+  if (fieldName) {
+    let observationText = texto;
+    // Remove "campo X Y Z" from the text
+    observationText = observationText.replace(/(?:campo|parcela)\s+[\w\s]+?(?=\s+(?:presencia|estado|estres|estrés|helada|granizo|maleza|plaga|oruga|chinche|deficiencia|clorosis|floración|floracion|nutrici|hongo|roya|enfermedad|sequía|sequia|encharcamiento|viento|llenado|emergencia|macollaje|panojamiento|buen|mal|mucha|poca|alta|baja|hay|se\s+observ|se\s+detect))/i, '').trim();
+    observationText = observationText.replace(/(?:campo|parcela)\s+\w+(?:\s+\w+)*/i, '').trim();
+    // Remove leading dashes, colons, commas
+    observationText = observationText.replace(/^[\s,:\-—]+/, '').trim();
 
-  let observationText = texto;
-  // Remove "campo X Y Z" from the text
-  observationText = observationText.replace(/(?:campo|parcela)\s+[\w\s]+?(?=\s+(?:presencia|estado|estres|estrés|helada|granizo|maleza|plaga|oruga|chinche|deficiencia|clorosis|floración|floracion|nutrici|hongo|roya|enfermedad|sequía|sequia|encharcamiento|viento|llenado|emergencia|macollaje|panojamiento|buen|mal|mucha|poca|alta|baja|hay|se\s+observ|se\s+detect))/i, '').trim();
-  observationText = observationText.replace(/(?:campo|parcela)\s+\w+(?:\s+\w+)*/i, '').trim();
-  // Remove leading dashes, colons, commas
-  observationText = observationText.replace(/^[\s,:\-—]+/, '').trim();
+    if (observationText && observationText.length >= 3) {
+      const category = _detectCategory(lower);
+      return { plotName: null, fieldName, observationText, category, type: 'field' };
+    }
+  }
 
-  if (!observationText || observationText.length < 3) return null;
-
+  // 3. Bare observation (no lot/field reference, but strong agronomic keyword detected)
   const category = _detectCategory(lower);
-  return { plotName: null, fieldName, observationText, category, type: 'field' };
+  if (category !== 'general') {
+    // Has a specific agronomic category → treat as bare observation
+    let observationText = texto.replace(/^[\s,:\-—]+/, '').trim();
+    if (observationText && observationText.length >= 3) {
+      return { plotName: null, fieldName: null, observationText, category, type: 'bare' };
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -1525,7 +1590,7 @@ function _detectCampoMultiWord(lower) {
 function _detectCategory(lower) {
   if (/maleza|rama\s*negra|yuyo|sorgo\s*de\s*alepo|cardo|gramon|gramilla/.test(lower)) return 'malezas';
   if (/oruga|plaga|chinche|isoca|trips|ara[ñn]uela|mosca|pulg[oó]n|bolillera|cogollero|bicho|enfermedad|hongo|roya|mancha/.test(lower)) return 'sanidad';
-  if (/nutrici[oó]n|deficiencia|clorosis|amarillamiento|carencia/.test(lower)) return 'nutricion';
+  if (/nutrici[oó]n|deficiencia|clorosis|amarill|carencia/.test(lower)) return 'nutricion';
   if (/estado\s+(?:fen|v\d|r\d)|fenolog|floraci[oó]n|llenado|emergencia|macollaje|espigaz[oó]n|panojamiento|(?:^|\s)[vr]\d+(?:\s|$)/.test(lower)) return 'fenologia';
   if (/helada|granizo|sequ[ií]a|encharcamiento|stress|estr[eé]s|viento|inundaci[oó]n/.test(lower)) return 'clima';
   return 'general';

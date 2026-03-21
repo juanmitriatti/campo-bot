@@ -1,0 +1,266 @@
+{
+  "audit_metadata": {
+    "date": "2026-03-20",
+    "scope": "Domain intent separation, observation dedup, agro report lote resolution",
+    "files_analyzed": [
+      "src/services/intent-classifier.ts",
+      "src/utils/parser.js",
+      "src/services/parser.service.ts",
+      "src/services/observations.js",
+      "src/domain/agronomy/agronomy.handler.ts",
+      "src/domain/agronomy/agronomy.repository.ts",
+      "src/domain/plots/plot-discovery.service.ts",
+      "src/middleware/response-formatter.ts",
+      "src/services/agro-report.js",
+      "src/services/expenses.js",
+      "init.sql"
+    ],
+    "test_count": 1060,
+    "test_status": "all_passing"
+  },
+
+  "intent_detection": {
+    "status": "PASS",
+    "pipeline_order": [
+      "1. Trivial command bypass (confirm, cancel, greeting, help, menu, etc.) → confidence 0.95",
+      "2. Full regex chain: commands → income → expense → partial → observation bypass → financial guard → general observation → bare reference → unknown",
+      "3. AI threshold check: if regex confidence ≥ 0.75, skip AI entirely",
+      "4. AI extraction (Claude Haiku) for low-confidence results",
+      "5. Fallback to regex result"
+    ],
+    "observation_prefix_detection": {
+      "status": "CORRECT",
+      "method": "detectDomainIntent() at intent-classifier.ts:336-341",
+      "regex": "^(?:observaci[oó]n|obs|nota)\\s*[:\\-\\u2014\\s]",
+      "behavior": "Anchored to start of string. Matches 'observación:', 'obs:', 'nota -', etc.",
+      "bypass_effect": "When matched, routes DIRECTLY to log_observation at confidence 0.95, bypassing hasAgroActivity guard entirely",
+      "example_observacion_riego_en_lote_1": "With prefix → routed as log_observation (0.95). Without prefix → hasAgroActivity matches 'riego', observation parser skipped, falls to bare reference (0.70), then AI extractor handles structured irrigation extraction"
+    },
+    "agro_activity_guard": {
+      "regex": "fumig|pulveriz|aplic[aóo]|herbicid|insecticid|fungicid|glifosato|fertiliz|nutri(?:mos|r|eron)|abono|urea|fósfor|fosforo|sembr|siembr|cosech|labran|arar|rastr|riego|reg[aué]",
+      "effect": "When matched AND no observation prefix, blocks parsearObservacion to let AI handle structured activity extraction",
+      "location": "intent-classifier.ts:201-204"
+    },
+    "financial_intent_guard": {
+      "regex": "gast[oéea]|ingres[oéea]|pagu[eé]|cobr[eé]|compr[eé]|vend[ií]|cargu[eé]|registr[eéa]|anot[eéa]|pago|venta|compra|cost[oó]|factur",
+      "runs_at": "Step 2.6 — after observation bypass but before general observation",
+      "behavior": "If financial keyword found + amount extractable → routes to expense (0.85) or expense_partial (0.60)"
+    },
+    "agro_report_patterns": {
+      "status": "CORRECT",
+      "lote_patterns": [
+        "(?:reporte|informe)\\s+agron[oó]mico\\s+(?:(?:del?|para|el)\\s+)?(?:el\\s+)?lote\\s+X",
+        "(?:reporte|informe)\\s+(?:agron[oó]mico\\s+)?semanal\\s+(?:(?:del?|para)\\s+)?lote\\s+X"
+      ],
+      "campo_patterns": [
+        "reporte\\s+(?:agron[oó]mico\\s+)?semanal\\s+(?:del?\\s+)?campo\\s+X",
+        "generar\\s+reporte\\s+(?:del?\\s+)?campo\\s+X",
+        "reporte\\s+(?:del?\\s+)?campo\\s+X",
+        "reporte\\s+agron[oó]mico\\s+(?:del?\\s+)?campo\\s+X",
+        "informe\\s+(?:del?\\s+)?campo\\s+X",
+        "informe\\s+(?:agron[oó]mico\\s+)?(?:del?\\s+)?campo\\s+X"
+      ],
+      "extract_logic": "Checks if matched string m[0] contains 'lote' → returns plotName; otherwise → returns fieldName",
+      "known_gap": "'reporte lote 1' (without 'agronómico' or 'semanal') matches plot_report, NOT generate_agro_report. This is by design."
+    },
+    "edge_case_observacion_financial": {
+      "scenario": "'observación: gasté 500 en gasoil'",
+      "result": "CORRECTLY intercepted as expense at step 2.3 (expense parser runs before observation bypass at step 2.5). Pipeline ordering provides natural protection."
+    }
+  },
+
+  "deduplication": {
+    "status": "PASS_WITH_ISSUES",
+    "layers": [
+      {
+        "layer": "1. Financial content guard",
+        "location": "observations.js:87-90",
+        "logic": "Requires BOTH a financial verb AND an amount pattern. Returns null if matched.",
+        "financial_verbs": "gast[eéo]|pagu[eé]|compr[eé]|cobr[eé]|vend[ií]|factur[eé]|ingres[eéo]|carg[ué]e?\\s+(?:gasto|ingreso)",
+        "amount_pattern": "\\$\\s*[\\d.,]+|\\d+\\s*(?:mil|k|lucas|palos|pesos|dolares|usd)|\\d{4,}",
+        "verdict": "CORRECT — dual-signal requirement prevents false positives"
+      },
+      {
+        "layer": "2. In-memory dedup cache",
+        "location": "observations.js:96-100",
+        "logic": "Map<string, timestamp> with key 'userId:plotId:normalizedText'. TTL: 5 minutes. Pruned lazily on each saveObservation call.",
+        "returns_on_hit": "null",
+        "verdict": "CORRECT dedup logic, BUT null return causes misleading UX (see bugs)"
+      },
+      {
+        "layer": "3. DB dedup query",
+        "location": "observations.js:103-115",
+        "sql": "SELECT id FROM agro_observations WHERE user_id=$1 AND normalized_text=$2 AND COALESCE(plot_id,0)=COALESCE($3,0) AND created_at > NOW()-INTERVAL '5 minutes'",
+        "returns_on_hit": "Existing row object {id} (truthy)",
+        "index": "idx_agro_obs_dedup on (user_id, COALESCE(plot_id,0), normalized_text, created_at DESC)",
+        "verdict": "CORRECT dedup logic, BUT truthy return causes false success confirmation (see bugs)"
+      },
+      {
+        "layer": "4. Output-level dedup",
+        "location": "observations.js:130-139",
+        "logic": "deduplicateObservations() — Set-based dedup by 'plotId:normalizedText', keeps first occurrence",
+        "called_in_report": true,
+        "verdict": "CORRECT"
+      }
+    ],
+    "normalization": {
+      "function": "normalizeObservationText(text)",
+      "location": "observations.js:57-66",
+      "steps": [
+        "toLowerCase()",
+        "NFD normalize + strip combining diacriticals (accents)",
+        "Remove all non-word, non-whitespace characters (punctuation)",
+        "Strip 'en [el] lote/campo X...' and everything after",
+        "Strip trailing bare 'en' / 'en el'",
+        "Collapse whitespace + trim"
+      ],
+      "examples": {
+        "hojas amarillas en lote 1": "hojas amarillas",
+        "Hojas Amarillas en Lote 1": "hojas amarillas",
+        "hojas amarillas en el lote 1": "hojas amarillas",
+        "observación: hojas amarillas": "observacion hojas amarillas"
+      },
+      "verdict": "CORRECT — handles case, accents, punctuation, location suffixes"
+    },
+    "text_cleaning": {
+      "observation_prefix_stripped": "YES — parsearObservacion strips 'lote X' and 'campo X' references from observationText",
+      "raw_text_stored": "observation_text column stores the text passed to saveObservation (from parser, not raw user message)",
+      "normalized_text_stored": "normalized_text column stores the normalized version for dedup queries"
+    }
+  },
+
+  "report_generation": {
+    "status": "PASS_WITH_ISSUES",
+    "lote_specific_reports": {
+      "supported": true,
+      "query_method": "getCurrentWeekObservationsByPlot(filterPlotId) — strict WHERE o.plot_id=$1",
+      "isolation_level": "DB-level (not client-side JS filter)",
+      "verdict": "CORRECT"
+    },
+    "financial_leakage_into_reports": {
+      "status": "NO_LEAKAGE",
+      "evidence": "No query in observations.js, agronomy.handler.ts, or agro-report.js references expenses or incomes tables. Domain events table (domain_events) is separate agronomic-only table.",
+      "verdict": "CLEAN"
+    },
+    "report_title_consistency": {
+      "status": "ISSUE",
+      "detail": "When user asks 'reporte agronómico lote 1', the title reads 'Reporte agronómico — [Campo Name]' (parent campo), NOT 'lote 1'. Data IS correctly scoped to lote 1, but title references parent campo.",
+      "location": "response-formatter.ts:104 and agronomy.handler.ts:674",
+      "severity": "LOW"
+    },
+    "output_dedup": {
+      "status": "APPLIED",
+      "location": "agronomy.handler.ts:633 — deduplicateObservations(rawObservations)",
+      "observation_count_source": "observations.length (filtered+deduped), NOT report.observationCount (field-wide)",
+      "verdict": "CORRECT"
+    },
+    "phrasing_consistency": {
+      "status": "MOSTLY_CONSISTENT",
+      "reporte_agronomico_lote_1": "→ generate_agro_report with plotName='1' ✓",
+      "informe_agronomico_lote_1": "→ generate_agro_report with plotName='1' ✓",
+      "reporte_agronomico_campo_norte": "→ generate_agro_report with fieldName='norte' ✓",
+      "reporte_lote_1_without_agronomico": "→ plot_report (DIFFERENT handler — by design, see known_gap)",
+      "reporte_campo_norte_without_agronomico": "→ generate_agro_report (pattern #5 catches 'reporte + campo') — slight inconsistency with lote variant"
+    },
+    "pdf_vs_text_scoping": {
+      "status": "ISSUE",
+      "detail": "generateWeeklyReport(userId, field.id) creates a FIELD-scoped PDF (all lotes), but the WhatsApp text message is correctly LOTE-scoped. User receives narrowly-scoped text + broadly-scoped PDF.",
+      "severity": "MEDIUM"
+    }
+  },
+
+  "cross_lote_isolation": {
+    "status": "PASS",
+    "observation_isolation": {
+      "method": "DB-level WHERE o.plot_id=$1",
+      "query": "getWeekObservationsByPlot(plotId, weekNumber, year)",
+      "verdict": "STRICT — lote 2 observations cannot appear in lote 1 reports"
+    },
+    "activity_isolation": {
+      "method": "User-wide DB fetch (last 10 events) + JS filter by plotIds Set",
+      "query": "getDomainEventsByUser(userId, 10) → .filter(ev => plotIds.has(ev.plot_id))",
+      "verdict": "SAFE but slightly inefficient — if user's last 10 events are all on other lotes, target lote shows 0 activities even if it has older ones",
+      "severity": "LOW"
+    },
+    "plot_discovery_safety": {
+      "auto_create_guard": true,
+      "detail": "Handler checks resolved.autoCreated — refuses to generate reports for auto-created (non-existent) lotes",
+      "verdict": "CORRECT"
+    }
+  },
+
+  "domain_contamination": {
+    "status": "PASS",
+    "financial_to_agro": {
+      "pipeline_guard": "Expense parser (step 2.3) runs BEFORE observation bypass (step 2.5) — financial messages intercepted first",
+      "storage_guard": "hasFinancialContent() in saveObservation rejects text with financial verb + amount pattern",
+      "report_guard": "Agro report queries only agro_observations and domain_events tables — no joins to expenses/incomes",
+      "verdict": "TRIPLE-LAYER PROTECTION — no contamination path found"
+    },
+    "agro_to_financial": {
+      "detail": "Financial queries (FinancialRepository, expenses.js) only touch expenses/incomes tables — no reference to agro_observations or domain_events",
+      "verdict": "CLEAN"
+    },
+    "table_separation": {
+      "financial": ["expenses", "incomes"],
+      "agronomic": ["agro_observations", "domain_events", "plot_crops"],
+      "shared": ["plots", "fields", "users"],
+      "verdict": "Clean table-level separation — no cross-domain data mixing possible at SQL level"
+    }
+  },
+
+  "critical_bugs": [
+    {
+      "id": "BUG-001",
+      "severity": "MEDIUM",
+      "title": "In-memory dedup returns null → misleading 'looks like expense' message",
+      "description": "saveObservation returns null for BOTH financial guard rejection AND in-memory dedup rejection. The handler's if(!saved) check shows 'Eso parece un gasto o ingreso' for ALL null returns, including legitimate duplicate observations. User is told their crop observation looks like a financial transaction when it was actually rejected as a duplicate.",
+      "location": "agronomy.handler.ts:719-725, observations.js:98-99",
+      "impact": "User confusion — correct observation rejected with wrong error message",
+      "fix": "Return distinct sentinel values from saveObservation (e.g., { rejected: 'financial' } vs { rejected: 'duplicate' }) or throw typed errors so handler can give appropriate feedback"
+    },
+    {
+      "id": "BUG-002",
+      "severity": "LOW",
+      "title": "DB dedup returns existing row → false success confirmation",
+      "description": "When in-memory cache misses but DB dedup catches a duplicate, saveObservation returns the existing row's {id} (truthy). The handler treats this as a successful save and confirms to the user. The user sees 'observation saved' but nothing was actually inserted.",
+      "location": "observations.js:111-114, agronomy.handler.ts:719",
+      "impact": "Minor UX issue — user sees confirmation for a no-op, but no data corruption occurs",
+      "fix": "Return a flag indicating whether the row was newly inserted or already existed"
+    },
+    {
+      "id": "BUG-003",
+      "severity": "LOW",
+      "title": "Report title uses campo name, not lote name, for lote-scoped reports",
+      "description": "When user requests 'reporte agronómico lote 1', the WhatsApp message title and PDF caption say 'Reporte agronómico — [Campo Name]' instead of indicating the specific lote. Data is correctly scoped but title is misleading.",
+      "location": "response-formatter.ts:104, agronomy.handler.ts:674",
+      "impact": "User may think the report covers the full campo when it only covers the requested lote"
+    },
+    {
+      "id": "BUG-004",
+      "severity": "MEDIUM",
+      "title": "PDF attachment is field-scoped while text message is lote-scoped",
+      "description": "generateWeeklyReport(userId, field.id) creates a PDF for the ENTIRE campo (all lotes), but the WhatsApp text summary correctly filters to the requested lote only. User receives a narrowly-scoped text summary contradicted by a broadly-scoped PDF.",
+      "location": "agronomy.handler.ts:623",
+      "impact": "Data inconsistency between text and PDF attachment"
+    },
+    {
+      "id": "BUG-005",
+      "severity": "LOW",
+      "title": "Activity fetch is user-wide with hard LIMIT 10, then JS-filtered",
+      "description": "getDomainEventsByUser(userId, 10) fetches the last 10 events for the entire user, then filters in JS by plotIds. If the user's last 10 events are all on other lotes, the target lote shows 0 activities even if it has older ones.",
+      "location": "agronomy.handler.ts:644-656, expenses.js:1260-1272",
+      "impact": "Lote-scoped reports may undercount activities for less-active lotes"
+    },
+    {
+      "id": "BUG-006",
+      "severity": "LOW",
+      "title": "'reporte lote 1' routes to plot_report, 'reporte campo norte' routes to generate_agro_report",
+      "description": "Without the 'agronómico' keyword, 'reporte lote X' matches plot_report while 'reporte campo X' matches generate_agro_report (pattern #5). This asymmetry means lote and campo get different report types for the same shorthand phrasing.",
+      "location": "parser.js:1275-1304",
+      "impact": "User gets different report format depending on whether they reference lote or campo"
+    }
+  ],
+
+  "insights": "The bot has a well-layered architecture with strong domain separation. Financial and agronomic data are cleanly separated at the table level — no SQL query crosses domains. The observation deduplication system is robust with 4 layers (financial guard → in-memory cache → DB dedup → output dedup), and the normalization function handles case, accents, punctuation, and location suffixes correctly. Cross-lote isolation is enforced at the DB level with strict WHERE plot_id=$1 queries. The main issues are UX-level: (1) the handler cannot distinguish between financial rejection and dedup rejection (both return null), causing a misleading error message for duplicates; (2) the PDF attachment is field-scoped while the text summary is correctly lote-scoped, creating an inconsistency; (3) report titles reference the parent campo even for lote-scoped reports. No data corruption, no domain contamination, and no cross-lote leakage was found."
+}

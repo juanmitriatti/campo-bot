@@ -11,7 +11,7 @@ import {
   checkRainAlert,
 } from '../../services/weather.js';
 import { generateWeeklyReport } from '../../services/agro-report.js';
-import { saveObservation, detectObservationCategory, getCurrentWeekObservations } from '../../services/observations.js';
+import { saveObservation, SAVE_REJECTED_FINANCIAL, SAVE_REJECTED_DUPLICATE, SAVE_REJECTED_NO_PLOT, detectObservationCategory, getCurrentWeekObservations, getCurrentWeekObservationsByPlot, deduplicateObservations } from '../../services/observations.js';
 import { formatObservationResponse, formatAgroReportResponse } from '../../middleware/response-formatter.js';
 import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
 import { formatHistoryResponse } from './plot-query.service.js';
@@ -21,21 +21,24 @@ import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, Activi
 // Prevents accidental persistence of questions/follow-ups as observations.
 
 const QUESTION_STARTS = /^(?:que|qué|cuando|cuándo|donde|dónde|como|cómo|cual|cuál|cuanto|cuánto|por\s+que|por\s+qué|quien|quién)/i;
-const FOLLOWUP_STARTS = /^(?:y\s|en\s|del\s|la\s|el\s|eso|ese|esa|ah[ií])/i;
-const STRONG_OBS_SIGNALS = /(?:observaci[oó]n|hay\s|se\s+detect|se\s+observ|presencia\s+de|se\s+ve|plaga|maleza|hongo|roya|helada|granizo|chinche|oruga)/i;
+const FOLLOWUP_STARTS = /^(?:y\s|del\s|eso|ese|esa|ah[ií])/i;
+const STRONG_OBS_SIGNALS = /(?:observaci[oó]n|hay\s|se\s+detect|se\s+observ|presencia\s+de|se\s+ve|plaga|maleza|hongo|roya|helada|granizo|chinche|oruga|gramilla|amarill|seco|seca|sequ[ií]a|encharcam|mancha|yuyo|cardo|isoca|pulgon|pulg[oó]n|trips|bicho|clorosis|deficiencia|carencia)/i;
 
-function isLikelyQuestionOrFollowUp(text: string): boolean {
+function isLikelyQuestionOrFollowUp(text: string, prefixDetected?: boolean): boolean {
+  // If observation prefix was explicitly detected, NEVER block
+  if (prefixDetected) return false;
+
   const trimmed = text.trim();
 
-  // Question marks → ALWAYS block, no exceptions (highest priority)
+  // Question marks → ALWAYS block
   if (trimmed.includes('?') || trimmed.includes('¿')) return true;
 
-  // Strong observation signals → allow persistence
+  // Strong observation signals → allow persistence (even short messages)
   if (STRONG_OBS_SIGNALS.test(trimmed)) return false;
 
-  // Very short messages (3 words or fewer)
+  // Very short messages (2 words or fewer) without agro signals → block
   const wordCount = trimmed.split(/\s+/).length;
-  if (wordCount <= 3) return true;
+  if (wordCount <= 2) return true;
 
   // Starts with question words
   if (QUESTION_STARTS.test(trimmed)) return true;
@@ -595,45 +598,83 @@ export class AgronomyHandler {
       // --- Agro Reports ---
 
       case 'generate_agro_report': {
-        const fieldName = cmd.fieldName as string;
-        if (!fieldName) {
-          return { messages: ['Indicá el campo. Ejemplo:\n📋 *reporte agronómico campo norte*'] };
+        const fieldName = cmd.fieldName as string | null;
+        const plotName = cmd.plotName as string | null;
+
+        if (!fieldName && !plotName) {
+          return { messages: ['Indicá el campo o lote. Ejemplo:\n📋 *reporte agronómico campo norte*\n📋 *reporte agronómico lote 1*'] };
         }
-        const field = await this.repo.getFieldByName(userId, fieldName);
+
+        let field: { id: number; name: string } | null = null;
+        let filterPlotId: number | null = null;
+        let filterPlotName: string | null = null;
+
+        if (plotName) {
+          const resolved = await this.plotDiscovery.resolveFromNames(userId, null, plotName);
+          if (!resolved.plotId || resolved.autoCreated) {
+            return { messages: [`No encontré el lote "${plotName}". Revisá el nombre o escribí *mis lotes* para ver tus lotes.`] };
+          }
+          filterPlotId = resolved.plotId;
+          filterPlotName = resolved.plotName;
+          field = await this.repo.getFieldByName(userId, resolved.fieldName!);
+        } else {
+          field = await this.repo.getFieldByName(userId, fieldName!);
+        }
+
         if (!field) {
-          return { messages: [`No encontré el campo "${fieldName}". Revisá el nombre o escribí *mis campos* para ver tus campos.`] };
+          return { messages: [`No encontré el campo "${fieldName || plotName}". Revisá el nombre o escribí *mis campos* para ver tus campos.`] };
         }
         try {
-          const report = await generateWeeklyReport(userId, field.id);
+          const report = await generateWeeklyReport(userId, field.id, filterPlotId);
           const pdfBuffer = fs.readFileSync(report.pdfPath);
 
           // Build per-plot observation breakdown
-          const observations = await getCurrentWeekObservations(field.id);
+          // When lote is specified, query ONLY that plot (strict filter, no field-level data)
+          const rawObservations = filterPlotId
+            ? await getCurrentWeekObservationsByPlot(filterPlotId)
+            : await getCurrentWeekObservations(field.id);
+
+          // Deduplicate observations before rendering (removes normalized-text duplicates)
+          const observations = deduplicateObservations(rawObservations);
+
           const plotMap = new Map<string, string[]>();
           for (const obs of observations) {
             const key = obs.plot_name || 'General';
             if (!plotMap.has(key)) plotMap.set(key, []);
             plotMap.get(key)!.push(obs.observation_text);
           }
-          const plotSummaries = [...plotMap.entries()].map(([plotName, obs]) => ({ plotName, observations: obs }));
+          const plotSummaries = [...plotMap.entries()].map(([pName, obs]) => ({ plotName: pName, observations: obs }));
 
-          // Recent activities for this field's plots
-          const fieldPlots = await this.repo.getPlotsByField(field.id);
-          const plotIds = new Set(fieldPlots.map(p => p.id));
-          const allEvents = await this.repo.getDomainEventsByUser(userId, 10);
-          const recentActivities = allEvents
-            .filter(ev => ev.plot_id && plotIds.has(ev.plot_id))
-            .slice(0, 5)
-            .map(ev => ({
-              label: getActivityLabel(ev.event_type).label,
-              detail: ev.product || ev.crop || '',
-              plotName: ev.plot_name || 'General',
-            }));
+          // Recent activities — DB-level plot filter when lote is specified (BUG-005 fix)
+          const recentActivities = filterPlotId
+            ? (await this.repo.getDomainEventsByPlot(filterPlotId, 5)).map(ev => ({
+                label: getActivityLabel(ev.event_type).label,
+                detail: ev.product || ev.crop || '',
+                plotName: ev.plot_name || 'General',
+              }))
+            : await (async () => {
+                const fieldPlots = await this.repo.getPlotsByField(field!.id);
+                const plotIds = new Set(fieldPlots.map(p => p.id));
+                const allEvents = await this.repo.getDomainEventsByUser(userId, 10);
+                return allEvents
+                  .filter(ev => ev.plot_id && plotIds.has(ev.plot_id))
+                  .slice(0, 5)
+                  .map(ev => ({
+                    label: getActivityLabel(ev.event_type).label,
+                    detail: ev.product || ev.crop || '',
+                    plotName: ev.plot_name || 'General',
+                  }));
+              })();
 
+          // Use filtered+deduped count, not the full-field count from PDF generator
+          const titleScope = filterPlotName
+            ? `${field.name} > ${filterPlotName}`
+            : field.name;
           const richMessage = formatAgroReportResponse({
             fieldName: field.name,
+            filterPlotName,
             weekNumber: report.weekNumber,
-            observationCount: report.observationCount,
+            observationCount: observations.length,
             plotSummaries,
             recentActivities,
           });
@@ -644,7 +685,7 @@ export class AgronomyHandler {
               buffer: pdfBuffer,
               filename: report.filename,
               mime: 'application/pdf',
-              caption: `Reporte Agronómico — ${field.name} — Semana ${report.weekNumber}`,
+              caption: `Reporte Agronómico — ${titleScope} — Semana ${report.weekNumber}`,
             },
             suggestionKey: 'report_shown',
           };
@@ -660,13 +701,15 @@ export class AgronomyHandler {
         const obsFieldName = cmd.fieldName as string | null;
         const obsPlotName = cmd.plotName as string | null;
         const obsText = cmd.observation as string;
+        const prefixDetected = !!(cmd as any).prefixDetected;
 
         if (!obsText) {
           return { messages: ['No pude detectar la observación. Ejemplo:\n🔍 *observación lote 3: hay presencia de rama negra*'] };
         }
 
         // Safety guard: don't persist questions or follow-ups as observations
-        if (isLikelyQuestionOrFollowUp(obsText)) {
+        // Bypassed when observation prefix was explicitly detected
+        if (isLikelyQuestionOrFollowUp(obsText, prefixDetected)) {
           return {
             messages: [
               'No entendí si querías registrar una observación o consultar algo.\n\n' +
@@ -680,15 +723,69 @@ export class AgronomyHandler {
         }
 
         const resolved = await this.plotDiscovery.resolveFromNames(userId, obsFieldName, obsPlotName);
+
+        // HYBRID plot assignment: auto-assign if single plot, ask if multiple, block if none
+        if (!resolved.plotId) {
+          const userPlots = await this.repo.findAllUserPlots(userId);
+
+          if (userPlots.length === 0) {
+            console.log(`[HYBRID] No plots → blocking observation for user ${userId}`);
+            return {
+              messages: ['Primero necesitás crear un lote.\n\nEjemplo:\n👉 *agregar lote 1*'],
+              suggestionKey: 'default_menu',
+            };
+          }
+
+          if (userPlots.length === 1) {
+            // Auto-assign: single plot, no ambiguity
+            resolved.plotId = userPlots[0].id;
+            resolved.fieldName = userPlots[0].field_name;
+            resolved.plotName = userPlots[0].name;
+            // Ensure fieldId is set
+            if (!resolved.fieldId) {
+              const field = await this.repo.getFieldByName(userId, userPlots[0].field_name);
+              if (field) resolved.fieldId = field.id;
+            }
+            console.log(`[HYBRID] Auto-assigned plot_id=${resolved.plotId} (single plot) for user ${userId}`);
+          } else {
+            // Multiple plots: ask user to specify
+            console.log(`[HYBRID] Multiple plots (${userPlots.length}) → asking user ${userId}`);
+            const plotList = userPlots.map(p => `• ${p.name} (${p.field_name})`).join('\n');
+            return {
+              messages: [`¿En qué lote?\n\nTus lotes:\n${plotList}\n\nEjemplo:\n👉 *observación lote 1: ${obsText}*`],
+              suggestionKey: 'default_menu',
+            };
+          }
+        }
+
         const category = detectObservationCategory(obsText);
 
-        await saveObservation(userId, {
+        const saved = await saveObservation(userId, {
           fieldId: resolved.fieldId,
           plotId: resolved.plotId,
           text: obsText,
           category,
           source: 'text',
         });
+
+        // Typed rejection handling
+        if (saved === SAVE_REJECTED_FINANCIAL) {
+          return {
+            messages: ['Eso parece un gasto o ingreso, no una observación agronómica.\n\nPara registrar un gasto escribí algo como:\n💰 *gasté 50mil en gasoil*'],
+            suggestionKey: 'default_menu',
+          };
+        }
+        if (saved === SAVE_REJECTED_DUPLICATE) {
+          return {
+            messages: ['Observación duplicada detectada'],
+          };
+        }
+        if (saved === SAVE_REJECTED_NO_PLOT) {
+          return {
+            messages: ['No se pudo guardar la observación sin lote. Indicá el lote.\n\nEjemplo:\n👉 *observación lote 1: malezas*'],
+            suggestionKey: 'default_menu',
+          };
+        }
 
         let locationLabel = 'General';
         if (resolved.plotName && resolved.fieldName) {
@@ -703,7 +800,7 @@ export class AgronomyHandler {
           locationLabel,
           plotName: resolved.plotName,
           category,
-          observationText: obsText,
+          observationText: saved.observation_text,
         });
         return { messages: [message], suggestionKey: 'observation_logged' };
       }

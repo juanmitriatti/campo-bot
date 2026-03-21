@@ -97,10 +97,10 @@ describe('parseCommand — new STT-friendly patterns', () => {
     expect(result!.plotName).toBe('3');
   });
 
-  it('"informe lote 2" → plot_info', () => {
+  it('"informe lote 2" → generate_agro_report (unified routing)', () => {
     const result = parseCommand('informe lote 2');
     expect(result).not.toBeNull();
-    expect(result!.command).toBe('plot_info');
+    expect(result!.command).toBe('generate_agro_report');
     expect(result!.plotName).toBe('2');
   });
 

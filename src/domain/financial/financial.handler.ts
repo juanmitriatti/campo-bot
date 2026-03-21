@@ -239,6 +239,17 @@ export class FinancialHandler {
       }
 
       case 'field_result': {
+        // If user said "resultado lote X", compute lote-level result
+        if (cmd.entityKeyword === 'lote') {
+          const plotResult = await this.service.getPlotResult(userId, cmd.fieldName as string);
+          if (!plotResult) {
+            return { messages: [`No encontré el lote *${cmd.fieldName}*.`], suggestionKey: 'report_shown' };
+          }
+          if (plotResult.ingresos === 0 && plotResult.gastos === 0) {
+            return { messages: [`No hay movimientos para lote *${plotResult.plotName}* este mes.`], suggestionKey: 'report_shown' };
+          }
+          return { messages: [formatResult(plotResult.ingresos, plotResult.gastos, `📊 Resultado financiero — lote ${plotResult.plotName} (${plotResult.fieldName}, ${currentMonthLabel()})`)], suggestionKey: 'report_shown' };
+        }
         const { ingresos, gastos } = await this.service.getFieldResult(userId, cmd.fieldName as string);
         if (ingresos === 0 && gastos === 0) {
           return { messages: [`No hay movimientos para ${cmd.fieldName} este mes.`], suggestionKey: 'report_shown' };
@@ -321,11 +332,19 @@ export class FinancialHandler {
           for (const p of allPlots) msg += `• ${p.name} (campo ${p.field_name})\n`;
           return { messages: [msg.trimEnd()] };
         }
-        if (report.rows.length === 0) {
-          return { messages: [`No hay gastos registrados para lote *${report.plotName}* (${currentMonthLabel()}).\n\n_Para ver actividades agronómicas: "qué pasó en el lote ${report.plotName}"_`], suggestionKey: 'report_shown' };
+        if (report.rows.length === 0 && report.incomeTotal === 0) {
+          return { messages: [`No hay movimientos para lote *${report.plotName}* (${currentMonthLabel()}).\n\n_Para ver actividades agronómicas: "qué pasó en el lote ${report.plotName}"_`], suggestionKey: 'report_shown' };
         }
         const { lines: plotLines, total: plotTotal } = formatReportRows(report.rows);
-        return { messages: [`📊 *Resumen financiero — lote ${report.plotName}* (${report.fieldName}, ${currentMonthLabel()})\n\n${plotLines}\nTotal: $${plotTotal.toLocaleString('es-AR')}\n\n_Para actividades agronómicas: "qué pasó en el lote ${report.plotName}"_`], suggestionKey: 'report_shown' };
+        let plotMsg = `📊 *Resumen financiero — lote ${report.plotName}* (${report.fieldName}, ${currentMonthLabel()})\n`;
+        if (report.rows.length > 0) plotMsg += `\n${plotLines}\nGastos: $${plotTotal.toLocaleString('es-AR')}`;
+        if (report.incomeTotal > 0) plotMsg += `\nIngresos: $${report.incomeTotal.toLocaleString('es-AR')}`;
+        if (report.rows.length > 0 || report.incomeTotal > 0) {
+          const resultado = report.incomeTotal - plotTotal;
+          plotMsg += `\nResultado: $${resultado.toLocaleString('es-AR')}`;
+        }
+        plotMsg += `\n\n_Para actividades agronómicas: "qué pasó en el lote ${report.plotName}"_`;
+        return { messages: [plotMsg], suggestionKey: 'report_shown' };
       }
 
       // --- Field report ---
@@ -334,11 +353,19 @@ export class FinancialHandler {
         if (cmd.entityKeyword === 'lote') {
           const plotReport = await this.service.getPlotReport(userId, cmd.fieldName as string);
           if (plotReport) {
-            if (plotReport.rows.length === 0) {
-              return { messages: [`No hay gastos registrados para lote *${plotReport.plotName}* (${currentMonthLabel()}).\n\n_Para actividades agronómicas: "qué pasó en el lote ${plotReport.plotName}"_`], suggestionKey: 'report_shown' };
+            if (plotReport.rows.length === 0 && plotReport.incomeTotal === 0) {
+              return { messages: [`No hay movimientos para lote *${plotReport.plotName}* (${currentMonthLabel()}).\n\n_Para actividades agronómicas: "qué pasó en el lote ${plotReport.plotName}"_`], suggestionKey: 'report_shown' };
             }
             const { lines: pLines, total: pTotal } = formatReportRows(plotReport.rows);
-            return { messages: [`📊 *Resumen financiero — lote ${plotReport.plotName}* (${plotReport.fieldName}, ${currentMonthLabel()})\n\n${pLines}\nTotal: $${pTotal.toLocaleString('es-AR')}\n\n_Para actividades agronómicas: "qué pasó en el lote ${plotReport.plotName}"_`], suggestionKey: 'report_shown' };
+            let pMsg = `📊 *Resumen financiero — lote ${plotReport.plotName}* (${plotReport.fieldName}, ${currentMonthLabel()})\n`;
+            if (plotReport.rows.length > 0) pMsg += `\n${pLines}\nGastos: $${pTotal.toLocaleString('es-AR')}`;
+            if (plotReport.incomeTotal > 0) pMsg += `\nIngresos: $${plotReport.incomeTotal.toLocaleString('es-AR')}`;
+            if (plotReport.rows.length > 0 || plotReport.incomeTotal > 0) {
+              const pResultado = plotReport.incomeTotal - pTotal;
+              pMsg += `\nResultado: $${pResultado.toLocaleString('es-AR')}`;
+            }
+            pMsg += `\n\n_Para actividades agronómicas: "qué pasó en el lote ${plotReport.plotName}"_`;
+            return { messages: [pMsg], suggestionKey: 'report_shown' };
           }
         }
         const rows = await this.service.getFieldReport(userId, cmd.fieldName as string);

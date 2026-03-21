@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { pool } from "../config/db.js";
 import { getPlotsByField, getActiveCrop } from "./expenses.js";
-import { getWeekObservations, getWeekNumber } from "./observations.js";
+import { getWeekObservations, getWeekObservationsByPlot, getWeekNumber } from "./observations.js";
 import { getSetting } from "./settings.service.js";
 import { logError } from "./error-logger.js";
 
@@ -24,7 +24,7 @@ const CATEGORY_LABELS = {
 /**
  * Generate a weekly agronomic PDF report for a field.
  */
-export async function generateWeeklyReport(userId, fieldId) {
+export async function generateWeeklyReport(userId, fieldId, filterPlotId = null) {
   try {
   // 1. Fetch field info
   const fieldResult = await pool.query(`SELECT * FROM fields WHERE id = $1`, [fieldId]);
@@ -39,8 +39,10 @@ export async function generateWeeklyReport(userId, fieldId) {
   const now = new Date();
   const { weekNumber, year } = getWeekNumber(now);
 
-  // 4. Fetch observations for this week
-  const observations = await getWeekObservations(fieldId, weekNumber, year);
+  // 4. Fetch observations for this week (lote-scoped or field-scoped)
+  const observations = filterPlotId
+    ? await getWeekObservationsByPlot(filterPlotId, weekNumber, year)
+    : await getWeekObservations(fieldId, weekNumber, year);
 
   // 5. Group by plot, separating field-level observations
   const plots = await getPlotsByField(fieldId);
@@ -48,6 +50,8 @@ export async function generateWeeklyReport(userId, fieldId) {
   const fieldObservations = []; // field-level (plot_id IS NULL)
 
   for (const plot of plots) {
+    // When filtering by lote, only include the target plot
+    if (filterPlotId && plot.id !== filterPlotId) continue;
     const crop = await getActiveCrop(plot.id);
     plotMap.set(plot.id, {
       name: plot.name,
@@ -65,7 +69,7 @@ export async function generateWeeklyReport(userId, fieldId) {
       if (entry) {
         entry.observations.push(obs);
       } else {
-        // Plot not in current field — treat as field-level
+        // Plot not in current scope — treat as field-level
         fieldObservations.push(obs);
       }
     }
@@ -74,7 +78,8 @@ export async function generateWeeklyReport(userId, fieldId) {
   // 6. Generate PDF
   const reportsDir = await getReportsDir();
   fs.mkdirSync(reportsDir, { recursive: true });
-  const filename = `${userId}_${fieldId}_W${weekNumber}_${year}.pdf`;
+  const plotSuffix = filterPlotId ? `_P${filterPlotId}` : '';
+  const filename = `${userId}_${fieldId}${plotSuffix}_W${weekNumber}_${year}.pdf`;
   const pdfPath = path.join(reportsDir, filename);
   await generateReportPDF({
     field,
@@ -84,6 +89,7 @@ export async function generateWeeklyReport(userId, fieldId) {
     plots: plotMap,
     fieldObservations,
     pdfPath,
+    filterPlotName: filterPlotId ? (plotMap.get(filterPlotId)?.name || null) : null,
   });
 
   // 7. Save report record
@@ -113,7 +119,7 @@ export async function generateWeeklyReport(userId, fieldId) {
 /**
  * Generate the PDF file using PDFKit.
  */
-function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldObservations, pdfPath }) {
+function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldObservations, pdfPath, filterPlotName = null }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const stream = fs.createWriteStream(pdfPath);
@@ -124,8 +130,11 @@ function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldOb
        .text('Reporte Agronómico Semanal', { align: 'center' });
     doc.moveDown(0.5);
 
+    const scopeLabel = filterPlotName
+      ? `Campo: ${field.name} > Lote: ${filterPlotName}`
+      : `Campo: ${field.name}`;
     doc.fontSize(11).font('Helvetica')
-       .text(`Campo: ${field.name}${field.city ? ` — ${field.city}` : ''}`, { align: 'center' });
+       .text(`${scopeLabel}${field.city ? ` — ${field.city}` : ''}`, { align: 'center' });
     doc.text(`Agrónomo: ${agronomist}`, { align: 'center' });
     doc.text(`Semana ${weekNumber} — ${year}`, { align: 'center' });
     doc.text(`Generado: ${new Date().toLocaleDateString('es-AR')}`, { align: 'center' });

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   normalizarMonto,
+  extractAmount,
+  hasFinancialIntent,
   parseCommand,
   detectarCategoria,
   detectarCategoriaIngreso,
@@ -105,34 +107,63 @@ describe("normalizarMonto", () => {
     it("gasté cien → 100", () => expect(normalizarMonto("gasté cien")).toBe(100));
   });
 
-  describe("digits with verb context (matchDirecto)", () => {
+  describe("digits with verb context → normalizarMonto returns null (verb-independent)", () => {
+    // normalizarMonto no longer has verb-prefix matching.
+    // Use extractAmount for number-first extraction.
+    it.each([
+      ["gaste 150000"],
+      ["gaste 5000"],
+      ["pague 200000"],
+      ["vendi 50000"],
+      ["cobre 10000"],
+    ])("%s → null", (input) => {
+      expect(normalizarMonto(input)).toBeNull();
+    });
+  });
+
+  describe("digits with verb context → extractAmount finds them", () => {
     it.each([
       ["gaste 150000", 150000],
       ["gaste 5000", 5000],
       ["pague 200000", 200000],
       ["vendi 50000", 50000],
       ["cobre 10000", 10000],
+      ["gaste 500", 500],
+      ["cargue gasto de 100 en semillas", 100],
+    ])("%s → %i", (input, expected) => {
+      expect(extractAmount(input)).toBe(expected);
+    });
+  });
+
+  describe("standalone numbers → normalizarMonto returns the value", () => {
+    // Standalone numbers (pure digits) are now parsed for interactive flow support
+    it.each([
+      ["50000", 50000],
+      ["150000", 150000],
+      ["500", 500],
     ])("%s → %i", (input, expected) => {
       expect(normalizarMonto(input)).toBe(expected);
     });
   });
 
-  describe("standalone numbers without context → null", () => {
-    // Raw numbers without verb prefix, $ sign, or suffix return null
-    // to avoid false positives on non-financial messages
+  describe("standalone numbers with dots → normalizarMonto strips dots and parses", () => {
+    // Dot-separated numbers like "50.000" are stripped to "50000"
+    // and matched by standalone digit detection
     it.each([
-      ["50000"],
-      ["150000"],
-      ["50.000"],    // dots stripped → "50000", still no context
-      ["1.500.000"], // dots stripped → "1500000", still no context
-    ])("%s → null", (input) => {
-      expect(normalizarMonto(input)).toBeNull();
+      ["50.000", 50000],
+      ["1.500.000", 1500000],
+    ])("%s → %i", (input, expected) => {
+      expect(normalizarMonto(input)).toBe(expected);
     });
   });
 
-  describe("small numbers without context → null", () => {
-    it("gaste 500 → null (< 4 digits, no suffix)", () => {
-      expect(normalizarMonto("gaste 500")).toBeNull();
+  describe("extractAmount safety: location numbers excluded", () => {
+    it.each([
+      ["lote 1"],
+      ["campo 2"],
+      ["parcela 3"],
+    ])("%s → null", (input) => {
+      expect(extractAmount(input)).toBeNull();
     });
   });
 

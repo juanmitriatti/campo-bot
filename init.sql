@@ -337,6 +337,7 @@ CREATE TABLE IF NOT EXISTS agro_observations (
   field_id INT REFERENCES fields(id),
   plot_id INT REFERENCES plots(id),
   observation_text TEXT NOT NULL,
+  normalized_text TEXT,
   category VARCHAR(30) NOT NULL DEFAULT 'general',
   source VARCHAR(10) NOT NULL DEFAULT 'text',
   created_at TIMESTAMP DEFAULT NOW()
@@ -344,6 +345,7 @@ CREATE TABLE IF NOT EXISTS agro_observations (
 
 CREATE INDEX IF NOT EXISTS idx_agro_obs_field_created ON agro_observations(field_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agro_obs_plot ON agro_observations(plot_id);
+CREATE INDEX IF NOT EXISTS idx_agro_obs_dedup ON agro_observations(user_id, COALESCE(plot_id, 0), normalized_text, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS agronomic_reports (
   id SERIAL PRIMARY KEY,
