@@ -979,7 +979,7 @@ export async function updateConversationMiniMemory(userId, { lastIntent, lastAct
 
 export async function getUserSingleField(userId) {
   const result = await pool.query(
-    `SELECT * FROM fields WHERE user_id = $1`,
+    `SELECT * FROM fields WHERE user_id = $1 AND deleted_at IS NULL`,
     [userId]
   );
   if (result.rows.length === 1) return result.rows[0];

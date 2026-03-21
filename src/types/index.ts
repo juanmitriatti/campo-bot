@@ -458,6 +458,7 @@ export interface HandlerResponse {
   sideEffects?: {
     setPending?: PendingTransaction;
     startFlow?: { state: FlowState; data?: Record<string, unknown> };
+    setPendingObservation?: { text: string; category: string };
   };
 }
 

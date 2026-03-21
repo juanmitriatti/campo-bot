@@ -13,6 +13,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore } from '../middleware/pending-transactions.js';
+import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
@@ -41,6 +42,9 @@ import { IntentValidator } from '../ai/intent-validator.js';
 import { UserContextService } from '../ai/user-context.service.js';
 import { ConversationalFallbackService } from '../ai/conversational-fallback.service.js';
 import { normalizeTranscript } from '../utils/text-normalizer.js';
+import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observations.js';
+import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
+import { formatObservationResponse } from '../middleware/response-formatter.js';
 import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult } from '../types/index.js';
 
 // --- Wire up dependencies ---
@@ -69,6 +73,8 @@ const conversationalFallback = new ConversationalFallbackService(userRepository)
 
 const dedup = new MessageDedup();
 const pendingStore = new PendingTransactionStore();
+const pendingObsStore = new PendingObservationStore();
+const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
 const transcriptionService = new TranscriptionService();
@@ -551,6 +557,65 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
+    // --- Check pending observation (plot disambiguation follow-up) ---
+    const pendingObs = pendingObsStore.get(phone);
+    if (pendingObs) {
+      // Cancel intent clears pending observation
+      if (isCancelIntent(text)) {
+        pendingObsStore.clear(phone);
+        await sendMessage(phone, '\u274c Observación cancelada.');
+        res.sendStatus(200);
+        return;
+      }
+
+      // RESOLUTION MODE: resolve EXISTING plot only — NEVER auto-create
+      const obsResolved = await plotDiscovery.resolveExisting(userId, text);
+
+      if (obsResolved.plotId) {
+        pendingObsStore.clear(phone);
+        const saved = await saveObservation(userId, {
+          fieldId: obsResolved.fieldId,
+          plotId: obsResolved.plotId,
+          text: pendingObs.text,
+          category: pendingObs.category,
+          source: 'text',
+        });
+
+        if (saved === SAVE_REJECTED_DUPLICATE) {
+          await sendMessage(phone, 'Observación duplicada detectada');
+        } else if (saved && !(saved as any)._rejected) {
+          let locationLabel = 'General';
+          if (obsResolved.plotName && obsResolved.fieldName) {
+            locationLabel = `${obsResolved.fieldName} > ${obsResolved.plotName}`;
+          } else if (obsResolved.plotName) {
+            locationLabel = obsResolved.plotName;
+          }
+          const message = formatObservationResponse({
+            locationLabel,
+            plotName: obsResolved.plotName,
+            category: pendingObs.category as any,
+            observationText: saved.observation_text,
+          });
+          const response: HandlerResponse = { messages: [message], suggestionKey: 'observation_logged' };
+          await sendResponse(phone, response);
+        } else {
+          await sendMessage(phone, 'No se pudo guardar la observación. Intentá de nuevo.');
+        }
+        console.log(`[PENDING_OBS] Resolved plot_id=${obsResolved.plotId} for pending observation, user ${userId}`);
+        conversationLogger.log(userId, phone, text, 'Observación registrada (follow-up)', 'command', 'log_observation', null, null, false, Date.now() - startTime).catch(() => {});
+        res.sendStatus(200);
+        return;
+      }
+
+      // HARD STOP: no plot found — re-ask. NEVER fall through to classifier.
+      const userPlots = await agronomyRepository.findAllUserPlots(userId);
+      const plotList = userPlots.map(p => `• ${p.name} (${p.field_name})`).join('\n');
+      await sendMessage(phone, `No encontré ese lote. ¿En qué lote?\n\nTus lotes:\n${plotList}`);
+      console.log(`[PENDING_OBS] Could not resolve plot from "${text}", asking again for user ${userId}`);
+      res.sendStatus(200);
+      return;
+    }
+
     // --- Check pending confirmation first ---
     const pending = pendingStore.get(phone);
 
@@ -711,6 +776,12 @@ router.post('/', async (req: Request, res: Response) => {
         }
         // Ensure every command gets a suggestion (no dead ends)
         response.suggestionKey = resolveSuggestionKey(intent.data.command, response.suggestionKey);
+        // Store pending observation for plot disambiguation follow-up
+        if (response.sideEffects?.setPendingObservation) {
+          const obs = response.sideEffects.setPendingObservation;
+          pendingObsStore.set(phone, { text: obs.text, category: obs.category, timestamp: Date.now() });
+          console.log(`[PENDING_OBS] Stored pending observation for user ${userId}: "${obs.text}"`);
+        }
         // Learn from successful command (fire-and-forget)
         learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
         conversationObserver.logCommandExecuted(userId, intent.data.command, { aiUsed, confidence });

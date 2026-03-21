@@ -1109,7 +1109,7 @@ const COMMAND_PATTERNS = [
   {
     command: "list_fields",
     patterns: [
-      /^(?:mis\s+(?:campos|parcelas)|ver\s+campos|listar\s+campos)$/,
+      /^(?:mis\s+(?:campos|parcelas)|ver\s+(?:mis\s+)?campos|listar\s+campos)$/,
       /cuantos?\s+(?:campos?|parcelas?)/,
       /que\s+(?:campos?|parcelas?)\s+tengo/,
       /(?:tengo|hay)\s+(?:campos?|parcelas?)\s*\??$/,

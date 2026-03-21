@@ -377,4 +377,150 @@ Input: "hay malezas en lote 1"
 
 ---
 
+## 2026-03-21 — Pending Observation State for Plot Disambiguation
+
+**Scope:** Implement conversational follow-up when observation requires plot clarification. User says "hay plagas" → bot asks "¿En qué lote?" → user says "lote 2" → observation saved to lote 2.
+
+### Problem
+
+When hybrid logic asked "¿En qué lote?", the observation context was lost. User's follow-up "lote 2" was parsed as a new intent (plot_info or list_plots) instead of completing the pending observation.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `src/middleware/pending-observations.ts` | NEW — `PendingObservationStore` (in-memory Map, 5-min TTL). Stores `{ text, category, timestamp }` keyed by phone. |
+| `src/types/index.ts` | Added `setPendingObservation` to `HandlerResponse.sideEffects` |
+| `agronomy.handler.ts` | Multi-plot branch now returns `sideEffects.setPendingObservation` with observation text and category |
+| `whatsapp.controller.ts` | Checks `pendingObsStore` BEFORE classification. If pending obs exists: resolves plot from message → saves observation → clears pending. Cancel clears pending. Unresolved plot → asks again. Stores pending obs when handler returns `sideEffects.setPendingObservation`. |
+
+### Flow
+
+```
+User: "hay plagas"
+→ classifier → log_observation → handler
+→ HYBRID: 2+ plots → "¿En qué lote?" + sideEffects.setPendingObservation
+→ controller stores { text: "hay plagas", category: "sanidad" } in pendingObsStore
+
+User: "lote 2"
+→ controller checks pendingObsStore → found
+→ plotDiscovery.resolve("lote 2") → plotId: 7
+→ saveObservation(userId, { plotId: 7, text: "hay plagas" })
+→ "Observación registrada" + clear pending
+```
+
+### Edge Cases Handled
+
+| Input after "¿En qué lote?" | Behavior |
+|------------------------------|----------|
+| "lote 2" | Save to lote 2, clear pending |
+| "cancelar" | Clear pending, "Observación cancelada" |
+| "lote inexistente" | "No encontré ese lote. ¿En qué lote?" (pending preserved) |
+| (5 min timeout) | Pending auto-expires, next message parsed normally |
+
+### Tests: 1115 passing (no regressions)
+
+---
+
+## 2026-03-21 — P0 Fix: Prevent Intent Leakage During Pending Observation
+
+**Scope:** Fix critical bug where "lote 3" during pending observation disambiguation triggered auto-creation of a new plot instead of resolving an existing one.
+
+### Root Cause
+
+`plotDiscovery.resolve()` calls `_resolvePlotOnly()` which auto-creates plots when no match is found (line 124-137 of `plot-discovery.service.ts`). During pending observation follow-up, the controller used `resolve()` — allowing unintended plot creation.
+
+### Fix
+
+| File | Change |
+|------|--------|
+| `plot-discovery.service.ts` | Added `resolveExisting()` — matches existing plots only (name match + alias match). Returns `plotId: null` if no match. NEVER auto-creates. |
+| `whatsapp.controller.ts` | Pending obs block now uses `plotDiscovery.resolveExisting()` instead of `plotDiscovery.resolve()`. Hard stop after "not found" — classifier NEVER runs while pending. |
+
+### Architectural Rule Enforced
+
+While `pendingObservation` exists, the system is in **RESOLUTION MODE**:
+- Only action allowed: resolve existing plot
+- Classifier is BLOCKED (early return before classification)
+- No auto-creation, no intent routing, no handler dispatch
+- Cancel clears pending, unresolved re-asks, 5-min timeout auto-expires
+
+### Tests: 1115 passing (no regressions)
+
+---
+
+## 2026-03-21 — Field ABM Deep Code Audit
+
+**Scope:** Full audit of field (campo) ABM — creation, retrieval, deletion, scoping, isolation, interaction with plots/observations, conversational flows.
+
+### Overall Health: 🟡 YELLOW — 1 Critical, 2 Medium, 2 Low
+
+### Findings
+
+| ID | Severity | Summary | File | Status |
+|----|----------|---------|------|--------|
+| CRITICAL-1 | CRITICAL | `getUserSingleField()` missing `AND deleted_at IS NULL` — returns soft-deleted fields, causes plot auto-creation under deleted fields | `expenses.js:980-987` | OPEN |
+| MEDIUM-1 | MEDIUM | `resolveExisting()` searches ALL user fields — plot name collisions across fields cause false "not found" | `plot-discovery.service.ts:145-178` | OPEN |
+| MEDIUM-2 | MEDIUM | `getObservationsByField()` and `getWeekObservations()` lack `user_id` filter — safe in WhatsApp flow (fieldId from user-scoped query) but exposed via unauthenticated dashboard | `observations.js:165-194` | OPEN |
+| LOW-1 | LOW | Plot aliases not cleaned on `deletePlot()` — deleted plots findable via stale aliases | `expenses.js` | OPEN |
+| LOW-2 | LOW | `field_id` nullable in `agro_observations` INSERT — always populated in practice by handler but schema allows NULL | `observations.js:140` | OPEN |
+
+### What's Working Correctly
+
+| Area | Status |
+|------|--------|
+| Soft delete filter (`deleted_at IS NULL`) in all field/plot queries (except CRITICAL-1) | OK |
+| Conversation state tracking (`last_field_id`/`last_plot_id` with LEFT JOIN) | OK |
+| Plot-scoped queries (`getPlotsByField(fieldId)` used consistently) | OK |
+| `resolveExisting()` never auto-creates | OK |
+| Pending obs isolation (hard stop before classifier) | OK |
+| `getOrCreateField` only in explicit commands (never during pending obs) | OK |
+| No cross-field joins in financial queries | OK |
+| Domain event scoping by `plot_id` | OK |
+
+### Recommended Fixes
+
+| Priority | Fix |
+|----------|-----|
+| P0 | Add `AND deleted_at IS NULL` to `getUserSingleField()` |
+| P1 | Add `user_id` filter to `getObservationsByField()` and `getWeekObservations()` |
+| P2 | Clean `plot_aliases` on `deletePlot()` |
+| P3 | Field-scoped `resolveExisting()` using `last_field_id` from conversation state |
+
+### Files Analyzed (12)
+
+`expenses.js`, `observations.js`, `plot-discovery.service.ts`, `plot.repository.ts`, `agronomy.handler.ts`, `agronomy.repository.ts`, `financial.handler.ts`, `financial.repository.ts`, `whatsapp.controller.ts`, `agro-report.js`, `dashboard.js`, `pending-observations.ts`
+
+### Tests: 1115 passing
+
+---
+
+## 2026-03-21 — P0 Fix: getUserSingleField() Soft-Delete Filter
+
+**Scope:** Fix CRITICAL-1 from Field ABM audit — `getUserSingleField()` returned soft-deleted fields, allowing plot auto-creation under deleted fields.
+
+### Fix
+
+| File | Change |
+|------|--------|
+| `expenses.js:980-987` | Added `AND deleted_at IS NULL` to `getUserSingleField()` query |
+
+### Caller Safety
+
+`PlotDiscoveryService._resolvePlotOnly()` (line 125-126): if `getUserSingleField` returns null, falls through to `getOrCreateField('General')` — correct for new users. This path is never reached during pending observation (`resolveExisting()` doesn't call `_resolvePlotOnly()`).
+
+### Audit Status Update
+
+| ID | Before | After |
+|----|--------|-------|
+| CRITICAL-1 | OPEN | **FIXED** |
+| MEDIUM-1 | OPEN | OPEN |
+| MEDIUM-2 | OPEN | OPEN |
+| LOW-1 | OPEN | OPEN |
+| LOW-2 | OPEN | OPEN |
+
+### Tests: 1115 passing (no regressions)
+
+---
+
 <!-- Add future audits above this line -->

@@ -748,12 +748,16 @@ export class AgronomyHandler {
             }
             console.log(`[HYBRID] Auto-assigned plot_id=${resolved.plotId} (single plot) for user ${userId}`);
           } else {
-            // Multiple plots: ask user to specify
+            // Multiple plots: ask user to specify, save pending observation for follow-up
             console.log(`[HYBRID] Multiple plots (${userPlots.length}) → asking user ${userId}`);
+            const category = detectObservationCategory(obsText);
             const plotList = userPlots.map(p => `• ${p.name} (${p.field_name})`).join('\n');
             return {
               messages: [`¿En qué lote?\n\nTus lotes:\n${plotList}\n\nEjemplo:\n👉 *observación lote 1: ${obsText}*`],
               suggestionKey: 'default_menu',
+              sideEffects: {
+                setPendingObservation: { text: obsText, category },
+              },
             };
           }
         }

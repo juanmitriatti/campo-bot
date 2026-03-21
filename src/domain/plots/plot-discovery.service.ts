@@ -138,6 +138,45 @@ export class PlotDiscoveryService {
     };
   }
 
+  /**
+   * Resolve a plot from text WITHOUT auto-creating anything.
+   * Returns plotId only if an existing plot matches. Used for pending observation disambiguation.
+   */
+  async resolveExisting(userId: UserId, text: string): Promise<PlotDiscoveryResult> {
+    const loteName = detectarLote(text);
+    if (!loteName) {
+      return { fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false };
+    }
+
+    // 1. Direct name match across fields
+    const plots = await findPlotByNameAcrossFields(userId, loteName);
+    if (plots.length === 1) {
+      return {
+        fieldId: plots[0].field_id,
+        fieldName: plots[0].field_name,
+        plotId: plots[0].id,
+        plotName: plots[0].name,
+        autoCreated: false,
+      };
+    }
+
+    // 2. Alias match
+    const normalized = normalizeText(loteName);
+    const aliasMatch = await findPlotByAlias(userId, normalized);
+    if (aliasMatch) {
+      return {
+        fieldId: aliasMatch.field_id,
+        fieldName: aliasMatch.field_name,
+        plotId: aliasMatch.id,
+        plotName: aliasMatch.name,
+        autoCreated: false,
+      };
+    }
+
+    // No match — do NOT auto-create
+    return { fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false };
+  }
+
   private async _registerAliases(plotId: number, plotName: string): Promise<void> {
     const normalized = normalizeText(plotName);
     await addPlotAlias(plotId, normalized);
