@@ -691,4 +691,54 @@ Two paths with inconsistent behavior:
 
 ---
 
+## 2026-03-21 — Full System Audit
+
+**File:** `audit-2026-03-21-full-system.md`
+**Scope:** Comprehensive audit of the entire campo-bot system: data model, fields/plots ABM, observations, rainfall (post-refactor), financials, intent routing, conversation state, dashboard/settings, reporting, and UX.
+
+### Verdict Summary
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Data Model | PASS | Schema sound. Proper FK relationships, soft-delete on fields/plots, indexes in place |
+| Fields/Plots ABM | PASS (with issues) | Soft-delete works. Plot alias cleanup missing on delete (LOW) |
+| Observations | PASS | 4-layer dedup, plot enforcement, hybrid assignment, pending obs store all working |
+| Rainfall (post-refactor) | PASS | Field-level only, dedup working, soft-delete filters in place |
+| Financial System | PASS (with issues) | Expense/income CRUD correct. Some edge cases in currency handling |
+| Intent Routing | PASS | Pipeline order correct. Prefix bypass → trivial → regex → AI fallback |
+| Conversation State | PASS | DB-persisted state, flow timeouts, context tracking all working |
+| Dashboard/Settings | FAIL | Zero authentication (CRITICAL). Dead settings still defined |
+| Reporting | PASS (with fix) | `queryPlotHistory` rainfall subquery fixed during audit |
+| UX | PASS | Commands route correctly, confirmations work, error messages in Spanish |
+
+### Bugs Found (15)
+
+| ID | Severity | Summary | Status |
+|----|----------|---------|--------|
+| BUG-SYS-01 | HIGH | Dashboard has zero authentication — all endpoints publicly accessible | OPEN |
+| BUG-SYS-02 | HIGH | Plot alias cleanup missing on `deletePlot()` — stale aliases can resolve to deleted plots | OPEN |
+| BUG-SYS-03 | MEDIUM | `getObservationsByField()` and `getWeekObservations()` lack `user_id` filter | OPEN |
+| BUG-SYS-04 | MEDIUM | `resolveExisting()` no disambiguation for same-name plots across fields | OPEN |
+| BUG-SYS-05 | MEDIUM | `findPlotByAlias` returns arbitrary `rows[0]` on multiple matches | OPEN |
+| BUG-SYS-06 | MEDIUM | No `last_field_id` scoping in plot resolution | OPEN |
+| BUG-SYS-07 | MEDIUM | `queryPlotHistory` rainfall subquery missing soft-delete filter on field join | **FIXED** |
+| BUG-SYS-08 | LOW | `rainfall.user_id` nullable in schema but always populated | OPEN |
+| BUG-SYS-09 | LOW | `field_id` nullable in `agro_observations` INSERT | OPEN |
+| BUG-SYS-10 | LOW | 6 system_settings defined but never read by code | OPEN |
+| BUG-SYS-11 | LOW | Scheduler ignores `SCHEDULER_CRON_EXPRESSION` setting | OPEN |
+| BUG-SYS-12 | LOW | Proactive alerts hour hardcoded to 8 AM | OPEN |
+| BUG-SYS-13 | LOW | No auto-refresh on dashboard | OPEN |
+| BUG-SYS-14 | LOW | AI pricing hardcoded in 8+ locations | OPEN |
+| BUG-SYS-15 | LOW | No dashboard rate limiting | OPEN |
+
+### Fix Applied During Audit
+
+| File | Change |
+|------|--------|
+| `src/services/expenses.js:1489` | Added `AND f3.deleted_at IS NULL` to `queryPlotHistory` rainfall subquery field LEFT JOIN |
+
+### Tests: 1115 passing
+
+---
+
 <!-- Add future audits above this line -->

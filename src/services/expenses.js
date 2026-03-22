@@ -1486,7 +1486,7 @@ export async function queryPlotHistory(userId, { plotId = null, fieldId = null, 
              r.millimeters::text as detail, r.millimeters as quantity, 'mm'::text as unit, NULL::text as crop, NULL::integer as plot_id,
              NULL::text as plot_name, f3.name as field_name
       FROM rainfall r
-      LEFT JOIN fields f3 ON r.field_id = f3.id
+      LEFT JOIN fields f3 ON r.field_id = f3.id AND f3.deleted_at IS NULL
       WHERE r.user_id = $1 ${rainLoc} ${rainDate}
     `);
   }
