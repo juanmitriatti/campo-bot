@@ -268,8 +268,8 @@ describe("parseCommand", () => {
     it("que campos tengo? → list_fields", () => {
       expect(parseCommand("que campos tengo?")).toMatchObject({ command: "list_fields" });
     });
-    it("mostrar lotes → list_fields", () => {
-      expect(parseCommand("mostrar lotes")).toMatchObject({ command: "list_fields" });
+    it("mostrar lotes → list_plots", () => {
+      expect(parseCommand("mostrar lotes")).toMatchObject({ command: "list_plots" });
     });
   });
 

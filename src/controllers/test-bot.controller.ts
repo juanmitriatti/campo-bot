@@ -1,0 +1,788 @@
+import express from 'express';
+import type { Request, Response } from 'express';
+import multer from 'multer';
+import { IntentClassifier } from '../services/intent-classifier.js';
+import { DomainRouter } from '../domain/router.js';
+import { InteractiveRouter } from '../domain/interactive/interactive.router.js';
+import { FinancialHandler } from '../domain/financial/financial.handler.js';
+import { FinancialService } from '../domain/financial/financial.service.js';
+import { FinancialRepository } from '../domain/financial/financial.repository.js';
+import { AgronomyHandler } from '../domain/agronomy/agronomy.handler.js';
+import { AgronomyRepository } from '../domain/agronomy/agronomy.repository.js';
+import { SystemHandler } from '../domain/system/system.handler.js';
+import { UserRepository } from '../domain/users/user.repository.js';
+import { PendingTransactionStore } from '../middleware/pending-transactions.js';
+import { PendingObservationStore } from '../middleware/pending-observations.js';
+import { LearningService } from '../domain/learning/learning.service.js';
+import { ContextResolver } from '../domain/learning/context-resolver.js';
+import { FeatureGate } from '../domain/billing/feature-gate.js';
+import { getSettingNumber } from '../services/settings.service.js';
+import { pool } from '../config/db.js';
+import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
+import { ConversationEngine } from '../middleware/conversation-engine.js';
+import { ConversationLogger } from '../middleware/conversation-logger.js';
+import { FlowRegistry } from '../middleware/flows/flow-registry.js';
+import { expenseFlow } from '../middleware/flows/expense.flow.js';
+import { incomeFlow } from '../middleware/flows/income.flow.js';
+import { fieldFlow } from '../middleware/flows/field.flow.js';
+import { rainfallFlow } from '../middleware/flows/rainfall.flow.js';
+import { activityFlow } from '../middleware/flows/activity.flow.js';
+import { EntityValidator } from '../services/entity-validator.js';
+import { getSuggestions, resolveSuggestionKey } from '../middleware/contextual-suggestions.js';
+import { enrichWithContext } from '../middleware/context-reuse.js';
+import { updateConversationMiniMemory } from '../services/expenses.js';
+import { ConversationObserver } from '../middleware/conversation-observer.js';
+import { IntentExtractor } from '../ai/intent-extractor.js';
+import { PromptBuilder } from '../ai/prompt-builder.js';
+import { IntentValidator } from '../ai/intent-validator.js';
+import { UserContextService } from '../ai/user-context.service.js';
+import { ConversationalFallbackService } from '../ai/conversational-fallback.service.js';
+import { normalizeTranscript } from '../utils/text-normalizer.js';
+import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observations.js';
+import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
+import { formatObservationResponse } from '../middleware/response-formatter.js';
+import { createSpeechProvider } from '../services/audio/providers/provider-factory.js';
+import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveMessage, InteractiveButton, InteractiveListSection, UserId } from '../types/index.js';
+import { asUserId } from '../types/index.js';
+import type { SpeechToTextProvider } from '../services/audio/providers/speech-provider.interface.js';
+
+// --- Response item type ---
+
+interface BotResponseItem {
+  type: 'text' | 'interactive';
+  text?: string;
+  interactive?: {
+    type: 'buttons' | 'list';
+    body: string;
+    buttons?: InteractiveButton[];
+    buttonText?: string;
+    sections?: InteractiveListSection[];
+  };
+}
+
+// --- Wire up dependencies (separate instances from webhook) ---
+
+const financialRepository = new FinancialRepository();
+const financialService = new FinancialService(financialRepository);
+const userRepository = new UserRepository();
+
+const financialHandler = new FinancialHandler(financialService);
+const agronomyRepository = new AgronomyRepository();
+const agronomyHandler = new AgronomyHandler(agronomyRepository);
+const systemHandler = new SystemHandler(userRepository);
+
+const featureGate = new FeatureGate();
+const domainRouter = new DomainRouter(financialHandler, agronomyHandler, systemHandler, featureGate);
+const interactiveRouter = new InteractiveRouter();
+
+const entityValidator = new EntityValidator();
+const userContextService = new UserContextService(entityValidator);
+const promptBuilder = new PromptBuilder();
+const intentValidator = new IntentValidator();
+const intentExtractor = new IntentExtractor(promptBuilder, intentValidator, userContextService, userRepository);
+const intentClassifier = new IntentClassifier(undefined, undefined, intentExtractor);
+const conversationalFallback = new ConversationalFallbackService(userRepository);
+
+const pendingStore = new PendingTransactionStore();
+const pendingObsStore = new PendingObservationStore();
+const plotDiscovery = new PlotDiscoveryService();
+const learningService = new LearningService();
+const contextResolver = new ContextResolver();
+
+const flowRegistry = new FlowRegistry();
+flowRegistry.register(expenseFlow);
+flowRegistry.register(incomeFlow);
+flowRegistry.register(fieldFlow);
+flowRegistry.register(rainfallFlow);
+flowRegistry.register(activityFlow);
+
+const conversationStateRepo = new ConversationStateRepository();
+const conversationObserver = new ConversationObserver();
+const conversationEngine = new ConversationEngine(conversationStateRepo, flowRegistry, conversationObserver);
+const conversationLogger = new ConversationLogger();
+
+const DESTRUCTIVE_COMMANDS = new Set([
+  'delete_last', 'delete_last_income', 'delete_specific',
+]);
+
+const SAFE_INTERRUPTION_COMMANDS = new Set([
+  'list_fields', 'list_plots', 'field_info', 'help', 'menu',
+  'weather_full', 'monthly_report', 'weekly_report', 'rainfall_report',
+  'greeting', 'thanks', 'dollar',
+]);
+
+function isCancelIntent(text: string): boolean {
+  const lower = text.toLowerCase().trim();
+  if (['cancelar', 'cancel', 'salir', 'no', 'parar', 'basta', 'chau', 'terminar'].includes(lower)) {
+    return true;
+  }
+  if (/^no\s*(quiero|gracias|,?\s*gracias)$/i.test(lower)) {
+    return true;
+  }
+  return false;
+}
+
+// --- Convert HandlerResponse → BotResponseItem[] ---
+
+function collectResponse(response: HandlerResponse): BotResponseItem[] {
+  const items: BotResponseItem[] = [];
+
+  for (const msg of response.messages) {
+    items.push({ type: 'text', text: msg });
+  }
+
+  // Attachment: send as text note (no binary in JSON)
+  if (response.attachment) {
+    items.push({ type: 'text', text: `[Archivo adjunto: ${response.attachment.filename}]` });
+  }
+
+  if (response.interactive) {
+    if (response.interactive.type === 'buttons') {
+      items.push({
+        type: 'interactive',
+        interactive: {
+          type: 'buttons',
+          body: response.interactive.body,
+          buttons: response.interactive.buttons,
+        },
+      });
+    } else if (response.interactive.type === 'list') {
+      items.push({
+        type: 'interactive',
+        interactive: {
+          type: 'list',
+          body: response.interactive.body,
+          buttonText: response.interactive.buttonText,
+          sections: response.interactive.sections,
+        },
+      });
+    }
+  }
+
+  // Contextual suggestions (only if no interactive already)
+  if (!response.interactive && response.suggestionKey) {
+    const suggestion = getSuggestions(response.suggestionKey);
+    if (suggestion && suggestion.type === 'buttons') {
+      items.push({
+        type: 'interactive',
+        interactive: {
+          type: 'buttons',
+          body: suggestion.body,
+          buttons: suggestion.buttons,
+        },
+      });
+    }
+  }
+
+  return items;
+}
+
+function interactiveButtons(body: string, buttons: InteractiveButton[]): BotResponseItem {
+  return {
+    type: 'interactive',
+    interactive: { type: 'buttons', body, buttons },
+  };
+}
+
+// --- Synthetic phone for in-memory stores ---
+
+function syntheticPhone(userId: number): string {
+  return `testbot_${userId}`;
+}
+
+// --- Router ---
+
+const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+// POST /api/test-bot — text + interactive replies
+router.post('/', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  try {
+    const userId = req.auth!.userId;
+    const numericUserId = asUserId(typeof userId === 'string' ? parseInt(userId, 10) : userId);
+    const { message: inputText, interactiveReplyId } = req.body as { message?: string; interactiveReplyId?: string };
+    const phone = syntheticPhone(numericUserId);
+
+    // Get user from DB — build a User-compatible object
+    const userRow = await pool.query('SELECT id, phone_number, name, city FROM users WHERE id = $1', [numericUserId]);
+    if (userRow.rows.length === 0) {
+      res.status(404).json({ error: 'Usuario no encontrado' });
+      return;
+    }
+    const row = userRow.rows[0];
+    const user = {
+      id: numericUserId,
+      phone_number: row.phone_number || phone,
+      name: row.name ?? null,
+      city: row.city ?? null,
+    };
+
+    // Ensure user_settings row exists (auth-only users may not have one)
+    await pool.query(
+      'INSERT INTO user_settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
+      [numericUserId],
+    );
+    const settings = await userRepository.getSettings(numericUserId);
+
+    // --- Interactive reply handling ---
+    if (interactiveReplyId) {
+      const items = await handleInteractiveReply(interactiveReplyId, numericUserId, user, settings, phone, startTime);
+      res.json({ messages: items });
+      return;
+    }
+
+    // --- Text message ---
+    if (!inputText || !inputText.trim()) {
+      res.json({ messages: [] });
+      return;
+    }
+
+    const text = inputText.trim();
+    const items = await processTextMessage(text, numericUserId, user, settings, phone, startTime);
+    res.json({ messages: items });
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('[test-bot] ERROR:', err.stack || err.message);
+    res.status(500).json({ error: err.message || 'Error interno del servidor' });
+  }
+});
+
+// POST /api/test-bot/audio — multipart audio upload
+router.post('/audio', upload.single('audio'), async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  try {
+    const userId = req.auth!.userId;
+    const numericUserId = asUserId(typeof userId === 'string' ? parseInt(userId, 10) : userId);
+    const phone = syntheticPhone(numericUserId);
+
+    if (!req.file) {
+      res.status(400).json({ error: 'No se recibió archivo de audio' });
+      return;
+    }
+
+    const userRow2 = await pool.query('SELECT id, phone_number, name, city FROM users WHERE id = $1', [numericUserId]);
+    if (userRow2.rows.length === 0) {
+      res.status(404).json({ error: 'Usuario no encontrado' });
+      return;
+    }
+    const row2 = userRow2.rows[0];
+    const user = {
+      id: numericUserId,
+      phone_number: row2.phone_number || phone,
+      name: row2.name ?? null,
+      city: row2.city ?? null,
+    };
+    await pool.query(
+      'INSERT INTO user_settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
+      [numericUserId],
+    );
+    const settings = await userRepository.getSettings(numericUserId);
+
+    // Transcribe audio directly (bypass WhatsApp download)
+    const provider = createSpeechProvider() as SpeechToTextProvider;
+    const result = await provider.transcribe(req.file.buffer, req.file.mimetype);
+    let transcript = result.text;
+    transcript = normalizeTranscript(transcript);
+
+    console.log('[test-bot] AUDIO TRANSCRIBED:', transcript);
+
+    // Process through the same text pipeline
+    const items = await processTextMessage(transcript, numericUserId, user, settings, phone, startTime);
+    res.json({ transcript, messages: items });
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('[test-bot] AUDIO ERROR:', err.message);
+    res.status(500).json({ error: 'No pude entender el audio. Intentá de nuevo.' });
+  }
+});
+
+// --- Interactive reply handler ---
+
+async function handleInteractiveReply(
+  callbackId: string,
+  userId: UserId,
+  user: any,
+  settings: any,
+  phone: string,
+  startTime: number,
+): Promise<BotResponseItem[]> {
+  console.log('[test-bot] INTERACTIVE:', callbackId);
+
+  // --- Flow callbacks ---
+  if (callbackId.startsWith('flow_')) {
+    const flowCtx = await conversationEngine.getFlowContext(userId);
+
+    if (callbackId === 'flow_confirm') {
+      const result = await conversationEngine.executeConfirm(userId, flowCtx);
+      return collectResponse(result.response);
+    }
+    if (callbackId === 'flow_cancel') {
+      await conversationEngine.clearFlow(userId);
+      const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
+      return [
+        { type: 'text', text: '\u274c Operacion cancelada.' },
+        ...collectResponse(menuResponse),
+      ];
+    }
+    if (callbackId === 'flow_skip') {
+      const result = await conversationEngine.skipStep(userId, flowCtx);
+      if (result.nextContext) await conversationEngine.setFlowContext(userId, result.nextContext);
+      return collectResponse(result.response);
+    }
+    if (callbackId === 'flow_back') {
+      const result = await conversationEngine.goBack(userId, flowCtx);
+      if (result.nextContext) await conversationEngine.setFlowContext(userId, result.nextContext);
+      return collectResponse(result.response);
+    }
+    if (callbackId.startsWith('flow_new_')) {
+      const flowName = callbackId.replace('flow_new_', '') + '_flow';
+      const result = await conversationEngine.startFlow(userId, flowName as FlowState);
+      return collectResponse(result.response);
+    }
+    // flow_cat_, flow_field_, flow_activity_ → feed into flow
+    const prefixes = ['flow_cat_', 'flow_field_', 'flow_activity_'] as const;
+    for (const prefix of prefixes) {
+      if (callbackId.startsWith(prefix)) {
+        let value = callbackId.replace(prefix, '');
+        if (prefix === 'flow_field_') value = value.replace(/_/g, ' ');
+        if (flowCtx.state !== 'idle') {
+          const result = await conversationEngine.processFlowMessage(userId, value, flowCtx);
+          if (result.nextContext) {
+            await conversationEngine.setFlowContext(userId, result.nextContext);
+          } else {
+            await conversationEngine.clearFlow(userId);
+          }
+          return collectResponse(result.response);
+        }
+      }
+    }
+    return [];
+  }
+
+  // --- Destructive command confirmation ---
+  if (callbackId.startsWith('confirm_destructive_')) {
+    const pendingAction = pendingStore.get(phone) as any;
+    pendingStore.clear(phone);
+    if (pendingAction?._destructiveCommand) {
+      const response = await domainRouter.routeCommand(pendingAction._destructiveCommand, userId, user, settings);
+      if (response) return collectResponse(response);
+    }
+    return [];
+  }
+
+  if (callbackId === 'cancel_destructive' || callbackId === 'cancel_action') {
+    pendingStore.clear(phone);
+    return [{ type: 'text', text: '\u274c Operacion cancelada.' }];
+  }
+
+  // --- Create plot ---
+  if (callbackId.startsWith('create_plot_')) {
+    const match = callbackId.match(/^create_plot_(.+)_in_(.+)$/);
+    if (match) {
+      const plotName = match[1].replace(/_/g, ' ');
+      const fieldName = match[2].replace(/_/g, ' ');
+      const field = await financialService.getFieldByName(userId, fieldName);
+      if (field) {
+        const plot = await financialService.getOrCreatePlot(field.id, plotName);
+        const response: HandlerResponse = {
+          messages: [`\ud83d\udccd Lote *${plot.name}* creado en campo *${field.name}*`],
+          suggestionKey: 'plot_created',
+        };
+        return collectResponse(response);
+      }
+      return [{ type: 'text', text: `No encontre el campo *${fieldName}*.` }];
+    }
+    return [];
+  }
+
+  // --- Confirm delete field ---
+  if (callbackId.startsWith('confirm_delete_field_')) {
+    const fieldName = callbackId.replace('confirm_delete_field_', '').replace(/_/g, ' ');
+    const deleted = await financialService.deleteField(userId, fieldName);
+    if (deleted) {
+      const response: HandlerResponse = {
+        messages: [`\ud83d\uddd1\ufe0f Campo *${fieldName}* eliminado.\nLos gastos/ingresos asociados quedan sin asignar.\n\n_Para restaurarlo: "restaurar campo ${fieldName}"_`],
+        suggestionKey: 'field_deleted',
+      };
+      return collectResponse(response);
+    }
+    return [{ type: 'text', text: `No se pudo eliminar el campo *${fieldName}*.` }];
+  }
+
+  // --- Confirm delete plot ---
+  if (callbackId.startsWith('confirm_delete_plot_')) {
+    const match = callbackId.match(/^confirm_delete_plot_(.+)_in_(.+)$/);
+    if (match) {
+      const plotName = match[1].replace(/_/g, ' ');
+      const fieldName = match[2].replace(/_/g, ' ');
+      const field = await financialService.getFieldByName(userId, fieldName);
+      if (field) {
+        const plots = await financialService.findPlotByNameAcrossFields(userId, plotName);
+        const plot = plots.find((p: any) => p.field_id === field.id);
+        if (plot) {
+          await financialService.deletePlot(plot.id, userId);
+          const response: HandlerResponse = {
+            messages: [`\ud83d\uddd1\ufe0f Lote *${plotName}* eliminado del campo *${fieldName}*.\nLos registros asociados quedan sin lote.\n\n_Para restaurarlo: "restaurar lote ${plotName}"_`],
+            suggestionKey: 'plot_deleted',
+          };
+          return collectResponse(response);
+        }
+        return [{ type: 'text', text: `No encontre el lote *${plotName}* en campo *${fieldName}*.` }];
+      }
+      return [{ type: 'text', text: `No encontre el campo *${fieldName}*.` }];
+    }
+    return [];
+  }
+
+  // --- Generic interactive routing ---
+  const intent = interactiveRouter.route(callbackId);
+  if (intent && intent.type === 'command') {
+    const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
+    if (response) return collectResponse(response);
+  }
+  return [];
+}
+
+// --- Main text message pipeline ---
+
+async function processTextMessage(
+  text: string,
+  userId: UserId,
+  user: any,
+  settings: any,
+  phone: string,
+  startTime: number,
+): Promise<BotResponseItem[]> {
+  console.log('[test-bot] TEXT:', text);
+
+  // Track last activity
+  pool.query('UPDATE users SET last_message_at = NOW() WHERE id = $1', [userId]).catch(() => {});
+
+  // --- Check active conversation flow ---
+  const flowCtx = await conversationEngine.getFlowContext(userId);
+
+  if (flowCtx.state !== 'idle') {
+    if (conversationEngine.isExpired(flowCtx)) {
+      await conversationEngine.clearFlow(userId);
+      // Fall through to normal processing
+    } else {
+      // FlowGuard: validate state consistency
+      const guardResult = await conversationEngine.validateFlowState(userId, flowCtx);
+      if (guardResult) {
+        return collectResponse(guardResult.response);
+      }
+
+      // Cancel/back detection
+      if (isCancelIntent(text)) {
+        await conversationEngine.clearFlow(userId);
+        const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
+        return [
+          { type: 'text', text: '\u274c Operacion cancelada.' },
+          ...collectResponse(menuResponse),
+        ];
+      }
+      const lower = text.toLowerCase().trim();
+      if (['volver', 'atras', 'atr\u00e1s', 'back'].includes(lower) && flowCtx.step > 0) {
+        const result = await conversationEngine.goBack(userId, flowCtx);
+        if (result.nextContext) await conversationEngine.setFlowContext(userId, result.nextContext);
+        return collectResponse(result.response);
+      }
+
+      // Smart interruption: check if the user typed a known command mid-flow
+      // Exception: field_flow name step — treat ALL input as raw name value
+      // (prevents "Campo Norte" from matching field_info pattern)
+      const isFlowNameStep = flowCtx.state === 'field_flow' && flowCtx.step === 0;
+      const interruptCmd = isFlowNameStep ? null : intentClassifier.parseCommandOnly(text);
+      if (interruptCmd && SAFE_INTERRUPTION_COMMANDS.has(interruptCmd.command)) {
+        // Read-only command → execute without canceling the flow, then re-prompt
+        const cmdItems: BotResponseItem[] = [];
+        const cmdResponse = await domainRouter.routeCommand(interruptCmd, userId, user, settings);
+        if (cmdResponse) cmdItems.push(...collectResponse(cmdResponse));
+        const reprompt = await conversationEngine.getCurrentStepPrompt(flowCtx, userId);
+        if (reprompt) cmdItems.push(...collectResponse(reprompt));
+        return cmdItems;
+      }
+
+      // Intent-first interruption: any non-safe command OR financial intent cancels the flow
+      if (interruptCmd || intentClassifier.detectsFinancialIntent(text)) {
+        await conversationEngine.clearFlow(userId);
+        // Fall through to normal intent processing below
+      } else {
+        // No intent detected → process within active flow
+        const result = await conversationEngine.processFlowMessage(userId, text, flowCtx);
+        if (result.nextContext) {
+          await conversationEngine.setFlowContext(userId, result.nextContext);
+        } else {
+          await conversationEngine.clearFlow(userId);
+        }
+        return collectResponse(result.response);
+      }
+    }
+  }
+
+  // --- Check pending observation (plot disambiguation) ---
+  const pendingObs = pendingObsStore.get(phone);
+  if (pendingObs) {
+    if (isCancelIntent(text)) {
+      pendingObsStore.clear(phone);
+      return [{ type: 'text', text: '\u274c Observacion cancelada.' }];
+    }
+
+    const obsResolved = await plotDiscovery.resolveExisting(userId, text);
+    if (obsResolved.plotId) {
+      pendingObsStore.clear(phone);
+      const saved = await saveObservation(userId, {
+        fieldId: obsResolved.fieldId,
+        plotId: obsResolved.plotId,
+        text: pendingObs.text,
+        category: pendingObs.category,
+        source: 'text',
+      });
+
+      if (saved === SAVE_REJECTED_DUPLICATE) {
+        return [{ type: 'text', text: 'Observacion duplicada detectada' }];
+      } else if (saved && !(saved as any)._rejected) {
+        let locationLabel = 'General';
+        if (obsResolved.plotName && obsResolved.fieldName) {
+          locationLabel = `${obsResolved.fieldName} > ${obsResolved.plotName}`;
+        } else if (obsResolved.plotName) {
+          locationLabel = obsResolved.plotName;
+        }
+        const message = formatObservationResponse({
+          locationLabel,
+          plotName: obsResolved.plotName,
+          category: pendingObs.category as any,
+          observationText: saved.observation_text,
+        });
+        const response: HandlerResponse = { messages: [message], suggestionKey: 'observation_logged' };
+        return collectResponse(response);
+      }
+      return [{ type: 'text', text: 'No se pudo guardar la observacion. Intenta de nuevo.' }];
+    }
+
+    const userPlots = await agronomyRepository.findAllUserPlots(userId);
+    const plotList = userPlots.map((p: any) => `\u2022 ${p.name} (${p.field_name})`).join('\n');
+    return [{ type: 'text', text: `No encontre ese lote. \u00bfEn que lote?\n\nTus lotes:\n${plotList}` }];
+  }
+
+  // --- Check pending confirmation ---
+  const pending = pendingStore.get(phone);
+
+  const lowConfidenceThreshold = (await getSettingNumber('CONFIDENCE_LOW_CONFIRM')) ?? 0.70;
+  const unknownFallbackThreshold = (await getSettingNumber('CONFIDENCE_UNKNOWN_FALLBACK')) ?? 0.50;
+
+  await enrichWithContext(text, userId);
+
+  // Classify intent
+  const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings);
+  const { intent: rawIntent, aiUsed, confidence } = parseResult;
+
+  // Enrich with learned vocabulary
+  const intent: Intent = await contextResolver.enrichIntent(userId, text, rawIntent);
+
+  // Handle confirm/cancel for pending
+  if (intent.type === 'command' && intent.data.command === 'confirm') {
+    if (!pending) {
+      return [{ type: 'text', text: 'No hay nada pendiente para confirmar.' }];
+    }
+    pendingStore.clear(phone);
+    const response = await financialHandler.handleConfirm(userId, pending, settings, user);
+    return collectResponse(response);
+  }
+  if (intent.type === 'command' && intent.data.command === 'cancel') {
+    if (!pending) {
+      return [{ type: 'text', text: 'No hay nada pendiente para cancelar.' }];
+    }
+    pendingStore.clear(phone);
+    return [{ type: 'text', text: '\u274c Operacion cancelada.' }];
+  }
+
+  if (pending) pendingStore.clear(phone);
+
+  // --- Partial parse → flow ---
+  if (intent.type === 'expense_partial') {
+    const hasExpenses = await featureGate.hasFeature(userId, 'expenses');
+    if (!hasExpenses) {
+      return [{ type: 'text', text: '\ud83d\udd12 El registro de gastos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
+    }
+    const prefillData: Record<string, unknown> = {};
+    if (intent.data.amount) prefillData.amount = intent.data.amount;
+    if (intent.data.currency) prefillData.currency = intent.data.currency;
+    if (intent.data.category) prefillData.category = intent.data.category;
+    const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
+    return collectResponse(result.response);
+  }
+
+  if (intent.type === 'income_partial') {
+    const hasIncomes = await featureGate.hasFeature(userId, 'incomes');
+    if (!hasIncomes) {
+      return [{ type: 'text', text: '\ud83d\udd12 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
+    }
+    const prefillData: Record<string, unknown> = {};
+    if (intent.data.amount) prefillData.amount = intent.data.amount;
+    if (intent.data.currency) prefillData.currency = intent.data.currency;
+    if (intent.data.category) prefillData.category = intent.data.category;
+    const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
+    return collectResponse(result.response);
+  }
+
+  // --- Ambiguous → disambiguation buttons ---
+  if (intent.type === 'ambiguous') {
+    const buttons = intent.candidates.slice(0, 3).map((c, i) => ({
+      id: `disambig_${i}`,
+      title: c.label.slice(0, 20),
+    }));
+    return [interactiveButtons('\u00bfQue queres hacer?', buttons)];
+  }
+
+  // --- Route commands ---
+  if (intent.type === 'command') {
+    if (DESTRUCTIVE_COMMANDS.has(intent.data.command)) {
+      const actionLabels: Record<string, string> = {
+        delete_last: 'eliminar el ultimo gasto',
+        delete_last_income: 'eliminar el ultimo ingreso',
+        delete_specific: 'eliminar un registro',
+      };
+      const label = actionLabels[intent.data.command] || 'realizar esta accion';
+      pendingStore.set(phone, {
+        type: 'expense',
+        data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
+        fieldId: null, fieldName: null, plotId: null, plotName: null,
+        timestamp: Date.now(),
+        _destructiveCommand: intent.data,
+      } as any);
+      return [interactiveButtons(
+        `\u00bfSeguro que queres ${label}?\nEsto no se puede deshacer.`,
+        [
+          { id: `confirm_destructive_${intent.data.command}`, title: 'Confirmar' },
+          { id: 'cancel_destructive', title: 'Cancelar' },
+        ],
+      )];
+    }
+
+    const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
+    if (response) {
+      if (response.messages.length === 0 && !response.attachment && !response.interactive) {
+        response.messages = ['No pude procesar ese comando. Escribi *ayuda* para ver las opciones.'];
+      }
+      response.suggestionKey = resolveSuggestionKey(intent.data.command, response.suggestionKey);
+      // Start a flow if the handler requested it (e.g. add_field_city → field_flow)
+      if (response.sideEffects?.startFlow) {
+        const { state, data } = response.sideEffects.startFlow;
+        const flowResult = await conversationEngine.startFlow(userId, state, data);
+        if (flowResult.nextContext) {
+          await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+        }
+        return collectResponse(flowResult.response);
+      }
+      if (response.sideEffects?.setPendingObservation) {
+        const obs = response.sideEffects.setPendingObservation;
+        pendingObsStore.set(phone, { text: obs.text, category: obs.category, timestamp: Date.now() });
+      }
+      learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
+      updateConversationMiniMemory(userId, {
+        lastIntent: intent.data.command,
+        lastActivityType: (intent.data.activityFilter as string) ?? (intent.data.activityType as string) ?? null,
+        lastQueryType: intent.data.command.startsWith('query_') ? intent.data.command : null,
+        lastTimeReference: (intent.data.timeLabel as string) ?? null,
+      }).catch(() => {});
+      return collectResponse(response);
+    }
+  }
+
+  // --- Handle expense ---
+  if (intent.type === 'expense') {
+    const hasExpenses = await featureGate.hasFeature(userId, 'expenses');
+    if (!hasExpenses) {
+      return [{ type: 'text', text: '\ud83d\udd12 El registro de gastos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
+    }
+    const effectiveSettings = confidence < lowConfidenceThreshold
+      ? { ...settings, confirm_before_save: true }
+      : settings;
+    const claudeField = aiUsed ? (intent.data as ParsedExpense & { field?: string }).field : undefined;
+    const response = await financialHandler.handleExpense(userId, intent.data, text, effectiveSettings, user, claudeField);
+    if (response.sideEffects?.setPending) {
+      pendingStore.set(phone, response.sideEffects.setPending);
+    }
+    learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
+    return collectResponse(response);
+  }
+
+  // --- Handle income ---
+  if (intent.type === 'income') {
+    const hasIncomes = await featureGate.hasFeature(userId, 'incomes');
+    if (!hasIncomes) {
+      return [{ type: 'text', text: '\ud83d\udd12 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
+    }
+    const effectiveSettings = confidence < lowConfidenceThreshold
+      ? { ...settings, confirm_before_save: true }
+      : settings;
+    const claudeField = aiUsed ? (intent.data as ParsedIncome & { field?: string }).field : undefined;
+    const response = await financialHandler.handleIncome(userId, intent.data, text, effectiveSettings, claudeField);
+    if (response.sideEffects?.setPending) {
+      pendingStore.set(phone, response.sideEffects.setPending);
+    }
+    learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
+    return collectResponse(response);
+  }
+
+  // --- Unknown → Conversational fallback ---
+  if (intent.type === 'unknown' || confidence < unknownFallbackThreshold) {
+    await financialService.saveUnparsedMessage(userId, text);
+    const fallbackResult = await conversationalFallback.respond(text, userId, settings);
+    const items: BotResponseItem[] = [{ type: 'text', text: fallbackResult.response }];
+    if (!fallbackResult.aiUsed) {
+      const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
+      items.push(...collectResponse(menuResponse));
+    }
+    return items;
+  }
+
+  return [];
+}
+
+// POST /api/test-bot/reset — wipe user session state for clean QA testing
+router.post('/reset', async (req: Request, res: Response) => {
+  try {
+    const userId = req.auth!.userId;
+    const numericUserId = asUserId(typeof userId === 'string' ? parseInt(userId, 10) : userId);
+    const phone = syntheticPhone(numericUserId);
+
+    // 1. Clear conversation flow state
+    await conversationEngine.clearFlow(numericUserId);
+
+    // 2. Clear in-memory pending stores
+    pendingStore.clear(phone);
+    pendingObsStore.clear(phone);
+
+    // 3. Soft-delete all user fields (cascades to plots via field_id)
+    await pool.query(
+      `UPDATE fields SET deleted_at = NOW(), deleted_by = 'test_reset' WHERE user_id = $1 AND deleted_at IS NULL`,
+      [numericUserId],
+    );
+
+    // 4. Soft-delete all expenses and incomes
+    await pool.query(
+      `UPDATE expenses SET deleted_at = NOW() WHERE user_id = $1 AND deleted_at IS NULL`,
+      [numericUserId],
+    );
+    await pool.query(
+      `UPDATE incomes SET deleted_at = NOW() WHERE user_id = $1 AND deleted_at IS NULL`,
+      [numericUserId],
+    );
+
+    // 5. Clear unparsed messages and AI usage logs
+    await pool.query(`DELETE FROM unparsed_messages WHERE user_id = $1`, [numericUserId]);
+    await pool.query(`DELETE FROM ai_usage WHERE user_id = $1`, [numericUserId]);
+
+    console.log(`[test-bot/reset] Wiped all data for user ${numericUserId}`);
+    res.json({ ok: true, message: 'Session and data reset successfully' });
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('[test-bot/reset] ERROR:', err.stack || err.message);
+    res.status(500).json({ error: err.message || 'Error resetting session' });
+  }
+});
+
+export default router;

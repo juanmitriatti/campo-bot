@@ -97,17 +97,19 @@ export class ConversationalFallbackService {
 
     try {
       // Load model settings from DB (cached 5 min)
-      const [model, maxTokens, timeoutMs, temperature] = await Promise.all([
+      const [model, maxTokens, timeoutMs, temperature, systemPrompt] = await Promise.all([
         getSetting('CONVERSATIONAL_FALLBACK_MODEL'),
         getSettingNumber('CONVERSATIONAL_FALLBACK_MAX_TOKENS'),
         getSettingNumber('CONVERSATIONAL_FALLBACK_TIMEOUT_MS'),
         getSettingNumber('CONVERSATIONAL_FALLBACK_TEMPERATURE'),
+        getSetting('CONVERSATIONAL_FALLBACK_SYSTEM_PROMPT'),
       ]);
 
       const resolvedModel = model || DEFAULT_MODEL;
       const resolvedMaxTokens = maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
       const resolvedTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const resolvedTemperature = temperature ?? DEFAULT_TEMPERATURE;
+      const resolvedSystemPrompt = systemPrompt || SYSTEM_PROMPT;
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), resolvedTimeout);
@@ -119,7 +121,7 @@ export class ConversationalFallbackService {
             model: resolvedModel,
             max_tokens: resolvedMaxTokens,
             temperature: resolvedTemperature,
-            system: SYSTEM_PROMPT,
+            system: resolvedSystemPrompt,
             messages: [{ role: 'user', content: text }],
           },
           { signal: controller.signal },

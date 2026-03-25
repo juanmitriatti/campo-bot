@@ -3,6 +3,12 @@ import { IntentValidator } from '../intent-validator.js';
 import { PromptBuilder } from '../prompt-builder.js';
 import type { UserContext } from '../user-context.service.js';
 
+vi.mock('../../services/settings.service.js', () => ({
+  getSetting: vi.fn().mockResolvedValue(null),
+  getSettingNumber: vi.fn().mockResolvedValue(null),
+  getSettingBool: vi.fn().mockResolvedValue(null),
+}));
+
 // =============================================================================
 // IntentValidator tests
 // =============================================================================
@@ -163,52 +169,52 @@ describe('IntentValidator', () => {
 describe('PromptBuilder', () => {
   const builder = new PromptBuilder();
 
-  it('builds a prompt without user context', () => {
-    const prompt = builder.build(null);
+  it('builds a prompt without user context', async () => {
+    const prompt = await builder.build(null);
     expect(prompt).toContain('agrícola');
     expect(prompt).toContain('log_expense');
     expect(prompt).toContain('log_income');
     expect(prompt).toContain('lucas');
   });
 
-  it('includes field names when available', () => {
+  it('includes field names when available', async () => {
     const ctx: UserContext = {
       fieldNames: ['Campo Norte', 'Campo Sur'],
       plotNames: ['Lote 1'],
       lastFieldName: null,
       lastPlotName: null,
     };
-    const prompt = builder.build(ctx);
+    const prompt = await builder.build(ctx);
     expect(prompt).toContain('Campo Norte');
     expect(prompt).toContain('Campo Sur');
     expect(prompt).toContain('Lote 1');
   });
 
-  it('includes last context', () => {
+  it('includes last context', async () => {
     const ctx: UserContext = {
       fieldNames: [],
       plotNames: [],
       lastFieldName: 'Campo Norte',
       lastPlotName: 'Lote 3',
     };
-    const prompt = builder.build(ctx);
+    const prompt = await builder.build(ctx);
     expect(prompt).toContain('Campo Norte');
     expect(prompt).toContain('Lote 3');
   });
 
-  it('omits user context line when all empty', () => {
+  it('omits user context line when all empty', async () => {
     const ctx: UserContext = {
       fieldNames: [],
       plotNames: [],
       lastFieldName: null,
       lastPlotName: null,
     };
-    const prompt = builder.build(ctx);
+    const prompt = await builder.build(ctx);
     expect(prompt).not.toContain('Usuario:');
   });
 
-  it('produces a compact prompt under 400 tokens', () => {
-    const prompt = builder.build(null);
+  it('produces a compact prompt under 400 tokens', async () => {
+    const prompt = await builder.build(null);
     // Rough token estimate: ~1 token per 4 chars for Spanish text
     const estimatedTokens = Math.ceil(prompt.length / 4);
     expect(estimatedTokens).toBeLessThan(400);

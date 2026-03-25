@@ -50,7 +50,7 @@ export class IntentExtractor {
       }
 
       // Build dynamic prompt
-      const systemPrompt = this.promptBuilder.build(userContext);
+      const systemPrompt = await this.promptBuilder.build(userContext);
 
       // Load model settings
       const [model, maxTokens, timeoutMs] = await Promise.all([

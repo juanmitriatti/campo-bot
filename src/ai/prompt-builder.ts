@@ -1,9 +1,11 @@
 import type { UserContext } from './user-context.service.js';
+import { getSetting } from '../services/settings.service.js';
 
 export class PromptBuilder {
-  build(userContext: UserContext | null): string {
+  async build(userContext: UserContext | null): Promise<string> {
+    const prefix = (await getSetting('AI_INTENT_SYSTEM_PROMPT_PREFIX')) || 'Asistente agrícola argentino.';
     const parts: string[] = [
-      'Asistente agrícola argentino. Extraé intención y datos del mensaje. Respondé SOLO JSON.',
+      `${prefix} Extraé intención y datos del mensaje. Respondé SOLO JSON.`,
       this.intentSection(),
       this.conventionsSection(),
     ];

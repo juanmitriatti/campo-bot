@@ -984,15 +984,17 @@ export async function getUserSingleField(userId) {
   return null;
 }
 
-export async function getPlotById(plotId) {
+export async function getPlotById(plotId, userId = null) {
   const result = await pool.query(
-    `SELECT p.*, f.name as field_name
+    `SELECT p.*, f.name as field_name, f.user_id
      FROM plots p
      JOIN fields f ON p.field_id = f.id
      WHERE p.id = $1`,
     [plotId]
   );
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row && userId !== null && row.user_id !== userId) return null;
+  return row;
 }
 
 // --- Edit / Delete ---

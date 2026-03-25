@@ -1051,9 +1051,12 @@ const COMMAND_PATTERNS = [
   {
     command: "list_plots",
     patterns: [
-      /^mis\s+lotes$/,
-      /^ver\s+lotes$/,
-      /^listar\s+lotes$/,
+      /^(?:mis\s+lotes|ver\s+lotes|listar\s+lotes)$/,
+      /(?:mostrar?|mostra|dame|decime)\s+(?:mis\s+)?lotes/,
+      /cuantos?\s+lotes?/,
+      /que\s+lotes?\s+tengo/,
+      /(?:tengo|hay)\s+lotes?\s*\??$/,
+      /(?:info|informacion|datos?|detalle)\s+(?:de\s+)?(?:mis\s+)?lotes/,
       /(?:mis\s+)?lotes\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
       /lotes\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
       /que\s+lotes\s+tiene\s+(?:el\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
@@ -1114,13 +1117,8 @@ const COMMAND_PATTERNS = [
       /que\s+(?:campos?|parcelas?)\s+tengo/,
       /(?:tengo|hay)\s+(?:campos?|parcelas?)\s*\??$/,
       /(?:mostrar?|mostra|dame|decime)\s+(?:mis\s+)?(?:campos?|parcelas?)/,
-      /^(?:mis\s+lotes|ver\s+lotes|listar\s+lotes)$/,
-      /(?:mostrar?|mostra|dame|decime)\s+(?:mis\s+)?lotes/,
-      /cuantos?\s+lotes?/,
-      /que\s+lotes?\s+tengo/,
-      /(?:tengo|hay)\s+lotes?\s*\??$/,
-      // Audio transcription patterns
-      /(?:info|informacion|datos?|detalle)\s+(?:de\s+)?(?:mis\s+)?(?:lotes|campos|parcelas)/,
+      // Audio transcription patterns (campos only)
+      /(?:info|informacion|datos?|detalle)\s+(?:de\s+)?(?:mis\s+)?(?:campos|parcelas)/,
     ],
   },
 
@@ -1174,6 +1172,14 @@ const COMMAND_PATTERNS = [
     extract: (m) => ({
       entityKeyword: m[1],
       city: m[2].trim().charAt(0).toUpperCase() + m[2].trim().slice(1),
+    }),
+  },
+  {
+    command: "add_field_city",
+    patterns: [/(?:agregar|agrega|nuevo|crear)\s+(?:un\s+)?(?:campo|parcela)\s+en\s+(.+)/],
+    extract: (m) => ({
+      entityKeyword: 'campo',
+      city: m[1].trim().charAt(0).toUpperCase() + m[1].trim().slice(1),
     }),
   },
   {

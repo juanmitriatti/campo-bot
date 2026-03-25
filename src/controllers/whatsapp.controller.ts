@@ -525,15 +525,17 @@ router.post('/', async (req: Request, res: Response) => {
           return;
         }
 
-        // Smart interruption: check if the user typed a safe read-only command mid-flow
-        const interruptCmd = intentClassifier.parseCommandOnly(text);
+        // Smart interruption: check if the user typed a known command mid-flow
+        // Exception: field_flow name step — treat ALL input as raw name value
+        // (prevents "Campo Norte" from matching field_info pattern)
+        const isFlowNameStep = flowCtx.state === 'field_flow' && flowCtx.step === 0;
+        const interruptCmd = isFlowNameStep ? null : intentClassifier.parseCommandOnly(text);
         if (interruptCmd && SAFE_INTERRUPTION_COMMANDS.has(interruptCmd.command)) {
-          // Execute the command without canceling the flow
+          // Read-only command → execute without canceling the flow, then re-prompt
           const cmdResponse = await domainRouter.routeCommand(interruptCmd, userId, user, settings);
           if (cmdResponse) {
             await sendResponse(phone, cmdResponse);
           }
-          // Re-prompt the current flow step so the user knows the flow is still active
           const reprompt = await conversationEngine.getCurrentStepPrompt(flowCtx, userId);
           if (reprompt) {
             await sendResponse(phone, reprompt);
@@ -543,17 +545,30 @@ router.post('/', async (req: Request, res: Response) => {
           return;
         }
 
-        // Process within active flow
-        const result = await conversationEngine.processFlowMessage(userId, text, flowCtx);
-        if (result.nextContext) {
-          await conversationEngine.setFlowContext(userId, result.nextContext);
-        } else {
+        // Intent-first interruption: any non-safe command OR financial intent cancels the flow
+        if (interruptCmd || intentClassifier.detectsFinancialIntent(text)) {
+          const durationMs = flowCtx.startedAt ? Date.now() - new Date(flowCtx.startedAt).getTime() : undefined;
+          console.log(`[FLOW_INTERRUPT] User ${userId} flow ${flowCtx.state} interrupted by ${interruptCmd?.command ?? 'financial_intent'}`);
+          conversationObserver.logFlowAbandoned(userId, flowCtx.state, flowCtx.step, 'intent_interrupt', {
+            durationMs,
+            filledFields: Object.keys(flowCtx.data),
+          });
           await conversationEngine.clearFlow(userId);
+          await sendMessage(phone, '\u21a9\ufe0f Se cancel\u00f3 el flujo anterior.');
+          // Fall through to normal intent processing below
+        } else {
+          // No intent detected → process within active flow
+          const result = await conversationEngine.processFlowMessage(userId, text, flowCtx);
+          if (result.nextContext) {
+            await conversationEngine.setFlowContext(userId, result.nextContext);
+          } else {
+            await conversationEngine.clearFlow(userId);
+          }
+          await sendResponse(phone, result.response);
+          conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', null, flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+          res.sendStatus(200);
+          return;
         }
-        await sendResponse(phone, result.response);
-        conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', null, flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
-        res.sendStatus(200);
-        return;
       }
     }
 
@@ -776,6 +791,19 @@ router.post('/', async (req: Request, res: Response) => {
         }
         // Ensure every command gets a suggestion (no dead ends)
         response.suggestionKey = resolveSuggestionKey(intent.data.command, response.suggestionKey);
+        // Start a flow if the handler requested it (e.g. add_field_city → field_flow)
+        if (response.sideEffects?.startFlow) {
+          const { state, data } = response.sideEffects.startFlow;
+          const flowResult = await conversationEngine.startFlow(userId, state, data);
+          if (flowResult.nextContext) {
+            await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+          }
+          conversationObserver.logFlowStarted(userId, state, { trigger: 'command', prefillFields: data ? Object.keys(data) : [] });
+          await sendResponse(phone, flowResult.response);
+          conversationLogger.log(userId, phone, text, flowResult.response.messages[0] ?? null, 'flow', 'flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive).catch(() => {});
+          res.sendStatus(200);
+          return;
+        }
         // Store pending observation for plot disambiguation follow-up
         if (response.sideEffects?.setPendingObservation) {
           const obs = response.sideEffects.setPendingObservation;

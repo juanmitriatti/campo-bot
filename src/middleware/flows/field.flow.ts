@@ -14,6 +14,19 @@ const steps: FlowStep[] = [
       const name = input.trim();
       if (name.length < 2) return { error: 'El nombre tiene que tener al menos 2 caracteres.' };
       if (name.length > 100) return { error: 'El nombre es demasiado largo (m\u00e1x 100 caracteres).' };
+      // Reject command-like input that was likely meant as a different intent
+      const lower = name.toLowerCase();
+      if (/^(?:agregar|agrega|nuevo|crear|borrar|eliminar|sacar|quitar|restaurar|renombrar)\s/.test(lower)) {
+        return { error: 'Eso parece un comando. Escrib\u00ed *cancelar* para salir y ejecutar el comando.' };
+      }
+      // Reject query keywords that indicate a different intent
+      if (/^(?:mis\s+(?:campos|lotes)|ver\s+|listar\s+|cuantos?\s+|mostrar?\s+|ayuda|menu|clima)/.test(lower)) {
+        return { error: 'Eso parece una consulta. Escrib\u00ed *cancelar* para salir del flujo.' };
+      }
+      // Reject financial patterns (expense/income)
+      if (/\b(?:gast[e\u00e9o]|pag[u\u00e9e]|compr[e\u00e9o]|vend[i\u00ed]|cobr[e\u00e9])\b/.test(lower) && /\d/.test(lower)) {
+        return { error: 'Eso parece un gasto o ingreso. Escrib\u00ed *cancelar* para salir y registrarlo.' };
+      }
       return { value: name };
     },
   },

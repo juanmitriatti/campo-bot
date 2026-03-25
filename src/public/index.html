@@ -1623,6 +1623,8 @@
     function apiFetch(url, options) {
       options = options || {};
       var headers = { 'Content-Type': 'application/json' };
+      var jwt = localStorage.getItem('accessToken');
+      if (jwt) headers['Authorization'] = 'Bearer ' + jwt;
       if (options.headers) {
         for (var k in options.headers) headers[k] = options.headers[k];
       }
@@ -1736,7 +1738,7 @@
 
     // ========== DASHBOARD ==========
     function loadDashboard() {
-      apiFetch('/dashboard/api/stats').then(function(data) {
+      apiFetch('/admin/api/stats').then(function(data) {
         if (!data) return;
         document.getElementById('stat-users').textContent =
           Number(data.totalUsers || 0).toLocaleString('es-AR');
@@ -1746,7 +1748,7 @@
           Number(data.activeUsersWeek || 0).toLocaleString('es-AR');
       });
 
-      apiFetch('/dashboard/api/audio-stats').then(function(data) {
+      apiFetch('/admin/api/audio-stats').then(function(data) {
         if (!data) return;
         document.getElementById('stat-audio-total').textContent =
           Number(data.totalAudios || 0).toLocaleString('es-AR');
@@ -1772,7 +1774,7 @@
         }
       }
 
-      apiFetch('/dashboard/api/global-settings').then(function(data) {
+      apiFetch('/admin/api/global-settings').then(function(data) {
         if (!data) return;
         document.getElementById('global-weather-enabled').checked = data.dailyWeatherEnabled;
         document.getElementById('global-weather-hour').value = data.dailyWeatherHour;
@@ -1785,7 +1787,7 @@
       var tbody = document.getElementById('alerts-table-body');
       tbody.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando alertas...</div></td></tr>';
 
-      apiFetch('/dashboard/api/alerts-overview').then(function(data) {
+      apiFetch('/admin/api/alerts-overview').then(function(data) {
         if (!data || !data.length) {
           tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">No hay usuarios</div></td></tr>';
           return;
@@ -1818,7 +1820,7 @@
       var type = document.getElementById('alert-filter-type').value;
       var status = document.getElementById('alert-filter-status').value;
       var offset = alertHistoryPage * alertHistoryLimit;
-      var url = '/dashboard/api/alert-history?limit=' + alertHistoryLimit + '&offset=' + offset;
+      var url = '/admin/api/alert-history?limit=' + alertHistoryLimit + '&offset=' + offset;
       if (type) url += '&type=' + type;
       if (status) url += '&status=' + status;
 
@@ -1873,7 +1875,7 @@
     }
 
     function loadAlertStats() {
-      apiFetch('/dashboard/api/alert-stats').then(function(data) {
+      apiFetch('/admin/api/alert-stats').then(function(data) {
         if (!data) return;
         var sent = 0, failed = 0;
         if (data.byStatus) {
@@ -1897,7 +1899,7 @@
         budgetAlert100: document.getElementById('global-budget-100').checked
       };
 
-      apiFetch('/dashboard/api/global-settings', {
+      apiFetch('/admin/api/global-settings', {
         method: 'PUT',
         body: JSON.stringify(body)
       }).then(function(result) {
@@ -1915,7 +1917,7 @@
 
     function loadParser() {
       // Load metrics
-      apiFetch('/dashboard/api/parse-metrics').then(function(data) {
+      apiFetch('/admin/api/parse-metrics').then(function(data) {
         if (!data) return;
         document.getElementById('stat-unparsed-week').textContent =
           Number(data.unparsedWeek || 0).toLocaleString('es-AR');
@@ -1926,7 +1928,7 @@
       });
 
       // Load fallback summary
-      apiFetch('/dashboard/api/fallback-summary').then(function(data) {
+      apiFetch('/admin/api/fallback-summary').then(function(data) {
         if (!data) return;
         document.getElementById('stat-fallback-calls').textContent =
           Number(data.totalCalls || 0).toLocaleString('es-AR');
@@ -1968,7 +1970,7 @@
       var tbody = document.getElementById('unparsed-table-body');
       tbody.innerHTML = '<tr><td colspan="4"><div class="loading"><div class="spinner"></div> Cargando mensajes...</div></td></tr>';
 
-      apiFetch('/dashboard/api/unparsed-messages?limit=' + UNPARSED_LIMIT + '&offset=' + unparsedOffset).then(function(data) {
+      apiFetch('/admin/api/unparsed-messages?limit=' + UNPARSED_LIMIT + '&offset=' + unparsedOffset).then(function(data) {
         if (!data) {
           tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state">Error al cargar mensajes</div></td></tr>';
           return;
@@ -2020,7 +2022,7 @@
       var tbody = document.getElementById('fallback-table-body');
       tbody.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando logs...</div></td></tr>';
 
-      apiFetch('/dashboard/api/fallback-logs?limit=' + FALLBACK_LIMIT + '&offset=' + fallbackOffset).then(function(data) {
+      apiFetch('/admin/api/fallback-logs?limit=' + FALLBACK_LIMIT + '&offset=' + fallbackOffset).then(function(data) {
         if (!data) {
           tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">Error al cargar logs</div></td></tr>';
           return;
@@ -2150,7 +2152,7 @@
       var statusFilter = document.getElementById('user-status-filter');
       if (statusFilter) statusFilter.value = '';
 
-      apiFetch('/dashboard/api/users').then(function(data) {
+      apiFetch('/admin/api/users').then(function(data) {
         if (!data) {
           tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state">Error al cargar usuarios</div></td></tr>';
           return;
@@ -2194,7 +2196,7 @@
       document.getElementById('modal-user-postal').value = '';
 
       // Fetch full detail for address fields
-      apiFetch('/dashboard/api/users/' + userId).then(function(detail) {
+      apiFetch('/admin/api/users/' + userId).then(function(detail) {
         if (detail) {
           document.getElementById('modal-user-address').value = detail.address || '';
           document.getElementById('modal-user-province').value = detail.province || '';
@@ -2229,7 +2231,7 @@
 
       if (editingUserId) {
         // Update
-        apiFetch('/dashboard/api/users/' + editingUserId, {
+        apiFetch('/admin/api/users/' + editingUserId, {
           method: 'PUT',
           body: JSON.stringify(body)
         }).then(function(result) {
@@ -2241,7 +2243,7 @@
         });
       } else {
         // Create
-        apiFetch('/dashboard/api/users', {
+        apiFetch('/admin/api/users', {
           method: 'POST',
           body: JSON.stringify(body)
         }).then(function(result) {
@@ -2270,7 +2272,7 @@
 
     function confirmDeleteUser() {
       if (!deletingUserId) return;
-      apiFetch('/dashboard/api/users/' + deletingUserId, { method: 'DELETE' }).then(function(result) {
+      apiFetch('/admin/api/users/' + deletingUserId, { method: 'DELETE' }).then(function(result) {
         if (result) {
           showToast('Usuario eliminado');
           closeDeleteUserModal();
@@ -2285,7 +2287,7 @@
       var labels = { active: 'Activo', suspended: 'Suspendido', disabled: 'Deshabilitado' };
       if (!confirm('Cambiar estado de "' + userName + '" a ' + labels[nextStatus] + '?')) return;
 
-      apiFetch('/dashboard/api/users/' + userId + '/status', {
+      apiFetch('/admin/api/users/' + userId + '/status', {
         method: 'PUT',
         body: JSON.stringify({ status: nextStatus })
       }).then(function(result) {
@@ -2311,7 +2313,7 @@
         '<div class="loading"><div class="spinner"></div> Cargando resumen...</div>';
 
       // Fetch user data
-      apiFetch('/dashboard/api/users/' + id).then(function(user) {
+      apiFetch('/admin/api/users/' + id).then(function(user) {
         if (!user) return;
 
         document.getElementById('detail-user-title').textContent = user.name || 'Usuario';
@@ -2352,7 +2354,7 @@
 
     function loadUserFinancialSummary(id) {
       var container = document.getElementById('financial-summary-cards');
-      apiFetch('/dashboard/api/users/' + id + '/financial-summary').then(function(data) {
+      apiFetch('/admin/api/users/' + id + '/financial-summary').then(function(data) {
         if (!data) {
           container.innerHTML = '<div class="empty-state">Error al cargar resumen</div>';
           return;
@@ -2379,7 +2381,7 @@
 
     function loadUserSettings(id) {
       var container = document.getElementById('settings-container');
-      apiFetch('/dashboard/api/users/' + id + '/settings').then(function(settings) {
+      apiFetch('/admin/api/users/' + id + '/settings').then(function(settings) {
         if (!settings) {
           container.innerHTML = '<div class="empty-state">Error al cargar configuraci\u00f3n</div>';
           return;
@@ -2441,7 +2443,7 @@
 
     function loadAiUsage(id) {
       var container = document.getElementById('ai-usage-cards');
-      apiFetch('/dashboard/api/users/' + id + '/ai-usage').then(function(data) {
+      apiFetch('/admin/api/users/' + id + '/ai-usage').then(function(data) {
         if (!data) {
           container.innerHTML = '<div class="empty-state">Error al cargar datos de IA</div>';
           return;
@@ -2474,7 +2476,7 @@
 
     function loadAudioUsage(id) {
       var container = document.getElementById('audio-usage-cards');
-      apiFetch('/dashboard/api/users/' + id + '/audio-usage').then(function(data) {
+      apiFetch('/admin/api/users/' + id + '/audio-usage').then(function(data) {
         if (!data) {
           container.innerHTML = '<div class="empty-state">Error al cargar datos de audio</div>';
           return;
@@ -2517,7 +2519,7 @@
         province: document.getElementById('detail-province').value.trim() || null
       };
 
-      apiFetch('/dashboard/api/users/' + currentUserId, {
+      apiFetch('/admin/api/users/' + currentUserId, {
         method: 'PUT',
         body: JSON.stringify(body)
       }).then(function(result) {
@@ -2542,7 +2544,7 @@
         rainAlertMm: parseInt(document.getElementById('setting-rain-mm').value) || 10
       };
 
-      apiFetch('/dashboard/api/users/' + currentUserId + '/settings', {
+      apiFetch('/admin/api/users/' + currentUserId + '/settings', {
         method: 'PUT',
         body: JSON.stringify(body)
       }).then(function(result) {
@@ -2561,8 +2563,8 @@
       container.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando planes...</div>';
 
       Promise.all([
-        apiFetch('/dashboard/api/plans'),
-        apiFetch('/dashboard/api/features')
+        apiFetch('/admin/api/plans'),
+        apiFetch('/admin/api/features')
       ]).then(function(results) {
         var plans = results[0];
         var features = results[1];
@@ -2625,7 +2627,7 @@
         }
       }
 
-      apiFetch('/dashboard/api/plans/' + planId + '/features', {
+      apiFetch('/admin/api/plans/' + planId + '/features', {
         method: 'PUT',
         body: JSON.stringify({ features: features })
       }).then(function(result) {
@@ -2641,8 +2643,8 @@
       select.innerHTML = '<option value="">Cargando...</option>';
 
       Promise.all([
-        apiFetch('/dashboard/api/plans'),
-        apiFetch('/dashboard/api/users/' + userId)
+        apiFetch('/admin/api/plans'),
+        apiFetch('/admin/api/users/' + userId)
       ]).then(function(results) {
         var plans = results[0];
         var user = results[1];
@@ -2668,7 +2670,7 @@
       var planId = document.getElementById('detail-plan').value;
       if (!planId) return;
 
-      apiFetch('/dashboard/api/users/' + currentUserId + '/plan', {
+      apiFetch('/admin/api/users/' + currentUserId + '/plan', {
         method: 'PUT',
         body: JSON.stringify({ planId: parseInt(planId) })
       }).then(function(result) {
@@ -2703,8 +2705,8 @@
       tbody.innerHTML = '<tr><td colspan="5"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>';
 
       Promise.all([
-        apiFetch('/dashboard/api/agro/fields'),
-        apiFetch('/dashboard/api/agro/reports')
+        apiFetch('/admin/api/agro/fields'),
+        apiFetch('/admin/api/agro/reports')
       ]).then(function(results) {
         var fields = results[0];
         var reports = results[1];
@@ -2750,7 +2752,7 @@
       document.getElementById('agro-reports-table-body').innerHTML = '<tr><td colspan="4"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>';
 
       // Load field detail
-      apiFetch('/dashboard/api/agro/fields/' + id).then(function(data) {
+      apiFetch('/admin/api/agro/fields/' + id).then(function(data) {
         if (!data) return;
         document.getElementById('agro-field-title').textContent = data.name || 'Campo';
         var subtitle = [];
@@ -2778,7 +2780,7 @@
       });
 
       // Load observations
-      apiFetch('/dashboard/api/agro/fields/' + id + '/observations?limit=30').then(function(data) {
+      apiFetch('/admin/api/agro/fields/' + id + '/observations?limit=30').then(function(data) {
         var container = document.getElementById('agro-observations-list');
         if (!data || !data.length) {
           container.innerHTML = '<div class="empty-state">No hay observaciones</div>';
@@ -2803,7 +2805,7 @@
       });
 
       // Load reports
-      apiFetch('/dashboard/api/agro/fields/' + id + '/reports').then(function(data) {
+      apiFetch('/admin/api/agro/fields/' + id + '/reports').then(function(data) {
         var tbody = document.getElementById('agro-reports-table-body');
         if (!data || !data.length) {
           tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state">No hay reportes</div></td></tr>';
@@ -2816,7 +2818,7 @@
             + '<td>S' + r.weekNumber + '</td>'
             + '<td>' + r.year + '</td>'
             + '<td>' + formatDateTime(r.createdAt) + '</td>'
-            + '<td><a href="/dashboard/api/agro/reports/' + r.id + '/pdf" target="_blank" style="color:var(--accent);">Descargar PDF</a></td>'
+            + '<td><a href="/admin/api/agro/reports/' + r.id + '/pdf" target="_blank" style="color:var(--accent);">Descargar PDF</a></td>'
             + '</tr>';
         }
         tbody.innerHTML = html;
@@ -2828,7 +2830,7 @@
       var btn = document.getElementById('btn-generate-agro-report');
       btn.disabled = true;
       btn.textContent = 'Generando...';
-      apiFetch('/dashboard/api/agro/fields/' + currentAgroFieldId + '/generate-report', {
+      apiFetch('/admin/api/agro/fields/' + currentAgroFieldId + '/generate-report', {
         method: 'POST'
       }).then(function(data) {
         btn.disabled = false;
@@ -2855,7 +2857,7 @@
       var container = document.getElementById('settings-groups-container');
       container.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando configuracion...</div>';
 
-      apiFetch('/dashboard/api/settings').then(function(data) {
+      apiFetch('/admin/api/settings').then(function(data) {
         if (!data) {
           container.innerHTML = '<div class="empty-state">Error al cargar configuracion</div>';
           return;
@@ -2936,7 +2938,7 @@
         }
       }
 
-      apiFetch('/dashboard/api/settings', {
+      apiFetch('/admin/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -2970,7 +2972,7 @@
       auditBody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>';
 
       // Overview
-      apiFetch('/dashboard/api/analytics/overview' + qs).then(function(d) {
+      apiFetch('/admin/api/analytics/overview' + qs).then(function(d) {
         if (!d) { overviewEl.innerHTML = '<div class="empty-state">Error al cargar</div>'; return; }
         var fmt = function(n) { return Number(n || 0).toLocaleString('es-AR'); };
         var fmtArs = function(n) { return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 }); };
@@ -2986,7 +2988,7 @@
       });
 
       // Bot performance
-      apiFetch('/dashboard/api/analytics/bot-performance' + qs).then(function(d) {
+      apiFetch('/admin/api/analytics/bot-performance' + qs).then(function(d) {
         if (!d) return;
         var i = d.intents;
         var rt = d.responseTime;
@@ -3003,7 +3005,7 @@
       });
 
       // AI by source
-      apiFetch('/dashboard/api/analytics/ai-tokens' + qs).then(function(d) {
+      apiFetch('/admin/api/analytics/ai-tokens' + qs).then(function(d) {
         if (!d || !d.bySource || d.bySource.length === 0) {
           aiBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--text-secondary);">Sin datos</td></tr>';
           return;
@@ -3017,7 +3019,7 @@
       });
 
       // Parse rates
-      apiFetch('/dashboard/api/analytics/parse-rates' + qs).then(function(d) {
+      apiFetch('/admin/api/analytics/parse-rates' + qs).then(function(d) {
         if (!d || !d.bySource || d.bySource.length === 0) {
           parseBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--text-secondary);">Sin datos</td></tr>';
           return;
@@ -3031,7 +3033,7 @@
       });
 
       // Audit log
-      apiFetch('/dashboard/api/audit-log').then(function(d) {
+      apiFetch('/admin/api/audit-log').then(function(d) {
         if (!d || !d.entries || d.entries.length === 0) {
           auditBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text-secondary);">Sin entradas</td></tr>';
           return;
@@ -3056,7 +3058,7 @@
 
     function loadErrorStats() {
       var grid = document.getElementById('error-stats-grid');
-      apiFetch('/dashboard/api/errors/stats').then(function(data) {
+      apiFetch('/admin/api/errors/stats').then(function(data) {
         if (!data) { grid.innerHTML = ''; return; }
         var html = '';
         html += '<div class="stat-card"><div class="stat-value">' + data.total + '</div><div class="stat-label">Total errores</div></div>';
@@ -3085,7 +3087,7 @@
       var tbody = document.getElementById('errors-tbody');
       tbody.innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div> Cargando...</td></tr>';
 
-      apiFetch('/dashboard/api/errors' + params).then(function(data) {
+      apiFetch('/admin/api/errors' + params).then(function(data) {
         if (!data) { tbody.innerHTML = '<tr><td colspan="6">Error al cargar</td></tr>'; return; }
 
         if (data.errors.length === 0) {
@@ -3124,7 +3126,7 @@
     }
 
     function showErrorDetail(id) {
-      apiFetch('/dashboard/api/errors/' + id).then(function(data) {
+      apiFetch('/admin/api/errors/' + id).then(function(data) {
         if (!data) return;
         var content = document.getElementById('error-detail-content');
         var date = new Date(data.created_at).toLocaleString('es-AR');

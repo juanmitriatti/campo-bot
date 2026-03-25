@@ -1,11 +1,17 @@
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import webhook from './controllers/whatsapp.controller.js';
+import testBotRoutes from './controllers/test-bot.controller.js';
 import dashboard from './routes/dashboard.js';
+import authRoutes from './routes/auth.routes.js';
+import { requireAuth, requireRole } from './middleware/auth.middleware.js';
 import { startScheduler } from './services/scheduler.js';
 
 dotenv.config();
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
 
@@ -15,11 +21,33 @@ app.use((req: express.Request, _res: express.Response, next: express.NextFunctio
   next();
 });
 
-// New TS webhook controller
+// WhatsApp webhook
 app.use('/webhook', webhook);
 
-// Legacy dashboard (stays as JS)
-app.use('/dashboard', dashboard);
+// Public + protected end-user auth routes
+app.use('/api/auth', authRoutes);
+
+// Test bot chat — requires JWT auth
+app.use('/api/test-bot', requireAuth, testBotRoutes);
+
+// Admin dashboard: protect API, then serve legacy dashboard
+app.use('/admin/api', requireAuth, requireRole('admin'));
+app.use('/admin', dashboard);
+
+// Serve React frontend build
+const frontendDist = path.resolve(__dirname, '../frontend/dist');
+app.use(express.static(frontendDist));
+
+// SPA fallback — serve index.html for all non-API, non-admin routes
+app.get('{*splat}', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/admin') || req.path.startsWith('/webhook')) {
+    next();
+    return;
+  }
+  res.sendFile(path.join(frontendDist, 'index.html'), (err) => {
+    if (err) next();
+  });
+});
 
 // Global error handler — Express 5 async errors
 // @ts-ignore — Express 5 error handler requires 4 params

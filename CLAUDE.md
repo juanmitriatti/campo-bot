@@ -13,6 +13,9 @@ campo-bot is a WhatsApp-based agricultural management assistant for Argentine fa
 - `npx vitest run src/utils/parser.test.js` — Run a single test file
 - `docker compose up --build` — Start app + PostgreSQL (port 5433 for DB, 3000 for app)
 - `docker compose up -d db` — Start only the database
+- `cd frontend && npm run dev` — Run React frontend dev server (port 5173, proxies API to :3000)
+- `cd frontend && npm run build` — Build frontend for production (output: `frontend/dist/`)
+- `npx tsx src/scripts/create-admin.ts --email <e> --name <n> --password <p>` — Bootstrap admin user
 
 ## Architecture
 
@@ -40,12 +43,33 @@ Handles Spanish text normalization, written numbers ("quinientos mil" → 500000
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-006_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users`, `fields`, `expenses`, `incomes`, `budgets`, `rainfall`, `user_settings`, `global_settings`, `ai_usage`, `unparsed_messages`.
+PostgreSQL with migrations in `src/migrations/001-031_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users`, `fields`, `expenses`, `incomes`, `budgets`, `rainfall`, `user_settings`, `global_settings`, `ai_usage`, `unparsed_messages`, `refresh_tokens`, `observation_history`.
+
+### Frontend (`frontend/`)
+
+React + Vite + TailwindCSS SPA. In production, Express serves the build from `frontend/dist/`.
+
+- **Stack**: React 19, React Router v6, Tailwind v3, Vite 6, TypeScript
+- **Auth flow**: JWT stored in localStorage, auto-refresh on 401, role-based route guards
+- **Key files**: `src/api/client.ts` (fetch wrapper), `src/context/AuthContext.tsx` (auth state), `src/components/ProtectedRoute.tsx` (route guard)
+- **Pages**: `/login`, `/register`, `/dashboard` (end-user)
+
+### Auth System (`src/domain/auth/`)
+
+JWT-based authentication with bcrypt passwords and refresh token rotation.
+
+- **`auth.service.ts`** — register, login, refresh, logout, profile update
+- **`auth.repository.ts`** — User DB queries (findByEmail, createUser, updateProfile)
+- **`token.repository.ts`** — Refresh token CRUD (save, find, revoke, cleanup)
+- **`observation.service.ts`** — End-user observation CRUD with edit history
+- **`auth.middleware.ts`** (`src/middleware/`) — `requireAuth` + `requireRole` Express middleware
 
 ### Routes
 
 - `GET/POST /webhook` — WhatsApp webhook (verification + message handler)
-- `/dashboard/api/*` — Admin dashboard endpoints (stats, users, settings, AI usage, parse metrics)
+- `/api/auth/*` — Auth endpoints (register, login, refresh, logout, profile, observations)
+- `/admin/api/*` — Admin dashboard API endpoints (stats, users, settings, AI usage, parse metrics) — requires admin JWT
+- `/admin` — Admin dashboard static files (legacy HTML/JS from `src/public/`)
 
 ## Key Conventions
 
@@ -59,4 +83,4 @@ PostgreSQL with migrations in `src/migrations/001-006_*.sql`. Schema initialized
 
 ## Environment Variables
 
-Required in `.env`: `DATABASE_URL`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `ANTHROPIC_API_KEY`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`. See `docker-compose.yml` for defaults.
+Required in `.env`: `DATABASE_URL`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `ANTHROPIC_API_KEY`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`, `JWT_SECRET`. See `docker-compose.yml` for defaults.

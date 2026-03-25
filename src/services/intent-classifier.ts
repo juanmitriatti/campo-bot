@@ -46,6 +46,18 @@ export class IntentClassifier {
     return this.parser.parseCommand(cleaned) || this.parser.parseCommand(preprocessed) || null;
   }
 
+  /**
+   * Lightweight check: does this text parse as an income or expense?
+   * Regex-only, no AI. Used by flow interruption logic to detect financial
+   * intents that should cancel an active flow.
+   */
+  detectsFinancialIntent(text: string): boolean {
+    const cleaned = stripFillerPhrases(text);
+    const preprocessed = this.parser.preprocess(cleaned);
+    return !!(this.parser.parseIncome(preprocessed) || this.parser.parseIncome(cleaned) ||
+              this.parser.parseExpense(preprocessed) || this.parser.parseExpense(cleaned));
+  }
+
   async classify(
     text: string,
     userId: UserId,

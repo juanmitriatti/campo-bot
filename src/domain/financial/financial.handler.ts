@@ -12,6 +12,7 @@ import type {
   PendingTransaction,
   HandlerResponse,
   PlotInfoData,
+  FlowState,
 } from '../../types/index.js';
 
 // --- Formatting helpers ---
@@ -466,12 +467,13 @@ export class FinancialHandler {
       }
 
       case 'add_field_city': {
-        const labelAddCity = cmd.entityKeyword === 'campo' ? 'Campo' : 'Lote';
-        const kw = (cmd.entityKeyword as string) || 'campo';
-        const autoName = (cmd.city as string).toLowerCase().replace(/\s+/g, '-');
-        await this.service.getOrCreateField(userId, autoName);
-        await this.service.setFieldCity(userId, autoName, cmd.city as string);
-        return { messages: [`\ud83d\udccd ${labelAddCity} *${autoName}* creado en *${cmd.city}*\n\nSi quer\u00e9s ponerle otro nombre, escrib\u00ed:\n*${kw} [nombre] est\u00e1 en ${cmd.city}*`] };
+        const city = cmd.city as string;
+        return {
+          messages: [],
+          sideEffects: {
+            startFlow: { state: 'field_flow' as FlowState, data: { city } },
+          },
+        };
       }
 
       case 'add_field': {
@@ -547,17 +549,35 @@ export class FinancialHandler {
           return { messages: [`Ya ten\u00e9s ${fieldCount} campos (m\u00e1ximo: ${maxFields}). Elimin\u00e1 uno antes de agregar otro.`] };
         }
 
+        const fieldName = (cmd.fieldName as string).trim();
         const labelAdd = cmd.entityKeyword === 'campo' ? 'Campo' : (cmd.entityKeyword === 'parcela' ? 'Parcela' : 'Lote');
-        await this.service.getOrCreateField(userId, cmd.fieldName as string);
-        if (cmd.city) {
-          await this.service.setFieldCity(userId, cmd.fieldName as string, cmd.city as string);
+
+        // Check if field already exists — differentiate "created" vs "already exists"
+        const existing = await this.service.getFieldByName(userId, fieldName);
+        if (existing) {
+          if (cmd.city) {
+            await this.service.setFieldCity(userId, fieldName, cmd.city as string);
+            return {
+              messages: [`El ${labelAdd.toLowerCase()} *${existing.name}* ya exist\u00eda. Ubicaci\u00f3n actualizada a *${cmd.city}*.`],
+              suggestionKey: 'field_info_shown',
+            };
+          }
           return {
-            messages: [`\ud83d\udccd ${labelAdd} *${cmd.fieldName}* creado en *${cmd.city}*`],
+            messages: [`Ya ten\u00e9s un ${labelAdd.toLowerCase()} llamado *${existing.name}*. Escrib\u00ed *mis campos* para verlos.`],
+            suggestionKey: 'field_info_shown',
+          };
+        }
+
+        await this.service.getOrCreateField(userId, fieldName);
+        if (cmd.city) {
+          await this.service.setFieldCity(userId, fieldName, cmd.city as string);
+          return {
+            messages: [`\ud83d\udccd ${labelAdd} *${fieldName}* creado en *${cmd.city}*`],
             suggestionKey: 'field_created',
           };
         }
         return {
-          messages: [`\ud83d\udccd ${labelAdd} *${cmd.fieldName}* creado correctamente.\n\nPara asignarle ubicaci\u00f3n escrib\u00ed:\n*${kwAdd} ${cmd.fieldName} est\u00e1 en [ciudad]*`],
+          messages: [`\ud83d\udccd ${labelAdd} *${fieldName}* creado correctamente.\n\nPara asignarle ubicaci\u00f3n escrib\u00ed:\n*${kwAdd} ${fieldName} est\u00e1 en [ciudad]*`],
           suggestionKey: 'field_created',
         };
       }
@@ -647,12 +667,26 @@ export class FinancialHandler {
       // --- Plots ---
       case 'list_plots': {
         if (!cmd.fieldName) {
-          // No field specified — show all plots grouped by field
+          const fields = await this.service.getUserFields(userId);
           const allPlots = await this.service.findAllUserPlots(userId);
-          if (allPlots.length === 0) {
-            return { messages: ['No tenés lotes registrados.\n\nPara agregar uno escribí:\n📍 *agregar lote 3 en campo norte*'] };
+
+          if (fields.length === 0) {
+            return {
+              messages: ['No tenés campos registrados, por lo tanto no hay lotes todavía.\n\nPara empezar, agregá un campo:\n📍 *agregar campo norte en Pergamino*'],
+              suggestionKey: 'field_info_shown',
+            };
           }
-          let msg = `📍 *Tus lotes (${allPlots.length}):*\n`;
+
+          if (allPlots.length === 0) {
+            const example = fields[0].name;
+            return {
+              messages: [`Tenés ${fields.length} campo${fields.length > 1 ? 's' : ''} pero todavía no registraste lotes.\n\nPara agregar uno escribí:\n📍 *agregar lote 1 en campo ${example}*`],
+              suggestionKey: 'field_info_shown',
+            };
+          }
+
+          const fieldSet = new Set(allPlots.map(p => p.field_name));
+          let msg = `📍 *Tus lotes (${allPlots.length}) en ${fieldSet.size} campo${fieldSet.size > 1 ? 's' : ''}:*\n`;
           const grouped = new Map<string, string[]>();
           for (const p of allPlots) {
             const list = grouped.get(p.field_name) || [];
@@ -665,7 +699,7 @@ export class FinancialHandler {
               msg += `\n  └ ${name}`;
             }
           }
-          return { messages: [msg] };
+          return { messages: [msg], suggestionKey: 'field_info_shown' };
         }
         const field = await this.service.getFieldByName(userId, cmd.fieldName as string);
         if (!field) {
@@ -686,7 +720,16 @@ export class FinancialHandler {
 
       case 'add_plot': {
         const field = await this.service.getOrCreateField(userId, cmd.fieldName as string);
+        // Check if plot already exists before creating
+        const existingPlots = await this.service.getPlotsByField(field.id);
+        const plotExists = existingPlots.some(p => p.name.toLowerCase() === (cmd.plotName as string).toLowerCase());
         const plot = await this.service.getOrCreatePlot(field.id, cmd.plotName as string);
+        if (plotExists) {
+          return {
+            messages: [`Ya exist\u00eda el lote *${plot.name}* en campo *${field.name}*.`],
+            suggestionKey: 'field_info_shown',
+          };
+        }
         return {
           messages: [`\ud83d\udccd Lote *${plot.name}* creado en campo *${field.name}*`],
           suggestionKey: 'plot_created',

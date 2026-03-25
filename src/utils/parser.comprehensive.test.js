@@ -1079,8 +1079,8 @@ describe("parseCommand", () => {
       expect(parseCommand("que campos tengo?")).toMatchObject({ command: "list_fields" });
     });
 
-    it("mostrar lotes → list_fields", () => {
-      expect(parseCommand("mostrar lotes")).toMatchObject({ command: "list_fields" });
+    it("mostrar lotes → list_plots", () => {
+      expect(parseCommand("mostrar lotes")).toMatchObject({ command: "list_plots" });
     });
 
     it("borrar lote test → delete_field fieldName:test", () => {
@@ -1414,16 +1414,16 @@ describe("multi-word field names", () => {
   });
 
   describe("list_fields audio patterns", () => {
-    it("info de mis lotes → list_fields", () => {
-      expect(parseCommand("info de mis lotes")).toMatchObject({ command: "list_fields" });
+    it("info de mis lotes → list_plots", () => {
+      expect(parseCommand("info de mis lotes")).toMatchObject({ command: "list_plots" });
     });
 
     it("informacion de mis campos → list_fields", () => {
       expect(parseCommand("informacion de mis campos")).toMatchObject({ command: "list_fields" });
     });
 
-    it("datos de mis lotes → list_fields", () => {
-      expect(parseCommand("datos de mis lotes")).toMatchObject({ command: "list_fields" });
+    it("datos de mis lotes → list_plots", () => {
+      expect(parseCommand("datos de mis lotes")).toMatchObject({ command: "list_plots" });
     });
   });
 
@@ -1538,10 +1538,10 @@ describe("mandatory test cases", () => {
     expect(r.entityKeyword).toBe("campo");
   });
 
-  it("TEST 3: info de mis lotes → LIST_FIELDS", () => {
+  it("TEST 3: info de mis lotes → LIST_PLOTS", () => {
     const r = parseCommand("info de mis lotes");
     expect(r).not.toBeNull();
-    expect(r.command).toBe("list_fields");
+    expect(r.command).toBe("list_plots");
   });
 
   it("TEST 4: lote la esperanza esta en bragado → SET_FIELD_CITY", () => {

@@ -110,6 +110,7 @@ export interface User {
   phone_number: string;
   name: string | null;
   city: string | null;
+  role?: 'admin' | 'end_user';
 }
 
 // --- User Settings ---
@@ -275,6 +276,7 @@ export interface ObservationRow {
   category: ObservationCategory;
   source: 'text' | 'audio';
   created_at: Date;
+  updated_at: Date | null;
 }
 
 // --- Plot Discovery ---

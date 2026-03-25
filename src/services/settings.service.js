@@ -46,6 +46,8 @@ const SETTING_DEFINITIONS = {
   CONVERSATIONAL_FALLBACK_MAX_TOKENS: { default: '120', type: 'number', group: 'ai', label: 'Max tokens fallback conversacional' },
   CONVERSATIONAL_FALLBACK_TIMEOUT_MS: { default: '5000', type: 'number', group: 'ai', label: 'Timeout fallback conversacional (ms)' },
   CONVERSATIONAL_FALLBACK_TEMPERATURE: { default: '0.3', type: 'number', group: 'ai', label: 'Temperature fallback conversacional' },
+  CONVERSATIONAL_FALLBACK_SYSTEM_PROMPT: { default: 'Sos un asistente agrícola en un bot de WhatsApp para productores argentinos. Respondé brevemente en español (máximo 2 oraciones). Si la pregunta es sobre agricultura, cultivos, lluvia o campo, dá una respuesta útil y corta. Si preguntan qué puede hacer el bot, explicá brevemente: registrar gastos, ingresos, lluvias, actividades agrícolas y pedir reportes. Nunca inventes datos del campo del usuario. Hablá en general.', type: 'string', group: 'ai', label: 'System prompt del fallback conversacional' },
+  AI_INTENT_SYSTEM_PROMPT_PREFIX: { default: 'Asistente agrícola argentino.', type: 'string', group: 'ai', label: 'Prefijo system prompt extracción de intención' },
   CONVERSATIONAL_FALLBACK_RATE_LIMIT_MAX: { default: '5', type: 'number', group: 'limits', label: 'Máx llamadas fallback por ventana' },
   CONVERSATIONAL_FALLBACK_RATE_LIMIT_WINDOW_MS: { default: '600000', type: 'number', group: 'limits', label: 'Ventana rate limit fallback (ms)' },
 
