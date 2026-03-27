@@ -39,7 +39,7 @@ The core flow lives in `src/routes/webhook.js` (the largest file). Messages go t
 
 ### Parser (`src/utils/parser.js`)
 
-Handles Spanish text normalization, written numbers ("quinientos mil" → 500000), Argentine slang ("lucas" = thousands, "palos" = millions), fuzzy category matching, and currency detection (ARS vs USD). This is the most complex utility and has 50+ test cases in `parser.test.js`.
+Handles Spanish text normalization, written numbers ("quinientos mil" → 500000), Argentine slang ("lucas" = thousands, "palos" = millions), fuzzy category matching, and currency detection (ARS vs USD). Includes a question guard (`isLikelyQuestion`) that prevents Spanish questions ("que es...?", "como...?") from being misclassified as expenses. This is the most complex utility and has 50+ test cases in `parser.test.js`.
 
 ### Database
 
@@ -80,6 +80,7 @@ JWT-based authentication with bcrypt passwords and refresh token rotation.
 - Expenses/incomes use soft delete (`deleted_at` column)
 - Optional confirmation workflow before saving transactions (per-user setting)
 - Claude AI calls are rate-limited per user (`claude_daily_limit` in user_settings)
+- PlotDiscoveryService is lookup-only — never auto-creates fields/plots; returns `notFound` info for unresolved entities
 
 ## Environment Variables
 

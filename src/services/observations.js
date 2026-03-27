@@ -1,31 +1,5 @@
 import { pool } from "../config/db.js";
-
-// --- Category detection keywords ---
-const CATEGORY_KEYWORDS = {
-  malezas: [
-    'maleza', 'rama negra', 'yuyo', 'sorgo de alepo', 'cardo', 'gramon',
-    'enredadera', 'gramilla', 'cerraja', 'nabón', 'nabon', 'ortiga',
-  ],
-  sanidad: [
-    'oruga', 'plaga', 'chinche', 'isoca', 'trips', 'arañuela', 'aranuela',
-    'mosca', 'pulgon', 'pulgón', 'bolillera', 'cogollero', 'bicho',
-    'enfermedad', 'hongo', 'roya', 'mancha', 'podredumbre',
-  ],
-  nutricion: [
-    'nutricion', 'nutrición', 'deficiencia', 'clorosis', 'amarillamiento',
-    'carencia', 'amarillo', 'necros',
-  ],
-  fenologia: [
-    'estado', 'fenolog', 'floración', 'floracion', 'llenado', 'emergencia',
-    'macollaje', 'espigazón', 'espigazon', 'panojamiento',
-    'v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11', 'v12',
-    'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8',
-  ],
-  clima: [
-    'helada', 'granizo', 'sequia', 'sequía', 'encharcamiento', 'stress',
-    'estrés', 'estres', 'viento', 'inundación', 'inundacion',
-  ],
-};
+import { OBSERVATION_CATEGORY_KEYWORDS } from "../constants/agro-terms.js";
 
 /**
  * Auto-detect observation category from text.
@@ -35,7 +9,7 @@ export function detectObservationCategory(text) {
   const lower = text.toLowerCase();
   // Negation: "no hay malezas" is an ABSENCE — do not classify as positive presence
   if (/\bno\s+hay\b/.test(lower)) return 'general';
-  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+  for (const [category, keywords] of Object.entries(OBSERVATION_CATEGORY_KEYWORDS)) {
     for (const kw of keywords) {
       if (lower.includes(kw)) return category;
     }

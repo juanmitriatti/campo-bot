@@ -17,6 +17,13 @@ import type {
 
 // --- Formatting helpers ---
 
+const EXPENSE_CONFIRMATIONS = ['✅ Listo, gasto registrado', '✅ Anotado', '✅ Gasto guardado', '✅ Registrado'];
+const INCOME_CONFIRMATIONS = ['💰 Listo, ingreso registrado', '💰 Anotado', '💰 Ingreso guardado', '💰 Registrado'];
+
+function pickRandom(arr: string[]): string {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
 const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 function currentMonthLabel(): string {
@@ -32,15 +39,18 @@ function currentWeekLabel(): string {
 }
 
 function buildLocationLabel(fieldName: string | null, plotName: string | null): string {
-  if (fieldName && plotName) return `${fieldName} > ${plotName}`;
-  if (plotName) return plotName;
+  const plotLabel = plotName
+    ? (plotName.toLowerCase().startsWith('lote') ? plotName : `Lote ${plotName}`)
+    : null;
+  if (plotLabel && fieldName) return `${plotLabel} (${fieldName})`;
+  if (plotLabel) return plotLabel;
   if (fieldName) return fieldName;
   return '';
 }
 
 function buildExpenseConfirmation(data: ParsedExpense, fieldName: string | null, plotName: string | null = null): string {
   const currency = data.currency === 'USD' ? 'USD' : '';
-  let msg = `\u2705 Gasto registrado\n${data.category}\n$${Number(data.amount).toLocaleString('es-AR')} ${currency}`.trim();
+  let msg = `${pickRandom(EXPENSE_CONFIRMATIONS)}\n${data.category}\n$${Number(data.amount).toLocaleString('es-AR')} ${currency}`.trim();
   const loc = buildLocationLabel(fieldName, plotName);
   if (loc) msg += `\n\ud83d\udccd ${loc}`;
   return msg;
@@ -48,7 +58,7 @@ function buildExpenseConfirmation(data: ParsedExpense, fieldName: string | null,
 
 function buildIncomeConfirmation(data: ParsedIncome | Record<string, unknown>, fieldName: string | null, plotName: string | null = null): string {
   const currency = (data.currency as string) === 'USD' ? 'USD' : '';
-  let msg = `\ud83d\udcb0 Ingreso registrado\n${data.category}\n$${Number(data.amount).toLocaleString('es-AR')} ${currency}`.trim();
+  let msg = `${pickRandom(INCOME_CONFIRMATIONS)}\n${data.category}\n$${Number(data.amount).toLocaleString('es-AR')} ${currency}`.trim();
   if (data.quantity && data.unit) {
     msg += `\n${data.quantity} ${data.unit}`;
     if (data.unit_price) msg += ` a $${Number(data.unit_price).toLocaleString('es-AR')}`;
@@ -71,8 +81,7 @@ function buildPendingMessage(type: 'expense' | 'income', data: ParsedExpense | P
     msg += '\n';
   }
   const loc = buildLocationLabel(fieldName, plotName);
-  msg += `Campo: ${loc || 'General'}\n`;
-  msg += `\nResponder *SI* para confirmar o *NO* para cancelar.`;
+  if (loc) msg += `Ubicación: ${loc}\n`;
   return msg;
 }
 
@@ -98,6 +107,19 @@ function formatReportRows(rows: CategoryTotal[]): { lines: string; total: number
   return { lines, total };
 }
 
+function buildNoFieldsBlockResponse(actionLabel: string): HandlerResponse {
+  return {
+    messages: [`Para registrar ${actionLabel} primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*`],
+    interactive: {
+      type: 'buttons',
+      body: `Necesitás un campo para registrar ${actionLabel}.`,
+      buttons: [
+        { id: 'cmd_agregar_campo', title: 'Crear Campo' },
+      ],
+    },
+  };
+}
+
 // --- Handler ---
 
 export class FinancialHandler {
@@ -105,17 +127,42 @@ export class FinancialHandler {
 
   private formatPlotInfo(info: PlotInfoData): string {
     const resultado = info.incomes.total - info.expenses.total;
-    let msg = `\ud83d\udccd *Lote ${info.name}* (campo ${info.field_name})\n`;
+    let msg = `📍 *Lote ${info.name}* (campo ${info.field_name})\n`;
     if (info.area_hectares) msg += `Superficie: ${info.area_hectares} ha\n`;
     if (info.soil_type) msg += `Suelo: ${info.soil_type}\n`;
-    msg += `\n\ud83d\udcca *Este mes:*\n`;
-    msg += `\ud83d\udcb8 Gastos: $${info.expenses.total.toLocaleString('es-AR')} (${info.expenses.count} reg.)\n`;
-    msg += `\ud83d\udcb0 Ingresos: $${info.incomes.total.toLocaleString('es-AR')} (${info.incomes.count} reg.)\n`;
-    msg += `\ud83d\udcc8 Resultado: $${resultado.toLocaleString('es-AR')}\n`;
-    if (info.rainfall.count > 0) {
-      msg += `\ud83c\udf27\ufe0f Lluvia: ${info.rainfall.total}mm (${info.rainfall.count} reg.)`;
+
+    if (info.activeCrop) {
+      msg += `\n🌱 *Cultivo activo:* ${info.activeCrop.crop} (${info.activeCrop.season_year})\n`;
     }
-    return msg;
+
+    msg += `\n📊 *Este mes:*\n`;
+    msg += `💸 Gastos: $${info.expenses.total.toLocaleString('es-AR')} (${info.expenses.count} reg.)\n`;
+    msg += `💰 Ingresos: $${info.incomes.total.toLocaleString('es-AR')} (${info.incomes.count} reg.)\n`;
+    msg += `📈 Resultado: $${resultado.toLocaleString('es-AR')}\n`;
+    if (info.rainfall.count > 0) {
+      msg += `🌧️ Lluvia: ${info.rainfall.total}mm (${info.rainfall.count} reg.)\n`;
+    }
+
+    if (info.recentActivities && info.recentActivities.length > 0) {
+      msg += `\n📋 *Actividades recientes:*\n`;
+      for (const a of info.recentActivities) {
+        const date = new Date(a.event_date);
+        const dateStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const detail = a.product || a.crop || a.event_type;
+        msg += `• ${a.event_type} — ${detail} (${dateStr})\n`;
+      }
+    }
+
+    const obs = (info as any).observations;
+    if (obs && obs.length > 0) {
+      msg += `\n🔍 *Observaciones recientes:*\n`;
+      for (const o of obs) {
+        const date = new Date(o.created_at);
+        const dateStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
+        msg += `• ${o.observation_text} (${dateStr})\n`;
+      }
+    }
+    return msg.trimEnd();
   }
 
   // --- Expense flow ---
@@ -126,21 +173,100 @@ export class FinancialHandler {
     text: string,
     settings: UserSettings,
     user: User,
-    claudeField?: string | null
+    fieldName?: string | null,
+    plotName?: string | null,
   ): Promise<HandlerResponse> {
-    const { fieldId, fieldName, plotId, plotName } = await this.service.resolveField(userId, text, claudeField);
+    // Block if user has no fields
+    const userFields = await this.service.getUserFields(userId);
+    if (userFields.length === 0) {
+      return buildNoFieldsBlockResponse('un gasto');
+    }
+
+    const resolution = await this.service.resolveField(userId, fieldName, plotName);
+    let { fieldId, fieldName: resFieldName, plotId, plotName: resPlotName } = resolution;
+
+    // If the referenced field/plot doesn't exist, warn and save without assignment
+    if (resolution.notFound) {
+      const label = resolution.notFound.type === 'field' ? 'campo' : 'lote';
+      const name = resolution.notFound.name;
+      const warningMsg = `\u26a0\ufe0f No encontré el ${label} *${name}*. El gasto se registró sin ${label} asignado.\nPara crearlo: *agregar ${label} ${name}*`;
+      await this.service.saveExpense(userId, data, null, null);
+      const messages = [buildExpenseConfirmation(data, null, null), warningMsg];
+      return { messages, suggestionKey: 'expense_saved' };
+    }
+
+    // Hybrid plot assignment: try to auto-assign plot
+    if (!plotId) {
+      if (resolution.needPlotSelection) {
+        // 2+ plots in field → redirect to expense flow at plot step
+        const currency = data.currency === 'USD' ? 'USD' : 'ARS';
+        return {
+          messages: [`\ud83d\udcb8 *${data.category}* \u2014 $${data.amount.toLocaleString('es-AR')}${currency === 'USD' ? ' USD' : ''}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
+          sideEffects: {
+            startFlow: {
+              state: 'expense_flow' as FlowState,
+              data: {
+                amount: { amount: data.amount, currency },
+                category: data.category,
+                description: data.description || text,
+              },
+            },
+          },
+        };
+      }
+      if (resolution.needPlotCreation) {
+        // Field exists but 0 plots → save with warning (no plots to pick)
+        await this.service.saveExpense(userId, data, fieldId, null);
+        const warningMsg = `\u26a0\ufe0f Se registr\u00f3 sin lote. Cre\u00e1 un lote para organizar mejor:\n*agregar lote [nombre] en campo ${resFieldName}*`;
+        return { messages: [buildExpenseConfirmation(data, resFieldName, null), warningMsg], suggestionKey: 'expense_saved' };
+      }
+      // No field resolved at all — check if user has a single plot globally
+      if (!fieldId) {
+        const allPlots = await this.service.findAllUserPlots(userId);
+        if (allPlots.length === 1) {
+          const singlePlot = allPlots[0];
+          const field = await this.service.getFieldByName(userId, singlePlot.field_name);
+          if (field) {
+            fieldId = field.id;
+            resFieldName = field.name;
+            plotId = singlePlot.id;
+            resPlotName = singlePlot.name;
+          }
+        }
+      }
+    }
+
+    // Conversational memory: inherit field/plot from recent financial message
+    if (!fieldId && !plotId) {
+      const recentCtx = await this.service.getRecentFinancialContext(userId);
+      if (recentCtx) {
+        fieldId = recentCtx.fieldId;
+        resFieldName = recentCtx.fieldName;
+        plotId = recentCtx.plotId;
+        resPlotName = recentCtx.plotName;
+      }
+    }
 
     if (settings.confirm_before_save) {
+      const pendingMsg = buildPendingMessage('expense', data, resFieldName, resPlotName);
       return {
-        messages: [buildPendingMessage('expense', data, fieldName, plotName)],
+        messages: [],
+        interactive: {
+          type: 'buttons' as const,
+          body: pendingMsg,
+          buttons: [
+            { id: 'confirm_pending', title: 'Confirmar' },
+            { id: 'cancel_pending', title: 'Cancelar' },
+          ],
+        },
         sideEffects: {
-          setPending: { type: 'expense', data, fieldId, fieldName, plotId, plotName, timestamp: Date.now() },
+          setPending: { type: 'expense', data, fieldId, fieldName: resFieldName, plotId, plotName: resPlotName, timestamp: Date.now() },
         },
       };
     }
 
     await this.service.saveExpense(userId, data, fieldId, plotId);
-    const messages = [buildExpenseConfirmation(data, fieldName, plotName)];
+    const messages = [buildExpenseConfirmation(data, resFieldName, resPlotName)];
 
     if (settings.budget_alerts) {
       const alert = await this.service.checkBudgetAlert(userId, data.category, user.name);
@@ -166,21 +292,101 @@ export class FinancialHandler {
     data: ParsedIncome,
     text: string,
     settings: UserSettings,
-    claudeField?: string | null
+    fieldName?: string | null,
+    plotName?: string | null,
   ): Promise<HandlerResponse> {
-    const { fieldId, fieldName, plotId, plotName } = await this.service.resolveField(userId, text, claudeField);
+    // Block if user has no fields
+    const userFields = await this.service.getUserFields(userId);
+    if (userFields.length === 0) {
+      return buildNoFieldsBlockResponse('un ingreso');
+    }
+
+    const resolution = await this.service.resolveField(userId, fieldName, plotName);
+    let { fieldId, fieldName: resFieldName, plotId, plotName: resPlotName } = resolution;
+
+    // If the referenced field/plot doesn't exist, warn and save without assignment
+    if (resolution.notFound) {
+      const label = resolution.notFound.type === 'field' ? 'campo' : 'lote';
+      const name = resolution.notFound.name;
+      const warningMsg = `\u26a0\ufe0f No encontré el ${label} *${name}*. El ingreso se registró sin ${label} asignado.\nPara crearlo: *agregar ${label} ${name}*`;
+      await this.service.saveIncome(userId, data, null, null);
+      const messages = [buildIncomeConfirmation(data, null, null), warningMsg];
+      return { messages, suggestionKey: 'income_saved' };
+    }
+
+    // Hybrid plot assignment: try to auto-assign plot
+    if (!plotId) {
+      if (resolution.needPlotSelection) {
+        // 2+ plots in field → redirect to income flow at plot step
+        const currency = data.currency === 'USD' ? 'USD' : 'ARS';
+        return {
+          messages: [`\ud83d\udcb0 *${data.category}* \u2014 $${data.amount.toLocaleString('es-AR')}${currency === 'USD' ? ' USD' : ''}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
+          sideEffects: {
+            startFlow: {
+              state: 'income_flow' as FlowState,
+              data: {
+                amount: { amount: data.amount, currency },
+                category: data.category,
+                description: data.description || text,
+                quantity: data.quantity ?? null,
+                unit: data.unit ?? null,
+                unit_price: data.unit_price ?? null,
+              },
+            },
+          },
+        };
+      }
+      if (resolution.needPlotCreation) {
+        await this.service.saveIncome(userId, data, fieldId, null);
+        const warningMsg = `\u26a0\ufe0f Se registr\u00f3 sin lote. Cre\u00e1 un lote para organizar mejor:\n*agregar lote [nombre] en campo ${resFieldName}*`;
+        return { messages: [buildIncomeConfirmation(data, resFieldName, null), warningMsg], suggestionKey: 'income_saved' };
+      }
+      if (!fieldId) {
+        const allPlots = await this.service.findAllUserPlots(userId);
+        if (allPlots.length === 1) {
+          const singlePlot = allPlots[0];
+          const field = await this.service.getFieldByName(userId, singlePlot.field_name);
+          if (field) {
+            fieldId = field.id;
+            resFieldName = field.name;
+            plotId = singlePlot.id;
+            resPlotName = singlePlot.name;
+          }
+        }
+      }
+    }
+
+    // Conversational memory: inherit field/plot from recent financial message
+    if (!fieldId && !plotId) {
+      const recentCtx = await this.service.getRecentFinancialContext(userId);
+      if (recentCtx) {
+        fieldId = recentCtx.fieldId;
+        resFieldName = recentCtx.fieldName;
+        plotId = recentCtx.plotId;
+        resPlotName = recentCtx.plotName;
+      }
+    }
 
     if (settings.confirm_before_save) {
+      const pendingMsg = buildPendingMessage('income', data, resFieldName, resPlotName);
       return {
-        messages: [buildPendingMessage('income', data, fieldName, plotName)],
+        messages: [],
+        interactive: {
+          type: 'buttons' as const,
+          body: pendingMsg,
+          buttons: [
+            { id: 'confirm_pending', title: 'Confirmar' },
+            { id: 'cancel_pending', title: 'Cancelar' },
+          ],
+        },
         sideEffects: {
-          setPending: { type: 'income', data, fieldId, fieldName, plotId, plotName, timestamp: Date.now() },
+          setPending: { type: 'income', data, fieldId, fieldName: resFieldName, plotId, plotName: resPlotName, timestamp: Date.now() },
         },
       };
     }
 
     await this.service.saveIncome(userId, data, fieldId, plotId);
-    const messages = [buildIncomeConfirmation(data, fieldName, plotName)];
+    const messages = [buildIncomeConfirmation(data, resFieldName, resPlotName)];
     const { ingresos, gastos } = await this.service.getMonthlyResult(userId);
     if (gastos > 0) {
       messages.push(formatResult(ingresos, gastos, 'Resultado del mes hasta ahora'));
@@ -318,7 +524,22 @@ export class FinancialHandler {
           return { messages: ['No hay gastos registrados este mes.'], suggestionKey: 'report_shown' };
         }
         const { lines, total } = formatReportRows(rows);
-        return { messages: [`📊 *Resumen financiero* (${currentMonthLabel()})\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}\n\n_Pedí "resultado mes" para ver ingresos vs gastos._`], suggestionKey: 'report_shown' };
+        let msg = `📊 *Resumen financiero* (${currentMonthLabel()})\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}`;
+
+        // Per-plot breakdown
+        const plotRows = await this.service.getMonthlyReportByPlot(userId);
+        if (plotRows.length > 0) {
+          msg += '\n\n📍 *Por lote:*';
+          for (const pr of plotRows) {
+            const resultado = pr.income_total - pr.expense_total;
+            msg += `\n• ${pr.plot_name} (${pr.field_name}): gastos $${pr.expense_total.toLocaleString('es-AR')}`;
+            if (pr.income_total > 0) msg += `, ingresos $${pr.income_total.toLocaleString('es-AR')}`;
+            if (pr.income_total > 0 || pr.expense_total > 0) msg += ` → $${resultado.toLocaleString('es-AR')}`;
+          }
+        }
+
+        msg += '\n\n_Pedí "resultado mes" para ver ingresos vs gastos._';
+        return { messages: [msg], suggestionKey: 'report_shown' };
       }
 
       // --- Plot report ---
@@ -460,10 +681,47 @@ export class FinancialHandler {
 
       // --- Fields ---
       case 'set_field_city': {
-        const labelCity = cmd.entityKeyword === 'campo' ? 'Campo' : 'Lote';
-        await this.service.getOrCreateField(userId, cmd.fieldName as string);
-        await this.service.setFieldCity(userId, cmd.fieldName as string, cmd.city as string);
-        return { messages: [`\ud83d\udccd ${labelCity} *${cmd.fieldName}* ubicado en *${cmd.city}*`] };
+        const cityFieldName = cmd.fieldName as string | null;
+        const cityValue = cmd.city as string | null;
+
+        // No field specified — auto-assign if single field
+        if (!cityFieldName) {
+          const fields = await this.service.getUserFields(userId);
+          if (fields.length === 0) {
+            return { messages: ['No tenés campos registrados.\n\nPrimero creá un campo:\n\ud83d\udccd *agregar campo [nombre]*'] };
+          }
+          if (fields.length === 1) {
+            const singleField = fields[0];
+            if (cityValue) {
+              await this.service.setFieldCity(userId, singleField.name, cityValue);
+              return { messages: [`\ud83d\udccd Campo *${singleField.name}* ubicado en *${cityValue}*`] };
+            }
+            return {
+              messages: [`\u00bfEn qu\u00e9 ciudad/localidad est\u00e1 tu campo *${singleField.name}*?`],
+              sideEffects: { setPendingFieldCity: { fieldName: singleField.name } },
+            };
+          }
+          // Multiple fields — ask which one
+          return {
+            messages: [`Ten\u00e9s ${fields.length} campos. \u00bfA cu\u00e1l quer\u00e9s asignarle ubicaci\u00f3n?\n\n${fields.map(f => `\u2022 *${f.name}*`).join('\n')}\n\nEscrib\u00ed: *campo [nombre] est\u00e1 en [ciudad]*`],
+          };
+        }
+
+        const labelCity = (!cmd.entityKeyword || cmd.entityKeyword === 'campo') ? 'Campo' : 'Lote';
+        const existingFieldCity = await this.service.getFieldByName(userId, cityFieldName);
+        if (!existingFieldCity) {
+          return {
+            messages: [`No encontr\u00e9 el ${labelCity.toLowerCase()} *${cityFieldName}*.\nPrimero crealo: *agregar campo ${cityFieldName}*`],
+          };
+        }
+        if (!cityValue) {
+          return {
+            messages: [`\u00bfEn qu\u00e9 ciudad/localidad est\u00e1 *${cityFieldName}*?`],
+            sideEffects: { setPendingFieldCity: { fieldName: cityFieldName } },
+          };
+        }
+        await this.service.setFieldCity(userId, cityFieldName, cityValue);
+        return { messages: [`\ud83d\udccd ${labelCity} *${cityFieldName}* ubicado en *${cityValue}*`] };
       }
 
       case 'add_field_city': {
@@ -484,12 +742,9 @@ export class FinancialHandler {
           const fields = await this.service.getUserFields(userId);
 
           if (fields.length === 0) {
-            // No fields → create default "general" field, then lot in it
-            const field = await this.service.getOrCreateField(userId, 'general');
-            await this.service.getOrCreatePlot(field.id, cmd.fieldName as string);
+            // No fields → ask user to create a field first
             return {
-              messages: [`\ud83d\udccd Lote *${cmd.fieldName}* creado en campo *general*\n_(Creamos el campo "general" autom\u00e1ticamente)_`],
-              suggestionKey: 'plot_created',
+              messages: [`No tenés campos registrados.\n\nPara agregar el lote *${cmd.fieldName}*, primero creá un campo:\n📍 *agregar campo [nombre]*\n\nDespués podés agregar el lote.`],
             };
           }
 
@@ -552,19 +807,26 @@ export class FinancialHandler {
         const fieldName = (cmd.fieldName as string).trim();
         const labelAdd = cmd.entityKeyword === 'campo' ? 'Campo' : (cmd.entityKeyword === 'parcela' ? 'Parcela' : 'Lote');
 
-        // Check if field already exists — differentiate "created" vs "already exists"
+        // Check if field already exists — ask user what to do (never silent overwrite)
         const existing = await this.service.getFieldByName(userId, fieldName);
         if (existing) {
-          if (cmd.city) {
-            await this.service.setFieldCity(userId, fieldName, cmd.city as string);
-            return {
-              messages: [`El ${labelAdd.toLowerCase()} *${existing.name}* ya exist\u00eda. Ubicaci\u00f3n actualizada a *${cmd.city}*.`],
-              suggestionKey: 'field_info_shown',
-            };
-          }
+          const city = cmd.city as string | null;
+          const cityChanged = city && city.toLowerCase() !== (existing.city || '').toLowerCase();
+          let msg = `⚠️ Ya existe un ${labelAdd.toLowerCase()} llamado *${existing.name}*`;
+          if (existing.city) msg += ` (ubicación: ${existing.city})`;
+          msg += '.';
+          if (cityChanged) msg += `\nLa nueva ubicación sería *${city}*.`;
+          msg += '\n\n¿Qué querés hacer?';
+
+          const buttons: { id: string; title: string }[] = [];
+          if (cityChanged) buttons.push({ id: 'field_dup_update', title: 'Actualizar ubic.' });
+          buttons.push({ id: 'field_dup_rename', title: 'Otro nombre' });
+          buttons.push({ id: 'field_dup_cancel', title: 'Cancelar' });
+
           return {
-            messages: [`Ya ten\u00e9s un ${labelAdd.toLowerCase()} llamado *${existing.name}*. Escrib\u00ed *mis campos* para verlos.`],
-            suggestionKey: 'field_info_shown',
+            messages: [msg],
+            interactive: { type: 'buttons' as const, body: '¿Qué querés hacer?', buttons },
+            sideEffects: { setFieldDuplicate: { name: fieldName, city } },
           };
         }
 
@@ -577,7 +839,8 @@ export class FinancialHandler {
           };
         }
         return {
-          messages: [`\ud83d\udccd ${labelAdd} *${fieldName}* creado correctamente.\n\nPara asignarle ubicaci\u00f3n escrib\u00ed:\n*${kwAdd} ${fieldName} est\u00e1 en [ciudad]*`],
+          messages: [`📍 ${labelAdd} *${fieldName}* creado.\n\n¿En qué ciudad o zona está?`],
+          sideEffects: { setPendingFieldCity: { fieldName } },
           suggestionKey: 'field_created',
         };
       }
@@ -649,19 +912,28 @@ export class FinancialHandler {
           return { messages: [`No encontr\u00e9 el ${label} *${cmd.fieldName}*.\nEscrib\u00ed *mis campos* para ver los que ten\u00e9s.`] };
         }
         const resultado = info.incomes.total - info.expenses.total;
-        let msg = `\ud83d\udccd *Campo ${info.name}*\n`;
-        msg += info.city ? `Ubicaci\u00f3n: ${info.city}\n` : `Ubicaci\u00f3n: sin asignar\n`;
+        let msg = `📍 *Campo ${info.name}*\n`;
+        msg += info.city ? `Ubicación: ${info.city}\n` : `Ubicación: sin asignar\n`;
         if (info.plotCount && info.plotCount > 0) {
           msg += `Lotes: ${info.plotCount}\n`;
         }
-        msg += `\n\ud83d\udcca *Este mes:*\n`;
-        msg += `\ud83d\udcb8 Gastos: $${info.expenses.total.toLocaleString('es-AR')} (${info.expenses.count} reg.)\n`;
-        msg += `\ud83d\udcb0 Ingresos: $${info.incomes.total.toLocaleString('es-AR')} (${info.incomes.count} reg.)\n`;
-        msg += `\ud83d\udcc8 Resultado: $${resultado.toLocaleString('es-AR')}\n`;
+        msg += `\n📊 *Este mes:*\n`;
+        msg += `💸 Gastos: $${info.expenses.total.toLocaleString('es-AR')} (${info.expenses.count} reg.)\n`;
+        msg += `💰 Ingresos: $${info.incomes.total.toLocaleString('es-AR')} (${info.incomes.count} reg.)\n`;
+        msg += `📈 Resultado: $${resultado.toLocaleString('es-AR')}\n`;
         if (info.rainfall.count > 0) {
-          msg += `\ud83c\udf27\ufe0f Lluvia: ${info.rainfall.total}mm (${info.rainfall.count} reg.)`;
+          msg += `🌧️ Lluvia: ${info.rainfall.total}mm (${info.rainfall.count} reg.)\n`;
         }
-        return { messages: [msg], suggestionKey: 'field_info_shown' };
+        if (info.observations && info.observations.length > 0) {
+          msg += `\n🔍 *Observaciones recientes:*\n`;
+          for (const o of info.observations) {
+            const date = new Date(o.created_at);
+            const dateStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
+            const plotLabel = o.plot_name ? ` [${o.plot_name}]` : '';
+            msg += `• ${o.observation_text}${plotLabel} (${dateStr})\n`;
+          }
+        }
+        return { messages: [msg.trimEnd()], suggestionKey: 'field_info_shown' };
       }
 
       // --- Plots ---
@@ -718,15 +990,84 @@ export class FinancialHandler {
         return { messages: [msg] };
       }
 
+      case 'add_plots_batch': {
+        const plotNames = cmd.plotNames as string[];
+        if (!plotNames || plotNames.length === 0) {
+          return { messages: ['No pude detectar los nombres de los lotes.\n\nEscrib\u00ed: *agregar lotes A, B y C*'] };
+        }
+        const fields = await this.service.getUserFields(userId);
+        if (fields.length === 0) {
+          return { messages: ['No ten\u00e9s campos registrados.\n\nPrimero cre\u00e1 un campo:\n\ud83d\udccd *agregar campo [nombre]*'] };
+        }
+        let targetField: { id: number; name: string };
+        if (fields.length === 1) {
+          const f = await this.service.getFieldByName(userId, fields[0].name);
+          if (!f) return { messages: ['Error al obtener el campo.'] };
+          targetField = f;
+        } else {
+          return {
+            messages: [`Ten\u00e9s ${fields.length} campos. Indic\u00e1 en cu\u00e1l crear los lotes.\n\nEscrib\u00ed: *agregar lote [nombre] en [campo]*`],
+          };
+        }
+        const created: string[] = [];
+        const existing: string[] = [];
+        const existingPlots = await this.service.getPlotsByField(targetField.id);
+        for (const name of plotNames) {
+          const already = existingPlots.some(p => p.name.toLowerCase() === name.toLowerCase());
+          if (already) {
+            existing.push(name);
+          } else {
+            await this.service.getOrCreatePlot(targetField.id, name);
+            created.push(name);
+          }
+        }
+        let msg = '';
+        if (created.length > 0) {
+          msg += `\ud83d\udccd Lotes creados en campo *${targetField.name}*:\n${created.map(n => `  \u2022 *${n}*`).join('\n')}`;
+        }
+        if (existing.length > 0) {
+          if (msg) msg += '\n\n';
+          msg += `Ya exist\u00edan: ${existing.map(n => `*${n}*`).join(', ')}`;
+        }
+        return { messages: [msg], suggestionKey: 'plot_created' };
+      }
+
       case 'add_plot': {
-        const field = await this.service.getOrCreateField(userId, cmd.fieldName as string);
+        let field: any;
+        if (!cmd.fieldName) {
+          const fields = await this.service.getUserFields(userId);
+          if (fields.length === 0) {
+            return {
+              messages: ['Para agregar un lote primero necesit\u00e1s crear un campo.\n\n\ud83d\udccd Escrib\u00ed *agregar campo [nombre]*'],
+            };
+          }
+          if (fields.length === 1) {
+            field = fields[0];
+          } else {
+            const buttons = fields.slice(0, 3).map((f: any) => ({
+              id: `create_plot_${(cmd.plotName as string).replace(/\s+/g, '_')}_in_${f.name.replace(/\s+/g, '_')}`,
+              title: f.name.slice(0, 20),
+            }));
+            return {
+              messages: [`\u00bfEn qu\u00e9 campo quer\u00e9s agregar el lote *${cmd.plotName}*?`],
+              interactive: { type: 'buttons' as const, body: '\u00bfEn qu\u00e9 campo?', buttons },
+            };
+          }
+        } else {
+          field = await this.service.getFieldByName(userId, cmd.fieldName as string);
+        }
+        if (!field) {
+          return {
+            messages: [`No encontr\u00e9 el campo *${cmd.fieldName}*.\n\nPrimero cre\u00e1 el campo:\n\ud83d\udccd *agregar campo ${cmd.fieldName}*`],
+          };
+        }
         // Check if plot already exists before creating
         const existingPlots = await this.service.getPlotsByField(field.id);
         const plotExists = existingPlots.some(p => p.name.toLowerCase() === (cmd.plotName as string).toLowerCase());
         const plot = await this.service.getOrCreatePlot(field.id, cmd.plotName as string);
         if (plotExists) {
           return {
-            messages: [`Ya exist\u00eda el lote *${plot.name}* en campo *${field.name}*.`],
+            messages: [`Ya existía el lote *${plot.name}* en campo *${field.name}*.`],
             suggestionKey: 'field_info_shown',
           };
         }

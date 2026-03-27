@@ -1,14 +1,59 @@
 import { UserRepository } from '../users/user.repository.js';
+import { PlanRepository } from '../billing/plan.repository.js';
+import { pool } from '../../config/db.js';
 import { buildHelpText } from './help-text.js';
+import type { FinancialService } from '../financial/financial.service.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse, InteractiveMessage } from '../../types/index.js';
 
 export class SystemHandler {
-  constructor(private userRepo: UserRepository) {}
+  private financialService: FinancialService | null;
+  private planRepo: PlanRepository;
+
+  constructor(private userRepo: UserRepository, financialService?: FinancialService | null) {
+    this.financialService = financialService ?? null;
+    this.planRepo = new PlanRepository();
+  }
 
   async handleCommand(cmd: ParsedCommand, userId: UserId, user: User, settings: UserSettings): Promise<HandlerResponse> {
     switch (cmd.command) {
       case 'greeting': {
         const nombre = user.name ? `, ${user.name}` : '';
+
+        // Onboarding: if user has no fields, guide them to create one
+        if (this.financialService) {
+          const fields = await this.financialService.getUserFields(userId);
+          if (fields.length === 0) {
+            return {
+              messages: [`Hola${nombre} \ud83d\udc4b Soy *MIA*, tu asistente de gesti\u00f3n agr\u00edcola.\n\nPara empezar, necesit\u00e1s crear tu primer campo. Escrib\u00ed algo como:\n\ud83d\udccd *agregar campo La Esperanza*`],
+              interactive: {
+                type: 'buttons',
+                body: '\u00bfQuer\u00e9s crear tu primer campo?',
+                buttons: [
+                  { id: 'cmd_agregar_campo', title: 'Crear Campo' },
+                  { id: 'menu_ayuda', title: 'Ayuda' },
+                ],
+              },
+            };
+          }
+
+          // Tier 2: has fields but no plots → guide to create a lote
+          const allPlots = await this.financialService.findAllUserPlots(userId);
+          if (allPlots.length === 0) {
+            const fieldName = fields[0].name || 'tu campo';
+            return {
+              messages: [`Hola${nombre} \ud83d\udc4b Ya ten\u00e9s tu campo *${fieldName}*.\n\nAhora cre\u00e1 un lote para poder registrar gastos e ingresos. Escrib\u00ed algo como:\n\ud83c\udf3e *agregar lote Lote 1 en ${fieldName}*`],
+              interactive: {
+                type: 'buttons',
+                body: '\u00bfQuer\u00e9s crear tu primer lote?',
+                buttons: [
+                  { id: 'cmd_agregar_lote', title: 'Crear Lote' },
+                  { id: 'menu_ayuda', title: 'Ayuda' },
+                ],
+              },
+            };
+          }
+        }
+
         return {
           messages: [`Hola${nombre} \ud83d\udc4b Soy *MIA*, tu asistente de gesti\u00f3n agr\u00edcola.`],
           interactive: {
@@ -127,12 +172,32 @@ export class SystemHandler {
         return {
           messages: [],
           interactive: {
-            type: 'buttons',
-            body: '\ud83d\udcca *Reportes* \u2014 \u00bfCu\u00e1l quer\u00e9s?',
-            buttons: [
-              { id: 'cmd_reporte_semanal', title: 'Semanal' },
-              { id: 'cmd_exportar_csv', title: 'Exportar CSV' },
-              { id: 'cmd_reporte_agro', title: 'Agron\u00f3mico' },
+            type: 'list',
+            body: '📊 *Reportes* — Elegí el que necesités:',
+            buttonText: 'Ver Reportes',
+            sections: [
+              {
+                title: '💰 Financiero',
+                rows: [
+                  { id: 'cmd_resumen_mensual', title: 'Resultado del Mes', description: 'Ingresos vs gastos del mes' },
+                  { id: 'cmd_reporte_mensual', title: 'Detalle Mensual', description: 'Gastos desglosados por categoría' },
+                  { id: 'cmd_reporte_semanal', title: 'Resumen Semanal', description: 'Movimientos de la semana' },
+                  { id: 'cmd_exportar_csv', title: 'Exportar CSV', description: 'Descargar datos en planilla' },
+                ],
+              },
+              {
+                title: '🌱 Agronómico',
+                rows: [
+                  { id: 'cmd_reporte_agro', title: 'Reporte Agronómico', description: 'Actividades y observaciones' },
+                  { id: 'cmd_historial_lote', title: 'Historial de Lote', description: 'Timeline completo de un lote' },
+                ],
+              },
+              {
+                title: '🌧️ Lluvias',
+                rows: [
+                  { id: 'cmd_reporte_lluvia', title: 'Reporte de Lluvia', description: 'Acumulados por campo y período' },
+                ],
+              },
             ],
           },
         };
@@ -238,6 +303,28 @@ export class SystemHandler {
       case 'set_city':
         await this.userRepo.setCity(userId, cmd.city as string);
         return { messages: [`\ud83d\udccd Ubicaci\u00f3n guardada: *${cmd.city}*\nAhora el clima va a ser de tu zona.`] };
+
+      case 'request_more_messages': {
+        // Log the request for analytics
+        try {
+          const plan = await this.planRepo.getUserPlan(userId);
+          const dailyCount = await this.userRepo.getDailyClaudeCount(userId);
+          await pool.query(
+            `INSERT INTO ai_limit_requests (user_id, plan_name, daily_count) VALUES ($1, $2, $3)`,
+            [userId, plan?.name ?? 'unknown', dailyCount],
+          );
+        } catch {
+          // Fire-and-forget
+        }
+        return {
+          messages: [
+            '\ud83d\udce9 Registramos tu solicitud de m\u00e1s mensajes.\n\n'
+            + 'Tu plan actual tiene un l\u00edmite diario de mensajes con IA. '
+            + 'Pod\u00e9s seguir usando comandos directos (registrar gastos, ver reportes, etc.) sin l\u00edmite.\n\n'
+            + 'Para ampliar tu l\u00edmite, consult\u00e1 con el administrador sobre los planes disponibles.',
+          ],
+        };
+      }
 
       default:
         return { messages: [] };

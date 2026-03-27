@@ -14,7 +14,7 @@ const FINANCIAL_COMMANDS = new Set([
   'export_csv',
   'set_field_city', 'add_field_city', 'add_field', 'list_fields',
   'delete_field', 'rename_field', 'field_info',
-  'list_plots', 'add_plot', 'delete_plot', 'plot_info', 'set_plot_area', 'set_plot_coords',
+  'list_plots', 'add_plot', 'add_plots_batch', 'delete_plot', 'plot_info', 'set_plot_area', 'set_plot_coords',
   'restore_field',
 ]);
 

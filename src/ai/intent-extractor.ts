@@ -2,7 +2,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PromptBuilder } from './prompt-builder.js';
 import { IntentValidator } from './intent-validator.js';
 import { UserContextService } from './user-context.service.js';
+import { ConversationHistoryService } from './conversation-history.service.js';
 import { UserRepository } from '../domain/users/user.repository.js';
+import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { getSetting, getSettingNumber, getSettingBool } from '../services/settings.service.js';
 import { saveAiFallbackLog } from '../services/expenses.js';
 import { logError } from '../services/error-logger.js';
@@ -13,12 +15,17 @@ const anthropic = new Anthropic({
 });
 
 export class IntentExtractor {
+  private planRepo: PlanRepository;
+
   constructor(
     private promptBuilder: PromptBuilder,
     private intentValidator: IntentValidator,
     private userContextService: UserContextService,
     private userRepo?: UserRepository,
-  ) {}
+    private historyService?: ConversationHistoryService,
+  ) {
+    this.planRepo = new PlanRepository();
+  }
 
   /**
    * Attempt LLM-based intent extraction.
@@ -35,19 +42,20 @@ export class IntentExtractor {
       const enabled = await getSettingBool('AI_INTENT_ENABLED');
       if (enabled === false) return null;
 
-      // Check daily rate limit
-      const claudeLimit = settings.claude_daily_limit || 50;
+      // Check daily rate limit (plan-based, fallback to user setting)
+      const claudeLimit = await this.getAiDailyLimit(userId, settings);
       const repo = this.userRepo ?? new UserRepository();
       const dailyCount = await repo.getDailyClaudeCount(userId);
       if (dailyCount >= claudeLimit) return null;
 
-      // Load user context for prompt enrichment
-      let userContext = null;
-      try {
-        userContext = await this.userContextService.loadContext(userId);
-      } catch {
-        // Context loading failed — proceed without context
-      }
+      // Load user context and conversation history in parallel
+      const [userContext, historyTurns] = await Promise.allSettled([
+        this.userContextService.loadContext(userId),
+        this.historyService ? this.historyService.getRecentTurns(userId) : Promise.resolve([]),
+      ]).then(results => [
+        results[0].status === 'fulfilled' ? results[0].value : null,
+        results[1].status === 'fulfilled' ? results[1].value : [],
+      ] as const);
 
       // Build dynamic prompt
       const systemPrompt = await this.promptBuilder.build(userContext);
@@ -63,6 +71,12 @@ export class IntentExtractor {
       const resolvedMaxTokens = maxTokens || 300;
       const resolvedTimeout = timeoutMs || 5000;
 
+      // Build multi-turn messages array (history + current message)
+      const messages: Anthropic.MessageParam[] = [
+        ...historyTurns.map(t => ({ role: t.role as 'user' | 'assistant', content: t.content })),
+        { role: 'user', content: text },
+      ];
+
       // Call Claude with timeout
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), resolvedTimeout);
@@ -75,7 +89,7 @@ export class IntentExtractor {
             max_tokens: resolvedMaxTokens,
             temperature: 0,
             system: systemPrompt,
-            messages: [{ role: 'user', content: text }],
+            messages,
           },
           { signal: controller.signal },
         );
@@ -94,7 +108,7 @@ export class IntentExtractor {
 
       console.log(
         `AI_INTENT (${dailyCount + 1}/${claudeLimit}):`,
-        response.content[0].type === 'text' ? response.content[0].text.slice(0, 120) : '[non-text]',
+        response.content[0].type === 'text' ? response.content[0].text.slice(0, 300) : '[non-text]',
         `TOKENS: ${usage.input_tokens}in/${usage.output_tokens}out`,
       );
 
@@ -114,5 +128,20 @@ export class IntentExtractor {
       console.log('AI_INTENT: fallback to regex —', isTimeout ? 'timeout' : (err instanceof Error ? err.message : String(err)));
       return null;
     }
+  }
+
+  /**
+   * Get AI daily limit: plan-based first, fallback to user setting.
+   */
+  private async getAiDailyLimit(userId: UserId, settings: UserSettings): Promise<number> {
+    try {
+      const plan = await this.planRepo.getUserPlan(userId);
+      if (plan?.daily_ai_limit != null) {
+        return plan.daily_ai_limit;
+      }
+    } catch {
+      // Plan lookup failed — use fallback
+    }
+    return settings.claude_daily_limit || 50;
   }
 }

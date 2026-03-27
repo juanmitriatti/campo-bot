@@ -14,6 +14,7 @@ import { UserRepository } from '../domain/users/user.repository.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
+import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
@@ -40,12 +41,14 @@ import { IntentExtractor } from '../ai/intent-extractor.js';
 import { PromptBuilder } from '../ai/prompt-builder.js';
 import { IntentValidator } from '../ai/intent-validator.js';
 import { UserContextService } from '../ai/user-context.service.js';
+import { ConversationHistoryService } from '../ai/conversation-history.service.js';
 import { ConversationalFallbackService } from '../ai/conversational-fallback.service.js';
 import { normalizeTranscript } from '../utils/text-normalizer.js';
+import { isLikelyQuestion } from '../utils/guards.js';
 import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observations.js';
 import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
 import { formatObservationResponse } from '../middleware/response-formatter.js';
-import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult } from '../types/index.js';
+import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, UserId } from '../types/index.js';
 
 // --- Wire up dependencies ---
 
@@ -56,7 +59,7 @@ const userRepository = new UserRepository();
 const financialHandler = new FinancialHandler(financialService);
 const agronomyRepository = new AgronomyRepository();
 const agronomyHandler = new AgronomyHandler(agronomyRepository);
-const systemHandler = new SystemHandler(userRepository);
+const systemHandler = new SystemHandler(userRepository, financialService);
 
 const featureGate = new FeatureGate();
 const domainRouter = new DomainRouter(financialHandler, agronomyHandler, systemHandler, featureGate);
@@ -67,13 +70,15 @@ const entityValidator = new EntityValidator();
 const userContextService = new UserContextService(entityValidator);
 const promptBuilder = new PromptBuilder();
 const intentValidator = new IntentValidator();
-const intentExtractor = new IntentExtractor(promptBuilder, intentValidator, userContextService, userRepository);
+const conversationHistoryService = new ConversationHistoryService();
+const intentExtractor = new IntentExtractor(promptBuilder, intentValidator, userContextService, userRepository, conversationHistoryService);
 const intentClassifier = new IntentClassifier(undefined, undefined, intentExtractor);
 const conversationalFallback = new ConversationalFallbackService(userRepository);
 
 const dedup = new MessageDedup();
 const pendingStore = new PendingTransactionStore();
 const pendingObsStore = new PendingObservationStore();
+const pendingCityStore = new PendingFieldCityStore();
 const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
@@ -92,6 +97,28 @@ const conversationStateRepo = new ConversationStateRepository();
 const conversationObserver = new ConversationObserver();
 const conversationEngine = new ConversationEngine(conversationStateRepo, flowRegistry, conversationObserver);
 const conversationLogger = new ConversationLogger();
+
+// Prerequisite block: requires at least 1 campo, and nudges if 0 lotes
+async function checkPrerequisiteBlock(userId: UserId, phone: string, actionLabel: string): Promise<boolean> {
+  const fields = await financialService.getUserFields(userId);
+  if (fields.length === 0) {
+    await sendMessage(phone, `Para ${actionLabel} primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*`);
+    await sendInteractiveButtons(phone, `Necesitás un campo para ${actionLabel}.`, [
+      { id: 'cmd_agregar_campo', title: 'Crear Campo' },
+    ]);
+    return true;
+  }
+  const allPlots = await financialService.findAllUserPlots(userId);
+  if (allPlots.length === 0) {
+    const example = fields[0].name;
+    await sendMessage(phone, `Para ${actionLabel} necesitás al menos un lote.\n\n📍 Escribí *agregar lote [nombre] en campo ${example}*`);
+    await sendInteractiveButtons(phone, `Necesitás un lote para ${actionLabel}.`, [
+      { id: 'cmd_agregar_lote', title: 'Crear Lote' },
+    ]);
+    return true;
+  }
+  return false;
+}
 
 // Destructive commands that require confirmation (delete_field/delete_plot handled by their own handler)
 const DESTRUCTIVE_COMMANDS = new Set([
@@ -205,6 +232,15 @@ router.post('/', async (req: Request, res: Response) => {
 
           if (callbackId === 'flow_confirm') {
             const result = await conversationEngine.executeConfirm(userId, flowCtx);
+            // Store pending field duplicate data if the flow detected one
+            if (result.response.sideEffects?.setFieldDuplicate) {
+              const dup = result.response.sideEffects.setFieldDuplicate;
+              pendingStore.set(phone, {
+                type: 'expense', data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
+                fieldId: null, fieldName: null, plotId: null, plotName: null,
+                timestamp: Date.now(), _fieldDuplicate: dup,
+              } as any);
+            }
             await sendResponse(phone, result.response);
             conversationLogger.log(userId, phone, '[confirm]', result.response.messages[0] ?? null, 'flow', 'flow_confirm', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
           } else if (callbackId === 'flow_cancel') {
@@ -232,6 +268,13 @@ router.post('/', async (req: Request, res: Response) => {
           } else if (callbackId.startsWith('flow_new_')) {
             // Start a new flow: flow_new_expense → expense_flow
             const flowName = callbackId.replace('flow_new_', '') + '_flow';
+            // Block financial/rainfall/activity flows if no fields
+            if (['expense_flow', 'income_flow', 'rainfall_flow', 'activity_flow'].includes(flowName)) {
+              if (await checkPrerequisiteBlock(userId, phone, 'registrar')) {
+                res.sendStatus(200);
+                return;
+              }
+            }
             const result = await conversationEngine.startFlow(userId, flowName as FlowState);
             conversationObserver.logFlowStarted(userId, flowName, { trigger: 'interactive_button' });
             await sendResponse(phone, result.response);
@@ -262,6 +305,19 @@ router.post('/', async (req: Request, res: Response) => {
               }
               await sendResponse(phone, result.response);
               conversationLogger.log(userId, phone, `[field:${value}]`, result.response.messages[0] ?? null, 'flow', 'flow_field', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+            }
+          } else if (callbackId.startsWith('flow_plot_')) {
+            // Plot selection within flow
+            const value = callbackId.replace('flow_plot_', '').replace(/_/g, ' ');
+            if (flowCtx.state !== 'idle') {
+              const result = await conversationEngine.processFlowMessage(userId, value, flowCtx);
+              if (result.nextContext) {
+                await conversationEngine.setFlowContext(userId, result.nextContext);
+              } else {
+                await conversationEngine.clearFlow(userId);
+              }
+              await sendResponse(phone, result.response);
+              conversationLogger.log(userId, phone, `[plot:${value}]`, result.response.messages[0] ?? null, 'flow', 'flow_plot', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
             }
           } else if (callbackId.startsWith('flow_activity_')) {
             // Activity type selection within flow
@@ -307,8 +363,70 @@ router.post('/', async (req: Request, res: Response) => {
         }
 
         // --- Cancel action (field/plot delete confirmation) ---
-        if (callbackId === 'cancel_action') {
+        if (callbackId === 'cancel_action' || callbackId === 'cancel_pending') {
+          pendingStore.clear(phone);
           await sendMessage(phone, '\u274c Operaci\u00f3n cancelada.');
+          res.sendStatus(200);
+          return;
+        }
+
+        // --- Confirm pending financial transaction (buttons) ---
+        if (callbackId === 'confirm_pending') {
+          const user = await userRepository.getOrCreate(phone);
+          const userId = user.id;
+          const settings = await userRepository.getSettings(userId);
+          const pendingTx = pendingStore.get(phone);
+          if (!pendingTx) {
+            await sendMessage(phone, 'No hay nada pendiente para confirmar.');
+            res.sendStatus(200);
+            return;
+          }
+          pendingStore.clear(phone);
+          const response = await financialHandler.handleConfirm(userId, pendingTx, settings, user);
+          await sendResponse(phone, response);
+          conversationLogger.log(userId, phone, `[confirm_pending]`, response.messages[0] ?? null, 'command', 'confirm', null, null, false, Date.now() - startTime, !!response.interactive).catch(() => {});
+          res.sendStatus(200);
+          return;
+        }
+
+        // --- Field duplicate resolution ---
+        if (callbackId.startsWith('field_dup_')) {
+          const user = await userRepository.getOrCreate(phone);
+          const userId = user.id;
+          const pendingDup = pendingStore.get(phone) as any;
+          const dupData = pendingDup?._fieldDuplicate as { name: string; city: string | null } | undefined;
+
+          if (!dupData) {
+            await sendMessage(phone, 'No hay un campo pendiente. Empezá de nuevo.');
+            res.sendStatus(200);
+            return;
+          }
+
+          pendingStore.clear(phone);
+
+          if (callbackId === 'field_dup_update') {
+            // Update city on existing field
+            if (dupData.city) {
+              await financialService.setFieldCity(userId, dupData.name, dupData.city);
+              await sendMessage(phone, `📍 Campo *${dupData.name}* actualizado. Nueva ubicación: *${dupData.city}*`);
+            } else {
+              await sendMessage(phone, `El campo *${dupData.name}* ya existe y no hay cambios que aplicar.`);
+            }
+          } else if (callbackId === 'field_dup_rename') {
+            // Start field flow to ask for a new name (keep city if provided)
+            const prefill: Record<string, unknown> = {};
+            if (dupData.city) prefill.city = dupData.city;
+            const flowResult = await conversationEngine.startFlow(userId, 'field_flow' as FlowState, prefill);
+            if (flowResult.nextContext) {
+              await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+            }
+            await sendMessage(phone, `Elegí otro nombre para el campo${dupData.city ? ` en ${dupData.city}` : ''}:`);
+            await sendResponse(phone, flowResult.response);
+          } else {
+            // field_dup_cancel
+            await sendMessage(phone, '❌ Operación cancelada.');
+          }
+
           res.sendStatus(200);
           return;
         }
@@ -526,13 +644,21 @@ router.post('/', async (req: Request, res: Response) => {
         }
 
         // Smart interruption: check if the user typed a known command mid-flow
-        // Exception: field_flow name step — treat ALL input as raw name value
-        // (prevents "Campo Norte" from matching field_info pattern)
+        const interruptCmd = intentClassifier.parseCommandOnly(text);
+        // During field_flow name step, suppress ONLY field_info
+        // (prevents "Campo Norte" from matching field_info, but allows "mis campos" → list_fields)
         const isFlowNameStep = flowCtx.state === 'field_flow' && flowCtx.step === 0;
-        const interruptCmd = isFlowNameStep ? null : intentClassifier.parseCommandOnly(text);
-        if (interruptCmd && SAFE_INTERRUPTION_COMMANDS.has(interruptCmd.command)) {
+        const effectiveCmd = (isFlowNameStep && interruptCmd?.command === 'field_info') ? null : interruptCmd;
+        if (effectiveCmd && SAFE_INTERRUPTION_COMMANDS.has(effectiveCmd.command)) {
+          // Greetings/thanks mid-flow → just re-prompt (avoid confusing mixed response)
+          if (effectiveCmd.command === 'greeting' || effectiveCmd.command === 'thanks') {
+            const reprompt = await conversationEngine.getCurrentStepPrompt(flowCtx, userId);
+            if (reprompt) await sendResponse(phone, reprompt);
+            res.sendStatus(200);
+            return;
+          }
           // Read-only command → execute without canceling the flow, then re-prompt
-          const cmdResponse = await domainRouter.routeCommand(interruptCmd, userId, user, settings);
+          const cmdResponse = await domainRouter.routeCommand(effectiveCmd, userId, user, settings);
           if (cmdResponse) {
             await sendResponse(phone, cmdResponse);
           }
@@ -540,15 +666,24 @@ router.post('/', async (req: Request, res: Response) => {
           if (reprompt) {
             await sendResponse(phone, reprompt);
           }
-          conversationLogger.log(userId, phone, text, cmdResponse?.messages[0] ?? null, 'command', interruptCmd.command, flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!(cmdResponse?.interactive)).catch(() => {});
+          conversationLogger.log(userId, phone, text, cmdResponse?.messages[0] ?? null, 'command', effectiveCmd.command, flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!(cmdResponse?.interactive)).catch(() => {});
+          res.sendStatus(200);
+          return;
+        }
+
+        // Question detection: questions mid-flow get a gentle nudge + re-prompt
+        if (isLikelyQuestion(text)) {
+          await sendMessage(phone, 'Estás en medio de un registro. Escribí *cancelar* si querés salir y preguntar.');
+          const reprompt = await conversationEngine.getCurrentStepPrompt(flowCtx, userId);
+          if (reprompt) await sendResponse(phone, reprompt);
           res.sendStatus(200);
           return;
         }
 
         // Intent-first interruption: any non-safe command OR financial intent cancels the flow
-        if (interruptCmd || intentClassifier.detectsFinancialIntent(text)) {
+        if (effectiveCmd || intentClassifier.detectsFinancialIntent(text)) {
           const durationMs = flowCtx.startedAt ? Date.now() - new Date(flowCtx.startedAt).getTime() : undefined;
-          console.log(`[FLOW_INTERRUPT] User ${userId} flow ${flowCtx.state} interrupted by ${interruptCmd?.command ?? 'financial_intent'}`);
+          console.log(`[FLOW_INTERRUPT] User ${userId} flow ${flowCtx.state} interrupted by ${effectiveCmd?.command ?? 'financial_intent'}`);
           conversationObserver.logFlowAbandoned(userId, flowCtx.state, flowCtx.step, 'intent_interrupt', {
             durationMs,
             filledFields: Object.keys(flowCtx.data),
@@ -570,6 +705,27 @@ router.post('/', async (req: Request, res: Response) => {
           return;
         }
       }
+    }
+
+    // --- Check pending field city assignment ---
+    const pendingCity = pendingCityStore.get(phone);
+    if (pendingCity) {
+      if (isCancelIntent(text)) {
+        pendingCityStore.clear(phone);
+        await sendMessage(phone, '👍 Podés asignar la ubicación después.');
+        res.sendStatus(200);
+        return;
+      }
+      let city = text.trim()
+        .replace(/^(?:esta|está|queda|ubicad[oa])\s+(?:en\s+)?/i, '')
+        .replace(/^en\s+/i, '')
+        .trim();
+      city = city.charAt(0).toUpperCase() + city.slice(1);
+      await financialService.setFieldCity(userId, pendingCity.fieldName, city);
+      pendingCityStore.clear(phone);
+      await sendMessage(phone, `📍 Campo *${pendingCity.fieldName}* ubicado en *${city}*`);
+      res.sendStatus(200);
+      return;
     }
 
     // --- Check pending observation (plot disambiguation follow-up) ---
@@ -703,6 +859,10 @@ router.post('/', async (req: Request, res: Response) => {
 
     // --- Handle partial parse → redirect to conversation flow ---
     if (intent.type === 'expense_partial') {
+      if (await checkPrerequisiteBlock(userId, phone, 'registrar un gasto')) {
+        res.sendStatus(200);
+        return;
+      }
       const hasExpenses = await featureGate.hasFeature(userId, 'expenses');
       if (!hasExpenses) {
         await sendMessage(phone, '\ud83d\udd12 El registro de gastos no est\u00e1 disponible en tu plan actual.\n\nEscrib\u00ed *plan* para ver las opciones.');
@@ -722,6 +882,10 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     if (intent.type === 'income_partial') {
+      if (await checkPrerequisiteBlock(userId, phone, 'registrar un ingreso')) {
+        res.sendStatus(200);
+        return;
+      }
       const hasIncomes = await featureGate.hasFeature(userId, 'incomes');
       if (!hasIncomes) {
         await sendMessage(phone, '\ud83d\udd12 El registro de ingresos no est\u00e1 disponible en tu plan actual.\n\nEscrib\u00ed *plan* para ver las opciones.');
@@ -754,6 +918,36 @@ router.post('/', async (req: Request, res: Response) => {
 
     // --- Route commands ---
     if (intent.type === 'command') {
+      // Start flow commands → launch flow directly
+      if (intent.data.command === 'start_expense_flow') {
+        if (await checkPrerequisiteBlock(userId, phone, 'registrar un gasto')) {
+          res.sendStatus(200);
+          return;
+        }
+        const result = await conversationEngine.startFlow(userId, 'expense_flow' as FlowState);
+        if (result.nextContext) await conversationEngine.setFlowContext(userId, result.nextContext);
+        await sendResponse(phone, result.response);
+        res.sendStatus(200);
+        return;
+      }
+      if (intent.data.command === 'start_income_flow') {
+        if (await checkPrerequisiteBlock(userId, phone, 'registrar un ingreso')) {
+          res.sendStatus(200);
+          return;
+        }
+        const hasIncomes = await featureGate.hasFeature(userId, 'incomes');
+        if (!hasIncomes) {
+          await sendMessage(phone, '\ud83d\udd12 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.');
+          res.sendStatus(200);
+          return;
+        }
+        const result = await conversationEngine.startFlow(userId, 'income_flow' as FlowState);
+        if (result.nextContext) await conversationEngine.setFlowContext(userId, result.nextContext);
+        await sendResponse(phone, result.response);
+        res.sendStatus(200);
+        return;
+      }
+
       // Destructive command confirmation
       if (DESTRUCTIVE_COMMANDS.has(intent.data.command)) {
         const actionLabels: Record<string, string> = {
@@ -782,6 +976,9 @@ router.post('/', async (req: Request, res: Response) => {
         return;
       }
 
+      // Attach original text so handlers can check if fields were explicitly mentioned
+      intent.data.originalText = text;
+
       const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
       if (response) {
         // Safety: ensure we never send an empty response (silent failure)
@@ -809,6 +1006,22 @@ router.post('/', async (req: Request, res: Response) => {
           const obs = response.sideEffects.setPendingObservation;
           pendingObsStore.set(phone, { text: obs.text, category: obs.category, timestamp: Date.now() });
           console.log(`[PENDING_OBS] Stored pending observation for user ${userId}: "${obs.text}"`);
+        }
+        // Store pending field city for next-message assignment
+        if (response.sideEffects?.setPendingFieldCity) {
+          pendingCityStore.set(phone, {
+            fieldName: response.sideEffects.setPendingFieldCity.fieldName,
+            timestamp: Date.now(),
+          });
+        }
+        // Store pending field duplicate data for resolution buttons
+        if (response.sideEffects?.setFieldDuplicate) {
+          const dup = response.sideEffects.setFieldDuplicate;
+          pendingStore.set(phone, {
+            type: 'expense', data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
+            fieldId: null, fieldName: null, plotId: null, plotName: null,
+            timestamp: Date.now(), _fieldDuplicate: dup,
+          } as any);
         }
         // Learn from successful command (fire-and-forget)
         learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
@@ -841,13 +1054,27 @@ router.post('/', async (req: Request, res: Response) => {
         ? { ...settings, confirm_before_save: true }
         : settings;
 
-      const claudeField = aiUsed ? (intent.data as ParsedExpense & { field?: string }).field : undefined;
-      const response = await financialHandler.handleExpense(userId, intent.data, text, effectiveSettings, user, claudeField);
+      const expData = intent.data as ParsedExpense & { field?: string; plot?: string };
+      const response = await financialHandler.handleExpense(userId, intent.data, text, effectiveSettings, user, expData.field, expData.plot);
+      if (response.sideEffects?.startFlow) {
+        const { state, data } = response.sideEffects.startFlow;
+        const flowResult = await conversationEngine.startFlow(userId, state, data);
+        if (flowResult.nextContext) {
+          await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+        }
+        conversationObserver.logFlowStarted(userId, state, { trigger: 'expense_plot_selection', prefillFields: data ? Object.keys(data) : [] });
+        await sendResponse(phone, response);
+        await sendResponse(phone, flowResult.response);
+        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'flow', 'expense_flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive).catch(() => {});
+        res.sendStatus(200);
+        return;
+      }
       if (response.sideEffects?.setPending) {
         pendingStore.set(phone, response.sideEffects.setPending);
       }
       // Learn from successful expense (fire-and-forget)
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
+      updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
       await sendResponse(phone, response);
       conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive).catch(() => {});
       res.sendStatus(200);
@@ -868,13 +1095,27 @@ router.post('/', async (req: Request, res: Response) => {
         ? { ...settings, confirm_before_save: true }
         : settings;
 
-      const claudeField = aiUsed ? (intent.data as ParsedIncome & { field?: string }).field : undefined;
-      const response = await financialHandler.handleIncome(userId, intent.data, text, effectiveSettings, claudeField);
+      const incData = intent.data as ParsedIncome & { field?: string; plot?: string };
+      const response = await financialHandler.handleIncome(userId, intent.data, text, effectiveSettings, incData.field, incData.plot);
+      if (response.sideEffects?.startFlow) {
+        const { state, data } = response.sideEffects.startFlow;
+        const flowResult = await conversationEngine.startFlow(userId, state, data);
+        if (flowResult.nextContext) {
+          await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+        }
+        conversationObserver.logFlowStarted(userId, state, { trigger: 'income_plot_selection', prefillFields: data ? Object.keys(data) : [] });
+        await sendResponse(phone, response);
+        await sendResponse(phone, flowResult.response);
+        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'flow', 'income_flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive).catch(() => {});
+        res.sendStatus(200);
+        return;
+      }
       if (response.sideEffects?.setPending) {
         pendingStore.set(phone, response.sideEffects.setPending);
       }
       // Learn from successful income (fire-and-forget)
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
+      updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
       await sendResponse(phone, response);
       conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive).catch(() => {});
       res.sendStatus(200);
@@ -891,8 +1132,11 @@ router.post('/', async (req: Request, res: Response) => {
         await sendMessage(phone, fallbackResult.response);
         conversationLogger.log(userId, phone, text, fallbackResult.response, 'conversational', null, null, null, true, Date.now() - startTime).catch(() => {});
       } else {
-        // Rate limited or disabled — show menu
+        // Rate limited or disabled — show menu with upgrade hint if limit hit
         await sendMessage(phone, fallbackResult.response);
+        if (fallbackResult.rateLimited) {
+          await sendMessage(phone, 'Si necesitás más mensajes con IA, escribí *más mensajes* para solicitar una ampliación.');
+        }
         const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
         await sendResponse(phone, menuResponse);
         conversationObserver.logMenuOpened(userId, { trigger: 'unknown_fallback' });

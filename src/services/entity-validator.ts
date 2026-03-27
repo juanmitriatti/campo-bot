@@ -80,6 +80,20 @@ export class EntityValidator {
     return result.rows.map((r: { name: string }) => r.name);
   }
 
+  async getUserPlotsWithFields(userId: UserId): Promise<{ plotName: string; fieldName: string }[]> {
+    const result = await pool.query(
+      `SELECT p.name AS plot_name, f.name AS field_name FROM plots p
+       JOIN fields f ON p.field_id = f.id
+       WHERE f.user_id = $1 AND p.deleted_at IS NULL AND f.deleted_at IS NULL
+       ORDER BY f.name, p.name`,
+      [userId]
+    );
+    return result.rows.map((r: { plot_name: string; field_name: string }) => ({
+      plotName: r.plot_name,
+      fieldName: r.field_name,
+    }));
+  }
+
   async validatePlot(userId: UserId, plotName: string): Promise<ValidationResult> {
     const result = await pool.query(
       `SELECT p.name FROM plots p

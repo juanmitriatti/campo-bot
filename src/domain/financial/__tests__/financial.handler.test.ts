@@ -24,12 +24,17 @@ function mockService(overrides: Record<string, any> = {}) {
     getFieldReport: vi.fn().mockResolvedValue([]),
     getMonthlyExpenses: vi.fn().mockResolvedValue([]),
     getMonthlyIncomeForMonth: vi.fn().mockResolvedValue([]),
-    getUserFields: vi.fn().mockResolvedValue([]),
+    getUserFields: vi.fn().mockResolvedValue([{ name: 'Campo Test', city: null }]),
     getOrCreateField: vi.fn().mockResolvedValue({ id: 1, name: 'test' }),
     setFieldCity: vi.fn(),
     deleteField: vi.fn().mockResolvedValue(false),
     renameField: vi.fn().mockResolvedValue(false),
     getFieldInfo: vi.fn().mockResolvedValue(null),
+    getPlotsByField: vi.fn().mockResolvedValue([]),
+    findAllUserPlots: vi.fn().mockResolvedValue([]),
+    getMonthlyReportByPlot: vi.fn().mockResolvedValue([]),
+    findPlotByNameAcrossFields: vi.fn().mockResolvedValue([]),
+    getRecentFinancialContext: vi.fn().mockResolvedValue(null),
     ...overrides,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
@@ -70,13 +75,13 @@ describe('FinancialHandler.handleExpense', () => {
     const response = await handler.handleExpense(userId, sampleExpense, 'pagué 50mil en gasoil', defaultSettings, defaultUser);
 
     expect(response.messages).toHaveLength(1);
-    expect(response.messages[0]).toContain('Gasto registrado');
+    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
     expect(response.messages[0]).toContain('Combustible');
     expect(response.sideEffects?.setPending).toBeUndefined();
     expect(service.saveExpense).toHaveBeenCalledOnce();
   });
 
-  it('returns setPending when confirm_before_save is true', async () => {
+  it('returns setPending with interactive buttons when confirm_before_save is true', async () => {
     const service = mockService();
     const handler = new FinancialHandler(service);
 
@@ -88,7 +93,13 @@ describe('FinancialHandler.handleExpense', () => {
 
     expect(response.sideEffects?.setPending).toBeDefined();
     expect(response.sideEffects!.setPending!.type).toBe('expense');
-    expect(response.messages[0]).toContain('Confirmo');
+    expect(response.messages).toEqual([]);
+    expect(response.interactive).toBeDefined();
+    expect(response.interactive!.body).toContain('Confirmo');
+    expect(response.interactive!.buttons).toEqual([
+      { id: 'confirm_pending', title: 'Confirmar' },
+      { id: 'cancel_pending', title: 'Cancelar' },
+    ]);
     expect(service.saveExpense).not.toHaveBeenCalled();
   });
 
@@ -105,7 +116,7 @@ describe('FinancialHandler.handleExpense', () => {
     );
 
     expect(response.messages).toHaveLength(2);
-    expect(response.messages[0]).toContain('Gasto registrado');
+    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
     expect(response.messages[1]).toContain('90%');
   });
 
@@ -130,7 +141,7 @@ describe('FinancialHandler.handleIncome', () => {
 
     const response = await handler.handleIncome(userId, sampleIncome, 'vendí soja', defaultSettings);
 
-    expect(response.messages[0]).toContain('Ingreso registrado');
+    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
     expect(response.messages[0]).toContain('Soja');
     expect(service.saveIncome).toHaveBeenCalledOnce();
   });
@@ -158,7 +169,7 @@ describe('FinancialHandler.handleConfirm', () => {
       type: 'expense', data: sampleExpense, fieldId: null, fieldName: null, timestamp: Date.now(),
     }, defaultSettings, defaultUser);
 
-    expect(response.messages[0]).toContain('Gasto registrado');
+    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
     expect(service.saveExpense).toHaveBeenCalledOnce();
   });
 
@@ -170,7 +181,7 @@ describe('FinancialHandler.handleConfirm', () => {
       type: 'income', data: sampleIncome, fieldId: null, fieldName: null, timestamp: Date.now(),
     }, defaultSettings, defaultUser);
 
-    expect(response.messages[0]).toContain('Ingreso registrado');
+    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
     expect(service.saveIncome).toHaveBeenCalledOnce();
   });
 });
@@ -230,7 +241,7 @@ describe('FinancialHandler.handleCommand', () => {
   });
 
   it('list_fields with no fields', async () => {
-    const handler = new FinancialHandler(mockService());
+    const handler = new FinancialHandler(mockService({ getUserFields: vi.fn().mockResolvedValue([]) }));
     const response = await handler.handleCommand({ command: 'list_fields' }, userId, defaultUser, defaultSettings);
     expect(response.messages[0]).toContain('No ten');
   });
@@ -239,5 +250,49 @@ describe('FinancialHandler.handleCommand', () => {
     const handler = new FinancialHandler(mockService());
     const response = await handler.handleCommand({ command: 'nonexistent_command' }, userId, defaultUser, defaultSettings);
     expect(response.messages).toEqual([]);
+  });
+});
+
+describe('FinancialHandler — conversational memory (P2)', () => {
+  it('uses recent financial context when no field/plot resolved', async () => {
+    const service = mockService({
+      getRecentFinancialContext: vi.fn().mockResolvedValue({
+        fieldId: 10, fieldName: 'Norte', plotId: 20, plotName: '1A',
+      }),
+    });
+    const handler = new FinancialHandler(service);
+
+    const response = await handler.handleExpense(userId, sampleExpense, 'y 30mil en semillas', defaultSettings, defaultUser);
+
+    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
+    expect(service.saveExpense).toHaveBeenCalledWith(userId, sampleExpense, 10, 20);
+  });
+
+  it('does NOT use context when field already resolved', async () => {
+    const service = mockService({
+      resolveField: vi.fn().mockResolvedValue({ fieldId: 5, fieldName: 'Sur', plotId: 15, plotName: '2B' }),
+      getRecentFinancialContext: vi.fn().mockResolvedValue({
+        fieldId: 10, fieldName: 'Norte', plotId: 20, plotName: '1A',
+      }),
+    });
+    const handler = new FinancialHandler(service);
+
+    const response = await handler.handleExpense(userId, sampleExpense, 'gasté 50mil en gasoil en lote 2B', defaultSettings, defaultUser);
+
+    expect(service.saveExpense).toHaveBeenCalledWith(userId, sampleExpense, 5, 15);
+    expect(service.getRecentFinancialContext).not.toHaveBeenCalled();
+  });
+
+  it('uses recent context for income too', async () => {
+    const service = mockService({
+      getRecentFinancialContext: vi.fn().mockResolvedValue({
+        fieldId: 10, fieldName: 'Norte', plotId: 20, plotName: '1A',
+      }),
+    });
+    const handler = new FinancialHandler(service);
+
+    const response = await handler.handleIncome(userId, sampleIncome, 'y vendí 10tn de trigo', defaultSettings);
+
+    expect(service.saveIncome).toHaveBeenCalledWith(userId, sampleIncome, 10, 20);
   });
 });

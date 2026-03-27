@@ -76,13 +76,36 @@ export const fieldFlow: FlowDefinition = {
     const name = data.name as string;
     const city = data.city as string | null;
 
+    // Check for duplicate before creating
+    const existing = await financialService.getFieldByName(userId, name);
+    if (existing) {
+      const cityChanged = city && city.toLowerCase() !== (existing.city || '').toLowerCase();
+      let msg = `⚠️ Ya existe un campo llamado *${existing.name}*`;
+      if (existing.city) msg += ` (ubicación: ${existing.city})`;
+      msg += '.';
+      if (cityChanged) msg += `\nLa nueva ubicación sería *${city}*.`;
+      msg += '\n\n¿Qué querés hacer?';
+
+      const buttons: { id: string; title: string }[] = [];
+      if (cityChanged) buttons.push({ id: 'field_dup_update', title: 'Actualizar ubic.' });
+      buttons.push({ id: 'field_dup_rename', title: 'Otro nombre' });
+      buttons.push({ id: 'field_dup_cancel', title: 'Cancelar' });
+
+      return {
+        messages: [msg],
+        interactive: { type: 'buttons' as const, body: '¿Qué querés hacer?', buttons },
+        sideEffects: { setFieldDuplicate: { name, city } },
+      };
+    }
+
+    // No duplicate — create
     await financialService.getOrCreateField(userId, name);
     if (city) {
       await financialService.setFieldCity(userId, name, city);
     }
 
-    let msg = `\ud83d\udccd Campo *${name}* creado correctamente.`;
-    if (city) msg += `\nUbicaci\u00f3n: ${city}`;
+    let msg = `📍 Campo *${name}* creado correctamente.`;
+    if (city) msg += `\nUbicación: ${city}`;
 
     const suggestions = getSuggestions('field_created');
     return {

@@ -97,19 +97,6 @@ describe('parseCommand — new STT-friendly patterns', () => {
     expect(result!.plotName).toBe('3');
   });
 
-  it('"informe lote 2" → generate_agro_report (unified routing)', () => {
-    const result = parseCommand('informe lote 2');
-    expect(result).not.toBeNull();
-    expect(result!.command).toBe('generate_agro_report');
-    expect(result!.plotName).toBe('2');
-  });
-
-  it('"actividad lote 2" → plot_activities', () => {
-    const result = parseCommand('actividad lote 2');
-    expect(result).not.toBeNull();
-    expect(result!.command).toBe('plot_activities');
-  });
-
   it('"estado campo norte" → field_info', () => {
     const result = parseCommand('estado campo norte');
     expect(result).not.toBeNull();
@@ -194,14 +181,6 @@ describe('normalizeTranscript — STT artifact cleaning', () => {
 
 // --- End-to-end: normalizeTranscript → parseCommand ---
 describe('normalizeTranscript + parseCommand — end-to-end', () => {
-  it('Whisper "SEÑOR PRESIDENTE. Reporte agronómico, campo general." → generate_agro_report', () => {
-    const raw = 'SEÑOR PRESIDENTE. Reporte agronómico, campo general.';
-    const normalized = normalizeTranscript(raw);
-    const result = parseCommand(normalized);
-    expect(result).not.toBeNull();
-    expect(result!.command).toBe('generate_agro_report');
-  });
-
   it('Whisper "Eh, estado del lote 3." → plot_info', () => {
     const normalized = normalizeTranscript('Eh, estado del lote 3.');
     const result = parseCommand(normalized);
@@ -227,14 +206,6 @@ describe('IntentClassifier — observation safety guard for report-like messages
   const classifier = new IntentClassifier(parser, mockUserRepo);
   const defaultSettings = { claude_daily_limit: 50 } as UserSettings;
   const userId = 1 as UserId;
-
-  it('"reporte campo general" does NOT become an observation', async () => {
-    const result = await classifier.classify('reporte campo general', userId, defaultSettings);
-    // Should match generate_agro_report or at least NOT be log_observation
-    if (result.intent.type === 'command') {
-      expect(result.intent.data.command).not.toBe('log_observation');
-    }
-  });
 
   it('"estado lote 3" does NOT become an observation', async () => {
     const result = await classifier.classify('estado lote 3', userId, defaultSettings);

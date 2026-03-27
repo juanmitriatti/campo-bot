@@ -104,12 +104,12 @@ export default function Chat() {
     }
   }, [audioBlob, audioUrl, discardRecording, addBotMessages]);
 
-  const handleInteractiveClick = useCallback(async (callbackId: string) => {
-    // Show which button was clicked
+  const handleInteractiveClick = useCallback(async (callbackId: string, label: string) => {
+    // Show button label (not internal callback ID)
     setMessages(prev => [...prev, {
       id: nextId(),
       role: 'user',
-      text: `[${callbackId}]`,
+      text: label,
       timestamp: new Date(),
     }]);
 

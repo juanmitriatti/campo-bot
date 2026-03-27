@@ -2,12 +2,10 @@ import {
   parseCommand,
   parseMensaje,
   parseMensajeIngreso,
-  detectarCampoLote,
   detectarCampo,
   detectarLote,
   normalizarMonto,
   extractAmount as _extractAmount,
-  hasFinancialIntent as _hasFinancialIntent,
   detectarCategoria,
   detectarCategoriaIngreso,
   parseMilimetros,
@@ -46,10 +44,6 @@ export class ParserService {
     return parseMensajeIngreso(text) as ParsedIncome | null;
   }
 
-  detectField(text: string): string | null {
-    return detectarCampoLote(text);
-  }
-
   detectCampo(text: string): string | null {
     return detectarCampo(text);
   }
@@ -84,9 +78,5 @@ export class ParserService {
 
   extractAmount(text: string): number | null {
     return _extractAmount(text);
-  }
-
-  hasFinancialIntent(text: string): boolean {
-    return _hasFinancialIntent(text);
   }
 }

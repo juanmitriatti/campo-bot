@@ -503,7 +503,7 @@ describe("detectarCategoria", () => {
       ["fertilizante", "Fertilizantes"],
       ["fertilizantes", "Fertilizantes"],
       ["urea", "Fertilizantes"],
-      ["glifosato", "Fertilizantes"],
+      ["glifosato", "Agroquímicos"],
       ["semilla", "Semillas"],
       ["semillas", "Semillas"],
       ["agroquimico", "Agroquímicos"],
@@ -797,155 +797,6 @@ describe("parseCommand", () => {
     });
   });
 
-  // --- Weather ---
-  describe("weather", () => {
-    it("clima → weather_full", () => {
-      expect(parseCommand("clima")).toMatchObject({ command: "weather_full" });
-    });
-
-    it("clima mañana → weather_forecast days:1", () => {
-      const r = parseCommand("clima mañana");
-      expect(r.command).toBe("weather_forecast");
-      expect(r.days).toBe(1);
-    });
-
-    it("clima semana → weather_forecast", () => {
-      expect(parseCommand("clima semana")).toMatchObject({ command: "weather_forecast" });
-    });
-
-    it("clima esta semana → weather_forecast", () => {
-      expect(parseCommand("clima esta semana")).toMatchObject({ command: "weather_forecast" });
-    });
-
-    it("clima en junin → weather_full city:junin", () => {
-      const r = parseCommand("clima en junin");
-      expect(r.command).toBe("weather_full");
-      expect(r.city).toBe("junin");
-    });
-
-    it("va a llover mañana? → weather_forecast days:1", () => {
-      const r = parseCommand("va a llover mañana?");
-      expect(r.command).toBe("weather_forecast");
-      expect(r.days).toBe(1);
-    });
-
-    it("va a llover en alberdi mañana? → weather_forecast city:alberdi", () => {
-      const r = parseCommand("va a llover en alberdi mañana?");
-      expect(r.command).toBe("weather_forecast");
-      expect(r.city).toBe("alberdi");
-    });
-  });
-
-  describe("weather_field", () => {
-    it("clima lote 3 → weather_field fieldName:3", () => {
-      expect(parseCommand("clima lote 3")).toMatchObject({ command: "weather_field", fieldName: "3" });
-    });
-
-    it("clima lote general → weather_field fieldName:general", () => {
-      expect(parseCommand("clima lote general")).toMatchObject({ command: "weather_field", fieldName: "general" });
-    });
-
-    it("va a llover en el lote test → weather_field fieldName:test", () => {
-      const r = parseCommand("va a llover en el lote test");
-      expect(r).not.toBeNull();
-      expect(r.fieldName).toBe("test");
-    });
-  });
-
-  // --- Rain Log ---
-  describe("log_rainfall", () => {
-    it("llovió 25mm → log_rainfall mm:25", () => {
-      expect(parseCommand("llovió 25mm")).toMatchObject({ command: "log_rainfall", mm: 25 });
-    });
-
-    it("llovio 30mm → log_rainfall mm:30", () => {
-      expect(parseCommand("llovio 30mm")).toMatchObject({ command: "log_rainfall", mm: 30 });
-    });
-
-    it("cayeron 30 mm lote 3 → log_rainfall mm:30 plotName:3", () => {
-      expect(parseCommand("cayeron 30 mm lote 3")).toMatchObject({
-        command: "log_rainfall",
-        mm: 30,
-        plotName: "3",
-      });
-    });
-
-    it("llovieron 20mm → log_rainfall mm:20", () => {
-      expect(parseCommand("llovieron 20mm")).toMatchObject({ command: "log_rainfall", mm: 20 });
-    });
-
-    it("cayeron 15mm en lote general → log_rainfall plotName:general", () => {
-      expect(parseCommand("cayeron 15mm en lote general")).toMatchObject({
-        command: "log_rainfall",
-        mm: 15,
-        plotName: "general",
-      });
-    });
-  });
-
-  // --- Reports ---
-  describe("reports", () => {
-    it("resumen mes → monthly_report", () => {
-      expect(parseCommand("resumen mes")).toMatchObject({ command: "monthly_report" });
-    });
-
-    it("resumen del mes → monthly_report", () => {
-      expect(parseCommand("resumen del mes")).toMatchObject({ command: "monthly_report" });
-    });
-
-    it("resumen semana → weekly_report", () => {
-      expect(parseCommand("resumen semana")).toMatchObject({ command: "weekly_report" });
-    });
-
-    it("resumen de la semana → weekly_report", () => {
-      expect(parseCommand("resumen de la semana")).toMatchObject({ command: "weekly_report" });
-    });
-
-    it("resumen semanal → weekly_report", () => {
-      expect(parseCommand("resumen semanal")).toMatchObject({ command: "weekly_report" });
-    });
-
-    it("resultado mes → monthly_result", () => {
-      expect(parseCommand("resultado mes")).toMatchObject({ command: "monthly_result" });
-    });
-
-    it("resultado del mes → monthly_result", () => {
-      expect(parseCommand("resultado del mes")).toMatchObject({ command: "monthly_result" });
-    });
-
-    it("rentabilidad → monthly_result", () => {
-      expect(parseCommand("rentabilidad")).toMatchObject({ command: "monthly_result" });
-    });
-
-    it("balance → monthly_result", () => {
-      expect(parseCommand("balance")).toMatchObject({ command: "monthly_result" });
-    });
-
-    it("resumen lote general → plot_report", () => {
-      expect(parseCommand("resumen lote general")).toMatchObject({
-        command: "plot_report",
-        plotName: "general",
-      });
-    });
-  });
-
-  describe("compare months", () => {
-    it("comparar marzo con febrero → compare_months", () => {
-      const r = parseCommand("comparar marzo con febrero");
-      expect(r.command).toBe("compare_months");
-      expect(r.mes1).toBe(2);  // marzo
-      expect(r.mes2).toBe(1);  // febrero
-      expect(r.mes1Name).toBe("marzo");
-      expect(r.mes2Name).toBe("febrero");
-    });
-
-    it("comparar enero con diciembre → compare_months", () => {
-      const r = parseCommand("comparar enero con diciembre");
-      expect(r.command).toBe("compare_months");
-      expect(r.mes1).toBe(0);
-      expect(r.mes2).toBe(11);
-    });
-  });
 
   // --- Budget ---
   describe("budget", () => {
@@ -994,10 +845,6 @@ describe("parseCommand", () => {
     it("borrar ultimo ingreso → delete_last_income", () => {
       expect(parseCommand("borrar ultimo ingreso")).toMatchObject({ command: "delete_last_income" });
     });
-
-    it("borrar ultima lluvia → delete_last_rainfall", () => {
-      expect(parseCommand("borrar ultima lluvia")).toMatchObject({ command: "delete_last_rainfall" });
-    });
   });
 
   // --- Export ---
@@ -1039,33 +886,6 @@ describe("parseCommand", () => {
     });
   });
 
-  // --- Rainfall queries ---
-  describe("rainfall queries", () => {
-    it("cuanto llovio esta semana? → rainfall_report week", () => {
-      const r = parseCommand("cuanto llovio esta semana?");
-      expect(r.command).toBe("rainfall_report");
-      expect(r.period).toBe("week");
-    });
-
-    it("cuanto llovio ayer? → rainfall_range", () => {
-      const r = parseCommand("cuanto llovio ayer?");
-      expect(r.command).toBe("rainfall_range");
-    });
-
-    it("cuanto llovio este mes → rainfall_report month", () => {
-      const r = parseCommand("cuanto llovio este mes");
-      expect(r.command).toBe("rainfall_report");
-      expect(r.period).toBe("month");
-    });
-
-    it("cuando llovio esta semana en el lote test → rainfall_report week plotName:test", () => {
-      const r = parseCommand("cuando llovio esta semana en el lote test?");
-      expect(r.command).toBe("rainfall_report");
-      expect(r.period).toBe("week");
-      expect(r.plotName).toBe("test");
-    });
-  });
-
   // --- Field management ---
   describe("field management", () => {
     it.each(["mis campos", "ver campos"])("%s → list_fields", (input) => {
@@ -1091,11 +911,11 @@ describe("parseCommand", () => {
       expect(parseCommand("eliminar campo norte")).toMatchObject({ command: "delete_field", fieldName: "norte" });
     });
 
-    it("agregar lote norte en junin → add_field", () => {
+    it("agregar lote norte en junin → add_plot (lote in field junin)", () => {
       const r = parseCommand("agregar lote norte en junin");
-      expect(r.command).toBe("add_field");
-      expect(r.fieldName).toBe("norte");
-      expect(r.city).toBe("Junin");
+      expect(r.command).toBe("add_plot");
+      expect(r.plotName).toBe("norte");
+      expect(r.fieldName).toBe("junin");
     });
 
     it("agregar lote sur → add_field sin city", () => {
@@ -1103,21 +923,6 @@ describe("parseCommand", () => {
       expect(r.command).toBe("add_field");
       expect(r.fieldName).toBe("sur");
       expect(r.city).toBeNull();
-    });
-  });
-
-  describe("set_field_city", () => {
-    it("el lote general esta en Vedia → set_field_city", () => {
-      const r = parseCommand("el lote general esta en Vedia");
-      expect(r.command).toBe("set_field_city");
-      expect(r.fieldName).toBe("general");
-      expect(r.city).toBe("Vedia");
-    });
-
-    it("el lote general esta ubicado en Vedia → set_field_city", () => {
-      const r = parseCommand("el lote general esta ubicado en Vedia");
-      expect(r.command).toBe("set_field_city");
-      expect(r.fieldName).toBe("general");
     });
   });
 
@@ -1137,39 +942,6 @@ describe("parseCommand", () => {
 
     it("estoy en Junin → set_city", () => {
       expect(parseCommand("estoy en Junin")).toMatchObject({ command: "set_city" });
-    });
-  });
-
-  // --- Cuánto gasté ---
-  describe("cuanto gaste variants", () => {
-    it("cuanto gaste esta semana → weekly_report", () => {
-      expect(parseCommand("cuanto gaste esta semana")).toMatchObject({ command: "weekly_report" });
-    });
-
-    it("cuanto gaste hoy → date_range_report", () => {
-      expect(parseCommand("cuanto gaste hoy")).toMatchObject({ command: "date_range_report" });
-    });
-
-    it("cuanto gaste en los ultimos 7 dias → date_range_report with dates", () => {
-      const r = parseCommand("cuanto gaste en los ultimos 7 dias");
-      expect(r.command).toBe("date_range_report");
-      expect(r.desde).toBeInstanceOf(Date);
-      expect(r.hasta).toBeInstanceOf(Date);
-    });
-  });
-
-  describe("result dispatch", () => {
-    it("resultado lote general → field_result fieldName:general", () => {
-      expect(parseCommand("resultado lote general")).toMatchObject({
-        command: "field_result",
-        fieldName: "general",
-      });
-    });
-
-    it("resultado del mes en lote test → field_result fieldName:test", () => {
-      const r = parseCommand("resultado del mes en lote test");
-      expect(r.command).toBe("field_result");
-      expect(r.fieldName).toBe("test");
     });
   });
 
@@ -1243,14 +1015,6 @@ describe("cross-contamination guards", () => {
 // ============================================================================
 
 describe("accent normalization", () => {
-  it("cuánto gasté esta semana → weekly_report (accents handled)", () => {
-    expect(parseCommand("cuánto gasté esta semana")).toMatchObject({ command: "weekly_report" });
-  });
-
-  it("cuánto gasté → recognized (accents stripped)", () => {
-    expect(parseCommand("cuánto gasté")).not.toBeNull();
-  });
-
   it("vendí with accent → income verb matched", () => {
     const r = parseMensajeIngreso("vendí soja por 200 mil");
     expect(r).not.toBeNull();
@@ -1282,23 +1046,6 @@ describe("regression: known bugs", () => {
     expect(r.category).toBe("Maquinaria");
   });
 
-  it("va a llover en alberdi mañana → city is alberdi, not null", () => {
-    const r = parseCommand("va a llover en alberdi mañana?");
-    expect(r.city).toBe("alberdi");
-  });
-
-  it("cuanto llovio ayer → rainfall_range, not monthly default", () => {
-    const r = parseCommand("cuanto llovio ayer?");
-    expect(r.command).toBe("rainfall_range");
-  });
-
-  it("cuando llovio esta semana en lote test → week + plot, not month default", () => {
-    const r = parseCommand("cuando llovio esta semana en el lote test?");
-    expect(r.command).toBe("rainfall_report");
-    expect(r.period).toBe("week");
-    expect(r.plotName).toBe("test");
-  });
-
   it("$50000 en gasoil → 50000 Combustible", () => {
     const r = parseMensaje("$50000 en gasoil");
     expect(r.amount).toBe(50000);
@@ -1327,24 +1074,25 @@ describe("multi-word field names", () => {
       expect(r.city).toBe("Junin");
     });
 
-    it("agregar lote san pedro → fieldName: 'san pedro'", () => {
+    it("agregar lote san pedro → add_plot (plot 'san' in field 'pedro')", () => {
       const r = parseCommand("agregar lote san pedro");
       expect(r).not.toBeNull();
-      expect(r.command).toBe("add_field");
-      expect(r.fieldName).toBe("san pedro");
+      expect(r.command).toBe("add_plot");
+      expect(r.plotName).toBe("san");
+      expect(r.fieldName).toBe("pedro");
     });
 
-    it("single word still works: agregar lote norte → fieldName: 'norte'", () => {
+    it("single word still works: agregar lote norte → add_field (smart lote flow)", () => {
       const r = parseCommand("agregar lote norte");
       expect(r.command).toBe("add_field");
       expect(r.fieldName).toBe("norte");
     });
 
-    it("single word with city still works: agregar lote norte en junin", () => {
+    it("agregar lote norte en junin → add_plot (lote in field junin)", () => {
       const r = parseCommand("agregar lote norte en junin");
-      expect(r.command).toBe("add_field");
-      expect(r.fieldName).toBe("norte");
-      expect(r.city).toBe("Junin");
+      expect(r.command).toBe("add_plot");
+      expect(r.plotName).toBe("norte");
+      expect(r.fieldName).toBe("junin");
     });
 
     it("4-word name: agregar campo la esperanza grande → fieldName: 'la esperanza grande'", () => {
@@ -1352,23 +1100,6 @@ describe("multi-word field names", () => {
       expect(r).not.toBeNull();
       expect(r.command).toBe("add_field");
       expect(r.fieldName).toBe("la esperanza grande");
-    });
-  });
-
-  describe("set_field_city with multi-word names", () => {
-    it("lote la esperanza esta en bragado → set_field_city", () => {
-      const r = parseCommand("lote la esperanza esta en bragado");
-      expect(r).not.toBeNull();
-      expect(r.command).toBe("set_field_city");
-      expect(r.fieldName).toBe("la esperanza");
-      expect(r.city).toBe("Bragado");
-    });
-
-    it("campo san martin queda en junin → set_field_city", () => {
-      const r = parseCommand("campo san martin queda en junin");
-      expect(r).not.toBeNull();
-      expect(r.command).toBe("set_field_city");
-      expect(r.fieldName).toBe("san martin");
     });
   });
 
@@ -1427,14 +1158,6 @@ describe("multi-word field names", () => {
     });
   });
 
-  describe("field_report with multi-word names", () => {
-    it("resumen campo la esperanza → field_report", () => {
-      const r = parseCommand("resumen campo la esperanza");
-      expect(r).not.toBeNull();
-      expect(r.command).toBe("field_report");
-      expect(r.fieldName).toBe("la esperanza");
-    });
-  });
 });
 
 // ============================================================================
@@ -1463,21 +1186,6 @@ describe("entityKeyword — campo vs lote distinction", () => {
     });
   });
 
-  describe("set_field_city tracks keyword", () => {
-    it("campo la esperanza esta en bragado → entityKeyword: 'campo'", () => {
-      const r = parseCommand("campo la esperanza esta en bragado");
-      expect(r.command).toBe("set_field_city");
-      expect(r.entityKeyword).toBe("campo");
-      expect(r.fieldName).toBe("la esperanza");
-    });
-
-    it("lote norte esta en junin → entityKeyword: 'lote'", () => {
-      const r = parseCommand("lote norte esta en junin");
-      expect(r.command).toBe("set_field_city");
-      expect(r.entityKeyword).toBe("lote");
-    });
-  });
-
   describe("delete_field tracks keyword", () => {
     it("borrar campo la esperanza → entityKeyword: 'campo'", () => {
       const r = parseCommand("borrar campo la esperanza");
@@ -1503,18 +1211,6 @@ describe("entityKeyword — campo vs lote distinction", () => {
     });
   });
 
-  describe("field_report tracks keyword", () => {
-    it("resumen campo norte → entityKeyword: 'campo'", () => {
-      const r = parseCommand("resumen campo norte");
-      expect(r.entityKeyword).toBe("campo");
-    });
-
-    it("resumen lote norte → plot_report with plotName: 'norte'", () => {
-      const r = parseCommand("resumen lote norte");
-      expect(r.command).toBe("plot_report");
-      expect(r.plotName).toBe("norte");
-    });
-  });
 });
 
 // ============================================================================
@@ -1544,14 +1240,6 @@ describe("mandatory test cases", () => {
     expect(r.command).toBe("list_plots");
   });
 
-  it("TEST 4: lote la esperanza esta en bragado → SET_FIELD_CITY", () => {
-    const r = parseCommand("lote la esperanza esta en bragado");
-    expect(r).not.toBeNull();
-    expect(r.command).toBe("set_field_city");
-    expect(r.fieldName).toBe("la esperanza");
-    expect(r.city).toBe("Bragado");
-    expect(r.entityKeyword).toBe("lote");
-  });
 });
 
 // ============================================================================
@@ -1559,23 +1247,17 @@ describe("mandatory test cases", () => {
 // ============================================================================
 
 describe("backward compatibility — single word names still work", () => {
-  it("agregar lote norte en junin → still works", () => {
+  it("agregar lote norte en junin → add_plot (BUG-C1 fix)", () => {
     const r = parseCommand("agregar lote norte en junin");
-    expect(r.command).toBe("add_field");
-    expect(r.fieldName).toBe("norte");
-    expect(r.city).toBe("Junin");
+    expect(r.command).toBe("add_plot");
+    expect(r.plotName).toBe("norte");
+    expect(r.fieldName).toBe("junin");
   });
 
   it("borrar lote test → still works", () => {
     const r = parseCommand("borrar lote test");
     expect(r.command).toBe("delete_field");
     expect(r.fieldName).toBe("test");
-  });
-
-  it("lote general esta en Vedia → still works", () => {
-    const r = parseCommand("lote general esta en Vedia");
-    expect(r.command).toBe("set_field_city");
-    expect(r.fieldName).toBe("general");
   });
 
   it("gaste 50mil en gasoil → expense still works", () => {

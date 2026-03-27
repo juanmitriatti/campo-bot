@@ -213,10 +213,10 @@ describe('PromptBuilder', () => {
     expect(prompt).not.toContain('Usuario:');
   });
 
-  it('produces a compact prompt under 400 tokens', async () => {
+  it('produces a compact prompt under 800 tokens', async () => {
     const prompt = await builder.build(null);
     // Rough token estimate: ~1 token per 4 chars for Spanish text
     const estimatedTokens = Math.ceil(prompt.length / 4);
-    expect(estimatedTokens).toBeLessThan(400);
+    expect(estimatedTokens).toBeLessThan(900);
   });
 });

@@ -13,6 +13,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
+import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
@@ -36,8 +37,10 @@ import { IntentExtractor } from '../ai/intent-extractor.js';
 import { PromptBuilder } from '../ai/prompt-builder.js';
 import { IntentValidator } from '../ai/intent-validator.js';
 import { UserContextService } from '../ai/user-context.service.js';
+import { ConversationHistoryService } from '../ai/conversation-history.service.js';
 import { ConversationalFallbackService } from '../ai/conversational-fallback.service.js';
 import { normalizeTranscript } from '../utils/text-normalizer.js';
+import { isLikelyQuestion } from '../utils/guards.js';
 import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observations.js';
 import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
 import { formatObservationResponse } from '../middleware/response-formatter.js';
@@ -69,7 +72,7 @@ const userRepository = new UserRepository();
 const financialHandler = new FinancialHandler(financialService);
 const agronomyRepository = new AgronomyRepository();
 const agronomyHandler = new AgronomyHandler(agronomyRepository);
-const systemHandler = new SystemHandler(userRepository);
+const systemHandler = new SystemHandler(userRepository, financialService);
 
 const featureGate = new FeatureGate();
 const domainRouter = new DomainRouter(financialHandler, agronomyHandler, systemHandler, featureGate);
@@ -79,12 +82,14 @@ const entityValidator = new EntityValidator();
 const userContextService = new UserContextService(entityValidator);
 const promptBuilder = new PromptBuilder();
 const intentValidator = new IntentValidator();
-const intentExtractor = new IntentExtractor(promptBuilder, intentValidator, userContextService, userRepository);
+const conversationHistoryService = new ConversationHistoryService();
+const intentExtractor = new IntentExtractor(promptBuilder, intentValidator, userContextService, userRepository, conversationHistoryService);
 const intentClassifier = new IntentClassifier(undefined, undefined, intentExtractor);
 const conversationalFallback = new ConversationalFallbackService(userRepository);
 
 const pendingStore = new PendingTransactionStore();
 const pendingObsStore = new PendingObservationStore();
+const pendingCityStore = new PendingFieldCityStore();
 const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
@@ -100,6 +105,37 @@ const conversationStateRepo = new ConversationStateRepository();
 const conversationObserver = new ConversationObserver();
 const conversationEngine = new ConversationEngine(conversationStateRepo, flowRegistry, conversationObserver);
 const conversationLogger = new ConversationLogger();
+
+// No-fields block response for flows
+function buildNoFieldsBlockItems(actionLabel: string): BotResponseItem[] {
+  return [
+    { type: 'text', text: `Para ${actionLabel} primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*` },
+    interactiveButtons(`Necesitás un campo para ${actionLabel}.`, [
+      { id: 'cmd_agregar_campo', title: 'Crear Campo' },
+    ]),
+  ];
+}
+
+function buildNoPlotBlockItems(actionLabel: string, fieldName: string): BotResponseItem[] {
+  return [
+    { type: 'text', text: `Para ${actionLabel} necesitás al menos un lote.\n\n📍 Escribí *agregar lote [nombre] en campo ${fieldName}*` },
+    interactiveButtons(`Necesitás un lote para ${actionLabel}.`, [
+      { id: 'cmd_agregar_lote', title: 'Crear Lote' },
+    ]),
+  ];
+}
+
+async function hasNoPrerequisites(userId: UserId): Promise<{ blocked: boolean; items?: BotResponseItem[] }> {
+  const fields = await financialService.getUserFields(userId);
+  if (fields.length === 0) {
+    return { blocked: true, items: buildNoFieldsBlockItems('registrar') };
+  }
+  const allPlots = await financialService.findAllUserPlots(userId);
+  if (allPlots.length === 0) {
+    return { blocked: true, items: buildNoPlotBlockItems('registrar', fields[0].name) };
+  }
+  return { blocked: false };
+}
 
 const DESTRUCTIVE_COMMANDS = new Set([
   'delete_last', 'delete_last_income', 'delete_specific',
@@ -315,6 +351,15 @@ async function handleInteractiveReply(
 
     if (callbackId === 'flow_confirm') {
       const result = await conversationEngine.executeConfirm(userId, flowCtx);
+      // Store pending field duplicate data if the flow detected one
+      if (result.response.sideEffects?.setFieldDuplicate) {
+        const dup = result.response.sideEffects.setFieldDuplicate;
+        pendingStore.set(phone, {
+          type: 'expense', data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
+          fieldId: null, fieldName: null, plotId: null, plotName: null,
+          timestamp: Date.now(), _fieldDuplicate: dup,
+        } as any);
+      }
       return collectResponse(result.response);
     }
     if (callbackId === 'flow_cancel') {
@@ -337,15 +382,20 @@ async function handleInteractiveReply(
     }
     if (callbackId.startsWith('flow_new_')) {
       const flowName = callbackId.replace('flow_new_', '') + '_flow';
+      // Block financial/rainfall/activity flows if no fields or no plots
+      if (['expense_flow', 'income_flow', 'rainfall_flow', 'activity_flow'].includes(flowName)) {
+        const prereq = await hasNoPrerequisites(userId);
+        if (prereq.blocked) return prereq.items!;
+      }
       const result = await conversationEngine.startFlow(userId, flowName as FlowState);
       return collectResponse(result.response);
     }
     // flow_cat_, flow_field_, flow_activity_ → feed into flow
-    const prefixes = ['flow_cat_', 'flow_field_', 'flow_activity_'] as const;
+    const prefixes = ['flow_cat_', 'flow_field_', 'flow_plot_', 'flow_activity_'] as const;
     for (const prefix of prefixes) {
       if (callbackId.startsWith(prefix)) {
         let value = callbackId.replace(prefix, '');
-        if (prefix === 'flow_field_') value = value.replace(/_/g, ' ');
+        if (prefix === 'flow_field_' || prefix === 'flow_plot_') value = value.replace(/_/g, ' ');
         if (flowCtx.state !== 'idle') {
           const result = await conversationEngine.processFlowMessage(userId, value, flowCtx);
           if (result.nextContext) {
@@ -371,8 +421,56 @@ async function handleInteractiveReply(
     return [];
   }
 
-  if (callbackId === 'cancel_destructive' || callbackId === 'cancel_action') {
+  if (callbackId === 'cancel_destructive' || callbackId === 'cancel_action' || callbackId === 'cancel_pending') {
     pendingStore.clear(phone);
+    return [{ type: 'text', text: '\u274c Operacion cancelada.' }];
+  }
+
+  // --- Confirm pending financial transaction (buttons) ---
+  if (callbackId === 'confirm_pending') {
+    const pendingTx = pendingStore.get(phone);
+    if (!pendingTx) {
+      return [{ type: 'text', text: 'No hay nada pendiente para confirmar.' }];
+    }
+    pendingStore.clear(phone);
+    const response = await financialHandler.handleConfirm(userId, pendingTx, settings, user);
+    return collectResponse(response);
+  }
+
+  // --- Field duplicate resolution ---
+  if (callbackId.startsWith('field_dup_')) {
+    const pendingDup = pendingStore.get(phone) as any;
+    const dupData = pendingDup?._fieldDuplicate as { name: string; city: string | null } | undefined;
+
+    if (!dupData) {
+      return [{ type: 'text', text: 'No hay un campo pendiente. Empeza de nuevo.' }];
+    }
+
+    pendingStore.clear(phone);
+
+    if (callbackId === 'field_dup_update') {
+      if (dupData.city) {
+        await financialService.setFieldCity(userId, dupData.name, dupData.city);
+        return [{ type: 'text', text: `📍 Campo *${dupData.name}* actualizado. Nueva ubicacion: *${dupData.city}*` }];
+      }
+      return [{ type: 'text', text: `El campo *${dupData.name}* ya existe y no hay cambios que aplicar.` }];
+    }
+
+    if (callbackId === 'field_dup_rename') {
+      const prefill: Record<string, unknown> = {};
+      if (dupData.city) prefill.city = dupData.city;
+      const flowResult = await conversationEngine.startFlow(userId, 'field_flow' as FlowState, prefill);
+      if (flowResult.nextContext) {
+        await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+      }
+      const items: BotResponseItem[] = [
+        { type: 'text', text: `Elegi otro nombre para el campo${dupData.city ? ` en ${dupData.city}` : ''}:` },
+        ...collectResponse(flowResult.response),
+      ];
+      return items;
+    }
+
+    // field_dup_cancel
     return [{ type: 'text', text: '\u274c Operacion cancelada.' }];
   }
 
@@ -490,22 +588,39 @@ async function processTextMessage(
       }
 
       // Smart interruption: check if the user typed a known command mid-flow
-      // Exception: field_flow name step — treat ALL input as raw name value
-      // (prevents "Campo Norte" from matching field_info pattern)
+      const interruptCmd = intentClassifier.parseCommandOnly(text);
+      // During field_flow name step, suppress ONLY field_info
+      // (prevents "Campo Norte" from matching field_info, but allows "mis campos" → list_fields)
       const isFlowNameStep = flowCtx.state === 'field_flow' && flowCtx.step === 0;
-      const interruptCmd = isFlowNameStep ? null : intentClassifier.parseCommandOnly(text);
-      if (interruptCmd && SAFE_INTERRUPTION_COMMANDS.has(interruptCmd.command)) {
+      const effectiveCmd = (isFlowNameStep && interruptCmd?.command === 'field_info') ? null : interruptCmd;
+      if (effectiveCmd && SAFE_INTERRUPTION_COMMANDS.has(effectiveCmd.command)) {
+        // Greetings/thanks mid-flow → just re-prompt (avoid confusing mixed response)
+        if (effectiveCmd.command === 'greeting' || effectiveCmd.command === 'thanks') {
+          const reprompt = await conversationEngine.getCurrentStepPrompt(flowCtx, userId);
+          if (reprompt) return collectResponse(reprompt);
+          return [];
+        }
         // Read-only command → execute without canceling the flow, then re-prompt
         const cmdItems: BotResponseItem[] = [];
-        const cmdResponse = await domainRouter.routeCommand(interruptCmd, userId, user, settings);
+        const cmdResponse = await domainRouter.routeCommand(effectiveCmd, userId, user, settings);
         if (cmdResponse) cmdItems.push(...collectResponse(cmdResponse));
         const reprompt = await conversationEngine.getCurrentStepPrompt(flowCtx, userId);
         if (reprompt) cmdItems.push(...collectResponse(reprompt));
         return cmdItems;
       }
 
+      // Question detection: questions mid-flow get a gentle nudge + re-prompt
+      if (isLikelyQuestion(text)) {
+        const reprompt = await conversationEngine.getCurrentStepPrompt(flowCtx, userId);
+        const items: BotResponseItem[] = [
+          { type: 'text', text: 'Estás en medio de un registro. Escribí *cancelar* si querés salir y preguntar.' },
+        ];
+        if (reprompt) items.push(...collectResponse(reprompt));
+        return items;
+      }
+
       // Intent-first interruption: any non-safe command OR financial intent cancels the flow
-      if (interruptCmd || intentClassifier.detectsFinancialIntent(text)) {
+      if (effectiveCmd || intentClassifier.detectsFinancialIntent(text)) {
         await conversationEngine.clearFlow(userId);
         // Fall through to normal intent processing below
       } else {
@@ -519,6 +634,23 @@ async function processTextMessage(
         return collectResponse(result.response);
       }
     }
+  }
+
+  // --- Check pending field city assignment ---
+  const pendingCity = pendingCityStore.get(phone);
+  if (pendingCity) {
+    if (isCancelIntent(text)) {
+      pendingCityStore.clear(phone);
+      return [{ type: 'text', text: '👍 Podés asignar la ubicación después.' }];
+    }
+    let city = text.trim()
+      .replace(/^(?:esta|está|queda|ubicad[oa])\s+(?:en\s+)?/i, '')
+      .replace(/^en\s+/i, '')
+      .trim();
+    city = city.charAt(0).toUpperCase() + city.slice(1);
+    await financialService.setFieldCity(userId, pendingCity.fieldName, city);
+    pendingCityStore.clear(phone);
+    return [{ type: 'text', text: `📍 Campo *${pendingCity.fieldName}* ubicado en *${city}*` }];
   }
 
   // --- Check pending observation (plot disambiguation) ---
@@ -602,6 +734,7 @@ async function processTextMessage(
 
   // --- Partial parse → flow ---
   if (intent.type === 'expense_partial') {
+    { const prereq = await hasNoPrerequisites(userId); if (prereq.blocked) return prereq.items!; }
     const hasExpenses = await featureGate.hasFeature(userId, 'expenses');
     if (!hasExpenses) {
       return [{ type: 'text', text: '\ud83d\udd12 El registro de gastos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
@@ -615,6 +748,7 @@ async function processTextMessage(
   }
 
   if (intent.type === 'income_partial') {
+    { const prereq = await hasNoPrerequisites(userId); if (prereq.blocked) return prereq.items!; }
     const hasIncomes = await featureGate.hasFeature(userId, 'incomes');
     if (!hasIncomes) {
       return [{ type: 'text', text: '\ud83d\udd12 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
@@ -638,6 +772,24 @@ async function processTextMessage(
 
   // --- Route commands ---
   if (intent.type === 'command') {
+    // Start flow commands → launch flow directly
+    if (intent.data.command === 'start_expense_flow') {
+      { const prereq = await hasNoPrerequisites(userId); if (prereq.blocked) return prereq.items!; }
+      const result = await conversationEngine.startFlow(userId, 'expense_flow' as FlowState);
+      if (result.nextContext) await conversationEngine.setFlowContext(userId, result.nextContext);
+      return collectResponse(result.response);
+    }
+    if (intent.data.command === 'start_income_flow') {
+      { const prereq = await hasNoPrerequisites(userId); if (prereq.blocked) return prereq.items!; }
+      const hasIncomes = await featureGate.hasFeature(userId, 'incomes');
+      if (!hasIncomes) {
+        return [{ type: 'text', text: '\ud83d\udd12 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
+      }
+      const result = await conversationEngine.startFlow(userId, 'income_flow' as FlowState);
+      if (result.nextContext) await conversationEngine.setFlowContext(userId, result.nextContext);
+      return collectResponse(result.response);
+    }
+
     if (DESTRUCTIVE_COMMANDS.has(intent.data.command)) {
       const actionLabels: Record<string, string> = {
         delete_last: 'eliminar el ultimo gasto',
@@ -661,6 +813,9 @@ async function processTextMessage(
       )];
     }
 
+    // Attach original text so handlers can check if fields were explicitly mentioned
+    intent.data.originalText = text;
+
     const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
     if (response) {
       if (response.messages.length === 0 && !response.attachment && !response.interactive) {
@@ -679,6 +834,20 @@ async function processTextMessage(
       if (response.sideEffects?.setPendingObservation) {
         const obs = response.sideEffects.setPendingObservation;
         pendingObsStore.set(phone, { text: obs.text, category: obs.category, timestamp: Date.now() });
+      }
+      if (response.sideEffects?.setPendingFieldCity) {
+        pendingCityStore.set(phone, {
+          fieldName: response.sideEffects.setPendingFieldCity.fieldName,
+          timestamp: Date.now(),
+        });
+      }
+      if (response.sideEffects?.setFieldDuplicate) {
+        const dup = response.sideEffects.setFieldDuplicate;
+        pendingStore.set(phone, {
+          type: 'expense', data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
+          fieldId: null, fieldName: null, plotId: null, plotName: null,
+          timestamp: Date.now(), _fieldDuplicate: dup,
+        } as any);
       }
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, {
@@ -700,12 +869,23 @@ async function processTextMessage(
     const effectiveSettings = confidence < lowConfidenceThreshold
       ? { ...settings, confirm_before_save: true }
       : settings;
-    const claudeField = aiUsed ? (intent.data as ParsedExpense & { field?: string }).field : undefined;
-    const response = await financialHandler.handleExpense(userId, intent.data, text, effectiveSettings, user, claudeField);
+    const expData = intent.data as ParsedExpense & { field?: string; plot?: string };
+    const response = await financialHandler.handleExpense(userId, intent.data, text, effectiveSettings, user, expData.field, expData.plot);
+    if (response.sideEffects?.startFlow) {
+      const { state, data } = response.sideEffects.startFlow;
+      const flowResult = await conversationEngine.startFlow(userId, state, data);
+      if (flowResult.nextContext) {
+        await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+      }
+      const items = collectResponse(response);
+      items.push(...collectResponse(flowResult.response));
+      return items;
+    }
     if (response.sideEffects?.setPending) {
       pendingStore.set(phone, response.sideEffects.setPending);
     }
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
+    updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
     return collectResponse(response);
   }
 
@@ -718,12 +898,23 @@ async function processTextMessage(
     const effectiveSettings = confidence < lowConfidenceThreshold
       ? { ...settings, confirm_before_save: true }
       : settings;
-    const claudeField = aiUsed ? (intent.data as ParsedIncome & { field?: string }).field : undefined;
-    const response = await financialHandler.handleIncome(userId, intent.data, text, effectiveSettings, claudeField);
+    const incData = intent.data as ParsedIncome & { field?: string; plot?: string };
+    const response = await financialHandler.handleIncome(userId, intent.data, text, effectiveSettings, incData.field, incData.plot);
+    if (response.sideEffects?.startFlow) {
+      const { state, data } = response.sideEffects.startFlow;
+      const flowResult = await conversationEngine.startFlow(userId, state, data);
+      if (flowResult.nextContext) {
+        await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+      }
+      const items = collectResponse(response);
+      items.push(...collectResponse(flowResult.response));
+      return items;
+    }
     if (response.sideEffects?.setPending) {
       pendingStore.set(phone, response.sideEffects.setPending);
     }
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
+    updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
     return collectResponse(response);
   }
 
@@ -742,46 +933,84 @@ async function processTextMessage(
   return [];
 }
 
-// POST /api/test-bot/reset — wipe user session state for clean QA testing
+// POST /api/test-bot/reset — hard-delete ALL user data for clean QA testing
 router.post('/reset', async (req: Request, res: Response) => {
+  const client = await pool.connect();
   try {
     const userId = req.auth!.userId;
     const numericUserId = asUserId(typeof userId === 'string' ? parseInt(userId, 10) : userId);
     const phone = syntheticPhone(numericUserId);
 
-    // 1. Clear conversation flow state
-    await conversationEngine.clearFlow(numericUserId);
-
-    // 2. Clear in-memory pending stores
+    // 1. Clear in-memory stores
     pendingStore.clear(phone);
     pendingObsStore.clear(phone);
 
-    // 3. Soft-delete all user fields (cascades to plots via field_id)
-    await pool.query(
-      `UPDATE fields SET deleted_at = NOW(), deleted_by = 'test_reset' WHERE user_id = $1 AND deleted_at IS NULL`,
+    // 2. Hard-delete all DB records in a transaction (FK-safe order)
+    await client.query('BEGIN');
+
+    // Layer 1: tables with FK to agro_observations (CASCADE, but be explicit)
+    await client.query(
+      `DELETE FROM observation_history WHERE observation_id IN (SELECT id FROM agro_observations WHERE user_id = $1)`,
       [numericUserId],
     );
 
-    // 4. Soft-delete all expenses and incomes
-    await pool.query(
-      `UPDATE expenses SET deleted_at = NOW() WHERE user_id = $1 AND deleted_at IS NULL`,
+    // Layer 2: tables with FK to fields/plots (non-cascade)
+    await client.query(`DELETE FROM alert_history WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM agronomic_reports WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM domain_events WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM agro_observations WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM expenses WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM incomes WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM rainfall WHERE user_id = $1`, [numericUserId]);
+
+    // Layer 3: conversation state (FK to fields/plots as SET NULL)
+    await client.query(`DELETE FROM conversation_state WHERE user_id = $1`, [numericUserId]);
+
+    // Layer 4: fields — CASCADE deletes plots → plot_aliases, plot_crops
+    await client.query(`DELETE FROM fields WHERE user_id = $1`, [numericUserId]);
+
+    // Layer 5: non-FK user data
+    await client.query(`DELETE FROM budgets WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM unparsed_messages WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM ai_usage WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM ai_fallback_logs WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM conversation_events WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM conversation_logs WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM parser_errors WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM deletion_log WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM farmer_vocabulary WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM message_patterns WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM audio_transcription_logs WHERE user_id = $1`, [numericUserId]);
+
+    // Verification: confirm zero records in core tables
+    const verify = await client.query(
+      `SELECT
+        (SELECT COUNT(*) FROM fields WHERE user_id = $1)::int AS fields,
+        (SELECT COUNT(*) FROM expenses WHERE user_id = $1)::int AS expenses,
+        (SELECT COUNT(*) FROM incomes WHERE user_id = $1)::int AS incomes,
+        (SELECT COUNT(*) FROM agro_observations WHERE user_id = $1)::int AS observations,
+        (SELECT COUNT(*) FROM conversation_state WHERE user_id = $1)::int AS conv_state`,
       [numericUserId],
     );
-    await pool.query(
-      `UPDATE incomes SET deleted_at = NOW() WHERE user_id = $1 AND deleted_at IS NULL`,
-      [numericUserId],
-    );
+    const counts = verify.rows[0];
+    const total = counts.fields + counts.expenses + counts.incomes + counts.observations + counts.conv_state;
+    if (total > 0) {
+      await client.query('ROLLBACK');
+      console.error(`[test-bot/reset] Verification failed: ${JSON.stringify(counts)}`);
+      res.status(500).json({ error: 'Reset verification failed — records remain', counts });
+      return;
+    }
 
-    // 5. Clear unparsed messages and AI usage logs
-    await pool.query(`DELETE FROM unparsed_messages WHERE user_id = $1`, [numericUserId]);
-    await pool.query(`DELETE FROM ai_usage WHERE user_id = $1`, [numericUserId]);
-
-    console.log(`[test-bot/reset] Wiped all data for user ${numericUserId}`);
-    res.json({ ok: true, message: 'Session and data reset successfully' });
+    await client.query('COMMIT');
+    console.log(`[test-bot/reset] Hard-deleted all data for user ${numericUserId}`);
+    res.json({ ok: true, message: 'Full reset complete — zero records verified' });
   } catch (error: unknown) {
+    await client.query('ROLLBACK').catch(() => {});
     const err = error as Error;
     console.error('[test-bot/reset] ERROR:', err.stack || err.message);
     res.status(500).json({ error: err.message || 'Error resetting session' });
+  } finally {
+    client.release();
   }
 });
 

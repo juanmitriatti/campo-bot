@@ -64,6 +64,59 @@ function createTestFlow(): FlowDefinition {
   };
 }
 
+// --- Test flow with interactive steps ---
+
+function createInteractiveFlow(): FlowDefinition {
+  return {
+    id: 'interactive_flow',
+    name: 'Test Interactive',
+    steps: [
+      {
+        field: 'category',
+        prompt: '¿Categoría?\n1. Combustible\n2. Semillas\nEscribí el nombre o número.',
+        interactive: {
+          type: 'list',
+          body: '¿Categoría?',
+          buttonText: 'Elegir',
+          sections: [{
+            title: 'Categorías',
+            rows: [
+              { id: 'cat_combustible', title: 'Combustible' },
+              { id: 'cat_semillas', title: 'Semillas' },
+            ],
+          }],
+        },
+        validate: (input) => {
+          if (!['Combustible', 'Semillas'].includes(input)) return { error: 'Categoría no válida.' };
+          return { value: input };
+        },
+      },
+      {
+        field: 'amount',
+        prompt: '¿Cuánto?',
+        // No interactive — text-only step
+        validate: (input) => {
+          const num = parseFloat(input);
+          if (isNaN(num) || num <= 0) return { error: 'Monto inválido.' };
+          return { value: num };
+        },
+      },
+    ],
+    buildConfirmation: (data) => ({
+      messages: [`Confirmar: $${data.amount} en ${data.category}`],
+      interactive: {
+        type: 'buttons',
+        body: '¿Confirmamos?',
+        buttons: [
+          { id: 'flow_confirm', title: 'Confirmar' },
+          { id: 'flow_cancel', title: 'Cancelar' },
+        ],
+      },
+    }),
+    execute: vi.fn(async () => ({ messages: ['Guardado.'] })),
+  };
+}
+
 const userId = 1 as UserId;
 
 describe('ConversationEngine', () => {
@@ -382,6 +435,69 @@ describe('ConversationEngine', () => {
       };
       const prompt = await engine.getCurrentStepPrompt(ctx, userId);
       expect(prompt).toBeNull();
+    });
+  });
+
+  // --- Interactive step prompt suppression ---
+
+  describe('interactive step prompt suppression', () => {
+    let interactiveFlow: FlowDefinition;
+
+    beforeEach(() => {
+      interactiveFlow = createInteractiveFlow();
+      registry.register(interactiveFlow);
+    });
+
+    it('startFlow with interactive step → messages empty, interactive present', async () => {
+      const result = await engine.startFlow(userId, 'interactive_flow');
+      expect(result.response.messages).toEqual([]);
+      expect(result.response.interactive).toBeDefined();
+      expect(result.response.interactive?.type).toBe('list');
+    });
+
+    it('advanceToNextStep to non-interactive step → messages has prompt', async () => {
+      const startResult = await engine.startFlow(userId, 'interactive_flow');
+      const ctx = startResult.nextContext!;
+      // Answer category step → advances to amount (no interactive)
+      const result = await engine.processFlowMessage(userId, 'Combustible', ctx);
+      expect(result.response.messages).toEqual(['¿Cuánto?']);
+      expect(result.response.interactive).toBeUndefined();
+    });
+
+    it('validation error with interactive step → messages has only error, no prompt', async () => {
+      const startResult = await engine.startFlow(userId, 'interactive_flow');
+      const ctx = startResult.nextContext!;
+      const result = await engine.processFlowMessage(userId, 'invalid', ctx);
+      expect(result.response.messages).toHaveLength(1);
+      expect(result.response.messages[0]).toContain('Categoría no válida.');
+      expect(result.response.messages[0]).not.toContain('Escribí el nombre');
+      expect(result.response.interactive?.type).toBe('list');
+    });
+
+    it('getCurrentStepPrompt with interactive → messages empty', async () => {
+      const ctx: FlowContext = {
+        state: 'interactive_flow',
+        step: 0,
+        data: {},
+        startedAt: new Date(),
+        expiresAt: new Date(Date.now() + 600000),
+      };
+      const prompt = await engine.getCurrentStepPrompt(ctx, userId);
+      expect(prompt?.messages).toEqual([]);
+      expect(prompt?.interactive?.type).toBe('list');
+    });
+
+    it('step without interactive → messages has prompt (fallback)', async () => {
+      const ctx: FlowContext = {
+        state: 'interactive_flow',
+        step: 1, // amount step — no interactive
+        data: { category: 'Combustible' },
+        startedAt: new Date(),
+        expiresAt: new Date(Date.now() + 600000),
+      };
+      const prompt = await engine.getCurrentStepPrompt(ctx, userId);
+      expect(prompt?.messages).toEqual(['¿Cuánto?']);
+      expect(prompt?.interactive).toBeUndefined();
     });
   });
 

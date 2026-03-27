@@ -2,17 +2,13 @@ import { normalizarMonto } from '../../utils/parser.js';
 import { FinancialService } from '../../domain/financial/financial.service.js';
 import { FinancialRepository } from '../../domain/financial/financial.repository.js';
 import { getSuggestions } from '../contextual-suggestions.js';
-import { buildFieldPrompt, buildFieldInteractive, validateFieldAsync } from './field-step-helpers.js';
+import { buildPlotPromptGrouped, buildPlotInteractiveGrouped, validatePlotAsync } from './field-step-helpers.js';
 import { EntityValidator } from '../../services/entity-validator.js';
+import { EXPENSE_CATEGORIES } from '../../constants/agro-terms.js';
 import type { FlowDefinition, FlowStep } from './flow.interface.js';
 import type { UserId, ParsedExpense, InteractiveMessage } from '../../types/index.js';
 
 const entityValidator = new EntityValidator();
-
-const EXPENSE_CATEGORIES = [
-  'Combustible', 'Fertilizantes', 'Semillas', 'Agroquímicos',
-  'Sueldos', 'Maquinaria', 'Arrendamiento', 'Impuestos', 'Otros',
-];
 
 const categoryList: InteractiveMessage = {
   type: 'list',
@@ -55,22 +51,22 @@ const steps: FlowStep[] = [
     },
   },
   {
-    field: 'fieldName',
-    prompt: '¿En qué campo? (escribí el nombre o "general" si no aplica)',
+    field: 'plotName',
+    prompt: '¿En qué lote?',
     promptAsync: async (_data, userId) => {
-      const fields = await entityValidator.getUserFieldNames(userId);
-      return buildFieldPrompt(fields);
+      const plots = await entityValidator.getUserPlotsWithFields(userId);
+      return buildPlotPromptGrouped(plots);
     },
     interactiveAsync: async (_data, userId) => {
-      const fields = await entityValidator.getUserFieldNames(userId);
-      return buildFieldInteractive(fields);
+      const plots = await entityValidator.getUserPlotsWithFields(userId);
+      return buildPlotInteractiveGrouped(plots);
     },
     validate: (input) => {
       const lower = input.toLowerCase().trim();
-      if (lower === 'general' || lower === 'ninguno' || lower === 'no') return { value: null };
+      if (lower === 'ninguno' || lower === 'no' || lower === 'sin lote') return { value: null };
       return { value: input.trim() };
     },
-    validateAsync: validateFieldAsync,
+    validateAsync: validatePlotAsync,
     optional: true,
   },
   {
@@ -97,7 +93,7 @@ export const expenseFlow: FlowDefinition = {
     let msg = '\ud83d\udcb8 *Confirmar gasto:*\n\n';
     msg += `Monto: *$${Number(amountInfo.amount).toLocaleString('es-AR')}${currency}*\n`;
     msg += `Categoría: *${data.category}*\n`;
-    if (data.fieldName) msg += `Campo: *${data.fieldName}*\n`;
+    if (data.plotName) msg += `Lote: *${data.plotName}*\n`;
     if (data.description) msg += `Detalle: ${data.description}\n`;
     msg += '\n¿Confirmamos?';
 
@@ -117,12 +113,21 @@ export const expenseFlow: FlowDefinition = {
 
   async execute(userId, data) {
     const amountInfo = data.amount as { amount: number; currency: string };
-    const fieldName = data.fieldName as string | null;
+    const plotName = data.plotName as string | null;
 
     let fieldId: number | null = null;
-    if (fieldName) {
-      const field = await financialService.getOrCreateField(userId, fieldName);
-      fieldId = field.id;
+    let plotId: number | null = null;
+    let resolvedPlotName: string | null = plotName;
+    let resolvedFieldName: string | null = null;
+
+    if (plotName) {
+      const plots = await financialService.findPlotByNameAcrossFields(userId, plotName);
+      if (plots.length > 0) {
+        plotId = plots[0].id;
+        fieldId = plots[0].field_id;
+        resolvedPlotName = plots[0].name;
+        resolvedFieldName = plots[0].field_name;
+      }
     }
 
     const expenseData: ParsedExpense = {
@@ -133,13 +138,17 @@ export const expenseFlow: FlowDefinition = {
       currency: amountInfo.currency as 'ARS' | 'USD',
     };
 
-    await financialService.saveExpense(userId, expenseData, fieldId);
+    await financialService.saveExpense(userId, expenseData, fieldId, plotId);
 
     const currency = amountInfo.currency === 'USD' ? ' USD' : '';
     let msg = '\u2705 Gasto registrado\n';
     msg += `${data.category}\n`;
     msg += `$${Number(amountInfo.amount).toLocaleString('es-AR')}${currency}`;
-    if (fieldName) msg += `\n\ud83d\udccd ${fieldName}`;
+    if (resolvedPlotName && resolvedFieldName) {
+      msg += `\n\ud83d\udccd Lote ${resolvedPlotName} (${resolvedFieldName})`;
+    } else if (resolvedPlotName) {
+      msg += `\n\ud83d\udccd Lote ${resolvedPlotName}`;
+    }
 
     const suggestions = getSuggestions('expense_saved');
     return {

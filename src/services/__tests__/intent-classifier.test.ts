@@ -29,17 +29,7 @@ describe('IntentClassifier — local parsing', () => {
     expect(aiUsed).toBe(false);
   });
 
-  it('classifies "clima" as weather_full command', async () => {
-    const { intent } = await classifier.classify('clima', userId, defaultSettings);
-    expect(intent.type).toBe('command');
-    if (intent.type === 'command') expect(intent.data.command).toBe('weather_full');
-  });
-
-  it('classifies "resumen del mes" as monthly_report command', async () => {
-    const { intent } = await classifier.classify('resumen del mes', userId, defaultSettings);
-    expect(intent.type).toBe('command');
-    if (intent.type === 'command') expect(intent.data.command).toBe('monthly_report');
-  });
+  // weather_full, monthly_report removed from regex — now AI-only intents
 
   it('classifies "borrar ultimo gasto" as delete_last command', async () => {
     const { intent } = await classifier.classify('borrar ultimo gasto', userId, defaultSettings);
@@ -53,54 +43,7 @@ describe('IntentClassifier — local parsing', () => {
     if (intent.type === 'command') expect(intent.data.command).toBe('dollar');
   });
 
-  // --- Expenses ---
-
-  it('classifies "pagué 50mil en gasoil" as expense', async () => {
-    const { intent, aiUsed } = await classifier.classify('pagué 50mil en gasoil', userId, defaultSettings);
-    expect(intent.type).toBe('expense');
-    if (intent.type === 'expense') {
-      expect(intent.data.amount).toBe(50000);
-      expect(intent.data.category).toBe('Combustible');
-      expect(intent.data.currency).toBe('ARS');
-    }
-    expect(aiUsed).toBe(false);
-  });
-
-  it('classifies "500k en semillas" as expense', async () => {
-    const { intent } = await classifier.classify('500k en semillas', userId, defaultSettings);
-    expect(intent.type).toBe('expense');
-    if (intent.type === 'expense') {
-      expect(intent.data.amount).toBe(500000);
-      expect(intent.data.category).toBe('Semillas');
-    }
-  });
-
-  // --- Incomes ---
-
-  it('classifies "vendí soja por 2 millones" as income', async () => {
-    const { intent, aiUsed } = await classifier.classify('vendí soja por 2 millones', userId, defaultSettings);
-    expect(intent.type).toBe('income');
-    if (intent.type === 'income') {
-      expect(intent.data.amount).toBe(2000000);
-      expect(intent.data.category).toBe('Soja');
-    }
-    expect(aiUsed).toBe(false);
-  });
-
-  // --- Priority ---
-
-  it('commands take priority over expense parsing', async () => {
-    const { intent } = await classifier.classify('resumen del mes', userId, defaultSettings);
-    expect(intent.type).toBe('command');
-  });
-
-  it('income parsing works for simple sale', async () => {
-    const { intent } = await classifier.classify('vendí soja por 500mil', userId, defaultSettings);
-    expect(intent.type).toBe('income');
-    if (intent.type === 'income') {
-      expect(intent.data.amount).toBe(500000);
-    }
-  });
+  // Expense/income regex parsing removed from classifier — now AI-only intents
 });
 
 describe('IntentClassifier — AI intent extraction via mock extractor', () => {
@@ -207,7 +150,7 @@ describe('IntentClassifier — AI intent extraction via mock extractor', () => {
     const lowConfResult: ParseResult = {
       intent: {
         type: 'command',
-        data: { command: 'weather_full' },
+        data: { command: 'help' },
       },
       confidence: 0.50, // Below AI_INTENT_MIN_CONFIDENCE default of 0.70
       aiUsed: true,
@@ -217,16 +160,16 @@ describe('IntentClassifier — AI intent extraction via mock extractor', () => {
     mockExtractor.extract.mockResolvedValueOnce(lowConfResult);
 
     const classifierWithAI = new IntentClassifier(parser, mockUserRepo, mockExtractor);
-    // "clima" will match regex as weather_full command
+    // "ayuda" will match regex as help command
     const { intent, aiUsed } = await classifierWithAI.classify(
-      'clima',
+      'ayuda',
       userId,
       defaultSettings
     );
 
-    // Should fall back to regex (trivial command bypass actually catches "clima" first)
+    // Should fall back to regex (trivial command bypass catches "ayuda")
     expect(intent.type).toBe('command');
-    if (intent.type === 'command') expect(intent.data.command).toBe('weather_full');
+    if (intent.type === 'command') expect(intent.data.command).toBe('help');
     // aiUsed should be false because regex matched it, not the AI
     expect(aiUsed).toBe(false);
   });
@@ -251,14 +194,15 @@ describe('IntentClassifier — AI intent extraction via mock extractor', () => {
     mockExtractor.extract.mockRejectedValueOnce(new Error('API error'));
 
     const classifierWithAI = new IntentClassifier(parser, mockUserRepo, mockExtractor);
-    // Use a message that matches regex expense parser
+    // Use a message that matches regex command parser
     const { intent, aiUsed } = await classifierWithAI.classify(
-      'pagué 50mil en gasoil',
+      'borrar ultimo gasto',
       userId,
       defaultSettings
     );
 
-    expect(intent.type).toBe('expense');
+    expect(intent.type).toBe('command');
+    if (intent.type === 'command') expect(intent.data.command).toBe('delete_last');
     expect(aiUsed).toBe(false);
   });
 });

@@ -169,7 +169,7 @@ export class ConversationEngine {
 
     return {
       response: {
-        messages: [prompt],
+        messages: interactive ? [] : [prompt],
         interactive,
       },
       nextContext: ctx,
@@ -230,10 +230,10 @@ export class ConversationEngine {
         errorMsg += '\n\n_Escribí *cancelar* para salir o elegí de la lista._';
       }
 
-      // Merge error + re-prompt into single message
+      // Merge error + re-prompt into single message (suppress prompt when interactive provides it)
       return {
         response: {
-          messages: [`${errorMsg}\n\n${prompt}`],
+          messages: interactive ? [errorMsg] : [`${errorMsg}\n\n${prompt}`],
           interactive,
         },
         nextContext: ctx,
@@ -261,8 +261,12 @@ export class ConversationEngine {
     const stepDef = flow.steps[ctx.step];
     if (!stepDef?.optional) {
       const prompt = await this.resolvePrompt(stepDef, ctx.data, userId);
+      const interactive = await this.resolveInteractive(stepDef, ctx.data, userId);
       return {
-        response: { messages: [`Este paso es obligatorio.\n\n${prompt}`] },
+        response: {
+          messages: interactive ? ['Este paso es obligatorio.'] : [`Este paso es obligatorio.\n\n${prompt}`],
+          interactive,
+        },
         nextContext: ctx,
       };
     }
@@ -307,7 +311,7 @@ export class ConversationEngine {
     const interactive = await this.resolveInteractive(stepDef, ctx.data, userId);
 
     return {
-      response: { messages: [prompt], interactive },
+      response: { messages: interactive ? [] : [prompt], interactive },
       nextContext: ctx,
     };
   }
@@ -316,17 +320,39 @@ export class ConversationEngine {
     userId: UserId,
     ctx: FlowContext,
   ): Promise<FlowMessageResult> {
+    // Guard: stale/idle state (e.g. double-tap on confirm button)
+    if (ctx.state === 'idle') {
+      return { response: { messages: ['No hay nada pendiente para confirmar.'] }, nextContext: null };
+    }
+
     const flowState = ctx.originFlow ?? ctx.state;
     const flow = this.registry.get(flowState as FlowState);
     if (!flow) {
+      await this.stateRepo.clearFlow(userId);
       return { response: { messages: ['Hubo un problema con el flujo. ¿Qué querés hacer?'] }, nextContext: null };
     }
 
-    const response = await flow.execute(userId, ctx.data);
-    await this.stateRepo.clearFlow(userId);
-    const durationMs = ctx.startedAt ? Date.now() - new Date(ctx.startedAt).getTime() : undefined;
-    this.observer?.logFlowCompleted(userId, flowState as string, ctx.step, { durationMs, dataKeys: Object.keys(ctx.data) });
-    return { response, nextContext: null };
+    // Validate required data: every non-optional step must have a value
+    for (const step of flow.steps) {
+      if (!step.optional && ctx.data[step.field] === undefined) {
+        await this.stateRepo.clearFlow(userId);
+        console.error(`[FLOW_CONFIRM] Missing required field "${step.field}" in ${flowState} for user ${userId}`);
+        return { response: { messages: ['Faltan datos en el flujo. Empezá de nuevo.'] }, nextContext: null };
+      }
+    }
+
+    try {
+      const response = await flow.execute(userId, ctx.data);
+      await this.stateRepo.clearFlow(userId);
+      const durationMs = ctx.startedAt ? Date.now() - new Date(ctx.startedAt).getTime() : undefined;
+      this.observer?.logFlowCompleted(userId, flowState as string, ctx.step, { durationMs, dataKeys: Object.keys(ctx.data) });
+      return { response, nextContext: null };
+    } catch (err: unknown) {
+      await this.stateRepo.clearFlow(userId);
+      const msg = (err as Error).message;
+      console.error(`[FLOW_CONFIRM] execute() failed for ${flowState}, user ${userId}:`, msg);
+      return { response: { messages: ['Hubo un error al guardar. Intentá de nuevo.'] }, nextContext: null };
+    }
   }
 
   async startFlowAtConfirmation(
@@ -366,7 +392,7 @@ export class ConversationEngine {
     const stepDef = flow.steps[ctx.step];
     const prompt = await this.resolvePrompt(stepDef, ctx.data, userId);
     const interactive = await this.resolveInteractive(stepDef, ctx.data, userId);
-    return { messages: [prompt], interactive };
+    return { messages: interactive ? [] : [prompt], interactive };
   }
 
   // --- Private helpers ---
@@ -408,6 +434,11 @@ export class ConversationEngine {
         nextStep++;
         continue;
       }
+      // Skip steps already pre-filled (e.g., city from "agregar campo en Vedia")
+      if (ctx.data[step.field] !== undefined) {
+        nextStep++;
+        continue;
+      }
       break;
     }
 
@@ -442,7 +473,7 @@ export class ConversationEngine {
 
     return {
       response: {
-        messages: [prompt],
+        messages: interactive ? [] : [prompt],
         interactive,
       },
       nextContext: ctx,

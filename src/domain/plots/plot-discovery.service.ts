@@ -1,27 +1,23 @@
 import {
-  getOrCreateField,
-  getOrCreatePlot,
   findPlotByNameAcrossFields,
   getFieldByName,
+  getPlotByName,
+  getPlotsByField,
   findPlotByAlias,
   addPlotAlias,
   getConversationState,
   updateConversationState,
-  getUserSingleField,
   getPlotById,
+  getUserFields,
+  findAllUserPlots,
 } from '../../services/expenses.js';
-import { detectarLote, detectarCampo, normalizeText } from '../../utils/parser.js';
+import { detectarLote, normalizeText } from '../../utils/parser.js';
 import type { UserId, PlotDiscoveryResult } from '../../types/index.js';
-
-const DEFAULT_FIELD_NAME = 'General';
 
 export class PlotDiscoveryService {
 
-  async resolve(userId: UserId, text: string, claudeField?: string | null): Promise<PlotDiscoveryResult> {
-    const campoName = detectarCampo(text) || claudeField || null;
-    const loteName = detectarLote(text);
-
-    return this.resolveFromNames(userId, campoName, loteName);
+  async resolve(userId: UserId, fieldName?: string | null, plotName?: string | null): Promise<PlotDiscoveryResult> {
+    return this.resolveFromNames(userId, fieldName || null, plotName || null);
   }
 
   async resolveFromNames(userId: UserId, campoName: string | null, plotName: string | null): Promise<PlotDiscoveryResult> {
@@ -42,12 +38,67 @@ export class PlotDiscoveryService {
 
     // Case: Only campo name
     if (campoName) {
-      const field = await getOrCreateField(userId, campoName);
+      const field = await getFieldByName(userId, campoName);
+      if (!field) {
+        return { fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false, notFound: { type: 'field', name: campoName } };
+      }
+      // Try to auto-assign plot within this field
+      const fieldPlots = await getPlotsByField(field.id);
+      if (fieldPlots.length === 1) {
+        await updateConversationState(userId, field.id, fieldPlots[0].id);
+        return { fieldId: field.id, fieldName: field.name, plotId: fieldPlots[0].id, plotName: fieldPlots[0].name, autoCreated: false };
+      }
+      if (fieldPlots.length === 0) {
+        await updateConversationState(userId, field.id, null);
+        return { fieldId: field.id, fieldName: field.name, plotId: null, plotName: null, autoCreated: false, needPlotCreation: { fieldId: field.id, fieldName: field.name } };
+      }
+      // 2+ plots → signal selection needed
       await updateConversationState(userId, field.id, null);
-      return { fieldId: field.id, fieldName: field.name, plotId: null, plotName: null, autoCreated: false };
+      return {
+        fieldId: field.id, fieldName: field.name, plotId: null, plotName: null, autoCreated: false,
+        needPlotSelection: { fieldId: field.id, fieldName: field.name, plots: fieldPlots.map(p => ({ id: p.id, name: p.name })) },
+      };
     }
 
-    // Nothing
+    // Nothing specified — auto-assign if user has exactly 1 plot total
+    const allPlots = await findAllUserPlots(userId);
+    if (allPlots.length === 1) {
+      const plot = allPlots[0];
+      const fieldForPlot = await getFieldByName(userId, plot.field_name);
+      if (fieldForPlot) {
+        await updateConversationState(userId, fieldForPlot.id, plot.id);
+        return { fieldId: fieldForPlot.id, fieldName: fieldForPlot.name, plotId: plot.id, plotName: plot.name, autoCreated: false };
+      }
+    }
+
+    // Fallback to single field — still signal plot status
+    const userFields = await getUserFields(userId);
+    if (userFields.length === 1) {
+      const field = await getFieldByName(userId, userFields[0].name);
+      if (field) {
+        await updateConversationState(userId, field.id, null);
+        if (allPlots.length === 0) {
+          return { fieldId: field.id, fieldName: field.name, plotId: null, plotName: null, autoCreated: false, needPlotCreation: { fieldId: field.id, fieldName: field.name } };
+        }
+        if (allPlots.length >= 2) {
+          const fieldPlots = allPlots.filter((p: any) => p.field_id === field.id);
+          return {
+            fieldId: field.id, fieldName: field.name, plotId: null, plotName: null, autoCreated: false,
+            needPlotSelection: { fieldId: field.id, fieldName: field.name, plots: fieldPlots.map(p => ({ id: p.id, name: p.name })) },
+          };
+        }
+        return { fieldId: field.id, fieldName: field.name, plotId: null, plotName: null, autoCreated: false };
+      }
+    }
+
+    // 2+ fields with plots → signal plot selection needed (all user plots)
+    if (userFields.length >= 2 && allPlots.length >= 1) {
+      return {
+        fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false,
+        needPlotSelection: { fieldId: null as any, fieldName: null as any, plots: allPlots.map((p: any) => ({ id: p.id, name: p.name })) },
+      };
+    }
+
     return { fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false };
   }
 
@@ -78,8 +129,15 @@ export class PlotDiscoveryService {
   }
 
   private async _resolveBoth(userId: UserId, campoName: string, plotName: string): Promise<PlotDiscoveryResult> {
-    const field = await getOrCreateField(userId, campoName);
-    const plot = await getOrCreatePlot(field.id, plotName);
+    const field = await getFieldByName(userId, campoName);
+    if (!field) {
+      return { fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false, notFound: { type: 'field', name: campoName } };
+    }
+    const plot = await getPlotByName(field.id, plotName);
+    if (!plot) {
+      await updateConversationState(userId, field.id, null);
+      return { fieldId: field.id, fieldName: field.name, plotId: null, plotName: null, autoCreated: false, notFound: { type: 'plot', name: plotName } };
+    }
     await this._registerAliases(plot.id, plotName);
     await updateConversationState(userId, field.id, plot.id);
     return { fieldId: field.id, fieldName: field.name, plotId: plot.id, plotName: plot.name, autoCreated: false };
@@ -121,21 +179,8 @@ export class PlotDiscoveryService {
       return { fieldId: existingField.id, fieldName: existingField.name, plotId: null, plotName: null, autoCreated: false };
     }
 
-    // 4. Auto-create: determine parent field
-    const singleField = await getUserSingleField(userId);
-    const parentField = singleField || await getOrCreateField(userId, DEFAULT_FIELD_NAME);
-
-    const newPlot = await getOrCreatePlot(parentField.id, plotName);
-    await this._registerAliases(newPlot.id, plotName);
-    await updateConversationState(userId, parentField.id, newPlot.id);
-
-    return {
-      fieldId: parentField.id,
-      fieldName: parentField.name,
-      plotId: newPlot.id,
-      plotName: newPlot.name,
-      autoCreated: true,
-    };
+    // 4. Not found — return notFound instead of auto-creating
+    return { fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false, notFound: { type: 'plot', name: plotName } };
   }
 
   /**

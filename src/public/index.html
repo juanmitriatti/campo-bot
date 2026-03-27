@@ -2596,6 +2596,15 @@
           + (plan.priceArs > 0 ? formatMoney(plan.priceArs) + '/mes' : 'Gratis')
           + '</div>';
 
+        // Daily AI limit
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 0;border-bottom:1px solid var(--border);">'
+          + '  <label style="font-size:13px;font-weight:600;white-space:nowrap;">Límite IA diario:</label>'
+          + '  <input type="number" min="0" max="10000" value="' + (plan.dailyAiLimit || 20) + '"'
+          + '    style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;"'
+          + '    data-plan-id="' + plan.id + '" onchange="updatePlanAiLimit(this)">'
+          + '  <span style="font-size:12px;color:var(--text-light);">msgs/día</span>'
+          + '</div>';
+
         // Feature toggles
         for (var f = 0; f < features.length; f++) {
           var feat = features[f];
@@ -2613,6 +2622,19 @@
 
       html += '</div>';
       container.innerHTML = html;
+    }
+
+    function updatePlanAiLimit(input) {
+      var planId = input.getAttribute('data-plan-id');
+      var value = parseInt(input.value) || 20;
+      apiFetch('/admin/api/plans/' + planId, {
+        method: 'PUT',
+        body: JSON.stringify({ dailyAiLimit: value })
+      }).then(function(result) {
+        if (result) {
+          showToast('Límite IA actualizado a ' + value + ' msgs/día');
+        }
+      });
     }
 
     function togglePlanFeature(checkbox) {
@@ -2897,7 +2919,8 @@
             html += '<label for="' + inputId + '" style="font-weight:500;display:block;">' + escapeHtml(s.label) + '</label>';
             html += '<code style="font-size:11px;color:var(--text-light);">' + escapeHtml(item.key) + '</code> ' + sourceLabel;
             html += '</div>';
-            html += '<div style="width:220px;">';
+            var isPrompt = item.key.indexOf('PROMPT') !== -1 || item.key.indexOf('prompt') !== -1;
+            html += '<div style="width:' + (isPrompt ? '400px' : '220px') + ';">';
 
             if (s.type === 'boolean') {
               var checked = s.value === 'true' || s.value === '1' ? ' checked' : '';
@@ -2905,6 +2928,8 @@
               html += '<input type="checkbox" id="' + inputId + '" data-key="' + item.key + '" data-type="boolean"' + checked + '>';
               html += (checked ? 'Habilitado' : 'Deshabilitado');
               html += '</label>';
+            } else if (item.key.indexOf('PROMPT') !== -1 || item.key.indexOf('prompt') !== -1) {
+              html += '<textarea id="' + inputId + '" data-key="' + item.key + '" data-type="' + s.type + '" rows="4" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;resize:vertical;">' + escapeHtml(s.value) + '</textarea>';
             } else {
               html += '<input type="' + (s.type === 'number' ? 'number' : 'text') + '" id="' + inputId + '" data-key="' + item.key + '" data-type="' + s.type + '" value="' + escapeHtml(s.value) + '" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;">';
             }

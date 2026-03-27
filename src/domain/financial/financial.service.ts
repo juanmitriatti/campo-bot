@@ -1,6 +1,6 @@
 import { FinancialRepository } from './financial.repository.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
-import { getGlobalSettings } from '../../services/expenses.js';
+import { getGlobalSettings, getConversationState } from '../../services/expenses.js';
 import type {
   UserId,
   ParsedExpense,
@@ -19,14 +19,20 @@ export class FinancialService {
 
   // --- Field + Plot resolution ---
 
-  async resolveFieldAndPlot(userId: UserId, text: string, claudeField?: string | null): Promise<FieldInfo> {
-    const result = await this.plotDiscovery.resolve(userId, text, claudeField);
-    return { fieldId: result.fieldId, fieldName: result.fieldName, plotId: result.plotId, plotName: result.plotName };
+  async resolveFieldAndPlot(userId: UserId, fieldName?: string | null, plotName?: string | null): Promise<FieldInfo> {
+    const result = await this.plotDiscovery.resolve(userId, fieldName, plotName);
+    return {
+      fieldId: result.fieldId, fieldName: result.fieldName,
+      plotId: result.plotId, plotName: result.plotName,
+      notFound: result.notFound,
+      needPlotSelection: result.needPlotSelection,
+      needPlotCreation: result.needPlotCreation,
+    };
   }
 
   // Backward compat wrapper
-  async resolveField(userId: UserId, text: string, claudeField?: string | null): Promise<FieldInfo> {
-    return this.resolveFieldAndPlot(userId, text, claudeField);
+  async resolveField(userId: UserId, fieldName?: string | null, plotName?: string | null): Promise<FieldInfo> {
+    return this.resolveFieldAndPlot(userId, fieldName, plotName);
   }
 
   // --- Expense operations ---
@@ -96,6 +102,10 @@ export class FinancialService {
 
   async getMonthlyReport(userId: UserId): Promise<CategoryTotal[]> {
     return this.repo.getMonthlyReport(userId);
+  }
+
+  async getMonthlyReportByPlot(userId: UserId): Promise<Array<{ plot_name: string; field_name: string; expense_total: number; income_total: number }>> {
+    return this.repo.getMonthlyReportByPlot(userId);
   }
 
   async getMonthlyReportForMonth(userId: UserId, month: number, year: number): Promise<CategoryTotal[]> {
@@ -216,6 +226,21 @@ export class FinancialService {
 
   async getPlotInfo(userId: UserId, plotName: string): Promise<PlotInfoData | null> {
     return this.repo.getPlotInfo(userId, plotName);
+  }
+
+  // --- Conversational memory ---
+
+  async getRecentFinancialContext(userId: UserId): Promise<{ fieldId: number; fieldName: string; plotId: number | null; plotName: string | null } | null> {
+    const state = await getConversationState(userId as unknown as number);
+    if (!state) return null;
+    const { last_field_id, field_name, last_plot_id, plot_name, last_intent, updated_at } = state;
+    if (!last_field_id || !field_name) return null;
+    // Only reuse if last intent was financial and within 5 minutes
+    const FINANCIAL_INTENTS = ['expense', 'income'];
+    if (!last_intent || !FINANCIAL_INTENTS.includes(last_intent)) return null;
+    const elapsed = Date.now() - new Date(updated_at).getTime();
+    if (elapsed > 5 * 60 * 1000) return null;
+    return { fieldId: last_field_id, fieldName: field_name, plotId: last_plot_id, plotName: plot_name };
   }
 
   // --- Unparsed ---

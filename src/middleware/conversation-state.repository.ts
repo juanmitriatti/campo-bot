@@ -25,16 +25,28 @@ export class ConversationStateRepository {
       [userId],
     );
     if (!row || row.flow_state === 'idle') return { ...IDLE_CONTEXT };
+
+    // Extract meta fields from flow_data JSONB (stored alongside user data)
+    const rawData = row.flow_data ?? {};
+    const { _originFlow, _stepFailCount, ...data } = rawData as Record<string, unknown>;
+
     return {
       state: row.flow_state as FlowState,
       step: row.flow_step,
-      data: row.flow_data ?? {},
+      data,
       startedAt: row.flow_started_at,
       expiresAt: row.flow_expires_at,
+      originFlow: (_originFlow as FlowState) ?? undefined,
+      stepFailCount: (typeof _stepFailCount === 'number') ? _stepFailCount : undefined,
     };
   }
 
   async setFlowContext(userId: UserId, ctx: FlowContext): Promise<void> {
+    // Embed meta fields into flow_data JSONB so they survive DB round-trips
+    const dataToStore: Record<string, unknown> = { ...ctx.data };
+    if (ctx.originFlow) dataToStore._originFlow = ctx.originFlow;
+    if (ctx.stepFailCount) dataToStore._stepFailCount = ctx.stepFailCount;
+
     await query(
       `INSERT INTO conversation_state (user_id, flow_state, flow_step, flow_data, flow_started_at, flow_expires_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, NOW())
@@ -45,7 +57,7 @@ export class ConversationStateRepository {
          flow_started_at = $5,
          flow_expires_at = $6,
          updated_at = NOW()`,
-      [userId, ctx.state, ctx.step, JSON.stringify(ctx.data), ctx.startedAt, ctx.expiresAt],
+      [userId, ctx.state, ctx.step, JSON.stringify(dataToStore), ctx.startedAt, ctx.expiresAt],
     );
   }
 

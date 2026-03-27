@@ -3,16 +3,17 @@ import type { UserId } from '../../../types/index.js';
 
 // Mock expenses.js functions
 const mocks = {
-  getOrCreateField: vi.fn(),
-  getOrCreatePlot: vi.fn(),
   findPlotByNameAcrossFields: vi.fn(),
   getFieldByName: vi.fn(),
+  getPlotByName: vi.fn(),
   findPlotByAlias: vi.fn(),
   addPlotAlias: vi.fn(),
   getConversationState: vi.fn(),
   updateConversationState: vi.fn(),
-  getUserSingleField: vi.fn(),
   getPlotById: vi.fn(),
+  getUserFields: vi.fn().mockResolvedValue([]),
+  getPlotsByField: vi.fn().mockResolvedValue([]),
+  findAllUserPlots: vi.fn().mockResolvedValue([]),
 };
 
 vi.mock('../../../services/expenses.js', () => mocks);
@@ -33,9 +34,9 @@ describe('PlotDiscoveryService', () => {
   });
 
   describe('resolveFromNames — both campo + plot', () => {
-    it('creates both and registers alias', async () => {
-      mocks.getOrCreateField.mockResolvedValue({ id: 10, name: 'norte' });
-      mocks.getOrCreatePlot.mockResolvedValue({ id: 20, field_id: 10, name: '3' });
+    it('resolves both when they exist', async () => {
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'norte' });
+      mocks.getPlotByName.mockResolvedValue({ id: 20, field_id: 10, name: '3' });
 
       const result = await service.resolveFromNames(userId, 'norte', '3');
 
@@ -44,11 +45,32 @@ describe('PlotDiscoveryService', () => {
         plotId: 20, plotName: '3',
         autoCreated: false,
       });
-      expect(mocks.getOrCreateField).toHaveBeenCalledWith(userId, 'norte');
-      expect(mocks.getOrCreatePlot).toHaveBeenCalledWith(10, '3');
+      expect(mocks.getFieldByName).toHaveBeenCalledWith(userId, 'norte');
+      expect(mocks.getPlotByName).toHaveBeenCalledWith(10, '3');
       expect(mocks.addPlotAlias).toHaveBeenCalledWith(20, '3');
       expect(mocks.addPlotAlias).toHaveBeenCalledWith(20, 'lote 3'); // numeric alias
       expect(mocks.updateConversationState).toHaveBeenCalledWith(userId, 10, 20);
+    });
+
+    it('returns notFound when field does not exist', async () => {
+      mocks.getFieldByName.mockResolvedValue(null);
+
+      const result = await service.resolveFromNames(userId, 'norte', '3');
+
+      expect(result.fieldId).toBeNull();
+      expect(result.notFound).toEqual({ type: 'field', name: 'norte' });
+      expect(mocks.getPlotByName).not.toHaveBeenCalled();
+    });
+
+    it('returns notFound when plot does not exist in field', async () => {
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'norte' });
+      mocks.getPlotByName.mockResolvedValue(null);
+
+      const result = await service.resolveFromNames(userId, 'norte', '3');
+
+      expect(result.fieldId).toBe(10);
+      expect(result.plotId).toBeNull();
+      expect(result.notFound).toEqual({ type: 'plot', name: '3' });
     });
   });
 
@@ -97,39 +119,17 @@ describe('PlotDiscoveryService', () => {
       });
     });
 
-    it('auto-creates under single field when user has exactly 1', async () => {
+    it('returns notFound instead of auto-creating', async () => {
       mocks.findPlotByNameAcrossFields.mockResolvedValue([]);
       mocks.findPlotByAlias.mockResolvedValue(null);
       mocks.getFieldByName.mockResolvedValue(null);
-      mocks.getUserSingleField.mockResolvedValue({ id: 10, name: 'mi campo' });
-      mocks.getOrCreatePlot.mockResolvedValue({ id: 30, field_id: 10, name: 'bajo' });
 
       const result = await service.resolveFromNames(userId, null, 'bajo');
 
-      expect(result).toEqual({
-        fieldId: 10, fieldName: 'mi campo',
-        plotId: 30, plotName: 'bajo',
-        autoCreated: true,
-      });
-      expect(mocks.getOrCreatePlot).toHaveBeenCalledWith(10, 'bajo');
-    });
-
-    it('auto-creates under "General" when user has 0 fields', async () => {
-      mocks.findPlotByNameAcrossFields.mockResolvedValue([]);
-      mocks.findPlotByAlias.mockResolvedValue(null);
-      mocks.getFieldByName.mockResolvedValue(null);
-      mocks.getUserSingleField.mockResolvedValue(null);
-      mocks.getOrCreateField.mockResolvedValue({ id: 99, name: 'General' });
-      mocks.getOrCreatePlot.mockResolvedValue({ id: 30, field_id: 99, name: 'bajo' });
-
-      const result = await service.resolveFromNames(userId, null, 'bajo');
-
-      expect(result).toEqual({
-        fieldId: 99, fieldName: 'General',
-        plotId: 30, plotName: 'bajo',
-        autoCreated: true,
-      });
-      expect(mocks.getOrCreateField).toHaveBeenCalledWith(userId, 'General');
+      expect(result.fieldId).toBeNull();
+      expect(result.plotId).toBeNull();
+      expect(result.autoCreated).toBe(false);
+      expect(result.notFound).toEqual({ type: 'plot', name: 'bajo' });
     });
   });
 
@@ -181,22 +181,66 @@ describe('PlotDiscoveryService', () => {
   });
 
   describe('resolveFromNames — campo only', () => {
-    it('creates field and updates state', async () => {
-      mocks.getOrCreateField.mockResolvedValue({ id: 10, name: 'norte' });
+    it('resolves field with 0 plots and signals needPlotCreation', async () => {
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'norte' });
+      mocks.getPlotsByField.mockResolvedValue([]);
+
+      const result = await service.resolveFromNames(userId, 'norte', null);
+
+      expect(result.fieldId).toBe(10);
+      expect(result.fieldName).toBe('norte');
+      expect(result.plotId).toBeNull();
+      expect(result.needPlotCreation).toEqual({ fieldId: 10, fieldName: 'norte' });
+      expect(mocks.updateConversationState).toHaveBeenCalledWith(userId, 10, null);
+    });
+
+    it('auto-assigns single plot in field', async () => {
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'norte' });
+      mocks.getPlotsByField.mockResolvedValue([{ id: 20, name: 'bajo' }]);
 
       const result = await service.resolveFromNames(userId, 'norte', null);
 
       expect(result).toEqual({
         fieldId: 10, fieldName: 'norte',
-        plotId: null, plotName: null,
+        plotId: 20, plotName: 'bajo',
         autoCreated: false,
       });
-      expect(mocks.updateConversationState).toHaveBeenCalledWith(userId, 10, null);
+      expect(mocks.updateConversationState).toHaveBeenCalledWith(userId, 10, 20);
+    });
+
+    it('signals needPlotSelection with 2+ plots', async () => {
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'norte' });
+      mocks.getPlotsByField.mockResolvedValue([
+        { id: 20, name: 'bajo' },
+        { id: 21, name: 'alto' },
+      ]);
+
+      const result = await service.resolveFromNames(userId, 'norte', null);
+
+      expect(result.fieldId).toBe(10);
+      expect(result.plotId).toBeNull();
+      expect(result.needPlotSelection).toEqual({
+        fieldId: 10, fieldName: 'norte',
+        plots: [{ id: 20, name: 'bajo' }, { id: 21, name: 'alto' }],
+      });
+    });
+
+    it('returns notFound when field does not exist', async () => {
+      mocks.getFieldByName.mockResolvedValue(null);
+
+      const result = await service.resolveFromNames(userId, 'norte', null);
+
+      expect(result.fieldId).toBeNull();
+      expect(result.notFound).toEqual({ type: 'field', name: 'norte' });
+      expect(mocks.updateConversationState).not.toHaveBeenCalled();
     });
   });
 
   describe('resolveFromNames — nothing', () => {
-    it('returns all nulls', async () => {
+    it('returns all nulls when no plots and no fields', async () => {
+      mocks.findAllUserPlots.mockResolvedValue([]);
+      mocks.getUserFields.mockResolvedValue([]);
+
       const result = await service.resolveFromNames(userId, null, null);
 
       expect(result).toEqual({
@@ -205,34 +249,50 @@ describe('PlotDiscoveryService', () => {
         autoCreated: false,
       });
     });
+
+    it('auto-assigns when user has exactly 1 plot total', async () => {
+      mocks.findAllUserPlots.mockResolvedValue([
+        { id: 20, name: 'bajo', field_id: 10, field_name: 'norte' },
+      ]);
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'norte' });
+
+      const result = await service.resolveFromNames(userId, null, null);
+
+      expect(result).toEqual({
+        fieldId: 10, fieldName: 'norte',
+        plotId: 20, plotName: 'bajo',
+        autoCreated: false,
+      });
+      expect(mocks.updateConversationState).toHaveBeenCalledWith(userId, 10, 20);
+    });
   });
 
-  describe('resolve — parses text', () => {
-    it('parses lote + campo from text', async () => {
-      mocks.getOrCreateField.mockResolvedValue({ id: 10, name: 'norte' });
-      mocks.getOrCreatePlot.mockResolvedValue({ id: 20, field_id: 10, name: '3' });
+  describe('resolve — accepts pre-extracted names', () => {
+    it('resolves with field + plot names', async () => {
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'norte' });
+      mocks.getPlotByName.mockResolvedValue({ id: 20, field_id: 10, name: '3' });
 
-      const result = await service.resolve(userId, 'pagué 50mil en lote 3 campo norte');
+      const result = await service.resolve(userId, 'norte', '3');
 
       expect(result.plotId).toBe(20);
       expect(result.fieldId).toBe(10);
     });
 
-    it('uses claudeField as fallback for campo', async () => {
-      mocks.getOrCreateField.mockResolvedValue({ id: 10, name: 'sur' });
-      mocks.getOrCreatePlot.mockResolvedValue({ id: 20, field_id: 10, name: '3' });
+    it('resolves with only field name', async () => {
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'sur' });
+      mocks.getPlotsByField.mockResolvedValue([{ id: 20, name: '3' }]);
 
-      const result = await service.resolve(userId, 'pagué 50mil lote 3', 'sur');
+      const result = await service.resolve(userId, 'sur');
 
       expect(result.fieldName).toBe('sur');
-      expect(result.plotName).toBe('3');
+      expect(result.plotId).toBe(20);
     });
   });
 
   describe('alias registration', () => {
     it('registers "lote N" alias for numeric plot names', async () => {
-      mocks.getOrCreateField.mockResolvedValue({ id: 10, name: 'norte' });
-      mocks.getOrCreatePlot.mockResolvedValue({ id: 20, field_id: 10, name: '5' });
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'norte' });
+      mocks.getPlotByName.mockResolvedValue({ id: 20, field_id: 10, name: '5' });
 
       await service.resolveFromNames(userId, 'norte', '5');
 
@@ -241,8 +301,8 @@ describe('PlotDiscoveryService', () => {
     });
 
     it('registers stripped alias for "lote X" names', async () => {
-      mocks.getOrCreateField.mockResolvedValue({ id: 10, name: 'norte' });
-      mocks.getOrCreatePlot.mockResolvedValue({ id: 20, field_id: 10, name: 'lote norte' });
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'norte' });
+      mocks.getPlotByName.mockResolvedValue({ id: 20, field_id: 10, name: 'lote norte' });
 
       await service.resolveFromNames(userId, 'norte', 'lote norte');
 

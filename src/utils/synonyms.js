@@ -45,6 +45,17 @@ export const SYNONYMS = {
   'glifo': 'glifosato',
   'agroquimico': 'agroquimico',
   'agroquimicos': 'agroquimicos',
+
+  // Machinery / services
+  'tractorista': 'maquinaria',
+  'laborear': 'laboreo',
+
+  // Transport / logistics
+  'fletes': 'flete',
+  'camionero': 'flete',
+
+  // Insurance
+  'seguros': 'seguro',
 };
 
 // Multi-word synonyms (checked before single-word)

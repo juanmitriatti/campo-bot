@@ -3,7 +3,7 @@ import InteractiveElement from './InteractiveElement';
 
 interface Props {
   message: ChatMessage;
-  onInteractiveClick: (callbackId: string) => void;
+  onInteractiveClick: (callbackId: string, label: string) => void;
 }
 
 function formatText(text: string): string {
@@ -14,7 +14,7 @@ function formatText(text: string): string {
     .replace(/\n/g, '<br/>');
 }
 
-function BotItem({ item, onInteractiveClick }: { item: BotResponseItem; onInteractiveClick: (id: string) => void }) {
+function BotItem({ item, onInteractiveClick, hideBody }: { item: BotResponseItem; onInteractiveClick: (id: string, label: string) => void; hideBody?: boolean }) {
   if (item.type === 'text' && item.text) {
     return (
       <div
@@ -24,7 +24,7 @@ function BotItem({ item, onInteractiveClick }: { item: BotResponseItem; onIntera
     );
   }
   if (item.type === 'interactive' && item.interactive) {
-    return <InteractiveElement interactive={item.interactive} onClick={onInteractiveClick} />;
+    return <InteractiveElement interactive={item.interactive} onClick={onInteractiveClick} hideBody={hideBody} />;
   }
   return null;
 }
@@ -54,11 +54,14 @@ export default function ChatBubble({ message, onInteractiveClick }: Props) {
     );
   }
 
-  // Bot message
+  // Bot message — suppress interactive body when a text item already provides context
+  const items = message.items ?? [];
+  const hasTextItem = items.some(it => it.type === 'text' && it.text);
+
   return (
     <div className="flex justify-start mb-3">
       <div className="max-w-[85%] space-y-2">
-        {message.items?.map((item, i) => (
+        {items.map((item, i) => (
           <div
             key={i}
             className={
@@ -67,7 +70,11 @@ export default function ChatBubble({ message, onInteractiveClick }: Props) {
                 : ''
             }
           >
-            <BotItem item={item} onInteractiveClick={onInteractiveClick} />
+            <BotItem
+              item={item}
+              onInteractiveClick={onInteractiveClick}
+              hideBody={item.type === 'interactive' && hasTextItem}
+            />
           </div>
         ))}
         <p className="text-[10px] text-gray-400 ml-2">{time}</p>

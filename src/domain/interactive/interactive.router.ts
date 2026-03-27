@@ -28,6 +28,7 @@ const CALLBACK_MAP: Record<string, ParsedCommand> = {
   'cmd_reporte_semanal': { command: 'weekly_report' },
   'cmd_exportar_csv': { command: 'export_csv' },
   'cmd_reporte_agro': { command: 'generate_agro_report' },
+  'cmd_historial_lote': { command: 'query_plot_history' },
   // Back to main menu
   'back_menu': { command: 'menu' },
   // Flow entry points (intercepted early in controller, here as documentation/fallback)
@@ -46,7 +47,20 @@ const CALLBACK_MAP: Record<string, ParsedCommand> = {
 export class InteractiveRouter {
   route(callbackId: string): Intent | null {
     const cmd = CALLBACK_MAP[callbackId];
-    if (!cmd) return null;
-    return { type: 'command', data: cmd };
+    if (cmd) return { type: 'command', data: cmd };
+
+    // Dynamic callbacks: cmd_historial_<plotId> → query_plot_history with plotId
+    const historialMatch = callbackId.match(/^cmd_historial_(\d+)$/);
+    if (historialMatch) {
+      return { type: 'command', data: { command: 'query_plot_history', plotId: parseInt(historialMatch[1], 10) } };
+    }
+
+    // Dynamic callbacks: rain_field_<fieldName>_<mm> → log_rainfall with field + mm
+    const rainMatch = callbackId.match(/^rain_field_(.+)_(\d+(?:\.\d+)?)$/);
+    if (rainMatch) {
+      return { type: 'command', data: { command: 'log_rainfall', fieldName: rainMatch[1], mm: parseFloat(rainMatch[2]) } };
+    }
+
+    return null;
   }
 }

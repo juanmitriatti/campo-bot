@@ -535,6 +535,7 @@ router.get("/api/plans", async (req, res) => {
       displayName: p.display_name,
       priceArs: parseFloat(p.price_ars),
       isActive: p.is_active,
+      dailyAiLimit: p.daily_ai_limit != null ? parseInt(p.daily_ai_limit) : 20,
       features: p.features || [],
       userCount: parseInt(p.user_count),
     })));
@@ -564,7 +565,7 @@ router.get("/api/features", async (req, res) => {
 
 router.put("/api/plans/:id", async (req, res) => {
   const { id } = req.params;
-  const { displayName, priceArs, isActive } = req.body;
+  const { displayName, priceArs, isActive, dailyAiLimit } = req.body;
 
   try {
     const sets = [];
@@ -574,6 +575,7 @@ router.put("/api/plans/:id", async (req, res) => {
     if (displayName !== undefined) { sets.push(`display_name = $${idx++}`); values.push(displayName); }
     if (priceArs !== undefined) { sets.push(`price_ars = $${idx++}`); values.push(priceArs); }
     if (isActive !== undefined) { sets.push(`is_active = $${idx++}`); values.push(isActive); }
+    if (dailyAiLimit !== undefined) { sets.push(`daily_ai_limit = $${idx++}`); values.push(dailyAiLimit); }
 
     if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });
 
@@ -586,7 +588,7 @@ router.put("/api/plans/:id", async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
 
     const p = result.rows[0];
-    res.json({ id: p.id, name: p.name, displayName: p.display_name, priceArs: parseFloat(p.price_ars), isActive: p.is_active });
+    res.json({ id: p.id, name: p.name, displayName: p.display_name, priceArs: parseFloat(p.price_ars), isActive: p.is_active, dailyAiLimit: p.daily_ai_limit != null ? parseInt(p.daily_ai_limit) : 20 });
   } catch (error) {
     console.error("Error updating plan:", error);
     res.status(500).json({ error: "Internal server error" });

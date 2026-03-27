@@ -2,6 +2,17 @@
 // Parser v2.0 — Modular, normalizado, con fuzzy matching y numeros escritos
 // ============================================================================
 
+import {
+  EXPENSE_KEYWORD_MAP,
+  INCOME_KEYWORD_MAP,
+  CROPS,
+  AGRO_PRODUCTS,
+  PRODUCT_TYPE_KEYWORDS,
+  IMPLEMENTS,
+  UNIT_ALIASES,
+  ACTIVITY_FILTER_PATTERNS,
+} from '../constants/agro-terms.js';
+
 // --- Normalización central ---
 function normalizeText(text) {
   return text.toLowerCase().trim()
@@ -145,8 +156,9 @@ export function normalizarMonto(texto) {
   const matchLucas = lower.match(/(\d+)\s?lucas/);
   if (matchLucas) return parseInt(matchLucas[1]) * 1000;
 
-  // Standalone number (for flows and direct amount input like "500")
-  if (/^\d+$/.test(lower)) return parseInt(lower);
+  // Standalone number (for flows and direct amount input like "500" or "200 dolares")
+  const stripped = lower.replace(/\s*(?:d[oó]lares?|pesos?|usd|ars)\s*/g, '').trim();
+  if (/^\d+$/.test(stripped)) return parseInt(stripped);
 
   return null;
 }
@@ -184,9 +196,12 @@ const FINANCIAL_KEYWORDS = /(?:gast[oéea]|ingres[oéea]|pagu[eé]|cobr[eé]|com
 /**
  * Detect financial intent via keywords. Verb-independent — matches nouns and all conjugations.
  */
-export function hasFinancialIntent(texto) {
+// Internal — used by parseMensaje. No longer part of public API.
+function hasFinancialIntent(texto) {
   return FINANCIAL_KEYWORDS.test(texto);
 }
+// Keep export for backward compat (tests)
+export { hasFinancialIntent };
 
 // --- Complejidad ---
 function esComplejo(texto) {
@@ -196,6 +211,15 @@ function esComplejo(texto) {
   if (lower.includes("cada")) return true;
   return false;
 }
+
+/**
+ * Detect questions that should NOT be parsed as expenses/incomes.
+ * Catches "qué es una maleza?", "cuánto llovió?", etc.
+ * Note: uses (?=\s|$) instead of \b because JS \b fails with accented chars (é, á, etc.)
+ */
+// Canonical implementation in guards.ts — import for internal use + re-export
+import { isLikelyQuestion as _isLikelyQuestion } from './guards.js';
+export const isLikelyQuestion = _isLikelyQuestion;
 
 // --- Levenshtein (ligero, sin dependencias) ---
 function levenshtein(a, b) {
@@ -217,110 +241,37 @@ function levenshtein(a, b) {
   return matrix[b.length][a.length];
 }
 
-// --- Diccionarios de categorías (sin acentos, post-normalización) ---
-const CATEGORIAS_GASTO = {
-  "gasoil": "Combustible", "diesel": "Combustible", "nafta": "Combustible", "combustible": "Combustible",
-  "fertilizante": "Fertilizantes", "fertilizantes": "Fertilizantes", "urea": "Fertilizantes", "glifosato": "Fertilizantes",
-  "semilla": "Semillas", "semillas": "Semillas",
-  "agroquimico": "Agroquímicos", "agroquimicos": "Agroquímicos", "herbicida": "Agroquímicos", "insecticida": "Agroquímicos", "fungicida": "Agroquímicos",
-  "sueldo": "Sueldos", "sueldos": "Sueldos", "jornal": "Sueldos", "peon": "Sueldos",
-  "repuesto": "Maquinaria", "repuestos": "Maquinaria", "tractor": "Maquinaria", "maquinaria": "Maquinaria", "cosechadora": "Maquinaria",
-  "alquiler": "Arrendamiento", "arrendamiento": "Arrendamiento", "arriendo": "Arrendamiento",
-  "impuesto": "Impuestos", "impuestos": "Impuestos", "inmobiliario": "Impuestos", "iibb": "Impuestos",
-};
+// --- Diccionarios de categorías — imported from constants/agro-terms.ts ---
 
-const CATEGORIAS_INGRESO = {
-  "soja": "Soja", "soya": "Soja",
-  "maiz": "Maíz",
-  "trigo": "Trigo",
-  "girasol": "Girasol",
-  "sorgo": "Sorgo",
-  "cebada": "Cebada",
-  "hacienda": "Hacienda", "ganado": "Hacienda", "novillo": "Hacienda", "vaca": "Hacienda",
-  "alquiler": "Arrendamiento", "arrendamiento": "Arrendamiento",
-};
-
-// --- Productos agronómicos ---
-const PRODUCTOS_AGRO = {
-  // Herbicidas
-  glifosato: { name: "Glifosato", type: "herbicida" },
-  glifo: { name: "Glifosato", type: "herbicida" },
-  roundup: { name: "Glifosato", type: "herbicida" },
-  atrazina: { name: "Atrazina", type: "herbicida" },
-  "2,4-d": { name: "2,4-D", type: "herbicida" },
-  "24d": { name: "2,4-D", type: "herbicida" },
-  metsulfuron: { name: "Metsulfurón", type: "herbicida" },
-  dicamba: { name: "Dicamba", type: "herbicida" },
-  paraquat: { name: "Paraquat", type: "herbicida" },
-  imazetapir: { name: "Imazetapir", type: "herbicida" },
-  cletodim: { name: "Cletodim", type: "herbicida" },
-  haloxifop: { name: "Haloxifop", type: "herbicida" },
-  // Insecticidas
-  cipermetrina: { name: "Cipermetrina", type: "insecticida" },
-  clorpirifos: { name: "Clorpirifós", type: "insecticida" },
-  fipronil: { name: "Fipronil", type: "insecticida" },
-  imidacloprid: { name: "Imidacloprid", type: "insecticida" },
-  dimetoato: { name: "Dimetoato", type: "insecticida" },
-  // Fungicidas
-  azoxistrobina: { name: "Azoxistrobina", type: "fungicida" },
-  carbendazim: { name: "Carbendazim", type: "fungicida" },
-  tebuconazol: { name: "Tebuconazol", type: "fungicida" },
-  // Fertilizantes
-  urea: { name: "Urea", type: "fertilizante" },
-  fosfato: { name: "Fosfato", type: "fertilizante" },
-  dap: { name: "DAP", type: "fertilizante" },
-  map: { name: "MAP", type: "fertilizante" },
-  superfosfato: { name: "Superfosfato", type: "fertilizante" },
-  "sulfato de amonio": { name: "Sulfato de Amonio", type: "fertilizante" },
-  nitrato: { name: "Nitrato", type: "fertilizante" },
-  can: { name: "CAN", type: "fertilizante" },
-  uan: { name: "UAN", type: "fertilizante" },
-  potasio: { name: "Potasio", type: "fertilizante" },
-};
-
-// Generic type keywords for product type detection
-const PRODUCT_TYPE_KEYWORDS = {
-  herbicida: "herbicida",
-  insecticida: "insecticida",
-  fungicida: "fungicida",
-  fertilizante: "fertilizante",
-  agroquimico: "herbicida",
-};
+// --- Productos agronómicos — imported from constants/agro-terms.ts ---
 
 export function detectarProducto(texto) {
   const normalized = normalizeText(texto);
 
   // Multi-word exact match first (e.g. "sulfato de amonio")
-  for (const key of Object.keys(PRODUCTOS_AGRO)) {
-    if (key.includes(" ") && normalized.includes(key)) return PRODUCTOS_AGRO[key];
+  for (const key of Object.keys(AGRO_PRODUCTS)) {
+    if (key.includes(" ") && normalized.includes(key)) return AGRO_PRODUCTS[key];
   }
 
   // Single-word exact match
   const words = normalized.split(/\s+/);
   for (const word of words) {
-    if (PRODUCTOS_AGRO[word]) return PRODUCTOS_AGRO[word];
+    if (AGRO_PRODUCTS[word]) return AGRO_PRODUCTS[word];
   }
 
   // Fuzzy startsWith
   for (const word of words) {
     if (word.length < 4) continue;
-    for (const key of Object.keys(PRODUCTOS_AGRO)) {
+    for (const key of Object.keys(AGRO_PRODUCTS)) {
       if (key.includes(" ")) continue;
-      if (word.startsWith(key) || key.startsWith(word)) return PRODUCTOS_AGRO[key];
+      if (word.startsWith(key) || key.startsWith(word)) return AGRO_PRODUCTS[key];
     }
   }
 
   return null;
 }
 
-// --- Quantity & Unit parsing ---
-const UNIT_ALIASES = {
-  kg: "kg", kgs: "kg", kilos: "kg", kilogramos: "kg",
-  lt: "lt", lts: "lt", litro: "lt", litros: "lt",
-  cc: "cc",
-  bolsa: "bolsas", bolsas: "bolsas",
-  tn: "tn", tonelada: "tn", toneladas: "tn",
-};
+// --- Quantity & Unit parsing (UNIT_ALIASES imported from constants/agro-terms.ts) ---
 
 export function parseQuantityUnit(texto) {
   const normalized = normalizeText(texto).replace(/,/g, ".");
@@ -357,39 +308,18 @@ export function parseFechaRelativa(texto) {
   return null;
 }
 
-// --- Implementos (tillage tools) ---
-const IMPLEMENTOS = {
-  cincel: "Cincel",
-  cincelada: "Cincel",
-  arado: "Arado",
-  arada: "Arado",
-  rastra: "Rastra",
-  rastreada: "Rastra",
-  disco: "Disco",
-  disqueada: "Disco",
-};
+// --- Implementos (IMPLEMENTS imported from constants/agro-terms.ts) ---
 
 export function detectarImplemento(texto) {
   const normalized = normalizeText(texto);
   const words = normalized.split(/\s+/);
   for (const word of words) {
-    if (IMPLEMENTOS[word]) return IMPLEMENTOS[word];
+    if (IMPLEMENTS[word]) return IMPLEMENTS[word];
   }
   return null;
 }
 
-// --- Cultivos ---
-const CULTIVOS = {
-  soja: "Soja", soya: "Soja",
-  maiz: "Maíz",
-  trigo: "Trigo",
-  girasol: "Girasol",
-  sorgo: "Sorgo",
-  cebada: "Cebada",
-  avena: "Avena",
-  centeno: "Centeno",
-  alfalfa: "Alfalfa",
-};
+// --- Cultivos (CROPS imported from constants/agro-terms.ts) ---
 
 export function detectarCultivo(texto) {
   const normalized = normalizeText(texto);
@@ -397,13 +327,13 @@ export function detectarCultivo(texto) {
 
   // Exact match first
   for (const word of words) {
-    if (CULTIVOS[word]) return CULTIVOS[word];
+    if (CROPS[word]) return CROPS[word];
   }
 
   // Fuzzy startsWith
   for (const word of words) {
     if (word.length < 3) continue;
-    for (const key of Object.keys(CULTIVOS)) {
+    for (const key of Object.keys(CROPS)) {
       if (word.startsWith(key) || key.startsWith(word)) return CULTIVOS[key];
     }
   }
@@ -446,12 +376,12 @@ function fuzzyLookup(normalized, dict) {
 
 export function detectarCategoria(texto) {
   const normalized = normalizeText(texto);
-  return fuzzyLookup(normalized, CATEGORIAS_GASTO);
+  return fuzzyLookup(normalized, EXPENSE_KEYWORD_MAP);
 }
 
 export function detectarCategoriaIngreso(texto) {
   const normalized = normalizeText(texto);
-  return fuzzyLookup(normalized, CATEGORIAS_INGRESO);
+  return fuzzyLookup(normalized, INCOME_KEYWORD_MAP);
 }
 
 // --- Milímetros de lluvia ---
@@ -632,22 +562,11 @@ export function parseTimeReference(text) {
   return null;
 }
 
-// --- Activity filter parsing for history queries ---
-
-const ACTIVITY_FILTER_MAP = [
-  { pattern: /fumig|pulveriz/, type: 'spraying' },
-  { pattern: /fertil|abono/, type: 'fertilization' },
-  { pattern: /labran|arar|cincel|disco/, type: 'tillage' },
-  { pattern: /riego|regar/, type: 'irrigation' },
-  { pattern: /siembr|sembr/, type: 'planting' },
-  { pattern: /cosech/, type: 'harvest' },
-  { pattern: /lluvia|precipit/, type: 'rainfall' },
-  { pattern: /observ|monitoreo|nota/, type: 'observation' },
-];
+// --- Activity filter parsing (ACTIVITY_FILTER_PATTERNS imported from constants/agro-terms.ts) ---
 
 export function parseActivityFilter(text) {
   const lower = text.toLowerCase();
-  for (const { pattern, type } of ACTIVITY_FILTER_MAP) {
+  for (const { pattern, type } of ACTIVITY_FILTER_PATTERNS) {
     if (pattern.test(lower)) return type;
   }
   return null;
@@ -692,9 +611,34 @@ const COMMAND_PATTERNS = [
   { command: "ack", patterns: [/^(ok|listo|perfecto|bien|bueno|entendido)$/] },
   { command: "help", patterns: [/^(ayuda|help|comandos|\?)$/] },
   { command: "menu", patterns: [/^(menu|menú|opciones)$/] },
+  { command: "show_reports_menu", patterns: [
+    /^(?:reportes?|informes?|ver\s+reportes?|ver\s+informes?|mis\s+reportes?)$/,
+    /^(?:quiero|necesito|dame|mostrar?|mostra)\s+(?:un\s+)?(?:reportes?|informes?)$/,
+  ]},
+
+  // --- Start flows via text ---
+  { command: "start_expense_flow", patterns: [
+    /^(?:registrar|cargar|anotar|nuevo|nueva)\s+(?:un\s+)?gasto$/,
+    /^(?:quiero|necesito)\s+(?:registrar|cargar|anotar)\s+(?:un\s+)?gasto$/,
+    /^(?:agregar|agrega)\s+(?:un\s+)?gasto$/,
+  ]},
+  { command: "start_income_flow", patterns: [
+    /^(?:registrar|cargar|anotar|nuevo|nueva)\s+(?:un\s+)?ingreso$/,
+    /^(?:quiero|necesito)\s+(?:registrar|cargar|anotar)\s+(?:un\s+)?ingreso$/,
+    /^(?:agregar|agrega)\s+(?:un\s+)?ingreso$/,
+  ]},
+
+  // --- Request more AI messages ---
+  { command: "request_more_messages", patterns: [
+    /^(?:quiero|necesito)\s+m[aá]s\s+mensajes$/,
+    /^m[aá]s\s+mensajes$/,
+    /^(?:solicitar|pedir)\s+m[aá]s\s+mensajes$/,
+    /^ampliar\s+(?:mi\s+)?(?:l[ií]mite|plan)$/,
+  ]},
 
   // --- Dólar ---
-  { command: "dollar", patterns: [/(?:dolar|dolares|cotizacion|cotizaciones)/, /precio.+dolar/, /dolar.+hoy/] },
+  // Negative lookbehind prevents "200 dolares" (amount) from matching as dollar query
+  { command: "dollar", patterns: [/(?<!\d)(?<!\d\s)(?:dolar|dolares|cotizacion|cotizaciones)/, /precio.+dolar/, /dolar.+hoy/] },
 
   // --- Alertas ---
   {
@@ -722,331 +666,6 @@ const COMMAND_PATTERNS = [
     },
   },
 
-  // --- Clima (orden importa: más específico primero) ---
-  {
-    command: "weather_all",
-    patterns: [/clima\s+(todos|campos|general)/],
-    condition: (n) => isWeatherContext(n),
-  },
-  {
-    command: "weather_field",
-    patterns: [/(?:clima|tiempo|pronostico|va a llover|llovera).*(?:lote|campo|parcela)\s+(\w+)/, /(?:lote|campo|parcela)\s+(\w+).*(?:clima|tiempo|pronostico)/],
-    extract: (m) => ({ fieldName: m[1] }),
-    condition: (n) => isWeatherContext(n),
-  },
-  {
-    command: "_weather_dispatch",
-    patterns: [
-      /(?:clima|tiempo|pronostico|temperatura)/,
-      /(?:va a llover|llovera|esperan?\s*lluvia|habra\s*lluvia)/,
-    ],
-    extract: (_m, normalized) => dispatchWeather(normalized),
-    condition: (n) => isWeatherContext(n),
-  },
-
-  // --- Registro de lluvia ---
-  {
-    command: "log_rainfall",
-    patterns: [/(?:llovio|cayeron|llovieron|lluvia|registrar lluvia)\s/, /\d+\s*mm/],
-    extract: (_m, normalized, original) => {
-      const mm = parseMilimetros(original);
-      if (mm === null || mm <= 0) return null;
-      const plotName = detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      return {
-        mm,
-        fieldName: campoMatch?.[1] || null,
-        plotName,
-      };
-    },
-    condition: (n) => {
-      const mm = parseMilimetros(n);
-      return mm !== null && mm > 0;
-    },
-  },
-
-  // --- Borrar última lluvia ---
-  { command: "delete_last_rainfall", patterns: [/borr(?:ar|a)\s+ultim[ao]\s+lluvia/] },
-
-  // --- Comparar lluvia ---
-  {
-    command: "_compare_rainfall",
-    patterns: [/(?:comparar|comparacion)\s+lluvias?\s+(\w+)\s+(?:con|vs)\s+(\w+)/],
-    extract: (m) => {
-      const m1 = parseMesNombre(m[1]);
-      const m2 = parseMesNombre(m[2]);
-      if (m1 !== null && m2 !== null) {
-        return { command: "compare_rainfall_months", mes1: m1, mes2: m2, mes1Name: MESES_NOMBRE[m1], mes2Name: MESES_NOMBRE[m2] };
-      }
-      const y1 = parseInt(m[1]);
-      const y2 = parseInt(m[2]);
-      if (y1 > 2000 && y2 > 2000) {
-        return { command: "compare_rainfall_years", year1: y1, year2: y2 };
-      }
-      return null;
-    },
-  },
-
-  // --- Consulta de lluvias ---
-  {
-    command: "_rainfall_query",
-    patterns: [/(?:lluvias?|cua[nl]to\s+llovio|cuando\s+llovio|llovio\s+(?:esta|este|ayer|hoy))/, /(?:llovio|lluvia).*(?:semana|mes|ano|ayer|hoy)/],
-    extract: (_m, normalized) => {
-      // Skip if has mm (that's a log_rainfall) or "registrar"
-      if (/\d+\s*mm/.test(normalized) || normalized.includes("registrar")) return null;
-      const plotName = detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      const fieldName = campoMatch?.[1] || null;
-
-      if (normalized.includes("semana")) return { command: "rainfall_report", period: "week", fieldName, plotName };
-      if (/ano|anual/.test(normalized)) return { command: "rainfall_report", period: "year", fieldName, plotName };
-      if (normalized.includes("ayer")) {
-        const ayer = new Date();
-        ayer.setDate(ayer.getDate() - 1);
-        return { command: "rainfall_range", desde: ayer, hasta: ayer, fieldName };
-      }
-      if (normalized.includes("hoy")) {
-        const hoy = new Date();
-        return { command: "rainfall_range", desde: hoy, hasta: hoy, fieldName };
-      }
-      if (normalized.includes("desde")) {
-        const matchRango = normalized.match(/desde\s+(.+?)\s+hasta\s+(.+)/);
-        if (matchRango) {
-          const desde = parseSpanishDate(matchRango[1]);
-          const hasta = parseSpanishDate(matchRango[2]);
-          if (desde && hasta) return { command: "rainfall_range", desde, hasta };
-        }
-      }
-      return { command: "rainfall_report", period: "month", fieldName, plotName };
-    },
-    condition: (n) => !/\d+\s*mm/.test(n) && !n.includes("registrar"),
-  },
-
-  // --- Cultivos (crop tracking) ---
-  {
-    command: "sow_crop",
-    patterns: [
-      /(?:sembre|siembra|plante|plantamos|plantaron|sembramos|sembraron|arrancamos\s+con)\s/,
-    ],
-    extract: (_m, normalized, original) => {
-      const crop = detectarCultivo(original);
-      if (!crop) return null;
-      const plotName = detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      return { crop, plotName, fieldName: campoMatch?.[1] || null };
-    },
-    condition: (n) => {
-      const hasSowVerb = /(?:sembre|siembra|plante|plantamos|plantaron|sembramos|sembraron|arrancamos\s+con)/.test(n);
-      return hasSowVerb && detectarCultivo(n) !== null;
-    },
-  },
-  {
-    command: "harvest_crop",
-    patterns: [
-      /(?:cosechamos|cosecharon|coseche|levantamos|levantaron|levante|terminamos\s+cosecha)\s/,
-    ],
-    extract: (_m, normalized, original) => {
-      const crop = detectarCultivo(original);
-      if (!crop) return null;
-      const plotName = detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      return { crop, plotName, fieldName: campoMatch?.[1] || null };
-    },
-    condition: (n) => {
-      const hasHarvestVerb = /(?:cosechamos|cosecharon|coseche|levantamos|levantaron|levante|terminamos\s+cosecha)/.test(n);
-      return hasHarvestVerb && detectarCultivo(n) !== null;
-    },
-  },
-  // --- Agronomic activities ---
-  {
-    command: "log_spraying",
-    patterns: [
-      /(?:aplicamos|tiramos|echamos|fumigamos|pulverizamos|curamos)\s/,
-    ],
-    extract: (_m, normalized, original) => {
-      const product = detectarProducto(original);
-      // Reject if product is a fertilizer (fertilization handles those)
-      if (product && product.type === "fertilizante") return null;
-      // Need either a known product or a generic type keyword
-      if (!product) {
-        const hasTypeKeyword = /(?:herbicida|insecticida|fungicida|agroquimico)/.test(normalized);
-        if (!hasTypeKeyword) return null;
-      }
-      const plotName = detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      const crop = detectarCultivo(original);
-      const qty = parseQuantityUnit(original);
-      const fecha = parseFechaRelativa(original);
-      return {
-        plotName,
-        fieldName: campoMatch?.[1] || null,
-        crop: crop || null,
-        product: product?.name || null,
-        productType: product?.type || null,
-        quantity: qty?.quantity || null,
-        unit: qty?.unit || null,
-        eventDate: fecha || null,
-      };
-    },
-    condition: (n) => {
-      const hasVerb = /(?:aplicamos|tiramos|echamos|fumigamos|pulverizamos|curamos)/.test(n);
-      if (!hasVerb) return false;
-      const product = detectarProducto(n);
-      if (product && product.type === "fertilizante") return false;
-      if (product) return true;
-      return /(?:herbicida|insecticida|fungicida|agroquimico)/.test(n);
-    },
-  },
-  {
-    command: "log_fertilization",
-    patterns: [
-      /(?:fertilizamos|abonamos)\s/,
-      /(?:aplicamos|tiramos|echamos|pusimos)\s/,
-    ],
-    extract: (_m, normalized, original) => {
-      const product = detectarProducto(original);
-      const hasFertVerb = /(?:fertilizamos|abonamos)/.test(normalized);
-      // Generic verbs require a fertilizer product
-      if (!hasFertVerb && (!product || product.type !== "fertilizante")) {
-        // Also accept generic "fertilizante" keyword
-        if (!/fertilizante/.test(normalized)) return null;
-      }
-      const plotName = detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      const crop = detectarCultivo(original);
-      const qty = parseQuantityUnit(original);
-      const fecha = parseFechaRelativa(original);
-      return {
-        plotName,
-        fieldName: campoMatch?.[1] || null,
-        crop: crop || null,
-        product: product?.name || null,
-        productType: product?.type || "fertilizante",
-        quantity: qty?.quantity || null,
-        unit: qty?.unit || null,
-        eventDate: fecha || null,
-      };
-    },
-    condition: (n) => {
-      const hasFertVerb = /(?:fertilizamos|abonamos)/.test(n);
-      if (hasFertVerb) return true;
-      const hasGenericVerb = /(?:aplicamos|tiramos|echamos|pusimos)/.test(n);
-      if (!hasGenericVerb) return false;
-      const product = detectarProducto(n);
-      if (product && product.type === "fertilizante") return true;
-      return /fertilizante/.test(n);
-    },
-  },
-  {
-    command: "log_tillage",
-    patterns: [
-      /(?:hicimos\s+(?:labranza|cincelada|rastreada|arada|disqueada))/,
-      /(?:aramos|pasamos\s+(?:el\s+)?(?:cincel|arado|rastra|disco))/,
-    ],
-    extract: (_m, normalized, original) => {
-      const plotName = detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      const implement = detectarImplemento(original);
-      const fecha = parseFechaRelativa(original);
-      return {
-        plotName,
-        fieldName: campoMatch?.[1] || null,
-        implement: implement || null,
-        eventDate: fecha || null,
-      };
-    },
-  },
-  {
-    command: "log_irrigation",
-    patterns: [
-      /(?:regamos|irrigamos)\s/,
-      /(?:hicimos|prendimos)\s+(?:el\s+)?(?:riego|pivot)/,
-    ],
-    extract: (_m, normalized, original) => {
-      const plotName = detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      const fecha = parseFechaRelativa(original);
-      return {
-        plotName,
-        fieldName: campoMatch?.[1] || null,
-        eventDate: fecha || null,
-      };
-    },
-  },
-  {
-    command: "plot_activities",
-    patterns: [
-      /(?:actividad(?:es)?|labores)\s+(?:del?\s+)?lote\s+(\w+)/,
-      /que\s+hicimos\s+en\s+(?:el\s+)?lote\s+(\w+)/,
-    ],
-    extract: (m, normalized) => {
-      const plotName = m[1] || detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      return {
-        plotName,
-        fieldName: campoMatch?.[1] || null,
-      };
-    },
-  },
-
-  {
-    command: "query_plot_history",
-    patterns: [
-      /(?:cuando|cuándo)\s+(?:fue|hicimos|hice)\s+(?:la\s+)?(?:ultima|última)\s+(.+?)(?:\s+(?:en|del?)\s+(?:(?:el\s+)?lote)\s+|$)/,
-      /(?:ultima|última)\s+(?:vez\s+que\s+)?(.+?)(?:\s+(?:en|del?)\s+(?:(?:el\s+)?lote)\s+|$)/,
-      /(?:que|qué)\s+(?:hicimos|hice|se\s+hizo|paso|pasó)\s+(?:en\s+)?(?:(?:el\s+)?lote)\s+/,
-      /(?:historial|historia)\s+(?:de\s+)?(?:actividad(?:es)?)\s+(?:del?\s+)?(?:(?:el\s+)?lote)\s+/,
-      /(?:que|qué)\s+(?:hicimos|hice|se\s+hizo|paso|pasó)\s+(?:esta\s+semana|este\s+mes|ayer|hoy)/,
-      // Binary questions: "¿se fumigó?", "¿hubo lluvia?", "¿se fertilizó el lote 3?"
-      /(?:se\s+)?(?:fumig[oó]|pulveriz[oó]|fertiliz[oó]|sembr[oó]|cosech[oó]|reg[oó]|ar[oó]|labr[oó])/,
-      /(?:hubo|hay|cay[oó]|llov[ií][oó]?)\s+(?:lluvias?|precipitacion(?:es)?|agua)/,
-    ],
-    extract: (_m, normalized, original) => {
-      const plotName = detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      const timeRef = parseTimeReference(original);
-      const activityFilter = parseActivityFilter(original);
-      // Detect binary question pattern: "¿se fumigó?", "¿hubo lluvia?"
-      const lower = original.toLowerCase();
-      const isBinaryQuestion = /(?:se\s+)?(?:fumig[oó]|pulveriz[oó]|fertiliz[oó]|sembr[oó]|cosech[oó]|reg[oó]|ar[oó]|labr[oó])\b/.test(lower)
-        || /(?:hubo|hay|cay[oó]|llov[ií][oó]?)\s+(?:lluvias?|precipitacion|agua)/.test(lower);
-      return {
-        plotName,
-        fieldName: campoMatch?.[1] || null,
-        timeRef,
-        activityFilter,
-        isBinaryQuestion,
-        _originalText: original,
-      };
-    },
-    condition: (n) => /(?:cuando|cuándo|ultima|última|que\s+(?:hicimos|hice|se\s+hizo|paso|pasó)|historial\s+de\s+actividad|se\s+(?:fumig|pulveriz|fertiliz|sembr|cosech|reg[oó]|ar[oó]|labr)|hubo\s+(?:lluvia|precipitacion|agua)|llov[ií])/.test(n),
-  },
-
-  {
-    command: "active_crop",
-    patterns: [
-      /(?:que\s+hay\s+sembrado|que\s+cultivo\s+tiene|que\s+tiene\s+sembrado|que\s+esta\s+sembrado)/,
-    ],
-    extract: (_m, normalized) => {
-      const plotName = detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      return { plotName, fieldName: campoMatch?.[1] || null };
-    },
-  },
-  {
-    command: "crop_history",
-    patterns: [
-      /(?:historial|campanas|campana|historia)\s+(?:del?\s+)?(?:lote|cultivos?)/,
-      /(?:historial|campanas|campana|historia)\s+(?:del?\s+)?(\w+)/,
-    ],
-    extract: (_m, normalized) => {
-      const plotName = detectarLote(normalized);
-      const campoMatch = normalized.match(/(?:campo|parcela)\s+(\w+)/);
-      return { plotName, fieldName: campoMatch?.[1] || null };
-    },
-    condition: (n) => /(?:historial|campanas|campana|historia)/.test(n) && (/lote/.test(n) || /cultivo/.test(n) || /campana/.test(n)),
-  },
-
   // --- Lotes (plots) de un campo ---
   {
     command: "list_plots",
@@ -1054,6 +673,7 @@ const COMMAND_PATTERNS = [
       /^(?:mis\s+lotes|ver\s+lotes|listar\s+lotes)$/,
       /(?:mostrar?|mostra|dame|decime)\s+(?:mis\s+)?lotes/,
       /cuantos?\s+lotes?/,
+      /cu[aá]les\s+son\s+(?:mis\s+)?lotes/,
       /que\s+lotes?\s+tengo/,
       /(?:tengo|hay)\s+lotes?\s*\??$/,
       /(?:info|informacion|datos?|detalle)\s+(?:de\s+)?(?:mis\s+)?lotes/,
@@ -1064,50 +684,97 @@ const COMMAND_PATTERNS = [
     extract: (m) => m[1] ? { fieldName: m[1].trim() } : {},
   },
   {
+    command: "add_plots_batch",
+    patterns: [
+      /(?:quiero\s+)?(?:agregar|agrega|crear)\s+(?:los\s+)?lotes\s+(.+)/,
+    ],
+    extract: (m, _norm, original) => {
+      // Re-match on original text to preserve casing
+      const re = /(?:quiero\s+)?(?:agregar|agrega|crear)\s+(?:los\s+)?lotes\s+(.+)/i;
+      const cm = original ? original.match(re) : null;
+      const raw = (cm ? cm[1] : m[1]).trim();
+      const names = raw
+        .split(/\s*[,]\s*|\s+y\s+/)
+        .map(n => n.trim())
+        .filter(n => n.length > 0 && !/^\d+\s*ha$/i.test(n));
+      return { plotNames: names };
+    },
+  },
+  {
     command: "add_plot",
     patterns: [
-      /(?:agregar|agrega|nuevo|crear)\s+lote\s+(\w+)\s+(?:en|del?)\s+campo\s+(\w+)/,
-      /(?:agregar|agrega|nuevo|crear)\s+lote\s+(\w+)\s+(?:en|del?)\s+(?:parcela)\s+(\w+)/,
+      /(?:agregar|agrega|nuevo|crear)\s+(?:(?:un|el)\s+)?lote\s+(.+?)\s+(?:en|al?|del?)\s+(?:(?:el|mi)\s+)?campo\s+(.+)/,
+      /(?:agregar|agrega|nuevo|crear)\s+(?:(?:un|el)\s+)?lote\s+(.+?)\s+(?:en|al?|del?)\s+(?:(?:la|mi)\s+)?parcela\s+(.+)/,
+      // "crear lote 3 en sur" — lote + en + field name (no "campo" keyword needed)
+      /(?:agregar|agrega|nuevo|crear)\s+(?:(?:un|el)\s+)?lote\s+(.+?)\s+(?:en|al?|del?)\s+(.+)/,
+      // "agregar lote 5 norte" — lote + name + bare field name (no preposition)
+      /(?:agregar|agrega|nuevo|crear)\s+(?:(?:un|el)\s+)?lote\s+(\S+)\s+(\S+)$/,
+      // "lote 4 para campo norte" — lote + plot + para + campo
+      /^lote\s+(\S+)\s+(?:para|en|al?|del?)\s+(?:(?:el|mi)\s+)?(?:campo|parcela)\s+(.+)/,
     ],
-    extract: (m) => ({ plotName: m[1], fieldName: m[2] }),
+    extract: (m, _norm, original) => {
+      // Re-match on original text to preserve casing
+      const re = /(?:agregar|agrega|nuevo|crear)\s+(?:(?:un|el)\s+)?lote\s+(.+?)\s+(?:en|al?|del?)\s+(?:(?:el|la|mi)\s+)?(?:campo|parcela\s+)?(.+)/i;
+      const cm = original ? original.match(re) : null;
+      // For the "lote X para campo Y" pattern
+      const re2 = /^lote\s+(\S+)\s+(?:para|en|al?|del?)\s+(?:(?:el|mi)\s+)?(?:campo|parcela)\s+(.+)/i;
+      const cm2 = original ? original.match(re2) : null;
+      return {
+        plotName: (cm2 ? cm2[1] : cm ? cm[1] : m[1]).trim(),
+        fieldName: (cm2 ? cm2[2] : cm ? cm[2] : m[2]).trim(),
+      };
+    },
+  },
+  {
+    // "agregar lote D" / "crear el lote norte" — no field specified (handler auto-assigns)
+    command: "add_plot",
+    patterns: [
+      /(?:agregar|agrega|nuevo|crear|añadir)\s+(?:(?:un|el)\s+)?lote\s+(.+)$/,
+    ],
+    extract: (m, _norm, original) => {
+      const re = /(?:agregar|agrega|nuevo|crear|añadir)\s+(?:(?:un|el)\s+)?lote\s+(.+)$/i;
+      const cm = original ? original.match(re) : null;
+      return {
+        plotName: (cm ? cm[1] : m[1]).trim(),
+        fieldName: null,
+      };
+    },
   },
   {
     command: "plot_info",
     patterns: [
-      /(?:info|detalle|datos?|informacion)\s+(?:del?\s+)?lote\s+(\w+)\s+(?:del?\s+)?campo\s+(\w+)/,
+      /(?:info|detalle|datos?|informacion)\s+(?:del?\s+)?lote\s+(.+?)\s+(?:del?\s+)?campo\s+(.+)/,
       /(?:info|detalle|datos?|informacion)\s+(?:del?\s+)?lote\s+(\w+)/,
       /(?:estado|como\s+viene)\s+(?:(?:el|del?)\s+)?lote\s+(\w+)/,
       /^lote\s+((?:\w+)(?:\s+(?!esta\s|queda\s|en\s|tiene\s)\w+){0,3})\s*\??$/,
     ],
-    extract: (m) => ({ plotName: m[1], fieldName: m[2] || null }),
+    extract: (m, _norm, original) => {
+      if (m[2]) {
+        // Two-group pattern (lote + campo) — preserve casing
+        const re = /(?:info|detalle|datos?|informacion)\s+(?:del?\s+)?lote\s+(.+?)\s+(?:del?\s+)?campo\s+(.+)/i;
+        const cm = original ? original.match(re) : null;
+        return {
+          plotName: (cm ? cm[1] : m[1]).trim(),
+          fieldName: (cm ? cm[2] : m[2]).trim(),
+        };
+      }
+      return { plotName: m[1], fieldName: null };
+    },
   },
   {
     command: "delete_plot",
     patterns: [
-      /(?:borr(?:ar|a)|elimin(?:ar|a)|sacar|quitar)\s+(?:el\s+)?lote\s+(\w+)\s+(?:del?\s+)?campo\s+(\w+)/,
+      /(?:borr(?:ar|a)|elimin(?:ar|a)|sacar|quitar)\s+(?:el\s+)?lote\s+(.+?)\s+(?:del?\s+)?campo\s+(.+)/,
     ],
-    extract: (m) => ({ plotName: m[1], fieldName: m[2] }),
+    extract: (m, _norm, original) => {
+      const re = /(?:borr(?:ar|a)|elimin(?:ar|a)|sacar|quitar)\s+(?:el\s+)?lote\s+(.+?)\s+(?:del?\s+)?campo\s+(.+)/i;
+      const cm = original ? original.match(re) : null;
+      return {
+        plotName: (cm ? cm[1] : m[1]).trim(),
+        fieldName: (cm ? cm[2] : m[2]).trim(),
+      };
+    },
   },
-  {
-    command: "set_plot_area",
-    patterns: [
-      /lote\s+(\w+)\s+tiene\s+(\d+(?:[.,]\d+)?)\s*(?:hectareas|has?|hect)\b/,
-      /(?:area|superficie)\s+(?:del?\s+)?lote\s+(\w+)\s+(?:es\s+)?(\d+(?:[.,]\d+)?)\s*(?:hectareas|has?|hect)?/,
-    ],
-    extract: (m) => ({ plotName: m[1], hectares: parseFloat(m[2].replace(",", ".")) }),
-  },
-  {
-    command: "set_plot_coords",
-    patterns: [
-      /lote\s+(\w+)\s+(?:esta|queda)\s+en\s+(-?\d+(?:[.,]\d+)?)\s*[,;]\s*(-?\d+(?:[.,]\d+)?)/,
-    ],
-    extract: (m) => ({
-      plotName: m[1],
-      lat: parseFloat(m[2].replace(",", ".")),
-      lng: parseFloat(m[3].replace(",", ".")),
-    }),
-  },
-
   // --- Listar campos ---
   {
     command: "list_fields",
@@ -1129,13 +796,6 @@ const COMMAND_PATTERNS = [
     extract: (m) => ({ entityKeyword: m[1], fieldName: m[2].trim() }),
   },
 
-  // --- Renombrar campo/lote ---
-  {
-    command: "rename_field",
-    patterns: [/(?:renombrar|cambiar\s+nombre)\s+(?:del?\s+)?(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!a\s|por\s)\w+){0,3})\s+(?:a|por)\s+((?:\w+)(?:\s+\w+){0,3})/],
-    extract: (m) => ({ entityKeyword: m[1], oldName: m[2].trim(), newName: m[3].trim() }),
-  },
-
   // --- Info campo/lote ---
   {
     command: "field_info",
@@ -1147,25 +807,41 @@ const COMMAND_PATTERNS = [
     extract: (m) => ({ entityKeyword: m[1], fieldName: m[2].trim() }),
   },
 
-  // --- Ubicación campo/lote ---
+  // --- Agronomy reports (high-signal patterns to avoid AI confusion with financial) ---
   {
-    command: "set_field_city",
-    patterns: [/(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!esta\s|queda\s)\w+){0,3})\s+(?:esta|queda)\s+(?:ubicad[oa]\s+)?en\s+(.+)/],
-    extract: (m) => ({
-      entityKeyword: m[1],
-      fieldName: m[2].trim(),
-      city: m[3].trim().charAt(0).toUpperCase() + m[3].trim().slice(1),
-    }),
+    command: "generate_agro_report",
+    patterns: [
+      /(?:registro|reporte|informe)\s+(?:agro(?:pecuario|n[oó]mico)?)\s+(?:(?:del?|en)\s+)?(?:lote\s+)?(.+)/,
+      /(?:registro|reporte|informe)\s+(?:agro(?:pecuario|n[oó]mico)?)/,
+    ],
+    extract: (m) => ({ plotName: m[1]?.trim() || null }),
   },
   {
-    command: "set_field_city",
-    patterns: [/tengo\s+(?:un\s+)?(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!en\s)\w+){0,3})\s+en\s+(.+)/],
-    extract: (m) => ({
-      entityKeyword: m[1],
-      fieldName: m[2].trim(),
-      city: m[3].trim().charAt(0).toUpperCase() + m[3].trim().slice(1),
-    }),
+    command: "query_plot_history",
+    patterns: [
+      /(?:qu[eé]\s+pas[oó]|que\s+hay|actividad(?:es)?|historial)\s+(?:en\s+)?(?:(?:el|del?)\s+)?lote\s+(.+)/,
+      // "última vez que se sembró/fumigó/fertilizó [en] [el] lote X"
+      /(?:ultima|última)\s+(?:vez\s+que\s+)?(?:se\s+)?(?:fumig|pulveriz|fertiliz|sembr|cosech|reg|ar[oó]|labr)\S*\s+(?:(?:en|del?)\s+)?(?:(?:el|mi)\s+)?lote\s+(.+)/,
+      // "se sembró/fumigó [en] [el] lote X" (binary questions)
+      /(?:se\s+)?(?:fumig[oó]|pulveriz[oó]|fertiliz[oó]|sembr[oó]|cosech[oó]|reg[oó]|ar[oó]|labr[oó])\s+(?:(?:en|del?)\s+)?(?:(?:el|mi)\s+)?lote\s+(.+)/,
+      // "cuando se sembró/fumigó [en] [el] lote X"
+      /(?:cuando|cuándo)\s+(?:se\s+)?(?:fumig|pulveriz|fertiliz|sembr|cosech|reg|ar[oó]|labr)\S*\s+(?:(?:en|del?)\s+)?(?:(?:el|mi)\s+)?lote\s+(.+)/,
+      // "hubo lluvia en el lote X"
+      /(?:hubo|hay|cay[oó]|llov[ií][oó]?)\s+(?:lluvias?|precipitacion(?:es)?|agua)\s+(?:(?:en|del?)\s+)?(?:(?:el|mi)\s+)?lote\s+(.+)/,
+    ],
+    extract: (m, fullText) => {
+      const plotName = m[1]?.trim() || null;
+      const activityFilter = parseActivityFilter(fullText);
+      const lower = fullText.toLowerCase();
+      const isUltimaVez = /(?:ultima|última)\s+vez/.test(lower)
+        || /(?:cuando|cuándo)\s+(?:se\s+)?(?:fumig|pulveriz|fertiliz|sembr|cosech|reg|ar[oó]|labr)/i.test(lower);
+      const isBinaryQuestion = /(?:se\s+)?(?:fumig[oó]|pulveriz[oó]|fertiliz[oó]|sembr[oó]|cosech[oó]|reg[oó]|ar[oó]|labr[oó])\s/.test(lower)
+        && !isUltimaVez;
+      return { plotName, activityFilter, isUltimaVez, isBinaryQuestion };
+    },
+    condition: (n) => /lote\s+\S/.test(n) && /(?:qu[eé]\s+pas|que\s+hay|actividad|historial|ultima|última|cuando|cuándo|(?:se\s+)?(?:fumig|pulveriz|fertiliz|sembr|cosech|reg[oó]|ar[oó]|labr)|hubo\s+(?:lluvia|agua)|llov[ií])/.test(n),
   },
+
   {
     command: "add_field_city",
     patterns: [/tengo\s+(?:un\s+)?(lote|campo|parcela)\s+en\s+(.+)/],
@@ -1199,6 +875,56 @@ const COMMAND_PATTERNS = [
     extract: (m) => ({ entityKeyword: m[1], fieldName: m[2].trim() }),
   },
 
+  // --- Ubicación campo/lote ---
+  {
+    command: "set_field_city",
+    patterns: [/(?:quiero\s+)?(?:agregar|poner|configurar|cambiar|asignar)\s+(?:la\s+)?ubicaci[oó]n\s+(?:d?el?\s+)?(?:campo|lote|parcela)?/],
+    extract: () => ({ fieldName: null, city: null }),
+  },
+  {
+    command: "set_field_city",
+    patterns: [/ubicar\s+(?:el\s+)?(?:campo|lote|parcela)(?:\s+(.+))?/],
+    extract: (m) => ({ fieldName: m[1]?.trim() || null, city: null }),
+  },
+  {
+    command: "set_field_city",
+    patterns: [
+      /(?:la\s+)?ubicaci[oó]n\s+(?:de\s+)?(?:mi\s+)?(campo|lote|parcela)\s+(?:es\s+(?:en\s+)?|est[aá]\s+(?:en\s+)?)(.+)/,
+      /(?:mi\s+)(campo|lote|parcela)\s+(?:esta|está|es|queda)\s+(?:en\s+)?(.+)/,
+    ],
+    extract: (m) => ({
+      entityKeyword: m[1],
+      fieldName: null,
+      city: m[2].trim().charAt(0).toUpperCase() + m[2].trim().slice(1),
+    }),
+  },
+  {
+    command: "set_field_city",
+    patterns: [/(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!esta\s|queda\s)\w+){0,3})\s+(?:esta|queda)\s+(?:ubicad[oa]\s+)?en\s+(.+)/],
+    extract: (m) => ({
+      entityKeyword: m[1],
+      fieldName: m[2].trim(),
+      city: m[3].trim().charAt(0).toUpperCase() + m[3].trim().slice(1),
+    }),
+  },
+  {
+    command: "set_field_city",
+    patterns: [/tengo\s+(?:un\s+)?(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!en\s)\w+){0,3})\s+en\s+(.+)/],
+    extract: (m) => ({
+      entityKeyword: m[1],
+      fieldName: m[2].trim(),
+      city: m[3].trim().charAt(0).toUpperCase() + m[3].trim().slice(1),
+    }),
+  },
+  {
+    command: "add_field_city",
+    patterns: [/tengo\s+(?:un\s+)?(lote|campo|parcela)\s+en\s+(.+)/],
+    extract: (m) => ({
+      entityKeyword: m[1],
+      city: m[2].trim().charAt(0).toUpperCase() + m[2].trim().slice(1),
+    }),
+  },
+
   // --- Ubicación / ciudad usuario ---
   {
     command: "set_city",
@@ -1215,124 +941,6 @@ const COMMAND_PATTERNS = [
     extract: (m) => ({
       name: m[1].trim().charAt(0).toUpperCase() + m[1].trim().slice(1),
     }),
-  },
-
-  // --- Cuánto gasté últimos X días ---
-  {
-    command: "date_range_report",
-    patterns: [/(?:cuanto|gastos?|gastando|gaste|total).*ultimos?\s+(\d+)\s*dias/],
-    extract: (m) => {
-      const days = parseInt(m[1]);
-      const hasta = new Date();
-      const desde = new Date();
-      desde.setDate(desde.getDate() - days);
-      return { desde, hasta };
-    },
-  },
-
-  // --- Cuánto gasté esta semana / este mes / hoy ---
-  {
-    command: "_cuanto_gaste",
-    patterns: [/(?:cuanto|total)\s+(?:voy\s+)?(?:gastando|gaste|llevo)/],
-    extract: (_m, normalized) => {
-      if (/semana/.test(normalized)) return { command: "weekly_report" };
-      if (/hoy/.test(normalized)) {
-        const hoy = new Date();
-        return { command: "date_range_report", desde: hoy, hasta: hoy };
-      }
-      return { command: "monthly_report" };
-    },
-  },
-
-  // --- Resultado / rentabilidad ---
-  {
-    command: "_result_dispatch",
-    patterns: [
-      /resultado.*?(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!est[ea]\b|del?\b|en\b|hoy\b|ayer\b|semana\b|mes\b|ultimo\b|última?\b)\w+){0,3})/,
-    ],
-    extract: (m) => ({ command: "field_result", entityKeyword: m[1], fieldName: m[2].trim() }),
-  },
-  {
-    command: "monthly_result",
-    patterns: [
-      /resultado\s+(?:del?\s+)?mes/,
-      /rentabilidad/,
-      /cuanto\s+gane/,
-      /cuanto\s+gaste(?!\s)/,
-      /balance/,
-      /margen/,
-    ],
-  },
-
-  // --- Comparativo de meses ---
-  {
-    command: "_compare_months",
-    patterns: [/comparar\s+(\w+)\s+(?:con|vs)\s+(\w+)/],
-    extract: (m) => {
-      const mes1 = parseMesNombre(m[1]);
-      const mes2 = parseMesNombre(m[2]);
-      if (mes1 !== null && mes2 !== null) {
-        return { command: "compare_months", mes1, mes2, mes1Name: MESES_NOMBRE[mes1], mes2Name: MESES_NOMBRE[mes2] };
-      }
-      return null;
-    },
-  },
-
-  // --- Reporte agronómico semanal ---
-  {
-    command: "generate_agro_report",
-    patterns: [
-      // Lote-specific (MUST be first — prevents campo-optional from capturing "lote X" as fieldName)
-      /(?:reporte|informe)\s+agron[oó]mico\s+(?:(?:del?|para|el)\s+)?(?:el\s+)?lote\s+((?:\w+)(?:\s+\w+){0,3})/,
-      /(?:reporte|informe)\s+(?:agron[oó]mico\s+)?semanal\s+(?:(?:del?|para)\s+)?lote\s+((?:\w+)(?:\s+\w+){0,3})/,
-      // Bare "reporte lote X" / "informe lote X" (without agronomico) — unified routing
-      /(?:reporte|informe)\s+(?:(?:del?|para|el)\s+)?(?:el\s+)?lote\s+((?:\w+)(?:\s+(?!est[ea]\b|del?\b|en\b|hoy\b|ayer\b|semana\b|mes\b|ultimo\b|última?\b)\w+){0,3})/,
-      // Campo-specific (campo REQUIRED in each pattern)
-      /reporte\s+(?:agron[oó]mico\s+)?semanal\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
-      /generar\s+reporte\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
-      /reporte\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
-      /reporte\s+agron[oó]mico\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
-      /informe\s+(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
-      /informe\s+(?:agron[oó]mico\s+)?(?:del?\s+)?campo\s+((?:\w+)(?:\s+\w+){0,3})/,
-    ],
-    extract: (m) => {
-      if (/\blote\b/.test(m[0].toLowerCase())) return { plotName: m[1].trim() };
-      return { fieldName: m[1].trim() };
-    },
-  },
-
-  // --- Resumen semanal ---
-  { command: "weekly_report", patterns: [/resumen\s+(?:de\s+la\s+)?semana/, /resumen\s+semanal/] },
-
-  // --- Resumen / reporte financiero ---
-  { command: "monthly_report", patterns: [/resumen\s+(?:del?\s+)?mes/, /(?:reporte|resumen)\s+financiero/] },
-
-  // --- Resumen por lote ---
-  {
-    command: "plot_report",
-    patterns: [
-      /(?:resumen|reporte)\s+(?:del?\s+)?lote\s+((?:\w+)(?:\s+(?!est[ea]\b|del?\b|en\b|hoy\b|ayer\b|semana\b|mes\b|ultimo\b|última?\b)\w+){0,3})/,
-    ],
-    extract: (m) => ({ plotName: m[1].trim() }),
-  },
-
-  // --- Resumen por campo ---
-  {
-    command: "field_report",
-    patterns: [/resumen\s+(campo|parcela)\s+((?:\w+)(?:\s+\w+){0,3})/],
-    extract: (m) => ({ entityKeyword: m[1], fieldName: m[2].trim() }),
-  },
-
-  // --- Resumen por rango ---
-  {
-    command: "date_range_report",
-    patterns: [/resumen\s+desde\s+(.+?)\s+hasta\s+(.+)/],
-    extract: (m) => {
-      const desde = parseSpanishDate(m[1]);
-      const hasta = parseSpanishDate(m[2]);
-      if (desde && hasta) return { desde, hasta };
-      return null;
-    },
   },
 
   // --- Presupuesto ---
@@ -1494,6 +1102,7 @@ export function parseMensajeIngreso(texto) {
 }
 
 export function parseMensaje(texto) {
+  if (isLikelyQuestion(texto)) return null;
   if (esComplejo(texto)) return null;
 
   const category = detectarCategoria(texto);

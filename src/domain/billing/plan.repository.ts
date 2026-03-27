@@ -80,6 +80,17 @@ export class PlanRepository {
     return { ...rows[0], price_ars: Number(rows[0].price_ars) };
   }
 
+  async getUserPlanAiLimit(userId: UserId): Promise<number | null> {
+    const { rows } = await pool.query(
+      `SELECT p.daily_ai_limit FROM plans p
+       JOIN users u ON u.plan_id = p.id
+       WHERE u.id = $1`,
+      [userId]
+    );
+    if (rows.length === 0 || rows[0].daily_ai_limit == null) return null;
+    return Number(rows[0].daily_ai_limit);
+  }
+
   async updatePlan(planId: number, updates: { display_name?: string; price_ars?: number; is_active?: boolean }): Promise<PlanRow | null> {
     const sets: string[] = [];
     const values: unknown[] = [];

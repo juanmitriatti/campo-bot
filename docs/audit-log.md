@@ -741,4 +741,337 @@ Two paths with inconsistent behavior:
 
 ---
 
+## 2026-03-25 — Auto-Creation Removal: PlotDiscoveryService Lookup-Only
+
+**Scope:** Remove all implicit auto-creation of fields and plots in `PlotDiscoveryService`. Replace `getOrCreateField`/`getOrCreatePlot` with lookup-only functions that return `notFound` info instead of silently creating entities.
+
+### Problem
+
+`PlotDiscoveryService._resolvePlotOnly()` and `_resolveBoth()` called `getOrCreateField`/`getOrCreatePlot`, silently creating fields/plots when they didn't exist. This caused phantom entities (e.g., "General" field), unexpected data associations, and user confusion.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `src/types/index.ts` | Added `notFound?: { type: 'field' \| 'plot'; name: string }` to `PlotDiscoveryResult` and `FieldInfo` |
+| `src/domain/plots/plot-discovery.service.ts` | Removed `getOrCreateField`, `getOrCreatePlot`, `getUserSingleField`, `DEFAULT_FIELD_NAME`. All paths now use `getFieldByName`/`getPlotByName` with `notFound` returns. |
+| `src/domain/financial/financial.service.ts` | Propagated `notFound` through `resolveFieldAndPlot` |
+| `src/domain/financial/financial.handler.ts` | `handleExpense`/`handleIncome`: saves with null field + warning on notFound. `add_field` (0 fields): asks user to create field first. `add_plot`/`set_field_city`: `getFieldByName` with not-found check. |
+| `src/middleware/flows/expense.flow.ts` | `getOrCreateField` → `getFieldByName` |
+| `src/middleware/flows/income.flow.ts` | `getOrCreateField` → `getFieldByName` |
+| `src/middleware/flows/rainfall.flow.ts` | `getOrCreateField` → `getFieldByName` |
+| `src/domain/agronomy/agronomy.handler.ts` | Replaced `getOrCreateField` fallback with "not found" error message |
+| `src/domain/plots/__tests__/plot-discovery.service.test.ts` | Fully rewritten: 17 tests covering notFound behavior, alias registration, last sentinel, campo-only, plot-only |
+
+### Intentional Creation Preserved
+
+- `add_field` command handler still creates fields (that's its purpose)
+- `field.flow.ts execute()` still uses `getOrCreateField` (explicit creation flow)
+- `getOrCreatePlot` still used in `create_plot_*` interactive button handler
+
+### Tests: 1146 passing (24 test files)
+
+---
+
+## 2026-03-25 — Frontend: Fix Flow Token Leakage & Message Duplication
+
+**Scope:** Fix two test-bot frontend bugs: (1) internal flow callback IDs shown as user messages (e.g., `[flow_confirm]`), (2) duplicate text when bot sends both text item and interactive body with same content.
+
+### Problem
+
+1. `Chat.tsx handleInteractiveClick` displayed `[${callbackId}]` as user message text — exposing internal IDs like `flow_confirm`, `flow_cat_combustible`
+2. Bot messages with both a text item and an interactive element showed the body text twice (once from text bubble, once from interactive body)
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `frontend/src/pages/Chat.tsx` | `handleInteractiveClick(callbackId, label)` — shows `label` (button title) as user message, not raw callback ID |
+| `frontend/src/components/chat/ChatBubble.tsx` | `onInteractiveClick` passes `(id, label)`. Detects `hasTextItem` and passes `hideBody` to interactive items. |
+| `frontend/src/components/chat/InteractiveElement.tsx` | `onClick` passes `(btn.id, btn.title)`. Added `hideBody` prop to conditionally hide interactive body when text already provides context. |
+
+### Tests: Frontend builds cleanly (no test regressions)
+
+---
+
+## 2026-03-25 — Question Guard: Prevent False Financial Intent in Parser
+
+**Scope:** Fix expense parser misclassifying Spanish questions as expenses, causing flow cancellation during confirming state.
+
+### Root Cause
+
+`parseMensaje("que es una maleza?")` returned `{ amount: 1, category: 'Fertilizantes' }` because:
+1. `parseWrittenNumber` matched "una" → `WRITTEN_NUMBERS["una"] = 1`
+2. `detectarCategoria` fuzzy-matched "maleza" → Fertilizantes
+
+This caused `detectsFinancialIntent()` to return `true` during active flows, triggering flow cancellation at the interruption check (`test-bot.controller.ts:555`). The cleared flow then fell through to the normal pipeline where AI classified the question as a new expense.
+
+### QA Scenario
+
+1. User in expense flow → confirming state ($50,000 Combustible)
+2. User sends "que es una maleza?" (intended: question, not expense)
+3. **Before fix**: flow cancelled, AI classifies as new expense ($1, Fertilizantes) — FAIL
+4. **After fix**: confirming handler responds "Respondé *SI* para confirmar o *NO* para cancelar." — PASS
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `src/utils/parser.js` | Added `isLikelyQuestion(texto)` — detects Spanish question patterns (starts with qué/cómo/cuándo/dónde/cuál/por qué/quién + ends with `?`). Called at top of `parseMensaje` as early return `null`. |
+
+### Pattern
+
+```regex
+/^(?:qu[eé]|c[oó]mo|cu[aá]ndo|d[oó]nde|cu[aá]l(?:es)?|por\s*qu[eé]|qui[eé]n(?:es)?)\b/
+```
+Combined with trailing `\?\s*$` check.
+
+### Tests: 1146 passing (396 parser tests, no regressions)
+
+---
+
+## 2026-03-26 — Financial-Lote Traceability Audit: FAIL
+
+**File:** `audit-2026-03-26-financial-lote-traceability.md`
+**Scope:** Verify ALL production financial data (expenses + incomes) is associated to plots (lotes), not only to fields (campos). Tests: explicit lote references, missing lote UX, campo aggregation, plot-level queries, campo-wide distribution.
+
+### Verdict: FAIL — 6 issues, financial traceability NOT guaranteed
+
+### Issues Found
+
+| ID | Severity | Summary |
+|----|----------|---------|
+| ISS-FT-01 | **CRITICAL** | No lote prompt when financial data lacks plot reference — saved with plot_id=NULL, "Campo: General" |
+| ISS-FT-02 | HIGH | "cuanto gaste en lote X" shows ALL expenses — routes to monthly_report, ignores lote filter |
+| ISS-FT-03 | HIGH | "aplique herbicida por 3000" routed to agro spraying (3000ml), not $3000 expense |
+| ISS-FT-04 | HIGH | Income without "del lote X" gets plot_id=NULL — no prompt for lote |
+| ISS-FT-05 | HIGH | "cuanto gaste en campo X" does not filter by campo — shows all expenses |
+| ISS-FT-06 | MEDIUM | No campo-wide expense distribution across lotes by hectares |
+
+### What Works
+
+- Expenses WITH explicit "en lote X" → plot_id correctly saved
+- Incomes WITH explicit "del lote X" → plot_id correctly saved
+- `plot_report` ("resumen lote X") → correctly filtered by plot_id
+- `plot_result` ("resultado lote X") → correctly filtered by plot_id
+- Observation system has hybrid guard (0→block, 1→auto, 2+→ask) — financial system lacks it
+
+### Key Root Cause
+
+`handleExpense()` and `handleIncome()` do NOT check for null plotId. Unlike the observation handler which has a hybrid plot guard, financial handlers silently default to "Campo: General" when no lote is detected.
+
+### Tests: Live API + DB verification, all DB assertions verified via direct SQL
+
+---
+
+## 2026-03-26 — Comprehensive Lotes Deep Audit: 113 Tests, 13 Bugs, Yield Gap Analysis
+
+**File:** `audit-2026-03-26-lotes-comprehensive.md`
+**Scope:** Full lote lifecycle — creation, listing, info, metadata, editing, deletion, crop lifecycle, yields/rindes, expenses, income association, edge cases, data model gaps. Tested across free and pro_plus plans to isolate feature-gate vs functionality issues.
+
+### Verdict: Production ready — CONDITIONAL
+
+Solid CRUD + crop lifecycle + agro observations. Complete absence of yield tracking and financial-lote disconnect block real farming use.
+
+### Critical Findings
+
+| ID | Severity | Summary |
+|----|----------|---------|
+| BUG-L01 | CRITICAL | No yield/rinde support — "rindio 3500 kg/ha" becomes observation text, not queryable yield data |
+| BUG-L02 | CRITICAL | Coordinate decimal stripping — normalizeText `.replace(/\./g, "")` corrupts -33.9 → -339 |
+| BUG-L03 | HIGH | Rename lote broken — handler calls getFieldByName for lotes instead of getPlotByName |
+| BUG-L04 | HIGH | Delete confirmation button ID mismatch — generic vs dynamic IDs |
+| BUG-L05 | HIGH | "ver lote X" not recognized — no parser pattern for "ver lote" (singular) |
+| BUG-L06 | HIGH | "cuanto gaste en lote 1" shows ALL expenses — not filtered by plot_id |
+| BUG-L07 | HIGH | Income never associated with lotes — plot_id always NULL on incomes |
+| BUG-L08 | MEDIUM | "gastos/ingresos del lote X" unrecognized — missing parser patterns |
+| BUG-L09 | MEDIUM | "que hay sembrado" (no lote) fails — should list all active crops |
+| BUG-L10 | MEDIUM | Harvest doesn't capture yield quantity — quantity/unit NULL in domain_events |
+| BUG-L11 | MEDIUM | No lote name validation — 0, -1, empty strings accepted |
+| BUG-L12 | LOW | Rename captures "lote" keyword in new name |
+| BUG-L13 | LOW | Multi-word lote names with "en" break parser |
+
+### Data Model Gaps
+
+- **Yield storage:** domain_events has quantity/unit columns but never populated for harvests
+- **Income-lote linkage:** incomes.plot_id always NULL — no lote selection in income parser or flow
+- **Expense query by lote:** Expenses stored with plot_id but "cuanto gaste en lote X" ignores it
+- **soil_type:** Column exists but no command to set it
+- **Coordinates:** lat/lng columns exist but decimal bug makes them useless
+
+### Tests: 113 inputs, 53+22 pass, 15+23 fail
+
+---
+
+## 2026-03-26 — Comprehensive QA: 48-Step Farmer Simulation + Bug Fixes
+
+**Scope:** End-to-end QA test simulating a real Argentine farmer user across: clean state, field/plot creation, intent override, activity with ambiguity, weather, expense flow, flow interruption, typos, duplicates, zombie flows, contextual questions, agronomy, and stress testing.
+
+### Bugs Found & Fixed (9)
+
+| ID | Severity | Summary | Fix |
+|----|----------|---------|-----|
+| BUG-C1 | CRITICAL | "crear/agregar lote X en Y" routed to `add_field` instead of `add_plot` | Added 3 new `add_plot` patterns before `add_field` in parser.js |
+| BUG-M1 | MEDIUM | `add_field_city` handler didn't pre-fill city in field flow | `advanceToNextStep` now skips pre-filled steps (`data[step.field] !== undefined`) |
+| BUG-M2 | MEDIUM | Questions didn't interrupt active flows at non-confirming steps | Added `isLikelyQuestion()` check in flow interruption logic (both controllers) |
+| BUG-M3 | MEDIUM | "hola" during flow showed mixed greeting + re-prompt | Greeting/thanks mid-flow now silently re-prompt (no greeting text) |
+| BUG-Q1 | CRITICAL | `isLikelyQuestion` fails on accented chars (qué, cuánto) — JS `\b` Unicode issue | Replaced `\b` with `(?=\s\|$)`, added `cuánto` pattern |
+| BUG-Q2 | MAJOR | `getFieldByName` fails with accented names (El Trébol vs el trebol) | JS `.normalize("NFD").replace(/[\u0300-\u036f]/g, "")` before SQL query |
+| BUG-Q3 | MAJOR | "registrar gasto" has no command pattern | Added `start_expense_flow`/`start_income_flow` commands + handlers |
+| BUG-Q4 | MAJOR | "200 dolares" triggers dollar exchange rate instead of expense | Negative lookbehind `(?<!\d)(?<!\d\s)` on dollar command pattern |
+| BUG-Q5 | MAJOR | `normalizarMonto("200 dolares")` returns null | Strip currency suffixes before standalone number check |
+
+### Files Changed (8)
+
+| File | Change |
+|------|--------|
+| `src/utils/parser.js` | add_plot patterns, isLikelyQuestion Unicode fix, dollar pattern, normalizarMonto, start_expense/income_flow commands, export isLikelyQuestion |
+| `src/middleware/conversation-engine.ts` | advanceToNextStep pre-fill skip |
+| `src/controllers/test-bot.controller.ts` | Question guard, greeting suppression, start flow handlers |
+| `src/controllers/whatsapp.controller.ts` | Same as test-bot controller changes |
+| `src/services/expenses.js` | getFieldByName accent normalization |
+| `src/services/intent-classifier.ts` | Added start_expense_flow, start_income_flow to TRIVIAL_COMMANDS |
+| `src/utils/parser.test.js` | Updated tests for new add_plot behavior, +6 BUG-C1 tests |
+| `src/utils/parser.comprehensive.test.js` | Updated 4 tests for add_plot behavior |
+
+### Tests: 1152 passing (+6 new)
+
+---
+
+## 2026-03-26 — Plots (Lotes) Feature Audit: 9 Phases, 65+ Test Steps
+
+**Scope:** Comprehensive audit of the plots (lotes) subsystem across: discovery & resolution, creation, reading, update/rename, deletion, data enrichment (observations, rainfall, activities), contextual usage (expenses, income, reports), error handling, and consistency.
+
+### Verdict: Production ready — CONDITIONAL
+
+The plots system handles core CRUD, observation association, and report generation correctly. However, several edge cases in coordinate parsing, rename commands, and inline expense-to-plot association need attention before full production confidence.
+
+### Bugs Found (7)
+
+| ID | Severity | Summary |
+|----|----------|---------|
+| BUG-P-01 | MEDIUM | Coordinate decimal parsing broken: `-33.8` parsed as `-338` (period treated as sentence end) |
+| BUG-P-02 | MEDIUM | Rename lote commands fail: "renombrar lote 1 a lote norte" → "No encontré lote 1" |
+| BUG-P-03 | LOW | "crear lote 4 en El Trebol" strips "El" from multi-word field name |
+| BUG-P-04 | MEDIUM | Inline expenses can't resolve existing lotes (plot context not passed to expense parser) |
+| BUG-P-05 | LOW | Question-form queries ("cuántos lotes tengo?") sometimes route to plan gate instead of list_plots |
+| BUG-P-06 | LOW | No "lote info" command — "info lote 1" not recognized |
+| BUG-P-07 | LOW | Alias registration inconsistent — some creation paths don't register aliases |
+
+### Gaps Identified (12)
+
+| Gap | Priority |
+|-----|----------|
+| No lote selection step in expense/income flows | HIGH |
+| No crop lifecycle management (siembra→cosecha per lote) | MEDIUM |
+| No lote-level cost tracking or profitability reports | MEDIUM |
+| No bulk operations (delete all lotes in field) | LOW |
+| No lote merge/split functionality | LOW |
+| No lote area (hectares) validation or display | LOW |
+| No lote history/timeline view | LOW |
+| No coordinate validation (lat/lng bounds for Argentina) | LOW |
+| No lote-level weather association | LOW |
+| No lote comparison reports | LOW |
+| No lote export (CSV/PDF) | LOW |
+| No "last used lote" memory for inline commands | MEDIUM |
+
+### Risks (3)
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Ambiguous lote resolution across fields | Data assigned to wrong lote | Planned: field-scoped resolution using `last_field_id` |
+| Coordinate data corruption (-33.8 → -338) | Wrong location stored | Fix decimal parsing in coordinate regex |
+| Inline expense disconnect from plots | Expenses not associated with lotes | Add lote context to expense parser or flow |
+
+### Capabilities Verified Working
+
+| Capability | Status |
+|------------|--------|
+| Create lote with field reference | PASS |
+| Create lote with auto-assign (1 field) | PASS |
+| List all lotes | PASS |
+| List lotes per field | PASS |
+| Delete lote (soft delete) | PASS |
+| Restore lote | PASS |
+| Observation → lote association | PASS |
+| Observation hybrid assignment (1 lote auto, 2+ ask) | PASS |
+| Pending observation disambiguation | PASS |
+| Lote-scoped agro reports | PASS |
+| Rainfall → parent field (field-level) | PASS |
+| Plot info command | PASS |
+| Duplicate lote detection | PASS |
+| Smart empty states (no fields, no lotes) | PASS |
+
+### Tests: 1152 passing (no regressions)
+
+---
+
+## 2026-03-27 — Reports UX Improvement: Discoverable Menu + Enriched Plot/Field Summaries
+
+**Scope:** Add discoverable reports entry point ("reportes"/"informes"), redesign reports menu as 3-section WhatsApp list, enrich `getPlotInfo`/`getFieldInfo` with crop+activities+observations data, update contextual suggestions.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `src/utils/parser.js` | Added `show_reports_menu` regex patterns: "reportes", "informes", "ver reportes", "mis reportes", "quiero/necesito/dame reportes" |
+| `src/domain/system/system.handler.ts` | Redesigned reports menu from 3 buttons to WhatsApp list with 3 sections: 💰 Financiero (4 items), 🌱 Agronómico (2 items), 🌧️ Lluvias (1 item) |
+| `src/domain/interactive/interactive.router.ts` | Added `cmd_historial_lote` → `query_plot_history` callback mapping |
+| `src/services/expenses.js` | `getPlotInfo`: added parallel queries for active crop (`plot_crops`) and recent activities (`domain_events` last 3). `getFieldInfo`: added parallel query for recent observations (`agro_observations` last 30 days with plot name join) |
+| `src/types/index.ts` | Extended `PlotInfoData` (activeCrop, recentActivities) and `FieldInfoData` (observations) interfaces |
+| `src/domain/financial/financial.handler.ts` | `formatPlotInfo`: added 🌱 Cultivo activo, 📋 Actividades recientes, 🔍 Observaciones sections. `field_info`: added 🔍 Observaciones recientes section |
+| `src/middleware/contextual-suggestions.ts` | `report_shown`: "Otro Reporte" → "Más Reportes" (menu_reportes). `field_info_shown`: "Ver Campos" → "Reportes" (menu_reportes) |
+| `src/ai/prompt-builder.ts` | Added `show_reports_menu` intent + `"reportes/informes" sin tipo→show_reports_menu` convention |
+
+### Tests: Existing tests pass (1 token limit test bumped from 420→450)
+
+---
+
+## 2026-03-27 — Bug Fix: query_plot_history Misrouting
+
+**Scope:** Fix "última vez que se sembró lote 1a" and similar agronomic history questions falling back to `plot_info` (financial) instead of `query_plot_history`.
+
+### Root Causes (2)
+
+| Cause | Detail |
+|-------|--------|
+| AI validator whitelist gap | `query_plot_history` missing from `KNOWN_INTENTS` in `intent-validator.ts` — AI returned correct intent but validator rejected it, causing fallback |
+| Regex patterns too narrow | Only 1 pattern (qué pasó/que hay/actividades/historial + lote X). No patterns for activity-verb queries |
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `src/ai/intent-validator.ts` | Added `'query_plot_history'` to `KNOWN_INTENTS` set |
+| `src/utils/parser.js` | Expanded `query_plot_history` from 1 to 5 regex patterns with condition guard |
+
+### New Regex Patterns — Argentine Farming Queries
+
+The 4 new patterns cover how Argentine farmers actually ask about lote history:
+
+**Pattern 1 — "Última vez que [se] [verbo] lote X"** (recency queries)
+- "última vez que se sembró lote 1a" / "ultima vez que fumigaron el lote sur"
+- "última vez que se fertilizó en lote 3" / "ultima vez que cosecharon mi lote norte"
+- Covers: fumigó, pulverizó, fertilizó, sembró, cosechó, regó, aró, labró
+
+**Pattern 2 — "Se [fumigó/sembró/etc] [en] lote X?" (binary questions / yes-no)**
+- "se fumigó el lote 1a?" / "se sembró en el lote norte?"
+- "fumigaron el lote 3?" / "cosecharon mi lote sur?"
+- "pulverizaron en lote 1a?" / "fertilizaron el lote este?"
+
+**Pattern 3 — "Cuándo se [verbo] lote X?" (temporal queries)**
+- "cuándo se sembró el lote 1a?" / "cuando fumigaron en el lote norte?"
+- "cuándo se cosechó mi lote 3?" / "cuando fertilizaron el lote sur?"
+
+**Pattern 4 — "Hubo lluvia/agua en lote X?" (rainfall history per lote)**
+- "hubo lluvia en el lote 1a?" / "hubo precipitaciones en lote norte?"
+- "llovió en el lote 3?" / "cayó agua en mi lote sur?"
+- "hay lluvia en lote 1a?"
+
+**Condition guard** prevents false positives: requires `lote\s+\S` AND at least one recognized query keyword.
+
+### Verified: 9 test variants all parse correctly, no false positives on control inputs
+
+---
+
 <!-- Add future audits above this line -->

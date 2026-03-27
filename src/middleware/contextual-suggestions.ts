@@ -114,7 +114,7 @@ const SUGGESTIONS: Record<string, InteractiveMessage> = {
     body: '¿Qué querés hacer ahora?',
     buttons: [
       { id: 'flow_new_expense', title: 'Registrar Gasto' },
-      { id: 'cmd_listar_campos', title: 'Ver Campos' },
+      { id: 'menu_reportes', title: 'Reportes' },
       { id: 'back_menu', title: 'Menú' },
     ],
   },
@@ -122,7 +122,7 @@ const SUGGESTIONS: Record<string, InteractiveMessage> = {
     type: 'buttons',
     body: '¿Qué querés hacer ahora?',
     buttons: [
-      { id: 'cmd_resumen_mensual', title: 'Otro Reporte' },
+      { id: 'menu_reportes', title: 'Más Reportes' },
       { id: 'flow_new_expense', title: 'Registrar Gasto' },
       { id: 'back_menu', title: 'Menú' },
     ],

@@ -2,7 +2,7 @@ import { normalizarMonto, parseMilimetros } from '../../utils/parser.js';
 import {
   saveRainfall as dbSaveRainfall,
   RAINFALL_REJECTED_DUPLICATE,
-  getOrCreateField as dbGetOrCreateField,
+  getFieldByName as dbGetFieldByName,
   getUserSettings,
   getDailyRainfallTotal,
 } from '../../services/expenses.js';
@@ -32,7 +32,7 @@ const steps: FlowStep[] = [
   },
   {
     field: 'fieldName',
-    prompt: '¿En qué campo llovió? (escribí el nombre o "general" si no aplica)',
+    prompt: '¿En qué campo llovió?',
     promptAsync: async (_data, userId) => {
       const fields = await entityValidator.getUserFieldNames(userId);
       return buildFieldPrompt(fields, '¿En qué campo llovió?');
@@ -46,7 +46,7 @@ const steps: FlowStep[] = [
           buttons: [{ id: 'flow_skip', title: 'Saltar' }],
         };
       }
-      return buildFieldInteractive(fields, '¿En qué campo llovió?', 'Sin campo');
+      return buildFieldInteractive(fields, '¿En qué campo llovió?');
     },
     validate: (input) => {
       const lower = input.toLowerCase().trim();
@@ -89,8 +89,8 @@ export const rainfallFlow: FlowDefinition = {
 
     let fieldId: number | null = null;
     if (fieldName) {
-      const field = await dbGetOrCreateField(userId, fieldName);
-      fieldId = field.id;
+      const field = await dbGetFieldByName(userId, fieldName);
+      if (field) fieldId = field.id;
     }
 
     const saved = await dbSaveRainfall(userId, mm, fieldId);

@@ -188,45 +188,81 @@ export class AgronomyHandler {
           return { messages: ['El valor debe estar entre 1 y 500mm.'] };
         }
 
+        // Block if user has no fields
+        const rainfallUserFields = await this.repo.getUserFields(userId);
+        if (rainfallUserFields.length === 0) {
+          return {
+            messages: ['Para registrar lluvia primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*'],
+            interactive: {
+              type: 'buttons',
+              body: 'Necesitás un campo para registrar lluvia.',
+              buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
+            },
+          };
+        }
+
         // Resolve field (field-level only, no plot_id)
         let fieldId: number | null = null;
-        let fieldLabel = 'General';
+        let fieldLabel: string | null = null;
 
-        if (cmd.fieldName) {
-          // Explicit field name
+        // Check if user explicitly mentioned a field/plot name in their message
+        // If no originalText, it's from a button callback — trust the field/plot name
+        const originalText = ((cmd.originalText as string) || '').toLowerCase();
+        const fromCallback = !cmd.originalText;
+        const fieldExplicit = cmd.fieldName
+          ? (fromCallback || originalText.includes((cmd.fieldName as string).toLowerCase()))
+          : false;
+        const plotExplicit = cmd.plotName
+          ? (fromCallback || originalText.includes((cmd.plotName as string).toLowerCase()))
+          : false;
+
+        if (cmd.fieldName && fieldExplicit) {
+          // User explicitly mentioned a field name (or selected via button)
           const field = await this.repo.getFieldByName(userId, cmd.fieldName as string);
           if (field) {
             fieldId = field.id;
             fieldLabel = field.name;
           } else {
-            const created = await this.repo.getOrCreateField(userId, cmd.fieldName as string);
-            fieldId = created.id;
-            fieldLabel = created.name;
+            return {
+              messages: [`No encontré el campo *${cmd.fieldName}*.\nPara crearlo: *agregar campo ${cmd.fieldName}*`],
+            };
           }
-        } else if (cmd.plotName) {
+        } else if (cmd.plotName && plotExplicit) {
           // "lote X" → resolve to parent field
           const plots = await this.repo.findPlotByNameAcrossFields(userId, cmd.plotName as string);
           if (plots.length > 0) {
             fieldId = plots[0].field_id;
             fieldLabel = plots[0].field_name;
           }
-        } else {
-          // Fallback: conversation state last_field_id
-          const convState = await this.repo.getConversationState(userId);
-          if (convState?.last_field_id && convState.field_name) {
-            fieldId = convState.last_field_id;
-            fieldLabel = convState.field_name;
+        } else if (rainfallUserFields.length === 1) {
+          // Auto-assign single field
+          const singleField = await this.repo.getFieldByName(userId, rainfallUserFields[0].name);
+          if (singleField) {
+            fieldId = singleField.id;
+            fieldLabel = singleField.name;
           }
+        } else {
+          // Multiple fields, none explicitly mentioned — ask user which one
+          const buttons = rainfallUserFields.slice(0, 3).map(f => ({
+            id: `rain_field_${f.name}_${mm}`,
+            title: f.name.slice(0, 20),
+          }));
+          return {
+            messages: [`Llovieron *${mm}mm* 🌧️ ¿En qué campo?`],
+            interactive: { type: 'buttons' as const, body: 'Elegí el campo:', buttons },
+          };
         }
 
         const saved = await this.repo.saveRainfall(userId, mm, fieldId);
 
         // Handle dedup rejection
         if (saved === RAINFALL_REJECTED_DUPLICATE) {
-          return { messages: [`Ya hay un registro de lluvia hoy para *${fieldLabel}*. Si querés corregirlo, borrá el anterior con *borrar lluvia* y registrá de nuevo.`] };
+          const dupLabel = fieldLabel || 'tu campo';
+          return { messages: [`Ya hay un registro de lluvia hoy para *${dupLabel}*. Si querés corregirlo, borrá el anterior con *borrar lluvia* y registrá de nuevo.`] };
         }
 
-        let msg = `\ud83c\udf27\ufe0f Lluvia registrada: *${mm}mm*\n\ud83d\udccd ${fieldLabel}`;
+        let msg = `\ud83c\udf27\ufe0f Lluvia registrada: *${mm}mm*`;
+        if (fieldLabel) msg += `\n\ud83d\udccd ${fieldLabel}`;
 
         // Check cumulative daily rain threshold alert
         if (settings.rain_alerts !== false) {
@@ -261,10 +297,24 @@ export class AgronomyHandler {
       }
 
       case 'rainfall_report': {
-        const periodLabel: Record<string, string> = { week: 'esta semana', month: 'este mes', year: 'este año' };
-        const period = cmd.period as string;
+        const periodLabel: Record<string, string> = {
+          week: 'esta semana', month: 'este mes', year: 'este año',
+          day: 'hoy', today: 'hoy',
+          last_week: 'la semana pasada', last_month: 'el mes pasado',
+        };
+        const rawPeriod = (cmd.period as string) || 'month';
+        // Normalize: day/today → week (DB doesn't have daily filter, week is closest)
+        const period = (rawPeriod === 'day' || rawPeriod === 'today') ? 'week' : rawPeriod;
+        const displayPeriod = periodLabel[rawPeriod] || periodLabel[period] || 'este mes';
 
-        if (cmd.fieldName) {
+        // Only filter by field if user explicitly mentioned it (not AI-inferred)
+        const rrOriginal = ((cmd.originalText as string) || '').toLowerCase();
+        const rrFromCallback = !cmd.originalText;
+        const rrFieldExplicit = cmd.fieldName
+          ? (rrFromCallback || rrOriginal.includes((cmd.fieldName as string).toLowerCase()))
+          : false;
+
+        if (cmd.fieldName && rrFieldExplicit) {
           const field = await this.repo.getFieldByName(userId, cmd.fieldName as string);
           let data = await this.repo.getRainfallPeriod(userId, period, field?.id || null);
           if (data.registros === 0 && field) {
@@ -272,19 +322,19 @@ export class AgronomyHandler {
             if (nullData.registros > 0) data = nullData;
           }
           if (data.registros === 0) {
-            return { messages: [`No hay registros de lluvia en ${cmd.fieldName} (${periodLabel[period]}).`], suggestionKey: 'rainfall_logged' };
+            return { messages: [`No hay registros de lluvia en ${cmd.fieldName} (${displayPeriod}).`], suggestionKey: 'rainfall_logged' };
           }
-          return { messages: [`🌧️ *Resumen de lluvias — ${cmd.fieldName}* (${periodLabel[period]})\n\nTotal: *${data.total}mm*\nRegistros: ${data.registros}`], suggestionKey: 'rainfall_logged' };
+          return { messages: [`🌧️ *Resumen de lluvias — ${cmd.fieldName}* (${displayPeriod})\n\nTotal: *${data.total}mm*\nRegistros: ${data.registros}`], suggestionKey: 'rainfall_logged' };
         }
 
         const allData = await this.repo.getRainfallAllLocations(userId, period);
         if (allData.length === 0) {
-          return { messages: [`No hay registros de lluvia (${periodLabel[period]}).`], suggestionKey: 'rainfall_logged' };
+          return { messages: [`No hay registros de lluvia (${displayPeriod}).`], suggestionKey: 'rainfall_logged' };
         }
         let totalGlobal = 0;
-        let msg = `🌧️ *Resumen de lluvias* (${periodLabel[period]})\n`;
+        let msg = `🌧️ *Resumen de lluvias* (${displayPeriod})\n`;
         for (const row of allData) {
-          const label = row.field_name || 'General';
+          const label = row.field_name || 'Sin campo';
           totalGlobal += row.total;
           msg += `\n📍 ${label}: *${row.total}mm* (${row.registros} reg.)`;
         }
@@ -476,6 +526,20 @@ export class AgronomyHandler {
         };
         const eventType = eventTypeMap[cmd.command];
 
+        // Block if user has no fields
+        const activityUserFields = await this.repo.getUserFields(userId);
+        if (activityUserFields.length === 0) {
+          const { label } = getActivityLabel(eventType);
+          return {
+            messages: [`Para registrar ${label.toLowerCase()} primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*`],
+            interactive: {
+              type: 'buttons',
+              body: `Necesitás un campo para registrar ${label.toLowerCase()}.`,
+              buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
+            },
+          };
+        }
+
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,
@@ -557,21 +621,66 @@ export class AgronomyHandler {
       }
 
       case 'query_plot_history': {
+        // If no plot/field specified (e.g. button click), ask user which lote
+        if (!cmd.plotName && !cmd.fieldName && !cmd.plotId) {
+          const userPlots = await this.repo.findAllUserPlots(userId);
+          if (userPlots.length === 0) {
+            return { messages: ['No tenés lotes creados. Primero creá un campo y un lote.'] };
+          }
+          if (userPlots.length === 1) {
+            // Auto-select single plot
+            cmd.plotName = userPlots[0].name;
+          } else if (userPlots.length <= 3) {
+            const buttons = userPlots.map(p => ({
+              id: `cmd_historial_${p.id}`,
+              title: p.name.slice(0, 20),
+            }));
+            return {
+              messages: ['¿De qué lote querés ver el historial?'],
+              interactive: { type: 'buttons' as const, body: 'Elegí un lote:', buttons },
+            };
+          } else {
+            // >3 plots: use list message
+            const sections = [{
+              title: 'Lotes',
+              rows: userPlots.map(p => ({
+                id: `cmd_historial_${p.id}`,
+                title: p.name.slice(0, 24),
+                description: p.field_name,
+              })),
+            }];
+            return {
+              messages: ['¿De qué lote querés ver el historial?'],
+              interactive: { type: 'list' as const, body: 'Elegí un lote:', buttonText: 'Ver lotes', sections },
+            };
+          }
+        }
+
+        // If plotId provided directly (from button callback), resolve plot name
+        if (cmd.plotId && !cmd.plotName) {
+          const plot = await this.repo.getPlotById(cmd.plotId as number);
+          if (plot) {
+            cmd.plotName = plot.name;
+          }
+        }
+
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,
           cmd.plotName as string | null
         );
 
+        // If user specified a plot but it wasn't found, tell them instead of querying unfiltered
+        if (cmd.plotName && !resolved.plotId) {
+          return {
+            messages: [`No encontré el lote *${cmd.plotName}*. Revisá el nombre o escribí *mis lotes* para ver los que tenés.`],
+          };
+        }
+
         const timeRef = cmd.timeRef as { desde: Date; hasta: Date } | null;
         const activityFilter = cmd.activityFilter as string | null;
         const isBinaryQuestion = !!(cmd.isBinaryQuestion);
-        const originalText = String(cmd._originalText || '');
-        const lower = originalText.toLowerCase();
-        const isUltimaVez = !isBinaryQuestion && (
-          /(?:ultima|última)\s+vez/.test(lower)
-          || /(?:cuando|cuándo)\s+fue\s+(?:la\s+)?(?:ultima|última)/.test(lower)
-        );
+        const isUltimaVez = !!(cmd.isUltimaVez);
         const hasNoFilters = !timeRef && !activityFilter && !isUltimaVez && !isBinaryQuestion;
 
         // Smart limits: binary/última→small, no filters→recent, filtered→moderate
@@ -595,6 +704,7 @@ export class AgronomyHandler {
         // Derive time label from original text
         let timeLabel = '';
         if (timeRef) {
+          const lower = ((cmd.originalText as string) || '').toLowerCase();
           if (/esta\s+semana/.test(lower)) timeLabel = 'esta semana';
           else if (/este\s+mes/.test(lower)) timeLabel = 'este mes';
           else if (/\bayer\b/.test(lower)) timeLabel = 'ayer';
@@ -640,11 +750,18 @@ export class AgronomyHandler {
         if (plotName) {
           const resolved = await this.plotDiscovery.resolveFromNames(userId, null, plotName);
           if (!resolved.plotId || resolved.autoCreated) {
-            return { messages: [`No encontré el lote "${plotName}". Revisá el nombre o escribí *mis lotes* para ver tus lotes.`] };
+            // Fallback: AI might have put a field name in the plot slot
+            const fallbackField = await this.repo.getFieldByName(userId, plotName);
+            if (fallbackField) {
+              field = fallbackField;
+            } else {
+              return { messages: [`No encontré el lote "${plotName}". Revisá el nombre o escribí *mis lotes* para ver tus lotes.`] };
+            }
+          } else {
+            filterPlotId = resolved.plotId;
+            filterPlotName = resolved.plotName;
+            field = await this.repo.getFieldByName(userId, resolved.fieldName!);
           }
-          filterPlotId = resolved.plotId;
-          filterPlotName = resolved.plotName;
-          field = await this.repo.getFieldByName(userId, resolved.fieldName!);
         } else {
           field = await this.repo.getFieldByName(userId, fieldName!);
         }

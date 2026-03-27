@@ -44,9 +44,9 @@ describe('inferCrop', () => {
 });
 
 describe('getActivityLabel', () => {
-  it('spraying → 💨 Pulverización', () => {
+  it('spraying → 💨 Fumigación', () => {
     const r = getActivityLabel('spraying');
-    expect(r.label).toBe('Pulverización');
+    expect(r.label).toBe('Fumigación');
   });
 
   it('fertilization → 🧪 Fertilización', () => {
@@ -88,7 +88,7 @@ describe('formatActivityConfirmation', () => {
       quantity: 200,
       unit: 'lt',
     });
-    expect(msg).toContain('Pulverización');
+    expect(msg).toContain('Fumigación');
     expect(msg).toContain('Norte > Lote 3');
     expect(msg).toContain('Glifosato');
     expect(msg).toContain('herbicida');

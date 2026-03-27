@@ -24,7 +24,8 @@ interface InteractiveData {
 
 interface Props {
   interactive: InteractiveData;
-  onClick: (callbackId: string) => void;
+  onClick: (callbackId: string, label: string) => void;
+  hideBody?: boolean;
 }
 
 function formatBody(text: string): string {
@@ -34,19 +35,21 @@ function formatBody(text: string): string {
     .replace(/\n/g, '<br/>');
 }
 
-export default function InteractiveElement({ interactive, onClick }: Props) {
+export default function InteractiveElement({ interactive, onClick, hideBody }: Props) {
   if (interactive.type === 'buttons') {
     return (
       <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-md shadow-sm overflow-hidden">
-        <div
-          className="px-4 py-2 text-sm text-gray-800"
-          dangerouslySetInnerHTML={{ __html: formatBody(interactive.body) }}
-        />
-        <div className="border-t border-gray-100">
+        {!hideBody && (
+          <div
+            className="px-4 py-2 text-sm text-gray-800"
+            dangerouslySetInnerHTML={{ __html: formatBody(interactive.body) }}
+          />
+        )}
+        <div className={hideBody ? '' : 'border-t border-gray-100'}>
           {interactive.buttons?.map((btn) => (
             <button
               key={btn.id}
-              onClick={() => onClick(btn.id)}
+              onClick={() => onClick(btn.id, btn.title)}
               className="w-full text-left px-4 py-2.5 text-sm font-medium text-campo-700 hover:bg-campo-50 transition-colors border-b border-gray-50 last:border-b-0"
             >
               {btn.title}
@@ -60,11 +63,13 @@ export default function InteractiveElement({ interactive, onClick }: Props) {
   if (interactive.type === 'list') {
     return (
       <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-md shadow-sm overflow-hidden">
-        <div
-          className="px-4 py-2 text-sm text-gray-800"
-          dangerouslySetInnerHTML={{ __html: formatBody(interactive.body) }}
-        />
-        <div className="border-t border-gray-100">
+        {!hideBody && (
+          <div
+            className="px-4 py-2 text-sm text-gray-800"
+            dangerouslySetInnerHTML={{ __html: formatBody(interactive.body) }}
+          />
+        )}
+        <div className={hideBody ? '' : 'border-t border-gray-100'}>
           {interactive.sections?.map((section, si) => (
             <div key={si}>
               <div className="px-4 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50">
@@ -73,7 +78,7 @@ export default function InteractiveElement({ interactive, onClick }: Props) {
               {section.rows.map((row) => (
                 <button
                   key={row.id}
-                  onClick={() => onClick(row.id)}
+                  onClick={() => onClick(row.id, row.title)}
                   className="w-full text-left px-4 py-2.5 hover:bg-campo-50 transition-colors border-b border-gray-50 last:border-b-0"
                 >
                   <span className="text-sm font-medium text-campo-700">{row.title}</span>

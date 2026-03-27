@@ -5,24 +5,11 @@ import {
   getPlotCropHistory,
 } from '../../services/expenses.js';
 import type { UserId, PlotCropRow } from '../../types/index.js';
+import { CROPS, CROP_SEASON } from '../../constants/agro-terms.js';
 
-// --- Crop dictionaries ---
-
-const CULTIVOS_NORMALIZED: Record<string, string> = {
-  soja: 'Soja', soya: 'Soja',
-  maiz: 'Maíz',
-  trigo: 'Trigo',
-  girasol: 'Girasol',
-  sorgo: 'Sorgo',
-  cebada: 'Cebada',
-  avena: 'Avena',
-  centeno: 'Centeno',
-  alfalfa: 'Alfalfa',
-};
-
-const GRUESA = new Set(['Soja', 'Maíz', 'Girasol', 'Sorgo']);
-const FINA = new Set(['Trigo', 'Cebada', 'Avena', 'Centeno']);
-const PERENNE = new Set(['Alfalfa']);
+const GRUESA = CROP_SEASON.GRUESA;
+const FINA = CROP_SEASON.FINA;
+const PERENNE = CROP_SEASON.PERENNE;
 
 // --- Pure functions ---
 
@@ -31,13 +18,13 @@ export function detectCropFromText(text: string): string | null {
   const words = normalized.split(/\s+/);
 
   for (const word of words) {
-    if (CULTIVOS_NORMALIZED[word]) return CULTIVOS_NORMALIZED[word];
+    if (CROPS[word]) return CROPS[word];
   }
 
   for (const word of words) {
     if (word.length < 3) continue;
-    for (const key of Object.keys(CULTIVOS_NORMALIZED)) {
-      if (word.startsWith(key) || key.startsWith(word)) return CULTIVOS_NORMALIZED[key];
+    for (const key of Object.keys(CROPS)) {
+      if (word.startsWith(key) || key.startsWith(word)) return CROPS[key];
     }
   }
 

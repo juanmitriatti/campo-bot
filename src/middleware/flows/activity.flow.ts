@@ -1,20 +1,12 @@
 import { saveDomainEvent as dbSaveDomainEvent, findPlotByNameAcrossFields } from '../../services/expenses.js';
 import { getSuggestions } from '../contextual-suggestions.js';
-import { buildPlotPrompt, validatePlotAsync } from './field-step-helpers.js';
+import { buildPlotPromptGrouped, validatePlotAsync } from './field-step-helpers.js';
 import { EntityValidator } from '../../services/entity-validator.js';
+import { ACTIVITY_TYPES } from '../../constants/agro-terms.js';
 import type { FlowDefinition, FlowStep } from './flow.interface.js';
 import type { UserId, InteractiveMessage } from '../../types/index.js';
 
 const entityValidator = new EntityValidator();
-
-const ACTIVITY_TYPES = [
-  { id: 'spraying', label: 'Fumigación' },
-  { id: 'fertilization', label: 'Fertilización' },
-  { id: 'planting', label: 'Siembra' },
-  { id: 'tillage', label: 'Labranza' },
-  { id: 'harvest', label: 'Cosecha' },
-  { id: 'irrigation', label: 'Riego' },
-];
 
 const activityTypeMap: Record<string, string> = {};
 for (const a of ACTIVITY_TYPES) {
@@ -59,8 +51,8 @@ const steps: FlowStep[] = [
     field: 'plotName',
     prompt: '¿En qué lote? (escribí el nombre, opcional)',
     promptAsync: async (_data, userId) => {
-      const plots = await entityValidator.getUserPlotNames(userId);
-      return buildPlotPrompt(plots);
+      const plots = await entityValidator.getUserPlotsWithFields(userId);
+      return buildPlotPromptGrouped(plots);
     },
     interactive: {
       type: 'buttons',

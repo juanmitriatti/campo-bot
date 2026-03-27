@@ -39,24 +39,22 @@ function buildFieldListText(fields: string[], cap = false): string {
 
 export function buildFieldPrompt(fields: string[], label = '¿En qué campo?'): string {
   if (fields.length === 0) {
-    return `${label} (escribí el nombre o "general" si no aplica)`;
+    return `No tenés campos creados. Escribí *cancelar* y después *agregar campo [nombre]* para crear uno.`;
   }
   const list = buildFieldListText(fields);
-  return `${label}\n${list}\n\nEscribí el nombre, número o "general".`;
+  return `${label}\n${list}\n\nEscribí el nombre o número.`;
 }
 
 export function buildFieldInteractive(
   fields: string[],
   body = '¿En qué campo?',
-  noFieldLabel = 'General',
 ): InteractiveMessage | null {
   if (fields.length === 0) return null;
-  const capped = fields.slice(0, MAX_INTERACTIVE_ROWS);
+  const capped = fields.slice(0, MAX_INTERACTIVE_ROWS + 1); // No extra "General" row anymore
   const rows = capped.map(f => ({
     id: `flow_field_${f.toLowerCase().replace(/\s+/g, '_')}`,
     title: f.length > 24 ? f.slice(0, 24) : f,
   }));
-  rows.push({ id: `flow_field_${normalize(noFieldLabel).replace(/\s+/g, '_')}`, title: noFieldLabel });
   return {
     type: 'list' as const,
     body,
@@ -80,9 +78,9 @@ export async function validateFieldAsync(
   // Get user's fields
   const fields = await entityValidator.getUserFieldNames(userId);
 
-  // No fields exist → accept any name (will be auto-created on execute)
+  // No fields exist → block, ask user to cancel and create field first
   if (fields.length === 0) {
-    return { value: input.trim() };
+    return { error: 'No tenés campos creados. Escribí *cancelar* y después *agregar campo [nombre]* para crear uno.' };
   }
 
   const normalizedInput = normalize(input);
@@ -108,13 +106,89 @@ export async function validateFieldAsync(
   return { error: `No encontré ese campo.\n\nTus campos:\n${list}` };
 }
 
-// Plot validation
+// Plot validation — supports grouped-by-field display
+
+export interface PlotWithField {
+  plotName: string;
+  fieldName: string;
+}
+
 export function buildPlotPrompt(plots: string[], label = '¿En qué lote?'): string {
   if (plots.length === 0) {
-    return `${label} (escribí el nombre, opcional)`;
+    return `No tenés lotes creados. Escribí *cancelar* y después *agregar lote [nombre] en campo [campo]* para crear uno.`;
   }
   const lines = plots.map((p, i) => `${i + 1}. ${p}`);
   return `${label}\n${lines.join('\n')}\n\nEscribí el nombre o número.`;
+}
+
+export function buildPlotPromptGrouped(plots: PlotWithField[], label = '¿En qué lote?'): string {
+  if (plots.length === 0) {
+    return `No tenés lotes creados. Escribí *cancelar* y después *agregar lote [nombre] en campo [campo]* para crear uno.`;
+  }
+  const fieldNames = [...new Set(plots.map(p => p.fieldName))];
+  if (fieldNames.length <= 1) {
+    return buildPlotPrompt(plots.map(p => p.plotName), label);
+  }
+  let text = `${label}\n`;
+  for (const fn of fieldNames) {
+    text += `\n*${fn}:*\n`;
+    const fieldPlots = plots.filter(p => p.fieldName === fn);
+    for (const p of fieldPlots) {
+      text += `  • ${p.plotName}\n`;
+    }
+  }
+  text += `\nEscribí el nombre del lote.`;
+  return text;
+}
+
+export function buildPlotInteractive(
+  plots: string[],
+  body = '¿En qué lote?',
+): InteractiveMessage | null {
+  if (plots.length === 0) return null;
+  const capped = plots.slice(0, MAX_INTERACTIVE_ROWS + 1);
+  const rows = capped.map(p => ({
+    id: `flow_plot_${p.toLowerCase().replace(/\s+/g, '_')}`,
+    title: p.length > 24 ? p.slice(0, 24) : p,
+  }));
+  return {
+    type: 'list' as const,
+    body,
+    buttonText: 'Ver lotes',
+    sections: [{ title: 'Lotes', rows }],
+  };
+}
+
+export function buildPlotInteractiveGrouped(
+  plots: PlotWithField[],
+  body = '¿En qué lote?',
+): InteractiveMessage | null {
+  if (plots.length === 0) return null;
+  const fieldNames = [...new Set(plots.map(p => p.fieldName))];
+  if (fieldNames.length <= 1) {
+    return buildPlotInteractive(plots.map(p => p.plotName), body);
+  }
+  // Group by field as separate sections
+  const sections: { title: string; rows: { id: string; title: string }[] }[] = [];
+  let totalRows = 0;
+  for (const fn of fieldNames) {
+    if (totalRows >= MAX_INTERACTIVE_ROWS + 1) break;
+    const fieldPlots = plots.filter(p => p.fieldName === fn);
+    const rows = fieldPlots
+      .slice(0, MAX_INTERACTIVE_ROWS + 1 - totalRows)
+      .map(p => ({
+        id: `flow_plot_${p.plotName.toLowerCase().replace(/\s+/g, '_')}`,
+        title: p.plotName.length > 24 ? p.plotName.slice(0, 24) : p.plotName,
+      }));
+    totalRows += rows.length;
+    sections.push({ title: fn, rows });
+  }
+  return {
+    type: 'list' as const,
+    body,
+    buttonText: 'Lotes',
+    sections,
+  };
 }
 
 export async function validatePlotAsync(

@@ -20,6 +20,7 @@ import {
   getLastDomainEvent as _getLastDomainEvent,
   deleteDomainEvent as _deleteDomainEvent,
   queryPlotHistory as _queryPlotHistory,
+  getPlotById as _getPlotById,
 } from '../../services/expenses.js';
 import { PlotRepository } from '../plots/plot.repository.js';
 import type { UserId, FieldRow, PlotRow, PlotCropRow, DomainEventRow, PlotHistoryRow } from '../../types/index.js';
@@ -106,6 +107,10 @@ export class AgronomyRepository {
     return this.plots.getUserFieldsWithCity(userId);
   }
 
+  async getUserFields(userId: UserId): Promise<{ name: string; city: string | null }[]> {
+    return this.plots.getUserFields(userId);
+  }
+
   // --- Plots (delegated to PlotRepository) ---
 
   async getOrCreatePlot(fieldId: number, name: string): Promise<PlotRow> {
@@ -122,6 +127,10 @@ export class AgronomyRepository {
 
   async findAllUserPlots(userId: UserId): Promise<Array<{ id: number; name: string; field_name: string }>> {
     return this.plots.findAllUserPlots(userId);
+  }
+
+  async getPlotById(plotId: number): Promise<{ id: number; name: string; field_name: string } | null> {
+    return _getPlotById(plotId);
   }
 
   // --- Plot crops ---

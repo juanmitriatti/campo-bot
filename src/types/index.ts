@@ -14,29 +14,9 @@ export function asUserId(id: number): UserId {
 
 export type Currency = 'ARS' | 'USD';
 
-// --- Categories ---
+// --- Categories (canonical definitions in constants/agro-terms.ts) ---
 
-export type ExpenseCategory =
-  | 'Combustible'
-  | 'Fertilizantes'
-  | 'Semillas'
-  | 'Agroquímicos'
-  | 'Sueldos'
-  | 'Maquinaria'
-  | 'Arrendamiento'
-  | 'Impuestos'
-  | 'Otros';
-
-export type IncomeCategory =
-  | 'Soja'
-  | 'Maíz'
-  | 'Trigo'
-  | 'Girasol'
-  | 'Sorgo'
-  | 'Cebada'
-  | 'Hacienda'
-  | 'Arrendamiento'
-  | 'Otros';
+export type { ExpenseCategory, IncomeCategory } from '../constants/agro-terms.js';
 
 // --- Parsed data ---
 
@@ -101,6 +81,9 @@ export interface FieldInfo {
   fieldName: string | null;
   plotId: number | null;
   plotName: string | null;
+  notFound?: { type: 'field' | 'plot'; name: string };
+  needPlotSelection?: { fieldId: number; fieldName: string; plots: Array<{ id: number; name: string }> };
+  needPlotCreation?: { fieldId: number; fieldName: string };
 }
 
 // --- User ---
@@ -201,6 +184,7 @@ export interface FieldInfoData {
   incomes: { total: number; count: number };
   rainfall: { total: number; count: number };
   plotCount?: number;
+  observations?: Array<{ observation_text: string; category: string; created_at: Date; plot_name: string | null }>;
 }
 
 export interface PlotInfoData {
@@ -211,6 +195,8 @@ export interface PlotInfoData {
   expenses: { total: number; count: number };
   incomes: { total: number; count: number };
   rainfall: { total: number; count: number };
+  activeCrop?: { crop: string; season_year: number } | null;
+  recentActivities?: Array<{ event_type: string; event_date: Date; product: string | null; crop: string | null }>;
 }
 
 // --- Plot Crops ---
@@ -265,7 +251,7 @@ export interface PlotHistoryRow {
 
 // --- Agro Observations ---
 
-export type ObservationCategory = 'sanidad' | 'malezas' | 'nutricion' | 'fenologia' | 'clima' | 'general';
+export type { ObservationCategory } from '../constants/agro-terms.js';
 
 export interface ObservationRow {
   id: number;
@@ -301,6 +287,9 @@ export interface PlotDiscoveryResult {
   plotId: number | null;
   plotName: string | null;
   autoCreated: boolean;
+  notFound?: { type: 'field' | 'plot'; name: string };
+  needPlotSelection?: { fieldId: number; fieldName: string; plots: Array<{ id: number; name: string }> };
+  needPlotCreation?: { fieldId: number; fieldName: string };
 }
 
 // --- AI Usage ---
@@ -461,6 +450,8 @@ export interface HandlerResponse {
     setPending?: PendingTransaction;
     startFlow?: { state: FlowState; data?: Record<string, unknown> };
     setPendingObservation?: { text: string; category: string };
+    setPendingFieldCity?: { fieldName: string };
+    setFieldDuplicate?: { name: string; city: string | null };
   };
 }
 
@@ -488,6 +479,7 @@ export interface PlanRow {
   display_name: string;
   price_ars: number;
   is_active: boolean;
+  daily_ai_limit: number | null;
   created_at: Date;
 }
 

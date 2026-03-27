@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getSetting, getSettingNumber, getSettingBool } from '../services/settings.service.js';
 import { saveAiFallbackLog } from '../services/expenses.js';
 import { UserRepository } from '../domain/users/user.repository.js';
+import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { logError } from '../services/error-logger.js';
 import type { UserId, UserSettings, AiUsage } from '../types/index.js';
 
@@ -63,9 +64,11 @@ export interface FallbackResult {
 
 export class ConversationalFallbackService {
   private userRepo: UserRepository;
+  private planRepo: PlanRepository;
 
   constructor(userRepo?: UserRepository) {
     this.userRepo = userRepo ?? new UserRepository();
+    this.planRepo = new PlanRepository();
   }
 
   async respond(
@@ -88,8 +91,8 @@ export class ConversationalFallbackService {
       return { response: RATE_LIMIT_RESPONSE, aiUsed: false, rateLimited: true };
     }
 
-    // Daily AI limit check (shared with intent extractor)
-    const claudeLimit = settings.claude_daily_limit || 50;
+    // Daily AI limit check (plan-based, fallback to user setting)
+    const claudeLimit = await this.getAiDailyLimit(userId, settings);
     const dailyCount = await this.userRepo.getDailyClaudeCount(userId);
     if (dailyCount >= claudeLimit) {
       return { response: RATE_LIMIT_RESPONSE, aiUsed: false, rateLimited: true };
@@ -161,6 +164,16 @@ export class ConversationalFallbackService {
       console.log('CONV_FALLBACK: error —', isTimeout ? 'timeout' : (err instanceof Error ? err.message : String(err)));
       return { response: RATE_LIMIT_RESPONSE, aiUsed: false, rateLimited: false };
     }
+  }
+
+  private async getAiDailyLimit(userId: UserId, settings: UserSettings): Promise<number> {
+    try {
+      const limit = await this.planRepo.getUserPlanAiLimit(userId);
+      if (limit != null) return limit;
+    } catch {
+      // Plan lookup failed — use fallback
+    }
+    return settings.claude_daily_limit || 50;
   }
 
   /** Exported for testing */

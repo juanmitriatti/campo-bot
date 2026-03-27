@@ -1,4 +1,5 @@
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
+import { EXPENSE_CATEGORY_SET, INCOME_CATEGORY_SET } from '../constants/agro-terms.js';
 
 /**
  * All known intent strings the LLM can return.
@@ -10,7 +11,7 @@ const KNOWN_INTENTS = new Set([
   // Agronomy
   'log_spraying', 'log_fertilization', 'log_tillage', 'log_irrigation',
   'sow_crop', 'harvest_crop', 'active_crop', 'crop_history',
-  'plot_activities', 'log_observation', 'generate_agro_report',
+  'plot_activities', 'query_plot_history', 'log_observation', 'generate_agro_report',
   'log_rainfall', 'delete_last_rainfall', 'rainfall_report', 'rainfall_range',
   'compare_rainfall_months', 'compare_rainfall_years',
   // Field/plot management
@@ -41,18 +42,6 @@ const KNOWN_INTENTS = new Set([
   'prompt_rainfall', 'prompt_add_field',
 ]);
 
-/** Expense categories recognized by the system. */
-const EXPENSE_CATEGORIES = new Set([
-  'Combustible', 'Fertilizantes', 'Semillas', 'Agroquímicos',
-  'Sueldos', 'Maquinaria', 'Arrendamiento', 'Impuestos', 'Otros',
-]);
-
-/** Income categories recognized by the system. */
-const INCOME_CATEGORIES = new Set([
-  'Soja', 'Maíz', 'Trigo', 'Girasol', 'Sorgo', 'Cebada',
-  'Hacienda', 'Arrendamiento', 'Otros',
-]);
-
 export interface LlmResponse {
   intent: string;
   confidence: number;
@@ -73,6 +62,14 @@ export interface LlmResponse {
   product_type?: string | null;
   crop?: string | null;
   event_date?: string | null;
+  // Report fields
+  period?: string | null;
+  date_range?: string | null;
+  timeRef?: string | null;
+  activityFilter?: string | null;
+  desde?: string | null;
+  hasta?: string | null;
+  days?: number | null;
   // Generic
   [key: string]: unknown;
 }
@@ -121,7 +118,7 @@ export class IntentValidator {
 
   private mapExpense(parsed: LlmResponse, originalMessage: string, confidence: number): ParseResult {
     if (parsed.amount && typeof parsed.amount === 'number' && parsed.amount > 0) {
-      const category = (parsed.category && EXPENSE_CATEGORIES.has(parsed.category))
+      const category = (parsed.category && EXPENSE_CATEGORY_SET.has(parsed.category))
         ? parsed.category
         : 'Otros';
       const currency: Currency = parsed.currency === 'USD' ? 'USD' : 'ARS';
@@ -165,7 +162,7 @@ export class IntentValidator {
 
   private mapIncome(parsed: LlmResponse, originalMessage: string, confidence: number): ParseResult {
     if (parsed.amount && typeof parsed.amount === 'number' && parsed.amount > 0) {
-      const category = (parsed.category && INCOME_CATEGORIES.has(parsed.category))
+      const category = (parsed.category && INCOME_CATEGORY_SET.has(parsed.category))
         ? parsed.category
         : 'Otros';
       const currency: Currency = parsed.currency === 'USD' ? 'USD' : 'ARS';
@@ -223,6 +220,19 @@ export class IntentValidator {
     if (parsed.unit != null) cmd.unit = parsed.unit;
     if (parsed.crop != null) cmd.crop = parsed.crop;
     if (parsed.event_date != null) cmd.eventDate = parsed.event_date;
+    if (parsed.observation != null) cmd.observation = parsed.observation;
+    if (parsed.period != null) cmd.period = parsed.period;
+    if (parsed.date_range != null) cmd.date_range = parsed.date_range;
+    if (parsed.timeRef != null) cmd.timeRef = parsed.timeRef;
+    if (parsed.activityFilter != null) cmd.activityFilter = parsed.activityFilter;
+    if (parsed.desde != null) cmd.desde = parsed.desde;
+    if (parsed.hasta != null) cmd.hasta = parsed.hasta;
+    if (parsed.days != null) cmd.days = parsed.days;
+
+    // Map quantity → mm for rainfall (handler expects cmd.mm)
+    if (parsed.intent === 'log_rainfall' && parsed.quantity != null) {
+      cmd.mm = parsed.quantity;
+    }
 
     return {
       intent: { type: 'command', data: cmd },

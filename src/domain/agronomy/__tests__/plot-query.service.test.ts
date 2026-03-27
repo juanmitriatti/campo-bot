@@ -46,14 +46,14 @@ describe('formatHistoryResponse — decision engine', () => {
 
   it('includes activity label in empty filtered response', () => {
     const msg = formatHistoryResponse([], makeCtx({ activityFilter: 'spraying' }));
-    expect(msg).toContain('pulverización');
+    expect(msg).toContain('fumigación');
   });
 
   // --- Binary NO ---
   it('returns ❌ for binary question with no results', () => {
     const msg = formatHistoryResponse([], makeCtx({ isBinaryQuestion: true, activityFilter: 'spraying' }));
     expect(msg).toMatch(/^❌/);
-    expect(msg).toContain('pulverización');
+    expect(msg).toContain('fumigación');
   });
 
   // --- Binary YES ---
@@ -77,7 +77,7 @@ describe('formatHistoryResponse — decision engine', () => {
     const rows = [makeRow()];
     const msg = formatHistoryResponse(rows, makeCtx({ isUltimaVez: true }));
     expect(msg).toContain('La última');
-    expect(msg).toContain('pulverización');
+    expect(msg).toContain('fumigación');
     expect(msg).toContain('Glifosato');
     expect(msg).toContain('Soja');
   });
@@ -123,7 +123,7 @@ describe('formatHistoryResponse — decision engine', () => {
     const msg = formatHistoryResponse(rows, makeCtx({ timeLabel: 'esta semana' }));
     expect(msg).toContain('📋 *Historial — lote 3*');
     expect(msg).toContain('esta semana');
-    expect(msg).toContain('Pulverización');
+    expect(msg).toContain('Fumigación');
     expect(msg).toContain('Lluvia');
     expect(msg).toContain('22mm');
   });

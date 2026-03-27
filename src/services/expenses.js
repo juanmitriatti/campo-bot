@@ -163,6 +163,41 @@ export async function getMonthlyReport(userId) {
   return result.rows;
 }
 
+export async function getMonthlyReportByPlot(userId) {
+  const result = await pool.query(
+    `WITH plot_expenses AS (
+       SELECT plot_id, COALESCE(SUM(amount), 0) as total
+       FROM expenses
+       WHERE user_id = $1 AND deleted_at IS NULL AND plot_id IS NOT NULL
+       AND date_trunc('month', expense_date) = date_trunc('month', NOW())
+       GROUP BY plot_id
+     ),
+     plot_incomes AS (
+       SELECT plot_id, COALESCE(SUM(amount), 0) as total
+       FROM incomes
+       WHERE user_id = $1 AND deleted_at IS NULL AND plot_id IS NOT NULL
+       AND date_trunc('month', income_date) = date_trunc('month', NOW())
+       GROUP BY plot_id
+     ),
+     all_plots AS (
+       SELECT plot_id FROM plot_expenses
+       UNION
+       SELECT plot_id FROM plot_incomes
+     )
+     SELECT p.name as plot_name, f.name as field_name,
+            COALESCE(pe.total, 0) as expense_total,
+            COALESCE(pi.total, 0) as income_total
+     FROM all_plots ap
+     JOIN plots p ON ap.plot_id = p.id AND p.deleted_at IS NULL
+     JOIN fields f ON p.field_id = f.id AND f.deleted_at IS NULL
+     LEFT JOIN plot_expenses pe ON pe.plot_id = ap.plot_id
+     LEFT JOIN plot_incomes pi ON pi.plot_id = ap.plot_id
+     ORDER BY COALESCE(pe.total, 0) + COALESCE(pi.total, 0) DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
 export async function getMonthlyReportForMonth(userId, month, year) {
   const result = await pool.query(
     `SELECT category, SUM(amount) as total
@@ -542,9 +577,11 @@ export async function setFieldCity(userId, fieldName, city) {
 }
 
 export async function getFieldByName(userId, fieldName) {
+  // Normalize accents for matching (e.g., "El Trébol" → "el trebol")
+  const normalized = fieldName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const result = await pool.query(
-    `SELECT * FROM fields WHERE user_id = $1 AND LOWER(name) = LOWER($2) AND deleted_at IS NULL`,
-    [userId, fieldName]
+    `SELECT * FROM fields WHERE user_id = $1 AND LOWER(name) = $2 AND deleted_at IS NULL`,
+    [userId, normalized]
   );
   return result.rows[0] || null;
 }
@@ -649,7 +686,7 @@ export async function getFieldInfo(userId, fieldName) {
   const field = await getFieldByName(userId, fieldName);
   if (!field) return null;
 
-  const [expensesR, incomesR, rainfallR, plotsR] = await Promise.all([
+  const [expensesR, incomesR, rainfallR, plotsR, observationsR] = await Promise.all([
     pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
        FROM expenses WHERE user_id = $1 AND field_id = $2 AND deleted_at IS NULL
@@ -672,6 +709,14 @@ export async function getFieldInfo(userId, fieldName) {
       `SELECT COUNT(*) as count FROM plots WHERE field_id = $1 AND deleted_at IS NULL`,
       [field.id]
     ),
+    pool.query(
+      `SELECT ao.observation_text, ao.category, ao.created_at, p.name as plot_name
+       FROM agro_observations ao
+       LEFT JOIN plots p ON ao.plot_id = p.id
+       WHERE ao.field_id = $1 AND ao.created_at >= NOW() - INTERVAL '30 days'
+       ORDER BY ao.created_at DESC LIMIT 5`,
+      [field.id]
+    ),
   ]);
 
   return {
@@ -681,6 +726,7 @@ export async function getFieldInfo(userId, fieldName) {
     incomes: { total: Number(incomesR.rows[0].total), count: parseInt(incomesR.rows[0].count) },
     rainfall: { total: Number(rainfallR.rows[0].total), count: parseInt(rainfallR.rows[0].count) },
     plotCount: parseInt(plotsR.rows[0].count),
+    observations: observationsR.rows,
   };
 }
 
@@ -806,7 +852,7 @@ export async function findPlotByNameAcrossFields(userId, plotName) {
 
 export async function findAllUserPlots(userId) {
   const result = await pool.query(
-    `SELECT p.id, p.name, f.name AS field_name
+    `SELECT p.id, p.name, p.field_id, f.name AS field_name
      FROM plots p JOIN fields f ON p.field_id = f.id
      WHERE f.user_id = $1 AND p.deleted_at IS NULL AND f.deleted_at IS NULL
      ORDER BY f.name, p.name`,
@@ -884,7 +930,7 @@ export async function getPlotInfo(userId, plotName) {
   if (plots.length === 0) return null;
   const plot = plots[0];
 
-  const [expensesR, incomesR, rainfallR] = await Promise.all([
+  const [expensesR, incomesR, rainfallR, observationsR, activeCropR, recentActivitiesR] = await Promise.all([
     pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
        FROM expenses WHERE user_id = $1 AND plot_id = $2 AND deleted_at IS NULL
@@ -903,6 +949,25 @@ export async function getPlotInfo(userId, plotName) {
        AND date_trunc('month', rainfall_date) = date_trunc('month', NOW())`,
       [userId, plot.field_id]
     ),
+    pool.query(
+      `SELECT observation_text, category, created_at
+       FROM agro_observations WHERE user_id = $1 AND plot_id = $2
+       AND created_at >= NOW() - INTERVAL '30 days'
+       ORDER BY created_at DESC LIMIT 5`,
+      [userId, plot.id]
+    ),
+    pool.query(
+      `SELECT crop, season_year FROM plot_crops
+       WHERE plot_id = $1 AND end_date IS NULL
+       ORDER BY start_date DESC LIMIT 1`,
+      [plot.id]
+    ),
+    pool.query(
+      `SELECT event_type, event_date, product, crop
+       FROM domain_events WHERE plot_id = $1
+       ORDER BY event_date DESC LIMIT 3`,
+      [plot.id]
+    ),
   ]);
 
   return {
@@ -913,6 +978,9 @@ export async function getPlotInfo(userId, plotName) {
     expenses: { total: Number(expensesR.rows[0].total), count: parseInt(expensesR.rows[0].count) },
     incomes: { total: Number(incomesR.rows[0].total), count: parseInt(incomesR.rows[0].count) },
     rainfall: { total: Number(rainfallR.rows[0].total), count: parseInt(rainfallR.rows[0].count) },
+    observations: observationsR.rows,
+    activeCrop: activeCropR.rows.length > 0 ? activeCropR.rows[0] : null,
+    recentActivities: recentActivitiesR.rows,
   };
 }
 
@@ -1112,18 +1180,21 @@ export async function deleteLastRainfall(userId) {
   return last.rows[0];
 }
 
+function rainfallDateCondition(period) {
+  switch (period) {
+    case "week": return "AND r.rainfall_date >= date_trunc('week', NOW())";
+    case "last_week": return "AND r.rainfall_date >= date_trunc('week', NOW()) - INTERVAL '1 week' AND r.rainfall_date < date_trunc('week', NOW())";
+    case "last_month": return "AND date_trunc('month', r.rainfall_date) = date_trunc('month', NOW() - INTERVAL '1 month')";
+    case "year": return "AND EXTRACT(YEAR FROM r.rainfall_date) = EXTRACT(YEAR FROM NOW())";
+    default: return "AND date_trunc('month', r.rainfall_date) = date_trunc('month', NOW())";
+  }
+}
+
 export async function getRainfallPeriod(userId, period, fieldId = null) {
   const fieldCond = fieldId !== null ? "AND r.field_id = $2" : "";
   const params = fieldId !== null ? [userId, fieldId] : [userId];
 
-  let dateCond;
-  if (period === "week") {
-    dateCond = "AND r.rainfall_date >= date_trunc('week', NOW())";
-  } else if (period === "year") {
-    dateCond = "AND EXTRACT(YEAR FROM r.rainfall_date) = EXTRACT(YEAR FROM NOW())";
-  } else {
-    dateCond = "AND date_trunc('month', r.rainfall_date) = date_trunc('month', NOW())";
-  }
+  const dateCond = rainfallDateCondition(period);
 
   const result = await pool.query(
     `SELECT COALESCE(SUM(r.millimeters), 0) as total, COUNT(*) as registros
@@ -1135,14 +1206,7 @@ export async function getRainfallPeriod(userId, period, fieldId = null) {
 }
 
 export async function getRainfallAllLocations(userId, period = "month") {
-  let dateCond;
-  if (period === "week") {
-    dateCond = "AND r.rainfall_date >= date_trunc('week', NOW())";
-  } else if (period === "year") {
-    dateCond = "AND EXTRACT(YEAR FROM r.rainfall_date) = EXTRACT(YEAR FROM NOW())";
-  } else {
-    dateCond = "AND date_trunc('month', r.rainfall_date) = date_trunc('month', NOW())";
-  }
+  const dateCond = rainfallDateCondition(period);
 
   const result = await pool.query(
     `SELECT f.name as field_name, COALESCE(SUM(r.millimeters), 0) as total, COUNT(*) as registros

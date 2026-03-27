@@ -1,13 +1,5 @@
 import type { ActivityType, PlotCropRow } from '../../types/index.js';
-
-// --- Product → crop inference ---
-
-const PRODUCT_CROP_MAP: Record<string, string> = {
-  Atrazina: 'Maíz',
-  Imazetapir: 'Soja',
-  Cletodim: 'Soja',
-  Haloxifop: 'Soja',
-};
+import { PRODUCT_CROP_MAP, ACTIVITY_LABEL_MAP } from '../../constants/agro-terms.js';
 
 export function inferCrop(
   explicitCrop: string | null,
@@ -20,19 +12,8 @@ export function inferCrop(
   return null;
 }
 
-// --- Activity labels ---
-
-const ACTIVITY_LABELS: Record<string, { emoji: string; label: string }> = {
-  spraying: { emoji: '\ud83d\udca8', label: 'Pulverizaci\u00f3n' },
-  fertilization: { emoji: '\ud83e\uddea', label: 'Fertilizaci\u00f3n' },
-  tillage: { emoji: '\ud83d\ude9c', label: 'Labranza' },
-  irrigation: { emoji: '\ud83d\udca7', label: 'Riego' },
-  planting: { emoji: '\ud83c\udf31', label: 'Siembra' },
-  harvest: { emoji: '\ud83c\udf3e', label: 'Cosecha' },
-};
-
 export function getActivityLabel(type: string): { emoji: string; label: string } {
-  return ACTIVITY_LABELS[type] || { emoji: '\ud83d\udccc', label: type };
+  return ACTIVITY_LABEL_MAP[type] || { emoji: '\ud83d\udccc', label: type };
 }
 
 // --- Confirmation formatting ---

@@ -8,6 +8,7 @@ import {
   updateExpenseAmount as _updateExpenseAmount,
   findExpenseByFilter as _findExpenseByFilter,
   getMonthlyReport as _getMonthlyReport,
+  getMonthlyReportByPlot as _getMonthlyReportByPlot,
   getMonthlyReportForMonth as _getMonthlyReportForMonth,
   getWeeklyReport as _getWeeklyReport,
   getDateRangeReport as _getDateRangeReport,
@@ -97,6 +98,16 @@ export class FinancialRepository {
   async getMonthlyReport(userId: UserId): Promise<CategoryTotal[]> {
     const rows = await _getMonthlyReport(userId);
     return rows.map((r: CategoryTotal) => ({ category: r.category, total: Number(r.total) }));
+  }
+
+  async getMonthlyReportByPlot(userId: UserId): Promise<Array<{ plot_name: string; field_name: string; expense_total: number; income_total: number }>> {
+    const rows = await _getMonthlyReportByPlot(userId);
+    return rows.map((r: any) => ({
+      plot_name: r.plot_name,
+      field_name: r.field_name,
+      expense_total: Number(r.expense_total),
+      income_total: Number(r.income_total),
+    }));
   }
 
   async getMonthlyReportForMonth(userId: UserId, month: number, year: number): Promise<CategoryTotal[]> {
