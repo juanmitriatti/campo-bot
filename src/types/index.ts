@@ -451,6 +451,7 @@ export interface HandlerResponse {
     startFlow?: { state: FlowState; data?: Record<string, unknown> };
     setPendingObservation?: { text: string; category: string };
     setPendingFieldCity?: { fieldName: string };
+    setPendingPlotArea?: { plotId: number; plotName: string; fieldName: string };
     setFieldDuplicate?: { name: string; city: string | null };
   };
 }

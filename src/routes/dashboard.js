@@ -348,16 +348,43 @@ router.get("/api/parse-metrics", async (req, res) => {
 router.get("/api/unparsed-messages", async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
   const offset = parseInt(req.query.offset) || 0;
+  const userFilter = req.query.user || null;
+  const phoneFilter = req.query.phone || null;
+  const fromDate = req.query.from || null;
+  const toDate = req.query.to || null;
 
   try {
-    const result = await pool.query(
-      `SELECT um.id, um.message, um.created_at, u.name, u.phone_number
+    let query = `SELECT um.id, um.message, um.created_at, u.name, u.phone_number
        FROM unparsed_messages um
-       JOIN users u ON um.user_id = u.id
-       ORDER BY um.created_at DESC
-       LIMIT $1 OFFSET $2`,
-      [limit, offset]
-    );
+       JOIN users u ON um.user_id = u.id`;
+    const conditions = [];
+    const params = [];
+
+    if (userFilter) {
+      params.push(`%${userFilter}%`);
+      conditions.push(`u.name ILIKE $${params.length}`);
+    }
+    if (phoneFilter) {
+      params.push(`%${phoneFilter}%`);
+      conditions.push(`u.phone_number ILIKE $${params.length}`);
+    }
+    if (fromDate) {
+      params.push(fromDate);
+      conditions.push(`um.created_at >= $${params.length}::date`);
+    }
+    if (toDate) {
+      params.push(toDate);
+      conditions.push(`um.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ` + conditions.join(' AND ');
+    }
+    query += ` ORDER BY um.created_at DESC`;
+    params.push(limit, offset);
+    query += ` LIMIT $${params.length - 1} OFFSET $${params.length}`;
+
+    const result = await pool.query(query, params);
 
     res.json(result.rows.map(r => ({
       id: r.id,
@@ -707,16 +734,37 @@ router.get("/api/fallback-logs", async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
   const offset = parseInt(req.query.offset) || 0;
   const userId = req.query.user_id || null;
+  const userFilter = req.query.user || null;
+  const fromDate = req.query.from || null;
+  const toDate = req.query.to || null;
 
   try {
     let query = `SELECT fl.id, fl.input_text, fl.claude_response, fl.tokens_used, fl.cost_usd, fl.created_at,
               u.name, u.phone_number, fl.user_id
        FROM ai_fallback_logs fl
        JOIN users u ON fl.user_id = u.id`;
+    const conditions = [];
     const params = [];
+
     if (userId) {
-      query += ` WHERE fl.user_id = $1`;
       params.push(userId);
+      conditions.push(`fl.user_id = $${params.length}`);
+    }
+    if (userFilter) {
+      params.push(`%${userFilter}%`);
+      conditions.push(`u.name ILIKE $${params.length}`);
+    }
+    if (fromDate) {
+      params.push(fromDate);
+      conditions.push(`fl.created_at >= $${params.length}::date`);
+    }
+    if (toDate) {
+      params.push(toDate);
+      conditions.push(`fl.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ` + conditions.join(' AND ');
     }
     query += ` ORDER BY fl.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
@@ -877,7 +925,7 @@ router.get("/api/agro/fields", async (req, res) => {
 router.get("/api/agro/fields/:id", async (req, res) => {
   try {
     const fieldId = req.params.id;
-    const [fieldR, plotsR] = await Promise.all([
+    const [fieldR, plotsR, fieldFinR, plotFinR, rainfallR] = await Promise.all([
       pool.query(`SELECT f.*, u.name AS user_name FROM fields f LEFT JOIN users u ON f.user_id = u.id WHERE f.id = $1`, [fieldId]),
       pool.query(
         `SELECT p.*,
@@ -891,10 +939,58 @@ router.get("/api/agro/fields/:id", async (req, res) => {
          WHERE p.field_id = $1
          ORDER BY p.name`, [fieldId]
       ),
+      // Field-level financial totals
+      pool.query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN e.currency = 'ARS' THEN e.amount ELSE 0 END), 0) AS expenses_ars,
+           COALESCE(SUM(CASE WHEN e.currency = 'USD' THEN e.amount ELSE 0 END), 0) AS expenses_usd,
+           COALESCE((SELECT SUM(CASE WHEN i.currency = 'ARS' THEN i.amount ELSE 0 END) FROM incomes i WHERE i.field_id = $1 AND i.deleted_at IS NULL), 0) AS incomes_ars,
+           COALESCE((SELECT SUM(CASE WHEN i.currency = 'USD' THEN i.amount ELSE 0 END) FROM incomes i WHERE i.field_id = $1 AND i.deleted_at IS NULL), 0) AS incomes_usd
+         FROM expenses e
+         WHERE e.field_id = $1 AND e.deleted_at IS NULL`, [fieldId]
+      ),
+      // Per-plot financial totals
+      pool.query(
+        `SELECT
+           p.id AS plot_id,
+           COALESCE(SUM(CASE WHEN e.currency = 'ARS' THEN e.amount ELSE 0 END), 0) AS expenses_ars,
+           COALESCE(SUM(CASE WHEN e.currency = 'USD' THEN e.amount ELSE 0 END), 0) AS expenses_usd
+         FROM plots p
+         LEFT JOIN expenses e ON e.plot_id = p.id AND e.deleted_at IS NULL
+         WHERE p.field_id = $1
+         GROUP BY p.id`, [fieldId]
+      ),
+      // Rainfall current month
+      pool.query(
+        `SELECT COALESCE(SUM(millimeters), 0) AS total_mm, COUNT(*) AS count
+         FROM rainfall
+         WHERE field_id = $1
+           AND EXTRACT(MONTH FROM rainfall_date) = EXTRACT(MONTH FROM NOW())
+           AND EXTRACT(YEAR FROM rainfall_date) = EXTRACT(YEAR FROM NOW())`, [fieldId]
+      ),
     ]);
 
     if (fieldR.rows.length === 0) return res.status(404).json({ error: "Field not found" });
     const field = fieldR.rows[0];
+    const fin = fieldFinR.rows[0] || {};
+
+    // Per-plot income totals (separate query to avoid cross-join)
+    const plotIncR = await pool.query(
+      `SELECT
+         p.id AS plot_id,
+         COALESCE(SUM(CASE WHEN i.currency = 'ARS' THEN i.amount ELSE 0 END), 0) AS incomes_ars,
+         COALESCE(SUM(CASE WHEN i.currency = 'USD' THEN i.amount ELSE 0 END), 0) AS incomes_usd
+       FROM plots p
+       LEFT JOIN incomes i ON i.plot_id = p.id AND i.deleted_at IS NULL
+       WHERE p.field_id = $1
+       GROUP BY p.id`, [fieldId]
+    );
+
+    const plotExpMap = {};
+    for (const r of plotFinR.rows) plotExpMap[r.plot_id] = r;
+    const plotIncMap = {};
+    for (const r of plotIncR.rows) plotIncMap[r.plot_id] = r;
+    const rain = rainfallR.rows[0] || { total_mm: 0, count: 0 };
 
     res.json({
       id: field.id,
@@ -902,13 +998,29 @@ router.get("/api/agro/fields/:id", async (req, res) => {
       city: field.city,
       hectares: field.hectares,
       userName: field.user_name,
-      plots: plotsR.rows.map(p => ({
-        id: p.id,
-        name: p.name,
-        areaHectares: p.area_hectares,
-        activeCrop: p.active_crop || null,
-        obsWeek: parseInt(p.obs_week),
-      })),
+      userId: field.user_id,
+      createdAt: field.created_at,
+      totalExpensesARS: parseFloat(fin.expenses_ars) || 0,
+      totalExpensesUSD: parseFloat(fin.expenses_usd) || 0,
+      totalIncomesARS: parseFloat(fin.incomes_ars) || 0,
+      totalIncomesUSD: parseFloat(fin.incomes_usd) || 0,
+      rainfallMonth: { totalMm: parseFloat(rain.total_mm) || 0, count: parseInt(rain.count) || 0 },
+      plots: plotsR.rows.map(p => {
+        const pe = plotExpMap[p.id] || {};
+        const pi = plotIncMap[p.id] || {};
+        return {
+          id: p.id,
+          name: p.name,
+          areaHectares: p.area_hectares,
+          activeCrop: p.active_crop || null,
+          soilType: p.soil_type || null,
+          obsWeek: parseInt(p.obs_week),
+          expensesARS: parseFloat(pe.expenses_ars) || 0,
+          expensesUSD: parseFloat(pe.expenses_usd) || 0,
+          incomesARS: parseFloat(pi.incomes_ars) || 0,
+          incomesUSD: parseFloat(pi.incomes_usd) || 0,
+        };
+      }),
     });
   } catch (error) {
     console.error("Error fetching agro field detail:", error);
@@ -921,8 +1033,42 @@ router.get("/api/agro/fields/:id/observations", async (req, res) => {
     const fieldId = req.params.id;
     const limit = parseInt(req.query.limit) || 50;
     const offset = parseInt(req.query.offset) || 0;
-    const observations = await getObservationsByField(fieldId, limit, offset);
-    res.json(observations.map(o => ({
+    const { category, plotId, from, to } = req.query;
+
+    const conditions = [`(o.field_id = $1 OR (o.plot_id IS NOT NULL AND p.field_id = $1))`];
+    const params = [fieldId];
+    let idx = 2;
+
+    if (category) {
+      conditions.push(`o.category = $${idx++}`);
+      params.push(category);
+    }
+    if (plotId) {
+      conditions.push(`o.plot_id = $${idx++}`);
+      params.push(plotId);
+    }
+    if (from) {
+      conditions.push(`o.created_at >= $${idx++}`);
+      params.push(from);
+    }
+    if (to) {
+      conditions.push(`o.created_at < ($${idx++}::date + INTERVAL '1 day')`);
+      params.push(to);
+    }
+
+    params.push(limit, offset);
+    const result = await pool.query(
+      `SELECT o.*, u.name AS user_name, p.name AS plot_name
+       FROM agro_observations o
+       LEFT JOIN users u ON o.user_id = u.id
+       LEFT JOIN plots p ON o.plot_id = p.id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY o.created_at DESC
+       LIMIT $${idx++} OFFSET $${idx++}`,
+      params
+    );
+
+    res.json(result.rows.map(o => ({
       id: o.id,
       plotName: o.plot_name || 'General del Campo',
       text: o.observation_text,
@@ -933,6 +1079,65 @@ router.get("/api/agro/fields/:id/observations", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching observations:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/api/agro/fields/:id/activities", async (req, res) => {
+  try {
+    const fieldId = req.params.id;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    const { plotId, eventType, from, to } = req.query;
+
+    const conditions = [`de.plot_id IN (SELECT id FROM plots WHERE field_id = $1)`];
+    const params = [fieldId];
+    let idx = 2;
+
+    if (plotId) {
+      conditions.push(`de.plot_id = $${idx++}`);
+      params.push(plotId);
+    }
+    if (eventType) {
+      conditions.push(`de.event_type = $${idx++}`);
+      params.push(eventType);
+    }
+    if (from) {
+      conditions.push(`de.event_date >= $${idx++}`);
+      params.push(from);
+    }
+    if (to) {
+      conditions.push(`de.event_date <= $${idx++}`);
+      params.push(to);
+    }
+
+    params.push(limit, offset);
+    const result = await pool.query(
+      `SELECT de.*, p.name AS plot_name, u.name AS user_name
+       FROM domain_events de
+       LEFT JOIN plots p ON de.plot_id = p.id
+       LEFT JOIN users u ON de.user_id = u.id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY de.event_date DESC
+       LIMIT $${idx++} OFFSET $${idx++}`,
+      params
+    );
+
+    res.json(result.rows.map(a => ({
+      id: a.id,
+      eventType: a.event_type,
+      eventDate: a.event_date,
+      crop: a.crop,
+      product: a.product,
+      quantity: a.quantity,
+      unit: a.unit,
+      implement: a.implement,
+      notes: a.notes,
+      plotName: a.plot_name,
+      userName: a.user_name,
+    })));
+  } catch (error) {
+    console.error("Error fetching field activities:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1887,6 +2092,270 @@ router.get("/api/audit-log", async (req, res) => {
     res.json({ entries: result.rows });
   } catch (error) {
     console.error("Error fetching audit log:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── AI Training endpoints ───────────────────────────────────────────────────
+
+// List training examples with pagination + intent filter
+router.get("/api/ai-training/examples", async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+    const intent = req.query.intent || null;
+
+    let query = `SELECT * FROM ai_training_examples`;
+    const params = [];
+    if (intent) {
+      params.push(intent);
+      query += ` WHERE intent = $${params.length}`;
+    }
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
+
+    const result = await pool.query(query, params);
+
+    let countQuery = `SELECT COUNT(*) FROM ai_training_examples`;
+    const countParams = [];
+    if (intent) {
+      countParams.push(intent);
+      countQuery += ` WHERE intent = $1`;
+    }
+    const countResult = await pool.query(countQuery, countParams);
+
+    res.json({
+      examples: result.rows,
+      total: parseInt(countResult.rows[0].count),
+    });
+  } catch (error) {
+    console.error("Error fetching training examples:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Create training example
+router.post("/api/ai-training/examples", async (req, res) => {
+  try {
+    const { input, expected_output, intent, is_active } = req.body;
+    if (!input || !expected_output || !intent) {
+      return res.status(400).json({ error: "input, expected_output, and intent are required" });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO ai_training_examples (input, expected_output, intent, is_active, source)
+       VALUES ($1, $2, $3, $4, 'manual')
+       RETURNING *`,
+      [input, JSON.stringify(expected_output), intent, is_active !== false],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error("Error creating training example:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Update training example
+router.put("/api/ai-training/examples/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { input, expected_output, intent, is_active } = req.body;
+
+    const result = await pool.query(
+      `UPDATE ai_training_examples
+       SET input = COALESCE($1, input),
+           expected_output = COALESCE($2, expected_output),
+           intent = COALESCE($3, intent),
+           is_active = COALESCE($4, is_active),
+           updated_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [
+        input || null,
+        expected_output ? JSON.stringify(expected_output) : null,
+        intent || null,
+        is_active != null ? is_active : null,
+        id,
+      ],
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: "Example not found" });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error updating training example:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Delete training example
+router.delete("/api/ai-training/examples/:id", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `DELETE FROM ai_training_examples WHERE id = $1 RETURNING id`,
+      [req.params.id],
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: "Example not found" });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error deleting training example:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// List AI conversation logs (for feedback)
+router.get("/api/ai-training/logs", async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+    const reviewed = req.query.reviewed; // 'true', 'false', or unset
+
+    let query = `SELECT cl.*, u.name AS user_name
+                 FROM conversation_logs cl
+                 LEFT JOIN users u ON cl.user_id = u.id
+                 WHERE cl.ai_used = true`;
+    const params = [];
+
+    if (reviewed === 'true') {
+      query += ` AND cl.was_correct IS NOT NULL`;
+    } else if (reviewed === 'false') {
+      query += ` AND cl.was_correct IS NULL`;
+    }
+
+    query += ` ORDER BY cl.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
+
+    const result = await pool.query(query, params);
+    res.json({ logs: result.rows });
+  } catch (error) {
+    console.error("Error fetching AI training logs:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Submit feedback on a conversation log
+router.patch("/api/ai-training/logs/:id/feedback", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { was_correct, corrected_intent } = req.body;
+
+    if (was_correct == null) {
+      return res.status(400).json({ error: "was_correct is required" });
+    }
+
+    const result = await pool.query(
+      `UPDATE conversation_logs
+       SET was_correct = $1, corrected_intent = $2
+       WHERE id = $3
+       RETURNING id, was_correct, corrected_intent`,
+      [was_correct, corrected_intent || null, id],
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: "Log not found" });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error saving feedback:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Promote a corrected log to a training example
+router.post("/api/ai-training/promote/:logId", async (req, res) => {
+  try {
+    const { logId } = req.params;
+
+    const logR = await pool.query(
+      `SELECT message_text, intent_type, intent_command, corrected_intent, was_correct
+       FROM conversation_logs WHERE id = $1`,
+      [logId],
+    );
+    if (logR.rows.length === 0) return res.status(404).json({ error: "Log not found" });
+
+    const log = logR.rows[0];
+    const intent = log.corrected_intent || log.intent_command || log.intent_type;
+    if (!intent) return res.status(400).json({ error: "No intent to promote" });
+
+    const expectedOutput = { intent, confidence: 1.0 };
+
+    const result = await pool.query(
+      `INSERT INTO ai_training_examples (input, expected_output, intent, is_active, source)
+       VALUES ($1, $2, $3, true, 'promoted')
+       RETURNING *`,
+      [log.message_text, JSON.stringify(expectedOutput), intent],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error("Error promoting log:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// AI Training stats
+router.get("/api/ai-training/stats", async (req, res) => {
+  try {
+    const [accuracyR, examplesR, topFailuresR, intentDistR] = await Promise.all([
+      // Accuracy (last 30 days)
+      pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE was_correct IS NOT NULL) AS reviewed,
+          COUNT(*) FILTER (WHERE was_correct = true) AS correct,
+          COUNT(*) FILTER (WHERE was_correct = false) AS incorrect
+        FROM conversation_logs
+        WHERE ai_used = true AND created_at >= NOW() - INTERVAL '30 days'
+      `),
+      // Active examples count
+      pool.query(`SELECT COUNT(*) AS total FROM ai_training_examples WHERE is_active = true`),
+      // Top failure intents (incorrect predictions, last 30 days)
+      pool.query(`
+        SELECT
+          COALESCE(corrected_intent, intent_command, intent_type) AS intent,
+          COUNT(*) AS count
+        FROM conversation_logs
+        WHERE was_correct = false
+          AND ai_used = true
+          AND created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY intent
+        ORDER BY count DESC
+        LIMIT 10
+      `),
+      // Intent distribution (last 30 days)
+      pool.query(`
+        SELECT
+          COALESCE(intent_command, intent_type) AS intent,
+          COUNT(*) AS count,
+          AVG(confidence) AS avg_confidence
+        FROM conversation_logs
+        WHERE ai_used = true
+          AND created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY intent
+        ORDER BY count DESC
+        LIMIT 20
+      `),
+    ]);
+
+    const acc = accuracyR.rows[0];
+    const reviewed = parseInt(acc.reviewed);
+    const correct = parseInt(acc.correct);
+
+    res.json({
+      accuracy: reviewed > 0 ? Math.round((correct / reviewed) * 1000) / 10 : null,
+      reviewed,
+      correct,
+      incorrect: parseInt(acc.incorrect),
+      activeExamples: parseInt(examplesR.rows[0].total),
+      topFailures: topFailuresR.rows.map(r => ({
+        intent: r.intent,
+        count: parseInt(r.count),
+      })),
+      intentDistribution: intentDistR.rows.map(r => ({
+        intent: r.intent,
+        count: parseInt(r.count),
+        avgConfidence: r.avg_confidence ? Math.round(parseFloat(r.avg_confidence) * 100) / 100 : null,
+      })),
+    });
+  } catch (error) {
+    console.error("Error fetching AI training stats:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

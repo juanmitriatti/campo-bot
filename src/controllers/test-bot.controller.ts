@@ -14,6 +14,7 @@ import { UserRepository } from '../domain/users/user.repository.js';
 import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
+import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
@@ -39,6 +40,7 @@ import { IntentValidator } from '../ai/intent-validator.js';
 import { UserContextService } from '../ai/user-context.service.js';
 import { ConversationHistoryService } from '../ai/conversation-history.service.js';
 import { ConversationalFallbackService } from '../ai/conversational-fallback.service.js';
+import { FewShotService } from '../ai/few-shot.service.js';
 import { normalizeTranscript } from '../utils/text-normalizer.js';
 import { isLikelyQuestion } from '../utils/guards.js';
 import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observations.js';
@@ -83,13 +85,15 @@ const userContextService = new UserContextService(entityValidator);
 const promptBuilder = new PromptBuilder();
 const intentValidator = new IntentValidator();
 const conversationHistoryService = new ConversationHistoryService();
-const intentExtractor = new IntentExtractor(promptBuilder, intentValidator, userContextService, userRepository, conversationHistoryService);
+const fewShotService = new FewShotService();
+const intentExtractor = new IntentExtractor(promptBuilder, intentValidator, userContextService, userRepository, conversationHistoryService, fewShotService);
 const intentClassifier = new IntentClassifier(undefined, undefined, intentExtractor);
 const conversationalFallback = new ConversationalFallbackService(userRepository);
 
 const pendingStore = new PendingTransactionStore();
 const pendingObsStore = new PendingObservationStore();
 const pendingCityStore = new PendingFieldCityStore();
+const pendingPlotAreaStore = new PendingPlotAreaStore();
 const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
@@ -395,7 +399,24 @@ async function handleInteractiveReply(
     for (const prefix of prefixes) {
       if (callbackId.startsWith(prefix)) {
         let value = callbackId.replace(prefix, '');
-        if (prefix === 'flow_field_' || prefix === 'flow_plot_') value = value.replace(/_/g, ' ');
+        if (prefix === 'flow_plot_') {
+          // Handle field__plot format for duplicate plot names across fields
+          // e.g. "don_pedro__1a" → plot="1a", fieldHint="don pedro"
+          const doubleSepIdx = value.indexOf('__');
+          if (doubleSepIdx > 0) {
+            const fieldHint = value.slice(0, doubleSepIdx).replace(/_/g, ' ');
+            value = value.slice(doubleSepIdx + 2).replace(/_/g, ' ');
+            // Store field hint in flow data so execute() can disambiguate
+            if (flowCtx.state !== 'idle') {
+              flowCtx.data._resolvedFieldHint = fieldHint;
+              await conversationEngine.setFlowContext(userId, flowCtx);
+            }
+          } else {
+            value = value.replace(/_/g, ' ');
+          }
+        } else if (prefix === 'flow_field_') {
+          value = value.replace(/_/g, ' ');
+        }
         if (flowCtx.state !== 'idle') {
           const result = await conversationEngine.processFlowMessage(userId, value, flowCtx);
           if (result.nextContext) {
@@ -653,6 +674,23 @@ async function processTextMessage(
     return [{ type: 'text', text: `📍 Campo *${pendingCity.fieldName}* ubicado en *${city}*` }];
   }
 
+  // --- Check pending plot area assignment ---
+  const pendingArea = pendingPlotAreaStore.get(phone);
+  if (pendingArea) {
+    if (isCancelIntent(text)) {
+      pendingPlotAreaStore.clear(phone);
+      return [{ type: 'text', text: '👍 Podés asignar las hectáreas después.' }];
+    }
+    const hectares = parseFloat(text.replace(/,/g, '.').replace(/\s*ha\s*/i, '').trim());
+    if (!isNaN(hectares) && hectares > 0 && hectares < 100000) {
+      await financialService.setPlotArea(pendingArea.plotId, hectares);
+      pendingPlotAreaStore.clear(phone);
+      return [{ type: 'text', text: `📍 Lote *${pendingArea.plotName}*: superficie actualizada a *${hectares} ha*` }];
+    }
+    // Not a valid number — clear pending and fall through to normal processing
+    pendingPlotAreaStore.clear(phone);
+  }
+
   // --- Check pending observation (plot disambiguation) ---
   const pendingObs = pendingObsStore.get(phone);
   if (pendingObs) {
@@ -660,42 +698,48 @@ async function processTextMessage(
       pendingObsStore.clear(phone);
       return [{ type: 'text', text: '\u274c Observacion cancelada.' }];
     }
-
-    const obsResolved = await plotDiscovery.resolveExisting(userId, text);
-    if (obsResolved.plotId) {
+    // Escape hatch: if the message looks like a known command, clear pending and fall through
+    const obsInterruptCmd = intentClassifier.parseCommandOnly(text);
+    if (obsInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
       pendingObsStore.clear(phone);
-      const saved = await saveObservation(userId, {
-        fieldId: obsResolved.fieldId,
-        plotId: obsResolved.plotId,
-        text: pendingObs.text,
-        category: pendingObs.category,
-        source: 'text',
-      });
-
-      if (saved === SAVE_REJECTED_DUPLICATE) {
-        return [{ type: 'text', text: 'Observacion duplicada detectada' }];
-      } else if (saved && !(saved as any)._rejected) {
-        let locationLabel = 'General';
-        if (obsResolved.plotName && obsResolved.fieldName) {
-          locationLabel = `${obsResolved.fieldName} > ${obsResolved.plotName}`;
-        } else if (obsResolved.plotName) {
-          locationLabel = obsResolved.plotName;
-        }
-        const message = formatObservationResponse({
-          locationLabel,
-          plotName: obsResolved.plotName,
-          category: pendingObs.category as any,
-          observationText: saved.observation_text,
+      // Fall through to normal processing below
+    } else {
+      const obsResolved = await plotDiscovery.resolveExisting(userId, text);
+      if (obsResolved.plotId) {
+        pendingObsStore.clear(phone);
+        const saved = await saveObservation(userId, {
+          fieldId: obsResolved.fieldId,
+          plotId: obsResolved.plotId,
+          text: pendingObs.text,
+          category: pendingObs.category,
+          source: 'text',
         });
-        const response: HandlerResponse = { messages: [message], suggestionKey: 'observation_logged' };
-        return collectResponse(response);
-      }
-      return [{ type: 'text', text: 'No se pudo guardar la observacion. Intenta de nuevo.' }];
-    }
 
-    const userPlots = await agronomyRepository.findAllUserPlots(userId);
-    const plotList = userPlots.map((p: any) => `\u2022 ${p.name} (${p.field_name})`).join('\n');
-    return [{ type: 'text', text: `No encontre ese lote. \u00bfEn que lote?\n\nTus lotes:\n${plotList}` }];
+        if (saved === SAVE_REJECTED_DUPLICATE) {
+          return [{ type: 'text', text: 'Observacion duplicada detectada' }];
+        } else if (saved && !(saved as any)._rejected) {
+          let locationLabel = 'General';
+          if (obsResolved.plotName && obsResolved.fieldName) {
+            locationLabel = `${obsResolved.fieldName} > ${obsResolved.plotName}`;
+          } else if (obsResolved.plotName) {
+            locationLabel = obsResolved.plotName;
+          }
+          const message = formatObservationResponse({
+            locationLabel,
+            plotName: obsResolved.plotName,
+            category: pendingObs.category as any,
+            observationText: saved.observation_text,
+          });
+          const response: HandlerResponse = { messages: [message], suggestionKey: 'observation_logged' };
+          return collectResponse(response);
+        }
+        return [{ type: 'text', text: 'No se pudo guardar la observacion. Intenta de nuevo.' }];
+      }
+
+      const userPlots = await agronomyRepository.findAllUserPlots(userId);
+      const plotList = userPlots.map((p: any) => `\u2022 ${p.name} (${p.field_name})`).join('\n');
+      return [{ type: 'text', text: `No encontre ese lote. \u00bfEn que lote?\n\nTus lotes:\n${plotList}` }];
+    }
   }
 
   // --- Check pending confirmation ---
@@ -720,6 +764,7 @@ async function processTextMessage(
     }
     pendingStore.clear(phone);
     const response = await financialHandler.handleConfirm(userId, pending, settings, user);
+    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
     return collectResponse(response);
   }
   if (intent.type === 'command' && intent.data.command === 'cancel') {
@@ -727,6 +772,7 @@ async function processTextMessage(
       return [{ type: 'text', text: 'No hay nada pendiente para cancelar.' }];
     }
     pendingStore.clear(phone);
+    conversationLogger.log(userId, phone, text, 'Operacion cancelada.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
     return [{ type: 'text', text: '\u274c Operacion cancelada.' }];
   }
 
@@ -744,6 +790,7 @@ async function processTextMessage(
     if (intent.data.currency) prefillData.currency = intent.data.currency;
     if (intent.data.category) prefillData.category = intent.data.category;
     const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
+    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
     return collectResponse(result.response);
   }
 
@@ -758,6 +805,7 @@ async function processTextMessage(
     if (intent.data.currency) prefillData.currency = intent.data.currency;
     if (intent.data.category) prefillData.category = intent.data.category;
     const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
+    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
     return collectResponse(result.response);
   }
 
@@ -767,6 +815,7 @@ async function processTextMessage(
       id: `disambig_${i}`,
       title: c.label.slice(0, 20),
     }));
+    conversationLogger.log(userId, phone, text, 'Disambiguation', 'ambiguous', null, null, null, aiUsed, Date.now() - startTime, true, confidence).catch(() => {});
     return [interactiveButtons('\u00bfQue queres hacer?', buttons)];
   }
 
@@ -841,6 +890,13 @@ async function processTextMessage(
           timestamp: Date.now(),
         });
       }
+      if (response.sideEffects?.setPendingPlotArea) {
+        const pa = response.sideEffects.setPendingPlotArea;
+        pendingPlotAreaStore.set(phone, {
+          plotId: pa.plotId, plotName: pa.plotName, fieldName: pa.fieldName,
+          timestamp: Date.now(),
+        });
+      }
       if (response.sideEffects?.setFieldDuplicate) {
         const dup = response.sideEffects.setFieldDuplicate;
         pendingStore.set(phone, {
@@ -856,6 +912,7 @@ async function processTextMessage(
         lastQueryType: intent.data.command.startsWith('query_') ? intent.data.command : null,
         lastTimeReference: (intent.data.timeLabel as string) ?? null,
       }).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
       return collectResponse(response);
     }
   }
@@ -886,6 +943,7 @@ async function processTextMessage(
     }
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
     updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
+    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
     return collectResponse(response);
   }
 
@@ -915,6 +973,7 @@ async function processTextMessage(
     }
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
     updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
+    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
     return collectResponse(response);
   }
 
@@ -923,9 +982,12 @@ async function processTextMessage(
     await financialService.saveUnparsedMessage(userId, text);
     const fallbackResult = await conversationalFallback.respond(text, userId, settings);
     const items: BotResponseItem[] = [{ type: 'text', text: fallbackResult.response }];
-    if (!fallbackResult.aiUsed) {
+    if (fallbackResult.aiUsed) {
+      conversationLogger.log(userId, phone, text, fallbackResult.response, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence).catch(() => {});
+    } else {
       const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
       items.push(...collectResponse(menuResponse));
+      conversationLogger.log(userId, phone, text, fallbackResult.response, 'unknown', null, null, null, false, Date.now() - startTime, true, confidence).catch(() => {});
     }
     return items;
   }

@@ -226,6 +226,11 @@ export class SystemHandler {
           messages: ['Para agregar un campo, escrib\u00ed:\n\n_\"Agregar campo [nombre]\"_\n\nEj: _\"Agregar campo La Esperanza\"_'],
         };
 
+      case 'prompt_add_plot':
+        return {
+          messages: ['Para agregar un lote, escrib\u00ed:\n\n_\"Agregar lote [nombre]\"_\n\nEj: _\"Agregar lote A1\"_\n\nSi ten\u00e9s varios campos, especific\u00e1 cu\u00e1l:\n_\"Agregar lote A1 en campo Norte\"_'],
+        };
+
       case 'thanks':
         return { messages: ['De nada \ud83d\udc4d Cualquier cosa, ac\u00e1 estoy.'] };
 

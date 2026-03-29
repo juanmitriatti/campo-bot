@@ -39,7 +39,7 @@ const KNOWN_INTENTS = new Set([
   'delete_last', 'delete_last_income', 'delete_specific',
   'edit_specific', 'edit_last',
   // Prompts
-  'prompt_rainfall', 'prompt_add_field',
+  'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',
 ]);
 
 export interface LlmResponse {
@@ -122,13 +122,15 @@ export class IntentValidator {
         ? parsed.category
         : 'Otros';
       const currency: Currency = parsed.currency === 'USD' ? 'USD' : 'ARS';
-      const data: ParsedExpense = {
+      const data: ParsedExpense & { field?: string; plot?: string } = {
         type: 'expense',
         amount: parsed.amount,
         category,
         description: parsed.description || originalMessage,
         currency,
       };
+      if (parsed.field) data.field = parsed.field;
+      if (parsed.plot) data.plot = parsed.plot;
       return {
         intent: { type: 'expense', data },
         confidence,
@@ -166,7 +168,7 @@ export class IntentValidator {
         ? parsed.category
         : 'Otros';
       const currency: Currency = parsed.currency === 'USD' ? 'USD' : 'ARS';
-      const data: ParsedIncome = {
+      const data: ParsedIncome & { field?: string; plot?: string } = {
         type: 'income',
         amount: parsed.amount,
         category,
@@ -176,6 +178,8 @@ export class IntentValidator {
         unit: parsed.unit ?? null,
         unit_price: parsed.unit_price ?? null,
       };
+      if (parsed.field) data.field = parsed.field;
+      if (parsed.plot) data.plot = parsed.plot;
       return {
         intent: { type: 'income', data },
         confidence,

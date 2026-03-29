@@ -24,6 +24,7 @@ const CALLBACK_MAP: Record<string, ParsedCommand> = {
   // Sub-menu: Campos
   'cmd_listar_campos': { command: 'list_fields' },
   'cmd_agregar_campo': { command: 'prompt_add_field' },
+  'cmd_agregar_lote': { command: 'prompt_add_plot' },
   // Sub-menu: Reportes
   'cmd_reporte_semanal': { command: 'weekly_report' },
   'cmd_exportar_csv': { command: 'export_csv' },

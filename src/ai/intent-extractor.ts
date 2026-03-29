@@ -8,6 +8,7 @@ import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { getSetting, getSettingNumber, getSettingBool } from '../services/settings.service.js';
 import { saveAiFallbackLog } from '../services/expenses.js';
 import { logError } from '../services/error-logger.js';
+import { FewShotService } from './few-shot.service.js';
 import type { UserId, UserSettings, ParseResult, AiUsage } from '../types/index.js';
 
 const anthropic = new Anthropic({
@@ -16,6 +17,7 @@ const anthropic = new Anthropic({
 
 export class IntentExtractor {
   private planRepo: PlanRepository;
+  private fewShotService: FewShotService;
 
   constructor(
     private promptBuilder: PromptBuilder,
@@ -23,8 +25,10 @@ export class IntentExtractor {
     private userContextService: UserContextService,
     private userRepo?: UserRepository,
     private historyService?: ConversationHistoryService,
+    fewShotService?: FewShotService,
   ) {
     this.planRepo = new PlanRepository();
+    this.fewShotService = fewShotService ?? new FewShotService();
   }
 
   /**
@@ -48,13 +52,16 @@ export class IntentExtractor {
       const dailyCount = await repo.getDailyClaudeCount(userId);
       if (dailyCount >= claudeLimit) return null;
 
-      // Load user context and conversation history in parallel
-      const [userContext, historyTurns] = await Promise.allSettled([
+      // Load user context, conversation history, and few-shot examples in parallel
+      const historyMaxChars = (await getSettingNumber('CONVERSATION_HISTORY_MAX_CHARS')) ?? 4000;
+      const [userContext, historyTurns, fewShotExamples] = await Promise.allSettled([
         this.userContextService.loadContext(userId),
-        this.historyService ? this.historyService.getRecentTurns(userId) : Promise.resolve([]),
+        this.historyService ? this.historyService.getRecentTurns(userId, historyMaxChars) : Promise.resolve([]),
+        this.fewShotService.getExamples(5),
       ]).then(results => [
         results[0].status === 'fulfilled' ? results[0].value : null,
         results[1].status === 'fulfilled' ? results[1].value : [],
+        results[2].status === 'fulfilled' ? results[2].value : [],
       ] as const);
 
       // Build dynamic prompt
@@ -71,10 +78,16 @@ export class IntentExtractor {
       const resolvedMaxTokens = maxTokens || 300;
       const resolvedTimeout = timeoutMs || 5000;
 
-      // Build multi-turn messages array (history + current message)
+      // Build multi-turn messages array (few-shot + history + current message)
+      // NOTE: History turns contain natural-language bot responses, which can
+      // confuse the model into responding conversationally instead of with JSON.
+      // We use assistant prefill '{"intent":"' to force structured JSON output.
+      const fewShotPairs = this.fewShotService.formatAsMessages(fewShotExamples);
       const messages: Anthropic.MessageParam[] = [
+        ...fewShotPairs,
         ...historyTurns.map(t => ({ role: t.role as 'user' | 'assistant', content: t.content })),
         { role: 'user', content: text },
+        { role: 'assistant', content: '{"intent":"' },
       ];
 
       // Call Claude with timeout
@@ -106,15 +119,18 @@ export class IntentExtractor {
       await repo.saveAiUsage(userId, usage);
       saveAiFallbackLog(userId, text, { type: 'ai_intent' }, usage).catch(() => {});
 
+      const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
       console.log(
         `AI_INTENT (${dailyCount + 1}/${claudeLimit}):`,
-        response.content[0].type === 'text' ? response.content[0].text.slice(0, 300) : '[non-text]',
+        ('{"intent":"' + responseText).slice(0, 300),
         `TOKENS: ${usage.input_tokens}in/${usage.output_tokens}out`,
       );
 
-      // Validate and map response
+      // Validate and map response — prepend the assistant prefill to reconstruct full JSON
+      const PREFILL = '{"intent":"';
       const rawText = response.content[0].type === 'text' ? response.content[0].text : '';
-      const result = this.intentValidator.validate(rawText, text);
+      const fullJson = PREFILL + rawText;
+      const result = this.intentValidator.validate(fullJson, text);
 
       return result;
     } catch (err) {

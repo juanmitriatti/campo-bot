@@ -12,8 +12,16 @@ export function inferCrop(
   return null;
 }
 
+const ACTIVITY_TYPE_ALIASES: Record<string, string> = {
+  sow_crop: 'planting',
+  harvest_crop: 'harvest',
+};
+
 export function getActivityLabel(type: string): { emoji: string; label: string } {
-  return ACTIVITY_LABEL_MAP[type] || { emoji: '\ud83d\udccc', label: type };
+  return ACTIVITY_LABEL_MAP[type]
+    || ACTIVITY_LABEL_MAP[type.replace(/^log_/, '')]
+    || ACTIVITY_LABEL_MAP[ACTIVITY_TYPE_ALIASES[type] ?? '']
+    || { emoji: '\ud83d\udccc', label: type };
 }
 
 // --- Confirmation formatting ---

@@ -1,20 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
-import ObservationEditModal from './ObservationEditModal';
+import ActivityEditModal from './ActivityEditModal';
 
-interface Observation {
+interface Activity {
   id: number;
-  observation_text: string;
-  category: string;
-  source: string;
+  event_type: string;
+  event_date: string;
+  crop: string | null;
+  product: string | null;
+  product_type: string | null;
+  quantity: number | null;
+  unit: string | null;
+  implement: string | null;
+  notes: string | null;
   created_at: string;
-  updated_at: string | null;
   plot_name: string | null;
   field_name: string | null;
 }
 
 interface PaginatedResponse {
-  observations: Observation[];
+  activities: Activity[];
   total: number;
   page: number;
   limit: number;
@@ -36,21 +41,26 @@ interface FiltersResponse {
   fields: FieldOption[];
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  sanidad: 'Sanidad',
-  malezas: 'Malezas',
-  nutricion: 'Nutrición',
-  fenologia: 'Fenología',
-  clima: 'Clima',
-  general: 'General',
+const ACTIVITY_TYPE_LABELS: Record<string, { label: string; emoji: string }> = {
+  spraying: { label: 'Fumigacion', emoji: '💨' },
+  fertilization: { label: 'Fertilizacion', emoji: '🧪' },
+  planting: { label: 'Siembra', emoji: '🌱' },
+  tillage: { label: 'Labranza', emoji: '🚜' },
+  harvest: { label: 'Cosecha', emoji: '🌾' },
+  irrigation: { label: 'Riego', emoji: '💧' },
 };
 
-export default function ObservationTable() {
+const ACTIVITY_TYPE_OPTIONS = Object.entries(ACTIVITY_TYPE_LABELS).map(([id, { label, emoji }]) => ({
+  id,
+  label: `${emoji} ${label}`,
+}));
+
+export default function ActivityTable() {
   const [data, setData] = useState<PaginatedResponse | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<Observation | null>(null);
+  const [editing, setEditing] = useState<Activity | null>(null);
 
   // Filter state
   const [fields, setFields] = useState<FieldOption[]>([]);
@@ -58,17 +68,17 @@ export default function ObservationTable() {
   const [plotId, setPlotId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [eventType, setEventType] = useState('');
 
   const limit = 10;
 
-  // Load filter options once
   useEffect(() => {
     apiRequest<FiltersResponse>('/observations/filters')
       .then(r => setFields(r.fields))
       .catch(() => {});
   }, []);
 
-  const fetchObservations = useCallback(async () => {
+  const fetchActivities = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -77,23 +87,19 @@ export default function ObservationTable() {
       if (plotId) params.set('plotId', plotId);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
-      const result = await apiRequest<PaginatedResponse>(`/observations?${params}`);
+      if (eventType) params.set('eventType', eventType);
+      const result = await apiRequest<PaginatedResponse>(`/activities?${params}`);
       setData(result);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al cargar observaciones');
+      setError(err instanceof Error ? err.message : 'Error al cargar actividades');
     } finally {
       setLoading(false);
     }
-  }, [page, fieldId, plotId, dateFrom, dateTo]);
+  }, [page, fieldId, plotId, dateFrom, dateTo, eventType]);
 
   useEffect(() => {
-    fetchObservations();
-  }, [fetchObservations]);
-
-  const handleSaved = () => {
-    setEditing(null);
-    fetchObservations();
-  };
+    fetchActivities();
+  }, [fetchActivities]);
 
   const handleFieldChange = (val: string) => {
     setFieldId(val);
@@ -106,10 +112,16 @@ export default function ObservationTable() {
     setPlotId('');
     setDateFrom('');
     setDateTo('');
+    setEventType('');
     setPage(1);
   };
 
-  const hasFilters = fieldId || plotId || dateFrom || dateTo;
+  const handleSaved = () => {
+    setEditing(null);
+    fetchActivities();
+  };
+
+  const hasFilters = fieldId || plotId || dateFrom || dateTo || eventType;
 
   const availablePlots = fieldId
     ? fields.find(f => f.id === Number(fieldId))?.plots ?? []
@@ -120,9 +132,22 @@ export default function ObservationTable() {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
     });
+  };
+
+  const getTypeLabel = (type: string) => {
+    const info = ACTIVITY_TYPE_LABELS[type];
+    return info ? `${info.emoji} ${info.label}` : type;
+  };
+
+  const getDetail = (a: Activity) => {
+    const parts: string[] = [];
+    if (a.product) parts.push(a.product);
+    if (a.quantity != null && a.unit) parts.push(`${a.quantity} ${a.unit}`);
+    else if (a.quantity != null) parts.push(String(a.quantity));
+    if (a.implement) parts.push(a.implement);
+    if (a.notes) parts.push(a.notes);
+    return parts.join(' - ') || '-';
   };
 
   if (loading && !data) {
@@ -137,7 +162,7 @@ export default function ObservationTable() {
     return (
       <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-700 text-sm">
         {error}
-        <button onClick={fetchObservations} className="ml-2 underline">Reintentar</button>
+        <button onClick={fetchActivities} className="ml-2 underline">Reintentar</button>
       </div>
     );
   }
@@ -187,6 +212,17 @@ export default function ObservationTable() {
             {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Tipo</label>
+          <select
+            value={eventType}
+            onChange={e => { setEventType(e.target.value); setPage(1); }}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+          >
+            <option value="">Todos</option>
+            {ACTIVITY_TYPE_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </div>
         {hasFilters && (
           <button
             onClick={clearFilters}
@@ -198,10 +234,10 @@ export default function ObservationTable() {
       </div>
 
       {/* Table */}
-      {!data || data.observations.length === 0 ? (
+      {!data || data.activities.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
-          <p className="text-lg">{hasFilters ? 'No hay observaciones con estos filtros' : 'No tenés observaciones todavía'}</p>
-          {!hasFilters && <p className="text-sm mt-1">Las observaciones que registres por WhatsApp aparecerán acá</p>}
+          <p className="text-lg">{hasFilters ? 'No hay actividades con estos filtros' : 'No tenes actividades todavia'}</p>
+          {!hasFilters && <p className="text-sm mt-1">Las actividades que registres por WhatsApp apareceran aca</p>}
         </div>
       ) : (
         <>
@@ -209,46 +245,45 @@ export default function ObservationTable() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Observación</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Campo</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Lote</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Categoría</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Creada</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Editada</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Cultivo</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Detalle</th>
                   <th className="px-4 py-3 w-20" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.observations.map(obs => (
-                  <tr key={obs.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 max-w-xs">
-                      <p className="truncate text-gray-800">{obs.observation_text}</p>
-                      <p className="text-xs text-gray-400 sm:hidden">
-                        {obs.field_name && `${obs.field_name} · `}
-                        {obs.plot_name && `${obs.plot_name} · `}
-                        {CATEGORY_LABELS[obs.category] || obs.category}
+                {data.activities.map(a => (
+                  <tr key={a.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
+                        {getTypeLabel(a.event_type)}
+                      </span>
+                      <p className="text-xs text-gray-400 sm:hidden mt-1">
+                        {a.field_name && `${a.field_name} · `}
+                        {a.plot_name && a.plot_name}
                       </p>
                     </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                      {formatDate(a.event_date)}
+                    </td>
                     <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                      {obs.field_name || '-'}
+                      {a.field_name || '-'}
                     </td>
                     <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
-                      {obs.plot_name || '-'}
+                      {a.plot_name || '-'}
                     </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
-                        {CATEGORY_LABELS[obs.category] || obs.category}
-                      </span>
+                    <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
+                      {a.crop || '-'}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                      {formatDate(obs.created_at)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap hidden sm:table-cell">
-                      {obs.updated_at ? formatDate(obs.updated_at) : '-'}
+                    <td className="px-4 py-3 max-w-xs">
+                      <p className="truncate text-gray-800">{getDetail(a)}</p>
                     </td>
                     <td className="px-4 py-3">
                       <button
-                        onClick={() => setEditing(obs)}
+                        onClick={() => setEditing(a)}
                         className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline"
                       >
                         Editar
@@ -264,7 +299,7 @@ export default function ObservationTable() {
           {data.totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
               <p className="text-sm text-gray-500">
-                {data.total} observaciones en total
+                {data.total} actividades en total
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -289,11 +324,9 @@ export default function ObservationTable() {
           )}
         </>
       )}
-
-      {/* Edit modal */}
       {editing && (
-        <ObservationEditModal
-          observation={editing}
+        <ActivityEditModal
+          activity={editing}
           onClose={() => setEditing(null)}
           onSaved={handleSaved}
         />

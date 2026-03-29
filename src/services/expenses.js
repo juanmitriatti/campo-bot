@@ -583,7 +583,22 @@ export async function getFieldByName(userId, fieldName) {
     `SELECT * FROM fields WHERE user_id = $1 AND LOWER(name) = $2 AND deleted_at IS NULL`,
     [userId, normalized]
   );
-  return result.rows[0] || null;
+  if (result.rows[0]) return result.rows[0];
+
+  // Fuzzy fallback: strip Spanish articles (el/la/los/las) from both sides and retry
+  const stripArticles = (s) => s.replace(/^(el|la|los|las)\s+/i, '').trim();
+  const stripped = stripArticles(normalized);
+  const fuzzy = await pool.query(
+    `SELECT * FROM fields WHERE user_id = $1 AND deleted_at IS NULL`,
+    [userId]
+  );
+  for (const row of fuzzy.rows) {
+    const rowNorm = row.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    if (rowNorm === normalized || stripArticles(rowNorm) === stripped) {
+      return row;
+    }
+  }
+  return null;
 }
 
 export async function getUserFieldsWithCity(userId) {
@@ -1477,15 +1492,27 @@ export async function queryPlotHistory(userId, { plotId = null, fieldId = null, 
   }
 
   // Rebuild with clean positional params to avoid confusion
-  // Use a simpler approach: build each subquery with its own conditions
+  // Determine which subqueries will run FIRST, then build params accordingly
+  const skipDe = (activityFilter === 'observation' || activityFilter === 'rainfall');
+  const skipObs = (activityFilter && activityFilter !== 'observation');
+  const skipRain = (activityFilter && activityFilter !== 'rainfall');
+
   const qParams = [userId];
   let qIdx = 2;
 
-  // Location param
-  let locParam = null;
-  if (plotId) { locParam = plotId; qParams.push(plotId); qIdx++; }
-  else if (fieldId) { locParam = fieldId; qParams.push(fieldId); qIdx++; }
-  const locParamRef = locParam ? `$2` : null;
+  // Location param — only push if at least one active subquery will reference it
+  // Note: rainfall only filters by fieldId (not plotId), so plotId-only + rain-only = no loc usage
+  const deNeedsLoc = !skipDe && (plotId || fieldId);
+  const obsNeedsLoc = !skipObs && (plotId || fieldId);
+  const rainNeedsLoc = !skipRain && fieldId;
+  const anyNeedsLoc = deNeedsLoc || obsNeedsLoc || rainNeedsLoc;
+
+  let locParamRef = null;
+  if (anyNeedsLoc && (plotId || fieldId)) {
+    qParams.push(plotId || fieldId);
+    locParamRef = `$${qIdx}`;
+    qIdx++;
+  }
 
   // Date params
   let dateParamRefs = null;
@@ -1495,30 +1522,27 @@ export async function queryPlotHistory(userId, { plotId = null, fieldId = null, 
     qIdx += 2;
   }
 
-  // Activity param
+  // Activity param — only push if domain_events subquery is active and needs event_type filter
+  const needsActParam = !skipDe && activityFilter && activityFilter !== 'observation' && activityFilter !== 'rainfall';
   let actParamRef = null;
-  if (activityFilter) {
+  if (needsActParam) {
     qParams.push(activityFilter);
     actParamRef = `$${qIdx}`;
     qIdx++;
   }
 
-  // Domain events subquery
-  const deLoc = plotId ? `AND de.plot_id = ${locParamRef}` : (fieldId ? `AND p.field_id = ${locParamRef}` : '');
+  // Domain events subquery filters
+  const deLoc = locParamRef ? (plotId ? `AND de.plot_id = ${locParamRef}` : `AND p.field_id = ${locParamRef}`) : '';
   const deDate = dateParamRefs ? `AND de.event_date BETWEEN ${dateParamRefs.desde} AND ${dateParamRefs.hasta}` : '';
-  const deAct = (activityFilter && activityFilter !== 'observation' && activityFilter !== 'rainfall')
-    ? `AND de.event_type = ${actParamRef}` : '';
-  const skipDe = (activityFilter === 'observation' || activityFilter === 'rainfall');
+  const deAct = actParamRef ? `AND de.event_type = ${actParamRef}` : '';
 
-  // Observations subquery
-  const obsLoc = plotId ? `AND o.plot_id = ${locParamRef}` : (fieldId ? `AND COALESCE(p2.field_id, o.field_id) = ${locParamRef}` : '');
+  // Observations subquery filters
+  const obsLoc = locParamRef ? (plotId ? `AND o.plot_id = ${locParamRef}` : `AND COALESCE(p2.field_id, o.field_id) = ${locParamRef}`) : '';
   const obsDate = dateParamRefs ? `AND o.created_at::date BETWEEN ${dateParamRefs.desde} AND ${dateParamRefs.hasta}` : '';
-  const skipObs = (activityFilter && activityFilter !== 'observation');
 
-  // Rainfall subquery
-  const rainLoc = fieldId ? `AND r.field_id = ${locParamRef}` : '';
+  // Rainfall subquery filters (rainfall only filters by fieldId, not plotId)
+  const rainLoc = (locParamRef && fieldId) ? `AND r.field_id = ${locParamRef}` : '';
   const rainDate = dateParamRefs ? `AND r.rainfall_date BETWEEN ${dateParamRefs.desde} AND ${dateParamRefs.hasta}` : '';
-  const skipRain = (activityFilter && activityFilter !== 'rainfall');
 
   const parts = [];
 

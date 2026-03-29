@@ -42,6 +42,10 @@ plot_report: plot
 monthly_result: -
 date_range_report: desde?,hasta?,days?
 query_plot_history: plot?,field?,timeRef?,activityFilter?
+add_field: field,city? (crear/agregar campo nuevo)
+add_plot: plotName,field?,hectares?
+add_plots_batch: plotNames[],field?
+set_plot_area: plot,hectares
 set_field_city: field,city? (ubicar campo/lote en una localidad)
 show_reports_menu: - (quiero ver reportes/informes, sin tipo específico)
 unknown: no encaja en ninguna`;
@@ -51,8 +55,9 @@ unknown: no encaja en ninguna`;
     return `REGLAS PARSEO AGRÍCOLA (PRIORIDAD ALTA):
 Sinónimos→intent: fumigué/pulvericé/curé/tiré/eché→log_spraying. fertilicé/aboné/metí+fertilizante→log_fertilization. sembré/implanté→sow_crop. coseché/levanté→harvest_crop. aré/pasé disco/disqueé/laburé→log_tillage. regué→log_irrigation.
 Patrones compuestos (prioridad máxima): gasté/compré/pagué+insumo→log_expense. vendí/cobré+producto→log_income. fumigué/apliqué/tiré/eché+químico→log_spraying. apliqué/metí+fertilizante→log_fertilization. sembré+cultivo→sow_crop. coseché/levanté+cultivo→harvest_crop. pasé+implemento→log_tillage. llovieron+mm→log_rainfall.
-Desambiguación: producto fertilizante(urea,DAP,MAP,fosfato,nitrato,potasio,sulfato)→log_fertilization. producto herbicida/insecticida/fungicida→log_spraying. apliqué/tiré/eché SIN producto→confidence<0.7. reporte+agronómico/agro→generate_agro_report. reporte+financiero/gastos/ingresos→field_report/plot_report. reporte+lote(sin contexto financiero)→generate_agro_report. reporte+campo(sin contexto financiero)→generate_agro_report. reporte+mes→monthly_report. reporte+semana→weekly_report.
-NUNCA clasificar como actividad si: consulta(cómo/cuánto/qué/clima), descripción vaga(está lindo/viene bien), contexto sin acción(el lote del medio)→usar unknown o log_observation con confidence<0.7. EXCEPCIÓN: "cuánto llovió"/"llovió hoy"/"lluvia este mes"→rainfall_report (es consulta de datos, no actividad).
+Desambiguación: producto fertilizante(urea,DAP,MAP,fosfato,nitrato,potasio,sulfato)→log_fertilization. producto herbicida/insecticida/fungicida→log_spraying. apliqué/tiré/eché SIN producto→confidence<0.7. reporte+agronómico/agro→generate_agro_report. reporte+financiero/gastos/ingresos→field_report/plot_report. reporte+lote(sin contexto financiero)→generate_agro_report. reporte+campo(sin contexto financiero)→generate_agro_report. reporte+mes→monthly_report. reporte+semana→weekly_report. CONSULTA FINANCIERA: "gastos/ingresos/movimientos+en/del+lote X"(sin monto)→plot_report con plot=X. "gastos/ingresos+en/del+campo X"(sin monto)→field_report con field=X. NUNCA clasificar consulta financiera como log_observation.
+NUNCA clasificar como actividad si: consulta(cómo/cuánto/qué/clima), descripción vaga(está lindo/viene bien), contexto sin acción(el lote del medio)→usar unknown o log_observation con confidence<0.7. EXCEPCIÓN: "cuánto llovió"/"llovió hoy"/"lluvia este mes"→rainfall_report (es consulta de datos, no actividad). CONSULTA DE HISTORIAL: "cuándo/cuando se fumigó/sembró/fertilizó/cosechó/regó"→query_plot_history (NO log_spraying/log_fertilization/etc). Palabras clave: cuándo+verbo actividad pasado=consulta, no registro.
+CAMPOS: "agregar/crear/nuevo campo X"→add_field(fieldName=X). "agregar campo X en Y"→add_field(fieldName=X,city=Y). "ubicar/ubicación campo X en Y"/"campo X está en Y"→set_field_city(field=X,city=Y). DIFERENCIA: add_field=crear campo nuevo, set_field_city=asignar ubicación a campo existente.
 Prioridad decisión: 1.patrones compuestos 2.sinónimos+producto 3.keywords simples 4.fallback. CRÍTICO: No inventar datos que el usuario no mencionó→usar null. Si no dice cultivo→crop:null. Si no dice campo/lote→field:null,plot:null. Ambigüedad fuerte→confidence<0.7.`;
   }
 

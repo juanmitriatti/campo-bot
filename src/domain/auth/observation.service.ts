@@ -35,9 +35,134 @@ interface PaginatedResult {
   totalPages: number;
 }
 
+interface ObservationFilters {
+  fieldId?: number;
+  plotId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+interface ActivityRow {
+  id: number;
+  user_id: number;
+  plot_id: number | null;
+  event_type: string;
+  event_date: string;
+  crop: string | null;
+  product: string | null;
+  product_type: string | null;
+  quantity: number | null;
+  unit: string | null;
+  implement: string | null;
+  notes: string | null;
+  created_at: Date;
+  plot_name: string | null;
+  field_name: string | null;
+}
+
+interface PaginatedActivities {
+  activities: ActivityRow[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+interface ActivityFilters {
+  fieldId?: number;
+  plotId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  eventType?: string;
+}
+
+interface ExpenseRow {
+  id: number;
+  user_id: number;
+  category: string;
+  description: string | null;
+  amount: number;
+  currency: string;
+  field_id: number | null;
+  plot_id: number | null;
+  expense_date: string;
+  created_at: Date;
+  field_name: string | null;
+  plot_name: string | null;
+}
+
+interface IncomeRow {
+  id: number;
+  user_id: number;
+  category: string;
+  description: string | null;
+  amount: number;
+  currency: string;
+  quantity: number | null;
+  unit: string | null;
+  unit_price: number | null;
+  field_id: number | null;
+  plot_id: number | null;
+  income_date: string;
+  created_at: Date;
+  field_name: string | null;
+  plot_name: string | null;
+}
+
+interface PaginatedExpenses {
+  expenses: ExpenseRow[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+interface PaginatedIncomes {
+  incomes: IncomeRow[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+interface FinancialFilters {
+  fieldId?: number;
+  plotId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  category?: string;
+}
+
 export class ObservationService {
-  async getUserObservations(userId: number, page: number = 1, limit: number = 20): Promise<PaginatedResult> {
+  async getUserObservations(userId: number, page: number = 1, limit: number = 20, filters: ObservationFilters = {}): Promise<PaginatedResult> {
     const offset = (page - 1) * limit;
+
+    const conditions = ['o.user_id = $1'];
+    const params: (number | string)[] = [userId];
+    let paramIdx = 1;
+
+    if (filters.fieldId) {
+      paramIdx++;
+      conditions.push(`o.field_id = $${paramIdx}`);
+      params.push(filters.fieldId);
+    }
+    if (filters.plotId) {
+      paramIdx++;
+      conditions.push(`o.plot_id = $${paramIdx}`);
+      params.push(filters.plotId);
+    }
+    if (filters.dateFrom) {
+      paramIdx++;
+      conditions.push(`o.created_at >= $${paramIdx}::date`);
+      params.push(filters.dateFrom);
+    }
+    if (filters.dateTo) {
+      paramIdx++;
+      conditions.push(`o.created_at < ($${paramIdx}::date + interval '1 day')`);
+      params.push(filters.dateTo);
+    }
+
+    const where = conditions.join(' AND ');
 
     const [dataResult, countResult] = await Promise.all([
       pool.query(
@@ -45,14 +170,14 @@ export class ObservationService {
          FROM agro_observations o
          LEFT JOIN plots p ON o.plot_id = p.id
          LEFT JOIN fields f ON o.field_id = f.id
-         WHERE o.user_id = $1
+         WHERE ${where}
          ORDER BY o.created_at DESC
-         LIMIT $2 OFFSET $3`,
-        [userId, limit, offset]
+         LIMIT $${paramIdx + 1} OFFSET $${paramIdx + 2}`,
+        [...params, limit, offset]
       ),
       pool.query(
-        `SELECT COUNT(*) FROM agro_observations WHERE user_id = $1`,
-        [userId]
+        `SELECT COUNT(*) FROM agro_observations o WHERE ${where}`,
+        params
       ),
     ]);
 
@@ -60,6 +185,216 @@ export class ObservationService {
 
     return {
       observations: dataResult.rows,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async getUserFieldsWithPlots(userId: number): Promise<{ id: number; name: string; plots: { id: number; name: string }[] }[]> {
+    const { rows: fields } = await pool.query(
+      `SELECT id, name FROM fields WHERE user_id = $1 AND deleted_at IS NULL ORDER BY name`,
+      [userId]
+    );
+    const { rows: plots } = await pool.query(
+      `SELECT id, name, field_id FROM plots WHERE field_id = ANY($1::int[]) AND deleted_at IS NULL ORDER BY name`,
+      [fields.map((f: { id: number }) => f.id)]
+    );
+    return fields.map((f: { id: number; name: string }) => ({
+      id: f.id,
+      name: f.name,
+      plots: plots
+        .filter((p: { field_id: number }) => p.field_id === f.id)
+        .map((p: { id: number; name: string }) => ({ id: p.id, name: p.name })),
+    }));
+  }
+
+  async getUserActivities(userId: number, page: number = 1, limit: number = 20, filters: ActivityFilters = {}): Promise<PaginatedActivities> {
+    const offset = (page - 1) * limit;
+
+    const conditions = ['de.user_id = $1'];
+    const params: (number | string)[] = [userId];
+    let paramIdx = 1;
+
+    if (filters.fieldId) {
+      paramIdx++;
+      conditions.push(`f.id = $${paramIdx}`);
+      params.push(filters.fieldId);
+    }
+    if (filters.plotId) {
+      paramIdx++;
+      conditions.push(`de.plot_id = $${paramIdx}`);
+      params.push(filters.plotId);
+    }
+    if (filters.dateFrom) {
+      paramIdx++;
+      conditions.push(`de.event_date >= $${paramIdx}::date`);
+      params.push(filters.dateFrom);
+    }
+    if (filters.dateTo) {
+      paramIdx++;
+      conditions.push(`de.event_date <= $${paramIdx}::date`);
+      params.push(filters.dateTo);
+    }
+    if (filters.eventType) {
+      paramIdx++;
+      conditions.push(`de.event_type = $${paramIdx}`);
+      params.push(filters.eventType);
+    }
+
+    const where = conditions.join(' AND ');
+
+    const [dataResult, countResult] = await Promise.all([
+      pool.query(
+        `SELECT de.*, p.name AS plot_name, f.name AS field_name
+         FROM domain_events de
+         LEFT JOIN plots p ON de.plot_id = p.id
+         LEFT JOIN fields f ON p.field_id = f.id
+         WHERE ${where}
+         ORDER BY de.event_date DESC, de.created_at DESC
+         LIMIT $${paramIdx + 1} OFFSET $${paramIdx + 2}`,
+        [...params, limit, offset]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FROM domain_events de
+         LEFT JOIN plots p ON de.plot_id = p.id
+         LEFT JOIN fields f ON p.field_id = f.id
+         WHERE ${where}`,
+        params
+      ),
+    ]);
+
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    return {
+      activities: dataResult.rows,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async getUserExpenses(userId: number, page: number = 1, limit: number = 20, filters: FinancialFilters = {}): Promise<PaginatedExpenses> {
+    const offset = (page - 1) * limit;
+
+    const conditions = ['e.user_id = $1', 'e.deleted_at IS NULL'];
+    const params: (number | string)[] = [userId];
+    let paramIdx = 1;
+
+    if (filters.fieldId) {
+      paramIdx++;
+      conditions.push(`e.field_id = $${paramIdx}`);
+      params.push(filters.fieldId);
+    }
+    if (filters.plotId) {
+      paramIdx++;
+      conditions.push(`e.plot_id = $${paramIdx}`);
+      params.push(filters.plotId);
+    }
+    if (filters.dateFrom) {
+      paramIdx++;
+      conditions.push(`e.expense_date >= $${paramIdx}::date`);
+      params.push(filters.dateFrom);
+    }
+    if (filters.dateTo) {
+      paramIdx++;
+      conditions.push(`e.expense_date <= $${paramIdx}::date`);
+      params.push(filters.dateTo);
+    }
+    if (filters.category) {
+      paramIdx++;
+      conditions.push(`e.category = $${paramIdx}`);
+      params.push(filters.category);
+    }
+
+    const where = conditions.join(' AND ');
+
+    const [dataResult, countResult] = await Promise.all([
+      pool.query(
+        `SELECT e.*, p.name AS plot_name, f.name AS field_name
+         FROM expenses e
+         LEFT JOIN plots p ON e.plot_id = p.id
+         LEFT JOIN fields f ON e.field_id = f.id
+         WHERE ${where}
+         ORDER BY e.expense_date DESC, e.created_at DESC
+         LIMIT $${paramIdx + 1} OFFSET $${paramIdx + 2}`,
+        [...params, limit, offset]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FROM expenses e WHERE ${where}`,
+        params
+      ),
+    ]);
+
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    return {
+      expenses: dataResult.rows,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async getUserIncomes(userId: number, page: number = 1, limit: number = 20, filters: FinancialFilters = {}): Promise<PaginatedIncomes> {
+    const offset = (page - 1) * limit;
+
+    const conditions = ['i.user_id = $1', 'i.deleted_at IS NULL'];
+    const params: (number | string)[] = [userId];
+    let paramIdx = 1;
+
+    if (filters.fieldId) {
+      paramIdx++;
+      conditions.push(`i.field_id = $${paramIdx}`);
+      params.push(filters.fieldId);
+    }
+    if (filters.plotId) {
+      paramIdx++;
+      conditions.push(`i.plot_id = $${paramIdx}`);
+      params.push(filters.plotId);
+    }
+    if (filters.dateFrom) {
+      paramIdx++;
+      conditions.push(`i.income_date >= $${paramIdx}::date`);
+      params.push(filters.dateFrom);
+    }
+    if (filters.dateTo) {
+      paramIdx++;
+      conditions.push(`i.income_date <= $${paramIdx}::date`);
+      params.push(filters.dateTo);
+    }
+    if (filters.category) {
+      paramIdx++;
+      conditions.push(`i.category = $${paramIdx}`);
+      params.push(filters.category);
+    }
+
+    const where = conditions.join(' AND ');
+
+    const [dataResult, countResult] = await Promise.all([
+      pool.query(
+        `SELECT i.*, p.name AS plot_name, f.name AS field_name
+         FROM incomes i
+         LEFT JOIN plots p ON i.plot_id = p.id
+         LEFT JOIN fields f ON i.field_id = f.id
+         WHERE ${where}
+         ORDER BY i.income_date DESC, i.created_at DESC
+         LIMIT $${paramIdx + 1} OFFSET $${paramIdx + 2}`,
+        [...params, limit, offset]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FROM incomes i WHERE ${where}`,
+        params
+      ),
+    ]);
+
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    return {
+      incomes: dataResult.rows,
       total,
       page,
       limit,
@@ -124,6 +459,113 @@ export class ObservationService {
     } finally {
       client.release();
     }
+  }
+
+  async editExpense(
+    expenseId: number,
+    userId: number,
+    data: { description?: string; amount?: number; currency?: string; category?: string; expense_date?: string }
+  ): Promise<ExpenseRow> {
+    const { rows } = await pool.query(
+      `SELECT * FROM expenses WHERE id = $1 AND deleted_at IS NULL`,
+      [expenseId]
+    );
+    if (rows.length === 0) {
+      throw new ObservationError(404, 'Gasto no encontrado');
+    }
+    if (rows[0].user_id !== userId) {
+      throw new ObservationError(403, 'No tenés permisos para editar este gasto');
+    }
+
+    const sets: string[] = ['updated_at = NOW()'];
+    const params: (string | number)[] = [];
+    let idx = 0;
+
+    if (data.description !== undefined) { idx++; sets.push(`description = $${idx}`); params.push(data.description); }
+    if (data.amount !== undefined) { idx++; sets.push(`amount = $${idx}`); params.push(data.amount); }
+    if (data.currency !== undefined) { idx++; sets.push(`currency = $${idx}`); params.push(data.currency); }
+    if (data.category !== undefined) { idx++; sets.push(`category = $${idx}`); params.push(data.category); }
+    if (data.expense_date !== undefined) { idx++; sets.push(`expense_date = $${idx}`); params.push(data.expense_date); }
+
+    idx++;
+    const result = await pool.query(
+      `UPDATE expenses SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      [...params, expenseId]
+    );
+    return result.rows[0];
+  }
+
+  async editIncome(
+    incomeId: number,
+    userId: number,
+    data: { description?: string; amount?: number; currency?: string; category?: string; income_date?: string; quantity?: number | null; unit?: string | null }
+  ): Promise<IncomeRow> {
+    const { rows } = await pool.query(
+      `SELECT * FROM incomes WHERE id = $1 AND deleted_at IS NULL`,
+      [incomeId]
+    );
+    if (rows.length === 0) {
+      throw new ObservationError(404, 'Ingreso no encontrado');
+    }
+    if (rows[0].user_id !== userId) {
+      throw new ObservationError(403, 'No tenés permisos para editar este ingreso');
+    }
+
+    const sets: string[] = ['updated_at = NOW()'];
+    const params: (string | number | null)[] = [];
+    let idx = 0;
+
+    if (data.description !== undefined) { idx++; sets.push(`description = $${idx}`); params.push(data.description); }
+    if (data.amount !== undefined) { idx++; sets.push(`amount = $${idx}`); params.push(data.amount); }
+    if (data.currency !== undefined) { idx++; sets.push(`currency = $${idx}`); params.push(data.currency); }
+    if (data.category !== undefined) { idx++; sets.push(`category = $${idx}`); params.push(data.category); }
+    if (data.income_date !== undefined) { idx++; sets.push(`income_date = $${idx}`); params.push(data.income_date); }
+    if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(data.quantity); }
+    if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit); }
+
+    idx++;
+    const result = await pool.query(
+      `UPDATE incomes SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      [...params, incomeId]
+    );
+    return result.rows[0];
+  }
+
+  async editActivity(
+    activityId: number,
+    userId: number,
+    data: { event_type?: string; event_date?: string; crop?: string | null; product?: string | null; quantity?: number | null; unit?: string | null; implement?: string | null; notes?: string | null }
+  ): Promise<ActivityRow> {
+    const { rows } = await pool.query(
+      `SELECT * FROM domain_events WHERE id = $1`,
+      [activityId]
+    );
+    if (rows.length === 0) {
+      throw new ObservationError(404, 'Actividad no encontrada');
+    }
+    if (rows[0].user_id !== userId) {
+      throw new ObservationError(403, 'No tenés permisos para editar esta actividad');
+    }
+
+    const sets: string[] = ['updated_at = NOW()'];
+    const params: (string | number | null)[] = [];
+    let idx = 0;
+
+    if (data.event_type !== undefined) { idx++; sets.push(`event_type = $${idx}`); params.push(data.event_type); }
+    if (data.event_date !== undefined) { idx++; sets.push(`event_date = $${idx}`); params.push(data.event_date); }
+    if (data.crop !== undefined) { idx++; sets.push(`crop = $${idx}`); params.push(data.crop); }
+    if (data.product !== undefined) { idx++; sets.push(`product = $${idx}`); params.push(data.product); }
+    if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(data.quantity); }
+    if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit); }
+    if (data.implement !== undefined) { idx++; sets.push(`implement = $${idx}`); params.push(data.implement); }
+    if (data.notes !== undefined) { idx++; sets.push(`notes = $${idx}`); params.push(data.notes); }
+
+    idx++;
+    const result = await pool.query(
+      `UPDATE domain_events SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      [...params, activityId]
+    );
+    return result.rows[0];
   }
 
   async getObservationHistory(observationId: number, userId: number): Promise<HistoryRow[]> {

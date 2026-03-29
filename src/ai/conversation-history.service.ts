@@ -6,21 +6,20 @@ export interface ConversationTurn {
   content: string;
 }
 
-const MAX_TOTAL_CHARS = 800;
-
 export class ConversationHistoryService {
   /**
    * Get recent conversation turns for multi-turn AI context.
-   * Returns oldest-first order, capped at ~200 tokens (800 chars).
+   * Returns oldest-first order, trimmed from oldest to fit within maxChars.
    */
-  async getRecentTurns(userId: UserId, limit = 3): Promise<ConversationTurn[]> {
+  async getRecentTurns(userId: UserId, maxChars = 4000): Promise<ConversationTurn[]> {
+    if (maxChars <= 0) return [];
+
     const { rows } = await pool.query(
       `SELECT message_text, response_text
        FROM conversation_logs
        WHERE user_id = $1 AND message_text IS NOT NULL
-       ORDER BY created_at DESC
-       LIMIT $2`,
-      [userId, limit],
+       ORDER BY created_at DESC`,
+      [userId],
     );
 
     if (rows.length === 0) return [];
@@ -40,7 +39,7 @@ export class ConversationHistoryService {
 
     // Truncate from the front (oldest) to stay within char budget
     let totalChars = turns.reduce((sum, t) => sum + t.content.length, 0);
-    while (totalChars > MAX_TOTAL_CHARS && turns.length > 0) {
+    while (totalChars > maxChars && turns.length > 0) {
       const removed = turns.shift()!;
       totalChars -= removed.content.length;
       // If we removed a user message, also remove the following assistant message

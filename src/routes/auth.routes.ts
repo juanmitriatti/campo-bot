@@ -78,13 +78,133 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+// --- Expense & Income routes ---
+
+router.get('/expenses', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+
+    const filters: { fieldId?: number; plotId?: number; dateFrom?: string; dateTo?: string; category?: string } = {};
+    const fieldId = parseInt(String(req.query.fieldId), 10);
+    if (!isNaN(fieldId)) filters.fieldId = fieldId;
+    const plotId = parseInt(String(req.query.plotId), 10);
+    if (!isNaN(plotId)) filters.plotId = plotId;
+    if (req.query.dateFrom && typeof req.query.dateFrom === 'string') filters.dateFrom = req.query.dateFrom;
+    if (req.query.dateTo && typeof req.query.dateTo === 'string') filters.dateTo = req.query.dateTo;
+    if (req.query.category && typeof req.query.category === 'string') filters.category = req.query.category;
+
+    const result = await observationService.getUserExpenses(req.auth!.userId, page, limit, filters);
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.get('/incomes', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+
+    const filters: { fieldId?: number; plotId?: number; dateFrom?: string; dateTo?: string; category?: string } = {};
+    const fieldId = parseInt(String(req.query.fieldId), 10);
+    if (!isNaN(fieldId)) filters.fieldId = fieldId;
+    const plotId = parseInt(String(req.query.plotId), 10);
+    if (!isNaN(plotId)) filters.plotId = plotId;
+    if (req.query.dateFrom && typeof req.query.dateFrom === 'string') filters.dateFrom = req.query.dateFrom;
+    if (req.query.dateTo && typeof req.query.dateTo === 'string') filters.dateTo = req.query.dateTo;
+    if (req.query.category && typeof req.query.category === 'string') filters.category = req.query.category;
+
+    const result = await observationService.getUserIncomes(req.auth!.userId, page, limit, filters);
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Activity routes ---
+
+router.get('/activities', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+
+    const filters: { fieldId?: number; plotId?: number; dateFrom?: string; dateTo?: string; eventType?: string } = {};
+    const fieldId = parseInt(String(req.query.fieldId), 10);
+    if (!isNaN(fieldId)) filters.fieldId = fieldId;
+    const plotId = parseInt(String(req.query.plotId), 10);
+    if (!isNaN(plotId)) filters.plotId = plotId;
+    if (req.query.dateFrom && typeof req.query.dateFrom === 'string') filters.dateFrom = req.query.dateFrom;
+    if (req.query.dateTo && typeof req.query.dateTo === 'string') filters.dateTo = req.query.dateTo;
+    if (req.query.eventType && typeof req.query.eventType === 'string') filters.eventType = req.query.eventType;
+
+    const result = await observationService.getUserActivities(req.auth!.userId, page, limit, filters);
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Edit routes ---
+
+router.patch('/expenses/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const result = await observationService.editExpense(id, req.auth!.userId, req.body);
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.patch('/incomes/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const result = await observationService.editIncome(id, req.auth!.userId, req.body);
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.patch('/activities/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const result = await observationService.editActivity(id, req.auth!.userId, req.body);
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
 // --- Observation routes ---
+
+router.get('/observations/filters', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const fields = await observationService.getUserFieldsWithPlots(req.auth!.userId);
+    res.json({ fields });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
 
 router.get('/observations', requireAuth, async (req: Request, res: Response) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
-    const result = await observationService.getUserObservations(req.auth!.userId, page, limit);
+
+    const filters: { fieldId?: number; plotId?: number; dateFrom?: string; dateTo?: string } = {};
+    const fieldId = parseInt(String(req.query.fieldId), 10);
+    if (!isNaN(fieldId)) filters.fieldId = fieldId;
+    const plotId = parseInt(String(req.query.plotId), 10);
+    if (!isNaN(plotId)) filters.plotId = plotId;
+    if (req.query.dateFrom && typeof req.query.dateFrom === 'string') filters.dateFrom = req.query.dateFrom;
+    if (req.query.dateTo && typeof req.query.dateTo === 'string') filters.dateTo = req.query.dateTo;
+
+    const result = await observationService.getUserObservations(req.auth!.userId, page, limit, filters);
     res.json(result);
   } catch (err) {
     handleError(err, res);

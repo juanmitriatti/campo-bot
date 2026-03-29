@@ -4,6 +4,7 @@ import { sendMessage } from "./whatsapp.js";
 import { getUsersWithRainAlerts, getGlobalSettings } from "./expenses.js";
 import { getForecast } from "./weather.js";
 import { sendAlertWithRetry, isDuplicate, recordDeduped } from "./alert.service.js";
+import { getSettingNumber } from "./settings.service.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -463,7 +464,61 @@ async function pestEscalationTick() {
 }
 
 // ---------------------------------------------------------------------------
-// Proactive Alerts Tick (monitoring + pest combined)
+// Missing Hectares Reminder (weekly per user)
+// ---------------------------------------------------------------------------
+
+async function missingHectaresReminderTick() {
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id AS plot_id, p.name AS plot_name, f.name AS field_name, u.id AS user_id, u.phone_number
+       FROM plots p
+       JOIN fields f ON p.field_id = f.id
+       JOIN users u ON f.user_id = u.id
+       WHERE p.area_hectares IS NULL
+         AND p.deleted_at IS NULL
+         AND f.deleted_at IS NULL
+         AND p.created_at < NOW() - INTERVAL '24 hours'
+       ORDER BY u.id, f.name, p.name`
+    );
+
+    if (rows.length === 0) return;
+
+    // Group by user
+    const byUser = new Map();
+    for (const row of rows) {
+      const list = byUser.get(row.user_id) || { phone: row.phone_number, plots: [] };
+      list.plots.push({ plotName: row.plot_name, fieldName: row.field_name });
+      byUser.set(row.user_id, list);
+    }
+
+    for (const [userId, data] of byUser) {
+      const dedupKey = `user_${userId}`;
+      const dup = await isDuplicate(userId, 'missing_hectares', dedupKey, 168); // 7 days
+      if (dup) continue;
+
+      const count = data.plots.length;
+      let msg = `📐 *Lotes sin superficie definida*\nTenés ${count} lote${count > 1 ? 's' : ''} sin hectáreas:\n`;
+      for (const p of data.plots) {
+        msg += `  • *${p.plotName}* (campo ${p.fieldName})\n`;
+      }
+      msg += `\nPodés decirme: "el lote ${data.plots[0].plotName} tiene 120 ha"`;
+
+      const result = await sendAlertWithRetry(userId, data.phone, msg, 'missing_hectares', {
+        dedupKey,
+        payload: { plotCount: count },
+      });
+
+      if (result.sent) {
+        console.log(`[hectares-reminder] Sent to user ${userId} (${count} plots missing area)`);
+      }
+    }
+  } catch (err) {
+    console.error("[hectares-reminder] Unexpected error:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Proactive Alerts Tick (monitoring + pest + hectares combined)
 // ---------------------------------------------------------------------------
 
 async function proactiveAlertsTick() {
@@ -472,11 +527,86 @@ async function proactiveAlertsTick() {
     // Run at 8 AM Argentina time (configurable via global settings in future)
     if (hour !== 8) return;
 
-    console.log(`[proactive-alerts] Running monitoring + pest escalation checks`);
+    console.log(`[proactive-alerts] Running monitoring + pest escalation + hectares reminder checks`);
     await monitoringReminderTick();
     await pestEscalationTick();
+    await missingHectaresReminderTick();
   } catch (err) {
     console.error("[proactive-alerts] Unexpected error:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Conversation Data Cleanup (daily at 3 AM Argentina)
+// ---------------------------------------------------------------------------
+
+async function conversationLogCleanupTick() {
+  const ttlDays = await getSettingNumber('CONVERSATION_LOG_TTL_DAYS');
+  if (!ttlDays || ttlDays <= 0) return;
+
+  const tables = ['conversation_logs', 'conversation_events', 'conversation_errors'];
+  for (const table of tables) {
+    try {
+      const { rowCount } = await pool.query(
+        `DELETE FROM ${table} WHERE created_at < NOW() - make_interval(days => $1)`,
+        [ttlDays]
+      );
+      if (rowCount > 0) {
+        console.log(`[cleanup] Deleted ${rowCount} rows from ${table} (older than ${ttlDays} days)`);
+      }
+    } catch (err) {
+      // Table may not exist — skip silently
+      if (err.code !== '42P01') {
+        console.error(`[cleanup] Error cleaning ${table}:`, err.message);
+      }
+    }
+  }
+}
+
+async function miniMemoryExpiryTick() {
+  const expiryDays = await getSettingNumber('MINI_MEMORY_EXPIRY_DAYS');
+  if (!expiryDays || expiryDays <= 0) return;
+
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE conversation_state
+          SET last_intent = NULL,
+              last_activity_type = NULL,
+              last_query_type = NULL,
+              last_time_reference = NULL,
+              last_plot_id = NULL,
+              last_field_id = NULL,
+              updated_at = NOW()
+        WHERE updated_at < NOW() - make_interval(days => $1)
+          AND flow_state = 'idle'
+          AND (last_intent IS NOT NULL
+               OR last_activity_type IS NOT NULL
+               OR last_query_type IS NOT NULL
+               OR last_time_reference IS NOT NULL
+               OR last_plot_id IS NOT NULL
+               OR last_field_id IS NOT NULL)`,
+      [expiryDays]
+    );
+    if (rowCount > 0) {
+      console.log(`[cleanup] Cleared mini-memory for ${rowCount} idle user(s) (inactive > ${expiryDays} days)`);
+    }
+  } catch (err) {
+    if (err.code !== '42P01') {
+      console.error('[cleanup] Error clearing mini-memory:', err.message);
+    }
+  }
+}
+
+async function dailyCleanupTick() {
+  try {
+    const { hour } = getArgentinaTime();
+    if (hour !== 3) return;
+
+    console.log('[cleanup] Running daily conversation data cleanup (3 AM Argentina)');
+    await conversationLogCleanupTick();
+    await miniMemoryExpiryTick();
+  } catch (err) {
+    console.error('[cleanup] Unexpected error:', err);
   }
 }
 
@@ -500,5 +630,10 @@ export function startScheduler() {
     proactiveAlertsTick();
   });
 
-  console.log("[scheduler] Cron jobs started — weekly summary + daily weather alerts + proactive alerts (hourly tick)");
+  // Daily cleanup (conversation logs TTL + mini-memory expiry) — every hour at :00 (checks hour === 3 internally)
+  cron.schedule("0 * * * *", () => {
+    dailyCleanupTick();
+  });
+
+  console.log("[scheduler] Cron jobs started — weekly summary + daily weather alerts + proactive alerts + daily cleanup (hourly tick)");
 }

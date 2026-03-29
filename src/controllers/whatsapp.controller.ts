@@ -15,6 +15,7 @@ import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
+import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
@@ -43,6 +44,7 @@ import { IntentValidator } from '../ai/intent-validator.js';
 import { UserContextService } from '../ai/user-context.service.js';
 import { ConversationHistoryService } from '../ai/conversation-history.service.js';
 import { ConversationalFallbackService } from '../ai/conversational-fallback.service.js';
+import { FewShotService } from '../ai/few-shot.service.js';
 import { normalizeTranscript } from '../utils/text-normalizer.js';
 import { isLikelyQuestion } from '../utils/guards.js';
 import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observations.js';
@@ -71,7 +73,8 @@ const userContextService = new UserContextService(entityValidator);
 const promptBuilder = new PromptBuilder();
 const intentValidator = new IntentValidator();
 const conversationHistoryService = new ConversationHistoryService();
-const intentExtractor = new IntentExtractor(promptBuilder, intentValidator, userContextService, userRepository, conversationHistoryService);
+const fewShotService = new FewShotService();
+const intentExtractor = new IntentExtractor(promptBuilder, intentValidator, userContextService, userRepository, conversationHistoryService, fewShotService);
 const intentClassifier = new IntentClassifier(undefined, undefined, intentExtractor);
 const conversationalFallback = new ConversationalFallbackService(userRepository);
 
@@ -79,6 +82,7 @@ const dedup = new MessageDedup();
 const pendingStore = new PendingTransactionStore();
 const pendingObsStore = new PendingObservationStore();
 const pendingCityStore = new PendingFieldCityStore();
+const pendingPlotAreaStore = new PendingPlotAreaStore();
 const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
@@ -308,8 +312,23 @@ router.post('/', async (req: Request, res: Response) => {
             }
           } else if (callbackId.startsWith('flow_plot_')) {
             // Plot selection within flow
-            const value = callbackId.replace('flow_plot_', '').replace(/_/g, ' ');
+            const rawPlotPayload = callbackId.replace('flow_plot_', '');
+            let value: string;
+            let fieldHint: string | undefined;
+            // Check for field__plot separator (duplicate plot names across fields)
+            if (rawPlotPayload.includes('__')) {
+              const sepIdx = rawPlotPayload.indexOf('__');
+              fieldHint = rawPlotPayload.slice(0, sepIdx).replace(/_/g, ' ');
+              value = rawPlotPayload.slice(sepIdx + 2).replace(/_/g, ' ');
+            } else {
+              value = rawPlotPayload.replace(/_/g, ' ');
+            }
             if (flowCtx.state !== 'idle') {
+              // Store field hint in flow data so execute() can disambiguate
+              if (fieldHint) {
+                flowCtx.data._resolvedFieldHint = fieldHint;
+                await conversationEngine.setFlowContext(userId, flowCtx);
+              }
               const result = await conversationEngine.processFlowMessage(userId, value, flowCtx);
               if (result.nextContext) {
                 await conversationEngine.setFlowContext(userId, result.nextContext);
@@ -728,6 +747,27 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    // --- Check pending plot area assignment ---
+    const pendingArea = pendingPlotAreaStore.get(phone);
+    if (pendingArea) {
+      if (isCancelIntent(text)) {
+        pendingPlotAreaStore.clear(phone);
+        await sendMessage(phone, '👍 Podés asignar las hectáreas después.');
+        res.sendStatus(200);
+        return;
+      }
+      const hectares = parseFloat(text.replace(/,/g, '.').replace(/\s*ha\s*/i, '').trim());
+      if (!isNaN(hectares) && hectares > 0 && hectares < 100000) {
+        await financialService.setPlotArea(pendingArea.plotId, hectares);
+        pendingPlotAreaStore.clear(phone);
+        await sendMessage(phone, `📍 Lote *${pendingArea.plotName}*: superficie actualizada a *${hectares} ha*`);
+        res.sendStatus(200);
+        return;
+      }
+      // Not a valid number — clear pending and fall through to normal processing
+      pendingPlotAreaStore.clear(phone);
+    }
+
     // --- Check pending observation (plot disambiguation follow-up) ---
     const pendingObs = pendingObsStore.get(phone);
     if (pendingObs) {
@@ -739,52 +779,59 @@ router.post('/', async (req: Request, res: Response) => {
         return;
       }
 
-      // RESOLUTION MODE: resolve EXISTING plot only — NEVER auto-create
-      const obsResolved = await plotDiscovery.resolveExisting(userId, text);
-
-      if (obsResolved.plotId) {
+      // Escape hatch: if the message looks like a known command, clear pending and fall through
+      const obsInterruptCmd = intentClassifier.parseCommandOnly(text);
+      if (obsInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
         pendingObsStore.clear(phone);
-        const saved = await saveObservation(userId, {
-          fieldId: obsResolved.fieldId,
-          plotId: obsResolved.plotId,
-          text: pendingObs.text,
-          category: pendingObs.category,
-          source: 'text',
-        });
+        // Fall through to normal processing below
+      } else {
+        // RESOLUTION MODE: resolve EXISTING plot only — NEVER auto-create
+        const obsResolved = await plotDiscovery.resolveExisting(userId, text);
 
-        if (saved === SAVE_REJECTED_DUPLICATE) {
-          await sendMessage(phone, 'Observación duplicada detectada');
-        } else if (saved && !(saved as any)._rejected) {
-          let locationLabel = 'General';
-          if (obsResolved.plotName && obsResolved.fieldName) {
-            locationLabel = `${obsResolved.fieldName} > ${obsResolved.plotName}`;
-          } else if (obsResolved.plotName) {
-            locationLabel = obsResolved.plotName;
-          }
-          const message = formatObservationResponse({
-            locationLabel,
-            plotName: obsResolved.plotName,
-            category: pendingObs.category as any,
-            observationText: saved.observation_text,
+        if (obsResolved.plotId) {
+          pendingObsStore.clear(phone);
+          const saved = await saveObservation(userId, {
+            fieldId: obsResolved.fieldId,
+            plotId: obsResolved.plotId,
+            text: pendingObs.text,
+            category: pendingObs.category,
+            source: 'text',
           });
-          const response: HandlerResponse = { messages: [message], suggestionKey: 'observation_logged' };
-          await sendResponse(phone, response);
-        } else {
-          await sendMessage(phone, 'No se pudo guardar la observación. Intentá de nuevo.');
+
+          if (saved === SAVE_REJECTED_DUPLICATE) {
+            await sendMessage(phone, 'Observación duplicada detectada');
+          } else if (saved && !(saved as any)._rejected) {
+            let locationLabel = 'General';
+            if (obsResolved.plotName && obsResolved.fieldName) {
+              locationLabel = `${obsResolved.fieldName} > ${obsResolved.plotName}`;
+            } else if (obsResolved.plotName) {
+              locationLabel = obsResolved.plotName;
+            }
+            const message = formatObservationResponse({
+              locationLabel,
+              plotName: obsResolved.plotName,
+              category: pendingObs.category as any,
+              observationText: saved.observation_text,
+            });
+            const response: HandlerResponse = { messages: [message], suggestionKey: 'observation_logged' };
+            await sendResponse(phone, response);
+          } else {
+            await sendMessage(phone, 'No se pudo guardar la observación. Intentá de nuevo.');
+          }
+          console.log(`[PENDING_OBS] Resolved plot_id=${obsResolved.plotId} for pending observation, user ${userId}`);
+          conversationLogger.log(userId, phone, text, 'Observación registrada (follow-up)', 'command', 'log_observation', null, null, false, Date.now() - startTime).catch(() => {});
+          res.sendStatus(200);
+          return;
         }
-        console.log(`[PENDING_OBS] Resolved plot_id=${obsResolved.plotId} for pending observation, user ${userId}`);
-        conversationLogger.log(userId, phone, text, 'Observación registrada (follow-up)', 'command', 'log_observation', null, null, false, Date.now() - startTime).catch(() => {});
+
+        // HARD STOP: no plot found — re-ask. NEVER fall through to classifier.
+        const userPlots = await agronomyRepository.findAllUserPlots(userId);
+        const plotList = userPlots.map(p => `• ${p.name} (${p.field_name})`).join('\n');
+        await sendMessage(phone, `No encontré ese lote. ¿En qué lote?\n\nTus lotes:\n${plotList}`);
+        console.log(`[PENDING_OBS] Could not resolve plot from "${text}", asking again for user ${userId}`);
         res.sendStatus(200);
         return;
       }
-
-      // HARD STOP: no plot found — re-ask. NEVER fall through to classifier.
-      const userPlots = await agronomyRepository.findAllUserPlots(userId);
-      const plotList = userPlots.map(p => `• ${p.name} (${p.field_name})`).join('\n');
-      await sendMessage(phone, `No encontré ese lote. ¿En qué lote?\n\nTus lotes:\n${plotList}`);
-      console.log(`[PENDING_OBS] Could not resolve plot from "${text}", asking again for user ${userId}`);
-      res.sendStatus(200);
-      return;
     }
 
     // --- Check pending confirmation first ---
@@ -834,7 +881,7 @@ router.post('/', async (req: Request, res: Response) => {
       pendingStore.clear(phone);
       const response = await financialHandler.handleConfirm(userId, pending, settings, user);
       await sendResponse(phone, response);
-      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -847,7 +894,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
       pendingStore.clear(phone);
       await sendMessage(phone, '\u274c Operaci\u00f3n cancelada.');
-      conversationLogger.log(userId, phone, text, 'Operaci\u00f3n cancelada.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime).catch(() => {});
+      conversationLogger.log(userId, phone, text, 'Operaci\u00f3n cancelada.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -876,7 +923,7 @@ router.post('/', async (req: Request, res: Response) => {
       const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
       conversationObserver.logFlowStarted(userId, 'expense_flow', { trigger: 'partial_parse', prefillFields: Object.keys(prefillData) });
       await sendResponse(phone, result.response);
-      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -899,7 +946,7 @@ router.post('/', async (req: Request, res: Response) => {
       const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
       conversationObserver.logFlowStarted(userId, 'income_flow', { trigger: 'partial_parse', prefillFields: Object.keys(prefillData) });
       await sendResponse(phone, result.response);
-      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -911,7 +958,7 @@ router.post('/', async (req: Request, res: Response) => {
         title: c.label.slice(0, 20),
       }));
       await sendInteractiveButtons(phone, '\u00bfQu\u00e9 quer\u00e9s hacer?', buttons);
-      conversationLogger.log(userId, phone, text, 'Disambiguation', 'ambiguous', null, null, null, aiUsed, Date.now() - startTime, true).catch(() => {});
+      conversationLogger.log(userId, phone, text, 'Disambiguation', 'ambiguous', null, null, null, aiUsed, Date.now() - startTime, true, confidence).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -971,7 +1018,7 @@ router.post('/', async (req: Request, res: Response) => {
           timestamp: Date.now(),
           _destructiveCommand: intent.data,
         } as any);
-        conversationLogger.log(userId, phone, text, `Confirmación: ${label}`, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, true).catch(() => {});
+        conversationLogger.log(userId, phone, text, `Confirmación: ${label}`, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, true, confidence).catch(() => {});
         res.sendStatus(200);
         return;
       }
@@ -1014,6 +1061,14 @@ router.post('/', async (req: Request, res: Response) => {
             timestamp: Date.now(),
           });
         }
+        // Store pending plot area for next-message assignment
+        if (response.sideEffects?.setPendingPlotArea) {
+          const pa = response.sideEffects.setPendingPlotArea;
+          pendingPlotAreaStore.set(phone, {
+            plotId: pa.plotId, plotName: pa.plotName, fieldName: pa.fieldName,
+            timestamp: Date.now(),
+          });
+        }
         // Store pending field duplicate data for resolution buttons
         if (response.sideEffects?.setFieldDuplicate) {
           const dup = response.sideEffects.setFieldDuplicate;
@@ -1034,7 +1089,7 @@ router.post('/', async (req: Request, res: Response) => {
           lastTimeReference: (intent.data.timeLabel as string) ?? null,
         }).catch(() => {});
         await sendResponse(phone, response);
-        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive).catch(() => {});
+        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
         res.sendStatus(200);
         return;
       }
@@ -1076,7 +1131,7 @@ router.post('/', async (req: Request, res: Response) => {
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
       await sendResponse(phone, response);
-      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -1117,7 +1172,7 @@ router.post('/', async (req: Request, res: Response) => {
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
       await sendResponse(phone, response);
-      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -1130,7 +1185,7 @@ router.post('/', async (req: Request, res: Response) => {
 
       if (fallbackResult.aiUsed) {
         await sendMessage(phone, fallbackResult.response);
-        conversationLogger.log(userId, phone, text, fallbackResult.response, 'conversational', null, null, null, true, Date.now() - startTime).catch(() => {});
+        conversationLogger.log(userId, phone, text, fallbackResult.response, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence).catch(() => {});
       } else {
         // Rate limited or disabled — show menu with upgrade hint if limit hit
         await sendMessage(phone, fallbackResult.response);
@@ -1140,7 +1195,7 @@ router.post('/', async (req: Request, res: Response) => {
         const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
         await sendResponse(phone, menuResponse);
         conversationObserver.logMenuOpened(userId, { trigger: 'unknown_fallback' });
-        conversationLogger.log(userId, phone, text, fallbackResult.response, 'unknown', null, null, null, false, Date.now() - startTime, true).catch(() => {});
+        conversationLogger.log(userId, phone, text, fallbackResult.response, 'unknown', null, null, null, false, Date.now() - startTime, true, confidence).catch(() => {});
       }
     }
 

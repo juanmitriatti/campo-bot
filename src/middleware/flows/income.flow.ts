@@ -139,11 +139,21 @@ export const incomeFlow: FlowDefinition = {
 
     if (plotName) {
       const plots = await financialService.findPlotByNameAcrossFields(userId, plotName);
-      if (plots.length > 0) {
+      if (plots.length === 1) {
         plotId = plots[0].id;
         fieldId = plots[0].field_id;
         resolvedPlotName = plots[0].name;
         resolvedFieldName = plots[0].field_name;
+      } else if (plots.length > 1) {
+        const fieldHint = data._resolvedFieldHint as string | undefined;
+        const match = fieldHint
+          ? plots.find(p => p.field_name.toLowerCase() === fieldHint.toLowerCase())
+          : null;
+        const selected = match || plots[0];
+        plotId = selected.id;
+        fieldId = selected.field_id;
+        resolvedPlotName = selected.name;
+        resolvedFieldName = selected.field_name;
       }
     }
 

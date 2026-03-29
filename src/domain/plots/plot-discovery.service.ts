@@ -205,6 +205,22 @@ export class PlotDiscoveryService {
       };
     }
 
+    // 1b. Multiple matches (duplicate names across fields) — try to extract field hint from full text
+    if (plots.length > 1) {
+      const resolved = this._disambiguateByFieldHint(text, plots);
+      if (resolved) {
+        return {
+          fieldId: resolved.field_id,
+          fieldName: resolved.field_name,
+          plotId: resolved.id,
+          plotName: resolved.name,
+          autoCreated: false,
+        };
+      }
+      // Still ambiguous — return null so caller re-asks
+      return { fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false };
+    }
+
     // 2. Alias match
     const normalized = normalizeText(loteName);
     const aliasMatch = await findPlotByAlias(userId, normalized);
@@ -220,6 +236,40 @@ export class PlotDiscoveryService {
 
     // No match — do NOT auto-create
     return { fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false };
+  }
+
+  /**
+   * Try to disambiguate duplicate plot matches by extracting a field name from the user's text.
+   * E.g., "1a la esperanza" → matches "1a" in field "La Esperanza"
+   */
+  private _disambiguateByFieldHint(
+    text: string,
+    plots: { id: number; field_id: number; field_name: string; name: string }[],
+  ): { id: number; field_id: number; field_name: string; name: string } | null {
+    const norm = (s: string) => s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const input = norm(text);
+    const fieldNames = [...new Set(plots.map(p => p.field_name))];
+
+    for (const fn of fieldNames) {
+      const normField = norm(fn);
+      // Check if input contains the field name (as suffix, after "en"/"de", or in parens)
+      const patterns = [
+        ` ${normField}`,           // suffix: "1a la esperanza"
+        ` en ${normField}`,        // "1a en la esperanza"
+        ` de ${normField}`,        // "1a de don pedro"
+        `(${normField})`,          // "1a (la esperanza)"
+        `campo ${normField}`,      // "campo don pedro 1a"
+      ];
+
+      for (const pat of patterns) {
+        if (input.includes(pat)) {
+          const match = plots.find(p => p.field_name === fn);
+          if (match) return match;
+        }
+      }
+    }
+
+    return null;
   }
 
   private async _registerAliases(plotId: number, plotName: string): Promise<void> {

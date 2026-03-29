@@ -1,6 +1,6 @@
 import { saveDomainEvent as dbSaveDomainEvent, findPlotByNameAcrossFields } from '../../services/expenses.js';
 import { getSuggestions } from '../contextual-suggestions.js';
-import { buildPlotPromptGrouped, validatePlotAsync } from './field-step-helpers.js';
+import { buildPlotPromptGrouped, buildPlotInteractiveGrouped, validatePlotAsync } from './field-step-helpers.js';
 import { EntityValidator } from '../../services/entity-validator.js';
 import { ACTIVITY_TYPES } from '../../constants/agro-terms.js';
 import type { FlowDefinition, FlowStep } from './flow.interface.js';
@@ -54,10 +54,9 @@ const steps: FlowStep[] = [
       const plots = await entityValidator.getUserPlotsWithFields(userId);
       return buildPlotPromptGrouped(plots);
     },
-    interactive: {
-      type: 'buttons',
-      body: '¿En qué lote?',
-      buttons: [{ id: 'flow_skip', title: 'Saltar' }],
+    interactiveAsync: async (_data, userId) => {
+      const plots = await entityValidator.getUserPlotsWithFields(userId);
+      return buildPlotInteractiveGrouped(plots);
     },
     validate: (input) => {
       const val = input.trim();
@@ -145,8 +144,14 @@ export const activityFlow: FlowDefinition = {
     let plotId: number | null = null;
     if (plotName) {
       const plots = await findPlotByNameAcrossFields(userId, plotName);
-      if (plots.length > 0) {
+      if (plots.length === 1) {
         plotId = plots[0].id;
+      } else if (plots.length > 1) {
+        const fieldHint = data._resolvedFieldHint as string | undefined;
+        const match = fieldHint
+          ? plots.find((p: any) => p.field_name.toLowerCase() === fieldHint.toLowerCase())
+          : null;
+        plotId = (match || plots[0]).id;
       }
     }
 

@@ -17,6 +17,18 @@ import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.se
 import { formatHistoryResponse } from './plot-query.service.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType } from '../../types/index.js';
 
+// --- AI intent → DB event_type normalization ---
+const ACTIVITY_FILTER_MAP: Record<string, string> = {
+  sow_crop: 'planting',
+  harvest_crop: 'harvest',
+};
+
+function normalizeActivityFilter(raw: string | null): string | null {
+  if (!raw) return null;
+  const stripped = raw.replace(/^log_/, '');
+  return ACTIVITY_FILTER_MAP[stripped] ?? ACTIVITY_FILTER_MAP[raw] ?? stripped;
+}
+
 // --- Observation safety guard ---
 // Prevents accidental persistence of questions/follow-ups as observations.
 
@@ -678,7 +690,8 @@ export class AgronomyHandler {
         }
 
         const timeRef = cmd.timeRef as { desde: Date; hasta: Date } | null;
-        const activityFilter = cmd.activityFilter as string | null;
+        const rawFilter = cmd.activityFilter as string | null;
+        const activityFilter = normalizeActivityFilter(rawFilter);
         const isBinaryQuestion = !!(cmd.isBinaryQuestion);
         const isUltimaVez = !!(cmd.isUltimaVez);
         const hasNoFilters = !timeRef && !activityFilter && !isUltimaVez && !isBinaryQuestion;

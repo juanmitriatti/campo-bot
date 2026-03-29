@@ -179,7 +179,7 @@ export const ACTIVITY_FILTER_PATTERNS: Array<{ pattern: RegExp; type: string }> 
   { pattern: /fumig|pulveriz/, type: 'spraying' },
   { pattern: /fertil|abono/, type: 'fertilization' },
   { pattern: /labran|arar|cincel|disco/, type: 'tillage' },
-  { pattern: /riego|regar/, type: 'irrigation' },
+  { pattern: /riego|regar|reg[oó]/, type: 'irrigation' },
   { pattern: /siembr|sembr/, type: 'planting' },
   { pattern: /cosech/, type: 'harvest' },
   { pattern: /lluvia|precipit/, type: 'rainfall' },

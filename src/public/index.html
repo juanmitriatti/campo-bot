@@ -796,6 +796,15 @@
         </svg>
         Parser
       </a>
+      <a class="nav-item" data-page="ai-training" onclick="navigate('ai-training')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.57-3.25 3.92v1.58h2.75a2.5 2.5 0 0 1 2.5 2.5v1.58A4 4 0 0 1 16 22a4 4 0 0 1-2-7.42V14.5a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5v.08A4 4 0 0 1 8 22a4 4 0 0 1-1.75-7.58" />
+          <circle cx="12" cy="6" r="2"/>
+          <circle cx="8" cy="18" r="2"/>
+          <circle cx="16" cy="18" r="2"/>
+        </svg>
+        AI Training
+      </a>
       <a class="nav-item" data-page="errors" onclick="navigate('errors')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
@@ -991,7 +1000,8 @@
         </div>
       </div>
 
-      <h2 style="font-size:18px;font-weight:600;margin-bottom:16px;">Uso de Claude (Fallback)</h2>
+      <h2 style="font-size:18px;font-weight:600;margin-bottom:4px;">Uso de Claude (Fallback)</h2>
+      <p style="color:var(--text-secondary,#64748b);font-size:13px;margin-bottom:12px;">Estad&iacute;sticas globales del fallback conversacional de Claude. Se activa cuando el pipeline AI+regex no puede resolver un mensaje (intent desconocido o confianza &lt; 0.5). Limitado a 5 llamadas por usuario cada 10 minutos.</p>
       <div class="stats-grid" id="fallback-summary-stats">
         <div class="stat-card">
           <div class="label">Total Fallback Calls</div>
@@ -1011,7 +1021,12 @@
         </div>
       </div>
 
-      <h2 style="font-size:18px;font-weight:600;margin-bottom:16px;">Fallback por Usuario</h2>
+      <h2 style="font-size:18px;font-weight:600;margin-bottom:4px;">Fallback por Usuario</h2>
+      <p style="color:var(--text-secondary,#64748b);font-size:13px;margin-bottom:12px;">Resumen de llamadas al fallback conversacional de Claude por usuario. Muestra cu&aacute;ntas veces se activ&oacute; el fallback cuando el pipeline principal no pudo resolver el mensaje.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <input type="text" id="fallback-user-filter-name" placeholder="Filtrar por usuario..." oninput="filterFallbackPerUser()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;min-width:180px;">
+        <input type="text" id="fallback-user-filter-phone" placeholder="Filtrar por tel&eacute;fono..." oninput="filterFallbackPerUser()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;min-width:180px;">
+      </div>
       <div class="table-container" style="margin-bottom:24px;">
         <div class="table-responsive">
           <table>
@@ -1031,8 +1046,15 @@
           </table>
         </div>
       </div>
+      <div class="btn-row" id="fallback-per-user-pagination" style="justify-content:center;margin-top:-12px;margin-bottom:24px;"></div>
 
-      <h2 style="font-size:18px;font-weight:600;margin-bottom:16px;">Fallback Logs</h2>
+      <h2 style="font-size:18px;font-weight:600;margin-bottom:4px;">Fallback Logs</h2>
+      <p style="color:var(--text-secondary,#64748b);font-size:13px;margin-bottom:12px;">Registro detallado de cada llamada al fallback conversacional. Incluye el mensaje original del usuario, la respuesta generada por Claude, tokens consumidos y costo. Se activa cuando el intent es desconocido o tiene baja confianza.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <input type="text" id="fallback-log-filter-user" placeholder="Filtrar por usuario..." oninput="applyFallbackLogFilters()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;min-width:180px;">
+        <input type="date" id="fallback-log-filter-from" onchange="applyFallbackLogFilters()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;">
+        <input type="date" id="fallback-log-filter-to" onchange="applyFallbackLogFilters()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;">
+      </div>
       <div class="table-container">
         <div class="table-responsive">
           <table>
@@ -1058,7 +1080,14 @@
       </div>
       <div class="btn-row" id="fallback-pagination" style="justify-content:center;margin-top:16px;"></div>
 
-      <h2 style="font-size:18px;font-weight:600;margin-bottom:16px;margin-top:32px;">Mensajes No Entendidos</h2>
+      <h2 style="font-size:18px;font-weight:600;margin-bottom:4px;margin-top:32px;">Mensajes No Entendidos</h2>
+      <p style="color:var(--text-secondary,#64748b);font-size:13px;margin-bottom:12px;">Mensajes que no pudieron ser clasificados por ning&uacute;n componente del pipeline (ni AI, ni regex, ni fallback conversacional). Son candidatos para mejorar el parser o agregar nuevos intents.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <input type="text" id="unparsed-filter-user" placeholder="Filtrar por usuario..." oninput="applyUnparsedFilters()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;min-width:180px;">
+        <input type="text" id="unparsed-filter-phone" placeholder="Filtrar por tel&eacute;fono..." oninput="applyUnparsedFilters()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;min-width:180px;">
+        <input type="date" id="unparsed-filter-from" onchange="applyUnparsedFilters()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;">
+        <input type="date" id="unparsed-filter-to" onchange="applyUnparsedFilters()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;">
+      </div>
       <div class="table-container">
         <div class="table-responsive">
           <table>
@@ -1235,6 +1264,7 @@
             <thead>
               <tr>
                 <th>Nombre</th>
+                <th>Usuario</th>
                 <th>Ubicacion</th>
                 <th>Hectareas</th>
                 <th>Lotes</th>
@@ -1242,7 +1272,7 @@
               </tr>
             </thead>
             <tbody id="agro-fields-table-body">
-              <tr><td colspan="5"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>
+              <tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>
             </tbody>
           </table>
         </div>
@@ -1260,6 +1290,70 @@
       <h1 class="page-title" id="agro-field-title">Campo</h1>
       <p id="agro-field-subtitle" style="color:var(--text-secondary);margin-bottom:20px;"></p>
 
+      <!-- Stat cards -->
+      <div class="stats-grid" id="agro-field-stats" style="margin-bottom:20px;">
+        <div class="stat-card">
+          <div class="label">Lotes</div>
+          <div class="value" id="afd-stat-plots">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Obs. Semana</div>
+          <div class="value" id="afd-stat-obs">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Gastos ARS</div>
+          <div class="value expense" id="afd-stat-exp-ars">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Gastos USD</div>
+          <div class="value expense" id="afd-stat-exp-usd">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Ingresos ARS</div>
+          <div class="value income" id="afd-stat-inc-ars">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Ingresos USD</div>
+          <div class="value income" id="afd-stat-inc-usd">-</div>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="card" style="margin-bottom:20px;">
+        <h3 class="card-title">Filtros</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+          <div>
+            <label style="display:block;font-size:12px;color:var(--text-light);margin-bottom:4px;">Desde</label>
+            <input type="date" id="afd-filter-from" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--text-light);margin-bottom:4px;">Hasta</label>
+            <input type="date" id="afd-filter-to" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--text-light);margin-bottom:4px;">Lote</label>
+            <select id="afd-filter-plot" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--text-light);margin-bottom:4px;">Categoria</label>
+            <select id="afd-filter-category" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);">
+              <option value="">Todas</option>
+              <option value="malezas">Malezas</option>
+              <option value="sanidad">Sanidad</option>
+              <option value="nutricion">Nutricion</option>
+              <option value="fenologia">Fenologia</option>
+              <option value="clima">Clima</option>
+              <option value="general">General</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="filterAgroDetail()">Filtrar</button>
+          <button class="btn btn-secondary" onclick="clearAgroDetailFilters()">Limpiar</button>
+        </div>
+      </div>
+
+      <!-- Plots table -->
       <div class="card" style="margin-bottom:20px;">
         <h3 class="card-title">Lotes</h3>
         <div class="table-wrapper">
@@ -1269,23 +1363,57 @@
                 <th>Lote</th>
                 <th>Cultivo</th>
                 <th>Hectareas</th>
+                <th>Tipo Suelo</th>
+                <th>Gastos</th>
+                <th>Ingresos</th>
                 <th>Obs. Semana</th>
               </tr>
             </thead>
             <tbody id="agro-lots-table-body">
-              <tr><td colspan="4"><div class="loading"><div class="spinner"></div> Cargando lotes...</div></td></tr>
+              <tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando lotes...</div></td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
+      <!-- Observations -->
       <div class="card" style="margin-bottom:20px;">
-        <h3 class="card-title">Observaciones recientes</h3>
+        <h3 class="card-title">Observaciones</h3>
         <div id="agro-observations-list">
           <div class="loading"><div class="spinner"></div> Cargando observaciones...</div>
         </div>
+        <div style="text-align:center;margin-top:12px;">
+          <button class="btn btn-secondary" id="afd-obs-load-more" style="display:none;" onclick="loadMoreAgroObs()">Cargar mas</button>
+        </div>
       </div>
 
+      <!-- Activities -->
+      <div class="card" style="margin-bottom:20px;">
+        <h3 class="card-title">Actividades</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Cultivo</th>
+                <th>Producto</th>
+                <th>Cantidad</th>
+                <th>Lote</th>
+                <th>Usuario</th>
+              </tr>
+            </thead>
+            <tbody id="agro-activities-table-body">
+              <tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando actividades...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="text-align:center;margin-top:12px;">
+          <button class="btn btn-secondary" id="afd-act-load-more" style="display:none;" onclick="loadMoreAgroAct()">Cargar mas</button>
+        </div>
+      </div>
+
+      <!-- Reports -->
       <div class="card">
         <h3 class="card-title">Reportes</h3>
         <button class="btn btn-primary" id="btn-generate-agro-report" style="margin-bottom:12px;" onclick="generateAgroReport()">Generar Reporte Semanal</button>
@@ -1303,6 +1431,107 @@
               <tr><td colspan="4"><div class="loading"><div class="spinner"></div> Cargando reportes...</div></td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== AI Training Page ===== -->
+    <div class="page" id="page-ai-training">
+      <h1 class="page-title">AI Training</h1>
+      <div style="display:flex;gap:8px;margin-bottom:20px;">
+        <button class="btn btn-primary" onclick="showAiTrainingTab('logs')" id="ai-tab-logs">Logs</button>
+        <button class="btn" onclick="showAiTrainingTab('dataset')" id="ai-tab-dataset">Dataset</button>
+        <button class="btn" onclick="showAiTrainingTab('stats')" id="ai-tab-stats">Stats</button>
+      </div>
+
+      <!-- Logs Tab -->
+      <div id="ai-training-logs" class="ai-training-tab">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">AI Prediction Logs</h2>
+            <select id="ai-logs-filter" onchange="loadAiTrainingLogs()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);">
+              <option value="">Todos</option>
+              <option value="false">Sin revisar</option>
+              <option value="true">Revisados</option>
+            </select>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Mensaje</th>
+                  <th>Respuesta IA</th>
+                  <th>Intent</th>
+                  <th>Confianza</th>
+                  <th>Feedback</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="ai-logs-table-body">
+                <tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dataset Tab -->
+      <div id="ai-training-dataset" class="ai-training-tab" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Training Examples</h2>
+            <button class="btn btn-primary" onclick="showAddExampleForm()">+ Agregar</button>
+          </div>
+          <div id="add-example-form" style="display:none;padding:16px 20px;border-bottom:1px solid var(--border);">
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
+              <div><label style="font-size:12px;display:block;margin-bottom:4px;">Input</label><input id="new-ex-input" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);width:300px;" placeholder="Mensaje del usuario"></div>
+              <div><label style="font-size:12px;display:block;margin-bottom:4px;">Intent</label><input id="new-ex-intent" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);width:160px;" placeholder="log_expense"></div>
+              <div><label style="font-size:12px;display:block;margin-bottom:4px;">Output JSON</label><input id="new-ex-output" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);width:300px;" placeholder='{"intent":"log_expense","confidence":1.0}'></div>
+              <button class="btn btn-primary" onclick="saveNewExample()">Guardar</button>
+              <button class="btn" onclick="document.getElementById('add-example-form').style.display='none'">Cancelar</button>
+            </div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Input</th>
+                  <th>Intent</th>
+                  <th>Source</th>
+                  <th>Activo</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="ai-dataset-table-body">
+                <tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Tab -->
+      <div id="ai-training-stats" class="ai-training-tab" style="display:none;">
+        <div class="stats-grid" id="ai-stats-grid">
+          <div class="loading"><div class="spinner"></div> Cargando...</div>
+        </div>
+        <div style="display:flex;gap:20px;margin-top:20px;flex-wrap:wrap;">
+          <div class="card" style="flex:1;min-width:300px;">
+            <div class="card-header"><h2 class="card-title">Top Failures</h2></div>
+            <table>
+              <thead><tr><th>Intent</th><th>Count</th></tr></thead>
+              <tbody id="ai-failures-table-body"></tbody>
+            </table>
+          </div>
+          <div class="card" style="flex:1;min-width:300px;">
+            <div class="card-header"><h2 class="card-title">Intent Distribution</h2></div>
+            <table>
+              <thead><tr><th>Intent</th><th>Count</th><th>Avg Confidence</th></tr></thead>
+              <tbody id="ai-distribution-table-body"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -1708,6 +1937,10 @@
         document.getElementById('page-analytics').classList.add('active');
         document.querySelector('[data-page="analytics"]').classList.add('active');
         loadAnalytics();
+      } else if (page === 'ai-training') {
+        document.getElementById('page-ai-training').classList.add('active');
+        document.querySelector('[data-page="ai-training"]').classList.add('active');
+        showAiTrainingTab('logs');
       } else if (page === 'errors') {
         document.getElementById('page-errors').classList.add('active');
         document.querySelector('[data-page="errors"]').classList.add('active');
@@ -1911,9 +2144,13 @@
 
     // ========== PARSER ==========
     var unparsedOffset = 0;
-    var UNPARSED_LIMIT = 50;
+    var UNPARSED_LIMIT = 40;
     var fallbackOffset = 0;
-    var FALLBACK_LIMIT = 50;
+    var FALLBACK_LIMIT = 40;
+    var PERUSER_LIMIT = 40;
+    var perUserPage = 0;
+    var fallbackPerUserData = []; // raw data for client-side filtering
+    var fallbackPerUserFiltered = []; // filtered subset for pagination
 
     function loadParser() {
       // Load metrics
@@ -1939,22 +2176,9 @@
         document.getElementById('stat-fallback-avg').textContent =
           formatUSD(data.avgCost || 0);
 
-        // Render per-user fallback table
-        var perUserTbody = document.getElementById('fallback-per-user-tbody');
-        if (data.perUser && data.perUser.length > 0) {
-          perUserTbody.innerHTML = data.perUser.map(function(u) {
-            return '<tr>'
-              + '<td>' + (u.name || 'Sin nombre') + '</td>'
-              + '<td>' + (u.phone || '-') + '</td>'
-              + '<td>' + Number(u.calls).toLocaleString('es-AR') + '</td>'
-              + '<td>' + Number(u.tokens).toLocaleString('es-AR') + '</td>'
-              + '<td class="cost">' + formatUSD(u.cost) + '</td>'
-              + '<td>' + new Date(u.lastCall).toLocaleString('es-AR') + '</td>'
-              + '</tr>';
-          }).join('');
-        } else {
-          perUserTbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">Sin datos de fallback</div></td></tr>';
-        }
+        // Store and render per-user fallback table
+        fallbackPerUserData = data.perUser || [];
+        renderFallbackPerUser(fallbackPerUserData);
       });
 
       // Load fallback logs
@@ -1964,13 +2188,85 @@
       // Load unparsed messages
       unparsedOffset = 0;
       loadUnparsedMessages();
+
+      // Reset per-user pagination
+      perUserPage = 0;
+    }
+
+    function renderFallbackPerUser(list) {
+      fallbackPerUserFiltered = list;
+      var perUserTbody = document.getElementById('fallback-per-user-tbody');
+      var start = perUserPage * PERUSER_LIMIT;
+      var pageItems = list.slice(start, start + PERUSER_LIMIT);
+
+      if (pageItems.length > 0) {
+        perUserTbody.innerHTML = pageItems.map(function(u) {
+          return '<tr>'
+            + '<td>' + escapeHtml(u.name || 'Sin nombre') + '</td>'
+            + '<td>' + escapeHtml(u.phone || '-') + '</td>'
+            + '<td>' + Number(u.calls).toLocaleString('es-AR') + '</td>'
+            + '<td>' + Number(u.tokens).toLocaleString('es-AR') + '</td>'
+            + '<td class="cost">' + formatUSD(u.cost) + '</td>'
+            + '<td>' + new Date(u.lastCall).toLocaleString('es-AR') + '</td>'
+            + '</tr>';
+        }).join('');
+      } else {
+        perUserTbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">Sin datos de fallback</div></td></tr>';
+      }
+
+      // Pagination
+      var pag = document.getElementById('fallback-per-user-pagination');
+      var totalPages = Math.ceil(list.length / PERUSER_LIMIT);
+      if (totalPages <= 1) { pag.innerHTML = ''; return; }
+      var currentPage = perUserPage + 1;
+      var btns = '';
+      if (perUserPage > 0) {
+        btns += '<button class="btn btn-primary btn-sm" onclick="perUserPagePrev()">&larr; Anterior</button>';
+      }
+      btns += '<span style="padding:6px 12px;font-size:13px;color:var(--text-secondary,#64748b);">P&aacute;gina ' + currentPage + ' de ' + totalPages + '</span>';
+      if (currentPage < totalPages) {
+        btns += '<button class="btn btn-primary btn-sm" onclick="perUserPageNext()">Siguiente &rarr;</button>';
+      }
+      pag.innerHTML = btns;
+    }
+
+    function perUserPageNext() {
+      perUserPage++;
+      renderFallbackPerUser(fallbackPerUserFiltered);
+    }
+
+    function perUserPagePrev() {
+      perUserPage = Math.max(0, perUserPage - 1);
+      renderFallbackPerUser(fallbackPerUserFiltered);
+    }
+
+    function filterFallbackPerUser() {
+      var nameFilter = (document.getElementById('fallback-user-filter-name').value || '').toLowerCase();
+      var phoneFilter = (document.getElementById('fallback-user-filter-phone').value || '').toLowerCase();
+      var filtered = fallbackPerUserData.filter(function(u) {
+        var matchName = !nameFilter || (u.name || '').toLowerCase().indexOf(nameFilter) !== -1;
+        var matchPhone = !phoneFilter || (u.phone || '').toLowerCase().indexOf(phoneFilter) !== -1;
+        return matchName && matchPhone;
+      });
+      perUserPage = 0;
+      renderFallbackPerUser(filtered);
     }
 
     function loadUnparsedMessages() {
       var tbody = document.getElementById('unparsed-table-body');
       tbody.innerHTML = '<tr><td colspan="4"><div class="loading"><div class="spinner"></div> Cargando mensajes...</div></td></tr>';
 
-      apiFetch('/admin/api/unparsed-messages?limit=' + UNPARSED_LIMIT + '&offset=' + unparsedOffset).then(function(data) {
+      var url = '/admin/api/unparsed-messages?limit=' + UNPARSED_LIMIT + '&offset=' + unparsedOffset;
+      var uUser = (document.getElementById('unparsed-filter-user').value || '').trim();
+      var uPhone = (document.getElementById('unparsed-filter-phone').value || '').trim();
+      var uFrom = document.getElementById('unparsed-filter-from').value || '';
+      var uTo = document.getElementById('unparsed-filter-to').value || '';
+      if (uUser) url += '&user=' + encodeURIComponent(uUser);
+      if (uPhone) url += '&phone=' + encodeURIComponent(uPhone);
+      if (uFrom) url += '&from=' + encodeURIComponent(uFrom);
+      if (uTo) url += '&to=' + encodeURIComponent(uTo);
+
+      apiFetch(url).then(function(data) {
         if (!data) {
           tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state">Error al cargar mensajes</div></td></tr>';
           return;
@@ -1996,11 +2292,16 @@
 
         // Pagination
         var pag = document.getElementById('unparsed-pagination');
+        var currentPage = Math.floor(unparsedOffset / UNPARSED_LIMIT) + 1;
+        var hasNext = data.length === UNPARSED_LIMIT;
         var btns = '';
         if (unparsedOffset > 0) {
           btns += '<button class="btn btn-primary btn-sm" onclick="unparsedPrev()">&larr; Anterior</button>';
         }
-        if (data.length === UNPARSED_LIMIT) {
+        if (unparsedOffset > 0 || hasNext) {
+          btns += '<span style="padding:6px 12px;font-size:13px;color:var(--text-secondary,#64748b);">P&aacute;gina ' + currentPage + '</span>';
+        }
+        if (hasNext) {
           btns += '<button class="btn btn-primary btn-sm" onclick="unparsedNext()">Siguiente &rarr;</button>';
         }
         pag.innerHTML = btns;
@@ -2017,12 +2318,25 @@
       loadUnparsedMessages();
     }
 
+    function applyUnparsedFilters() {
+      unparsedOffset = 0;
+      loadUnparsedMessages();
+    }
+
     // ========== FALLBACK LOGS ==========
     function loadFallbackLogs() {
       var tbody = document.getElementById('fallback-table-body');
       tbody.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando logs...</div></td></tr>';
 
-      apiFetch('/admin/api/fallback-logs?limit=' + FALLBACK_LIMIT + '&offset=' + fallbackOffset).then(function(data) {
+      var url = '/admin/api/fallback-logs?limit=' + FALLBACK_LIMIT + '&offset=' + fallbackOffset;
+      var flUser = (document.getElementById('fallback-log-filter-user').value || '').trim();
+      var flFrom = document.getElementById('fallback-log-filter-from').value || '';
+      var flTo = document.getElementById('fallback-log-filter-to').value || '';
+      if (flUser) url += '&user=' + encodeURIComponent(flUser);
+      if (flFrom) url += '&from=' + encodeURIComponent(flFrom);
+      if (flTo) url += '&to=' + encodeURIComponent(flTo);
+
+      apiFetch(url).then(function(data) {
         if (!data) {
           tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">Error al cargar logs</div></td></tr>';
           return;
@@ -2054,11 +2368,16 @@
 
         // Pagination
         var pag = document.getElementById('fallback-pagination');
+        var currentPage = Math.floor(fallbackOffset / FALLBACK_LIMIT) + 1;
+        var hasNext = data.length === FALLBACK_LIMIT;
         var btns = '';
         if (fallbackOffset > 0) {
           btns += '<button class="btn btn-primary btn-sm" onclick="fallbackPrev()">&larr; Anterior</button>';
         }
-        if (data.length === FALLBACK_LIMIT) {
+        if (fallbackOffset > 0 || hasNext) {
+          btns += '<span style="padding:6px 12px;font-size:13px;color:var(--text-secondary,#64748b);">P&aacute;gina ' + currentPage + '</span>';
+        }
+        if (hasNext) {
           btns += '<button class="btn btn-primary btn-sm" onclick="fallbackNext()">Siguiente &rarr;</button>';
         }
         pag.innerHTML = btns;
@@ -2072,6 +2391,11 @@
 
     function fallbackPrev() {
       fallbackOffset = Math.max(0, fallbackOffset - FALLBACK_LIMIT);
+      loadFallbackLogs();
+    }
+
+    function applyFallbackLogFilters() {
+      fallbackOffset = 0;
       loadFallbackLogs();
     }
 
@@ -2724,7 +3048,7 @@
 
     function loadAgronomy() {
       var tbody = document.getElementById('agro-fields-table-body');
-      tbody.innerHTML = '<tr><td colspan="5"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>';
 
       Promise.all([
         apiFetch('/admin/api/agro/fields'),
@@ -2733,7 +3057,7 @@
         var fields = results[0];
         var reports = results[1];
         if (!fields) {
-          tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state">Error al cargar campos</div></td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">Error al cargar campos</div></td></tr>';
           return;
         }
 
@@ -2746,15 +3070,16 @@
 
         // Table
         if (!fields.length) {
-          tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state">No hay campos registrados</div></td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">No hay campos registrados</div></td></tr>';
           return;
         }
 
         var html = '';
         for (var i = 0; i < fields.length; i++) {
           var f = fields[i];
-          html += '<tr class="clickable" onclick="navigate(\'agro-field\', \'' + f.id + '\')">'
+          html += '<tr class="clickable" onclick="window.open(\'/admin/#agro-field/' + f.id + '\', \'_blank\')">'
             + '<td><strong>' + escapeHtml(f.name || '-') + '</strong></td>'
+            + '<td>' + escapeHtml(f.userName || 'Sin nombre') + '</td>'
             + '<td>' + escapeHtml(f.city || '-') + '</td>'
             + '<td>' + (f.hectares || '-') + '</td>'
             + '<td>' + f.plotCount + '</td>'
@@ -2765,13 +3090,48 @@
       });
     }
 
+    var afdObsOffset = 0;
+    var afdActOffset = 0;
+    var AFD_PAGE_SIZE = 30;
+
+    function formatMoney(amount) {
+      return Number(amount || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+
+    function formatMoneyBoth(ars, usd) {
+      var parts = [];
+      if (ars) parts.push('$' + formatMoney(ars));
+      if (usd) parts.push('U$D ' + formatMoney(usd));
+      return parts.join(' / ') || '-';
+    }
+
+    var EVENT_TYPE_LABELS = {
+      spraying: 'Fumigacion',
+      fertilization: 'Fertilizacion',
+      sowing: 'Siembra',
+      harvest: 'Cosecha',
+      tillage: 'Labranza',
+      irrigation: 'Riego',
+      other: 'Otro'
+    };
+
     function loadAgroFieldDetail(id) {
       currentAgroFieldId = id;
+      afdObsOffset = 0;
+      afdActOffset = 0;
       document.getElementById('agro-field-title').textContent = 'Campo';
       document.getElementById('agro-field-subtitle').textContent = '';
-      document.getElementById('agro-lots-table-body').innerHTML = '<tr><td colspan="4"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>';
+      document.getElementById('agro-lots-table-body').innerHTML = '<tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>';
       document.getElementById('agro-observations-list').innerHTML = '<div class="loading"><div class="spinner"></div> Cargando...</div>';
+      document.getElementById('agro-activities-table-body').innerHTML = '<tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>';
       document.getElementById('agro-reports-table-body').innerHTML = '<tr><td colspan="4"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>';
+      document.getElementById('afd-obs-load-more').style.display = 'none';
+      document.getElementById('afd-act-load-more').style.display = 'none';
+
+      // Reset filters
+      document.getElementById('afd-filter-from').value = '';
+      document.getElementById('afd-filter-to').value = '';
+      document.getElementById('afd-filter-category').value = '';
 
       // Load field detail
       apiFetch('/admin/api/agro/fields/' + id).then(function(data) {
@@ -2780,12 +3140,31 @@
         var subtitle = [];
         if (data.city) subtitle.push(data.city);
         if (data.hectares) subtitle.push(data.hectares + ' ha');
+        if (data.userName) subtitle.push('Usuario: ' + data.userName);
         document.getElementById('agro-field-subtitle').textContent = subtitle.join(' — ');
+
+        // Stat cards
+        var totalObs = 0;
+        for (var i = 0; i < (data.plots || []).length; i++) totalObs += (data.plots[i].obsWeek || 0);
+        document.getElementById('afd-stat-plots').textContent = (data.plots || []).length;
+        document.getElementById('afd-stat-obs').textContent = totalObs;
+        document.getElementById('afd-stat-exp-ars').textContent = '$' + formatMoney(data.totalExpensesARS);
+        document.getElementById('afd-stat-exp-usd').textContent = 'U$D ' + formatMoney(data.totalExpensesUSD);
+        document.getElementById('afd-stat-inc-ars').textContent = '$' + formatMoney(data.totalIncomesARS);
+        document.getElementById('afd-stat-inc-usd').textContent = 'U$D ' + formatMoney(data.totalIncomesUSD);
+
+        // Plot selector in filter
+        var plotSelect = document.getElementById('afd-filter-plot');
+        plotSelect.innerHTML = '<option value="">Todos</option>';
+        for (var i = 0; i < (data.plots || []).length; i++) {
+          var p = data.plots[i];
+          plotSelect.innerHTML += '<option value="' + p.id + '">' + escapeHtml(p.name) + '</option>';
+        }
 
         // Lots table
         var ltbody = document.getElementById('agro-lots-table-body');
         if (!data.plots || !data.plots.length) {
-          ltbody.innerHTML = '<tr><td colspan="4"><div class="empty-state">No hay lotes</div></td></tr>';
+          ltbody.innerHTML = '<tr><td colspan="7"><div class="empty-state">No hay lotes</div></td></tr>';
         } else {
           var html = '';
           for (var i = 0; i < data.plots.length; i++) {
@@ -2794,6 +3173,9 @@
               + '<td><strong>' + escapeHtml(p.name) + '</strong></td>'
               + '<td>' + escapeHtml(p.activeCrop || '-') + '</td>'
               + '<td>' + (p.areaHectares || '-') + '</td>'
+              + '<td>' + escapeHtml(p.soilType || '-') + '</td>'
+              + '<td>' + formatMoneyBoth(p.expensesARS, p.expensesUSD) + '</td>'
+              + '<td>' + formatMoneyBoth(p.incomesARS, p.incomesUSD) + '</td>'
               + '<td>' + (p.obsWeek > 0 ? '<span class="badge badge-green">' + p.obsWeek + '</span>' : '0') + '</td>'
               + '</tr>';
           }
@@ -2801,11 +3183,35 @@
         }
       });
 
-      // Load observations
-      apiFetch('/admin/api/agro/fields/' + id + '/observations?limit=30').then(function(data) {
+      // Load observations, activities, reports
+      loadAgroObs(id, false);
+      loadAgroAct(id, false);
+      loadAgroReports(id);
+    }
+
+    function getAfdFilterParams() {
+      var params = [];
+      var from = document.getElementById('afd-filter-from').value;
+      var to = document.getElementById('afd-filter-to').value;
+      var plotId = document.getElementById('afd-filter-plot').value;
+      var category = document.getElementById('afd-filter-category').value;
+      if (from) params.push('from=' + from);
+      if (to) params.push('to=' + to);
+      if (plotId) params.push('plotId=' + plotId);
+      if (category) params.push('category=' + category);
+      return params;
+    }
+
+    function loadAgroObs(id, append) {
+      var url = '/admin/api/agro/fields/' + id + '/observations?limit=' + AFD_PAGE_SIZE + '&offset=' + afdObsOffset;
+      var filterParams = getAfdFilterParams();
+      if (filterParams.length) url += '&' + filterParams.join('&');
+
+      apiFetch(url).then(function(data) {
         var container = document.getElementById('agro-observations-list');
         if (!data || !data.length) {
-          container.innerHTML = '<div class="empty-state">No hay observaciones</div>';
+          if (!append) container.innerHTML = '<div class="empty-state">No hay observaciones</div>';
+          document.getElementById('afd-obs-load-more').style.display = 'none';
           return;
         }
         var html = '';
@@ -2823,10 +3229,56 @@
             + '<small style="color:var(--text-light);">' + formatDateTime(o.createdAt) + ' — ' + escapeHtml(o.userName || 'Usuario') + '</small>'
             + '</div>';
         }
-        container.innerHTML = html;
+        if (append) {
+          container.innerHTML += html;
+        } else {
+          container.innerHTML = html;
+        }
+        document.getElementById('afd-obs-load-more').style.display = data.length >= AFD_PAGE_SIZE ? '' : 'none';
       });
+    }
 
-      // Load reports
+    function loadAgroAct(id, append) {
+      var url = '/admin/api/agro/fields/' + id + '/activities?limit=' + AFD_PAGE_SIZE + '&offset=' + afdActOffset;
+      var filterParams = getAfdFilterParams();
+      // For activities, remap category to eventType
+      var actParams = filterParams.filter(function(p) { return !p.startsWith('category='); });
+      var category = document.getElementById('afd-filter-category').value;
+      // Category filter only applies to observations, not activities
+      if (actParams.length) url += '&' + actParams.join('&');
+
+      apiFetch(url).then(function(data) {
+        var tbody = document.getElementById('agro-activities-table-body');
+        if (!data || !data.length) {
+          if (!append) tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state">No hay actividades</div></td></tr>';
+          document.getElementById('afd-act-load-more').style.display = 'none';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < data.length; i++) {
+          var a = data[i];
+          var typeLabel = EVENT_TYPE_LABELS[a.eventType] || a.eventType || '-';
+          var qty = a.quantity ? (a.quantity + (a.unit ? ' ' + a.unit : '')) : '-';
+          html += '<tr>'
+            + '<td>' + formatDateTime(a.eventDate) + '</td>'
+            + '<td>' + escapeHtml(typeLabel) + '</td>'
+            + '<td>' + escapeHtml(a.crop || '-') + '</td>'
+            + '<td>' + escapeHtml(a.product || '-') + '</td>'
+            + '<td>' + escapeHtml(qty) + '</td>'
+            + '<td>' + escapeHtml(a.plotName || '-') + '</td>'
+            + '<td>' + escapeHtml(a.userName || '-') + '</td>'
+            + '</tr>';
+        }
+        if (append) {
+          tbody.innerHTML += html;
+        } else {
+          tbody.innerHTML = html;
+        }
+        document.getElementById('afd-act-load-more').style.display = data.length >= AFD_PAGE_SIZE ? '' : 'none';
+      });
+    }
+
+    function loadAgroReports(id) {
       apiFetch('/admin/api/agro/fields/' + id + '/reports').then(function(data) {
         var tbody = document.getElementById('agro-reports-table-body');
         if (!data || !data.length) {
@@ -2845,6 +3297,32 @@
         }
         tbody.innerHTML = html;
       });
+    }
+
+    function filterAgroDetail() {
+      if (!currentAgroFieldId) return;
+      afdObsOffset = 0;
+      afdActOffset = 0;
+      loadAgroObs(currentAgroFieldId, false);
+      loadAgroAct(currentAgroFieldId, false);
+    }
+
+    function clearAgroDetailFilters() {
+      document.getElementById('afd-filter-from').value = '';
+      document.getElementById('afd-filter-to').value = '';
+      document.getElementById('afd-filter-plot').value = '';
+      document.getElementById('afd-filter-category').value = '';
+      filterAgroDetail();
+    }
+
+    function loadMoreAgroObs() {
+      afdObsOffset += AFD_PAGE_SIZE;
+      loadAgroObs(currentAgroFieldId, true);
+    }
+
+    function loadMoreAgroAct() {
+      afdActOffset += AFD_PAGE_SIZE;
+      loadAgroAct(currentAgroFieldId, true);
     }
 
     function generateAgroReport() {
@@ -2871,8 +3349,11 @@
     var SETTINGS_GROUP_LABELS = {
       audio: 'Audio',
       ai: 'Inteligencia Artificial',
+      bot: 'Bot y Flujos',
       agronomy: 'Agronomia',
-      limits: 'Limites'
+      limits: 'Limites',
+      system: 'Sistema',
+      onboarding: 'Onboarding'
     };
 
     function loadSettings() {
@@ -2895,7 +3376,7 @@
         }
 
         var html = '';
-        var groupOrder = ['audio', 'ai', 'agronomy', 'limits'];
+        var groupOrder = ['ai', 'bot', 'audio', 'limits', 'agronomy', 'system', 'onboarding'];
         for (var g = 0; g < groupOrder.length; g++) {
           var groupKey = groupOrder[g];
           var items = groups[groupKey];
@@ -2918,8 +3399,11 @@
             html += '<div style="flex:1;">';
             html += '<label for="' + inputId + '" style="font-weight:500;display:block;">' + escapeHtml(s.label) + '</label>';
             html += '<code style="font-size:11px;color:var(--text-light);">' + escapeHtml(item.key) + '</code> ' + sourceLabel;
+            if (s.description) {
+              html += '<div style="font-size:12px;color:var(--text-light);margin-top:4px;line-height:1.4;">' + escapeHtml(s.description) + '</div>';
+            }
             html += '</div>';
-            var isPrompt = item.key.indexOf('PROMPT') !== -1 || item.key.indexOf('prompt') !== -1;
+            var isPrompt = item.key.indexOf('PROMPT') !== -1 || item.key.indexOf('prompt') !== -1 || item.key.indexOf('MESSAGE') !== -1;
             html += '<div style="width:' + (isPrompt ? '400px' : '220px') + ';">';
 
             if (s.type === 'boolean') {
@@ -2928,7 +3412,7 @@
               html += '<input type="checkbox" id="' + inputId + '" data-key="' + item.key + '" data-type="boolean"' + checked + '>';
               html += (checked ? 'Habilitado' : 'Deshabilitado');
               html += '</label>';
-            } else if (item.key.indexOf('PROMPT') !== -1 || item.key.indexOf('prompt') !== -1) {
+            } else if (item.key.indexOf('PROMPT') !== -1 || item.key.indexOf('prompt') !== -1 || item.key.indexOf('MESSAGE') !== -1) {
               html += '<textarea id="' + inputId + '" data-key="' + item.key + '" data-type="' + s.type + '" rows="4" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;resize:vertical;">' + escapeHtml(s.value) + '</textarea>';
             } else {
               html += '<input type="' + (s.type === 'number' ? 'number' : 'text') + '" id="' + inputId + '" data-key="' + item.key + '" data-type="' + s.type + '" value="' + escapeHtml(s.value) + '" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;">';
@@ -3181,6 +3665,204 @@
 
     function closeErrorDetail() {
       document.getElementById('error-detail-modal').style.display = 'none';
+    }
+
+    // ========== AI TRAINING ==========
+
+    function showAiTrainingTab(tab) {
+      var tabs = document.querySelectorAll('.ai-training-tab');
+      for (var i = 0; i < tabs.length; i++) tabs[i].style.display = 'none';
+      document.getElementById('ai-tab-logs').className = 'btn';
+      document.getElementById('ai-tab-dataset').className = 'btn';
+      document.getElementById('ai-tab-stats').className = 'btn';
+      document.getElementById('ai-tab-' + tab).className = 'btn btn-primary';
+
+      if (tab === 'logs') {
+        document.getElementById('ai-training-logs').style.display = 'block';
+        loadAiTrainingLogs();
+      } else if (tab === 'dataset') {
+        document.getElementById('ai-training-dataset').style.display = 'block';
+        loadAiTrainingDataset();
+      } else if (tab === 'stats') {
+        document.getElementById('ai-training-stats').style.display = 'block';
+        loadAiTrainingStats();
+      }
+    }
+
+    function loadAiTrainingLogs() {
+      var filter = document.getElementById('ai-logs-filter').value;
+      var url = '/admin/api/ai-training/logs?limit=50';
+      if (filter) url += '&reviewed=' + filter;
+      apiFetch(url).then(function(data) {
+        if (!data) return;
+        var tbody = document.getElementById('ai-logs-table-body');
+        if (!data.logs || data.logs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">Sin logs</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data.logs.map(function(l) {
+          var d = new Date(l.created_at);
+          var dateStr = d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+          var intentStr = l.intent_command || l.intent_type || '-';
+          var confStr = l.confidence != null ? (l.confidence * 100).toFixed(0) + '%' : '-';
+          var responseStr = l.response_text ? escapeHtml(l.response_text) : '<span style="color:var(--text-muted);">-</span>';
+          var feedbackStr = '';
+          if (l.was_correct === true) feedbackStr = '<span style="color:var(--success);">Correcto</span>';
+          else if (l.was_correct === false) feedbackStr = '<span style="color:var(--danger);">Incorrecto</span>' + (l.corrected_intent ? ' (' + l.corrected_intent + ')' : '');
+          else feedbackStr = '<span style="color:var(--text-muted);">-</span>';
+
+          var actions = '';
+          if (l.was_correct == null) {
+            actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;" onclick="markLogCorrect(' + l.id + ',true)">OK</button>';
+            actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;" onclick="markLogIncorrect(' + l.id + ')">Mal</button>';
+          }
+          if (l.was_correct === false || l.corrected_intent) {
+            actions += '<button class="btn btn-primary" style="padding:2px 8px;font-size:11px;" onclick="promoteLog(' + l.id + ')">Promover</button>';
+          }
+
+          return '<tr>' +
+            '<td style="white-space:nowrap;">' + dateStr + '</td>' +
+            '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(l.message_text || '') + '</td>' +
+            '<td style="max-width:400px;overflow:auto;text-overflow:clip;font-size:12px;white-space:pre-wrap;word-break:break-word;vertical-align:top;min-width:250px;"><div style="max-height:120px;overflow:auto;display:block;">' + responseStr + '</div></td>' +
+            '<td><code>' + intentStr + '</code></td>' +
+            '<td>' + confStr + '</td>' +
+            '<td>' + feedbackStr + '</td>' +
+            '<td style="white-space:nowrap;">' + actions + '</td>' +
+            '</tr>';
+        }).join('');
+      });
+    }
+
+    function markLogCorrect(logId, correct) {
+      apiFetch('/admin/api/ai-training/logs/' + logId + '/feedback', {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ was_correct: correct })
+      }).then(function() { loadAiTrainingLogs(); });
+    }
+
+    function markLogIncorrect(logId) {
+      var corrected = prompt('Intent correcto (dejar vacio para solo marcar incorrecto):');
+      apiFetch('/admin/api/ai-training/logs/' + logId + '/feedback', {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ was_correct: false, corrected_intent: corrected || null })
+      }).then(function() { loadAiTrainingLogs(); });
+    }
+
+    function promoteLog(logId) {
+      apiFetch('/admin/api/ai-training/promote/' + logId, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+      }).then(function(data) {
+        if (data) {
+          alert('Ejemplo promovido al dataset (ID: ' + data.id + ')');
+          loadAiTrainingLogs();
+        }
+      });
+    }
+
+    function loadAiTrainingDataset() {
+      apiFetch('/admin/api/ai-training/examples?limit=100').then(function(data) {
+        if (!data) return;
+        var tbody = document.getElementById('ai-dataset-table-body');
+        if (!data.examples || data.examples.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Sin ejemplos</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data.examples.map(function(e) {
+          return '<tr>' +
+            '<td>' + e.id + '</td>' +
+            '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(e.input) + '</td>' +
+            '<td><code>' + e.intent + '</code></td>' +
+            '<td>' + e.source + '</td>' +
+            '<td>' + (e.is_active ? '<span style="color:var(--success);">Si</span>' : '<span style="color:var(--text-muted);">No</span>') + '</td>' +
+            '<td style="white-space:nowrap;">' +
+              '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;" onclick="toggleExampleActive(' + e.id + ',' + !e.is_active + ')">' + (e.is_active ? 'Desactivar' : 'Activar') + '</button>' +
+              '<button class="btn" style="padding:2px 8px;font-size:11px;color:var(--danger);" onclick="deleteExample(' + e.id + ')">Eliminar</button>' +
+            '</td></tr>';
+        }).join('');
+      });
+    }
+
+    function showAddExampleForm() {
+      document.getElementById('add-example-form').style.display = 'block';
+      document.getElementById('new-ex-input').value = '';
+      document.getElementById('new-ex-intent').value = '';
+      document.getElementById('new-ex-output').value = '';
+    }
+
+    function saveNewExample() {
+      var input = document.getElementById('new-ex-input').value.trim();
+      var intent = document.getElementById('new-ex-intent').value.trim();
+      var outputStr = document.getElementById('new-ex-output').value.trim();
+      if (!input || !intent) { alert('Input e intent son requeridos'); return; }
+
+      var expectedOutput;
+      try {
+        expectedOutput = outputStr ? JSON.parse(outputStr) : { intent: intent, confidence: 1.0 };
+      } catch(e) { alert('JSON invalido en Output'); return; }
+
+      apiFetch('/admin/api/ai-training/examples', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ input: input, expected_output: expectedOutput, intent: intent })
+      }).then(function(data) {
+        if (data) {
+          document.getElementById('add-example-form').style.display = 'none';
+          loadAiTrainingDataset();
+        }
+      });
+    }
+
+    function toggleExampleActive(id, active) {
+      apiFetch('/admin/api/ai-training/examples/' + id, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ is_active: active })
+      }).then(function() { loadAiTrainingDataset(); });
+    }
+
+    function deleteExample(id) {
+      if (!confirm('Eliminar ejemplo #' + id + '?')) return;
+      apiFetch('/admin/api/ai-training/examples/' + id, { method: 'DELETE' })
+        .then(function() { loadAiTrainingDataset(); });
+    }
+
+    function loadAiTrainingStats() {
+      apiFetch('/admin/api/ai-training/stats').then(function(data) {
+        if (!data) return;
+        var grid = document.getElementById('ai-stats-grid');
+        var accStr = data.accuracy != null ? data.accuracy + '%' : 'N/A';
+        var accColor = data.accuracy != null && data.accuracy >= 80 ? 'var(--success)' : (data.accuracy != null && data.accuracy >= 60 ? 'var(--warning)' : 'var(--danger)');
+        grid.innerHTML =
+          '<div class="stat-card"><div class="stat-value" style="color:' + accColor + ';">' + accStr + '</div><div class="stat-label">Accuracy (30d)</div></div>' +
+          '<div class="stat-card"><div class="stat-value">' + data.reviewed + '</div><div class="stat-label">Revisados</div></div>' +
+          '<div class="stat-card"><div class="stat-value" style="color:var(--success);">' + data.correct + '</div><div class="stat-label">Correctos</div></div>' +
+          '<div class="stat-card"><div class="stat-value" style="color:var(--danger);">' + data.incorrect + '</div><div class="stat-label">Incorrectos</div></div>' +
+          '<div class="stat-card"><div class="stat-value">' + data.activeExamples + '</div><div class="stat-label">Ejemplos Activos</div></div>';
+
+        // Top failures
+        var failTbody = document.getElementById('ai-failures-table-body');
+        if (data.topFailures && data.topFailures.length > 0) {
+          failTbody.innerHTML = data.topFailures.map(function(f) {
+            return '<tr><td><code>' + (f.intent || '-') + '</code></td><td>' + f.count + '</td></tr>';
+          }).join('');
+        } else {
+          failTbody.innerHTML = '<tr><td colspan="2" style="color:var(--text-muted);">Sin datos</td></tr>';
+        }
+
+        // Intent distribution
+        var distTbody = document.getElementById('ai-distribution-table-body');
+        if (data.intentDistribution && data.intentDistribution.length > 0) {
+          distTbody.innerHTML = data.intentDistribution.map(function(d) {
+            var confStr = d.avgConfidence != null ? (d.avgConfidence * 100).toFixed(0) + '%' : '-';
+            return '<tr><td><code>' + (d.intent || '-') + '</code></td><td>' + d.count + '</td><td>' + confStr + '</td></tr>';
+          }).join('');
+        } else {
+          distTbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted);">Sin datos</td></tr>';
+        }
+      });
     }
 
     // ========== INIT ==========

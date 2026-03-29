@@ -32,7 +32,7 @@ const SYSTEM_COMMANDS = new Set([
   'greeting', 'help', 'thanks', 'ack', 'dollar',
   'menu', 'show_expense_menu', 'show_income_menu', 'show_agro_menu',
   'show_fields_menu', 'show_rain_menu', 'show_reports_menu',
-  'prompt_rainfall', 'prompt_add_field',
+  'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',
   'show_alerts', 'set_rain_threshold',
   'enable_rain_alerts', 'disable_rain_alerts',
   'enable_budget_alerts', 'disable_budget_alerts',

@@ -14,13 +14,14 @@ export class ConversationLogger {
     aiUsed?: boolean,
     processingTimeMs?: number | null,
     responseInteractive?: boolean,
+    confidence?: number | null,
   ): Promise<void> {
     const truncatedResponse = responseText ? responseText.slice(0, 500) : null;
     await query(
       `INSERT INTO conversation_logs
        (user_id, phone, direction, message_text, intent_type, intent_command,
-        flow_state, flow_step, ai_used, response_text, response_interactive, processing_time_ms)
-       VALUES ($1, $2, 'inbound', $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        flow_state, flow_step, ai_used, response_text, response_interactive, processing_time_ms, confidence)
+       VALUES ($1, $2, 'inbound', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         userId,
         phone,
@@ -33,6 +34,7 @@ export class ConversationLogger {
         truncatedResponse,
         responseInteractive ?? false,
         processingTimeMs ?? null,
+        confidence ?? null,
       ],
     );
   }

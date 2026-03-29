@@ -85,8 +85,8 @@ export async function validateFieldAsync(
 
   const normalizedInput = normalize(input);
 
-  // Numeric selection: "1", "2", etc.
-  const num = parseInt(input, 10);
+  // Numeric selection: "1", "2", etc. — only if entire input is a number
+  const num = /^\d+$/.test(input.trim()) ? parseInt(input, 10) : NaN;
   if (!isNaN(num) && num >= 1 && num <= fields.length) {
     return { value: fields[num - 1] };
   }
@@ -168,6 +168,14 @@ export function buildPlotInteractiveGrouped(
   if (fieldNames.length <= 1) {
     return buildPlotInteractive(plots.map(p => p.plotName), body);
   }
+
+  // Detect duplicate plot names (appear in >1 field)
+  const nameCount = new Map<string, number>();
+  for (const p of plots) {
+    const key = p.plotName.toLowerCase();
+    nameCount.set(key, (nameCount.get(key) || 0) + 1);
+  }
+
   // Group by field as separate sections
   const sections: { title: string; rows: { id: string; title: string }[] }[] = [];
   let totalRows = 0;
@@ -176,10 +184,18 @@ export function buildPlotInteractiveGrouped(
     const fieldPlots = plots.filter(p => p.fieldName === fn);
     const rows = fieldPlots
       .slice(0, MAX_INTERACTIVE_ROWS + 1 - totalRows)
-      .map(p => ({
-        id: `flow_plot_${p.plotName.toLowerCase().replace(/\s+/g, '_')}`,
-        title: p.plotName.length > 24 ? p.plotName.slice(0, 24) : p.plotName,
-      }));
+      .map(p => {
+        const plotSlug = p.plotName.toLowerCase().replace(/\s+/g, '_');
+        const isDuplicate = (nameCount.get(p.plotName.toLowerCase()) || 0) > 1;
+        // Duplicate names get field__plot ID format; unique names keep backward-compatible format
+        const id = isDuplicate
+          ? `flow_plot_${fn.toLowerCase().replace(/\s+/g, '_')}__${plotSlug}`
+          : `flow_plot_${plotSlug}`;
+        return {
+          id,
+          title: p.plotName.length > 24 ? p.plotName.slice(0, 24) : p.plotName,
+        };
+      });
     totalRows += rows.length;
     sections.push({ title: fn, rows });
   }
@@ -191,6 +207,66 @@ export function buildPlotInteractiveGrouped(
   };
 }
 
+/**
+ * Extract a field hint from user input when plot name alone is ambiguous.
+ * Supports patterns:
+ *   "1a la esperanza", "1a en la esperanza", "1a de don pedro", "1a (la esperanza)", "campo don pedro 1a"
+ * Returns { plotName, fieldName } or null.
+ */
+export function extractFieldHint(
+  rawInput: string,
+  plots: PlotWithField[],
+): { plotName: string; fieldName: string } | null {
+  const input = normalize(rawInput);
+  const fieldNames = [...new Set(plots.map(p => p.fieldName))];
+
+  for (const fn of fieldNames) {
+    const normField = normalize(fn);
+    const fieldPlots = plots.filter(p => p.fieldName === fn);
+
+    // Pattern: "campo {field} {plot}" → "campo don pedro 1a"
+    const campoPrefix = `campo ${normField} `;
+    if (input.startsWith(campoPrefix)) {
+      const plotPart = input.slice(campoPrefix.length).trim();
+      const match = fieldPlots.find(p => normalize(p.plotName) === plotPart || levenshtein(normalize(p.plotName), plotPart) <= 1);
+      if (match) return { plotName: match.plotName, fieldName: fn };
+    }
+
+    // Pattern: "{plot} (field)" → "1a (la esperanza)"
+    const parenMatch = input.match(new RegExp(`^(.+?)\\s*\\(\\s*${escapeRegex(normField)}\\s*\\)$`));
+    if (parenMatch) {
+      const plotPart = parenMatch[1].trim();
+      const match = fieldPlots.find(p => normalize(p.plotName) === plotPart || levenshtein(normalize(p.plotName), plotPart) <= 1);
+      if (match) return { plotName: match.plotName, fieldName: fn };
+    }
+
+    // Pattern: "{plot} en/de {field}" → "1a en la esperanza", "1a de don pedro"
+    for (const prep of ['en', 'de']) {
+      const sepIdx = input.indexOf(` ${prep} ${normField}`);
+      if (sepIdx > 0 && sepIdx + ` ${prep} ${normField}`.length === input.length) {
+        const plotPart = input.slice(0, sepIdx).trim();
+        const match = fieldPlots.find(p => normalize(p.plotName) === plotPart || levenshtein(normalize(p.plotName), plotPart) <= 1);
+        if (match) return { plotName: match.plotName, fieldName: fn };
+      }
+    }
+
+    // Pattern: "{plot} {field}" (suffix) → "1a la esperanza"
+    if (input.endsWith(` ${normField}`)) {
+      const plotPart = input.slice(0, input.length - normField.length - 1).trim();
+      if (plotPart.length > 0) {
+        const match = fieldPlots.find(p => normalize(p.plotName) === plotPart || levenshtein(normalize(p.plotName), plotPart) <= 1);
+        if (match) return { plotName: match.plotName, fieldName: fn };
+      }
+    }
+  }
+
+  return null;
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export async function validatePlotAsync(
   input: string,
   _data: Record<string, unknown>,
@@ -199,32 +275,93 @@ export async function validatePlotAsync(
   const val = input.trim();
   if (val.length < 1) return { error: 'Ingresá un nombre de lote válido.' };
 
-  const plots = await entityValidator.getUserPlotNames(userId);
+  const plotsWithFields = await entityValidator.getUserPlotsWithFields(userId);
 
   // No plots exist → accept any name
-  if (plots.length === 0) {
+  if (plotsWithFields.length === 0) {
     return { value: val };
   }
 
+  // Flatten to unique plot names for numeric selection
+  const uniquePlotNames = [...new Set(plotsWithFields.map(p => p.plotName))];
   const normalizedInput = normalize(input);
 
-  // Numeric selection
-  const num = parseInt(input, 10);
-  if (!isNaN(num) && num >= 1 && num <= plots.length) {
-    return { value: plots[num - 1] };
+  // Numeric selection — only if the ENTIRE input is a number (avoid "1B" → 1)
+  const num = /^\d+$/.test(input.trim()) ? parseInt(input, 10) : NaN;
+  if (!isNaN(num) && num >= 1 && num <= uniquePlotNames.length) {
+    const selected = uniquePlotNames[num - 1];
+    // Check if this name appears in multiple fields
+    const matches = plotsWithFields.filter(p => p.plotName === selected);
+    if (matches.length === 1) return { value: selected };
+    // Ambiguous — fall through to disambiguation
   }
 
   // Exact match
-  for (const p of plots) {
-    if (normalize(p) === normalizedInput) return { value: p };
+  const exactMatches = plotsWithFields.filter(p => normalize(p.plotName) === normalizedInput);
+  if (exactMatches.length === 1) return { value: exactMatches[0].plotName };
+
+  if (exactMatches.length > 1) {
+    // Duplicate plot name across fields — check for pre-stored field hint first (from interactive callback)
+    const preHint = _data._resolvedFieldHint as string | undefined;
+    if (preHint) {
+      const hintMatch = exactMatches.find(p => normalize(p.fieldName) === normalize(preHint));
+      if (hintMatch) return { value: hintMatch.plotName };
+    }
+    // Try extracting field hint from input text
+    const hint = extractFieldHint(input, plotsWithFields);
+    if (hint) {
+      _data._resolvedFieldHint = hint.fieldName;
+      return { value: hint.plotName };
+    }
+    // Show disambiguation message
+    const options = exactMatches.map(p => `• ${p.plotName} (${p.fieldName})`).join('\n');
+    return { error: `Hay varios lotes "${exactMatches[0].plotName}". ¿Cuál?\n${options}\n\nEj: "${exactMatches[0].plotName} ${exactMatches[0].fieldName}"` };
   }
 
   // Fuzzy match
-  for (const p of plots) {
-    if (levenshtein(normalize(p), normalizedInput) <= 2) return { value: p };
+  const fuzzyMatches: PlotWithField[] = [];
+  for (const p of plotsWithFields) {
+    if (levenshtein(normalize(p.plotName), normalizedInput) <= 2) {
+      fuzzyMatches.push(p);
+    }
+  }
+  // Deduplicate by plotName+fieldName
+  const uniqueFuzzy = fuzzyMatches.filter((p, i, arr) => arr.findIndex(x => x.plotName === p.plotName && x.fieldName === p.fieldName) === i);
+  if (uniqueFuzzy.length === 1) return { value: uniqueFuzzy[0].plotName };
+  if (uniqueFuzzy.length > 1) {
+    // Check if all matches are the same plot name (duplicates across fields)
+    const uniqueNames = [...new Set(uniqueFuzzy.map(p => p.plotName))];
+    if (uniqueNames.length === 1) {
+      const hint = extractFieldHint(input, plotsWithFields);
+      if (hint) {
+        _data._resolvedFieldHint = hint.fieldName;
+        return { value: hint.plotName };
+      }
+      const options = uniqueFuzzy.map(p => `• ${p.plotName} (${p.fieldName})`).join('\n');
+      return { error: `Hay varios lotes "${uniqueFuzzy[0].plotName}". ¿Cuál?\n${options}\n\nEj: "${uniqueFuzzy[0].plotName} ${uniqueFuzzy[0].fieldName}"` };
+    }
+    // Multiple different plot names matched fuzzily — try field hint
+    const hint = extractFieldHint(input, plotsWithFields);
+    if (hint) {
+      _data._resolvedFieldHint = hint.fieldName;
+      return { value: hint.plotName };
+    }
+    // Return first fuzzy match (existing behavior for non-duplicate case)
+    return { value: uniqueFuzzy[0].plotName };
   }
 
-  // No match → show available plots
-  const lines = plots.map((p, i) => `${i + 1}. ${p}`);
-  return { error: `No encontré ese lote.\n\nTus lotes:\n${lines.join('\n')}` };
+  // No match — try extractFieldHint for "plotname fieldname" pattern that didn't match above
+  const hint = extractFieldHint(input, plotsWithFields);
+  if (hint) {
+    _data._resolvedFieldHint = hint.fieldName;
+    return { value: hint.plotName };
+  }
+
+  // Show grouped list of available plots
+  const fieldNames = [...new Set(plotsWithFields.map(p => p.fieldName))];
+  let listText = '';
+  for (const fn of fieldNames) {
+    listText += `*${fn}:* ${plotsWithFields.filter(p => p.fieldName === fn).map(p => p.plotName).join(', ')}\n`;
+  }
+  return { error: `No encontré ese lote.\n\nTus lotes:\n${listText.trim()}` };
 }

@@ -29,7 +29,7 @@ describe('ConversationHistoryService', () => {
       ],
     });
 
-    const turns = await service.getRecentTurns(1 as any, 3);
+    const turns = await service.getRecentTurns(1 as any, 4000);
     expect(turns[0]).toEqual({ role: 'user', content: 'first' });
     expect(turns[1]).toEqual({ role: 'assistant', content: 'reply1' });
     expect(turns[2]).toEqual({ role: 'user', content: 'second' });
@@ -38,7 +38,7 @@ describe('ConversationHistoryService', () => {
     expect(turns[5]).toEqual({ role: 'assistant', content: 'reply3' });
   });
 
-  it('truncates oldest turns to stay within 800 char budget', async () => {
+  it('truncates oldest turns to stay within char budget', async () => {
     const longText = 'A'.repeat(400);
     mockQuery.mockResolvedValue({
       rows: [
@@ -47,7 +47,7 @@ describe('ConversationHistoryService', () => {
       ],
     });
 
-    const turns = await service.getRecentTurns(1 as any, 3);
+    const turns = await service.getRecentTurns(1 as any, 800);
     // The long pair (800 chars) should be dropped, keeping the short pair
     const totalChars = turns.reduce((sum, t) => sum + t.content.length, 0);
     expect(totalChars).toBeLessThanOrEqual(800);
@@ -65,12 +65,18 @@ describe('ConversationHistoryService', () => {
     expect(turns).toEqual([{ role: 'user', content: 'hello' }]);
   });
 
-  it('queries with correct limit parameter', async () => {
+  it('returns empty array when maxChars is 0', async () => {
+    const turns = await service.getRecentTurns(1 as any, 0);
+    expect(turns).toEqual([]);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it('queries without SQL LIMIT', async () => {
     mockQuery.mockResolvedValue({ rows: [] });
-    await service.getRecentTurns(42 as any, 5);
+    await service.getRecentTurns(42 as any, 4000);
     expect(mockQuery).toHaveBeenCalledWith(
       expect.stringContaining('conversation_logs'),
-      [42, 5],
+      [42],
     );
   });
 });

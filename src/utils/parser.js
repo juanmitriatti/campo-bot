@@ -741,6 +741,14 @@ const COMMAND_PATTERNS = [
     },
   },
   {
+    // "quiero agregar un lote" / "agregar lote" / "crear un lote" — generic, no name given
+    command: "prompt_add_plot",
+    patterns: [
+      /^(?:quiero\s+)?(?:agregar|agrega|crear|añadir|nuevo)\s+(?:(?:un|el|mi)\s+)?lote\s*$/,
+    ],
+    extract: () => ({}),
+  },
+  {
     command: "plot_info",
     patterns: [
       /(?:info|detalle|datos?|informacion)\s+(?:del?\s+)?lote\s+(.+?)\s+(?:del?\s+)?campo\s+(.+)/,
@@ -821,16 +829,20 @@ const COMMAND_PATTERNS = [
     patterns: [
       /(?:qu[eé]\s+pas[oó]|que\s+hay|actividad(?:es)?|historial)\s+(?:en\s+)?(?:(?:el|del?)\s+)?lote\s+(.+)/,
       // "última vez que se sembró/fumigó/fertilizó [en] [el] lote X"
-      /(?:ultima|última)\s+(?:vez\s+que\s+)?(?:se\s+)?(?:fumig|pulveriz|fertiliz|sembr|cosech|reg|ar[oó]|labr)\S*\s+(?:(?:en|del?)\s+)?(?:(?:el|mi)\s+)?lote\s+(.+)/,
+      /(?:ultima|última)\s+(?:vez\s+(?:que\s+)?)?(?:se\s+)?(?:fumig|pulveriz|fertiliz|sembr|cosech|reg|ar[oó]|labr)\S*\s+(?:.*?\s+)?(?:(?:en|del?)\s+)?(?:(?:el|mi)\s+)?lote\s+(.+)/,
       // "se sembró/fumigó [en] [el] lote X" (binary questions)
       /(?:se\s+)?(?:fumig[oó]|pulveriz[oó]|fertiliz[oó]|sembr[oó]|cosech[oó]|reg[oó]|ar[oó]|labr[oó])\s+(?:(?:en|del?)\s+)?(?:(?:el|mi)\s+)?lote\s+(.+)/,
-      // "cuando se sembró/fumigó [en] [el] lote X"
-      /(?:cuando|cuándo)\s+(?:se\s+)?(?:fumig|pulveriz|fertiliz|sembr|cosech|reg|ar[oó]|labr)\S*\s+(?:(?:en|del?)\s+)?(?:(?:el|mi)\s+)?lote\s+(.+)/,
+      // "cuando se sembró/fumigó [por última vez] [en] [el] lote X"
+      /(?:cuando|cuándo)\s+(?:se\s+)?(?:fumig|pulveriz|fertiliz|sembr|cosech|reg|ar[oó]|labr)\S*\s+(?:.*?\s+)?(?:(?:en|del?)\s+)?(?:(?:el|mi)\s+)?lote\s+(.+)/,
       // "hubo lluvia en el lote X"
       /(?:hubo|hay|cay[oó]|llov[ií][oó]?)\s+(?:lluvias?|precipitacion(?:es)?|agua)\s+(?:(?:en|del?)\s+)?(?:(?:el|mi)\s+)?lote\s+(.+)/,
     ],
     extract: (m, fullText) => {
-      const plotName = m[1]?.trim() || null;
+      const plotName = m[1]?.trim()
+        .replace(/[?¿!¡.,;:]+$/g, '')
+        .replace(/\s+(?:en|de|del|durante|este|esta|estos|estas|el|la|los|las)\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|semana|mes|año|hoy|ayer|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo).*$/i, '')
+        .replace(/\s+(?:(?:ultimos|últimos|ultimas|últimas)\s+\d+\s+d[ií]as?).*$/i, '')
+        .trim() || null;
       const activityFilter = parseActivityFilter(fullText);
       const lower = fullText.toLowerCase();
       const isUltimaVez = /(?:ultima|última)\s+vez/.test(lower)
@@ -866,6 +878,15 @@ const COMMAND_PATTERNS = [
       fieldName: m[2].trim(),
       city: m[3] ? m[3].trim().charAt(0).toUpperCase() + m[3].trim().slice(1) : null,
     }),
+  },
+
+  {
+    // "quiero agregar un campo" / "crear un campo" — generic, no name given
+    command: "prompt_add_field",
+    patterns: [
+      /^(?:quiero\s+)?(?:agregar|agrega|crear|añadir|nuevo)\s+(?:(?:un|el|mi)\s+)?campo\s*$/,
+    ],
+    extract: () => ({}),
   },
 
   // --- Restaurar campo/lote ---

@@ -1,9 +1,23 @@
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import ObservationTable from '../components/ObservationTable';
+import ActivityTable from '../components/ActivityTable';
+import ExpenseTable from '../components/ExpenseTable';
+import IncomeTable from '../components/IncomeTable';
+
+type Tab = 'observations' | 'activities' | 'expenses' | 'incomes';
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'observations', label: 'Observaciones' },
+  { key: 'activities', label: 'Actividades' },
+  { key: 'expenses', label: 'Gastos' },
+  { key: 'incomes', label: 'Ingresos' },
+];
 
 export default function Dashboard() {
   const { user, plan, features } = useAuth();
+  const [activeTab, setActiveTab] = useState<Tab>('observations');
 
   if (!user) return null;
 
@@ -46,15 +60,29 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Observations */}
+        {/* Tabs */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-800">Mis observaciones</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Observaciones agronómicas registradas por WhatsApp
-            </p>
+            <div className="flex gap-6">
+              {TABS.map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`pb-2 text-sm font-semibold border-b-2 transition-colors ${
+                    activeTab === tab.key
+                      ? 'border-campo-600 text-campo-700'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <ObservationTable />
+          {activeTab === 'observations' && <ObservationTable />}
+          {activeTab === 'activities' && <ActivityTable />}
+          {activeTab === 'expenses' && <ExpenseTable />}
+          {activeTab === 'incomes' && <IncomeTable />}
         </div>
       </main>
     </div>

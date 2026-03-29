@@ -26,65 +26,90 @@ const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const SETTING_DEFINITIONS = {
   // Audio
-  MAX_AUDIO_DURATION_SECONDS: { default: '120', type: 'number', group: 'audio', label: 'Duración máxima de audio (seg)' },
-  OPENAI_WHISPER_MODEL: { default: 'whisper-1', type: 'string', group: 'audio', label: 'Modelo Whisper' },
-  SPEECH_TIMEOUT_MS: { default: '30000', type: 'number', group: 'audio', label: 'Timeout transcripción (ms)' },
+  MAX_AUDIO_DURATION_SECONDS: { default: '120', type: 'number', group: 'audio', label: 'Duración máxima de audio (seg)', description: 'Límite de duración para los audios de WhatsApp que el bot acepta transcribir. Audios más largos se rechazan.' },
+  OPENAI_WHISPER_MODEL: { default: 'whisper-1', type: 'string', group: 'audio', label: 'Modelo Whisper', description: 'Modelo de OpenAI usado para la transcripción de voz a texto. "whisper-1" es el estándar.' },
+  SPEECH_TIMEOUT_MS: { default: '30000', type: 'number', group: 'audio', label: 'Timeout transcripción (ms)', description: 'Tiempo máximo de espera para que la API de transcripción responda antes de cancelar.' },
+  MAX_AUDIO_PER_HOUR: { default: '10', type: 'number', group: 'limits', label: 'Máx audios por hora por usuario', description: 'Rate limit de audios por usuario por hora. Previene abuso del servicio de transcripción.' },
 
-  // AI
-  CLAUDE_FALLBACK_MODEL: { default: 'claude-haiku-4-5-20251001', type: 'string', group: 'ai', label: 'Modelo Claude fallback' },
-  CLAUDE_FALLBACK_MAX_TOKENS: { default: '250', type: 'number', group: 'ai', label: 'Max tokens fallback' },
-  CLAUDE_FALLBACK_ENABLED: { default: 'true', type: 'boolean', group: 'ai', label: 'Claude fallback habilitado' },
+  // AI — Legacy fallback (claude.js)
+  CLAUDE_FALLBACK_MODEL: { default: 'claude-haiku-4-5-20251001', type: 'string', group: 'ai', label: 'Modelo Claude fallback legacy', description: 'Modelo usado por el parser de gastos/ingresos legacy (services/claude.js). Solo se usa si el pipeline AI-first falla.' },
+  CLAUDE_FALLBACK_MAX_TOKENS: { default: '250', type: 'number', group: 'ai', label: 'Max tokens fallback legacy', description: 'Tokens máximos para la respuesta del parser legacy de gastos/ingresos.' },
+  CLAUDE_FALLBACK_ENABLED: { default: 'true', type: 'boolean', group: 'ai', label: 'Claude fallback legacy habilitado', description: 'Habilita/deshabilita el parser legacy de gastos. Si está deshabilitado, solo funciona el pipeline AI-first.' },
 
-  // AI Intent Extraction
-  AI_INTENT_ENABLED: { default: 'true', type: 'boolean', group: 'ai', label: 'Extracción de intención por IA habilitada' },
-  AI_INTENT_MODEL: { default: 'claude-haiku-4-5-20251001', type: 'string', group: 'ai', label: 'Modelo para extracción de intención' },
-  AI_INTENT_MAX_TOKENS: { default: '300', type: 'number', group: 'ai', label: 'Max tokens extracción de intención' },
-  AI_INTENT_TIMEOUT_MS: { default: '5000', type: 'number', group: 'ai', label: 'Timeout extracción de intención (ms)' },
-  AI_INTENT_MIN_CONFIDENCE: { default: '0.70', type: 'number', group: 'ai', label: 'Confianza mínima para aceptar intención IA' },
-  CONVERSATIONAL_FALLBACK_ENABLED: { default: 'true', type: 'boolean', group: 'ai', label: 'Fallback conversacional habilitado' },
-  CONVERSATIONAL_FALLBACK_MODEL: { default: 'claude-haiku-4-5-20251001', type: 'string', group: 'ai', label: 'Modelo fallback conversacional' },
-  CONVERSATIONAL_FALLBACK_MAX_TOKENS: { default: '120', type: 'number', group: 'ai', label: 'Max tokens fallback conversacional' },
-  CONVERSATIONAL_FALLBACK_TIMEOUT_MS: { default: '5000', type: 'number', group: 'ai', label: 'Timeout fallback conversacional (ms)' },
-  CONVERSATIONAL_FALLBACK_TEMPERATURE: { default: '0.3', type: 'number', group: 'ai', label: 'Temperature fallback conversacional' },
-  CONVERSATIONAL_FALLBACK_SYSTEM_PROMPT: { default: 'Sos un asistente agrícola en un bot de WhatsApp para productores argentinos. Respondé brevemente en español (máximo 2 oraciones). Si la pregunta es sobre agricultura, cultivos, lluvia o campo, dá una respuesta útil y corta. Si preguntan qué puede hacer el bot, explicá brevemente: registrar gastos, ingresos, lluvias, actividades agrícolas y pedir reportes. Nunca inventes datos del campo del usuario. Hablá en general.', type: 'string', group: 'ai', label: 'System prompt del fallback conversacional' },
-  AI_INTENT_SYSTEM_PROMPT_PREFIX: { default: 'Asistente agrícola argentino.', type: 'string', group: 'ai', label: 'Prefijo system prompt extracción de intención' },
-  CONVERSATIONAL_FALLBACK_RATE_LIMIT_MAX: { default: '5', type: 'number', group: 'limits', label: 'Máx llamadas fallback por ventana' },
-  CONVERSATIONAL_FALLBACK_RATE_LIMIT_WINDOW_MS: { default: '600000', type: 'number', group: 'limits', label: 'Ventana rate limit fallback (ms)' },
+  // AI Intent Extraction (primary pipeline)
+  AI_INTENT_ENABLED: { default: 'true', type: 'boolean', group: 'ai', label: 'Pipeline IA habilitado (kill switch)', description: 'Kill switch principal. Si se desactiva, TODOS los mensajes van al pipeline regex legacy. Usar solo en emergencia.' },
+  AI_INTENT_MODEL: { default: 'claude-haiku-4-5-20251001', type: 'string', group: 'ai', label: 'Modelo para extracción de intención', description: 'Modelo Claude usado para clasificar intención del mensaje del usuario (el motor principal del bot).' },
+  AI_INTENT_MAX_TOKENS: { default: '300', type: 'number', group: 'ai', label: 'Max tokens extracción de intención', description: 'Tokens máximos para la respuesta JSON del clasificador de intención.' },
+  AI_INTENT_TIMEOUT_MS: { default: '5000', type: 'number', group: 'ai', label: 'Timeout extracción de intención (ms)', description: 'Tiempo máximo de espera para la clasificación IA. Si expira, cae al pipeline regex.' },
+  AI_INTENT_MIN_CONFIDENCE: { default: '0.70', type: 'number', group: 'ai', label: 'Confianza mínima para aceptar intención', description: 'Umbral de confianza IA. Por debajo de este valor, el resultado se descarta y se usa regex fallback.' },
+  AI_INTENT_SYSTEM_PROMPT_PREFIX: { default: 'Asistente agrícola argentino.', type: 'string', group: 'ai', label: 'Prefijo system prompt IA', description: 'Primera línea del system prompt enviado al clasificador de intención. Permite ajustar el tono sin tocar código.' },
+  CONVERSATION_HISTORY_MAX_CHARS: { default: '4000', type: 'number', group: 'ai', label: 'Máx caracteres historial conversación', description: 'Cantidad máxima de caracteres del historial de conversación enviados como contexto al clasificador IA. Más caracteres = más contexto pero más tokens consumidos (~4 chars = 1 token). 0 = sin historial.' },
+
+  // Conversational fallback
+  CONVERSATIONAL_FALLBACK_ENABLED: { default: 'true', type: 'boolean', group: 'ai', label: 'Fallback conversacional habilitado', description: 'Cuando el bot no entiende un mensaje (intent=unknown), genera una respuesta breve con IA. Si se desactiva, muestra texto de ayuda estático.' },
+  CONVERSATIONAL_FALLBACK_MODEL: { default: 'claude-haiku-4-5-20251001', type: 'string', group: 'ai', label: 'Modelo fallback conversacional', description: 'Modelo Claude usado para respuestas conversacionales cuando no se detecta intención clara.' },
+  CONVERSATIONAL_FALLBACK_MAX_TOKENS: { default: '300', type: 'number', group: 'ai', label: 'Max tokens fallback conversacional', description: 'Tokens máximos para respuestas conversacionales. Mantener bajo (200-400) para respuestas breves pero completas.' },
+  CONVERSATIONAL_FALLBACK_TIMEOUT_MS: { default: '5000', type: 'number', group: 'ai', label: 'Timeout fallback conversacional (ms)', description: 'Tiempo máximo de espera para la respuesta conversacional.' },
+  CONVERSATIONAL_FALLBACK_TEMPERATURE: { default: '0.3', type: 'number', group: 'ai', label: 'Temperature fallback conversacional', description: 'Creatividad de las respuestas conversacionales. 0.0=determinista, 1.0=creativo. Recomendado: 0.2-0.4.' },
+  CONVERSATIONAL_FALLBACK_SYSTEM_PROMPT: { default: `Sos MIA, asistente de gestión agrícola por WhatsApp para productores argentinos. Respondé en español argentino (vos/tenés/podés), breve (máx 3-4 oraciones), tono amigable y práctico.
+
+CAPACIDADES DEL BOT — guiá al usuario con ejemplos concretos:
+
+💰 GASTOS: Registrar con lenguaje natural. Ej: "gasté 50000 en gasoil", "compré semillas 30mil", "pagué 200 USD en agroquímicos". Categorías: Combustible, Fertilizantes, Semillas, Agroquímicos, Sueldos, Maquinaria, Arrendamiento, Impuestos, Otros. Moneda: ARS por defecto, "dólares/USD" para USD. Borrar último: "borrar último gasto". Reporte: "resumen mensual", "reporte del mes".
+
+💵 INGRESOS: "vendí 30 tn de soja a 300 USD", "cobré 500mil por arrendamiento". Categorías: Soja, Maíz, Trigo, Girasol, Sorgo, Cebada, Hacienda, Arrendamiento, Otros. Borrar último: "borrar último ingreso".
+
+🏡 CAMPOS Y LOTES: "agregar campo La Esperanza", "agregar campo X en [ciudad]", "agregar lote A1 en campo Norte", "agregar lotes A1, A2, A3", "mis campos", "info campo Norte", "info lote A1", "ubicar campo X en Pergamino". Lotes son la unidad productiva; campos son agrupadores. Se pueden asignar hectáreas: "lote A1 tiene 50 ha".
+
+🌱 ACTIVIDADES AGRÍCOLAS: "fumigué lote norte con glifosato 3 lt/ha", "sembré soja en lote 1", "fertilicé con urea 100 kg/ha", "coseché 30 tn de trigo", "pasé disco en lote sur", "regué lote 3". Productos reconocidos: herbicidas (glifosato, atrazina, 2,4-D, dicamba), insecticidas (cipermetrina, clorpirifós), fungicidas (azoxistrobina, tebuconazol), fertilizantes (urea, DAP, MAP, fosfato, superfosfato, sulfato de amonio).
+
+📝 OBSERVACIONES: "observación: vi rama negra en lote norte", "hay chinches en soja lote 1", "emergencia de maíz lote A1". Categorías automáticas: malezas, sanidad, nutrición, fenología, clima.
+
+🌧️ LLUVIA: "llovieron 25mm", "cayeron 40mm en campo norte". Reportes: "lluvia esta semana", "lluvia este mes", "lluvia del año".
+
+🌤️ CLIMA: "clima" → pronóstico del tiempo basado en la ubicación del campo.
+
+📊 REPORTES: "resumen del mes" (resultado mensual), "reporte mensual" (detalle por categoría), "reporte semanal", "reporte campo Norte", "reporte lote A1", "reporte agro" (agronómico), "historial lote A1", "exportar CSV". Para reportes por rango: "gastos últimos 30 días", "ingresos de enero a marzo".
+
+💲 DÓLAR: "dólar" → cotización actual de todos los tipos de dólar.
+
+⚙️ CONFIGURACIÓN: "configuración" (ver alertas actuales), "activar/desactivar alerta lluvia", "alerta lluvia 20mm" (umbral), "activar/desactivar resumen semanal", "activar/desactivar alerta presupuesto". "me llamo Juan" (guardar nombre), "estoy en Pergamino" (guardar ubicación).
+
+📋 PRESUPUESTOS: "presupuesto combustible 500000" (definir tope mensual por categoría).
+
+🗂️ MENÚ: El usuario puede escribir "menú" para ver todas las opciones con botones interactivos.
+
+REGLAS:
+- NUNCA inventes datos del campo del usuario (hectáreas, rindes, gastos, etc.)
+- Si no sabés algo específico, sugerí el comando correcto
+- Si el usuario parece querer hacer algo pero no sabe cómo, dá el ejemplo exacto
+- Para consultas agronómicas generales (plagas, cultivos, fertilización), dá respuestas cortas y útiles basadas en conocimiento general
+- Si la consulta es completamente ajena a agricultura/campo/finanzas rurales, respondé amablemente que sos un asistente agrícola y sugerí "menú" para ver opciones
+- Usá "lucas"=miles, "palos"=millones si el usuario los usa
+- Siempre priorizá dar EJEMPLOS CONCRETOS de cómo usar el bot`, type: 'string', group: 'ai', label: 'System prompt del fallback conversacional', description: 'Instrucciones que recibe el modelo para generar respuestas conversacionales. Define personalidad y límites del bot.' },
+
+  // Rate limiting
+  CONVERSATIONAL_FALLBACK_RATE_LIMIT_MAX: { default: '5', type: 'number', group: 'limits', label: 'Máx llamadas fallback por ventana', description: 'Cantidad máxima de respuestas conversacionales por usuario dentro de la ventana de tiempo.' },
+  CONVERSATIONAL_FALLBACK_RATE_LIMIT_WINDOW_MS: { default: '600000', type: 'number', group: 'limits', label: 'Ventana rate limit fallback (ms)', description: 'Ventana de tiempo (10 min por defecto) para el rate limit del fallback conversacional.' },
 
   // Confidence thresholds
-  CONFIDENCE_HIGH_SKIP_AI: { default: '0.75', type: 'number', group: 'ai', label: 'Confianza para omitir IA' },
-  CONFIDENCE_LOW_CONFIRM: { default: '0.70', type: 'number', group: 'ai', label: 'Confianza baja (forzar confirmación)' },
-  CONFIDENCE_UNKNOWN_FALLBACK: { default: '0.50', type: 'number', group: 'ai', label: 'Confianza para fallback conversacional' },
+  CONFIDENCE_LOW_CONFIRM: { default: '0.70', type: 'number', group: 'ai', label: 'Confianza baja (forzar confirmación)', description: 'Si la confianza del resultado está por debajo de este valor, se pide confirmación al usuario antes de guardar.' },
+  CONFIDENCE_UNKNOWN_FALLBACK: { default: '0.50', type: 'number', group: 'ai', label: 'Confianza para fallback conversacional', description: 'Si la confianza está por debajo de este valor, se activa el fallback conversacional en vez de ejecutar la acción.' },
 
   // Flow & conversation
-  FLOW_TIMEOUT_MS: { default: '600000', type: 'number', group: 'bot', label: 'Timeout de flujo conversacional (ms)' },
-  FLOW_MAX_STEP_FAILURES: { default: '3', type: 'number', group: 'bot', label: 'Máx fallos por paso antes de hint' },
-  PENDING_TRANSACTION_TIMEOUT_MS: { default: '300000', type: 'number', group: 'bot', label: 'Timeout transacción pendiente (ms)' },
-  DEDUP_MAX_SIZE: { default: '1000', type: 'number', group: 'bot', label: 'Tamaño máximo caché deduplicación' },
+  FLOW_TIMEOUT_MS: { default: '600000', type: 'number', group: 'bot', label: 'Timeout de flujo conversacional (ms)', description: 'Tiempo máximo (10 min por defecto) que un flujo de registro (gasto, ingreso, etc.) permanece activo sin actividad.' },
+  FLOW_MAX_STEP_FAILURES: { default: '3', type: 'number', group: 'bot', label: 'Máx fallos por paso antes de hint', description: 'Después de N respuestas inválidas en un paso del flujo, se muestra un hint para cancelar.' },
 
-  // Audio rate limiting
-  MAX_AUDIO_PER_HOUR: { default: '10', type: 'number', group: 'limits', label: 'Máx audios por hora por usuario' },
-  AUDIO_COST_PER_MINUTE_USD: { default: '0.006', type: 'number', group: 'audio', label: 'Costo audio por minuto (USD)' },
+  // Domain
+  DEFAULT_RAIN_ALERT_MM: { default: '10', type: 'number', group: 'system', label: 'Umbral lluvia por defecto (mm)', description: 'Milímetros de lluvia a partir de los cuales se genera una alerta. Se usa como fallback cuando el usuario no configuró su propio umbral.' },
+  REPORTS_STORAGE_PATH: { default: 'data/reports', type: 'string', group: 'agronomy', label: 'Ruta almacenamiento reportes', description: 'Directorio del servidor donde se guardan los reportes agronómicos PDF generados.' },
 
-  // Cache TTLs
-  USER_CONTEXT_CACHE_TTL_MS: { default: '60000', type: 'number', group: 'system', label: 'Cache contexto usuario (ms)' },
-  FEATURE_GATE_CACHE_TTL_MS: { default: '300000', type: 'number', group: 'system', label: 'Cache feature gate (ms)' },
+  // Cleanup
+  CONVERSATION_LOG_TTL_DAYS: { default: '90', type: 'number', group: 'system', label: 'TTL de logs conversacionales (días)', description: 'Días que se conservan los registros de conversation_logs, conversation_events y conversation_errors. Pasado este tiempo se eliminan automáticamente a las 3 AM. Poner 0 para desactivar.' },
+  MINI_MEMORY_EXPIRY_DAYS: { default: '7', type: 'number', group: 'system', label: 'Expiración de mini-memoria (días)', description: 'Días de inactividad tras los cuales se limpian los campos de contexto rápido (last_intent, last_plot_id, etc.) en conversation_state. Solo aplica a usuarios sin flujo activo. Poner 0 para desactivar.' },
 
-  // Scheduler & weather
-  SCHEDULER_CRON_EXPRESSION: { default: '0 * * * *', type: 'string', group: 'system', label: 'Expresión cron del scheduler' },
-  DEFAULT_RAIN_ALERT_MM: { default: '10', type: 'number', group: 'system', label: 'Umbral lluvia por defecto (mm)' },
-
-  // Domain defaults
-  DEFAULT_FIELD_NAME: { default: 'General', type: 'string', group: 'system', label: 'Nombre campo por defecto' },
-  DEFAULT_USER_PLAN: { default: 'free', type: 'string', group: 'system', label: 'Plan por defecto nuevos usuarios' },
-
-  // Agronomy
-  MAX_OBSERVATIONS_PER_REPORT: { default: '200', type: 'number', group: 'agronomy', label: 'Máx observaciones por reporte' },
-  REPORTS_STORAGE_PATH: { default: 'data/reports', type: 'string', group: 'agronomy', label: 'Ruta de almacenamiento de reportes' },
-
-  // Limits
-  MAX_AUDIO_PER_USER_DAY: { default: '50', type: 'number', group: 'limits', label: 'Máx audios por usuario/día' },
-  MAX_REPORTS_PER_WEEK: { default: '10', type: 'number', group: 'limits', label: 'Máx reportes por semana' },
+  // Onboarding
+  ONBOARDING_FIRST_PLOT_MESSAGE: { default: '🌾 *¡Tu campo está listo!* Ya tenés campo y lote configurados.\n\nAcá van ejemplos de lo que podés hacer:\n\n💰 *Gastos e Ingresos*\n"gasté 50000 en gasoil"\n"vendí 30 tn de soja a 300 usd"\n\n🌱 *Actividades*\n"fumigué lote norte con glifosato"\n"sembré soja en lote 1"\n\n🌧 *Lluvia y Clima*\n"llovieron 25mm"\n"clima"\n\n📊 *Reportes*\n"resumen del mes"\n"reporte agro"\n\nEscribí *menú* para ver todas las opciones.', type: 'string', group: 'onboarding', label: 'Mensaje de bienvenida tras primer lote', description: 'Mensaje que se envía una sola vez cuando el usuario crea su primer lote. Se muestra como guía de uso del bot.' },
 };
 
 /**
@@ -190,6 +215,7 @@ export async function getAllSettings() {
       type: def.type,
       group: def.group,
       label: def.label,
+      description: def.description || null,
       default: def.default,
     };
   }
