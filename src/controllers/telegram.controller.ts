@@ -170,7 +170,7 @@ const DESTRUCTIVE_COMMANDS = new Set([
 
 const SAFE_INTERRUPTION_COMMANDS = new Set([
   'list_fields', 'list_plots', 'field_info', 'help', 'menu',
-  'weather_full', 'monthly_report', 'weekly_report', 'rainfall_report',
+  'weather_full', 'financial_report', 'monthly_report', 'weekly_report', 'rainfall_report',
   'greeting', 'thanks', 'dollar',
 ]);
 

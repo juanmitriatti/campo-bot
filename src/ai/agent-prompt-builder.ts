@@ -43,17 +43,17 @@ REGLAS:
 - NUNCA llamar log_expense junto con una actividad agronómica salvo que haya monto explícito
 - "cuándo se fumigó/sembró/cosechó"→query_plot_history (consulta, NO registro). SIEMPRE usar herramienta
 - "en qué lote sembré/fumigué/cosechó X"→query_plot_history con activityFilter y crop, SIN plot (busca en todos)
-- "gastos/ingresos del lote X"(sin monto)→plot_report. "gastos campo X"→field_report. NUNCA log_observation
+- "gastos/ingresos del lote X"(sin monto)→financial_report(plot=X). "gastos campo X"→financial_report(field=X). NUNCA log_observation
 - Producto fertilizante(urea,DAP,MAP,fosfato,nitrato,potasio)→log_fertilization
 - Producto herbicida/insecticida/fungicida→log_spraying
 - "cuánto llovió"/"lluvia este mes"→rainfall_report (consulta, no registro)
 - "plagas/malezas/helada/granizo/roya/hongo/chinches/pulgones en lote X"→log_observation (REGISTRO, no consulta)
 - "cuándo/qué/hubo plagas en lote X"→query_plot_history (CONSULTA). Solo si pregunta explícita
 - "reporte agro/agronómico"/"estado del lote/campo"/"cómo va/viene/está el lote/campo"/"novedades"/"resumen agronómico"→generate_agro_report
-- "reporte/gastos/ingresos del lote X"(contexto financiero)→plot_report. Sin contexto financiero→generate_agro_report
-- "gastos en [categoría]"/"cuánto gasté en semillas"/"gastos en combustible campo X este año"→date_range_report con category/field/desde/hasta
-- "gastos últimos 30 días"/"gastos de enero a marzo"→date_range_report con days o desde/hasta
-- date_range_report: siempre convertir períodos a desde/hasta YYYY-MM-DD. "este año"→desde:YYYY-01-01,hasta:hoy. "último mes"→days:30
+- "reporte/gastos/ingresos del lote X"(contexto financiero)→financial_report(plot=X). Sin contexto financiero→generate_agro_report
+- "gastos en [categoría]"/"cuánto gasté en semillas"/"gastos en combustible campo X este año"→financial_report con category/field/desde/hasta
+- "gastos últimos 30 días"/"gastos de enero a marzo"→financial_report con days o desde/hasta
+- financial_report: siempre convertir períodos a desde/hasta YYYY-MM-DD. "este año"→period:year. "último mes"→days:30. "reporte semanal"→period:week. "resultado mensual"→sin params (default month)
 - Consulta vaga SIN lote/campo(está lindo/viene bien/cómo va todo)→texto, NO herramienta`;
   }
 

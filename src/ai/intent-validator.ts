@@ -20,6 +20,7 @@ const KNOWN_INTENTS = new Set([
   'list_plots', 'add_plot', 'delete_plot', 'plot_info',
   'set_plot_area', 'restore_field',
   // Reports
+  'financial_report',
   'monthly_result', 'field_result', 'weekly_report', 'monthly_report',
   'field_report', 'plot_report', 'date_range_report', 'compare_months',
   // Weather

@@ -181,6 +181,27 @@ describe('AgentResponseMapper', () => {
       }
     });
 
+    it('maps financial_report with all params', () => {
+      const result = makeResult([{
+        toolName: 'financial_report',
+        toolInput: { field: 'Norte', plot: 'A1', period: 'month', category: 'Combustible', type: 'expenses', include_activities: true, activity_filter: 'spraying' },
+        toolUseId: 'test_fr',
+      }]);
+
+      const parsed = mapper.mapToParseResults(result, 'gastos en combustible del lote A1');
+      expect(parsed[0].intent.type).toBe('command');
+      if (parsed[0].intent.type === 'command') {
+        expect(parsed[0].intent.data.command).toBe('financial_report');
+        expect(parsed[0].intent.data.fieldName).toBe('Norte');
+        expect(parsed[0].intent.data.plotName).toBe('A1');
+        expect(parsed[0].intent.data.period).toBe('month');
+        expect(parsed[0].intent.data.category).toBe('Combustible');
+        expect(parsed[0].intent.data.reportType).toBe('expenses');
+        expect(parsed[0].intent.data.include_activities).toBe(true);
+        expect(parsed[0].intent.data.activity_filter).toBe('spraying');
+      }
+    });
+
     it('maps add_plots_batch with plotNames array', () => {
       const result = makeResult([{
         toolName: 'add_plots_batch',

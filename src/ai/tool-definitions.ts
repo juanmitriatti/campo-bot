@@ -206,67 +206,21 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'monthly_report',
-    description: 'Reporte mensual detallado por categoría. "reporte mensual", "reporte del mes".',
-    input_schema: {
-      type: 'object',
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'weekly_report',
-    description: 'Resumen semanal. "reporte semanal", "resumen de la semana".',
-    input_schema: {
-      type: 'object',
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'field_report',
-    description: 'Reporte financiero por campo. "gastos del campo X", "reporte campo X".',
+    name: 'financial_report',
+    description: 'Reporte financiero unificado. "reporte mensual", "gastos del campo X", "gastos del lote Y", "resumen semanal", "resultado del mes", "gastos últimos 30 días", "gastos en combustible este año", "ingresos de enero a marzo".',
     input_schema: {
       type: 'object',
       properties: {
-        field: { type: 'string', description: 'Nombre del campo.' },
-      },
-      required: ['field'],
-    },
-  },
-  {
-    name: 'plot_report',
-    description: 'Reporte financiero por lote. "gastos del lote X", "reporte lote X".',
-    input_schema: {
-      type: 'object',
-      properties: {
-        plot: { type: 'string', description: 'Nombre del lote.' },
-      },
-      required: ['plot'],
-    },
-  },
-  {
-    name: 'monthly_result',
-    description: 'Resultado mensual (ingresos - gastos). "resumen del mes", "resultado mensual".',
-    input_schema: {
-      type: 'object',
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'date_range_report',
-    description: 'Reporte financiero flexible con filtros opcionales. "gastos últimos 30 días", "gastos en combustible en campo X este año", "ingresos de enero a marzo del lote Y", "cuánto gasté en semillas".',
-    input_schema: {
-      type: 'object',
-      properties: {
-        desde: { type: 'string', description: 'Fecha inicio (YYYY-MM-DD o referencia).' },
-        hasta: { type: 'string', description: 'Fecha fin (YYYY-MM-DD o referencia).' },
-        days: { type: 'number', description: 'Cantidad de días hacia atrás (ej: 30).' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        period: { type: 'string', enum: ['week', 'month', 'year'], description: 'Atajo de período. week=semanal, month=mensual (default), year=anual.' },
+        desde: { type: 'string', description: 'Fecha inicio (YYYY-MM-DD).' },
+        hasta: { type: 'string', description: 'Fecha fin (YYYY-MM-DD).' },
+        days: { type: 'number', description: 'Últimos N días (ej: 30).' },
         category: { type: 'string', description: 'Categoría de gasto/ingreso a filtrar (Combustible, Semillas, Agroquímicos, etc.).' },
         type: { type: 'string', enum: ['expenses', 'incomes', 'both'], description: 'Tipo: solo gastos, solo ingresos, o ambos. Default: both.' },
+        include_activities: { type: 'boolean', description: 'Incluir actividades agronómicas en el reporte.' },
+        activity_filter: { type: 'string', enum: ['spraying', 'fertilization', 'planting', 'harvest', 'tillage', 'irrigation'], description: 'Filtro de tipo de actividad.' },
       },
       required: [],
     },

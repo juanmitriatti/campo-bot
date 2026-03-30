@@ -71,6 +71,7 @@ export class FeatureGate {
   static commandToFeature(command: string): FeatureKey | null {
     const map: Record<string, FeatureKey> = {
       // Financial
+      financial_report: 'expenses',
       monthly_report: 'expenses',
       weekly_report: 'expenses',
       monthly_result: 'expenses',

@@ -149,6 +149,7 @@ const COMMAND_SUGGESTION_MAP: Record<string, string> = {
   weather_forecast: 'weather_shown',
   weather_field: 'weather_shown',
   weather_all: 'weather_shown',
+  financial_report: 'report_shown',
   monthly_report: 'report_shown',
   weekly_report: 'report_shown',
   field_report: 'report_shown',

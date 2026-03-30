@@ -7,6 +7,7 @@ import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from 
 // --- Command routing sets ---
 
 const FINANCIAL_COMMANDS = new Set([
+  'financial_report',
   'monthly_result', 'field_result', 'compare_months',
   'weekly_report', 'monthly_report', 'field_report', 'plot_report', 'date_range_report',
   'set_budget',

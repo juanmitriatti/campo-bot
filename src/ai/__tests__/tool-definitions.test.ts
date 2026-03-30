@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { TOOL_DEFINITIONS, TOOL_NAMES } from '../tool-definitions.js';
 
 describe('TOOL_DEFINITIONS', () => {
-  it('has 26 tools', () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(26);
+  it('has 21 tools', () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(21);
   });
 
   it('all tools have unique names', () => {
@@ -66,11 +66,27 @@ describe('TOOL_DEFINITIONS', () => {
   });
 
   it('report tools exist', () => {
-    const reportTools = ['weather_full', 'rainfall_report', 'monthly_report', 'weekly_report',
-      'field_report', 'plot_report', 'monthly_result', 'date_range_report',
+    const reportTools = ['weather_full', 'rainfall_report', 'financial_report',
       'generate_agro_report', 'query_plot_history'];
     for (const name of reportTools) {
       expect(TOOL_NAMES.has(name)).toBe(true);
     }
+  });
+
+  it('financial_report has all expected properties', () => {
+    const tool = TOOL_DEFINITIONS.find(t => t.name === 'financial_report')!;
+    expect(tool).toBeTruthy();
+    const props = tool.input_schema.properties!;
+    expect(props).toHaveProperty('field');
+    expect(props).toHaveProperty('plot');
+    expect(props).toHaveProperty('period');
+    expect(props).toHaveProperty('desde');
+    expect(props).toHaveProperty('hasta');
+    expect(props).toHaveProperty('days');
+    expect(props).toHaveProperty('category');
+    expect(props).toHaveProperty('type');
+    expect(props).toHaveProperty('include_activities');
+    expect(props).toHaveProperty('activity_filter');
+    expect(tool.input_schema.required).toEqual([]);
   });
 });

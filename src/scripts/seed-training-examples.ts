@@ -81,13 +81,13 @@ const EXAMPLES: Example[] = [
   // --- Reports ---
   {
     input: 'mostrame el reporte financiero del campo norte',
-    expected_output: { intent: 'field_report', confidence: 0.93, field: 'norte' },
-    intent: 'field_report',
+    expected_output: { intent: 'financial_report', confidence: 0.93, field: 'norte' },
+    intent: 'financial_report',
   },
   {
     input: 'cuánto gasté en el lote 5?',
-    expected_output: { intent: 'plot_report', confidence: 0.92, plot: 'lote 5' },
-    intent: 'plot_report',
+    expected_output: { intent: 'financial_report', confidence: 0.92, plot: 'lote 5' },
+    intent: 'financial_report',
   },
   // --- Query history ---
   {
@@ -104,8 +104,8 @@ const EXAMPLES: Example[] = [
   // --- Monthly report ---
   {
     input: 'reporte mensual',
-    expected_output: { intent: 'monthly_report', confidence: 0.95 },
-    intent: 'monthly_report',
+    expected_output: { intent: 'financial_report', confidence: 0.95 },
+    intent: 'financial_report',
   },
   // --- Greeting ---
   {

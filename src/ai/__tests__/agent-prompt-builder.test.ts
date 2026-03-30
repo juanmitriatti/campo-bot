@@ -44,7 +44,7 @@ describe('AgentPromptBuilder', () => {
     expect(prompt).toContain('log_income');
     expect(prompt).toContain('log_spraying');
     expect(prompt).toContain('query_plot_history');
-    expect(prompt).toContain('plot_report');
+    expect(prompt).toContain('financial_report');
   });
 
   it('includes currency conventions', () => {

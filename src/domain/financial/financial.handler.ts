@@ -5,6 +5,7 @@ import { getActivityLabel } from '../agronomy/activity.service.js';
 import { getSetting } from '../../services/settings.service.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../../middleware/pending-field-city-handler.js';
+import { queryPlotHistory } from '../../services/expenses.js';
 import type {
   UserId,
   User,
@@ -168,6 +169,116 @@ export class FinancialHandler {
       }
     }
     return msg.trimEnd();
+  }
+
+  // --- Unified financial report dispatcher ---
+
+  private async handleFinancialReport(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const fieldName = cmd.fieldName as string | null;
+    const plotName = cmd.plotName as string | null;
+    const period = cmd.period as string | null;
+    const desde = cmd.desde as string | null;
+    const hasta = cmd.hasta as string | null;
+    const days = cmd.days as number | null;
+    const category = cmd.category as string | null;
+    const reportType = (cmd.reportType as string) || 'both';
+    const includeActivities = cmd.include_activities as boolean | null;
+    const activityFilter = cmd.activity_filter as string | null;
+
+    const hasDateFilter = desde || hasta || days;
+    const hasScope = fieldName || plotName;
+
+    // Weekly report shortcut
+    if (period === 'week' && !hasScope && !hasDateFilter && !category) {
+      return this.handleCommand({ command: 'weekly_report' }, userId, {} as any, {} as any);
+    }
+
+    // Date range / category / days filters → date_range_report logic
+    if (hasDateFilter || category || period === 'year') {
+      const dateCmd: ParsedCommand = {
+        command: 'date_range_report',
+        ...(fieldName ? { fieldName } : {}),
+        ...(plotName ? { plotName } : {}),
+        ...(category ? { category } : {}),
+        reportType,
+      };
+      if (period === 'year') {
+        const now = new Date();
+        dateCmd.desde = `${now.getFullYear()}-01-01`;
+        dateCmd.hasta = now.toISOString().slice(0, 10);
+      } else {
+        if (desde) dateCmd.desde = desde;
+        if (hasta) dateCmd.hasta = hasta;
+        if (days) dateCmd.days = days;
+      }
+      const result = await this.handleCommand(dateCmd, userId, {} as any, {} as any);
+
+      // Append activities section if requested
+      if (includeActivities && result.messages.length > 0) {
+        const activitiesSection = await this.buildActivitiesSection(userId, plotName, activityFilter);
+        if (activitiesSection) {
+          result.messages[result.messages.length - 1] += '\n\n' + activitiesSection;
+        }
+      }
+      return result;
+    }
+
+    // Plot-scoped (no dates) → plot_report
+    if (plotName && !fieldName) {
+      const result = await this.handleCommand({ command: 'plot_report', plotName }, userId, {} as any, {} as any);
+      if (includeActivities && result.messages.length > 0) {
+        const activitiesSection = await this.buildActivitiesSection(userId, plotName, activityFilter);
+        if (activitiesSection) {
+          result.messages[result.messages.length - 1] += '\n\n' + activitiesSection;
+        }
+      }
+      return result;
+    }
+
+    // Field-scoped (no dates) → field_report
+    if (fieldName) {
+      const result = await this.handleCommand({ command: 'field_report', fieldName }, userId, {} as any, {} as any);
+      if (includeActivities && result.messages.length > 0) {
+        const activitiesSection = await this.buildActivitiesSection(userId, plotName, activityFilter);
+        if (activitiesSection) {
+          result.messages[result.messages.length - 1] += '\n\n' + activitiesSection;
+        }
+      }
+      return result;
+    }
+
+    // No params or period=month → monthly report (default)
+    if (reportType === 'both' && !category) {
+      return this.handleCommand({ command: 'monthly_report' }, userId, {} as any, {} as any);
+    }
+
+    // Type filter only (e.g., "solo gastos este mes") → monthly with type context
+    return this.handleCommand({ command: 'monthly_report' }, userId, {} as any, {} as any);
+  }
+
+  private async buildActivitiesSection(userId: UserId, plotName: string | null, activityFilter: string | null): Promise<string | null> {
+    try {
+      // Resolve plotName to plotId if provided
+      let plotId: number | null = null;
+      if (plotName) {
+        const plots = await this.service.findPlotByNameAcrossFields(userId, plotName);
+        if (plots.length > 0) plotId = plots[0].id;
+      }
+      const activities = await queryPlotHistory(userId, { plotId, activityFilter, limit: 5 });
+      if (!activities || activities.length === 0) return null;
+
+      let section = '📋 *Actividades recientes:*\n';
+      for (const a of activities) {
+        const date = new Date(a.event_date);
+        const dateStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const { emoji, label } = getActivityLabel(a.event_type);
+        const detail = a.product || a.crop || label;
+        section += `• ${emoji} ${label} — ${detail} (${dateStr})\n`;
+      }
+      return section.trimEnd();
+    } catch {
+      return null;
+    }
   }
 
   // --- Expense flow ---
@@ -486,6 +597,11 @@ export class FinancialHandler {
 
   async handleCommand(cmd: ParsedCommand, userId: UserId, user: User, settings: UserSettings): Promise<HandlerResponse> {
     switch (cmd.command) {
+      // --- Unified financial report (agent tool_use) ---
+      case 'financial_report': {
+        return this.handleFinancialReport(cmd, userId);
+      }
+
       // --- Result / Rentability ---
       case 'monthly_result': {
         const { ingresos, gastos } = await this.service.getMonthlyResult(userId);

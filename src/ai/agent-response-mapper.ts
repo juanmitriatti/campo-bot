@@ -207,6 +207,8 @@ export class AgentResponseMapper {
     if (input.days != null) cmd.days = input.days;
     if (input.category != null) cmd.category = input.category;
     if (input.type != null) cmd.reportType = input.type;
+    if (input.include_activities != null) cmd.include_activities = input.include_activities;
+    if (input.activity_filter != null) cmd.activity_filter = input.activity_filter;
 
     // Rainfall: quantity → mm (handler expects cmd.mm)
     if (toolName === 'log_rainfall' && input.quantity != null) {
