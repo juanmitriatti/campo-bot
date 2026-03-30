@@ -277,9 +277,9 @@ export async function validatePlotAsync(
 
   const plotsWithFields = await entityValidator.getUserPlotsWithFields(userId);
 
-  // No plots exist → accept any name
+  // No plots exist → block, ask user to cancel and create plot first
   if (plotsWithFields.length === 0) {
-    return { value: val };
+    return { error: 'No tenés lotes creados. Escribí *cancelar* y después *agregar lote [nombre] en campo [campo]* para crear uno.' };
   }
 
   // Flatten to unique plot names for numeric selection

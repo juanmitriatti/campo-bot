@@ -5,7 +5,7 @@ import type { ParsedExpense, ParsedIncome, UserSettings, User, UserId } from '..
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mockService(overrides: Record<string, any> = {}) {
   return {
-    resolveField: vi.fn().mockResolvedValue({ fieldId: null, fieldName: null }),
+    resolveField: vi.fn().mockResolvedValue({ fieldId: 1, fieldName: 'Campo Test', plotId: 1, plotName: 'Lote 1' }),
     saveExpense: vi.fn().mockResolvedValue({ id: 1 }),
     saveIncome: vi.fn().mockResolvedValue({ id: 1 }),
     checkBudgetAlert: vi.fn().mockResolvedValue(null),
@@ -31,7 +31,7 @@ function mockService(overrides: Record<string, any> = {}) {
     renameField: vi.fn().mockResolvedValue(false),
     getFieldInfo: vi.fn().mockResolvedValue(null),
     getPlotsByField: vi.fn().mockResolvedValue([]),
-    findAllUserPlots: vi.fn().mockResolvedValue([]),
+    findAllUserPlots: vi.fn().mockResolvedValue([{ id: 1, name: 'Lote 1', field_name: 'Campo Test', field_id: 1 }]),
     getMonthlyReportByPlot: vi.fn().mockResolvedValue([]),
     findPlotByNameAcrossFields: vi.fn().mockResolvedValue([]),
     getRecentFinancialContext: vi.fn().mockResolvedValue(null),
@@ -254,8 +254,15 @@ describe('FinancialHandler.handleCommand', () => {
 });
 
 describe('FinancialHandler — conversational memory (P2)', () => {
+  const twoPlots = [
+    { id: 1, name: 'Lote 1', field_name: 'Norte', field_id: 1 },
+    { id: 2, name: 'Lote 2', field_name: 'Norte', field_id: 1 },
+  ];
+
   it('uses recent financial context when no field/plot resolved', async () => {
     const service = mockService({
+      resolveField: vi.fn().mockResolvedValue({ fieldId: null, fieldName: null }),
+      findAllUserPlots: vi.fn().mockResolvedValue(twoPlots),
       getRecentFinancialContext: vi.fn().mockResolvedValue({
         fieldId: 10, fieldName: 'Norte', plotId: 20, plotName: '1A',
       }),
@@ -285,6 +292,8 @@ describe('FinancialHandler — conversational memory (P2)', () => {
 
   it('uses recent context for income too', async () => {
     const service = mockService({
+      resolveField: vi.fn().mockResolvedValue({ fieldId: null, fieldName: null }),
+      findAllUserPlots: vi.fn().mockResolvedValue(twoPlots),
       getRecentFinancialContext: vi.fn().mockResolvedValue({
         fieldId: 10, fieldName: 'Norte', plotId: 20, plotName: '1A',
       }),

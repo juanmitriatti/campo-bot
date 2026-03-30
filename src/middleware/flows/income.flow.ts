@@ -77,12 +77,9 @@ const steps: FlowStep[] = [
       return buildPlotInteractiveGrouped(plots);
     },
     validate: (input) => {
-      const lower = input.toLowerCase().trim();
-      if (lower === 'ninguno' || lower === 'no' || lower === 'sin lote') return { value: null };
       return { value: input.trim() };
     },
     validateAsync: validatePlotAsync,
-    optional: true,
   },
   {
     field: 'description',

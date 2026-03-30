@@ -125,6 +125,20 @@ function buildNoFieldsBlockResponse(actionLabel: string): HandlerResponse {
   };
 }
 
+function buildNoPlotsBlockResponse(actionLabel: string, fieldName?: string): HandlerResponse {
+  const fieldHint = fieldName ? ` en campo ${fieldName}` : '';
+  return {
+    messages: [`Para registrar ${actionLabel} primero necesitás crear un lote.\n\n📍 Escribí *agregar lote [nombre]${fieldHint}*\nEj: *agregar lote norte${fieldHint}*`],
+    interactive: {
+      type: 'buttons',
+      body: `Necesitás un lote para registrar ${actionLabel}.`,
+      buttons: [
+        { id: 'cmd_agregar_lote', title: 'Crear Lote' },
+      ],
+    },
+  };
+}
+
 // --- Handler ---
 
 export class FinancialHandler {
@@ -298,17 +312,33 @@ export class FinancialHandler {
       return buildNoFieldsBlockResponse('un gasto');
     }
 
+    // Block if user has no plots at all
+    const allUserPlots = await this.service.findAllUserPlots(userId);
+    if (allUserPlots.length === 0) {
+      return buildNoPlotsBlockResponse('un gasto', userFields[0]?.name);
+    }
+
     const resolution = await this.service.resolveField(userId, fieldName, plotName);
     let { fieldId, fieldName: resFieldName, plotId, plotName: resPlotName } = resolution;
 
-    // If the referenced field/plot doesn't exist, warn and save without assignment
+    // If the referenced field/plot doesn't exist, redirect to flow for plot selection
     if (resolution.notFound) {
       const label = resolution.notFound.type === 'field' ? 'campo' : 'lote';
       const name = resolution.notFound.name;
-      const warningMsg = `\u26a0\ufe0f No encontré el ${label} *${name}*. El gasto se registró sin ${label} asignado.\nPara crearlo: *agregar ${label} ${name}*`;
-      await this.service.saveExpense(userId, data, null, null);
-      const messages = [buildExpenseConfirmation(data, null, null), warningMsg];
-      return { messages, suggestionKey: 'expense_saved' };
+      const currency = data.currency === 'USD' ? 'USD' : 'ARS';
+      return {
+        messages: [`\u26a0\ufe0f No encontré el ${label} *${name}*.\n\n\ud83d\udcb8 *${data.category}* \u2014 $${data.amount.toLocaleString('es-AR')}${currency === 'USD' ? ' USD' : ''}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
+        sideEffects: {
+          startFlow: {
+            state: 'expense_flow' as FlowState,
+            data: {
+              amount: { amount: data.amount, currency },
+              category: data.category,
+              description: data.description || text,
+            },
+          },
+        },
+      };
     }
 
     // Hybrid plot assignment: try to auto-assign plot
@@ -331,16 +361,13 @@ export class FinancialHandler {
         };
       }
       if (resolution.needPlotCreation) {
-        // Field exists but 0 plots → save with warning (no plots to pick)
-        await this.service.saveExpense(userId, data, fieldId, null);
-        const warningMsg = `\u26a0\ufe0f Se registr\u00f3 sin lote. Cre\u00e1 un lote para organizar mejor:\n*agregar lote [nombre] en campo ${resFieldName}*`;
-        return { messages: [buildExpenseConfirmation(data, resFieldName, null), warningMsg], suggestionKey: 'expense_saved' };
+        // Field exists but 0 plots → block, tell user to create a plot
+        return buildNoPlotsBlockResponse('un gasto', resFieldName ?? undefined);
       }
       // No field resolved at all — check if user has a single plot globally
       if (!fieldId) {
-        const allPlots = await this.service.findAllUserPlots(userId);
-        if (allPlots.length === 1) {
-          const singlePlot = allPlots[0];
+        if (allUserPlots.length === 1) {
+          const singlePlot = allUserPlots[0];
           const field = await this.service.getFieldByName(userId, singlePlot.field_name);
           if (field) {
             fieldId = field.id;
@@ -355,7 +382,7 @@ export class FinancialHandler {
     // Conversational memory: inherit field/plot from recent financial message
     if (!fieldId && !plotId) {
       const recentCtx = await this.service.getRecentFinancialContext(userId);
-      if (recentCtx) {
+      if (recentCtx && recentCtx.plotId) {
         fieldId = recentCtx.fieldId;
         resFieldName = recentCtx.fieldName;
         plotId = recentCtx.plotId;
@@ -365,23 +392,20 @@ export class FinancialHandler {
 
     // No plot resolved → redirect to expense flow so user picks one
     if (!plotId) {
-      const allPlots = await this.service.findAllUserPlots(userId);
-      if (allPlots.length > 0) {
-        const currency = data.currency === 'USD' ? 'USD' : 'ARS';
-        return {
-          messages: [],
-          sideEffects: {
-            startFlow: {
-              state: 'expense_flow' as FlowState,
-              data: {
-                amount: { amount: data.amount, currency },
-                category: data.category,
-                description: data.description || text,
-              },
+      const currency = data.currency === 'USD' ? 'USD' : 'ARS';
+      return {
+        messages: [],
+        sideEffects: {
+          startFlow: {
+            state: 'expense_flow' as FlowState,
+            data: {
+              amount: { amount: data.amount, currency },
+              category: data.category,
+              description: data.description || text,
             },
           },
-        };
-      }
+        },
+      };
     }
 
     if (settings.confirm_before_save) {
@@ -438,17 +462,36 @@ export class FinancialHandler {
       return buildNoFieldsBlockResponse('un ingreso');
     }
 
+    // Block if user has no plots at all
+    const allUserPlots = await this.service.findAllUserPlots(userId);
+    if (allUserPlots.length === 0) {
+      return buildNoPlotsBlockResponse('un ingreso', userFields[0]?.name);
+    }
+
     const resolution = await this.service.resolveField(userId, fieldName, plotName);
     let { fieldId, fieldName: resFieldName, plotId, plotName: resPlotName } = resolution;
 
-    // If the referenced field/plot doesn't exist, warn and save without assignment
+    // If the referenced field/plot doesn't exist, redirect to flow for plot selection
     if (resolution.notFound) {
       const label = resolution.notFound.type === 'field' ? 'campo' : 'lote';
       const name = resolution.notFound.name;
-      const warningMsg = `\u26a0\ufe0f No encontré el ${label} *${name}*. El ingreso se registró sin ${label} asignado.\nPara crearlo: *agregar ${label} ${name}*`;
-      await this.service.saveIncome(userId, data, null, null);
-      const messages = [buildIncomeConfirmation(data, null, null), warningMsg];
-      return { messages, suggestionKey: 'income_saved' };
+      const currency = data.currency === 'USD' ? 'USD' : 'ARS';
+      return {
+        messages: [`\u26a0\ufe0f No encontré el ${label} *${name}*.\n\n\ud83d\udcb0 *${data.category}* \u2014 $${data.amount.toLocaleString('es-AR')}${currency === 'USD' ? ' USD' : ''}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
+        sideEffects: {
+          startFlow: {
+            state: 'income_flow' as FlowState,
+            data: {
+              amount: { amount: data.amount, currency },
+              category: data.category,
+              description: data.description || text,
+              quantity: data.quantity ?? null,
+              unit: data.unit ?? null,
+              unit_price: data.unit_price ?? null,
+            },
+          },
+        },
+      };
     }
 
     // Hybrid plot assignment: try to auto-assign plot
@@ -474,14 +517,12 @@ export class FinancialHandler {
         };
       }
       if (resolution.needPlotCreation) {
-        await this.service.saveIncome(userId, data, fieldId, null);
-        const warningMsg = `\u26a0\ufe0f Se registr\u00f3 sin lote. Cre\u00e1 un lote para organizar mejor:\n*agregar lote [nombre] en campo ${resFieldName}*`;
-        return { messages: [buildIncomeConfirmation(data, resFieldName, null), warningMsg], suggestionKey: 'income_saved' };
+        // Field exists but 0 plots → block, tell user to create a plot
+        return buildNoPlotsBlockResponse('un ingreso', resFieldName ?? undefined);
       }
       if (!fieldId) {
-        const allPlots = await this.service.findAllUserPlots(userId);
-        if (allPlots.length === 1) {
-          const singlePlot = allPlots[0];
+        if (allUserPlots.length === 1) {
+          const singlePlot = allUserPlots[0];
           const field = await this.service.getFieldByName(userId, singlePlot.field_name);
           if (field) {
             fieldId = field.id;
@@ -496,7 +537,7 @@ export class FinancialHandler {
     // Conversational memory: inherit field/plot from recent financial message
     if (!fieldId && !plotId) {
       const recentCtx = await this.service.getRecentFinancialContext(userId);
-      if (recentCtx) {
+      if (recentCtx && recentCtx.plotId) {
         fieldId = recentCtx.fieldId;
         resFieldName = recentCtx.fieldName;
         plotId = recentCtx.plotId;
@@ -506,26 +547,23 @@ export class FinancialHandler {
 
     // No plot resolved → redirect to income flow so user picks one
     if (!plotId) {
-      const allPlots = await this.service.findAllUserPlots(userId);
-      if (allPlots.length > 0) {
-        const currency = data.currency === 'USD' ? 'USD' : 'ARS';
-        return {
-          messages: [],
-          sideEffects: {
-            startFlow: {
-              state: 'income_flow' as FlowState,
-              data: {
-                amount: { amount: data.amount, currency },
-                category: data.category,
-                description: data.description || text,
-                quantity: data.quantity ?? null,
-                unit: data.unit ?? null,
-                unit_price: data.unit_price ?? null,
-              },
+      const currency = data.currency === 'USD' ? 'USD' : 'ARS';
+      return {
+        messages: [],
+        sideEffects: {
+          startFlow: {
+            state: 'income_flow' as FlowState,
+            data: {
+              amount: { amount: data.amount, currency },
+              category: data.category,
+              description: data.description || text,
+              quantity: data.quantity ?? null,
+              unit: data.unit ?? null,
+              unit_price: data.unit_price ?? null,
             },
           },
-        };
-      }
+        },
+      };
     }
 
     if (settings.confirm_before_save) {
