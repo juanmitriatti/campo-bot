@@ -58,7 +58,9 @@ Kill switches:
 
 ### Key Services
 
-- **`services/expenses.js`** — Database layer for all CRUD: expenses, incomes, budgets, fields, rainfall, user settings, AI usage tracking, plot history queries. Includes `getOrCreateUserByTelegramId()` for Telegram user provisioning.
+- **`services/expenses.js`** — Database layer for all CRUD: expenses, incomes, budgets, fields, rainfall, user settings, AI usage tracking, plot history queries. Includes `getOrCreateUserByTelegramId()` for Telegram user provisioning. `setFieldCity` and `setUserCity` accept optional `province` param.
+- **`services/localidad-lookup.service.ts`** — Validates city names against 4027 Argentine census localities (`src/data/localidades_censales.json`). Returns exact match, disambiguation (multiple provinces), fuzzy suggestions (Levenshtein ≤ 3), or not_found. Singleton with lazy-loaded index.
+- **`middleware/pending-field-city-handler.ts`** — Shared handler for pending city validation across all 3 controllers (WhatsApp, Telegram, test-bot). Exports `formatLocation(city, province)` helper.
 - **`services/whatsapp.js`** — WhatsApp Cloud API client (send messages via Meta API).
 - **`services/telegram.ts`** — Telegram Bot API client (sendMessage, sendButtons, sendList, sendDocument, downloadFile).
 - **`services/weather.js`** — OpenWeather API integration for forecasts and rain alerts.
@@ -80,7 +82,7 @@ Handles Spanish text normalization, written numbers ("quinientos mil" → 500000
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-035_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id` column), `fields`, `plots`, `expenses`, `incomes`, `budgets`, `rainfall`, `domain_events` (activities), `agro_observations`, `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`.
+PostgreSQL with migrations in `src/migrations/001-036_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province` columns), `fields` (includes `province`), `plots`, `expenses`, `incomes`, `budgets`, `rainfall`, `domain_events` (activities), `agro_observations`, `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`.
 
 ### Frontend (`frontend/`)
 
@@ -118,7 +120,7 @@ Interruptible conversation flows for multi-step data entry (expense, income, rai
 
 - **`conversation-engine.ts`** — FSM: startFlow, processFlowMessage, clearFlow, goBack, skipStep
 - **`conversation-state.repository.ts`** — DB-persisted flow state
-- **`flows/`** — field_flow, expense_flow, income_flow, rainfall_flow, activity_flow (activity_flow uses dynamic `interactiveAsync` for plot selection)
+- **`flows/`** — field_flow (city step validates via localidadLookup, saves province), expense_flow, income_flow, rainfall_flow, activity_flow (activity_flow uses dynamic `interactiveAsync` for plot selection)
 - Safe interruption commands execute mid-flow without canceling; financial intents cancel the active flow
 
 ## Key Conventions
