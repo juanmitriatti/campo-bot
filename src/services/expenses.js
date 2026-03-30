@@ -635,7 +635,7 @@ export async function getUserFieldsWithCity(userId) {
 
 export async function getUserFields(userId) {
   const result = await pool.query(
-    `SELECT name, city FROM fields WHERE user_id = $1 AND deleted_at IS NULL ORDER BY name`,
+    `SELECT id, name, city FROM fields WHERE user_id = $1 AND deleted_at IS NULL ORDER BY name`,
     [userId]
   );
   return result.rows;
