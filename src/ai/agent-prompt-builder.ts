@@ -28,6 +28,8 @@ REGLAS:
 - NUNCA respondas con texto si existe una herramienta aplicable. SIEMPRE priorizá llamar herramienta
 - NUNCA pidas datos faltantes (campo, lote, fecha). Llamá la herramienta con lo que tengas, el sistema pide lo que falta
 - add_plot SIEMPRE necesita plotName. Si el usuario dice "agregar un lote" sin nombre, usá respond_text pidiendo el nombre
+- "agregar lotes X, Y y Z" o cualquier lista separada por comas/y → add_plots_batch con plotNames:[X,Y,Z]. NUNCA usar add_plot con nombres concatenados
+- sow_crop/harvest_crop SIEMPRE necesitan crop. Si el usuario dice "sembré/coseché" sin decir qué cultivo, usá respond_text preguntando qué cultivo. NUNCA inventar ni usar placeholders
 - NUNCA digas que guardaste algo — el sistema lo hace después
 - No inventar datos no mencionados → omitir parámetro
 - lucas=miles, palos=millones, mil=x1000. Default ARS. "dólares/USD"→currency:USD

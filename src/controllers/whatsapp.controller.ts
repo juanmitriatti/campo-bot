@@ -14,6 +14,7 @@ import { UserRepository } from '../domain/users/user.repository.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
+import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
 import { handlePendingCity } from '../middleware/pending-field-city-handler.js';
@@ -88,6 +89,7 @@ const conversationalFallback = new ConversationalFallbackService(userRepository)
 const dedup = new MessageDedup();
 const pendingStore = new PendingTransactionStore();
 const pendingObsStore = new PendingObservationStore();
+const pendingActStore = new PendingActivityStore();
 const pendingCityStore = new PendingFieldCityStore();
 const pendingPlotAreaStore = new PendingPlotAreaStore();
 const plotDiscovery = new PlotDiscoveryService();
@@ -838,6 +840,42 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
+    // --- Check pending activity (plot disambiguation for agro activities) ---
+    const pendingAct = pendingActStore.get(phone);
+    if (pendingAct) {
+      if (isCancelIntent(text)) {
+        pendingActStore.clear(phone);
+        await sendMessage(phone, '❌ Actividad cancelada.');
+        res.sendStatus(200);
+        return;
+      }
+      const actInterruptCmd = intentClassifier.parseCommandOnly(text);
+      if (actInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
+        pendingActStore.clear(phone);
+        // Fall through to normal processing
+      } else {
+        const actResolved = await plotDiscovery.resolveExisting(userId, text);
+        if (actResolved.plotId) {
+          pendingActStore.clear(phone);
+          const actResult = await agronomyHandler.savePendingActivity(
+            userId, pendingAct, actResolved.plotId,
+            actResolved.fieldId, actResolved.plotName, actResolved.fieldName,
+          );
+          await sendResponse(phone, actResult);
+          console.log(`[PENDING_ACT] Resolved plot_id=${actResolved.plotId} for pending ${pendingAct.command}, user ${userId}`);
+          conversationLogger.log(userId, phone, text, actResult.messages[0] ?? null, 'command', pendingAct.command, null, null, false, Date.now() - startTime).catch(() => {});
+          res.sendStatus(200);
+          return;
+        }
+        const userPlots = await agronomyRepository.findAllUserPlots(userId);
+        const plotList = userPlots.map(p => `• ${p.name} (${p.field_name})`).join('\n');
+        await sendMessage(phone, `No encontré ese lote. ¿En qué lote?\n\nTus lotes:\n${plotList}`);
+        console.log(`[PENDING_ACT] Could not resolve plot from "${text}", asking again for user ${userId}`);
+        res.sendStatus(200);
+        return;
+      }
+    }
+
     // --- Check pending confirmation first ---
     const pending = pendingStore.get(phone);
 
@@ -1069,6 +1107,12 @@ router.post('/', async (req: Request, res: Response) => {
           const obs = response.sideEffects.setPendingObservation;
           pendingObsStore.set(phone, { text: obs.text, category: obs.category, timestamp: Date.now() });
           console.log(`[PENDING_OBS] Stored pending observation for user ${userId}: "${obs.text}"`);
+        }
+        // Store pending activity for plot disambiguation follow-up
+        if (response.sideEffects?.setPendingActivity) {
+          const act = response.sideEffects.setPendingActivity;
+          pendingActStore.set(phone, { command: act.command, data: act.data, timestamp: Date.now() });
+          console.log(`[PENDING_ACT] Stored pending ${act.command} for user ${userId}`);
         }
         // Store pending field city for next-message assignment
         if (response.sideEffects?.setPendingFieldCity) {

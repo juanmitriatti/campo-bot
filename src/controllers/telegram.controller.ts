@@ -13,6 +13,7 @@ import { UserRepository } from '../domain/users/user.repository.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
+import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
 import { handlePendingCity } from '../middleware/pending-field-city-handler.js';
@@ -108,6 +109,7 @@ const conversationalFallback = new ConversationalFallbackService(userRepository)
 
 const pendingStore = new PendingTransactionStore();
 const pendingObsStore = new PendingObservationStore();
+const pendingActStore = new PendingActivityStore();
 const pendingCityStore = new PendingFieldCityStore();
 const pendingPlotAreaStore = new PendingPlotAreaStore();
 const plotDiscovery = new PlotDiscoveryService();
@@ -767,6 +769,33 @@ async function processTextMessage(
     }
   }
 
+  // --- Check pending activity (plot disambiguation for agro activities) ---
+  const pendingAct = pendingActStore.get(phone);
+  if (pendingAct) {
+    if (isCancelIntent(text)) {
+      pendingActStore.clear(phone);
+      return [{ type: 'text', text: '❌ Actividad cancelada.' }];
+    }
+    const actInterruptCmd = intentClassifier.parseCommandOnly(text);
+    if (actInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
+      pendingActStore.clear(phone);
+      // Fall through to normal processing
+    } else {
+      const actResolved = await plotDiscovery.resolveExisting(userId, text);
+      if (actResolved.plotId) {
+        pendingActStore.clear(phone);
+        const result = await agronomyHandler.savePendingActivity(
+          userId, pendingAct, actResolved.plotId,
+          actResolved.fieldId, actResolved.plotName, actResolved.fieldName,
+        );
+        return collectResponse(result);
+      }
+      const userPlots = await agronomyRepository.findAllUserPlots(userId);
+      const plotList = userPlots.map((p: any) => `• ${p.name} (${p.field_name})`).join('\n');
+      return [{ type: 'text', text: `No encontré ese lote. ¿En qué lote?\n\nTus lotes:\n${plotList}` }];
+    }
+  }
+
   // --- Check pending confirmation ---
   const pending = pendingStore.get(phone);
 
@@ -915,6 +944,10 @@ async function processTextMessage(
       if (response.sideEffects?.setPendingObservation) {
         const obs = response.sideEffects.setPendingObservation;
         pendingObsStore.set(phone, { text: obs.text, category: obs.category, timestamp: Date.now() });
+      }
+      if (response.sideEffects?.setPendingActivity) {
+        const act = response.sideEffects.setPendingActivity;
+        pendingActStore.set(phone, { command: act.command, data: act.data, timestamp: Date.now() });
       }
       if (response.sideEffects?.setPendingFieldCity) {
         pendingCityStore.set(phone, {

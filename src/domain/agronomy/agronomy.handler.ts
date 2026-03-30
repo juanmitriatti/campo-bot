@@ -15,7 +15,8 @@ import { saveObservation, SAVE_REJECTED_FINANCIAL, SAVE_REJECTED_DUPLICATE, SAVE
 import { formatObservationResponse, formatAgroReportResponse } from '../../middleware/response-formatter.js';
 import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
 import { formatHistoryResponse } from './plot-query.service.js';
-import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType } from '../../types/index.js';
+import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
+import type { PendingActivity } from '../../middleware/pending-activities.js';
 
 // --- AI intent → DB event_type normalization ---
 const ACTIVITY_FILTER_MAP: Record<string, string> = {
@@ -66,6 +67,166 @@ export class AgronomyHandler {
   private cropService = new CropService();
 
   constructor(private repo: AgronomyRepository) {}
+
+  /**
+   * Hybrid plot resolution: resolve → auto-assign single → ask user for multiple → block if none.
+   */
+  private async resolveActivityPlot(
+    userId: UserId,
+    resolved: PlotDiscoveryResult,
+  ): Promise<
+    | { type: 'resolved'; plotId: number; fieldId: number | null; plotName: string | null; fieldName: string | null }
+    | { type: 'no_plots' }
+    | { type: 'ask_user'; plots: Array<{ id: number; name: string; field_name: string }> }
+  > {
+    if (resolved.plotId) {
+      return { type: 'resolved', plotId: resolved.plotId, fieldId: resolved.fieldId, plotName: resolved.plotName, fieldName: resolved.fieldName };
+    }
+
+    const userPlots = await this.repo.findAllUserPlots(userId);
+
+    if (userPlots.length === 0) {
+      return { type: 'no_plots' };
+    }
+
+    if (userPlots.length === 1) {
+      const p = userPlots[0];
+      const field = await this.repo.getFieldByName(userId, p.field_name);
+      return {
+        type: 'resolved',
+        plotId: p.id,
+        fieldId: field?.id ?? null,
+        plotName: p.name,
+        fieldName: p.field_name,
+      };
+    }
+
+    return { type: 'ask_user', plots: userPlots };
+  }
+
+  /**
+   * Build "which plot?" response for activity pending pattern.
+   */
+  private buildAskPlotResponse(
+    activityLabel: string,
+    plots: Array<{ id: number; name: string; field_name: string }>,
+    cmd: ParsedCommand,
+  ): HandlerResponse {
+    const plotList = plots.map(p => `• ${p.name} (${p.field_name})`).join('\n');
+    return {
+      messages: [`¿En qué lote?\n\nTus lotes:\n${plotList}`],
+      suggestionKey: 'default_menu',
+      sideEffects: {
+        setPendingActivity: { command: cmd.command, data: { ...cmd } },
+      },
+    };
+  }
+
+  /**
+   * Resolve a pending activity after the user specifies a plot.
+   * Called by controllers when user answers the "which plot?" prompt.
+   */
+  async savePendingActivity(
+    userId: UserId,
+    pending: PendingActivity,
+    plotId: number,
+    fieldId: number | null,
+    plotName: string | null,
+    fieldName: string | null,
+  ): Promise<HandlerResponse> {
+    const plotLabel = fieldName ? `${fieldName} > ${plotName}` : plotName;
+    const cmd = pending.data;
+
+    const EVENT_TYPE_MAP: Record<string, ActivityType> = {
+      log_spraying: 'spraying',
+      log_fertilization: 'fertilization',
+      log_tillage: 'tillage',
+      log_irrigation: 'irrigation',
+      sow_crop: 'planting',
+      harvest_crop: 'harvest',
+    };
+
+    if (pending.command === 'sow_crop') {
+      const crop = cmd.crop as string;
+      const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotId, crop);
+      const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
+
+      await this.repo.saveDomainEvent(userId, {
+        plotId,
+        plotCropId: cropRow.id,
+        eventType: 'planting',
+        crop,
+      });
+
+      const msgs: string[] = [];
+      if (closedPrevious) {
+        msgs.push(`📋 Se cerró la campaña anterior de *${closedPrevious.crop}* en ${plotLabel}.`);
+      }
+      msgs.push(`🌱 *${crop}* sembrado en *${plotLabel}*\n📅 Campaña ${label}`);
+      return { messages: msgs };
+    }
+
+    if (pending.command === 'harvest_crop') {
+      const crop = cmd.crop as string;
+      const closed = await this.cropService.harvestCrop(plotId, crop);
+
+      if (!closed) {
+        const active = await this.cropService.getActive(plotId);
+        if (active) {
+          return { messages: [`En *${plotLabel}* hay *${active.crop}* sembrado, no ${crop}.\nSi querés cosechar ${active.crop}, escribí:\n🌾 *cosechamos ${active.crop.toLowerCase()} en el lote ${plotName}*`] };
+        }
+        return { messages: [`No hay cultivo activo en *${plotLabel}* para cosechar.`] };
+      }
+
+      await this.repo.saveDomainEvent(userId, {
+        plotId,
+        plotCropId: closed.id,
+        eventType: 'harvest',
+        crop,
+      });
+
+      const label = formatSeasonLabel(closed.season_year, closed.season_type);
+      return { messages: [`🌾 *${crop}* cosechado en *${plotLabel}*\n📅 Campaña ${label} finalizada`] };
+    }
+
+    // log_spraying / log_fertilization / log_tillage / log_irrigation
+    const eventType = EVENT_TYPE_MAP[pending.command];
+    if (!eventType) {
+      return { messages: ['No pude procesar esa actividad. Intentá de nuevo.'] };
+    }
+
+    const activeCrop = await this.cropService.getActive(plotId);
+    const crop = inferCrop(
+      cmd.crop as string | null,
+      activeCrop,
+      cmd.product as string | null,
+    );
+
+    await this.repo.saveDomainEvent(userId, {
+      plotId,
+      plotCropId: activeCrop?.id || null,
+      eventType,
+      eventDate: cmd.eventDate as Date | null,
+      crop,
+      product: cmd.product as string | null,
+      productType: cmd.productType as string | null,
+      quantity: cmd.quantity as number | null,
+      unit: cmd.unit as string | null,
+      implement: cmd.implement as string | null,
+    });
+
+    const confirmation = formatActivityConfirmation(eventType, plotLabel, {
+      product: cmd.product as string | null,
+      productType: cmd.productType as string | null,
+      quantity: cmd.quantity as number | null,
+      unit: cmd.unit as string | null,
+      crop,
+      implement: cmd.implement as string | null,
+      eventDate: cmd.eventDate as Date | null,
+    });
+
+    return { messages: [confirmation] };
+  }
 
   async handleCommand(cmd: ParsedCommand, userId: UserId, user: User, settings: UserSettings): Promise<HandlerResponse> {
     switch (cmd.command) {
@@ -413,18 +574,31 @@ export class AgronomyHandler {
           cmd.fieldName as string | null,
           cmd.plotName as string | null
         );
-        if (!resolved.plotId) {
-          return { messages: ['No pude identificar el lote. Escribí algo como:\n🌱 *sembré soja en el lote 3*'] };
+        const plotResult = await this.resolveActivityPlot(userId, resolved);
+
+        if (plotResult.type === 'no_plots') {
+          return {
+            messages: ['Primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*'],
+            interactive: {
+              type: 'buttons',
+              body: 'Necesitás un lote para registrar siembra.',
+              buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
+            },
+          };
+        }
+
+        if (plotResult.type === 'ask_user') {
+          return this.buildAskPlotResponse('siembra', plotResult.plots, cmd);
         }
 
         const crop = cmd.crop as string;
-        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, resolved.plotId, crop);
+        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop);
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
-        const plotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+        const plotLabel = plotResult.fieldName ? `${plotResult.fieldName} > ${plotResult.plotName}` : plotResult.plotName;
 
         // Save domain event for planting
         await this.repo.saveDomainEvent(userId, {
-          plotId: resolved.plotId,
+          plotId: plotResult.plotId,
           plotCropId: cropRow.id,
           eventType: 'planting',
           crop,
@@ -444,25 +618,38 @@ export class AgronomyHandler {
           cmd.fieldName as string | null,
           cmd.plotName as string | null
         );
-        if (!resolved.plotId) {
-          return { messages: ['No pude identificar el lote. Escribí algo como:\n🌾 *cosechamos soja en el lote 3*'] };
+        const plotResult = await this.resolveActivityPlot(userId, resolved);
+
+        if (plotResult.type === 'no_plots') {
+          return {
+            messages: ['Primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*'],
+            interactive: {
+              type: 'buttons',
+              body: 'Necesitás un lote para registrar cosecha.',
+              buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
+            },
+          };
+        }
+
+        if (plotResult.type === 'ask_user') {
+          return this.buildAskPlotResponse('cosecha', plotResult.plots, cmd);
         }
 
         const crop = cmd.crop as string;
-        const closed = await this.cropService.harvestCrop(resolved.plotId, crop);
-        const plotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+        const closed = await this.cropService.harvestCrop(plotResult.plotId, crop);
+        const plotLabel = plotResult.fieldName ? `${plotResult.fieldName} > ${plotResult.plotName}` : plotResult.plotName;
 
         if (!closed) {
-          const active = await this.cropService.getActive(resolved.plotId);
+          const active = await this.cropService.getActive(plotResult.plotId);
           if (active) {
-            return { messages: [`En *${plotLabel}* hay *${active.crop}* sembrado, no ${crop}.\nSi querés cosechar ${active.crop}, escribí:\n🌾 *cosechamos ${active.crop.toLowerCase()} en el lote ${resolved.plotName}*`] };
+            return { messages: [`En *${plotLabel}* hay *${active.crop}* sembrado, no ${crop}.\nSi querés cosechar ${active.crop}, escribí:\n🌾 *cosechamos ${active.crop.toLowerCase()} en el lote ${plotResult.plotName}*`] };
           }
           return { messages: [`No hay cultivo activo en *${plotLabel}* para cosechar.`] };
         }
 
         // Save domain event for harvest
         await this.repo.saveDomainEvent(userId, {
-          plotId: resolved.plotId,
+          plotId: plotResult.plotId,
           plotCropId: closed.id,
           eventType: 'harvest',
           crop,
@@ -537,32 +724,31 @@ export class AgronomyHandler {
           log_irrigation: 'irrigation',
         };
         const eventType = eventTypeMap[cmd.command];
-
-        // Block if user has no fields
-        const activityUserFields = await this.repo.getUserFields(userId);
-        if (activityUserFields.length === 0) {
-          const { label } = getActivityLabel(eventType);
-          return {
-            messages: [`Para registrar ${label.toLowerCase()} primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*`],
-            interactive: {
-              type: 'buttons',
-              body: `Necesitás un campo para registrar ${label.toLowerCase()}.`,
-              buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
-            },
-          };
-        }
+        const { label: actLabel } = getActivityLabel(eventType);
 
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,
           cmd.plotName as string | null
         );
-        if (!resolved.plotId) {
-          const { label } = getActivityLabel(eventType);
-          return { messages: [`No pude identificar el lote. Escribí algo como:\n${label} en el *lote 3*`] };
+        const plotResult = await this.resolveActivityPlot(userId, resolved);
+
+        if (plotResult.type === 'no_plots') {
+          return {
+            messages: [`Para registrar ${actLabel.toLowerCase()} primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*`],
+            interactive: {
+              type: 'buttons',
+              body: `Necesitás un campo para registrar ${actLabel.toLowerCase()}.`,
+              buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
+            },
+          };
         }
 
-        const activeCrop = resolved.plotId ? await this.cropService.getActive(resolved.plotId) : null;
+        if (plotResult.type === 'ask_user') {
+          return this.buildAskPlotResponse(actLabel.toLowerCase(), plotResult.plots, cmd);
+        }
+
+        const activeCrop = await this.cropService.getActive(plotResult.plotId);
         const crop = inferCrop(
           cmd.crop as string | null,
           activeCrop,
@@ -570,7 +756,7 @@ export class AgronomyHandler {
         );
 
         await this.repo.saveDomainEvent(userId, {
-          plotId: resolved.plotId,
+          plotId: plotResult.plotId,
           plotCropId: activeCrop?.id || null,
           eventType,
           eventDate: cmd.eventDate as Date | null,
@@ -582,9 +768,9 @@ export class AgronomyHandler {
           implement: cmd.implement as string | null,
         });
 
-        const plotLabel = resolved.fieldName
-          ? `${resolved.fieldName} > ${resolved.plotName}`
-          : resolved.plotName;
+        const plotLabel = plotResult.fieldName
+          ? `${plotResult.fieldName} > ${plotResult.plotName}`
+          : plotResult.plotName;
 
         const confirmation = formatActivityConfirmation(eventType, plotLabel, {
           product: cmd.product as string | null,

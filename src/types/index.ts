@@ -451,6 +451,7 @@ export interface HandlerResponse {
     setPendingFieldCity?: { fieldName: string };
     setPendingPlotArea?: { plotId: number; plotName: string; fieldName: string };
     setFieldDuplicate?: { name: string; city: string | null };
+    setPendingActivity?: { command: string; data: Record<string, unknown> };
   };
 }
 
