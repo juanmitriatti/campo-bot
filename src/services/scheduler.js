@@ -5,6 +5,7 @@ import { getUsersWithRainAlerts, getGlobalSettings } from "./expenses.js";
 import { getForecast } from "./weather.js";
 import { sendAlertWithRetry, isDuplicate, recordDeduped } from "./alert.service.js";
 import { getSettingNumber } from "./settings.service.js";
+import { cleanupOldReports } from "./agro-report.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -602,9 +603,13 @@ async function dailyCleanupTick() {
     const { hour } = getArgentinaTime();
     if (hour !== 3) return;
 
-    console.log('[cleanup] Running daily conversation data cleanup (3 AM Argentina)');
+    console.log('[cleanup] Running daily cleanup (3 AM Argentina)');
     await conversationLogCleanupTick();
     await miniMemoryExpiryTick();
+    const deletedReports = await cleanupOldReports(30);
+    if (deletedReports > 0) {
+      console.log(`[cleanup] Deleted ${deletedReports} old PDF report(s) (>30 days)`);
+    }
   } catch (err) {
     console.error('[cleanup] Unexpected error:', err);
   }

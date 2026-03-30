@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { pool } from "../config/db.js";
 import { getPlotsByField, getActiveCrop } from "./expenses.js";
-import { getWeekObservations, getWeekObservationsByPlot, getWeekNumber } from "./observations.js";
+import { getWeekObservations, getWeekObservationsByPlot, getWeekNumber, deduplicateObservations, getNowArgentina } from "./observations.js";
 import { getSetting } from "./settings.service.js";
 import { logError } from "./error-logger.js";
 
@@ -21,10 +21,19 @@ const CATEGORY_LABELS = {
   general: 'General',
 };
 
+const ACTIVITY_LABELS = {
+  spraying: 'Fumigacion',
+  fertilization: 'Fertilizacion',
+  planting: 'Siembra',
+  tillage: 'Labranza',
+  harvest: 'Cosecha',
+  irrigation: 'Riego',
+};
+
 /**
  * Generate a weekly agronomic PDF report for a field.
  */
-export async function generateWeeklyReport(userId, fieldId, filterPlotId = null) {
+export async function generateWeeklyReport(userId, fieldId, filterPlotId = null, { activities = [] } = {}) {
   try {
   // 1. Fetch field info
   const fieldResult = await pool.query(`SELECT * FROM fields WHERE id = $1`, [fieldId]);
@@ -35,14 +44,15 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null)
   const userResult = await pool.query(`SELECT * FROM users WHERE id = $1`, [userId]);
   const user = userResult.rows[0];
 
-  // 3. Get current ISO week
-  const now = new Date();
+  // 3. Get current ISO week (Argentina timezone)
+  const now = getNowArgentina();
   const { weekNumber, year } = getWeekNumber(now);
 
-  // 4. Fetch observations for this week (lote-scoped or field-scoped)
-  const observations = filterPlotId
+  // 4. Fetch observations for this week (lote-scoped or field-scoped), deduplicated
+  const rawObservations = filterPlotId
     ? await getWeekObservationsByPlot(filterPlotId, weekNumber, year)
     : await getWeekObservations(fieldId, weekNumber, year);
+  const observations = deduplicateObservations(rawObservations);
 
   // 5. Group by plot, separating field-level observations
   const plots = await getPlotsByField(fieldId);
@@ -90,6 +100,7 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null)
     fieldObservations,
     pdfPath,
     filterPlotName: filterPlotId ? (plotMap.get(filterPlotId)?.name || null) : null,
+    activities,
   });
 
   // 7. Save report record
@@ -119,7 +130,7 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null)
 /**
  * Generate the PDF file using PDFKit.
  */
-function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldObservations, pdfPath, filterPlotName = null }) {
+function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldObservations, pdfPath, filterPlotName = null, activities = [] }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const stream = fs.createWriteStream(pdfPath);
@@ -177,9 +188,23 @@ function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldOb
       doc.moveDown(0.8);
     }
 
+    // --- Recent activities ---
+    if (activities.length > 0) {
+      hasContent = true;
+
+      if (doc.y > 650) doc.addPage();
+      doc.fontSize(14).font('Helvetica-Bold').text('Actividad Reciente');
+      doc.moveDown(0.3);
+
+      for (const act of activities) {
+        _renderActivity(doc, act);
+      }
+      doc.moveDown(0.8);
+    }
+
     if (!hasContent) {
       doc.fontSize(12).font('Helvetica')
-         .text('No hay observaciones registradas para esta semana.', { align: 'center' });
+         .text('No hay observaciones ni actividades registradas para esta semana.', { align: 'center' });
     }
 
     doc.end();
@@ -202,6 +227,30 @@ function _renderObservation(doc, obs) {
   doc.fontSize(8).fillColor('#888888')
      .text(`  ${dateStr} — ${obs.user_name || 'Usuario'}`)
      .fillColor('#000000');
+  doc.moveDown(0.3);
+
+  if (doc.y > 720) {
+    doc.addPage();
+  }
+}
+
+function _renderActivity(doc, act) {
+  const typeLabel = ACTIVITY_LABELS[act.event_type] || act.event_type;
+  const detail = act.product || act.crop || '';
+  const plotLabel = act.plot_name || 'General';
+  const dateStr = act.event_date
+    ? new Date(act.event_date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+    : '';
+
+  doc.fontSize(10).font('Helvetica-Bold')
+     .text(`[${typeLabel}]`, { continued: true })
+     .font('Helvetica')
+     .text(` ${detail}${detail ? ' — ' : ''}${plotLabel}`);
+  if (dateStr) {
+    doc.fontSize(8).fillColor('#888888')
+       .text(`  ${dateStr}`)
+       .fillColor('#000000');
+  }
   doc.moveDown(0.3);
 
   if (doc.y > 720) {
@@ -251,4 +300,42 @@ export async function getReportById(reportId) {
     [reportId]
   );
   return result.rows[0] || null;
+}
+
+/**
+ * Clean up old PDF report files and DB records older than `days` days.
+ * Returns the number of files deleted.
+ */
+export async function cleanupOldReports(days = 30) {
+  try {
+    const result = await pool.query(
+      `SELECT id, pdf_path FROM agronomic_reports WHERE created_at < NOW() - $1::interval`,
+      [`${days} days`]
+    );
+
+    let deleted = 0;
+    for (const row of result.rows) {
+      if (row.pdf_path) {
+        try {
+          fs.unlinkSync(row.pdf_path);
+          deleted++;
+        } catch {
+          // File already gone — continue
+        }
+      }
+    }
+
+    if (result.rows.length > 0) {
+      const ids = result.rows.map(r => r.id);
+      await pool.query(
+        `DELETE FROM agronomic_reports WHERE id = ANY($1)`,
+        [ids]
+      );
+    }
+
+    return deleted;
+  } catch (err) {
+    logError('agro-report', 'CLEANUP_ERROR', err, { context: { days } });
+    return 0;
+  }
 }

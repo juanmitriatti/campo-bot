@@ -789,7 +789,19 @@ export class AgronomyHandler {
           return { messages: [`No encontré el campo "${fieldName || plotName}". Revisá el nombre o escribí *mis campos* para ver tus campos.`] };
         }
         try {
-          const report = await generateWeeklyReport(userId, field.id, filterPlotId);
+          // Fetch raw activities first — used by both PDF and text summary
+          const rawActivities = filterPlotId
+            ? await this.repo.getDomainEventsByPlot(filterPlotId, 5)
+            : await (async () => {
+                const fieldPlots = await this.repo.getPlotsByField(field!.id);
+                const plotIds = new Set(fieldPlots.map(p => p.id));
+                const allEvents = await this.repo.getDomainEventsByUser(userId, 10);
+                return allEvents
+                  .filter(ev => ev.plot_id && plotIds.has(ev.plot_id))
+                  .slice(0, 5);
+              })();
+
+          const report = await generateWeeklyReport(userId, field.id, filterPlotId, { activities: rawActivities });
           const pdfBuffer = fs.readFileSync(report.pdfPath);
 
           // Build per-plot observation breakdown
@@ -809,26 +821,12 @@ export class AgronomyHandler {
           }
           const plotSummaries = [...plotMap.entries()].map(([pName, obs]) => ({ plotName: pName, observations: obs }));
 
-          // Recent activities — DB-level plot filter when lote is specified (BUG-005 fix)
-          const recentActivities = filterPlotId
-            ? (await this.repo.getDomainEventsByPlot(filterPlotId, 5)).map(ev => ({
-                label: getActivityLabel(ev.event_type).label,
-                detail: ev.product || ev.crop || '',
-                plotName: ev.plot_name || 'General',
-              }))
-            : await (async () => {
-                const fieldPlots = await this.repo.getPlotsByField(field!.id);
-                const plotIds = new Set(fieldPlots.map(p => p.id));
-                const allEvents = await this.repo.getDomainEventsByUser(userId, 10);
-                return allEvents
-                  .filter(ev => ev.plot_id && plotIds.has(ev.plot_id))
-                  .slice(0, 5)
-                  .map(ev => ({
-                    label: getActivityLabel(ev.event_type).label,
-                    detail: ev.product || ev.crop || '',
-                    plotName: ev.plot_name || 'General',
-                  }));
-              })();
+          // Format activities for text summary
+          const recentActivities = rawActivities.map(ev => ({
+            label: getActivityLabel(ev.event_type).label,
+            detail: ev.product || ev.crop || '',
+            plotName: ev.plot_name || 'General',
+          }));
 
           // Use filtered+deduped count, not the full-field count from PDF generator
           const titleScope = filterPlotName

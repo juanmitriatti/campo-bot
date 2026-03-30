@@ -174,7 +174,7 @@ export async function getWeekObservations(fieldId, weekNumber, year) {
  * Get observations from current ISO week.
  */
 export async function getCurrentWeekObservations(fieldId) {
-  const now = new Date();
+  const now = getNowArgentina();
   const { weekNumber, year } = getWeekNumber(now);
   return getWeekObservations(fieldId, weekNumber, year);
 }
@@ -202,7 +202,7 @@ export async function getWeekObservationsByPlot(plotId, weekNumber, year) {
  * Get observations from current ISO week for a specific plot.
  */
 export async function getCurrentWeekObservationsByPlot(plotId) {
-  const now = new Date();
+  const now = getNowArgentina();
   const { weekNumber, year } = getWeekNumber(now);
   return getWeekObservationsByPlot(plotId, weekNumber, year);
 }
@@ -212,15 +212,27 @@ export async function getCurrentWeekObservationsByPlot(plotId) {
  * Includes observations on the field itself and on any plot belonging to the field.
  */
 export async function getWeekObservationCount(fieldId) {
+  const now = getNowArgentina();
+  const { weekNumber, year } = getWeekNumber(now);
   const result = await pool.query(
     `SELECT COUNT(*) AS total FROM agro_observations o
      LEFT JOIN plots p ON o.plot_id = p.id
      WHERE (o.field_id = $1 OR (o.plot_id IS NOT NULL AND p.field_id = $1))
-       AND EXTRACT(ISOYEAR FROM o.created_at) = EXTRACT(ISOYEAR FROM NOW())
-       AND EXTRACT(WEEK FROM o.created_at) = EXTRACT(WEEK FROM NOW())`,
-    [fieldId]
+       AND EXTRACT(ISOYEAR FROM o.created_at) = $2
+       AND EXTRACT(WEEK FROM o.created_at) = $3`,
+    [fieldId, year, weekNumber]
   );
   return parseInt(result.rows[0].total);
+}
+
+/**
+ * Get current date in Argentina timezone (UTC-3).
+ * Avoids wrong-day issues when server runs in UTC.
+ */
+export function getNowArgentina() {
+  return new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' })
+  );
 }
 
 /**
