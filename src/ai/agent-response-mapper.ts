@@ -28,7 +28,20 @@ export class AgentResponseMapper {
       return [];
     }
 
-    return result.toolCalls.map(tc => this.mapToolCall(tc, originalText));
+    // Filter: if agent returned log_expense alongside an agro activity, drop the expense
+    // (Haiku sometimes hallucinates an expense for activity messages like "hoy sembramos soja")
+    const AGRO_ACTIVITY_TOOLS = new Set([
+      'sow_crop', 'harvest_crop', 'log_spraying', 'log_fertilization',
+      'log_tillage', 'log_irrigation', 'log_activity',
+    ]);
+    let filteredCalls = result.toolCalls;
+    const hasAgroActivity = filteredCalls.some(tc => AGRO_ACTIVITY_TOOLS.has(tc.toolName));
+    if (hasAgroActivity) {
+      filteredCalls = filteredCalls.filter(tc => tc.toolName !== 'log_expense' && tc.toolName !== 'log_income');
+      if (filteredCalls.length === 0) filteredCalls = result.toolCalls; // safety: don't drop everything
+    }
+
+    return filteredCalls.map(tc => this.mapToolCall(tc, originalText));
   }
 
   private mapToolCall(
