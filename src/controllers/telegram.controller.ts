@@ -783,7 +783,7 @@ async function processTextMessage(
   // Handle conversational response from Agent
   if ((parseResult as any)._conversationalResponse) {
     const convResponse = (parseResult as any)._conversationalResponse as string;
-    conversationLogger.log(userId, phone, text, convResponse, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
+    conversationLogger.log(userId, phone, text, convResponse, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
     return [{ type: 'text' as const, text: convResponse }];
   }
 
@@ -799,7 +799,7 @@ async function processTextMessage(
     }
     pendingStore.clear(phone);
     const response = await financialHandler.handleConfirm(userId, pending, settings, user);
-    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
     return collectResponse(response);
   }
   if (intent.type === 'command' && intent.data.command === 'cancel') {
@@ -807,7 +807,7 @@ async function processTextMessage(
       return [{ type: 'text', text: 'No hay nada pendiente para cancelar.' }];
     }
     pendingStore.clear(phone);
-    conversationLogger.log(userId, phone, text, 'Operacion cancelada.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, 'Operacion cancelada.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
     return [{ type: 'text', text: '\u274c Operacion cancelada.' }];
   }
 
@@ -825,7 +825,7 @@ async function processTextMessage(
     if (intent.data.currency) prefillData.currency = intent.data.currency;
     if (intent.data.category) prefillData.category = intent.data.category;
     const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
-    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
     return collectResponse(result.response);
   }
 
@@ -840,7 +840,7 @@ async function processTextMessage(
     if (intent.data.currency) prefillData.currency = intent.data.currency;
     if (intent.data.category) prefillData.category = intent.data.category;
     const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
-    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
     return collectResponse(result.response);
   }
 
@@ -850,7 +850,7 @@ async function processTextMessage(
       id: `disambig_${i}`,
       title: c.label.slice(0, 20),
     }));
-    conversationLogger.log(userId, phone, text, 'Disambiguation', 'ambiguous', null, null, null, aiUsed, Date.now() - startTime, true, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, 'Disambiguation', 'ambiguous', null, null, null, aiUsed, Date.now() - startTime, true, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
     return [interactiveButtonsItem('\u00bfQue queres hacer?', buttons)];
   }
 
@@ -944,7 +944,7 @@ async function processTextMessage(
         lastQueryType: intent.data.command.startsWith('query_') ? intent.data.command : null,
         lastTimeReference: (intent.data.timeLabel as string) ?? null,
       }).catch(() => {});
-      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
       return collectResponse(response);
     }
   }
@@ -975,7 +975,7 @@ async function processTextMessage(
     }
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
     updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
-    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
     return collectResponse(response);
   }
 
@@ -1005,7 +1005,7 @@ async function processTextMessage(
     }
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
     updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
-    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
     return collectResponse(response);
   }
 
@@ -1015,11 +1015,11 @@ async function processTextMessage(
     const fallbackResult = await conversationalFallback.respond(text, userId, settings);
     const items: BotResponseItem[] = [{ type: 'text', text: fallbackResult.response }];
     if (fallbackResult.aiUsed) {
-      conversationLogger.log(userId, phone, text, fallbackResult.response, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence).catch(() => {});
+      conversationLogger.log(userId, phone, text, fallbackResult.response, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence, null, null, 'telegram').catch(() => {});
     } else {
       const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
       items.push(...collectResponse(menuResponse));
-      conversationLogger.log(userId, phone, text, fallbackResult.response, 'unknown', null, null, null, false, Date.now() - startTime, true, confidence).catch(() => {});
+      conversationLogger.log(userId, phone, text, fallbackResult.response, 'unknown', null, null, null, false, Date.now() - startTime, true, confidence, null, null, 'telegram').catch(() => {});
     }
     return items;
   }

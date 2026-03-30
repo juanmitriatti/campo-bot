@@ -897,7 +897,7 @@ router.post('/', async (req: Request, res: Response) => {
       pendingStore.clear(phone);
       const response = await financialHandler.handleConfirm(userId, pending, settings, user);
       await sendResponse(phone, response);
-      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -910,7 +910,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
       pendingStore.clear(phone);
       await sendMessage(phone, '\u274c Operaci\u00f3n cancelada.');
-      conversationLogger.log(userId, phone, text, 'Operaci\u00f3n cancelada.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
+      conversationLogger.log(userId, phone, text, 'Operaci\u00f3n cancelada.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -939,7 +939,7 @@ router.post('/', async (req: Request, res: Response) => {
       const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
       conversationObserver.logFlowStarted(userId, 'expense_flow', { trigger: 'partial_parse', prefillFields: Object.keys(prefillData) });
       await sendResponse(phone, result.response);
-      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
+      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -962,7 +962,7 @@ router.post('/', async (req: Request, res: Response) => {
       const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
       conversationObserver.logFlowStarted(userId, 'income_flow', { trigger: 'partial_parse', prefillFields: Object.keys(prefillData) });
       await sendResponse(phone, result.response);
-      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
+      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -974,7 +974,7 @@ router.post('/', async (req: Request, res: Response) => {
         title: c.label.slice(0, 20),
       }));
       await sendInteractiveButtons(phone, '\u00bfQu\u00e9 quer\u00e9s hacer?', buttons);
-      conversationLogger.log(userId, phone, text, 'Disambiguation', 'ambiguous', null, null, null, aiUsed, Date.now() - startTime, true, confidence).catch(() => {});
+      conversationLogger.log(userId, phone, text, 'Disambiguation', 'ambiguous', null, null, null, aiUsed, Date.now() - startTime, true, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -1034,7 +1034,7 @@ router.post('/', async (req: Request, res: Response) => {
           timestamp: Date.now(),
           _destructiveCommand: intent.data,
         } as any);
-        conversationLogger.log(userId, phone, text, `Confirmación: ${label}`, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, true, confidence).catch(() => {});
+        conversationLogger.log(userId, phone, text, `Confirmación: ${label}`, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, true, confidence, toolCallsData, agentMode).catch(() => {});
         res.sendStatus(200);
         return;
       }
@@ -1060,7 +1060,7 @@ router.post('/', async (req: Request, res: Response) => {
           }
           conversationObserver.logFlowStarted(userId, state, { trigger: 'command', prefillFields: data ? Object.keys(data) : [] });
           await sendResponse(phone, flowResult.response);
-          conversationLogger.log(userId, phone, text, flowResult.response.messages[0] ?? null, 'flow', 'flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive).catch(() => {});
+          conversationLogger.log(userId, phone, text, flowResult.response.messages[0] ?? null, 'flow', 'flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
           res.sendStatus(200);
           return;
         }
@@ -1136,7 +1136,7 @@ router.post('/', async (req: Request, res: Response) => {
         conversationObserver.logFlowStarted(userId, state, { trigger: 'expense_plot_selection', prefillFields: data ? Object.keys(data) : [] });
         await sendResponse(phone, response);
         await sendResponse(phone, flowResult.response);
-        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'flow', 'expense_flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive).catch(() => {});
+        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'flow', 'expense_flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
         res.sendStatus(200);
         return;
       }
@@ -1177,7 +1177,7 @@ router.post('/', async (req: Request, res: Response) => {
         conversationObserver.logFlowStarted(userId, state, { trigger: 'income_plot_selection', prefillFields: data ? Object.keys(data) : [] });
         await sendResponse(phone, response);
         await sendResponse(phone, flowResult.response);
-        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'flow', 'income_flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive).catch(() => {});
+        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'flow', 'income_flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
         res.sendStatus(200);
         return;
       }

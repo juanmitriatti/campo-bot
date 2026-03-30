@@ -17,14 +17,15 @@ export class ConversationLogger {
     confidence?: number | null,
     toolCalls?: object[] | null,
     agentMode?: string | null,
+    channel?: string | null,
   ): Promise<void> {
     const truncatedResponse = responseText ? responseText.slice(0, 500) : null;
     await query(
       `INSERT INTO conversation_logs
        (user_id, phone, direction, message_text, intent_type, intent_command,
         flow_state, flow_step, ai_used, response_text, response_interactive, processing_time_ms, confidence,
-        tool_calls, agent_mode)
-       VALUES ($1, $2, 'inbound', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        tool_calls, agent_mode, channel)
+       VALUES ($1, $2, 'inbound', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         userId,
         phone,
@@ -40,6 +41,7 @@ export class ConversationLogger {
         confidence ?? null,
         toolCalls ? JSON.stringify(toolCalls) : null,
         agentMode ?? null,
+        channel ?? 'whatsapp',
       ],
     );
   }
