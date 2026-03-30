@@ -310,7 +310,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       type: 'object',
       properties: {
         field: { type: 'string', description: 'Nombre del campo a crear.' },
-        city: { type: 'string', description: 'Ciudad/localidad del campo.' },
+        city: { type: 'string', description: 'Localidad del campo (nombre de localidad argentina).' },
       },
       required: ['field'],
     },
@@ -359,7 +359,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       type: 'object',
       properties: {
         field: { type: 'string', description: 'Nombre del campo.' },
-        city: { type: 'string', description: 'Ciudad/localidad.' },
+        city: { type: 'string', description: 'Localidad del campo (nombre de localidad argentina).' },
       },
       required: ['field'],
     },

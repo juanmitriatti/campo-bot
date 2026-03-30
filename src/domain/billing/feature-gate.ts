@@ -99,7 +99,6 @@ export class FeatureGate {
       delete_plot: 'fields',
       plot_info: 'fields',
       set_plot_area: 'fields',
-      set_plot_coords: 'fields',
       restore_field: 'fields',
       // Weather
       weather_full: 'weather',

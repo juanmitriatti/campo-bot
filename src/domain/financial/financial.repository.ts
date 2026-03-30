@@ -180,19 +180,19 @@ export class FinancialRepository {
     return this.plots.getOrCreateField(userId, name);
   }
 
-  async setFieldCity(userId: UserId, fieldName: string, city: string): Promise<void> {
-    await this.plots.setFieldCity(userId, fieldName, city);
+  async setFieldCity(userId: UserId, fieldName: string, city: string, province?: string | null): Promise<void> {
+    await this.plots.setFieldCity(userId, fieldName, city, province);
   }
 
   async getFieldByName(userId: UserId, fieldName: string): Promise<FieldRow | null> {
     return this.plots.getFieldByName(userId, fieldName);
   }
 
-  async getUserFieldsWithCity(userId: UserId): Promise<{ name: string; city: string }[]> {
+  async getUserFieldsWithCity(userId: UserId): Promise<{ name: string; city: string; province: string | null }[]> {
     return this.plots.getUserFieldsWithCity(userId);
   }
 
-  async getUserFields(userId: UserId): Promise<{ name: string; city: string | null }[]> {
+  async getUserFields(userId: UserId): Promise<{ name: string; city: string | null; province: string | null }[]> {
     return this.plots.getUserFields(userId);
   }
 
@@ -244,10 +244,6 @@ export class FinancialRepository {
 
   async setPlotArea(plotId: number, hectares: number): Promise<void> {
     return this.plots.setPlotArea(plotId, hectares);
-  }
-
-  async setPlotCoords(plotId: number, lat: number, lng: number): Promise<void> {
-    return this.plots.setPlotCoords(plotId, lat, lng);
   }
 
   async getPlotInfo(userId: UserId, plotName: string): Promise<PlotInfoData | null> {

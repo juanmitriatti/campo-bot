@@ -16,7 +16,6 @@ import {
   deletePlot as _deletePlot,
   restorePlot as _restorePlot,
   setPlotArea as _setPlotArea,
-  setPlotCoords as _setPlotCoords,
   getPlotInfo as _getPlotInfo,
   getPlotReport as _getPlotReport,
   getPlotResult as _getPlotResult,
@@ -38,16 +37,16 @@ export class PlotRepository {
     return _getFieldByName(userId, fieldName) as Promise<FieldRow | null>;
   }
 
-  async getUserFieldsWithCity(userId: UserId): Promise<{ name: string; city: string }[]> {
+  async getUserFieldsWithCity(userId: UserId): Promise<{ name: string; city: string; province: string | null }[]> {
     return _getUserFieldsWithCity(userId);
   }
 
-  async getUserFields(userId: UserId): Promise<{ name: string; city: string | null }[]> {
+  async getUserFields(userId: UserId): Promise<{ name: string; city: string | null; province: string | null }[]> {
     return _getUserFields(userId);
   }
 
-  async setFieldCity(userId: UserId, fieldName: string, city: string): Promise<void> {
-    await _setFieldCity(userId, fieldName, city);
+  async setFieldCity(userId: UserId, fieldName: string, city: string, province?: string | null): Promise<void> {
+    await _setFieldCity(userId, fieldName, city, province);
   }
 
   async getUserFieldCount(userId: UserId): Promise<number> {
@@ -99,10 +98,6 @@ export class PlotRepository {
 
   async setPlotArea(plotId: number, hectares: number): Promise<void> {
     await _setPlotArea(plotId, hectares);
-  }
-
-  async setPlotCoords(plotId: number, lat: number, lng: number): Promise<void> {
-    await _setPlotCoords(plotId, lat, lng);
   }
 
   async getPlotInfo(userId: UserId, plotName: string): Promise<PlotInfoData | null> {

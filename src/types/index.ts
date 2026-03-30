@@ -147,8 +147,7 @@ export interface FieldRow {
   user_id: number;
   name: string;
   city: string | null;
-  hectares: number | null;
-  location: string | null;
+  province: string | null;
 }
 
 export interface PlotRow {
@@ -157,8 +156,6 @@ export interface PlotRow {
   name: string;
   area_hectares: number | null;
   soil_type: string | null;
-  lat: number | null;
-  lng: number | null;
   created_at: Date;
 }
 
@@ -180,6 +177,7 @@ export interface RainfallData {
 export interface FieldInfoData {
   name: string;
   city: string | null;
+  province: string | null;
   expenses: { total: number; count: number };
   incomes: { total: number; count: number };
   rainfall: { total: number; count: number };

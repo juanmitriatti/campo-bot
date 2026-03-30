@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-campo-bot is a WhatsApp-based agricultural management assistant for Argentine farmers (entirely in Spanish). It uses an AI-first parsing pipeline with two modes — **AI Agent (tool_use)** and legacy **JSON extraction** — with regex fallback, to understand natural language messages about farm expenses, income, agronomic activities, observations, weather, and rainfall, storing data in PostgreSQL.
+campo-bot is a WhatsApp and Telegram-based agricultural management assistant for Argentine farmers (entirely in Spanish). It uses an AI-first parsing pipeline with two modes — **AI Agent (tool_use)** and legacy **JSON extraction** — with regex fallback, to understand natural language messages about farm expenses, income, agronomic activities, observations, weather, and rainfall, storing data in PostgreSQL.
 
 ## Commands
 
@@ -42,8 +42,8 @@ Kill switches:
 #### AI Agent (tool_use) — new primary path
 - **`agent.service.ts`** — Calls Claude with `tool_use` + `tool_choice: auto`; returns `AgentResult` with tool calls array + optional conversational text. Uses plan-based rate limiting, conversation history, few-shot examples, and configurable timeout.
 - **`tool-definitions.ts`** — 27 Anthropic tool definitions grouped by domain: Financial (2), Activities (6), Observations (2), Reports (10), Field/Plot Mgmt (5), System (2). Each tool has typed `input_schema` with enum validation for categories.
-- **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules and user context. Tool definitions carry the schema, so the prompt only needs rules.
-- **`agent-response-mapper.ts`** — Converts `AgentResult` → `ParseResult[]` for backward compatibility. Maps `log_expense`/`log_income` tool calls to expense/income ParseResults; everything else to command ParseResults. No-tool conversational responses become `_conversationalResponse` on ParseResult.
+- **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules and user context. Tool definitions carry the schema, so the prompt only needs rules. Includes explicit rules that agro activities (fumigué, sembré, coseché, etc.) are ONLY activities and NEVER expenses unless the user mentions an explicit amount.
+- **`agent-response-mapper.ts`** — Converts `AgentResult` → `ParseResult[]` for backward compatibility. Maps `log_expense`/`log_income` tool calls to expense/income ParseResults; everything else to command ParseResults. No-tool conversational responses become `_conversationalResponse` on ParseResult. **Fix**: filters spurious `log_expense`/`log_income` tool calls when the agent also returns an agro activity tool (sow_crop, harvest_crop, log_spraying, etc.), preventing Haiku from misclassifying activity messages as expenses.
 - **`few-shot.service.ts`** — `formatAsToolUseMessages()` converts training examples to tool_use triplets (user → assistant[tool_use] → user[tool_result]).
 
 #### JSON extraction — legacy fallback (when AGENT_ENABLED=false)
@@ -58,8 +58,9 @@ Kill switches:
 
 ### Key Services
 
-- **`services/expenses.js`** — Database layer for all CRUD: expenses, incomes, budgets, fields, rainfall, user settings, AI usage tracking, plot history queries.
+- **`services/expenses.js`** — Database layer for all CRUD: expenses, incomes, budgets, fields, rainfall, user settings, AI usage tracking, plot history queries. Includes `getOrCreateUserByTelegramId()` for Telegram user provisioning.
 - **`services/whatsapp.js`** — WhatsApp Cloud API client (send messages via Meta API).
+- **`services/telegram.ts`** — Telegram Bot API client (sendMessage, sendButtons, sendList, sendDocument, downloadFile).
 - **`services/weather.js`** — OpenWeather API integration for forecasts and rain alerts.
 - **`services/scheduler.js`** — node-cron jobs: weekly summaries, daily weather alerts, proactive reminders (missing hectares), Argentina timezone.
 - **`services/observations.js`** — Observation CRUD with 4-layer dedup, normalization, financial guard.
@@ -79,7 +80,7 @@ Handles Spanish text normalization, written numbers ("quinientos mil" → 500000
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-034_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users`, `fields`, `plots`, `expenses`, `incomes`, `budgets`, `rainfall`, `domain_events` (activities), `agro_observations`, `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB and `agent_mode` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`.
+PostgreSQL with migrations in `src/migrations/001-035_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id` column), `fields`, `plots`, `expenses`, `incomes`, `budgets`, `rainfall`, `domain_events` (activities), `agro_observations`, `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`.
 
 ### Frontend (`frontend/`)
 
@@ -106,6 +107,7 @@ JWT-based authentication with bcrypt passwords and refresh token rotation.
 ### Routes
 
 - `GET/POST /webhook` — WhatsApp webhook (verification + message handler)
+- `POST /telegram` — Telegram webhook handler (secret verified via `src/middleware/telegram-auth.ts`)
 - `/api/auth/*` — Auth endpoints (register, login, refresh, logout, profile, observations, expenses, incomes, activities — including PATCH edit endpoints, GET filters)
 - `/admin/api/*` — Admin dashboard API endpoints (stats, users, settings, AI usage, parse metrics, enriched field detail with financials, field activities) — requires admin JWT
 - `/admin` — Admin dashboard static files (legacy HTML/JS from `src/public/`)
@@ -132,9 +134,30 @@ Interruptible conversation flows for multi-step data entry (expense, income, rai
 - PlotDiscoveryService is lookup-only — never auto-creates fields/plots; returns `notFound` info for unresolved entities
 - Observation safety guard in `agronomy.handler.ts`: `isLikelyQuestionOrFollowUp()` prevents non-agro text from being saved as observations
 
+## Deployment
+
+The project is deployed on **Railway** at `campo-bot-production.up.railway.app`. Deploy with `railway up` from the local directory.
+
+The Dockerfile builds the frontend as part of the image: it installs frontend dependencies and runs `npm run build` so `frontend/dist/` is present at runtime. No separate build step is needed when deploying.
+
+Required environment variables on Railway: `DATABASE_URL`, `JWT_SECRET`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`.
+
+## Telegram Integration
+
+Telegram support was added as a second messaging channel alongside WhatsApp. All message processing (AI pipeline, flows, domain handlers) is shared.
+
+- **`src/services/telegram.ts`** — Telegram Bot API client: `sendMessage`, `sendButtons`, `sendList`, `sendDocument`, `downloadFile`
+- **`src/controllers/telegram.controller.ts`** — Webhook handler at `POST /telegram`; follows the same pattern as `test-bot.controller.ts`
+- **`src/middleware/telegram-auth.ts`** — Webhook secret verification middleware
+- **`src/scripts/setup-telegram-webhook.ts`** — Registers the Telegram webhook URL with the Bot API
+- **`src/scripts/delete-telegram-webhook.ts`** — Removes the registered Telegram webhook
+- **Migration 035** — Adds `telegram_id` column to `users`; adds `channel` column to `conversation_logs`
+- User store key: `tg_${chatId}`; users are provisioned on first contact via `getOrCreateUserByTelegramId()` in `expenses.js`
+- Env vars: `TELEGRAM_BOT_TOKEN` (required), `TELEGRAM_WEBHOOK_SECRET` (optional, for webhook verification)
+
 ## Environment Variables
 
-Required in `.env`: `DATABASE_URL`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `ANTHROPIC_API_KEY`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`, `JWT_SECRET`. See `docker-compose.yml` for defaults.
+Required in `.env`: `DATABASE_URL`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `ANTHROPIC_API_KEY`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`, `JWT_SECRET`, `TELEGRAM_BOT_TOKEN`. See `docker-compose.yml` for defaults. `TELEGRAM_WEBHOOK_SECRET` is optional.
 
 ### AI Agent Settings (configurable via admin dashboard)
 

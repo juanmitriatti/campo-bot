@@ -47,10 +47,10 @@ export async function setUserName(userId, name) {
   );
 }
 
-export async function setUserCity(userId, city) {
+export async function setUserCity(userId, city, province = null) {
   await pool.query(
-    "UPDATE users SET city = $1 WHERE id = $2",
-    [city, userId]
+    "UPDATE users SET city = $1, province = COALESCE($3, province) WHERE id = $2",
+    [city, userId, province]
   );
 }
 
@@ -58,27 +58,6 @@ export async function setUserEmail(userId, email) {
   await pool.query(
     "UPDATE users SET email = $1 WHERE id = $2",
     [email, userId]
-  );
-}
-
-export async function setUserAddress(userId, address) {
-  await pool.query(
-    "UPDATE users SET address = $1 WHERE id = $2",
-    [address, userId]
-  );
-}
-
-export async function setUserPostalCode(userId, postalCode) {
-  await pool.query(
-    "UPDATE users SET postal_code = $1 WHERE id = $2",
-    [postalCode, userId]
-  );
-}
-
-export async function setUserProvince(userId, province) {
-  await pool.query(
-    "UPDATE users SET province = $1 WHERE id = $2",
-    [province, userId]
   );
 }
 
@@ -593,10 +572,10 @@ export async function getOrCreateField(userId, name) {
   return result.rows[0];
 }
 
-export async function setFieldCity(userId, fieldName, city) {
+export async function setFieldCity(userId, fieldName, city, province = null) {
   await pool.query(
-    `UPDATE fields SET city = $1 WHERE user_id = $2 AND LOWER(name) = LOWER($3)`,
-    [city, userId, fieldName]
+    `UPDATE fields SET city = $1, province = COALESCE($4, province) WHERE user_id = $2 AND LOWER(name) = LOWER($3)`,
+    [city, userId, fieldName, province]
   );
 }
 
@@ -627,7 +606,7 @@ export async function getFieldByName(userId, fieldName) {
 
 export async function getUserFieldsWithCity(userId) {
   const result = await pool.query(
-    `SELECT name, city FROM fields WHERE user_id = $1 AND city IS NOT NULL AND deleted_at IS NULL`,
+    `SELECT name, city, province FROM fields WHERE user_id = $1 AND city IS NOT NULL AND deleted_at IS NULL`,
     [userId]
   );
   return result.rows;
@@ -635,7 +614,7 @@ export async function getUserFieldsWithCity(userId) {
 
 export async function getUserFields(userId) {
   const result = await pool.query(
-    `SELECT id, name, city FROM fields WHERE user_id = $1 AND deleted_at IS NULL ORDER BY name`,
+    `SELECT id, name, city, province FROM fields WHERE user_id = $1 AND deleted_at IS NULL ORDER BY name`,
     [userId]
   );
   return result.rows;
@@ -761,6 +740,7 @@ export async function getFieldInfo(userId, fieldName) {
   return {
     name: field.name,
     city: field.city,
+    province: field.province || null,
     expenses: { total: Number(expensesR.rows[0].total), count: parseInt(expensesR.rows[0].count) },
     incomes: { total: Number(incomesR.rows[0].total), count: parseInt(incomesR.rows[0].count) },
     rainfall: { total: Number(rainfallR.rows[0].total), count: parseInt(rainfallR.rows[0].count) },
@@ -954,13 +934,6 @@ export async function setPlotArea(plotId, hectares) {
   await pool.query(
     `UPDATE plots SET area_hectares = $1 WHERE id = $2`,
     [hectares, plotId]
-  );
-}
-
-export async function setPlotCoords(plotId, lat, lng) {
-  await pool.query(
-    `UPDATE plots SET lat = $1, lng = $2 WHERE id = $3`,
-    [lat, lng, plotId]
   );
 }
 

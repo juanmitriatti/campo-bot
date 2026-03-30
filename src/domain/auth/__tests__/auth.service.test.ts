@@ -62,7 +62,7 @@ describe('AuthService', () => {
       mockAuthRepo.findByEmail.mockResolvedValue(null);
       mockAuthRepo.createUser.mockResolvedValue({
         id: 1, name: 'Test', email: 'test@test.com', role: 'end_user',
-        city: null, address: null, postal_code: null, province: null, plan_id: 1,
+        city: null, province: null, plan_id: 1,
       });
 
       const result = await service.register({
@@ -111,7 +111,7 @@ describe('AuthService', () => {
       mockAuthRepo.findByEmail.mockResolvedValue({
         id: 1, name: 'Test', email: 'test@test.com', role: 'end_user',
         password_hash: '$2b$12$hashedpassword',
-        city: null, address: null, postal_code: null, province: null, plan_id: 1,
+        city: null, province: null, plan_id: 1,
       });
 
       const result = await service.login({ email: 'test@test.com', password: 'password123' });
@@ -174,7 +174,7 @@ describe('AuthService', () => {
       mockTokenRepo.findValidToken.mockResolvedValue({ id: 1, user_id: 1, expires_at: new Date(Date.now() + 86400000) });
       mockAuthRepo.getUserById.mockResolvedValue({
         id: 1, name: 'Test', email: 'test@test.com', role: 'end_user',
-        city: null, address: null, postal_code: null, province: null, plan_id: 1,
+        city: null, province: null, plan_id: 1,
       });
 
       const newTokens = await service.refreshTokens(refreshToken);
@@ -200,7 +200,7 @@ describe('AuthService', () => {
       const service = new AuthService(mockAuthRepo, mockTokenRepo, mockPlanRepo);
       mockAuthRepo.getUserById.mockResolvedValue({
         id: 1, name: 'Test', email: 'test@test.com', role: 'end_user',
-        city: null, address: null, postal_code: null, province: null, plan_id: 1,
+        city: null, province: null, plan_id: 1,
       });
 
       const result = await service.getProfile(1);
@@ -222,7 +222,7 @@ describe('AuthService', () => {
       mockAuthRepo.findByEmail.mockResolvedValue(null);
       mockAuthRepo.updateProfile.mockResolvedValue({
         id: 1, name: 'Updated', email: 'new@test.com', role: 'end_user',
-        city: null, address: null, postal_code: null, province: null, plan_id: 1,
+        city: null, province: null, plan_id: 1,
       });
 
       const result = await service.updateProfile(1, { name: 'Updated', email: 'new@test.com' });

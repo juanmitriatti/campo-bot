@@ -3,10 +3,8 @@ CREATE TABLE users (
   phone_number VARCHAR(20) UNIQUE,
   name VARCHAR(100),
   city VARCHAR(100),
+  province VARCHAR(100),
   email TEXT,
-  address TEXT,
-  postal_code TEXT,
-  province TEXT,
   password_hash TEXT,
   role VARCHAR(20) NOT NULL DEFAULT 'end_user'
 );
@@ -16,8 +14,7 @@ CREATE TABLE fields (
   user_id INT REFERENCES users(id),
   name VARCHAR(100) NOT NULL,
   city VARCHAR(100),
-  hectares NUMERIC,
-  location VARCHAR(200),
+  province VARCHAR(100),
   deleted_at TIMESTAMP DEFAULT NULL,
   deleted_by VARCHAR(50) DEFAULT NULL,
   UNIQUE(user_id, name)
@@ -29,8 +26,6 @@ CREATE TABLE plots (
   name VARCHAR(100) NOT NULL,
   area_hectares NUMERIC,
   soil_type VARCHAR(50),
-  lat NUMERIC,
-  lng NUMERIC,
   created_at TIMESTAMP DEFAULT NOW(),
   deleted_at TIMESTAMP DEFAULT NULL,
   deleted_by VARCHAR(50) DEFAULT NULL,

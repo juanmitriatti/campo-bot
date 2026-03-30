@@ -25,8 +25,8 @@ export class UserRepository {
     await _setUserName(userId, name);
   }
 
-  async setCity(userId: UserId, city: string): Promise<void> {
-    await _setUserCity(userId, city);
+  async setCity(userId: UserId, city: string, province?: string | null): Promise<void> {
+    await _setUserCity(userId, city, province);
   }
 
   async getSettings(userId: UserId): Promise<UserSettings> {

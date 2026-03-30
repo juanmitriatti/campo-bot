@@ -16,6 +16,7 @@ import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
+import { handlePendingCity } from '../middleware/pending-field-city-handler.js';
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
@@ -741,14 +742,11 @@ router.post('/', async (req: Request, res: Response) => {
         res.sendStatus(200);
         return;
       }
-      let city = text.trim()
-        .replace(/^(?:esta|está|queda|ubicad[oa])\s+(?:en\s+)?/i, '')
-        .replace(/^en\s+/i, '')
-        .trim();
-      city = city.charAt(0).toUpperCase() + city.slice(1);
-      await financialService.setFieldCity(userId, pendingCity.fieldName, city);
-      pendingCityStore.clear(phone);
-      await sendMessage(phone, `📍 Campo *${pendingCity.fieldName}* ubicado en *${city}*`);
+      const cityResult = await handlePendingCity(text, pendingCity, userId, financialService);
+      if (cityResult.clearPending) pendingCityStore.clear(phone);
+      for (const msg of cityResult.messages) {
+        await sendMessage(phone, msg);
+      }
       res.sendStatus(200);
       return;
     }

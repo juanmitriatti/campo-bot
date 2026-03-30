@@ -154,8 +154,8 @@ export class FinancialService {
     return this.repo.getOrCreateField(userId, name);
   }
 
-  async setFieldCity(userId: UserId, fieldName: string, city: string) {
-    await this.repo.setFieldCity(userId, fieldName, city);
+  async setFieldCity(userId: UserId, fieldName: string, city: string, province?: string | null) {
+    await this.repo.setFieldCity(userId, fieldName, city, province);
   }
 
   async getFieldByName(userId: UserId, fieldName: string) {
@@ -218,10 +218,6 @@ export class FinancialService {
 
   async setPlotArea(plotId: number, hectares: number) {
     return this.repo.setPlotArea(plotId, hectares);
-  }
-
-  async setPlotCoords(plotId: number, lat: number, lng: number) {
-    return this.repo.setPlotCoords(plotId, lat, lng);
   }
 
   async getPlotInfo(userId: UserId, plotName: string): Promise<PlotInfoData | null> {

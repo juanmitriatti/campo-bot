@@ -18,7 +18,7 @@ const KNOWN_INTENTS = new Set([
   'list_fields', 'add_field', 'delete_field', 'rename_field', 'field_info',
   'set_field_city', 'add_field_city',
   'list_plots', 'add_plot', 'delete_plot', 'plot_info',
-  'set_plot_area', 'set_plot_coords', 'restore_field',
+  'set_plot_area', 'restore_field',
   // Reports
   'monthly_result', 'field_result', 'weekly_report', 'monthly_report',
   'field_report', 'plot_report', 'date_range_report', 'compare_months',

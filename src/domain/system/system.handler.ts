@@ -2,6 +2,8 @@ import { UserRepository } from '../users/user.repository.js';
 import { PlanRepository } from '../billing/plan.repository.js';
 import { pool } from '../../config/db.js';
 import { buildHelpText } from './help-text.js';
+import { localidadLookup } from '../../services/localidad-lookup.service.js';
+import { formatLocation } from '../../middleware/pending-field-city-handler.js';
 import type { FinancialService } from '../financial/financial.service.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse, InteractiveMessage } from '../../types/index.js';
 
@@ -305,9 +307,30 @@ export class SystemHandler {
         await this.userRepo.setName(userId, cmd.name as string);
         return { messages: [`\u2705 Listo, ${cmd.name}. Ya te tengo registrado.`] };
 
-      case 'set_city':
-        await this.userRepo.setCity(userId, cmd.city as string);
-        return { messages: [`\ud83d\udccd Ubicaci\u00f3n guardada: *${cmd.city}*\nAhora el clima va a ser de tu zona.`] };
+      case 'set_city': {
+        const cityInput = cmd.city as string;
+        const lookupResult = localidadLookup.lookup(cityInput);
+
+        if (lookupResult.status === 'exact') {
+          const loc = lookupResult.matches[0];
+          await this.userRepo.setCity(userId, loc.nombre, loc.provincia);
+          return { messages: [`\ud83d\udccd Ubicaci\u00f3n guardada: *${formatLocation(loc.nombre, loc.provincia)}*\nAhora el clima va a ser de tu zona.`] };
+        }
+
+        if (lookupResult.status === 'disambiguate') {
+          const options = lookupResult.matches.map(m => `\u2022 ${m.nombre}, ${m.provincia}`).join('\n');
+          return { messages: [`Hay varias localidades con ese nombre:\n${options}\n\nIndic\u00e1me la provincia para guardar tu ubicaci\u00f3n.`] };
+        }
+
+        if (lookupResult.status === 'suggestions') {
+          const suggestions = lookupResult.matches.map(m => `\u2022 ${m.nombre}, ${m.provincia}`).join('\n');
+          return { messages: [`No encontr\u00e9 "${cityInput}". \u00bfQuisiste decir?\n${suggestions}`] };
+        }
+
+        // not_found — save as-is without province
+        await this.userRepo.setCity(userId, cityInput);
+        return { messages: [`\ud83d\udccd Ubicaci\u00f3n guardada: *${cityInput}*\nNo encontr\u00e9 esa localidad en el listado censal, pero la guard\u00e9 igual.\nAhora el clima va a ser de tu zona.`] };
+      }
 
       case 'request_more_messages': {
         // Log the request for analytics

@@ -15,6 +15,7 @@ import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
+import { handlePendingCity } from '../middleware/pending-field-city-handler.js';
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
@@ -696,14 +697,9 @@ async function processTextMessage(
       pendingCityStore.clear(phone);
       return [{ type: 'text', text: '👍 Podés asignar la ubicación después.' }];
     }
-    let city = text.trim()
-      .replace(/^(?:esta|está|queda|ubicad[oa])\s+(?:en\s+)?/i, '')
-      .replace(/^en\s+/i, '')
-      .trim();
-    city = city.charAt(0).toUpperCase() + city.slice(1);
-    await financialService.setFieldCity(userId, pendingCity.fieldName, city);
-    pendingCityStore.clear(phone);
-    return [{ type: 'text', text: `📍 Campo *${pendingCity.fieldName}* ubicado en *${city}*` }];
+    const cityResult = await handlePendingCity(text, pendingCity, userId, financialService);
+    if (cityResult.clearPending) pendingCityStore.clear(phone);
+    return cityResult.messages.map(msg => ({ type: 'text' as const, text: msg }));
   }
 
   // --- Check pending plot area assignment ---

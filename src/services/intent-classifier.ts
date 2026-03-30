@@ -32,7 +32,7 @@ const TRIVIAL_COMMANDS = new Set([
   'add_field', 'add_plot', 'add_plots_batch', 'delete_field', 'delete_plot',
   'rename_field', 'field_info', 'plot_info',
   'set_field_city', 'add_field_city',
-  'set_plot_area', 'set_plot_coords', 'restore_field',
+  'set_plot_area', 'restore_field',
   'set_city', 'set_name', 'set_budget',
   'show_alerts', 'set_rain_threshold',
   'enable_rain_alerts', 'disable_rain_alerts',

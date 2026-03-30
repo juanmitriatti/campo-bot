@@ -3,6 +3,8 @@ import { generateCSV } from '../../utils/csv.js';
 import { recordAlert } from '../../services/alert.service.js';
 import { getActivityLabel } from '../agronomy/activity.service.js';
 import { getSetting } from '../../services/settings.service.js';
+import { localidadLookup } from '../../services/localidad-lookup.service.js';
+import { formatLocation } from '../../middleware/pending-field-city-handler.js';
 import type {
   UserId,
   User,
@@ -811,8 +813,17 @@ export class FinancialHandler {
           if (fields.length === 1) {
             const singleField = fields[0];
             if (cityValue) {
-              await this.service.setFieldCity(userId, singleField.name, cityValue);
-              return { messages: [`\ud83d\udccd Campo *${singleField.name}* ubicado en *${cityValue}*`] };
+              const lookup = localidadLookup.lookup(cityValue);
+              if (lookup.status === 'exact') {
+                const loc = lookup.matches[0];
+                await this.service.setFieldCity(userId, singleField.name, loc.nombre, loc.provincia);
+                return { messages: [`\ud83d\udccd Campo *${singleField.name}* ubicado en *${formatLocation(loc.nombre, loc.provincia)}*`] };
+              }
+              // Non-exact: save as-is, enter pending for correction
+              return {
+                messages: [`\u00bfEn qu\u00e9 ciudad/localidad est\u00e1 tu campo *${singleField.name}*?`],
+                sideEffects: { setPendingFieldCity: { fieldName: singleField.name } },
+              };
             }
             return {
               messages: [`\u00bfEn qu\u00e9 ciudad/localidad est\u00e1 tu campo *${singleField.name}*?`],
@@ -838,8 +849,18 @@ export class FinancialHandler {
             sideEffects: { setPendingFieldCity: { fieldName: cityFieldName } },
           };
         }
-        await this.service.setFieldCity(userId, cityFieldName, cityValue);
-        return { messages: [`\ud83d\udccd ${labelCity} *${cityFieldName}* ubicado en *${cityValue}*`] };
+        // Validate city via localidad lookup
+        const lookupResult = localidadLookup.lookup(cityValue);
+        if (lookupResult.status === 'exact') {
+          const loc = lookupResult.matches[0];
+          await this.service.setFieldCity(userId, cityFieldName, loc.nombre, loc.provincia);
+          return { messages: [`\ud83d\udccd ${labelCity} *${cityFieldName}* ubicado en *${formatLocation(loc.nombre, loc.provincia)}*`] };
+        }
+        // Non-exact: enter pending state for re-prompt
+        return {
+          messages: [`\u00bfEn qu\u00e9 ciudad/localidad est\u00e1 *${cityFieldName}*?`],
+          sideEffects: { setPendingFieldCity: { fieldName: cityFieldName } },
+        };
       }
 
       case 'add_field_city': {
@@ -919,7 +940,7 @@ export class FinancialHandler {
                 rows: fields.slice(0, 10).map(f => ({
                   id: `create_plot_${plotSlug}_in_${f.name.replace(/\s+/g, '_')}`,
                   title: f.name.substring(0, 24),
-                  description: f.city ? f.city.substring(0, 72) : undefined,
+                  description: f.city ? formatLocation(f.city, f.province).substring(0, 72) : undefined,
                 })),
               }],
             },
@@ -942,7 +963,7 @@ export class FinancialHandler {
           const city = cmd.city as string | null;
           const cityChanged = city && city.toLowerCase() !== (existing.city || '').toLowerCase();
           let msg = `⚠️ Ya existe un ${labelAdd.toLowerCase()} llamado *${existing.name}*`;
-          if (existing.city) msg += ` (ubicación: ${existing.city})`;
+          if (existing.city) msg += ` (ubicación: ${formatLocation(existing.city, existing.province)})`;
           msg += '.';
           if (cityChanged) msg += `\nLa nueva ubicación sería *${city}*.`;
           msg += '\n\n¿Qué querés hacer?';
@@ -961,14 +982,24 @@ export class FinancialHandler {
 
         await this.service.getOrCreateField(userId, fieldName);
         if (cmd.city) {
-          await this.service.setFieldCity(userId, fieldName, cmd.city as string);
+          const lookup = localidadLookup.lookup(cmd.city as string);
+          if (lookup.status === 'exact') {
+            const loc = lookup.matches[0];
+            await this.service.setFieldCity(userId, fieldName, loc.nombre, loc.provincia);
+            return {
+              messages: [`\ud83d\udccd ${labelAdd} *${fieldName}* creado en *${formatLocation(loc.nombre, loc.provincia)}*`],
+              suggestionKey: 'field_created',
+            };
+          }
+          // Non-exact: create field, enter pending for localidad resolution
           return {
-            messages: [`\ud83d\udccd ${labelAdd} *${fieldName}* creado en *${cmd.city}*`],
+            messages: [`📍 ${labelAdd} *${fieldName}* creado.\n\n¿En qué localidad está?`],
+            sideEffects: { setPendingFieldCity: { fieldName } },
             suggestionKey: 'field_created',
           };
         }
         return {
-          messages: [`📍 ${labelAdd} *${fieldName}* creado.\n\n¿En qué ciudad o zona está?`],
+          messages: [`📍 ${labelAdd} *${fieldName}* creado.\n\n¿En qué localidad está?`],
           sideEffects: { setPendingFieldCity: { fieldName } },
           suggestionKey: 'field_created',
         };
@@ -981,7 +1012,7 @@ export class FinancialHandler {
         }
         let msg = `\ud83d\udccd *Tus campos (${fields.length}):*\n`;
         for (const f of fields) {
-          msg += `\n\u2022 *${f.name}*${f.city ? ` \u2014 ${f.city}` : ' \u2014 sin ubicaci\u00f3n'}`;
+          msg += `\n\u2022 *${f.name}*${f.city ? ` \u2014 ${formatLocation(f.city, f.province)}` : ' \u2014 sin ubicaci\u00f3n'}`;
         }
         msg += '\n\n_Comandos: agregar campo X, lotes del campo X, info campo X_';
         return { messages: [msg] };
@@ -1042,7 +1073,7 @@ export class FinancialHandler {
         }
         const resultado = info.incomes.total - info.expenses.total;
         let msg = `📍 *Campo ${info.name}*\n`;
-        msg += info.city ? `Ubicación: ${info.city}\n` : `Ubicación: sin asignar\n`;
+        msg += info.city ? `Ubicación: ${formatLocation(info.city, info.province)}\n` : `Ubicación: sin asignar\n`;
         if (info.plotCount && info.plotCount > 0) {
           msg += `Lotes: ${info.plotCount}\n`;
         }
@@ -1278,15 +1309,6 @@ export class FinancialHandler {
         }
         await this.service.setPlotArea(plots[0].id, cmd.hectares as number);
         return { messages: [`\ud83d\udccd Lote *${plots[0].name}*: superficie actualizada a *${cmd.hectares} ha*`] };
-      }
-
-      case 'set_plot_coords': {
-        const plots = await this.service.findPlotByNameAcrossFields(userId, cmd.plotName as string);
-        if (plots.length === 0) {
-          return { messages: [`No encontr\u00e9 el lote *${cmd.plotName}*.`] };
-        }
-        await this.service.setPlotCoords(plots[0].id, cmd.lat as number, cmd.lng as number);
-        return { messages: [`\ud83d\udccd Lote *${plots[0].name}*: coordenadas actualizadas (${cmd.lat}, ${cmd.lng})`] };
       }
 
       case 'restore_field': {

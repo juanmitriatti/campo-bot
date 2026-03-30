@@ -53,6 +53,7 @@ router.get("/api/users", async (req, res) => {
          u.phone_number,
          u.name,
          u.city,
+         u.province,
          u.email,
          u.status,
          u.last_message_at,
@@ -80,6 +81,7 @@ router.get("/api/users", async (req, res) => {
       name: u.name,
       phone: u.phone_number,
       city: u.city,
+      province: u.province || null,
       email: u.email || null,
       status: u.status || 'active',
       planName: u.plan_name || 'Free',
@@ -120,10 +122,8 @@ router.get("/api/users/:id", async (req, res) => {
       name: u.name,
       phone: u.phone_number,
       city: u.city,
-      email: u.email || null,
-      address: u.address || null,
-      postalCode: u.postal_code || null,
       province: u.province || null,
+      email: u.email || null,
       planId: u.plan_id || null,
       recentExpenses: expensesR.rows.map(e => ({
         date: e.expense_date,
@@ -239,7 +239,7 @@ router.put("/api/users/:id/settings", async (req, res) => {
 
 router.put("/api/users/:id", async (req, res) => {
   const { id } = req.params;
-  const { name, city, email, address, postalCode, province } = req.body;
+  const { name, city, email, province } = req.body;
 
   try {
     const result = await pool.query(
@@ -247,11 +247,9 @@ router.put("/api/users/:id", async (req, res) => {
          name = COALESCE($1, name),
          city = COALESCE($2, city),
          email = COALESCE($3, email),
-         address = COALESCE($4, address),
-         postal_code = COALESCE($5, postal_code),
-         province = COALESCE($6, province)
-       WHERE id = $7 RETURNING *`,
-      [name, city, email, address, postalCode, province, id]
+         province = COALESCE($5, province)
+       WHERE id = $4 RETURNING *`,
+      [name, city, email, id, province]
     );
 
     if (result.rows.length === 0) {
@@ -264,10 +262,8 @@ router.put("/api/users/:id", async (req, res) => {
       name: u.name,
       phone: u.phone_number,
       city: u.city,
-      email: u.email || null,
-      address: u.address || null,
-      postalCode: u.postal_code || null,
       province: u.province || null,
+      email: u.email || null,
     });
   } catch (error) {
     console.error("Error updating user:", error);
@@ -996,6 +992,7 @@ router.get("/api/agro/fields/:id", async (req, res) => {
       id: field.id,
       name: field.name,
       city: field.city,
+      province: field.province || null,
       hectares: field.hectares,
       userName: field.user_name,
       userId: field.user_id,
@@ -1720,7 +1717,7 @@ router.put("/api/users/:id/status", async (req, res) => {
 
 router.post("/api/users", async (req, res) => {
   try {
-    const { name, phone, city, email, address, postalCode, province } = req.body;
+    const { name, phone, city, email, province } = req.body;
     if (!phone || !phone.trim()) {
       return res.status(400).json({ error: "El teléfono es obligatorio" });
     }
@@ -1732,10 +1729,10 @@ router.post("/api/users", async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO users (phone_number, name, city, email, address, postal_code, province, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+      `INSERT INTO users (phone_number, name, city, email, province, status)
+       VALUES ($1, $2, $3, $4, $5, 'active')
        RETURNING *`,
-      [phone.trim(), name || null, city || null, email || null, address || null, postalCode || null, province || null]
+      [phone.trim(), name || null, city || null, email || null, province || null]
     );
 
     const u = result.rows[0];
@@ -1752,6 +1749,7 @@ router.post("/api/users", async (req, res) => {
       name: u.name,
       phone: u.phone_number,
       city: u.city,
+      province: u.province || null,
       email: u.email || null,
       status: u.status || 'active',
     });

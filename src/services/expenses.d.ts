@@ -10,7 +10,7 @@ export function getRainfallPeriod(userId: number, period: string, fieldId?: numb
 // Re-declare the rest so the .d.ts doesn't shadow them — let TS infer from .js
 export function getOrCreateUser(phone: string): Promise<{ id: number; phone_number: string; name: string | null; city: string | null }>;
 export function setUserName(userId: number, name: string): Promise<void>;
-export function setUserCity(userId: number, city: string): Promise<void>;
+export function setUserCity(userId: number, city: string, province?: string | null): Promise<void>;
 export function getUserSettings(userId: number): Promise<{
   weekly_summary?: boolean;
   weekly_summary_day?: number;
@@ -45,16 +45,16 @@ export function setBudget(userId: number, category: string, amount: number): Pro
 export function getBudget(userId: number, category: string): Promise<{ monthly_limit: string } | null>;
 export function getCategoryMonthlyTotal(userId: number, category: string): Promise<number>;
 export function checkBudgetAlert(total: number, limit: number, category: string, userName: string | null, userId: number, globalSettings?: { budget_alert_80?: boolean; budget_alert_100?: boolean } | null): Promise<string | null>;
-export function getOrCreateField(userId: number, name: string): Promise<{ id: number; user_id: number; name: string; city: string | null }>;
-export function setFieldCity(userId: number, fieldName: string, city: string): Promise<void>;
-export function getFieldByName(userId: number, fieldName: string): Promise<{ id: number; user_id: number; name: string; city: string | null } | null>;
-export function getUserFieldsWithCity(userId: number): Promise<Array<{ name: string; city: string }>>;
-export function getUserFields(userId: number): Promise<Array<{ name: string; city: string | null }>>;
+export function getOrCreateField(userId: number, name: string): Promise<{ id: number; user_id: number; name: string; city: string | null; province: string | null }>;
+export function setFieldCity(userId: number, fieldName: string, city: string, province?: string | null): Promise<void>;
+export function getFieldByName(userId: number, fieldName: string): Promise<{ id: number; user_id: number; name: string; city: string | null; province: string | null } | null>;
+export function getUserFieldsWithCity(userId: number): Promise<Array<{ name: string; city: string; province: string | null }>>;
+export function getUserFields(userId: number): Promise<Array<{ name: string; city: string | null; province: string | null }>>;
 export function getUserFieldCount(userId: number): Promise<number>;
 export function deleteField(userId: number, fieldName: string): Promise<boolean>;
-export function restoreField(userId: number, fieldName: string): Promise<{ id: number; user_id: number; name: string; city: string | null } | null>;
+export function restoreField(userId: number, fieldName: string): Promise<{ id: number; user_id: number; name: string; city: string | null; province: string | null } | null>;
 export function renameField(userId: number, oldName: string, newName: string): Promise<boolean>;
-export function getFieldInfo(userId: number, fieldName: string): Promise<{ name: string; city: string | null; expenses: { total: number; count: number }; incomes: { total: number; count: number }; rainfall: { total: number; count: number }; plotCount: number } | null>;
+export function getFieldInfo(userId: number, fieldName: string): Promise<{ name: string; city: string | null; province: string | null; expenses: { total: number; count: number }; incomes: { total: number; count: number }; rainfall: { total: number; count: number }; plotCount: number } | null>;
 export function saveUnparsedMessage(userId: number, message: string): Promise<void>;
 export function getDailyClaudeCount(userId: number): Promise<number>;
 export function saveAiUsage(userId: number, usage: { input_tokens: number; output_tokens: number }): Promise<void>;
@@ -69,7 +69,7 @@ export function getRainfallForYear(userId: number, year: number): Promise<{ tota
 export function getRainfallRange(userId: number, desde: Date, hasta: Date): Promise<{ total: string | number; registros: string | number }>;
 
 // --- Plot aliases & conversation state ---
-export function findPlotByAlias(userId: number, normalizedAlias: string): Promise<{ id: number; field_id: number; name: string; field_name: string; area_hectares: number | null; soil_type: string | null; lat: number | null; lng: number | null; created_at: Date } | null>;
+export function findPlotByAlias(userId: number, normalizedAlias: string): Promise<{ id: number; field_id: number; name: string; field_name: string; area_hectares: number | null; soil_type: string | null; created_at: Date } | null>;
 export function addPlotAlias(plotId: number, normalizedAlias: string): Promise<void>;
 export function getConversationState(userId: number): Promise<{ user_id: number; last_plot_id: number | null; last_field_id: number | null; updated_at: Date; plot_name: string | null; field_name: string | null; last_intent: string | null; last_activity_type: string | null; last_query_type: string | null; last_time_reference: string | null } | null>;
 export function updateConversationState(userId: number, fieldId: number | null, plotId: number | null): Promise<void>;
@@ -79,8 +79,8 @@ export function updateConversationMiniMemory(userId: number, data: {
   lastQueryType?: string | null;
   lastTimeReference?: string | null;
 }): Promise<void>;
-export function getUserSingleField(userId: number): Promise<{ id: number; user_id: number; name: string; city: string | null } | null>;
-export function getPlotById(plotId: number): Promise<{ id: number; field_id: number; name: string; field_name: string; area_hectares: number | null; soil_type: string | null; lat: number | null; lng: number | null; created_at: Date } | null>;
+export function getUserSingleField(userId: number): Promise<{ id: number; user_id: number; name: string; city: string | null; province: string | null } | null>;
+export function getPlotById(plotId: number): Promise<{ id: number; field_id: number; name: string; field_name: string; area_hectares: number | null; soil_type: string | null; created_at: Date } | null>;
 
 // --- Domain events ---
 export function saveDomainEvent(userId: number, data: {
@@ -113,15 +113,14 @@ export function getPlotCropHistory(plotId: number): Promise<Array<{ id: number; 
 export function getPlotCropBySeason(plotId: number, seasonYear: number, crop: string): Promise<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date } | null>;
 
 // --- Plots ---
-export function getOrCreatePlot(fieldId: number, name: string): Promise<{ id: number; field_id: number; name: string; area_hectares: number | null; soil_type: string | null; lat: number | null; lng: number | null; created_at: Date }>;
-export function getPlotByName(fieldId: number, plotName: string): Promise<{ id: number; field_id: number; name: string; area_hectares: number | null; soil_type: string | null; lat: number | null; lng: number | null; created_at: Date } | null>;
-export function getPlotsByField(fieldId: number): Promise<Array<{ id: number; field_id: number; name: string; area_hectares: number | null; soil_type: string | null; lat: number | null; lng: number | null; created_at: Date }>>;
-export function findPlotByNameAcrossFields(userId: number, plotName: string): Promise<Array<{ id: number; field_id: number; name: string; field_name: string; area_hectares: number | null; soil_type: string | null; lat: number | null; lng: number | null; created_at: Date }>>;
+export function getOrCreatePlot(fieldId: number, name: string): Promise<{ id: number; field_id: number; name: string; area_hectares: number | null; soil_type: string | null; created_at: Date }>;
+export function getPlotByName(fieldId: number, plotName: string): Promise<{ id: number; field_id: number; name: string; area_hectares: number | null; soil_type: string | null; created_at: Date } | null>;
+export function getPlotsByField(fieldId: number): Promise<Array<{ id: number; field_id: number; name: string; area_hectares: number | null; soil_type: string | null; created_at: Date }>>;
+export function findPlotByNameAcrossFields(userId: number, plotName: string): Promise<Array<{ id: number; field_id: number; name: string; field_name: string; area_hectares: number | null; soil_type: string | null; created_at: Date }>>;
 export function findAllUserPlots(userId: number): Promise<Array<{ id: number; name: string; field_name: string }>>;
 export function deletePlot(plotId: number, userId?: number | null): Promise<boolean>;
 export function restorePlot(userId: number, plotName: string, fieldName: string): Promise<{ id: number; field_id: number; name: string } | null>;
 export function setPlotArea(plotId: number, hectares: number): Promise<void>;
-export function setPlotCoords(plotId: number, lat: number, lng: number): Promise<void>;
 export function getPlotInfo(userId: number, plotName: string): Promise<{ name: string; field_name: string; area_hectares: number | null; soil_type: string | null; expenses: { total: number; count: number }; incomes: { total: number; count: number }; rainfall: { total: number; count: number } } | null>;
 
 // --- Plot history query ---
