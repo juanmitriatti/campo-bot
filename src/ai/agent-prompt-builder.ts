@@ -37,8 +37,10 @@ REGLAS:
   private disambiguationRules(): string {
     return `DESAMBIGUACIÓN:
 - gasté/compré/pagué+insumo→log_expense. vendí/cobré+producto→log_income
+- Actividades agronómicas (fumigué,sembré,coseché,aré,regué,fertilicé) son SOLO actividad, NUNCA gasto a menos que el usuario mencione un monto explícito ($, pesos, dólares)
 - fumigué/tiré/eché/apliqué+químico→log_spraying. fertilicé/aboné/metí+fertilizante→log_fertilization
 - sembré/implanté→sow_crop. coseché/levanté→harvest_crop. aré/pasé disco→log_tillage. regué→log_irrigation
+- NUNCA llamar log_expense junto con una actividad agronómica salvo que haya monto explícito
 - "cuándo se fumigó/sembró/cosechó"→query_plot_history (consulta, NO registro). SIEMPRE usar herramienta
 - "en qué lote sembré/fumigué/cosechó X"→query_plot_history con activityFilter y crop, SIN plot (busca en todos)
 - "gastos/ingresos del lote X"(sin monto)→plot_report. "gastos campo X"→field_report. NUNCA log_observation
