@@ -45,6 +45,9 @@ import { UserContextService } from '../ai/user-context.service.js';
 import { ConversationHistoryService } from '../ai/conversation-history.service.js';
 import { ConversationalFallbackService } from '../ai/conversational-fallback.service.js';
 import { FewShotService } from '../ai/few-shot.service.js';
+import { AgentService } from '../ai/agent.service.js';
+import { AgentPromptBuilder } from '../ai/agent-prompt-builder.js';
+import { AgentResponseMapper } from '../ai/agent-response-mapper.js';
 import { normalizeTranscript } from '../utils/text-normalizer.js';
 import { isLikelyQuestion } from '../utils/guards.js';
 import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observations.js';
@@ -75,7 +78,10 @@ const intentValidator = new IntentValidator();
 const conversationHistoryService = new ConversationHistoryService();
 const fewShotService = new FewShotService();
 const intentExtractor = new IntentExtractor(promptBuilder, intentValidator, userContextService, userRepository, conversationHistoryService, fewShotService);
-const intentClassifier = new IntentClassifier(undefined, undefined, intentExtractor);
+const agentPromptBuilder = new AgentPromptBuilder();
+const agentService = new AgentService(agentPromptBuilder, userContextService, userRepository, conversationHistoryService, fewShotService);
+const agentResponseMapper = new AgentResponseMapper();
+const intentClassifier = new IntentClassifier(undefined, undefined, intentExtractor, agentService, agentResponseMapper);
 const conversationalFallback = new ConversationalFallbackService(userRepository);
 
 const dedup = new MessageDedup();
@@ -847,6 +853,18 @@ router.post('/', async (req: Request, res: Response) => {
     // Classify intent (now returns ParseResult with confidence)
     const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings);
     const { intent: rawIntent, aiUsed, confidence } = parseResult;
+    const agentMode = (parseResult as any)._agentMode as string | undefined;
+    const toolCallsData = (parseResult as any)._toolCalls as object[] | undefined;
+
+    // Handle conversational response from Agent (no tool call — agent replied directly)
+    if ((parseResult as any)._conversationalResponse) {
+      const convResponse = (parseResult as any)._conversationalResponse as string;
+      await sendMessage(phone, convResponse);
+      conversationLogger.log(userId, phone, text, convResponse, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
+      res.sendStatus(200);
+      return;
+    }
+
     const intentCommand = rawIntent.type === 'command' ? rawIntent.data.command : null;
     conversationObserver.logIntentDetected(userId, rawIntent.type, intentCommand, confidence, parseResult.source, { aiUsed, missingFields: parseResult.missingFields.length > 0 ? parseResult.missingFields : undefined });
     if (aiUsed) {
@@ -1089,7 +1107,7 @@ router.post('/', async (req: Request, res: Response) => {
           lastTimeReference: (intent.data.timeLabel as string) ?? null,
         }).catch(() => {});
         await sendResponse(phone, response);
-        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
+        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
         res.sendStatus(200);
         return;
       }
@@ -1131,7 +1149,7 @@ router.post('/', async (req: Request, res: Response) => {
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
       await sendResponse(phone, response);
-      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -1172,12 +1190,15 @@ router.post('/', async (req: Request, res: Response) => {
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
       await sendResponse(phone, response);
-      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
 
     // --- Unknown → Conversational fallback → Menu ---
+    // Note: when AGENT_ENABLED=true, the agent handles conversational responses directly
+    // (caught above via _conversationalResponse). This fallback only runs for regex-only
+    // or JSON-path unknowns.
     if (intent.type === 'unknown' || confidence < unknownFallbackThreshold) {
       await financialService.saveUnparsedMessage(userId, text);
 
@@ -1185,7 +1206,7 @@ router.post('/', async (req: Request, res: Response) => {
 
       if (fallbackResult.aiUsed) {
         await sendMessage(phone, fallbackResult.response);
-        conversationLogger.log(userId, phone, text, fallbackResult.response, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence).catch(() => {});
+        conversationLogger.log(userId, phone, text, fallbackResult.response, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
       } else {
         // Rate limited or disabled — show menu with upgrade hint if limit hit
         await sendMessage(phone, fallbackResult.response);
@@ -1195,7 +1216,7 @@ router.post('/', async (req: Request, res: Response) => {
         const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
         await sendResponse(phone, menuResponse);
         conversationObserver.logMenuOpened(userId, { trigger: 'unknown_fallback' });
-        conversationLogger.log(userId, phone, text, fallbackResult.response, 'unknown', null, null, null, false, Date.now() - startTime, true, confidence).catch(() => {});
+        conversationLogger.log(userId, phone, text, fallbackResult.response, 'unknown', null, null, null, false, Date.now() - startTime, true, confidence, toolCallsData, agentMode).catch(() => {});
       }
     }
 

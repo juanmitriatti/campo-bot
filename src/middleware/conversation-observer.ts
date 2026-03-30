@@ -34,8 +34,8 @@ export class ConversationObserver {
           params.sessionId ?? null,
         ],
       );
-    } catch {
-      // Fire-and-forget — don't crash on observability failure
+    } catch (err) {
+      console.error('[conversation-observer] emit failed:', params.eventType, (err as Error).message);
     }
   }
 

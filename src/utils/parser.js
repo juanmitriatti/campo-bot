@@ -727,12 +727,13 @@ const COMMAND_PATTERNS = [
   },
   {
     // "agregar lote D" / "crear el lote norte" — no field specified (handler auto-assigns)
+    // (.+?) stops before " y " + action verb to avoid swallowing compound messages
     command: "add_plot",
     patterns: [
-      /(?:agregar|agrega|nuevo|crear|añadir)\s+(?:(?:un|el)\s+)?lote\s+(.+)$/,
+      /(?:agregar|agrega|nuevo|crear|añadir)\s+(?:(?:un|el)\s+)?lote\s+(.+?)(?:\s+y\s+|$)/,
     ],
     extract: (m, _norm, original) => {
-      const re = /(?:agregar|agrega|nuevo|crear|añadir)\s+(?:(?:un|el)\s+)?lote\s+(.+)$/i;
+      const re = /(?:agregar|agrega|nuevo|crear|añadir)\s+(?:(?:un|el)\s+)?lote\s+(.+?)(?:\s+y\s+|$)/i;
       const cm = original ? original.match(re) : null;
       return {
         plotName: (cm ? cm[1] : m[1]).trim(),
@@ -819,8 +820,14 @@ const COMMAND_PATTERNS = [
   {
     command: "generate_agro_report",
     patterns: [
-      /(?:registro|reporte|informe)\s+(?:agro(?:pecuario|n[oó]mico)?)\s+(?:(?:del?|en)\s+)?(?:lote\s+)?(.+)/,
-      /(?:registro|reporte|informe)\s+(?:agro(?:pecuario|n[oó]mico)?)/,
+      // "reporte/informe agronómico [del] [lote] X"
+      /(?:registro|reporte|informe|resumen)\s+(?:agro(?:pecuario|n[oó]mico)?)\s+(?:(?:del?|en)\s+)?(?:lote\s+)?(.+)/,
+      // "reporte/informe agronómico" (sin lote)
+      /(?:registro|reporte|informe|resumen)\s+(?:agro(?:pecuario|n[oó]mico)?)/,
+      // "estado/novedades del lote/campo X"
+      /(?:estado|novedades)\s+(?:del?|en)\s+(?:(?:el|mi)\s+)?(?:lote|campo)\s+(.+)/,
+      // "cómo va/viene/está [el] lote/campo X"
+      /c[oó]mo\s+(?:va|viene|est[aá])\s+(?:(?:el|mi)\s+)?(?:lote|campo)\s+(.+)/,
     ],
     extract: (m) => ({ plotName: m[1]?.trim() || null }),
   },

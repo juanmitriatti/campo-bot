@@ -8,6 +8,7 @@ export interface QueryContext {
   isBinaryQuestion: boolean;
   hasNoFilters: boolean;       // no time + no activity filter
   activityFilter: string | null;
+  crossPlot?: boolean;         // true when searching across all plots
 }
 
 // --- Response type decision engine ---
@@ -61,7 +62,7 @@ export function prioritizeRows(rows: PlotHistoryRow[]): PlotHistoryRow[] {
 
 // --- Formatting helpers ---
 
-function formatEventLine(row: PlotHistoryRow): string {
+function formatEventLine(row: PlotHistoryRow, showPlot = false): string {
   const { emoji, label } = row.source === 'observation'
     ? { emoji: '📝', label: `Obs: ${row.type}` }
     : row.source === 'rainfall'
@@ -69,6 +70,7 @@ function formatEventLine(row: PlotHistoryRow): string {
     : getActivityLabel(row.type);
   const dateStr = new Date(row.date).toLocaleDateString('es-AR');
   let line = `${emoji} *${label}* — ${dateStr}`;
+  if (showPlot && row.plot_name) line += ` — 📍 ${row.plot_name}`;
   if (row.detail && row.source === 'rainfall') line += ` — ${row.detail}mm`;
   else if (row.detail && row.source !== 'observation') line += ` — ${row.detail}`;
   if (row.quantity && row.unit && row.source !== 'rainfall') line += ` (${row.quantity} ${row.unit})`;
@@ -160,7 +162,8 @@ export function formatHistoryResponse(rows: PlotHistoryRow[], ctx: QueryContext)
       const row = rows[0];
       const { emoji, label } = getActivityLabel(row.type);
       const dateStr = new Date(row.date).toLocaleDateString('es-AR');
-      let msg = `${emoji} La última *${label.toLowerCase()}* en *${ctx.plotLabel}* fue el *${dateStr}*.`;
+      const locationLabel = ctx.crossPlot && row.plot_name ? row.plot_name : ctx.plotLabel;
+      let msg = `${emoji} La última *${label.toLowerCase()}* en *${locationLabel}* fue el *${dateStr}*.`;
       if (row.detail && row.source !== 'rainfall') msg += `\n${row.detail}`;
       if (row.quantity && row.unit) msg += ` (${row.quantity} ${row.unit})`;
       if (row.crop) msg += `\nCultivo: ${row.crop}`;
@@ -174,7 +177,7 @@ export function formatHistoryResponse(rows: PlotHistoryRow[], ctx: QueryContext)
 
       let msg = `📍 *${ctx.plotLabel}*\n\nÚltimas actividades:\n`;
       for (const row of limited) {
-        msg += `\n${formatEventLine(row)}`;
+        msg += `\n${formatEventLine(row, ctx.crossPlot)}`;
       }
       if (rows.length > RECENT_LIMIT) {
         msg += `\n\n_...y ${rows.length - RECENT_LIMIT} más_`;
@@ -194,7 +197,7 @@ export function formatHistoryResponse(rows: PlotHistoryRow[], ctx: QueryContext)
 
       const top = sorted.slice(0, SUMMARY_THRESHOLD);
       for (const row of top) {
-        msg += `\n${formatEventLine(row)}`;
+        msg += `\n${formatEventLine(row, ctx.crossPlot)}`;
       }
       if (rows.length > SUMMARY_THRESHOLD) {
         msg += `\n\n_Mostrando ${SUMMARY_THRESHOLD} de ${rows.length}. Refiná con fecha o actividad._`;
@@ -209,7 +212,7 @@ export function formatHistoryResponse(rows: PlotHistoryRow[], ctx: QueryContext)
       msg += '\n';
 
       for (const row of rows) {
-        msg += `\n${formatEventLine(row)}`;
+        msg += `\n${formatEventLine(row, ctx.crossPlot)}`;
       }
       return msg;
     }

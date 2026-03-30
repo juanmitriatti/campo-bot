@@ -1,10 +1,19 @@
 import { ParserService } from './parser.service.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { stripFillerPhrases } from '../utils/text-normalizer.js';
-import { getSettingNumber } from './settings.service.js';
+import { getSettingNumber, getSettingBool } from './settings.service.js';
 import { pool } from '../config/db.js';
 import type { IntentExtractor } from '../ai/intent-extractor.js';
+import type { AgentService } from '../ai/agent.service.js';
+import type { AgentResponseMapper } from '../ai/agent-response-mapper.js';
 import type { UserId, UserSettings, ParseResult } from '../types/index.js';
+
+/**
+ * Detects compound messages with multiple actions joined by "y" + action verb.
+ * Example: "agregar lote mdp y agregarle un gasto de 100mil en gasoil"
+ * These should go to the AI agent, not regex (which can only handle one action).
+ */
+const COMPOUND_ACTION_PATTERN = /\by\b\s+(?:(?:también|además|después|luego)\s+)?(?:agreg|cre[aeé]|registr|gast[éeoa]|compr[éeoa]|vend[íieoa]|cobr|pagu[ée]|fumig|sembr|cosech|fertiliz|reg[oó]|ar[eé]|llov|anot|poné|pon[eé]|met[eéi]|carg)/i;
 
 /**
  * Commands that are trivial to detect via regex and don't need LLM.
@@ -45,11 +54,21 @@ export class IntentClassifier {
   private parser: ParserService;
   private userRepo: UserRepository;
   private extractor: IntentExtractor | null;
+  private agentService: AgentService | null;
+  private responseMapper: AgentResponseMapper | null;
 
-  constructor(parser?: ParserService, userRepo?: UserRepository, extractor?: IntentExtractor) {
+  constructor(
+    parser?: ParserService,
+    userRepo?: UserRepository,
+    extractor?: IntentExtractor,
+    agentService?: AgentService,
+    responseMapper?: AgentResponseMapper,
+  ) {
     this.parser = parser ?? new ParserService();
     this.userRepo = userRepo ?? new UserRepository();
     this.extractor = extractor ?? null;
+    this.agentService = agentService ?? null;
+    this.responseMapper = responseMapper ?? null;
   }
 
   /**
@@ -136,15 +155,47 @@ export class IntentClassifier {
     if (trivialCmd) return trivialCmd;
 
     // =========================================================================
-    // STEP 3 — AI extraction (PRIMARY — runs first for non-trivial messages)
+    // STEP 3a — AI Agent (tool_use) — runs when AGENT_ENABLED=true
+    // =========================================================================
+    const agentEnabled = await getSettingBool('AGENT_ENABLED');
+    if (agentEnabled && this.agentService && this.responseMapper) {
+      try {
+        const minConfidence = (await getSettingNumber('AI_INTENT_MIN_CONFIDENCE')) ?? 0.70;
+        const agentResult = await this.agentService.extract(text, preprocessed, userId, settings);
+        if (agentResult) {
+          const parseResults = this.responseMapper.mapToParseResults(agentResult, text);
+          if (parseResults.length > 0) {
+            const primary = parseResults[0];
+            // Attach extra tool calls for logging (compound actions)
+            if (agentResult.toolCalls.length > 1) {
+              (primary as any)._extraToolCalls = agentResult.toolCalls.slice(1);
+            }
+            // Attach agent metadata for logging
+            (primary as any)._agentMode = 'tool_use';
+            (primary as any)._toolCalls = agentResult.toolCalls;
+
+            if (primary.confidence >= minConfidence || (primary as any)._conversationalResponse) {
+              return primary;
+            }
+          }
+        }
+        // Fall through to JSON extractor or regex
+      } catch {
+        // Agent failed — fall through
+      }
+    }
+
+    // =========================================================================
+    // STEP 3b — AI JSON extraction (fallback when agent disabled or unavailable)
     // Kill switch (AI_INTENT_ENABLED=false) makes extract() return null,
     // falling through to regex chain below.
     // =========================================================================
-    if (this.extractor) {
+    if ((!agentEnabled || !this.agentService) && this.extractor) {
       try {
         const minConfidence = (await getSettingNumber('AI_INTENT_MIN_CONFIDENCE')) ?? 0.70;
         const aiResult = await this.extractor.extract(text, preprocessed, userId, settings);
         if (aiResult && aiResult.confidence >= minConfidence) {
+          (aiResult as any)._agentMode = 'json';
           return aiResult;
         }
         // Low confidence or null → fall through to regex
@@ -163,6 +214,9 @@ export class IntentClassifier {
    * Fast regex for trivial commands that never need LLM.
    */
   private classifyTrivial(cleaned: string, preprocessed: string): ParseResult | null {
+    // Compound messages (e.g. "agregar lote X y registrar gasto") must go to AI agent
+    if (COMPOUND_ACTION_PATTERN.test(cleaned)) return null;
+
     const cmd = this.parser.parseCommand(cleaned) || this.parser.parseCommand(preprocessed);
     if (cmd && TRIVIAL_COMMANDS.has(cmd.command as string)) {
       return {

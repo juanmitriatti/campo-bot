@@ -116,8 +116,8 @@ export class FinancialService {
     return this.repo.getWeeklyReport(userId);
   }
 
-  async getDateRangeReport(userId: UserId, desde: Date, hasta: Date): Promise<CategoryTotal[]> {
-    return this.repo.getDateRangeReport(userId, desde, hasta);
+  async getDateRangeReport(userId: UserId, desde: Date, hasta: Date, opts?: { fieldName?: string | null; plotName?: string | null; category?: string | null; type?: string }): Promise<any> {
+    return this.repo.getDateRangeReport(userId, desde, hasta, opts);
   }
 
   async getFieldReport(userId: UserId, fieldName: string): Promise<CategoryTotal[]> {

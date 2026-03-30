@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-campo-bot is a WhatsApp-based agricultural management assistant for Argentine farmers (entirely in Spanish). It uses an AI-first parsing pipeline (Claude Haiku) with regex fallback to understand natural language messages about farm expenses, income, agronomic activities, observations, weather, and rainfall, storing data in PostgreSQL.
+campo-bot is a WhatsApp-based agricultural management assistant for Argentine farmers (entirely in Spanish). It uses an AI-first parsing pipeline with two modes — **AI Agent (tool_use)** and legacy **JSON extraction** — with regex fallback, to understand natural language messages about farm expenses, income, agronomic activities, observations, weather, and rainfall, storing data in PostgreSQL.
 
 ## Commands
 
@@ -20,26 +20,41 @@ campo-bot is a WhatsApp-based agricultural management assistant for Argentine fa
 
 ## Architecture
 
-### Message Processing Pipeline (AI-First)
+### Message Processing Pipeline (3 Modes)
 
 Messages are orchestrated by `src/services/intent-classifier.ts` through a strict fallback chain:
 
 1. **Observation prefix** — Messages starting with "observación:" bypass AI entirely
-2. **Trivial commands** — confirm, cancel, greeting, help, menu, etc. skip AI
-3. **AI primary** (`src/ai/intent-extractor.ts`) — Claude Haiku with multi-turn history + dynamic prompt; returns structured JSON intent with confidence score
+2. **Trivial commands** — confirm, cancel, greeting, help, menu, etc. skip AI (~36 commands)
+3. **AI primary** — Two modes controlled by `AGENT_ENABLED` setting:
+   - **Mode A: AI Agent** (`AGENT_ENABLED=true`) — `src/ai/agent.service.ts` calls Claude with `tool_use`; Claude decides which tool(s) to call or responds conversationally without tools. Supports compound actions (multiple tool calls per message).
+   - **Mode B: JSON extraction** (`AGENT_ENABLED=false`, default) — `src/ai/intent-extractor.ts` calls Claude Haiku with JSON prompt + assistant prefill; returns structured JSON intent.
 4. **Regex fallback** (`src/utils/parser.js`) — Commands, observations, bare references; only runs when AI is disabled/failed/low-confidence
-5. **Conversational fallback** (`src/ai/conversational-fallback.service.ts`) — Lightweight Claude call for unknown/low-confidence intents
+5. **Conversational fallback** (`src/ai/conversational-fallback.service.ts`) — Lightweight Claude call for unknown intents (only active when `AGENT_ENABLED=false`; when agent is enabled, it handles conversational responses directly)
 
-Kill switch: `AI_INTENT_ENABLED=false` skips step 3, running full regex chain.
+Kill switches:
+- `AGENT_ENABLED=true` → tool_use agent (new)
+- `AGENT_ENABLED=false` + `AI_INTENT_ENABLED=true` → JSON extraction (legacy, default)
+- Both false → regex-only pipeline
 
 ### AI Intent System (`src/ai/`)
 
-- **`intent-extractor.ts`** — Calls Claude Haiku with conversation history + dynamic prompt, returns ParseResult
-- **`prompt-builder.ts`** — Compact system prompt with 33+ intents (including plot mgmt: add_plot, add_plots_batch, set_plot_area), agro rules, disambiguation patterns
+#### AI Agent (tool_use) — new primary path
+- **`agent.service.ts`** — Calls Claude with `tool_use` + `tool_choice: auto`; returns `AgentResult` with tool calls array + optional conversational text. Uses plan-based rate limiting, conversation history, few-shot examples, and configurable timeout.
+- **`tool-definitions.ts`** — 27 Anthropic tool definitions grouped by domain: Financial (2), Activities (6), Observations (2), Reports (10), Field/Plot Mgmt (5), System (2). Each tool has typed `input_schema` with enum validation for categories.
+- **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules and user context. Tool definitions carry the schema, so the prompt only needs rules.
+- **`agent-response-mapper.ts`** — Converts `AgentResult` → `ParseResult[]` for backward compatibility. Maps `log_expense`/`log_income` tool calls to expense/income ParseResults; everything else to command ParseResults. No-tool conversational responses become `_conversationalResponse` on ParseResult.
+- **`few-shot.service.ts`** — `formatAsToolUseMessages()` converts training examples to tool_use triplets (user → assistant[tool_use] → user[tool_result]).
+
+#### JSON extraction — legacy fallback (when AGENT_ENABLED=false)
+- **`intent-extractor.ts`** — Calls Claude Haiku with conversation history + dynamic prompt + assistant prefill, returns ParseResult
+- **`prompt-builder.ts`** — Compact system prompt with 33+ intents, agro rules, disambiguation patterns
 - **`intent-validator.ts`** — Validates LLM JSON output, maps to ParseResult; propagates field/plot from AI response into expense/income data
-- **`conversation-history.service.ts`** — Loads recent turns from `conversation_logs` (800 char budget, 3 turns)
+
+#### Shared services
+- **`conversation-history.service.ts`** — Loads recent turns from `conversation_logs` (4000 char budget)
 - **`user-context.service.ts`** — Loads user fields/plots/lastContext with 60s cache
-- **`conversational-fallback.service.ts`** — Rate-limited (5/10min) lightweight fallback for unknown intents
+- **`conversational-fallback.service.ts`** — Rate-limited (5/10min) lightweight fallback for unknown intents (only active when AGENT_ENABLED=false)
 
 ### Key Services
 
@@ -64,7 +79,7 @@ Handles Spanish text normalization, written numbers ("quinientos mil" → 500000
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-032_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users`, `fields`, `plots`, `expenses`, `incomes`, `budgets`, `rainfall`, `domain_events` (activities), `agro_observations`, `user_settings`, `global_settings`, `ai_usage`, `conversation_logs`, `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`.
+PostgreSQL with migrations in `src/migrations/001-034_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users`, `fields`, `plots`, `expenses`, `incomes`, `budgets`, `rainfall`, `domain_events` (activities), `agro_observations`, `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB and `agent_mode` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`.
 
 ### Frontend (`frontend/`)
 
@@ -120,3 +135,13 @@ Interruptible conversation flows for multi-step data entry (expense, income, rai
 ## Environment Variables
 
 Required in `.env`: `DATABASE_URL`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `ANTHROPIC_API_KEY`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`, `JWT_SECRET`. See `docker-compose.yml` for defaults.
+
+### AI Agent Settings (configurable via admin dashboard)
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `AGENT_ENABLED` | bool | `false` | Kill switch: `true` = tool_use agent, `false` = JSON extraction |
+| `AGENT_MODEL` | string | `claude-haiku-4-5-20251001` | Model for agent |
+| `AGENT_MAX_TOKENS` | number | `400` | Max output tokens |
+| `AGENT_TIMEOUT_MS` | number | `8000` | Timeout in ms |
+| `AGENT_TEMPERATURE` | number | `0` | Temperature (0 = deterministic) |

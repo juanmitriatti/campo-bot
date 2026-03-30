@@ -33,6 +33,8 @@ services:
       SPEECH_PROVIDER: ${SPEECH_PROVIDER:-openai}
       OPENAI_WHISPER_MODEL: ${OPENAI_WHISPER_MODEL:-whisper-1}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
 
 volumes:
   pgdata:

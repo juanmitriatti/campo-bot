@@ -120,9 +120,8 @@ export class FinancialRepository {
     return rows.map((r: CategoryTotal) => ({ category: r.category, total: Number(r.total) }));
   }
 
-  async getDateRangeReport(userId: UserId, desde: Date, hasta: Date): Promise<CategoryTotal[]> {
-    const rows = await _getDateRangeReport(userId, desde, hasta);
-    return rows.map((r: CategoryTotal) => ({ category: r.category, total: Number(r.total) }));
+  async getDateRangeReport(userId: UserId, desde: Date, hasta: Date, opts?: { fieldName?: string | null; plotName?: string | null; category?: string | null; type?: string }): Promise<any> {
+    return _getDateRangeReport(userId, desde, hasta, opts);
   }
 
   async getMonthlyExpenses(userId: UserId): Promise<ExpenseRow[]> {

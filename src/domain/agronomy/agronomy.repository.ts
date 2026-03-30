@@ -200,6 +200,7 @@ export class AgronomyRepository {
     desde?: Date | null;
     hasta?: Date | null;
     activityFilter?: string | null;
+    crop?: string | null;
     limit?: number;
   }): Promise<PlotHistoryRow[]> {
     return _queryPlotHistory(userId, opts) as Promise<PlotHistoryRow[]>;

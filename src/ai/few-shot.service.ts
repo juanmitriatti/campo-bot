@@ -38,4 +38,43 @@ export class FewShotService {
     }
     return messages;
   }
+
+  /**
+   * Format examples as tool_use message triplets for the Agent pipeline.
+   * Each example becomes:
+   *   1. user: "gasté 50mil en gasoil"
+   *   2. assistant: [{ type: 'tool_use', name: 'log_expense', input: {...} }]
+   *   3. user: [{ type: 'tool_result', tool_use_id: '...', content: 'OK' }]
+   *
+   * The expected_output JSONB has { intent, amount, category, ... } —
+   * 'intent' becomes the tool name, the rest becomes tool input.
+   */
+  formatAsToolUseMessages(examples: TrainingExample[]): Anthropic.MessageParam[] {
+    const messages: Anthropic.MessageParam[] = [];
+    for (const ex of examples) {
+      const { intent, confidence: _c, ...toolInput } = ex.expected_output as Record<string, unknown>;
+      const toolName = (typeof intent === 'string' ? intent : ex.intent) || 'unknown';
+      const fakeId = `fewshot_${ex.id}`;
+
+      messages.push({ role: 'user', content: ex.input });
+      messages.push({
+        role: 'assistant',
+        content: [{
+          type: 'tool_use',
+          id: fakeId,
+          name: toolName,
+          input: toolInput,
+        }],
+      });
+      messages.push({
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: fakeId,
+          content: 'OK',
+        }],
+      });
+    }
+    return messages;
+  }
 }

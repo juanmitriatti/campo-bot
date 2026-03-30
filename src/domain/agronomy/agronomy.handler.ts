@@ -633,8 +633,10 @@ export class AgronomyHandler {
       }
 
       case 'query_plot_history': {
-        // If no plot/field specified (e.g. button click), ask user which lote
-        if (!cmd.plotName && !cmd.fieldName && !cmd.plotId) {
+        const hasFilter = !!(cmd.activityFilter || cmd.crop);
+        // If no plot/field specified and no filter → ask user which lote
+        // If there IS a filter (e.g. "en qué lote sembré maíz") → search all plots
+        if (!cmd.plotName && !cmd.fieldName && !cmd.plotId && !hasFilter) {
           const userPlots = await this.repo.findAllUserPlots(userId);
           if (userPlots.length === 0) {
             return { messages: ['No tenés lotes creados. Primero creá un campo y un lote.'] };
@@ -692,9 +694,10 @@ export class AgronomyHandler {
         const timeRef = cmd.timeRef as { desde: Date; hasta: Date } | null;
         const rawFilter = cmd.activityFilter as string | null;
         const activityFilter = normalizeActivityFilter(rawFilter);
+        const cropFilter = cmd.crop as string | null;
         const isBinaryQuestion = !!(cmd.isBinaryQuestion);
         const isUltimaVez = !!(cmd.isUltimaVez);
-        const hasNoFilters = !timeRef && !activityFilter && !isUltimaVez && !isBinaryQuestion;
+        const hasNoFilters = !timeRef && !activityFilter && !cropFilter && !isUltimaVez && !isBinaryQuestion;
 
         // Smart limits: binary/última→small, no filters→recent, filtered→moderate
         const limit = (isBinaryQuestion || isUltimaVez) ? 5
@@ -707,12 +710,13 @@ export class AgronomyHandler {
           desde: timeRef?.desde ?? null,
           hasta: timeRef?.hasta ?? null,
           activityFilter,
+          crop: cropFilter,
           limit,
         });
 
         const plotLabel = resolved.plotName
           ? (resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName)
-          : 'general';
+          : 'todos los lotes';
 
         // Derive time label from original text
         let timeLabel = '';
@@ -734,6 +738,7 @@ export class AgronomyHandler {
           }
         }
 
+        const crossPlot = !resolved.plotId && !resolved.fieldId;
         const msg = formatHistoryResponse(rows, {
           plotLabel,
           timeLabel,
@@ -741,6 +746,7 @@ export class AgronomyHandler {
           isBinaryQuestion,
           hasNoFilters,
           activityFilter,
+          crossPlot,
         });
 
         return { messages: [msg], suggestionKey: 'query_result' };

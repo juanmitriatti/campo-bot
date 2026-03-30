@@ -646,18 +646,88 @@ export class FinancialHandler {
         return { messages: [`📊 *Resumen financiero — ${cmd.fieldName}* (${currentMonthLabel()})\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}\n\n_Para reporte agronómico: "reporte campo ${cmd.fieldName}"_`], suggestionKey: 'report_shown' };
       }
 
-      // --- Date range report ---
+      // --- Date range report (flexible: field, plot, category, type filters) ---
       case 'date_range_report': {
-        const desde = cmd.desde as Date;
-        const hasta = cmd.hasta as Date;
-        const rows = await this.service.getDateRangeReport(userId, desde, hasta);
+        // Resolve dates: AI sends strings ("2026-01-01") or days (30)
+        let desde: Date;
+        let hasta: Date = new Date();
+        hasta.setHours(23, 59, 59, 999);
+
+        if (cmd.desde) {
+          desde = new Date(cmd.desde as string);
+        } else if (cmd.days) {
+          desde = new Date();
+          desde.setDate(desde.getDate() - (cmd.days as number));
+        } else {
+          // Default: current month
+          desde = new Date();
+          desde.setDate(1);
+        }
+        desde.setHours(0, 0, 0, 0);
+
+        if (cmd.hasta) {
+          hasta = new Date(cmd.hasta as string);
+          hasta.setHours(23, 59, 59, 999);
+        }
+
+        const fieldName = cmd.fieldName as string | null;
+        const plotName = cmd.plotName as string | null;
+        const category = cmd.category as string | null;
+        const reportType = (cmd.reportType as string) || 'both';
+
+        const results = await this.service.getDateRangeReport(userId, desde, hasta, {
+          fieldName, plotName, category, type: reportType,
+        });
+
         const desdeStr = desde.toLocaleDateString('es-AR');
         const hastaStr = hasta.toLocaleDateString('es-AR');
-        if (rows.length === 0) {
-          return { messages: [`No hay gastos entre ${desdeStr} y ${hastaStr}.`], suggestionKey: 'report_shown' };
+
+        // Build scope label
+        const scopeParts: string[] = [];
+        if (fieldName) scopeParts.push(`campo ${fieldName}`);
+        if (plotName) scopeParts.push(`lote ${plotName}`);
+        if (category) scopeParts.push(category.toLowerCase());
+        const scopeLabel = scopeParts.length > 0 ? ` — ${scopeParts.join(', ')}` : '';
+
+        const hasExpenses = results.expenses.length > 0;
+        const hasIncomes = results.incomes.length > 0;
+
+        if (!hasExpenses && !hasIncomes) {
+          return { messages: [`No hay registros${scopeLabel} entre ${desdeStr} y ${hastaStr}.`], suggestionKey: 'report_shown' };
         }
-        const { lines, total } = formatReportRows(rows);
-        return { messages: [`📊 *Resumen financiero* (${desdeStr} — ${hastaStr})\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}`], suggestionKey: 'report_shown' };
+
+        let msg = `📊 *Resumen financiero${scopeLabel}*\n(${desdeStr} — ${hastaStr})\n`;
+
+        if (hasExpenses) {
+          msg += '\n*Gastos:*\n';
+          for (const r of results.expenses) {
+            const monto = Number(r.total);
+            const curr = r.currency === 'USD' ? ' USD' : '';
+            msg += `${r.category}: $${monto.toLocaleString('es-AR')}${curr}\n`;
+          }
+          if (results.expenses.length > 1 || !category) {
+            msg += `*Total gastos: $${results.expenseTotal.toLocaleString('es-AR')}*\n`;
+          }
+        }
+
+        if (hasIncomes) {
+          msg += '\n*Ingresos:*\n';
+          for (const r of results.incomes) {
+            const monto = Number(r.total);
+            const curr = r.currency === 'USD' ? ' USD' : '';
+            msg += `${r.category}: $${monto.toLocaleString('es-AR')}${curr}\n`;
+          }
+          if (results.incomes.length > 1 || !category) {
+            msg += `*Total ingresos: $${results.incomeTotal.toLocaleString('es-AR')}*\n`;
+          }
+        }
+
+        if (hasExpenses && hasIncomes) {
+          const resultado = results.incomeTotal - results.expenseTotal;
+          msg += `\n*Resultado: $${resultado.toLocaleString('es-AR')}*`;
+        }
+
+        return { messages: [msg.trim()], suggestionKey: 'report_shown' };
       }
 
       // --- Budget ---
@@ -1099,6 +1169,11 @@ export class FinancialHandler {
       }
 
       case 'add_plot': {
+        if (!cmd.plotName || (typeof cmd.plotName === 'string' && cmd.plotName.trim() === '')) {
+          return {
+            messages: ['Necesitás indicar el nombre del lote.\n\n📍 Escribí *agregar lote [nombre] en campo [campo]*'],
+          };
+        }
         let field: any;
         if (!cmd.fieldName) {
           const fields = await this.service.getUserFields(userId);

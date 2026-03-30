@@ -4,6 +4,8 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import webhook from './controllers/whatsapp.controller.js';
 import testBotRoutes from './controllers/test-bot.controller.js';
+import telegramWebhook from './controllers/telegram.controller.js';
+import { verifyTelegramWebhook } from './middleware/telegram-auth.js';
 import dashboard from './routes/dashboard.js';
 import authRoutes from './routes/auth.routes.js';
 import { requireAuth, requireRole } from './middleware/auth.middleware.js';
@@ -24,6 +26,9 @@ app.use((req: express.Request, _res: express.Response, next: express.NextFunctio
 // WhatsApp webhook
 app.use('/webhook', webhook);
 
+// Telegram webhook
+app.use('/telegram', verifyTelegramWebhook, telegramWebhook);
+
 // Public + protected end-user auth routes
 app.use('/api/auth', authRoutes);
 
@@ -40,7 +45,7 @@ app.use(express.static(frontendDist));
 
 // SPA fallback — serve index.html for all non-API, non-admin routes
 app.get('{*splat}', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (req.path.startsWith('/api/') || req.path.startsWith('/admin') || req.path.startsWith('/webhook')) {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/admin') || req.path.startsWith('/webhook') || req.path.startsWith('/telegram')) {
     next();
     return;
   }

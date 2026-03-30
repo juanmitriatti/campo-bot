@@ -16,6 +16,30 @@ export async function getOrCreateUser(phone) {
   return newUser.rows[0];
 }
 
+export async function getOrCreateUserByTelegramId(telegramId, name = null) {
+  const existing = await pool.query(
+    "SELECT * FROM users WHERE telegram_id = $1",
+    [telegramId]
+  );
+
+  if (existing.rows.length > 0) return existing.rows[0];
+
+  // Use tg_<id> as phone_number placeholder for store compatibility
+  const phonePlaceholder = `tg_${telegramId}`;
+  const newUser = await pool.query(
+    "INSERT INTO users (phone_number, telegram_id, name) VALUES ($1, $2, $3) RETURNING *",
+    [phonePlaceholder, telegramId, name]
+  );
+
+  // Ensure user_settings row
+  await pool.query(
+    "INSERT INTO user_settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING",
+    [newUser.rows[0].id]
+  );
+
+  return newUser.rows[0];
+}
+
 export async function setUserName(userId, name) {
   await pool.query(
     "UPDATE users SET name = $1 WHERE id = $2",
@@ -1118,21 +1142,101 @@ export async function findExpenseByFilter(userId, filter) {
   return result.rows[0] || null;
 }
 
-// --- Date range report ---
+// --- Date range report (flexible: optional field, plot, category filters) ---
 
-export async function getDateRangeReport(userId, desde, hasta) {
-  const result = await pool.query(
-    `SELECT category, SUM(amount) as total
-     FROM expenses
-     WHERE user_id = $1
-     AND deleted_at IS NULL
-     AND expense_date >= $2
-     AND expense_date <= $3
-     GROUP BY category
-     ORDER BY total DESC`,
-    [userId, desde, hasta]
-  );
-  return result.rows;
+export async function getDateRangeReport(userId, desde, hasta, { fieldName = null, plotName = null, category = null, type = 'both' } = {}) {
+  const params = [userId, desde, hasta];
+  let idx = 4;
+
+  // Build dynamic filters
+  let fieldJoin = '';
+  let fieldFilter = '';
+  if (fieldName) {
+    fieldJoin = 'LEFT JOIN fields f ON e.field_id = f.id';
+    fieldFilter = `AND LOWER(f.name) = LOWER($${idx}) AND f.deleted_at IS NULL`;
+    params.push(fieldName);
+    idx++;
+  }
+
+  let plotJoin = '';
+  let plotFilter = '';
+  if (plotName) {
+    plotJoin = 'LEFT JOIN plots p ON e.plot_id = p.id';
+    plotFilter = `AND LOWER(p.name) = LOWER($${idx}) AND p.deleted_at IS NULL`;
+    params.push(plotName);
+    idx++;
+  }
+
+  let categoryFilter = '';
+  if (category) {
+    categoryFilter = `AND LOWER(e.category) = LOWER($${idx})`;
+    params.push(category);
+    idx++;
+  }
+
+  const results = { expenses: [], incomes: [], expenseTotal: 0, incomeTotal: 0 };
+
+  if (type === 'expenses' || type === 'both') {
+    const expQ = `SELECT e.category, SUM(e.amount) as total, e.currency
+     FROM expenses e
+     ${fieldJoin}
+     ${plotJoin}
+     WHERE e.user_id = $1
+     AND e.deleted_at IS NULL
+     AND e.expense_date >= $2
+     AND e.expense_date <= $3
+     ${fieldFilter} ${plotFilter} ${categoryFilter}
+     GROUP BY e.category, e.currency
+     ORDER BY total DESC`;
+    const expR = await pool.query(expQ, params);
+    results.expenses = expR.rows;
+    results.expenseTotal = expR.rows.reduce((sum, r) => sum + (r.currency === 'USD' ? 0 : parseFloat(r.total)), 0);
+  }
+
+  if (type === 'incomes' || type === 'both') {
+    // Rebuild params for incomes (same structure but different table/columns)
+    const incParams = [userId, desde, hasta];
+    let incIdx = 4;
+    let incFieldJoin = '';
+    let incFieldFilter = '';
+    if (fieldName) {
+      incFieldJoin = 'LEFT JOIN fields f ON i.field_id = f.id';
+      incFieldFilter = `AND LOWER(f.name) = LOWER($${incIdx}) AND f.deleted_at IS NULL`;
+      incParams.push(fieldName);
+      incIdx++;
+    }
+    let incPlotJoin = '';
+    let incPlotFilter = '';
+    if (plotName) {
+      incPlotJoin = 'LEFT JOIN plots p ON i.plot_id = p.id';
+      incPlotFilter = `AND LOWER(p.name) = LOWER($${incIdx}) AND p.deleted_at IS NULL`;
+      incParams.push(plotName);
+      incIdx++;
+    }
+    let incCategoryFilter = '';
+    if (category) {
+      incCategoryFilter = `AND LOWER(i.category) = LOWER($${incIdx})`;
+      incParams.push(category);
+      incIdx++;
+    }
+
+    const incQ = `SELECT i.category, SUM(i.amount) as total, i.currency
+     FROM incomes i
+     ${incFieldJoin}
+     ${incPlotJoin}
+     WHERE i.user_id = $1
+     AND i.deleted_at IS NULL
+     AND i.income_date >= $2
+     AND i.income_date <= $3
+     ${incFieldFilter} ${incPlotFilter} ${incCategoryFilter}
+     GROUP BY i.category, i.currency
+     ORDER BY total DESC`;
+    const incR = await pool.query(incQ, incParams);
+    results.incomes = incR.rows;
+    results.incomeTotal = incR.rows.reduce((sum, r) => sum + (r.currency === 'USD' ? 0 : parseFloat(r.total)), 0);
+  }
+
+  return results;
 }
 
 // --- CSV export ---
@@ -1446,7 +1550,7 @@ export async function getParseMetrics() {
 
 // --- Plot history query ---
 
-export async function queryPlotHistory(userId, { plotId = null, fieldId = null, desde = null, hasta = null, activityFilter = null, limit = 20 } = {}) {
+export async function queryPlotHistory(userId, { plotId = null, fieldId = null, desde = null, hasta = null, activityFilter = null, crop = null, limit = 20 } = {}) {
   const params = [userId];
   let idx = 2;
 
@@ -1531,10 +1635,19 @@ export async function queryPlotHistory(userId, { plotId = null, fieldId = null, 
     qIdx++;
   }
 
+  // Crop param — filter domain_events by crop name (case-insensitive)
+  let cropParamRef = null;
+  if (!skipDe && crop) {
+    qParams.push(crop.toLowerCase());
+    cropParamRef = `$${qIdx}`;
+    qIdx++;
+  }
+
   // Domain events subquery filters
   const deLoc = locParamRef ? (plotId ? `AND de.plot_id = ${locParamRef}` : `AND p.field_id = ${locParamRef}`) : '';
   const deDate = dateParamRefs ? `AND de.event_date BETWEEN ${dateParamRefs.desde} AND ${dateParamRefs.hasta}` : '';
   const deAct = actParamRef ? `AND de.event_type = ${actParamRef}` : '';
+  const deCrop = cropParamRef ? `AND LOWER(de.crop) = ${cropParamRef}` : '';
 
   // Observations subquery filters
   const obsLoc = locParamRef ? (plotId ? `AND o.plot_id = ${locParamRef}` : `AND COALESCE(p2.field_id, o.field_id) = ${locParamRef}`) : '';
@@ -1554,7 +1667,7 @@ export async function queryPlotHistory(userId, { plotId = null, fieldId = null, 
       FROM domain_events de
       LEFT JOIN plots p ON de.plot_id = p.id
       LEFT JOIN fields f ON p.field_id = f.id
-      WHERE de.user_id = $1 ${deLoc} ${deDate} ${deAct}
+      WHERE de.user_id = $1 ${deLoc} ${deDate} ${deAct} ${deCrop}
     `);
   }
 

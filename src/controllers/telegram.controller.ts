@@ -1,6 +1,5 @@
 import express from 'express';
 import type { Request, Response } from 'express';
-import multer from 'multer';
 import { IntentClassifier } from '../services/intent-classifier.js';
 import { DomainRouter } from '../domain/router.js';
 import { InteractiveRouter } from '../domain/interactive/interactive.router.js';
@@ -11,6 +10,7 @@ import { AgronomyHandler } from '../domain/agronomy/agronomy.handler.js';
 import { AgronomyRepository } from '../domain/agronomy/agronomy.repository.js';
 import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
+import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
@@ -32,7 +32,7 @@ import { activityFlow } from '../middleware/flows/activity.flow.js';
 import { EntityValidator } from '../services/entity-validator.js';
 import { getSuggestions, resolveSuggestionKey } from '../middleware/contextual-suggestions.js';
 import { enrichWithContext } from '../middleware/context-reuse.js';
-import { updateConversationMiniMemory } from '../services/expenses.js';
+import { getOrCreateUserByTelegramId, updateConversationMiniMemory } from '../services/expenses.js';
 import { ConversationObserver } from '../middleware/conversation-observer.js';
 import { IntentExtractor } from '../ai/intent-extractor.js';
 import { PromptBuilder } from '../ai/prompt-builder.js';
@@ -50,11 +50,19 @@ import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observatio
 import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
 import { formatObservationResponse } from '../middleware/response-formatter.js';
 import { createSpeechProvider } from '../services/audio/providers/provider-factory.js';
-import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveMessage, InteractiveButton, InteractiveListSection, UserId } from '../types/index.js';
+import {
+  sendTelegramMessage,
+  sendTelegramButtons,
+  sendTelegramList,
+  sendTelegramDocument,
+  answerCallbackQuery,
+  downloadTelegramFile,
+} from '../services/telegram.js';
+import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveButton, InteractiveListSection, UserId } from '../types/index.js';
 import { asUserId } from '../types/index.js';
 import type { SpeechToTextProvider } from '../services/audio/providers/speech-provider.interface.js';
 
-// --- Response item type ---
+// --- Response item type (same as test-bot) ---
 
 interface BotResponseItem {
   type: 'text' | 'interactive';
@@ -68,7 +76,7 @@ interface BotResponseItem {
   };
 }
 
-// --- Wire up dependencies (separate instances from webhook) ---
+// --- Wire up dependencies (separate instances from webhook/test-bot) ---
 
 const financialRepository = new FinancialRepository();
 const financialService = new FinancialService(financialRepository);
@@ -82,6 +90,7 @@ const systemHandler = new SystemHandler(userRepository, financialService);
 const featureGate = new FeatureGate();
 const domainRouter = new DomainRouter(financialHandler, agronomyHandler, systemHandler, featureGate);
 const interactiveRouter = new InteractiveRouter();
+const dedup = new MessageDedup();
 
 const entityValidator = new EntityValidator();
 const userContextService = new UserContextService(entityValidator);
@@ -116,11 +125,18 @@ const conversationObserver = new ConversationObserver();
 const conversationEngine = new ConversationEngine(conversationStateRepo, flowRegistry, conversationObserver);
 const conversationLogger = new ConversationLogger();
 
-// No-fields block response for flows
+// --- Telegram-specific key for in-memory stores ---
+
+function tgPhone(chatId: string | number): string {
+  return `tg_${chatId}`;
+}
+
+// --- Helper functions (same as test-bot) ---
+
 function buildNoFieldsBlockItems(actionLabel: string): BotResponseItem[] {
   return [
     { type: 'text', text: `Para ${actionLabel} primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*` },
-    interactiveButtons(`Necesitás un campo para ${actionLabel}.`, [
+    interactiveButtonsItem(`Necesitás un campo para ${actionLabel}.`, [
       { id: 'cmd_agregar_campo', title: 'Crear Campo' },
     ]),
   ];
@@ -129,7 +145,7 @@ function buildNoFieldsBlockItems(actionLabel: string): BotResponseItem[] {
 function buildNoPlotBlockItems(actionLabel: string, fieldName: string): BotResponseItem[] {
   return [
     { type: 'text', text: `Para ${actionLabel} necesitás al menos un lote.\n\n📍 Escribí *agregar lote [nombre] en campo ${fieldName}*` },
-    interactiveButtons(`Necesitás un lote para ${actionLabel}.`, [
+    interactiveButtonsItem(`Necesitás un lote para ${actionLabel}.`, [
       { id: 'cmd_agregar_lote', title: 'Crear Lote' },
     ]),
   ];
@@ -177,9 +193,9 @@ function collectResponse(response: HandlerResponse): BotResponseItem[] {
     items.push({ type: 'text', text: msg });
   }
 
-  // Attachment: send as text note (no binary in JSON)
   if (response.attachment) {
-    items.push({ type: 'text', text: `[Archivo adjunto: ${response.attachment.filename}]` });
+    // We'll handle attachments as documents in sendBotResponse
+    items.push({ type: 'text', text: `__attachment__:${response.attachment.filename}`, ...({ _attachment: response.attachment } as any) });
   }
 
   if (response.interactive) {
@@ -205,7 +221,6 @@ function collectResponse(response: HandlerResponse): BotResponseItem[] {
     }
   }
 
-  // Contextual suggestions (only if no interactive already)
   if (!response.interactive && response.suggestionKey) {
     const suggestion = getSuggestions(response.suggestionKey);
     if (suggestion && suggestion.type === 'buttons') {
@@ -223,127 +238,152 @@ function collectResponse(response: HandlerResponse): BotResponseItem[] {
   return items;
 }
 
-function interactiveButtons(body: string, buttons: InteractiveButton[]): BotResponseItem {
+function interactiveButtonsItem(body: string, buttons: InteractiveButton[]): BotResponseItem {
   return {
     type: 'interactive',
     interactive: { type: 'buttons', body, buttons },
   };
 }
 
-// --- Synthetic phone for in-memory stores ---
+// --- Send bot response items via Telegram ---
 
-function syntheticPhone(userId: number): string {
-  return `testbot_${userId}`;
+async function sendBotResponse(chatId: string | number, items: BotResponseItem[]): Promise<void> {
+  for (const item of items) {
+    try {
+      if (item.type === 'text' && item.text) {
+        // Check for attachment marker
+        const attachment = (item as any)._attachment;
+        if (attachment?.buffer) {
+          await sendTelegramDocument(chatId, attachment.buffer, attachment.filename, attachment.caption);
+        } else if (!item.text.startsWith('__attachment__:')) {
+          await sendTelegramMessage(chatId, item.text);
+        }
+      } else if (item.type === 'interactive' && item.interactive) {
+        if (item.interactive.type === 'buttons' && item.interactive.buttons) {
+          await sendTelegramButtons(chatId, item.interactive.body, item.interactive.buttons);
+        } else if (item.interactive.type === 'list' && item.interactive.sections) {
+          await sendTelegramList(chatId, item.interactive.body, item.interactive.sections);
+        }
+      }
+    } catch (err) {
+      console.error('[telegram] Error sending response item:', err);
+    }
+  }
 }
 
 // --- Router ---
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
-// POST /api/test-bot — text + interactive replies
+// POST /telegram — Telegram webhook
 router.post('/', async (req: Request, res: Response) => {
+  // Telegram expects 200 quickly; process async
+  res.sendStatus(200);
+
   const startTime = Date.now();
   try {
-    const userId = req.auth!.userId;
-    const numericUserId = asUserId(typeof userId === 'string' ? parseInt(userId, 10) : userId);
-    const { message: inputText, interactiveReplyId } = req.body as { message?: string; interactiveReplyId?: string };
-    const phone = syntheticPhone(numericUserId);
+    const update = req.body;
 
-    // Get user from DB — build a User-compatible object
-    const userRow = await pool.query('SELECT id, phone_number, name, city FROM users WHERE id = $1', [numericUserId]);
-    if (userRow.rows.length === 0) {
-      res.status(404).json({ error: 'Usuario no encontrado' });
-      return;
-    }
-    const row = userRow.rows[0];
-    const user = {
-      id: numericUserId,
-      phone_number: row.phone_number || phone,
-      name: row.name ?? null,
-      city: row.city ?? null,
-    };
+    // --- Callback query (button press) ---
+    if (update.callback_query) {
+      const cbQuery = update.callback_query;
+      const chatId = cbQuery.message?.chat?.id;
+      const callbackId = cbQuery.data;
 
-    // Ensure user_settings row exists (auth-only users may not have one)
-    await pool.query(
-      'INSERT INTO user_settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
-      [numericUserId],
-    );
-    const settings = await userRepository.getSettings(numericUserId);
+      if (!chatId || !callbackId) return;
 
-    // --- Interactive reply handling ---
-    if (interactiveReplyId) {
-      const items = await handleInteractiveReply(interactiveReplyId, numericUserId, user, settings, phone, startTime);
-      res.json({ messages: items });
+      // Dedup on callback query id
+      if (dedup.isDuplicate(`cb_${cbQuery.id}`)) return;
+
+      // Acknowledge button press
+      answerCallbackQuery(cbQuery.id).catch(() => {});
+
+      // Ignore noop (section titles)
+      if (callbackId === 'noop') return;
+
+      const phone = tgPhone(chatId);
+      const userRow = await getOrCreateUserByTelegramId(String(chatId), cbQuery.from?.first_name);
+      const userId = asUserId(userRow.id);
+      const user = {
+        id: userId,
+        phone_number: userRow.phone_number || phone,
+        name: userRow.name ?? null,
+        city: userRow.city ?? null,
+      };
+      const settings = await userRepository.getSettings(userId);
+
+      const items = await handleInteractiveReply(callbackId, userId, user, settings, phone, startTime);
+      await sendBotResponse(chatId, items);
       return;
     }
 
     // --- Text message ---
-    if (!inputText || !inputText.trim()) {
-      res.json({ messages: [] });
-      return;
-    }
+    const message = update.message;
+    if (!message) return;
 
-    const text = inputText.trim();
-    const items = await processTextMessage(text, numericUserId, user, settings, phone, startTime);
-    res.json({ messages: items });
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error('[test-bot] ERROR:', err.stack || err.message);
-    res.status(500).json({ error: err.message || 'Error interno del servidor' });
-  }
-});
+    const chatId = message.chat?.id;
+    if (!chatId) return;
 
-// POST /api/test-bot/audio — multipart audio upload
-router.post('/audio', upload.single('audio'), async (req: Request, res: Response) => {
-  const startTime = Date.now();
-  try {
-    const userId = req.auth!.userId;
-    const numericUserId = asUserId(typeof userId === 'string' ? parseInt(userId, 10) : userId);
-    const phone = syntheticPhone(numericUserId);
+    // Dedup on update_id
+    if (dedup.isDuplicate(String(update.update_id))) return;
 
-    if (!req.file) {
-      res.status(400).json({ error: 'No se recibió archivo de audio' });
-      return;
-    }
-
-    const userRow2 = await pool.query('SELECT id, phone_number, name, city FROM users WHERE id = $1', [numericUserId]);
-    if (userRow2.rows.length === 0) {
-      res.status(404).json({ error: 'Usuario no encontrado' });
-      return;
-    }
-    const row2 = userRow2.rows[0];
+    const phone = tgPhone(chatId);
+    const userRow = await getOrCreateUserByTelegramId(String(chatId), message.from?.first_name);
+    const userId = asUserId(userRow.id);
     const user = {
-      id: numericUserId,
-      phone_number: row2.phone_number || phone,
-      name: row2.name ?? null,
-      city: row2.city ?? null,
+      id: userId,
+      phone_number: userRow.phone_number || phone,
+      name: userRow.name ?? null,
+      city: userRow.city ?? null,
     };
-    await pool.query(
-      'INSERT INTO user_settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
-      [numericUserId],
-    );
-    const settings = await userRepository.getSettings(numericUserId);
+    const settings = await userRepository.getSettings(userId);
 
-    // Transcribe audio directly (bypass WhatsApp download)
-    const provider = createSpeechProvider() as SpeechToTextProvider;
-    const result = await provider.transcribe(req.file.buffer, req.file.mimetype);
-    let transcript = result.text;
-    transcript = normalizeTranscript(transcript);
+    // --- Voice/audio message ---
+    if (message.voice || message.audio) {
+      const fileId = message.voice?.file_id || message.audio?.file_id;
+      if (fileId) {
+        try {
+          const buffer = await downloadTelegramFile(fileId);
+          const provider = createSpeechProvider() as SpeechToTextProvider;
+          const result = await provider.transcribe(buffer, 'audio/ogg');
+          let transcript = result.text;
+          transcript = normalizeTranscript(transcript);
+          console.log('[telegram] AUDIO TRANSCRIBED:', transcript);
 
-    console.log('[test-bot] AUDIO TRANSCRIBED:', transcript);
+          if (transcript.trim()) {
+            const items = await processTextMessage(transcript, userId, user, settings, phone, startTime);
+            await sendBotResponse(chatId, items);
+          }
+        } catch (err) {
+          console.error('[telegram] Audio error:', err);
+          await sendTelegramMessage(chatId, 'No pude entender el audio. Intentá de nuevo.');
+        }
+      }
+      return;
+    }
 
-    // Process through the same text pipeline
-    const items = await processTextMessage(transcript, numericUserId, user, settings, phone, startTime);
-    res.json({ transcript, messages: items });
+    // --- Text ---
+    let text = message.text || '';
+
+    // Handle /start command
+    if (text === '/start') {
+      text = 'hola';
+    } else if (text.startsWith('/')) {
+      // Strip leading slash for other commands (e.g., /menu → menu)
+      text = text.slice(1);
+    }
+
+    if (!text.trim()) return;
+
+    const items = await processTextMessage(text.trim(), userId, user, settings, phone, startTime);
+    await sendBotResponse(chatId, items);
   } catch (error: unknown) {
     const err = error as Error;
-    console.error('[test-bot] AUDIO ERROR:', err.message);
-    res.status(500).json({ error: 'No pude entender el audio. Intentá de nuevo.' });
+    console.error('[telegram] ERROR:', err.stack || err.message);
   }
 });
 
-// --- Interactive reply handler ---
+// --- Interactive reply handler (same logic as test-bot) ---
 
 async function handleInteractiveReply(
   callbackId: string,
@@ -353,9 +393,8 @@ async function handleInteractiveReply(
   phone: string,
   startTime: number,
 ): Promise<BotResponseItem[]> {
-  console.log('[test-bot] INTERACTIVE:', callbackId);
+  console.log('[telegram] INTERACTIVE:', callbackId);
 
-  // Log interactive message for analytics
   conversationObserver.logMessageReceived(userId, { phone, messageType: 'interactive', messageLength: callbackId.length });
 
   // --- Flow callbacks ---
@@ -364,7 +403,6 @@ async function handleInteractiveReply(
 
     if (callbackId === 'flow_confirm') {
       const result = await conversationEngine.executeConfirm(userId, flowCtx);
-      // Store pending field duplicate data if the flow detected one
       if (result.response.sideEffects?.setFieldDuplicate) {
         const dup = result.response.sideEffects.setFieldDuplicate;
         pendingStore.set(phone, {
@@ -395,7 +433,6 @@ async function handleInteractiveReply(
     }
     if (callbackId.startsWith('flow_new_')) {
       const flowName = callbackId.replace('flow_new_', '') + '_flow';
-      // Block financial/rainfall/activity flows if no fields or no plots
       if (['expense_flow', 'income_flow', 'rainfall_flow', 'activity_flow'].includes(flowName)) {
         const prereq = await hasNoPrerequisites(userId);
         if (prereq.blocked) return prereq.items!;
@@ -403,19 +440,16 @@ async function handleInteractiveReply(
       const result = await conversationEngine.startFlow(userId, flowName as FlowState);
       return collectResponse(result.response);
     }
-    // flow_cat_, flow_field_, flow_activity_ → feed into flow
+    // flow_cat_, flow_field_, flow_plot_, flow_activity_ → feed into flow
     const prefixes = ['flow_cat_', 'flow_field_', 'flow_plot_', 'flow_activity_'] as const;
     for (const prefix of prefixes) {
       if (callbackId.startsWith(prefix)) {
         let value = callbackId.replace(prefix, '');
         if (prefix === 'flow_plot_') {
-          // Handle field__plot format for duplicate plot names across fields
-          // e.g. "don_pedro__1a" → plot="1a", fieldHint="don pedro"
           const doubleSepIdx = value.indexOf('__');
           if (doubleSepIdx > 0) {
             const fieldHint = value.slice(0, doubleSepIdx).replace(/_/g, ' ');
             value = value.slice(doubleSepIdx + 2).replace(/_/g, ' ');
-            // Store field hint in flow data so execute() can disambiguate
             if (flowCtx.state !== 'idle') {
               flowCtx.data._resolvedFieldHint = fieldHint;
               await conversationEngine.setFlowContext(userId, flowCtx);
@@ -456,7 +490,7 @@ async function handleInteractiveReply(
     return [{ type: 'text', text: '\u274c Operacion cancelada.' }];
   }
 
-  // --- Confirm pending financial transaction (buttons) ---
+  // --- Confirm pending financial transaction ---
   if (callbackId === 'confirm_pending') {
     const pendingTx = pendingStore.get(phone);
     if (!pendingTx) {
@@ -500,7 +534,6 @@ async function handleInteractiveReply(
       return items;
     }
 
-    // field_dup_cancel
     return [{ type: 'text', text: '\u274c Operacion cancelada.' }];
   }
 
@@ -514,7 +547,7 @@ async function handleInteractiveReply(
       if (field) {
         const plot = await financialService.getOrCreatePlot(field.id, plotName);
         const response: HandlerResponse = {
-          messages: [`\ud83d\udccd Lote *${plot.name}* creado en campo *${field.name}*`],
+          messages: [`📍 Lote *${plot.name}* creado en campo *${field.name}*`],
           suggestionKey: 'plot_created',
         };
         return collectResponse(response);
@@ -530,7 +563,7 @@ async function handleInteractiveReply(
     const deleted = await financialService.deleteField(userId, fieldName);
     if (deleted) {
       const response: HandlerResponse = {
-        messages: [`\ud83d\uddd1\ufe0f Campo *${fieldName}* eliminado.\nLos gastos/ingresos asociados quedan sin asignar.\n\n_Para restaurarlo: "restaurar campo ${fieldName}"_`],
+        messages: [`🗑️ Campo *${fieldName}* eliminado.\nLos gastos/ingresos asociados quedan sin asignar.\n\n_Para restaurarlo: "restaurar campo ${fieldName}"_`],
         suggestionKey: 'field_deleted',
       };
       return collectResponse(response);
@@ -551,7 +584,7 @@ async function handleInteractiveReply(
         if (plot) {
           await financialService.deletePlot(plot.id, userId);
           const response: HandlerResponse = {
-            messages: [`\ud83d\uddd1\ufe0f Lote *${plotName}* eliminado del campo *${fieldName}*.\nLos registros asociados quedan sin lote.\n\n_Para restaurarlo: "restaurar lote ${plotName}"_`],
+            messages: [`🗑️ Lote *${plotName}* eliminado del campo *${fieldName}*.\nLos registros asociados quedan sin lote.\n\n_Para restaurarlo: "restaurar lote ${plotName}"_`],
             suggestionKey: 'plot_deleted',
           };
           return collectResponse(response);
@@ -572,7 +605,7 @@ async function handleInteractiveReply(
   return [];
 }
 
-// --- Main text message pipeline ---
+// --- Main text message pipeline (same logic as test-bot) ---
 
 async function processTextMessage(
   text: string,
@@ -582,13 +615,11 @@ async function processTextMessage(
   phone: string,
   startTime: number,
 ): Promise<BotResponseItem[]> {
-  console.log('[test-bot] TEXT:', text);
+  console.log('[telegram] TEXT:', text);
 
-  // Track last activity
   pool.query('UPDATE users SET last_message_at = NOW() WHERE id = $1', [userId]).catch(() => {});
 
-  // Log message received for analytics
-  const sessionId = `testbot_${userId}_${new Date().toISOString().slice(0, 10)}`;
+  const sessionId = `tg_${userId}_${new Date().toISOString().slice(0, 10)}`;
   conversationObserver.logMessageReceived(userId, { phone, messageType: 'text', messageLength: text.length }, sessionId);
 
   // --- Check active conversation flow ---
@@ -597,15 +628,12 @@ async function processTextMessage(
   if (flowCtx.state !== 'idle') {
     if (conversationEngine.isExpired(flowCtx)) {
       await conversationEngine.clearFlow(userId);
-      // Fall through to normal processing
     } else {
-      // FlowGuard: validate state consistency
       const guardResult = await conversationEngine.validateFlowState(userId, flowCtx);
       if (guardResult) {
         return collectResponse(guardResult.response);
       }
 
-      // Cancel/back detection
       if (isCancelIntent(text)) {
         await conversationEngine.clearFlow(userId);
         const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
@@ -621,20 +649,15 @@ async function processTextMessage(
         return collectResponse(result.response);
       }
 
-      // Smart interruption: check if the user typed a known command mid-flow
       const interruptCmd = intentClassifier.parseCommandOnly(text);
-      // During field_flow name step, suppress ONLY field_info
-      // (prevents "Campo Norte" from matching field_info, but allows "mis campos" → list_fields)
       const isFlowNameStep = flowCtx.state === 'field_flow' && flowCtx.step === 0;
       const effectiveCmd = (isFlowNameStep && interruptCmd?.command === 'field_info') ? null : interruptCmd;
       if (effectiveCmd && SAFE_INTERRUPTION_COMMANDS.has(effectiveCmd.command)) {
-        // Greetings/thanks mid-flow → just re-prompt (avoid confusing mixed response)
         if (effectiveCmd.command === 'greeting' || effectiveCmd.command === 'thanks') {
           const reprompt = await conversationEngine.getCurrentStepPrompt(flowCtx, userId);
           if (reprompt) return collectResponse(reprompt);
           return [];
         }
-        // Read-only command → execute without canceling the flow, then re-prompt
         const cmdItems: BotResponseItem[] = [];
         const cmdResponse = await domainRouter.routeCommand(effectiveCmd, userId, user, settings);
         if (cmdResponse) cmdItems.push(...collectResponse(cmdResponse));
@@ -643,7 +666,6 @@ async function processTextMessage(
         return cmdItems;
       }
 
-      // Question detection: questions mid-flow get a gentle nudge + re-prompt
       if (isLikelyQuestion(text)) {
         const reprompt = await conversationEngine.getCurrentStepPrompt(flowCtx, userId);
         const items: BotResponseItem[] = [
@@ -653,12 +675,9 @@ async function processTextMessage(
         return items;
       }
 
-      // Intent-first interruption: any non-safe command OR financial intent cancels the flow
       if (effectiveCmd || intentClassifier.detectsFinancialIntent(text)) {
         await conversationEngine.clearFlow(userId);
-        // Fall through to normal intent processing below
       } else {
-        // No intent detected → process within active flow
         const result = await conversationEngine.processFlowMessage(userId, text, flowCtx);
         if (result.nextContext) {
           await conversationEngine.setFlowContext(userId, result.nextContext);
@@ -700,22 +719,19 @@ async function processTextMessage(
       pendingPlotAreaStore.clear(phone);
       return [{ type: 'text', text: `📍 Lote *${pendingArea.plotName}*: superficie actualizada a *${hectares} ha*` }];
     }
-    // Not a valid number — clear pending and fall through to normal processing
     pendingPlotAreaStore.clear(phone);
   }
 
-  // --- Check pending observation (plot disambiguation) ---
+  // --- Check pending observation ---
   const pendingObs = pendingObsStore.get(phone);
   if (pendingObs) {
     if (isCancelIntent(text)) {
       pendingObsStore.clear(phone);
       return [{ type: 'text', text: '\u274c Observacion cancelada.' }];
     }
-    // Escape hatch: if the message looks like a known command, clear pending and fall through
     const obsInterruptCmd = intentClassifier.parseCommandOnly(text);
     if (obsInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
       pendingObsStore.clear(phone);
-      // Fall through to normal processing below
     } else {
       const obsResolved = await plotDiscovery.resolveExisting(userId, text);
       if (obsResolved.plotId) {
@@ -763,7 +779,6 @@ async function processTextMessage(
 
   await enrichWithContext(text, userId);
 
-  // Classify intent
   const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings);
   const { intent: rawIntent, aiUsed, confidence } = parseResult;
   const agentMode = (parseResult as any)._agentMode as string | undefined;
@@ -776,11 +791,9 @@ async function processTextMessage(
     return [{ type: 'text' as const, text: convResponse }];
   }
 
-  // Log intent for analytics
   const intentCommand = rawIntent.type === 'command' ? rawIntent.data.command : null;
   conversationObserver.logIntentDetected(userId, rawIntent.type, intentCommand, confidence, parseResult.source, { aiUsed, missingFields: parseResult.missingFields.length > 0 ? parseResult.missingFields : undefined });
 
-  // Enrich with learned vocabulary
   const intent: Intent = await contextResolver.enrichIntent(userId, text, rawIntent);
 
   // Handle confirm/cancel for pending
@@ -809,7 +822,7 @@ async function processTextMessage(
     { const prereq = await hasNoPrerequisites(userId); if (prereq.blocked) return prereq.items!; }
     const hasExpenses = await featureGate.hasFeature(userId, 'expenses');
     if (!hasExpenses) {
-      return [{ type: 'text', text: '\ud83d\udd12 El registro de gastos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
+      return [{ type: 'text', text: '🔒 El registro de gastos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
     }
     const prefillData: Record<string, unknown> = {};
     if (intent.data.amount) prefillData.amount = intent.data.amount;
@@ -824,7 +837,7 @@ async function processTextMessage(
     { const prereq = await hasNoPrerequisites(userId); if (prereq.blocked) return prereq.items!; }
     const hasIncomes = await featureGate.hasFeature(userId, 'incomes');
     if (!hasIncomes) {
-      return [{ type: 'text', text: '\ud83d\udd12 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
+      return [{ type: 'text', text: '🔒 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
     }
     const prefillData: Record<string, unknown> = {};
     if (intent.data.amount) prefillData.amount = intent.data.amount;
@@ -842,12 +855,11 @@ async function processTextMessage(
       title: c.label.slice(0, 20),
     }));
     conversationLogger.log(userId, phone, text, 'Disambiguation', 'ambiguous', null, null, null, aiUsed, Date.now() - startTime, true, confidence).catch(() => {});
-    return [interactiveButtons('\u00bfQue queres hacer?', buttons)];
+    return [interactiveButtonsItem('\u00bfQue queres hacer?', buttons)];
   }
 
   // --- Route commands ---
   if (intent.type === 'command') {
-    // Start flow commands → launch flow directly
     if (intent.data.command === 'start_expense_flow') {
       { const prereq = await hasNoPrerequisites(userId); if (prereq.blocked) return prereq.items!; }
       const result = await conversationEngine.startFlow(userId, 'expense_flow' as FlowState);
@@ -858,7 +870,7 @@ async function processTextMessage(
       { const prereq = await hasNoPrerequisites(userId); if (prereq.blocked) return prereq.items!; }
       const hasIncomes = await featureGate.hasFeature(userId, 'incomes');
       if (!hasIncomes) {
-        return [{ type: 'text', text: '\ud83d\udd12 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
+        return [{ type: 'text', text: '🔒 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
       }
       const result = await conversationEngine.startFlow(userId, 'income_flow' as FlowState);
       if (result.nextContext) await conversationEngine.setFlowContext(userId, result.nextContext);
@@ -879,7 +891,7 @@ async function processTextMessage(
         timestamp: Date.now(),
         _destructiveCommand: intent.data,
       } as any);
-      return [interactiveButtons(
+      return [interactiveButtonsItem(
         `\u00bfSeguro que queres ${label}?\nEsto no se puede deshacer.`,
         [
           { id: `confirm_destructive_${intent.data.command}`, title: 'Confirmar' },
@@ -888,7 +900,6 @@ async function processTextMessage(
       )];
     }
 
-    // Attach original text so handlers can check if fields were explicitly mentioned
     intent.data.originalText = text;
 
     const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
@@ -897,7 +908,6 @@ async function processTextMessage(
         response.messages = ['No pude procesar ese comando. Escribi *ayuda* para ver las opciones.'];
       }
       response.suggestionKey = resolveSuggestionKey(intent.data.command, response.suggestionKey);
-      // Start a flow if the handler requested it (e.g. add_field_city → field_flow)
       if (response.sideEffects?.startFlow) {
         const { state, data } = response.sideEffects.startFlow;
         const flowResult = await conversationEngine.startFlow(userId, state, data);
@@ -947,7 +957,7 @@ async function processTextMessage(
   if (intent.type === 'expense') {
     const hasExpenses = await featureGate.hasFeature(userId, 'expenses');
     if (!hasExpenses) {
-      return [{ type: 'text', text: '\ud83d\udd12 El registro de gastos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
+      return [{ type: 'text', text: '🔒 El registro de gastos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
     }
     const effectiveSettings = confidence < lowConfidenceThreshold
       ? { ...settings, confirm_before_save: true }
@@ -977,7 +987,7 @@ async function processTextMessage(
   if (intent.type === 'income') {
     const hasIncomes = await featureGate.hasFeature(userId, 'incomes');
     if (!hasIncomes) {
-      return [{ type: 'text', text: '\ud83d\udd12 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
+      return [{ type: 'text', text: '🔒 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
     }
     const effectiveSettings = confidence < lowConfidenceThreshold
       ? { ...settings, confirm_before_save: true }
@@ -1020,86 +1030,5 @@ async function processTextMessage(
 
   return [];
 }
-
-// POST /api/test-bot/reset — hard-delete ALL user data for clean QA testing
-router.post('/reset', async (req: Request, res: Response) => {
-  const client = await pool.connect();
-  try {
-    const userId = req.auth!.userId;
-    const numericUserId = asUserId(typeof userId === 'string' ? parseInt(userId, 10) : userId);
-    const phone = syntheticPhone(numericUserId);
-
-    // 1. Clear in-memory stores
-    pendingStore.clear(phone);
-    pendingObsStore.clear(phone);
-
-    // 2. Hard-delete all DB records in a transaction (FK-safe order)
-    await client.query('BEGIN');
-
-    // Layer 1: tables with FK to agro_observations (CASCADE, but be explicit)
-    await client.query(
-      `DELETE FROM observation_history WHERE observation_id IN (SELECT id FROM agro_observations WHERE user_id = $1)`,
-      [numericUserId],
-    );
-
-    // Layer 2: tables with FK to fields/plots (non-cascade)
-    await client.query(`DELETE FROM alert_history WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM agronomic_reports WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM domain_events WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM agro_observations WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM expenses WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM incomes WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM rainfall WHERE user_id = $1`, [numericUserId]);
-
-    // Layer 3: conversation state (FK to fields/plots as SET NULL)
-    await client.query(`DELETE FROM conversation_state WHERE user_id = $1`, [numericUserId]);
-
-    // Layer 4: fields — CASCADE deletes plots → plot_aliases, plot_crops
-    await client.query(`DELETE FROM fields WHERE user_id = $1`, [numericUserId]);
-
-    // Layer 5: non-FK user data
-    await client.query(`DELETE FROM budgets WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM unparsed_messages WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM ai_usage WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM ai_fallback_logs WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM conversation_events WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM conversation_logs WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM parser_errors WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM deletion_log WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM farmer_vocabulary WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM message_patterns WHERE user_id = $1`, [numericUserId]);
-    await client.query(`DELETE FROM audio_transcription_logs WHERE user_id = $1`, [numericUserId]);
-
-    // Verification: confirm zero records in core tables
-    const verify = await client.query(
-      `SELECT
-        (SELECT COUNT(*) FROM fields WHERE user_id = $1)::int AS fields,
-        (SELECT COUNT(*) FROM expenses WHERE user_id = $1)::int AS expenses,
-        (SELECT COUNT(*) FROM incomes WHERE user_id = $1)::int AS incomes,
-        (SELECT COUNT(*) FROM agro_observations WHERE user_id = $1)::int AS observations,
-        (SELECT COUNT(*) FROM conversation_state WHERE user_id = $1)::int AS conv_state`,
-      [numericUserId],
-    );
-    const counts = verify.rows[0];
-    const total = counts.fields + counts.expenses + counts.incomes + counts.observations + counts.conv_state;
-    if (total > 0) {
-      await client.query('ROLLBACK');
-      console.error(`[test-bot/reset] Verification failed: ${JSON.stringify(counts)}`);
-      res.status(500).json({ error: 'Reset verification failed — records remain', counts });
-      return;
-    }
-
-    await client.query('COMMIT');
-    console.log(`[test-bot/reset] Hard-deleted all data for user ${numericUserId}`);
-    res.json({ ok: true, message: 'Full reset complete — zero records verified' });
-  } catch (error: unknown) {
-    await client.query('ROLLBACK').catch(() => {});
-    const err = error as Error;
-    console.error('[test-bot/reset] ERROR:', err.stack || err.message);
-    res.status(500).json({ error: err.message || 'Error resetting session' });
-  } finally {
-    client.release();
-  }
-});
 
 export default router;

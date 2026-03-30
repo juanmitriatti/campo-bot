@@ -36,8 +36,15 @@ const SETTING_DEFINITIONS = {
   CLAUDE_FALLBACK_MAX_TOKENS: { default: '250', type: 'number', group: 'ai', label: 'Max tokens fallback legacy', description: 'Tokens máximos para la respuesta del parser legacy de gastos/ingresos.' },
   CLAUDE_FALLBACK_ENABLED: { default: 'true', type: 'boolean', group: 'ai', label: 'Claude fallback legacy habilitado', description: 'Habilita/deshabilita el parser legacy de gastos. Si está deshabilitado, solo funciona el pipeline AI-first.' },
 
-  // AI Intent Extraction (primary pipeline)
-  AI_INTENT_ENABLED: { default: 'true', type: 'boolean', group: 'ai', label: 'Pipeline IA habilitado (kill switch)', description: 'Kill switch principal. Si se desactiva, TODOS los mensajes van al pipeline regex legacy. Usar solo en emergencia.' },
+  // AI Agent (tool_use pipeline — new)
+  AGENT_ENABLED: { default: 'false', type: 'boolean', group: 'ai', label: 'AI Agent tool_use habilitado', description: 'Kill switch: true=usa tool_use (nuevo), false=usa JSON extraction (actual). Si true, AGENT_* settings aplican.' },
+  AGENT_MODEL: { default: 'claude-haiku-4-5-20251001', type: 'string', group: 'ai', label: 'Modelo AI Agent', description: 'Modelo Claude para el agent tool_use.' },
+  AGENT_MAX_TOKENS: { default: '400', type: 'number', group: 'ai', label: 'Max tokens AI Agent', description: 'Tokens máximos para respuesta del agent.' },
+  AGENT_TIMEOUT_MS: { default: '8000', type: 'number', group: 'ai', label: 'Timeout AI Agent (ms)', description: 'Timeout del agent en ms.' },
+  AGENT_TEMPERATURE: { default: '0', type: 'number', group: 'ai', label: 'Temperature AI Agent', description: 'Temperatura del agent (0=determinista).' },
+
+  // AI Intent Extraction (primary pipeline — fallback when AGENT_ENABLED=false)
+  AI_INTENT_ENABLED: { default: 'true', type: 'boolean', group: 'ai', label: 'Pipeline IA JSON habilitado (kill switch)', description: 'Kill switch del pipeline JSON. Si se desactiva (y AGENT_ENABLED=false), TODOS los mensajes van al pipeline regex. Usar solo en emergencia.' },
   AI_INTENT_MODEL: { default: 'claude-haiku-4-5-20251001', type: 'string', group: 'ai', label: 'Modelo para extracción de intención', description: 'Modelo Claude usado para clasificar intención del mensaje del usuario (el motor principal del bot).' },
   AI_INTENT_MAX_TOKENS: { default: '300', type: 'number', group: 'ai', label: 'Max tokens extracción de intención', description: 'Tokens máximos para la respuesta JSON del clasificador de intención.' },
   AI_INTENT_TIMEOUT_MS: { default: '5000', type: 'number', group: 'ai', label: 'Timeout extracción de intención (ms)', description: 'Tiempo máximo de espera para la clasificación IA. Si expira, cae al pipeline regex.' },
