@@ -275,7 +275,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        plotName: { type: 'string', description: 'Nombre del lote a crear.' },
+        plotName: { type: 'string', description: 'Nombre de UN SOLO lote. Si hay comas o "y" (ej: "A1, A2 y A3"), usá add_plots_batch.' },
         field: { type: 'string', description: 'Campo donde crear el lote.' },
         hectares: { type: 'number', description: 'Superficie en hectáreas.' },
       },

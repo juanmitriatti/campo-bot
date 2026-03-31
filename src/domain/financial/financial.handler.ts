@@ -1359,6 +1359,16 @@ export class FinancialHandler {
             messages: ['Necesitás indicar el nombre del lote.\n\n📍 Escribí *agregar lote [nombre] en campo [campo]*'],
           };
         }
+        // Auto-split: if plotName contains commas or " y ", redirect to add_plots_batch
+        if (typeof cmd.plotName === 'string' && /[,]|\sy\s/.test(cmd.plotName)) {
+          const names = cmd.plotName.split(/\s*,\s*|\s+y\s+/).map((n: string) => n.trim()).filter(Boolean);
+          if (names.length > 1) {
+            cmd.command = 'add_plots_batch';
+            cmd.plotNames = names;
+            delete cmd.plotName;
+            return this.handleCommand(cmd, userId, user, settings);
+          }
+        }
         let field: any;
         if (!cmd.fieldName) {
           const fields = await this.service.getUserFields(userId);
