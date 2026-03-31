@@ -41,7 +41,7 @@ Kill switches:
 
 #### AI Agent (tool_use) — new primary path
 - **`agent.service.ts`** — Calls Claude with `tool_use` + `tool_choice: auto`; returns `AgentResult` with tool calls array + optional conversational text. Uses plan-based rate limiting, conversation history, few-shot examples, and configurable timeout.
-- **`tool-definitions.ts`** — 27 Anthropic tool definitions grouped by domain: Financial (2), Activities (6), Observations (2), Reports (10), Field/Plot Mgmt (5), System (2). Each tool has typed `input_schema` with enum validation for categories.
+- **`tool-definitions.ts`** — 21 Anthropic tool definitions grouped by domain: Financial (2), Activities (6), Observations (2), Reports (5), Field/Plot Mgmt (5), System (1). Each tool has typed `input_schema` with enum validation for categories.
 - **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules and user context. Tool definitions carry the schema, so the prompt only needs rules. Includes explicit rules that agro activities (fumigué, sembré, coseché, etc.) are ONLY activities and NEVER expenses unless the user mentions an explicit amount.
 - **`agent-response-mapper.ts`** — Converts `AgentResult` → `ParseResult[]` for backward compatibility. Maps `log_expense`/`log_income` tool calls to expense/income ParseResults; everything else to command ParseResults. No-tool conversational responses become `_conversationalResponse` on ParseResult. **Fix**: filters spurious `log_expense`/`log_income` tool calls when the agent also returns an agro activity tool (sow_crop, harvest_crop, log_spraying, etc.), preventing Haiku from misclassifying activity messages as expenses.
 - **`few-shot.service.ts`** — `formatAsToolUseMessages()` converts training examples to tool_use triplets (user → assistant[tool_use] → user[tool_result]).
@@ -60,7 +60,7 @@ Kill switches:
 
 - **`services/expenses.js`** — Database layer for all CRUD: expenses, incomes, budgets, fields, rainfall, user settings, AI usage tracking, plot history queries. Includes `getOrCreateUserByTelegramId()` for Telegram user provisioning. `setFieldCity` and `setUserCity` accept optional `province` param.
 - **`services/localidad-lookup.service.ts`** — Validates city names against 4027 Argentine census localities (`src/data/localidades_censales.json`). Returns exact match, disambiguation (multiple provinces), fuzzy suggestions (Levenshtein ≤ 3), or not_found. Singleton with lazy-loaded index.
-- **`middleware/pending-field-city-handler.ts`** — Shared handler for pending city validation across all 3 controllers (WhatsApp, Telegram, test-bot). Exports `formatLocation(city, province)` helper.
+- **`middleware/pending-field-city-handler.ts`** — Shared handler for pending city validation across all 3 controllers (WhatsApp, Telegram, test-bot). Exports `formatLocation(city, province)` helper. Strips full-sentence patterns (e.g., "el campo X está en Paraná" → "Paraná") before city lookup.
 - **`services/whatsapp.js`** — WhatsApp Cloud API client (send messages via Meta API).
 - **`services/telegram.ts`** — Telegram Bot API client (sendMessage, sendButtons, sendList, sendDocument, downloadFile).
 - **`services/weather.js`** — OpenWeather API integration for forecasts and rain alerts.
@@ -71,7 +71,7 @@ Kill switches:
 ### Domain Layer (`src/domain/`)
 
 - **`agronomy/`** — AgronomyHandler (activities, observations, weather, rainfall, agro reports, plot history queries); `normalizeActivityFilter()` maps AI filter strings to DB event_type values
-- **`financial/`** — FinancialHandler (expenses, incomes, budgets, financial reports, inline hectares on plot creation, activity labels with emojis in reports), FinancialService, FinancialRepository
+- **`financial/`** — FinancialHandler (expenses, incomes, budgets, unified `financial_report` dispatching, inline hectares on plot creation, activity labels with emojis in reports, auto-split comma-separated plot names from `add_plot` → `add_plots_batch`), FinancialService, FinancialRepository
 - **`auth/`** — Auth system (JWT, bcrypt, refresh tokens) + ObservationService (dashboard CRUD for observations, activities, expenses, incomes with edit support)
 - **`plots/`** — PlotDiscoveryService (lookup-only, never auto-creates), PlotRepository
 - **`billing/`** — Plan-based AI daily limits
@@ -142,7 +142,7 @@ The project is deployed on **Railway** at `campo-bot-production.up.railway.app`.
 
 The Dockerfile builds the frontend as part of the image: it installs frontend dependencies and runs `npm run build` so `frontend/dist/` is present at runtime. No separate build step is needed when deploying.
 
-Required environment variables on Railway: `DATABASE_URL`, `JWT_SECRET`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`.
+Required environment variables on Railway: `DATABASE_URL`, `JWT_SECRET`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (for Whisper audio transcription), `TELEGRAM_BOT_TOKEN`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`.
 
 ## Telegram Integration
 
