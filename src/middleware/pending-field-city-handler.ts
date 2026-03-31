@@ -21,8 +21,9 @@ export async function handlePendingCity(
   userId: UserId,
   financialService: FinancialService,
 ): Promise<PendingCityResult> {
-  // Strip common prefixes
+  // Strip common prefixes and full-sentence patterns like "el campo X está en Y"
   let input = text.trim()
+    .replace(/^.*?\b(?:est[aá]|queda|ubicad[oa])\s+en\s+/i, '')
     .replace(/^(?:esta|está|queda|ubicad[oa])\s+(?:en\s+)?/i, '')
     .replace(/^en\s+/i, '')
     .trim();
