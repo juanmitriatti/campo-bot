@@ -490,6 +490,7 @@ async function handleInteractiveReply(
 
   if (callbackId === 'cancel_destructive' || callbackId === 'cancel_action' || callbackId === 'cancel_pending') {
     pendingStore.clear(phone);
+    conversationLogger.log(userId, phone, `[${callbackId}]`, 'Operacion cancelada.', 'command', 'cancel', null, null, false, null, false, null, null, null, 'telegram').catch(() => {});
     return [{ type: 'text', text: '\u274c Operacion cancelada.' }];
   }
 
@@ -497,10 +498,12 @@ async function handleInteractiveReply(
   if (callbackId === 'confirm_pending') {
     const pendingTx = pendingStore.get(phone);
     if (!pendingTx) {
+      conversationLogger.log(userId, phone, '[confirm_pending]', 'No hay nada pendiente para confirmar.', 'command', 'confirm', null, null, false, null, false, null, null, null, 'telegram').catch(() => {});
       return [{ type: 'text', text: 'No hay nada pendiente para confirmar.' }];
     }
     pendingStore.clear(phone);
     const response = await financialHandler.handleConfirm(userId, pendingTx, settings, user);
+    conversationLogger.log(userId, phone, '[confirm_pending]', response.messages[0] ?? null, 'command', 'confirm', null, null, false, null, !!response.interactive, null, null, null, 'telegram').catch(() => {});
     return collectResponse(response);
   }
 

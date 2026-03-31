@@ -384,16 +384,20 @@ router.post('/', async (req: Request, res: Response) => {
         }
 
         if (callbackId === 'cancel_destructive') {
+          const user = await userRepository.getOrCreate(phone);
           pendingStore.clear(phone);
           await sendMessage(phone, '\u274c Operaci\u00f3n cancelada.');
+          conversationLogger.log(user.id, phone, '[cancel_destructive]', 'Operación cancelada.', 'command', 'cancel', null, null, false, Date.now() - startTime).catch(() => {});
           res.sendStatus(200);
           return;
         }
 
         // --- Cancel action (field/plot delete confirmation) ---
         if (callbackId === 'cancel_action' || callbackId === 'cancel_pending') {
+          const user = await userRepository.getOrCreate(phone);
           pendingStore.clear(phone);
           await sendMessage(phone, '\u274c Operaci\u00f3n cancelada.');
+          conversationLogger.log(user.id, phone, `[${callbackId}]`, 'Operación cancelada.', 'command', 'cancel', null, null, false, Date.now() - startTime).catch(() => {});
           res.sendStatus(200);
           return;
         }
@@ -406,6 +410,7 @@ router.post('/', async (req: Request, res: Response) => {
           const pendingTx = pendingStore.get(phone);
           if (!pendingTx) {
             await sendMessage(phone, 'No hay nada pendiente para confirmar.');
+            conversationLogger.log(userId, phone, '[confirm_pending]', 'No hay nada pendiente para confirmar.', 'command', 'confirm', null, null, false, Date.now() - startTime).catch(() => {});
             res.sendStatus(200);
             return;
           }
@@ -929,6 +934,7 @@ router.post('/', async (req: Request, res: Response) => {
     if (intent.type === 'command' && intent.data.command === 'confirm') {
       if (!pending) {
         await sendMessage(phone, 'No hay nada pendiente para confirmar.');
+        conversationLogger.log(userId, phone, text, 'No hay nada pendiente para confirmar.', 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
         res.sendStatus(200);
         return;
       }
@@ -943,6 +949,7 @@ router.post('/', async (req: Request, res: Response) => {
     if (intent.type === 'command' && intent.data.command === 'cancel') {
       if (!pending) {
         await sendMessage(phone, 'No hay nada pendiente para cancelar.');
+        conversationLogger.log(userId, phone, text, 'No hay nada pendiente para cancelar.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
         res.sendStatus(200);
         return;
       }
