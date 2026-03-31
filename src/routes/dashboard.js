@@ -2237,7 +2237,7 @@ router.patch("/api/ai-training/logs/:id/feedback", async (req, res) => {
     const { id } = req.params;
     const { was_correct, corrected_intent } = req.body;
 
-    if (was_correct == null) {
+    if (was_correct === undefined) {
       return res.status(400).json({ error: "was_correct is required" });
     }
 

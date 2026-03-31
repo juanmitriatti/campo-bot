@@ -3755,6 +3755,13 @@
           if (l.was_correct == null) {
             actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;" onclick="markLogCorrect(' + l.id + ',true)">OK</button>';
             actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;" onclick="markLogIncorrect(' + l.id + ')">Mal</button>';
+          } else {
+            if (l.was_correct === true) {
+              actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;opacity:0.7;" onclick="markLogIncorrect(' + l.id + ')" title="Cambiar a incorrecto">Mal</button>';
+            } else {
+              actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;opacity:0.7;" onclick="markLogCorrect(' + l.id + ',true)" title="Cambiar a correcto">OK</button>';
+            }
+            actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;opacity:0.6;" onclick="resetLogFeedback(' + l.id + ')" title="Quitar feedback">↩</button>';
           }
           if (l.was_correct === false || l.corrected_intent) {
             actions += '<button class="btn btn-primary" style="padding:2px 8px;font-size:11px;" onclick="promoteLog(' + l.id + ')">Promover</button>';
@@ -3787,6 +3794,14 @@
         method: 'PATCH',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ was_correct: false, corrected_intent: corrected || null })
+      }).then(function() { loadAiTrainingLogs(); });
+    }
+
+    function resetLogFeedback(logId) {
+      apiFetch('/admin/api/ai-training/logs/' + logId + '/feedback', {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ was_correct: null, corrected_intent: null })
       }).then(function() { loadAiTrainingLogs(); });
     }
 

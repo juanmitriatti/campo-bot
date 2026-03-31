@@ -34,7 +34,7 @@ import { activityFlow } from '../middleware/flows/activity.flow.js';
 import { EntityValidator } from '../services/entity-validator.js';
 import { getSuggestions, resolveSuggestionKey } from '../middleware/contextual-suggestions.js';
 import { enrichWithContext } from '../middleware/context-reuse.js';
-import { getOrCreateUserByTelegramId, updateConversationMiniMemory } from '../services/expenses.js';
+import { getOrCreateUserByTelegramId, updateConversationMiniMemory, saveAudioTranscriptionLog, getHourlyAudioCount } from '../services/expenses.js';
 import { ConversationObserver } from '../middleware/conversation-observer.js';
 import { IntentExtractor } from '../ai/intent-extractor.js';
 import { PromptBuilder } from '../ai/prompt-builder.js';
@@ -52,6 +52,7 @@ import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observatio
 import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
 import { formatObservationResponse } from '../middleware/response-formatter.js';
 import { createSpeechProvider } from '../services/audio/providers/provider-factory.js';
+import { getAudioConfig } from '../services/audio/audio.types.js';
 import {
   sendTelegramMessage,
   sendTelegramButtons,
@@ -352,6 +353,23 @@ router.post('/', async (req: Request, res: Response) => {
           let transcript = result.text;
           transcript = normalizeTranscript(transcript);
           console.log('[telegram] AUDIO TRANSCRIBED:', transcript);
+
+          // Log audio transcription cost
+          try {
+            const durationSeconds = message.voice?.duration || message.audio?.duration || 0;
+            const durationMinutes = durationSeconds / 60;
+            const costUsd = durationMinutes * 0.006;
+            const audioConfig = getAudioConfig();
+            await saveAudioTranscriptionLog(userId, {
+              durationSeconds,
+              provider: provider.name || audioConfig.provider,
+              model: audioConfig.openaiWhisperModel,
+              costUsd,
+            });
+            console.log(`[telegram] audio logged: ${durationSeconds}s, $${costUsd.toFixed(6)} USD`);
+          } catch (logErr: unknown) {
+            console.error('[telegram] failed to log audio:', (logErr as Error).message);
+          }
 
           if (transcript.trim()) {
             const items = await processTextMessage(transcript, userId, user, settings, phone, startTime);
