@@ -1,141 +1,60 @@
 import type { InteractiveMessage } from '../types/index.js';
 
-const DEFAULT_MENU: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Qué querés hacer?',
-  buttons: [
-    { id: 'flow_new_expense', title: 'Registrar Gasto' },
-    { id: 'flow_new_activity', title: 'Registrar Actividad' },
-    { id: 'back_menu', title: 'Menú' },
+const MENU_LIST: InteractiveMessage = {
+  type: 'list',
+  body: '¿Seguimos?',
+  buttonText: 'Menú',
+  sections: [
+    {
+      title: 'Registrar',
+      rows: [
+        { id: 'flow_new_expense', title: '💰 Nuevo Gasto', description: 'Registrar paso a paso' },
+        { id: 'flow_new_income', title: '💸 Nuevo Ingreso', description: 'Registrar paso a paso' },
+        { id: 'flow_new_activity', title: '🌾 Nueva Actividad', description: 'Siembra, fumigación, etc.' },
+      ],
+    },
+    {
+      title: 'Finanzas',
+      rows: [
+        { id: 'cmd_resumen_mensual', title: '📈 Resultado Mes', description: 'Ingresos vs gastos' },
+        { id: 'menu_reportes', title: '📊 Reportes', description: 'Semanal, CSV, agronómico' },
+        { id: 'menu_dolar', title: '💵 Dólar', description: 'Cotización actual' },
+      ],
+    },
+    {
+      title: 'Campo',
+      rows: [
+        { id: 'menu_clima', title: '☀️ Clima', description: 'Pronóstico del tiempo' },
+        { id: 'menu_lluvia', title: '🌧️ Lluvia', description: 'Registrar, ver reportes' },
+        { id: 'menu_campos', title: '🏡 Campos', description: 'Listar, agregar campos' },
+      ],
+    },
+    {
+      title: 'Sistema',
+      rows: [
+        { id: 'menu_config', title: '⚙️ Configuración', description: 'Alertas y preferencias' },
+        { id: 'menu_ayuda', title: '❓ Ayuda', description: 'Ver todos los comandos' },
+      ],
+    },
   ],
 };
 
 const SUGGESTIONS: Record<string, InteractiveMessage> = {
-  default_menu: DEFAULT_MENU,
-  expense_saved: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'flow_new_expense', title: 'Otro Gasto' },
-      { id: 'cmd_resumen_mensual', title: 'Resumen Mes' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  income_saved: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'flow_new_income', title: 'Otro Ingreso' },
-      { id: 'cmd_resumen_mensual', title: 'Resultado Mes' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  field_created: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'cmd_agregar_lote', title: 'Agregar Lote' },
-      { id: 'flow_new_expense', title: 'Registrar Gasto' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  rainfall_logged: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'cmd_reporte_lluvia', title: 'Reporte Lluvia' },
-      { id: 'menu_clima', title: 'Clima' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  activity_logged: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'flow_new_activity', title: 'Otra Actividad' },
-      { id: 'cmd_reporte_agro', title: 'Reporte Agro' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  plot_created: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'flow_new_expense', title: 'Registrar Gasto' },
-      { id: 'cmd_listar_campos', title: 'Ver Campos' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  field_deleted: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'cmd_listar_campos', title: 'Ver Campos' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  plot_deleted: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'cmd_listar_campos', title: 'Ver Campos' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  observation_logged: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'flow_new_activity', title: 'Registrar Actividad' },
-      { id: 'cmd_reporte_agro', title: 'Reporte Agro' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  query_result: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'flow_new_activity', title: 'Registrar Actividad' },
-      { id: 'cmd_reporte_agro', title: 'Reporte Agro' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  query_empty: {
-    type: 'buttons',
-    body: '¿Querés hacer algo más?',
-    buttons: [
-      { id: 'flow_new_activity', title: 'Registrar Actividad' },
-      { id: 'cmd_listar_campos', title: 'Ver Campos' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  field_info_shown: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'flow_new_expense', title: 'Registrar Gasto' },
-      { id: 'menu_reportes', title: 'Reportes' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  report_shown: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'menu_reportes', title: 'Más Reportes' },
-      { id: 'flow_new_expense', title: 'Registrar Gasto' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
-  weather_shown: {
-    type: 'buttons',
-    body: '¿Qué querés hacer ahora?',
-    buttons: [
-      { id: 'cmd_registrar_lluvia', title: 'Registrar Lluvia' },
-      { id: 'cmd_reporte_lluvia', title: 'Reporte Lluvia' },
-      { id: 'back_menu', title: 'Menú' },
-    ],
-  },
+  default_menu: MENU_LIST,
+  expense_saved: MENU_LIST,
+  income_saved: MENU_LIST,
+  field_created: MENU_LIST,
+  rainfall_logged: MENU_LIST,
+  activity_logged: MENU_LIST,
+  plot_created: MENU_LIST,
+  field_deleted: MENU_LIST,
+  plot_deleted: MENU_LIST,
+  observation_logged: MENU_LIST,
+  query_result: MENU_LIST,
+  query_empty: MENU_LIST,
+  field_info_shown: MENU_LIST,
+  report_shown: MENU_LIST,
+  weather_shown: MENU_LIST,
 };
 
 // Command → suggestion key mapping for commands that don't set their own suggestionKey
@@ -175,5 +94,5 @@ export function resolveSuggestionKey(command: string, existingKey?: string | nul
 }
 
 export function getDefaultSuggestion(): InteractiveMessage {
-  return DEFAULT_MENU;
+  return MENU_LIST;
 }
