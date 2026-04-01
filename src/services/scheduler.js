@@ -292,13 +292,16 @@ async function checkWeatherForUser(user) {
             continue;
           }
 
-          alerts.push({
-            city: resolvedCity,
-            dayName: day.dayName,
-            rain: day.rain,
-            icon: day.icon,
-            dedupKey,
-          });
+          // Deduplicate within same message (same city+day from user city + field city)
+          if (!alerts.some(a => a.dedupKey === dedupKey)) {
+            alerts.push({
+              city: resolvedCity,
+              dayName: day.dayName,
+              rain: day.rain,
+              icon: day.icon,
+              dedupKey,
+            });
+          }
         }
       }
     } catch (err) {
