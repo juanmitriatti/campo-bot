@@ -1,6 +1,7 @@
 import { FinancialHandler } from './financial/financial.handler.js';
 import { AgronomyHandler } from './agronomy/agronomy.handler.js';
 import { SystemHandler } from './system/system.handler.js';
+import { SharingHandler } from './sharing/sharing.handler.js';
 import { FeatureGate } from './billing/feature-gate.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../types/index.js';
 
@@ -29,6 +30,10 @@ const AGRONOMY_COMMANDS = new Set([
   'query_plot_history', 'log_observation', 'generate_agro_report',
 ]);
 
+const SHARING_COMMANDS = new Set([
+  'share_field', 'accept_invite', 'list_field_members', 'remove_field_member',
+]);
+
 const SYSTEM_COMMANDS = new Set([
   'greeting', 'help', 'thanks', 'ack', 'dollar',
   'menu', 'show_expense_menu', 'show_income_menu', 'show_agro_menu',
@@ -43,14 +48,17 @@ const SYSTEM_COMMANDS = new Set([
 
 export class DomainRouter {
   private featureGate: FeatureGate;
+  private sharingHandler: SharingHandler;
 
   constructor(
     private financialHandler: FinancialHandler,
     private agronomyHandler: AgronomyHandler,
     private systemHandler: SystemHandler,
     featureGate?: FeatureGate,
+    sharingHandler?: SharingHandler,
   ) {
     this.featureGate = featureGate ?? new FeatureGate();
+    this.sharingHandler = sharingHandler ?? new SharingHandler();
   }
 
   async routeCommand(
@@ -85,6 +93,10 @@ export class DomainRouter {
 
     if (AGRONOMY_COMMANDS.has(command)) {
       return this.agronomyHandler.handleCommand(cmd, userId, user, settings);
+    }
+
+    if (SHARING_COMMANDS.has(command)) {
+      return this.sharingHandler.handleCommand(cmd, userId, user, settings);
     }
 
     return null;

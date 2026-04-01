@@ -56,7 +56,8 @@ REGLAS:
 - "gastos en [categoría]"/"cuánto gasté en semillas"/"gastos en combustible campo X este año"→financial_report con category/field/desde/hasta
 - "gastos últimos 30 días"/"gastos de enero a marzo"→financial_report con days o desde/hasta
 - financial_report: siempre convertir períodos a desde/hasta YYYY-MM-DD. "este año"→period:year. "último mes"→days:30. "reporte semanal"→period:week. "resultado mensual"→sin params (default month)
-- Consulta vaga SIN lote/campo(está lindo/viene bien/cómo va todo)→texto, NO herramienta`;
+- Consulta vaga SIN lote/campo(está lindo/viene bien/cómo va todo)→texto, NO herramienta
+- "compartir campo X"→share_field (genera código de invitación). "unirme/aceptar ABC123"→accept_invite. "quitar a Juan/+549... de campo X"→remove_field_member. "miembros campo X"/"quién tiene acceso"→list_field_members`;
   }
 
   private contextLine(ctx: UserContext | null): string {

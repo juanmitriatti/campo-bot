@@ -60,7 +60,8 @@ router.get("/api/users", async (req, res) => {
          p.display_name AS plan_name,
          COALESCE(ai.ai_calls_today, 0) AS ai_calls_today,
          COALESCE(u.last_message_at, ai_all.last_ai) AS last_activity,
-         COALESCE(fields.field_count, 0) AS field_count
+         COALESCE(fields.field_count, 0) AS field_count,
+         COALESCE(shared.shared_field_count, 0) AS shared_field_count
        FROM users u
        LEFT JOIN plans p ON u.plan_id = p.id
        LEFT JOIN LATERAL (
@@ -73,6 +74,11 @@ router.get("/api/users", async (req, res) => {
        LEFT JOIN LATERAL (
          SELECT COUNT(*) AS field_count FROM fields WHERE user_id = u.id AND deleted_at IS NULL
        ) fields ON true
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) AS shared_field_count
+         FROM field_members fm
+         WHERE fm.user_id = u.id AND fm.role = 'member'
+       ) shared ON true
        ORDER BY last_activity DESC NULLS LAST`
     );
 
@@ -86,6 +92,7 @@ router.get("/api/users", async (req, res) => {
       status: u.status || 'active',
       planName: u.plan_name || 'Free',
       fieldCount: parseInt(u.field_count),
+      sharedFieldCount: parseInt(u.shared_field_count),
       aiCallsToday: parseInt(u.ai_calls_today),
       lastActivity: u.last_activity,
       lastMessageAt: u.last_message_at,
@@ -887,6 +894,60 @@ router.get("/api/users/:id/audio-usage", async (req, res) => {
   }
 });
 
+// ─── GET /dashboard/api/users/:id/shared-fields ─────────────────────────────
+
+router.get("/api/users/:id/shared-fields", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [sharedWithMeR, myFieldsSharedR] = await Promise.all([
+      // Fields shared WITH this user (they are member, not owner)
+      pool.query(
+        `SELECT f.id, f.name, f.city, fm.role, fm.created_at AS joined_at,
+                owner_u.name AS owner_name, owner_u.phone_number AS owner_phone
+         FROM field_members fm
+         JOIN fields f ON f.id = fm.field_id
+         JOIN field_members owner_fm ON owner_fm.field_id = f.id AND owner_fm.role = 'owner'
+         JOIN users owner_u ON owner_u.id = owner_fm.user_id
+         WHERE fm.user_id = $1 AND fm.role = 'member' AND f.deleted_at IS NULL
+         ORDER BY fm.created_at DESC`, [id]
+      ),
+      // Fields this user OWNS that are shared with others
+      pool.query(
+        `SELECT f.id, f.name, f.city, fm.created_at AS shared_since,
+                member_u.name AS member_name, member_u.phone_number AS member_phone
+         FROM field_members fm
+         JOIN fields f ON f.id = fm.field_id
+         JOIN field_members owner_fm ON owner_fm.field_id = f.id AND owner_fm.role = 'owner' AND owner_fm.user_id = $1
+         JOIN users member_u ON member_u.id = fm.user_id
+         WHERE fm.user_id != $1 AND fm.role = 'member' AND f.deleted_at IS NULL
+         ORDER BY fm.created_at DESC`, [id]
+      ),
+    ]);
+
+    res.json({
+      sharedWithMe: sharedWithMeR.rows.map(r => ({
+        fieldId: r.id,
+        fieldName: r.name,
+        city: r.city,
+        ownerName: r.owner_name,
+        ownerPhone: r.owner_phone,
+        joinedAt: r.joined_at,
+      })),
+      myFieldsSharedWith: myFieldsSharedR.rows.map(r => ({
+        fieldId: r.id,
+        fieldName: r.name,
+        city: r.city,
+        memberName: r.member_name,
+        memberPhone: r.member_phone,
+        sharedSince: r.shared_since,
+      })),
+    });
+  } catch (error) {
+    console.error("Error fetching user shared fields:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ─── Agronomy endpoints ─────────────────────────────────────────────────────
 
 router.get("/api/agro/fields", async (req, res) => {
@@ -898,7 +959,8 @@ router.get("/api/agro/fields", async (req, res) => {
           WHERE field_id = f.id
             AND EXTRACT(ISOYEAR FROM created_at) = EXTRACT(ISOYEAR FROM NOW())
             AND EXTRACT(WEEK FROM created_at) = EXTRACT(WEEK FROM NOW())) AS obs_week,
-         u.name AS user_name
+         u.name AS user_name,
+         (SELECT COUNT(*) FROM field_members WHERE field_id = f.id) AS member_count
        FROM fields f
        LEFT JOIN users u ON f.user_id = u.id
        ORDER BY f.name`
@@ -911,6 +973,7 @@ router.get("/api/agro/fields", async (req, res) => {
       plotCount: parseInt(r.plot_count),
       obsWeek: parseInt(r.obs_week),
       userName: r.user_name,
+      memberCount: parseInt(r.member_count),
     })));
   } catch (error) {
     console.error("Error fetching agro fields:", error);
@@ -921,7 +984,7 @@ router.get("/api/agro/fields", async (req, res) => {
 router.get("/api/agro/fields/:id", async (req, res) => {
   try {
     const fieldId = req.params.id;
-    const [fieldR, plotsR, fieldFinR, plotFinR, rainfallR] = await Promise.all([
+    const [fieldR, plotsR, fieldFinR, plotFinR, rainfallR, membersR] = await Promise.all([
       pool.query(`SELECT f.*, u.name AS user_name FROM fields f LEFT JOIN users u ON f.user_id = u.id WHERE f.id = $1`, [fieldId]),
       pool.query(
         `SELECT p.*,
@@ -964,6 +1027,14 @@ router.get("/api/agro/fields/:id", async (req, res) => {
            AND EXTRACT(MONTH FROM rainfall_date) = EXTRACT(MONTH FROM NOW())
            AND EXTRACT(YEAR FROM rainfall_date) = EXTRACT(YEAR FROM NOW())`, [fieldId]
       ),
+      // Members
+      pool.query(
+        `SELECT fm.role, fm.created_at, u.id AS user_id, u.name, u.phone_number
+         FROM field_members fm
+         JOIN users u ON u.id = fm.user_id
+         WHERE fm.field_id = $1
+         ORDER BY fm.role DESC, fm.created_at`, [fieldId]
+      ),
     ]);
 
     if (fieldR.rows.length === 0) return res.status(404).json({ error: "Field not found" });
@@ -1002,6 +1073,13 @@ router.get("/api/agro/fields/:id", async (req, res) => {
       totalIncomesARS: parseFloat(fin.incomes_ars) || 0,
       totalIncomesUSD: parseFloat(fin.incomes_usd) || 0,
       rainfallMonth: { totalMm: parseFloat(rain.total_mm) || 0, count: parseInt(rain.count) || 0 },
+      members: membersR.rows.map(m => ({
+        userId: m.user_id,
+        name: m.name,
+        phone: m.phone_number,
+        role: m.role,
+        joinedAt: m.created_at,
+      })),
       plots: plotsR.rows.map(p => {
         const pe = plotExpMap[p.id] || {};
         const pi = plotIncMap[p.id] || {};

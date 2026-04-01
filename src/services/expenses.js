@@ -1,5 +1,13 @@
 import { pool } from "../config/db.js";
 
+/**
+ * Helper: returns a SQL subquery fragment for accessible field IDs via field_members.
+ * Usage: `WHERE f.id IN (${accessibleFieldsSql(paramIdx)})` with userId as param.
+ */
+function accessibleFieldsSql(paramIdx) {
+  return `SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
+}
+
 export async function getOrCreateUser(phone) {
   const existing = await pool.query(
     "SELECT * FROM users WHERE phone_number=$1",
@@ -156,7 +164,7 @@ export async function getMonthlyReport(userId) {
   const result = await pool.query(
     `SELECT category, SUM(amount) as total
      FROM expenses
-     WHERE user_id = $1
+     WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND date_trunc('month', expense_date) = date_trunc('month', NOW())
      GROUP BY category
@@ -168,17 +176,23 @@ export async function getMonthlyReport(userId) {
 
 export async function getMonthlyReportByPlot(userId) {
   const result = await pool.query(
-    `WITH plot_expenses AS (
+    `WITH accessible_fields AS (
+       ${accessibleFieldsSql(1)}
+     ),
+     accessible_plots AS (
+       SELECT p.id FROM plots p WHERE p.field_id IN (SELECT field_id FROM accessible_fields) AND p.deleted_at IS NULL
+     ),
+     plot_expenses AS (
        SELECT plot_id, COALESCE(SUM(amount), 0) as total
        FROM expenses
-       WHERE user_id = $1 AND deleted_at IS NULL AND plot_id IS NOT NULL
+       WHERE deleted_at IS NULL AND plot_id IN (SELECT id FROM accessible_plots)
        AND date_trunc('month', expense_date) = date_trunc('month', NOW())
        GROUP BY plot_id
      ),
      plot_incomes AS (
        SELECT plot_id, COALESCE(SUM(amount), 0) as total
        FROM incomes
-       WHERE user_id = $1 AND deleted_at IS NULL AND plot_id IS NOT NULL
+       WHERE deleted_at IS NULL AND plot_id IN (SELECT id FROM accessible_plots)
        AND date_trunc('month', income_date) = date_trunc('month', NOW())
        GROUP BY plot_id
      ),
@@ -205,7 +219,7 @@ export async function getMonthlyReportForMonth(userId, month, year) {
   const result = await pool.query(
     `SELECT category, SUM(amount) as total
      FROM expenses
-     WHERE user_id = $1
+     WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND EXTRACT(MONTH FROM expense_date) = $2
      AND EXTRACT(YEAR FROM expense_date) = $3
@@ -242,28 +256,29 @@ export async function getDailyClaudeCount(userId) {
 }
 
 export async function getUserFinancialSummary(userId) {
+  const accessCond = `(user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))`;
   const [expensesR, incomesR, expCountR, incCountR] = await Promise.all([
     pool.query(
       `SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
-       WHERE user_id = $1 AND deleted_at IS NULL
+       WHERE ${accessCond} AND deleted_at IS NULL
        AND date_trunc('month', expense_date) = date_trunc('month', NOW())`,
       [userId]
     ),
     pool.query(
       `SELECT COALESCE(SUM(amount), 0) AS total FROM incomes
-       WHERE user_id = $1 AND deleted_at IS NULL
+       WHERE ${accessCond} AND deleted_at IS NULL
        AND date_trunc('month', income_date) = date_trunc('month', NOW())`,
       [userId]
     ),
     pool.query(
       `SELECT COUNT(*) AS count FROM expenses
-       WHERE user_id = $1 AND deleted_at IS NULL
+       WHERE ${accessCond} AND deleted_at IS NULL
        AND date_trunc('month', expense_date) = date_trunc('month', NOW())`,
       [userId]
     ),
     pool.query(
       `SELECT COUNT(*) AS count FROM incomes
-       WHERE user_id = $1 AND deleted_at IS NULL
+       WHERE ${accessCond} AND deleted_at IS NULL
        AND date_trunc('month', income_date) = date_trunc('month', NOW())`,
       [userId]
     ),
@@ -372,7 +387,7 @@ export async function getMonthlyIncomeReport(userId) {
   const result = await pool.query(
     `SELECT category, SUM(amount) as total
      FROM incomes
-     WHERE user_id = $1
+     WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND date_trunc('month', income_date) = date_trunc('month', NOW())
      GROUP BY category
@@ -386,7 +401,7 @@ export async function getMonthlyIncomeForMonth(userId, month, year) {
   const result = await pool.query(
     `SELECT category, SUM(amount) as total
      FROM incomes
-     WHERE user_id = $1
+     WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND EXTRACT(MONTH FROM income_date) = $2
      AND EXTRACT(YEAR FROM income_date) = $3
@@ -420,14 +435,14 @@ export async function getMonthlyResult(userId) {
   const incomes = await pool.query(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM incomes
-     WHERE user_id = $1 AND deleted_at IS NULL
+     WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)})) AND deleted_at IS NULL
      AND date_trunc('month', income_date) = date_trunc('month', NOW())`,
     [userId]
   );
   const expenses = await pool.query(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM expenses
-     WHERE user_id = $1 AND deleted_at IS NULL
+     WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)})) AND deleted_at IS NULL
      AND date_trunc('month', expense_date) = date_trunc('month', NOW())`,
     [userId]
   );
@@ -442,7 +457,7 @@ export async function getFieldResult(userId, fieldName) {
     `SELECT COALESCE(SUM(i.amount), 0) as total
      FROM incomes i
      JOIN fields f ON i.field_id = f.id
-     WHERE i.user_id = $1 AND i.deleted_at IS NULL
+     WHERE f.id IN (${accessibleFieldsSql(1)}) AND i.deleted_at IS NULL
      AND LOWER(f.name) = LOWER($2)
      AND date_trunc('month', i.income_date) = date_trunc('month', NOW())`,
     [userId, fieldName]
@@ -451,7 +466,7 @@ export async function getFieldResult(userId, fieldName) {
     `SELECT COALESCE(SUM(e.amount), 0) as total
      FROM expenses e
      JOIN fields f ON e.field_id = f.id
-     WHERE e.user_id = $1 AND e.deleted_at IS NULL
+     WHERE f.id IN (${accessibleFieldsSql(1)}) AND e.deleted_at IS NULL
      AND LOWER(f.name) = LOWER($2)
      AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())`,
     [userId, fieldName]
@@ -486,7 +501,7 @@ export async function getCategoryMonthlyTotal(userId, category) {
   const result = await pool.query(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM expenses
-     WHERE user_id = $1
+     WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND LOWER(category) = LOWER($2)
      AND date_trunc('month', expense_date) = date_trunc('month', NOW())`,
@@ -499,7 +514,7 @@ export async function getPreviousMonthCategoryTotal(userId, category) {
   const result = await pool.query(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM expenses
-     WHERE user_id = $1
+     WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND LOWER(category) = LOWER($2)
      AND date_trunc('month', expense_date) = date_trunc('month', NOW() - interval '1 month')`,
@@ -546,7 +561,7 @@ export async function getWeeklyReport(userId) {
   const result = await pool.query(
     `SELECT category, SUM(amount) as total
      FROM expenses
-     WHERE user_id = $1
+     WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND expense_date >= date_trunc('week', NOW())
      GROUP BY category
@@ -559,8 +574,9 @@ export async function getWeeklyReport(userId) {
 // --- Fields ---
 
 export async function getOrCreateField(userId, name) {
+  // Check accessible fields (owned + shared)
   const existing = await pool.query(
-    `SELECT * FROM fields WHERE user_id = $1 AND LOWER(name) = LOWER($2) AND deleted_at IS NULL`,
+    `SELECT * FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND LOWER(name) = LOWER($2) AND deleted_at IS NULL`,
     [userId, name]
   );
   if (existing.rows.length > 0) return existing.rows[0];
@@ -569,12 +585,20 @@ export async function getOrCreateField(userId, name) {
     `INSERT INTO fields (user_id, name) VALUES ($1, $2) RETURNING *`,
     [userId, name]
   );
+
+  // Auto-insert owner membership
+  await pool.query(
+    `INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2) ON CONFLICT (field_id, user_id) DO NOTHING`,
+    [result.rows[0].id, userId]
+  );
+
   return result.rows[0];
 }
 
 export async function setFieldCity(userId, fieldName, city, province = null) {
   await pool.query(
-    `UPDATE fields SET city = $1, province = COALESCE($4, province) WHERE user_id = $2 AND LOWER(name) = LOWER($3)`,
+    `UPDATE fields SET city = $1, province = COALESCE($4, province)
+     WHERE id IN (${accessibleFieldsSql(2)}) AND LOWER(name) = LOWER($3)`,
     [city, userId, fieldName, province]
   );
 }
@@ -583,7 +607,7 @@ export async function getFieldByName(userId, fieldName) {
   // Normalize accents for matching (e.g., "El Trébol" → "el trebol")
   const normalized = fieldName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const result = await pool.query(
-    `SELECT * FROM fields WHERE user_id = $1 AND LOWER(name) = $2 AND deleted_at IS NULL`,
+    `SELECT * FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND LOWER(name) = $2 AND deleted_at IS NULL`,
     [userId, normalized]
   );
   if (result.rows[0]) return result.rows[0];
@@ -592,7 +616,7 @@ export async function getFieldByName(userId, fieldName) {
   const stripArticles = (s) => s.replace(/^(el|la|los|las)\s+/i, '').trim();
   const stripped = stripArticles(normalized);
   const fuzzy = await pool.query(
-    `SELECT * FROM fields WHERE user_id = $1 AND deleted_at IS NULL`,
+    `SELECT * FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND deleted_at IS NULL`,
     [userId]
   );
   for (const row of fuzzy.rows) {
@@ -606,7 +630,7 @@ export async function getFieldByName(userId, fieldName) {
 
 export async function getUserFieldsWithCity(userId) {
   const result = await pool.query(
-    `SELECT name, city, province FROM fields WHERE user_id = $1 AND city IS NOT NULL AND deleted_at IS NULL`,
+    `SELECT name, city, province FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND city IS NOT NULL AND deleted_at IS NULL`,
     [userId]
   );
   return result.rows;
@@ -614,7 +638,7 @@ export async function getUserFieldsWithCity(userId) {
 
 export async function getUserFields(userId) {
   const result = await pool.query(
-    `SELECT id, name, city, province FROM fields WHERE user_id = $1 AND deleted_at IS NULL ORDER BY name`,
+    `SELECT id, name, city, province FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND deleted_at IS NULL ORDER BY name`,
     [userId]
   );
   return result.rows;
@@ -622,7 +646,7 @@ export async function getUserFields(userId) {
 
 export async function getUserFieldCount(userId) {
   const result = await pool.query(
-    `SELECT COUNT(*) as count FROM fields WHERE user_id = $1 AND deleted_at IS NULL`,
+    `SELECT COUNT(*) as count FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND deleted_at IS NULL`,
     [userId]
   );
   return parseInt(result.rows[0].count);
@@ -665,9 +689,11 @@ export async function deleteField(userId, fieldName) {
 }
 
 export async function restoreField(userId, fieldName) {
+  // Only owner can restore — check field_members for owner role on deleted fields
   const result = await pool.query(
     `UPDATE fields SET deleted_at = NULL, deleted_by = NULL
-     WHERE user_id = $1 AND LOWER(name) = LOWER($2) AND deleted_at IS NOT NULL
+     WHERE id IN (SELECT fm.field_id FROM field_members fm WHERE fm.user_id = $1 AND fm.role = 'owner')
+     AND LOWER(name) = LOWER($2) AND deleted_at IS NOT NULL
      RETURNING *`,
     [userId, fieldName]
   );
@@ -707,21 +733,21 @@ export async function getFieldInfo(userId, fieldName) {
   const [expensesR, incomesR, rainfallR, plotsR, observationsR] = await Promise.all([
     pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
-       FROM expenses WHERE user_id = $1 AND field_id = $2 AND deleted_at IS NULL
+       FROM expenses WHERE field_id = $1 AND deleted_at IS NULL
        AND date_trunc('month', expense_date) = date_trunc('month', NOW())`,
-      [userId, field.id]
+      [field.id]
     ),
     pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
-       FROM incomes WHERE user_id = $1 AND field_id = $2 AND deleted_at IS NULL
+       FROM incomes WHERE field_id = $1 AND deleted_at IS NULL
        AND date_trunc('month', income_date) = date_trunc('month', NOW())`,
-      [userId, field.id]
+      [field.id]
     ),
     pool.query(
       `SELECT COALESCE(SUM(millimeters), 0) as total, COUNT(*) as count
-       FROM rainfall WHERE user_id = $1 AND field_id = $2
+       FROM rainfall WHERE field_id = $1
        AND date_trunc('month', rainfall_date) = date_trunc('month', NOW())`,
-      [userId, field.id]
+      [field.id]
     ),
     pool.query(
       `SELECT COUNT(*) as count FROM plots WHERE field_id = $1 AND deleted_at IS NULL`,
@@ -754,7 +780,7 @@ export async function getFieldReport(userId, fieldName) {
     `SELECT e.category, SUM(e.amount) as total
      FROM expenses e
      JOIN fields f ON e.field_id = f.id
-     WHERE e.user_id = $1
+     WHERE f.id IN (${accessibleFieldsSql(1)})
      AND e.deleted_at IS NULL
      AND f.deleted_at IS NULL
      AND LOWER(f.name) = LOWER($2)
@@ -774,19 +800,19 @@ export async function getPlotReport(userId, plotName) {
     pool.query(
       `SELECT e.category, SUM(e.amount) as total
        FROM expenses e
-       WHERE e.user_id = $1 AND e.plot_id = $2
+       WHERE e.plot_id = $1
        AND e.deleted_at IS NULL
        AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())
        GROUP BY e.category ORDER BY total DESC`,
-      [userId, plot.id]
+      [plot.id]
     ),
     pool.query(
       `SELECT COALESCE(SUM(i.amount), 0) as total
        FROM incomes i
-       WHERE i.user_id = $1 AND i.plot_id = $2
+       WHERE i.plot_id = $1
        AND i.deleted_at IS NULL
        AND date_trunc('month', i.income_date) = date_trunc('month', NOW())`,
-      [userId, plot.id]
+      [plot.id]
     ),
   ]);
   return {
@@ -804,18 +830,18 @@ export async function getPlotResult(userId, plotName) {
   const incomes = await pool.query(
     `SELECT COALESCE(SUM(i.amount), 0) as total
      FROM incomes i
-     WHERE i.user_id = $1 AND i.plot_id = $2
+     WHERE i.plot_id = $1
      AND i.deleted_at IS NULL
      AND date_trunc('month', i.income_date) = date_trunc('month', NOW())`,
-    [userId, plot.id]
+    [plot.id]
   );
   const expenses = await pool.query(
     `SELECT COALESCE(SUM(e.amount), 0) as total
      FROM expenses e
-     WHERE e.user_id = $1 AND e.plot_id = $2
+     WHERE e.plot_id = $1
      AND e.deleted_at IS NULL
      AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())`,
-    [userId, plot.id]
+    [plot.id]
   );
   return {
     ingresos: Number(incomes.rows[0].total),
@@ -862,7 +888,7 @@ export async function findPlotByNameAcrossFields(userId, plotName) {
     `SELECT p.*, f.name as field_name, f.id as field_id
      FROM plots p
      JOIN fields f ON p.field_id = f.id
-     WHERE f.user_id = $1 AND LOWER(p.name) = LOWER($2)
+     WHERE f.id IN (${accessibleFieldsSql(1)}) AND LOWER(p.name) = LOWER($2)
        AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
     [userId, plotName]
   );
@@ -873,7 +899,7 @@ export async function findAllUserPlots(userId) {
   const result = await pool.query(
     `SELECT p.id, p.name, p.field_id, f.name AS field_name
      FROM plots p JOIN fields f ON p.field_id = f.id
-     WHERE f.user_id = $1 AND p.deleted_at IS NULL AND f.deleted_at IS NULL
+     WHERE f.id IN (${accessibleFieldsSql(1)}) AND p.deleted_at IS NULL AND f.deleted_at IS NULL
      ORDER BY f.name, p.name`,
     [userId]
   );
@@ -912,7 +938,7 @@ export async function restorePlot(userId, plotName, fieldName) {
      WHERE id IN (
        SELECT p.id FROM plots p
        JOIN fields f ON p.field_id = f.id
-       WHERE f.user_id = $1 AND LOWER(p.name) = LOWER($2)
+       WHERE f.id IN (${accessibleFieldsSql(1)}) AND LOWER(p.name) = LOWER($2)
          AND LOWER(f.name) = LOWER($3) AND p.deleted_at IS NOT NULL
      )
      RETURNING *`,
@@ -945,28 +971,28 @@ export async function getPlotInfo(userId, plotName) {
   const [expensesR, incomesR, rainfallR, observationsR, activeCropR, recentActivitiesR] = await Promise.all([
     pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
-       FROM expenses WHERE user_id = $1 AND plot_id = $2 AND deleted_at IS NULL
+       FROM expenses WHERE plot_id = $1 AND deleted_at IS NULL
        AND date_trunc('month', expense_date) = date_trunc('month', NOW())`,
-      [userId, plot.id]
+      [plot.id]
     ),
     pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
-       FROM incomes WHERE user_id = $1 AND plot_id = $2 AND deleted_at IS NULL
+       FROM incomes WHERE plot_id = $1 AND deleted_at IS NULL
        AND date_trunc('month', income_date) = date_trunc('month', NOW())`,
-      [userId, plot.id]
+      [plot.id]
     ),
     pool.query(
       `SELECT COALESCE(SUM(millimeters), 0) as total, COUNT(*) as count
-       FROM rainfall WHERE user_id = $1 AND field_id = $2
+       FROM rainfall WHERE field_id = $1
        AND date_trunc('month', rainfall_date) = date_trunc('month', NOW())`,
-      [userId, plot.field_id]
+      [plot.field_id]
     ),
     pool.query(
       `SELECT observation_text, category, created_at
-       FROM agro_observations WHERE user_id = $1 AND plot_id = $2
+       FROM agro_observations WHERE plot_id = $1
        AND created_at >= NOW() - INTERVAL '30 days'
        ORDER BY created_at DESC LIMIT 5`,
-      [userId, plot.id]
+      [plot.id]
     ),
     pool.query(
       `SELECT crop, season_year FROM plot_crops
@@ -1004,7 +1030,7 @@ export async function findPlotByAlias(userId, normalizedAlias) {
      FROM plot_aliases pa
      JOIN plots p ON pa.plot_id = p.id
      JOIN fields f ON p.field_id = f.id
-     WHERE f.user_id = $1 AND pa.alias = $2
+     WHERE f.id IN (${accessibleFieldsSql(1)}) AND pa.alias = $2
        AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
     [userId, normalizedAlias]
   );
@@ -1057,7 +1083,7 @@ export async function updateConversationMiniMemory(userId, { lastIntent, lastAct
 
 export async function getUserSingleField(userId) {
   const result = await pool.query(
-    `SELECT * FROM fields WHERE user_id = $1 AND deleted_at IS NULL`,
+    `SELECT * FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND deleted_at IS NULL`,
     [userId]
   );
   if (result.rows.length === 1) return result.rows[0];
@@ -1073,7 +1099,14 @@ export async function getPlotById(plotId, userId = null) {
     [plotId]
   );
   const row = result.rows[0] || null;
-  if (row && userId !== null && row.user_id !== userId) return null;
+  if (row && userId !== null) {
+    // Check access via field_members instead of direct user_id
+    const { rows: access } = await pool.query(
+      `SELECT 1 FROM field_members WHERE user_id = $1 AND field_id = $2 LIMIT 1`,
+      [userId, row.field_id]
+    );
+    if (access.length === 0) return null;
+  }
   return row;
 }
 
@@ -1147,6 +1180,9 @@ export async function getDateRangeReport(userId, desde, hasta, { fieldName = nul
     idx++;
   }
 
+  // Access filter: user's own data OR data on fields they have access to
+  const accessFilter = `(e.user_id = $1 OR e.field_id IN (${accessibleFieldsSql(1)}))`;
+
   const results = { expenses: [], incomes: [], expenseTotal: 0, incomeTotal: 0 };
 
   if (type === 'expenses' || type === 'both') {
@@ -1154,7 +1190,7 @@ export async function getDateRangeReport(userId, desde, hasta, { fieldName = nul
      FROM expenses e
      ${fieldJoin}
      ${plotJoin}
-     WHERE e.user_id = $1
+     WHERE ${accessFilter}
      AND e.deleted_at IS NULL
      AND e.expense_date >= $2
      AND e.expense_date <= $3
@@ -1193,11 +1229,13 @@ export async function getDateRangeReport(userId, desde, hasta, { fieldName = nul
       incIdx++;
     }
 
+    const incAccessFilter = `(i.user_id = $1 OR i.field_id IN (${accessibleFieldsSql(1)}))`;
+
     const incQ = `SELECT i.category, SUM(i.amount) as total, i.currency
      FROM incomes i
      ${incFieldJoin}
      ${incPlotJoin}
-     WHERE i.user_id = $1
+     WHERE ${incAccessFilter}
      AND i.deleted_at IS NULL
      AND i.income_date >= $2
      AND i.income_date <= $3
@@ -1219,7 +1257,7 @@ export async function getMonthlyExpenses(userId) {
     `SELECT e.expense_date, e.category, e.description, e.amount, e.currency, f.name as field_name
      FROM expenses e
      LEFT JOIN fields f ON e.field_id = f.id
-     WHERE e.user_id = $1
+     WHERE (e.user_id = $1 OR e.field_id IN (${accessibleFieldsSql(1)}))
      AND e.deleted_at IS NULL
      AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())
      ORDER BY e.expense_date DESC`,
@@ -1304,7 +1342,7 @@ export async function getRainfallAllLocations(userId, period = "month") {
     `SELECT f.name as field_name, COALESCE(SUM(r.millimeters), 0) as total, COUNT(*) as registros
      FROM rainfall r
      LEFT JOIN fields f ON r.field_id = f.id AND f.deleted_at IS NULL
-     WHERE r.user_id = $1 ${dateCond}
+     WHERE (r.user_id = $1 OR r.field_id IN (${accessibleFieldsSql(1)})) ${dateCond}
      GROUP BY f.name
      ORDER BY total DESC`,
     [userId]

@@ -137,7 +137,7 @@ export class ObservationService {
   async getUserObservations(userId: number, page: number = 1, limit: number = 20, filters: ObservationFilters = {}): Promise<PaginatedResult> {
     const offset = (page - 1) * limit;
 
-    const conditions = ['o.user_id = $1'];
+    const conditions = ['(o.user_id = $1 OR o.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1))'];
     const params: (number | string)[] = [userId];
     let paramIdx = 1;
 
@@ -194,7 +194,7 @@ export class ObservationService {
 
   async getUserFieldsWithPlots(userId: number): Promise<{ id: number; name: string; plots: { id: number; name: string }[] }[]> {
     const { rows: fields } = await pool.query(
-      `SELECT id, name FROM fields WHERE user_id = $1 AND deleted_at IS NULL ORDER BY name`,
+      `SELECT id, name FROM fields WHERE id IN (SELECT field_id FROM field_members WHERE user_id = $1) AND deleted_at IS NULL ORDER BY name`,
       [userId]
     );
     const { rows: plots } = await pool.query(
@@ -213,7 +213,8 @@ export class ObservationService {
   async getUserActivities(userId: number, page: number = 1, limit: number = 20, filters: ActivityFilters = {}): Promise<PaginatedActivities> {
     const offset = (page - 1) * limit;
 
-    const conditions = ['de.user_id = $1'];
+    // Show activities from own data + activities on plots in accessible fields
+    const conditions = ['(de.user_id = $1 OR de.plot_id IN (SELECT p.id FROM plots p WHERE p.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1)))'];
     const params: (number | string)[] = [userId];
     let paramIdx = 1;
 
@@ -279,7 +280,7 @@ export class ObservationService {
   async getUserExpenses(userId: number, page: number = 1, limit: number = 20, filters: FinancialFilters = {}): Promise<PaginatedExpenses> {
     const offset = (page - 1) * limit;
 
-    const conditions = ['e.user_id = $1', 'e.deleted_at IS NULL'];
+    const conditions = ['(e.user_id = $1 OR e.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1))', 'e.deleted_at IS NULL'];
     const params: (number | string)[] = [userId];
     let paramIdx = 1;
 
@@ -342,7 +343,7 @@ export class ObservationService {
   async getUserIncomes(userId: number, page: number = 1, limit: number = 20, filters: FinancialFilters = {}): Promise<PaginatedIncomes> {
     const offset = (page - 1) * limit;
 
-    const conditions = ['i.user_id = $1', 'i.deleted_at IS NULL'];
+    const conditions = ['(i.user_id = $1 OR i.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1))', 'i.deleted_at IS NULL'];
     const params: (number | string)[] = [userId];
     let paramIdx = 1;
 
@@ -417,7 +418,9 @@ export class ObservationService {
     }
 
     const obs = rows[0];
-    if (obs.user_id !== userId) {
+    // Allow edit if user owns the observation OR has access to its field
+    const canEdit = obs.user_id === userId || (obs.field_id && await this._hasFieldAccess(userId, obs.field_id));
+    if (!canEdit) {
       throw new ObservationError(403, 'No tenés permisos para editar esta observación');
     }
 
@@ -473,7 +476,10 @@ export class ObservationService {
     if (rows.length === 0) {
       throw new ObservationError(404, 'Gasto no encontrado');
     }
-    if (rows[0].user_id !== userId) {
+    // Allow edit if user owns the expense OR has access to its field
+    const exp = rows[0];
+    const canEdit = exp.user_id === userId || (exp.field_id && await this._hasFieldAccess(userId, exp.field_id));
+    if (!canEdit) {
       throw new ObservationError(403, 'No tenés permisos para editar este gasto');
     }
 
@@ -507,7 +513,10 @@ export class ObservationService {
     if (rows.length === 0) {
       throw new ObservationError(404, 'Ingreso no encontrado');
     }
-    if (rows[0].user_id !== userId) {
+    // Allow edit if user owns the income OR has access to its field
+    const inc = rows[0];
+    const canEdit = inc.user_id === userId || (inc.field_id && await this._hasFieldAccess(userId, inc.field_id));
+    if (!canEdit) {
       throw new ObservationError(403, 'No tenés permisos para editar este ingreso');
     }
 
@@ -543,7 +552,19 @@ export class ObservationService {
     if (rows.length === 0) {
       throw new ObservationError(404, 'Actividad no encontrada');
     }
-    if (rows[0].user_id !== userId) {
+    // Allow edit if user owns the activity OR has access to the plot's field
+    const act = rows[0];
+    let canEditActivity = act.user_id === userId;
+    if (!canEditActivity && act.plot_id) {
+      const { rows: plotRows } = await pool.query(
+        `SELECT p.field_id FROM plots p WHERE p.id = $1`,
+        [act.plot_id]
+      );
+      if (plotRows.length > 0) {
+        canEditActivity = await this._hasFieldAccess(userId, plotRows[0].field_id);
+      }
+    }
+    if (!canEditActivity) {
       throw new ObservationError(403, 'No tenés permisos para editar esta actividad');
     }
 
@@ -577,8 +598,10 @@ export class ObservationService {
     if (obsRows.length === 0) {
       throw new ObservationError(404, 'Observación no encontrada');
     }
-    if (obsRows[0].user_id !== userId) {
-      throw new ObservationError(403, 'No tenés permisos para editar esta observación');
+    const obsRow = obsRows[0];
+    const canView = obsRow.user_id === userId || (obsRow.field_id && await this._hasFieldAccess(userId, obsRow.field_id));
+    if (!canView) {
+      throw new ObservationError(403, 'No tenés permisos para ver esta observación');
     }
 
     const { rows } = await pool.query(
@@ -588,6 +611,15 @@ export class ObservationService {
       [observationId]
     );
     return rows;
+  }
+
+  /** Check if user has access to a field via field_members */
+  private async _hasFieldAccess(userId: number, fieldId: number): Promise<boolean> {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM field_members WHERE user_id = $1 AND field_id = $2 LIMIT 1`,
+      [userId, fieldId]
+    );
+    return rows.length > 0;
   }
 }
 

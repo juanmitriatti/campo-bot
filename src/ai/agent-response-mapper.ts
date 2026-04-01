@@ -215,6 +215,11 @@ export class AgentResponseMapper {
       cmd.mm = input.quantity;
     }
 
+    // Sharing
+    if (input.phone != null) cmd.phone = input.phone;
+    if (input.code != null) cmd.code = input.code;
+    if (input.member != null) { cmd.memberName = input.member; cmd.phone = input.member; }
+
     return {
       intent: { type: 'command', data: cmd },
       confidence: 0.95,

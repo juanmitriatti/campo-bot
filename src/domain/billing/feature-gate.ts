@@ -125,6 +125,10 @@ export class FeatureGate {
       plot_activities: 'agronomy',
       log_observation: 'agronomy',
       generate_agro_report: 'agronomy',
+      // Sharing
+      share_field: 'fields',
+      list_field_members: 'fields',
+      remove_field_member: 'fields',
     };
 
     return map[command] ?? null;

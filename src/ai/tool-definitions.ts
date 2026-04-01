@@ -322,6 +322,55 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // show_reports_menu and export_csv handled by regex TRIVIAL_COMMANDS — not needed here
 
   // ========================
+  // SHARING (enterprise)
+  // ========================
+  {
+    name: 'share_field',
+    description: 'Generar código de invitación para compartir campo. "compartir campo X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: { type: 'string', description: 'Nombre del campo a compartir.' },
+      },
+      required: ['field'],
+    },
+  },
+  {
+    name: 'accept_invite',
+    description: 'Unirse a un campo con código de invitación. "unirme ABC123", "aceptar invitación ABC123".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        code: { type: 'string', description: 'Código de invitación de 6 caracteres.' },
+      },
+      required: ['code'],
+    },
+  },
+  {
+    name: 'list_field_members',
+    description: 'Ver miembros de un campo compartido. "miembros campo X", "quién tiene acceso al campo X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: FIELD_PROP,
+      },
+      required: ['field'],
+    },
+  },
+  {
+    name: 'remove_field_member',
+    description: 'Quitar acceso de un usuario a un campo compartido. "quitar a Juan de campo X", "quitar a +549... de campo X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: { type: 'string', description: 'Nombre del campo.' },
+        member: { type: 'string', description: 'Nombre o teléfono del usuario a quitar.' },
+      },
+      required: ['field', 'member'],
+    },
+  },
+
+  // ========================
   // CONVERSATIONAL (fallback)
   // ========================
   {

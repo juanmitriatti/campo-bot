@@ -910,6 +910,7 @@
                 <th>Plan</th>
                 <th>Estado</th>
                 <th>Campos</th>
+                <th>Compartidos</th>
                 <th>IA Hoy</th>
                 <th>&Uacute;ltima Actividad</th>
                 <th>Acciones</th>
@@ -917,7 +918,7 @@
             </thead>
             <tbody id="users-table-body">
               <tr>
-                <td colspan="9">
+                <td colspan="10">
                   <div class="loading"><div class="spinner"></div> Cargando usuarios...</div>
                 </td>
               </tr>
@@ -1269,10 +1270,11 @@
                 <th>Hectareas</th>
                 <th>Lotes</th>
                 <th>Obs. Semana</th>
+                <th>Miembros</th>
               </tr>
             </thead>
             <tbody id="agro-fields-table-body">
-              <tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>
+              <tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>
             </tbody>
           </table>
         </div>
@@ -1289,6 +1291,17 @@
       </button>
       <h1 class="page-title" id="agro-field-title">Campo</h1>
       <p id="agro-field-subtitle" style="color:var(--text-secondary);margin-bottom:20px;"></p>
+
+      <!-- Members card (shared fields) -->
+      <div class="card" id="agro-field-members-card" style="margin-bottom:20px;display:none;">
+        <h3 class="card-title">Miembros</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Nombre</th><th>Tel&eacute;fono</th><th>Rol</th><th>Desde</th></tr></thead>
+            <tbody id="agro-field-members-body"></tbody>
+          </table>
+        </div>
+      </div>
 
       <!-- Stat cards -->
       <div class="stats-grid" id="agro-field-stats" style="margin-bottom:20px;">
@@ -1725,6 +1738,14 @@
         </div>
         <div class="btn-row">
           <button class="btn btn-primary btn-sm" onclick="saveUserPlan()">Cambiar Plan</button>
+        </div>
+      </div>
+
+      <!-- Shared Fields -->
+      <div class="detail-section" id="shared-fields-section" style="display:none;">
+        <h3>Campos Compartidos</h3>
+        <div id="shared-fields-container">
+          <div class="loading"><div class="spinner"></div> Cargando...</div>
         </div>
       </div>
 
@@ -2447,7 +2468,7 @@
       var tbody = document.getElementById('users-table-body');
       var footer = document.getElementById('users-count-footer');
       if (!data || !data.length) {
-        tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state">No hay usuarios</div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state">No hay usuarios</div></td></tr>';
         if (footer) footer.textContent = '';
         return;
       }
@@ -2461,6 +2482,7 @@
           + '<td>' + escapeHtml(u.planName || 'Free') + '</td>'
           + '<td>' + statusBadge(u.status) + '</td>'
           + '<td>' + (u.fieldCount || 0) + '</td>'
+          + '<td>' + (u.sharedFieldCount > 0 ? '<span class="badge badge-purple">' + u.sharedFieldCount + '</span>' : '0') + '</td>'
           + '<td><span class="badge badge-blue">' + (u.aiCallsToday || 0) + '</span></td>'
           + '<td>' + formatDateTime(u.lastActivity) + '</td>'
           + '<td style="white-space:nowrap;">'
@@ -2503,7 +2525,7 @@
 
     function loadUsers() {
       var tbody = document.getElementById('users-table-body');
-      tbody.innerHTML = '<tr><td colspan="9"><div class="loading"><div class="spinner"></div> Cargando usuarios...</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10"><div class="loading"><div class="spinner"></div> Cargando usuarios...</div></td></tr>';
       var searchInput = document.getElementById('user-search-input');
       if (searchInput) searchInput.value = '';
       var statusFilter = document.getElementById('user-status-filter');
@@ -2511,7 +2533,7 @@
 
       apiFetch('/admin/api/users').then(function(data) {
         if (!data) {
-          tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state">Error al cargar usuarios</div></td></tr>';
+          tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state">Error al cargar usuarios</div></td></tr>';
           return;
         }
         usersCache = data;
@@ -2701,12 +2723,13 @@
         }
       });
 
-      // Load settings, AI usage, audio usage, financial summary, and plan selector in parallel
+      // Load settings, AI usage, audio usage, financial summary, plan selector, and shared fields in parallel
       loadUserSettings(id);
       loadAiUsage(id);
       loadAudioUsage(id);
       loadUserPlanSelector(id);
       loadUserFinancialSummary(id);
+      loadUserSharedFields(id);
     }
 
     function loadUserFinancialSummary(id) {
@@ -2733,6 +2756,53 @@
           + '  <div class="label">Transacciones</div>'
           + '  <div class="value">' + Number(data.transactionCount || 0).toLocaleString('es-AR') + '</div>'
           + '</div>';
+      });
+    }
+
+    function loadUserSharedFields(id) {
+      var section = document.getElementById('shared-fields-section');
+      var container = document.getElementById('shared-fields-container');
+      section.style.display = 'none';
+      container.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando...</div>';
+
+      apiFetch('/admin/api/users/' + id + '/shared-fields').then(function(data) {
+        if (!data) { section.style.display = 'none'; return; }
+        var hasShared = (data.sharedWithMe && data.sharedWithMe.length) || (data.myFieldsSharedWith && data.myFieldsSharedWith.length);
+        if (!hasShared) { section.style.display = 'none'; return; }
+
+        section.style.display = '';
+        var html = '';
+
+        if (data.sharedWithMe && data.sharedWithMe.length) {
+          html += '<h4 style="margin:12px 0 8px;font-size:14px;color:var(--text-secondary);">Campos que le compartieron</h4>';
+          html += '<div class="table-wrapper"><table><thead><tr><th>Campo</th><th>Owner</th><th>Desde</th></tr></thead><tbody>';
+          for (var i = 0; i < data.sharedWithMe.length; i++) {
+            var s = data.sharedWithMe[i];
+            html += '<tr>'
+              + '<td><a href="#" onclick="event.preventDefault();navigate(\'agro-field\', \'' + s.fieldId + '\')">' + escapeHtml(s.fieldName) + '</a>' + (s.city ? ' <small style="color:var(--text-light);">(' + escapeHtml(s.city) + ')</small>' : '') + '</td>'
+              + '<td>' + escapeHtml(s.ownerName || '-') + '</td>'
+              + '<td>' + formatDate(s.joinedAt) + '</td>'
+              + '</tr>';
+          }
+          html += '</tbody></table></div>';
+        }
+
+        if (data.myFieldsSharedWith && data.myFieldsSharedWith.length) {
+          html += '<h4 style="margin:12px 0 8px;font-size:14px;color:var(--text-secondary);">Sus campos compartidos con otros</h4>';
+          html += '<div class="table-wrapper"><table><thead><tr><th>Campo</th><th>Miembro</th><th>Tel&eacute;fono</th><th>Desde</th></tr></thead><tbody>';
+          for (var i = 0; i < data.myFieldsSharedWith.length; i++) {
+            var s = data.myFieldsSharedWith[i];
+            html += '<tr>'
+              + '<td><a href="#" onclick="event.preventDefault();navigate(\'agro-field\', \'' + s.fieldId + '\')">' + escapeHtml(s.fieldName) + '</a>' + (s.city ? ' <small style="color:var(--text-light);">(' + escapeHtml(s.city) + ')</small>' : '') + '</td>'
+              + '<td>' + escapeHtml(s.memberName || '-') + '</td>'
+              + '<td>' + escapeHtml(s.memberPhone || '-') + '</td>'
+              + '<td>' + formatDate(s.sharedSince) + '</td>'
+              + '</tr>';
+          }
+          html += '</tbody></table></div>';
+        }
+
+        container.innerHTML = html;
       });
     }
 
@@ -3081,7 +3151,7 @@
 
     function loadAgronomy() {
       var tbody = document.getElementById('agro-fields-table-body');
-      tbody.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>';
 
       Promise.all([
         apiFetch('/admin/api/agro/fields'),
@@ -3090,7 +3160,7 @@
         var fields = results[0];
         var reports = results[1];
         if (!fields) {
-          tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">Error al cargar campos</div></td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state">Error al cargar campos</div></td></tr>';
           return;
         }
 
@@ -3103,7 +3173,7 @@
 
         // Table
         if (!fields.length) {
-          tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">No hay campos registrados</div></td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state">No hay campos registrados</div></td></tr>';
           return;
         }
 
@@ -3117,6 +3187,7 @@
             + '<td>' + (f.hectares || '-') + '</td>'
             + '<td>' + f.plotCount + '</td>'
             + '<td>' + (f.obsWeek > 0 ? '<span class="badge badge-green">' + f.obsWeek + '</span>' : '0') + '</td>'
+            + '<td>' + (f.memberCount > 1 ? '<span class="badge badge-purple">' + f.memberCount + '</span>' : '1') + '</td>'
             + '</tr>';
         }
         tbody.innerHTML = html;
@@ -3167,6 +3238,10 @@
       document.getElementById('afd-filter-category').value = '';
 
       // Load field detail
+      // Reset members card
+      document.getElementById('agro-field-members-card').style.display = 'none';
+      document.getElementById('agro-field-members-body').innerHTML = '';
+
       apiFetch('/admin/api/agro/fields/' + id).then(function(data) {
         if (!data) return;
         document.getElementById('agro-field-title').textContent = data.name || 'Campo';
@@ -3213,6 +3288,25 @@
               + '</tr>';
           }
           ltbody.innerHTML = html;
+        }
+
+        // Members section
+        if (data.members && data.members.length > 1) {
+          document.getElementById('agro-field-members-card').style.display = '';
+          var mhtml = '';
+          for (var j = 0; j < data.members.length; j++) {
+            var m = data.members[j];
+            var roleBadge = m.role === 'owner'
+              ? '<span class="badge badge-green">Owner</span>'
+              : '<span class="badge badge-blue">Miembro</span>';
+            mhtml += '<tr>'
+              + '<td>' + escapeHtml(m.name || 'Sin nombre') + '</td>'
+              + '<td>' + escapeHtml(m.phone || '-') + '</td>'
+              + '<td>' + roleBadge + '</td>'
+              + '<td>' + formatDate(m.joinedAt) + '</td>'
+              + '</tr>';
+          }
+          document.getElementById('agro-field-members-body').innerHTML = mhtml;
         }
       });
 

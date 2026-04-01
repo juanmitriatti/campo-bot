@@ -6,6 +6,7 @@ import { getSetting } from '../../services/settings.service.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../../middleware/pending-field-city-handler.js';
 import { queryPlotHistory } from '../../services/expenses.js';
+import { FieldSharingService } from '../sharing/field-sharing.service.js';
 import type {
   UserId,
   User,
@@ -142,7 +143,11 @@ function buildNoPlotsBlockResponse(actionLabel: string, fieldName?: string): Han
 // --- Handler ---
 
 export class FinancialHandler {
-  constructor(private service: FinancialService) {}
+  private sharingService: FieldSharingService;
+
+  constructor(private service: FinancialService, sharingService?: FieldSharingService) {
+    this.sharingService = sharingService ?? new FieldSharingService();
+  }
 
   private formatPlotInfo(info: PlotInfoData): string {
     const resultado = info.incomes.total - info.expenses.total;
@@ -1179,6 +1184,12 @@ export class FinancialHandler {
           return { messages: [`No encontr\u00e9 ${labelDel.toLowerCase()} *${cmd.fieldName}*.`] };
         }
 
+        // Owner-only check for shared fields
+        const isOwnerDel = await this.sharingService.isOwner(userId, exists.id);
+        if (!isOwnerDel) {
+          return { messages: [`Solo el dueño del campo *${cmd.fieldName}* puede eliminarlo.`] };
+        }
+
         // Get associated data counts for confirmation message
         const info = await this.service.getFieldInfo(userId, cmd.fieldName as string);
         const plotCount = info ? info.plotCount : 0;
@@ -1204,11 +1215,20 @@ export class FinancialHandler {
 
       case 'rename_field': {
         const labelRen = cmd.entityKeyword === 'campo' ? 'Campo' : 'Lote';
+        // Check ownership before renaming
+        const fieldToRename = await this.service.getFieldByName(userId, cmd.oldName as string);
+        if (!fieldToRename) {
+          return { messages: [`No encontré ${labelRen.toLowerCase()} *${cmd.oldName}*.`] };
+        }
+        const isOwnerRen = await this.sharingService.isOwner(userId, fieldToRename.id);
+        if (!isOwnerRen) {
+          return { messages: [`Solo el dueño del campo *${cmd.oldName}* puede renombrarlo.`] };
+        }
         const renamed = await this.service.renameField(userId, cmd.oldName as string, cmd.newName as string);
         if (!renamed) {
-          return { messages: [`No encontr\u00e9 ${labelRen.toLowerCase()} *${cmd.oldName}*.`] };
+          return { messages: [`No encontré ${labelRen.toLowerCase()} *${cmd.oldName}*.`] };
         }
-        return { messages: [`\u270f\ufe0f ${labelRen} *${cmd.oldName}* renombrado a *${cmd.newName}*`] };
+        return { messages: [`✏️ ${labelRen} *${cmd.oldName}* renombrado a *${cmd.newName}*`] };
       }
 
       case 'field_info': {
