@@ -68,6 +68,21 @@ describe('sendAlertWithRetryMultiChannel — routing', () => {
     warnSpy.mockRestore();
   });
 
+  it('extracts telegramId from tg_ phone placeholder', async () => {
+    mockTelegram.mockResolvedValue(undefined);
+
+    const res = await sendAlertWithRetryMultiChannel(
+      1,
+      { phone: 'tg_8629094580' },
+      'msg',
+      'weather',
+    );
+
+    expect(res.sent).toBe(true);
+    expect(mockTelegram).toHaveBeenCalledWith('8629094580', 'msg');
+    expect(mockWhatsApp).not.toHaveBeenCalled();
+  });
+
   it('prefers Telegram when both telegramId and phone are set', async () => {
     mockTelegram.mockResolvedValue(undefined);
 

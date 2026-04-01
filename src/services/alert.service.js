@@ -57,7 +57,12 @@ export async function sendAlertWithRetry(userId, phone, message, alertType, meta
  * @param {object} metadata
  * @returns {Promise<{sent: boolean, alertId: number}>}
  */
-export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId }, message, alertType, metadata = {}) {
+export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId: rawTelegramId }, message, alertType, metadata = {}) {
+  // Detect tg_ placeholder phone numbers and extract telegramId
+  let telegramId = rawTelegramId;
+  if (!telegramId && phone && phone.startsWith('tg_')) {
+    telegramId = phone.slice(3);
+  }
   const { fieldId = null, plotId = null, dedupKey = null, payload = {} } = metadata;
 
   const { rows } = await pool.query(
