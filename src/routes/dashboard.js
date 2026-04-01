@@ -419,7 +419,7 @@ router.get("/api/global-settings", async (req, res) => {
     const g = result.rows[0];
     res.json({
       dailyWeatherEnabled: g.daily_weather_enabled,
-      dailyWeatherHour: g.daily_weather_hour,
+      dailyWeatherHour: parseFloat(g.daily_weather_hour),
       defaultRainAlertMm: g.default_rain_alert_mm,
       budgetAlert80: g.budget_alert_80,
       budgetAlert100: g.budget_alert_100,
@@ -457,7 +457,7 @@ router.put("/api/global-settings", async (req, res) => {
     const g = result.rows[0];
     res.json({
       dailyWeatherEnabled: g.daily_weather_enabled,
-      dailyWeatherHour: g.daily_weather_hour,
+      dailyWeatherHour: parseFloat(g.daily_weather_hour),
       defaultRainAlertMm: g.default_rain_alert_mm,
       budgetAlert80: g.budget_alert_80,
       budgetAlert100: g.budget_alert_100,

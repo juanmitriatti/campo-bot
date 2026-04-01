@@ -121,7 +121,9 @@ export async function getGlobalSettings() {
       budget_alert_100: true,
     };
   }
-  return result.rows[0];
+  const row = result.rows[0];
+  row.daily_weather_hour = parseFloat(row.daily_weather_hour);
+  return row;
 }
 
 export async function updateGlobalSettings(settings) {

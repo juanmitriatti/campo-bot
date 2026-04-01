@@ -2054,10 +2054,14 @@
       var hourSelect = document.getElementById('global-weather-hour');
       if (hourSelect.options.length === 0) {
         for (var i = 0; i < 24; i++) {
-          var opt = document.createElement('option');
-          opt.value = i;
-          opt.textContent = String(i).padStart(2, '0') + ':00';
-          hourSelect.appendChild(opt);
+          var opt0 = document.createElement('option');
+          opt0.value = i;
+          opt0.textContent = String(i).padStart(2, '0') + ':00';
+          hourSelect.appendChild(opt0);
+          var opt30 = document.createElement('option');
+          opt30.value = i + 0.5;
+          opt30.textContent = String(i).padStart(2, '0') + ':30';
+          hourSelect.appendChild(opt30);
         }
       }
 
@@ -2180,7 +2184,7 @@
     function saveGlobalSettings() {
       var body = {
         dailyWeatherEnabled: document.getElementById('global-weather-enabled').checked,
-        dailyWeatherHour: parseInt(document.getElementById('global-weather-hour').value),
+        dailyWeatherHour: parseFloat(document.getElementById('global-weather-hour').value),
         defaultRainAlertMm: parseInt(document.getElementById('global-default-rain-mm').value) || 10,
         budgetAlert80: document.getElementById('global-budget-80').checked,
         budgetAlert100: document.getElementById('global-budget-100').checked

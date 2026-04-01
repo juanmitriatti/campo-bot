@@ -21,6 +21,7 @@ function getArgentinaTime() {
     date: now,
     day: now.getDay(), // 0 = Sunday … 6 = Saturday
     hour: now.getHours(),
+    halfHour: now.getHours() + (now.getMinutes() >= 30 ? 0.5 : 0),
   };
 }
 
@@ -334,10 +335,10 @@ async function weatherAlertTick() {
     const globalSettings = await getGlobalSettings();
     if (!globalSettings.daily_weather_enabled) return;
 
-    const { hour } = getArgentinaTime();
-    if (hour !== globalSettings.daily_weather_hour) return;
+    const { halfHour } = getArgentinaTime();
+    if (halfHour !== globalSettings.daily_weather_hour) return;
 
-    console.log(`[weather-alert] Running daily weather check at hour ${hour}`);
+    console.log(`[weather-alert] Running daily weather check at ${halfHour}`);
 
     const users = await getUsersWithRainAlerts();
     if (users.length === 0) return;
@@ -628,8 +629,8 @@ export function startScheduler() {
     tick();
   });
 
-  // Daily weather alerts — every hour at :00 (checks global_settings.daily_weather_hour)
-  cron.schedule("0 * * * *", () => {
+  // Daily weather alerts — every :00 and :30 (checks global_settings.daily_weather_hour)
+  cron.schedule("0,30 * * * *", () => {
     weatherAlertTick();
   });
 
