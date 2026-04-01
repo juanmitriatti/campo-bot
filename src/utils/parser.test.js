@@ -63,6 +63,13 @@ describe("normalizarMonto", () => {
     it("doscientos mil → 200000", () => expect(normalizarMonto("doscientos mil")).toBe(200000));
   });
 
+  describe("sufijo M (millones)", () => {
+    it("5M → 5000000", () => expect(normalizarMonto("5M")).toBe(5000000));
+    it("5m → 5000000", () => expect(normalizarMonto("5m")).toBe(5000000));
+    it("1,5M → 1500000", () => expect(normalizarMonto("1,5M")).toBe(1500000));
+    it("2.5M → 25000000 (dot stripped as thousand sep)", () => expect(normalizarMonto("2.5M")).toBe(25000000));
+  });
+
   describe("standalone numbers", () => {
     it("500 → 500 (standalone)", () => expect(normalizarMonto("500")).toBe(500));
     it("150000 → 150000 (standalone)", () => expect(normalizarMonto("150000")).toBe(150000));

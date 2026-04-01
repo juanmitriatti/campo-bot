@@ -153,6 +153,9 @@ export function normalizarMonto(texto) {
   const matchK = lower.match(/(\d+)k/);
   if (matchK) return parseInt(matchK[1]) * 1000;
 
+  const matchM = lower.match(/(\d+(?:[.,]\d+)?)m\b/);
+  if (matchM) return Math.round(parseFloat(matchM[1].replace(",", ".")) * 1_000_000);
+
   const matchLucas = lower.match(/(\d+)\s?lucas/);
   if (matchLucas) return parseInt(matchLucas[1]) * 1000;
 
