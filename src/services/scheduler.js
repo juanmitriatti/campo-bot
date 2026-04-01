@@ -254,30 +254,34 @@ async function tick() {
 
 async function getUserFieldCities(userId) {
   const { rows } = await pool.query(
-    `SELECT DISTINCT city FROM fields
+    `SELECT DISTINCT ON (city) city, name FROM fields
      WHERE (user_id = $1 OR id IN (SELECT field_id FROM field_members WHERE user_id = $1))
-       AND city IS NOT NULL AND deleted_at IS NULL`,
+       AND city IS NOT NULL AND deleted_at IS NULL
+     ORDER BY city, name`,
     [userId]
   );
-  return rows.map(r => r.city);
+  return rows;
 }
 
 async function checkWeatherForUser(user) {
-  const cities = new Set();
+  // Build city sources: { city -> label }
+  const citySources = new Map();
 
-  // Add user's own city
-  if (user.city) cities.add(user.city);
+  if (user.city) citySources.set(user.city, 'tu ubicación');
 
-  // Add field cities
-  const fieldCities = await getUserFieldCities(user.id);
-  for (const c of fieldCities) cities.add(c);
+  const fieldRows = await getUserFieldCities(user.id);
+  for (const r of fieldRows) {
+    if (!citySources.has(r.city)) {
+      citySources.set(r.city, r.name);
+    }
+  }
 
-  if (cities.size === 0) return;
+  if (citySources.size === 0) return;
 
   const threshold = user.rain_alert_mm || 10;
   const alerts = [];
 
-  for (const city of cities) {
+  for (const [city, label] of citySources) {
     try {
       const forecastData = await getForecast(city, 2);
       for (const day of forecastData.forecast) {
@@ -285,7 +289,7 @@ async function checkWeatherForUser(user) {
           const resolvedCity = forecastData.city || city;
           const dedupKey = `${resolvedCity}_${day.dayName}`;
 
-          // Check deduplication
+          // Check deduplication against previous alerts
           const dup = await isDuplicate(user.id, 'weather', dedupKey, 24);
           if (dup) {
             await recordDeduped(user.id, 'weather', dedupKey);
@@ -296,6 +300,8 @@ async function checkWeatherForUser(user) {
           if (!alerts.some(a => a.dedupKey === dedupKey)) {
             alerts.push({
               city: resolvedCity,
+              label,
+              isUserCity: label === 'tu ubicación',
               dayName: day.dayName,
               rain: day.rain,
               icon: day.icon,
@@ -311,9 +317,12 @@ async function checkWeatherForUser(user) {
 
   if (alerts.length === 0) return;
 
+  // Sort: user location first, then campos
+  alerts.sort((a, b) => (b.isUserCity ? 1 : 0) - (a.isUserCity ? 1 : 0));
+
   let msg = "🌧️ *Alerta de lluvia*\n";
   for (const a of alerts) {
-    msg += `\n${a.icon} *${a.city}* — ${a.dayName}: ${a.rain}mm estimados`;
+    msg += `\n${a.icon} *${a.city}* (${a.label}) — ${a.dayName}: ${a.rain}mm estimados`;
   }
   msg += `\n\n_Umbral configurado: ${threshold}mm_`;
 
