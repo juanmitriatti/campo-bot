@@ -149,7 +149,7 @@ export async function updateGlobalSettings(settings) {
 
 export async function getUsersWithRainAlerts() {
   const { rows } = await pool.query(
-    `SELECT u.id, u.phone_number, u.city,
+    `SELECT u.id, u.phone_number, u.telegram_id, u.city,
             COALESCE(s.rain_alert_mm, (SELECT default_rain_alert_mm FROM global_settings WHERE id = 1), 10) AS rain_alert_mm
      FROM users u
      JOIN user_settings s ON s.user_id = u.id

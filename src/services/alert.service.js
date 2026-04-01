@@ -1,5 +1,6 @@
 import { pool } from "../config/db.js";
 import { sendMessageWithRetry } from "./whatsapp.js";
+import { sendTelegramMessage } from "./telegram.ts";
 import { logError } from "./error-logger.js";
 
 /**
@@ -43,6 +44,84 @@ export async function sendAlertWithRetry(userId, phone, message, alertType, meta
     userId, alertType, alertId,
     context: { phone, attempts: result.attempts },
   });
+  return { sent: false, alertId };
+}
+
+/**
+ * Send an alert via Telegram or WhatsApp, with retry and persistence.
+ *
+ * @param {number} userId
+ * @param {{ phone?: string, telegramId?: string }} channels
+ * @param {string} message
+ * @param {string} alertType
+ * @param {object} metadata
+ * @returns {Promise<{sent: boolean, alertId: number}>}
+ */
+export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId }, message, alertType, metadata = {}) {
+  const { fieldId = null, plotId = null, dedupKey = null, payload = {} } = metadata;
+
+  const { rows } = await pool.query(
+    `INSERT INTO alert_history (user_id, alert_type, field_id, plot_id, message, payload, status, dedup_key)
+     VALUES ($1, $2, $3, $4, $5, $6, 'retrying', $7)
+     RETURNING id`,
+    [userId, alertType, fieldId, plotId, message, JSON.stringify(payload), dedupKey]
+  );
+  const alertId = rows[0].id;
+
+  let sent = false;
+  let channel = '';
+
+  if (telegramId) {
+    channel = 'telegram';
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await sendTelegramMessage(telegramId, message);
+        sent = true;
+        break;
+      } catch (err) {
+        if (attempt === maxAttempts) {
+          logError('alerts', 'ALERT_SEND_FAILED', err, {
+            userId, alertType, alertId,
+            context: { channel: 'telegram', telegramId, attempts: maxAttempts },
+          });
+        } else {
+          await new Promise(r => setTimeout(r, 1000 * attempt));
+        }
+      }
+    }
+  } else if (phone) {
+    channel = 'whatsapp';
+    const result = await sendMessageWithRetry(phone, message);
+    if (result.success) {
+      sent = true;
+    } else {
+      logError('alerts', 'ALERT_SEND_FAILED', new Error(result.error), {
+        userId, alertType, alertId,
+        context: { channel: 'whatsapp', phone, attempts: result.attempts },
+      });
+    }
+  } else {
+    console.warn(`[alert] User ${userId} has no phone or telegramId — skipping alert`);
+    await pool.query(
+      `UPDATE alert_history SET status = 'failed', retry_count = 0 WHERE id = $1`,
+      [alertId]
+    );
+    return { sent: false, alertId };
+  }
+
+  if (sent) {
+    await pool.query(
+      `UPDATE alert_history SET status = 'sent', delivered_at = NOW() WHERE id = $1`,
+      [alertId]
+    );
+    return { sent: true, alertId };
+  }
+
+  await pool.query(
+    `UPDATE alert_history SET status = 'failed' WHERE id = $1`,
+    [alertId]
+  );
   return { sent: false, alertId };
 }
 

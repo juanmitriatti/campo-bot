@@ -3,7 +3,7 @@ import { pool } from "../config/db.js";
 import { sendMessage } from "./whatsapp.js";
 import { getUsersWithRainAlerts, getGlobalSettings } from "./expenses.js";
 import { getForecast } from "./weather.js";
-import { sendAlertWithRetry, isDuplicate, recordDeduped } from "./alert.service.js";
+import { sendAlertWithRetry, sendAlertWithRetryMultiChannel, isDuplicate, recordDeduped } from "./alert.service.js";
 import { getSettingNumber } from "./settings.service.js";
 import { cleanupOldReports } from "./agro-report.js";
 
@@ -253,7 +253,9 @@ async function tick() {
 
 async function getUserFieldCities(userId) {
   const { rows } = await pool.query(
-    `SELECT DISTINCT city FROM fields WHERE user_id = $1 AND city IS NOT NULL AND deleted_at IS NULL`,
+    `SELECT DISTINCT city FROM fields
+     WHERE (user_id = $1 OR id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+       AND city IS NOT NULL AND deleted_at IS NULL`,
     [userId]
   );
   return rows.map(r => r.city);
@@ -314,13 +316,14 @@ async function checkWeatherForUser(user) {
   // Use first alert's dedupKey as representative
   const dedupKey = alerts[0].dedupKey;
 
-  const result = await sendAlertWithRetry(user.id, user.phone_number, msg, 'weather', {
+  const result = await sendAlertWithRetryMultiChannel(user.id, { phone: user.phone_number, telegramId: user.telegram_id }, msg, 'weather', {
     dedupKey,
     payload: { cities: alerts.map(a => a.city), threshold },
   });
 
   if (result.sent) {
-    console.log(`[weather-alert] Rain alert sent to user ${user.id} (${user.phone_number})`);
+    const channel = user.telegram_id ? 'telegram' : 'whatsapp';
+    console.log(`[weather-alert] Rain alert sent to user ${user.id} via ${channel}`);
   } else {
     console.error(`[weather-alert] Failed to send to user ${user.id} after retries`);
   }
