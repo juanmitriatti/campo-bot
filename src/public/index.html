@@ -1127,7 +1127,7 @@
         <div class="form-grid" style="margin-top:12px;margin-bottom:12px;">
           <div class="form-group">
             <label for="global-weather-hour">Hora del chequeo diario</label>
-            <select id="global-weather-hour"></select>
+            <input type="time" id="global-weather-hour" value="06:00">
           </div>
           <div class="form-group">
             <label for="global-default-rain-mm">Umbral lluvia por defecto (mm)</label>
@@ -2051,20 +2051,6 @@
     // ========== ALERTS ==========
     function loadAlerts() {
       // Load global settings
-      var hourSelect = document.getElementById('global-weather-hour');
-      if (hourSelect.options.length === 0) {
-        for (var i = 0; i < 24; i++) {
-          var opt0 = document.createElement('option');
-          opt0.value = i;
-          opt0.textContent = String(i).padStart(2, '0') + ':00';
-          hourSelect.appendChild(opt0);
-          var opt30 = document.createElement('option');
-          opt30.value = i + 0.5;
-          opt30.textContent = String(i).padStart(2, '0') + ':30';
-          hourSelect.appendChild(opt30);
-        }
-      }
-
       apiFetch('/admin/api/global-settings').then(function(data) {
         if (!data) return;
         document.getElementById('global-weather-enabled').checked = data.dailyWeatherEnabled;
@@ -2184,7 +2170,7 @@
     function saveGlobalSettings() {
       var body = {
         dailyWeatherEnabled: document.getElementById('global-weather-enabled').checked,
-        dailyWeatherHour: parseFloat(document.getElementById('global-weather-hour').value),
+        dailyWeatherHour: document.getElementById('global-weather-hour').value,
         defaultRainAlertMm: parseInt(document.getElementById('global-default-rain-mm').value) || 10,
         budgetAlert80: document.getElementById('global-budget-80').checked,
         budgetAlert100: document.getElementById('global-budget-100').checked

@@ -115,15 +115,13 @@ export async function getGlobalSettings() {
   if (result.rows.length === 0) {
     return {
       daily_weather_enabled: true,
-      daily_weather_hour: 6,
+      daily_weather_hour: '06:00',
       default_rain_alert_mm: 10,
       budget_alert_80: true,
       budget_alert_100: true,
     };
   }
-  const row = result.rows[0];
-  row.daily_weather_hour = parseFloat(row.daily_weather_hour);
-  return row;
+  return result.rows[0];
 }
 
 export async function updateGlobalSettings(settings) {
