@@ -41,7 +41,7 @@ Kill switches:
 
 #### AI Agent (tool_use) — new primary path
 - **`agent.service.ts`** — Calls Claude with `tool_use` + `tool_choice: auto`; returns `AgentResult` with tool calls array + optional conversational text. Uses plan-based rate limiting, conversation history, few-shot examples, and configurable timeout.
-- **`tool-definitions.ts`** — 21 Anthropic tool definitions grouped by domain: Financial (2), Activities (6), Observations (2), Reports (5), Field/Plot Mgmt (5), System (1). Each tool has typed `input_schema` with enum validation for categories.
+- **`tool-definitions.ts`** — 25 Anthropic tool definitions grouped by domain: Financial (2), Activities (6), Observations (2), Reports (5), Field/Plot Mgmt (5), Sharing (4), System (1). Each tool has typed `input_schema` with enum validation for categories.
 - **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules and user context. Tool definitions carry the schema, so the prompt only needs rules. Includes explicit rules that agro activities (fumigué, sembré, coseché, etc.) are ONLY activities and NEVER expenses unless the user mentions an explicit amount.
 - **`agent-response-mapper.ts`** — Converts `AgentResult` → `ParseResult[]` for backward compatibility. Maps `log_expense`/`log_income` tool calls to expense/income ParseResults; everything else to command ParseResults. No-tool conversational responses become `_conversationalResponse` on ParseResult. **Fix**: filters spurious `log_expense`/`log_income` tool calls when the agent also returns an agro activity tool (sow_crop, harvest_crop, log_spraying, etc.), preventing Haiku from misclassifying activity messages as expenses.
 - **`few-shot.service.ts`** — `formatAsToolUseMessages()` converts training examples to tool_use triplets (user → assistant[tool_use] → user[tool_result]).
@@ -64,7 +64,8 @@ Kill switches:
 - **`services/whatsapp.js`** — WhatsApp Cloud API client (send messages via Meta API).
 - **`services/telegram.ts`** — Telegram Bot API client (sendMessage, sendButtons, sendList, sendDocument, downloadFile).
 - **`services/weather.js`** — OpenWeather API integration for forecasts and rain alerts.
-- **`services/scheduler.js`** — node-cron jobs: weekly summaries, daily weather alerts, proactive reminders (missing hectares), Argentina timezone.
+- **`services/alert.service.js`** — Multi-channel alert delivery (Telegram-first, WhatsApp fallback). Deduplication, retry with backoff, `alert_history` DB tracking. Extracts `telegramId` from `tg_` placeholder phone numbers.
+- **`services/scheduler.js`** — node-cron jobs: weekly summaries, daily weather alerts (half-hour precision via HH:MM), proactive reminders (missing hectares), Argentina timezone. Weather alerts show campo name or "tu ubicación" per city, with within-message dedup for same-city overlap.
 - **`services/observations.js`** — Observation CRUD with 4-layer dedup, normalization, financial guard.
 - **`services/settings.service.js`** — Global settings definitions with descriptions, grouped by category (ai, bot, audio, limits, agronomy, system).
 
@@ -73,6 +74,7 @@ Kill switches:
 - **`agronomy/`** — AgronomyHandler (activities, observations, weather, rainfall, agro reports, plot history queries); `normalizeActivityFilter()` maps AI filter strings to DB event_type values
 - **`financial/`** — FinancialHandler (expenses, incomes, budgets, unified `financial_report` dispatching, inline hectares on plot creation, activity labels with emojis in reports, auto-split comma-separated plot names from `add_plot` → `add_plots_batch`), FinancialService, FinancialRepository
 - **`auth/`** — Auth system (JWT, bcrypt, refresh tokens) + ObservationService (dashboard CRUD for observations, activities, expenses, incomes with edit support)
+- **`sharing/`** — FieldSharingService (invite-code flow: `createInvite` → 6-char code, `acceptInvite` → redeem, `removeMemberByIdentifier` by name/phone), SharingHandler
 - **`plots/`** — PlotDiscoveryService (lookup-only, never auto-creates), PlotRepository
 - **`billing/`** — Plan-based AI daily limits
 
@@ -82,7 +84,7 @@ Handles Spanish text normalization, written numbers ("quinientos mil" → 500000
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-036_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province` columns), `fields` (includes `province`), `plots`, `expenses`, `incomes`, `budgets`, `rainfall`, `domain_events` (activities), `agro_observations`, `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`.
+PostgreSQL with migrations in `src/migrations/001-039_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province` columns), `fields` (includes `province`), `plots`, `expenses`, `incomes`, `budgets`, `rainfall`, `domain_events` (activities), `agro_observations`, `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking).
 
 ### Frontend (`frontend/`)
 
@@ -156,6 +158,30 @@ Telegram support was added as a second messaging channel alongside WhatsApp. All
 - **Migration 035** — Adds `telegram_id` column to `users`; adds `channel` column to `conversation_logs`
 - User store key: `tg_${chatId}`; users are provisioned on first contact via `getOrCreateUserByTelegramId()` in `expenses.js`
 - Env vars: `TELEGRAM_BOT_TOKEN` (required), `TELEGRAM_WEBHOOK_SECRET` (optional, for webhook verification)
+
+## Field Sharing (Campos Compartidos)
+
+Invite-code based field sharing that works across WhatsApp and Telegram.
+
+- **Flow**: Owner says "compartir campo X" → bot generates 6-char code (7-day expiry) → owner shares code externally → invitee says "unirme ABC123" → gets access
+- **`src/domain/sharing/field-sharing.service.ts`** — Core: `createInvite()` (owner + enterprise check, generates code), `acceptInvite()` (validates code/expiry/usage, adds membership in transaction), `removeMemberByIdentifier()` (by name or phone), `getAccessibleFieldIds()`, `listMembers()`, `isOwner()`
+- **`src/domain/sharing/sharing.handler.ts`** — Handles `share_field`, `accept_invite`, `list_field_members`, `remove_field_member`
+- **Migration 037** — `field_members` table (field_id, user_id, role, invited_by); backfills existing fields as 'owner'
+- **Migration 038** — `field_invites` table (code VARCHAR(6) UNIQUE, created_by, used_by, used_at, expires_at)
+- All field/plot queries use `field_members` for access control (`accessibleFieldsSql()` helper in `expenses.js`)
+- Enterprise plan required to generate invite codes; accepting is free (no feature gate)
+- 4 AI tools: `share_field` (generates code), `accept_invite` (code), `list_field_members`, `remove_field_member` (member name or phone)
+
+## Multi-Channel Alerts
+
+Weather and proactive alerts are delivered to both WhatsApp and Telegram users.
+
+- **`src/services/alert.service.js`** — `sendAlertWithRetryMultiChannel()`: Telegram-first (3 retries, 1-3s backoff), WhatsApp fallback. Extracts `telegramId` from `tg_` placeholder phone numbers. Tracks delivery in `alert_history` table with deduplication.
+- **Migration 039** — Converts `daily_weather_hour` from integer to VARCHAR(5) HH:MM format for half-hour precision
+- Weather alerts show campo name per city (e.g., "Santa Fe (La Esperanza)") or "tu ubicación" for user's personal city
+- Within-message dedup prevents duplicate city alerts when user city matches a field's city
+- Admin dashboard: weather alert hour is an HH:MM time input (not just hour selector)
+- 14 tests in `alert.service.test.ts`
 
 ## Environment Variables
 
