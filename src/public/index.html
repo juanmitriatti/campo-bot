@@ -2853,7 +2853,7 @@
           + '</div>'
 
           + '<div class="btn-row">'
-          + '  <button class="btn btn-primary btn-sm" onclick="saveSettings()">Guardar Configuraci\u00f3n</button>'
+          + '  <button class="btn btn-primary btn-sm" onclick="saveUserSettings()">Guardar Configuraci\u00f3n</button>'
           + '</div>';
       });
     }
@@ -2947,7 +2947,7 @@
       });
     }
 
-    function saveSettings() {
+    function saveUserSettings() {
       if (!currentUserId) return;
 
       var body = {
