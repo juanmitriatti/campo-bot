@@ -7,6 +7,7 @@ import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../../middleware/pending-field-city-handler.js';
 import { queryPlotHistory } from '../../services/expenses.js';
 import { FieldSharingService } from '../sharing/field-sharing.service.js';
+import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
 import type {
   UserId,
   User,
@@ -1477,11 +1478,7 @@ export class FinancialHandler {
           if (allPlots.length === 0) {
             return { messages: [`No encontr\u00e9 el lote *${cmd.plotName}*.\nNo ten\u00e9s lotes registrados.`] };
           }
-          let notFoundMsg = `No encontr\u00e9 el lote *${cmd.plotName}*.\n\nTus lotes son:\n`;
-          for (const p of allPlots) {
-            notFoundMsg += `\u2022 ${p.name} (campo ${p.field_name})\n`;
-          }
-          return { messages: [notFoundMsg.trimEnd()] };
+          return { messages: [`No encontré el lote *${cmd.plotName}*.\n\nTus lotes:\n${formatPlotListGrouped(allPlots)}`] };
         }
         return { messages: [this.formatPlotInfo(plotInfo)], suggestionKey: 'field_info_shown' };
       }

@@ -17,6 +17,7 @@ import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.se
 import { formatHistoryResponse } from './plot-query.service.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
 import type { PendingActivity } from '../../middleware/pending-activities.js';
+import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
 
 // --- AI intent → DB event_type normalization ---
 const ACTIVITY_FILTER_MAP: Record<string, string> = {
@@ -112,9 +113,8 @@ export class AgronomyHandler {
     plots: Array<{ id: number; name: string; field_name: string }>,
     cmd: ParsedCommand,
   ): HandlerResponse {
-    const plotList = plots.map(p => `• ${p.name} (${p.field_name})`).join('\n');
     return {
-      messages: [`¿En qué lote?\n\nTus lotes:\n${plotList}`],
+      messages: [`¿En qué lote?\n\n${formatPlotListGrouped(plots)}`],
       suggestionKey: 'default_menu',
       sideEffects: {
         setPendingActivity: { command: cmd.command, data: { ...cmd } },
@@ -830,25 +830,15 @@ export class AgronomyHandler {
           if (userPlots.length === 1) {
             // Auto-select single plot
             cmd.plotName = userPlots[0].name;
-          } else if (userPlots.length <= 3) {
-            const buttons = userPlots.map(p => ({
-              id: `cmd_historial_${p.id}`,
-              title: p.name.slice(0, 20),
-            }));
-            return {
-              messages: ['¿De qué lote querés ver el historial?'],
-              interactive: { type: 'buttons' as const, body: 'Elegí un lote:', buttons },
-            };
           } else {
-            // >3 plots: use list message
-            const sections = [{
-              title: 'Lotes',
-              rows: userPlots.map(p => ({
+            const fieldNames = [...new Set(userPlots.map(p => p.field_name))];
+            const sections = fieldNames.map(fn => ({
+              title: fn,
+              rows: userPlots.filter(p => p.field_name === fn).map(p => ({
                 id: `cmd_historial_${p.id}`,
                 title: p.name.slice(0, 24),
-                description: p.field_name,
               })),
-            }];
+            }));
             return {
               messages: ['¿De qué lote querés ver el historial?'],
               interactive: { type: 'list' as const, body: 'Elegí un lote:', buttonText: 'Ver lotes', sections },
@@ -1099,9 +1089,8 @@ export class AgronomyHandler {
             // Multiple plots: ask user to specify, save pending observation for follow-up
             console.log(`[HYBRID] Multiple plots (${userPlots.length}) → asking user ${userId}`);
             const category = detectObservationCategory(obsText);
-            const plotList = userPlots.map(p => `• ${p.name} (${p.field_name})`).join('\n');
             return {
-              messages: [`¿En qué lote?\n\nTus lotes:\n${plotList}\n\nEjemplo:\n👉 *observación lote 1: ${obsText}*`],
+              messages: [`¿En qué lote?\n\n${formatPlotListGrouped(userPlots)}\n\nEjemplo:\n👉 *observación lote 1: ${obsText}*`],
               suggestionKey: 'default_menu',
               sideEffects: {
                 setPendingObservation: { text: obsText, category },

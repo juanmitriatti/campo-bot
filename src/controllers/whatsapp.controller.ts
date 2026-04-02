@@ -51,6 +51,7 @@ import { AgentService } from '../ai/agent.service.js';
 import { AgentPromptBuilder } from '../ai/agent-prompt-builder.js';
 import { AgentResponseMapper } from '../ai/agent-response-mapper.js';
 import { normalizeTranscript } from '../utils/text-normalizer.js';
+import { formatPlotListGrouped } from '../middleware/flows/field-step-helpers.js';
 import { isLikelyQuestion } from '../utils/guards.js';
 import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observations.js';
 import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
@@ -837,8 +838,7 @@ router.post('/', async (req: Request, res: Response) => {
 
         // HARD STOP: no plot found — re-ask. NEVER fall through to classifier.
         const userPlots = await agronomyRepository.findAllUserPlots(userId);
-        const plotList = userPlots.map(p => `• ${p.name} (${p.field_name})`).join('\n');
-        await sendMessage(phone, `No encontré ese lote. ¿En qué lote?\n\nTus lotes:\n${plotList}`);
+        await sendMessage(phone, `No encontré ese lote. ¿En qué lote?\n\n${formatPlotListGrouped(userPlots)}`);
         console.log(`[PENDING_OBS] Could not resolve plot from "${text}", asking again for user ${userId}`);
         res.sendStatus(200);
         return;
@@ -873,8 +873,7 @@ router.post('/', async (req: Request, res: Response) => {
           return;
         }
         const userPlots = await agronomyRepository.findAllUserPlots(userId);
-        const plotList = userPlots.map(p => `• ${p.name} (${p.field_name})`).join('\n');
-        await sendMessage(phone, `No encontré ese lote. ¿En qué lote?\n\nTus lotes:\n${plotList}`);
+        await sendMessage(phone, `No encontré ese lote. ¿En qué lote?\n\n${formatPlotListGrouped(userPlots)}`);
         console.log(`[PENDING_ACT] Could not resolve plot from "${text}", asking again for user ${userId}`);
         res.sendStatus(200);
         return;

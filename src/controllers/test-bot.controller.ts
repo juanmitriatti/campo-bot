@@ -47,6 +47,7 @@ import { AgentService } from '../ai/agent.service.js';
 import { AgentPromptBuilder } from '../ai/agent-prompt-builder.js';
 import { AgentResponseMapper } from '../ai/agent-response-mapper.js';
 import { normalizeTranscript } from '../utils/text-normalizer.js';
+import { formatPlotListGrouped } from '../middleware/flows/field-step-helpers.js';
 import { isLikelyQuestion } from '../utils/guards.js';
 import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observations.js';
 import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
@@ -751,8 +752,7 @@ async function processTextMessage(
       }
 
       const userPlots = await agronomyRepository.findAllUserPlots(userId);
-      const plotList = userPlots.map((p: any) => `\u2022 ${p.name} (${p.field_name})`).join('\n');
-      return [{ type: 'text', text: `No encontre ese lote. \u00bfEn que lote?\n\nTus lotes:\n${plotList}` }];
+      return [{ type: 'text', text: `No encontré ese lote. ¿En qué lote?\n\n${formatPlotListGrouped(userPlots)}` }];
     }
   }
 
@@ -778,8 +778,7 @@ async function processTextMessage(
         return collectResponse(result);
       }
       const userPlots = await agronomyRepository.findAllUserPlots(userId);
-      const plotList = userPlots.map((p: any) => `• ${p.name} (${p.field_name})`).join('\n');
-      return [{ type: 'text', text: `No encontré ese lote. ¿En qué lote?\n\nTus lotes:\n${plotList}` }];
+      return [{ type: 'text', text: `No encontré ese lote. ¿En qué lote?\n\n${formatPlotListGrouped(userPlots)}` }];
     }
   }
 

@@ -126,9 +126,6 @@ export function buildPlotPromptGrouped(plots: PlotWithField[], label = '¿En qu�
     return `No tenés lotes creados. Escribí *cancelar* y después *agregar lote [nombre] en campo [campo]* para crear uno.`;
   }
   const fieldNames = [...new Set(plots.map(p => p.fieldName))];
-  if (fieldNames.length <= 1) {
-    return buildPlotPrompt(plots.map(p => p.plotName), label);
-  }
   let text = `${label}\n`;
   for (const fn of fieldNames) {
     text += `\n*${fn}:*\n`;
@@ -139,6 +136,23 @@ export function buildPlotPromptGrouped(plots: PlotWithField[], label = '¿En qu�
   }
   text += `\nEscribí el nombre del lote.`;
   return text;
+}
+
+/**
+ * Format a flat plot list grouped by campo for plain text messages.
+ */
+export function formatPlotListGrouped(plots: Array<{ name: string; field_name: string }>): string {
+  const fieldNames = [...new Set(plots.map(p => p.field_name))];
+  let text = '';
+  for (const fn of fieldNames) {
+    text += `*${fn}:*\n`;
+    const fieldPlots = plots.filter(p => p.field_name === fn);
+    for (const p of fieldPlots) {
+      text += `  • ${p.name}\n`;
+    }
+    text += '\n';
+  }
+  return text.trimEnd();
 }
 
 export function buildPlotInteractive(
@@ -165,9 +179,6 @@ export function buildPlotInteractiveGrouped(
 ): InteractiveMessage | null {
   if (plots.length === 0) return null;
   const fieldNames = [...new Set(plots.map(p => p.fieldName))];
-  if (fieldNames.length <= 1) {
-    return buildPlotInteractive(plots.map(p => p.plotName), body);
-  }
 
   // Detect duplicate plot names (appear in >1 field)
   const nameCount = new Map<string, number>();
