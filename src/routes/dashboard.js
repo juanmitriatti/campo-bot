@@ -59,15 +59,22 @@ router.get("/api/users", async (req, res) => {
          u.last_message_at,
          p.display_name AS plan_name,
          COALESCE(ai.ai_calls_today, 0) AS ai_calls_today,
+         COALESCE(ai.tokens_today, 0) AS tokens_today,
+         COALESCE(ai_month.tokens_month, 0) AS tokens_month,
          COALESCE(u.last_message_at, ai_all.last_ai) AS last_activity,
          COALESCE(fields.field_count, 0) AS field_count,
          COALESCE(shared.shared_field_count, 0) AS shared_field_count
        FROM users u
        LEFT JOIN plans p ON u.plan_id = p.id
        LEFT JOIN LATERAL (
-         SELECT COUNT(*) AS ai_calls_today
+         SELECT COUNT(*) AS ai_calls_today,
+                COALESCE(SUM(total_tokens), 0) AS tokens_today
          FROM ai_usage WHERE user_id = u.id AND created_at::date = CURRENT_DATE
        ) ai ON true
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(total_tokens), 0) AS tokens_month
+         FROM ai_usage WHERE user_id = u.id AND created_at >= date_trunc('month', CURRENT_DATE)
+       ) ai_month ON true
        LEFT JOIN LATERAL (
          SELECT MAX(created_at) AS last_ai FROM ai_usage WHERE user_id = u.id
        ) ai_all ON true
@@ -82,21 +89,33 @@ router.get("/api/users", async (req, res) => {
        ORDER BY last_activity DESC NULLS LAST`
     );
 
-    res.json(result.rows.map(u => ({
-      id: u.id,
-      name: u.name,
-      phone: u.phone_number,
-      city: u.city,
-      province: u.province || null,
-      email: u.email || null,
-      status: u.status || 'active',
-      planName: u.plan_name || 'Free',
-      fieldCount: parseInt(u.field_count),
-      sharedFieldCount: parseInt(u.shared_field_count),
-      aiCallsToday: parseInt(u.ai_calls_today),
-      lastActivity: u.last_activity,
-      lastMessageAt: u.last_message_at,
-    })));
+    // Haiku pricing: $0.80/M input, $4/M output
+    // Average split from ai_usage: ~96% input, ~4% output
+    // Blended rate: 0.96 * 0.80 + 0.04 * 4.00 = $0.928/M tokens
+    const COST_PER_TOKEN = 0.928 / 1_000_000;
+
+    res.json(result.rows.map(u => {
+      const tokensToday = parseInt(u.tokens_today);
+      const tokensMonth = parseInt(u.tokens_month);
+      return {
+        id: u.id,
+        name: u.name,
+        phone: u.phone_number,
+        city: u.city,
+        province: u.province || null,
+        email: u.email || null,
+        status: u.status || 'active',
+        planName: u.plan_name || 'Free',
+        fieldCount: parseInt(u.field_count),
+        sharedFieldCount: parseInt(u.shared_field_count),
+        aiCallsToday: parseInt(u.ai_calls_today),
+        tokensToday,
+        costToday: +(tokensToday * COST_PER_TOKEN).toFixed(4),
+        costMonth: +(tokensMonth * COST_PER_TOKEN).toFixed(4),
+        lastActivity: u.last_activity,
+        lastMessageAt: u.last_message_at,
+      };
+    }));
   } catch (error) {
     console.error("Error fetching users:", error);
     res.status(500).json({ error: "Internal server error" });

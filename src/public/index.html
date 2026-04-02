@@ -912,13 +912,16 @@
                 <th>Campos</th>
                 <th>Compartidos</th>
                 <th>IA Hoy</th>
+                <th>Tokens Hoy</th>
+                <th>USD Hoy</th>
+                <th>USD Mes</th>
                 <th>&Uacute;ltima Actividad</th>
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody id="users-table-body">
               <tr>
-                <td colspan="10">
+                <td colspan="13">
                   <div class="loading"><div class="spinner"></div> Cargando usuarios...</div>
                 </td>
               </tr>
@@ -2458,7 +2461,7 @@
       var tbody = document.getElementById('users-table-body');
       var footer = document.getElementById('users-count-footer');
       if (!data || !data.length) {
-        tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state">No hay usuarios</div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13"><div class="empty-state">No hay usuarios</div></td></tr>';
         if (footer) footer.textContent = '';
         return;
       }
@@ -2474,6 +2477,9 @@
           + '<td>' + (u.fieldCount || 0) + '</td>'
           + '<td>' + (u.sharedFieldCount > 0 ? '<span class="badge badge-purple">' + u.sharedFieldCount + '</span>' : '0') + '</td>'
           + '<td><span class="badge badge-blue">' + (u.aiCallsToday || 0) + '</span></td>'
+          + '<td style="text-align:right;font-size:12px;color:var(--text-secondary);">' + ((u.tokensToday || 0) > 0 ? (u.tokensToday / 1000).toFixed(1) + 'K' : '-') + '</td>'
+          + '<td style="text-align:right;font-size:12px;">' + (u.costToday > 0 ? '$' + u.costToday.toFixed(3) : '-') + '</td>'
+          + '<td style="text-align:right;font-size:12px;font-weight:600;">' + (u.costMonth > 0 ? '$' + u.costMonth.toFixed(2) : '-') + '</td>'
           + '<td>' + formatDateTime(u.lastActivity) + '</td>'
           + '<td style="white-space:nowrap;">'
           + '  <button class="btn btn-sm" style="background:var(--bg);color:var(--text);padding:4px 8px;font-size:12px;margin-right:4px;" onclick="event.stopPropagation();showEditUserModal(' + u.id + ')" title="Editar">&#9998;</button>'
