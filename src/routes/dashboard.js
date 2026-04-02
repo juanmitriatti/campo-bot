@@ -7,6 +7,7 @@ import { generateWeeklyReport, getReportsByField, getAllReports, getReportById }
 import { getAllSettings, setSetting, SECRET_KEYS, SETTING_DEFINITIONS } from "../services/settings.service.js";
 import { getErrorLogs, getErrorById, getErrorStats } from "../services/error-logger.js";
 import { getAlertHistory, getAlertStats } from "../services/alert.service.js";
+import { getActivityDictionary, updateActivitySynonyms } from "../services/activity-dictionary.service.js";
 
 const router = Router();
 
@@ -2451,6 +2452,33 @@ router.get("/api/ai-training/stats", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching AI training stats:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── Activity Dictionary endpoints ──────────────────────────────────────────
+
+router.get("/api/ai-training/dictionary", async (req, res) => {
+  try {
+    const entries = await getActivityDictionary();
+    res.json({ entries });
+  } catch (error) {
+    console.error("Error fetching activity dictionary:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/api/ai-training/dictionary/:activityType", async (req, res) => {
+  try {
+    const { activityType } = req.params;
+    const { synonyms } = req.body;
+    if (typeof synonyms !== 'string') {
+      return res.status(400).json({ error: "synonyms (string) is required" });
+    }
+    await updateActivitySynonyms(activityType, synonyms);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error updating activity dictionary:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

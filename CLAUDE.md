@@ -42,7 +42,7 @@ Kill switches:
 #### AI Agent (tool_use) — new primary path
 - **`agent.service.ts`** — Calls Claude with `tool_use` + `tool_choice: auto`; returns `AgentResult` with tool calls array + optional conversational text. Uses plan-based rate limiting, conversation history, few-shot examples, and configurable timeout.
 - **`tool-definitions.ts`** — 25 Anthropic tool definitions grouped by domain: Financial (2), Activities (6), Observations (2), Reports (5), Field/Plot Mgmt (5), Sharing (4), System (1). Each tool has typed `input_schema` with enum validation for categories. All registration tools (9 of 25) include an optional `event_date` param (YYYY-MM-DD) for user-mentioned dates.
-- **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules, user context, and dynamic today's date for date extraction. Tool definitions carry the schema, so the prompt only needs rules. Includes explicit rules that agro activities (fumigué, sembré, coseché, etc.) are ONLY activities and NEVER expenses unless the user mentions an explicit amount.
+- **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules, user context, and dynamic today's date for date extraction. Tool definitions carry the schema, so the prompt only needs rules. Includes explicit rules that agro activities (fumigué, sembré, coseché, etc.) are ONLY activities and NEVER expenses unless the user mentions an explicit amount. Activity synonym lines are dynamically generated from `activity_dictionary` DB table (admin-editable via dashboard).
 - **`agent-response-mapper.ts`** — Converts `AgentResult` → `ParseResult[]` for backward compatibility. Maps `log_expense`/`log_income` tool calls to expense/income ParseResults (including `expenseDate`/`incomeDate` from `event_date`); everything else to command ParseResults (including `eventDate`). No-tool conversational responses become `_conversationalResponse` on ParseResult. **Smart agro filter**: when agent returns `log_expense`/`log_income` alongside an agro activity tool (sow_crop, harvest_crop, etc.), only drops them if amount=0 (Haiku hallucination). Keeps legitimate expenses with real amounts (e.g., "sembré soja y la semilla costó 100mil").
 - **`few-shot.service.ts`** — `formatAsToolUseMessages()` converts training examples to tool_use triplets (user → assistant[tool_use] → user[tool_result]).
 
@@ -79,6 +79,7 @@ When the AI Agent returns multiple tool calls for a single message (e.g., "Sembr
 - **`services/scheduler.js`** — node-cron jobs: weekly summaries, daily weather alerts (half-hour precision via HH:MM), proactive reminders (missing hectares), Argentina timezone. Weather alerts show campo name or "tu ubicación" per city, with within-message dedup for same-city overlap.
 - **`services/observations.js`** — Observation CRUD with 4-layer dedup, normalization, financial guard.
 - **`services/settings.service.js`** — Global settings definitions with descriptions, grouped by category (ai, bot, audio, limits, agronomy, system).
+- **`services/activity-dictionary.service.ts`** — Cached CRUD for `activity_dictionary` table (5-min TTL). Provides activity type → synonym mapping for dynamic AI agent prompt generation. Admin-editable via dashboard Diccionario tab.
 
 ### Domain Layer (`src/domain/`)
 
@@ -96,7 +97,7 @@ Handles Spanish text normalization, written numbers ("quinientos mil" → 500000
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-041_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`), `incomes` (includes `income_date`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`), `agro_observations` (includes `observation_date`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking).
+PostgreSQL with migrations in `src/migrations/001-042_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`), `incomes` (includes `income_date`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`), `agro_observations` (includes `observation_date`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking), `activity_dictionary` (admin-editable activity synonyms for AI agent prompt).
 
 ### Frontend (`frontend/`)
 

@@ -1,4 +1,5 @@
 import type { UserContext } from './user-context.service.js';
+import type { ActivityDictionaryEntry } from '../services/activity-dictionary.service.js';
 
 /**
  * Builds a compact system prompt for the AI Agent pipeline.
@@ -6,10 +7,10 @@ import type { UserContext } from './user-context.service.js';
  * disambiguation rules and user context.
  */
 export class AgentPromptBuilder {
-  build(userContext: UserContext | null): string {
+  build(userContext: UserContext | null, dictionary?: ActivityDictionaryEntry[]): string {
     const parts: string[] = [
       this.coreRules(),
-      this.disambiguationRules(),
+      this.disambiguationRules(dictionary),
     ];
 
     const ctx = this.contextLine(userContext);
@@ -43,13 +44,31 @@ REGLAS:
 - Acciones compuestas: si el usuario pide varias cosas en un mensaje, usá varias tools en orden de dependencia. Ej: "agregá campo X y lote Y" → add_field(name=X) + add_plot(plotName=Y, field=X)`;
   }
 
-  private disambiguationRules(): string {
-    return `DESAMBIGUACIÓN:
-- gasté/compré/pagué+insumo→log_expense. vendí/cobré+producto→log_income
-- Actividades agronómicas (fumigué,sembré,coseché,aré,regué,fertilicé) son SOLO actividad, NUNCA gasto a menos que el usuario mencione un monto explícito ($, pesos, dólares)
+  private buildActivityLines(dictionary?: ActivityDictionaryEntry[]): string {
+    if (!dictionary || dictionary.length === 0) {
+      return `- Actividades agronómicas (fumigué,sembré,coseché,aré,regué,fertilicé) son SOLO actividad, NUNCA gasto a menos que el usuario mencione un monto explícito ($, pesos, dólares)
 - fumigué/tiré/eché/apliqué+químico→log_spraying. fertilicé/aboné/metí+fertilizante→log_fertilization
 - sembré/implanté→sow_crop. coseché/levanté→harvest_crop. aré/pasé disco→log_tillage. regué→log_irrigation
-- NUNCA llamar log_expense junto con una actividad agronómica salvo que haya monto explícito
+- NUNCA llamar log_expense junto con una actividad agronómica salvo que haya monto explícito`;
+    }
+
+    const allVerbs: string[] = [];
+    const lines = dictionary.map(entry => {
+      const syns = entry.synonyms.split('\n').map(s => s.trim()).filter(Boolean);
+      if (syns.length > 0) allVerbs.push(syns[0]);
+      const synStr = syns.join('/');
+      return `- "${synStr}" → ${entry.tool_name} (NUNCA expense)`;
+    });
+
+    return `- Actividades agronómicas (${allVerbs.join(',')}) son SOLO actividad, NUNCA gasto a menos que el usuario mencione un monto explícito ($, pesos, dólares)
+${lines.join('\n')}
+- NUNCA llamar log_expense junto con una actividad agronómica salvo que haya monto explícito`;
+  }
+
+  private disambiguationRules(dictionary?: ActivityDictionaryEntry[]): string {
+    return `DESAMBIGUACIÓN:
+- gasté/compré/pagué+insumo→log_expense. vendí/cobré+producto→log_income
+${this.buildActivityLines(dictionary)}
 - "cuándo se fumigó/sembró/cosechó"→query_plot_history (consulta, NO registro). SIEMPRE usar herramienta
 - "en qué lote sembré/fumigué/cosechó X"→query_plot_history con activityFilter y crop, SIN plot (busca en todos)
 - "gastos/ingresos del lote X"(sin monto)→financial_report(plot=X). "gastos campo X"→financial_report(field=X). NUNCA log_observation

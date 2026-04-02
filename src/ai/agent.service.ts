@@ -9,6 +9,7 @@ import { TOOL_DEFINITIONS } from './tool-definitions.js';
 import { getSetting, getSettingNumber, getSettingBool } from '../services/settings.service.js';
 import { saveAiFallbackLog } from '../services/expenses.js';
 import { logError } from '../services/error-logger.js';
+import { getActivityDictionary } from '../services/activity-dictionary.service.js';
 import type { UserId, UserSettings, AiUsage } from '../types/index.js';
 
 const anthropic = new Anthropic({
@@ -64,18 +65,20 @@ export class AgentService {
 
       // Load user context, conversation history, and few-shot examples in parallel
       const historyMaxChars = (await getSettingNumber('CONVERSATION_HISTORY_MAX_CHARS')) ?? 4000;
-      const [userContext, historyTurns, fewShotExamples] = await Promise.allSettled([
+      const [userContext, historyTurns, fewShotExamples, dictionary] = await Promise.allSettled([
         this.userContextService.loadContext(userId),
         this.historyService ? this.historyService.getRecentTurns(userId, historyMaxChars) : Promise.resolve([]),
         this.fewShotService ? this.fewShotService.getExamples(5) : Promise.resolve([]),
+        getActivityDictionary(),
       ]).then(results => [
         results[0].status === 'fulfilled' ? results[0].value : null,
         results[1].status === 'fulfilled' ? results[1].value : [],
         results[2].status === 'fulfilled' ? results[2].value : [],
+        results[3].status === 'fulfilled' ? results[3].value : undefined,
       ] as const);
 
       // Build system prompt
-      const systemPrompt = this.promptBuilder.build(userContext);
+      const systemPrompt = this.promptBuilder.build(userContext, dictionary);
 
       // Load agent-specific settings
       const [model, maxTokens, timeoutMs] = await Promise.all([
