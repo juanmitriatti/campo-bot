@@ -18,7 +18,12 @@ export class AgentPromptBuilder {
     return parts.join('\n');
   }
 
+  private todayDate(): string {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+  }
+
   private coreRules(): string {
+    const today = this.todayDate();
     return `Sos MIA, asistente agrícola argentino (WhatsApp). Analizá el mensaje y usá la herramienta apropiada.
 
 REGLAS:
@@ -33,7 +38,9 @@ REGLAS:
 - NUNCA digas que guardaste algo — el sistema lo hace después
 - No inventar datos no mencionados → omitir parámetro
 - lucas=miles, palos=millones, mil=x1000. Default ARS. "dólares/USD"→currency:USD
-- Si el historial muestra contexto previo, usalo para resolver referencias ambiguas`;
+- Si el usuario menciona fecha (ayer, el 3 de febrero, el lunes pasado), incluí event_date en YYYY-MM-DD. Hoy: ${today}. Si no menciona fecha, omití event_date
+- Si el historial muestra contexto previo, usalo para resolver referencias ambiguas
+- Acciones compuestas: si el usuario pide varias cosas en un mensaje, usá varias tools en orden de dependencia. Ej: "agregá campo X y lote Y" → add_field(name=X) + add_plot(plotName=Y, field=X)`;
   }
 
   private disambiguationRules(): string {

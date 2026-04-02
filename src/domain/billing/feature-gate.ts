@@ -85,6 +85,9 @@ export class FeatureGate {
       edit_last: 'expenses',
       export_csv: 'csv_export',
       delete_last_income: 'incomes',
+      delete_specific_income: 'incomes',
+      edit_last_income: 'incomes',
+      edit_specific_income: 'incomes',
       // Budgets
       set_budget: 'budgets',
       // Fields
@@ -126,9 +129,9 @@ export class FeatureGate {
       log_observation: 'agronomy',
       generate_agro_report: 'agronomy',
       // Sharing
-      share_field: 'fields',
-      list_field_members: 'fields',
-      remove_field_member: 'fields',
+      share_field: 'sharing',
+      list_field_members: 'sharing',
+      remove_field_member: 'sharing',
     };
 
     return map[command] ?? null;

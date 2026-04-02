@@ -13,6 +13,7 @@ const PLOT_PROP = { type: 'string' as const, description: 'Nombre del lote, si m
 const CROP_PROP = { type: 'string' as const, description: 'Cultivo, si mencionado.' };
 const QUANTITY_PROP = { type: 'number' as const, description: 'Cantidad.' };
 const UNIT_PROP = { type: 'string' as const, description: 'Unidad (kg, lt, cc, tn, bolsas, kg/ha, lt/ha).' };
+const DATE_PROP = { type: 'string' as const, description: 'Fecha YYYY-MM-DD si el usuario menciona una fecha distinta a hoy. Omitir si es hoy.' };
 
 export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // ========================
@@ -30,6 +31,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         currency: { type: 'string', enum: ['ARS', 'USD'], description: 'Moneda. Default ARS. "dólares/USD"→USD.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        event_date: DATE_PROP,
       },
       required: ['amount', 'description'],
     },
@@ -49,6 +51,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         unit_price: { type: 'number', description: 'Precio por unidad.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        event_date: DATE_PROP,
       },
       required: ['amount', 'description'],
     },
@@ -70,6 +73,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         crop: CROP_PROP,
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        event_date: DATE_PROP,
       },
       required: [],
     },
@@ -86,6 +90,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         crop: CROP_PROP,
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        event_date: DATE_PROP,
       },
       required: [],
     },
@@ -100,6 +105,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         crop: CROP_PROP,
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        event_date: DATE_PROP,
       },
       required: [],
     },
@@ -115,6 +121,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         crop: CROP_PROP,
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        event_date: DATE_PROP,
       },
       required: [],
     },
@@ -128,6 +135,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         crop: { type: 'string', description: 'Cultivo sembrado.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        event_date: DATE_PROP,
       },
       required: ['crop'],
     },
@@ -143,6 +151,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         unit: UNIT_PROP,
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        event_date: DATE_PROP,
       },
       required: ['crop'],
     },
@@ -161,6 +170,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         crop: CROP_PROP,
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        event_date: DATE_PROP,
       },
       required: ['observation'],
     },

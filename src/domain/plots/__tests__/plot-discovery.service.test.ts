@@ -131,6 +131,57 @@ describe('PlotDiscoveryService', () => {
       expect(result.autoCreated).toBe(false);
       expect(result.notFound).toEqual({ type: 'plot', name: 'bajo' });
     });
+
+    it('returns needPlotSelection when same plot name exists in multiple campos', async () => {
+      mocks.findPlotByNameAcrossFields.mockResolvedValue([
+        { id: 20, field_id: 10, name: '2Z', field_name: 'Norte' },
+        { id: 30, field_id: 11, name: '2Z', field_name: 'Sur' },
+      ]);
+      mocks.getConversationState.mockResolvedValue(null);
+
+      const result = await service.resolveFromNames(userId, null, '2Z');
+
+      expect(result.fieldId).toBeNull();
+      expect(result.plotId).toBeNull();
+      expect(result.needPlotSelection).toEqual({
+        fieldId: null, fieldName: null,
+        plots: [
+          { id: 20, name: '2Z (Norte)' },
+          { id: 30, name: '2Z (Sur)' },
+        ],
+      });
+    });
+
+    it('auto-resolves duplicate plot name via conversation state', async () => {
+      mocks.findPlotByNameAcrossFields.mockResolvedValue([
+        { id: 20, field_id: 10, name: '2Z', field_name: 'Norte' },
+        { id: 30, field_id: 11, name: '2Z', field_name: 'Sur' },
+      ]);
+      mocks.getConversationState.mockResolvedValue({ last_field_id: 11 });
+
+      const result = await service.resolveFromNames(userId, null, '2Z');
+
+      expect(result).toEqual({
+        fieldId: 11, fieldName: 'Sur',
+        plotId: 30, plotName: '2Z',
+        autoCreated: false,
+      });
+      expect(mocks.updateConversationState).toHaveBeenCalledWith(userId, 11, 30);
+      expect(mocks.addPlotAlias).toHaveBeenCalled();
+    });
+
+    it('returns needPlotSelection when conversation state does not match any campo', async () => {
+      mocks.findPlotByNameAcrossFields.mockResolvedValue([
+        { id: 20, field_id: 10, name: '2Z', field_name: 'Norte' },
+        { id: 30, field_id: 11, name: '2Z', field_name: 'Sur' },
+      ]);
+      mocks.getConversationState.mockResolvedValue({ last_field_id: 99 });
+
+      const result = await service.resolveFromNames(userId, null, '2Z');
+
+      expect(result.needPlotSelection).toBeDefined();
+      expect(result.needPlotSelection!.plots).toHaveLength(2);
+    });
   });
 
   describe('resolveFromNames — __last__ sentinel', () => {

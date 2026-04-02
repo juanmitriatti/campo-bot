@@ -78,13 +78,13 @@ describe('FeatureGate', () => {
       mockRepo.getUserPlan.mockResolvedValue({ id: 3, name: 'pro_plus' as PlanName });
       mockRepo.getPlanFeatures.mockResolvedValue([
         'expenses', 'incomes', 'fields', 'budgets', 'rainfall',
-        'weather', 'csv_export', 'agronomy', 'ai_fallback',
+        'weather', 'csv_export', 'agronomy', 'audio',
       ] as FeatureKey[]);
 
       const features = await gate.getUserFeatures(userId);
       expect(features).toHaveLength(9);
       expect(features).toContain('agronomy');
-      expect(features).toContain('ai_fallback');
+      expect(features).toContain('audio');
     });
   });
 
@@ -136,6 +136,21 @@ describe('FeatureGate', () => {
     it('maps field commands to fields feature', () => {
       expect(FeatureGate.commandToFeature('add_field')).toBe('fields');
       expect(FeatureGate.commandToFeature('list_plots')).toBe('fields');
+    });
+
+    it('maps income commands to incomes feature', () => {
+      expect(FeatureGate.commandToFeature('delete_last_income')).toBe('incomes');
+      expect(FeatureGate.commandToFeature('delete_specific_income')).toBe('incomes');
+    });
+
+    it('maps sharing commands to sharing feature', () => {
+      expect(FeatureGate.commandToFeature('share_field')).toBe('sharing');
+      expect(FeatureGate.commandToFeature('list_field_members')).toBe('sharing');
+      expect(FeatureGate.commandToFeature('remove_field_member')).toBe('sharing');
+    });
+
+    it('does not gate accept_invite (always allowed)', () => {
+      expect(FeatureGate.commandToFeature('accept_invite')).toBeNull();
     });
 
     it('returns null for system commands (always allowed)', () => {

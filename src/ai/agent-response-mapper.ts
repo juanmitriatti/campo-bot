@@ -37,7 +37,14 @@ export class AgentResponseMapper {
     let filteredCalls = result.toolCalls;
     const hasAgroActivity = filteredCalls.some(tc => AGRO_ACTIVITY_TOOLS.has(tc.toolName));
     if (hasAgroActivity) {
-      filteredCalls = filteredCalls.filter(tc => tc.toolName !== 'log_expense' && tc.toolName !== 'log_income');
+      // Only drop spurious expense/income calls that have NO explicit amount
+      // (Haiku hallucination). Keep them if the user mentioned a real amount.
+      filteredCalls = filteredCalls.filter(tc => {
+        if (tc.toolName !== 'log_expense' && tc.toolName !== 'log_income') return true;
+        const input = tc.toolInput as Record<string, unknown>;
+        const amount = typeof input.amount === 'number' ? input.amount : 0;
+        return amount > 0; // keep if agent extracted a real amount
+      });
       if (filteredCalls.length === 0) filteredCalls = result.toolCalls; // safety: don't drop everything
     }
 
@@ -92,6 +99,7 @@ export class AgentResponseMapper {
       };
       if (typeof input.field === 'string') data.field = input.field;
       if (typeof input.plot === 'string') data.plot = input.plot;
+      if (typeof input.event_date === 'string') data.expenseDate = input.event_date;
 
       return {
         intent: { type: 'expense', data },
@@ -143,6 +151,7 @@ export class AgentResponseMapper {
       };
       if (typeof input.field === 'string') data.field = input.field;
       if (typeof input.plot === 'string') data.plot = input.plot;
+      if (typeof input.event_date === 'string') data.incomeDate = input.event_date;
 
       return {
         intent: { type: 'income', data },

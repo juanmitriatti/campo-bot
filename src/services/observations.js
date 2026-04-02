@@ -68,7 +68,7 @@ export const SAVE_REJECTED_DUPLICATE = { _rejected: 'duplicate' };
  */
 export const SAVE_REJECTED_NO_PLOT = { _rejected: 'no_plot' };
 
-export async function saveObservation(userId, { fieldId, plotId, text, category, source }) {
+export async function saveObservation(userId, { fieldId, plotId, text, category, source, observationDate }) {
   // Guard: observations MUST have a plot — never store with plot_id = NULL
   if (!plotId) {
     console.warn(`[obs-guard] Rejected observation without plot_id for user ${userId}`);
@@ -109,9 +109,9 @@ export async function saveObservation(userId, { fieldId, plotId, text, category,
   }
 
   const result = await pool.query(
-    `INSERT INTO agro_observations (user_id, field_id, plot_id, observation_text, normalized_text, category, source)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [userId, fieldId || null, plotId || null, normalizedText, normalizedText, category || 'general', source || 'text']
+    `INSERT INTO agro_observations (user_id, field_id, plot_id, observation_text, normalized_text, category, source, observation_date)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::date, CURRENT_DATE)) RETURNING *`,
+    [userId, fieldId || null, plotId || null, normalizedText, normalizedText, category || 'general', source || 'text', observationDate || null]
   );
   _recentInserts.set(dedupKey, Date.now());
   return result.rows[0];

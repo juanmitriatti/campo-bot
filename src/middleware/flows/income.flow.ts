@@ -163,6 +163,7 @@ export const incomeFlow: FlowDefinition = {
       quantity: quantity,
       unit: quantity ? 'tn' : null,
       unit_price: quantity ? Math.round(amountInfo.amount / quantity) : null,
+      ...(data.incomeDate ? { incomeDate: data.incomeDate as string } : {}),
     };
 
     await financialService.saveIncome(userId, incomeData, fieldId, plotId);

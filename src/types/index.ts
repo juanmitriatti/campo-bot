@@ -26,6 +26,7 @@ export interface ParsedExpense {
   category: string;
   description: string;
   currency: Currency;
+  expenseDate?: string | null;
 }
 
 export interface ParsedIncome {
@@ -37,6 +38,7 @@ export interface ParsedIncome {
   quantity?: number | null;
   unit?: string | null;
   unit_price?: number | null;
+  incomeDate?: string | null;
 }
 
 export interface ParsedCommand {
@@ -470,8 +472,8 @@ export type FeatureKey =
   | 'agronomy'
   | 'csv_export'
   | 'weather'
-  | 'ai_fallback'
-  | 'audio';
+  | 'audio'
+  | 'sharing';
 
 export interface PlanRow {
   id: number;

@@ -158,6 +158,31 @@ export class PlotDiscoveryService {
       };
     }
 
+    // 1b. Multiple matches (same name in different campos) — disambiguate
+    if (plots.length > 1) {
+      // Try conversation state — if user recently used one of the campos, auto-resolve
+      const state = await getConversationState(userId);
+      if (state?.last_field_id) {
+        const inLastField = plots.find((p: any) => p.field_id === state.last_field_id);
+        if (inLastField) {
+          await this._registerAliases(inLastField.id, plotName);
+          await updateConversationState(userId, inLastField.field_id, inLastField.id);
+          return {
+            fieldId: inLastField.field_id, fieldName: inLastField.field_name,
+            plotId: inLastField.id, plotName: inLastField.name, autoCreated: false,
+          };
+        }
+      }
+      // Can't auto-resolve → return needPlotSelection with campo-tagged names
+      return {
+        fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false,
+        needPlotSelection: {
+          fieldId: null as any, fieldName: null as any,
+          plots: plots.map((p: any) => ({ id: p.id, name: `${p.name} (${p.field_name})` })),
+        },
+      };
+    }
+
     // 2. Alias match
     const normalized = normalizeText(plotName);
     const aliasMatch = await findPlotByAlias(userId, normalized);

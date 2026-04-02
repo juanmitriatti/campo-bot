@@ -144,6 +144,7 @@ export const expenseFlow: FlowDefinition = {
       category: data.category as string,
       description: (data.description as string) || '',
       currency: amountInfo.currency as 'ARS' | 'USD',
+      ...(data.expenseDate ? { expenseDate: data.expenseDate as string } : {}),
     };
 
     await financialService.saveExpense(userId, expenseData, fieldId, plotId);

@@ -55,11 +55,23 @@ function buildLocationLabel(fieldName: string | null, plotName: string | null): 
   return '';
 }
 
+function formatEventDate(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T12:00:00');
+  if (isNaN(d.getTime())) return null;
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  if (d.toDateString() === today.toDateString()) return null;
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 function buildExpenseConfirmation(data: ParsedExpense, fieldName: string | null, plotName: string | null = null): string {
   const currency = data.currency === 'USD' ? 'USD' : '';
   let msg = `${pickRandom(EXPENSE_CONFIRMATIONS)}\n${data.category}\n$${Number(data.amount).toLocaleString('es-AR')} ${currency}`.trim();
   const loc = buildLocationLabel(fieldName, plotName);
   if (loc) msg += `\n\ud83d\udccd ${loc}`;
+  const dateLabel = formatEventDate(data.expenseDate);
+  if (dateLabel) msg += `\n\ud83d\udcc5 ${dateLabel}`;
   return msg;
 }
 
@@ -72,6 +84,8 @@ function buildIncomeConfirmation(data: ParsedIncome | Record<string, unknown>, f
   }
   const loc = buildLocationLabel(fieldName, plotName);
   if (loc) msg += `\n\ud83d\udccd ${loc}`;
+  const dateLabel = formatEventDate((data as any).incomeDate);
+  if (dateLabel) msg += `\n\ud83d\udcc5 ${dateLabel}`;
   return msg;
 }
 
@@ -341,6 +355,7 @@ export class FinancialHandler {
               amount: { amount: data.amount, currency },
               category: data.category,
               description: data.description || text,
+              ...(data.expenseDate ? { expenseDate: data.expenseDate } : {}),
             },
           },
         },
@@ -361,6 +376,7 @@ export class FinancialHandler {
                 amount: { amount: data.amount, currency },
                 category: data.category,
                 description: data.description || text,
+                ...(data.expenseDate ? { expenseDate: data.expenseDate } : {}),
               },
             },
           },
@@ -408,6 +424,7 @@ export class FinancialHandler {
               amount: { amount: data.amount, currency },
               category: data.category,
               description: data.description || text,
+              ...(data.expenseDate ? { expenseDate: data.expenseDate } : {}),
             },
           },
         },
@@ -494,6 +511,7 @@ export class FinancialHandler {
               quantity: data.quantity ?? null,
               unit: data.unit ?? null,
               unit_price: data.unit_price ?? null,
+              ...(data.incomeDate ? { incomeDate: data.incomeDate } : {}),
             },
           },
         },
@@ -517,6 +535,7 @@ export class FinancialHandler {
                 quantity: data.quantity ?? null,
                 unit: data.unit ?? null,
                 unit_price: data.unit_price ?? null,
+                ...(data.incomeDate ? { incomeDate: data.incomeDate } : {}),
               },
             },
           },
@@ -566,6 +585,7 @@ export class FinancialHandler {
               quantity: data.quantity ?? null,
               unit: data.unit ?? null,
               unit_price: data.unit_price ?? null,
+              ...(data.incomeDate ? { incomeDate: data.incomeDate } : {}),
             },
           },
         },

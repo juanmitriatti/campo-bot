@@ -277,8 +277,8 @@ INSERT INTO features (key, description) VALUES
   ('agronomy', 'Actividades agronómicas'),
   ('csv_export', 'Exportar datos a CSV'),
   ('weather', 'Consulta de clima'),
-  ('ai_fallback', 'Parsing inteligente con IA'),
-  ('audio', 'Procesamiento de mensajes de voz')
+  ('audio', 'Procesamiento de mensajes de voz'),
+  ('sharing', 'Campos compartidos')
 ON CONFLICT (key) DO NOTHING;
 
 -- FREE plan features
@@ -296,7 +296,7 @@ ON CONFLICT DO NOTHING;
 -- PRO+ plan features
 INSERT INTO plan_features (plan_id, feature_id)
 SELECT p.id, f.id FROM plans p, features f
-WHERE p.name = 'pro_plus' AND f.key IN ('expenses', 'incomes', 'fields', 'budgets', 'rainfall', 'weather', 'csv_export', 'agronomy', 'ai_fallback', 'audio')
+WHERE p.name = 'pro_plus' AND f.key IN ('expenses', 'incomes', 'fields', 'budgets', 'rainfall', 'weather', 'csv_export', 'agronomy', 'audio')
 ON CONFLICT DO NOTHING;
 
 -- ENTERPRISE plan features (all)

@@ -170,6 +170,10 @@ export class IntentClassifier {
             if (agentResult.toolCalls.length > 1) {
               (primary as any)._extraToolCalls = agentResult.toolCalls.slice(1);
             }
+            // Attach all parsed results for compound execution
+            if (parseResults.length > 1) {
+              (primary as any)._compoundResults = parseResults;
+            }
             // Attach agent metadata for logging
             (primary as any)._agentMode = 'tool_use';
             (primary as any)._toolCalls = agentResult.toolCalls;

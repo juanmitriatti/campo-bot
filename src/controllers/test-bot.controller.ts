@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import multer from 'multer';
 import { IntentClassifier } from '../services/intent-classifier.js';
 import { DomainRouter } from '../domain/router.js';
+import { CompoundExecutor } from '../domain/compound-executor.js';
 import { InteractiveRouter } from '../domain/interactive/interactive.router.js';
 import { FinancialHandler } from '../domain/financial/financial.handler.js';
 import { FinancialService } from '../domain/financial/financial.service.js';
@@ -801,6 +802,56 @@ async function processTextMessage(
     const convResponse = (parseResult as any)._conversationalResponse as string;
     conversationLogger.log(userId, phone, text, convResponse, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
     return [{ type: 'text' as const, text: convResponse }];
+  }
+
+  // --- Handle compound actions from Agent (multiple tool calls) ---
+  const compoundResults = (parseResult as any)._compoundResults as ParseResult[] | undefined;
+  if (compoundResults && compoundResults.length > 1) {
+    const executor = new CompoundExecutor(domainRouter, financialHandler);
+    const result = await executor.execute(compoundResults, userId, user, settings, text);
+    if (result && result.messages.length > 0) {
+      const items: BotResponseItem[] = result.messages.map(m => ({ type: 'text' as const, text: m }));
+      if (result.stoppedAtFlow && result.lastSideEffects?.startFlow) {
+        const { state, data } = result.lastSideEffects.startFlow;
+        const flowResult = await conversationEngine.startFlow(userId, state, data);
+        if (flowResult.nextContext) await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+        items.push(...collectResponse(flowResult.response));
+      } else if (result.lastSideEffects) {
+        if (result.lastSideEffects.setPendingObservation) {
+          const obs = result.lastSideEffects.setPendingObservation;
+          pendingObsStore.set(phone, { text: obs.text, category: obs.category, timestamp: Date.now() });
+        }
+        if (result.lastSideEffects.setPendingActivity) {
+          const act = result.lastSideEffects.setPendingActivity;
+          pendingActStore.set(phone, { command: act.command, data: act.data, timestamp: Date.now() });
+        }
+        if (result.lastSideEffects.setPendingFieldCity) {
+          pendingCityStore.set(phone, { fieldName: result.lastSideEffects.setPendingFieldCity.fieldName, timestamp: Date.now() });
+        }
+        if (result.lastSideEffects.setPendingPlotArea) {
+          const pa = result.lastSideEffects.setPendingPlotArea;
+          pendingPlotAreaStore.set(phone, { plotId: pa.plotId, plotName: pa.plotName, fieldName: pa.fieldName, timestamp: Date.now() });
+        }
+        if (result.lastSideEffects.setFieldDuplicate) {
+          const dup = result.lastSideEffects.setFieldDuplicate;
+          pendingStore.set(phone, {
+            type: 'expense', data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
+            fieldId: null, fieldName: null, plotId: null, plotName: null,
+            timestamp: Date.now(), _fieldDuplicate: dup,
+          } as any);
+        }
+      }
+      if (result.lastInteractive) {
+        items.push({ type: 'interactive', interactive: result.lastInteractive } as BotResponseItem);
+      } else if (result.lastSuggestionKey) {
+        const suggestion = getSuggestions(result.lastSuggestionKey);
+        if (suggestion && suggestion.type === 'buttons') {
+          items.push({ type: 'interactive', interactive: { type: 'buttons', body: suggestion.body, buttons: suggestion.buttons } } as BotResponseItem);
+        }
+      }
+      conversationLogger.log(userId, phone, text, result.messages[0] ?? null, 'command', 'compound', null, null, aiUsed, Date.now() - startTime, !!result.lastInteractive, confidence, toolCallsData, agentMode).catch(() => {});
+      return items;
+    }
   }
 
   // Log intent for analytics

@@ -155,6 +155,7 @@ export class AgronomyHandler {
         plotId,
         plotCropId: cropRow.id,
         eventType: 'planting',
+        eventDate: cmd.eventDate as Date | null,
         crop,
       });
 
@@ -182,6 +183,7 @@ export class AgronomyHandler {
         plotId,
         plotCropId: closed.id,
         eventType: 'harvest',
+        eventDate: cmd.eventDate as Date | null,
         crop,
       });
 
@@ -601,6 +603,7 @@ export class AgronomyHandler {
           plotId: plotResult.plotId,
           plotCropId: cropRow.id,
           eventType: 'planting',
+          eventDate: cmd.eventDate as Date | null,
           crop,
         });
 
@@ -652,6 +655,7 @@ export class AgronomyHandler {
           plotId: plotResult.plotId,
           plotCropId: closed.id,
           eventType: 'harvest',
+          eventDate: cmd.eventDate as Date | null,
           crop,
         });
 
@@ -1107,6 +1111,7 @@ export class AgronomyHandler {
           text: obsText,
           category,
           source: 'text',
+          observationDate: cmd.eventDate as string | null,
         });
 
         // Typed rejection handling

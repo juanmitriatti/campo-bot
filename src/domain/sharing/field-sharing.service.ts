@@ -215,11 +215,6 @@ export class FieldSharingService {
       return { success: false, message: 'Solo el dueño del campo puede compartirlo.' };
     }
 
-    const plan = await this.planRepo.getUserPlan(ownerUserId);
-    if (!plan || plan.name !== 'enterprise') {
-      return { success: false, message: 'La función de campos compartidos está disponible solo en el plan Enterprise.' };
-    }
-
     // Generate code with collision retry (up to 5 attempts)
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = this.generateCode();

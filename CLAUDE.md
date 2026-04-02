@@ -41,10 +41,21 @@ Kill switches:
 
 #### AI Agent (tool_use) — new primary path
 - **`agent.service.ts`** — Calls Claude with `tool_use` + `tool_choice: auto`; returns `AgentResult` with tool calls array + optional conversational text. Uses plan-based rate limiting, conversation history, few-shot examples, and configurable timeout.
-- **`tool-definitions.ts`** — 25 Anthropic tool definitions grouped by domain: Financial (2), Activities (6), Observations (2), Reports (5), Field/Plot Mgmt (5), Sharing (4), System (1). Each tool has typed `input_schema` with enum validation for categories.
-- **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules and user context. Tool definitions carry the schema, so the prompt only needs rules. Includes explicit rules that agro activities (fumigué, sembré, coseché, etc.) are ONLY activities and NEVER expenses unless the user mentions an explicit amount.
-- **`agent-response-mapper.ts`** — Converts `AgentResult` → `ParseResult[]` for backward compatibility. Maps `log_expense`/`log_income` tool calls to expense/income ParseResults; everything else to command ParseResults. No-tool conversational responses become `_conversationalResponse` on ParseResult. **Fix**: filters spurious `log_expense`/`log_income` tool calls when the agent also returns an agro activity tool (sow_crop, harvest_crop, log_spraying, etc.), preventing Haiku from misclassifying activity messages as expenses.
+- **`tool-definitions.ts`** — 25 Anthropic tool definitions grouped by domain: Financial (2), Activities (6), Observations (2), Reports (5), Field/Plot Mgmt (5), Sharing (4), System (1). Each tool has typed `input_schema` with enum validation for categories. All registration tools (9 of 25) include an optional `event_date` param (YYYY-MM-DD) for user-mentioned dates.
+- **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules, user context, and dynamic today's date for date extraction. Tool definitions carry the schema, so the prompt only needs rules. Includes explicit rules that agro activities (fumigué, sembré, coseché, etc.) are ONLY activities and NEVER expenses unless the user mentions an explicit amount.
+- **`agent-response-mapper.ts`** — Converts `AgentResult` → `ParseResult[]` for backward compatibility. Maps `log_expense`/`log_income` tool calls to expense/income ParseResults (including `expenseDate`/`incomeDate` from `event_date`); everything else to command ParseResults (including `eventDate`). No-tool conversational responses become `_conversationalResponse` on ParseResult. **Smart agro filter**: when agent returns `log_expense`/`log_income` alongside an agro activity tool (sow_crop, harvest_crop, etc.), only drops them if amount=0 (Haiku hallucination). Keeps legitimate expenses with real amounts (e.g., "sembré soja y la semilla costó 100mil").
 - **`few-shot.service.ts`** — `formatAsToolUseMessages()` converts training examples to tool_use triplets (user → assistant[tool_use] → user[tool_result]).
+
+#### Compound Action Execution
+When the AI Agent returns multiple tool calls for a single message (e.g., "Sembré soja en A1 y la semilla costó 100mil"), all tool calls execute sequentially via `CompoundExecutor`:
+- `IntentClassifier` attaches `_compoundResults` metadata when `parseResults.length > 1`
+- All 3 controllers (WhatsApp, Telegram, test-bot) check for `_compoundResults` before normal routing
+- Handles `command`, `expense`, and `income` type ParseResults (expenses/incomes via `FinancialHandler`, commands via `DomainRouter`)
+- In compound context, `confirm_before_save` is forced to `false` so expenses/incomes save directly
+- If any step returns `startFlow` sideEffect, execution stops there (flow needs user input)
+- Errors in one step don't block subsequent steps
+- Combined messages from all steps are sent as a single response
+- No extra AI tokens used — agent already returned all tool calls in one API call; compound executor just processes them all
 
 #### JSON extraction — legacy fallback (when AGENT_ENABLED=false)
 - **`intent-extractor.ts`** — Calls Claude Haiku with conversation history + dynamic prompt + assistant prefill, returns ParseResult
@@ -76,7 +87,8 @@ Kill switches:
 - **`auth/`** — Auth system (JWT, bcrypt, refresh tokens) + ObservationService (dashboard CRUD for observations, activities, expenses, incomes with edit support)
 - **`sharing/`** — FieldSharingService (invite-code flow: `createInvite` → 6-char code, `acceptInvite` → redeem, `removeMemberByIdentifier` by name/phone), SharingHandler
 - **`plots/`** — PlotDiscoveryService (lookup-only, never auto-creates), PlotRepository
-- **`billing/`** — Plan-based AI daily limits
+- **`compound-executor.ts`** — Sequential executor for compound actions (multiple tool calls from a single message). Handles command/expense/income types via DomainRouter + FinancialHandler, forces `confirm_before_save=false` for expenses/incomes, stops at startFlow sideEffects, skips errors gracefully. Used by all 3 controllers when agent returns >1 tool call. 11 tests.
+- **`billing/`** — Plan-based AI daily limits + FeatureGate (maps commands → feature keys, checks plan access)
 
 ### Parser (`src/utils/parser.js`)
 
@@ -84,7 +96,7 @@ Handles Spanish text normalization, written numbers ("quinientos mil" → 500000
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-039_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province` columns), `fields` (includes `province`), `plots`, `expenses`, `incomes`, `budgets`, `rainfall`, `domain_events` (activities), `agro_observations`, `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking).
+PostgreSQL with migrations in `src/migrations/001-041_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`), `incomes` (includes `income_date`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`), `agro_observations` (includes `observation_date`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking).
 
 ### Frontend (`frontend/`)
 
@@ -164,12 +176,12 @@ Telegram support was added as a second messaging channel alongside WhatsApp. All
 Invite-code based field sharing that works across WhatsApp and Telegram.
 
 - **Flow**: Owner says "compartir campo X" → bot generates 6-char code (7-day expiry) → owner shares code externally → invitee says "unirme ABC123" → gets access
-- **`src/domain/sharing/field-sharing.service.ts`** — Core: `createInvite()` (owner + enterprise check, generates code), `acceptInvite()` (validates code/expiry/usage, adds membership in transaction), `removeMemberByIdentifier()` (by name or phone), `getAccessibleFieldIds()`, `listMembers()`, `isOwner()`
+- **`src/domain/sharing/field-sharing.service.ts`** — Core: `createInvite()` (owner check, generates code), `acceptInvite()` (validates code/expiry/usage, adds membership in transaction), `removeMemberByIdentifier()` (by name or phone), `getAccessibleFieldIds()`, `listMembers()`, `isOwner()`
 - **`src/domain/sharing/sharing.handler.ts`** — Handles `share_field`, `accept_invite`, `list_field_members`, `remove_field_member`
 - **Migration 037** — `field_members` table (field_id, user_id, role, invited_by); backfills existing fields as 'owner'
 - **Migration 038** — `field_invites` table (code VARCHAR(6) UNIQUE, created_by, used_by, used_at, expires_at)
 - All field/plot queries use `field_members` for access control (`accessibleFieldsSql()` helper in `expenses.js`)
-- Enterprise plan required to generate invite codes; accepting is free (no feature gate)
+- Enterprise plan required to generate invite codes (gated via `sharing` feature in FeatureGate); `accept_invite` is ungated (anyone can redeem)
 - 4 AI tools: `share_field` (generates code), `accept_invite` (code), `list_field_members`, `remove_field_member` (member name or phone)
 
 ## Multi-Channel Alerts
