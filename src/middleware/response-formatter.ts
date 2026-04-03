@@ -94,10 +94,9 @@ export interface AgroReportResponseData {
   observationCount: number;
   plotSummaries: PlotObservationSummary[];
   recentActivities: RecentActivity[];
+  desde?: string;
+  hasta?: string;
 }
-
-const MAX_PLOTS = 5;
-const MAX_ACTIVITIES = 5;
 
 export function formatAgroReportResponse(data: AgroReportResponseData): string {
   const lines: string[] = [];
@@ -105,15 +104,17 @@ export function formatAgroReportResponse(data: AgroReportResponseData): string {
   const titleScope = data.filterPlotName
     ? `${data.fieldName} > ${data.filterPlotName}`
     : data.fieldName;
-  lines.push(`🌱 *Reporte agronómico — ${titleScope}* (semana ${data.weekNumber})`);
+  const periodLabel = data.desde && data.hasta
+    ? `${data.desde} a ${data.hasta}`
+    : `semana ${data.weekNumber}`;
+  lines.push(`🌱 *Reporte agronómico — ${titleScope}* (${periodLabel})`);
   lines.push('');
   lines.push(`📊 Observaciones: ${data.observationCount}`);
 
-  const plots = data.plotSummaries.slice(0, MAX_PLOTS);
-  if (plots.length > 0) {
+  if (data.plotSummaries.length > 0) {
     lines.push('');
     lines.push('*Detalle por lote*');
-    for (const plot of plots) {
+    for (const plot of data.plotSummaries) {
       lines.push('');
       lines.push(`🌱 ${plot.plotName}`);
       for (const obs of plot.observations) {
@@ -122,11 +123,10 @@ export function formatAgroReportResponse(data: AgroReportResponseData): string {
     }
   }
 
-  const activities = data.recentActivities.slice(0, MAX_ACTIVITIES);
-  if (activities.length > 0) {
+  if (data.recentActivities.length > 0) {
     lines.push('');
-    lines.push('*Actividad reciente*');
-    for (const act of activities) {
+    lines.push(`*Actividades* (${data.recentActivities.length})`);
+    for (const act of data.recentActivities) {
       const detail = act.detail ? `: ${act.detail}` : '';
       lines.push(`• ${act.label}${detail} (${act.plotName})`);
     }

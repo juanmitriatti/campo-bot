@@ -237,13 +237,14 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'generate_agro_report',
-    description: 'Generar reporte agronómico semanal con observaciones y actividades. "reporte agro", "reporte agronómico del lote X", "estado del lote X", "cómo va el lote X", "novedades del campo", "resumen agronómico", "informe del lote".',
+    description: 'Generar reporte agronómico con observaciones y actividades. "reporte agro", "reporte agronómico del lote X", "estado del lote X", "cómo va el lote X", "novedades del campo", "resumen agronómico", "informe del lote". Soporta rango de fechas.',
     input_schema: {
       type: 'object',
       properties: {
         field: FIELD_PROP,
         plot: PLOT_PROP,
-        date_range: { type: 'string', description: 'Rango de fechas.' },
+        desde: { type: 'string', description: 'Fecha inicio YYYY-MM-DD, si mencionado.' },
+        hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD, si mencionado.' },
       },
       required: [],
     },

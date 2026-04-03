@@ -108,7 +108,7 @@ describe('formatAgroReportResponse', () => {
     expect(result).toContain('\u2022 pulg\u00f3n');
     expect(result).toContain('\u2022 chinches');
     expect(result).toContain('\ud83c\udf31 Lote 5');
-    expect(result).toContain('*Actividad reciente*');
+    expect(result).toContain('*Actividades*');
     expect(result).toContain('Observaci\u00f3n: pulg\u00f3n (Lote 3)');
   });
 
@@ -124,7 +124,7 @@ describe('formatAgroReportResponse', () => {
     });
 
     expect(result).not.toContain('*Detalle por lote*');
-    expect(result).toContain('*Actividad reciente*');
+    expect(result).toContain('*Actividades*');
   });
 
   it('hides "Actividad reciente" when activities is empty', () => {
@@ -139,6 +139,6 @@ describe('formatAgroReportResponse', () => {
     });
 
     expect(result).toContain('*Detalle por lote*');
-    expect(result).not.toContain('*Actividad reciente*');
+    expect(result).not.toContain('*Actividades*');
   });
 });

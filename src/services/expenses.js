@@ -1477,6 +1477,36 @@ export async function getDomainEventsByUser(userId, limit = 20) {
   return result.rows;
 }
 
+export async function getDomainEventsByFieldDateRange(fieldId, desde, hasta) {
+  const result = await pool.query(
+    `SELECT de.*, p.name as plot_name, f.name as field_name
+     FROM domain_events de
+     LEFT JOIN plots p ON de.plot_id = p.id
+     LEFT JOIN fields f ON p.field_id = f.id
+     WHERE p.field_id = $1
+       AND de.event_date >= $2::date
+       AND de.event_date <= $3::date
+     ORDER BY de.event_date DESC, de.created_at DESC`,
+    [fieldId, desde, hasta]
+  );
+  return result.rows;
+}
+
+export async function getDomainEventsByPlotDateRange(plotId, desde, hasta) {
+  const result = await pool.query(
+    `SELECT de.*, p.name as plot_name, f.name as field_name
+     FROM domain_events de
+     LEFT JOIN plots p ON de.plot_id = p.id
+     LEFT JOIN fields f ON p.field_id = f.id
+     WHERE de.plot_id = $1
+       AND de.event_date >= $2::date
+       AND de.event_date <= $3::date
+     ORDER BY de.event_date DESC, de.created_at DESC`,
+    [plotId, desde, hasta]
+  );
+  return result.rows;
+}
+
 export async function getLastDomainEvent(userId) {
   const result = await pool.query(
     `SELECT de.*, p.name as plot_name, f.name as field_name

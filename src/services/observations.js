@@ -208,6 +208,43 @@ export async function getCurrentWeekObservationsByPlot(plotId) {
 }
 
 /**
+ * Get observations for a field within a date range.
+ * Uses observation_date (falls back to created_at via COALESCE).
+ */
+export async function getObservationsByDateRange(fieldId, desde, hasta) {
+  const result = await pool.query(
+    `SELECT o.*, u.name AS user_name, p.name AS plot_name
+     FROM agro_observations o
+     LEFT JOIN users u ON o.user_id = u.id
+     LEFT JOIN plots p ON o.plot_id = p.id
+     WHERE (o.field_id = $1 OR (o.plot_id IS NOT NULL AND p.field_id = $1))
+       AND COALESCE(o.observation_date, o.created_at::date) >= $2::date
+       AND COALESCE(o.observation_date, o.created_at::date) <= $3::date
+     ORDER BY COALESCE(o.observation_date, o.created_at::date) ASC, o.created_at ASC`,
+    [fieldId, desde, hasta]
+  );
+  return result.rows;
+}
+
+/**
+ * Get observations for a specific plot within a date range.
+ */
+export async function getObservationsByDateRangeAndPlot(plotId, desde, hasta) {
+  const result = await pool.query(
+    `SELECT o.*, u.name AS user_name, p.name AS plot_name
+     FROM agro_observations o
+     LEFT JOIN users u ON o.user_id = u.id
+     LEFT JOIN plots p ON o.plot_id = p.id
+     WHERE o.plot_id = $1
+       AND COALESCE(o.observation_date, o.created_at::date) >= $2::date
+       AND COALESCE(o.observation_date, o.created_at::date) <= $3::date
+     ORDER BY COALESCE(o.observation_date, o.created_at::date) ASC, o.created_at ASC`,
+    [plotId, desde, hasta]
+  );
+  return result.rows;
+}
+
+/**
  * Get observation count for a field in the current week.
  * Includes observations on the field itself and on any plot belonging to the field.
  */

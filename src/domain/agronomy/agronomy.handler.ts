@@ -11,7 +11,7 @@ import {
   checkRainAlert,
 } from '../../services/weather.js';
 import { generateWeeklyReport } from '../../services/agro-report.js';
-import { saveObservation, SAVE_REJECTED_FINANCIAL, SAVE_REJECTED_DUPLICATE, SAVE_REJECTED_NO_PLOT, detectObservationCategory, getCurrentWeekObservations, getCurrentWeekObservationsByPlot, deduplicateObservations } from '../../services/observations.js';
+import { saveObservation, SAVE_REJECTED_FINANCIAL, SAVE_REJECTED_DUPLICATE, SAVE_REJECTED_NO_PLOT, detectObservationCategory, getCurrentWeekObservations, getCurrentWeekObservationsByPlot, getObservationsByDateRange, getObservationsByDateRangeAndPlot, deduplicateObservations } from '../../services/observations.js';
 import { formatObservationResponse, formatAgroReportResponse } from '../../middleware/response-formatter.js';
 import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
 import { formatHistoryResponse } from './plot-query.service.js';
@@ -937,6 +937,9 @@ export class AgronomyHandler {
       case 'generate_agro_report': {
         const fieldName = cmd.fieldName as string | null;
         const plotName = cmd.plotName as string | null;
+        const desde = cmd.desde as string | null;
+        const hasta = cmd.hasta as string | null;
+        const hasDateRange = !!(desde && hasta);
 
         if (!fieldName && !plotName) {
           return { messages: ['Indicá el campo o lote. Ejemplo:\n📋 *reporte agronómico campo norte*\n📋 *reporte agronómico lote 1*'] };
@@ -969,28 +972,43 @@ export class AgronomyHandler {
           return { messages: [`No encontré el campo "${fieldName || plotName}". Revisá el nombre o escribí *mis campos* para ver tus campos.`] };
         }
         try {
-          // Fetch raw activities first — used by both PDF and text summary
-          const rawActivities = filterPlotId
-            ? await this.repo.getDomainEventsByPlot(filterPlotId, 5)
-            : await (async () => {
-                const fieldPlots = await this.repo.getPlotsByField(field!.id);
-                const plotIds = new Set(fieldPlots.map(p => p.id));
-                const allEvents = await this.repo.getDomainEventsByUser(userId, 10);
-                return allEvents
-                  .filter(ev => ev.plot_id && plotIds.has(ev.plot_id))
-                  .slice(0, 5);
-              })();
+          // Fetch raw activities — date-range or current week (no cap)
+          let rawActivities;
+          if (hasDateRange) {
+            rawActivities = filterPlotId
+              ? await this.repo.getDomainEventsByPlotDateRange(filterPlotId, desde!, hasta!)
+              : await this.repo.getDomainEventsByFieldDateRange(field.id, desde!, hasta!);
+          } else {
+            rawActivities = filterPlotId
+              ? await this.repo.getDomainEventsByPlot(filterPlotId)
+              : await (async () => {
+                  const fieldPlots = await this.repo.getPlotsByField(field!.id);
+                  const plotIds = new Set(fieldPlots.map(p => p.id));
+                  const allEvents = await this.repo.getDomainEventsByUser(userId);
+                  return allEvents.filter(ev => ev.plot_id && plotIds.has(ev.plot_id));
+                })();
+          }
 
-          const report = await generateWeeklyReport(userId, field.id, filterPlotId, { activities: rawActivities });
+          const report = await generateWeeklyReport(userId, field.id, filterPlotId, {
+            activities: rawActivities,
+            desde: desde || undefined,
+            hasta: hasta || undefined,
+          });
           const pdfBuffer = fs.readFileSync(report.pdfPath);
 
           // Build per-plot observation breakdown
-          // When lote is specified, query ONLY that plot (strict filter, no field-level data)
-          const rawObservations = filterPlotId
-            ? await getCurrentWeekObservationsByPlot(filterPlotId)
-            : await getCurrentWeekObservations(field.id);
+          let rawObservations;
+          if (hasDateRange) {
+            rawObservations = filterPlotId
+              ? await getObservationsByDateRangeAndPlot(filterPlotId, desde!, hasta!)
+              : await getObservationsByDateRange(field.id, desde!, hasta!);
+          } else {
+            rawObservations = filterPlotId
+              ? await getCurrentWeekObservationsByPlot(filterPlotId)
+              : await getCurrentWeekObservations(field.id);
+          }
 
-          // Deduplicate observations before rendering (removes normalized-text duplicates)
+          // Deduplicate observations before rendering
           const observations = deduplicateObservations(rawObservations);
 
           const plotMap = new Map<string, string[]>();
@@ -1001,14 +1019,13 @@ export class AgronomyHandler {
           }
           const plotSummaries = [...plotMap.entries()].map(([pName, obs]) => ({ plotName: pName, observations: obs }));
 
-          // Format activities for text summary
+          // Format activities for text summary (no cap)
           const recentActivities = rawActivities.map(ev => ({
             label: getActivityLabel(ev.event_type).label,
             detail: ev.product || ev.crop || '',
             plotName: ev.plot_name || 'General',
           }));
 
-          // Use filtered+deduped count, not the full-field count from PDF generator
           const titleScope = filterPlotName
             ? `${field.name} > ${filterPlotName}`
             : field.name;
@@ -1019,15 +1036,20 @@ export class AgronomyHandler {
             observationCount: observations.length,
             plotSummaries,
             recentActivities,
+            desde: desde || undefined,
+            hasta: hasta || undefined,
           });
 
+          const captionPeriod = hasDateRange
+            ? `${desde} a ${hasta}`
+            : `Semana ${report.weekNumber}`;
           return {
             messages: [richMessage],
             attachment: {
               buffer: pdfBuffer,
               filename: report.filename,
               mime: 'application/pdf',
-              caption: `Reporte Agronómico — ${titleScope} — Semana ${report.weekNumber}`,
+              caption: `Reporte Agronómico — ${titleScope} — ${captionPeriod}`,
             },
             suggestionKey: 'report_shown',
           };

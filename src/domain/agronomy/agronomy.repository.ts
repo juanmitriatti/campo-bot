@@ -17,6 +17,8 @@ import {
   saveDomainEvent as _saveDomainEvent,
   getDomainEventsByPlot as _getDomainEventsByPlot,
   getDomainEventsByUser as _getDomainEventsByUser,
+  getDomainEventsByFieldDateRange as _getDomainEventsByFieldDateRange,
+  getDomainEventsByPlotDateRange as _getDomainEventsByPlotDateRange,
   getLastDomainEvent as _getLastDomainEvent,
   deleteDomainEvent as _deleteDomainEvent,
   queryPlotHistory as _queryPlotHistory,
@@ -181,6 +183,16 @@ export class AgronomyRepository {
   async getDomainEventsByUser(userId: UserId, limit = 20): Promise<Array<DomainEventRow & { plot_name: string | null; field_name: string | null }>> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return _getDomainEventsByUser(userId, limit) as Promise<any>;
+  }
+
+  async getDomainEventsByFieldDateRange(fieldId: number, desde: string, hasta: string): Promise<Array<DomainEventRow & { plot_name: string | null; field_name: string | null }>> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return _getDomainEventsByFieldDateRange(fieldId, desde, hasta) as Promise<any>;
+  }
+
+  async getDomainEventsByPlotDateRange(plotId: number, desde: string, hasta: string): Promise<Array<DomainEventRow & { plot_name: string | null; field_name: string | null }>> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return _getDomainEventsByPlotDateRange(plotId, desde, hasta) as Promise<any>;
   }
 
   async getLastDomainEvent(userId: UserId): Promise<(DomainEventRow & { plot_name: string | null; field_name: string | null }) | null> {

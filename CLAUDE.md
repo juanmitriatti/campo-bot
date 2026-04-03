@@ -83,7 +83,7 @@ When the AI Agent returns multiple tool calls for a single message (e.g., "Sembr
 
 ### Domain Layer (`src/domain/`)
 
-- **`agronomy/`** — AgronomyHandler (activities, observations, weather, rainfall, agro reports, plot history queries); `normalizeActivityFilter()` maps AI filter strings to DB event_type values
+- **`agronomy/`** — AgronomyHandler (activities, observations, weather, rainfall, agro reports, plot history queries); `normalizeActivityFilter()` maps AI filter strings to DB event_type values. `generate_agro_report` supports date range (`desde`/`hasta`) and defaults to current week; shows all observations and activities (no caps)
 - **`financial/`** — FinancialHandler (expenses, incomes, budgets, unified `financial_report` dispatching, inline hectares on plot creation, activity labels with emojis in reports, auto-split comma-separated plot names from `add_plot` → `add_plots_batch`), FinancialService, FinancialRepository
 - **`auth/`** — Auth system (JWT, bcrypt, refresh tokens) + ObservationService (dashboard CRUD for observations, activities, expenses, incomes with edit support)
 - **`sharing/`** — FieldSharingService (invite-code flow: `createInvite` → 6-char code, `acceptInvite` → redeem, `removeMemberByIdentifier` by name/phone), SharingHandler

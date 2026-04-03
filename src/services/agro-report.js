@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { pool } from "../config/db.js";
 import { getPlotsByField, getActiveCrop } from "./expenses.js";
-import { getWeekObservations, getWeekObservationsByPlot, getWeekNumber, deduplicateObservations, getNowArgentina } from "./observations.js";
+import { getWeekObservations, getWeekObservationsByPlot, getObservationsByDateRange, getObservationsByDateRangeAndPlot, getWeekNumber, deduplicateObservations, getNowArgentina } from "./observations.js";
 import { getSetting } from "./settings.service.js";
 import { logError } from "./error-logger.js";
 
@@ -31,9 +31,10 @@ const ACTIVITY_LABELS = {
 };
 
 /**
- * Generate a weekly agronomic PDF report for a field.
+ * Generate an agronomic PDF report for a field.
+ * Supports optional date range (desde/hasta) — defaults to current ISO week.
  */
-export async function generateWeeklyReport(userId, fieldId, filterPlotId = null, { activities = [] } = {}) {
+export async function generateWeeklyReport(userId, fieldId, filterPlotId = null, { activities = [], desde, hasta } = {}) {
   try {
   // 1. Fetch field info
   const fieldResult = await pool.query(`SELECT * FROM fields WHERE id = $1`, [fieldId]);
@@ -47,11 +48,19 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
   // 3. Get current ISO week (Argentina timezone)
   const now = getNowArgentina();
   const { weekNumber, year } = getWeekNumber(now);
+  const hasDateRange = !!(desde && hasta);
 
-  // 4. Fetch observations for this week (lote-scoped or field-scoped), deduplicated
-  const rawObservations = filterPlotId
-    ? await getWeekObservationsByPlot(filterPlotId, weekNumber, year)
-    : await getWeekObservations(fieldId, weekNumber, year);
+  // 4. Fetch observations (date-range or current week), deduplicated
+  let rawObservations;
+  if (hasDateRange) {
+    rawObservations = filterPlotId
+      ? await getObservationsByDateRangeAndPlot(filterPlotId, desde, hasta)
+      : await getObservationsByDateRange(fieldId, desde, hasta);
+  } else {
+    rawObservations = filterPlotId
+      ? await getWeekObservationsByPlot(filterPlotId, weekNumber, year)
+      : await getWeekObservations(fieldId, weekNumber, year);
+  }
   const observations = deduplicateObservations(rawObservations);
 
   // 5. Group by plot, separating field-level observations
@@ -89,7 +98,8 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
   const reportsDir = await getReportsDir();
   fs.mkdirSync(reportsDir, { recursive: true });
   const plotSuffix = filterPlotId ? `_P${filterPlotId}` : '';
-  const filename = `${userId}_${fieldId}${plotSuffix}_W${weekNumber}_${year}.pdf`;
+  const dateSuffix = hasDateRange ? `_${desde}_${hasta}` : `_W${weekNumber}_${year}`;
+  const filename = `${userId}_${fieldId}${plotSuffix}${dateSuffix}.pdf`;
   const pdfPath = path.join(reportsDir, filename);
   await generateReportPDF({
     field,
@@ -101,6 +111,8 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
     pdfPath,
     filterPlotName: filterPlotId ? (plotMap.get(filterPlotId)?.name || null) : null,
     activities,
+    desde: hasDateRange ? desde : null,
+    hasta: hasDateRange ? hasta : null,
   });
 
   // 7. Save report record
@@ -130,15 +142,16 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
 /**
  * Generate the PDF file using PDFKit.
  */
-function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldObservations, pdfPath, filterPlotName = null, activities = [] }) {
+function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldObservations, pdfPath, filterPlotName = null, activities = [], desde = null, hasta = null }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const stream = fs.createWriteStream(pdfPath);
     doc.pipe(stream);
 
     // --- Header ---
+    const title = desde && hasta ? 'Reporte Agronómico' : 'Reporte Agronómico Semanal';
     doc.fontSize(20).font('Helvetica-Bold')
-       .text('Reporte Agronómico Semanal', { align: 'center' });
+       .text(title, { align: 'center' });
     doc.moveDown(0.5);
 
     const scopeLabel = filterPlotName
@@ -147,7 +160,10 @@ function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldOb
     doc.fontSize(11).font('Helvetica')
        .text(`${scopeLabel}${field.city ? ` — ${field.city}` : ''}`, { align: 'center' });
     doc.text(`Agrónomo: ${agronomist}`, { align: 'center' });
-    doc.text(`Semana ${weekNumber} — ${year}`, { align: 'center' });
+    const periodLabel = desde && hasta
+      ? `${desde} a ${hasta}`
+      : `Semana ${weekNumber} — ${year}`;
+    doc.text(periodLabel, { align: 'center' });
     doc.text(`Generado: ${new Date().toLocaleDateString('es-AR')}`, { align: 'center' });
     doc.moveDown(1);
 
@@ -203,8 +219,11 @@ function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldOb
     }
 
     if (!hasContent) {
+      const emptyMsg = desde && hasta
+        ? 'No hay observaciones ni actividades registradas en el período seleccionado.'
+        : 'No hay observaciones ni actividades registradas para esta semana.';
       doc.fontSize(12).font('Helvetica')
-         .text('No hay observaciones ni actividades registradas para esta semana.', { align: 'center' });
+         .text(emptyMsg, { align: 'center' });
     }
 
     doc.end();
