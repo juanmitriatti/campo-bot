@@ -43,25 +43,11 @@ export class StockPurchaseService {
     if (!product || !quantity || !unit || !fieldId) return null;
 
     try {
-      // Resolve or auto-create warehouse for the field
-      const warehouse = await stockService.resolveWarehouse(userId, undefined, undefined);
-      if (!warehouse) return null;
-
-      // Check warehouse belongs to same field
+      // Find or auto-create warehouse for the expense's field
       const fieldWarehouses = await repo.getWarehousesByField(fieldId);
-      const match = fieldWarehouses[0]; // use first warehouse in field
-      if (!match) {
-        // Auto-create for this specific field
-        const newWh = await repo.createWarehouse(fieldId, 'Principal');
-        return {
-          expenseId,
-          product,
-          quantity,
-          unit,
-          fieldId,
-          warehouseId: newWh.id,
-          warehouseName: newWh.name,
-        };
+      let warehouse = fieldWarehouses[0];
+      if (!warehouse) {
+        warehouse = await repo.createWarehouse(fieldId, 'Principal');
       }
 
       return {
@@ -70,10 +56,11 @@ export class StockPurchaseService {
         quantity,
         unit,
         fieldId,
-        warehouseId: match.id,
-        warehouseName: match.name,
+        warehouseId: warehouse.id,
+        warehouseName: warehouse.name,
       };
-    } catch {
+    } catch (err) {
+      console.error('[stock-purchase] suggestStockEntry error:', err);
       return null;
     }
   }

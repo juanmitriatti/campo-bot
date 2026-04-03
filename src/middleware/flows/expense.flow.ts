@@ -172,15 +172,12 @@ export const expenseFlow: FlowDefinition = {
           userId, saved.id, expenseData.product, expenseData.quantity, expenseData.unit, fieldId,
         );
         if (suggestion) {
-          const messages = [msg];
-          messages.push(
-            `\n📦 ¿Querés cargar *${expenseData.quantity}${expenseData.unit} de ${expenseData.product}* al stock del Depósito ${suggestion.warehouseName}?`
-          );
+          msg += `\n\n📦 ¿Querés cargar *${expenseData.quantity}${expenseData.unit} de ${expenseData.product}* al stock del Depósito ${suggestion.warehouseName}?`;
           return {
-            messages,
+            messages: [],
             interactive: {
               type: 'buttons' as const,
-              body: messages.join('\n'),
+              body: msg,
               buttons: [
                 { id: `stock_entry_yes_${saved.id}`, title: 'Sí, cargar' },
                 { id: `stock_entry_no_${saved.id}`, title: 'No' },

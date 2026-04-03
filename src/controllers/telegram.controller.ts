@@ -644,7 +644,7 @@ async function handleInteractiveReply(
       try {
         const pending = pendingStockEntryStore.get(phone);
         if (pending) {
-          const { StockPurchaseService } = await import('../stock/stock-purchase.service.js');
+          const { StockPurchaseService } = await import('../domain/stock/stock-purchase.service.js');
           const purchaseService = new StockPurchaseService();
           const { item } = await purchaseService.applyStockEntry(userId, pending as any);
           pendingStockEntryStore.delete(phone);
@@ -666,7 +666,7 @@ async function handleInteractiveReply(
       try {
         const pending = pendingStockDeductionStore.get(phone);
         if (pending) {
-          const { StockDeductionService } = await import('../stock/stock-deduction.service.js');
+          const { StockDeductionService } = await import('../domain/stock/stock-deduction.service.js');
           const deductionService = new StockDeductionService();
           const { item } = await deductionService.applyDeduction(userId, pending as any);
           pendingStockDeductionStore.delete(phone);
@@ -688,7 +688,7 @@ async function handleInteractiveReply(
       try {
         const pending = pendingStockEntryStore.get(phone);
         if (pending && pending.type === 'grain') {
-          const { StockPurchaseService } = await import('../stock/stock-purchase.service.js');
+          const { StockPurchaseService } = await import('../domain/stock/stock-purchase.service.js');
           const svc = new StockPurchaseService();
           const { item, movement } = await svc.applyStockEntry(userId, pending as any);
           pendingStockEntryStore.delete(phone);
@@ -710,7 +710,7 @@ async function handleInteractiveReply(
       try {
         const pending = pendingStockDeductionStore.get(phone);
         if (pending) {
-          const { StockService } = await import('../stock/stock.service.js');
+          const { StockService } = await import('../domain/stock/stock.service.js');
           const svc = new StockService();
           const { item } = await svc.removeStock(userId, pending.product as string, pending.totalQuantity as number, pending.unit as string, {
             reason: 'Venta de grano',
