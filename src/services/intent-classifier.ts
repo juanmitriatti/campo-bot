@@ -41,7 +41,7 @@ const TRIVIAL_COMMANDS = new Set([
   'export_csv',
   'delete_last', 'delete_last_income', 'delete_specific', 'edit_specific', 'edit_last',
   'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',
-  'generate_agro_report', 'query_plot_history',
+  'query_plot_history',
 ]);
 
 /**
