@@ -456,6 +456,7 @@ export interface HandlerResponse {
     setPendingObservation?: { text: string; category: string };
     setPendingFieldCity?: { fieldName: string };
     setPendingPlotArea?: { plotId: number; plotName: string; fieldName: string };
+    setPendingPlotAreaQueue?: Array<{ plotId: number; plotName: string; fieldName: string }>;
     setFieldDuplicate?: { name: string; city: string | null };
     setPendingActivity?: { command: string; data: Record<string, unknown> };
     setPendingStockEntry?: {

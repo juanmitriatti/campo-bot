@@ -19,6 +19,7 @@ import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
 import { handlePendingCity } from '../middleware/pending-field-city-handler.js';
+import { handlePendingPlotArea, storePlotAreaSideEffects } from '../middleware/pending-plot-area-handler.js';
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
@@ -490,6 +491,10 @@ router.post('/', async (req: Request, res: Response) => {
                 messages: [`\ud83d\udccd Lote *${plot.name}* creado en campo *${field.name}*`],
                 suggestionKey: 'plot_created',
               };
+              const plotAreaPrompt = storePlotAreaSideEffects(phone, pendingPlotAreaStore, {
+                setPendingPlotArea: { plotId: plot.id, plotName: plot.name, fieldName: field.name },
+              });
+              if (plotAreaPrompt) response.messages.push(plotAreaPrompt);
               await sendResponse(phone, response);
               conversationLogger.log(userId, phone, `[create_plot:${plotName}:${fieldName}]`, response.messages[0], 'command', 'add_plot', null, null, false, Date.now() - startTime, true).catch(() => {});
             } else {
@@ -890,24 +895,13 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // --- Check pending plot area assignment ---
-    const pendingArea = pendingPlotAreaStore.get(phone);
-    if (pendingArea) {
-      if (isCancelIntent(text)) {
-        pendingPlotAreaStore.clear(phone);
-        await sendMessage(phone, '👍 Podés asignar las hectáreas después.');
-        res.sendStatus(200);
-        return;
+    const plotAreaResult = await handlePendingPlotArea(text, phone, pendingPlotAreaStore, financialService);
+    if (plotAreaResult.handled) {
+      for (const msg of plotAreaResult.messages) {
+        await sendMessage(phone, msg);
       }
-      const hectares = parseFloat(text.replace(/,/g, '.').replace(/\s*ha\s*/i, '').trim());
-      if (!isNaN(hectares) && hectares > 0 && hectares < 100000) {
-        await financialService.setPlotArea(pendingArea.plotId, hectares);
-        pendingPlotAreaStore.clear(phone);
-        await sendMessage(phone, `📍 Lote *${pendingArea.plotName}*: superficie actualizada a *${hectares} ha*`);
-        res.sendStatus(200);
-        return;
-      }
-      // Not a valid number — clear pending and fall through to normal processing
-      pendingPlotAreaStore.clear(phone);
+      res.sendStatus(200);
+      return;
     }
 
     // --- Check pending observation (plot disambiguation follow-up) ---
@@ -1068,10 +1062,8 @@ router.post('/', async (req: Request, res: Response) => {
             if (result.lastSideEffects.setPendingFieldCity) {
               pendingCityStore.set(phone, { fieldName: result.lastSideEffects.setPendingFieldCity.fieldName, timestamp: Date.now() });
             }
-            if (result.lastSideEffects.setPendingPlotArea) {
-              const pa = result.lastSideEffects.setPendingPlotArea;
-              pendingPlotAreaStore.set(phone, { plotId: pa.plotId, plotName: pa.plotName, fieldName: pa.fieldName, timestamp: Date.now() });
-            }
+            const plotAreaPrompt = storePlotAreaSideEffects(phone, pendingPlotAreaStore, result.lastSideEffects);
+            if (plotAreaPrompt) combined.messages.push(plotAreaPrompt);
             if (result.lastSideEffects.setFieldDuplicate) {
               const dup = result.lastSideEffects.setFieldDuplicate;
               pendingStore.set(phone, {
@@ -1312,14 +1304,9 @@ router.post('/', async (req: Request, res: Response) => {
             timestamp: Date.now(),
           });
         }
-        // Store pending plot area for next-message assignment
-        if (response.sideEffects?.setPendingPlotArea) {
-          const pa = response.sideEffects.setPendingPlotArea;
-          pendingPlotAreaStore.set(phone, {
-            plotId: pa.plotId, plotName: pa.plotName, fieldName: pa.fieldName,
-            timestamp: Date.now(),
-          });
-        }
+        // Store pending plot area (single or queue)
+        const plotAreaPromptCmd = storePlotAreaSideEffects(phone, pendingPlotAreaStore, response.sideEffects);
+        if (plotAreaPromptCmd) response.messages.push(plotAreaPromptCmd);
         // Store pending field duplicate data for resolution buttons
         if (response.sideEffects?.setFieldDuplicate) {
           const dup = response.sideEffects.setFieldDuplicate;

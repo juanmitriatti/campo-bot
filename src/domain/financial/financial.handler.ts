@@ -1203,7 +1203,7 @@ export class FinancialHandler {
                 await this.service.setPlotArea(plot.id, cmd.hectares as number);
                 messages.push(`📍 Lote *${cmd.fieldName}* (${cmd.hectares} ha) creado en campo *${fields[0].name}*`);
               } else {
-                messages.push(`📍 Lote *${cmd.fieldName}* creado en campo *${fields[0].name}*\n📐 ¿Cuántas hectáreas tiene? (podés decirme después)`);
+                messages.push(`📍 Lote *${cmd.fieldName}* creado en campo *${fields[0].name}*`);
                 loteSideEffects.setPendingPlotArea = { plotId: plot.id, plotName: plot.name, fieldName: fields[0].name };
               }
               if (plotsBefore.length === 0) {
@@ -1489,7 +1489,7 @@ export class FinancialHandler {
           };
         }
         const plotsBeforeBatch = await this.service.findAllUserPlots(userId);
-        const created: string[] = [];
+        const created: Array<{ name: string; id: number }> = [];
         const existing: string[] = [];
         const existingPlots = await this.service.getPlotsByField(targetField.id);
         for (const name of plotNames) {
@@ -1497,14 +1497,13 @@ export class FinancialHandler {
           if (already) {
             existing.push(name);
           } else {
-            await this.service.getOrCreatePlot(targetField.id, name);
-            created.push(name);
+            const plot = await this.service.getOrCreatePlot(targetField.id, name);
+            created.push({ name: plot.name, id: plot.id });
           }
         }
         let msg = '';
         if (created.length > 0) {
-          msg += `📍 Lotes creados en campo *${targetField.name}*:\n${created.map(n => `  \u2022 *${n}*`).join('\n')}`;
-          msg += `\n\n📐 ¿Cuántas hectáreas tiene cada lote? Podés decirme: "${created[0]} tiene 120 ha"`;
+          msg += `📍 Lotes creados en campo *${targetField.name}*:\n${created.map(c => `  \u2022 *${c.name}*`).join('\n')}`;
         }
         if (existing.length > 0) {
           if (created.length > 0) msg += '\n\n';
@@ -1515,7 +1514,14 @@ export class FinancialHandler {
           const welcomeMsg = await getSetting('ONBOARDING_FIRST_PLOT_MESSAGE');
           if (welcomeMsg) batchMessages.push(welcomeMsg);
         }
-        return { messages: batchMessages, suggestionKey: 'plot_created' };
+        const batchSideEffects: HandlerResponse['sideEffects'] = {};
+        if (created.length > 0) {
+          const now = Date.now();
+          batchSideEffects.setPendingPlotAreaQueue = created.map(c => ({
+            plotId: c.id, plotName: c.name, fieldName: targetField.name,
+          }));
+        }
+        return { messages: batchMessages, suggestionKey: 'plot_created', sideEffects: batchSideEffects };
       }
 
       case 'add_plot': {
@@ -1580,7 +1586,7 @@ export class FinancialHandler {
           await this.service.setPlotArea(plot.id, cmd.hectares as number);
           addPlotMessages.push(`📍 Lote *${plot.name}* (${cmd.hectares} ha) creado en campo *${field.name}*`);
         } else {
-          addPlotMessages.push(`📍 Lote *${plot.name}* creado en campo *${field.name}*\n📐 ¿Cuántas hectáreas tiene? (podés decirme después)`);
+          addPlotMessages.push(`📍 Lote *${plot.name}* creado en campo *${field.name}*`);
           addPlotSideEffects.setPendingPlotArea = { plotId: plot.id, plotName: plot.name, fieldName: field.name };
         }
         if (plotsBeforeAdd.length === 0) {

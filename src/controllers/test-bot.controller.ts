@@ -18,6 +18,7 @@ import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
 import { handlePendingCity } from '../middleware/pending-field-city-handler.js';
+import { handlePendingPlotArea, storePlotAreaSideEffects } from '../middleware/pending-plot-area-handler.js';
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
@@ -536,8 +537,12 @@ async function handleInteractiveReply(
         const response: HandlerResponse = {
           messages: [`\ud83d\udccd Lote *${plot.name}* creado en campo *${field.name}*`],
           suggestionKey: 'plot_created',
+          sideEffects: { setPendingPlotArea: { plotId: plot.id, plotName: plot.name, fieldName: field.name } },
         };
-        return collectResponse(response);
+        const items = collectResponse(response);
+        const prompt = storePlotAreaSideEffects(phone, pendingPlotAreaStore, response.sideEffects);
+        if (prompt) items.push({ type: 'text', text: prompt });
+        return items;
       }
       return [{ type: 'text', text: `No encontre el campo *${fieldName}*.` }];
     }
@@ -796,20 +801,9 @@ async function processTextMessage(
   }
 
   // --- Check pending plot area assignment ---
-  const pendingArea = pendingPlotAreaStore.get(phone);
-  if (pendingArea) {
-    if (isCancelIntent(text)) {
-      pendingPlotAreaStore.clear(phone);
-      return [{ type: 'text', text: '👍 Podés asignar las hectáreas después.' }];
-    }
-    const hectares = parseFloat(text.replace(/,/g, '.').replace(/\s*ha\s*/i, '').trim());
-    if (!isNaN(hectares) && hectares > 0 && hectares < 100000) {
-      await financialService.setPlotArea(pendingArea.plotId, hectares);
-      pendingPlotAreaStore.clear(phone);
-      return [{ type: 'text', text: `📍 Lote *${pendingArea.plotName}*: superficie actualizada a *${hectares} ha*` }];
-    }
-    // Not a valid number — clear pending and fall through to normal processing
-    pendingPlotAreaStore.clear(phone);
+  const plotAreaResult = await handlePendingPlotArea(text, phone, pendingPlotAreaStore, financialService);
+  if (plotAreaResult.handled) {
+    return plotAreaResult.messages.map(msg => ({ type: 'text' as const, text: msg }));
   }
 
   // --- Check pending observation (plot disambiguation) ---
@@ -933,10 +927,8 @@ async function processTextMessage(
         if (result.lastSideEffects.setPendingFieldCity) {
           pendingCityStore.set(phone, { fieldName: result.lastSideEffects.setPendingFieldCity.fieldName, timestamp: Date.now() });
         }
-        if (result.lastSideEffects.setPendingPlotArea) {
-          const pa = result.lastSideEffects.setPendingPlotArea;
-          pendingPlotAreaStore.set(phone, { plotId: pa.plotId, plotName: pa.plotName, fieldName: pa.fieldName, timestamp: Date.now() });
-        }
+        const plotAreaPrompt = storePlotAreaSideEffects(phone, pendingPlotAreaStore, result.lastSideEffects);
+        if (plotAreaPrompt) items.push({ type: 'text', text: plotAreaPrompt });
         if (result.lastSideEffects.setFieldDuplicate) {
           const dup = result.lastSideEffects.setFieldDuplicate;
           pendingStore.set(phone, {
@@ -1112,13 +1104,7 @@ async function processTextMessage(
           timestamp: Date.now(),
         });
       }
-      if (response.sideEffects?.setPendingPlotArea) {
-        const pa = response.sideEffects.setPendingPlotArea;
-        pendingPlotAreaStore.set(phone, {
-          plotId: pa.plotId, plotName: pa.plotName, fieldName: pa.fieldName,
-          timestamp: Date.now(),
-        });
-      }
+      const plotAreaPromptCmd = storePlotAreaSideEffects(phone, pendingPlotAreaStore, response.sideEffects);
       if (response.sideEffects?.setFieldDuplicate) {
         const dup = response.sideEffects.setFieldDuplicate;
         pendingStore.set(phone, {
@@ -1141,7 +1127,9 @@ async function processTextMessage(
         lastTimeReference: (intent.data.timeLabel as string) ?? null,
       }).catch(() => {});
       conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
-      return collectResponse(response);
+      const items = collectResponse(response);
+      if (plotAreaPromptCmd) items.push({ type: 'text', text: plotAreaPromptCmd });
+      return items;
     }
   }
 
