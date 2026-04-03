@@ -12,6 +12,8 @@ interface Expense {
   created_at: string;
   plot_name: string | null;
   field_name: string | null;
+  user_name: string | null;
+  edited_by_name: string | null;
 }
 
 interface PaginatedResponse {
@@ -248,6 +250,7 @@ export default function ExpenseTable() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Campo</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Lote</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Monto</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
                   <th className="px-4 py-3 w-20" />
                 </tr>
               </thead>
@@ -278,6 +281,10 @@ export default function ExpenseTable() {
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-gray-800">
                       {formatAmount(exp.amount, exp.currency)}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
+                      {exp.user_name || '-'}
+                      {exp.edited_by_name && <span className="block text-gray-400">editado por {exp.edited_by_name}</span>}
                     </td>
                     <td className="px-4 py-3">
                       <button

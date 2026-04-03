@@ -44,7 +44,8 @@ CREATE TABLE expenses (
   plot_id INT REFERENCES plots(id),
   expense_date DATE DEFAULT CURRENT_DATE,
   created_at TIMESTAMP DEFAULT NOW(),
-  deleted_at TIMESTAMP DEFAULT NULL
+  deleted_at TIMESTAMP DEFAULT NULL,
+  edited_by INT REFERENCES users(id)
 );
 
 CREATE TABLE incomes (
@@ -61,7 +62,8 @@ CREATE TABLE incomes (
   plot_id INT REFERENCES plots(id),
   income_date DATE DEFAULT CURRENT_DATE,
   created_at TIMESTAMP DEFAULT NOW(),
-  deleted_at TIMESTAMP DEFAULT NULL
+  deleted_at TIMESTAMP DEFAULT NULL,
+  edited_by INT REFERENCES users(id)
 );
 
 CREATE TABLE budgets (
@@ -196,7 +198,8 @@ CREATE TABLE IF NOT EXISTS domain_events (
   unit VARCHAR(20),
   implement VARCHAR(50),
   notes TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMP DEFAULT NOW(),
+  edited_by INT REFERENCES users(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_domain_events_user_id ON domain_events(user_id);

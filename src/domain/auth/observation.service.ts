@@ -14,6 +14,7 @@ interface ObservationRow {
   updated_at: Date | null;
   plot_name: string | null;
   field_name: string | null;
+  user_name: string | null;
 }
 
 interface HistoryRow {
@@ -58,6 +59,8 @@ interface ActivityRow {
   created_at: Date;
   plot_name: string | null;
   field_name: string | null;
+  user_name: string | null;
+  edited_by_name: string | null;
 }
 
 interface PaginatedActivities {
@@ -89,6 +92,8 @@ interface ExpenseRow {
   created_at: Date;
   field_name: string | null;
   plot_name: string | null;
+  user_name: string | null;
+  edited_by_name: string | null;
 }
 
 interface IncomeRow {
@@ -107,6 +112,8 @@ interface IncomeRow {
   created_at: Date;
   field_name: string | null;
   plot_name: string | null;
+  user_name: string | null;
+  edited_by_name: string | null;
 }
 
 interface PaginatedExpenses {
@@ -166,10 +173,11 @@ export class ObservationService {
 
     const [dataResult, countResult] = await Promise.all([
       pool.query(
-        `SELECT o.*, p.name AS plot_name, f.name AS field_name
+        `SELECT o.*, p.name AS plot_name, f.name AS field_name, u.name AS user_name
          FROM agro_observations o
          LEFT JOIN plots p ON o.plot_id = p.id
          LEFT JOIN fields f ON o.field_id = f.id
+         LEFT JOIN users u ON o.user_id = u.id
          WHERE ${where}
          ORDER BY o.created_at DESC
          LIMIT $${paramIdx + 1} OFFSET $${paramIdx + 2}`,
@@ -248,10 +256,12 @@ export class ObservationService {
 
     const [dataResult, countResult] = await Promise.all([
       pool.query(
-        `SELECT de.*, p.name AS plot_name, f.name AS field_name
+        `SELECT de.*, p.name AS plot_name, f.name AS field_name, u.name AS user_name, eu.name AS edited_by_name
          FROM domain_events de
          LEFT JOIN plots p ON de.plot_id = p.id
          LEFT JOIN fields f ON p.field_id = f.id
+         LEFT JOIN users u ON de.user_id = u.id
+         LEFT JOIN users eu ON de.edited_by = eu.id
          WHERE ${where}
          ORDER BY de.event_date DESC, de.created_at DESC
          LIMIT $${paramIdx + 1} OFFSET $${paramIdx + 2}`,
@@ -314,10 +324,12 @@ export class ObservationService {
 
     const [dataResult, countResult] = await Promise.all([
       pool.query(
-        `SELECT e.*, p.name AS plot_name, f.name AS field_name
+        `SELECT e.*, p.name AS plot_name, f.name AS field_name, u.name AS user_name, eu.name AS edited_by_name
          FROM expenses e
          LEFT JOIN plots p ON e.plot_id = p.id
          LEFT JOIN fields f ON e.field_id = f.id
+         LEFT JOIN users u ON e.user_id = u.id
+         LEFT JOIN users eu ON e.edited_by = eu.id
          WHERE ${where}
          ORDER BY e.expense_date DESC, e.created_at DESC
          LIMIT $${paramIdx + 1} OFFSET $${paramIdx + 2}`,
@@ -377,10 +389,12 @@ export class ObservationService {
 
     const [dataResult, countResult] = await Promise.all([
       pool.query(
-        `SELECT i.*, p.name AS plot_name, f.name AS field_name
+        `SELECT i.*, p.name AS plot_name, f.name AS field_name, u.name AS user_name, eu.name AS edited_by_name
          FROM incomes i
          LEFT JOIN plots p ON i.plot_id = p.id
          LEFT JOIN fields f ON i.field_id = f.id
+         LEFT JOIN users u ON i.user_id = u.id
+         LEFT JOIN users eu ON i.edited_by = eu.id
          WHERE ${where}
          ORDER BY i.income_date DESC, i.created_at DESC
          LIMIT $${paramIdx + 1} OFFSET $${paramIdx + 2}`,
@@ -487,6 +501,7 @@ export class ObservationService {
     const params: (string | number)[] = [];
     let idx = 0;
 
+    idx++; sets.push(`edited_by = $${idx}`); params.push(userId);
     if (data.description !== undefined) { idx++; sets.push(`description = $${idx}`); params.push(data.description); }
     if (data.amount !== undefined) { idx++; sets.push(`amount = $${idx}`); params.push(data.amount); }
     if (data.currency !== undefined) { idx++; sets.push(`currency = $${idx}`); params.push(data.currency); }
@@ -524,6 +539,7 @@ export class ObservationService {
     const params: (string | number | null)[] = [];
     let idx = 0;
 
+    idx++; sets.push(`edited_by = $${idx}`); params.push(userId);
     if (data.description !== undefined) { idx++; sets.push(`description = $${idx}`); params.push(data.description); }
     if (data.amount !== undefined) { idx++; sets.push(`amount = $${idx}`); params.push(data.amount); }
     if (data.currency !== undefined) { idx++; sets.push(`currency = $${idx}`); params.push(data.currency); }
@@ -572,6 +588,7 @@ export class ObservationService {
     const params: (string | number | null)[] = [];
     let idx = 0;
 
+    idx++; sets.push(`edited_by = $${idx}`); params.push(userId);
     if (data.event_type !== undefined) { idx++; sets.push(`event_type = $${idx}`); params.push(data.event_type); }
     if (data.event_date !== undefined) { idx++; sets.push(`event_date = $${idx}`); params.push(data.event_date); }
     if (data.crop !== undefined) { idx++; sets.push(`crop = $${idx}`); params.push(data.crop); }

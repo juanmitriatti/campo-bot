@@ -11,6 +11,7 @@ interface Observation {
   updated_at: string | null;
   plot_name: string | null;
   field_name: string | null;
+  user_name: string | null;
 }
 
 interface PaginatedResponse {
@@ -214,6 +215,7 @@ export default function ObservationTable() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Lote</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Categoría</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Creada</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Editada</th>
                   <th className="px-4 py-3 w-20" />
                 </tr>
@@ -242,6 +244,9 @@ export default function ObservationTable() {
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                       {formatDate(obs.created_at)}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
+                      {obs.user_name || '-'}
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap hidden sm:table-cell">
                       {obs.updated_at ? formatDate(obs.updated_at) : '-'}

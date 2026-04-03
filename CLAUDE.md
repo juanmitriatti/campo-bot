@@ -97,7 +97,7 @@ Handles Spanish text normalization, written numbers ("quinientos mil" → 500000
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-042_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province`, `last_name` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`), `incomes` (includes `income_date`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`), `agro_observations` (includes `observation_date`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking), `activity_dictionary` (admin-editable activity synonyms for AI agent prompt).
+PostgreSQL with migrations in `src/migrations/001-043_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province`, `last_name` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`, `edited_by`), `incomes` (includes `income_date`, `edited_by`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`, `edited_by`), `agro_observations` (includes `observation_date`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking), `activity_dictionary` (admin-editable activity synonyms for AI agent prompt).
 
 ### Frontend (`frontend/`)
 
@@ -107,8 +107,9 @@ React + Vite + TailwindCSS SPA. In production, Express serves the build from `fr
 - **Auth flow**: JWT stored in localStorage, auto-refresh on 401, role-based route guards
 - **Key files**: `src/api/client.ts` (fetch wrapper), `src/context/AuthContext.tsx` (auth state), `src/components/ProtectedRoute.tsx` (route guard)
 - **Pages**: `/login`, `/register` (split name/apellido, dynamic plan fetching from API), `/dashboard` (end-user with 4 tabs: Observaciones, Actividades, Gastos, Ingresos)
-- **Dashboard features**: Paginated tables with filters (date, campo, lote, category/type), inline "Editar" button on each row, edit modals for all entity types
+- **Dashboard features**: Paginated tables with filters (date, campo, lote, category/type), inline "Editar" button on each row, edit modals for all entity types, "Registrado por" column showing creator name (and editor name if edited) on all tables
 - **Edit modals**: `ObservationEditModal` (with history tracking), `ExpenseEditModal`, `IncomeEditModal`, `ActivityEditModal` (lightweight, no history)
+- **Edit audit**: `edited_by` column on `expenses`, `incomes`, `domain_events` tracks who last edited each record. Dashboard queries JOIN `users` to show `user_name` (creator) and `edited_by_name` (last editor) on all 4 tables
 - **Date handling**: Uses `toLocalDate()` helper for date inputs to avoid UTC timezone shift (Argentina is UTC-3)
 
 ### Auth System (`src/domain/auth/`)

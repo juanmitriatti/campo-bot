@@ -16,6 +16,8 @@ interface Activity {
   created_at: string;
   plot_name: string | null;
   field_name: string | null;
+  user_name: string | null;
+  edited_by_name: string | null;
 }
 
 interface PaginatedResponse {
@@ -251,6 +253,7 @@ export default function ActivityTable() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Lote</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Cultivo</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Detalle</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
                   <th className="px-4 py-3 w-20" />
                 </tr>
               </thead>
@@ -280,6 +283,10 @@ export default function ActivityTable() {
                     </td>
                     <td className="px-4 py-3 max-w-xs">
                       <p className="truncate text-gray-800">{getDetail(a)}</p>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
+                      {a.user_name || '-'}
+                      {a.edited_by_name && <span className="block text-gray-400">editado por {a.edited_by_name}</span>}
                     </td>
                     <td className="px-4 py-3">
                       <button

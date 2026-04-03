@@ -15,6 +15,8 @@ interface Income {
   created_at: string;
   plot_name: string | null;
   field_name: string | null;
+  user_name: string | null;
+  edited_by_name: string | null;
 }
 
 interface PaginatedResponse {
@@ -258,6 +260,7 @@ export default function IncomeTable() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Lote</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Cantidad</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Monto</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
                   <th className="px-4 py-3 w-20" />
                 </tr>
               </thead>
@@ -291,6 +294,10 @@ export default function IncomeTable() {
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-green-700">
                       {formatAmount(inc.amount, inc.currency)}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
+                      {inc.user_name || '-'}
+                      {inc.edited_by_name && <span className="block text-gray-400">editado por {inc.edited_by_name}</span>}
                     </td>
                     <td className="px-4 py-3">
                       <button
