@@ -97,7 +97,7 @@ Handles Spanish text normalization, written numbers ("quinientos mil" → 500000
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-042_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`), `incomes` (includes `income_date`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`), `agro_observations` (includes `observation_date`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking), `activity_dictionary` (admin-editable activity synonyms for AI agent prompt).
+PostgreSQL with migrations in `src/migrations/001-042_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province`, `last_name` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`), `incomes` (includes `income_date`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`), `agro_observations` (includes `observation_date`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking), `activity_dictionary` (admin-editable activity synonyms for AI agent prompt).
 
 ### Frontend (`frontend/`)
 
@@ -106,7 +106,7 @@ React + Vite + TailwindCSS SPA. In production, Express serves the build from `fr
 - **Stack**: React 19, React Router v6, Tailwind v3, Vite 6, TypeScript
 - **Auth flow**: JWT stored in localStorage, auto-refresh on 401, role-based route guards
 - **Key files**: `src/api/client.ts` (fetch wrapper), `src/context/AuthContext.tsx` (auth state), `src/components/ProtectedRoute.tsx` (route guard)
-- **Pages**: `/login`, `/register`, `/dashboard` (end-user with 4 tabs: Observaciones, Actividades, Gastos, Ingresos)
+- **Pages**: `/login`, `/register` (split name/apellido, dynamic plan fetching from API), `/dashboard` (end-user with 4 tabs: Observaciones, Actividades, Gastos, Ingresos)
 - **Dashboard features**: Paginated tables with filters (date, campo, lote, category/type), inline "Editar" button on each row, edit modals for all entity types
 - **Edit modals**: `ObservationEditModal` (with history tracking), `ExpenseEditModal`, `IncomeEditModal`, `ActivityEditModal` (lightweight, no history)
 - **Date handling**: Uses `toLocalDate()` helper for date inputs to avoid UTC timezone shift (Argentina is UTC-3)
@@ -115,7 +115,7 @@ React + Vite + TailwindCSS SPA. In production, Express serves the build from `fr
 
 JWT-based authentication with bcrypt passwords and refresh token rotation.
 
-- **`auth.service.ts`** — register, login, refresh, logout, profile update
+- **`auth.service.ts`** — register (with duplicate-email race condition handling), login, refresh, logout, profile update
 - **`auth.repository.ts`** — User DB queries (findByEmail, createUser, updateProfile)
 - **`token.repository.ts`** — Refresh token CRUD (save, find, revoke, cleanup)
 - **`observation.service.ts`** — Dashboard CRUD: observations (with edit history), expenses, incomes, activities (edit support via `editExpense`, `editIncome`, `editActivity`); `getUserFieldsWithPlots()` for filter dropdowns
@@ -125,7 +125,7 @@ JWT-based authentication with bcrypt passwords and refresh token rotation.
 
 - `GET/POST /webhook` — WhatsApp webhook (verification + message handler)
 - `POST /telegram` — Telegram webhook handler (secret verified via `src/middleware/telegram-auth.ts`)
-- `/api/auth/*` — Auth endpoints (register, login, refresh, logout, profile, observations, expenses, incomes, activities — including PATCH edit endpoints, GET filters)
+- `/api/auth/*` — Auth endpoints (register, login, refresh, logout, profile, plans, observations, expenses, incomes, activities — including PATCH edit endpoints, GET filters)
 - `/admin/api/*` — Admin dashboard API endpoints (stats, users, settings, AI usage, parse metrics, enriched field detail with financials, field activities) — requires admin JWT
 - `/admin` — Admin dashboard static files (legacy HTML/JS from `src/public/`)
 
