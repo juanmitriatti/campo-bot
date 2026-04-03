@@ -319,12 +319,17 @@ export class ObservationService {
       conditions.push(`e.category = $${paramIdx}`);
       params.push(filters.category);
     }
+    if ((filters as Record<string, unknown>).expenseType) {
+      paramIdx++;
+      conditions.push(`e.expense_type = $${paramIdx}`);
+      params.push((filters as Record<string, unknown>).expenseType as string);
+    }
 
     const where = conditions.join(' AND ');
 
     const [dataResult, countResult] = await Promise.all([
       pool.query(
-        `SELECT e.*, p.name AS plot_name, f.name AS field_name, u.name AS user_name, eu.name AS edited_by_name
+        `SELECT e.*, e.expense_type, e.product, e.quantity, e.unit, p.name AS plot_name, f.name AS field_name, u.name AS user_name, eu.name AS edited_by_name
          FROM expenses e
          LEFT JOIN plots p ON e.plot_id = p.id
          LEFT JOIN fields f ON e.field_id = f.id
@@ -481,7 +486,7 @@ export class ObservationService {
   async editExpense(
     expenseId: number,
     userId: number,
-    data: { description?: string; amount?: number; currency?: string; category?: string; expense_date?: string }
+    data: { description?: string; amount?: number; currency?: string; category?: string; expense_date?: string; expense_type?: string; product?: string | null; quantity?: number | null; unit?: string | null }
   ): Promise<ExpenseRow> {
     const { rows } = await pool.query(
       `SELECT * FROM expenses WHERE id = $1 AND deleted_at IS NULL`,
@@ -507,6 +512,10 @@ export class ObservationService {
     if (data.currency !== undefined) { idx++; sets.push(`currency = $${idx}`); params.push(data.currency); }
     if (data.category !== undefined) { idx++; sets.push(`category = $${idx}`); params.push(data.category); }
     if (data.expense_date !== undefined) { idx++; sets.push(`expense_date = $${idx}`); params.push(data.expense_date); }
+    if (data.expense_type !== undefined) { idx++; sets.push(`expense_type = $${idx}`); params.push(data.expense_type); }
+    if (data.product !== undefined) { idx++; sets.push(`product = $${idx}`); params.push(data.product as string); }
+    if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(data.quantity as number); }
+    if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit as string); }
 
     idx++;
     const result = await pool.query(

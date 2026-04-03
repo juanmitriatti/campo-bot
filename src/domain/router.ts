@@ -2,6 +2,7 @@ import { FinancialHandler } from './financial/financial.handler.js';
 import { AgronomyHandler } from './agronomy/agronomy.handler.js';
 import { SystemHandler } from './system/system.handler.js';
 import { SharingHandler } from './sharing/sharing.handler.js';
+import { StockHandler } from './stock/stock.handler.js';
 import { FeatureGate } from './billing/feature-gate.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../types/index.js';
 
@@ -34,6 +35,13 @@ const SHARING_COMMANDS = new Set([
   'share_field', 'accept_invite', 'list_field_members', 'remove_field_member',
 ]);
 
+const STOCK_COMMANDS = new Set([
+  'create_warehouse', 'list_warehouses',
+  'add_stock', 'remove_stock', 'adjust_stock',
+  'check_stock', 'stock_history',
+  'set_min_stock', 'check_low_stock',
+]);
+
 const SYSTEM_COMMANDS = new Set([
   'greeting', 'help', 'thanks', 'ack', 'dollar',
   'menu', 'show_expense_menu', 'show_income_menu', 'show_agro_menu',
@@ -49,6 +57,7 @@ const SYSTEM_COMMANDS = new Set([
 export class DomainRouter {
   private featureGate: FeatureGate;
   private sharingHandler: SharingHandler;
+  private stockHandler: StockHandler;
 
   constructor(
     private financialHandler: FinancialHandler,
@@ -56,9 +65,11 @@ export class DomainRouter {
     private systemHandler: SystemHandler,
     featureGate?: FeatureGate,
     sharingHandler?: SharingHandler,
+    stockHandler?: StockHandler,
   ) {
     this.featureGate = featureGate ?? new FeatureGate();
     this.sharingHandler = sharingHandler ?? new SharingHandler();
+    this.stockHandler = stockHandler ?? new StockHandler();
   }
 
   async routeCommand(
@@ -97,6 +108,10 @@ export class DomainRouter {
 
     if (SHARING_COMMANDS.has(command)) {
       return this.sharingHandler.handleCommand(cmd, userId, user, settings);
+    }
+
+    if (STOCK_COMMANDS.has(command)) {
+      return this.stockHandler.handleCommand(cmd, userId, user, settings);
     }
 
     return null;

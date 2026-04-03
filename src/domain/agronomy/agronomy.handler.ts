@@ -651,16 +651,57 @@ export class AgronomyHandler {
         }
 
         // Save domain event for harvest
-        await this.repo.saveDomainEvent(userId, {
+        const harvestQuantity = cmd.quantity ? Number(cmd.quantity) : null;
+        const harvestUnit = (cmd.unit as string) || 'tn';
+        const savedEvent = await this.repo.saveDomainEvent(userId, {
           plotId: plotResult.plotId,
           plotCropId: closed.id,
           eventType: 'harvest',
           eventDate: cmd.eventDate as Date | null,
           crop,
+          quantity: harvestQuantity,
+          unit: harvestQuantity ? harvestUnit : null,
         });
 
         const label = formatSeasonLabel(closed.season_year, closed.season_type);
-        return { messages: [`🌾 *${crop}* cosechado en *${plotLabel}*\n📅 Campaña ${label} finalizada`] };
+        const messages = [`🌾 *${crop}* cosechado en *${plotLabel}*\n📅 Campaña ${label} finalizada`];
+
+        // If quantity provided, suggest loading grain to stock/silo
+        if (harvestQuantity && harvestQuantity > 0) {
+          try {
+            const { FeatureGate } = await import('../billing/feature-gate.js');
+            const fg = new FeatureGate();
+            const hasStock = await fg.hasFeature(userId, 'stock');
+            if (hasStock) {
+              const warehouseName = (cmd.warehouseName as string) || undefined;
+              messages.push(`\n📦 ¿Querés cargar *${harvestQuantity}${harvestUnit}* de *${crop}* al ${warehouseName ? `silo *${warehouseName}*` : 'stock'}?`);
+              return {
+                messages,
+                interactive: {
+                  type: 'buttons',
+                  body: `Cargar ${harvestQuantity}${harvestUnit} de ${crop} al stock?`,
+                  buttons: [
+                    { id: `stock_grain_yes_${savedEvent.id}`, title: 'Sí, cargar' },
+                    { id: `stock_grain_no_${savedEvent.id}`, title: 'No' },
+                  ],
+                },
+                sideEffects: {
+                  setPendingStockEntry: {
+                    type: 'grain',
+                    domainEventId: savedEvent.id,
+                    crop,
+                    quantity: harvestQuantity,
+                    unit: harvestUnit,
+                    fieldId: plotResult.fieldId || 0,
+                    warehouseName: warehouseName || undefined,
+                  },
+                },
+              };
+            }
+          } catch { /* stock feature not available, skip */ }
+        }
+
+        return { messages };
       }
 
       case 'active_crop': {
@@ -759,7 +800,7 @@ export class AgronomyHandler {
           cmd.product as string | null,
         );
 
-        await this.repo.saveDomainEvent(userId, {
+        const savedEvent = await this.repo.saveDomainEvent(userId, {
           plotId: plotResult.plotId,
           plotCropId: activeCrop?.id || null,
           eventType,
@@ -785,6 +826,57 @@ export class AgronomyHandler {
           implement: cmd.implement as string | null,
           eventDate: cmd.eventDate as Date | null,
         });
+
+        // Suggest stock deduction for spraying/fertilization with product
+        if ((eventType === 'spraying' || eventType === 'fertilization') && cmd.product && savedEvent?.id) {
+          try {
+            const { StockDeductionService } = await import('../stock/stock-deduction.service.js');
+            const deductionService = new StockDeductionService();
+
+            // Get plot hectares for dose calculation
+            let plotHectares: number | undefined;
+            if (plotResult.plotId) {
+              const plotInfo = await this.plotDiscovery.getPlotInfo(plotResult.plotId);
+              plotHectares = plotInfo?.area_hectares || undefined;
+            }
+
+            const dosePerHa = cmd.unit && typeof cmd.unit === 'string' && (cmd.unit as string).includes('/ha')
+              ? (cmd.quantity as number) : undefined;
+
+            const suggestion = await deductionService.suggestDeduction(
+              userId,
+              savedEvent.id,
+              cmd.product as string,
+              dosePerHa && plotHectares ? dosePerHa * plotHectares : cmd.quantity as number | undefined,
+              (cmd.unit as string || '').replace('/ha', '') || undefined,
+              plotResult.fieldId || undefined,
+              plotHectares,
+              dosePerHa,
+            );
+
+            if (suggestion) {
+              const messages = [confirmation];
+              const stockMsg = `\n📦 Tenés ${suggestion.currentStock}${suggestion.unit} de *${suggestion.product}* en ${suggestion.warehouseName}.\n¿Descontar *${suggestion.totalQuantity}${suggestion.unit}*?`;
+              messages.push(stockMsg);
+              return {
+                messages,
+                interactive: {
+                  type: 'buttons' as const,
+                  body: messages.join('\n'),
+                  buttons: [
+                    { id: `stock_deduct_yes_${savedEvent.id}`, title: 'Sí, descontar' },
+                    { id: `stock_deduct_no_${savedEvent.id}`, title: 'No' },
+                  ],
+                },
+                sideEffects: {
+                  setPendingStockDeduction: suggestion,
+                } as any,
+              };
+            }
+          } catch {
+            // Stock feature not available — ignore
+          }
+        }
 
         return { messages: [confirmation] };
       }

@@ -10,6 +10,10 @@ interface Expense {
   expense_date: string;
   field_name: string | null;
   plot_name: string | null;
+  expense_type: string | null;
+  product: string | null;
+  quantity: number | null;
+  unit: string | null;
 }
 
 interface Props {
@@ -25,14 +29,16 @@ function toLocalDate(dateStr: string): string {
 
 const EXPENSE_CATEGORIES = [
   'combustible', 'fertilizantes', 'semillas', 'agroquimicos',
-  'sueldos', 'maquinaria', 'arrendamiento', 'impuestos', 'otros',
+  'labranzas', 'sueldos', 'maquinaria', 'arrendamiento', 'impuestos', 'otros',
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
   combustible: 'Combustible', fertilizantes: 'Fertilizantes', semillas: 'Semillas',
-  agroquimicos: 'Agroquimicos', sueldos: 'Sueldos', maquinaria: 'Maquinaria',
+  agroquimicos: 'Agroquimicos', labranzas: 'Labranzas', sueldos: 'Sueldos', maquinaria: 'Maquinaria',
   arrendamiento: 'Arrendamiento', impuestos: 'Impuestos', otros: 'Otros',
 };
+
+const INSUMO_CATEGORIES = new Set(['agroquimicos', 'fertilizantes', 'semillas', 'combustible']);
 
 export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
   const [description, setDescription] = useState(expense.description || '');
@@ -40,8 +46,14 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
   const [currency, setCurrency] = useState(expense.currency);
   const [category, setCategory] = useState(expense.category);
   const [expenseDate, setExpenseDate] = useState(expense.expense_date ? toLocalDate(expense.expense_date) : '');
+  const [expenseTypeVal, setExpenseTypeVal] = useState(expense.expense_type || 'varios');
+  const [product, setProduct] = useState(expense.product || '');
+  const [quantity, setQuantity] = useState(expense.quantity != null ? String(expense.quantity) : '');
+  const [unit, setUnit] = useState(expense.unit || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isInsumo = expenseTypeVal === 'insumo';
 
   const handleSave = async () => {
     const parsedAmount = parseFloat(amount);
@@ -55,7 +67,17 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
     try {
       await apiRequest(`/expenses/${expense.id}`, {
         method: 'PATCH',
-        body: { description: description.trim() || null, amount: parsedAmount, currency, category, expense_date: expenseDate },
+        body: {
+          description: description.trim() || null,
+          amount: parsedAmount,
+          currency,
+          category,
+          expense_date: expenseDate,
+          expense_type: expenseTypeVal,
+          product: isInsumo ? (product.trim() || null) : null,
+          quantity: isInsumo && quantity ? parseFloat(quantity) : null,
+          unit: isInsumo ? (unit.trim() || null) : null,
+        },
       });
       onSaved();
     } catch (err: unknown) {
@@ -98,10 +120,24 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Tipo</label>
+                <select value={expenseTypeVal} onChange={e => {
+                  setExpenseTypeVal(e.target.value);
+                  if (e.target.value === 'varios') { setProduct(''); setQuantity(''); setUnit(''); }
+                }}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none">
+                  <option value="varios">Varios</option>
+                  <option value="insumo">Insumo</option>
+                </select>
+              </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Categoria</label>
-                <select value={category} onChange={e => setCategory(e.target.value)}
+                <select value={category} onChange={e => {
+                  setCategory(e.target.value);
+                  if (INSUMO_CATEGORIES.has(e.target.value)) setExpenseTypeVal('insumo');
+                }}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none">
                   {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>)}
                 </select>
@@ -112,6 +148,25 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
               </div>
             </div>
+            {isInsumo && (
+              <div className="grid grid-cols-3 gap-3 p-3 bg-purple-50 rounded-md border border-purple-200">
+                <div>
+                  <label className="block text-xs text-purple-600 mb-1">Producto</label>
+                  <input type="text" value={product} onChange={e => setProduct(e.target.value)} placeholder="Ej: Roundup"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs text-purple-600 mb-1">Cantidad</label>
+                  <input type="number" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="Ej: 20"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs text-purple-600 mb-1">Unidad</label>
+                  <input type="text" value={unit} onChange={e => setUnit(e.target.value)} placeholder="Ej: lt, kg"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
+                </div>
+              </div>
+            )}
           </div>
 
           {error && <p className="text-red-600 text-sm mt-2">{error}</p>}

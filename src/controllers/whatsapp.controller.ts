@@ -98,6 +98,8 @@ const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
 const transcriptionService = new TranscriptionService();
+const pendingStockEntryStore = new Map<string, Record<string, unknown>>();
+const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
 
 // --- Flow engine ---
 
@@ -255,6 +257,10 @@ router.post('/', async (req: Request, res: Response) => {
                 fieldId: null, fieldName: null, plotId: null, plotName: null,
                 timestamp: Date.now(), _fieldDuplicate: dup,
               } as any);
+            }
+            // Store pending stock entry if expense flow suggests one
+            if (result.response.sideEffects?.setPendingStockEntry) {
+              pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
             }
             await sendResponse(phone, result.response);
             conversationLogger.log(userId, phone, '[confirm]', result.response.messages[0] ?? null, 'flow', 'flow_confirm', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
@@ -418,6 +424,9 @@ router.post('/', async (req: Request, res: Response) => {
           }
           pendingStore.clear(phone);
           const response = await financialHandler.handleConfirm(userId, pendingTx, settings, user);
+          if (response.sideEffects?.setPendingStockEntry) {
+            pendingStockEntryStore.set(phone, response.sideEffects.setPendingStockEntry as Record<string, unknown>);
+          }
           await sendResponse(phone, response);
           conversationLogger.log(userId, phone, `[confirm_pending]`, response.messages[0] ?? null, 'command', 'confirm', null, null, false, Date.now() - startTime, !!response.interactive).catch(() => {});
           res.sendStatus(200);
@@ -537,6 +546,122 @@ router.post('/', async (req: Request, res: Response) => {
             } else {
               await sendMessage(phone, `No encontr\u00e9 el campo *${fieldName}*.`);
             }
+          }
+          res.sendStatus(200);
+          return;
+        }
+
+        // --- Stock entry callback (purchase → stock) ---
+        if (callbackId.startsWith('stock_entry_yes_') || callbackId.startsWith('stock_entry_no_')) {
+          const accepted = callbackId.startsWith('stock_entry_yes_');
+          const user = await userRepository.getOrCreate(phone);
+          if (accepted) {
+            try {
+              const pending = pendingStockEntryStore.get(phone);
+              if (pending) {
+                const { StockPurchaseService } = await import('../domain/stock/stock-purchase.service.js');
+                const svc = new StockPurchaseService();
+                const result = await svc.applyStockEntry(user.id, pending as any);
+                pendingStockEntryStore.delete(phone);
+                await sendMessage(phone, `📦 Stock actualizado: +${result.movement.quantity}${result.item.unit} de ${result.item.name} (${result.item.current_quantity}${result.item.unit} total)`);
+              } else {
+                await sendMessage(phone, '⚠️ No hay entrada de stock pendiente.');
+              }
+            } catch (err: any) {
+              await sendMessage(phone, `❌ Error al cargar stock: ${err.message}`);
+            }
+          } else {
+            pendingStockEntryStore.delete(phone);
+            await sendMessage(phone, '👌 Stock no modificado.');
+          }
+          res.sendStatus(200);
+          return;
+        }
+
+        // --- Stock deduction callback (activity → stock) ---
+        if (callbackId.startsWith('stock_deduct_yes_') || callbackId.startsWith('stock_deduct_no_')) {
+          const accepted = callbackId.startsWith('stock_deduct_yes_');
+          const user = await userRepository.getOrCreate(phone);
+          if (accepted) {
+            try {
+              const pending = pendingStockDeductionStore.get(phone);
+              if (pending) {
+                const { StockDeductionService } = await import('../domain/stock/stock-deduction.service.js');
+                const svc = new StockDeductionService();
+                const result = await svc.applyDeduction(user.id, pending as any);
+                pendingStockDeductionStore.delete(phone);
+                await sendMessage(phone, `📦 Stock descontado: -${pending.totalQuantity}${result.item.unit} de ${result.item.name} (${result.item.current_quantity}${result.item.unit} restante)`);
+              } else {
+                await sendMessage(phone, '⚠️ No hay descuento de stock pendiente.');
+              }
+            } catch (err: any) {
+              await sendMessage(phone, `❌ Error al descontar stock: ${err.message}`);
+            }
+          } else {
+            const pending = pendingStockDeductionStore.get(phone);
+            if (pending?.domainEventId) {
+              const { StockDeductionService } = await import('../domain/stock/stock-deduction.service.js');
+              const svc = new StockDeductionService();
+              await svc.declineDeduction(pending.domainEventId as number);
+            }
+            pendingStockDeductionStore.delete(phone);
+            await sendMessage(phone, '👌 Stock no modificado.');
+          }
+          res.sendStatus(200);
+          return;
+        }
+
+        // --- Grain stock entry callback (harvest → silo) ---
+        if (callbackId.startsWith('stock_grain_yes_') || callbackId.startsWith('stock_grain_no_')) {
+          const accepted = callbackId.startsWith('stock_grain_yes_');
+          const user = await userRepository.getOrCreate(phone);
+          if (accepted) {
+            try {
+              const pending = pendingStockEntryStore.get(phone);
+              if (pending && pending.type === 'grain') {
+                const { StockPurchaseService } = await import('../domain/stock/stock-purchase.service.js');
+                const svc = new StockPurchaseService();
+                const result = await svc.applyStockEntry(user.id, pending as any);
+                pendingStockEntryStore.delete(phone);
+                await sendMessage(phone, `📦 Stock actualizado: +${result.movement.quantity}${result.item.unit} de ${result.item.name} (${result.item.current_quantity}${result.item.unit} total)`);
+              } else {
+                await sendMessage(phone, '⚠️ No hay cosecha pendiente para cargar.');
+              }
+            } catch (err: any) {
+              await sendMessage(phone, `❌ Error al cargar al silo: ${err.message}`);
+            }
+          } else {
+            pendingStockEntryStore.delete(phone);
+            await sendMessage(phone, '👌 No se cargó al stock.');
+          }
+          res.sendStatus(200);
+          return;
+        }
+
+        // --- Grain sale stock deduction callback ---
+        if (callbackId.startsWith('stock_grain_sale_yes_') || callbackId.startsWith('stock_grain_sale_no_')) {
+          const accepted = callbackId.startsWith('stock_grain_sale_yes_');
+          const user = await userRepository.getOrCreate(phone);
+          if (accepted) {
+            try {
+              const pending = pendingStockDeductionStore.get(phone);
+              if (pending) {
+                const { StockService } = await import('../domain/stock/stock.service.js');
+                const svc = new StockService();
+                const { item } = await svc.removeStock(user.id, pending.product as string, pending.totalQuantity as number, pending.unit as string, {
+                  reason: 'Venta de grano',
+                });
+                pendingStockDeductionStore.delete(phone);
+                await sendMessage(phone, `📦 Stock descontado: *${item.name}* → ${item.current_quantity}${item.unit} restante`);
+              } else {
+                await sendMessage(phone, '⚠️ No hay descuento de stock pendiente.');
+              }
+            } catch (err: any) {
+              await sendMessage(phone, `❌ Error al descontar stock: ${err.message}`);
+            }
+          } else {
+            pendingStockDeductionStore.delete(phone);
+            await sendMessage(phone, '👌 Stock no modificado.');
           }
           res.sendStatus(200);
           return;
@@ -733,6 +858,10 @@ router.post('/', async (req: Request, res: Response) => {
             await conversationEngine.setFlowContext(userId, result.nextContext);
           } else {
             await conversationEngine.clearFlow(userId);
+          }
+          // Store pending stock entry if expense flow suggests one
+          if (result.response.sideEffects?.setPendingStockEntry) {
+            pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
           }
           await sendResponse(phone, result.response);
           conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', null, flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
@@ -1200,6 +1329,10 @@ router.post('/', async (req: Request, res: Response) => {
             timestamp: Date.now(), _fieldDuplicate: dup,
           } as any);
         }
+        // Store pending stock deduction for activity → stock callback
+        if (response.sideEffects?.setPendingStockDeduction) {
+          pendingStockDeductionStore.set(phone, response.sideEffects.setPendingStockDeduction as Record<string, unknown>);
+        }
         // Learn from successful command (fire-and-forget)
         learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
         conversationObserver.logCommandExecuted(userId, intent.data.command, { aiUsed, confidence });
@@ -1249,6 +1382,9 @@ router.post('/', async (req: Request, res: Response) => {
       if (response.sideEffects?.setPending) {
         pendingStore.set(phone, response.sideEffects.setPending);
       }
+      if (response.sideEffects?.setPendingStockEntry) {
+        pendingStockEntryStore.set(phone, response.sideEffects.setPendingStockEntry as Record<string, unknown>);
+      }
       // Learn from successful expense (fire-and-forget)
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
@@ -1289,6 +1425,9 @@ router.post('/', async (req: Request, res: Response) => {
       }
       if (response.sideEffects?.setPending) {
         pendingStore.set(phone, response.sideEffects.setPending);
+      }
+      if (response.sideEffects?.setPendingStockDeduction) {
+        pendingStockDeductionStore.set(phone, response.sideEffects.setPendingStockDeduction as Record<string, unknown>);
       }
       // Learn from successful income (fire-and-forget)
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});

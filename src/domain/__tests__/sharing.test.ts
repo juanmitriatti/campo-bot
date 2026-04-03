@@ -1,4 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('../../config/db.js', () => ({
+  pool: { query: vi.fn(), connect: vi.fn() },
+}));
+
 import { DomainRouter } from '../router.js';
 import { SharingHandler } from '../sharing/sharing.handler.js';
 import { FieldSharingService } from '../sharing/field-sharing.service.js';

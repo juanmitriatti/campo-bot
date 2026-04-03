@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { TOOL_DEFINITIONS, TOOL_NAMES } from '../tool-definitions.js';
 
 describe('TOOL_DEFINITIONS', () => {
-  it('has 25 tools', () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(25);
+  it('has 33 tools', () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(33);
   });
 
   it('all tools have unique names', () => {

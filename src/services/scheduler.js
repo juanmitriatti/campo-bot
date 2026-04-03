@@ -538,16 +538,52 @@ async function missingHectaresReminderTick() {
 // Proactive Alerts Tick (monitoring + pest + hectares combined)
 // ---------------------------------------------------------------------------
 
+async function lowStockAlertTick() {
+  try {
+    const { StockAlertService } = await import('../domain/stock/stock-alert.service.js');
+    const alertService = new StockAlertService();
+    const lowStockUsers = await alertService.getLowStockUsers();
+
+    for (const lsu of lowStockUsers) {
+      const dedupKey = `user_${lsu.userId}`;
+      const dup = await isDuplicate(lsu.userId, 'low_stock', dedupKey, 24); // 24h dedup
+      if (dup) {
+        await recordDeduped(lsu.userId, 'low_stock', dedupKey);
+        continue;
+      }
+
+      const msg = alertService.formatLowStockAlert(lsu.items);
+      if (!msg) continue;
+
+      const result = await sendAlertWithRetryMultiChannel(
+        lsu.userId,
+        { phone: lsu.phone, telegramId: lsu.telegramId },
+        msg,
+        'low_stock',
+        { dedupKey, payload: { itemCount: lsu.items.length } },
+      );
+
+      if (result.sent) {
+        const channel = lsu.telegramId ? 'telegram' : 'whatsapp';
+        console.log(`[low-stock] Alert sent to user ${lsu.userId} via ${channel} (${lsu.items.length} items)`);
+      }
+    }
+  } catch (err) {
+    console.error("[low-stock] Unexpected error:", err);
+  }
+}
+
 async function proactiveAlertsTick() {
   try {
     const { hour } = getArgentinaTime();
     // Run at 8 AM Argentina time (configurable via global settings in future)
     if (hour !== 8) return;
 
-    console.log(`[proactive-alerts] Running monitoring + pest escalation + hectares reminder checks`);
+    console.log(`[proactive-alerts] Running monitoring + pest escalation + hectares reminder + low stock checks`);
     await monitoringReminderTick();
     await pestEscalationTick();
     await missingHectaresReminderTick();
+    await lowStockAlertTick();
   } catch (err) {
     console.error("[proactive-alerts] Unexpected error:", err);
   }
@@ -656,5 +692,5 @@ export function startScheduler() {
     dailyCleanupTick();
   });
 
-  console.log("[scheduler] Cron jobs started — weekly summary + daily weather alerts + proactive alerts + daily cleanup (hourly tick)");
+  console.log("[scheduler] Cron jobs started — weekly summary + daily weather alerts + proactive alerts (incl. low stock) + daily cleanup (hourly tick)");
 }

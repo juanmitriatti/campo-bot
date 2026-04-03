@@ -11,7 +11,7 @@
 
 export const EXPENSE_CATEGORIES = [
   'Combustible', 'Fertilizantes', 'Semillas', 'Agroquímicos',
-  'Sueldos', 'Maquinaria', 'Arrendamiento', 'Impuestos', 'Otros',
+  'Labranzas', 'Sueldos', 'Maquinaria', 'Arrendamiento', 'Impuestos', 'Otros',
 ] as const;
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
@@ -24,12 +24,25 @@ export const EXPENSE_KEYWORD_MAP: Record<string, string> = {
   fertilizante: 'Fertilizantes', fertilizantes: 'Fertilizantes', urea: 'Fertilizantes',
   semilla: 'Semillas', semillas: 'Semillas',
   agroquimico: 'Agroquímicos', agroquimicos: 'Agroquímicos', herbicida: 'Agroquímicos', insecticida: 'Agroquímicos', fungicida: 'Agroquímicos', glifosato: 'Agroquímicos', fumigacion: 'Agroquímicos',
+  labranza: 'Labranzas', labranzas: 'Labranzas', 'siembra directa': 'Labranzas', 'pulverizacion terrestre': 'Labranzas', 'pulverizacion aerea': 'Labranzas', 'servicio de aplicacion': 'Labranzas',
   sueldo: 'Sueldos', sueldos: 'Sueldos', jornal: 'Sueldos', peon: 'Sueldos',
   repuesto: 'Maquinaria', repuestos: 'Maquinaria', tractor: 'Maquinaria', maquinaria: 'Maquinaria', cosechadora: 'Maquinaria', contratista: 'Maquinaria', laboreo: 'Maquinaria',
   alquiler: 'Arrendamiento', arrendamiento: 'Arrendamiento', arriendo: 'Arrendamiento',
   impuesto: 'Impuestos', impuestos: 'Impuestos', inmobiliario: 'Impuestos', iibb: 'Impuestos',
   flete: 'Otros', transporte: 'Otros', seguro: 'Otros', veterinario: 'Otros', silobolsa: 'Otros',
 };
+
+// ============================================================================
+// EXPENSE TYPE CLASSIFICATION
+// ============================================================================
+
+/** Categories that represent storable inputs (insumos) */
+export const INSUMO_CATEGORIES = new Set(['Agroquímicos', 'Fertilizantes', 'Semillas', 'Combustible']);
+
+/** Categories that represent services/overheads (varios) */
+export const VARIOS_CATEGORIES = new Set(['Labranzas', 'Sueldos', 'Maquinaria', 'Arrendamiento', 'Impuestos', 'Otros']);
+
+export type ExpenseType = 'insumo' | 'varios';
 
 // ============================================================================
 // INCOME CATEGORIES

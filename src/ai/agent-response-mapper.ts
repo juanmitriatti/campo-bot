@@ -1,6 +1,57 @@
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
-import { EXPENSE_CATEGORY_SET, INCOME_CATEGORY_SET } from '../constants/agro-terms.js';
+import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES } from '../constants/agro-terms.js';
 import type { AgentResult } from './agent.service.js';
+
+/** Strip accents for comparison */
+function stripAccents(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Accent-insensitive category match against a known set */
+function matchCategory(raw: string, categories: readonly string[]): string | null {
+  // Exact match first
+  if (new Set(categories).has(raw)) return raw;
+  // Accent-insensitive
+  const norm = stripAccents(raw).toLowerCase();
+  for (const cat of categories) {
+    if (stripAccents(cat).toLowerCase() === norm) return cat;
+  }
+  return null;
+}
+
+/** Known product keywords → { category, expense_type } for fallback inference */
+const PRODUCT_CATEGORY_KEYWORDS: Record<string, { category: string; expenseType: 'insumo' | 'varios' }> = {
+  roundup: { category: 'Agroquímicos', expenseType: 'insumo' },
+  glifosato: { category: 'Agroquímicos', expenseType: 'insumo' },
+  atrazina: { category: 'Agroquímicos', expenseType: 'insumo' },
+  '2,4-d': { category: 'Agroquímicos', expenseType: 'insumo' },
+  '24d': { category: 'Agroquímicos', expenseType: 'insumo' },
+  herbicida: { category: 'Agroquímicos', expenseType: 'insumo' },
+  insecticida: { category: 'Agroquímicos', expenseType: 'insumo' },
+  fungicida: { category: 'Agroquímicos', expenseType: 'insumo' },
+  cipermetrina: { category: 'Agroquímicos', expenseType: 'insumo' },
+  fipronil: { category: 'Agroquímicos', expenseType: 'insumo' },
+  urea: { category: 'Fertilizantes', expenseType: 'insumo' },
+  dap: { category: 'Fertilizantes', expenseType: 'insumo' },
+  map: { category: 'Fertilizantes', expenseType: 'insumo' },
+  fosfato: { category: 'Fertilizantes', expenseType: 'insumo' },
+  fertilizante: { category: 'Fertilizantes', expenseType: 'insumo' },
+  semilla: { category: 'Semillas', expenseType: 'insumo' },
+  semillas: { category: 'Semillas', expenseType: 'insumo' },
+  gasoil: { category: 'Combustible', expenseType: 'insumo' },
+  nafta: { category: 'Combustible', expenseType: 'insumo' },
+  diesel: { category: 'Combustible', expenseType: 'insumo' },
+  combustible: { category: 'Combustible', expenseType: 'insumo' },
+};
+
+/** Infer category/expense_type from product name */
+function inferFromProduct(product: string): { category: string; expenseType: 'insumo' | 'varios' } | null {
+  const norm = stripAccents(product).toLowerCase();
+  for (const [keyword, info] of Object.entries(PRODUCT_CATEGORY_KEYWORDS)) {
+    if (norm.includes(keyword)) return info;
+  }
+  return null;
+}
 
 /**
  * Converts AgentResult (tool_use output) → ParseResult[] for backward compatibility
@@ -88,15 +139,37 @@ export class AgentResponseMapper {
 
     if (amount > 0) {
       const rawCategory = typeof input.category === 'string' ? input.category : '';
-      const category = EXPENSE_CATEGORY_SET.has(rawCategory) ? rawCategory : 'Otros';
+      let category = matchCategory(rawCategory, EXPENSE_CATEGORIES) ?? 'Otros';
       const currency: Currency = input.currency === 'USD' ? 'USD' : 'ARS';
+      // Determine expense_type: explicit from agent, or infer from category, or infer from product
+      let expenseType: 'insumo' | 'varios' = 'varios';
+      if (input.expense_type === 'insumo' || input.expense_type === 'varios') {
+        expenseType = input.expense_type;
+      } else if (INSUMO_CATEGORIES.has(category)) {
+        expenseType = 'insumo';
+      }
+
+      // Fallback: infer from product name when category is Otros or expense_type is missing
+      const productStr = typeof input.product === 'string' ? input.product : '';
+      if (productStr && (category === 'Otros' || expenseType === 'varios')) {
+        const inferred = inferFromProduct(productStr);
+        if (inferred) {
+          if (category === 'Otros') category = inferred.category;
+          if (expenseType === 'varios') expenseType = inferred.expenseType;
+        }
+      }
+
       const data: ParsedExpense & { field?: string; plot?: string } = {
         type: 'expense',
         amount,
         category,
         description: typeof input.description === 'string' ? input.description : originalText,
         currency,
+        expenseType,
       };
+      if (typeof input.product === 'string') data.product = input.product;
+      if (typeof input.quantity === 'number') data.quantity = input.quantity;
+      if (typeof input.unit === 'string') data.unit = input.unit;
       if (typeof input.field === 'string') data.field = input.field;
       if (typeof input.plot === 'string') data.plot = input.plot;
       if (typeof input.event_date === 'string') data.expenseDate = input.event_date;
@@ -137,7 +210,7 @@ export class AgentResponseMapper {
 
     if (amount > 0) {
       const rawCategory = typeof input.category === 'string' ? input.category : '';
-      const category = INCOME_CATEGORY_SET.has(rawCategory) ? rawCategory : 'Otros';
+      const category = matchCategory(rawCategory, INCOME_CATEGORIES) ?? 'Otros';
       const currency: Currency = input.currency === 'USD' ? 'USD' : 'ARS';
       const data: ParsedIncome & { field?: string; plot?: string } = {
         type: 'income',
@@ -223,6 +296,11 @@ export class AgentResponseMapper {
     if (toolName === 'log_rainfall' && input.quantity != null) {
       cmd.mm = input.quantity;
     }
+
+    // Stock
+    if (input.warehouse != null) cmd.warehouseName = input.warehouse;
+    if (input.reason != null) cmd.reason = input.reason;
+    if (input.name != null && !cmd.product) cmd.warehouseName = input.name; // create_warehouse: name → warehouseName
 
     // Sharing
     if (input.phone != null) cmd.phone = input.phone;

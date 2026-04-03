@@ -145,9 +145,13 @@ export const expenseFlow: FlowDefinition = {
       description: (data.description as string) || '',
       currency: amountInfo.currency as 'ARS' | 'USD',
       ...(data.expenseDate ? { expenseDate: data.expenseDate as string } : {}),
+      ...(data.expenseType ? { expenseType: data.expenseType as 'insumo' | 'varios' } : {}),
+      ...(data.product ? { product: data.product as string } : {}),
+      ...(data.quantity ? { quantity: data.quantity as number } : {}),
+      ...(data.unit ? { unit: data.unit as string } : {}),
     };
 
-    await financialService.saveExpense(userId, expenseData, fieldId, plotId);
+    const saved = await financialService.saveExpense(userId, expenseData, fieldId, plotId);
 
     const currency = amountInfo.currency === 'USD' ? ' USD' : '';
     let msg = '\u2705 Gasto registrado\n';
@@ -157,6 +161,39 @@ export const expenseFlow: FlowDefinition = {
       msg += `\n\ud83d\udccd Lote ${resolvedPlotName} (${resolvedFieldName})`;
     } else if (resolvedPlotName) {
       msg += `\n\ud83d\udccd Lote ${resolvedPlotName}`;
+    }
+
+    // Suggest stock entry for insumo expenses
+    if (expenseData.expenseType === 'insumo' && expenseData.product && expenseData.quantity && expenseData.unit && fieldId) {
+      try {
+        const { StockPurchaseService } = await import('../../domain/stock/stock-purchase.service.js');
+        const purchaseService = new StockPurchaseService();
+        const suggestion = await purchaseService.suggestStockEntry(
+          userId, saved.id, expenseData.product, expenseData.quantity, expenseData.unit, fieldId,
+        );
+        if (suggestion) {
+          const messages = [msg];
+          messages.push(
+            `\n📦 ¿Querés cargar *${expenseData.quantity}${expenseData.unit} de ${expenseData.product}* al stock del Depósito ${suggestion.warehouseName}?`
+          );
+          return {
+            messages,
+            interactive: {
+              type: 'buttons' as const,
+              body: messages.join('\n'),
+              buttons: [
+                { id: `stock_entry_yes_${saved.id}`, title: 'Sí, cargar' },
+                { id: `stock_entry_no_${saved.id}`, title: 'No' },
+              ],
+            },
+            sideEffects: {
+              setPendingStockEntry: suggestion,
+            },
+          };
+        }
+      } catch {
+        // Stock feature may not be available
+      }
     }
 
     const suggestions = getSuggestions('expense_saved');

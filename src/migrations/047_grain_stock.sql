@@ -1,0 +1,3 @@
+-- Grain stock attributes
+ALTER TABLE stock_items ADD COLUMN IF NOT EXISTS grade VARCHAR(50) DEFAULT NULL;
+ALTER TABLE stock_items ADD COLUMN IF NOT EXISTS humidity_pct NUMERIC DEFAULT NULL;

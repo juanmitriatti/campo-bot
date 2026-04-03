@@ -39,9 +39,10 @@ REGLAS:
 - NUNCA digas que guardaste algo — el sistema lo hace después
 - No inventar datos no mencionados → omitir parámetro
 - lucas=miles, palos=millones, mil=x1000. Default ARS. "dólares/USD"→currency:USD
-- Si el usuario menciona fecha (ayer, el 3 de febrero, el lunes pasado), incluí event_date en YYYY-MM-DD. Hoy: ${today}. Si no menciona fecha, omití event_date
+- Si el usuario menciona fecha, incluí event_date en YYYY-MM-DD. Hoy: ${today}. Si la fecha mencionada ya pasó este año (mes anterior al actual), usá el año actual. Ej: "el 2 de febrero" con hoy ${today} → event_date: "${today.slice(0, 4)}-02-02". Si no menciona fecha, omití event_date
 - Si el historial muestra contexto previo, usalo para resolver referencias ambiguas
-- Acciones compuestas: si el usuario pide varias cosas en un mensaje, usá varias tools en orden de dependencia. Ej: "agregá campo X y lote Y" → add_field(name=X) + add_plot(plotName=Y, field=X)`;
+- Acciones compuestas: si el usuario pide varias cosas en un mensaje, usá varias tools en orden de dependencia. Ej: "agregá campo X y lote Y" → add_field(name=X) + add_plot(plotName=Y, field=X)
+- Compuesto actividad+costo: "sembré X y la semilla costó Y" → sow_crop + UN SOLO log_expense. El costo es UN gasto, no duplicar`;
   }
 
   private buildActivityLines(dictionary?: ActivityDictionaryEntry[]): string {
@@ -67,7 +68,9 @@ ${lines.join('\n')}
 
   private disambiguationRules(dictionary?: ActivityDictionaryEntry[]): string {
     return `DESAMBIGUACIÓN:
-- gasté/compré/pagué+insumo→log_expense. vendí/cobré+producto→log_income
+- gasté/compré/pagué+monto→log_expense. vendí/cobré+producto→log_income
+- TIPOS DE GASTO: Si mencionan producto concreto (Roundup,urea,semilla X,gasoil,glifosato)→expense_type=insumo + capturar product/quantity/unit. Si mencionan servicio (labré,pagué la siembra,servicio de fumigación,pulverización terrestre)→expense_type=varios, category=labranzas. Default=varios
+- Categorías insumo: agroquimicos,fertilizantes,semillas,combustible → siempre expense_type=insumo
 ${this.buildActivityLines(dictionary)}
 - "cuándo se fumigó/sembró/cosechó"→query_plot_history (consulta, NO registro). SIEMPRE usar herramienta
 - "en qué lote sembré/fumigué/cosechó X"→query_plot_history con activityFilter y crop, SIN plot (busca en todos)
@@ -83,7 +86,9 @@ ${this.buildActivityLines(dictionary)}
 - "gastos últimos 30 días"/"gastos de enero a marzo"→financial_report con days o desde/hasta
 - financial_report: siempre convertir períodos a desde/hasta YYYY-MM-DD. "este año"→period:year. "último mes"→days:30. "reporte semanal"→period:week. "resultado mensual"→sin params (default month)
 - Consulta vaga SIN lote/campo(está lindo/viene bien/cómo va todo)→texto, NO herramienta
-- "compartir campo X"→share_field (genera código de invitación). "unirme/aceptar ABC123"→accept_invite. "quitar a Juan/+549... de campo X"→remove_field_member. "miembros campo X"/"quién tiene acceso"→list_field_members`;
+- "compartir campo X"→share_field (genera código de invitación). "unirme/aceptar ABC123"→accept_invite. "quitar a Juan/+549... de campo X"→remove_field_member. "miembros campo X"/"quién tiene acceso"→list_field_members
+- STOCK: "cargué/entraron/recibí+producto+cantidad"→add_stock. "usé/saqué/gasté+producto+cantidad"(sin monto $)→remove_stock. "tengo X de Y"(inventario)→adjust_stock. "cuánto X tengo"/"inventario"/"stock"→check_stock. "movimientos de X"→stock_history. "stock mínimo"→set_min_stock
+- CUIDADO: "gasté" con monto ($, pesos, dólares) → log_expense. "gasté" sin monto + producto + cantidad → remove_stock`;
   }
 
   private contextLine(ctx: UserContext | null): string {

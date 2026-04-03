@@ -132,6 +132,16 @@ export class FeatureGate {
       share_field: 'sharing',
       list_field_members: 'sharing',
       remove_field_member: 'sharing',
+      // Stock
+      create_warehouse: 'stock',
+      list_warehouses: 'stock',
+      add_stock: 'stock',
+      remove_stock: 'stock',
+      adjust_stock: 'stock',
+      check_stock: 'stock',
+      stock_history: 'stock',
+      set_min_stock: 'stock',
+      check_low_stock: 'stock',
     };
 
     return map[command] ?? null;

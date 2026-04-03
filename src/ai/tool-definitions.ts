@@ -29,6 +29,10 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         category: { type: 'string', enum: [...EXPENSE_CATEGORIES], description: 'Categoría del gasto.' },
         description: { type: 'string', description: 'Descripción breve del gasto.' },
         currency: { type: 'string', enum: ['ARS', 'USD'], description: 'Moneda. Default ARS. "dólares/USD"→USD.' },
+        expense_type: { type: 'string', enum: ['insumo', 'varios'], description: 'insumo=producto almacenable (Roundup,urea,semilla). varios=servicio/labranza (siembra directa,pulverización). Default: inferir de categoría.' },
+        product: { type: 'string', description: 'Nombre del producto/insumo (Roundup, Urea, Gasoil). Solo si expense_type=insumo.' },
+        quantity: QUANTITY_PROP,
+        unit: UNIT_PROP,
         field: FIELD_PROP,
         plot: PLOT_PROP,
         event_date: DATE_PROP,
@@ -142,13 +146,14 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'harvest_crop',
-    description: 'Registrar cosecha. Verbos: coseché, levanté.',
+    description: 'Registrar cosecha. Verbos: coseché, levanté. Si mencionan cantidad → sugerir carga a silo/stock.',
     input_schema: {
       type: 'object',
       properties: {
         crop: { type: 'string', description: 'Cultivo cosechado.' },
-        quantity: { type: 'number', description: 'Cantidad cosechada.' },
+        quantity: { type: 'number', description: 'Cantidad cosechada (ej: 50 tn).' },
         unit: UNIT_PROP,
+        warehouse: { type: 'string', description: 'Nombre del depósito/silo destino.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
         event_date: DATE_PROP,
@@ -331,6 +336,119 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
 
   // show_reports_menu and export_csv handled by regex TRIVIAL_COMMANDS — not needed here
+
+  // ========================
+  // STOCK
+  // ========================
+  {
+    name: 'create_warehouse',
+    description: 'Crear depósito/galpón en un campo. "crear depósito X en campo Y".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nombre del depósito.' },
+        field: FIELD_PROP,
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'list_warehouses',
+    description: 'Listar depósitos. "depósitos del campo X", "mis depósitos".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: FIELD_PROP,
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'add_stock',
+    description: 'Cargar stock/insumo al depósito. "cargué/entraron 500lt de glifosato", "recibí 200kg de urea".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product: { type: 'string', description: 'Nombre del producto/insumo.' },
+        quantity: QUANTITY_PROP,
+        unit: UNIT_PROP,
+        field: FIELD_PROP,
+        warehouse: { type: 'string', description: 'Nombre del depósito, si mencionado.' },
+        category: { type: 'string', description: 'Categoría: agroquimicos, fertilizantes, semillas, combustible, otros.' },
+        reason: { type: 'string', description: 'Motivo de la carga.' },
+      },
+      required: ['product', 'quantity', 'unit'],
+    },
+  },
+  {
+    name: 'remove_stock',
+    description: 'Descargar/usar stock. "usé/saqué 50lt de glifosato", "gasté 100kg de urea".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product: { type: 'string', description: 'Nombre del producto.' },
+        quantity: QUANTITY_PROP,
+        unit: UNIT_PROP,
+        field: FIELD_PROP,
+        warehouse: { type: 'string', description: 'Nombre del depósito, si mencionado.' },
+        reason: { type: 'string', description: 'Motivo.' },
+      },
+      required: ['product', 'quantity', 'unit'],
+    },
+  },
+  {
+    name: 'adjust_stock',
+    description: 'Ajustar stock a cantidad exacta. "tengo 200lt de glifosato", "el stock de urea es 500kg".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product: { type: 'string', description: 'Nombre del producto.' },
+        quantity: QUANTITY_PROP,
+        unit: UNIT_PROP,
+        field: FIELD_PROP,
+        warehouse: { type: 'string', description: 'Nombre del depósito, si mencionado.' },
+        reason: { type: 'string', description: 'Motivo del ajuste.' },
+      },
+      required: ['product', 'quantity', 'unit'],
+    },
+  },
+  {
+    name: 'check_stock',
+    description: 'Consultar stock/inventario. "cuánto glifosato tengo", "inventario", "stock del campo X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product: { type: 'string', description: 'Producto a consultar. Omitir para ver todo.' },
+        field: FIELD_PROP,
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'stock_history',
+    description: 'Ver movimientos de un producto en stock. "movimientos de glifosato", "historial de stock de urea".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product: { type: 'string', description: 'Producto a consultar.' },
+        field: FIELD_PROP,
+      },
+      required: ['product'],
+    },
+  },
+  {
+    name: 'set_min_stock',
+    description: 'Configurar stock mínimo para alertas. "stock mínimo de glifosato 50lt", "alertar cuando queden menos de 100kg de urea".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product: { type: 'string', description: 'Nombre del producto.' },
+        quantity: { type: 'number', description: 'Cantidad mínima de alerta.' },
+        field: FIELD_PROP,
+      },
+      required: ['product', 'quantity'],
+    },
+  },
 
   // ========================
   // SHARING (enterprise)

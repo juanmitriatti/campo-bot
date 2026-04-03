@@ -41,7 +41,7 @@ Kill switches:
 
 #### AI Agent (tool_use) — new primary path
 - **`agent.service.ts`** — Calls Claude with `tool_use` + `tool_choice: auto`; returns `AgentResult` with tool calls array + optional conversational text. Uses plan-based rate limiting, conversation history, few-shot examples, and configurable timeout.
-- **`tool-definitions.ts`** — 25 Anthropic tool definitions grouped by domain: Financial (2), Activities (6), Observations (2), Reports (5), Field/Plot Mgmt (5), Sharing (4), System (1). Each tool has typed `input_schema` with enum validation for categories. All registration tools (9 of 25) include an optional `event_date` param (YYYY-MM-DD) for user-mentioned dates.
+- **`tool-definitions.ts`** — 33 Anthropic tool definitions grouped by domain: Financial (2), Activities (6), Observations (2), Reports (5), Field/Plot Mgmt (5), Sharing (4), Stock (8), System (1). Each tool has typed `input_schema` with enum validation for categories. All registration tools include an optional `event_date` param (YYYY-MM-DD) for user-mentioned dates.
 - **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules, user context, and dynamic today's date for date extraction. Tool definitions carry the schema, so the prompt only needs rules. Includes explicit rules that agro activities (fumigué, sembré, coseché, etc.) are ONLY activities and NEVER expenses unless the user mentions an explicit amount. Activity synonym lines are dynamically generated from `activity_dictionary` DB table (admin-editable via dashboard).
 - **`agent-response-mapper.ts`** — Converts `AgentResult` → `ParseResult[]` for backward compatibility. Maps `log_expense`/`log_income` tool calls to expense/income ParseResults (including `expenseDate`/`incomeDate` from `event_date`); everything else to command ParseResults (including `eventDate`). No-tool conversational responses become `_conversationalResponse` on ParseResult. **Smart agro filter**: when agent returns `log_expense`/`log_income` alongside an agro activity tool (sow_crop, harvest_crop, etc.), only drops them if amount=0 (Haiku hallucination). Keeps legitimate expenses with real amounts (e.g., "sembré soja y la semilla costó 100mil").
 - **`few-shot.service.ts`** — `formatAsToolUseMessages()` converts training examples to tool_use triplets (user → assistant[tool_use] → user[tool_result]).
@@ -76,7 +76,7 @@ When the AI Agent returns multiple tool calls for a single message (e.g., "Sembr
 - **`services/telegram.ts`** — Telegram Bot API client (sendMessage, sendButtons, sendList, sendDocument, downloadFile).
 - **`services/weather.js`** — OpenWeather API integration for forecasts and rain alerts.
 - **`services/alert.service.js`** — Multi-channel alert delivery (Telegram-first, WhatsApp fallback). Deduplication, retry with backoff, `alert_history` DB tracking. Extracts `telegramId` from `tg_` placeholder phone numbers.
-- **`services/scheduler.js`** — node-cron jobs: weekly summaries, daily weather alerts (half-hour precision via HH:MM), proactive reminders (missing hectares), Argentina timezone. Weather alerts show campo name or "tu ubicación" per city, with within-message dedup for same-city overlap.
+- **`services/scheduler.js`** — node-cron jobs: weekly summaries, daily weather alerts (half-hour precision via HH:MM), proactive reminders (missing hectares, low stock alerts at 8AM), Argentina timezone. Weather alerts show campo name or "tu ubicación" per city, with within-message dedup for same-city overlap.
 - **`services/observations.js`** — Observation CRUD with 4-layer dedup, normalization, financial guard.
 - **`services/settings.service.js`** — Global settings definitions with descriptions, grouped by category (ai, bot, audio, limits, agronomy, system).
 - **`services/activity-dictionary.service.ts`** — Cached CRUD for `activity_dictionary` table (5-min TTL). Provides activity type → synonym mapping for dynamic AI agent prompt generation. Admin-editable via dashboard Diccionario tab.
@@ -87,6 +87,7 @@ When the AI Agent returns multiple tool calls for a single message (e.g., "Sembr
 - **`financial/`** — FinancialHandler (expenses, incomes, budgets, unified `financial_report` dispatching, inline hectares on plot creation, activity labels with emojis in reports, auto-split comma-separated plot names from `add_plot` → `add_plots_batch`), FinancialService, FinancialRepository
 - **`auth/`** — Auth system (JWT, bcrypt, refresh tokens) + ObservationService (dashboard CRUD for observations, activities, expenses, incomes with edit support)
 - **`sharing/`** — FieldSharingService (invite-code flow: `createInvite` → 6-char code, `acceptInvite` → redeem, `removeMemberByIdentifier` by name/phone), SharingHandler
+- **`stock/`** — Full inventory management: StockRepository (atomic movements with row locking), StockService (auto-resolve warehouse/field, fuzzy product search, grain stock), StockHandler (9 chat commands), StockPurchaseService (expense→stock entry suggestion + grain entry), StockDeductionService (activity→stock deduction), StockAlertService (low stock alerts daily at 8AM). Feature-gated to `pro_plus`/`enterprise` plans.
 - **`plots/`** — PlotDiscoveryService (lookup-only, never auto-creates), PlotRepository
 - **`compound-executor.ts`** — Sequential executor for compound actions (multiple tool calls from a single message). Handles command/expense/income types via DomainRouter + FinancialHandler, forces `confirm_before_save=false` for expenses/incomes, stops at startFlow sideEffects, skips errors gracefully. Used by all 3 controllers when agent returns >1 tool call. 11 tests.
 - **`billing/`** — Plan-based AI daily limits + FeatureGate (maps commands → feature keys, checks plan access)
@@ -97,7 +98,7 @@ Handles Spanish text normalization, written numbers ("quinientos mil" → 500000
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-043_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province`, `last_name` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`, `edited_by`), `incomes` (includes `income_date`, `edited_by`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`, `edited_by`), `agro_observations` (includes `observation_date`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking), `activity_dictionary` (admin-editable activity synonyms for AI agent prompt).
+PostgreSQL with migrations in `src/migrations/001-047_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province`, `last_name` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`, `edited_by`, `expense_type`, `product`, `quantity`, `unit`), `incomes` (includes `income_date`, `edited_by`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`, `edited_by`, `stock_deduction_status`), `agro_observations` (includes `observation_date`), `warehouses` (per-field storage), `stock_items` (inventory with `current_quantity`, `min_stock`, `grade`, `humidity_pct`), `stock_movements` (entrada/salida/ajuste with links to `expense_id`/`domain_event_id`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking), `activity_dictionary` (admin-editable activity synonyms for AI agent prompt).
 
 ### Frontend (`frontend/`)
 
@@ -106,8 +107,8 @@ React + Vite + TailwindCSS SPA. In production, Express serves the build from `fr
 - **Stack**: React 19, React Router v6, Tailwind v3, Vite 6, TypeScript
 - **Auth flow**: JWT stored in localStorage, auto-refresh on 401, role-based route guards
 - **Key files**: `src/api/client.ts` (fetch wrapper), `src/context/AuthContext.tsx` (auth state), `src/components/ProtectedRoute.tsx` (route guard)
-- **Pages**: `/login`, `/register` (split name/apellido, dynamic plan fetching from API), `/dashboard` (end-user with 4 tabs: Observaciones, Actividades, Gastos, Ingresos)
-- **Dashboard features**: Paginated tables with filters (date, campo, lote, category/type), inline "Editar" button on each row, edit modals for all entity types, "Registrado por" column showing creator name (and editor name if edited) on all tables
+- **Pages**: `/login`, `/register` (split name/apellido, dynamic plan fetching from API), `/dashboard` (end-user with 5 tabs: Observaciones, Actividades, Gastos, Ingresos, Stock)
+- **Dashboard features**: Paginated tables with filters (date, campo, lote, category/type), inline "Editar" button on each row, edit modals for all entity types, "Registrado por" column showing creator name (and editor name if edited) on all tables. Stock tab shows inventory with movement history and edit modal.
 - **Edit modals**: `ObservationEditModal` (with history tracking), `ExpenseEditModal`, `IncomeEditModal`, `ActivityEditModal` (lightweight, no history)
 - **Edit audit**: `edited_by` column on `expenses`, `incomes`, `domain_events` tracks who last edited each record. Dashboard queries JOIN `users` to show `user_name` (creator) and `edited_by_name` (last editor) on all 4 tables
 - **Date handling**: Uses `toLocalDate()` helper for date inputs to avoid UTC timezone shift (Argentina is UTC-3)
@@ -185,6 +186,24 @@ Invite-code based field sharing that works across WhatsApp and Telegram.
 - All field/plot queries use `field_members` for access control (`accessibleFieldsSql()` helper in `expenses.js`)
 - Enterprise plan required to generate invite codes (gated via `sharing` feature in FeatureGate); `accept_invite` is ungated (anyone can redeem)
 - 4 AI tools: `share_field` (generates code), `accept_invite` (code), `list_field_members`, `remove_field_member` (member name or phone)
+
+## Stock System (Inventario)
+
+Full inventory management for agricultural inputs (insumos) and grain (granos). Feature-gated to `pro_plus` and `enterprise` plans.
+
+- **Data model**: `warehouses` (per-field) → `stock_items` (product, quantity, unit, min_stock, grade, humidity) → `stock_movements` (entrada/salida/ajuste with links to expenses and activities)
+- **Expense types**: `expenses.expense_type` differentiates `'varios'` (services/labranzas) from `'insumo'` (storable products like agroquimicos, fertilizantes, semillas, combustible). Agent auto-detects type from product name/category.
+- **Migrations**: 044 (expense types), 045 (warehouses/stock_items/stock_movements + feature), 046 (stock_deduction_status on domain_events), 047 (grain: grade/humidity_pct on stock_items)
+- **`src/domain/stock/`** — Repository (atomic movements with `FOR UPDATE` row lock), Service (auto-resolve warehouse, fuzzy search, unit validation, grain stock), Handler (9 commands), PurchaseService (expense→stock suggestion + grain entry), DeductionService (activity→stock deduction), AlertService (low stock alerts)
+- **AI tools** (8): `create_warehouse`, `list_warehouses`, `add_stock`, `remove_stock`, `adjust_stock`, `check_stock`, `stock_history`, `set_min_stock`
+- **Interactive flows** (all via buttons on both WhatsApp + Telegram):
+  - Expense (insumo) → "cargar al stock?" (`stock_entry_yes/no`)
+  - Activity (spraying/fertilization) → "descontar del stock?" (`stock_deduct_yes/no`)
+  - Harvest → "cargar grano al silo?" (`stock_grain_yes/no`)
+  - Grain sale → "descontar del stock?" (`stock_grain_sale_yes/no`)
+- **Alerts**: Daily 8AM low stock check via `lowStockAlertTick()` in scheduler, multi-channel delivery with 24h dedup
+- **Dashboard**: Stock tab with `StockTable`, `StockMovementHistory` modal, `StockEditModal`. Expense table shows type badge + product column + type filter.
+- **API endpoints**: `GET /api/auth/stock`, `GET /api/auth/stock/:id/movements`, `GET /api/auth/stock/filters`, `PATCH /api/auth/stock/:id`
 
 ## Multi-Channel Alerts
 

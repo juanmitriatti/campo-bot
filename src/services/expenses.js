@@ -343,8 +343,8 @@ export async function getAiFallbackSummary() {
 export async function saveExpense(userId, data, fieldId = null, plotId = null) {
   const result = await pool.query(
     `INSERT INTO expenses
-    (user_id, category, description, amount, currency, field_id, plot_id, expense_date)
-    VALUES ($1,$2,$3,$4,$5,$6,$7, COALESCE($8::date, CURRENT_DATE))
+    (user_id, category, description, amount, currency, field_id, plot_id, expense_date, expense_type, product, quantity, unit)
+    VALUES ($1,$2,$3,$4,$5,$6,$7, COALESCE($8::date, CURRENT_DATE), $9, $10, $11, $12)
     RETURNING id`,
     [
       userId,
@@ -354,7 +354,11 @@ export async function saveExpense(userId, data, fieldId = null, plotId = null) {
       data.currency || "ARS",
       fieldId,
       plotId,
-      data.expenseDate || null
+      data.expenseDate || null,
+      data.expenseType || 'varios',
+      data.product || null,
+      data.quantity || null,
+      data.unit || null,
     ]
   );
   return result.rows[0];

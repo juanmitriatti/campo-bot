@@ -5,14 +5,16 @@ import ObservationTable from '../components/ObservationTable';
 import ActivityTable from '../components/ActivityTable';
 import ExpenseTable from '../components/ExpenseTable';
 import IncomeTable from '../components/IncomeTable';
+import StockTable from '../components/StockTable';
 
-type Tab = 'observations' | 'activities' | 'expenses' | 'incomes';
+type Tab = 'observations' | 'activities' | 'expenses' | 'incomes' | 'stock';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'observations', label: 'Observaciones' },
   { key: 'activities', label: 'Actividades' },
   { key: 'expenses', label: 'Gastos' },
   { key: 'incomes', label: 'Ingresos' },
+  { key: 'stock', label: 'Stock' },
 ];
 
 export default function Dashboard() {
@@ -83,6 +85,7 @@ export default function Dashboard() {
           {activeTab === 'activities' && <ActivityTable />}
           {activeTab === 'expenses' && <ExpenseTable />}
           {activeTab === 'incomes' && <IncomeTable />}
+          {activeTab === 'stock' && <StockTable />}
         </div>
       </main>
     </div>

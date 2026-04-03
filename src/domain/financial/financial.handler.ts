@@ -356,6 +356,10 @@ export class FinancialHandler {
               category: data.category,
               description: data.description || text,
               ...(data.expenseDate ? { expenseDate: data.expenseDate } : {}),
+              ...(data.expenseType ? { expenseType: data.expenseType } : {}),
+              ...(data.product ? { product: data.product } : {}),
+              ...(data.quantity ? { quantity: data.quantity } : {}),
+              ...(data.unit ? { unit: data.unit } : {}),
             },
           },
         },
@@ -377,6 +381,10 @@ export class FinancialHandler {
                 category: data.category,
                 description: data.description || text,
                 ...(data.expenseDate ? { expenseDate: data.expenseDate } : {}),
+                ...(data.expenseType ? { expenseType: data.expenseType } : {}),
+                ...(data.product ? { product: data.product } : {}),
+                ...(data.quantity ? { quantity: data.quantity } : {}),
+                ...(data.unit ? { unit: data.unit } : {}),
               },
             },
           },
@@ -425,6 +433,10 @@ export class FinancialHandler {
               category: data.category,
               description: data.description || text,
               ...(data.expenseDate ? { expenseDate: data.expenseDate } : {}),
+              ...(data.expenseType ? { expenseType: data.expenseType } : {}),
+              ...(data.product ? { product: data.product } : {}),
+              ...(data.quantity ? { quantity: data.quantity } : {}),
+              ...(data.unit ? { unit: data.unit } : {}),
             },
           },
         },
@@ -449,7 +461,7 @@ export class FinancialHandler {
       };
     }
 
-    await this.service.saveExpense(userId, data, fieldId, plotId);
+    const saved = await this.service.saveExpense(userId, data, fieldId, plotId);
     const messages = [buildExpenseConfirmation(data, resFieldName, resPlotName)];
 
     if (settings.budget_alerts) {
@@ -463,6 +475,39 @@ export class FinancialHandler {
           dedupKey: `${data.category}_${monthKey}`,
           payload: { category: data.category },
         }).catch(() => {});
+      }
+    }
+
+    // Suggest stock entry for insumo expenses
+    if (data.expenseType === 'insumo' && data.product && data.quantity && data.unit && fieldId) {
+      try {
+        const { StockPurchaseService } = await import('../stock/stock-purchase.service.js');
+        const purchaseService = new StockPurchaseService();
+        const suggestion = await purchaseService.suggestStockEntry(
+          userId, saved.id, data.product, data.quantity, data.unit, fieldId,
+        );
+        if (suggestion) {
+          messages.push(
+            `\n📦 ¿Querés cargar *${data.quantity}${data.unit} de ${data.product}* al stock del Depósito ${suggestion.warehouseName}?`
+          );
+          return {
+            messages,
+            interactive: {
+              type: 'buttons' as const,
+              body: messages.join('\n'),
+              buttons: [
+                { id: `stock_entry_yes_${saved.id}`, title: 'Sí, cargar' },
+                { id: `stock_entry_no_${saved.id}`, title: 'No' },
+              ],
+            },
+            sideEffects: {
+              setPendingStockEntry: suggestion,
+            },
+            suggestionKey: 'expense_saved',
+          };
+        }
+      } catch {
+        // Stock feature may not be available — ignore
       }
     }
 
@@ -610,11 +655,56 @@ export class FinancialHandler {
       };
     }
 
-    await this.service.saveIncome(userId, data, fieldId, plotId);
+    const savedIncome = await this.service.saveIncome(userId, data, fieldId, plotId);
     const messages = [buildIncomeConfirmation(data, resFieldName, resPlotName)];
     const { ingresos, gastos } = await this.service.getMonthlyResult(userId);
     if (gastos > 0) {
       messages.push(formatResult(ingresos, gastos, 'Resultado del mes hasta ahora'));
+    }
+
+    // Grain sale → suggest stock deduction
+    const GRAIN_CATEGORIES = new Set(['soja', 'maíz', 'trigo', 'girasol', 'sorgo', 'cebada']);
+    const category = (data.category || '').toLowerCase();
+    if (GRAIN_CATEGORIES.has(category) && data.quantity && data.unit && fieldId) {
+      try {
+        const { FeatureGate } = await import('../billing/feature-gate.js');
+        const fg = new FeatureGate();
+        const hasStock = await fg.hasFeature(userId, 'stock');
+        if (hasStock) {
+          const { StockService } = await import('../stock/stock.service.js');
+          const stockService = new StockService();
+          const stockItem = await stockService.findProduct(userId, data.category);
+          if (stockItem && stockItem.current_quantity > 0) {
+            const qty = data.quantity;
+            const unit = data.unit;
+            messages.push(`\n📦 Tenés *${stockItem.current_quantity}${stockItem.unit}* de *${stockItem.name}* en stock.\n¿Descontar *${qty}${unit}*?`);
+            return {
+              messages,
+              interactive: {
+                type: 'buttons',
+                body: `Descontar ${qty}${unit} de ${data.category} del stock?`,
+                buttons: [
+                  { id: `stock_grain_sale_yes_${savedIncome?.id || 0}`, title: 'Sí, descontar' },
+                  { id: `stock_grain_sale_no_${savedIncome?.id || 0}`, title: 'No' },
+                ],
+              },
+              sideEffects: {
+                setPendingStockDeduction: {
+                  type: 'grain_sale',
+                  stockItemId: stockItem.id,
+                  product: stockItem.name,
+                  totalQuantity: qty,
+                  unit,
+                  fieldId,
+                  warehouseName: stockItem.warehouse_name || 'Principal',
+                  currentStock: stockItem.current_quantity,
+                },
+              },
+              suggestionKey: 'income_saved',
+            };
+          }
+        }
+      } catch { /* stock not available */ }
     }
 
     return { messages, suggestionKey: 'income_saved' };
@@ -638,21 +728,55 @@ export class FinancialHandler {
       }
       return { messages };
     } else {
-      await this.service.saveExpense(userId, pending.data as ParsedExpense, pending.fieldId, pending.plotId);
-      const messages = [buildExpenseConfirmation(pending.data as ParsedExpense, pending.fieldName, pending.plotName)];
+      const expenseData = pending.data as ParsedExpense;
+      const saved = await this.service.saveExpense(userId, expenseData, pending.fieldId, pending.plotId);
+      const messages = [buildExpenseConfirmation(expenseData, pending.fieldName, pending.plotName)];
       if (settings.budget_alerts) {
-        const alert = await this.service.checkBudgetAlert(userId, pending.data.category, user.name);
+        const alert = await this.service.checkBudgetAlert(userId, expenseData.category, user.name);
         if (alert) {
           messages.push(alert);
           const now = new Date();
           const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
           const alertType = alert.startsWith('\u{1F534}') ? 'budget_100' : 'budget_80';
           recordAlert(userId, alertType, alert, {
-            dedupKey: `${pending.data.category}_${monthKey}`,
-            payload: { category: pending.data.category },
+            dedupKey: `${expenseData.category}_${monthKey}`,
+            payload: { category: expenseData.category },
           }).catch(() => {});
         }
       }
+
+      // Suggest stock entry for insumo expenses
+      if (expenseData.expenseType === 'insumo' && expenseData.product && expenseData.quantity && expenseData.unit && pending.fieldId) {
+        try {
+          const { StockPurchaseService } = await import('../stock/stock-purchase.service.js');
+          const purchaseService = new StockPurchaseService();
+          const suggestion = await purchaseService.suggestStockEntry(
+            userId, saved.id, expenseData.product, expenseData.quantity, expenseData.unit, pending.fieldId,
+          );
+          if (suggestion) {
+            messages.push(
+              `\n📦 ¿Querés cargar *${expenseData.quantity}${expenseData.unit} de ${expenseData.product}* al stock del Depósito ${suggestion.warehouseName}?`
+            );
+            return {
+              messages,
+              interactive: {
+                type: 'buttons' as const,
+                body: messages.join('\n'),
+                buttons: [
+                  { id: `stock_entry_yes_${saved.id}`, title: 'Sí, cargar' },
+                  { id: `stock_entry_no_${saved.id}`, title: 'No' },
+                ],
+              },
+              sideEffects: {
+                setPendingStockEntry: suggestion,
+              },
+            };
+          }
+        } catch {
+          // Stock feature may not be available — ignore
+        }
+      }
+
       return { messages };
     }
   }

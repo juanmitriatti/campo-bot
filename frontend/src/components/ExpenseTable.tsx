@@ -14,6 +14,10 @@ interface Expense {
   field_name: string | null;
   user_name: string | null;
   edited_by_name: string | null;
+  expense_type: string | null;
+  product: string | null;
+  quantity: number | null;
+  unit: string | null;
 }
 
 interface PaginatedResponse {
@@ -44,6 +48,7 @@ const EXPENSE_CATEGORIES = [
   'fertilizantes',
   'semillas',
   'agroquimicos',
+  'labranzas',
   'sueldos',
   'maquinaria',
   'arrendamiento',
@@ -56,11 +61,17 @@ const CATEGORY_LABELS: Record<string, string> = {
   fertilizantes: 'Fertilizantes',
   semillas: 'Semillas',
   agroquimicos: 'Agroquimicos',
+  labranzas: 'Labranzas',
   sueldos: 'Sueldos',
   maquinaria: 'Maquinaria',
   arrendamiento: 'Arrendamiento',
   impuestos: 'Impuestos',
   otros: 'Otros',
+};
+
+const EXPENSE_TYPE_LABELS: Record<string, string> = {
+  insumo: 'Insumo',
+  varios: 'Varios',
 };
 
 function formatAmount(amount: number, currency: string): string {
@@ -83,6 +94,7 @@ export default function ExpenseTable() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [category, setCategory] = useState('');
+  const [expenseType, setExpenseType] = useState('');
 
   const limit = 10;
 
@@ -102,6 +114,7 @@ export default function ExpenseTable() {
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
       if (category) params.set('category', category);
+      if (expenseType) params.set('expenseType', expenseType);
       const result = await apiRequest<PaginatedResponse>(`/expenses?${params}`);
       setData(result);
     } catch (err: unknown) {
@@ -109,7 +122,7 @@ export default function ExpenseTable() {
     } finally {
       setLoading(false);
     }
-  }, [page, fieldId, plotId, dateFrom, dateTo, category]);
+  }, [page, fieldId, plotId, dateFrom, dateTo, category, expenseType]);
 
   useEffect(() => {
     fetchExpenses();
@@ -127,6 +140,7 @@ export default function ExpenseTable() {
     setDateFrom('');
     setDateTo('');
     setCategory('');
+    setExpenseType('');
     setPage(1);
   };
 
@@ -135,7 +149,7 @@ export default function ExpenseTable() {
     fetchExpenses();
   };
 
-  const hasFilters = fieldId || plotId || dateFrom || dateTo || category;
+  const hasFilters = fieldId || plotId || dateFrom || dateTo || category || expenseType;
 
   const availablePlots = fieldId
     ? fields.find(f => f.id === Number(fieldId))?.plots ?? []
@@ -222,6 +236,18 @@ export default function ExpenseTable() {
             {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>)}
           </select>
         </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Tipo</label>
+          <select
+            value={expenseType}
+            onChange={e => { setExpenseType(e.target.value); setPage(1); }}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+          >
+            <option value="">Todos</option>
+            <option value="insumo">Insumo</option>
+            <option value="varios">Varios</option>
+          </select>
+        </div>
         {hasFilters && (
           <button
             onClick={clearFilters}
@@ -245,8 +271,10 @@ export default function ExpenseTable() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Tipo</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Categoria</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Descripcion</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Producto</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Campo</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Lote</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Monto</th>
@@ -261,6 +289,15 @@ export default function ExpenseTable() {
                       {formatDate(exp.expense_date)}
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
+                      <span className={`inline-block text-xs px-2 py-0.5 rounded ${
+                        exp.expense_type === 'insumo'
+                          ? 'bg-purple-100 text-purple-800'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        {exp.expense_type === 'insumo' ? 'Insumo' : 'Varios'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell">
                       <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
                         {CATEGORY_LABELS[exp.category] || exp.category}
                       </span>
@@ -268,10 +305,18 @@ export default function ExpenseTable() {
                     <td className="px-4 py-3 max-w-xs">
                       <p className="truncate text-gray-800">{exp.description || '-'}</p>
                       <p className="text-xs text-gray-400 md:hidden">
-                        {CATEGORY_LABELS[exp.category] || exp.category}
+                        {EXPENSE_TYPE_LABELS[exp.expense_type || 'varios'] || 'Varios'} · {CATEGORY_LABELS[exp.category] || exp.category}
                         {exp.field_name && ` · ${exp.field_name}`}
                         {exp.plot_name && ` · ${exp.plot_name}`}
                       </p>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
+                      {exp.product ? (
+                        <span>
+                          {exp.product}
+                          {exp.quantity && exp.unit && <span className="text-xs text-gray-400 ml-1">({exp.quantity} {exp.unit})</span>}
+                        </span>
+                      ) : '-'}
                     </td>
                     <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
                       {exp.field_name || '-'}

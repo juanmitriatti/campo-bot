@@ -27,6 +27,10 @@ export interface ParsedExpense {
   description: string;
   currency: Currency;
   expenseDate?: string | null;
+  expenseType?: 'insumo' | 'varios';
+  product?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
 }
 
 export interface ParsedIncome {
@@ -454,6 +458,25 @@ export interface HandlerResponse {
     setPendingPlotArea?: { plotId: number; plotName: string; fieldName: string };
     setFieldDuplicate?: { name: string; city: string | null };
     setPendingActivity?: { command: string; data: Record<string, unknown> };
+    setPendingStockEntry?: {
+      expenseId: number;
+      product: string;
+      quantity: number;
+      unit: string;
+      fieldId: number;
+      warehouseId: number;
+      warehouseName: string;
+    };
+    setPendingStockDeduction?: {
+      domainEventId: number;
+      stockItemId: number;
+      product: string;
+      totalQuantity: number;
+      unit: string;
+      fieldId: number;
+      warehouseName: string;
+      currentStock: number;
+    };
   };
 }
 
@@ -473,7 +496,8 @@ export type FeatureKey =
   | 'csv_export'
   | 'weather'
   | 'audio'
-  | 'sharing';
+  | 'sharing'
+  | 'stock';
 
 export interface PlanRow {
   id: number;
