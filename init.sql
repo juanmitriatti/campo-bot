@@ -4,6 +4,7 @@ CREATE TABLE users (
   name VARCHAR(100),
   city VARCHAR(100),
   province VARCHAR(100),
+  last_name VARCHAR(100),
   email TEXT,
   password_hash TEXT,
   role VARCHAR(20) NOT NULL DEFAULT 'end_user'

@@ -32,7 +32,7 @@ export class AuthService {
   }
 
   async register(body: RegisterBody): Promise<{ user: AuthUser; tokens: TokenPair }> {
-    const { name, email, password, plan_id } = body;
+    const { name, last_name, email, password, plan_id } = body;
 
     if (!name || !email || !password) {
       throw new AuthError(400, 'El email, nombre y contraseña son obligatorios');
@@ -59,7 +59,18 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const user = await this.auth.createUser({ name, email, passwordHash, planId });
+
+    let user: AuthUser;
+    try {
+      user = await this.auth.createUser({ name, lastName: last_name, email, passwordHash, planId });
+    } catch (err: unknown) {
+      // PG unique constraint violation (race condition: findByEmail returned null but another request inserted same email)
+      if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
+        throw new AuthError(409, 'Ya existe una cuenta con este email');
+      }
+      throw err;
+    }
+
     const tokens = await this.generateTokenPair(user.id, user.role);
 
     return { user, tokens };

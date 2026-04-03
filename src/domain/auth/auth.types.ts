@@ -8,6 +8,7 @@ export interface JwtPayload {
 
 export interface RegisterBody {
   name: string;
+  last_name?: string;
   email: string;
   password: string;
   plan_id?: number;
@@ -25,6 +26,7 @@ export interface TokenPair {
 
 export interface ProfileUpdateBody {
   name?: string;
+  last_name?: string;
   email?: string;
   city?: string;
 }
@@ -32,6 +34,7 @@ export interface ProfileUpdateBody {
 export interface AuthUser {
   id: number;
   name: string | null;
+  last_name: string | null;
   email: string | null;
   role: UserRole;
   city: string | null;

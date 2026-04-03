@@ -6,6 +6,7 @@ export type UserRole = 'admin' | 'end_user';
 export interface User {
   id: number;
   name: string | null;
+  last_name: string | null;
   email: string | null;
   role: UserRole;
   city: string | null;
@@ -32,7 +33,7 @@ interface AuthState {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<User>;
-  register: (name: string, email: string, password: string, planId?: number) => Promise<User>;
+  register: (name: string, email: string, password: string, planId?: number, lastName?: string) => Promise<User>;
   logout: () => void;
   clearError: () => void;
 }
@@ -93,11 +94,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (name: string, email: string, password: string, planId?: number): Promise<User> => {
+  const register = useCallback(async (name: string, email: string, password: string, planId?: number, lastName?: string): Promise<User> => {
     setError(null);
     try {
       const body: Record<string, unknown> = { name, email, password };
       if (planId) body.plan_id = planId;
+      if (lastName) body.last_name = lastName;
 
       const data = await apiRequest<{ user: User; tokens: { accessToken: string; refreshToken: string } }>(
         '/register',

@@ -53,6 +53,7 @@ router.get("/api/users", async (req, res) => {
          u.id,
          u.phone_number,
          u.name,
+         u.last_name,
          u.city,
          u.province,
          u.email,
@@ -101,6 +102,7 @@ router.get("/api/users", async (req, res) => {
       return {
         id: u.id,
         name: u.name,
+        lastName: u.last_name || null,
         phone: u.phone_number,
         city: u.city,
         province: u.province || null,
@@ -147,6 +149,7 @@ router.get("/api/users/:id", async (req, res) => {
     res.json({
       id: u.id,
       name: u.name,
+      lastName: u.last_name || null,
       phone: u.phone_number,
       city: u.city,
       province: u.province || null,
@@ -266,17 +269,18 @@ router.put("/api/users/:id/settings", async (req, res) => {
 
 router.put("/api/users/:id", async (req, res) => {
   const { id } = req.params;
-  const { name, city, email, province } = req.body;
+  const { name, last_name, city, email, province } = req.body;
 
   try {
     const result = await pool.query(
       `UPDATE users SET
          name = COALESCE($1, name),
-         city = COALESCE($2, city),
-         email = COALESCE($3, email),
-         province = COALESCE($5, province)
-       WHERE id = $4 RETURNING *`,
-      [name, city, email, id, province]
+         last_name = COALESCE($2, last_name),
+         city = COALESCE($3, city),
+         email = COALESCE($4, email),
+         province = COALESCE($6, province)
+       WHERE id = $5 RETURNING *`,
+      [name, last_name, city, email, id, province]
     );
 
     if (result.rows.length === 0) {
@@ -287,6 +291,7 @@ router.put("/api/users/:id", async (req, res) => {
     res.json({
       id: u.id,
       name: u.name,
+      lastName: u.last_name || null,
       phone: u.phone_number,
       city: u.city,
       province: u.province || null,
@@ -1815,7 +1820,7 @@ router.put("/api/users/:id/status", async (req, res) => {
 
 router.post("/api/users", async (req, res) => {
   try {
-    const { name, phone, city, email, province } = req.body;
+    const { name, last_name, phone, city, email, province } = req.body;
     if (!phone || !phone.trim()) {
       return res.status(400).json({ error: "El teléfono es obligatorio" });
     }
@@ -1827,10 +1832,10 @@ router.post("/api/users", async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO users (phone_number, name, city, email, province, status)
-       VALUES ($1, $2, $3, $4, $5, 'active')
+      `INSERT INTO users (phone_number, name, last_name, city, email, province, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active')
        RETURNING *`,
-      [phone.trim(), name || null, city || null, email || null, province || null]
+      [phone.trim(), name || null, last_name || null, city || null, email || null, province || null]
     );
 
     const u = result.rows[0];
@@ -1845,6 +1850,7 @@ router.post("/api/users", async (req, res) => {
     res.status(201).json({
       id: u.id,
       name: u.name,
+      lastName: u.last_name || null,
       phone: u.phone_number,
       city: u.city,
       province: u.province || null,

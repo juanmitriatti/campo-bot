@@ -5,12 +5,12 @@ interface UserWithPassword extends AuthUser {
   password_hash: string | null;
 }
 
-const PROFILE_FIELDS_WHITELIST = ['name', 'email', 'city'] as const;
+const PROFILE_FIELDS_WHITELIST = ['name', 'last_name', 'email', 'city'] as const;
 
 export class AuthRepository {
   async findByEmail(email: string): Promise<UserWithPassword | null> {
     const { rows } = await pool.query(
-      `SELECT id, name, email, role, city, province, plan_id, password_hash
+      `SELECT id, name, last_name, email, role, city, province, plan_id, password_hash
        FROM users WHERE email = $1`,
       [email]
     );
@@ -19,24 +19,25 @@ export class AuthRepository {
 
   async getUserById(userId: number): Promise<AuthUser | null> {
     const { rows } = await pool.query(
-      `SELECT id, name, email, role, city, province, plan_id
+      `SELECT id, name, last_name, email, role, city, province, plan_id
        FROM users WHERE id = $1`,
       [userId]
     );
     return rows.length > 0 ? rows[0] : null;
   }
 
-  async createUser({ name, email, passwordHash, planId }: {
+  async createUser({ name, lastName, email, passwordHash, planId }: {
     name: string;
+    lastName?: string;
     email: string;
     passwordHash: string;
     planId: number;
   }): Promise<AuthUser> {
     const { rows } = await pool.query(
-      `INSERT INTO users (name, email, password_hash, role, plan_id)
-       VALUES ($1, $2, $3, 'end_user', $4)
-       RETURNING id, name, email, role, city, province, plan_id`,
-      [name, email, passwordHash, planId]
+      `INSERT INTO users (name, last_name, email, password_hash, role, plan_id)
+       VALUES ($1, $2, $3, $4, 'end_user', $5)
+       RETURNING id, name, last_name, email, role, city, province, plan_id`,
+      [name, lastName || null, email, passwordHash, planId]
     );
     return rows[0];
   }
@@ -58,7 +59,7 @@ export class AuthRepository {
     values.push(userId);
     const { rows } = await pool.query(
       `UPDATE users SET ${sets.join(', ')} WHERE id = $${idx}
-       RETURNING id, name, email, role, city, province, plan_id`,
+       RETURNING id, name, last_name, email, role, city, province, plan_id`,
       values
     );
     return rows.length > 0 ? rows[0] : null;
@@ -66,7 +67,7 @@ export class AuthRepository {
 
   async findByPhone(phone: string): Promise<AuthUser | null> {
     const { rows } = await pool.query(
-      `SELECT id, name, email, role, city, province, plan_id
+      `SELECT id, name, last_name, email, role, city, province, plan_id
        FROM users WHERE phone_number = $1`,
       [phone]
     );

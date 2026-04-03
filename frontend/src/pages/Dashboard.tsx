@@ -32,7 +32,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide">Nombre</p>
-              <p className="text-sm font-medium text-gray-800 mt-0.5">{user.name || '-'}</p>
+              <p className="text-sm font-medium text-gray-800 mt-0.5">{[user.name, user.last_name].filter(Boolean).join(' ') || '-'}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide">Email</p>

@@ -1,14 +1,25 @@
 import { Router } from 'express';
 import { AuthService, AuthError } from '../domain/auth/auth.service.js';
 import { ObservationService, ObservationError } from '../domain/auth/observation.service.js';
+import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import type { Request, Response } from 'express';
 
 const router = Router();
 const authService = new AuthService();
 const observationService = new ObservationService();
+const planRepo = new PlanRepository();
 
 // --- Public routes ---
+
+router.get('/plans', async (_req: Request, res: Response) => {
+  try {
+    const plans = await planRepo.getAllPlans();
+    res.json(plans.map(p => ({ id: p.id, name: p.name, display_name: p.display_name, price_ars: p.price_ars })));
+  } catch (err) {
+    handleError(err, res);
+  }
+});
 
 router.post('/register', async (req: Request, res: Response) => {
   try {

@@ -939,7 +939,11 @@
         <div class="form-grid">
           <div class="form-group">
             <label for="modal-user-name">Nombre</label>
-            <input type="text" id="modal-user-name" placeholder="Juan P&eacute;rez">
+            <input type="text" id="modal-user-name" placeholder="Juan">
+          </div>
+          <div class="form-group">
+            <label for="modal-user-last-name">Apellido</label>
+            <input type="text" id="modal-user-last-name" placeholder="P&eacute;rez">
           </div>
           <div class="form-group">
             <label for="modal-user-phone">Tel&eacute;fono *</label>
@@ -1712,6 +1716,10 @@
           <div class="form-group">
             <label for="detail-name">Nombre</label>
             <input type="text" id="detail-name">
+          </div>
+          <div class="form-group">
+            <label for="detail-last-name">Apellido</label>
+            <input type="text" id="detail-last-name">
           </div>
           <div class="form-group">
             <label for="detail-phone">Tel&eacute;fono</label>
@@ -2564,6 +2572,7 @@
       editingUserId = null;
       document.getElementById('user-modal-title').textContent = 'Nuevo Usuario';
       document.getElementById('modal-user-name').value = '';
+      document.getElementById('modal-user-last-name').value = '';
       document.getElementById('modal-user-phone').value = '';
       document.getElementById('modal-user-phone').disabled = false;
       document.getElementById('modal-user-city').value = '';
@@ -2583,6 +2592,7 @@
       // Pre-fill from cache
       var u = usersCache.find(function(x) { return x.id === userId; });
       document.getElementById('modal-user-name').value = (u && u.name) || '';
+      document.getElementById('modal-user-last-name').value = (u && u.lastName) || '';
       document.getElementById('modal-user-phone').value = (u && u.phone) || '';
       document.getElementById('modal-user-phone').disabled = true;
       document.getElementById('modal-user-city').value = (u && u.city) || '';
@@ -2594,6 +2604,7 @@
       // Fetch full detail for address fields
       apiFetch('/admin/api/users/' + userId).then(function(detail) {
         if (detail) {
+          document.getElementById('modal-user-last-name').value = detail.lastName || '';
           document.getElementById('modal-user-address').value = detail.address || '';
           document.getElementById('modal-user-province').value = detail.province || '';
           document.getElementById('modal-user-postal').value = detail.postalCode || '';
@@ -2617,6 +2628,7 @@
 
       var body = {
         name: document.getElementById('modal-user-name').value.trim() || null,
+        last_name: document.getElementById('modal-user-last-name').value.trim() || null,
         phone: phone,
         city: document.getElementById('modal-user-city').value.trim() || null,
         email: document.getElementById('modal-user-email').value.trim() || null,
@@ -2712,8 +2724,9 @@
       apiFetch('/admin/api/users/' + id).then(function(user) {
         if (!user) return;
 
-        document.getElementById('detail-user-title').textContent = user.name || 'Usuario';
+        document.getElementById('detail-user-title').textContent = [user.name, user.lastName].filter(Boolean).join(' ') || 'Usuario';
         document.getElementById('detail-name').value = user.name || '';
+        document.getElementById('detail-last-name').value = user.lastName || '';
         document.getElementById('detail-phone').value = user.phone || '';
         document.getElementById('detail-city').value = user.city || '';
         document.getElementById('detail-email').value = user.email || '';
@@ -2955,6 +2968,7 @@
 
       var body = {
         name: document.getElementById('detail-name').value.trim(),
+        last_name: document.getElementById('detail-last-name').value.trim() || null,
         phone: document.getElementById('detail-phone').value.trim(),
         city: document.getElementById('detail-city').value.trim(),
         email: document.getElementById('detail-email').value.trim() || null,
