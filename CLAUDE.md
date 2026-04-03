@@ -25,7 +25,7 @@ campo-bot is a WhatsApp and Telegram-based agricultural management assistant for
 Messages are orchestrated by `src/services/intent-classifier.ts` through a strict fallback chain:
 
 1. **Observation prefix** — Messages starting with "observación:" bypass AI entirely
-2. **Trivial commands** — confirm, cancel, greeting, help, menu, etc. skip AI (~36 commands)
+2. **Trivial commands** — confirm, cancel, greeting, help, menu, etc. skip AI (~35 commands). Note: `generate_agro_report` is NOT trivial (needs agent for date range parsing)
 3. **AI primary** — Two modes controlled by `AGENT_ENABLED` setting:
    - **Mode A: AI Agent** (`AGENT_ENABLED=true`) — `src/ai/agent.service.ts` calls Claude with `tool_use`; Claude decides which tool(s) to call or responds conversationally without tools. Supports compound actions (multiple tool calls per message).
    - **Mode B: JSON extraction** (`AGENT_ENABLED=false`, default) — `src/ai/intent-extractor.ts` calls Claude Haiku with JSON prompt + assistant prefill; returns structured JSON intent.
