@@ -836,7 +836,8 @@ export class AgronomyHandler {
             // Get plot hectares for dose calculation
             let plotHectares: number | undefined;
             if (plotResult.plotId) {
-              const plotInfo = await this.plotDiscovery.getPlotInfo(plotResult.plotId);
+              const { getPlotById } = await import('../../services/expenses.js');
+              const plotInfo = await getPlotById(plotResult.plotId);
               plotHectares = plotInfo?.area_hectares || undefined;
             }
 
