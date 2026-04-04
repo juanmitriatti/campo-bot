@@ -938,6 +938,7 @@ router.get("/api/users/:id/audio-usage", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching user audio usage:", error);
+    logError('admin-api', 'USER_AUDIO_USAGE_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -992,6 +993,7 @@ router.get("/api/users/:id/shared-fields", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching user shared fields:", error);
+    logError('admin-api', 'USER_SHARED_FIELDS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1025,6 +1027,7 @@ router.get("/api/agro/fields", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching agro fields:", error);
+    logError('admin-api', 'AGRO_FIELDS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1147,6 +1150,7 @@ router.get("/api/agro/fields/:id", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching agro field detail:", error);
+    logError('admin-api', 'AGRO_FIELD_DETAIL_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1202,6 +1206,7 @@ router.get("/api/agro/fields/:id/observations", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching observations:", error);
+    logError('admin-api', 'OBSERVATIONS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1261,6 +1266,7 @@ router.get("/api/agro/fields/:id/activities", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching field activities:", error);
+    logError('admin-api', 'FIELD_ACTIVITIES_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1278,6 +1284,7 @@ router.get("/api/agro/reports", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching agro reports:", error);
+    logError('admin-api', 'AGRO_REPORTS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1294,6 +1301,7 @@ router.get("/api/agro/fields/:id/reports", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching field reports:", error);
+    logError('admin-api', 'FIELD_REPORTS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1314,6 +1322,7 @@ router.post("/api/agro/fields/:id/generate-report", async (req, res) => {
     });
   } catch (error) {
     console.error("Error generating agro report:", error);
+    logError('admin-api', 'AGRO_REPORT_GENERATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1328,6 +1337,7 @@ router.get("/api/agro/reports/:id/pdf", async (req, res) => {
     fs.createReadStream(report.pdf_path).pipe(res);
   } catch (error) {
     console.error("Error serving report PDF:", error);
+    logError('admin-api', 'REPORT_PDF_SERVE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1340,6 +1350,7 @@ router.get("/api/settings", async (req, res) => {
     res.json(settings);
   } catch (error) {
     console.error("Error fetching settings:", error);
+    logError('admin-api', 'SETTINGS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1376,6 +1387,7 @@ router.post("/api/settings", async (req, res) => {
     res.json(results);
   } catch (error) {
     console.error("Error updating settings:", error);
+    logError('admin-api', 'SETTINGS_UPDATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1473,6 +1485,7 @@ router.get("/api/parser-errors", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching parser errors:", error);
+    logError('admin-api', 'PARSER_ERRORS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1506,6 +1519,7 @@ router.get("/api/parser-errors/stats", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching parser error stats:", error);
+    logError('admin-api', 'PARSER_ERROR_STATS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1726,6 +1740,7 @@ router.get("/api/conversation-stats", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching conversation stats:", error);
+    logError('admin-api', 'CONVERSATION_STATS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1755,6 +1770,7 @@ router.get("/api/conversation-stats/unknown-phrases", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching unknown phrases:", error);
+    logError('admin-api', 'UNKNOWN_PHRASES_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1793,6 +1809,7 @@ router.get("/api/conversation-stats/user-journey/:userId", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching user journey:", error);
+    logError('admin-api', 'USER_JOURNEY_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1820,6 +1837,7 @@ router.get("/api/deletion-log", async (req, res) => {
     res.json({ deletionLog: result.rows });
   } catch (error) {
     console.error("Error fetching deletion log:", error);
+    logError('admin-api', 'DELETION_LOG_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1850,6 +1868,7 @@ router.put("/api/users/:id/status", async (req, res) => {
     res.json({ ok: true, status: result.rows[0].status });
   } catch (error) {
     console.error("Error updating user status:", error);
+    logError('admin-api', 'USER_STATUS_UPDATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1897,6 +1916,7 @@ router.post("/api/users", async (req, res) => {
     });
   } catch (error) {
     console.error("Error creating user:", error);
+    logError('admin-api', 'USER_CREATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1949,6 +1969,7 @@ router.delete("/api/users/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     console.error("Error deleting user:", error);
+    logError('admin-api', 'USER_DELETE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2051,6 +2072,7 @@ router.get("/api/analytics/overview", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching analytics overview:", error);
+    logError('admin-api', 'ANALYTICS_OVERVIEW_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2108,6 +2130,7 @@ router.get("/api/analytics/ai-tokens", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching AI token analytics:", error);
+    logError('admin-api', 'AI_TOKEN_ANALYTICS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2144,6 +2167,7 @@ router.get("/api/analytics/parse-rates", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching parse rates:", error);
+    logError('admin-api', 'PARSE_RATES_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2216,6 +2240,7 @@ router.get("/api/analytics/bot-performance", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching bot performance:", error);
+    logError('admin-api', 'BOT_PERFORMANCE_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2232,6 +2257,7 @@ router.get("/api/audit-log", async (req, res) => {
     res.json({ entries: result.rows });
   } catch (error) {
     console.error("Error fetching audit log:", error);
+    logError('admin-api', 'AUDIT_LOG_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2270,6 +2296,7 @@ router.get("/api/ai-training/examples", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching training examples:", error);
+    logError('admin-api', 'TRAINING_EXAMPLES_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2292,6 +2319,7 @@ router.post("/api/ai-training/examples", async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error("Error creating training example:", error);
+    logError('admin-api', 'TRAINING_EXAMPLE_CREATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2324,6 +2352,7 @@ router.put("/api/ai-training/examples/:id", async (req, res) => {
     res.json(result.rows[0]);
   } catch (error) {
     console.error("Error updating training example:", error);
+    logError('admin-api', 'TRAINING_EXAMPLE_UPDATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2339,6 +2368,7 @@ router.delete("/api/ai-training/examples/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     console.error("Error deleting training example:", error);
+    logError('admin-api', 'TRAINING_EXAMPLE_DELETE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2369,6 +2399,7 @@ router.get("/api/ai-training/logs", async (req, res) => {
     res.json({ logs: result.rows });
   } catch (error) {
     console.error("Error fetching AI training logs:", error);
+    logError('admin-api', 'AI_TRAINING_LOGS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2395,6 +2426,7 @@ router.patch("/api/ai-training/logs/:id/feedback", async (req, res) => {
     res.json(result.rows[0]);
   } catch (error) {
     console.error("Error saving feedback:", error);
+    logError('admin-api', 'FEEDBACK_SAVE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2427,6 +2459,7 @@ router.post("/api/ai-training/promote/:logId", async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error("Error promoting log:", error);
+    logError('admin-api', 'LOG_PROMOTE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2496,6 +2529,7 @@ router.get("/api/ai-training/stats", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching AI training stats:", error);
+    logError('admin-api', 'AI_TRAINING_STATS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2508,6 +2542,7 @@ router.get("/api/ai-training/dictionary", async (req, res) => {
     res.json({ entries });
   } catch (error) {
     console.error("Error fetching activity dictionary:", error);
+    logError('admin-api', 'ACTIVITY_DICTIONARY_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2523,6 +2558,7 @@ router.put("/api/ai-training/dictionary/:activityType", async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     console.error("Error updating activity dictionary:", error);
+    logError('admin-api', 'ACTIVITY_DICTIONARY_UPDATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
