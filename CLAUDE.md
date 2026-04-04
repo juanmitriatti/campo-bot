@@ -96,7 +96,7 @@ When the AI Agent returns multiple tool calls for a single message (e.g., "Sembr
 
 ### Parser (`src/utils/parser.js`)
 
-Handles Spanish text normalization, written numbers ("quinientos mil" → 500000), Argentine slang ("lucas" = thousands, "palos" = millions), fuzzy category matching, and currency detection (ARS vs USD). Includes a question guard (`isLikelyQuestion` in `src/utils/guards.ts`) that prevents Spanish questions from being misclassified. ~950 lines with 50+ test cases in `parser.test.js`.
+Handles Spanish text normalization, written numbers ("quinientos mil" → 500000), Argentine slang ("lucas" = thousands, "palos" = millions), fuzzy category matching, and currency detection (ARS vs USD). Includes a question guard (`isLikelyQuestion` in `src/utils/guards.ts`) that prevents Spanish questions from being misclassified. `add_plots_batch` regex extracts optional `fieldName` from "en [campo]" suffix. ~950 lines with 50+ test cases in `parser.test.js`.
 
 ### Database
 
