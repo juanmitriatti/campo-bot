@@ -1479,7 +1479,13 @@ export class FinancialHandler {
           return { messages: ['No ten\u00e9s campos registrados.\n\nPrimero cre\u00e1 un campo:\n\ud83d\udccd *agregar campo [nombre]*'] };
         }
         let targetField: { id: number; name: string };
-        if (fields.length === 1) {
+        if (cmd.fieldName) {
+          const f = await this.service.getFieldByName(userId, cmd.fieldName as string);
+          if (!f) {
+            return { messages: [`No encontré el campo *${cmd.fieldName}*.\n\nEscribí *mis campos* para ver tus campos.`] };
+          }
+          targetField = f;
+        } else if (fields.length === 1) {
           const f = await this.service.getFieldByName(userId, fields[0].name);
           if (!f) return { messages: ['Error al obtener el campo.'] };
           targetField = f;
