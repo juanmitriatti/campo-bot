@@ -94,13 +94,17 @@ When the AI Agent returns multiple tool calls for a single message (e.g., "Sembr
 - **`compound-executor.ts`** — Sequential executor for compound actions (multiple tool calls from a single message). Handles command/expense/income types via DomainRouter + FinancialHandler, forces `confirm_before_save=false` for expenses/incomes, stops at startFlow sideEffects, skips errors gracefully. Used by all 3 controllers when agent returns >1 tool call. 11 tests.
 - **`billing/`** — Plan-based AI daily limits + FeatureGate (maps commands → feature keys, checks plan access)
 
+### Date Utilities (`src/utils/date.ts`)
+
+Centralized Argentina timezone helpers: `getNowArgentina()`, `getTodayISO()` (YYYY-MM-DD), `formatDateAR()` (dd/mm/yyyy), `formatDateShortAR()` (dd/mm). All use `America/Argentina/Buenos_Aires` timezone explicitly.
+
 ### Parser (`src/utils/parser.js`)
 
 Handles Spanish text normalization, written numbers ("quinientos mil" → 500000), Argentine slang ("lucas" = thousands, "palos" = millions), fuzzy category matching, and currency detection (ARS vs USD). Includes a question guard (`isLikelyQuestion` in `src/utils/guards.ts`) that prevents Spanish questions from being misclassified. `add_plots_batch` regex extracts optional `fieldName` from "en [campo]" suffix. ~950 lines with 50+ test cases in `parser.test.js`.
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-047_*.sql`. Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province`, `last_name` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`, `edited_by`, `expense_type`, `product`, `quantity`, `unit`), `incomes` (includes `income_date`, `edited_by`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`, `edited_by`, `stock_deduction_status`), `agro_observations` (includes `observation_date`), `warehouses` (per-field storage), `stock_items` (inventory with `current_quantity`, `min_stock`, `grade`, `humidity_pct`), `stock_movements` (entrada/salida/ajuste with links to `expense_id`/`domain_event_id`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking), `activity_dictionary` (admin-editable activity synonyms for AI agent prompt).
+PostgreSQL with migrations in `src/migrations/001-048_*.sql`. Database timezone set to `America/Argentina/Buenos_Aires` (migration 048). Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province`, `last_name` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`, `edited_by`, `expense_type`, `product`, `quantity`, `unit`), `incomes` (includes `income_date`, `edited_by`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`, `edited_by`, `stock_deduction_status`), `agro_observations` (includes `observation_date`), `warehouses` (per-field storage), `stock_items` (inventory with `current_quantity`, `min_stock`, `grade`, `humidity_pct`), `stock_movements` (entrada/salida/ajuste with links to `expense_id`/`domain_event_id`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking), `activity_dictionary` (admin-editable activity synonyms for AI agent prompt).
 
 ### Frontend (`frontend/`)
 
@@ -147,7 +151,7 @@ Interruptible conversation flows for multi-step data entry (expense, income, rai
 - ESM modules (`"type": "module"` in package.json) — use `import`/`export`, not `require`
 - All user-facing text is in Spanish (Argentine dialect)
 - Currency: ARS (default) and USD; amounts use Argentine conventions (50mil = 50,000)
-- Timezone: America/Argentina/Buenos_Aires
+- Timezone: America/Argentina/Buenos_Aires (UTC-3). All `new Date()` for "today" must use `toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })`. All user-facing dates use `toLocaleDateString('es-AR', { timeZone: ... })` for dd/mm/yyyy format. PostgreSQL timezone set via migration 048. Centralized helpers in `src/utils/date.ts`
 - Expenses/incomes use soft delete (`deleted_at` column), fields/plots use soft delete (`deleted_at`, `deleted_by`)
 - Lotes (plots) = primary productive unit for expenses/incomes; Campos (fields) = grouping container
 - Optional confirmation workflow before saving transactions (per-user setting)
