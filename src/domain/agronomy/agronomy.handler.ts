@@ -875,8 +875,8 @@ export class AgronomyHandler {
                 } as any,
               };
             }
-          } catch {
-            // Stock feature not available — ignore
+          } catch (stockErr) {
+            console.error('[stock-deduction] Error suggesting deduction:', stockErr);
           }
         }
 
