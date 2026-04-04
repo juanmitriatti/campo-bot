@@ -589,13 +589,19 @@ router.post('/', async (req: Request, res: Response) => {
           const user = await userRepository.getOrCreate(phone);
           if (accepted) {
             try {
-              const pending = pendingStockDeductionStore.get(phone);
+              const pending = pendingStockDeductionStore.get(phone) as Record<string, unknown> | undefined;
               if (pending) {
-                const { StockDeductionService } = await import('../domain/stock/stock-deduction.service.js');
-                const svc = new StockDeductionService();
-                const result = await svc.applyDeduction(user.id, pending as any);
-                pendingStockDeductionStore.delete(phone);
-                await sendMessage(phone, `📦 Stock descontado: -${pending.totalQuantity}${result.item.unit} de ${result.item.name} (${result.item.current_quantity}${result.item.unit} restante)`);
+                if (!pending.totalQuantity || (pending.totalQuantity as number) <= 0) {
+                  (pending as any).awaitingQuantity = true;
+                  pendingStockDeductionStore.set(phone, pending);
+                  await sendMessage(phone, `¿Cuántos ${pending.unit || 'lt'} de *${pending.product}* usaste?`);
+                } else {
+                  const { StockDeductionService } = await import('../domain/stock/stock-deduction.service.js');
+                  const svc = new StockDeductionService();
+                  const result = await svc.applyDeduction(user.id, pending as any);
+                  pendingStockDeductionStore.delete(phone);
+                  await sendMessage(phone, `📦 Stock descontado: -${pending.totalQuantity}${result.item.unit} de ${result.item.name} (${result.item.current_quantity}${result.item.unit} restante)`);
+                }
               } else {
                 await sendMessage(phone, '⚠️ No hay descuento de stock pendiente.');
               }
@@ -899,6 +905,35 @@ router.post('/', async (req: Request, res: Response) => {
     if (plotAreaResult.handled) {
       for (const msg of plotAreaResult.messages) {
         await sendMessage(phone, msg);
+      }
+      res.sendStatus(200);
+      return;
+    }
+
+    // --- Check pending stock deduction quantity ---
+    const pendingDeduction = pendingStockDeductionStore.get(phone) as Record<string, unknown> | undefined;
+    if (pendingDeduction && (pendingDeduction as any).awaitingQuantity) {
+      const qtyMatch = text.trim().match(/^[\d.,]+/);
+      const qty = qtyMatch ? parseFloat(qtyMatch[0].replace(',', '.')) : NaN;
+      if (!isNaN(qty) && qty > 0) {
+        try {
+          (pendingDeduction as any).totalQuantity = qty;
+          (pendingDeduction as any).awaitingQuantity = false;
+          const { StockDeductionService } = await import('../domain/stock/stock-deduction.service.js');
+          const deductionService = new StockDeductionService();
+          const { item } = await deductionService.applyDeduction(userId, pendingDeduction as any);
+          pendingStockDeductionStore.delete(phone);
+          await sendMessage(phone, `📤 Stock descontado: *${item.name}* → ${item.current_quantity} ${item.unit}`);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Error al descontar stock';
+          pendingStockDeductionStore.delete(phone);
+          await sendMessage(phone, `❌ ${msg}`);
+        }
+      } else if (/cancel|no|salir/i.test(text.trim())) {
+        pendingStockDeductionStore.delete(phone);
+        await sendMessage(phone, '👍 OK, no se descontó del stock.');
+      } else {
+        await sendMessage(phone, `Decime la cantidad en ${pendingDeduction.unit || 'lt'}. Ej: *3*`);
       }
       res.sendStatus(200);
       return;

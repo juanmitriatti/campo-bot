@@ -669,8 +669,14 @@ async function handleInteractiveReply(
     const accepted = callbackId.startsWith('stock_deduct_yes_');
     if (accepted) {
       try {
-        const pending = pendingStockDeductionStore.get(phone);
+        const pending = pendingStockDeductionStore.get(phone) as Record<string, unknown> | undefined;
         if (pending) {
+          // If no quantity specified, ask the user
+          if (!pending.totalQuantity || (pending.totalQuantity as number) <= 0) {
+            (pending as any).awaitingQuantity = true;
+            pendingStockDeductionStore.set(phone, pending);
+            return [{ type: 'text', text: `¿Cuántos ${pending.unit || 'lt'} de *${pending.product}* usaste?` }];
+          }
           const { StockDeductionService } = await import('../domain/stock/stock-deduction.service.js');
           const deductionService = new StockDeductionService();
           const { item } = await deductionService.applyDeduction(userId, pending as any);
@@ -844,6 +850,33 @@ async function processTextMessage(
   const plotAreaResult = await handlePendingPlotArea(text, phone, pendingPlotAreaStore, financialService);
   if (plotAreaResult.handled) {
     return plotAreaResult.messages.map(msg => ({ type: 'text' as const, text: msg }));
+  }
+
+  // --- Check pending stock deduction quantity ---
+  const pendingDeduction = pendingStockDeductionStore.get(phone) as Record<string, unknown> | undefined;
+  if (pendingDeduction && (pendingDeduction as any).awaitingQuantity) {
+    const qtyMatch = text.trim().match(/^[\d.,]+/);
+    const qty = qtyMatch ? parseFloat(qtyMatch[0].replace(',', '.')) : NaN;
+    if (!isNaN(qty) && qty > 0) {
+      try {
+        (pendingDeduction as any).totalQuantity = qty;
+        (pendingDeduction as any).awaitingQuantity = false;
+        const { StockDeductionService } = await import('../domain/stock/stock-deduction.service.js');
+        const deductionService = new StockDeductionService();
+        const { item } = await deductionService.applyDeduction(userId, pendingDeduction as any);
+        pendingStockDeductionStore.delete(phone);
+        return [{ type: 'text', text: `📤 Stock descontado: *${item.name}* → ${item.current_quantity} ${item.unit}` }];
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error al descontar stock';
+        pendingStockDeductionStore.delete(phone);
+        return [{ type: 'text', text: `❌ ${msg}` }];
+      }
+    } else if (/cancel|no|salir/i.test(text.trim())) {
+      pendingStockDeductionStore.delete(phone);
+      return [{ type: 'text', text: '👍 OK, no se descontó del stock.' }];
+    } else {
+      return [{ type: 'text', text: `Decime la cantidad en ${pendingDeduction.unit || 'lt'}. Ej: *3*` }];
+    }
   }
 
   // --- Check pending observation ---

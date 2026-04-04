@@ -48,7 +48,29 @@ export class StockDeductionService {
       if (dosePerHa && plotHectares && !totalQuantity) {
         totalQuantity = dosePerHa * plotHectares;
       }
-      if (!totalQuantity) return null;
+      // If no quantity, still return suggestion so handler can ask the user
+      if (!totalQuantity) {
+        // Check if there's stock at all
+        if (item.current_quantity <= 0) return null;
+
+        await pool.query(
+          `UPDATE domain_events SET stock_deduction_status = 'suggested' WHERE id = $1`,
+          [domainEventId]
+        );
+
+        return {
+          domainEventId,
+          stockItemId: item.id,
+          product: item.name,
+          totalQuantity: 0,
+          unit: item.unit,
+          fieldId: item.field_id || 0,
+          warehouseName: item.warehouse_name || 'Principal',
+          currentStock: item.current_quantity,
+          plotHectares,
+          dosePerHa,
+        };
+      }
 
       // Check unit compatibility
       const itemUnit = item.unit.toLowerCase();

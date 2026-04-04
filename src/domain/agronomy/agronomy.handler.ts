@@ -856,7 +856,9 @@ export class AgronomyHandler {
 
             if (suggestion) {
               const messages = [confirmation];
-              const stockMsg = `\n📦 Tenés ${suggestion.currentStock}${suggestion.unit} de *${suggestion.product}* en ${suggestion.warehouseName}.\n¿Descontar *${suggestion.totalQuantity}${suggestion.unit}*?`;
+              const stockMsg = suggestion.totalQuantity > 0
+                ? `\n📦 Tenés ${suggestion.currentStock} ${suggestion.unit} de *${suggestion.product}* en ${suggestion.warehouseName}.\n¿Descontar *${suggestion.totalQuantity} ${suggestion.unit}*?`
+                : `\n📦 Tenés ${suggestion.currentStock} ${suggestion.unit} de *${suggestion.product}* en ${suggestion.warehouseName}.\n¿Descontar del stock?`;
               messages.push(stockMsg);
               return {
                 messages,
