@@ -2,6 +2,7 @@ import { StockService } from './stock.service.js';
 import type { StockItemRow, StockMovementRow } from './stock.repository.js';
 import type { UserId } from '../../types/index.js';
 import { pool } from '../../config/db.js';
+import { logError } from '../../services/error-logger.js';
 
 const stockService = new StockService();
 
@@ -104,6 +105,7 @@ export class StockDeductionService {
       };
     } catch (err) {
       console.error('[stock-deduction] suggestDeduction failed:', err);
+      logError('stock', 'DEDUCTION_SUGGEST', err as Error);
       return null;
     }
   }

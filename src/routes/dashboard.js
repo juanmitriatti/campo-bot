@@ -5,7 +5,7 @@ import { pool } from "../config/db.js";
 import { getObservationsByField, getWeekObservationCount } from "../services/observations.js";
 import { generateWeeklyReport, getReportsByField, getAllReports, getReportById } from "../services/agro-report.js";
 import { getAllSettings, setSetting, SECRET_KEYS, SETTING_DEFINITIONS } from "../services/settings.service.js";
-import { getErrorLogs, getErrorById, getErrorStats } from "../services/error-logger.js";
+import { getErrorLogs, getErrorById, getErrorStats, getErrorFilters, logError } from "../services/error-logger.js";
 import { getAlertHistory, getAlertStats } from "../services/alert.service.js";
 import { getActivityDictionary, updateActivitySynonyms } from "../services/activity-dictionary.service.js";
 
@@ -40,6 +40,7 @@ router.get("/api/stats", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching stats:", error);
+    logError('admin-api', 'STATS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -121,6 +122,7 @@ router.get("/api/users", async (req, res) => {
     }));
   } catch (error) {
     console.error("Error fetching users:", error);
+    logError('admin-api', 'USERS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -164,6 +166,7 @@ router.get("/api/users/:id", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching user detail:", error);
+    logError('admin-api', 'USER_DETAIL_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -207,6 +210,7 @@ router.get("/api/users/:id/settings", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching user settings:", error);
+    logError('admin-api', 'USER_SETTINGS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -261,6 +265,7 @@ router.put("/api/users/:id/settings", async (req, res) => {
     });
   } catch (error) {
     console.error("Error upserting user settings:", error);
+    logError('admin-api', 'USER_SETTINGS_UPSERT', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -299,6 +304,7 @@ router.put("/api/users/:id", async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating user:", error);
+    logError('admin-api', 'USER_UPDATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -338,6 +344,7 @@ router.get("/api/users/:id/ai-usage", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching AI usage:", error);
+    logError('admin-api', 'AI_USAGE_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -367,6 +374,7 @@ router.get("/api/parse-metrics", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching parse metrics:", error);
+    logError('admin-api', 'PARSE_METRICS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -423,6 +431,7 @@ router.get("/api/unparsed-messages", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching unparsed messages:", error);
+    logError('admin-api', 'UNPARSED_MESSAGES_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -451,6 +460,7 @@ router.get("/api/global-settings", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching global settings:", error);
+    logError('admin-api', 'GLOBAL_SETTINGS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -489,6 +499,7 @@ router.put("/api/global-settings", async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating global settings:", error);
+    logError('admin-api', 'GLOBAL_SETTINGS_UPDATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -521,6 +532,7 @@ router.get("/api/alerts-overview", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching alerts overview:", error);
+    logError('admin-api', 'ALERTS_OVERVIEW_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -558,6 +570,7 @@ router.get("/api/alert-history", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching alert history:", error);
+    logError('admin-api', 'ALERT_HISTORY_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -570,6 +583,7 @@ router.get("/api/alert-stats", async (req, res) => {
     res.json(stats);
   } catch (error) {
     console.error("Error fetching alert stats:", error);
+    logError('admin-api', 'ALERT_STATS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -596,6 +610,7 @@ router.get("/api/plans", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching plans:", error);
+    logError('admin-api', 'PLANS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -612,6 +627,7 @@ router.get("/api/features", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching features:", error);
+    logError('admin-api', 'FEATURES_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -646,6 +662,7 @@ router.put("/api/plans/:id", async (req, res) => {
     res.json({ id: p.id, name: p.name, displayName: p.display_name, priceArs: parseFloat(p.price_ars), isActive: p.is_active, dailyAiLimit: p.daily_ai_limit != null ? parseInt(p.daily_ai_limit) : 20 });
   } catch (error) {
     console.error("Error updating plan:", error);
+    logError('admin-api', 'PLAN_UPDATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -677,6 +694,7 @@ router.put("/api/plans/:id/features", async (req, res) => {
     res.json({ planId: parseInt(id), features: result.rows.map(r => r.key) });
   } catch (error) {
     console.error("Error updating plan features:", error);
+    logError('admin-api', 'PLAN_FEATURES_UPDATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -704,6 +722,7 @@ router.put("/api/users/:id/plan", async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating user plan:", error);
+    logError('admin-api', 'USER_PLAN_UPDATE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -752,6 +771,7 @@ router.get("/api/users/:id/financial-summary", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching financial summary:", error);
+    logError('admin-api', 'FINANCIAL_SUMMARY_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -812,6 +832,7 @@ router.get("/api/fallback-logs", async (req, res) => {
     })));
   } catch (error) {
     console.error("Error fetching fallback logs:", error);
+    logError('admin-api', 'FALLBACK_LOGS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -859,6 +880,7 @@ router.get("/api/fallback-summary", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching fallback summary:", error);
+    logError('admin-api', 'FALLBACK_SUMMARY_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -885,6 +907,7 @@ router.get("/api/audio-stats", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching audio stats:", error);
+    logError('admin-api', 'AUDIO_STATS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1359,19 +1382,34 @@ router.post("/api/settings", async (req, res) => {
 
 // ─── Error logs endpoints ────────────────────────────────────────────────────
 
+router.get("/api/errors/filters", async (req, res) => {
+  try {
+    const filters = await getErrorFilters();
+    res.json(filters);
+  } catch (error) {
+    console.error("Error fetching error filters:", error);
+    logError('admin-api', 'FILTERS_ERROR', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/api/errors", async (req, res) => {
   try {
-    const { service, severity, user_id, limit, offset } = req.query;
+    const { service, severity, user_id, error_type, date_from, date_to, limit, offset } = req.query;
     const result = await getErrorLogs({
       service: service || undefined,
       severity: severity || undefined,
       userId: user_id ? parseInt(user_id) : undefined,
+      errorType: error_type || undefined,
+      dateFrom: date_from || undefined,
+      dateTo: date_to || undefined,
       limit: limit ? parseInt(limit) : 100,
       offset: offset ? parseInt(offset) : 0,
     });
     res.json(result);
   } catch (error) {
     console.error("Error fetching error logs:", error);
+    logError('admin-api', 'ERROR_LOGS_FETCH', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -6,6 +6,7 @@ import { getForecast } from "./weather.js";
 import { sendAlertWithRetry, sendAlertWithRetryMultiChannel, isDuplicate, recordDeduped } from "./alert.service.js";
 import { getSettingNumber } from "./settings.service.js";
 import { cleanupOldReports } from "./agro-report.js";
+import { logError } from "./error-logger.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -228,6 +229,7 @@ async function processUser(user) {
     console.log(`[scheduler] Weekly summary sent to user ${user.id} (${user.phone_number})`);
   } catch (err) {
     console.error(`[scheduler] Error sending weekly summary to user ${user.id}:`, err);
+    logError('scheduler', 'WEEKLY_SUMMARY_SEND', err, { userId: user.id });
   }
 }
 
@@ -245,6 +247,7 @@ async function tick() {
     }
   } catch (err) {
     console.error("[scheduler] Unexpected error during tick:", err);
+    logError('scheduler', 'WEEKLY_TICK_ERROR', err);
   }
 }
 
@@ -312,6 +315,7 @@ async function checkWeatherForUser(user) {
       }
     } catch (err) {
       console.error(`[weather-alert] Error fetching forecast for ${city}:`, err.message);
+      logError('scheduler', 'WEATHER_FORECAST_FETCH', err, { userId: user.id, context: { city } });
     }
   }
 
@@ -339,6 +343,7 @@ async function checkWeatherForUser(user) {
     console.log(`[weather-alert] Rain alert sent to user ${user.id} via ${channel}`);
   } else {
     console.error(`[weather-alert] Failed to send to user ${user.id} after retries`);
+    logError('scheduler', 'WEATHER_ALERT_SEND', `Failed to send weather alert after retries`, { userId: user.id });
   }
 }
 
@@ -361,6 +366,7 @@ async function weatherAlertTick() {
     }
   } catch (err) {
     console.error("[weather-alert] Unexpected error:", err);
+    logError('scheduler', 'WEATHER_TICK_ERROR', err);
   }
 }
 
@@ -421,6 +427,7 @@ async function monitoringReminderTick() {
     }
   } catch (err) {
     console.error("[monitoring] Unexpected error:", err);
+    logError('scheduler', 'MONITORING_TICK_ERROR', err);
   }
 }
 
@@ -477,6 +484,7 @@ async function pestEscalationTick() {
     }
   } catch (err) {
     console.error("[pest-alert] Unexpected error:", err);
+    logError('scheduler', 'PEST_ALERT_TICK_ERROR', err);
   }
 }
 
@@ -531,6 +539,7 @@ async function missingHectaresReminderTick() {
     }
   } catch (err) {
     console.error("[hectares-reminder] Unexpected error:", err);
+    logError('scheduler', 'HECTARES_REMINDER_ERROR', err);
   }
 }
 
@@ -570,6 +579,7 @@ async function lowStockAlertTick() {
     }
   } catch (err) {
     console.error("[low-stock] Unexpected error:", err);
+    logError('scheduler', 'LOW_STOCK_ALERT_ERROR', err);
   }
 }
 
@@ -586,6 +596,7 @@ async function proactiveAlertsTick() {
     await lowStockAlertTick();
   } catch (err) {
     console.error("[proactive-alerts] Unexpected error:", err);
+    logError('scheduler', 'PROACTIVE_ALERTS_ERROR', err);
   }
 }
 
@@ -611,6 +622,7 @@ async function conversationLogCleanupTick() {
       // Table may not exist — skip silently
       if (err.code !== '42P01') {
         console.error(`[cleanup] Error cleaning ${table}:`, err.message);
+        logError('scheduler', 'CLEANUP_TABLE_ERROR', err, { context: { table } });
       }
     }
   }
@@ -646,6 +658,7 @@ async function miniMemoryExpiryTick() {
   } catch (err) {
     if (err.code !== '42P01') {
       console.error('[cleanup] Error clearing mini-memory:', err.message);
+      logError('scheduler', 'CLEANUP_MINI_MEMORY', err);
     }
   }
 }
@@ -664,6 +677,7 @@ async function dailyCleanupTick() {
     }
   } catch (err) {
     console.error('[cleanup] Unexpected error:', err);
+    logError('scheduler', 'DAILY_CLEANUP_ERROR', err);
   }
 }
 

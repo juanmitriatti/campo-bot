@@ -3,6 +3,7 @@ import { UserRepository } from '../domain/users/user.repository.js';
 import { stripFillerPhrases } from '../utils/text-normalizer.js';
 import { getSettingNumber, getSettingBool } from './settings.service.js';
 import { pool } from '../config/db.js';
+import { logError } from '../services/error-logger.js';
 import type { IntentExtractor } from '../ai/intent-extractor.js';
 import type { AgentService } from '../ai/agent.service.js';
 import type { AgentResponseMapper } from '../ai/agent-response-mapper.js';
@@ -186,6 +187,7 @@ export class IntentClassifier {
         // Fall through to JSON extractor or regex
       } catch (agentErr) {
         console.error('[intent-classifier] Agent failed, falling back:', agentErr);
+        logError('intent-classifier', 'AGENT_FAILED', agentErr as Error, { userId });
       }
     }
 
@@ -205,6 +207,7 @@ export class IntentClassifier {
         // Low confidence or null → fall through to regex
       } catch (extractErr) {
         console.error('[intent-classifier] JSON extractor failed, falling back to regex:', extractErr);
+        logError('intent-classifier', 'JSON_EXTRACTOR_FAILED', extractErr as Error, { userId });
       }
     }
 

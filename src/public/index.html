@@ -1587,21 +1587,22 @@
         <div class="card-header">
           <h2 class="card-title">Filtros</h2>
         </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;padding:0 20px 16px;">
-          <select id="error-filter-service" onchange="loadErrors()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;padding:0 20px 16px;align-items:center;">
+          <select id="error-filter-service" onchange="errorsPage=0;loadErrors()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;">
             <option value="">Todos los servicios</option>
-            <option value="whatsapp">WhatsApp</option>
-            <option value="claude">Claude</option>
-            <option value="audio">Audio</option>
-            <option value="webhook">Webhook</option>
-            <option value="agro-report">Agro Report</option>
           </select>
-          <select id="error-filter-severity" onchange="loadErrors()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;">
+          <select id="error-filter-severity" onchange="errorsPage=0;loadErrors()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;">
             <option value="">Todas las severidades</option>
             <option value="error">Error</option>
             <option value="warning">Warning</option>
             <option value="info">Info</option>
           </select>
+          <select id="error-filter-type" onchange="errorsPage=0;loadErrors()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;">
+            <option value="">Todos los tipos</option>
+          </select>
+          <input type="date" id="error-filter-date-from" onchange="errorsPage=0;loadErrors()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;" title="Desde">
+          <input type="date" id="error-filter-date-to" onchange="errorsPage=0;loadErrors()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;" title="Hasta">
+          <input type="number" id="error-filter-user" placeholder="User ID" onchange="errorsPage=0;loadErrors()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;width:100px;" title="Filtrar por usuario">
           <button onclick="loadErrors()" class="btn-primary" style="padding:8px 16px;font-size:13px;">Actualizar</button>
         </div>
       </div>
@@ -2030,6 +2031,7 @@
       } else if (page === 'errors') {
         document.getElementById('page-errors').classList.add('active');
         document.querySelector('[data-page="errors"]').classList.add('active');
+        loadErrorFilters();
         loadErrorStats();
         loadErrors();
       } else if (page === 'settings') {
@@ -3744,12 +3746,41 @@
       });
     }
 
+    function loadErrorFilters() {
+      apiFetch('/admin/api/errors/filters').then(function(data) {
+        if (!data) return;
+        var serviceSel = document.getElementById('error-filter-service');
+        var currentService = serviceSel.value;
+        serviceSel.innerHTML = '<option value="">Todos los servicios</option>';
+        for (var i = 0; i < data.services.length; i++) {
+          serviceSel.innerHTML += '<option value="' + escapeHtml(data.services[i]) + '">' + escapeHtml(data.services[i]) + '</option>';
+        }
+        serviceSel.value = currentService;
+
+        var typeSel = document.getElementById('error-filter-type');
+        var currentType = typeSel.value;
+        typeSel.innerHTML = '<option value="">Todos los tipos</option>';
+        for (var j = 0; j < data.errorTypes.length; j++) {
+          typeSel.innerHTML += '<option value="' + escapeHtml(data.errorTypes[j]) + '">' + escapeHtml(data.errorTypes[j]) + '</option>';
+        }
+        typeSel.value = currentType;
+      });
+    }
+
     function loadErrors() {
       var service = document.getElementById('error-filter-service').value;
       var severity = document.getElementById('error-filter-severity').value;
+      var errorType = document.getElementById('error-filter-type').value;
+      var dateFrom = document.getElementById('error-filter-date-from').value;
+      var dateTo = document.getElementById('error-filter-date-to').value;
+      var userId = document.getElementById('error-filter-user').value;
       var params = '?limit=' + errorsLimit + '&offset=' + (errorsPage * errorsLimit);
-      if (service) params += '&service=' + service;
-      if (severity) params += '&severity=' + severity;
+      if (service) params += '&service=' + encodeURIComponent(service);
+      if (severity) params += '&severity=' + encodeURIComponent(severity);
+      if (errorType) params += '&error_type=' + encodeURIComponent(errorType);
+      if (dateFrom) params += '&date_from=' + encodeURIComponent(dateFrom);
+      if (dateTo) params += '&date_to=' + encodeURIComponent(dateTo);
+      if (userId) params += '&user_id=' + encodeURIComponent(userId);
 
       var tbody = document.getElementById('errors-tbody');
       tbody.innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div> Cargando...</td></tr>';

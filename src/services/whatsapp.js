@@ -5,6 +5,7 @@ import { logError } from "./error-logger.js";
 dotenv.config();
 
 function formatArgNumber(phone) {
+  if (!phone) return phone;
   // WhatsApp envía 5492364469135 pero para responder necesita 54236154469135
   if (phone.startsWith("549")) {
     const local = phone.slice(3); // quita "549"

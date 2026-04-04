@@ -13,6 +13,7 @@ import {
 import { generateWeeklyReport } from '../../services/agro-report.js';
 import { saveObservation, SAVE_REJECTED_FINANCIAL, SAVE_REJECTED_DUPLICATE, SAVE_REJECTED_NO_PLOT, detectObservationCategory, getCurrentWeekObservations, getCurrentWeekObservationsByPlot, getObservationsByDateRange, getObservationsByDateRangeAndPlot, deduplicateObservations } from '../../services/observations.js';
 import { formatObservationResponse, formatAgroReportResponse } from '../../middleware/response-formatter.js';
+import { logError } from '../../services/error-logger.js';
 import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
 import { formatHistoryResponse } from './plot-query.service.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
@@ -253,6 +254,7 @@ export class AgronomyHandler {
           return { messages: [msg], suggestionKey: 'weather_shown' };
         } catch (e: unknown) {
           console.error('WEATHER ERROR:', (e as Error).message);
+          logError('agronomy', 'WEATHER_CURRENT', e as Error, { userId });
           return { messages: ['No pude obtener el clima. Verific\u00e1 la ciudad o intent\u00e1 m\u00e1s tarde.'] };
         }
       }
@@ -273,6 +275,7 @@ export class AgronomyHandler {
           return { messages: [msg], suggestionKey: 'weather_shown' };
         } catch (e: unknown) {
           console.error('WEATHER ERROR:', (e as Error).message);
+          logError('agronomy', 'WEATHER_FORECAST', e as Error, { userId });
           return { messages: ['No pude obtener el pron\u00f3stico. Verific\u00e1 la ciudad o intent\u00e1 m\u00e1s tarde.'] };
         }
       }
@@ -298,6 +301,7 @@ export class AgronomyHandler {
           return { messages: [msg], suggestionKey: 'weather_shown' };
         } catch (e: unknown) {
           console.error('WEATHER ERROR:', (e as Error).message);
+          logError('agronomy', 'WEATHER_FIELD', e as Error, { userId });
           return { messages: ['No pude obtener el clima. Verific\u00e1 la ciudad o intent\u00e1 m\u00e1s tarde.'] };
         }
       }
@@ -349,6 +353,7 @@ export class AgronomyHandler {
           return { messages: [msg], suggestionKey: 'weather_shown' };
         } catch (e: unknown) {
           console.error('WEATHER ERROR:', (e as Error).message);
+          logError('agronomy', 'WEATHER_ALL', e as Error, { userId });
           return { messages: ['No pude obtener el clima. Intent\u00e1 m\u00e1s tarde.'] };
         }
       }
@@ -698,7 +703,7 @@ export class AgronomyHandler {
                 },
               };
             }
-          } catch (stockErr) { console.error('[agronomy] Stock grain suggestion failed:', stockErr); }
+          } catch (stockErr) { console.error('[agronomy] Stock grain suggestion failed:', stockErr); logError('agronomy', 'STOCK_GRAIN_SUGGEST', stockErr as Error, { userId }); }
         }
 
         return { messages };
@@ -878,6 +883,7 @@ export class AgronomyHandler {
             }
           } catch (stockErr) {
             console.error('[stock-deduction] Error suggesting deduction:', stockErr);
+            logError('agronomy', 'STOCK_DEDUCTION_SUGGEST', stockErr as Error, { userId });
           }
         }
 
@@ -1150,6 +1156,7 @@ export class AgronomyHandler {
           };
         } catch (err: unknown) {
           console.error('AGRO REPORT ERROR:', (err as Error).message);
+          logError('agronomy', 'AGRO_REPORT', err as Error, { userId });
           return { messages: ['Hubo un error generando el reporte agronómico. Intentá de nuevo.'] };
         }
       }

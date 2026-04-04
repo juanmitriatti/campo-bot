@@ -1,4 +1,5 @@
 import { DomainRouter } from './router.js';
+import { logError } from '../services/error-logger.js';
 import type { FinancialHandler } from './financial/financial.handler.js';
 import type { ParseResult, ParsedCommand, ParsedExpense, ParsedIncome, UserId, User, UserSettings, HandlerResponse } from '../types/index.js';
 
@@ -100,6 +101,7 @@ export class CompoundExecutor {
           ? (step.intent.data as ParsedCommand).command
           : step.intent.type;
         console.error(`[COMPOUND] Error executing step "${label}":`, err);
+        logError('compound', 'STEP_EXECUTE', err as Error, { userId, context: { label } });
       }
     }
 

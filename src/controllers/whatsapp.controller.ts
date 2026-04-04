@@ -28,6 +28,7 @@ import { getAudioConfig } from '../services/audio/audio.types.js';
 import { saveAudioTranscriptionLog, getHourlyAudioCount } from '../services/expenses.js';
 import { getSettingNumber } from '../services/settings.service.js';
 import { pool } from '../config/db.js';
+import { logError, logWarning } from '../services/error-logger.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
 import { ConversationEngine } from '../middleware/conversation-engine.js';
 import { ConversationLogger } from '../middleware/conversation-logger.js';
@@ -737,10 +738,12 @@ router.post('/', async (req: Request, res: Response) => {
           console.log(`[audio] logged: ${durationSeconds}s, $${costUsd.toFixed(6)} USD`);
         } catch (logErr: unknown) {
           console.error('[audio] failed to log transcription:', (logErr as Error).message);
+          logError('whatsapp', 'AUDIO_LOG_FAILED', logErr as Error, { userId: user.id });
         }
       } catch (err: unknown) {
         const error = err as Error;
         console.error('[audio] error:', error.message);
+        logError('whatsapp', 'AUDIO_PROCESSING', error, { userId: user.id });
         if (err instanceof AudioTooLongError) {
           await sendMessage(phone, '\u26a0\ufe0f El audio es demasiado largo. Envi\u00e1 un audio m\u00e1s corto o escrib\u00ed el mensaje.');
         } else {
@@ -1303,6 +1306,7 @@ router.post('/', async (req: Request, res: Response) => {
         // Safety: ensure we never send an empty response (silent failure)
         if (response.messages.length === 0 && !response.attachment && !response.interactive) {
           console.warn(`[SILENT_FAILURE] Command "${intent.data.command}" returned empty response for user ${userId}`);
+          logWarning('whatsapp', 'SILENT_FAILURE', `Command "${intent.data.command}" returned empty response`, { userId, context: { command: intent.data.command } });
           response.messages = ['No pude procesar ese comando. Escribí *ayuda* para ver las opciones.'];
         }
         // Ensure every command gets a suggestion (no dead ends)
@@ -1489,6 +1493,7 @@ router.post('/', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const err = error as Error & { response?: { data?: unknown } };
     console.error('ERROR:', err.response?.data || err.message);
+    logError('whatsapp', 'WEBHOOK_ERROR', err, { context: { responseData: err.response?.data } });
     res.sendStatus(500);
   }
 });

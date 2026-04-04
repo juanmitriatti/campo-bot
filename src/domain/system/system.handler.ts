@@ -5,6 +5,7 @@ import { buildHelpText } from './help-text.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../../middleware/pending-field-city-handler.js';
 import type { FinancialService } from '../financial/financial.service.js';
+import { logError } from '../../services/error-logger.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse, InteractiveMessage } from '../../types/index.js';
 
 export class SystemHandler {
@@ -254,6 +255,7 @@ export class SystemHandler {
           return { messages: [msg] };
         } catch (e: unknown) {
           console.error('DOLLAR API ERROR:', (e as Error).message);
+          logError('system', 'DOLLAR_API', e as Error);
           return { messages: ['No pude obtener la cotizaci\u00f3n del d\u00f3lar. Intent\u00e1 m\u00e1s tarde.'] };
         }
       }

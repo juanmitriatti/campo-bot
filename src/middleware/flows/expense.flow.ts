@@ -6,6 +6,7 @@ import { buildPlotPromptGrouped, buildPlotInteractiveGrouped, validatePlotAsync 
 import { EntityValidator } from '../../services/entity-validator.js';
 import { EXPENSE_CATEGORIES } from '../../constants/agro-terms.js';
 import type { FlowDefinition, FlowStep } from './flow.interface.js';
+import { logError } from '../../services/error-logger.js';
 import type { UserId, ParsedExpense, InteractiveMessage } from '../../types/index.js';
 
 const entityValidator = new EntityValidator();
@@ -190,6 +191,7 @@ export const expenseFlow: FlowDefinition = {
         }
       } catch (stockErr) {
         console.error('[expense-flow] Stock suggestion failed:', stockErr);
+        logError('expense-flow', 'STOCK_SUGGEST', stockErr as Error);
       }
     }
 

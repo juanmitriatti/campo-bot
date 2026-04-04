@@ -1,5 +1,6 @@
 import { query } from '../config/database.js';
 import type { UserId } from '../types/index.js';
+import { logError } from '../services/error-logger.js';
 
 interface EmitParams {
   userId: UserId;
@@ -36,6 +37,7 @@ export class ConversationObserver {
       );
     } catch (err) {
       console.error('[conversation-observer] emit failed:', params.eventType, (err as Error).message);
+      logError('observer', 'EMIT_FAILED', err as Error, { context: { eventType: params.eventType } });
     }
   }
 

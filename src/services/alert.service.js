@@ -25,7 +25,32 @@ export async function sendAlertWithRetry(userId, phone, message, alertType, meta
   );
   const alertId = rows[0].id;
 
-  const result = await sendMessageWithRetry(phone, message);
+  // Handle Telegram-only users (tg_ placeholder phones or null phones)
+  let telegramId = null;
+  if (phone && phone.startsWith('tg_')) {
+    telegramId = phone.slice(3);
+  } else if (!phone) {
+    // Try to find Telegram ID from user record
+    const userResult = await pool.query('SELECT telegram_id FROM users WHERE id = $1', [userId]);
+    if (userResult.rows[0]?.telegram_id) {
+      telegramId = userResult.rows[0].telegram_id;
+    }
+  }
+
+  let result;
+  if (telegramId) {
+    // Route to Telegram
+    try {
+      await sendTelegramMessage(telegramId, message);
+      result = { success: true, attempts: 1 };
+    } catch (err) {
+      result = { success: false, attempts: 1, error: err.message };
+    }
+  } else if (phone) {
+    result = await sendMessageWithRetry(phone, message);
+  } else {
+    result = { success: false, attempts: 0, error: 'No phone or Telegram ID available' };
+  }
 
   if (result.success) {
     await pool.query(

@@ -1,6 +1,7 @@
 import { LearningRepository } from './learning.repository.js';
 import { normalizeText } from '../../utils/parser.js';
 import type { UserId, Intent, VocabularyCategory } from '../../types/index.js';
+import { logError } from '../../services/error-logger.js';
 
 /** Words too common to learn as vocabulary. */
 const STOP_WORDS = new Set([
@@ -69,6 +70,7 @@ export class LearningService {
       await this._learnVocabulary(userId, normalized, intent);
     } catch (err) {
       console.error('LearningService.learnFromMessage error:', err);
+      logError('learning', 'LEARN_MESSAGE', err as Error, { userId });
     }
   }
 

@@ -5,6 +5,7 @@ import type { FlowContext, FlowState, HandlerResponse, InteractiveMessage, UserI
 import type { FlowDefinition, FlowStep, FlowStepValidationSuccess } from './flows/flow.interface.js';
 
 import { getSettingNumber } from '../services/settings.service.js';
+import { logError } from '../services/error-logger.js';
 
 // Defaults — overridden by system_settings at runtime
 const DEFAULT_FLOW_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -337,6 +338,7 @@ export class ConversationEngine {
       if (!step.optional && ctx.data[step.field] === undefined) {
         await this.stateRepo.clearFlow(userId);
         console.error(`[FLOW_CONFIRM] Missing required field "${step.field}" in ${flowState} for user ${userId}`);
+        logError('flow-engine', 'MISSING_FIELD', `Missing required field "${step.field}" in ${flowState}`, { userId, context: { flowState, field: step.field } });
         return { response: { messages: ['Faltan datos en el flujo. Empezá de nuevo.'] }, nextContext: null };
       }
     }
@@ -351,6 +353,7 @@ export class ConversationEngine {
       await this.stateRepo.clearFlow(userId);
       const msg = (err as Error).message;
       console.error(`[FLOW_CONFIRM] execute() failed for ${flowState}, user ${userId}:`, msg);
+      logError('flow-engine', 'FLOW_EXECUTE_FAILED', err as Error, { userId, context: { flowState } });
       return { response: { messages: ['Hubo un error al guardar. Intentá de nuevo.'] }, nextContext: null };
     }
   }

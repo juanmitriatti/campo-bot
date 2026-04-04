@@ -8,6 +8,7 @@ import { formatLocation } from '../../middleware/pending-field-city-handler.js';
 import { queryPlotHistory } from '../../services/expenses.js';
 import { FieldSharingService } from '../sharing/field-sharing.service.js';
 import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
+import { logError } from '../../services/error-logger.js';
 import type {
   UserId,
   User,
@@ -508,6 +509,7 @@ export class FinancialHandler {
         }
       } catch (stockErr) {
         console.error('[financial] Stock suggestion failed after expense save:', stockErr);
+        logError('financial', 'STOCK_SUGGEST_EXPENSE', stockErr as Error, { userId });
       }
     }
 
@@ -704,7 +706,7 @@ export class FinancialHandler {
             };
           }
         }
-      } catch (stockErr) { console.error('[financial] Stock deduction suggestion failed:', stockErr); }
+      } catch (stockErr) { console.error('[financial] Stock deduction suggestion failed:', stockErr); logError('financial', 'STOCK_DEDUCTION_SUGGEST', stockErr as Error, { userId }); }
     }
 
     return { messages, suggestionKey: 'income_saved' };
@@ -774,6 +776,7 @@ export class FinancialHandler {
           }
         } catch (stockErr) {
           console.error('[financial] Stock suggestion failed in handleConfirm:', stockErr);
+          logError('financial', 'STOCK_SUGGEST_CONFIRM', stockErr as Error, { userId });
         }
       }
 

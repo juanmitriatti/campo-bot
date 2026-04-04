@@ -126,7 +126,7 @@ export async function logInfo(service, errorType, message, options = {}) {
 /**
  * Query error logs with filters. Used by the dashboard API.
  */
-export async function getErrorLogs({ service, severity, userId, limit = 100, offset = 0 } = {}) {
+export async function getErrorLogs({ service, severity, userId, errorType, dateFrom, dateTo, limit = 100, offset = 0 } = {}) {
   const conditions = [];
   const params = [];
   let paramIdx = 1;
@@ -142,6 +142,18 @@ export async function getErrorLogs({ service, severity, userId, limit = 100, off
   if (userId) {
     conditions.push(`user_id = $${paramIdx++}`);
     params.push(userId);
+  }
+  if (errorType) {
+    conditions.push(`error_type = $${paramIdx++}`);
+    params.push(errorType);
+  }
+  if (dateFrom) {
+    conditions.push(`created_at >= $${paramIdx++}::date`);
+    params.push(dateFrom);
+  }
+  if (dateTo) {
+    conditions.push(`created_at < ($${paramIdx++}::date + interval '1 day')`);
+    params.push(dateTo);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -169,6 +181,23 @@ export async function getErrorLogs({ service, severity, userId, limit = 100, off
 export async function getErrorById(id) {
   const result = await pool.query(`SELECT * FROM error_logs WHERE id = $1`, [id]);
   return result.rows[0] || null;
+}
+
+/**
+ * Get error summary stats for dashboard.
+ */
+/**
+ * Get distinct filter values for the dashboard dropdowns.
+ */
+export async function getErrorFilters() {
+  const [servicesR, typesR] = await Promise.all([
+    pool.query(`SELECT DISTINCT service FROM error_logs ORDER BY service`),
+    pool.query(`SELECT DISTINCT error_type FROM error_logs ORDER BY error_type`),
+  ]);
+  return {
+    services: servicesR.rows.map(r => r.service),
+    errorTypes: typesR.rows.map(r => r.error_type),
+  };
 }
 
 /**

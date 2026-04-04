@@ -1,5 +1,6 @@
 import { pool } from "../config/db.js";
 import { OBSERVATION_CATEGORY_KEYWORDS } from "../constants/agro-terms.js";
+import { logWarning } from "../services/error-logger.js";
 
 /**
  * Auto-detect observation category from text.
@@ -72,6 +73,7 @@ export async function saveObservation(userId, { fieldId, plotId, text, category,
   // Guard: observations MUST have a plot — never store with plot_id = NULL
   if (!plotId) {
     console.warn(`[obs-guard] Rejected observation without plot_id for user ${userId}`);
+    logWarning('observations', 'REJECTED_NO_PLOT', `Observation without plot_id`, { userId });
     return SAVE_REJECTED_NO_PLOT;
   }
 
@@ -79,6 +81,7 @@ export async function saveObservation(userId, { fieldId, plotId, text, category,
   // MUST run on original text — normalization strips $ and amounts
   if (hasFinancialContent(text)) {
     console.warn(`[obs-guard] Rejected financial content as observation for user ${userId}: "${text.slice(0, 80)}"`);
+    logWarning('observations', 'REJECTED_FINANCIAL', `Financial content rejected as observation`, { userId });
     return SAVE_REJECTED_FINANCIAL;
   }
 
@@ -90,6 +93,7 @@ export async function saveObservation(userId, { fieldId, plotId, text, category,
   _pruneMemoryCache();
   if (_recentInserts.has(dedupKey)) {
     console.warn(`[obs-guard] In-memory dedup for user ${userId}: "${normalizedText.slice(0, 80)}"`);
+    logWarning('observations', 'DEDUP_MEMORY', `In-memory dedup hit`, { userId });
     return SAVE_REJECTED_DUPLICATE;
   }
 
@@ -105,6 +109,7 @@ export async function saveObservation(userId, { fieldId, plotId, text, category,
   if (dedupResult.rows.length > 0) {
     _recentInserts.set(dedupKey, Date.now());
     console.warn(`[obs-guard] DB dedup for user ${userId}: "${normalizedText.slice(0, 80)}"`);
+    logWarning('observations', 'DEDUP_DB', `DB dedup hit`, { userId });
     return SAVE_REJECTED_DUPLICATE;
   }
 

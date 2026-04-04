@@ -24,6 +24,7 @@ import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
 import { getSettingNumber } from '../services/settings.service.js';
 import { pool } from '../config/db.js';
+import { logError } from '../services/error-logger.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
 import { ConversationEngine } from '../middleware/conversation-engine.js';
 import { ConversationLogger } from '../middleware/conversation-logger.js';
@@ -276,6 +277,7 @@ async function sendBotResponse(chatId: string | number, items: BotResponseItem[]
       }
     } catch (err) {
       console.error('[telegram] Error sending response item:', err);
+      logError('telegram', 'SEND_RESPONSE', err as Error);
     }
   }
 }
@@ -380,6 +382,7 @@ router.post('/', async (req: Request, res: Response) => {
             console.log(`[telegram] audio logged: ${durationSeconds}s, $${costUsd.toFixed(6)} USD`);
           } catch (logErr: unknown) {
             console.error('[telegram] failed to log audio:', (logErr as Error).message);
+            logError('telegram', 'AUDIO_LOG_FAILED', logErr as Error, { userId });
           }
 
           if (transcript.trim()) {
@@ -388,6 +391,7 @@ router.post('/', async (req: Request, res: Response) => {
           }
         } catch (err) {
           console.error('[telegram] Audio error:', err);
+          logError('telegram', 'AUDIO_PROCESSING', err as Error, { userId });
           await sendTelegramMessage(chatId, 'No pude entender el audio. Intentá de nuevo.');
         }
       }
@@ -412,6 +416,7 @@ router.post('/', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const err = error as Error;
     console.error('[telegram] ERROR:', err.stack || err.message);
+    logError('telegram', 'WEBHOOK_ERROR', err);
   }
 });
 

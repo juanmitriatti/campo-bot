@@ -1,5 +1,6 @@
 import { StockService } from './stock.service.js';
 import { StockRepository } from './stock.repository.js';
+import { logError } from '../../services/error-logger.js';
 import type { StockItemRow, StockMovementRow } from './stock.repository.js';
 import type { UserId } from '../../types/index.js';
 
@@ -61,6 +62,7 @@ export class StockPurchaseService {
       };
     } catch (err) {
       console.error('[stock-purchase] suggestStockEntry error:', err);
+      logError('stock', 'PURCHASE_SUGGEST', err as Error);
       return null;
     }
   }

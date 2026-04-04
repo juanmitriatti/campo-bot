@@ -4,6 +4,7 @@ import { ObservationService, ObservationError } from '../domain/auth/observation
 import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import type { Request, Response } from 'express';
+import { logError } from '../services/error-logger.js';
 
 const router = Router();
 const authService = new AuthService();
@@ -346,6 +347,7 @@ function handleError(err: unknown, res: Response): void {
     return;
   }
   console.error('Auth route error:', err);
+  logError('auth', 'ROUTE_ERROR', err as Error);
   res.status(500).json({ error: 'Error interno del servidor' });
 }
 

@@ -12,6 +12,7 @@ import { AgronomyHandler } from '../domain/agronomy/agronomy.handler.js';
 import { AgronomyRepository } from '../domain/agronomy/agronomy.repository.js';
 import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
+import { logError } from '../services/error-logger.js';
 import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
@@ -298,6 +299,7 @@ router.post('/', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const err = error as Error;
     console.error('[test-bot] ERROR:', err.stack || err.message);
+    logError('test-bot', 'WEBHOOK_ERROR', err);
     res.status(500).json({ error: err.message || 'Error interno del servidor' });
   }
 });
@@ -347,6 +349,7 @@ router.post('/audio', upload.single('audio'), async (req: Request, res: Response
   } catch (error: unknown) {
     const err = error as Error;
     console.error('[test-bot] AUDIO ERROR:', err.message);
+    logError('test-bot', 'AUDIO_PROCESSING', err);
     res.status(500).json({ error: 'No pude entender el audio. Intentá de nuevo.' });
   }
 });
