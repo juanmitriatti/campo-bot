@@ -102,7 +102,8 @@ export class StockDeductionService {
         plotHectares,
         dosePerHa,
       };
-    } catch {
+    } catch (err) {
+      console.error('[stock-deduction] suggestDeduction failed:', err);
       return null;
     }
   }

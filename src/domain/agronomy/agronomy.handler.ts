@@ -698,7 +698,7 @@ export class AgronomyHandler {
                 },
               };
             }
-          } catch { /* stock feature not available, skip */ }
+          } catch (stockErr) { console.error('[agronomy] Stock grain suggestion failed:', stockErr); }
         }
 
         return { messages };

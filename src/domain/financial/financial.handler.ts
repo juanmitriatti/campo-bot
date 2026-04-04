@@ -506,8 +506,8 @@ export class FinancialHandler {
             suggestionKey: 'expense_saved',
           };
         }
-      } catch {
-        // Stock feature may not be available — ignore
+      } catch (stockErr) {
+        console.error('[financial] Stock suggestion failed after expense save:', stockErr);
       }
     }
 
@@ -704,7 +704,7 @@ export class FinancialHandler {
             };
           }
         }
-      } catch { /* stock not available */ }
+      } catch (stockErr) { console.error('[financial] Stock deduction suggestion failed:', stockErr); }
     }
 
     return { messages, suggestionKey: 'income_saved' };
@@ -772,8 +772,8 @@ export class FinancialHandler {
               },
             };
           }
-        } catch {
-          // Stock feature may not be available — ignore
+        } catch (stockErr) {
+          console.error('[financial] Stock suggestion failed in handleConfirm:', stockErr);
         }
       }
 

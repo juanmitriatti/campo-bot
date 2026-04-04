@@ -188,8 +188,8 @@ export const expenseFlow: FlowDefinition = {
             },
           };
         }
-      } catch {
-        // Stock feature may not be available
+      } catch (stockErr) {
+        console.error('[expense-flow] Stock suggestion failed:', stockErr);
       }
     }
 

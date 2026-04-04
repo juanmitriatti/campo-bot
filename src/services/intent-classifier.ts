@@ -184,8 +184,8 @@ export class IntentClassifier {
           }
         }
         // Fall through to JSON extractor or regex
-      } catch {
-        // Agent failed — fall through
+      } catch (agentErr) {
+        console.error('[intent-classifier] Agent failed, falling back:', agentErr);
       }
     }
 
@@ -203,8 +203,8 @@ export class IntentClassifier {
           return aiResult;
         }
         // Low confidence or null → fall through to regex
-      } catch {
-        // AI extraction failed — fall through to regex
+      } catch (extractErr) {
+        console.error('[intent-classifier] JSON extractor failed, falling back to regex:', extractErr);
       }
     }
 
