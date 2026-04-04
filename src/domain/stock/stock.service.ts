@@ -287,7 +287,7 @@ export class StockService {
       `SELECT f.id, f.name FROM fields f
        JOIN field_members fm ON f.id = fm.field_id
        WHERE fm.user_id = $1 AND f.deleted_at IS NULL
-       ORDER BY f.created_at ASC LIMIT 1`,
+       ORDER BY f.id ASC LIMIT 1`,
       [Number(userId)]
     );
     return rows[0] || null;
