@@ -17,17 +17,32 @@ export function formatMarkdown(text: string): string {
 
 export async function sendTelegramMessage(chatId: string | number, text: string): Promise<void> {
   try {
+    const formatted = formatMarkdown(text);
     const response = await fetch(`${API_BASE()}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: formatMarkdown(text),
+        text: formatted,
         parse_mode: 'Markdown',
       }),
     });
     if (!response.ok) {
       const body = await response.text();
+      // Retry without parse_mode if Telegram can't parse the Markdown
+      if (response.status === 400 && body.includes("can't parse entities")) {
+        const plain = formatted.replace(/[*_`]/g, '');
+        const retry = await fetch(`${API_BASE()}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: plain }),
+        });
+        if (!retry.ok) {
+          const retryBody = await retry.text();
+          throw new Error(`Telegram sendMessage failed (plain retry): ${retry.status} ${retryBody}`);
+        }
+        return;
+      }
       throw new Error(`Telegram sendMessage failed: ${response.status} ${body}`);
     }
   } catch (err: any) {
@@ -46,18 +61,32 @@ export async function sendTelegramButtons(
   try {
     // One button per row
     const inline_keyboard = buttons.map(b => [{ text: b.title, callback_data: b.id }]);
+    const formatted = formatMarkdown(body);
     const response = await fetch(`${API_BASE()}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: formatMarkdown(body),
+        text: formatted,
         parse_mode: 'Markdown',
         reply_markup: { inline_keyboard },
       }),
     });
     if (!response.ok) {
       const respBody = await response.text();
+      if (response.status === 400 && respBody.includes("can't parse entities")) {
+        const plain = formatted.replace(/[*_`]/g, '');
+        const retry = await fetch(`${API_BASE()}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: plain, reply_markup: { inline_keyboard } }),
+        });
+        if (!retry.ok) {
+          const retryBody = await retry.text();
+          throw new Error(`Telegram sendButtons failed (plain retry): ${retry.status} ${retryBody}`);
+        }
+        return;
+      }
       throw new Error(`Telegram sendButtons failed: ${response.status} ${respBody}`);
     }
   } catch (err: any) {
@@ -91,18 +120,32 @@ export async function sendTelegramList(
         inline_keyboard.push(row);
       }
     }
+    const formatted = formatMarkdown(body);
     const response = await fetch(`${API_BASE()}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: formatMarkdown(body),
+        text: formatted,
         parse_mode: 'Markdown',
         reply_markup: { inline_keyboard },
       }),
     });
     if (!response.ok) {
       const respBody = await response.text();
+      if (response.status === 400 && respBody.includes("can't parse entities")) {
+        const plain = formatted.replace(/[*_`]/g, '');
+        const retry = await fetch(`${API_BASE()}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: plain, reply_markup: { inline_keyboard } }),
+        });
+        if (!retry.ok) {
+          const retryBody = await retry.text();
+          throw new Error(`Telegram sendList failed (plain retry): ${retry.status} ${retryBody}`);
+        }
+        return;
+      }
       throw new Error(`Telegram sendList failed: ${response.status} ${respBody}`);
     }
   } catch (err: any) {
