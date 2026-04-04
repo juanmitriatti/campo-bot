@@ -695,12 +695,27 @@ const COMMAND_PATTERNS = [
       // Re-match on original text to preserve casing
       const re = /(?:quiero\s+)?(?:agregar|agrega|crear)\s+(?:los\s+)?lotes\s+(.+)/i;
       const cm = original ? original.match(re) : null;
-      const raw = (cm ? cm[1] : m[1]).trim();
+      let raw = (cm ? cm[1] : m[1]).trim();
+      // Extract optional field name from "en [campo]" / "en el [campo]" suffix
+      let fieldName = null;
+      const fieldMatch = raw.match(/\s+(?:en|al?|del?)\s+(?:(?:el|la|mi)\s+)?(?:campo\s+)?(.+)$/i);
+      if (fieldMatch) {
+        // Only treat as field if it's after the last comma/y (not splitting a plot name)
+        const fieldPart = fieldMatch[0];
+        const beforeField = raw.slice(0, raw.length - fieldPart.length);
+        // Ensure the part before contains at least one plot name separator
+        if (/[,]|\sy\s/.test(beforeField)) {
+          fieldName = fieldMatch[1].trim();
+          raw = beforeField.trim();
+        }
+      }
       const names = raw
         .split(/\s*[,]\s*|\s+y\s+/)
         .map(n => n.trim())
         .filter(n => n.length > 0 && !/^\d+\s*ha$/i.test(n));
-      return { plotNames: names };
+      const result = { plotNames: names };
+      if (fieldName) result.fieldName = fieldName;
+      return result;
     },
   },
   {
