@@ -66,7 +66,7 @@ export function formatActivityConfirmation(
   }
 
   if (details.eventDate) {
-    const dateStr = details.eventDate.toLocaleDateString('es-AR');
+    const dateStr = details.eventDate.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
     lines.push(`\ud83d\udcc5 ${dateStr}`);
   }
 

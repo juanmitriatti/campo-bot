@@ -112,7 +112,7 @@ export const rainfallFlow: FlowDefinition = {
         const threshold = settings?.rain_alert_mm ?? 10;
         const dailyTotal = await getDailyRainfallTotal(userId, fieldId);
         if (dailyTotal >= threshold) {
-          const today = new Date().toISOString().slice(0, 10);
+          const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
           const dedupKey = `field_${fieldId ?? 0}_${today}`;
           const dup = await isDuplicate(userId, 'rain_observed', dedupKey, 24);
           if (!dup) {

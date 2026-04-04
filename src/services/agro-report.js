@@ -164,7 +164,7 @@ function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldOb
       ? `${desde} a ${hasta}`
       : `Semana ${weekNumber} — ${year}`;
     doc.text(periodLabel, { align: 'center' });
-    doc.text(`Generado: ${new Date().toLocaleDateString('es-AR')}`, { align: 'center' });
+    doc.text(`Generado: ${new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`, { align: 'center' });
     doc.moveDown(1);
 
     // --- Horizontal rule ---
@@ -258,7 +258,7 @@ function _renderActivity(doc, act) {
   const detail = act.product || act.crop || '';
   const plotLabel = act.plot_name || 'General';
   const dateStr = act.event_date
-    ? new Date(act.event_date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+    ? new Date(act.event_date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })
     : '';
 
   doc.fontSize(10).font('Helvetica-Bold')

@@ -9,6 +9,8 @@ services:
       POSTGRES_USER: campo
       POSTGRES_PASSWORD: campo123
       POSTGRES_DB: campo_bot
+      TZ: America/Argentina/Buenos_Aires
+      PGTZ: America/Argentina/Buenos_Aires
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -22,6 +24,7 @@ services:
     depends_on:
       - db
     environment:
+      TZ: America/Argentina/Buenos_Aires
       PORT: 3000
       DATABASE_URL: postgresql://campo:campo123@db:5432/campo_bot
       WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}

@@ -187,7 +187,7 @@ export class StockHandler {
     const lines = movements.map(m => {
       const emoji = typeEmoji[m.movement_type] || '📋';
       const sign = m.movement_type === 'salida' ? '-' : m.movement_type === 'entrada' ? '+' : '=';
-      const date = new Date(m.movement_date).toLocaleDateString('es-AR');
+      const date = new Date(m.movement_date).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
       const reason = m.reason ? ` (${m.reason})` : '';
       return `  ${emoji} ${date}: ${sign}${m.quantity} ${item.unit}${reason}`;
     });

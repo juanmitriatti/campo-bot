@@ -103,7 +103,7 @@ export class SharingHandler {
       const role = m.role === 'owner' ? '👑 Dueño' : '👤 Miembro';
       msg += `\n${role}: ${name}`;
       if (m.role === 'member') {
-        const date = new Date(m.created_at).toLocaleDateString('es-AR');
+        const date = new Date(m.created_at).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
         msg += ` (desde ${date})`;
       }
     }

@@ -761,7 +761,7 @@ async function processTextMessage(
 
   pool.query('UPDATE users SET last_message_at = NOW() WHERE id = $1', [userId]).catch(() => {});
 
-  const sessionId = `tg_${userId}_${new Date().toISOString().slice(0, 10)}`;
+  const sessionId = `tg_${userId}_${new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })}`;
   conversationObserver.logMessageReceived(userId, { phone, messageType: 'text', messageLength: text.length }, sessionId);
 
   // --- Check active conversation flow ---

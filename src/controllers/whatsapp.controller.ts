@@ -762,7 +762,7 @@ router.post('/', async (req: Request, res: Response) => {
     const user = await userRepository.getOrCreate(phone);
     const userId = user.id;
     const settings = await userRepository.getSettings(userId);
-    const sessionId = `${phone}_${new Date().toISOString().slice(0, 10)}`;
+    const sessionId = `${phone}_${new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })}`;
     const messageType = message.type === 'audio' ? 'audio' : 'text';
     conversationObserver.logMessageReceived(userId, { phone, messageType, messageLength: text.length }, sessionId);
 

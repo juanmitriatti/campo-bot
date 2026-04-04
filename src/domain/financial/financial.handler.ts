@@ -59,10 +59,10 @@ function formatEventDate(dateStr: string | null | undefined): string | null {
   if (!dateStr) return null;
   const d = new Date(dateStr + 'T12:00:00');
   if (isNaN(d.getTime())) return null;
-  const today = new Date();
-  today.setHours(12, 0, 0, 0);
-  if (d.toDateString() === today.toDateString()) return null;
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const dateIso = d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+  if (dateIso === todayStr) return null;
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Argentina/Buenos_Aires' });
 }
 
 function buildExpenseConfirmation(data: ParsedExpense, fieldName: string | null, plotName: string | null = null): string {
@@ -237,9 +237,9 @@ export class FinancialHandler {
         reportType,
       };
       if (period === 'year') {
-        const now = new Date();
-        dateCmd.desde = `${now.getFullYear()}-01-01`;
-        dateCmd.hasta = now.toISOString().slice(0, 10);
+        const nowAR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+        dateCmd.desde = `${nowAR.getFullYear()}-01-01`;
+        dateCmd.hasta = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
       } else {
         if (desde) dateCmd.desde = desde;
         if (hasta) dateCmd.hasta = hasta;
@@ -985,8 +985,8 @@ export class FinancialHandler {
           fieldName, plotName, category, type: reportType,
         });
 
-        const desdeStr = desde.toLocaleDateString('es-AR');
-        const hastaStr = hasta.toLocaleDateString('es-AR');
+        const desdeStr = desde.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+        const hastaStr = hasta.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
 
         // Build scope label
         const scopeParts: string[] = [];

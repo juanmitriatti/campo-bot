@@ -444,7 +444,7 @@ export class AgronomyHandler {
           const threshold = settings.rain_alert_mm ?? 10;
           const dailyTotal = await this.repo.getDailyRainfallTotal(userId, fieldId);
           if (dailyTotal >= threshold) {
-            const today = new Date().toISOString().slice(0, 10);
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
             const dedupKey = `field_${fieldId ?? 0}_${today}`;
             const dup = await isDuplicate(userId, 'rain_observed', dedupKey, 24);
             if (!dup) {
@@ -520,8 +520,8 @@ export class AgronomyHandler {
       case 'rainfall_range': {
         const desde = cmd.desde as Date;
         const hasta = cmd.hasta as Date;
-        const desdeStr = desde.toLocaleDateString('es-AR');
-        const hastaStr = hasta.toLocaleDateString('es-AR');
+        const desdeStr = desde.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+        const hastaStr = hasta.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
         const data = await this.repo.getRainfallRange(userId, desde, hasta);
         if (data.registros === 0) {
           return { messages: [`No hay registros de lluvia (${desdeStr} — ${hastaStr}).`], suggestionKey: 'rainfall_logged' };
@@ -906,7 +906,7 @@ export class AgronomyHandler {
         let msg = `📋 *Actividades — ${plotLabel}*\n`;
         for (const ev of events) {
           const { emoji, label } = getActivityLabel(ev.event_type);
-          const dateStr = new Date(ev.event_date).toLocaleDateString('es-AR');
+          const dateStr = new Date(ev.event_date).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
           let line = `\n${emoji} *${label}* — ${dateStr}`;
           if (ev.product) line += ` — ${ev.product}`;
           if (ev.quantity && ev.unit) line += ` (${ev.quantity} ${ev.unit})`;
