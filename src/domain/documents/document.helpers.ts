@@ -116,24 +116,10 @@ export function buildPostExtractionButtons(
 ): { body: string; buttons: Array<{ id: string; title: string }> } | null {
   const hasAmount = !!(extraction.total_amount && extraction.total_amount > 0);
   const hasLineItems = !!(extraction.line_items && extraction.line_items.length > 0);
-  const hasInsumoItems = hasLineItems && extraction.line_items!.some(
-    item => isInsumoCategory(item.category),
-  );
 
-  // Case 1: Has amount + insumo items + stock feature → Gasto + Stock / Solo gasto / Solo guardar
-  if (hasAmount && hasInsumoItems && hasStockFeature) {
-    return {
-      body: '¿Qué querés hacer con este documento?',
-      buttons: [
-        { id: `doc_expense_stock_${docId}`, title: 'Gasto + Stock' },
-        { id: `doc_expense_yes_${docId}`, title: 'Solo gasto' },
-        { id: `doc_expense_no_${docId}`, title: 'Solo guardar' },
-      ],
-    };
-  }
-
-  // Case 2: Has amount (insumo or not, without stock feature) → Registrar gasto / Solo guardar
-  if (hasAmount) {
+  // Case 1: Factura with amount → Registrar gasto / Solo guardar (never stock)
+  // Remito with amount should NOT show "Registrar gasto"
+  if (hasAmount && docIntent !== 'remito') {
     return {
       body: '¿Querés registrar esto como gasto?',
       buttons: [
@@ -143,7 +129,7 @@ export function buildPostExtractionButtons(
     };
   }
 
-  // Case 3: Remito with line items, no amount, stock feature → Cargar stock / Solo guardar
+  // Case 2: Remito with line items + stock feature → Cargar stock / Solo guardar
   if (docIntent === 'remito' && hasLineItems && hasStockFeature) {
     return {
       body: '¿Querés cargar estos items al stock?',
@@ -154,6 +140,6 @@ export function buildPostExtractionButtons(
     };
   }
 
-  // No structured data → no buttons
+  // No structured data or remito without stock feature → no buttons
   return null;
 }

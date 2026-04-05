@@ -273,6 +273,79 @@ export class StockService {
   }
 
   // ========================
+  // DOCUMENT-SPECIFIC OPERATIONS
+  // ========================
+
+  /**
+   * Find which products from a list don't exist in any of the user's warehouses.
+   */
+  async findMissingProducts(
+    userId: UserId,
+    products: Array<{ name: string; unit?: string; category?: string }>,
+  ): Promise<Array<{ name: string; unit?: string; category?: string }>> {
+    const missing: Array<{ name: string; unit?: string; category?: string }> = [];
+    const seen = new Set<string>();
+    for (const p of products) {
+      const key = p.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const existing = await this.repo.findStockItemByUser(Number(userId), p.name);
+      if (!existing) missing.push(p);
+    }
+    return missing;
+  }
+
+  /**
+   * Create a stock item with qty=0 (product discovery, no movement).
+   */
+  async createProductOnly(
+    userId: UserId,
+    warehouseId: number,
+    product: string,
+    category: string,
+    unit: string,
+  ): Promise<StockItemRow> {
+    // Check if already exists in this warehouse
+    const existing = await this.repo.findStockItem(warehouseId, product);
+    if (existing) return existing;
+    return this.repo.createStockItem(Number(userId), warehouseId, product, category, 0, unit);
+  }
+
+  /**
+   * Add stock to a specific warehouse (skips warehouse resolution).
+   */
+  async addStockToWarehouse(
+    userId: UserId,
+    warehouseId: number,
+    product: string,
+    category: string,
+    quantity: number,
+    unit: string,
+    reason?: string,
+  ): Promise<{ item: StockItemRow; movement: StockMovementRow; created: boolean }> {
+    let item = await this.repo.findStockItem(warehouseId, product);
+    let created = false;
+
+    if (item) {
+      if (item.unit.toLowerCase() !== unit.toLowerCase()) {
+        throw new Error(`El producto "${item.name}" está en ${item.unit}, no se puede cargar en ${unit}`);
+      }
+    }
+
+    if (!item) {
+      item = await this.repo.createStockItem(Number(userId), warehouseId, product, category || 'otros', 0, unit);
+      created = true;
+    }
+
+    const { item: updatedItem, movement } = await this.repo.applyMovement(
+      item.id, Number(userId), 'entrada', quantity,
+      reason || 'Carga desde remito',
+    );
+
+    return { item: updatedItem, movement, created };
+  }
+
+  // ========================
   // HELPERS
   // ========================
 

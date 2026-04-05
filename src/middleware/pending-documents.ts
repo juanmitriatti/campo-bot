@@ -8,8 +8,10 @@ export interface PendingDocumentAction {
   /** Set after plot selection, before saving */
   resolvedFieldId?: number | null;
   resolvedPlotId?: number | null;
-  /** 'expense' or 'expense_stock' — deferred action after plot selection */
-  deferredAction?: 'expense' | 'expense_stock';
+  /** Deferred action after plot selection */
+  deferredAction?: 'expense';
+  /** Products from line items not found in user's stock (for product discovery) */
+  missingProducts?: Array<{ name: string; unit?: string; category?: string }>;
 }
 
 const EXPIRY_MS = 5 * 60 * 1000; // 5 minutes

@@ -155,6 +155,21 @@ export class StockRepository {
     return rows[0] || null;
   }
 
+  async findStockItemByUser(userId: number, productName: string): Promise<StockItemRow | null> {
+    const { rows } = await pool.query(
+      `SELECT si.*, w.name AS warehouse_name, f.name AS field_name, f.id AS field_id
+       FROM stock_items si
+       JOIN warehouses w ON si.warehouse_id = w.id
+       JOIN fields f ON w.field_id = f.id
+       WHERE w.field_id IN (${accessibleFieldsSql(1)})
+         AND si.deleted_at IS NULL AND w.deleted_at IS NULL
+         AND LOWER(si.name) = LOWER($2)
+       LIMIT 1`,
+      [userId, productName]
+    );
+    return rows[0] || null;
+  }
+
   async findStockItemFuzzy(userId: number, productName: string, fieldId?: number): Promise<StockItemRow | null> {
     const normalizedName = productName.toLowerCase();
     let query = `SELECT si.*, w.name AS warehouse_name, f.name AS field_name, f.id AS field_id

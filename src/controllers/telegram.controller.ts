@@ -69,7 +69,7 @@ import { DocumentService, DocumentError } from '../domain/documents/document.ser
 import { PendingDocumentStore } from '../middleware/pending-documents.js';
 import { PendingDocumentUploadStore } from '../middleware/pending-document-upload.js';
 import type { DocumentUploadIntent } from '../middleware/pending-document-upload.js';
-import { formatExtractionSummary, buildSuggestedExpenses, buildPostExtractionButtons, isInsumoCategory } from '../domain/documents/document.helpers.js';
+import { formatExtractionSummary, buildSuggestedExpenses, buildPostExtractionButtons } from '../domain/documents/document.helpers.js';
 import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveButton, InteractiveListSection, UserId } from '../types/index.js';
 import { asUserId } from '../types/index.js';
 import type { SpeechToTextProvider } from '../services/audio/providers/speech-provider.interface.js';
@@ -123,7 +123,6 @@ const pendingActStore = new PendingActivityStore();
 const pendingCityStore = new PendingFieldCityStore();
 const pendingPlotAreaStore = new PendingPlotAreaStore();
 const pendingStockEntryStore = new Map<string, Record<string, unknown>>();
-const pendingStockEntryQueue = new Map<string, Array<Record<string, unknown>>>();
 const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
 const documentServiceTg = new DocumentService();
 const pendingDocumentStoreTg = new PendingDocumentStore();
@@ -797,23 +796,6 @@ async function handleInteractiveReply(
       resultItems.push({ type: 'text', text: '👍 OK, no se cargó al stock.' });
     }
     pendingStockEntryStore.delete(phone);
-    // Check queue for next insumo item
-    const queue = pendingStockEntryQueue.get(phone);
-    if (queue && queue.length > 0) {
-      const next = queue.shift()!;
-      if (queue.length === 0) pendingStockEntryQueue.delete(phone);
-      pendingStockEntryStore.set(phone, {
-        expenseId: next.expenseId,
-        product: next.product,
-        quantity: next.quantity,
-        unit: next.unit || 'lt',
-        category: next.category,
-      });
-      resultItems.push(interactiveButtonsItem(`¿Cargar *${next.product}* al stock?`, [
-        { id: `stock_entry_yes_${next.expenseId}`, title: 'Sí, cargar' },
-        { id: `stock_entry_no_${next.expenseId}`, title: 'No' },
-      ]));
-    }
     return resultItems;
   }
 
@@ -940,56 +922,82 @@ async function handleInteractiveReply(
     }
   }
 
-  // --- Document expense+stock callback ---
-  if (callbackId.startsWith('doc_expense_stock_')) {
-    try {
-      const pending = pendingDocumentStoreTg.get(phone);
-      if (!pending) return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
-      // Resolve plot before saving
-      const plotRes = await resolveDocPlot(userId);
-      if (!plotRes.resolved) {
-        // Multiple plots → ask user to pick, defer action
-        pending.deferredAction = 'expense_stock';
-        pendingDocumentStoreTg.set(phone, pending);
-        const buttons = plotRes.plots.slice(0, 3).map(p => ({
-          id: `doc_plot_${p.id}`,
-          title: `${p.name} (${p.field_name})`.slice(0, 20),
-        }));
-        return [interactiveButtonsItem('¿En qué lote registramos los gastos?', buttons)];
-      }
-      return await saveDocExpensesWithStockTg(pending, userId, phone, plotRes.fieldId, plotRes.plotId);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al registrar';
-      return [{ type: 'text', text: `❌ ${msg}` }];
-    }
-  }
-
-  // --- Document stock-only callback (remito → stock) ---
+  // --- Document stock-only callback (remito → warehouse selection) ---
   if (callbackId.startsWith('doc_stock_yes_')) {
     try {
       const pending = pendingDocumentStoreTg.get(phone);
-      if (pending && pending.extraction.line_items && pending.extraction.line_items.length > 0) {
-        const { StockService } = await import('../domain/stock/stock.service.js');
-        const stockService = new StockService();
-        const messages: string[] = [];
-        for (const item of pending.extraction.line_items) {
-          try {
-            const { item: stockItem } = await stockService.addStock(userId, item.product, item.quantity || 1, item.unit || 'u', {
-              reason: `Remito ${pending.extraction.supplier || ''}`.trim(),
-            });
-            messages.push(`📦 +${item.quantity || 1}${item.unit || 'u'} de ${stockItem.name} (${stockItem.current_quantity}${stockItem.unit} total)`);
-          } catch {
-            messages.push(`⚠️ No pude cargar ${item.product} al stock`);
-          }
-        }
-        pendingDocumentStoreTg.clear(phone);
-        return [{ type: 'text', text: messages.join('\n') }];
+      if (!pending || !pending.extraction.line_items || pending.extraction.line_items.length === 0) {
+        return [{ type: 'text', text: '⚠️ No hay items para cargar al stock.' }];
       }
-      return [{ type: 'text', text: '⚠️ No hay items para cargar al stock.' }];
+      const { StockService } = await import('../domain/stock/stock.service.js');
+      const stockService = new StockService();
+      const warehouses = await stockService.listWarehouses(userId);
+      if (warehouses.length <= 1) {
+        // 0 or 1 warehouse → auto-resolve and load
+        return await loadRemitoStockTg(pending, userId, phone, stockService);
+      }
+      // Multiple warehouses → ask user to pick
+      const buttons = warehouses.slice(0, 3).map(w => ({
+        id: `doc_warehouse_${w.id}_${pending.documentId}`,
+        title: `${w.name} (${w.field_name || ''})`.slice(0, 20),
+      }));
+      return [interactiveButtonsItem('¿En qué galpón cargamos el stock?', buttons)];
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al cargar stock';
       return [{ type: 'text', text: `❌ ${msg}` }];
     }
+  }
+
+  // --- Document warehouse selection callback (remito → specific warehouse) ---
+  if (callbackId.startsWith('doc_warehouse_')) {
+    const match = callbackId.match(/^doc_warehouse_(\d+)_(\d+)$/);
+    if (match) {
+      const warehouseId = parseInt(match[1], 10);
+      try {
+        const pending = pendingDocumentStoreTg.get(phone);
+        if (!pending) return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
+        const { StockService } = await import('../domain/stock/stock.service.js');
+        const stockService = new StockService();
+        return await loadRemitoStockTg(pending, userId, phone, stockService, warehouseId);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error al cargar stock';
+        return [{ type: 'text', text: `❌ ${msg}` }];
+      }
+    }
+  }
+
+  // --- Document product discovery callbacks ---
+  if (callbackId.startsWith('doc_create_products_yes_') || callbackId.startsWith('doc_create_products_no_')) {
+    const accepted = callbackId.startsWith('doc_create_products_yes_');
+    if (accepted) {
+      try {
+        const pending = pendingDocumentStoreTg.get(phone);
+        if (!pending?.missingProducts || pending.missingProducts.length === 0) {
+          pendingDocumentStoreTg.clear(phone);
+          return [{ type: 'text', text: '⚠️ No hay productos pendientes.' }];
+        }
+        const { StockService } = await import('../domain/stock/stock.service.js');
+        const stockService = new StockService();
+        const warehouse = await stockService.resolveWarehouse(userId);
+        const messages: string[] = [];
+        for (const p of pending.missingProducts) {
+          try {
+            await stockService.createProductOnly(userId, warehouse.id, p.name, p.category || 'otros', p.unit || 'u');
+            messages.push(`📋 Producto creado: *${p.name}* (${p.unit || 'u'}) - qty 0`);
+          } catch {
+            messages.push(`⚠️ No pude crear ${p.name}`);
+          }
+        }
+        pendingDocumentStoreTg.clear(phone);
+        return [{ type: 'text', text: messages.join('\n') }];
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error al crear productos';
+        pendingDocumentStoreTg.clear(phone);
+        return [{ type: 'text', text: `❌ ${msg}` }];
+      }
+    }
+    pendingDocumentStoreTg.clear(phone);
+    return [{ type: 'text', text: '👌 OK, no se crearon productos en el stock.' }];
   }
 
   // --- Document expense callback ---
@@ -1027,13 +1035,9 @@ async function handleInteractiveReply(
       try {
         const pending = pendingDocumentStoreTg.get(phone);
         if (!pending) return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
-        // Look up the field for this plot
         const allPlots = await financialService.findAllUserPlots(userId);
         const plot = allPlots.find(p => p.id === plotId);
         const fieldId = plot?.field_id ?? null;
-        if (pending.deferredAction === 'expense_stock') {
-          return await saveDocExpensesWithStockTg(pending, userId, phone, fieldId, plotId);
-        }
         return await saveDocExpensesTg(pending, userId, phone, fieldId, plotId);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Error al registrar';
@@ -1051,7 +1055,7 @@ async function handleInteractiveReply(
   return [];
 }
 
-/** Save document expenses (no stock). */
+/** Save document expenses, then check for product discovery (missing products in stock). */
 async function saveDocExpensesTg(
   pending: import('../middleware/pending-documents.js').PendingDocumentAction,
   userId: UserId, phone: string,
@@ -1078,67 +1082,73 @@ async function saveDocExpensesTg(
   if (firstExpenseId) {
     await documentServiceTg.linkToExpense(pending.documentId, firstExpenseId, userId).catch(() => {});
   }
+  const items: BotResponseItem[] = [{ type: 'text', text: messages.join('\n') }];
+
+  // Product discovery: check if any line item products are missing from stock
+  try {
+    const lineItems = pending.extraction.line_items;
+    if (lineItems && lineItems.length > 0) {
+      const { StockService } = await import('../domain/stock/stock.service.js');
+      const stockService = new StockService();
+      const { FeatureGate: FG } = await import('../domain/billing/feature-gate.js');
+      const fg = new FG();
+      const hasStock = await fg.hasFeature(userId, 'stock');
+      if (hasStock) {
+        const products = lineItems.map(li => ({ name: li.product, unit: li.unit, category: li.category }));
+        const missing = await stockService.findMissingProducts(userId, products);
+        if (missing.length > 0) {
+          pending.missingProducts = missing;
+          pendingDocumentStoreTg.set(phone, pending);
+          const names = missing.map(p => p.name).join(', ');
+          items.push(interactiveButtonsItem(
+            `Encontré ${missing.length} producto${missing.length > 1 ? 's' : ''} que no está${missing.length > 1 ? 'n' : ''} en tu stock: *${names}*. ¿Querés darlos de alta?`,
+            [
+              { id: `doc_create_products_yes_${pending.documentId}`, title: 'Sí, crear' },
+              { id: `doc_create_products_no_${pending.documentId}`, title: 'No' },
+            ],
+          ));
+          return items;
+        }
+      }
+    }
+  } catch {
+    // Product discovery is best-effort, don't fail the expense save
+  }
+
   pendingDocumentStoreTg.clear(phone);
-  return [{ type: 'text', text: messages.join('\n') }];
+  return items;
 }
 
-/** Save document expenses + trigger stock entry queue for insumo items. */
-async function saveDocExpensesWithStockTg(
+/** Load remito line items into stock (optionally into a specific warehouse). */
+async function loadRemitoStockTg(
   pending: import('../middleware/pending-documents.js').PendingDocumentAction,
   userId: UserId, phone: string,
-  fieldId: number | null, plotId: number | null,
+  stockService: import('../domain/stock/stock.service.js').StockService,
+  warehouseId?: number,
 ): Promise<BotResponseItem[]> {
-  const { saveExpense } = await import('../services/expenses.js');
   const messages: string[] = [];
-  let firstExpenseId: number | null = null;
-  const insumoExpenses: Array<Record<string, unknown>> = [];
-  for (const exp of pending.suggestedExpenses) {
-    const saved = await saveExpense(userId, {
-      amount: exp.amount!,
-      category: exp.category || 'Otros',
-      description: exp.description || 'Factura procesada',
-      currency: exp.currency || 'ARS',
-      expenseDate: exp.expenseDate || null,
-      expenseType: exp.expenseType || 'varios',
-      product: exp.product || null,
-      quantity: exp.quantity || null,
-      unit: exp.unit || null,
-    }, fieldId, plotId);
-    if (!firstExpenseId && saved?.id) firstExpenseId = saved.id;
-    messages.push(`✅ Gasto registrado: $${exp.amount?.toLocaleString('es-AR')} - ${exp.description}`);
-    if (exp.expenseType === 'insumo' && saved?.id) {
-      insumoExpenses.push({
-        expenseId: saved.id,
-        product: exp.product,
-        quantity: exp.quantity,
-        unit: exp.unit,
-        category: exp.category,
-      });
+  for (const item of pending.extraction.line_items!) {
+    try {
+      if (warehouseId) {
+        const { item: stockItem } = await stockService.addStockToWarehouse(
+          userId, warehouseId, item.product, item.category || 'otros',
+          item.quantity || 1, item.unit || 'u',
+          `Remito ${pending.extraction.supplier || ''}`.trim(),
+        );
+        messages.push(`📦 +${item.quantity || 1}${item.unit || 'u'} de ${stockItem.name} (${stockItem.current_quantity}${stockItem.unit} total)`);
+      } else {
+        const { item: stockItem } = await stockService.addStock(userId, item.product, item.quantity || 1, item.unit || 'u', {
+          category: item.category || 'otros',
+          reason: `Remito ${pending.extraction.supplier || ''}`.trim(),
+        });
+        messages.push(`📦 +${item.quantity || 1}${item.unit || 'u'} de ${stockItem.name} (${stockItem.current_quantity}${stockItem.unit} total)`);
+      }
+    } catch {
+      messages.push(`⚠️ No pude cargar ${item.product} al stock`);
     }
-  }
-  if (firstExpenseId) {
-    await documentServiceTg.linkToExpense(pending.documentId, firstExpenseId, userId).catch(() => {});
   }
   pendingDocumentStoreTg.clear(phone);
-  const items: BotResponseItem[] = [{ type: 'text', text: messages.join('\n') }];
-  if (insumoExpenses.length > 0) {
-    const first = insumoExpenses[0];
-    pendingStockEntryStore.set(phone, {
-      expenseId: first.expenseId,
-      product: first.product,
-      quantity: first.quantity,
-      unit: first.unit || 'lt',
-      category: first.category,
-    });
-    if (insumoExpenses.length > 1) {
-      pendingStockEntryQueue.set(phone, insumoExpenses.slice(1));
-    }
-    items.push(interactiveButtonsItem(`¿Cargar *${first.product}* al stock?`, [
-      { id: `stock_entry_yes_${first.expenseId}`, title: 'Sí, cargar' },
-      { id: `stock_entry_no_${first.expenseId}`, title: 'No' },
-    ]));
-  }
-  return items;
+  return [{ type: 'text', text: messages.join('\n') }];
 }
 
 // --- Main text message pipeline (same logic as test-bot) ---

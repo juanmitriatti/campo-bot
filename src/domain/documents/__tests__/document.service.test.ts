@@ -386,7 +386,7 @@ describe('isInsumoCategory', () => {
 // ============================================================================
 
 describe('buildPostExtractionButtons', () => {
-  it('returns Gasto + Stock / Solo gasto / Solo guardar for amount + insumo + stock', () => {
+  it('returns Registrar gasto / Solo guardar for factura with insumo amount + stock (no Gasto+Stock)', () => {
     const extraction: DocumentExtraction = {
       total_amount: 100000,
       line_items: [
@@ -395,14 +395,13 @@ describe('buildPostExtractionButtons', () => {
     };
     const result = buildPostExtractionButtons(extraction, 1, 'factura', true);
     expect(result).not.toBeNull();
-    expect(result!.buttons).toHaveLength(3);
-    expect(result!.buttons[0].id).toBe('doc_expense_stock_1');
-    expect(result!.buttons[0].title).toBe('Gasto + Stock');
-    expect(result!.buttons[1].title).toBe('Solo gasto');
-    expect(result!.buttons[2].title).toBe('Solo guardar');
+    expect(result!.buttons).toHaveLength(2);
+    expect(result!.buttons[0].id).toBe('doc_expense_yes_1');
+    expect(result!.buttons[0].title).toBe('Registrar gasto');
+    expect(result!.buttons[1].title).toBe('Solo guardar');
   });
 
-  it('returns Registrar gasto / Solo guardar for amount + insumo WITHOUT stock feature', () => {
+  it('returns Registrar gasto / Solo guardar for factura with insumo WITHOUT stock feature', () => {
     const extraction: DocumentExtraction = {
       total_amount: 100000,
       line_items: [
@@ -416,7 +415,7 @@ describe('buildPostExtractionButtons', () => {
     expect(result!.buttons[1].title).toBe('Solo guardar');
   });
 
-  it('returns Registrar gasto / Solo guardar for amount + non-insumo', () => {
+  it('returns Registrar gasto / Solo guardar for factura with non-insumo amount', () => {
     const extraction: DocumentExtraction = {
       total_amount: 50000,
       line_items: [
@@ -458,5 +457,30 @@ describe('buildPostExtractionButtons', () => {
     };
     const result = buildPostExtractionButtons(extraction, 6, 'remito', false);
     expect(result).toBeNull();
+  });
+
+  it('returns null for remito with amount (should NOT show Registrar gasto)', () => {
+    const extraction: DocumentExtraction = {
+      total_amount: 50000,
+      line_items: [
+        { product: 'Semilla de soja', total: 50000, quantity: 200, unit: 'kg', category: 'Semillas' },
+      ],
+    };
+    const result = buildPostExtractionButtons(extraction, 7, 'remito', false);
+    expect(result).toBeNull();
+  });
+
+  it('returns Cargar stock for remito with amount + line items + stock feature', () => {
+    const extraction: DocumentExtraction = {
+      total_amount: 50000,
+      line_items: [
+        { product: 'Semilla de soja', total: 50000, quantity: 200, unit: 'kg', category: 'Semillas' },
+      ],
+    };
+    const result = buildPostExtractionButtons(extraction, 8, 'remito', true);
+    expect(result).not.toBeNull();
+    expect(result!.buttons).toHaveLength(2);
+    expect(result!.buttons[0].id).toBe('doc_stock_yes_8');
+    expect(result!.buttons[0].title).toBe('Cargar stock');
   });
 });
