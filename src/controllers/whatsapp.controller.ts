@@ -106,6 +106,7 @@ const learningService = new LearningService();
 const contextResolver = new ContextResolver();
 const transcriptionService = new TranscriptionService();
 const pendingStockEntryStore = new Map<string, Record<string, unknown>>();
+const pendingStockEntryQueue = new Map<string, Array<Record<string, unknown>>>();
 const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
 const documentService = new DocumentService();
 const pendingDocumentStore = new PendingDocumentStore();
@@ -614,7 +615,6 @@ router.post('/', async (req: Request, res: Response) => {
                 const { StockPurchaseService } = await import('../domain/stock/stock-purchase.service.js');
                 const svc = new StockPurchaseService();
                 const result = await svc.applyStockEntry(user.id, pending as any);
-                pendingStockEntryStore.delete(phone);
                 await sendMessage(phone, `📦 Stock actualizado: +${result.movement.quantity}${result.item.unit} de ${result.item.name} (${result.item.current_quantity}${result.item.unit} total)`);
               } else {
                 await sendMessage(phone, '⚠️ No hay entrada de stock pendiente.');
@@ -623,8 +623,25 @@ router.post('/', async (req: Request, res: Response) => {
               await sendMessage(phone, `❌ Error al cargar stock: ${err.message}`);
             }
           } else {
-            pendingStockEntryStore.delete(phone);
             await sendMessage(phone, '👌 Stock no modificado.');
+          }
+          pendingStockEntryStore.delete(phone);
+          // Chain to next queued insumo item
+          const queue = pendingStockEntryQueue.get(phone);
+          if (queue && queue.length > 0) {
+            const next = queue.shift()!;
+            if (queue.length === 0) pendingStockEntryQueue.delete(phone);
+            pendingStockEntryStore.set(phone, {
+              expenseId: next.expenseId,
+              product: next.product,
+              quantity: next.quantity,
+              unit: next.unit || 'lt',
+              category: next.category,
+            });
+            await sendInteractiveButtons(phone, `¿Cargar *${next.product}* al stock?`, [
+              { id: `stock_entry_yes_${next.expenseId}`, title: 'Sí, cargar' },
+              { id: `stock_entry_no_${next.expenseId}`, title: 'No' },
+            ]);
           }
           res.sendStatus(200);
           return;
@@ -826,7 +843,7 @@ router.post('/', async (req: Request, res: Response) => {
               }
               pendingDocumentStore.clear(phone);
               await sendMessage(phone, messages.join('\n'));
-              // Trigger stock entry for first insumo item
+              // Trigger stock entry for insumo items (queue for multiple)
               if (insumoExpenses.length > 0) {
                 const first = insumoExpenses[0];
                 pendingStockEntryStore.set(phone, {
@@ -836,6 +853,9 @@ router.post('/', async (req: Request, res: Response) => {
                   unit: first.unit || 'lt',
                   category: first.category,
                 });
+                if (insumoExpenses.length > 1) {
+                  pendingStockEntryQueue.set(phone, insumoExpenses.slice(1));
+                }
                 await sendInteractiveButtons(phone, `¿Cargar *${first.product}* al stock?`, [
                   { id: `stock_entry_yes_${first.expenseId}`, title: 'Sí, cargar' },
                   { id: `stock_entry_no_${first.expenseId}`, title: 'No' },

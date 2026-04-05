@@ -123,6 +123,7 @@ const pendingActStore = new PendingActivityStore();
 const pendingCityStore = new PendingFieldCityStore();
 const pendingPlotAreaStore = new PendingPlotAreaStore();
 const pendingStockEntryStore = new Map<string, Record<string, unknown>>();
+const pendingStockEntryQueue = new Map<string, Array<Record<string, unknown>>>();
 const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
 const documentServiceTg = new DocumentService();
 const pendingDocumentStoreTg = new PendingDocumentStore();
@@ -756,6 +757,7 @@ async function handleInteractiveReply(
   // --- Stock entry suggestion (from insumo expense) ---
   if (callbackId.startsWith('stock_entry_yes_') || callbackId.startsWith('stock_entry_no_')) {
     const accepted = callbackId.startsWith('stock_entry_yes_');
+    const resultItems: BotResponseItem[] = [];
     if (accepted) {
       try {
         const pending = pendingStockEntryStore.get(phone);
@@ -763,16 +765,34 @@ async function handleInteractiveReply(
           const { StockPurchaseService } = await import('../domain/stock/stock-purchase.service.js');
           const purchaseService = new StockPurchaseService();
           const { item } = await purchaseService.applyStockEntry(userId, pending as any);
-          pendingStockEntryStore.delete(phone);
-          return [{ type: 'text', text: `📦 Stock actualizado: *${item.name}* → ${item.current_quantity} ${item.unit}` }];
+          resultItems.push({ type: 'text', text: `📦 Stock actualizado: *${item.name}* → ${item.current_quantity} ${item.unit}` });
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Error al cargar stock';
-        return [{ type: 'text', text: `❌ ${msg}` }];
+        resultItems.push({ type: 'text', text: `❌ ${msg}` });
       }
+    } else {
+      resultItems.push({ type: 'text', text: '👍 OK, no se cargó al stock.' });
     }
     pendingStockEntryStore.delete(phone);
-    return [{ type: 'text', text: accepted ? '📦 Stock cargado.' : '👍 OK, no se cargó al stock.' }];
+    // Check queue for next insumo item
+    const queue = pendingStockEntryQueue.get(phone);
+    if (queue && queue.length > 0) {
+      const next = queue.shift()!;
+      if (queue.length === 0) pendingStockEntryQueue.delete(phone);
+      pendingStockEntryStore.set(phone, {
+        expenseId: next.expenseId,
+        product: next.product,
+        quantity: next.quantity,
+        unit: next.unit || 'lt',
+        category: next.category,
+      });
+      resultItems.push(interactiveButtonsItem(`¿Cargar *${next.product}* al stock?`, [
+        { id: `stock_entry_yes_${next.expenseId}`, title: 'Sí, cargar' },
+        { id: `stock_entry_no_${next.expenseId}`, title: 'No' },
+      ]));
+    }
+    return resultItems;
   }
 
   // --- Stock deduction suggestion (from activity) ---
@@ -945,6 +965,9 @@ async function handleInteractiveReply(
             unit: first.unit || 'lt',
             category: first.category,
           });
+          if (insumoExpenses.length > 1) {
+            pendingStockEntryQueue.set(phone, insumoExpenses.slice(1));
+          }
           items.push(interactiveButtonsItem(`¿Cargar *${first.product}* al stock?`, [
             { id: `stock_entry_yes_${first.expenseId}`, title: 'Sí, cargar' },
             { id: `stock_entry_no_${first.expenseId}`, title: 'No' },
