@@ -69,6 +69,8 @@
 
     .success-icon { font-size: 48px; margin-bottom: 8px; }
     .error-icon { font-size: 48px; margin-bottom: 8px; }
+    /* Hide default Leaflet.Draw toolbar — we auto-start drawing */
+    .leaflet-draw-toolbar { display: none !important; }
   </style>
 </head>
 <body>
@@ -76,7 +78,7 @@
 <div id="header">
   <div>
     <h1 id="field-name">Cargando...</h1>
-    <div class="subtitle">Dibujá el contorno del campo</div>
+    <div class="subtitle">Tocá cada esquina del campo para dibujarlo</div>
   </div>
 </div>
 
@@ -156,6 +158,10 @@
     });
     map.addControl(drawControl);
 
+    // Auto-start polygon drawing mode so user just taps to place points
+    new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
+    showStatus('Tocá en el mapa para marcar cada esquina del campo. Tocá el primer punto para cerrar.');
+
     map.on(L.Draw.Event.CREATED, function(e) {
       drawnItems.clearLayers();
       drawnItems.addLayer(e.layer);
@@ -194,12 +200,13 @@
       }
     });
 
-    // Clear button
+    // Clear button — restart drawing mode
     document.getElementById('clear-btn').addEventListener('click', function() {
       drawnItems.clearLayers();
       currentPolygon = null;
       document.getElementById('save-btn').disabled = true;
-      hideStatus();
+      new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
+      showStatus('Tocá en el mapa para marcar cada esquina del campo.');
     });
 
     // Save button
