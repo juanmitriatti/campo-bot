@@ -59,6 +59,13 @@ Tu asistente de gesti\u00f3n agr\u00edcola \ud83c\udf31
 \u2022 Actividades lote 3
 
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\ud83e\uddfe *Documentos*
+\u2022 Cargar factura \u2192 registra gastos
+\u2022 Cargar remito \u2192 carga al stock
+\u2022 Mis facturas / documentos
+\u2022 Vincular factura 5 al gasto 42
+
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 \u270f\ufe0f *Editar Datos*
 \u2022 Borrar \u00faltimo gasto
 \u2022 Editar \u00faltimo gasto a 250mil

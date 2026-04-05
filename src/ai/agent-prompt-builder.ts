@@ -89,7 +89,7 @@ ${this.buildActivityLines(dictionary)}
 - "compartir campo X"→share_field (genera código de invitación). "unirme/aceptar ABC123"→accept_invite. "quitar a Juan/+549... de campo X"→remove_field_member. "miembros campo X"/"quién tiene acceso"→list_field_members
 - STOCK: "cargué/entraron/recibí+producto+cantidad"→add_stock. "usé/saqué/gasté+producto+cantidad"(sin monto $)→remove_stock. "tengo X de Y"(inventario)→adjust_stock. "cuánto X tengo"/"inventario"/"stock"→check_stock. "movimientos de X"→stock_history. "stock mínimo"→set_min_stock
 - CUIDADO: "gasté" con monto ($, pesos, dólares) → log_expense. "gasté" sin monto + producto + cantidad → remove_stock
-- DOCUMENTOS: "mis facturas"/"documentos" → list_documents. "vincular factura" → link_document_to_expense. Si quieren cargar/subir factura/remito → respond_text diciendo "Enviame la foto o PDF y lo proceso" (el sistema maneja subida de imágenes automáticamente)`;
+- DOCUMENTOS: "mis facturas"/"documentos" → list_documents. "vincular factura" → link_document_to_expense. Si quieren cargar/subir → respond_text: factura="Enviame la foto de la factura y registro los gastos", remito="Enviame la foto del remito y lo cargo al stock". Facturas=gastos solamente, remitos=stock solamente`;
   }
 
   private contextLine(ctx: UserContext | null): string {

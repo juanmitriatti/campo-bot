@@ -1173,9 +1173,9 @@ router.post('/', async (req: Request, res: Response) => {
             mediaRef: { mediaId, mimeType: mediaMime, filename, caption },
             timestamp: Date.now(),
           });
-          await sendInteractiveButtons(phone, '📷 Recibí una imagen. ¿Qué querés hacer?', [
-            { id: 'doc_classify_factura', title: '🧾 Procesar factura' },
-            { id: 'doc_classify_remito', title: '📋 Procesar remito' },
+          await sendInteractiveButtons(phone, '📷 Recibí una imagen. ¿Es una factura (para gastos) o un remito (para stock)?', [
+            { id: 'doc_classify_factura', title: '🧾 Factura (gastos)' },
+            { id: 'doc_classify_remito', title: '📋 Remito (stock)' },
             { id: 'doc_classify_skip', title: 'No procesar' },
           ]);
 

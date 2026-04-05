@@ -92,8 +92,8 @@ export class SystemHandler {
               {
                 title: 'Documentos',
                 rows: [
-                  { id: 'doc_upload_factura', title: '🧾 Cargar Factura', description: 'Procesar foto de factura' },
-                  { id: 'doc_upload_remito', title: '📋 Cargar Remito', description: 'Procesar foto de remito' },
+                  { id: 'doc_upload_factura', title: '🧾 Cargar Factura', description: 'Registrar gastos desde factura' },
+                  { id: 'doc_upload_remito', title: '📋 Cargar Remito', description: 'Cargar stock desde remito' },
                 ],
               },
               {
