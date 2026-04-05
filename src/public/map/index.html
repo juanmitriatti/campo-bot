@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Dibujar campo - Campo Bot</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
@@ -32,6 +31,7 @@
     }
     .btn:active { transform: scale(0.95); }
     .btn-primary { background: #2d6a4f; color: white; }
+    .btn-danger { background: #dc3545; color: white; }
     .btn-secondary { background: white; color: #333; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -41,6 +41,22 @@
       background: white; border: 2px solid #ccc; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       font-size: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    #undo-btn {
+      position: fixed; top: 62px; left: 10px; z-index: 1000;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: white; border: 2px solid #ccc; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    #undo-btn:disabled { opacity: 0.3; }
+
+    #point-count {
+      position: fixed; top: 62px; left: 50%; transform: translateX(-50%); z-index: 1000;
+      background: rgba(0,0,0,0.7); color: white; padding: 6px 14px;
+      border-radius: 20px; font-size: 13px; font-weight: 500;
+      display: none;
     }
 
     #status {
@@ -69,8 +85,6 @@
 
     .success-icon { font-size: 48px; margin-bottom: 8px; }
     .error-icon { font-size: 48px; margin-bottom: 8px; }
-    /* Hide default Leaflet.Draw toolbar — we auto-start drawing */
-    .leaflet-draw-toolbar { display: none !important; }
   </style>
 </head>
 <body>
@@ -86,10 +100,13 @@
 <div id="map"></div>
 
 <button id="locate-btn" title="Mi ubicación">📍</button>
+<button id="undo-btn" title="Deshacer último punto" disabled>↩</button>
+<div id="point-count"></div>
 
 <div id="actions" style="display: none;">
   <button class="btn btn-secondary" id="clear-btn">Borrar</button>
-  <button class="btn btn-primary" id="save-btn" disabled>Guardar</button>
+  <button class="btn btn-primary" id="finish-btn" disabled>Cerrar polígono</button>
+  <button class="btn btn-primary" id="save-btn" style="display:none;">Guardar</button>
 </div>
 
 <div id="overlay">
@@ -100,7 +117,6 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script>
 (function() {
   const params = new URLSearchParams(window.location.search);
@@ -112,7 +128,15 @@
     return;
   }
 
-  let map, drawnItems, drawControl, currentPolygon = null;
+  let map;
+  let points = [];       // Array of L.LatLng
+  let markers = [];      // Array of L.CircleMarker
+  let polyline = null;   // L.Polyline connecting points
+  let polygon = null;    // L.Polygon (after closing)
+  let isFinished = false;
+
+  const POLY_STYLE = { color: '#2d6a4f', weight: 3, fillOpacity: 0.15, fillColor: '#2d6a4f' };
+  const LINE_STYLE = { color: '#2d6a4f', weight: 2, dashArray: '8,6' };
 
   // Validate token
   fetch(`${API_BASE}/api/map/${token}`)
@@ -131,7 +155,6 @@
     });
 
   function initMap() {
-    // Default to center of Argentina
     map = L.map('map', { zoomControl: false }).setView([-34, -64], 6);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -141,46 +164,12 @@
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    drawnItems = new L.FeatureGroup();
-    map.addLayer(drawnItems);
+    showStatus('Tocá en el mapa para marcar cada esquina del campo.');
 
-    drawControl = new L.Control.Draw({
-      position: 'topright',
-      draw: {
-        polygon: {
-          allowIntersection: false,
-          showArea: true,
-          shapeOptions: { color: '#2d6a4f', weight: 3, fillOpacity: 0.15 },
-        },
-        polyline: false, rectangle: false, circle: false, marker: false, circlemarker: false,
-      },
-      edit: { featureGroup: drawnItems },
-    });
-    map.addControl(drawControl);
-
-    // Auto-start polygon drawing mode so user just taps to place points
-    new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
-    showStatus('Tocá en el mapa para marcar cada esquina del campo. Tocá el primer punto para cerrar.');
-
-    map.on(L.Draw.Event.CREATED, function(e) {
-      drawnItems.clearLayers();
-      drawnItems.addLayer(e.layer);
-      currentPolygon = e.layer.getLatLngs()[0].map(ll => [ll.lat, ll.lng]);
-      document.getElementById('save-btn').disabled = false;
-      showStatus('Polígono dibujado. Tocá "Guardar" para confirmar.');
-    });
-
-    map.on(L.Draw.Event.EDITED, function() {
-      const layers = drawnItems.getLayers();
-      if (layers.length > 0) {
-        currentPolygon = layers[0].getLatLngs()[0].map(ll => [ll.lat, ll.lng]);
-      }
-    });
-
-    map.on(L.Draw.Event.DELETED, function() {
-      currentPolygon = null;
-      document.getElementById('save-btn').disabled = true;
-      hideStatus();
+    // Main interaction: tap map to add points
+    map.on('click', function(e) {
+      if (isFinished) return;
+      addPoint(e.latlng);
     });
 
     // Locate me button
@@ -200,30 +189,142 @@
       }
     });
 
-    // Clear button — restart drawing mode
+    // Undo last point
+    document.getElementById('undo-btn').addEventListener('click', function() {
+      if (isFinished || points.length === 0) return;
+      removeLastPoint();
+    });
+
+    // Close polygon (finish drawing)
+    document.getElementById('finish-btn').addEventListener('click', function() {
+      if (points.length < 3) return;
+      closePolygon();
+    });
+
+    // Clear all and restart
     document.getElementById('clear-btn').addEventListener('click', function() {
-      drawnItems.clearLayers();
-      currentPolygon = null;
-      document.getElementById('save-btn').disabled = true;
-      new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
-      showStatus('Tocá en el mapa para marcar cada esquina del campo.');
+      resetDrawing();
     });
 
     // Save button
     document.getElementById('save-btn').addEventListener('click', function() {
-      if (!currentPolygon || currentPolygon.length < 3) return;
+      if (!isFinished || points.length < 3) return;
       savePolygon();
     });
+  }
+
+  function addPoint(latlng) {
+    points.push(latlng);
+
+    // Add a visible marker
+    const isFirst = points.length === 1;
+    const marker = L.circleMarker(latlng, {
+      radius: isFirst ? 10 : 7,
+      color: '#2d6a4f',
+      fillColor: isFirst ? '#40916c' : '#2d6a4f',
+      fillOpacity: 1,
+      weight: isFirst ? 3 : 2,
+    }).addTo(map);
+
+    // Tapping the first marker closes the polygon
+    if (isFirst) {
+      marker.on('click', function(e) {
+        L.DomEvent.stopPropagation(e);
+        if (!isFinished && points.length >= 3) {
+          closePolygon();
+        }
+      });
+    }
+
+    markers.push(marker);
+    updatePolyline();
+    updateUI();
+  }
+
+  function removeLastPoint() {
+    points.pop();
+    const marker = markers.pop();
+    if (marker) map.removeLayer(marker);
+    updatePolyline();
+    updateUI();
+  }
+
+  function updatePolyline() {
+    if (polyline) {
+      map.removeLayer(polyline);
+      polyline = null;
+    }
+    if (points.length >= 2) {
+      polyline = L.polyline(points, LINE_STYLE).addTo(map);
+    }
+  }
+
+  function closePolygon() {
+    isFinished = true;
+
+    // Remove polyline and markers, draw filled polygon
+    if (polyline) { map.removeLayer(polyline); polyline = null; }
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+
+    polygon = L.polygon(points, POLY_STYLE).addTo(map);
+    map.fitBounds(polygon.getBounds(), { padding: [30, 30] });
+
+    updateUI();
+    showStatus('Polígono listo. Tocá "Guardar" para confirmar o "Borrar" para empezar de nuevo.');
+  }
+
+  function resetDrawing() {
+    // Clear everything
+    if (polyline) { map.removeLayer(polyline); polyline = null; }
+    if (polygon) { map.removeLayer(polygon); polygon = null; }
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+    points = [];
+    isFinished = false;
+    updateUI();
+    showStatus('Tocá en el mapa para marcar cada esquina del campo.');
+  }
+
+  function updateUI() {
+    const count = points.length;
+    const countEl = document.getElementById('point-count');
+    const finishBtn = document.getElementById('finish-btn');
+    const saveBtn = document.getElementById('save-btn');
+    const undoBtn = document.getElementById('undo-btn');
+
+    if (isFinished) {
+      countEl.style.display = 'none';
+      finishBtn.style.display = 'none';
+      saveBtn.style.display = '';
+      undoBtn.disabled = true;
+    } else {
+      saveBtn.style.display = 'none';
+      finishBtn.style.display = '';
+      finishBtn.disabled = count < 3;
+      undoBtn.disabled = count === 0;
+
+      if (count > 0) {
+        countEl.textContent = count < 3
+          ? `${count} punto${count > 1 ? 's' : ''} — necesitás al menos 3`
+          : `${count} puntos — podés cerrar el polígono`;
+        countEl.style.display = 'block';
+      } else {
+        countEl.style.display = 'none';
+      }
+    }
   }
 
   function savePolygon() {
     document.getElementById('save-btn').disabled = true;
     showOverlay('saving');
 
+    const polygonData = points.map(ll => [ll.lat, ll.lng]);
+
     fetch(`${API_BASE}/api/map/${token}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ polygon: currentPolygon }),
+      body: JSON.stringify({ polygon: polygonData }),
     })
       .then(r => {
         if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Error'); });
