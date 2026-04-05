@@ -70,7 +70,7 @@ When the AI Agent returns multiple tool calls for a single message (e.g., "Sembr
 ### Key Services
 
 - **`services/expenses.js`** — Database layer for all CRUD: expenses, incomes, budgets, fields, rainfall, user settings, AI usage tracking, plot history queries. Includes `getOrCreateUserByTelegramId()` for Telegram user provisioning. `setFieldCity` and `setUserCity` accept optional `province` param.
-- **`services/localidad-lookup.service.ts`** — Validates city names against 4027 Argentine census localities (`src/data/localidades_censales.json`). Returns exact match, disambiguation (multiple provinces), fuzzy suggestions (Levenshtein ≤ 3), or not_found. Singleton with lazy-loaded index.
+- **`services/localidad-lookup.service.ts`** — Validates city names against 4027 Argentine census localities (`src/data/localidades_censales.json`). Returns exact match, disambiguation (multiple provinces), fuzzy suggestions (Levenshtein ≤ 3), or not_found. Singleton with lazy-loaded index. Normalizer strips accents AND soft hyphens (U+00AD) — 53 Buenos Aires entries in the census data contain invisible soft hyphens that broke matching (e.g., "Junín" BA was invisible to lookup).
 - **`middleware/pending-field-city-handler.ts`** — Shared handler for pending city validation across all 3 controllers (WhatsApp, Telegram, test-bot). Exports `formatLocation(city, province)` helper. Strips full-sentence patterns (e.g., "el campo X está en Paraná" → "Paraná") before city lookup.
 - **`middleware/pending-field-location.ts`** — Pending store + handler for field location selection during `create_field` flow. Stores `fieldId` + `fieldName`, presents 3 location options as buttons: "Escribir localidad" (existing city validation), "Dibujar en mapa" (generates token-authenticated Leaflet map URL), "Compartir ubicación" (WhatsApp/Telegram native location sharing). Handles responses from all 3 paths. Reverse geocoding via Nominatim (non-blocking) for map/location options.
 - **`middleware/pending-plot-area.ts`** — Queue-based pending store for plot hectares assignment. Supports single item (`set`) or batch (`setQueue`) for multi-plot creation. Includes `dequeueFirst()` for sequential per-plot prompting and 5-minute timeout.
@@ -88,7 +88,7 @@ When the AI Agent returns multiple tool calls for a single message (e.g., "Sembr
 ### Domain Layer (`src/domain/`)
 
 - **`agronomy/`** — AgronomyHandler (activities, observations, weather, rainfall, agro reports, plot history queries); `normalizeActivityFilter()` maps AI filter strings to DB event_type values. `generate_agro_report` supports date range (`desde`/`hasta`) and defaults to current week; shows all observations and activities (no caps)
-- **`financial/`** — FinancialHandler (expenses, incomes, budgets, unified `financial_report` dispatching, mandatory hectares on plot creation via blocking queue prompt, activity labels with emojis in reports, auto-split comma-separated plot names from `add_plot` → `add_plots_batch` with sequential per-plot hectares), FinancialService, FinancialRepository
+- **`financial/`** — FinancialHandler (expenses, incomes, budgets, unified `financial_report` dispatching, mandatory hectares on plot creation via blocking queue prompt, activity labels with emojis in reports, auto-split comma-separated plot names from `add_plot` → `add_plots_batch` with sequential per-plot hectares). `add_field` handler starts `field_flow` (3 location options) instead of creating field immediately with `setPendingFieldCity`. Only fast-paths when city is provided AND matches exactly. FinancialService, FinancialRepository
 - **`auth/`** — Auth system (JWT, bcrypt, refresh tokens) + ObservationService (dashboard CRUD for observations, activities, expenses, incomes with edit support)
 - **`sharing/`** — FieldSharingService (invite-code flow: `createInvite` → 6-char code, `acceptInvite` → redeem, `removeMemberByIdentifier` by name/phone), SharingHandler
 - **`stock/`** — Full inventory management: StockRepository (atomic movements with row locking), StockService (auto-resolve warehouse/field, fuzzy product search, grain stock), StockHandler (9 chat commands), StockPurchaseService (expense→stock entry suggestion + grain entry), StockDeductionService (activity→stock deduction), StockAlertService (low stock alerts daily at 8AM). Feature-gated to `pro_plus`/`enterprise` plans.
@@ -137,7 +137,7 @@ JWT-based authentication with bcrypt passwords and refresh token rotation.
 - `GET/POST /webhook` — WhatsApp webhook (verification + message handler)
 - `POST /telegram` — Telegram webhook handler (secret verified via `src/middleware/telegram-auth.ts`)
 - `/api/auth/*` — Auth endpoints (register, login, refresh, logout, profile, plans, observations, expenses, incomes, activities — including PATCH edit endpoints, GET filters)
-- `GET /api/map/:token` — Public map page for polygon drawing (token-authenticated, no JWT). Serves `src/public/map/index.html` (Leaflet + Leaflet.Draw, mobile-first)
+- `GET /api/map/:token` — Public map page for polygon drawing (token-authenticated, no JWT). Serves `src/public/map/index.html` (Leaflet + Leaflet.Draw, mobile-first). Auto-starts polygon drawing mode on load; default Leaflet.Draw toolbar hidden
 - `POST /api/map/:token` — Receives polygon GeoJSON from map page, saves to field, consumes token
 - `/admin/api/*` — Admin dashboard API endpoints (stats, users, settings, AI usage, parse metrics, enriched field detail with financials, field activities) — requires admin JWT
 - `/admin` — Admin dashboard static files (legacy HTML/JS from `src/public/`)
@@ -148,7 +148,8 @@ Interruptible conversation flows for multi-step data entry (expense, income, rai
 
 - **`conversation-engine.ts`** — FSM: startFlow, processFlowMessage, clearFlow, goBack, skipStep. Bug fix: `skipIf` check now runs in `executeConfirm` to properly skip steps with pre-filled data
 - **`conversation-state.repository.ts`** — DB-persisted flow state
-- **`flows/`** — field_flow (location step replaced city-only with 3 options via `setPendingFieldLocation` sideEffect), expense_flow, income_flow, rainfall_flow, activity_flow (activity_flow uses dynamic `interactiveAsync` for plot selection)
+- **`flows/`** — field_flow (3 location options: city/map/share via `locationMethod` step + `setPendingFieldLocation` sideEffect), expense_flow, income_flow, rainfall_flow, activity_flow (activity_flow uses dynamic `interactiveAsync` for plot selection)
+- **Flow callback routing** — `flow_field_loc_*` callbacks (location method buttons) are handled BEFORE the generic `flow_field_*` prefix handler in all 3 controllers, otherwise the prefix strip turns `flow_field_loc_map` into `"loc map"` which fails validation
 - Safe interruption commands execute mid-flow without canceling; financial intents cancel the active flow
 
 ## Key Conventions
