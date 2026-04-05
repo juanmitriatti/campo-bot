@@ -14,7 +14,7 @@ export interface LookupResult {
 }
 
 function normalize(s: string): string {
-  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  return s.normalize('NFD').replace(/[\u0300-\u036f\u00AD]/g, '').toLowerCase().trim();
 }
 
 function levenshtein(a: string, b: string): number {
@@ -50,9 +50,9 @@ class LocalidadLookupService {
 
     for (const loc of data.localidades_censales) {
       const localidad: Localidad = {
-        nombre: loc.nombre,
-        provincia: loc.provincia.nombre,
-        departamento: loc.departamento?.nombre ?? null,
+        nombre: loc.nombre.replace(/\u00AD/g, ''),
+        provincia: loc.provincia.nombre.replace(/\u00AD/g, ''),
+        departamento: loc.departamento?.nombre?.replace(/\u00AD/g, '') ?? null,
       };
 
       const norm = normalize(loc.nombre);

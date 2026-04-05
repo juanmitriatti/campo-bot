@@ -1287,10 +1287,11 @@ export class FinancialHandler {
           };
         }
 
-        await this.service.getOrCreateField(userId, fieldName);
+        // If city was provided and matches exactly, fast path (create + set city immediately)
         if (cmd.city) {
           const lookup = localidadLookup.lookup(cmd.city as string);
           if (lookup.status === 'exact') {
+            await this.service.getOrCreateField(userId, fieldName);
             const loc = lookup.matches[0];
             await this.service.setFieldCity(userId, fieldName, loc.nombre, loc.provincia);
             return {
@@ -1298,17 +1299,18 @@ export class FinancialHandler {
               suggestionKey: 'field_created',
             };
           }
-          // Non-exact: create field, enter pending for localidad resolution
-          return {
-            messages: [`📍 ${labelAdd} *${fieldName}* creado.\n\n¿En qué localidad está?`],
-            sideEffects: { setPendingFieldCity: { fieldName } },
-            suggestionKey: 'field_created',
-          };
+        }
+
+        // No city or non-exact match: start field_flow with name pre-filled
+        // so the user sees the 3 location method buttons
+        const prefillData: Record<string, unknown> = { name: fieldName };
+        if (cmd.city) {
+          // User already typed a city but it didn't match exactly — skip to city step
+          prefillData.locationMethod = 'city';
         }
         return {
-          messages: [`📍 ${labelAdd} *${fieldName}* creado.\n\n¿En qué localidad está?`],
-          sideEffects: { setPendingFieldCity: { fieldName } },
-          suggestionKey: 'field_created',
+          messages: [`📍 Vamos a crear el campo *${fieldName}*.`],
+          sideEffects: { startFlow: { state: 'field_flow' as const, data: prefillData } },
         };
       }
 
