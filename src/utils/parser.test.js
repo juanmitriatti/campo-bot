@@ -455,6 +455,24 @@ describe("parseCommand", () => {
       expect(parseCommand("exportar gastos")).toMatchObject({ command: "export_csv" });
     });
   });
+
+  describe("start_document_upload", () => {
+    it("cargar factura → start_document_upload documentType:factura", () => {
+      expect(parseCommand("cargar factura")).toMatchObject({ command: "start_document_upload", documentType: "factura" });
+    });
+    it("subir remito → start_document_upload documentType:remito", () => {
+      expect(parseCommand("subir remito")).toMatchObject({ command: "start_document_upload", documentType: "remito" });
+    });
+    it("procesar comprobante → start_document_upload documentType:factura", () => {
+      expect(parseCommand("procesar comprobante")).toMatchObject({ command: "start_document_upload", documentType: "factura" });
+    });
+    it("cargar una foto de factura → start_document_upload documentType:factura", () => {
+      expect(parseCommand("cargar una foto de factura")).toMatchObject({ command: "start_document_upload", documentType: "factura" });
+    });
+    it("subir ticket → start_document_upload documentType:ticket", () => {
+      expect(parseCommand("subir ticket")).toMatchObject({ command: "start_document_upload", documentType: "ticket" });
+    });
+  });
 });
 
 // ============================================================================

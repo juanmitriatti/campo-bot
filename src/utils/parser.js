@@ -631,6 +631,11 @@ const COMMAND_PATTERNS = [
     /^(?:agregar|agrega)\s+(?:un\s+)?ingreso$/,
   ]},
 
+  // --- Document upload ---
+  { command: "start_document_upload", patterns: [
+    /^(?:cargar|subir|procesar)\s+(?:una?\s+)?(?:foto\s+(?:de\s+)?)?(?:la\s+)?(factura|remito|ticket|comprobante)/,
+  ], extract: (m) => ({ documentType: m[1] === 'comprobante' ? 'factura' : m[1] }) },
+
   // --- Request more AI messages ---
   { command: "request_more_messages", patterns: [
     /^(?:quiero|necesito)\s+m[aá]s\s+mensajes$/,

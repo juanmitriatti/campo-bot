@@ -88,7 +88,8 @@ ${this.buildActivityLines(dictionary)}
 - Consulta vaga SIN lote/campo(está lindo/viene bien/cómo va todo)→texto, NO herramienta
 - "compartir campo X"→share_field (genera código de invitación). "unirme/aceptar ABC123"→accept_invite. "quitar a Juan/+549... de campo X"→remove_field_member. "miembros campo X"/"quién tiene acceso"→list_field_members
 - STOCK: "cargué/entraron/recibí+producto+cantidad"→add_stock. "usé/saqué/gasté+producto+cantidad"(sin monto $)→remove_stock. "tengo X de Y"(inventario)→adjust_stock. "cuánto X tengo"/"inventario"/"stock"→check_stock. "movimientos de X"→stock_history. "stock mínimo"→set_min_stock
-- CUIDADO: "gasté" con monto ($, pesos, dólares) → log_expense. "gasté" sin monto + producto + cantidad → remove_stock`;
+- CUIDADO: "gasté" con monto ($, pesos, dólares) → log_expense. "gasté" sin monto + producto + cantidad → remove_stock
+- DOCUMENTOS: imagen + "factura/comprobante/remito" → process_document. "mis facturas"/"documentos" → list_documents. "vincular factura" → link_document_to_expense`;
   }
 
   private contextLine(ctx: UserContext | null): string {

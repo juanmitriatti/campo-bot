@@ -32,6 +32,9 @@ const CALLBACK_MAP: Record<string, ParsedCommand> = {
   'cmd_historial_lote': { command: 'query_plot_history' },
   // Back to main menu
   'back_menu': { command: 'menu' },
+  // Document upload entry points
+  'doc_upload_factura': { command: 'start_document_upload', documentType: 'factura' },
+  'doc_upload_remito': { command: 'start_document_upload', documentType: 'remito' },
   // Flow entry points (intercepted early in controller, here as documentation/fallback)
   'flow_new_expense': { command: 'start_flow', flow: 'expense_flow' },
   'flow_new_income': { command: 'start_flow', flow: 'income_flow' },

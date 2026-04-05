@@ -65,6 +65,11 @@ import {
   answerCallbackQuery,
   downloadTelegramFile,
 } from '../services/telegram.js';
+import { DocumentService, DocumentError } from '../domain/documents/document.service.js';
+import { PendingDocumentStore } from '../middleware/pending-documents.js';
+import { PendingDocumentUploadStore } from '../middleware/pending-document-upload.js';
+import type { DocumentUploadIntent } from '../middleware/pending-document-upload.js';
+import { formatExtractionSummary, buildSuggestedExpenses, buildPostExtractionButtons, isInsumoCategory } from '../domain/documents/document.helpers.js';
 import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveButton, InteractiveListSection, UserId } from '../types/index.js';
 import { asUserId } from '../types/index.js';
 import type { SpeechToTextProvider } from '../services/audio/providers/speech-provider.interface.js';
@@ -119,6 +124,9 @@ const pendingCityStore = new PendingFieldCityStore();
 const pendingPlotAreaStore = new PendingPlotAreaStore();
 const pendingStockEntryStore = new Map<string, Record<string, unknown>>();
 const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
+const documentServiceTg = new DocumentService();
+const pendingDocumentStoreTg = new PendingDocumentStore();
+const pendingDocUploadStoreTg = new PendingDocumentUploadStore();
 const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
@@ -282,6 +290,42 @@ async function sendBotResponse(chatId: string | number, items: BotResponseItem[]
   }
 }
 
+// --- Document processing helper ---
+
+async function processDocumentWithIntentTg(
+  chatId: string | number, userId: UserId, buffer: Buffer, mediaMime: string,
+  filename: string | undefined, caption: string, docIntent: DocumentUploadIntent | undefined,
+  phone: string, startTime: number,
+): Promise<BotResponseItem[]> {
+  const { document: doc, extraction, isExisting } = await documentServiceTg.processDocument(
+    userId, buffer, mediaMime, filename, 'telegram', caption,
+  );
+
+  if (isExisting) {
+    return [{ type: 'text', text: `📄 Este documento ya fue procesado (#${doc.id}).` }];
+  }
+
+  const summary = formatExtractionSummary(extraction, doc.id, doc.document_type || 'otro');
+  const items: BotResponseItem[] = [{ type: 'text', text: summary }];
+
+  const hasStock = await featureGate.hasFeature(userId, 'stock');
+  const buttonConfig = buildPostExtractionButtons(extraction, doc.id, docIntent, hasStock);
+
+  if (buttonConfig) {
+    const suggestedExpenses = buildSuggestedExpenses(extraction);
+    pendingDocumentStoreTg.set(phone, {
+      documentId: doc.id,
+      extraction,
+      suggestedExpenses,
+      timestamp: Date.now(),
+    });
+    items.push(interactiveButtonsItem(buttonConfig.body, buttonConfig.buttons));
+  }
+
+  conversationLogger.log(userId, phone, `[document:${mediaMime}]`, summary.slice(0, 200), 'command', 'process_document', null, null, true, Date.now() - startTime, true).catch(() => {});
+  return items;
+}
+
 // --- Router ---
 
 const router = express.Router();
@@ -396,6 +440,68 @@ router.post('/', async (req: Request, res: Response) => {
         }
       }
       return;
+    }
+
+    // --- Photo/document handling (invoices, receipts) ---
+    if (message.photo || (message.document && (message.document.mime_type || '').match(/^(image\/|application\/pdf)/))) {
+      const isPhoto = !!message.photo;
+      const fileId = isPhoto
+        ? message.photo[message.photo.length - 1].file_id  // highest resolution
+        : message.document?.file_id;
+      const mediaMime = isPhoto ? 'image/jpeg' : (message.document?.mime_type || 'application/octet-stream');
+      const caption = message.caption || '';
+      const filename = message.document?.file_name;
+
+      if (fileId && (mediaMime.startsWith('image/') || mediaMime === 'application/pdf')) {
+        try {
+          const hasDocuments = await featureGate.hasFeature(userId, 'documents');
+          if (!hasDocuments) {
+            await sendTelegramMessage(chatId, '🔒 El procesamiento de documentos no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones.');
+            return;
+          }
+
+          const { allowed, limit } = await documentServiceTg.checkDailyLimit(userId);
+          if (!allowed) {
+            await sendTelegramMessage(chatId, `⚠️ Alcanzaste el límite diario de ${limit} documentos. Intentá mañana.`);
+            return;
+          }
+
+          // Check if user already chose a document type (State A: menu → waiting for image)
+          const pendingUpload = pendingDocUploadStoreTg.get(phone);
+          if (pendingUpload?.intent) {
+            const docIntent = pendingUpload.intent;
+            pendingDocUploadStoreTg.clear(phone);
+            await sendTelegramMessage(chatId, '🔍 Procesando documento...');
+            const buffer = await downloadTelegramFile(fileId);
+            const items = await processDocumentWithIntentTg(chatId, userId, buffer, mediaMime, filename, caption, docIntent, phone, startTime);
+            await sendBotResponse(chatId, items);
+            return;
+          }
+
+          // Unprompted image (State B): store mediaRef, ask what to do
+          pendingDocUploadStoreTg.set(phone, {
+            mediaRef: { mediaId: fileId, mimeType: mediaMime, filename, caption },
+            timestamp: Date.now(),
+          });
+          await sendTelegramButtons(chatId, '📷 Recibí una imagen. ¿Qué querés hacer?', [
+            { id: 'doc_classify_factura', title: '🧾 Procesar factura' },
+            { id: 'doc_classify_remito', title: '📋 Procesar remito' },
+            { id: 'doc_classify_skip', title: 'No procesar' },
+          ]);
+
+          conversationLogger.log(userId, phone, `[image_received:${mediaMime}]`, 'Awaiting document intent', 'command', 'document_intent_prompt', null, null, false, Date.now() - startTime, true).catch(() => {});
+        } catch (err: unknown) {
+          const error = err as Error;
+          console.error('[telegram] document error:', error.message);
+          logError('telegram', 'DOCUMENT_PROCESSING', error, { userId });
+          if (err instanceof DocumentError) {
+            await sendTelegramMessage(chatId, `⚠️ ${error.message}`);
+          } else {
+            await sendTelegramMessage(chatId, 'No pude procesar el documento. Intentá con otra imagen o PDF.');
+          }
+        }
+        return;
+      }
     }
 
     // --- Text ---
@@ -741,6 +847,185 @@ async function handleInteractiveReply(
     }
     pendingStockDeductionStore.delete(phone);
     return [{ type: 'text', text: accepted ? '📦 Stock descontado.' : '👍 OK, no se descontó del stock.' }];
+  }
+
+  // --- Document upload intent (menu entry) ---
+  if (callbackId === 'doc_upload_factura' || callbackId === 'doc_upload_remito') {
+    const docType = callbackId === 'doc_upload_factura' ? 'factura' : 'remito' as DocumentUploadIntent;
+    const hasDocuments = await featureGate.hasFeature(userId, 'documents');
+    if (!hasDocuments) {
+      return [{ type: 'text', text: '🔒 El procesamiento de documentos no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones.' }];
+    }
+    const label = docType === 'factura' ? '🧾 factura' : '📋 remito';
+    pendingDocUploadStoreTg.set(phone, { intent: docType, timestamp: Date.now() });
+    return [{ type: 'text', text: `Enviame la foto o PDF del ${label} y lo proceso.` }];
+  }
+
+  // --- Document classify callback (unprompted image → user chose type) ---
+  if (callbackId === 'doc_classify_factura' || callbackId === 'doc_classify_remito' || callbackId === 'doc_classify_skip') {
+    const pendingUpload = pendingDocUploadStoreTg.get(phone);
+    pendingDocUploadStoreTg.clear(phone);
+
+    if (callbackId === 'doc_classify_skip') {
+      return [{ type: 'text', text: '👌 Imagen ignorada.' }];
+    }
+
+    if (!pendingUpload?.mediaRef) {
+      return [{ type: 'text', text: '⚠️ La imagen expiró. Enviala de nuevo.' }];
+    }
+
+    const docType = callbackId === 'doc_classify_factura' ? 'factura' : 'remito' as DocumentUploadIntent;
+    try {
+      const buffer = await downloadTelegramFile(pendingUpload.mediaRef.mediaId);
+      const items: BotResponseItem[] = [{ type: 'text', text: '🔍 Procesando documento...' }];
+      // Extract chatId from phone (tg_XXXXX)
+      const chatIdStr = phone.replace('tg_', '');
+      const result = await processDocumentWithIntentTg(
+        chatIdStr, userId, buffer, pendingUpload.mediaRef.mimeType,
+        pendingUpload.mediaRef.filename, pendingUpload.mediaRef.caption || '',
+        docType, phone, startTime,
+      );
+      items.push(...result);
+      return items;
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('[telegram] doc classify error:', error.message);
+      logError('telegram', 'DOC_CLASSIFY_CALLBACK', error, { userId });
+      if (err instanceof DocumentError) {
+        return [{ type: 'text', text: `⚠️ ${error.message}` }];
+      }
+      return [{ type: 'text', text: 'No pude procesar el documento. Intentá con otra imagen o PDF.' }];
+    }
+  }
+
+  // --- Document expense+stock callback ---
+  if (callbackId.startsWith('doc_expense_stock_')) {
+    try {
+      const pending = pendingDocumentStoreTg.get(phone);
+      if (pending) {
+        const { saveExpense } = await import('../services/expenses.js');
+        const messages: string[] = [];
+        let firstExpenseId: number | null = null;
+        const insumoExpenses: Array<Record<string, unknown>> = [];
+        for (const exp of pending.suggestedExpenses) {
+          const saved = await saveExpense(userId, {
+            amount: exp.amount!,
+            category: exp.category || 'Otros',
+            description: exp.description || 'Factura procesada',
+            currency: exp.currency || 'ARS',
+            expenseDate: exp.expenseDate || null,
+            expenseType: exp.expenseType || 'varios',
+            product: exp.product || null,
+            quantity: exp.quantity || null,
+            unit: exp.unit || null,
+          }, null, null);
+          if (!firstExpenseId && saved?.id) firstExpenseId = saved.id;
+          messages.push(`✅ Gasto registrado: $${exp.amount?.toLocaleString('es-AR')} - ${exp.description}`);
+          if (exp.expenseType === 'insumo' && saved?.id) {
+            insumoExpenses.push({
+              expenseId: saved.id,
+              product: exp.product,
+              quantity: exp.quantity,
+              unit: exp.unit,
+              category: exp.category,
+            });
+          }
+        }
+        if (firstExpenseId) {
+          await documentServiceTg.linkToExpense(pending.documentId, firstExpenseId, userId).catch(() => {});
+        }
+        pendingDocumentStoreTg.clear(phone);
+        const items: BotResponseItem[] = [{ type: 'text', text: messages.join('\n') }];
+        if (insumoExpenses.length > 0) {
+          const first = insumoExpenses[0];
+          pendingStockEntryStore.set(phone, {
+            expenseId: first.expenseId,
+            product: first.product,
+            quantity: first.quantity,
+            unit: first.unit || 'lt',
+            category: first.category,
+          });
+          items.push(interactiveButtonsItem(`¿Cargar *${first.product}* al stock?`, [
+            { id: `stock_entry_yes_${first.expenseId}`, title: 'Sí, cargar' },
+            { id: `stock_entry_no_${first.expenseId}`, title: 'No' },
+          ]));
+        }
+        return items;
+      }
+      return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al registrar';
+      return [{ type: 'text', text: `❌ ${msg}` }];
+    }
+  }
+
+  // --- Document stock-only callback (remito → stock) ---
+  if (callbackId.startsWith('doc_stock_yes_')) {
+    try {
+      const pending = pendingDocumentStoreTg.get(phone);
+      if (pending && pending.extraction.line_items && pending.extraction.line_items.length > 0) {
+        const { StockService } = await import('../domain/stock/stock.service.js');
+        const stockService = new StockService();
+        const messages: string[] = [];
+        for (const item of pending.extraction.line_items) {
+          try {
+            const { item: stockItem } = await stockService.addStock(userId, item.product, item.quantity || 1, item.unit || 'u', {
+              reason: `Remito ${pending.extraction.supplier || ''}`.trim(),
+            });
+            messages.push(`📦 +${item.quantity || 1}${item.unit || 'u'} de ${stockItem.name} (${stockItem.current_quantity}${stockItem.unit} total)`);
+          } catch {
+            messages.push(`⚠️ No pude cargar ${item.product} al stock`);
+          }
+        }
+        pendingDocumentStoreTg.clear(phone);
+        return [{ type: 'text', text: messages.join('\n') }];
+      }
+      return [{ type: 'text', text: '⚠️ No hay items para cargar al stock.' }];
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al cargar stock';
+      return [{ type: 'text', text: `❌ ${msg}` }];
+    }
+  }
+
+  // --- Document expense callback ---
+  if (callbackId.startsWith('doc_expense_yes_') || callbackId.startsWith('doc_expense_no_')) {
+    const accepted = callbackId.startsWith('doc_expense_yes_');
+    if (accepted) {
+      try {
+        const pending = pendingDocumentStoreTg.get(phone);
+        if (pending) {
+          const { saveExpense } = await import('../services/expenses.js');
+          const messages: string[] = [];
+          let firstExpenseId: number | null = null;
+          for (const exp of pending.suggestedExpenses) {
+            const saved = await saveExpense(userId, {
+              amount: exp.amount!,
+              category: exp.category || 'Otros',
+              description: exp.description || 'Factura procesada',
+              currency: exp.currency || 'ARS',
+              expenseDate: exp.expenseDate || null,
+              expenseType: exp.expenseType || 'varios',
+              product: exp.product || null,
+              quantity: exp.quantity || null,
+              unit: exp.unit || null,
+            }, null, null);
+            if (!firstExpenseId && saved?.id) firstExpenseId = saved.id;
+            messages.push(`✅ Gasto registrado: $${exp.amount?.toLocaleString('es-AR')} - ${exp.description}`);
+          }
+          if (firstExpenseId) {
+            await documentServiceTg.linkToExpense(pending.documentId, firstExpenseId, userId).catch(() => {});
+          }
+          pendingDocumentStoreTg.clear(phone);
+          return [{ type: 'text', text: messages.join('\n') }];
+        }
+        return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error al registrar gasto';
+        return [{ type: 'text', text: `❌ ${msg}` }];
+      }
+    }
+    pendingDocumentStoreTg.clear(phone);
+    return [{ type: 'text', text: '👌 Documento guardado sin registrar gasto.' }];
   }
 
   // --- Generic interactive routing ---
@@ -1097,6 +1382,19 @@ async function processTextMessage(
 
   // --- Route commands ---
   if (intent.type === 'command') {
+    // Start document upload → store intent, prompt for image
+    if (intent.data.command === 'start_document_upload') {
+      const hasDocuments = await featureGate.hasFeature(userId, 'documents');
+      if (!hasDocuments) {
+        return [{ type: 'text', text: '🔒 El procesamiento de documentos no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones.' }];
+      }
+      const docType = (intent.data.documentType as DocumentUploadIntent) || 'factura';
+      const label = docType === 'factura' ? '🧾 factura' : docType === 'remito' ? '📋 remito' : '🎫 ticket';
+      pendingDocUploadStoreTg.set(phone, { intent: docType, timestamp: Date.now() });
+      conversationLogger.log(userId, phone, text, `Start document upload: ${docType}`, 'command', 'start_document_upload', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
+      return [{ type: 'text', text: `Enviame la foto o PDF del ${label} y lo proceso.` }];
+    }
+
     if (intent.data.command === 'start_expense_flow') {
       { const prereq = await hasNoPrerequisites(userId); if (prereq.blocked) return prereq.items!; }
       const result = await conversationEngine.startFlow(userId, 'expense_flow' as FlowState);

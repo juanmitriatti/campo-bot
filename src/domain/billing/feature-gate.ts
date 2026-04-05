@@ -142,6 +142,10 @@ export class FeatureGate {
       stock_history: 'stock',
       set_min_stock: 'stock',
       check_low_stock: 'stock',
+      // Documents
+      process_document: 'documents',
+      list_documents: 'documents',
+      link_document_to_expense: 'documents',
     };
 
     return map[command] ?? null;

@@ -500,6 +500,46 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
 
   // ========================
+  // DOCUMENTS
+  // ========================
+  {
+    name: 'process_document',
+    description: 'Procesar foto de factura/remito/comprobante. Cuando el usuario envía imagen con contexto de factura.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        context: { type: 'string', description: 'Contexto adicional del usuario sobre el documento.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_documents',
+    description: 'Listar facturas/comprobantes procesados. "mis facturas", "documentos procesados".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        period: { type: 'string', enum: ['week', 'month', 'year'], description: 'Período.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'link_document_to_expense',
+    description: 'Vincular factura a gasto existente. "vincular factura 5 al gasto 42".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        documentId: { type: 'number', description: 'ID del documento.' },
+        expenseId: { type: 'number', description: 'ID del gasto.' },
+      },
+      required: ['documentId', 'expenseId'],
+    },
+  },
+
+  // ========================
   // CONVERSATIONAL (fallback)
   // ========================
   {

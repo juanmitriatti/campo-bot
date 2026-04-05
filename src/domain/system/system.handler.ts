@@ -90,6 +90,13 @@ export class SystemHandler {
                 ],
               },
               {
+                title: 'Documentos',
+                rows: [
+                  { id: 'doc_upload_factura', title: '🧾 Cargar Factura', description: 'Procesar foto de factura' },
+                  { id: 'doc_upload_remito', title: '📋 Cargar Remito', description: 'Procesar foto de remito' },
+                ],
+              },
+              {
                 title: 'Finanzas',
                 rows: [
                   { id: 'cmd_resumen_mensual', title: '\ud83d\udcc8 Resultado Mes', description: 'Ingresos vs gastos' },

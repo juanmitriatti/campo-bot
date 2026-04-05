@@ -307,6 +307,11 @@ export class AgentResponseMapper {
     if (input.code != null) cmd.code = input.code;
     if (input.member != null) { cmd.memberName = input.member; cmd.phone = input.member; }
 
+    // Documents
+    if (input.documentId != null) cmd.documentId = input.documentId;
+    if (input.expenseId != null) cmd.expenseId = input.expenseId;
+    if (input.context != null) cmd.context = input.context;
+
     return {
       intent: { type: 'command', data: cmd },
       confidence: 0.95,

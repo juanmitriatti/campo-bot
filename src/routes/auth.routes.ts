@@ -5,6 +5,7 @@ import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import type { Request, Response } from 'express';
 import { logError } from '../services/error-logger.js';
+import { pool } from '../config/db.js';
 
 const router = Router();
 const authService = new AuthService();
@@ -336,6 +337,77 @@ router.patch('/stock/:id', requireAuth, async (req: Request, res: Response) => {
     );
     if (result.rows.length === 0) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
     res.json(result.rows[0]);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Document routes ---
+
+router.get('/documents', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+    const filters: Record<string, string> = {};
+    if (req.query.documentType && typeof req.query.documentType === 'string') filters.documentType = req.query.documentType;
+    if (req.query.desde && typeof req.query.desde === 'string') filters.desde = req.query.desde;
+    if (req.query.hasta && typeof req.query.hasta === 'string') filters.hasta = req.query.hasta;
+
+    const { DocumentRepository } = await import('../domain/documents/document.repository.js');
+    const repo = new DocumentRepository();
+    const { rows, total } = await repo.getUserDocuments(req.auth!.userId, page, limit, filters);
+
+    res.json({
+      data: rows,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.get('/documents/filters', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query(
+      `SELECT DISTINCT document_type FROM documents WHERE user_id = $1 AND deleted_at IS NULL ORDER BY document_type`,
+      [req.auth!.userId],
+    );
+    res.json({ documentTypes: result.rows.map(r => r.document_type) });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.get('/documents/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+
+    const { DocumentRepository } = await import('../domain/documents/document.repository.js');
+    const repo = new DocumentRepository();
+    const doc = await repo.findById(id, req.auth!.userId);
+    if (!doc) { res.status(404).json({ error: 'Documento no encontrado' }); return; }
+    res.json(doc);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.get('/documents/:id/file', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+
+    const { DocumentService } = await import('../domain/documents/document.service.js');
+    const svc = new DocumentService();
+    const file = await svc.getDocumentFile(id, req.auth!.userId);
+    if (!file) { res.status(404).json({ error: 'Archivo no encontrado' }); return; }
+
+    res.setHeader('Content-Type', file.mime);
+    res.setHeader('Content-Disposition', `inline; filename="${file.filename}"`);
+    res.send(file.buffer);
   } catch (err) {
     handleError(err, res);
   }

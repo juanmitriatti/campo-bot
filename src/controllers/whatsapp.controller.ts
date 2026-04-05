@@ -59,6 +59,11 @@ import { isLikelyQuestion } from '../utils/guards.js';
 import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observations.js';
 import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
 import { formatObservationResponse } from '../middleware/response-formatter.js';
+import { DocumentService, DocumentError } from '../domain/documents/document.service.js';
+import { PendingDocumentStore } from '../middleware/pending-documents.js';
+import { PendingDocumentUploadStore } from '../middleware/pending-document-upload.js';
+import type { DocumentUploadIntent } from '../middleware/pending-document-upload.js';
+import { formatExtractionSummary, buildSuggestedExpenses, buildPostExtractionButtons, isInsumoCategory } from '../domain/documents/document.helpers.js';
 import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, UserId } from '../types/index.js';
 
 // --- Wire up dependencies ---
@@ -102,6 +107,9 @@ const contextResolver = new ContextResolver();
 const transcriptionService = new TranscriptionService();
 const pendingStockEntryStore = new Map<string, Record<string, unknown>>();
 const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
+const documentService = new DocumentService();
+const pendingDocumentStore = new PendingDocumentStore();
+const pendingDocUploadStore = new PendingDocumentUploadStore();
 
 // --- Flow engine ---
 
@@ -192,6 +200,44 @@ async function sendResponse(phone: string, response: HandlerResponse): Promise<v
       await sendInteractiveButtons(phone, suggestion.body, suggestion.buttons);
     }
   }
+}
+
+// --- Document processing helper ---
+
+async function processDocumentWithIntent(
+  phone: string, userId: UserId, buffer: Buffer, mediaMime: string,
+  filename: string | undefined, caption: string, docIntent: DocumentUploadIntent | undefined,
+  startTime: number,
+): Promise<void> {
+  const { document: doc, extraction, isExisting } = await documentService.processDocument(
+    userId, buffer, mediaMime, filename, 'whatsapp', caption,
+  );
+
+  if (isExisting) {
+    await sendMessage(phone, `📄 Este documento ya fue procesado (#${doc.id}).`);
+    return;
+  }
+
+  const summary = formatExtractionSummary(extraction, doc.id, doc.document_type || 'otro');
+  await sendMessage(phone, summary);
+
+  // Smart post-extraction buttons based on content + intent
+  const hasStock = await featureGate.hasFeature(userId, 'stock');
+  const buttonConfig = buildPostExtractionButtons(extraction, doc.id, docIntent, hasStock);
+
+  if (buttonConfig) {
+    // Store pending document for expense/stock callbacks
+    const suggestedExpenses = buildSuggestedExpenses(extraction);
+    pendingDocumentStore.set(phone, {
+      documentId: doc.id,
+      extraction,
+      suggestedExpenses,
+      timestamp: Date.now(),
+    });
+    await sendInteractiveButtons(phone, buttonConfig.body, buttonConfig.buttons);
+  }
+
+  conversationLogger.log(userId, phone, `[document:${mediaMime}]`, summary.slice(0, 200), 'command', 'process_document', null, null, true, Date.now() - startTime, true).catch(() => {});
 }
 
 // --- Router ---
@@ -679,6 +725,213 @@ router.post('/', async (req: Request, res: Response) => {
           return;
         }
 
+        // --- Document upload intent (menu entry) ---
+        if (callbackId === 'doc_upload_factura' || callbackId === 'doc_upload_remito') {
+          const user = await userRepository.getOrCreate(phone);
+          const userId = user.id;
+          const docType = callbackId === 'doc_upload_factura' ? 'factura' : 'remito' as DocumentUploadIntent;
+          const hasDocuments = await featureGate.hasFeature(userId, 'documents');
+          if (!hasDocuments) {
+            await sendMessage(phone, '🔒 El procesamiento de documentos no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones.');
+          } else {
+            const label = docType === 'factura' ? '🧾 factura' : '📋 remito';
+            pendingDocUploadStore.set(phone, { intent: docType, timestamp: Date.now() });
+            await sendMessage(phone, `Enviame la foto o PDF del ${label} y lo proceso.`);
+          }
+          res.sendStatus(200);
+          return;
+        }
+
+        // --- Document classify callback (unprompted image → user chose type) ---
+        if (callbackId === 'doc_classify_factura' || callbackId === 'doc_classify_remito' || callbackId === 'doc_classify_skip') {
+          const user = await userRepository.getOrCreate(phone);
+          const userId = user.id;
+          const pendingUpload = pendingDocUploadStore.get(phone);
+          pendingDocUploadStore.clear(phone);
+
+          if (callbackId === 'doc_classify_skip') {
+            await sendMessage(phone, '👌 Imagen ignorada.');
+            res.sendStatus(200);
+            return;
+          }
+
+          if (!pendingUpload?.mediaRef) {
+            await sendMessage(phone, '⚠️ La imagen expiró. Enviala de nuevo.');
+            res.sendStatus(200);
+            return;
+          }
+
+          const docType = callbackId === 'doc_classify_factura' ? 'factura' : 'remito' as DocumentUploadIntent;
+          try {
+            await sendMessage(phone, '🔍 Procesando documento...');
+            const { downloadMedia } = await import('../services/whatsapp.js');
+            const buffer = await downloadMedia(pendingUpload.mediaRef.mediaId);
+            await processDocumentWithIntent(
+              phone, userId, buffer, pendingUpload.mediaRef.mimeType,
+              pendingUpload.mediaRef.filename, pendingUpload.mediaRef.caption || '',
+              docType, startTime,
+            );
+          } catch (err: unknown) {
+            const error = err as Error;
+            console.error('[document] classify callback error:', error.message);
+            logError('whatsapp', 'DOC_CLASSIFY_CALLBACK', error, { phone });
+            if (err instanceof DocumentError) {
+              await sendMessage(phone, `⚠️ ${error.message}`);
+            } else {
+              await sendMessage(phone, 'No pude procesar el documento. Intentá con otra imagen o PDF.');
+            }
+          }
+          res.sendStatus(200);
+          return;
+        }
+
+        // --- Document expense+stock callback ---
+        if (callbackId.startsWith('doc_expense_stock_')) {
+          const user = await userRepository.getOrCreate(phone);
+          const userId = user.id;
+          try {
+            const pending = pendingDocumentStore.get(phone);
+            if (pending) {
+              const { saveExpense } = await import('../services/expenses.js');
+              const messages: string[] = [];
+              let firstExpenseId: number | null = null;
+              const insumoExpenses: Array<Record<string, unknown>> = [];
+              for (const exp of pending.suggestedExpenses) {
+                const saved = await saveExpense(userId, {
+                  amount: exp.amount!,
+                  category: exp.category || 'Otros',
+                  description: exp.description || 'Factura procesada',
+                  currency: exp.currency || 'ARS',
+                  expenseDate: exp.expenseDate || null,
+                  expenseType: exp.expenseType || 'varios',
+                  product: exp.product || null,
+                  quantity: exp.quantity || null,
+                  unit: exp.unit || null,
+                }, null, null);
+                if (!firstExpenseId && saved?.id) firstExpenseId = saved.id;
+                messages.push(`✅ Gasto registrado: $${exp.amount?.toLocaleString('es-AR')} - ${exp.description}`);
+                // Collect insumo expenses for stock entry suggestion
+                if (exp.expenseType === 'insumo' && saved?.id) {
+                  insumoExpenses.push({
+                    expenseId: saved.id,
+                    product: exp.product,
+                    quantity: exp.quantity,
+                    unit: exp.unit,
+                    category: exp.category,
+                  });
+                }
+              }
+              if (firstExpenseId) {
+                await documentService.linkToExpense(pending.documentId, firstExpenseId, userId).catch(() => {});
+              }
+              pendingDocumentStore.clear(phone);
+              await sendMessage(phone, messages.join('\n'));
+              // Trigger stock entry for first insumo item
+              if (insumoExpenses.length > 0) {
+                const first = insumoExpenses[0];
+                pendingStockEntryStore.set(phone, {
+                  expenseId: first.expenseId,
+                  product: first.product,
+                  quantity: first.quantity,
+                  unit: first.unit || 'lt',
+                  category: first.category,
+                });
+                await sendInteractiveButtons(phone, `¿Cargar *${first.product}* al stock?`, [
+                  { id: `stock_entry_yes_${first.expenseId}`, title: 'Sí, cargar' },
+                  { id: `stock_entry_no_${first.expenseId}`, title: 'No' },
+                ]);
+              }
+            } else {
+              await sendMessage(phone, '⚠️ No hay documento pendiente.');
+            }
+          } catch (err: any) {
+            await sendMessage(phone, `❌ Error al registrar: ${err.message}`);
+            logError('whatsapp', 'DOC_EXPENSE_STOCK_CALLBACK', err, { phone });
+          }
+          res.sendStatus(200);
+          return;
+        }
+
+        // --- Document stock-only callback (remito → stock) ---
+        if (callbackId.startsWith('doc_stock_yes_')) {
+          const user = await userRepository.getOrCreate(phone);
+          const userId = user.id;
+          try {
+            const pending = pendingDocumentStore.get(phone);
+            if (pending && pending.extraction.line_items && pending.extraction.line_items.length > 0) {
+              const { StockService } = await import('../domain/stock/stock.service.js');
+              const stockService = new StockService();
+              const messages: string[] = [];
+              for (const item of pending.extraction.line_items) {
+                try {
+                  const { item: stockItem } = await stockService.addStock(userId, item.product, item.quantity || 1, item.unit || 'u', {
+                    reason: `Remito ${pending.extraction.supplier || ''}`.trim(),
+                  });
+                  messages.push(`📦 +${item.quantity || 1}${item.unit || 'u'} de ${stockItem.name} (${stockItem.current_quantity}${stockItem.unit} total)`);
+                } catch {
+                  messages.push(`⚠️ No pude cargar ${item.product} al stock`);
+                }
+              }
+              pendingDocumentStore.clear(phone);
+              await sendMessage(phone, messages.join('\n'));
+            } else {
+              await sendMessage(phone, '⚠️ No hay items para cargar al stock.');
+            }
+          } catch (err: any) {
+            await sendMessage(phone, `❌ Error al cargar stock: ${err.message}`);
+            logError('whatsapp', 'DOC_STOCK_CALLBACK', err, { phone });
+          }
+          res.sendStatus(200);
+          return;
+        }
+
+        // --- Document expense callback ---
+        if (callbackId.startsWith('doc_expense_yes_') || callbackId.startsWith('doc_expense_no_')) {
+          const accepted = callbackId.startsWith('doc_expense_yes_');
+          const user = await userRepository.getOrCreate(phone);
+          if (accepted) {
+            try {
+              const pending = pendingDocumentStore.get(phone);
+              if (pending) {
+                const { saveExpense } = await import('../services/expenses.js');
+                const expenses = pending.suggestedExpenses;
+                const messages: string[] = [];
+                let firstExpenseId: number | null = null;
+                for (const exp of expenses) {
+                  const saved = await saveExpense(user.id, {
+                    amount: exp.amount!,
+                    category: exp.category || 'Otros',
+                    description: exp.description || 'Factura procesada',
+                    currency: exp.currency || 'ARS',
+                    expenseDate: exp.expenseDate || null,
+                    expenseType: exp.expenseType || 'varios',
+                    product: exp.product || null,
+                    quantity: exp.quantity || null,
+                    unit: exp.unit || null,
+                  }, null, null);
+                  if (!firstExpenseId && saved?.id) firstExpenseId = saved.id;
+                  messages.push(`✅ Gasto registrado: $${exp.amount?.toLocaleString('es-AR')} - ${exp.description}`);
+                }
+                if (firstExpenseId) {
+                  await documentService.linkToExpense(pending.documentId, firstExpenseId, user.id).catch(() => {});
+                }
+                pendingDocumentStore.clear(phone);
+                await sendMessage(phone, messages.join('\n'));
+              } else {
+                await sendMessage(phone, '⚠️ No hay documento pendiente.');
+              }
+            } catch (err: any) {
+              await sendMessage(phone, `❌ Error al registrar gasto: ${err.message}`);
+              logError('whatsapp', 'DOC_EXPENSE_CALLBACK', err, { phone });
+            }
+          } else {
+            pendingDocumentStore.clear(phone);
+            await sendMessage(phone, '👌 Documento guardado sin registrar gasto.');
+          }
+          res.sendStatus(200);
+          return;
+        }
+
         // --- Existing interactive routing ---
         const intent = interactiveRouter.route(callbackId);
         if (intent && intent.type === 'command') {
@@ -748,6 +1001,75 @@ router.post('/', async (req: Request, res: Response) => {
           await sendMessage(phone, '\u26a0\ufe0f El audio es demasiado largo. Envi\u00e1 un audio m\u00e1s corto o escrib\u00ed el mensaje.');
         } else {
           await sendMessage(phone, 'No pude entender el audio. \u00bfPodr\u00edas escribirlo o enviar otro audio?');
+        }
+        res.sendStatus(200);
+        return;
+      }
+    }
+
+    // --- Image/document handling (invoices, receipts) ---
+    if (!text && (message.type === 'image' || message.type === 'document')) {
+      const mediaInfo = message.image || message.document;
+      const mediaId = mediaInfo?.id;
+      const mediaMime = mediaInfo?.mime_type || 'application/octet-stream';
+      const caption = message.image?.caption || message.document?.caption || '';
+      const filename = message.document?.filename;
+
+      if (mediaId && (mediaMime.startsWith('image/') || mediaMime === 'application/pdf')) {
+        const user = await userRepository.getOrCreate(phone);
+        const userId = user.id;
+
+        try {
+          // Check feature access
+          const hasDocuments = await featureGate.hasFeature(userId, 'documents');
+          if (!hasDocuments) {
+            await sendMessage(phone, '🔒 El procesamiento de documentos no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones.');
+            res.sendStatus(200);
+            return;
+          }
+
+          // Check daily limit
+          const { allowed, limit } = await documentService.checkDailyLimit(userId);
+          if (!allowed) {
+            await sendMessage(phone, `⚠️ Alcanzaste el límite diario de ${limit} documentos. Intentá mañana.`);
+            res.sendStatus(200);
+            return;
+          }
+
+          // Check if user already chose a document type (State A: menu → waiting for image)
+          const pendingUpload = pendingDocUploadStore.get(phone);
+          if (pendingUpload?.intent) {
+            const docIntent = pendingUpload.intent;
+            pendingDocUploadStore.clear(phone);
+            await sendMessage(phone, '🔍 Procesando documento...');
+            const { downloadMedia } = await import('../services/whatsapp.js');
+            const buffer = await downloadMedia(mediaId);
+            await processDocumentWithIntent(phone, userId, buffer, mediaMime, filename, caption, docIntent, startTime);
+            res.sendStatus(200);
+            return;
+          }
+
+          // Unprompted image (State B): store mediaRef, ask what to do
+          pendingDocUploadStore.set(phone, {
+            mediaRef: { mediaId, mimeType: mediaMime, filename, caption },
+            timestamp: Date.now(),
+          });
+          await sendInteractiveButtons(phone, '📷 Recibí una imagen. ¿Qué querés hacer?', [
+            { id: 'doc_classify_factura', title: '🧾 Procesar factura' },
+            { id: 'doc_classify_remito', title: '📋 Procesar remito' },
+            { id: 'doc_classify_skip', title: 'No procesar' },
+          ]);
+
+          conversationLogger.log(userId, phone, `[image_received:${mediaMime}]`, 'Awaiting document intent', 'command', 'document_intent_prompt', null, null, false, Date.now() - startTime, true).catch(() => {});
+        } catch (err: unknown) {
+          const error = err as Error;
+          console.error('[document] error:', error.message);
+          logError('whatsapp', 'DOCUMENT_PROCESSING', error, { phone });
+          if (err instanceof DocumentError) {
+            await sendMessage(phone, `⚠️ ${error.message}`);
+          } else {
+            await sendMessage(phone, 'No pude procesar el documento. Intentá con otra imagen o PDF.');
+          }
         }
         res.sendStatus(200);
         return;
@@ -1240,6 +1562,23 @@ router.post('/', async (req: Request, res: Response) => {
 
     // --- Route commands ---
     if (intent.type === 'command') {
+      // Start document upload → store intent, prompt for image
+      if (intent.data.command === 'start_document_upload') {
+        const hasDocuments = await featureGate.hasFeature(userId, 'documents');
+        if (!hasDocuments) {
+          await sendMessage(phone, '🔒 El procesamiento de documentos no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones.');
+          res.sendStatus(200);
+          return;
+        }
+        const docType = (intent.data.documentType as DocumentUploadIntent) || 'factura';
+        const label = docType === 'factura' ? '🧾 factura' : docType === 'remito' ? '📋 remito' : '🎫 ticket';
+        pendingDocUploadStore.set(phone, { intent: docType, timestamp: Date.now() });
+        await sendMessage(phone, `Enviame la foto o PDF del ${label} y lo proceso.`);
+        conversationLogger.log(userId, phone, text, `Start document upload: ${docType}`, 'command', 'start_document_upload', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
+        res.sendStatus(200);
+        return;
+      }
+
       // Start flow commands → launch flow directly
       if (intent.data.command === 'start_expense_flow') {
         if (await checkPrerequisiteBlock(userId, phone, 'registrar un gasto')) {

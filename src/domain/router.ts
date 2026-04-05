@@ -3,6 +3,7 @@ import { AgronomyHandler } from './agronomy/agronomy.handler.js';
 import { SystemHandler } from './system/system.handler.js';
 import { SharingHandler } from './sharing/sharing.handler.js';
 import { StockHandler } from './stock/stock.handler.js';
+import { DocumentHandler } from './documents/document.handler.js';
 import { FeatureGate } from './billing/feature-gate.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../types/index.js';
 
@@ -42,6 +43,10 @@ const STOCK_COMMANDS = new Set([
   'set_min_stock', 'check_low_stock',
 ]);
 
+const DOCUMENT_COMMANDS = new Set([
+  'process_document', 'list_documents', 'link_document_to_expense',
+]);
+
 const SYSTEM_COMMANDS = new Set([
   'greeting', 'help', 'thanks', 'ack', 'dollar',
   'menu', 'show_expense_menu', 'show_income_menu', 'show_agro_menu',
@@ -58,6 +63,7 @@ export class DomainRouter {
   private featureGate: FeatureGate;
   private sharingHandler: SharingHandler;
   private stockHandler: StockHandler;
+  private documentHandler: DocumentHandler;
 
   constructor(
     private financialHandler: FinancialHandler,
@@ -66,10 +72,12 @@ export class DomainRouter {
     featureGate?: FeatureGate,
     sharingHandler?: SharingHandler,
     stockHandler?: StockHandler,
+    documentHandler?: DocumentHandler,
   ) {
     this.featureGate = featureGate ?? new FeatureGate();
     this.sharingHandler = sharingHandler ?? new SharingHandler();
     this.stockHandler = stockHandler ?? new StockHandler();
+    this.documentHandler = documentHandler ?? new DocumentHandler();
   }
 
   async routeCommand(
@@ -112,6 +120,10 @@ export class DomainRouter {
 
     if (STOCK_COMMANDS.has(command)) {
       return this.stockHandler.handleCommand(cmd, userId, user, settings);
+    }
+
+    if (DOCUMENT_COMMANDS.has(command)) {
+      return this.documentHandler.handleCommand(cmd, userId, user, settings);
     }
 
     return null;

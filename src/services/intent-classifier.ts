@@ -29,6 +29,7 @@ const TRIVIAL_COMMANDS = new Set([
   'show_fields_menu', 'show_rain_menu', 'show_reports_menu',
   'start_expense_flow', 'start_income_flow',
   'request_more_messages',
+  'start_document_upload',
   // Field/plot CRUD — regex handles these precisely, AI would misclassify
   'add_field', 'add_plot', 'add_plots_batch', 'delete_field', 'delete_plot',
   'rename_field', 'field_info', 'plot_info',

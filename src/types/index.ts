@@ -468,6 +468,11 @@ export interface HandlerResponse {
       warehouseId: number;
       warehouseName: string;
     };
+    setPendingDocumentAction?: {
+      documentId: number;
+      extraction: DocumentExtraction;
+      suggestedExpenses: Array<Partial<ParsedExpense> & { field?: string; plot?: string }>;
+    };
     setPendingStockDeduction?: {
       domainEventId: number;
       stockItemId: number;
@@ -498,7 +503,8 @@ export type FeatureKey =
   | 'weather'
   | 'audio'
   | 'sharing'
-  | 'stock';
+  | 'stock'
+  | 'documents';
 
 export interface PlanRow {
   id: number;
@@ -515,4 +521,45 @@ export interface FeatureRow {
   key: FeatureKey;
   description: string;
   created_at: Date;
+}
+
+// --- Document Processing ---
+
+export interface DocumentLineItem {
+  product: string;
+  quantity?: number;
+  unit?: string;
+  unit_price?: number;
+  total?: number;
+  category?: string;
+}
+
+export interface DocumentExtraction {
+  supplier?: string;
+  date?: string;
+  total_amount?: number;
+  currency?: 'ARS' | 'USD';
+  tax_amount?: number;
+  document_number?: string;
+  line_items?: DocumentLineItem[];
+  raw_text_summary?: string;
+}
+
+export interface DocumentRow {
+  id: number;
+  user_id: number;
+  document_type: string;
+  original_filename: string | null;
+  mime_type: string;
+  file_size_bytes: number;
+  compressed_path: string | null;
+  file_hash: string | null;
+  extracted_data: DocumentExtraction | null;
+  processing_status: string;
+  processing_error: string | null;
+  linked_expense_id: number | null;
+  source_channel: string;
+  processing_time_ms: number | null;
+  created_at: Date;
+  deleted_at: Date | null;
 }

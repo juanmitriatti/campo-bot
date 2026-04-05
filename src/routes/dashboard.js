@@ -2563,4 +2563,29 @@ router.put("/api/ai-training/dictionary/:activityType", async (req, res) => {
   }
 });
 
+// --- Document stats (admin) ---
+router.get("/api/documents/stats", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        count(*)::int AS total,
+        count(*) FILTER (WHERE processing_status = 'processed')::int AS processed,
+        count(*) FILTER (WHERE processing_status = 'error')::int AS errors,
+        count(*) FILTER (WHERE linked_expense_id IS NOT NULL)::int AS linked,
+        count(DISTINCT user_id)::int AS unique_users
+      FROM documents WHERE deleted_at IS NULL
+    `);
+    const byType = await pool.query(`
+      SELECT document_type, count(*)::int AS count
+      FROM documents WHERE deleted_at IS NULL
+      GROUP BY document_type ORDER BY count DESC
+    `);
+    res.json({ ...result.rows[0], byType: byType.rows });
+  } catch (error) {
+    console.error("Error fetching document stats:", error);
+    logError('admin-api', 'DOCUMENT_STATS', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;
