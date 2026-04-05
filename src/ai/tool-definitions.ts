@@ -503,19 +503,6 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // DOCUMENTS
   // ========================
   {
-    name: 'process_document',
-    description: 'Procesar foto de factura/remito/comprobante. Cuando el usuario envía imagen con contexto de factura.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        context: { type: 'string', description: 'Contexto adicional del usuario sobre el documento.' },
-        field: FIELD_PROP,
-        plot: PLOT_PROP,
-      },
-      required: [],
-    },
-  },
-  {
     name: 'list_documents',
     description: 'Listar facturas/comprobantes procesados. "mis facturas", "documentos procesados".',
     input_schema: {

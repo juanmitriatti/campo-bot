@@ -143,7 +143,7 @@ export class FeatureGate {
       set_min_stock: 'stock',
       check_low_stock: 'stock',
       // Documents
-      process_document: 'documents',
+      start_document_upload: 'documents',
       list_documents: 'documents',
       link_document_to_expense: 'documents',
     };

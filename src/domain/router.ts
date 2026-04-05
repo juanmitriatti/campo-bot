@@ -44,7 +44,7 @@ const STOCK_COMMANDS = new Set([
 ]);
 
 const DOCUMENT_COMMANDS = new Set([
-  'process_document', 'list_documents', 'link_document_to_expense',
+  'list_documents', 'link_document_to_expense',
 ]);
 
 const SYSTEM_COMMANDS = new Set([
