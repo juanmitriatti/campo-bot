@@ -5,6 +5,11 @@ export interface PendingDocumentAction {
   extraction: DocumentExtraction;
   suggestedExpenses: Array<Partial<ParsedExpense> & { field?: string; plot?: string }>;
   timestamp: number;
+  /** Set after plot selection, before saving */
+  resolvedFieldId?: number | null;
+  resolvedPlotId?: number | null;
+  /** 'expense' or 'expense_stock' — deferred action after plot selection */
+  deferredAction?: 'expense' | 'expense_stock';
 }
 
 const EXPIRY_MS = 5 * 60 * 1000; // 5 minutes

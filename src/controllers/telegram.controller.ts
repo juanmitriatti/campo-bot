@@ -132,6 +132,28 @@ const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
 
+/**
+ * Resolve field/plot for document expense saving.
+ * Returns { fieldId, plotId } if auto-resolved, or { plots } if user must pick.
+ */
+async function resolveDocPlot(userId: UserId): Promise<
+  | { resolved: true; fieldId: number; plotId: number }
+  | { resolved: false; plots: Array<{ id: number; name: string; field_name: string }> }
+  | { resolved: true; fieldId: null; plotId: null }
+> {
+  const allPlots = await financialService.findAllUserPlots(userId);
+  if (allPlots.length === 0) return { resolved: true, fieldId: null, plotId: null };
+  if (allPlots.length === 1) {
+    const p = allPlots[0];
+    return { resolved: true, fieldId: p.field_id, plotId: p.id };
+  }
+  // Check recent financial context
+  const recent = await financialService.getRecentFinancialContext(userId);
+  if (recent?.plotId) return { resolved: true, fieldId: recent.fieldId, plotId: recent.plotId };
+  // Multiple plots, no recent context → user must pick
+  return { resolved: false, plots: allPlots };
+}
+
 const flowRegistry = new FlowRegistry();
 flowRegistry.register(expenseFlow);
 flowRegistry.register(incomeFlow);
@@ -922,60 +944,20 @@ async function handleInteractiveReply(
   if (callbackId.startsWith('doc_expense_stock_')) {
     try {
       const pending = pendingDocumentStoreTg.get(phone);
-      if (pending) {
-        const { saveExpense } = await import('../services/expenses.js');
-        const messages: string[] = [];
-        let firstExpenseId: number | null = null;
-        const insumoExpenses: Array<Record<string, unknown>> = [];
-        for (const exp of pending.suggestedExpenses) {
-          const saved = await saveExpense(userId, {
-            amount: exp.amount!,
-            category: exp.category || 'Otros',
-            description: exp.description || 'Factura procesada',
-            currency: exp.currency || 'ARS',
-            expenseDate: exp.expenseDate || null,
-            expenseType: exp.expenseType || 'varios',
-            product: exp.product || null,
-            quantity: exp.quantity || null,
-            unit: exp.unit || null,
-          }, null, null);
-          if (!firstExpenseId && saved?.id) firstExpenseId = saved.id;
-          messages.push(`✅ Gasto registrado: $${exp.amount?.toLocaleString('es-AR')} - ${exp.description}`);
-          if (exp.expenseType === 'insumo' && saved?.id) {
-            insumoExpenses.push({
-              expenseId: saved.id,
-              product: exp.product,
-              quantity: exp.quantity,
-              unit: exp.unit,
-              category: exp.category,
-            });
-          }
-        }
-        if (firstExpenseId) {
-          await documentServiceTg.linkToExpense(pending.documentId, firstExpenseId, userId).catch(() => {});
-        }
-        pendingDocumentStoreTg.clear(phone);
-        const items: BotResponseItem[] = [{ type: 'text', text: messages.join('\n') }];
-        if (insumoExpenses.length > 0) {
-          const first = insumoExpenses[0];
-          pendingStockEntryStore.set(phone, {
-            expenseId: first.expenseId,
-            product: first.product,
-            quantity: first.quantity,
-            unit: first.unit || 'lt',
-            category: first.category,
-          });
-          if (insumoExpenses.length > 1) {
-            pendingStockEntryQueue.set(phone, insumoExpenses.slice(1));
-          }
-          items.push(interactiveButtonsItem(`¿Cargar *${first.product}* al stock?`, [
-            { id: `stock_entry_yes_${first.expenseId}`, title: 'Sí, cargar' },
-            { id: `stock_entry_no_${first.expenseId}`, title: 'No' },
-          ]));
-        }
-        return items;
+      if (!pending) return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
+      // Resolve plot before saving
+      const plotRes = await resolveDocPlot(userId);
+      if (!plotRes.resolved) {
+        // Multiple plots → ask user to pick, defer action
+        pending.deferredAction = 'expense_stock';
+        pendingDocumentStoreTg.set(phone, pending);
+        const buttons = plotRes.plots.slice(0, 3).map(p => ({
+          id: `doc_plot_${p.id}`,
+          title: `${p.name} (${p.field_name})`.slice(0, 20),
+        }));
+        return [interactiveButtonsItem('¿En qué lote registramos los gastos?', buttons)];
       }
-      return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
+      return await saveDocExpensesWithStockTg(pending, userId, phone, plotRes.fieldId, plotRes.plotId);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al registrar';
       return [{ type: 'text', text: `❌ ${msg}` }];
@@ -1016,32 +998,19 @@ async function handleInteractiveReply(
     if (accepted) {
       try {
         const pending = pendingDocumentStoreTg.get(phone);
-        if (pending) {
-          const { saveExpense } = await import('../services/expenses.js');
-          const messages: string[] = [];
-          let firstExpenseId: number | null = null;
-          for (const exp of pending.suggestedExpenses) {
-            const saved = await saveExpense(userId, {
-              amount: exp.amount!,
-              category: exp.category || 'Otros',
-              description: exp.description || 'Factura procesada',
-              currency: exp.currency || 'ARS',
-              expenseDate: exp.expenseDate || null,
-              expenseType: exp.expenseType || 'varios',
-              product: exp.product || null,
-              quantity: exp.quantity || null,
-              unit: exp.unit || null,
-            }, null, null);
-            if (!firstExpenseId && saved?.id) firstExpenseId = saved.id;
-            messages.push(`✅ Gasto registrado: $${exp.amount?.toLocaleString('es-AR')} - ${exp.description}`);
-          }
-          if (firstExpenseId) {
-            await documentServiceTg.linkToExpense(pending.documentId, firstExpenseId, userId).catch(() => {});
-          }
-          pendingDocumentStoreTg.clear(phone);
-          return [{ type: 'text', text: messages.join('\n') }];
+        if (!pending) return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
+        // Resolve plot before saving
+        const plotRes = await resolveDocPlot(userId);
+        if (!plotRes.resolved) {
+          pending.deferredAction = 'expense';
+          pendingDocumentStoreTg.set(phone, pending);
+          const buttons = plotRes.plots.slice(0, 3).map(p => ({
+            id: `doc_plot_${p.id}`,
+            title: `${p.name} (${p.field_name})`.slice(0, 20),
+          }));
+          return [interactiveButtonsItem('¿En qué lote registramos los gastos?', buttons)];
         }
-        return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
+        return await saveDocExpensesTg(pending, userId, phone, plotRes.fieldId, plotRes.plotId);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Error al registrar gasto';
         return [{ type: 'text', text: `❌ ${msg}` }];
@@ -1051,6 +1020,28 @@ async function handleInteractiveReply(
     return [{ type: 'text', text: '👌 Documento guardado sin registrar gasto.' }];
   }
 
+  // --- Document plot selection callback (deferred expense saving) ---
+  if (callbackId.startsWith('doc_plot_')) {
+    const plotId = parseInt(callbackId.replace('doc_plot_', ''), 10);
+    if (!isNaN(plotId)) {
+      try {
+        const pending = pendingDocumentStoreTg.get(phone);
+        if (!pending) return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
+        // Look up the field for this plot
+        const allPlots = await financialService.findAllUserPlots(userId);
+        const plot = allPlots.find(p => p.id === plotId);
+        const fieldId = plot?.field_id ?? null;
+        if (pending.deferredAction === 'expense_stock') {
+          return await saveDocExpensesWithStockTg(pending, userId, phone, fieldId, plotId);
+        }
+        return await saveDocExpensesTg(pending, userId, phone, fieldId, plotId);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error al registrar';
+        return [{ type: 'text', text: `❌ ${msg}` }];
+      }
+    }
+  }
+
   // --- Generic interactive routing ---
   const intent = interactiveRouter.route(callbackId);
   if (intent && intent.type === 'command') {
@@ -1058,6 +1049,96 @@ async function handleInteractiveReply(
     if (response) return collectResponse(response);
   }
   return [];
+}
+
+/** Save document expenses (no stock). */
+async function saveDocExpensesTg(
+  pending: import('../middleware/pending-documents.js').PendingDocumentAction,
+  userId: UserId, phone: string,
+  fieldId: number | null, plotId: number | null,
+): Promise<BotResponseItem[]> {
+  const { saveExpense } = await import('../services/expenses.js');
+  const messages: string[] = [];
+  let firstExpenseId: number | null = null;
+  for (const exp of pending.suggestedExpenses) {
+    const saved = await saveExpense(userId, {
+      amount: exp.amount!,
+      category: exp.category || 'Otros',
+      description: exp.description || 'Factura procesada',
+      currency: exp.currency || 'ARS',
+      expenseDate: exp.expenseDate || null,
+      expenseType: exp.expenseType || 'varios',
+      product: exp.product || null,
+      quantity: exp.quantity || null,
+      unit: exp.unit || null,
+    }, fieldId, plotId);
+    if (!firstExpenseId && saved?.id) firstExpenseId = saved.id;
+    messages.push(`✅ Gasto registrado: $${exp.amount?.toLocaleString('es-AR')} - ${exp.description}`);
+  }
+  if (firstExpenseId) {
+    await documentServiceTg.linkToExpense(pending.documentId, firstExpenseId, userId).catch(() => {});
+  }
+  pendingDocumentStoreTg.clear(phone);
+  return [{ type: 'text', text: messages.join('\n') }];
+}
+
+/** Save document expenses + trigger stock entry queue for insumo items. */
+async function saveDocExpensesWithStockTg(
+  pending: import('../middleware/pending-documents.js').PendingDocumentAction,
+  userId: UserId, phone: string,
+  fieldId: number | null, plotId: number | null,
+): Promise<BotResponseItem[]> {
+  const { saveExpense } = await import('../services/expenses.js');
+  const messages: string[] = [];
+  let firstExpenseId: number | null = null;
+  const insumoExpenses: Array<Record<string, unknown>> = [];
+  for (const exp of pending.suggestedExpenses) {
+    const saved = await saveExpense(userId, {
+      amount: exp.amount!,
+      category: exp.category || 'Otros',
+      description: exp.description || 'Factura procesada',
+      currency: exp.currency || 'ARS',
+      expenseDate: exp.expenseDate || null,
+      expenseType: exp.expenseType || 'varios',
+      product: exp.product || null,
+      quantity: exp.quantity || null,
+      unit: exp.unit || null,
+    }, fieldId, plotId);
+    if (!firstExpenseId && saved?.id) firstExpenseId = saved.id;
+    messages.push(`✅ Gasto registrado: $${exp.amount?.toLocaleString('es-AR')} - ${exp.description}`);
+    if (exp.expenseType === 'insumo' && saved?.id) {
+      insumoExpenses.push({
+        expenseId: saved.id,
+        product: exp.product,
+        quantity: exp.quantity,
+        unit: exp.unit,
+        category: exp.category,
+      });
+    }
+  }
+  if (firstExpenseId) {
+    await documentServiceTg.linkToExpense(pending.documentId, firstExpenseId, userId).catch(() => {});
+  }
+  pendingDocumentStoreTg.clear(phone);
+  const items: BotResponseItem[] = [{ type: 'text', text: messages.join('\n') }];
+  if (insumoExpenses.length > 0) {
+    const first = insumoExpenses[0];
+    pendingStockEntryStore.set(phone, {
+      expenseId: first.expenseId,
+      product: first.product,
+      quantity: first.quantity,
+      unit: first.unit || 'lt',
+      category: first.category,
+    });
+    if (insumoExpenses.length > 1) {
+      pendingStockEntryQueue.set(phone, insumoExpenses.slice(1));
+    }
+    items.push(interactiveButtonsItem(`¿Cargar *${first.product}* al stock?`, [
+      { id: `stock_entry_yes_${first.expenseId}`, title: 'Sí, cargar' },
+      { id: `stock_entry_no_${first.expenseId}`, title: 'No' },
+    ]));
+  }
+  return items;
 }
 
 // --- Main text message pipeline (same logic as test-bot) ---
