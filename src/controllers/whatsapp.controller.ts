@@ -484,6 +484,18 @@ router.post('/', async (req: Request, res: Response) => {
               await sendResponse(phone, result.response);
               conversationLogger.log(userId, phone, `[cat:${value}]`, result.response.messages[0] ?? null, 'flow', 'flow_cat', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
             }
+          } else if (callbackId.startsWith('flow_field_loc_')) {
+            // Location method buttons → pass full ID to flow engine
+            if (flowCtx.state !== 'idle') {
+              const result = await conversationEngine.processFlowMessage(userId, callbackId, flowCtx);
+              if (result.nextContext) {
+                await conversationEngine.setFlowContext(userId, result.nextContext);
+              } else {
+                await conversationEngine.clearFlow(userId);
+              }
+              await sendResponse(phone, result.response);
+              conversationLogger.log(userId, phone, `[loc:${callbackId}]`, result.response.messages[0] ?? null, 'flow', 'flow_field_loc', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+            }
           } else if (callbackId.startsWith('flow_field_')) {
             // Field selection within flow
             const value = callbackId.replace('flow_field_', '').replace(/_/g, ' ');

@@ -638,6 +638,16 @@ async function handleInteractiveReply(
       const result = await conversationEngine.startFlow(userId, flowName as FlowState, prefillData);
       return collectResponse(result.response);
     }
+    // flow_field_loc_ → location method buttons, pass full ID to flow engine
+    if (callbackId.startsWith('flow_field_loc_') && flowCtx.state !== 'idle') {
+      const result = await conversationEngine.processFlowMessage(userId, callbackId, flowCtx);
+      if (result.nextContext) {
+        await conversationEngine.setFlowContext(userId, result.nextContext);
+      } else {
+        await conversationEngine.clearFlow(userId);
+      }
+      return collectResponse(result.response);
+    }
     // flow_cat_, flow_field_, flow_plot_, flow_activity_ → feed into flow
     const prefixes = ['flow_cat_', 'flow_field_', 'flow_plot_', 'flow_activity_'] as const;
     for (const prefix of prefixes) {
