@@ -333,8 +333,9 @@ export class ConversationEngine {
       return { response: { messages: ['Hubo un problema con el flujo. ¿Qué querés hacer?'] }, nextContext: null };
     }
 
-    // Validate required data: every non-optional step must have a value
+    // Validate required data: every non-optional, non-skipped step must have a value
     for (const step of flow.steps) {
+      if (step.skipIf && step.skipIf(ctx.data)) continue;
       if (!step.optional && ctx.data[step.field] === undefined) {
         await this.stateRepo.clearFlow(userId);
         console.error(`[FLOW_CONFIRM] Missing required field "${step.field}" in ${flowState} for user ${userId}`);

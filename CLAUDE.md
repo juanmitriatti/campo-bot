@@ -72,6 +72,7 @@ When the AI Agent returns multiple tool calls for a single message (e.g., "Sembr
 - **`services/expenses.js`** — Database layer for all CRUD: expenses, incomes, budgets, fields, rainfall, user settings, AI usage tracking, plot history queries. Includes `getOrCreateUserByTelegramId()` for Telegram user provisioning. `setFieldCity` and `setUserCity` accept optional `province` param.
 - **`services/localidad-lookup.service.ts`** — Validates city names against 4027 Argentine census localities (`src/data/localidades_censales.json`). Returns exact match, disambiguation (multiple provinces), fuzzy suggestions (Levenshtein ≤ 3), or not_found. Singleton with lazy-loaded index.
 - **`middleware/pending-field-city-handler.ts`** — Shared handler for pending city validation across all 3 controllers (WhatsApp, Telegram, test-bot). Exports `formatLocation(city, province)` helper. Strips full-sentence patterns (e.g., "el campo X está en Paraná" → "Paraná") before city lookup.
+- **`middleware/pending-field-location.ts`** — Pending store + handler for field location selection during `create_field` flow. Stores `fieldId` + `fieldName`, presents 3 location options as buttons: "Escribir localidad" (existing city validation), "Dibujar en mapa" (generates token-authenticated Leaflet map URL), "Compartir ubicación" (WhatsApp/Telegram native location sharing). Handles responses from all 3 paths. Reverse geocoding via Nominatim (non-blocking) for map/location options.
 - **`middleware/pending-plot-area.ts`** — Queue-based pending store for plot hectares assignment. Supports single item (`set`) or batch (`setQueue`) for multi-plot creation. Includes `dequeueFirst()` for sequential per-plot prompting and 5-minute timeout.
 - **`middleware/pending-plot-area-handler.ts`** — Shared handler for pending plot area assignment across all 3 controllers. `handlePendingPlotArea()` blocks on invalid input (re-prompts instead of falling through), dequeues on valid hectares, clears queue on cancel. `storePlotAreaSideEffects()` processes both `setPendingPlotArea` and `setPendingPlotAreaQueue` sideEffects.
 - **`services/whatsapp.js`** — WhatsApp Cloud API client (send messages via Meta API).
@@ -82,6 +83,7 @@ When the AI Agent returns multiple tool calls for a single message (e.g., "Sembr
 - **`services/observations.js`** — Observation CRUD with 4-layer dedup, normalization, financial guard.
 - **`services/settings.service.js`** — Global settings definitions with descriptions, grouped by category (ai, bot, audio, limits, agronomy, system).
 - **`services/activity-dictionary.service.ts`** — Cached CRUD for `activity_dictionary` table (5-min TTL). Provides activity type → synonym mapping for dynamic AI agent prompt generation. Admin-editable via dashboard Diccionario tab.
+- **`services/map-token.service.ts`** — Creates and validates single-use tokens for the map polygon drawing page. Tokens expire after 30 minutes and are consumed on polygon submission.
 
 ### Domain Layer (`src/domain/`)
 
@@ -105,7 +107,7 @@ Handles Spanish text normalization, written numbers ("quinientos mil" → 500000
 
 ### Database
 
-PostgreSQL with migrations in `src/migrations/001-048_*.sql`. Database timezone set to `America/Argentina/Buenos_Aires` (migration 048). Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province`, `last_name` columns), `fields` (includes `province`), `plots`, `expenses` (includes `expense_date`, `edited_by`, `expense_type`, `product`, `quantity`, `unit`), `incomes` (includes `income_date`, `edited_by`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`, `edited_by`, `stock_deduction_status`), `agro_observations` (includes `observation_date`), `warehouses` (per-field storage), `stock_items` (inventory with `current_quantity`, `min_stock`, `grade`, `humidity_pct`), `stock_movements` (entrada/salida/ajuste with links to `expense_id`/`domain_event_id`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking), `activity_dictionary` (admin-editable activity synonyms for AI agent prompt).
+PostgreSQL with migrations in `src/migrations/001-051_*.sql`. Database timezone set to `America/Argentina/Buenos_Aires` (migration 048). Schema initialized by `init.sql` (mounted in Docker). Key tables: `users` (includes `telegram_id`, `province`, `last_name` columns), `fields` (includes `province`, `lat`, `lng`, `polygon`, `location_method`), `plots`, `expenses` (includes `expense_date`, `edited_by`, `expense_type`, `product`, `quantity`, `unit`), `incomes` (includes `income_date`, `edited_by`), `budgets`, `rainfall`, `domain_events` (activities, includes `event_date`, `edited_by`, `stock_deduction_status`), `agro_observations` (includes `observation_date`), `warehouses` (per-field storage), `stock_items` (inventory with `current_quantity`, `min_stock`, `grade`, `humidity_pct`), `stock_movements` (entrada/salida/ajuste with links to `expense_id`/`domain_event_id`), `user_settings`, `global_settings`, `ai_usage`, `conversation_logs` (includes `tool_calls` JSONB, `agent_mode`, and `channel` columns), `conversation_events`, `conversation_state`, `unparsed_messages`, `refresh_tokens`, `observation_history`, `field_members` (sharing), `field_invites` (invite codes), `alert_history` (alert delivery tracking), `activity_dictionary` (admin-editable activity synonyms for AI agent prompt), `map_tokens` (single-use tokens for map polygon drawing).
 
 ### Frontend (`frontend/`)
 
@@ -135,6 +137,8 @@ JWT-based authentication with bcrypt passwords and refresh token rotation.
 - `GET/POST /webhook` — WhatsApp webhook (verification + message handler)
 - `POST /telegram` — Telegram webhook handler (secret verified via `src/middleware/telegram-auth.ts`)
 - `/api/auth/*` — Auth endpoints (register, login, refresh, logout, profile, plans, observations, expenses, incomes, activities — including PATCH edit endpoints, GET filters)
+- `GET /api/map/:token` — Public map page for polygon drawing (token-authenticated, no JWT). Serves `src/public/map/index.html` (Leaflet + Leaflet.Draw, mobile-first)
+- `POST /api/map/:token` — Receives polygon GeoJSON from map page, saves to field, consumes token
 - `/admin/api/*` — Admin dashboard API endpoints (stats, users, settings, AI usage, parse metrics, enriched field detail with financials, field activities) — requires admin JWT
 - `/admin` — Admin dashboard static files (legacy HTML/JS from `src/public/`)
 
@@ -142,9 +146,9 @@ JWT-based authentication with bcrypt passwords and refresh token rotation.
 
 Interruptible conversation flows for multi-step data entry (expense, income, rainfall, field, activity).
 
-- **`conversation-engine.ts`** — FSM: startFlow, processFlowMessage, clearFlow, goBack, skipStep
+- **`conversation-engine.ts`** — FSM: startFlow, processFlowMessage, clearFlow, goBack, skipStep. Bug fix: `skipIf` check now runs in `executeConfirm` to properly skip steps with pre-filled data
 - **`conversation-state.repository.ts`** — DB-persisted flow state
-- **`flows/`** — field_flow (city step validates via localidadLookup, saves province), expense_flow, income_flow, rainfall_flow, activity_flow (activity_flow uses dynamic `interactiveAsync` for plot selection)
+- **`flows/`** — field_flow (location step replaced city-only with 3 options via `setPendingFieldLocation` sideEffect), expense_flow, income_flow, rainfall_flow, activity_flow (activity_flow uses dynamic `interactiveAsync` for plot selection)
 - Safe interruption commands execute mid-flow without canceling; financial intents cancel the active flow
 
 ## Key Conventions
@@ -166,7 +170,7 @@ The project is deployed on **Railway** at `campo-bot-production.up.railway.app`.
 
 The Dockerfile builds the frontend as part of the image: it installs frontend dependencies and runs `npm run build` so `frontend/dist/` is present at runtime. No separate build step is needed when deploying.
 
-Required environment variables on Railway: `DATABASE_URL`, `JWT_SECRET`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (for Whisper audio transcription), `TELEGRAM_BOT_TOKEN`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`.
+Required environment variables on Railway: `DATABASE_URL`, `JWT_SECRET`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (for Whisper audio transcription), `TELEGRAM_BOT_TOKEN`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`. `APP_URL` is auto-derived from `RAILWAY_PUBLIC_DOMAIN` on Railway; set explicitly for other deployments (used for map polygon drawing URLs).
 
 ## Telegram Integration
 
@@ -225,7 +229,7 @@ Weather and proactive alerts are delivered to both WhatsApp and Telegram users.
 
 ## Environment Variables
 
-Required in `.env`: `DATABASE_URL`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `ANTHROPIC_API_KEY`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`, `JWT_SECRET`, `TELEGRAM_BOT_TOKEN`. See `docker-compose.yml` for defaults. `TELEGRAM_WEBHOOK_SECRET` is optional.
+Required in `.env`: `DATABASE_URL`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `ANTHROPIC_API_KEY`, `VERIFY_TOKEN`, `OPENWEATHER_API_KEY`, `JWT_SECRET`, `TELEGRAM_BOT_TOKEN`. See `docker-compose.yml` for defaults. `TELEGRAM_WEBHOOK_SECRET` is optional. `APP_URL` (or `RAILWAY_PUBLIC_DOMAIN`) is used for map URL generation in the field location flow.
 
 ### AI Agent Settings (configurable via admin dashboard)
 

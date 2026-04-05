@@ -9,6 +9,7 @@ import { verifyTelegramWebhook } from './middleware/telegram-auth.js';
 import dashboard from './routes/dashboard.js';
 import authRoutes from './routes/auth.routes.js';
 import { requireAuth, requireRole } from './middleware/auth.middleware.js';
+import mapRoutes from './routes/map.routes.js';
 import { startScheduler } from './services/scheduler.js';
 
 dotenv.config();
@@ -35,6 +36,10 @@ app.use('/api/auth', authRoutes);
 // Test bot chat — requires JWT auth
 app.use('/api/test-bot', requireAuth, testBotRoutes);
 
+// Map page (public, token-authenticated)
+app.use('/api/map', mapRoutes);
+app.use('/map', express.static(path.join(__dirname, 'public/map')));
+
 // Admin dashboard: protect API, then serve legacy dashboard
 app.use('/admin/api', requireAuth, requireRole('admin'));
 app.use('/admin', dashboard);
@@ -45,7 +50,7 @@ app.use(express.static(frontendDist));
 
 // SPA fallback — serve index.html for all non-API, non-admin routes
 app.get('{*splat}', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (req.path.startsWith('/api/') || req.path.startsWith('/admin') || req.path.startsWith('/webhook') || req.path.startsWith('/telegram')) {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/admin') || req.path.startsWith('/webhook') || req.path.startsWith('/telegram') || req.path.startsWith('/map')) {
     next();
     return;
   }

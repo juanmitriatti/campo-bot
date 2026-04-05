@@ -3,10 +3,18 @@ import { FinancialRepository } from '../../domain/financial/financial.repository
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../pending-field-city-handler.js';
 import { getSuggestions } from '../contextual-suggestions.js';
+import { MapTokenService } from '../../services/map-token.service.js';
 import type { FlowDefinition, FlowStep } from './flow.interface.js';
 import type { UserId } from '../../types/index.js';
 
 const financialService = new FinancialService(new FinancialRepository());
+const mapTokenService = new MapTokenService();
+
+function getAppUrl(): string {
+  if (process.env.APP_URL) return process.env.APP_URL;
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+  return 'http://localhost:3000';
+}
 
 const steps: FlowStep[] = [
   {
@@ -33,8 +41,37 @@ const steps: FlowStep[] = [
     },
   },
   {
+    field: 'locationMethod',
+    prompt: '¿Cómo querés ubicar el campo?',
+    skipIf: (data) => data.city !== undefined, // Skip when city is pre-filled
+    interactive: {
+      type: 'buttons',
+      body: '¿Cómo querés ubicar el campo?',
+      buttons: [
+        { id: 'flow_field_loc_city', title: 'Escribir localidad' },
+        { id: 'flow_field_loc_map', title: 'Dibujar en mapa' },
+        { id: 'flow_field_loc_share', title: 'Compartir ubicación' },
+      ],
+    },
+    validate: (input) => {
+      const lower = input.trim().toLowerCase();
+      // Accept callback IDs from buttons
+      if (lower === 'flow_field_loc_city' || /localidad|ciudad|escribir/i.test(lower)) {
+        return { value: 'city' };
+      }
+      if (lower === 'flow_field_loc_map' || /mapa|dibujar/i.test(lower)) {
+        return { value: 'map' };
+      }
+      if (lower === 'flow_field_loc_share' || /ubicaci[oó]n|compartir|gps/i.test(lower)) {
+        return { value: 'share' };
+      }
+      return { error: 'Elegí una opción: *Escribir localidad*, *Dibujar en mapa* o *Compartir ubicación*.' };
+    },
+  },
+  {
     field: 'city',
     prompt: '¿En qué localidad está el campo?',
+    skipIf: (data) => data.locationMethod !== 'city',
     validate: (input) => {
       const city = input.trim();
       if (city.length < 2) return { error: 'La localidad tiene que tener al menos 2 caracteres.' };
@@ -84,12 +121,19 @@ export const fieldFlow: FlowDefinition = {
   steps,
 
   buildConfirmation(data) {
+    const method = data.locationMethod as string;
     let msg = '🏡 *Confirmar nuevo campo:*\n\n';
     msg += `Nombre: *${data.name}*\n`;
-    if (data.city) {
+
+    if (method === 'city' && data.city) {
       const province = data._province as string | null;
       msg += `Localidad: *${formatLocation(data.city as string, province)}*\n`;
+    } else if (method === 'map') {
+      msg += `Ubicación: _Se va a generar un enlace para dibujar el contorno en el mapa_\n`;
+    } else if (method === 'share') {
+      msg += `Ubicación: _Después de confirmar, compartí tu ubicación_\n`;
     }
+
     msg += '\n¿Confirmamos?';
 
     return {
@@ -108,8 +152,11 @@ export const fieldFlow: FlowDefinition = {
 
   async execute(userId, data) {
     const name = data.name as string;
+    const method = (data.locationMethod as string) || 'city';
     const city = data.city as string | null;
     const province = data._province as string | null;
+    const channel = data._channel as string | null;
+    const channelId = data._channelId as string | null;
 
     // Check for duplicate before creating
     const existing = await financialService.getFieldByName(userId, name);
@@ -133,19 +180,55 @@ export const fieldFlow: FlowDefinition = {
       };
     }
 
-    // No duplicate — create
-    await financialService.getOrCreateField(userId, name);
-    if (city) {
-      await financialService.setFieldCity(userId, name, city, province);
+    // No duplicate — create field
+    const field = await financialService.getOrCreateField(userId, name);
+    const fieldId = field.id;
+
+    if (method === 'city') {
+      // Existing city behavior
+      if (city) {
+        await financialService.setFieldCity(userId, name, city, province);
+      }
+      let msg = `📍 Campo *${name}* creado correctamente.`;
+      if (city) msg += `\nUbicación: ${formatLocation(city, province)}`;
+      const suggestions = getSuggestions('field_created');
+      return { messages: [msg], interactive: suggestions ?? undefined };
     }
 
-    let msg = `📍 Campo *${name}* creado correctamente.`;
-    if (city) msg += `\nUbicación: ${formatLocation(city, province)}`;
+    if (method === 'map') {
+      // Generate map token and return URL
+      const effectiveChannel = channel || 'whatsapp';
+      const effectiveChannelId = channelId || '';
 
+      const token = await mapTokenService.createToken(
+        userId, name, fieldId, effectiveChannel, effectiveChannelId,
+      );
+
+      const baseUrl = getAppUrl();
+      const mapUrl = `${baseUrl}/map?token=${token}`;
+
+      return {
+        messages: [
+          `📍 Campo *${name}* creado correctamente.\n\n🗺️ Abrí este enlace para dibujar el contorno del campo:\n${mapUrl}\n\n_El enlace expira en 30 minutos._`,
+        ],
+      };
+    }
+
+    if (method === 'share') {
+      // Create field, set pending location for next location message
+      return {
+        messages: [
+          `📍 Campo *${name}* creado correctamente.\n\n📌 Ahora compartí tu ubicación para ubicar el campo en el mapa.`,
+        ],
+        sideEffects: {
+          setPendingFieldLocation: { fieldId, fieldName: name },
+        },
+      };
+    }
+
+    // Fallback (shouldn't happen)
+    let msg = `📍 Campo *${name}* creado correctamente.`;
     const suggestions = getSuggestions('field_created');
-    return {
-      messages: [msg],
-      interactive: suggestions ?? undefined,
-    };
+    return { messages: [msg], interactive: suggestions ?? undefined };
   },
 };

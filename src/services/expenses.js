@@ -609,6 +609,21 @@ export async function setFieldCity(userId, fieldName, city, province = null) {
   );
 }
 
+export async function setFieldCoordinates(fieldId, lat, lng) {
+  await pool.query(
+    `UPDATE fields SET latitude = $1, longitude = $2, location_method = 'coordinates' WHERE id = $3`,
+    [lat, lng, fieldId]
+  );
+}
+
+export async function setFieldPolygon(fieldId, polygon, lat, lng, city, province) {
+  await pool.query(
+    `UPDATE fields SET polygon = $1, latitude = $2, longitude = $3, location_method = 'map',
+     city = COALESCE(city, $4), province = COALESCE(province, $5) WHERE id = $6`,
+    [JSON.stringify(polygon), lat, lng, city, province, fieldId]
+  );
+}
+
 export async function getFieldByName(userId, fieldName) {
   // Normalize accents for matching (e.g., "El Trébol" → "el trebol")
   const normalized = fieldName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();

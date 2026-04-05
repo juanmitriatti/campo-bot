@@ -18,6 +18,7 @@ import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
+import { PendingFieldLocationStore } from '../middleware/pending-field-location.js';
 import { handlePendingCity } from '../middleware/pending-field-city-handler.js';
 import { handlePendingPlotArea, storePlotAreaSideEffects } from '../middleware/pending-plot-area-handler.js';
 import { LearningService } from '../domain/learning/learning.service.js';
@@ -110,6 +111,7 @@ const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
 const documentService = new DocumentService();
 const pendingDocumentStore = new PendingDocumentStore();
 const pendingDocUploadStore = new PendingDocumentUploadStore();
+const pendingFieldLocationStore = new PendingFieldLocationStore();
 
 /** Resolve field/plot for document expense saving. */
 async function resolveDocPlotWa(userId: UserId): Promise<
@@ -424,6 +426,11 @@ router.post('/', async (req: Request, res: Response) => {
             if (result.response.sideEffects?.setPendingStockEntry) {
               pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
             }
+            // Store pending field location for share-location flow
+            if (result.response.sideEffects?.setPendingFieldLocation) {
+              const loc = result.response.sideEffects.setPendingFieldLocation;
+              pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
+            }
             await sendResponse(phone, result.response);
             conversationLogger.log(userId, phone, '[confirm]', result.response.messages[0] ?? null, 'flow', 'flow_confirm', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
           } else if (callbackId === 'flow_cancel') {
@@ -458,7 +465,8 @@ router.post('/', async (req: Request, res: Response) => {
                 return;
               }
             }
-            const result = await conversationEngine.startFlow(userId, flowName as FlowState);
+            const prefillData = flowName === 'field_flow' ? { _channel: 'whatsapp', _channelId: phone } : undefined;
+            const result = await conversationEngine.startFlow(userId, flowName as FlowState, prefillData);
             conversationObserver.logFlowStarted(userId, flowName, { trigger: 'interactive_button' });
             await sendResponse(phone, result.response);
             conversationLogger.log(userId, phone, `[start:${flowName}]`, result.response.messages[0] ?? null, 'flow', 'flow_start', flowName, 0, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
@@ -620,7 +628,7 @@ router.post('/', async (req: Request, res: Response) => {
             }
           } else if (callbackId === 'field_dup_rename') {
             // Start field flow to ask for a new name (keep city if provided)
-            const prefill: Record<string, unknown> = {};
+            const prefill: Record<string, unknown> = { _channel: 'whatsapp', _channelId: phone };
             if (dupData.city) prefill.city = dupData.city;
             const flowResult = await conversationEngine.startFlow(userId, 'field_flow' as FlowState, prefill);
             if (flowResult.nextContext) {
@@ -1187,6 +1195,30 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
+    // --- Location message handling (WhatsApp shared location) ---
+    if (!text && message.type === 'location' && message.location) {
+      const lat = message.location.latitude;
+      const lng = message.location.longitude;
+      if (typeof lat === 'number' && typeof lng === 'number') {
+        const pendingLoc = pendingFieldLocationStore.get(phone);
+        if (pendingLoc) {
+          const user = await userRepository.getOrCreate(phone);
+          const { handlePendingLocation } = await import('../middleware/pending-field-location-handler.js');
+          const result = await handlePendingLocation(lat, lng, pendingLoc, user.id);
+          if (result.clearPending) pendingFieldLocationStore.clear(phone);
+          for (const msg of result.messages) {
+            await sendMessage(phone, msg);
+          }
+          res.sendStatus(200);
+          return;
+        }
+        // No pending location — ignore or acknowledge
+        await sendMessage(phone, '📍 Ubicación recibida, pero no hay un campo pendiente de ubicar.\n\nPara ubicar un campo, primero creá uno con *agregar campo [nombre]*.');
+        res.sendStatus(200);
+        return;
+      }
+    }
+
     if (!text) {
       res.sendStatus(200);
       return;
@@ -1516,6 +1548,11 @@ router.post('/', async (req: Request, res: Response) => {
         // Handle sideEffects
         if (result.stoppedAtFlow && result.lastSideEffects?.startFlow) {
           const { state, data } = result.lastSideEffects.startFlow;
+          if (state === 'field_flow') {
+            const flowData = data ?? {};
+            flowData._channel = 'whatsapp';
+            flowData._channelId = phone;
+          }
           const flowResult = await conversationEngine.startFlow(userId, state, data);
           if (flowResult.nextContext) await conversationEngine.setFlowContext(userId, flowResult.nextContext);
           await sendResponse(phone, combined);
@@ -1542,6 +1579,10 @@ router.post('/', async (req: Request, res: Response) => {
                 fieldId: null, fieldName: null, plotId: null, plotName: null,
                 timestamp: Date.now(), _fieldDuplicate: dup,
               } as any);
+            }
+            if (result.lastSideEffects.setPendingFieldLocation) {
+              const loc = result.lastSideEffects.setPendingFieldLocation;
+              pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
             }
           }
           await sendResponse(phone, combined);
@@ -1764,6 +1805,12 @@ router.post('/', async (req: Request, res: Response) => {
         // Start a flow if the handler requested it (e.g. add_field_city → field_flow)
         if (response.sideEffects?.startFlow) {
           const { state, data } = response.sideEffects.startFlow;
+          // Inject channel info for field_flow map/share location options
+          if (state === 'field_flow') {
+            const flowData = data ?? {};
+            flowData._channel = 'whatsapp';
+            flowData._channelId = phone;
+          }
           const flowResult = await conversationEngine.startFlow(userId, state, data);
           if (flowResult.nextContext) {
             await conversationEngine.setFlowContext(userId, flowResult.nextContext);
@@ -1808,6 +1855,11 @@ router.post('/', async (req: Request, res: Response) => {
         // Store pending stock deduction for activity → stock callback
         if (response.sideEffects?.setPendingStockDeduction) {
           pendingStockDeductionStore.set(phone, response.sideEffects.setPendingStockDeduction as Record<string, unknown>);
+        }
+        // Store pending field location for next location message
+        if (response.sideEffects?.setPendingFieldLocation) {
+          const loc = response.sideEffects.setPendingFieldLocation;
+          pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
         }
         // Learn from successful command (fire-and-forget)
         learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});

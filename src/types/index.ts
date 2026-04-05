@@ -483,6 +483,10 @@ export interface HandlerResponse {
       warehouseName: string;
       currentStock: number;
     };
+    setPendingFieldLocation?: {
+      fieldId: number;
+      fieldName: string;
+    };
   };
 }
 

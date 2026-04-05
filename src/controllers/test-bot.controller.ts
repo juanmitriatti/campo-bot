@@ -18,6 +18,7 @@ import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
+import { PendingFieldLocationStore } from '../middleware/pending-field-location.js';
 import { handlePendingCity } from '../middleware/pending-field-city-handler.js';
 import { handlePendingPlotArea, storePlotAreaSideEffects } from '../middleware/pending-plot-area-handler.js';
 import { LearningService } from '../domain/learning/learning.service.js';
@@ -109,6 +110,7 @@ const pendingCityStore = new PendingFieldCityStore();
 const pendingPlotAreaStore = new PendingPlotAreaStore();
 const pendingStockEntryStore = new Map<string, Record<string, unknown>>();
 const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
+const pendingFieldLocationStore = new PendingFieldLocationStore();
 const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
@@ -388,6 +390,10 @@ async function handleInteractiveReply(
       if (result.response.sideEffects?.setPendingStockEntry) {
         pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
       }
+      if (result.response.sideEffects?.setPendingFieldLocation) {
+        const loc = result.response.sideEffects.setPendingFieldLocation;
+        pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
+      }
       return collectResponse(result.response);
     }
     if (callbackId === 'flow_cancel') {
@@ -511,7 +517,7 @@ async function handleInteractiveReply(
     }
 
     if (callbackId === 'field_dup_rename') {
-      const prefill: Record<string, unknown> = {};
+      const prefill: Record<string, unknown> = { _channel: 'testbot', _channelId: phone };
       if (dupData.city) prefill.city = dupData.city;
       const flowResult = await conversationEngine.startFlow(userId, 'field_flow' as FlowState, prefill);
       if (flowResult.nextContext) {
@@ -1119,6 +1125,11 @@ async function processTextMessage(
       // Start a flow if the handler requested it (e.g. add_field_city → field_flow)
       if (response.sideEffects?.startFlow) {
         const { state, data } = response.sideEffects.startFlow;
+        if (state === 'field_flow') {
+          const flowData = data ?? {};
+          flowData._channel = 'testbot';
+          flowData._channelId = phone;
+        }
         const flowResult = await conversationEngine.startFlow(userId, state, data);
         if (flowResult.nextContext) {
           await conversationEngine.setFlowContext(userId, flowResult.nextContext);
@@ -1153,6 +1164,10 @@ async function processTextMessage(
       }
       if (response.sideEffects?.setPendingStockEntry) {
         pendingStockEntryStore.set(phone, response.sideEffects.setPendingStockEntry as Record<string, unknown>);
+      }
+      if (response.sideEffects?.setPendingFieldLocation) {
+        const loc = response.sideEffects.setPendingFieldLocation;
+        pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
       }
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, {

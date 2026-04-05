@@ -17,6 +17,7 @@ import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
+import { PendingFieldLocationStore } from '../middleware/pending-field-location.js';
 import { handlePendingCity } from '../middleware/pending-field-city-handler.js';
 import { handlePendingPlotArea, storePlotAreaSideEffects } from '../middleware/pending-plot-area-handler.js';
 import { LearningService } from '../domain/learning/learning.service.js';
@@ -127,6 +128,7 @@ const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
 const documentServiceTg = new DocumentService();
 const pendingDocumentStoreTg = new PendingDocumentStore();
 const pendingDocUploadStoreTg = new PendingDocumentUploadStore();
+const pendingFieldLocationStore = new PendingFieldLocationStore();
 const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
@@ -526,6 +528,27 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
+    // --- Location message handling (Telegram shared location) ---
+    if (message.location) {
+      const lat = message.location.latitude;
+      const lng = message.location.longitude;
+      if (typeof lat === 'number' && typeof lng === 'number') {
+        const pendingLoc = pendingFieldLocationStore.get(phone);
+        if (pendingLoc) {
+          const { handlePendingLocation } = await import('../middleware/pending-field-location-handler.js');
+          const result = await handlePendingLocation(lat, lng, pendingLoc, userId);
+          if (result.clearPending) pendingFieldLocationStore.clear(phone);
+          for (const msg of result.messages) {
+            await sendTelegramMessage(chatId, msg);
+          }
+          return;
+        }
+        // No pending location
+        await sendTelegramMessage(chatId, '📍 Ubicación recibida, pero no hay un campo pendiente de ubicar.\n\nPara ubicar un campo, primero creá uno con *agregar campo [nombre]*.');
+        return;
+      }
+    }
+
     // --- Text ---
     let text = message.text || '';
 
@@ -580,6 +603,11 @@ async function handleInteractiveReply(
       if (result.response.sideEffects?.setPendingStockEntry) {
         pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
       }
+      // Store pending field location for share-location flow
+      if (result.response.sideEffects?.setPendingFieldLocation) {
+        const loc = result.response.sideEffects.setPendingFieldLocation;
+        pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
+      }
       return collectResponse(result.response);
     }
     if (callbackId === 'flow_cancel') {
@@ -606,7 +634,8 @@ async function handleInteractiveReply(
         const prereq = await hasNoPrerequisites(userId);
         if (prereq.blocked) return prereq.items!;
       }
-      const result = await conversationEngine.startFlow(userId, flowName as FlowState);
+      const prefillData = flowName === 'field_flow' ? { _channel: 'telegram', _channelId: phone } : undefined;
+      const result = await conversationEngine.startFlow(userId, flowName as FlowState, prefillData);
       return collectResponse(result.response);
     }
     // flow_cat_, flow_field_, flow_plot_, flow_activity_ → feed into flow
@@ -696,7 +725,7 @@ async function handleInteractiveReply(
     }
 
     if (callbackId === 'field_dup_rename') {
-      const prefill: Record<string, unknown> = {};
+      const prefill: Record<string, unknown> = { _channel: 'telegram', _channelId: phone };
       if (dupData.city) prefill.city = dupData.city;
       const flowResult = await conversationEngine.startFlow(userId, 'field_flow' as FlowState, prefill);
       if (flowResult.nextContext) {
@@ -1387,6 +1416,11 @@ async function processTextMessage(
       // Handle sideEffects from the execution
       if (result.stoppedAtFlow && result.lastSideEffects?.startFlow) {
         const { state, data } = result.lastSideEffects.startFlow;
+        if (state === 'field_flow') {
+          const flowData = data ?? {};
+          flowData._channel = 'telegram';
+          flowData._channelId = phone;
+        }
         const flowResult = await conversationEngine.startFlow(userId, state, data);
         if (flowResult.nextContext) await conversationEngine.setFlowContext(userId, flowResult.nextContext);
         items.push(...collectResponse(flowResult.response));
@@ -1411,6 +1445,10 @@ async function processTextMessage(
             fieldId: null, fieldName: null, plotId: null, plotName: null,
             timestamp: Date.now(), _fieldDuplicate: dup,
           } as any);
+        }
+        if (result.lastSideEffects.setPendingFieldLocation) {
+          const loc = result.lastSideEffects.setPendingFieldLocation;
+          pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
         }
       }
       if (result.lastInteractive) {
@@ -1559,6 +1597,11 @@ async function processTextMessage(
       response.suggestionKey = resolveSuggestionKey(intent.data.command, response.suggestionKey);
       if (response.sideEffects?.startFlow) {
         const { state, data } = response.sideEffects.startFlow;
+        if (state === 'field_flow') {
+          const flowData = data ?? {};
+          flowData._channel = 'telegram';
+          flowData._channelId = phone;
+        }
         const flowResult = await conversationEngine.startFlow(userId, state, data);
         if (flowResult.nextContext) {
           await conversationEngine.setFlowContext(userId, flowResult.nextContext);
@@ -1590,6 +1633,10 @@ async function processTextMessage(
       }
       if (response.sideEffects?.setPendingStockDeduction) {
         pendingStockDeductionStore.set(phone, response.sideEffects.setPendingStockDeduction as Record<string, unknown>);
+      }
+      if (response.sideEffects?.setPendingFieldLocation) {
+        const loc = response.sideEffects.setPendingFieldLocation;
+        pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
       }
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, {
