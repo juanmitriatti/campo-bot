@@ -659,7 +659,7 @@ export async function getUserFieldsWithCity(userId) {
 
 export async function getUserFields(userId) {
   const result = await pool.query(
-    `SELECT id, name, city, province FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND deleted_at IS NULL ORDER BY name`,
+    `SELECT id, name, city, province, location_method FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND deleted_at IS NULL ORDER BY name`,
     [userId]
   );
   return result.rows;

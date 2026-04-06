@@ -1321,7 +1321,14 @@ export class FinancialHandler {
         }
         let msg = `\ud83d\udccd *Tus campos (${fields.length}):*\n`;
         for (const f of fields) {
-          msg += `\n\u2022 *${f.name}*${f.city ? ` \u2014 ${formatLocation(f.city, f.province)}` : ' \u2014 sin ubicaci\u00f3n'}`;
+          const loc = f.city
+            ? formatLocation(f.city, f.province)
+            : f.province
+              ? f.province
+              : (f as any).location_method === 'map'
+                ? 'ubicado en mapa'
+                : null;
+          msg += `\n\u2022 *${f.name}*${loc ? ` \u2014 ${loc}` : ' \u2014 sin ubicaci\u00f3n'}`;
         }
         msg += '\n\n_Comandos: agregar campo X, lotes del campo X, info campo X_';
         return { messages: [msg] };
