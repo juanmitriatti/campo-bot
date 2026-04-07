@@ -212,6 +212,10 @@ export class FinancialRepository {
     return this.plots.renameField(userId, oldName, newName);
   }
 
+  async renamePlot(userId: UserId, oldName: string, newName: string, fieldName?: string | null): Promise<{ id: number; oldName: string; newName: string; fieldName: string } | null> {
+    return this.plots.renamePlot(userId, oldName, newName, fieldName);
+  }
+
   async getFieldInfo(userId: UserId, fieldName: string): Promise<FieldInfoData | null> {
     return this.plots.getFieldInfo(userId, fieldName);
   }

@@ -186,6 +186,10 @@ export class FinancialService {
     return this.repo.renameField(userId, oldName, newName);
   }
 
+  async renamePlot(userId: UserId, oldName: string, newName: string, fieldName?: string | null) {
+    return this.repo.renamePlot(userId, oldName, newName, fieldName);
+  }
+
   async getFieldInfo(userId: UserId, fieldName: string): Promise<FieldInfoData | null> {
     return this.repo.getFieldInfo(userId, fieldName);
   }

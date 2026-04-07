@@ -29,6 +29,8 @@ function mockService(overrides: Record<string, any> = {}) {
     setFieldCity: vi.fn(),
     deleteField: vi.fn().mockResolvedValue(false),
     renameField: vi.fn().mockResolvedValue(false),
+    renamePlot: vi.fn().mockResolvedValue(null),
+    restorePlot: vi.fn().mockResolvedValue(null),
     getFieldInfo: vi.fn().mockResolvedValue(null),
     getPlotsByField: vi.fn().mockResolvedValue([]),
     findAllUserPlots: vi.fn().mockResolvedValue([{ id: 1, name: 'Lote 1', field_name: 'Campo Test', field_id: 1 }]),

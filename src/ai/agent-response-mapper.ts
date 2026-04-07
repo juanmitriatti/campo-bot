@@ -267,6 +267,8 @@ export class AgentResponseMapper {
     if (input.plotNames != null) cmd.plotNames = input.plotNames;
     if (input.city != null) cmd.city = input.city;
     if (input.hectares != null) cmd.hectares = input.hectares;
+    if (input.oldName != null) cmd.oldName = input.oldName;
+    if (input.newName != null) cmd.newName = input.newName;
 
     // Activity fields
     if (input.product != null) cmd.product = input.product;

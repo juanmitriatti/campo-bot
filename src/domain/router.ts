@@ -19,7 +19,7 @@ const FINANCIAL_COMMANDS = new Set([
   'set_field_city', 'add_field_city', 'add_field', 'list_fields',
   'delete_field', 'rename_field', 'field_info',
   'list_plots', 'add_plot', 'add_plots_batch', 'delete_plot', 'plot_info', 'set_plot_area',
-  'restore_field',
+  'restore_field', 'rename_plot', 'restore_plot',
 ]);
 
 const AGRONOMY_COMMANDS = new Set([

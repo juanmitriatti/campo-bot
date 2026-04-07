@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { TOOL_DEFINITIONS, TOOL_NAMES } from '../tool-definitions.js';
 
 describe('TOOL_DEFINITIONS', () => {
-  it('has 35 tools', () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(35);
+  it('has 41 tools', () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(41);
   });
 
   it('all tools have unique names', () => {
@@ -63,6 +63,12 @@ describe('TOOL_DEFINITIONS', () => {
     expect(TOOL_NAMES.has('add_plots_batch')).toBe(true);
     expect(TOOL_NAMES.has('set_plot_area')).toBe(true);
     expect(TOOL_NAMES.has('set_field_city')).toBe(true);
+    expect(TOOL_NAMES.has('delete_field')).toBe(true);
+    expect(TOOL_NAMES.has('delete_plot')).toBe(true);
+    expect(TOOL_NAMES.has('rename_field')).toBe(true);
+    expect(TOOL_NAMES.has('rename_plot')).toBe(true);
+    expect(TOOL_NAMES.has('restore_field')).toBe(true);
+    expect(TOOL_NAMES.has('restore_plot')).toBe(true);
   });
 
   it('report tools exist', () => {

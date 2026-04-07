@@ -919,6 +919,35 @@ const COMMAND_PATTERNS = [
     extract: () => ({}),
   },
 
+  // --- Renombrar campo ---
+  {
+    command: "rename_field",
+    patterns: [
+      /(?:renombrar|cambiar\s+(?:el\s+)?nombre(?:\s+del?)?)\s+campo\s+(.+?)\s+(?:a|por)\s+(.+)/,
+    ],
+    extract: (m, _norm, original) => {
+      const re = /(?:renombrar|cambiar\s+(?:el\s+)?nombre(?:\s+del?)?)\s+campo\s+(.+?)\s+(?:a|por)\s+(.+)/i;
+      const cm = original ? original.match(re) : null;
+      return { oldName: (cm ? cm[1] : m[1]).trim(), newName: (cm ? cm[2] : m[2]).trim() };
+    },
+  },
+  // --- Renombrar lote ---
+  {
+    command: "rename_plot",
+    patterns: [
+      /(?:renombrar|cambiar\s+(?:el\s+)?nombre(?:\s+del?)?)\s+lote\s+(.+?)\s+(?:a|por)\s+(.+?)(?:\s+(?:en|del?)\s+(?:campo\s+)?(.+))?$/,
+    ],
+    extract: (m, _norm, original) => {
+      const re = /(?:renombrar|cambiar\s+(?:el\s+)?nombre(?:\s+del?)?)\s+lote\s+(.+?)\s+(?:a|por)\s+(.+?)(?:\s+(?:en|del?)\s+(?:campo\s+)?(.+))?$/i;
+      const cm = original ? original.match(re) : null;
+      return {
+        oldName: (cm ? cm[1] : m[1]).trim(),
+        newName: (cm ? cm[2] : m[2]).trim(),
+        fieldName: (cm ? cm[3] : m[3])?.trim() || null,
+      };
+    },
+  },
+
   // --- Restaurar campo/lote ---
   {
     command: "restore_field",

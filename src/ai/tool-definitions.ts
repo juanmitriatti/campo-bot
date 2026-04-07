@@ -334,6 +334,77 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       required: ['field'],
     },
   },
+  {
+    name: 'delete_field',
+    description: 'Eliminar campo. "borrar campo X", "eliminar campo X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: { type: 'string', description: 'Nombre del campo a eliminar.' },
+      },
+      required: ['field'],
+    },
+  },
+  {
+    name: 'delete_plot',
+    description: 'Eliminar lote de un campo. "borrar lote X del campo Y", "eliminar lote X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        plot: { type: 'string', description: 'Nombre del lote a eliminar.' },
+        field: { type: 'string', description: 'Nombre del campo al que pertenece el lote.' },
+      },
+      required: ['plot', 'field'],
+    },
+  },
+  {
+    name: 'rename_field',
+    description: 'Renombrar campo. "renombrar campo X a Y", "cambiar nombre campo X por Y".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        oldName: { type: 'string', description: 'Nombre actual del campo.' },
+        newName: { type: 'string', description: 'Nuevo nombre del campo.' },
+      },
+      required: ['oldName', 'newName'],
+    },
+  },
+  {
+    name: 'rename_plot',
+    description: 'Renombrar lote. "renombrar lote X a Y en campo Z", "cambiar nombre lote X por Y".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        oldName: { type: 'string', description: 'Nombre actual del lote.' },
+        newName: { type: 'string', description: 'Nuevo nombre del lote.' },
+        field: { type: 'string', description: 'Nombre del campo al que pertenece el lote.' },
+      },
+      required: ['oldName', 'newName', 'field'],
+    },
+  },
+  {
+    name: 'restore_field',
+    description: 'Restaurar campo eliminado. "restaurar campo X", "recuperar campo X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: { type: 'string', description: 'Nombre del campo a restaurar.' },
+      },
+      required: ['field'],
+    },
+  },
+  {
+    name: 'restore_plot',
+    description: 'Restaurar lote eliminado. "restaurar lote X del campo Y", "recuperar lote X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        plot: { type: 'string', description: 'Nombre del lote a restaurar.' },
+        field: { type: 'string', description: 'Nombre del campo al que pertenece el lote.' },
+      },
+      required: ['plot', 'field'],
+    },
+  },
 
   // show_reports_menu and export_csv handled by regex TRIVIAL_COMMANDS — not needed here
 

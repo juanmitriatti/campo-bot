@@ -1355,6 +1355,16 @@ export class FinancialHandler {
         let confirmMsg = `\u00bfSeguro que quer\u00e9s eliminar ${labelDel.toLowerCase()} *${cmd.fieldName}*?`;
         if (plotCount && plotCount > 0) confirmMsg += `\nTiene ${plotCount} lote${plotCount > 1 ? 's' : ''} que tambi\u00e9n se eliminar\u00e1${plotCount > 1 ? 'n' : ''}.`;
         if (dataCount > 0) confirmMsg += `\nTiene ${dataCount} registro${dataCount > 1 ? 's' : ''} asociado${dataCount > 1 ? 's' : ''} que quedar\u00e1${dataCount > 1 ? 'n' : ''} sin asignar.`;
+
+        // Warn about shared members
+        try {
+          const members = await this.sharingService.listMembers(userId, exists.id);
+          const nonOwners = members.filter((m: any) => m.role !== 'owner');
+          if (nonOwners.length > 0) {
+            confirmMsg += `\n⚠️ ${nonOwners.length} usuario${nonOwners.length > 1 ? 's' : ''} compartido${nonOwners.length > 1 ? 's' : ''} perderá${nonOwners.length > 1 ? 'n' : ''} acceso.`;
+          }
+        } catch { /* sharing query failed — continue without warning */ }
+
         confirmMsg += `\n\n_Pod\u00e9s restaurarlo despu\u00e9s con "restaurar ${labelDel.toLowerCase()} ${cmd.fieldName}"_`;
 
         return {
@@ -1386,6 +1396,44 @@ export class FinancialHandler {
           return { messages: [`No encontré ${labelRen.toLowerCase()} *${cmd.oldName}*.`] };
         }
         return { messages: [`✏️ ${labelRen} *${cmd.oldName}* renombrado a *${cmd.newName}*`] };
+      }
+
+      case 'rename_plot': {
+        const oldPlotName = cmd.oldName as string;
+        const newPlotName = cmd.newName as string;
+        const renPlotFieldName = cmd.fieldName as string | null;
+
+        // Resolve field for ownership check
+        let renPlotField: any = null;
+        if (renPlotFieldName) {
+          renPlotField = await this.service.getFieldByName(userId, renPlotFieldName);
+          if (!renPlotField) {
+            return { messages: [`No encontré el campo *${renPlotFieldName}*.`] };
+          }
+        } else {
+          // Auto-resolve: find plots with oldName across user's fields
+          const plotMatches = await this.service.findPlotByNameAcrossFields(userId, oldPlotName);
+          if (plotMatches.length === 0) {
+            return { messages: [`No encontré el lote *${oldPlotName}*.`] };
+          }
+          if (plotMatches.length > 1) {
+            return { messages: [`Hay ${plotMatches.length} lotes con nombre *${oldPlotName}*. Indicá el campo:\n*renombrar lote ${oldPlotName} a ${newPlotName} en campo [nombre]*`] };
+          }
+          renPlotField = await this.service.getFieldByName(userId, plotMatches[0].field_name);
+        }
+
+        if (renPlotField) {
+          const isOwnerRenPlot = await this.sharingService.isOwner(userId, renPlotField.id);
+          if (!isOwnerRenPlot) {
+            return { messages: [`Solo el dueño del campo *${renPlotField.name}* puede renombrar sus lotes.`] };
+          }
+        }
+
+        const renamedPlot = await this.service.renamePlot(userId, oldPlotName, newPlotName, renPlotFieldName);
+        if (!renamedPlot) {
+          return { messages: [`No encontré el lote *${oldPlotName}*${renPlotFieldName ? ` en campo *${renPlotFieldName}*` : ''}.`] };
+        }
+        return { messages: [`✏️ Lote *${oldPlotName}* renombrado a *${newPlotName}* (campo ${renamedPlot.fieldName})`] };
       }
 
       case 'field_info': {
@@ -1619,13 +1667,20 @@ export class FinancialHandler {
         if (!field) {
           return { messages: [`No encontr\u00e9 el campo *${cmd.fieldName}*.`] };
         }
+
+        // Owner-only check
+        const isOwnerDelPlot = await this.sharingService.isOwner(userId, field.id);
+        if (!isOwnerDelPlot) {
+          return { messages: [`Solo el dueño del campo *${cmd.fieldName}* puede eliminar sus lotes.`] };
+        }
+
         const plotsForDel = await this.service.findPlotByNameAcrossFields(userId, cmd.plotName as string);
         const plotForDel = plotsForDel.find(p => p.field_id === field.id);
         if (!plotForDel) {
           return { messages: [`No encontr\u00e9 el lote *${cmd.plotName}* en campo *${cmd.fieldName}*.`] };
         }
 
-        const confirmPlotMsg = `\u00bfSeguro que quer\u00e9s eliminar el lote *${cmd.plotName}* del campo *${cmd.fieldName}*?\nLos registros asociados quedar\u00e1n sin lote.\n\n_Pod\u00e9s restaurarlo despu\u00e9s con "restaurar lote ${cmd.plotName}"_`;
+        const confirmPlotMsg = `\u00bfSeguro que quer\u00e9s eliminar el lote *${cmd.plotName}* del campo *${cmd.fieldName}*?\nLos registros asociados quedar\u00e1n sin lote.\n\n_Pod\u00e9s restaurarlo despu\u00e9s con "restaurar lote ${cmd.plotName} del campo ${cmd.fieldName}"_`;
         return {
           messages: [confirmPlotMsg],
           interactive: {
@@ -1662,13 +1717,42 @@ export class FinancialHandler {
 
       case 'restore_field': {
         const kwRestore = (cmd.entityKeyword as string) || 'campo';
-        const labelRestore = kwRestore === 'campo' ? 'Campo' : 'Lote';
+
+        // If regex gave entityKeyword='lote', search deleted plots instead
+        if (kwRestore === 'lote') {
+          // Try to find which field the deleted plot belongs to
+          const allFields = await this.service.getUserFields(userId);
+          for (const f of allFields) {
+            const restoredPlot = await this.service.restorePlot(userId, cmd.fieldName as string, f.name);
+            if (restoredPlot) {
+              return {
+                messages: [`✅ Lote *${restoredPlot.name}* restaurado correctamente en campo *${f.name}*.`],
+                suggestionKey: 'field_created',
+              };
+            }
+          }
+          return { messages: [`No encontré lote eliminado con nombre *${cmd.fieldName}*.`] };
+        }
+
         const restored = await this.service.restoreField(userId, cmd.fieldName as string);
         if (!restored) {
-          return { messages: [`No encontr\u00e9 ${labelRestore.toLowerCase()} eliminado con nombre *${cmd.fieldName}*.`] };
+          return { messages: [`No encontr\u00e9 campo eliminado con nombre *${cmd.fieldName}*.`] };
         }
         return {
-          messages: [`\u2705 ${labelRestore} *${restored.name}* restaurado correctamente.\nSus lotes asociados tambi\u00e9n fueron restaurados.`],
+          messages: [`\u2705 Campo *${restored.name}* restaurado correctamente.\nSus lotes asociados tambi\u00e9n fueron restaurados.`],
+          suggestionKey: 'field_created',
+        };
+      }
+
+      case 'restore_plot': {
+        const plotToRestore = cmd.plotName as string;
+        const fieldForRestore = cmd.fieldName as string;
+        const restoredPlot = await this.service.restorePlot(userId, plotToRestore, fieldForRestore);
+        if (!restoredPlot) {
+          return { messages: [`No encontré lote eliminado *${plotToRestore}* en campo *${fieldForRestore}*.`] };
+        }
+        return {
+          messages: [`✅ Lote *${restoredPlot.name}* restaurado correctamente en campo *${fieldForRestore}*.`],
           suggestionKey: 'field_created',
         };
       }

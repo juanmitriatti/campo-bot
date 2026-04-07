@@ -104,6 +104,8 @@ export class FeatureGate {
       plot_info: 'fields',
       set_plot_area: 'fields',
       restore_field: 'fields',
+      rename_plot: 'fields',
+      restore_plot: 'fields',
       // Weather
       weather_full: 'weather',
       weather_forecast: 'weather',

@@ -8,6 +8,7 @@ import {
   deleteField as _deleteField,
   restoreField as _restoreField,
   renameField as _renameField,
+  renamePlot as _renamePlot,
   getFieldInfo as _getFieldInfo,
   getOrCreatePlot as _getOrCreatePlot,
   getPlotsByField as _getPlotsByField,
@@ -63,6 +64,10 @@ export class PlotRepository {
 
   async renameField(userId: UserId, oldName: string, newName: string): Promise<boolean> {
     return _renameField(userId, oldName, newName);
+  }
+
+  async renamePlot(userId: UserId, oldName: string, newName: string, fieldName?: string | null): Promise<{ id: number; oldName: string; newName: string; fieldName: string } | null> {
+    return _renamePlot(userId, oldName, newName, fieldName);
   }
 
   async getFieldInfo(userId: UserId, fieldName: string): Promise<FieldInfoData | null> {

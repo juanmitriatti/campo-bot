@@ -202,6 +202,52 @@ describe('AgentResponseMapper', () => {
       }
     });
 
+    it('maps rename_field with oldName and newName', () => {
+      const result = makeResult([{
+        toolName: 'rename_field',
+        toolInput: { oldName: 'Norte', newName: 'Sur' },
+        toolUseId: 'test_rename_field',
+      }]);
+
+      const parsed = mapper.mapToParseResults(result, 'renombrar campo Norte a Sur');
+      if (parsed[0].intent.type === 'command') {
+        expect(parsed[0].intent.data.command).toBe('rename_field');
+        expect(parsed[0].intent.data.oldName).toBe('Norte');
+        expect(parsed[0].intent.data.newName).toBe('Sur');
+      }
+    });
+
+    it('maps rename_plot with oldName, newName, and field', () => {
+      const result = makeResult([{
+        toolName: 'rename_plot',
+        toolInput: { oldName: 'A1', newName: 'B1', field: 'Norte' },
+        toolUseId: 'test_rename_plot',
+      }]);
+
+      const parsed = mapper.mapToParseResults(result, 'renombrar lote A1 a B1 en campo Norte');
+      if (parsed[0].intent.type === 'command') {
+        expect(parsed[0].intent.data.command).toBe('rename_plot');
+        expect(parsed[0].intent.data.oldName).toBe('A1');
+        expect(parsed[0].intent.data.newName).toBe('B1');
+        expect(parsed[0].intent.data.fieldName).toBe('Norte');
+      }
+    });
+
+    it('maps restore_plot with plot and field', () => {
+      const result = makeResult([{
+        toolName: 'restore_plot',
+        toolInput: { plot: 'A1', field: 'Norte' },
+        toolUseId: 'test_restore_plot',
+      }]);
+
+      const parsed = mapper.mapToParseResults(result, 'restaurar lote A1 del campo Norte');
+      if (parsed[0].intent.type === 'command') {
+        expect(parsed[0].intent.data.command).toBe('restore_plot');
+        expect(parsed[0].intent.data.plotName).toBe('A1');
+        expect(parsed[0].intent.data.fieldName).toBe('Norte');
+      }
+    });
+
     it('maps add_plots_batch with plotNames array', () => {
       const result = makeResult([{
         toolName: 'add_plots_batch',

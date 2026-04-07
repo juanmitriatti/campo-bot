@@ -747,6 +747,23 @@ export async function renameField(userId, oldName, newName) {
   return true;
 }
 
+export async function renamePlot(userId, oldName, newName, fieldName) {
+  const plots = await findPlotByNameAcrossFields(userId, oldName);
+  if (!fieldName) {
+    if (plots.length === 0) return null;
+    // Auto-resolve if only one match
+    const plot = plots[0];
+    await pool.query(`UPDATE plots SET name = $1 WHERE id = $2`, [newName, plot.id]);
+    return { id: plot.id, oldName: plot.name, newName, fieldName: plot.field_name };
+  }
+  const field = await getFieldByName(userId, fieldName);
+  if (!field) return null;
+  const plot = plots.find(p => p.field_id === field.id);
+  if (!plot) return null;
+  await pool.query(`UPDATE plots SET name = $1 WHERE id = $2`, [newName, plot.id]);
+  return { id: plot.id, oldName: plot.name, newName, fieldName: field.name };
+}
+
 export async function getFieldInfo(userId, fieldName) {
   const field = await getFieldByName(userId, fieldName);
   if (!field) return null;
