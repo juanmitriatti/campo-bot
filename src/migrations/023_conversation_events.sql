@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS conversation_events (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_ce_user ON conversation_events(user_id, created_at DESC);
-CREATE INDEX idx_ce_type ON conversation_events(event_type, created_at DESC);
-CREATE INDEX idx_ce_flow ON conversation_events(flow_state, event_type) WHERE flow_state IS NOT NULL;
-CREATE INDEX idx_ce_session ON conversation_events(session_id, created_at) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ce_user ON conversation_events(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ce_type ON conversation_events(event_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ce_flow ON conversation_events(flow_state, event_type) WHERE flow_state IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ce_session ON conversation_events(session_id, created_at) WHERE session_id IS NOT NULL;

@@ -11,6 +11,7 @@ import authRoutes from './routes/auth.routes.js';
 import { requireAuth, requireRole } from './middleware/auth.middleware.js';
 import mapRoutes from './routes/map.routes.js';
 import { startScheduler } from './services/scheduler.js';
+import { runMigrations } from './scripts/run-migrations.js';
 
 dotenv.config();
 
@@ -68,9 +69,24 @@ app.use((err: any, _req: any, res: any, _next: any) => {
 
 const port = process.env.PORT || 3000;
 
-app.listen(port, () => {
-  console.log(`Servidor corriendo en puerto ${port}`);
-  startScheduler();
-});
+async function bootstrap() {
+  // Run pending DB migrations BEFORE the server starts accepting traffic.
+  // Disable with RUN_MIGRATIONS_ON_START=false (e.g. for unit tests).
+  if (process.env.RUN_MIGRATIONS_ON_START !== 'false') {
+    try {
+      await runMigrations();
+    } catch (err) {
+      console.error('[bootstrap] Migration failure — aborting startup:', err);
+      process.exit(1);
+    }
+  }
+
+  app.listen(port, () => {
+    console.log(`Servidor corriendo en puerto ${port}`);
+    startScheduler();
+  });
+}
+
+bootstrap();
 
 export default app;

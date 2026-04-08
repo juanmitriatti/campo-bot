@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS farmer_vocabulary (
   UNIQUE(user_id, normalized_phrase, category)
 );
 
-CREATE INDEX idx_farmer_vocab_user ON farmer_vocabulary(user_id);
-CREATE INDEX idx_farmer_vocab_lookup ON farmer_vocabulary(user_id, category, confidence);
+CREATE INDEX IF NOT EXISTS idx_farmer_vocab_user ON farmer_vocabulary(user_id);
+CREATE INDEX IF NOT EXISTS idx_farmer_vocab_lookup ON farmer_vocabulary(user_id, category, confidence);
 
 -- message_patterns: stores successful message → intent mappings
 CREATE TABLE IF NOT EXISTS message_patterns (
@@ -28,5 +28,5 @@ CREATE TABLE IF NOT EXISTS message_patterns (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_message_patterns_user ON message_patterns(user_id);
-CREATE INDEX idx_message_patterns_intent ON message_patterns(user_id, intent);
+CREATE INDEX IF NOT EXISTS idx_message_patterns_user ON message_patterns(user_id);
+CREATE INDEX IF NOT EXISTS idx_message_patterns_intent ON message_patterns(user_id, intent);
