@@ -148,6 +148,14 @@ export class FeatureGate {
       start_document_upload: 'documents',
       list_documents: 'documents',
       link_document_to_expense: 'documents',
+      // Livestock
+      add_livestock: 'livestock',
+      remove_livestock: 'livestock',
+      transfer_livestock: 'livestock',
+      record_livestock_death: 'livestock',
+      record_livestock_birth: 'livestock',
+      list_livestock: 'livestock',
+      livestock_history: 'livestock',
     };
 
     return map[command] ?? null;

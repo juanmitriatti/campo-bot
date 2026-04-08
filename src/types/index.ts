@@ -508,7 +508,8 @@ export type FeatureKey =
   | 'audio'
   | 'sharing'
   | 'stock'
-  | 'documents';
+  | 'documents'
+  | 'livestock';
 
 export interface PlanRow {
   id: number;

@@ -598,6 +598,128 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
 
   // ========================
+  // LIVESTOCK (hacienda)
+  // ========================
+  {
+    name: 'add_livestock',
+    description: 'Registrar ingreso/compra de hacienda (vacas, terneros, novillos, etc.) en un lote. Verbos: agregué, compré, metí, ingresé + N animales. Requiere lote.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría del animal.' },
+        count: { type: 'number', description: 'Cantidad de animales (entero > 0).' },
+        breed: { type: 'string', description: 'Raza (Angus, Hereford, Brangus, etc.), si mencionado.' },
+        avg_weight_kg: { type: 'number', description: 'Peso promedio en kg, si mencionado.' },
+        unit_price_ars: { type: 'number', description: 'Precio unitario en pesos, si mencionado.' },
+        unit_price_usd: { type: 'number', description: 'Precio unitario en dólares, si mencionado.' },
+        reason: { type: 'string', description: 'Motivo/descripción breve (ej: "compra remate Liniers").' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        event_date: DATE_PROP,
+      },
+      required: ['category', 'count', 'plot'],
+    },
+  },
+  {
+    name: 'remove_livestock',
+    description: 'Registrar egreso/venta de hacienda de un lote. Verbos: vendí, saqué, faené + N animales. Requiere lote.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría del animal.' },
+        count: { type: 'number', description: 'Cantidad de animales.' },
+        breed: { type: 'string', description: 'Raza, si mencionado.' },
+        unit_price_ars: { type: 'number', description: 'Precio unitario en pesos, si mencionado.' },
+        unit_price_usd: { type: 'number', description: 'Precio unitario en dólares, si mencionado.' },
+        reason: { type: 'string', description: 'Motivo/descripción breve.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        event_date: DATE_PROP,
+      },
+      required: ['category', 'count', 'plot'],
+    },
+  },
+  {
+    name: 'transfer_livestock',
+    description: 'Mover animales entre dos lotes. Verbos: mové, pasé, trasladé + N animales + de lote X a lote Y. Operación atómica.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría del animal.' },
+        count: { type: 'number', description: 'Cantidad a mover.' },
+        breed: { type: 'string', description: 'Raza, si se quiere filtrar por raza.' },
+        source_field: { type: 'string', description: 'Campo de origen, si mencionado.' },
+        source_plot: { type: 'string', description: 'Lote de origen.' },
+        dest_field: { type: 'string', description: 'Campo de destino, si mencionado.' },
+        dest_plot: { type: 'string', description: 'Lote de destino.' },
+        dest_category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría destino (para recategorización en el mismo lote).' },
+        reason: { type: 'string', description: 'Motivo/descripción breve.' },
+        event_date: DATE_PROP,
+      },
+      required: ['category', 'count', 'source_plot', 'dest_plot'],
+    },
+  },
+  {
+    name: 'record_livestock_death',
+    description: 'Registrar muerte/baja de animales en un lote. Verbos: se murió, falleció, perdí, baja.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría del animal.' },
+        count: { type: 'number', description: 'Cantidad muerta.' },
+        breed: { type: 'string', description: 'Raza, si mencionado.' },
+        reason: { type: 'string', description: 'Causa (enfermedad, accidente, etc.), si mencionado.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        event_date: DATE_PROP,
+      },
+      required: ['category', 'count', 'plot'],
+    },
+  },
+  {
+    name: 'record_livestock_birth',
+    description: 'Registrar nacimiento/parición de terneros. Verbos: parió, nacieron, tuve N crías.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría del animal (normalmente ternero/ternera).' },
+        count: { type: 'number', description: 'Cantidad nacida.' },
+        breed: { type: 'string', description: 'Raza, si mencionado.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        event_date: DATE_PROP,
+      },
+      required: ['category', 'count', 'plot'],
+    },
+  },
+  {
+    name: 'list_livestock',
+    description: 'Listar inventario de hacienda. Preguntas: cuántas vacas tengo, stock de hacienda, rodeo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Filtrar por categoría, si mencionado.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+      },
+    },
+  },
+  {
+    name: 'livestock_history',
+    description: 'Mostrar historial de movimientos de un grupo de hacienda en un lote específico.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría del animal.' },
+        breed: { type: 'string', description: 'Raza, si se quiere filtrar.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+      },
+      required: ['category', 'plot'],
+    },
+  },
+
+  // ========================
   // CONVERSATIONAL (fallback)
   // ========================
   {

@@ -314,6 +314,18 @@ export class AgentResponseMapper {
     if (input.expenseId != null) cmd.expenseId = input.expenseId;
     if (input.context != null) cmd.context = input.context;
 
+    // Livestock
+    if (input.count != null) cmd.count = input.count;
+    if (input.breed != null) cmd.breed = input.breed;
+    if (input.avg_weight_kg != null) cmd.avg_weight_kg = input.avg_weight_kg;
+    if (input.unit_price_ars != null) cmd.unit_price_ars = input.unit_price_ars;
+    if (input.unit_price_usd != null) cmd.unit_price_usd = input.unit_price_usd;
+    if (input.source_field != null) cmd.sourceField = input.source_field;
+    if (input.source_plot != null) cmd.sourcePlot = input.source_plot;
+    if (input.dest_field != null) cmd.destField = input.dest_field;
+    if (input.dest_plot != null) cmd.destPlot = input.dest_plot;
+    if (input.dest_category != null) cmd.destCategory = input.dest_category;
+
     return {
       intent: { type: 'command', data: cmd },
       confidence: 0.95,

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { TOOL_DEFINITIONS, TOOL_NAMES } from '../tool-definitions.js';
 
 describe('TOOL_DEFINITIONS', () => {
-  it('has 41 tools', () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(41);
+  it('has 48 tools', () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(48);
   });
 
   it('all tools have unique names', () => {
@@ -77,6 +77,31 @@ describe('TOOL_DEFINITIONS', () => {
     for (const name of reportTools) {
       expect(TOOL_NAMES.has(name)).toBe(true);
     }
+  });
+
+  it('livestock tools exist with required fields', () => {
+    const livestockTools = ['add_livestock', 'remove_livestock', 'transfer_livestock',
+      'record_livestock_death', 'record_livestock_birth', 'list_livestock', 'livestock_history'];
+    for (const name of livestockTools) {
+      expect(TOOL_NAMES.has(name)).toBe(true);
+    }
+
+    // add_livestock requires category, count, plot
+    const add = TOOL_DEFINITIONS.find(t => t.name === 'add_livestock')!;
+    expect(add.input_schema.required).toContain('category');
+    expect(add.input_schema.required).toContain('count');
+    expect(add.input_schema.required).toContain('plot');
+
+    // transfer_livestock requires source_plot and dest_plot
+    const transfer = TOOL_DEFINITIONS.find(t => t.name === 'transfer_livestock')!;
+    expect(transfer.input_schema.required).toContain('source_plot');
+    expect(transfer.input_schema.required).toContain('dest_plot');
+
+    // category enum has 9 values
+    const catProp = add.input_schema.properties!.category as { enum: string[] };
+    expect(catProp.enum).toEqual([
+      'vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey',
+    ]);
   });
 
   it('financial_report has all expected properties', () => {

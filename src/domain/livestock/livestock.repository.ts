@@ -1,0 +1,480 @@
+import { pool } from '../../config/db.js';
+import type {
+  LivestockCategory,
+  LivestockMovementType,
+  LivestockGroupRow,
+  LivestockMovementRow,
+} from './livestock.types.js';
+
+function accessibleFieldsSql(paramIdx: number): string {
+  return `SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
+}
+
+/**
+ * Repository for livestock groups and movements.
+ * All mutations that change counts MUST go through applyMovement/applyTransfer
+ * to keep the movement ledger and the group state consistent.
+ */
+export class LivestockRepository {
+  // ========================
+  // GROUPS (read)
+  // ========================
+
+  async findGroup(plotId: number, category: LivestockCategory, breed: string | null): Promise<LivestockGroupRow | null> {
+    const { rows } = await pool.query(
+      `SELECT lg.*, p.name AS plot_name, f.name AS field_name
+       FROM livestock_groups lg
+       JOIN plots p ON lg.plot_id = p.id
+       JOIN fields f ON lg.field_id = f.id
+       WHERE lg.plot_id = $1
+         AND lg.category = $2
+         AND lg.breed IS NOT DISTINCT FROM $3
+         AND lg.deleted_at IS NULL`,
+      [plotId, category, breed]
+    );
+    return rows[0] || null;
+  }
+
+  async getGroupById(id: string): Promise<LivestockGroupRow | null> {
+    const { rows } = await pool.query(
+      `SELECT lg.*, p.name AS plot_name, f.name AS field_name
+       FROM livestock_groups lg
+       JOIN plots p ON lg.plot_id = p.id
+       JOIN fields f ON lg.field_id = f.id
+       WHERE lg.id = $1 AND lg.deleted_at IS NULL`,
+      [id]
+    );
+    return rows[0] || null;
+  }
+
+  async listGroups(
+    userId: number,
+    opts: { fieldId?: number; plotId?: number; category?: LivestockCategory } = {}
+  ): Promise<LivestockGroupRow[]> {
+    let query = `SELECT lg.*, p.name AS plot_name, f.name AS field_name
+       FROM livestock_groups lg
+       JOIN plots p ON lg.plot_id = p.id
+       JOIN fields f ON lg.field_id = f.id
+       WHERE lg.field_id IN (${accessibleFieldsSql(1)})
+         AND lg.deleted_at IS NULL
+         AND f.deleted_at IS NULL`;
+    const params: (string | number)[] = [userId];
+
+    if (opts.fieldId) {
+      params.push(opts.fieldId);
+      query += ` AND lg.field_id = $${params.length}`;
+    }
+    if (opts.plotId) {
+      params.push(opts.plotId);
+      query += ` AND lg.plot_id = $${params.length}`;
+    }
+    if (opts.category) {
+      params.push(opts.category);
+      query += ` AND lg.category = $${params.length}`;
+    }
+    query += ' ORDER BY f.name, p.name, lg.category';
+
+    const { rows } = await pool.query(query, params);
+    return rows;
+  }
+
+  async countTotal(userId: number, opts: { fieldId?: number; plotId?: number } = {}): Promise<number> {
+    let query = `SELECT COALESCE(SUM(lg.count), 0) AS total
+       FROM livestock_groups lg
+       WHERE lg.field_id IN (${accessibleFieldsSql(1)})
+         AND lg.deleted_at IS NULL`;
+    const params: (string | number)[] = [userId];
+    if (opts.fieldId) {
+      params.push(opts.fieldId);
+      query += ` AND lg.field_id = $${params.length}`;
+    }
+    if (opts.plotId) {
+      params.push(opts.plotId);
+      query += ` AND lg.plot_id = $${params.length}`;
+    }
+    const { rows } = await pool.query(query, params);
+    return parseInt(rows[0].total, 10);
+  }
+
+  // ========================
+  // GROUPS (write, non-atomic)
+  // ========================
+
+  /** Create a new group with count=0 (movements fill it) */
+  async createGroup(
+    userId: number,
+    fieldId: number,
+    plotId: number,
+    category: LivestockCategory,
+    breed: string | null,
+    opts: { avg_weight_kg?: number | null; notes?: string | null } = {}
+  ): Promise<LivestockGroupRow> {
+    const { rows } = await pool.query(
+      `INSERT INTO livestock_groups
+         (user_id, field_id, plot_id, category, breed, count, avg_weight_kg, notes)
+       VALUES ($1, $2, $3, $4, $5, 0, $6, $7)
+       ON CONFLICT (plot_id, category, breed) DO UPDATE
+         SET deleted_at = NULL,
+             updated_at = NOW()
+       RETURNING *`,
+      [userId, fieldId, plotId, category, breed, opts.avg_weight_kg ?? null, opts.notes ?? null]
+    );
+    return rows[0];
+  }
+
+  async updateGroupMetadata(
+    id: string,
+    patch: { breed?: string | null; avg_weight_kg?: number | null; notes?: string | null }
+  ): Promise<void> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (patch.breed !== undefined) {
+      params.push(patch.breed);
+      sets.push(`breed = $${params.length}`);
+    }
+    if (patch.avg_weight_kg !== undefined) {
+      params.push(patch.avg_weight_kg);
+      sets.push(`avg_weight_kg = $${params.length}`);
+    }
+    if (patch.notes !== undefined) {
+      params.push(patch.notes);
+      sets.push(`notes = $${params.length}`);
+    }
+    if (sets.length === 0) return;
+    params.push(id);
+    await pool.query(
+      `UPDATE livestock_groups SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${params.length}`,
+      params
+    );
+  }
+
+  // ========================
+  // MOVEMENTS (read)
+  // ========================
+
+  async getMovementsForGroup(groupId: string, limit = 20): Promise<LivestockMovementRow[]> {
+    const { rows } = await pool.query(
+      `SELECT * FROM livestock_movements
+       WHERE source_group_id = $1 OR dest_group_id = $1
+       ORDER BY movement_date DESC, created_at DESC
+       LIMIT $2`,
+      [groupId, limit]
+    );
+    return rows;
+  }
+
+  async getRecentMovements(userId: number, limit = 20): Promise<LivestockMovementRow[]> {
+    const { rows } = await pool.query(
+      `SELECT * FROM livestock_movements
+       WHERE user_id = $1
+       ORDER BY movement_date DESC, created_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+    return rows;
+  }
+
+  /**
+   * List movements across all accessible fields with JOINed group/plot/field context.
+   * Supports pagination and filters. Used by dashboard history panel.
+   */
+  async listMovements(
+    userId: number,
+    opts: {
+      fieldId?: number;
+      plotId?: number;
+      category?: LivestockCategory;
+      movementType?: LivestockMovementType;
+      desde?: string;
+      hasta?: string;
+      limit?: number;
+      offset?: number;
+    } = {}
+  ): Promise<{ rows: (LivestockMovementRow & {
+    source_category?: LivestockCategory | null;
+    source_breed?: string | null;
+    source_plot_name?: string | null;
+    source_field_name?: string | null;
+    dest_category?: LivestockCategory | null;
+    dest_breed?: string | null;
+    dest_plot_name?: string | null;
+    dest_field_name?: string | null;
+  })[]; total: number }> {
+    const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
+    const offset = Math.max(0, opts.offset ?? 0);
+
+    const where: string[] = [
+      `m.user_id = $1`,
+      // At least one endpoint's group must be in an accessible field
+      `(
+        (src.field_id IS NOT NULL AND src.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+        OR
+        (dst.field_id IS NOT NULL AND dst.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+      )`,
+    ];
+    const params: (string | number)[] = [userId];
+
+    if (opts.fieldId) {
+      params.push(opts.fieldId);
+      where.push(`(src.field_id = $${params.length} OR dst.field_id = $${params.length})`);
+    }
+    if (opts.plotId) {
+      params.push(opts.plotId);
+      where.push(`(src.plot_id = $${params.length} OR dst.plot_id = $${params.length})`);
+    }
+    if (opts.category) {
+      params.push(opts.category);
+      where.push(`(src.category = $${params.length} OR dst.category = $${params.length})`);
+    }
+    if (opts.movementType) {
+      params.push(opts.movementType);
+      where.push(`m.movement_type = $${params.length}`);
+    }
+    if (opts.desde) {
+      params.push(opts.desde);
+      where.push(`m.movement_date >= $${params.length}::date`);
+    }
+    if (opts.hasta) {
+      params.push(opts.hasta);
+      where.push(`m.movement_date <= $${params.length}::date`);
+    }
+
+    const baseFrom = `FROM livestock_movements m
+       LEFT JOIN livestock_groups src ON m.source_group_id = src.id
+       LEFT JOIN plots sp ON src.plot_id = sp.id
+       LEFT JOIN fields sf ON src.field_id = sf.id
+       LEFT JOIN livestock_groups dst ON m.dest_group_id = dst.id
+       LEFT JOIN plots dp ON dst.plot_id = dp.id
+       LEFT JOIN fields df ON dst.field_id = df.id
+       WHERE ${where.join(' AND ')}`;
+
+    const countResult = await pool.query(`SELECT COUNT(*)::int AS total ${baseFrom}`, params);
+    const total = countResult.rows[0]?.total ?? 0;
+
+    params.push(limit);
+    params.push(offset);
+    const { rows } = await pool.query(
+      `SELECT m.*,
+              src.category AS source_category, src.breed AS source_breed,
+              sp.name AS source_plot_name, sf.name AS source_field_name,
+              dst.category AS dest_category, dst.breed AS dest_breed,
+              dp.name AS dest_plot_name, df.name AS dest_field_name
+       ${baseFrom}
+       ORDER BY m.movement_date DESC, m.created_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+
+    return { rows, total };
+  }
+
+  // ========================
+  // MOVEMENTS (atomic single-group)
+  // ========================
+
+  /**
+   * Atomic: update ONE group's count + create ONE movement row.
+   * Used for entrada, salida, muerte, nacimiento, ajuste.
+   *
+   * - entrada / nacimiento: delta is added to destGroupId
+   * - salida / muerte:      delta is subtracted from sourceGroupId (fails if count goes negative)
+   * - ajuste:               destGroupId count is SET to delta (absolute)
+   */
+  async applySingleMovement(
+    userId: number,
+    movementType: LivestockMovementType,
+    groupId: string,
+    count: number,
+    opts: {
+      avg_weight_kg?: number | null;
+      unit_price_ars?: number | null;
+      unit_price_usd?: number | null;
+      reason?: string | null;
+      notes?: string | null;
+      movement_date?: string | null;
+    } = {}
+  ): Promise<{ group: LivestockGroupRow; movement: LivestockMovementRow }> {
+    if (!['entrada', 'salida', 'muerte', 'nacimiento', 'ajuste'].includes(movementType)) {
+      throw new Error(`applySingleMovement no soporta tipo "${movementType}"`);
+    }
+    if (count <= 0 && movementType !== 'ajuste') {
+      throw new Error('La cantidad debe ser mayor a 0');
+    }
+    if (movementType === 'ajuste' && count < 0) {
+      throw new Error('El ajuste no puede ser negativo');
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const { rows: locked } = await client.query(
+        `SELECT * FROM livestock_groups WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [groupId]
+      );
+      if (locked.length === 0) throw new Error('Grupo de hacienda no encontrado');
+      const group = locked[0] as LivestockGroupRow;
+
+      let newCount: number;
+      if (movementType === 'entrada' || movementType === 'nacimiento') {
+        newCount = Number(group.count) + count;
+      } else if (movementType === 'salida' || movementType === 'muerte') {
+        newCount = Number(group.count) - count;
+        if (newCount < 0) {
+          throw new Error(`Cantidad insuficiente. Disponible: ${group.count} animales`);
+        }
+      } else {
+        // ajuste: set absolute
+        newCount = count;
+      }
+
+      await client.query(
+        `UPDATE livestock_groups SET count = $1, updated_at = NOW() WHERE id = $2`,
+        [newCount, groupId]
+      );
+
+      const isIncoming = movementType === 'entrada' || movementType === 'nacimiento';
+      const source = isIncoming ? null : groupId;
+      const dest = isIncoming ? groupId : (movementType === 'ajuste' ? groupId : null);
+
+      const movementCount = movementType === 'ajuste'
+        ? Math.max(1, Math.abs(newCount - Number(group.count)) || 1)
+        : count;
+
+      const { rows: movements } = await client.query(
+        `INSERT INTO livestock_movements
+           (user_id, movement_type, source_group_id, dest_group_id, count,
+            avg_weight_kg, unit_price_ars, unit_price_usd, reason, notes, movement_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11::date, CURRENT_DATE))
+         RETURNING *`,
+        [
+          userId,
+          movementType,
+          source,
+          dest,
+          movementCount,
+          opts.avg_weight_kg ?? null,
+          opts.unit_price_ars ?? null,
+          opts.unit_price_usd ?? null,
+          opts.reason ?? null,
+          opts.notes ?? null,
+          opts.movement_date ?? null,
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        group: { ...group, count: newCount },
+        movement: movements[0],
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Atomic: move `count` animals from sourceGroupId → destGroupId in a single transaction.
+   * Used for 'transferencia' (between plots) and 'recategorizacion' (same plot, different category).
+   * Locks rows in consistent ID order to avoid deadlocks.
+   */
+  async applyTransferMovement(
+    userId: number,
+    movementType: 'transferencia' | 'recategorizacion',
+    sourceGroupId: string,
+    destGroupId: string,
+    count: number,
+    opts: {
+      avg_weight_kg?: number | null;
+      reason?: string | null;
+      notes?: string | null;
+      movement_date?: string | null;
+    } = {}
+  ): Promise<{
+    sourceGroup: LivestockGroupRow;
+    destGroup: LivestockGroupRow;
+    movement: LivestockMovementRow;
+  }> {
+    if (count <= 0) throw new Error('La cantidad debe ser mayor a 0');
+    if (sourceGroupId === destGroupId) {
+      throw new Error('El grupo origen y destino no pueden ser el mismo');
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Lock both groups in a consistent order (smaller UUID first) to avoid deadlocks
+      const [firstId, secondId] = sourceGroupId < destGroupId
+        ? [sourceGroupId, destGroupId]
+        : [destGroupId, sourceGroupId];
+
+      const { rows: lockedRows } = await client.query(
+        `SELECT * FROM livestock_groups
+         WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
+         ORDER BY id
+         FOR UPDATE`,
+        [[firstId, secondId]]
+      );
+
+      if (lockedRows.length !== 2) {
+        throw new Error('Grupo origen o destino no encontrado');
+      }
+
+      const byId = new Map<string, LivestockGroupRow>();
+      for (const row of lockedRows) byId.set(row.id, row);
+      const sourceGroup = byId.get(sourceGroupId)!;
+      const destGroup = byId.get(destGroupId)!;
+
+      const newSourceCount = Number(sourceGroup.count) - count;
+      if (newSourceCount < 0) {
+        throw new Error(`Cantidad insuficiente en origen. Disponible: ${sourceGroup.count} animales`);
+      }
+      const newDestCount = Number(destGroup.count) + count;
+
+      await client.query(
+        `UPDATE livestock_groups SET count = $1, updated_at = NOW() WHERE id = $2`,
+        [newSourceCount, sourceGroupId]
+      );
+      await client.query(
+        `UPDATE livestock_groups SET count = $1, updated_at = NOW() WHERE id = $2`,
+        [newDestCount, destGroupId]
+      );
+
+      const { rows: movements } = await client.query(
+        `INSERT INTO livestock_movements
+           (user_id, movement_type, source_group_id, dest_group_id, count,
+            avg_weight_kg, reason, notes, movement_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::date, CURRENT_DATE))
+         RETURNING *`,
+        [
+          userId,
+          movementType,
+          sourceGroupId,
+          destGroupId,
+          count,
+          opts.avg_weight_kg ?? null,
+          opts.reason ?? null,
+          opts.notes ?? null,
+          opts.movement_date ?? null,
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        sourceGroup: { ...sourceGroup, count: newSourceCount },
+        destGroup: { ...destGroup, count: newDestCount },
+        movement: movements[0],
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+}

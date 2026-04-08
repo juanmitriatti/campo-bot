@@ -41,6 +41,10 @@ const KNOWN_INTENTS = new Set([
   'edit_specific', 'edit_last',
   // Prompts
   'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',
+  // Livestock (hacienda)
+  'add_livestock', 'remove_livestock', 'transfer_livestock',
+  'record_livestock_death', 'record_livestock_birth',
+  'list_livestock', 'livestock_history',
 ]);
 
 export interface LlmResponse {

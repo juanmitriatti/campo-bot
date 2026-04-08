@@ -4,6 +4,7 @@ import { SystemHandler } from './system/system.handler.js';
 import { SharingHandler } from './sharing/sharing.handler.js';
 import { StockHandler } from './stock/stock.handler.js';
 import { DocumentHandler } from './documents/document.handler.js';
+import { LivestockHandler } from './livestock/livestock.handler.js';
 import { FeatureGate } from './billing/feature-gate.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../types/index.js';
 
@@ -47,6 +48,12 @@ const DOCUMENT_COMMANDS = new Set([
   'list_documents', 'link_document_to_expense',
 ]);
 
+const LIVESTOCK_COMMANDS = new Set([
+  'add_livestock', 'remove_livestock', 'transfer_livestock',
+  'record_livestock_death', 'record_livestock_birth',
+  'list_livestock', 'livestock_history',
+]);
+
 const SYSTEM_COMMANDS = new Set([
   'greeting', 'help', 'thanks', 'ack', 'dollar',
   'menu', 'show_expense_menu', 'show_income_menu', 'show_agro_menu',
@@ -64,6 +71,7 @@ export class DomainRouter {
   private sharingHandler: SharingHandler;
   private stockHandler: StockHandler;
   private documentHandler: DocumentHandler;
+  private livestockHandler: LivestockHandler;
 
   constructor(
     private financialHandler: FinancialHandler,
@@ -73,11 +81,13 @@ export class DomainRouter {
     sharingHandler?: SharingHandler,
     stockHandler?: StockHandler,
     documentHandler?: DocumentHandler,
+    livestockHandler?: LivestockHandler,
   ) {
     this.featureGate = featureGate ?? new FeatureGate();
     this.sharingHandler = sharingHandler ?? new SharingHandler();
     this.stockHandler = stockHandler ?? new StockHandler();
     this.documentHandler = documentHandler ?? new DocumentHandler();
+    this.livestockHandler = livestockHandler ?? new LivestockHandler();
   }
 
   async routeCommand(
@@ -124,6 +134,10 @@ export class DomainRouter {
 
     if (DOCUMENT_COMMANDS.has(command)) {
       return this.documentHandler.handleCommand(cmd, userId, user, settings);
+    }
+
+    if (LIVESTOCK_COMMANDS.has(command)) {
+      return this.livestockHandler.handleCommand(cmd, userId, user, settings);
     }
 
     return null;

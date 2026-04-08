@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth.middleware.js';
 import type { Request, Response } from 'express';
 import { logError } from '../services/error-logger.js';
 import { pool } from '../config/db.js';
+import { asUserId } from '../types/index.js';
 
 const router = Router();
 const authService = new AuthService();
@@ -337,6 +338,151 @@ router.patch('/stock/:id', requireAuth, async (req: Request, res: Response) => {
     );
     if (result.rows.length === 0) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
     res.json(result.rows[0]);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Livestock routes ---
+
+router.get('/livestock', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+
+    const filters: { fieldId?: number; plotId?: number; category?: string } = {};
+    const fieldId = parseInt(String(req.query.fieldId), 10);
+    if (!isNaN(fieldId)) filters.fieldId = fieldId;
+    const plotId = parseInt(String(req.query.plotId), 10);
+    if (!isNaN(plotId)) filters.plotId = plotId;
+    if (req.query.category && typeof req.query.category === 'string') filters.category = req.query.category;
+
+    const { LivestockRepository } = await import('../domain/livestock/livestock.repository.js');
+    const repo = new LivestockRepository();
+    const groups = await repo.listGroups(req.auth!.userId, filters as {
+      fieldId?: number; plotId?: number; category?: import('../domain/livestock/livestock.types.js').LivestockCategory;
+    });
+    const total = await repo.countTotal(req.auth!.userId, { fieldId: filters.fieldId, plotId: filters.plotId });
+
+    const offset = (page - 1) * limit;
+    const pageItems = groups.slice(offset, offset + limit);
+
+    res.json({
+      items: pageItems,
+      totalAnimals: total,
+      totalGroups: groups.length,
+      page,
+      limit,
+      totalPages: Math.ceil(groups.length / limit),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.get('/livestock/movements', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+    const offset = (page - 1) * limit;
+
+    const opts: {
+      fieldId?: number;
+      plotId?: number;
+      category?: import('../domain/livestock/livestock.types.js').LivestockCategory;
+      movementType?: import('../domain/livestock/livestock.types.js').LivestockMovementType;
+      desde?: string;
+      hasta?: string;
+      limit: number;
+      offset: number;
+    } = { limit, offset };
+
+    const fieldId = parseInt(String(req.query.fieldId), 10);
+    if (!isNaN(fieldId)) opts.fieldId = fieldId;
+    const plotId = parseInt(String(req.query.plotId), 10);
+    if (!isNaN(plotId)) opts.plotId = plotId;
+    if (req.query.category && typeof req.query.category === 'string') {
+      opts.category = req.query.category as import('../domain/livestock/livestock.types.js').LivestockCategory;
+    }
+    if (req.query.movementType && typeof req.query.movementType === 'string') {
+      opts.movementType = req.query.movementType as import('../domain/livestock/livestock.types.js').LivestockMovementType;
+    }
+    if (req.query.desde && typeof req.query.desde === 'string') opts.desde = req.query.desde;
+    if (req.query.hasta && typeof req.query.hasta === 'string') opts.hasta = req.query.hasta;
+
+    const { LivestockRepository } = await import('../domain/livestock/livestock.repository.js');
+    const repo = new LivestockRepository();
+    const { rows, total } = await repo.listMovements(req.auth!.userId, opts);
+
+    res.json({
+      items: rows,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.get('/livestock/:id/movements', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    if (!id) { res.status(400).json({ error: 'ID inválido' }); return; }
+
+    const { LivestockRepository } = await import('../domain/livestock/livestock.repository.js');
+    const repo = new LivestockRepository();
+
+    const group = await repo.getGroupById(id);
+    if (!group) { res.status(404).json({ error: 'Grupo de hacienda no encontrado' }); return; }
+
+    // Access control: group must belong to an accessible field
+    const { FieldSharingService } = await import('../domain/sharing/field-sharing.service.js');
+    const sharing = new FieldSharingService();
+    const canAccess = await sharing.isFieldAccessible(asUserId(req.auth!.userId), group.field_id);
+    if (!canAccess) { res.status(403).json({ error: 'Sin acceso a este grupo' }); return; }
+
+    const movements = await repo.getMovementsForGroup(id, 50);
+    res.json({ group, movements });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.get('/livestock/filters', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const fields = await observationService.getUserFieldsWithPlots(req.auth!.userId);
+    res.json({
+      fields,
+      categories: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'],
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.patch('/livestock/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    if (!id) { res.status(400).json({ error: 'ID inválido' }); return; }
+
+    const { LivestockRepository } = await import('../domain/livestock/livestock.repository.js');
+    const repo = new LivestockRepository();
+
+    const group = await repo.getGroupById(id);
+    if (!group) { res.status(404).json({ error: 'Grupo no encontrado' }); return; }
+
+    // Access control
+    const { FieldSharingService } = await import('../domain/sharing/field-sharing.service.js');
+    const sharing = new FieldSharingService();
+    const canAccess = await sharing.isFieldAccessible(asUserId(req.auth!.userId), group.field_id);
+    if (!canAccess) { res.status(403).json({ error: 'Sin acceso a este grupo' }); return; }
+
+    const { breed, avg_weight_kg, notes } = req.body;
+    await repo.updateGroupMetadata(id, { breed, avg_weight_kg, notes });
+    const updated = await repo.getGroupById(id);
+    res.json(updated);
   } catch (err) {
     handleError(err, res);
   }
