@@ -39,6 +39,20 @@ const QUESTION_STARTS = /^(?:que|qué|cuando|cuándo|donde|dónde|como|cómo|cua
 const FOLLOWUP_STARTS = /^(?:y\s|del\s|eso|ese|esa|ah[ií])/i;
 const STRONG_OBS_SIGNALS = /(?:observaci[oó]n|hay\s|se\s+detect|se\s+observ|presencia\s+de|se\s+ve|plaga|maleza|hongo|roya|helada|granizo|chinche|oruga|gramilla|amarill|seco|seca|sequ[ií]a|encharcam|mancha|yuyo|cardo|isoca|pulgon|pulg[oó]n|trips|bicho|clorosis|deficiencia|carencia)/i;
 
+// Livestock guard: if the text looks like a livestock operation
+// (category + quantity), reject as observation — the agent should have
+// classified this as a livestock tool instead
+const LIVESTOCK_CATEGORY_WORDS = /\b(?:vacas?|vaquillonas?|vaquillas?|terneros?|terneras?|novillos?|novillitos?|toros?|toritos?|bueyes?|hacienda|ganado)\b/i;
+const LIVESTOCK_VERB_HINTS = /\b(?:agregar|agregu[eé]|a[nñ]adir|a[nñ]ad[ií]|meter|met[ií]|cargar|cargu[eé]|sumar|sum[eé]|entrar|entraron|vender|vend[ií]|sacar|saqu[eé]|salieron|mover|mov[eé]|pasar|pas[eé]|transferir|transfer[ií]|morir|muri[oó]|murieron|nacer|naci[oó]|nacieron|parir|parieron)\b/i;
+
+function isLikelyLivestockMessage(text: string): boolean {
+  const trimmed = text.trim();
+  if (!LIVESTOCK_CATEGORY_WORDS.test(trimmed)) return false;
+  // Has a numeric quantity (e.g. "20 vacas") OR a livestock verb hint
+  const hasNumber = /\d/.test(trimmed);
+  return hasNumber || LIVESTOCK_VERB_HINTS.test(trimmed);
+}
+
 function isLikelyQuestionOrFollowUp(text: string, prefixDetected?: boolean): boolean {
   // If observation prefix was explicitly detected, NEVER block
   if (prefixDetected) return false;
@@ -47,6 +61,9 @@ function isLikelyQuestionOrFollowUp(text: string, prefixDetected?: boolean): boo
 
   // Question marks → ALWAYS block
   if (trimmed.includes('?') || trimmed.includes('¿')) return true;
+
+  // Livestock messages are never observations — block
+  if (isLikelyLivestockMessage(trimmed)) return true;
 
   // Strong observation signals → allow persistence (even short messages)
   if (STRONG_OBS_SIGNALS.test(trimmed)) return false;
@@ -1176,6 +1193,19 @@ export class AgronomyHandler {
         // Safety guard: don't persist questions or follow-ups as observations
         // Bypassed when observation prefix was explicitly detected
         if (isLikelyQuestionOrFollowUp(obsText, prefixDetected)) {
+          // Livestock-looking text: point user at livestock commands directly
+          if (!prefixDetected && isLikelyLivestockMessage(obsText)) {
+            return {
+              messages: [
+                '🐄 ¿Querías registrar hacienda?\n\n' +
+                'Ejemplos:\n' +
+                '👉 *agregué 20 vacas al lote A1*\n' +
+                '👉 *vendí 5 novillos del lote 1B*\n' +
+                '👉 *cuántos animales tengo*',
+              ],
+              suggestionKey: 'default_menu',
+            };
+          }
           return {
             messages: [
               'No entendí si querías registrar una observación o consultar algo.\n\n' +
