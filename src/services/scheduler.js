@@ -4,9 +4,11 @@ import { sendMessage } from "./whatsapp.js";
 import { getUsersWithRainAlerts, getGlobalSettings } from "./expenses.js";
 import { getForecast } from "./weather.js";
 import { sendAlertWithRetry, sendAlertWithRetryMultiChannel, isDuplicate, recordDeduped } from "./alert.service.js";
-import { getSettingNumber } from "./settings.service.js";
+import { getSettingNumber, getSettingBool } from "./settings.service.js";
 import { cleanupOldReports } from "./agro-report.js";
 import { logError } from "./error-logger.js";
+import { ConversationStateRepository } from "../middleware/conversation-state.repository.js";
+import { buildTimeoutMessage, buildHalflifeMessage } from "../middleware/conversation-engine.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -682,6 +684,82 @@ async function dailyCleanupTick() {
 }
 
 // ---------------------------------------------------------------------------
+// Flow Reminder Tick (every minute)
+// ---------------------------------------------------------------------------
+// - Sends "¿seguís ahí?" half-life warnings for active flows past halflife
+// - Sends "cerré el formulario" notifications for expired flows (catches users
+//   who never came back, complementing the inline notification in controllers)
+// ---------------------------------------------------------------------------
+
+const conversationStateRepoForReminder = new ConversationStateRepository();
+
+async function flowReminderTick() {
+  try {
+    const timeoutNotifyEnabled = (await getSettingBool('FLOW_TIMEOUT_NOTIFICATION_ENABLED')) ?? true;
+    const halflifeEnabled = (await getSettingBool('FLOW_HALFLIFE_WARNING_ENABLED')) ?? true;
+    const halflifeMs = (await getSettingNumber('FLOW_HALFLIFE_WARNING_MS')) ?? 300000;
+
+    if (!timeoutNotifyEnabled && !halflifeEnabled) return;
+
+    const activeFlows = await conversationStateRepoForReminder.findActiveFlowsForReminder();
+    if (activeFlows.length === 0) return;
+
+    const now = Date.now();
+
+    for (const flow of activeFlows) {
+      const expiresAtMs = flow.flowExpiresAt ? new Date(flow.flowExpiresAt).getTime() : null;
+      const startedAtMs = flow.flowStartedAt ? new Date(flow.flowStartedAt).getTime() : null;
+      if (!startedAtMs) continue;
+
+      // 1. Expired flow → send timeout notification and clear
+      if (expiresAtMs && now >= expiresAtMs) {
+        if (!timeoutNotifyEnabled) {
+          await conversationStateRepoForReminder.clearFlow(flow.userId);
+          continue;
+        }
+        try {
+          await sendAlertWithRetryMultiChannel(
+            flow.userId,
+            { phone: flow.phone, telegramId: flow.telegramId },
+            buildTimeoutMessage(flow.flowState),
+            'flow_timeout',
+            { dedupKey: `flow_timeout_${flow.userId}_${startedAtMs}` }
+          );
+          console.log(`[flow-reminder] Timeout notice sent to user ${flow.userId} (flow: ${flow.flowState})`);
+        } catch (err) {
+          console.error(`[flow-reminder] Failed to send timeout notice to user ${flow.userId}:`, err.message);
+        }
+        await conversationStateRepoForReminder.clearFlow(flow.userId);
+        continue;
+      }
+
+      // 2. Half-life reached → send "still there?" warning (once per flow)
+      if (!halflifeEnabled) continue;
+      if (flow.halflifeNotifiedAt) continue; // Already notified
+      const halflifeAtMs = startedAtMs + halflifeMs;
+      if (now < halflifeAtMs) continue; // Too early
+
+      try {
+        await sendAlertWithRetryMultiChannel(
+          flow.userId,
+          { phone: flow.phone, telegramId: flow.telegramId },
+          buildHalflifeMessage(flow.flowState),
+          'flow_halflife',
+          { dedupKey: `flow_halflife_${flow.userId}_${startedAtMs}` }
+        );
+        await conversationStateRepoForReminder.markHalflifeNotified(flow.userId);
+        console.log(`[flow-reminder] Halflife warning sent to user ${flow.userId} (flow: ${flow.flowState})`);
+      } catch (err) {
+        console.error(`[flow-reminder] Failed to send halflife warning to user ${flow.userId}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[flow-reminder] Unexpected error:', err);
+    logError('scheduler', 'FLOW_REMINDER_ERROR', err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -706,5 +784,10 @@ export function startScheduler() {
     dailyCleanupTick();
   });
 
-  console.log("[scheduler] Cron jobs started — weekly summary + daily weather alerts + proactive alerts (incl. low stock) + daily cleanup (hourly tick)");
+  // Flow reminder tick — every minute, checks active flows for halflife warning + timeout notification
+  cron.schedule("* * * * *", () => {
+    flowReminderTick();
+  });
+
+  console.log("[scheduler] Cron jobs started — weekly summary + daily weather alerts + proactive alerts (incl. low stock) + daily cleanup + flow reminders");
 }

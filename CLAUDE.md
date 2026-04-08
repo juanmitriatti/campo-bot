@@ -79,7 +79,7 @@ When the AI Agent returns multiple tool calls for a single message (e.g., "Sembr
 - **`services/telegram.ts`** — Telegram Bot API client (sendMessage, sendButtons, sendList, sendDocument, downloadFile).
 - **`services/weather.js`** — OpenWeather API integration for forecasts and rain alerts.
 - **`services/alert.service.js`** — Multi-channel alert delivery (Telegram-first, WhatsApp fallback). Deduplication, retry with backoff, `alert_history` DB tracking. Extracts `telegramId` from `tg_` placeholder phone numbers.
-- **`services/scheduler.js`** — node-cron jobs: weekly summaries, daily weather alerts (half-hour precision via HH:MM), proactive reminders (missing hectares, low stock alerts at 8AM), Argentina timezone. Weather alerts show campo name or "tu ubicación" per city, with within-message dedup for same-city overlap.
+- **`services/scheduler.js`** — node-cron jobs: weekly summaries, daily weather alerts (half-hour precision via HH:MM), proactive reminders (missing hectares, low stock alerts at 8AM), flow reminder tick (every minute: sends timeout + half-life notifications to stale conversation flows), Argentina timezone. Weather alerts show campo name or "tu ubicación" per city, with within-message dedup for same-city overlap.
 - **`services/observations.js`** — Observation CRUD with 4-layer dedup, normalization, financial guard.
 - **`services/settings.service.js`** — Global settings definitions with descriptions, grouped by category (ai, bot, audio, limits, agronomy, system).
 - **`services/activity-dictionary.service.ts`** — Cached CRUD for `activity_dictionary` table (5-min TTL). Provides activity type → synonym mapping for dynamic AI agent prompt generation. Admin-editable via dashboard Diccionario tab.
@@ -146,8 +146,8 @@ JWT-based authentication with bcrypt passwords and refresh token rotation.
 
 Interruptible conversation flows for multi-step data entry (expense, income, rainfall, field, activity).
 
-- **`conversation-engine.ts`** — FSM: startFlow, processFlowMessage, clearFlow, goBack, skipStep. Bug fix: `skipIf` check now runs in `executeConfirm` to properly skip steps with pre-filled data
-- **`conversation-state.repository.ts`** — DB-persisted flow state
+- **`conversation-engine.ts`** — FSM: startFlow, processFlowMessage, clearFlow, goBack, skipStep. Bug fix: `skipIf` check now runs in `executeConfirm` to properly skip steps with pre-filled data. Exports `buildTimeoutMessage(flowState)`, `buildHalflifeMessage(flowState)`, `getFlowLabel(flowState)` helpers used by both controllers and scheduler
+- **`conversation-state.repository.ts`** — DB-persisted flow state. Includes `findActiveFlowsForReminder()` (JOINs users for alert routing) and `markHalflifeNotified(userId)` for the flow reminder scheduler
 - **`flows/`** — field_flow (3 location options: city/map/share via `locationMethod` step + `setPendingFieldLocation` sideEffect), expense_flow, income_flow, rainfall_flow, activity_flow (activity_flow uses dynamic `interactiveAsync` for plot selection)
 - **Flow callback routing** — `flow_field_loc_*` callbacks (location method buttons) are handled BEFORE the generic `flow_field_*` prefix handler in all 3 controllers, otherwise the prefix strip turns `flow_field_loc_map` into `"loc map"` which fails validation
 - Safe interruption commands execute mid-flow without canceling; financial intents cancel the active flow
@@ -216,6 +216,29 @@ Full inventory management for agricultural inputs (insumos) and grain (granos). 
 - **Alerts**: Daily 8AM low stock check via `lowStockAlertTick()` in scheduler, multi-channel delivery with 24h dedup
 - **Dashboard**: Stock tab with `StockTable`, `StockMovementHistory` modal, `StockEditModal`. Expense table shows type badge + product column + type filter.
 - **API endpoints**: `GET /api/auth/stock`, `GET /api/auth/stock/:id/movements`, `GET /api/auth/stock/filters`, `PATCH /api/auth/stock/:id`
+
+## Flow Reminders & Timeout Notifications
+
+Conversation flows (expense_flow, income_flow, field_flow, etc.) are interruptible but had silent expiry — users got no feedback when a flow timed out. Two safety nets fix that:
+
+- **Who decides timeout?** DB setting `FLOW_TIMEOUT_MS` (default 600000 = 10 min) in `system_settings`, editable from admin dashboard → `bot` group. Falls back to `process.env.FLOW_TIMEOUT_MS`, then to `DEFAULT_FLOW_TIMEOUT_MS` in `conversation-engine.ts`. Cached 5 min, refreshed on each `startFlow()` call.
+- **Inline timeout notification (lazy path)** — On incoming message, controllers (whatsapp, telegram, test-bot) detect `isExpired(flowCtx)` → send "⏰ Cerré el gasto anterior por inactividad…" and bail early so the user's next message starts fresh. Gated by `FLOW_TIMEOUT_NOTIFICATION_ENABLED`.
+- **Scheduler tick (proactive path)** — `flowReminderTick()` runs every minute (cron `* * * * *`). For each active non-idle flow:
+  1. If `flow_expires_at < now` → send timeout message via `sendAlertWithRetryMultiChannel` (Telegram-first) + `clearFlow()`. Handles users who never come back
+  2. If `started_at + FLOW_HALFLIFE_WARNING_MS < now` and not yet notified → send "👋 ¿Seguís ahí? Tu gasto quedó a medias…" and mark notified via `markHalflifeNotified()`
+- **Migration 052** — `flow_halflife_notified_at TIMESTAMP` on `conversation_state` + partial index on `flow_expires_at WHERE flow_state != 'idle'` for efficient tick queries
+- **`ConversationStateRepository`** — `findActiveFlowsForReminder()` JOINs with users for contact info (phone + telegram_id); `markHalflifeNotified(userId)`; `clearFlow()` also resets the halflife flag so reused flows re-arm the warning
+- **Message builders** in `conversation-engine.ts`: `buildTimeoutMessage(flowState)`, `buildHalflifeMessage(flowState)`, `getFlowLabel(flowState)` (e.g., `expense_flow` → 'gasto')
+- **Dedupkeys** `flow_timeout_${userId}_${startedAtMs}` and `flow_halflife_${userId}_${startedAtMs}` prevent duplicates on retries
+
+### Flow Reminder Settings (configurable via admin dashboard)
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `FLOW_TIMEOUT_MS` | number | `600000` | Flow timeout in ms. Examples: 300000=5min, 600000=10min, 900000=15min |
+| `FLOW_TIMEOUT_NOTIFICATION_ENABLED` | bool | `true` | Send "flow expired" message when user interacts after timeout |
+| `FLOW_HALFLIFE_WARNING_ENABLED` | bool | `true` | Send proactive "¿seguís ahí?" ping at half the timeout |
+| `FLOW_HALFLIFE_WARNING_MS` | number | `300000` | Time after flow start before half-life reminder fires (ms) |
 
 ## Multi-Channel Alerts
 

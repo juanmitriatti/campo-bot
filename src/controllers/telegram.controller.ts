@@ -23,11 +23,11 @@ import { handlePendingPlotArea, storePlotAreaSideEffects } from '../middleware/p
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
-import { getSettingNumber } from '../services/settings.service.js';
+import { getSettingNumber, getSettingBool } from '../services/settings.service.js';
 import { pool } from '../config/db.js';
 import { logError } from '../services/error-logger.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
-import { ConversationEngine } from '../middleware/conversation-engine.js';
+import { ConversationEngine, buildTimeoutMessage } from '../middleware/conversation-engine.js';
 import { ConversationLogger } from '../middleware/conversation-logger.js';
 import { FlowRegistry } from '../middleware/flows/flow-registry.js';
 import { expenseFlow } from '../middleware/flows/expense.flow.js';
@@ -1212,7 +1212,13 @@ async function processTextMessage(
 
   if (flowCtx.state !== 'idle') {
     if (conversationEngine.isExpired(flowCtx)) {
+      const notifyEnabled = (await getSettingBool('FLOW_TIMEOUT_NOTIFICATION_ENABLED')) ?? true;
+      const expiredFlowState = flowCtx.originFlow ?? flowCtx.state;
       await conversationEngine.clearFlow(userId);
+      if (notifyEnabled) {
+        return [{ type: 'text', text: buildTimeoutMessage(expiredFlowState) }];
+      }
+      // Notification disabled — fall through to normal processing
     } else {
       const guardResult = await conversationEngine.validateFlowState(userId, flowCtx);
       if (guardResult) {

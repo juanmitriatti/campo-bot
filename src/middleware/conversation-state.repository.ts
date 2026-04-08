@@ -1,6 +1,17 @@
 import { query, queryOne } from '../config/database.js';
 import type { FlowContext, FlowState, UserId } from '../types/index.js';
 
+export interface ActiveFlowRow {
+  userId: UserId;
+  phone: string | null;
+  telegramId: string | null;
+  flowState: FlowState;
+  flowStep: number;
+  flowStartedAt: Date | null;
+  flowExpiresAt: Date | null;
+  halflifeNotifiedAt: Date | null;
+}
+
 const IDLE_CONTEXT: FlowContext = {
   state: 'idle',
   step: 0,
@@ -65,8 +76,53 @@ export class ConversationStateRepository {
     await query(
       `UPDATE conversation_state
        SET flow_state = 'idle', flow_step = 0, flow_data = '{}',
-           flow_started_at = NULL, flow_expires_at = NULL, updated_at = NOW()
+           flow_started_at = NULL, flow_expires_at = NULL,
+           flow_halflife_notified_at = NULL, updated_at = NOW()
        WHERE user_id = $1`,
+      [userId],
+    );
+  }
+
+  /**
+   * Find all active (non-idle) flows joined with user contact info.
+   * Used by the scheduler to send half-life reminders and timeout notifications.
+   */
+  async findActiveFlowsForReminder(): Promise<ActiveFlowRow[]> {
+    const rows = await query<{
+      user_id: number;
+      phone_number: string | null;
+      telegram_id: string | null;
+      flow_state: string;
+      flow_step: number;
+      flow_started_at: Date | null;
+      flow_expires_at: Date | null;
+      flow_halflife_notified_at: Date | null;
+    }>(
+      `SELECT cs.user_id, u.phone_number, u.telegram_id,
+              cs.flow_state, cs.flow_step,
+              cs.flow_started_at, cs.flow_expires_at, cs.flow_halflife_notified_at
+         FROM conversation_state cs
+         JOIN users u ON u.id = cs.user_id
+        WHERE cs.flow_state != 'idle'
+          AND cs.flow_started_at IS NOT NULL`,
+    );
+    return rows.map((r) => ({
+      userId: r.user_id as UserId,
+      phone: r.phone_number,
+      telegramId: r.telegram_id,
+      flowState: r.flow_state as FlowState,
+      flowStep: r.flow_step,
+      flowStartedAt: r.flow_started_at,
+      flowExpiresAt: r.flow_expires_at,
+      halflifeNotifiedAt: r.flow_halflife_notified_at,
+    }));
+  }
+
+  async markHalflifeNotified(userId: UserId): Promise<void> {
+    await query(
+      `UPDATE conversation_state
+          SET flow_halflife_notified_at = NOW(), updated_at = NOW()
+        WHERE user_id = $1`,
       [userId],
     );
   }

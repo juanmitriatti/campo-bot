@@ -27,11 +27,11 @@ import { FeatureGate } from '../domain/billing/feature-gate.js';
 import { TranscriptionService, AudioTooLongError } from '../services/audio/transcription.service.js';
 import { getAudioConfig } from '../services/audio/audio.types.js';
 import { saveAudioTranscriptionLog, getHourlyAudioCount } from '../services/expenses.js';
-import { getSettingNumber } from '../services/settings.service.js';
+import { getSettingNumber, getSettingBool } from '../services/settings.service.js';
 import { pool } from '../config/db.js';
 import { logError, logWarning } from '../services/error-logger.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
-import { ConversationEngine } from '../middleware/conversation-engine.js';
+import { ConversationEngine, buildTimeoutMessage } from '../middleware/conversation-engine.js';
 import { ConversationLogger } from '../middleware/conversation-logger.js';
 import { FlowRegistry } from '../middleware/flows/flow-registry.js';
 import { expenseFlow } from '../middleware/flows/expense.flow.js';
@@ -1257,8 +1257,15 @@ router.post('/', async (req: Request, res: Response) => {
         const durationMs = flowCtx.startedAt ? Date.now() - new Date(flowCtx.startedAt).getTime() : undefined;
         conversationObserver.logFlowAbandoned(userId, flowCtx.state, flowCtx.step, 'expired', { durationMs, filledFields: Object.keys(flowCtx.data) });
         conversationLogger.logError(userId, 'flow_expired', 'Flow expired, clearing state', text, flowCtx.state, flowCtx.step).catch(() => {});
+        const notifyEnabled = (await getSettingBool('FLOW_TIMEOUT_NOTIFICATION_ENABLED')) ?? true;
+        const expiredFlowState = flowCtx.originFlow ?? flowCtx.state;
         await conversationEngine.clearFlow(userId);
-        // Fall through to normal processing
+        if (notifyEnabled) {
+          await sendMessage(phone, buildTimeoutMessage(expiredFlowState));
+          res.sendStatus(200);
+          return;
+        }
+        // Notification disabled — fall through to normal processing
       } else {
         // FlowGuard: validate state consistency
         const guardResult = await conversationEngine.validateFlowState(userId, flowCtx);

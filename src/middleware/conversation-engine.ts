@@ -20,6 +20,30 @@ async function refreshFlowSettings(): Promise<void> {
   MAX_STEP_FAILURES = (await getSettingNumber('FLOW_MAX_STEP_FAILURES')) ?? DEFAULT_MAX_STEP_FAILURES;
 }
 
+// --- Spanish labels for user-facing notifications ---
+const FLOW_LABELS: Record<string, string> = {
+  expense_flow: 'gasto',
+  income_flow: 'ingreso',
+  field_flow: 'campo',
+  activity_flow: 'actividad',
+  rainfall_flow: 'lluvia',
+  confirming: 'pendiente',
+};
+
+export function getFlowLabel(flowState: string): string {
+  return FLOW_LABELS[flowState] ?? 'formulario';
+}
+
+export function buildTimeoutMessage(flowState: string): string {
+  const label = getFlowLabel(flowState);
+  return `⏰ Cerré el ${label} anterior por inactividad. Si querés seguir, escribime de nuevo.`;
+}
+
+export function buildHalflifeMessage(flowState: string): string {
+  const label = getFlowLabel(flowState);
+  return `👋 ¿Seguís ahí? Tu ${label} quedó a medias. Respondé o escribí *cancelar* para salir.`;
+}
+
 export interface FlowMessageResult {
   response: HandlerResponse;
   nextContext: FlowContext | null; // null = clear flow
