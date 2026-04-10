@@ -274,6 +274,33 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // FIELD / PLOT MANAGEMENT
   // ========================
   {
+    name: 'list_fields',
+    description: 'Listar campos del usuario. "mis campos", "ver campos", "qué campos tengo".',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_plots',
+    description: 'Listar lotes. "mis lotes", "qué lotes tiene el campo", "lotes del campo X", "cuántos lotes tengo".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: { type: 'string', description: 'Nombre del campo para filtrar lotes. Omitir para ver todos.' },
+      },
+    },
+  },
+  {
+    name: 'field_info',
+    description: 'Info detallada de un campo o lote. "info campo X", "detalle lote A1", "estado del campo Norte".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        entityKeyword: { type: 'string', enum: ['campo', 'lote'], description: 'Si se pregunta por campo o lote.' },
+        fieldName: { type: 'string', description: 'Nombre del campo o lote.' },
+      },
+      required: ['fieldName'],
+    },
+  },
+  {
     name: 'add_field',
     description: 'Crear campo nuevo. "agregar campo X", "crear campo X en Y".',
     input_schema: {

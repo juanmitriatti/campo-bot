@@ -262,6 +262,7 @@ export class AgentResponseMapper {
 
     // Map field/plot names (tool schema uses 'field'/'plot', handlers expect 'fieldName'/'plotName')
     if (input.field != null) cmd.fieldName = input.field;
+    if (input.fieldName != null) cmd.fieldName = input.fieldName;
     if (input.plot != null) cmd.plotName = input.plot;
     if (input.plotName != null) cmd.plotName = input.plotName;
     if (input.plotNames != null) cmd.plotNames = input.plotNames;
@@ -269,6 +270,7 @@ export class AgentResponseMapper {
     if (input.hectares != null) cmd.hectares = input.hectares;
     if (input.oldName != null) cmd.oldName = input.oldName;
     if (input.newName != null) cmd.newName = input.newName;
+    if (input.entityKeyword != null) cmd.entityKeyword = input.entityKeyword;
 
     // Activity fields
     if (input.product != null) cmd.product = input.product;

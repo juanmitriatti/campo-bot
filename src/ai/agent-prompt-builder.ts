@@ -86,6 +86,7 @@ ${this.buildActivityLines(dictionary)}
 - "gastos últimos 30 días"/"gastos de enero a marzo"→financial_report con days o desde/hasta
 - financial_report: siempre convertir períodos a desde/hasta YYYY-MM-DD. "este año"→period:year. "último mes"→days:30. "reporte semanal"→period:week. "resultado mensual"→sin params (default month)
 - generate_agro_report: igual criterio que financial_report para rangos. "reporte agro de enero a marzo"→desde/hasta YYYY-MM-DD. "reporte agro última semana"→desde/hasta. "reporte agro" sin período→sin params (default: semana actual)
+- LISTADO: "mis campos"/"ver campos"/"qué campos tengo"→list_fields. "mis lotes"/"qué lotes tiene el campo"/"lotes del campo X"/"cuántos lotes"→list_plots. "info campo X"/"detalle lote A1"/"estado del campo"→field_info. NUNCA usar query_plot_history para listar lotes/campos
 - Consulta vaga SIN lote/campo(está lindo/viene bien/cómo va todo)→texto, NO herramienta
 - "compartir campo X"→share_field (genera código de invitación). "unirme/aceptar ABC123"→accept_invite. "quitar a Juan/+549... de campo X"→remove_field_member. "miembros campo X"/"quién tiene acceso"→list_field_members
 - STOCK: "cargué/entraron/recibí+producto+cantidad"→add_stock. "usé/saqué/gasté+producto+cantidad"(sin monto $)→remove_stock. "tengo X de Y"(inventario)→adjust_stock. "movimientos de X"→stock_history. "stock mínimo"→set_min_stock

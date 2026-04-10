@@ -293,6 +293,15 @@ describe("parseCommand", () => {
     it("que lotes tiene el campo norte → list_plots", () => {
       expect(parseCommand("que lotes tiene el campo norte")).toMatchObject({ command: "list_plots", fieldName: "norte" });
     });
+    it("q lotes tiene el campo → list_plots (abbreviation, no field name)", () => {
+      expect(parseCommand("q lotes tiene el campo")).toMatchObject({ command: "list_plots" });
+    });
+    it("q lotes tiene el campo norte → list_plots (abbreviation with field)", () => {
+      expect(parseCommand("q lotes tiene el campo norte")).toMatchObject({ command: "list_plots", fieldName: "norte" });
+    });
+    it("q lotes tengo → list_plots (abbreviation)", () => {
+      expect(parseCommand("q lotes tengo")).toMatchObject({ command: "list_plots" });
+    });
   });
 
   describe("add_plot", () => {
