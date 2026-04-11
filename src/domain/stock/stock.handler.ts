@@ -47,7 +47,12 @@ export class StockHandler {
       return { messages: ['No tenés depósitos registrados. Se creará uno automáticamente al cargar stock.'] };
     }
 
-    const lines = warehouses.map(w => `  📦 *${w.name}* (${w.field_name})`);
+    const productCounts = await stockService.getWarehouseProductCounts(userId);
+    const lines = warehouses.map(w => {
+      const count = productCounts.get(w.id) || 0;
+      const countLabel = count > 0 ? ` — ${count} producto${count > 1 ? 's' : ''}` : '';
+      return `  📦 *${w.name}* (${w.field_name})${countLabel}`;
+    });
     return {
       messages: [`🏭 *Depósitos*\n\n${lines.join('\n')}`],
     };
@@ -150,10 +155,14 @@ export class StockHandler {
       const it = items[0];
       const minLabel = it.min_stock != null ? `  ⚠️ Mínimo: ${it.min_stock} ${it.unit}\n` : '';
       const lowWarning = it.min_stock != null && it.current_quantity <= it.min_stock ? '  🔴 *STOCK BAJO*\n' : '';
+      const grainInfo = (it.grade || it.humidity_pct != null)
+        ? `  🌾 ${it.grade ? `Grado: ${it.grade}` : ''}${it.grade && it.humidity_pct != null ? ' | ' : ''}${it.humidity_pct != null ? `Humedad: ${it.humidity_pct}%` : ''}\n`
+        : '';
       return {
         messages: [
           `📦 *${it.name}*\n\n` +
           `  📊 Cantidad: *${it.current_quantity} ${it.unit}*\n` +
+          grainInfo +
           minLabel + lowWarning +
           `  🏭 ${it.warehouse_name || 'Principal'} (${it.field_name || ''})`,
         ],
@@ -163,7 +172,8 @@ export class StockHandler {
     // Multiple items
     const lines = items.map(it => {
       const low = it.min_stock != null && it.current_quantity <= it.min_stock ? ' 🔴' : '';
-      return `  • *${it.name}*: ${it.current_quantity} ${it.unit}${low} — ${it.warehouse_name} (${it.field_name})`;
+      const grain = it.grade ? ` [G${it.grade}${it.humidity_pct != null ? ` H${it.humidity_pct}%` : ''}]` : '';
+      return `  • *${it.name}*: ${it.current_quantity} ${it.unit}${grain}${low} — ${it.warehouse_name} (${it.field_name})`;
     });
 
     return {
@@ -189,7 +199,8 @@ export class StockHandler {
       const sign = m.movement_type === 'salida' ? '-' : m.movement_type === 'entrada' ? '+' : '=';
       const date = new Date(m.movement_date).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
       const reason = m.reason ? ` (${m.reason})` : '';
-      return `  ${emoji} ${date}: ${sign}${m.quantity} ${item.unit}${reason}`;
+      const notes = m.notes ? ` | ${m.notes}` : '';
+      return `  ${emoji} ${date}: ${sign}${m.quantity} ${item.unit}${reason}${notes}`;
     });
 
     return {

@@ -222,7 +222,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'financial_report',
-    description: 'Reporte financiero unificado. "reporte mensual", "gastos del campo X", "gastos del lote Y", "resumen semanal", "resultado del mes", "gastos últimos 30 días", "gastos en combustible este año", "ingresos de enero a marzo".',
+    description: 'Reporte financiero unificado. "reporte mensual", "gastos del campo X", "gastos del lote Y", "resumen semanal", "resultado del mes", "gastos últimos 30 días", "gastos en combustible este año", "ingresos de enero a marzo", "gastos por hectárea", "costo/ha".',
     input_schema: {
       type: 'object',
       properties: {
@@ -242,7 +242,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'generate_agro_report',
-    description: 'Generar reporte agronómico con observaciones y actividades. "reporte agro", "reporte agronómico del lote X", "estado del lote X", "cómo va el lote X", "novedades del campo", "resumen agronómico", "informe del lote". Soporta rango de fechas.',
+    description: 'Generar reporte agronómico con observaciones y actividades. "reporte agro", "reporte agronómico del lote X", "estado del lote X", "cómo va el lote X", "novedades del campo", "resumen agronómico", "informe del lote", "reporte de actividades", "qué se hizo en el campo". Soporta rango de fechas.',
     input_schema: {
       type: 'object',
       properties: {
@@ -275,12 +275,12 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // ========================
   {
     name: 'list_fields',
-    description: 'Listar campos del usuario. "mis campos", "ver campos", "qué campos tengo".',
+    description: 'Listar campos del usuario con ubicación, cantidad de lotes y hectáreas totales. "mis campos", "ver campos", "qué campos tengo".',
     input_schema: { type: 'object', properties: {} },
   },
   {
     name: 'list_plots',
-    description: 'Listar lotes. "mis lotes", "qué lotes tiene el campo", "lotes del campo X", "cuántos lotes tengo".',
+    description: 'Listar lotes con superficie en hectáreas. "mis lotes", "qué lotes tiene el campo", "lotes del campo X", "cuántos lotes tengo", "hectáreas del campo X", "has campo X", "superficie".',
     input_schema: {
       type: 'object',
       properties: {
@@ -290,7 +290,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'field_info',
-    description: 'Info detallada de un campo o lote. "info campo X", "detalle lote A1", "estado del campo Norte".',
+    description: 'Info detallada de un campo o lote: ubicación, hectáreas, gastos/ingresos del mes, lluvia, observaciones y actividades recientes. "info campo X", "detalle lote A1", "estado del campo Norte".',
     input_schema: {
       type: 'object',
       properties: {
@@ -512,7 +512,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'check_stock',
-    description: 'Consultar stock/inventario. "cuánto glifosato tengo", "inventario", "stock del campo X".',
+    description: 'Consultar stock/inventario con cantidad, depósito, stock mínimo y calidad de grano (grado/humedad). "cuánto glifosato tengo", "inventario", "stock del campo X".',
     input_schema: {
       type: 'object',
       properties: {
@@ -721,7 +721,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'list_livestock',
-    description: 'Listar inventario de hacienda. Preguntas: cuántas vacas tengo, stock de hacienda, rodeo.',
+    description: 'Listar inventario de hacienda con cantidad, raza y peso promedio por grupo. Preguntas: cuántas vacas tengo, stock de hacienda, rodeo, cuánto pesan.',
     input_schema: {
       type: 'object',
       properties: {
@@ -733,7 +733,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'livestock_history',
-    description: 'Mostrar historial de movimientos de un grupo de hacienda en un lote específico.',
+    description: 'Mostrar historial de movimientos de hacienda con fecha, cantidad, peso, precio y motivo. "historial vacas lote A1", "movimientos novillos".',
     input_schema: {
       type: 'object',
       properties: {

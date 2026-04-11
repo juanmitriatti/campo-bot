@@ -35,6 +35,10 @@ export class StockService {
     return this.repo.getAccessibleWarehouses(Number(userId));
   }
 
+  async getWarehouseProductCounts(userId: UserId): Promise<Map<number, number>> {
+    return this.repo.getWarehouseProductCounts(Number(userId));
+  }
+
   // ========================
   // STOCK OPERATIONS
   // ========================

@@ -1319,6 +1319,7 @@ export class FinancialHandler {
         if (fields.length === 0) {
           return { messages: ['No ten\u00e9s campos registrados.\n\nPara agregar uno escrib\u00ed:\n\ud83d\udccd *agregar campo norte en Pergamino*\no\n\ud83d\udccd *tengo un campo en Lincoln*'] };
         }
+        let totalHa = 0;
         let msg = `\ud83d\udccd *Tus campos (${fields.length}):*\n`;
         for (const f of fields) {
           const loc = f.city
@@ -1328,7 +1329,17 @@ export class FinancialHandler {
               : (f as any).location_method === 'map'
                 ? 'ubicado en mapa'
                 : null;
-          msg += `\n\u2022 *${f.name}*${loc ? ` \u2014 ${loc}` : ' \u2014 sin ubicaci\u00f3n'}`;
+          const plotCount = (f as any).plot_count || 0;
+          const ha = Number((f as any).total_hectares) || 0;
+          totalHa += ha;
+          const details: string[] = [];
+          if (plotCount > 0) details.push(`${plotCount} lote${plotCount > 1 ? 's' : ''}`);
+          if (ha > 0) details.push(`${ha.toLocaleString('es-AR')} ha`);
+          const detailStr = details.length > 0 ? ` (${details.join(', ')})` : '';
+          msg += `\n\u2022 *${f.name}*${loc ? ` \u2014 ${loc}` : ' \u2014 sin ubicaci\u00f3n'}${detailStr}`;
+        }
+        if (totalHa > 0) {
+          msg += `\n\n\ud83d\udcd0 *Total: ${totalHa.toLocaleString('es-AR')} ha*`;
         }
         msg += '\n\n_Comandos: agregar campo X, lotes del campo X, info campo X_';
         return { messages: [msg] };
@@ -1500,17 +1511,28 @@ export class FinancialHandler {
 
           const fieldSet = new Set(allPlots.map(p => p.field_name));
           let msg = `📍 *Tus lotes (${allPlots.length}) en ${fieldSet.size} campo${fieldSet.size > 1 ? 's' : ''}:*\n`;
-          const grouped = new Map<string, string[]>();
+          const grouped = new Map<string, typeof allPlots>();
           for (const p of allPlots) {
             const list = grouped.get(p.field_name) || [];
-            list.push(p.name);
+            list.push(p);
             grouped.set(p.field_name, list);
           }
+          let grandTotal = 0;
           for (const [fieldName, plots] of grouped) {
-            msg += `\n• *${fieldName}*`;
-            for (const name of plots) {
-              msg += `\n  └ ${name}`;
+            let fieldHa = 0;
+            const plotLines: string[] = [];
+            for (const p of plots) {
+              const ha = p.area_hectares ? Number(p.area_hectares) : 0;
+              fieldHa += ha;
+              plotLines.push(`\n  └ ${p.name}${ha > 0 ? ` — ${ha.toLocaleString('es-AR')} ha` : ''}`);
             }
+            grandTotal += fieldHa;
+            const fieldHaLabel = fieldHa > 0 ? ` (${fieldHa.toLocaleString('es-AR')} ha)` : '';
+            msg += `\n• *${fieldName}*${fieldHaLabel}`;
+            msg += plotLines.join('');
+          }
+          if (grandTotal > 0) {
+            msg += `\n\n📐 *Total: ${grandTotal.toLocaleString('es-AR')} ha*`;
           }
           return { messages: [msg], suggestionKey: 'field_info_shown' };
         }

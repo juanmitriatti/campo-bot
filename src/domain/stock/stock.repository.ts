@@ -129,6 +129,21 @@ export class StockRepository {
     return rows[0] || null;
   }
 
+  async getWarehouseProductCounts(userId: number): Promise<Map<number, number>> {
+    const { rows } = await pool.query(
+      `SELECT si.warehouse_id, COUNT(si.id)::int AS product_count
+       FROM stock_items si
+       JOIN warehouses w ON si.warehouse_id = w.id
+       WHERE w.field_id IN (${accessibleFieldsSql(1)})
+         AND si.deleted_at IS NULL AND w.deleted_at IS NULL
+       GROUP BY si.warehouse_id`,
+      [userId]
+    );
+    const map = new Map<number, number>();
+    for (const r of rows) map.set(r.warehouse_id, r.product_count);
+    return map;
+  }
+
   async countAccessibleWarehouses(userId: number): Promise<number> {
     const { rows } = await pool.query(
       `SELECT COUNT(*) FROM warehouses w

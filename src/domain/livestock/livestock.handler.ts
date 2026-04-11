@@ -237,11 +237,15 @@ export class LivestockHandler {
 
     const sections: string[] = [];
     for (const [plotKey, plotGroups] of byPlot.entries()) {
+      let plotWeight = 0;
       const lines = plotGroups.map(g => {
         const breed = g.breed ? ` ${g.breed}` : '';
-        return `    • ${LIVESTOCK_CATEGORY_LABEL[g.category]}${breed}: *${g.count}*`;
+        const weight = g.avg_weight_kg ? ` (${g.avg_weight_kg} kg prom.)` : '';
+        if (g.avg_weight_kg) plotWeight += g.avg_weight_kg * g.count;
+        return `    • ${LIVESTOCK_CATEGORY_LABEL[g.category]}${breed}: *${g.count}*${weight}`;
       });
-      sections.push(`  📍 *${plotKey}*\n${lines.join('\n')}`);
+      const plotWeightLabel = plotWeight > 0 ? `\n    ⚖️ Peso estimado: ${Math.round(plotWeight).toLocaleString('es-AR')} kg` : '';
+      sections.push(`  📍 *${plotKey}*\n${lines.join('\n')}${plotWeightLabel}`);
     }
 
     return {
@@ -279,8 +283,15 @@ export class LivestockHandler {
         : ['salida', 'muerte'].includes(m.movement_type)
         ? '-'
         : '↔';
+      const weight = m.avg_weight_kg ? ` (${m.avg_weight_kg}kg)` : '';
+      const price = m.unit_price_ars
+        ? ` — $${Number(m.unit_price_ars).toLocaleString('es-AR')}/cab`
+        : m.unit_price_usd
+        ? ` — US$${Number(m.unit_price_usd).toLocaleString('es-AR')}/cab`
+        : '';
       const reason = m.reason ? ` — ${m.reason}` : '';
-      return `  ${mv.emoji} ${date}: ${sign}${m.count}${reason}`;
+      const notes = m.notes ? ` | ${m.notes}` : '';
+      return `  ${mv.emoji} ${date}: ${sign}${m.count}${weight}${price}${reason}${notes}`;
     });
 
     const breed = group.breed ? ` ${group.breed}` : '';

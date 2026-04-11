@@ -659,7 +659,14 @@ export async function getUserFieldsWithCity(userId) {
 
 export async function getUserFields(userId) {
   const result = await pool.query(
-    `SELECT id, name, city, province, location_method FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND deleted_at IS NULL ORDER BY name`,
+    `SELECT f.id, f.name, f.city, f.province, f.location_method,
+            COUNT(p.id)::int AS plot_count,
+            COALESCE(SUM(p.area_hectares), 0)::numeric AS total_hectares
+     FROM fields f
+     LEFT JOIN plots p ON p.field_id = f.id AND p.deleted_at IS NULL
+     WHERE f.id IN (${accessibleFieldsSql(1)}) AND f.deleted_at IS NULL
+     GROUP BY f.id, f.name, f.city, f.province, f.location_method
+     ORDER BY f.name`,
     [userId]
   );
   return result.rows;
@@ -936,7 +943,7 @@ export async function findPlotByNameAcrossFields(userId, plotName) {
 
 export async function findAllUserPlots(userId) {
   const result = await pool.query(
-    `SELECT p.id, p.name, p.field_id, f.name AS field_name
+    `SELECT p.id, p.name, p.field_id, p.area_hectares, f.name AS field_name
      FROM plots p JOIN fields f ON p.field_id = f.id
      WHERE f.id IN (${accessibleFieldsSql(1)}) AND p.deleted_at IS NULL AND f.deleted_at IS NULL
      ORDER BY f.name, p.name`,
