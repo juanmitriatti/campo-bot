@@ -788,7 +788,7 @@ export async function getFieldInfo(userId, fieldName) {
       [field.id]
     ),
     pool.query(
-      `SELECT COUNT(*) as count FROM plots WHERE field_id = $1 AND deleted_at IS NULL`,
+      `SELECT COUNT(*) as count, COALESCE(SUM(area_hectares), 0) as total_hectares FROM plots WHERE field_id = $1 AND deleted_at IS NULL`,
       [field.id]
     ),
     pool.query(
@@ -809,6 +809,7 @@ export async function getFieldInfo(userId, fieldName) {
     incomes: { total: Number(incomesR.rows[0].total), count: parseInt(incomesR.rows[0].count) },
     rainfall: { total: Number(rainfallR.rows[0].total), count: parseInt(rainfallR.rows[0].count) },
     plotCount: parseInt(plotsR.rows[0].count),
+    totalHectares: Number(plotsR.rows[0].total_hectares),
     observations: observationsR.rows,
   };
 }

@@ -1454,7 +1454,9 @@ export class FinancialHandler {
         let msg = `📍 *Campo ${info.name}*\n`;
         msg += info.city ? `Ubicación: ${formatLocation(info.city, info.province)}\n` : `Ubicación: sin asignar\n`;
         if (info.plotCount && info.plotCount > 0) {
-          msg += `Lotes: ${info.plotCount}\n`;
+          msg += `Lotes: ${info.plotCount}`;
+          if (info.totalHectares > 0) msg += ` (${info.totalHectares.toLocaleString('es-AR')} ha)`;
+          msg += `\n`;
         }
         msg += `\n📊 *Este mes:*\n`;
         msg += `💸 Gastos: $${info.expenses.total.toLocaleString('es-AR')} (${info.expenses.count} reg.)\n`;
@@ -1521,10 +1523,17 @@ export class FinancialHandler {
           return { messages: [`El campo *${field.name}* no tiene lotes.\n\nPara agregar uno escrib\u00ed:\n\ud83d\udccd *agregar lote 3 en campo ${field.name}*`] };
         }
         let msg = `\ud83d\udccd *Lotes de ${field.name} (${plots.length}):*\n`;
+        let totalHa = 0;
         for (const p of plots) {
           msg += `\n\u2022 *${p.name}*`;
-          if (p.area_hectares) msg += ` \u2014 ${p.area_hectares} ha`;
+          if (p.area_hectares) {
+            msg += ` \u2014 ${p.area_hectares} ha`;
+            totalHa += Number(p.area_hectares);
+          }
           if (p.soil_type) msg += ` (${p.soil_type})`;
+        }
+        if (totalHa > 0) {
+          msg += `\n\n📐 *Total: ${totalHa.toLocaleString('es-AR')} ha*`;
         }
         return { messages: [msg] };
       }
