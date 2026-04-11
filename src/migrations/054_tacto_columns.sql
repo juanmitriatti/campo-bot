@@ -4,11 +4,6 @@ ALTER TABLE domain_events ADD COLUMN IF NOT EXISTS pregnant_count INTEGER;
 ALTER TABLE domain_events ADD COLUMN IF NOT EXISTS open_count INTEGER;
 ALTER TABLE domain_events ADD COLUMN IF NOT EXISTS uncertain_count INTEGER;
 
-INSERT INTO activity_dictionary (activity_type, tool_name, synonyms)
-VALUES ('tacto', 'log_tacto', 'tacto
-palpación
-revisé preñez
-tacto rectal
-control de preñez
-revisión de preñez')
-ON CONFLICT DO NOTHING;
+INSERT INTO activity_dictionary (activity_type, display_name, tool_name, synonyms)
+VALUES ('tacto', 'Tacto', 'log_tacto', E'tacto\npalpación\nrevisé preñez\ntacto rectal\ncontrol de preñez\nrevisión de preñez')
+ON CONFLICT (activity_type) DO NOTHING;
