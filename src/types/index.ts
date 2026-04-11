@@ -218,7 +218,7 @@ export interface PlotCropRow {
 
 // --- Domain Events ---
 
-export type ActivityType = 'planting' | 'harvest' | 'spraying' | 'fertilization' | 'tillage' | 'irrigation' | 'observation';
+export type ActivityType = 'planting' | 'harvest' | 'spraying' | 'fertilization' | 'tillage' | 'irrigation' | 'observation' | 'tacto';
 
 export interface DomainEventRow {
   id: number;
@@ -234,6 +234,9 @@ export interface DomainEventRow {
   unit: string | null;
   implement: string | null;
   notes: string | null;
+  pregnant_count: number | null;
+  open_count: number | null;
+  uncertain_count: number | null;
   created_at: Date;
 }
 

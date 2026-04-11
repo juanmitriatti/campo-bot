@@ -162,6 +162,7 @@ export class AgronomyHandler {
       log_irrigation: 'irrigation',
       sow_crop: 'planting',
       harvest_crop: 'harvest',
+      log_tacto: 'tacto',
     };
 
     if (pending.command === 'sow_crop') {
@@ -207,6 +208,48 @@ export class AgronomyHandler {
 
       const label = formatSeasonLabel(closed.season_year, closed.season_type);
       return { messages: [`🌾 *${crop}* cosechado en *${plotLabel}*\n📅 Campaña ${label} finalizada`] };
+    }
+
+    if (pending.command === 'log_tacto') {
+      let pregnantCount = typeof cmd.pregnantCount === 'number' ? cmd.pregnantCount : null;
+      let openCount = typeof cmd.openCount === 'number' ? cmd.openCount : null;
+      let uncertainCount = typeof cmd.uncertainCount === 'number' ? cmd.uncertainCount : null;
+      let totalChecked = typeof cmd.totalChecked === 'number' ? cmd.totalChecked : null;
+      if (totalChecked == null && pregnantCount != null) {
+        totalChecked = (pregnantCount || 0) + (openCount || 0) + (uncertainCount || 0);
+      }
+      if (openCount == null && totalChecked != null && pregnantCount != null) {
+        openCount = totalChecked - pregnantCount - (uncertainCount || 0);
+        if (openCount < 0) openCount = 0;
+      }
+      const category = typeof cmd.category === 'string' ? cmd.category : null;
+      await this.repo.saveDomainEvent(userId, {
+        plotId,
+        eventType: 'tacto',
+        eventDate: cmd.eventDate as Date | null,
+        quantity: totalChecked,
+        product: category,
+        implement: cmd.implement as string | null,
+        notes: cmd.notes as string | null,
+        pregnantCount,
+        openCount,
+        uncertainCount,
+      });
+      const lines: string[] = ['🩺 *Tacto* registrado'];
+      lines.push(`📍 ${plotLabel}`);
+      if (totalChecked != null) {
+        const catLabel = category ? ` ${category}s` : '';
+        lines.push(`🐄 ${totalChecked}${catLabel} revisadas`);
+      }
+      if (pregnantCount != null) lines.push(`✅ Preñadas: *${pregnantCount}*`);
+      if (openCount != null && openCount > 0) lines.push(`❌ Vacías: *${openCount}*`);
+      if (uncertainCount != null && uncertainCount > 0) lines.push(`❓ Dudosas: *${uncertainCount}*`);
+      if (pregnantCount != null && totalChecked != null && totalChecked > 0) {
+        const rate = Math.round((pregnantCount / totalChecked) * 100);
+        lines.push(`📊 Tasa de preñez: *${rate}%*`);
+      }
+      if (cmd.implement) lines.push(`👨‍⚕️ Veterinario: ${cmd.implement}`);
+      return { messages: [lines.join('\n')] };
     }
 
     // log_spraying / log_fertilization / log_tillage / log_irrigation
@@ -905,6 +948,94 @@ export class AgronomyHandler {
         }
 
         return { messages: [confirmation] };
+      }
+
+      case 'log_tacto': {
+        const resolved = await this.plotDiscovery.resolveFromNames(
+          userId,
+          cmd.fieldName as string | null,
+          cmd.plotName as string | null
+        );
+        const plotResult = await this.resolveActivityPlot(userId, resolved);
+
+        if (plotResult.type === 'no_plots') {
+          return {
+            messages: ['Para registrar tacto primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*'],
+            interactive: {
+              type: 'buttons',
+              body: 'Necesitás un lote para registrar tacto.',
+              buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
+            },
+          };
+        }
+
+        if (plotResult.type === 'ask_user') {
+          return this.buildAskPlotResponse('tacto', plotResult.plots, cmd);
+        }
+
+        // Extract counts
+        let pregnantCount = typeof cmd.pregnantCount === 'number' ? cmd.pregnantCount : null;
+        let openCount = typeof cmd.openCount === 'number' ? cmd.openCount : null;
+        let uncertainCount = typeof cmd.uncertainCount === 'number' ? cmd.uncertainCount : null;
+        let totalChecked = typeof cmd.totalChecked === 'number' ? cmd.totalChecked : null;
+
+        // Auto-compute total from parts if not provided
+        if (totalChecked == null && pregnantCount != null) {
+          totalChecked = (pregnantCount || 0) + (openCount || 0) + (uncertainCount || 0);
+        }
+
+        // Auto-compute open from total - pregnant - uncertain when open not provided
+        if (openCount == null && totalChecked != null && pregnantCount != null) {
+          openCount = totalChecked - pregnantCount - (uncertainCount || 0);
+          if (openCount < 0) openCount = 0;
+        }
+
+        const category = typeof cmd.category === 'string' ? cmd.category : null;
+
+        await this.repo.saveDomainEvent(userId, {
+          plotId: plotResult.plotId,
+          eventType: 'tacto',
+          eventDate: cmd.eventDate as Date | null,
+          quantity: totalChecked,
+          product: category, // vaca/vaquillona stored in product field
+          implement: cmd.implement as string | null,
+          notes: cmd.notes as string | null,
+          pregnantCount,
+          openCount,
+          uncertainCount,
+        });
+
+        const plotLabel = plotResult.fieldName
+          ? `${plotResult.fieldName} > ${plotResult.plotName}`
+          : plotResult.plotName;
+
+        // Build confirmation message
+        const lines: string[] = ['🩺 *Tacto* registrado'];
+        lines.push(`📍 ${plotLabel}`);
+        if (totalChecked != null) {
+          const catLabel = category ? ` ${category}s` : '';
+          lines.push(`🐄 ${totalChecked}${catLabel} revisadas`);
+        }
+        if (pregnantCount != null) lines.push(`✅ Preñadas: *${pregnantCount}*`);
+        if (openCount != null && openCount > 0) lines.push(`❌ Vacías: *${openCount}*`);
+        if (uncertainCount != null && uncertainCount > 0) lines.push(`❓ Dudosas: *${uncertainCount}*`);
+
+        // Pregnancy rate
+        if (pregnantCount != null && totalChecked != null && totalChecked > 0) {
+          const rate = Math.round((pregnantCount / totalChecked) * 100);
+          lines.push(`📊 Tasa de preñez: *${rate}%*`);
+        }
+
+        if (cmd.implement) lines.push(`👨‍⚕️ Veterinario: ${cmd.implement}`);
+        if (cmd.notes) lines.push(`📝 ${cmd.notes}`);
+
+        // Show date if not today
+        if (cmd.eventDate) {
+          const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+          lines.push(`📅 ${dateStr}`);
+        }
+
+        return { messages: [lines.join('\n')] };
       }
 
       case 'plot_activities': {

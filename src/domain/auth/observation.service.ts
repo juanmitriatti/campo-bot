@@ -568,7 +568,7 @@ export class ObservationService {
   async editActivity(
     activityId: number,
     userId: number,
-    data: { event_type?: string; event_date?: string; crop?: string | null; product?: string | null; quantity?: number | null; unit?: string | null; implement?: string | null; notes?: string | null }
+    data: { event_type?: string; event_date?: string; crop?: string | null; product?: string | null; quantity?: number | null; unit?: string | null; implement?: string | null; notes?: string | null; pregnant_count?: number | null; open_count?: number | null; uncertain_count?: number | null }
   ): Promise<ActivityRow> {
     const { rows } = await pool.query(
       `SELECT * FROM domain_events WHERE id = $1`,
@@ -606,6 +606,9 @@ export class ObservationService {
     if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit); }
     if (data.implement !== undefined) { idx++; sets.push(`implement = $${idx}`); params.push(data.implement); }
     if (data.notes !== undefined) { idx++; sets.push(`notes = $${idx}`); params.push(data.notes); }
+    if (data.pregnant_count !== undefined) { idx++; sets.push(`pregnant_count = $${idx}`); params.push(data.pregnant_count); }
+    if (data.open_count !== undefined) { idx++; sets.push(`open_count = $${idx}`); params.push(data.open_count); }
+    if (data.uncertain_count !== undefined) { idx++; sets.push(`uncertain_count = $${idx}`); params.push(data.uncertain_count); }
 
     idx++;
     const result = await pool.query(

@@ -13,6 +13,9 @@ interface Activity {
   unit: string | null;
   implement: string | null;
   notes: string | null;
+  pregnant_count: number | null;
+  open_count: number | null;
+  uncertain_count: number | null;
   created_at: string;
   plot_name: string | null;
   field_name: string | null;
@@ -50,6 +53,7 @@ const ACTIVITY_TYPE_LABELS: Record<string, { label: string; emoji: string }> = {
   tillage: { label: 'Labranza', emoji: '🚜' },
   harvest: { label: 'Cosecha', emoji: '🌾' },
   irrigation: { label: 'Riego', emoji: '💧' },
+  tacto: { label: 'Tacto', emoji: '🩺' },
 };
 
 const ACTIVITY_TYPE_OPTIONS = Object.entries(ACTIVITY_TYPE_LABELS).map(([id, { label, emoji }]) => ({
@@ -143,6 +147,18 @@ export default function ActivityTable() {
   };
 
   const getDetail = (a: Activity) => {
+    if (a.event_type === 'tacto') {
+      const parts: string[] = [];
+      if (a.pregnant_count != null) parts.push(`${a.pregnant_count} preñadas`);
+      if (a.open_count != null && a.open_count > 0) parts.push(`${a.open_count} vacías`);
+      if (a.uncertain_count != null && a.uncertain_count > 0) parts.push(`${a.uncertain_count} dudosas`);
+      if (a.quantity != null && a.quantity > 0 && a.pregnant_count != null) {
+        const rate = Math.round((a.pregnant_count / a.quantity) * 100);
+        parts.push(`${rate}%`);
+      }
+      if (a.implement) parts.push(a.implement);
+      return parts.join(' - ') || '-';
+    }
     const parts: string[] = [];
     if (a.product) parts.push(a.product);
     if (a.quantity != null && a.unit) parts.push(`${a.quantity} ${a.unit}`);

@@ -162,6 +162,27 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
 
+  {
+    name: 'log_tacto',
+    description: 'Registrar tacto/revisión de preñez en vacas o vaquillonas. Verbos: hice tacto, palpé, revisé preñez, palpación, se hizo tacto, dio X preñadas.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        total_checked: { type: 'number', description: 'Total de animales revisados. Si no lo dicen, se calcula de preñadas+vacías+dudosas.' },
+        pregnant_count: { type: 'number', description: 'Cantidad de preñadas.' },
+        open_count: { type: 'number', description: 'Cantidad de vacías.' },
+        uncertain_count: { type: 'number', description: 'Cantidad de dudosas.' },
+        category: { type: 'string', enum: ['vaca', 'vaquillona'], description: 'Categoría animal revisada.' },
+        veterinarian: { type: 'string', description: 'Nombre del veterinario.' },
+        notes: { type: 'string', description: 'Observaciones adicionales.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        event_date: DATE_PROP,
+      },
+      required: ['pregnant_count'],
+    },
+  },
+
   // ========================
   // OBSERVATIONS
   // ========================

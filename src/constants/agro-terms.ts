@@ -176,6 +176,7 @@ export const ACTIVITY_TYPES: readonly ActivityTypeEntry[] = [
   { id: 'tillage', label: 'Labranza', emoji: '\ud83d\ude9c' },
   { id: 'harvest', label: 'Cosecha', emoji: '\ud83c\udf3e' },
   { id: 'irrigation', label: 'Riego', emoji: '\ud83d\udca7' },
+  { id: 'tacto', label: 'Tacto', emoji: '\ud83e\ude7a' },
 ] as const;
 
 /** id or label → { emoji, label } lookup */
@@ -197,6 +198,7 @@ export const ACTIVITY_FILTER_PATTERNS: Array<{ pattern: RegExp; type: string }> 
   { pattern: /cosech/, type: 'harvest' },
   { pattern: /lluvia|precipit/, type: 'rainfall' },
   { pattern: /observ|monitoreo|nota/, type: 'observation' },
+  { pattern: /tacto|palpaci[oó]n|pre[nñ]ez/, type: 'tacto' },
 ];
 
 // ============================================================================

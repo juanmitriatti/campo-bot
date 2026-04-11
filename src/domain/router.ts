@@ -31,6 +31,7 @@ const AGRONOMY_COMMANDS = new Set([
   'sow_crop', 'harvest_crop', 'active_crop', 'crop_history',
   'log_spraying', 'log_fertilization', 'log_tillage', 'log_irrigation', 'plot_activities',
   'query_plot_history', 'log_observation', 'generate_agro_report',
+  'log_tacto',
 ]);
 
 const SHARING_COMMANDS = new Set([

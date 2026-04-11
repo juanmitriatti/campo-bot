@@ -171,6 +171,9 @@ export class AgronomyRepository {
     unit?: string | null;
     implement?: string | null;
     notes?: string | null;
+    pregnantCount?: number | null;
+    openCount?: number | null;
+    uncertainCount?: number | null;
   }): Promise<DomainEventRow> {
     return _saveDomainEvent(userId, data) as Promise<DomainEventRow>;
   }

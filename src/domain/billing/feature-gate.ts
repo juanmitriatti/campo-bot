@@ -130,6 +130,7 @@ export class FeatureGate {
       plot_activities: 'agronomy',
       log_observation: 'agronomy',
       generate_agro_report: 'agronomy',
+      log_tacto: 'agronomy',
       // Sharing
       share_field: 'sharing',
       list_field_members: 'sharing',

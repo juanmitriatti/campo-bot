@@ -11,6 +11,9 @@ interface Activity {
   unit: string | null;
   implement: string | null;
   notes: string | null;
+  pregnant_count: number | null;
+  open_count: number | null;
+  uncertain_count: number | null;
   field_name: string | null;
   plot_name: string | null;
 }
@@ -33,6 +36,7 @@ const ACTIVITY_TYPES = [
   { id: 'tillage', label: 'Labranza' },
   { id: 'harvest', label: 'Cosecha' },
   { id: 'irrigation', label: 'Riego' },
+  { id: 'tacto', label: 'Tacto' },
 ];
 
 export default function ActivityEditModal({ activity, onClose, onSaved }: Props) {
@@ -44,6 +48,9 @@ export default function ActivityEditModal({ activity, onClose, onSaved }: Props)
   const [unit, setUnit] = useState(activity.unit || '');
   const [implement, setImplement] = useState(activity.implement || '');
   const [notes, setNotes] = useState(activity.notes || '');
+  const [pregnantCount, setPregnantCount] = useState(activity.pregnant_count != null ? String(activity.pregnant_count) : '');
+  const [openCountVal, setOpenCountVal] = useState(activity.open_count != null ? String(activity.open_count) : '');
+  const [uncertainCount, setUncertainCount] = useState(activity.uncertain_count != null ? String(activity.uncertain_count) : '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,18 +62,24 @@ export default function ActivityEditModal({ activity, onClose, onSaved }: Props)
     setSaving(true);
     setError(null);
     try {
+      const body: Record<string, unknown> = {
+        event_type: eventType,
+        event_date: eventDate,
+        crop: crop.trim() || null,
+        product: product.trim() || null,
+        quantity: parsedQty,
+        unit: unit.trim() || null,
+        implement: implement.trim() || null,
+        notes: notes.trim() || null,
+      };
+      if (eventType === 'tacto') {
+        body.pregnant_count = pregnantCount.trim() ? parseInt(pregnantCount) : null;
+        body.open_count = openCountVal.trim() ? parseInt(openCountVal) : null;
+        body.uncertain_count = uncertainCount.trim() ? parseInt(uncertainCount) : null;
+      }
       await apiRequest(`/activities/${activity.id}`, {
         method: 'PATCH',
-        body: {
-          event_type: eventType,
-          event_date: eventDate,
-          crop: crop.trim() || null,
-          product: product.trim() || null,
-          quantity: parsedQty,
-          unit: unit.trim() || null,
-          implement: implement.trim() || null,
-          notes: notes.trim() || null,
-        },
+        body,
       });
       onSaved();
     } catch (err: unknown) {
@@ -143,6 +156,28 @@ export default function ActivityEditModal({ activity, onClose, onSaved }: Props)
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none resize-none"
                 placeholder="Notas adicionales..." />
             </div>
+            {eventType === 'tacto' && (
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Preñadas</label>
+                  <input type="number" value={pregnantCount} onChange={e => setPregnantCount(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
+                    placeholder="0" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Vacías</label>
+                  <input type="number" value={openCountVal} onChange={e => setOpenCountVal(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
+                    placeholder="0" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Dudosas</label>
+                  <input type="number" value={uncertainCount} onChange={e => setUncertainCount(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
+                    placeholder="0" />
+                </div>
+              </div>
+            )}
           </div>
 
           {error && <p className="text-red-600 text-sm mt-2">{error}</p>}

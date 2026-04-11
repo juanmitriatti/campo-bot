@@ -83,7 +83,7 @@ export class AgentResponseMapper {
     // (Haiku sometimes hallucinates an expense for activity messages like "hoy sembramos soja")
     const AGRO_ACTIVITY_TOOLS = new Set([
       'sow_crop', 'harvest_crop', 'log_spraying', 'log_fertilization',
-      'log_tillage', 'log_irrigation', 'log_activity',
+      'log_tillage', 'log_irrigation', 'log_activity', 'log_tacto',
     ]);
     let filteredCalls = result.toolCalls;
     const hasAgroActivity = filteredCalls.some(tc => AGRO_ACTIVITY_TOOLS.has(tc.toolName));
@@ -327,6 +327,14 @@ export class AgentResponseMapper {
     if (input.dest_field != null) cmd.destField = input.dest_field;
     if (input.dest_plot != null) cmd.destPlot = input.dest_plot;
     if (input.dest_category != null) cmd.destCategory = input.dest_category;
+
+    // Tacto (pregnancy check)
+    if (input.total_checked != null) cmd.totalChecked = input.total_checked;
+    if (input.pregnant_count != null) cmd.pregnantCount = input.pregnant_count;
+    if (input.open_count != null) cmd.openCount = input.open_count;
+    if (input.uncertain_count != null) cmd.uncertainCount = input.uncertain_count;
+    if (input.veterinarian != null) cmd.implement = input.veterinarian;
+    if (input.notes != null) cmd.notes = input.notes;
 
     return {
       intent: { type: 'command', data: cmd },

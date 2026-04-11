@@ -1483,12 +1483,13 @@ export async function getPlotCropBySeason(plotId, seasonYear, crop) {
 
 export async function saveDomainEvent(userId, data) {
   const result = await pool.query(
-    `INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop, product, product_type, quantity, unit, implement, notes)
-     VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12)
+    `INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop, product, product_type, quantity, unit, implement, notes, pregnant_count, open_count, uncertain_count)
+     VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING *`,
     [userId, data.plotId || null, data.plotCropId || null, data.eventType, data.eventDate || null,
      data.crop || null, data.product || null, data.productType || null,
-     data.quantity || null, data.unit || null, data.implement || null, data.notes || null]
+     data.quantity || null, data.unit || null, data.implement || null, data.notes || null,
+     data.pregnantCount ?? null, data.openCount ?? null, data.uncertainCount ?? null]
   );
   return result.rows[0];
 }
