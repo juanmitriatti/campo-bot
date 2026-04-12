@@ -60,6 +60,17 @@ const EXAMPLES: Example[] = [
     expected_output: { intent: 'log_tillage', confidence: 0.92, product: 'rastra', plot: 'norte' },
     intent: 'log_tillage',
   },
+  // --- Tacto (pregnancy check) ---
+  {
+    input: 'hice tacto en el lote 3, revisé 80 vacas, 60 preñadas y 20 vacías',
+    expected_output: { intent: 'log_tacto', confidence: 0.95, total_checked: 80, pregnant_count: 60, open_count: 20, category: 'vaca', plot: 'lote 3' },
+    intent: 'log_tacto',
+  },
+  {
+    input: 'se hizo tacto y dio 135 preñadas y 6 vacías',
+    expected_output: { intent: 'log_tacto', confidence: 0.95, pregnant_count: 135, open_count: 6 },
+    intent: 'log_tacto',
+  },
   // --- Observations ---
   {
     input: 'observación: vi presencia de oruga militar en lote 2',
