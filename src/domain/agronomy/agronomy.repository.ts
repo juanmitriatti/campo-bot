@@ -23,6 +23,8 @@ import {
   deleteDomainEvent as _deleteDomainEvent,
   queryPlotHistory as _queryPlotHistory,
   getPlotById as _getPlotById,
+  findLastDomainEventFiltered as _findLastDomainEventFiltered,
+  updateDomainEventPlot as _updateDomainEventPlot,
 } from '../../services/expenses.js';
 import { PlotRepository } from '../plots/plot.repository.js';
 import type { UserId, FieldRow, PlotRow, PlotCropRow, DomainEventRow, PlotHistoryRow } from '../../types/index.js';
@@ -205,6 +207,15 @@ export class AgronomyRepository {
 
   async deleteDomainEvent(eventId: number): Promise<DomainEventRow | null> {
     return _deleteDomainEvent(eventId) as Promise<DomainEventRow | null>;
+  }
+
+  async findLastDomainEventFiltered(userId: UserId, filters: { eventType?: string; crop?: string } = {}): Promise<(DomainEventRow & { plot_name: string | null; field_name: string | null }) | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return _findLastDomainEventFiltered(userId, filters) as Promise<any>;
+  }
+
+  async updateDomainEventPlot(eventId: number, plotId: number, editedBy: UserId, extraFields: { crop?: string; eventDate?: string } = {}): Promise<DomainEventRow | null> {
+    return _updateDomainEventPlot(eventId, plotId, editedBy, extraFields) as Promise<DomainEventRow | null>;
   }
 
   // --- Plot history query ---

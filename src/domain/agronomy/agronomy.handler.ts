@@ -1038,6 +1038,68 @@ export class AgronomyHandler {
         return { messages: [lines.join('\n')] };
       }
 
+      case 'edit_last_activity': {
+        // Normalize activity filter from AI tool enum to DB event_type
+        const editFilter = normalizeActivityFilter(cmd.activityFilter as string | null);
+        const editCropFilter = cmd.crop as string | null;
+        const newPlotName = cmd.newPlotName as string | null;
+        const newFieldName = cmd.newFieldName as string | null;
+        const newCrop = cmd.newCrop as string | null;
+        const newDate = cmd.newDate as string | null;
+
+        if (!newPlotName) {
+          return { messages: ['Indicá el lote correcto. Ejemplo:\n✏️ *la siembra era en lote B*'] };
+        }
+
+        // Find last matching activity
+        const lastEvent = await this.repo.findLastDomainEventFiltered(userId, {
+          eventType: editFilter || undefined,
+          crop: editCropFilter || undefined,
+        });
+
+        if (!lastEvent) {
+          const filterDesc = editFilter ? ` de tipo ${editFilter}` : '';
+          const cropDesc = editCropFilter ? ` de ${editCropFilter}` : '';
+          return { messages: [`No encontré actividad reciente${filterDesc}${cropDesc} para editar.`] };
+        }
+
+        // Resolve new plot
+        const newResolved = await this.plotDiscovery.resolveFromNames(
+          userId,
+          newFieldName,
+          newPlotName,
+        );
+
+        if (!newResolved.plotId) {
+          return { messages: [`No encontré el lote *${newPlotName}*. Revisá el nombre o escribí *mis lotes*.`] };
+        }
+
+        // Build extra fields to update
+        const extraFields: { crop?: string; eventDate?: string } = {};
+        if (newCrop) extraFields.crop = newCrop;
+        if (newDate) extraFields.eventDate = newDate;
+
+        // Update the event
+        await this.repo.updateDomainEventPlot(lastEvent.id, newResolved.plotId, userId, extraFields);
+
+        const { label: editActLabel } = getActivityLabel(lastEvent.event_type);
+        const oldPlotLabel = lastEvent.plot_name || 'sin lote';
+        const newPlotLabel = newResolved.fieldName
+          ? `${newResolved.fieldName} > ${newResolved.plotName}`
+          : newResolved.plotName;
+
+        const editLines: string[] = [`✏️ Actividad corregida: *${editActLabel}*`];
+        if (lastEvent.crop) editLines[0] += ` de *${lastEvent.crop}*`;
+        editLines.push(`📍 ${oldPlotLabel} → *${newPlotLabel}*`);
+        if (newCrop) editLines.push(`🌱 Cultivo: ${lastEvent.crop || '?'} → *${newCrop}*`);
+        if (newDate) {
+          const dateStr = new Date(newDate).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+          editLines.push(`📅 Fecha: *${dateStr}*`);
+        }
+
+        return { messages: [editLines.join('\n')] };
+      }
+
       case 'plot_activities': {
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,

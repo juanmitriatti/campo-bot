@@ -568,7 +568,7 @@ export class ObservationService {
   async editActivity(
     activityId: number,
     userId: number,
-    data: { event_type?: string; event_date?: string; crop?: string | null; product?: string | null; quantity?: number | null; unit?: string | null; implement?: string | null; notes?: string | null; pregnant_count?: number | null; open_count?: number | null; uncertain_count?: number | null }
+    data: { event_type?: string; event_date?: string; crop?: string | null; product?: string | null; quantity?: number | null; unit?: string | null; implement?: string | null; notes?: string | null; pregnant_count?: number | null; open_count?: number | null; uncertain_count?: number | null; plot_id?: number | null }
   ): Promise<ActivityRow> {
     const { rows } = await pool.query(
       `SELECT * FROM domain_events WHERE id = $1`,
@@ -609,6 +609,20 @@ export class ObservationService {
     if (data.pregnant_count !== undefined) { idx++; sets.push(`pregnant_count = $${idx}`); params.push(data.pregnant_count); }
     if (data.open_count !== undefined) { idx++; sets.push(`open_count = $${idx}`); params.push(data.open_count); }
     if (data.uncertain_count !== undefined) { idx++; sets.push(`uncertain_count = $${idx}`); params.push(data.uncertain_count); }
+    if (data.plot_id !== undefined) {
+      // When plot changes, also derive field_id from the plot's parent field
+      if (data.plot_id !== null) {
+        const { rows: plotRows } = await pool.query(`SELECT field_id FROM plots WHERE id = $1 AND deleted_at IS NULL`, [data.plot_id]);
+        if (plotRows.length > 0) {
+          // Verify user has access to this field
+          const hasAccess = await this._hasFieldAccess(userId, plotRows[0].field_id);
+          if (!hasAccess) {
+            throw new ObservationError(403, 'No tenés acceso al lote seleccionado');
+          }
+        }
+      }
+      idx++; sets.push(`plot_id = $${idx}`); params.push(data.plot_id);
+    }
 
     idx++;
     const result = await pool.query(

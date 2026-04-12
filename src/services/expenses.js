@@ -1566,6 +1566,52 @@ export async function getLastDomainEvent(userId) {
   return result.rows[0] || null;
 }
 
+export async function findLastDomainEventFiltered(userId, filters = {}) {
+  const conditions = ['de.user_id = $1'];
+  const params = [userId];
+  let idx = 1;
+
+  if (filters.eventType) {
+    idx++;
+    conditions.push(`de.event_type = $${idx}`);
+    params.push(filters.eventType);
+  }
+  if (filters.crop) {
+    idx++;
+    conditions.push(`de.crop ILIKE $${idx}`);
+    params.push(`%${filters.crop}%`);
+  }
+
+  const result = await pool.query(
+    `SELECT de.*, p.name as plot_name, f.name as field_name, p.field_id
+     FROM domain_events de
+     LEFT JOIN plots p ON de.plot_id = p.id
+     LEFT JOIN fields f ON p.field_id = f.id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY de.created_at DESC
+     LIMIT 1`,
+    params
+  );
+  return result.rows[0] || null;
+}
+
+export async function updateDomainEventPlot(eventId, plotId, editedBy, extraFields = {}) {
+  const sets = ['plot_id = $1', 'updated_at = NOW()', 'edited_by = $2'];
+  const params = [plotId, editedBy];
+  let idx = 2;
+
+  if (extraFields.crop !== undefined) { idx++; sets.push(`crop = $${idx}`); params.push(extraFields.crop); }
+  if (extraFields.eventDate !== undefined) { idx++; sets.push(`event_date = $${idx}`); params.push(extraFields.eventDate); }
+  if (extraFields.eventType !== undefined) { idx++; sets.push(`event_type = $${idx}`); params.push(extraFields.eventType); }
+
+  idx++;
+  const result = await pool.query(
+    `UPDATE domain_events SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+    [...params, eventId]
+  );
+  return result.rows[0] || null;
+}
+
 export async function deleteDomainEvent(eventId) {
   const result = await pool.query(
     `DELETE FROM domain_events WHERE id = $1 RETURNING *`,

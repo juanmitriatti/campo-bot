@@ -101,6 +101,7 @@ ${this.buildActivityLines(dictionary)}
 - CRÍTICO: CUALQUIER mención de "vaca/vacas/ternero/terneros/vaquillona/novillo/toro/buey" + cantidad numérica → SIEMPRE tool de hacienda, NUNCA log_observation. Las palabras vaca/ternero/etc son categorías de hacienda, no observaciones agronómicas
 - Categorías hacienda: vaca, vaquillona, ternero, ternera, novillo, novillito, toro, torito, buey. Normalizá plurales (vacas→vaca, terneros→ternero)
 - Recategorización: "pasé 10 terneros a novillos"/"recategoricé vaquillonas como vacas" en el mismo lote → transfer_livestock con source_plot=dest_plot y dest_category distinta
+- EDITAR ACTIVIDAD: "la siembra era en lote B"/"corregí la última actividad"/"me equivoqué de lote en la fumigación"/"era en otro lote" → edit_last_activity. NO re-registrar (duplicaría). activity_filter opcional para refinar búsqueda
 - TACTO/PREÑEZ: "hice tacto"/"se hizo tacto"/"palpé"/"revisé preñez"/"dio X preñadas"→log_tacto. SIEMPRE actividad, NUNCA observation ni livestock movement. Solo vacas/vaquillonas. "rodeo de X"→field o plot name X. Si no dicen total pero sí preñadas+vacías, total=preñadas+vacías+dudosas
 - Hacienda SIEMPRE necesita lote (plot). Si no lo mencionan y no hay contexto, usá respond_text pidiendo el lote. NUNCA llamar log_expense junto con hacienda salvo monto explícito de compra/venta`;
   }

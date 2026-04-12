@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { apiRequest } from '../api/client';
 
 interface Activity {
@@ -16,6 +16,8 @@ interface Activity {
   uncertain_count: number | null;
   field_name: string | null;
   plot_name: string | null;
+  plot_id?: number | null;
+  field_id?: number | null;
 }
 
 interface Props {
@@ -23,6 +25,9 @@ interface Props {
   onClose: () => void;
   onSaved: () => void;
 }
+
+interface PlotOption { id: number; name: string }
+interface FieldOption { id: number; name: string; plots: PlotOption[] }
 
 function toLocalDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -54,6 +59,43 @@ export default function ActivityEditModal({ activity, onClose, onSaved }: Props)
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Field/plot selection
+  const [fields, setFields] = useState<FieldOption[]>([]);
+  const [selectedFieldId, setSelectedFieldId] = useState<number | ''>('');
+  const [selectedPlotId, setSelectedPlotId] = useState<number | ''>('');
+  const [loadingFields, setLoadingFields] = useState(true);
+
+  useEffect(() => {
+    apiRequest<{ fields: FieldOption[] }>('/observations/filters')
+      .then(data => {
+        setFields(data.fields);
+        // Pre-select current field/plot
+        if (activity.plot_id) {
+          for (const f of data.fields) {
+            const p = f.plots.find(pl => pl.id === activity.plot_id);
+            if (p) {
+              setSelectedFieldId(f.id);
+              setSelectedPlotId(p.id);
+              break;
+            }
+          }
+        } else if (activity.field_name) {
+          const f = data.fields.find(fl => fl.name === activity.field_name);
+          if (f) setSelectedFieldId(f.id);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingFields(false));
+  }, [activity.plot_id, activity.field_name]);
+
+  const selectedField = fields.find(f => f.id === selectedFieldId);
+  const availablePlots = selectedField?.plots || [];
+
+  const handleFieldChange = (fid: number | '') => {
+    setSelectedFieldId(fid);
+    setSelectedPlotId('');
+  };
+
   const handleSave = async () => {
     if (!eventType) { setError('El tipo es obligatorio'); return; }
 
@@ -77,6 +119,10 @@ export default function ActivityEditModal({ activity, onClose, onSaved }: Props)
         body.open_count = openCountVal.trim() ? parseInt(openCountVal) : null;
         body.uncertain_count = uncertainCount.trim() ? parseInt(uncertainCount) : null;
       }
+      // Include plot_id if changed
+      if (selectedPlotId !== '' && selectedPlotId !== activity.plot_id) {
+        body.plot_id = selectedPlotId;
+      }
       await apiRequest(`/activities/${activity.id}`, {
         method: 'PATCH',
         body,
@@ -98,8 +144,35 @@ export default function ActivityEditModal({ activity, onClose, onSaved }: Props)
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
           </div>
 
-          {activity.field_name && <p className="text-sm text-gray-500 mb-1">Campo: <span className="font-medium text-gray-700">{activity.field_name}</span></p>}
-          {activity.plot_name && <p className="text-sm text-gray-500 mb-3">Lote: <span className="font-medium text-gray-700">{activity.plot_name}</span></p>}
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Campo</label>
+              {loadingFields ? (
+                <p className="text-sm text-gray-400">Cargando...</p>
+              ) : (
+                <select
+                  value={selectedFieldId}
+                  onChange={e => handleFieldChange(e.target.value ? Number(e.target.value) : '')}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
+                >
+                  <option value="">Sin campo</option>
+                  {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Lote</label>
+              <select
+                value={selectedPlotId}
+                onChange={e => setSelectedPlotId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
+                disabled={!selectedFieldId || availablePlots.length === 0}
+              >
+                <option value="">Sin lote</option>
+                {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          </div>
 
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">

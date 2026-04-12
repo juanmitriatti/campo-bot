@@ -316,6 +316,13 @@ export class AgentResponseMapper {
     if (input.expenseId != null) cmd.expenseId = input.expenseId;
     if (input.context != null) cmd.context = input.context;
 
+    // Edit activity
+    if (input.new_plot != null) cmd.newPlotName = input.new_plot;
+    if (input.new_field != null) cmd.newFieldName = input.new_field;
+    if (input.new_crop != null) cmd.newCrop = input.new_crop;
+    if (input.new_date != null) cmd.newDate = input.new_date;
+    if (input.activity_filter != null && toolName === 'edit_last_activity') cmd.activityFilter = input.activity_filter;
+
     // Livestock
     if (input.count != null) cmd.count = input.count;
     if (input.breed != null) cmd.breed = input.breed;

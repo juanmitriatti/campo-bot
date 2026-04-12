@@ -17,6 +17,7 @@ interface Activity {
   open_count: number | null;
   uncertain_count: number | null;
   created_at: string;
+  plot_id: number | null;
   plot_name: string | null;
   field_name: string | null;
   user_name: string | null;

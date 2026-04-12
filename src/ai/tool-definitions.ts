@@ -163,6 +163,23 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
 
   {
+    name: 'edit_last_activity',
+    description: 'Corregir/editar la última actividad registrada. Cambiar de lote, corregir cultivo o fecha. "la siembra era en lote B", "corregí la última actividad al lote norte", "me equivoqué de lote en la fumigación".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        activity_filter: { type: 'string', enum: ['spraying', 'fertilization', 'planting', 'harvest', 'tillage', 'irrigation', 'tacto'], description: 'Tipo de actividad a buscar (opcional).' },
+        crop: CROP_PROP,
+        new_plot: { type: 'string', description: 'Nuevo lote correcto.' },
+        new_field: FIELD_PROP,
+        new_crop: { type: 'string', description: 'Nuevo cultivo, si se quiere corregir.' },
+        new_date: { type: 'string', description: 'Nueva fecha YYYY-MM-DD, si se quiere corregir.' },
+      },
+      required: ['new_plot'],
+    },
+  },
+
+  {
     name: 'log_tacto',
     description: 'Registrar tacto/revisión de preñez en vacas o vaquillonas. Verbos: hice tacto, palpé, revisé preñez, palpación, se hizo tacto, dio X preñadas.',
     input_schema: {
