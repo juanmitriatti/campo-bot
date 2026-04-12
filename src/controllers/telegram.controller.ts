@@ -1475,7 +1475,7 @@ async function processTextMessage(
           items.push({ type: 'interactive', interactive: { type: 'buttons', body: suggestion.body, buttons: suggestion.buttons } } as BotResponseItem);
         }
       }
-      conversationLogger.log(userId, phone, text, result.messages[0] ?? null, 'command', 'compound', null, null, aiUsed, Date.now() - startTime, !!result.lastInteractive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
+      conversationLogger.log(userId, phone, text, result.messages.join('\n\n') || null, 'command', 'compound', null, null, aiUsed, Date.now() - startTime, !!result.lastInteractive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
       return items;
     }
     // result is null or empty → fall through to normal single-action path

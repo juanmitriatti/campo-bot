@@ -1606,7 +1606,7 @@ router.post('/', async (req: Request, res: Response) => {
           }
           await sendResponse(phone, combined);
         }
-        conversationLogger.log(userId, phone, text, result.messages[0] ?? null, 'command', 'compound', null, null, aiUsed, Date.now() - startTime, !!result.lastInteractive, confidence, toolCallsData, agentMode).catch(() => {});
+        conversationLogger.log(userId, phone, text, result.messages.join('\n\n') || null, 'command', 'compound', null, null, aiUsed, Date.now() - startTime, !!result.lastInteractive, confidence, toolCallsData, agentMode).catch(() => {});
         res.sendStatus(200);
         return;
       }

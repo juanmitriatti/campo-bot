@@ -260,6 +260,76 @@ describe('CompoundExecutor', () => {
     expect(passedSettings.confirm_before_save).toBe(false);
   });
 
+  it('consolidates livestock compound into single message', async () => {
+    const mockRouter = {
+      routeCommand: vi.fn()
+        .mockResolvedValueOnce({
+          messages: ['🐄 *Hacienda actualizada*\n\n  Vaca (nuevo grupo)\n  ➕ 141 animales\n  📊 Total en lote: *141*\n  📍 schiavi (Don Aurelio)'],
+        } as HandlerResponse)
+        .mockResolvedValueOnce({
+          messages: ['🐄 *Hacienda actualizada*\n\n  Ternero (nuevo grupo)\n  ➕ 141 animales\n  📊 Total en lote: *141*\n  📍 schiavi (Don Aurelio)'],
+        } as HandlerResponse),
+    };
+
+    const executor = new CompoundExecutor(mockRouter as any);
+    const results = [
+      makeCommandResult('add_livestock', { category: 'vaca', count: 141, plotName: 'schiavi', fieldName: 'Don Aurelio' }),
+      makeCommandResult('add_livestock', { category: 'ternero', count: 141, plotName: 'schiavi', fieldName: 'Don Aurelio' }),
+    ];
+
+    const result = await executor.execute(results, 1 as UserId, mockUser, mockSettings);
+
+    expect(result).not.toBeNull();
+    // Should be consolidated into a single message
+    expect(result!.messages).toHaveLength(1);
+    expect(result!.messages[0]).toContain('141 Vaca');
+    expect(result!.messages[0]).toContain('141 Ternero');
+    expect(result!.messages[0]).toContain('schiavi');
+  });
+
+  it('does not consolidate livestock on different plots', async () => {
+    const mockRouter = {
+      routeCommand: vi.fn()
+        .mockResolvedValueOnce({ messages: ['🐄 vacas en A1'] } as HandlerResponse)
+        .mockResolvedValueOnce({ messages: ['🐄 terneros en B2'] } as HandlerResponse),
+    };
+
+    const executor = new CompoundExecutor(mockRouter as any);
+    const results = [
+      makeCommandResult('add_livestock', { category: 'vaca', count: 10, plotName: 'A1', fieldName: 'Norte' }),
+      makeCommandResult('add_livestock', { category: 'ternero', count: 10, plotName: 'B2', fieldName: 'Norte' }),
+    ];
+
+    const result = await executor.execute(results, 1 as UserId, mockUser, mockSettings);
+
+    expect(result).not.toBeNull();
+    // Different plots → no consolidation
+    expect(result!.messages).toHaveLength(2);
+  });
+
+  it('does not consolidate mixed livestock + non-livestock compound', async () => {
+    const mockRouter = {
+      routeCommand: vi.fn()
+        .mockResolvedValueOnce({ messages: ['🐄 vacas cargadas'] } as HandlerResponse),
+    };
+    const mockFinancial = {
+      handleExpense: vi.fn()
+        .mockResolvedValueOnce({ messages: ['💰 Gasto registrado'] } as HandlerResponse),
+    };
+
+    const executor = new CompoundExecutor(mockRouter as any, mockFinancial as any);
+    const results = [
+      makeCommandResult('add_livestock', { category: 'vaca', count: 10, plotName: 'A1' }),
+      makeExpenseResult(),
+    ];
+
+    const result = await executor.execute(results, 1 as UserId, mockUser, mockSettings);
+
+    expect(result).not.toBeNull();
+    // Mixed types → no consolidation
+    expect(result!.messages).toHaveLength(2);
+  });
+
   it('falls back without financialHandler — only commands execute', async () => {
     const mockRouter = {
       routeCommand: vi.fn()

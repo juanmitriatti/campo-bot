@@ -726,7 +726,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'record_livestock_birth',
-    description: 'Registrar nacimiento/parición de terneros. Verbos: parió, nacieron, tuve N crías.',
+    description: 'Registrar nacimiento/parición de terneros. SOLO usar con verbos explícitos de nacimiento: parió, nacieron, nació, parición, tuve crías. NUNCA usar para "hay N terneros" o "con N terneros" (eso es add_livestock).',
     input_schema: {
       type: 'object',
       properties: {
