@@ -131,6 +131,7 @@ export class FeatureGate {
       log_observation: 'agronomy',
       generate_agro_report: 'agronomy',
       log_tacto: 'agronomy',
+      tacto_summary: 'agronomy',
       edit_last_activity: 'agronomy',
       // Sharing
       share_field: 'sharing',
@@ -159,6 +160,14 @@ export class FeatureGate {
       adjust_livestock: 'livestock',
       list_livestock: 'livestock',
       livestock_history: 'livestock',
+      // Feedlot / Corrals
+      create_feedlot: 'livestock',
+      list_feedlots: 'livestock',
+      delete_feedlot: 'livestock',
+      create_corral: 'livestock',
+      list_corrals: 'livestock',
+      delete_corral: 'livestock',
+      rename_corral: 'livestock',
     };
 
     return map[command] ?? null;

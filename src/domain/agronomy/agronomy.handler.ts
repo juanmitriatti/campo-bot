@@ -16,6 +16,7 @@ import { formatObservationResponse, formatAgroReportResponse } from '../../middl
 import { logError } from '../../services/error-logger.js';
 import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
 import { formatHistoryResponse } from './plot-query.service.js';
+import { formatDateAR } from '../../utils/date.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
 import type { PendingActivity } from '../../middleware/pending-activities.js';
 import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
@@ -1033,6 +1034,113 @@ export class AgronomyHandler {
         if (cmd.eventDate) {
           const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
           lines.push(`📅 ${dateStr}`);
+        }
+
+        return { messages: [lines.join('\n')] };
+      }
+
+      case 'tacto_summary': {
+        // Resolve optional field/plot
+        let summaryFieldId: number | null = null;
+        let summaryPlotId: number | null = null;
+        let summaryPlotName: string | null = null;
+
+        if (cmd.plotName || cmd.fieldName) {
+          const resolved = await this.plotDiscovery.resolveFromNames(
+            userId,
+            cmd.fieldName as string | null,
+            cmd.plotName as string | null,
+          );
+          summaryFieldId = resolved.fieldId ?? null;
+          summaryPlotId = resolved.plotId ?? null;
+          summaryPlotName = resolved.plotName ?? null;
+        }
+
+        const rows = await this.repo.getTactoSummary(userId, {
+          fieldId: summaryFieldId,
+          plotId: summaryPlotId,
+          desde: cmd.desde as string | null,
+          hasta: cmd.hasta as string | null,
+        });
+
+        if (rows.length === 0) {
+          return { messages: ['No hay registros de tacto' + (summaryPlotName ? ` en *${summaryPlotName}*` : '') + '.'] };
+        }
+
+        // Aggregate totals across all rows
+        let grandPregnant = 0;
+        let grandOpen = 0;
+        let grandUncertain = 0;
+        let grandChecked = 0;
+        let minDate: string | null = null;
+        let maxDate: string | null = null;
+
+        for (const row of rows) {
+          grandPregnant += row.total_pregnant;
+          grandOpen += row.total_open;
+          grandUncertain += row.total_uncertain;
+          grandChecked += row.total_checked;
+          const d = row.event_date;
+          if (!minDate || d < minDate) minDate = d;
+          if (!maxDate || d > maxDate) maxDate = d;
+        }
+
+        const rate = grandChecked > 0 ? Math.round((grandPregnant / grandChecked) * 100) : 0;
+
+        // Date label
+        let dateLabel: string;
+        if (cmd.desde && cmd.hasta) {
+          dateLabel = `${formatDateAR(cmd.desde as string)} — ${formatDateAR(cmd.hasta as string)}`;
+        } else if (minDate === maxDate) {
+          dateLabel = `último tacto (${formatDateAR(minDate!)})`;
+        } else {
+          dateLabel = `${formatDateAR(minDate!)} — ${formatDateAR(maxDate!)}`;
+        }
+
+        // Per-plot summary (only when not filtering by a specific plot)
+        if (summaryPlotId) {
+          // Single-plot view
+          const lines: string[] = [
+            `🩺 *Tacto — ${summaryPlotName}*`,
+            `📅 ${dateLabel}`,
+            '',
+            `🐄 ${grandChecked} revisadas`,
+            `✅ Preñadas: ${grandPregnant}`,
+            `❌ Vacías: ${grandOpen}`,
+          ];
+          if (grandUncertain > 0) lines.push(`❓ Dudosas: ${grandUncertain}`);
+          lines.push(`📊 Tasa de preñez: *${rate}%*`);
+          return { messages: [lines.join('\n')] };
+        }
+
+        // Global summary with per-plot breakdown
+        const lines: string[] = [
+          '🩺 *Resumen de tacto*',
+          `📅 Periodo: ${dateLabel}`,
+          '',
+          `🐄 ${grandChecked} vacas revisadas`,
+          `✅ Preñadas: ${grandPregnant}`,
+          `❌ Vacías: ${grandOpen}`,
+        ];
+        if (grandUncertain > 0) lines.push(`❓ Dudosas: ${grandUncertain}`);
+        lines.push(`📊 Tasa de preñez: *${rate}%*`);
+
+        // Group by plot for breakdown
+        const plotMap = new Map<string, { checked: number; pregnant: number }>();
+        for (const row of rows) {
+          const key = row.plot_name || 'Sin lote';
+          const existing = plotMap.get(key) || { checked: 0, pregnant: 0 };
+          existing.checked += row.total_checked;
+          existing.pregnant += row.total_pregnant;
+          plotMap.set(key, existing);
+        }
+
+        if (plotMap.size > 1) {
+          lines.push('', '📍 *Por lote:*');
+          for (const [name, data] of plotMap) {
+            const plotRate = data.checked > 0 ? Math.round((data.pregnant / data.checked) * 100) : 0;
+            lines.push(`  • ${name}: ${data.checked} revisadas - ${data.pregnant} preñadas (${plotRate}%)`);
+          }
         }
 
         return { messages: [lines.join('\n')] };

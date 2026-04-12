@@ -350,19 +350,21 @@ router.get('/livestock', requireAuth, async (req: Request, res: Response) => {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
 
-    const filters: { fieldId?: number; plotId?: number; category?: string } = {};
+    const filters: { fieldId?: number; plotId?: number; corralId?: number; category?: string } = {};
     const fieldId = parseInt(String(req.query.fieldId), 10);
     if (!isNaN(fieldId)) filters.fieldId = fieldId;
     const plotId = parseInt(String(req.query.plotId), 10);
     if (!isNaN(plotId)) filters.plotId = plotId;
+    const corralId = parseInt(String(req.query.corralId), 10);
+    if (!isNaN(corralId)) filters.corralId = corralId;
     if (req.query.category && typeof req.query.category === 'string') filters.category = req.query.category;
 
     const { LivestockRepository } = await import('../domain/livestock/livestock.repository.js');
     const repo = new LivestockRepository();
     const groups = await repo.listGroups(req.auth!.userId, filters as {
-      fieldId?: number; plotId?: number; category?: import('../domain/livestock/livestock.types.js').LivestockCategory;
+      fieldId?: number; plotId?: number; corralId?: number; category?: import('../domain/livestock/livestock.types.js').LivestockCategory;
     });
-    const total = await repo.countTotal(req.auth!.userId, { fieldId: filters.fieldId, plotId: filters.plotId });
+    const total = await repo.countTotal(req.auth!.userId, { fieldId: filters.fieldId, plotId: filters.plotId, corralId: filters.corralId });
 
     const offset = (page - 1) * limit;
     const pageItems = groups.slice(offset, offset + limit);
@@ -389,6 +391,7 @@ router.get('/livestock/movements', requireAuth, async (req: Request, res: Respon
     const opts: {
       fieldId?: number;
       plotId?: number;
+      corralId?: number;
       category?: import('../domain/livestock/livestock.types.js').LivestockCategory;
       movementType?: import('../domain/livestock/livestock.types.js').LivestockMovementType;
       desde?: string;
@@ -401,6 +404,8 @@ router.get('/livestock/movements', requireAuth, async (req: Request, res: Respon
     if (!isNaN(fieldId)) opts.fieldId = fieldId;
     const plotId = parseInt(String(req.query.plotId), 10);
     if (!isNaN(plotId)) opts.plotId = plotId;
+    const corralId = parseInt(String(req.query.corralId), 10);
+    if (!isNaN(corralId)) opts.corralId = corralId;
     if (req.query.category && typeof req.query.category === 'string') {
       opts.category = req.query.category as import('../domain/livestock/livestock.types.js').LivestockCategory;
     }
@@ -453,8 +458,14 @@ router.get('/livestock/:id/movements', requireAuth, async (req: Request, res: Re
 router.get('/livestock/filters', requireAuth, async (req: Request, res: Response) => {
   try {
     const fields = await observationService.getUserFieldsWithPlots(req.auth!.userId);
+    const { FeedlotRepository } = await import('../domain/feedlot/feedlot.repository.js');
+    const feedlotRepo = new FeedlotRepository();
+    const feedlots = await feedlotRepo.listFeedlots(asUserId(req.auth!.userId));
+    const corrals = await feedlotRepo.listCorralsByUser(asUserId(req.auth!.userId));
     res.json({
       fields,
+      feedlots,
+      corrals,
       categories: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'],
     });
   } catch (err) {
@@ -483,6 +494,173 @@ router.patch('/livestock/:id', requireAuth, async (req: Request, res: Response) 
     await repo.updateGroupMetadata(id, { breed, avg_weight_kg, notes });
     const updated = await repo.getGroupById(id);
     res.json(updated);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Feedlot & Corral routes ---
+
+router.get('/feedlots', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { FeedlotRepository } = await import('../domain/feedlot/feedlot.repository.js');
+    const repo = new FeedlotRepository();
+    const feedlots = await repo.listFeedlots(asUserId(req.auth!.userId));
+    res.json({ items: feedlots });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.post('/feedlots', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { name, fieldId, capacity, notes } = req.body;
+    if (!name || !fieldId) { res.status(400).json({ error: 'name y fieldId son requeridos' }); return; }
+
+    // Access control
+    const { FieldSharingService } = await import('../domain/sharing/field-sharing.service.js');
+    const sharing = new FieldSharingService();
+    const canAccess = await sharing.isFieldAccessible(asUserId(req.auth!.userId), fieldId);
+    if (!canAccess) { res.status(403).json({ error: 'Sin acceso a este campo' }); return; }
+
+    const { FeedlotRepository } = await import('../domain/feedlot/feedlot.repository.js');
+    const repo = new FeedlotRepository();
+    const feedlot = await repo.createFeedlot(asUserId(req.auth!.userId), fieldId, name, { capacity, notes });
+    res.status(201).json(feedlot);
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes('ya tiene un feedlot')) {
+      res.status(409).json({ error: err.message });
+      return;
+    }
+    handleError(err, res);
+  }
+});
+
+router.patch('/feedlots/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+
+    const { FeedlotRepository } = await import('../domain/feedlot/feedlot.repository.js');
+    const repo = new FeedlotRepository();
+
+    // Verify feedlot exists and user has access
+    const feedlots = await repo.listFeedlots(asUserId(req.auth!.userId));
+    const feedlot = feedlots.find(f => f.id === id);
+    if (!feedlot) { res.status(404).json({ error: 'Feedlot no encontrado' }); return; }
+
+    const { name, capacity, notes } = req.body;
+    await pool.query(
+      `UPDATE feedlots SET name = COALESCE($1, name), capacity = COALESCE($2, capacity), notes = COALESCE($3, notes), updated_at = NOW() WHERE id = $4`,
+      [name || null, capacity ?? null, notes ?? null, id],
+    );
+    res.json({ success: true });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.delete('/feedlots/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+
+    const { FeedlotRepository } = await import('../domain/feedlot/feedlot.repository.js');
+    const repo = new FeedlotRepository();
+
+    const feedlots = await repo.listFeedlots(asUserId(req.auth!.userId));
+    const feedlot = feedlots.find(f => f.id === id);
+    if (!feedlot) { res.status(404).json({ error: 'Feedlot no encontrado' }); return; }
+
+    await repo.deleteFeedlot(id);
+    res.json({ success: true });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.get('/feedlots/:id/corrals', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const feedlotId = parseInt(String(req.params.id), 10);
+    if (isNaN(feedlotId)) { res.status(400).json({ error: 'ID inválido' }); return; }
+
+    const { FeedlotRepository } = await import('../domain/feedlot/feedlot.repository.js');
+    const repo = new FeedlotRepository();
+
+    // Access control via feedlot list
+    const feedlots = await repo.listFeedlots(asUserId(req.auth!.userId));
+    const feedlot = feedlots.find(f => f.id === feedlotId);
+    if (!feedlot) { res.status(404).json({ error: 'Feedlot no encontrado' }); return; }
+
+    const corrals = await repo.listCorrals(feedlotId);
+    res.json({ items: corrals });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.post('/corrals', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { name, feedlotId, capacity, notes } = req.body;
+    if (!name || !feedlotId) { res.status(400).json({ error: 'name y feedlotId son requeridos' }); return; }
+
+    const { FeedlotRepository } = await import('../domain/feedlot/feedlot.repository.js');
+    const repo = new FeedlotRepository();
+
+    // Access control via feedlot
+    const feedlots = await repo.listFeedlots(asUserId(req.auth!.userId));
+    const feedlot = feedlots.find(f => f.id === feedlotId);
+    if (!feedlot) { res.status(403).json({ error: 'Sin acceso a este feedlot' }); return; }
+
+    const corral = await repo.createCorral(feedlotId, name, { capacity, notes });
+    res.status(201).json(corral);
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes('ya existe')) {
+      res.status(409).json({ error: err.message });
+      return;
+    }
+    handleError(err, res);
+  }
+});
+
+router.patch('/corrals/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+
+    const { FeedlotRepository } = await import('../domain/feedlot/feedlot.repository.js');
+    const repo = new FeedlotRepository();
+
+    // Access control via corral list
+    const corrals = await repo.listCorralsByUser(asUserId(req.auth!.userId));
+    const corral = corrals.find(c => c.id === id);
+    if (!corral) { res.status(404).json({ error: 'Corral no encontrado' }); return; }
+
+    const { name, capacity, notes } = req.body;
+    await pool.query(
+      `UPDATE corrals SET name = COALESCE($1, name), capacity = COALESCE($2, capacity), notes = COALESCE($3, notes), updated_at = NOW() WHERE id = $4`,
+      [name || null, capacity ?? null, notes ?? null, id],
+    );
+    res.json({ success: true });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.delete('/corrals/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+
+    const { FeedlotRepository } = await import('../domain/feedlot/feedlot.repository.js');
+    const repo = new FeedlotRepository();
+
+    const corrals = await repo.listCorralsByUser(asUserId(req.auth!.userId));
+    const corral = corrals.find(c => c.id === id);
+    if (!corral) { res.status(404).json({ error: 'Corral no encontrado' }); return; }
+
+    await repo.deleteCorral(id);
+    res.json({ success: true });
   } catch (err) {
     handleError(err, res);
   }

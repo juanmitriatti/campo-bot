@@ -24,7 +24,7 @@ export class LivestockRepository {
     const { rows } = await pool.query(
       `SELECT lg.*, p.name AS plot_name, f.name AS field_name
        FROM livestock_groups lg
-       JOIN plots p ON lg.plot_id = p.id
+       LEFT JOIN plots p ON lg.plot_id = p.id
        JOIN fields f ON lg.field_id = f.id
        WHERE lg.plot_id = $1
          AND lg.category = $2
@@ -35,11 +35,30 @@ export class LivestockRepository {
     return rows[0] || null;
   }
 
+  async findGroupInCorral(corralId: number, category: LivestockCategory, breed: string | null): Promise<LivestockGroupRow | null> {
+    const { rows } = await pool.query(
+      `SELECT lg.*, c.name AS corral_name, fl.name AS feedlot_name, f.name AS field_name
+       FROM livestock_groups lg
+       JOIN corrals c ON lg.corral_id = c.id
+       JOIN feedlots fl ON c.feedlot_id = fl.id
+       JOIN fields f ON lg.field_id = f.id
+       WHERE lg.corral_id = $1
+         AND lg.category = $2
+         AND lg.breed IS NOT DISTINCT FROM $3
+         AND lg.deleted_at IS NULL`,
+      [corralId, category, breed]
+    );
+    return rows[0] || null;
+  }
+
   async getGroupById(id: string): Promise<LivestockGroupRow | null> {
     const { rows } = await pool.query(
-      `SELECT lg.*, p.name AS plot_name, f.name AS field_name
+      `SELECT lg.*, p.name AS plot_name, f.name AS field_name,
+              c.name AS corral_name, fl2.name AS feedlot_name
        FROM livestock_groups lg
-       JOIN plots p ON lg.plot_id = p.id
+       LEFT JOIN plots p ON lg.plot_id = p.id
+       LEFT JOIN corrals c ON lg.corral_id = c.id
+       LEFT JOIN feedlots fl2 ON c.feedlot_id = fl2.id
        JOIN fields f ON lg.field_id = f.id
        WHERE lg.id = $1 AND lg.deleted_at IS NULL`,
       [id]
@@ -49,11 +68,14 @@ export class LivestockRepository {
 
   async listGroups(
     userId: number,
-    opts: { fieldId?: number; plotId?: number; category?: LivestockCategory } = {}
+    opts: { fieldId?: number; plotId?: number; corralId?: number; category?: LivestockCategory } = {}
   ): Promise<LivestockGroupRow[]> {
-    let query = `SELECT lg.*, p.name AS plot_name, f.name AS field_name
+    let query = `SELECT lg.*, p.name AS plot_name, f.name AS field_name,
+              c.name AS corral_name, fl2.name AS feedlot_name
        FROM livestock_groups lg
-       JOIN plots p ON lg.plot_id = p.id
+       LEFT JOIN plots p ON lg.plot_id = p.id
+       LEFT JOIN corrals c ON lg.corral_id = c.id
+       LEFT JOIN feedlots fl2 ON c.feedlot_id = fl2.id
        JOIN fields f ON lg.field_id = f.id
        WHERE lg.field_id IN (${accessibleFieldsSql(1)})
          AND lg.deleted_at IS NULL
@@ -68,17 +90,21 @@ export class LivestockRepository {
       params.push(opts.plotId);
       query += ` AND lg.plot_id = $${params.length}`;
     }
+    if (opts.corralId) {
+      params.push(opts.corralId);
+      query += ` AND lg.corral_id = $${params.length}`;
+    }
     if (opts.category) {
       params.push(opts.category);
       query += ` AND lg.category = $${params.length}`;
     }
-    query += ' ORDER BY f.name, p.name, lg.category';
+    query += ' ORDER BY f.name, COALESCE(p.name, c.name), lg.category';
 
     const { rows } = await pool.query(query, params);
     return rows;
   }
 
-  async countTotal(userId: number, opts: { fieldId?: number; plotId?: number } = {}): Promise<number> {
+  async countTotal(userId: number, opts: { fieldId?: number; plotId?: number; corralId?: number } = {}): Promise<number> {
     let query = `SELECT COALESCE(SUM(lg.count), 0) AS total
        FROM livestock_groups lg
        WHERE lg.field_id IN (${accessibleFieldsSql(1)})
@@ -92,6 +118,10 @@ export class LivestockRepository {
       params.push(opts.plotId);
       query += ` AND lg.plot_id = $${params.length}`;
     }
+    if (opts.corralId) {
+      params.push(opts.corralId);
+      query += ` AND lg.corral_id = $${params.length}`;
+    }
     const { rows } = await pool.query(query, params);
     return parseInt(rows[0].total, 10);
   }
@@ -100,7 +130,7 @@ export class LivestockRepository {
   // GROUPS (write, non-atomic)
   // ========================
 
-  /** Create a new group with count=0 (movements fill it) */
+  /** Create a new group with count=0 in a plot (movements fill it) */
   async createGroup(
     userId: number,
     fieldId: number,
@@ -111,13 +141,33 @@ export class LivestockRepository {
   ): Promise<LivestockGroupRow> {
     const { rows } = await pool.query(
       `INSERT INTO livestock_groups
-         (user_id, field_id, plot_id, category, breed, count, avg_weight_kg, notes)
-       VALUES ($1, $2, $3, $4, $5, 0, $6, $7)
-       ON CONFLICT (plot_id, category, breed) DO UPDATE
-         SET deleted_at = NULL,
-             updated_at = NOW()
+         (user_id, field_id, plot_id, corral_id, category, breed, count, avg_weight_kg, notes)
+       VALUES ($1, $2, $3, NULL, $4, $5, 0, $6, $7)
+       ON CONFLICT (plot_id, category, breed) WHERE plot_id IS NOT NULL AND deleted_at IS NULL
+         DO UPDATE SET deleted_at = NULL, updated_at = NOW()
        RETURNING *`,
       [userId, fieldId, plotId, category, breed, opts.avg_weight_kg ?? null, opts.notes ?? null]
+    );
+    return rows[0];
+  }
+
+  /** Create a new group with count=0 in a corral (movements fill it) */
+  async createGroupInCorral(
+    userId: number,
+    fieldId: number,
+    corralId: number,
+    category: LivestockCategory,
+    breed: string | null,
+    opts: { avg_weight_kg?: number | null; notes?: string | null } = {}
+  ): Promise<LivestockGroupRow> {
+    const { rows } = await pool.query(
+      `INSERT INTO livestock_groups
+         (user_id, field_id, plot_id, corral_id, category, breed, count, avg_weight_kg, notes)
+       VALUES ($1, $2, NULL, $3, $4, $5, 0, $6, $7)
+       ON CONFLICT (corral_id, category, breed) WHERE corral_id IS NOT NULL AND deleted_at IS NULL
+         DO UPDATE SET deleted_at = NULL, updated_at = NOW()
+       RETURNING *`,
+      [userId, fieldId, corralId, category, breed, opts.avg_weight_kg ?? null, opts.notes ?? null]
     );
     return rows[0];
   }
@@ -175,7 +225,7 @@ export class LivestockRepository {
   }
 
   /**
-   * List movements across all accessible fields with JOINed group/plot/field context.
+   * List movements across all accessible fields with JOINed group/plot/field/corral context.
    * Supports pagination and filters. Used by dashboard history panel.
    */
   async listMovements(
@@ -183,6 +233,7 @@ export class LivestockRepository {
     opts: {
       fieldId?: number;
       plotId?: number;
+      corralId?: number;
       category?: LivestockCategory;
       movementType?: LivestockMovementType;
       desde?: string;
@@ -195,10 +246,14 @@ export class LivestockRepository {
     source_breed?: string | null;
     source_plot_name?: string | null;
     source_field_name?: string | null;
+    source_corral_name?: string | null;
+    source_feedlot_name?: string | null;
     dest_category?: LivestockCategory | null;
     dest_breed?: string | null;
     dest_plot_name?: string | null;
     dest_field_name?: string | null;
+    dest_corral_name?: string | null;
+    dest_feedlot_name?: string | null;
   })[]; total: number }> {
     const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
     const offset = Math.max(0, opts.offset ?? 0);
@@ -222,6 +277,10 @@ export class LivestockRepository {
       params.push(opts.plotId);
       where.push(`(src.plot_id = $${params.length} OR dst.plot_id = $${params.length})`);
     }
+    if (opts.corralId) {
+      params.push(opts.corralId);
+      where.push(`(src.corral_id = $${params.length} OR dst.corral_id = $${params.length})`);
+    }
     if (opts.category) {
       params.push(opts.category);
       where.push(`(src.category = $${params.length} OR dst.category = $${params.length})`);
@@ -242,9 +301,13 @@ export class LivestockRepository {
     const baseFrom = `FROM livestock_movements m
        LEFT JOIN livestock_groups src ON m.source_group_id = src.id
        LEFT JOIN plots sp ON src.plot_id = sp.id
+       LEFT JOIN corrals sc ON src.corral_id = sc.id
+       LEFT JOIN feedlots sfl ON sc.feedlot_id = sfl.id
        LEFT JOIN fields sf ON src.field_id = sf.id
        LEFT JOIN livestock_groups dst ON m.dest_group_id = dst.id
        LEFT JOIN plots dp ON dst.plot_id = dp.id
+       LEFT JOIN corrals dc ON dst.corral_id = dc.id
+       LEFT JOIN feedlots dfl ON dc.feedlot_id = dfl.id
        LEFT JOIN fields df ON dst.field_id = df.id
        WHERE ${where.join(' AND ')}`;
 
@@ -257,8 +320,10 @@ export class LivestockRepository {
       `SELECT m.*,
               src.category AS source_category, src.breed AS source_breed,
               sp.name AS source_plot_name, sf.name AS source_field_name,
+              sc.name AS source_corral_name, sfl.name AS source_feedlot_name,
               dst.category AS dest_category, dst.breed AS dest_breed,
-              dp.name AS dest_plot_name, df.name AS dest_field_name
+              dp.name AS dest_plot_name, df.name AS dest_field_name,
+              dc.name AS dest_corral_name, dfl.name AS dest_feedlot_name
        ${baseFrom}
        ORDER BY m.movement_date DESC, m.created_at DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -378,7 +443,7 @@ export class LivestockRepository {
 
   /**
    * Atomic: move `count` animals from sourceGroupId → destGroupId in a single transaction.
-   * Used for 'transferencia' (between plots) and 'recategorizacion' (same plot, different category).
+   * Used for 'transferencia' (between plots/corrals) and 'recategorizacion' (same location, different category).
    * Locks rows in consistent ID order to avoid deadlocks.
    */
   async applyTransferMovement(

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { TOOL_DEFINITIONS, TOOL_NAMES } from '../tool-definitions.js';
 
 describe('TOOL_DEFINITIONS', () => {
-  it('has 54 tools', () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(54);
+  it('has 62 tools', () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(62);
   });
 
   it('all tools have unique names', () => {
@@ -86,22 +86,40 @@ describe('TOOL_DEFINITIONS', () => {
       expect(TOOL_NAMES.has(name)).toBe(true);
     }
 
-    // add_livestock requires category, count, plot
+    // add_livestock requires category, count (plot is now optional — plot OR corral)
     const add = TOOL_DEFINITIONS.find(t => t.name === 'add_livestock')!;
     expect(add.input_schema.required).toContain('category');
     expect(add.input_schema.required).toContain('count');
-    expect(add.input_schema.required).toContain('plot');
+    expect(add.input_schema.properties).toHaveProperty('plot');
+    expect(add.input_schema.properties).toHaveProperty('corral');
 
-    // transfer_livestock requires source_plot and dest_plot
+    // transfer_livestock has source_plot/dest_plot/source_corral/dest_corral (all optional)
     const transfer = TOOL_DEFINITIONS.find(t => t.name === 'transfer_livestock')!;
-    expect(transfer.input_schema.required).toContain('source_plot');
-    expect(transfer.input_schema.required).toContain('dest_plot');
+    expect(transfer.input_schema.properties).toHaveProperty('source_plot');
+    expect(transfer.input_schema.properties).toHaveProperty('dest_plot');
+    expect(transfer.input_schema.properties).toHaveProperty('source_corral');
+    expect(transfer.input_schema.properties).toHaveProperty('dest_corral');
 
     // category enum has 9 values
     const catProp = add.input_schema.properties!.category as { enum: string[] };
     expect(catProp.enum).toEqual([
       'vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey',
     ]);
+  });
+
+  it('feedlot tools exist', () => {
+    const feedlotTools = ['create_feedlot', 'list_feedlots', 'delete_feedlot',
+      'create_corral', 'list_corrals', 'delete_corral', 'rename_corral'];
+    for (const name of feedlotTools) {
+      expect(TOOL_NAMES.has(name)).toBe(true);
+    }
+
+    const createFeedlot = TOOL_DEFINITIONS.find(t => t.name === 'create_feedlot')!;
+    expect(createFeedlot.input_schema.required).toContain('name');
+    expect(createFeedlot.input_schema.required).toContain('field');
+
+    const createCorral = TOOL_DEFINITIONS.find(t => t.name === 'create_corral')!;
+    expect(createCorral.input_schema.required).toContain('name');
   });
 
   it('financial_report has all expected properties', () => {

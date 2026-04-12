@@ -5,6 +5,7 @@ import { SharingHandler } from './sharing/sharing.handler.js';
 import { StockHandler } from './stock/stock.handler.js';
 import { DocumentHandler } from './documents/document.handler.js';
 import { LivestockHandler } from './livestock/livestock.handler.js';
+import { FeedlotHandler } from './feedlot/feedlot.handler.js';
 import { FeatureGate } from './billing/feature-gate.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../types/index.js';
 
@@ -31,7 +32,7 @@ const AGRONOMY_COMMANDS = new Set([
   'sow_crop', 'harvest_crop', 'active_crop', 'crop_history',
   'log_spraying', 'log_fertilization', 'log_tillage', 'log_irrigation', 'plot_activities',
   'query_plot_history', 'log_observation', 'generate_agro_report',
-  'log_tacto', 'edit_last_activity',
+  'log_tacto', 'tacto_summary', 'edit_last_activity',
 ]);
 
 const SHARING_COMMANDS = new Set([
@@ -55,6 +56,11 @@ const LIVESTOCK_COMMANDS = new Set([
   'list_livestock', 'livestock_history',
 ]);
 
+const FEEDLOT_COMMANDS = new Set([
+  'create_feedlot', 'list_feedlots', 'delete_feedlot',
+  'create_corral', 'list_corrals', 'delete_corral', 'rename_corral',
+]);
+
 const SYSTEM_COMMANDS = new Set([
   'greeting', 'help', 'thanks', 'ack', 'dollar',
   'menu', 'show_expense_menu', 'show_income_menu', 'show_agro_menu',
@@ -73,6 +79,7 @@ export class DomainRouter {
   private stockHandler: StockHandler;
   private documentHandler: DocumentHandler;
   private livestockHandler: LivestockHandler;
+  private feedlotHandler: FeedlotHandler;
 
   constructor(
     private financialHandler: FinancialHandler,
@@ -83,12 +90,14 @@ export class DomainRouter {
     stockHandler?: StockHandler,
     documentHandler?: DocumentHandler,
     livestockHandler?: LivestockHandler,
+    feedlotHandler?: FeedlotHandler,
   ) {
     this.featureGate = featureGate ?? new FeatureGate();
     this.sharingHandler = sharingHandler ?? new SharingHandler();
     this.stockHandler = stockHandler ?? new StockHandler();
     this.documentHandler = documentHandler ?? new DocumentHandler();
     this.livestockHandler = livestockHandler ?? new LivestockHandler();
+    this.feedlotHandler = feedlotHandler ?? new FeedlotHandler();
   }
 
   async routeCommand(
@@ -139,6 +148,10 @@ export class DomainRouter {
 
     if (LIVESTOCK_COMMANDS.has(command)) {
       return this.livestockHandler.handleCommand(cmd, userId, user, settings);
+    }
+
+    if (FEEDLOT_COMMANDS.has(command)) {
+      return this.feedlotHandler.handleCommand(cmd, userId, user, settings);
     }
 
     return null;

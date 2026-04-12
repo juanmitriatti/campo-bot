@@ -5,6 +5,8 @@ import type { UserId } from '../types/index.js';
 export interface UserContext {
   fieldNames: string[];
   plotNames: string[];
+  corralNames: string[];
+  feedlotNames: string[];
   lastFieldName: string | null;
   lastPlotName: string | null;
 }
@@ -31,15 +33,19 @@ export class UserContextService {
     }
 
     // Load all in parallel — partial failure is OK
-    const [fieldsResult, plotsResult, lastContextResult] = await Promise.allSettled([
+    const [fieldsResult, plotsResult, lastContextResult, corralsResult, feedlotsResult] = await Promise.allSettled([
       this.entityValidator.getUserFieldNames(userId),
       this.entityValidator.getUserPlotNames(userId),
       this.loadLastContext(userId),
+      this.loadCorralNames(userId),
+      this.loadFeedlotNames(userId),
     ]);
 
     const context: UserContext = {
       fieldNames: fieldsResult.status === 'fulfilled' ? fieldsResult.value : [],
       plotNames: plotsResult.status === 'fulfilled' ? plotsResult.value : [],
+      corralNames: corralsResult.status === 'fulfilled' ? corralsResult.value : [],
+      feedlotNames: feedlotsResult.status === 'fulfilled' ? feedlotsResult.value : [],
       lastFieldName: lastContextResult.status === 'fulfilled' ? lastContextResult.value.lastFieldName : null,
       lastPlotName: lastContextResult.status === 'fulfilled' ? lastContextResult.value.lastPlotName : null,
     };
@@ -68,5 +74,28 @@ export class UserContextService {
       lastFieldName: result.rows[0].field_name ?? null,
       lastPlotName: result.rows[0].plot_name ?? null,
     };
+  }
+
+  private async loadCorralNames(userId: UserId): Promise<string[]> {
+    const result = await pool.query(
+      `SELECT c.name FROM corrals c
+       JOIN feedlots fl ON c.feedlot_id = fl.id
+       WHERE fl.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1)
+         AND c.deleted_at IS NULL AND fl.deleted_at IS NULL
+       ORDER BY c.name`,
+      [userId],
+    );
+    return result.rows.map((r: { name: string }) => r.name);
+  }
+
+  private async loadFeedlotNames(userId: UserId): Promise<string[]> {
+    const result = await pool.query(
+      `SELECT fl.name FROM feedlots fl
+       WHERE fl.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1)
+         AND fl.deleted_at IS NULL
+       ORDER BY fl.name`,
+      [userId],
+    );
+    return result.rows.map((r: { name: string }) => r.name);
   }
 }

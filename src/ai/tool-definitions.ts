@@ -199,6 +199,20 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       required: ['pregnant_count'],
     },
   },
+  {
+    name: 'tacto_summary',
+    description: 'Consultar resumen/promedio de tacto (revisión de preñez). "promedio del tacto", "resultados del tacto", "como salió el tacto", "tasa de preñez", "cuántas preñadas".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: { type: 'string', description: 'Campo (opcional).' },
+        plot: { type: 'string', description: 'Lote específico (opcional).' },
+        desde: { type: 'string', description: 'Fecha inicio YYYY-MM-DD (opcional).' },
+        hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD (opcional).' },
+      },
+      required: [],
+    },
+  },
 
   // ========================
   // OBSERVATIONS
@@ -302,7 +316,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         field: FIELD_PROP,
         crop: { type: 'string', description: 'Cultivo a buscar (maíz, soja, trigo, etc.).' },
         timeRef: { type: 'string', description: 'Referencia temporal (últimos 30 días, este mes, etc.).' },
-        activityFilter: { type: 'string', description: 'Filtro de actividad: log_spraying, log_fertilization, sow_crop, harvest_crop, log_tillage, log_irrigation.' },
+        activityFilter: { type: 'string', description: 'Filtro de actividad: log_spraying, log_fertilization, sow_crop, harvest_crop, log_tillage, log_irrigation, tacto.' },
       },
       required: [],
     },
@@ -667,7 +681,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // ========================
   {
     name: 'add_livestock',
-    description: 'Registrar ingreso/compra de hacienda (vacas, terneros, novillos, etc.) en un lote. Verbos: agregué, compré, metí, ingresé + N animales. Requiere lote.',
+    description: 'Registrar ingreso/compra de hacienda (vacas, terneros, novillos, etc.) en un lote o corral de feedlot. Verbos: agregué, compré, metí, ingresé + N animales. Requiere lote o corral.',
     input_schema: {
       type: 'object',
       properties: {
@@ -680,14 +694,15 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         reason: { type: 'string', description: 'Motivo/descripción breve (ej: "compra remate Liniers").' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Nombre del corral en el feedlot (alternativa a plot).' },
         event_date: DATE_PROP,
       },
-      required: ['category', 'count', 'plot'],
+      required: ['category', 'count'],
     },
   },
   {
     name: 'remove_livestock',
-    description: 'Registrar egreso/venta de hacienda de un lote. Verbos: vendí, saqué, faené + N animales. Requiere lote.',
+    description: 'Registrar egreso/venta de hacienda de un lote o corral. Verbos: vendí, saqué, faené + N animales. Requiere lote o corral.',
     input_schema: {
       type: 'object',
       properties: {
@@ -699,14 +714,15 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         reason: { type: 'string', description: 'Motivo/descripción breve.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Nombre del corral en el feedlot (alternativa a plot).' },
         event_date: DATE_PROP,
       },
-      required: ['category', 'count', 'plot'],
+      required: ['category', 'count'],
     },
   },
   {
     name: 'transfer_livestock',
-    description: 'Mover animales entre dos lotes. Verbos: mové, pasé, trasladé + N animales + de lote X a lote Y. Operación atómica.',
+    description: 'Mover animales entre lotes, corrales, o lote↔corral. Verbos: mové, pasé, trasladé + N animales + de X a Y. Operación atómica. Origen y destino pueden ser plot o corral.',
     input_schema: {
       type: 'object',
       properties: {
@@ -714,19 +730,21 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         count: { type: 'number', description: 'Cantidad a mover.' },
         breed: { type: 'string', description: 'Raza, si se quiere filtrar por raza.' },
         source_field: { type: 'string', description: 'Campo de origen, si mencionado.' },
-        source_plot: { type: 'string', description: 'Lote de origen.' },
+        source_plot: { type: 'string', description: 'Lote de origen (si el origen es un lote).' },
+        source_corral: { type: 'string', description: 'Corral de origen (si el origen es un corral de feedlot).' },
         dest_field: { type: 'string', description: 'Campo de destino, si mencionado.' },
-        dest_plot: { type: 'string', description: 'Lote de destino.' },
-        dest_category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría destino (para recategorización en el mismo lote).' },
+        dest_plot: { type: 'string', description: 'Lote de destino (si el destino es un lote).' },
+        dest_corral: { type: 'string', description: 'Corral de destino (si el destino es un corral de feedlot).' },
+        dest_category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría destino (para recategorización en la misma ubicación).' },
         reason: { type: 'string', description: 'Motivo/descripción breve.' },
         event_date: DATE_PROP,
       },
-      required: ['category', 'count', 'source_plot', 'dest_plot'],
+      required: ['category', 'count'],
     },
   },
   {
     name: 'record_livestock_death',
-    description: 'Registrar muerte/baja de animales en un lote. Verbos: se murió, falleció, perdí, baja.',
+    description: 'Registrar muerte/baja de animales en un lote o corral. Verbos: se murió, falleció, perdí, baja.',
     input_schema: {
       type: 'object',
       properties: {
@@ -736,9 +754,10 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         reason: { type: 'string', description: 'Causa (enfermedad, accidente, etc.), si mencionado.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Nombre del corral en el feedlot (alternativa a plot).' },
         event_date: DATE_PROP,
       },
-      required: ['category', 'count', 'plot'],
+      required: ['category', 'count'],
     },
   },
   {
@@ -752,14 +771,15 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         breed: { type: 'string', description: 'Raza, si mencionado.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Nombre del corral en el feedlot (alternativa a plot).' },
         event_date: DATE_PROP,
       },
-      required: ['category', 'count', 'plot'],
+      required: ['category', 'count'],
     },
   },
   {
     name: 'adjust_livestock',
-    description: 'Corregir/ajustar el conteo absoluto de animales en un lote. Frases: "en lote X hay N vacas", "ajustá a N", "corregí, son N vacas", "el conteo real es N". DIFERENCIA con add_livestock: adjust ESTABLECE el total, add SUMA al existente.',
+    description: 'Corregir/ajustar el conteo absoluto de animales en un lote o corral. Frases: "en lote X hay N vacas", "en corral 1 hay N novillos", "ajustá a N", "corregí, son N vacas", "el conteo real es N". DIFERENCIA con add_livestock: adjust ESTABLECE el total, add SUMA al existente.',
     input_schema: {
       type: 'object',
       properties: {
@@ -769,26 +789,28 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         reason: { type: 'string', description: 'Motivo de la corrección.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Nombre del corral en el feedlot (alternativa a plot).' },
         event_date: DATE_PROP,
       },
-      required: ['category', 'count', 'plot'],
+      required: ['category', 'count'],
     },
   },
   {
     name: 'list_livestock',
-    description: 'Listar inventario de hacienda con cantidad, raza y peso promedio por grupo. Preguntas: cuántas vacas tengo, stock de hacienda, rodeo, cuánto pesan.',
+    description: 'Listar inventario de hacienda con cantidad, raza y peso promedio por grupo. Incluye lotes y corrales de feedlot. Preguntas: cuántas vacas tengo, stock de hacienda, rodeo, cuánto pesan.',
     input_schema: {
       type: 'object',
       properties: {
         category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Filtrar por categoría, si mencionado.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Filtrar por corral del feedlot.' },
       },
     },
   },
   {
     name: 'livestock_history',
-    description: 'Mostrar historial de movimientos de hacienda con fecha, cantidad, peso, precio y motivo. "historial vacas lote A1", "movimientos novillos".',
+    description: 'Mostrar historial de movimientos de hacienda con fecha, cantidad, peso, precio y motivo. "historial vacas lote A1", "historial novillos corral 1", "movimientos novillos".',
     input_schema: {
       type: 'object',
       properties: {
@@ -796,8 +818,93 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         breed: { type: 'string', description: 'Raza, si se quiere filtrar.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Nombre del corral del feedlot (alternativa a plot).' },
       },
-      required: ['category', 'plot'],
+      required: ['category'],
+    },
+  },
+
+  // ========================
+  // FEEDLOT / CORRALS
+  // ========================
+  {
+    name: 'create_feedlot',
+    description: 'Crear un feedlot en un campo. Máximo 1 feedlot por campo. "crear feedlot en campo X", "nuevo feedlot".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nombre del feedlot.' },
+        field: FIELD_PROP,
+        capacity: { type: 'number', description: 'Capacidad en cabezas, si mencionado.' },
+      },
+      required: ['name', 'field'],
+    },
+  },
+  {
+    name: 'list_feedlots',
+    description: 'Listar feedlots del usuario. "mis feedlots", "feedlots".',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'delete_feedlot',
+    description: 'Eliminar feedlot de un campo. "borrar feedlot del campo X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: FIELD_PROP,
+      },
+      required: ['field'],
+    },
+  },
+  {
+    name: 'create_corral',
+    description: 'Crear un corral dentro de un feedlot. "crear corral 1", "nuevo corral Norte en campo X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nombre del corral (ej: "1", "Norte", "Engorde A").' },
+        field: FIELD_PROP,
+        capacity: { type: 'number', description: 'Capacidad del corral, si mencionado.' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'list_corrals',
+    description: 'Listar corrales del feedlot. "corrales", "corrales del campo X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: FIELD_PROP,
+      },
+    },
+  },
+  {
+    name: 'delete_corral',
+    description: 'Eliminar un corral. "borrar corral 1".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        corral: { type: 'string', description: 'Nombre del corral a eliminar.' },
+        field: FIELD_PROP,
+      },
+      required: ['corral'],
+    },
+  },
+  {
+    name: 'rename_corral',
+    description: 'Renombrar un corral. "renombrar corral 1 a Norte".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        oldName: { type: 'string', description: 'Nombre actual del corral.' },
+        newName: { type: 'string', description: 'Nuevo nombre del corral.' },
+        field: FIELD_PROP,
+      },
+      required: ['oldName', 'newName'],
     },
   },
 

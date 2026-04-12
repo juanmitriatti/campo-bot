@@ -61,7 +61,8 @@ export interface LivestockGroupRow {
   id: string;
   user_id: number;
   field_id: number;
-  plot_id: number;
+  plot_id: number | null;
+  corral_id: number | null;
   category: LivestockCategory;
   breed: string | null;
   count: number;
@@ -73,6 +74,8 @@ export interface LivestockGroupRow {
   // Joined columns (optional)
   field_name?: string;
   plot_name?: string;
+  corral_name?: string;
+  feedlot_name?: string;
 }
 
 export interface LivestockMovementRow {

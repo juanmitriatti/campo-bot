@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import LivestockTable from './LivestockTable';
 import LivestockHistoryPanel from './LivestockHistoryPanel';
+import FeedlotPanel from './FeedlotPanel';
 
-type SubTab = 'groups' | 'history';
+type SubTab = 'groups' | 'history' | 'feedlot';
 
 export default function LivestockTab() {
   const [subTab, setSubTab] = useState<SubTab>('groups');
@@ -30,9 +31,20 @@ export default function LivestockTab() {
         >
           Historial
         </button>
+        <button
+          onClick={() => setSubTab('feedlot')}
+          className={`pb-2 font-medium border-b-2 transition-colors ${
+            subTab === 'feedlot'
+              ? 'border-campo-600 text-campo-700'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Feedlot
+        </button>
       </div>
       {subTab === 'groups' && <LivestockTable />}
       {subTab === 'history' && <LivestockHistoryPanel />}
+      {subTab === 'feedlot' && <FeedlotPanel />}
     </div>
   );
 }

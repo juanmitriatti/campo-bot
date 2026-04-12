@@ -19,10 +19,14 @@ interface Movement {
   source_breed: string | null;
   source_plot_name: string | null;
   source_field_name: string | null;
+  source_corral_name: string | null;
+  source_feedlot_name: string | null;
   dest_category: string | null;
   dest_breed: string | null;
   dest_plot_name: string | null;
   dest_field_name: string | null;
+  dest_corral_name: string | null;
+  dest_feedlot_name: string | null;
 }
 
 interface PaginatedResponse {
@@ -65,10 +69,15 @@ function describeEndpoint(m: Movement, which: 'source' | 'dest'): string | null 
   const cat = which === 'source' ? m.source_category : m.dest_category;
   const plot = which === 'source' ? m.source_plot_name : m.dest_plot_name;
   const field = which === 'source' ? m.source_field_name : m.dest_field_name;
-  if (!cat && !plot) return null;
+  const corral = which === 'source' ? m.source_corral_name : m.dest_corral_name;
+  if (!cat && !plot && !corral) return null;
   const parts: string[] = [];
   if (cat) parts.push(CATEGORY_LABELS[cat] || cat);
-  if (plot) parts.push(plot);
+  if (corral) {
+    parts.push(`🔲 ${corral}`);
+  } else if (plot) {
+    parts.push(plot);
+  }
   if (field) parts.push(field);
   return parts.join(' · ');
 }

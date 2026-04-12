@@ -25,6 +25,7 @@ import {
   getPlotById as _getPlotById,
   findLastDomainEventFiltered as _findLastDomainEventFiltered,
   updateDomainEventPlot as _updateDomainEventPlot,
+  getTactoSummary as _getTactoSummary,
 } from '../../services/expenses.js';
 import { PlotRepository } from '../plots/plot.repository.js';
 import type { UserId, FieldRow, PlotRow, PlotCropRow, DomainEventRow, PlotHistoryRow } from '../../types/index.js';
@@ -40,6 +41,19 @@ export interface RainfallByLocation {
   field_name: string | null;
   total: number;
   registros: number;
+}
+
+export interface TactoSummaryRow {
+  plot_id: number | null;
+  plot_name: string | null;
+  field_name: string | null;
+  event_date: string;
+  category: string | null;
+  total_pregnant: number;
+  total_open: number;
+  total_uncertain: number;
+  total_checked: number;
+  record_count: number;
 }
 
 export class AgronomyRepository {
@@ -219,6 +233,27 @@ export class AgronomyRepository {
   }
 
   // --- Plot history query ---
+
+  async getTactoSummary(userId: UserId, filters: {
+    fieldId?: number | null;
+    plotId?: number | null;
+    desde?: string | null;
+    hasta?: string | null;
+  }): Promise<TactoSummaryRow[]> {
+    const rows = await _getTactoSummary(userId, filters);
+    return rows.map((r: any) => ({
+      plot_id: r.plot_id ?? null,
+      plot_name: r.plot_name ?? null,
+      field_name: r.field_name ?? null,
+      event_date: r.event_date,
+      category: r.category ?? null,
+      total_pregnant: Number(r.total_pregnant),
+      total_open: Number(r.total_open),
+      total_uncertain: Number(r.total_uncertain),
+      total_checked: Number(r.total_checked),
+      record_count: Number(r.record_count),
+    }));
+  }
 
   async queryPlotHistory(userId: UserId, opts: {
     plotId?: number | null;

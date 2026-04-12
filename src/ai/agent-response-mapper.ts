@@ -331,9 +331,16 @@ export class AgentResponseMapper {
     if (input.unit_price_usd != null) cmd.unit_price_usd = input.unit_price_usd;
     if (input.source_field != null) cmd.sourceField = input.source_field;
     if (input.source_plot != null) cmd.sourcePlot = input.source_plot;
+    if (input.source_corral != null) cmd.sourceCorral = input.source_corral;
     if (input.dest_field != null) cmd.destField = input.dest_field;
     if (input.dest_plot != null) cmd.destPlot = input.dest_plot;
+    if (input.dest_corral != null) cmd.destCorral = input.dest_corral;
     if (input.dest_category != null) cmd.destCategory = input.dest_category;
+    if (input.corral != null) cmd.corralName = input.corral;
+
+    // Feedlot
+    if (input.capacity != null) cmd.capacity = input.capacity;
+    if (input.name != null && !cmd.fieldName && !cmd.warehouseName) cmd.feedlotName = input.name;
 
     // Tacto (pregnancy check)
     if (input.total_checked != null) cmd.totalChecked = input.total_checked;

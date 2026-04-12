@@ -102,8 +102,15 @@ ${this.buildActivityLines(dictionary)}
 - Categorías hacienda: vaca, vaquillona, ternero, ternera, novillo, novillito, toro, torito, buey. Normalizá plurales (vacas→vaca, terneros→ternero)
 - Recategorización: "pasé 10 terneros a novillos"/"recategoricé vaquillonas como vacas" en el mismo lote → transfer_livestock con source_plot=dest_plot y dest_category distinta
 - EDITAR ACTIVIDAD: "la siembra era en lote B"/"corregí la última actividad"/"me equivoqué de lote en la fumigación"/"era en otro lote" → edit_last_activity. NO re-registrar (duplicaría). activity_filter opcional para refinar búsqueda
-- TACTO/PREÑEZ: "hice tacto"/"se hizo tacto"/"palpé"/"revisé preñez"/"dio X preñadas"→log_tacto. SIEMPRE actividad, NUNCA observation ni livestock movement. Solo vacas/vaquillonas. "rodeo de X"→field o plot name X. Si no dicen total pero sí preñadas+vacías, total=preñadas+vacías+dudosas
-- Hacienda SIEMPRE necesita lote (plot). Si no lo mencionan y no hay contexto, usá respond_text pidiendo el lote. NUNCA llamar log_expense junto con hacienda salvo monto explícito de compra/venta`;
+- TACTO/PREÑEZ REGISTRO: "hice tacto"/"se hizo tacto"/"palpé"/"revisé preñez"/"dio X preñadas"→log_tacto. SIEMPRE actividad, NUNCA observation ni livestock movement. Solo vacas/vaquillonas. "rodeo de X"→field o plot name X. Si no dicen total pero sí preñadas+vacías, total=preñadas+vacías+dudosas
+- TACTO/PREÑEZ CONSULTA: "promedio del tacto"/"resultados del tacto"/"como salió el tacto"/"tasa de preñez"/"cuántas preñadas"/"resumen tacto" → tacto_summary. NUNCA financial_report para consultas de tacto
+- Hacienda SIEMPRE necesita lote (plot) o corral. Si no lo mencionan y no hay contexto, usá respond_text pidiendo el lote o corral. NUNCA llamar log_expense junto con hacienda salvo monto explícito de compra/venta
+- FEEDLOT/CORRAL: "crear feedlot en campo X"→create_feedlot. "crear corral X"→create_corral. "corrales"→list_corrals. "feedlots"→list_feedlots. "borrar corral X"→delete_corral. "renombrar corral X a Y"→rename_corral
+- "corral X" sin más contexto → asumir feedlot activo del usuario. Si tiene 1 feedlot, auto-resolver
+- "mandá N al feedlot" sin corral → pedir qué corral (NUNCA asumir)
+- Transferencias lote↔corral: "mové 10 del lote A1 al corral 1"→transfer_livestock(source_plot=A1, dest_corral=1). "del corral 1 al lote A1"→transfer_livestock(source_corral=1, dest_plot=A1)
+- "feedlot" ≠ lote, "corral" ≠ lote chico. Entidades distintas del modelo intensivo
+- Hacienda en feedlot: "agregué 20 novillos al corral 1"→add_livestock(corral=1). "vendí 5 del corral Norte"→remove_livestock(corral=Norte)`;
   }
 
   private contextLine(ctx: UserContext | null): string {
@@ -112,6 +119,8 @@ ${this.buildActivityLines(dictionary)}
     const parts: string[] = [];
     if (ctx.fieldNames.length > 0) parts.push(`campos:[${ctx.fieldNames.join(',')}]`);
     if (ctx.plotNames.length > 0) parts.push(`lotes:[${ctx.plotNames.join(',')}]`);
+    if (ctx.corralNames && ctx.corralNames.length > 0) parts.push(`corrales:[${ctx.corralNames.join(',')}]`);
+    if (ctx.feedlotNames && ctx.feedlotNames.length > 0) parts.push(`feedlots:[${ctx.feedlotNames.join(',')}]`);
     if (ctx.lastFieldName) parts.push(`último campo:${ctx.lastFieldName}`);
     if (ctx.lastPlotName) parts.push(`último lote:${ctx.lastPlotName}`);
 

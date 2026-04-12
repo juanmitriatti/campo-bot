@@ -12,6 +12,11 @@ import type {
   HandlerResponse,
 } from '../../types/index.js';
 
+/** Format a group's location for display */
+function fmtLoc(group: LivestockGroupRow): string {
+  return LivestockService.formatLocation(group);
+}
+
 export class LivestockHandler {
   private service: LivestockService;
 
@@ -59,6 +64,7 @@ export class LivestockHandler {
       count,
       fieldName: cmd.fieldName as string,
       plotName: cmd.plotName as string,
+      corralName: cmd.corralName as string,
       breed: cmd.breed as string,
       avg_weight_kg: cmd.avg_weight_kg as number,
       unit_price_ars: cmd.unit_price_ars as number,
@@ -74,8 +80,8 @@ export class LivestockHandler {
         `🐄 *Hacienda actualizada*\n\n` +
         `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}${newLabel}\n` +
         `  ➕ ${count} animales\n` +
-        `  📊 Total en lote: *${group.count}*\n` +
-        `  📍 ${group.plot_name || '—'} (${group.field_name || ''})`,
+        `  📊 Total: *${group.count}*\n` +
+        `  📍 ${fmtLoc(group)}`,
       ],
     };
   }
@@ -95,6 +101,7 @@ export class LivestockHandler {
       count,
       fieldName: cmd.fieldName as string,
       plotName: cmd.plotName as string,
+      corralName: cmd.corralName as string,
       breed: cmd.breed as string,
       unit_price_ars: cmd.unit_price_ars as number,
       unit_price_usd: cmd.unit_price_usd as number,
@@ -109,7 +116,7 @@ export class LivestockHandler {
         `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}\n` +
         `  ➖ ${count} animales\n` +
         `  📊 Quedan: *${group.count}*\n` +
-        `  📍 ${group.plot_name || '—'} (${group.field_name || ''})`,
+        `  📍 ${fmtLoc(group)}`,
       ],
     };
   }
@@ -123,17 +130,22 @@ export class LivestockHandler {
     const count = cmd.count as number;
     const sourcePlot = cmd.sourcePlot as string;
     const destPlot = cmd.destPlot as string;
+    const sourceCorral = cmd.sourceCorral as string;
+    const destCorral = cmd.destCorral as string;
     if (!category) return { messages: ['Necesito la categoría. Ej: "mové 10 vacas del lote A1 al lote B2".'] };
     if (!count || count <= 0) return { messages: ['Necesito la cantidad.'] };
-    if (!sourcePlot || !destPlot) return { messages: ['Necesito el lote de origen y destino.'] };
+    if (!sourcePlot && !sourceCorral) return { messages: ['Necesito el origen (lote o corral).'] };
+    if (!destPlot && !destCorral) return { messages: ['Necesito el destino (lote o corral).'] };
 
     const { sourceGroup, destGroup, movement } = await this.service.transferAnimals(userId, {
       category,
       count,
       sourceField: cmd.sourceField as string,
-      sourcePlot,
+      sourcePlot: sourcePlot || undefined,
+      sourceCorral: sourceCorral || undefined,
       destField: cmd.destField as string,
-      destPlot,
+      destPlot: destPlot || undefined,
+      destCorral: destCorral || undefined,
       breed: cmd.breed as string,
       destCategory: cmd.destCategory as string,
       reason: cmd.reason as string,
@@ -147,8 +159,8 @@ export class LivestockHandler {
         `${mvLabel.emoji} *${mvLabel.label}*\n\n` +
         `  ${LIVESTOCK_CATEGORY_LABEL[sourceGroup.category]}${breed}\n` +
         `  ↗️ ${count} animales\n` +
-        `  Desde: *${sourceGroup.plot_name || '—'}* (quedan ${sourceGroup.count})\n` +
-        `  Hacia: *${destGroup.plot_name || '—'}* (ahora ${destGroup.count})`,
+        `  Desde: *${fmtLoc(sourceGroup)}* (quedan ${sourceGroup.count})\n` +
+        `  Hacia: *${fmtLoc(destGroup)}* (ahora ${destGroup.count})`,
       ],
     };
   }
@@ -168,6 +180,7 @@ export class LivestockHandler {
       count,
       fieldName: cmd.fieldName as string,
       plotName: cmd.plotName as string,
+      corralName: cmd.corralName as string,
       breed: cmd.breed as string,
       reason: cmd.reason as string,
       movement_date: cmd.eventDate as string,
@@ -180,7 +193,7 @@ export class LivestockHandler {
         `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}\n` +
         `  ➖ ${count} animales\n` +
         `  📊 Quedan: *${group.count}*\n` +
-        `  📍 ${group.plot_name || '—'} (${group.field_name || ''})` +
+        `  📍 ${fmtLoc(group)}` +
         (cmd.reason ? `\n  📝 ${cmd.reason}` : ''),
       ],
     };
@@ -197,6 +210,7 @@ export class LivestockHandler {
       count,
       fieldName: cmd.fieldName as string,
       plotName: cmd.plotName as string,
+      corralName: cmd.corralName as string,
       breed: cmd.breed as string,
       movement_date: cmd.eventDate as string,
     });
@@ -207,8 +221,8 @@ export class LivestockHandler {
         `🐣 *Nacimiento registrado*\n\n` +
         `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}\n` +
         `  ➕ ${count} animales\n` +
-        `  📊 Total en lote: *${group.count}*\n` +
-        `  📍 ${group.plot_name || '—'} (${group.field_name || ''})`,
+        `  📊 Total: *${group.count}*\n` +
+        `  📍 ${fmtLoc(group)}`,
       ],
     };
   }
@@ -228,6 +242,7 @@ export class LivestockHandler {
       count,
       fieldName: cmd.fieldName as string,
       plotName: cmd.plotName as string,
+      corralName: cmd.corralName as string,
       breed: cmd.breed as string,
       reason: cmd.reason as string,
       movement_date: cmd.eventDate as string,
@@ -242,7 +257,7 @@ export class LivestockHandler {
         `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}\n` +
         `  📊 Antes: ${previousCount} → Ahora: *${group.count}*` +
         (diff !== 0 ? ` (${diffLabel})` : '') + `\n` +
-        `  📍 ${group.plot_name || '—'} (${group.field_name || ''})`,
+        `  📍 ${fmtLoc(group)}`,
       ],
     };
   }
@@ -255,6 +270,7 @@ export class LivestockHandler {
     const { groups, total } = await this.service.listInventory(userId, {
       fieldName: cmd.fieldName as string,
       plotName: cmd.plotName as string,
+      corralName: cmd.corralName as string,
       category: cmd.category as string,
     });
 
@@ -262,25 +278,27 @@ export class LivestockHandler {
       return { messages: ['🐄 No tenés hacienda registrada. Cargá animales con "agregué 20 vacas al lote A1".'] };
     }
 
-    // Group by plot for readability
-    const byPlot = new Map<string, LivestockGroupRow[]>();
+    // Group by location for readability
+    const byLocation = new Map<string, LivestockGroupRow[]>();
     for (const g of groups) {
-      const key = `${g.field_name || '—'} / ${g.plot_name || '—'}`;
-      if (!byPlot.has(key)) byPlot.set(key, []);
-      byPlot.get(key)!.push(g);
+      const key = g.corral_name
+        ? `🔲 Corral ${g.corral_name} (${g.feedlot_name || 'Feedlot'} — ${g.field_name || ''})`
+        : `📍 ${g.field_name || '—'} / ${g.plot_name || '—'}`;
+      if (!byLocation.has(key)) byLocation.set(key, []);
+      byLocation.get(key)!.push(g);
     }
 
     const sections: string[] = [];
-    for (const [plotKey, plotGroups] of byPlot.entries()) {
-      let plotWeight = 0;
-      const lines = plotGroups.map(g => {
+    for (const [locKey, locGroups] of byLocation.entries()) {
+      let locWeight = 0;
+      const lines = locGroups.map(g => {
         const breed = g.breed ? ` ${g.breed}` : '';
         const weight = g.avg_weight_kg ? ` (${g.avg_weight_kg} kg prom.)` : '';
-        if (g.avg_weight_kg) plotWeight += g.avg_weight_kg * g.count;
+        if (g.avg_weight_kg) locWeight += g.avg_weight_kg * g.count;
         return `    • ${LIVESTOCK_CATEGORY_LABEL[g.category]}${breed}: *${g.count}*${weight}`;
       });
-      const plotWeightLabel = plotWeight > 0 ? `\n    ⚖️ Peso estimado: ${Math.round(plotWeight).toLocaleString('es-AR')} kg` : '';
-      sections.push(`  📍 *${plotKey}*\n${lines.join('\n')}${plotWeightLabel}`);
+      const weightLabel = locWeight > 0 ? `\n    ⚖️ Peso estimado: ${Math.round(locWeight).toLocaleString('es-AR')} kg` : '';
+      sections.push(`  ${locKey}\n${lines.join('\n')}${weightLabel}`);
     }
 
     return {
@@ -293,19 +311,21 @@ export class LivestockHandler {
   private async livestockHistory(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const category = cmd.category as string;
     const plot = cmd.plotName as string;
-    if (!category || !plot) {
-      return { messages: ['Necesito categoría y lote. Ej: "historial vacas lote A1".'] };
+    const corral = cmd.corralName as string;
+    if (!category || (!plot && !corral)) {
+      return { messages: ['Necesito categoría y lote/corral. Ej: "historial vacas lote A1" o "historial novillos corral 1".'] };
     }
 
     const { group, movements } = await this.service.getHistory(userId, {
       category,
       fieldName: cmd.fieldName as string,
-      plotName: plot,
+      plotName: plot || undefined,
+      corralName: corral || undefined,
       breed: cmd.breed as string,
     });
 
     if (movements.length === 0) {
-      return { messages: [`No hay movimientos de *${LIVESTOCK_CATEGORY_LABEL[group.category]}* en ${group.plot_name}.`] };
+      return { messages: [`No hay movimientos de *${LIVESTOCK_CATEGORY_LABEL[group.category]}* en ${fmtLoc(group)}.`] };
     }
 
     const lines = movements.map(m => {
@@ -333,7 +353,7 @@ export class LivestockHandler {
     return {
       messages: [
         `🐄 *Historial ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}*\n` +
-        `  📍 ${group.plot_name} (${group.field_name})\n` +
+        `  📍 ${fmtLoc(group)}\n` +
         `  📊 Stock actual: *${group.count}*\n\n` +
         lines.join('\n'),
       ],

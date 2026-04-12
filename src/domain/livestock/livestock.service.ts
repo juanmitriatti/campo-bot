@@ -7,6 +7,7 @@ import type {
 } from './livestock.types.js';
 import { LIVESTOCK_CATEGORIES } from './livestock.types.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
+import { FeedlotService, type ResolvedCorralRef } from '../feedlot/feedlot.service.js';
 import type { UserId } from '../../types/index.js';
 
 export interface ResolvedPlotRef {
@@ -15,6 +16,11 @@ export interface ResolvedPlotRef {
   plotId: number;
   plotName: string;
 }
+
+export type ResolvedLocation =
+  | { type: 'plot'; fieldId: number; fieldName: string; plotId: number; plotName: string }
+  | { type: 'corral'; fieldId: number; fieldName: string; feedlotId: number;
+      feedlotName: string; corralId: number; corralName: string };
 
 export interface MovementFinancials {
   unit_price_ars?: number | null;
@@ -29,10 +35,12 @@ export interface MovementFinancials {
 export class LivestockService {
   private repo: LivestockRepository;
   private plotDiscovery: PlotDiscoveryService;
+  private feedlotService: FeedlotService;
 
-  constructor(repo?: LivestockRepository, plotDiscovery?: PlotDiscoveryService) {
+  constructor(repo?: LivestockRepository, plotDiscovery?: PlotDiscoveryService, feedlotService?: FeedlotService) {
     this.repo = repo ?? new LivestockRepository();
     this.plotDiscovery = plotDiscovery ?? new PlotDiscoveryService();
+    this.feedlotService = feedlotService ?? new FeedlotService();
   }
 
   // ========================
@@ -79,13 +87,58 @@ export class LivestockService {
   }
 
   // ========================
-  // PLOT RESOLUTION
+  // LOCATION RESOLUTION
   // ========================
 
   /**
+   * Resolve a location (plot OR corral) for livestock operations.
+   * If corralName is provided, resolves via feedlot service.
+   * If plotName is provided, resolves via plot discovery service.
+   */
+  async resolveLocation(
+    userId: UserId,
+    fieldName?: string | null,
+    plotName?: string | null,
+    corralName?: string | null,
+  ): Promise<ResolvedLocation> {
+    if (corralName) {
+      const ref = await this.feedlotService.resolveCorral(userId, corralName, fieldName);
+      return {
+        type: 'corral',
+        fieldId: ref.fieldId,
+        fieldName: ref.fieldName,
+        feedlotId: ref.feedlotId,
+        feedlotName: ref.feedlotName,
+        corralId: ref.corralId,
+        corralName: ref.corralName,
+      };
+    }
+
+    if (plotName) {
+      const plot = await this.resolvePlot(userId, fieldName, plotName);
+      return {
+        type: 'plot',
+        fieldId: plot.fieldId,
+        fieldName: plot.fieldName,
+        plotId: plot.plotId,
+        plotName: plot.plotName,
+      };
+    }
+
+    // Neither specified — try auto-resolve via plot (existing behavior)
+    const plot = await this.resolvePlot(userId, fieldName, null);
+    return {
+      type: 'plot',
+      fieldId: plot.fieldId,
+      fieldName: plot.fieldName,
+      plotId: plot.plotId,
+      plotName: plot.plotName,
+    };
+  }
+
+  /**
    * Resolve a plot reference for livestock operations.
-   * Throws a user-friendly error if plot cannot be uniquely resolved
-   * (livestock always needs an explicit plot — no auto-creation).
+   * Throws a user-friendly error if plot cannot be uniquely resolved.
    */
   private async resolvePlot(
     userId: UserId,
@@ -111,7 +164,7 @@ export class LivestockService {
       throw new Error(`Decime en qué lote. Opciones: ${names}.`);
     }
     if (!result.plotId || !result.fieldId) {
-      throw new Error('Necesito que me digas en qué lote. Ej: "agregá 20 vacas al lote A1".');
+      throw new Error('Necesito que me digas en qué lote o corral. Ej: "agregá 20 vacas al lote A1" o "al corral 1".');
     }
 
     return {
@@ -122,15 +175,29 @@ export class LivestockService {
     };
   }
 
-  /** Find-or-create the group for a given (plot, category, breed) triple */
-  private async ensureGroup(
+  /** Find-or-create the group for a given location + category + breed */
+  private async ensureGroupAtLocation(
     userId: UserId,
-    plot: ResolvedPlotRef,
+    loc: ResolvedLocation,
     category: LivestockCategory,
     breed: string | null,
     opts: { avg_weight_kg?: number | null; notes?: string | null } = {}
   ): Promise<LivestockGroupRow> {
-    const existing = await this.repo.findGroup(plot.plotId, category, breed);
+    if (loc.type === 'corral') {
+      const existing = await this.repo.findGroupInCorral(loc.corralId, category, breed);
+      if (existing) {
+        if (opts.avg_weight_kg !== undefined || opts.notes !== undefined) {
+          await this.repo.updateGroupMetadata(existing.id, {
+            avg_weight_kg: opts.avg_weight_kg,
+            notes: opts.notes,
+          });
+        }
+        return existing;
+      }
+      return this.repo.createGroupInCorral(Number(userId), loc.fieldId, loc.corralId, category, breed, opts);
+    }
+    // Plot
+    const existing = await this.repo.findGroup(loc.plotId, category, breed);
     if (existing) {
       if (opts.avg_weight_kg !== undefined || opts.notes !== undefined) {
         await this.repo.updateGroupMetadata(existing.id, {
@@ -140,7 +207,38 @@ export class LivestockService {
       }
       return existing;
     }
-    return this.repo.createGroup(Number(userId), plot.fieldId, plot.plotId, category, breed, opts);
+    return this.repo.createGroup(Number(userId), loc.fieldId, loc.plotId, category, breed, opts);
+  }
+
+  /** Find group at a resolved location */
+  private async findGroupAtLocation(
+    loc: ResolvedLocation,
+    category: LivestockCategory,
+    breed: string | null
+  ): Promise<LivestockGroupRow | null> {
+    if (loc.type === 'corral') {
+      return this.repo.findGroupInCorral(loc.corralId, category, breed);
+    }
+    return this.repo.findGroup(loc.plotId, category, breed);
+  }
+
+  /** Attach human-readable location names to a group */
+  private attachLocationNames(group: LivestockGroupRow, loc: ResolvedLocation): void {
+    group.field_name = loc.fieldName;
+    if (loc.type === 'corral') {
+      group.corral_name = loc.corralName;
+      group.feedlot_name = loc.feedlotName;
+    } else {
+      group.plot_name = loc.plotName;
+    }
+  }
+
+  /** Get human-readable location label */
+  static formatLocation(group: LivestockGroupRow): string {
+    if (group.corral_name) {
+      return `Corral ${group.corral_name} (${group.feedlot_name || 'Feedlot'} — ${group.field_name || ''})`;
+    }
+    return `${group.plot_name || '—'} (${group.field_name || ''})`;
   }
 
   // ========================
@@ -148,7 +246,7 @@ export class LivestockService {
   // ========================
 
   /**
-   * Add animals to a plot (compra o ingreso externo).
+   * Add animals to a plot or corral (compra o ingreso externo).
    * Creates the group on demand. Returns the updated group + movement.
    */
   async addAnimals(
@@ -158,6 +256,7 @@ export class LivestockService {
       count: number;
       fieldName?: string | null;
       plotName?: string | null;
+      corralName?: string | null;
       breed?: string | null;
       avg_weight_kg?: number | null;
       unit_price_ars?: number | null;
@@ -171,12 +270,12 @@ export class LivestockService {
     if (!category) throw new Error(`Categoría no reconocida: "${opts.category}". Usá vaca, vaquillona, ternero, novillo, toro, etc.`);
     if (!opts.count || opts.count <= 0) throw new Error('La cantidad debe ser mayor a 0.');
 
-    const plot = await this.resolvePlot(userId, opts.fieldName, opts.plotName);
+    const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
 
-    const existing = await this.repo.findGroup(plot.plotId, category, opts.breed ?? null);
+    const existing = await this.findGroupAtLocation(loc, category, opts.breed ?? null);
     const created = !existing;
 
-    const group = await this.ensureGroup(userId, plot, category, opts.breed ?? null, {
+    const group = await this.ensureGroupAtLocation(userId, loc, category, opts.breed ?? null, {
       avg_weight_kg: opts.avg_weight_kg,
       notes: opts.notes,
     });
@@ -196,13 +295,12 @@ export class LivestockService {
       }
     );
 
-    updated.field_name = plot.fieldName;
-    updated.plot_name = plot.plotName;
+    this.attachLocationNames(updated, loc);
     return { group: updated, movement, created };
   }
 
   /**
-   * Remove animals from a plot (venta o egreso externo).
+   * Remove animals from a plot or corral (venta o egreso externo).
    */
   async removeAnimals(
     userId: UserId,
@@ -211,6 +309,7 @@ export class LivestockService {
       count: number;
       fieldName?: string | null;
       plotName?: string | null;
+      corralName?: string | null;
       breed?: string | null;
       unit_price_ars?: number | null;
       unit_price_usd?: number | null;
@@ -223,12 +322,13 @@ export class LivestockService {
     if (!category) throw new Error(`Categoría no reconocida: "${opts.category}".`);
     if (!opts.count || opts.count <= 0) throw new Error('La cantidad debe ser mayor a 0.');
 
-    const plot = await this.resolvePlot(userId, opts.fieldName, opts.plotName);
+    const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
+    const locLabel = loc.type === 'corral' ? `corral ${loc.corralName}` : `lote ${loc.plotName}`;
 
-    const group = await this.repo.findGroup(plot.plotId, category, opts.breed ?? null);
+    const group = await this.findGroupAtLocation(loc, category, opts.breed ?? null);
     if (!group) {
       throw new Error(
-        `No hay ${category}${opts.breed ? ` (${opts.breed})` : ''} en el lote ${plot.plotName}.`
+        `No hay ${category}${opts.breed ? ` (${opts.breed})` : ''} en el ${locLabel}.`
       );
     }
 
@@ -246,14 +346,13 @@ export class LivestockService {
       }
     );
 
-    updated.field_name = plot.fieldName;
-    updated.plot_name = plot.plotName;
+    this.attachLocationNames(updated, loc);
     return { group: updated, movement };
   }
 
   /**
-   * Move animals between two plots (or recategorize within the same plot).
-   * Atomic: both groups are locked in a single transaction.
+   * Move animals between two locations (plot↔plot, plot↔corral, corral↔corral).
+   * Or recategorize within the same location. Atomic: both groups are locked.
    */
   async transferAnimals(
     userId: UserId,
@@ -261,11 +360,13 @@ export class LivestockService {
       category: string;
       count: number;
       sourceField?: string | null;
-      sourcePlot: string;
+      sourcePlot?: string | null;
+      sourceCorral?: string | null;
       destField?: string | null;
-      destPlot: string;
+      destPlot?: string | null;
+      destCorral?: string | null;
       breed?: string | null;
-      destCategory?: string | null; // if set, this is a recategorization
+      destCategory?: string | null;
       reason?: string | null;
       notes?: string | null;
       movement_date?: string | null;
@@ -284,26 +385,33 @@ export class LivestockService {
       : category;
     if (!destCategory) throw new Error(`Categoría destino no reconocida: "${opts.destCategory}".`);
 
-    const source = await this.resolvePlot(userId, opts.sourceField, opts.sourcePlot);
-    const dest = await this.resolvePlot(userId, opts.destField, opts.destPlot);
+    const source = await this.resolveLocation(userId, opts.sourceField, opts.sourcePlot, opts.sourceCorral);
+    const dest = await this.resolveLocation(userId, opts.destField, opts.destPlot, opts.destCorral);
 
-    const isRecategorization =
-      source.plotId === dest.plotId && category !== destCategory;
+    // Detect same location
+    const sameLocation =
+      (source.type === 'plot' && dest.type === 'plot' && source.plotId === dest.plotId) ||
+      (source.type === 'corral' && dest.type === 'corral' && source.corralId === dest.corralId);
+
+    const isRecategorization = sameLocation && category !== destCategory;
     const movementType: 'transferencia' | 'recategorizacion' =
       isRecategorization ? 'recategorizacion' : 'transferencia';
 
-    if (source.plotId === dest.plotId && category === destCategory) {
-      throw new Error('El lote origen y destino son iguales y no hay recategorización.');
+    if (sameLocation && category === destCategory) {
+      const locLabel = source.type === 'corral' ? 'corral' : 'lote';
+      throw new Error(`El ${locLabel} origen y destino son iguales y no hay recategorización.`);
     }
 
-    const sourceGroup = await this.repo.findGroup(source.plotId, category, opts.breed ?? null);
+    const sourceLocLabel = source.type === 'corral' ? `corral ${source.corralName}` : `lote ${source.plotName}`;
+
+    const sourceGroup = await this.findGroupAtLocation(source, category, opts.breed ?? null);
     if (!sourceGroup) {
       throw new Error(
-        `No hay ${category}${opts.breed ? ` (${opts.breed})` : ''} en el lote ${source.plotName}.`
+        `No hay ${category}${opts.breed ? ` (${opts.breed})` : ''} en el ${sourceLocLabel}.`
       );
     }
 
-    const destGroup = await this.ensureGroup(userId, dest, destCategory, opts.breed ?? null);
+    const destGroup = await this.ensureGroupAtLocation(userId, dest, destCategory, opts.breed ?? null);
 
     const result = await this.repo.applyTransferMovement(
       Number(userId),
@@ -312,16 +420,14 @@ export class LivestockService {
       destGroup.id,
       opts.count,
       {
-        reason: opts.reason ?? (isRecategorization ? 'Recategorización' : 'Transferencia entre lotes'),
+        reason: opts.reason ?? (isRecategorization ? 'Recategorización' : 'Transferencia'),
         notes: opts.notes,
         movement_date: opts.movement_date,
       }
     );
 
-    result.sourceGroup.field_name = source.fieldName;
-    result.sourceGroup.plot_name = source.plotName;
-    result.destGroup.field_name = dest.fieldName;
-    result.destGroup.plot_name = dest.plotName;
+    this.attachLocationNames(result.sourceGroup, source);
+    this.attachLocationNames(result.destGroup, dest);
 
     return result;
   }
@@ -334,6 +440,7 @@ export class LivestockService {
       count: number;
       fieldName?: string | null;
       plotName?: string | null;
+      corralName?: string | null;
       breed?: string | null;
       reason?: string | null;
       notes?: string | null;
@@ -351,6 +458,7 @@ export class LivestockService {
       count: number;
       fieldName?: string | null;
       plotName?: string | null;
+      corralName?: string | null;
       breed?: string | null;
       reason?: string | null;
       notes?: string | null;
@@ -361,10 +469,10 @@ export class LivestockService {
     if (!category) throw new Error(`Categoría no reconocida: "${opts.category}".`);
     if (!opts.count || opts.count <= 0) throw new Error('La cantidad debe ser mayor a 0.');
 
-    const plot = await this.resolvePlot(userId, opts.fieldName, opts.plotName);
-    const existing = await this.repo.findGroup(plot.plotId, category, opts.breed ?? null);
+    const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
+    const existing = await this.findGroupAtLocation(loc, category, opts.breed ?? null);
     const created = !existing;
-    const group = await this.ensureGroup(userId, plot, category, opts.breed ?? null);
+    const group = await this.ensureGroupAtLocation(userId, loc, category, opts.breed ?? null);
 
     const { group: updated, movement } = await this.repo.applySingleMovement(
       Number(userId),
@@ -378,8 +486,7 @@ export class LivestockService {
       }
     );
 
-    updated.field_name = plot.fieldName;
-    updated.plot_name = plot.plotName;
+    this.attachLocationNames(updated, loc);
     return { group: updated, movement, created };
   }
 
@@ -392,6 +499,7 @@ export class LivestockService {
       count: number;
       fieldName?: string | null;
       plotName?: string | null;
+      corralName?: string | null;
       breed?: string | null;
       reason?: string | null;
       notes?: string | null;
@@ -402,11 +510,13 @@ export class LivestockService {
     if (!category) throw new Error(`Categoría no reconocida: "${opts.category}".`);
     if (!opts.count || opts.count <= 0) throw new Error('La cantidad debe ser mayor a 0.');
 
-    const plot = await this.resolvePlot(userId, opts.fieldName, opts.plotName);
-    const group = await this.repo.findGroup(plot.plotId, category, opts.breed ?? null);
+    const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
+    const locLabel = loc.type === 'corral' ? `corral ${loc.corralName}` : `lote ${loc.plotName}`;
+
+    const group = await this.findGroupAtLocation(loc, category, opts.breed ?? null);
     if (!group) {
       throw new Error(
-        `No hay ${category}${opts.breed ? ` (${opts.breed})` : ''} en el lote ${plot.plotName}.`
+        `No hay ${category}${opts.breed ? ` (${opts.breed})` : ''} en el ${locLabel}.`
       );
     }
 
@@ -422,8 +532,7 @@ export class LivestockService {
       }
     );
 
-    updated.field_name = plot.fieldName;
-    updated.plot_name = plot.plotName;
+    this.attachLocationNames(updated, loc);
     return { group: updated, movement };
   }
 
@@ -438,6 +547,7 @@ export class LivestockService {
       count: number;
       fieldName?: string | null;
       plotName?: string | null;
+      corralName?: string | null;
       breed?: string | null;
       reason?: string | null;
       notes?: string | null;
@@ -448,13 +558,13 @@ export class LivestockService {
     if (!category) throw new Error(`Categoría no reconocida: "${opts.category}". Usá vaca, vaquillona, ternero, novillo, toro, etc.`);
     if (opts.count == null || opts.count < 0) throw new Error('La cantidad debe ser 0 o mayor.');
 
-    const plot = await this.resolvePlot(userId, opts.fieldName, opts.plotName);
+    const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
 
-    const existing = await this.repo.findGroup(plot.plotId, category, opts.breed ?? null);
+    const existing = await this.findGroupAtLocation(loc, category, opts.breed ?? null);
     const created = !existing;
     const previousCount = existing ? Number(existing.count) : 0;
 
-    const group = await this.ensureGroup(userId, plot, category, opts.breed ?? null, {
+    const group = await this.ensureGroupAtLocation(userId, loc, category, opts.breed ?? null, {
       notes: opts.notes,
     });
 
@@ -470,19 +580,22 @@ export class LivestockService {
       }
     );
 
-    updated.field_name = plot.fieldName;
-    updated.plot_name = plot.plotName;
+    this.attachLocationNames(updated, loc);
     return { group: updated, movement, previousCount, created };
   }
 
   /** List current livestock inventory */
   async listInventory(
     userId: UserId,
-    opts: { fieldName?: string | null; plotName?: string | null; category?: string | null } = {}
+    opts: { fieldName?: string | null; plotName?: string | null; corralName?: string | null; category?: string | null } = {}
   ): Promise<{ groups: LivestockGroupRow[]; total: number }> {
-    const filters: { fieldId?: number; plotId?: number; category?: LivestockCategory } = {};
+    const filters: { fieldId?: number; plotId?: number; corralId?: number; category?: LivestockCategory } = {};
 
-    if (opts.fieldName || opts.plotName) {
+    if (opts.corralName) {
+      const ref = await this.feedlotService.resolveCorral(userId, opts.corralName, opts.fieldName);
+      filters.corralId = ref.corralId;
+      filters.fieldId = ref.fieldId;
+    } else if (opts.fieldName || opts.plotName) {
       const plot = opts.plotName
         ? await this.resolvePlot(userId, opts.fieldName ?? null, opts.plotName)
         : null;
@@ -490,7 +603,6 @@ export class LivestockService {
         filters.fieldId = plot.fieldId;
         filters.plotId = plot.plotId;
       } else if (opts.fieldName) {
-        // Field-only filter: resolve field
         const result = await this.plotDiscovery.resolve(userId, opts.fieldName, null);
         if (result.notFound) throw new Error(`No encontré el campo "${opts.fieldName}".`);
         if (result.fieldId) filters.fieldId = result.fieldId;
@@ -507,21 +619,26 @@ export class LivestockService {
     return { groups, total };
   }
 
-  /** Get movement history for a plot/category group */
+  /** Get movement history for a location/category group */
   async getHistory(
     userId: UserId,
-    opts: { fieldName?: string | null; plotName: string; category: string; breed?: string | null }
+    opts: { fieldName?: string | null; plotName?: string | null; corralName?: string | null; category: string; breed?: string | null }
   ): Promise<{ group: LivestockGroupRow; movements: LivestockMovementRow[] }> {
     const category = LivestockService.normalizeCategory(opts.category);
     if (!category) throw new Error(`Categoría no reconocida: "${opts.category}".`);
 
-    const plot = await this.resolvePlot(userId, opts.fieldName, opts.plotName);
-    const group = await this.repo.findGroup(plot.plotId, category, opts.breed ?? null);
-    if (!group) {
-      throw new Error(`No hay ${category} en el lote ${plot.plotName}.`);
+    if (!opts.plotName && !opts.corralName) {
+      throw new Error('Necesito saber el lote o corral. Ej: "historial vacas lote A1" o "historial novillos corral 1".');
     }
-    group.field_name = plot.fieldName;
-    group.plot_name = plot.plotName;
+
+    const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
+    const locLabel = loc.type === 'corral' ? `corral ${loc.corralName}` : `lote ${loc.plotName}`;
+
+    const group = await this.findGroupAtLocation(loc, category, opts.breed ?? null);
+    if (!group) {
+      throw new Error(`No hay ${category} en el ${locLabel}.`);
+    }
+    this.attachLocationNames(group, loc);
 
     const movements = await this.repo.getMovementsForGroup(group.id, 50);
     return { group, movements };

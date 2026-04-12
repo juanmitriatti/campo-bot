@@ -7,7 +7,8 @@ interface LivestockGroup {
   id: string;
   user_id: number;
   field_id: number;
-  plot_id: number;
+  plot_id: number | null;
+  corral_id: number | null;
   category: string;
   breed: string | null;
   count: number;
@@ -16,7 +17,9 @@ interface LivestockGroup {
   created_at: string;
   updated_at: string;
   field_name: string;
-  plot_name: string;
+  plot_name: string | null;
+  corral_name: string | null;
+  feedlot_name: string | null;
 }
 
 interface PaginatedResponse {
@@ -34,8 +37,17 @@ interface FieldOption {
   plots: { id: number; name: string }[];
 }
 
+interface CorralOption {
+  id: number;
+  name: string;
+  feedlot_id: number;
+  feedlot_name?: string;
+  field_name?: string;
+}
+
 interface FiltersResponse {
   fields: FieldOption[];
+  corrals: CorralOption[];
   categories: string[];
 }
 
@@ -60,15 +72,17 @@ export default function LivestockTable() {
   const [editing, setEditing] = useState<LivestockGroup | null>(null);
 
   const [fields, setFields] = useState<FieldOption[]>([]);
+  const [corrals, setCorrals] = useState<CorralOption[]>([]);
   const [fieldId, setFieldId] = useState('');
   const [plotId, setPlotId] = useState('');
+  const [corralId, setCorralId] = useState('');
   const [category, setCategory] = useState('');
 
   const limit = 15;
 
   useEffect(() => {
     apiRequest<FiltersResponse>('/livestock/filters')
-      .then(r => setFields(r.fields))
+      .then(r => { setFields(r.fields); setCorrals(r.corrals || []); })
       .catch(() => {});
   }, []);
 
@@ -79,6 +93,7 @@ export default function LivestockTable() {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (fieldId) params.set('fieldId', fieldId);
       if (plotId) params.set('plotId', plotId);
+      if (corralId) params.set('corralId', corralId);
       if (category) params.set('category', category);
       const result = await apiRequest<PaginatedResponse>(`/livestock?${params}`);
       setData(result);
@@ -87,7 +102,7 @@ export default function LivestockTable() {
     } finally {
       setLoading(false);
     }
-  }, [page, fieldId, plotId, category]);
+  }, [page, fieldId, plotId, corralId, category]);
 
   useEffect(() => {
     fetchLivestock();
@@ -98,7 +113,7 @@ export default function LivestockTable() {
     fetchLivestock();
   };
 
-  const hasFilters = !!fieldId || !!plotId || !!category;
+  const hasFilters = !!fieldId || !!plotId || !!corralId || !!category;
 
   // Plots filtered by selected field
   const plotsForField = fieldId
@@ -149,6 +164,19 @@ export default function LivestockTable() {
             {plotsForField.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
+        {corrals.length > 0 && (
+          <div className="flex flex-col">
+            <label className="text-xs text-gray-500 mb-1">Corral</label>
+            <select
+              value={corralId}
+              onChange={e => { setCorralId(e.target.value); setPage(1); }}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            >
+              <option value="">Todos</option>
+              {corrals.map(c => <option key={c.id} value={c.id}>{c.name}{c.field_name ? ` (${c.field_name})` : ''}</option>)}
+            </select>
+          </div>
+        )}
         <div className="flex flex-col">
           <label className="text-xs text-gray-500 mb-1">Categoría</label>
           <select
@@ -164,7 +192,7 @@ export default function LivestockTable() {
         </div>
         {hasFilters && (
           <button
-            onClick={() => { setFieldId(''); setPlotId(''); setCategory(''); setPage(1); }}
+            onClick={() => { setFieldId(''); setPlotId(''); setCorralId(''); setCategory(''); setPage(1); }}
             className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline py-1.5"
           >
             Limpiar
@@ -193,7 +221,7 @@ export default function LivestockTable() {
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Categoría</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Cantidad</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Lote</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Ubicación</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Campo</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Raza</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Peso prom.</th>
@@ -206,14 +234,18 @@ export default function LivestockTable() {
                     <td className="px-4 py-3">
                       <p className="text-gray-800 font-medium">{CATEGORY_LABELS[group.category] || group.category}</p>
                       <p className="text-xs text-gray-400 sm:hidden">
-                        {group.plot_name} · {group.field_name}
+                        {group.corral_name ? `🔲 ${group.corral_name}` : group.plot_name} · {group.field_name}
                         {group.breed && ` · ${group.breed}`}
                       </p>
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-gray-800">
                       {group.count}
                     </td>
-                    <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">{group.plot_name}</td>
+                    <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
+                      {group.corral_name
+                        ? <span>🔲 {group.corral_name}</span>
+                        : group.plot_name}
+                    </td>
                     <td className="px-4 py-3 text-gray-600 hidden md:table-cell">{group.field_name}</td>
                     <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
                       {group.breed || <span className="text-gray-300">-</span>}

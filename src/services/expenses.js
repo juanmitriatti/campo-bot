@@ -1839,3 +1839,53 @@ export async function queryPlotHistory(userId, { plotId = null, fieldId = null, 
   const result = await pool.query(sql, qParams);
   return result.rows;
 }
+
+export async function getTactoSummary(userId, { fieldId = null, plotId = null, desde = null, hasta = null } = {}) {
+  const params = [userId];
+  let idx = 2;
+  const conditions = [`de.user_id = $1`, `de.event_type = 'tacto'`];
+
+  if (plotId) {
+    conditions.push(`de.plot_id = $${idx}`);
+    params.push(plotId);
+    idx++;
+  } else if (fieldId) {
+    conditions.push(`p.field_id = $${idx}`);
+    params.push(fieldId);
+    idx++;
+  }
+
+  if (desde) {
+    conditions.push(`de.event_date >= $${idx}`);
+    params.push(desde);
+    idx++;
+  }
+  if (hasta) {
+    conditions.push(`de.event_date <= $${idx}`);
+    params.push(hasta);
+    idx++;
+  }
+
+  const sql = `
+    SELECT
+      de.plot_id,
+      p.name as plot_name,
+      f.name as field_name,
+      de.event_date,
+      de.product as category,
+      SUM(COALESCE(de.pregnant_count, 0)) as total_pregnant,
+      SUM(COALESCE(de.open_count, 0)) as total_open,
+      SUM(COALESCE(de.uncertain_count, 0)) as total_uncertain,
+      SUM(COALESCE(de.quantity, 0)) as total_checked,
+      COUNT(*) as record_count
+    FROM domain_events de
+    LEFT JOIN plots p ON de.plot_id = p.id
+    LEFT JOIN fields f ON p.field_id = f.id
+    WHERE ${conditions.join(' AND ')}
+    GROUP BY de.plot_id, p.name, f.name, de.event_date, de.product
+    ORDER BY de.event_date DESC
+  `;
+
+  const result = await pool.query(sql, params);
+  return result.rows;
+}
