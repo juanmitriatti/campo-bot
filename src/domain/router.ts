@@ -51,7 +51,7 @@ const DOCUMENT_COMMANDS = new Set([
 
 const LIVESTOCK_COMMANDS = new Set([
   'add_livestock', 'remove_livestock', 'transfer_livestock',
-  'record_livestock_death', 'record_livestock_birth',
+  'record_livestock_death', 'record_livestock_birth', 'adjust_livestock',
   'list_livestock', 'livestock_history',
 ]);
 

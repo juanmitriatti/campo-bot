@@ -427,6 +427,54 @@ export class LivestockService {
     return { group: updated, movement };
   }
 
+  /**
+   * Adjust animals to an absolute count (corrección).
+   * Creates the group on demand if it doesn't exist.
+   */
+  async adjustAnimals(
+    userId: UserId,
+    opts: {
+      category: string;
+      count: number;
+      fieldName?: string | null;
+      plotName?: string | null;
+      breed?: string | null;
+      reason?: string | null;
+      notes?: string | null;
+      movement_date?: string | null;
+    },
+  ): Promise<{ group: LivestockGroupRow; movement: LivestockMovementRow; previousCount: number; created: boolean }> {
+    const category = LivestockService.normalizeCategory(opts.category);
+    if (!category) throw new Error(`Categoría no reconocida: "${opts.category}". Usá vaca, vaquillona, ternero, novillo, toro, etc.`);
+    if (opts.count == null || opts.count < 0) throw new Error('La cantidad debe ser 0 o mayor.');
+
+    const plot = await this.resolvePlot(userId, opts.fieldName, opts.plotName);
+
+    const existing = await this.repo.findGroup(plot.plotId, category, opts.breed ?? null);
+    const created = !existing;
+    const previousCount = existing ? Number(existing.count) : 0;
+
+    const group = await this.ensureGroup(userId, plot, category, opts.breed ?? null, {
+      notes: opts.notes,
+    });
+
+    const { group: updated, movement } = await this.repo.applySingleMovement(
+      Number(userId),
+      'ajuste',
+      group.id,
+      opts.count,
+      {
+        reason: opts.reason ?? 'Corrección manual',
+        notes: opts.notes,
+        movement_date: opts.movement_date,
+      }
+    );
+
+    updated.field_name = plot.fieldName;
+    updated.plot_name = plot.plotName;
+    return { group: updated, movement, previousCount, created };
+  }
+
   /** List current livestock inventory */
   async listInventory(
     userId: UserId,

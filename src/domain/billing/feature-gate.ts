@@ -155,6 +155,7 @@ export class FeatureGate {
       transfer_livestock: 'livestock',
       record_livestock_death: 'livestock',
       record_livestock_birth: 'livestock',
+      adjust_livestock: 'livestock',
       list_livestock: 'livestock',
       livestock_history: 'livestock',
     };

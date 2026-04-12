@@ -741,6 +741,23 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'adjust_livestock',
+    description: 'Corregir/ajustar el conteo absoluto de animales en un lote. Frases: "en lote X hay N vacas", "ajustá a N", "corregí, son N vacas", "el conteo real es N". DIFERENCIA con add_livestock: adjust ESTABLECE el total, add SUMA al existente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría del animal.' },
+        count: { type: 'number', description: 'Cantidad ABSOLUTA (total real, no diferencia).' },
+        breed: { type: 'string', description: 'Raza, si mencionado.' },
+        reason: { type: 'string', description: 'Motivo de la corrección.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        event_date: DATE_PROP,
+      },
+      required: ['category', 'count', 'plot'],
+    },
+  },
+  {
     name: 'list_livestock',
     description: 'Listar inventario de hacienda con cantidad, raza y peso promedio por grupo. Preguntas: cuántas vacas tengo, stock de hacienda, rodeo, cuánto pesan.',
     input_schema: {

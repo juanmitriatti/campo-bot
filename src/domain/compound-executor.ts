@@ -19,7 +19,7 @@ export interface CompoundResult {
 
 /** Livestock commands that produce per-category messages we want to merge */
 const LIVESTOCK_COMMANDS = new Set([
-  'add_livestock', 'remove_livestock', 'record_livestock_birth', 'record_livestock_death',
+  'add_livestock', 'remove_livestock', 'record_livestock_birth', 'record_livestock_death', 'adjust_livestock',
 ]);
 
 /** Intent types that can be executed in a compound action */

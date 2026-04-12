@@ -32,6 +32,7 @@ export class LivestockHandler {
         case 'transfer_livestock': return await this.transferLivestock(cmd, userId);
         case 'record_livestock_death': return await this.recordDeath(cmd, userId);
         case 'record_livestock_birth': return await this.recordBirth(cmd, userId);
+        case 'adjust_livestock': return await this.adjustLivestock(cmd, userId);
         case 'list_livestock': return await this.listLivestock(cmd, userId);
         case 'livestock_history': return await this.livestockHistory(cmd, userId);
         default:
@@ -207,6 +208,40 @@ export class LivestockHandler {
         `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}\n` +
         `  ➕ ${count} animales\n` +
         `  📊 Total en lote: *${group.count}*\n` +
+        `  📍 ${group.plot_name || '—'} (${group.field_name || ''})`,
+      ],
+    };
+  }
+
+  // ========================
+  // ADJUST
+  // ========================
+
+  private async adjustLivestock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const category = cmd.category as string;
+    const count = cmd.count as number;
+    if (!category) return { messages: ['Necesito la categoría. Ej: "en el lote A1 hay 50 vacas".'] };
+    if (count == null || count < 0) return { messages: ['Necesito la cantidad (0 o más). Ej: "en el lote A1 hay 50 vacas".'] };
+
+    const { group, previousCount } = await this.service.adjustAnimals(userId, {
+      category,
+      count,
+      fieldName: cmd.fieldName as string,
+      plotName: cmd.plotName as string,
+      breed: cmd.breed as string,
+      reason: cmd.reason as string,
+      movement_date: cmd.eventDate as string,
+    });
+
+    const breed = group.breed ? ` ${group.breed}` : '';
+    const diff = count - previousCount;
+    const diffLabel = diff > 0 ? `+${diff}` : `${diff}`;
+    return {
+      messages: [
+        `🔄 *Hacienda corregida*\n\n` +
+        `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}\n` +
+        `  📊 Antes: ${previousCount} → Ahora: *${group.count}*` +
+        (diff !== 0 ? ` (${diffLabel})` : '') + `\n` +
         `  📍 ${group.plot_name || '—'} (${group.field_name || ''})`,
       ],
     };
