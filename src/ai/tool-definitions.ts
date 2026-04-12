@@ -146,7 +146,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'harvest_crop',
-    description: 'Registrar cosecha. Verbos: coseché, levanté. Si mencionan cantidad → sugerir carga a silo/stock.',
+    description: 'Registrar cosecha. Verbos: coseché, levanté. NO cierra la campaña, solo registra el hito. Si mencionan cantidad → sugerir carga a silo/stock.',
     input_schema: {
       type: 'object',
       properties: {
@@ -154,11 +154,42 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         quantity: { type: 'number', description: 'Cantidad cosechada (ej: 50 tn).' },
         unit: UNIT_PROP,
         warehouse: { type: 'string', description: 'Nombre del depósito/silo destino.' },
+        yield_kg: { type: 'number', description: 'Rendimiento total en kg (ej: 5000). Si dicen tn, convertir a kg.' },
+        yield_notes: { type: 'string', description: 'Notas sobre el rendimiento.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
         event_date: DATE_PROP,
       },
       required: ['crop'],
+    },
+  },
+
+  {
+    name: 'close_campaign',
+    description: 'Cerrar una campaña de siembra. Úsala cuando el usuario diga "cerrar campaña", "terminó la campaña del trigo", "cerrar la soja", "fin de campaña".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        plot: PLOT_PROP,
+        field: FIELD_PROP,
+        crop: { type: 'string', description: 'Cultivo a cerrar.' },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'campaign_stats',
+    description: 'Obtener estadísticas completas de una campaña: actividades, gastos, ingresos, rendimiento, rentabilidad. "cómo va la campaña", "cuánto gasté en la soja", "rendimiento del trigo", "rentabilidad del maíz", "estadísticas de la campaña", "resultado de la soja".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        plot: { type: 'string', description: 'Nombre del lote.' },
+        field: { type: 'string', description: 'Nombre del campo (opcional si tiene 1).' },
+        crop: { type: 'string', description: 'Cultivo (soja, maíz, trigo, etc.).' },
+        season_year: { type: 'string', description: 'Campaña ej "2025/26". Si no se indica, usa la activa o última.' },
+      },
+      required: [],
     },
   },
 

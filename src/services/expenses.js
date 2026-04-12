@@ -1479,6 +1479,53 @@ export async function getPlotCropBySeason(plotId, seasonYear, crop) {
   return result.rows[0] || null;
 }
 
+export async function setPlotCropHarvested(cropId, harvestedAt, yieldKg = null, yieldNotes = null) {
+  const result = await pool.query(
+    `UPDATE plot_crops SET harvested_at = COALESCE($2, CURRENT_DATE), yield_kg = $3, yield_notes = $4
+     WHERE id = $1 RETURNING *`,
+    [cropId, harvestedAt, yieldKg, yieldNotes]
+  );
+  return result.rows[0] || null;
+}
+
+export async function getCampaignExpenses(plotId, startDate, endDate = null) {
+  const result = await pool.query(
+    `SELECT * FROM expenses WHERE plot_id = $1 AND deleted_at IS NULL
+     AND expense_date >= $2 AND ($3::date IS NULL OR expense_date <= $3)
+     ORDER BY expense_date`,
+    [plotId, startDate, endDate]
+  );
+  return result.rows;
+}
+
+export async function getCampaignIncomes(plotId, startDate, endDate = null) {
+  const result = await pool.query(
+    `SELECT * FROM incomes WHERE plot_id = $1 AND deleted_at IS NULL
+     AND income_date >= $2 AND ($3::date IS NULL OR income_date <= $3)
+     ORDER BY income_date`,
+    [plotId, startDate, endDate]
+  );
+  return result.rows;
+}
+
+export async function getCampaignActivities(plotCropId) {
+  const result = await pool.query(
+    `SELECT * FROM domain_events WHERE plot_crop_id = $1 ORDER BY event_date`,
+    [plotCropId]
+  );
+  return result.rows;
+}
+
+export async function getCampaignObservations(plotId, startDate, endDate = null) {
+  const result = await pool.query(
+    `SELECT * FROM agro_observations WHERE plot_id = $1 AND deleted_at IS NULL
+     AND observation_date >= $2 AND ($3::date IS NULL OR observation_date <= $3)
+     ORDER BY observation_date`,
+    [plotId, startDate, endDate]
+  );
+  return result.rows;
+}
+
 // --- Domain events ---
 
 export async function saveDomainEvent(userId, data) {

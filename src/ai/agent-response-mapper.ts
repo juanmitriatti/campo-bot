@@ -316,6 +316,11 @@ export class AgentResponseMapper {
     if (input.expenseId != null) cmd.expenseId = input.expenseId;
     if (input.context != null) cmd.context = input.context;
 
+    // Campaign / harvest yield
+    if (input.yield_kg != null) cmd.yieldKg = input.yield_kg;
+    if (input.yield_notes != null) cmd.yieldNotes = input.yield_notes;
+    if (input.season_year != null) cmd.seasonYear = input.season_year;
+
     // Edit activity
     if (input.new_plot != null) cmd.newPlotName = input.new_plot;
     if (input.new_field != null) cmd.newFieldName = input.new_field;

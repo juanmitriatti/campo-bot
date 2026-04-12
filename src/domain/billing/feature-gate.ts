@@ -133,6 +133,8 @@ export class FeatureGate {
       log_tacto: 'agronomy',
       tacto_summary: 'agronomy',
       edit_last_activity: 'agronomy',
+      close_campaign: 'agronomy',
+      campaign_stats: 'agronomy',
       // Sharing
       share_field: 'sharing',
       list_field_members: 'sharing',

@@ -8,6 +8,7 @@ const mocks = {
   getActiveCrop: vi.fn(),
   getPlotCropHistory: vi.fn(),
   getPlotCropBySeason: vi.fn(),
+  setPlotCropHarvested: vi.fn(),
 };
 
 vi.mock('../../../services/expenses.js', () => mocks);
@@ -163,19 +164,37 @@ describe('CropService', () => {
   });
 
   describe('harvestCrop', () => {
-    it('active matches → closes', async () => {
+    it('active matches → sets harvested_at (campaign stays open)', async () => {
       const active = {
         id: 1, plot_id: 10, crop: 'Soja', season_year: 2025,
-        season_type: 'gruesa', start_date: new Date(), end_date: null, created_at: new Date(),
+        season_type: 'gruesa', start_date: new Date(), end_date: null, harvested_at: null, created_at: new Date(),
       };
-      const closed = { ...active, end_date: new Date() };
+      const harvested = { ...active, harvested_at: new Date() };
       mocks.getActiveCrop.mockResolvedValue(active);
-      mocks.closePlotCrop.mockResolvedValue(closed);
+      mocks.setPlotCropHarvested.mockResolvedValue(harvested);
 
       const result = await service.harvestCrop(10, 'Soja');
 
-      expect(result).toBe(closed);
-      expect(mocks.closePlotCrop).toHaveBeenCalledWith(1, expect.any(Date));
+      expect(result).toBe(harvested);
+      expect(result!.end_date).toBeNull(); // campaign stays open
+      expect(result!.harvested_at).toBeTruthy();
+      expect(mocks.setPlotCropHarvested).toHaveBeenCalledWith(1, expect.any(Date), null, null);
+      expect(mocks.closePlotCrop).not.toHaveBeenCalled();
+    });
+
+    it('active matches with yield → stores yield data', async () => {
+      const active = {
+        id: 1, plot_id: 10, crop: 'Soja', season_year: 2025,
+        season_type: 'gruesa', start_date: new Date(), end_date: null, harvested_at: null, created_at: new Date(),
+      };
+      const harvested = { ...active, harvested_at: new Date(), yield_kg: 5000, yield_notes: 'Buen rinde' };
+      mocks.getActiveCrop.mockResolvedValue(active);
+      mocks.setPlotCropHarvested.mockResolvedValue(harvested);
+
+      const result = await service.harvestCrop(10, 'Soja', undefined, 5000, 'Buen rinde');
+
+      expect(result!.yield_kg).toBe(5000);
+      expect(mocks.setPlotCropHarvested).toHaveBeenCalledWith(1, expect.any(Date), 5000, 'Buen rinde');
     });
 
     it('active does not match → null', async () => {
@@ -193,6 +212,21 @@ describe('CropService', () => {
 
       const result = await service.harvestCrop(10, 'Soja');
       expect(result).toBeNull();
+    });
+  });
+
+  describe('closeCampaign', () => {
+    it('closes campaign by setting end_date', async () => {
+      const closed = {
+        id: 1, plot_id: 10, crop: 'Soja', season_year: 2025,
+        season_type: 'gruesa', start_date: new Date(), end_date: new Date(), harvested_at: new Date(), created_at: new Date(),
+      };
+      mocks.closePlotCrop.mockResolvedValue(closed);
+
+      const result = await service.closeCampaign(1);
+
+      expect(result).toBe(closed);
+      expect(mocks.closePlotCrop).toHaveBeenCalledWith(1);
     });
   });
 

@@ -3,6 +3,7 @@ import {
   closePlotCrop,
   getActiveCrop,
   getPlotCropHistory,
+  setPlotCropHarvested,
 } from '../../services/expenses.js';
 import type { UserId, PlotCropRow } from '../../types/index.js';
 import { CROPS, CROP_SEASON } from '../../constants/agro-terms.js';
@@ -68,6 +69,21 @@ export function formatSeasonLabel(seasonYear: number, seasonType: string): strin
   return `${seasonYear}`;
 }
 
+export type CampaignState = 'active' | 'harvested' | 'closed';
+
+export function getCampaignState(row: PlotCropRow): CampaignState {
+  if (row.end_date) return 'closed';
+  if (row.harvested_at) return 'harvested';
+  return 'active';
+}
+
+export function getCampaignStateLabel(row: PlotCropRow): string {
+  const state = getCampaignState(row);
+  if (state === 'closed') return '✅ Cerrada';
+  if (state === 'harvested') return '🌾 Cosechada (abierta)';
+  return '🌱 Activa';
+}
+
 // --- CropService class ---
 
 export class CropService {
@@ -104,14 +120,23 @@ export class CropService {
   async harvestCrop(
     plotId: number,
     crop: string,
-    date?: Date
+    date?: Date,
+    yieldKg?: number | null,
+    yieldNotes?: string | null,
   ): Promise<PlotCropRow | null> {
     const active = await getActiveCrop(plotId) as PlotCropRow | null;
     if (!active) return null;
     if (active.crop !== crop) return null;
 
     const effectiveDate = date || new Date();
-    return await closePlotCrop(active.id, effectiveDate) as PlotCropRow | null;
+    // Set harvested_at instead of closing the campaign
+    return await setPlotCropHarvested(active.id, effectiveDate, yieldKg ?? null, yieldNotes ?? null) as PlotCropRow | null;
+  }
+
+  async closeCampaign(
+    plotCropId: number,
+  ): Promise<PlotCropRow | null> {
+    return await closePlotCrop(plotCropId) as PlotCropRow | null;
   }
 
   async getActive(plotId: number): Promise<PlotCropRow | null> {

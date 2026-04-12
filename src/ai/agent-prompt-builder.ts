@@ -110,7 +110,9 @@ ${this.buildActivityLines(dictionary)}
 - "mandá N al feedlot" sin corral → pedir qué corral (NUNCA asumir)
 - Transferencias lote↔corral: "mové 10 del lote A1 al corral 1"→transfer_livestock(source_plot=A1, dest_corral=1). "del corral 1 al lote A1"→transfer_livestock(source_corral=1, dest_plot=A1)
 - "feedlot" ≠ lote, "corral" ≠ lote chico. Entidades distintas del modelo intensivo
-- Hacienda en feedlot: "agregué 20 novillos al corral 1"→add_livestock(corral=1). "vendí 5 del corral Norte"→remove_livestock(corral=Norte)`;
+- Hacienda en feedlot: "agregué 20 novillos al corral 1"→add_livestock(corral=1). "vendí 5 del corral Norte"→remove_livestock(corral=Norte)
+- CAMPAÑAS: "cómo va la campaña/soja/trigo"/"cuánto gasté en la soja"/"rendimiento del maíz"/"rentabilidad"/"resultado de la soja"→campaign_stats. "cerrar campaña"/"terminó la campaña"→close_campaign. "cosechamos"→harvest_crop (NO cierra la campaña, solo registra hito)
+- harvest_crop YA NO cierra la campaña. Para cerrar: close_campaign`;
   }
 
   private contextLine(ctx: UserContext | null): string {

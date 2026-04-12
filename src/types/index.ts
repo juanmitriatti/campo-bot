@@ -213,6 +213,9 @@ export interface PlotCropRow {
   season_type: string;
   start_date: Date;
   end_date: Date | null;
+  harvested_at: Date | null;
+  yield_kg: number | null;
+  yield_notes: string | null;
   created_at: Date;
 }
 
