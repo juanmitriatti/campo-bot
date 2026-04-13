@@ -132,7 +132,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'active_crop',
-    description: 'Consultar qué cultivo hay sembrado. Sin lote: lista TODOS los cultivos activos del usuario. Con lote: muestra el cultivo de ese lote. Con crop: filtra lotes con ese cultivo. "qué hay sembrado", "dónde hay soja", "soja?", "cultivo activo", "qué tengo sembrado", "en qué lotes hay trigo".',
+    description: 'Consultar cultivos ACTUALMENTE sembrados. USAR SIEMPRE que pregunten qué hay sembrado o dónde hay un cultivo. Sin lote: lista TODOS los cultivos activos. Con crop: filtra lotes con ese cultivo. Triggers: "soja?", "dónde hay soja", "hay soja?", "qué tengo sembrado", "cultivo activo", "en qué lotes hay trigo", "qué hay sembrado", "onde hay maíz", "tengo soja?". NUNCA usar query_plot_history para estas consultas.',
     input_schema: {
       type: 'object',
       properties: {
@@ -352,7 +352,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'query_plot_history',
-    description: 'Consultar historial de actividades. "cuándo se fumigó el lote X", "historial lote A1", "en qué lote sembré maíz". Puede buscar en todos los lotes si no se especifica uno.',
+    description: 'Consultar historial de actividades PASADAS. "cuándo se fumigó el lote X", "historial lote A1", "qué se hizo en el lote". SOLO para historial de acciones pasadas. Para consultar cultivos actualmente sembrados ("hay soja?", "dónde hay soja", "qué tengo sembrado") usar active_crop.',
     input_schema: {
       type: 'object',
       properties: {
