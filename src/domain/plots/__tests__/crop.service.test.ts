@@ -9,6 +9,7 @@ const mocks = {
   getPlotCropHistory: vi.fn(),
   getPlotCropBySeason: vi.fn(),
   setPlotCropHarvested: vi.fn(),
+  getAllActiveCrops: vi.fn(),
 };
 
 vi.mock('../../../services/expenses.js', () => mocks);

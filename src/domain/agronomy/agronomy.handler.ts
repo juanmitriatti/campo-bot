@@ -790,27 +790,49 @@ export class AgronomyHandler {
       }
 
       case 'active_crop': {
+        // If plot specified → show that plot's active crop (original behavior)
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,
           cmd.plotName as string | null
         );
-        if (!resolved.plotId) {
-          return { messages: ['No pude identificar el lote. Escribí algo como:\n🔍 *qué hay sembrado en el lote 3*'] };
+
+        if (resolved.plotId) {
+          const active = await this.cropService.getActive(resolved.plotId);
+          const plotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+
+          if (!active) {
+            return { messages: [`No hay cultivo activo en *${plotLabel}*.`] };
+          }
+
+          const label = formatSeasonLabel(active.season_year, active.season_type);
+          const stateLabel = getCampaignStateLabel(active);
+          let msg = `🌱 *${plotLabel}* tiene *${active.crop}* sembrado\n📅 Campaña ${label}\n${stateLabel}`;
+          if (active.yield_kg) {
+            msg += `\n📊 Rendimiento: ${Number(active.yield_kg).toLocaleString('es-AR')} kg`;
+          }
+          return { messages: [msg] };
         }
 
-        const active = await this.cropService.getActive(resolved.plotId);
-        const plotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+        // No plot specified → list all active crops, optionally filtered by crop name
+        const cropFilter = cmd.crop as string | null;
+        const allActive = await this.cropService.listActiveCrops(userId, cropFilter);
 
-        if (!active) {
-          return { messages: [`No hay cultivo activo en *${plotLabel}*.`] };
+        if (allActive.length === 0) {
+          const filterMsg = cropFilter ? ` de *${cropFilter}*` : '';
+          return { messages: [`No hay campañas activas${filterMsg}.`] };
         }
 
-        const label = formatSeasonLabel(active.season_year, active.season_type);
-        const stateLabel = getCampaignStateLabel(active);
-        let msg = `🌱 *${plotLabel}* tiene *${active.crop}* sembrado\n📅 Campaña ${label}\n${stateLabel}`;
-        if (active.yield_kg) {
-          msg += `\n📊 Rendimiento: ${Number(active.yield_kg).toLocaleString('es-AR')} kg`;
+        const cropLabel = cropFilter ? `${cropFilter}` : 'Cultivos activos';
+        let msg = `🌱 *${cropLabel}*\n`;
+        for (const row of allActive) {
+          const label = formatSeasonLabel(row.season_year, row.season_type);
+          const stateLabel = getCampaignStateLabel(row);
+          const plotLabel = `${row.field_name} > ${row.plot_name}`;
+          msg += `\n${stateLabel} *${row.crop}* en *${plotLabel}* — ${label}`;
+          if (row.yield_kg) {
+            msg += ` (${Number(row.yield_kg).toLocaleString('es-AR')} kg)`;
+          }
         }
         return { messages: [msg] };
       }

@@ -131,6 +131,19 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'active_crop',
+    description: 'Consultar qué cultivo hay sembrado. Sin lote: lista TODOS los cultivos activos del usuario. Con lote: muestra el cultivo de ese lote. Con crop: filtra lotes con ese cultivo. "qué hay sembrado", "dónde hay soja", "soja?", "cultivo activo", "qué tengo sembrado", "en qué lotes hay trigo".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        plot: PLOT_PROP,
+        field: FIELD_PROP,
+        crop: { type: 'string', description: 'Filtrar por cultivo (ej: soja, maíz).' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'sow_crop',
     description: 'Registrar siembra. Verbos: sembré, implanté.',
     input_schema: {

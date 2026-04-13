@@ -4,6 +4,7 @@ import {
   getActiveCrop,
   getPlotCropHistory,
   setPlotCropHarvested,
+  getAllActiveCrops,
 } from '../../services/expenses.js';
 import type { UserId, PlotCropRow } from '../../types/index.js';
 import { CROPS, CROP_SEASON } from '../../constants/agro-terms.js';
@@ -145,5 +146,9 @@ export class CropService {
 
   async getHistory(plotId: number): Promise<PlotCropRow[]> {
     return await getPlotCropHistory(plotId) as PlotCropRow[];
+  }
+
+  async listActiveCrops(userId: UserId, cropFilter?: string | null): Promise<(PlotCropRow & { plot_name: string; field_name: string; area_hectares: number | null })[]> {
+    return await getAllActiveCrops(userId, cropFilter ?? null) as any[];
   }
 }

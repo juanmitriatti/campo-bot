@@ -1463,6 +1463,23 @@ export async function getActiveCrop(plotId) {
   return result.rows[0] || null;
 }
 
+export async function getAllActiveCrops(userId, cropFilter = null) {
+  const result = await pool.query(
+    `SELECT pc.*, p.name AS plot_name, f.name AS field_name, p.area_hectares
+     FROM plot_crops pc
+     JOIN plots p ON pc.plot_id = p.id
+     JOIN fields f ON p.field_id = f.id
+     WHERE f.id IN (${accessibleFieldsSql(1)})
+       AND pc.end_date IS NULL
+       AND p.deleted_at IS NULL
+       AND f.deleted_at IS NULL
+       ${cropFilter ? 'AND LOWER(pc.crop) = LOWER($2)' : ''}
+     ORDER BY f.name, p.name`,
+    cropFilter ? [userId, cropFilter] : [userId]
+  );
+  return result.rows;
+}
+
 export async function getPlotCropHistory(plotId) {
   const result = await pool.query(
     `SELECT * FROM plot_crops WHERE plot_id = $1 ORDER BY season_year DESC, created_at DESC`,
