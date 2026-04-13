@@ -112,6 +112,7 @@ const documentService = new DocumentService();
 const pendingDocumentStore = new PendingDocumentStore();
 const pendingDocUploadStore = new PendingDocumentUploadStore();
 const pendingFieldLocationStore = new PendingFieldLocationStore();
+import { pendingCampaignCloseStore } from '../middleware/pending-campaign-close.js';
 
 /** Resolve field/plot for document expense saving. */
 async function resolveDocPlotWa(userId: UserId): Promise<
@@ -858,6 +859,27 @@ router.post('/', async (req: Request, res: Response) => {
           return;
         }
 
+        // --- Campaign close suggestion (after activity on harvested campaign) ---
+        if (callbackId.startsWith('campaign_close_yes_') || callbackId.startsWith('campaign_close_no_')) {
+          const accepted = callbackId.startsWith('campaign_close_yes_');
+          if (accepted) {
+            const pending = pendingCampaignCloseStore.get(phone);
+            if (pending) {
+              const { CropService } = await import('../domain/plots/crop.service.js');
+              await new CropService().closeCampaign(pending.plotCropId);
+              pendingCampaignCloseStore.delete(phone);
+              await sendMessage(phone, `✅ Campaña de *${pending.crop}* en *${pending.plotName}* cerrada.`);
+            } else {
+              await sendMessage(phone, '⚠️ No hay campaña pendiente para cerrar.');
+            }
+          } else {
+            pendingCampaignCloseStore.delete(phone);
+            await sendMessage(phone, '👌 La campaña sigue abierta.');
+          }
+          res.sendStatus(200);
+          return;
+        }
+
         // --- Document upload intent (menu entry) ---
         if (callbackId === 'doc_upload_factura' || callbackId === 'doc_upload_remito') {
           const user = await userRepository.getOrCreate(phone);
@@ -1512,6 +1534,9 @@ router.post('/', async (req: Request, res: Response) => {
             userId, pendingAct, actResolved.plotId,
             actResolved.fieldId, actResolved.plotName, actResolved.fieldName,
           );
+          if (actResult.sideEffects?.setPendingCampaignClose) {
+            pendingCampaignCloseStore.set(phone, actResult.sideEffects.setPendingCampaignClose);
+          }
           await sendResponse(phone, actResult);
           console.log(`[PENDING_ACT] Resolved plot_id=${actResolved.plotId} for pending ${pendingAct.command}, user ${userId}`);
           conversationLogger.log(userId, phone, text, actResult.messages[0] ?? null, 'command', pendingAct.command, null, null, false, Date.now() - startTime).catch(() => {});
@@ -1602,6 +1627,9 @@ router.post('/', async (req: Request, res: Response) => {
             if (result.lastSideEffects.setPendingFieldLocation) {
               const loc = result.lastSideEffects.setPendingFieldLocation;
               pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
+            }
+            if (result.lastSideEffects.setPendingCampaignClose) {
+              pendingCampaignCloseStore.set(phone, result.lastSideEffects.setPendingCampaignClose);
             }
           }
           await sendResponse(phone, combined);
@@ -1879,6 +1907,9 @@ router.post('/', async (req: Request, res: Response) => {
         if (response.sideEffects?.setPendingFieldLocation) {
           const loc = response.sideEffects.setPendingFieldLocation;
           pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
+        }
+        if (response.sideEffects?.setPendingCampaignClose) {
+          pendingCampaignCloseStore.set(phone, response.sideEffects.setPendingCampaignClose);
         }
         // Learn from successful command (fire-and-forget)
         learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});

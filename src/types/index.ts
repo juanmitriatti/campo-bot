@@ -493,6 +493,11 @@ export interface HandlerResponse {
       fieldId: number;
       fieldName: string;
     };
+    setPendingCampaignClose?: {
+      plotCropId: number;
+      crop: string;
+      plotName: string;
+    };
   };
 }
 

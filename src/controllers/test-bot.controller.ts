@@ -111,6 +111,8 @@ const pendingPlotAreaStore = new PendingPlotAreaStore();
 const pendingStockEntryStore = new Map<string, Record<string, unknown>>();
 const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
 const pendingFieldLocationStore = new PendingFieldLocationStore();
+import { pendingCampaignCloseStore } from '../middleware/pending-campaign-close.js';
+import type { PendingCampaignClose } from '../middleware/pending-campaign-close.js';
 const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
@@ -702,6 +704,22 @@ async function handleInteractiveReply(
     return [{ type: 'text', text: accepted ? '📦 Stock descontado.' : '👍 OK, no se descontó del stock.' }];
   }
 
+  // --- Campaign close suggestion (after activity on harvested campaign) ---
+  if (callbackId.startsWith('campaign_close_yes_') || callbackId.startsWith('campaign_close_no_')) {
+    const accepted = callbackId.startsWith('campaign_close_yes_');
+    if (accepted) {
+      const pending = pendingCampaignCloseStore.get(phone);
+      if (pending) {
+        const { CropService } = await import('../domain/plots/crop.service.js');
+        await new CropService().closeCampaign(pending.plotCropId);
+        pendingCampaignCloseStore.delete(phone);
+        return [{ type: 'text', text: `✅ Campaña de *${pending.crop}* en *${pending.plotName}* cerrada.` }];
+      }
+    }
+    pendingCampaignCloseStore.delete(phone);
+    return [{ type: 'text', text: '👌 La campaña sigue abierta.' }];
+  }
+
   // --- Generic interactive routing ---
   const intent = interactiveRouter.route(callbackId);
   if (intent && intent.type === 'command') {
@@ -931,6 +949,9 @@ async function processTextMessage(
           userId, pendingAct, actResolved.plotId,
           actResolved.fieldId, actResolved.plotName, actResolved.fieldName,
         );
+        if (result.sideEffects?.setPendingCampaignClose) {
+          pendingCampaignCloseStore.set(phone, result.sideEffects.setPendingCampaignClose);
+        }
         return collectResponse(result);
       }
       const userPlots = await agronomyRepository.findAllUserPlots(userId);
@@ -998,6 +1019,9 @@ async function processTextMessage(
         }
         if (result.lastSideEffects.setPendingStockDeduction) {
           pendingStockDeductionStore.set(phone, result.lastSideEffects.setPendingStockDeduction as Record<string, unknown>);
+        }
+        if (result.lastSideEffects.setPendingCampaignClose) {
+          pendingCampaignCloseStore.set(phone, result.lastSideEffects.setPendingCampaignClose);
         }
       }
       if (result.lastInteractive) {
@@ -1183,6 +1207,9 @@ async function processTextMessage(
       if (response.sideEffects?.setPendingFieldLocation) {
         const loc = response.sideEffects.setPendingFieldLocation;
         pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
+      }
+      if (response.sideEffects?.setPendingCampaignClose) {
+        pendingCampaignCloseStore.set(phone, response.sideEffects.setPendingCampaignClose);
       }
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, {

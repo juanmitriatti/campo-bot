@@ -1465,10 +1465,18 @@ export async function getActiveCrop(plotId) {
 
 export async function getAllActiveCrops(userId, cropFilter = null) {
   const result = await pool.query(
-    `SELECT pc.*, p.name AS plot_name, f.name AS field_name, p.area_hectares
+    `SELECT pc.*, p.name AS plot_name, f.name AS field_name, p.area_hectares,
+            act.activity_count, act.last_activity_date, act.last_activity_type
      FROM plot_crops pc
      JOIN plots p ON pc.plot_id = p.id
      JOIN fields f ON p.field_id = f.id
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*)::int AS activity_count,
+              MAX(de.event_date) AS last_activity_date,
+              (ARRAY_AGG(de.event_type ORDER BY de.event_date DESC))[1] AS last_activity_type
+       FROM domain_events de
+       WHERE de.plot_crop_id = pc.id
+     ) act ON true
      WHERE f.id IN (${accessibleFieldsSql(1)})
        AND pc.end_date IS NULL
        AND p.deleted_at IS NULL

@@ -296,6 +296,22 @@ export class AgronomyHandler {
       eventDate: cmd.eventDate as Date | null,
     });
 
+    // Check if plot has a harvested (but not closed) campaign → offer to close
+    if (activeCrop?.harvested_at && !activeCrop.end_date) {
+      return {
+        messages: [confirmation],
+        interactive: {
+          type: 'buttons',
+          body: `La campaña de ${activeCrop.crop} en ${plotLabel} ya fue cosechada. ¿Querés cerrarla?`,
+          buttons: [
+            { id: `campaign_close_yes_${activeCrop.id}`, title: 'Cerrar campaña' },
+            { id: `campaign_close_no_${activeCrop.id}`, title: 'Mantener abierta' },
+          ],
+        },
+        sideEffects: { setPendingCampaignClose: { plotCropId: activeCrop.id, crop: activeCrop.crop, plotName: plotLabel || '' } },
+      };
+    }
+
     return { messages: [confirmation] };
   }
 
@@ -790,7 +806,7 @@ export class AgronomyHandler {
       }
 
       case 'active_crop': {
-        // If plot specified → show that plot's active crop (original behavior)
+        // If plot specified → show that plot's active crop detail
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,
@@ -807,15 +823,31 @@ export class AgronomyHandler {
 
           const label = formatSeasonLabel(active.season_year, active.season_type);
           const stateLabel = getCampaignStateLabel(active);
-          let msg = `🌱 *${plotLabel}* tiene *${active.crop}* sembrado\n📅 Campaña ${label}\n${stateLabel}`;
-          if (active.yield_kg) {
-            msg += `\n📊 Rendimiento: ${Number(active.yield_kg).toLocaleString('es-AR')} kg`;
+          const lines: string[] = [`🌱 *${active.crop}* en *${plotLabel}*`];
+          lines.push(`📅 Campaña ${label} — ${stateLabel}`);
+
+          const { getPlotById } = await import('../../services/expenses.js');
+          const plotInfo = await getPlotById(resolved.plotId);
+          if (plotInfo?.area_hectares) {
+            lines.push(`📐 Superficie: ${Number(plotInfo.area_hectares).toLocaleString('es-AR')} ha`);
           }
-          return { messages: [msg] };
+          if (active.start_date) {
+            lines.push(`🗓️ Siembra: ${formatDateAR(active.start_date)}`);
+          }
+          if (active.harvested_at) {
+            lines.push(`🌾 Cosecha: ${formatDateAR(active.harvested_at)}`);
+          }
+          if (active.yield_kg) {
+            const yieldStr = Number(active.yield_kg).toLocaleString('es-AR');
+            const kgPerHa = plotInfo?.area_hectares ? Math.round(Number(active.yield_kg) / Number(plotInfo.area_hectares)) : null;
+            let yieldLine = `📊 Rendimiento: ${yieldStr} kg`;
+            if (kgPerHa) yieldLine += ` (${kgPerHa.toLocaleString('es-AR')} kg/ha)`;
+            lines.push(yieldLine);
+          }
+          return { messages: [lines.join('\n')] };
         }
 
         // No plot specified → list all active crops, optionally filtered by crop name
-        // Normalize crop name (regex gives "maiz", DB has "Maíz")
         const rawCrop = cmd.crop as string | null;
         const cropFilter = rawCrop ? (detectCropFromText(rawCrop) || rawCrop) : null;
         const allActive = await this.cropService.listActiveCrops(userId, cropFilter);
@@ -825,18 +857,60 @@ export class AgronomyHandler {
           return { messages: [`No hay campañas activas${filterMsg}.`] };
         }
 
+        // Compute totals
+        let totalHa = 0;
+        let totalYieldKg = 0;
+        let totalActivities = 0;
+        for (const row of allActive) {
+          if (row.area_hectares) totalHa += Number(row.area_hectares);
+          if (row.yield_kg) totalYieldKg += Number(row.yield_kg);
+          if (row.activity_count) totalActivities += Number(row.activity_count);
+        }
+
+        // Header with summary
         const cropLabel = cropFilter ? `${cropFilter}` : 'Cultivos activos';
-        let msg = `🌱 *${cropLabel}*\n`;
+        const lines: string[] = [`🌱 *${cropLabel}*`];
+
+        // Summary line
+        const summaryParts: string[] = [];
+        summaryParts.push(`${allActive.length} lote${allActive.length > 1 ? 's' : ''}`);
+        if (totalHa > 0) summaryParts.push(`${totalHa.toLocaleString('es-AR')} ha`);
+        if (totalActivities > 0) summaryParts.push(`${totalActivities} actividades`);
+        lines.push(summaryParts.join(' · '));
+
+        if (totalYieldKg > 0) {
+          let yieldSummary = `📊 Rinde total: ${totalYieldKg.toLocaleString('es-AR')} kg`;
+          if (totalHa > 0) yieldSummary += ` (${Math.round(totalYieldKg / totalHa).toLocaleString('es-AR')} kg/ha)`;
+          lines.push(yieldSummary);
+        }
+
+        // Per-plot detail
+        lines.push('');
         for (const row of allActive) {
           const label = formatSeasonLabel(row.season_year, row.season_type);
           const stateLabel = getCampaignStateLabel(row);
           const plotLabel = `${row.field_name} > ${row.plot_name}`;
-          msg += `\n${stateLabel} *${row.crop}* en *${plotLabel}* — ${label}`;
+          const haStr = row.area_hectares ? `${Number(row.area_hectares).toLocaleString('es-AR')} ha` : '';
+
+          let detail = `${stateLabel} *${row.crop}* en *${plotLabel}*`;
+          if (haStr) detail += ` — ${haStr}`;
+          detail += ` — ${label}`;
+
+          // Extra detail inline
+          const extras: string[] = [];
           if (row.yield_kg) {
-            msg += ` (${Number(row.yield_kg).toLocaleString('es-AR')} kg)`;
+            const kgPerHa = row.area_hectares ? Math.round(Number(row.yield_kg) / Number(row.area_hectares)) : null;
+            extras.push(`rinde: ${Number(row.yield_kg).toLocaleString('es-AR')} kg${kgPerHa ? ` (${kgPerHa.toLocaleString('es-AR')} kg/ha)` : ''}`);
           }
+          if (row.last_activity_date && row.last_activity_type) {
+            const { label: actLabel } = getActivityLabel(row.last_activity_type);
+            extras.push(`últ: ${actLabel} ${formatDateAR(row.last_activity_date)}`);
+          }
+          if (extras.length > 0) detail += `\n    ${extras.join(' · ')}`;
+
+          lines.push(detail);
         }
-        return { messages: [msg] };
+        return { messages: [lines.join('\n')] };
       }
 
       case 'crop_history': {
@@ -1039,6 +1113,22 @@ export class AgronomyHandler {
             console.error('[stock-deduction] Error suggesting deduction:', stockErr);
             logError('agronomy', 'STOCK_DEDUCTION_SUGGEST', stockErr as Error, { userId });
           }
+        }
+
+        // Check if plot has a harvested (but not closed) campaign → offer to close
+        if (activeCrop?.harvested_at && !activeCrop.end_date) {
+          return {
+            messages: [confirmation],
+            interactive: {
+              type: 'buttons',
+              body: `La campaña de ${activeCrop.crop} en ${plotLabel} ya fue cosechada. ¿Querés cerrarla?`,
+              buttons: [
+                { id: `campaign_close_yes_${activeCrop.id}`, title: 'Cerrar campaña' },
+                { id: `campaign_close_no_${activeCrop.id}`, title: 'Mantener abierta' },
+              ],
+            },
+            sideEffects: { setPendingCampaignClose: { plotCropId: activeCrop.id, crop: activeCrop.crop, plotName: plotLabel || '' } },
+          };
         }
 
         return { messages: [confirmation] };
