@@ -7,7 +7,7 @@ interface LivestockGroup {
   breed: string | null;
   count: number;
   field_name: string;
-  plot_name: string;
+  plot_name: string | null;
 }
 
 interface Movement {
