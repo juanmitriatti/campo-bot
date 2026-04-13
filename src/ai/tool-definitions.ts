@@ -232,7 +232,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'tacto_summary',
-    description: 'Consultar resumen/promedio de tacto (revisión de preñez). "promedio del tacto", "resultados del tacto", "como salió el tacto", "tasa de preñez", "cuántas preñadas".',
+    description: 'Consultar resumen/promedio de tacto (revisión de preñez). Triggers: "promedio del tacto", "resultados del tacto", "como salió el tacto", "tasa de preñez", "cuántas preñadas", "% de preñez", "% preñes", "porcentaje de preñez", "tacto de [campo]", "tacto del campo X", "resumen tacto". SIEMPRE usar esta herramienta cuando mencionan tacto/preñez en contexto de consulta.',
     input_schema: {
       type: 'object',
       properties: {
