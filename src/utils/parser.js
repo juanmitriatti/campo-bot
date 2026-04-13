@@ -840,27 +840,6 @@ const COMMAND_PATTERNS = [
     extract: (m) => ({ entityKeyword: m[1], fieldName: m[2].trim() }),
   },
 
-  // --- Active crop queries (before agronomy reports to prevent AI misclassification) ---
-  {
-    command: "active_crop",
-    patterns: [
-      // "donde/onde hay soja", "dónde hay trigo", "hay soja?", "en qué lotes hay soja"
-      /(?:d?onde|d[oó]nde|en\s+qu[eé]\s+lotes?)\s+hay\s+(soj[ao]|soya|ma[ií]z|trigo|girasol|sorgo|cebada|avena|centeno|alfalfa)/,
-      // "soja?" / "maiz?" — bare crop name as question
-      /^(soj[ao]|soya|ma[ií]z|trigo|girasol|sorgo|cebada|avena|centeno|alfalfa)\s*\??$/,
-      // "qué tengo sembrado" / "qué hay sembrado" / "cultivos activos" / "cultivo activo"
-      /(?:qu[eé]\s+(?:tengo|hay)\s+sembrad[oa]|cultivos?\s+activos?)/,
-      // "tengo soja?" / "tengo trigo sembrado?"
-      /tengo\s+(soj[ao]|soya|ma[ií]z|trigo|girasol|sorgo|cebada|avena|centeno|alfalfa)(?:\s+sembrad[oa])?\s*\??/,
-      // "hay soja sembrada?" / "hay trigo sembrado?"
-      /hay\s+(soj[ao]|soya|ma[ií]z|trigo|girasol|sorgo|cebada|avena|centeno|alfalfa)(?:\s+sembrad[oa])?\s*\??/,
-    ],
-    extract: (m) => {
-      const cropName = m[1]?.trim().toLowerCase() || null;
-      return { crop: cropName || null };
-    },
-  },
-
   // --- Agronomy reports (high-signal patterns to avoid AI confusion with financial) ---
   {
     command: "generate_agro_report",
