@@ -1,7 +1,7 @@
 import fs from 'fs';
 import { AgronomyRepository, RAINFALL_REJECTED_DUPLICATE } from './agronomy.repository.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
-import { CropService, formatSeasonLabel, getSeasonTypeForCrop, getCampaignStateLabel, getCampaignState } from '../plots/crop.service.js';
+import { CropService, detectCropFromText, formatSeasonLabel, getSeasonTypeForCrop, getCampaignStateLabel, getCampaignState } from '../plots/crop.service.js';
 import { CampaignStatsService } from './campaign-stats.service.js';
 import type { CampaignStats } from './campaign-stats.service.js';
 import { inferCrop, getActivityLabel, formatActivityConfirmation } from './activity.service.js';
@@ -815,7 +815,9 @@ export class AgronomyHandler {
         }
 
         // No plot specified → list all active crops, optionally filtered by crop name
-        const cropFilter = cmd.crop as string | null;
+        // Normalize crop name (regex gives "maiz", DB has "Maíz")
+        const rawCrop = cmd.crop as string | null;
+        const cropFilter = rawCrop ? (detectCropFromText(rawCrop) || rawCrop) : null;
         const allActive = await this.cropService.listActiveCrops(userId, cropFilter);
 
         if (allActive.length === 0) {
