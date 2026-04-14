@@ -881,6 +881,7 @@ export class AgronomyHandler {
         const acOriginal = ((cmd.originalText as string) || '').toLowerCase();
         const wantDetail = cmd.detail === true || cmd.detail === 'true'
           || /qu[eé]\s*lotes|en\s*qu[eé]|d[oó]nde|detalle|desglose|cu[aá]les/.test(acOriginal);
+        console.log(`[active_crop] originalText="${acOriginal}" detail=${cmd.detail} wantDetail=${wantDetail}`);
 
         if (wantDetail) {
           if (totalYieldKg > 0) {
