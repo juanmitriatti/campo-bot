@@ -132,7 +132,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'active_crop',
-    description: 'Consultar cultivos ACTUALMENTE sembrados. USAR SIEMPRE que pregunten qué hay sembrado o dónde hay un cultivo. Sin lote: lista TODOS los cultivos activos. Con crop: filtra lotes con ese cultivo. Triggers: "soja?", "dónde hay soja", "hay soja?", "qué tengo sembrado", "cultivo activo", "en qué lotes hay trigo", "qué hay sembrado", "onde hay maíz", "tengo soja?". NUNCA usar query_plot_history para estas consultas.',
+    description: 'Consultar cultivos ACTUALMENTE sembrados con hectáreas por lote y totales. USAR SIEMPRE que pregunten qué hay sembrado, dónde hay un cultivo, o hectáreas/has sembradas de un cultivo. Triggers: "soja?", "dónde hay soja", "hay soja?", "has sembradas", "has de soja", "hectáreas sembradas de trigo", "cuántas has de maíz", "superficie sembrada", "qué tengo sembrado", "cultivo activo", "en qué lotes hay trigo", "qué hay sembrado", "tengo soja?". PRIORIDAD sobre list_plots cuando mencionan cultivo o "sembradas". NUNCA usar query_plot_history ni list_plots para estas consultas.',
     input_schema: {
       type: 'object',
       properties: {
@@ -376,7 +376,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'list_plots',
-    description: 'Listar lotes con superficie en hectáreas. "mis lotes", "qué lotes tiene el campo", "lotes del campo X", "cuántos lotes tengo", "hectáreas del campo X", "has campo X", "superficie".',
+    description: 'Listar lotes con superficie en hectáreas. "mis lotes", "qué lotes tiene el campo", "lotes del campo X", "cuántos lotes tengo", "hectáreas del campo X", "has campo X", "superficie total". NO usar para "has sembradas" ni cuando mencionan un cultivo (→ active_crop).',
     input_schema: {
       type: 'object',
       properties: {
