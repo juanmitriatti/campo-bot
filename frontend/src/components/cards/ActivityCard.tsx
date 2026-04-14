@@ -1,0 +1,89 @@
+interface Activity {
+  id: number;
+  event_type: string;
+  event_date: string;
+  crop: string | null;
+  product: string | null;
+  product_type: string | null;
+  quantity: number | null;
+  unit: string | null;
+  implement: string | null;
+  notes: string | null;
+  pregnant_count: number | null;
+  open_count: number | null;
+  uncertain_count: number | null;
+  created_at: string;
+  plot_id: number | null;
+  plot_name: string | null;
+  field_name: string | null;
+  user_name: string | null;
+  edited_by_name: string | null;
+}
+
+const ACTIVITY_TYPE_LABELS: Record<string, { label: string; emoji: string }> = {
+  spraying: { label: 'Fumigacion', emoji: '💨' },
+  fertilization: { label: 'Fertilizacion', emoji: '🧪' },
+  planting: { label: 'Siembra', emoji: '🌱' },
+  tillage: { label: 'Labranza', emoji: '🚜' },
+  harvest: { label: 'Cosecha', emoji: '🌾' },
+  irrigation: { label: 'Riego', emoji: '💧' },
+  tacto: { label: 'Tacto', emoji: '🩺' },
+};
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+}
+
+function getDetail(a: Activity): string {
+  if (a.event_type === 'tacto') {
+    const parts: string[] = [];
+    if (a.pregnant_count != null) parts.push(`${a.pregnant_count} prenadas`);
+    if (a.open_count != null && a.open_count > 0) parts.push(`${a.open_count} vacias`);
+    return parts.join(' - ') || '-';
+  }
+  const parts: string[] = [];
+  if (a.product) parts.push(a.product);
+  if (a.quantity != null && a.unit) parts.push(`${a.quantity} ${a.unit}`);
+  if (a.implement) parts.push(a.implement);
+  if (a.notes) parts.push(a.notes);
+  return parts.join(' - ') || '-';
+}
+
+interface Props {
+  activity: Activity;
+  onEdit: (a: Activity) => void;
+}
+
+export default function ActivityCard({ activity, onEdit }: Props) {
+  const info = ACTIVITY_TYPE_LABELS[activity.event_type];
+  const typeLabel = info ? `${info.emoji} ${info.label}` : activity.event_type;
+  const location = [activity.field_name, activity.plot_name].filter(Boolean).join(', ');
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-4">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs bg-campo-100 text-campo-800 px-1.5 py-0.5 rounded">
+              {typeLabel}
+            </span>
+            {activity.crop && (
+              <span className="text-xs text-gray-500">{activity.crop}</span>
+            )}
+          </div>
+          <p className="text-sm text-gray-600 truncate">{getDetail(activity)}</p>
+          <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400">
+            <span>{formatDate(activity.event_date)}</span>
+            {location && <><span>·</span><span className="truncate">{location}</span></>}
+          </div>
+        </div>
+        <button
+          onClick={() => onEdit(activity)}
+          className="text-campo-600 hover:text-campo-800 text-xs font-medium ml-2 shrink-0"
+        >
+          Editar
+        </button>
+      </div>
+    </div>
+  );
+}

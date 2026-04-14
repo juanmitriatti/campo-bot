@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
 import IncomeEditModal from './IncomeEditModal';
+import IncomeCard from './cards/IncomeCard';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface Income {
   id: number;
@@ -80,6 +82,7 @@ function formatQuantity(qty: number | null, unit: string | null): string {
 }
 
 export default function IncomeTable() {
+  const isMobile = useIsMobile();
   const [data, setData] = useState<PaginatedResponse | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -241,7 +244,7 @@ export default function IncomeTable() {
         )}
       </div>
 
-      {/* Table */}
+      {/* Content */}
       {!data || data.incomes.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <p className="text-lg">{hasFilters ? 'No hay ingresos con estos filtros' : 'No tenes ingresos todavia'}</p>
@@ -249,69 +252,72 @@ export default function IncomeTable() {
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Categoria</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Descripcion</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Campo</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Lote</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Cantidad</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Monto</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
-                  <th className="px-4 py-3 w-20" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data.incomes.map(inc => (
-                  <tr key={inc.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                      {formatDate(inc.income_date)}
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded">
-                        {CATEGORY_LABELS[inc.category] || inc.category}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 max-w-xs">
-                      <p className="truncate text-gray-800">{inc.description || '-'}</p>
-                      <p className="text-xs text-gray-400 md:hidden">
-                        {CATEGORY_LABELS[inc.category] || inc.category}
-                        {inc.field_name && ` · ${inc.field_name}`}
-                        {inc.plot_name && ` · ${inc.plot_name}`}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                      {inc.field_name || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
-                      {inc.plot_name || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden lg:table-cell whitespace-nowrap">
-                      {formatQuantity(inc.quantity, inc.unit)}
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-green-700">
-                      {formatAmount(inc.amount, inc.currency)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
-                      {inc.user_name || '-'}
-                      {inc.edited_by_name && <span className="block text-gray-400">editado por {inc.edited_by_name}</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setEditing(inc)}
-                        className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline"
-                      >
-                        Editar
-                      </button>
-                    </td>
+          {isMobile ? (
+            <div className="space-y-3 p-4">
+              {data.incomes.map(inc => (
+                <IncomeCard key={inc.id} income={inc} onEdit={setEditing} />
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Categoria</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Descripcion</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Campo</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Lote</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Cantidad</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-600">Monto</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
+                    <th className="px-4 py-3 w-20" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {data.incomes.map(inc => (
+                    <tr key={inc.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                        {formatDate(inc.income_date)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded">
+                          {CATEGORY_LABELS[inc.category] || inc.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 max-w-xs">
+                        <p className="truncate text-gray-800">{inc.description || '-'}</p>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {inc.field_name || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {inc.plot_name || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 hidden lg:table-cell whitespace-nowrap">
+                        {formatQuantity(inc.quantity, inc.unit)}
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-green-700">
+                        {formatAmount(inc.amount, inc.currency)}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
+                        {inc.user_name || '-'}
+                        {inc.edited_by_name && <span className="block text-gray-400">editado por {inc.edited_by_name}</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => setEditing(inc)}
+                          className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline"
+                        >
+                          Editar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Pagination */}
           {data.totalPages > 1 && (

@@ -121,7 +121,16 @@ React + Vite + TailwindCSS SPA. In production, Express serves the build from `fr
 - **Stack**: React 19, React Router v6, Tailwind v3, Vite 6, TypeScript
 - **Auth flow**: JWT stored in localStorage, auto-refresh on 401, role-based route guards
 - **Key files**: `src/api/client.ts` (fetch wrapper), `src/context/AuthContext.tsx` (auth state), `src/components/ProtectedRoute.tsx` (route guard)
-- **Pages**: `/login`, `/register` (split name/apellido, dynamic plan fetching from API), `/dashboard` (end-user with 6 tabs: Observaciones, Actividades, Gastos, Ingresos, Stock, Hacienda)
+- **Pages**: `/login`, `/register` (split name/apellido, dynamic plan fetching from API), `/dashboard` (end-user), `/chat` (test bot)
+- **Dashboard layout**: Sidebar navigation (desktop) + bottom nav (mobile) with `view` state (not sub-routes). Default view is **Overview** with KPI cards, quick actions, recent feed, and alerts. Detail views: Gastos, Ingresos, Actividades, Observaciones, Stock (feature-gated), Hacienda (feature-gated).
+  - **`components/layout/Sidebar.tsx`** — Desktop sidebar nav (`w-56`, left side), feature-gated items for Stock/Hacienda
+  - **`components/layout/BottomNav.tsx`** — Mobile fixed bottom nav (5 icons), visible below `md` breakpoint
+  - **`components/overview/OverviewPage.tsx`** — KPI cards (expenses, incomes, result, activities), quick actions (navigate to `/chat`), recent feed (last 5 items), alerts banner (stock alerts + livestock count)
+  - **`components/overview/`** — `KpiCard`, `SparklineBar` (CSS-only), `QuickActions`, `RecentFeed`, `AlertsBanner`
+  - **`hooks/useIsMobile.ts`** — `matchMedia` hook (< 768px breakpoint)
+  - **`hooks/useDashboardData.ts`** — Fetches `GET /api/auth/dashboard` KPI endpoint
+  - **`GET /api/auth/dashboard`** — Backend endpoint returning monthly expense/income aggregates, activities count, recent items feed, optional stock_alerts_count and livestock_total. Uses `field_members` access control.
+- **Mobile cards**: Dual rendering on detail tables — desktop shows `<table>`, mobile (< 768px) shows card list. Card components in `components/cards/`: `ExpenseCard`, `IncomeCard`, `ActivityCard`, `ObservationCard`
 - **Dashboard features**: Paginated tables with filters (date, campo, lote, category/type), inline "Editar" button on each row, edit modals for all entity types, "Registrado por" column showing creator name (and editor name if edited) on all tables. Stock tab shows inventory with movement history and edit modal. Hacienda tab has two sub-tabs: **Grupos** (per-plot livestock inventory with field/plot/category filters, totals banner, movements/edit actions) and **Historial** (global movements timeline with field/plot/category/type/date-range filters).
 - **Edit modals**: `ObservationEditModal` (with history tracking), `ExpenseEditModal`, `IncomeEditModal`, `ActivityEditModal` (campo/lote cascading selectors + all activity fields, no history)
 - **Edit audit**: `edited_by` column on `expenses`, `incomes`, `domain_events` tracks who last edited each record. Dashboard queries JOIN `users` to show `user_name` (creator) and `edited_by_name` (last editor) on all 4 tables
@@ -141,7 +150,7 @@ JWT-based authentication with bcrypt passwords and refresh token rotation.
 
 - `GET/POST /webhook` — WhatsApp webhook (verification + message handler)
 - `POST /telegram` — Telegram webhook handler (secret verified via `src/middleware/telegram-auth.ts`)
-- `/api/auth/*` — Auth endpoints (register, login, refresh, logout, profile, plans, observations, expenses, incomes, activities — including PATCH edit endpoints, GET filters)
+- `/api/auth/*` — Auth endpoints (register, login, refresh, logout, profile, plans, dashboard overview KPIs, observations, expenses, incomes, activities — including PATCH edit endpoints, GET filters)
 - `GET /api/map/:token` — Public map page for polygon drawing (token-authenticated, no JWT). Serves `src/public/map/index.html` (Leaflet + Leaflet.Draw, mobile-first). Auto-starts polygon drawing mode on load; default Leaflet.Draw toolbar hidden
 - `POST /api/map/:token` — Receives polygon GeoJSON from map page, saves to field, consumes token
 - `/admin/api/*` — Admin dashboard API endpoints (stats, users, settings, AI usage, parse metrics, enriched field detail with financials, field activities) — requires admin JWT

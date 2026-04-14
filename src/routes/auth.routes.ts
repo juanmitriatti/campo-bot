@@ -92,6 +92,118 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+// --- Dashboard overview ---
+
+router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.auth!.userId;
+    const accessibleFields = `SELECT field_id FROM field_members WHERE user_id = $1`;
+
+    // Current month boundaries (Argentina TZ)
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
+
+    // Expenses: current + previous month
+    const expensesQuery = pool.query(
+      `SELECT
+        COALESCE(SUM(CASE WHEN expense_date >= $2::date THEN amount ELSE 0 END), 0) AS current_month,
+        COALESCE(SUM(CASE WHEN expense_date >= $3::date AND expense_date < $2::date THEN amount ELSE 0 END), 0) AS prev_month
+       FROM expenses
+       WHERE (user_id = $1 OR field_id IN (${accessibleFields}))
+         AND deleted_at IS NULL AND currency = 'ARS'
+         AND expense_date >= $3::date`,
+      [userId, monthStart, prevMonthStart]
+    );
+
+    // Incomes: current + previous month
+    const incomesQuery = pool.query(
+      `SELECT
+        COALESCE(SUM(CASE WHEN income_date >= $2::date THEN amount ELSE 0 END), 0) AS current_month,
+        COALESCE(SUM(CASE WHEN income_date >= $3::date AND income_date < $2::date THEN amount ELSE 0 END), 0) AS prev_month
+       FROM incomes
+       WHERE (user_id = $1 OR field_id IN (${accessibleFields}))
+         AND deleted_at IS NULL AND currency = 'ARS'
+         AND income_date >= $3::date`,
+      [userId, monthStart, prevMonthStart]
+    );
+
+    // Activities count this month
+    const activitiesQuery = pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM domain_events
+       WHERE user_id = $1
+         AND event_date >= $2::date`,
+      [userId, monthStart]
+    );
+
+    // Recent items: last 5 expenses + incomes + activities mixed
+    const recentQuery = pool.query(
+      `(SELECT 'expense' AS type, e.description, e.amount, e.currency, NULL AS event_type,
+              e.expense_date AS date, f.name AS field_name, p.name AS plot_name
+        FROM expenses e
+        LEFT JOIN fields f ON e.field_id = f.id
+        LEFT JOIN plots p ON e.plot_id = p.id
+        WHERE (e.user_id = $1 OR e.field_id IN (${accessibleFields}))
+          AND e.deleted_at IS NULL
+        ORDER BY e.expense_date DESC, e.created_at DESC LIMIT 5)
+       UNION ALL
+       (SELECT 'income' AS type, i.description, i.amount, i.currency, NULL AS event_type,
+              i.income_date AS date, f.name AS field_name, p.name AS plot_name
+        FROM incomes i
+        LEFT JOIN fields f ON i.field_id = f.id
+        LEFT JOIN plots p ON i.plot_id = p.id
+        WHERE (i.user_id = $1 OR i.field_id IN (${accessibleFields}))
+          AND i.deleted_at IS NULL
+        ORDER BY i.income_date DESC, i.created_at DESC LIMIT 5)
+       UNION ALL
+       (SELECT 'activity' AS type, NULL AS description, NULL::numeric AS amount, NULL AS currency, de.event_type,
+              de.event_date AS date, f.name AS field_name, p.name AS plot_name
+        FROM domain_events de
+        LEFT JOIN plots p ON de.plot_id = p.id
+        LEFT JOIN fields f ON p.field_id = f.id
+        WHERE de.user_id = $1
+        ORDER BY de.event_date DESC, de.created_at DESC LIMIT 5)
+       ORDER BY date DESC LIMIT 5`,
+      [userId]
+    );
+
+    const [expensesRes, incomesRes, activitiesRes, recentRes] = await Promise.all([
+      expensesQuery, incomesQuery, activitiesQuery, recentQuery,
+    ]);
+
+    const result: Record<string, unknown> = {
+      expenses_month_ars: Number(expensesRes.rows[0].current_month),
+      expenses_prev_month_ars: Number(expensesRes.rows[0].prev_month),
+      incomes_month_ars: Number(incomesRes.rows[0].current_month),
+      incomes_prev_month_ars: Number(incomesRes.rows[0].prev_month),
+      activities_month_count: activitiesRes.rows[0].count,
+      recent_items: recentRes.rows,
+    };
+
+    // Optional: stock alerts (feature-gated)
+    try {
+      const { StockRepository } = await import('../domain/stock/stock.repository.js');
+      const stockRepo = new StockRepository();
+      const items = await stockRepo.getStockItems(userId);
+      const lowStock = items.filter(i => i.min_stock && i.current_quantity <= i.min_stock);
+      result.stock_alerts_count = lowStock.length;
+    } catch { /* stock feature not available */ }
+
+    // Optional: livestock total
+    try {
+      const { LivestockRepository } = await import('../domain/livestock/livestock.repository.js');
+      const livestockRepo = new LivestockRepository();
+      const total = await livestockRepo.countTotal(userId, {});
+      result.livestock_total = total;
+    } catch { /* livestock feature not available */ }
+
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
 // --- Expense & Income routes ---
 
 router.get('/expenses', requireAuth, async (req: Request, res: Response) => {

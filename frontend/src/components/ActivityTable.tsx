@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
 import ActivityEditModal from './ActivityEditModal';
+import ActivityCard from './cards/ActivityCard';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface Activity {
   id: number;
@@ -63,6 +65,7 @@ const ACTIVITY_TYPE_OPTIONS = Object.entries(ACTIVITY_TYPE_LABELS).map(([id, { l
 }));
 
 export default function ActivityTable() {
+  const isMobile = useIsMobile();
   const [data, setData] = useState<PaginatedResponse | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -252,7 +255,7 @@ export default function ActivityTable() {
         )}
       </div>
 
-      {/* Table */}
+      {/* Content */}
       {!data || data.activities.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <p className="text-lg">{hasFilters ? 'No hay actividades con estos filtros' : 'No tenes actividades todavia'}</p>
@@ -260,64 +263,68 @@ export default function ActivityTable() {
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Campo</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Lote</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Cultivo</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Detalle</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
-                  <th className="px-4 py-3 w-20" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data.activities.map(a => (
-                  <tr key={a.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
-                        {getTypeLabel(a.event_type)}
-                      </span>
-                      <p className="text-xs text-gray-400 sm:hidden mt-1">
-                        {a.field_name && `${a.field_name} · `}
-                        {a.plot_name && a.plot_name}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                      {formatDate(a.event_date)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                      {a.field_name || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
-                      {a.plot_name || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                      {a.crop || '-'}
-                    </td>
-                    <td className="px-4 py-3 max-w-xs">
-                      <p className="truncate text-gray-800">{getDetail(a)}</p>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
-                      {a.user_name || '-'}
-                      {a.edited_by_name && <span className="block text-gray-400">editado por {a.edited_by_name}</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setEditing(a)}
-                        className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline"
-                      >
-                        Editar
-                      </button>
-                    </td>
+          {isMobile ? (
+            <div className="space-y-3 p-4">
+              {data.activities.map(a => (
+                <ActivityCard key={a.id} activity={a} onEdit={setEditing} />
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Campo</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Lote</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Cultivo</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Detalle</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
+                    <th className="px-4 py-3 w-20" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {data.activities.map(a => (
+                    <tr key={a.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
+                          {getTypeLabel(a.event_type)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                        {formatDate(a.event_date)}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {a.field_name || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {a.plot_name || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {a.crop || '-'}
+                      </td>
+                      <td className="px-4 py-3 max-w-xs">
+                        <p className="truncate text-gray-800">{getDetail(a)}</p>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
+                        {a.user_name || '-'}
+                        {a.edited_by_name && <span className="block text-gray-400">editado por {a.edited_by_name}</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => setEditing(a)}
+                          className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline"
+                        >
+                          Editar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Pagination */}
           {data.totalPages > 1 && (

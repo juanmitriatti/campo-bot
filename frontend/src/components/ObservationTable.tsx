@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
 import ObservationEditModal from './ObservationEditModal';
+import ObservationCard from './cards/ObservationCard';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface Observation {
   id: number;
@@ -47,6 +49,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function ObservationTable() {
+  const isMobile = useIsMobile();
   const [data, setData] = useState<PaginatedResponse | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -198,72 +201,75 @@ export default function ObservationTable() {
         )}
       </div>
 
-      {/* Table */}
+      {/* Content */}
       {!data || data.observations.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
-          <p className="text-lg">{hasFilters ? 'No hay observaciones con estos filtros' : 'No tenés observaciones todavía'}</p>
-          {!hasFilters && <p className="text-sm mt-1">Las observaciones que registres por WhatsApp aparecerán acá</p>}
+          <p className="text-lg">{hasFilters ? 'No hay observaciones con estos filtros' : 'No tenes observaciones todavia'}</p>
+          {!hasFilters && <p className="text-sm mt-1">Las observaciones que registres por WhatsApp apareceran aca</p>}
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Observación</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Campo</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Lote</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Categoría</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Creada</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Editada</th>
-                  <th className="px-4 py-3 w-20" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data.observations.map(obs => (
-                  <tr key={obs.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 max-w-xs">
-                      <p className="truncate text-gray-800">{obs.observation_text}</p>
-                      <p className="text-xs text-gray-400 sm:hidden">
-                        {obs.field_name && `${obs.field_name} · `}
-                        {obs.plot_name && `${obs.plot_name} · `}
-                        {CATEGORY_LABELS[obs.category] || obs.category}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                      {obs.field_name || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
-                      {obs.plot_name || '-'}
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
-                        {CATEGORY_LABELS[obs.category] || obs.category}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                      {formatDate(obs.created_at)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
-                      {obs.user_name || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap hidden sm:table-cell">
-                      {obs.updated_at ? formatDate(obs.updated_at) : '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setEditing(obs)}
-                        className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline"
-                      >
-                        Editar
-                      </button>
-                    </td>
+          {isMobile ? (
+            <div className="space-y-3 p-4">
+              {data.observations.map(obs => (
+                <ObservationCard key={obs.id} observation={obs} onEdit={setEditing} />
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Observacion</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Campo</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Lote</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Categoria</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Creada</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Editada</th>
+                    <th className="px-4 py-3 w-20" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {data.observations.map(obs => (
+                    <tr key={obs.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 max-w-xs">
+                        <p className="truncate text-gray-800">{obs.observation_text}</p>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {obs.field_name || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {obs.plot_name || '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
+                          {CATEGORY_LABELS[obs.category] || obs.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                        {formatDate(obs.created_at)}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
+                        {obs.user_name || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                        {obs.updated_at ? formatDate(obs.updated_at) : '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => setEditing(obs)}
+                          className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline"
+                        >
+                          Editar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Pagination */}
           {data.totalPages > 1 && (

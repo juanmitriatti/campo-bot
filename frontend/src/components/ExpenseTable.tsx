@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
 import ExpenseEditModal from './ExpenseEditModal';
+import ExpenseCard from './cards/ExpenseCard';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface Expense {
   id: number;
@@ -82,6 +84,7 @@ function formatAmount(amount: number, currency: string): string {
 }
 
 export default function ExpenseTable() {
+  const isMobile = useIsMobile();
   const [data, setData] = useState<PaginatedResponse | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -258,7 +261,7 @@ export default function ExpenseTable() {
         )}
       </div>
 
-      {/* Table */}
+      {/* Content */}
       {!data || data.expenses.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <p className="text-lg">{hasFilters ? 'No hay gastos con estos filtros' : 'No tenes gastos todavia'}</p>
@@ -266,84 +269,87 @@ export default function ExpenseTable() {
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Tipo</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Categoria</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Descripcion</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Producto</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Campo</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Lote</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Monto</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
-                  <th className="px-4 py-3 w-20" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data.expenses.map(exp => (
-                  <tr key={exp.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                      {formatDate(exp.expense_date)}
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className={`inline-block text-xs px-2 py-0.5 rounded ${
-                        exp.expense_type === 'insumo'
-                          ? 'bg-purple-100 text-purple-800'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}>
-                        {exp.expense_type === 'insumo' ? 'Insumo' : 'Varios'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
-                        {CATEGORY_LABELS[exp.category] || exp.category}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 max-w-xs">
-                      <p className="truncate text-gray-800">{exp.description || '-'}</p>
-                      <p className="text-xs text-gray-400 md:hidden">
-                        {EXPENSE_TYPE_LABELS[exp.expense_type || 'varios'] || 'Varios'} · {CATEGORY_LABELS[exp.category] || exp.category}
-                        {exp.field_name && ` · ${exp.field_name}`}
-                        {exp.plot_name && ` · ${exp.plot_name}`}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
-                      {exp.product ? (
-                        <span>
-                          {exp.product}
-                          {exp.quantity && exp.unit && <span className="text-xs text-gray-400 ml-1">({exp.quantity} {exp.unit})</span>}
-                        </span>
-                      ) : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                      {exp.field_name || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
-                      {exp.plot_name || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-gray-800">
-                      {formatAmount(exp.amount, exp.currency)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
-                      {exp.user_name || '-'}
-                      {exp.edited_by_name && <span className="block text-gray-400">editado por {exp.edited_by_name}</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setEditing(exp)}
-                        className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline"
-                      >
-                        Editar
-                      </button>
-                    </td>
+          {isMobile ? (
+            <div className="space-y-3 p-4">
+              {data.expenses.map(exp => (
+                <ExpenseCard key={exp.id} expense={exp} onEdit={setEditing} />
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Categoria</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Descripcion</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Producto</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Campo</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Lote</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-600">Monto</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
+                    <th className="px-4 py-3 w-20" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {data.expenses.map(exp => (
+                    <tr key={exp.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                        {formatDate(exp.expense_date)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block text-xs px-2 py-0.5 rounded ${
+                          exp.expense_type === 'insumo'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {exp.expense_type === 'insumo' ? 'Insumo' : 'Varios'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
+                          {CATEGORY_LABELS[exp.category] || exp.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 max-w-xs">
+                        <p className="truncate text-gray-800">{exp.description || '-'}</p>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
+                        {exp.product ? (
+                          <span>
+                            {exp.product}
+                            {exp.quantity && exp.unit && <span className="text-xs text-gray-400 ml-1">({exp.quantity} {exp.unit})</span>}
+                          </span>
+                        ) : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {exp.field_name || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {exp.plot_name || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-gray-800">
+                        {formatAmount(exp.amount, exp.currency)}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
+                        {exp.user_name || '-'}
+                        {exp.edited_by_name && <span className="block text-gray-400">editado por {exp.edited_by_name}</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => setEditing(exp)}
+                          className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline"
+                        >
+                          Editar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Pagination */}
           {data.totalPages > 1 && (
