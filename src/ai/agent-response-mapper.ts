@@ -347,6 +347,9 @@ export class AgentResponseMapper {
     if (input.capacity != null) cmd.capacity = input.capacity;
     if (input.name != null && !cmd.fieldName && !cmd.warehouseName) cmd.feedlotName = input.name;
 
+    // active_crop detail flag
+    if (input.detail != null) cmd.detail = input.detail;
+
     // Tacto (pregnancy check)
     if (input.total_checked != null) cmd.totalChecked = input.total_checked;
     if (input.pregnant_count != null) cmd.pregnantCount = input.pregnant_count;

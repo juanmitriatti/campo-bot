@@ -877,8 +877,10 @@ export class AgronomyHandler {
         if (totalHa > 0) summaryParts.push(`${totalHa.toLocaleString('es-AR')} ha`);
         lines.push(summaryParts.join(' · '));
 
-        // Brief mode (default): just summary. Detail mode: full per-plot breakdown
-        const wantDetail = cmd.detail === true || cmd.detail === 'true';
+        // Detect if user wants per-plot detail from original text or explicit param
+        const acOriginal = ((cmd.originalText as string) || '').toLowerCase();
+        const wantDetail = cmd.detail === true || cmd.detail === 'true'
+          || /qu[eé]\s*lotes|en\s*qu[eé]|d[oó]nde|detalle|desglose|cu[aá]les/.test(acOriginal);
 
         if (wantDetail) {
           if (totalYieldKg > 0) {
