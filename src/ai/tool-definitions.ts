@@ -132,13 +132,14 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'active_crop',
-    description: 'Consultar cultivos ACTUALMENTE sembrados con hectáreas por lote y totales. USAR SIEMPRE que pregunten qué hay sembrado, dónde hay un cultivo, o hectáreas/has sembradas de un cultivo. Triggers: "soja?", "dónde hay soja", "hay soja?", "has sembradas", "has de soja", "hectáreas sembradas de trigo", "cuántas has de maíz", "superficie sembrada", "qué tengo sembrado", "cultivo activo", "en qué lotes hay trigo", "qué hay sembrado", "tengo soja?". PRIORIDAD sobre list_plots cuando mencionan cultivo o "sembradas". NUNCA usar query_plot_history ni list_plots para estas consultas.',
+    description: 'Consultar cultivos ACTUALMENTE sembrados con hectáreas. USAR SIEMPRE que pregunten qué hay sembrado, dónde hay un cultivo, o hectáreas/has sembradas. Triggers: "soja?", "hay soja?", "has sembradas", "has de soja", "hectáreas sembradas de trigo", "cuántas has de maíz", "superficie sembrada", "qué tengo sembrado", "cultivo activo", "en qué lotes hay trigo", "qué hay sembrado", "tengo soja?". PRIORIDAD sobre list_plots cuando mencionan cultivo o "sembradas". NUNCA usar query_plot_history ni list_plots. Default: resumen breve (total lotes y has). detail=true: desglose por lote.',
     input_schema: {
       type: 'object',
       properties: {
         plot: PLOT_PROP,
         field: FIELD_PROP,
         crop: { type: 'string', description: 'Filtrar por cultivo (ej: soja, maíz).' },
+        detail: { type: 'boolean', description: 'true para desglose por lote. Default false (resumen breve). Usar true cuando piden detalle/desglose/"en qué lotes".' },
       },
       required: [],
     },

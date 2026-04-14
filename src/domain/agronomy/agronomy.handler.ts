@@ -875,41 +875,44 @@ export class AgronomyHandler {
         const summaryParts: string[] = [];
         summaryParts.push(`${allActive.length} lote${allActive.length > 1 ? 's' : ''}`);
         if (totalHa > 0) summaryParts.push(`${totalHa.toLocaleString('es-AR')} ha`);
-        if (totalActivities > 0) summaryParts.push(`${totalActivities} actividades`);
         lines.push(summaryParts.join(' · '));
 
-        if (totalYieldKg > 0) {
-          let yieldSummary = `📊 Rinde total: ${totalYieldKg.toLocaleString('es-AR')} kg`;
-          if (totalHa > 0) yieldSummary += ` (${Math.round(totalYieldKg / totalHa).toLocaleString('es-AR')} kg/ha)`;
-          lines.push(yieldSummary);
+        // Brief mode (default): just summary. Detail mode: full per-plot breakdown
+        const wantDetail = cmd.detail === true || cmd.detail === 'true';
+
+        if (wantDetail) {
+          if (totalYieldKg > 0) {
+            let yieldSummary = `📊 Rinde total: ${totalYieldKg.toLocaleString('es-AR')} kg`;
+            if (totalHa > 0) yieldSummary += ` (${Math.round(totalYieldKg / totalHa).toLocaleString('es-AR')} kg/ha)`;
+            lines.push(yieldSummary);
+          }
+
+          lines.push('');
+          for (const row of allActive) {
+            const label = formatSeasonLabel(row.season_year, row.season_type);
+            const stateLabel = getCampaignStateLabel(row);
+            const plotLabel = `${row.field_name} > ${row.plot_name}`;
+            const haStr = row.area_hectares ? `${Number(row.area_hectares).toLocaleString('es-AR')} ha` : '';
+
+            let detailLine = `${stateLabel} *${row.crop}* en *${plotLabel}*`;
+            if (haStr) detailLine += ` — ${haStr}`;
+            detailLine += ` — ${label}`;
+
+            const extras: string[] = [];
+            if (row.yield_kg) {
+              const kgPerHa = row.area_hectares ? Math.round(Number(row.yield_kg) / Number(row.area_hectares)) : null;
+              extras.push(`rinde: ${Number(row.yield_kg).toLocaleString('es-AR')} kg${kgPerHa ? ` (${kgPerHa.toLocaleString('es-AR')} kg/ha)` : ''}`);
+            }
+            if (row.last_activity_date && row.last_activity_type) {
+              const { label: actLabel } = getActivityLabel(row.last_activity_type);
+              extras.push(`últ: ${actLabel} ${formatDateAR(row.last_activity_date)}`);
+            }
+            if (extras.length > 0) detailLine += `\n    ${extras.join(' · ')}`;
+
+            lines.push(detailLine);
+          }
         }
 
-        // Per-plot detail
-        lines.push('');
-        for (const row of allActive) {
-          const label = formatSeasonLabel(row.season_year, row.season_type);
-          const stateLabel = getCampaignStateLabel(row);
-          const plotLabel = `${row.field_name} > ${row.plot_name}`;
-          const haStr = row.area_hectares ? `${Number(row.area_hectares).toLocaleString('es-AR')} ha` : '';
-
-          let detail = `${stateLabel} *${row.crop}* en *${plotLabel}*`;
-          if (haStr) detail += ` — ${haStr}`;
-          detail += ` — ${label}`;
-
-          // Extra detail inline
-          const extras: string[] = [];
-          if (row.yield_kg) {
-            const kgPerHa = row.area_hectares ? Math.round(Number(row.yield_kg) / Number(row.area_hectares)) : null;
-            extras.push(`rinde: ${Number(row.yield_kg).toLocaleString('es-AR')} kg${kgPerHa ? ` (${kgPerHa.toLocaleString('es-AR')} kg/ha)` : ''}`);
-          }
-          if (row.last_activity_date && row.last_activity_type) {
-            const { label: actLabel } = getActivityLabel(row.last_activity_type);
-            extras.push(`últ: ${actLabel} ${formatDateAR(row.last_activity_date)}`);
-          }
-          if (extras.length > 0) detail += `\n    ${extras.join(' · ')}`;
-
-          lines.push(detail);
-        }
         return { messages: [lines.join('\n')] };
       }
 
