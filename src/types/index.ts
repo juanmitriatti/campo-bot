@@ -47,6 +47,7 @@ export interface ParsedIncome {
 
 export interface ParsedCommand {
   command: string;
+  corralName?: string;
   [key: string]: unknown;
 }
 
@@ -162,6 +163,7 @@ export interface PlotRow {
   name: string;
   area_hectares: number | null;
   soil_type: string | null;
+  grupo: string | null;
   created_at: Date;
 }
 

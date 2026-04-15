@@ -148,7 +148,7 @@ export class CropService {
     return await getPlotCropHistory(plotId) as PlotCropRow[];
   }
 
-  async listActiveCrops(userId: UserId, cropFilter?: string | null): Promise<(PlotCropRow & { plot_name: string; field_name: string; area_hectares: number | null })[]> {
-    return await getAllActiveCrops(userId, cropFilter ?? null) as any[];
+  async listActiveCrops(userId: UserId, cropFilter?: string | null, grupo?: string | null): Promise<(PlotCropRow & { plot_name: string; field_name: string; area_hectares: number | null })[]> {
+    return await getAllActiveCrops(userId, cropFilter ?? null, grupo ?? null) as any[];
   }
 }

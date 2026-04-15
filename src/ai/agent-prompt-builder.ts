@@ -113,7 +113,9 @@ ${this.buildActivityLines(dictionary)}
 - "feedlot" ≠ lote, "corral" ≠ lote chico. Entidades distintas del modelo intensivo
 - Hacienda en feedlot: "agregué 20 novillos al corral 1"→add_livestock(corral=1). "vendí 5 del corral Norte"→remove_livestock(corral=Norte)
 - CAMPAÑAS: "cómo va la campaña/soja/trigo"/"cuánto gasté en la soja"/"rendimiento del maíz"/"rentabilidad"/"resultado de la soja"→campaign_stats. "cerrar campaña"/"terminó la campaña"→close_campaign. "cosechamos"→harvest_crop (NO cierra la campaña, solo registra hito)
-- harvest_crop YA NO cierra la campaña. Para cerrar: close_campaign`;
+- harvest_crop YA NO cierra la campaña. Para cerrar: close_campaign
+- ACTIVIDADES STATS: "cuántas fumigaciones"/"cuántas siembras"/"actividades del mes"/"resumen actividades"/"estadísticas actividades"/"cuántas veces fumigué/sembré" → activity_stats. Para consultas tipo "cuándo fumigué" (fecha específica) → query_plot_history
+- GRUPO LOTES: "asignar grupo X al lote Y"/"grupo del lote"/"cambiar grupo" → set_plot_grupo. "actividades del grupo X"/"fumigaciones grupo X" → activity_stats(grupo=X). "qué hay sembrado en grupo X"/"soja del grupo X" → active_crop(grupo=X)`;
   }
 
   private contextLine(ctx: UserContext | null): string {

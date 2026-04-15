@@ -26,6 +26,7 @@ import {
   findLastDomainEventFiltered as _findLastDomainEventFiltered,
   updateDomainEventPlot as _updateDomainEventPlot,
   getTactoSummary as _getTactoSummary,
+  getActivityStats as _getActivityStats,
 } from '../../services/expenses.js';
 import { PlotRepository } from '../plots/plot.repository.js';
 import type { UserId, FieldRow, PlotRow, PlotCropRow, DomainEventRow, PlotHistoryRow } from '../../types/index.js';
@@ -47,6 +48,9 @@ export interface TactoSummaryRow {
   plot_id: number | null;
   plot_name: string | null;
   field_name: string | null;
+  corral_id: number | null;
+  corral_name: string | null;
+  feedlot_name: string | null;
   event_date: string;
   category: string | null;
   total_pregnant: number;
@@ -54,6 +58,15 @@ export interface TactoSummaryRow {
   total_uncertain: number;
   total_checked: number;
   record_count: number;
+}
+
+export interface ActivityStatsRow {
+  event_type: string;
+  count: number;
+  earliest: string;
+  latest: string;
+  plot_name: string | null;
+  field_name: string | null;
 }
 
 export class AgronomyRepository {
@@ -178,6 +191,7 @@ export class AgronomyRepository {
   async saveDomainEvent(userId: UserId, data: {
     plotId?: number | null;
     plotCropId?: number | null;
+    corralId?: number | null;
     eventType: string;
     eventDate?: Date | null;
     crop?: string | null;
@@ -237,6 +251,7 @@ export class AgronomyRepository {
   async getTactoSummary(userId: UserId, filters: {
     fieldId?: number | null;
     plotId?: number | null;
+    corralId?: number | null;
     desde?: string | null;
     hasta?: string | null;
   }): Promise<TactoSummaryRow[]> {
@@ -245,6 +260,9 @@ export class AgronomyRepository {
       plot_id: r.plot_id ?? null,
       plot_name: r.plot_name ?? null,
       field_name: r.field_name ?? null,
+      corral_id: r.corral_id ?? null,
+      corral_name: r.corral_name ?? null,
+      feedlot_name: r.feedlot_name ?? null,
       event_date: r.event_date,
       category: r.category ?? null,
       total_pregnant: Number(r.total_pregnant),
@@ -252,6 +270,25 @@ export class AgronomyRepository {
       total_uncertain: Number(r.total_uncertain),
       total_checked: Number(r.total_checked),
       record_count: Number(r.record_count),
+    }));
+  }
+
+  async getActivityStats(userId: UserId, filters: {
+    fieldId?: number | null;
+    plotId?: number | null;
+    activityFilter?: string | null;
+    desde?: string | null;
+    hasta?: string | null;
+    grupo?: string | null;
+  }): Promise<ActivityStatsRow[]> {
+    const rows = await _getActivityStats(userId, filters);
+    return rows.map((r: any) => ({
+      event_type: r.event_type,
+      count: Number(r.count),
+      earliest: r.earliest,
+      latest: r.latest,
+      plot_name: r.plot_name ?? null,
+      field_name: r.field_name ?? null,
     }));
   }
 

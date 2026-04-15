@@ -65,7 +65,7 @@ doc.fontSize(22).fillColor(BLUE).font('Helvetica-Bold').text('MIA — Referencia
 doc.moveDown(0.2);
 doc.fontSize(10).fillColor(GRAY).font('Helvetica').text('Listado completo de intents del agente AI para entrenamiento y corrección', { align: 'center' });
 doc.moveDown(0.1);
-doc.fontSize(9).fillColor(GRAY).text(`Generado: ${new Date().toLocaleDateString('es-AR')} — 49 tools`, { align: 'center' });
+doc.fontSize(9).fillColor(GRAY).text(`Generado: ${new Date().toLocaleDateString('es-AR')} — 63 tools`, { align: 'center' });
 
 // =====================
 // DATA
@@ -85,6 +85,7 @@ const sections = [
       ['log_observation', 'Registrar observación', '"hay chinches en soja lote 1"'],
       ['log_tacto', 'Registrar tacto/preñez', '"hice tacto, 60 preñadas y 20 vacías"'],
       ['log_rainfall', 'Registrar lluvia', '"llovieron 25mm"'],
+      ['edit_last_activity', 'Corregir última actividad', '"la siembra era en lote B"'],
     ],
   },
   {
@@ -97,6 +98,7 @@ const sections = [
       ['weather_full', 'Pronóstico del tiempo', '"clima"'],
       ['check_stock', 'Consultar stock', '"cuánto gasoil tengo?", "inventario"'],
       ['stock_history', 'Historial de stock', '"movimientos de urea"'],
+      ['tacto_summary', 'Resumen de tacto/preñez', '"promedio del tacto", "tasa de preñez"'],
       ['list_livestock', 'Listar hacienda', '"cuántos animales tengo?"'],
       ['livestock_history', 'Historial de hacienda', '"historial vacas lote A1"'],
       ['list_documents', 'Listar documentos', '"mis facturas"'],
@@ -112,6 +114,7 @@ const sections = [
       ['add_plot', 'Agregar lote', '"agregar lote A1 en campo Norte"'],
       ['add_plots_batch', 'Agregar lotes (batch)', '"agregar lotes A1, A2, A3"'],
       ['set_plot_area', 'Asignar hectáreas', '"lote A1 tiene 50 ha"'],
+      ['set_plot_grupo', 'Asignar grupo/sociedad', '"asignar grupo Pérez al lote 11A"'],
       ['set_field_city', 'Ubicar campo', '"ubicar campo en Pergamino"'],
       ['delete_field', 'Borrar campo', '"borrar campo X"'],
       ['delete_plot', 'Borrar lote', '"borrar lote A1"'],
@@ -140,6 +143,19 @@ const sections = [
       ['transfer_livestock', 'Transferir animales', '"mové 10 vacas del lote A al B"'],
       ['record_livestock_death', 'Registrar muerte', '"se murieron 2 terneros"'],
       ['record_livestock_birth', 'Registrar nacimiento', '"nacieron 8 terneros"'],
+      ['adjust_livestock', 'Ajustar conteo', '"en lote A1 hay 50 vacas"'],
+    ],
+  },
+  {
+    title: 'Feedlot / Corrales',
+    rows: [
+      ['create_feedlot', 'Crear feedlot', '"crear feedlot en campo Norte"'],
+      ['list_feedlots', 'Listar feedlots', '"mis feedlots"'],
+      ['delete_feedlot', 'Borrar feedlot', '"borrar feedlot X"'],
+      ['create_corral', 'Crear corral', '"crear corral Recepción"'],
+      ['list_corrals', 'Listar corrales', '"corrales"'],
+      ['delete_corral', 'Borrar corral', '"borrar corral X"'],
+      ['rename_corral', 'Renombrar corral', '"renombrar corral X a Y"'],
     ],
   },
   {
@@ -190,7 +206,9 @@ const notes = [
   '• "gasté" + monto → log_expense. "gasté/usé" + producto sin monto → remove_stock.',
   '• Actividades agro (fumigué, sembré, coseché) → SIEMPRE tool de actividad, NUNCA log_expense, salvo monto explícito.',
   '• Hacienda (vacas, terneros, novillos) + cantidad → SIEMPRE tool de hacienda, NUNCA log_observation.',
-  '• Tacto/preñez ("hice tacto", "palpé", "revisé preñez", "dio X preñadas") → SIEMPRE log_tacto. NUNCA log_observation ni livestock. Solo vacas/vaquillonas.',
+  '• Tacto REGISTRO ("hice tacto", "palpé", "revisé preñez", "dio X preñadas") → SIEMPRE log_tacto. NUNCA log_observation ni livestock.',
+  '• Tacto CONSULTA ("promedio del tacto", "resultados del tacto", "tasa de preñez", "cuántas preñadas") → tacto_summary. NUNCA financial_report.',
+  '• Feedlot: "corral X" ≠ "lote X". Los corrales son entidades del sistema intensivo de feedlot, separadas de los lotes de campo.',
   '• respond_text = el agente responde sin ejecutar ninguna acción. Para saludos, agradecimientos, preguntas agronómicas generales.',
 ];
 

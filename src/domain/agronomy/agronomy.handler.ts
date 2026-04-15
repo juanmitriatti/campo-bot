@@ -4,6 +4,7 @@ import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { CropService, detectCropFromText, formatSeasonLabel, getSeasonTypeForCrop, getCampaignStateLabel, getCampaignState } from '../plots/crop.service.js';
 import { CampaignStatsService } from './campaign-stats.service.js';
 import type { CampaignStats } from './campaign-stats.service.js';
+import { FeedlotService } from '../feedlot/feedlot.service.js';
 import { inferCrop, getActivityLabel, formatActivityConfirmation } from './activity.service.js';
 import {
   getCurrentWeather,
@@ -847,14 +848,16 @@ export class AgronomyHandler {
           return { messages: [lines.join('\n')] };
         }
 
-        // No plot specified → list all active crops, optionally filtered by crop name
+        // No plot specified → list all active crops, optionally filtered by crop name and/or grupo
         const rawCrop = cmd.crop as string | null;
         const cropFilter = rawCrop ? (detectCropFromText(rawCrop) || rawCrop) : null;
-        const allActive = await this.cropService.listActiveCrops(userId, cropFilter);
+        const grupoFilter = cmd.grupo as string | null;
+        const allActive = await this.cropService.listActiveCrops(userId, cropFilter, grupoFilter);
 
         if (allActive.length === 0) {
           const filterMsg = cropFilter ? ` de *${cropFilter}*` : '';
-          return { messages: [`No hay campañas activas${filterMsg}.`] };
+          const grupoMsg = grupoFilter ? ` en grupo *${grupoFilter}*` : '';
+          return { messages: [`No hay campañas activas${filterMsg}${grupoMsg}.`] };
         }
 
         // Compute totals
@@ -991,6 +994,88 @@ export class AgronomyHandler {
         }
 
         return { messages: [this.formatCampaignStats(stats)] };
+      }
+
+      case 'activity_stats': {
+        let statsFieldId: number | null = null;
+        let statsPlotId: number | null = null;
+        let statsLocationLabel: string | null = null;
+
+        if (cmd.plotName || cmd.fieldName) {
+          const resolved = await this.plotDiscovery.resolveFromNames(
+            userId,
+            cmd.fieldName as string | null,
+            cmd.plotName as string | null,
+          );
+          statsFieldId = resolved.fieldId ?? null;
+          statsPlotId = resolved.plotId ?? null;
+          statsLocationLabel = resolved.plotName
+            ? (resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName)
+            : resolved.fieldName ?? null;
+        }
+
+        if (cmd.grupo && !statsLocationLabel) {
+          statsLocationLabel = `grupo ${cmd.grupo}`;
+        }
+
+        const actFilter = normalizeActivityFilter(cmd.activityFilter as string | null);
+
+        const rows = await this.repo.getActivityStats(userId, {
+          fieldId: statsFieldId,
+          plotId: statsPlotId,
+          activityFilter: actFilter,
+          desde: cmd.desde as string | null,
+          hasta: cmd.hasta as string | null,
+          grupo: cmd.grupo as string | null,
+        });
+
+        if (rows.length === 0) {
+          let emptyMsg = 'No hay actividades registradas';
+          if (statsLocationLabel) emptyMsg += ` en *${statsLocationLabel}*`;
+          if (cmd.desde || cmd.hasta) emptyMsg += ' en el período indicado';
+          emptyMsg += '.';
+          return { messages: [emptyMsg] };
+        }
+
+        // Aggregate by event_type (rows may have per-plot breakdown)
+        const byType = new Map<string, { count: number; earliest: string; latest: string }>();
+        let totalCount = 0;
+        let globalEarliest: string | null = null;
+        let globalLatest: string | null = null;
+
+        for (const row of rows) {
+          totalCount += row.count;
+          const existing = byType.get(row.event_type);
+          if (existing) {
+            existing.count += row.count;
+            if (row.earliest < existing.earliest) existing.earliest = row.earliest;
+            if (row.latest > existing.latest) existing.latest = row.latest;
+          } else {
+            byType.set(row.event_type, { count: row.count, earliest: row.earliest, latest: row.latest });
+          }
+          if (!globalEarliest || row.earliest < globalEarliest) globalEarliest = row.earliest;
+          if (!globalLatest || row.latest > globalLatest) globalLatest = row.latest;
+        }
+
+        const lines: string[] = [];
+        let title = '📊 *Resumen de actividades*';
+        if (statsLocationLabel) title += ` — ${statsLocationLabel}`;
+        lines.push(title);
+
+        if (globalEarliest && globalLatest) {
+          lines.push(`📅 ${formatDateAR(globalEarliest)} — ${formatDateAR(globalLatest)}`);
+        }
+        lines.push('');
+
+        for (const [type, data] of byType) {
+          const { emoji, label } = getActivityLabel(type);
+          lines.push(`${emoji} ${label}: *${data.count}*`);
+        }
+
+        lines.push('');
+        lines.push(`*Total: ${totalCount} actividades*`);
+
+        return { messages: [lines.join('\n')] };
       }
 
       // --- Agronomic activities ---
@@ -1139,26 +1224,49 @@ export class AgronomyHandler {
       }
 
       case 'log_tacto': {
-        const resolved = await this.plotDiscovery.resolveFromNames(
-          userId,
-          cmd.fieldName as string | null,
-          cmd.plotName as string | null
-        );
-        const plotResult = await this.resolveActivityPlot(userId, resolved);
+        // Corral path: if corralName is provided, resolve via FeedlotService
+        const corralName = cmd.corralName as string | null;
+        let tactoPlotId: number | null = null;
+        let tactoCorralId: number | null = null;
+        let tactoLabel: string | null = null;
 
-        if (plotResult.type === 'no_plots') {
-          return {
-            messages: ['Para registrar tacto primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*'],
-            interactive: {
-              type: 'buttons',
-              body: 'Necesitás un lote para registrar tacto.',
-              buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
-            },
-          };
-        }
+        if (corralName) {
+          try {
+            const feedlotService = new FeedlotService();
+            const corralRef = await feedlotService.resolveCorral(userId, corralName, cmd.fieldName as string | null);
+            tactoCorralId = corralRef.corralId;
+            tactoLabel = `Feedlot ${corralRef.feedlotName} > ${corralRef.corralName}`;
+          } catch (err: unknown) {
+            return { messages: [(err as Error).message] };
+          }
+        } else {
+          // Standard plot resolution path
+          const resolved = await this.plotDiscovery.resolveFromNames(
+            userId,
+            cmd.fieldName as string | null,
+            cmd.plotName as string | null
+          );
+          const plotResult = await this.resolveActivityPlot(userId, resolved);
 
-        if (plotResult.type === 'ask_user') {
-          return this.buildAskPlotResponse('tacto', plotResult.plots, cmd);
+          if (plotResult.type === 'no_plots') {
+            return {
+              messages: ['Para registrar tacto primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*'],
+              interactive: {
+                type: 'buttons',
+                body: 'Necesitás un lote para registrar tacto.',
+                buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
+              },
+            };
+          }
+
+          if (plotResult.type === 'ask_user') {
+            return this.buildAskPlotResponse('tacto', plotResult.plots, cmd);
+          }
+
+          tactoPlotId = plotResult.plotId;
+          tactoLabel = plotResult.fieldName
+            ? `${plotResult.fieldName} > ${plotResult.plotName}`
+            : plotResult.plotName;
         }
 
         // Extract counts
@@ -1181,7 +1289,8 @@ export class AgronomyHandler {
         const category = typeof cmd.category === 'string' ? cmd.category : null;
 
         await this.repo.saveDomainEvent(userId, {
-          plotId: plotResult.plotId,
+          plotId: tactoPlotId,
+          corralId: tactoCorralId,
           eventType: 'tacto',
           eventDate: cmd.eventDate as Date | null,
           quantity: totalChecked,
@@ -1193,13 +1302,9 @@ export class AgronomyHandler {
           uncertainCount,
         });
 
-        const plotLabel = plotResult.fieldName
-          ? `${plotResult.fieldName} > ${plotResult.plotName}`
-          : plotResult.plotName;
-
         // Build confirmation message
         const lines: string[] = ['🩺 *Tacto* registrado'];
-        lines.push(`📍 ${plotLabel}`);
+        lines.push(`📍 ${tactoLabel}`);
         if (totalChecked != null) {
           const catLabel = category ? ` ${category}s` : '';
           lines.push(`🐄 ${totalChecked}${catLabel} revisadas`);
@@ -1227,12 +1332,25 @@ export class AgronomyHandler {
       }
 
       case 'tacto_summary': {
-        // Resolve optional field/plot
+        // Resolve optional field/plot/corral
         let summaryFieldId: number | null = null;
         let summaryPlotId: number | null = null;
-        let summaryPlotName: string | null = null;
+        let summaryCorralId: number | null = null;
+        let summaryLocationName: string | null = null;
 
-        if (cmd.plotName || cmd.fieldName) {
+        const summaryCorralName = cmd.corralName as string | null;
+
+        if (summaryCorralName) {
+          try {
+            const feedlotService = new FeedlotService();
+            const corralRef = await feedlotService.resolveCorral(userId, summaryCorralName, cmd.fieldName as string | null);
+            summaryCorralId = corralRef.corralId;
+            summaryFieldId = corralRef.fieldId;
+            summaryLocationName = `Feedlot ${corralRef.feedlotName} > ${corralRef.corralName}`;
+          } catch (err: unknown) {
+            return { messages: [(err as Error).message] };
+          }
+        } else if (cmd.plotName || cmd.fieldName) {
           const resolved = await this.plotDiscovery.resolveFromNames(
             userId,
             cmd.fieldName as string | null,
@@ -1240,18 +1358,19 @@ export class AgronomyHandler {
           );
           summaryFieldId = resolved.fieldId ?? null;
           summaryPlotId = resolved.plotId ?? null;
-          summaryPlotName = resolved.plotName ?? null;
+          summaryLocationName = resolved.plotName ?? null;
         }
 
         const rows = await this.repo.getTactoSummary(userId, {
           fieldId: summaryFieldId,
           plotId: summaryPlotId,
+          corralId: summaryCorralId,
           desde: cmd.desde as string | null,
           hasta: cmd.hasta as string | null,
         });
 
         if (rows.length === 0) {
-          return { messages: ['No hay registros de tacto' + (summaryPlotName ? ` en *${summaryPlotName}*` : '') + '.'] };
+          return { messages: ['No hay registros de tacto' + (summaryLocationName ? ` en *${summaryLocationName}*` : '') + '.'] };
         }
 
         // Aggregate totals across all rows
@@ -1284,11 +1403,10 @@ export class AgronomyHandler {
           dateLabel = `${formatDateAR(minDate!)} — ${formatDateAR(maxDate!)}`;
         }
 
-        // Per-plot summary (only when not filtering by a specific plot)
-        if (summaryPlotId) {
-          // Single-plot view
+        // Single-location view (specific plot or corral)
+        if (summaryPlotId || summaryCorralId) {
           const lines: string[] = [
-            `🩺 *Tacto — ${summaryPlotName}*`,
+            `🩺 *Tacto — ${summaryLocationName}*`,
             `📅 ${dateLabel}`,
             '',
             `🐄 ${grandChecked} revisadas`,
@@ -1300,7 +1418,7 @@ export class AgronomyHandler {
           return { messages: [lines.join('\n')] };
         }
 
-        // Global summary with per-plot breakdown
+        // Global summary with per-location breakdown
         const lines: string[] = [
           '🩺 *Resumen de tacto*',
           `📅 Periodo: ${dateLabel}`,
@@ -1312,21 +1430,23 @@ export class AgronomyHandler {
         if (grandUncertain > 0) lines.push(`❓ Dudosas: ${grandUncertain}`);
         lines.push(`📊 Tasa de preñez: *${rate}%*`);
 
-        // Group by plot for breakdown
-        const plotMap = new Map<string, { checked: number; pregnant: number }>();
+        // Group by location (plot or corral) for breakdown
+        const locationMap = new Map<string, { checked: number; pregnant: number }>();
         for (const row of rows) {
-          const key = row.plot_name || 'Sin lote';
-          const existing = plotMap.get(key) || { checked: 0, pregnant: 0 };
+          const key = row.corral_name
+            ? `${row.feedlot_name || 'Feedlot'} > ${row.corral_name}`
+            : (row.plot_name || 'Sin lote');
+          const existing = locationMap.get(key) || { checked: 0, pregnant: 0 };
           existing.checked += row.total_checked;
           existing.pregnant += row.total_pregnant;
-          plotMap.set(key, existing);
+          locationMap.set(key, existing);
         }
 
-        if (plotMap.size > 1) {
-          lines.push('', '📍 *Por lote:*');
-          for (const [name, data] of plotMap) {
-            const plotRate = data.checked > 0 ? Math.round((data.pregnant / data.checked) * 100) : 0;
-            lines.push(`  • ${name}: ${data.checked} revisadas - ${data.pregnant} preñadas (${plotRate}%)`);
+        if (locationMap.size > 1) {
+          lines.push('', '📍 *Por ubicación:*');
+          for (const [name, data] of locationMap) {
+            const locRate = data.checked > 0 ? Math.round((data.pregnant / data.checked) * 100) : 0;
+            lines.push(`  • ${name}: ${data.checked} revisadas - ${data.pregnant} preñadas (${locRate}%)`);
           }
         }
 

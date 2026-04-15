@@ -132,13 +132,14 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'active_crop',
-    description: 'Consultar cultivos ACTUALMENTE sembrados con hectáreas. USAR SIEMPRE que pregunten qué hay sembrado, dónde hay un cultivo, o hectáreas/has sembradas. Triggers: "soja?", "hay soja?", "has sembradas", "has de soja", "hectáreas sembradas de trigo", "cuántas has de maíz", "superficie sembrada", "qué tengo sembrado", "cultivo activo", "en qué lotes hay trigo", "qué hay sembrado", "tengo soja?". PRIORIDAD sobre list_plots cuando mencionan cultivo o "sembradas". NUNCA usar query_plot_history ni list_plots.',
+    description: 'Consultar cultivos ACTUALMENTE sembrados con hectáreas. USAR SIEMPRE que pregunten qué hay sembrado, dónde hay un cultivo, o hectáreas/has sembradas. Triggers: "soja?", "hay soja?", "has sembradas", "has de soja", "hectáreas sembradas de trigo", "cuántas has de maíz", "superficie sembrada", "qué tengo sembrado", "cultivo activo", "en qué lotes hay trigo", "qué hay sembrado", "tengo soja?", "soja del grupo Pérez". PRIORIDAD sobre list_plots cuando mencionan cultivo o "sembradas". NUNCA usar query_plot_history ni list_plots.',
     input_schema: {
       type: 'object',
       properties: {
         plot: PLOT_PROP,
         field: FIELD_PROP,
         crop: { type: 'string', description: 'Filtrar por cultivo (ej: soja, maíz).' },
+        grupo: { type: 'string', description: 'Filtrar por grupo/sociedad de lotes.' },
       },
       required: [],
     },
@@ -207,6 +208,23 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
 
   {
+    name: 'activity_stats',
+    description: 'Resumen/estadísticas de actividades: cuántas fumigaciones, siembras, cosechas, etc. por período. "cuántas fumigaciones hice", "resumen de actividades del mes", "actividades este año", "cuántas veces fumigué", "estadísticas de actividades", "actividades del grupo Pérez".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        grupo: { type: 'string', description: 'Filtrar por grupo/sociedad de lotes.' },
+        activity_filter: { type: 'string', enum: ['spraying', 'fertilization', 'planting', 'harvest', 'tillage', 'irrigation'], description: 'Tipo de actividad. Solo si el usuario pregunta por un tipo específico.' },
+        desde: { type: 'string', description: 'Fecha inicio YYYY-MM-DD.' },
+        hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD.' },
+      },
+      required: [],
+    },
+  },
+
+  {
     name: 'edit_last_activity',
     description: 'Corregir/editar la última actividad registrada. Cambiar de lote, corregir cultivo o fecha. "la siembra era en lote B", "corregí la última actividad al lote norte", "me equivoqué de lote en la fumigación".',
     input_schema: {
@@ -238,6 +256,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         notes: { type: 'string', description: 'Observaciones adicionales.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Nombre del corral (feedlot). Si el tacto es en un corral, usar esto en vez de plot.' },
         event_date: DATE_PROP,
       },
       required: ['pregnant_count'],
@@ -251,6 +270,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       properties: {
         field: { type: 'string', description: 'Campo (opcional).' },
         plot: { type: 'string', description: 'Lote específico (opcional).' },
+        corral: { type: 'string', description: 'Nombre del corral (feedlot) (opcional).' },
         desde: { type: 'string', description: 'Fecha inicio YYYY-MM-DD (opcional).' },
         hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD (opcional).' },
       },
@@ -443,6 +463,19 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         hectares: { type: 'number', description: 'Superficie en hectáreas.' },
       },
       required: ['plot', 'hectares'],
+    },
+  },
+  {
+    name: 'set_plot_grupo',
+    description: 'Asignar grupo/sociedad a un lote. "asignar grupo Pérez al lote 11A", "el lote A1 es del grupo Norte".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        plot: { type: 'string', description: 'Nombre del lote.' },
+        grupo: { type: 'string', description: 'Nombre del grupo/sociedad.' },
+        field: FIELD_PROP,
+      },
+      required: ['plot', 'grupo'],
     },
   },
   {

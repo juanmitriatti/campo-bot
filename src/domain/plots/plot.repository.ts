@@ -17,6 +17,8 @@ import {
   deletePlot as _deletePlot,
   restorePlot as _restorePlot,
   setPlotArea as _setPlotArea,
+  setPlotGrupo as _setPlotGrupo,
+  findPlotsByGrupo as _findPlotsByGrupo,
   getPlotInfo as _getPlotInfo,
   getPlotReport as _getPlotReport,
   getPlotResult as _getPlotResult,
@@ -103,6 +105,14 @@ export class PlotRepository {
 
   async setPlotArea(plotId: number, hectares: number): Promise<void> {
     await _setPlotArea(plotId, hectares);
+  }
+
+  async setPlotGrupo(plotId: number, grupo: string): Promise<void> {
+    await _setPlotGrupo(plotId, grupo);
+  }
+
+  async findPlotsByGrupo(userId: UserId, grupo: string): Promise<Array<PlotRow & { field_name: string }>> {
+    return _findPlotsByGrupo(userId, grupo) as Promise<Array<PlotRow & { field_name: string }>>;
   }
 
   async getPlotInfo(userId: UserId, plotName: string): Promise<PlotInfoData | null> {

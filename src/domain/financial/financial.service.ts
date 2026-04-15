@@ -224,6 +224,10 @@ export class FinancialService {
     return this.repo.setPlotArea(plotId, hectares);
   }
 
+  async setPlotGrupo(plotId: number, grupo: string) {
+    return this.repo.setPlotGrupo(plotId, grupo);
+  }
+
   async getPlotInfo(userId: UserId, plotName: string): Promise<PlotInfoData | null> {
     return this.repo.getPlotInfo(userId, plotName);
   }

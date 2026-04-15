@@ -1746,6 +1746,15 @@ export class FinancialHandler {
         return { messages: [`\ud83d\udccd Lote *${plots[0].name}*: superficie actualizada a *${cmd.hectares} ha*`] };
       }
 
+      case 'set_plot_grupo': {
+        const grupoPlots = await this.service.findPlotByNameAcrossFields(userId, cmd.plotName as string);
+        if (grupoPlots.length === 0) {
+          return { messages: [`No encontré el lote *${cmd.plotName}*.`] };
+        }
+        await this.service.setPlotGrupo(grupoPlots[0].id, cmd.grupo as string);
+        return { messages: [`🏷️ Lote *${grupoPlots[0].name}*: grupo asignado → *${cmd.grupo}*`] };
+      }
+
       case 'restore_field': {
         const kwRestore = (cmd.entityKeyword as string) || 'campo';
 

@@ -20,7 +20,7 @@ const FINANCIAL_COMMANDS = new Set([
   'export_csv',
   'set_field_city', 'add_field_city', 'add_field', 'list_fields',
   'delete_field', 'rename_field', 'field_info',
-  'list_plots', 'add_plot', 'add_plots_batch', 'delete_plot', 'plot_info', 'set_plot_area',
+  'list_plots', 'add_plot', 'add_plots_batch', 'delete_plot', 'plot_info', 'set_plot_area', 'set_plot_grupo',
   'restore_field', 'rename_plot', 'restore_plot',
 ]);
 
@@ -29,7 +29,7 @@ const AGRONOMY_COMMANDS = new Set([
   'log_rainfall', 'delete_last_rainfall',
   'rainfall_report', 'rainfall_range',
   'compare_rainfall_months', 'compare_rainfall_years',
-  'sow_crop', 'harvest_crop', 'active_crop', 'crop_history', 'close_campaign', 'campaign_stats',
+  'sow_crop', 'harvest_crop', 'active_crop', 'crop_history', 'close_campaign', 'campaign_stats', 'activity_stats',
   'log_spraying', 'log_fertilization', 'log_tillage', 'log_irrigation', 'plot_activities',
   'query_plot_history', 'log_observation', 'generate_agro_report',
   'log_tacto', 'tacto_summary', 'edit_last_activity',

@@ -1009,6 +1009,27 @@ export async function setPlotArea(plotId, hectares) {
   );
 }
 
+export async function setPlotGrupo(plotId, grupo) {
+  await pool.query(
+    `UPDATE plots SET grupo = $1 WHERE id = $2`,
+    [grupo, plotId]
+  );
+}
+
+export async function findPlotsByGrupo(userId, grupo) {
+  const result = await pool.query(
+    `SELECT p.*, f.name AS field_name
+     FROM plots p
+     JOIN fields f ON p.field_id = f.id
+     JOIN field_members fm ON f.id = fm.field_id AND fm.user_id = $1
+     WHERE LOWER(p.grupo) = LOWER($2)
+       AND p.deleted_at IS NULL AND f.deleted_at IS NULL
+     ORDER BY f.name, p.name`,
+    [userId, grupo]
+  );
+  return result.rows;
+}
+
 export async function getPlotInfo(userId, plotName) {
   const plots = await findPlotByNameAcrossFields(userId, plotName);
   if (plots.length === 0) return null;
@@ -1463,7 +1484,20 @@ export async function getActiveCrop(plotId) {
   return result.rows[0] || null;
 }
 
-export async function getAllActiveCrops(userId, cropFilter = null) {
+export async function getAllActiveCrops(userId, cropFilter = null, grupo = null) {
+  const params = [userId];
+  let idx = 2;
+  let extraConditions = '';
+  if (cropFilter) {
+    extraConditions += ` AND LOWER(pc.crop) = LOWER($${idx})`;
+    params.push(cropFilter);
+    idx++;
+  }
+  if (grupo) {
+    extraConditions += ` AND LOWER(p.grupo) = LOWER($${idx})`;
+    params.push(grupo);
+    idx++;
+  }
   const result = await pool.query(
     `SELECT pc.*, p.name AS plot_name, f.name AS field_name, p.area_hectares,
             act.activity_count, act.last_activity_date, act.last_activity_type
@@ -1481,9 +1515,9 @@ export async function getAllActiveCrops(userId, cropFilter = null) {
        AND pc.end_date IS NULL
        AND p.deleted_at IS NULL
        AND f.deleted_at IS NULL
-       ${cropFilter ? 'AND LOWER(pc.crop) = LOWER($2)' : ''}
+       ${extraConditions}
      ORDER BY f.name, p.name`,
-    cropFilter ? [userId, cropFilter] : [userId]
+    params
   );
   return result.rows;
 }
@@ -1555,13 +1589,14 @@ export async function getCampaignObservations(plotId, startDate, endDate = null)
 
 export async function saveDomainEvent(userId, data) {
   const result = await pool.query(
-    `INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop, product, product_type, quantity, unit, implement, notes, pregnant_count, open_count, uncertain_count)
-     VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+    `INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop, product, product_type, quantity, unit, implement, notes, pregnant_count, open_count, uncertain_count, corral_id)
+     VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      RETURNING *`,
     [userId, data.plotId || null, data.plotCropId || null, data.eventType, data.eventDate || null,
      data.crop || null, data.product || null, data.productType || null,
      data.quantity || null, data.unit || null, data.implement || null, data.notes || null,
-     data.pregnantCount ?? null, data.openCount ?? null, data.uncertainCount ?? null]
+     data.pregnantCount ?? null, data.openCount ?? null, data.uncertainCount ?? null,
+     data.corralId || null]
   );
   return result.rows[0];
 }
@@ -1912,17 +1947,21 @@ export async function queryPlotHistory(userId, { plotId = null, fieldId = null, 
   return result.rows;
 }
 
-export async function getTactoSummary(userId, { fieldId = null, plotId = null, desde = null, hasta = null } = {}) {
+export async function getTactoSummary(userId, { fieldId = null, plotId = null, corralId = null, desde = null, hasta = null } = {}) {
   const params = [userId];
   let idx = 2;
   const conditions = [`de.user_id = $1`, `de.event_type = 'tacto'`];
 
-  if (plotId) {
+  if (corralId) {
+    conditions.push(`de.corral_id = $${idx}`);
+    params.push(corralId);
+    idx++;
+  } else if (plotId) {
     conditions.push(`de.plot_id = $${idx}`);
     params.push(plotId);
     idx++;
   } else if (fieldId) {
-    conditions.push(`p.field_id = $${idx}`);
+    conditions.push(`(p.field_id = $${idx} OR fl.field_id = $${idx})`);
     params.push(fieldId);
     idx++;
   }
@@ -1943,6 +1982,9 @@ export async function getTactoSummary(userId, { fieldId = null, plotId = null, d
       de.plot_id,
       p.name as plot_name,
       f.name as field_name,
+      de.corral_id,
+      c.name as corral_name,
+      fl.name as feedlot_name,
       de.event_date,
       de.product as category,
       SUM(COALESCE(de.pregnant_count, 0)) as total_pregnant,
@@ -1953,9 +1995,69 @@ export async function getTactoSummary(userId, { fieldId = null, plotId = null, d
     FROM domain_events de
     LEFT JOIN plots p ON de.plot_id = p.id
     LEFT JOIN fields f ON p.field_id = f.id
+    LEFT JOIN corrals c ON de.corral_id = c.id
+    LEFT JOIN feedlots fl ON c.feedlot_id = fl.id
     WHERE ${conditions.join(' AND ')}
-    GROUP BY de.plot_id, p.name, f.name, de.event_date, de.product
+    GROUP BY de.plot_id, p.name, f.name, de.corral_id, c.name, fl.name, de.event_date, de.product
     ORDER BY de.event_date DESC
+  `;
+
+  const result = await pool.query(sql, params);
+  return result.rows;
+}
+
+// --- Activity stats (aggregated counts by type) ---
+
+export async function getActivityStats(userId, { fieldId = null, plotId = null, activityFilter = null, desde = null, hasta = null, grupo = null } = {}) {
+  const params = [userId];
+  let idx = 2;
+  const conditions = [`de.user_id = $1`, `de.event_type != 'tacto'`];
+
+  if (activityFilter) {
+    conditions.push(`de.event_type = $${idx}`);
+    params.push(activityFilter);
+    idx++;
+  }
+  if (plotId) {
+    conditions.push(`de.plot_id = $${idx}`);
+    params.push(plotId);
+    idx++;
+  } else if (fieldId) {
+    conditions.push(`p.field_id = $${idx}`);
+    params.push(fieldId);
+    idx++;
+  }
+  if (grupo) {
+    conditions.push(`LOWER(p.grupo) = LOWER($${idx})`);
+    params.push(grupo);
+    idx++;
+  }
+  if (desde) {
+    conditions.push(`de.event_date >= $${idx}`);
+    params.push(desde);
+    idx++;
+  }
+  if (hasta) {
+    conditions.push(`de.event_date <= $${idx}`);
+    params.push(hasta);
+    idx++;
+  }
+
+  const sql = `
+    SELECT
+      de.event_type,
+      COUNT(*)::int as count,
+      MIN(de.event_date) as earliest,
+      MAX(de.event_date) as latest,
+      p.name as plot_name,
+      f.name as field_name
+    FROM domain_events de
+    LEFT JOIN plots p ON de.plot_id = p.id
+    LEFT JOIN fields f ON p.field_id = f.id
+    JOIN field_members fm ON f.id = fm.field_id AND fm.user_id = $1
+    WHERE ${conditions.join(' AND ')}
+    GROUP BY de.event_type, p.name, f.name
+    ORDER BY count DESC
   `;
 
   const result = await pool.query(sql, params);

@@ -343,6 +343,9 @@ export class AgentResponseMapper {
     if (input.dest_category != null) cmd.destCategory = input.dest_category;
     if (input.corral != null) cmd.corralName = input.corral;
 
+    // Grupo (sociedad)
+    if (input.grupo != null) cmd.grupo = input.grupo;
+
     // Feedlot
     if (input.capacity != null) cmd.capacity = input.capacity;
     if (input.name != null && !cmd.fieldName && !cmd.warehouseName) cmd.feedlotName = input.name;

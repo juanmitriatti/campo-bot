@@ -250,6 +250,10 @@ export class FinancialRepository {
     return this.plots.setPlotArea(plotId, hectares);
   }
 
+  async setPlotGrupo(plotId: number, grupo: string): Promise<void> {
+    return this.plots.setPlotGrupo(plotId, grupo);
+  }
+
   async getPlotInfo(userId: UserId, plotName: string): Promise<PlotInfoData | null> {
     return this.plots.getPlotInfo(userId, plotName);
   }
