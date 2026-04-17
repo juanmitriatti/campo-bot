@@ -880,9 +880,9 @@ export class AgronomyHandler {
         if (totalHa > 0) summaryParts.push(`${totalHa.toLocaleString('es-AR')} ha`);
         lines.push(summaryParts.join(' · '));
 
-        // Detect if user wants per-plot detail purely from original text
+        // Default to detail when few results; regex fallback for large lists
         const acOriginal = ((cmd.originalText as string) || '').toLowerCase();
-        const wantDetail = /qu[eé]\s*lotes|en\s*qu[eé]|d[oó]nde|detalle|desglose|cu[aá]les/.test(acOriginal);
+        const wantDetail = allActive.length <= 15 || /qu?[eé]?\s*(lotes|cultivos|son|hay)|en\s*qu[eé]|d[oó]nde|detalle|desglose|cu[aá]les/.test(acOriginal);
 
         if (wantDetail) {
           if (totalYieldKg > 0) {

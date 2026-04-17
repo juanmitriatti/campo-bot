@@ -103,15 +103,26 @@ describe('formatHistoryResponse — decision engine', () => {
     expect(msg).toContain('💡 Podés preguntar');
   });
 
-  // --- Summary + list (large result set) ---
+  // --- Summary + list (large result set, >15 items) ---
   it('returns summary + list for large filtered result set', () => {
+    const rows = Array.from({ length: 20 }, (_, i) =>
+      makeRow({ id: i, date: makeDate(`2026-03-${String(28 - (i % 28)).padStart(2, '0')}`) })
+    );
+    const msg = formatHistoryResponse(rows, makeCtx({ timeLabel: 'este mes' }));
+    expect(msg).toContain('Resumen (20 registros)');
+    expect(msg).toContain('Detalle');
+    expect(msg).toContain('Mostrando 15 de 20');
+  });
+
+  // --- Detail list for ≤15 items (no summary) ---
+  it('returns full detail list for 10 filtered items (≤15 threshold)', () => {
     const rows = Array.from({ length: 10 }, (_, i) =>
       makeRow({ id: i, date: makeDate(`2026-03-${String(15 - i).padStart(2, '0')}`) })
     );
     const msg = formatHistoryResponse(rows, makeCtx({ timeLabel: 'este mes' }));
-    expect(msg).toContain('Resumen (10 registros)');
-    expect(msg).toContain('Detalle');
-    expect(msg).toContain('Mostrando 7 de 10');
+    expect(msg).toContain('📋 *Historial — lote 3*');
+    expect(msg).toContain('Fumigación');
+    expect(msg).not.toContain('Resumen');
   });
 
   // --- Clean list (small filtered result) ---

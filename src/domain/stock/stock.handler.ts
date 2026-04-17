@@ -169,7 +169,26 @@ export class StockHandler {
       };
     }
 
-    // Multiple items
+    // Multiple items — detail when ≤15, compact when more
+    if (items.length <= 15) {
+      const lines = items.map(it => {
+        const minLabel = it.min_stock != null ? `  ⚠️ Mínimo: ${it.min_stock} ${it.unit}\n` : '';
+        const lowWarning = it.min_stock != null && it.current_quantity <= it.min_stock ? '  🔴 *STOCK BAJO*\n' : '';
+        const grainInfo = (it.grade || it.humidity_pct != null)
+          ? `  🌾 ${it.grade ? `Grado: ${it.grade}` : ''}${it.grade && it.humidity_pct != null ? ' | ' : ''}${it.humidity_pct != null ? `Humedad: ${it.humidity_pct}%` : ''}\n`
+          : '';
+        return `📦 *${it.name}*\n` +
+          `  📊 Cantidad: *${it.current_quantity} ${it.unit}*\n` +
+          grainInfo +
+          minLabel + lowWarning +
+          `  🏭 ${it.warehouse_name || 'Principal'} (${it.field_name || ''})`;
+      });
+
+      return {
+        messages: [`📦 *Inventario* (${items.length} productos)\n\n${lines.join('\n\n')}`],
+      };
+    }
+
     const lines = items.map(it => {
       const low = it.min_stock != null && it.current_quantity <= it.min_stock ? ' 🔴' : '';
       const grain = it.grade ? ` [G${it.grade}${it.humidity_pct != null ? ` H${it.humidity_pct}%` : ''}]` : '';

@@ -16,7 +16,7 @@ export interface QueryContext {
 type ResponseType = 'empty' | 'binary_yes' | 'binary_no' | 'single' | 'list' | 'summary_list' | 'recent_summary';
 
 const RECENT_LIMIT = 5;
-const SUMMARY_THRESHOLD = 7;
+const SUMMARY_THRESHOLD = 15;
 
 function decideResponseType(rows: PlotHistoryRow[], ctx: QueryContext): ResponseType {
   if (rows.length === 0) {
