@@ -115,7 +115,8 @@ ${this.buildActivityLines(dictionary)}
 - CAMPAÑAS: "cómo va la campaña/soja/trigo"/"cuánto gasté en la soja"/"rendimiento del maíz"/"rentabilidad"/"resultado de la soja"→campaign_stats. "cerrar campaña"/"terminó la campaña"→close_campaign. "cosechamos"→harvest_crop (NO cierra la campaña, solo registra hito)
 - harvest_crop YA NO cierra la campaña. Para cerrar: close_campaign
 - ACTIVIDADES STATS: "cuántas fumigaciones"/"cuántas siembras"/"actividades del mes"/"resumen actividades"/"estadísticas actividades"/"cuántas veces fumigué/sembré" → activity_stats. Para consultas tipo "cuándo fumigué" (fecha específica) → query_plot_history
-- GRUPO LOTES: "asignar grupo X al lote Y"/"grupo del lote"/"cambiar grupo" → set_plot_grupo. "actividades del grupo X"/"fumigaciones grupo X" → activity_stats(grupo=X). "qué hay sembrado en grupo X"/"soja del grupo X" → active_crop(grupo=X)`;
+- GRUPO LOTES (asignación): "asignar grupo X al lote Y"/"el lote Y es del grupo X"/"los lotes A, B son de X"/"titularidad de los lotes es X"/"lotes A y B pertenecen a X"/"el dueño de los lotes A,B es X"/"cambiar grupo del lote" → set_plot_grupo(plots=[...], grupo=X). SIEMPRE usar array plots aunque sea un solo lote. NUNCA responder conversacional si hay nombres de lotes + nombre de grupo/titular
+- GRUPO LOTES (consultas): "cuántas has/hectáreas del grupo X"/"lotes del grupo X"/"superficie de la sociedad X"/"has de la titularidad X" → list_plots(grupo=X). "actividades del grupo X"/"fumigaciones grupo X" → activity_stats(grupo=X). "qué hay sembrado en grupo X"/"soja del grupo X" → active_crop(grupo=X)`;
   }
 
   private contextLine(ctx: UserContext | null): string {

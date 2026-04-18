@@ -2376,27 +2376,36 @@ router.delete("/api/ai-training/examples/:id", async (req, res) => {
 // List AI conversation logs (for feedback)
 router.get("/api/ai-training/logs", async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const limit = Math.min(parseInt(req.query.limit) || 70, 500);
     const offset = parseInt(req.query.offset) || 0;
     const reviewed = req.query.reviewed; // 'true', 'false', or unset
 
-    let query = `SELECT cl.*, u.name AS user_name
-                 FROM conversation_logs cl
-                 LEFT JOIN users u ON cl.user_id = u.id
-                 WHERE cl.ai_used = true`;
-    const params = [];
-
+    let whereClause = `WHERE cl.ai_used = true`;
     if (reviewed === 'true') {
-      query += ` AND cl.was_correct IS NOT NULL`;
+      whereClause += ` AND cl.was_correct IS NOT NULL`;
     } else if (reviewed === 'false') {
-      query += ` AND cl.was_correct IS NULL`;
+      whereClause += ` AND cl.was_correct IS NULL`;
     }
 
-    query += ` ORDER BY cl.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-    params.push(limit, offset);
+    const countQuery = `SELECT COUNT(*)::int AS total FROM conversation_logs cl ${whereClause}`;
+    const dataQuery = `SELECT cl.*, u.name AS user_name
+                       FROM conversation_logs cl
+                       LEFT JOIN users u ON cl.user_id = u.id
+                       ${whereClause}
+                       ORDER BY cl.created_at DESC
+                       LIMIT $1 OFFSET $2`;
 
-    const result = await pool.query(query, params);
-    res.json({ logs: result.rows });
+    const [countResult, dataResult] = await Promise.all([
+      pool.query(countQuery),
+      pool.query(dataQuery, [limit, offset]),
+    ]);
+
+    res.json({
+      logs: dataResult.rows,
+      total: countResult.rows[0].total,
+      limit,
+      offset,
+    });
   } catch (error) {
     console.error("Error fetching AI training logs:", error);
     logError('admin-api', 'AI_TRAINING_LOGS_FETCH', error);

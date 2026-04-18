@@ -228,6 +228,10 @@ export class FinancialService {
     return this.repo.setPlotGrupo(plotId, grupo);
   }
 
+  async findPlotsByGrupo(userId: UserId, grupo: string) {
+    return this.repo.findPlotsByGrupo(userId, grupo);
+  }
+
   async getPlotInfo(userId: UserId, plotName: string): Promise<PlotInfoData | null> {
     return this.repo.getPlotInfo(userId, plotName);
   }

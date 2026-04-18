@@ -1470,7 +1470,7 @@
         <div class="card">
           <div class="card-header">
             <h2 class="card-title">AI Prediction Logs</h2>
-            <select id="ai-logs-filter" onchange="loadAiTrainingLogs()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);">
+            <select id="ai-logs-filter" onchange="loadAiTrainingLogs(true)" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);">
               <option value="">Todos</option>
               <option value="false">Sin revisar</option>
               <option value="true">Revisados</option>
@@ -1486,13 +1486,30 @@
                   <th>Intent</th>
                   <th>Confianza</th>
                   <th>Feedback</th>
-                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody id="ai-logs-table-body">
-                <tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>
+                <tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>
               </tbody>
             </table>
+          </div>
+          <div id="ai-logs-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid var(--border);gap:12px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="font-size:12px;color:var(--text-muted);">Por página:</label>
+              <select id="ai-logs-page-size" onchange="onAiLogsPageSizeChange()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);font-size:12px;">
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="70" selected>70</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+              </select>
+              <span id="ai-logs-range" style="font-size:12px;color:var(--text-muted);margin-left:8px;"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button id="ai-logs-prev" class="btn" style="padding:4px 12px;font-size:12px;" onclick="aiLogsPrevPage()" disabled>← Anterior</button>
+              <span id="ai-logs-page-info" style="font-size:12px;color:var(--text-muted);min-width:80px;text-align:center;">Página 1</span>
+              <button id="ai-logs-next" class="btn" style="padding:4px 12px;font-size:12px;" onclick="aiLogsNextPage()" disabled>Siguiente →</button>
+            </div>
           </div>
         </div>
       </div>
@@ -3882,15 +3899,52 @@
       }
     }
 
-    function loadAiTrainingLogs() {
+    var aiLogsState = { offset: 0, limit: 70, total: 0 };
+
+    function onAiLogsPageSizeChange() {
+      aiLogsState.limit = parseInt(document.getElementById('ai-logs-page-size').value) || 70;
+      aiLogsState.offset = 0;
+      loadAiTrainingLogs();
+    }
+
+    function aiLogsPrevPage() {
+      aiLogsState.offset = Math.max(0, aiLogsState.offset - aiLogsState.limit);
+      loadAiTrainingLogs();
+    }
+
+    function aiLogsNextPage() {
+      if (aiLogsState.offset + aiLogsState.limit < aiLogsState.total) {
+        aiLogsState.offset += aiLogsState.limit;
+        loadAiTrainingLogs();
+      }
+    }
+
+    function updateAiLogsPagination() {
+      var total = aiLogsState.total;
+      var limit = aiLogsState.limit;
+      var offset = aiLogsState.offset;
+      var currentPage = Math.floor(offset / limit) + 1;
+      var totalPages = Math.max(1, Math.ceil(total / limit));
+      var from = total === 0 ? 0 : offset + 1;
+      var to = Math.min(offset + limit, total);
+      document.getElementById('ai-logs-range').textContent = from + '–' + to + ' de ' + total;
+      document.getElementById('ai-logs-page-info').textContent = 'Página ' + currentPage + ' de ' + totalPages;
+      document.getElementById('ai-logs-prev').disabled = offset === 0;
+      document.getElementById('ai-logs-next').disabled = offset + limit >= total;
+    }
+
+    function loadAiTrainingLogs(resetOffset) {
+      if (resetOffset) aiLogsState.offset = 0;
       var filter = document.getElementById('ai-logs-filter').value;
-      var url = '/admin/api/ai-training/logs?limit=50';
+      var url = '/admin/api/ai-training/logs?limit=' + aiLogsState.limit + '&offset=' + aiLogsState.offset;
       if (filter) url += '&reviewed=' + filter;
       apiFetch(url).then(function(data) {
         if (!data) return;
+        aiLogsState.total = data.total || 0;
+        updateAiLogsPagination();
         var tbody = document.getElementById('ai-logs-table-body');
         if (!data.logs || data.logs.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">Sin logs</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Sin logs</td></tr>';
           return;
         }
         tbody.innerHTML = data.logs.map(function(l) {
@@ -3906,25 +3960,20 @@
           }
           var confStr = l.confidence != null ? (l.confidence * 100).toFixed(0) + '%' : '-';
           var responseStr = l.response_text ? escapeHtml(l.response_text) : '<span style="color:var(--text-muted);">-</span>';
-          var feedbackStr = '';
-          if (l.was_correct === true) feedbackStr = '<span style="color:var(--success);">Correcto</span>';
-          else if (l.was_correct === false) feedbackStr = '<span style="color:var(--danger);">Incorrecto</span>' + (l.corrected_intent ? ' (' + l.corrected_intent + ')' : '');
-          else feedbackStr = '<span style="color:var(--text-muted);">-</span>';
-
-          var actions = '';
+          var feedback = '';
           if (l.was_correct == null) {
-            actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;" onclick="markLogCorrect(' + l.id + ',true)">OK</button>';
-            actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;" onclick="markLogIncorrect(' + l.id + ')">Mal</button>';
+            feedback += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;" onclick="markLogCorrect(' + l.id + ',true)">OK</button>';
+            feedback += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;" onclick="markLogIncorrect(' + l.id + ')">Mal</button>';
+          } else if (l.was_correct === true) {
+            feedback += '<span style="color:var(--success);font-weight:600;margin-right:6px;">✓ Correcto</span>';
+            feedback += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;opacity:0.7;" onclick="markLogIncorrect(' + l.id + ')" title="Cambiar a incorrecto">Mal</button>';
+            feedback += '<button class="btn" style="padding:2px 8px;font-size:11px;opacity:0.6;" onclick="resetLogFeedback(' + l.id + ')" title="Quitar feedback">↩</button>';
           } else {
-            if (l.was_correct === true) {
-              actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;opacity:0.7;" onclick="markLogIncorrect(' + l.id + ')" title="Cambiar a incorrecto">Mal</button>';
-            } else {
-              actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;opacity:0.7;" onclick="markLogCorrect(' + l.id + ',true)" title="Cambiar a correcto">OK</button>';
-            }
-            actions += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;opacity:0.6;" onclick="resetLogFeedback(' + l.id + ')" title="Quitar feedback">↩</button>';
-          }
-          if (l.was_correct === false || l.corrected_intent) {
-            actions += '<button class="btn btn-primary" style="padding:2px 8px;font-size:11px;" onclick="promoteLog(' + l.id + ')">Promover</button>';
+            feedback += '<span style="color:var(--danger);font-weight:600;margin-right:6px;">✗ Incorrecto</span>';
+            if (l.corrected_intent) feedback += '<span style="font-size:10px;color:var(--text-muted);">(' + l.corrected_intent + ')</span> ';
+            feedback += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;opacity:0.7;" onclick="markLogCorrect(' + l.id + ',true)" title="Cambiar a correcto">OK</button>';
+            feedback += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;opacity:0.6;" onclick="resetLogFeedback(' + l.id + ')" title="Quitar feedback">↩</button>';
+            feedback += '<button class="btn btn-primary" style="padding:2px 8px;font-size:11px;" onclick="promoteLog(' + l.id + ')">Promover</button>';
           }
 
           return '<tr>' +
@@ -3933,8 +3982,7 @@
             '<td style="max-width:400px;overflow:auto;text-overflow:clip;font-size:12px;white-space:pre-wrap;word-break:break-word;vertical-align:top;min-width:250px;"><div style="max-height:120px;overflow:auto;display:block;">' + responseStr + '</div></td>' +
             '<td><code>' + intentStr + '</code>' + modeBadge + toolCallsStr + '</td>' +
             '<td>' + confStr + '</td>' +
-            '<td>' + feedbackStr + '</td>' +
-            '<td style="white-space:nowrap;">' + actions + '</td>' +
+            '<td style="white-space:nowrap;">' + feedback + '</td>' +
             '</tr>';
         }).join('');
       });

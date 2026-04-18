@@ -91,7 +91,7 @@ export class PlotRepository {
     return _findPlotByNameAcrossFields(userId, plotName) as Promise<any>;
   }
 
-  async findAllUserPlots(userId: UserId): Promise<Array<{ id: number; name: string; field_name: string }>> {
+  async findAllUserPlots(userId: UserId): Promise<Array<{ id: number; name: string; field_name: string; area_hectares: number | null }>> {
     return _findAllUserPlots(userId);
   }
 

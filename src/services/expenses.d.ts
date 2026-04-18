@@ -117,10 +117,12 @@ export function getOrCreatePlot(fieldId: number, name: string): Promise<{ id: nu
 export function getPlotByName(fieldId: number, plotName: string): Promise<{ id: number; field_id: number; name: string; area_hectares: number | null; soil_type: string | null; created_at: Date } | null>;
 export function getPlotsByField(fieldId: number): Promise<Array<{ id: number; field_id: number; name: string; area_hectares: number | null; soil_type: string | null; created_at: Date }>>;
 export function findPlotByNameAcrossFields(userId: number, plotName: string): Promise<Array<{ id: number; field_id: number; name: string; field_name: string; area_hectares: number | null; soil_type: string | null; created_at: Date }>>;
-export function findAllUserPlots(userId: number): Promise<Array<{ id: number; name: string; field_name: string }>>;
+export function findAllUserPlots(userId: number): Promise<Array<{ id: number; name: string; field_name: string; area_hectares: number | null }>>;
 export function deletePlot(plotId: number, userId?: number | null): Promise<boolean>;
 export function restorePlot(userId: number, plotName: string, fieldName: string): Promise<{ id: number; field_id: number; name: string } | null>;
 export function setPlotArea(plotId: number, hectares: number): Promise<void>;
+export function setPlotGrupo(plotId: number, grupo: string): Promise<void>;
+export function findPlotsByGrupo(userId: number, grupo: string): Promise<Array<{ id: number; field_id: number; name: string; field_name: string; area_hectares: number | null; soil_type: string | null; grupo: string | null; created_at: Date }>>;
 export function getPlotInfo(userId: number, plotName: string): Promise<{ name: string; field_name: string; area_hectares: number | null; soil_type: string | null; expenses: { total: number; count: number }; incomes: { total: number; count: number }; rainfall: { total: number; count: number } } | null>;
 
 // --- Plot history query ---

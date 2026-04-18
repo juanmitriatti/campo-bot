@@ -234,7 +234,7 @@ export class FinancialRepository {
     return this.plots.findPlotByNameAcrossFields(userId, plotName);
   }
 
-  async findAllUserPlots(userId: UserId): Promise<Array<{ id: number; name: string; field_name: string }>> {
+  async findAllUserPlots(userId: UserId): Promise<Array<{ id: number; name: string; field_name: string; area_hectares: number | null }>> {
     return this.plots.findAllUserPlots(userId);
   }
 
@@ -252,6 +252,10 @@ export class FinancialRepository {
 
   async setPlotGrupo(plotId: number, grupo: string): Promise<void> {
     return this.plots.setPlotGrupo(plotId, grupo);
+  }
+
+  async findPlotsByGrupo(userId: UserId, grupo: string): Promise<Array<PlotRow & { field_name: string }>> {
+    return this.plots.findPlotsByGrupo(userId, grupo);
   }
 
   async getPlotInfo(userId: UserId, plotName: string): Promise<PlotInfoData | null> {

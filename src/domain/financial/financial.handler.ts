@@ -1490,6 +1490,36 @@ export class FinancialHandler {
 
       // --- Plots ---
       case 'list_plots': {
+        // Grupo filter takes priority over field filter
+        if (cmd.grupo) {
+          const grupoName = (cmd.grupo as string).trim();
+          const grupoPlots = await this.service.findPlotsByGrupo(userId, grupoName);
+          if (grupoPlots.length === 0) {
+            return {
+              messages: [`No encontré lotes asignados al grupo *${grupoName}*.\n\nPara asignar: *los lotes A, B son del grupo ${grupoName}*`],
+            };
+          }
+          let msg = `🏷️ *Lotes del grupo ${grupoName} (${grupoPlots.length}):*\n`;
+          let total = 0;
+          const grouped = new Map<string, typeof grupoPlots>();
+          for (const p of grupoPlots) {
+            const list = grouped.get(p.field_name) || [];
+            list.push(p);
+            grouped.set(p.field_name, list);
+          }
+          for (const [fieldName, plots] of grouped) {
+            msg += `\n• *${fieldName}*`;
+            for (const p of plots) {
+              const ha = p.area_hectares ? Number(p.area_hectares) : 0;
+              total += ha;
+              msg += `\n  └ ${p.name}${ha > 0 ? ` — ${ha.toLocaleString('es-AR')} ha` : ''}`;
+            }
+          }
+          if (total > 0) {
+            msg += `\n\n📐 *Total: ${total.toLocaleString('es-AR')} ha*`;
+          }
+          return { messages: [msg], suggestionKey: 'field_info_shown' };
+        }
         if (!cmd.fieldName) {
           const fields = await this.service.getUserFields(userId);
           const allPlots = await this.service.findAllUserPlots(userId);
@@ -1747,12 +1777,46 @@ export class FinancialHandler {
       }
 
       case 'set_plot_grupo': {
-        const grupoPlots = await this.service.findPlotByNameAcrossFields(userId, cmd.plotName as string);
-        if (grupoPlots.length === 0) {
-          return { messages: [`No encontré el lote *${cmd.plotName}*.`] };
+        const grupo = cmd.grupo as string;
+        // Support both batch (plotNames[]) and single (plotName) for backward compat with regex
+        const targetNames: string[] = Array.isArray(cmd.plotNames) && cmd.plotNames.length > 0
+          ? (cmd.plotNames as string[])
+          : cmd.plotName
+            ? [cmd.plotName as string]
+            : [];
+        if (targetNames.length === 0) {
+          return { messages: ['No pude detectar los lotes. Escribí: *asignar grupo X al lote Y* o *los lotes A, B son del grupo X*.'] };
         }
-        await this.service.setPlotGrupo(grupoPlots[0].id, cmd.grupo as string);
-        return { messages: [`🏷️ Lote *${grupoPlots[0].name}*: grupo asignado → *${cmd.grupo}*`] };
+        if (!grupo) {
+          return { messages: ['No pude detectar el grupo/sociedad. Escribí: *lote Y es del grupo X*.'] };
+        }
+        const updated: string[] = [];
+        const notFound: string[] = [];
+        for (const rawName of targetNames) {
+          const name = rawName.trim();
+          if (!name) continue;
+          const plots = await this.service.findPlotByNameAcrossFields(userId, name);
+          if (plots.length === 0) {
+            notFound.push(name);
+            continue;
+          }
+          await this.service.setPlotGrupo(plots[0].id, grupo);
+          updated.push(plots[0].name);
+        }
+        if (updated.length === 0) {
+          return { messages: [`No encontré los lotes: ${notFound.join(', ')}.`] };
+        }
+        const lines: string[] = [];
+        if (updated.length === 1) {
+          lines.push(`🏷️ Lote *${updated[0]}*: grupo asignado → *${grupo}*`);
+        } else {
+          lines.push(`🏷️ ${updated.length} lotes asignados al grupo *${grupo}*:`);
+          for (const n of updated) lines.push(`  • ${n}`);
+        }
+        if (notFound.length > 0) {
+          lines.push(`\n⚠️ No encontré: ${notFound.join(', ')}`);
+        }
+        return { messages: [lines.join('\n')] };
       }
 
       case 'restore_field': {
