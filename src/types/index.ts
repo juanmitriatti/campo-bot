@@ -218,6 +218,7 @@ export interface PlotCropRow {
   harvested_at: Date | null;
   yield_kg: number | null;
   yield_notes: string | null;
+  sowed_hectares: number | null;
   created_at: Date;
 }
 

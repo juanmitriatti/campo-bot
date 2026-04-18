@@ -172,7 +172,8 @@ export class AgronomyHandler {
 
     if (pending.command === 'sow_crop') {
       const crop = cmd.crop as string;
-      const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotId, crop);
+      const sowedHa = cmd.hectares != null ? Number(cmd.hectares) : null;
+      const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotId, crop, undefined, sowedHa);
       const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
 
       await this.repo.saveDomainEvent(userId, {
@@ -187,7 +188,9 @@ export class AgronomyHandler {
       if (closedPrevious) {
         msgs.push(`📋 Se cerró la campaña anterior de *${closedPrevious.crop}* en ${plotLabel}.`);
       }
-      msgs.push(`🌱 *${crop}* sembrado en *${plotLabel}*\n📅 Campaña ${label}`);
+      let sowMsg = `🌱 *${crop}* sembrado en *${plotLabel}*\n📅 Campaña ${label}`;
+      if (sowedHa) sowMsg += `\n📐 Sembradas: ${sowedHa.toLocaleString('es-AR')} ha`;
+      msgs.push(sowMsg);
       return { messages: msgs };
     }
 
@@ -684,7 +687,8 @@ export class AgronomyHandler {
         }
 
         const crop = cmd.crop as string;
-        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop);
+        const sowedHa = cmd.hectares != null ? Number(cmd.hectares) : null;
+        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, sowedHa);
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
         const plotLabel = plotResult.fieldName ? `${plotResult.fieldName} > ${plotResult.plotName}` : plotResult.plotName;
 
@@ -701,7 +705,9 @@ export class AgronomyHandler {
         if (closedPrevious) {
           msgs.push(`📋 Se cerró la campaña anterior de *${closedPrevious.crop}* en ${plotLabel}.`);
         }
-        msgs.push(`🌱 *${crop}* sembrado en *${plotLabel}*\n📅 Campaña ${label}`);
+        let sowMsg = `🌱 *${crop}* sembrado en *${plotLabel}*\n📅 Campaña ${label}`;
+        if (sowedHa) sowMsg += `\n📐 Sembradas: ${sowedHa.toLocaleString('es-AR')} ha`;
+        msgs.push(sowMsg);
         return { messages: msgs };
       }
 
@@ -829,8 +835,13 @@ export class AgronomyHandler {
 
           const { getPlotById } = await import('../../services/expenses.js');
           const plotInfo = await getPlotById(resolved.plotId);
-          if (plotInfo?.area_hectares) {
-            lines.push(`📐 Superficie: ${Number(plotInfo.area_hectares).toLocaleString('es-AR')} ha`);
+          const sowedHa = active.sowed_hectares ? Number(active.sowed_hectares) : null;
+          const plotHa = plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : null;
+          const effectiveHa = sowedHa ?? plotHa;
+          if (sowedHa && plotHa && sowedHa < plotHa) {
+            lines.push(`📐 Sembradas: ${sowedHa.toLocaleString('es-AR')} ha (de ${plotHa.toLocaleString('es-AR')} ha totales)`);
+          } else if (effectiveHa) {
+            lines.push(`📐 Superficie: ${effectiveHa.toLocaleString('es-AR')} ha`);
           }
           if (active.start_date) {
             lines.push(`🗓️ Siembra: ${formatDateAR(active.start_date)}`);
@@ -840,7 +851,7 @@ export class AgronomyHandler {
           }
           if (active.yield_kg) {
             const yieldStr = Number(active.yield_kg).toLocaleString('es-AR');
-            const kgPerHa = plotInfo?.area_hectares ? Math.round(Number(active.yield_kg) / Number(plotInfo.area_hectares)) : null;
+            const kgPerHa = effectiveHa ? Math.round(Number(active.yield_kg) / effectiveHa) : null;
             let yieldLine = `📊 Rendimiento: ${yieldStr} kg`;
             if (kgPerHa) yieldLine += ` (${kgPerHa.toLocaleString('es-AR')} kg/ha)`;
             lines.push(yieldLine);
@@ -860,12 +871,13 @@ export class AgronomyHandler {
           return { messages: [`No hay campañas activas${filterMsg}${grupoMsg}.`] };
         }
 
-        // Compute totals
+        // Compute totals — prefer sowed_hectares, fallback to area_hectares
         let totalHa = 0;
         let totalYieldKg = 0;
         let totalActivities = 0;
         for (const row of allActive) {
-          if (row.area_hectares) totalHa += Number(row.area_hectares);
+          const ha = row.sowed_hectares ? Number(row.sowed_hectares) : (row.area_hectares ? Number(row.area_hectares) : 0);
+          totalHa += ha;
           if (row.yield_kg) totalYieldKg += Number(row.yield_kg);
           if (row.activity_count) totalActivities += Number(row.activity_count);
         }
@@ -896,7 +908,10 @@ export class AgronomyHandler {
             const label = formatSeasonLabel(row.season_year, row.season_type);
             const stateLabel = getCampaignStateLabel(row);
             const plotLabel = `${row.field_name} > ${row.plot_name}`;
-            const haStr = row.area_hectares ? `${Number(row.area_hectares).toLocaleString('es-AR')} ha` : '';
+            const sowedHa = row.sowed_hectares ? Number(row.sowed_hectares) : null;
+            const plotHa = row.area_hectares ? Number(row.area_hectares) : null;
+            const effectiveHa = sowedHa ?? plotHa;
+            const haStr = effectiveHa ? `${effectiveHa.toLocaleString('es-AR')} ha` : '';
 
             let detailLine = `${stateLabel} *${row.crop}* en *${plotLabel}*`;
             if (haStr) detailLine += ` — ${haStr}`;
@@ -904,7 +919,7 @@ export class AgronomyHandler {
 
             const extras: string[] = [];
             if (row.yield_kg) {
-              const kgPerHa = row.area_hectares ? Math.round(Number(row.yield_kg) / Number(row.area_hectares)) : null;
+              const kgPerHa = effectiveHa ? Math.round(Number(row.yield_kg) / effectiveHa) : null;
               extras.push(`rinde: ${Number(row.yield_kg).toLocaleString('es-AR')} kg${kgPerHa ? ` (${kgPerHa.toLocaleString('es-AR')} kg/ha)` : ''}`);
             }
             if (row.last_activity_date && row.last_activity_type) {

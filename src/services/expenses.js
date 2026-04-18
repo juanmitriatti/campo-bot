@@ -1457,12 +1457,12 @@ export async function getRainfallRange(userId, desde, hasta) {
 
 // --- Plot crops ---
 
-export async function createPlotCrop(plotId, crop, seasonYear, seasonType, startDate = null) {
+export async function createPlotCrop(plotId, crop, seasonYear, seasonType, startDate = null, sowedHectares = null) {
   const result = await pool.query(
-    `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date)
-     VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE))
+    `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, sowed_hectares)
+     VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6)
      RETURNING *`,
-    [plotId, crop, seasonYear, seasonType, startDate]
+    [plotId, crop, seasonYear, seasonType, startDate, sowedHectares]
   );
   return result.rows[0];
 }
@@ -1499,7 +1499,7 @@ export async function getAllActiveCrops(userId, cropFilter = null, grupo = null)
     idx++;
   }
   const result = await pool.query(
-    `SELECT pc.*, p.name AS plot_name, f.name AS field_name, p.area_hectares,
+    `SELECT pc.*, p.name AS plot_name, f.name AS field_name, p.area_hectares, pc.sowed_hectares,
             act.activity_count, act.last_activity_date, act.last_activity_type
      FROM plot_crops pc
      JOIN plots p ON pc.plot_id = p.id

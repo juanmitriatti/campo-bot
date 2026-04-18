@@ -151,6 +151,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       type: 'object',
       properties: {
         crop: { type: 'string', description: 'Cultivo sembrado.' },
+        hectares: { type: 'number', description: 'Hectáreas sembradas (si es menos que la superficie total del lote). Omitir si se sembró todo el lote.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
         event_date: DATE_PROP,
@@ -396,11 +397,12 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'list_plots',
-    description: 'Listar lotes con superficie en hectáreas. "mis lotes", "qué lotes tiene el campo", "lotes del campo X", "cuántos lotes tengo", "hectáreas del campo X", "has campo X", "superficie total". NO usar para "has sembradas" ni cuando mencionan un cultivo (→ active_crop).',
+    description: 'Listar lotes con superficie en hectáreas. "mis lotes", "qué lotes tiene el campo", "lotes del campo X", "cuántos lotes tengo", "hectáreas del campo X", "has campo X", "superficie total". Soporta filtro por grupo/sociedad: "lotes del grupo X", "cuántas has del grupo/sociedad X", "hectáreas de la titularidad Y" → usar parámetro grupo. NO usar para "has sembradas" ni cuando mencionan un cultivo (→ active_crop).',
     input_schema: {
       type: 'object',
       properties: {
         field: { type: 'string', description: 'Nombre del campo para filtrar lotes. Omitir para ver todos.' },
+        grupo: { type: 'string', description: 'Filtrar por grupo/sociedad/titularidad de los lotes.' },
       },
     },
   },
@@ -467,15 +469,15 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'set_plot_grupo',
-    description: 'Asignar grupo/sociedad a un lote. "asignar grupo Pérez al lote 11A", "el lote A1 es del grupo Norte".',
+    description: 'Asignar grupo/sociedad/titularidad a uno o varios lotes. Frases: "asignar grupo Pérez al lote 11A", "el lote A1 es del grupo Norte", "los lotes 9B y 11A son de Pérez", "titularidad de los lotes 11C y 9B es Aurelio", "lotes 11A, 11B pertenecen al grupo X", "el dueño de los lotes es X". Usar plotNames (array) para asignar a uno o varios lotes en una sola llamada; siempre pasarlo como array aunque sea un solo lote.',
     input_schema: {
       type: 'object',
       properties: {
-        plot: { type: 'string', description: 'Nombre del lote.' },
-        grupo: { type: 'string', description: 'Nombre del grupo/sociedad.' },
+        plotNames: { type: 'array', items: { type: 'string' }, description: 'Nombres de los lotes a asignar el grupo (uno o varios).' },
+        grupo: { type: 'string', description: 'Nombre del grupo/sociedad/titular.' },
         field: FIELD_PROP,
       },
-      required: ['plot', 'grupo'],
+      required: ['plotNames', 'grupo'],
     },
   },
   {
