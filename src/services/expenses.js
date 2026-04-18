@@ -1022,7 +1022,7 @@ export async function findPlotsByGrupo(userId, grupo) {
      FROM plots p
      JOIN fields f ON p.field_id = f.id
      JOIN field_members fm ON f.id = fm.field_id AND fm.user_id = $1
-     WHERE LOWER(p.grupo) = LOWER($2)
+     WHERE LOWER(p.grupo) LIKE '%' || LOWER($2) || '%'
        AND p.deleted_at IS NULL AND f.deleted_at IS NULL
      ORDER BY f.name, p.name`,
     [userId, grupo]
@@ -1494,7 +1494,7 @@ export async function getAllActiveCrops(userId, cropFilter = null, grupo = null)
     idx++;
   }
   if (grupo) {
-    extraConditions += ` AND LOWER(p.grupo) = LOWER($${idx})`;
+    extraConditions += ` AND LOWER(p.grupo) LIKE '%' || LOWER($${idx}) || '%'`;
     params.push(grupo);
     idx++;
   }
@@ -2028,7 +2028,7 @@ export async function getActivityStats(userId, { fieldId = null, plotId = null, 
     idx++;
   }
   if (grupo) {
-    conditions.push(`LOWER(p.grupo) = LOWER($${idx})`);
+    conditions.push(`LOWER(p.grupo) LIKE '%' || LOWER($${idx}) || '%'`);
     params.push(grupo);
     idx++;
   }
