@@ -63,7 +63,11 @@ router.get("/api/users", async (req, res) => {
          p.display_name AS plan_name,
          COALESCE(ai.ai_calls_today, 0) AS ai_calls_today,
          COALESCE(ai.tokens_today, 0) AS tokens_today,
+         COALESCE(ai.input_tokens_today, 0) AS input_tokens_today,
+         COALESCE(ai.output_tokens_today, 0) AS output_tokens_today,
          COALESCE(ai_month.tokens_month, 0) AS tokens_month,
+         COALESCE(ai_month.input_tokens_month, 0) AS input_tokens_month,
+         COALESCE(ai_month.output_tokens_month, 0) AS output_tokens_month,
          COALESCE(u.last_message_at, ai_all.last_ai) AS last_activity,
          COALESCE(fields.field_count, 0) AS field_count,
          COALESCE(shared.shared_field_count, 0) AS shared_field_count
