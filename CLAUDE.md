@@ -68,6 +68,12 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 ### Sow Crop
 - `sow_crop` accepts optional `hectares` param for partial-plot sowing → `plot_crops.sowed_hectares`
 
+### Harvest Loads
+- `harvest_crop` accepts optional `loads[]` (per-truck: driver_name, weight_kg, destination, destinatario, truck_plate)
+- Dedup: same plot harvested today → appends loads, no duplicate event
+- `query_harvest_loads` tool queries stored loads (filters: plot, field, date, driver, destinatario)
+- `campaign_stats` includes per-truck detail in yield section
+
 ## Key Conventions
 
 - ESM modules (`"type": "module"`) — `import`/`export`, not `require`
@@ -93,7 +99,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 
 ### AI Pipeline
 - `src/ai/agent.service.ts` — Claude tool_use agent (primary)
-- `src/ai/tool-definitions.ts` — 65 tool definitions with typed schemas
+- `src/ai/tool-definitions.ts` — 68 tool definitions with typed schemas
 - `src/ai/agent-prompt-builder.ts` — Compact system prompt with disambiguation rules
 - `src/ai/agent-response-mapper.ts` — AgentResult → ParseResult[] conversion
 - `src/ai/intent-extractor.ts` — JSON extraction (legacy fallback)

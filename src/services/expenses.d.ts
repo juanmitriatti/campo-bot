@@ -146,3 +146,43 @@ export function queryPlotHistory(userId: number, opts?: {
   plot_name: string | null;
   field_name: string | null;
 }>>;
+
+// --- Harvest loads ---
+export interface HarvestLoadRow {
+  id: number;
+  domain_event_id: number;
+  plot_crop_id: number | null;
+  driver_name: string;
+  weight_kg: number;
+  destination: string | null;
+  destinatario: string | null;
+  truck_plate: string | null;
+  notes: string | null;
+  created_at: Date;
+}
+export interface HarvestLoadInput {
+  driver_name: string;
+  weight_kg: number;
+  destination?: string | null;
+  destinatario?: string | null;
+  truck_plate?: string | null;
+}
+export function saveHarvestLoads(domainEventId: number, plotCropId: number | null, loads: HarvestLoadInput[]): Promise<HarvestLoadRow[]>;
+export function getHarvestLoads(domainEventId: number): Promise<HarvestLoadRow[]>;
+export function findTodayHarvestEvent(userId: number, plotId: number): Promise<{ id: number; user_id: number; plot_id: number; plot_crop_id: number | null; event_type: string; event_date: Date; crop: string | null; created_at: Date } | null>;
+export function updateYieldFromLoads(plotCropId: number): Promise<void>;
+export interface HarvestLoadQueryRow extends HarvestLoadRow {
+  event_date: Date;
+  crop: string | null;
+  plot_name: string | null;
+  field_name: string | null;
+}
+export function queryHarvestLoads(userId: number, opts?: {
+  plotId?: number | null;
+  fieldId?: number | null;
+  desde?: string | null;
+  hasta?: string | null;
+  driverName?: string | null;
+  destinatario?: string | null;
+}): Promise<HarvestLoadQueryRow[]>;
+export function getHarvestLoadsByCampaign(plotCropId: number): Promise<Array<HarvestLoadRow & { event_date: Date }>>;

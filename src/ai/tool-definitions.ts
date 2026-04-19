@@ -161,7 +161,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'harvest_crop',
-    description: 'Registrar cosecha. Verbos: coseché, levanté. NO cierra la campaña, solo registra el hito. Si mencionan cantidad → sugerir carga a silo/stock.',
+    description: 'Registrar cosecha o cargas de camiones. Verbos: coseché, levanté, se cargó/cargaron. Si mencionan chofer+kg → usar loads[]. Números argentinos: "31.320" = 31320 kg (punto es separador de miles). NO cierra la campaña, solo registra el hito.',
     input_schema: {
       type: 'object',
       properties: {
@@ -171,11 +171,43 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         warehouse: { type: 'string', description: 'Nombre del depósito/silo destino.' },
         yield_kg: { type: 'number', description: 'Rendimiento total en kg (ej: 5000). Si dicen tn, convertir a kg.' },
         yield_notes: { type: 'string', description: 'Notas sobre el rendimiento.' },
+        loads: {
+          type: 'array',
+          description: 'Cargas de camiones. Extraer de "britos 31.320 kg, contreras 31.487". Cada item: chofer + kg. Números argentinos: "31.320" = 31320 kg (punto es separador de miles).',
+          items: {
+            type: 'object',
+            properties: {
+              driver_name: { type: 'string', description: 'Nombre del chofer/transportista.' },
+              weight_kg: { type: 'number', description: 'Peso en kg. "31.320" argentino = 31320 kg. Si dicen tn, x1000.' },
+              destination: { type: 'string', enum: ['silo', 'acopio', 'venta_directa'], description: 'Destino de la carga.' },
+              destinatario: { type: 'string', description: 'Empresa destino (Cargill, ACA, etc.).' },
+              truck_plate: { type: 'string', description: 'Patente si la mencionan.' },
+            },
+            required: ['driver_name', 'weight_kg'],
+          },
+        },
         field: FIELD_PROP,
         plot: PLOT_PROP,
         event_date: DATE_PROP,
       },
       required: ['crop'],
+    },
+  },
+
+  {
+    name: 'query_harvest_loads',
+    description: 'Consultar cargas de cosecha (camiones). "cargas del lote X", "cuánto llevó Britos", "cargas a Cargill", "detalle de cosecha", "camiones del lote X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        desde: { type: 'string', description: 'Fecha inicio YYYY-MM-DD.' },
+        hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD.' },
+        driver_name: { type: 'string', description: 'Filtrar por chofer/transportista.' },
+        destinatario: { type: 'string', description: 'Filtrar por empresa destino (Cargill, ACA, etc.).' },
+      },
+      required: [],
     },
   },
 

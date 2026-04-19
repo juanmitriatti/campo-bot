@@ -4,7 +4,7 @@
 
 ### AI Agent (tool_use) — primary path
 - **`agent.service.ts`** — Calls Claude with `tool_use` + `tool_choice: auto`; returns `AgentResult` with tool calls array + optional conversational text. Uses plan-based rate limiting, conversation history, few-shot examples, and configurable timeout.
-- **`tool-definitions.ts`** — 65 tool definitions with typed `input_schema`. All registration tools include `event_date` (YYYY-MM-DD). Query/report tools include expected output data and example trigger phrases.
+- **`tool-definitions.ts`** — 68 tool definitions with typed `input_schema`. All registration tools include `event_date` (YYYY-MM-DD). Query/report tools include expected output data and example trigger phrases.
 - **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules, user context, dynamic today's date. Activity synonym lines dynamically generated from `activity_dictionary` DB table (admin-editable).
 - **`agent-response-mapper.ts`** — Converts `AgentResult` → `ParseResult[]` for backward compat. Maps tool calls to expense/income/command ParseResults. No-tool responses → `_conversationalResponse`. Smart agro filter: drops `log_expense`/`log_income` alongside agro tools only when amount=0.
 - **`few-shot.service.ts`** — `formatAsToolUseMessages()` converts training examples to tool_use triplets.
@@ -58,6 +58,7 @@
 - Campaign lifecycle: ACTIVE → HARVESTED (`harvested_at`) → CLOSED (`end_date`). `CropService.startCrop()` auto-closes harvested campaigns when re-sowing.
 - `active_crop`: with plot → single crop; without → ALL active crops (filterable by crop name)
 - Sowed hectares: `sow_crop` accepts optional `hectares` → `plot_crops.sowed_hectares`
+- Harvest loads: `harvest_crop` accepts optional `loads[]` (per-truck: driver, kg, destination). Dedup: same plot+today → append. `updateYieldFromLoads()` auto-sums into `plot_crops.yield_kg`. Query via `query_harvest_loads` tool.
 
 ### Financial (`financial/`)
 - FinancialHandler: expenses, incomes, budgets, unified `financial_report`, mandatory hectares on plot creation, auto-split comma-separated plot names → `add_plots_batch`
@@ -104,6 +105,7 @@ PostgreSQL with migrations in `src/migrations/001-060_*.sql`. Timezone: `America
 - `domain_events` (event_date, edited_by, stock_deduction_status, pregnant_count/open_count/uncertain_count)
 - `agro_observations` (observation_date), `budgets`, `rainfall`
 - `plot_crops` (crop, season_year, start_date, end_date, harvested_at, yield_kg, sowed_hectares)
+- `harvest_loads` (domain_event_id, plot_crop_id, driver_name, weight_kg, destination, destinatario, truck_plate)
 - `warehouses`, `stock_items` (current_quantity, min_stock, grade, humidity_pct), `stock_movements`
 - `livestock_groups` (plot_id OR corral_id, category, breed, count), `livestock_movements` (movement_type, source/dest)
 - `feedlots` (UNIQUE field_id), `corrals` (UNIQUE feedlot_id+name)

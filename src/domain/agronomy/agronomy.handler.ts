@@ -737,29 +737,87 @@ export class AgronomyHandler {
         const crop = cmd.crop as string;
         const yieldKg = cmd.yieldKg != null ? Number(cmd.yieldKg) : null;
         const yieldNotes = (cmd.yieldNotes as string) || null;
-        const harvested = await this.cropService.harvestCrop(plotResult.plotId, crop, cmd.eventDate as Date | undefined, yieldKg, yieldNotes);
         const plotLabel = plotResult.fieldName ? `${plotResult.fieldName} > ${plotResult.plotName}` : plotResult.plotName;
 
-        if (!harvested) {
-          const active = await this.cropService.getActive(plotResult.plotId);
-          if (active) {
-            return { messages: [`En *${plotLabel}* hay *${active.crop}* sembrado, no ${crop}.\nSi querés cosechar ${active.crop}, escribí:\n🌾 *cosechamos ${active.crop.toLowerCase()} en el lote ${plotResult.plotName}*`] };
+        // Dedup: check if there's already a harvest event for this plot today
+        const loads = Array.isArray(cmd.loads) ? cmd.loads as Array<{ driver_name: string; weight_kg: number; destination?: string; destinatario?: string; truck_plate?: string }> : null;
+        const existingEvent = await this.repo.findTodayHarvestEvent(userId, plotResult.plotId);
+
+        let savedEvent: { id: number; plot_crop_id?: number | null; [key: string]: unknown };
+        let harvested: { id: number; season_year: number; season_type: string } | null = null;
+        let isAppend = false;
+
+        if (existingEvent) {
+          // Reuse existing event — just append loads
+          savedEvent = existingEvent;
+          isAppend = true;
+          // Get plot_crop info for season label
+          if (existingEvent.plot_crop_id) {
+            const activeCrop = await this.cropService.getActive(plotResult.plotId);
+            if (activeCrop) harvested = activeCrop;
           }
-          return { messages: [`No hay cultivo activo en *${plotLabel}* para cosechar.`] };
+        } else {
+          // Normal flow: register harvest
+          const harvestedResult = await this.cropService.harvestCrop(plotResult.plotId, crop, cmd.eventDate as Date | undefined, yieldKg, yieldNotes);
+
+          if (!harvestedResult) {
+            const active = await this.cropService.getActive(plotResult.plotId);
+            if (active) {
+              return { messages: [`En *${plotLabel}* hay *${active.crop}* sembrado, no ${crop}.\nSi querés cosechar ${active.crop}, escribí:\n🌾 *cosechamos ${active.crop.toLowerCase()} en el lote ${plotResult.plotName}*`] };
+            }
+            return { messages: [`No hay cultivo activo en *${plotLabel}* para cosechar.`] };
+          }
+
+          harvested = harvestedResult;
+
+          // Save domain event for harvest
+          const harvestQuantity = cmd.quantity ? Number(cmd.quantity) : null;
+          const harvestUnit = (cmd.unit as string) || 'tn';
+          savedEvent = await this.repo.saveDomainEvent(userId, {
+            plotId: plotResult.plotId,
+            plotCropId: harvestedResult.id,
+            eventType: 'harvest',
+            eventDate: cmd.eventDate as Date | null,
+            crop,
+            quantity: harvestQuantity,
+            unit: harvestQuantity ? harvestUnit : null,
+          });
         }
 
-        // Save domain event for harvest
-        const harvestQuantity = cmd.quantity ? Number(cmd.quantity) : null;
-        const harvestUnit = (cmd.unit as string) || 'tn';
-        const savedEvent = await this.repo.saveDomainEvent(userId, {
-          plotId: plotResult.plotId,
-          plotCropId: harvested.id,
-          eventType: 'harvest',
-          eventDate: cmd.eventDate as Date | null,
-          crop,
-          quantity: harvestQuantity,
-          unit: harvestQuantity ? harvestUnit : null,
-        });
+        // Save loads if provided
+        if (loads && loads.length > 0) {
+          const plotCropId = (savedEvent.plot_crop_id as number) || null;
+          await this.repo.saveHarvestLoads(savedEvent.id, plotCropId, loads);
+          if (plotCropId) {
+            await this.repo.updateYieldFromLoads(plotCropId);
+          }
+
+          // Build per-truck response
+          const totalKg = loads.reduce((sum, l) => sum + Number(l.weight_kg), 0);
+          const loadLines = loads.map(l => {
+            let line = `• ${l.driver_name} — ${Number(l.weight_kg).toLocaleString('es-AR')} kg`;
+            if (l.destinatario) line += ` → ${l.destinatario}`;
+            else if (l.destination) line += ` → ${l.destination}`;
+            return line;
+          });
+
+          const header = isAppend
+            ? `🚛 *${loads.length} carga${loads.length > 1 ? 's' : ''} agregada${loads.length > 1 ? 's' : ''} en ${plotLabel}:*`
+            : `🚛 *${loads.length} carga${loads.length > 1 ? 's' : ''} registrada${loads.length > 1 ? 's' : ''} en ${plotLabel}:*`;
+          let loadsMsg = `${header}\n${loadLines.join('\n')}\n\n📊 *Total: ${totalKg.toLocaleString('es-AR')} kg*`;
+
+          if (harvested && !isAppend) {
+            const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
+            loadsMsg += `\n📅 Campaña ${label}`;
+          }
+          loadsMsg += `\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime "cerrar campaña".`;
+          return { messages: [loadsMsg] };
+        }
+
+        // No loads — original behavior
+        if (!harvested) {
+          return { messages: [`Cosecha registrada en *${plotLabel}*.`] };
+        }
 
         const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
         let harvestMsg = `🌾 *${crop}* cosechado en *${plotLabel}*\n📅 Campaña ${label}`;
@@ -775,6 +833,8 @@ export class AgronomyHandler {
         const messages = [harvestMsg];
 
         // If quantity provided, suggest loading grain to stock/silo
+        const harvestQuantity = cmd.quantity ? Number(cmd.quantity) : null;
+        const harvestUnit = (cmd.unit as string) || 'tn';
         if (harvestQuantity && harvestQuantity > 0) {
           try {
             const { FeatureGate } = await import('../billing/feature-gate.js');
@@ -1089,6 +1149,62 @@ export class AgronomyHandler {
 
         lines.push('');
         lines.push(`*Total: ${totalCount} actividades*`);
+
+        return { messages: [lines.join('\n')] };
+      }
+
+      case 'query_harvest_loads': {
+        let loadsPlotId: number | null = null;
+        let loadsFieldId: number | null = null;
+        let loadsLocationLabel: string | null = null;
+
+        if (cmd.plotName || cmd.fieldName) {
+          const resolved = await this.plotDiscovery.resolveFromNames(
+            userId,
+            cmd.fieldName as string | null,
+            cmd.plotName as string | null,
+          );
+          loadsFieldId = resolved.fieldId ?? null;
+          loadsPlotId = resolved.plotId ?? null;
+          loadsLocationLabel = resolved.plotName
+            ? (resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName)
+            : resolved.fieldName ?? null;
+        }
+
+        const loadRows = await this.repo.queryHarvestLoads(userId, {
+          plotId: loadsPlotId,
+          fieldId: loadsFieldId,
+          desde: cmd.desde as string | null,
+          hasta: cmd.hasta as string | null,
+          driverName: cmd.driverName as string | null,
+          destinatario: cmd.destinatario as string | null,
+        });
+
+        if (loadRows.length === 0) {
+          let emptyMsg = 'No hay cargas de cosecha registradas';
+          if (loadsLocationLabel) emptyMsg += ` en *${loadsLocationLabel}*`;
+          emptyMsg += '.';
+          return { messages: [emptyMsg] };
+        }
+
+        // Group by date+plot for display
+        const totalKg = loadRows.reduce((sum, r) => sum + Number(r.weight_kg), 0);
+        const lines: string[] = [];
+        let title = `🚛 *${loadRows.length} carga${loadRows.length > 1 ? 's' : ''}*`;
+        if (loadsLocationLabel) title += ` — ${loadsLocationLabel}`;
+        lines.push(title);
+
+        for (const r of loadRows) {
+          let line = `• ${r.driver_name} — ${Number(r.weight_kg).toLocaleString('es-AR')} kg`;
+          if (r.destinatario) line += ` → ${r.destinatario}`;
+          else if (r.destination) line += ` → ${r.destination}`;
+          if (r.truck_plate) line += ` (${r.truck_plate})`;
+          if (!loadsPlotId && r.plot_name) line += ` [${r.plot_name}]`;
+          lines.push(line);
+        }
+
+        lines.push('');
+        lines.push(`📊 *Total: ${totalKg.toLocaleString('es-AR')} kg*`);
 
         return { messages: [lines.join('\n')] };
       }
@@ -1976,6 +2092,17 @@ export class AgronomyHandler {
       let yieldLine = `\n*Rendimiento:* ${s.yield.kg.toLocaleString('es-AR')} kg`;
       if (s.yield.kgPerHa) yieldLine += ` (${s.yield.kgPerHa.toLocaleString('es-AR')} kg/ha)`;
       lines.push(yieldLine);
+    }
+
+    // Harvest loads detail
+    if (s.yield.loads && s.yield.loads.length > 0) {
+      lines.push(`\n🚛 *Cargas (${s.yield.loads.length}):*`);
+      for (const ld of s.yield.loads) {
+        let loadLine = `• ${ld.driver_name} — ${ld.weight_kg.toLocaleString('es-AR')} kg`;
+        if (ld.destinatario) loadLine += ` → ${ld.destinatario}`;
+        else if (ld.destination) loadLine += ` → ${ld.destination}`;
+        lines.push(loadLine);
+      }
     }
 
     // Profitability (only if both expenses and incomes exist)

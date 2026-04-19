@@ -1,13 +1,13 @@
 # Tool Selection Reference
 
-> 65 Anthropic tool definitions in `src/ai/tool-definitions.ts`. Each has typed `input_schema` with enum validation.
+> 68 Anthropic tool definitions in `src/ai/tool-definitions.ts`. Each has typed `input_schema` with enum validation.
 
 ## Tool Groups
 
 | Group | Count | Tools |
 |-------|-------|-------|
 | Financial | 2 | `log_expense`, `log_income` |
-| Activities | 11 | `sow_crop`, `harvest_crop`, `log_spraying`, `log_fertilization`, `log_activity`, `active_crop`, `close_campaign`, `campaign_stats`, `log_tacto`, `tacto_summary`, `edit_last_activity` |
+| Activities | 13 | `sow_crop`, `harvest_crop`, `query_harvest_loads`, `log_spraying`, `log_fertilization`, `log_activity`, `active_crop`, `close_campaign`, `campaign_stats`, `activity_stats`, `log_tacto`, `tacto_summary`, `edit_last_activity` |
 | Observations | 2 | `log_observation`, `query_plot_history` |
 | Reports | 5 | `financial_report`, `generate_agro_report`, `show_reports_menu`, `crop_report`, `campaign_report` |
 | Field/Plot Mgmt | 11 | `create_field`, `list_fields`, `delete_field`, `rename_field`, `add_plot`, `add_plots_batch`, `list_plots`, `set_plot_area`, `delete_plot`, `rename_plot`, `set_field_city` |
@@ -52,6 +52,14 @@
 ### Sow Crop
 - `sow_crop` accepts optional `hectares` param for partial-plot sowing
 - Stored in `plot_crops.sowed_hectares`
+
+### Harvest Loads (Per-Truck Tracking)
+- `harvest_crop` accepts optional `loads[]` array: `{ driver_name, weight_kg, destination?, destinatario?, truck_plate? }`
+- Argentine number convention: "31.320 kg" = 31320 (dot = thousands separator)
+- Dedup: if same plot already harvested today → appends loads to existing event (no duplicate harvest)
+- `updateYieldFromLoads()` auto-sums all loads into `plot_crops.yield_kg`
+- `query_harvest_loads` queries stored loads with filters (plot, field, date, driver, destinatario)
+- `campaign_stats` includes loads detail in the yield section
 
 ## Common Tool Params
 

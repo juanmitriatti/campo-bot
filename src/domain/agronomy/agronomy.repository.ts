@@ -27,6 +27,12 @@ import {
   updateDomainEventPlot as _updateDomainEventPlot,
   getTactoSummary as _getTactoSummary,
   getActivityStats as _getActivityStats,
+  saveHarvestLoads as _saveHarvestLoads,
+  getHarvestLoads as _getHarvestLoads,
+  findTodayHarvestEvent as _findTodayHarvestEvent,
+  updateYieldFromLoads as _updateYieldFromLoads,
+  queryHarvestLoads as _queryHarvestLoads,
+  getHarvestLoadsByCampaign as _getHarvestLoadsByCampaign,
 } from '../../services/expenses.js';
 import { PlotRepository } from '../plots/plot.repository.js';
 import type { UserId, FieldRow, PlotRow, PlotCropRow, DomainEventRow, PlotHistoryRow } from '../../types/index.js';
@@ -302,5 +308,70 @@ export class AgronomyRepository {
     limit?: number;
   }): Promise<PlotHistoryRow[]> {
     return _queryPlotHistory(userId, opts) as Promise<PlotHistoryRow[]>;
+  }
+
+  // --- Harvest loads ---
+
+  async saveHarvestLoads(domainEventId: number, plotCropId: number | null, loads: Array<{
+    driver_name: string;
+    weight_kg: number;
+    destination?: string | null;
+    destinatario?: string | null;
+    truck_plate?: string | null;
+  }>): Promise<unknown[]> {
+    return _saveHarvestLoads(domainEventId, plotCropId, loads);
+  }
+
+  async getHarvestLoads(domainEventId: number): Promise<Array<{
+    id: number;
+    domain_event_id: number;
+    driver_name: string;
+    weight_kg: number;
+    destination: string | null;
+    destinatario: string | null;
+    truck_plate: string | null;
+  }>> {
+    return _getHarvestLoads(domainEventId);
+  }
+
+  async findTodayHarvestEvent(userId: UserId, plotId: number): Promise<DomainEventRow | null> {
+    return _findTodayHarvestEvent(userId, plotId) as Promise<DomainEventRow | null>;
+  }
+
+  async updateYieldFromLoads(plotCropId: number): Promise<void> {
+    return _updateYieldFromLoads(plotCropId);
+  }
+
+  async queryHarvestLoads(userId: UserId, opts: {
+    plotId?: number | null;
+    fieldId?: number | null;
+    desde?: string | null;
+    hasta?: string | null;
+    driverName?: string | null;
+    destinatario?: string | null;
+  }): Promise<Array<{
+    id: number;
+    driver_name: string;
+    weight_kg: number;
+    destination: string | null;
+    destinatario: string | null;
+    truck_plate: string | null;
+    event_date: Date;
+    crop: string | null;
+    plot_name: string | null;
+    field_name: string | null;
+  }>> {
+    return _queryHarvestLoads(userId, opts);
+  }
+
+  async getHarvestLoadsByCampaign(plotCropId: number): Promise<Array<{
+    id: number;
+    driver_name: string;
+    weight_kg: number;
+    destination: string | null;
+    destinatario: string | null;
+    event_date: Date;
+  }>> {
+    return _getHarvestLoadsByCampaign(plotCropId);
   }
 }

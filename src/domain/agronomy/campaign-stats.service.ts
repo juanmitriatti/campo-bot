@@ -4,6 +4,7 @@ import {
   getCampaignActivities,
   getCampaignObservations,
   getPlotById,
+  getHarvestLoadsByCampaign,
 } from '../../services/expenses.js';
 import { CropService, formatSeasonLabel, getCampaignState } from '../plots/crop.service.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
@@ -45,6 +46,7 @@ export interface CampaignStats {
     kg: number | null;
     kgPerHa: number | null;
     notes: string | null;
+    loads: { driver_name: string; weight_kg: number; destination: string | null; destinatario: string | null; event_date: string }[];
   };
 
   profitability: {
@@ -116,11 +118,12 @@ export class CampaignStatsService {
     const durationDays = Math.ceil((endRef.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
     // Fetch data in parallel
-    const [activities, expenses, incomes, observations] = await Promise.all([
+    const [activities, expenses, incomes, observations, harvestLoads] = await Promise.all([
       getCampaignActivities(campaign.id),
       getCampaignExpenses(resolved.plotId, campaign.start_date, campaign.end_date),
       getCampaignIncomes(resolved.plotId, campaign.start_date, campaign.end_date),
       getCampaignObservations(resolved.plotId, campaign.start_date, campaign.end_date),
+      getHarvestLoadsByCampaign(campaign.id),
     ]);
 
     // Aggregate activities
@@ -170,6 +173,15 @@ export class CampaignStatsService {
     const yieldKg = campaign.yield_kg ? Number(campaign.yield_kg) : null;
     const yieldKgPerHa = yieldKg && areaHa ? Math.round(yieldKg / areaHa) : null;
 
+    // Harvest loads
+    const loadsList = (harvestLoads || []).map((hl: any) => ({
+      driver_name: hl.driver_name as string,
+      weight_kg: Number(hl.weight_kg),
+      destination: hl.destination || null,
+      destinatario: hl.destinatario || null,
+      event_date: formatDateAR(hl.event_date),
+    }));
+
     // Profitability
     const netARS = incTotalARS - expTotalARS;
     const costPerHa = areaHa ? Math.round(expTotalARS / areaHa) : null;
@@ -194,7 +206,7 @@ export class CampaignStatsService {
       activities: { total: actList.length, byType: actByType, list: actList },
       expenses: { totalARS: expTotalARS, totalUSD: expTotalUSD, byCategory: expByCategory, count: expenses.length },
       incomes: { totalARS: incTotalARS, totalUSD: incTotalUSD, count: incomes.length },
-      yield: { kg: yieldKg, kgPerHa: yieldKgPerHa, notes: campaign.yield_notes || null },
+      yield: { kg: yieldKg, kgPerHa: yieldKgPerHa, notes: campaign.yield_notes || null, loads: loadsList },
       profitability: { netARS, costPerHaARS: costPerHa, incomePerHaARS: incomePerHa },
       observations: { count: obsList.length, list: obsList },
       areaHectares: areaHa,

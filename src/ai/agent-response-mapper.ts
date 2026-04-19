@@ -358,6 +358,11 @@ export class AgentResponseMapper {
     if (input.veterinarian != null) cmd.implement = input.veterinarian;
     if (input.notes != null) cmd.notes = input.notes;
 
+    // Harvest loads
+    if (input.loads != null) cmd.loads = input.loads;
+    if (input.driver_name != null) cmd.driverName = input.driver_name;
+    if (input.destinatario != null) cmd.destinatario = input.destinatario;
+
     return {
       intent: { type: 'command', data: cmd },
       confidence: 0.95,

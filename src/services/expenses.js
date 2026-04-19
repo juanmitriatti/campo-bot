@@ -2063,3 +2063,112 @@ export async function getActivityStats(userId, { fieldId = null, plotId = null, 
   const result = await pool.query(sql, params);
   return result.rows;
 }
+
+// --- Harvest loads ---
+
+export async function saveHarvestLoads(domainEventId, plotCropId, loads) {
+  if (!loads || loads.length === 0) return [];
+  const values = [];
+  const params = [];
+  let idx = 1;
+  for (const load of loads) {
+    values.push(`($${idx}, $${idx+1}, $${idx+2}, $${idx+3}, $${idx+4}, $${idx+5}, $${idx+6})`);
+    params.push(domainEventId, plotCropId || null, load.driver_name, load.weight_kg,
+      load.destination || null, load.destinatario || null, load.truck_plate || null);
+    idx += 7;
+  }
+  const sql = `INSERT INTO harvest_loads (domain_event_id, plot_crop_id, driver_name, weight_kg, destination, destinatario, truck_plate)
+    VALUES ${values.join(', ')} RETURNING *`;
+  const result = await pool.query(sql, params);
+  return result.rows;
+}
+
+export async function getHarvestLoads(domainEventId) {
+  const result = await pool.query(
+    `SELECT * FROM harvest_loads WHERE domain_event_id = $1 ORDER BY id`,
+    [domainEventId]
+  );
+  return result.rows;
+}
+
+export async function findTodayHarvestEvent(userId, plotId) {
+  const result = await pool.query(
+    `SELECT * FROM domain_events
+     WHERE user_id = $1 AND plot_id = $2 AND event_type = 'harvest'
+       AND event_date = CURRENT_DATE
+     ORDER BY created_at DESC LIMIT 1`,
+    [userId, plotId]
+  );
+  return result.rows[0] || null;
+}
+
+export async function updateYieldFromLoads(plotCropId) {
+  if (!plotCropId) return;
+  await pool.query(
+    `UPDATE plot_crops SET yield_kg = (
+       SELECT COALESCE(SUM(weight_kg), 0) FROM harvest_loads WHERE plot_crop_id = $1
+     ) WHERE id = $1`,
+    [plotCropId]
+  );
+}
+
+export async function queryHarvestLoads(userId, { plotId = null, fieldId = null, desde = null, hasta = null, driverName = null, destinatario = null } = {}) {
+  const params = [userId];
+  let idx = 2;
+  const conditions = [`de.user_id = $1`, `de.event_type = 'harvest'`];
+
+  if (plotId) {
+    conditions.push(`de.plot_id = $${idx}`);
+    params.push(plotId);
+    idx++;
+  } else if (fieldId) {
+    conditions.push(`p.field_id = $${idx}`);
+    params.push(fieldId);
+    idx++;
+  }
+  if (desde) {
+    conditions.push(`de.event_date >= $${idx}::date`);
+    params.push(desde);
+    idx++;
+  }
+  if (hasta) {
+    conditions.push(`de.event_date <= $${idx}::date`);
+    params.push(hasta);
+    idx++;
+  }
+  if (driverName) {
+    conditions.push(`LOWER(hl.driver_name) LIKE '%' || LOWER($${idx}) || '%'`);
+    params.push(driverName);
+    idx++;
+  }
+  if (destinatario) {
+    conditions.push(`LOWER(hl.destinatario) LIKE '%' || LOWER($${idx}) || '%'`);
+    params.push(destinatario);
+    idx++;
+  }
+
+  const sql = `
+    SELECT hl.*, de.event_date, de.crop, p.name as plot_name, f.name as field_name
+    FROM harvest_loads hl
+    JOIN domain_events de ON hl.domain_event_id = de.id
+    LEFT JOIN plots p ON de.plot_id = p.id
+    LEFT JOIN fields f ON p.field_id = f.id
+    JOIN field_members fm ON f.id = fm.field_id AND fm.user_id = $1
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY de.event_date DESC, hl.id
+  `;
+  const result = await pool.query(sql, params);
+  return result.rows;
+}
+
+export async function getHarvestLoadsByCampaign(plotCropId) {
+  const result = await pool.query(
+    `SELECT hl.*, de.event_date
+     FROM harvest_loads hl
+     JOIN domain_events de ON hl.domain_event_id = de.id
+     WHERE hl.plot_crop_id = $1
+     ORDER BY de.event_date, hl.id`,
+    [plotCropId]
+  );
+  return result.rows;
+}
