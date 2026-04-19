@@ -71,11 +71,15 @@ router.get("/api/users", async (req, res) => {
        LEFT JOIN plans p ON u.plan_id = p.id
        LEFT JOIN LATERAL (
          SELECT COUNT(*) AS ai_calls_today,
-                COALESCE(SUM(total_tokens), 0) AS tokens_today
+                COALESCE(SUM(total_tokens), 0) AS tokens_today,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens_today,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens_today
          FROM ai_usage WHERE user_id = u.id AND created_at::date = CURRENT_DATE
        ) ai ON true
        LEFT JOIN LATERAL (
-         SELECT COALESCE(SUM(total_tokens), 0) AS tokens_month
+         SELECT COALESCE(SUM(total_tokens), 0) AS tokens_month,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens_month,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens_month
          FROM ai_usage WHERE user_id = u.id AND created_at >= date_trunc('month', CURRENT_DATE)
        ) ai_month ON true
        LEFT JOIN LATERAL (
@@ -92,10 +96,11 @@ router.get("/api/users", async (req, res) => {
        ORDER BY last_activity DESC NULLS LAST`
     );
 
-    // Haiku pricing: $0.80/M input, $4/M output
-    // Average split from ai_usage: ~96% input, ~4% output
-    // Blended rate: 0.96 * 0.80 + 0.04 * 4.00 = $0.928/M tokens
-    const COST_PER_TOKEN = 0.928 / 1_000_000;
+    // Haiku pricing: $0.80/M input, $4.00/M output
+    const INPUT_COST_PER_M = 0.80;
+    const OUTPUT_COST_PER_M = 4.00;
+    const calcCost = (inputTokens, outputTokens) =>
+      +(inputTokens / 1_000_000 * INPUT_COST_PER_M + outputTokens / 1_000_000 * OUTPUT_COST_PER_M).toFixed(4);
 
     res.json(result.rows.map(u => {
       const tokensToday = parseInt(u.tokens_today);
@@ -114,8 +119,8 @@ router.get("/api/users", async (req, res) => {
         sharedFieldCount: parseInt(u.shared_field_count),
         aiCallsToday: parseInt(u.ai_calls_today),
         tokensToday,
-        costToday: +(tokensToday * COST_PER_TOKEN).toFixed(4),
-        costMonth: +(tokensMonth * COST_PER_TOKEN).toFixed(4),
+        costToday: calcCost(parseInt(u.input_tokens_today), parseInt(u.output_tokens_today)),
+        costMonth: calcCost(parseInt(u.input_tokens_month), parseInt(u.output_tokens_month)),
         lastActivity: u.last_activity,
         lastMessageAt: u.last_message_at,
       };
