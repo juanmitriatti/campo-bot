@@ -293,6 +293,7 @@ export class AgentResponseMapper {
     if (input.days != null) cmd.days = input.days;
     if (input.category != null) cmd.category = input.category;
     if (input.type != null) cmd.reportType = input.type;
+    if (input.report_type != null) cmd.reportType = input.report_type;
     if (input.include_activities != null) cmd.include_activities = input.include_activities;
     if (input.activity_filter != null) cmd.activity_filter = input.activity_filter;
 
@@ -320,6 +321,8 @@ export class AgentResponseMapper {
     if (input.yield_kg != null) cmd.yieldKg = input.yield_kg;
     if (input.yield_notes != null) cmd.yieldNotes = input.yield_notes;
     if (input.season_year != null) cmd.seasonYear = input.season_year;
+    if (input.season_year_1 != null) cmd.seasonYear1 = input.season_year_1;
+    if (input.season_year_2 != null) cmd.seasonYear2 = input.season_year_2;
 
     // Edit activity
     if (input.new_plot != null) cmd.newPlotName = input.new_plot;
@@ -364,6 +367,17 @@ export class AgentResponseMapper {
     if (input.destinatario != null) cmd.destinatario = input.destinatario;
     if (input.driver_names != null) cmd.driverNames = input.driver_names;
     if (input.only_without_destination != null) cmd.onlyWithoutDestination = input.only_without_destination;
+
+    // Expense templates (recurring)
+    if (input.template_id != null) cmd.templateId = input.template_id;
+    if (input.recurrence_type != null) cmd.recurrenceType = input.recurrence_type;
+    if (input.recurrence_day != null) cmd.recurrenceDay = input.recurrence_day;
+    if (toolName.includes('expense_template')) {
+      if (input.name != null) cmd.name = input.name;
+      if (input.amount != null) cmd.amount = input.amount;
+      if (input.currency != null) cmd.currency = input.currency;
+      if (input.description != null) cmd.description = input.description;
+    }
 
     return {
       intent: { type: 'command', data: cmd },

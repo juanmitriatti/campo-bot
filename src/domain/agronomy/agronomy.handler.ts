@@ -3,7 +3,7 @@ import { AgronomyRepository, RAINFALL_REJECTED_DUPLICATE } from './agronomy.repo
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { CropService, detectCropFromText, formatSeasonLabel, getSeasonTypeForCrop, getCampaignStateLabel, getCampaignState } from '../plots/crop.service.js';
 import { CampaignStatsService } from './campaign-stats.service.js';
-import type { CampaignStats } from './campaign-stats.service.js';
+import type { CampaignStats, CampaignComparison } from './campaign-stats.service.js';
 import { FeedlotService } from '../feedlot/feedlot.service.js';
 import { inferCrop, getActivityLabel, formatActivityConfirmation } from './activity.service.js';
 import {
@@ -1071,6 +1071,23 @@ export class AgronomyHandler {
         return { messages: [this.formatCampaignStats(stats)] };
       }
 
+      case 'compare_campaigns': {
+        const comparison = await this.campaignStatsService.compareCampaigns(
+          userId,
+          cmd.plotName as string | null,
+          cmd.fieldName as string | null,
+          cmd.crop as string | null,
+          cmd.seasonYear1 as string | null,
+          cmd.seasonYear2 as string | null,
+        );
+
+        if (typeof comparison === 'string') {
+          return { messages: [comparison] };
+        }
+
+        return { messages: [this.formatCampaignComparison(comparison)] };
+      }
+
       case 'activity_stats': {
         let statsFieldId: number | null = null;
         let statsPlotId: number | null = null;
@@ -2086,6 +2103,43 @@ export class AgronomyHandler {
         return { messages: [message], suggestionKey: 'observation_logged' };
       }
 
+      case 'share_report': {
+        const { ReportShareService } = await import('../../services/report-share.service.js');
+        const reportService = new ReportShareService();
+
+        const reportType = cmd.reportType as string;
+        let result;
+
+        if (reportType === 'campaign') {
+          result = await reportService.generateCampaignPDF(
+            userId,
+            cmd.plotName as string | null,
+            cmd.fieldName as string | null,
+            cmd.crop as string | null,
+          );
+        } else {
+          result = await reportService.generateFinancialPDF(
+            userId,
+            cmd.fieldName as string | null,
+            cmd.period as string | null,
+          );
+        }
+
+        if (typeof result === 'string') {
+          return { messages: [result] };
+        }
+
+        return {
+          messages: [`📄 Reporte generado: *${result.filename}*`],
+          attachment: {
+            buffer: result.buffer,
+            filename: result.filename,
+            mime: result.mime,
+            caption: `📄 ${reportType === 'campaign' ? 'Campaña' : 'Reporte Financiero'} — ${result.filename}`,
+          },
+        };
+      }
+
       default:
         return { messages: ['No pude procesar ese comando agronómico. Escribí *menú agro* para ver las opciones.'] };
     }
@@ -2153,12 +2207,48 @@ export class AgronomyHandler {
       let profLine = `\n*Rentabilidad:*\nResultado neto: ${sign}$${s.profitability.netARS.toLocaleString('es-AR')} ARS`;
       if (s.profitability.costPerHaARS != null) profLine += `\nCosto/ha: $${s.profitability.costPerHaARS.toLocaleString('es-AR')}`;
       if (s.profitability.incomePerHaARS != null) profLine += ` | Ingreso/ha: $${s.profitability.incomePerHaARS.toLocaleString('es-AR')}`;
+      if (s.profitability.costPerTnARS != null) profLine += `\nCosto/tn: $${s.profitability.costPerTnARS.toLocaleString('es-AR')}`;
+      if (s.profitability.costPerTnUSD != null) profLine += ` (US$${s.profitability.costPerTnUSD.toLocaleString('es-AR')}/tn)`;
+      if (s.profitability.incomePerTnARS != null) profLine += ` | Ingreso/tn: $${s.profitability.incomePerTnARS.toLocaleString('es-AR')}`;
       lines.push(profLine);
     }
 
     // Observations
     if (s.observations.count > 0) {
       lines.push(`\n*Observaciones:* ${s.observations.count}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  private formatCampaignComparison(c: CampaignComparison): string {
+    const fmt = (n: number) => n.toLocaleString('es-AR');
+    const fmtPct = (p: number | null) => {
+      if (p == null) return '';
+      const sign = p >= 0 ? '+' : '';
+      return ` (${sign}${p}%)`;
+    };
+
+    const s1 = c.season1.stats;
+    const s2 = c.season2.stats;
+    const lines: string[] = [];
+
+    lines.push(`📊 *Comparación ${c.crop}* — ${c.plot}${c.field ? ` (${c.field})` : ''}`);
+    lines.push(`*${c.season1.label}* vs *${c.season2.label}*`);
+
+    if (s1.yield.kgPerHa != null && s2.yield.kgPerHa != null) {
+      lines.push(`\n🌾 Rinde: ${fmt(s1.yield.kgPerHa)} vs ${fmt(s2.yield.kgPerHa)} kg/ha${fmtPct(c.deltas.yieldKgPerHaPct)}`);
+    }
+
+    lines.push(`💸 Gastos: $${fmt(s1.expenses.totalARS)} vs $${fmt(s2.expenses.totalARS)}${fmtPct(c.deltas.expensesPct)}`);
+    lines.push(`💰 Ingresos: $${fmt(s1.incomes.totalARS)} vs $${fmt(s2.incomes.totalARS)}${fmtPct(c.deltas.incomesPct)}`);
+
+    if (s1.profitability.costPerHaARS != null && s2.profitability.costPerHaARS != null) {
+      const result1 = (s1.profitability.incomePerHaARS ?? 0) - s1.profitability.costPerHaARS;
+      const result2 = (s2.profitability.incomePerHaARS ?? 0) - s2.profitability.costPerHaARS;
+      const sign1 = result1 >= 0 ? '+' : '';
+      const sign2 = result2 >= 0 ? '+' : '';
+      lines.push(`📈 Resultado/ha: ${sign1}$${fmt(result1)} vs ${sign2}$${fmt(result2)}${fmtPct(c.deltas.netPerHaPct)}`);
     }
 
     return lines.join('\n');

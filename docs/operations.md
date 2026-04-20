@@ -37,7 +37,7 @@ npx tsx src/scripts/run-migrations.ts   # Manual run
 
 Set `RUN_MIGRATIONS_ON_START=false` to disable (e.g., unit tests).
 
-Files: `src/migrations/001-060_*.sql`
+Files: `src/migrations/001-066_*.sql`
 
 ## Environment Variables
 
@@ -53,6 +53,8 @@ Required in `.env`:
 Optional:
 - `TELEGRAM_WEBHOOK_SECRET` — Webhook verification
 - `APP_URL` — Map URL generation (auto-derived from `RAILWAY_PUBLIC_DOMAIN` on Railway)
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` — Web push notifications (generate via `npx web-push generate-vapid-keys`)
+- `VAPID_SUBJECT` — Push notification contact (default: `mailto:admin@campobot.com`)
 
 ## AI Agent Settings
 
@@ -76,6 +78,19 @@ Configurable via admin dashboard → `bot` group:
 | `FLOW_TIMEOUT_NOTIFICATION_ENABLED` | bool | `true` | Notify user on flow expiry |
 | `FLOW_HALFLIFE_WARNING_ENABLED` | bool | `true` | Send "seguís ahí?" mid-flow ping |
 | `FLOW_HALFLIFE_WARNING_MS` | number | `300000` | Time before half-life reminder (ms) |
+| `MONTHLY_SUMMARY_HOUR` | number | `8` | Hour (0-23 Argentina TZ) to send monthly summary |
+
+## Scheduler Jobs
+
+| Schedule | Job | Description |
+|----------|-----|-------------|
+| Mon 8AM | `weeklyTick` | Enhanced weekly summary (expenses, incomes, vs previous week, active campaigns) |
+| 1st of month (configurable hour) | `monthlyTick` | Monthly summary (vs previous month, top categories, rainfall, activities) |
+| Hourly (8AM gate) | `proactiveAlertsTick` | Monitoring, pest escalation, hectares reminders, low stock, phenology alerts |
+| Daily 7AM | `expenseTemplateTick` | Process recurring expense templates (create expenses, advance next_run_date) |
+| Daily (configurable) | `dailyAlertsTick` | Weather alerts, rain forecasts |
+| Every minute | `flowReminderTick` | Expired flow notifications, half-life warnings |
+| Daily 3AM | `cleanupTick` | Old conversation state cleanup |
 
 ## Telegram Webhook Setup
 
@@ -91,4 +106,5 @@ User store key: `tg_${chatId}`. Users provisioned on first contact via `getOrCre
 ```bash
 npx tsx src/scripts/create-admin.ts --email <e> --name <n> --password <p>
 npx tsx src/scripts/seed-dummy-data.ts --user-id <id> [--reset]
+npx web-push generate-vapid-keys   # Generate VAPID keys for push notifications
 ```

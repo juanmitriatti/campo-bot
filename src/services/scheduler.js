@@ -154,6 +154,133 @@ async function getPreviousWeekCategoryTotal(userId, category) {
   return Number(rows[0].total);
 }
 
+async function getPreviousWeekExpense(userId) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(amount),0) AS total
+       FROM expenses
+      WHERE user_id = $1
+        AND deleted_at IS NULL
+        AND expense_date >= date_trunc('week', NOW()) - interval '7 days'
+        AND expense_date <  date_trunc('week', NOW())`,
+    [userId]
+  );
+  return Number(rows[0].total);
+}
+
+async function getPreviousWeekIncome(userId) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(amount),0) AS total
+       FROM incomes
+      WHERE user_id = $1
+        AND deleted_at IS NULL
+        AND income_date >= date_trunc('week', NOW()) - interval '7 days'
+        AND income_date <  date_trunc('week', NOW())`,
+    [userId]
+  );
+  return Number(rows[0].total);
+}
+
+async function getActiveCampaigns(userId) {
+  const { rows } = await pool.query(
+    `SELECT pc.crop, pc.start_date, p.name AS plot_name, f.name AS field_name,
+            p.area_hectares,
+            COALESCE(
+              (SELECT SUM(e.amount) FROM expenses e
+               WHERE e.plot_id = p.id AND e.deleted_at IS NULL
+               AND e.expense_date >= pc.start_date
+               AND e.currency = 'ARS'), 0
+            ) AS campaign_expenses_ars
+       FROM plot_crops pc
+       JOIN plots p ON pc.plot_id = p.id
+       JOIN fields f ON p.field_id = f.id
+      WHERE (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+        AND pc.end_date IS NULL
+        AND p.deleted_at IS NULL AND f.deleted_at IS NULL
+      ORDER BY pc.start_date ASC`,
+    [userId]
+  );
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Monthly report queries
+// ---------------------------------------------------------------------------
+
+async function getMonthExpenses(userId, monthsAgo) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(amount),0) AS total
+       FROM expenses
+      WHERE user_id = $1
+        AND deleted_at IS NULL
+        AND expense_date >= date_trunc('month', NOW()) - make_interval(months => $2)
+        AND expense_date <  date_trunc('month', NOW()) - make_interval(months => $2 - 1)`,
+    [userId, monthsAgo]
+  );
+  return Number(rows[0].total);
+}
+
+async function getMonthIncomes(userId, monthsAgo) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(amount),0) AS total
+       FROM incomes
+      WHERE user_id = $1
+        AND deleted_at IS NULL
+        AND income_date >= date_trunc('month', NOW()) - make_interval(months => $2)
+        AND income_date <  date_trunc('month', NOW()) - make_interval(months => $2 - 1)`,
+    [userId, monthsAgo]
+  );
+  return Number(rows[0].total);
+}
+
+async function getMonthTopCategories(userId, monthsAgo) {
+  const { rows } = await pool.query(
+    `SELECT category, SUM(amount) AS total
+       FROM expenses
+      WHERE user_id = $1
+        AND deleted_at IS NULL
+        AND expense_date >= date_trunc('month', NOW()) - make_interval(months => $2)
+        AND expense_date <  date_trunc('month', NOW()) - make_interval(months => $2 - 1)
+      GROUP BY category
+      ORDER BY total DESC
+      LIMIT 3`,
+    [userId, monthsAgo]
+  );
+  return rows.map(r => ({ category: r.category || 'Otros', total: Number(r.total) }));
+}
+
+async function getMonthRainfall(userId, monthsAgo) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(millimeters),0) AS total
+       FROM rainfall
+      WHERE user_id = $1
+        AND rainfall_date >= date_trunc('month', NOW()) - make_interval(months => $2)
+        AND rainfall_date <  date_trunc('month', NOW()) - make_interval(months => $2 - 1)`,
+    [userId, monthsAgo]
+  );
+  return Number(rows[0].total);
+}
+
+async function getMonthActivitiesCount(userId, monthsAgo) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*) AS total
+       FROM domain_events de
+       JOIN plots p ON de.plot_id = p.id
+       JOIN fields f ON p.field_id = f.id
+      WHERE (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+        AND de.event_date >= date_trunc('month', NOW()) - make_interval(months => $2)
+        AND de.event_date <  date_trunc('month', NOW()) - make_interval(months => $2 - 1)
+        AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
+    [userId, monthsAgo]
+  );
+  return Number(rows[0].total);
+}
+
+function getMonthNameByOffset(offset) {
+  const d = new Date();
+  d.setMonth(d.getMonth() - offset);
+  return getMonthName(d);
+}
+
 // ---------------------------------------------------------------------------
 // Report builder
 // ---------------------------------------------------------------------------
@@ -202,6 +329,41 @@ async function buildWeeklyReport(userId) {
       }
     }
     msg += `\n\n⚠️ Esta semana el resultado fue negativo (${formatCurrency(result)}).${insightExtra}`;
+  }
+
+  // Previous week comparison
+  const [prevExpense, prevIncome] = await Promise.all([
+    getPreviousWeekExpense(userId),
+    getPreviousWeekIncome(userId),
+  ]);
+
+  if (prevExpense > 0 || prevIncome > 0) {
+    msg += `\n\n📊 *vs semana anterior:*`;
+    if (prevExpense > 0) {
+      const expPct = ((expense - prevExpense) / prevExpense * 100).toFixed(0);
+      const expSign = Number(expPct) >= 0 ? '+' : '';
+      msg += `\n💸 Gastos: ${expSign}${expPct}%`;
+    }
+    if (prevIncome > 0) {
+      const incPct = ((income - prevIncome) / prevIncome * 100).toFixed(0);
+      const incSign = Number(incPct) >= 0 ? '+' : '';
+      msg += `\n💰 Ingresos: ${incSign}${incPct}%`;
+    }
+  }
+
+  // Active campaigns
+  const campaigns = await getActiveCampaigns(userId);
+  if (campaigns.length > 0) {
+    msg += `\n\n🌱 *Campañas activas:*`;
+    for (const c of campaigns) {
+      const daysSince = Math.ceil((Date.now() - new Date(c.start_date).getTime()) / (1000 * 60 * 60 * 24));
+      let campLine = `\n${c.crop} en ${c.plot_name} — ${daysSince} días`;
+      if (c.area_hectares && Number(c.campaign_expenses_ars) > 0) {
+        const costHa = Math.round(Number(c.campaign_expenses_ars) / Number(c.area_hectares));
+        campLine += ` | $${costHa.toLocaleString('es-AR')}/ha`;
+      }
+      msg += campLine;
+    }
   }
 
   return msg;
@@ -585,17 +747,54 @@ async function lowStockAlertTick() {
   }
 }
 
+async function phenologyAlertTick() {
+  try {
+    const { PhenologyService } = await import('../domain/agronomy/phenology.service.js');
+    const svc = new PhenologyService();
+    const alerts = await svc.getPendingAlerts();
+
+    for (const alert of alerts) {
+      // Dedup: 7-day window per plotCrop + stageCode
+      const dedupKey = `phenology_${alert.plotCropId}_${alert.stageCode}`;
+      const dup = await isDuplicate(alert.userId, 'phenology', dedupKey, 168); // 7 days
+      if (dup) {
+        await recordDeduped(alert.userId, 'phenology', dedupKey);
+        continue;
+      }
+
+      const msg = svc.formatAlert(alert);
+      const result = await sendAlertWithRetryMultiChannel(
+        alert.userId,
+        { phone: alert.phone, telegramId: alert.telegramId },
+        msg,
+        'phenology',
+        { dedupKey, payload: { crop: alert.crop, stage: alert.stageCode } }
+      );
+
+      if (result.sent) {
+        console.log(`[phenology] Alert sent to user ${alert.userId}: ${alert.crop} ${alert.stageCode} in ${alert.plotName}`);
+      }
+    }
+  } catch (err) {
+    // Table may not exist yet — skip silently
+    if (err.code === '42P01') return;
+    console.error('[phenology] Error:', err);
+    logError('scheduler', 'PHENOLOGY_ALERT_ERROR', err);
+  }
+}
+
 async function proactiveAlertsTick() {
   try {
     const { hour } = getArgentinaTime();
     // Run at 8 AM Argentina time (configurable via global settings in future)
     if (hour !== 8) return;
 
-    console.log(`[proactive-alerts] Running monitoring + pest escalation + hectares reminder + low stock checks`);
+    console.log(`[proactive-alerts] Running monitoring + pest escalation + hectares reminder + low stock + phenology checks`);
     await monitoringReminderTick();
     await pestEscalationTick();
     await missingHectaresReminderTick();
     await lowStockAlertTick();
+    await phenologyAlertTick();
   } catch (err) {
     console.error("[proactive-alerts] Unexpected error:", err);
     logError('scheduler', 'PROACTIVE_ALERTS_ERROR', err);
@@ -760,6 +959,126 @@ async function flowReminderTick() {
 }
 
 // ---------------------------------------------------------------------------
+// Monthly Summary
+// ---------------------------------------------------------------------------
+
+async function buildMonthlyReport(userId) {
+  const prevMonth = getMonthNameByOffset(1);
+
+  const [expense, prevExpense, income, prevIncome, topCats, rainfall, prevRainfall, actCount] = await Promise.all([
+    getMonthExpenses(userId, 1),
+    getMonthExpenses(userId, 2),
+    getMonthIncomes(userId, 1),
+    getMonthIncomes(userId, 2),
+    getMonthTopCategories(userId, 1),
+    getMonthRainfall(userId, 1),
+    getMonthRainfall(userId, 2),
+    getMonthActivitiesCount(userId, 1),
+  ]);
+
+  const result = income - expense;
+
+  let msg = `📊 *Resumen mensual — ${prevMonth}*\n\n`;
+  msg += `💸 Gastos: ${formatCurrency(expense)}`;
+  if (prevExpense > 0) {
+    const pct = ((expense - prevExpense) / prevExpense * 100).toFixed(0);
+    msg += ` (${Number(pct) >= 0 ? '+' : ''}${pct}% vs mes anterior)`;
+  }
+  msg += `\n💰 Ingresos: ${formatCurrency(income)}`;
+  if (prevIncome > 0) {
+    const pct = ((income - prevIncome) / prevIncome * 100).toFixed(0);
+    msg += ` (${Number(pct) >= 0 ? '+' : ''}${pct}% vs mes anterior)`;
+  }
+  msg += `\n📈 Resultado: ${result >= 0 ? '+' : ''}${formatCurrency(result)}`;
+
+  if (topCats.length > 0) {
+    msg += `\n\n📋 *Top gastos:*`;
+    for (const c of topCats) {
+      msg += `\n• ${c.category}: ${formatCurrency(c.total)}`;
+    }
+  }
+
+  if (rainfall > 0) {
+    msg += `\n\n🌧️ Lluvia: ${rainfall}mm`;
+    if (prevRainfall > 0) {
+      msg += ` (anterior: ${prevRainfall}mm)`;
+    }
+  }
+
+  if (actCount > 0) {
+    msg += `\n🌱 Actividades: ${actCount}`;
+  }
+
+  return msg;
+}
+
+async function getMatchingMonthlyUsers() {
+  const { rows } = await pool.query(
+    `SELECT u.id, u.phone_number, u.telegram_id
+       FROM users u
+       JOIN user_settings s ON s.user_id = u.id
+      WHERE s.monthly_summary = true`
+  );
+  return rows;
+}
+
+async function monthlyTick() {
+  try {
+    const { date, hour } = getArgentinaTime();
+    const monthlyHour = (await getSettingNumber('MONTHLY_SUMMARY_HOUR')) ?? 8;
+
+    // Only run on 1st of month at configured hour
+    if (date.getDate() !== 1 || hour !== monthlyHour) return;
+
+    console.log(`[scheduler] Running monthly summaries at hour ${hour}`);
+    const users = await getMatchingMonthlyUsers();
+    if (users.length === 0) return;
+
+    console.log(`[scheduler] ${users.length} user(s) matched for monthly summary`);
+    for (const user of users) {
+      try {
+        const report = await buildMonthlyReport(user.id);
+        await sendAlertWithRetryMultiChannel(
+          user.id,
+          { phone: user.phone_number, telegramId: user.telegram_id },
+          report,
+          'monthly_summary',
+          { dedupKey: `monthly_${user.id}_${date.getFullYear()}_${date.getMonth()}` }
+        );
+        console.log(`[scheduler] Monthly summary sent to user ${user.id}`);
+      } catch (err) {
+        console.error(`[scheduler] Error sending monthly summary to user ${user.id}:`, err);
+        logError('scheduler', 'MONTHLY_SUMMARY_SEND', err, { userId: user.id });
+      }
+    }
+  } catch (err) {
+    console.error("[scheduler] Monthly tick error:", err);
+    logError('scheduler', 'MONTHLY_TICK_ERROR', err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Expense Templates (recurring expenses)
+// ---------------------------------------------------------------------------
+
+async function expenseTemplateTick() {
+  try {
+    const { hour } = getArgentinaTime();
+    if (hour !== 7) return;
+
+    const { ExpenseTemplateService } = await import('../domain/financial/expense-template.service.js');
+    const svc = new ExpenseTemplateService();
+    const processed = await svc.processTemplates();
+    if (processed > 0) {
+      console.log(`[expense-templates] Processed ${processed} recurring expense(s)`);
+    }
+  } catch (err) {
+    console.error('[expense-templates] Error:', err);
+    logError('scheduler', 'EXPENSE_TEMPLATE_ERROR', err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -767,6 +1086,11 @@ export function startScheduler() {
   // Weekly summary — every hour at :00
   cron.schedule("0 * * * *", () => {
     tick();
+  });
+
+  // Monthly summary — every hour at :00 (checks date.getDate() === 1 && hour internally)
+  cron.schedule("0 * * * *", () => {
+    monthlyTick();
   });
 
   // Daily weather alerts — every minute (checks global_settings.daily_weather_hour HH:MM match)
@@ -789,5 +1113,10 @@ export function startScheduler() {
     flowReminderTick();
   });
 
-  console.log("[scheduler] Cron jobs started — weekly summary + daily weather alerts + proactive alerts (incl. low stock) + daily cleanup + flow reminders");
+  // Expense templates — every hour at :00 (checks hour === 7 internally)
+  cron.schedule("0 * * * *", () => {
+    expenseTemplateTick();
+  });
+
+  console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily weather alerts + proactive alerts (incl. low stock, phenology) + daily cleanup + flow reminders + expense templates");
 }

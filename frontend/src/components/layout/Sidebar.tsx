@@ -1,3 +1,5 @@
+import { usePushNotifications } from '../../hooks/usePushNotifications';
+
 export type DashboardView = 'overview' | 'expenses' | 'incomes' | 'activities' | 'observations' | 'stock' | 'livestock';
 
 interface NavItem {
@@ -27,6 +29,7 @@ export default function Sidebar({ active, onChange, features }: SidebarProps) {
   const visibleItems = NAV_ITEMS.filter(
     item => !item.feature || features.includes(item.feature)
   );
+  const { subscribed, loading, subscribe, unsubscribe } = usePushNotifications();
 
   return (
     <aside className="hidden md:flex flex-col w-56 bg-white border-r border-gray-200 min-h-[calc(100vh-3.5rem)]">
@@ -46,6 +49,17 @@ export default function Sidebar({ active, onChange, features }: SidebarProps) {
           </button>
         ))}
       </nav>
+      <div className="mt-auto p-3 border-t border-gray-200">
+        <button
+          onClick={subscribed ? unsubscribe : subscribe}
+          disabled={loading}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 w-full disabled:opacity-50"
+          title={subscribed ? 'Desactivar notificaciones' : 'Activar notificaciones'}
+        >
+          <span>{subscribed ? '\uD83D\uDD14' : '\uD83D\uDD15'}</span>
+          <span>{subscribed ? 'Notificaciones activas' : 'Activar notificaciones'}</span>
+        </button>
+      </div>
     </aside>
   );
 }

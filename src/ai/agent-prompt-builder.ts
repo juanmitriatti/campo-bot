@@ -68,6 +68,7 @@ ${lines.join('\n')}
 
   private disambiguationRules(dictionary?: ActivityDictionaryEntry[]): string {
     return `DESAMBIGUACIÓN:
+- GASTOS RECURRENTES: "gasto fijo/recurrente/mensual/semanal"→create_expense_template. "mis gastos fijos"/"gastos recurrentes"→list_expense_templates. "borrar/cancelar gasto fijo"→delete_expense_template. NUNCA confundir con log_expense (que es un registro único)
 - gasté/compré/pagué+monto→log_expense. vendí/cobré+producto→log_income
 - TIPOS DE GASTO: Si mencionan producto concreto (Roundup,urea,semilla X,gasoil,glifosato)→expense_type=insumo + capturar product/quantity/unit. Si mencionan servicio (labré,pagué la siembra,servicio de fumigación,pulverización terrestre)→expense_type=varios, category=labranzas. Default=varios
 - Categorías insumo: agroquimicos,fertilizantes,semillas,combustible → siempre expense_type=insumo
@@ -112,7 +113,9 @@ ${this.buildActivityLines(dictionary)}
 - Transferencias lote↔corral: "mové 10 del lote A1 al corral 1"→transfer_livestock(source_plot=A1, dest_corral=1). "del corral 1 al lote A1"→transfer_livestock(source_corral=1, dest_plot=A1)
 - "feedlot" ≠ lote, "corral" ≠ lote chico. Entidades distintas del modelo intensivo
 - Hacienda en feedlot: "agregué 20 novillos al corral 1"→add_livestock(corral=1). "vendí 5 del corral Norte"→remove_livestock(corral=Norte)
+- PDF/COMPARTIR REPORTE: "mandame el PDF"/"exportar reporte"/"compartir reporte"/"PDF de la campaña"/"descargar reporte"/"PDF financiero"→share_report. report_type=campaign para campañas, report_type=financial para financiero
 - CAMPAÑAS: "cómo va la campaña/soja/trigo"/"cuánto gasté en la soja"/"rendimiento del maíz"/"rentabilidad"/"resultado de la soja"→campaign_stats. "cerrar campaña"/"terminó la campaña"→close_campaign. "cosechamos"→harvest_crop (NO cierra la campaña, solo registra hito)
+- COMPARAR CAMPAÑAS: "comparar soja 25/26 vs 24/25"/"comparar campañas"/"cómo salió vs la anterior"/"comparar con la campaña pasada"→compare_campaigns. Si solo dice "comparar" sin cultivo, compara las 2 últimas del mismo lote
 - harvest_crop YA NO cierra la campaña. Para cerrar: close_campaign
 - CARGAS COSECHA: "se cargó/cargaron [lote] fulano X kg, mengano Y kg" → harvest_crop con loads[]. Números argentinos: "31.320 kg" = 31320 (punto = miles). Si después dicen destino ("a Cargill"/"acopio"/"al silo") → harvest_crop con loads[]+destination/destinatario
 - CONSULTA CARGAS: "cargas del lote X"/"cuánto llevó fulano"/"camiones a Cargill"/"detalle cosecha" → query_harvest_loads. NUNCA query_plot_history para cargas de camiones

@@ -1086,6 +1086,96 @@ export class FinancialHandler {
         return { messages: [`\u270f\ufe0f Gasto actualizado: ${edited.category}\n$${edited.oldAmount.toLocaleString('es-AR')} \u2192 $${(cmd.amount as number).toLocaleString('es-AR')}`] };
       }
 
+      // --- Expense Templates (recurring) ---
+      case 'create_expense_template': {
+        const templateName = cmd.name as string | undefined;
+        const templateAmount = cmd.amount as number | undefined;
+        if (!templateName || !templateAmount) {
+          return { messages: ['Necesito al menos el nombre y monto del gasto recurrente.'] };
+        }
+        const recurrenceType = (cmd.recurrenceType as string) || 'monthly';
+        let recurrenceDay = cmd.recurrenceDay as number | undefined;
+        if (recurrenceDay == null) {
+          recurrenceDay = recurrenceType === 'monthly' ? 1 : 1; // 1st of month or Monday
+        }
+
+        let fieldId: number | null = null;
+        let plotId: number | null = null;
+        const fieldName = cmd.fieldName as string | undefined;
+        const plotName = cmd.plotName as string | undefined;
+        if (fieldName || plotName) {
+          const resolution = await this.service.resolveField(userId, fieldName, plotName);
+          fieldId = resolution.fieldId ?? null;
+          plotId = resolution.plotId ?? null;
+        }
+
+        const { ExpenseTemplateService } = await import('./expense-template.service.js');
+        const templateService = new ExpenseTemplateService();
+        const template = await templateService.create(userId, {
+          name: templateName,
+          amount: templateAmount,
+          currency: (cmd.currency as string) || 'ARS',
+          category: cmd.category as string | undefined,
+          description: cmd.description as string | undefined,
+          fieldId: fieldId ?? undefined,
+          plotId: plotId ?? undefined,
+          recurrenceType,
+          recurrenceDay,
+        });
+
+        const freqLabel = recurrenceType === 'weekly' ? 'semanal' : recurrenceType === 'biweekly' ? 'quincenal' : 'mensual';
+        const currLabel = template.currency === 'USD' ? ' USD' : '';
+        let msg = `\u2705 Gasto recurrente creado\n\n`;
+        msg += `\ud83d\udcdd *${template.name}*\n`;
+        msg += `\ud83d\udcb0 $${template.amount.toLocaleString('es-AR')}${currLabel}\n`;
+        msg += `\ud83d\udd04 Frecuencia: ${freqLabel}\n`;
+        msg += `\ud83d\udcc5 Pr\u00f3ximo: ${new Date(template.next_run_date + 'T12:00:00').toLocaleDateString('es-AR')}`;
+        if (template.field_name) msg += `\n\ud83d\udccd ${template.field_name}`;
+        if (template.plot_name) msg += ` - ${template.plot_name}`;
+        return { messages: [msg] };
+      }
+
+      case 'list_expense_templates': {
+        const { ExpenseTemplateService } = await import('./expense-template.service.js');
+        const templateService = new ExpenseTemplateService();
+        const templates = await templateService.list(userId);
+
+        if (templates.length === 0) {
+          return { messages: ['No ten\u00e9s gastos recurrentes configurados.\n\nPod\u00e9s crear uno con:\n_"gasto fijo mensual 50k combustible"_'] };
+        }
+
+        let msg = `\ud83d\udd04 *Gastos recurrentes activos*\n`;
+        for (const t of templates) {
+          const freqLabel = t.recurrence_type === 'weekly' ? 'semanal' : t.recurrence_type === 'biweekly' ? 'quincenal' : 'mensual';
+          const currLabel = t.currency === 'USD' ? ' USD' : '';
+          msg += `\n\u2022 *${t.name}* — $${t.amount.toLocaleString('es-AR')}${currLabel} (${freqLabel})`;
+          const nextDate = new Date(t.next_run_date + 'T12:00:00').toLocaleDateString('es-AR');
+          msg += `\n  Pr\u00f3ximo: ${nextDate}`;
+          if (t.field_name) msg += ` | ${t.field_name}`;
+          if (t.plot_name) msg += ` - ${t.plot_name}`;
+        }
+        return { messages: [msg] };
+      }
+
+      case 'delete_expense_template': {
+        const { ExpenseTemplateService } = await import('./expense-template.service.js');
+        const templateService = new ExpenseTemplateService();
+        let deleted = false;
+
+        if (cmd.templateId) {
+          deleted = await templateService.delete(userId, cmd.templateId as number);
+        } else if (cmd.name) {
+          deleted = await templateService.deleteByName(userId, cmd.name as string);
+        } else {
+          return { messages: ['Necesito el nombre del gasto recurrente a eliminar.\n\nEscrib\u00ed _"mis gastos fijos"_ para ver la lista.'] };
+        }
+
+        if (!deleted) {
+          return { messages: ['No encontr\u00e9 un gasto recurrente activo con ese nombre.'] };
+        }
+        return { messages: ['\ud83d\uddd1\ufe0f Gasto recurrente eliminado correctamente.'] };
+      }
+
       // --- Export ---
       case 'export_csv': {
         const rows = await this.service.getMonthlyExpenses(userId);

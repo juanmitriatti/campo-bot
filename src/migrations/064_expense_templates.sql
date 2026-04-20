@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS expense_templates (
+  id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES users(id) NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  amount NUMERIC(12,2) NOT NULL,
+  currency VARCHAR(3) DEFAULT 'ARS',
+  category VARCHAR(50),
+  description TEXT,
+  field_id INT REFERENCES fields(id),
+  plot_id INT REFERENCES plots(id),
+  expense_type VARCHAR(20) DEFAULT 'varios',
+  product VARCHAR(200),
+  quantity NUMERIC(12,2),
+  unit VARCHAR(20),
+  recurrence_type VARCHAR(20) NOT NULL CHECK (recurrence_type IN ('weekly','biweekly','monthly')),
+  recurrence_day INT NOT NULL,
+  active BOOLEAN DEFAULT true,
+  next_run_date DATE NOT NULL,
+  last_run_date DATE,
+  created_at TIMESTAMP DEFAULT NOW()
+);

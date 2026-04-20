@@ -100,7 +100,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 
 ### AI Pipeline
 - `src/ai/agent.service.ts` — Claude tool_use agent (primary)
-- `src/ai/tool-definitions.ts` — 68 tool definitions with typed schemas
+- `src/ai/tool-definitions.ts` — 74 tool definitions with typed schemas
 - `src/ai/agent-prompt-builder.ts` — Compact system prompt with disambiguation rules
 - `src/ai/agent-response-mapper.ts` — AgentResult → ParseResult[] conversion
 - `src/ai/intent-extractor.ts` — JSON extraction (legacy fallback)

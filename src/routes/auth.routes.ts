@@ -849,6 +849,163 @@ router.get('/documents/:id/file', requireAuth, async (req: Request, res: Respons
   }
 });
 
+// --- Analytics (charts) ---
+
+router.get('/analytics', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.auth!.userId;
+
+    // Monthly trend - last 6 months
+    const { rows: monthlyTrend } = await pool.query(
+      `WITH months AS (
+         SELECT generate_series(
+           date_trunc('month', NOW()) - interval '5 months',
+           date_trunc('month', NOW()),
+           '1 month'
+         )::date AS month_start
+       )
+       SELECT
+         to_char(m.month_start, 'YYYY-MM') AS month,
+         to_char(m.month_start, 'Mon') AS label,
+         COALESCE((
+           SELECT SUM(amount) FROM expenses
+           WHERE user_id = $1 AND deleted_at IS NULL AND currency = 'ARS'
+             AND expense_date >= m.month_start
+             AND expense_date < m.month_start + interval '1 month'
+         ), 0)::numeric AS expenses,
+         COALESCE((
+           SELECT SUM(amount) FROM incomes
+           WHERE user_id = $1 AND deleted_at IS NULL AND currency = 'ARS'
+             AND income_date >= m.month_start
+             AND income_date < m.month_start + interval '1 month'
+         ), 0)::numeric AS incomes
+       FROM months m
+       ORDER BY m.month_start`,
+      [userId]
+    );
+
+    // Expense categories - current month
+    const { rows: expenseCategories } = await pool.query(
+      `SELECT category, SUM(amount)::numeric AS total
+         FROM expenses
+        WHERE user_id = $1 AND deleted_at IS NULL AND currency = 'ARS'
+          AND expense_date >= date_trunc('month', NOW())
+        GROUP BY category
+        ORDER BY total DESC`,
+      [userId]
+    );
+
+    res.json({
+      monthlyTrend: monthlyTrend.map(r => ({
+        month: r.month,
+        label: r.label,
+        expenses: Number(r.expenses),
+        incomes: Number(r.incomes),
+      })),
+      expenseCategories: expenseCategories.map(r => ({
+        category: r.category || 'Otros',
+        total: Number(r.total),
+      })),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Map data ---
+
+router.get('/map-data', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.auth!.userId;
+
+    const { rows: fields } = await pool.query(
+      `SELECT f.id, f.name, f.lat, f.lng, f.polygon, f.city
+         FROM fields f
+        WHERE (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+          AND f.deleted_at IS NULL
+        ORDER BY f.name`,
+      [userId]
+    );
+
+    const { rows: plots } = await pool.query(
+      `SELECT p.id, p.name, p.field_id, p.area_hectares,
+              pc.crop AS active_crop, pc.start_date AS crop_start_date,
+              CASE
+                WHEN pc.id IS NOT NULL AND pc.harvested_at IS NULL THEN 'active'
+                WHEN pc.id IS NOT NULL AND pc.harvested_at IS NOT NULL AND pc.end_date IS NULL THEN 'harvested'
+                ELSE 'idle'
+              END AS crop_status
+         FROM plots p
+         LEFT JOIN LATERAL (
+           SELECT id, crop, start_date, harvested_at, end_date
+             FROM plot_crops
+            WHERE plot_id = p.id AND end_date IS NULL
+            ORDER BY start_date DESC
+            LIMIT 1
+         ) pc ON true
+        WHERE p.field_id IN (SELECT id FROM fields WHERE (user_id = $1 OR id IN (SELECT field_id FROM field_members WHERE user_id = $1)) AND deleted_at IS NULL)
+          AND p.deleted_at IS NULL
+        ORDER BY p.name`,
+      [userId]
+    );
+
+    res.json({
+      fields: fields.map(f => ({
+        id: f.id,
+        name: f.name,
+        lat: f.lat ? Number(f.lat) : null,
+        lng: f.lng ? Number(f.lng) : null,
+        polygon: f.polygon,
+        city: f.city,
+      })),
+      plots: plots.map(p => ({
+        id: p.id,
+        name: p.name,
+        fieldId: p.field_id,
+        areaHectares: p.area_hectares ? Number(p.area_hectares) : null,
+        activeCrop: p.active_crop,
+        cropStatus: p.crop_status,
+      })),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Push notification routes ---
+
+router.get('/push/vapid-key', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const { PushNotificationService } = await import('../services/push-notification.service.js');
+    const svc = new PushNotificationService();
+    res.json({ publicKey: svc.getVapidPublicKey() });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.post('/push/subscribe', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { PushNotificationService } = await import('../services/push-notification.service.js');
+    const svc = new PushNotificationService();
+    await svc.subscribe(req.auth!.userId, req.body);
+    res.json({ ok: true });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.delete('/push/unsubscribe', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { PushNotificationService } = await import('../services/push-notification.service.js');
+    const svc = new PushNotificationService();
+    await svc.unsubscribe(req.auth!.userId, req.body.endpoint);
+    res.json({ ok: true });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
 function handleError(err: unknown, res: Response): void {
   if (err instanceof AuthError || err instanceof ObservationError) {
     res.status(err.status).json({ error: err.message });

@@ -62,6 +62,49 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
 
   // ========================
+  // EXPENSE TEMPLATES (recurring)
+  // ========================
+  {
+    name: 'create_expense_template',
+    description: 'Crear un gasto recurrente/fijo que se registra automáticamente. "gasto fijo mensual 50k combustible", "gasto recurrente semanal 10k jornales", "agendar gasto mensual de arrendamiento", "cada mes gastar 100k en combustible".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nombre descriptivo del gasto recurrente.' },
+        amount: { type: 'number', description: 'Monto del gasto.' },
+        currency: { type: 'string', enum: ['ARS', 'USD'], description: 'Moneda. Default ARS.' },
+        category: { type: 'string', description: 'Categoría del gasto.' },
+        recurrence_type: { type: 'string', enum: ['weekly', 'biweekly', 'monthly'], description: 'Frecuencia. Default monthly.' },
+        recurrence_day: { type: 'number', description: 'Día: para monthly=día del mes (1-28), para weekly/biweekly=día semana (0=dom..6=sáb). Default: 1 para monthly, lunes (1) para weekly.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+      },
+      required: ['name', 'amount'],
+    },
+  },
+  {
+    name: 'list_expense_templates',
+    description: 'Ver gastos recurrentes/fijos configurados. "mis gastos fijos", "gastos recurrentes", "qué gastos automáticos tengo".',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'delete_expense_template',
+    description: 'Eliminar/cancelar un gasto recurrente/fijo. "borrar gasto fijo combustible", "cancelar gasto recurrente de arrendamiento", "eliminar gasto automático".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nombre del gasto recurrente a eliminar.' },
+        template_id: { type: 'number', description: 'ID del template (si se conoce).' },
+      },
+      required: [],
+    },
+  },
+
+  // ========================
   // ACTIVITIES
   // ========================
   {
@@ -257,6 +300,22 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
 
   {
+    name: 'compare_campaigns',
+    description: 'Comparar dos campañas del mismo lote: rinde, gastos, ingresos, resultado/ha. "comparar soja 25/26 vs 24/25", "comparar campañas", "cómo salió vs la anterior", "comparar la soja con la campaña pasada".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        plot: PLOT_PROP,
+        field: FIELD_PROP,
+        crop: { type: 'string', description: 'Cultivo (soja, maíz, trigo, etc.).' },
+        season_year_1: { type: 'string', description: 'Campaña más reciente ej "2025/26". Si no se indica, usa las 2 últimas.' },
+        season_year_2: { type: 'string', description: 'Campaña anterior ej "2024/25".' },
+      },
+      required: [],
+    },
+  },
+
+  {
     name: 'activity_stats',
     description: 'Resumen/estadísticas de actividades: cuántas fumigaciones, siembras, cosechas, etc. por período. "cuántas fumigaciones hice", "resumen de actividades del mes", "actividades este año", "cuántas veces fumigué", "estadísticas de actividades", "actividades del grupo Pérez".',
     input_schema: {
@@ -417,6 +476,21 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD, si mencionado.' },
       },
       required: [],
+    },
+  },
+  {
+    name: 'share_report',
+    description: 'Generar y enviar un reporte en PDF. "mandame el PDF de la campaña", "exportar reporte financiero", "PDF del reporte", "compartir reporte de la soja", "enviar reporte en PDF", "descargar reporte", "PDF campaña", "PDF financiero".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        report_type: { type: 'string', enum: ['campaign', 'financial'], description: 'Tipo de reporte.' },
+        plot: PLOT_PROP,
+        field: FIELD_PROP,
+        crop: { type: 'string', description: 'Cultivo (solo para campaign).' },
+        period: { type: 'string', enum: ['week', 'month', 'year'], description: 'Período (solo para financial). Default month.' },
+      },
+      required: ['report_type'],
     },
   },
   {

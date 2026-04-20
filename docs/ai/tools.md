@@ -1,15 +1,15 @@
 # Tool Selection Reference
 
-> 69 Anthropic tool definitions in `src/ai/tool-definitions.ts`. Each has typed `input_schema` with enum validation.
+> 74 Anthropic tool definitions in `src/ai/tool-definitions.ts`. Each has typed `input_schema` with enum validation.
 
 ## Tool Groups
 
 | Group | Count | Tools |
 |-------|-------|-------|
-| Financial | 2 | `log_expense`, `log_income` |
-| Activities | 14 | `sow_crop`, `harvest_crop`, `query_harvest_loads`, `delete_harvest_loads`, `log_spraying`, `log_fertilization`, `log_activity`, `active_crop`, `close_campaign`, `campaign_stats`, `activity_stats`, `log_tacto`, `tacto_summary`, `edit_last_activity` |
+| Financial | 5 | `log_expense`, `log_income`, `create_expense_template`, `list_expense_templates`, `delete_expense_template` |
+| Activities | 15 | `sow_crop`, `harvest_crop`, `query_harvest_loads`, `delete_harvest_loads`, `log_spraying`, `log_fertilization`, `log_activity`, `active_crop`, `close_campaign`, `campaign_stats`, `compare_campaigns`, `activity_stats`, `log_tacto`, `tacto_summary`, `edit_last_activity` |
 | Observations | 2 | `log_observation`, `query_plot_history` |
-| Reports | 5 | `financial_report`, `generate_agro_report`, `show_reports_menu`, `crop_report`, `campaign_report` |
+| Reports | 6 | `financial_report`, `generate_agro_report`, `share_report`, `show_reports_menu`, `crop_report`, `campaign_report` |
 | Field/Plot Mgmt | 11 | `create_field`, `list_fields`, `delete_field`, `rename_field`, `add_plot`, `add_plots_batch`, `list_plots`, `set_plot_area`, `delete_plot`, `rename_plot`, `set_field_city` |
 | Sharing | 4 | `share_field`, `accept_invite`, `list_field_members`, `remove_field_member` |
 | Stock | 8 | `create_warehouse`, `list_warehouses`, `add_stock`, `remove_stock`, `adjust_stock`, `check_stock`, `stock_history`, `set_min_stock` |
@@ -39,6 +39,19 @@
 - IF "gastos/ingresos + en/del + lote X" (no amount) → `financial_report(plot=X)` (NEVER `log_observation`)
 - IF "gastos + campo X" → `financial_report(field=X)`
 
+### Recurring Expenses
+- IF "gasto fijo/recurrente/mensual/semanal" → `create_expense_template` (NEVER `log_expense`)
+- IF "mis gastos fijos"/"gastos recurrentes" → `list_expense_templates`
+- IF "borrar/cancelar gasto fijo" → `delete_expense_template`
+
+### Campaign Comparison
+- IF "comparar soja 25/26 vs 24/25"/"comparar campañas"/"cómo salió vs la anterior" → `compare_campaigns`
+- IF only "comparar" without crop → compares last 2 campaigns of same plot
+
+### PDF / Share Reports
+- IF "mandame el PDF"/"exportar reporte"/"compartir reporte"/"PDF de la campaña" → `share_report`
+- `report_type=campaign` for campaign reports, `report_type=financial` for financial
+
 ### Livestock Disambiguation
 - IF "N vacas con N terneros" → 2x `add_livestock` (NEVER `record_livestock_birth`)
 - IF explicit birth verb (nacieron/parieron/nació) → `record_livestock_birth`
@@ -60,7 +73,7 @@
 - `updateYieldFromLoads()` auto-sums all loads into `plot_crops.yield_kg`
 - `query_harvest_loads` queries stored loads with filters (plot, field, date, driver, destinatario)
 - `delete_harvest_loads` removes loads by criteria (plot, date, driver_names[], only_without_destination)
-- `campaign_stats` includes loads detail in the yield section
+- `campaign_stats` includes loads detail in the yield section + cost/tn and income/tn metrics
 
 ## Common Tool Params
 

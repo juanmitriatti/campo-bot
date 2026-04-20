@@ -53,6 +53,9 @@ export interface CampaignStats {
     netARS: number;
     costPerHaARS: number | null;
     incomePerHaARS: number | null;
+    costPerTnARS: number | null;
+    costPerTnUSD: number | null;
+    incomePerTnARS: number | null;
   };
 
   observations: {
@@ -61,6 +64,26 @@ export interface CampaignStats {
   };
 
   areaHectares: number | null;
+}
+
+export interface CampaignComparison {
+  crop: string;
+  plot: string;
+  field: string;
+  season1: { label: string; stats: CampaignStats };
+  season2: { label: string; stats: CampaignStats };
+  deltas: {
+    yieldKgPerHaPct: number | null;
+    expensesPct: number | null;
+    incomesPct: number | null;
+    netPerHaPct: number | null;
+    costPerHaPct: number | null;
+  };
+}
+
+function pctDelta(a: number, b: number): number | null {
+  if (b === 0) return a > 0 ? 100 : null;
+  return Math.round(((a - b) / Math.abs(b)) * 100);
 }
 
 export class CampaignStatsService {
@@ -186,6 +209,10 @@ export class CampaignStatsService {
     const netARS = incTotalARS - expTotalARS;
     const costPerHa = areaHa ? Math.round(expTotalARS / areaHa) : null;
     const incomePerHa = areaHa ? Math.round(incTotalARS / areaHa) : null;
+    const yieldTn = yieldKg ? yieldKg / 1000 : null;
+    const costPerTnARS = yieldTn ? Math.round(expTotalARS / yieldTn) : null;
+    const costPerTnUSD = yieldTn && expTotalUSD ? Math.round(expTotalUSD / yieldTn) : null;
+    const incomePerTnARS = yieldTn ? Math.round(incTotalARS / yieldTn) : null;
 
     // Observations
     const obsList = observations.map((o: any) => ({
@@ -207,9 +234,96 @@ export class CampaignStatsService {
       expenses: { totalARS: expTotalARS, totalUSD: expTotalUSD, byCategory: expByCategory, count: expenses.length },
       incomes: { totalARS: incTotalARS, totalUSD: incTotalUSD, count: incomes.length },
       yield: { kg: yieldKg, kgPerHa: yieldKgPerHa, notes: campaign.yield_notes || null, loads: loadsList },
-      profitability: { netARS, costPerHaARS: costPerHa, incomePerHaARS: incomePerHa },
+      profitability: { netARS, costPerHaARS: costPerHa, incomePerHaARS: incomePerHa, costPerTnARS, costPerTnUSD, incomePerTnARS },
       observations: { count: obsList.length, list: obsList },
       areaHectares: areaHa,
+    };
+  }
+
+  async compareCampaigns(
+    userId: UserId,
+    plotName?: string | null,
+    fieldName?: string | null,
+    crop?: string | null,
+    seasonYear1?: string | null,
+    seasonYear2?: string | null,
+  ): Promise<CampaignComparison | string> {
+    const resolved = await this.plotDiscovery.resolveFromNames(userId, fieldName ?? null, plotName ?? null);
+    if (!resolved.plotId) {
+      return 'No pude identificar el lote. Indicá el lote para comparar campañas.';
+    }
+
+    const history = await this.cropService.getHistory(resolved.plotId);
+    if (history.length < 2) {
+      return `El lote *${resolved.plotName}* no tiene suficientes campañas para comparar.`;
+    }
+
+    // Find the two campaigns to compare
+    let campaign1: PlotCropRow | null = null;
+    let campaign2: PlotCropRow | null = null;
+
+    if (seasonYear1 && seasonYear2) {
+      for (const row of history) {
+        if (crop && row.crop.toLowerCase() !== crop.toLowerCase()) continue;
+        const label = formatSeasonLabel(row.season_year, row.season_type);
+        if (label === seasonYear1 || String(row.season_year) === seasonYear1) campaign1 = row;
+        if (label === seasonYear2 || String(row.season_year) === seasonYear2) campaign2 = row;
+      }
+    } else {
+      // Auto: find most recent two campaigns of the same crop
+      const targetCrop = crop?.toLowerCase() ?? null;
+      const matches: PlotCropRow[] = [];
+      for (const row of history) {
+        if (targetCrop && row.crop.toLowerCase() !== targetCrop) continue;
+        matches.push(row);
+        if (matches.length === 2) break;
+      }
+      if (matches.length === 2) {
+        campaign1 = matches[0];
+        campaign2 = matches[1];
+      } else if (!targetCrop && history.length >= 2) {
+        // Fallback: last two regardless of crop
+        campaign1 = history[0];
+        campaign2 = history[1];
+      }
+    }
+
+    if (!campaign1 || !campaign2) {
+      return `No encontré dos campañas${crop ? ` de ${crop}` : ''} para comparar en *${resolved.plotName}*.`;
+    }
+
+    const label1 = formatSeasonLabel(campaign1.season_year, campaign1.season_type);
+    const label2 = formatSeasonLabel(campaign2.season_year, campaign2.season_type);
+
+    const [stats1, stats2] = await Promise.all([
+      this.getCampaignStats(userId, plotName, fieldName, campaign1.crop, String(campaign1.season_year)),
+      this.getCampaignStats(userId, plotName, fieldName, campaign2.crop, String(campaign2.season_year)),
+    ]);
+
+    if (typeof stats1 === 'string') return stats1;
+    if (typeof stats2 === 'string') return stats2;
+
+    const deltas = {
+      yieldKgPerHaPct: stats1.yield.kgPerHa != null && stats2.yield.kgPerHa != null
+        ? pctDelta(stats1.yield.kgPerHa, stats2.yield.kgPerHa) : null,
+      expensesPct: pctDelta(stats1.expenses.totalARS, stats2.expenses.totalARS),
+      incomesPct: pctDelta(stats1.incomes.totalARS, stats2.incomes.totalARS),
+      netPerHaPct: stats1.profitability.incomePerHaARS != null && stats2.profitability.incomePerHaARS != null
+        ? pctDelta(
+            stats1.profitability.incomePerHaARS - (stats1.profitability.costPerHaARS ?? 0),
+            stats2.profitability.incomePerHaARS - (stats2.profitability.costPerHaARS ?? 0),
+          ) : null,
+      costPerHaPct: stats1.profitability.costPerHaARS != null && stats2.profitability.costPerHaARS != null
+        ? pctDelta(stats1.profitability.costPerHaARS, stats2.profitability.costPerHaARS) : null,
+    };
+
+    return {
+      crop: campaign1.crop,
+      plot: resolved.plotName || '',
+      field: resolved.fieldName || '',
+      season1: { label: label1, stats: stats1 },
+      season2: { label: label2, stats: stats2 },
+      deltas,
     };
   }
 }

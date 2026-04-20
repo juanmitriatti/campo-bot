@@ -140,6 +140,15 @@ export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId
     return { sent: false, alertId };
   }
 
+  // Push notification (best effort, no retry needed)
+  try {
+    const { PushNotificationService } = await import('./push-notification.service.js');
+    const pushSvc = new PushNotificationService();
+    await pushSvc.sendToUser(userId, 'Campo Bot', message.replace(/\*/g, '').replace(/_/g, '').slice(0, 200));
+  } catch (pushErr) {
+    // Silently fail — push is supplementary
+  }
+
   if (sent) {
     await pool.query(
       `UPDATE alert_history SET status = 'sent', delivered_at = NOW() WHERE id = $1`,

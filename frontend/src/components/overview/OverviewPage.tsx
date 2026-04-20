@@ -1,9 +1,13 @@
 import { useDashboardData } from '../../hooks/useDashboardData';
+import { useAnalyticsData } from '../../hooks/useAnalyticsData';
 import KpiCard from './KpiCard';
 import SparklineBar from './SparklineBar';
+import MonthlyTrendChart from './MonthlyTrendChart';
+import ExpensePieChart from './ExpensePieChart';
 import QuickActions from './QuickActions';
 import RecentFeed from './RecentFeed';
 import AlertsBanner from './AlertsBanner';
+import FieldMap from './FieldMap';
 
 function formatArs(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -18,6 +22,7 @@ function calcDelta(current: number, previous: number): number | null {
 
 export default function OverviewPage() {
   const { data, loading, error, refresh } = useDashboardData();
+  const analytics = useAnalyticsData();
 
   if (loading) {
     return (
@@ -87,6 +92,17 @@ export default function OverviewPage() {
           icon="🌱"
         />
       </div>
+
+      {/* Charts */}
+      {analytics.data && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <MonthlyTrendChart data={analytics.data.monthlyTrend} />
+          <ExpensePieChart data={analytics.data.expenseCategories} />
+        </div>
+      )}
+
+      {/* Map */}
+      <FieldMap />
 
       {/* Quick Actions */}
       <div>
