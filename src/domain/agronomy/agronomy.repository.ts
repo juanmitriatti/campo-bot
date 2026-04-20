@@ -33,6 +33,7 @@ import {
   updateYieldFromLoads as _updateYieldFromLoads,
   queryHarvestLoads as _queryHarvestLoads,
   getHarvestLoadsByCampaign as _getHarvestLoadsByCampaign,
+  deleteHarvestLoads as _deleteHarvestLoads,
 } from '../../services/expenses.js';
 import { PlotRepository } from '../plots/plot.repository.js';
 import type { UserId, FieldRow, PlotRow, PlotCropRow, DomainEventRow, PlotHistoryRow } from '../../types/index.js';
@@ -373,5 +374,13 @@ export class AgronomyRepository {
     event_date: Date;
   }>> {
     return _getHarvestLoadsByCampaign(plotCropId);
+  }
+
+  async deleteHarvestLoads(userId: number, plotId: number, opts?: {
+    eventDate?: string;
+    driverNames?: string[];
+    onlyWithoutDestination?: boolean;
+  }) {
+    return _deleteHarvestLoads(userId, plotId, opts);
   }
 }

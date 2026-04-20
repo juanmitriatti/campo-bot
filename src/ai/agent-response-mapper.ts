@@ -362,6 +362,8 @@ export class AgentResponseMapper {
     if (input.loads != null) cmd.loads = input.loads;
     if (input.driver_name != null) cmd.driverName = input.driver_name;
     if (input.destinatario != null) cmd.destinatario = input.destinatario;
+    if (input.driver_names != null) cmd.driverNames = input.driver_names;
+    if (input.only_without_destination != null) cmd.onlyWithoutDestination = input.only_without_destination;
 
     return {
       intent: { type: 'command', data: cmd },

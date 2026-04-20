@@ -1209,6 +1209,48 @@ export class AgronomyHandler {
         return { messages: [lines.join('\n')] };
       }
 
+      case 'delete_harvest_loads': {
+        if (!cmd.plotName) {
+          return { messages: ['Necesito saber de qué lote eliminar las cargas.'] };
+        }
+
+        const delResolved = await this.plotDiscovery.resolveFromNames(
+          userId,
+          cmd.fieldName as string | null,
+          cmd.plotName as string | null,
+        );
+        if (!delResolved.plotId) {
+          return { messages: [`No encontré el lote *${cmd.plotName}*.`] };
+        }
+
+        const delOpts: { eventDate?: string; driverNames?: string[]; onlyWithoutDestination?: boolean } = {};
+        if (cmd.eventDate) delOpts.eventDate = cmd.eventDate as string;
+        if (cmd.driverNames && Array.isArray(cmd.driverNames)) delOpts.driverNames = cmd.driverNames as string[];
+        if (cmd.onlyWithoutDestination) delOpts.onlyWithoutDestination = true;
+
+        const deleted = await this.repo.deleteHarvestLoads(userId, delResolved.plotId, delOpts);
+
+        if (deleted.length === 0) {
+          return { messages: ['No se encontraron cargas que coincidan con los criterios para eliminar.'] };
+        }
+
+        const delTotal = deleted.reduce((sum, r) => sum + Number(r.weight_kg), 0);
+        const delLines: string[] = [];
+        const delLabel = delResolved.fieldName
+          ? `${delResolved.fieldName} > ${delResolved.plotName}`
+          : delResolved.plotName;
+        delLines.push(`🗑️ *${deleted.length} carga${deleted.length > 1 ? 's' : ''} eliminada${deleted.length > 1 ? 's' : ''} de ${delLabel}:*`);
+        for (const r of deleted) {
+          let line = `• ${r.driver_name} — ${Number(r.weight_kg).toLocaleString('es-AR')} kg`;
+          if (r.destinatario) line += ` → ${r.destinatario}`;
+          delLines.push(line);
+        }
+        delLines.push('');
+        delLines.push(`📊 *Total eliminado: ${delTotal.toLocaleString('es-AR')} kg*`);
+
+        return { messages: [delLines.join('\n')] };
+      }
+
       // --- Agronomic activities ---
 
       case 'log_spraying':

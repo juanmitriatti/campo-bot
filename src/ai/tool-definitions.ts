@@ -212,6 +212,22 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
 
   {
+    name: 'delete_harvest_loads',
+    description: 'Eliminar cargas de cosecha duplicadas o incorrectas. "borrar las cargas del lote X", "eliminar cargas duplicadas", "borrar camiones sin destino del 7D".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        event_date: { type: 'string', description: 'Fecha YYYY-MM-DD de las cargas a eliminar.' },
+        driver_names: { type: 'array', items: { type: 'string' }, description: 'Nombres de choferes cuyas cargas eliminar. Si vacío, elimina todas las del lote+fecha.' },
+        only_without_destination: { type: 'boolean', description: 'true = solo eliminar cargas SIN destino asignado (útil para duplicados).' },
+      },
+      required: ['plot'],
+    },
+  },
+
+  {
     name: 'close_campaign',
     description: 'Cerrar una campaña de siembra. Úsala cuando el usuario diga "cerrar campaña", "terminó la campaña del trigo", "cerrar la soja", "fin de campaña".',
     input_schema: {

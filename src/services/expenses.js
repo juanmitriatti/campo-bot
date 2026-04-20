@@ -1577,7 +1577,7 @@ export async function getCampaignActivities(plotCropId) {
 
 export async function getCampaignObservations(plotId, startDate, endDate = null) {
   const result = await pool.query(
-    `SELECT * FROM agro_observations WHERE plot_id = $1 AND deleted_at IS NULL
+    `SELECT * FROM agro_observations WHERE plot_id = $1
      AND observation_date >= $2 AND ($3::date IS NULL OR observation_date <= $3)
      ORDER BY observation_date`,
     [plotId, startDate, endDate]
@@ -2171,4 +2171,62 @@ export async function getHarvestLoadsByCampaign(plotCropId) {
     [plotCropId]
   );
   return result.rows;
+}
+
+/**
+ * Delete harvest loads matching criteria. Returns deleted rows.
+ * After deletion, recalculates yield_kg for affected plot_crops.
+ */
+export async function deleteHarvestLoads(userId, plotId, { eventDate, driverNames, onlyWithoutDestination } = {}) {
+  // Build WHERE clause
+  const conditions = [
+    'hl.domain_event_id = de.id',
+    'de.user_id = $1',
+    'de.plot_id = $2',
+    "de.event_type = 'harvest'",
+  ];
+  const params = [userId, plotId];
+  let paramIdx = 3;
+
+  if (eventDate) {
+    conditions.push(`de.event_date = $${paramIdx}::date`);
+    params.push(eventDate);
+    paramIdx++;
+  }
+
+  if (driverNames && driverNames.length > 0) {
+    conditions.push(`LOWER(hl.driver_name) = ANY($${paramIdx}::text[])`);
+    params.push(driverNames.map(d => d.toLowerCase()));
+    paramIdx++;
+  }
+
+  if (onlyWithoutDestination) {
+    conditions.push('(hl.destination IS NULL AND hl.destinatario IS NULL)');
+  }
+
+  // Get affected plot_crop_ids before deletion
+  const affectedResult = await pool.query(
+    `SELECT DISTINCT hl.plot_crop_id FROM harvest_loads hl
+     JOIN domain_events de ON ${conditions.join(' AND ')}`,
+    params
+  );
+  const affectedPlotCropIds = affectedResult.rows
+    .map(r => r.plot_crop_id)
+    .filter(Boolean);
+
+  // Delete matching loads
+  const deleteResult = await pool.query(
+    `DELETE FROM harvest_loads hl
+     USING domain_events de
+     WHERE ${conditions.join(' AND ')}
+     RETURNING hl.*`,
+    params
+  );
+
+  // Recalculate yield for affected plot_crops
+  for (const pcId of affectedPlotCropIds) {
+    await updateYieldFromLoads(pcId);
+  }
+
+  return deleteResult.rows;
 }

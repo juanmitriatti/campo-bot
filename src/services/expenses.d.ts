@@ -186,3 +186,8 @@ export function queryHarvestLoads(userId: number, opts?: {
   destinatario?: string | null;
 }): Promise<HarvestLoadQueryRow[]>;
 export function getHarvestLoadsByCampaign(plotCropId: number): Promise<Array<HarvestLoadRow & { event_date: Date }>>;
+export function deleteHarvestLoads(userId: number, plotId: number, opts?: {
+  eventDate?: string;
+  driverNames?: string[];
+  onlyWithoutDestination?: boolean;
+}): Promise<HarvestLoadRow[]>;
