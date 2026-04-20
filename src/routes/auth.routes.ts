@@ -2,16 +2,30 @@ import { Router } from 'express';
 import { AuthService, AuthError } from '../domain/auth/auth.service.js';
 import { ObservationService, ObservationError } from '../domain/auth/observation.service.js';
 import { PlanRepository } from '../domain/billing/plan.repository.js';
+import { FeatureGate } from '../domain/billing/feature-gate.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
-import type { Request, Response } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { logError } from '../services/error-logger.js';
 import { pool } from '../config/db.js';
 import { asUserId } from '../types/index.js';
+import type { FeatureKey } from '../types/index.js';
 
 const router = Router();
 const authService = new AuthService();
 const observationService = new ObservationService();
 const planRepo = new PlanRepository();
+const featureGate = new FeatureGate();
+
+function requireFeature(feature: FeatureKey) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const hasAccess = await featureGate.hasFeature(asUserId(req.auth!.userId), feature);
+    if (!hasAccess) {
+      res.status(403).json({ error: 'Feature not available in your plan' });
+      return;
+    }
+    next();
+  };
+}
 
 // --- Public routes ---
 
@@ -206,7 +220,7 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
 
 // --- Expense & Income routes ---
 
-router.get('/expenses', requireAuth, async (req: Request, res: Response) => {
+router.get('/expenses', requireAuth, requireFeature('expenses'), async (req: Request, res: Response) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
@@ -228,7 +242,7 @@ router.get('/expenses', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.get('/incomes', requireAuth, async (req: Request, res: Response) => {
+router.get('/incomes', requireAuth, requireFeature('incomes'), async (req: Request, res: Response) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
@@ -251,7 +265,7 @@ router.get('/incomes', requireAuth, async (req: Request, res: Response) => {
 
 // --- Activity routes ---
 
-router.get('/activities', requireAuth, async (req: Request, res: Response) => {
+router.get('/activities', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
@@ -274,7 +288,7 @@ router.get('/activities', requireAuth, async (req: Request, res: Response) => {
 
 // --- Edit routes ---
 
-router.patch('/expenses/:id', requireAuth, async (req: Request, res: Response) => {
+router.patch('/expenses/:id', requireAuth, requireFeature('expenses'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -285,7 +299,7 @@ router.patch('/expenses/:id', requireAuth, async (req: Request, res: Response) =
   }
 });
 
-router.patch('/incomes/:id', requireAuth, async (req: Request, res: Response) => {
+router.patch('/incomes/:id', requireAuth, requireFeature('incomes'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -296,7 +310,7 @@ router.patch('/incomes/:id', requireAuth, async (req: Request, res: Response) =>
   }
 });
 
-router.patch('/activities/:id', requireAuth, async (req: Request, res: Response) => {
+router.patch('/activities/:id', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -309,7 +323,7 @@ router.patch('/activities/:id', requireAuth, async (req: Request, res: Response)
 
 // --- Observation routes ---
 
-router.get('/observations/filters', requireAuth, async (req: Request, res: Response) => {
+router.get('/observations/filters', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
   try {
     const fields = await observationService.getUserFieldsWithPlots(req.auth!.userId);
     res.json({ fields });
@@ -318,7 +332,7 @@ router.get('/observations/filters', requireAuth, async (req: Request, res: Respo
   }
 });
 
-router.get('/observations', requireAuth, async (req: Request, res: Response) => {
+router.get('/observations', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
@@ -338,7 +352,7 @@ router.get('/observations', requireAuth, async (req: Request, res: Response) => 
   }
 });
 
-router.patch('/observations/:id', requireAuth, async (req: Request, res: Response) => {
+router.patch('/observations/:id', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
   try {
     const { text } = req.body;
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -357,7 +371,7 @@ router.patch('/observations/:id', requireAuth, async (req: Request, res: Respons
   }
 });
 
-router.get('/observations/:id/history', requireAuth, async (req: Request, res: Response) => {
+router.get('/observations/:id/history', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
   try {
     const observationId = parseInt(String(req.params.id), 10);
     if (isNaN(observationId)) {
@@ -373,7 +387,7 @@ router.get('/observations/:id/history', requireAuth, async (req: Request, res: R
 
 // --- Stock routes ---
 
-router.get('/stock', requireAuth, async (req: Request, res: Response) => {
+router.get('/stock', requireAuth, requireFeature('stock'), async (req: Request, res: Response) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
@@ -409,7 +423,7 @@ router.get('/stock', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.get('/stock/:id/movements', requireAuth, async (req: Request, res: Response) => {
+router.get('/stock/:id/movements', requireAuth, requireFeature('stock'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -427,7 +441,7 @@ router.get('/stock/:id/movements', requireAuth, async (req: Request, res: Respon
   }
 });
 
-router.patch('/stock/:id', requireAuth, async (req: Request, res: Response) => {
+router.patch('/stock/:id', requireAuth, requireFeature('stock'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -457,7 +471,7 @@ router.patch('/stock/:id', requireAuth, async (req: Request, res: Response) => {
 
 // --- Livestock routes ---
 
-router.get('/livestock', requireAuth, async (req: Request, res: Response) => {
+router.get('/livestock', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
@@ -494,7 +508,7 @@ router.get('/livestock', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.get('/livestock/movements', requireAuth, async (req: Request, res: Response) => {
+router.get('/livestock/movements', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
@@ -543,7 +557,7 @@ router.get('/livestock/movements', requireAuth, async (req: Request, res: Respon
   }
 });
 
-router.get('/livestock/:id/movements', requireAuth, async (req: Request, res: Response) => {
+router.get('/livestock/:id/movements', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     if (!id) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -567,7 +581,7 @@ router.get('/livestock/:id/movements', requireAuth, async (req: Request, res: Re
   }
 });
 
-router.get('/livestock/filters', requireAuth, async (req: Request, res: Response) => {
+router.get('/livestock/filters', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const fields = await observationService.getUserFieldsWithPlots(req.auth!.userId);
     const { FeedlotRepository } = await import('../domain/feedlot/feedlot.repository.js');
@@ -585,7 +599,7 @@ router.get('/livestock/filters', requireAuth, async (req: Request, res: Response
   }
 });
 
-router.patch('/livestock/:id', requireAuth, async (req: Request, res: Response) => {
+router.patch('/livestock/:id', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     if (!id) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -613,7 +627,7 @@ router.patch('/livestock/:id', requireAuth, async (req: Request, res: Response) 
 
 // --- Feedlot & Corral routes ---
 
-router.get('/feedlots', requireAuth, async (req: Request, res: Response) => {
+router.get('/feedlots', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const { FeedlotRepository } = await import('../domain/feedlot/feedlot.repository.js');
     const repo = new FeedlotRepository();
@@ -624,7 +638,7 @@ router.get('/feedlots', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.post('/feedlots', requireAuth, async (req: Request, res: Response) => {
+router.post('/feedlots', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const { name, fieldId, capacity, notes } = req.body;
     if (!name || !fieldId) { res.status(400).json({ error: 'name y fieldId son requeridos' }); return; }
@@ -648,7 +662,7 @@ router.post('/feedlots', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.patch('/feedlots/:id', requireAuth, async (req: Request, res: Response) => {
+router.patch('/feedlots/:id', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -672,7 +686,7 @@ router.patch('/feedlots/:id', requireAuth, async (req: Request, res: Response) =
   }
 });
 
-router.delete('/feedlots/:id', requireAuth, async (req: Request, res: Response) => {
+router.delete('/feedlots/:id', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -691,7 +705,7 @@ router.delete('/feedlots/:id', requireAuth, async (req: Request, res: Response) 
   }
 });
 
-router.get('/feedlots/:id/corrals', requireAuth, async (req: Request, res: Response) => {
+router.get('/feedlots/:id/corrals', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const feedlotId = parseInt(String(req.params.id), 10);
     if (isNaN(feedlotId)) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -711,7 +725,7 @@ router.get('/feedlots/:id/corrals', requireAuth, async (req: Request, res: Respo
   }
 });
 
-router.post('/corrals', requireAuth, async (req: Request, res: Response) => {
+router.post('/corrals', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const { name, feedlotId, capacity, notes } = req.body;
     if (!name || !feedlotId) { res.status(400).json({ error: 'name y feedlotId son requeridos' }); return; }
@@ -735,7 +749,7 @@ router.post('/corrals', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.patch('/corrals/:id', requireAuth, async (req: Request, res: Response) => {
+router.patch('/corrals/:id', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -759,7 +773,7 @@ router.patch('/corrals/:id', requireAuth, async (req: Request, res: Response) =>
   }
 });
 
-router.delete('/corrals/:id', requireAuth, async (req: Request, res: Response) => {
+router.delete('/corrals/:id', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -780,7 +794,7 @@ router.delete('/corrals/:id', requireAuth, async (req: Request, res: Response) =
 
 // --- Document routes ---
 
-router.get('/documents', requireAuth, async (req: Request, res: Response) => {
+router.get('/documents', requireAuth, requireFeature('documents'), async (req: Request, res: Response) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
@@ -804,7 +818,7 @@ router.get('/documents', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.get('/documents/filters', requireAuth, async (req: Request, res: Response) => {
+router.get('/documents/filters', requireAuth, requireFeature('documents'), async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
       `SELECT DISTINCT document_type FROM documents WHERE user_id = $1 AND deleted_at IS NULL ORDER BY document_type`,
@@ -816,7 +830,7 @@ router.get('/documents/filters', requireAuth, async (req: Request, res: Response
   }
 });
 
-router.get('/documents/:id', requireAuth, async (req: Request, res: Response) => {
+router.get('/documents/:id', requireAuth, requireFeature('documents'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
@@ -831,7 +845,7 @@ router.get('/documents/:id', requireAuth, async (req: Request, res: Response) =>
   }
 });
 
-router.get('/documents/:id/file', requireAuth, async (req: Request, res: Response) => {
+router.get('/documents/:id/file', requireAuth, requireFeature('documents'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }

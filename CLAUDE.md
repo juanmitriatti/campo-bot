@@ -89,12 +89,23 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 
 ## Feature Gates
 
-| Feature Key | Required Plan | Commands |
-|-------------|---------------|----------|
-| `stock` | pro_plus+ | create_warehouse, add_stock, check_stock, etc. |
-| `livestock` | pro_plus+ | add_livestock, transfer_livestock, etc. |
+All 13 features are independently toggleable per plan via admin UI (`PUT /dashboard/api/plans/:id/features`). Bot commands, dashboard API endpoints (`requireFeature()` middleware), and frontend (Sidebar + BottomNav + view guard) all enforce gating.
+
+| Feature Key | Required Plan | Scope |
+|-------------|---------------|-------|
+| `expenses` | all | log_expense, financial_report, expense templates, dashboard Gastos tab + API |
+| `incomes` | all | log_income, income edits, dashboard Ingresos tab + API |
+| `fields` | all | add_field, add_plot, add_plots_batch, set_plot_grupo, etc. |
+| `budgets` | all | set_budget |
+| `rainfall` | all | log_rainfall, rainfall reports |
+| `agronomy` | all | sow/harvest/spray/fertilize, observations, agro reports, campaign_stats, dashboard Activities + Observations tabs + API |
+| `csv_export` | pro+ | export_csv |
+| `weather` | all | weather_full, weather_forecast, weather_field |
+| `audio` | all | voice message transcription |
 | `sharing` | enterprise | share_field (accept_invite is ungated) |
-| `documents` | all (daily limits vary) | upload_document, list_documents |
+| `stock` | pro_plus+ | create_warehouse, add_stock, check_stock, etc., dashboard Stock tab + API |
+| `documents` | all (daily limits vary) | upload_document, list_documents, dashboard Documents tab + API |
+| `livestock` | pro_plus+ | add_livestock, transfer_livestock, feedlots, corrals, dashboard Hacienda tab + API |
 
 ## Key File Map
 

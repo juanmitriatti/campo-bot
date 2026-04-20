@@ -90,7 +90,7 @@
 - PlotDiscoveryService (lookup-only, NEVER auto-creates), PlotRepository
 
 ### Billing (`billing/`)
-- Plan-based AI daily limits + FeatureGate (maps commands → feature keys, checks plan access)
+- Plan-based AI daily limits + FeatureGate (maps commands → feature keys, checks plan access). All 13 features independently toggleable per plan via admin UI. API endpoints gated with `requireFeature()` middleware.
 
 ## Flow Engine (`src/middleware/`)
 
@@ -138,7 +138,7 @@ React 19 + Vite 6 + Tailwind v3 + React Router v6 SPA. Express serves `frontend/
 - Dashboard: Sidebar (desktop) + BottomNav (mobile), `view` state. Default: Overview (KPIs, charts, map, quick actions, feed, alerts)
 - Overview charts: `MonthlyTrendChart` (recharts AreaChart, 6-month expense/income trend), `ExpensePieChart` (recharts PieChart, category breakdown)
 - Overview map: `FieldMap` (react-leaflet, collapsible, field markers + polygons colored by crop status)
-- Detail views: Gastos, Ingresos, Actividades, Observaciones, Stock (feature-gated), Hacienda (feature-gated)
+- Detail views: Gastos (feature-gated: expenses), Ingresos (incomes), Actividades (agronomy), Observaciones (agronomy), Stock (stock), Hacienda (livestock) — all feature-gated in Sidebar, BottomNav, and view guard
 - Paginated tables with filters + inline edit buttons + edit modals. Mobile: card components instead of tables
 - Edit audit: `edited_by` on all entities, shown as "Registrado por" / "editado por" in tables
 - Date handling: `toLocalDate()` helper avoids UTC timezone shift

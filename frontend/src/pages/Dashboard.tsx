@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/layout/Sidebar';
@@ -12,9 +12,26 @@ import StockTable from '../components/StockTable';
 import LivestockTab from '../components/LivestockTab';
 import type { DashboardView } from '../components/layout/Sidebar';
 
+const viewFeatureMap: Record<DashboardView, string | null> = {
+  overview: null,
+  expenses: 'expenses',
+  incomes: 'incomes',
+  activities: 'agronomy',
+  observations: 'agronomy',
+  stock: 'stock',
+  livestock: 'livestock',
+};
+
 export default function Dashboard() {
   const { user, features } = useAuth();
   const [view, setView] = useState<DashboardView>('overview');
+
+  useEffect(() => {
+    const required = viewFeatureMap[view];
+    if (required && !features.includes(required)) {
+      setView('overview');
+    }
+  }, [view, features]);
 
   if (!user) return null;
 
@@ -69,7 +86,7 @@ export default function Dashboard() {
         </main>
       </div>
 
-      <BottomNav active={view} onChange={setView} />
+      <BottomNav active={view} onChange={setView} features={features} />
     </div>
   );
 }

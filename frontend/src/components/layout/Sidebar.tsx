@@ -11,10 +11,10 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'overview', label: 'Resumen', icon: '📊' },
-  { key: 'expenses', label: 'Gastos', icon: '💸' },
-  { key: 'incomes', label: 'Ingresos', icon: '💵' },
-  { key: 'activities', label: 'Actividades', icon: '🌱' },
-  { key: 'observations', label: 'Observaciones', icon: '👁️' },
+  { key: 'expenses', label: 'Gastos', icon: '💸', feature: 'expenses' },
+  { key: 'incomes', label: 'Ingresos', icon: '💵', feature: 'incomes' },
+  { key: 'activities', label: 'Actividades', icon: '🌱', feature: 'agronomy' },
+  { key: 'observations', label: 'Observaciones', icon: '👁️', feature: 'agronomy' },
   { key: 'stock', label: 'Stock', icon: '📦', feature: 'stock' },
   { key: 'livestock', label: 'Hacienda', icon: '🐄', feature: 'livestock' },
 ];
