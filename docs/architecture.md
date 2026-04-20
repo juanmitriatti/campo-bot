@@ -58,7 +58,7 @@
 - Campaign lifecycle: ACTIVE → HARVESTED (`harvested_at`) → CLOSED (`end_date`). `CropService.startCrop()` auto-closes harvested campaigns when re-sowing.
 - `active_crop`: with plot → single crop; without → ALL active crops (filterable by crop name)
 - Sowed hectares: `sow_crop` accepts optional `hectares` → `plot_crops.sowed_hectares`
-- Harvest loads: `harvest_crop` accepts optional `loads[]` (per-truck: driver, kg, destination). Dedup: same plot+today → append. `updateYieldFromLoads()` auto-sums into `plot_crops.yield_kg`. Query via `query_harvest_loads` tool.
+- Harvest loads: `harvest_crop` accepts optional `loads[]` (per-truck: driver, kg, destination). Dedup: same plot+today → append. `updateYieldFromLoads()` auto-sums into `plot_crops.yield_kg`. Query via `query_harvest_loads` tool. Delete duplicates via `delete_harvest_loads` tool.
 
 ### Financial (`financial/`)
 - FinancialHandler: expenses, incomes, budgets, unified `financial_report`, mandatory hectares on plot creation, auto-split comma-separated plot names → `add_plots_batch`

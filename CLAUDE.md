@@ -72,6 +72,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - `harvest_crop` accepts optional `loads[]` (per-truck: driver_name, weight_kg, destination, destinatario, truck_plate)
 - Dedup: same plot harvested today → appends loads, no duplicate event
 - `query_harvest_loads` tool queries stored loads (filters: plot, field, date, driver, destinatario)
+- `delete_harvest_loads` tool removes loads by criteria (plot, date, driver_names[], only_without_destination)
 - `campaign_stats` includes per-truck detail in yield section
 
 ## Key Conventions
