@@ -10,14 +10,20 @@ interface TrainingExample {
 
 export class FewShotService {
   /**
-   * Load active training examples from DB, random sample.
+   * Load active training examples from DB. Order is **deterministic per day**
+   * so the cached prefix (tools + system + few-shot) stays stable within a
+   * day — random ordering was invalidating the cache on every call, paying
+   * 125% cache-write pricing each time.
+   *
+   * Pseudo-randomness per day is preserved via md5(id || CURRENT_DATE) so
+   * Haiku sees different example rotations over time without thrashing cache.
    */
   async getExamples(limit = 5): Promise<TrainingExample[]> {
     return query<TrainingExample>(
       `SELECT id, input, expected_output, intent
        FROM ai_training_examples
        WHERE is_active = true
-       ORDER BY RANDOM()
+       ORDER BY md5(id::text || CURRENT_DATE::text)
        LIMIT $1`,
       [limit],
     );
