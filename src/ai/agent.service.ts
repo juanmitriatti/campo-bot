@@ -21,7 +21,10 @@ const anthropic = new Anthropic({
  * tools+system+few-shot prefix becomes a stable cacheable boundary.
  * Immutable — clones the last message so we don't mutate the service's output.
  */
-function withFewShotCacheBoundary(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+function withFewShotCacheBoundary(
+  messages: Anthropic.MessageParam[],
+  cacheControl: { type: 'ephemeral'; ttl?: '5m' | '1h' },
+): Anthropic.MessageParam[] {
   if (messages.length === 0) return messages;
   const last = messages[messages.length - 1];
   if (!Array.isArray(last.content) || last.content.length === 0) return messages;
@@ -29,7 +32,7 @@ function withFewShotCacheBoundary(messages: Anthropic.MessageParam[]): Anthropic
   const lastBlock = newContent[newContent.length - 1];
   newContent[newContent.length - 1] = {
     ...lastBlock,
-    cache_control: { type: 'ephemeral' },
+    cache_control: cacheControl,
   } as typeof lastBlock;
   return [
     ...messages.slice(0, -1),
@@ -105,21 +108,30 @@ export class AgentService {
       const userPrefix = this.promptBuilder.buildUserMessagePrefix(userContext);
 
       // Load agent-specific settings
-      const [model, maxTokens, timeoutMs] = await Promise.all([
+      const [model, maxTokens, timeoutMs, temperatureStr, cacheTtlSetting] = await Promise.all([
         getSetting('AGENT_MODEL'),
         getSettingNumber('AGENT_MAX_TOKENS'),
         getSettingNumber('AGENT_TIMEOUT_MS'),
+        getSetting('AGENT_TEMPERATURE'),
+        getSetting('AGENT_CACHE_TTL'),
       ]);
 
       const resolvedModel = model || 'claude-haiku-4-5-20251001';
       const resolvedMaxTokens = maxTokens || 400;
       const resolvedTimeout = timeoutMs || 8000;
+      const resolvedTemperature = temperatureStr != null ? Number(temperatureStr) : 0;
+      // "short" → 5-min TTL (1.25x write), "long" → 1-hour TTL (2x write but lasts 12x longer).
+      // We apply the same cache_control object to all 3 breakpoints (system, tools, few-shot).
+      const cacheControl: { type: 'ephemeral'; ttl?: '5m' | '1h' } =
+        cacheTtlSetting === 'long'
+          ? { type: 'ephemeral', ttl: '1h' }
+          : { type: 'ephemeral' };
 
       // Build messages: few-shot (tool_use format) + history + current.
       // Cache boundary goes on the LAST few-shot block so tools+system+few-shot
       // become a stable cacheable prefix; history varies per user/session and stays uncached.
       const fewShotPairs = this.fewShotService
-        ? withFewShotCacheBoundary(this.fewShotService.formatAsToolUseMessages(fewShotExamples))
+        ? withFewShotCacheBoundary(this.fewShotService.formatAsToolUseMessages(fewShotExamples), cacheControl)
         : [];
 
       const userContent = userPrefix ? `${userPrefix}\n\n${text}` : text;
@@ -139,7 +151,7 @@ export class AgentService {
             ...TOOL_DEFINITIONS.slice(0, -1),
             {
               ...TOOL_DEFINITIONS[TOOL_DEFINITIONS.length - 1],
-              cache_control: { type: 'ephemeral' },
+              cache_control: cacheControl,
             },
           ]
         : TOOL_DEFINITIONS;
@@ -154,8 +166,8 @@ export class AgentService {
           {
             model: resolvedModel,
             max_tokens: resolvedMaxTokens,
-            temperature: 0,
-            system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+            temperature: resolvedTemperature,
+            system: [{ type: 'text', text: systemPrompt, cache_control: cacheControl }],
             tools: cachedTools,
             tool_choice: { type: 'any' },
             messages,

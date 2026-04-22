@@ -41,7 +41,8 @@ const SETTING_DEFINITIONS = {
   AGENT_MODEL: { default: 'claude-haiku-4-5-20251001', type: 'string', group: 'ai', label: 'Modelo AI Agent', description: 'Modelo Claude para el agent tool_use.' },
   AGENT_MAX_TOKENS: { default: '400', type: 'number', group: 'ai', label: 'Max tokens AI Agent', description: 'Tokens máximos para respuesta del agent.' },
   AGENT_TIMEOUT_MS: { default: '8000', type: 'number', group: 'ai', label: 'Timeout AI Agent (ms)', description: 'Timeout del agent en ms.' },
-  AGENT_TEMPERATURE: { default: '0', type: 'number', group: 'ai', label: 'Temperature AI Agent', description: 'Temperatura del agent (0=determinista).' },
+  AGENT_TEMPERATURE: { default: '0', type: 'number', group: 'ai', label: 'Temperature AI Agent', description: 'Temperatura del agent (0=determinista, 1=creativo). Recomendado 0 para clasificación de intención.' },
+  AGENT_CACHE_TTL: { default: 'short', type: 'string', group: 'ai', label: 'TTL del prompt cache AI Agent', description: 'Duración del cache de prompt (Anthropic). "short" = 5 minutos, write cost 125% (default, ideal para sesiones cortas). "long" = 1 hora, write cost 200% pero el cache dura 12x más (ideal si hay repeat traffic dentro de 1h). Valores aceptados: short | long.' },
 
   // AI Intent Extraction (primary pipeline — fallback when AGENT_ENABLED=false)
   AI_INTENT_ENABLED: { default: 'true', type: 'boolean', group: 'ai', label: 'Pipeline IA JSON habilitado (kill switch)', description: 'Kill switch del pipeline JSON. Si se desactiva (y AGENT_ENABLED=false), TODOS los mensajes van al pipeline regex. Usar solo en emergencia.' },
