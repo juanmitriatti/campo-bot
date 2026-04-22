@@ -98,8 +98,11 @@ export class AgentService {
         results[3].status === 'fulfilled' ? results[3].value : undefined,
       ] as const);
 
-      // Build system prompt
-      const systemPrompt = this.promptBuilder.build(userContext, dictionary);
+      // Build system prompt (stable — cacheable across users/calls).
+      // Per-user context + today's date are injected into the user message
+      // prefix so they don't invalidate the cache.
+      const systemPrompt = this.promptBuilder.build(null, dictionary);
+      const userPrefix = this.promptBuilder.buildUserMessagePrefix(userContext);
 
       // Load agent-specific settings
       const [model, maxTokens, timeoutMs] = await Promise.all([
@@ -119,13 +122,14 @@ export class AgentService {
         ? withFewShotCacheBoundary(this.fewShotService.formatAsToolUseMessages(fewShotExamples))
         : [];
 
+      const userContent = userPrefix ? `${userPrefix}\n\n${text}` : text;
       const messages: Anthropic.MessageParam[] = [
         ...fewShotPairs,
         ...historyTurns.map(t => ({
           role: t.role as 'user' | 'assistant',
           content: t.content,
         })),
-        { role: 'user', content: text },
+        { role: 'user', content: userContent },
       ];
 
       // Tool definitions are identical across all users → cache them.

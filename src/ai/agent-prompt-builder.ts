@@ -7,16 +7,31 @@ import type { ActivityDictionaryEntry } from '../services/activity-dictionary.se
  * disambiguation rules and user context.
  */
 export class AgentPromptBuilder {
-  build(userContext: UserContext | null, dictionary?: ActivityDictionaryEntry[]): string {
-    const parts: string[] = [
+  /**
+   * Build the STABLE system prompt. Deliberately excludes user-specific context
+   * and anything that changes intra-day, so the cached prefix hits across all
+   * users and calls within the same day.
+   * User context + today's date must be injected as a message prefix via
+   * `buildUserMessagePrefix()` (not part of the cached system block).
+   */
+  build(_userContext?: UserContext | null, dictionary?: ActivityDictionaryEntry[]): string {
+    return [
       this.coreRules(),
       this.disambiguationRules(dictionary),
-    ];
+    ].join('\n');
+  }
 
+  /**
+   * Dynamic per-message context: today's date + user's fields/plots/etc.
+   * Prepended to the user message text so it's never part of the cached prefix.
+   * Returns empty string if there's nothing to add.
+   */
+  buildUserMessagePrefix(userContext: UserContext | null): string {
+    const today = this.todayDate();
+    const parts: string[] = [`Hoy: ${today}.`];
     const ctx = this.contextLine(userContext);
     if (ctx) parts.push(ctx);
-
-    return parts.join('\n');
+    return parts.join(' ');
   }
 
   private todayDate(): string {
@@ -24,7 +39,6 @@ export class AgentPromptBuilder {
   }
 
   private coreRules(): string {
-    const today = this.todayDate();
     return `Sos MIA, asistente agrícola argentino (WhatsApp y Telegram). Analizá el mensaje y usá la herramienta apropiada.
 
 REGLAS:
@@ -39,7 +53,7 @@ REGLAS:
 - NUNCA digas que guardaste algo — el sistema lo hace después
 - No inventar datos no mencionados → omitir parámetro
 - lucas=miles, palos=millones, mil=x1000. Default ARS. "dólares/USD"→currency:USD
-- Si el usuario menciona fecha, incluí event_date en YYYY-MM-DD. Hoy: ${today}. Regla de año: si el mes mencionado es ANTERIOR o IGUAL al actual, usá el año actual; si el mes mencionado es POSTERIOR al actual (futuro), usá el año anterior (los registros son pasados). Ej: "el 2 de febrero" con hoy ${today} → event_date: "${today.slice(0, 4)}-02-02". "el 15 de octubre" con hoy ${today} → event_date: "${(parseInt(today.slice(0, 4)) - 1).toString()}-10-15". Si no menciona fecha, omití event_date
+- Fechas: event_date en YYYY-MM-DD. La fecha actual llega en el prefijo del mensaje ("Hoy: YYYY-MM-DD"). Regla de año: si el mes mencionado es ANTERIOR o IGUAL al actual, usá el año actual; si es POSTERIOR al actual (futuro), usá el año anterior. Ej: "el 2 de febrero" → event_date año actual; "el 15 de octubre" con hoy en abril → año anterior
 - Si el historial muestra contexto previo, usalo para resolver referencias ambiguas
 - Acciones compuestas: si el usuario pide varias cosas en un mensaje, usá varias tools en orden de dependencia. Ej: "agregá campo X y lote Y" → add_field(name=X) + add_plot(plotName=Y, field=X)
 - Compuesto actividad+costo: "sembré X y la semilla costó Y" → sow_crop + UN SOLO log_expense. El costo es UN gasto, no duplicar`;

@@ -13,7 +13,7 @@ describe('AgentPromptBuilder', () => {
     expect(prompt).not.toContain('Usuario:');
   });
 
-  it('includes user context when provided', () => {
+  it('exposes user context via buildUserMessagePrefix (not in cached system prompt)', () => {
     const ctx: UserContext = {
       fieldNames: ['Norte', 'Sur'],
       plotNames: ['A1', 'B2'],
@@ -21,10 +21,17 @@ describe('AgentPromptBuilder', () => {
       lastPlotName: 'A1',
     };
     const prompt = builder.build(ctx);
-    expect(prompt).toContain('campos:[Norte,Sur]');
-    expect(prompt).toContain('lotes:[A1,B2]');
-    expect(prompt).toContain('último campo:Norte');
-    expect(prompt).toContain('último lote:A1');
+    // User-specific context format must NOT leak into the cached system prompt
+    expect(prompt).not.toContain('Usuario:');
+    expect(prompt).not.toContain('último campo:');
+    expect(prompt).not.toContain('último lote:');
+
+    const prefix = builder.buildUserMessagePrefix(ctx);
+    expect(prefix).toContain('campos:[Norte,Sur]');
+    expect(prefix).toContain('lotes:[A1,B2]');
+    expect(prefix).toContain('último campo:Norte');
+    expect(prefix).toContain('último lote:A1');
+    expect(prefix).toMatch(/^Hoy: \d{4}-\d{2}-\d{2}/);
   });
 
   it('omits empty context sections', () => {
