@@ -3967,7 +3967,8 @@
           } else if (l.was_correct === true) {
             feedback += '<span style="color:var(--success);font-weight:600;margin-right:6px;">✓ Correcto</span>';
             feedback += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;opacity:0.7;" onclick="markLogIncorrect(' + l.id + ')" title="Cambiar a incorrecto">Mal</button>';
-            feedback += '<button class="btn" style="padding:2px 8px;font-size:11px;opacity:0.6;" onclick="resetLogFeedback(' + l.id + ')" title="Quitar feedback">↩</button>';
+            feedback += '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px;opacity:0.6;" onclick="resetLogFeedback(' + l.id + ')" title="Quitar feedback">↩</button>';
+            feedback += '<button class="btn btn-primary" style="padding:2px 8px;font-size:11px;" onclick="promoteLog(' + l.id + ')" title="Agregar como ejemplo de entrenamiento">Promover</button>';
           } else {
             feedback += '<span style="color:var(--danger);font-weight:600;margin-right:6px;">✗ Incorrecto</span>';
             if (l.corrected_intent) feedback += '<span style="font-size:10px;color:var(--text-muted);">(' + l.corrected_intent + ')</span> ';

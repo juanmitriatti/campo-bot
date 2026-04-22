@@ -89,10 +89,11 @@ export class AgentService {
 
       // Load user context, conversation history, and few-shot examples in parallel
       const historyMaxChars = (await getSettingNumber('CONVERSATION_HISTORY_MAX_CHARS')) ?? 4000;
+      const fewShotLimit = (await getSettingNumber('AGENT_FEW_SHOT_LIMIT')) ?? 5;
       const [userContext, historyTurns, fewShotExamples, dictionary] = await Promise.allSettled([
         this.userContextService.loadContext(userId),
         this.historyService ? this.historyService.getRecentTurns(userId, historyMaxChars) : Promise.resolve([]),
-        this.fewShotService ? this.fewShotService.getExamples(5) : Promise.resolve([]),
+        this.fewShotService ? this.fewShotService.getExamples(fewShotLimit) : Promise.resolve([]),
         getActivityDictionary(),
       ]).then(results => [
         results[0].status === 'fulfilled' ? results[0].value : null,
