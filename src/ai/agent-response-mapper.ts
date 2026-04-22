@@ -2,6 +2,59 @@ import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency 
 import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES } from '../constants/agro-terms.js';
 import type { AgentResult } from './agent.service.js';
 
+/**
+ * Parse Argentine-format weight to kg.
+ *   "31.320"   → 31320   (dot = thousands, 3-digit group)
+ *   "31.320,5" → 31320.5 (dot = thousands, comma = decimal)
+ *   "31320"    → 31320
+ *   "30,5"     → 30.5
+ *   "28.4"     → 28.4    (2-digit after dot: treat as decimal)
+ */
+function parseArNumber(raw: string): number | null {
+  const s = raw.trim();
+  if (!s) return null;
+  if (s.includes(',')) {
+    const cleaned = s.replace(/\./g, '').replace(',', '.');
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+  }
+  const dotGroups = s.split('.');
+  if (dotGroups.length > 1 && dotGroups.slice(1).every(g => g.length === 3 && /^\d+$/.test(g))) {
+    const n = Number(s.replace(/\./g, ''));
+    return Number.isFinite(n) ? n : null;
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Regex fallback: extract harvest loads from raw user message when the agent
+ * misses them. Handles single-line formats like
+ *   "Cosecha del lote X Britos 31.320 Contreras 31.487 ..."
+ * Only runs when the text contains a cosecha/carga keyword. Captures (surname, weight)
+ * pairs — multi-word drivers or explicit destinatarios should be handled by the
+ * agent itself (this is the last-resort net for single-word surname lists).
+ */
+export function extractHarvestLoadsFromText(text: string): Array<{ driver_name: string; weight_kg: number }> {
+  if (!text) return [];
+  if (!/(cosech|cargar|se\s+carg|carga[sr])/i.test(text)) return [];
+
+  const pairRegex = /([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s+((?:\d{1,3}(?:\.\d{3})+|\d+(?:[.,]\d+)?))\s*(kg|tn|toneladas?)?/g;
+  const loads: Array<{ driver_name: string; weight_kg: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = pairRegex.exec(text)) !== null) {
+    const name = match[1];
+    if (/^(Cosecha|Lote|Campo|Soja|Ma[íi]z|Trigo|Girasol|Sorgo|Cebada|Campa[ñn]a|Don|Cargill|Acopio|Silo|Rinde|Rindieron)$/i.test(name)) continue;
+    const weight = parseArNumber(match[2]);
+    if (weight == null || weight <= 0) continue;
+    const unit = (match[3] || '').toLowerCase();
+    const isTonnes = unit.startsWith('t') || (!unit && weight < 1000);
+    const weightKg = isTonnes ? weight * 1000 : weight;
+    loads.push({ driver_name: name, weight_kg: weightKg });
+  }
+  return loads;
+}
+
 /** Strip accents for comparison */
 function stripAccents(s: string): string {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -131,7 +184,7 @@ export class AgentResponseMapper {
     }
 
     // Everything else → command
-    return this.mapCommand(toolName, input);
+    return this.mapCommand(toolName, input, originalText);
   }
 
   private mapExpense(input: Record<string, unknown>, originalText: string): ParseResult {
@@ -258,7 +311,7 @@ export class AgentResponseMapper {
     };
   }
 
-  private mapCommand(toolName: string, input: Record<string, unknown>): ParseResult {
+  private mapCommand(toolName: string, input: Record<string, unknown>, originalText = ''): ParseResult {
     const cmd: ParsedCommand = { command: toolName };
 
     // Map field/plot names (tool schema uses 'field'/'plot', handlers expect 'fieldName'/'plotName')
@@ -369,6 +422,18 @@ export class AgentResponseMapper {
     if (input.destinatario != null) cmd.destinatario = input.destinatario;
     if (input.driver_names != null) cmd.driverNames = input.driver_names;
     if (input.only_without_destination != null) cmd.onlyWithoutDestination = input.only_without_destination;
+
+    // Safety net for harvest_crop: if AI missed loads[] but the raw text has a
+    // `Nombre Número` list (common when user sends a single-line message), parse
+    // them with a regex and inject so the handler persists them.
+    if (toolName === 'harvest_crop'
+        && (!Array.isArray(cmd.loads) || (cmd.loads as unknown[]).length === 0)
+        && originalText) {
+      const fallbackLoads = extractHarvestLoadsFromText(originalText);
+      if (fallbackLoads.length > 0) {
+        cmd.loads = fallbackLoads;
+      }
+    }
 
     // Expense templates (recurring)
     if (input.template_id != null) cmd.templateId = input.template_id;

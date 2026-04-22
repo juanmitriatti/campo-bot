@@ -122,6 +122,7 @@ ${this.buildActivityLines(dictionary)}
 - CARGAS COSECHA: REGLA FUERTE. En contexto de cosecha, TODA lista de "nombre número" (uno por línea o separados por coma) es loads[]. NO importa si falta "kg" o destinatario — driver_name y weight_kg son los únicos requeridos.
   Ejemplos válidos → harvest_crop con loads[]:
   • "Cosecha del lote X\nBritos 31.320\nContreras 31.487" → 2 loads sin destinatario
+  • "Cosecha del lote X Britos 31.320 Contreras 31.487 Vitali 31.300" (UNA SOLA LÍNEA, espacios entre pares) → 3 loads. CADA par Nombre+Número es una carga.
   • "cosechamos soja. Pérez 28tn, López 30tn" → 2 loads con weight en tn
   • "se cargó [lote] fulano X kg, mengano Y kg" → loads[]
   • "Britos a Cargill con 31.320" → load con destinatario=Cargill
