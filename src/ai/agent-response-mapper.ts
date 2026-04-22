@@ -170,6 +170,7 @@ export class AgentResponseMapper {
       if (typeof input.product === 'string') data.product = input.product;
       if (typeof input.quantity === 'number') data.quantity = input.quantity;
       if (typeof input.unit === 'string') data.unit = input.unit;
+      if (typeof input.unit_price === 'number') data.unit_price = input.unit_price;
       if (typeof input.field === 'string') data.field = input.field;
       if (typeof input.plot === 'string') data.plot = input.plot;
       if (typeof input.event_date === 'string') data.expenseDate = input.event_date;
@@ -267,6 +268,7 @@ export class AgentResponseMapper {
     if (input.plotName != null) cmd.plotName = input.plotName;
     if (input.plotNames != null) cmd.plotNames = input.plotNames;
     if (input.city != null) cmd.city = input.city;
+    if (input.province != null) cmd.province = input.province;
     if (input.hectares != null) cmd.hectares = input.hectares;
     if (input.oldName != null) cmd.oldName = input.oldName;
     if (input.newName != null) cmd.newName = input.newName;

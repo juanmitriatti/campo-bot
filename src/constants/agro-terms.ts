@@ -11,7 +11,7 @@
 
 export const EXPENSE_CATEGORIES = [
   'Combustible', 'Fertilizantes', 'Semillas', 'Agroquímicos',
-  'Labranzas', 'Sueldos', 'Maquinaria', 'Arrendamiento', 'Impuestos', 'Otros',
+  'Labranzas', 'Sueldos', 'Maquinaria', 'Arrendamiento', 'Impuestos', 'Hacienda', 'Otros',
 ] as const;
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
@@ -29,6 +29,7 @@ export const EXPENSE_KEYWORD_MAP: Record<string, string> = {
   repuesto: 'Maquinaria', repuestos: 'Maquinaria', tractor: 'Maquinaria', maquinaria: 'Maquinaria', cosechadora: 'Maquinaria', contratista: 'Maquinaria', laboreo: 'Maquinaria',
   alquiler: 'Arrendamiento', arrendamiento: 'Arrendamiento', arriendo: 'Arrendamiento',
   impuesto: 'Impuestos', impuestos: 'Impuestos', inmobiliario: 'Impuestos', iibb: 'Impuestos',
+  hacienda: 'Hacienda', vacas: 'Hacienda', novillos: 'Hacienda', novillitos: 'Hacienda', terneros: 'Hacienda', vaquillonas: 'Hacienda', toros: 'Hacienda',
   flete: 'Otros', transporte: 'Otros', seguro: 'Otros', veterinario: 'Otros', silobolsa: 'Otros',
 };
 

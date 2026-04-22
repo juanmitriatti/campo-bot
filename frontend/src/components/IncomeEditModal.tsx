@@ -9,6 +9,7 @@ interface Income {
   currency: string;
   quantity: number | null;
   unit: string | null;
+  unit_price: number | null;
   income_date: string;
   field_name: string | null;
   plot_name: string | null;
@@ -41,6 +42,7 @@ export default function IncomeEditModal({ income, onClose, onSaved }: Props) {
   const [category, setCategory] = useState(income.category);
   const [quantity, setQuantity] = useState(income.quantity != null ? String(income.quantity) : '');
   const [unit, setUnit] = useState(income.unit || '');
+  const [unitPrice, setUnitPrice] = useState(income.unit_price != null ? String(income.unit_price) : '');
   const [incomeDate, setIncomeDate] = useState(income.income_date ? toLocalDate(income.income_date) : '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +55,7 @@ export default function IncomeEditModal({ income, onClose, onSaved }: Props) {
     }
 
     const parsedQty = quantity.trim() ? parseFloat(quantity) : null;
+    const parsedUnitPrice = unitPrice.trim() ? parseFloat(unitPrice) : null;
 
     setSaving(true);
     setError(null);
@@ -67,6 +70,7 @@ export default function IncomeEditModal({ income, onClose, onSaved }: Props) {
           income_date: incomeDate,
           quantity: parsedQty,
           unit: unit.trim() || null,
+          unit_price: parsedUnitPrice,
         },
       });
       onSaved();
@@ -124,7 +128,7 @@ export default function IncomeEditModal({ income, onClose, onSaved }: Props) {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Cantidad</label>
                 <input type="number" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)}
@@ -136,6 +140,12 @@ export default function IncomeEditModal({ income, onClose, onSaved }: Props) {
                 <input type="text" value={unit} onChange={e => setUnit(e.target.value)}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
                   placeholder="Ej: tn" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Precio unitario</label>
+                <input type="number" step="0.01" value={unitPrice} onChange={e => setUnitPrice(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
+                  placeholder="Ej: 250000" />
               </div>
             </div>
           </div>

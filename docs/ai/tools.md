@@ -68,12 +68,46 @@
 
 ### Harvest Loads (Per-Truck Tracking)
 - `harvest_crop` accepts optional `loads[]` array: `{ driver_name, weight_kg, destination?, destinatario?, truck_plate? }`
-- Argentine number convention: "31.320 kg" = 31320 (dot = thousands separator)
+- Only `driver_name` + `weight_kg` required on each load. Destinatario and kg unit optional.
+- Extraction: in cosecha context, ANY list of `nombre número` (line-separated or comma-separated) is loads[], with or without "kg" unit or "a destinatario".
+- Argentine number convention: "31.320 kg" = 31320 (dot = thousands separator). Values in tn auto-convert to kg (*1000).
 - Dedup: if same plot already harvested today → appends loads to existing event (no duplicate harvest)
 - `updateYieldFromLoads()` auto-sums all loads into `plot_crops.yield_kg`
 - `query_harvest_loads` queries stored loads with filters (plot, field, date, driver, destinatario)
 - `delete_harvest_loads` removes loads by criteria (plot, date, driver_names[], only_without_destination)
 - `campaign_stats` includes loads detail in the yield section + cost/tn and income/tn metrics
+- "Cosecha del lote X" WITHOUT driver/weight list → `query_harvest_loads` (query intent), NOT `harvest_crop` (register)
+- If `harvest_crop` called with no new loads but plot already has stored loads → response appends existing-loads summary
+
+### Expense Metadata (Insumos)
+- `log_expense` accepts `unit_price` (number) — for "a X c/u" / "a X el kg/lt" patterns. Ex: "50 bolsas urea a 8000 c/u" → quantity=50, unit_price=8000, amount=400000.
+- Parity with `log_income.unit_price` (added in migration 067).
+- `ExpenseEditModal` + `IncomeEditModal` expose unit_price field when `expense_type=insumo`.
+- `ExpenseCard` / `IncomeCard` render "Producto · Qty unit · @ precio" line below description when data present.
+
+### Weather Queries
+- `weather_full` accepts `city` + `province` (optional). Agent MUST extract city when user mentions it ("clima en Ameghino" → city="Ameghino").
+- Handler runs `localidadLookup` on the city name:
+  - `exact` → use matched city
+  - `disambiguate` (Ameghino in Bs As vs La Pampa) → respond with options asking user to clarify with province
+  - `suggestions` (typo) → offer fuzzy alternatives
+  - `not_found` → try OpenWeather with the raw name (tolerant)
+- No city in query → falls back to `user.city` (current behavior).
+
+### Livestock ↔ Financial Integration
+- `add_livestock` with `unit_price_ars` or `unit_price_usd` → auto-creates expense (category "Hacienda") with total = count × unit_price.
+- `remove_livestock` with `unit_price_*` → auto-creates income (category "Hacienda").
+- Currency priority: ARS if present, else USD.
+- Persisted in `livestock_movements.linked_expense_id` / `linked_income_id` for traceability.
+- Best-effort: if financial write fails, movement still succeeds (logged, not thrown).
+
+### Prompt Caching (Cost Optimization)
+- `agent.service.ts` sets `cache_control: { type: 'ephemeral' }` on:
+  1. System prompt (already was)
+  2. Last tool definition (new) — caches the 74-tool block (~2000 tokens)
+  3. Last few-shot message (new) — caches examples (~830 tokens)
+- Expected input cost reduction: ~65-75% on cache hits (5-min TTL, shared per API key).
+- Logs `CACHE: Nread/Nwrite` in `AI_AGENT` line so hit rate can be observed in Railway logs.
 
 ## Common Tool Params
 

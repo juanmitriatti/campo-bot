@@ -14,13 +14,19 @@ interface Expense {
   product: string | null;
   quantity: number | null;
   unit: string | null;
+  unit_price: number | null;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
   combustible: 'Combustible', fertilizantes: 'Fertilizantes', semillas: 'Semillas',
   agroquimicos: 'Agroquimicos', labranzas: 'Labranzas', sueldos: 'Sueldos',
-  maquinaria: 'Maquinaria', arrendamiento: 'Arrendamiento', impuestos: 'Impuestos', otros: 'Otros',
+  maquinaria: 'Maquinaria', arrendamiento: 'Arrendamiento', impuestos: 'Impuestos',
+  hacienda: 'Hacienda', otros: 'Otros',
 };
+
+function formatNumber(n: number): string {
+  return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(n);
+}
 
 function formatAmount(amount: number, currency: string): string {
   if (currency === 'USD') return `USD ${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(amount)}`;
@@ -38,6 +44,13 @@ interface Props {
 
 export default function ExpenseCard({ expense, onEdit }: Props) {
   const location = [expense.field_name, expense.plot_name].filter(Boolean).join(', ');
+  const productLine = expense.product
+    ? [
+        expense.product,
+        expense.quantity != null && expense.unit ? `${formatNumber(expense.quantity)} ${expense.unit}` : null,
+        expense.unit_price != null ? `@ ${formatAmount(expense.unit_price, expense.currency)}` : null,
+      ].filter(Boolean).join(' · ')
+    : null;
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -52,6 +65,7 @@ export default function ExpenseCard({ expense, onEdit }: Props) {
             </span>
           </div>
           <p className="text-sm text-gray-600 truncate">{expense.description || '-'}</p>
+          {productLine && <p className="text-xs text-purple-700 mt-0.5 truncate">{productLine}</p>}
           <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400">
             <span>{formatDate(expense.expense_date)}</span>
             {location && <><span>·</span><span className="truncate">{location}</span></>}

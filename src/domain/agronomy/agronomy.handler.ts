@@ -20,6 +20,7 @@ import { logError } from '../../services/error-logger.js';
 import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
 import { formatHistoryResponse } from './plot-query.service.js';
 import { formatDateAR } from '../../utils/date.js';
+import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
 import type { PendingActivity } from '../../middleware/pending-activities.js';
 import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
@@ -34,6 +35,45 @@ function normalizeActivityFilter(raw: string | null): string | null {
   if (!raw) return null;
   const stripped = raw.replace(/^log_/, '');
   return ACTIVITY_FILTER_MAP[stripped] ?? ACTIVITY_FILTER_MAP[raw] ?? stripped;
+}
+
+/**
+ * Resolve a weather query to a concrete city name using localidadLookup.
+ * Returns { city } when unambiguous, { clarify } when the user needs to specify a province.
+ * Falls back to user.city when no explicit city was provided.
+ */
+function resolveWeatherCity(
+  cmd: ParsedCommand,
+  user: User,
+): { city: string | null; clarify?: string } {
+  const rawCity = typeof cmd.city === 'string' ? cmd.city.trim() : '';
+  if (!rawCity) return { city: user.city ?? null };
+
+  const province = typeof cmd.province === 'string' ? cmd.province.trim() : '';
+  const input = province ? `${rawCity}, ${province}` : rawCity;
+  const result = localidadLookup.lookup(input);
+
+  if (result.status === 'exact') {
+    return { city: result.matches[0].nombre };
+  }
+  if (result.status === 'disambiguate') {
+    const options = result.matches.slice(0, 6).map(m => `• ${m.nombre}, ${m.provincia}`).join('\n');
+    return {
+      city: null,
+      clarify:
+        `🤔 Hay varias localidades con ese nombre:\n${options}\n\n` +
+        `Decime otra vez aclarando la provincia, ej: *clima en ${result.matches[0].nombre} ${result.matches[0].provincia}*`,
+    };
+  }
+  if (result.status === 'suggestions' && result.matches.length > 0) {
+    const options = result.matches.slice(0, 4).map(m => `• ${m.nombre}, ${m.provincia}`).join('\n');
+    return {
+      city: null,
+      clarify: `🤔 No encontré "${rawCity}" exacto. ¿Querías decir?\n${options}`,
+    };
+  }
+  // not_found → try OpenWeather with the raw name anyway (it's tolerant)
+  return { city: rawCity };
 }
 
 // --- Observation safety guard ---
@@ -327,7 +367,9 @@ export class AgronomyHandler {
         if (!process.env.OPENWEATHER_API_KEY) {
           return { messages: ['El clima no est\u00e1 configurado todav\u00eda.'] };
         }
-        const weatherCity = (cmd.city as string) || user.city || null;
+        const resolved = resolveWeatherCity(cmd, user);
+        if (resolved.clarify) return { messages: [resolved.clarify] };
+        const weatherCity = resolved.city;
         if (!weatherCity && !process.env.WEATHER_CITY) {
           return { messages: ['No tengo tu ubicaci\u00f3n. Escrib\u00ed algo como:\n\ud83d\udccd *estoy en Jun\u00edn*\n\nO ped\u00ed el clima de una ciudad:\n\ud83c\udf24\ufe0f *clima en Pergamino*'] };
         }
@@ -337,7 +379,7 @@ export class AgronomyHandler {
             getForecast(weatherCity, 3),
           ]);
           let msg = formatCurrentWeather(current) + '\n\n' + formatForecast(forecastData);
-          const rainAlert = checkRainAlert(forecastData);
+          const rainAlert = checkRainAlert(forecastData, settings.rain_alert_mm);
           if (rainAlert) msg += '\n\n' + rainAlert;
           return { messages: [msg], suggestionKey: 'weather_shown' };
         } catch (e: unknown) {
@@ -351,14 +393,16 @@ export class AgronomyHandler {
         if (!process.env.OPENWEATHER_API_KEY) {
           return { messages: ['El clima no est\u00e1 configurado todav\u00eda.'] };
         }
-        const fcCity = (cmd.city as string) || user.city || null;
+        const resolved = resolveWeatherCity(cmd, user);
+        if (resolved.clarify) return { messages: [resolved.clarify] };
+        const fcCity = resolved.city;
         if (!fcCity && !process.env.WEATHER_CITY) {
           return { messages: ['No tengo tu ubicaci\u00f3n. Escrib\u00ed algo como:\n\ud83d\udccd *estoy en Jun\u00edn*\n\nO ped\u00ed el clima de una ciudad:\n\ud83c\udf24\ufe0f *clima en Pergamino*'] };
         }
         try {
           const forecastData = await getForecast(fcCity, cmd.days as number);
           let msg = formatForecast(forecastData);
-          const rainAlert = checkRainAlert(forecastData);
+          const rainAlert = checkRainAlert(forecastData, settings.rain_alert_mm);
           if (rainAlert) msg += '\n\n' + rainAlert;
           return { messages: [msg], suggestionKey: 'weather_shown' };
         } catch (e: unknown) {
@@ -384,7 +428,7 @@ export class AgronomyHandler {
           ]);
           let msg = `\ud83d\udccd *Lote ${cmd.fieldName}* (${fieldCity})\n\n`;
           msg += formatCurrentWeather(current) + '\n\n' + formatForecast(forecastData);
-          const rainAlert = checkRainAlert(forecastData);
+          const rainAlert = checkRainAlert(forecastData, settings.rain_alert_mm);
           if (rainAlert) msg += '\n\n' + rainAlert;
           return { messages: [msg], suggestionKey: 'weather_shown' };
         } catch (e: unknown) {
@@ -430,7 +474,7 @@ export class AgronomyHandler {
             msg += `\n${loc.label} \u2014 *${loc.city}*\n`;
             msg += `${current.icon} ${current.temp}\u00b0C | \ud83d\udca7${current.humidity}% | \ud83d\udca8${current.wind}km/h\n`;
 
-            const rainAlert = checkRainAlert(forecast);
+            const rainAlert = checkRainAlert(forecast, settings.rain_alert_mm);
             if (rainAlert) alerts.push(`${loc.label} (${loc.city}): ${rainAlert}`);
           }
 
@@ -762,10 +806,13 @@ export class AgronomyHandler {
 
           if (!harvestedResult) {
             const active = await this.cropService.getActive(plotResult.plotId);
+            const lostLoadsNote = loads && loads.length > 0
+              ? `\n\n⚠️ Las *${loads.length} carga${loads.length > 1 ? 's' : ''}* no se guardaron (necesitás un cultivo activo primero). Sembrá el lote y volvé a mandar el mensaje completo con las cargas.`
+              : '';
             if (active) {
-              return { messages: [`En *${plotLabel}* hay *${active.crop}* sembrado, no ${crop}.\nSi querés cosechar ${active.crop}, escribí:\n🌾 *cosechamos ${active.crop.toLowerCase()} en el lote ${plotResult.plotName}*`] };
+              return { messages: [`En *${plotLabel}* hay *${active.crop}* sembrado, no ${crop}.\nSi querés cosechar ${active.crop}, escribí:\n🌾 *cosechamos ${active.crop.toLowerCase()} en el lote ${plotResult.plotName}*${lostLoadsNote}`] };
             }
-            return { messages: [`No hay cultivo activo en *${plotLabel}* para cosechar.`] };
+            return { messages: [`No hay cultivo activo en *${plotLabel}* para cosechar.${lostLoadsNote}`] };
           }
 
           harvested = harvestedResult;
@@ -829,6 +876,22 @@ export class AgronomyHandler {
           harvestMsg += `\n📊 Rendimiento: ${yieldKg.toLocaleString('es-AR')} kg`;
           if (kgPerHa) harvestMsg += ` (${kgPerHa.toLocaleString('es-AR')} kg/ha)`;
         }
+
+        // If plot_crop has existing loads (from prior messages), surface them so the user
+        // knows the info is stored and doesn't think it got lost.
+        try {
+          const plotCropId = (savedEvent.plot_crop_id as number) || harvested.id || null;
+          if (plotCropId) {
+            const existingLoads = await this.repo.getHarvestLoadsByCampaign(plotCropId);
+            if (existingLoads.length > 0) {
+              const totalKg = existingLoads.reduce((sum, l) => sum + Number(l.weight_kg), 0);
+              harvestMsg += `\n\n📦 *${existingLoads.length} carga${existingLoads.length > 1 ? 's' : ''} registrada${existingLoads.length > 1 ? 's' : ''}* (total: ${totalKg.toLocaleString('es-AR')} kg)\nEscribí *cargas del lote ${plotResult.plotName}* para ver el detalle.`;
+            }
+          }
+        } catch {
+          // Non-critical: swallow errors so the main harvest message still goes through
+        }
+
         harvestMsg += `\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime "cerrar campaña".`;
         const messages = [harvestMsg];
 

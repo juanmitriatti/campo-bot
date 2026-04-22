@@ -542,4 +542,18 @@ export class LivestockRepository {
       client.release();
     }
   }
+
+  async setMovementFinancialLink(
+    movementId: string,
+    expenseId: number | null,
+    incomeId: number | null,
+  ): Promise<void> {
+    await pool.query(
+      `UPDATE livestock_movements
+       SET linked_expense_id = COALESCE($2, linked_expense_id),
+           linked_income_id = COALESCE($3, linked_income_id)
+       WHERE id = $1`,
+      [movementId, expenseId, incomeId]
+    );
+  }
 }

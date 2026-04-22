@@ -49,7 +49,8 @@ CREATE TABLE expenses (
   expense_type VARCHAR(20) DEFAULT 'varios',
   product VARCHAR(150),
   quantity NUMERIC,
-  unit VARCHAR(30)
+  unit VARCHAR(30),
+  unit_price NUMERIC
 );
 
 CREATE TABLE incomes (

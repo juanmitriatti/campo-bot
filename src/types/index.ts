@@ -31,6 +31,7 @@ export interface ParsedExpense {
   product?: string | null;
   quantity?: number | null;
   unit?: string | null;
+  unit_price?: number | null;
 }
 
 export interface ParsedIncome {
@@ -130,6 +131,11 @@ export interface ExpenseRow {
   expense_date: Date;
   created_at: Date;
   deleted_at: Date | null;
+  expense_type?: 'insumo' | 'varios';
+  product?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  unit_price?: number | null;
 }
 
 export interface IncomeRow {

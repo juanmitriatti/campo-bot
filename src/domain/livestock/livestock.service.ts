@@ -5,10 +5,11 @@ import type {
   LivestockMovementRow,
   LivestockMovementType,
 } from './livestock.types.js';
-import { LIVESTOCK_CATEGORIES } from './livestock.types.js';
+import { LIVESTOCK_CATEGORIES, LIVESTOCK_CATEGORY_LABEL } from './livestock.types.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FeedlotService, type ResolvedCorralRef } from '../feedlot/feedlot.service.js';
-import type { UserId } from '../../types/index.js';
+import { saveExpense, saveIncome } from '../../services/expenses.js';
+import type { UserId, Currency } from '../../types/index.js';
 
 export interface ResolvedPlotRef {
   fieldId: number;
@@ -25,6 +26,13 @@ export type ResolvedLocation =
 export interface MovementFinancials {
   unit_price_ars?: number | null;
   unit_price_usd?: number | null;
+}
+
+export interface LinkedFinancialRecord {
+  type: 'expense' | 'income';
+  id: number;
+  amount: number;
+  currency: Currency;
 }
 
 /**
@@ -233,6 +241,95 @@ export class LivestockService {
     }
   }
 
+  /**
+   * Resolve (amount, currency) from the unit prices supplied. Prefers ARS when both are set.
+   * Returns null if no price info was provided.
+   */
+  private static resolvePriceTotal(
+    count: number,
+    opts: { unit_price_ars?: number | null; unit_price_usd?: number | null }
+  ): { amount: number; currency: Currency } | null {
+    if (opts.unit_price_ars && opts.unit_price_ars > 0) {
+      return { amount: Math.round(count * opts.unit_price_ars * 100) / 100, currency: 'ARS' };
+    }
+    if (opts.unit_price_usd && opts.unit_price_usd > 0) {
+      return { amount: Math.round(count * opts.unit_price_usd * 100) / 100, currency: 'USD' };
+    }
+    return null;
+  }
+
+  /**
+   * Create an expense/income for a livestock movement that carried a unit price,
+   * and link it back to the movement row. Side-effect only — does not throw the
+   * livestock operation if the financial write fails (best-effort logging).
+   */
+  private async createLinkedFinancialRecord(
+    userId: UserId,
+    movement: LivestockMovementRow,
+    kind: 'expense' | 'income',
+    fieldId: number,
+    plotId: number | null,
+    category: LivestockCategory,
+    count: number,
+    breed: string | null,
+    movementDate: string | null | undefined,
+  ): Promise<LinkedFinancialRecord | null> {
+    const price = LivestockService.resolvePriceTotal(count, {
+      unit_price_ars: movement.unit_price_ars,
+      unit_price_usd: movement.unit_price_usd,
+    });
+    if (!price) return null;
+
+    const label = LIVESTOCK_CATEGORY_LABEL[category].toLowerCase();
+    const breedSuffix = breed ? ` ${breed}` : '';
+    const description = kind === 'expense'
+      ? `Compra hacienda: ${count} ${label}${count > 1 ? 's' : ''}${breedSuffix}`
+      : `Venta hacienda: ${count} ${label}${count > 1 ? 's' : ''}${breedSuffix}`;
+
+    try {
+      if (kind === 'expense') {
+        const { id } = await saveExpense(
+          userId,
+          {
+            type: 'expense',
+            amount: price.amount,
+            currency: price.currency,
+            category: 'Hacienda',
+            description,
+            expenseType: 'varios',
+            expenseDate: movementDate ?? null,
+          },
+          fieldId,
+          plotId,
+        );
+        await this.repo.setMovementFinancialLink(movement.id, id, null);
+        return { type: 'expense', id, amount: price.amount, currency: price.currency };
+      }
+      const { id } = await saveIncome(
+        userId,
+        {
+          type: 'income',
+          amount: price.amount,
+          currency: price.currency,
+          category: 'Hacienda',
+          description,
+          quantity: count,
+          unit: label,
+          unit_price: movement.unit_price_ars ?? movement.unit_price_usd,
+          incomeDate: movementDate ?? null,
+        },
+        fieldId,
+        plotId,
+      );
+      await this.repo.setMovementFinancialLink(movement.id, null, id);
+      return { type: 'income', id, amount: price.amount, currency: price.currency };
+    } catch (err) {
+      // Financial write is additive — don't fail the livestock operation.
+      console.error('[livestock] failed to create linked financial record', err);
+      return null;
+    }
+  }
+
   /** Get human-readable location label */
   static formatLocation(group: LivestockGroupRow): string {
     if (group.corral_name) {
@@ -265,7 +362,7 @@ export class LivestockService {
       notes?: string | null;
       movement_date?: string | null;
     },
-  ): Promise<{ group: LivestockGroupRow; movement: LivestockMovementRow; created: boolean }> {
+  ): Promise<{ group: LivestockGroupRow; movement: LivestockMovementRow; created: boolean; financial?: LinkedFinancialRecord }> {
     const category = LivestockService.normalizeCategory(opts.category);
     if (!category) throw new Error(`Categoría no reconocida: "${opts.category}". Usá vaca, vaquillona, ternero, novillo, toro, etc.`);
     if (!opts.count || opts.count <= 0) throw new Error('La cantidad debe ser mayor a 0.');
@@ -296,7 +393,20 @@ export class LivestockService {
     );
 
     this.attachLocationNames(updated, loc);
-    return { group: updated, movement, created };
+
+    const financial = await this.createLinkedFinancialRecord(
+      userId,
+      movement,
+      'expense',
+      loc.fieldId,
+      loc.type === 'plot' ? loc.plotId : null,
+      category,
+      opts.count,
+      opts.breed ?? null,
+      opts.movement_date,
+    ) ?? undefined;
+
+    return { group: updated, movement, created, financial };
   }
 
   /**
@@ -317,7 +427,7 @@ export class LivestockService {
       notes?: string | null;
       movement_date?: string | null;
     },
-  ): Promise<{ group: LivestockGroupRow; movement: LivestockMovementRow }> {
+  ): Promise<{ group: LivestockGroupRow; movement: LivestockMovementRow; financial?: LinkedFinancialRecord }> {
     const category = LivestockService.normalizeCategory(opts.category);
     if (!category) throw new Error(`Categoría no reconocida: "${opts.category}".`);
     if (!opts.count || opts.count <= 0) throw new Error('La cantidad debe ser mayor a 0.');
@@ -347,7 +457,20 @@ export class LivestockService {
     );
 
     this.attachLocationNames(updated, loc);
-    return { group: updated, movement };
+
+    const financial = await this.createLinkedFinancialRecord(
+      userId,
+      movement,
+      'income',
+      loc.fieldId,
+      loc.type === 'plot' ? loc.plotId : null,
+      category,
+      opts.count,
+      opts.breed ?? null,
+      opts.movement_date,
+    ) ?? undefined;
+
+    return { group: updated, movement, financial };
   }
 
   /**

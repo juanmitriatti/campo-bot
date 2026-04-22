@@ -42,6 +42,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - Agro verb WITH explicit amount → BOTH activity + `log_expense` (compound action)
 - compré/gasté + insumo → `log_expense` (type=insumo)
 - vendí/cobré → `log_income`
+- "a X c/u" / "a X el kg" → `log_expense.unit_price` (parity with `log_income`)
 
 ### Hectáreas vs Hacienda
 - "has"/"hectáreas"/"superficie" + campo → `list_plots` (NOT livestock)
@@ -59,6 +60,15 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - "N vacas con N terneros" → 2x `add_livestock` (NEVER `record_livestock_birth`)
 - Birth verbs only (nacieron/parieron/nació) → `record_livestock_birth`
 - "pasé N terneros a novillos" → `transfer_livestock` (recategorización auto-detected)
+- `add_livestock` / `remove_livestock` with `unit_price_ars|usd` → auto-creates linked expense/income (category "Hacienda"). Stored in `livestock_movements.linked_expense_id` / `linked_income_id`.
+
+### Weather
+- "clima/pronóstico/va a llover en X" → `weather_full(city=X, province?)`. NEVER fall back to user.city if query mentions a city.
+- Handler uses `localidadLookup` to disambiguate ambiguous names (ej: Ameghino in Bs As vs La Pampa).
+
+### Harvest Loads (per-truck)
+- ANY list of `nombre número` in a cosecha context is `loads[]` — destinatario and kg unit are optional.
+- "Cosecha del lote X" WITHOUT driver/weight list → `query_harvest_loads` (query intent), NOT `harvest_crop`.
 
 ### Reports
 - "reporte agronómico" → `generate_agro_report` (needs agent for date range)
@@ -69,11 +79,20 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - `sow_crop` accepts optional `hectares` param for partial-plot sowing → `plot_crops.sowed_hectares`
 
 ### Harvest Loads
-- `harvest_crop` accepts optional `loads[]` (per-truck: driver_name, weight_kg, destination, destinatario, truck_plate)
+- `harvest_crop` accepts optional `loads[]` (per-truck: driver_name, weight_kg, destination?, destinatario?, truck_plate?). Only driver+weight required.
 - Dedup: same plot harvested today → appends loads, no duplicate event
+- If `loads[]` present but no active crop → handler warns the user the loads were dropped
+- If harvest called with no new loads but plot has stored loads → response includes existing-loads summary
 - `query_harvest_loads` tool queries stored loads (filters: plot, field, date, driver, destinatario)
 - `delete_harvest_loads` tool removes loads by criteria (plot, date, driver_names[], only_without_destination)
 - `campaign_stats` includes per-truck detail in yield section
+
+### Weather Alerts (scheduled 06:00 AR)
+- Rain: today + next 2 days, threshold `user_settings.rain_alert_mm` (default 10mm)
+- Wind: days with `wind ≥ wind_alert_kmh` (default 20) — for spraying decisions
+- Dry window: N consecutive days < 1mm (default 3 days via `dry_window_days`) — for application/sowing planning
+- All alerts include "_Es un pronóstico, puede cambiar._" disclaimer
+- Dedup: 24h per city+day per alert type. Channel: Telegram-first, WhatsApp fallback
 
 ## Key Conventions
 

@@ -14,6 +14,7 @@ interface Expense {
   product: string | null;
   quantity: number | null;
   unit: string | null;
+  unit_price: number | null;
 }
 
 interface Props {
@@ -29,13 +30,13 @@ function toLocalDate(dateStr: string): string {
 
 const EXPENSE_CATEGORIES = [
   'combustible', 'fertilizantes', 'semillas', 'agroquimicos',
-  'labranzas', 'sueldos', 'maquinaria', 'arrendamiento', 'impuestos', 'otros',
+  'labranzas', 'sueldos', 'maquinaria', 'arrendamiento', 'impuestos', 'hacienda', 'otros',
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
   combustible: 'Combustible', fertilizantes: 'Fertilizantes', semillas: 'Semillas',
   agroquimicos: 'Agroquimicos', labranzas: 'Labranzas', sueldos: 'Sueldos', maquinaria: 'Maquinaria',
-  arrendamiento: 'Arrendamiento', impuestos: 'Impuestos', otros: 'Otros',
+  arrendamiento: 'Arrendamiento', impuestos: 'Impuestos', hacienda: 'Hacienda', otros: 'Otros',
 };
 
 const INSUMO_CATEGORIES = new Set(['agroquimicos', 'fertilizantes', 'semillas', 'combustible']);
@@ -50,6 +51,7 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
   const [product, setProduct] = useState(expense.product || '');
   const [quantity, setQuantity] = useState(expense.quantity != null ? String(expense.quantity) : '');
   const [unit, setUnit] = useState(expense.unit || '');
+  const [unitPrice, setUnitPrice] = useState(expense.unit_price != null ? String(expense.unit_price) : '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,6 +79,7 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
           product: isInsumo ? (product.trim() || null) : null,
           quantity: isInsumo && quantity ? parseFloat(quantity) : null,
           unit: isInsumo ? (unit.trim() || null) : null,
+          unit_price: isInsumo && unitPrice ? parseFloat(unitPrice) : null,
         },
       });
       onSaved();
@@ -125,7 +128,7 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
                 <label className="block text-xs text-gray-500 mb-1">Tipo</label>
                 <select value={expenseTypeVal} onChange={e => {
                   setExpenseTypeVal(e.target.value);
-                  if (e.target.value === 'varios') { setProduct(''); setQuantity(''); setUnit(''); }
+                  if (e.target.value === 'varios') { setProduct(''); setQuantity(''); setUnit(''); setUnitPrice(''); }
                 }}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none">
                   <option value="varios">Varios</option>
@@ -149,10 +152,15 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
               </div>
             </div>
             {isInsumo && (
-              <div className="grid grid-cols-3 gap-3 p-3 bg-purple-50 rounded-md border border-purple-200">
+              <div className="grid grid-cols-2 gap-3 p-3 bg-purple-50 rounded-md border border-purple-200">
                 <div>
                   <label className="block text-xs text-purple-600 mb-1">Producto</label>
                   <input type="text" value={product} onChange={e => setProduct(e.target.value)} placeholder="Ej: Roundup"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs text-purple-600 mb-1">Unidad</label>
+                  <input type="text" value={unit} onChange={e => setUnit(e.target.value)} placeholder="Ej: lt, kg, bolsas"
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
                 </div>
                 <div>
@@ -161,8 +169,8 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs text-purple-600 mb-1">Unidad</label>
-                  <input type="text" value={unit} onChange={e => setUnit(e.target.value)} placeholder="Ej: lt, kg"
+                  <label className="block text-xs text-purple-600 mb-1">Precio unitario</label>
+                  <input type="number" step="0.01" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} placeholder="Ej: 8000"
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
                 </div>
               </div>

@@ -16,6 +16,27 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+/**
+ * Attach a cache_control marker to the last few-shot message so the
+ * tools+system+few-shot prefix becomes a stable cacheable boundary.
+ * Immutable — clones the last message so we don't mutate the service's output.
+ */
+function withFewShotCacheBoundary(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  if (messages.length === 0) return messages;
+  const last = messages[messages.length - 1];
+  if (!Array.isArray(last.content) || last.content.length === 0) return messages;
+  const newContent = [...last.content];
+  const lastBlock = newContent[newContent.length - 1];
+  newContent[newContent.length - 1] = {
+    ...lastBlock,
+    cache_control: { type: 'ephemeral' },
+  } as typeof lastBlock;
+  return [
+    ...messages.slice(0, -1),
+    { ...last, content: newContent },
+  ];
+}
+
 export interface AgentToolCall {
   toolName: string;
   toolInput: Record<string, unknown>;
@@ -91,9 +112,11 @@ export class AgentService {
       const resolvedMaxTokens = maxTokens || 400;
       const resolvedTimeout = timeoutMs || 8000;
 
-      // Build messages: few-shot (tool_use format) + history + current
+      // Build messages: few-shot (tool_use format) + history + current.
+      // Cache boundary goes on the LAST few-shot block so tools+system+few-shot
+      // become a stable cacheable prefix; history varies per user/session and stays uncached.
       const fewShotPairs = this.fewShotService
-        ? this.fewShotService.formatAsToolUseMessages(fewShotExamples)
+        ? withFewShotCacheBoundary(this.fewShotService.formatAsToolUseMessages(fewShotExamples))
         : [];
 
       const messages: Anthropic.MessageParam[] = [
@@ -104,6 +127,18 @@ export class AgentService {
         })),
         { role: 'user', content: text },
       ];
+
+      // Tool definitions are identical across all users → cache them.
+      // Adding cache_control to the last tool marks the whole block as a cache prefix.
+      const cachedTools: Anthropic.Tool[] = TOOL_DEFINITIONS.length > 0
+        ? [
+            ...TOOL_DEFINITIONS.slice(0, -1),
+            {
+              ...TOOL_DEFINITIONS[TOOL_DEFINITIONS.length - 1],
+              cache_control: { type: 'ephemeral' },
+            },
+          ]
+        : TOOL_DEFINITIONS;
 
       // Call Claude with tool_use + timeout
       const controller = new AbortController();
@@ -117,7 +152,7 @@ export class AgentService {
             max_tokens: resolvedMaxTokens,
             temperature: 0,
             system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-            tools: TOOL_DEFINITIONS,
+            tools: cachedTools,
             tool_choice: { type: 'any' },
             messages,
           },
@@ -132,6 +167,8 @@ export class AgentService {
         input_tokens: response.usage.input_tokens,
         output_tokens: response.usage.output_tokens,
       };
+      const cacheRead = response.usage.cache_read_input_tokens ?? 0;
+      const cacheWrite = response.usage.cache_creation_input_tokens ?? 0;
 
       await repo.saveAiUsage(userId, usage);
       saveAiFallbackLog(userId, text, { type: 'agent_tool_use' }, usage).catch(() => {});
@@ -158,6 +195,7 @@ export class AgentService {
           ? `tools=[${toolCalls.map(t => t.toolName).join(',')}]`
           : `conversational="${(conversationalText ?? '').slice(0, 100)}"`,
         `TOKENS: ${usage.input_tokens}in/${usage.output_tokens}out`,
+        `CACHE: ${cacheRead}read/${cacheWrite}write`,
       );
 
       return { toolCalls, conversationalText, usage };

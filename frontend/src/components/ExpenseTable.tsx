@@ -20,6 +20,7 @@ interface Expense {
   product: string | null;
   quantity: number | null;
   unit: string | null;
+  unit_price: number | null;
 }
 
 interface PaginatedResponse {

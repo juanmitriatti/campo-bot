@@ -10,11 +10,18 @@ import type {
   UserSettings,
   ParsedCommand,
   HandlerResponse,
+  Currency,
 } from '../../types/index.js';
 
 /** Format a group's location for display */
 function fmtLoc(group: LivestockGroupRow): string {
   return LivestockService.formatLocation(group);
+}
+
+/** Format a monetary amount for WhatsApp/Telegram messages */
+function fmtAmount(amount: number, currency: Currency): string {
+  const nf = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 });
+  return currency === 'USD' ? `USD ${nf.format(amount)}` : `$${nf.format(amount)}`;
 }
 
 export class LivestockHandler {
@@ -59,7 +66,7 @@ export class LivestockHandler {
     if (!category) return { messages: ['Necesito saber la categoría. Ej: "agregué 20 vacas al lote A1".'] };
     if (!count || count <= 0) return { messages: ['Necesito la cantidad. Ej: "agregué 20 vacas al lote A1".'] };
 
-    const { group, created } = await this.service.addAnimals(userId, {
+    const { group, created, financial } = await this.service.addAnimals(userId, {
       category,
       count,
       fieldName: cmd.fieldName as string,
@@ -75,13 +82,17 @@ export class LivestockHandler {
 
     const newLabel = created ? ' (nuevo grupo)' : '';
     const breed = group.breed ? ` ${group.breed}` : '';
+    const financialLine = financial
+      ? `\n  💸 Gasto registrado: ${fmtAmount(financial.amount, financial.currency)} (Hacienda)`
+      : '';
     return {
       messages: [
         `🐄 *Hacienda actualizada*\n\n` +
         `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}${newLabel}\n` +
         `  ➕ ${count} animales\n` +
         `  📊 Total: *${group.count}*\n` +
-        `  📍 ${fmtLoc(group)}`,
+        `  📍 ${fmtLoc(group)}` +
+        financialLine,
       ],
     };
   }
@@ -96,7 +107,7 @@ export class LivestockHandler {
     if (!category) return { messages: ['Necesito la categoría. Ej: "vendí 5 vacas del lote A1".'] };
     if (!count || count <= 0) return { messages: ['Necesito la cantidad. Ej: "vendí 5 vacas del lote A1".'] };
 
-    const { group } = await this.service.removeAnimals(userId, {
+    const { group, financial } = await this.service.removeAnimals(userId, {
       category,
       count,
       fieldName: cmd.fieldName as string,
@@ -110,13 +121,17 @@ export class LivestockHandler {
     });
 
     const breed = group.breed ? ` ${group.breed}` : '';
+    const financialLine = financial
+      ? `\n  💰 Ingreso registrado: ${fmtAmount(financial.amount, financial.currency)} (Hacienda)`
+      : '';
     return {
       messages: [
         `🐄 *Hacienda descontada*\n\n` +
         `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}\n` +
         `  ➖ ${count} animales\n` +
         `  📊 Quedan: *${group.count}*\n` +
-        `  📍 ${fmtLoc(group)}`,
+        `  📍 ${fmtLoc(group)}` +
+        financialLine,
       ],
     };
   }

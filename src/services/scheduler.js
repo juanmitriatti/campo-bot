@@ -2,7 +2,7 @@ import cron from "node-cron";
 import { pool } from "../config/db.js";
 import { sendMessage } from "./whatsapp.js";
 import { getUsersWithRainAlerts, getGlobalSettings } from "./expenses.js";
-import { getForecast } from "./weather.js";
+import { getForecast, checkDryWindow, checkWindAlert } from "./weather.js";
 import { sendAlertWithRetry, sendAlertWithRetryMultiChannel, isDuplicate, recordDeduped } from "./alert.service.js";
 import { getSettingNumber, getSettingBool } from "./settings.service.js";
 import { cleanupOldReports } from "./agro-report.js";
@@ -445,35 +445,65 @@ async function checkWeatherForUser(user) {
 
   if (citySources.size === 0) return;
 
-  const threshold = user.rain_alert_mm || 10;
-  const alerts = [];
+  const rainThreshold = user.rain_alert_mm || 10;
+  const windThreshold = user.wind_alert_kmh || 20;
+  const dryDays = user.dry_window_days || 3;
+  const rainAlerts = [];
+  const windAlerts = [];
+  const dryAlerts = [];
 
+  // Fetch forecast once per city and run all three checks (rain, wind, dry window).
+  // includeToday: true — 6am run still has the whole day ahead, so today's rain/wind matters.
   for (const [city, label] of citySources) {
     try {
-      const forecastData = await getForecast(city, 2);
-      for (const day of forecastData.forecast) {
-        if (day.rain >= threshold) {
-          const resolvedCity = forecastData.city || city;
-          const dedupKey = `${resolvedCity}_${day.dayName}`;
+      const forecastData = await getForecast(city, 3, { includeToday: true });
+      const resolvedCity = forecastData.city || city;
+      const isUserCity = label === 'tu ubicación';
 
-          // Check deduplication against previous alerts
+      // --- Rain per-day ---
+      for (const day of forecastData.forecast) {
+        if (day.rain >= rainThreshold) {
+          const dedupKey = `rain_${resolvedCity}_${day.dayName}`;
           const dup = await isDuplicate(user.id, 'weather', dedupKey, 24);
           if (dup) {
             await recordDeduped(user.id, 'weather', dedupKey);
             continue;
           }
-
-          // Deduplicate within same message (same city+day from user city + field city)
-          if (!alerts.some(a => a.dedupKey === dedupKey)) {
-            alerts.push({
-              city: resolvedCity,
-              label,
-              isUserCity: label === 'tu ubicación',
-              dayName: day.dayName,
-              rain: day.rain,
-              icon: day.icon,
-              dedupKey,
+          if (!rainAlerts.some(a => a.dedupKey === dedupKey)) {
+            rainAlerts.push({
+              city: resolvedCity, label, isUserCity,
+              dayName: day.dayName, rain: day.rain, icon: day.icon, dedupKey,
             });
+          }
+        }
+      }
+
+      // --- Wind (single message per city per day-run) ---
+      if (user.wind_alerts) {
+        const windMsg = checkWindAlert(forecastData, windThreshold);
+        if (windMsg) {
+          const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+          const dedupKey = `wind_${resolvedCity}_${today}`;
+          const dup = await isDuplicate(user.id, 'weather', dedupKey, 24);
+          if (dup) {
+            await recordDeduped(user.id, 'weather', dedupKey);
+          } else if (!windAlerts.some(a => a.dedupKey === dedupKey)) {
+            windAlerts.push({ city: resolvedCity, label, isUserCity, body: windMsg, dedupKey });
+          }
+        }
+      }
+
+      // --- Dry window (single message per city per day-run) ---
+      if (user.dry_window_alerts) {
+        const dryMsg = checkDryWindow(forecastData, dryDays);
+        if (dryMsg) {
+          const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+          const dedupKey = `dry_${resolvedCity}_${today}`;
+          const dup = await isDuplicate(user.id, 'weather', dedupKey, 24);
+          if (dup) {
+            await recordDeduped(user.id, 'weather', dedupKey);
+          } else if (!dryAlerts.some(a => a.dedupKey === dedupKey)) {
+            dryAlerts.push({ city: resolvedCity, label, isUserCity, body: dryMsg, dedupKey });
           }
         }
       }
@@ -483,31 +513,55 @@ async function checkWeatherForUser(user) {
     }
   }
 
-  if (alerts.length === 0) return;
+  await sendRainAlertBundle(user, rainAlerts, rainThreshold);
+  await sendCityAlertBundle(user, windAlerts, '🌬️ *Alerta de viento*', 'wind');
+  await sendCityAlertBundle(user, dryAlerts, '☀️ *Ventana seca*', 'dry');
+}
 
-  // Sort: user location first, then campos
+async function sendRainAlertBundle(user, alerts, threshold) {
+  if (alerts.length === 0) return;
   alerts.sort((a, b) => (b.isUserCity ? 1 : 0) - (a.isUserCity ? 1 : 0));
 
   let msg = "🌧️ *Alerta de lluvia*\n";
   for (const a of alerts) {
     msg += `\n${a.icon} *${a.city}* (${a.label}) — ${a.dayName}: ${a.rain}mm estimados`;
   }
-  msg += `\n\n_Umbral configurado: ${threshold}mm_`;
+  msg += `\n\n_Umbral configurado: ${threshold}mm. Es un pronóstico, puede cambiar._`;
 
-  // Use first alert's dedupKey as representative
   const dedupKey = alerts[0].dedupKey;
-
   const result = await sendAlertWithRetryMultiChannel(user.id, { phone: user.phone_number, telegramId: user.telegram_id }, msg, 'weather', {
     dedupKey,
     payload: { cities: alerts.map(a => a.city), threshold },
   });
-
   if (result.sent) {
     const channel = user.telegram_id ? 'telegram' : 'whatsapp';
     console.log(`[weather-alert] Rain alert sent to user ${user.id} via ${channel}`);
   } else {
-    console.error(`[weather-alert] Failed to send to user ${user.id} after retries`);
-    logError('scheduler', 'WEATHER_ALERT_SEND', `Failed to send weather alert after retries`, { userId: user.id });
+    console.error(`[weather-alert] Failed to send rain alert to user ${user.id} after retries`);
+    logError('scheduler', 'WEATHER_ALERT_SEND', `Failed to send rain alert after retries`, { userId: user.id });
+  }
+}
+
+async function sendCityAlertBundle(user, alerts, header, kind) {
+  if (alerts.length === 0) return;
+  alerts.sort((a, b) => (b.isUserCity ? 1 : 0) - (a.isUserCity ? 1 : 0));
+
+  let msg = `${header}\n`;
+  for (const a of alerts) {
+    msg += `\n*${a.city}* (${a.label})\n${a.body}\n`;
+  }
+
+  const dedupKey = alerts[0].dedupKey;
+  const result = await sendAlertWithRetryMultiChannel(user.id, { phone: user.phone_number, telegramId: user.telegram_id }, msg, 'weather', {
+    dedupKey,
+    payload: { cities: alerts.map(a => a.city), kind },
+  });
+  if (result.sent) {
+    const channel = user.telegram_id ? 'telegram' : 'whatsapp';
+    console.log(`[weather-alert] ${kind} alert sent to user ${user.id} via ${channel}`);
+  } else {
+    console.error(`[weather-alert] Failed to send ${kind} alert to user ${user.id} after retries`);
+    logError('scheduler', 'WEATHER_ALERT_SEND', `Failed to send ${kind} alert after retries`, { userId: user.id });
   }
 }
 

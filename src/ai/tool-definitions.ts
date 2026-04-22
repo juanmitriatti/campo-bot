@@ -33,6 +33,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         product: { type: 'string', description: 'Nombre del producto/insumo (Roundup, Urea, Gasoil). Solo si expense_type=insumo.' },
         quantity: QUANTITY_PROP,
         unit: UNIT_PROP,
+        unit_price: { type: 'number', description: 'Precio por unidad. Usar cuando el usuario dice "a X c/u", "a X el kg/bolsa/lt". Ej: "50 bolsas de urea a 8000 c/u" → quantity=50, unit_price=8000, amount=400000.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
         event_date: DATE_PROP,
@@ -422,11 +423,13 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // ========================
   {
     name: 'weather_full',
-    description: 'Consultar clima/pronóstico del tiempo.',
+    description: 'Consultar clima/pronóstico del tiempo. Si el usuario menciona una ciudad distinta a su ubicación ("clima en X", "va a llover en X", "pronóstico de X"), capturar en city. Si aclara provincia ("clima en Ameghino Buenos Aires"), capturar en province.',
     input_schema: {
       type: 'object',
       properties: {
         field: FIELD_PROP,
+        city: { type: 'string', description: 'Nombre de ciudad/localidad mencionada explícitamente. Ej: "clima en Ameghino" → city="Ameghino". Omitir si el usuario no menciona ciudad (se usa su ubicación).' },
+        province: { type: 'string', description: 'Provincia, solo si el usuario la menciona para desambiguar. Ej: "clima en Ameghino Buenos Aires" → province="Buenos Aires".' },
       },
       required: [],
     },

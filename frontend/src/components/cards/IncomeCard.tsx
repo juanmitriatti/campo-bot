@@ -26,6 +26,10 @@ function formatAmount(amount: number, currency: string): string {
   return `$${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(amount)}`;
 }
 
+function formatNumber(n: number): string {
+  return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(n);
+}
+
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 }
@@ -37,6 +41,12 @@ interface Props {
 
 export default function IncomeCard({ income, onEdit }: Props) {
   const location = [income.field_name, income.plot_name].filter(Boolean).join(', ');
+  const quantityLine = income.quantity != null && income.unit
+    ? [
+        `${formatNumber(income.quantity)} ${income.unit}`,
+        income.unit_price != null ? `@ ${formatAmount(income.unit_price, income.currency)}` : null,
+      ].filter(Boolean).join(' · ')
+    : null;
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -51,6 +61,7 @@ export default function IncomeCard({ income, onEdit }: Props) {
             </span>
           </div>
           <p className="text-sm text-gray-600 truncate">{income.description || '-'}</p>
+          {quantityLine && <p className="text-xs text-emerald-700 mt-0.5 truncate">{quantityLine}</p>}
           <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400">
             <span>{formatDate(income.income_date)}</span>
             {location && <><span>·</span><span className="truncate">{location}</span></>}

@@ -150,10 +150,14 @@ export async function updateGlobalSettings(settings) {
 export async function getUsersWithRainAlerts() {
   const { rows } = await pool.query(
     `SELECT u.id, u.phone_number, u.telegram_id, u.city,
-            COALESCE(s.rain_alert_mm, (SELECT default_rain_alert_mm FROM global_settings WHERE id = 1), 10) AS rain_alert_mm
+            COALESCE(s.rain_alert_mm, (SELECT default_rain_alert_mm FROM global_settings WHERE id = 1), 10) AS rain_alert_mm,
+            COALESCE(s.wind_alerts, true) AS wind_alerts,
+            COALESCE(s.wind_alert_kmh, (SELECT default_wind_alert_kmh FROM global_settings WHERE id = 1), 20) AS wind_alert_kmh,
+            COALESCE(s.dry_window_alerts, true) AS dry_window_alerts,
+            COALESCE(s.dry_window_days, (SELECT default_dry_window_days FROM global_settings WHERE id = 1), 3) AS dry_window_days
      FROM users u
      JOIN user_settings s ON s.user_id = u.id
-     WHERE s.rain_alerts = true`
+     WHERE s.rain_alerts = true OR s.wind_alerts = true OR s.dry_window_alerts = true`
   );
   return rows;
 }
@@ -343,8 +347,8 @@ export async function getAiFallbackSummary() {
 export async function saveExpense(userId, data, fieldId = null, plotId = null) {
   const result = await pool.query(
     `INSERT INTO expenses
-    (user_id, category, description, amount, currency, field_id, plot_id, expense_date, expense_type, product, quantity, unit)
-    VALUES ($1,$2,$3,$4,$5,$6,$7, COALESCE($8::date, CURRENT_DATE), $9, $10, $11, $12)
+    (user_id, category, description, amount, currency, field_id, plot_id, expense_date, expense_type, product, quantity, unit, unit_price)
+    VALUES ($1,$2,$3,$4,$5,$6,$7, COALESCE($8::date, CURRENT_DATE), $9, $10, $11, $12, $13)
     RETURNING id`,
     [
       userId,
@@ -359,6 +363,7 @@ export async function saveExpense(userId, data, fieldId = null, plotId = null) {
       data.product || null,
       data.quantity || null,
       data.unit || null,
+      data.unit_price ?? null,
     ]
   );
   return result.rows[0];

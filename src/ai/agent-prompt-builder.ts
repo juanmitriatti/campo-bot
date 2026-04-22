@@ -72,6 +72,7 @@ ${lines.join('\n')}
 - gasté/compré/pagué+monto→log_expense. vendí/cobré+producto→log_income
 - TIPOS DE GASTO: Si mencionan producto concreto (Roundup,urea,semilla X,gasoil,glifosato)→expense_type=insumo + capturar product/quantity/unit. Si mencionan servicio (labré,pagué la siembra,servicio de fumigación,pulverización terrestre)→expense_type=varios, category=labranzas. Default=varios
 - Categorías insumo: agroquimicos,fertilizantes,semillas,combustible → siempre expense_type=insumo
+- PRECIO UNITARIO en log_expense: cuando el usuario dice "a X c/u", "a X el kg/bolsa/lt", "cada uno a X" → capturar unit_price y amount=quantity*unit_price. Ej: "50 bolsas de urea a 8000 c/u"→quantity=50, unit=bolsas, unit_price=8000, amount=400000. "2000 lt de gasoil a 950 el litro"→quantity=2000, unit=lt, unit_price=950, amount=1900000
 ${this.buildActivityLines(dictionary)}
 - "cuándo se fumigó/sembró/cosechó"→query_plot_history (consulta, NO registro). SIEMPRE usar herramienta
 - "en qué lote sembré/fumigué/cosechó X"→query_plot_history con activityFilter y crop, SIN plot (busca en todos)
@@ -79,6 +80,7 @@ ${this.buildActivityLines(dictionary)}
 - Producto fertilizante(urea,DAP,MAP,fosfato,nitrato,potasio)→log_fertilization
 - Producto herbicida/insecticida/fungicida→log_spraying
 - "cuánto llovió"/"lluvia este mes"→rainfall_report (consulta, no registro)
+- CLIMA: "clima/pronóstico/va a llover/tiempo en X"→weather_full con city=X. SIEMPRE extraer la ciudad si el usuario la menciona, NO asumir la ubicación del usuario. Ej: "en ameghino va a llover?"→weather_full(city="Ameghino"). Si mencionan provincia ("clima en ameghino buenos aires")→agregar province. Sin ciudad ("clima"/"pronóstico")→weather_full sin city (usa ubicación del usuario)
 - "plagas/malezas/helada/granizo/roya/hongo/chinches/pulgones en lote X"→log_observation (REGISTRO, no consulta)
 - "cuándo/qué/hubo plagas en lote X"→query_plot_history (CONSULTA). Solo si pregunta explícita
 - "reporte agro/agronómico"/"estado del lote/campo"/"cómo va/viene/está el lote/campo"/"novedades"/"resumen agronómico"→generate_agro_report
@@ -117,8 +119,14 @@ ${this.buildActivityLines(dictionary)}
 - CAMPAÑAS: "cómo va la campaña/soja/trigo"/"cuánto gasté en la soja"/"rendimiento del maíz"/"rentabilidad"/"resultado de la soja"→campaign_stats. "cerrar campaña"/"terminó la campaña"→close_campaign. "cosechamos"→harvest_crop (NO cierra la campaña, solo registra hito)
 - COMPARAR CAMPAÑAS: "comparar soja 25/26 vs 24/25"/"comparar campañas"/"cómo salió vs la anterior"/"comparar con la campaña pasada"→compare_campaigns. Si solo dice "comparar" sin cultivo, compara las 2 últimas del mismo lote
 - harvest_crop YA NO cierra la campaña. Para cerrar: close_campaign
-- CARGAS COSECHA: "se cargó/cargaron [lote] fulano X kg, mengano Y kg" → harvest_crop con loads[]. Números argentinos: "31.320 kg" = 31320 (punto = miles). Si después dicen destino ("a Cargill"/"acopio"/"al silo") → harvest_crop con loads[]+destination/destinatario
-- CONSULTA CARGAS: "cargas del lote X"/"cuánto llevó fulano"/"camiones a Cargill"/"detalle cosecha" → query_harvest_loads. NUNCA query_plot_history para cargas de camiones
+- CARGAS COSECHA: REGLA FUERTE. En contexto de cosecha, TODA lista de "nombre número" (uno por línea o separados por coma) es loads[]. NO importa si falta "kg" o destinatario — driver_name y weight_kg son los únicos requeridos.
+  Ejemplos válidos → harvest_crop con loads[]:
+  • "Cosecha del lote X\nBritos 31.320\nContreras 31.487" → 2 loads sin destinatario
+  • "cosechamos soja. Pérez 28tn, López 30tn" → 2 loads con weight en tn
+  • "se cargó [lote] fulano X kg, mengano Y kg" → loads[]
+  • "Britos a Cargill con 31.320" → load con destinatario=Cargill
+  Números argentinos: "31.320" = 31320 (punto = miles). Si viene en tn convertir a kg (*1000). Destinatario solo si lo mencionan explícitamente ("a X"/"para X").
+- CONSULTA COSECHA/CARGAS: "cargas del lote X"/"cuánto llevó fulano"/"camiones a Cargill"/"detalle cosecha"/"cosecha del lote X?"/"ver cosecha de X"/"mostrar cargas X" (consulta sin datos nuevos) → query_harvest_loads. NUNCA query_plot_history para cargas de camiones. "Cosecha del lote X" SIN lista de choferes/pesos → query_harvest_loads, NO harvest_crop
 - ELIMINAR CARGAS: "borrar/eliminar cargas del lote X"/"esas cargas están de más"/"duplicado"/"borrar camiones sin destino" → delete_harvest_loads. Si dicen "sin destino" → only_without_destination=true. Si mencionan choferes → driver_names[]
 - ACTIVIDADES STATS: "cuántas fumigaciones"/"cuántas siembras"/"actividades del mes"/"resumen actividades"/"estadísticas actividades"/"cuántas veces fumigué/sembré" → activity_stats. Para consultas tipo "cuándo fumigué" (fecha específica) → query_plot_history
 - GRUPO LOTES (asignación): "asignar grupo X al lote Y"/"el lote Y es del grupo X"/"los lotes A, B son de X"/"titularidad de los lotes es X"/"lotes A y B pertenecen a X"/"el dueño de los lotes A,B es X"/"cambiar grupo del lote" → set_plot_grupo(plots=[...], grupo=X). SIEMPRE usar array plots aunque sea un solo lote. NUNCA responder conversacional si hay nombres de lotes + nombre de grupo/titular

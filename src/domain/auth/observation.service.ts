@@ -486,7 +486,7 @@ export class ObservationService {
   async editExpense(
     expenseId: number,
     userId: number,
-    data: { description?: string; amount?: number; currency?: string; category?: string; expense_date?: string; expense_type?: string; product?: string | null; quantity?: number | null; unit?: string | null }
+    data: { description?: string; amount?: number; currency?: string; category?: string; expense_date?: string; expense_type?: string; product?: string | null; quantity?: number | null; unit?: string | null; unit_price?: number | null }
   ): Promise<ExpenseRow> {
     const { rows } = await pool.query(
       `SELECT * FROM expenses WHERE id = $1 AND deleted_at IS NULL`,
@@ -516,6 +516,7 @@ export class ObservationService {
     if (data.product !== undefined) { idx++; sets.push(`product = $${idx}`); params.push(data.product as string); }
     if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(data.quantity as number); }
     if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit as string); }
+    if (data.unit_price !== undefined) { idx++; sets.push(`unit_price = $${idx}`); params.push(data.unit_price as number); }
 
     idx++;
     const result = await pool.query(
@@ -528,7 +529,7 @@ export class ObservationService {
   async editIncome(
     incomeId: number,
     userId: number,
-    data: { description?: string; amount?: number; currency?: string; category?: string; income_date?: string; quantity?: number | null; unit?: string | null }
+    data: { description?: string; amount?: number; currency?: string; category?: string; income_date?: string; quantity?: number | null; unit?: string | null; unit_price?: number | null }
   ): Promise<IncomeRow> {
     const { rows } = await pool.query(
       `SELECT * FROM incomes WHERE id = $1 AND deleted_at IS NULL`,
@@ -556,6 +557,7 @@ export class ObservationService {
     if (data.income_date !== undefined) { idx++; sets.push(`income_date = $${idx}`); params.push(data.income_date); }
     if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(data.quantity); }
     if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit); }
+    if (data.unit_price !== undefined) { idx++; sets.push(`unit_price = $${idx}`); params.push(data.unit_price); }
 
     idx++;
     const result = await pool.query(

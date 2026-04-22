@@ -24,7 +24,8 @@ export async function getCurrentWeather(city) {
   };
 }
 
-export async function getForecast(city, days = 3) {
+export async function getForecast(city, days = 3, options = {}) {
+  const { includeToday = false } = options;
   city = city || DEFAULT_CITY;
   const { data } = await axios.get(`${BASE_URL}/forecast`, {
     params: { q: `${city},AR`, appid: API_KEY, units: "metric", lang: "es" }
@@ -48,7 +49,7 @@ export async function getForecast(city, days = 3) {
   const forecast = [];
 
   for (const [date, info] of Object.entries(dailyMap)) {
-    if (date === today) continue; // skip today (use current weather)
+    if (!includeToday && date === today) continue;
     if (forecast.length >= days) break;
 
     const minTemp = Math.round(Math.min(...info.temps));
@@ -58,7 +59,7 @@ export async function getForecast(city, days = 3) {
 
     forecast.push({
       date,
-      dayName: dayNameES(date),
+      dayName: date === today ? 'hoy' : dayNameES(date),
       minTemp,
       maxTemp,
       rain: Math.round(info.rain * 10) / 10,
@@ -112,11 +113,49 @@ export function formatForecast(data) {
   return msg;
 }
 
-export function checkRainAlert(data) {
+export function checkRainAlert(data, threshold = 10) {
   const tomorrow = data.forecast[0];
   if (!tomorrow) return null;
-  if (tomorrow.rain >= 10) {
-    return `🌧️ *Alerta:* Se esperan lluvias fuertes mañana (${tomorrow.dayName}) — ${tomorrow.rain}mm estimados.`;
+  if (tomorrow.rain >= threshold) {
+    return `🌧️ *Alerta:* Se esperan lluvias (${tomorrow.dayName}) — ${tomorrow.rain}mm estimados.\n_Es un pronóstico, puede cambiar._`;
   }
   return null;
+}
+
+/**
+ * Dry window alert: consecutive days without meaningful rain (< 1mm).
+ * Useful to plan agrochemical applications, sowing, etc.
+ * @param {{ forecast: Array<{ dayName: string, rain: number }> }} data
+ * @param {number} minDays minimum consecutive dry days to trigger
+ * @returns {string|null}
+ */
+export function checkDryWindow(data, minDays = 3) {
+  if (!data.forecast || data.forecast.length < minDays) return null;
+  const DRY_THRESHOLD = 1; // mm — below this is effectively dry
+  let streak = 0;
+  const dryDays = [];
+  for (const day of data.forecast) {
+    if (day.rain < DRY_THRESHOLD) {
+      streak++;
+      dryDays.push(day.dayName);
+    } else {
+      break;
+    }
+  }
+  if (streak < minDays) return null;
+  return `☀️ *Ventana seca:* ${streak} días sin lluvia (${dryDays.join(', ')}). Buena oportunidad para aplicar/sembrar.\n_Es un pronóstico, puede cambiar._`;
+}
+
+/**
+ * Wind alert: any day in forecast with wind >= threshold km/h.
+ * Relevant for spraying — strong wind means drift and poor coverage.
+ * @param {{ forecast: Array<{ dayName: string, wind: number }> }} data
+ * @param {number} threshold km/h
+ */
+export function checkWindAlert(data, threshold = 20) {
+  if (!data.forecast) return null;
+  const windy = data.forecast.filter(d => d.wind >= threshold);
+  if (windy.length === 0) return null;
+  const detail = windy.map(d => `${d.dayName}: ${d.wind}km/h`).join(', ');
+  return `🌬️ *Alerta de viento:* ${detail}. Evitar aplicaciones de agroquímicos.\n_Es un pronóstico, puede cambiar._`;
 }

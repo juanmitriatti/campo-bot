@@ -88,6 +88,8 @@ export interface LivestockMovementRow {
   avg_weight_kg: number | null;
   unit_price_ars: number | null;
   unit_price_usd: number | null;
+  linked_expense_id: number | null;
+  linked_income_id: number | null;
   reason: string | null;
   notes: string | null;
   movement_date: Date;
