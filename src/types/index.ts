@@ -316,6 +316,10 @@ export interface PlotDiscoveryResult {
 export interface AiUsage {
   input_tokens: number;
   output_tokens: number;
+  /** Non-cached input tokens read from cache (billed at 10% of input rate). */
+  cache_read_tokens?: number;
+  /** Input tokens written to the prompt cache (billed at 125% of input rate for 5-min TTL, 200% for 1h). */
+  cache_write_tokens?: number;
 }
 
 // --- Claude analysis result ---

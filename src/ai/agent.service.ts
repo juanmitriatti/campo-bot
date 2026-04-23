@@ -180,12 +180,14 @@ export class AgentService {
       }
 
       // Track usage
+      const cacheRead = response.usage.cache_read_input_tokens ?? 0;
+      const cacheWrite = response.usage.cache_creation_input_tokens ?? 0;
       const usage: AiUsage = {
         input_tokens: response.usage.input_tokens,
         output_tokens: response.usage.output_tokens,
+        cache_read_tokens: cacheRead,
+        cache_write_tokens: cacheWrite,
       };
-      const cacheRead = response.usage.cache_read_input_tokens ?? 0;
-      const cacheWrite = response.usage.cache_creation_input_tokens ?? 0;
 
       await repo.saveAiUsage(userId, usage);
       saveAiFallbackLog(userId, text, { type: 'agent_tool_use' }, usage).catch(() => {});

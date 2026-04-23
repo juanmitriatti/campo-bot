@@ -237,16 +237,28 @@ export async function getMonthlyReportForMonth(userId, month, year) {
 // --- AI usage ---
 
 export async function saveAiUsage(userId, usage) {
+  const cacheRead = usage.cache_read_tokens || 0;
+  const cacheWrite = usage.cache_write_tokens || 0;
+  // Haiku 4.5 pricing — input 1x, cache read 0.1x, cache write 1.25x (5min TTL)
   const cost = (usage.input_tokens / 1_000_000 * 0.80) +
+               (cacheRead / 1_000_000 * 0.08) +
+               (cacheWrite / 1_000_000 * 1.00) +
                (usage.output_tokens / 1_000_000 * 4);
 
   await pool.query(
-    `INSERT INTO ai_usage (user_id, input_tokens, output_tokens, total_tokens)
-     VALUES ($1, $2, $3, $4)`,
-    [userId, usage.input_tokens, usage.output_tokens, usage.input_tokens + usage.output_tokens]
+    `INSERT INTO ai_usage (user_id, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [
+      userId,
+      usage.input_tokens,
+      usage.output_tokens,
+      usage.input_tokens + usage.output_tokens + cacheRead + cacheWrite,
+      cacheRead,
+      cacheWrite,
+    ]
   );
 
-  console.log(`COST: $${cost.toFixed(6)} USD (in:${usage.input_tokens} out:${usage.output_tokens})`);
+  console.log(`COST: $${cost.toFixed(6)} USD (in:${usage.input_tokens} cache_r:${cacheRead} cache_w:${cacheWrite} out:${usage.output_tokens})`);
 }
 
 export async function getDailyClaudeCount(userId) {

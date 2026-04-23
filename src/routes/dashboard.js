@@ -22,8 +22,14 @@ router.get("/api/stats", async (req, res) => {
   try {
     const [usersR, aiCostR, activeR] = await Promise.all([
       pool.query("SELECT COUNT(*) AS total FROM users"),
+      // Haiku 4.5: input 0.80/M, cache read 0.08/M (10%), cache write 1.00/M (125%), output 4.00/M
       pool.query(
-        `SELECT COALESCE(SUM(input_tokens / 1000000.0 * 0.80 + output_tokens / 1000000.0 * 4), 0) AS total
+        `SELECT COALESCE(SUM(
+           input_tokens / 1000000.0 * 0.80
+           + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08
+           + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00
+           + output_tokens / 1000000.0 * 4.0
+         ), 0) AS total
          FROM ai_usage
          WHERE date_trunc('month', created_at) = date_trunc('month', CURRENT_DATE)`
       ),
@@ -65,9 +71,13 @@ router.get("/api/users", async (req, res) => {
          COALESCE(ai.tokens_today, 0) AS tokens_today,
          COALESCE(ai.input_tokens_today, 0) AS input_tokens_today,
          COALESCE(ai.output_tokens_today, 0) AS output_tokens_today,
+         COALESCE(ai.cache_read_today, 0) AS cache_read_today,
+         COALESCE(ai.cache_write_today, 0) AS cache_write_today,
          COALESCE(ai_month.tokens_month, 0) AS tokens_month,
          COALESCE(ai_month.input_tokens_month, 0) AS input_tokens_month,
          COALESCE(ai_month.output_tokens_month, 0) AS output_tokens_month,
+         COALESCE(ai_month.cache_read_month, 0) AS cache_read_month,
+         COALESCE(ai_month.cache_write_month, 0) AS cache_write_month,
          COALESCE(u.last_message_at, ai_all.last_ai) AS last_activity,
          COALESCE(fields.field_count, 0) AS field_count,
          COALESCE(shared.shared_field_count, 0) AS shared_field_count
@@ -77,13 +87,17 @@ router.get("/api/users", async (req, res) => {
          SELECT COUNT(*) AS ai_calls_today,
                 COALESCE(SUM(total_tokens), 0) AS tokens_today,
                 COALESCE(SUM(input_tokens), 0) AS input_tokens_today,
-                COALESCE(SUM(output_tokens), 0) AS output_tokens_today
+                COALESCE(SUM(output_tokens), 0) AS output_tokens_today,
+                COALESCE(SUM(cache_read_tokens), 0) AS cache_read_today,
+                COALESCE(SUM(cache_write_tokens), 0) AS cache_write_today
          FROM ai_usage WHERE user_id = u.id AND created_at::date = CURRENT_DATE
        ) ai ON true
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(total_tokens), 0) AS tokens_month,
                 COALESCE(SUM(input_tokens), 0) AS input_tokens_month,
-                COALESCE(SUM(output_tokens), 0) AS output_tokens_month
+                COALESCE(SUM(output_tokens), 0) AS output_tokens_month,
+                COALESCE(SUM(cache_read_tokens), 0) AS cache_read_month,
+                COALESCE(SUM(cache_write_tokens), 0) AS cache_write_month
          FROM ai_usage WHERE user_id = u.id AND created_at >= date_trunc('month', CURRENT_DATE)
        ) ai_month ON true
        LEFT JOIN LATERAL (
@@ -100,11 +114,18 @@ router.get("/api/users", async (req, res) => {
        ORDER BY last_activity DESC NULLS LAST`
     );
 
-    // Haiku pricing: $0.80/M input, $4.00/M output
+    // Haiku 4.5 pricing: input 1x, cache_read 0.1x, cache_write 1.25x, output flat
     const INPUT_COST_PER_M = 0.80;
+    const CACHE_READ_COST_PER_M = 0.08;   // 10% of input rate
+    const CACHE_WRITE_COST_PER_M = 1.00;  // 125% of input rate (5-min TTL)
     const OUTPUT_COST_PER_M = 4.00;
-    const calcCost = (inputTokens, outputTokens) =>
-      +(inputTokens / 1_000_000 * INPUT_COST_PER_M + outputTokens / 1_000_000 * OUTPUT_COST_PER_M).toFixed(4);
+    const calcCost = (inputTokens, outputTokens, cacheRead = 0, cacheWrite = 0) =>
+      +(
+        inputTokens / 1_000_000 * INPUT_COST_PER_M +
+        cacheRead / 1_000_000 * CACHE_READ_COST_PER_M +
+        cacheWrite / 1_000_000 * CACHE_WRITE_COST_PER_M +
+        outputTokens / 1_000_000 * OUTPUT_COST_PER_M
+      ).toFixed(4);
 
     res.json(result.rows.map(u => {
       const tokensToday = parseInt(u.tokens_today);
@@ -123,8 +144,18 @@ router.get("/api/users", async (req, res) => {
         sharedFieldCount: parseInt(u.shared_field_count),
         aiCallsToday: parseInt(u.ai_calls_today),
         tokensToday,
-        costToday: calcCost(parseInt(u.input_tokens_today), parseInt(u.output_tokens_today)),
-        costMonth: calcCost(parseInt(u.input_tokens_month), parseInt(u.output_tokens_month)),
+        costToday: calcCost(
+          parseInt(u.input_tokens_today),
+          parseInt(u.output_tokens_today),
+          parseInt(u.cache_read_today),
+          parseInt(u.cache_write_today),
+        ),
+        costMonth: calcCost(
+          parseInt(u.input_tokens_month),
+          parseInt(u.output_tokens_month),
+          parseInt(u.cache_read_month),
+          parseInt(u.cache_write_month),
+        ),
         lastActivity: u.last_activity,
         lastMessageAt: u.last_message_at,
       };
