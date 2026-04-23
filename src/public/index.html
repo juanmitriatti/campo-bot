@@ -888,14 +888,19 @@
       </div>
 
       <!-- Search & Filters -->
-      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
-        <input type="text" id="user-search-input" oninput="filterUsers()" placeholder="Buscar por nombre, tel&eacute;fono, email, ciudad o plan..." style="flex:1;min-width:250px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit;color:var(--text);background:#fff;">
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+        <input type="text" id="user-filter-name" oninput="filterUsers()" placeholder="Nombre" style="padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit;color:var(--text);background:#fff;min-width:140px;flex:1;">
+        <input type="text" id="user-filter-phone" oninput="filterUsers()" placeholder="Tel&eacute;fono" style="padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit;color:var(--text);background:#fff;min-width:140px;flex:1;">
+        <input type="text" id="user-filter-email" oninput="filterUsers()" placeholder="Email" style="padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit;color:var(--text);background:#fff;min-width:160px;flex:1;">
+        <input type="text" id="user-filter-city" oninput="filterUsers()" placeholder="Ciudad" style="padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit;color:var(--text);background:#fff;min-width:120px;flex:1;">
+        <input type="text" id="user-filter-plan" oninput="filterUsers()" placeholder="Plan" style="padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit;color:var(--text);background:#fff;min-width:100px;flex:1;">
         <select id="user-status-filter" onchange="filterUsers()" style="padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit;color:var(--text);background:#fff;min-width:140px;">
           <option value="">Todos los estados</option>
           <option value="active">Activos</option>
           <option value="suspended">Suspendidos</option>
           <option value="disabled">Deshabilitados</option>
         </select>
+        <button onclick="clearUserFilters()" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;background:#fff;color:var(--text-muted);cursor:pointer;" title="Limpiar todos los filtros">Limpiar</button>
       </div>
 
       <!-- Users Table -->
@@ -2552,26 +2557,38 @@
     }
 
     function filterUsers() {
-      var query = (document.getElementById('user-search-input').value || '').toLowerCase();
-      var statusFilter = document.getElementById('user-status-filter').value;
+      function val(id) { var el = document.getElementById(id); return ((el && el.value) || '').toLowerCase().trim(); }
+      var name = val('user-filter-name');
+      var phone = val('user-filter-phone');
+      var email = val('user-filter-email');
+      var city = val('user-filter-city');
+      var plan = val('user-filter-plan');
+      var statusFilter = (document.getElementById('user-status-filter') || {}).value || '';
       var filtered = usersCache.filter(function(u) {
-        var matchesSearch = !query
-          || (u.name || '').toLowerCase().indexOf(query) !== -1
-          || (u.phone || '').toLowerCase().indexOf(query) !== -1
-          || (u.email || '').toLowerCase().indexOf(query) !== -1
-          || (u.city || '').toLowerCase().indexOf(query) !== -1
-          || (u.planName || '').toLowerCase().indexOf(query) !== -1;
-        var matchesStatus = !statusFilter || (u.status || 'active') === statusFilter;
-        return matchesSearch && matchesStatus;
+        if (name && (u.name || '').toLowerCase().indexOf(name) === -1) return false;
+        if (phone && (u.phone || '').toLowerCase().indexOf(phone) === -1) return false;
+        if (email && (u.email || '').toLowerCase().indexOf(email) === -1) return false;
+        if (city && (u.city || '').toLowerCase().indexOf(city) === -1) return false;
+        if (plan && (u.planName || '').toLowerCase().indexOf(plan) === -1) return false;
+        if (statusFilter && (u.status || 'active') !== statusFilter) return false;
+        return true;
       });
       renderUsersTable(filtered);
+    }
+
+    function clearUserFilters() {
+      ['user-filter-name','user-filter-phone','user-filter-email','user-filter-city','user-filter-plan']
+        .forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+      var statusFilter = document.getElementById('user-status-filter');
+      if (statusFilter) statusFilter.value = '';
+      filterUsers();
     }
 
     function loadUsers() {
       var tbody = document.getElementById('users-table-body');
       tbody.innerHTML = '<tr><td colspan="10"><div class="loading"><div class="spinner"></div> Cargando usuarios...</div></td></tr>';
-      var searchInput = document.getElementById('user-search-input');
-      if (searchInput) searchInput.value = '';
+      ['user-filter-name','user-filter-phone','user-filter-email','user-filter-city','user-filter-plan']
+        .forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
       var statusFilter = document.getElementById('user-status-filter');
       if (statusFilter) statusFilter.value = '';
 
