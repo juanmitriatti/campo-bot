@@ -8,6 +8,7 @@ import ObservationTable from '../components/ObservationTable';
 import ActivityTable from '../components/ActivityTable';
 import ExpenseTable from '../components/ExpenseTable';
 import IncomeTable from '../components/IncomeTable';
+import ReportTable from '../components/ReportTable';
 import StockTable from '../components/StockTable';
 import LivestockTab from '../components/LivestockTab';
 import type { DashboardView } from '../components/layout/Sidebar';
@@ -18,6 +19,7 @@ const viewFeatureMap: Record<DashboardView, string | null> = {
   incomes: 'incomes',
   activities: 'agronomy',
   observations: 'agronomy',
+  reports: 'agronomy',
   stock: 'stock',
   livestock: 'livestock',
 };
@@ -61,6 +63,12 @@ export default function Dashboard() {
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
             <ObservationTable />
+          </div>
+        );
+      case 'reports':
+        return (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <ReportTable />
           </div>
         );
       case 'stock':

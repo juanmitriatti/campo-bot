@@ -30,6 +30,81 @@ const ACTIVITY_LABELS = {
   irrigation: 'Riego',
 };
 
+const fmtNumAR = (n) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(Math.round(Number(n || 0)));
+
+/**
+ * Aggregate financial + yield data for the report's scope.
+ * - If plotId is given, restrict to that plot.
+ * - Otherwise aggregate all plots in the field.
+ * - dateFrom/dateTo bracket the expenses/incomes window. Yields come from
+ *   any plot_crops that closed inside the window.
+ */
+async function getFinancialSummary({ fieldId, plotId, dateFrom, dateTo }) {
+  const plotFilter = plotId ? `AND plot_id = $3` : `AND field_id = $3`;
+  const scopeId = plotId || fieldId;
+
+  const expR = await pool.query(
+    `SELECT COALESCE(currency, 'ARS') AS currency, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS count
+     FROM expenses
+     WHERE deleted_at IS NULL
+       AND expense_date BETWEEN $1 AND $2
+       ${plotFilter}
+     GROUP BY currency`,
+    [dateFrom, dateTo, scopeId]
+  );
+
+  const incR = await pool.query(
+    `SELECT COALESCE(currency, 'ARS') AS currency, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS count
+     FROM incomes
+     WHERE deleted_at IS NULL
+       AND income_date BETWEEN $1 AND $2
+       ${plotFilter}
+     GROUP BY currency`,
+    [dateFrom, dateTo, scopeId]
+  );
+
+  // Yields from harvests inside the window. Sum kg and kg/ha across plots.
+  const yieldR = await pool.query(
+    `SELECT pc.yield_kg, p.area_hectares, p.name AS plot_name, pc.crop
+     FROM plot_crops pc
+     JOIN plots p ON p.id = pc.plot_id
+     WHERE pc.yield_kg IS NOT NULL
+       AND pc.harvested_at BETWEEN $1 AND $2
+       ${plotId ? 'AND pc.plot_id = $3' : 'AND p.field_id = $3 AND p.deleted_at IS NULL'}`,
+    [dateFrom, dateTo, scopeId]
+  );
+
+  const byCurrency = (rows) => {
+    const map = { ARS: { total: 0, count: 0 }, USD: { total: 0, count: 0 } };
+    for (const r of rows) map[r.currency === 'USD' ? 'USD' : 'ARS'] = { total: Number(r.total), count: Number(r.count) };
+    return map;
+  };
+
+  const expenses = byCurrency(expR.rows);
+  const incomes = byCurrency(incR.rows);
+
+  let yieldKg = 0;
+  let areaWithYield = 0;
+  const yieldDetail = [];
+  for (const row of yieldR.rows) {
+    const kg = Number(row.yield_kg || 0);
+    const ha = Number(row.area_hectares || 0);
+    yieldKg += kg;
+    if (ha > 0) areaWithYield += ha;
+    yieldDetail.push({ plotName: row.plot_name, crop: row.crop, kg, kgPerHa: ha > 0 ? Math.round(kg / ha) : null });
+  }
+  const kgPerHa = areaWithYield > 0 ? Math.round(yieldKg / areaWithYield) : null;
+
+  return {
+    expenses,
+    incomes,
+    yield: { kg: yieldKg, kgPerHa, detail: yieldDetail },
+    netARS: incomes.ARS.total - expenses.ARS.total,
+    netUSD: incomes.USD.total - expenses.USD.total,
+    hasAny: expenses.ARS.count + expenses.USD.count + incomes.ARS.count + incomes.USD.count > 0 || yieldDetail.length > 0,
+  };
+}
+
 /**
  * Generate an agronomic PDF report for a field.
  * Supports optional date range (desde/hasta) — defaults to current ISO week.
@@ -94,7 +169,16 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
     }
   }
 
-  // 6. Generate PDF
+  // 6. Financial summary + yield for the same date window
+  const { dateFromIso, dateToIso } = resolveReportWindow({ hasDateRange, desde, hasta, year, weekNumber });
+  const financial = await getFinancialSummary({
+    fieldId,
+    plotId: filterPlotId,
+    dateFrom: dateFromIso,
+    dateTo: dateToIso,
+  });
+
+  // 7. Generate PDF
   const reportsDir = await getReportsDir();
   fs.mkdirSync(reportsDir, { recursive: true });
   const plotSuffix = filterPlotId ? `_P${filterPlotId}` : '';
@@ -113,13 +197,14 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
     activities,
     desde: hasDateRange ? desde : null,
     hasta: hasDateRange ? hasta : null,
+    financial,
   });
 
-  // 7. Save report record
+  // 7. Save report record (plot_id lets us distinguish per-plot reports from field-level ones)
   const reportResult = await pool.query(
-    `INSERT INTO agronomic_reports (user_id, field_id, week_number, year, pdf_path)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [userId, fieldId, weekNumber, year, pdfPath]
+    `INSERT INTO agronomic_reports (user_id, field_id, plot_id, week_number, year, pdf_path)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [userId, fieldId, filterPlotId, weekNumber, year, pdfPath]
   );
 
   return {
@@ -142,7 +227,25 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
 /**
  * Generate the PDF file using PDFKit.
  */
-function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldObservations, pdfPath, filterPlotName = null, activities = [], desde = null, hasta = null }) {
+/**
+ * Resolve the ISO date window the report covers, used to fetch expenses/incomes/yields.
+ * - With `desde`/`hasta`: uses them as-is.
+ * - Weekly mode: Monday..Sunday of the given ISO week.
+ */
+function resolveReportWindow({ hasDateRange, desde, hasta, year, weekNumber }) {
+  if (hasDateRange) return { dateFromIso: desde, dateToIso: hasta };
+  const simple = new Date(Date.UTC(year, 0, 1 + (weekNumber - 1) * 7));
+  const day = simple.getUTCDay();
+  const monday = new Date(simple);
+  if (day <= 4) monday.setUTCDate(simple.getUTCDate() - simple.getUTCDay() + 1);
+  else monday.setUTCDate(simple.getUTCDate() + 8 - simple.getUTCDay());
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  const iso = (d) => d.toISOString().slice(0, 10);
+  return { dateFromIso: iso(monday), dateToIso: iso(sunday) };
+}
+
+function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldObservations, pdfPath, filterPlotName = null, activities = [], desde = null, hasta = null, financial = null }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const stream = fs.createWriteStream(pdfPath);
@@ -218,6 +321,55 @@ function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldOb
       doc.moveDown(0.8);
     }
 
+    // --- Financial + yield summary (new, appended after activities) ---
+    if (financial && financial.hasAny) {
+      hasContent = true;
+      if (doc.y > 620) doc.addPage();
+      doc.fontSize(14).font('Helvetica-Bold').text('Resumen económico y de rinde');
+      doc.moveDown(0.3);
+
+      const expARS = financial.expenses.ARS.total;
+      const expUSD = financial.expenses.USD.total;
+      const incARS = financial.incomes.ARS.total;
+      const incUSD = financial.incomes.USD.total;
+
+      if (expARS || incARS) {
+        doc.fontSize(10).font('Helvetica-Bold').text('Pesos (ARS)', { continued: false });
+        doc.font('Helvetica').fontSize(10)
+           .text(`  Gastos: $${fmtNumAR(expARS)} (${financial.expenses.ARS.count} registros)`)
+           .text(`  Ingresos: $${fmtNumAR(incARS)} (${financial.incomes.ARS.count} registros)`)
+           .text(`  Resultado: ${financial.netARS >= 0 ? '+' : ''}$${fmtNumAR(financial.netARS)}`);
+        doc.moveDown(0.3);
+      }
+
+      if (expUSD || incUSD) {
+        doc.fontSize(10).font('Helvetica-Bold').text('Dólares (USD)');
+        doc.font('Helvetica').fontSize(10)
+           .text(`  Gastos: USD ${fmtNumAR(expUSD)} (${financial.expenses.USD.count} registros)`)
+           .text(`  Ingresos: USD ${fmtNumAR(incUSD)} (${financial.incomes.USD.count} registros)`)
+           .text(`  Resultado: ${financial.netUSD >= 0 ? '+' : ''}USD ${fmtNumAR(financial.netUSD)}`);
+        doc.moveDown(0.3);
+      }
+
+      if (financial.yield && financial.yield.kg > 0) {
+        doc.fontSize(10).font('Helvetica-Bold').text('Rinde cosechado');
+        doc.font('Helvetica').fontSize(10)
+           .text(`  Total: ${fmtNumAR(financial.yield.kg)} kg`
+             + (financial.yield.kgPerHa ? ` (${fmtNumAR(financial.yield.kgPerHa)} kg/ha promedio)` : ''));
+        for (const d of financial.yield.detail) {
+          const line = `  • ${d.plotName}${d.crop ? ` — ${d.crop}` : ''}: ${fmtNumAR(d.kg)} kg`
+            + (d.kgPerHa ? ` (${fmtNumAR(d.kgPerHa)} kg/ha)` : '');
+          doc.text(line);
+        }
+        doc.moveDown(0.3);
+      }
+
+      doc.fontSize(8).fillColor('#888888')
+         .text('Nota: solo se suman gastos/ingresos asignados al alcance del reporte dentro del período. Montos en ARS y USD se muestran por separado (sin conversión).')
+         .fillColor('#000000');
+      doc.moveDown(0.6);
+    }
+
     if (!hasContent) {
       const emptyMsg = desde && hasta
         ? 'No hay observaciones ni actividades registradas en el período seleccionado.'
@@ -275,6 +427,50 @@ function _renderActivity(doc, act) {
   if (doc.y > 720) {
     doc.addPage();
   }
+}
+
+/**
+ * Get all agronomic reports for a given end user (self + shared fields).
+ * Joins field + plot names for display in the user dashboard.
+ */
+export async function getReportsByUserId(userId) {
+  const result = await pool.query(
+    `SELECT r.id, r.field_id, r.plot_id, r.week_number, r.year, r.pdf_path, r.created_at,
+            f.name AS field_name,
+            p.name AS plot_name
+     FROM agronomic_reports r
+     LEFT JOIN fields f ON r.field_id = f.id
+     LEFT JOIN plots p ON r.plot_id = p.id
+     WHERE r.user_id = $1
+        OR r.field_id IN (
+             SELECT field_id FROM field_members WHERE user_id = $1
+           )
+     ORDER BY r.created_at DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
+/**
+ * Fetch a report by id, scoped to the given user (self-owned or shared field).
+ * Returns null when the report doesn't exist or the user can't access it.
+ */
+export async function getReportByIdForUser(reportId, userId) {
+  const result = await pool.query(
+    `SELECT r.id, r.user_id, r.field_id, r.plot_id, r.week_number, r.year, r.pdf_path, r.created_at,
+            f.name AS field_name,
+            p.name AS plot_name
+     FROM agronomic_reports r
+     LEFT JOIN fields f ON r.field_id = f.id
+     LEFT JOIN plots p ON r.plot_id = p.id
+     WHERE r.id = $1
+       AND (
+         r.user_id = $2
+         OR r.field_id IN (SELECT field_id FROM field_members WHERE user_id = $2)
+       )`,
+    [reportId, userId]
+  );
+  return result.rows[0] || null;
 }
 
 /**

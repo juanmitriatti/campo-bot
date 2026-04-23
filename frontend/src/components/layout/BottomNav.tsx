@@ -13,6 +13,7 @@ const ITEMS: BottomNavItem[] = [
   { key: 'incomes', label: 'Ingresos', icon: '💵', feature: 'incomes' },
   { key: 'activities', label: 'Actividades', icon: '🌱', feature: 'agronomy' },
   { key: 'observations', label: 'Obs.', icon: '👁️', feature: 'agronomy' },
+  { key: 'reports', label: 'Reportes', icon: '📄', feature: 'agronomy' },
 ];
 
 interface BottomNavProps {

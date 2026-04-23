@@ -385,6 +385,65 @@ router.get('/observations/:id/history', requireAuth, requireFeature('agronomy'),
   }
 });
 
+// --- Agro reports ---
+
+router.get('/reports', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
+  try {
+    const { getReportsByUserId } = await import('../services/agro-report.js');
+    const rows = await getReportsByUserId(req.auth!.userId);
+    res.json({
+      reports: rows.map((r: {
+        id: number;
+        field_id: number;
+        plot_id: number | null;
+        field_name: string | null;
+        plot_name: string | null;
+        week_number: number;
+        year: number;
+        created_at: Date;
+      }) => ({
+        id: r.id,
+        fieldId: r.field_id,
+        plotId: r.plot_id,
+        fieldName: r.field_name,
+        plotName: r.plot_name,
+        weekNumber: r.week_number,
+        year: r.year,
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.get('/reports/:id/pdf', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
+  try {
+    const reportId = parseInt(String(req.params.id), 10);
+    if (isNaN(reportId)) {
+      res.status(400).json({ error: 'ID de reporte inválido' });
+      return;
+    }
+    const { getReportByIdForUser } = await import('../services/agro-report.js');
+    const report = await getReportByIdForUser(reportId, req.auth!.userId);
+    if (!report || !report.pdf_path) {
+      res.status(404).json({ error: 'Reporte no encontrado' });
+      return;
+    }
+    const fs = await import('fs');
+    if (!fs.existsSync(report.pdf_path)) {
+      res.status(410).json({ error: 'El archivo ya no está disponible (expiró o fue eliminado)' });
+      return;
+    }
+    const scopeLabel = report.plot_name
+      ? `${report.field_name || 'campo'}-${report.plot_name}`
+      : (report.field_name || 'campo');
+    res.download(report.pdf_path, `reporte-${scopeLabel}-W${report.week_number}-${report.year}.pdf`);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
 // --- Stock routes ---
 
 router.get('/stock', requireAuth, requireFeature('stock'), async (req: Request, res: Response) => {
