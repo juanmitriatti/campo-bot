@@ -33,7 +33,11 @@
 
 ## Cost Optimization
 
-- **Input tokens were not cached on tools**: Until Apr 2026, only the system prompt had `cache_control`. The 74-tool definitions block (~2000 tokens) was sent uncached every call. Now `agent.service.ts` marks the last tool and last few-shot message with `cache_control: { type: 'ephemeral' }` — cache hit rate visible in `AI_AGENT CACHE: Nread/Nwrite` log line.
+- **Input tokens were not cached on tools**: Until Apr 2026, only the system prompt had `cache_control`. The 74-tool definitions block was sent uncached every call. Now `agent.service.ts` marks the last tool and last few-shot message with `cache_control` — cache hit rate visible in `AI_AGENT CACHE: Nread/Nwrite` log line.
+- **Cache invalidated between consecutive calls**: The system prompt used to include `lastFieldName`/`lastPlotName` from user context, which changed per message. That shifted the cached prefix and forced a ~24k-token cache rewrite every call. Fix: `AgentPromptBuilder.build()` now returns only stable content; `buildUserMessagePrefix()` emits user context + today's date into the user message (not cached). See commit 98b8a26.
+- **Few-shot `ORDER BY RANDOM()` thrashed cache**: Each call picked 5 different examples, shifting the cached prefix. Replaced with `ORDER BY md5(id::text || CURRENT_DATE::text)` — deterministic per day, rotates across days. See commit aca29ad.
+- **AGENT_MAX_TOKENS=400 truncated big outputs**: A harvest_crop call with 17 loads needed ~850 output tokens, hit the 400 ceiling, produced broken JSON, and the handler discarded loads[]. Bumped to 1500 via the `AGENT_MAX_TOKENS` setting. You only pay for tokens actually generated.
+- **Dashboard under-reported Anthropic bill ~15×**: `ai_usage` only stored `input_tokens` / `output_tokens`, so cache writes (1.25× of input rate) and reads (0.10×) were invisible. Migration 070 added `cache_read_tokens` and `cache_write_tokens`. Dashboard cost formulas now include all four terms. **No change in actual billing — just visibility into what Anthropic was already charging.**
 
 ## Weather Alerts
 

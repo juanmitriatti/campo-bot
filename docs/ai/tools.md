@@ -102,12 +102,20 @@
 - Best-effort: if financial write fails, movement still succeeds (logged, not thrown).
 
 ### Prompt Caching (Cost Optimization)
-- `agent.service.ts` sets `cache_control: { type: 'ephemeral' }` on:
-  1. System prompt (already was)
-  2. Last tool definition (new) — caches the 74-tool block (~2000 tokens)
-  3. Last few-shot message (new) — caches examples (~830 tokens)
-- Expected input cost reduction: ~65-75% on cache hits (5-min TTL, shared per API key).
+- `agent.service.ts` sets `cache_control` on three breakpoints:
+  1. System prompt (stable: core rules + disambiguation only; user context + today's date moved to user-message prefix so the cached prefix hits across users)
+  2. Last tool definition — caches the 74-tool block (~24k tokens when serialized for cache)
+  3. Last few-shot message — caches examples (~830 tokens). Selection is deterministic per day via `ORDER BY md5(id::text || CURRENT_DATE::text)` so the cache doesn't thrash with random reshuffles.
+- TTL is configurable via `AGENT_CACHE_TTL` setting: `short` (5 min, 1.25× write, default) / `long` (1 hour, 2× write). Wiring in `agent.service.ts` translates this into `cache_control.ttl`.
+- Few-shot count configurable via `AGENT_FEW_SHOT_LIMIT` (default 5). Each example ~166 tokens. Going from 5 → 10 adds ~$0.02/day at 100 calls.
+- `AGENT_TEMPERATURE` is read from settings (was hardcoded to 0 before Apr 2026). Default 0.
 - Logs `CACHE: Nread/Nwrite` in `AI_AGENT` line so hit rate can be observed in Railway logs.
+
+### Cost Tracking (Migration 070)
+- `ai_usage` table now stores `cache_read_tokens` and `cache_write_tokens` alongside `input_tokens` / `output_tokens`. Without these, dashboard under-reported cost ~15× on cache-heavy calls.
+- `saveAiUsage()` in `src/services/expenses.js` persists all 4 token types and computes the real Haiku 4.5 cost: input 0.80/M, cache read 0.08/M (10%), cache write 1.00/M (125% for 5-min TTL), output 4.00/M.
+- Dashboard `/admin/api/stats` "Costo IA del Mes" + `/api/users` `costToday` / `costMonth` use the same 4-term formula.
+- The "Costo Total USD" / "Costo Promedio" tiles under the Audio and Fallback subsections now labelled "Costo Audio (hist.)" / "Costo Fallback (hist.)" to avoid being confused with bot-wide totals.
 
 ## Common Tool Params
 

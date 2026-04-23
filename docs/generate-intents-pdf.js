@@ -301,8 +301,14 @@ const pipeline = [
   '4. Regex fallback → si agent deshabilitado, falla o baja confianza.',
   '5. Conversational fallback → si ninguna tool matchea, Claude responde como texto.',
   '',
-  'Optimización (2026-04): prompt caching sobre system prompt + tool definitions + few-shot examples.',
-  'Ahorro ~65-75% en input tokens en cache hits (TTL 5min, compartido per API key).',
+  'Prompt caching (2026-04): tres breakpoints cache_control — system prompt, última tool, último few-shot.',
+  'Contexto del usuario + fecha de hoy van en el prefijo del mensaje (no cacheado), para que el prefix cacheado sea estable entre usuarios.',
+  'Few-shots rotan diarios (md5 determinístico por día) — no ORDER BY RANDOM() que invalidaba el cache.',
+  'TTL configurable: AGENT_CACHE_TTL=short (5min, 1.25× write) | long (1h, 2× write). Cantidad: AGENT_FEW_SHOT_LIMIT (default 5).',
+  '',
+  'Cost tracking (2026-04, migración 070): ai_usage guarda cache_read_tokens + cache_write_tokens además de input/output.',
+  'Dashboard calcula costo real con 4 términos (Haiku): input $0.80/M, cache read $0.08/M (10%), cache write $1.00/M (125%), output $4.00/M.',
+  'Log line: "AI_AGENT CACHE: Nread/Nwrite" permite observar hit rate en Railway logs.',
 ];
 
 for (const line of pipeline) {

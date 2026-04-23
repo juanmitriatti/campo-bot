@@ -94,6 +94,12 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - All alerts include "_Es un pronóstico, puede cambiar._" disclaimer
 - Dedup: 24h per city+day per alert type. Channel: Telegram-first, WhatsApp fallback
 
+### AI Cost & Caching
+- Agent settings live under the `ai` group in admin (`/admin/#settings`, section **"Configuración de IA"**): `AGENT_ENABLED`, `AGENT_MODEL`, `AGENT_MAX_TOKENS` (default 1500), `AGENT_TIMEOUT_MS`, `AGENT_TEMPERATURE`, `AGENT_CACHE_TTL` (`short`/`long`), `AGENT_FEW_SHOT_LIMIT` (default 5).
+- Prompt caching: three cache_control breakpoints (system, tools, last few-shot). User context + today's date injected via `buildUserMessagePrefix()` so the cached prefix stays stable across users/calls.
+- Few-shots rotate daily via `ORDER BY md5(id::text || CURRENT_DATE::text)` — deterministic per day, varied across days. No random reshuffles.
+- `ai_usage` persists `cache_read_tokens` + `cache_write_tokens` (migration 070). Dashboard cost uses 4-term Haiku pricing: input 0.80, cache read 0.08 (10%), cache write 1.00 (125%), output 4.00 per M. Log line `AI_AGENT CACHE: Nread/Nwrite` shows real cache hits in Railway logs.
+
 ## Key Conventions
 
 - ESM modules (`"type": "module"`) — `import`/`export`, not `require`
