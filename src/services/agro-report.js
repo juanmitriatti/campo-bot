@@ -1,10 +1,11 @@
 import PDFDocument from "pdfkit";
+import SVGtoPDF from "svg-to-pdfkit";
 import fs from "fs";
 import path from "path";
 import { pool } from "../config/db.js";
 import { getPlotsByField, getActiveCrop } from "./expenses.js";
 import { getWeekObservations, getWeekObservationsByPlot, getObservationsByDateRange, getObservationsByDateRangeAndPlot, getWeekNumber, deduplicateObservations, getNowArgentina } from "./observations.js";
-import { getSetting } from "./settings.service.js";
+import { getSetting, getSettingBool } from "./settings.service.js";
 import { logError } from "./error-logger.js";
 
 async function getReportsDir() {
@@ -169,7 +170,7 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
     }
   }
 
-  // 6. Financial summary + yield for the same date window
+  // 6. Financial summary + yield + comparison + rainfall + toggles
   const { dateFromIso, dateToIso } = resolveReportWindow({ hasDateRange, desde, hasta, year, weekNumber });
   const financial = await getFinancialSummary({
     fieldId,
@@ -177,6 +178,34 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
     dateFrom: dateFromIso,
     dateTo: dateToIso,
   });
+
+  // Previous period of same length (for comparison)
+  const { prevFromIso, prevToIso } = shiftPeriodBack(dateFromIso, dateToIso);
+  const prevFinancial = await getFinancialSummary({
+    fieldId,
+    plotId: filterPlotId,
+    dateFrom: prevFromIso,
+    dateTo: prevToIso,
+  });
+  const prevActivities = await getActivitiesInWindow({ fieldId, plotId: filterPlotId, dateFrom: prevFromIso, dateTo: prevToIso });
+
+  // Rainfall aggregate + nearby forecast
+  const rainfall = await getRainfallForWindow({ fieldId, plotId: filterPlotId, dateFrom: dateFromIso, dateTo: dateToIso });
+
+  // Attach activities to each plot bucket (for the per-plot section + timeline colours)
+  const activityPlotMap = new Map();
+  for (const act of activities) {
+    if (act.plot_id) {
+      if (!activityPlotMap.has(act.plot_id)) activityPlotMap.set(act.plot_id, []);
+      activityPlotMap.get(act.plot_id).push(act);
+    }
+  }
+  for (const [pid, p] of plotMap) {
+    p.activities = activityPlotMap.get(pid) || [];
+  }
+
+  // Toggle matrix + branding
+  const toggles = await loadReportToggles();
 
   // 7. Generate PDF
   const reportsDir = await getReportsDir();
@@ -198,6 +227,12 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
     desde: hasDateRange ? desde : null,
     hasta: hasDateRange ? hasta : null,
     financial,
+    prevFinancial,
+    prevActivitiesCount: prevActivities.length,
+    rainfall,
+    toggles,
+    dateFromIso,
+    dateToIso,
   });
 
   // 7. Save report record (plot_id lets us distinguish per-plot reports from field-level ones)
@@ -245,137 +280,597 @@ function resolveReportWindow({ hasDateRange, desde, hasta, year, weekNumber }) {
   return { dateFromIso: iso(monday), dateToIso: iso(sunday) };
 }
 
-function generateReportPDF({ field, agronomist, weekNumber, year, plots, fieldObservations, pdfPath, filterPlotName = null, activities = [], desde = null, hasta = null, financial = null }) {
+// ---------------------------------------------------------------------------
+// Period helpers
+// ---------------------------------------------------------------------------
+
+function shiftPeriodBack(fromIso, toIso) {
+  const from = new Date(`${fromIso}T00:00:00Z`);
+  const to = new Date(`${toIso}T00:00:00Z`);
+  const days = Math.max(1, Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+  const prevTo = new Date(from); prevTo.setUTCDate(from.getUTCDate() - 1);
+  const prevFrom = new Date(prevTo); prevFrom.setUTCDate(prevTo.getUTCDate() - (days - 1));
+  const iso = (d) => d.toISOString().slice(0, 10);
+  return { prevFromIso: iso(prevFrom), prevToIso: iso(prevTo) };
+}
+
+async function getActivitiesInWindow({ fieldId, plotId, dateFrom, dateTo }) {
+  const plotFilter = plotId ? `de.plot_id = $3` : `de.plot_id IN (SELECT id FROM plots WHERE field_id = $3 AND deleted_at IS NULL)`;
+  const { rows } = await pool.query(
+    `SELECT de.id, de.event_type, de.event_date, de.plot_id, de.crop, de.product, de.quantity, de.unit,
+            p.name AS plot_name
+     FROM domain_events de
+     LEFT JOIN plots p ON p.id = de.plot_id
+     WHERE ${plotFilter}
+       AND de.event_date BETWEEN $1 AND $2
+     ORDER BY de.event_date DESC, de.id DESC`,
+    [dateFrom, dateTo, plotId || fieldId],
+  );
+  return rows;
+}
+
+async function getRainfallForWindow({ fieldId, plotId, dateFrom, dateTo }) {
+  const plotFilter = plotId ? `plot_id = $3` : `field_id = $3`;
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(millimeters), 0) AS total_mm, COUNT(*) AS events
+     FROM rainfall
+     WHERE ${plotFilter}
+       AND rainfall_date BETWEEN $1 AND $2`,
+    [dateFrom, dateTo, plotId || fieldId],
+  );
+  return { totalMm: Number(rows[0].total_mm || 0), events: Number(rows[0].events || 0) };
+}
+
+async function loadReportToggles() {
+  const keys = [
+    'AGRO_REPORT_SHOW_HEADER_SUMMARY', 'AGRO_REPORT_SHOW_KPIS', 'AGRO_REPORT_SHOW_COMPARISON',
+    'AGRO_REPORT_SHOW_PER_PLOT', 'AGRO_REPORT_SHOW_TIMELINE', 'AGRO_REPORT_SHOW_INSIGHTS',
+    'AGRO_REPORT_SHOW_WEATHER_SECTION', 'AGRO_REPORT_SHOW_FINANCIAL_SUMMARY',
+    'AGRO_REPORT_SHOW_CHARTS_YIELD', 'AGRO_REPORT_SHOW_CHARTS_CROPS',
+    'AGRO_REPORT_SHOW_LOGO',
+  ];
+  const bools = await Promise.all(keys.map(k => getSettingBool(k)));
+  const t = {};
+  keys.forEach((k, i) => { t[k.replace('AGRO_REPORT_SHOW_', '').toLowerCase()] = bools[i] !== false; });
+  t.logo = bools[keys.indexOf('AGRO_REPORT_SHOW_LOGO')] === true;
+  t.logoPath = (await getSetting('AGRO_REPORT_LOGO_PATH')) || '';
+  t.brandName = (await getSetting('AGRO_REPORT_BRAND_NAME')) || 'Agrobot';
+  return t;
+}
+
+// ---------------------------------------------------------------------------
+// Derived metrics
+// ---------------------------------------------------------------------------
+
+function computeKPIs({ plots, activities, financial, filterPlotId }) {
+  let totalHa = 0;
+  let activePlots = 0;
+  const cropSet = new Set();
+  for (const [, p] of plots) {
+    if (filterPlotId && p.id !== filterPlotId) continue;
+    if (p.area) totalHa += Number(p.area);
+    if (p.crop) { activePlots += 1; cropSet.add(p.crop); }
+  }
+  return {
+    hectares: totalHa || null,
+    kgHarvested: financial?.yield?.kg || 0,
+    avgKgPerHa: financial?.yield?.kgPerHa || null,
+    activePlots,
+    crops: Array.from(cropSet),
+    activitiesCount: activities.length,
+    expensesARS: financial?.expenses?.ARS?.total || 0,
+    expensesUSD: financial?.expenses?.USD?.total || 0,
+    incomesARS: financial?.incomes?.ARS?.total || 0,
+    incomesUSD: financial?.incomes?.USD?.total || 0,
+  };
+}
+
+function pctDelta(curr, prev) {
+  if (prev == null || prev === 0) return curr > 0 ? { sign: '+', pct: 100, arrow: '▲' } : null;
+  const d = ((curr - prev) / prev) * 100;
+  if (Math.abs(d) < 0.1) return { sign: '=', pct: 0, arrow: '•' };
+  return { sign: d > 0 ? '+' : '−', pct: Math.abs(d).toFixed(1), arrow: d > 0 ? '▲' : '▼' };
+}
+
+function computeInsights({ kpis, plots, prevKpis, activities }) {
+  const out = [];
+
+  // 1. Lote outperformer — mayor rinde vs promedio del campo
+  if (kpis.avgKgPerHa && kpis.avgKgPerHa > 0) {
+    let best = null;
+    for (const [, p] of plots) {
+      const harvested = (p.activities || []).find(a => a.event_type === 'harvest');
+      if (!harvested || !p.area || !harvested.quantity) continue;
+      const kgHa = Number(harvested.quantity) * (harvested.unit === 'tn' ? 1000 : 1) / Number(p.area);
+      if (!best || kgHa > best.kgHa) best = { name: p.name, kgHa: Math.round(kgHa) };
+    }
+    if (best && best.kgHa > kpis.avgKgPerHa * 1.1) {
+      const pct = Math.round(((best.kgHa - kpis.avgKgPerHa) / kpis.avgKgPerHa) * 100);
+      out.push(`El lote *${best.name}* rindió un ${pct}% por encima del promedio del campo.`);
+    }
+  }
+
+  // 2. Comparación semana anterior
+  if (prevKpis) {
+    const deltaKg = pctDelta(kpis.kgHarvested, prevKpis.kgHarvested);
+    if (deltaKg && deltaKg.pct !== 0 && kpis.kgHarvested > 0) {
+      out.push(`Los kg cosechados ${deltaKg.sign === '−' ? 'bajaron' : 'subieron'} ${deltaKg.pct}% respecto al período anterior.`);
+    }
+    const deltaYield = pctDelta(kpis.avgKgPerHa, prevKpis.avgKgPerHa);
+    if (deltaYield && deltaYield.pct !== 0 && kpis.avgKgPerHa) {
+      out.push(`El rinde promedio ${deltaYield.sign === '−' ? 'cayó' : 'mejoró'} ${deltaYield.pct}% vs. el período anterior.`);
+    }
+  }
+
+  // 3. Lotes sin actividad
+  const touched = new Set(activities.map(a => a.plot_id).filter(Boolean));
+  const idle = [];
+  for (const [pid, p] of plots) if (p.crop && !touched.has(pid)) idle.push(p.name);
+  if (idle.length > 0 && plots.size > 1) {
+    out.push(`Sin actividad registrada en: ${idle.slice(0, 4).join(', ')}${idle.length > 4 ? '…' : ''}.`);
+  }
+
+  // 4. Cultivo dominante
+  if (kpis.crops.length > 1) {
+    const byCrop = new Map();
+    for (const [, p] of plots) if (p.crop && p.area) byCrop.set(p.crop, (byCrop.get(p.crop) || 0) + Number(p.area));
+    const total = [...byCrop.values()].reduce((a, b) => a + b, 0);
+    for (const [crop, ha] of byCrop) {
+      if (ha / total > 0.6) {
+        out.push(`El cultivo dominante es *${crop}* con el ${Math.round(ha / total * 100)}% de la superficie.`);
+        break;
+      }
+    }
+  }
+
+  // 5. Semana sin aplicaciones
+  const hasApp = activities.some(a => a.event_type === 'spraying' || a.event_type === 'fertilization');
+  if (!hasApp && activities.length > 0) {
+    out.push('No se registraron fumigaciones ni fertilizaciones en el período.');
+  }
+
+  // 6. Concentración de cosecha en un lote
+  const harvestKgByPlot = new Map();
+  for (const a of activities) {
+    if (a.event_type !== 'harvest' || !a.quantity) continue;
+    const kg = Number(a.quantity) * (a.unit === 'tn' ? 1000 : 1);
+    harvestKgByPlot.set(a.plot_name, (harvestKgByPlot.get(a.plot_name) || 0) + kg);
+  }
+  const totalHarvested = [...harvestKgByPlot.values()].reduce((a, b) => a + b, 0);
+  if (totalHarvested > 0 && harvestKgByPlot.size > 1) {
+    for (const [plot, kg] of harvestKgByPlot) {
+      if (kg / totalHarvested > 0.7) {
+        out.push(`El lote *${plot}* concentra el ${Math.round(kg / totalHarvested * 100)}% de la producción cosechada.`);
+        break;
+      }
+    }
+  }
+
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Styling tokens
+// ---------------------------------------------------------------------------
+
+const COLORS = {
+  primary: '#16a34a',
+  secondary: '#0891b2',
+  warn: '#f59e0b',
+  danger: '#dc2626',
+  gray: '#6b7280',
+  lightGray: '#e5e7eb',
+  bg: '#f9fafb',
+};
+const ACTIVITY_DOT = {
+  harvest: '#16a34a',
+  planting: '#22c55e',
+  spraying: '#f59e0b',
+  fertilization: '#f97316',
+  tillage: '#6b7280',
+  irrigation: '#0ea5e9',
+};
+
+// ---------------------------------------------------------------------------
+// Section renderers
+// ---------------------------------------------------------------------------
+
+function pageBreakIfNeeded(doc, minSpace = 140) {
+  if (doc.y > 792 - 60 - minSpace) doc.addPage();
+}
+
+function sectionTitle(doc, text) {
+  pageBreakIfNeeded(doc, 60);
+  doc.moveDown(0.4);
+  doc.fontSize(13).font('Helvetica-Bold').fillColor(COLORS.primary).text(text);
+  doc.fillColor('#000');
+  doc.moveTo(50, doc.y + 2).lineTo(545, doc.y + 2).lineWidth(0.5).strokeColor(COLORS.lightGray).stroke().strokeColor('#000').lineWidth(1);
+  doc.moveDown(0.5);
+}
+
+function renderHeader({ doc, field, filterPlotName, agronomist, periodLabel, toggles, kpis, rainfall }) {
+  const startY = doc.y;
+
+  // Logo (optional)
+  if (toggles.logo && toggles.logoPath && fs.existsSync(toggles.logoPath)) {
+    try {
+      doc.image(toggles.logoPath, 50, startY, { fit: [80, 40] });
+    } catch { /* ignore bad logos */ }
+  }
+
+  const brand = toggles.brandName || 'Agrobot';
+  doc.fontSize(9).font('Helvetica').fillColor(COLORS.gray).text(brand, 50, startY, { align: 'right', width: 495 });
+  doc.fillColor('#000');
+
+  doc.moveDown(0.8);
+  doc.fontSize(18).font('Helvetica-Bold').text('Reporte Agronómico', { align: 'center' });
+  doc.moveDown(0.2);
+  const scope = filterPlotName
+    ? `Campo ${field.name} › Lote ${filterPlotName}`
+    : `Campo ${field.name}`;
+  doc.fontSize(11).font('Helvetica').fillColor(COLORS.gray)
+     .text(`${scope}${field.city ? ` — ${field.city}` : ''}`, { align: 'center' });
+  doc.text(`${periodLabel}  ·  Agrónomo: ${agronomist}`, { align: 'center' });
+  doc.text(`Generado: ${new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`, { align: 'center' });
+  doc.fillColor('#000');
+
+  if (toggles.header_summary) {
+    doc.moveDown(0.4);
+    const chips = [];
+    if (kpis.hectares) chips.push(`${fmtNumAR(kpis.hectares)} ha monitoreadas`);
+    if (rainfall && rainfall.totalMm > 0) chips.push(`${fmtNumAR(rainfall.totalMm)} mm de lluvia`);
+    if (kpis.crops.length > 0) chips.push(`Cultivos: ${kpis.crops.join(', ')}`);
+    if (chips.length > 0) {
+      doc.fontSize(10).font('Helvetica').fillColor(COLORS.secondary).text(chips.join('   ·   '), { align: 'center' });
+      doc.fillColor('#000');
+    }
+  }
+  doc.moveDown(0.5);
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).lineWidth(1).strokeColor(COLORS.primary).stroke().strokeColor('#000');
+  doc.moveDown(0.6);
+}
+
+function renderKPIs(doc, kpis) {
+  sectionTitle(doc, 'Métricas del período');
+  const rows = [
+    ['Hectáreas monitoreadas', kpis.hectares ? `${fmtNumAR(kpis.hectares)} ha` : '—'],
+    ['Kg cosechados', kpis.kgHarvested ? `${fmtNumAR(kpis.kgHarvested)} kg` : '—'],
+    ['Rinde promedio', kpis.avgKgPerHa ? `${fmtNumAR(kpis.avgKgPerHa)} kg/ha` : '—'],
+    ['Lotes activos', String(kpis.activePlots)],
+    ['Actividades registradas', String(kpis.activitiesCount)],
+    ['Gastos (ARS)', kpis.expensesARS ? `$${fmtNumAR(kpis.expensesARS)}` : '—'],
+    ['Ingresos (ARS)', kpis.incomesARS ? `$${fmtNumAR(kpis.incomesARS)}` : '—'],
+  ];
+  const colWidth = (545 - 50) / 2;
+  doc.fontSize(10).font('Helvetica');
+  const rowHeight = 18;
+  let y = doc.y;
+  for (let i = 0; i < rows.length; i += 2) {
+    const [lKey, lVal] = rows[i];
+    const [rKey, rVal] = rows[i + 1] || ['', ''];
+    doc.rect(50, y, colWidth, rowHeight).fillAndStroke(COLORS.bg, COLORS.lightGray);
+    doc.rect(50 + colWidth, y, colWidth, rowHeight).fillAndStroke(COLORS.bg, COLORS.lightGray);
+    doc.fillColor(COLORS.gray).font('Helvetica').text(lKey, 56, y + 5, { width: colWidth - 12 });
+    doc.fillColor('#000').font('Helvetica-Bold').text(lVal, 56, y + 5, { width: colWidth - 12, align: 'right' });
+    if (rKey) {
+      doc.fillColor(COLORS.gray).font('Helvetica').text(rKey, 56 + colWidth, y + 5, { width: colWidth - 12 });
+      doc.fillColor('#000').font('Helvetica-Bold').text(rVal, 56 + colWidth, y + 5, { width: colWidth - 12, align: 'right' });
+    }
+    y += rowHeight;
+  }
+  doc.y = y;
+  doc.fillColor('#000').font('Helvetica');
+  doc.moveDown(0.5);
+}
+
+function renderComparison(doc, { kpis, prevKpis }) {
+  if (!prevKpis) return;
+  sectionTitle(doc, 'Comparación con período anterior');
+  const cmp = [
+    ['Kg cosechados', kpis.kgHarvested, prevKpis.kgHarvested, (v) => v ? fmtNumAR(v) : '—'],
+    ['Rinde (kg/ha)', kpis.avgKgPerHa, prevKpis.avgKgPerHa, (v) => v ? fmtNumAR(v) : '—'],
+    ['Actividades', kpis.activitiesCount, prevKpis.activitiesCount, (v) => String(v)],
+    ['Gastos ARS', kpis.expensesARS, prevKpis.expensesARS, (v) => v ? `$${fmtNumAR(v)}` : '—'],
+    ['Ingresos ARS', kpis.incomesARS, prevKpis.incomesARS, (v) => v ? `$${fmtNumAR(v)}` : '—'],
+  ];
+  const colW = [180, 120, 120, 75];
+  let y = doc.y;
+  doc.fontSize(9).font('Helvetica-Bold').fillColor(COLORS.gray);
+  ['Métrica', 'Actual', 'Anterior', 'Δ'].forEach((h, i) => {
+    const x = 50 + colW.slice(0, i).reduce((a, b) => a + b, 0);
+    doc.text(h, x + 4, y + 4, { width: colW[i] - 8 });
+  });
+  y += 18;
+  doc.fillColor('#000').font('Helvetica').fontSize(10);
+  for (const [name, curr, prev, fmt] of cmp) {
+    const delta = pctDelta(curr, prev);
+    doc.text(name, 54, y + 4, { width: colW[0] - 8 });
+    doc.text(fmt(curr), 54 + colW[0], y + 4, { width: colW[1] - 8, align: 'right' });
+    doc.text(fmt(prev), 54 + colW[0] + colW[1], y + 4, { width: colW[2] - 8, align: 'right' });
+    if (delta) {
+      const color = delta.arrow === '▲' ? COLORS.primary : (delta.arrow === '▼' ? COLORS.danger : COLORS.gray);
+      doc.fillColor(color).text(`${delta.arrow} ${delta.sign}${delta.pct}%`, 54 + colW[0] + colW[1] + colW[2], y + 4, { width: colW[3] - 8, align: 'right' });
+      doc.fillColor('#000');
+    } else {
+      doc.fillColor(COLORS.gray).text('—', 54 + colW[0] + colW[1] + colW[2], y + 4, { width: colW[3] - 8, align: 'right' });
+      doc.fillColor('#000');
+    }
+    y += 16;
+  }
+  doc.y = y;
+  doc.moveDown(0.5);
+}
+
+function renderInsights(doc, insights) {
+  if (!insights || insights.length === 0) return;
+  sectionTitle(doc, 'Insights del período');
+  doc.fontSize(10).font('Helvetica');
+  for (const line of insights) {
+    doc.fillColor(COLORS.secondary).text('●', 54, doc.y, { continued: true, width: 14 });
+    doc.fillColor('#000').text(' ' + line, { width: 485 });
+    doc.moveDown(0.2);
+  }
+  doc.moveDown(0.3);
+}
+
+function renderPerPlot(doc, { plots, fieldObservations, filterPlotId }) {
+  if (fieldObservations.length === 0 && [...plots.values()].every(p => (!p.observations || p.observations.length === 0) && (!p.activities || p.activities.length === 0))) {
+    return false;
+  }
+
+  if (fieldObservations.length > 0) {
+    sectionTitle(doc, 'Observaciones generales del campo');
+    for (const obs of fieldObservations) _renderObservation(doc, obs);
+    doc.moveDown(0.3);
+  }
+
+  for (const [pid, p] of plots) {
+    if (filterPlotId && pid !== filterPlotId) continue;
+    const acts = p.activities || [];
+    const obs = p.observations || [];
+    if (acts.length === 0 && obs.length === 0) continue;
+
+    pageBreakIfNeeded(doc, 120);
+    const plotHeader = `${p.name}${p.crop ? ` — ${p.crop}` : ''}${p.area ? ` (${p.area} ha)` : ''}`;
+    doc.fontSize(12).font('Helvetica-Bold').fillColor(COLORS.primary).text(plotHeader);
+    doc.fillColor('#000');
+    doc.moveDown(0.1);
+
+    if (acts.length > 0) {
+      doc.fontSize(9).font('Helvetica').fillColor(COLORS.gray).text('Actividades:');
+      doc.fillColor('#000');
+      for (const a of acts) _renderTimelineDot(doc, a);
+      doc.moveDown(0.2);
+    }
+    if (obs.length > 0) {
+      doc.fontSize(9).font('Helvetica').fillColor(COLORS.gray).text('Observaciones:');
+      doc.fillColor('#000');
+      for (const o of obs) _renderObservation(doc, o);
+    }
+    doc.moveDown(0.4);
+  }
+  return true;
+}
+
+function _renderTimelineDot(doc, act) {
+  const color = ACTIVITY_DOT[act.event_type] || COLORS.gray;
+  const typeLabel = ACTIVITY_LABELS[act.event_type] || act.event_type;
+  const dateStr = act.event_date
+    ? new Date(act.event_date).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', timeZone: 'America/Argentina/Buenos_Aires' })
+    : '';
+  const detail = [act.product, act.crop].filter(Boolean).join(' ') || '';
+  const qty = act.quantity ? ` — ${fmtNumAR(act.quantity)} ${act.unit || ''}` : '';
+
+  const x0 = 54;
+  const y0 = doc.y + 4;
+  doc.circle(x0 + 3, y0, 3).fillAndStroke(color, color);
+  doc.fillColor('#000').fontSize(9).font('Helvetica-Bold').text(`${dateStr}  ${typeLabel}`, x0 + 14, doc.y, { continued: true });
+  doc.font('Helvetica').text(`${detail ? ' — ' + detail : ''}${qty}`);
+  doc.moveDown(0.2);
+}
+
+function renderTimeline(doc, activities) {
+  if (!activities || activities.length === 0) return;
+  sectionTitle(doc, 'Actividad del período');
+  for (const a of activities) {
+    pageBreakIfNeeded(doc, 20);
+    const color = ACTIVITY_DOT[a.event_type] || COLORS.gray;
+    const typeLabel = ACTIVITY_LABELS[a.event_type] || a.event_type;
+    const dateStr = a.event_date
+      ? new Date(a.event_date).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', timeZone: 'America/Argentina/Buenos_Aires' })
+      : '';
+    const detail = [a.product, a.crop].filter(Boolean).join(' ');
+    const qty = a.quantity ? ` · ${fmtNumAR(a.quantity)} ${a.unit || ''}` : '';
+    const plot = a.plot_name ? ` · ${a.plot_name}` : '';
+    const y = doc.y;
+    doc.circle(58, y + 7, 4).fillAndStroke(color, color);
+    doc.fillColor('#000').fontSize(10).font('Helvetica-Bold').text(`${dateStr}  ${typeLabel}`, 72, y, { continued: true });
+    doc.font('Helvetica').text(`${detail ? ' — ' + detail : ''}${qty}${plot}`);
+    doc.moveDown(0.2);
+  }
+  doc.moveDown(0.3);
+}
+
+function renderWeatherSection(doc, { rainfall, dateFromIso, dateToIso }) {
+  sectionTitle(doc, 'Clima del período');
+  doc.fontSize(10).font('Helvetica');
+  if (rainfall && rainfall.totalMm > 0) {
+    doc.text(`Lluvia acumulada: ${fmtNumAR(rainfall.totalMm)} mm en ${rainfall.events} registro${rainfall.events !== 1 ? 's' : ''}.`);
+  } else {
+    doc.fillColor(COLORS.gray).text(`Sin registros de lluvia entre ${dateFromIso} y ${dateToIso}.`).fillColor('#000');
+  }
+  doc.fontSize(8).fillColor(COLORS.gray).text('Temperatura histórica no disponible en este reporte.').fillColor('#000');
+  doc.moveDown(0.4);
+}
+
+function renderFinancialSummary(doc, financial) {
+  if (!financial || !financial.hasAny) return;
+  sectionTitle(doc, 'Resumen económico');
+  const expARS = financial.expenses.ARS.total;
+  const expUSD = financial.expenses.USD.total;
+  const incARS = financial.incomes.ARS.total;
+  const incUSD = financial.incomes.USD.total;
+  doc.fontSize(10).font('Helvetica');
+  if (expARS || incARS) {
+    doc.font('Helvetica-Bold').text('Pesos (ARS)');
+    doc.font('Helvetica')
+       .text(`  Gastos: $${fmtNumAR(expARS)} · Ingresos: $${fmtNumAR(incARS)} · Resultado: ${financial.netARS >= 0 ? '+' : ''}$${fmtNumAR(financial.netARS)}`);
+    doc.moveDown(0.2);
+  }
+  if (expUSD || incUSD) {
+    doc.font('Helvetica-Bold').text('Dólares (USD)');
+    doc.font('Helvetica')
+       .text(`  Gastos: USD ${fmtNumAR(expUSD)} · Ingresos: USD ${fmtNumAR(incUSD)} · Resultado: ${financial.netUSD >= 0 ? '+' : ''}USD ${fmtNumAR(financial.netUSD)}`);
+    doc.moveDown(0.2);
+  }
+  if (financial.yield && financial.yield.kg > 0) {
+    doc.font('Helvetica-Bold').text('Rinde cosechado');
+    doc.font('Helvetica').text(`  Total: ${fmtNumAR(financial.yield.kg)} kg${financial.yield.kgPerHa ? ` (${fmtNumAR(financial.yield.kgPerHa)} kg/ha promedio)` : ''}`);
+  }
+  doc.fontSize(8).fillColor(COLORS.gray).text('Nota: ARS y USD se muestran por separado (sin conversión).').fillColor('#000');
+  doc.moveDown(0.4);
+}
+
+// ---------------------------------------------------------------------------
+// SVG charts
+// ---------------------------------------------------------------------------
+
+function buildBarChartSVG({ title, data, width = 480, height = 180 }) {
+  if (!data || data.length === 0) return null;
+  const padL = 80, padR = 20, padT = 30, padB = 30;
+  const chartW = width - padL - padR;
+  const chartH = height - padT - padB;
+  const max = Math.max(...data.map(d => d.value), 1);
+  const barW = chartW / data.length * 0.7;
+  const gap = chartW / data.length * 0.3;
+
+  let bars = '';
+  data.forEach((d, i) => {
+    const h = (d.value / max) * chartH;
+    const x = padL + i * (barW + gap) + gap / 2;
+    const y = padT + chartH - h;
+    bars += `<rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="${COLORS.primary}" rx="2"/>`;
+    bars += `<text x="${x + barW / 2}" y="${padT + chartH + 12}" font-size="9" fill="${COLORS.gray}" text-anchor="middle">${escXml(d.label)}</text>`;
+    bars += `<text x="${x + barW / 2}" y="${y - 3}" font-size="8" fill="#000" text-anchor="middle">${escXml(d.valueLabel || String(d.value))}</text>`;
+  });
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    <text x="${width / 2}" y="15" font-size="11" font-weight="bold" text-anchor="middle">${escXml(title)}</text>
+    <line x1="${padL}" y1="${padT + chartH}" x2="${padL + chartW}" y2="${padT + chartH}" stroke="${COLORS.lightGray}" stroke-width="1"/>
+    ${bars}
+  </svg>`;
+}
+
+function buildPieChartSVG({ title, data, width = 360, height = 200 }) {
+  if (!data || data.length === 0) return null;
+  const total = data.reduce((a, b) => a + b.value, 0);
+  if (total === 0) return null;
+  const cx = 100, cy = 110, r = 70;
+  const palette = ['#16a34a', '#0891b2', '#f59e0b', '#dc2626', '#8b5cf6', '#64748b'];
+  let acc = 0;
+  let slices = '';
+  let legend = '';
+  data.forEach((d, i) => {
+    const pct = d.value / total;
+    const start = acc * 2 * Math.PI;
+    const end = (acc + pct) * 2 * Math.PI;
+    acc += pct;
+    const x1 = cx + r * Math.sin(start);
+    const y1 = cy - r * Math.cos(start);
+    const x2 = cx + r * Math.sin(end);
+    const y2 = cy - r * Math.cos(end);
+    const largeArc = pct > 0.5 ? 1 : 0;
+    const color = palette[i % palette.length];
+    slices += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc} 1 ${x2},${y2} Z" fill="${color}"/>`;
+    legend += `<rect x="200" y="${60 + i * 20}" width="12" height="12" fill="${color}"/>`;
+    legend += `<text x="218" y="${70 + i * 20}" font-size="10" fill="#000">${escXml(d.label)} · ${Math.round(pct * 100)}%</text>`;
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    <text x="${width / 2}" y="15" font-size="11" font-weight="bold" text-anchor="middle">${escXml(title)}</text>
+    ${slices}
+    ${legend}
+  </svg>`;
+}
+
+function escXml(s) { return String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]); }
+
+function renderYieldChart(doc, { activities, plots }) {
+  const data = [];
+  for (const [, p] of plots) {
+    if (!p.area) continue;
+    const harv = (p.activities || []).find(a => a.event_type === 'harvest' && a.quantity);
+    if (!harv) continue;
+    const kg = Number(harv.quantity) * (harv.unit === 'tn' ? 1000 : 1);
+    const kgHa = Math.round(kg / Number(p.area));
+    data.push({ label: p.name.slice(0, 8), value: kgHa, valueLabel: fmtNumAR(kgHa) });
+  }
+  if (data.length === 0) return;
+  sectionTitle(doc, 'Rinde por lote (kg/ha)');
+  const svg = buildBarChartSVG({ title: '', data });
+  if (!svg) return;
+  pageBreakIfNeeded(doc, 180);
+  SVGtoPDF(doc, svg, 50, doc.y, { width: 495, assumePt: true });
+  doc.y += 180;
+  doc.moveDown(0.3);
+}
+
+function renderCropsChart(doc, { plots }) {
+  const byCrop = new Map();
+  for (const [, p] of plots) {
+    if (!p.crop || !p.area) continue;
+    byCrop.set(p.crop, (byCrop.get(p.crop) || 0) + Number(p.area));
+  }
+  if (byCrop.size === 0) return;
+  const data = [...byCrop.entries()].map(([label, value]) => ({ label, value }));
+  sectionTitle(doc, 'Distribución de cultivos (hectáreas)');
+  const svg = buildPieChartSVG({ title: '', data });
+  if (!svg) return;
+  pageBreakIfNeeded(doc, 210);
+  SVGtoPDF(doc, svg, 50, doc.y, { width: 360, assumePt: true });
+  doc.y += 200;
+  doc.moveDown(0.3);
+}
+
+// ---------------------------------------------------------------------------
+// PDF orchestrator
+// ---------------------------------------------------------------------------
+
+function generateReportPDF({
+  field, agronomist, weekNumber, year, plots, fieldObservations, pdfPath,
+  filterPlotName = null, activities = [], desde = null, hasta = null,
+  financial = null, prevFinancial = null, prevActivitiesCount = 0,
+  rainfall = null, toggles = {}, dateFromIso = null, dateToIso = null,
+}) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const stream = fs.createWriteStream(pdfPath);
     doc.pipe(stream);
 
-    // --- Header ---
-    const title = desde && hasta ? 'Reporte Agronómico' : 'Reporte Agronómico Semanal';
-    doc.fontSize(20).font('Helvetica-Bold')
-       .text(title, { align: 'center' });
-    doc.moveDown(0.5);
+    const periodLabel = desde && hasta ? `${desde} a ${hasta}` : `Semana ${weekNumber} — ${year}`;
+    const kpis = computeKPIs({ plots, activities, financial, filterPlotId: null });
+    const prevKpis = prevFinancial ? computeKPIs({ plots, activities: new Array(prevActivitiesCount), financial: prevFinancial, filterPlotId: null }) : null;
+    const insights = toggles.insights ? computeInsights({ kpis, plots, prevKpis, activities }) : [];
 
-    const scopeLabel = filterPlotName
-      ? `Campo: ${field.name} > Lote: ${filterPlotName}`
-      : `Campo: ${field.name}`;
-    doc.fontSize(11).font('Helvetica')
-       .text(`${scopeLabel}${field.city ? ` — ${field.city}` : ''}`, { align: 'center' });
-    doc.text(`Agrónomo: ${agronomist}`, { align: 'center' });
-    const periodLabel = desde && hasta
-      ? `${desde} a ${hasta}`
-      : `Semana ${weekNumber} — ${year}`;
-    doc.text(periodLabel, { align: 'center' });
-    doc.text(`Generado: ${new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`, { align: 'center' });
-    doc.moveDown(1);
+    renderHeader({ doc, field, filterPlotName, agronomist, periodLabel, toggles, kpis, rainfall });
 
-    // --- Horizontal rule ---
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
-    doc.moveDown(1);
+    if (toggles.kpis) renderKPIs(doc, kpis);
+    if (toggles.comparison && prevKpis) renderComparison(doc, { kpis, prevKpis });
+    if (toggles.insights && insights.length > 0) renderInsights(doc, insights);
+    if (toggles.charts_yield) renderYieldChart(doc, { activities, plots });
+    if (toggles.charts_crops) renderCropsChart(doc, { plots });
+    if (toggles.per_plot) renderPerPlot(doc, { plots, fieldObservations, filterPlotId: null });
+    if (toggles.timeline && activities.length > 0) renderTimeline(doc, activities);
+    if (toggles.weather_section) renderWeatherSection(doc, { rainfall, dateFromIso, dateToIso });
+    if (toggles.financial_summary) renderFinancialSummary(doc, financial);
 
-    let hasContent = false;
-
-    // --- Field-level observations (general, no specific plot) ---
-    if (fieldObservations.length > 0) {
-      hasContent = true;
-      doc.fontSize(14).font('Helvetica-Bold').text('Observaciones Generales del Campo');
-      doc.moveDown(0.3);
-
-      for (const obs of fieldObservations) {
-        _renderObservation(doc, obs);
-      }
-      doc.moveDown(0.8);
-    }
-
-    // --- Plot-level observations ---
-    for (const [plotId, plotData] of plots) {
-      if (plotData.observations.length === 0) continue;
-      hasContent = true;
-
-      // Plot header
-      let plotHeader = plotData.name;
-      if (plotData.crop) plotHeader += ` — ${plotData.crop}`;
-      if (plotData.area) plotHeader += ` (${plotData.area} ha)`;
-
-      doc.fontSize(14).font('Helvetica-Bold').text(plotHeader);
-      doc.moveDown(0.3);
-
-      for (const obs of plotData.observations) {
-        _renderObservation(doc, obs);
-      }
-      doc.moveDown(0.8);
-    }
-
-    // --- Recent activities ---
-    if (activities.length > 0) {
-      hasContent = true;
-
-      if (doc.y > 650) doc.addPage();
-      doc.fontSize(14).font('Helvetica-Bold').text('Actividad Reciente');
-      doc.moveDown(0.3);
-
-      for (const act of activities) {
-        _renderActivity(doc, act);
-      }
-      doc.moveDown(0.8);
-    }
-
-    // --- Financial + yield summary (new, appended after activities) ---
-    if (financial && financial.hasAny) {
-      hasContent = true;
-      if (doc.y > 620) doc.addPage();
-      doc.fontSize(14).font('Helvetica-Bold').text('Resumen económico y de rinde');
-      doc.moveDown(0.3);
-
-      const expARS = financial.expenses.ARS.total;
-      const expUSD = financial.expenses.USD.total;
-      const incARS = financial.incomes.ARS.total;
-      const incUSD = financial.incomes.USD.total;
-
-      if (expARS || incARS) {
-        doc.fontSize(10).font('Helvetica-Bold').text('Pesos (ARS)', { continued: false });
-        doc.font('Helvetica').fontSize(10)
-           .text(`  Gastos: $${fmtNumAR(expARS)} (${financial.expenses.ARS.count} registros)`)
-           .text(`  Ingresos: $${fmtNumAR(incARS)} (${financial.incomes.ARS.count} registros)`)
-           .text(`  Resultado: ${financial.netARS >= 0 ? '+' : ''}$${fmtNumAR(financial.netARS)}`);
-        doc.moveDown(0.3);
-      }
-
-      if (expUSD || incUSD) {
-        doc.fontSize(10).font('Helvetica-Bold').text('Dólares (USD)');
-        doc.font('Helvetica').fontSize(10)
-           .text(`  Gastos: USD ${fmtNumAR(expUSD)} (${financial.expenses.USD.count} registros)`)
-           .text(`  Ingresos: USD ${fmtNumAR(incUSD)} (${financial.incomes.USD.count} registros)`)
-           .text(`  Resultado: ${financial.netUSD >= 0 ? '+' : ''}USD ${fmtNumAR(financial.netUSD)}`);
-        doc.moveDown(0.3);
-      }
-
-      if (financial.yield && financial.yield.kg > 0) {
-        doc.fontSize(10).font('Helvetica-Bold').text('Rinde cosechado');
-        doc.font('Helvetica').fontSize(10)
-           .text(`  Total: ${fmtNumAR(financial.yield.kg)} kg`
-             + (financial.yield.kgPerHa ? ` (${fmtNumAR(financial.yield.kgPerHa)} kg/ha promedio)` : ''));
-        for (const d of financial.yield.detail) {
-          const line = `  • ${d.plotName}${d.crop ? ` — ${d.crop}` : ''}: ${fmtNumAR(d.kg)} kg`
-            + (d.kgPerHa ? ` (${fmtNumAR(d.kgPerHa)} kg/ha)` : '');
-          doc.text(line);
-        }
-        doc.moveDown(0.3);
-      }
-
-      doc.fontSize(8).fillColor('#888888')
-         .text('Nota: solo se suman gastos/ingresos asignados al alcance del reporte dentro del período. Montos en ARS y USD se muestran por separado (sin conversión).')
-         .fillColor('#000000');
-      doc.moveDown(0.6);
-    }
-
-    if (!hasContent) {
-      const emptyMsg = desde && hasta
-        ? 'No hay observaciones ni actividades registradas en el período seleccionado.'
-        : 'No hay observaciones ni actividades registradas para esta semana.';
-      doc.fontSize(12).font('Helvetica')
-         .text(emptyMsg, { align: 'center' });
+    // Fallback if everything came up empty
+    if (fieldObservations.length === 0 && activities.length === 0 && (!financial || !financial.hasAny)) {
+      doc.moveDown(1);
+      doc.fontSize(11).font('Helvetica').fillColor(COLORS.gray)
+         .text(desde && hasta
+            ? 'No hay observaciones ni actividades registradas en el período seleccionado.'
+            : 'No hay observaciones ni actividades registradas para esta semana.',
+           { align: 'center' });
     }
 
     doc.end();

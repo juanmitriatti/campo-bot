@@ -27,6 +27,7 @@
     "pdfkit": "^0.17.2",
     "pg": "^8.19.0",
     "sharp": "^0.34.5",
+    "svg-to-pdfkit": "^0.1.8",
     "web-push": "^3.6.7"
   },
   "devDependencies": {

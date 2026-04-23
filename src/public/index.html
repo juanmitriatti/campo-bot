@@ -3545,6 +3545,7 @@
       ai: 'Configuración de IA',
       bot: 'Bot y Flujos',
       agronomy: 'Agronomia',
+      agro_report: 'Configuración de Reporte Agro',
       limits: 'Limites',
       system: 'Sistema',
       onboarding: 'Onboarding'
@@ -3570,7 +3571,7 @@
         }
 
         var html = '';
-        var groupOrder = ['ai', 'bot', 'audio', 'limits', 'agronomy', 'system', 'onboarding'];
+        var groupOrder = ['ai', 'agro_report', 'bot', 'audio', 'limits', 'agronomy', 'system', 'onboarding'];
         for (var g = 0; g < groupOrder.length; g++) {
           var groupKey = groupOrder[g];
           var items = groups[groupKey];
@@ -3600,7 +3601,19 @@
             var isPrompt = item.key.indexOf('PROMPT') !== -1 || item.key.indexOf('prompt') !== -1 || item.key.indexOf('MESSAGE') !== -1;
             html += '<div style="width:' + (isPrompt ? '400px' : '220px') + ';">';
 
-            if (s.type === 'boolean') {
+            if (item.key === 'AGRO_REPORT_LOGO_PATH') {
+              // Special control: file uploader. Value displayed read-only; upload/remove buttons call dedicated endpoints.
+              var currentName = s.value ? s.value.split('/').pop() : '(sin logo cargado)';
+              html += '<div style="display:flex;flex-direction:column;gap:6px;">';
+              html += '<input type="file" id="logo-upload-input" accept="image/png,image/jpeg,image/webp" style="font-size:12px;">';
+              html += '<div style="font-size:11px;color:var(--text-light);">Actual: <code>' + escapeHtml(currentName) + '</code></div>';
+              html += '<div style="display:flex;gap:6px;">';
+              html += '<button class="btn" onclick="uploadReportLogo()" style="font-size:12px;padding:4px 10px;">Subir logo</button>';
+              if (s.value) html += '<button class="btn" onclick="deleteReportLogo()" style="font-size:12px;padding:4px 10px;">Quitar</button>';
+              html += '</div>';
+              html += '<input type="hidden" id="' + inputId + '" data-key="' + item.key + '" data-type="' + s.type + '" value="' + escapeHtml(s.value) + '">';
+              html += '</div>';
+            } else if (s.type === 'boolean') {
               var checked = s.value === 'true' || s.value === '1' ? ' checked' : '';
               html += '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">';
               html += '<input type="checkbox" id="' + inputId + '" data-key="' + item.key + '" data-type="boolean"' + checked + '>';
@@ -3621,6 +3634,35 @@
         html += '<button class="btn btn-primary" onclick="saveSettings()" id="btn-save-settings">Guardar Cambios</button>';
         container.innerHTML = html;
       });
+    }
+
+    function uploadReportLogo() {
+      var input = document.getElementById('logo-upload-input');
+      if (!input || !input.files || input.files.length === 0) {
+        alert('Elegí un archivo primero.');
+        return;
+      }
+      var fd = new FormData();
+      fd.append('logo', input.files[0]);
+      fetch('/admin/api/agro-report/logo', { method: 'POST', body: fd })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, body: j }; }); })
+        .then(function(res) {
+          if (!res.ok) throw new Error(res.body.error || 'Error al subir');
+          alert('Logo subido correctamente.');
+          loadSettings();
+        })
+        .catch(function(err) { alert('Error: ' + err.message); });
+    }
+
+    function deleteReportLogo() {
+      if (!confirm('¿Quitar el logo del reporte?')) return;
+      fetch('/admin/api/agro-report/logo', { method: 'DELETE' })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, body: j }; }); })
+        .then(function(res) {
+          if (!res.ok) throw new Error(res.body.error || 'Error al quitar');
+          loadSettings();
+        })
+        .catch(function(err) { alert('Error: ' + err.message); });
     }
 
     function saveSettings() {

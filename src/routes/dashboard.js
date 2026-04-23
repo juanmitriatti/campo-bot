@@ -1,6 +1,8 @@
 import { Router } from "express";
 import express from "express";
 import fs from "fs";
+import path from "path";
+import multer from "multer";
 import { pool } from "../config/db.js";
 import { getObservationsByField, getWeekObservationCount } from "../services/observations.js";
 import { generateWeeklyReport, getReportsByField, getAllReports, getReportById } from "../services/agro-report.js";
@@ -1379,6 +1381,60 @@ router.get("/api/agro/reports/:id/pdf", async (req, res) => {
     console.error("Error serving report PDF:", error);
     logError('admin-api', 'REPORT_PDF_SERVE', error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── Agro report logo upload ────────────────────────────────────────────────
+
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(png|jpe?g|webp)$/i.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Formato no soportado. Usá PNG, JPG o WEBP.'));
+  },
+});
+
+router.post('/api/agro-report/logo', logoUpload.single('logo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: 'No se recibió archivo' });
+      return;
+    }
+    const brandingDir = path.resolve(process.cwd(), 'data/branding');
+    fs.mkdirSync(brandingDir, { recursive: true });
+    const ext = (req.file.mimetype.split('/')[1] || 'png').replace('jpeg', 'jpg');
+    const target = path.join(brandingDir, `report-logo.${ext}`);
+    // Remove any previous logo (different extension) so only one stays around
+    for (const e of ['png', 'jpg', 'webp']) {
+      const stale = path.join(brandingDir, `report-logo.${e}`);
+      if (stale !== target && fs.existsSync(stale)) { try { fs.unlinkSync(stale); } catch { /* ignore */ } }
+    }
+    fs.writeFileSync(target, req.file.buffer);
+    await setSetting('AGRO_REPORT_LOGO_PATH', target);
+    await setSetting('AGRO_REPORT_SHOW_LOGO', 'true');
+    res.json({ ok: true, path: target, size: req.file.size });
+  } catch (err) {
+    console.error('Error uploading logo:', err);
+    logError('admin-api', 'AGRO_LOGO_UPLOAD', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+router.delete('/api/agro-report/logo', async (_req, res) => {
+  try {
+    const currentPath = (await import('../services/settings.service.js')).getSetting
+      ? await (await import('../services/settings.service.js')).getSetting('AGRO_REPORT_LOGO_PATH')
+      : '';
+    if (currentPath && fs.existsSync(currentPath)) {
+      try { fs.unlinkSync(currentPath); } catch { /* ignore */ }
+    }
+    await setSetting('AGRO_REPORT_LOGO_PATH', '');
+    await setSetting('AGRO_REPORT_SHOW_LOGO', 'false');
+    res.json({ ok: true });
+  } catch (err) {
+    logError('admin-api', 'AGRO_LOGO_DELETE', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
