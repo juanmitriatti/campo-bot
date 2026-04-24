@@ -14,9 +14,9 @@ export class AgentPromptBuilder {
    * User context + today's date must be injected as a message prefix via
    * `buildUserMessagePrefix()` (not part of the cached system block).
    */
-  build(_userContext?: UserContext | null, dictionary?: ActivityDictionaryEntry[]): string {
+  build(_userContext?: UserContext | null, dictionary?: ActivityDictionaryEntry[], botName?: string): string {
     return [
-      this.coreRules(),
+      this.coreRules(botName),
       this.disambiguationRules(dictionary),
     ].join('\n');
   }
@@ -38,8 +38,9 @@ export class AgentPromptBuilder {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
   }
 
-  private coreRules(): string {
-    return `Sos MIA, asistente agrícola argentino (WhatsApp y Telegram). Analizá el mensaje y usá la herramienta apropiada.
+  private coreRules(botName?: string): string {
+    const name = botName || 'MIA';
+    return `Sos ${name}, asistente agrícola argentino (WhatsApp y Telegram). Analizá el mensaje y usá la herramienta apropiada.
 
 REGLAS:
 - Registro de gasto/ingreso/actividad/observación/lluvia → llamá la herramienta correspondiente

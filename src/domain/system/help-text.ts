@@ -1,6 +1,6 @@
-export function buildHelpText(userName: string | null): string {
+export function buildHelpText(userName: string | null, botName: string = 'MIA'): string {
   const nombre = userName ? ` ${userName}` : '';
-  return `\ud83d\udc4b Hola${nombre}, soy *MIA*
+  return `\ud83d\udc4b Hola${nombre}, soy *${botName}*
 Tu asistente de gesti\u00f3n agr\u00edcola \ud83c\udf31
 
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501

@@ -3548,7 +3548,8 @@
       agro_report: 'Configuración de Reporte Agro',
       limits: 'Limites',
       system: 'Sistema',
-      onboarding: 'Onboarding'
+      onboarding: 'Onboarding',
+      mensajes: 'Mensajes del Bot'
     };
 
     function loadSettings() {
@@ -3571,7 +3572,7 @@
         }
 
         var html = '';
-        var groupOrder = ['ai', 'agro_report', 'bot', 'audio', 'limits', 'agronomy', 'system', 'onboarding'];
+        var groupOrder = ['mensajes', 'ai', 'agro_report', 'bot', 'audio', 'limits', 'agronomy', 'system', 'onboarding'];
         for (var g = 0; g < groupOrder.length; g++) {
           var groupKey = groupOrder[g];
           var items = groups[groupKey];

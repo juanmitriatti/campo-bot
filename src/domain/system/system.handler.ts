@@ -4,6 +4,8 @@ import { pool } from '../../config/db.js';
 import { buildHelpText } from './help-text.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../../middleware/pending-field-city-handler.js';
+import { getSetting } from '../../services/settings.service.js';
+import { interpolate } from '../../utils/template.js';
 import type { FinancialService } from '../financial/financial.service.js';
 import { logError } from '../../services/error-logger.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse, InteractiveMessage } from '../../types/index.js';
@@ -21,13 +23,16 @@ export class SystemHandler {
     switch (cmd.command) {
       case 'greeting': {
         const nombre = user.name ? `, ${user.name}` : '';
+        const botName = (await getSetting('BOT_NAME')) || 'MIA';
+        const vars = { nombre, botName };
 
         // Onboarding: if user has no fields, guide them to create one
         if (this.financialService) {
           const fields = await this.financialService.getUserFields(userId);
           if (fields.length === 0) {
+            const template = (await getSetting('GREETING_NEW_USER_MESSAGE')) || '';
             return {
-              messages: [`Hola${nombre} \ud83d\udc4b Soy *MIA*, tu asistente de gesti\u00f3n agr\u00edcola.\n\nPara empezar, necesit\u00e1s crear tu primer campo. Escrib\u00ed algo como:\n\ud83d\udccd *agregar campo La Esperanza*`],
+              messages: [interpolate(template, vars)],
               interactive: {
                 type: 'buttons',
                 body: '\u00bfQuer\u00e9s crear tu primer campo?',
@@ -43,8 +48,9 @@ export class SystemHandler {
           const allPlots = await this.financialService.findAllUserPlots(userId);
           if (allPlots.length === 0) {
             const fieldName = fields[0].name || 'tu campo';
+            const template = (await getSetting('GREETING_NO_PLOTS_MESSAGE')) || '';
             return {
-              messages: [`Hola${nombre} \ud83d\udc4b Ya ten\u00e9s tu campo *${fieldName}*.\n\nAhora cre\u00e1 un lote para poder registrar gastos e ingresos. Escrib\u00ed algo como:\n\ud83c\udf3e *agregar lote Lote 1 en ${fieldName}*`],
+              messages: [interpolate(template, { ...vars, fieldName })],
               interactive: {
                 type: 'buttons',
                 body: '\u00bfQuer\u00e9s crear tu primer lote?',
@@ -57,8 +63,9 @@ export class SystemHandler {
           }
         }
 
+        const template = (await getSetting('GREETING_NORMAL_MESSAGE')) || '';
         return {
-          messages: [`Hola${nombre} \ud83d\udc4b Soy *MIA*, tu asistente de gesti\u00f3n agr\u00edcola.`],
+          messages: [interpolate(template, vars)],
           interactive: {
             type: 'buttons',
             body: '\u00bfQu\u00e9 quer\u00e9s hacer?',
@@ -71,8 +78,10 @@ export class SystemHandler {
         };
       }
 
-      case 'help':
-        return { messages: [buildHelpText(user.name)] };
+      case 'help': {
+        const helpBotName = (await getSetting('BOT_NAME')) || 'MIA';
+        return { messages: [buildHelpText(user.name, helpBotName)] };
+      }
 
       case 'menu':
         return {

@@ -105,7 +105,8 @@ export class AgentService {
       // Build system prompt (stable — cacheable across users/calls).
       // Per-user context + today's date are injected into the user message
       // prefix so they don't invalidate the cache.
-      const systemPrompt = this.promptBuilder.build(null, dictionary);
+      const botName = (await getSetting('BOT_NAME')) || 'MIA';
+      const systemPrompt = this.promptBuilder.build(null, dictionary, botName);
       const userPrefix = this.promptBuilder.buildUserMessagePrefix(userContext);
 
       // Load agent-specific settings

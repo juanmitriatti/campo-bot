@@ -25,8 +25,23 @@ import type {
 
 // --- Formatting helpers ---
 
-const EXPENSE_CONFIRMATIONS = ['✅ Listo, gasto registrado', '✅ Anotado', '✅ Gasto guardado', '✅ Registrado'];
-const INCOME_CONFIRMATIONS = ['💰 Listo, ingreso registrado', '💰 Anotado', '💰 Ingreso guardado', '💰 Registrado'];
+import { splitPool } from '../../utils/template.js';
+
+const DEFAULT_EXPENSE_CONFIRMATIONS = ['✅ Listo, gasto registrado', '✅ Anotado', '✅ Gasto guardado', '✅ Registrado'];
+const DEFAULT_INCOME_CONFIRMATIONS = ['💰 Listo, ingreso registrado', '💰 Anotado', '💰 Ingreso guardado', '💰 Registrado'];
+
+async function getConfirmationPool(type: 'expense' | 'income'): Promise<string[]> {
+  const key = type === 'expense' ? 'EXPENSE_CONFIRMATIONS_MESSAGE' : 'INCOME_CONFIRMATIONS_MESSAGE';
+  const defaults = type === 'expense' ? DEFAULT_EXPENSE_CONFIRMATIONS : DEFAULT_INCOME_CONFIRMATIONS;
+  try {
+    const raw = await getSetting(key);
+    if (!raw) return defaults;
+    const pool = splitPool(raw);
+    return pool.length > 0 ? pool : defaults;
+  } catch {
+    return defaults;
+  }
+}
 
 function pickRandom(arr: string[]): string {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -66,9 +81,10 @@ function formatEventDate(dateStr: string | null | undefined): string | null {
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Argentina/Buenos_Aires' });
 }
 
-function buildExpenseConfirmation(data: ParsedExpense, fieldName: string | null, plotName: string | null = null): string {
+async function buildExpenseConfirmation(data: ParsedExpense, fieldName: string | null, plotName: string | null = null): Promise<string> {
+  const pool = await getConfirmationPool('expense');
   const currency = data.currency === 'USD' ? 'USD' : '';
-  let msg = `${pickRandom(EXPENSE_CONFIRMATIONS)}\n${data.category}\n$${Number(data.amount).toLocaleString('es-AR')} ${currency}`.trim();
+  let msg = `${pickRandom(pool)}\n${data.category}\n$${Number(data.amount).toLocaleString('es-AR')} ${currency}`.trim();
   const loc = buildLocationLabel(fieldName, plotName);
   if (loc) msg += `\n\ud83d\udccd ${loc}`;
   const dateLabel = formatEventDate(data.expenseDate);
@@ -76,9 +92,10 @@ function buildExpenseConfirmation(data: ParsedExpense, fieldName: string | null,
   return msg;
 }
 
-function buildIncomeConfirmation(data: ParsedIncome | Record<string, unknown>, fieldName: string | null, plotName: string | null = null): string {
+async function buildIncomeConfirmation(data: ParsedIncome | Record<string, unknown>, fieldName: string | null, plotName: string | null = null): Promise<string> {
+  const pool = await getConfirmationPool('income');
   const currency = (data.currency as string) === 'USD' ? 'USD' : '';
-  let msg = `${pickRandom(INCOME_CONFIRMATIONS)}\n${data.category}\n$${Number(data.amount).toLocaleString('es-AR')} ${currency}`.trim();
+  let msg = `${pickRandom(pool)}\n${data.category}\n$${Number(data.amount).toLocaleString('es-AR')} ${currency}`.trim();
   if (data.quantity && data.unit) {
     msg += `\n${data.quantity} ${data.unit}`;
     if (data.unit_price) msg += ` a $${Number(data.unit_price).toLocaleString('es-AR')}`;
@@ -463,7 +480,7 @@ export class FinancialHandler {
     }
 
     const saved = await this.service.saveExpense(userId, data, fieldId, plotId);
-    const messages = [buildExpenseConfirmation(data, resFieldName, resPlotName)];
+    const messages = [await buildExpenseConfirmation(data, resFieldName, resPlotName)];
 
     if (settings.budget_alerts) {
       const alert = await this.service.checkBudgetAlert(userId, data.category, user.name);
@@ -658,7 +675,7 @@ export class FinancialHandler {
     }
 
     const savedIncome = await this.service.saveIncome(userId, data, fieldId, plotId);
-    const messages = [buildIncomeConfirmation(data, resFieldName, resPlotName)];
+    const messages = [await buildIncomeConfirmation(data, resFieldName, resPlotName)];
     const { ingresos, gastos } = await this.service.getMonthlyResult(userId);
     if (gastos > 0) {
       messages.push(formatResult(ingresos, gastos, 'Resultado del mes hasta ahora'));
@@ -723,7 +740,7 @@ export class FinancialHandler {
     if (pending.type === 'income') {
       const incomeData = pending.data as ParsedIncome;
       await this.service.saveIncome(userId, incomeData, pending.fieldId, pending.plotId);
-      const messages = [buildIncomeConfirmation(incomeData, pending.fieldName, pending.plotName)];
+      const messages = [await buildIncomeConfirmation(incomeData, pending.fieldName, pending.plotName)];
       const { ingresos, gastos } = await this.service.getMonthlyResult(userId);
       if (gastos > 0) {
         messages.push(formatResult(ingresos, gastos, 'Resultado del mes hasta ahora'));
@@ -732,7 +749,7 @@ export class FinancialHandler {
     } else {
       const expenseData = pending.data as ParsedExpense;
       const saved = await this.service.saveExpense(userId, expenseData, pending.fieldId, pending.plotId);
-      const messages = [buildExpenseConfirmation(expenseData, pending.fieldName, pending.plotName)];
+      const messages = [await buildExpenseConfirmation(expenseData, pending.fieldName, pending.plotName)];
       if (settings.budget_alerts) {
         const alert = await this.service.checkBudgetAlert(userId, expenseData.category, user.name);
         if (alert) {
