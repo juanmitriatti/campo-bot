@@ -169,6 +169,54 @@ export class AgronomyHandler {
   }
 
   /**
+   * Tailored response for "you tried to log activity X but have no plots".
+   * Distinguishes between (a) no fields at all (the original case), (b) one
+   * field already created, and (c) multiple fields. When the user mentioned
+   * hectares in the same message, surface them in the suggested command.
+   */
+  private async buildNoPlotsResponse(
+    userId: UserId,
+    activityLabel: string,
+    cmd: ParsedCommand,
+  ): Promise<HandlerResponse> {
+    const fields = await this.repo.getUserFields(userId);
+    const haNum = cmd.hectares != null ? Number(cmd.hectares) : null;
+    const haHint = haNum && haNum > 0 ? ` de ${haNum} ha` : '';
+
+    if (fields.length === 0) {
+      return {
+        messages: [`Para registrar ${activityLabel} primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*`],
+        interactive: {
+          type: 'buttons',
+          body: `Necesitás un campo para registrar ${activityLabel}.`,
+          buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
+        },
+      };
+    }
+
+    if (fields.length === 1) {
+      const f = fields[0];
+      return {
+        messages: [
+          `El campo *${f.name}* todavía no tiene lotes cargados.\n\n` +
+          `Creá uno con:\n📍 *agregar lote [nombre] en campo ${f.name}${haHint}*\n\n` +
+          `Después reintentá la ${activityLabel}.`,
+        ],
+      };
+    }
+
+    const someFields = fields.slice(0, 3).map(f => `*${f.name}*`).join(', ');
+    const more = fields.length > 3 ? '…' : '';
+    return {
+      messages: [
+        `Tus campos (${someFields}${more}) todavía no tienen lotes cargados.\n\n` +
+        `Creá uno con:\n📍 *agregar lote [nombre] en campo [cuál]${haHint}*\n\n` +
+        `Después reintentá la ${activityLabel}.`,
+      ],
+    };
+  }
+
+  /**
    * Build "which plot?" response for activity pending pattern.
    */
   private buildAskPlotResponse(
@@ -716,14 +764,7 @@ export class AgronomyHandler {
         const plotResult = await this.resolveActivityPlot(userId, resolved);
 
         if (plotResult.type === 'no_plots') {
-          return {
-            messages: ['Primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*'],
-            interactive: {
-              type: 'buttons',
-              body: 'Necesitás un lote para registrar siembra.',
-              buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
-            },
-          };
+          return this.buildNoPlotsResponse(userId, 'siembra', cmd);
         }
 
         if (plotResult.type === 'ask_user') {
@@ -764,14 +805,7 @@ export class AgronomyHandler {
         const plotResult = await this.resolveActivityPlot(userId, resolved);
 
         if (plotResult.type === 'no_plots') {
-          return {
-            messages: ['Primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*'],
-            interactive: {
-              type: 'buttons',
-              body: 'Necesitás un lote para registrar cosecha.',
-              buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
-            },
-          };
+          return this.buildNoPlotsResponse(userId, 'cosecha', cmd);
         }
 
         if (plotResult.type === 'ask_user') {
@@ -1354,14 +1388,7 @@ export class AgronomyHandler {
         const plotResult = await this.resolveActivityPlot(userId, resolved);
 
         if (plotResult.type === 'no_plots') {
-          return {
-            messages: [`Para registrar ${actLabel.toLowerCase()} primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*`],
-            interactive: {
-              type: 'buttons',
-              body: `Necesitás un campo para registrar ${actLabel.toLowerCase()}.`,
-              buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
-            },
-          };
+          return this.buildNoPlotsResponse(userId, actLabel.toLowerCase(), cmd);
         }
 
         if (plotResult.type === 'ask_user') {
@@ -1502,14 +1529,7 @@ export class AgronomyHandler {
           const plotResult = await this.resolveActivityPlot(userId, resolved);
 
           if (plotResult.type === 'no_plots') {
-            return {
-              messages: ['Para registrar tacto primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*'],
-              interactive: {
-                type: 'buttons',
-                body: 'Necesitás un lote para registrar tacto.',
-                buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
-              },
-            };
+            return this.buildNoPlotsResponse(userId, 'tacto', cmd);
           }
 
           if (plotResult.type === 'ask_user') {
