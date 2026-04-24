@@ -607,12 +607,12 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'set_field_city',
-    description: 'Asignar ubicación a campo existente. "ubicar campo X en Y", "campo X está en Y".',
+    description: 'Asignar ubicación a campo existente. SOLO llamar cuando el usuario menciona EXPLÍCITAMENTE la localidad ("ubicar campo X en Y", "campo X está en Pergamino", "corregir: es en Ameghino"). Si el usuario dice "agregar ubicación" / "poner ubicación" / "cambiar ubicación" sin nombrar ciudad, NO llames esta tool — usá respond_text pidiendo la ciudad.',
     input_schema: {
       type: 'object',
       properties: {
         field: { type: 'string', description: 'Nombre del campo.' },
-        city: { type: 'string', description: 'Localidad del campo (nombre de localidad argentina).' },
+        city: { type: 'string', description: 'Localidad mencionada explícitamente por el usuario. NUNCA inventar, NUNCA asumir. Si no aparece en el mensaje, omitir este parámetro.' },
       },
       required: ['field'],
     },

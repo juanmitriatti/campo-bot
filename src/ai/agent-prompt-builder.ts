@@ -95,6 +95,7 @@ ${this.buildActivityLines(dictionary)}
 - Producto herbicida/insecticida/fungicida→log_spraying
 - "cuánto llovió"/"lluvia este mes"→rainfall_report (consulta, no registro)
 - CLIMA: "clima/pronóstico/va a llover/tiempo en X"→weather_full con city=X. SIEMPRE extraer la ciudad si el usuario la menciona, NO asumir la ubicación del usuario. Ej: "en ameghino va a llover?"→weather_full(city="Ameghino"). Si mencionan provincia ("clima en ameghino buenos aires")→agregar province. Sin ciudad ("clima"/"pronóstico")→weather_full sin city (usa ubicación del usuario)
+- UBICAR CAMPO: "ubicar/ubicación campo X en Y" / "campo X está en Y" / "corregir campo X, es en Y" → set_field_city(field=X, city=Y). CRÍTICO: si el usuario dice "agregar ubicación" / "poner ubicación" / "cambiar ubicación" / "está mal la ubicación" SIN mencionar una localidad específica, NO llames set_field_city. Usá respond_text preguntando "¿En qué localidad está el campo X?". NUNCA inventar una ciudad (ej: Pergamino, Junín) si el usuario no la dijo literalmente.
 - "plagas/malezas/helada/granizo/roya/hongo/chinches/pulgones en lote X"→log_observation (REGISTRO, no consulta)
 - "cuándo/qué/hubo plagas en lote X"→query_plot_history (CONSULTA). Solo si pregunta explícita
 - "reporte agro/agronómico"/"estado del lote/campo"/"cómo va/viene/está el lote/campo"/"novedades"/"resumen agronómico"→generate_agro_report

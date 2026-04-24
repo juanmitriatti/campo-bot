@@ -15,18 +15,70 @@ export function formatLocation(city: string, province: string | null): string {
   return province ? `${city}, ${province}` : city;
 }
 
+/**
+ * Detects inputs that clearly aren't a city — numbers, agro commands, cancels, etc.
+ * When pending-city state is on but the user sends something like "52 hectáreas" or
+ * "Siembra...", we should abort the pending flow instead of prompting "¿En qué
+ * ciudad...?" over and over.
+ */
+function looksLikeNonCity(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (!t) return true;
+  if (/^(cancelar|cancel|salir|nada|ninguna|ninguno|olvidalo|dejalo)\b/.test(t)) return true;
+  // Agro / registration verbs
+  if (/\b(siembra|sembr[ée]|coseché|cosecha|fumig[ué]|fertilic[ée]|ri?egué|apliqu[ée]|gasté|pagué|compré|vendí|cobré|llovi[oó]|hect[aá]rea|rinde|factura|remito|recibí|agrega|agregar|crear|borrar|eliminar|mover|pas[ée])\b/.test(t)) return true;
+  // Numbers-first content ("52 ha", "3000 kg", "$50000")
+  if (/^(?:\$|us\$|usd)?\s*\d[\d.,]*\s*(ha|hect|kg|tn|mm|lt|$|pesos|dolares|usd|ars|,|\.)/i.test(t)) return true;
+  // Very short (< 3 chars) or no letters at all
+  if (t.length < 3 || !/[a-záéíóúñ]/i.test(t)) return true;
+  return false;
+}
+
+/**
+ * Extract the locality part from correction phrases. Handles:
+ *   - "está en X" / "queda en X" / "ubicado en X"
+ *   - "no, es X" / "es en X" / "es X"
+ *   - "está mal, es en X" / "me equivoqué, es X"
+ *   - Bare "X" or "en X"
+ */
+function extractCityCandidate(text: string): string {
+  let s = text.trim();
+
+  // Remove leading filler/correction phrases up to the locality keyword.
+  // Regex order matters: most specific first.
+  const patterns = [
+    /^.*?\b(?:no\s*,?|est[aá]\s+mal\s*,?|me\s+equivoqu[ée]\s*,?|perdón\s*,?|perd[oó]n\s*,?)\s+(?:es|fue|seria|sería|es\s+en)\s+/i,
+    /^.*?\b(?:est[aá]|queda|ubicad[oa])\s+en\s+/i,
+    /^(?:es|fue|es\s+en|fue\s+en)\s+/i,
+    /^(?:esta|está|queda|ubicad[oa])\s+(?:en\s+)?/i,
+    /^en\s+/i,
+  ];
+  for (const p of patterns) {
+    const next = s.replace(p, '').trim();
+    if (next && next !== s) { s = next; break; }
+  }
+
+  return s;
+}
+
 export async function handlePendingCity(
   text: string,
   pending: PendingCity,
   userId: UserId,
   financialService: FinancialService,
 ): Promise<PendingCityResult> {
-  // Strip common prefixes and full-sentence patterns like "el campo X está en Y"
-  let input = text.trim()
-    .replace(/^.*?\b(?:est[aá]|queda|ubicad[oa])\s+en\s+/i, '')
-    .replace(/^(?:esta|está|queda|ubicad[oa])\s+(?:en\s+)?/i, '')
-    .replace(/^en\s+/i, '')
-    .trim();
+  // Escape hatch: non-city inputs abort the flow so the user can actually register
+  // whatever they wanted without getting stuck in "¿En qué ciudad...?".
+  if (looksLikeNonCity(text)) {
+    return {
+      messages: [
+        `Dejé pendiente la ubicación de *${pending.fieldName}*. Cuando quieras asignarla, escribí:\n📍 *ubicar campo ${pending.fieldName} en [localidad]*`,
+      ],
+      clearPending: true,
+    };
+  }
+
+  const input = extractCityCandidate(text);
 
   if (!input) {
     return {
