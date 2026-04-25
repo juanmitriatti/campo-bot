@@ -314,7 +314,10 @@ export async function getUserFinancialSummary(userId) {
 
 export async function saveAiFallbackLog(userId, inputText, claudeResponse, usage) {
   const tokensUsed = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+  // Haiku 4.5: input 0.80/M, cache read 0.08/M, cache write 1.00/M, output 4.00/M
   const costUsd = ((usage.input_tokens || 0) / 1_000_000 * 0.80) +
+                  ((usage.cache_read_tokens || 0) / 1_000_000 * 0.08) +
+                  ((usage.cache_write_tokens || 0) / 1_000_000 * 1.00) +
                   ((usage.output_tokens || 0) / 1_000_000 * 4);
 
   await pool.query(

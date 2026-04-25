@@ -360,20 +360,20 @@ router.get("/api/users/:id/ai-usage", async (req, res) => {
     const [todayR, monthR, totalR] = await Promise.all([
       pool.query(
         `SELECT COUNT(*) AS count,
-                COALESCE(SUM(input_tokens / 1000000.0 * 0.80 + output_tokens / 1000000.0 * 4), 0) AS cost
+                COALESCE(SUM(input_tokens / 1000000.0 * 0.80 + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08 + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00 + output_tokens / 1000000.0 * 4.00), 0) AS cost
          FROM ai_usage WHERE user_id = $1 AND created_at::date = CURRENT_DATE`,
         [id]
       ),
       pool.query(
         `SELECT COUNT(*) AS count,
-                COALESCE(SUM(input_tokens / 1000000.0 * 0.80 + output_tokens / 1000000.0 * 4), 0) AS cost
+                COALESCE(SUM(input_tokens / 1000000.0 * 0.80 + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08 + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00 + output_tokens / 1000000.0 * 4.00), 0) AS cost
          FROM ai_usage WHERE user_id = $1
            AND date_trunc('month', created_at) = date_trunc('month', CURRENT_DATE)`,
         [id]
       ),
       pool.query(
         `SELECT COUNT(*) AS count,
-                COALESCE(SUM(input_tokens / 1000000.0 * 0.80 + output_tokens / 1000000.0 * 4), 0) AS cost
+                COALESCE(SUM(input_tokens / 1000000.0 * 0.80 + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08 + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00 + output_tokens / 1000000.0 * 4.00), 0) AS cost
          FROM ai_usage WHERE user_id = $1`,
         [id]
       ),
@@ -2117,13 +2117,18 @@ router.get("/api/analytics/overview", async (req, res) => {
         FROM domain_events
         WHERE created_at >= NOW() - $1::int * INTERVAL '1 day'
       `, [days]),
-      // AI usage
+      // AI usage (Haiku 4.5: input 0.80/M, cache read 0.08/M, cache write 1.00/M, output 4.00/M)
       pool.query(`
         SELECT
           COUNT(*) AS calls,
           COALESCE(SUM(input_tokens), 0) AS input_tokens,
           COALESCE(SUM(output_tokens), 0) AS output_tokens,
-          COALESCE(SUM(input_tokens / 1000000.0 * 0.80 + output_tokens / 1000000.0 * 4), 0) AS cost_usd
+          COALESCE(SUM(
+            input_tokens / 1000000.0 * 0.80
+            + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08
+            + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00
+            + output_tokens / 1000000.0 * 4.00
+          ), 0) AS cost_usd
         FROM ai_usage
         WHERE created_at >= NOW() - $1::int * INTERVAL '1 day'
       `, [days]),
@@ -2180,27 +2185,35 @@ router.get("/api/analytics/ai-tokens", async (req, res) => {
 
   try {
     const [perDayR, bySourceR] = await Promise.all([
+      // Per-day cost (Haiku 4.5 full pricing incl. cache)
       pool.query(`
         SELECT
           date_trunc('day', created_at)::date AS date,
           COUNT(*) AS calls,
           SUM(input_tokens) AS input_tokens,
           SUM(output_tokens) AS output_tokens,
-          SUM(input_tokens / 1000000.0 * 0.80 + output_tokens / 1000000.0 * 4) AS cost_usd
+          SUM(
+            input_tokens / 1000000.0 * 0.80
+            + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08
+            + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00
+            + output_tokens / 1000000.0 * 4.00
+          ) AS cost_usd
         FROM ai_usage
         WHERE created_at >= NOW() - $1::int * INTERVAL '1 day'
         GROUP BY date ORDER BY date
       `, [days]),
+      // By source — derive from ai_fallback_logs (has source type in claude_response JSON)
       pool.query(`
         SELECT
           CASE
+            WHEN claude_response LIKE '%agent_tool_use%' THEN 'agent_tool_use'
             WHEN claude_response LIKE '%ai_intent%' THEN 'intent_extraction'
             WHEN claude_response LIKE '%conversational_fallback%' THEN 'conversational_fallback'
             ELSE 'legacy_fallback'
           END AS source,
           COUNT(*) AS calls,
-          SUM(tokens_used) AS tokens,
-          SUM(cost_usd) AS cost_usd
+          COALESCE(SUM(tokens_used), 0) AS tokens,
+          COALESCE(SUM(cost_usd), 0) AS cost_usd
         FROM ai_fallback_logs
         WHERE created_at >= NOW() - $1::int * INTERVAL '1 day'
         GROUP BY source
