@@ -1046,30 +1046,69 @@ router.get("/api/agro/fields", async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT f.*,
-         (SELECT COUNT(*) FROM plots WHERE field_id = f.id) AS plot_count,
+         (SELECT COUNT(*) FROM plots WHERE field_id = f.id AND deleted_at IS NULL) AS plot_count,
          (SELECT COUNT(*) FROM agro_observations
           WHERE field_id = f.id
             AND EXTRACT(ISOYEAR FROM created_at) = EXTRACT(ISOYEAR FROM NOW())
             AND EXTRACT(WEEK FROM created_at) = EXTRACT(WEEK FROM NOW())) AS obs_week,
          u.name AS user_name,
+         u.id AS uid,
          (SELECT COUNT(*) FROM field_members WHERE field_id = f.id) AS member_count
        FROM fields f
        LEFT JOIN users u ON f.user_id = u.id
+       WHERE f.deleted_at IS NULL
        ORDER BY f.name`
     );
     res.json(result.rows.map(r => ({
       id: r.id,
       name: r.name,
       city: r.city,
+      province: r.province,
       hectares: r.hectares,
       plotCount: parseInt(r.plot_count),
       obsWeek: parseInt(r.obs_week),
       userName: r.user_name,
+      userId: r.uid,
       memberCount: parseInt(r.member_count),
     })));
   } catch (error) {
     console.error("Error fetching agro fields:", error);
     logError('admin-api', 'AGRO_FIELDS_FETCH', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PATCH /api/agro/fields/:id — edit field name/city
+router.patch("/api/agro/fields/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, city, province } = req.body;
+    const sets = [];
+    const vals = [];
+    let idx = 1;
+    if (name !== undefined) { sets.push(`name = $${idx++}`); vals.push(name); }
+    if (city !== undefined) { sets.push(`city = $${idx++}`); vals.push(city); }
+    if (province !== undefined) { sets.push(`province = $${idx++}`); vals.push(province); }
+    if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });
+    vals.push(id);
+    await pool.query(`UPDATE fields SET ${sets.join(', ')} WHERE id = $${idx} AND deleted_at IS NULL`, vals);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error updating field:", error);
+    logError('admin-api', 'AGRO_FIELD_UPDATE', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// DELETE /api/agro/fields/:id — soft delete
+router.delete("/api/agro/fields/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query(`UPDATE fields SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, [id]);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error deleting field:", error);
+    logError('admin-api', 'AGRO_FIELD_DELETE', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

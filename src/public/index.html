@@ -1281,6 +1281,15 @@
 
       <div class="card">
         <h3 class="card-title">Campos</h3>
+        <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+          <select id="agro-filter-user" onchange="filterAgroFields()" style="padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border);font-size:13px;">
+            <option value="">Todos los usuarios</option>
+          </select>
+          <select id="agro-filter-city" onchange="filterAgroFields()" style="padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border);font-size:13px;">
+            <option value="">Todas las ubicaciones</option>
+          </select>
+          <input type="text" id="agro-filter-name" onkeyup="filterAgroFields()" placeholder="Buscar campo..." style="padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border);font-size:13px;width:180px;">
+        </div>
         <div class="table-wrapper">
           <table>
             <thead>
@@ -1292,12 +1301,33 @@
                 <th>Lotes</th>
                 <th>Obs. Semana</th>
                 <th>Miembros</th>
+                <th style="width:90px;">Acciones</th>
               </tr>
             </thead>
             <tbody id="agro-fields-table-body">
-              <tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>
+              <tr><td colspan="8"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Edit Field Modal -->
+      <div id="agro-edit-field-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center;">
+        <div style="background:var(--card-bg);border-radius:var(--radius-lg);padding:24px;max-width:400px;width:90%;box-shadow:var(--shadow-lg);">
+          <h3 style="margin-bottom:16px;">Editar Campo</h3>
+          <input type="hidden" id="edit-field-id">
+          <div style="margin-bottom:12px;">
+            <label style="font-size:13px;font-weight:500;display:block;margin-bottom:4px;">Nombre</label>
+            <input type="text" id="edit-field-name" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;">
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="font-size:13px;font-weight:500;display:block;margin-bottom:4px;">Ciudad</label>
+            <input type="text" id="edit-field-city" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;">
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+            <button class="btn" onclick="closeEditFieldModal()">Cancelar</button>
+            <button class="btn btn-primary" onclick="saveFieldEdit()">Guardar</button>
+          </div>
         </div>
       </div>
     </div>
@@ -3238,9 +3268,11 @@
       general: 'General'
     };
 
+    var allAgroFields = [];
+
     function loadAgronomy() {
       var tbody = document.getElementById('agro-fields-table-body');
-      tbody.innerHTML = '<tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8"><div class="loading"><div class="spinner"></div> Cargando campos...</div></td></tr>';
 
       Promise.all([
         apiFetch('/admin/api/agro/fields'),
@@ -3249,9 +3281,11 @@
         var fields = results[0];
         var reports = results[1];
         if (!fields) {
-          tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state">Error al cargar campos</div></td></tr>';
+          tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state">Error al cargar campos</div></td></tr>';
           return;
         }
+
+        allAgroFields = fields;
 
         // Stats
         document.getElementById('stat-agro-fields').textContent = fields.length;
@@ -3260,26 +3294,101 @@
         document.getElementById('stat-agro-obs-week').textContent = totalObs;
         document.getElementById('stat-agro-reports').textContent = reports ? reports.length : 0;
 
-        // Table
-        if (!fields.length) {
-          tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state">No hay campos registrados</div></td></tr>';
-          return;
-        }
-
-        var html = '';
+        // Populate filter dropdowns
+        var userSelect = document.getElementById('agro-filter-user');
+        var citySelect = document.getElementById('agro-filter-city');
+        var prevUser = userSelect.value;
+        var prevCity = citySelect.value;
+        userSelect.innerHTML = '<option value="">Todos los usuarios</option>';
+        citySelect.innerHTML = '<option value="">Todas las ubicaciones</option>';
+        var users = {}, cities = {};
         for (var i = 0; i < fields.length; i++) {
           var f = fields[i];
-          html += '<tr class="clickable" onclick="window.open(\'/admin/#agro-field/' + f.id + '\', \'_blank\')">'
-            + '<td><strong>' + escapeHtml(f.name || '-') + '</strong></td>'
-            + '<td>' + escapeHtml(f.userName || 'Sin nombre') + '</td>'
-            + '<td>' + escapeHtml(f.city || '-') + '</td>'
-            + '<td>' + (f.hectares || '-') + '</td>'
-            + '<td>' + f.plotCount + '</td>'
-            + '<td>' + (f.obsWeek > 0 ? '<span class="badge badge-green">' + f.obsWeek + '</span>' : '0') + '</td>'
-            + '<td>' + (f.memberCount > 1 ? '<span class="badge badge-purple">' + f.memberCount + '</span>' : '1') + '</td>'
-            + '</tr>';
+          if (f.userName && !users[f.userName]) { users[f.userName] = f.userId; userSelect.innerHTML += '<option value="' + f.userId + '">' + escapeHtml(f.userName) + '</option>'; }
+          var loc = f.city || '';
+          if (loc && !cities[loc]) { cities[loc] = true; citySelect.innerHTML += '<option value="' + escapeHtml(loc) + '">' + escapeHtml(loc) + '</option>'; }
         }
-        tbody.innerHTML = html;
+        userSelect.value = prevUser;
+        citySelect.value = prevCity;
+
+        filterAgroFields();
+      });
+    }
+
+    function filterAgroFields() {
+      var userId = document.getElementById('agro-filter-user').value;
+      var city = document.getElementById('agro-filter-city').value;
+      var nameQ = (document.getElementById('agro-filter-name').value || '').toLowerCase().trim();
+      var tbody = document.getElementById('agro-fields-table-body');
+
+      var filtered = allAgroFields.filter(function(f) {
+        if (userId && String(f.userId) !== userId) return false;
+        if (city && (f.city || '') !== city) return false;
+        if (nameQ && (f.name || '').toLowerCase().indexOf(nameQ) === -1) return false;
+        return true;
+      });
+
+      if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state">No hay campos que coincidan</div></td></tr>';
+        return;
+      }
+
+      var html = '';
+      for (var i = 0; i < filtered.length; i++) {
+        var f = filtered[i];
+        html += '<tr>'
+          + '<td class="clickable" onclick="window.location.hash=\'#agro-field/' + f.id + '\'" style="cursor:pointer;"><strong>' + escapeHtml(f.name || '-') + '</strong></td>'
+          + '<td>' + escapeHtml(f.userName || 'Sin nombre') + '</td>'
+          + '<td>' + escapeHtml(f.city || '-') + '</td>'
+          + '<td>' + (f.hectares || '-') + '</td>'
+          + '<td>' + f.plotCount + '</td>'
+          + '<td>' + (f.obsWeek > 0 ? '<span class="badge badge-green">' + f.obsWeek + '</span>' : '0') + '</td>'
+          + '<td>' + (f.memberCount > 1 ? '<span class="badge badge-purple">' + f.memberCount + '</span>' : '1') + '</td>'
+          + '<td style="white-space:nowrap;">'
+          + '<button onclick="openEditFieldModal(' + f.id + ', \'' + escapeHtml(f.name || '').replace(/'/g, "\\'") + '\', \'' + escapeHtml(f.city || '').replace(/'/g, "\\'") + '\')" style="background:none;border:none;cursor:pointer;padding:4px 6px;color:var(--accent);" title="Editar">'
+          + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
+          + '</button>'
+          + '<button onclick="deleteAgroField(' + f.id + ', \'' + escapeHtml(f.name || '').replace(/'/g, "\\'") + '\')" style="background:none;border:none;cursor:pointer;padding:4px 6px;color:var(--danger);" title="Eliminar">'
+          + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'
+          + '</button>'
+          + '</td>'
+          + '</tr>';
+      }
+      tbody.innerHTML = html;
+    }
+
+    function openEditFieldModal(id, name, city) {
+      document.getElementById('edit-field-id').value = id;
+      document.getElementById('edit-field-name').value = name;
+      document.getElementById('edit-field-city').value = city;
+      document.getElementById('agro-edit-field-modal').style.display = 'flex';
+    }
+
+    function closeEditFieldModal() {
+      document.getElementById('agro-edit-field-modal').style.display = 'none';
+    }
+
+    function saveFieldEdit() {
+      var id = document.getElementById('edit-field-id').value;
+      var name = document.getElementById('edit-field-name').value.trim();
+      var city = document.getElementById('edit-field-city').value.trim();
+      if (!name) return;
+      apiFetch('/admin/api/agro/fields/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, city: city || null })
+      }).then(function(r) {
+        if (r) {
+          closeEditFieldModal();
+          loadAgronomy();
+        }
+      });
+    }
+
+    function deleteAgroField(id, name) {
+      if (!confirm('Eliminar campo "' + name + '"? Esta accion es irreversible.')) return;
+      apiFetch('/admin/api/agro/fields/' + id, { method: 'DELETE' }).then(function(r) {
+        if (r) loadAgronomy();
       });
     }
 
