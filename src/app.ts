@@ -45,17 +45,27 @@ app.use('/map', express.static(path.join(__dirname, 'public/map')));
 app.use('/admin/api', requireAuth, requireRole('admin'));
 app.use('/admin', dashboard);
 
-// Serve React frontend build
+// React frontend app (dashboard) — served on explicit routes only
 const frontendDist = path.resolve(__dirname, '../frontend/dist');
-app.use(express.static(frontendDist));
+app.use('/app-assets', express.static(frontendDist));
+const reactAppRoutes = ['/login', '/register', '/dashboard', '/chat'];
+app.get(reactAppRoutes, (_req: express.Request, res: express.Response, next: express.NextFunction) => {
+  res.sendFile(path.join(frontendDist, 'index.html'), (err) => { if (err) next(); });
+});
 
-// SPA fallback — serve index.html for all non-API, non-admin routes
+// Landing page (campo-chat-bot) — static assets + SPA fallback
+const landingDist = path.resolve(__dirname, '../landing/dist');
+app.use(express.static(landingDist));
+
+// SPA fallback → landing page for all unknown routes
 app.get('{*splat}', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (req.path.startsWith('/api/') || req.path.startsWith('/admin') || req.path.startsWith('/webhook') || req.path.startsWith('/telegram') || req.path.startsWith('/map')) {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/admin') ||
+      req.path.startsWith('/webhook') || req.path.startsWith('/telegram') ||
+      req.path.startsWith('/map') || req.path.startsWith('/app-assets')) {
     next();
     return;
   }
-  res.sendFile(path.join(frontendDist, 'index.html'), (err) => {
+  res.sendFile(path.join(landingDist, 'index.html'), (err) => {
     if (err) next();
   });
 });

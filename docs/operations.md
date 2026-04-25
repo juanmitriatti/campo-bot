@@ -9,7 +9,7 @@ Deployed at `campo-bot-production.up.railway.app`.
 railway up --detach
 ```
 
-The Dockerfile builds the frontend (`npm run build` → `frontend/dist/`). No separate build step needed.
+The Dockerfile builds both the frontend (`frontend/dist/`) and the landing page (`landing/dist/`, git submodule). No separate build step needed.
 
 ## Docker Local Dev
 

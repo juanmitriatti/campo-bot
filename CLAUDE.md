@@ -15,6 +15,7 @@ campo-bot is a WhatsApp and Telegram-based agricultural management assistant for
 - `docker compose up -d db` — Start only the database
 - `cd frontend && npm run dev` — Run React frontend dev server (port 5173, proxies API to :3000)
 - `cd frontend && npm run build` — Build frontend for production (output: `frontend/dist/`)
+- `cd landing && npm run build` — Build landing page for production (output: `landing/dist/`)
 - `npx tsx src/scripts/create-admin.ts --email <e> --name <n> --password <p>` — Bootstrap admin user
 - `npx tsx src/scripts/seed-dummy-data.ts --user-id <id> [--reset]` — Seed dummy data
 - `npx tsx src/scripts/run-migrations.ts` — Manually run pending DB migrations (auto-runs on startup)
@@ -173,6 +174,11 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/utils/date.ts` — Argentina timezone helpers
 - `src/utils/guards.ts` — `isLikelyQuestion()` guard
 - `src/types/index.ts` — ParseResult, PlanRow, ParseSource
+
+### Landing Page
+- `landing/` — Git submodule (campo-chat-bot). Marketing site: hero, features, pricing, testimonial, WhatsApp demo
+- Served on `/` and all non-matched routes. Frontend app served on `/login`, `/register`, `/dashboard`, `/chat` only
+- Frontend assets at `/app-assets/*`, landing assets at `/assets/*` (no collision)
 
 ## Extended Documentation
 

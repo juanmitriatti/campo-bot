@@ -124,15 +124,25 @@ PostgreSQL with migrations in `src/migrations/001-066_*.sql`. Timezone: `America
 
 ## Routes
 
+- `/` — Landing page SPA (campo-chat-bot marketing site)
+- `/login`, `/register`, `/dashboard`, `/chat` — React frontend SPA (dashboard app)
+- `/app-assets/*` — Frontend static assets (JS, CSS, fonts)
 - `GET/POST /webhook` — WhatsApp webhook
 - `POST /telegram` — Telegram webhook (secret verified)
 - `/api/auth/*` — Auth + dashboard (register, login, refresh, plans, observations, expenses, incomes, activities, stock, livestock — including PATCH edits, GET filters, analytics, map-data, push notifications)
 - `GET/POST /api/map/:token` — Public map page for polygon drawing (token-authenticated)
 - `/admin/api/*` — Admin dashboard API (stats, users, settings, AI usage, parse metrics)
 
+## Landing Page (`landing/`)
+
+Git submodule (`campo-chat-bot`). React + Vite + shadcn/ui + Framer Motion marketing site. Built to `landing/dist/`, served by Express as static + SPA fallback on `/` and all non-matched routes.
+
+- CTAs link to `/login` (Ingresar) and `/register` (Probar gratis, plan CTAs)
+- Assets served from `/assets/*` (default Vite base path)
+
 ## Frontend (`frontend/`)
 
-React 19 + Vite 6 + Tailwind v3 + React Router v6 SPA. Express serves `frontend/dist/` in production.
+React 19 + Vite 6 + Tailwind v3 + React Router v6 SPA. Served on explicit routes (`/login`, `/register`, `/dashboard`, `/chat`) only. Assets served from `/app-assets/*` (Vite `base: '/app-assets/'`).
 
 - Auth: JWT in localStorage, auto-refresh on 401, role-based route guards
 - Dashboard: Sidebar (desktop) + BottomNav (mobile), `view` state. Default: Overview (KPIs, charts, map, quick actions, feed, alerts)
