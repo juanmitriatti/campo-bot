@@ -62,7 +62,7 @@ doc.fontSize(22).fillColor(BLUE).font('Helvetica-Bold').text('MIA — Referencia
 doc.moveDown(0.2);
 doc.fontSize(10).fillColor(GRAY).font('Helvetica').text('Listado completo de intents del agente AI para entrenamiento y corrección', { align: 'center' });
 doc.moveDown(0.1);
-doc.fontSize(9).fillColor(GRAY).text(`Generado: ${new Date().toLocaleDateString('es-AR')} — 74 tools`, { align: 'center' });
+doc.fontSize(9).fillColor(GRAY).text(`Generado: ${new Date().toLocaleDateString('es-AR')} — 76 tools`, { align: 'center' });
 
 // =====================
 // DATA
@@ -80,7 +80,8 @@ const sections = [
       ['sow_crop', 'Registrar siembra', '"sembré soja en lote 1"'],
       ['harvest_crop', 'Registrar cosecha (+ loads)', '"coseché 30 tn trigo", "1 camión 28tn"'],
       ['close_campaign', 'Cerrar campaña', '"cerrar campaña soja lote 1"'],
-      ['log_observation', 'Registrar observación', '"hay chinches en soja lote 1"'],
+      ['log_observation', 'Registrar observación libre', '"hay chinches en soja lote 1"'],
+      ['log_crop_scouting', 'Monitoreo estructurado (métricas)', '"soja V3 con 15% rama negra y chinche leve"'],
       ['log_tacto', 'Registrar tacto/preñez', '"hice tacto, 60 preñadas y 20 vacías"'],
       ['log_rainfall', 'Registrar lluvia', '"llovieron 25mm"'],
       ['edit_last_activity', 'Corregir última actividad', '"la siembra era en lote B"'],
@@ -104,6 +105,7 @@ const sections = [
       ['activity_stats', 'Estadísticas de actividades', '"cuántas fumigaciones hice?"'],
       ['active_crop', 'Cultivos activos / ha sembradas', '"hay soja?", "has sembradas"'],
       ['query_plot_history', 'Historial de actividades', '"cuándo se fumigó el lote norte?"'],
+      ['query_scoutings', 'Consultar monitoreos estructurados', '"cómo viene la sanidad", "presión de plagas"'],
       ['query_harvest_loads', 'Consultar cargas de cosecha', '"camiones del lote A1"'],
       ['delete_harvest_loads', 'Borrar cargas de cosecha', '"borrar cargas del 10/4"'],
       ['rainfall_report', 'Reporte de lluvias', '"cuánto llovió este mes?"'],
@@ -250,6 +252,14 @@ const newRules = [
   '',
   '• COSECHA con cargas: "coseché 30tn, camión ABC 15tn a Cargill, camión XYZ 15tn a ACA" → harvest_crop con array loads[].',
   '  Cada load: driver_name, weight_kg, destination, destinatario, truck_plate.',
+  '',
+  '• MONITOREO ESTRUCTURADO (log_crop_scouting vs log_observation): si el mensaje tiene MÉTRICAS (estadio V3/R5/Z3, %, severidad,',
+  '  conteo, densidad) → log_crop_scouting. Free text sin métricas → log_observation. Severidad: ausente=1, leve=2, moderada=3, alta=4, severa=5.',
+  '  Ej: "soja V3 con 15% de rama negra y presencia leve de chinche" → stage_code=V3, weed_coverage_pct=15, weed_species=["rama negra"], pest_species="chinche", pest_severity_1_5=2.',
+  '  Consultas como "cómo viene la sanidad" / "presión de plagas" / "evolución del cultivo" → query_scoutings (NUNCA query_plot_history).',
+  '',
+  '• UBICAR CAMPO: NUNCA inventar ciudad. Si el usuario dice "agregar/cambiar ubicación" sin nombrar localidad → respond_text pidiendo ciudad.',
+  '  Si dice "campo X está en Ameghino" / "corregir, es en Y" → set_field_city(field=X, city=Y).',
 ];
 
 for (const note of newRules) {

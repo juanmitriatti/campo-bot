@@ -76,6 +76,12 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - "reporte financiero" / "cómo vamos" → `financial_report`
 - "reportes"/"informes" (generic) → `show_reports_menu`
 
+### Crop Scouting (structured monitoring)
+- Message has METRICS (V3/R5/Z3 stage code, %, severity word, density, pl/m²) → `log_crop_scouting`. Free text without metrics → `log_observation`.
+- Severity mapping: ausente=1, leve=2, moderada=3, alta=4, severa=5.
+- Ex: "soja V3 con 15% rama negra y presencia leve de chinche" → `log_crop_scouting(stage_code=V3, weed_coverage_pct=15, weed_species=["rama negra"], pest_species="chinche", pest_severity_1_5=2)`.
+- Queries: "cómo viene la sanidad", "presión de plagas", "evolución del cultivo", "monitoreos del lote X" → `query_scoutings` (NOT `query_plot_history`).
+
 ### Sow Crop
 - `sow_crop` accepts optional `hectares` param for partial-plot sowing → `plot_crops.sowed_hectares`
 

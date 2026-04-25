@@ -1,6 +1,6 @@
 # Tool Selection Reference
 
-> 74 Anthropic tool definitions in `src/ai/tool-definitions.ts`. Each has typed `input_schema` with enum validation.
+> 76 Anthropic tool definitions in `src/ai/tool-definitions.ts`. Each has typed `input_schema` with enum validation.
 
 ## Tool Groups
 
@@ -9,6 +9,7 @@
 | Financial | 5 | `log_expense`, `log_income`, `create_expense_template`, `list_expense_templates`, `delete_expense_template` |
 | Activities | 15 | `sow_crop`, `harvest_crop`, `query_harvest_loads`, `delete_harvest_loads`, `log_spraying`, `log_fertilization`, `log_activity`, `active_crop`, `close_campaign`, `campaign_stats`, `compare_campaigns`, `activity_stats`, `log_tacto`, `tacto_summary`, `edit_last_activity` |
 | Observations | 2 | `log_observation`, `query_plot_history` |
+| Crop scouting (structured) | 2 | `log_crop_scouting`, `query_scoutings` |
 | Reports | 6 | `financial_report`, `generate_agro_report`, `share_report`, `show_reports_menu`, `crop_report`, `campaign_report` |
 | Field/Plot Mgmt | 11 | `create_field`, `list_fields`, `delete_field`, `rename_field`, `add_plot`, `add_plots_batch`, `list_plots`, `set_plot_area`, `delete_plot`, `rename_plot`, `set_field_city` |
 | Sharing | 4 | `share_field`, `accept_invite`, `list_field_members`, `remove_field_member` |
@@ -116,6 +117,17 @@
 - `saveAiUsage()` in `src/services/expenses.js` persists all 4 token types and computes the real Haiku 4.5 cost: input 0.80/M, cache read 0.08/M (10%), cache write 1.00/M (125% for 5-min TTL), output 4.00/M.
 - Dashboard `/admin/api/stats` "Costo IA del Mes" + `/api/users` `costToday` / `costMonth` use the same 4-term formula.
 - The "Costo Total USD" / "Costo Promedio" tiles under the Audio and Fallback subsections now labelled "Costo Audio (hist.)" / "Costo Fallback (hist.)" to avoid being confused with bot-wide totals.
+
+### Crop Scouting (Migration 072) — Structured Agronomic Monitoring
+- New table `crop_scoutings` separates structured scouting from free-text `agro_observations`. Different conceptual entities — scoutings are analytical data that need to be queryable by metric.
+- 9 optional metrics per row: `stage_code` (V3, R5, Z3 → matches `crop_stages`), `weed_coverage_pct` (0-100), `weed_species[]`, `pest_species`, `pest_severity_1_5` (1=ausente, 2=leve, 3=moderada, 4=alta, 5=severa), `pest_affected_pct`, `soil_moisture_1_5`, `emergence_pct`, `plant_density_m2`. Plus free-text `notes`.
+- `plot_id` REQUIRED (analytics depend on it); `plot_crop_id` auto-derived from active campaign so per-campaign rollups work.
+- **`log_crop_scouting`**: extracts the metrics from messages like "soja V3 con 15% de rama negra y presencia leve de chinche" → `stage_code=V3, weed_coverage_pct=15, weed_species=["rama negra"], pest_species="chinche", pest_severity_1_5=2`. Severity calibration documented inline in the prompt.
+- **`query_scoutings`**: filters by plot, field, date range, min severity, stage. Triggered by phrases like "cómo viene la sanidad", "presión de plagas", "evolución del cultivo".
+- Disambiguation: scouting wins over `log_observation` when the message contains structured metrics (% , severity keyword, stage code, density). Free-text without metrics still goes to `log_observation`.
+- **`campaign_stats`** includes a `scouting` block: last stage observed (+ date), avg weed coverage %, max pest severity (+ species), avg plant density, last emergence pct.
+- **Agro PDF report**: new "Monitoreo del cultivo" section (toggle `AGRO_REPORT_SHOW_SCOUTING`, default on). Period summary + last-10 detail with notes inline.
+- **End-user dashboard**: tab "Monitoreos" 🔍 next to Observaciones (gated by `agronomy` feature). Auth endpoint `GET /api/auth/scoutings` with filters. Read-only — captura va por bot.
 
 ## Common Tool Params
 
