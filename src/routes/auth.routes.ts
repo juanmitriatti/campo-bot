@@ -444,6 +444,66 @@ router.get('/reports/:id/pdf', requireAuth, requireFeature('agronomy'), async (r
   }
 });
 
+// --- Crop scoutings ---
+
+router.get('/scoutings', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
+  try {
+    const userId = req.auth!.userId;
+    const plotId = req.query.plotId ? parseInt(String(req.query.plotId), 10) : null;
+    const fieldId = req.query.fieldId ? parseInt(String(req.query.fieldId), 10) : null;
+    const dateFrom = (req.query.dateFrom as string) || null;
+    const dateTo = (req.query.dateTo as string) || null;
+    const minSeverity = req.query.minSeverity ? parseInt(String(req.query.minSeverity), 10) : null;
+    const stageCode = (req.query.stageCode as string) || null;
+    const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit), 10) || 50));
+
+    const { queryScoutings } = await import('../services/expenses.js');
+    const rows = await queryScoutings({
+      userId,
+      plotId,
+      fieldId,
+      dateFrom,
+      dateTo,
+      minSeverity,
+      stageCode,
+      limit,
+    });
+    res.json({
+      scoutings: rows.map((r: {
+        id: number; plot_id: number; field_id: number | null; plot_crop_id: number | null;
+        scouting_date: Date; stage_code: string | null;
+        weed_coverage_pct: string | number | null; weed_species: string[] | null;
+        pest_species: string | null; pest_severity_1_5: number | null; pest_affected_pct: string | number | null;
+        soil_moisture_1_5: number | null; emergence_pct: string | number | null; plant_density_m2: string | number | null;
+        notes: string | null; created_at: Date;
+        plot_name: string | null; field_name: string | null; crop: string | null;
+      }) => ({
+        id: r.id,
+        plotId: r.plot_id,
+        fieldId: r.field_id,
+        plotCropId: r.plot_crop_id,
+        scoutingDate: r.scouting_date,
+        stageCode: r.stage_code,
+        weedCoveragePct: r.weed_coverage_pct != null ? Number(r.weed_coverage_pct) : null,
+        weedSpecies: r.weed_species,
+        pestSpecies: r.pest_species,
+        pestSeverity: r.pest_severity_1_5,
+        pestAffectedPct: r.pest_affected_pct != null ? Number(r.pest_affected_pct) : null,
+        soilMoisture: r.soil_moisture_1_5,
+        emergencePct: r.emergence_pct != null ? Number(r.emergence_pct) : null,
+        plantDensityM2: r.plant_density_m2 != null ? Number(r.plant_density_m2) : null,
+        notes: r.notes,
+        createdAt: r.created_at,
+        plotName: r.plot_name,
+        fieldName: r.field_name,
+        crop: r.crop,
+      })),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
 // --- Stock routes ---
 
 router.get('/stock', requireAuth, requireFeature('stock'), async (req: Request, res: Response) => {
