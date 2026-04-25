@@ -1595,6 +1595,98 @@ export async function getCampaignActivities(plotCropId) {
   return result.rows;
 }
 
+// --- Crop scouting (structured monitoring) ---
+
+/**
+ * Persist a structured scouting record. All metric fields are optional;
+ * caller passes whatever the user reported.
+ */
+export async function saveCropScouting(userId, data) {
+  const result = await pool.query(
+    `INSERT INTO crop_scoutings (
+      user_id, field_id, plot_id, plot_crop_id, scouting_date,
+      stage_code, weed_coverage_pct, weed_species,
+      pest_species, pest_severity_1_5, pest_affected_pct,
+      soil_moisture_1_5, emergence_pct, plant_density_m2,
+      notes, source
+    )
+    VALUES (
+      $1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE),
+      $6, $7, $8,
+      $9, $10, $11,
+      $12, $13, $14,
+      $15, COALESCE($16, 'text')
+    )
+    RETURNING *`,
+    [
+      userId,
+      data.fieldId ?? null,
+      data.plotId,
+      data.plotCropId ?? null,
+      data.scoutingDate ?? null,
+      data.stageCode ?? null,
+      data.weedCoveragePct ?? null,
+      data.weedSpecies && data.weedSpecies.length ? data.weedSpecies : null,
+      data.pestSpecies ?? null,
+      data.pestSeverity ?? null,
+      data.pestAffectedPct ?? null,
+      data.soilMoisture ?? null,
+      data.emergencePct ?? null,
+      data.plantDensityM2 ?? null,
+      data.notes ?? null,
+      data.source ?? null,
+    ]
+  );
+  return result.rows[0];
+}
+
+export async function getScoutingsForPlotCampaign(plotCropId) {
+  const result = await pool.query(
+    `SELECT * FROM crop_scoutings WHERE plot_crop_id = $1 AND deleted_at IS NULL ORDER BY scouting_date DESC, id DESC`,
+    [plotCropId]
+  );
+  return result.rows;
+}
+
+export async function getScoutingsForPlotInRange(plotId, dateFrom, dateTo) {
+  const result = await pool.query(
+    `SELECT * FROM crop_scoutings
+     WHERE plot_id = $1
+       AND scouting_date BETWEEN $2 AND $3
+       AND deleted_at IS NULL
+     ORDER BY scouting_date DESC, id DESC`,
+    [plotId, dateFrom, dateTo]
+  );
+  return result.rows;
+}
+
+export async function queryScoutings({ userId, plotId = null, fieldId = null, dateFrom = null, dateTo = null, minSeverity = null, stageCode = null, limit = 30 }) {
+  const conditions = ['s.user_id = $1', 's.deleted_at IS NULL'];
+  const params = [userId];
+  let i = 1;
+  if (plotId) { i++; conditions.push(`s.plot_id = $${i}`); params.push(plotId); }
+  if (fieldId && !plotId) { i++; conditions.push(`s.field_id = $${i}`); params.push(fieldId); }
+  if (dateFrom) { i++; conditions.push(`s.scouting_date >= $${i}`); params.push(dateFrom); }
+  if (dateTo) { i++; conditions.push(`s.scouting_date <= $${i}`); params.push(dateTo); }
+  if (minSeverity) { i++; conditions.push(`s.pest_severity_1_5 >= $${i}`); params.push(minSeverity); }
+  if (stageCode) { i++; conditions.push(`s.stage_code = $${i}`); params.push(stageCode.toUpperCase()); }
+  i++; const limitParam = `$${i}`;
+  params.push(Math.min(Math.max(limit, 1), 100));
+
+  const result = await pool.query(
+    `SELECT s.*, p.name AS plot_name, f.name AS field_name, pc.crop AS crop
+     FROM crop_scoutings s
+     LEFT JOIN plots p ON p.id = s.plot_id
+     LEFT JOIN fields f ON f.id = s.field_id
+     LEFT JOIN plot_crops pc ON pc.id = s.plot_crop_id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY s.scouting_date DESC, s.id DESC
+     LIMIT ${limitParam}`,
+    params
+  );
+  return result.rows;
+}
+
 export async function getCampaignObservations(plotId, startDate, endDate = null) {
   const result = await pool.query(
     `SELECT * FROM agro_observations WHERE plot_id = $1

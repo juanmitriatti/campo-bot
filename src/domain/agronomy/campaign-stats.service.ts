@@ -5,6 +5,7 @@ import {
   getCampaignObservations,
   getPlotById,
   getHarvestLoadsByCampaign,
+  getScoutingsForPlotCampaign,
 } from '../../services/expenses.js';
 import { CropService, formatSeasonLabel, getCampaignState } from '../plots/crop.service.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
@@ -62,6 +63,17 @@ export interface CampaignStats {
     count: number;
     list: { date: string; text: string }[];
   };
+
+  scouting: {
+    count: number;
+    lastStage: string | null;
+    lastStageDate: string | null;
+    avgWeedPct: number | null;
+    maxPestSeverity: number | null;
+    maxPestSpecies: string | null;
+    avgPlantDensity: number | null;
+    lastEmergencePct: number | null;
+  } | null;
 
   areaHectares: number | null;
 }
@@ -141,12 +153,13 @@ export class CampaignStatsService {
     const durationDays = Math.ceil((endRef.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
     // Fetch data in parallel
-    const [activities, expenses, incomes, observations, harvestLoads] = await Promise.all([
+    const [activities, expenses, incomes, observations, harvestLoads, scoutings] = await Promise.all([
       getCampaignActivities(campaign.id),
       getCampaignExpenses(resolved.plotId, campaign.start_date, campaign.end_date),
       getCampaignIncomes(resolved.plotId, campaign.start_date, campaign.end_date),
       getCampaignObservations(resolved.plotId, campaign.start_date, campaign.end_date),
       getHarvestLoadsByCampaign(campaign.id),
+      getScoutingsForPlotCampaign(campaign.id),
     ]);
 
     // Aggregate activities
@@ -220,6 +233,45 @@ export class CampaignStatsService {
       text: o.text || o.observation || '',
     }));
 
+    // Scouting aggregates (last stage observed, max pest severity, avg weed coverage, density, emergence)
+    let scoutingAgg = null as null | {
+      count: number;
+      lastStage: string | null;
+      lastStageDate: string | null;
+      avgWeedPct: number | null;
+      maxPestSeverity: number | null;
+      maxPestSpecies: string | null;
+      avgPlantDensity: number | null;
+      lastEmergencePct: number | null;
+    };
+    if (scoutings.length > 0) {
+      const sorted = [...scoutings].sort((a: any, b: any) => new Date(b.scouting_date).getTime() - new Date(a.scouting_date).getTime());
+      const stagesRow = sorted.find((s: any) => s.stage_code) as any;
+      const weeds = scoutings.filter((s: any) => s.weed_coverage_pct != null);
+      const avgWeed = weeds.length ? weeds.reduce((a: number, s: any) => a + Number(s.weed_coverage_pct), 0) / weeds.length : null;
+      let maxSev = null as number | null;
+      let maxSevSpecies = null as string | null;
+      for (const s of scoutings as any[]) {
+        if (s.pest_severity_1_5 != null && (maxSev == null || s.pest_severity_1_5 > maxSev)) {
+          maxSev = s.pest_severity_1_5;
+          maxSevSpecies = s.pest_species || null;
+        }
+      }
+      const densities = scoutings.filter((s: any) => s.plant_density_m2 != null);
+      const avgDensity = densities.length ? densities.reduce((a: number, s: any) => a + Number(s.plant_density_m2), 0) / densities.length : null;
+      const emergRow = sorted.find((s: any) => s.emergence_pct != null) as any;
+      scoutingAgg = {
+        count: scoutings.length,
+        lastStage: stagesRow?.stage_code || null,
+        lastStageDate: stagesRow ? formatDateAR(stagesRow.scouting_date) : null,
+        avgWeedPct: avgWeed != null ? Math.round(avgWeed * 10) / 10 : null,
+        maxPestSeverity: maxSev,
+        maxPestSpecies: maxSevSpecies,
+        avgPlantDensity: avgDensity != null ? Math.round(avgDensity * 10) / 10 : null,
+        lastEmergencePct: emergRow?.emergence_pct != null ? Number(emergRow.emergence_pct) : null,
+      };
+    }
+
     return {
       crop: campaign.crop,
       plot: resolved.plotName || '',
@@ -236,6 +288,7 @@ export class CampaignStatsService {
       yield: { kg: yieldKg, kgPerHa: yieldKgPerHa, notes: campaign.yield_notes || null, loads: loadsList },
       profitability: { netARS, costPerHaARS: costPerHa, incomePerHaARS: incomePerHa, costPerTnARS, costPerTnUSD, incomePerTnARS },
       observations: { count: obsList.length, list: obsList },
+      scouting: scoutingAgg,
       areaHectares: areaHa,
     };
   }

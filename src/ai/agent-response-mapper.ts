@@ -416,6 +416,22 @@ export class AgentResponseMapper {
     if (input.veterinarian != null) cmd.implement = input.veterinarian;
     if (input.notes != null) cmd.notes = input.notes;
 
+    // Crop scouting query filters
+    if (input.min_severity != null) cmd.minSeverity = input.min_severity;
+    if (input.desde != null) cmd.desde = input.desde;
+    if (input.hasta != null) cmd.hasta = input.hasta;
+
+    // Crop scouting (structured monitoring)
+    if (input.stage_code != null) cmd.stageCode = input.stage_code;
+    if (input.weed_coverage_pct != null) cmd.weedCoveragePct = input.weed_coverage_pct;
+    if (input.weed_species != null) cmd.weedSpecies = input.weed_species;
+    if (input.pest_species != null) cmd.pestSpecies = input.pest_species;
+    if (input.pest_severity_1_5 != null) cmd.pestSeverity = input.pest_severity_1_5;
+    if (input.pest_affected_pct != null) cmd.pestAffectedPct = input.pest_affected_pct;
+    if (input.soil_moisture_1_5 != null) cmd.soilMoisture = input.soil_moisture_1_5;
+    if (input.emergence_pct != null) cmd.emergencePct = input.emergence_pct;
+    if (input.plant_density_m2 != null) cmd.plantDensityM2 = input.plant_density_m2;
+
     // Harvest loads
     if (input.loads != null) cmd.loads = input.loads;
     if (input.driver_name != null) cmd.driverName = input.driver_name;

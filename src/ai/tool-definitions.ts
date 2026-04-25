@@ -417,6 +417,47 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       required: ['quantity'],
     },
   },
+  {
+    name: 'query_scoutings',
+    description: 'Consultar monitoreos estructurados ya registrados (NO es para registrar). Usar cuando el usuario pregunta "cómo viene la sanidad", "presión de plagas", "evolución del cultivo", "qué malezas hubo en X", "monitoreos del lote/campo X". Filtros opcionales por lote, campo, rango de fechas, severidad mínima, estadio.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        crop: CROP_PROP,
+        desde: { type: 'string', description: 'YYYY-MM-DD inicio.' },
+        hasta: { type: 'string', description: 'YYYY-MM-DD fin.' },
+        min_severity: { type: 'integer', description: 'Severidad mínima de plaga 1-5 para filtrar (ej: solo severas: 4).' },
+        stage_code: { type: 'string', description: 'Filtrar por estadio fenológico observado.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'log_crop_scouting',
+    description: 'Registrar MONITOREO ESTRUCTURADO del cultivo (no es lo mismo que log_observation que es texto libre). Usar cuando el usuario reporta métricas: estadio fenológico (V3, R5, Z3), % de cobertura de malezas, presión/severidad de plagas, % de plantas afectadas, humedad de suelo, % de emergencia, plantas/m². Ejemplo: "soja V3 con 15% de rama negra y presencia leve de chinche" → stage_code=V3, weed_coverage_pct=15, weed_species=["rama negra"], pest_species="chinche", pest_severity_1_5=2. Calibración severidad: ausente=1, leve=2, moderada=3, alta=4, severa=5. Si el mensaje no tiene métricas estructurables, usar log_observation.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        crop: CROP_PROP,
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        event_date: DATE_PROP,
+        stage_code: { type: 'string', description: 'Código del estadio fenológico observado: soja (VE,V2..V8,R1..R7), maíz (VE,V6,VT,R1..R6), trigo (Z2..Z9). Pasarlo en mayúsculas.' },
+        weed_coverage_pct: { type: 'number', description: 'Porcentaje de cobertura de malezas en el lote (0-100).' },
+        weed_species: { type: 'array', items: { type: 'string' }, description: 'Especies de malezas observadas, ej: ["rama negra", "yuyo colorado"].' },
+        pest_species: { type: 'string', description: 'Especie de plaga o enfermedad principal: chinche, oruga, isoca, roya, mancha, etc.' },
+        pest_severity_1_5: { type: 'integer', description: 'Severidad 1-5. ausente=1, leve=2, moderada=3, alta=4, severa=5. Inferir de palabras del usuario.' },
+        pest_affected_pct: { type: 'number', description: 'Porcentaje de plantas/superficie afectada por la plaga (0-100).' },
+        soil_moisture_1_5: { type: 'integer', description: 'Humedad de suelo en escala 1-5: 1=seco, 2=algo seco, 3=normal, 4=húmedo, 5=saturado.' },
+        emergence_pct: { type: 'number', description: 'Porcentaje de emergencia logrado post-siembra (0-100).' },
+        plant_density_m2: { type: 'number', description: 'Densidad de plantas por metro cuadrado.' },
+        notes: { type: 'string', description: 'Comentario adicional libre que no encaje en los campos estructurados.' },
+      },
+      required: [],
+    },
+  },
 
   // ========================
   // REPORTS

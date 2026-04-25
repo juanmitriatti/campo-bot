@@ -2059,6 +2059,133 @@ export class AgronomyHandler {
         }
       }
 
+      // --- Crop scouting query ---
+
+      case 'query_scoutings': {
+        const resolved = await this.plotDiscovery.resolveFromNames(
+          userId,
+          cmd.fieldName as string | null,
+          cmd.plotName as string | null
+        );
+        const { queryScoutings } = await import('../../services/expenses.js');
+        const desde = cmd.desde as string | undefined;
+        const hasta = cmd.hasta as string | undefined;
+        const rows = await queryScoutings({
+          userId: Number(userId),
+          plotId: resolved.plotId ?? null,
+          fieldId: resolved.fieldId ?? null,
+          dateFrom: desde ?? null,
+          dateTo: hasta ?? null,
+          minSeverity: (cmd.minSeverity as number) ?? null,
+          stageCode: (cmd.stageCode as string) ?? null,
+          limit: 20,
+        });
+
+        if (rows.length === 0) {
+          const scope = resolved.plotName ? `lote *${resolved.plotName}*` : (resolved.fieldName ? `campo *${resolved.fieldName}*` : 'tu cuenta');
+          return { messages: [`No hay monitoreos registrados para ${scope} con esos filtros.`] };
+        }
+
+        const sevLabels = ['', 'ausente', 'leve', 'moderada', 'alta', 'severa'];
+        const lines: string[] = [`🔍 *Monitoreos (${rows.length})*`];
+        for (const r of rows.slice(0, 10)) {
+          const date = r.scouting_date ? new Date(r.scouting_date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '';
+          const plot = r.plot_name || '';
+          const parts: string[] = [];
+          if (r.stage_code) parts.push(`${r.stage_code}`);
+          if (r.weed_coverage_pct != null) parts.push(`${r.weed_coverage_pct}% maleza`);
+          if (r.pest_species) {
+            const sev = r.pest_severity_1_5 ? ` ${sevLabels[r.pest_severity_1_5]}` : '';
+            parts.push(`${r.pest_species}${sev}`);
+          }
+          if (r.emergence_pct != null) parts.push(`${r.emergence_pct}% emerg.`);
+          if (r.plant_density_m2 != null) parts.push(`${r.plant_density_m2} pl/m²`);
+          if (r.soil_moisture_1_5 != null) parts.push(`humedad ${r.soil_moisture_1_5}/5`);
+          const detail = parts.length ? ` — ${parts.join(' · ')}` : '';
+          lines.push(`• ${date} *${plot}*${detail}`);
+        }
+        if (rows.length > 10) lines.push(`… (${rows.length - 10} más)`);
+        return { messages: [lines.join('\n')] };
+      }
+
+      // --- Crop scouting (structured monitoring) ---
+
+      case 'log_crop_scouting': {
+        const resolved = await this.plotDiscovery.resolveFromNames(
+          userId,
+          cmd.fieldName as string | null,
+          cmd.plotName as string | null
+        );
+
+        // Plot is required for scouting (analytics depend on it)
+        if (!resolved.plotId) {
+          const userPlots = await this.repo.findAllUserPlots(userId);
+          if (userPlots.length === 0) return this.buildNoPlotsResponse(userId, 'monitoreo', cmd);
+          if (userPlots.length === 1) {
+            resolved.plotId = userPlots[0].id;
+            resolved.fieldName = userPlots[0].field_name;
+            resolved.plotName = userPlots[0].name;
+            if (!resolved.fieldId) {
+              const field = await this.repo.getFieldByName(userId, userPlots[0].field_name);
+              if (field) resolved.fieldId = field.id;
+            }
+          } else {
+            return this.buildAskPlotResponse('monitoreo', userPlots, cmd);
+          }
+        }
+
+        const stageCode = cmd.stageCode ? String(cmd.stageCode).toUpperCase() : null;
+        const weedSpecies = Array.isArray(cmd.weedSpecies) ? cmd.weedSpecies as string[] : null;
+
+        // Derive plot_crop_id from the active campaign so analytics can filter by campaign
+        const activeCrop = await this.cropService.getActive(resolved.plotId);
+
+        const { saveCropScouting } = await import('../../services/expenses.js');
+        const saved = await saveCropScouting(userId, {
+          fieldId: resolved.fieldId,
+          plotId: resolved.plotId,
+          plotCropId: activeCrop?.id ?? null,
+          scoutingDate: cmd.eventDate as string | undefined,
+          stageCode,
+          weedCoveragePct: cmd.weedCoveragePct as number | undefined,
+          weedSpecies,
+          pestSpecies: cmd.pestSpecies as string | undefined,
+          pestSeverity: cmd.pestSeverity as number | undefined,
+          pestAffectedPct: cmd.pestAffectedPct as number | undefined,
+          soilMoisture: cmd.soilMoisture as number | undefined,
+          emergencePct: cmd.emergencePct as number | undefined,
+          plantDensityM2: cmd.plantDensityM2 as number | undefined,
+          notes: cmd.notes as string | undefined,
+        });
+
+        // Build human-readable confirmation
+        const lines: string[] = [];
+        const plotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+        lines.push(`🔍 *Monitoreo registrado* en *${plotLabel}*`);
+        if (saved.stage_code) lines.push(`  📐 Estadio: *${saved.stage_code}*`);
+        if (saved.weed_coverage_pct != null) {
+          const sp = weedSpecies && weedSpecies.length ? ` (${weedSpecies.join(', ')})` : '';
+          lines.push(`  🌿 Malezas: ${saved.weed_coverage_pct}%${sp}`);
+        } else if (weedSpecies && weedSpecies.length) {
+          lines.push(`  🌿 Malezas: ${weedSpecies.join(', ')}`);
+        }
+        if (saved.pest_species) {
+          const sevLabels = ['', 'ausente', 'leve', 'moderada', 'alta', 'severa'];
+          const sevLbl = saved.pest_severity_1_5 ? ` (${sevLabels[saved.pest_severity_1_5]} ${saved.pest_severity_1_5}/5)` : '';
+          const aff = saved.pest_affected_pct != null ? `, ${saved.pest_affected_pct}% afectado` : '';
+          lines.push(`  🐛 Plaga: ${saved.pest_species}${sevLbl}${aff}`);
+        }
+        if (saved.soil_moisture_1_5 != null) {
+          const moistLabels = ['', 'seco', 'algo seco', 'normal', 'húmedo', 'saturado'];
+          lines.push(`  💧 Humedad suelo: ${moistLabels[saved.soil_moisture_1_5]} (${saved.soil_moisture_1_5}/5)`);
+        }
+        if (saved.emergence_pct != null) lines.push(`  🌱 Emergencia: ${saved.emergence_pct}%`);
+        if (saved.plant_density_m2 != null) lines.push(`  🔢 Densidad: ${saved.plant_density_m2} pl/m²`);
+        if (saved.notes) lines.push(`  📝 ${saved.notes}`);
+
+        return { messages: [lines.join('\n')] };
+      }
+
       // --- Observations ---
 
       case 'log_observation': {
@@ -2294,6 +2421,22 @@ export class AgronomyHandler {
       if (s.profitability.costPerTnUSD != null) profLine += ` (US$${s.profitability.costPerTnUSD.toLocaleString('es-AR')}/tn)`;
       if (s.profitability.incomePerTnARS != null) profLine += ` | Ingreso/tn: $${s.profitability.incomePerTnARS.toLocaleString('es-AR')}`;
       lines.push(profLine);
+    }
+
+    // Scouting (structured monitoring)
+    if (s.scouting && s.scouting.count > 0) {
+      const sevLabels = ['', 'ausente', 'leve', 'moderada', 'alta', 'severa'];
+      const sLines: string[] = [`\n🔍 *Monitoreo (${s.scouting.count}):*`];
+      if (s.scouting.lastStage) sLines.push(`• Estadio observado: *${s.scouting.lastStage}* (${s.scouting.lastStageDate})`);
+      if (s.scouting.avgWeedPct != null) sLines.push(`• Cobertura malezas (prom): ${s.scouting.avgWeedPct}%`);
+      if (s.scouting.maxPestSeverity != null) {
+        const sev = sevLabels[s.scouting.maxPestSeverity];
+        const sp = s.scouting.maxPestSpecies ? ` ${s.scouting.maxPestSpecies}` : '';
+        sLines.push(`• Plaga máx:${sp} (${sev} ${s.scouting.maxPestSeverity}/5)`);
+      }
+      if (s.scouting.lastEmergencePct != null) sLines.push(`• Emergencia: ${s.scouting.lastEmergencePct}%`);
+      if (s.scouting.avgPlantDensity != null) sLines.push(`• Densidad prom: ${s.scouting.avgPlantDensity} pl/m²`);
+      lines.push(sLines.join('\n'));
     }
 
     // Observations

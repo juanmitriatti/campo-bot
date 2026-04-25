@@ -192,6 +192,9 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
   // Rainfall aggregate + nearby forecast
   const rainfall = await getRainfallForWindow({ fieldId, plotId: filterPlotId, dateFrom: dateFromIso, dateTo: dateToIso });
 
+  // Crop scouting in window
+  const scoutings = await getScoutingsForWindow({ fieldId, plotId: filterPlotId, dateFrom: dateFromIso, dateTo: dateToIso });
+
   // Attach activities to each plot bucket (for the per-plot section + timeline colours)
   const activityPlotMap = new Map();
   for (const act of activities) {
@@ -230,6 +233,7 @@ export async function generateWeeklyReport(userId, fieldId, filterPlotId = null,
     prevFinancial,
     prevActivitiesCount: prevActivities.length,
     rainfall,
+    scoutings,
     toggles,
     dateFromIso,
     dateToIso,
@@ -309,6 +313,24 @@ async function getActivitiesInWindow({ fieldId, plotId, dateFrom, dateTo }) {
   return rows;
 }
 
+async function getScoutingsForWindow({ fieldId, plotId, dateFrom, dateTo }) {
+  const plotFilter = plotId
+    ? `plot_id = $3`
+    : `plot_id IN (SELECT id FROM plots WHERE field_id = $3 AND deleted_at IS NULL)`;
+  const { rows } = await pool.query(
+    `SELECT s.*, p.name AS plot_name, pc.crop AS crop
+     FROM crop_scoutings s
+     LEFT JOIN plots p ON p.id = s.plot_id
+     LEFT JOIN plot_crops pc ON pc.id = s.plot_crop_id
+     WHERE ${plotFilter}
+       AND s.scouting_date BETWEEN $1 AND $2
+       AND s.deleted_at IS NULL
+     ORDER BY s.scouting_date DESC, s.id DESC`,
+    [dateFrom, dateTo, plotId || fieldId],
+  );
+  return rows;
+}
+
 async function getRainfallForWindow({ fieldId, plotId, dateFrom, dateTo }) {
   const plotFilter = plotId ? `plot_id = $3` : `field_id = $3`;
   const { rows } = await pool.query(
@@ -326,6 +348,7 @@ async function loadReportToggles() {
     'AGRO_REPORT_SHOW_HEADER_SUMMARY', 'AGRO_REPORT_SHOW_KPIS', 'AGRO_REPORT_SHOW_COMPARISON',
     'AGRO_REPORT_SHOW_PER_PLOT', 'AGRO_REPORT_SHOW_TIMELINE', 'AGRO_REPORT_SHOW_INSIGHTS',
     'AGRO_REPORT_SHOW_WEATHER_SECTION', 'AGRO_REPORT_SHOW_FINANCIAL_SUMMARY',
+    'AGRO_REPORT_SHOW_SCOUTING',
     'AGRO_REPORT_SHOW_CHARTS_YIELD', 'AGRO_REPORT_SHOW_CHARTS_CROPS',
     'AGRO_REPORT_SHOW_LOGO',
   ];
@@ -703,6 +726,69 @@ function renderWeatherSection(doc, { rainfall, dateFromIso, dateToIso }) {
   doc.moveDown(0.4);
 }
 
+function renderScoutingSection(doc, scoutings) {
+  if (!scoutings || scoutings.length === 0) return;
+  sectionTitle(doc, 'Monitoreo del cultivo');
+  doc.fontSize(10).font('Helvetica');
+
+  const sevLabels = ['', 'ausente', 'leve', 'moderada', 'alta', 'severa'];
+  const moistLabels = ['', 'seco', 'algo seco', 'normal', 'húmedo', 'saturado'];
+
+  // Aggregate quick view
+  const stages = scoutings.filter(s => s.stage_code).map(s => s.stage_code);
+  const lastStage = stages.length ? stages[0] : null;
+  const weeds = scoutings.filter(s => s.weed_coverage_pct != null);
+  const avgWeed = weeds.length ? Math.round(weeds.reduce((a, s) => a + Number(s.weed_coverage_pct), 0) / weeds.length * 10) / 10 : null;
+  let maxSev = null, maxSevSpecies = null;
+  for (const s of scoutings) {
+    if (s.pest_severity_1_5 != null && (maxSev == null || s.pest_severity_1_5 > maxSev)) {
+      maxSev = s.pest_severity_1_5;
+      maxSevSpecies = s.pest_species;
+    }
+  }
+  const densities = scoutings.filter(s => s.plant_density_m2 != null);
+  const avgDensity = densities.length ? Math.round(densities.reduce((a, s) => a + Number(s.plant_density_m2), 0) / densities.length * 10) / 10 : null;
+  const lastEmerg = scoutings.find(s => s.emergence_pct != null);
+
+  doc.font('Helvetica-Bold').text('Resumen del período', { continued: false });
+  doc.font('Helvetica');
+  if (lastStage) doc.text(`  Último estadio: ${lastStage}`);
+  if (avgWeed != null) doc.text(`  Cobertura malezas (promedio): ${avgWeed}%`);
+  if (maxSev != null) doc.text(`  Plaga más severa: ${maxSevSpecies || '—'} (${sevLabels[maxSev]} ${maxSev}/5)`);
+  if (avgDensity != null) doc.text(`  Densidad promedio: ${fmtNumAR(avgDensity)} pl/m²`);
+  if (lastEmerg) doc.text(`  Emergencia (último registro): ${lastEmerg.emergence_pct}%`);
+  doc.moveDown(0.3);
+
+  // Detail list (last 10)
+  const recent = scoutings.slice(0, 10);
+  doc.font('Helvetica-Bold').text(`Detalle (${recent.length}${scoutings.length > 10 ? ` de ${scoutings.length}` : ''})`);
+  doc.font('Helvetica');
+  for (const s of recent) {
+    pageBreakIfNeeded(doc, 16);
+    const date = s.scouting_date ? new Date(s.scouting_date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' }) : '';
+    const parts = [];
+    if (s.stage_code) parts.push(`${s.stage_code}`);
+    if (s.weed_coverage_pct != null) {
+      const sp = Array.isArray(s.weed_species) && s.weed_species.length ? ` (${s.weed_species.join(', ')})` : '';
+      parts.push(`${s.weed_coverage_pct}% maleza${sp}`);
+    }
+    if (s.pest_species) {
+      const sev = s.pest_severity_1_5 ? ` ${sevLabels[s.pest_severity_1_5]}` : '';
+      const aff = s.pest_affected_pct != null ? ` ${s.pest_affected_pct}% afect.` : '';
+      parts.push(`${s.pest_species}${sev}${aff}`);
+    }
+    if (s.soil_moisture_1_5 != null) parts.push(`humedad ${moistLabels[s.soil_moisture_1_5]}`);
+    if (s.emergence_pct != null) parts.push(`${s.emergence_pct}% emerg.`);
+    if (s.plant_density_m2 != null) parts.push(`${s.plant_density_m2} pl/m²`);
+    const detail = parts.length ? ` — ${parts.join(' · ')}` : '';
+    doc.text(`  • ${date}${detail}`);
+    if (s.notes) {
+      doc.fontSize(9).fillColor(COLORS.gray).text(`    ${s.notes}`).fillColor('#000').fontSize(10);
+    }
+  }
+  doc.moveDown(0.4);
+}
+
 function renderFinancialSummary(doc, financial) {
   if (!financial || !financial.hasAny) return;
   sectionTitle(doc, 'Resumen económico');
@@ -839,7 +925,7 @@ function generateReportPDF({
   field, agronomist, weekNumber, year, plots, fieldObservations, pdfPath,
   filterPlotName = null, activities = [], desde = null, hasta = null,
   financial = null, prevFinancial = null, prevActivitiesCount = 0,
-  rainfall = null, toggles = {}, dateFromIso = null, dateToIso = null,
+  rainfall = null, scoutings = [], toggles = {}, dateFromIso = null, dateToIso = null,
 }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -861,6 +947,7 @@ function generateReportPDF({
     if (toggles.per_plot) renderPerPlot(doc, { plots, fieldObservations, filterPlotId: null });
     if (toggles.timeline && activities.length > 0) renderTimeline(doc, activities);
     if (toggles.weather_section) renderWeatherSection(doc, { rainfall, dateFromIso, dateToIso });
+    if (toggles.scouting !== false) renderScoutingSection(doc, scoutings);
     if (toggles.financial_summary) renderFinancialSummary(doc, financial);
 
     // Fallback if everything came up empty
