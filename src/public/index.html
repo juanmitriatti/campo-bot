@@ -820,6 +820,15 @@
         </svg>
         Configuracion
       </a>
+      <a class="nav-item" data-page="ai-settings" onclick="navigate('ai-settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.57-3.25 3.92v1.58h2.75a2.5 2.5 0 0 1 2.5 2.5v1.58A4 4 0 0 1 16 22a4 4 0 0 1-2-7.42V14.5a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5v.08A4 4 0 0 1 8 22a4 4 0 0 1-1.75-7.58" />
+          <circle cx="12" cy="6" r="2"/>
+          <circle cx="8" cy="18" r="2"/>
+          <circle cx="16" cy="18" r="2"/>
+        </svg>
+        Config. de IA
+      </a>
     </nav>
     <div class="sidebar-footer">
       MIA v1.0 &mdash; WhatsApp Bot
@@ -1721,6 +1730,15 @@
       </div>
     </div>
 
+    <!-- ===== AI Settings Page ===== -->
+    <div class="page" id="page-ai-settings">
+      <h1 class="page-title">Configuracion de IA</h1>
+      <p style="color:var(--text-secondary);margin-bottom:20px;">Modelos, tokens, timeouts y prompts del pipeline de IA. Los cambios se aplican inmediatamente.</p>
+      <div id="ai-settings-groups-container">
+        <div class="loading"><div class="spinner"></div> Cargando configuracion...</div>
+      </div>
+    </div>
+
     <!-- ===== User Detail Page ===== -->
     <div class="page" id="page-user-detail">
       <button class="back-btn" onclick="navigate('users')">
@@ -2060,6 +2078,10 @@
         document.getElementById('page-settings').classList.add('active');
         document.querySelector('[data-page="settings"]').classList.add('active');
         loadSettings();
+      } else if (page === 'ai-settings') {
+        document.getElementById('page-ai-settings').classList.add('active');
+        document.querySelector('[data-page="ai-settings"]').classList.add('active');
+        loadAiSettings();
       } else if (page === 'agro-field' && id) {
         document.getElementById('page-agro-field-detail').classList.add('active');
         document.querySelector('[data-page="agronomy"]').classList.add('active');
@@ -3552,8 +3574,11 @@
       mensajes: 'Mensajes del Bot'
     };
 
-    function loadSettings() {
-      var container = document.getElementById('settings-groups-container');
+    // AI-related setting groups shown in the dedicated "Config. de IA" page
+    var AI_SETTING_GROUPS = { ai: true, audio: true, limits: true };
+
+    function renderSettingsGroups(containerId, groupOrder, filterFn, saveBtnId, saveFn) {
+      var container = document.getElementById(containerId);
       container.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando configuracion...</div>';
 
       apiFetch('/admin/api/settings').then(function(data) {
@@ -3572,9 +3597,9 @@
         }
 
         var html = '';
-        var groupOrder = ['mensajes', 'ai', 'agro_report', 'bot', 'audio', 'limits', 'agronomy', 'system', 'onboarding'];
         for (var g = 0; g < groupOrder.length; g++) {
           var groupKey = groupOrder[g];
+          if (filterFn && !filterFn(groupKey)) continue;
           var items = groups[groupKey];
           if (!items) continue;
 
@@ -3632,9 +3657,19 @@
           html += '</div></div>';
         }
 
-        html += '<button class="btn btn-primary" onclick="saveSettings()" id="btn-save-settings">Guardar Cambios</button>';
+        html += '<button class="btn btn-primary" onclick="' + saveFn + '()" id="' + saveBtnId + '">Guardar Cambios</button>';
         container.innerHTML = html;
       });
+    }
+
+    function loadSettings() {
+      var allGroups = ['mensajes', 'agro_report', 'bot', 'ai', 'audio', 'limits', 'agronomy', 'system', 'onboarding'];
+      renderSettingsGroups('settings-groups-container', allGroups, function(g) { return !AI_SETTING_GROUPS[g]; }, 'btn-save-settings', 'saveSettings');
+    }
+
+    function loadAiSettings() {
+      var aiGroups = ['ai', 'audio', 'limits'];
+      renderSettingsGroups('ai-settings-groups-container', aiGroups, null, 'btn-save-ai-settings', 'saveAiSettings');
     }
 
     function uploadReportLogo() {
@@ -3666,13 +3701,13 @@
         .catch(function(err) { alert('Error: ' + err.message); });
     }
 
-    function saveSettings() {
-      var btn = document.getElementById('btn-save-settings');
+    function saveSettingsFromContainer(containerId, btnId, reloadFn) {
+      var btn = document.getElementById(btnId);
       btn.disabled = true;
       btn.textContent = 'Guardando...';
 
       var updates = {};
-      var inputs = document.querySelectorAll('[data-key]');
+      var inputs = document.getElementById(containerId).querySelectorAll('[data-key]');
       for (var i = 0; i < inputs.length; i++) {
         var input = inputs[i];
         var key = input.getAttribute('data-key');
@@ -3692,12 +3727,20 @@
         btn.disabled = false;
         btn.textContent = 'Guardar Cambios';
         if (data) {
-          loadSettings();
+          reloadFn();
         }
       }).catch(function() {
         btn.disabled = false;
         btn.textContent = 'Guardar Cambios';
       });
+    }
+
+    function saveSettings() {
+      saveSettingsFromContainer('settings-groups-container', 'btn-save-settings', loadSettings);
+    }
+
+    function saveAiSettings() {
+      saveSettingsFromContainer('ai-settings-groups-container', 'btn-save-ai-settings', loadAiSettings);
     }
 
     // ========== ANALYTICS ==========
