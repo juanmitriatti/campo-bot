@@ -1,0 +1,21 @@
+{
+  "name": "basic-expense",
+  "description": "Register a simple expense with confirmation",
+  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "steps": [
+    {
+      "send": "gasté 50 mil en gasoil",
+      "expect": {
+        "responseContains": ["50.000", "gasoil"],
+        "hasConfirmButton": true
+      }
+    },
+    {
+      "tap": "confirm_pending",
+      "expect": {
+        "responseContains": ["registrad"],
+        "dbExpense": { "amount": 50000, "category": "Combustible" }
+      }
+    }
+  ]
+}

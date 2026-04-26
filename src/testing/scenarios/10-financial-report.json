@@ -1,0 +1,13 @@
+{
+  "name": "financial-report",
+  "description": "Request a financial report (may be empty)",
+  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "steps": [
+    {
+      "send": "reporte financiero del mes",
+      "expect": {
+        "responseNotContains": ["error", "no pude"]
+      }
+    }
+  ]
+}

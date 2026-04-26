@@ -19,6 +19,9 @@ campo-bot is a WhatsApp and Telegram-based agricultural management assistant for
 - `npx tsx src/scripts/create-admin.ts --email <e> --name <n> --password <p>` — Bootstrap admin user
 - `npx tsx src/scripts/seed-dummy-data.ts --user-id <id> [--reset]` — Seed dummy data
 - `npx tsx src/scripts/run-migrations.ts` — Manually run pending DB migrations (auto-runs on startup)
+- `npm run eval` — Run conversational eval (18 scenarios against local Docker, real pipeline + DB)
+- `npm run eval:verbose` — Same with step-by-step detail
+- `npx tsx src/testing/run-eval.ts --scenario basic-expense` — Run a single eval scenario
 
 ## Message Processing Pipeline
 
@@ -181,6 +184,13 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/controllers/telegram.controller.ts` — Telegram webhook
 - `src/controllers/test-bot.controller.ts` — Test bot (same pipeline)
 
+### Eval Framework (Conversational Testing)
+- `src/testing/run-eval.ts` — CLI entry: `npm run eval` (runs all scenarios against local Docker)
+- `src/testing/test-bot-client.ts` — HTTP client wrapping test-bot API (send/tap/reset/queryDb)
+- `src/testing/assertions.ts` — Deterministic assertions (responseContains, dbHasExpense, dbHasActivity, etc.)
+- `src/testing/scenario-runner.ts` — Loads JSON scenarios, runs setup→steps→assertions→report
+- `src/testing/scenarios/*.json` — 18 test scenarios + `_setup.json` reusable sequences
+
 ### Config & Utils
 - `src/utils/parser.js` — Spanish text normalization, number expansion, category matching
 - `src/utils/date.ts` — Argentina timezone helpers
@@ -201,3 +211,20 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - **[docs/features/stock.md](docs/features/stock.md)** — Stock/inventory system
 - **[docs/features/livestock.md](docs/features/livestock.md)** — Livestock/hacienda system
 - **[docs/features/documents.md](docs/features/documents.md)** — Document processing (facturas/remitos)
+
+## Tests
+
+### Unit Tests (vitest)
+- 1211 total, 7 pre-existing failures. Baseline: 1204 passing.
+- Run: `npm test`
+- Single file: `npx vitest run src/utils/parser.test.js`
+
+### Conversational Eval (end-to-end, real pipeline)
+- 18 scenarios testing key intents against local Docker (real DB, real AI pipeline, no mocks)
+- Requires: `docker compose up -d` (app on :3000 + DB on :5433)
+- Run: `npm run eval` — auto-registers test user, resets between scenarios, exits 1 on failure
+- Single: `npx tsx src/testing/run-eval.ts --scenario basic-expense`
+- Verbose: `npm run eval:verbose`
+- Scenarios cover: expenses, incomes, fields/plots, sowing, spraying, observations, weather, reports, greetings, rainfall, compound actions, conversational fallback
+- Add new scenarios: create `src/testing/scenarios/NN-name.json`, reusable setup in `_setup.json`
+- **Run eval after any change to the AI pipeline, agent prompt, tool definitions, handlers, or flows**

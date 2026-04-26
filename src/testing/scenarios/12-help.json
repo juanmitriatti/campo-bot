@@ -1,0 +1,13 @@
+{
+  "name": "help",
+  "description": "Request help and get usage guide",
+  "steps": [
+    {
+      "send": "ayuda",
+      "expect": {
+        "responseNotContains": ["error"],
+        "hasButtons": true
+      }
+    }
+  ]
+}

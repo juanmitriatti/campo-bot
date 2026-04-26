@@ -1,0 +1,13 @@
+{
+  "name": "greeting",
+  "description": "Send a greeting and get menu/welcome response",
+  "steps": [
+    {
+      "send": "hola",
+      "expect": {
+        "responseNotContains": ["error"],
+        "hasButtons": true
+      }
+    }
+  ]
+}

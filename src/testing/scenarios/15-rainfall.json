@@ -1,0 +1,14 @@
+{
+  "name": "rainfall",
+  "description": "Register rainfall measurement",
+  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "steps": [
+    {
+      "send": "llovieron 30mm en lote Norte",
+      "expect": {
+        "responseContains": ["30", "mm"],
+        "responseNotContains": ["error"]
+      }
+    }
+  ]
+}

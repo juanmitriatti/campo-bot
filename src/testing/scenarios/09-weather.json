@@ -1,0 +1,13 @@
+{
+  "name": "weather",
+  "description": "Request weather forecast for a city",
+  "steps": [
+    {
+      "send": "clima en Pergamino",
+      "expect": {
+        "responseContains": ["Pergamino"],
+        "responseNotContains": ["error", "no pude"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "list-fields",
+  "description": "List user fields after creating one",
+  "setup": ["add-field-esperanza"],
+  "steps": [
+    {
+      "send": "mis campos",
+      "expect": {
+        "responseContains": ["La Esperanza"]
+      }
+    }
+  ]
+}

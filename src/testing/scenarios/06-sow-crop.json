@@ -1,0 +1,14 @@
+{
+  "name": "sow-crop",
+  "description": "Register sowing soja on a plot",
+  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "steps": [
+    {
+      "send": "sembré soja en lote Norte",
+      "expect": {
+        "responseContains": ["soja"],
+        "dbActivity": { "eventType": "sow", "crop": "soja" }
+      }
+    }
+  ]
+}

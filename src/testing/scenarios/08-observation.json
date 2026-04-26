@@ -1,0 +1,14 @@
+{
+  "name": "observation",
+  "description": "Log a free-text observation with prefix bypass",
+  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "steps": [
+    {
+      "send": "observación: presencia de chinche en lote Norte",
+      "expect": {
+        "responseContains": ["chinche"],
+        "dbObservation": { "textContains": "chinche" }
+      }
+    }
+  ]
+}

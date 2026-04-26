@@ -1,0 +1,21 @@
+{
+  "name": "expense-usd",
+  "description": "Register a USD expense",
+  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "steps": [
+    {
+      "send": "gasté 500 dólares en repuestos",
+      "expect": {
+        "responseContains": ["500", "USD"],
+        "hasConfirmButton": true
+      }
+    },
+    {
+      "tap": "confirm_pending",
+      "expect": {
+        "responseContains": ["registrad"],
+        "dbExpense": { "amount": 500 }
+      }
+    }
+  ]
+}

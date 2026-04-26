@@ -1,0 +1,12 @@
+{
+  "name": "conversational",
+  "description": "Non-agro conversational message gets a friendly response (no tool call)",
+  "steps": [
+    {
+      "send": "cómo estás?",
+      "expect": {
+        "responseNotContains": ["error", "no pude"]
+      }
+    }
+  ]
+}

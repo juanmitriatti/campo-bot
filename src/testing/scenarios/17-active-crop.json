@@ -1,0 +1,14 @@
+{
+  "name": "active-crop",
+  "description": "Query what crop is active on a plot",
+  "setup": ["add-field-esperanza", "add-plot-norte", "sow-soja-norte"],
+  "steps": [
+    {
+      "send": "qué tiene sembrado el lote Norte?",
+      "expect": {
+        "responseContains": ["soja"],
+        "responseNotContains": ["error"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "basic-income",
+  "description": "Register a soja sale income with confirmation",
+  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "steps": [
+    {
+      "send": "vendí soja por 2 millones",
+      "expect": {
+        "responseContains": ["2.000.000", "soja"],
+        "hasConfirmButton": true
+      }
+    },
+    {
+      "tap": "confirm_pending",
+      "expect": {
+        "responseContains": ["registrad"],
+        "dbIncome": { "amount": 2000000 }
+      }
+    }
+  ]
+}

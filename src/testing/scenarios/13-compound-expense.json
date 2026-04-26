@@ -1,0 +1,14 @@
+{
+  "name": "compound-expense",
+  "description": "Agent handles compound action: activity + expense in one message",
+  "setup": ["add-field-esperanza", "add-plot-norte", "sow-soja-norte"],
+  "steps": [
+    {
+      "send": "fumigué con glifosato en lote Norte, gasté 50 mil",
+      "expect": {
+        "responseContains": ["glifosato"],
+        "dbActivity": { "eventType": "spray" }
+      }
+    }
+  ]
+}

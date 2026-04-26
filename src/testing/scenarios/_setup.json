@@ -1,0 +1,19 @@
+{
+  "add-field-esperanza": [
+    { "send": "agregar campo La Esperanza" },
+    { "wait": 300 },
+    { "tap": "flow_field_loc_city" },
+    { "send": "Pergamino" },
+    { "wait": 300 },
+    { "tap": "flow_confirm" }
+  ],
+  "add-plot-norte": [
+    { "send": "agregar lote Norte al campo La Esperanza" },
+    { "wait": 300 },
+    { "send": "100" }
+  ],
+  "sow-soja-norte": [
+    { "send": "sembré soja en lote Norte" },
+    { "wait": 500 }
+  ]
+}

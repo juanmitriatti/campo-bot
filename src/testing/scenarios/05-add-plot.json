@@ -1,0 +1,19 @@
+{
+  "name": "add-plot",
+  "description": "Create a new plot in an existing field",
+  "setup": ["add-field-esperanza"],
+  "steps": [
+    {
+      "send": "agregar lote Sur al campo La Esperanza",
+      "expect": {
+        "responseContains": ["Sur", "La Esperanza"]
+      }
+    },
+    {
+      "send": "200",
+      "expect": {
+        "responseContains": ["200", "ha"]
+      }
+    }
+  ]
+}

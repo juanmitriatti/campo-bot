@@ -8,7 +8,9 @@
     "dev": "tsx src/app.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval": "npx tsx src/testing/run-eval.ts --all",
+    "eval:verbose": "npx tsx src/testing/run-eval.ts --all --verbose"
   },
   "keywords": [],
   "author": "",
