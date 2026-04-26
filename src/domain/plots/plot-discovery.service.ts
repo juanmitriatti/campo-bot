@@ -135,6 +135,12 @@ export class PlotDiscoveryService {
     }
     const plot = await getPlotByName(field.id, plotName);
     if (!plot) {
+      // If field has exactly 1 plot, auto-resolve to it (agent may have hallucinated field name as plot)
+      const fieldPlots = await getPlotsByField(field.id);
+      if (fieldPlots.length === 1) {
+        await updateConversationState(userId, field.id, fieldPlots[0].id);
+        return { fieldId: field.id, fieldName: field.name, plotId: fieldPlots[0].id, plotName: fieldPlots[0].name, autoCreated: false };
+      }
       await updateConversationState(userId, field.id, null);
       return { fieldId: field.id, fieldName: field.name, plotId: null, plotName: null, autoCreated: false, notFound: { type: 'plot', name: plotName } };
     }

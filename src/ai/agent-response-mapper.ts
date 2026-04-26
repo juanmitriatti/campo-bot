@@ -389,6 +389,7 @@ export class AgentResponseMapper {
 
     // Campaign / harvest yield
     if (input.yield_kg != null) cmd.yieldKg = input.yield_kg;
+    if (input.yield_kg_per_ha != null) cmd.yieldKgPerHa = input.yield_kg_per_ha;
     if (input.yield_notes != null) cmd.yieldNotes = input.yield_notes;
     if (input.season_year != null) cmd.seasonYear = input.season_year;
     if (input.season_year_1 != null) cmd.seasonYear1 = input.season_year_1;

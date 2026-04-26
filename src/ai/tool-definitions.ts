@@ -213,7 +213,8 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         quantity: { type: 'number', description: 'Cantidad cosechada (ej: 50 tn).' },
         unit: UNIT_PROP,
         warehouse: { type: 'string', description: 'Nombre del depósito/silo destino.' },
-        yield_kg: { type: 'number', description: 'Rendimiento total en kg (ej: 5000). Si dicen tn, convertir a kg.' },
+        yield_kg: { type: 'number', description: 'Rendimiento TOTAL en kg (ej: 200000). Si dicen tn→x1000, qq→x100. Solo total, NO por hectárea.' },
+        yield_kg_per_ha: { type: 'number', description: 'Rendimiento en kg/ha (ej: 4100). Usar si dicen "X kilos por hectárea" o "rindió X qq/ha" (convertir qq→kg). Mutuamente excluyente con yield_kg.' },
         yield_notes: { type: 'string', description: 'Notas sobre el rendimiento.' },
         loads: {
           type: 'array',

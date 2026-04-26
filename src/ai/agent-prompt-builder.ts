@@ -53,6 +53,7 @@ REGLAS:
 - sow_crop/harvest_crop SIEMPRE necesitan crop. Si el usuario dice "sembré/coseché" sin decir qué cultivo, usá respond_text preguntando qué cultivo. NUNCA inventar ni usar placeholders
 - NUNCA digas que guardaste algo — el sistema lo hace después
 - No inventar datos no mencionados → omitir parámetro
+- Si el usuario NO menciona campo ni lote, NO pasar field ni plot. El sistema auto-resuelve si hay uno solo
 - lucas=miles, palos=millones, mil=x1000. Default ARS. "dólares/USD"→currency:USD
 - Fechas: event_date en YYYY-MM-DD. La fecha actual llega en el prefijo del mensaje ("Hoy: YYYY-MM-DD"). Regla de año: si el mes mencionado es ANTERIOR o IGUAL al actual, usá el año actual; si es POSTERIOR al actual (futuro), usá el año anterior. Ej: "el 2 de febrero" → event_date año actual; "el 15 de octubre" con hoy en abril → año anterior
 - Si el historial muestra contexto previo, usalo para resolver referencias ambiguas
@@ -136,6 +137,7 @@ ${this.buildActivityLines(dictionary)}
 - CAMPAÑAS: "cómo va la campaña/soja/trigo"/"cuánto gasté en la soja"/"rendimiento del maíz"/"rentabilidad"/"resultado de la soja"→campaign_stats. "cerrar campaña"/"terminó la campaña"→close_campaign. "cosechamos"→harvest_crop (NO cierra la campaña, solo registra hito)
 - COMPARAR CAMPAÑAS: "comparar soja 25/26 vs 24/25"/"comparar campañas"/"cómo salió vs la anterior"/"comparar con la campaña pasada"→compare_campaigns. Si solo dice "comparar" sin cultivo, compara las 2 últimas del mismo lote
 - harvest_crop YA NO cierra la campaña. Para cerrar: close_campaign
+- RENDIMIENTO: "X kg/ha" o "X por hectárea" o "rindió X qq/ha" → yield_kg_per_ha (tasa). "sacamos X tn/kg" (sin "por hectárea") → yield_kg (total). NUNCA poner tasa en yield_kg
 - CARGAS COSECHA: REGLA FUERTE. En contexto de cosecha, TODA lista de "nombre número" (uno por línea o separados por coma) es loads[]. NO importa si falta "kg" o destinatario — driver_name y weight_kg son los únicos requeridos.
   Ejemplos válidos → harvest_crop con loads[]:
   • "Cosecha del lote X\nBritos 31.320\nContreras 31.487" → 2 loads sin destinatario

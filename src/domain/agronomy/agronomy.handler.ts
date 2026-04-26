@@ -389,22 +389,6 @@ export class AgronomyHandler {
       eventDate: cmd.eventDate as Date | null,
     });
 
-    // Check if plot has a harvested (but not closed) campaign → offer to close
-    if (activeCrop?.harvested_at && !activeCrop.end_date) {
-      return {
-        messages: [confirmation],
-        interactive: {
-          type: 'buttons',
-          body: `La campaña de ${activeCrop.crop} en ${plotLabel} ya fue cosechada. ¿Querés cerrarla?`,
-          buttons: [
-            { id: `campaign_close_yes_${activeCrop.id}`, title: 'Cerrar campaña' },
-            { id: `campaign_close_no_${activeCrop.id}`, title: 'Mantener abierta' },
-          ],
-        },
-        sideEffects: { setPendingCampaignClose: { plotCropId: activeCrop.id, crop: activeCrop.crop, plotName: plotLabel || '' } },
-      };
-    }
-
     return { messages: [confirmation] };
   }
 
@@ -827,9 +811,26 @@ export class AgronomyHandler {
         }
 
         const crop = cmd.crop as string;
-        const yieldKg = cmd.yieldKg != null ? Number(cmd.yieldKg) : null;
+        const yieldKgRaw = cmd.yieldKg != null ? Number(cmd.yieldKg) : null;
+        const yieldKgPerHa = cmd.yieldKgPerHa != null ? Number(cmd.yieldKgPerHa) : null;
         const yieldNotes = (cmd.yieldNotes as string) || null;
         const plotLabel = plotResult.fieldName ? `${plotResult.fieldName} > ${plotResult.plotName}` : plotResult.plotName;
+
+        // Resolve effective yield: if user gave rate (kg/ha), compute total; if total, use as-is
+        let yieldKg = yieldKgRaw;
+        let computedKgPerHa: number | null = null;
+        if (yieldKgPerHa != null || yieldKgRaw != null) {
+          const { getPlotById: getPlotForYield } = await import('../../services/expenses.js');
+          const plotForYield = await getPlotForYield(plotResult.plotId, userId);
+          const areaHa = plotForYield?.area_hectares ? Number(plotForYield.area_hectares) : null;
+
+          if (yieldKgPerHa != null) {
+            computedKgPerHa = yieldKgPerHa;
+            yieldKg = areaHa ? Math.round(yieldKgPerHa * areaHa) : null;
+          } else if (yieldKgRaw != null && areaHa) {
+            computedKgPerHa = Math.round(yieldKgRaw / areaHa);
+          }
+        }
 
         // Dedup: check if there's already a harvest event for this plot today
         const loads = Array.isArray(cmd.loads) ? cmd.loads as Array<{ driver_name: string; weight_kg: number; destination?: string; destinatario?: string; truck_plate?: string; humidity_pct?: number; quality_metrics?: Record<string, unknown> }> : null;
@@ -937,13 +938,9 @@ export class AgronomyHandler {
 
         const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
         let harvestMsg = `🌾 *${crop}* cosechado en *${plotLabel}*\n📅 Campaña ${label}`;
-        if (yieldKg) {
-          const { getPlotById } = await import('../../services/expenses.js');
-          const plotInfo = await getPlotById(plotResult.plotId, userId);
-          const areaHa = plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : null;
-          const kgPerHa = areaHa ? Math.round(yieldKg / areaHa) : null;
-          harvestMsg += `\n📊 Rendimiento: ${yieldKg.toLocaleString('es-AR')} kg`;
-          if (kgPerHa) harvestMsg += ` (${kgPerHa.toLocaleString('es-AR')} kg/ha)`;
+        if (yieldKg || computedKgPerHa) {
+          if (yieldKg) harvestMsg += `\n📊 Rendimiento: ${yieldKg.toLocaleString('es-AR')} kg`;
+          if (computedKgPerHa) harvestMsg += yieldKg ? ` (${computedKgPerHa.toLocaleString('es-AR')} kg/ha)` : `\n📊 Rendimiento: ${computedKgPerHa.toLocaleString('es-AR')} kg/ha`;
         }
 
         // If plot_crop has existing loads (from prior messages), surface them so the user
@@ -1518,22 +1515,6 @@ export class AgronomyHandler {
             console.error('[stock-deduction] Error suggesting deduction:', stockErr);
             logError('agronomy', 'STOCK_DEDUCTION_SUGGEST', stockErr as Error, { userId });
           }
-        }
-
-        // Check if plot has a harvested (but not closed) campaign → offer to close
-        if (activeCrop?.harvested_at && !activeCrop.end_date) {
-          return {
-            messages: [confirmation],
-            interactive: {
-              type: 'buttons',
-              body: `La campaña de ${activeCrop.crop} en ${plotLabel} ya fue cosechada. ¿Querés cerrarla?`,
-              buttons: [
-                { id: `campaign_close_yes_${activeCrop.id}`, title: 'Cerrar campaña' },
-                { id: `campaign_close_no_${activeCrop.id}`, title: 'Mantener abierta' },
-              ],
-            },
-            sideEffects: { setPendingCampaignClose: { plotCropId: activeCrop.id, crop: activeCrop.crop, plotName: plotLabel || '' } },
-          };
         }
 
         return { messages: [confirmation] };

@@ -41,6 +41,11 @@ Kill switches: `AGENT_ENABLED=true` → agent | `AGENT_ENABLED=false` + `AI_INTE
 
 These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool selection:
 
+### Plot Resolution
+- If user doesn't mention field/plot, agent omits params → system auto-resolves if user has exactly 1 plot
+- PlotDiscoveryService `_resolveBoth()`: if field found but plot not found, auto-resolves to single plot when field has exactly 1
+- Campaign close buttons ("Cerrar campaña / Mantener abierta") only appear after `harvest_crop`, NEVER after spraying/fertilization/other activities
+
 ### Activity vs Expense
 - Agro verb (fumigué, sembré, coseché, fertilicé) WITHOUT explicit amount → activity tool, NEVER `log_expense`
 - Agro verb WITH explicit amount → BOTH activity + `log_expense` (compound action)
@@ -73,6 +78,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 ### Harvest Loads (per-truck)
 - ANY list of `nombre número` in a cosecha context is `loads[]` — destinatario and kg unit are optional.
 - "Cosecha del lote X" WITHOUT driver/weight list → `query_harvest_loads` (query intent), NOT `harvest_crop`.
+- `yield_kg_per_ha` (rate) vs `yield_kg` (total): "X kg/ha" or "X por hectárea" → `yield_kg_per_ha`. "sacamos X tn/kg" (no "por hectárea") → `yield_kg`. Handler computes total = rate × area when rate provided.
 
 ### Reports
 - "reporte agronómico" → `generate_agro_report` (needs agent for date range)
