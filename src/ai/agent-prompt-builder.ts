@@ -56,7 +56,7 @@ REGLAS:
 - Si el usuario NO menciona campo ni lote, NO pasar field ni plot. El sistema auto-resuelve si hay uno solo
 - lucas=miles, palo=millón, medio palo=500mil, mil=x1000. Default ARS. "dólares/USD"→currency:USD
 - Fechas: event_date en YYYY-MM-DD. La fecha actual llega en el prefijo del mensaje ("Hoy: YYYY-MM-DD"). Regla de año: si el mes mencionado es ANTERIOR o IGUAL al actual, usá el año actual; si es POSTERIOR al actual (futuro), usá el año anterior. Ej: "el 2 de febrero" → event_date año actual; "el 15 de octubre" con hoy en abril → año anterior
-- Si el historial muestra contexto previo, usalo para resolver referencias ambiguas
+- Referencias pronominales ("ahí", "ese lote", "el mismo", "ahí mismo") → pasar plot="__last__". NUNCA resolver el nombre vos, el sistema tiene el contexto correcto
 - Acciones compuestas: si el usuario pide varias cosas en un mensaje, usá varias tools en orden de dependencia. Ej: "agregá campo X y lote Y" → add_field(name=X) + add_plot(plotName=Y, field=X)
 - Compuesto actividad+costo: "sembré X y la semilla costó Y" → sow_crop + UN SOLO log_expense. El costo es UN gasto, no duplicar`;
   }

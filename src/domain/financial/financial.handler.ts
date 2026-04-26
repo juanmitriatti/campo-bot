@@ -5,7 +5,7 @@ import { getActivityLabel } from '../agronomy/activity.service.js';
 import { getSetting } from '../../services/settings.service.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../../middleware/pending-field-city-handler.js';
-import { queryPlotHistory } from '../../services/expenses.js';
+import { queryPlotHistory, updateConversationState } from '../../services/expenses.js';
 import { FieldSharingService } from '../sharing/field-sharing.service.js';
 import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
 import { logError } from '../../services/error-logger.js';
@@ -1807,6 +1807,8 @@ export class FinancialHandler {
         const plotExists = existingPlots.some(p => p.name.toLowerCase() === (cmd.plotName as string).toLowerCase());
         const plotsBeforeAdd = await this.service.findAllUserPlots(userId);
         const plot = await this.service.getOrCreatePlot(field.id, cmd.plotName as string);
+        // Update conversation state so "ahí"/"ese lote" references the new plot
+        await updateConversationState(userId, field.id, plot.id);
         if (plotExists) {
           return {
             messages: [`Ya existía el lote *${plot.name}* en campo *${field.name}*.`],
