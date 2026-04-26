@@ -221,6 +221,32 @@ export class PlotDiscoveryService {
   async resolveExisting(userId: UserId, text: string): Promise<PlotDiscoveryResult> {
     const loteName = detectarLote(text);
     if (!loteName) {
+      // Fallback: try the raw text as a direct plot name (handles button taps like "norte")
+      const trimmed = text.trim();
+      if (trimmed.length > 0 && trimmed.length < 100) {
+        const directMatch = await findPlotByNameAcrossFields(userId, trimmed);
+        if (directMatch.length === 1) {
+          return {
+            fieldId: directMatch[0].field_id,
+            fieldName: directMatch[0].field_name,
+            plotId: directMatch[0].id,
+            plotName: directMatch[0].name,
+            autoCreated: false,
+          };
+        }
+        // Try alias
+        const normalized = normalizeText(trimmed);
+        const aliasMatch = await findPlotByAlias(userId, normalized);
+        if (aliasMatch) {
+          return {
+            fieldId: aliasMatch.field_id,
+            fieldName: aliasMatch.field_name,
+            plotId: aliasMatch.id,
+            plotName: aliasMatch.name,
+            autoCreated: false,
+          };
+        }
+      }
       return { fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false };
     }
 
