@@ -841,14 +841,17 @@ export class AgronomyHandler {
         let isAppend = false;
 
         if (existingEvent) {
+          // Validate crop matches before reusing existing event
+          if (existingEvent.plot_crop_id) {
+            const activeCrop = await this.cropService.getActive(plotResult.plotId);
+            if (activeCrop && activeCrop.crop.toLowerCase() !== crop.toLowerCase()) {
+              return { messages: [`En *${plotLabel}* hay *${activeCrop.crop}* sembrado, no ${crop}.\nSi querés cosechar ${activeCrop.crop}, escribí:\n🌾 *cosechamos ${activeCrop.crop.toLowerCase()} en el lote ${plotResult.plotName}*`] };
+            }
+            if (activeCrop) harvested = activeCrop;
+          }
           // Reuse existing event — just append loads
           savedEvent = existingEvent;
           isAppend = true;
-          // Get plot_crop info for season label
-          if (existingEvent.plot_crop_id) {
-            const activeCrop = await this.cropService.getActive(plotResult.plotId);
-            if (activeCrop) harvested = activeCrop;
-          }
         } else {
           // Normal flow: register harvest
           const harvestedResult = await this.cropService.harvestCrop(plotResult.plotId, crop, cmd.eventDate as Date | undefined, yieldKg, yieldNotes);

@@ -128,7 +128,7 @@ export class CropService {
   ): Promise<PlotCropRow | null> {
     const active = await getActiveCrop(plotId) as PlotCropRow | null;
     if (!active) return null;
-    if (active.crop !== crop) return null;
+    if (active.crop.toLowerCase() !== crop.toLowerCase()) return null;
 
     const effectiveDate = date || new Date();
     // Set harvested_at instead of closing the campaign
