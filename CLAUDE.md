@@ -86,13 +86,19 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - `sow_crop` accepts optional `hectares` param for partial-plot sowing → `plot_crops.sowed_hectares`
 
 ### Harvest Loads
-- `harvest_crop` accepts optional `loads[]` (per-truck: driver_name, weight_kg, destination?, destinatario?, truck_plate?). Only driver+weight required.
+- `harvest_crop` accepts optional `loads[]` (per-truck: driver_name, weight_kg, destination?, destinatario?, truck_plate?, humidity_pct?, quality_metrics?). Only driver+weight required.
 - Dedup: same plot harvested today → appends loads, no duplicate event
 - If `loads[]` present but no active crop → handler warns the user the loads were dropped
 - If harvest called with no new loads but plot has stored loads → response includes existing-loads summary
 - `query_harvest_loads` tool queries stored loads (filters: plot, field, date, driver, destinatario)
 - `delete_harvest_loads` tool removes loads by criteria (plot, date, driver_names[], only_without_destination)
-- `campaign_stats` includes per-truck detail in yield section
+- `campaign_stats` includes per-truck detail (with humidity + quality) in yield section + `avgHumidity` aggregate
+- `humidity_pct` (0-50%, migration 073) — capture from "al 14%" / "13.5 de humedad". AR base: soja 13.5%, trigo 14%, maíz 14.5%
+- `quality_metrics` JSONB (migration 073) — crop-specific: soja `{oil_pct}`, trigo `{protein_pct, gluten_pct, test_weight_kg_hl}`, girasol `{oil_pct}`. Pasarlas SOLO si el usuario las mencionó
+
+### Units (kg / tn / qq)
+- `UNIT_PROP` accepts kg, lt, cc, tn, qq, bolsas, kg/ha, lt/ha. qq=quintal=100 kg, tn=tonelada=1000 kg.
+- Conversion happens in `normalizeToKg(quantity, unit)` (agent-response-mapper.ts) + ad-hoc in agro-report.js + the regex fallback. Examples: "rindió 42 qq" → 4200 kg, "200 qq de soja" → 20000 kg.
 
 ### Weather Alerts (scheduled 06:00 AR)
 - Rain: today + next 2 days, threshold `user_settings.rain_alert_mm` (default 10mm)

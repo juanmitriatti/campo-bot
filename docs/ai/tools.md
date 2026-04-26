@@ -68,10 +68,10 @@
 - Stored in `plot_crops.sowed_hectares`
 
 ### Harvest Loads (Per-Truck Tracking)
-- `harvest_crop` accepts optional `loads[]` array: `{ driver_name, weight_kg, destination?, destinatario?, truck_plate? }`
-- Only `driver_name` + `weight_kg` required on each load. Destinatario and kg unit optional.
+- `harvest_crop` accepts optional `loads[]` array: `{ driver_name, weight_kg, destination?, destinatario?, truck_plate?, humidity_pct?, quality_metrics? }`
+- Only `driver_name` + `weight_kg` required on each load. Everything else optional.
 - Extraction: in cosecha context, ANY list of `nombre número` (line-separated or comma-separated) is loads[], with or without "kg" unit or "a destinatario".
-- Argentine number convention: "31.320 kg" = 31320 (dot = thousands separator). Values in tn auto-convert to kg (*1000).
+- Argentine number convention: "31.320 kg" = 31320 (dot = thousands separator). `tn` and `qq` auto-convert to kg (×1000 / ×100).
 - Dedup: if same plot already harvested today → appends loads to existing event (no duplicate harvest)
 - `updateYieldFromLoads()` auto-sums all loads into `plot_crops.yield_kg`
 - `query_harvest_loads` queries stored loads with filters (plot, field, date, driver, destinatario)
@@ -79,6 +79,19 @@
 - `campaign_stats` includes loads detail in the yield section + cost/tn and income/tn metrics
 - "Cosecha del lote X" WITHOUT driver/weight list → `query_harvest_loads` (query intent), NOT `harvest_crop` (register)
 - If `harvest_crop` called with no new loads but plot already has stored loads → response appends existing-loads summary
+
+### Harvest Humidity & Quality (Migration 073)
+- **Humidity** per load: `harvest_loads.humidity_pct` (0-50% with CHECK constraint). Phrases like "al 14%", "13.5 de humedad", "Britos 31.320 al 13.5%" → captured into the load. Calibration in tool description: AR base is 13.5% soja, 14% trigo, 14.5% maíz.
+- **Quality metrics** per load: `harvest_loads.quality_metrics` (JSONB, crop-specific shape). Soja: `{oil_pct: 22.5}`. Trigo: `{protein_pct: 11.8, gluten_pct: 24, test_weight_kg_hl: 78}`. Girasol: `{oil_pct: 44}`. Tool description tells the agent to populate ONLY when user explicitly mentions the value (anti-hallucination).
+- Bot response shows `(14% hum)` per truck line + `💧 Humedad promedio` + `🏷️ Calidad` block when present.
+- `campaign_stats.yield.avgHumidity` is the campaign-wide average (loads that reported humidity ÷ count).
+- Out of scope: rindes por ambiente (sub-plot zones loma/bajo) — would need a `plot_environments` table + per-zone capture; ROI considered low for current user base.
+
+### qq (Quintal) Unit Support
+- `qq` (quintal = 100 kg) added to `UNIT_PROP` description alongside kg/lt/cc/tn/bolsas.
+- Conversion happens in 4 places: `extractHarvestLoadsFromText` (regex fallback), and 3 sites in `agro-report.js`.
+- `normalizeToKg(quantity, unit)` helper exported from `agent-response-mapper.ts` — central kg conversion. Treats `tn` as ×1000, `qq` as ×100, anything else as ×1.
+- Examples now understood: *"lote norte rindió 42 qq"* (= 4200 kg), *"Britos 42 qq"* in single-line cosecha messages, *"coseché 200 qq de soja"*.
 
 ### Expense Metadata (Insumos)
 - `log_expense` accepts `unit_price` (number) — for "a X c/u" / "a X el kg/lt" patterns. Ex: "50 bolsas urea a 8000 c/u" → quantity=50, unit_price=8000, amount=400000.
