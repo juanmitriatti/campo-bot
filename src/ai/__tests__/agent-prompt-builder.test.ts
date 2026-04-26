@@ -57,7 +57,7 @@ describe('AgentPromptBuilder', () => {
   it('includes currency conventions', () => {
     const prompt = builder.build(null);
     expect(prompt).toContain('lucas=miles');
-    expect(prompt).toContain('palos=millones');
+    expect(prompt).toContain('palo=millón');
     expect(prompt).toContain('ARS');
   });
 });

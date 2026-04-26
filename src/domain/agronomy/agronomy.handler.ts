@@ -353,6 +353,48 @@ export class AgronomyHandler {
       return { messages: [lines.join('\n')] };
     }
 
+    // log_crop_scouting — save scouting with the resolved plot
+    if (pending.command === 'log_crop_scouting') {
+      const stageCode = cmd.stageCode ? String(cmd.stageCode).toUpperCase() : null;
+      const weedSpecies = Array.isArray(cmd.weedSpecies) ? cmd.weedSpecies as string[] : null;
+      const activeCropForScouting = await this.cropService.getActive(plotId);
+
+      const { saveCropScouting } = await import('../../services/expenses.js');
+      const saved = await saveCropScouting(userId, {
+        fieldId: fieldId ?? undefined,
+        plotId,
+        plotCropId: activeCropForScouting?.id ?? null,
+        scoutingDate: cmd.eventDate as string | undefined,
+        stageCode,
+        weedCoveragePct: cmd.weedCoveragePct as number | undefined,
+        weedSpecies,
+        pestSpecies: cmd.pestSpecies as string | undefined,
+        pestSeverity: cmd.pestSeverity as number | undefined,
+        pestAffectedPct: cmd.pestAffectedPct as number | undefined,
+        soilMoisture: cmd.soilMoisture as number | undefined,
+        emergencePct: cmd.emergencePct as number | undefined,
+        plantDensityM2: cmd.plantDensityM2 as number | undefined,
+        notes: cmd.notes as string | undefined,
+      });
+
+      const lines: string[] = [];
+      lines.push(`🔍 *Monitoreo registrado* en *${plotLabel}*`);
+      if (saved.stage_code) lines.push(`  📐 Estadio: *${saved.stage_code}*`);
+      if (saved.weed_coverage_pct != null) {
+        const sp = weedSpecies && weedSpecies.length ? ` (${weedSpecies.join(', ')})` : '';
+        lines.push(`  🌿 Malezas: ${saved.weed_coverage_pct}%${sp}`);
+      } else if (weedSpecies && weedSpecies.length) {
+        lines.push(`  🌿 Malezas: ${weedSpecies.join(', ')}`);
+      }
+      if (saved.pest_species) {
+        const sevLabels = ['', 'ausente', 'leve', 'moderada', 'alta', 'severa'];
+        const sevLbl = saved.pest_severity_1_5 ? ` (${sevLabels[saved.pest_severity_1_5]} ${saved.pest_severity_1_5}/5)` : '';
+        const aff = saved.pest_affected_pct != null ? `, ${saved.pest_affected_pct}% afectado` : '';
+        lines.push(`  🐛 Plaga: ${saved.pest_species}${sevLbl}${aff}`);
+      }
+      return { messages: [lines.join('\n')] };
+    }
+
     // log_spraying / log_fertilization / log_tillage / log_irrigation
     const eventType = EVENT_TYPE_MAP[pending.command];
     if (!eventType) {

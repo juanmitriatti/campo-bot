@@ -35,6 +35,7 @@ const AGRONOMY_COMMANDS = new Set([
   'query_plot_history', 'log_observation', 'generate_agro_report',
   'log_tacto', 'tacto_summary', 'edit_last_activity',
   'share_report',
+  'log_crop_scouting', 'query_scoutings',
 ]);
 
 const SHARING_COMMANDS = new Set([
