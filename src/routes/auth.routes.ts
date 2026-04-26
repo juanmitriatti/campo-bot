@@ -1017,14 +1017,17 @@ router.get('/analytics', requireAuth, async (req: Request, res: Response) => {
       [userId]
     );
 
-    // Expense categories - current month
-    const { rows: expenseCategories } = await pool.query(
-      `SELECT category, SUM(amount)::numeric AS total
-         FROM expenses
-        WHERE user_id = $1 AND deleted_at IS NULL AND currency = 'ARS'
-          AND expense_date >= date_trunc('month', NOW())
-        GROUP BY category
-        ORDER BY total DESC`,
+    // Rainfall - last 30 days
+    const { rows: rainfallDaily } = await pool.query(
+      `SELECT r.rain_date::text AS date,
+              to_char(r.rain_date, 'DD/MM') AS label,
+              SUM(r.mm)::numeric AS mm
+         FROM rainfall r
+         JOIN fields f ON f.id = r.field_id
+        WHERE f.user_id = $1 AND f.deleted_at IS NULL
+          AND r.rain_date >= CURRENT_DATE - interval '30 days'
+        GROUP BY r.rain_date
+        ORDER BY r.rain_date`,
       [userId]
     );
 
@@ -1035,9 +1038,10 @@ router.get('/analytics', requireAuth, async (req: Request, res: Response) => {
         expenses: Number(r.expenses),
         incomes: Number(r.incomes),
       })),
-      expenseCategories: expenseCategories.map(r => ({
-        category: r.category || 'Otros',
-        total: Number(r.total),
+      rainfallDaily: rainfallDaily.map(r => ({
+        date: r.date,
+        label: r.label,
+        mm: Number(r.mm),
       })),
     });
   } catch (err) {

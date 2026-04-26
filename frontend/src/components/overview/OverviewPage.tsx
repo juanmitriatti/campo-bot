@@ -3,8 +3,7 @@ import { useAnalyticsData } from '../../hooks/useAnalyticsData';
 import KpiCard from './KpiCard';
 import SparklineBar from './SparklineBar';
 import MonthlyTrendChart from './MonthlyTrendChart';
-import ExpensePieChart from './ExpensePieChart';
-import QuickActions from './QuickActions';
+import RainfallChart from './RainfallChart';
 import RecentFeed from './RecentFeed';
 import AlertsBanner from './AlertsBanner';
 import FieldMap from './FieldMap';
@@ -97,18 +96,12 @@ export default function OverviewPage() {
       {analytics.data && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <MonthlyTrendChart data={analytics.data.monthlyTrend} />
-          <ExpensePieChart data={analytics.data.expenseCategories} />
+          <RainfallChart data={analytics.data.rainfallDaily} />
         </div>
       )}
 
       {/* Map */}
       <FieldMap />
-
-      {/* Quick Actions */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Acciones rapidas</h3>
-        <QuickActions />
-      </div>
 
       {/* Recent Feed */}
       <RecentFeed items={data.recent_items} />

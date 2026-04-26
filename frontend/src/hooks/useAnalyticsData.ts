@@ -8,14 +8,15 @@ interface MonthlyTrend {
   incomes: number;
 }
 
-interface ExpenseCategory {
-  category: string;
-  total: number;
+interface RainfallDaily {
+  date: string;
+  label: string;
+  mm: number;
 }
 
 interface AnalyticsData {
   monthlyTrend: MonthlyTrend[];
-  expenseCategories: ExpenseCategory[];
+  rainfallDaily: RainfallDaily[];
 }
 
 export function useAnalyticsData() {
