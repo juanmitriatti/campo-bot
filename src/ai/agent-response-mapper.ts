@@ -39,7 +39,7 @@ export function extractHarvestLoadsFromText(text: string): Array<{ driver_name: 
   if (!text) return [];
   if (!/(cosech|cargar|se\s+carg|carga[sr])/i.test(text)) return [];
 
-  const pairRegex = /([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s+((?:\d{1,3}(?:\.\d{3})+|\d+(?:[.,]\d+)?))\s*(kg|tn|toneladas?)?/g;
+  const pairRegex = /([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s+((?:\d{1,3}(?:\.\d{3})+|\d+(?:[.,]\d+)?))\s*(kg|tn|toneladas?|qq|quintales?)?/g;
   const loads: Array<{ driver_name: string; weight_kg: number }> = [];
   let match: RegExpExecArray | null;
   while ((match = pairRegex.exec(text)) !== null) {
@@ -48,11 +48,26 @@ export function extractHarvestLoadsFromText(text: string): Array<{ driver_name: 
     const weight = parseArNumber(match[2]);
     if (weight == null || weight <= 0) continue;
     const unit = (match[3] || '').toLowerCase();
-    const isTonnes = unit.startsWith('t') || (!unit && weight < 1000);
-    const weightKg = isTonnes ? weight * 1000 : weight;
+    let weightKg = weight;
+    if (unit.startsWith('t')) weightKg = weight * 1000;
+    else if (unit.startsWith('q')) weightKg = weight * 100;
+    else if (!unit && weight < 1000) weightKg = weight * 1000; // bare small number → assume tn
     loads.push({ driver_name: name, weight_kg: weightKg });
   }
   return loads;
+}
+
+/**
+ * Convert (quantity, unit) to kg for grain/seed/fertilizer flow.
+ * Argentine commercial: tn=1000, qq=100, kg=1. Returns null if can't normalize.
+ */
+export function normalizeToKg(quantity: number | null | undefined, unit: string | null | undefined): number | null {
+  if (quantity == null || !Number.isFinite(Number(quantity))) return null;
+  const q = Number(quantity);
+  const u = (unit || '').toLowerCase().trim();
+  if (u === 'tn' || u.startsWith('tonel')) return q * 1000;
+  if (u === 'qq' || u.startsWith('quint')) return q * 100;
+  return q;
 }
 
 /** Strip accents for comparison */

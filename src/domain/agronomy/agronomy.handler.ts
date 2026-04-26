@@ -818,7 +818,7 @@ export class AgronomyHandler {
         const plotLabel = plotResult.fieldName ? `${plotResult.fieldName} > ${plotResult.plotName}` : plotResult.plotName;
 
         // Dedup: check if there's already a harvest event for this plot today
-        const loads = Array.isArray(cmd.loads) ? cmd.loads as Array<{ driver_name: string; weight_kg: number; destination?: string; destinatario?: string; truck_plate?: string }> : null;
+        const loads = Array.isArray(cmd.loads) ? cmd.loads as Array<{ driver_name: string; weight_kg: number; destination?: string; destinatario?: string; truck_plate?: string; humidity_pct?: number; quality_metrics?: Record<string, unknown> }> : null;
         const existingEvent = await this.repo.findTodayHarvestEvent(userId, plotResult.plotId);
 
         let savedEvent: { id: number; plot_crop_id?: number | null; [key: string]: unknown };
@@ -877,15 +877,36 @@ export class AgronomyHandler {
           const totalKg = loads.reduce((sum, l) => sum + Number(l.weight_kg), 0);
           const loadLines = loads.map(l => {
             let line = `• ${l.driver_name} — ${Number(l.weight_kg).toLocaleString('es-AR')} kg`;
+            if (l.humidity_pct != null) line += ` (${l.humidity_pct}% hum)`;
             if (l.destinatario) line += ` → ${l.destinatario}`;
             else if (l.destination) line += ` → ${l.destination}`;
             return line;
           });
 
+          // Quality summary (if any load has metrics, surface them in the response)
+          const withQuality = loads.filter(l => l.quality_metrics && Object.keys(l.quality_metrics).length > 0);
+          const qualityLine = withQuality.length > 0
+            ? `\n\n🏷️ *Calidad:* ${withQuality.map(l => {
+                const metrics = Object.entries(l.quality_metrics!)
+                  .map(([k, v]) => `${k.replace(/_pct$/, '%').replace(/_/g, ' ')}: ${v}`)
+                  .join(', ');
+                return `${l.driver_name} → ${metrics}`;
+              }).join(' · ')}`
+            : '';
+
           const header = isAppend
             ? `🚛 *${loads.length} carga${loads.length > 1 ? 's' : ''} agregada${loads.length > 1 ? 's' : ''} en ${plotLabel}:*`
             : `🚛 *${loads.length} carga${loads.length > 1 ? 's' : ''} registrada${loads.length > 1 ? 's' : ''} en ${plotLabel}:*`;
-          let loadsMsg = `${header}\n${loadLines.join('\n')}\n\n📊 *Total: ${totalKg.toLocaleString('es-AR')} kg*`;
+          // Average humidity if at least one load reports it
+          const humidityLoads = loads.filter(l => l.humidity_pct != null);
+          const avgHumidity = humidityLoads.length > 0
+            ? Math.round(humidityLoads.reduce((a, l) => a + Number(l.humidity_pct), 0) / humidityLoads.length * 10) / 10
+            : null;
+          const humLine = avgHumidity != null
+            ? `\n💧 *Humedad promedio:* ${avgHumidity}% (${humidityLoads.length}/${loads.length} cargas)`
+            : '';
+
+          let loadsMsg = `${header}\n${loadLines.join('\n')}\n\n📊 *Total: ${totalKg.toLocaleString('es-AR')} kg*${humLine}${qualityLine}`;
 
           if (harvested && !isAppend) {
             const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
@@ -2405,9 +2426,24 @@ export class AgronomyHandler {
       lines.push(`\n🚛 *Cargas (${s.yield.loads.length}):*`);
       for (const ld of s.yield.loads) {
         let loadLine = `• ${ld.driver_name} — ${ld.weight_kg.toLocaleString('es-AR')} kg`;
+        if (ld.humidity_pct != null) loadLine += ` (${ld.humidity_pct}% hum)`;
         if (ld.destinatario) loadLine += ` → ${ld.destinatario}`;
         else if (ld.destination) loadLine += ` → ${ld.destination}`;
         lines.push(loadLine);
+      }
+      if (s.yield.avgHumidity != null) {
+        lines.push(`💧 Humedad promedio: ${s.yield.avgHumidity}%`);
+      }
+      // Quality metrics (any load with metrics)
+      const qLoads = s.yield.loads.filter(l => l.quality_metrics && Object.keys(l.quality_metrics).length > 0);
+      if (qLoads.length > 0) {
+        lines.push(`🏷️ *Calidad:*`);
+        for (const ql of qLoads) {
+          const metrics = Object.entries(ql.quality_metrics!)
+            .map(([k, v]) => `${k.replace(/_pct$/, '%').replace(/_/g, ' ')}: ${v}`)
+            .join(', ');
+          lines.push(`  • ${ql.driver_name}: ${metrics}`);
+        }
       }
     }
 

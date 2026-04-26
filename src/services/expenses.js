@@ -2184,12 +2184,21 @@ export async function saveHarvestLoads(domainEventId, plotCropId, loads) {
   const params = [];
   let idx = 1;
   for (const load of loads) {
-    values.push(`($${idx}, $${idx+1}, $${idx+2}, $${idx+3}, $${idx+4}, $${idx+5}, $${idx+6})`);
-    params.push(domainEventId, plotCropId || null, load.driver_name, load.weight_kg,
-      load.destination || null, load.destinatario || null, load.truck_plate || null);
-    idx += 7;
+    values.push(`($${idx}, $${idx+1}, $${idx+2}, $${idx+3}, $${idx+4}, $${idx+5}, $${idx+6}, $${idx+7}, $${idx+8})`);
+    params.push(
+      domainEventId,
+      plotCropId || null,
+      load.driver_name,
+      load.weight_kg,
+      load.destination || null,
+      load.destinatario || null,
+      load.truck_plate || null,
+      load.humidity_pct ?? null,
+      load.quality_metrics ? JSON.stringify(load.quality_metrics) : null,
+    );
+    idx += 9;
   }
-  const sql = `INSERT INTO harvest_loads (domain_event_id, plot_crop_id, driver_name, weight_kg, destination, destinatario, truck_plate)
+  const sql = `INSERT INTO harvest_loads (domain_event_id, plot_crop_id, driver_name, weight_kg, destination, destinatario, truck_plate, humidity_pct, quality_metrics)
     VALUES ${values.join(', ')} RETURNING *`;
   const result = await pool.query(sql, params);
   return result.rows;

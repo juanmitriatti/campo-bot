@@ -47,7 +47,8 @@ export interface CampaignStats {
     kg: number | null;
     kgPerHa: number | null;
     notes: string | null;
-    loads: { driver_name: string; weight_kg: number; destination: string | null; destinatario: string | null; event_date: string }[];
+    loads: { driver_name: string; weight_kg: number; destination: string | null; destinatario: string | null; event_date: string; humidity_pct: number | null; quality_metrics: Record<string, unknown> | null }[];
+    avgHumidity: number | null;
   };
 
   profitability: {
@@ -216,7 +217,15 @@ export class CampaignStatsService {
       destination: hl.destination || null,
       destinatario: hl.destinatario || null,
       event_date: formatDateAR(hl.event_date),
+      humidity_pct: hl.humidity_pct != null ? Number(hl.humidity_pct) : null,
+      quality_metrics: hl.quality_metrics || null,
     }));
+
+    // Average humidity (only loads that reported it)
+    const humLoads = (harvestLoads || []).filter((hl: any) => hl.humidity_pct != null);
+    const avgHumidity = humLoads.length > 0
+      ? Math.round(humLoads.reduce((a: number, hl: any) => a + Number(hl.humidity_pct), 0) / humLoads.length * 10) / 10
+      : null;
 
     // Profitability
     const netARS = incTotalARS - expTotalARS;
@@ -285,7 +294,7 @@ export class CampaignStatsService {
       activities: { total: actList.length, byType: actByType, list: actList },
       expenses: { totalARS: expTotalARS, totalUSD: expTotalUSD, byCategory: expByCategory, count: expenses.length },
       incomes: { totalARS: incTotalARS, totalUSD: incTotalUSD, count: incomes.length },
-      yield: { kg: yieldKg, kgPerHa: yieldKgPerHa, notes: campaign.yield_notes || null, loads: loadsList },
+      yield: { kg: yieldKg, kgPerHa: yieldKgPerHa, notes: campaign.yield_notes || null, loads: loadsList, avgHumidity },
       profitability: { netARS, costPerHaARS: costPerHa, incomePerHaARS: incomePerHa, costPerTnARS, costPerTnUSD, incomePerTnARS },
       observations: { count: obsList.length, list: obsList },
       scouting: scoutingAgg,

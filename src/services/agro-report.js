@@ -404,7 +404,7 @@ function computeInsights({ kpis, plots, prevKpis, activities }) {
     for (const [, p] of plots) {
       const harvested = (p.activities || []).find(a => a.event_type === 'harvest');
       if (!harvested || !p.area || !harvested.quantity) continue;
-      const kgHa = Number(harvested.quantity) * (harvested.unit === 'tn' ? 1000 : 1) / Number(p.area);
+      const kgHa = Number(harvested.quantity) * (harvested.unit === 'tn' ? 1000 : (harvested.unit === 'qq' ? 100 : 1)) / Number(p.area);
       if (!best || kgHa > best.kgHa) best = { name: p.name, kgHa: Math.round(kgHa) };
     }
     if (best && best.kgHa > kpis.avgKgPerHa * 1.1) {
@@ -456,7 +456,7 @@ function computeInsights({ kpis, plots, prevKpis, activities }) {
   const harvestKgByPlot = new Map();
   for (const a of activities) {
     if (a.event_type !== 'harvest' || !a.quantity) continue;
-    const kg = Number(a.quantity) * (a.unit === 'tn' ? 1000 : 1);
+    const kg = Number(a.quantity) * (a.unit === 'tn' ? 1000 : (a.unit === 'qq' ? 100 : 1));
     harvestKgByPlot.set(a.plot_name, (harvestKgByPlot.get(a.plot_name) || 0) + kg);
   }
   const totalHarvested = [...harvestKgByPlot.values()].reduce((a, b) => a + b, 0);
@@ -886,7 +886,7 @@ function renderYieldChart(doc, { activities, plots }) {
     if (!p.area) continue;
     const harv = (p.activities || []).find(a => a.event_type === 'harvest' && a.quantity);
     if (!harv) continue;
-    const kg = Number(harv.quantity) * (harv.unit === 'tn' ? 1000 : 1);
+    const kg = Number(harv.quantity) * (harv.unit === 'tn' ? 1000 : (harv.unit === 'qq' ? 100 : 1));
     const kgHa = Math.round(kg / Number(p.area));
     data.push({ label: p.name.slice(0, 8), value: kgHa, valueLabel: fmtNumAR(kgHa) });
   }

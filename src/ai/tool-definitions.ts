@@ -12,7 +12,7 @@ const FIELD_PROP = { type: 'string' as const, description: 'Nombre del campo, si
 const PLOT_PROP = { type: 'string' as const, description: 'Nombre del lote, si mencionado.' };
 const CROP_PROP = { type: 'string' as const, description: 'Cultivo, si mencionado.' };
 const QUANTITY_PROP = { type: 'number' as const, description: 'Cantidad.' };
-const UNIT_PROP = { type: 'string' as const, description: 'Unidad (kg, lt, cc, tn, bolsas, kg/ha, lt/ha).' };
+const UNIT_PROP = { type: 'string' as const, description: 'Unidad (kg, lt, cc, tn, qq, bolsas, kg/ha, lt/ha). qq=quintal=100 kg. tn=tonelada=1000 kg. Mantener la unidad como la dijo el usuario; el sistema convierte a kg cuando hace falta.' };
 const DATE_PROP = { type: 'string' as const, description: 'Fecha YYYY-MM-DD si el usuario menciona una fecha distinta a hoy. Omitir si es hoy.' };
 
 export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
@@ -222,10 +222,12 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
             type: 'object',
             properties: {
               driver_name: { type: 'string', description: 'Nombre del chofer/transportista.' },
-              weight_kg: { type: 'number', description: 'Peso en kg. "31.320" argentino = 31320 kg. Si dicen tn, x1000.' },
+              weight_kg: { type: 'number', description: 'Peso en kg. "31.320" argentino = 31320 kg. Si dicen tn x1000, qq x100.' },
               destination: { type: 'string', enum: ['silo', 'acopio', 'venta_directa'], description: 'Destino de la carga.' },
               destinatario: { type: 'string', description: 'Empresa destino (Cargill, ACA, etc.).' },
               truck_plate: { type: 'string', description: 'Patente si la mencionan.' },
+              humidity_pct: { type: 'number', description: 'Humedad medida % (ej: "al 14%", "13.5 de humedad"). Argentina típicamente: soja 13.5% base, trigo 14%, maíz 14.5%.' },
+              quality_metrics: { type: 'object', description: 'Métricas de calidad específicas del cultivo. Soja: {oil_pct}. Trigo: {protein_pct, gluten_pct, test_weight_kg_hl}. Girasol: {oil_pct}. Pasarlas SOLO si el usuario las menciona explícitamente.' },
             },
             required: ['driver_name', 'weight_kg'],
           },
