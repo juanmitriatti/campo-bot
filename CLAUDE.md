@@ -96,7 +96,8 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 
 ### Harvest Loads
 - `harvest_crop` accepts optional `loads[]` (per-truck: driver_name, weight_kg, destination?, destinatario?, truck_plate?, humidity_pct?, quality_metrics?). Only driver+weight required.
-- Dedup: same plot harvested today → appends loads, no duplicate event
+- Dedup: same plot harvested today → appends loads, no duplicate event. Dedup path validates crop matches active crop before reusing event
+- Yield rate: `yield_kg_per_ha` param for "X kg/ha" inputs. Handler computes total = rate × area. Mutually exclusive with `yield_kg` (total)
 - If `loads[]` present but no active crop → handler warns the user the loads were dropped
 - If harvest called with no new loads but plot has stored loads → response includes existing-loads summary
 - `query_harvest_loads` tool queries stored loads (filters: plot, field, date, driver, destinatario)
@@ -126,7 +127,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 
 - ESM modules (`"type": "module"`) — `import`/`export`, not `require`
 - All user-facing text in Argentine Spanish
-- Currency: ARS (default) and USD; amounts use Argentine conventions (50mil = 50,000)
+- Currency: ARS (default) and USD; amounts use Argentine conventions (50mil = 50,000, medio palo = 500,000, palo = 1,000,000)
 - Timezone: `America/Argentina/Buenos_Aires` (UTC-3). Centralized helpers in `src/utils/date.ts`: `getNowArgentina()`, `getTodayISO()`, `formatDateAR()`. PostgreSQL timezone set via migration 048.
 - Soft delete: `deleted_at` on expenses, incomes, fields, plots
 - Lotes (plots) = primary productive unit; Campos (fields) = grouping container
@@ -174,6 +175,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/domain/documents/` — Invoice/receipt processing (Claude Vision)
 - `src/domain/sharing/` — Invite-code field sharing
 - `src/domain/feedlot/` — Feedlot/corral CRUD
+- `src/domain/router.ts` — **DomainRouter**: routes commands to handlers. New commands MUST be added to the appropriate `*_COMMANDS` set here or they will silently fail (return null)
 - `src/domain/compound-executor.ts` — Sequential execution of multiple tool calls
 - `src/domain/billing/` — Plan limits + FeatureGate
 
