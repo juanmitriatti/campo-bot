@@ -1357,15 +1357,25 @@ export async function getMonthlyExpenses(userId) {
 
 export const RAINFALL_REJECTED_DUPLICATE = { _rejected: 'duplicate_rainfall' };
 
-export async function saveRainfall(userId, mm, fieldId = null) {
+export async function saveRainfall(userId, mm, fieldId = null, rainfallDate = null) {
+  const effectiveDate = rainfallDate || null; // null → CURRENT_DATE via SQL default
   const existing = await pool.query(
     `SELECT id FROM rainfall
      WHERE user_id = $1 AND COALESCE(field_id, 0) = COALESCE($2, 0)
-       AND rainfall_date = CURRENT_DATE`,
-    [userId, fieldId]
+       AND rainfall_date = COALESCE($3::date, CURRENT_DATE)`,
+    [userId, fieldId, effectiveDate]
   );
   if (existing.rows.length > 0) return RAINFALL_REJECTED_DUPLICATE;
 
+  if (effectiveDate) {
+    const result = await pool.query(
+      `INSERT INTO rainfall (user_id, field_id, millimeters, rainfall_date)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [userId, fieldId, mm, effectiveDate]
+    );
+    return result.rows[0];
+  }
   const result = await pool.query(
     `INSERT INTO rainfall (user_id, field_id, millimeters)
      VALUES ($1, $2, $3)

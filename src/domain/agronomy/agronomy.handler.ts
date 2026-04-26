@@ -640,16 +640,24 @@ export class AgronomyHandler {
           };
         }
 
-        const saved = await this.repo.saveRainfall(userId, mm, fieldId);
+        const rainfallDate = cmd.eventDate ? String(cmd.eventDate) : null;
+        const saved = await this.repo.saveRainfall(userId, mm, fieldId, rainfallDate);
 
         // Handle dedup rejection
         if (saved === RAINFALL_REJECTED_DUPLICATE) {
           const dupLabel = fieldLabel || 'tu campo';
-          return { messages: [`Ya hay un registro de lluvia hoy para *${dupLabel}*. Si querés corregirlo, borrá el anterior con *borrar lluvia* y registrá de nuevo.`] };
+          const dateLabel = rainfallDate
+            ? new Date(rainfallDate + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long', timeZone: 'America/Argentina/Buenos_Aires' })
+            : 'hoy';
+          return { messages: [`Ya hay un registro de lluvia el *${dateLabel}* para *${dupLabel}*. Si querés corregirlo, borrá el anterior con *borrar lluvia* y registrá de nuevo.`] };
         }
 
         let msg = `\ud83c\udf27\ufe0f Lluvia registrada: *${mm}mm*`;
         if (fieldLabel) msg += `\n\ud83d\udccd ${fieldLabel}`;
+        if (rainfallDate) {
+          const dateLabel = new Date(rainfallDate + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long', timeZone: 'America/Argentina/Buenos_Aires' });
+          msg += `\n\ud83d\udcc5 ${dateLabel}`;
+        }
 
         // Check cumulative daily rain threshold alert
         if (settings.rain_alerts !== false) {

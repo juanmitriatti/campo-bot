@@ -83,8 +83,8 @@ export class AgronomyRepository {
     this.plots = plotRepo ?? new PlotRepository();
   }
 
-  async saveRainfall(userId: UserId, mm: number, fieldId: number | null): Promise<unknown> {
-    return _saveRainfall(userId, mm, fieldId);
+  async saveRainfall(userId: UserId, mm: number, fieldId: number | null, rainfallDate?: string | null): Promise<unknown> {
+    return _saveRainfall(userId, mm, fieldId, rainfallDate ?? null);
   }
 
   async getConversationState(userId: UserId): Promise<{ last_field_id: number | null; field_name: string | null } | null> {

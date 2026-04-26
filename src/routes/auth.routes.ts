@@ -1019,15 +1019,15 @@ router.get('/analytics', requireAuth, async (req: Request, res: Response) => {
 
     // Rainfall - last 30 days
     const { rows: rainfallDaily } = await pool.query(
-      `SELECT r.rain_date::text AS date,
-              to_char(r.rain_date, 'DD/MM') AS label,
-              SUM(r.mm)::numeric AS mm
+      `SELECT r.rainfall_date::text AS date,
+              to_char(r.rainfall_date, 'DD/MM') AS label,
+              SUM(r.millimeters)::numeric AS mm
          FROM rainfall r
          JOIN fields f ON f.id = r.field_id
         WHERE f.user_id = $1 AND f.deleted_at IS NULL
-          AND r.rain_date >= CURRENT_DATE - interval '30 days'
-        GROUP BY r.rain_date
-        ORDER BY r.rain_date`,
+          AND r.rainfall_date >= CURRENT_DATE - interval '30 days'
+        GROUP BY r.rainfall_date
+        ORDER BY r.rainfall_date`,
       [userId]
     );
 
