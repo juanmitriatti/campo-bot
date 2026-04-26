@@ -135,8 +135,24 @@ export class ScenarioRunner {
             };
           }
           if (this.verbose) console.log(`    Setup: ${setupName} (${setupSteps.length} steps)`);
-          for (const step of setupSteps) {
-            await this.executeStep(step, -1); // -1 = setup step (no assertions collected)
+          for (let i = 0; i < setupSteps.length; i++) {
+            const step = setupSteps[i];
+            try {
+              const result = await this.executeStep(step, -1);
+              if (this.verbose && result.responsePreview) {
+                console.log(`      setup[${i}]: ${result.action} → "${result.responsePreview.slice(0, 80)}..."`);
+              }
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              return {
+                name: scenario.name,
+                description: scenario.description,
+                passed: false,
+                steps: [],
+                durationMs: Date.now() - start,
+                error: `Setup "${setupName}" failed at step ${i}: ${msg}`,
+              };
+            }
           }
         }
       }
@@ -183,7 +199,8 @@ export class ScenarioRunner {
       const failCount = result.steps.reduce((sum, s) => sum + s.assertions.filter(a => !a.pass).length, 0);
       console.log(`  ${icon} ${result.name} (${assertionCount} assertions, ${failCount} failed, ${result.durationMs}ms)`);
 
-      if (!result.passed && this.verbose) {
+      if (!result.passed) {
+        // Always show failure details (not just in verbose mode)
         for (const step of result.steps) {
           for (const a of step.assertions) {
             if (!a.pass) {
@@ -215,7 +232,7 @@ export class ScenarioRunner {
       result = await this.client.tap(step.tap);
     }
 
-    if (this.verbose && result) {
+    if (this.verbose && result && stepIndex >= 0) {
       const preview = TestBotClient.allText(result).slice(0, 120);
       console.log(`      Step ${stepIndex}: ${action} → "${preview}..."`);
     }

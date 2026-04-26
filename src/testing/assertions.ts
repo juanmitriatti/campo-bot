@@ -73,6 +73,7 @@ export function hasButton(result: SendResult, buttonId: string): AssertionResult
 }
 
 // --- DB state assertions ---
+// All DB assertions filter by user_id to prevent cross-user contamination.
 
 export interface DbExpenseFilter {
   amount?: number;
@@ -80,11 +81,11 @@ export interface DbExpenseFilter {
   description?: string;
 }
 
-/** Check that at least one expense matches the filter. */
+/** Check that at least one expense matches the filter for the current user. */
 export async function dbHasExpense(client: TestBotClient, filter: DbExpenseFilter): Promise<AssertionResult> {
-  const conditions: string[] = ['deleted_at IS NULL'];
-  const params: unknown[] = [];
-  let idx = 1;
+  const conditions: string[] = ['user_id = $1', 'deleted_at IS NULL'];
+  const params: unknown[] = [client.userId];
+  let idx = 2;
 
   if (filter.amount !== undefined) {
     conditions.push(`amount = $${idx++}`);
@@ -115,11 +116,11 @@ export interface DbIncomeFilter {
   category?: string;
 }
 
-/** Check that at least one income matches the filter. */
+/** Check that at least one income matches the filter for the current user. */
 export async function dbHasIncome(client: TestBotClient, filter: DbIncomeFilter): Promise<AssertionResult> {
-  const conditions: string[] = ['deleted_at IS NULL'];
-  const params: unknown[] = [];
-  let idx = 1;
+  const conditions: string[] = ['user_id = $1', 'deleted_at IS NULL'];
+  const params: unknown[] = [client.userId];
+  let idx = 2;
 
   if (filter.amount !== undefined) {
     conditions.push(`amount = $${idx++}`);
@@ -147,18 +148,18 @@ export interface DbActivityFilter {
   plot?: string;
 }
 
-/** Check that at least one domain_event (activity) matches the filter. */
+/** Check that at least one domain_event (activity) matches the filter for the current user. */
 export async function dbHasActivity(client: TestBotClient, filter: DbActivityFilter): Promise<AssertionResult> {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-  let idx = 1;
+  const conditions: string[] = ['de.user_id = $1'];
+  const params: unknown[] = [client.userId];
+  let idx = 2;
 
   if (filter.eventType) {
-    conditions.push(`LOWER(event_type) = LOWER($${idx++})`);
+    conditions.push(`LOWER(de.event_type) = LOWER($${idx++})`);
     params.push(filter.eventType);
   }
   if (filter.crop) {
-    conditions.push(`LOWER(crop) = LOWER($${idx++})`);
+    conditions.push(`LOWER(de.crop) = LOWER($${idx++})`);
     params.push(filter.crop);
   }
   if (filter.plot) {
@@ -166,11 +167,10 @@ export async function dbHasActivity(client: TestBotClient, filter: DbActivityFil
     params.push(filter.plot);
   }
 
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const sql = `SELECT de.id, de.event_type, de.crop, p.name as plot_name
     FROM domain_events de
     LEFT JOIN plots p ON p.id = de.plot_id
-    ${where}
+    WHERE ${conditions.join(' AND ')}
     ORDER BY de.created_at DESC LIMIT 1`;
   const rows = await client.queryDb(sql, params);
   return {
@@ -187,11 +187,11 @@ export interface DbObservationFilter {
   category?: string;
 }
 
-/** Check that at least one agro_observation matches the filter. */
+/** Check that at least one agro_observation matches the filter for the current user. */
 export async function dbHasObservation(client: TestBotClient, filter: DbObservationFilter): Promise<AssertionResult> {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-  let idx = 1;
+  const conditions: string[] = ['user_id = $1'];
+  const params: unknown[] = [client.userId];
+  let idx = 2;
 
   if (filter.textContains) {
     conditions.push(`LOWER(observation_text) LIKE LOWER($${idx++})`);
@@ -202,8 +202,7 @@ export async function dbHasObservation(client: TestBotClient, filter: DbObservat
     params.push(filter.category);
   }
 
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const sql = `SELECT id, observation_text, category FROM agro_observations ${where} ORDER BY created_at DESC LIMIT 1`;
+  const sql = `SELECT id, observation_text, category FROM agro_observations WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 1`;
   const rows = await client.queryDb(sql, params);
   return {
     pass: rows.length > 0,
@@ -214,7 +213,7 @@ export async function dbHasObservation(client: TestBotClient, filter: DbObservat
   };
 }
 
-/** Verify exact row count in a table (for the current user). */
+/** Verify exact row count in a table for the current user. */
 export async function dbRowCount(client: TestBotClient, table: string, expectedCount: number): Promise<AssertionResult> {
   // Sanitize table name to prevent injection
   const safeTables = [
@@ -227,16 +226,40 @@ export async function dbRowCount(client: TestBotClient, table: string, expectedC
     return { pass: false, name: 'dbRowCount', message: `Table "${table}" not in safe list` };
   }
 
+  // Tables with user_id directly
+  const hasUserId = [
+    'expenses', 'incomes', 'fields', 'domain_events',
+    'agro_observations', 'crop_scoutings', 'rainfall', 'budgets',
+    'livestock_groups', 'livestock_movements',
+    'stock_items', 'stock_movements', 'warehouses', 'documents',
+  ];
+  // Tables with user_id via fields join
+  const needsFieldJoin = ['plots', 'harvest_loads'];
+
   const hasDeletedAt = ['expenses', 'incomes', 'fields'].includes(table);
   const deletedFilter = hasDeletedAt ? ' AND deleted_at IS NULL' : '';
-  const sql = `SELECT COUNT(*)::int as cnt FROM ${table} WHERE 1=1${deletedFilter}`;
-  const rows = await client.queryDb(sql);
+
+  let sql: string;
+  if (hasUserId.includes(table)) {
+    sql = `SELECT COUNT(*)::int as cnt FROM ${table} WHERE user_id = $1${deletedFilter}`;
+  } else if (needsFieldJoin.includes(table)) {
+    if (table === 'plots') {
+      sql = `SELECT COUNT(*)::int as cnt FROM plots p JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1 AND f.deleted_at IS NULL`;
+    } else {
+      // harvest_loads → join plots → fields
+      sql = `SELECT COUNT(*)::int as cnt FROM harvest_loads hl JOIN plots p ON p.id = hl.plot_id JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1`;
+    }
+  } else {
+    return { pass: false, name: 'dbRowCount', message: `No user_id strategy for table "${table}"` };
+  }
+
+  const rows = await client.queryDb(sql, [client.userId]);
   const actual = (rows[0] as { cnt: number }).cnt;
   return {
     pass: actual === expectedCount,
     name: 'dbRowCount',
     message: actual === expectedCount
       ? `${table}: ${actual} rows (expected ${expectedCount})`
-      : `${table}: ${actual} rows (expected ${expectedCount})`,
+      : `${table}: got ${actual} rows, expected ${expectedCount}`,
   };
 }

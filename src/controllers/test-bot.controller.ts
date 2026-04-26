@@ -1317,12 +1317,15 @@ router.post('/reset', async (req: Request, res: Response) => {
     const numericUserId = asUserId(typeof userId === 'string' ? parseInt(userId, 10) : userId);
     const phone = syntheticPhone(numericUserId);
 
-    // 1. Clear in-memory stores
+    // 1. Clear ALL in-memory stores
     pendingStore.clear(phone);
     pendingObsStore.clear(phone);
     pendingActStore.clear(phone);
+    pendingCityStore.clear(phone);
     pendingStockEntryStore.delete(phone);
     pendingStockDeductionStore.delete(phone);
+    pendingFieldLocationStore.clear(phone);
+    pendingCampaignCloseStore.delete(phone);
 
     // 2. Hard-delete all DB records in a transaction (FK-safe order)
     await client.query('BEGIN');
