@@ -12,6 +12,7 @@ import { AgronomyHandler } from '../domain/agronomy/agronomy.handler.js';
 import { AgronomyRepository } from '../domain/agronomy/agronomy.repository.js';
 import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
+import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
@@ -749,7 +750,7 @@ router.post('/', async (req: Request, res: Response) => {
                 const { StockPurchaseService } = await import('../domain/stock/stock-purchase.service.js');
                 const svc = new StockPurchaseService();
                 const result = await svc.applyStockEntry(user.id, pending as any);
-                await sendMessage(phone, `📦 Stock actualizado: +${result.movement.quantity}${result.item.unit} de ${result.item.name} (${result.item.current_quantity}${result.item.unit} total)`);
+                await sendMessage(phone, `📦 Stock actualizado: +${formatQuantityHuman(result.movement.quantity, result.item.unit)} de ${result.item.name} (${formatQuantityHuman(result.item.current_quantity, result.item.unit)} total)`);
               } else {
                 await sendMessage(phone, '⚠️ No hay entrada de stock pendiente.');
               }
@@ -781,7 +782,7 @@ router.post('/', async (req: Request, res: Response) => {
                   const svc = new StockDeductionService();
                   const result = await svc.applyDeduction(user.id, pending as any);
                   pendingStockDeductionStore.delete(phone);
-                  await sendMessage(phone, `📦 Stock descontado: -${pending.totalQuantity}${result.item.unit} de ${result.item.name} (${result.item.current_quantity}${result.item.unit} restante)`);
+                  await sendMessage(phone, `📦 Stock descontado: -${formatQuantityHuman(pending.totalQuantity as number, result.item.unit)} de ${result.item.name} (${formatQuantityHuman(result.item.current_quantity, result.item.unit)} restante)`);
                 }
               } else {
                 await sendMessage(phone, '⚠️ No hay descuento de stock pendiente.');
@@ -815,7 +816,7 @@ router.post('/', async (req: Request, res: Response) => {
                 const svc = new StockPurchaseService();
                 const result = await svc.applyStockEntry(user.id, pending as any);
                 pendingStockEntryStore.delete(phone);
-                await sendMessage(phone, `📦 Stock actualizado: +${result.movement.quantity}${result.item.unit} de ${result.item.name} (${result.item.current_quantity}${result.item.unit} total)`);
+                await sendMessage(phone, `📦 Stock actualizado: +${formatQuantityHuman(result.movement.quantity, result.item.unit)} de ${result.item.name} (${formatQuantityHuman(result.item.current_quantity, result.item.unit)} total)`);
               } else {
                 await sendMessage(phone, '⚠️ No hay cosecha pendiente para cargar.');
               }
@@ -844,7 +845,7 @@ router.post('/', async (req: Request, res: Response) => {
                   reason: 'Venta de grano',
                 });
                 pendingStockDeductionStore.delete(phone);
-                await sendMessage(phone, `📦 Stock descontado: *${item.name}* → ${item.current_quantity}${item.unit} restante`);
+                await sendMessage(phone, `📦 Stock descontado: *${item.name}* → ${formatQuantityHuman(item.current_quantity, item.unit)} restante`);
               } else {
                 await sendMessage(phone, '⚠️ No hay descuento de stock pendiente.');
               }
@@ -1432,7 +1433,7 @@ router.post('/', async (req: Request, res: Response) => {
           const deductionService = new StockDeductionService();
           const { item } = await deductionService.applyDeduction(userId, pendingDeduction as any);
           pendingStockDeductionStore.delete(phone);
-          await sendMessage(phone, `📤 Stock descontado: *${item.name}* → ${item.current_quantity} ${item.unit}`);
+          await sendMessage(phone, `📤 Stock descontado: *${item.name}* → ${formatQuantityHuman(item.current_quantity, item.unit)}`);
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : 'Error al descontar stock';
           pendingStockDeductionStore.delete(phone);

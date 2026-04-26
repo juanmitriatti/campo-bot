@@ -66,6 +66,7 @@
 ### Sow Crop
 - `sow_crop` accepts optional `hectares` param for partial-plot sowing
 - Stored in `plot_crops.sowed_hectares`
+- **Ha validation warning**: if `hectares > plot.area_hectares`, response appends ⚠️ warning (non-blocking)
 
 ### Harvest Loads (Per-Truck Tracking)
 - `harvest_crop` accepts optional `loads[]` array: `{ driver_name, weight_kg, destination?, destinatario?, truck_plate?, humidity_pct?, quality_metrics? }`

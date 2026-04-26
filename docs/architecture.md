@@ -59,7 +59,7 @@
 - `normalizeActivityFilter()` maps AI filter strings to DB event_type values
 - Campaign lifecycle: ACTIVE → HARVESTED (`harvested_at`) → CLOSED (`end_date`). `CropService.startCrop()` auto-closes harvested campaigns when re-sowing.
 - `active_crop`: with plot → single crop; without → ALL active crops (filterable by crop name)
-- Sowed hectares: `sow_crop` accepts optional `hectares` → `plot_crops.sowed_hectares`
+- Sowed hectares: `sow_crop` accepts optional `hectares` → `plot_crops.sowed_hectares`. Warns if hectares > plot area (non-blocking)
 - Harvest loads: `harvest_crop` accepts optional `loads[]` (per-truck: driver, kg, destination). Dedup: same plot+today → append. `updateYieldFromLoads()` auto-sums into `plot_crops.yield_kg`. Query via `query_harvest_loads` tool. Delete duplicates via `delete_harvest_loads` tool.
 - Campaign stats: cost/ha, cost/tn (ARS+USD), income/ha, income/tn metrics
 - Campaign comparison: `compare_campaigns` tool compares 2 seasons (auto-detects or explicit) with % deltas on yield, expenses, incomes, net result/ha

@@ -20,6 +20,7 @@ import { logError } from '../../services/error-logger.js';
 import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
 import { formatHistoryResponse } from './plot-query.service.js';
 import { formatDateAR } from '../../utils/date.js';
+import { formatQuantityHuman } from '../../utils/format-quantity.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
 import type { PendingActivity } from '../../middleware/pending-activities.js';
@@ -792,6 +793,19 @@ export class AgronomyHandler {
         }
         let sowMsg = `🌱 *${crop}* sembrado en *${plotLabel}*\n📅 Campaña ${label}`;
         if (sowedHa) sowMsg += `\n📐 Sembradas: ${sowedHa.toLocaleString('es-AR')} ha`;
+
+        // Warn if sowed hectares exceed plot area
+        if (sowedHa) {
+          try {
+            const { getPlotById } = await import('../../services/expenses.js');
+            const plotInfo = await getPlotById(plotResult.plotId, userId);
+            const areaHa = plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : null;
+            if (areaHa && sowedHa > areaHa) {
+              sowMsg += `\n\n⚠️ El lote tiene *${areaHa} ha* registradas pero la siembra indica *${sowedHa} ha*. Verificá la superficie.`;
+            }
+          } catch { /* non-critical */ }
+        }
+
         msgs.push(sowMsg);
         return { messages: msgs };
       }
@@ -960,12 +974,13 @@ export class AgronomyHandler {
             const hasStock = await fg.hasFeature(userId, 'stock');
             if (hasStock) {
               const warehouseName = (cmd.warehouseName as string) || undefined;
-              messages.push(`\n📦 ¿Querés cargar *${harvestQuantity}${harvestUnit}* de *${crop}* al ${warehouseName ? `silo *${warehouseName}*` : 'stock'}?`);
+              const fmtQty = formatQuantityHuman(harvestQuantity, harvestUnit);
+              messages.push(`\n📦 ¿Querés cargar *${fmtQty}* de *${crop}* al ${warehouseName ? `silo *${warehouseName}*` : 'stock'}?`);
               return {
                 messages,
                 interactive: {
                   type: 'buttons',
-                  body: `Cargar ${harvestQuantity}${harvestUnit} de ${crop} al stock?`,
+                  body: `Cargar ${fmtQty} de ${crop} al stock?`,
                   buttons: [
                     { id: `stock_grain_yes_${savedEvent.id}`, title: 'Sí, cargar' },
                     { id: `stock_grain_no_${savedEvent.id}`, title: 'No' },

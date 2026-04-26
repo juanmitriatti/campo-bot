@@ -195,6 +195,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/utils/parser.js` — Spanish text normalization, number expansion, category matching
 - `src/utils/date.ts` — Argentina timezone helpers
 - `src/utils/guards.ts` — `isLikelyQuestion()` guard
+- `src/utils/format-quantity.ts` — `formatQuantityHuman()`: renders large kg as tn (e.g. 213200kg → ≈ 213,2 tn)
 - `src/types/index.ts` — ParseResult, PlanRow, ParseSource
 
 ### Landing Page

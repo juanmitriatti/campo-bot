@@ -11,6 +11,7 @@ import { AgronomyHandler } from '../domain/agronomy/agronomy.handler.js';
 import { AgronomyRepository } from '../domain/agronomy/agronomy.repository.js';
 import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
+import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
@@ -878,7 +879,7 @@ async function handleInteractiveReply(
           const svc = new StockPurchaseService();
           const { item, movement } = await svc.applyStockEntry(userId, pending as any);
           pendingStockEntryStore.delete(phone);
-          return [{ type: 'text', text: `📦 Stock actualizado: +${movement.quantity}${item.unit} de ${item.name} (${item.current_quantity}${item.unit} total)` }];
+          return [{ type: 'text', text: `📦 Stock actualizado: +${formatQuantityHuman(movement.quantity, item.unit)} de ${item.name} (${formatQuantityHuman(item.current_quantity, item.unit)} total)` }];
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Error al cargar al silo';
