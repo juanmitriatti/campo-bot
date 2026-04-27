@@ -4,7 +4,7 @@
 
 ### AI Agent (tool_use) — primary path
 - **`agent.service.ts`** — Calls Claude with `tool_use` + `tool_choice: auto`; returns `AgentResult` with tool calls array + optional conversational text. Uses plan-based rate limiting, conversation history, few-shot examples, and configurable timeout.
-- **`tool-definitions.ts`** — 74 tool definitions with typed `input_schema`. All registration tools include `event_date` (YYYY-MM-DD). Query/report tools include expected output data and example trigger phrases.
+- **`tool-definitions.ts`** — 82 tool definitions with typed `input_schema`. All registration tools include `event_date` (YYYY-MM-DD). Query/report tools include expected output data and example trigger phrases.
 - **`agent-prompt-builder.ts`** — Compact system prompt (~400 tokens) with disambiguation rules, user context, dynamic today's date. Activity synonym lines dynamically generated from `activity_dictionary` DB table (admin-editable).
 - **`agent-response-mapper.ts`** — Converts `AgentResult` → `ParseResult[]` for backward compat. Maps tool calls to expense/income/command ParseResults. No-tool responses → `_conversationalResponse`. Smart agro filter: drops `log_expense`/`log_income` alongside agro tools only when amount=0.
 - **`few-shot.service.ts`** — `formatAsToolUseMessages()` converts training examples to tool_use triplets.
@@ -103,15 +103,15 @@
 
 ## Database
 
-PostgreSQL with migrations in `src/migrations/001-066_*.sql`. Timezone: `America/Argentina/Buenos_Aires` (migration 048). Migrations auto-run on app startup via `bootstrap()` → `runMigrations()`.
+PostgreSQL with migrations in `src/migrations/001-074_*.sql`. Timezone: `America/Argentina/Buenos_Aires` (migration 048). Migrations auto-run on app startup via `bootstrap()` → `runMigrations()`.
 
 ### Key Tables
 - `users` (telegram_id, province, last_name), `fields` (province, lat, lng, polygon, location_method), `plots`
 - `expenses` (expense_date, edited_by, expense_type, product, quantity, unit), `incomes` (income_date, edited_by)
-- `domain_events` (event_date, edited_by, stock_deduction_status, pregnant_count/open_count/uncertain_count)
+- `domain_events` (event_date, edited_by, stock_deduction_status, pregnant_count/open_count/uncertain_count, animal_category, animals_affected)
 - `agro_observations` (observation_date), `budgets`, `rainfall`
 - `plot_crops` (crop, season_year, start_date, end_date, harvested_at, yield_kg, sowed_hectares)
-- `harvest_loads` (domain_event_id, plot_crop_id, driver_name, weight_kg, destination, destinatario, truck_plate)
+- `harvest_loads` (domain_event_id, plot_crop_id, driver_name, weight_kg, destination, destinatario, truck_plate, humidity_pct, quality_metrics)
 - `expense_templates` (name, amount, recurrence_type, recurrence_day, next_run_date, active)
 - `crop_stages` (crop, stage_name, stage_code, typical_days_from_sowing, alert_message)
 - `warehouses`, `stock_items` (current_quantity, min_stock, grade, humidity_pct), `stock_movements`

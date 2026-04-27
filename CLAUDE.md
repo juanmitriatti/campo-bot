@@ -241,7 +241,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 ## Tests
 
 ### Unit Tests (vitest)
-- 1211 total, 7 pre-existing failures. Baseline: 1204 passing.
+- 1211 total, 6 pre-existing failures. Baseline: 1205 passing.
 - Run: `npm test`
 - Single file: `npx vitest run src/utils/parser.test.js`
 

@@ -37,7 +37,7 @@ npx tsx src/scripts/run-migrations.ts   # Manual run
 
 Set `RUN_MIGRATIONS_ON_START=false` to disable (e.g., unit tests).
 
-Files: `src/migrations/001-066_*.sql`
+Files: `src/migrations/001-074_*.sql`
 
 ## Environment Variables
 
