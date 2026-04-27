@@ -1711,16 +1711,78 @@ export async function getCampaignObservations(plotId, startDate, endDate = null)
 
 export async function saveDomainEvent(userId, data) {
   const result = await pool.query(
-    `INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop, product, product_type, quantity, unit, implement, notes, pregnant_count, open_count, uncertain_count, corral_id)
-     VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+    `INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop, product, product_type, quantity, unit, implement, notes, pregnant_count, open_count, uncertain_count, corral_id, animal_category, animals_affected)
+     VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
      RETURNING *`,
     [userId, data.plotId || null, data.plotCropId || null, data.eventType, data.eventDate || null,
      data.crop || null, data.product || null, data.productType || null,
      data.quantity || null, data.unit || null, data.implement || null, data.notes || null,
      data.pregnantCount ?? null, data.openCount ?? null, data.uncertainCount ?? null,
-     data.corralId || null]
+     data.corralId || null, data.animalCategory || null, data.animalsAffected ?? null]
   );
   return result.rows[0];
+}
+
+/**
+ * Query livestock-related domain events (health_event, repro_event, weighing).
+ * Returns rows with plot_name, field_name, corral info joined.
+ */
+export async function queryLivestockEvents(userId, eventType, { fieldId = null, plotId = null, corralId = null, category = null, subtype = null, desde = null, hasta = null, limit = 30 } = {}) {
+  const conditions = ['de.user_id = $1', 'de.event_type = $2'];
+  const params = [userId, eventType];
+  let idx = 3;
+
+  if (fieldId) { conditions.push(`p.field_id = $${idx++}`); params.push(fieldId); }
+  if (plotId) { conditions.push(`de.plot_id = $${idx++}`); params.push(plotId); }
+  if (corralId) { conditions.push(`de.corral_id = $${idx++}`); params.push(corralId); }
+  if (category) { conditions.push(`de.animal_category = $${idx++}`); params.push(category); }
+  if (subtype) { conditions.push(`de.product_type = $${idx++}`); params.push(subtype); }
+  if (desde) { conditions.push(`de.event_date >= $${idx++}::date`); params.push(desde); }
+  if (hasta) { conditions.push(`de.event_date <= $${idx++}::date`); params.push(hasta); }
+
+  const result = await pool.query(
+    `SELECT de.*, p.name as plot_name, f.name as field_name,
+            c.name as corral_name, fl.name as feedlot_name
+     FROM domain_events de
+     LEFT JOIN plots p ON de.plot_id = p.id
+     LEFT JOIN fields f ON p.field_id = f.id
+     LEFT JOIN corrals c ON de.corral_id = c.id
+     LEFT JOIN feedlots fl ON c.feedlot_id = fl.id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY de.event_date DESC, de.created_at DESC
+     LIMIT $${idx}`,
+    [...params, limit]
+  );
+  return result.rows;
+}
+
+/**
+ * Update avg_weight_kg on a matching livestock_group.
+ * Matches by userId + category + (plotId or corralId).
+ */
+export async function updateLivestockGroupWeight(userId, { category, plotId = null, corralId = null, avgWeightKg }) {
+  const conditions = ['user_id = $1', 'category = $2', 'deleted_at IS NULL'];
+  const params = [userId, category];
+  let idx = 3;
+
+  if (corralId) {
+    conditions.push(`corral_id = $${idx++}`);
+    params.push(corralId);
+  } else if (plotId) {
+    conditions.push(`plot_id = $${idx++}`);
+    params.push(plotId);
+  } else {
+    return null; // Need at least one location
+  }
+
+  params.push(avgWeightKg);
+  const result = await pool.query(
+    `UPDATE livestock_groups SET avg_weight_kg = $${idx++}, updated_at = NOW()
+     WHERE ${conditions.join(' AND ')}
+     RETURNING *`,
+    params
+  );
+  return result.rows[0] || null;
 }
 
 export async function getDomainEventsByPlot(plotId, limit = 20) {

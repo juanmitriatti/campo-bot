@@ -1073,6 +1073,120 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
 
   // ========================
+  // LIVESTOCK — HEALTH / REPRO / WEIGHING
+  // ========================
+  {
+    name: 'log_health_event',
+    description: 'Registrar evento sanitario: vacunación, desparasitación, tratamiento veterinario, revisión sanitaria. Verbos: vacuné, desparasité, curé, traté, revisé sanitariamente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        health_type: { type: 'string', enum: ['vacunacion', 'desparasitacion', 'tratamiento', 'revision_sanitaria'], description: 'Tipo de evento sanitario.' },
+        disease_or_vaccine: { type: 'string', description: 'Nombre de la vacuna, enfermedad o tratamiento (ej: "aftosa", "brucelosis", "ivermectina", "queratoconjuntivitis").' },
+        category: { type: 'string', enum: ['vaca','vaquillona','ternero','ternera','novillo','novillito','toro','torito','buey'], description: 'Categoría animal.' },
+        animals_affected: { type: 'number', description: 'Cantidad de animales tratados/vacunados.' },
+        dose_quantity: { type: 'number', description: 'Cantidad de dosis/producto aplicado (opcional).' },
+        dose_unit: { type: 'string', description: 'Unidad de dosis (cc, ml, lt). Opcional.' },
+        veterinarian: { type: 'string', description: 'Nombre del veterinario.' },
+        notes: { type: 'string', description: 'Observaciones adicionales.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Nombre del corral (feedlot).' },
+        event_date: DATE_PROP,
+      },
+      required: ['health_type'],
+    },
+  },
+  {
+    name: 'query_health_events',
+    description: 'Consultar historial sanitario: vacunaciones, desparasitaciones, tratamientos. Triggers: "cuándo se vacunó", "historial sanitario", "qué vacunas tiene", "última desparasitación".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Corral (opcional).' },
+        category: { type: 'string', description: 'Categoría animal (opcional).' },
+        health_type: { type: 'string', enum: ['vacunacion', 'desparasitacion', 'tratamiento', 'revision_sanitaria'], description: 'Filtrar por tipo.' },
+        desde: { type: 'string', description: 'Fecha inicio YYYY-MM-DD.' },
+        hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'log_repro_event',
+    description: 'Registrar evento reproductivo: servicio/entore (echar toro), destete, inseminación artificial, detección de celo. Verbos: eché el toro, desteté, inseminé, detecté celo, entore.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        repro_type: { type: 'string', enum: ['servicio', 'destete', 'inseminacion', 'deteccion_celo'], description: 'Tipo de evento reproductivo. servicio=echar el toro/entore.' },
+        category: { type: 'string', enum: ['vaca','vaquillona','ternero','ternera','novillo','novillito','toro','torito','buey'], description: 'Categoría animal.' },
+        animals_affected: { type: 'number', description: 'Cantidad de animales.' },
+        sire_info: { type: 'string', description: 'Info del toro/padrillo: nombre, raza, caravana (ej: "toro Angus caravana 1234").' },
+        method: { type: 'string', description: 'Método (para inseminación: "IA", "IATF", "monta natural").' },
+        notes: { type: 'string', description: 'Observaciones.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Nombre del corral (feedlot).' },
+        event_date: DATE_PROP,
+      },
+      required: ['repro_type'],
+    },
+  },
+  {
+    name: 'query_repro_events',
+    description: 'Consultar eventos reproductivos: servicios, destetes, inseminaciones. Triggers: "cuándo se echó el toro", "destetes del año", "historial reproductivo".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Corral (opcional).' },
+        category: { type: 'string', description: 'Categoría animal (opcional).' },
+        repro_type: { type: 'string', enum: ['servicio', 'destete', 'inseminacion', 'deteccion_celo'], description: 'Filtrar por tipo.' },
+        desde: { type: 'string', description: 'Fecha inicio YYYY-MM-DD.' },
+        hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'log_weighing',
+    description: 'Registrar pesaje de hacienda. Verbos: pesé, pesaron, peso promedio. El peso es SIEMPRE promedio por animal en kg.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['vaca','vaquillona','ternero','ternera','novillo','novillito','toro','torito','buey'], description: 'Categoría animal.' },
+        avg_weight_kg: { type: 'number', description: 'Peso promedio por animal en kg.' },
+        animals_weighed: { type: 'number', description: 'Cantidad de animales pesados.' },
+        notes: { type: 'string', description: 'Observaciones.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Nombre del corral (feedlot).' },
+        event_date: DATE_PROP,
+      },
+      required: ['avg_weight_kg'],
+    },
+  },
+  {
+    name: 'query_weighings',
+    description: 'Consultar pesajes y GDPV (ganancia diaria de peso vivo). Triggers: "cuánto pesan", "evolución de peso", "GDPV", "ganancia de peso", "último pesaje".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Corral (opcional).' },
+        category: { type: 'string', description: 'Categoría animal (opcional).' },
+        desde: { type: 'string', description: 'Fecha inicio YYYY-MM-DD.' },
+        hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD.' },
+      },
+      required: [],
+    },
+  },
+
+  // ========================
   // FEEDLOT / CORRALS
   // ========================
   {

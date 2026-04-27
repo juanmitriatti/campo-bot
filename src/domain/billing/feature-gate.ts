@@ -176,6 +176,13 @@ export class FeatureGate {
       adjust_livestock: 'livestock',
       list_livestock: 'livestock',
       livestock_history: 'livestock',
+      // Livestock — Health / Repro / Weighing
+      log_health_event: 'livestock',
+      query_health_events: 'livestock',
+      log_repro_event: 'livestock',
+      query_repro_events: 'livestock',
+      log_weighing: 'livestock',
+      query_weighings: 'livestock',
       // Feedlot / Corrals
       create_feedlot: 'livestock',
       list_feedlots: 'livestock',

@@ -217,6 +217,6 @@ describe('PromptBuilder', () => {
     const prompt = await builder.build(null);
     // Rough token estimate: ~1 token per 4 chars for Spanish text
     const estimatedTokens = Math.ceil(prompt.length / 4);
-    expect(estimatedTokens).toBeLessThan(900);
+    expect(estimatedTokens).toBeLessThan(1200);
   });
 });

@@ -1,6 +1,6 @@
 # Livestock System (Hacienda)
 
-Event-sourced cattle inventory tracking. Feature-gated to `pro_plus` and `enterprise` plans. Migration `053_livestock.sql`.
+Event-sourced cattle inventory tracking with health, reproduction, and weighing event logging. Feature-gated to `pro_plus` and `enterprise` plans. Migrations: `053_livestock.sql` (base), `074_domain_events_livestock_columns.sql` (health/repro/weighing).
 
 ## Data Model
 
@@ -17,11 +17,15 @@ Event-sourced cattle inventory tracking. Feature-gated to `pro_plus` and `enterp
 
 - **LivestockRepository** — `applySingleMovement()` uses `FOR UPDATE` row lock. `applyTransferMovement()` locks both groups in consistent UUID order to prevent deadlocks.
 - **LivestockService** — Category normalization, location resolution via `resolveLocation()` (plots AND corrals, never auto-creates), find-or-create groups, auto-classifies same-location+different-category as `recategorizacion`.
-- **LivestockHandler** — 8 commands, emoji responses, Argentine Spanish.
+- **LivestockHandler** — 14 commands (8 inventory + 6 health/repro/weighing), emoji responses, Argentine Spanish.
 
-## AI Tools (8)
+## AI Tools (14)
 
+### Inventory (8)
 `add_livestock`, `remove_livestock`, `transfer_livestock`, `record_livestock_death`, `record_livestock_birth`, `adjust_livestock`, `list_livestock`, `livestock_history`
+
+### Health / Reproduction / Weighing (6)
+`log_health_event`, `query_health_events`, `log_repro_event`, `query_repro_events`, `log_weighing`, `query_weighings`
 
 ### Example Mappings
 - "agregué 20 vacas al lote norte" → `add_livestock`
@@ -32,6 +36,67 @@ Event-sourced cattle inventory tracking. Feature-gated to `pro_plus` and `enterp
 - "nacieron 8 terneros" → `record_livestock_birth`
 - "en el lote A1 hay 50 vacas" → `adjust_livestock`
 - "cuántos animales tengo" → `list_livestock`
+
+## Sanidad Animal (Health Events)
+
+Health events are stored in `domain_events` (not `livestock_movements`) with `animal_category` and `animals_affected` columns (migration 074).
+
+### Health Types
+- `vacunacion` — Vaccination (aftosa, brucelosis, carbunclo, etc.)
+- `desparasitacion` — Deworming (ivermectina, doramectina, etc.)
+- `tratamiento` — Veterinary treatment (antibiotics, topical treatments)
+- `revision_sanitaria` — Health inspection/checkup
+
+### Key Fields
+- `health_type` (required) — One of the 4 types above
+- `disease_or_vaccine` — Name of vaccine, disease, or drug applied
+- `category` — Animal category (vaca, novillo, ternero, etc.)
+- `animals_affected` — Number of animals treated
+- `dose_quantity` / `dose_unit` — Dosage applied (optional)
+- `veterinarian` — Vet name (optional)
+
+### Example Mappings
+- "vacuné 200 vacas contra aftosa" → `log_health_event(health_type=vacunacion, disease_or_vaccine=aftosa, category=vaca, animals_affected=200)`
+- "desparasité los novillos con ivermectina" → `log_health_event(health_type=desparasitacion, disease_or_vaccine=ivermectina, category=novillo)`
+- "historial sanitario del lote norte" → `query_health_events(plot=norte)`
+
+## Reproducción (Reproductive Events)
+
+Reproductive events also use `domain_events` table with the same `animal_category` and `animals_affected` columns.
+
+### Repro Types
+- `servicio` — Bull service / natural mating (echar el toro, entore)
+- `destete` — Weaning (NOT the same as removing livestock; calves stay in inventory)
+- `inseminacion` — Artificial insemination (IA, IATF)
+- `deteccion_celo` — Heat detection
+
+### Key Fields
+- `repro_type` (required) — One of the 4 types above
+- `category` — Animal category
+- `animals_affected` — Number of animals involved
+- `sire_info` — Bull/sire details (name, breed, ear tag number)
+- `method` — Insemination method (IA, IATF, monta natural)
+
+### Example Mappings
+- "eché el toro Angus a 50 vacas" → `log_repro_event(repro_type=servicio, category=vaca, animals_affected=50, sire_info=Angus)`
+- "desteté 30 terneros" → `log_repro_event(repro_type=destete, category=ternero, animals_affected=30)`
+- "inseminé 80 vaquillonas por IATF" → `log_repro_event(repro_type=inseminacion, category=vaquillona, animals_affected=80, method=IATF)`
+- "cuándo se echó el toro" → `query_repro_events(repro_type=servicio)`
+
+## Pesaje (Weighing Events)
+
+Weighing events use `domain_events` with weight stored as average per animal. Supports GDPV (ganancia diaria de peso vivo) calculation from consecutive weighings.
+
+### Key Fields
+- `avg_weight_kg` (required) — Average weight per animal in kg (NEVER total weight)
+- `animals_weighed` — Number of animals weighed
+- `category` — Animal category
+
+### Example Mappings
+- "pesé los novillos, 380 kg promedio" → `log_weighing(category=novillo, avg_weight_kg=380)`
+- "pesamos 100 novillos a 420 kg" → `log_weighing(category=novillo, avg_weight_kg=420, animals_weighed=100)`
+- "evolución de peso de los novillos" → `query_weighings(category=novillo)`
+- "GDPV del lote norte" → `query_weighings(plot=norte)`
 
 ## Dashboard & API
 

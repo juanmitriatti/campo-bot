@@ -71,6 +71,23 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - "pasé N terneros a novillos" → `transfer_livestock` (recategorización auto-detected)
 - `add_livestock` / `remove_livestock` with `unit_price_ars|usd` → auto-creates linked expense/income (category "Hacienda"). Stored in `livestock_movements.linked_expense_id` / `linked_income_id`.
 
+### Sanidad Animal (livestock health)
+- vacuné/desparasité/curé/traté + animales → `log_health_event`. health_type: vacuné=vacunacion, desparasité=desparasitacion, curé/traté=tratamiento, revisé=revision_sanitaria
+- `disease_or_vaccine` captures vaccine/disease name (aftosa, brucelosis, ivermectina). `dose_quantity`/`dose_unit` for dosage
+- "cuándo se vacunó"/"historial sanitario"/"última desparasitación" → `query_health_events`
+- NEVER use `log_observation` for livestock health events
+
+### Reproducción (livestock repro)
+- eché el toro/entore/servicio → `log_repro_event(repro_type=servicio)`. desteté → `log_repro_event(repro_type=destete)` (NOT `remove_livestock`)
+- inseminé/IA/IATF → `log_repro_event(repro_type=inseminacion)`. detecté celo → `log_repro_event(repro_type=deteccion_celo)`
+- `sire_info` for bull details (name, breed, ear tag). `method` for insemination method (IA, IATF, monta natural)
+- "cuándo se echó el toro"/"historial reproductivo"/"destetes del año" → `query_repro_events`
+
+### Pesaje Hacienda (weighing)
+- pesé/pesaron/peso promedio + kg → `log_weighing`. Weight is ALWAYS average per animal, not total
+- `animals_weighed` for count of animals weighed
+- "cuánto pesan"/"evolución de peso"/"GDPV"/"ganancia de peso"/"último pesaje" → `query_weighings`
+
 ### Weather
 - "clima/pronóstico/va a llover en X" → `weather_full(city=X, province?)`. NEVER fall back to user.city if query mentions a city.
 - Handler uses `localidadLookup` to disambiguate ambiguous names (ej: Ameghino in Bs As vs La Pampa).
@@ -153,13 +170,13 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 | `sharing` | enterprise | share_field (accept_invite is ungated) |
 | `stock` | pro_plus+ | create_warehouse, add_stock, check_stock, etc., dashboard Stock tab + API |
 | `documents` | all (daily limits vary) | upload_document, list_documents, dashboard Documents tab + API |
-| `livestock` | pro_plus+ | add_livestock, transfer_livestock, feedlots, corrals, dashboard Hacienda tab + API |
+| `livestock` | pro_plus+ | add_livestock, transfer_livestock, health/repro/weighing events, feedlots, corrals, dashboard Hacienda tab + API |
 
 ## Key File Map
 
 ### AI Pipeline
 - `src/ai/agent.service.ts` — Claude tool_use agent (primary)
-- `src/ai/tool-definitions.ts` — 74 tool definitions with typed schemas
+- `src/ai/tool-definitions.ts` — 82 tool definitions with typed schemas
 - `src/ai/agent-prompt-builder.ts` — Compact system prompt with disambiguation rules
 - `src/ai/agent-response-mapper.ts` — AgentResult → ParseResult[] conversion
 - `src/ai/intent-extractor.ts` — JSON extraction (legacy fallback)
@@ -170,7 +187,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 ### Domain Handlers
 - `src/domain/agronomy/` — Activities, observations, weather, reports, campaigns, tacto
 - `src/domain/financial/` — Expenses, incomes, budgets, reports, plot creation
-- `src/domain/livestock/` — Cattle inventory (event-sourced, 8 AI tools)
+- `src/domain/livestock/` — Cattle inventory (event-sourced, 14 AI tools: 8 inventory + 6 health/repro/weighing)
 - `src/domain/stock/` — Inventory management (8 AI tools)
 - `src/domain/documents/` — Invoice/receipt processing (Claude Vision)
 - `src/domain/sharing/` — Invite-code field sharing

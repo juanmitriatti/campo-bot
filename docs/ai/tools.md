@@ -1,6 +1,6 @@
 # Tool Selection Reference
 
-> 76 Anthropic tool definitions in `src/ai/tool-definitions.ts`. Each has typed `input_schema` with enum validation.
+> 82 Anthropic tool definitions in `src/ai/tool-definitions.ts`. Each has typed `input_schema` with enum validation.
 
 ## Tool Groups
 
@@ -15,7 +15,7 @@
 | Sharing | 4 | `share_field`, `accept_invite`, `list_field_members`, `remove_field_member` |
 | Stock | 8 | `create_warehouse`, `list_warehouses`, `add_stock`, `remove_stock`, `adjust_stock`, `check_stock`, `stock_history`, `set_min_stock` |
 | Documents | 3 | `upload_document`, `list_documents`, `link_document_to_expense` |
-| Livestock | 8 | `add_livestock`, `remove_livestock`, `transfer_livestock`, `record_livestock_death`, `record_livestock_birth`, `adjust_livestock`, `list_livestock`, `livestock_history` |
+| Livestock | 14 | `add_livestock`, `remove_livestock`, `transfer_livestock`, `record_livestock_death`, `record_livestock_birth`, `adjust_livestock`, `list_livestock`, `livestock_history`, `log_health_event`, `query_health_events`, `log_repro_event`, `query_repro_events`, `log_weighing`, `query_weighings` |
 | Feedlot/Corral | 7 | `create_feedlot`, `list_feedlots`, `delete_feedlot`, `create_corral`, `list_corrals`, `delete_corral`, `rename_corral` |
 | System | 1 | `update_settings` |
 
@@ -57,6 +57,22 @@
 - IF "N vacas con N terneros" → 2x `add_livestock` (NEVER `record_livestock_birth`)
 - IF explicit birth verb (nacieron/parieron/nació) → `record_livestock_birth`
 - IF "pasé N terneros a novillos en lote X" → `transfer_livestock` (auto-detects recategorización)
+
+### Livestock Health (Sanidad)
+- IF vacuné/desparasité/curé/traté + animales → `log_health_event` (NEVER `log_observation`)
+- health_type mapping: vacuné → `vacunacion`, desparasité → `desparasitacion`, curé/traté → `tratamiento`, revisé → `revision_sanitaria`
+- IF "cuándo se vacunó" / "historial sanitario" / "última desparasitación" → `query_health_events`
+
+### Livestock Reproduction (Reproducción)
+- IF eché el toro / entore / servicio → `log_repro_event(repro_type=servicio)`
+- IF desteté → `log_repro_event(repro_type=destete)` (NOT `remove_livestock`)
+- IF inseminé / IA / IATF → `log_repro_event(repro_type=inseminacion)`
+- IF detecté celo → `log_repro_event(repro_type=deteccion_celo)`
+- IF "cuándo se echó el toro" / "historial reproductivo" / "destetes del año" → `query_repro_events`
+
+### Livestock Weighing (Pesaje)
+- IF pesé / pesaron / peso promedio + kg → `log_weighing` (weight is ALWAYS avg per animal)
+- IF "cuánto pesan" / "evolución de peso" / "GDPV" / "ganancia de peso" / "último pesaje" → `query_weighings`
 
 ### Report Routing
 - IF "reporte agronómico" → `generate_agro_report` (needs agent for date range parsing)
@@ -116,10 +132,19 @@
 - Persisted in `livestock_movements.linked_expense_id` / `linked_income_id` for traceability.
 - Best-effort: if financial write fails, movement still succeeds (logged, not thrown).
 
+### Livestock Health / Repro / Weighing (Migration 074)
+- Health, reproduction, and weighing events are stored in `domain_events` (NOT `livestock_movements`), with 2 new columns: `animal_category` (varchar) and `animals_affected` (integer).
+- `log_health_event`: health_type enum (`vacunacion`, `desparasitacion`, `tratamiento`, `revision_sanitaria`), `disease_or_vaccine`, `dose_quantity`/`dose_unit`, `veterinarian`.
+- `query_health_events`: filters by field, plot, corral, category, health_type, date range.
+- `log_repro_event`: repro_type enum (`servicio`, `destete`, `inseminacion`, `deteccion_celo`), `sire_info`, `method`.
+- `query_repro_events`: filters by field, plot, corral, category, repro_type, date range.
+- `log_weighing`: `avg_weight_kg` (per animal), `animals_weighed`. Always average weight, never total.
+- `query_weighings`: filters by field, plot, corral, category, date range. Supports GDPV (ganancia diaria de peso vivo) calculation.
+
 ### Prompt Caching (Cost Optimization)
 - `agent.service.ts` sets `cache_control` on three breakpoints:
   1. System prompt (stable: core rules + disambiguation only; user context + today's date moved to user-message prefix so the cached prefix hits across users)
-  2. Last tool definition — caches the 74-tool block (~24k tokens when serialized for cache)
+  2. Last tool definition — caches the 82-tool block (~26k tokens when serialized for cache)
   3. Last few-shot message — caches examples (~830 tokens). Selection is deterministic per day via `ORDER BY md5(id::text || CURRENT_DATE::text)` so the cache doesn't thrash with random reshuffles.
 - TTL is configurable via `AGENT_CACHE_TTL` setting: `short` (5 min, 1.25× write, default) / `long` (1 hour, 2× write). Wiring in `agent.service.ts` translates this into `cache_control.ttl`.
 - Few-shot count configurable via `AGENT_FEW_SHOT_LIMIT` (default 5). Each example ~166 tokens. Going from 5 → 10 adds ~$0.02/day at 100 calls.

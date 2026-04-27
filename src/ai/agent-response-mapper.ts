@@ -432,6 +432,21 @@ export class AgentResponseMapper {
     if (input.veterinarian != null) cmd.implement = input.veterinarian;
     if (input.notes != null) cmd.notes = input.notes;
 
+    // Health events
+    if (input.health_type != null) cmd.healthType = input.health_type;
+    if (input.disease_or_vaccine != null) cmd.diseaseOrVaccine = input.disease_or_vaccine;
+    if (input.animals_affected != null) cmd.animalsAffected = input.animals_affected;
+    if (input.dose_quantity != null) cmd.doseQuantity = input.dose_quantity;
+    if (input.dose_unit != null) cmd.doseUnit = input.dose_unit;
+
+    // Repro events
+    if (input.repro_type != null) cmd.reproType = input.repro_type;
+    if (input.sire_info != null) cmd.sireInfo = input.sire_info;
+    if (input.method != null) cmd.method = input.method;
+
+    // Weighing
+    if (input.animals_weighed != null) cmd.animalsWeighed = input.animals_weighed;
+
     // Crop scouting query filters
     if (input.min_severity != null) cmd.minSeverity = input.min_severity;
     if (input.desde != null) cmd.desde = input.desde;

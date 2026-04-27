@@ -57,6 +57,22 @@ export const LIVESTOCK_MOVEMENT_LABEL: Record<LivestockMovementType, { emoji: st
   ajuste: { emoji: '📊', label: 'Ajuste' },
 };
 
+/** Pretty labels for health event subtypes */
+export const HEALTH_TYPE_LABEL: Record<string, string> = {
+  vacunacion: 'Vacunación',
+  desparasitacion: 'Desparasitación',
+  tratamiento: 'Tratamiento',
+  revision_sanitaria: 'Revisión sanitaria',
+};
+
+/** Pretty labels for reproductive event subtypes */
+export const REPRO_TYPE_LABEL: Record<string, string> = {
+  servicio: 'Servicio (entore)',
+  destete: 'Destete',
+  inseminacion: 'Inseminación artificial',
+  deteccion_celo: 'Detección de celo',
+};
+
 export interface LivestockGroupRow {
   id: string;
   user_id: number;
