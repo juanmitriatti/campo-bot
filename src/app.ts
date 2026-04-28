@@ -31,6 +31,17 @@ app.use('/webhook', webhook);
 // Telegram webhook
 app.use('/telegram', verifyTelegramWebhook, telegramWebhook);
 
+// Health check — used by CI smoke test post-deploy.
+// Returns the running git sha (set at build time via RAILWAY_GIT_COMMIT_SHA)
+// so we can confirm a specific deploy is live.
+app.get('/api/health', (_req: express.Request, res: express.Response) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    sha: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+  });
+});
+
 // Public + protected end-user auth routes
 app.use('/api/auth', authRoutes);
 

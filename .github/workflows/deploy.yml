@@ -1,0 +1,74 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install backend deps
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    name: Railway deploy
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.com/install.sh | sh
+          echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service "${{ vars.RAILWAY_SERVICE || 'campo-bot' }}" --detach
+
+  smoke:
+    name: Post-deploy smoke test
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PROD_URL: https://campo-bot-production.up.railway.app
+    steps:
+      - name: Wait for new deployment to be live
+        run: |
+          set -e
+          for i in $(seq 1 60); do
+            code=$(curl -sk -o /dev/null -w "%{http_code}" "$PROD_URL/api/health" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "Health check OK after ${i}0s"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Health check never returned 200"
+          exit 1

@@ -39,6 +39,14 @@ vi.mock('../../domain/users/user.repository.js', () => ({
   },
 }));
 
+// Mock PlanRepository — defaults to "no plan limit" so tests fall back to
+// settings.claude_daily_limit. Override per-test if needed.
+vi.mock('../../domain/billing/plan.repository.js', () => ({
+  PlanRepository: class {
+    getUserPlanAiLimit = vi.fn().mockResolvedValue(null);
+  },
+}));
+
 describe('ConversationalFallbackService', () => {
   const mockSettings = {
     confirm_before_save: false,
@@ -119,11 +127,14 @@ describe('ConversationalFallbackService', () => {
   });
 
   describe('prompt constraints', () => {
-    it('system prompt is under 150 tokens', () => {
+    it('system prompt stays compact (under 350 tokens)', () => {
       const prompt = ConversationalFallbackService.systemPrompt;
-      // Conservative estimate: ~1 token per 4 chars for Spanish
+      // Conservative estimate: ~1 token per 4 chars for Spanish.
+      // Threshold is a guard against bloat, bumped from 150 → 350 as the
+      // prompt grew with disambiguation rules. Keep it well under a
+      // typical fallback budget so the conversational call stays cheap.
       const estimatedTokens = Math.ceil(prompt.length / 4);
-      expect(estimatedTokens).toBeLessThan(150);
+      expect(estimatedTokens).toBeLessThan(350);
     });
 
     it('rate limit response is in Spanish', () => {

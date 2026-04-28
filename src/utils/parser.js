@@ -759,8 +759,15 @@ const COMMAND_PATTERNS = [
     extract: (m, _norm, original) => {
       const re = /(?:agregar|agrega|nuevo|crear|añadir)\s+(?:(?:un|el)\s+)?lote\s+(.+?)(?:\s+y\s+|$)/i;
       const cm = original ? original.match(re) : null;
+      const captured = (cm ? cm[1] : m[1]).trim();
+      // For a single bare word ("agregar lote sur"), defer to the smart-lote
+      // add_field flow further down — that path uses entityKeyword='lote' and
+      // auto-resolves the field. Only catch here when it's clearly a multi-token
+      // plot reference (numeric or multi-word).
+      const looksLikeBareSingleWord = /^\w+$/.test(captured) && !/^\d/.test(captured);
+      if (looksLikeBareSingleWord) return null;
       return {
-        plotName: (cm ? cm[1] : m[1]).trim(),
+        plotName: captured,
         fieldName: null,
       };
     },
