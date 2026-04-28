@@ -10,6 +10,27 @@ import type { AgentResult } from './agent.service.js';
  *   "30,5"     → 30.5
  *   "28.4"     → 28.4    (2-digit after dot: treat as decimal)
  */
+/**
+ * Normalize crop names that may come in English or with informal variants.
+ * Idempotent: passes Spanish names through unchanged.
+ */
+const CROP_SYNONYMS: Record<string, string> = {
+  soybean: 'soja', soybeans: 'soja', soy: 'soja', soya: 'soja',
+  corn: 'maíz', maize: 'maíz', maiz: 'maíz', choclo: 'maíz', maicito: 'maíz',
+  wheat: 'trigo',
+  sunflower: 'girasol',
+  sorghum: 'sorgo',
+  barley: 'cebada',
+  oat: 'avena', oats: 'avena',
+  cotton: 'algodón', algodon: 'algodón',
+  rye: 'centeno',
+};
+export function normalizeCropName(input: unknown): unknown {
+  if (typeof input !== 'string') return input;
+  const lower = input.trim().toLowerCase();
+  return CROP_SYNONYMS[lower] || input;
+}
+
 function parseArNumber(raw: string): number | null {
   const s = raw.trim();
   if (!s) return null;
@@ -347,7 +368,7 @@ export class AgentResponseMapper {
     if (input.product_type != null) cmd.productType = input.product_type;
     if (input.quantity != null) cmd.quantity = input.quantity;
     if (input.unit != null) cmd.unit = input.unit;
-    if (input.crop != null) cmd.crop = input.crop;
+    if (input.crop != null) cmd.crop = normalizeCropName(input.crop);
     if (input.event_date != null) cmd.eventDate = input.event_date;
 
     // Observation
@@ -408,6 +429,8 @@ export class AgentResponseMapper {
     if (input.avg_weight_kg != null) cmd.avg_weight_kg = input.avg_weight_kg;
     if (input.unit_price_ars != null) cmd.unit_price_ars = input.unit_price_ars;
     if (input.unit_price_usd != null) cmd.unit_price_usd = input.unit_price_usd;
+    if (input.is_purchase != null) cmd.isPurchase = input.is_purchase;
+    if (input.is_sale != null) cmd.isSale = input.is_sale;
     if (input.source_field != null) cmd.sourceField = input.source_field;
     if (input.source_plot != null) cmd.sourcePlot = input.source_plot;
     if (input.source_corral != null) cmd.sourceCorral = input.source_corral;

@@ -903,12 +903,22 @@ const COMMAND_PATTERNS = [
   },
   {
     command: "add_field",
-    patterns: [/(?:agregar|agrega|nuevo|crear)\s+(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!en\s)\w+){0,3})(?:\s+en\s+(.+))?/],
-    extract: (m) => ({
-      entityKeyword: m[1],
-      fieldName: m[2].trim(),
-      city: m[3] ? m[3].trim().charAt(0).toUpperCase() + m[3].trim().slice(1) : null,
-    }),
+    // Stop city extraction at the first comma so compound messages like
+    // "agregar campo X en Y, lotes A,B" don't smuggle the rest into city.
+    patterns: [/(?:agregar|agrega|nuevo|crear)\s+(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!en\s)\w+){0,3})(?:\s+en\s+([^,]+))?/],
+    extract: (m, _norm, original) => {
+      // If the original message contains additional clauses after the city
+      // (lotes/sembré/llovió/etc.), defer to the agent — don't try to handle
+      // it here, since trivial parsing will smuggle garbage.
+      if (original && /,\s+(lotes?|sembr[ée]|fumig[ué]|coseché|cosech[ée]|llov[ií][oó]?|fertilic[ée]|y\s+\w)/i.test(original)) {
+        return null;
+      }
+      return {
+        entityKeyword: m[1],
+        fieldName: m[2].trim(),
+        city: m[3] ? m[3].trim().charAt(0).toUpperCase() + m[3].trim().slice(1) : null,
+      };
+    },
   },
 
   {
@@ -981,7 +991,10 @@ const COMMAND_PATTERNS = [
   },
   {
     command: "set_field_city",
-    patterns: [/(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!esta\s|queda\s)\w+){0,3})\s+(?:esta|queda)\s+(?:ubicad[oa]\s+)?en\s+(.+)/],
+    // Anchor at the start of the message and require explicit "ubicad[oa]" OR
+    // "está en X" with no agro-stage / activity verb between them, so messages
+    // like "el soybean del lote 1A está en V4" don't fall into set_field_city.
+    patterns: [/^(?:el\s+|la\s+|mi\s+)?(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!esta\s|queda\s)\w+){0,3})\s+(?:esta|queda)\s+ubicad[oa]\s+en\s+(.+)/],
     extract: (m) => ({
       entityKeyword: m[1],
       fieldName: m[2].trim(),

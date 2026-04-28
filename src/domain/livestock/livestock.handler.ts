@@ -97,6 +97,11 @@ export class LivestockHandler {
     const financialLine = financial
       ? `\n  💸 Gasto registrado: ${fmtAmount(financial.amount, financial.currency)} (Hacienda)`
       : '';
+    const isPurchase = cmd.isPurchase === true;
+    const hasPrice = !!(cmd.unit_price_ars || cmd.unit_price_usd);
+    const askPriceLine = (isPurchase && !hasPrice && !financial)
+      ? '\n\n¿A cuánto fue la compra? Así registro el gasto.'
+      : '';
     return {
       messages: [
         `🐄 *Hacienda actualizada*\n\n` +
@@ -104,7 +109,8 @@ export class LivestockHandler {
         `  ➕ ${count} animales\n` +
         `  📊 Total: *${group.count}*\n` +
         `  📍 ${fmtLoc(group)}` +
-        financialLine,
+        financialLine +
+        askPriceLine,
       ],
     };
   }
@@ -136,6 +142,11 @@ export class LivestockHandler {
     const financialLine = financial
       ? `\n  💰 Ingreso registrado: ${fmtAmount(financial.amount, financial.currency)} (Hacienda)`
       : '';
+    const isSale = cmd.isSale === true;
+    const hasPrice = !!(cmd.unit_price_ars || cmd.unit_price_usd);
+    const askPriceLine = (isSale && !hasPrice && !financial)
+      ? '\n\n¿A cuánto fue la venta? Así registro el ingreso.'
+      : '';
     return {
       messages: [
         `🐄 *Hacienda descontada*\n\n` +
@@ -143,7 +154,8 @@ export class LivestockHandler {
         `  ➖ ${count} animales\n` +
         `  📊 Quedan: *${group.count}*\n` +
         `  📍 ${fmtLoc(group)}` +
-        financialLine,
+        financialLine +
+        askPriceLine,
       ],
     };
   }

@@ -65,6 +65,23 @@ export class InteractiveRouter {
       return { type: 'command', data: { command: 'log_rainfall', fieldName: rainMatch[1], mm: parseFloat(rainMatch[2]) } };
     }
 
+    // Batched callbacks: rain_batch_<fieldName>_<base64> → log_rainfall_batch
+    const rainBatchMatch = callbackId.match(/^rain_batch_(.+)_([A-Za-z0-9_-]+)$/);
+    if (rainBatchMatch) {
+      try {
+        const json = Buffer.from(rainBatchMatch[2], 'base64url').toString('utf-8');
+        const items = JSON.parse(json) as Array<{ mm: number; date: string | null }>;
+        if (Array.isArray(items) && items.length > 0) {
+          return {
+            type: 'command',
+            data: { command: 'log_rainfall_batch', fieldName: rainBatchMatch[1], items },
+          };
+        }
+      } catch {
+        // fall through to null
+      }
+    }
+
     return null;
   }
 }

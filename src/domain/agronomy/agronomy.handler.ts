@@ -22,6 +22,7 @@ import { formatHistoryResponse } from './plot-query.service.js';
 import { formatDateAR } from '../../utils/date.js';
 import { formatQuantityHuman } from '../../utils/format-quantity.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
+import { validateStageCode } from './stage-code-validator.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
 import type { PendingActivity } from '../../middleware/pending-activities.js';
 import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
@@ -681,6 +682,41 @@ export class AgronomyHandler {
         }
 
         return { messages: [msg] };
+      }
+
+      case 'log_rainfall_batch': {
+        // Batched rainfall save from a "rain_batch_<field>_<b64>" callback —
+        // applies the chosen field to all queued mm/date pairs at once.
+        const fieldName = cmd.fieldName as string;
+        const items = (cmd.items as Array<{ mm: number; date: string | null }>) || [];
+        if (!fieldName || items.length === 0) {
+          return { messages: ['No pude resolver las lluvias pendientes. Probá registrarlas de nuevo.'] };
+        }
+        const field = await this.repo.getFieldByName(userId, fieldName);
+        if (!field) {
+          return { messages: [`No encontré el campo *${fieldName}*.`] };
+        }
+        const lines: string[] = [`🌧️ Lluvias registradas en *${field.name}*:`];
+        let total = 0;
+        let saved = 0;
+        for (const it of items) {
+          const result = await this.repo.saveRainfall(userId, it.mm, field.id, it.date);
+          if (result === RAINFALL_REJECTED_DUPLICATE) {
+            const dateLabel = it.date
+              ? new Date(it.date + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short', timeZone: 'America/Argentina/Buenos_Aires' })
+              : 'hoy';
+            lines.push(`  • ${it.mm}mm el ${dateLabel} — _ya estaba cargado, omitido_`);
+            continue;
+          }
+          const dateLabel = it.date
+            ? new Date(it.date + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short', timeZone: 'America/Argentina/Buenos_Aires' })
+            : 'hoy';
+          lines.push(`  • ${it.mm}mm el ${dateLabel}`);
+          total += it.mm;
+          saved += 1;
+        }
+        if (saved > 0) lines.push(`📊 Total: *${total}mm* (${saved} registros)`);
+        return { messages: [lines.join('\n')] };
       }
 
       case 'delete_last_rainfall': {
@@ -2207,6 +2243,11 @@ export class AgronomyHandler {
         const stageCode = cmd.stageCode ? String(cmd.stageCode).toUpperCase() : null;
         const weedSpecies = Array.isArray(cmd.weedSpecies) ? cmd.weedSpecies as string[] : null;
 
+        // Validate stage_code against crop. Non-blocking warning so the user
+        // sees a typo (e.g. soja R12) but the monitoreo still saves.
+        const cropForStage = (cmd.crop as string | null) || (await this.cropService.getActive(resolved.plotId))?.crop || null;
+        const stageValidation = validateStageCode(cropForStage, stageCode);
+
         // Derive plot_crop_id from the active campaign so analytics can filter by campaign
         const activeCrop = await this.cropService.getActive(resolved.plotId);
 
@@ -2232,7 +2273,13 @@ export class AgronomyHandler {
         const lines: string[] = [];
         const plotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
         lines.push(`🔍 *Monitoreo registrado* en *${plotLabel}*`);
-        if (saved.stage_code) lines.push(`  📐 Estadio: *${saved.stage_code}*`);
+        if (saved.stage_code) {
+          lines.push(`  📐 Estadio: *${saved.stage_code}*`);
+          if (!stageValidation.ok) {
+            lines.push(`  ${stageValidation.warning}`);
+            if (stageValidation.validRanges) lines.push(`  Estadios válidos: ${stageValidation.validRanges}`);
+          }
+        }
         if (saved.weed_coverage_pct != null) {
           const sp = weedSpecies && weedSpecies.length ? ` (${weedSpecies.join(', ')})` : '';
           lines.push(`  🌿 Malezas: ${saved.weed_coverage_pct}%${sp}`);

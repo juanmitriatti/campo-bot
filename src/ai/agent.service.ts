@@ -50,6 +50,8 @@ export interface AgentResult {
   toolCalls: AgentToolCall[];
   conversationalText: string | null;
   usage: AiUsage;
+  /** True when Anthropic stopped the response because max_tokens was reached. */
+  truncated: boolean;
 }
 
 export class AgentService {
@@ -209,6 +211,14 @@ export class AgentService {
         }
       }
 
+      const truncated = response.stop_reason === 'max_tokens';
+      if (truncated) {
+        console.warn(
+          `AI_AGENT TRUNCATED: stop_reason=max_tokens — bumpear AGENT_MAX_TOKENS (actual=${resolvedMaxTokens}). ` +
+            `Tools devueltos: ${toolCalls.length}`,
+        );
+      }
+
       console.log(
         `AI_AGENT (${dailyCount + 1}/${claudeLimit}):`,
         toolCalls.length > 0
@@ -216,9 +226,10 @@ export class AgentService {
           : `conversational="${(conversationalText ?? '').slice(0, 100)}"`,
         `TOKENS: ${usage.input_tokens}in/${usage.output_tokens}out`,
         `CACHE: ${cacheRead}read/${cacheWrite}write`,
+        `STOP: ${response.stop_reason}`,
       );
 
-      return { toolCalls, conversationalText, usage };
+      return { toolCalls, conversationalText, usage, truncated };
     } catch (err) {
       const isTimeout = err instanceof Error && err.name === 'AbortError';
       if (!isTimeout) {

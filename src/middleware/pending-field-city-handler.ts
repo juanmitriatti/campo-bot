@@ -24,12 +24,26 @@ export function formatLocation(city: string, province: string | null): string {
 function looksLikeNonCity(text: string): boolean {
   const t = text.trim().toLowerCase();
   if (!t) return true;
-  if (/^(cancelar|cancel|salir|nada|ninguna|ninguno|olvidalo|dejalo)\b/.test(t)) return true;
-  // Agro / registration verbs
-  if (/\b(siembra|sembr[ée]|coseché|cosecha|fumig[ué]|fertilic[ée]|ri?egué|apliqu[ée]|gasté|pagué|compré|vendí|cobré|llovi[oó]|hect[aá]rea|rinde|factura|remito|recibí|agrega|agregar|crear|borrar|eliminar|mover|pas[ée])\b/.test(t)) return true;
-  // Numbers-first content ("52 ha", "3000 kg", "$50000")
-  if (/^(?:\$|us\$|usd)?\s*\d[\d.,]*\s*(ha|hect|kg|tn|mm|lt|$|pesos|dolares|usd|ars|,|\.)/i.test(t)) return true;
-  // Very short (< 3 chars) or no letters at all
+  if (/^(cancelar|cancel|salir|nada|ninguna|ninguno|olvidalo|dejalo|olvidá|olvidate)\b/.test(t)) return true;
+  // Agro / registration verbs. \b before the verb is enough; trailing boundary doesn't
+  // play well with accented endings (é, í, ó) under ASCII \b semantics.
+  if (/\b(siembra|sembr[ée]|cosech[ée]|cosecha|fumig[ué]|fertilic[ée]|ri[eé]gu[ée]|apliqu[ée]|gast[ée]|pagu[ée]|compr[ée]|vend[íi]|cobr[ée]|us[ée]|cargu[ée]|llov[ií][oó]?|hect[aá]rea|rinde|rind[ií][oó]?|factura|remito|recib[íi]|agrega|agregar|crear|borrar|eliminar|mover|pas[ée]|metele|met[ée]|ech[ée]|inseminé?|tratam|vacun[ée]|desparasit[ée])/.test(t)) return true;
+  // Numbers-first content ("52 ha", "3000 kg", "$50000", "us$3000")
+  if (/^(?:\$|us\$|usd)\s*\d/i.test(t)) return true;
+  if (/^\d[\d.,]*\s*(ha|hect|kg|tn|qq|mm|lt|cc|bolsas|pesos|dolares|usd|ars)/i.test(t)) return true;
+  // Listas con ":" — típico de cosecha "lote 1A: Britos 30 tn, Pérez 25 tn"
+  if (/:/.test(t) && /\d/.test(t)) return true;
+  // Pregunta o reporte
+  if (/^(¿|cómo|como|cuánto|cuanto|cuál|cual|qué|que|reporte|informe|pasame|dame|mostr|listar|listame)\b/.test(t)) return true;
+  // Cualquier "?" en el texto = no es localidad
+  if (/\?/.test(t)) return true;
+  // Mensajes muy largos (> 60 chars) raramente son una localidad
+  if (t.length > 60) return true;
+  // Múltiples comas separando datos (no es "Ciudad, Provincia")
+  if ((t.match(/,/g) || []).length >= 2) return true;
+  // SQL / inyección — empieza con keywords destructivos
+  if (/^(drop|delete|select|insert|update|truncate|ignore\s+all)\b/.test(t)) return true;
+  // Muy corto o sin letras
   if (t.length < 3 || !/[a-záéíóúñ]/i.test(t)) return true;
   return false;
 }

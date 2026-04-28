@@ -179,6 +179,11 @@ export class IntentClassifier {
             // Attach agent metadata for logging
             (primary as any)._agentMode = 'tool_use';
             (primary as any)._toolCalls = agentResult.toolCalls;
+            // Surface truncation so controllers can warn the user that not all
+            // requested actions made it into the response.
+            if (agentResult.truncated) {
+              (primary as any)._truncated = true;
+            }
 
             if (primary.confidence >= minConfidence || (primary as any)._conversationalResponse) {
               return primary;

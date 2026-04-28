@@ -112,15 +112,85 @@ export class CompoundExecutor {
       }
     }
 
+    const consolidated = consolidateRainfallPrompts(messages, actionable, lastInteractive);
     return {
-      messages: consolidateLivestockMessages(messages, actionable),
+      messages: consolidateLivestockMessages(consolidated.messages, actionable),
       lastSideEffects,
       stoppedAtFlow,
-      lastInteractive,
+      lastInteractive: consolidated.interactive ?? lastInteractive,
       lastAttachment,
       lastSuggestionKey,
     };
   }
+}
+
+/**
+ * When a compound action has multiple log_rainfall steps that all need a
+ * field choice (no field passed, multiple fields exist), merge their
+ * "Llovieron Xmm 🌧️ ¿En qué campo?" prompts into a single buttoned message.
+ * The button callback is `rain_batch_<field>_<base64payload>` carrying all
+ * mm/date pairs so the interactive handler can persist them in one shot.
+ */
+function consolidateRainfallPrompts(
+  messages: string[],
+  actionable: ParseResult[],
+  lastInteractive: HandlerResponse['interactive'],
+): { messages: string[]; interactive: HandlerResponse['interactive'] } {
+  const rainCommands: ParsedCommand[] = [];
+  for (const r of actionable) {
+    if (r.intent.type !== 'command') continue;
+    if (r.intent.data.command !== 'log_rainfall') continue;
+    rainCommands.push(r.intent.data);
+  }
+  if (rainCommands.length < 2) return { messages, interactive: lastInteractive };
+
+  // Find rainfall ask-prompts in messages (one per step that needed field)
+  const askIndices: number[] = [];
+  messages.forEach((m, i) => {
+    if (/^Llovieron \*\d+(?:\.\d+)?mm\* 🌧️ ¿En qué campo\?$/.test(m)) askIndices.push(i);
+  });
+  if (askIndices.length < 2) return { messages, interactive: lastInteractive };
+
+  // Build payload: list of (mm, eventDate) for each pending rainfall
+  const items = rainCommands.map(d => ({
+    mm: Number(d.mm ?? d.quantity ?? 0),
+    date: typeof d.eventDate === 'string' ? d.eventDate : null,
+  })).filter(it => it.mm > 0);
+  if (items.length < 2) return { messages, interactive: lastInteractive };
+
+  // Take the existing buttons from lastInteractive (they have the field names)
+  const fieldNames: string[] = [];
+  if (lastInteractive && lastInteractive.type === 'buttons' && Array.isArray(lastInteractive.buttons)) {
+    for (const b of lastInteractive.buttons) {
+      const m = b.id.match(/^rain_field_(.+)_\d+(?:\.\d+)?$/);
+      if (m) fieldNames.push(m[1]);
+    }
+  }
+  if (fieldNames.length === 0) return { messages, interactive: lastInteractive };
+
+  const summary = items
+    .map(it => {
+      const dateLabel = it.date
+        ? new Date(it.date + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short', timeZone: 'America/Argentina/Buenos_Aires' })
+        : '';
+      return dateLabel ? `${it.mm}mm el ${dateLabel}` : `${it.mm}mm`;
+    })
+    .join(', ');
+
+  const payloadB64 = Buffer.from(JSON.stringify(items)).toString('base64url');
+  const buttons = fieldNames.slice(0, 3).map(name => ({
+    id: `rain_batch_${name}_${payloadB64}`,
+    title: name.slice(0, 20),
+  }));
+
+  // Replace all "¿En qué campo?" prompts with a single consolidated message
+  const filtered = messages.filter((_, i) => !askIndices.includes(i));
+  filtered.push(`🌧️ Registré ${items.length} lluvias (${summary}). ¿En qué campo?`);
+
+  return {
+    messages: filtered,
+    interactive: { type: 'buttons' as const, body: 'Elegí el campo:', buttons },
+  };
 }
 
 /**

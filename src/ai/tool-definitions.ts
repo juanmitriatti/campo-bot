@@ -410,12 +410,13 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'log_rainfall',
-    description: 'Registrar lluvia en milímetros. "llovieron Xmm", "cayeron Xmm".',
+    description: 'Registrar lluvia en milímetros. "llovieron Xmm", "cayeron Xmm". Si el usuario menciona varios días en un mensaje ("20mm el lunes, 35mm el martes"), llamá UNA tool por día con event_date YYYY-MM-DD para cada uno. Si NO mencionan campo, omitir el param y el sistema agrupará en una sola pregunta.',
     input_schema: {
       type: 'object',
       properties: {
         quantity: { type: 'number', description: 'Milímetros de lluvia.' },
         field: FIELD_PROP,
+        event_date: DATE_PROP,
       },
       required: ['quantity'],
     },
@@ -589,12 +590,12 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'add_field',
-    description: 'Crear campo nuevo. "agregar campo X", "crear campo X en Y".',
+    description: 'Crear campo nuevo. "agregar campo X", "crear campo X en Y". CRÍTICO: si el mensaje contiene "campo X en Y" o "campo X de/ubicado en Y", DEBÉS pasar city=Y. Ej: "agregar campo Las Marías en Pergamino" → add_field(field="Las Marías", city="Pergamino"). NUNCA omitas city si está en el mensaje.',
     input_schema: {
       type: 'object',
       properties: {
         field: { type: 'string', description: 'Nombre del campo a crear.' },
-        city: { type: 'string', description: 'Localidad del campo (nombre de localidad argentina).' },
+        city: { type: 'string', description: 'Localidad del campo. Extraer de patrones "campo X en Y" / "en Y" después del nombre. NUNCA inventar — solo si el usuario la mencionó literalmente.' },
       },
       required: ['field'],
     },
@@ -940,6 +941,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         unit_price_ars: { type: 'number', description: 'Precio unitario en pesos, si mencionado.' },
         unit_price_usd: { type: 'number', description: 'Precio unitario en dólares, si mencionado.' },
         reason: { type: 'string', description: 'Motivo/descripción breve (ej: "compra remate Liniers").' },
+        is_purchase: { type: 'boolean', description: 'true si el usuario dijo compré/compra. Omitir si solo agregó/metió/ingresó.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
         corral: { type: 'string', description: 'Nombre del corral en el feedlot (alternativa a plot).' },
@@ -959,6 +961,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         breed: { type: 'string', description: 'Raza, si mencionado.' },
         unit_price_ars: { type: 'number', description: 'Precio unitario en pesos, si mencionado.' },
         unit_price_usd: { type: 'number', description: 'Precio unitario en dólares, si mencionado.' },
+        is_sale: { type: 'boolean', description: 'true si el usuario dijo vendí/venta. Omitir si solo sacó/faenó.' },
         reason: { type: 'string', description: 'Motivo/descripción breve.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,

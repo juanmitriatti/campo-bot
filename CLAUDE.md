@@ -92,6 +92,26 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - "clima/pronóstico/va a llover en X" → `weather_full(city=X, province?)`. NEVER fall back to user.city if query mentions a city.
 - Handler uses `localidadLookup` to disambiguate ambiguous names (ej: Ameghino in Bs As vs La Pampa).
 
+### Pending field-city escape hatch
+- `pending-field-city-handler.looksLikeNonCity()` aborts the loop when the user types something that clearly isn't a locality (agro verbs, lists with `:`, queries with `?`, messages > 60 chars, SQL keywords, multiple commas). When triggered, the bot tells the user "Dejé pendiente la ubicación de X" and clears the pending state so subsequent registrations work.
+- Add new escape patterns here, NOT in the agent prompt.
+
+### Crop name synonyms (anglicismos)
+- `src/utils/synonyms.js` + `src/ai/agent-response-mapper.normalizeCropName()` translate English crop names to Spanish before the handler sees them: `soybean → soja`, `corn/maize → maíz`, `wheat → trigo`, `sunflower → girasol`, `sorghum → sorgo`, `barley → cebada`, `oat/oats → avena`, `cotton → algodón`, `rye → centeno`. Applied in BOTH the regex parser layer and the agent input normalization, so anglicisms work whether AGENT_ENABLED is on or off.
+
+### Mid-flow rename
+- During any flow that has a `data.name` field set (currently `field_flow`), the user can correct the name with patterns like "se llama X, no Y" / "no Y, es X" / "el nombre es X". `extractRenameCorrection()` in `conversation-engine.ts` parses the new name, mutates `data.name`, and re-prompts the current step — no need to cancel + restart.
+
+### Agent truncation handling
+- `AgentResult.truncated` is true when Anthropic stops with `stop_reason=max_tokens`. Surfaced to controllers via `ParseResult._truncated` and rendered as "⚠️ El mensaje era largo y se cortó. Si te quedaron acciones sin registrar, repetilas en un mensaje aparte." Console logs `AI_AGENT TRUNCATED:` for monitoring. Bump `AGENT_MAX_TOKENS` (default 1500) if you see this often in production.
+
+### Stage code validation (log_crop_scouting)
+- `src/domain/agronomy/stage-code-validator.ts` validates `stage_code` against `crop`: soja (VE, V1..V8, R1..R8), maíz (VE, V1..V21, VT, R1..R6), trigo/cebada (Zadoks Z21..Z99), girasol (VE, V1..V20, R1..R9), sorgo (VE, V1..V12, R1..R6). Non-blocking: the monitoreo still saves and the bot adds a warning line "⚠️ El estadio X no es típico de Y" + valid range hint. Useful for typos like "soja R12" (R12 doesn't exist for soja).
+
+### Multi-day rainfall (log_rainfall_batch)
+- When the agent fires multiple `log_rainfall` calls in compound (e.g. "20mm el lunes, 35mm el martes y 12mm el miércoles") and none provide a field, `compound-executor.consolidateRainfallPrompts()` collapses the per-rain "¿En qué campo?" prompts into a single batched prompt with callback `rain_batch_<fieldName>_<base64payload>`. The interactive router decodes and dispatches `log_rainfall_batch` which persists all entries in one shot. Callback payload is JSON-then-base64url of `[{mm, date}]`.
+- `log_rainfall` schema includes `event_date` so each call carries its own date; the regex parser deliberately ignores compound rainfall messages so the agent handles them.
+
 ### Harvest Loads (per-truck)
 - ANY list of `nombre número` in a cosecha context is `loads[]` — destinatario and kg unit are optional.
 - "Cosecha del lote X" WITHOUT driver/weight list → `query_harvest_loads` (query intent), NOT `harvest_crop`.
@@ -175,7 +195,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 ## Key File Map
 
 ### AI Pipeline
-- `src/ai/agent.service.ts` — Claude tool_use agent (primary)
+- `src/ai/agent.service.ts` — Claude tool_use agent (primary). `AgentResult.truncated` exposed when stop_reason=max_tokens
 - `src/ai/tool-definitions.ts` — 82 tool definitions with typed schemas
 - `src/ai/agent-prompt-builder.ts` — Compact system prompt with disambiguation rules
 - `src/ai/agent-response-mapper.ts` — AgentResult → ParseResult[] conversion
@@ -200,7 +220,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/services/intent-classifier.ts` — Pipeline orchestrator
 - `src/services/expenses.js` — Main DB layer (all CRUD)
 - `src/services/localidad-lookup.service.ts` — City validation (4027 census localities)
-- `src/middleware/conversation-engine.ts` — Flow FSM (startFlow, processFlowMessage, clearFlow)
+- `src/middleware/conversation-engine.ts` — Flow FSM (startFlow, processFlowMessage, clearFlow). Includes `extractRenameCorrection()` for mid-flow name corrections
 - `src/middleware/pending-field-location.ts` — 3-option field location (city/map/share)
 - `src/middleware/pending-plot-area.ts` — Queue-based hectares assignment
 

@@ -58,20 +58,34 @@ function parseArgs(): { userId: number; reset: boolean } {
 async function resetUserData(client: PoolClient, userId: number): Promise<void> {
   console.log(`  Resetting all data for user ${userId}...`);
 
-  // Layer 1: FK to agro_observations
+  // Layer 1: FK to agro_observations + harvest_loads (FK to domain_events) + stock_movements (FK to domain_events)
   await client.query(
     `DELETE FROM observation_history WHERE observation_id IN (SELECT id FROM agro_observations WHERE user_id = $1)`,
     [userId],
   );
+  await client.query(
+    `DELETE FROM harvest_loads WHERE domain_event_id IN (SELECT id FROM domain_events WHERE user_id = $1)`,
+    [userId],
+  );
+  await client.query(`DELETE FROM stock_movements WHERE user_id = $1`, [userId]);
+  await client.query(`DELETE FROM stock_items WHERE user_id = $1`, [userId]);
+  await client.query(`DELETE FROM warehouses WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`, [userId]);
+
+  // Livestock movements + groups (movements have FK to groups so order matters)
+  await client.query(`DELETE FROM livestock_movements WHERE user_id = $1`, [userId]);
+  await client.query(`DELETE FROM livestock_groups WHERE user_id = $1`, [userId]);
 
   // Layer 2: tables with FK to fields/plots
+  await client.query(`DELETE FROM crop_scoutings WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM alert_history WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM agronomic_reports WHERE user_id = $1`, [userId]);
+  await client.query(`DELETE FROM documents WHERE user_id = $1`, [userId]).catch(() => {});
   await client.query(`DELETE FROM domain_events WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM agro_observations WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM expenses WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM incomes WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM rainfall WHERE user_id = $1`, [userId]);
+  await client.query(`DELETE FROM expense_templates WHERE user_id = $1`, [userId]).catch(() => {});
 
   // Layer 3: conversation state
   await client.query(`DELETE FROM conversation_state WHERE user_id = $1`, [userId]);
@@ -163,6 +177,13 @@ async function seed(client: PoolClient, userId: number): Promise<void> {
     const { rows: [field] } = await client.query(
       `INSERT INTO fields (user_id, name, city) VALUES ($1, $2, $3) RETURNING id`,
       [userId, f.name, f.city],
+    );
+    // Production add_field creates a field_members owner row — replicate so
+    // accessibleFieldsSql() (which only checks field_members, not fields.user_id)
+    // returns this field. Without this, list_fields/getFieldByName see 0 fields.
+    await client.query(
+      `INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2) ON CONFLICT (field_id, user_id) DO NOTHING`,
+      [field.id, userId],
     );
     fieldIds[f.name] = field.id;
     console.log(`   Campo "${f.name}" (${f.city}) → id=${field.id}`);
@@ -396,13 +417,15 @@ async function seed(client: PoolClient, userId: number): Promise<void> {
   ];
 
   let actCount = 0;
+  // Track harvest event ids by plot_crop_id so we can attach loads later
+  const harvestEventByCropId: Record<number, number> = {};
   for (const a of activities) {
     const plotId = plotIds[a.plotKey];
     const cropKey = a.plotKey;
     const plotCropId = cropIds[cropKey] || null;
-    await client.query(
+    const { rows: [evt] } = await client.query(
       `INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop, product, product_type, quantity, unit, implement, notes, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
       [userId, plotId, plotCropId, a.eventType, a.eventDate,
         a.crop || null, a.product || null, a.productType || null,
         a.quantity || null, a.unit || null, a.implement || null,
@@ -410,6 +433,9 @@ async function seed(client: PoolClient, userId: number): Promise<void> {
           parseInt(a.eventDate.slice(0, 4)), parseInt(a.eventDate.slice(5, 7)), parseInt(a.eventDate.slice(8, 10)), 9
         )],
     );
+    if (a.eventType === 'harvest' && plotCropId) {
+      harvestEventByCropId[plotCropId] = evt.id;
+    }
     actCount++;
   }
   console.log(`   ${actCount} activities inserted.`);
@@ -465,6 +491,166 @@ async function seed(client: PoolClient, userId: number): Promise<void> {
   console.log(`   ${obsCount} observations inserted.`);
 
   // =========================================================================
+  // 7. Crop scoutings (structured monitoring) ~10 records
+  // =========================================================================
+  console.log('\n7. Inserting crop scoutings...');
+
+  const scoutings: Array<{
+    plotKey: string; scoutingDate: string; stageCode?: string;
+    weedCoveragePct?: number; weedSpecies?: string[];
+    pestSpecies?: string; pestSeverity?: number; pestAffectedPct?: number;
+    soilMoisture?: number; emergencePct?: number; plantDensityM2?: number;
+    notes?: string;
+  }> = [
+    { plotKey: 'Don Pedro/1A', scoutingDate: d(2026, 1, 5), stageCode: 'V4', emergencePct: 95, plantDensityM2: 28, soilMoisture: 3, notes: 'Buena implantación' },
+    { plotKey: 'Don Pedro/1A', scoutingDate: d(2026, 1, 22), stageCode: 'V6', weedCoveragePct: 12, weedSpecies: ['rama negra', 'yuyo colorado'], pestSpecies: 'chinche', pestSeverity: 2 },
+    { plotKey: 'Don Pedro/1A', scoutingDate: d(2026, 2, 18), stageCode: 'R3', weedCoveragePct: 8, pestSpecies: 'chinche', pestSeverity: 3, pestAffectedPct: 25, soilMoisture: 2, notes: 'Subió la presión, evaluar control' },
+    { plotKey: 'Don Pedro/1A', scoutingDate: d(2026, 3, 10), stageCode: 'R5', weedCoveragePct: 5, pestSpecies: 'chinche', pestSeverity: 1, soilMoisture: 4 },
+    { plotKey: 'Don Pedro/1B', scoutingDate: d(2026, 1, 28), stageCode: 'V8', emergencePct: 92, plantDensityM2: 6, soilMoisture: 3 },
+    { plotKey: 'Don Pedro/1B', scoutingDate: d(2026, 2, 15), stageCode: 'V12', pestSpecies: 'isoca bolillera', pestSeverity: 3, pestAffectedPct: 15, notes: 'Cerca del umbral de daño económico' },
+    { plotKey: 'Don Pedro/1B', scoutingDate: d(2026, 3, 5), stageCode: 'R2', weedCoveragePct: 3, soilMoisture: 4 },
+    { plotKey: 'La Esperanza/Norte', scoutingDate: d(2026, 1, 18), stageCode: 'Z5', pestSpecies: 'roya anaranjada', pestSeverity: 2, pestAffectedPct: 10 },
+    { plotKey: 'La Esperanza/Norte', scoutingDate: d(2026, 2, 5), stageCode: 'Z7', pestSpecies: 'roya anaranjada', pestSeverity: 4, pestAffectedPct: 35, notes: 'Aplicar fungicida urgente' },
+    { plotKey: 'La Esperanza/Sur', scoutingDate: d(2026, 1, 30), stageCode: 'V6', emergencePct: 88, plantDensityM2: 5, weedCoveragePct: 18, weedSpecies: ['yuyo colorado'] },
+    { plotKey: 'La Esperanza/Sur', scoutingDate: d(2026, 2, 22), stageCode: 'R1', soilMoisture: 2, notes: 'Floración, déficit hídrico' },
+  ];
+
+  let scoutCount = 0;
+  for (const s of scoutings) {
+    const plotId = plotIds[s.plotKey];
+    const fieldKey = s.plotKey.split('/')[0];
+    const fieldId = fieldIds[fieldKey];
+    const cropId = cropIds[s.plotKey] || null;
+    await client.query(
+      `INSERT INTO crop_scoutings (
+         user_id, field_id, plot_id, plot_crop_id, scouting_date,
+         stage_code, weed_coverage_pct, weed_species,
+         pest_species, pest_severity_1_5, pest_affected_pct,
+         soil_moisture_1_5, emergence_pct, plant_density_m2,
+         notes, source, created_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'text',$16)`,
+      [
+        userId, fieldId, plotId, cropId, s.scoutingDate,
+        s.stageCode || null, s.weedCoveragePct ?? null,
+        s.weedSpecies && s.weedSpecies.length ? s.weedSpecies : null,
+        s.pestSpecies || null, s.pestSeverity ?? null, s.pestAffectedPct ?? null,
+        s.soilMoisture ?? null, s.emergencePct ?? null, s.plantDensityM2 ?? null,
+        s.notes || null,
+        ts(parseInt(s.scoutingDate.slice(0,4)), parseInt(s.scoutingDate.slice(5,7)), parseInt(s.scoutingDate.slice(8,10)), 8),
+      ],
+    );
+    scoutCount++;
+  }
+  console.log(`   ${scoutCount} scoutings inserted.`);
+
+  // =========================================================================
+  // 8. Harvest loads (per-truck for the existing trigo harvest)
+  // =========================================================================
+  console.log('\n8. Inserting harvest loads...');
+
+  const trigoCropId = cropIds['La Esperanza/Norte'] ?? null;
+  const trigoHarvestEventId = trigoCropId ? harvestEventByCropId[trigoCropId] : null;
+  let loadsCount = 0;
+  if (trigoHarvestEventId && trigoCropId) {
+    const trigoLoads = [
+      { driver: 'Britos', kg: 31320, dest: 'Cargill',  hum: 13.5, qual: { protein_pct: 11.8, gluten_pct: 24, test_weight_kg_hl: 78 } },
+      { driver: 'Contreras', kg: 30580, dest: 'Cargill', hum: 14.0, qual: null },
+      { driver: 'Vitali', kg: 29950, dest: 'ACA', hum: 13.8, qual: { protein_pct: 12.1, gluten_pct: 25 } },
+      { driver: 'Medero', kg: 28640, dest: 'ACA', hum: 14.2, qual: null },
+    ];
+    for (const ld of trigoLoads) {
+      await client.query(
+        `INSERT INTO harvest_loads (domain_event_id, plot_crop_id, driver_name, weight_kg, destination, destinatario, truck_plate, humidity_pct, quality_metrics)
+         VALUES ($1, $2, $3, $4, NULL, $5, NULL, $6, $7)`,
+        [trigoHarvestEventId, trigoCropId, ld.driver, ld.kg, ld.dest, ld.hum, ld.qual ? JSON.stringify(ld.qual) : null],
+      );
+      loadsCount++;
+    }
+    // Update plot_crops.yield_kg by summing loads
+    await client.query(
+      `UPDATE plot_crops SET yield_kg = (SELECT COALESCE(SUM(weight_kg),0) FROM harvest_loads WHERE plot_crop_id = $1) WHERE id = $1`,
+      [trigoCropId],
+    );
+  }
+  console.log(`   ${loadsCount} harvest loads inserted.`);
+
+  // =========================================================================
+  // 9. Livestock (groups + movements) — ~3 groups, ~6 movements
+  // =========================================================================
+  console.log('\n9. Inserting livestock data...');
+
+  const livestockSeed: Array<{
+    plotKey: string; category: 'vaca' | 'novillo' | 'ternero'; breed: string;
+    initialCount: number; movements: Array<{
+      type: 'entrada' | 'salida' | 'nacimiento' | 'muerte';
+      count: number; date: string;
+      unit_price_ars?: number; unit_price_usd?: number;
+    }>;
+  }> = [
+    {
+      plotKey: 'Don Pedro/1C', category: 'vaca', breed: 'Angus', initialCount: 0,
+      movements: [
+        { type: 'entrada', count: 25, date: d(2025, 12, 5), unit_price_ars: 600000 },
+        { type: 'nacimiento', count: 8, date: d(2026, 2, 10) },
+        { type: 'salida', count: 4, date: d(2026, 3, 18), unit_price_ars: 720000 },
+      ],
+    },
+    {
+      plotKey: 'Don Pedro/1C', category: 'novillo', breed: 'Angus', initialCount: 0,
+      movements: [
+        { type: 'entrada', count: 30, date: d(2025, 11, 20), unit_price_usd: 800 },
+        { type: 'salida', count: 10, date: d(2026, 3, 25), unit_price_usd: 950 },
+      ],
+    },
+    {
+      plotKey: 'Don Pedro/1C', category: 'ternero', breed: 'Angus', initialCount: 0,
+      movements: [
+        { type: 'entrada', count: 12, date: d(2026, 1, 15), unit_price_ars: 280000 },
+        { type: 'muerte', count: 1, date: d(2026, 2, 28) },
+      ],
+    },
+  ];
+
+  let groupCount = 0;
+  let movCount = 0;
+  for (const g of livestockSeed) {
+    const plotId = plotIds[g.plotKey];
+    const fieldKey = g.plotKey.split('/')[0];
+    const fieldId = fieldIds[fieldKey];
+    // Compute final count from movements
+    let finalCount = g.initialCount;
+    for (const m of g.movements) {
+      if (m.type === 'entrada' || m.type === 'nacimiento') finalCount += m.count;
+      else finalCount -= m.count;
+    }
+    const { rows: [grp] } = await client.query(
+      `INSERT INTO livestock_groups (user_id, field_id, plot_id, category, breed, count)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [userId, fieldId, plotId, g.category, g.breed, finalCount],
+    );
+    groupCount++;
+    // Insert movements
+    for (const m of g.movements) {
+      const isIncoming = m.type === 'entrada' || m.type === 'nacimiento';
+      const sourceId = isIncoming ? null : grp.id;
+      const destId = isIncoming ? grp.id : null;
+      await client.query(
+        `INSERT INTO livestock_movements
+         (user_id, movement_type, source_group_id, dest_group_id, count,
+          unit_price_ars, unit_price_usd, movement_date, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          userId, m.type, sourceId, destId, m.count,
+          m.unit_price_ars ?? null, m.unit_price_usd ?? null, m.date,
+          ts(parseInt(m.date.slice(0,4)), parseInt(m.date.slice(5,7)), parseInt(m.date.slice(8,10)), 14),
+        ],
+      );
+      movCount++;
+    }
+  }
+  console.log(`   ${groupCount} livestock groups, ${movCount} movements inserted.`);
+
+  // =========================================================================
   // Summary
   // =========================================================================
   console.log('\n========================================');
@@ -479,6 +665,9 @@ async function seed(client: PoolClient, userId: number): Promise<void> {
   console.log(`  Rainfall:      ${rainCount}`);
   console.log(`  Activities:    ${actCount}`);
   console.log(`  Observations:  ${obsCount}`);
+  console.log(`  Scoutings:     ${scoutCount}`);
+  console.log(`  Harvest loads: ${loadsCount}`);
+  console.log(`  Livestock:     ${groupCount} grupos / ${movCount} movimientos`);
   console.log('========================================');
 }
 

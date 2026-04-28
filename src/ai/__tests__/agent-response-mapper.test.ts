@@ -9,6 +9,7 @@ describe('AgentResponseMapper', () => {
     toolCalls,
     conversationalText: text,
     usage: { input_tokens: 100, output_tokens: 50 },
+    truncated: false,
   });
 
   describe('expense mapping', () => {

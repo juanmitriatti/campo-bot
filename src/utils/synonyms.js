@@ -28,6 +28,20 @@ export const SYNONYMS = {
   'choclo': 'maiz',
   'maicito': 'maiz',
   'soya': 'soja',
+  // Anglicismos comunes (audio transcription / mensajes mixtos)
+  'soybean': 'soja',
+  'soybeans': 'soja',
+  'soy': 'soja',
+  'corn': 'maiz',
+  'maize': 'maiz',
+  'wheat': 'trigo',
+  'sunflower': 'girasol',
+  'sorghum': 'sorgo',
+  'barley': 'cebada',
+  'oat': 'avena',
+  'oats': 'avena',
+  'cotton': 'algodon',
+  'rye': 'centeno',
 
   // Unit variants
   'tonelada': 'tn',

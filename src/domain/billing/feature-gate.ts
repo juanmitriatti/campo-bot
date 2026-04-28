@@ -118,6 +118,7 @@ export class FeatureGate {
       weather_all: 'weather',
       // Rainfall
       log_rainfall: 'rainfall',
+      log_rainfall_batch: 'rainfall',
       delete_last_rainfall: 'rainfall',
       rainfall_report: 'rainfall',
       rainfall_range: 'rainfall',

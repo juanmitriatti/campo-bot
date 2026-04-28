@@ -983,10 +983,14 @@ async function processTextMessage(
 
   // --- Handle compound actions from Agent (multiple tool calls) ---
   const compoundResults = (parseResult as any)._compoundResults as ParseResult[] | undefined;
+  const truncatedFlag = (parseResult as any)._truncated === true;
   if (compoundResults && compoundResults.length > 1) {
     const executor = new CompoundExecutor(domainRouter, financialHandler);
     const result = await executor.execute(compoundResults, userId, user, settings, text);
     if (result && result.messages.length > 0) {
+      if (truncatedFlag) {
+        result.messages.push('⚠️ El mensaje era largo y se cortó. Si te quedaron acciones sin registrar, repetilas en un mensaje aparte.');
+      }
       const items: BotResponseItem[] = result.messages.map(m => ({ type: 'text' as const, text: m }));
       if (result.stoppedAtFlow && result.lastSideEffects?.startFlow) {
         const { state, data } = result.lastSideEffects.startFlow;

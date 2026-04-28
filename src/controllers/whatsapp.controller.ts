@@ -1579,10 +1579,14 @@ router.post('/', async (req: Request, res: Response) => {
 
     // --- Handle compound actions from Agent (multiple tool calls) ---
     const compoundResults = (parseResult as any)._compoundResults as ParseResult[] | undefined;
+    const truncatedFlag = (parseResult as any)._truncated === true;
     if (compoundResults && compoundResults.length > 1) {
       const executor = new CompoundExecutor(domainRouter, financialHandler);
       const result = await executor.execute(compoundResults, userId, user, settings, text);
       if (result && result.messages.length > 0) {
+        if (truncatedFlag) {
+          result.messages.push('⚠️ El mensaje era largo y se cortó. Si te quedaron acciones sin registrar, repetilas en un mensaje aparte.');
+        }
         // Build a combined HandlerResponse and send it
         const combined: HandlerResponse = {
           messages: result.messages,

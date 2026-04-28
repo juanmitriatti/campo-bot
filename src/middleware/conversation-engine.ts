@@ -44,6 +44,28 @@ export function buildHalflifeMessage(flowState: string): string {
   return `👋 ¿Seguís ahí? Tu ${label} quedó a medias. Respondé o escribí *cancelar* para salir.`;
 }
 
+/**
+ * Detect "se llama X, no Y" / "no Y, se llama X" / "se llama X" / "es X, no Y"
+ * style corrections to the field name. Returns the new name or null.
+ */
+export function extractRenameCorrection(text: string): string | null {
+  const t = text.trim();
+  if (!t) return null;
+  // "Se llama Don Carletti, no Carleti" / "se llama Don Carletti"
+  let m = t.match(/^se\s+llama\s+(.+?)(?:\s*,\s*no\s+.+)?$/i);
+  if (m) return m[1].trim();
+  // "no Carleti, se llama Don Carletti"
+  m = t.match(/^no\s+.+?,\s*(?:se\s+llama|es)\s+(.+)$/i);
+  if (m) return m[1].trim();
+  // "es Don Carletti, no Carleti"
+  m = t.match(/^es\s+(.+?)\s*,\s*no\s+.+$/i);
+  if (m) return m[1].trim();
+  // "el nombre es X" / "el campo se llama X"
+  m = t.match(/^(?:el\s+)?(?:campo\s+)?(?:nombre|nombre\s+real)\s+(?:es|correcto\s+es)\s+(.+)$/i);
+  if (m) return m[1].trim();
+  return null;
+}
+
 export interface FlowMessageResult {
   response: HandlerResponse;
   nextContext: FlowContext | null; // null = clear flow
@@ -234,6 +256,28 @@ export class ConversationEngine {
         response: { messages: ['Error en el flujo. ¿Qué querés hacer?'] },
         nextContext: null,
       };
+    }
+
+    // Mid-flow rename: if the user corrects the name ("se llama X, no Y" /
+    // "no se llama Y, es X") and we already have a `name` in flow data, update
+    // it and re-prompt the current step so the user doesn't have to cancel +
+    // restart the flow.
+    if (stepDef.field !== 'name' && typeof ctx.data?.name === 'string') {
+      const renamed = extractRenameCorrection(text);
+      if (renamed && renamed.toLowerCase() !== (ctx.data.name as string).toLowerCase()) {
+        ctx.data.name = renamed;
+        const prompt = await this.resolvePrompt(stepDef, ctx.data, userId);
+        const interactive = await this.resolveInteractive(stepDef, ctx.data, userId);
+        return {
+          response: {
+            messages: interactive
+              ? [`✏️ Renombrado a *${renamed}*. Seguimos.`]
+              : [`✏️ Renombrado a *${renamed}*.\n\n${prompt}`],
+            interactive,
+          },
+          nextContext: ctx,
+        };
+      }
     }
 
     // Validate input: prefer async, fallback to sync
