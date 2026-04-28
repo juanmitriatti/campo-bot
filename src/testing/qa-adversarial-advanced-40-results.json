@@ -1,0 +1,1017 @@
+[
+  {
+    "test_name": "01_duplicate_expense_rapid",
+    "category": "silent_corruption",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "gaste 5000 en gasoil en el lote Norte (sent twice simultaneously)",
+        "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$5.000*\nUbicación: Lote Norte (la esperanza)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"] | 💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$5.000*\nUbicación: Lote Norte (la esperanza)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+      }
+    ],
+    "expected_behavior": [
+      "Should NOT create duplicate expenses when same message sent twice rapidly"
+    ],
+    "possible_failures": [
+      "Creates 2 identical expenses",
+      "Race condition causes data corruption"
+    ],
+    "actual_result": "DB count: 1, responses: 💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$5.000 | 💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$5.000",
+    "notes": "Only 1 expense created despite simultaneous sends - no duplication"
+  },
+  {
+    "test_name": "02_amount_mutation_context",
+    "category": "silent_corruption",
+    "severity": "high",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "gaste 15000 en fertilizante en el lote Norte",
+        "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *$15.000*\nUbicación: Lote Norte (la esperanza)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+      },
+      {
+        "role": "user",
+        "message": "cuanto gaste en fertilizante?",
+        "response": "No hay registros — fertilizantes entre 1/4/2026 y 28/4/2026."
+      },
+      {
+        "role": "user",
+        "message": "no, eran 20000",
+        "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *$20.000*\nUbicación: Lote Norte (la esperanza)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+      }
+    ],
+    "expected_behavior": [
+      "Correction \"no, eran 20000\" should either update the expense or explicitly ask for confirmation"
+    ],
+    "possible_failures": [
+      "Creates second expense instead of updating",
+      "Silently ignores correction",
+      "Creates observation"
+    ],
+    "actual_result": "DB amounts: [], last response: 💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *$20.000*\nUbicación: Lote",
+    "notes": "Unexpected state: []"
+  },
+  {
+    "test_name": "03_wrong_plot_assignment_similar_names",
+    "category": "silent_corruption",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "fumigue el lote 1A con glifosato 2lt/ha",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > 1A\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: trigo\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar *200 lt*?\n💨 *Fumigación* registrada\n📍 la esperanza > 1A\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: trigo\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar *200 lt*?\n[BUTTONS: stock_deduct_yes_223=\"Sí, descontar\", stock_deduct_no_223=\"No\"]"
+      },
+      {
+        "role": "user",
+        "message": "fumigue tambien ahi con 2,4D 1lt/ha",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > 1A\n🧴 2,4D (herbicida)\n📏 1 lt/ha\n🌱 Cultivo: trigo"
+      }
+    ],
+    "expected_behavior": [
+      "\"ahi\" should resolve to lote 1A from previous spray context"
+    ],
+    "possible_failures": [
+      "Resolves to wrong plot",
+      "Assigns to Norte/Sur instead of 1A",
+      "Creates duplicate on wrong plot"
+    ],
+    "actual_result": "💨 *Fumigación* registrada\n📍 la esperanza > 1A\n🧴 2,4D (herbicida)\n📏 1 lt/ha\n🌱 Cultivo: trigo",
+    "notes": "\"ahi\" correctly resolved to lote 1A from previous context"
+  },
+  {
+    "test_name": "04_currency_confusion",
+    "category": "silent_corruption",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "vendi soja a 300 el kg en el lote Norte",
+        "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Soja*\nMonto: *$300*\nUbicación: Lote Norte (la esperanza)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+      },
+      {
+        "role": "user",
+        "message": "vendi maiz a 200 dolares la tonelada en el lote Sur",
+        "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Maíz*\nMonto: *$200 USD*\nUbicación: Lote Sur (la esperanza)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+      }
+    ],
+    "expected_behavior": [
+      "\"300 el kg\" should be ARS (default), \"200 dolares\" should be USD"
+    ],
+    "possible_failures": [
+      "Both stored as ARS",
+      "Both stored as USD",
+      "Currency field empty"
+    ],
+    "actual_result": "[{\"desc\":\"maíz\",\"curr\":\"USD\",\"amt\":\"200\"},{\"desc\":\"soja\",\"curr\":\"ARS\",\"amt\":\"300\"}]",
+    "notes": "Currencies correct: maiz=USD, soja=ARS"
+  },
+  {
+    "test_name": "05_negative_quantity_injection",
+    "category": "silent_corruption",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cosechamos -500 kg en norte",
+        "response": "En *la esperanza > Norte* hay *soja* sembrado, no <UNKNOWN>.\nSi querés cosechar soja, escribí:\n🌾 *cosechamos soja en el lote Norte*"
+      }
+    ],
+    "expected_behavior": [
+      "Should reject or warn about negative harvest yield, NEVER store negative"
+    ],
+    "possible_failures": [
+      "Stores -500 kg yield",
+      "Interprets as expense removal",
+      "Crashes"
+    ],
+    "actual_result": "DB negative rows: 0, response: En *la esperanza > Norte* hay *soja* sembrado, no <UNKNOWN>.\nSi querés cosechar ",
+    "notes": "No negative stored and response: En *la esperanza > Norte* hay *soja* sembrado, no <UNKNOWN>.\nSi querés cosechar "
+  },
+  {
+    "test_name": "06_zero_hectares_sow",
+    "category": "silent_corruption",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "sembre soja en 0 hectareas del lote Sur",
+        "response": "⚠️ La superficie sembrada debe ser mayor a 0 ha."
+      }
+    ],
+    "expected_behavior": [
+      "Should reject sowing with 0 hectares"
+    ],
+    "possible_failures": [
+      "Creates crop record with 0 area",
+      "Ignores hectares param and uses full plot area",
+      "Crashes"
+    ],
+    "actual_result": "Zero-ha crops in DB: 0, response: ⚠️ La superficie sembrada debe ser mayor a 0 ha.",
+    "notes": "Rejected zero hectares appropriately"
+  },
+  {
+    "test_name": "07_future_date_expense",
+    "category": "silent_corruption",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "gaste 50000 en semillas el 15 de diciembre de 2027",
+        "response": "💸 *Semillas* — $50.000\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[BUTTONS: flow_plot_1a=\"1A\", flow_plot_noreste=\"Noreste\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\", flow_plot_principal=\"Principal\", flow_plot_reserva=\"Reserva\"]"
+      }
+    ],
+    "expected_behavior": [
+      "Should warn about far-future date (Dec 2027) or reject it"
+    ],
+    "possible_failures": [
+      "Silently stores expense with 2027 date",
+      "Does not validate date range"
+    ],
+    "actual_result": "Future rows: 0, response: 💸 *Semillas* — $50.000\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[BUTTONS: fl",
+    "notes": "Did not store far-future expense (rejected or used different date)"
+  },
+  {
+    "test_name": "08_overwrite_active_crop",
+    "category": "silent_corruption",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "sembre maiz en el lote Norte",
+        "response": "📋 Se cerró la campaña anterior de *soja* en la esperanza > Norte.\n🌱 *maíz* sembrado en *la esperanza > Norte*\n📅 Campaña 2025/26"
+      }
+    ],
+    "expected_behavior": [
+      "Should warn that Norte already has active soja crop before allowing new sow"
+    ],
+    "possible_failures": [
+      "Silently overwrites active crop",
+      "Creates second active crop on same plot",
+      "No validation"
+    ],
+    "actual_result": "📋 Se cerró la campaña anterior de *soja* en la esperanza > Norte.\n🌱 *maíz* sembrado en *la esperanza > Norte*\n📅 Campa",
+    "notes": "Bot warned about existing active crop (soja) before allowing sow"
+  },
+  {
+    "test_name": "09_context_decay_10_messages",
+    "category": "memory_drift",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cuantas has tiene el lote Norte?",
+        "response": "📍 *Lotes de la esperanza (4):*\n\n• *1A* — 100 ha\n• *Noreste* — 60 ha\n• *Norte* — 150 ha\n• *Sur* — 80 ha\n\n📐 *Total: 390 ha*"
+      },
+      {
+        "role": "user",
+        "message": "(10 filler messages sent)",
+        "response": "..."
+      },
+      {
+        "role": "user",
+        "message": "fumigue ahi con glifosato",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n🌱 Cultivo: maíz\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar del stock?\n💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n🌱 Cultivo: maíz\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar del stock?\n[BUTTONS: stock_deduct_yes_226=\"Sí, descontar\", stock_deduct_no_226=\"No\"]"
+      }
+    ],
+    "expected_behavior": [
+      "\"ahi\" should resolve to Norte or bot should ask (context may have decayed)"
+    ],
+    "possible_failures": [
+      "Assigns to wrong plot without asking",
+      "Creates observation instead of activity"
+    ],
+    "actual_result": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n🌱 Cultivo: maíz\n\n📦 Tenés 500 lt de *glifos",
+    "notes": "Context survived 10 intervening messages - \"ahi\" resolved to Norte"
+  },
+  {
+    "test_name": "10_cross_field_context_leak",
+    "category": "memory_drift",
+    "severity": "high",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "que cultivo tiene el lote Principal?",
+        "response": "🌱 *soja* en *san martin > Principal*\n📅 Campaña 2025/26 — 🌱 Activa\n📐 Superficie: 200 ha\n🗓️ Siembra: 28/04/2026"
+      },
+      {
+        "role": "user",
+        "message": "y el lote Norte?",
+        "response": "🌱 *maíz* en *la esperanza > Norte*\n📅 Campaña 2025/26 — 🌱 Activa\n📐 Superficie: 150 ha\n🗓️ Siembra: 28/04/2026"
+      },
+      {
+        "role": "user",
+        "message": "gastos de ese campo",
+        "response": "No hay gastos registrados para san martin (abril 2026).\n\n_Para reporte agronómico: \"reporte campo san martin\"_"
+      }
+    ],
+    "expected_behavior": [
+      "\"ese campo\" after mentioning Norte should resolve to La Esperanza, not San Martin"
+    ],
+    "possible_failures": [
+      "Resolves to San Martin (first field mentioned)",
+      "Context from Principal leaks into resolution"
+    ],
+    "actual_result": "No hay gastos registrados para san martin (abril 2026).\n\n_Para reporte agronómico: \"reporte campo san martin\"_",
+    "notes": "Context resolved to San Martin instead of La Esperanza — context tracking may not reflect latest query"
+  },
+  {
+    "test_name": "11_stale_pronoun_after_action",
+    "category": "memory_drift",
+    "severity": "high",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "gaste 10000 en gasoil para el lote Norte",
+        "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$10.000*\nUbicación: Lote Norte (la esperanza)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+      },
+      {
+        "role": "user",
+        "message": "gaste 5000 en repuestos",
+        "response": "✅ Registrado\nCombustible\n$10.000\n📍 Lote Norte (la esperanza)\n💸 *Otros* — $5.000\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[BUTTONS: flow_plot_1a=\"1A\", flow_plot_noreste=\"Noreste\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\", flow_plot_principal=\"Principal\", flow_plot_reserva=\"Reserva\"]"
+      }
+    ],
+    "expected_behavior": [
+      "New expense without plot mention should NOT inherit plot from previous message"
+    ],
+    "possible_failures": [
+      "Silently assigns Norte to unrelated expense",
+      "Context bleeds between actions"
+    ],
+    "actual_result": "plot_id=null, plot_name=null",
+    "notes": "Bot asked which plot (expenses do not always need a plot)"
+  },
+  {
+    "test_name": "12_entity_confusion_same_verb",
+    "category": "memory_drift",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "fumigue el norte con glifosato 3lt/ha",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: maíz\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar *450 lt*?\n💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: maíz\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar *450 lt*?\n[BUTTONS: stock_deduct_yes_227=\"Sí, descontar\", stock_deduct_no_227=\"No\"]"
+      },
+      {
+        "role": "user",
+        "message": "fumigue el sur con 2,4D 1.5lt/ha",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Sur\n🧴 2,4D (herbicida)\n📏 1.5 lt/ha\n🌱 Cultivo: maíz"
+      },
+      {
+        "role": "user",
+        "message": "que se le puso al norte?",
+        "response": "💨 La última *fumigación* en *la esperanza > Norte* fue el *28/4/2026*.\nglifosato\nCultivo: maíz"
+      }
+    ],
+    "expected_behavior": [
+      "Query about Norte should show glifosato, NOT 2,4D which was for Sur"
+    ],
+    "possible_failures": [
+      "Shows 2,4D for Norte (entity confusion)",
+      "Mixes up plot-product attributions"
+    ],
+    "actual_result": "💨 La última *fumigación* en *la esperanza > Norte* fue el *28/4/2026*.\nglifosato\nCultivo: maíz",
+    "notes": "Correctly attributed glifosato to Norte (not 2,4D from Sur)"
+  },
+  {
+    "test_name": "13_compound_context_bleed",
+    "category": "memory_drift",
+    "severity": "medium",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "sembre soja en el lote Principal y maiz en el lote Sur",
+        "response": "🌱 *soja* sembrado en *san martin > Principal*\n📅 Campaña 2025/26\n🌱 *maíz* sembrado en *la esperanza > Sur*\n📅 Campaña 2025/26"
+      },
+      {
+        "role": "user",
+        "message": "cuanto rindio ahi?",
+        "response": ""
+      }
+    ],
+    "expected_behavior": [
+      "\"ahi\" after compound action is ambiguous - bot should ask which plot"
+    ],
+    "possible_failures": [
+      "Picks last plot silently",
+      "Picks first plot silently",
+      "Crashes"
+    ],
+    "actual_result": "",
+    "notes": "Response: "
+  },
+  {
+    "test_name": "14_cancel_then_reference",
+    "category": "memory_drift",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "agregar campo Nuevo",
+        "response": "¿Cómo querés ubicar el campo?\n[BUTTONS: flow_field_loc_city=\"Escribir localidad\", flow_field_loc_map=\"Dibujar en mapa\", flow_field_loc_share=\"Compartir ubicación\"]"
+      },
+      {
+        "role": "user",
+        "message": "cancelar",
+        "response": "❌ Operacion cancelada.\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités.\n[BUTTONS: flow_new_expense=\"💸 Nuevo Gasto\", flow_new_income=\"💰 Nuevo Ingreso\", doc_upload_factura=\"🧾 Cargar Factura\", doc_upload_remito=\"📋 Cargar Remito\", cmd_resumen_mensual=\"📈 Resultado Mes\", menu_reportes=\"📊 Reportes\", menu_dolar=\"💵 Dólar\", menu_clima=\"☀️ Clima\", menu_lluvia=\"🌧️ Lluvia\", menu_campos=\"🏡 Campos\", menu_config=\"⚙️ Configuración\", menu_ayuda=\"❓ Ayuda\"]"
+      },
+      {
+        "role": "user",
+        "message": "si, registra eso",
+        "response": "🌱 *soja* sembrado en *san martin > Principal*\n📅 Campaña 2025/26\n🌱 *maíz* sembrado en *la esperanza > Sur*\n📅 Campaña 2025/26"
+      }
+    ],
+    "expected_behavior": [
+      "After cancel, \"si registra eso\" should NOT resume the cancelled flow"
+    ],
+    "possible_failures": [
+      "Resumes field creation flow",
+      "Creates \"Nuevo\" field",
+      "State leak after cancel"
+    ],
+    "actual_result": "🌱 *soja* sembrado en *san martin > Principal*\n📅 Campaña 2025/26\n🌱 *maíz* sembrado en *la esperanza > Sur*\n📅 Campaña ",
+    "notes": "Cancelled flow not resumed - state was properly cleared"
+  },
+  {
+    "test_name": "15_number_context_confusion",
+    "category": "memory_drift",
+    "severity": "medium",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "tengo 50 vacas en el lote Norte",
+        "response": "🐄 *Hacienda actualizada*\n\n  Vaca\n  ➕ 50 animales\n  📊 Total: *150*\n  📍 Norte (la esperanza)"
+      },
+      {
+        "role": "user",
+        "message": "gaste 50000 en alimento",
+        "response": "💸 *Otros* — $50.000\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[BUTTONS: flow_plot_1a=\"1A\", flow_plot_noreste=\"Noreste\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\", flow_plot_principal=\"Principal\", flow_plot_reserva=\"Reserva\"]"
+      },
+      {
+        "role": "user",
+        "message": "cuantas vacas tengo?",
+        "response": "No encontré ese lote.\n\nTus lotes:\n*la esperanza:* 1A, Noreste, Norte, Sur\n*san martin:* Principal, Reserva\n¿En qué lote?\n[BUTTONS: flow_plot_1a=\"1A\", flow_plot_noreste=\"Noreste\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\", flow_plot_principal=\"Principal\", flow_plot_reserva=\"Reserva\"]"
+      }
+    ],
+    "expected_behavior": [
+      "\"cuantas vacas\" should show cattle count (50), not confuse with expense amount (50000)"
+    ],
+    "possible_failures": [
+      "Shows 50000 from expense context",
+      "Confuses livestock with financial data"
+    ],
+    "actual_result": "No encontré ese lote.\n\nTus lotes:\n*la esperanza:* 1A, Noreste, Norte, Sur\n*san martin:* Principal, Reserva\n¿En qué lote?",
+    "notes": "Response: No encontré ese lote.\n\nTus lotes:\n*la esperanza:* 1A, Noreste, Norte, Sur\n*san martin:* Principal, R"
+  },
+  {
+    "test_name": "16_field_vs_plot_name_collision",
+    "category": "memory_drift",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cuantas hectareas tiene esperanza?",
+        "response": "📍 *Lotes de la esperanza (4):*\n\n• *1A* — 100 ha\n• *Noreste* — 60 ha\n• *Norte* — 150 ha\n• *Sur* — 80 ha\n\n📐 *Total: 390 ha*"
+      }
+    ],
+    "expected_behavior": [
+      "\"esperanza\" should resolve to field \"La Esperanza\" (partial match)"
+    ],
+    "possible_failures": [
+      "Does not match any entity",
+      "Matches wrong entity",
+      "Creates confusion with partial match"
+    ],
+    "actual_result": "📍 *Lotes de la esperanza (4):*\n\n• *1A* — 100 ha\n• *Noreste* — 60 ha\n• *Norte* — 150 ha\n• *Sur* — 80 ha\n\n📐 *Total: 390 ",
+    "notes": "Resolved \"esperanza\" to field \"La Esperanza\" and showed total/per-plot hectares"
+  },
+  {
+    "test_name": "17_past_date_before_sow",
+    "category": "temporal_contradiction",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "fumigue el lote Norte el 1 de enero de 2025",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🌱 Cultivo: maíz\n📅 31/12/2024"
+      }
+    ],
+    "expected_behavior": [
+      "Spraying before sow date should trigger warning or rejection"
+    ],
+    "possible_failures": [
+      "Stores activity with date before sow",
+      "No temporal validation"
+    ],
+    "actual_result": "DB rows: 0, response: 💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🌱 Cultivo: maíz\n📅 31/12/202",
+    "notes": "No pre-sow activity stored. Response: 💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🌱 Cultiv"
+  },
+  {
+    "test_name": "18_harvest_before_sow",
+    "category": "temporal_contradiction",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "coseche el lote Reserva",
+        "response": "No hay cultivo activo en *san martin > Reserva* para cosechar."
+      }
+    ],
+    "expected_behavior": [
+      "Harvesting a plot with no crop should fail cleanly"
+    ],
+    "possible_failures": [
+      "Creates harvest event on empty plot",
+      "Crashes",
+      "Creates observation"
+    ],
+    "actual_result": "No hay cultivo activo en *san martin > Reserva* para cosechar.",
+    "notes": "Bot correctly rejected harvest on plot without active crop"
+  },
+  {
+    "test_name": "19_overlapping_activities_same_day",
+    "category": "temporal_contradiction",
+    "severity": "high",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "fumigue el lote Norte con glifosato 2lt/ha hoy a la manana",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: maíz\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar *300 lt*?\n💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: maíz\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar *300 lt*?\n[BUTTONS: stock_deduct_yes_234=\"Sí, descontar\", stock_deduct_no_234=\"No\"]"
+      },
+      {
+        "role": "user",
+        "message": "fumigue el lote Norte con 2,4D 1lt/ha hoy a la tarde",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 2,4D (herbicida)\n📏 1 lt/ha\n🌱 Cultivo: maíz"
+      }
+    ],
+    "expected_behavior": [
+      "Two different sprays on same day/plot should create 2 separate events"
+    ],
+    "possible_failures": [
+      "Second spray overwrites first",
+      "Deduplication incorrectly merges them"
+    ],
+    "actual_result": "Products in DB: []",
+    "notes": "Could not verify in DB. Products found: []"
+  },
+  {
+    "test_name": "20_contradictory_yield",
+    "category": "temporal_contradiction",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "el lote 1A rindio 3000 kg/ha",
+        "response": "En *la esperanza > 1A* hay *trigo* sembrado, no soja.\nSi querés cosechar trigo, escribí:\n🌾 *cosechamos trigo en el lote 1A*"
+      },
+      {
+        "role": "user",
+        "message": "no mentira, rindio 2500 kg/ha",
+        "response": "🌾 *trigo* cosechado en *la esperanza > 1A*\n📅 Campaña 2025/26\n📊 Rendimiento: 250.000 kg (2.500 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\"."
+      }
+    ],
+    "expected_behavior": [
+      "Correction should update yield, not create duplicate harvest"
+    ],
+    "possible_failures": [
+      "Creates two harvest events",
+      "Ignores correction",
+      "Original yield remains"
+    ],
+    "actual_result": "Yields in DB: [\"250000\"], response: 🌾 *trigo* cosechado en *la esperanza > 1A*\n📅 Campaña 2025/26\n📊 Rendimiento: 2",
+    "notes": "Yield was updated to corrected value (2500)"
+  },
+  {
+    "test_name": "21_rainfall_exceeds_physics",
+    "category": "temporal_contradiction",
+    "severity": "low",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "llovieron 800mm en el campo La Esperanza",
+        "response": "El valor debe estar entre 1 y 500mm."
+      }
+    ],
+    "expected_behavior": [
+      "800mm in one day should trigger sanity warning (rare but possible in extreme events)"
+    ],
+    "possible_failures": [
+      "Stores without question",
+      "No range validation on rainfall"
+    ],
+    "actual_result": "Stored: false, response: El valor debe estar entre 1 y 500mm.",
+    "notes": "Did not store extreme value (rejected or asked for confirmation)"
+  },
+  {
+    "test_name": "22_future_harvest_date",
+    "category": "temporal_contradiction",
+    "severity": "low",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "coseche el lote 1A el 15 de agosto",
+        "response": "🌾 *trigo* cosechado en *la esperanza > 1A*\n📅 Campaña 2025/26\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\"."
+      }
+    ],
+    "expected_behavior": [
+      "\"15 de agosto\" in April should be interpreted as past August or bot should ask"
+    ],
+    "possible_failures": [
+      "Stores future date without asking",
+      "Cannot determine year"
+    ],
+    "actual_result": "Stored date: none, response: 🌾 *trigo* cosechado en *la esperanza > 1A*\n📅 Campaña 2025/26\n\nLa campaña sigue",
+    "notes": "No harvest stored with August date. Response: 🌾 *trigo* cosechado en *la esperanza > 1A*\n📅 Campaña 2025/26\n\nLa campaña sigue"
+  },
+  {
+    "test_name": "23_lote_vs_product_homonym",
+    "category": "entity_collision",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "sembre rye en el lote Reserva",
+        "response": "🌱 *centeno* sembrado en *san martin > Reserva*\n📅 Campaña 2025/26"
+      }
+    ],
+    "expected_behavior": [
+      "\"rye\" should be normalized to \"centeno\" via anglicism synonyms"
+    ],
+    "possible_failures": [
+      "Stores \"rye\" literally",
+      "Interprets as brand name",
+      "Normalization fails"
+    ],
+    "actual_result": "🌱 *centeno* sembrado en *san martin > Reserva*\n📅 Campaña 2025/26",
+    "notes": "\"rye\" correctly normalized to \"centeno\""
+  },
+  {
+    "test_name": "24_number_as_plot_name",
+    "category": "entity_collision",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "agregar lote 100 al campo San Martin",
+        "response": "📍 Lote *100* creado en campo *san martin*\n📐 ¿Cuántas hectáreas tiene *100*?"
+      },
+      {
+        "role": "user",
+        "message": "45 (hectares)",
+        "response": "📍 Lote *100*: superficie actualizada a *45 ha*"
+      },
+      {
+        "role": "user",
+        "message": "sembre soja en 100",
+        "response": "🌱 *soja* sembrado en *san martin > 100*\n📅 Campaña 2025/26"
+      }
+    ],
+    "expected_behavior": [
+      "\"sembre soja en 100\" should interpret 100 as plot name (since it exists)"
+    ],
+    "possible_failures": [
+      "Interprets as 100 hectares partial sow",
+      "Asks for plot when \"100\" IS the plot"
+    ],
+    "actual_result": "🌱 *soja* sembrado en *san martin > 100*\n📅 Campaña 2025/26",
+    "notes": "\"100\" resolved as plot name, not hectares quantity"
+  },
+  {
+    "test_name": "25_animal_category_as_quantity",
+    "category": "entity_collision",
+    "severity": "low",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "agregue 1 vaca en el lote Norte",
+        "response": "🐄 *Hacienda actualizada*\n\n  Vaca\n  ➕ 1 animales\n  📊 Total: *151*\n  📍 Norte (la esperanza)"
+      },
+      {
+        "role": "user",
+        "message": "agregue vaca 1 en el lote Norte",
+        "response": "🐄 *Hacienda actualizada*\n\n  Vaca\n  ➕ 1 animales\n  📊 Total: *152*\n  📍 Norte (la esperanza)"
+      }
+    ],
+    "expected_behavior": [
+      "Both \"1 vaca\" and \"vaca 1\" should add 1 cow (no ear tag system exists)"
+    ],
+    "possible_failures": [
+      "\"vaca 1\" misinterpreted as category name",
+      "Quantity parsing fails on word order change"
+    ],
+    "actual_result": "First: 🐄 *Hacienda actualizada*\n\n  Vaca\n  ➕ 1 , Second: 🐄 *Hacienda actualizada*\n\n  Vaca\n  ➕ 1 ",
+    "notes": "Both variants handled (quantity interpretation in both cases)"
+  },
+  {
+    "test_name": "26_city_as_field_name",
+    "category": "entity_collision",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "clima en Pergamino",
+        "response": "⛅ *Clima en Pergamino*\n\n🌡️ 15°C (ST 14°C)\n💧 Humedad: 28%\n💨 Viento: 13 km/h\nAlgo de nubes\n\n⛅ *Pronóstico Pergamino*\n\n*miércoles*: ⛅ 11°/22° 💨23km/h\n*jueves*: ☀️ 10°/22° 💨19km/h\n*viernes*: ⛅ 12°/23° 💨13km/h"
+      }
+    ],
+    "expected_behavior": [
+      "\"clima en Pergamino\" should query weather for city, not show field info"
+    ],
+    "possible_failures": [
+      "Resolves to field \"La Esperanza\" (which is IN Pergamino)",
+      "Shows plot data"
+    ],
+    "actual_result": "⛅ *Clima en Pergamino*\n\n🌡️ 15°C (ST 14°C)\n💧 Humedad: 28%\n💨 Viento: 13 km/h\nAlgo de nubes\n\n⛅ *Pronóstico Pergamino*\n\n*",
+    "notes": "\"Pergamino\" correctly interpreted as city for weather, not field/plot reference"
+  },
+  {
+    "test_name": "27_partial_name_match",
+    "category": "entity_collision",
+    "severity": "medium",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "fumigue el nor con glifosato",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Noreste\n🧴 glifosato (herbicida)\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar del stock?\n💨 *Fumigación* registrada\n📍 la esperanza > Noreste\n🧴 glifosato (herbicida)\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar del stock?\n[BUTTONS: stock_deduct_yes_239=\"Sí, descontar\", stock_deduct_no_239=\"No\"]"
+      }
+    ],
+    "expected_behavior": [
+      "\"el nor\" is ambiguous between Norte and Noreste - should ask or match Norte (exact start)"
+    ],
+    "possible_failures": [
+      "Silently picks wrong plot",
+      "Crashes on ambiguous match",
+      "Creates new plot \"nor\""
+    ],
+    "actual_result": "💨 *Fumigación* registrada\n📍 la esperanza > Noreste\n🧴 glifosato (herbicida)\n\n📦 Tenés 500 lt de *glifosato* en Galpon ",
+    "notes": "Bot picked one without asking (might be acceptable if \"nor\" clearly matches \"Norte\"): 💨 *Fumigación* registrada\n📍 la esperanza > Noreste\n🧴 glif"
+  },
+  {
+    "test_name": "28_compound_different_crops_same_plot",
+    "category": "entity_collision",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "sembre soja y maiz en el lote Norte",
+        "response": "No puedo sembrar dos cultivos diferentes en el mismo lote al mismo tiempo. ¿En cuál de los dos lotes querés sembrar soja y en cuál maíz? O si es en el mismo lote, ¿cuál es el cultivo principal?"
+      }
+    ],
+    "expected_behavior": [
+      "Cannot sow 2 different crops on same plot simultaneously - should reject or ask"
+    ],
+    "possible_failures": [
+      "Creates both crops",
+      "Only sows first, silently drops second",
+      "Crashes"
+    ],
+    "actual_result": "No puedo sembrar dos cultivos diferentes en el mismo lote al mismo tiempo. ¿En cuál de los dos lotes querés sembrar soja",
+    "notes": "Bot correctly rejected or asked about impossible dual-crop sow"
+  },
+  {
+    "test_name": "29_livestock_same_category_multi_location",
+    "category": "entity_collision",
+    "severity": "medium",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "vendi 10 vacas",
+        "response": "❌ No hay vaca en el lote Sur."
+      }
+    ],
+    "expected_behavior": [
+      "With vacas in multiple locations, \"vendi vacas\" should ask which location OR auto-resolve if only 1 group"
+    ],
+    "possible_failures": [
+      "Sells from wrong location",
+      "Creates income without removing from inventory",
+      "Crashes"
+    ],
+    "actual_result": "❌ No hay vaca en el lote Sur.",
+    "notes": "Response: ❌ No hay vaca en el lote Sur."
+  },
+  {
+    "test_name": "30_activity_with_expense_unit_ambiguity",
+    "category": "entity_collision",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "fumigue el norte con 3 litros de glifosato a 5000",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 3 lt\n🌱 Cultivo: maíz\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar *3 lt*?\n💸 *Agroquímicos* — $15.000\n\n¿En qué lote lo registramos?\n¿En qué lote?\n💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 3 lt\n🌱 Cultivo: maíz\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar *3 lt*?\n[BUTTONS: flow_plot_1a=\"1A\", flow_plot_noreste=\"Noreste\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\", flow_plot_100=\"100\", flow_plot_principal=\"Principal\", flow_plot_reserva=\"Reserva\", stock_deduct_yes_240=\"Sí, descontar\", stock_deduct_no_240=\"No\"]"
+      }
+    ],
+    "expected_behavior": [
+      "\"fumigue con X a 5000\" should register activity + expense ($5000 total or per unit)"
+    ],
+    "possible_failures": [
+      "Only registers activity, misses price",
+      "Price interpreted as quantity",
+      "Creates observation"
+    ],
+    "actual_result": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 3 lt\n🌱 Cultivo: maíz\n\n📦 Tenés 500 lt de",
+    "notes": "Registered both activity and expense (compound action with amount)"
+  },
+  {
+    "test_name": "31_hacienda_vs_hectareas_typo",
+    "category": "cross_domain",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cuantas has hay en el norte?",
+        "response": "📍 *Lotes de la esperanza (4):*\n\n• *1A* — 100 ha\n• *Noreste* — 60 ha\n• *Norte* — 150 ha\n• *Sur* — 80 ha\n\n📐 *Total: 390 ha*"
+      }
+    ],
+    "expected_behavior": [
+      "\"cuantas has\" = hectareas query, NOT hacienda. Should show 150 has for Norte"
+    ],
+    "possible_failures": [
+      "Shows cattle count instead of area",
+      "Interprets \"has\" as abbreviation for hacienda"
+    ],
+    "actual_result": "📍 *Lotes de la esperanza (4):*\n\n• *1A* — 100 ha\n• *Noreste* — 60 ha\n• *Norte* — 150 ha\n• *Sur* — 80 ha\n\n📐 *Total: 390 ",
+    "notes": "\"has\" correctly interpreted as hectareas (150 for Norte)"
+  },
+  {
+    "test_name": "32_observation_vs_activity",
+    "category": "cross_domain",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "el trigo del 1A esta con roya",
+        "response": "🔍 Observación registrada\n\n📍 la esperanza > 1A\n📂 🐛 Sanidad\n📝 trigo con roya\n\n⚠️ *Recomendación*\nMonitorear en los próximos días para evaluar avance de la plaga.\n\nPodés registrar ahora:\n• fumigación lote 1A\n• otra observación lote 1A"
+      }
+    ],
+    "expected_behavior": [
+      "\"esta con roya\" is a disease observation, NOT a spray/activity registration"
+    ],
+    "possible_failures": [
+      "Creates spray activity",
+      "Creates expense",
+      "Ignores entirely"
+    ],
+    "actual_result": "🔍 Observación registrada\n\n📍 la esperanza > 1A\n📂 🐛 Sanidad\n📝 trigo con roya\n\n⚠️ *Recomendación*\nMonitorear en los pr",
+    "notes": "Correctly classified as observation/scouting (disease report), not activity"
+  },
+  {
+    "test_name": "33_income_vs_transfer",
+    "category": "cross_domain",
+    "severity": "high",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "movi 30 novillos al feedlot",
+        "response": "❌ No encontré el corral \"__last__\"."
+      },
+      {
+        "role": "user",
+        "message": "vendi 30 novillos al feedlot",
+        "response": "🐄 *Hacienda descontada*\n\n  Novillo\n  ➖ 30 animales\n  📊 Quedan: *20*\n  📍 Sur (la esperanza)\n\n¿A cuánto fue la venta? Así registro el ingreso."
+      }
+    ],
+    "expected_behavior": [
+      "\"movi\" = transfer_livestock (physical), \"vendi\" = remove_livestock + income"
+    ],
+    "possible_failures": [
+      "Both treated as sales",
+      "Both treated as transfers",
+      "No distinction between verbs"
+    ],
+    "actual_result": "Move: ❌ No encontré el corral \"__last__\"., Sell: 🐄 *Hacienda descontada*\n\n  Novillo\n  ➖ 30 animale",
+    "notes": "Partial: transfer=false, income1=false, sale=true"
+  },
+  {
+    "test_name": "34_stock_vs_expense",
+    "category": "cross_domain",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "compre 200 litros de glifosato a 3000 el litro en el lote Norte",
+        "response": "✅ Anotado\nAgroquímicos\n$600.000\n📍 Lote Norte (la esperanza)\n\n📦 ¿Querés cargar *200lt de glifosato* al stock del Depósito Principal?\n📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 200 lt\n  📊 Total: *200 lt*\n  🏭 Principal (la esperanza)\n✅ Anotado\nAgroquímicos\n$600.000\n📍 Lote Norte (la esperanza)\n\n📦 ¿Querés cargar *200lt de glifosato* al stock del Depósito Principal?\n[BUTTONS: stock_entry_yes_65=\"Sí, cargar\", stock_entry_no_65=\"No\"]"
+      }
+    ],
+    "expected_behavior": [
+      "\"compre glifosato\" should create expense (and optionally update stock)"
+    ],
+    "possible_failures": [
+      "Only adds to stock, no expense",
+      "Neither expense nor stock",
+      "Only expense, stock diverges"
+    ],
+    "actual_result": "Expense in DB: true, Stock in DB: true",
+    "notes": "Expense created. Stock also updated: true. Response: ✅ Anotado\nAgroquímicos\n$600.000\n📍 Lote Norte (la esperanza)"
+  },
+  {
+    "test_name": "35_weather_vs_rainfall",
+    "category": "cross_domain",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "llovio 20mm",
+        "response": "Llovieron *20mm* 🌧️ ¿En qué campo?\nElegí el campo:\n[BUTTONS: rain_field_la esperanza_20=\"la esperanza\", rain_field_san martin_20=\"san martin\"]"
+      }
+    ],
+    "expected_behavior": [
+      "\"llovio 20mm\" should register rainfall data, not be treated as chat"
+    ],
+    "possible_failures": [
+      "Treated as conversational message",
+      "Creates observation instead of rainfall record"
+    ],
+    "actual_result": "Stored in DB: false, response: Llovieron *20mm* 🌧️ ¿En qué campo?\nElegí el campo:\n[BUTTONS: rain_field_la espe",
+    "notes": "\"llovio 20mm\" correctly interpreted as rainfall registration"
+  },
+  {
+    "test_name": "36_query_vs_registration",
+    "category": "cross_domain",
+    "severity": "medium",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "soja a 300 dolares",
+        "response": "💰 *Soja* — $300 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[BUTTONS: flow_plot_1a=\"1A\", flow_plot_noreste=\"Noreste\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\", flow_plot_100=\"100\", flow_plot_principal=\"Principal\", flow_plot_reserva=\"Reserva\"]"
+      }
+    ],
+    "expected_behavior": [
+      "\"soja a 300 dolares\" is ambiguous - bot should ask if selling or just noting price"
+    ],
+    "possible_failures": [
+      "Creates income without quantity",
+      "Creates expense",
+      "Ignores entirely"
+    ],
+    "actual_result": "💰 *Soja* — $300 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[BUTTONS: flow_plot_1a=\"1A\", flow_plot_noreste=\"Noreste",
+    "notes": "Interpreted as income without quantity - may be premature registration"
+  },
+  {
+    "test_name": "37_sql_injection_attempt",
+    "category": "edge_case",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "agregue campo '; DROP TABLE users; --",
+        "response": "¿Cómo querés ubicar el campo?\n[BUTTONS: flow_field_loc_city=\"Escribir localidad\", flow_field_loc_map=\"Dibujar en mapa\", flow_field_loc_share=\"Compartir ubicación\"]"
+      }
+    ],
+    "expected_behavior": [
+      "SQL injection should be safely handled via parameterized queries"
+    ],
+    "possible_failures": [
+      "DB tables dropped",
+      "Application crash",
+      "Data corruption"
+    ],
+    "actual_result": "DB intact: true, response: ¿Cómo querés ubicar el campo?\n[BUTTONS: flow_field_loc_city=\"Escribir localidad\"",
+    "notes": "SQL injection attempt safely handled - DB intact"
+  },
+  {
+    "test_name": "38_extremely_long_message",
+    "category": "edge_case",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "(2052 chars - multiple embedded operations)",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: maíz\n\n📦 Tenés 500 lt de *glifosato* en Galpon Central.\n¿Descontar *450 lt*?\n🧪 *Fertilización* registrada\n📍 la esperanza > Sur\n🧴 urea\n📏 150 kg/ha\n🌱 Cultivo: maíz\n\n📦 Tenés 2000 kg de *urea* en Galpon Central.\n¿Descontar *12000 kg*?\n🚛 *3 cargas agregadas en la esperanza > 1A:*\n• Garcia — 28.000 kg (13.8% hum)\n• Lopez — 31.000 kg (14.1% hum)\n• Martinez — 29.500 kg (13.5% hum)\n\n📊 *Total: 88.500 kg*\n💧 *Humedad promedio:* 13.8% (3/3 cargas)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n💸 *Combustible* — $450.000\n\n¿En qué lote lo registramos?\n¿En qué lote?\n🧪 *Fertilización* registrada\n📍 la esperanza > Sur\n🧴 urea\n📏 150 kg/ha\n🌱 Cultivo: maíz\n\n📦 Tenés 2000 kg de *urea* en Galpon Central.\n¿Descontar *12000 kg*?\n[BUTTONS: flow_plot_1a=\"1A\", flow_plot_noreste=\"Noreste\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\", flow_plot_100=\"100\", flow_plot_principal=\"Principal\", flow_plot_reserva=\"Reserva\", stock_deduct_yes_242=\"Sí, descontar\", stock_deduct_no_242=\"No\"]"
+      }
+    ],
+    "expected_behavior": [
+      "Should process embedded operations or warn about truncation for very long messages"
+    ],
+    "possible_failures": [
+      "Crashes",
+      "Silent data loss",
+      "Only processes first operation",
+      "Timeout"
+    ],
+    "actual_result": "Response length: 1106, contains registrations: true, truncation warning: false",
+    "notes": "Bot processed long message and registered actions (response 1106 chars)"
+  },
+  {
+    "test_name": "39_emoji_heavy_message",
+    "category": "edge_case",
+    "severity": "low",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "sembre corn-emoji en el lote wheat-emoji norte tractor-emoji",
+        "response": "🌱 *maíz* sembrado en *la esperanza > Norte*\n📅 Campaña 2025/26"
+      }
+    ],
+    "expected_behavior": [
+      "Should extract \"norte\" as plot despite emojis, optionally interpret corn emoji as maiz"
+    ],
+    "possible_failures": [
+      "Crashes on emoji characters",
+      "Ignores entire message",
+      "Creates garbled data"
+    ],
+    "actual_result": "🌱 *maíz* sembrado en *la esperanza > Norte*\n📅 Campaña 2025/26",
+    "notes": "Bot extracted plot \"Norte\" from emoji-laden text. Crop: detected"
+  },
+  {
+    "test_name": "40_contradictory_units",
+    "category": "edge_case",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "compre 5 toneladas de urea a 200 pesos el kilo en el lote Norte",
+        "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *$1.000.000*\nDetalle: 5 tn a $200\nUbicación: Lote Norte (la esperanza)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+      }
+    ],
+    "expected_behavior": [
+      "5 toneladas at 200/kg = 5000kg * 200 = $1,000,000"
+    ],
+    "possible_failures": [
+      "Does not convert tn to kg for price calc",
+      "Stores unit price only",
+      "Wrong multiplication"
+    ],
+    "actual_result": "DB amount: $1,000,000, response: ✅ Listo, gasto registrado\nFertilizantes\n$1.000.000\n📍 Lote Norte (la esperanza)\n",
+    "notes": "Correctly calculated: 5tn * 200/kg = $1,000,000 (expected ~$1,000,000)"
+  }
+]

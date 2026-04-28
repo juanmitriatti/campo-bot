@@ -844,6 +844,9 @@ export class AgronomyHandler {
 
         const crop = cmd.crop as string;
         const sowedHa = cmd.hectares != null ? Number(cmd.hectares) : null;
+        if (sowedHa != null && sowedHa <= 0) {
+          return { messages: ['⚠️ La superficie sembrada debe ser mayor a 0 ha.'] };
+        }
         const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, sowedHa);
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
         const plotLabel = plotResult.fieldName ? `${plotResult.fieldName} > ${plotResult.plotName}` : plotResult.plotName;

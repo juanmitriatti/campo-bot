@@ -1444,4 +1444,31 @@ router.post('/reset', async (req: Request, res: Response) => {
   }
 });
 
+// Query DB endpoint for test assertions (SELECT + UPDATE for test setup)
+router.post('/query-db', async (req: Request, res: Response) => {
+  const userId = req.auth?.userId;
+  if (!userId) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  const { sql, params } = req.body;
+  if (!sql || typeof sql !== 'string') {
+    res.status(400).json({ error: 'Missing sql' });
+    return;
+  }
+  // Safety: only allow SELECT and UPDATE (for plan upgrade etc.)
+  const trimmed = sql.trim().toLowerCase();
+  if (!trimmed.startsWith('select') && !trimmed.startsWith('update')) {
+    res.status(403).json({ error: 'Only SELECT and UPDATE queries allowed' });
+    return;
+  }
+  try {
+    const result = await pool.query(sql, params || []);
+    res.json({ rows: result.rows || [] });
+  } catch (error: unknown) {
+    const err = error as Error;
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

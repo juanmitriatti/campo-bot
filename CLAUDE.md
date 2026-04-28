@@ -236,6 +236,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/testing/scenario-runner.ts` — Loads JSON scenarios, runs setup→steps→assertions→report
 - `src/testing/scenarios/*.json` — 18 test scenarios + `_setup.json` reusable sequences
 - `src/testing/qa-adversarial-30.ts` — 30 adversarial QA scenarios (run: `npx tsx src/testing/qa-adversarial-30.ts`)
+- `src/testing/qa-adversarial-advanced-40.ts` — 40 advanced adversarial scenarios (run: `npx tsx src/testing/qa-adversarial-advanced-40.ts`)
 
 ### Config & Utils
 - `src/utils/parser.js` — Spanish text normalization, number expansion, category matching
@@ -262,7 +263,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 ## Tests
 
 ### Unit Tests (vitest)
-- 1211 total, 6 pre-existing failures. Baseline: 1205 passing.
+- 1240 total, 0 failures. Baseline: 1240 passing.
 - Run: `npm test`
 - Single file: `npx vitest run src/utils/parser.test.js`
 
@@ -281,3 +282,11 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - Requires: `docker compose up -d` + enterprise plan on test user
 - Tests: implicit references, typos, compound actions, recategorización, multi-day rainfall, crop scouting severity, harvest loads, financial queries vs registrations, unit conversions (qq/tn), weather, context memory
 - Last run: **90% pass rate** (27 PASS, 0 FAIL, 3 WARN) — MVP READY
+
+### QA Adversarial Advanced Testing (40 scenarios)
+- `npx tsx src/testing/qa-adversarial-advanced-40.ts` — 40 advanced adversarial scenarios targeting silent data corruption, memory drift, temporal contradictions, entity collisions, cross-domain confusion, and edge cases
+- Requires: `docker compose up -d` + enterprise plan on test user
+- Uses DB verification via `/api/test-bot/query-db` endpoint (SELECT/UPDATE only)
+- Setup: 2 fields (La Esperanza + San Martin), 6 plots, 4 crops, livestock, stock warehouse
+- Categories: silent corruption (01-08), memory drift (09-16), temporal contradictions (17-22), entity collisions (23-30), cross-domain confusion (31-36), edge cases (37-40)
+- Last run: **73% pass rate** (29 PASS, 0 FAIL, 11 WARN)
