@@ -543,7 +543,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'query_plot_history',
-    description: 'Consultar historial de actividades PASADAS. "cuándo se fumigó el lote X", "historial lote A1", "qué se hizo en el lote". SOLO para historial de acciones pasadas. Para consultar cultivos actualmente sembrados ("hay soja?", "dónde hay soja", "qué tengo sembrado") usar active_crop.',
+    description: 'Consultar historial de actividades PASADAS. "cuándo se fumigó el lote X", "historial lote A1", "qué se hizo en el lote", "última fumigación del lote X". SOLO para historial de acciones pasadas. Para consultar cultivos actualmente sembrados ("hay soja?", "dónde hay soja", "qué tengo sembrado") usar active_crop. IMPORTANTE: el parámetro plot debe contener SOLO el nombre del lote, sin cualificadores temporales. Ej: "cuándo se fumigó el lote Norte por última vez" → plot="Norte", isUltimaVez=true.',
     input_schema: {
       type: 'object',
       properties: {
@@ -552,6 +552,8 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         crop: { type: 'string', description: 'Cultivo a buscar (maíz, soja, trigo, etc.).' },
         timeRef: { type: 'string', description: 'Referencia temporal (últimos 30 días, este mes, etc.).' },
         activityFilter: { type: 'string', description: 'Filtro de actividad: log_spraying, log_fertilization, sow_crop, harvest_crop, log_tillage, log_irrigation, tacto.' },
+        isUltimaVez: { type: 'boolean', description: 'true si el usuario pregunta por la última vez que se hizo algo ("por última vez", "la última", "última fumigación").' },
+        isBinaryQuestion: { type: 'boolean', description: 'true si el usuario hace una pregunta de sí/no ("¿se fumigó?", "¿se sembró?").' },
       },
       required: [],
     },

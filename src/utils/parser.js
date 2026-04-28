@@ -878,6 +878,7 @@ const COMMAND_PATTERNS = [
     extract: (m, fullText) => {
       const plotName = m[1]?.trim()
         .replace(/[?¿!¡.,;:]+$/g, '')
+        .replace(/\s+(?:por\s+)?(?:ultima|última)\s+vez.*$/i, '')
         .replace(/\s+(?:en|de|del|durante|este|esta|estos|estas|el|la|los|las)\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|semana|mes|año|hoy|ayer|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo).*$/i, '')
         .replace(/\s+(?:(?:ultimos|últimos|ultimas|últimas)\s+\d+\s+d[ií]as?).*$/i, '')
         .trim() || null;

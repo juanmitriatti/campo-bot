@@ -68,7 +68,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 ### Livestock
 - "N vacas con N terneros" → 2x `add_livestock` (NEVER `record_livestock_birth`)
 - Birth verbs only (nacieron/parieron/nació) → `record_livestock_birth`
-- "pasé N terneros a novillos" → `transfer_livestock` (recategorización auto-detected)
+- "pasé N terneros a novillos" → `transfer_livestock` (recategorización auto-detected). Handler auto-resolves: if no destination and `dest_category` set → same-location recategorization. If no source and only one group of that category exists → auto-resolves source.
 - `add_livestock` / `remove_livestock` with `unit_price_ars|usd` → auto-creates linked expense/income (category "Hacienda"). Stored in `livestock_movements.linked_expense_id` / `linked_income_id`.
 
 ### Sanidad Animal (livestock health)
@@ -235,6 +235,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/testing/assertions.ts` — Deterministic assertions (responseContains, dbHasExpense, dbHasActivity, etc.)
 - `src/testing/scenario-runner.ts` — Loads JSON scenarios, runs setup→steps→assertions→report
 - `src/testing/scenarios/*.json` — 18 test scenarios + `_setup.json` reusable sequences
+- `src/testing/qa-adversarial-30.ts` — 30 adversarial QA scenarios (run: `npx tsx src/testing/qa-adversarial-30.ts`)
 
 ### Config & Utils
 - `src/utils/parser.js` — Spanish text normalization, number expansion, category matching
@@ -274,3 +275,9 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - Scenarios cover: expenses, incomes, fields/plots, sowing, spraying, observations, weather, reports, greetings, rainfall, compound actions, conversational fallback
 - Add new scenarios: create `src/testing/scenarios/NN-name.json`, reusable setup in `_setup.json`
 - **Run eval after any change to the AI pipeline, agent prompt, tool definitions, handlers, or flows**
+
+### QA Adversarial Testing (30 scenarios)
+- `npx tsx src/testing/qa-adversarial-30.ts` — 30 adversarial scenarios testing informal language, ambiguity, stock, hacienda, scouting, complex queries
+- Requires: `docker compose up -d` + enterprise plan on test user
+- Tests: implicit references, typos, compound actions, recategorización, multi-day rainfall, crop scouting severity, harvest loads, financial queries vs registrations, unit conversions (qq/tn), weather, context memory
+- Last run: **90% pass rate** (27 PASS, 0 FAIL, 3 WARN) — MVP READY

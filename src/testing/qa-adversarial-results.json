@@ -1,0 +1,722 @@
+[
+  {
+    "test_name": "01_implicit_plot_reference",
+    "category": "contexto_conversacional",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cuántas has tiene el lote Norte?",
+        "response": "📍 *Lotes de la esperanza (3):*\n\n• *El Fondo* — 200 ha\n• *Norte* — 150 ha\n• *Sur* — 80 ha\n\n📐 *Total: 430 ha*"
+      },
+      {
+        "role": "user",
+        "message": "fumigué ahí con glifosato 3lt/ha",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: soja"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should resolve \"ahí\" to lote Norte from previous message context"
+    ],
+    "possible_failures": [
+      "Bot asks which plot instead of using context",
+      "Bot logs to wrong plot"
+    ],
+    "actual_result": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: soja",
+    "notes": "Implicit reference resolved correctly"
+  },
+  {
+    "test_name": "02_ambiguous_size_reference",
+    "category": "ambiguedad",
+    "severity": "medium",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "fumigá el chico con 2,4D",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 2,4D (herbicida)\n🌱 Cultivo: soja"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should ask which plot \"el chico\" refers to, or resolve to smallest plot"
+    ],
+    "possible_failures": [
+      "Bot picks random plot",
+      "Bot creates observation instead of activity",
+      "Bot ignores the command"
+    ],
+    "actual_result": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 2,4D (herbicida)\n🌱 Cultivo: soja",
+    "notes": "Testing if bot handles informal size-based plot references"
+  },
+  {
+    "test_name": "03_compound_activity_expense",
+    "category": "acciones_compuestas",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "fumigué el lote Norte con glifosato, gasté 85mil en el producto",
+        "response": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n🌱 Cultivo: soja\n✅ Anotado\nAgroquímicos\n$85.000\n📍 Lote Norte (la esperanza)"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should register BOTH a spray activity AND an expense of $85,000"
+    ],
+    "possible_failures": [
+      "Only registers activity, misses expense",
+      "Only registers expense, misses activity",
+      "Registers duplicate"
+    ],
+    "actual_result": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n🌱 Cultivo: soja\n✅ Anotado\nAgroquímicos\n$85.000\n📍 Lote Norte (la esperanza)",
+    "notes": "Compound action executed correctly"
+  },
+  {
+    "test_name": "04_livestock_ambiguity_no_quantity",
+    "category": "hacienda",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "vendí un poco de hacienda",
+        "response": "¿Cuántos animales vendiste y de qué categoría (vacas, novillos, terneros, etc.)? ¿De qué lote o corral?"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should ask how many animals and which category were sold"
+    ],
+    "possible_failures": [
+      "Bot registers sale without quantity",
+      "Bot ignores command",
+      "Bot creates generic income instead of livestock removal"
+    ],
+    "actual_result": "¿Cuántos animales vendiste y de qué categoría (vacas, novillos, terneros, etc.)? ¿De qué lote o corral?",
+    "notes": "Bot correctly asked for details"
+  },
+  {
+    "test_name": "05_typo_crop_name",
+    "category": "lenguaje_informal",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "sembre soga en el fondo",
+        "response": "🌱 *soja* sembrado en *la esperanza > El Fondo*\n📅 Campaña 2025/26"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should interpret \"soga\" as \"soja\" and \"el fondo\" as lote El Fondo"
+    ],
+    "possible_failures": [
+      "Bot does not understand \"soga\"",
+      "Bot does not resolve \"el fondo\" to plot name",
+      "Creates observation instead of sowing activity"
+    ],
+    "actual_result": "🌱 *soja* sembrado en *la esperanza > El Fondo*\n📅 Campaña 2025/26",
+    "notes": "Testing typo tolerance and informal plot naming"
+  },
+  {
+    "test_name": "06_stock_without_warehouse",
+    "category": "stock",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "tengo 500lt de glifosato en el galpón",
+        "response": "📊 *Stock ajustado*\n\n  📦 *glifosato*\n  📊 Cantidad actual: *500 lt*\n  🏭 Principal (la esperanza)"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should create warehouse \"el galpón\" and add 500lt of glifosato, or ask for warehouse creation"
+    ],
+    "possible_failures": [
+      "Bot ignores warehouse mention",
+      "Bot creates expense instead of stock entry",
+      "Bot fails because no warehouse exists"
+    ],
+    "actual_result": "📊 *Stock ajustado*\n\n  📦 *glifosato*\n  📊 Cantidad actual: *500 lt*\n  🏭 Principal (la esperanza)",
+    "notes": "Testing stock creation flow when no warehouse pre-exists"
+  },
+  {
+    "test_name": "07_livestock_recategorization",
+    "category": "hacienda",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "pasé 10 terneros del lote Norte a novillos",
+        "response": "🔁 *Recategorización*\n\n  Ternero\n  ↗️ 10 animales\n  Desde: *Norte (la esperanza)* (quedan 10)\n  Hacia: *Norte (la esperanza)* (ahora 40)"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should use transfer_livestock to recategorize 10 terneros from Norte to novillos (same lote)"
+    ],
+    "possible_failures": [
+      "Bot removes terneros + adds novillos as separate actions",
+      "Bot creates generic observation",
+      "Bot does not understand recategorization"
+    ],
+    "actual_result": "🔁 *Recategorización*\n\n  Ternero\n  ↗️ 10 animales\n  Desde: *Norte (la esperanza)* (quedan 10)\n  Hacia: *Norte (la esperanza)* (ahora 40)",
+    "notes": "Recategorization handled correctly"
+  },
+  {
+    "test_name": "08_relative_date_rainfall",
+    "category": "fechas",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "el martes pasado llovieron 25mm",
+        "response": "🌧️ Lluvia registrada: *25mm*\n📍 la esperanza\n📅 21 de abril\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should register 25mm rainfall for last Tuesday"
+    ],
+    "possible_failures": [
+      "Bot uses today's date instead of last Tuesday",
+      "Bot asks for date despite clear reference",
+      "Bot ignores rainfall command"
+    ],
+    "actual_result": "🌧️ Lluvia registrada: *25mm*\n📍 la esperanza\n📅 21 de abril\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)",
+    "notes": "Relative date handled"
+  },
+  {
+    "test_name": "09_multi_day_rainfall_batch",
+    "category": "lluvia",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "llovió 15mm el lunes, 20mm el martes y 8mm el miércoles",
+        "response": "🌧️ Lluvia registrada: *15mm*\n📍 la esperanza\n📅 26 de abril\n🌧️ Lluvia registrada: *20mm*\n📍 la esperanza\n📅 27 de abril\n🌧️ Lluvia registrada: *8mm*\n📍 la esperanza\n📅 28 de abril"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should register 3 separate rainfall entries for Monday, Tuesday, Wednesday"
+    ],
+    "possible_failures": [
+      "Bot only registers one day",
+      "Bot sums all rainfall into one entry",
+      "Bot asks for field 3 times instead of once"
+    ],
+    "actual_result": "🌧️ Lluvia registrada: *15mm*\n📍 la esperanza\n📅 26 de abril\n🌧️ Lluvia registrada: *20mm*\n📍 la esperanza\n📅 27 de abril\n🌧️ Lluvia registrada: *8mm*\n📍 la esperanza\n📅 28 de abril",
+    "notes": "Testing multi-day rainfall batch consolidation"
+  },
+  {
+    "test_name": "10_crop_scouting_informal_language",
+    "category": "monitoreo",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "la soja del norte viene en R3 con algo de rama negra, diría 10% ponele",
+        "response": "🔍 *Monitoreo registrado* en *la esperanza > Norte*\n  📐 Estadio: *R3*\n  🌿 Malezas: 10.00% (rama negra)"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should log crop scouting: stage=R3, weed_species=rama negra, weed_coverage_pct=10 for lote Norte"
+    ],
+    "possible_failures": [
+      "Bot creates free-text observation instead of structured scouting",
+      "Misses stage code",
+      "Misses weed percentage",
+      "Wrong plot assignment"
+    ],
+    "actual_result": "🔍 *Monitoreo registrado* en *la esperanza > Norte*\n  📐 Estadio: *R3*\n  🌿 Malezas: 10.00% (rama negra)",
+    "notes": "Structured scouting captured from informal language"
+  },
+  {
+    "test_name": "11_financial_query_not_registration",
+    "category": "queries",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cuánto gasté en el lote Norte?",
+        "response": "📊 *Resumen financiero — lote Norte* (la esperanza, abril 2026)\n\nAgroquímicos: $85.000\n\nGastos: $85.000\nResultado: $-85.000\n\n_Para actividades agronómicas: \"qué pasó en el lote Norte\"_"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should return financial report for lote Norte, NOT try to register an expense"
+    ],
+    "possible_failures": [
+      "Bot interprets as expense registration",
+      "Bot creates observation",
+      "Bot asks for amount"
+    ],
+    "actual_result": "📊 *Resumen financiero — lote Norte* (la esperanza, abril 2026)\n\nAgroquímicos: $85.000\n\nGastos: $85.000\nResultado: $-85.000\n\n_Para actividades agronómicas: \"qué pasó en el lote Norte\"_",
+    "notes": "Correctly identified as query"
+  },
+  {
+    "test_name": "12_harvest_with_multiple_loads",
+    "category": "cosecha",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cosechamos soja del lote Norte. García 32000kg, Pérez 28500kg, Rodríguez 30000kg",
+        "response": "🚛 *3 cargas registradas en la esperanza > Norte:*\n• García — 32.000 kg\n• Pérez — 28.500 kg\n• Rodríguez — 30.000 kg\n\n📊 *Total: 90.500 kg*\n📅 Campaña 2025/26\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\"."
+      }
+    ],
+    "expected_behavior": [
+      "Bot should register harvest with 3 loads: García 32000, Pérez 28500, Rodríguez 30000"
+    ],
+    "possible_failures": [
+      "Bot only registers harvest without loads",
+      "Bot treats as 3 separate incomes",
+      "Bot misses driver names"
+    ],
+    "actual_result": "🚛 *3 cargas registradas en la esperanza > Norte:*\n• García — 32.000 kg\n• Pérez — 28.500 kg\n• Rodríguez — 30.000 kg\n\n📊 *Total: 90.500 kg*\n📅 Campaña 2025/26\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".",
+    "notes": "Harvest loads captured"
+  },
+  {
+    "test_name": "13_livestock_health_vaccination",
+    "category": "hacienda_sanidad",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "vacuné las 50 vacas contra aftosa",
+        "response": "💉 *Evento sanitario registrado*\n  Tipo: Vacunación\n  🦠 aftosa\n  🐄 50 Vacas\n  📍 la esperanza > El Fondo"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should log health event: type=vacunacion, disease_or_vaccine=aftosa, animals_affected=50, category=vacas"
+    ],
+    "possible_failures": [
+      "Bot creates generic observation",
+      "Bot uses log_observation instead of log_health_event",
+      "Misses vaccine name"
+    ],
+    "actual_result": "💉 *Evento sanitario registrado*\n  Tipo: Vacunación\n  🦠 aftosa\n  🐄 50 Vacas\n  📍 la esperanza > El Fondo",
+    "notes": "Health event logged correctly"
+  },
+  {
+    "test_name": "14_livestock_repro_service",
+    "category": "hacienda_reproduccion",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "eché el toro con las 50 vacas, monta natural",
+        "response": "🐂 *Evento reproductivo registrado*\n  Tipo: Servicio (entore)\n  🐄 50 Vacas\n  🔬 Método: monta natural\n  📍 la esperanza > El Fondo"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should log repro event: type=servicio, method=monta natural, 50 vacas"
+    ],
+    "possible_failures": [
+      "Bot creates generic activity",
+      "Bot uses add_livestock instead of log_repro_event",
+      "Misses method field"
+    ],
+    "actual_result": "🐂 *Evento reproductivo registrado*\n  Tipo: Servicio (entore)\n  🐄 50 Vacas\n  🔬 Método: monta natural\n  📍 la esperanza > El Fondo",
+    "notes": "Repro event logged"
+  },
+  {
+    "test_name": "15_livestock_weighing",
+    "category": "hacienda_pesaje",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "pesé los 30 novillos, promedio 380kg",
+        "response": "⚖️ *Pesaje registrado*\n  🐄 30 Novillos\n  📊 Peso promedio: *380 kg*\n  📍 la esperanza > El Fondo"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should log weighing: 30 novillos, avg 380kg per animal"
+    ],
+    "possible_failures": [
+      "Bot interprets 380kg as total weight",
+      "Bot creates generic observation",
+      "Bot misses animal count"
+    ],
+    "actual_result": "⚖️ *Pesaje registrado*\n  🐄 30 Novillos\n  📊 Peso promedio: *380 kg*\n  📍 la esperanza > El Fondo",
+    "notes": "Weighing logged correctly"
+  },
+  {
+    "test_name": "16_context_repeat_action_other_plot",
+    "category": "contexto_conversacional",
+    "severity": "high",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "fertilicé el lote Norte con urea 100kg/ha",
+        "response": "🧪 *Fertilización* registrada\n📍 la esperanza > Norte\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: soja"
+      },
+      {
+        "role": "user",
+        "message": "hacé lo mismo en el otro lote",
+        "response": "🧪 *Fertilización* registrada\n📍 la esperanza > Norte\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: soja"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should either replicate fertilization on another plot or ask which plot"
+    ],
+    "possible_failures": [
+      "Bot does not understand \"hacé lo mismo\"",
+      "Bot repeats on same plot",
+      "Bot loses context of previous action"
+    ],
+    "actual_result": "🧪 *Fertilización* registrada\n📍 la esperanza > Norte\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: soja",
+    "notes": "Testing if bot can replicate actions across plots from context"
+  },
+  {
+    "test_name": "17_observation_not_activity",
+    "category": "observaciones",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "la soja del norte está un poco amarilla",
+        "response": "🔍 Observación registrada\n\n📍 la esperanza > Norte\n📂 📝 General\n📝 la soja esta un poco amarilla\n\nPodés registrar ahora:\n• otra observación lote Norte"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should log as free-text observation, NOT as an agronomic activity"
+    ],
+    "possible_failures": [
+      "Bot interprets as fertilization need",
+      "Bot creates scouting instead of observation",
+      "Bot ignores the message"
+    ],
+    "actual_result": "🔍 Observación registrada\n\n📍 la esperanza > Norte\n📂 📝 General\n📝 la soja esta un poco amarilla\n\nPodés registrar ahora:\n• otra observación lote Norte",
+    "notes": "Visual observation should NOT trigger activity registration"
+  },
+  {
+    "test_name": "18_query_plot_history_not_registration",
+    "category": "queries",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cuándo se fumigó el lote Norte por última vez?",
+        "response": "💨 La última *fumigación* en *la esperanza > Norte* fue el *28/4/2026*.\nglifosato (3 lt/ha)\nCultivo: soja"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should query and return spray history for lote Norte, NOT register a new spray"
+    ],
+    "possible_failures": [
+      "Bot registers a new spray activity",
+      "Bot creates observation",
+      "Bot asks what product was used"
+    ],
+    "actual_result": "💨 La última *fumigación* en *la esperanza > Norte* fue el *28/4/2026*.\nglifosato (3 lt/ha)\nCultivo: soja",
+    "notes": "Question about history should trigger query, not registration"
+  },
+  {
+    "test_name": "19_income_with_unit_price_usd",
+    "category": "ingresos",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "vendí 200 tn de soja a 300 dólares el tn",
+        "response": "💰 *Soja* — $60.000 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[BUTTONS: flow_plot_el_fondo=\"El Fondo\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\"]"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should register income: 200tn soja at USD 300/tn = USD 60,000"
+    ],
+    "possible_failures": [
+      "Bot confuses ARS and USD",
+      "Bot misses unit price",
+      "Bot calculates wrong total",
+      "Bot creates expense instead of income"
+    ],
+    "actual_result": "💰 *Soja* — $60.000 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[BUTTONS: flow_plot_el_fondo=\"El Fondo\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\"]",
+    "notes": "Income registered"
+  },
+  {
+    "test_name": "20_long_conversation_implicit_refs",
+    "category": "contexto_conversacional",
+    "severity": "high",
+    "status": "WARN",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "che, qué cultivo tiene el lote Norte?",
+        "response": "🌱 *soja* en *la esperanza > Norte*\n📅 Campaña 2025/26 — 🌾 Cosechada (abierta)\n📐 Superficie: 150 ha\n🗓️ Siembra: 28/04/2026\n🌾 Cosecha: 28/04/2026\n📊 Rendimiento: 90.500 kg (603 kg/ha)"
+      },
+      {
+        "role": "user",
+        "message": "y el Sur?",
+        "response": "🌱 *maíz* en *la esperanza > Sur*\n📅 Campaña 2025/26 — 🌱 Activa\n📐 Superficie: 80 ha\n🗓️ Siembra: 28/04/2026"
+      },
+      {
+        "role": "user",
+        "message": "en qué estadio está la del Norte?",
+        "response": "🔍 *Monitoreos (1)*\n• 28/4 *Norte* — R3 · 10.00% maleza"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should understand \"y el Sur?\" refers to \"qué cultivo tiene\" and \"la del Norte\" refers to crop"
+    ],
+    "possible_failures": [
+      "Bot loses context after first question",
+      "Bot asks what \"la\" refers to",
+      "Bot confuses plot references"
+    ],
+    "actual_result": "🌱 *soja* en *la esperanza > Norte*\n📅 Campaña 2025/26 — 🌾 Cosechada (abierta)\n📐 Superficie: 150 ha\n🗓️ Siembra: 28/04/2026\n🌾 Cosecha: 28/04/2026\n📊 Rendimiento: 90.500 kg (603 kg/ha) | 🌱 *maíz* en *la esperanza > Sur*\n📅 Campaña 2025/26 — 🌱 Activa\n📐 Superficie: 80 ha\n🗓️ Siembra: 28/04/2026 | 🔍 *Monitoreos (1)*\n• 28/4 *Norte* — R3 · 10.00% maleza",
+    "notes": "Testing multi-turn conversational memory"
+  },
+  {
+    "test_name": "21_hectareas_not_hacienda",
+    "category": "ambiguedad",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cuántas has tengo?",
+        "response": "📍 *Lotes de la esperanza (3):*\n\n• *El Fondo* — 200 ha\n• *Norte* — 150 ha\n• *Sur* — 80 ha\n\n📐 *Total: 430 ha*"
+      }
+    ],
+    "expected_behavior": [
+      "\"cuántas has\" should list plots/hectares, NOT livestock"
+    ],
+    "possible_failures": [
+      "Bot interprets \"has\" as \"hacienda\"",
+      "Bot shows livestock count instead of hectares"
+    ],
+    "actual_result": "📍 *Lotes de la esperanza (3):*\n\n• *El Fondo* — 200 ha\n• *Norte* — 150 ha\n• *Sur* — 80 ha\n\n📐 *Total: 430 ha*",
+    "notes": "Correctly identified hectares query"
+  },
+  {
+    "test_name": "22_informal_currency_slang",
+    "category": "lenguaje_informal",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "compré 2000lt de gasoil x 850 mangos el litro",
+        "response": "💸 *Combustible* — $1.700.000\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[BUTTONS: flow_plot_el_fondo=\"El Fondo\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\"]"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should understand \"mangos\" = pesos and calculate 2000 * 850 = $1,700,000"
+    ],
+    "possible_failures": [
+      "Bot does not understand \"mangos\"",
+      "Bot misses unit price calculation",
+      "Bot registers wrong amount"
+    ],
+    "actual_result": "💸 *Combustible* — $1.700.000\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[BUTTONS: flow_plot_el_fondo=\"El Fondo\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\"]",
+    "notes": "Informal currency handled"
+  },
+  {
+    "test_name": "23_stock_query",
+    "category": "stock",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cuánto glifosato me queda?",
+        "response": "📦 *glifosato*\n\n  📊 Cantidad: *500 lt*\n  🏭 Principal (la esperanza)"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should check stock of glifosato and report quantity available"
+    ],
+    "possible_failures": [
+      "Bot creates expense instead",
+      "Bot asks for warehouse",
+      "Bot creates purchase order"
+    ],
+    "actual_result": "📦 *glifosato*\n\n  📊 Cantidad: *500 lt*\n  🏭 Principal (la esperanza)",
+    "notes": "Stock query handled"
+  },
+  {
+    "test_name": "24_scouting_multiple_pests_severity",
+    "category": "monitoreo",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "el maíz del Sur en V6, chinche con presión alta, y algo de roya moderada en hoja",
+        "response": "🔍 *Monitoreo registrado* en *la esperanza > Sur*\n  📐 Estadio: *V6*\n  🐛 Plaga: chinche (alta 4/5)\n  📝 roya moderada en hoja"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should log scouting: stage=V6, pest=chinche severity=4(alta), disease=roya severity=3(moderada), plot=Sur"
+    ],
+    "possible_failures": [
+      "Bot creates observation instead of scouting",
+      "Bot misses severity mapping",
+      "Bot only captures one pest/disease"
+    ],
+    "actual_result": "🔍 *Monitoreo registrado* en *la esperanza > Sur*\n  📐 Estadio: *V6*\n  🐛 Plaga: chinche (alta 4/5)\n  📝 roya moderada en hoja",
+    "notes": "Complex scouting captured"
+  },
+  {
+    "test_name": "25_weather_query_specific_city",
+    "category": "clima",
+    "severity": "low",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "va a llover en Pergamino esta semana?",
+        "response": "No pude obtener el clima. Verificá la ciudad o intentá más tarde."
+      }
+    ],
+    "expected_behavior": [
+      "Bot should return weather forecast for Pergamino"
+    ],
+    "possible_failures": [
+      "Bot uses user default city instead of Pergamino",
+      "Bot creates rainfall entry",
+      "Bot does not understand weather query"
+    ],
+    "actual_result": "No pude obtener el clima. Verificá la ciudad o intentá más tarde.",
+    "notes": "Weather query handled"
+  },
+  {
+    "test_name": "26_inconsistent_harvest_wrong_crop",
+    "category": "validacion_negocio",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cosechamos soja del lote Sur",
+        "response": "En *la esperanza > Sur* hay *maíz* sembrado, no soja.\nSi querés cosechar maíz, escribí:\n🌾 *cosechamos maíz en el lote Sur*"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should warn that lote Sur has maíz, not soja, and ask for confirmation or correction"
+    ],
+    "possible_failures": [
+      "Bot harvests soja from a maíz plot without warning",
+      "Bot creates new crop record",
+      "Bot ignores the discrepancy"
+    ],
+    "actual_result": "En *la esperanza > Sur* hay *maíz* sembrado, no soja.\nSi querés cosechar maíz, escribí:\n🌾 *cosechamos maíz en el lote Sur*",
+    "notes": "Testing business logic validation for crop consistency"
+  },
+  {
+    "test_name": "27_campaign_stats_query",
+    "category": "queries",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "cómo viene la campaña del lote Norte?",
+        "response": "📊 *Campaña soja 2025/26* — Norte (la esperanza)\nEstado: 🌾 Cosechada (abierta) | 1 días\n\n*Actividades (7):*\nSiembra: 1 | Fumigación: 3 | Cosecha: 1 | Fertilización: 2\n\n*Gastos:* $85.000 ARS\nAgroquímicos: $85.000\n\n*Rendimiento:* 90.500 kg (603 kg/ha)\n\n🚛 *Cargas (3):*\n• García — 32.000 kg\n• Pérez — 28.500 kg\n• Rodríguez — 30.000 kg\n\n*Rentabilidad:*\nResultado neto: $-85.000 ARS\nCosto/ha: $567 | Ingreso/ha: $0\nCosto/tn: $939 | Ingreso/tn: $0\n\n🔍 *Monitoreo (1):*\n• Estadio observado: *R3* (28/04/2026)\n• Cobertura malezas (prom): 10%\n\n*Observaciones:* 1"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should return campaign stats for lote Norte (activities, expenses, yield if harvested)"
+    ],
+    "possible_failures": [
+      "Bot creates observation",
+      "Bot shows general report instead of plot-specific",
+      "Bot does not understand \"cómo viene\""
+    ],
+    "actual_result": "📊 *Campaña soja 2025/26* — Norte (la esperanza)\nEstado: 🌾 Cosechada (abierta) | 1 días\n\n*Actividades (7):*\nSiembra: 1 | Fumigación: 3 | Cosecha: 1 | Fertilización: 2\n\n*Gastos:* $85.000 ARS\nAgroquímicos: $85.000\n\n*Rendimiento:* 90.500 kg (603 kg/ha)\n\n🚛 *Cargas (3):*\n• García — 32.000 kg\n• Pérez — 28.500 kg\n• Rodríguez — 30.000 kg\n\n*Rentabilidad:*\nResultado neto: $-85.000 ARS\nCosto/ha: $567 | Ingreso/ha: $0\nCosto/tn: $939 | Ingreso/tn: $0\n\n🔍 *Monitoreo (1):*\n• Estadio observado: *R3* (28/04/2026)\n• Cobertura malezas (prom): 10%\n\n*Observaciones:* 1",
+    "notes": "Campaign query resolved"
+  },
+  {
+    "test_name": "28_livestock_add_not_birth",
+    "category": "hacienda",
+    "severity": "high",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "5 vacas con 5 terneros",
+        "response": "🐄 *Hacienda actualizada*\n\n  ➕ 5 Vaca\n  ➕ 5 Ternero\n  📍 Sur"
+      }
+    ],
+    "expected_behavior": [
+      "\"N vacas con N terneros\" should trigger 2x add_livestock, NOT record_livestock_birth"
+    ],
+    "possible_failures": [
+      "Bot uses birth event instead of add",
+      "Bot only adds one category",
+      "Bot asks which one to add"
+    ],
+    "actual_result": "🐄 *Hacienda actualizada*\n\n  ➕ 5 Vaca\n  ➕ 5 Ternero\n  📍 Sur",
+    "notes": "Testing disambiguation between add and birth events"
+  },
+  {
+    "test_name": "29_quintal_to_kg_conversion",
+    "category": "unidades",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "el lote Norte rindió 42 qq",
+        "response": "🌾 *soja* cosechado en *la esperanza > Norte*\n📅 Campaña 2025/26\n\n📦 *3 cargas registradas* (total: 90.500 kg)\nEscribí *cargas del lote Norte* para ver el detalle.\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *42 qq* de *soja* al stock?\nCargar 42 qq de soja al stock?\n[BUTTONS: stock_grain_yes_142=\"Sí, cargar\", stock_grain_no_142=\"No\"]"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should convert 42 qq to 4200 kg/ha for yield"
+    ],
+    "possible_failures": [
+      "Bot stores 42 as kg",
+      "Bot does not understand qq unit",
+      "Bot creates expense instead of harvest"
+    ],
+    "actual_result": "🌾 *soja* cosechado en *la esperanza > Norte*\n📅 Campaña 2025/26\n\n📦 *3 cargas registradas* (total: 90.500 kg)\nEscribí *cargas del lote Norte* para ver el detalle.\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *42 qq* de *soja* al stock?\nCargar 42 qq de soja al stock?\n[BUTTONS: stock_grain_yes_142=\"Sí, cargar\", stock_grain_no_142=\"No\"]",
+    "notes": "Quintal conversion handled"
+  },
+  {
+    "test_name": "30_full_realistic_conversation",
+    "category": "flujo_completo",
+    "severity": "medium",
+    "status": "PASS",
+    "conversation": [
+      {
+        "role": "user",
+        "message": "hola",
+        "response": "Hola, Don Raúl 👋 Soy *MIA*, tu asistente de gestión agrícola.\n¿Qué querés hacer?\n[BUTTONS: menu_gastos=\"Gastos\", menu_clima=\"Clima\", back_menu=\"Ver Menú\"]"
+      },
+      {
+        "role": "user",
+        "message": "ayer gasté 120 lucas en semilla de trigo",
+        "response": "💸 *Semillas* — $120.000\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[BUTTONS: flow_plot_el_fondo=\"El Fondo\", flow_plot_norte=\"Norte\", flow_plot_sur=\"Sur\"]"
+      },
+      {
+        "role": "user",
+        "message": "cómo estoy de plata este mes?",
+        "response": "📊 *Resumen financiero* (abril 2026)\n\nAgroquímicos: $85.000\n\nTotal: $85.000\n\n📍 *Por lote:*\n• Norte (la esperanza): gastos $85.000 → $-85.000\n\n_Pedí \"resultado mes\" para ver ingresos vs gastos._"
+      }
+    ],
+    "expected_behavior": [
+      "Bot should greet, register expense for yesterday, then show monthly financial summary"
+    ],
+    "possible_failures": [
+      "Bot loses context between messages",
+      "Bot double-registers expense",
+      "Financial report does not include registered expense"
+    ],
+    "actual_result": "hola → Hola, Don Raúl 👋 Soy *MIA*, tu asistente de gestión agrícol\nayer gasté 120 lucas en semilla de trigo → 💸 *Semillas* — $120.000\n\n¿En qué lote lo registramos?\n¿En q\ncómo estoy de plata este mes? → 📊 *Resumen financiero* (abril 2026)\n\nAgroquímicos: $85.000\n",
+    "notes": "Full multi-turn realistic farmer conversation"
+  }
+]

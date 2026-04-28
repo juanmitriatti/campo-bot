@@ -1342,6 +1342,10 @@ router.post('/reset', async (req: Request, res: Response) => {
     );
 
     // Layer 2: tables with FK to fields/plots (non-cascade)
+    await client.query(
+      `DELETE FROM harvest_loads WHERE domain_event_id IN (SELECT id FROM domain_events WHERE user_id = $1)`,
+      [numericUserId],
+    );
     await client.query(`DELETE FROM alert_history WHERE user_id = $1`, [numericUserId]);
     await client.query(`DELETE FROM agronomic_reports WHERE user_id = $1`, [numericUserId]);
     await client.query(`DELETE FROM domain_events WHERE user_id = $1`, [numericUserId]);
@@ -1349,6 +1353,45 @@ router.post('/reset', async (req: Request, res: Response) => {
     await client.query(`DELETE FROM expenses WHERE user_id = $1`, [numericUserId]);
     await client.query(`DELETE FROM incomes WHERE user_id = $1`, [numericUserId]);
     await client.query(`DELETE FROM rainfall WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM crop_scoutings WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM expense_templates WHERE user_id = $1`, [numericUserId]);
+    // Livestock + stock + feedlots (FK to fields)
+    await client.query(
+      `DELETE FROM livestock_movements WHERE user_id = $1`,
+      [numericUserId],
+    );
+    await client.query(
+      `DELETE FROM livestock_groups WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`,
+      [numericUserId],
+    );
+    await client.query(
+      `DELETE FROM stock_movements WHERE user_id = $1`,
+      [numericUserId],
+    );
+    await client.query(
+      `DELETE FROM stock_items WHERE warehouse_id IN (SELECT id FROM warehouses WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1))`,
+      [numericUserId],
+    );
+    await client.query(
+      `DELETE FROM warehouses WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`,
+      [numericUserId],
+    );
+    await client.query(
+      `DELETE FROM feedlots WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`,
+      [numericUserId],
+    );
+    await client.query(
+      `DELETE FROM field_members WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`,
+      [numericUserId],
+    );
+    await client.query(
+      `DELETE FROM field_invites WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`,
+      [numericUserId],
+    );
+    await client.query(
+      `DELETE FROM map_tokens WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`,
+      [numericUserId],
+    );
 
     // Layer 3: conversation state (FK to fields/plots as SET NULL)
     await client.query(`DELETE FROM conversation_state WHERE user_id = $1`, [numericUserId]);

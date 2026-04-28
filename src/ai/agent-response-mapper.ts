@@ -379,6 +379,8 @@ export class AgentResponseMapper {
     if (input.date_range != null) cmd.date_range = input.date_range;
     if (input.timeRef != null) cmd.timeRef = input.timeRef;
     if (input.activityFilter != null) cmd.activityFilter = input.activityFilter;
+    if (input.isUltimaVez != null) cmd.isUltimaVez = input.isUltimaVez;
+    if (input.isBinaryQuestion != null) cmd.isBinaryQuestion = input.isBinaryQuestion;
     if (input.desde != null) cmd.desde = input.desde;
     if (input.hasta != null) cmd.hasta = input.hasta;
     if (input.days != null) cmd.days = input.days;

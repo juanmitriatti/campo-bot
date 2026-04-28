@@ -171,22 +171,53 @@ export class LivestockHandler {
     const destPlot = cmd.destPlot as string;
     const sourceCorral = cmd.sourceCorral as string;
     const destCorral = cmd.destCorral as string;
+    const destCategory = cmd.destCategory as string;
     if (!category) return { messages: ['Necesito la categoría. Ej: "mové 10 vacas del lote A1 al lote B2".'] };
     if (!count || count <= 0) return { messages: ['Necesito la cantidad.'] };
-    if (!sourcePlot && !sourceCorral) return { messages: ['Necesito el origen (lote o corral).'] };
-    if (!destPlot && !destCorral) return { messages: ['Necesito el destino (lote o corral).'] };
+
+    // Auto-resolve source: if not specified, look for a unique group of this category
+    let effectiveSourcePlot = sourcePlot;
+    let effectiveSourceCorral = sourceCorral;
+    if (!sourcePlot && !sourceCorral) {
+      try {
+        const { groups } = await this.service.listInventory(userId, { category });
+        const nonEmpty = groups.filter((g) => g.count > 0);
+        if (nonEmpty.length === 1) {
+          // Unique group — auto-resolve source location
+          const g = nonEmpty[0];
+          if (g.plot_name) effectiveSourcePlot = g.plot_name;
+          if (g.corral_name) effectiveSourceCorral = g.corral_name;
+        } else if (nonEmpty.length === 0) {
+          return { messages: [`❌ No hay ${category} registrados.`] };
+        } else {
+          return { messages: ['Necesito el origen (lote o corral).'] };
+        }
+      } catch {
+        return { messages: ['Necesito el origen (lote o corral).'] };
+      }
+    }
+    if (!effectiveSourcePlot && !effectiveSourceCorral) return { messages: ['Necesito el origen (lote o corral).'] };
+    // Recategorización in-situ: si hay destCategory pero no destino explícito, usar el mismo origen
+    let effectiveDestPlot = destPlot;
+    let effectiveDestCorral = destCorral;
+    if (!destPlot && !destCorral && destCategory) {
+      effectiveDestPlot = effectiveSourcePlot;
+      effectiveDestCorral = effectiveSourceCorral;
+    } else if (!destPlot && !destCorral) {
+      return { messages: ['Necesito el destino (lote o corral).'] };
+    }
 
     const { sourceGroup, destGroup, movement } = await this.service.transferAnimals(userId, {
       category,
       count,
       sourceField: cmd.sourceField as string,
-      sourcePlot: sourcePlot || undefined,
-      sourceCorral: sourceCorral || undefined,
+      sourcePlot: effectiveSourcePlot || undefined,
+      sourceCorral: effectiveSourceCorral || undefined,
       destField: cmd.destField as string,
-      destPlot: destPlot || undefined,
-      destCorral: destCorral || undefined,
+      destPlot: effectiveDestPlot || undefined,
+      destCorral: effectiveDestCorral || undefined,
       breed: cmd.breed as string,
-      destCategory: cmd.destCategory as string,
+      destCategory: destCategory || undefined,
       reason: cmd.reason as string,
       movement_date: cmd.eventDate as string,
     });

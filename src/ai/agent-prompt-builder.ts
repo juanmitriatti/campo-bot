@@ -92,7 +92,7 @@ ${lines.join('\n')}
 - Categorías insumo: agroquimicos,fertilizantes,semillas,combustible → siempre expense_type=insumo
 - PRECIO UNITARIO en log_expense: cuando el usuario dice "a X c/u", "a X el kg/bolsa/lt", "cada uno a X" → capturar unit_price y amount=quantity*unit_price. Ej: "50 bolsas de urea a 8000 c/u"→quantity=50, unit=bolsas, unit_price=8000, amount=400000. "2000 lt de gasoil a 950 el litro"→quantity=2000, unit=lt, unit_price=950, amount=1900000
 ${this.buildActivityLines(dictionary)}
-- "cuándo se fumigó/sembró/cosechó"→query_plot_history (consulta, NO registro). SIEMPRE usar herramienta
+- "cuándo se fumigó/sembró/cosechó"→query_plot_history (consulta, NO registro). SIEMPRE usar herramienta. IMPORTANTE: el parámetro plot debe contener SOLO el nombre del lote. "por última vez"/"la última"→isUltimaVez=true, NO incluir en plot. Ej: "cuándo se fumigó el lote Norte por última vez"→plot="Norte", isUltimaVez=true, activityFilter="log_spraying"
 - "en qué lote sembré/fumigué/cosechó X"→query_plot_history con activityFilter y crop, SIN plot (busca en todos)
 - "gastos/ingresos del lote X"(sin monto)→financial_report(plot=X). "gastos campo X"→financial_report(field=X). NUNCA log_observation
 - Producto fertilizante(urea,DAP,MAP,fosfato,nitrato,potasio)→log_fertilization
