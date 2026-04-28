@@ -17,8 +17,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - uses: actions/setup-node@v4
         with:
@@ -37,8 +35,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - uses: actions/setup-node@v4
         with:
@@ -52,27 +48,4 @@ jobs:
 
       - name: Build frontend
         working-directory: frontend
-        run: npm run build
-
-  build-landing:
-    name: Landing build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: landing/package-lock.json
-
-      - name: Install landing deps
-        working-directory: landing
-        run: npm ci
-
-      - name: Build landing
-        working-directory: landing
         run: npm run build

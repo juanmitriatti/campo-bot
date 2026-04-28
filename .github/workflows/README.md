@@ -9,26 +9,32 @@
 
 ## One-time setup
 
-The deploy workflow needs a Railway token. Create it once and add it as a repo secret:
+The deploy workflow needs **two** secrets:
 
-```bash
-# Locally (already authenticated):
-railway login
-railway link  # pick the campo-bot project
+### 1. `RAILWAY_TOKEN` (required)
 
-# Generate a project-scoped token:
-# Go to https://railway.app → project settings → Tokens → Create
-# Copy the value.
-```
+Token used by `railway up`. Create at https://railway.app → project settings → Tokens → Create.
 
-Then in GitHub:
+In GitHub: Repo → **Settings → Secrets and variables → Actions → New repository secret**, name `RAILWAY_TOKEN`.
 
-1. Repo → **Settings → Secrets and variables → Actions**
-2. **New repository secret**:
-   - Name: `RAILWAY_TOKEN`
-   - Value: the token from Railway
-3. (Optional) **Variables** tab → add `RAILWAY_SERVICE` if your Railway service is not named `campo-bot`.
-4. (Optional) **Environments** → create `production` for the deploy job (allows protection rules / required reviewers).
+### 2. `LANDING_REPO_TOKEN` (required because the `landing/` submodule is private)
+
+The `landing/` submodule points to `juanmitriatti/campo-chat-bot` (private repo). The default `GITHUB_TOKEN` cannot read other private repos, so the deploy workflow needs a PAT (or fine-grained token) with **read** access to that repo.
+
+Create one at https://github.com/settings/personal-access-tokens/new:
+- Resource owner: `juanmitriatti`
+- Repository access: only `juanmitriatti/campo-chat-bot`
+- Permissions → Contents: **Read-only**
+
+Add as secret `LANDING_REPO_TOKEN` in this repo.
+
+### 3. (Optional) Repository variables
+
+- `RAILWAY_SERVICE` — only if your Railway service is named something other than `campo-bot`.
+
+### 4. (Optional) GitHub environment
+
+Create a `production` environment under **Settings → Environments** for protection rules / required reviewers on the deploy job.
 
 ## Manual deploy
 
@@ -40,7 +46,9 @@ Or from the GitHub UI: Actions → Deploy → Run workflow.
 
 ## Smoke test
 
-`deploy.yml` polls `https://campo-bot-production.up.railway.app/api/health` for up to 10 minutes after `railway up`. The endpoint returns `{ status, timestamp, sha }`. If you want to verify a specific commit is live, compare `sha` with `git rev-parse --short HEAD`.
+`deploy.yml` polls `https://campo-bot-production.up.railway.app/api/health` for up to 10 minutes after `railway up`. The endpoint returns `{ status, timestamp, sha }`. The smoke step compares `sha` against the commit currently being deployed and only succeeds when they match — that confirms the new build is actually live, not just the old one still serving 200s.
+
+`sha` is read from `RAILWAY_GIT_COMMIT_SHA` which Railway sets automatically.
 
 ## Local equivalent
 

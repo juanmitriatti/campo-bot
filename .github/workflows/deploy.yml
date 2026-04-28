@@ -16,8 +16,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - uses: actions/setup-node@v4
         with:
@@ -37,9 +35,20 @@ jobs:
     timeout-minutes: 15
     environment: production
     steps:
+      # Submodule (landing) is private. We need an auth token with read access
+      # to juanmitriatti/campo-chat-bot so railway up can upload its contents.
+      # Configure secret LANDING_REPO_TOKEN (PAT or fine-grained token).
+      - name: Configure submodule auth
+        if: env.LANDING_REPO_TOKEN != ''
+        env:
+          LANDING_REPO_TOKEN: ${{ secrets.LANDING_REPO_TOKEN }}
+        run: |
+          git config --global url."https://x-access-token:${LANDING_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
+
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          token: ${{ secrets.LANDING_REPO_TOKEN || github.token }}
 
       - name: Install Railway CLI
         run: |
@@ -55,20 +64,25 @@ jobs:
     name: Post-deploy smoke test
     needs: deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       PROD_URL: https://campo-bot-production.up.railway.app
     steps:
-      - name: Wait for new deployment to be live
+      - uses: actions/checkout@v4
+      - name: Verify new sha is live
         run: |
           set -e
+          expected=$(git rev-parse --short=7 HEAD)
+          echo "Waiting for /api/health to report sha=$expected"
           for i in $(seq 1 60); do
-            code=$(curl -sk -o /dev/null -w "%{http_code}" "$PROD_URL/api/health" || echo 000)
-            if [ "$code" = "200" ]; then
-              echo "Health check OK after ${i}0s"
+            response=$(curl -sk --max-time 10 "$PROD_URL/api/health" || echo '{}')
+            live=$(echo "$response" | grep -oE '"sha":"[^"]*"' | sed 's/"sha":"//;s/"//')
+            echo "[${i}] live=${live:-<empty>}"
+            if [ "$live" = "$expected" ]; then
+              echo "OK — $expected is live"
               exit 0
             fi
             sleep 10
           done
-          echo "Health check never returned 200"
+          echo "Timed out waiting for $expected to go live (last seen: ${live:-<none>})"
           exit 1
