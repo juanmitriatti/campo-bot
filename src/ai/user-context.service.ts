@@ -2,6 +2,11 @@ import { pool } from '../config/db.js';
 import { EntityValidator } from '../services/entity-validator.js';
 import type { UserId } from '../types/index.js';
 
+export interface ContextStackEntry {
+  fieldName: string | null;
+  plotName: string | null;
+}
+
 export interface UserContext {
   fieldNames: string[];
   plotNames: string[];
@@ -9,6 +14,7 @@ export interface UserContext {
   feedlotNames: string[];
   lastFieldName: string | null;
   lastPlotName: string | null;
+  recentContexts: ContextStackEntry[];
 }
 
 interface CacheEntry {
@@ -41,13 +47,15 @@ export class UserContextService {
       this.loadFeedlotNames(userId),
     ]);
 
+    const lastCtx = lastContextResult.status === 'fulfilled' ? lastContextResult.value : null;
     const context: UserContext = {
       fieldNames: fieldsResult.status === 'fulfilled' ? fieldsResult.value : [],
       plotNames: plotsResult.status === 'fulfilled' ? plotsResult.value : [],
       corralNames: corralsResult.status === 'fulfilled' ? corralsResult.value : [],
       feedlotNames: feedlotsResult.status === 'fulfilled' ? feedlotsResult.value : [],
-      lastFieldName: lastContextResult.status === 'fulfilled' ? lastContextResult.value.lastFieldName : null,
-      lastPlotName: lastContextResult.status === 'fulfilled' ? lastContextResult.value.lastPlotName : null,
+      lastFieldName: lastCtx?.lastFieldName ?? null,
+      lastPlotName: lastCtx?.lastPlotName ?? null,
+      recentContexts: lastCtx?.recentContexts ?? [],
     };
 
     // Cache it
@@ -56,11 +64,16 @@ export class UserContextService {
     return context;
   }
 
-  private async loadLastContext(userId: UserId): Promise<{ lastFieldName: string | null; lastPlotName: string | null }> {
+  private async loadLastContext(userId: UserId): Promise<{
+    lastFieldName: string | null;
+    lastPlotName: string | null;
+    recentContexts: ContextStackEntry[];
+  }> {
     const result = await pool.query(
       `SELECT
          f.name AS field_name,
-         p.name AS plot_name
+         p.name AS plot_name,
+         cs.context_stack
        FROM conversation_state cs
        LEFT JOIN fields f ON cs.last_field_id = f.id AND f.deleted_at IS NULL
        LEFT JOIN plots p ON cs.last_plot_id = p.id AND p.deleted_at IS NULL
@@ -68,11 +81,44 @@ export class UserContextService {
       [userId],
     );
     if (result.rows.length === 0) {
-      return { lastFieldName: null, lastPlotName: null };
+      return { lastFieldName: null, lastPlotName: null, recentContexts: [] };
     }
+    const row = result.rows[0];
+    // Resolve context_stack field/plot IDs to names
+    const stack: Array<{ field_id: number | null; plot_id: number | null }> = row.context_stack ?? [];
+    let recentContexts: ContextStackEntry[] = [];
+    if (stack.length > 0) {
+      const fieldIds = [...new Set(stack.map(e => e.field_id).filter(Boolean))];
+      const plotIds = [...new Set(stack.map(e => e.plot_id).filter(Boolean))];
+
+      const fieldMap = new Map<number, string>();
+      const plotMap = new Map<number, string>();
+
+      if (fieldIds.length > 0) {
+        const fRes = await pool.query(
+          `SELECT id, name FROM fields WHERE id = ANY($1) AND deleted_at IS NULL`,
+          [fieldIds],
+        );
+        for (const r of fRes.rows) fieldMap.set(r.id, r.name);
+      }
+      if (plotIds.length > 0) {
+        const pRes = await pool.query(
+          `SELECT id, name FROM plots WHERE id = ANY($1) AND deleted_at IS NULL`,
+          [plotIds],
+        );
+        for (const r of pRes.rows) plotMap.set(r.id, r.name);
+      }
+
+      recentContexts = stack.map(e => ({
+        fieldName: e.field_id ? fieldMap.get(e.field_id) ?? null : null,
+        plotName: e.plot_id ? plotMap.get(e.plot_id) ?? null : null,
+      }));
+    }
+
     return {
-      lastFieldName: result.rows[0].field_name ?? null,
-      lastPlotName: result.rows[0].plot_name ?? null,
+      lastFieldName: row.field_name ?? null,
+      lastPlotName: row.plot_name ?? null,
+      recentContexts,
     };
   }
 

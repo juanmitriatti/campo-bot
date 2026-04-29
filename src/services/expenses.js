@@ -1145,12 +1145,25 @@ export async function getConversationState(userId) {
 }
 
 export async function updateConversationState(userId, fieldId, plotId) {
+  // Read current stack, push new entry (dedup + max 3 LIFO), then write back
+  const existing = await pool.query(
+    `SELECT context_stack FROM conversation_state WHERE user_id = $1`,
+    [userId],
+  );
+  const oldStack = existing.rows[0]?.context_stack ?? [];
+  const newEntry = { field_id: fieldId, plot_id: plotId, ts: new Date().toISOString() };
+  // Remove duplicate (same field+plot), prepend new entry, keep max 3
+  const deduped = oldStack.filter(
+    e => !(e.field_id === fieldId && e.plot_id === plotId)
+  );
+  const newStack = [newEntry, ...deduped].slice(0, 3);
+
   await pool.query(
-    `INSERT INTO conversation_state (user_id, last_field_id, last_plot_id, updated_at)
-     VALUES ($1, $2, $3, NOW())
+    `INSERT INTO conversation_state (user_id, last_field_id, last_plot_id, context_stack, updated_at)
+     VALUES ($1, $2, $3, $4::jsonb, NOW())
      ON CONFLICT (user_id) DO UPDATE SET
-       last_field_id = $2, last_plot_id = $3, updated_at = NOW()`,
-    [userId, fieldId, plotId]
+       last_field_id = $2, last_plot_id = $3, context_stack = $4::jsonb, updated_at = NOW()`,
+    [userId, fieldId, plotId, JSON.stringify(newStack)]
   );
 }
 

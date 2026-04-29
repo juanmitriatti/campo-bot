@@ -766,7 +766,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'add_stock',
-    description: 'Cargar stock/insumo al depósito. "cargué/entraron 500lt de glifosato", "recibí 200kg de urea".',
+    description: 'Cargar stock/insumo al depósito. "cargué/entraron 500lt de glifosato", "recibí 200kg de urea". Si el usuario menciona precio (compré X a $Y), pasar unit_price_ars/usd — el sistema crea el gasto automáticamente, NO llamar log_expense por separado.',
     input_schema: {
       type: 'object',
       properties: {
@@ -777,6 +777,8 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         warehouse: { type: 'string', description: 'Nombre del depósito, si mencionado.' },
         category: { type: 'string', description: 'Categoría: agroquimicos, fertilizantes, semillas, combustible, otros.' },
         reason: { type: 'string', description: 'Motivo de la carga.' },
+        unit_price_ars: { type: 'number', description: 'Precio unitario en pesos, si mencionado. El sistema crea el gasto automáticamente.' },
+        unit_price_usd: { type: 'number', description: 'Precio unitario en dólares, si mencionado. El sistema crea el gasto automáticamente.' },
       },
       required: ['product', 'quantity', 'unit'],
     },

@@ -99,8 +99,18 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 ### Crop name synonyms (anglicismos)
 - `src/utils/synonyms.js` + `src/ai/agent-response-mapper.normalizeCropName()` translate English crop names to Spanish before the handler sees them: `soybean → soja`, `corn/maize → maíz`, `wheat → trigo`, `sunflower → girasol`, `sorghum → sorgo`, `barley → cebada`, `oat/oats → avena`, `cotton → algodón`, `rye → centeno`. Applied in BOTH the regex parser layer and the agent input normalization, so anglicisms work whether AGENT_ENABLED is on or off.
 
+### Stock + Expense Compound
+- `add_stock` accepts optional `unit_price_ars` / `unit_price_usd`. When present, the handler auto-creates a linked expense (category "Insumos", total = quantity × unit_price). Best-effort: stock succeeds even if expense fails. Bot response includes "💰 Gasto registrado: $X" line.
+- Agent prompt rule: "compré X a $Y → add_stock(unit_price_ars=Y). El sistema crea el gasto automáticamente, NO llamar log_expense por separado"
+
 ### Mid-flow rename
 - During any flow that has a `data.name` field set (currently `field_flow`), the user can correct the name with patterns like "se llama X, no Y" / "no Y, es X" / "el nombre es X". `extractRenameCorrection()` in `conversation-engine.ts` parses the new name, mutates `data.name`, and re-prompts the current step — no need to cancel + restart.
+
+### Mid-flow amount/category correction
+- During any flow (expense, income, etc.) that has `data.amount` or `data.category` already set, the user can correct with patterns: "no, eran X" / "en realidad X" / "perdón, X" / "quise decir X" for amounts, or "no, es X" / "no, categoría X" for categories. Works both mid-flow AND during confirmation step. `extractAmountCorrection()` and `extractCategoryCorrection()` in `conversation-engine.ts`.
+
+### Multi-slot context tracking
+- `conversation_state.context_stack` (JSONB, migration 075) stores last 3 field/plot references as `[{field_id, plot_id, ts}]`. Updated on every `updateConversationState()` call (LIFO, deduped). Exposed in agent prompt as "contextos recientes:[1)Lote Norte (La Esperanza), 2)Lote Sur...]" when stack has >1 entry. Enables resolution of "el otro campo" / "el de antes".
 
 ### Agent truncation handling
 - `AgentResult.truncated` is true when Anthropic stops with `stop_reason=max_tokens`. Surfaced to controllers via `ParseResult._truncated` and rendered as "⚠️ El mensaje era largo y se cortó. Si te quedaron acciones sin registrar, repetilas en un mensaje aparte." Console logs `AI_AGENT TRUNCATED:` for monitoring. Bump `AGENT_MAX_TOKENS` (default 1500) if you see this often in production.

@@ -1,4 +1,5 @@
 import { StockService } from './stock.service.js';
+import { saveExpense } from '../../services/expenses.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../../types/index.js';
 
 const stockService = new StockService();
@@ -74,6 +75,39 @@ export class StockHandler {
       reason: cmd.reason as string,
     });
 
+    // Auto-create linked expense if unit_price provided (follows livestock pattern)
+    let expenseLine = '';
+    const unitPriceArs = cmd.unit_price_ars as number | undefined;
+    const unitPriceUsd = cmd.unit_price_usd as number | undefined;
+    if (unitPriceArs || unitPriceUsd) {
+      try {
+        const price = unitPriceArs ?? unitPriceUsd!;
+        const currency = unitPriceArs ? 'ARS' : 'USD';
+        const totalAmount = quantity * price;
+        await saveExpense(
+          userId,
+          {
+            category: 'Insumos',
+            description: `Compra insumo: ${quantity} ${unit} de ${product}`,
+            amount: totalAmount,
+            currency,
+            expenseType: 'insumo',
+            product,
+            quantity,
+            unit,
+            unit_price: price,
+          },
+          item.field_id ?? null,
+          null,
+        );
+        const currSymbol = currency === 'USD' ? 'U$D' : '$';
+        expenseLine = `\n  💰 Gasto registrado: ${currSymbol}${totalAmount.toLocaleString('es-AR')}`;
+      } catch (err) {
+        console.error('[STOCK_HANDLER] Failed to create linked expense:', (err as Error).message);
+        // Best-effort: stock insert succeeded, expense failed — don't fail the whole operation
+      }
+    }
+
     const newLabel = created ? ' (nuevo)' : '';
     return {
       messages: [
@@ -81,7 +115,8 @@ export class StockHandler {
         `  📦 *${item.name}*${newLabel}\n` +
         `  ➕ ${quantity} ${unit}\n` +
         `  📊 Total: *${item.current_quantity} ${item.unit}*\n` +
-        `  🏭 ${item.warehouse_name || 'Principal'} (${item.field_name || ''})`,
+        `  🏭 ${item.warehouse_name || 'Principal'} (${item.field_name || ''})` +
+        expenseLine,
       ],
     };
   }

@@ -114,7 +114,7 @@ ${this.buildActivityLines(dictionary)}
 - HECTÁREAS CAMPO (→list_plots, SOLO sin cultivo): "has"/"hectáreas"/"superficie"+"campo X"/"totales" SOLO cuando NO mencionan cultivo ni "sembradas"→list_plots(fieldName=X). has=hectáreas (abreviatura), NUNCA confundir con hacienda. Si mencionan cultivo → active_crop
 - Consulta vaga SIN lote/campo(está lindo/viene bien/cómo va todo)→texto, NO herramienta
 - "compartir campo X"→share_field (genera código de invitación). "unirme/aceptar ABC123"→accept_invite. "quitar a Juan/+549... de campo X"→remove_field_member. "miembros campo X"/"quién tiene acceso"→list_field_members
-- STOCK: "cargué/entraron/recibí+producto+cantidad"→add_stock. "compré+producto+cantidad"(SIN monto $)→add_stock (ingreso a inventario). "compré+producto+cantidad+monto"(CON monto)→AMBOS add_stock + log_expense. "usé/saqué/gasté+producto+cantidad"(sin monto $)→remove_stock. "tengo X de Y"(inventario)→adjust_stock. "movimientos de X"→stock_history. "stock mínimo"→set_min_stock
+- STOCK: "cargué/entraron/recibí+producto+cantidad"→add_stock. "compré+producto+cantidad+precio"(con precio unitario)→add_stock(unit_price_ars=Y). El sistema crea el gasto automáticamente, NO llamar log_expense por separado. "compré+producto+cantidad"(SIN precio)→add_stock. "usé/saqué/gasté+producto+cantidad"(sin monto $)→remove_stock. "tengo X de Y"(inventario)→adjust_stock. "movimientos de X"→stock_history. "stock mínimo"→set_min_stock
 - STOCK CONSULTA (→check_stock): "cuánto X tengo", "qué stock tengo de X", "stock de X", "inventario", "stock", "hay X?", "tengo X?", "queda X?", "qué hay en el galpón/depósito", "qué tengo en el galpón/depósito", "productos en galpón X", "galpón X" (sin verbo de registro)
 - CUIDADO: "gasté" con monto ($, pesos, dólares) → log_expense. "gasté" sin monto + producto + cantidad → remove_stock
 - DOCUMENTOS: "mis facturas"/"documentos" → list_documents. "vincular factura" → link_document_to_expense. Si quieren cargar/subir → respond_text: factura="Enviame la foto de la factura y registro los gastos", remito="Enviame la foto del remito y lo cargo al stock". Facturas=gastos solamente, remitos=stock solamente
@@ -170,6 +170,16 @@ ${this.buildActivityLines(dictionary)}
     if (ctx.feedlotNames && ctx.feedlotNames.length > 0) parts.push(`feedlots:[${ctx.feedlotNames.join(',')}]`);
     if (ctx.lastFieldName) parts.push(`último campo:${ctx.lastFieldName}`);
     if (ctx.lastPlotName) parts.push(`último lote:${ctx.lastPlotName}`);
+    // Context stack: last 3 field/plot references for "el otro campo" / "el de antes"
+    if (ctx.recentContexts && ctx.recentContexts.length > 1) {
+      const labels = ctx.recentContexts.map((e, i) => {
+        const plot = e.plotName ?? '';
+        const field = e.fieldName ?? '';
+        const label = plot ? `${plot} (${field})` : field;
+        return `${i + 1})${label}`;
+      });
+      parts.push(`contextos recientes:[${labels.join(', ')}]`);
+    }
 
     if (parts.length === 0) return '';
     return `Usuario: ${parts.join(', ')}`;

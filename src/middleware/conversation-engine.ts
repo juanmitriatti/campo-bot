@@ -6,6 +6,7 @@ import type { FlowDefinition, FlowStep, FlowStepValidationSuccess } from './flow
 
 import { getSettingNumber } from '../services/settings.service.js';
 import { logError } from '../services/error-logger.js';
+import { normalizarMonto } from '../utils/parser.js';
 
 // Defaults — overridden by system_settings at runtime
 const DEFAULT_FLOW_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -64,6 +65,37 @@ export function extractRenameCorrection(text: string): string | null {
   m = t.match(/^(?:el\s+)?(?:campo\s+)?(?:nombre|nombre\s+real)\s+(?:es|correcto\s+es)\s+(.+)$/i);
   if (m) return m[1].trim();
   return null;
+}
+
+/**
+ * Detect mid-flow amount corrections like "no, eran 20000" / "en realidad 50mil" / "perdón, 30000".
+ * Returns the corrected amount or null if not a correction.
+ */
+export function extractAmountCorrection(text: string): number | null {
+  const t = text.trim();
+  if (!t) return null;
+  // Patterns: "no, eran X" / "no, son X" / "en realidad X" / "perdón X" / "quise decir X" / "no X"
+  const m = t.match(
+    /^(?:no,?\s*(?:eran?|son|fue(?:ron)?)|en\s+realidad|perd[oó]n,?\s*|quise\s+decir)\s+(.+)$/i,
+  );
+  if (!m) return null;
+  const amount = normalizarMonto(m[1]);
+  return amount && amount > 0 ? amount : null;
+}
+
+/**
+ * Detect mid-flow category corrections like "no, es gasoil" / "no, categoría insumos".
+ * Returns the corrected category string (raw, will be re-validated by the step) or null.
+ */
+export function extractCategoryCorrection(text: string): string | null {
+  const t = text.trim();
+  if (!t) return null;
+  // "no, es X" / "no, categoría X" / "cambiar a X" / "en realidad X"
+  const m = t.match(
+    /^(?:no,?\s*(?:es|categor[ií]a)|cambiar\s+a|en\s+realidad\s+categor[ií]a)\s+(.+)$/i,
+  );
+  if (!m) return null;
+  return m[1].trim() || null;
 }
 
 export interface FlowMessageResult {
@@ -228,12 +260,61 @@ export class ConversationEngine {
     text: string,
     ctx: FlowContext,
   ): Promise<FlowMessageResult> {
-    // If in confirming state, handle text-based confirm/cancel
+    // If in confirming state, handle text-based confirm/cancel + corrections
     if (ctx.state === 'confirming') {
       const lower = text.toLowerCase().trim();
       if (['si', 'sí', 'confirmar', 'confirmado', 'dale', 'ok', 'listo', 'perfecto', 'va', 'vamos', 'seguro', 'claro', '👍'].includes(lower)) {
         return this.executeConfirm(userId, ctx);
       }
+
+      // Allow amount correction during confirmation ("no, eran 20000")
+      if (ctx.data.amount != null) {
+        const correctedAmount = extractAmountCorrection(text);
+        if (correctedAmount) {
+          if (typeof ctx.data.amount === 'object' && (ctx.data.amount as Record<string, unknown>).currency) {
+            ctx.data.amount = { amount: correctedAmount, currency: (ctx.data.amount as Record<string, unknown>).currency };
+          } else {
+            ctx.data.amount = correctedAmount;
+          }
+          // Re-show confirmation with updated data
+          const originFlow = ctx.originFlow ?? ctx.state;
+          const flow = this.registry.get(originFlow as FlowState);
+          if (flow) {
+            await this.stateRepo.setFlowContext(userId, ctx);
+            const fmtAmount = correctedAmount.toLocaleString('es-AR');
+            const confirmation = flow.buildConfirmation(ctx.data);
+            return {
+              response: {
+                messages: [`✏️ Monto actualizado a *$${fmtAmount}*.`, ...confirmation.messages],
+                interactive: confirmation.interactive,
+              },
+              nextContext: ctx,
+            };
+          }
+        }
+      }
+
+      // Allow category correction during confirmation
+      if (typeof ctx.data.category === 'string') {
+        const correctedCat = extractCategoryCorrection(text);
+        if (correctedCat) {
+          ctx.data.category = correctedCat;
+          const originFlow = ctx.originFlow ?? ctx.state;
+          const flow = this.registry.get(originFlow as FlowState);
+          if (flow) {
+            await this.stateRepo.setFlowContext(userId, ctx);
+            const confirmation = flow.buildConfirmation(ctx.data);
+            return {
+              response: {
+                messages: [`✏️ Categoría actualizada a *${correctedCat}*.`, ...confirmation.messages],
+                interactive: confirmation.interactive,
+              },
+              nextContext: ctx,
+            };
+          }
+        }
+      }
+
       // Any other text in confirming state — treat as cancel
       return {
         response: { messages: ['Respondé *SI* para confirmar o *NO* para cancelar.'] },
@@ -273,6 +354,50 @@ export class ConversationEngine {
             messages: interactive
               ? [`✏️ Renombrado a *${renamed}*. Seguimos.`]
               : [`✏️ Renombrado a *${renamed}*.\n\n${prompt}`],
+            interactive,
+          },
+          nextContext: ctx,
+        };
+      }
+    }
+
+    // Mid-flow amount correction: "no, eran 20000" updates amount without restarting
+    if (stepDef.field !== 'amount' && ctx.data.amount != null) {
+      const correctedAmount = extractAmountCorrection(text);
+      if (correctedAmount) {
+        // Preserve currency if amount is an object (expense flow), otherwise store plain number
+        if (typeof ctx.data.amount === 'object' && (ctx.data.amount as Record<string, unknown>).currency) {
+          ctx.data.amount = { amount: correctedAmount, currency: (ctx.data.amount as Record<string, unknown>).currency };
+        } else {
+          ctx.data.amount = correctedAmount;
+        }
+        const prompt = await this.resolvePrompt(stepDef, ctx.data, userId);
+        const interactive = await this.resolveInteractive(stepDef, ctx.data, userId);
+        const fmtAmount = correctedAmount.toLocaleString('es-AR');
+        return {
+          response: {
+            messages: interactive
+              ? [`✏️ Monto actualizado a *$${fmtAmount}*. Seguimos.`]
+              : [`✏️ Monto actualizado a *$${fmtAmount}*.\n\n${prompt}`],
+            interactive,
+          },
+          nextContext: ctx,
+        };
+      }
+    }
+
+    // Mid-flow category correction: "no, es gasoil" updates category without restarting
+    if (stepDef.field !== 'category' && typeof ctx.data.category === 'string') {
+      const correctedCat = extractCategoryCorrection(text);
+      if (correctedCat) {
+        ctx.data.category = correctedCat;
+        const prompt = await this.resolvePrompt(stepDef, ctx.data, userId);
+        const interactive = await this.resolveInteractive(stepDef, ctx.data, userId);
+        return {
+          response: {
+            messages: interactive
+              ? [`✏️ Categoría actualizada a *${correctedCat}*. Seguimos.`]
+              : [`✏️ Categoría actualizada a *${correctedCat}*.\n\n${prompt}`],
             interactive,
           },
           nextContext: ctx,

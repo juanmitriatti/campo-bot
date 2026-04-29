@@ -399,6 +399,8 @@ export class AgentResponseMapper {
     if (input.warehouse != null) cmd.warehouseName = input.warehouse;
     if (input.reason != null) cmd.reason = input.reason;
     if (input.name != null && !cmd.product) cmd.warehouseName = input.name; // create_warehouse: name → warehouseName
+    if (input.unit_price_ars != null) cmd.unit_price_ars = input.unit_price_ars;
+    if (input.unit_price_usd != null) cmd.unit_price_usd = input.unit_price_usd;
 
     // Sharing
     if (input.phone != null) cmd.phone = input.phone;
