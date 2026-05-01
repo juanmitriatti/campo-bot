@@ -125,15 +125,16 @@ doc.roundedRect(130, statsY, 290, 115, 6).strokeColor(SECONDARY).lineWidth(1).st
 doc.fontSize(11).font('Helvetica-Bold').fillColor(PRIMARY).text('Resumen', 0, statsY + 12, { align: 'center' });
 doc.moveDown(0.3);
 doc.fontSize(9.5).font('Helvetica').fillColor(BLACK);
-doc.text('65 herramientas AI Agent (tool_use)', 0, statsY + 30, { align: 'center' });
+doc.text('82 herramientas AI Agent (tool_use)', 0, statsY + 30, { align: 'center' });
 doc.text('35+ comandos regex (triviales)', 0, statsY + 45, { align: 'center' });
-doc.text('11 dominios: Finanzas, Agro, Clima, Reportes,', 0, statsY + 60, { align: 'center' });
-doc.text('Campos/Lotes, Stock, Hacienda, Feedlot,', 0, statsY + 73, { align: 'center' });
-doc.text('Compartidos, Documentos, Sistema', 0, statsY + 86, { align: 'center' });
+doc.text('12 dominios: Finanzas, Agro, Monitoreo (Scouting),', 0, statsY + 60, { align: 'center' });
+doc.text('Clima, Reportes, Campos/Lotes, Stock,', 0, statsY + 73, { align: 'center' });
+doc.text('Hacienda + Sanidad/Repro/Pesaje, Feedlot,', 0, statsY + 86, { align: 'center' });
+doc.text('Compartidos, Documentos, Sistema', 0, statsY + 99, { align: 'center' });
 
-doc.y = statsY + 135;
-doc.moveDown(4);
-doc.fontSize(8).fillColor(GRAY).text(`Generado: ${new Date().toLocaleDateString('es-AR')} -- Campo Bot v2.0`, { align: 'center' });
+doc.y = statsY + 145;
+doc.moveDown(3.5);
+doc.fontSize(8).fillColor(GRAY).text(`Generado: ${new Date().toLocaleDateString('es-AR')} -- Campo Bot v2.5 (Abr 2026)`, { align: 'center' });
 
 // ==================== PIPELINE PAGE ====================
 doc.addPage();
@@ -213,6 +214,12 @@ intentRow('set_budget', 'Asigna un presupuesto mensual a una categoria.', ['pres
 intentRow('start_expense_flow', 'Inicia flujo guiado paso a paso para registrar un gasto.', ['registrar gasto', 'nuevo gasto']);
 intentRow('start_income_flow', 'Inicia flujo guiado paso a paso para registrar un ingreso.', ['registrar ingreso', 'nuevo ingreso']);
 
+subsection('Plantillas de Gastos');
+
+intentRow('create_expense_template', 'Crea una plantilla reutilizable de gasto recurrente (mensual / quincenal / semanal).', ['plantilla alquiler 200mil mensual'], 'ai');
+intentRow('list_expense_templates', 'Lista las plantillas activas y su proximo disparo.', ['mis plantillas', 'gastos recurrentes'], 'ai');
+intentRow('delete_expense_template', 'Elimina una plantilla por nombre.', ['borrar plantilla alquiler'], 'ai');
+
 // ==================== AGRONOMY INTENTS ====================
 doc.addPage();
 sectionTitle('Intents Agronomicos', '#27ae60');
@@ -237,10 +244,25 @@ intentCard('sow_crop', 'Registra siembra de un cultivo. Verbos: sembre, implante
   'hoy sembramos soja en campo norte',
 ], ['crop (requerido)', 'field', 'plot', 'event_date', 'season_year', 'season_type'], 'ai');
 
-intentCard('harvest_crop', 'Registra cosecha. Verbos: coseche, levante. Setea harvested_at en plot_crops (la campania queda abierta para actividades post-cosecha).', [
+intentCard('harvest_crop', 'Registra cosecha. Verbos: coseche, levante. Setea harvested_at en plot_crops (la campania queda abierta para actividades post-cosecha). Acepta cargas por camion en `loads[]` (chofer + kg + opcional destinatario, patente, humedad %, calidad). Acepta `yield_kg_per_ha` para "X kg/ha" o "X qq/ha". Dedup: si se cosecha el mismo lote el mismo dia, se anexan loads sin duplicar el evento.', [
   'coseche 25 toneladas de trigo',
   'levante la soja del lote A1',
-], ['crop (requerido)', 'quantity', 'unit', 'field', 'plot', 'event_date', 'yield_kg'], 'ai');
+  'cosecha lote norte: Britos 28000, Perez 31500 al 14% humedad',
+  'rindio 42 qq en el lote sur',
+], ['crop (requerido)', 'quantity', 'unit', 'field', 'plot', 'event_date', 'yield_kg', 'yield_kg_per_ha', 'loads[] (driver_name, weight_kg, destination?, destinatario?, truck_plate?, humidity_pct?, quality_metrics?)'], 'ai');
+
+intentCard('query_harvest_loads', 'Consulta cargas (camiones) de cosecha registradas. Filtros por lote, campo, fecha, chofer o destinatario. Muestra humedad y calidad si fueron capturadas.', [
+  'cargas del lote norte',
+  'cuanto llevo Britos',
+  'cargas a Cargill este mes',
+  'detalle de cosecha del lote A1',
+], ['plot', 'field', 'desde', 'hasta', 'driver_name', 'destinatario'], 'ai');
+
+intentCard('delete_harvest_loads', 'Elimina cargas duplicadas o incorrectas. Soporta borrado selectivo: por choferes, por fecha, o solo las que no tienen destinatario asignado.', [
+  'borrar las cargas del lote norte de hoy',
+  'eliminar cargas duplicadas',
+  'borrar camiones sin destino del 7D',
+], ['plot (requerido)', 'field', 'event_date', 'driver_names[]', 'only_without_destination'], 'ai');
 
 intentCard('active_crop', 'Consulta el cultivo activo de un lote. Sin parametro plot: lista TODOS los cultivos activos del usuario (opcionalmente filtrados por crop). Con parametro plot: muestra el cultivo especifico del lote.', [
   'que cultivo tiene el lote A1?',
@@ -254,11 +276,17 @@ intentCard('close_campaign', 'Cierra definitivamente una campania de cultivo. Se
   'finalizar campania maiz campo norte',
 ], ['crop (requerido)', 'field', 'plot'], 'ai');
 
-intentCard('campaign_stats', 'Estadisticas de una campania: actividades, gastos, ingresos, rendimiento (kg/ha), rentabilidad. Agrega datos por tipo de actividad, categoria de gasto y tipo de ingreso.', [
+intentCard('campaign_stats', 'Estadisticas de una campania: actividades, gastos, ingresos, rendimiento (kg/ha + humedad promedio + calidad), rentabilidad, monitoreos (scouting). Agrega datos por tipo de actividad, categoria de gasto, tipo de ingreso y por camion.', [
   'estadisticas campania soja',
   'como va la campania de maiz',
   'rentabilidad soja lote norte',
-], ['crop (requerido)', 'field', 'plot'], 'ai');
+], ['crop', 'field', 'plot', 'season_year (ej: 2025/26)'], 'ai');
+
+intentCard('compare_campaigns', 'Compara dos campanias del mismo lote o cultivo: rinde, gastos, ingresos, resultado por hectarea. Si no se especifican anios, toma las dos ultimas.', [
+  'comparar soja 25/26 vs 24/25',
+  'comparar campanias',
+  'como salio vs la anterior',
+], ['plot', 'field', 'crop', 'season_year_1', 'season_year_2'], 'ai');
 
 intentCard('activity_stats', 'Estadisticas agregadas de actividades por periodo: cantidad de fumigaciones, siembras, cosechas, etc. Con breakdown por lote/campo.', [
   'cuantas fumigaciones hice este mes',
@@ -302,20 +330,42 @@ intentCard('log_observation', 'Registra una observacion agronomica de campo. Cat
   'el maiz esta en V6 en el lote A1',
 ], ['observation (requerido)', 'crop', 'field', 'plot', 'event_date'], 'both');
 
-intentCard('log_rainfall', 'Registra milimetros de lluvia. Patrones: llovieron Xmm, cayeron X milimetros.', [
+intentCard('log_rainfall', 'Registra milimetros de lluvia. Patrones: llovieron Xmm, cayeron X milimetros. Soporta multi-dia: cuando se mencionan varios dias en un mensaje (ej: "20mm el lunes, 35mm el martes"), el agente dispara una llamada por dia y compound-executor consolida en un solo prompt batched.', [
   'llovieron 25mm',
   'cayeron 30 milimetros anoche',
+  '20mm el lunes, 35mm el martes y 12mm el miercoles',
 ], ['quantity en mm (requerido)', 'field', 'event_date'], 'both');
+
+intentCard('log_rainfall_batch', 'Persistencia atomica de varios registros de lluvia (uno por dia) cuando el agente disparo multiples log_rainfall sin campo. El usuario elige el campo una sola vez via boton callback `rain_batch_<field>_<base64>`.', [
+  '(disparado automaticamente desde log_rainfall multi-dia)',
+], ['entries[] (requerido: mm + date)', 'field (requerido)'], 'ai');
+
+subsection('Monitoreo de Cultivo (Crop Scouting)');
+
+intentCard('log_crop_scouting', 'Monitoreo agronomico ESTRUCTURADO (distinto de log_observation que es texto libre). Se activa cuando el mensaje incluye metricas: estadio fenologico (V3, R5, Z3), %, severidad (leve/moderada/alta/severa), densidad (pl/m2). 9 metricas tipadas. Incluye validador stage_code: si el estadio no es tipico del cultivo (ej: "soja R12") se guarda igual con un warning.', [
+  'soja V3 con 15% rama negra y presencia leve de chinche',
+  'monitoreo lote A1: maiz V6, 30% emergencia, suelo humedo',
+  'trigo Z3 sin malezas, sin plagas',
+], ['crop', 'plot', 'field', 'event_date', 'stage_code', 'weed_coverage_pct', 'weed_species[]', 'pest_species', 'pest_severity_1_5 (1=ausente,5=severa)', 'pest_affected_pct', 'soil_moisture_1_5', 'emergence_pct', 'plant_density_m2', 'notes'], 'ai');
+
+intentCard('query_scoutings', 'Consulta monitoreos ya registrados. Filtros por lote/campo/cultivo, rango de fechas, severidad minima, estadio.', [
+  'como viene la sanidad del lote norte',
+  'presion de plagas',
+  'evolucion del cultivo',
+  'monitoreos del lote A1 con severidad alta',
+], ['plot', 'field', 'crop', 'desde', 'hasta', 'min_severity (1-5)', 'stage_code'], 'ai');
 
 // ==================== WEATHER & REPORTS ====================
 doc.addPage();
 sectionTitle('Clima y Reportes Agronomicos', '#2e86c1');
 
-intentCard('weather_full', 'Consulta del clima actual y pronostico extendido para la ubicacion del usuario o campo especifico.', [
+intentCard('weather_full', 'Consulta del clima actual y pronostico extendido. Si el usuario menciona una ciudad explicita ("clima en X"), se usa esa city. localidadLookup desambigua nombres ambiguos (ej: Ameghino BA vs La Pampa).', [
   'que tiempo hace',
   'pronostico',
   'clima en el campo norte',
-], ['field'], 'ai');
+  'va a llover en Pergamino',
+  'clima en Ameghino Buenos Aires',
+], ['field', 'city', 'province'], 'ai');
 
 intentCard('rainfall_report', 'Reporte de lluvias: acumulado por periodo (hoy, semana, mes, anio, semana pasada, mes pasado).', [
   'cuanto llovio esta semana',
@@ -331,12 +381,20 @@ intentCard('generate_agro_report', 'Genera reporte agronomico en PDF: observacio
   'reporte agro de enero a marzo',
 ], ['field', 'plot', 'desde', 'hasta'], 'both');
 
-intentCard('query_plot_history', 'Consulta el historial de actividades de un lote: fumigaciones, siembras, cosechas, fertilizaciones, lluvias, observaciones.', [
+intentCard('query_plot_history', 'Consulta el historial de actividades de un lote: fumigaciones, siembras, cosechas, fertilizaciones, lluvias, observaciones. Soporta isUltimaVez para "ultima fumigacion" y isBinaryQuestion para preguntas si/no.', [
   'cuando se fumigo el lote norte',
   'historial del lote A1',
   'ultima vez que se sembro en el sur',
   'en que lote sembre maiz',
-], ['plot', 'field', 'crop', 'timeRef', 'activityFilter'], 'both');
+  'se fumigo el lote norte?',
+], ['plot', 'field', 'crop', 'timeRef', 'activityFilter', 'isUltimaVez', 'isBinaryQuestion'], 'both');
+
+intentCard('share_report', 'Genera y envia un reporte en PDF al usuario (campania o financiero). Para campania genera el PDF de la campana del lote/cultivo indicado. Para financiero arma el PDF del periodo (week/month/year).', [
+  'mandame el PDF de la campania',
+  'exportar reporte financiero',
+  'PDF de la soja del lote norte',
+  'compartir reporte mensual',
+], ['report_type (campaign|financial)', 'plot', 'field', 'crop', 'period (week|month|year)'], 'ai');
 
 // ==================== FIELD/PLOT MANAGEMENT ====================
 doc.addPage();
@@ -452,16 +510,16 @@ sectionTitle('Gestion de Hacienda (Livestock)', '#7d3c98');
 doc.fontSize(9).font('Helvetica').fillColor(GRAY).text('Inventario de ganado (vacas, terneros, novillos, toros, bueyes) con modelo event-sourced. Requiere plan pro_plus o enterprise.');
 doc.moveDown(0.5);
 
-intentCard('add_livestock', 'Agrega animales a un lote o corral. Crea un grupo si no existe. Categorias: vaca, vaquillona, ternero, ternera, novillo, novillito, toro, torito, buey. Soporta plurales ("vacas" -> "vaca").', [
+intentCard('add_livestock', 'Agrega animales a un lote o corral. Crea un grupo si no existe. Categorias: vaca, vaquillona, ternero, ternera, novillo, novillito, toro, torito, buey. Soporta plurales ("vacas" -> "vaca"). Si se incluye `unit_price_ars|usd`, AUTO-CREA un gasto vinculado (categoria Hacienda) para la compra. La relacion se guarda en livestock_movements.linked_expense_id.', [
   'agregue 20 vacas al lote norte',
   'entraron 15 terneros al corral 3',
-  'compre 50 novillos de raza Angus',
-], ['category (requerido)', 'count (requerido)', 'field', 'plot', 'corral', 'breed', 'avg_weight_kg', 'notes', 'event_date'], 'ai');
+  'compre 50 novillos a 800 dolares c/u',
+], ['category (requerido)', 'count (requerido)', 'field', 'plot', 'corral', 'breed', 'avg_weight_kg', 'unit_price_ars', 'unit_price_usd', 'notes', 'event_date'], 'ai');
 
-intentCard('remove_livestock', 'Registra salida de animales (venta, salida a pasturas, etc.). Requiere count suficiente en el grupo.', [
-  'vendi 5 novillos del lote A1',
+intentCard('remove_livestock', 'Registra salida de animales (venta, salida a pasturas, etc.). Requiere count suficiente en el grupo. Si se incluye `unit_price_ars|usd`, AUTO-CREA un ingreso vinculado (categoria Hacienda) para la venta.', [
+  'vendi 5 novillos del lote A1 a 1200 dolares c/u',
   'salieron 10 vacas del corral 2',
-], ['category (requerido)', 'count (requerido)', 'field', 'plot', 'corral', 'breed', 'notes', 'event_date'], 'ai');
+], ['category (requerido)', 'count (requerido)', 'field', 'plot', 'corral', 'breed', 'unit_price_ars', 'unit_price_usd', 'notes', 'event_date'], 'ai');
 
 intentCard('transfer_livestock', 'Mueve animales entre lotes o corrales. Si source_plot === dest_plot y categorias distintas, se clasifica como recategorizacion.', [
   'move 10 vacas del lote A al lote B',
@@ -496,6 +554,55 @@ intentCard('livestock_history', 'Historial de movimientos de un grupo: entradas,
   'movimientos de terneros',
   'entradas del corral 2 este mes',
 ], ['category', 'field', 'plot', 'corral', 'desde', 'hasta', 'movement_type'], 'ai');
+
+subsection('Sanidad Animal');
+
+intentCard('log_health_event', 'Registra eventos sanitarios: vacunaciones, desparasitaciones, tratamientos curativos, revisiones. Verbos: vacune, desparasite, cure, trate. health_type se infiere del verbo: vacune=vacunacion, desparasite=desparasitacion, curo/trato=tratamiento, revise=revision_sanitaria. Captura nombre de vacuna/enfermedad y dosis.', [
+  'vacune 50 vacas contra aftosa',
+  'desparasite con ivermectina los terneros del lote A',
+  'trate 5 vacas por mastitis',
+  'revisamos sanitariamente el rodeo del corral 2',
+], ['health_type (requerido)', 'animals_affected', 'category', 'disease_or_vaccine', 'dose_quantity', 'dose_unit', 'field', 'plot', 'corral', 'veterinarian', 'event_date'], 'ai');
+
+intentCard('query_health_events', 'Consulta historial sanitario: ultima vacunacion, desparasitaciones del año, tratamientos por animal o categoria.', [
+  'cuando se vacuno la hacienda',
+  'historial sanitario del corral 2',
+  'ultima desparasitacion de los terneros',
+], ['health_type', 'category', 'field', 'plot', 'corral', 'desde', 'hasta'], 'ai');
+
+subsection('Reproduccion');
+
+intentCard('log_repro_event', 'Registra eventos reproductivos. Verbos: eche el toro/entore (servicio), insemine/IA/IATF (inseminacion), deteccion de celo, deste (destete). repro_type: servicio, inseminacion, deteccion_celo, destete. Captura datos de toro padre o metodo de IA.', [
+  'eche el toro al lote norte el 15 de enero',
+  'insemine 30 vaquillonas con IATF',
+  'deteccion de celo: 12 vacas',
+  'desteté 25 terneros del corral 3',
+], ['repro_type (requerido)', 'animals_affected', 'category', 'sire_info (raza, nombre, RP)', 'method (IA, IATF, monta natural)', 'field', 'plot', 'corral', 'event_date'], 'ai');
+
+intentCard('query_repro_events', 'Consulta historial reproductivo: cuando se servicio, destetes del año, eficiencia reproductiva.', [
+  'cuando se echo el toro al lote norte',
+  'historial reproductivo',
+  'destetes del año',
+], ['repro_type', 'category', 'field', 'plot', 'corral', 'desde', 'hasta'], 'ai');
+
+subsection('Pesaje');
+
+intentCard('log_weighing', 'Registra pesaje de hacienda. IMPORTANTE: el peso es SIEMPRE promedio por animal, no peso total. Verbos: pese, peso promedio. Captura cantidad de animales pesados.', [
+  'pese 30 novillos a 380 kg promedio',
+  'peso promedio del corral 1: 250 kg, 25 animales',
+], ['avg_weight_kg (requerido)', 'animals_weighed', 'category', 'field', 'plot', 'corral', 'event_date'], 'ai');
+
+intentCard('query_weighings', 'Consulta evolucion de peso: GDPV (ganancia diaria de peso vivo), ultimo pesaje, comparativa entre lotes.', [
+  'cuanto pesan los novillos del corral 2',
+  'evolucion de peso del lote norte',
+  'GDPV del corral A',
+  'ultimo pesaje',
+], ['category', 'field', 'plot', 'corral', 'desde', 'hasta'], 'ai');
+
+intentCard('adjust_livestock', 'Ajusta el count de un grupo al valor absoluto indicado. Usado para correcciones de inventario.', [
+  'en el lote A1 hay 50 vacas',
+  'ajustar a 30 novillos el corral 2',
+], ['category (requerido)', 'count (requerido)', 'field', 'plot', 'corral', 'notes'], 'ai');
 
 // ==================== FEEDLOT / CORRAL (NEW) ====================
 doc.addPage();
@@ -697,6 +804,100 @@ doc.moveDown(0.5);
 subsection('Deduplicacion de Observaciones');
 doc.fontSize(9).font('Helvetica').fillColor(BLACK);
 doc.text('Las observaciones pasan por 4 capas de deduplicacion: normalizacion de texto, cache en memoria (5 min), verificacion en DB (5 min), y dedup al renderizar. Evita duplicados por mensajes repetidos.', 60, doc.y, { width: 475 });
+doc.moveDown(0.5);
+
+subsection('Compound Stock + Gasto');
+doc.fontSize(9).font('Helvetica').fillColor(BLACK);
+doc.text('add_stock acepta unit_price_ars / unit_price_usd. Cuando esta presente, el handler crea un gasto vinculado (categoria Insumos, total = quantity * unit_price). El agente NUNCA debe llamar log_expense por separado en estos casos. Mismo patron en add_livestock / remove_livestock con linked_expense_id / linked_income_id.', 60, doc.y, { width: 475 });
+doc.moveDown(0.5);
+
+subsection('Correcciones Mid-Flow');
+doc.fontSize(9).font('Helvetica').fillColor(BLACK);
+doc.text('Durante un flujo activo el usuario puede corregir sin cancelar. Patrones soportados: (1) RENAME: "se llama X, no Y" / "no Y, es X" / "el nombre es X" actualiza data.name. (2) AMOUNT: "no, eran X" / "en realidad X" / "perdon, X" / "quise decir X" corrige el monto. (3) CATEGORY: "no, es X" / "no, categoria X". Funciona tanto en flujo como en confirmacion.', 60, doc.y, { width: 475 });
+doc.moveDown(0.5);
+
+subsection('Lluvia Multi-Dia (log_rainfall_batch)');
+doc.fontSize(9).font('Helvetica').fillColor(BLACK);
+doc.text('Cuando se registran varios dias de lluvia en un mensaje ("20mm el lunes, 35mm el martes y 12mm el miercoles") el agente dispara N llamadas log_rainfall (una por dia con event_date). Si ninguna trae campo, compound-executor.consolidateRainfallPrompts() los colapsa en un solo prompt batched con callback rain_batch_<field>_<base64>. El boton dispara log_rainfall_batch que persiste todo de una.', 60, doc.y, { width: 475 });
+doc.moveDown(0.5);
+
+subsection('Truncamiento del Agente');
+doc.fontSize(9).font('Helvetica').fillColor(BLACK);
+doc.text('Si Anthropic devuelve stop_reason=max_tokens, AgentResult.truncated=true. El bot agrega "El mensaje era largo y se corto. Si te quedaron acciones sin registrar, repetilas en un mensaje aparte." y se loguea AI_AGENT TRUNCATED. AGENT_MAX_TOKENS default 1500 (admin > Configuracion de IA).', 60, doc.y, { width: 475 });
+doc.moveDown(0.5);
+
+subsection('Unidades qq / tn / kg');
+doc.fontSize(9).font('Helvetica').fillColor(BLACK);
+doc.text('Conversion centralizada en normalizeToKg(quantity, unit). qq (quintal) = 100 kg, tn (tonelada) = 1000 kg. "rindio 42 qq" -> 4200 kg. "200 qq de soja" -> 20000 kg. Aplica al cargar harvest_loads + agro-report. formatQuantityHuman() renderiza grandes valores como tn (213200 kg -> ~ 213,2 tn).', 60, doc.y, { width: 475 });
+doc.moveDown(0.5);
+
+subsection('Cosecha: Humedad y Calidad');
+doc.fontSize(9).font('Helvetica').fillColor(BLACK);
+doc.text('harvest_loads soporta humidity_pct (0-50%) y quality_metrics (JSONB crop-specific): soja {oil_pct}, trigo {protein_pct, gluten_pct, test_weight_kg_hl}, girasol {oil_pct}. Se capturan SOLO si el usuario las menciono (el agente nunca inventa). yield_kg_per_ha vs yield_kg: "X kg/ha" o "X qq/ha" -> rate. "sacamos X tn/kg" sin "por hectarea" -> total.', 60, doc.y, { width: 475 });
+doc.moveDown(0.5);
+
+subsection('Memoria Multi-Slot (context_stack)');
+doc.fontSize(9).font('Helvetica').fillColor(BLACK);
+doc.text('conversation_state.context_stack (JSONB) guarda los ultimos 3 lotes/campos referenciados como [{field_id, plot_id, ts}], LIFO con dedup. Se expone al agente como "contextos recientes:[1) Lote Norte (La Esperanza), 2) Lote Sur ...]" cuando el stack tiene >1 entrada. Permite resolver "el otro campo" / "el de antes".', 60, doc.y, { width: 475 });
+doc.moveDown(0.5);
+
+subsection('Validador de Estadios (stage_code)');
+doc.fontSize(9).font('Helvetica').fillColor(BLACK);
+doc.text('log_crop_scouting valida stage_code contra crop. Soja VE/V1..V8/R1..R8, maiz VE/V1..V21/VT/R1..R6, trigo+cebada Zadoks Z21..Z99, girasol VE/V1..V20/R1..R9, sorgo VE/V1..V12/R1..R6. Es NO bloqueante: el monitoreo se guarda igual y se agrega un warning ("El estadio R12 no es tipico de soja").', 60, doc.y, { width: 475 });
+
+// ==================== MVP AUDIT PAGE ====================
+doc.addPage();
+sectionTitle('Auditoria MVP - Estado y Brechas', '#c0392b');
+doc.fontSize(9).font('Helvetica').fillColor(GRAY);
+doc.text(`Snapshot al ${new Date().toLocaleDateString('es-AR')}. Inventario: 82 herramientas AI distribuidas en 12 dominios; 1240 tests unitarios verdes; eval conversacional 18/18; QA adversarial 90% (30 esc.) y 73% (40 avanzados). Pasaron a produccion features de Sanidad/Repro/Pesaje, Crop Scouting estructurado, harvest_loads con humedad+calidad, multi-day rainfall y memoria multi-slot.`, 60, doc.y, { width: 480 });
+doc.moveDown(0.6);
+
+subsection('Brechas P0 (bloqueantes pre-launch)');
+doc.fontSize(9).font('Helvetica').fillColor(BLACK);
+const p0 = [
+  ['Verificacion de canal y tenant', 'No hay flow de verificacion de telefono al registrar (WhatsApp/Telegram). Riesgo de colision si dos usuarios reclaman el mismo numero. No existe channel_verified en users.'],
+  ['Cobros y suscripciones', 'Existe el modelo de planes (free/pro/pro_plus/enterprise) y feature gates funcionan, pero NO hay integracion de pagos (Stripe/MercadoPago). Asignacion de plan via script admin. Sin trial -> paid -> churn lifecycle.'],
+  ['Atomicidad de compound actions', 'compound-executor ejecuta tools secuencial; si falla a mitad de camino, los writes previos quedan persistidos. Falta saga / dead-letter queue.'],
+  ['Export full-data (portabilidad GDPR)', 'export_csv solo cubre gastos. No hay export de actividades, hacienda, stock, observaciones, scoutings, documentos.'],
+];
+for (const [t, d] of p0) {
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#c0392b').text(`> ${t}`, 60, doc.y, { width: 480 });
+  doc.fontSize(8.5).font('Helvetica').fillColor(BLACK).text(d, 70, doc.y, { width: 470 });
+  doc.moveDown(0.3);
+}
+
+subsection('Brechas P1 (habilitadores MVP)');
+doc.fontSize(9).font('Helvetica').fillColor(BLACK);
+const p1 = [
+  ['Onboarding guiado', 'El primer registro post-login no guia a crear campo+lote. pending-field-location se dispara solo despues de la primera actividad. No se asigna automaticamente plan free al alta.'],
+  ['Notificaciones nativas', 'Push web (VAPID) funciona, pero alertas por WhatsApp/Telegram nativas no tienen confirmacion de entrega. UI de preferencias de notificaciones falta en frontend.'],
+  ['Cobertura de tests E2E', '18 escenarios conversacionales + 70 adversariales cubren el happy path. Faltan: aislamiento multi-tenant, flujos compuestos largos (campo -> lote -> siembra -> fumigacion -> cosecha), regresion de ediciones.'],
+  ['Documentos: human-in-the-loop', 'Claude Vision extrae factura/remito y crea gastos automaticamente. No hay paso de revision/edicion antes de persistir. Sin audit trail de aceptacion/rechazo.'],
+  ['Forecast vs spraying', 'weather_full informa pronostico pero no integra con la decision de fumigar (alerta "no fumigar si lluvia inminente"). Wind/dry alerts existen pero independientes.'],
+];
+for (const [t, d] of p1) {
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#d68910').text(`> ${t}`, 60, doc.y, { width: 480 });
+  doc.fontSize(8.5).font('Helvetica').fillColor(BLACK).text(d, 70, doc.y, { width: 470 });
+  doc.moveDown(0.3);
+}
+
+subsection('Brechas P2 (mejoras post-MVP)');
+doc.fontSize(9).font('Helvetica').fillColor(BLACK);
+const p2 = [
+  ['Soft-delete inconsistente', 'expenses, incomes, fields, plots tienen deleted_at. Livestock, stock, documentos no -> borrado permanente.'],
+  ['Aggregations livestock', 'No hay vistas materializadas de "rodeo total por campo" o "by-breed inventory" mas alla de list_livestock.'],
+  ['Visualizacion scouting', 'crop_scoutings se guarda y aparece en agro PDF, pero el dashboard no grafica evolucion fenologica ni timeline de presion de plagas.'],
+  ['Re-trigger truncamiento', 'AgentResult.truncated avisa al usuario pero no reintenta automaticamente con el mensaje partido.'],
+];
+for (const [t, d] of p2) {
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#7f8c8d').text(`> ${t}`, 60, doc.y, { width: 480 });
+  doc.fontSize(8.5).font('Helvetica').fillColor(BLACK).text(d, 70, doc.y, { width: 470 });
+  doc.moveDown(0.3);
+}
+
+doc.moveDown(0.4);
+doc.fontSize(9).font('Helvetica-Oblique').fillColor(GRAY);
+doc.text('Conclusion: el bot esta funcionalmente completo para MVP de gestion agricola+ganadera. Lanzamiento viable cerrando los 4 P0 (verificacion canal, integracion de pagos, atomicidad compound, export portabilidad). Los P1/P2 pueden iterarse en post-launch.', 60, doc.y, { width: 480 });
 
 // ==================== FOOTER ON ALL PAGES ====================
 const totalPages = doc.bufferedPageRange().count;
