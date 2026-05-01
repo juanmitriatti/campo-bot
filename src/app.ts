@@ -8,6 +8,7 @@ import telegramWebhook from './controllers/telegram.controller.js';
 import { verifyTelegramWebhook } from './middleware/telegram-auth.js';
 import dashboard from './routes/dashboard.js';
 import authRoutes from './routes/auth.routes.js';
+import webhookRoutes from './routes/webhooks.routes.js';
 import { requireAuth, requireRole } from './middleware/auth.middleware.js';
 import mapRoutes from './routes/map.routes.js';
 import { startScheduler } from './services/scheduler.js';
@@ -17,6 +18,11 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+// Payment webhooks need the raw body for signature verification — mount them
+// BEFORE express.json() so the JSON parser doesn't consume the stream.
+app.use('/webhooks', webhookRoutes);
+
 app.use(express.json());
 
 // Request logger

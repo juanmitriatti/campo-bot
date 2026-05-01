@@ -1172,5 +1172,28 @@ export function startScheduler() {
     expenseTemplateTick();
   });
 
-  console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily weather alerts + proactive alerts (incl. low stock, phenology) + daily cleanup + flow reminders + expense templates");
+  // Subscription sweep (trial expiry + past_due downgrade) — every hour at :15
+  cron.schedule("15 * * * *", () => {
+    subscriptionSweepTick().catch(err => console.error("[scheduler] subscription sweep failed:", err));
+  });
+
+  console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily weather alerts + proactive alerts (incl. low stock, phenology) + daily cleanup + flow reminders + expense templates + subscription sweep");
+}
+
+async function subscriptionSweepTick() {
+  // Only run once per day around 03:15 AR to avoid hammering the DB hourly.
+  const argTzNow = new Date();
+  if (argTzNow.toLocaleString('es-AR', { hour: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' }) !== '03') {
+    return;
+  }
+  try {
+    const { SubscriptionService } = await import("../domain/billing/subscription.service.js");
+    const svc = new SubscriptionService();
+    const r = await svc.sweepExpired();
+    if (r.trialExpired || r.pastDueCancelled || r.cancelledDowngraded) {
+      console.log(`[scheduler] subscription sweep — trialExpired=${r.trialExpired} pastDueCancelled=${r.pastDueCancelled} cancelledDowngraded=${r.cancelledDowngraded}`);
+    }
+  } catch (err) {
+    console.error("[scheduler] subscriptionSweepTick error:", err);
+  }
 }

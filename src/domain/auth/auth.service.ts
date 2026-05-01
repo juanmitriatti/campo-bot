@@ -4,6 +4,9 @@ import crypto from 'crypto';
 import { AuthRepository } from './auth.repository.js';
 import { TokenRepository } from './token.repository.js';
 import { PlanRepository } from '../billing/plan.repository.js';
+import { SubscriptionService } from '../billing/subscription.service.js';
+import { logError } from '../../services/error-logger.js';
+import { asUserId } from '../../types/index.js';
 import type { JwtPayload, TokenPair, RegisterBody, LoginBody, ProfileUpdateBody, AuthUser } from './auth.types.js';
 
 const BCRYPT_ROUNDS = 12;
@@ -24,11 +27,19 @@ export class AuthService {
   private auth: AuthRepository;
   private tokens: TokenRepository;
   private plans: PlanRepository;
+  private subscriptions: SubscriptionService | null;
 
-  constructor(authRepo?: AuthRepository, tokenRepo?: TokenRepository, planRepo?: PlanRepository) {
+  constructor(
+    authRepo?: AuthRepository,
+    tokenRepo?: TokenRepository,
+    planRepo?: PlanRepository,
+    subscriptions?: SubscriptionService,
+  ) {
     this.auth = authRepo ?? new AuthRepository();
     this.tokens = tokenRepo ?? new TokenRepository();
     this.plans = planRepo ?? new PlanRepository();
+    // Lazy default — tests can pass null to skip the trial entirely.
+    this.subscriptions = subscriptions === undefined ? new SubscriptionService() : subscriptions;
   }
 
   async register(body: RegisterBody): Promise<{ user: AuthUser; tokens: TokenPair }> {
@@ -69,6 +80,20 @@ export class AuthService {
         throw new AuthError(409, 'Ya existe una cuenta con este email');
       }
       throw err;
+    }
+
+    // Best-effort: bootstrap a trial subscription if PAYMENTS_ENABLED.
+    // Failures here MUST NOT break registration — the user still gets the free
+    // plan that was already assigned above.
+    if (this.subscriptions) {
+      try {
+        const trialPlanName = (body.plan_id ? null : 'pro') as string | null;
+        if (trialPlanName) {
+          await this.subscriptions.createTrialIfMissing(asUserId(user.id), trialPlanName);
+        }
+      } catch (err) {
+        logError('auth', 'TRIAL_BOOTSTRAP_FAILED', err as Error, { userId: user.id });
+      }
     }
 
     const tokens = await this.generateTokenPair(user.id, user.role);

@@ -4,6 +4,7 @@ import { ObservationService, ObservationError } from '../domain/auth/observation
 import { ChannelVerificationService, VerificationError } from '../domain/auth/channel-verification.service.js';
 import { AccountDeletionService, AccountDeletionError } from '../domain/auth/account-deletion.service.js';
 import { DataExportService } from '../services/data-export.service.js';
+import { SubscriptionService, SubscriptionError } from '../domain/billing/subscription.service.js';
 import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
@@ -21,6 +22,7 @@ const featureGate = new FeatureGate();
 const verificationService = new ChannelVerificationService();
 const accountDeletionService = new AccountDeletionService();
 const dataExportService = new DataExportService();
+const subscriptionService = new SubscriptionService();
 
 function requireFeature(feature: FeatureKey) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -202,6 +204,54 @@ router.delete('/me', requireAuth, async (req: Request, res: Response) => {
     }
     await accountDeletionService.deleteAccount(asUserId(req.auth!.userId), password);
     res.json({ deleted: true });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Subscriptions / billing ---
+
+router.get('/subscription', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const status = await subscriptionService.getStatus(asUserId(req.auth!.userId));
+    res.json(status);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.post('/subscription/checkout', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { plan, period } = req.body as { plan?: string; period?: 'monthly' | 'yearly' };
+    if (!plan) {
+      res.status(400).json({ error: 'plan es obligatorio.' });
+      return;
+    }
+    if (period && period !== 'monthly' && period !== 'yearly') {
+      res.status(400).json({ error: 'period debe ser monthly o yearly.' });
+      return;
+    }
+    const profile = await authService.getProfile(req.auth!.userId);
+    if (!profile?.user.email) {
+      res.status(400).json({ error: 'Necesitamos tu email registrado para procesar el pago.' });
+      return;
+    }
+    const result = await subscriptionService.startCheckout({
+      userId: asUserId(req.auth!.userId),
+      payerEmail: profile.user.email,
+      planName: plan,
+      billingPeriod: period ?? 'monthly',
+    });
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.post('/subscription/cancel', requireAuth, async (req: Request, res: Response) => {
+  try {
+    await subscriptionService.cancel(asUserId(req.auth!.userId));
+    res.json({ cancelled: true });
   } catch (err) {
     handleError(err, res);
   }
@@ -1254,6 +1304,10 @@ function handleError(err: unknown, res: Response): void {
     return;
   }
   if (err instanceof AccountDeletionError) {
+    res.status(err.status).json({ error: err.message, code: err.code });
+    return;
+  }
+  if (err instanceof SubscriptionError) {
     res.status(err.status).json({ error: err.message, code: err.code });
     return;
   }

@@ -155,6 +155,14 @@ REGLAS:
   OTP_MAX_ATTEMPTS: { default: '5', type: 'number', group: 'system', label: 'Máximo intentos por código OTP', description: 'Cuántas veces el usuario puede equivocarse al ingresar el código antes de tener que pedir uno nuevo. Default 5.' },
   TELEGRAM_LINK_TTL_MINUTES: { default: '1440', type: 'number', group: 'system', label: 'Validez del link de Telegram (min)', description: 'Cuánto vive el deep-link de vinculación de Telegram (en minutos). Default 1440 (24h).' },
   REQUIRE_VERIFIED_CHANNEL: { default: 'false', type: 'boolean', group: 'system', label: 'Requerir verificación de canal', description: 'Si está activo, mensajes desde un WhatsApp/Telegram NO verificado son rechazados con un onboarding hint en lugar de auto-crear un usuario anónimo. Default false durante MVP/transición; activar antes del launch público para garantizar aislamiento multi-tenant.' },
+
+  // Payments (MercadoPago)
+  PAYMENTS_ENABLED: { default: 'false', type: 'boolean', group: 'payments', label: 'Pagos habilitados', description: 'Kill switch global de la integración de pagos. Si está apagado: no se ofrece checkout, no se crean trials automáticos, los webhooks se siguen aceptando para idempotencia pero no aplican cambios. Activar cuando MP_ACCESS_TOKEN esté configurado y probaste el flow en sandbox.' },
+  MP_ACCESS_TOKEN: { default: '', type: 'string', group: 'payments', label: 'MercadoPago — Access Token', description: 'Access token de MercadoPago (formato APP_USR-XXXX-... o TEST-XXXX-...). Se usa para crear preapprovals y consultar estado. NUNCA commitearlo al repo. Generalo en https://www.mercadopago.com.ar/developers/panel/credentials.' },
+  MP_WEBHOOK_SECRET: { default: '', type: 'string', group: 'payments', label: 'MercadoPago — Webhook Secret', description: 'Secret HMAC para verificar la firma de los webhooks (header x-signature). Configurarlo en MP > Notificaciones webhooks. Si lo dejás vacío, los webhooks se procesan sin verificar firma (solo apto para sandbox).' },
+  TRIAL_DAYS: { default: '14', type: 'number', group: 'payments', label: 'Duración del trial (días)', description: 'Cuántos días de prueba gratis del plan pro recibe un usuario al registrarse. 0 = sin trial. Cambiarlo solo afecta a registros nuevos.' },
+  TRIAL_PLAN_NAME: { default: 'pro', type: 'string', group: 'payments', label: 'Plan del trial', description: 'Qué plan se otorga durante el trial. Default "pro". Si querés ofrecer un trial más amplio cambialo a "pro_plus" o "enterprise". Tiene que ser un plan existente en la tabla plans.' },
+  PAST_DUE_GRACE_DAYS: { default: '3', type: 'number', group: 'payments', label: 'Días de gracia tras pago fallido', description: 'Cuántos días pasados de un pago fallido (status past_due) antes de cancelar la suscripción y bajar al plan free. Default 3. El usuario sigue con acceso pleno durante la gracia.' },
 };
 
 /**

@@ -10,6 +10,27 @@ interface VerificationStatus {
   telegram_id: string | null;
 }
 
+interface SubscriptionRow {
+  id: number;
+  status: 'trial' | 'active' | 'past_due' | 'cancelled' | 'expired';
+  billing_period: 'monthly' | 'yearly';
+  trial_ends_at: string | null;
+  current_period_end: string | null;
+  provider: string;
+}
+
+interface SubscriptionStatus {
+  subscription: SubscriptionRow | null;
+  plan: {
+    id: number;
+    name: string;
+    display_name: string;
+    price_ars: number;
+    price_ars_yearly: number | null;
+  } | null;
+  payments_enabled: boolean;
+}
+
 type WaStep = 'idle' | 'enter-phone' | 'enter-code' | 'success';
 
 export default function ChannelLinking() {
@@ -36,6 +57,12 @@ export default function ChannelLinking() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Subscription state
+  const [sub, setSub] = useState<SubscriptionStatus | null>(null);
+  const [subBusy, setSubBusy] = useState(false);
+  const [subError, setSubError] = useState<string | null>(null);
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
+
   const { logout } = useAuth();
   const navigate = useNavigate();
 
@@ -48,9 +75,47 @@ export default function ChannelLinking() {
     }
   };
 
+  const refreshSub = async () => {
+    try {
+      const s = await apiRequest<SubscriptionStatus>('/subscription');
+      setSub(s);
+    } catch {
+      // ignore (e.g. payments_enabled=false → endpoint still returns)
+    }
+  };
+
   useEffect(() => {
-    refreshStatus().finally(() => setLoading(false));
+    Promise.all([refreshStatus(), refreshSub()]).finally(() => setLoading(false));
   }, []);
+
+  // ---------- Subscription ----------
+  const upgradeNow = async (planName: string) => {
+    setSubError(null);
+    setSubBusy(true);
+    try {
+      const r = await apiRequest<{ init_point: string }>('/subscription/checkout', {
+        method: 'POST',
+        body: { plan: planName, period: billingPeriod },
+      });
+      window.location.href = r.init_point;
+    } catch (err) {
+      setSubError(err instanceof ApiError ? err.message : 'No pude iniciar el checkout.');
+      setSubBusy(false);
+    }
+  };
+
+  const cancelSub = async () => {
+    if (!confirm('¿Cancelar la suscripción? Vas a tener acceso hasta el fin del período pagado.')) return;
+    setSubBusy(true);
+    try {
+      await apiRequest('/subscription/cancel', { method: 'POST' });
+      await refreshSub();
+    } catch (err) {
+      setSubError(err instanceof ApiError ? err.message : 'No pude cancelar.');
+    } finally {
+      setSubBusy(false);
+    }
+  };
 
   // ---------- WhatsApp ----------
   const startWhatsApp = async () => {
@@ -197,6 +262,17 @@ export default function ChannelLinking() {
 
   if (loading) {
     return <div className="p-6 text-gray-500">Cargando…</div>;
+  }
+
+  function statusLabel(s: string): string {
+    switch (s) {
+      case 'trial': return 'En prueba gratis';
+      case 'active': return 'Activa';
+      case 'past_due': return 'Pago pendiente';
+      case 'cancelled': return 'Cancelada';
+      case 'expired': return 'Expirada';
+      default: return s;
+    }
   }
 
   return (
@@ -389,6 +465,81 @@ export default function ChannelLinking() {
           </div>
         )}
       </div>
+
+      {/* Subscription card */}
+      {sub?.payments_enabled && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-start gap-3">
+            <div className="text-3xl">💳</div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-gray-800">Suscripción</h3>
+              {sub.subscription ? (
+                <div className="mt-2 space-y-1 text-sm">
+                  <p className="text-gray-700">
+                    Plan actual: <span className="font-medium">{sub.plan?.display_name ?? '—'}</span>
+                  </p>
+                  <p className="text-gray-500">
+                    Estado: <span className={`font-medium ${
+                      sub.subscription.status === 'active' ? 'text-green-700' :
+                      sub.subscription.status === 'trial' ? 'text-blue-700' :
+                      sub.subscription.status === 'past_due' ? 'text-amber-700' :
+                      'text-gray-600'
+                    }`}>{statusLabel(sub.subscription.status)}</span>
+                  </p>
+                  {sub.subscription.status === 'trial' && sub.subscription.trial_ends_at && (
+                    <p className="text-blue-700">
+                      Trial vence el {new Date(sub.subscription.trial_ends_at).toLocaleDateString('es-AR')}.
+                    </p>
+                  )}
+                  {sub.subscription.current_period_end && (
+                    <p className="text-gray-500">
+                      Próximo cobro: {new Date(sub.subscription.current_period_end).toLocaleDateString('es-AR')}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 mt-1">Sin suscripción activa.</p>
+              )}
+
+              {(!sub.subscription || sub.subscription.status === 'trial' || sub.subscription.status === 'past_due') && sub.plan && sub.plan.price_ars > 0 && (
+                <div className="mt-4 space-y-3">
+                  <div className="flex gap-2 text-xs">
+                    <button
+                      onClick={() => setBillingPeriod('monthly')}
+                      className={`px-3 py-1 rounded-full border ${billingPeriod === 'monthly' ? 'bg-campo-600 text-white border-campo-600' : 'bg-white text-gray-700 border-gray-300'}`}
+                    >Mensual ${sub.plan.price_ars.toLocaleString('es-AR')}</button>
+                    {sub.plan.price_ars_yearly && (
+                      <button
+                        onClick={() => setBillingPeriod('yearly')}
+                        className={`px-3 py-1 rounded-full border ${billingPeriod === 'yearly' ? 'bg-campo-600 text-white border-campo-600' : 'bg-white text-gray-700 border-gray-300'}`}
+                      >Anual ${sub.plan.price_ars_yearly.toLocaleString('es-AR')}</button>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => upgradeNow(sub.plan!.name)}
+                    disabled={subBusy}
+                    className="px-4 py-2 bg-campo-600 text-white rounded-md text-sm font-medium hover:bg-campo-700 disabled:opacity-50"
+                  >
+                    {subBusy ? 'Redirigiendo…' : 'Pagar con MercadoPago'}
+                  </button>
+                </div>
+              )}
+
+              {sub.subscription && (sub.subscription.status === 'active' || sub.subscription.status === 'trial') && (
+                <button
+                  onClick={cancelSub}
+                  disabled={subBusy}
+                  className="mt-3 text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                >
+                  Cancelar suscripción
+                </button>
+              )}
+
+              {subError && <p className="text-xs text-red-600 mt-2">{subError}</p>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Data export card */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
