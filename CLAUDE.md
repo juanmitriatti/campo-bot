@@ -170,6 +170,39 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - Few-shots rotate daily via `ORDER BY md5(id::text || CURRENT_DATE::text)` — deterministic per day, varied across days. No random reshuffles.
 - `ai_usage` persists `cache_read_tokens` + `cache_write_tokens` (migration 070). Dashboard cost uses 4-term Haiku pricing: input 0.80, cache read 0.08 (10%), cache write 1.00 (125%), output 4.00 per M. Log line `AI_AGENT CACHE: Nread/Nwrite` shows real cache hits in Railway logs.
 
+## Account Lifecycle & Billing (P0 hardening — Mayo 2026)
+
+Four production-readiness features added on top of the agent pipeline. All four are gated by admin settings so they ship dark and you flip them on when ready.
+
+### Compound action atomicity (always on)
+- `src/config/db.js` hijacks `pool.query` and `pool.connect` via `AsyncLocalStorage`. When inside a `withTransaction(fn)` block every query — including from the 47 files that import `pool` — runs on the same client. Inner `pool.connect()` calls (livestock/stock repos with their own BEGIN/COMMIT) get a savepoint-aware shadow client, so nested `BEGIN` becomes `SAVEPOINT sp_<rand>`, `COMMIT` becomes `RELEASE`, `ROLLBACK` becomes `ROLLBACK TO`. Zero changes to caller code.
+- `CompoundExecutor.execute()` wraps the steps in `withTransaction`. If any step throws → rollback all + a single user-facing message: "❌ No pude registrar todas las acciones del mensaje. Ningún dato quedó guardado. Probá de nuevo o registralo en mensajes separados."
+- `src/config/db.js` also exports `withTransaction(fn)` for any new code that needs an atomic boundary (used by `AccountDeletionService` and `SubscriptionService.handleWebhook`).
+
+### Channel verification — WhatsApp OTP + Telegram deep-link (`REQUIRE_VERIFIED_CHANNEL`)
+- Migration 076 adds `users.whatsapp_verified_at`, `users.telegram_verified_at`, table `channel_verifications` (code, target, attempts, expires_at, verified_at) with partial indexes for pending lookups. **Grandfathers existing users**: any user with a real phone (not the `tg_<id>` placeholder) or `telegram_id` is auto-marked verified at NOW() so this is non-breaking.
+- `src/domain/auth/channel-verification.service.ts` — `ChannelVerificationService`. Methods: `startWhatsApp` (normalizes AR phones, generates 6-digit OTP, sends via Cloud API, race-safe phone-collision check), `confirmWhatsApp` (TTL + max-attempts), `startTelegramLink` (deep-link via `t.me/<bot>?start=verify_<token>`), `redeemTelegramToken` (idempotent linking from the bot side; safe if Telegram already linked elsewhere), `unlinkWhatsApp/Telegram`, `getStatus`.
+- Endpoints (under `/api/auth`, all require auth): `GET /verify/status`, `POST /verify/whatsapp/start|confirm`, `DELETE /verify/whatsapp`, `POST /verify/telegram/start`, `DELETE /verify/telegram`.
+- Bot gating: WhatsApp + Telegram controllers add a top-level gate using `userRepository.findVerifiedByPhone` / `findVerifiedByTelegramId`. When `REQUIRE_VERIFIED_CHANNEL=true` and no verified user owns this channel, replies with onboarding hint pointing at `PUBLIC_URL/register` and stops (no anonymous auto-create). Telegram also intercepts `/start verify_<token>` BEFORE user lookup to redeem deep-link tokens.
+- Settings (group `system`): `PUBLIC_URL`, `TELEGRAM_BOT_USERNAME` (without @), `OTP_TTL_MINUTES` (10), `OTP_MAX_ATTEMPTS` (5), `TELEGRAM_LINK_TTL_MINUTES` (1440), `REQUIRE_VERIFIED_CHANNEL` (kill switch, default false).
+- Frontend: "Mi cuenta" tab in dashboard (`frontend/src/components/ChannelLinking.tsx`) drives both flows.
+
+### Data export + account deletion (always on, GDPR)
+- Migration 077 adds `users.deleted_at` for soft-delete with 30-day grace.
+- `src/services/data-export.service.ts` — `DataExportService.streamUserExport(userId, res)` streams a ZIP via `archiver`. One CSV per domain (23 in total: fields, plots, plot_crops, expenses, incomes, budgets, expense_templates, activities, observations, scoutings, harvest_loads, rainfall, agronomic_reports, livestock_groups, livestock_movements, feedlots, corrals, warehouses, stock_items, stock_movements, documents [metadata only — binaries excluded], field_invites, field_members) plus README.txt + metadata.json. Per-table failures are isolated (replaced with an error stub instead of aborting the entire export).
+- `src/domain/auth/account-deletion.service.ts` — `AccountDeletionService.deleteAccount(userId, password)`: requires current password, marks `status='deleted'` + `deleted_at`, nulls out PII (email, phone_number, telegram_id, password_hash, *_verified_at), revokes all refresh tokens — all wrapped in `withTransaction`. The same email can be re-registered immediately because PII is released.
+- Endpoints (under `/api/auth`): `GET /me/export` (streams ZIP), `DELETE /me` (requires password in body).
+
+### Payments — MercadoPago Subscriptions (`PAYMENTS_ENABLED`)
+- Migration 078 creates `subscriptions` (state machine: trial → active → past_due → cancelled/expired; partial unique index `idx_subscriptions_user_active` enforces ONE non-terminal sub per user) and `payment_events` (idempotent webhook log, unique `(provider, provider_event_id)`). Plus `plans.price_ars_yearly` for optional annual pricing.
+- `src/domain/billing/payment-provider.ts` — abstract `PaymentProvider` interface. Implementations plug in via the same shape (Stripe etc. can be added later).
+- `src/domain/billing/mercadopago.provider.ts` — MP Preapproval API integration. Creates recurring charges (monthly = 1 month frequency; yearly = 1 year), validates HMAC `x-signature` (skipped only when `MP_WEBHOOK_SECRET` is empty for sandbox), maps MP statuses (`authorized`→active, `paused`→past_due, `cancelled`→cancelled, `finished`→expired).
+- `src/domain/billing/subscription.service.ts` — `SubscriptionService`. Methods: `createTrialIfMissing` (called from `AuthService.register`; creates a 14-day pro trial when `PAYMENTS_ENABLED`), `getStatus`, `startCheckout` (gated by enabled + provider configured + plan has price > 0), `cancel` (immediate downgrade for pure trials, deferred to `current_period_end` for paid subs — provider is told to stop billing, local sub keeps `status='cancelled'` until cron sweep downgrades plan), `handleWebhook` (idempotent — duplicate events become no-ops via the unique constraint; on `status='active'` event also calls `setUserPlan` + invalidates feature gate cache), `sweepExpired` (daily cron at 03:15 AR via `subscriptionSweepTick` in scheduler.js — handles trial expiry, past_due grace window, cancelled subs whose period_end has passed).
+- Endpoints: `GET /api/auth/subscription`, `POST /api/auth/subscription/checkout` (body: `{plan, period}`), `POST /api/auth/subscription/cancel`. Webhook lives outside the API tree at `POST /webhooks/mercadopago` and is mounted with `express.raw` BEFORE the global JSON parser so signature verification has access to original bytes.
+- Settings (group `payments`): `PAYMENTS_ENABLED` (kill switch), `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `TRIAL_DAYS` (14), `TRIAL_PLAN_NAME` (pro), `PAST_DUE_GRACE_DAYS` (3).
+- Frontend: "Suscripción" card in Mi cuenta — current plan + status (trial/active/past_due/cancelled), trial expiry countdown, monthly/yearly toggle, MP checkout button, cancel button. Hidden when `PAYMENTS_ENABLED=false`.
+- **Production rollout**: get production credentials at https://www.mercadopago.com.ar/developers/panel/credentials → set `MP_ACCESS_TOKEN` + `MP_WEBHOOK_SECRET` in admin → register webhook URL `<PUBLIC_URL>/webhooks/mercadopago` in MP > Notificaciones → flip `PAYMENTS_ENABLED=true`. Test flow with sandbox card before announcing.
+
 ## Key Conventions
 
 - ESM modules (`"type": "module"`) — `import`/`export`, not `require`
@@ -222,9 +255,10 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/domain/documents/` — Invoice/receipt processing (Claude Vision)
 - `src/domain/sharing/` — Invite-code field sharing
 - `src/domain/feedlot/` — Feedlot/corral CRUD
+- `src/domain/auth/` — Auth + `ChannelVerificationService` (OTP/deep-link) + `AccountDeletionService` (soft-delete + PII release)
+- `src/domain/billing/` — Plans + `FeatureGate` + `PaymentProvider` interface + `MercadoPagoProvider` + `SubscriptionService`
 - `src/domain/router.ts` — **DomainRouter**: routes commands to handlers. New commands MUST be added to the appropriate `*_COMMANDS` set here or they will silently fail (return null)
-- `src/domain/compound-executor.ts` — Sequential execution of multiple tool calls
-- `src/domain/billing/` — Plan limits + FeatureGate
+- `src/domain/compound-executor.ts` — Sequential execution of multiple tool calls inside a single `withTransaction` boundary; per-step throws → rollback all + user-facing apology message
 
 ### Services & Middleware
 - `src/services/intent-classifier.ts` — Pipeline orchestrator
@@ -234,10 +268,12 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/middleware/pending-field-location.ts` — 3-option field location (city/map/share)
 - `src/middleware/pending-plot-area.ts` — Queue-based hectares assignment
 
-### Controllers
-- `src/controllers/whatsapp.controller.ts` — WhatsApp webhook
-- `src/controllers/telegram.controller.ts` — Telegram webhook
-- `src/controllers/test-bot.controller.ts` — Test bot (same pipeline)
+### Controllers + Routes
+- `src/controllers/whatsapp.controller.ts` — WhatsApp webhook (with channel-verification gate when REQUIRE_VERIFIED_CHANNEL=true)
+- `src/controllers/telegram.controller.ts` — Telegram webhook (intercepts `/start verify_<token>` deep-link redemption + same channel gate)
+- `src/controllers/test-bot.controller.ts` — Test bot (same pipeline, JWT auth instead of phone lookup)
+- `src/routes/auth.routes.ts` — All `/api/auth/*` endpoints incl. verify, me/export, me delete, subscription
+- `src/routes/webhooks.routes.ts` — `/webhooks/mercadopago` (mounted with `express.raw` BEFORE the global JSON parser so HMAC verification has the original bytes)
 
 ### Eval Framework (Conversational Testing)
 - `src/testing/run-eval.ts` — CLI entry: `npm run eval` (runs all scenarios against local Docker)
@@ -249,10 +285,12 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/testing/qa-adversarial-advanced-40.ts` — 40 advanced adversarial scenarios (run: `npx tsx src/testing/qa-adversarial-advanced-40.ts`)
 
 ### Config & Utils
+- `src/config/db.js` — `pool` (with AsyncLocalStorage hijack for transactions) + `withTransaction(fn)` helper
 - `src/utils/parser.js` — Spanish text normalization, number expansion, category matching
 - `src/utils/date.ts` — Argentina timezone helpers
 - `src/utils/guards.ts` — `isLikelyQuestion()` guard
 - `src/utils/format-quantity.ts` — `formatQuantityHuman()`: renders large kg as tn (e.g. 213200kg → ≈ 213,2 tn)
+- `src/services/data-export.service.ts` — `DataExportService.streamUserExport()` — full GDPR ZIP per user
 - `src/types/index.ts` — ParseResult, PlanRow, ParseSource
 
 ### Landing Page
@@ -273,7 +311,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 ## Tests
 
 ### Unit Tests (vitest)
-- 1240 total, 0 failures. Baseline: 1240 passing.
+- 1280 total, 0 failures. Baseline: 1280 passing.
 - Run: `npm test`
 - Single file: `npx vitest run src/utils/parser.test.js`
 

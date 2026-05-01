@@ -134,7 +134,7 @@ doc.text('Compartidos, Documentos, Sistema', 0, statsY + 99, { align: 'center' }
 
 doc.y = statsY + 145;
 doc.moveDown(3.5);
-doc.fontSize(8).fillColor(GRAY).text(`Generado: ${new Date().toLocaleDateString('es-AR')} -- Campo Bot v2.5 (Abr 2026)`, { align: 'center' });
+doc.fontSize(8).fillColor(GRAY).text(`Generado: ${new Date().toLocaleDateString('es-AR')} -- Campo Bot v3.0 (May 2026, MVP-ready)`, { align: 'center' });
 
 // ==================== PIPELINE PAGE ====================
 doc.addPage();
@@ -849,19 +849,19 @@ doc.text('log_crop_scouting valida stage_code contra crop. Soja VE/V1..V8/R1..R8
 doc.addPage();
 sectionTitle('Auditoria MVP - Estado y Brechas', '#c0392b');
 doc.fontSize(9).font('Helvetica').fillColor(GRAY);
-doc.text(`Snapshot al ${new Date().toLocaleDateString('es-AR')}. Inventario: 82 herramientas AI distribuidas en 12 dominios; 1240 tests unitarios verdes; eval conversacional 18/18; QA adversarial 90% (30 esc.) y 73% (40 avanzados). Pasaron a produccion features de Sanidad/Repro/Pesaje, Crop Scouting estructurado, harvest_loads con humedad+calidad, multi-day rainfall y memoria multi-slot.`, 60, doc.y, { width: 480 });
+doc.text(`Snapshot al ${new Date().toLocaleDateString('es-AR')}. Inventario: 82 herramientas AI distribuidas en 12 dominios; 1280 tests unitarios verdes; eval conversacional 18/18; QA adversarial 90% (30 esc.) y 73% (40 avanzados). Pasaron a produccion features de Sanidad/Repro/Pesaje, Crop Scouting estructurado, harvest_loads con humedad+calidad, multi-day rainfall, memoria multi-slot, y los 4 P0 de hardening MVP (Mayo 2026).`, 60, doc.y, { width: 480 });
 doc.moveDown(0.6);
 
-subsection('Brechas P0 (bloqueantes pre-launch)');
+subsection('P0 (bloqueantes pre-launch) - CERRADOS');
 doc.fontSize(9).font('Helvetica').fillColor(BLACK);
 const p0 = [
-  ['Verificacion de canal y tenant', 'No hay flow de verificacion de telefono al registrar (WhatsApp/Telegram). Riesgo de colision si dos usuarios reclaman el mismo numero. No existe channel_verified en users.'],
-  ['Cobros y suscripciones', 'Existe el modelo de planes (free/pro/pro_plus/enterprise) y feature gates funcionan, pero NO hay integracion de pagos (Stripe/MercadoPago). Asignacion de plan via script admin. Sin trial -> paid -> churn lifecycle.'],
-  ['Atomicidad de compound actions', 'compound-executor ejecuta tools secuencial; si falla a mitad de camino, los writes previos quedan persistidos. Falta saga / dead-letter queue.'],
-  ['Export full-data (portabilidad GDPR)', 'export_csv solo cubre gastos. No hay export de actividades, hacienda, stock, observaciones, scoutings, documentos.'],
+  ['[OK] Atomicidad de compound actions', 'Resuelto. src/config/db.js hijack pool.query/pool.connect con AsyncLocalStorage; CompoundExecutor envuelve steps en withTransaction. Step que tira -> rollback total + mensaje al usuario. Inner transactions usan SAVEPOINT.'],
+  ['[OK] Verificacion de canal y tenant', 'Resuelto. Migracion 076 + ChannelVerificationService. WA OTP via Cloud API + TG deep-link. Endpoints /api/auth/verify/*. Gate en bot controllers behind REQUIRE_VERIFIED_CHANNEL. Grandfather de users existentes.'],
+  ['[OK] Export full-data (portabilidad GDPR)', 'Resuelto. Migracion 077 + DataExportService. Stream ZIP con 23 CSV via archiver (fields, plots, plot_crops, expenses, incomes, activities, observations, scoutings, harvest_loads, rainfall, livestock, stock, documents, etc.) + metadata.json + README. AccountDeletionService con password gate, soft-delete + PII release.'],
+  ['[OK] Cobros y suscripciones', 'Resuelto. Migracion 078 + PaymentProvider interface + MercadoPagoProvider (Preapproval API). SubscriptionService: trial bootstrap 14d en register, checkout, webhook idempotente, cancel (trial=immediate, paid=deferred), daily sweep cron. Behind PAYMENTS_ENABLED. UI Suscripcion en Mi cuenta.'],
 ];
 for (const [t, d] of p0) {
-  doc.fontSize(9).font('Helvetica-Bold').fillColor('#c0392b').text(`> ${t}`, 60, doc.y, { width: 480 });
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#27ae60').text(`> ${t}`, 60, doc.y, { width: 480 });
   doc.fontSize(8.5).font('Helvetica').fillColor(BLACK).text(d, 70, doc.y, { width: 470 });
   doc.moveDown(0.3);
 }
@@ -897,7 +897,7 @@ for (const [t, d] of p2) {
 
 doc.moveDown(0.4);
 doc.fontSize(9).font('Helvetica-Oblique').fillColor(GRAY);
-doc.text('Conclusion: el bot esta funcionalmente completo para MVP de gestion agricola+ganadera. Lanzamiento viable cerrando los 4 P0 (verificacion canal, integracion de pagos, atomicidad compound, export portabilidad). Los P1/P2 pueden iterarse en post-launch.', 60, doc.y, { width: 480 });
+doc.text('Conclusion: los 4 P0 estan implementados y verificados end-to-end. MVP listo para launch publico una vez que se setean MP_ACCESS_TOKEN, TELEGRAM_BOT_USERNAME y se flipan los kill switches PAYMENTS_ENABLED y REQUIRE_VERIFIED_CHANNEL desde admin. Los P1/P2 (notificaciones nativas, soft-delete consistente, gráficos scouting, retry truncamiento, etc.) pueden iterarse en post-launch.', 60, doc.y, { width: 480 });
 
 // ==================== FOOTER ON ALL PAGES ====================
 const totalPages = doc.bufferedPageRange().count;
