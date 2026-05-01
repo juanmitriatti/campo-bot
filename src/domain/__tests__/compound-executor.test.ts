@@ -135,7 +135,7 @@ describe('CompoundExecutor', () => {
     expect(result).toBeNull();
   });
 
-  it('continues after error in one step', async () => {
+  it('rolls back compound when any step throws and shows user-friendly message', async () => {
     const mockRouter = {
       routeCommand: vi.fn()
         .mockResolvedValueOnce({ messages: ['OK 1'] } as HandlerResponse)
@@ -153,7 +153,13 @@ describe('CompoundExecutor', () => {
     const result = await executor.execute(results, 1 as UserId, mockUser, mockSettings);
 
     expect(result).not.toBeNull();
-    expect(result!.messages).toEqual(['OK 1', 'OK 3']);
+    expect(result!.messages).toHaveLength(1);
+    expect(result!.messages[0]).toMatch(/No pude registrar todas las acciones/);
+    // Step 3 is never reached — execution aborted at step 2
+    expect(mockRouter.routeCommand).toHaveBeenCalledTimes(2);
+    expect(result!.stoppedAtFlow).toBe(false);
+    expect(result!.lastSideEffects).toBeUndefined();
+    expect(result!.lastInteractive).toBeUndefined();
   });
 
   it('tracks last sideEffects from non-flow steps', async () => {
