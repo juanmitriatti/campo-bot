@@ -12,6 +12,7 @@ import IncomeTable from '../components/IncomeTable';
 import ReportTable from '../components/ReportTable';
 import StockTable from '../components/StockTable';
 import LivestockTab from '../components/LivestockTab';
+import ChannelLinking from '../components/ChannelLinking';
 import type { DashboardView } from '../components/layout/Sidebar';
 
 const viewFeatureMap: Record<DashboardView, string | null> = {
@@ -24,6 +25,7 @@ const viewFeatureMap: Record<DashboardView, string | null> = {
   reports: 'agronomy',
   stock: 'stock',
   livestock: 'livestock',
+  account: null,
 };
 
 export default function Dashboard() {
@@ -87,6 +89,8 @@ export default function Dashboard() {
         );
       case 'livestock':
         return <LivestockTab />;
+      case 'account':
+        return <ChannelLinking />;
     }
   };
 

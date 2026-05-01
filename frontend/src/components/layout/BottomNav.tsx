@@ -15,6 +15,7 @@ const ITEMS: BottomNavItem[] = [
   { key: 'observations', label: 'Obs.', icon: '👁️', feature: 'agronomy' },
   { key: 'scoutings', label: 'Monitor.', icon: '🔍', feature: 'agronomy' },
   { key: 'reports', label: 'Reportes', icon: '📄', feature: 'agronomy' },
+  { key: 'account', label: 'Cuenta', icon: '👤' },
 ];
 
 interface BottomNavProps {
