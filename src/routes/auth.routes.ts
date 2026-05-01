@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AuthService, AuthError } from '../domain/auth/auth.service.js';
 import { ObservationService, ObservationError } from '../domain/auth/observation.service.js';
+import { ChannelVerificationService, VerificationError } from '../domain/auth/channel-verification.service.js';
 import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
@@ -15,6 +16,7 @@ const authService = new AuthService();
 const observationService = new ObservationService();
 const planRepo = new PlanRepository();
 const featureGate = new FeatureGate();
+const verificationService = new ChannelVerificationService();
 
 function requireFeature(feature: FeatureKey) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -101,6 +103,72 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
   try {
     const user = await authService.updateProfile(req.auth!.userId, req.body);
     res.json({ user });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Channel verification (WhatsApp OTP + Telegram deep-link) ---
+
+router.get('/verify/status', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const status = await verificationService.getStatus(asUserId(req.auth!.userId));
+    res.json(status);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.post('/verify/whatsapp/start', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { phone } = req.body as { phone?: string };
+    if (!phone) {
+      res.status(400).json({ error: 'El campo phone es obligatorio.' });
+      return;
+    }
+    const result = await verificationService.startWhatsApp(asUserId(req.auth!.userId), phone);
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.post('/verify/whatsapp/confirm', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { code } = req.body as { code?: string };
+    if (!code) {
+      res.status(400).json({ error: 'El campo code es obligatorio.' });
+      return;
+    }
+    const status = await verificationService.confirmWhatsApp(asUserId(req.auth!.userId), code);
+    res.json(status);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.delete('/verify/whatsapp', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const status = await verificationService.unlinkWhatsApp(asUserId(req.auth!.userId));
+    res.json(status);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.post('/verify/telegram/start', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const result = await verificationService.startTelegramLink(asUserId(req.auth!.userId));
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.delete('/verify/telegram', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const status = await verificationService.unlinkTelegram(asUserId(req.auth!.userId));
+    res.json(status);
   } catch (err) {
     handleError(err, res);
   }
@@ -1146,6 +1214,10 @@ router.delete('/push/unsubscribe', requireAuth, async (req: Request, res: Respon
 function handleError(err: unknown, res: Response): void {
   if (err instanceof AuthError || err instanceof ObservationError) {
     res.status(err.status).json({ error: err.message });
+    return;
+  }
+  if (err instanceof VerificationError) {
+    res.status(err.status).json({ error: err.message, code: err.code });
     return;
   }
   console.error('Auth route error:', err);

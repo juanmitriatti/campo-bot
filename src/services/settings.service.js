@@ -147,6 +147,14 @@ REGLAS:
 
   // Onboarding
   ONBOARDING_FIRST_PLOT_MESSAGE: { default: '🌾 *¡Tu campo está listo!* Ya tenés campo y lote configurados.\n\nAcá van ejemplos de lo que podés hacer:\n\n💰 *Gastos e Ingresos*\n"gasté 50000 en gasoil"\n"vendí 30 tn de soja a 300 usd"\n\n🌱 *Actividades*\n"fumigué lote norte con glifosato"\n"sembré soja en lote 1"\n\n🌧 *Lluvia y Clima*\n"llovieron 25mm"\n"clima"\n\n📊 *Reportes*\n"resumen del mes"\n"reporte agro"\n\nEscribí *menú* para ver todas las opciones.', type: 'string', group: 'onboarding', label: 'Mensaje de bienvenida tras primer lote', description: 'Mensaje que se envía una sola vez cuando el usuario crea su primer lote. Se muestra como guía de uso del bot.' },
+
+  // Channel verification (WhatsApp OTP + Telegram deep-link)
+  PUBLIC_URL: { default: 'https://campo-bot-production.up.railway.app', type: 'string', group: 'system', label: 'URL pública del frontend', description: 'URL base del frontend (ej: https://campo.bot). Se usa para construir links que el bot envía al usuario (registro, recuperación, etc.). Cambiá esto cuando muevas el dominio sin necesidad de redeploy.' },
+  TELEGRAM_BOT_USERNAME: { default: '', type: 'string', group: 'system', label: 'Username del bot de Telegram', description: 'Username del bot SIN @ (ej: "CampoBot"). Necesario para generar deep-links de vinculación de cuenta (https://t.me/<usuario>?start=verify_<token>). Si está vacío, la vinculación de Telegram queda deshabilitada.' },
+  OTP_TTL_MINUTES: { default: '10', type: 'number', group: 'system', label: 'Validez del código OTP (min)', description: 'Cuánto dura un código de verificación de WhatsApp (en minutos). Default 10. Subir a 15 si los usuarios reportan que el código vence antes de que lleguen a copiarlo.' },
+  OTP_MAX_ATTEMPTS: { default: '5', type: 'number', group: 'system', label: 'Máximo intentos por código OTP', description: 'Cuántas veces el usuario puede equivocarse al ingresar el código antes de tener que pedir uno nuevo. Default 5.' },
+  TELEGRAM_LINK_TTL_MINUTES: { default: '1440', type: 'number', group: 'system', label: 'Validez del link de Telegram (min)', description: 'Cuánto vive el deep-link de vinculación de Telegram (en minutos). Default 1440 (24h).' },
+  REQUIRE_VERIFIED_CHANNEL: { default: 'false', type: 'boolean', group: 'system', label: 'Requerir verificación de canal', description: 'Si está activo, mensajes desde un WhatsApp/Telegram NO verificado son rechazados con un onboarding hint en lugar de auto-crear un usuario anónimo. Default false durante MVP/transición; activar antes del launch público para garantizar aislamiento multi-tenant.' },
 };
 
 /**
