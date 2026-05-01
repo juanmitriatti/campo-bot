@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiRequest, ApiError } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 interface VerificationStatus {
   whatsapp_verified: boolean;
@@ -26,6 +28,16 @@ export default function ChannelLinking() {
   const [tgLink, setTgLink] = useState<string | null>(null);
   const [tgBusy, setTgBusy] = useState(false);
   const [tgError, setTgError] = useState<string | null>(null);
+
+  // Export + delete state
+  const [exportBusy, setExportBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const { logout } = useAuth();
+  const navigate = useNavigate();
 
   const refreshStatus = async () => {
     try {
@@ -128,6 +140,58 @@ export default function ChannelLinking() {
       setTgError(err instanceof ApiError ? err.message : 'No pude desvincular.');
     } finally {
       setTgBusy(false);
+    }
+  };
+
+  // ---------- Data export ----------
+  const downloadExport = async () => {
+    setExportBusy(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch('/api/auth/me/export', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const today = new Date().toISOString().slice(0, 10);
+      a.download = `campo-bot-export-${today}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`No pude descargar el export: ${(err as Error).message}`);
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  // ---------- Delete account ----------
+  const confirmDelete = async () => {
+    setDeleteError(null);
+    if (!deletePassword) {
+      setDeleteError('Ingresá tu contraseña actual para confirmar.');
+      return;
+    }
+    setDeleteBusy(true);
+    try {
+      await apiRequest('/me', {
+        method: 'DELETE',
+        body: { password: deletePassword },
+      });
+      // Hard logout — token stays valid for the access window but the user is deleted.
+      logout();
+      navigate('/login');
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'No pude eliminar la cuenta.');
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -324,6 +388,79 @@ export default function ChannelLinking() {
             {tgError && <p className="text-xs text-red-600">{tgError}</p>}
           </div>
         )}
+      </div>
+
+      {/* Data export card */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="flex items-start gap-3">
+          <div className="text-3xl">📦</div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-gray-800">Exportar mis datos</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Descargá un ZIP con todo lo que registraste: campos, lotes, gastos, ingresos, actividades, observaciones, monitoreos, hacienda, stock, documentos. Un CSV por sección + un metadata.json con tu cuenta.
+            </p>
+            <button
+              onClick={downloadExport}
+              disabled={exportBusy}
+              className="mt-3 px-4 py-2 bg-campo-600 text-white rounded-md text-sm font-medium hover:bg-campo-700 disabled:opacity-50"
+            >
+              {exportBusy ? 'Generando ZIP…' : 'Descargar ZIP'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Danger zone */}
+      <div className="bg-white rounded-lg shadow-sm border border-red-200 p-6">
+        <div className="flex items-start gap-3">
+          <div className="text-3xl">⚠️</div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-red-700">Eliminar mi cuenta</h3>
+            <p className="text-sm text-gray-600 mt-1">
+              Tu cuenta se marca como eliminada y se desvinculan WhatsApp/Telegram. Tus datos quedan 30 días por si te arrepentís, después se borran definitivamente. Recomendamos descargar el export antes.
+            </p>
+
+            {!deleteOpen ? (
+              <button
+                onClick={() => setDeleteOpen(true)}
+                className="mt-3 px-4 py-2 border border-red-300 text-red-700 rounded-md text-sm font-medium hover:bg-red-50"
+              >
+                Eliminar mi cuenta
+              </button>
+            ) : (
+              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md space-y-3">
+                <p className="text-sm text-red-800 font-medium">
+                  Esta acción es definitiva. Confirmá con tu contraseña actual.
+                </p>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={e => setDeletePassword(e.target.value)}
+                  placeholder="Contraseña actual"
+                  className="w-full max-w-xs border border-red-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none"
+                  disabled={deleteBusy}
+                />
+                {deleteError && <p className="text-xs text-red-700">{deleteError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={confirmDelete}
+                    disabled={deleteBusy}
+                    className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {deleteBusy ? 'Eliminando…' : 'Confirmar eliminación'}
+                  </button>
+                  <button
+                    onClick={() => { setDeleteOpen(false); setDeletePassword(''); setDeleteError(null); }}
+                    disabled={deleteBusy}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

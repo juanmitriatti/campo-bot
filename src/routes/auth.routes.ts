@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { AuthService, AuthError } from '../domain/auth/auth.service.js';
 import { ObservationService, ObservationError } from '../domain/auth/observation.service.js';
 import { ChannelVerificationService, VerificationError } from '../domain/auth/channel-verification.service.js';
+import { AccountDeletionService, AccountDeletionError } from '../domain/auth/account-deletion.service.js';
+import { DataExportService } from '../services/data-export.service.js';
 import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
@@ -17,6 +19,8 @@ const observationService = new ObservationService();
 const planRepo = new PlanRepository();
 const featureGate = new FeatureGate();
 const verificationService = new ChannelVerificationService();
+const accountDeletionService = new AccountDeletionService();
+const dataExportService = new DataExportService();
 
 function requireFeature(feature: FeatureKey) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -169,6 +173,35 @@ router.delete('/verify/telegram', requireAuth, async (req: Request, res: Respons
   try {
     const status = await verificationService.unlinkTelegram(asUserId(req.auth!.userId));
     res.json(status);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Data portability (GDPR) ---
+
+router.get('/me/export', requireAuth, async (req: Request, res: Response) => {
+  try {
+    await dataExportService.streamUserExport(asUserId(req.auth!.userId), res);
+  } catch (err) {
+    if (!res.headersSent) {
+      handleError(err, res);
+    } else {
+      console.error('[me/export] error after headers sent:', err);
+      res.end();
+    }
+  }
+});
+
+router.delete('/me', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { password } = req.body as { password?: string };
+    if (!password) {
+      res.status(400).json({ error: 'Tenés que confirmar tu contraseña actual.', code: 'PASSWORD_REQUIRED' });
+      return;
+    }
+    await accountDeletionService.deleteAccount(asUserId(req.auth!.userId), password);
+    res.json({ deleted: true });
   } catch (err) {
     handleError(err, res);
   }
@@ -1217,6 +1250,10 @@ function handleError(err: unknown, res: Response): void {
     return;
   }
   if (err instanceof VerificationError) {
+    res.status(err.status).json({ error: err.message, code: err.code });
+    return;
+  }
+  if (err instanceof AccountDeletionError) {
     res.status(err.status).json({ error: err.message, code: err.code });
     return;
   }
