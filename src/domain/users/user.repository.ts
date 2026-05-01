@@ -7,6 +7,8 @@ import {
   getDailyClaudeCount as _getDailyClaudeCount,
   saveAiUsage as _saveAiUsage,
 } from '../../services/expenses.js';
+import { pool } from '../../config/db.js';
+import { getSettingBool } from '../../services/settings.service.js';
 import type { User, UserId, UserSettings, AiUsage } from '../../types/index.js';
 import { asUserId } from '../../types/index.js';
 
@@ -19,6 +21,62 @@ export class UserRepository {
       name: row.name ?? null,
       city: row.city ?? null,
     };
+  }
+
+  /**
+   * Look up a user that has VERIFIED this WhatsApp number.
+   * Returns null if no verified user owns this phone.
+   */
+  async findVerifiedByPhone(phone: string): Promise<User | null> {
+    const { rows } = await pool.query(
+      `SELECT id, phone_number, name, city
+       FROM users
+       WHERE phone_number = $1
+         AND whatsapp_verified_at IS NOT NULL
+         AND status <> 'disabled'
+       LIMIT 1`,
+      [phone]
+    );
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    return {
+      id: asUserId(row.id),
+      phone_number: row.phone_number,
+      name: row.name ?? null,
+      city: row.city ?? null,
+    };
+  }
+
+  /**
+   * Look up a user that has VERIFIED this Telegram chat.
+   */
+  async findVerifiedByTelegramId(telegramId: string): Promise<User | null> {
+    const { rows } = await pool.query(
+      `SELECT id, phone_number, name, city
+       FROM users
+       WHERE telegram_id = $1
+         AND telegram_verified_at IS NOT NULL
+         AND status <> 'disabled'
+       LIMIT 1`,
+      [telegramId]
+    );
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    return {
+      id: asUserId(row.id),
+      phone_number: row.phone_number,
+      name: row.name ?? null,
+      city: row.city ?? null,
+    };
+  }
+
+  /**
+   * Reads the REQUIRE_VERIFIED_CHANNEL kill switch. When true, unverified
+   * channels (WhatsApp number / Telegram chat) get rejected with an
+   * onboarding hint instead of being auto-claimed.
+   */
+  async isVerificationRequired(): Promise<boolean> {
+    return (await getSettingBool('REQUIRE_VERIFIED_CHANNEL')) === true;
   }
 
   async setName(userId: UserId, name: string): Promise<void> {

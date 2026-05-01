@@ -28,7 +28,7 @@ import { FeatureGate } from '../domain/billing/feature-gate.js';
 import { TranscriptionService, AudioTooLongError } from '../services/audio/transcription.service.js';
 import { getAudioConfig } from '../services/audio/audio.types.js';
 import { saveAudioTranscriptionLog, getHourlyAudioCount } from '../services/expenses.js';
-import { getSettingNumber, getSettingBool } from '../services/settings.service.js';
+import { getSetting, getSettingNumber, getSettingBool } from '../services/settings.service.js';
 import { pool } from '../config/db.js';
 import { logError, logWarning } from '../services/error-logger.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
@@ -391,6 +391,23 @@ router.post('/', async (req: Request, res: Response) => {
 
     const phone: string = message.from;
     let text: string | undefined = message.text?.body;
+
+    // --- Channel verification gate ---
+    // If REQUIRE_VERIFIED_CHANNEL is on AND no verified user owns this phone,
+    // refuse to auto-create an anonymous user. Send an onboarding hint and stop.
+    // (When the kill switch is off — default during MVP — the controller falls
+    // through and the existing getOrCreate calls handle the legacy auto-create
+    // path for backwards compatibility.)
+    const verifiedWaUser = await userRepository.findVerifiedByPhone(phone);
+    if (!verifiedWaUser && (await userRepository.isVerificationRequired())) {
+      const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://campo-bot-production.up.railway.app';
+      await sendMessage(
+        phone,
+        `Hola 👋\n\nPara usar Campo Bot tenés que registrarte y vincular este número desde la app:\n\n🔗 ${publicUrl}/register\n\nUna vez registrado, vinculá tu WhatsApp desde tu perfil y volvé a escribirme.`,
+      );
+      res.sendStatus(200);
+      return;
+    }
 
     // --- Interactive reply handling ---
     if (message.type === 'interactive') {

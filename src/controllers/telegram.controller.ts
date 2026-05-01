@@ -24,7 +24,8 @@ import { handlePendingPlotArea, storePlotAreaSideEffects } from '../middleware/p
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
-import { getSettingNumber, getSettingBool } from '../services/settings.service.js';
+import { getSetting, getSettingNumber, getSettingBool } from '../services/settings.service.js';
+import { ChannelVerificationService, VerificationError } from '../domain/auth/channel-verification.service.js';
 import { pool } from '../config/db.js';
 import { logError } from '../services/error-logger.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
@@ -409,7 +410,51 @@ router.post('/', async (req: Request, res: Response) => {
     if (dedup.isDuplicate(String(update.update_id))) return;
 
     const phone = tgPhone(chatId);
-    const userRow = await getOrCreateUserByTelegramId(String(chatId), message.from?.first_name);
+    const startText = (message.text || '').trim();
+
+    // --- Telegram deep-link verification ---
+    // Format: "/start verify_<token>" — links this Telegram chat to a web user.
+    if (startText.startsWith('/start verify_')) {
+      const token = startText.slice('/start verify_'.length).trim();
+      const verifSvc = new ChannelVerificationService();
+      try {
+        const r = await verifSvc.redeemTelegramToken(
+          token,
+          String(chatId),
+          message.from?.first_name ?? null,
+        );
+        const greeting = r.already_linked
+          ? '✅ Tu cuenta ya estaba vinculada. ¡Listo para operar!'
+          : '✅ *Cuenta vinculada*\n\nYa podés usar Campo Bot por Telegram. Probá con *menu* o escribí algo como "gasté 50 mil en gasoil".';
+        await sendTelegramMessage(chatId, greeting);
+      } catch (err) {
+        if (err instanceof VerificationError) {
+          await sendTelegramMessage(chatId, `❌ ${err.message}`);
+        } else {
+          console.error('[telegram] redeemTelegramToken failed:', err);
+          logError('telegram', 'VERIFY_REDEEM', err as Error);
+          await sendTelegramMessage(chatId, '❌ No pude vincular la cuenta. Volvé a generar el link desde la app y probá de nuevo.');
+        }
+      }
+      return;
+    }
+
+    // --- Channel verification gate ---
+    // If REQUIRE_VERIFIED_CHANNEL is on and this Telegram chat isn't linked to a
+    // verified web user, refuse to auto-create. Otherwise fall through to legacy.
+    const verifiedTgUser = await userRepository.findVerifiedByTelegramId(String(chatId));
+    if (!verifiedTgUser && (await userRepository.isVerificationRequired())) {
+      const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://campo-bot-production.up.railway.app';
+      await sendTelegramMessage(
+        chatId,
+        `Hola 👋\n\nPara usar Campo Bot tenés que registrarte en la app y vincular este Telegram desde tu perfil:\n\n🔗 ${publicUrl}/register\n\nUna vez generado el link de vinculación, tocalo y volvemos a hablar.`,
+      );
+      return;
+    }
+
+    const userRow = verifiedTgUser
+      ? { id: verifiedTgUser.id, phone_number: verifiedTgUser.phone_number, name: verifiedTgUser.name, city: verifiedTgUser.city }
+      : await getOrCreateUserByTelegramId(String(chatId), message.from?.first_name);
     const userId = asUserId(userRow.id);
     const user = {
       id: userId,
