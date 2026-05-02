@@ -95,7 +95,7 @@ const intentExtractor = new IntentExtractor(promptBuilder, intentValidator, user
 const agentPromptBuilder = new AgentPromptBuilder();
 const agentService = new AgentService(agentPromptBuilder, userContextService, userRepository, conversationHistoryService, fewShotService);
 const agentResponseMapper = new AgentResponseMapper();
-const intentClassifier = new IntentClassifier(undefined, undefined, intentExtractor, agentService, agentResponseMapper);
+const intentClassifier = new IntentClassifier(undefined, undefined, intentExtractor, agentService, agentResponseMapper, userContextService);
 const conversationalFallback = new ConversationalFallbackService(userRepository);
 
 const dedup = new MessageDedup();

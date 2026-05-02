@@ -7,6 +7,7 @@ import { logError } from '../services/error-logger.js';
 import type { IntentExtractor } from '../ai/intent-extractor.js';
 import type { AgentService } from '../ai/agent.service.js';
 import type { AgentResponseMapper } from '../ai/agent-response-mapper.js';
+import type { UserContextService } from '../ai/user-context.service.js';
 import type { UserId, UserSettings, ParseResult } from '../types/index.js';
 
 /**
@@ -58,6 +59,7 @@ export class IntentClassifier {
   private extractor: IntentExtractor | null;
   private agentService: AgentService | null;
   private responseMapper: AgentResponseMapper | null;
+  private userContextService: UserContextService | null;
 
   constructor(
     parser?: ParserService,
@@ -65,12 +67,14 @@ export class IntentClassifier {
     extractor?: IntentExtractor,
     agentService?: AgentService,
     responseMapper?: AgentResponseMapper,
+    userContextService?: UserContextService,
   ) {
     this.parser = parser ?? new ParserService();
     this.userRepo = userRepo ?? new UserRepository();
     this.extractor = extractor ?? null;
     this.agentService = agentService ?? null;
     this.responseMapper = responseMapper ?? null;
+    this.userContextService = userContextService ?? null;
   }
 
   /**
@@ -167,7 +171,24 @@ export class IntentClassifier {
         if (agentResult) {
           const validationEnabled = await getSettingBool('AGENT_OUTPUT_VALIDATION_ENABLED');
           const validateCrop = validationEnabled && (await getSettingBool('AGENT_VALIDATE_CROP'));
-          const parseResults = this.responseMapper.mapToParseResults(agentResult, text, { validateCrop });
+          const validatePlotField = validationEnabled && (await getSettingBool('AGENT_VALIDATE_PLOT_FIELD'));
+          let userPlots: string[] | undefined;
+          let userFields: string[] | undefined;
+          if (validatePlotField && this.userContextService) {
+            try {
+              const ctx = await this.userContextService.loadContext(userId);
+              userPlots = ctx.plotNames;
+              userFields = ctx.fieldNames;
+            } catch {
+              // If context load fails, skip plot/field validation rather than blocking the call
+            }
+          }
+          const parseResults = this.responseMapper.mapToParseResults(agentResult, text, {
+            validateCrop,
+            validatePlotField,
+            userPlots,
+            userFields,
+          });
           if (parseResults.length > 0) {
             const primary = parseResults[0];
             // Attach extra tool calls for logging (compound actions)
