@@ -250,6 +250,9 @@ export class ObservationService {
       paramIdx++;
       conditions.push(`de.event_type = $${paramIdx}`);
       params.push(filters.eventType);
+    } else {
+      // Exclude livestock-only event types (they have their own tabs in Hacienda)
+      conditions.push(`de.event_type NOT IN ('health_event', 'repro_event', 'weighing')`);
     }
 
     const where = conditions.join(' AND ');
@@ -329,7 +332,11 @@ export class ObservationService {
 
     const [dataResult, countResult] = await Promise.all([
       pool.query(
-        `SELECT e.*, e.expense_type, e.product, e.quantity, e.unit, p.name AS plot_name, f.name AS field_name, u.name AS user_name, eu.name AS edited_by_name
+        `SELECT e.*, e.expense_type, e.product, e.quantity, e.unit,
+                p.name AS plot_name, f.name AS field_name,
+                u.name AS user_name, eu.name AS edited_by_name,
+                EXISTS(SELECT 1 FROM livestock_movements lm WHERE lm.linked_expense_id = e.id) AS linked_from_livestock,
+                EXISTS(SELECT 1 FROM documents d WHERE d.linked_expense_id = e.id AND d.deleted_at IS NULL) AS linked_from_document
          FROM expenses e
          LEFT JOIN plots p ON e.plot_id = p.id
          LEFT JOIN fields f ON e.field_id = f.id
@@ -394,7 +401,9 @@ export class ObservationService {
 
     const [dataResult, countResult] = await Promise.all([
       pool.query(
-        `SELECT i.*, p.name AS plot_name, f.name AS field_name, u.name AS user_name, eu.name AS edited_by_name
+        `SELECT i.*, p.name AS plot_name, f.name AS field_name,
+                u.name AS user_name, eu.name AS edited_by_name,
+                EXISTS(SELECT 1 FROM livestock_movements lm WHERE lm.linked_income_id = i.id) AS linked_from_livestock
          FROM incomes i
          LEFT JOIN plots p ON i.plot_id = p.id
          LEFT JOIN fields f ON i.field_id = f.id
