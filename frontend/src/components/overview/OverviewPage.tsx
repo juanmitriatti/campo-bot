@@ -8,6 +8,7 @@ import RecentFeed from './RecentFeed';
 import AlertsBanner from './AlertsBanner';
 import FieldMap from './FieldMap';
 import SubscriptionBanner from './SubscriptionBanner';
+import EmailVerifyBanner from './EmailVerifyBanner';
 
 function formatArs(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -52,6 +53,7 @@ export default function OverviewPage({ onGoToAccount }: OverviewPageProps = {}) 
 
   return (
     <div className="space-y-6">
+      <EmailVerifyBanner />
       <SubscriptionBanner onGoToAccount={onGoToAccount ?? (() => {})} />
 
       {/* KPI Cards */}

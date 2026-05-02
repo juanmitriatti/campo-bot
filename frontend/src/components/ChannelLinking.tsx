@@ -301,13 +301,23 @@ export default function ChannelLinking() {
             </div>
           </div>
           {status?.whatsapp_verified && (
-            <button
-              onClick={unlinkWhatsApp}
-              disabled={waBusy}
-              className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
-            >
-              Desvincular
-            </button>
+            <div className="flex gap-3 items-center">
+              <button
+                onClick={() => { setWaStep('enter-phone'); setWaPhone(''); setWaError(null); }}
+                disabled={waBusy}
+                className="text-xs text-gray-600 hover:text-gray-800 disabled:opacity-50"
+                title="Si perdiste acceso a este WhatsApp, vinculá un número nuevo"
+              >
+                Cambiar número
+              </button>
+              <button
+                onClick={unlinkWhatsApp}
+                disabled={waBusy}
+                className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+              >
+                Desvincular
+              </button>
+            </div>
           )}
         </div>
 
@@ -420,13 +430,23 @@ export default function ChannelLinking() {
             </div>
           </div>
           {status?.telegram_verified && (
-            <button
-              onClick={unlinkTelegram}
-              disabled={tgBusy}
-              className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
-            >
-              Desvincular
-            </button>
+            <div className="flex gap-3 items-center">
+              <button
+                onClick={startTelegram}
+                disabled={tgBusy}
+                className="text-xs text-gray-600 hover:text-gray-800 disabled:opacity-50"
+                title="Si perdiste acceso a este Telegram, generá un link nuevo"
+              >
+                Vincular otra cuenta
+              </button>
+              <button
+                onClick={unlinkTelegram}
+                disabled={tgBusy}
+                className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+              >
+                Desvincular
+              </button>
+            </div>
           )}
         </div>
 
