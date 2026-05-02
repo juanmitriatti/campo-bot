@@ -8,6 +8,7 @@ import type { IntentExtractor } from '../ai/intent-extractor.js';
 import type { AgentService } from '../ai/agent.service.js';
 import type { AgentResponseMapper } from '../ai/agent-response-mapper.js';
 import type { UserContextService } from '../ai/user-context.service.js';
+import { detectCorrection } from '../ai/correction-classifier.js';
 import type { UserId, UserSettings, ParseResult } from '../types/index.js';
 
 /**
@@ -159,6 +160,28 @@ export class IntentClassifier {
     // =========================================================================
     const trivialCmd = this.classifyTrivial(cleaned, preprocessed);
     if (trivialCmd) return trivialCmd;
+
+    // =========================================================================
+    // STEP 2.5 — Correction pre-classifier (server-side, behind flag)
+    // Detects "no, era en lote X" / "perdón fue Y" patterns and routes
+    // directly to edit_last_activity, bypassing the agent. Conservative:
+    // only the highest-confidence patterns trigger.
+    // =========================================================================
+    if (await getSettingBool('AGENT_CORRECTION_PRE_CLASSIFIER_ENABLED')) {
+      const correction = detectCorrection(text);
+      if (correction) {
+        const data: import('../types/index.js').ParsedCommand = { command: 'edit_last_activity' };
+        if (correction.newPlot) data.newPlotName = correction.newPlot;
+        if (correction.newCrop) data.newCrop = correction.newCrop;
+        return {
+          intent: { type: 'command', data },
+          confidence: 0.92,
+          aiUsed: false,
+          source: 'regex',
+          missingFields: [],
+        };
+      }
+    }
 
     // =========================================================================
     // STEP 3a — AI Agent (tool_use) — runs when AGENT_ENABLED=true
