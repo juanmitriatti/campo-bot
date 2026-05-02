@@ -1867,8 +1867,9 @@ export class AgronomyHandler {
         const newCrop = cmd.newCrop as string | null;
         const newDate = cmd.newDate as string | null;
 
-        if (!newPlotName) {
-          return { messages: ['Indicá el lote correcto. Ejemplo:\n✏️ *la siembra era en lote B*'] };
+        // At least one change must be specified — plot, crop, or date.
+        if (!newPlotName && !newCrop && !newDate) {
+          return { messages: ['¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*'] };
         }
 
         // Find last matching activity
@@ -1883,15 +1884,23 @@ export class AgronomyHandler {
           return { messages: [`No encontré actividad reciente${filterDesc}${cropDesc} para editar.`] };
         }
 
-        // Resolve new plot
-        const newResolved = await this.plotDiscovery.resolveFromNames(
-          userId,
-          newFieldName,
-          newPlotName,
-        );
-
-        if (!newResolved.plotId) {
-          return { messages: [`No encontré el lote *${newPlotName}*. Revisá el nombre o escribí *mis lotes*.`] };
+        // Resolve new plot only when one was provided. Crop-only / date-only
+        // edits keep the activity on its current plot.
+        let newPlotId: number | null = null;
+        let newPlotLabel: string | null = null;
+        if (newPlotName) {
+          const newResolved = await this.plotDiscovery.resolveFromNames(
+            userId,
+            newFieldName,
+            newPlotName,
+          );
+          if (!newResolved.plotId) {
+            return { messages: [`No encontré el lote *${newPlotName}*. Revisá el nombre o escribí *mis lotes*.`] };
+          }
+          newPlotId = newResolved.plotId;
+          newPlotLabel = newResolved.fieldName
+            ? `${newResolved.fieldName} > ${newResolved.plotName}`
+            : newResolved.plotName;
         }
 
         // Build extra fields to update
@@ -1899,18 +1908,17 @@ export class AgronomyHandler {
         if (newCrop) extraFields.crop = newCrop;
         if (newDate) extraFields.eventDate = newDate;
 
-        // Update the event
-        await this.repo.updateDomainEventPlot(lastEvent.id, newResolved.plotId, userId, extraFields);
+        // Update the event (plotId may be null when the user only fixed crop/date)
+        await this.repo.updateDomainEventPlot(lastEvent.id, newPlotId, userId, extraFields);
 
         const { label: editActLabel } = getActivityLabel(lastEvent.event_type);
         const oldPlotLabel = lastEvent.plot_name || 'sin lote';
-        const newPlotLabel = newResolved.fieldName
-          ? `${newResolved.fieldName} > ${newResolved.plotName}`
-          : newResolved.plotName;
 
         const editLines: string[] = [`✏️ Actividad corregida: *${editActLabel}*`];
         if (lastEvent.crop) editLines[0] += ` de *${lastEvent.crop}*`;
-        editLines.push(`📍 ${oldPlotLabel} → *${newPlotLabel}*`);
+        if (newPlotLabel) {
+          editLines.push(`📍 ${oldPlotLabel} → *${newPlotLabel}*`);
+        }
         if (newCrop) editLines.push(`🌱 Cultivo: ${lastEvent.crop || '?'} → *${newCrop}*`);
         if (newDate) {
           const dateStr = new Date(newDate).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });

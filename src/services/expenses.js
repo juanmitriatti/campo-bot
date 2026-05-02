@@ -1900,10 +1900,11 @@ export async function findLastDomainEventFiltered(userId, filters = {}) {
 }
 
 export async function updateDomainEventPlot(eventId, plotId, editedBy, extraFields = {}) {
-  const sets = ['plot_id = $1', 'updated_at = NOW()', 'edited_by = $2'];
-  const params = [plotId, editedBy];
-  let idx = 2;
+  const sets = ['updated_at = NOW()', 'edited_by = $1'];
+  const params = [editedBy];
+  let idx = 1;
 
+  if (plotId != null) { idx++; sets.push(`plot_id = $${idx}`); params.push(plotId); }
   if (extraFields.crop !== undefined) { idx++; sets.push(`crop = $${idx}`); params.push(extraFields.crop); }
   if (extraFields.eventDate !== undefined) { idx++; sets.push(`event_date = $${idx}`); params.push(extraFields.eventDate); }
   if (extraFields.eventType !== undefined) { idx++; sets.push(`event_type = $${idx}`); params.push(extraFields.eventType); }

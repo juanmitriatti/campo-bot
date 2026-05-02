@@ -249,7 +249,7 @@ export class AgronomyRepository {
     return _findLastDomainEventFiltered(userId, filters) as Promise<any>;
   }
 
-  async updateDomainEventPlot(eventId: number, plotId: number, editedBy: UserId, extraFields: { crop?: string; eventDate?: string } = {}): Promise<DomainEventRow | null> {
+  async updateDomainEventPlot(eventId: number, plotId: number | null, editedBy: UserId, extraFields: { crop?: string; eventDate?: string } = {}): Promise<DomainEventRow | null> {
     return _updateDomainEventPlot(eventId, plotId, editedBy, extraFields) as Promise<DomainEventRow | null>;
   }
 
