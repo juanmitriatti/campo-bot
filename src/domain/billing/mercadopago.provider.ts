@@ -7,7 +7,8 @@ import type {
   PaymentProvider,
 } from './payment-provider.js';
 
-const MP_API_BASE = 'https://api.mercadopago.com';
+// Override via env for tests. Production stays on api.mercadopago.com.
+const MP_API_BASE = process.env.MP_API_BASE_URL || 'https://api.mercadopago.com';
 
 interface MpPreapprovalResponse {
   id: string;

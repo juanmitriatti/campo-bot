@@ -1456,10 +1456,11 @@ router.post('/query-db', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Missing sql' });
     return;
   }
-  // Safety: only allow SELECT and UPDATE (for plan upgrade etc.)
+  // Safety: only allow SELECT, UPDATE and INSERT (test seeding for plans,
+  // settings, etc.). DELETE / DROP / TRUNCATE / ALTER stay blocked.
   const trimmed = sql.trim().toLowerCase();
-  if (!trimmed.startsWith('select') && !trimmed.startsWith('update')) {
-    res.status(403).json({ error: 'Only SELECT and UPDATE queries allowed' });
+  if (!trimmed.startsWith('select') && !trimmed.startsWith('update') && !trimmed.startsWith('insert')) {
+    res.status(403).json({ error: 'Only SELECT, UPDATE and INSERT queries allowed' });
     return;
   }
   try {
