@@ -88,6 +88,11 @@ export default function Login() {
               Registrate
             </Link>
           </p>
+          <p className="text-center text-xs text-gray-500">
+            <Link to="/forgot-password" className="text-campo-600 hover:text-campo-700">
+              Olvidé mi contraseña
+            </Link>
+          </p>
         </form>
       </div>
     </div>
