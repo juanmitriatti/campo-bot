@@ -1,4 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
+
+// CompoundExecutor wraps execution in withTransaction(). In tests we don't
+// have a real DB, so we shim it to a passthrough that just runs the callback.
+vi.mock('../../config/db.js', () => ({
+  pool: { query: vi.fn() },
+  withTransaction: async (fn: () => Promise<unknown>) => fn(),
+}));
+
 import { CompoundExecutor } from '../compound-executor.js';
 import type { ParseResult, HandlerResponse, UserId, User, UserSettings, ParsedCommand } from '../../types/index.js';
 
