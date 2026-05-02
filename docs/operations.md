@@ -4,12 +4,34 @@
 
 Deployed at `campo-bot-production.up.railway.app`.
 
-**Railway does NOT auto-deploy on `git push`.** After pushing to main, run manually:
+**Push to `main` auto-deploys via GitHub Actions** (`.github/workflows/deploy.yml`):
+1. **Tests** — `npm ci && npm test` (must pass)
+2. **Railway deploy** — `railway up --detach` against the `campo-bot` service
+3. **Smoke test** — polls `/api/health` for up to 10 min until `sha` matches `github.sha`. Fails the run if the new commit doesn't go live.
+
+Required GitHub secrets:
+- `RAILWAY_TOKEN` — Railway CLI auth
+- `LANDING_REPO_TOKEN` — fine-grained PAT with `Contents: Read` on `juanmitriatti/campo-chat-bot`, used to clone the private `landing/` submodule during checkout
+
+The smoke test relies on `/api/health` returning the running SHA. Resolution at boot (`src/app.ts`):
+1. `process.env.RAILWAY_GIT_COMMIT_SHA` (only set with Railway's native GitHub integration — not used here)
+2. Fallback: `.deploy-sha` file written by CI before `railway up`. **Do NOT add `.deploy-sha` to `.gitignore`** — `railway up` respects gitignore and would exclude the file from upload.
+3. `null` otherwise
+
+Manual deploy fallback (e.g. CI bypassed):
 ```bash
 railway up --detach
 ```
 
 The Dockerfile builds both the frontend (`frontend/dist/`) and the landing page (`landing/dist/`, git submodule). No separate build step needed.
+
+Useful commands:
+```bash
+railway status --json | grep createdAt    # When did the latest deploy land?
+railway logs --deployment | tail -N        # Runtime logs
+railway logs --build | tail -N             # Build logs
+curl https://campo-bot-production.up.railway.app/api/health   # What SHA is live?
+```
 
 ## Docker Local Dev
 

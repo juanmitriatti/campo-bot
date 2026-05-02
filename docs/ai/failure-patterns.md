@@ -56,6 +56,8 @@
 - **Scheduled alert skipping today**: The 06:00 AR scheduler only checked tomorrow + day after. Now includes today too (`{ includeToday: true }`) — by 6am the day is still ahead, so today's rain/wind matters.
 - **No dry-window or wind alerts**: Added 2 new alert types: `checkDryWindow` (consecutive days below 1mm rain, useful for planning applications) and `checkWindAlert` (any day ≥ threshold km/h). Settings: `dry_window_days` (default 3), `wind_alert_kmh` (default 20). All weather alerts now include "_Es un pronóstico, puede cambiar._" disclaimer.
 
-## Deploy Gotcha
+## Deploy Gotcha (resolved 2026-05-02)
 
-- **Railway does NOT auto-deploy on `git push`**: Must run `railway up --detach` manually after pushing to main. Otherwise prod stays on old code indefinitely.
+- **Push to `main` now auto-deploys via GitHub Actions**: tests → `railway up` → smoke test that polls `/api/health` for the new SHA. Configured in `.github/workflows/deploy.yml`. See [docs/operations.md](../operations.md#railway-deploy) for full details.
+- **Historical context**: previously prod required a manual `railway up --detach` after every push, and prod regularly drifted to days-old code while the commit sat on GitHub. The pipeline closes that gap.
+- **`.deploy-sha` must NOT be in `.gitignore`**: `railway up` respects gitignore and would exclude the file from upload, causing the smoke test to time out forever (`/api/health` returns `sha:null`).
