@@ -55,6 +55,12 @@ jobs:
           curl -fsSL https://railway.com/install.sh | sh
           echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
 
+      # Bundles the SHA with the uploaded code so /api/health can report it.
+      # Railway only injects RAILWAY_GIT_COMMIT_SHA on its native GitHub
+      # integration, not on `railway up` deploys.
+      - name: Write deploy SHA
+        run: echo "${{ github.sha }}" > .deploy-sha
+
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

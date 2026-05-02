@@ -1,4 +1,5 @@
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -19,6 +20,19 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// Resolved once at boot. Set by Railway when integrated via GitHub, or written
+// to .deploy-sha at CI build time when deploying via `railway up`.
+const DEPLOY_SHA: string | null = (() => {
+  const fromEnv = process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7);
+  if (fromEnv) return fromEnv;
+  try {
+    const file = path.join(process.cwd(), '.deploy-sha');
+    return fs.readFileSync(file, 'utf8').trim().slice(0, 7) || null;
+  } catch {
+    return null;
+  }
+})();
+
 // Payment webhooks need the raw body for signature verification — mount them
 // BEFORE express.json() so the JSON parser doesn't consume the stream.
 app.use('/webhooks', webhookRoutes);
@@ -38,13 +52,11 @@ app.use('/webhook', webhook);
 app.use('/telegram', verifyTelegramWebhook, telegramWebhook);
 
 // Health check — used by CI smoke test post-deploy.
-// Returns the running git sha (set at build time via RAILWAY_GIT_COMMIT_SHA)
-// so we can confirm a specific deploy is live.
 app.get('/api/health', (_req: express.Request, res: express.Response) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    sha: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+    sha: DEPLOY_SHA,
   });
 });
 
