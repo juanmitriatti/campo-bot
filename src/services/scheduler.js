@@ -445,7 +445,8 @@ async function checkWeatherForUser(user) {
 
   if (citySources.size === 0) return;
 
-  const rainThreshold = user.rain_alert_mm || 10;
+  const defaultRainMm = (await getSettingNumber('DEFAULT_RAIN_ALERT_MM')) ?? 10;
+  const rainThreshold = user.rain_alert_mm || defaultRainMm;
   const windThreshold = user.wind_alert_kmh || 20;
   const dryDays = user.dry_window_days || 3;
   const rainAlerts = [];
