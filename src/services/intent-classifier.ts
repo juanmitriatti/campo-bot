@@ -165,7 +165,9 @@ export class IntentClassifier {
         const minConfidence = (await getSettingNumber('AI_INTENT_MIN_CONFIDENCE')) ?? 0.70;
         const agentResult = await this.agentService.extract(text, preprocessed, userId, settings);
         if (agentResult) {
-          const parseResults = this.responseMapper.mapToParseResults(agentResult, text);
+          const validationEnabled = await getSettingBool('AGENT_OUTPUT_VALIDATION_ENABLED');
+          const validateCrop = validationEnabled && (await getSettingBool('AGENT_VALIDATE_CROP'));
+          const parseResults = this.responseMapper.mapToParseResults(agentResult, text, { validateCrop });
           if (parseResults.length > 0) {
             const primary = parseResults[0];
             // Attach extra tool calls for logging (compound actions)

@@ -1,7 +1,7 @@
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
 import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES } from '../constants/agro-terms.js';
 import type { AgentResult } from './agent.service.js';
-import { validateToolCall } from './agent-output-validator.js';
+import { validateToolCall, type ValidationOptions } from './agent-output-validator.js';
 
 /**
  * Parse Argentine-format weight to kg.
@@ -154,7 +154,11 @@ export class AgentResponseMapper {
    * - If no tool calls and there's conversational text, returns a single 'unknown' ParseResult
    *   with _conversationalResponse attached.
    */
-  mapToParseResults(result: AgentResult, originalText: string): ParseResult[] {
+  mapToParseResults(
+    result: AgentResult,
+    originalText: string,
+    validationOptions: ValidationOptions = {},
+  ): ParseResult[] {
     if (result.toolCalls.length === 0) {
       if (result.conversationalText) {
         return [{
@@ -189,22 +193,22 @@ export class AgentResponseMapper {
       if (filteredCalls.length === 0) filteredCalls = result.toolCalls; // safety: don't drop everything
     }
 
-    return filteredCalls.map(tc => this.mapToolCall(tc, originalText));
+    return filteredCalls.map(tc => this.mapToolCall(tc, originalText, validationOptions));
   }
 
   private mapToolCall(
     toolCall: AgentResult['toolCalls'][0],
     originalText: string,
+    validationOptions: ValidationOptions = {},
   ): ParseResult {
     const { toolName, toolInput } = toolCall;
-    // Validate agent output against the user text. In Phase 1 this is a
-    // passthrough — the wiring is in place so subsequent phases can register
-    // per-field rules without touching this file.
-    const { input } = validateToolCall({
-      toolName,
-      input: toolInput as Record<string, unknown>,
-      originalText,
-    });
+    // Validate agent output against the user text. Per-field rules ship behind
+    // their own flags in `validationOptions`; when none are enabled this is a
+    // passthrough.
+    const { input } = validateToolCall(
+      { toolName, input: toolInput as Record<string, unknown>, originalText },
+      validationOptions,
+    );
 
     if (toolName === 'log_expense') {
       return this.mapExpense(input, originalText);
