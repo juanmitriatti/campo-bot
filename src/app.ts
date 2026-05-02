@@ -32,6 +32,7 @@ const DEPLOY_SHA: string | null = (() => {
     return null;
   }
 })();
+console.log(`[boot] DEPLOY_SHA=${DEPLOY_SHA ?? '<null>'} cwd=${process.cwd()}`);
 
 // Payment webhooks need the raw body for signature verification — mount them
 // BEFORE express.json() so the JSON parser doesn't consume the stream.
