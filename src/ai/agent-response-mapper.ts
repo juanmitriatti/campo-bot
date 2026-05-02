@@ -1,6 +1,7 @@
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
 import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES } from '../constants/agro-terms.js';
 import type { AgentResult } from './agent.service.js';
+import { validateToolCall } from './agent-output-validator.js';
 
 /**
  * Parse Argentine-format weight to kg.
@@ -196,7 +197,14 @@ export class AgentResponseMapper {
     originalText: string,
   ): ParseResult {
     const { toolName, toolInput } = toolCall;
-    const input = toolInput as Record<string, unknown>;
+    // Validate agent output against the user text. In Phase 1 this is a
+    // passthrough — the wiring is in place so subsequent phases can register
+    // per-field rules without touching this file.
+    const { input } = validateToolCall({
+      toolName,
+      input: toolInput as Record<string, unknown>,
+      originalText,
+    });
 
     if (toolName === 'log_expense') {
       return this.mapExpense(input, originalText);

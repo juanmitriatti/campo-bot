@@ -298,4 +298,72 @@ describe('AgentResponseMapper', () => {
       }
     });
   });
+
+  // Baseline regression tests pinning down behavior we MUST preserve as the
+  // server-side validation layer (Phases 2+) lands. If a future phase breaks
+  // any of these, the validation rule is too aggressive and needs tuning.
+  describe('baseline behavior to preserve through validation phases', () => {
+    it('compound action: each tool call sees the same originalText', () => {
+      // "agregar campo X en Y, lotes A y B, sembré soja en A" → 3 tool calls,
+      // ALL must be validatable against the original full text. None of the
+      // entities in the later calls can be stripped just because the relevant
+      // span is at the START of the message.
+      const result = makeResult([
+        { toolName: 'add_field', toolInput: { name: 'Don Pedro', city: 'Pergamino' }, toolUseId: 'c1' },
+        { toolName: 'add_plots_batch', toolInput: { plotNames: ['A', 'B'], field: 'Don Pedro' }, toolUseId: 'c2' },
+        { toolName: 'sow_crop', toolInput: { crop: 'soja', plot: 'A', field: 'Don Pedro' }, toolUseId: 'c3' },
+      ]);
+      const parsed = mapper.mapToParseResults(
+        result,
+        'agregar campo Don Pedro en Pergamino, lotes A y B, sembré soja en A',
+      );
+      expect(parsed).toHaveLength(3);
+      // Field name on the sow_crop must survive validation even though it
+      // appears earlier in the message than the sow_crop verb.
+      if (parsed[2].intent.type === 'command') {
+        expect(parsed[2].intent.data.command).toBe('sow_crop');
+        expect(parsed[2].intent.data.crop).toBe('soja');
+      }
+    });
+
+    it('pronoun reference: __last__ on plot must NOT be stripped when user wrote a pronoun', () => {
+      // Critical multi-turn pattern. User text contains "ahí" → agent passes
+      // plot="__last__". Validation must allow this; stripping would break
+      // every "fumigué ahí" / "sembré ese lote" follow-up.
+      const result = makeResult([
+        { toolName: 'log_spraying', toolInput: { product: 'glifosato', plot: '__last__' }, toolUseId: 'pr1' },
+      ]);
+      const parsed = mapper.mapToParseResults(result, 'fumigué ahí con glifosato');
+      if (parsed[0].intent.type === 'command') {
+        expect(parsed[0].intent.data.command).toBe('log_spraying');
+        expect(parsed[0].intent.data.plotName).toBe('__last__');
+      }
+    });
+
+    it('explicit plot name in user text: must survive validation', () => {
+      // "sembré soja en lote 1B" → plot="1B" appears in text, must NOT be
+      // stripped. Future validation needs accent/case-insensitive matching.
+      const result = makeResult([
+        { toolName: 'sow_crop', toolInput: { crop: 'soja', plot: '1B' }, toolUseId: 'ep1' },
+      ]);
+      const parsed = mapper.mapToParseResults(result, 'sembré soja en lote 1B');
+      if (parsed[0].intent.type === 'command') {
+        expect(parsed[0].intent.data.command).toBe('sow_crop');
+        expect(parsed[0].intent.data.plotName).toBe('1B');
+        expect(parsed[0].intent.data.crop).toBe('soja');
+      }
+    });
+
+    it('crop normalization: anglicismo (soybean → soja) must survive validation', () => {
+      // The agent normalizes anglicismos; the validator must recognize the
+      // English form as backing for the Spanish output.
+      const result = makeResult([
+        { toolName: 'sow_crop', toolInput: { crop: 'soja' }, toolUseId: 'ang1' },
+      ]);
+      const parsed = mapper.mapToParseResults(result, 'sembramos soybean en lote 1A');
+      if (parsed[0].intent.type === 'command') {
+        expect(parsed[0].intent.data.crop).toBe('soja');
+      }
+    });
+  });
 });
