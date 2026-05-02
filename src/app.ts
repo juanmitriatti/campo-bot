@@ -3,6 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+dotenv.config();
+import { initSentry, captureException, Sentry } from './services/sentry.js';
+initSentry();
 import webhook from './controllers/whatsapp.controller.js';
 import testBotRoutes from './controllers/test-bot.controller.js';
 import telegramWebhook from './controllers/telegram.controller.js';
@@ -14,8 +17,6 @@ import { requireAuth, requireRole } from './middleware/auth.middleware.js';
 import mapRoutes from './routes/map.routes.js';
 import { startScheduler } from './services/scheduler.js';
 import { runMigrations } from './scripts/run-migrations.js';
-
-dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -78,7 +79,7 @@ app.use('/admin', dashboard);
 // React frontend app (dashboard) — served on explicit routes only
 const frontendDist = path.resolve(__dirname, '../frontend/dist');
 app.use('/app-assets', express.static(frontendDist));
-const reactAppRoutes = ['/login', '/register', '/dashboard', '/chat'];
+const reactAppRoutes = ['/login', '/register', '/dashboard', '/chat', '/forgot-password', '/reset-password', '/verify-email'];
 app.get(reactAppRoutes, (_req: express.Request, res: express.Response, next: express.NextFunction) => {
   res.sendFile(path.join(frontendDist, 'index.html'), (err) => { if (err) next(); });
 });
@@ -102,9 +103,24 @@ app.get('{*splat}', (req: express.Request, res: express.Response, next: express.
 
 // Global error handler — Express 5 async errors
 // @ts-ignore — Express 5 error handler requires 4 params
-app.use((err: any, _req: any, res: any, _next: any) => {
+app.use((err: any, req: any, res: any, _next: any) => {
   console.error('UNHANDLED ERROR:', err?.stack || err?.message || err);
+  captureException(err, { path: req?.path, method: req?.method });
   if (!res.headersSent) res.sendStatus(500);
+});
+
+// Process-level safety nets. Without these, an unhandled rejection /
+// uncaught exception escapes Express's error handler and goes to stdout
+// with no Sentry hit.
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED REJECTION:', reason);
+  captureException(reason as Error);
+});
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+  captureException(err);
+  // Give Sentry a brief window to flush before crashing.
+  Sentry.close(2000).finally(() => process.exit(1));
 });
 
 const port = process.env.PORT || 3000;

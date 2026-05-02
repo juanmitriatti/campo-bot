@@ -70,4 +70,25 @@ export interface PaymentProvider {
    * is something we don't act on (e.g. a "test" ping).
    */
   parseWebhook(payload: unknown): Promise<ParsedWebhookOutcome | null>;
+
+  /**
+   * Refund a previously processed payment. Optional: not every provider has
+   * a public refund API; SubscriptionService never calls this — only the
+   * admin support endpoint does.
+   *
+   * @param providerPaymentId — provider-specific payment id (NOT the
+   *   subscription id). For MercadoPago this is the `id` returned by
+   *   `/v1/payments/:id`.
+   * @param amountArs — partial refund amount. Omit to refund the full amount.
+   */
+  refund?(providerPaymentId: string, amountArs?: number): Promise<RefundResult>;
+}
+
+export interface RefundResult {
+  /** Provider-side refund id, useful for cross-referencing in the dashboard. */
+  refund_id: string;
+  /** Status returned by the provider (approved, pending, rejected, …). */
+  status: string;
+  /** Effective amount refunded, in ARS. */
+  amount_ars: number;
 }

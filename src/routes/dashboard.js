@@ -2720,6 +2720,217 @@ router.put("/api/ai-training/dictionary/:activityType", async (req, res) => {
   }
 });
 
+// ============================================================
+// Customer support tools (admin → end-user)
+// ============================================================
+//
+// Helpers + endpoints to let an admin investigate and fix data on
+// behalf of a user that wrote in: list their gastos/ingresos, edit or
+// soft-delete a single row, view their bot conversation, refund their
+// last MercadoPago charge. Every mutation is recorded in
+// support_audit_log so we have a who/what/when paper trail.
+
+async function recordSupportAction(adminUserId, targetUserId, action, opts = {}) {
+  try {
+    await pool.query(
+      `INSERT INTO support_audit_log (admin_user_id, target_user_id, action, resource_type, resource_id, reason, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        adminUserId,
+        targetUserId,
+        action,
+        opts.resourceType || null,
+        opts.resourceId != null ? String(opts.resourceId) : null,
+        opts.reason || null,
+        opts.metadata ? JSON.stringify(opts.metadata) : null,
+      ],
+    );
+  } catch (err) {
+    console.error('[support-audit] Failed to write audit row:', err.message);
+  }
+}
+
+router.get("/api/users/:id/expenses", async (req, res) => {
+  const userId = parseInt(req.params.id, 10);
+  if (Number.isNaN(userId)) return res.status(400).json({ error: 'invalid_user_id' });
+  const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+  try {
+    const { rows } = await pool.query(
+      `SELECT e.id, e.expense_date, e.category, e.amount, e.currency, e.description, e.expense_type,
+              e.product, e.quantity, e.unit, e.unit_price, e.deleted_at,
+              p.name AS plot_name, f.name AS field_name
+         FROM expenses e
+         LEFT JOIN plots p ON e.plot_id = p.id
+         LEFT JOIN fields f ON e.field_id = f.id
+        WHERE e.user_id = $1
+        ORDER BY e.expense_date DESC, e.created_at DESC
+        LIMIT $2`,
+      [userId, limit],
+    );
+    res.json({ expenses: rows });
+  } catch (error) {
+    console.error('Error fetching support user expenses:', error);
+    logError('admin-api', 'SUPPORT_EXPENSES_LIST', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.delete("/api/users/:userId/expenses/:expenseId", async (req, res) => {
+  const userId = parseInt(req.params.userId, 10);
+  const expenseId = parseInt(req.params.expenseId, 10);
+  if (Number.isNaN(userId) || Number.isNaN(expenseId)) {
+    return res.status(400).json({ error: 'invalid_id' });
+  }
+  const reason = (req.body && req.body.reason) || null;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE expenses SET deleted_at = NOW()
+        WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+        RETURNING id, amount, currency, category, description, expense_date`,
+      [expenseId, userId],
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'expense_not_found' });
+    await recordSupportAction(req.auth?.userId, userId, 'delete_expense', {
+      resourceType: 'expense',
+      resourceId: expenseId,
+      reason,
+      metadata: rows[0],
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error soft-deleting expense as admin:', error);
+    logError('admin-api', 'SUPPORT_DELETE_EXPENSE', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.patch("/api/users/:userId/expenses/:expenseId", async (req, res) => {
+  const userId = parseInt(req.params.userId, 10);
+  const expenseId = parseInt(req.params.expenseId, 10);
+  if (Number.isNaN(userId) || Number.isNaN(expenseId)) {
+    return res.status(400).json({ error: 'invalid_id' });
+  }
+  const allowed = ['amount', 'currency', 'category', 'description', 'expense_date'];
+  const sets = [];
+  const values = [];
+  let idx = 1;
+  for (const key of allowed) {
+    if (req.body && req.body[key] !== undefined) {
+      sets.push(`${key} = $${idx++}`);
+      values.push(req.body[key]);
+    }
+  }
+  if (sets.length === 0) return res.status(400).json({ error: 'no_fields' });
+  values.push(expenseId, userId);
+  try {
+    const { rows } = await pool.query(
+      `UPDATE expenses SET ${sets.join(', ')}, updated_at = NOW()
+        WHERE id = $${idx++} AND user_id = $${idx} AND deleted_at IS NULL
+        RETURNING *`,
+      values,
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'expense_not_found' });
+    await recordSupportAction(req.auth?.userId, userId, 'edit_expense', {
+      resourceType: 'expense',
+      resourceId: expenseId,
+      reason: req.body?.reason || null,
+      metadata: { changes: req.body },
+    });
+    res.json({ expense: rows[0] });
+  } catch (error) {
+    console.error('Error editing expense as admin:', error);
+    logError('admin-api', 'SUPPORT_EDIT_EXPENSE', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get("/api/users/:id/conversation-log", async (req, res) => {
+  const userId = parseInt(req.params.id, 10);
+  if (Number.isNaN(userId)) return res.status(400).json({ error: 'invalid_user_id' });
+  const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, message_text, response_text, intent_type, source, confidence,
+              created_at
+         FROM conversation_logs
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2`,
+      [userId, limit],
+    );
+    res.json({ messages: rows });
+  } catch (error) {
+    console.error('Error fetching support conversation log:', error);
+    logError('admin-api', 'SUPPORT_CONVERSATION_LOG', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post("/api/users/:id/subscription/refund", async (req, res) => {
+  const userId = parseInt(req.params.id, 10);
+  if (Number.isNaN(userId)) return res.status(400).json({ error: 'invalid_user_id' });
+  const { paymentId, amountArs, reason } = req.body || {};
+  if (!paymentId) return res.status(400).json({ error: 'paymentId requerido (ID del pago en MercadoPago)' });
+  try {
+    const { MercadoPagoProvider } = await import('../domain/billing/mercadopago.provider.js');
+    const provider = new MercadoPagoProvider();
+    const configured = await provider.isConfigured();
+    if (!configured) {
+      return res.status(503).json({ error: 'MercadoPago no está configurado.' });
+    }
+    if (typeof provider.refund !== 'function') {
+      return res.status(501).json({ error: 'El proveedor de pagos no soporta refunds.' });
+    }
+    const result = await provider.refund(String(paymentId), amountArs ? Number(amountArs) : undefined);
+    await recordSupportAction(req.auth?.userId, userId, 'refund_payment', {
+      resourceType: 'mp_payment',
+      resourceId: paymentId,
+      reason: reason || null,
+      metadata: { amountArs: amountArs ?? null, providerResponse: result },
+    });
+    res.json({ ok: true, result });
+  } catch (error) {
+    console.error('Error refunding payment as admin:', error);
+    logError('admin-api', 'SUPPORT_REFUND', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.get("/api/support/audit-log", async (req, res) => {
+  const targetUserId = req.query.userId ? parseInt(req.query.userId, 10) : null;
+  const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+  try {
+    let result;
+    if (targetUserId) {
+      result = await pool.query(
+        `SELECT sa.*, a.name AS admin_name, a.email AS admin_email
+           FROM support_audit_log sa
+           LEFT JOIN users a ON sa.admin_user_id = a.id
+          WHERE sa.target_user_id = $1
+          ORDER BY sa.created_at DESC
+          LIMIT $2`,
+        [targetUserId, limit],
+      );
+    } else {
+      result = await pool.query(
+        `SELECT sa.*, a.name AS admin_name, a.email AS admin_email,
+                t.name AS target_name, t.email AS target_email
+           FROM support_audit_log sa
+           LEFT JOIN users a ON sa.admin_user_id = a.id
+           LEFT JOIN users t ON sa.target_user_id = t.id
+          ORDER BY sa.created_at DESC
+          LIMIT $1`,
+        [limit],
+      );
+    }
+    res.json({ entries: result.rows });
+  } catch (error) {
+    console.error('Error fetching support audit log:', error);
+    logError('admin-api', 'SUPPORT_AUDIT_LOG_LIST', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // --- Document stats (admin) ---
 router.get("/api/documents/stats", async (req, res) => {
   try {

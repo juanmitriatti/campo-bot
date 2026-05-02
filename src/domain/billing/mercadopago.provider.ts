@@ -5,6 +5,7 @@ import type {
   CheckoutResult,
   ParsedWebhookOutcome,
   PaymentProvider,
+  RefundResult,
 } from './payment-provider.js';
 
 // Override via env for tests. Production stays on api.mercadopago.com.
@@ -189,6 +190,41 @@ export class MercadoPagoProvider implements PaymentProvider {
     });
     if (!res.ok) return null;
     return (await res.json()) as MpPreapprovalDetail;
+  }
+
+  /**
+   * Refund a payment via MP's /v1/payments/:id/refunds. Pass `amountArs`
+   * for partial refunds; omitting it refunds the full original amount.
+   *
+   * Errors are NOT silenced — the caller (admin endpoint) wants to surface
+   * the MP error message to the operator.
+   */
+  async refund(providerPaymentId: string, amountArs?: number): Promise<RefundResult> {
+    const token = (await getSetting('MP_ACCESS_TOKEN'))?.trim();
+    if (!token) throw new Error('MP_ACCESS_TOKEN no configurado');
+
+    const body = typeof amountArs === 'number' ? JSON.stringify({ amount: amountArs }) : undefined;
+    const res = await fetch(`${MP_API_BASE}/v1/payments/${encodeURIComponent(providerPaymentId)}/refunds`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'X-Idempotency-Key': crypto.randomUUID(),
+      },
+      body,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '<no body>');
+      throw new Error(`MercadoPago refund failed (${res.status}): ${errText}`);
+    }
+
+    const json = (await res.json()) as { id?: number | string; status?: string; amount?: number };
+    return {
+      refund_id: String(json.id ?? ''),
+      status: String(json.status ?? 'unknown'),
+      amount_ars: Number(json.amount ?? amountArs ?? 0),
+    };
   }
 
   private mapStatus(mpStatus: string): ParsedWebhookOutcome['status'] | undefined {

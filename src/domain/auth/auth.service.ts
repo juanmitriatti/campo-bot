@@ -97,6 +97,15 @@ export class AuthService {
       }
     }
 
+    // Best-effort: kick off email verification. Failures here are silent —
+    // the user can request a resend from "Mi cuenta" later.
+    try {
+      const { sendVerificationEmail } = await import('./email-verification.service.js');
+      await sendVerificationEmail(user.id);
+    } catch (err) {
+      logError('auth', 'EMAIL_VERIFY_SEND_FAILED', err as Error, { userId: user.id });
+    }
+
     const tokens = await this.generateTokenPair(user.id, user.role);
 
     return { user, tokens };

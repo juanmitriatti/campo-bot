@@ -14,6 +14,9 @@ const SECRET_KEYS = new Set([
   'OPENWEATHER_API_KEY',
   'OPENAI_BASE_URL',
   'WHISPER_API_BASE_URL',
+  'RESEND_API_KEY',
+  'SENTRY_DSN',
+  'SENTRY_DSN_FRONTEND',
 ]);
 
 /**
@@ -163,6 +166,20 @@ REGLAS:
   TRIAL_DAYS: { default: '14', type: 'number', group: 'payments', label: 'Duración del trial (días)', description: 'Cuántos días de prueba gratis del plan pro recibe un usuario al registrarse. 0 = sin trial. Cambiarlo solo afecta a registros nuevos.' },
   TRIAL_PLAN_NAME: { default: 'pro', type: 'string', group: 'payments', label: 'Plan del trial', description: 'Qué plan se otorga durante el trial. Default "pro". Si querés ofrecer un trial más amplio cambialo a "pro_plus" o "enterprise". Tiene que ser un plan existente en la tabla plans.' },
   PAST_DUE_GRACE_DAYS: { default: '3', type: 'number', group: 'payments', label: 'Días de gracia tras pago fallido', description: 'Cuántos días pasados de un pago fallido (status past_due) antes de cancelar la suscripción y bajar al plan free. Default 3. El usuario sigue con acceso pleno durante la gracia.' },
+
+  // Email (Resend)
+  RESEND_API_KEY: { default: '', type: 'string', group: 'email', label: 'Resend — API key', description: 'API key de Resend (https://resend.com) para enviar emails transaccionales: recuperación de contraseña, verificación de email. Si está vacío, los emails se loguean a consola (modo dev). Generalo en https://resend.com/api-keys.' },
+  MAIL_FROM_EMAIL: { default: 'noreply@campo-bot.com', type: 'string', group: 'email', label: 'Email remitente', description: 'Dirección "from" para todos los emails transaccionales. Tiene que ser un dominio verificado en Resend.' },
+  MAIL_FROM_NAME: { default: 'Campo Bot', type: 'string', group: 'email', label: 'Nombre remitente', description: 'Nombre que aparece como remitente en los emails. Ej: "Campo Bot".' },
+  PASSWORD_RESET_TTL_MINUTES: { default: '60', type: 'number', group: 'email', label: 'Validez del link de reset (min)', description: 'Cuánto vive el link para resetear contraseña. Default 60 minutos.' },
+  EMAIL_VERIFY_TTL_HOURS: { default: '24', type: 'number', group: 'email', label: 'Validez del link de verificación (horas)', description: 'Cuánto vive el link de verificación de email post-registro. Default 24 horas.' },
+  EMAIL_VERIFY_REQUIRED: { default: 'false', type: 'boolean', group: 'email', label: 'Requerir email verificado', description: 'Si está activo, el usuario no puede iniciar checkout de pago hasta verificar su email. Default false durante MVP; activar antes del launch público.' },
+
+  // Sentry / observability
+  SENTRY_DSN: { default: '', type: 'string', group: 'system', label: 'Sentry DSN (backend)', description: 'DSN de Sentry para alertas en tiempo real de errores en el servidor. Si está vacío, Sentry queda deshabilitado y los errores solo van a la tabla error_logs y a stdout. Crearlo en https://sentry.io/.' },
+  SENTRY_DSN_FRONTEND: { default: '', type: 'string', group: 'system', label: 'Sentry DSN (frontend)', description: 'DSN de Sentry específico para el frontend (proyecto separado, recomendado). Se inyecta vía /api/auth/public-config y se inicializa en el cliente. Si está vacío, el frontend no reporta a Sentry.' },
+  SENTRY_TRACES_SAMPLE_RATE: { default: '0.1', type: 'number', group: 'system', label: 'Sentry — sample rate de traces', description: 'Fracción de transacciones a samplear (0.0-1.0). Default 0.1 (10%) para no inflar costos. Subir a 1.0 solo en debug.' },
+  SENTRY_ENVIRONMENT: { default: 'production', type: 'string', group: 'system', label: 'Sentry — environment tag', description: 'Tag de environment que se envía en cada evento (production, staging, dev). Permite filtrar en el dashboard de Sentry.' },
 };
 
 /**

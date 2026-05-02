@@ -3,6 +3,13 @@ import { AuthService, AuthError } from '../domain/auth/auth.service.js';
 import { ObservationService, ObservationError } from '../domain/auth/observation.service.js';
 import { ChannelVerificationService, VerificationError } from '../domain/auth/channel-verification.service.js';
 import { AccountDeletionService, AccountDeletionError } from '../domain/auth/account-deletion.service.js';
+import { PasswordRecoveryService, PasswordRecoveryError } from '../domain/auth/password-recovery.service.js';
+import {
+  sendVerificationEmail,
+  confirmVerificationToken,
+  getVerificationStatus,
+  EmailVerificationError,
+} from '../domain/auth/email-verification.service.js';
 import { DataExportService } from '../services/data-export.service.js';
 import { SubscriptionService, SubscriptionError } from '../domain/billing/subscription.service.js';
 import { PlanRepository } from '../domain/billing/plan.repository.js';
@@ -23,6 +30,7 @@ const verificationService = new ChannelVerificationService();
 const accountDeletionService = new AccountDeletionService();
 const dataExportService = new DataExportService();
 const subscriptionService = new SubscriptionService();
+const passwordRecoveryService = new PasswordRecoveryService();
 
 function requireFeature(feature: FeatureKey) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -41,6 +49,28 @@ router.get('/plans', async (_req: Request, res: Response) => {
   try {
     const plans = await planRepo.getAllPlans();
     res.json(plans.map(p => ({ id: p.id, name: p.name, display_name: p.display_name, price_ars: p.price_ars })));
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// Public values the frontend needs at boot. Whitelisted; never include
+// anything that isn't safe to leak.
+router.get('/public-config', async (_req: Request, res: Response) => {
+  try {
+    const { getSetting } = await import('../services/settings.service.js');
+    const [sentryDsn, environment, sampleRate] = await Promise.all([
+      getSetting('SENTRY_DSN_FRONTEND'),
+      getSetting('SENTRY_ENVIRONMENT'),
+      getSetting('SENTRY_TRACES_SAMPLE_RATE'),
+    ]);
+    res.json({
+      sentry: {
+        dsn: sentryDsn || null,
+        environment: environment || 'production',
+        tracesSampleRate: Number(sampleRate ?? '0.1'),
+      },
+    });
   } catch (err) {
     handleError(err, res);
   }
@@ -73,6 +103,61 @@ router.post('/refresh', async (req: Request, res: Response) => {
     }
     const tokens = await authService.refreshTokens(refreshToken);
     res.json(tokens);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Forgot password / email verification (public) ---
+
+router.post('/forgot-password', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body || {};
+    await passwordRecoveryService.requestReset(email);
+    // Always 200 — never reveal whether the email exists.
+    res.json({ ok: true });
+  } catch (err) {
+    if (err instanceof PasswordRecoveryError && err.status === 400) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    handleError(err, res);
+  }
+});
+
+router.post('/reset-password', async (req: Request, res: Response) => {
+  try {
+    const { token, password } = req.body || {};
+    await passwordRecoveryService.resetPassword(token, password);
+    res.json({ ok: true });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.post('/verify-email', async (req: Request, res: Response) => {
+  try {
+    const { token } = req.body || {};
+    const result = await confirmVerificationToken(token);
+    res.json({ ok: true, userId: result.userId });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.post('/resend-verification', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const result = await sendVerificationEmail(req.auth!.userId);
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.get('/verify-email/status', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const status = await getVerificationStatus(req.auth!.userId);
+    res.json(status);
   } catch (err) {
     handleError(err, res);
   }
@@ -235,6 +320,14 @@ router.post('/subscription/checkout', requireAuth, async (req: Request, res: Res
     if (!profile?.user.email) {
       res.status(400).json({ error: 'Necesitamos tu email registrado para procesar el pago.' });
       return;
+    }
+    const verifyRequired = ((await import('../services/settings.service.js')).getSettingBool);
+    if (await verifyRequired('EMAIL_VERIFY_REQUIRED')) {
+      const status = await getVerificationStatus(req.auth!.userId);
+      if (!status.emailVerified) {
+        res.status(400).json({ error: 'Verificá tu email antes de iniciar el pago. Te mandamos un link de verificación cuando te registraste.', code: 'EMAIL_NOT_VERIFIED' });
+        return;
+      }
     }
     const result = await subscriptionService.startCheckout({
       userId: asUserId(req.auth!.userId),
@@ -1431,6 +1524,10 @@ function handleError(err: unknown, res: Response): void {
   }
   if (err instanceof SubscriptionError) {
     res.status(err.status).json({ error: err.message, code: err.code });
+    return;
+  }
+  if (err instanceof PasswordRecoveryError || err instanceof EmailVerificationError) {
+    res.status(err.status).json({ error: err.message });
     return;
   }
   console.error('Auth route error:', err);

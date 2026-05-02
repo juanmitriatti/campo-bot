@@ -23,6 +23,8 @@
   "description": "",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@sentry/node": "^10.51.0",
+    "@sentry/profiling-node": "^10.51.0",
     "@types/multer": "^2.1.0",
     "archiver": "^7.0.1",
     "axios": "^1.13.6",
@@ -34,6 +36,7 @@
     "node-cron": "^4.2.1",
     "pdfkit": "^0.17.2",
     "pg": "^8.19.0",
+    "resend": "^6.12.2",
     "sharp": "^0.34.5",
     "svg-to-pdfkit": "^0.1.8",
     "web-push": "^3.6.7"
