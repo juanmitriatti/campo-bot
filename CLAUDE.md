@@ -140,7 +140,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 
 ### Sow Crop
 - `sow_crop` accepts optional `hectares` param for partial-plot sowing → `plot_crops.sowed_hectares`
-- **Missing-crop guard**: if the user says "sembré/sembramos" without naming a crop, both the prompt (rule in `agent-prompt-builder.ts` distinguishing IDENTIFICATION data from BUSINESS data) AND a defensive `isPlaceholder()` guard in `src/utils/guards.ts` block persistence. Handler responds "🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)" and writes nothing to `plot_crops`. Same guard applied to `harvest_crop`. Detects `<UNKNOWN>`, "desconocido", "?", empty, and generic echoes like "cultivo"/"producto".
+- **Missing-crop pending state** (structural): `crop` is OPTIONAL in `sow_crop`/`harvest_crop` schema. Prompt orders agent to OMIT the param when the user didn't name a crop and explicitly bans inferring from active_crop / past sowings. When the handler sees `isPlaceholder(cmd.crop)`, it returns `setPendingActivity({ ...cmd, _needs: 'crop' })` + asks "🌱 ¿Qué cultivo sembraste?". The 3 controllers (whatsapp/telegram/test-bot) intercept the next message: `extractCropFromText()` (in `src/utils/crops.ts`) tries to map it to a canonical crop. On match → re-runs `handleCommand` with merged data (which may then ask for plot via the existing flow). On miss → re-asks. Cancel and other-intent inputs still escape via the existing `isCancelIntent` / `parseCommandOnly` checks.
 
 ### Harvest Loads
 - `harvest_crop` accepts optional `loads[]` (per-truck: driver_name, weight_kg, destination?, destinatario?, truck_plate?, humidity_pct?, quality_metrics?). Only driver+weight required.

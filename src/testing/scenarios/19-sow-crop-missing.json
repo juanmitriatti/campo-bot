@@ -1,6 +1,6 @@
 {
   "name": "sow-crop-missing-crop",
-  "description": "Sowing without naming a crop must ask the user, never persist a placeholder",
+  "description": "Sowing without naming a crop: bot must ask, persist nothing until user names a real crop, then complete the sow on a follow-up turn",
   "setup": ["add-field-esperanza", "add-plot-norte"],
   "steps": [
     {
@@ -9,6 +9,13 @@
         "responseContains": ["cultivo"],
         "responseNotContains": ["UNKNOWN", "sembrado en", "Campaña"],
         "dbRowCount": { "table": "domain_events", "count": 0 }
+      }
+    },
+    {
+      "send": "soja",
+      "expect": {
+        "responseContains": ["soja", "sembrado"],
+        "dbActivity": { "eventType": "planting", "crop": "soja", "plot": "Norte" }
       }
     }
   ]

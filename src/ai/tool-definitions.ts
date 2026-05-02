@@ -190,26 +190,26 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'sow_crop',
-    description: 'Registrar siembra. Verbos: sembré, implanté.',
+    description: 'Registrar siembra. Verbos: sembré, implanté. Si el usuario NO nombra cultivo, OMITÍ el param crop (el sistema pregunta). NUNCA inferir el cultivo del lote ni inventarlo.',
     input_schema: {
       type: 'object',
       properties: {
-        crop: { type: 'string', description: 'Cultivo sembrado.' },
+        crop: { type: 'string', description: 'Cultivo sembrado, EXACTAMENTE como lo nombró el usuario. Omitir si no lo nombró.' },
         hectares: { type: 'number', description: 'Hectáreas sembradas (si es menos que la superficie total del lote). Omitir si se sembró todo el lote.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
         event_date: DATE_PROP,
       },
-      required: ['crop'],
+      required: [],
     },
   },
   {
     name: 'harvest_crop',
-    description: 'Registrar cosecha o cargas de camiones. Verbos: coseché, levanté, se cargó/cargaron. Si mencionan chofer+kg → usar loads[]. Números argentinos: "31.320" = 31320 kg (punto es separador de miles). NO cierra la campaña, solo registra el hito.',
+    description: 'Registrar cosecha o cargas de camiones. Verbos: coseché, levanté, se cargó/cargaron. Si mencionan chofer+kg → usar loads[]. Números argentinos: "31.320" = 31320 kg (punto es separador de miles). NO cierra la campaña, solo registra el hito. Si el usuario NO nombra cultivo, OMITÍ el param crop (el sistema pregunta). NUNCA inferir el cultivo ni inventarlo.',
     input_schema: {
       type: 'object',
       properties: {
-        crop: { type: 'string', description: 'Cultivo cosechado.' },
+        crop: { type: 'string', description: 'Cultivo cosechado, EXACTAMENTE como lo nombró el usuario. Omitir si no lo nombró.' },
         quantity: { type: 'number', description: 'Cantidad cosechada (ej: 50 tn).' },
         unit: UNIT_PROP,
         warehouse: { type: 'string', description: 'Nombre del depósito/silo destino.' },
@@ -237,7 +237,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         plot: PLOT_PROP,
         event_date: DATE_PROP,
       },
-      required: ['crop'],
+      required: [],
     },
   },
 

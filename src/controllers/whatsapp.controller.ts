@@ -58,6 +58,7 @@ import { AgentResponseMapper } from '../ai/agent-response-mapper.js';
 import { normalizeTranscript } from '../utils/text-normalizer.js';
 import { formatPlotListGrouped } from '../middleware/flows/field-step-helpers.js';
 import { isLikelyQuestion } from '../utils/guards.js';
+import { extractCropFromText } from '../utils/crops.js';
 import { saveObservation, SAVE_REJECTED_DUPLICATE } from '../services/observations.js';
 import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
 import { formatObservationResponse } from '../middleware/response-formatter.js';
@@ -1544,6 +1545,30 @@ router.post('/', async (req: Request, res: Response) => {
       if (actInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
         pendingActStore.clear(phone);
         // Fall through to normal processing
+      } else if (pendingAct.data._needs === 'crop') {
+        const crop = extractCropFromText(text);
+        if (crop) {
+          pendingActStore.clear(phone);
+          const merged = { ...pendingAct.data, crop } as ParsedCommand;
+          delete (merged as Record<string, unknown>)._needs;
+          const result = await agronomyHandler.handleCommand(merged, userId, user, settings);
+          if (result.sideEffects?.setPendingActivity) {
+            const next = result.sideEffects.setPendingActivity;
+            pendingActStore.set(phone, { command: next.command, data: next.data, timestamp: Date.now() });
+          }
+          if (result.sideEffects?.setPendingCampaignClose) {
+            pendingCampaignCloseStore.set(phone, result.sideEffects.setPendingCampaignClose);
+          }
+          await sendResponse(phone, result);
+          console.log(`[PENDING_CROP] Resolved crop="${crop}" for pending ${pendingAct.command}, user ${userId}`);
+          conversationLogger.log(userId, phone, text, result.messages[0] ?? null, 'command', pendingAct.command, null, null, false, Date.now() - startTime).catch(() => {});
+          res.sendStatus(200);
+          return;
+        }
+        await sendMessage(phone, `No reconocí ese cultivo. ¿Qué cultivo? (ej: soja, maíz, trigo, girasol)`);
+        console.log(`[PENDING_CROP] Could not resolve crop from "${text}", asking again for user ${userId}`);
+        res.sendStatus(200);
+        return;
       } else {
         const actResolved = await plotDiscovery.resolveExisting(userId, text);
         if (actResolved.plotId) {

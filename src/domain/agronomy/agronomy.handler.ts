@@ -835,7 +835,12 @@ export class AgronomyHandler {
 
       case 'sow_crop': {
         if (isPlaceholder(cmd.crop)) {
-          return { messages: ['🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)'] };
+          return {
+            messages: ['🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)'],
+            sideEffects: {
+              setPendingActivity: { command: 'sow_crop', data: { ...cmd, _needs: 'crop' } },
+            },
+          };
         }
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
@@ -895,7 +900,12 @@ export class AgronomyHandler {
 
       case 'harvest_crop': {
         if (isPlaceholder(cmd.crop)) {
-          return { messages: ['🌾 ¿Qué cultivo cosechaste? (ej: soja, maíz, trigo, girasol)'] };
+          return {
+            messages: ['🌾 ¿Qué cultivo cosechaste? (ej: soja, maíz, trigo, girasol)'],
+            sideEffects: {
+              setPendingActivity: { command: 'harvest_crop', data: { ...cmd, _needs: 'crop' } },
+            },
+          };
         }
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
