@@ -25,11 +25,18 @@ export class AgentPromptBuilder {
    * Dynamic per-message context: today's date + user's fields/plots/etc.
    * Prepended to the user message text so it's never part of the cached prefix.
    * Returns empty string if there's nothing to add.
+   *
+   * `reduced=true` drops `lastFieldName`, `lastPlotName`, and `recentContexts`
+   * — that data is what tempts the agent to silently default a missing plot to
+   * the previous one. Pronoun resolution (`__last__` for "ahí", "ese lote")
+   * still works because PlotDiscoveryService resolves the sentinel server-side
+   * from `conversation_state`, independently of the prompt. List of all
+   * fields/plots is kept so the agent still recognizes user-mentioned names.
    */
-  buildUserMessagePrefix(userContext: UserContext | null): string {
+  buildUserMessagePrefix(userContext: UserContext | null, reduced = false): string {
     const today = this.todayDate();
     const parts: string[] = [`Hoy: ${today}.`];
-    const ctx = this.contextLine(userContext);
+    const ctx = this.contextLine(userContext, reduced);
     if (ctx) parts.push(ctx);
     return parts.join(' ');
   }
@@ -163,7 +170,7 @@ ${this.buildActivityLines(dictionary)}
 - GRUPO LOTES (consultas): "cuántas has/hectáreas del grupo X"/"lotes del grupo X"/"superficie de la sociedad X"/"has de la titularidad X" → list_plots(grupo=X). "actividades del grupo X"/"fumigaciones grupo X" → activity_stats(grupo=X). "qué hay sembrado en grupo X"/"soja del grupo X" → active_crop(grupo=X)`;
   }
 
-  private contextLine(ctx: UserContext | null): string {
+  private contextLine(ctx: UserContext | null, reduced = false): string {
     if (!ctx) return '';
 
     const parts: string[] = [];
@@ -171,17 +178,19 @@ ${this.buildActivityLines(dictionary)}
     if (ctx.plotNames.length > 0) parts.push(`lotes:[${ctx.plotNames.join(',')}]`);
     if (ctx.corralNames && ctx.corralNames.length > 0) parts.push(`corrales:[${ctx.corralNames.join(',')}]`);
     if (ctx.feedlotNames && ctx.feedlotNames.length > 0) parts.push(`feedlots:[${ctx.feedlotNames.join(',')}]`);
-    if (ctx.lastFieldName) parts.push(`último campo:${ctx.lastFieldName}`);
-    if (ctx.lastPlotName) parts.push(`último lote:${ctx.lastPlotName}`);
-    // Context stack: last 3 field/plot references for "el otro campo" / "el de antes"
-    if (ctx.recentContexts && ctx.recentContexts.length > 1) {
-      const labels = ctx.recentContexts.map((e, i) => {
-        const plot = e.plotName ?? '';
-        const field = e.fieldName ?? '';
-        const label = plot ? `${plot} (${field})` : field;
-        return `${i + 1})${label}`;
-      });
-      parts.push(`contextos recientes:[${labels.join(', ')}]`);
+    if (!reduced) {
+      if (ctx.lastFieldName) parts.push(`último campo:${ctx.lastFieldName}`);
+      if (ctx.lastPlotName) parts.push(`último lote:${ctx.lastPlotName}`);
+      // Context stack: last 3 field/plot references for "el otro campo" / "el de antes"
+      if (ctx.recentContexts && ctx.recentContexts.length > 1) {
+        const labels = ctx.recentContexts.map((e, i) => {
+          const plot = e.plotName ?? '';
+          const field = e.fieldName ?? '';
+          const label = plot ? `${plot} (${field})` : field;
+          return `${i + 1})${label}`;
+        });
+        parts.push(`contextos recientes:[${labels.join(', ')}]`);
+      }
     }
 
     if (parts.length === 0) return '';

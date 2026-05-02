@@ -109,7 +109,8 @@ export class AgentService {
       // prefix so they don't invalidate the cache.
       const botName = (await getSetting('BOT_NAME')) || 'MIA';
       const systemPrompt = this.promptBuilder.build(null, dictionary, botName);
-      const userPrefix = this.promptBuilder.buildUserMessagePrefix(userContext);
+      const reducedContext = await getSettingBool('AGENT_REDUCED_CONTEXT_PROMPT_ENABLED');
+      const userPrefix = this.promptBuilder.buildUserMessagePrefix(userContext, reducedContext);
 
       // Load agent-specific settings
       const [model, maxTokens, timeoutMs, temperatureStr, cacheTtlSetting] = await Promise.all([

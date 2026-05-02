@@ -60,4 +60,52 @@ describe('AgentPromptBuilder', () => {
     expect(prompt).toContain('palo=millón');
     expect(prompt).toContain('ARS');
   });
+
+  describe('reduced context mode (Phase 5)', () => {
+    const ctx: UserContext = {
+      fieldNames: ['Norte', 'Sur'],
+      plotNames: ['A1', 'B2'],
+      lastFieldName: 'Norte',
+      lastPlotName: 'A1',
+      recentContexts: [
+        { fieldName: 'Norte', plotName: 'A1' },
+        { fieldName: 'Sur', plotName: 'B2' },
+      ],
+      corralNames: [],
+      feedlotNames: [],
+    };
+
+    it('includes último/recent context when reduced flag is OFF (default)', () => {
+      const prefix = builder.buildUserMessagePrefix(ctx);
+      expect(prefix).toContain('último campo:Norte');
+      expect(prefix).toContain('último lote:A1');
+      expect(prefix).toContain('contextos recientes:');
+    });
+
+    it('omits último/recent context when reduced flag is ON', () => {
+      const prefix = builder.buildUserMessagePrefix(ctx, true);
+      expect(prefix).not.toContain('último campo:');
+      expect(prefix).not.toContain('último lote:');
+      expect(prefix).not.toContain('contextos recientes:');
+    });
+
+    it('still includes campos/lotes lists in reduced mode', () => {
+      // Names of all owned plots/fields are kept — the agent still needs them
+      // to recognize when the user says a real plot name like "Norte".
+      const prefix = builder.buildUserMessagePrefix(ctx, true);
+      expect(prefix).toContain('campos:[Norte,Sur]');
+      expect(prefix).toContain('lotes:[A1,B2]');
+    });
+
+    it('still includes today date in reduced mode', () => {
+      const prefix = builder.buildUserMessagePrefix(ctx, true);
+      expect(prefix).toMatch(/^Hoy: \d{4}-\d{2}-\d{2}/);
+    });
+
+    it('reduced mode with no context returns just the date', () => {
+      const prefix = builder.buildUserMessagePrefix(null, true);
+      expect(prefix).toMatch(/^Hoy: \d{4}-\d{2}-\d{2}/);
+      expect(prefix).not.toContain('Usuario:');
+    });
+  });
 });
