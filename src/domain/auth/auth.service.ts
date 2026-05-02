@@ -6,6 +6,7 @@ import { TokenRepository } from './token.repository.js';
 import { PlanRepository } from '../billing/plan.repository.js';
 import { SubscriptionService } from '../billing/subscription.service.js';
 import { logError } from '../../services/error-logger.js';
+import { getSetting } from '../../services/settings.service.js';
 import { asUserId } from '../../types/index.js';
 import type { JwtPayload, TokenPair, RegisterBody, LoginBody, ProfileUpdateBody, AuthUser } from './auth.types.js';
 
@@ -87,8 +88,8 @@ export class AuthService {
     // plan that was already assigned above.
     if (this.subscriptions) {
       try {
-        const trialPlanName = (body.plan_id ? null : 'pro') as string | null;
-        if (trialPlanName) {
+        if (!body.plan_id) {
+          const trialPlanName = (await getSetting('TRIAL_PLAN_NAME')) || 'pro';
           await this.subscriptions.createTrialIfMissing(asUserId(user.id), trialPlanName);
         }
       } catch (err) {
