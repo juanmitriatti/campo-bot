@@ -10,7 +10,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "eval": "npx tsx src/testing/run-eval.ts --all",
-    "eval:verbose": "npx tsx src/testing/run-eval.ts --all --verbose"
+    "eval:verbose": "npx tsx src/testing/run-eval.ts --all --verbose",
+    "qa:p0:atomicity": "npx tsx src/testing/qa-p0/qa-p0-atomicity.ts",
+    "qa:p0:channel": "npx tsx src/testing/qa-p0/qa-p0-channel-verify.ts",
+    "qa:p0:export": "npx tsx src/testing/qa-p0/qa-p0-export-delete.ts",
+    "qa:p0:billing": "npx tsx src/testing/qa-p0/qa-p0-billing.ts",
+    "qa:p0": "npm run qa:p0:atomicity && npm run qa:p0:channel && npm run qa:p0:export && npm run qa:p0:billing"
   },
   "keywords": [],
   "author": "",
