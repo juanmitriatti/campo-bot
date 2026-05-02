@@ -19,6 +19,7 @@ interface Income {
   field_name: string | null;
   user_name: string | null;
   edited_by_name: string | null;
+  linked_from_livestock?: boolean;
 }
 
 interface PaginatedResponse {
@@ -287,6 +288,9 @@ export default function IncomeTable() {
                       </td>
                       <td className="px-4 py-3 max-w-xs">
                         <p className="truncate text-gray-800">{inc.description || '-'}</p>
+                        {inc.linked_from_livestock && (
+                          <p className="text-[11px] text-campo-600 mt-0.5">🔗 Auto-creado por venta de hacienda</p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-600">
                         {inc.field_name || '-'}

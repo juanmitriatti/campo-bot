@@ -27,6 +27,8 @@ interface Movement {
   dest_field_name: string | null;
   dest_corral_name: string | null;
   dest_feedlot_name: string | null;
+  linked_expense_id: number | null;
+  linked_income_id: number | null;
 }
 
 interface PaginatedResponse {
@@ -276,6 +278,12 @@ export default function LivestockHistoryPanel() {
                         {m.unit_price_usd != null && <span className="mr-2">US${m.unit_price_usd.toLocaleString('es-AR')}</span>}
                         {m.reason && <span className="mr-2">{m.reason}</span>}
                         {m.notes && <span className="italic text-gray-400">{m.notes}</span>}
+                        {(m.linked_expense_id || m.linked_income_id) && (
+                          <div className="mt-1 text-[11px] text-campo-600">
+                            {m.linked_expense_id && <>🔗 Gasto #{m.linked_expense_id}</>}
+                            {m.linked_income_id && <>🔗 Ingreso #{m.linked_income_id}</>}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

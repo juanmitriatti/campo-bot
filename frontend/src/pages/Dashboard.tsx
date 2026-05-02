@@ -12,6 +12,8 @@ import IncomeTable from '../components/IncomeTable';
 import ReportTable from '../components/ReportTable';
 import StockTable from '../components/StockTable';
 import LivestockTab from '../components/LivestockTab';
+import DocumentsTable from '../components/DocumentsTable';
+import HarvestLoadsTable from '../components/HarvestLoadsTable';
 import ChannelLinking from '../components/ChannelLinking';
 import type { DashboardView } from '../components/layout/Sidebar';
 
@@ -23,8 +25,10 @@ const viewFeatureMap: Record<DashboardView, string | null> = {
   observations: 'agronomy',
   scoutings: 'agronomy',
   reports: 'agronomy',
+  harvests: 'agronomy',
   stock: 'stock',
   livestock: 'livestock',
+  documents: 'documents',
   account: null,
 };
 
@@ -44,7 +48,7 @@ export default function Dashboard() {
   const renderContent = () => {
     switch (view) {
       case 'overview':
-        return <OverviewPage />;
+        return <OverviewPage onGoToAccount={() => setView('account')} />;
       case 'expenses':
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -89,6 +93,18 @@ export default function Dashboard() {
         );
       case 'livestock':
         return <LivestockTab />;
+      case 'documents':
+        return (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <DocumentsTable />
+          </div>
+        );
+      case 'harvests':
+        return (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <HarvestLoadsTable />
+          </div>
+        );
       case 'account':
         return <ChannelLinking />;
     }
