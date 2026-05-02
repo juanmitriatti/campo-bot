@@ -158,6 +158,8 @@ export interface HarvestLoadRow {
   destinatario: string | null;
   truck_plate: string | null;
   notes: string | null;
+  humidity_pct: number | null;
+  quality_metrics: Record<string, unknown> | null;
   created_at: Date;
 }
 export interface HarvestLoadInput {

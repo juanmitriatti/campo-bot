@@ -293,12 +293,13 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
       [userId, monthStart, prevMonthStart]
     );
 
-    // Activities count this month
+    // Activities count this month (excluding livestock-only events shown elsewhere)
     const activitiesQuery = pool.query(
       `SELECT COUNT(*)::int AS count
        FROM domain_events
        WHERE user_id = $1
-         AND event_date >= $2::date`,
+         AND event_date >= $2::date
+         AND event_type NOT IN ('health_event', 'repro_event', 'weighing')`,
       [userId, monthStart]
     );
 
@@ -328,6 +329,7 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
         LEFT JOIN plots p ON de.plot_id = p.id
         LEFT JOIN fields f ON p.field_id = f.id
         WHERE de.user_id = $1
+          AND de.event_type NOT IN ('health_event', 'repro_event', 'weighing')
         ORDER BY de.event_date DESC, de.created_at DESC LIMIT 5)
        ORDER BY date DESC LIMIT 5`,
       [userId]
@@ -655,6 +657,62 @@ router.get('/scoutings', requireAuth, requireFeature('agronomy'), async (req: Re
   }
 });
 
+// --- Harvest loads (per truck, with humidity + quality) ---
+
+router.get('/harvest-loads', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
+  try {
+    const userId = req.auth!.userId;
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit), 10) || 50));
+
+    const plotId = req.query.plotId ? parseInt(String(req.query.plotId), 10) : null;
+    const fieldId = req.query.fieldId ? parseInt(String(req.query.fieldId), 10) : null;
+    const desde = (req.query.dateFrom as string) || null;
+    const hasta = (req.query.dateTo as string) || null;
+    const driverName = (req.query.driver as string) || null;
+    const destinatario = (req.query.destinatario as string) || null;
+
+    const { queryHarvestLoads } = await import('../services/expenses.js');
+    const allRows = await queryHarvestLoads(userId, {
+      plotId: plotId && !isNaN(plotId) ? plotId : null,
+      fieldId: fieldId && !isNaN(fieldId) ? fieldId : null,
+      desde,
+      hasta,
+      driverName,
+      destinatario,
+    });
+
+    const total = allRows.length;
+    const offset = (page - 1) * limit;
+    const slice = allRows.slice(offset, offset + limit);
+
+    res.json({
+      data: slice.map((r) => ({
+        id: r.id,
+        driverName: r.driver_name,
+        weightKg: Number(r.weight_kg),
+        destination: r.destination,
+        destinatario: r.destinatario,
+        truckPlate: r.truck_plate,
+        notes: r.notes,
+        humidityPct: r.humidity_pct != null ? Number(r.humidity_pct) : null,
+        qualityMetrics: r.quality_metrics,
+        eventDate: r.event_date,
+        crop: r.crop,
+        plotName: r.plot_name,
+        fieldName: r.field_name,
+        createdAt: r.created_at,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
 // --- Stock routes ---
 
 router.get('/stock', requireAuth, requireFeature('stock'), async (req: Request, res: Response) => {
@@ -821,6 +879,70 @@ router.get('/livestock/movements', requireAuth, requireFeature('livestock'), asy
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.get('/livestock/events', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const eventType = String(req.query.type || '');
+    const allowed = new Set(['health_event', 'repro_event', 'weighing']);
+    if (!allowed.has(eventType)) {
+      res.status(400).json({ error: 'type debe ser health_event | repro_event | weighing' });
+      return;
+    }
+
+    const fieldId = req.query.fieldId ? parseInt(String(req.query.fieldId), 10) : null;
+    const plotId = req.query.plotId ? parseInt(String(req.query.plotId), 10) : null;
+    const corralId = req.query.corralId ? parseInt(String(req.query.corralId), 10) : null;
+    const category = (req.query.category as string) || null;
+    const subtype = (req.query.subtype as string) || null;
+    const desde = (req.query.desde as string) || null;
+    const hasta = (req.query.hasta as string) || null;
+    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit), 10) || 100));
+
+    const { queryLivestockEvents } = await import('../services/expenses.js');
+    const rows = await queryLivestockEvents(req.auth!.userId, eventType, {
+      fieldId: fieldId && !isNaN(fieldId) ? fieldId : null,
+      plotId: plotId && !isNaN(plotId) ? plotId : null,
+      corralId: corralId && !isNaN(corralId) ? corralId : null,
+      category,
+      subtype,
+      desde,
+      hasta,
+      limit,
+    });
+
+    res.json({
+      data: rows.map((r: {
+        id: number; event_date: Date; event_type: string;
+        product: string | null; product_type: string | null;
+        quantity: string | number | null; unit: string | null; implement: string | null;
+        animal_category: string | null; animals_affected: number | null;
+        notes: string | null; created_at: Date;
+        plot_id: number | null; plot_name: string | null;
+        field_name: string | null; corral_name: string | null; feedlot_name: string | null;
+      }) => ({
+        id: r.id,
+        eventDate: r.event_date,
+        eventType: r.event_type,
+        subtype: r.product_type,
+        product: r.product,
+        quantity: r.quantity != null ? Number(r.quantity) : null,
+        unit: r.unit,
+        implement: r.implement,
+        category: r.animal_category,
+        animalsAffected: r.animals_affected,
+        notes: r.notes,
+        createdAt: r.created_at,
+        plotId: r.plot_id,
+        plotName: r.plot_name,
+        fieldName: r.field_name,
+        corralName: r.corral_name,
+        feedlotName: r.feedlot_name,
+      })),
     });
   } catch (err) {
     handleError(err, res);

@@ -21,6 +21,8 @@ interface Expense {
   quantity: number | null;
   unit: string | null;
   unit_price: number | null;
+  linked_from_livestock?: boolean;
+  linked_from_document?: boolean;
 }
 
 interface PaginatedResponse {
@@ -315,6 +317,12 @@ export default function ExpenseTable() {
                       </td>
                       <td className="px-4 py-3 max-w-xs">
                         <p className="truncate text-gray-800">{exp.description || '-'}</p>
+                        {(exp.linked_from_livestock || exp.linked_from_document) && (
+                          <p className="text-[11px] text-campo-600 mt-0.5">
+                            {exp.linked_from_livestock && '🔗 Auto-creado por hacienda'}
+                            {exp.linked_from_document && (exp.linked_from_livestock ? ' · ' : '') + '📎 Vinculado a documento'}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
                         {exp.product ? (

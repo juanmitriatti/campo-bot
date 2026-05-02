@@ -1,6 +1,6 @@
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 
-export type DashboardView = 'overview' | 'expenses' | 'incomes' | 'activities' | 'observations' | 'scoutings' | 'reports' | 'stock' | 'livestock' | 'account';
+export type DashboardView = 'overview' | 'expenses' | 'incomes' | 'activities' | 'observations' | 'scoutings' | 'reports' | 'harvests' | 'stock' | 'livestock' | 'documents' | 'account';
 
 interface NavItem {
   key: DashboardView;
@@ -17,8 +17,10 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'observations', label: 'Observaciones', icon: '👁️', feature: 'agronomy' },
   { key: 'scoutings', label: 'Monitoreos', icon: '🔍', feature: 'agronomy' },
   { key: 'reports', label: 'Reportes', icon: '📄', feature: 'agronomy' },
+  { key: 'harvests', label: 'Cosechas', icon: '🌾', feature: 'agronomy' },
   { key: 'stock', label: 'Stock', icon: '📦', feature: 'stock' },
   { key: 'livestock', label: 'Hacienda', icon: '🐄', feature: 'livestock' },
+  { key: 'documents', label: 'Documentos', icon: '📎', feature: 'documents' },
   { key: 'account', label: 'Mi cuenta', icon: '👤' },
 ];
 

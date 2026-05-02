@@ -7,6 +7,7 @@ import RainfallChart from './RainfallChart';
 import RecentFeed from './RecentFeed';
 import AlertsBanner from './AlertsBanner';
 import FieldMap from './FieldMap';
+import SubscriptionBanner from './SubscriptionBanner';
 
 function formatArs(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -19,7 +20,11 @@ function calcDelta(current: number, previous: number): number | null {
   return ((current - previous) / previous) * 100;
 }
 
-export default function OverviewPage() {
+interface OverviewPageProps {
+  onGoToAccount?: () => void;
+}
+
+export default function OverviewPage({ onGoToAccount }: OverviewPageProps = {}) {
   const { data, loading, error, refresh } = useDashboardData();
   const analytics = useAnalyticsData();
 
@@ -47,6 +52,8 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-6">
+      <SubscriptionBanner onGoToAccount={onGoToAccount ?? (() => {})} />
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="flex flex-col gap-3">
