@@ -1,0 +1,15 @@
+{
+  "name": "sow-crop-missing-crop",
+  "description": "Sowing without naming a crop must ask the user, never persist a placeholder",
+  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "steps": [
+    {
+      "send": "sembramos 20 hectareas en el lote Norte ayer",
+      "expect": {
+        "responseContains": ["cultivo"],
+        "responseNotContains": ["UNKNOWN", "sembrado en", "Campaña"],
+        "dbRowCount": { "table": "domain_events", "count": 0 }
+      }
+    }
+  ]
+}

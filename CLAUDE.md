@@ -140,6 +140,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 
 ### Sow Crop
 - `sow_crop` accepts optional `hectares` param for partial-plot sowing → `plot_crops.sowed_hectares`
+- **Missing-crop guard**: if the user says "sembré/sembramos" without naming a crop, both the prompt (rule in `agent-prompt-builder.ts` distinguishing IDENTIFICATION data from BUSINESS data) AND a defensive `isPlaceholder()` guard in `src/utils/guards.ts` block persistence. Handler responds "🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)" and writes nothing to `plot_crops`. Same guard applied to `harvest_crop`. Detects `<UNKNOWN>`, "desconocido", "?", empty, and generic echoes like "cultivo"/"producto".
 
 ### Harvest Loads
 - `harvest_crop` accepts optional `loads[]` (per-truck: driver_name, weight_kg, destination?, destinatario?, truck_plate?, humidity_pct?, quality_metrics?). Only driver+weight required.

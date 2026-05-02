@@ -22,6 +22,7 @@ import { formatHistoryResponse } from './plot-query.service.js';
 import { formatDateAR } from '../../utils/date.js';
 import { formatQuantityHuman } from '../../utils/format-quantity.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
+import { isPlaceholder } from '../../utils/guards.js';
 import { validateStageCode } from './stage-code-validator.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
 import type { PendingActivity } from '../../middleware/pending-activities.js';
@@ -262,6 +263,9 @@ export class AgronomyHandler {
 
     if (pending.command === 'sow_crop') {
       const crop = cmd.crop as string;
+      if (isPlaceholder(crop)) {
+        return { messages: ['🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)'] };
+      }
       const sowedHa = cmd.hectares != null ? Number(cmd.hectares) : null;
       const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotId, crop, undefined, sowedHa);
       const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
@@ -286,6 +290,9 @@ export class AgronomyHandler {
 
     if (pending.command === 'harvest_crop') {
       const crop = cmd.crop as string;
+      if (isPlaceholder(crop)) {
+        return { messages: ['🌾 ¿Qué cultivo cosechaste? (ej: soja, maíz, trigo, girasol)'] };
+      }
       const yieldKg = cmd.yieldKg != null ? Number(cmd.yieldKg) : null;
       const yieldNotes = (cmd.yieldNotes as string) || null;
       const harvested = await this.cropService.harvestCrop(plotId, crop, cmd.eventDate as Date | undefined, yieldKg, yieldNotes);
@@ -827,6 +834,9 @@ export class AgronomyHandler {
       // --- Crops ---
 
       case 'sow_crop': {
+        if (isPlaceholder(cmd.crop)) {
+          return { messages: ['🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)'] };
+        }
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,
@@ -884,6 +894,9 @@ export class AgronomyHandler {
       }
 
       case 'harvest_crop': {
+        if (isPlaceholder(cmd.crop)) {
+          return { messages: ['🌾 ¿Qué cultivo cosechaste? (ej: soja, maíz, trigo, girasol)'] };
+        }
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,
