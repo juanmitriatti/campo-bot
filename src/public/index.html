@@ -1876,9 +1876,12 @@
         </div>
       </div>
 
-      <!-- Recent Expenses -->
+      <!-- Soporte: Gastos editables -->
       <div class="detail-section">
-        <h3>&Uacute;ltimos Gastos</h3>
+        <h3>Soporte &mdash; Gastos del usuario</h3>
+        <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+          Editar o borrar gastos del usuario en su nombre. Cada acci&oacute;n queda en el historial de soporte.
+        </p>
         <div class="table-responsive">
           <table>
             <thead>
@@ -1887,12 +1890,78 @@
                 <th>Categor&iacute;a</th>
                 <th>Monto</th>
                 <th>Descripci&oacute;n</th>
+                <th>Lote / Campo</th>
+                <th style="width: 120px;">Acciones</th>
               </tr>
             </thead>
-            <tbody id="expenses-table-body">
+            <tbody id="support-expenses-body">
               <tr>
-                <td colspan="4">
+                <td colspan="6">
                   <div class="loading"><div class="spinner"></div> Cargando gastos...</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Soporte: Conversaci&oacute;n con el bot -->
+      <div class="detail-section">
+        <h3>Soporte &mdash; Conversaci&oacute;n con el bot</h3>
+        <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+          &Uacute;ltimos 100 mensajes intercambiados con el bot. &Uacute;til cuando el usuario reporta un registro raro.
+        </p>
+        <div id="support-conversation-container" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: #fafafa;">
+          <div class="loading"><div class="spinner"></div> Cargando conversaci&oacute;n...</div>
+        </div>
+      </div>
+
+      <!-- Soporte: Reembolso MercadoPago -->
+      <div class="detail-section">
+        <h3>Soporte &mdash; Reembolso de pago (MercadoPago)</h3>
+        <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+          Reembolsa un pago concreto. <strong>El paymentId</strong> es el id del pago en MP (no el id de la suscripci&oacute;n) &mdash; busc&aacute;lo en el panel de MercadoPago. Dejar el monto vac&iacute;o reembolsa el total.
+        </p>
+        <div class="form-grid" style="grid-template-columns: 2fr 1fr 2fr;">
+          <div class="form-group">
+            <label for="support-refund-payment-id">Payment ID (MP)</label>
+            <input type="text" id="support-refund-payment-id" placeholder="ej: 12345678901">
+          </div>
+          <div class="form-group">
+            <label for="support-refund-amount">Monto ARS (opcional)</label>
+            <input type="number" id="support-refund-amount" placeholder="vac&iacute;o = total" min="0" step="0.01">
+          </div>
+          <div class="form-group">
+            <label for="support-refund-reason">Motivo</label>
+            <input type="text" id="support-refund-reason" placeholder="ej: cobrado 2x">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-danger btn-sm" onclick="supportRefund()">Reembolsar</button>
+        </div>
+      </div>
+
+      <!-- Soporte: Historial de auditor&iacute;a -->
+      <div class="detail-section">
+        <h3>Soporte &mdash; Historial de acciones de admin</h3>
+        <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+          Todo lo que un admin tocó sobre este usuario (edits, deletes, refunds).
+        </p>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Admin</th>
+                <th>Acci&oacute;n</th>
+                <th>Recurso</th>
+                <th>Motivo</th>
+              </tr>
+            </thead>
+            <tbody id="support-audit-body">
+              <tr>
+                <td colspan="5">
+                  <div class="loading"><div class="spinner"></div> Cargando historial...</div>
                 </td>
               </tr>
             </tbody>
@@ -2803,15 +2872,12 @@
         '<div class="loading"><div class="spinner"></div> Cargando datos de IA...</div>';
       document.getElementById('audio-usage-cards').innerHTML =
         '<div class="loading"><div class="spinner"></div> Cargando datos de audio...</div>';
-      document.getElementById('expenses-table-body').innerHTML =
-        '<tr><td colspan="4"><div class="loading"><div class="spinner"></div> Cargando gastos...</div></td></tr>';
       document.getElementById('financial-summary-cards').innerHTML =
         '<div class="loading"><div class="spinner"></div> Cargando resumen...</div>';
 
-      // Fetch user data
+      // Fetch user data (header info)
       apiFetch('/admin/api/users/' + id).then(function(user) {
         if (!user) return;
-
         document.getElementById('detail-user-title').textContent = [user.name, user.lastName].filter(Boolean).join(' ') || 'Usuario';
         document.getElementById('detail-name').value = user.name || '';
         document.getElementById('detail-last-name').value = user.lastName || '';
@@ -2821,33 +2887,210 @@
         document.getElementById('detail-address').value = user.address || '';
         document.getElementById('detail-postal-code').value = user.postalCode || '';
         document.getElementById('detail-province').value = user.province || '';
-
-        // Render recent expenses
-        if (user.recentExpenses && user.recentExpenses.length) {
-          var html = '';
-          for (var i = 0; i < user.recentExpenses.length; i++) {
-            var e = user.recentExpenses[i];
-            html += '<tr>'
-              + '<td>' + formatDate(e.date) + '</td>'
-              + '<td>' + escapeHtml(e.category || '-') + '</td>'
-              + '<td style="color: var(--danger); font-weight: 500;">' + formatMoney(e.amount) + '</td>'
-              + '<td>' + escapeHtml(e.description || '-') + '</td>'
-              + '</tr>';
-          }
-          document.getElementById('expenses-table-body').innerHTML = html;
-        } else {
-          document.getElementById('expenses-table-body').innerHTML =
-            '<tr><td colspan="4"><div class="empty-state">No hay gastos recientes</div></td></tr>';
-        }
       });
 
-      // Load settings, AI usage, audio usage, financial summary, plan selector, and shared fields in parallel
+      // Reset support refund form between users
+      var rpId = document.getElementById('support-refund-payment-id'); if (rpId) rpId.value = '';
+      var rpAmt = document.getElementById('support-refund-amount'); if (rpAmt) rpAmt.value = '';
+      var rpReason = document.getElementById('support-refund-reason'); if (rpReason) rpReason.value = '';
+
       loadUserSettings(id);
       loadAiUsage(id);
       loadAudioUsage(id);
       loadUserPlanSelector(id);
       loadUserFinancialSummary(id);
       loadUserSharedFields(id);
+      loadSupportExpenses(id);
+      loadSupportConversation(id);
+      loadSupportAuditLog(id);
+    }
+
+    // ========== SUPPORT \u2014 EXPENSES (admin can edit/delete) ==========
+    function loadSupportExpenses(id) {
+      var body = document.getElementById('support-expenses-body');
+      if (!body) return;
+      body.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando gastos...</div></td></tr>';
+      apiFetch('/admin/api/users/' + id + '/expenses?limit=50').then(function(data) {
+        if (!data || !data.expenses) {
+          body.innerHTML = '<tr><td colspan="6"><div class="empty-state">Error al cargar</div></td></tr>';
+          return;
+        }
+        if (data.expenses.length === 0) {
+          body.innerHTML = '<tr><td colspan="6"><div class="empty-state">No tiene gastos registrados</div></td></tr>';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < data.expenses.length; i++) {
+          var e = data.expenses[i];
+          var loc = [e.plot_name, e.field_name].filter(Boolean).join(' / ') || '-';
+          var deletedStyle = e.deleted_at ? 'opacity: 0.5; text-decoration: line-through;' : '';
+          var deletedTag = e.deleted_at ? ' <span style="color: var(--danger); font-size: 11px;">(borrado)</span>' : '';
+          html += '<tr style="' + deletedStyle + '">'
+            + '<td>' + formatDate(e.expense_date) + deletedTag + '</td>'
+            + '<td>' + escapeHtml(e.category || '-') + '</td>'
+            + '<td style="color: var(--danger); font-weight: 500;">' + (e.currency === 'USD' ? 'USD ' : '$') + Number(e.amount).toLocaleString('es-AR') + '</td>'
+            + '<td>' + escapeHtml(e.description || '-') + '</td>'
+            + '<td>' + escapeHtml(loc) + '</td>'
+            + '<td>'
+            + (e.deleted_at
+              ? ''
+              : '<button class="btn btn-secondary btn-sm" style="margin-right: 4px;" onclick="supportEditExpense(' + id + ', ' + e.id + ')">Editar</button>'
+                + '<button class="btn btn-danger btn-sm" onclick="supportDeleteExpense(' + id + ', ' + e.id + ')">Borrar</button>')
+            + '</td>'
+            + '</tr>';
+        }
+        body.innerHTML = html;
+      });
+    }
+
+    function supportEditExpense(userId, expenseId) {
+      var newDescription = prompt('Nueva descripci\u00f3n (vac\u00edo = no cambiar):');
+      if (newDescription === null) return;
+      var newAmountStr = prompt('Nuevo monto (vac\u00edo = no cambiar):');
+      if (newAmountStr === null) return;
+      var reason = prompt('Motivo de la edici\u00f3n (queda en el audit log):', 'Pedido del usuario');
+      if (reason === null) return;
+      var body = { reason: reason };
+      if (newDescription.trim() !== '') body.description = newDescription.trim();
+      if (newAmountStr.trim() !== '') {
+        var n = Number(newAmountStr.trim());
+        if (isNaN(n) || n < 0) { showToast('Monto inv\u00e1lido', 'error'); return; }
+        body.amount = n;
+      }
+      if (!body.description && body.amount === undefined) {
+        showToast('Nada que cambiar', 'error');
+        return;
+      }
+      apiFetch('/admin/api/users/' + userId + '/expenses/' + expenseId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(function(res) {
+        if (!res) return;
+        showToast('Gasto editado');
+        loadSupportExpenses(userId);
+        loadSupportAuditLog(userId);
+      });
+    }
+
+    function supportDeleteExpense(userId, expenseId) {
+      var reason = prompt('Motivo del borrado (queda en el audit log):', 'Pedido del usuario');
+      if (reason === null) return;
+      if (!confirm('Borrar el gasto #' + expenseId + '? Es soft-delete, queda recuperable.')) return;
+      apiFetch('/admin/api/users/' + userId + '/expenses/' + expenseId, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason }),
+      }).then(function(res) {
+        if (!res) return;
+        showToast('Gasto borrado');
+        loadSupportExpenses(userId);
+        loadSupportAuditLog(userId);
+      });
+    }
+
+    // ========== SUPPORT \u2014 CONVERSATION LOG ==========
+    function loadSupportConversation(id) {
+      var container = document.getElementById('support-conversation-container');
+      if (!container) return;
+      container.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando conversaci\u00f3n...</div>';
+      apiFetch('/admin/api/users/' + id + '/conversation-log?limit=100').then(function(data) {
+        if (!data || !data.messages) {
+          container.innerHTML = '<div class="empty-state">Error al cargar</div>';
+          return;
+        }
+        if (data.messages.length === 0) {
+          container.innerHTML = '<div class="empty-state">Sin mensajes registrados</div>';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < data.messages.length; i++) {
+          var m = data.messages[i];
+          var when = formatDateTime(m.created_at);
+          var sourceLabel = m.source ? '<span style="color: var(--text-light); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 8px;">' + escapeHtml(m.source) + '</span>' : '';
+          var intentLabel = m.intent_type ? '<span style="background: #e0f2fe; color: #075985; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 6px;">' + escapeHtml(m.intent_type) + '</span>' : '';
+          html += '<div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">'
+            + '<div style="font-size: 11px; color: var(--text-light);">' + when + sourceLabel + intentLabel + '</div>'
+            + '<div style="margin: 4px 0; padding: 6px 10px; background: white; border-radius: 6px; border-left: 3px solid var(--primary);">'
+            + '<strong style="color: var(--primary); font-size: 11px; text-transform: uppercase;">User:</strong> '
+            + escapeHtml(m.message_text || '') + '</div>'
+            + (m.response_text
+              ? '<div style="margin: 4px 0; padding: 6px 10px; background: white; border-radius: 6px; border-left: 3px solid var(--accent);">'
+                + '<strong style="color: var(--accent); font-size: 11px; text-transform: uppercase;">Bot:</strong> '
+                + escapeHtml(m.response_text) + '</div>'
+              : '')
+            + '</div>';
+        }
+        container.innerHTML = html;
+      });
+    }
+
+    // ========== SUPPORT \u2014 REFUND ==========
+    function supportRefund() {
+      if (currentUserId == null) return;
+      var paymentId = document.getElementById('support-refund-payment-id').value.trim();
+      var amountStr = document.getElementById('support-refund-amount').value.trim();
+      var reason = document.getElementById('support-refund-reason').value.trim();
+      if (!paymentId) { showToast('Pegale el payment ID de MP', 'error'); return; }
+      var body = { paymentId: paymentId };
+      if (amountStr) {
+        var n = Number(amountStr);
+        if (isNaN(n) || n <= 0) { showToast('Monto inv\u00e1lido', 'error'); return; }
+        body.amountArs = n;
+      }
+      if (reason) body.reason = reason;
+      var label = body.amountArs ? '$' + body.amountArs.toLocaleString('es-AR') : 'el TOTAL';
+      if (!confirm('Reembolsar ' + label + ' del pago ' + paymentId + '?\n\nEsta operaci\u00f3n se ejecuta en MercadoPago y NO se puede deshacer.')) return;
+      apiFetch('/admin/api/users/' + currentUserId + '/subscription/refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(function(res) {
+        if (!res) return;
+        showToast('Reembolso enviado a MercadoPago');
+        document.getElementById('support-refund-payment-id').value = '';
+        document.getElementById('support-refund-amount').value = '';
+        document.getElementById('support-refund-reason').value = '';
+        loadSupportAuditLog(currentUserId);
+      });
+    }
+
+    // ========== SUPPORT \u2014 AUDIT LOG ==========
+    function loadSupportAuditLog(id) {
+      var body = document.getElementById('support-audit-body');
+      if (!body) return;
+      body.innerHTML = '<tr><td colspan="5"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>';
+      apiFetch('/admin/api/support/audit-log?userId=' + id + '&limit=50').then(function(data) {
+        if (!data || !data.entries) {
+          body.innerHTML = '<tr><td colspan="5"><div class="empty-state">Error al cargar</div></td></tr>';
+          return;
+        }
+        if (data.entries.length === 0) {
+          body.innerHTML = '<tr><td colspan="5"><div class="empty-state">Sin acciones de soporte registradas</div></td></tr>';
+          return;
+        }
+        var ACTION_LABELS = {
+          edit_expense: 'Edit\u00f3 gasto',
+          delete_expense: 'Borr\u00f3 gasto',
+          refund_payment: 'Reembols\u00f3 pago',
+        };
+        var html = '';
+        for (var i = 0; i < data.entries.length; i++) {
+          var e = data.entries[i];
+          var resource = e.resource_type && e.resource_id
+            ? escapeHtml(e.resource_type) + ' #' + escapeHtml(e.resource_id)
+            : '-';
+          var actionLabel = ACTION_LABELS[e.action] || escapeHtml(e.action);
+          html += '<tr>'
+            + '<td>' + formatDateTime(e.created_at) + '</td>'
+            + '<td>' + escapeHtml(e.admin_name || '?') + ' <span style="color: var(--text-light); font-size: 11px;">' + escapeHtml(e.admin_email || '') + '</span></td>'
+            + '<td>' + actionLabel + '</td>'
+            + '<td>' + resource + '</td>'
+            + '<td>' + escapeHtml(e.reason || '-') + '</td>'
+            + '</tr>';
+        }
+        body.innerHTML = html;
+      });
     }
 
     function loadUserFinancialSummary(id) {

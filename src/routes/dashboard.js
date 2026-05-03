@@ -2850,15 +2850,22 @@ router.get("/api/users/:id/conversation-log", async (req, res) => {
   const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
   try {
     const { rows } = await pool.query(
-      `SELECT id, message_text, response_text, intent_type, source, confidence,
-              created_at
+      `SELECT id, message_text, response_text, intent_type, intent_command,
+              flow_state, ai_used, confidence, direction, created_at
          FROM conversation_logs
         WHERE user_id = $1
         ORDER BY created_at DESC
         LIMIT $2`,
       [userId, limit],
     );
-    res.json({ messages: rows });
+    // Map direction → source so the frontend (which already expects `source`)
+    // doesn't need a schema change.
+    res.json({
+      messages: rows.map(r => ({
+        ...r,
+        source: r.direction || null,
+      })),
+    });
   } catch (error) {
     console.error('Error fetching support conversation log:', error);
     logError('admin-api', 'SUPPORT_CONVERSATION_LOG', error);
