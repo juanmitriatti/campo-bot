@@ -1598,6 +1598,14 @@ async function processTextMessage(
 
   if (pending) pendingStore.clear(phone);
 
+  // --- Phase 2: regex fallback refused to parse a complex intent ---
+  if (intent.type === 'fallback_blocked') {
+    const { fallbackBlockedCopy } = await import('../services/intent-safety.js');
+    const reply = fallbackBlockedCopy(intent.reason, intent.attemptedCommand);
+    conversationLogger.log(userId, phone, text, reply, 'fallback_blocked', intent.attemptedCommand ?? null, null, null, aiUsed, Date.now() - startTime, false, 0, toolCallsData, agentMode, 'telegram').catch(() => {});
+    return [{ type: 'text', text: reply }];
+  }
+
   // --- Partial parse → flow ---
   if (intent.type === 'expense_partial') {
     { const prereq = await hasNoPrerequisites(userId); if (prereq.blocked) return prereq.items!; }

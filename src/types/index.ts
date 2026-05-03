@@ -61,7 +61,14 @@ export type Intent =
   | { type: 'expense_partial'; data: Partial<ParsedExpense> & { type: 'expense' } }
   | { type: 'income_partial'; data: Partial<ParsedIncome> & { type: 'income' } }
   | { type: 'ambiguous'; candidates: AmbiguousCandidate[] }
-  | { type: 'unknown'; raw: string };
+  | { type: 'unknown'; raw: string }
+  /**
+   * Phase 2 — emitted by the regex fallback when the parsed command is not
+   * in SAFE_FALLBACK_INTENTS. Tells the controller to respond with a
+   * user-friendly "no pude procesar esto sin IA" message instead of
+   * silently degrading or guessing.
+   */
+  | { type: 'fallback_blocked'; reason: 'ai_required' | 'unparseable_complex'; raw: string; attemptedCommand?: string };
 
 export interface AmbiguousCandidate {
   intent: Intent;
