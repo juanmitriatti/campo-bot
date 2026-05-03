@@ -46,6 +46,60 @@ describe('IntentClassifier — local parsing', () => {
   // Expense/income regex parsing removed from classifier — now AI-only intents
 });
 
+describe('IntentClassifier — Phase 2 fallback gating', () => {
+  // No extractor, no agent → goes straight to regex fallback (step 4).
+
+  it('blocks generate_agro_report when AI is unavailable (returns fallback_blocked)', async () => {
+    const result = await classifier.classify('reporte agronomico del lote norte', userId, defaultSettings);
+    expect(result.intent.type).toBe('fallback_blocked');
+    if (result.intent.type === 'fallback_blocked') {
+      expect(result.intent.reason).toBe('ai_required');
+      expect(result.intent.attemptedCommand).toBe('generate_agro_report');
+      expect(result.intent.raw).toBe('reporte agronomico del lote norte');
+    }
+    expect(result.confidence).toBe(0);
+    expect(result.aiUsed).toBe(false);
+  });
+
+  // Note: weather_* commands are listed in SAFE_FALLBACK_INTENTS but the
+  // current parser doesn't actually emit them via parseCommand (the
+  // dispatchWeather helper isn't wired into the COMMAND_PATTERNS table
+  // anymore — weather is AI-only today). The whitelist entries are
+  // future-proofing in case wiring is restored. So we don't assert on
+  // weather here; query_plot_history below covers the read-only-SAFE case.
+
+  it('allows query_plot_history through the fallback (read-only)', async () => {
+    const result = await classifier.classify('cuando se fumigo en el lote norte', userId, defaultSettings);
+    expect(result.intent.type).toBe('command');
+    if (result.intent.type === 'command') {
+      expect(result.intent.data.command).toBe('query_plot_history');
+    }
+  });
+
+  it('does NOT attempt to parse "gasté 50000 en gasoil" via fallback (financial = AI required)', async () => {
+    // The regex parser doesn't have an expense pattern for this anymore (Phase A
+    // refactor removed it). The classifier's fallback either returns
+    // fallback_blocked (if some other rule triggered) or unknown (no match).
+    // What it MUST NEVER return is a partially-parsed expense intent.
+    const result = await classifier.classify('gaste 50000 en gasoil', userId, defaultSettings);
+    expect(result.intent.type).not.toBe('expense');
+    expect(result.intent.type).not.toBe('expense_partial');
+    if (result.intent.type === 'command') {
+      // Must not have parsed log_expense or any other financial cmd
+      expect(result.intent.data.command).not.toBe('log_expense');
+      expect(result.intent.data.command).not.toBe('log_income');
+    }
+  });
+
+  it('still allows log_observation via "observación:" prefix (text-only safe)', async () => {
+    const result = await classifier.classify('observacion: vi rama negra en lote sur', userId, defaultSettings);
+    expect(result.intent.type).toBe('command');
+    if (result.intent.type === 'command') {
+      expect(result.intent.data.command).toBe('log_observation');
+    }
+  });
+});
+
 describe('IntentClassifier — AI intent extraction via mock extractor', () => {
   const mockExtractor = {
     extract: vi.fn(),

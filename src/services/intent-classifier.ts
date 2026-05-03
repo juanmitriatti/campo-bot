@@ -2,6 +2,7 @@ import { ParserService } from './parser.service.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { stripFillerPhrases } from '../utils/text-normalizer.js';
 import { getSettingNumber, getSettingBool } from './settings.service.js';
+import { isSafeFallbackCommand } from './intent-safety.js';
 import { pool } from '../config/db.js';
 import { logError } from '../services/error-logger.js';
 import type { IntentExtractor } from '../ai/intent-extractor.js';
@@ -293,6 +294,13 @@ export class IntentClassifier {
    * Full regex chain: commands → observation (structural fallback).
    * Income/expense parsing removed — handled by AI primary path.
    * Observation detection runs after command checks.
+   *
+   * Phase 2 guard: this path only runs when the AI pipeline was unavailable
+   * (rate-limit, timeout, low confidence). Any command that isn't in
+   * SAFE_FALLBACK_INTENTS is blocked here and returned as a
+   * `fallback_blocked` intent so the controller can respond with a
+   * user-friendly "no pude procesar esto sin IA" message instead of letting
+   * a half-parsed write hit the DB.
    */
   private async classifyWithRegex(
     text: string,
@@ -303,6 +311,24 @@ export class IntentClassifier {
     // Try all structured commands (including non-trivial ones)
     const cmd = this.parser.parseCommand(cleaned) || this.parser.parseCommand(preprocessed);
     if (cmd) {
+      // Phase 2: only allow safe commands through the regex fallback. Anything
+      // that mutates structured data or requires AI to disambiguate is blocked.
+      if (!isSafeFallbackCommand(cmd.command as string)) {
+        console.log(`[FALLBACK_BLOCKED] user=${userId} command=${cmd.command} reason=ai_required raw="${text.slice(0, 80)}"`);
+        return {
+          intent: {
+            type: 'fallback_blocked',
+            reason: 'ai_required',
+            raw: text,
+            attemptedCommand: cmd.command as string,
+          },
+          confidence: 0,
+          aiUsed: false,
+          source: 'command',
+          missingFields: [],
+        };
+      }
+      console.log(`[FALLBACK_SAFE] user=${userId} command=${cmd.command} source=regex`);
       return {
         intent: { type: 'command', data: cmd },
         confidence: 0.95,
