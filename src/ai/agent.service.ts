@@ -10,6 +10,7 @@ import { getSetting, getSettingNumber, getSettingBool } from '../services/settin
 import { saveAiFallbackLog } from '../services/expenses.js';
 import { logError } from '../services/error-logger.js';
 import { getActivityDictionary } from '../services/activity-dictionary.service.js';
+import { limitNotifier } from '../services/limit-notifier.service.js';
 import type { UserId, UserSettings, AiUsage } from '../types/index.js';
 
 const anthropic = new Anthropic({
@@ -87,7 +88,19 @@ export class AgentService {
       const claudeLimit = await this.getAiDailyLimit(userId, settings);
       const repo = this.userRepo ?? new UserRepository();
       const dailyCount = await repo.getDailyClaudeCount(userId);
-      if (dailyCount >= claudeLimit) return null;
+      if (dailyCount >= claudeLimit) {
+        // Phase 1 — soft-block transparente. The pipeline still falls through
+        // to regex (caller decides what to do), but the user gets ONE message
+        // per day so the rate-limit isn't silent.
+        const planName = await this.getPlanNameForLog(userId);
+        void limitNotifier.maybeNotifyHit({
+          userId: Number(userId),
+          used: dailyCount,
+          limit: claudeLimit,
+          planName,
+        });
+        return null;
+      }
 
       // Load user context, conversation history, and few-shot examples in parallel
       const historyMaxChars = (await getSettingNumber('CONVERSATION_HISTORY_MAX_CHARS')) ?? 4000;
@@ -196,6 +209,21 @@ export class AgentService {
       await repo.saveAiUsage(userId, usage);
       saveAiFallbackLog(userId, text, { type: 'agent_tool_use' }, usage).catch(() => {});
 
+      // Phase 1 — fire the 80%-warning when this call brings the user across
+      // the threshold. Deduped to once-per-day inside the notifier. We use
+      // dailyCount + 1 because saveAiUsage just inserted a new row.
+      const newCount = dailyCount + 1;
+      const warningThreshold = Math.floor(claudeLimit * 0.8);
+      if (warningThreshold > 0 && newCount >= warningThreshold && newCount < claudeLimit) {
+        const planName = await this.getPlanNameForLog(userId);
+        void limitNotifier.maybeNotifyWarning({
+          userId: Number(userId),
+          used: newCount,
+          limit: claudeLimit,
+          planName,
+        });
+      }
+
       // Extract tool calls and conversational text from response
       const toolCalls: AgentToolCall[] = [];
       let conversationalText: string | null = null;
@@ -253,5 +281,18 @@ export class AgentService {
       // Plan lookup failed — use fallback
     }
     return settings.claude_daily_limit || 50;
+  }
+
+  /**
+   * Best-effort plan-name resolution used only for log/notification context.
+   * Failures are non-fatal — limit notifications still go out.
+   */
+  private async getPlanNameForLog(userId: UserId): Promise<string | null> {
+    try {
+      const plan = await this.planRepo.getUserPlan(userId);
+      return plan?.name ?? null;
+    } catch {
+      return null;
+    }
   }
 }
