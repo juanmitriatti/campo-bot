@@ -61,7 +61,15 @@ export type Intent =
   | { type: 'expense_partial'; data: Partial<ParsedExpense> & { type: 'expense' } }
   | { type: 'income_partial'; data: Partial<ParsedIncome> & { type: 'income' } }
   | { type: 'ambiguous'; candidates: AmbiguousCandidate[] }
-  | { type: 'unknown'; raw: string };
+  | { type: 'unknown'; raw: string }
+  /**
+   * Phase 3 — emitted at the very top of the pipeline when the user's
+   * trial has expired and they have no active paid subscription. The
+   * controller responds with a clear "tu prueba terminó" message + CTA to
+   * /dashboard/account. No data writes happen in this path — datos
+   * existentes preservados.
+   */
+  | { type: 'trial_expired'; raw: string };
 
 export interface AmbiguousCandidate {
   intent: Intent;

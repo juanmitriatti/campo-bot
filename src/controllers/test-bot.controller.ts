@@ -1091,6 +1091,14 @@ async function processTextMessage(
 
   if (pending) pendingStore.clear(phone);
 
+  // --- Phase 3: trial expired (access-gate blocked AI / writes) ---
+  if (intent.type === 'trial_expired') {
+    const { trialExpiredCopy } = await import('../services/access-gate.service.js');
+    const reply = trialExpiredCopy();
+    conversationLogger.log(userId, phone, text, reply, 'trial_expired', null, null, null, aiUsed, Date.now() - startTime, false, 0).catch(() => {});
+    return [{ type: 'text', text: reply }];
+  }
+
   // --- Partial parse → flow ---
   if (intent.type === 'expense_partial') {
     { const prereq = await hasNoPrerequisites(userId); if (prereq.blocked) return prereq.items!; }

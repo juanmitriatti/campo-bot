@@ -68,6 +68,7 @@ export class SubscriptionService {
     await this.repo.createTrial({ userId, planId: plan.id, trialDays });
     await this.plans.setUserPlan(userId, plan.id);
     this.featureGate.invalidateCache();
+    console.log(`[TRIAL_STARTED] user=${userId} plan=${plan.name} days=${trialDays}`);
   }
 
   // ----- Status query -----
@@ -257,6 +258,7 @@ export class SubscriptionService {
     for (const sub of expiringTrials) {
       await this.repo.updateStatus({ id: sub.id, status: 'expired' });
       await this.downgradeToFree(sub.user_id as UserId);
+      console.log(`[TRIAL_EXPIRED] user=${sub.user_id} sub_id=${sub.id} via=cron_sweep`);
       trialExpired++;
     }
 

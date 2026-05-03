@@ -46,6 +46,18 @@ describe('IntentClassifier — local parsing', () => {
   // Expense/income regex parsing removed from classifier — now AI-only intents
 });
 
+describe('IntentClassifier — Phase 3 access gate', () => {
+  it('grandfathered users (no subscription row) flow through the normal pipeline', async () => {
+    // Without a real DB, getUserAccessMode catches the SELECT failure and
+    // fails open ('full'). 'ayuda' should classify as a help command.
+    const result = await classifier.classify('ayuda', userId, defaultSettings);
+    expect(result.intent.type).toBe('command');
+    if (result.intent.type === 'command') {
+      expect(result.intent.data.command).toBe('help');
+    }
+  });
+});
+
 describe('IntentClassifier — AI intent extraction via mock extractor', () => {
   const mockExtractor = {
     extract: vi.fn(),
