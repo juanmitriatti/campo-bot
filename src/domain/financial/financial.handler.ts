@@ -183,43 +183,53 @@ export class FinancialHandler {
   }
 
   private formatPlotInfo(info: PlotInfoData): string {
-    const resultado = info.incomes.total - info.expenses.total;
-    let msg = `📍 *Lote ${info.name}* (campo ${info.field_name})\n`;
-    if (info.area_hectares) msg += `Superficie: ${info.area_hectares} ha\n`;
-    if (info.soil_type) msg += `Suelo: ${info.soil_type}\n`;
+    // New layout: AGRO first (cultivo + actividades + observaciones + lluvia)
+    // → financial summary one-liner → PDF report hint. Empty agro sections
+    // render explicit "ninguno/ninguna" so the user can see at a glance that
+    // the data isn't there yet (instead of inferring from absence).
+    const meta: string[] = [];
+    if (info.area_hectares) meta.push(`${info.area_hectares} ha`);
+    if (info.soil_type) meta.push(info.soil_type);
+    let msg = `📍 *Lote ${info.name}* — campo ${info.field_name}${meta.length ? ` · ${meta.join(' · ')}` : ''}\n`;
 
-    if (info.activeCrop) {
-      msg += `\n🌱 *Cultivo activo:* ${info.activeCrop.crop} (${info.activeCrop.season_year})\n`;
-    }
+    msg += `\n🌱 *Cultivo activo:* ${info.activeCrop ? `${info.activeCrop.crop} (${info.activeCrop.season_year})` : 'ninguno'}\n`;
 
-    msg += `\n📊 *Este mes:*\n`;
-    msg += `💸 Gastos: $${info.expenses.total.toLocaleString('es-AR')} (${info.expenses.count} reg.)\n`;
-    msg += `💰 Ingresos: $${info.incomes.total.toLocaleString('es-AR')} (${info.incomes.count} reg.)\n`;
-    msg += `📈 Resultado: $${resultado.toLocaleString('es-AR')}\n`;
-    if (info.rainfall.count > 0) {
-      msg += `🌧️ Lluvia: ${info.rainfall.total}mm (${info.rainfall.count} reg.)\n`;
-    }
-
+    msg += `📋 *Actividades recientes:* `;
     if (info.recentActivities && info.recentActivities.length > 0) {
-      msg += `\n📋 *Actividades recientes:*\n`;
+      msg += `\n`;
       for (const a of info.recentActivities) {
         const date = new Date(a.event_date);
         const dateStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
         const { emoji, label } = getActivityLabel(a.event_type);
         const detail = a.product || a.crop || label;
-        msg += `• ${emoji} ${label} — ${detail} (${dateStr})\n`;
+        msg += `  • ${emoji} ${label} — ${detail} (${dateStr})\n`;
       }
+    } else {
+      msg += `ninguna\n`;
     }
 
     const obs = (info as any).observations;
+    msg += `🔍 *Observaciones recientes:* `;
     if (obs && obs.length > 0) {
-      msg += `\n🔍 *Observaciones recientes:*\n`;
+      msg += `\n`;
       for (const o of obs) {
         const date = new Date(o.created_at);
         const dateStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
-        msg += `• ${o.observation_text} (${dateStr})\n`;
+        msg += `  • ${o.observation_text} (${dateStr})\n`;
       }
+    } else {
+      msg += `ninguna\n`;
     }
+
+    msg += `🌧️ *Lluvia (mes):* ${info.rainfall.count > 0 ? `${info.rainfall.total} mm (${info.rainfall.count} reg.)` : '0 mm'}\n`;
+
+    // Financial — one-liner summary
+    const resultado = info.incomes.total - info.expenses.total;
+    msg += `\n💰 *Resumen mes:* gastos $${info.expenses.total.toLocaleString('es-AR')} (${info.expenses.count}) · ingresos $${info.incomes.total.toLocaleString('es-AR')} (${info.incomes.count}) · resultado $${resultado.toLocaleString('es-AR')}\n`;
+
+    // PDF report hint — works on every channel without new callback infra
+    msg += `\n📊 *Reportes en PDF:* pedí _"reporte agro lote ${info.name}"_ o _"reporte financiero lote ${info.name}"_`;
+
     return msg.trimEnd();
   }
 
@@ -1613,30 +1623,37 @@ export class FinancialHandler {
           const label = cmd.entityKeyword === 'lote' ? 'lote' : 'campo';
           return { messages: [`No encontr\u00e9 el ${label} *${cmd.fieldName}*.\nEscrib\u00ed *mis campos* para ver los que ten\u00e9s.`] };
         }
+        // Same layout philosophy as formatPlotInfo: agro first, financial as
+        // a one-liner, PDF hint at the end. Empty observations render as
+        // "ninguna" instead of being silently omitted.
         const resultado = info.incomes.total - info.expenses.total;
-        let msg = `📍 *Campo ${info.name}*\n`;
-        msg += info.city ? `Ubicación: ${formatLocation(info.city, info.province)}\n` : `Ubicación: sin asignar\n`;
+        const metaParts: string[] = [];
         if (info.plotCount && info.plotCount > 0) {
-          msg += `Lotes: ${info.plotCount}`;
-          if (info.totalHectares > 0) msg += ` (${info.totalHectares.toLocaleString('es-AR')} ha)`;
-          msg += `\n`;
+          metaParts.push(`${info.plotCount} lote${info.plotCount > 1 ? 's' : ''}`);
         }
-        msg += `\n📊 *Este mes:*\n`;
-        msg += `💸 Gastos: $${info.expenses.total.toLocaleString('es-AR')} (${info.expenses.count} reg.)\n`;
-        msg += `💰 Ingresos: $${info.incomes.total.toLocaleString('es-AR')} (${info.incomes.count} reg.)\n`;
-        msg += `📈 Resultado: $${resultado.toLocaleString('es-AR')}\n`;
-        if (info.rainfall.count > 0) {
-          msg += `🌧️ Lluvia: ${info.rainfall.total}mm (${info.rainfall.count} reg.)\n`;
-        }
+        if (info.totalHectares > 0) metaParts.push(`${info.totalHectares.toLocaleString('es-AR')} ha`);
+        let msg = `📍 *Campo ${info.name}*${metaParts.length ? ` · ${metaParts.join(' · ')}` : ''}\n`;
+        msg += info.city ? `📌 ${formatLocation(info.city, info.province)}\n` : `📌 Ubicación: sin asignar\n`;
+
+        msg += `\n🔍 *Observaciones recientes:* `;
         if (info.observations && info.observations.length > 0) {
-          msg += `\n🔍 *Observaciones recientes:*\n`;
+          msg += `\n`;
           for (const o of info.observations) {
             const date = new Date(o.created_at);
             const dateStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
             const plotLabel = o.plot_name ? ` [${o.plot_name}]` : '';
-            msg += `• ${o.observation_text}${plotLabel} (${dateStr})\n`;
+            msg += `  • ${o.observation_text}${plotLabel} (${dateStr})\n`;
           }
+        } else {
+          msg += `ninguna\n`;
         }
+
+        msg += `🌧️ *Lluvia (mes):* ${info.rainfall.count > 0 ? `${info.rainfall.total} mm (${info.rainfall.count} reg.)` : '0 mm'}\n`;
+
+        msg += `\n💰 *Resumen mes:* gastos $${info.expenses.total.toLocaleString('es-AR')} (${info.expenses.count}) · ingresos $${info.incomes.total.toLocaleString('es-AR')} (${info.incomes.count}) · resultado $${resultado.toLocaleString('es-AR')}\n`;
+
+        msg += `\n📊 *Reportes en PDF:* pedí _"reporte agro campo ${info.name}"_ o _"reporte financiero campo ${info.name}"_`;
+
         return { messages: [msg.trimEnd()], suggestionKey: 'field_info_shown' };
       }
 
