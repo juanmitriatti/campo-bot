@@ -110,8 +110,10 @@ export class CampaignStatsService {
     crop?: string | null,
     seasonYear?: string | null,
   ): Promise<CampaignStats | string> {
-    // Resolve plot
-    const resolved = await this.plotDiscovery.resolveFromNames(userId, fieldName ?? null, plotName ?? null);
+    // Resolve plot — fall back to recently referenced plot when nothing was
+    // specified, so questions like "promedio?" right after talking about a
+    // lote work without re-typing the name.
+    const resolved = await this.plotDiscovery.resolveFromNamesWithContext(userId, fieldName ?? null, plotName ?? null);
     if (!resolved.plotId) {
       return 'No pude identificar el lote. Indicá el lote para ver las estadísticas de la campaña.';
     }

@@ -934,8 +934,11 @@ export async function getOrCreatePlot(fieldId, name) {
 }
 
 export async function getPlotByName(fieldId, plotName) {
+  // Whitespace-insensitive match so "11 d", "11D", "11 D" all hit "11D".
   const result = await pool.query(
-    `SELECT * FROM plots WHERE field_id = $1 AND LOWER(name) = LOWER($2) AND deleted_at IS NULL`,
+    `SELECT * FROM plots WHERE field_id = $1
+       AND REGEXP_REPLACE(LOWER(name), '\\s+', '', 'g') = REGEXP_REPLACE(LOWER($2), '\\s+', '', 'g')
+       AND deleted_at IS NULL`,
     [fieldId, plotName]
   );
   return result.rows[0] || null;
@@ -950,11 +953,13 @@ export async function getPlotsByField(fieldId) {
 }
 
 export async function findPlotByNameAcrossFields(userId, plotName) {
+  // Whitespace-insensitive match (see getPlotByName).
   const result = await pool.query(
     `SELECT p.*, f.name as field_name, f.id as field_id
      FROM plots p
      JOIN fields f ON p.field_id = f.id
-     WHERE f.id IN (${accessibleFieldsSql(1)}) AND LOWER(p.name) = LOWER($2)
+     WHERE f.id IN (${accessibleFieldsSql(1)})
+       AND REGEXP_REPLACE(LOWER(p.name), '\\s+', '', 'g') = REGEXP_REPLACE(LOWER($2), '\\s+', '', 'g')
        AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
     [userId, plotName]
   );

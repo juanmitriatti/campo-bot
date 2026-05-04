@@ -1270,7 +1270,7 @@ export class AgronomyHandler {
       }
 
       case 'close_campaign': {
-        const resolved = await this.plotDiscovery.resolveFromNames(
+        const resolved = await this.plotDiscovery.resolveFromNamesWithContext(
           userId,
           cmd.fieldName as string | null,
           cmd.plotName as string | null
@@ -2547,11 +2547,16 @@ export class AgronomyHandler {
       lines.push(incLine);
     }
 
-    // Yield
+    // Yield — if recorded, show kg and kg/ha. If the campaign was harvested
+    // but the user never logged the kg, surface that explicitly with a hint
+    // instead of silently omitting the line (otherwise "promedio?" returns a
+    // table that doesn't even mention the rinde).
     if (s.yield.kg) {
       let yieldLine = `\n*Rendimiento:* ${s.yield.kg.toLocaleString('es-AR')} kg`;
       if (s.yield.kgPerHa) yieldLine += ` (${s.yield.kgPerHa.toLocaleString('es-AR')} kg/ha)`;
       lines.push(yieldLine);
+    } else if (s.state === 'harvested' || s.state === 'closed') {
+      lines.push(`\n*Rendimiento:* no registrado\n_Cargalo con: "rindió X kg/ha en lote ${s.plot}" o "cosechamos X tn en ${s.plot}"._`);
     }
 
     // Harvest loads detail

@@ -20,6 +20,24 @@ export class PlotDiscoveryService {
     return this.resolveFromNames(userId, fieldName || null, plotName || null);
   }
 
+  /**
+   * Same as resolveFromNames but, if NEITHER campo nor plot is specified
+   * AND the standard auto-resolution returns no plot, falls back to the
+   * most recently used plot from conversation_state. Use for context-aware
+   * commands like "cerrar campaña" or "promedio?" where the user expects
+   * the bot to remember what they were just talking about.
+   */
+  async resolveFromNamesWithContext(
+    userId: UserId,
+    campoName: string | null,
+    plotName: string | null,
+  ): Promise<PlotDiscoveryResult> {
+    const result = await this.resolveFromNames(userId, campoName, plotName);
+    if (result.plotId || campoName || plotName) return result;
+    const fromState = await this._resolveFromConversationState(userId);
+    return fromState.plotId ? fromState : result;
+  }
+
   async resolveFromNames(userId: UserId, campoName: string | null, plotName: string | null): Promise<PlotDiscoveryResult> {
     // Case: pronoun reference → conversation state
     if (plotName === '__last__') {
