@@ -922,6 +922,19 @@ async function handleInteractiveReply(
         const msg = err instanceof Error ? err.message : 'Error al descontar stock';
         return [{ type: 'text', text: `❌ ${msg}` }];
       }
+    } else {
+      // Decline path: persist the user's NO so the activity isn't re-asked.
+      // Mirrors the whatsapp.controller behavior — was missing here.
+      const pending = pendingStockDeductionStore.get(phone) as Record<string, unknown> | undefined;
+      if (pending?.domainEventId) {
+        try {
+          const { StockDeductionService } = await import('../domain/stock/stock-deduction.service.js');
+          const svc = new StockDeductionService();
+          await svc.declineDeduction(pending.domainEventId as number);
+        } catch (err) {
+          console.error('[telegram] declineDeduction failed:', err);
+        }
+      }
     }
     pendingStockDeductionStore.delete(phone);
     return [{ type: 'text', text: accepted ? '📤 Stock descontado.' : '👍 OK, no se descontó del stock.' }];
