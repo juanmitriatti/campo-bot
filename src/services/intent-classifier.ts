@@ -3,6 +3,7 @@ import { UserRepository } from '../domain/users/user.repository.js';
 import { stripFillerPhrases } from '../utils/text-normalizer.js';
 import { getSettingNumber, getSettingBool } from './settings.service.js';
 import { isSafeFallbackCommand } from './intent-safety.js';
+import { getUserAccessMode } from './access-gate.service.js';
 import { pool } from '../config/db.js';
 import { logError } from '../services/error-logger.js';
 import type { IntentExtractor } from '../ai/intent-extractor.js';
@@ -106,6 +107,23 @@ export class IntentClassifier {
     userId: UserId,
     settings: UserSettings
   ): Promise<ParseResult> {
+    // =========================================================================
+    // STEP 0 — Access gate (Phase 3). Read subscription state in real time;
+    // a trial that expired 5 minutes ago is blocked NOW, not after the cron.
+    // Grandfather: users without any subscription row pass as 'full'.
+    // =========================================================================
+    const accessMode = await getUserAccessMode(Number(userId));
+    if (accessMode === 'trial_expired_readonly') {
+      console.log(`[TRIAL_EXPIRED] user=${userId} raw="${text.slice(0, 80)}"`);
+      return {
+        intent: { type: 'trial_expired', raw: text },
+        confidence: 0,
+        aiUsed: false,
+        source: 'command',
+        missingFields: [],
+      };
+    }
+
     // 0. Strip audio transcription filler phrases + preprocess
     const cleaned = stripFillerPhrases(text);
     const preprocessed = this.parser.preprocess(cleaned);

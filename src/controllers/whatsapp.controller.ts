@@ -328,6 +328,13 @@ async function processDocumentWithIntent(
   filename: string | undefined, caption: string, docIntent: DocumentUploadIntent | undefined,
   startTime: number,
 ): Promise<void> {
+  // Phase 3 — block OCR for trial-expired users. Vision API costs real money.
+  const { getUserAccessMode, trialExpiredCopy } = await import('../services/access-gate.service.js');
+  if (await getUserAccessMode(Number(userId)) === 'trial_expired_readonly') {
+    console.log(`[TRIAL_EXPIRED] user=${userId} channel=document source=whatsapp`);
+    await sendMessage(phone, trialExpiredCopy());
+    return;
+  }
   const { document: doc, extraction, isExisting } = await documentService.processDocument(
     userId, buffer, mediaMime, filename, 'whatsapp', caption,
   );
@@ -1123,6 +1130,16 @@ router.post('/', async (req: Request, res: Response) => {
     // --- Audio message handling ---
     if (!text && message.type === 'audio' && message.audio?.id) {
       const user = await userRepository.getOrCreate(phone);
+      // Phase 3 — block audio processing when the trial expired. Whisper
+      // costs real money, so we can't let a trial-expired user keep
+      // racking up bills.
+      const { getUserAccessMode, trialExpiredCopy } = await import('../services/access-gate.service.js');
+      if (await getUserAccessMode(user.id) === 'trial_expired_readonly') {
+        console.log(`[TRIAL_EXPIRED] user=${user.id} channel=audio source=whatsapp`);
+        await sendMessage(phone, trialExpiredCopy());
+        res.sendStatus(200);
+        return;
+      }
       const hasAudio = await featureGate.hasFeature(user.id, 'audio');
       if (!hasAudio) {
         await sendMessage(phone, '\ud83d\udd12 El procesamiento de audios no est\u00e1 disponible en tu plan actual.\n\nEscrib\u00ed *plan* para ver las opciones.');
@@ -1746,6 +1763,13 @@ router.post('/', async (req: Request, res: Response) => {
     if (pending) {
       pendingStore.clear(phone);
     }
+
+    // --- Phase 3: trial expired (access-gate blocked AI / writes) ---
+    if (intent.type === 'trial_expired') {
+      const { trialExpiredCopy } = await import('../services/access-gate.service.js');
+      const reply = trialExpiredCopy();
+      await sendMessage(phone, reply);
+      conversationLogger.log(userId, phone, text, reply, 'trial_expired', null, null, null, aiUsed, Date.now() - startTime, false, 0, toolCallsData, agentMode).catch(() => {});
 
     // --- Phase 2: regex fallback refused to parse a complex intent ---
     if (intent.type === 'fallback_blocked') {

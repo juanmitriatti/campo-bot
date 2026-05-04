@@ -325,6 +325,12 @@ async function processDocumentWithIntentTg(
   filename: string | undefined, caption: string, docIntent: DocumentUploadIntent | undefined,
   phone: string, startTime: number,
 ): Promise<BotResponseItem[]> {
+  // Phase 3 — block OCR for trial-expired users.
+  const { getUserAccessMode, trialExpiredCopy } = await import('../services/access-gate.service.js');
+  if (await getUserAccessMode(Number(userId)) === 'trial_expired_readonly') {
+    console.log(`[TRIAL_EXPIRED] user=${userId} channel=document source=telegram`);
+    return [{ type: 'text', text: trialExpiredCopy() }];
+  }
   const { document: doc, extraction, isExisting } = await documentServiceTg.processDocument(
     userId, buffer, mediaMime, filename, 'telegram', caption,
   );
@@ -467,6 +473,13 @@ router.post('/', async (req: Request, res: Response) => {
 
     // --- Voice/audio message ---
     if (message.voice || message.audio) {
+      // Phase 3 — block audio processing when the trial expired.
+      const { getUserAccessMode, trialExpiredCopy } = await import('../services/access-gate.service.js');
+      if (await getUserAccessMode(Number(userId)) === 'trial_expired_readonly') {
+        console.log(`[TRIAL_EXPIRED] user=${userId} channel=audio source=telegram`);
+        await sendTelegramMessage(chatId, trialExpiredCopy());
+        return;
+      }
       const hasAudio = await featureGate.hasFeature(userId, 'audio');
       if (!hasAudio) {
         await sendTelegramMessage(chatId, '🔒 El procesamiento de audios no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones.');
@@ -1597,6 +1610,12 @@ async function processTextMessage(
   }
 
   if (pending) pendingStore.clear(phone);
+
+  // --- Phase 3: trial expired (access-gate blocked AI / writes) ---
+  if (intent.type === 'trial_expired') {
+    const { trialExpiredCopy } = await import('../services/access-gate.service.js');
+    const reply = trialExpiredCopy();
+    conversationLogger.log(userId, phone, text, reply, 'trial_expired', null, null, null, aiUsed, Date.now() - startTime, false, 0, toolCallsData, agentMode, 'telegram').catch(() => {});
 
   // --- Phase 2: regex fallback refused to parse a complex intent ---
   if (intent.type === 'fallback_blocked') {
