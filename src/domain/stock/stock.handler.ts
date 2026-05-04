@@ -207,6 +207,18 @@ export class StockHandler {
       };
     }
 
+    // Aggregate by unit so a "cuánto en total" question gets a real summary line
+    // even when units differ. Mixing lt and kg without breakdown is misleading.
+    const totalsByUnit = new Map<string, number>();
+    for (const it of items) {
+      const unit = String(it.unit).toLowerCase();
+      totalsByUnit.set(unit, (totalsByUnit.get(unit) || 0) + Number(it.current_quantity));
+    }
+    const totalLine = Array.from(totalsByUnit.entries())
+      .map(([u, q]) => `${q.toLocaleString('es-AR')} ${u}`)
+      .join(' · ');
+    const summary = `\n\n📊 *Total*: ${totalLine}`;
+
     // Multiple items — detail when ≤15, compact when more
     if (items.length <= 15) {
       const lines = items.map(it => {
@@ -223,7 +235,7 @@ export class StockHandler {
       });
 
       return {
-        messages: [`📦 *Inventario* (${items.length} productos)\n\n${lines.join('\n\n')}`],
+        messages: [`📦 *Inventario* (${items.length} productos)\n\n${lines.join('\n\n')}${summary}`],
       };
     }
 
@@ -234,7 +246,7 @@ export class StockHandler {
     });
 
     return {
-      messages: [`📦 *Inventario* (${items.length} productos)\n\n${lines.join('\n')}`],
+      messages: [`📦 *Inventario* (${items.length} productos)\n\n${lines.join('\n')}${summary}`],
     };
   }
 

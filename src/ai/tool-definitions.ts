@@ -852,6 +852,15 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       required: ['product', 'quantity'],
     },
   },
+  {
+    name: 'check_low_stock',
+    description: 'Listar productos POR DEBAJO del stock mínimo configurado. "productos con stock bajo", "qué stock está bajo?", "hay algo bajo de stock?", "alertas de stock". Si no hay nada bajo, responde "todo en orden".',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
 
   // ========================
   // SHARING (enterprise)

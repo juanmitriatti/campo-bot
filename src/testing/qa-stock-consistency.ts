@@ -496,7 +496,8 @@ async function testC1() {
       const r3 = await sendL(ctx, `cuánto en total?`);
       const r1ok = /100|glifosato/i.test(r1);
       const r2ok = /50|urea/i.test(r2);
-      const r3ok = /150|total|todo|stock/i.test(r3);
+      // The handler now adds "📊 Total: 150 lt" when listing >1 item.
+      const r3ok = /total/i.test(r3) && /150/.test(r3);
       const status: 'PASS' | 'WARN' | 'FAIL' = (r1ok && r2ok && r3ok) ? 'PASS' : (r1ok && r2ok) ? 'WARN' : 'FAIL';
       const notes = `r1=${r1ok} r2=${r2ok} r3=${r3ok} | r3: ${r3.substring(0, 180)}`;
       return { status, actual: notes, notes };
@@ -829,19 +830,17 @@ async function testG1() {
 async function testG2() {
   return runScenario(
     { name: 'G2 restock above min → no longer in low-stock list', category: 'min-stock', severity: 'low',
-      expected: ['Item NOT in low-stock list after restock'],
-      possibleFailures: ['Stays in list (stale)'] },
+      expected: ['Bot says "todo en orden / no hay productos bajos" via check_low_stock'],
+      possibleFailures: ['Bot picks check_stock instead', 'Stale flag'] },
     async (ctx) => {
       await sendL(ctx, `cargué 100 lt de glifosato`);
       await sendL(ctx, `stock mínimo de glifosato 50 lt`);
       await sendL(ctx, `saqué 60 lt de glifosato`);
-      // Verify it's flagged at this point (current_quantity should be 40, below min 50)
       await sendL(ctx, `cargué 50 lt de glifosato`);  // back to 90
-      // Use a more direct query phrasing the bot is more likely to map to check_low_stock
       const r = await sendL(ctx, `productos con stock bajo`);
-      const stillFlagged = /glifosato.*bajo|bajo.*glifosato/i.test(r);
-      const explicitNone = /todo.*ok|no hay|ninguno|sin productos|sin stock bajo|todo en orden/i.test(r);
-      // Verify against DB too: item should NOT have current_quantity < min_stock now
+      const stillFlagged = /\bbajo\b.*glifosato|glifosato.*\bbajo\b|stock bajo.*glifosato/i.test(r);
+      // The check_low_stock handler returns "✅ No hay productos con stock bajo." when empty.
+      const explicitNone = /no hay productos con stock bajo|todo en orden|sin productos.*bajo|✅/i.test(r);
       const items = await getStockItemsByName('glifosato');
       const dbConsistent = items[0] && Number(items[0].current_quantity) >= 50;
       let status: 'PASS' | 'WARN' | 'FAIL';
@@ -870,17 +869,25 @@ async function main() {
   await dbQuery(`UPDATE users SET plan_id = 4 WHERE id = $1`, [userId]);
   console.log('  Upgraded to enterprise plan\n');
 
-  const tests: Array<() => Promise<TestResult>> = [
-    testA1, testA2, testA3, testA4, testA5,
-    testB1, testB2, testB3, testB4,
-    testC1, testC2, testC3, testC4, testC5,
-    testD1, testD2, testD3,
-    testE1, testE2, testE3,
-    testF1, testF2, testF3,
-    testG1, testG2,
+  // Each entry is [code, function] so a CLI filter can target specific scenarios.
+  const allTests: Array<[string, () => Promise<TestResult>]> = [
+    ['A1', testA1], ['A2', testA2], ['A3', testA3], ['A4', testA4], ['A5', testA5],
+    ['B1', testB1], ['B2', testB2], ['B3', testB3], ['B4', testB4],
+    ['C1', testC1], ['C2', testC2], ['C3', testC3], ['C4', testC4], ['C5', testC5],
+    ['D1', testD1], ['D2', testD2], ['D3', testD3],
+    ['E1', testE1], ['E2', testE2], ['E3', testE3],
+    ['F1', testF1], ['F2', testF2], ['F3', testF3],
+    ['G1', testG1], ['G2', testG2],
   ];
 
-  console.log(`  Running ${tests.length} scenarios...\n`);
+  // Filter via env var ONLY=C1,D3,G2 to run a subset.
+  const onlyEnv = (process.env.ONLY || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  const tests = onlyEnv.length > 0
+    ? allTests.filter(([code]) => onlyEnv.includes(code)).map(([, fn]) => fn)
+    : allTests.map(([, fn]) => fn);
+
+  if (onlyEnv.length > 0) console.log(`  Filter ONLY=${onlyEnv.join(',')} → running ${tests.length} of ${allTests.length}\n`);
+  else console.log(`  Running ${tests.length} scenarios...\n`);
 
   for (let i = 0; i < tests.length; i++) {
     console.log(`  --- ${String(i + 1).padStart(2, '0')}/${tests.length} ---`);
