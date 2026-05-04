@@ -1,0 +1,982 @@
+{
+  "ts": "2026-05-04T02:05:36.215Z",
+  "pass": 13,
+  "warn": 9,
+  "fail": 3,
+  "total": 25,
+  "results": [
+    {
+      "test_name": "A1 add_stock with unit_price creates linked expense atomically",
+      "category": "transactional",
+      "severity": "high",
+      "status": "FAIL",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "compré 100 lt de glifosato a 2000 c/u"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)\n  💰 Gasto registrado: $200.000"
+        }
+      ],
+      "expected_behavior": [
+        "stock_movement entrada qty=100",
+        "expense type=insumo amount=200000",
+        "movement.expense_id links to expense"
+      ],
+      "possible_failures": [
+        "Only stock created (expense missing)",
+        "Only expense created (stock missing)",
+        "No link between them"
+      ],
+      "actual_result": "mov=true exp=true linked=false | resp: 📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)\n  💰 Gasto registrado: $200.000",
+      "notes": "mov=true exp=true linked=false | resp: 📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)\n  💰 Gasto registrado: $200.000"
+    },
+    {
+      "test_name": "A2 remove > available is rejected; stock stays",
+      "category": "transactional",
+      "severity": "high",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 100 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "saqué 200 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "❌ Stock insuficiente. Disponible: 100 lt"
+        }
+      ],
+      "expected_behavior": [
+        "Bot rejects",
+        "No new stock_movements salida row",
+        "current_quantity unchanged at 100"
+      ],
+      "possible_failures": [
+        "Stock goes negative",
+        "Salida row inserted anyway"
+      ],
+      "actual_result": "qty=100 salidas=0 negative=false | resp: ❌ Stock insuficiente. Disponible: 100 lt",
+      "notes": "qty=100 salidas=0 negative=false | resp: ❌ Stock insuficiente. Disponible: 100 lt"
+    },
+    {
+      "test_name": "A3 movement sum equals current_quantity (invariant)",
+      "category": "transactional",
+      "severity": "high",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 100 lt de urea"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *urea* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "cargué 50 lt de urea"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *urea*\n  ➕ 50 lt\n  📊 Total: *150 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "saqué 30 lt de urea"
+        },
+        {
+          "role": "bot",
+          "message": "📤 *Stock descontado*\n\n  📦 *urea*\n  ➖ 30 lt\n  📊 Quedan: *120 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "saqué 20 lt de urea"
+        },
+        {
+          "role": "bot",
+          "message": "📤 *Stock descontado*\n\n  📦 *urea*\n  ➖ 20 lt\n  📊 Quedan: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "cargué 10 lt de urea"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *urea*\n  ➕ 10 lt\n  📊 Total: *110 lt*\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "SUM(entrada) - SUM(salida) == current_quantity"
+      ],
+      "possible_failures": [
+        "Sum drifts",
+        "Salida inserted but qty not decremented"
+      ],
+      "actual_result": "stored=110 computed=110 (in=160 out=50)",
+      "notes": "stored=110 computed=110 (in=160 out=50)"
+    },
+    {
+      "test_name": "A4 delete warehouse with stock — items not orphaned",
+      "category": "transactional",
+      "severity": "medium",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 50 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 50 lt\n  📊 Total: *50 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "eliminar depósito Galpon Central"
+        },
+        {
+          "role": "bot",
+          "message": ""
+        }
+      ],
+      "expected_behavior": [
+        "Either reject deletion OR cascade properly; never orphan items"
+      ],
+      "possible_failures": [
+        "Items reference deleted warehouse_id without cascade",
+        "Crash 500"
+      ],
+      "actual_result": "orphan_items=0 | resp: ",
+      "notes": "orphan_items=0 | resp: "
+    },
+    {
+      "test_name": "A5 compound add+use both persist (happy path)",
+      "category": "transactional",
+      "severity": "high",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "compré 100 lt de glifosato y usé 30 lt hoy en el Lote 1"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)\n📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 30 lt\n  📊 Quedan: *70 lt*\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "Both stock entrada AND salida (or activity) persist"
+      ],
+      "possible_failures": [
+        "Half-done state",
+        "Only one side persists"
+      ],
+      "actual_result": "entrada=true salida=true total_movs=2 | resp: 📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)\n📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 30 lt\n  📊 Quedan: *70 lt*\n  🏭 Galpon Centr",
+      "notes": "entrada=true salida=true total_movs=2 | resp: 📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)\n📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 30 lt\n  📊 Quedan: *70 lt*\n  🏭 Galpon Centr"
+    },
+    {
+      "test_name": "B1 add 100 lt, try sacar 50 kg",
+      "category": "units",
+      "severity": "medium",
+      "status": "WARN",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 100 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "saqué 50 kg de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "❌ \"glifosato\" está en lt, no se puede descontar en kg"
+        }
+      ],
+      "expected_behavior": [
+        "Bot detects unit mismatch (asks or rejects)",
+        "No silent conversion"
+      ],
+      "possible_failures": [
+        "Silently treats 50 kg as 50 lt",
+        "Crashes"
+      ],
+      "actual_result": "qty_after=100 detected_mismatch=false | resp: ❌ \"glifosato\" está en lt, no se puede descontar en kg",
+      "notes": "qty_after=100 detected_mismatch=false | resp: ❌ \"glifosato\" está en lt, no se puede descontar en kg"
+    },
+    {
+      "test_name": "B2 add 50 tn soja, sacar 30000 kg → 20000 kg / 20 tn",
+      "category": "units",
+      "severity": "medium",
+      "status": "FAIL",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 50 tn de soja"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *soja* (nuevo)\n  ➕ 50 tn\n  📊 Total: *50 tn*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "saqué 30000 kg de soja"
+        },
+        {
+          "role": "bot",
+          "message": "❌ \"soja\" está en tn, no se puede descontar en kg"
+        }
+      ],
+      "expected_behavior": [
+        "Final stock = 20000 kg or 20 tn"
+      ],
+      "possible_failures": [
+        "Treats tn==kg",
+        "Final stock wrong"
+      ],
+      "actual_result": "qty=50 unit=tn | resp: ❌ \"soja\" está en tn, no se puede descontar en kg",
+      "notes": "qty=50 unit=tn | resp: ❌ \"soja\" está en tn, no se puede descontar en kg"
+    },
+    {
+      "test_name": "B3 cargué 42 qq de trigo → 4200 kg",
+      "category": "units",
+      "severity": "low",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 42 qq de trigo"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *trigo* (nuevo)\n  ➕ 42 qq\n  📊 Total: *42 qq*\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "Stored as 4200 kg (or 42 qq if qq is a stored unit)"
+      ],
+      "possible_failures": [
+        "Stored as 42 raw"
+      ],
+      "actual_result": "qty=42 unit=qq | resp: 📥 *Stock actualizado*\n\n  📦 *trigo* (nuevo)\n  ➕ 42 qq\n  📊 Total: *42 qq*\n  🏭 Galpon Central (campo qa)",
+      "notes": "qty=42 unit=qq | resp: 📥 *Stock actualizado*\n\n  📦 *trigo* (nuevo)\n  ➕ 42 qq\n  📊 Total: *42 qq*\n  🏭 Galpon Central (campo qa)"
+    },
+    {
+      "test_name": "B4 cargué 50 de urea (no unit) → bot asks",
+      "category": "units",
+      "severity": "medium",
+      "status": "WARN",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 50 de urea"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *urea* (nuevo)\n  ➕ 50 kg\n  📊 Total: *50 kg*\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "Bot asks for unit, no row inserted with NULL/default"
+      ],
+      "possible_failures": [
+        "Silently picks a unit",
+        "Inserts NULL unit row"
+      ],
+      "actual_result": "items=1 asked=false unit=kg | resp: 📥 *Stock actualizado*\n\n  📦 *urea* (nuevo)\n  ➕ 50 kg\n  📊 Total: *50 kg*\n  🏭 Galpon Central (campo qa)",
+      "notes": "items=1 asked=false unit=kg | resp: 📥 *Stock actualizado*\n\n  📦 *urea* (nuevo)\n  ➕ 50 kg\n  📊 Total: *50 kg*\n  🏭 Galpon Central (campo qa)"
+    },
+    {
+      "test_name": "C1 multi-turn: tengo glifosato? → y de urea? → cuánto en total?",
+      "category": "conversational",
+      "severity": "medium",
+      "status": "WARN",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 100 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "cargué 50 lt de urea"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *urea* (nuevo)\n  ➕ 50 lt\n  📊 Total: *50 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "tengo glifosato?"
+        },
+        {
+          "role": "bot",
+          "message": "📦 *glifosato*\n\n  📊 Cantidad: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "y de urea?"
+        },
+        {
+          "role": "bot",
+          "message": "📦 *urea*\n\n  📊 Cantidad: *50 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "cuánto en total?"
+        },
+        {
+          "role": "bot",
+          "message": "📦 *Inventario* (2 productos)\n\n📦 *glifosato*\n  📊 Cantidad: *100 lt*\n  🏭 Galpon Central (campo qa)\n\n📦 *urea*\n  📊 Cantidad: *50 lt*\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "Each turn answers correctly",
+        "\"en total\" sums (does not re-ask)"
+      ],
+      "possible_failures": [
+        "Drops context",
+        "Re-asks"
+      ],
+      "actual_result": "r1=true r2=true r3=false | r3: 📦 *Inventario* (2 productos)\n\n📦 *glifosato*\n  📊 Cantidad: *100 lt*\n  🏭 Galpon Central (campo qa)\n\n📦 *urea*\n  📊 Cantidad: *50 lt*\n  🏭 Galpon Central (campo qa)",
+      "notes": "r1=true r2=true r3=false | r3: 📦 *Inventario* (2 productos)\n\n📦 *glifosato*\n  📊 Cantidad: *100 lt*\n  🏭 Galpon Central (campo qa)\n\n📦 *urea*\n  📊 Cantidad: *50 lt*\n  🏭 Galpon Central (campo qa)"
+    },
+    {
+      "test_name": "C2 pronombre: cargué 100 lt glifosato → saqué 20 de eso",
+      "category": "conversational",
+      "severity": "medium",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 100 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "saqué 20 de eso"
+        },
+        {
+          "role": "bot",
+          "message": "📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 20 lt\n  📊 Quedan: *80 lt*\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "\"de eso\" resolves to glifosato",
+        "salida row of 20 lt"
+      ],
+      "possible_failures": [
+        "Asks producto",
+        "Saca de un producto distinto"
+      ],
+      "actual_result": "qty_after=80 | resp: 📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 20 lt\n  📊 Quedan: *80 lt*\n  🏭 Galpon Central (campo qa)",
+      "notes": "qty_after=80 | resp: 📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 20 lt\n  📊 Quedan: *80 lt*\n  🏭 Galpon Central (campo qa)"
+    },
+    {
+      "test_name": "C3 typo: glifosado → matches glifosato",
+      "category": "conversational",
+      "severity": "medium",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 100 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "saqué 10 lt de glifosado"
+        },
+        {
+          "role": "bot",
+          "message": "📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 10 lt\n  📊 Quedan: *90 lt*\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "Fuzzy match",
+        "No new \"glifosado\" item"
+      ],
+      "possible_failures": [
+        "Creates new item with the typo"
+      ],
+      "actual_result": "products=[\"glifosato\"] qty=90",
+      "notes": "products=[\"glifosato\"] qty=90"
+    },
+    {
+      "test_name": "C4 English input: \"I bought 100kg of urea\"",
+      "category": "conversational",
+      "severity": "low",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "I bought 100kg of urea"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *urea* (nuevo)\n  ➕ 100 kg\n  📊 Total: *100 kg*\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "Parses correctly OR politely declines",
+        "Never creates phantom item"
+      ],
+      "possible_failures": [
+        "Creates \"urea\" with wrong qty/unit"
+      ],
+      "actual_result": "urea={\"id\":32,\"name\":\"urea\",\"current_quantity\":\"100\",\"unit\":\"kg\"} | resp: 📥 *Stock actualizado*\n\n  📦 *urea* (nuevo)\n  ➕ 100 kg\n  📊 Total: *100 kg*\n  🏭 Galpon Central (campo qa)",
+      "notes": "urea={\"id\":32,\"name\":\"urea\",\"current_quantity\":\"100\",\"unit\":\"kg\"} | resp: 📥 *Stock actualizado*\n\n  📦 *urea* (nuevo)\n  ➕ 100 kg\n  📊 Total: *100 kg*\n  🏭 Galpon Central (campo qa)"
+    },
+    {
+      "test_name": "C5 cancel mid-flow: start add_stock then cancelar",
+      "category": "conversational",
+      "severity": "medium",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "quiero cargar stock"
+        },
+        {
+          "role": "bot",
+          "message": "¿Qué producto querés cargar al stock? (ej: glifosato, urea, semilla de soja, gasoil, etc.) Y ¿cuánta cantidad?"
+        },
+        {
+          "role": "user",
+          "message": "cancelar"
+        },
+        {
+          "role": "bot",
+          "message": "No hay nada pendiente para cancelar."
+        },
+        {
+          "role": "user",
+          "message": "hola"
+        },
+        {
+          "role": "bot",
+          "message": "Hola, Testing 👋 Soy *MIA*, tu asistente de gestión agrícola.\n¿Qué querés hacer?\n[BUTTONS: menu_gastos=\"Gastos\", menu_clima=\"Clima\", back_menu=\"Ver Menú\"]"
+        }
+      ],
+      "expected_behavior": [
+        "Flow cleared",
+        "No partial stock_items / stock_movements row"
+      ],
+      "possible_failures": [
+        "Partial item inserted",
+        "Flow stays sticky"
+      ],
+      "actual_result": "items=0 movs=0 | last resp: Hola, Testing 👋 Soy *MIA*, tu asistente de gestión agrícola.\n¿Qué querés hacer?\n[BUTTONS: menu_gastos=\"Gastos\", menu_clima=\"Clima\", back_menu=\"Ver Me",
+      "notes": "items=0 movs=0 | last resp: Hola, Testing 👋 Soy *MIA*, tu asistente de gestión agrícola.\n¿Qué querés hacer?\n[BUTTONS: menu_gastos=\"Gastos\", menu_clima=\"Clima\", back_menu=\"Ver Me"
+    },
+    {
+      "test_name": "D1 double-tap \"cargar al stock\" button",
+      "category": "idempotency",
+      "severity": "high",
+      "status": "WARN",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "gasté 200000 en glifosato, 100 lt"
+        },
+        {
+          "role": "bot",
+          "message": "💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *$200.000*\nDetalle: 100 lt\nUbicación: Lote 1 (campo qa)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+        }
+      ],
+      "expected_behavior": [
+        "Only ONE entrada movement",
+        "Second tap is no-op"
+      ],
+      "possible_failures": [
+        "Two movements created"
+      ],
+      "actual_result": "no stock_entry button surfaced",
+      "notes": "expense did not trigger stock prompt | resp: 💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *$200.000*\nDetalle: 100 lt\nUbicación: Lote 1 (campo qa)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+    },
+    {
+      "test_name": "D2 tap fake/expired callback id — no crash",
+      "category": "idempotency",
+      "severity": "medium",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "tap",
+          "message": "stock_entry_yes_99999999 (fake)"
+        },
+        {
+          "role": "bot",
+          "message": "📦 Stock cargado."
+        }
+      ],
+      "expected_behavior": [
+        "Bot responds gracefully (no 500)"
+      ],
+      "possible_failures": [
+        "HTTP 500"
+      ],
+      "actual_result": "📦 Stock cargado.",
+      "notes": "resp len=17"
+    },
+    {
+      "test_name": "D3 decline spray stock deduction — stock unchanged",
+      "category": "idempotency",
+      "severity": "high",
+      "status": "WARN",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 100 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "fumigué el Lote 1 con 2 lt/ha de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "💨 *Fumigación* registrada\n📍 campo qa > Lote 1\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n\n📦 Tenés 100 lt de *glifosato* en Galpon Central.\n¿Descontar *200 lt*?\n💨 *Fumigación* registrada\n📍 campo qa > Lote 1\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n\n📦 Tenés 100 lt de *glifosato* en Galpon Central.\n¿Descontar *200 lt*?\n[BUTTONS: stock_deduct_yes_271=\"Sí, descontar\", stock_deduct_no_271=\"No\"]"
+        },
+        {
+          "role": "tap",
+          "message": "stock_deduct_no_271"
+        },
+        {
+          "role": "bot",
+          "message": "👍 OK, no se descontó del stock."
+        }
+      ],
+      "expected_behavior": [
+        "stock_deduction_status=declined",
+        "current_quantity unchanged"
+      ],
+      "possible_failures": [
+        "Stock decremented despite decline"
+      ],
+      "actual_result": "qty=100 declined=false",
+      "notes": "qty=100 declined=false"
+    },
+    {
+      "test_name": "E1 same product in 2 warehouses",
+      "category": "multi-warehouse",
+      "severity": "medium",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "crear depósito Galpon Norte en Campo QA"
+        },
+        {
+          "role": "bot",
+          "message": "🏭 Depósito *Galpon Norte* creado correctamente."
+        },
+        {
+          "role": "user",
+          "message": "cargué 100 lt de glifosato en Galpon Central"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "cargué 50 lt de glifosato en Galpon Norte"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 50 lt\n  📊 Total: *50 lt*\n  🏭 Galpon Norte (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "tengo glifosato?"
+        },
+        {
+          "role": "bot",
+          "message": "📦 *glifosato*\n\n  📊 Cantidad: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "Both quantities visible (sum or per-warehouse breakdown)"
+      ],
+      "possible_failures": [
+        "Only one warehouse shown",
+        "Silently merges"
+      ],
+      "actual_result": "db_total=150 items=2 resp_shows_both=true | resp: 📦 *glifosato*\n\n  📊 Cantidad: *100 lt*\n  🏭 Galpon Central (campo qa)",
+      "notes": "db_total=150 items=2 resp_shows_both=true | resp: 📦 *glifosato*\n\n  📊 Cantidad: *100 lt*\n  🏭 Galpon Central (campo qa)"
+    },
+    {
+      "test_name": "E2 same grain, two batches with different humidity",
+      "category": "multi-warehouse",
+      "severity": "low",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 1000 kg de soja al 13.5% de humedad"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *soja* (nuevo)\n  ➕ 1000 kg\n  📊 Total: *1000 kg*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "cargué 500 kg de soja al 14.5% de humedad"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *soja*\n  ➕ 500 kg\n  📊 Total: *1500 kg*\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "Either separate items per humidity OR merged with combined humidity tracking"
+      ],
+      "possible_failures": [
+        "Crashes",
+        "Loses one batch"
+      ],
+      "actual_result": "items=1 total_qty=1500 (expected 1500)",
+      "notes": "items=1 total_qty=1500 (expected 1500)"
+    },
+    {
+      "test_name": "E3 sacar without specifying warehouse when 2 have it",
+      "category": "multi-warehouse",
+      "severity": "medium",
+      "status": "WARN",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "crear depósito Galpon Sur en Campo QA"
+        },
+        {
+          "role": "bot",
+          "message": "🏭 Depósito *Galpon Sur* creado correctamente."
+        },
+        {
+          "role": "user",
+          "message": "cargué 100 lt de glifosato en Galpon Central"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "cargué 100 lt de glifosato en Galpon Sur"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Sur (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "saqué 20 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 20 lt\n  📊 Quedan: *80 lt*\n  🏭 Galpon Sur (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "Bot asks which warehouse",
+        "No silent pick"
+      ],
+      "possible_failures": [
+        "Picks one silently"
+      ],
+      "actual_result": "asked=false salidas=1 | resp: 📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 20 lt\n  📊 Quedan: *80 lt*\n  🏭 Galpon Sur (campo qa)",
+      "notes": "asked=false salidas=1 | resp: 📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 20 lt\n  📊 Quedan: *80 lt*\n  🏭 Galpon Sur (campo qa)"
+    },
+    {
+      "test_name": "F1 cosechar 4200 kg soja → tap \"cargar al silo\"",
+      "category": "granos",
+      "severity": "high",
+      "status": "WARN",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "sembré soja en el Lote 1"
+        },
+        {
+          "role": "bot",
+          "message": "🌱 *soja* sembrado en *campo qa > Lote 1*\n📅 Campaña 2025/26"
+        },
+        {
+          "role": "user",
+          "message": "hoy"
+        },
+        {
+          "role": "bot",
+          "message": "Hola 👋 ¿En qué puedo ayudarte hoy? Podés:\n\n📋 **Registrar actividades**: sembrar, cosechar, fumigar, fertilizar, riego, labranza\n💰 **Gastos e ingresos**: registrar compras, ventas, servicios\n📊 **Consultas**: ver reportes, clima, stock, historial de actividades\n🐄 **Hacienda**: agregar/vender animales, tacto, sanidad, reproducción\n🌾 **Cultivos**: ver qué hay sembrado, rendimientos, campañas\n\n¿Qué necesitás?"
+        },
+        {
+          "role": "user",
+          "message": "cancelar"
+        },
+        {
+          "role": "bot",
+          "message": "No hay nada pendiente para cancelar."
+        },
+        {
+          "role": "user",
+          "message": "coseché soja en el Lote 1, 4200 kg"
+        },
+        {
+          "role": "bot",
+          "message": "🌾 *soja* cosechado en *campo qa > Lote 1*\n📅 Campaña 2025/26\n📊 Rendimiento: 4.200 kg (42 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\"."
+        }
+      ],
+      "expected_behavior": [
+        "Grain stock_item created with quantity=4200"
+      ],
+      "possible_failures": [
+        "No grain stock prompt",
+        "Quantity mismatch"
+      ],
+      "actual_result": "no stock_grain button",
+      "notes": "harvest did not surface silo prompt | resp: 🌾 *soja* cosechado en *campo qa > Lote 1*\n📅 Campaña 2025/26\n📊 Rendimiento: 4.200 kg (42 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\"."
+    },
+    {
+      "test_name": "F2 vendí 2000 kg soja → tap \"descontar del silo\"",
+      "category": "granos",
+      "severity": "high",
+      "status": "WARN",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "sembré soja en el Lote 1"
+        },
+        {
+          "role": "bot",
+          "message": "🌱 *soja* sembrado en *campo qa > Lote 1*\n📅 Campaña 2025/26"
+        },
+        {
+          "role": "user",
+          "message": "hoy"
+        },
+        {
+          "role": "bot",
+          "message": "📍 *Campo campo qa*\nUbicación: Pergamino, Buenos Aires\nLotes: 1 (100 ha)\n\n📊 *Este mes:*\n💸 Gastos: $0 (0 reg.)\n💰 Ingresos: $0 (0 reg.)\n📈 Resultado: $0"
+        },
+        {
+          "role": "user",
+          "message": "cancelar"
+        },
+        {
+          "role": "bot",
+          "message": "No hay nada pendiente para cancelar."
+        },
+        {
+          "role": "user",
+          "message": "coseché soja en el Lote 1, 4200 kg"
+        },
+        {
+          "role": "bot",
+          "message": "🌾 *soja* cosechado en *campo qa > Lote 1*\n📅 Campaña 2025/26\n📊 Rendimiento: 4.200 kg (42 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\"."
+        },
+        {
+          "role": "user",
+          "message": "vendí 2000 kg de soja a 500 c/u"
+        },
+        {
+          "role": "bot",
+          "message": "💰 ¿Confirmo ingreso?\n\nCategoría: *Soja*\nMonto: *$1.000.000*\nDetalle: 2000 kg a $500\nUbicación: Lote 1 (campo qa)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+        }
+      ],
+      "expected_behavior": [
+        "Stock decreases to 2200 kg"
+      ],
+      "possible_failures": [
+        "No deduction prompt",
+        "Wrong amount"
+      ],
+      "actual_result": "no stock_grain_sale button",
+      "notes": "sale did not prompt deduction | resp: 💰 ¿Confirmo ingreso?\n\nCategoría: *Soja*\nMonto: *$1.000.000*\nDetalle: 2000 kg a $500\nUbicación: Lote 1 (campo qa)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+    },
+    {
+      "test_name": "F3 vendí 5000 kg soja con stock 4200",
+      "category": "granos",
+      "severity": "high",
+      "status": "FAIL",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "sembré soja en el Lote 1"
+        },
+        {
+          "role": "bot",
+          "message": "🌱 *soja* sembrado en *campo qa > Lote 1*\n📅 Campaña 2025/26"
+        },
+        {
+          "role": "user",
+          "message": "hoy"
+        },
+        {
+          "role": "bot",
+          "message": "📍 *Campo campo qa*\nUbicación: Pergamino, Buenos Aires\nLotes: 1 (100 ha)\n\n📊 *Este mes:*\n💸 Gastos: $0 (0 reg.)\n💰 Ingresos: $0 (0 reg.)\n📈 Resultado: $0"
+        },
+        {
+          "role": "user",
+          "message": "cancelar"
+        },
+        {
+          "role": "bot",
+          "message": "No hay nada pendiente para cancelar."
+        },
+        {
+          "role": "user",
+          "message": "coseché soja en el Lote 1, 4200 kg"
+        },
+        {
+          "role": "bot",
+          "message": "🌾 *soja* cosechado en *campo qa > Lote 1*\n📅 Campaña 2025/26\n📊 Rendimiento: 4.200 kg (42 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\"."
+        },
+        {
+          "role": "user",
+          "message": "vendí 5000 kg de soja a 500 c/u"
+        },
+        {
+          "role": "bot",
+          "message": "💰 ¿Confirmo ingreso?\n\nCategoría: *Soja*\nMonto: *$2.500.000*\nDetalle: 5000 kg a $500\nUbicación: Lote 1 (campo qa)\n\n[BUTTONS: confirm_pending=\"Confirmar\", cancel_pending=\"Cancelar\"]"
+        }
+      ],
+      "expected_behavior": [
+        "Either rejects, warns, or partials — never goes negative"
+      ],
+      "possible_failures": [
+        "Stock goes negative"
+      ],
+      "actual_result": "qty_after_oversale=-1 (FAIL only if negative)",
+      "notes": "qty_after_oversale=-1 (FAIL only if negative)"
+    },
+    {
+      "test_name": "G1 set min=50, drop below → check_low_stock lists it",
+      "category": "min-stock",
+      "severity": "low",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 100 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "stock mínimo de glifosato 50 lt"
+        },
+        {
+          "role": "bot",
+          "message": "⚠️ *Stock mínimo configurado*\n\n  📦 *glifosato*\n  ⚠️ Alerta cuando baje de: 50 lt\n  📊 Stock actual: 100 lt"
+        },
+        {
+          "role": "user",
+          "message": "saqué 60 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 60 lt\n  📊 Quedan: *40 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "qué stock está bajo?"
+        },
+        {
+          "role": "bot",
+          "message": "📦 *glifosato*\n\n  📊 Cantidad: *40 lt*\n  ⚠️ Mínimo: 50 lt\n  🔴 *STOCK BAJO*\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "Item appears in low-stock response"
+      ],
+      "possible_failures": [
+        "Not flagged"
+      ],
+      "actual_result": "resp: 📦 *glifosato*\n\n  📊 Cantidad: *40 lt*\n  ⚠️ Mínimo: 50 lt\n  🔴 *STOCK BAJO*\n  🏭 Galpon Central (campo qa)",
+      "notes": "resp: 📦 *glifosato*\n\n  📊 Cantidad: *40 lt*\n  ⚠️ Mínimo: 50 lt\n  🔴 *STOCK BAJO*\n  🏭 Galpon Central (campo qa)"
+    },
+    {
+      "test_name": "G2 restock above min → no longer in low-stock list",
+      "category": "min-stock",
+      "severity": "low",
+      "status": "WARN",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "cargué 100 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "stock mínimo de glifosato 50 lt"
+        },
+        {
+          "role": "bot",
+          "message": "⚠️ *Stock mínimo configurado*\n\n  📦 *glifosato*\n  ⚠️ Alerta cuando baje de: 50 lt\n  📊 Stock actual: 100 lt"
+        },
+        {
+          "role": "user",
+          "message": "saqué 60 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 60 lt\n  📊 Quedan: *40 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "cargué 50 lt de glifosato"
+        },
+        {
+          "role": "bot",
+          "message": "📥 *Stock actualizado*\n\n  📦 *glifosato*\n  ➕ 50 lt\n  📊 Total: *90 lt*\n  🏭 Galpon Central (campo qa)"
+        },
+        {
+          "role": "user",
+          "message": "qué stock está bajo?"
+        },
+        {
+          "role": "bot",
+          "message": "📦 *glifosato*\n\n  📊 Cantidad: *90 lt*\n  ⚠️ Mínimo: 50 lt\n  🏭 Galpon Central (campo qa)"
+        }
+      ],
+      "expected_behavior": [
+        "Item NOT in low-stock list after restock"
+      ],
+      "possible_failures": [
+        "Stays in list (stale)"
+      ],
+      "actual_result": "still_flagged=false explicit_none=false | resp: 📦 *glifosato*\n\n  📊 Cantidad: *90 lt*\n  ⚠️ Mínimo: 50 lt\n  🏭 Galpon Central (campo qa)",
+      "notes": "still_flagged=false explicit_none=false | resp: 📦 *glifosato*\n\n  📊 Cantidad: *90 lt*\n  ⚠️ Mínimo: 50 lt\n  🏭 Galpon Central (campo qa)"
+    }
+  ]
+}
