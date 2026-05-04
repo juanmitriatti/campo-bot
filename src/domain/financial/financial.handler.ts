@@ -739,12 +739,57 @@ export class FinancialHandler {
   ): Promise<HandlerResponse> {
     if (pending.type === 'income') {
       const incomeData = pending.data as ParsedIncome;
-      await this.service.saveIncome(userId, incomeData, pending.fieldId, pending.plotId);
+      const savedIncome = await this.service.saveIncome(userId, incomeData, pending.fieldId, pending.plotId);
       const messages = [await buildIncomeConfirmation(incomeData, pending.fieldName, pending.plotName)];
       const { ingresos, gastos } = await this.service.getMonthlyResult(userId);
       if (gastos > 0) {
         messages.push(formatResult(ingresos, gastos, 'Resultado del mes hasta ahora'));
       }
+
+      // Grain sale → suggest stock deduction (mirror of the handleIncome path so the
+      // prompt also surfaces when the income goes through pending→confirm).
+      const GRAIN_CATEGORIES = new Set(['soja', 'maíz', 'trigo', 'girasol', 'sorgo', 'cebada']);
+      const category = (incomeData.category || '').toLowerCase();
+      if (GRAIN_CATEGORIES.has(category) && incomeData.quantity && incomeData.unit && pending.fieldId) {
+        try {
+          const { FeatureGate } = await import('../billing/feature-gate.js');
+          const fg = new FeatureGate();
+          if (await fg.hasFeature(userId, 'stock')) {
+            const { StockService } = await import('../stock/stock.service.js');
+            const stockService = new StockService();
+            const stockItem = await stockService.findProduct(userId, incomeData.category);
+            if (stockItem && stockItem.current_quantity > 0) {
+              const qty = incomeData.quantity;
+              const unit = incomeData.unit;
+              messages.push(`\n📦 Tenés *${stockItem.current_quantity}${stockItem.unit}* de *${stockItem.name}* en stock.\n¿Descontar *${qty}${unit}*?`);
+              return {
+                messages,
+                interactive: {
+                  type: 'buttons',
+                  body: `Descontar ${qty}${unit} de ${incomeData.category} del stock?`,
+                  buttons: [
+                    { id: `stock_grain_sale_yes_${savedIncome?.id || 0}`, title: 'Sí, descontar' },
+                    { id: `stock_grain_sale_no_${savedIncome?.id || 0}`, title: 'No' },
+                  ],
+                },
+                sideEffects: {
+                  setPendingStockDeduction: {
+                    type: 'grain_sale',
+                    stockItemId: stockItem.id,
+                    product: stockItem.name,
+                    totalQuantity: qty,
+                    unit,
+                    fieldId: pending.fieldId,
+                    warehouseName: stockItem.warehouse_name || 'Principal',
+                    currentStock: stockItem.current_quantity,
+                  },
+                },
+              };
+            }
+          }
+        } catch (stockErr) { console.error('[financial] Stock deduction suggestion (confirm) failed:', stockErr); logError('financial', 'STOCK_DEDUCTION_SUGGEST_CONFIRM', stockErr as Error, { userId }); }
+      }
+
       return { messages };
     } else {
       const expenseData = pending.data as ParsedExpense;

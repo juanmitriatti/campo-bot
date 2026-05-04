@@ -2,3 +2,14 @@ node_modules
 .env
 .git
 .gitignore
+*.HEIC
+*.heic
+IMG_*
+uploads/
+frontend/node_modules
+landing/node_modules
+docs/
+src/testing/screenshots/
+src/testing/qa-*.json
+*.log
+.DS_Store

@@ -68,7 +68,7 @@ export class StockHandler {
     if (!quantity || quantity <= 0) return { messages: ['Necesito la cantidad. Ej: "cargué 500lt de glifosato"'] };
     if (!unit) return { messages: ['Necesito la unidad. Ej: "cargué 500lt de glifosato"'] };
 
-    const { item, created } = await stockService.addStock(userId, product, quantity, unit, {
+    const { item, movement, created } = await stockService.addStock(userId, product, quantity, unit, {
       fieldName: cmd.fieldName as string,
       warehouseName: cmd.warehouseName as string,
       category: cmd.category as string,
@@ -84,7 +84,7 @@ export class StockHandler {
         const price = unitPriceArs ?? unitPriceUsd!;
         const currency = unitPriceArs ? 'ARS' : 'USD';
         const totalAmount = quantity * price;
-        await saveExpense(
+        const expense = await saveExpense(
           userId,
           {
             category: 'Insumos',
@@ -100,6 +100,9 @@ export class StockHandler {
           item.field_id ?? null,
           null,
         );
+        if (expense?.id) {
+          await stockService.linkMovementToExpense(movement.id, expense.id);
+        }
         const currSymbol = currency === 'USD' ? 'U$D' : '$';
         expenseLine = `\n  💰 Gasto registrado: ${currSymbol}${totalAmount.toLocaleString('es-AR')}`;
       } catch (err) {

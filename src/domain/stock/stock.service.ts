@@ -102,6 +102,22 @@ export class StockService {
       movementDate?: string;
     } = {},
   ): Promise<{ item: StockItemRow; movement: StockMovementRow }> {
+    // Disambiguation: when no warehouse is specified and the product exists in
+    // more than one warehouse, refuse to silently pick. Ask the user.
+    if (!opts.warehouseName) {
+      let fieldId: number | undefined;
+      if (opts.fieldName) {
+        const field = await this.resolveField(userId, opts.fieldName);
+        if (field) fieldId = field.id;
+      }
+      const allMatches = await this.repo.findAllStockItemsFuzzy(Number(userId), product, fieldId);
+      const distinctWarehouses = new Set(allMatches.map(m => m.warehouse_id));
+      if (distinctWarehouses.size > 1) {
+        const labels = allMatches.map(m => `${m.warehouse_name} (${m.current_quantity} ${m.unit})`).join(', ');
+        throw new Error(`"${product}" está en más de un depósito: ${labels}. Especificá de qué depósito sacar (ej: "saqué ${quantity} ${unit} de ${product} del ${allMatches[0].warehouse_name}")`);
+      }
+    }
+
     const item = await this.findProduct(userId, product, opts.fieldName);
     if (!item) throw new Error(`No se encontró "${product}" en el stock`);
 
@@ -408,5 +424,9 @@ export class StockService {
       if (field) fieldId = field.id;
     }
     return this.repo.findStockItemFuzzy(Number(userId), product, fieldId);
+  }
+
+  async linkMovementToExpense(movementId: number, expenseId: number): Promise<void> {
+    return this.repo.linkMovementToExpense(movementId, expenseId);
   }
 }

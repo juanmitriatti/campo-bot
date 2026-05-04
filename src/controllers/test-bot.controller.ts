@@ -507,6 +507,9 @@ async function handleInteractiveReply(
     if (response.sideEffects?.setPendingStockEntry) {
       pendingStockEntryStore.set(phone, response.sideEffects.setPendingStockEntry as Record<string, unknown>);
     }
+    if (response.sideEffects?.setPendingStockDeduction) {
+      pendingStockDeductionStore.set(phone, response.sideEffects.setPendingStockDeduction as Record<string, unknown>);
+    }
     conversationLogger.log(userId, phone, '[confirm_pending]', response.messages[0] ?? null, 'command', 'confirm').catch(() => {});
     return collectResponse(response);
   }
@@ -1382,6 +1385,17 @@ router.post('/reset', async (req: Request, res: Response) => {
     );
     await client.query(`DELETE FROM alert_history WHERE user_id = $1`, [numericUserId]);
     await client.query(`DELETE FROM agronomic_reports WHERE user_id = $1`, [numericUserId]);
+    // stock_movements has FK to expenses (expense_id) and domain_events (domain_event_id)
+    // and livestock_movements has FK to expenses/incomes too. Delete movements BEFORE
+    // their parent rows.
+    await client.query(
+      `DELETE FROM stock_movements WHERE user_id = $1`,
+      [numericUserId],
+    );
+    await client.query(
+      `DELETE FROM livestock_movements WHERE user_id = $1`,
+      [numericUserId],
+    );
     await client.query(`DELETE FROM domain_events WHERE user_id = $1`, [numericUserId]);
     await client.query(`DELETE FROM agro_observations WHERE user_id = $1`, [numericUserId]);
     await client.query(`DELETE FROM expenses WHERE user_id = $1`, [numericUserId]);
@@ -1391,15 +1405,7 @@ router.post('/reset', async (req: Request, res: Response) => {
     await client.query(`DELETE FROM expense_templates WHERE user_id = $1`, [numericUserId]);
     // Livestock + stock + feedlots (FK to fields)
     await client.query(
-      `DELETE FROM livestock_movements WHERE user_id = $1`,
-      [numericUserId],
-    );
-    await client.query(
       `DELETE FROM livestock_groups WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`,
-      [numericUserId],
-    );
-    await client.query(
-      `DELETE FROM stock_movements WHERE user_id = $1`,
       [numericUserId],
     );
     await client.query(

@@ -981,9 +981,11 @@ export class AgronomyHandler {
 
           harvested = harvestedResult;
 
-          // Save domain event for harvest
-          const harvestQuantity = cmd.quantity ? Number(cmd.quantity) : null;
-          const harvestUnit = (cmd.unit as string) || 'tn';
+          // Save domain event for harvest. The agent may pass the kg total via
+          // either `quantity` (older path) or `yieldKg` (the typical harvest schema);
+          // fall back to the resolved yieldKg so the silo prompt still surfaces.
+          const harvestQuantity = cmd.quantity ? Number(cmd.quantity) : (yieldKg ?? null);
+          const harvestUnit = cmd.quantity ? ((cmd.unit as string) || 'tn') : 'kg';
           savedEvent = await this.repo.saveDomainEvent(userId, {
             plotId: plotResult.plotId,
             plotCropId: harvestedResult.id,
@@ -1076,9 +1078,10 @@ export class AgronomyHandler {
         harvestMsg += `\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime "cerrar campaña".`;
         const messages = [harvestMsg];
 
-        // If quantity provided, suggest loading grain to stock/silo
-        const harvestQuantity = cmd.quantity ? Number(cmd.quantity) : null;
-        const harvestUnit = (cmd.unit as string) || 'tn';
+        // If quantity provided, suggest loading grain to stock/silo. Same
+        // fallback as the saveDomainEvent block above.
+        const harvestQuantity = cmd.quantity ? Number(cmd.quantity) : (yieldKg ?? null);
+        const harvestUnit = cmd.quantity ? ((cmd.unit as string) || 'tn') : 'kg';
         if (harvestQuantity && harvestQuantity > 0) {
           try {
             const { FeatureGate } = await import('../billing/feature-gate.js');

@@ -206,6 +206,34 @@ export class StockRepository {
     return rows[0] || null;
   }
 
+  /** Like findStockItemFuzzy but returns ALL matches (used to detect ambiguity). */
+  async findAllStockItemsFuzzy(userId: number, productName: string, fieldId?: number): Promise<StockItemRow[]> {
+    const normalizedName = productName.toLowerCase();
+    let query = `SELECT si.*, w.name AS warehouse_name, f.name AS field_name, f.id AS field_id
+       FROM stock_items si
+       JOIN warehouses w ON si.warehouse_id = w.id
+       JOIN fields f ON w.field_id = f.id
+       WHERE w.field_id IN (${accessibleFieldsSql(1)})
+         AND si.deleted_at IS NULL AND w.deleted_at IS NULL
+         AND (LOWER(si.name) = $2 OR LOWER(si.name) LIKE $3)
+         AND si.current_quantity > 0`;
+    const params: (string | number)[] = [userId, normalizedName, `%${normalizedName}%`];
+
+    if (fieldId) {
+      params.push(fieldId);
+      query += ` AND f.id = $${params.length}`;
+    }
+    query += ' ORDER BY CASE WHEN LOWER(si.name) = $2 THEN 0 ELSE 1 END, si.current_quantity DESC';
+
+    const { rows } = await pool.query(query, params);
+    return rows;
+  }
+
+  /** Backfill the expense link on a stock movement (used after a linked expense is created). */
+  async linkMovementToExpense(movementId: number, expenseId: number): Promise<void> {
+    await pool.query(`UPDATE stock_movements SET expense_id = $1 WHERE id = $2`, [expenseId, movementId]);
+  }
+
   async createStockItem(
     userId: number,
     warehouseId: number,
