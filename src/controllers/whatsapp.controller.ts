@@ -1770,6 +1770,13 @@ router.post('/', async (req: Request, res: Response) => {
       const reply = trialExpiredCopy();
       await sendMessage(phone, reply);
       conversationLogger.log(userId, phone, text, reply, 'trial_expired', null, null, null, aiUsed, Date.now() - startTime, false, 0, toolCallsData, agentMode).catch(() => {});
+
+    // --- Phase 2: regex fallback refused to parse a complex intent ---
+    if (intent.type === 'fallback_blocked') {
+      const { fallbackBlockedCopy } = await import('../services/intent-safety.js');
+      const reply = fallbackBlockedCopy(intent.reason, intent.attemptedCommand);
+      await sendMessage(phone, reply);
+      conversationLogger.log(userId, phone, text, reply, 'fallback_blocked', intent.attemptedCommand ?? null, null, null, aiUsed, Date.now() - startTime, false, 0, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }

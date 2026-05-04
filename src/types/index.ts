@@ -63,6 +63,15 @@ export type Intent =
   | { type: 'ambiguous'; candidates: AmbiguousCandidate[] }
   | { type: 'unknown'; raw: string }
   /**
+  | { type: 'unknown'; raw: string }
+  /**
+   * Phase 2 — emitted by the regex fallback when the parsed command is not
+   * in SAFE_FALLBACK_INTENTS. Tells the controller to respond with a
+   * user-friendly "no pude procesar esto sin IA" message instead of
+   * silently degrading or guessing.
+   */
+  | { type: 'fallback_blocked'; reason: 'ai_required' | 'unparseable_complex'; raw: string; attemptedCommand?: string }
+  /**
    * Phase 3 — emitted at the very top of the pipeline when the user's
    * trial has expired and they have no active paid subscription. The
    * controller responds with a clear "tu prueba terminó" message + CTA to

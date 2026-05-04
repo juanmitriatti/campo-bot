@@ -8,6 +8,7 @@ import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { getSetting, getSettingNumber, getSettingBool } from '../services/settings.service.js';
 import { saveAiFallbackLog } from '../services/expenses.js';
 import { logError } from '../services/error-logger.js';
+import { limitNotifier } from '../services/limit-notifier.service.js';
 import { FewShotService } from './few-shot.service.js';
 import type { UserId, UserSettings, ParseResult, AiUsage } from '../types/index.js';
 
@@ -50,7 +51,18 @@ export class IntentExtractor {
       const claudeLimit = await this.getAiDailyLimit(userId, settings);
       const repo = this.userRepo ?? new UserRepository();
       const dailyCount = await repo.getDailyClaudeCount(userId);
-      if (dailyCount >= claudeLimit) return null;
+      if (dailyCount >= claudeLimit) {
+        // Phase 1 — soft-block transparente. Notify once per day; the
+        // pipeline still falls through to regex.
+        const planName = await this.getPlanNameForLog(userId);
+        void limitNotifier.maybeNotifyHit({
+          userId: Number(userId),
+          used: dailyCount,
+          limit: claudeLimit,
+          planName,
+        });
+        return null;
+      }
 
       // Load user context, conversation history, and few-shot examples in parallel
       const historyMaxChars = (await getSettingNumber('CONVERSATION_HISTORY_MAX_CHARS')) ?? 4000;
@@ -119,6 +131,19 @@ export class IntentExtractor {
       await repo.saveAiUsage(userId, usage);
       saveAiFallbackLog(userId, text, { type: 'ai_intent' }, usage).catch(() => {});
 
+      // Phase 1 — fire the 80% warning when this call crosses the threshold.
+      const newCount = dailyCount + 1;
+      const warningThreshold = Math.floor(claudeLimit * 0.8);
+      if (warningThreshold > 0 && newCount >= warningThreshold && newCount < claudeLimit) {
+        const planName = await this.getPlanNameForLog(userId);
+        void limitNotifier.maybeNotifyWarning({
+          userId: Number(userId),
+          used: newCount,
+          limit: claudeLimit,
+          planName,
+        });
+      }
+
       const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
       console.log(
         `AI_INTENT (${dailyCount + 1}/${claudeLimit}):`,
@@ -159,5 +184,17 @@ export class IntentExtractor {
       // Plan lookup failed — use fallback
     }
     return settings.claude_daily_limit || 50;
+  }
+
+  /**
+   * Best-effort plan-name resolution used only for log/notification context.
+   */
+  private async getPlanNameForLog(userId: UserId): Promise<string | null> {
+    try {
+      const plan = await this.planRepo.getUserPlan(userId);
+      return plan?.name ?? null;
+    } catch {
+      return null;
+    }
   }
 }
