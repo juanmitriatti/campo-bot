@@ -2536,7 +2536,7 @@ router.get("/api/ai-training/logs", async (req, res) => {
     }
 
     const countQuery = `SELECT COUNT(*)::int AS total FROM conversation_logs cl ${whereClause}`;
-    const dataQuery = `SELECT cl.*, u.name AS user_name
+    const dataQuery = `SELECT cl.*, u.name AS user_name, u.last_name AS user_last_name, u.email AS user_email
                        FROM conversation_logs cl
                        LEFT JOIN users u ON cl.user_id = u.id
                        ${whereClause}

@@ -1530,10 +1530,11 @@
                   <th>Intent</th>
                   <th>Confianza</th>
                   <th>Feedback</th>
+                  <th>Usuario</th>
                 </tr>
               </thead>
               <tbody id="ai-logs-table-body">
-                <tr><td colspan="6"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>
+                <tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -4156,7 +4157,7 @@
         updateAiLogsPagination();
         var tbody = document.getElementById('ai-logs-table-body');
         if (!data.logs || data.logs.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Sin logs</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">Sin logs</td></tr>';
           return;
         }
         tbody.innerHTML = data.logs.map(function(l) {
@@ -4189,6 +4190,9 @@
             feedback += '<button class="btn btn-primary" style="padding:2px 8px;font-size:11px;" onclick="promoteLog(' + l.id + ')">Promover</button>';
           }
 
+          var userParts = [l.user_name, l.user_last_name].filter(Boolean).join(' ');
+          var userLabel = userParts || l.user_email || ('#' + (l.user_id || '?'));
+          var userCell = '<span title="' + escapeHtml(l.user_email || '') + '">' + escapeHtml(userLabel) + '</span>';
           return '<tr>' +
             '<td style="white-space:nowrap;">' + dateStr + '</td>' +
             '<td style="max-width:250px;overflow:hidden;white-space:pre-wrap;word-break:break-word;vertical-align:top;min-width:250px;">' + escapeHtml(l.message_text || '') + '</td>' +
@@ -4196,6 +4200,7 @@
             '<td><code>' + intentStr + '</code>' + modeBadge + toolCallsStr + '</td>' +
             '<td>' + confStr + '</td>' +
             '<td style="white-space:nowrap;">' + feedback + '</td>' +
+            '<td style="white-space:nowrap;font-size:12px;">' + userCell + '</td>' +
             '</tr>';
         }).join('');
       });
