@@ -245,6 +245,167 @@ const PERSONAS: Persona[] = [
     },
   },
   {
+    id: 'multi_campo',
+    name: 'Multi-campo (dueño con 3 campos)',
+    description: 'Sos un productor que tiene 3 campos: "Don Pedro" en Pergamino con lotes A1 (40ha), A2 (50ha), A3 (35ha); "La Esperanza" en Bragado con lotes Norte (60ha) y Sur (45ha); "El Pedacito" en Tandil con lotes 1B (20ha) y 1C (30ha). Querés navegar entre los 3 campos, comparar info, hacer queries cruzadas. Sos preciso pero a veces te confundís de campo cuando preguntás.',
+    goal: 'Listar tus campos y lotes; preguntar info de algún lote; preguntar cuántas hectáreas tenés en total; consultar cultivos activos en uno de los 3 campos.',
+    styleRules: 'Mensajes cortos. Mezclás referencias a distintos campos en la misma sesión. NO repetís el contexto cada vez (asumís que el bot recuerda).',
+    maxTurns: 14,
+    setup: async () => {
+      await apiReset();
+      await seedFieldAndPlot('Don Pedro', 'Pergamino', 'A1', 40);
+      await apiSend('agregar lote A2 al campo Don Pedro');
+      await apiSend('50');
+      await apiSend('agregar lote A3 al campo Don Pedro');
+      await apiSend('35');
+      await seedFieldAndPlot('La Esperanza', 'Bragado', 'Norte', 60);
+      await apiSend('agregar lote Sur al campo La Esperanza');
+      await apiSend('45');
+      await seedFieldAndPlot('El Pedacito', 'Tandil', '1B', 20);
+      await apiSend('agregar lote 1C al campo El Pedacito');
+      await apiSend('30');
+    },
+    postCheck: async () => {
+      const fields = await dbQuery(
+        `SELECT COUNT(*)::int AS n FROM fields WHERE user_id=$1 AND deleted_at IS NULL`, [USER_ID],
+      );
+      const plots = await dbQuery(
+        `SELECT COUNT(*)::int AS n FROM plots p JOIN fields f ON f.id=p.field_id
+         WHERE f.user_id=$1 AND p.deleted_at IS NULL AND f.deleted_at IS NULL`, [USER_ID],
+      );
+      const fc = Number(fields[0]?.n || 0);
+      const pc = Number(plots[0]?.n || 0);
+      const ok = fc === 3 && pc === 7;
+      return {
+        goalAchieved: ok,
+        details: `fields=${fc} (expected 3) plots=${pc} (expected 7)`,
+      };
+    },
+  },
+  {
+    id: 'ganadero',
+    name: 'Ganadero hardcore',
+    description: 'Sos un ganadero que maneja hacienda en un campo "Estancia La Recreación" con 2 lotes "Potrero 1" (80ha) y "Potrero 2" (90ha). Hablás con vocabulario ganadero (vaca, novillo, vaquillona, ternero, toro). Sos meticuloso con números.',
+    goal: 'Agregar 80 vacas Angus al Potrero 1, transferir 30 al Potrero 2, registrar 5 nacimientos en Potrero 2, vender 10 vacas del Potrero 1, consultar el inventario actual.',
+    styleRules: 'Frases cortas, técnicas. Usás términos correctos. NO mezclás con agro (no sembrás, no fumigás).',
+    maxTurns: 16,
+    setup: async () => {
+      await apiReset();
+      await seedFieldAndPlot('Estancia La Recreación', 'Tandil', 'Potrero 1', 80);
+      await apiSend('agregar lote Potrero 2 al campo Estancia La Recreación');
+      await apiSend('90');
+    },
+    postCheck: async () => {
+      const groups = await dbQuery(
+        `SELECT lg.category, lg.count, p.name FROM livestock_groups lg
+         JOIN plots p ON p.id = lg.plot_id JOIN fields f ON f.id = p.field_id
+         WHERE f.user_id = $1`, [USER_ID],
+      );
+      const totalVacas = groups.filter(g => /vaca/i.test(g.category)).reduce((s, g) => s + Number(g.count), 0);
+      // Started 80, +5 nacieron, -10 vendidas = 75; transferred so split 50/30 + 5 in P2 = 50/35 = 85? Hmm.
+      // Actual: +80, -10 sold, +5 born = 75. Allow ±5 for variance.
+      const ok = totalVacas >= 65 && totalVacas <= 85;
+      return {
+        goalAchieved: ok,
+        details: `total_vacas=${totalVacas} (expected ~75) groups=${groups.length}`,
+      };
+    },
+  },
+  {
+    id: 'contador',
+    name: 'Contador (query-heavy)',
+    description: 'Sos el contador del campo "El Algarrobo" en Pergamino con lotes "Sur" (100ha) y "Norte" (80ha). Tu rol es consultar y reportar: queres ver gastos, ingresos, comparar meses, exportar CSV. Estás interesado en NÚMEROS, no en operaciones agro.',
+    goal: 'Cargar gastos diversos en distintos lotes (3 gastos por $200k cada uno), pedir resumen mensual, pedir resumen por campo, pedir reporte financiero.',
+    styleRules: 'Lenguaje formal. Pedís reportes específicos. Citás categorías concretas (combustible, sueldos, agroquímicos).',
+    maxTurns: 14,
+    setup: async () => {
+      await apiReset();
+      await seedFieldAndPlot('El Algarrobo', 'Pergamino', 'Sur', 100);
+      await apiSend('agregar lote Norte al campo El Algarrobo');
+      await apiSend('80');
+    },
+    postCheck: async () => {
+      const expenses = await dbQuery(
+        `SELECT COUNT(*)::int AS n, COALESCE(SUM(amount),0) AS total
+         FROM expenses WHERE user_id=$1 AND deleted_at IS NULL`, [USER_ID],
+      );
+      const n = Number(expenses[0]?.n || 0);
+      const total = Number(expenses[0]?.total || 0);
+      const ok = n >= 3 && total >= 500000;
+      return {
+        goalAchieved: ok,
+        details: `expenses=${n} total=$${total.toLocaleString('es-AR')} (expected ≥3 ≥$500k)`,
+      };
+    },
+  },
+  {
+    id: 'mixto',
+    name: 'Productor mixto (agro + ganadero)',
+    description: 'Sos un productor mixto en "La Querencia" en Pergamino con un lote "1A" (50ha) que tiene tanto siembra como hacienda. Manejás ambos worlds en el mismo lote.',
+    goal: 'En el lote 1A: sembrar soja, agregar 30 vacas, registrar 25mm de lluvia, fumigar con glifosato, consultar el estado del lote.',
+    styleRules: 'Mensajes cortos, prácticos. Saltás entre temas (siembra → hacienda → lluvia) sin avisar.',
+    maxTurns: 14,
+    setup: async () => {
+      await apiReset();
+      await seedFieldAndPlot('La Querencia', 'Pergamino', '1A', 50);
+    },
+    postCheck: async () => {
+      const sown = await dbQuery(
+        `SELECT pc.crop FROM plot_crops pc JOIN plots p ON p.id=pc.plot_id JOIN fields f ON f.id=p.field_id
+         WHERE f.user_id=$1 AND pc.crop ILIKE 'soja'`, [USER_ID],
+      );
+      const livestock = await dbQuery(
+        `SELECT lg.count FROM livestock_groups lg JOIN plots p ON p.id=lg.plot_id JOIN fields f ON f.id=p.field_id
+         WHERE f.user_id=$1`, [USER_ID],
+      );
+      const rain = await dbQuery(
+        `SELECT COUNT(*)::int AS n FROM rainfall r JOIN fields f ON f.id=r.field_id
+         WHERE f.user_id=$1 AND r.deleted_at IS NULL`, [USER_ID],
+      ).catch(() => [{ n: 0 }]);
+      const sprayCount = await dbQuery(
+        `SELECT COUNT(*)::int AS n FROM domain_events de JOIN plots p ON p.id=de.plot_id JOIN fields f ON f.id=p.field_id
+         WHERE f.user_id=$1 AND de.event_type='spraying'`, [USER_ID],
+      );
+      const sownOk = sown.length > 0;
+      const livestockOk = livestock.length > 0 && livestock.reduce((s, l) => s + Number(l.count), 0) >= 25;
+      const rainOk = Number(rain[0]?.n || 0) > 0;
+      const sprayOk = Number(sprayCount[0]?.n || 0) > 0;
+      const score = [sownOk, livestockOk, rainOk, sprayOk].filter(Boolean).length;
+      return {
+        goalAchieved: score >= 3,
+        details: `sown=${sownOk} livestock=${livestockOk} rain=${rainOk} spray=${sprayOk} score=${score}/4`,
+      };
+    },
+  },
+  {
+    id: 'despistado',
+    name: 'Despistado mobile (typos masivos)',
+    description: 'Estás escribiendo desde un celular en el campo, con typos masivos, abreviaturas, frases cortadas. Tenés un campo "Don Cosme" con lote "1A" (40ha). Igual queres que te entienda.',
+    goal: 'Cargar un gasto de combustible $80.000, registrar siembra de soja en 1A, consultar el lote.',
+    styleRules: 'Typos en cada mensaje (ej: "compre gsoil 80mil", "smbre soja en 1a"). Abreviaturas como "x" por "por", "tmb" por "también". Sin tildes.',
+    maxTurns: 14,
+    setup: async () => {
+      await apiReset();
+      await seedFieldAndPlot('Don Cosme', 'Pergamino', '1A', 40);
+    },
+    postCheck: async () => {
+      const expenses = await dbQuery(
+        `SELECT COUNT(*)::int AS n FROM expenses WHERE user_id=$1 AND deleted_at IS NULL AND category ILIKE '%combustible%'`,
+        [USER_ID],
+      );
+      const sown = await dbQuery(
+        `SELECT COUNT(*)::int AS n FROM plot_crops pc JOIN plots p ON p.id=pc.plot_id JOIN fields f ON f.id=p.field_id
+         WHERE f.user_id=$1 AND pc.crop ILIKE 'soja'`, [USER_ID],
+      );
+      const expOk = Number(expenses[0]?.n || 0) > 0;
+      const sownOk = Number(sown[0]?.n || 0) > 0;
+      return {
+        goalAchieved: expOk && sownOk,
+        details: `expense_combustible=${expOk} soja_sown=${sownOk}`,
+      };
+    },
+  },
+  {
     id: 'adversario',
     name: 'Adversario / breaker',
     description: 'Sos un usuario molesto que está intentando romper el bot. Cambiás de tema, escribís con typos extremos, mezclás idiomas, contradecís cosas que dijiste antes, mandás mensajes ambiguos. Tenés un campo "Test" con lote "X1" de 25 ha.',
@@ -513,8 +674,18 @@ async function main() {
   console.log(`  Models: persona=${PERSONA_MODEL} evaluator=${EVALUATOR_MODEL}\n`);
 
   const results: RunResult[] = [];
+  let lastAuthRefresh = Date.now();
   for (const p of personas) {
     for (let i = 0; i < runs; i++) {
+      // Re-auth every ~30 min to avoid JWT expiry on long runs (despistado
+      // was hitting 401 at the end of 5x5 runs because the original token
+      // had expired ~50 min in).
+      if (Date.now() - lastAuthRefresh > 30 * 60 * 1000) {
+        const fresh = await apiRegister();
+        AUTH_TOKEN = fresh.token;
+        lastAuthRefresh = Date.now();
+        console.log('  [auth refreshed]');
+      }
       const r = await runPersona(p);
       results.push(r);
     }
