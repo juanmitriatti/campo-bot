@@ -612,6 +612,17 @@ const COMMAND_PATTERNS = [
   { command: "greeting", patterns: [/^(hola|buenas|buen dia|buenas tardes|buenas noches|hey|que tal)\b/] },
   { command: "thanks", patterns: [/^(gracias|gracia|thank|thx|genial|joya)\b/] },
   { command: "ack", patterns: [/^(ok|listo|perfecto|bien|bueno|entendido)$/] },
+  // Closings: short messages that are ONLY pleasantries / farewells. Avoids
+  // sending these into the agent, which sometimes responds verbosely with a
+  // tool call and the user then "needs" to keep the conversation going (the
+  // QA chaos persona caught despedida loops). Match short messages (≤40 chars)
+  // that consist only of closing words/phrases.
+  { command: "ack", patterns: [
+    /^(chau|nos\s+vemos|hasta\s+luego|hasta\s+la\s+pr[óo]xima|abrazo|saludos)\b/i,
+    /^(?:dale|ok|listo|perfecto|bueno|bien|todo\s+bien|todo\s+ok|all\s+good)[\s,.!]*(?:gracias|grax|graxias|che|boludo|amigo)?[\s,.!]*$/i,
+    /^(?:gracias|grax)[\s,.!]+(?:che|boludo|amigo|capo|maestro)[\s,.!]*$/i,
+    /^(?:dejalo\s+as[íi]|d[eé]jalo|listo\s+nom[áa]s|qued[óo]\s+todo\s+bien)[\s,.!]*$/i,
+  ] },
   { command: "help", patterns: [/^(ayuda|help|comandos|\?)$/] },
   { command: "menu", patterns: [/^(menu|menú|opciones)$/] },
   { command: "show_reports_menu", patterns: [

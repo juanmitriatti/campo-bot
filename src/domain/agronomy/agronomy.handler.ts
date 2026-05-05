@@ -1181,7 +1181,10 @@ export class AgronomyHandler {
           const plotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
 
           if (!active) {
-            return { messages: [`No hay cultivo activo en *${plotLabel}*.`] };
+            // Helpful hint so the user has a path forward — the chaos persona
+            // hit "No hay campañas activas" repeated 4+ times without knowing
+            // how to start one.
+            return { messages: [`No hay cultivo activo en *${plotLabel}*.\n\n_Para sembrar: "sembré soja en ${resolved.plotName}" (o cambiá el cultivo)._`] };
           }
 
           const label = formatSeasonLabel(active.season_year, active.season_type);
@@ -1224,7 +1227,7 @@ export class AgronomyHandler {
         if (allActive.length === 0) {
           const filterMsg = cropFilter ? ` de *${cropFilter}*` : '';
           const grupoMsg = grupoFilter ? ` en grupo *${grupoFilter}*` : '';
-          return { messages: [`No hay campañas activas${filterMsg}${grupoMsg}.`] };
+          return { messages: [`No hay campañas activas${filterMsg}${grupoMsg}.\n\n_Para sembrar: "sembré ${cropFilter || 'soja'} en lote X". Para ver historial: "historial del lote X"._`] };
         }
 
         // Compute totals — prefer sowed_hectares, fallback to area_hectares
