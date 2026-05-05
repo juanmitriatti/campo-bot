@@ -371,6 +371,21 @@ export class FinancialHandler {
     const resolution = await this.service.resolveField(userId, fieldName, plotName);
     let { fieldId, fieldName: resFieldName, plotId, plotName: resPlotName } = resolution;
 
+    // Field-level expenses: when the category is a corporate-overhead one
+    // (sueldos, arrendamiento, etc.) AND the user didn't explicitly say a
+    // plot, drop the auto-resolved plot. Otherwise "sueldos $300k" gets
+    // silently assigned to the user's only lote, which is data corruption
+    // (the QA "Pedro despistado" persona caught it).
+    const FIELD_LEVEL_CATEGORIES = new Set([
+      'sueldos', 'arrendamiento', 'alquiler', 'servicios', 'impuestos',
+      'contabilidad', 'administración', 'administracion', 'gastos generales',
+    ]);
+    const isFieldLevelExpense = !plotName && FIELD_LEVEL_CATEGORIES.has((data.category || '').toLowerCase());
+    if (isFieldLevelExpense && plotId) {
+      plotId = null;
+      resPlotName = null;
+    }
+
     // If the referenced field/plot doesn't exist, redirect to flow for plot selection
     if (resolution.notFound) {
       const label = resolution.notFound.type === 'field' ? 'campo' : 'lote';
@@ -450,8 +465,11 @@ export class FinancialHandler {
       }
     }
 
-    // No plot resolved → redirect to expense flow so user picks one
-    if (!plotId) {
+    // No plot resolved → redirect to expense flow so user picks one. EXCEPT
+    // when this is a field-level expense (sueldos/arrendamiento/etc.) and
+    // we already have a field — then save at field level (plot_id NULL)
+    // without forcing the user through plot selection.
+    if (!plotId && !(isFieldLevelExpense && fieldId)) {
       const currency = data.currency === 'USD' ? 'USD' : 'ARS';
       return {
         messages: [],
@@ -865,6 +883,50 @@ export class FinancialHandler {
       // --- Unified financial report (agent tool_use) ---
       case 'financial_report': {
         return this.handleFinancialReport(cmd, userId);
+      }
+
+      // --- Edit last expense: clear lot or reassign ---
+      case 'edit_last_expense': {
+        const categoryFilter = cmd.categoryFilter as string | null;
+        const newPlotName = cmd.newPlotName as string | null;
+        const newFieldName = cmd.newFieldName as string | null;
+        const clearLot = !!cmd.clearLot;
+
+        if (!newPlotName && !clearLot && !newFieldName) {
+          return { messages: ['¿Qué corregimos del gasto? Indicá el nuevo lote o pedí "sin lote" para dejarlo a nivel de campo. Ej:\n✏️ *los sueldos eran del campo, sin lote*\n✏️ *el gasoil al lote norte*'] };
+        }
+
+        const last = await this.service.findLastExpenseByCategory(userId, categoryFilter);
+        if (!last) {
+          const filterDesc = categoryFilter ? ` de tipo *${categoryFilter}*` : '';
+          return { messages: [`No encontré un gasto reciente${filterDesc} para editar.`] };
+        }
+
+        let newPlotId: number | null = null;
+        let newFieldId: number | null = null;
+        let newPlotLabel: string | null = null;
+        if (clearLot) {
+          newPlotId = null;
+          newFieldId = last.field_id;  // keep field_id, drop plot_id
+          newPlotLabel = '(sin lote)';
+        } else if (newPlotName) {
+          const resolved = await this.plotDiscovery.resolveFromNames(userId, newFieldName, newPlotName);
+          if (!resolved.plotId) {
+            return { messages: [`No encontré el lote *${newPlotName}*. Revisá el nombre o escribí *mis lotes*.`] };
+          }
+          newPlotId = resolved.plotId;
+          newFieldId = resolved.fieldId;
+          newPlotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+        }
+
+        await this.service.updateExpensePlot(last.id, newFieldId, newPlotId);
+
+        const oldLabel = last.plot_name ? (last.field_name ? `${last.field_name} > ${last.plot_name}` : last.plot_name) : (last.field_name || 'sin lote');
+        return {
+          messages: [
+            `✏️ Gasto corregido: *${last.category}* $${Number(last.amount).toLocaleString('es-AR')}\n📍 ${oldLabel} → *${newPlotLabel}*`,
+          ],
+        };
       }
 
       // --- Result / Rentability ---

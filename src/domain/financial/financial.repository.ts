@@ -75,6 +75,37 @@ export class FinancialRepository {
     return row as ExpenseRow;
   }
 
+  async findLastExpenseByCategory(userId: UserId, categoryFilter: string | null): Promise<(ExpenseRow & { field_name: string | null; plot_name: string | null }) | null> {
+    const { pool } = await import('../../config/db.js');
+    const params: any[] = [userId];
+    let where = `e.user_id = $1 AND e.deleted_at IS NULL`;
+    if (categoryFilter) {
+      params.push(`%${categoryFilter}%`);
+      where += ` AND e.category ILIKE $${params.length}`;
+    }
+    const result = await pool.query(
+      `SELECT e.*, f.name AS field_name, p.name AS plot_name
+       FROM expenses e
+       LEFT JOIN fields f ON f.id = e.field_id
+       LEFT JOIN plots p ON p.id = e.plot_id
+       WHERE ${where}
+       ORDER BY e.id DESC LIMIT 1`,
+      params,
+    );
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    row.amount = Number(row.amount);
+    return row;
+  }
+
+  async updateExpensePlot(expenseId: number, fieldId: number | null, plotId: number | null): Promise<void> {
+    const { pool } = await import('../../config/db.js');
+    await pool.query(
+      `UPDATE expenses SET field_id = $2, plot_id = $3, updated_at = NOW() WHERE id = $1`,
+      [expenseId, fieldId, plotId],
+    );
+  }
+
   // --- Incomes ---
 
   async saveIncome(userId: UserId, data: ParsedIncome, fieldId: number | null = null, plotId: number | null = null): Promise<{ id: number }> {

@@ -432,12 +432,14 @@ export class AgentResponseMapper {
     if (input.season_year_1 != null) cmd.seasonYear1 = input.season_year_1;
     if (input.season_year_2 != null) cmd.seasonYear2 = input.season_year_2;
 
-    // Edit activity
+    // Edit activity / expense
     if (input.new_plot != null) cmd.newPlotName = input.new_plot;
     if (input.new_field != null) cmd.newFieldName = input.new_field;
     if (input.new_crop != null) cmd.newCrop = input.new_crop;
     if (input.new_date != null) cmd.newDate = input.new_date;
     if (input.activity_filter != null && toolName === 'edit_last_activity') cmd.activityFilter = input.activity_filter;
+    if (input.category_filter != null && toolName === 'edit_last_expense') cmd.categoryFilter = input.category_filter;
+    if (input.clear_lot != null) cmd.clearLot = input.clear_lot;
 
     // Livestock
     if (input.count != null) cmd.count = input.count;

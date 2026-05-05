@@ -17,6 +17,7 @@ const FINANCIAL_COMMANDS = new Set([
   'weekly_report', 'monthly_report', 'field_report', 'plot_report', 'date_range_report',
   'set_budget',
   'delete_last', 'delete_last_income', 'delete_specific', 'edit_specific', 'edit_last',
+  'edit_last_expense',
   'export_csv',
   'set_field_city', 'add_field_city', 'add_field', 'list_fields',
   'delete_field', 'rename_field', 'field_info',

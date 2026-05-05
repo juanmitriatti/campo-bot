@@ -48,6 +48,14 @@ export class FinancialService {
     return { category: last.category, amount: Number(last.amount) };
   }
 
+  async findLastExpenseByCategory(userId: UserId, categoryFilter: string | null) {
+    return this.repo.findLastExpenseByCategory(userId, categoryFilter);
+  }
+
+  async updateExpensePlot(expenseId: number, fieldId: number | null, plotId: number | null): Promise<void> {
+    return this.repo.updateExpensePlot(expenseId, fieldId, plotId);
+  }
+
   async deleteSpecificExpense(userId: UserId, filter: string): Promise<{ category: string; amount: number } | null> {
     const expense = await this.repo.findExpenseByFilter(userId, filter);
     if (!expense) return null;

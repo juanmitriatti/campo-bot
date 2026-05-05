@@ -112,11 +112,33 @@ export class StockDeductionService {
 
   /**
    * Apply a stock deduction from an activity.
+   *
+   * Idempotency guard: if the activity's stock_deduction_status is already
+   * 'accepted' OR if a stock_movement is already linked to this
+   * domain_event_id, skip the deduction. This prevents the double-deduction
+   * bug surfaced by the QA "Roberto" persona — the spray flow could leave
+   * a pending deduction AND the agent could also fire remove_stock in the
+   * same compound, causing 240 lt to leave stock when the user used 120.
    */
   async applyDeduction(
     userId: UserId,
     suggestion: StockDeductionSuggestion,
-  ): Promise<{ item: StockItemRow; movement: StockMovementRow }> {
+  ): Promise<{ item: StockItemRow; movement: StockMovementRow; alreadyApplied?: boolean }> {
+    const guard = await pool.query(
+      `SELECT
+         (SELECT stock_deduction_status FROM domain_events WHERE id = $1) AS status,
+         (SELECT COUNT(*)::int FROM stock_movements WHERE domain_event_id = $1) AS movement_count`,
+      [suggestion.domainEventId],
+    );
+    const status = guard.rows[0]?.status;
+    const movementCount = Number(guard.rows[0]?.movement_count || 0);
+    if (status === 'accepted' || movementCount > 0) {
+      // Already deducted via this domain_event — return current item state without duplicating.
+      const item = await stockService.findProduct(userId, suggestion.product);
+      const fakeMovement = { id: 0, stock_item_id: suggestion.stockItemId, user_id: Number(userId), movement_type: 'salida', quantity: 0, reason: 'duplicate-skipped', notes: null, expense_id: null, domain_event_id: suggestion.domainEventId, movement_date: new Date(), created_at: new Date() } as StockMovementRow;
+      return { item: item!, movement: fakeMovement, alreadyApplied: true };
+    }
+
     const { item, movement } = await stockService.removeStock(
       userId,
       suggestion.product,

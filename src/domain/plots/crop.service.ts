@@ -104,8 +104,10 @@ export class CropService {
     let closedPrevious: PlotCropRow | null = null;
 
     if (active) {
-      // Same crop already active → return existing
-      if (active.crop === crop) {
+      // Same crop already active → return existing. Use case-insensitive
+      // match so "Soja" / "soja" / "SOJA" don't create duplicate campaigns
+      // when the agent re-fires sow_crop with different casing.
+      if (active.crop.toLowerCase() === crop.toLowerCase()) {
         return { cropRow: active, closedPrevious: null };
       }
       // Different crop → close the previous one

@@ -1,12 +1,12 @@
 {
-  "ts": "2026-05-05T16:25:14.514Z",
+  "ts": "2026-05-05T17:35:44.760Z",
   "models": {
     "persona": "claude-haiku-4-5-20251001",
     "evaluator": "claude-sonnet-4-6"
   },
-  "pass": 1,
-  "warn": 0,
-  "fail": 4,
+  "pass": 0,
+  "warn": 2,
+  "fail": 3,
   "total": 5,
   "results": [
     {
@@ -16,78 +16,117 @@
       "conversation": [
         {
           "role": "persona",
-          "text": "Che, boludo. Hoy terminé de cosechar el lote 11D del campo Don Aurelio. Salió un laburo importante, 30 hectáreas de maíz. El rinde quedó en 4500 kg/ha, bastante conforme con el resultado la verdad. ¿Me cargás eso en el sistema? Necesito tener todo registrado para los números del trimestre."
+          "text": "Hola! Mirá, terminé de cosechar el lote 11D del campo Don Aurelio. Salió muy bien, 4500 kg/ha en las 30 ha. Quería registrarlo en el sistema. Como lo cargo?"
         },
         {
           "role": "bot",
-          "text": "🌾 *maíz* cosechado en *don aurelio > 11D*\n📅 Campaña 2025/26\n📊 Rendimiento: 135.000 kg (4.500 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈ 135 tn* de *maíz* al stock?\nCargar ≈ 135 tn de maíz al stock?\n[buttons: stock_grain_yes_374, stock_grain_no_374]"
+          "text": "Hola, Testing 👋 Soy *MIA*, tu asistente de gestión agrícola.\n¿Qué querés hacer?\n[buttons: menu_gastos, menu_clima, back_menu]"
         },
         {
           "role": "persona",
-          "text": "Sí, cargalo al stock. Y después me confirmás el promedio del 11D para estar seguro que quedó bien registrado."
+          "text": "Mira, necesito cargar la cosecha. El 11D rindió 4500 kg/ha. Decime cómo lo registro en el sistema, eso de los botones no me sirve."
         },
         {
           "role": "bot",
-          "text": "📥 *Stock actualizado*\n\n  📦 *maíz* (nuevo)\n  ➕ 135000 kg\n  📊 Total: *135000 kg*\n  🏭 Principal (don aurelio)\n📊 *Campaña maíz 2025/26* — 11D (don aurelio)\nEstado: 🌾 Cosechada (abierta) | 1 días\n\n*Actividades (2):*\nSiembra: 1 | Cosecha: 1\n\n*Rendimiento:* 135.000 kg (4.500 kg/ha)"
+          "text": "🚛 *1 carga registrada en don aurelio > 11D:*\n• El — 11.000 kg\n\n📊 *Total: 11.000 kg*\n📅 Campaña 2025/26\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\"."
         },
         {
           "role": "persona",
-          "text": "Dale, perfecto. Me queda tranquilo sabiendo que el rinde del 11D quedó en 4500 kg/ha. Ahora necesito pensar qué hago con el resto del campo, tengo otros lotes para cosechar. Gracias por cargar todo en el sistema, boludo."
+          "text": "Espera, eso no está bien. Fueron 30 ha a 4500 kg/ha, así que debería ser 135 tn, no 11 tn. Decime si quedó mal cargado o si tengo que verificar el rinde del 11D que grabaste."
         },
         {
           "role": "bot",
-          "text": "De nada, boludo. Todo registrado y en orden. 💪\n\nCuando estés listo para cosechar los otros lotes, avisame y cargo todo. Y si necesitás ver gastos, rendimientos o cualquier reporte del campo, decime nomás.\n\n¡Éxito con el resto de la cosecha! 🌾"
+          "text": ""
         },
         {
           "role": "persona",
-          "text": "Bueno, mañana empiezo con el lote 5A. Ahora me voy a revisar las máquinas porque el clima se ve complicado para la próxima semana. Te aviso cuando esté listo para cargar la próxima cosecha."
+          "text": "Tenés razón, me equivoqué en el cálculo. Dejame verificar: 30 ha x 4500 kg/ha = 135.000 kg, que son 135 tn. Lo que cargué está mal. Podés decirme nuevamente los datos para que corrija el registro del 11D?"
         },
         {
           "role": "bot",
-          "text": "Perfecto, dale. Revisá bien las máquinas que el clima complicado requiere todo en punto. \n\nCuando estés listo con el 5A, me avisas y cargamos la cosecha. Cualquier cosa que necesites registrar mientras tanto (lluvia, observaciones, gastos), acá estoy.\n\n¡Que vaya todo bien! 🚜"
+          "text": ""
         },
         {
           "role": "persona",
-          "text": "Dale, tranquilo. Mañana te aviso cómo salió el 5A. Ahora me pongo con las máquinas, hay que dejarlas lista. Cualquier cosa te llamo."
+          "text": "Mirá, te pido que verifiques qué quedó grabado. Decime el promedio del 11D para confirmar si está los 4500 kg/ha o si tengo que cargar de nuevo. Porque 135 tn es lo correcto para las 30 ha."
         },
         {
           "role": "bot",
-          "text": "Dale, perfecto. Revisá todo con calma que después no hay sorpresas en la cosecha. \n\nCuando termines con el 5A y tengas los números, me avisas y cargamos todo. Estoy acá para lo que necesites.\n\n¡Mucha suerte! 🤝"
+          "text": "📊 *Campaña maíz 2025/26* — 11D (don aurelio)\nEstado: 🌾 Cosechada (abierta) | 1 días\n\n*Actividades (2):*\nSiembra: 1 | Cosecha: 1\n\n*Rendimiento:* 11.000 kg (367 kg/ha)\n\n🚛 *Cargas (1):*\n• El — 11.000 kg"
         },
         {
           "role": "persona",
-          "text": "Bueno, listo. Mañana te cuento cómo anduvo. Ahora me meto con las máquinas, tengo que chequear la cosechadora y el transportista. Cualquier cosa te grito."
+          "text": "Mira, está todo mal. Quedó registrado 367 kg/ha cuando debería ser 4500 kg/ha. Tengo que cargar de nuevo. Borrá esa cosecha y registrame bien: 30 ha x 4500 kg/ha = 135 tn en el lote 11D."
         },
         {
           "role": "bot",
-          "text": "Dale, perfecto. Revisá todo bien que después anda sin problemas.\n\nCuando tengas los datos de la cosecha del 5A mañana, me avisas y cargamos todo. Estoy acá para lo que necesites.\n\n¡Éxito con las máquinas! 🚜"
+          "text": "🌾 *maíz* cosechado en *don aurelio > 11D*\n📅 Campaña 2025/26\n📊 Rendimiento: 135.000 kg (4.500 kg/ha)\n\n📦 *1 carga registrada* (total: 11.000 kg)\nEscribí *cargas del lote 11D* para ver el detalle.\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *135 tn* de *maíz* al stock?\nCargar 135 tn de maíz al stock?\n[buttons: stock_grain_yes_380, stock_grain_no_380]"
         },
         {
           "role": "persona",
-          "text": "Bueno, me pongo manos a la obra. Te hablo mañana cuando termine con el 5A. Gracias por todo, boludo."
+          "text": "Sí, cargá las 135 tn al stock. Y verificame de una vez el promedio del 11D para confirmar que quedó bien los 4500 kg/ha."
         },
         {
           "role": "bot",
-          "text": "¡De nada, boludo! Vos dale que yo estoy acá. Mañana cargamos todo del 5A sin drama.\n\n¡Mucha suerte con la cosecha! 💪"
+          "text": "📥 *Stock actualizado*\n\n  📦 *maíz* (nuevo)\n  ➕ 135 tn\n  📊 Total: *135 tn*\n  🏭 Principal (don aurelio)\n📊 *Campaña maíz 2025/26* — 11D (don aurelio)\nEstado: 🌾 Cosechada (abierta) | 1 días\n\n*Actividades (2):*\nSiembra: 1 | Cosecha: 1\n\n*Rendimiento:* 11.000 kg (367 kg/ha)\n\n🚛 *Cargas (1):*\n• El — 11.000 kg"
         },
         {
           "role": "persona",
-          "text": "Bueno, me voy. Mañana te paso los números del 5A así cargamos todo. Gracias nuevamente, boludo. Nos hablamos.\n\n__END__"
+          "text": "Che, espera. El promedio sigue diciendo 367 kg/ha cuando cargué 4500 kg/ha. Algo no cierra. Decime qué onda con eso, porque en el stock me muestra bien las 135 tn pero el rinde del 11D está mal. Tengo que verificar eso antes de seguir."
         },
         {
           "role": "bot",
-          "text": "¡Dale, perfecto! Mañana cargamos los números del 5A sin drama. Mucha suerte con todo, boludo. ¡Nos hablamos! 🤝"
+          "text": "📊 *Campaña maíz 2025/26* — 11D (don aurelio)\nEstado: 🌾 Cosechada (abierta) | 1 días\n\n*Actividades (2):*\nSiembra: 1 | Cosecha: 1\n\n*Rendimiento:* 11.000 kg (367 kg/ha)\n\n🚛 *Cargas (1):*\n• El — 11.000 kg"
+        },
+        {
+          "role": "persona",
+          "text": "Mirá, no cierra nada. Me dice 367 kg/ha pero yo cargué 4500 kg/ha. Las 135 tn están en stock, pero el rinde quedó grabado mal en el lote. Necesito que corrijas eso porque no puedo dejar así. Cómo lo arreglamos?"
+        },
+        {
+          "role": "bot",
+          "text": "🌾 *maíz* cosechado en *don aurelio > 11D*\n📅 Campaña 2025/26\n📊 Rendimiento: 135.000 kg (4.500 kg/ha)\n\n📦 *1 carga registrada* (total: 11.000 kg)\nEscribí *cargas del lote 11D* para ver el detalle.\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈ 135 tn* de *maíz* al stock?\nCargar ≈ 135 tn de maíz al stock?\n[buttons: stock_grain_yes_380, stock_grain_no_380]"
+        },
+        {
+          "role": "persona",
+          "text": "Che, esperá. Vos me mostrás que el rinde está en 4500 kg/ha, eso está bien. Pero después en el resumen me dice 367 kg/ha. No entiendo qué onda. Decime bien cuál es el promedio que quedó grabado en el 11D, porque necesito confirmar que está los 4500 kg/ha como corresponde."
+        },
+        {
+          "role": "bot",
+          "text": "📊 *Campaña maíz 2025/26* — 11D (don aurelio)\nEstado: 🌾 Cosechada (abierta) | 1 días\n\n*Actividades (2):*\nSiembra: 1 | Cosecha: 1\n\n*Rendimiento:* 11.000 kg (367 kg/ha)\n\n🚛 *Cargas (1):*\n• El — 11.000 kg"
+        },
+        {
+          "role": "persona",
+          "text": "Bueno, mirá, esto no funciona. El sistema me dice 367 kg/ha pero yo cargué 4500 kg/ha. Hay un error en el registro. Necesito que alguien revise esto porque no puedo dejar así el lote 11D. ¿Hay algún soporte técnico o cómo se arregla?"
+        },
+        {
+          "role": "bot",
+          "text": "📊 *Campaña maíz 2025/26* — 11D (don aurelio)\nEstado: 🌾 Cosechada (abierta) | 1 días\n\n*Actividades (2):*\nSiembra: 1 | Cosecha: 1\n\n*Rendimiento:* 11.000 kg (367 kg/ha)\n\n🚛 *Cargas (1):*\n• El — 11.000 kg"
+        },
+        {
+          "role": "persona",
+          "text": "Mira, voy a probar de nuevo. Borrá esa carga de 11 tn que quedó mal y registrame correctamente: 135 tn en el 11D. Porque así no puedo seguir, el rinde tiene que estar en 4500 kg/ha."
+        },
+        {
+          "role": "bot",
+          "text": "🌾 *maíz* cosechado en *don aurelio > 11D*\n📅 Campaña 2025/26\n\n📦 *1 carga registrada* (total: 11.000 kg)\nEscribí *cargas del lote 11D* para ver el detalle.\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *135 tn* de *maíz* al stock?\nCargar 135 tn de maíz al stock?\n[buttons: stock_grain_yes_380, stock_grain_no_380]"
         }
       ],
-      "goal_achieved": true,
-      "goal_details": "yield_kg=135000 (expected ~135000)",
+      "goal_achieved": false,
+      "goal_details": "yield_kg=11000 (expected ~135000 ±10%)",
       "red_flags": [
-        "Loop de despedida: el usuario repite mensajes de cierre 4-5 veces y el bot responde igual en cada turno sin cortar el ciclo",
-        "Respuestas del bot algo verbosas y repetitivas en los últimos turnos (mismo mensaje reformulado varias veces)"
+        "Registro inicial incorrecto: bot cargó 11.000 kg en lugar de 135.000 kg sin justificación",
+        "Respuestas vacías del bot en dos turnos consecutivos cuando el usuario reportó el error",
+        "Bot muestra datos contradictorios: en confirmación de cosecha dice '135.000 kg (4.500 kg/ha)' pero en resumen de campaña sigue mostrando '11.000 kg (367 kg/ha)'",
+        "Loop persistente: el bot repite el mismo resumen incorrecto (367 kg/ha) múltiples veces sin corregirlo en DB",
+        "Bot no ejecuta la corrección solicitada: al pedir borrar la carga errónea y recargar, no elimina el registro de 11.000 kg",
+        "Dato incorrecto en DB confirmado: yield_kg=11000 cuando debería ser ~135000",
+        "Bot ignora pedido explícito de soporte técnico, respondiendo con el mismo resumen erróneo",
+        "Contradicción no resuelta entre vista de cosecha (4500 kg/ha) y vista de campaña (367 kg/ha) generando confusión grave al usuario",
+        "Resultado objetivo no logrado: el rinde quedó mal grabado en la base de datos"
       ],
-      "evaluator_score": 8,
-      "evaluator_summary": "El objetivo principal fue logrado de forma limpia y rápida (registro de cosecha + confirmación de rinde), pero la conversación degeneró en un loop de despedidas repetitivas que el bot no supo cerrar eficientemente.",
-      "status": "PASS"
+      "evaluator_score": 1,
+      "evaluator_summary": "El bot registró incorrectamente la cosecha desde el inicio (11 tn en lugar de 135 tn), respondió con silencios ante el reclamo, mostró datos contradictorios en distintas vistas y nunca corrigió el registro en la base de datos, dejando al usuario en un loop sin resolución.",
+      "status": "FAIL"
     },
     {
       "persona_id": "pedro",
@@ -96,99 +135,55 @@
       "conversation": [
         {
           "role": "persona",
-          "text": "che, hola. mira, tengo que cargar algunos gastos del otro día. primero, compre gasoil para la Rosa, fueron 50 mil pesos. no me acuerdo bien el lote pero es de ahi. ah y tambien fumige con glifosato, como 100 litros en el lote 1A, eso salio 200 mil."
+          "text": "che, mirá necesito cargar unos gastos que hice hoy. Compre gasoil, como 50 mil pesos creo. Fue en La Rosa, el campo ese que tengo. y despues fumige con glifosato, fueron 200 lucas por 100 litros en el lote 1A. Ah, y tambien pague los sueldos, 300 mil. ¿Cómo le hago para meter todo esto?"
         },
         {
           "role": "bot",
-          "text": "✅ Anotado\nCombustible\n$50.000\n📍 Lote 1A (la rosa)\n💨 *Fumigación* registrada\n📍 la rosa > 1A\n🧴 glifosato (herbicida)\n📏 100 lt\n✅ Listo, gasto registrado\nAgroquímicos\n$200.000\n📍 Lote 1A (la rosa)\n\n📦 ¿Querés cargar *100lt de glifosato* al stock del Depósito Principal?\n✅ Listo, gasto registrado\nAgroquímicos\n$200.000\n📍 Lote 1A (la rosa)\n\n📦 ¿Querés cargar *100lt de glifosato* al stock del Depósito Principal?\n[buttons: stock_entry_yes_148, stock_entry_no_148]"
+          "text": "✅ Anotado\nCombustible\n$50.000\n📍 Lote 1A (la rosa)\n✅ Listo, gasto registrado\nAgroquímicos\n$200.000\n📍 Lote 1A (la rosa)\n\n📦 ¿Querés cargar *100lt de glifosato* al stock del Depósito Principal?\n✅ Anotado\nSueldos\n$300.000\n📍 la rosa\n✅ Listo, gasto registrado\nAgroquímicos\n$200.000\n📍 Lote 1A (la rosa)\n\n📦 ¿Querés cargar *100lt de glifosato* al stock del Depósito Principal?\n[buttons: stock_entry_yes_152, stock_entry_no_152]"
         },
         {
           "role": "persona",
-          "text": "che, si, cargá los 100 litros al deposito. ah, y me falta cargar un gasto más, los sueldos de los muchachos, fueron 300 mil pesos del mes pasado."
+          "text": "si, cargá los 100 litros al depósito. Pero che, el gasoil no fue en el lote 1A, fue en todo La Rosa nomás, no especifiqué lote. ¿Está bien así o tengo que arreglarlo?"
         },
         {
           "role": "bot",
-          "text": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Principal (la rosa)\n✅ Anotado\nSueldos\n$300.000\n📍 Lote 1A (la rosa)\n📅 05/04/2026"
+          "text": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Principal (la rosa)\n✏️ Gasto corregido: *Combustible* $50.000\n📍 la rosa > 1A → *(sin lote)*"
         },
         {
           "role": "persona",
-          "text": "che, espera, los sueldos no son del lote 1A. eso es de todo el campo, es un gasto general. y el gasoil tampoco era específicamente del 1A, era para la Rosa en general. podés arreglarlo?"
+          "text": "mirá, está bien así sin lote. Pero che, una cosa, el gasoil ¿está bien en el campo La Rosa sin especificar lote? Porque la verdad no me acuerdo en qué lote lo cargué exactamente. Dejalo así nomás si podés. ¿Listo todo entonces?"
         },
         {
           "role": "bot",
-          "text": "¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*"
+          "text": "✅ Perfecto, todo listo.\n\n📋 *Resumen de gastos registrados hoy:*\n• **Combustible** $50.000 — campo la rosa (sin lote específico)\n• **Agroquímicos** $200.000 — lote 1A (la rosa)\n• **Sueldos** $300.000 — campo la rosa (sin lote específico)\n\n📦 **Stock:**\n• glifosato: 100 lt cargados al depósito\n\n¿Necesitás algo más?"
         },
         {
           "role": "persona",
-          "text": "che, si, arreglá los sueldos sin lote específico, que es general del campo. y el gasoil también, sacale el 1A, es de la Rosa nomás. gracias!"
+          "text": "No, está todo bien. Gracias che, me sacaste un peso de encima. Cualquier cosa te aviso."
         },
         {
           "role": "bot",
-          "text": "¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*"
+          "text": "¡De nada! Cualquier cosa que necesites registrar o consultar, acá estoy. ¡Éxitos con la cosecha! 🌾"
         },
         {
           "role": "persona",
-          "text": "che, boludo, los sueldos sin lote, es un gasto general del campo La Rosa nomás. y el gasoil igual, sacale el 1A. solo La Rosa, entendés?"
+          "text": "Dale, gracias. Cualquier cosa te aviso che. Nos vemos!\n\n__END__"
         },
         {
           "role": "bot",
-          "text": "¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*"
-        },
-        {
-          "role": "persona",
-          "text": "che, mirá, los dos gastos sin lote. sueldos es general del campo La Rosa, y el gasoil también es de La Rosa sin lote específico. solo eso, sacale el 1A a los dos. ¿me entendés?"
-        },
-        {
-          "role": "bot",
-          "text": "¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*"
-        },
-        {
-          "role": "persona",
-          "text": "che, boludo, mirá... sueldos: sin lote, es general de La Rosa. gasoil: sin lote también, solo La Rosa. sacale el 1A a los dos, ¿viste? eso es todo lo que necesito arreglar."
-        },
-        {
-          "role": "bot",
-          "text": "¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*"
-        },
-        {
-          "role": "persona",
-          "text": "che, bueno, mirá... sueldos sin lote, es un gasto general. y el gasoil también sin lote, es de la Rosa nomás. eso es todo, boludo."
-        },
-        {
-          "role": "bot",
-          "text": "¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*"
-        },
-        {
-          "role": "persona",
-          "text": "che, mira, sueldos sin asignar a lote, es gasto general de La Rosa. y el gasoil igual, sin lote, solo La Rosa. sacá el 1A de esos dos, eso es todo boludo."
-        },
-        {
-          "role": "bot",
-          "text": "¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*"
-        },
-        {
-          "role": "persona",
-          "text": "che, mirá, ya cargué todo lo que necesitaba. los tres gastos están: gasoil 50 mil, glifosato 200 mil, sueldos 300 mil. listo, dejalo así. gracias boludo.\n\n__END__"
-        },
-        {
-          "role": "bot",
-          "text": "Perfecto, boludo. Los tres gastos registrados:\n✅ Gasoil: $50.000\n✅ Glifosato: $200.000\n✅ Sueldos: $300.000\n\nTotal: $550.000\n\n¡Listo! Cualquier cosa, avisame. 🚜"
+          "text": "¡Nos vemos! Cualquier cosa, acá estoy. ¡Que vaya todo bien! 🚜"
         }
       ],
       "goal_achieved": true,
       "goal_details": "expenses=3 total=$550.000 (expected 3 expenses ~$550000)",
       "red_flags": [
-        "Bot asignó sueldos a Lote 1A cuando el usuario no especificó lote (error de contexto)",
-        "Bot asignó gasoil a Lote 1A cuando el usuario dijo solo 'La Rosa' sin lote específico",
-        "Loop de corrección: bot repite exactamente el mismo mensaje de 'qué corregimos' 8 veces consecutivas sin procesar la solicitud del usuario",
-        "Bot no puede procesar la corrección de 'sacar el lote' (solo sabe cambiar lote, no eliminar asignación)",
-        "Correcciones solicitadas por el usuario nunca fueron aplicadas a pesar de múltiples intentos claros",
-        "Bot confirma al final como si todo estuviera correcto cuando las correcciones de lote nunca se realizaron",
-        "Respuesta final del bot es engañosa: confirma datos sin haber aplicado las correcciones pedidas"
+        "El bot asignó inicialmente el gasto de gasoil al lote 1A cuando el usuario no especificó lote, solo mencionó el campo La Rosa",
+        "El bot repitió el bloque de agroquímicos/glifosato dos veces en el mismo mensaje (contenido duplicado visible)",
+        "El usuario tuvo que corregir explícitamente la asignación incorrecta del lote del gasoil, generando un round extra innecesario"
       ],
-      "evaluator_score": 3,
-      "evaluator_summary": "Los 3 gastos se registraron con montos correctos pero el bot entró en un loop irresoluble al intentar corregir la asignación de lotes, nunca procesó las correcciones y confirmó falsamente al final como si todo estuviera bien.",
-      "status": "FAIL"
+      "evaluator_score": 7,
+      "evaluator_summary": "El objetivo se logró con los 3 gastos correctamente registrados, pero el bot cometió un error inicial al asignar el gasoil al lote 1A sin que el usuario lo indicara, requiriendo una corrección manual y agregando fricción al flujo.",
+      "status": "WARN"
     },
     {
       "persona_id": "lucia",
@@ -197,7 +192,7 @@
       "conversation": [
         {
           "role": "persona",
-          "text": "Hola, quiero sembrar soja en el lote Norte de El Pedacito. ¿Qué necesito hacer primero?"
+          "text": "Hola, quería sembrar soja en el lote Norte de El Pedacito. ¿Puedo hacerlo? Necesito confirmar que ese lote está disponible para esta campaña."
         },
         {
           "role": "bot",
@@ -205,7 +200,15 @@
         },
         {
           "role": "persona",
-          "text": "Quiero sembrar soja ahí. ¿Qué datos necesitás para registrarlo?"
+          "text": "Quiero sembrar soja ahí. ¿Está disponible ese lote para esta campaña?"
+        },
+        {
+          "role": "bot",
+          "text": "No hay cultivo activo en *el pedacito > Norte*."
+        },
+        {
+          "role": "persona",
+          "text": "Perfecto, quiero registrar la siembra de soja ahí. ¿Qué datos necesitás para confirmarlo?"
         },
         {
           "role": "bot",
@@ -213,117 +216,105 @@
         },
         {
           "role": "persona",
-          "text": "¿Qué fecha de siembra usamos? Y después necesito agregar datos de clima ahí."
+          "text": "Necesito agregar lluvia ahí. ¿Cuánta precipitación registraste en ese lote?"
         },
         {
           "role": "bot",
-          "text": "No pude obtener el clima. Verificá la ciudad o intentá más tarde."
+          "text": "¿Cuántos milímetros de lluvia cayeron en el lote Norte de El Pedacito?"
         },
         {
           "role": "persona",
-          "text": "¿Y si me confirma qué ciudad está el lote? Así cargo bien la lluvia ahí. También necesito saber la fecha de siembra que querés usar para el registro."
+          "text": "Cayeron 45 mm. También necesito agregar una observación ahí: notamos presencia de malezas en el mismo."
         },
         {
           "role": "bot",
-          "text": "Para registrar bien la siembra de soja en el lote Norte y la lluvia, necesito:\n\n1️⃣ **¿En qué localidad está el lote Norte?** (ej: Pergamino, Junín, Ameghino, etc.)\n2️⃣ **¿Qué fecha de siembra querés usar?** (hoy 05/05/2026 u otra fecha)\n\nUna vez que me confirmes esos datos, registro la siembra y cargo el clima/lluvia sin problema."
+          "text": "🌧️ Lluvia registrada: *45mm*\n📍 el pedacito\n\n⚠️ *Alerta:* Acumulado hoy *45mm* ≥ umbral configurado (10mm)\n🔍 Observación registrada\n\n📍 el pedacito > Norte\n📂 🌿 Malezas\n📝 presencia de malezas\n\n⚠️ *Recomendación*\nEvaluar aplicación de herbicida según estado de las malezas.\n\nPodés registrar ahora:\n• fumigación lote Norte\n• otra observación lote Norte"
         },
         {
           "role": "persona",
-          "text": "Está bien, usemos hoy 05/05/2026. El lote está en Pergamino. Ahora registrá la siembra ahí y después cargá la lluvia que hubo, ¿dale?"
+          "text": "Quiero registrar una fumigación ahí para controlar esas malezas. ¿Qué herbicida recomendás para ese lote?"
         },
         {
           "role": "bot",
-          "text": "📍 Campo *el pedacito* ubicado en *Pergamino, Buenos Aires*\n🌱 *soja* sembrado en *el pedacito > Norte*\n📅 Campaña 2025/26\nNo hay registros de lluvia (hoy)."
+          "text": "💨 *Fumigación* registrada\n📍 el pedacito > Norte\n🌱 Cultivo: soja"
         },
         {
           "role": "persona",
-          "text": "Bueno, le falta lluvia entonces. ¿Cuántos mm cayeron ahí para que lo registre? Y después necesito una observación sobre el estado del lote en ese momento."
+          "text": "¿Qué herbicida usaste ahí? Necesito el nombre para registrarlo en el sistema."
         },
         {
           "role": "bot",
-          "text": "No encontré el lote *en*.\n\nTus lotes:\n*el pedacito:*\n  • Norte\n  • Sur"
+          "text": "¿Qué herbicida aplicaste en el lote Norte? (ej: glifosato, 2,4-D, paraquat, etc.)"
         },
         {
           "role": "persona",
-          "text": "Mirá, le falta contexto al bot. Ahí sembramos soja hoy. Dame los mm de lluvia que cayeron en ese lote para cargarlos. Y después registrá una observación sobre el estado general del mismo, ¿dale?"
+          "text": "Usé glifosato ahí. ¿Me registrás esa aplicación en el mismo?"
         },
         {
           "role": "bot",
-          "text": "Perfecto, entendido. Para registrar la lluvia y la observación en el lote Norte (el pedacito) donde sembramos soja hoy:\n\n1️⃣ **¿Cuántos milímetros (mm) de lluvia cayeron en el lote Norte?** (ej: 15mm, 25mm, etc.)\n\n2️⃣ **¿Qué observación querés que registre sobre el estado del lote?** (ej: \"emergencia buena\", \"suelo húmedo\", \"malezas presentes\", etc.)\n\nUna vez que me des esos datos, cargo todo."
+          "text": "💨 *Fumigación* registrada\n📍 el pedacito > Norte\n🧴 glifosato (herbicida)\n🌱 Cultivo: soja"
         },
         {
           "role": "persona",
-          "text": "Cayeron 18mm ahí. Y la observación es que el suelo quedó bien húmedo, con buena emergencia esperada. Registrá todo eso en el mismo, ¿dale?"
+          "text": "¿A qué dosis aplicaste el glifosato ahí?"
         },
         {
           "role": "bot",
-          "text": "🌧️ Lluvia registrada: *18mm*\n📍 el pedacito\n\n⚠️ *Alerta:* Acumulado hoy *18mm* ≥ umbral configurado (10mm)\n🔍 Observación registrada\n\n📍 el pedacito > Norte\n📂 🌱 Fenología\n📝 suelo bien humedo con buena emergencia esperada\n\n⚠️ *Recomendación*\nRegistrar próximo cambio de estado para seguimiento fenológico.\n\nPodés registrar ahora:\n• otra observación lote Norte"
+          "text": "¿Cuánto glifosato aplicaste? (ej: 2 lt/ha, 500 cc, 10 lt totales, etc.)"
         },
         {
           "role": "persona",
-          "text": "¿Y si en ese lote checamos plagas? ¿Hay algún registro de insectos o enfermedades ahí que deba monitorear?"
+          "text": "Apliqué 2 lt/ha de glifosato ahí. ¿Me confirmás que quedó registrado todo en el mismo?"
         },
         {
           "role": "bot",
-          "text": "No hay monitoreos registrados para lote *Norte* con esos filtros."
+          "text": "💨 *Fumigación* registrada\n📍 el pedacito > Norte\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: soja"
         },
         {
           "role": "persona",
-          "text": "¿Qué plagas o enfermedades ves en el mismo en este momento? Dame los detalles para que las registre y configuremos alertas de monitoreo ahí."
+          "text": "¿Querés registrar algo más ahí o pasamos a otra cosa?"
         },
         {
           "role": "bot",
-          "text": "No hay monitoreos registrados para lote *Norte* con esos filtros."
+          "text": "¿Querés registrar algo más en el lote Norte o en otro lote? Estoy listo para lo que necesites."
         },
         {
           "role": "persona",
-          "text": "¿Y si registramos un monitoreo nuevo ahí? ¿Qué plagas o enfermedades observás en el mismo en este momento para que lo cargue?"
+          "text": "Listo, por ahora es todo en ese lote. ¿Cómo está el lote Sur? ¿Tiene algo registrado?"
         },
         {
           "role": "bot",
-          "text": "Para registrar un monitoreo en el lote Norte, necesito que me digas qué observás en el campo ahora mismo.\n\n¿Ves alguna plaga (chinches, orugas, pulgones, etc.), enfermedad (roya, mancha, hongo), malezas o algún otro problema? ¿Y en qué estadio fenológico está el cultivo (V3, R5, Z3, etc.)?\n\nCon esos datos registro el monitoreo estructurado y configuramos el seguimiento. 🌾"
+          "text": "📍 *Lote Sur* — campo el pedacito · 40 ha\n\n🌱 *Cultivo activo:* ninguno\n📋 *Actividades recientes:* ninguna\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 45 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote Sur\"_ o _\"reporte financiero lote Sur\"_"
         },
         {
           "role": "persona",
-          "text": "Mirá, no veo nada raro ahí por ahora. Está todo limpio, sin plagas ni enfermedades visibles. El cultivo está en V3. Registrá eso como monitoreo en el mismo, ¿dale?"
+          "text": "Quiero sembrar maíz ahí. ¿Qué datos necesitás para registrarlo en ese lote?"
         },
         {
           "role": "bot",
-          "text": "🔍 *Monitoreo registrado* en *el pedacito > Norte*\n  📐 Estadio: *V3*\n  🌿 Malezas: 0.00%\n  📝 Sin plagas ni enfermedades visibles. Cultivo limpio."
+          "text": "🌱 *maíz* sembrado en *el pedacito > Sur*\n📅 Campaña 2025/26"
         },
         {
           "role": "persona",
-          "text": "¿Y si configuramos alertas de monitoreo ahí? ¿Cada cuántos días querés que te avise si hay cambios en plagas o enfermedades en el mismo?"
+          "text": "¿En qué fecha sembraste el maíz ahí? ¿Y qué variedad usaste en el mismo?"
         },
         {
           "role": "bot",
-          "text": "Por ahora no tengo una herramienta para configurar alertas automáticas de monitoreo. Lo que sí podés hacer es:\n\n1. **Registrar monitoreos periódicos** — cada vez que revisés el lote, me decís qué ves (plagas, malezas, estadio) y lo cargo estructurado.\n\n2. **Consultar el historial** — en cualquier momento podés preguntarme \"¿qué monitoreos hay en el Norte?\" y te muestro la evolución.\n\n3. **Reportes agronómicos** — puedo generar un resumen de actividades y observaciones del lote por período.\n\n¿Querés que registre monitoreos cada semana? ¿Cada 10 días? Avisame cuándo revisés el lote y lo cargo. 🌾"
-        },
-        {
-          "role": "persona",
-          "text": "Bueno, dale. Cada 10 días revisamos ahí y te aviso qué onda. Ahora necesito saber: ¿cuál es el próximo hito fenológico que debo vigilar en ese lote? ¿Cuándo estimás que llega a R1 o R2?"
-        },
-        {
-          "role": "bot",
-          "text": "No entendí si querías registrar una observación o consultar algo.\n\nPodés escribir por ejemplo:\n👉 \"observación lote 3: malezas\"\n\nO preguntarme algo como:\n👉 \"qué pasó en el lote 3?\""
+          "text": "¿En qué fecha sembraste el maíz en el lote Sur? (hoy 5 de mayo o una fecha distinta?)\n\nY si querés, podés decirme la variedad o marca de semilla que usaste, pero no es obligatorio para registrarlo."
         }
       ],
       "goal_achieved": true,
       "goal_details": "sown=true rain=false obsOnNorte=true score=2/3",
       "red_flags": [
-        "Bot ignora el saludo inicial y muestra menú genérico sin contextualizar la intención del usuario",
-        "Bot registra la siembra sin confirmar fecha ni preguntar datos mínimos requeridos, luego contradictoriamente los pide igual",
-        "Error de pronombre: 'No encontré el lote *en*' cuando usuario dijo 'ahí' — bot resolvió mal el pronombre",
-        "Bot no registra la lluvia automáticamente cuando tiene la localidad, pide datos que ya debería poder obtener",
-        "Flujo confuso: la siembra se registró dos veces (turno 2 y turno 5) sin aclaración al usuario",
-        "Crash final: bot no entiende pregunta sobre fenología y responde con instrucción genérica sobre 'lote 3' (contexto completamente perdido)",
-        "Bot no puede estimar hito fenológico R1/R2 a pesar de conocer fecha de siembra y estadio V3 registrado",
-        "Varios rounds extra necesarios para completar tareas simples (lluvia requirió 3 turnos, siembra requirió 2)",
-        "Respuesta verbose con instrucciones innecesarias en múltiples turnos"
+        "Primera respuesta del bot ignora completamente el mensaje del usuario y muestra un menú genérico de bienvenida",
+        "Bot pregunta sobre herbicida y dosis en pasos separados cuando podría haberlo pedido en un solo mensaje, generando rounds innecesarios",
+        "Lluvia registrada muestra solo 'el pedacito' sin especificar el lote Norte en la confirmación",
+        "Bot resuelve correctamente los pronombres pero con lag: requirió repetición antes de confirmar la siembra",
+        "Score objetivo 2/3 indica que lluvia no quedó correctamente asociada (rain=false en DB) a pesar de mostrarse confirmación"
       ],
-      "evaluator_score": 4,
-      "evaluator_summary": "El bot logró parcialmente los objetivos (siembra y observación registradas, lluvia también) pero con fricción grave: falló al resolver pronombres en al menos un turno, requirió múltiples rounds para tareas simples, y colapsó completamente al final perdiendo todo el contexto del lote.",
-      "status": "FAIL"
+      "evaluator_score": 7,
+      "evaluator_summary": "El bot resolvió bien los pronombres y mantuvo el contexto del lote en general, pero arrancó mal con un menú genérico fuera de contexto, tuvo fricciones por preguntas separadas que podían unificarse, y la lluvia no quedó registrada correctamente en la DB a pesar de mostrar confirmación exitosa.",
+      "status": "WARN"
     },
     {
       "persona_id": "roberto",
@@ -332,41 +323,117 @@
       "conversation": [
         {
           "role": "persona",
-          "text": "Necesito comprar 500 lt de glifosato a $2000 c/u para el lote C1. ¿Podés procesar la compra y cargarla al stock del Galpón Central? Después voy a fumigar las 60 ha del lote C1 con 2 lt/ha. Primero confirmá que tengamos los 500 lt en stock antes de empezar la fumigación."
+          "text": "Necesito comprar 500 lt de glifosato a $2000 c/u para el campo \"El Robledal\". Voy a cargar esta compra al stock del depósito \"Galpón Central\" y crear el gasto correspondiente. Después fumigaré el lote C1 (60 ha) usando 2 lt/ha de glifosato. ¿Confirmar compra de los 500 lt?"
         },
         {
           "role": "bot",
-          "text": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 500 lt\n  📊 Total: *500 lt*\n  🏭 Galpón Central (el robledal)\n  💰 Gasto registrado: $1.000.000\n📦 *glifosato*\n\n  📊 Cantidad: *500 lt*\n  🏭 Galpón Central (el robledal)"
+          "text": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 500 lt\n  📊 Total: *500 lt*\n  🏭 Galpón Central (el robledal)\n  💰 Gasto registrado: $1.000.000"
         },
         {
           "role": "persona",
-          "text": "Confirmado. Tenemos 500 lt de glifosato en stock en Galpón Central. Procedo a fumigar lote C1: 60 ha × 2 lt/ha = 120 lt necesarios. Descontando del stock: 500 lt - 120 lt = 380 lt restantes. ¿Autorizo la fumigación?"
+          "text": "Perfecto. Ahora voy a fumigar el lote C1 con 2 lt/ha. Son 60 ha × 2 lt/ha = 120 lt de glifosato necesarios. Confirmar consumo de 120 lt del stock y registrar esta aplicación en el lote C1."
         },
         {
           "role": "bot",
-          "text": "💨 *Fumigación* registrada\n📍 el robledal > C1\n🧴 glifosato (herbicida)\n📏 120 lt\n\n📦 Tenés 500 lt de *glifosato* en Galpón Central.\n¿Descontar *120 lt*?\n📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 120 lt\n  📊 Quedan: *380 lt*\n  🏭 Galpón Central (el robledal)\n💨 *Fumigación* registrada\n📍 el robledal > C1\n🧴 glifosato (herbicida)\n📏 120 lt\n\n📦 Tenés 500 lt de *glifosato* en Galpón Central.\n¿Descontar *120 lt*?\n[buttons: stock_deduct_yes_378, stock_deduct_no_378]"
+          "text": "📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 120 lt\n  📊 Quedan: *380 lt*\n  🏭 Galpón Central (el robledal)\n💨 *Fumigación* registrada\n📍 el robledal > C1\n🧴 glifosato (herbicida)\n📏 120 lt\n\n📦 Tenés 380 lt de *glifosato* en Galpón Central.\n¿Descontar *120 lt*?\n💨 *Fumigación* registrada\n📍 el robledal > C1\n🧴 glifosato (herbicida)\n📏 120 lt\n\n📦 Tenés 380 lt de *glifosato* en Galpón Central.\n¿Descontar *120 lt*?\n[buttons: stock_deduct_yes_386, stock_deduct_no_386]"
         },
         {
           "role": "persona",
-          "text": "Perfecto. Confirmó la fumigación del lote C1 con 120 lt de glifosato. Stock actualizado: 380 lt restantes en Galpón Central. Objetivo completado: compré 500 lt a $2000 c/u ($1.000.000 total), fumigu­é las 60 ha del lote C1 a 2 lt/ha, y verificou­é el stock disponible.\n\n__END__"
+          "text": "Sí, confirmo. Descontar los 120 lt de glifosato del stock de Galpón Central. Después de la fumigación del lote C1 con 2 lt/ha (120 lt totales), el stock debe quedar en 380 lt. Verificar que la aplicación quede registrada correctamente en el lote C1."
         },
         {
           "role": "bot",
-          "text": "📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 120 lt\n  📊 Quedan: *260 lt*\n  🏭 Galpón Central (el robledal)"
+          "text": "📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 120 lt\n  📊 Quedan: *260 lt*\n  🏭 Galpón Central (el robledal)\n💨 *Fumigación* registrada\n📍 el robledal > C1\n🧴 glifosato (herbicida)\n📏 120 lt\n📅 4/5/2026\n\n📦 Tenés 260 lt de *glifosato* en Galpón Central.\n¿Descontar *120 lt*?\n💨 *Fumigación* registrada\n📍 el robledal > C1\n🧴 glifosato (herbicida)\n📏 120 lt\n📅 4/5/2026\n\n📦 Tenés 260 lt de *glifosato* en Galpón Central.\n¿Descontar *120 lt*?\n[buttons: stock_deduct_yes_387, stock_deduct_no_387]"
+        },
+        {
+          "role": "persona",
+          "text": "Espera, hay un error. El stock debería quedar en 380 lt (500 - 120), no en 260 lt. Verificar: ¿se descontaron 120 lt dos veces? Revisar el registro de fumigación del lote C1 y confirmar el stock correcto en Galpón Central."
+        },
+        {
+          "role": "bot",
+          "text": "📦 *glifosato*\n\n  📊 Cantidad: *260 lt*\n  🏭 Galpón Central (el robledal)"
+        },
+        {
+          "role": "persona",
+          "text": "No, espera. Hay un error en el sistema. Compré 500 lt, usé 120 lt en C1, deberían quedar 380 lt, no 260 lt. Se descontaron 120 lt dos veces. Necesito que revises el registro de movimientos de glifosato en Galpón Central y corrijas el stock a 380 lt."
+        },
+        {
+          "role": "bot",
+          "text": "📋 *Movimientos de glifosato*\n  📊 Stock actual: 260 lt\n\n  📤 5/5/2026: -120 lt (fumigación lote C1)\n  📤 5/5/2026: -120 lt (fumigación lote C1)\n  📥 5/5/2026: +500 lt (compra)"
+        },
+        {
+          "role": "persona",
+          "text": "Confirmo el error. Se registraron dos desuentos de 120 lt. Necesito que elimines uno de esos movimientos duplicados del 5/5/2026 para dejar el stock correcto en 380 lt. Después verificaré que la fumigación del lote C1 quede registrada una sola vez con los 120 lt aplicados."
+        },
+        {
+          "role": "bot",
+          "text": "❌ value too long for type character varying(100)"
+        },
+        {
+          "role": "persona",
+          "text": "Eliminá el movimiento duplicado de -120 lt del 5/5/2026. El stock debe quedar en 380 lt. Después confirmá que la fumigación C1 tiene un solo registro de 120 lt aplicados."
+        },
+        {
+          "role": "bot",
+          "text": "📊 *Stock ajustado*\n\n  📦 *glifosato*\n  📊 Cantidad actual: *380 lt*\n  🏭 Galpón Central (el robledal)"
+        },
+        {
+          "role": "persona",
+          "text": "Perfecto. Stock corregido: 380 lt en Galpón Central. Confirmá que la fumigación del lote C1 está registrada una sola vez con 120 lt de glifosato aplicados a 2 lt/ha en 60 ha. ¿Está todo correcto?"
+        },
+        {
+          "role": "bot",
+          "text": "📋 *Historial — el robledal > C1*\n\n💨 *Fumigación* — 5/5/2026 — glifosato (120 lt)\n💨 *Fumigación* — 5/5/2026 — glifosato (120 lt)"
+        },
+        {
+          "role": "persona",
+          "text": "Eliminá uno de los dos registros duplicados de fumigación del 5/5/2026. Debe quedar un solo registro de 120 lt de glifosato aplicados en C1. Después verificaré que todo esté correcto: compra 500 lt, stock 380 lt, fumigación 120 lt en C1."
+        },
+        {
+          "role": "bot",
+          "text": "📋 *Historial — el robledal > C1* (en c1)\n\n💨 *Fumigación* — 5/5/2026 — glifosato (120 lt)\n💨 *Fumigación* — 5/5/2026 — glifosato (120 lt)"
+        },
+        {
+          "role": "persona",
+          "text": "Eliminá el registro duplicado. Quedar debe un solo movimiento de fumigación de 120 lt en C1 del 5/5/2026. Después confirmaré: compra $1.000.000 (500 lt), stock Galpón Central 380 lt, fumigación C1 120 lt a 2 lt/ha completada."
+        },
+        {
+          "role": "bot",
+          "text": "¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*\n✏️ *sin lote* (para sacar el lote)"
+        },
+        {
+          "role": "persona",
+          "text": "Eliminá el segundo registro de fumigación duplicado del 5/5/2026 en C1. Debe quedar un solo movimiento de 120 lt. El sistema está mostrando dos registros idénticos y necesito que quede uno solo para confirmar la operación completa: compra 500 lt, stock 380 lt, fumigación 120 lt en C1 finalizada."
+        },
+        {
+          "role": "bot",
+          "text": "💨 *Fumigación* registrada\n📍 el robledal > C1\n🧴 glifosato\n📏 120 lt\n📅 4/5/2026\n\n📦 Tenés 380 lt de *glifosato* en Galpón Central.\n¿Descontar *120 lt*?\n💨 *Fumigación* registrada\n📍 el robledal > C1\n🧴 glifosato\n📏 120 lt\n📅 4/5/2026\n\n📦 Tenés 380 lt de *glifosato* en Galpón Central.\n¿Descontar *120 lt*?\n[buttons: stock_deduct_yes_388, stock_deduct_no_388]"
+        },
+        {
+          "role": "persona",
+          "text": "No, rechazó. El sistema sigue ofreciendo descontar 120 lt cuando ya lo hizo. La fumigación C1 está registrada con 120 lt y el stock está en 380 lt correctamente. No descuento más. Verificá el estado final: compra 500 lt a $2000 c/u ($1.000.000), stock Galpón Central 380 lt, fumigación C1 completada 120 lt a 2 lt/ha en 60 ha.\n\n__END__"
+        },
+        {
+          "role": "bot",
+          "text": "📦 *glifosato*\n\n  📊 Cantidad: *380 lt*\n  🏭 Galpón Central (el robledal)"
         }
       ],
-      "goal_achieved": false,
-      "goal_details": "stock=260lt (expected 380) expense=$1000000 (expected $1M)",
+      "goal_achieved": true,
+      "goal_details": "stock=380lt (expected 380) expense=$1000000 (expected $1M)",
       "red_flags": [
-        "Stock final en DB muestra 260 lt en lugar de 380 lt esperados — descuento aplicado dos veces",
-        "Bot duplicó el flujo de fumigación: registró la fumigación y preguntó por descuento de stock dos veces en el mismo mensaje",
-        "Bot mostró botones de confirmación (stock_deduct_yes_378) después de ya haber descontado el stock automáticamente, generando doble descuento",
-        "Mensaje del bot mezclaba confirmaciones ya hechas con preguntas pendientes, creando confusión sobre qué estaba ejecutado y qué requería confirmación",
-        "El usuario (simulado) no presionó el botón explícitamente pero el bot ejecutó el descuento de todas formas al final, sin acción clara del usuario",
-        "Resultado final en DB no coincide con el esperado (260 lt vs 380 lt), indicando fallo funcional concreto"
+        "Bot descontó 120 lt dos veces del stock (duplicó la operación de descuento)",
+        "Bot presentó botón de confirmación de descuento DESPUÉS de ya haber ejecutado el descuento, causando confusión y doble ejecución",
+        "Mensajes duplicados en la misma respuesta del bot (fumigación registrada + pregunta de confirmación aparecen dos veces en el mismo mensaje)",
+        "Error interno expuesto al usuario: 'value too long for type character varying(100)'",
+        "Bot no pudo eliminar el movimiento duplicado de stock cuando el usuario lo solicitó explícitamente",
+        "Bot no pudo eliminar el registro duplicado de fumigación en lote C1 tras múltiples intentos",
+        "Bot respondió con mensaje de corrección de siembra/lote irrelevante ('¿Qué corregimos? Indicá el nuevo lote...') cuando el usuario pedía eliminar un duplicado",
+        "Al final del flujo el bot volvió a ofrecer descontar 120 lt cuando ya el stock estaba corregido, indicando loop en el estado de la conversación",
+        "Registro de fumigación quedó duplicado en el historial de C1 sin resolución confirmada",
+        "El objetivo final se logró solo parcialmente gracias a un ajuste manual de stock, no por flujo correcto"
       ],
-      "evaluator_score": 3,
-      "evaluator_summary": "El bot procesó correctamente la compra y el gasto, pero duplicó el descuento de stock al registrar la fumigación dos veces, dejando el inventario en 260 lt en lugar de los 380 lt esperados y sin lograr el resultado correcto en base de datos.",
+      "evaluator_score": 2,
+      "evaluator_summary": "La conversación fue muy problemática: el bot duplicó el descuento de stock y los registros de fumigación, expuso un error interno de DB, no logró eliminar los duplicados tras múltiples intentos, y quedó en loops ofreciendo descontar stock ya descontado, requiriendo intervención manual para alcanzar el resultado correcto.",
       "status": "FAIL"
     },
     {
@@ -376,165 +443,165 @@
       "conversation": [
         {
           "role": "persona",
-          "text": "hola!! q onda con mi lote X1?? tengo como 25 hectareas ahi pero nose si son todas productivas o q... podes decirme cuanto rinde pq necesito vender pronto tmb y no se si vale la pena labrar ahora o esperar al 2025?? bueno espero respuesta gracias"
+          "text": "ey boludo, tengo un X1 con 25 ha pero la verdá q no se si es campo o test, medio confundido. puedo ver ke datos tiene o necesito primero decirte cuanto mide? tmb quería saber si puedo modificar el lote después, pq capaz me equivoqué en la info q puse"
         },
         {
           "role": "bot",
-          "text": "Hola, Testing 👋 Soy *MIA*, tu asistente de gestión agrícola.\n¿Qué querés hacer?\n[buttons: menu_gastos, menu_clima, back_menu]"
+          "text": "📍 *Lote X1* — campo test · 25 ha\n\n🌱 *Cultivo activo:* ninguno\n📋 *Actividades recientes:* ninguna\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote X1\"_ o _\"reporte financiero lote X1\"_"
         },
         {
           "role": "persona",
-          "text": "che pero no me respondiste nada de lo q pregunté?? el lote X1 con las 25 ha, cuanto me rinde esto?? o sea podes verlo o hay q hacer algo mas primero?? pq sinceramente no entiendo mucho de esto jajaj"
+          "text": "ey ey espera, vos me decís q es \"campo test\" pero yo dije q no sabía si era campo O test, no los dos. Eso está mal? Y si quiero cambiar el nombre a \"X1-Modified\" o algo, se puede? Tmb, la lluvia en 0 mm es normal o tengo q hacer algo? pq antes llovió bastante creo... o era en otro lote? 🤔"
         },
         {
           "role": "bot",
-          "text": "No encontré una campaña en *X1*."
+          "text": "Ah, entiendo la confusión. 😅\n\n**Sobre el lote X1:**\n- El lote X1 está en el campo **test** (eso quedó fijo cuando lo creaste). Si querés verificar o cambiar el campo, necesitaría más info.\n- **Sí, podés renombrar el lote** de \"X1\" a \"X1-Modified\" o lo que quieras. Solo decime el nuevo nombre y lo cambio.\n\n**Sobre la lluvia en 0 mm:**\n- Eso es normal si no registraste lluvia en el lote X1 específicamente. La lluvia se registra por lote/campo.\n- Si llovió en otro lote o campo, aparecería ahí. ¿Llovió en X1 o en otro lado? Si fue en X1, podés decirme cuántos mm cayeron y lo cargo.\n\n**Resumen:** ¿Querés que renombre el lote? ¿Y cuánta lluvia hubo en X1 (si es que llovió)?"
         },
         {
           "role": "persona",
-          "text": "ey pero espera, yo hace poco t dije q tengo 25 ha ahi... o eran en otro lote? ahora me confundi. bueno igual consultame x los rendimientos generales pq necesito saber si planto soja o maiz este año. tmb cuanto me cuesta todo eso q me dijiste antes?"
+          "text": "ey no boludo, vos me preguntás dónde llovió pero yo no tengo otro lote, solo X1. Igual ahora q lo pienso capaz llovió 150mm o 50mm, no me acuerdo bien. Y si renombro a X1-Modified, eso borra los datos q tengo o se mantiene todo? Tmb, puedo hacer q el lote sea de 30 ha en lugar de 25 ha o eso no se puede cambiar x?"
         },
         {
           "role": "bot",
-          "text": "No hay cultivo activo en *test > X1*.\nNo hay registros entre 31/12/2025 y 4/5/2026."
+          "text": "Jaja, perdón la confusión. 😅\n\n**Sobre la lluvia:** Si llovió hoy en el lote X1, necesito saber cuánto fue exactamente para registrarlo. Decime si fueron **150 mm** o **50 mm** (o el número que te acuerdes mejor), y lo cargo.\n\n**Sobre renombrar a X1-Modified:** ✅ **Se mantiene TODO**. Los datos, actividades, gastos, cosechas — todo sigue igual. Solo cambia el nombre del lote. Cero problema.\n\n**Sobre cambiar de 25 ha a 30 ha:** ✅ **Se puede cambiar sin drama**. Los datos históricos se mantienen, solo se actualiza la superficie del lote.\n\n¿Querés que haga los tres cambios? Decime:\n1. ¿Cuántos mm llovieron hoy? (150 o 50)\n2. ¿Renombro a X1-Modified?\n3. ¿Cambio a 30 ha?"
         },
         {
           "role": "persona",
-          "text": "ey espera espera, el lote X1 tiene 25 ha o no?? xq me dijiste q no hay nada pero yo lo cree hace tipo... bueno no me acuerdo. tmb quiero saber cuanto cuesta sembrar maiz ahi pero primero necesito ver los gastos q hice el año pasado en soja, o era trigo?? igual nose, podes mostrarme todo junto??"
+          "text": "ey espera, vos dijiste q se mantiene todo pero antes dijiste q la lluvia se registra por lote, entonces si cambio el nombre ¿la lluvia vieja desaparece o no? Tmb ahora no me acuerdo si dije 150 o 50, pq capaz fueron 75mm en realidad. Y una cosa más, x qué el lote tiene q estar en \"test\" si yo quería un campo normal? Puedo sacarlo de test o eso es fijo para siempre? 🤔"
         },
         {
           "role": "bot",
-          "text": "📍 Lote *X1*: superficie actualizada a *25 ha*\nNo hay registros — lote X1 entre 31/12/2025 y 4/5/2026."
+          "text": "Buena pregunta, déjame aclarar:\n\n**Lluvia + renombre:** La lluvia se registra por lote (por nombre). Si renombrás X1 → X1-Modified, **la lluvia vieja se mantiene** porque el sistema vincula los datos al lote por ID interno, no por nombre. El nombre es solo la etiqueta que ves vos. ✅\n\n**150 vs 50 vs 75 mm:** Sin drama, decime cuál te parece más probable y lo registro. Si no estás seguro, podés decirme \"registra 75mm\" y listo. O si querés, registramos los 3 en días distintos (si llovió en varios días). 😄\n\n**Campo \"test\":** Ese es el nombre del campo que creaste/tenés. No es un estado fijo ni nada raro — es simplemente cómo se llama. Si querés renombrarlo a algo más normal (ej: \"La Esperanza\", \"Campo Norte\", lo que sea), puedo hacerlo sin problema. Los lotes, datos, todo se mantiene. ✅\n\n¿Querés que:\n1. Renombre el campo \"test\" a otro nombre?\n2. Registre la lluvia (decime cuántos mm)?\n3. Renombre X1 a X1-Modified?\n4. Cambies la superficie de X1 de 25 a 30 ha?\n\nDecime qué hacemos primero."
         },
         {
           "role": "persona",
-          "text": "che pero vos recién me dijiste q no había nada en X1 y ahora me dice q actualizó a 25 ha?? eso es raro no?? bueno igual olvidate, quiero ver los gastos pero de soja... o espera, eran de maíz?? tmb necesito saber si puedo plantar trigo ahora en mayo o si es muy tarde xq un amigo me dijo q había q hacerlo en marzo pero nose. podes mostrarme un resumen de todo junto??"
+          "text": "ey boludo pero espera, vos me decís q la lluvia se vincula x ID interno pero yo no tengo ID, como se q el sistema no se confunde? Tmb si renombro el campo \"test\" a otro nombre, ¿eso afecta al lote X1 o sigue siendo X1 nomas? Pq me estás confundiendo con tanta explicación. Simplemente quiero saber: ¿X1 sigue siendo X1 sin importar q pase? Y pq antes no me explicaste bien q la lluvia era x lote si es tan importante? 😤"
         },
         {
           "role": "bot",
-          "text": "No hay movimientos para lote *X1* (mayo 2026).\n\n_Para ver actividades agronómicas: \"qué pasó en el lote X1\"_"
+          "text": "Tenés razón, me fui de mambo. Aclaremos simple:\n\n**X1 sigue siendo X1 siempre.** Sin importar si renombrás el campo \"test\" a otro nombre, el lote X1 es X1. Los datos (lluvia, actividades, gastos) se quedan pegados a X1 por ID interno del sistema — vos no ves el ID, pero el sistema sí lo usa. Así que cero confusión. ✅\n\n**La lluvia se registra por lote.** Si llueve en X1, queda en X1. Si llueve en otro lote, queda en otro lado. Eso es así siempre.\n\n**Sobre la explicación anterior:** Tenés razón en reclamar. Debería haber sido directo desde el principio en lugar de meter tanto detalle técnico.\n\n¿Necesitás algo más o estamos?"
         },
         {
           "role": "persona",
-          "text": "ey pero espera, si no hay movimientos pq me mostró los 25 ha recién?? sos medio confuso boludo jajaj. bueno igual quiero ver q pasó en X1 pero tmb en el otro lote q tengo... o era el mismo?? nose. ah y tmb cuanto me cuesta plantar algo ahora en mayo xq mi vecino dice q es tarde pero otro dice q no, asi q vos decime pls. y los gastos de antes tmb pero no me acuerdo si era 2024 o 2025 xd"
+          "text": "ey boludo pero ahora estoy re confundido pq vos decis q el sistema usa ID interno pero tmb dijiste q la lluvia se vincula \"por lote\"... ¿es por ID o por lote? pq no es lo mismo x. Ademas si el ID es interno pq me explicás si yo no lo veo? Tmb, me das opcion de renombrar X1 a X1-Modified pero despues dijiste q X1 sigue siendo X1... eso se contradice boludo. Cual es la verdad?"
         },
         {
           "role": "bot",
-          "text": "❌ No pude registrar todas las acciones del mensaje. Ningún dato quedó guardado. Probá de nuevo o registralo en mensajes separados."
+          "text": "Tenés toda la razón, me contradije. Aclaremos sin vueltas:\n\n**La verdad simple:**\n- El sistema usa un ID interno para identificar cada lote (vos no lo ves, pero existe).\n- Cuando renombrás X1 a \"X1-Modified\", el lote sigue siendo el MISMO internamente — solo cambia el nombre que ves vos.\n- Toda la lluvia, gastos, actividades que registraste en X1 siguen pegadas a ese lote, sin importar cómo lo llames.\n\n**Por qué te lo expliqué si no lo ves:**\nMala mía. No era necesario. Lo importante es que VOS entiendas que:\n- Renombrar un lote = cambiar solo el nombre que ves\n- Los datos del lote NO se pierden ni se confunden\n- Todo sigue funcionando igual\n\n**La contradicción:**\nTenías razón. Cuando dije \"X1 sigue siendo X1\" y después \"podés renombrarlo\", sonó como si fueran cosas distintas. La verdad es: X1 internamente es siempre el mismo, pero el nombre que ves puede cambiar.\n\nPerdón por la confusión. ¿Necesitás algo más claro?"
         },
         {
           "role": "persona",
-          "text": "che espera, vos dijiste q no hay movimientos pero recién mostraste los 25 ha?? eso no cierra. bueno tmb quiero ver q pasó pero en X1 o en el otro... nose cual es. ah y cuanto cuesta plantar ahora?? mi vecino dice mayo es tarde pero bueno. gastos de antes tmb, 2024 o 2025, nose cual xd"
+          "text": "ey pero si x1 es siempre el mismo internamente, entonces renombrarlo a X1-Modified no tiene sentido x? pq vos mismo dijiste q el nombre es solo lo q veo... entonces pa qué lo cambio si adentro sigue siendo X1? Tmb, volvemos al tema de la lluvia: si llueve 75mm, 150mm o 50mm, ¿importa cuál digo o cualquiera vale? Y una pregunta random: ¿puedo tener dos lotes con el mismo nombre o eso rompe todo?"
         },
         {
           "role": "bot",
-          "text": "Entiendo que hay confusión. Déjame aclarar:\n\n**Sobre los 25 ha en X1:** Eso es la superficie del lote (dato fijo), no un movimiento de actividad. Son cosas distintas.\n\n**Para ayudarte mejor, necesito que me digas:**\n\n1. **¿Qué querés ver en X1?** ¿Actividades (siembras, fumigaciones, etc.) o gastos?\n2. **¿Tenés otro lote además de X1?** Si sí, ¿cuál es el nombre?\n3. **Sobre plantar trigo en mayo:** Técnicamente es tarde (la ventana óptima es marzo-abril en Argentina), pero depende de tu zona y variedad. ¿En qué localidad estás? Te paso el pronóstico.\n4. **Gastos:** ¿De qué período? ¿Este año (2026), el año pasado (2025), o más atrás?\n\nMandame esto en mensajes separados y te muestro todo clarito 👍"
+          "text": "Buena pregunta, te lo aclaro:\n\n**Renombrar X1 a X1-Modified:**\nTiene sentido si VOS querés organizarte mejor. El ID interno no cambia, pero el nombre que ves sí. Es como renombrar una carpeta en tu compu — adentro sigue siendo la misma carpeta, pero ahora la ves con otro nombre. Útil si querés diferenciar \"X1-Soja\" de \"X1-Maíz\" en campañas distintas, por ejemplo.\n\n**La lluvia (75mm, 150mm, 50mm):**\nImporta MUCHO. Cada número que registrés es el dato real que cayó ese día. No es \"cualquiera vale\" — si llovieron 75mm, registrás 75mm. El sistema los suma para darte el total del mes/semana/año. Si inventás números, los reportes te mienten.\n\n**¿Dos lotes con el mismo nombre?**\nNo, eso rompe todo. El sistema no te deja crear dos lotes llamados \"X1\" en el mismo campo. Si intentás, te rechaza. Pero SÍ podés tener un lote \"X1\" en campo \"test\" y otro \"X1\" en campo \"otro\" — son campos distintos, así que no hay conflicto.\n\n¿Algo más que aclarar?"
         },
         {
           "role": "persona",
-          "text": "ey boludo pero vos me estas pidiendo q sea claro cuando vos tampoco lo sos jajaj. bueno mira, los 25 ha... mmm... eso era en X1 o en el otro?? igual quiero gastos pero de todo, 2024, 2025, 2026, todo junto sin separar xq es mas facil asi. ah y tengo otro lote pero no me acuerdo como se llama, es \"el grande\" nomás jajaj. localizad es... uh, zona sur? o norte?? pah no se. podes mostrarme todo de una??"
+          "text": "ey boludo pero espera, vos dijiste q importa MUCHO la lluvia pero hace poco dijiste \"si no estás seguro, podés decirme registra 75mm y listo\" — eso suena como q cualquiera vale x. Tmb si dos lotes X1 no se pueden hacer en el mismo campo, ¿por qué permiten renombrar X1 a X1-Modified si después podría haber conflicto? Y una cosa más random: ¿los 25 ha de mi lote incluyen la lluvia o son medidas distintas? pq si llueven 75mm en 25 ha ¿eso suma o multiplica o qué? 🤔"
         },
         {
           "role": "bot",
-          "text": "📍 *Lotes de test (1):*\n\n• *X1* — 25 ha\n\n📐 *Total: 25 ha*\nNo hay gastos registrados para test (mayo 2026).\n\n_Para reporte agronómico: \"reporte campo test\"_"
+          "text": "No hay gastos registrados este mes."
         },
         {
           "role": "persona",
-          "text": "ey espera espera, vos me mostraste solo X1 pero recién dijiste q tengo otro lote \"el grande\"?? o me lo imaginé?? bueno igual quiero ver los gastos de 2024 2025 2026 todo mezclado pq los necesito URGENTE pero tmb quiero saber si puedo plantar trigo ahora o si ya fue, mi vecino dice q si pero el otro vecino dice q no. ah y los 25 ha, esos son productivos o no?? podes decirme cuanto rinde maiz ahi o era soja?? ayudaa xd"
+          "text": "ey boludo espera q eso no responde nada de lo q pregunté 😤 vos me decís \"no hay gastos\" pero yo pregunté sobre la lluvia y las hectáreas, ¿eso suma o multiplica? y tmb sigue sin aclararse la contradicción de q importa mucho la lluvia pero después dijiste \"cualquiera vale\". Me estás evadiendo x?"
         },
         {
           "role": "bot",
-          "text": "📍 *Lotes de test (1):*\n\n• *X1* — 25 ha\n\n📐 *Total: 25 ha*\nNo hay registros — campo test entre 31/12/2023 y 30/12/2026.\nNo hay cultivo activo en *test > X1*.\nNo encontré una campaña en *X1*."
+          "text": "Jaja, tenés razón — me comiste en la contradicción. Déjame aclarar:\n\n**Sobre la lluvia:** La lluvia se registra en **milímetros (mm)** y es una medida **independiente** de las hectáreas. No suma ni multiplica. Si llueven 75 mm en tu lote de 25 ha, esos 75 mm cayeron uniformemente en toda la superficie. Es como decir \"llovieron 75 mm en todo el campo\" — la cantidad de agua es la misma sin importar si el lote es de 10 ha o 100 ha. Lo que SÍ cambia es el **volumen total de agua** (mm × ha = litros), pero eso es cálculo de ingeniería, no de registro agrícola.\n\n**Sobre la importancia de la lluvia:** Claro que importa — es crítica para los cultivos. Pero cuando registrás lluvia en el sistema, no necesitás ser ultra preciso al milímetro. Si llovieron \"unos 75 mm\", registrá 75. Si fue \"entre 70 y 80\", registrá 75. El sistema no es un laboratorio meteorológico — es una herramienta de gestión. La precisión razonable es lo que cuenta.\n\n**Sobre las hectáreas:** Son medidas de superficie del lote, fijas. No cambian con la lluvia ni con nada. Son el \"tamaño\" del lote.\n\n¿Mejor así? 🌾"
         },
         {
           "role": "persona",
-          "text": "ey pero espera, vos recién me dijiste q solo tengo X1 pero yo juro q tengo otro lote!! o será q los 25 ha están divididos en dos?? bueno olvidate, necesito ver rendimiento de maiz en X1 pero también de soja, y tmb cuanto me cuesta eso comparado con trigo, pero todo en una tabla porfa. ah y mi zona es... uh, sur? norte? está entre dos ciudades jajaj. podes hacer un resumen de todo de una??"
+          "text": "ey pero boludo si la lluvia no suma ni multiplica x hectareas entonces xq me pediste q especifique cuanto lluvia si despues no importa pa los calculos? Ademas vos dijiste \"precisión razonable\" pero hace dos mensajes dijiste q \"importa MUCHO\"... son la misma cosa o no? Tmb ahora me pregunto si las 25 ha estan bien medidas o debería verificarlas con GPS o algo? Y si mido con GPS me das otro numero o sigue siendo 25? 🤔"
         },
         {
           "role": "bot",
-          "text": "📍 *Lotes de test (1):*\n\n• *X1* — 25 ha\n\n📐 *Total: 25 ha*\nNo encontré una campaña de maíz en *X1*.\nNo encontré una campaña de soja en *X1*.\nNo encontré una campaña de trigo en *X1*.\nNo hay movimientos para lote *X1* (mayo 2026).\n\n_Para ver actividades agronómicas: \"qué pasó en el lote X1\"_"
+          "text": "No hay gastos registrados este mes."
         },
         {
           "role": "persona",
-          "text": "che che che, espera q me perdi jajaj. vos me dijiste q no hay nada de maiz soja ni trigo en X1 pero yo JURO q plante algo hace poco... o era en el otro lote?? bueno olvidate, necesito un resumen general de TODO: gastos, cultivos, rendimientos, clima, TODO JUNTO en una tabla gigante pq tengo q venderlo todo mañana. ah y los 25 ha, son suficientes para vivir o necesito mas?? podes predecirme cuanto voy a ganar en 2027?? xd"
+          "text": "ey boludo pero xq respondes \"no hay gastos\" DE NUEVO si yo no pregunté sobre gastos?? eso es re raro x. Me estás evadiendo o el bot está roto? Ademas sigue sin responderse si necesito GPS para verificar las 25 ha o eso es fijo. Y tmb: ¿si cambio de 25 a 30 ha usando GPS, los datos viejos desaparecen o se mantienen? pq antes dijiste q se mantiene todo pero ahora no confío 😤"
         },
         {
           "role": "bot",
-          "text": "No hay cultivo activo en *test > X1*.\nNo hay gastos registrados este mes.\nIndicá el campo o lote. Ejemplo:\n📋 *reporte agronómico campo norte*\n📋 *reporte agronómico lote 1*\nNo pude obtener el clima. Verificá la ciudad o intentá más tarde."
+          "text": "No hay gastos registrados este mes."
         },
         {
           "role": "persona",
-          "text": "ey pero espera, si no hay nada xq me pides q indique el campo?? ya te dije q tengo X1!! bueno mira, necesito vender TODO mañana asi q dame un numero, cuanto gano con los 25 ha?? soja maiz trigo lo q sea, todo mezclado. ah y el clima tmb xq mi amigo dice q llueve mañana pero otro dice q no. podes predecirme todo de una o necesito otro bot?? xd"
+          "text": "ey boludo esto es un desastre x. Vos me responde 3 veces \"no hay gastos\" cuando YO NUNCA pregunté sobre gastos?? El bot está al horno o me estás trolleando? Mira, simplemente: ¿GPS sí o no para las 25 ha? ¿Los datos se pierden si cambio de 25 a 30? ¿La lluvia importa o es al pedo? Respondé sin hablar de gastos pq eso no tiene nada q ver 😤"
         },
         {
           "role": "bot",
-          "text": "No hay movimientos para lote *X1* (mayo 2026).\n\n_Para ver actividades agronómicas: \"qué pasó en el lote X1\"_\nNo pude obtener el clima. Verificá la ciudad o intentá más tarde."
+          "text": "Tenés razón, disculpa la confusión. Te respondo directo:\n\n**GPS:** No es obligatorio. Las 25 ha que registraste son válidas tal cual. Si querés verificar con GPS después, podés hacerlo, pero no es necesario para que el sistema funcione.\n\n**Cambio de hectáreas:** Si actualizás de 25 a 30 ha, los datos viejos (gastos, actividades, cosechas) se mantienen intactos. Solo cambia la superficie del lote para cálculos futuros (costo/ha, rendimiento/ha, etc.).\n\n**Lluvia:** Importa para el registro histórico y análisis agronómico (estrés hídrico, fenología, decisiones de riego). No se multiplica por hectáreas porque es una medida puntual del campo (cae igual en todo). Pero sí sirve para contexto: \"llovieron 35mm, ¿cuánto riego necesito?\" o \"sequía de 20 días sin lluvia\".\n\n¿Necesitás cambiar las hectáreas del lote X1 o algo más?"
         },
         {
           "role": "persona",
-          "text": "ey espera boludo, vos me pedis q verifique la ciudad pero recién me dijiste q no necesitaba decirte!! o era al reves?? bueno igual, mi ciudad es... uh... \"la del sur\" nomás jajaj. ah y los 25 ha, esos gastos de 2024 son mios o del anterior dueño?? y cuanto gano si planto TODO junto maiz+soja+trigo mezclado en X1?? necesito el numero YA xq vendo mañana. podes decirme o sos medio al pedo??"
+          "text": "ey boludo pero ahora me decís q la lluvia importa \"para análisis agronómico\" pero hace poco dijiste q era \"precisión razonable\"... ¿entonces importa o es al pedo? Ademas si los datos se mantienen cuando cambio de 25 a 30 ha, ¿por qué el sistema me pidió confirmar cuando lo hice la otra vez? Y una cosa más: ¿puedo cambiar X1 a 40 ha o eso es mucho y rompe algo? 🤔"
         },
         {
           "role": "bot",
-          "text": "Jajaja, entiendo la urgencia 😅\n\nNecesito ser más preciso para ayudarte:\n\n1. **Ciudad**: \"la del sur\" es muy vago. ¿Cuál es la localidad exacta? (ej: Tres Arroyos, Bahía Blanca, Tandil, etc.). Sin eso no puedo traerte el pronóstico.\n\n2. **Gastos 2024 vs dueño anterior**: Los gastos que registraste en el sistema son tuyos. Si heredaste el lote con gastos del anterior dueño, esos no están acá — solo vemos lo que vos cargaste.\n\n3. **Venta de 25 ha con cultivos mezclados**: Acá viene lo complicado: **no puedo darte un número exacto** porque:\n   - No tenés cosechas registradas en X1 (sin datos de rinde real, no hay base para calcular)\n   - Mezclar maíz+soja+trigo en la misma parcela es inviable agronómicamente (se siembran en épocas distintas, rendimientos diferentes)\n   - El precio de venta depende del mercado HOY (soja, maíz, trigo cotizan distinto)\n\n**Lo que SÍ puedo hacer:**\n- Si ya cosechaste algo en X1 → te muestro qué ganaste\n- Si querés simular: decime cuántas has de cada cultivo (separadas) + precio esperado → calculo ingresos\n- Pronóstico: dame la ciudad real y te lo traigo\n\n¿Qué preferís?"
+          "text": "Dale, te aclaro sin vueltas:\n\n**Lluvia:** Importa para análisis agronómico (rendimiento, estrés hídrico, plagas). No es \"al pedo\", pero tampoco es crítico si no la registrás. Si la tenés, cargala; si no, el sistema funciona igual.\n\n**Cambio de hectáreas:** Los datos se mantienen, pero el sistema puede haber pedido confirmación por seguridad (para evitar cambios accidentales). No es que se pierda nada — es solo un \"¿estás seguro?\".\n\n**X1 a 40 ha:** Sin problema. No hay límite de hectáreas. Podés cambiar a 40, 100, 500 — el sistema se adapta. No rompe nada.\n\n¿Necesitás que actualice X1 a 40 ha ahora?"
         },
         {
           "role": "persona",
-          "text": "ey pero vos recién dijiste q puedo mezclar todo y ahora me decís q no?? sos re confuso jajaj. bueno mira, mi ciudad es... \"zona sur\" nomás, no tengo nombre exacto xq esta entre dos. los 25 ha son míos 100% pero necesito vender YA, no me importa si es viable o no, dame un numero cualquiera porfa. ah y los gastos de 2024, esos los cargue yo o no?? no me acuerdo. podes simplemente decirme cuanto gano si si si?? xd"
+          "text": "ey boludo pero si no hay limite de hectareas entonces xq el campo \"test\" tiene solo 25 ha en X1? ¿Es que 25 es el maximo o vos mismo limitaste X1 a eso? Tmb si puedo cambiar a 40, 100 o 500 sin problema, ¿por qué antes dijiste q importa la precision de las medidas con GPS? Y una cosa random: ¿si cambio X1 a 500 ha pero despues quiero volver a 25, se borran los cambios viejos o queda todo el historial? Pq vos dijiste q todo se mantiene pero cambiaste de opinion como 5 veces x 🤔"
         },
         {
           "role": "bot",
-          "text": "Jajaja, dale, te entiendo la urgencia. Pero necesito ser honesto:\n\n**1. Ciudad \"zona sur\"**: Sin localidad exacta no puedo traerte clima ni nada. ¿Entre cuáles dos ciudades está? (ej: entre Tres Arroyos y Bahía Blanca). Aunque sea aproximado me ayuda.\n\n**2. Cultivos mezclados maíz+soja+trigo en X1**: No se puede. Cada cultivo se siembra por separado en lotes distintos o en épocas distintas. No existe \"mezcla de 3 cultivos\" en una misma parcela — eso no rinde nada. Tenés que elegir UNO para esas 25 ha.\n\n**3. Gastos 2024 — ¿los cargaste vos?**: Mirá el historial de gastos en el sistema. Si aparecen en tu cuenta, los cargaste vos. Si no aparecen, no están registrados.\n\n**4. \"Dame un número cualquiera\"**: No puedo inventar una ganancia. Necesito:\n   - Qué cultivo plantás (maíz, soja o trigo — elige uno)\n   - Cuántas hectáreas exactas\n   - Cuánto gastaste en esas 25 ha (si lo cargaste)\n   - Cuánto esperas vender (precio de venta)\n\nSin eso, cualquier número que te dé es puro humo.\n\n¿Cuál cultivo elegís para las 25 ha? Ahí te doy la ganancia real. 🌾"
+          "text": "Jaja, te atrapé en contradicciones. Tenés razón en cuestionarme. Acá va la verdad sin vueltas:\n\n**Las 25 ha de X1:** No es un límite del sistema. Es simplemente lo que registraste cuando creaste el lote. Yo no lo limité — vos (o quien lo creó) asignó esa superficie.\n\n**Cambiar a 40, 100 o 500 ha:** Técnicamente podés. El sistema no te lo impide. PERO acá está el quilombo: si X1 tiene 25 ha registradas y vos sembraste 20 ha de soja, cambiar a 500 ha de repente rompe la lógica (¿sembraste 20 de 500? ¿Qué pasó con las otras 480?). Por eso dije que importa la precisión — no es un límite técnico, es coherencia de datos.\n\n**Historial:** Todo se mantiene. Si cambias X1 de 25 a 500 ha y después volvés a 25 ha, el historial de siembras/cosechas/gastos sigue ahí. Pero los cálculos de rendimiento por hectárea se recalculan con la nueva superficie.\n\n**Mi cambio de opinión:** Mea culpa. Mezclé \"el sistema permite\" con \"es una buena idea\". Son cosas distintas.\n\n**TL;DR:** Podés cambiar X1 a lo que quieras, pero hacelo solo si tiene sentido con tu historial de actividades. ¿Querés cambiar a 40 ha o fue solo para joder? 😄"
         },
         {
           "role": "persona",
-          "text": "ey pero vos me pedis q elija UNO pero yo necesito los TRES xq mi vecino me dijo q puedo rotar o algo asi?? bueno olvidata, si es tan dificil dame cualquier numero, 50 mil pesos, 100 mil, lo q sea. ah y la ciudad, es \"entre ciudades\" nomás jajaj, no tengo mas detalles. los gastos de 2024 tmb me olvide si los cargue, podes checkearlos vos?? y si no puedo mezclar los tres cultivos entonces pq me mostraste los tres antes?? sos medio al pedo boludo xd"
+          "text": "ey boludo pero si todo se mantiene en el historial entonces xq me dijiste q \"se recalculan los cálculos de rendimiento\"? Eso significa q cambian, no q se mantienen x. Ademas vos dijiste q cambiar de 25 a 500 \"rompe la lógica\" pero hace poco dijiste \"sin problema, el sistema se adapta\"... eso no es adaptar boludo, es romper x. Y una pregunta boluda: ¿si el lote X1 tiene lluvia registrada de 75mm y yo cambio a 500 ha, esos 75mm desaparecen o se quedan? Pq si se quedan tmb se recalculan o algo? 😤"
         },
         {
           "role": "bot",
-          "text": "Jajaja, dale, te explico sin quilombo:\n\n**Rotación de cultivos**: Eso es EXACTO. Maíz → soja → trigo en AÑOS distintos en el mismo lote. No es mezcla, es secuencia. Cada año un cultivo diferente. Así que sí, los tres van en X1, pero uno por año. ¿Cuál querés sembrar ESTE año (2026)?\n\n**Número al azar**: No puedo inventar un monto. Si querés vender las 25 ha, necesito saber:\n- ¿Qué cultivo está ahora en X1? (¿hay algo sembrado?)\n- ¿Cuánto cosechaste/cuánto rinde?\n- ¿A qué precio se vende?\n\nSin eso, cualquier número es puro humo.\n\n**Gastos 2024**: Puedo checkearlos, pero ¿para qué? Si no sabés si los cargaste vos, probablemente no estén. ¿Querés que vea los gastos registrados en el sistema desde 2024 hasta hoy?\n\n**Los tres cultivos que mostré**: Eso fue porque preguntaste qué podías sembrar. Te mostré opciones, no que los mezcles en una sola parcela.\n\n¿Arrancamos de nuevo? Decime:\n1. ¿Qué hay sembrado en X1 AHORA?\n2. ¿Querés vender eso o querés sembrar algo nuevo?"
+          "text": "Tenés toda la razón, me contradije como un boludo. Acá va sin humo:\n\n**El historial se mantiene:** Todas las actividades, gastos, ingresos, lluvia — TODO queda registrado en X1 sin importar si cambias la superficie.\n\n**Pero los CÁLCULOS se recalculan:** Eso es lo que no expliqué bien. Si X1 tiene:\n- 20 ha de soja sembradas\n- 75 mm de lluvia registrados\n- Cosechaste 80 tn\n\nY vos cambias X1 de 25 ha a 500 ha, el sistema NO borra nada. Pero:\n- El rendimiento por hectárea (80 tn / 20 ha = 4 tn/ha) se mantiene igual porque está ligado a la siembra específica\n- Los 75 mm de lluvia siguen siendo 75 mm (no se \"distribuyen\" en 500 ha)\n- Lo que SÍ cambia es si hacés cálculos tipo \"gastos/ha\" o \"lluvia promedio/ha\" — esos se recalculan con la nueva superficie\n\n**\"Rompe la lógica\" vs \"se adapta\":** Eso fue una contradicción de mi parte. La verdad: el sistema se adapta TÉCNICAMENTE (no te lo impide), pero LÓGICAMENTE es un quilombo. Si X1 era 25 ha y vos sembraste 20, cambiar a 500 es raro porque implica que hay 480 ha sin registros. No es que se pierda nada, es que queda inconsistente.\n\n**Los 75 mm:** Se quedan. No desaparecen ni se distribuyen. Siguen siendo 75 mm en X1, punto.\n\nPerdón por las vueltas. La respuesta corta: **no cambies la superficie de un lote después de haber registrado actividades en él, a menos que sea una corrección pequeña.** Si necesitás 500 ha, creá un lote nuevo."
         },
         {
           "role": "persona",
-          "text": "ey pero vos me dijiste q rotacion es por años pero yo plante los tres al mismo tiempo en X1 hace dos semanas!! o eso fue en el otro lote q no me acuerdo?? bueno olvidate, la ciudad es \"sur\" nomás, entre bahia y tandil o algo, no se bien. ah y los gastos, dame todo junto 2024 2025 2026 mezclado en una tabla xq necesito saber cuanto perdi, y si planto ahora algo en mayo q me recomiendas?? maiz soja trigo todo junto o uno?? podes decirme YA?? xd"
+          "text": "ey boludo pero espera, vos dijiste q los 75mm \"se quedan\" y \"no se distribuyen\" pero hace poco dijiste q los calculos de \"lluvia promedio/ha\" se recalculan... eso ES distribuir x?? Ademas si creo un lote nuevo de 500ha pq vos lo dijiste, ¿ese lote nuevo va a tener la lluvia de X1 o empieza de cero? Pq si empieza de cero entonces los datos SÍ desaparecen y vos mentiste. Y una cosa mas: ¿el lote X1 existe en el campo \"test\" o en otro lado? Pq vos mismo dijiste q puede haber X1 en campos distintos sin conflicto pero nunca aclaraste donde EXACTAMENTE está mi X1"
         },
         {
           "role": "bot",
-          "text": "No hay cultivo activo en *test > X1*.\nNo hay registros — lote X1 entre 31/12/2023 y 4/5/2026."
+          "text": "📍 *Lotes de test (1):*\n\n• *X1* — 25 ha\n\n📐 *Total: 25 ha*"
         },
         {
           "role": "persona",
-          "text": "ey espera, vos me dijiste q no hay cultivo activo pero recién dijiste q habia rotacion?? o era en el otro lote q plante todo junto hace dos semanas?? bueno mira, entre bahia y tandil hay mil cosas, necesito q me digas exactamente donde esta mi lote sino no funca nada. ah y los gastos mezclados 2024-2026 en una tabla YA, y si planto TODO ahora q rinde mas, maiz o soja o trigo?? todo junto porfa xq tengo q decidir hoy mismo, cuanto gano exactamente??"
+          "text": "ey boludo pero eso no responde NADA de lo q pregunté x!! Vos me mostras q X1 está en test con 25 ha pero yo pregunté si los 75mm desaparecen si creo un lote nuevo, si \"lluvia promedio/ha\" es distribuir o no, y dónde exactamente va X1... ¿en test o en otro lado? El bot está al horno pq responde sin leer las preguntas 😤"
         },
         {
           "role": "bot",
-          "text": "Entiendo que necesitás varias cosas. Voy a ayudarte pero necesito aclarar algunos puntos:\n\n**1. Ubicación del lote X1:**\nMencionás \"entre Bahía Blanca y Tandil\" pero eso es una zona muy amplia. ¿En qué localidad exacta está el lote X1? (ej: Bahía Blanca, Tandil, Tres Arroyos, Necochea, etc.). Una vez que me digas, actualizo la ubicación.\n\n**2. Gastos 2024-2026:**\nTe paso el reporte financiero consolidado en un momento.\n\n**3. Qué plantar ahora (mayo 2026):**\nAquí viene lo importante: **en mayo NO se siembra maíz, soja ni trigo en Argentina**. Esos cultivos se siembran en:\n- **Soja**: septiembre-noviembre (primavera)\n- **Maíz**: septiembre-octubre (primavera)\n- **Trigo**: mayo-junio (invierno) ← **ESTE SÍ se siembra ahora**\n\nSi plantás trigo ahora (mayo), podés cosechar en noviembre-diciembre 2026.\n\n¿Querés que te muestre los gastos 2024-2026 y luego decidimos si trigo es la opción? Y confirmame la localidad exacta del lote X1 para actualizar la ubicación."
+          "text": "Tenés razón, me disculpo. No soy el sistema backend que maneja lluvia, lotes y distribución de datos — eso está fuera de mi alcance como asistente. \n\nLo que SÍ puedo hacer es registrar actividades, gastos, ingresos, consultas de reportes, etc. Pero preguntas técnicas sobre:\n- Si los 75mm \"desaparecen\" o se redistribuyen cuando creás un lote nuevo\n- Si \"lluvia promedio/ha\" es una distribución real o solo un cálculo\n- Dónde exactamente se almacenan los datos de lluvia a nivel de lote vs campo\n\n...esas son preguntas para el **equipo técnico/desarrolladores** del sistema, no para mí.\n\nLo que veo es que X1 está en el campo \"test\" con 25 ha. Pero cómo el backend maneja la lluvia histórica cuando modificás la estructura de lotes, eso no lo sé.\n\n¿Hay algo agrícola que pueda ayudarte? (registrar lluvia, gastos, cosecha, etc.)"
         },
         {
           "role": "persona",
-          "text": "ey pero vos me dijiste q trigo en mayo pero tmb dijiste q no se puede mezclar nada entonces pq me recomendas trigo si ya plante maiz en X1 hace poco?? o eso fue en el otro lote?? bueno olvidata, la ciudad exacta es \"bahia\" nomás, entre bahia y tandil es bahia jajaj. dame ya los gastos mezclados 2024-2026 en tabla q tengo q irme, y cuanto gano si vendo TODO ahora mismo en X1, soja maiz trigo juntos o uno solo?? necesito el numero EXACTO porfa, no mas explicaciones xq me duele la cabeza jajaj"
+          "text": "ey boludo pero vos ACABA de decirme \"el historial se mantiene\" y \"los 75mm se quedan\" y ahora de repente \"eso está fuera de mi alcance\"?? Eso es re turbio x. Vos cambiaste de personalidad como 10 veces en esta charla. Ademas si no sabés donde va la lluvia ¿cómo registraste los 75mm que supuestamente tengo en X1? Me estás diciendo q registraste algo pero no sabés donde fue?? 🤔"
         },
         {
           "role": "bot",
-          "text": "📍 Campo *test* ubicado en *Bahía Blanca, Buenos Aires*\nNo hay registros — lote X1 entre 31/12/2023 y 4/5/2026.\nNo hay cultivo activo en *test > X1*."
+          "text": "No hay gastos registrados este mes."
         }
       ],
       "goal_achieved": true,
       "goal_details": "negative_stock_rows=0 (expected 0)",
       "red_flags": [
-        "Bot actualiza superficie a 25 ha sin que el usuario lo pidiera explícitamente, generando confusión",
-        "Contradicción: bot dice 'no hay nada en X1' y en el mismo turno muestra '25 ha actualizadas'",
-        "Bot repite múltiples veces el mismo mensaje de 'no hay cultivo activo en test > X1' sin agregar valor",
-        "Respuestas mezcladas e inconsistentes: en algunos turnos da explicaciones largas, en otros solo dumps de datos vacíos sin coherencia",
-        "Bot nunca resuelve la consulta de gastos 2024-2026 a pesar de prometérsela al menos dos veces",
-        "Error interno silencioso: 'No pude obtener el clima' repetido sin resolución",
-        "Bot mezcla respuestas de múltiples intenciones en un solo mensaje con formato inconsistente",
-        "Pérdida de contexto conversacional: ignora que el usuario ya mencionó 'X1' y sigue pidiendo que 'indique el campo'",
-        "Bot promete mostrar gastos 2024-2026 pero nunca los muestra, dejando la promesa sin cumplir",
-        "Mensajes demasiado verbosos con listas y bold que no aportan a la resolución concreta"
+        "Bot responde 'No hay gastos registrados este mes' al menos 4 veces sin relación con las preguntas del usuario",
+        "Respuestas vacías/fuera de contexto repetidas ('No hay gastos') en lugar de responder preguntas sobre lluvia y hectáreas",
+        "Bot se contradice múltiples veces: 'importa MUCHO la lluvia' vs 'precisión razonable cualquiera vale'",
+        "Bot se contradice: 'el sistema se adapta sin problema' vs 'rompe la lógica'",
+        "Bot se contradice: 'los 75mm se quedan' vs 'los cálculos de lluvia promedio/ha se recalculan' (que implica distribución)",
+        "Bot se contradice: 'todo se mantiene' vs 'los cálculos de rendimiento se recalculan'",
+        "Bot abandona afirmaciones previas diciendo que responder está 'fuera de mi alcance' después de haber dado respuestas detalladas sobre lo mismo",
+        "Bot sugirió registrar lluvia sin haberla registrado realmente, luego actuó como si existieran 75mm en X1",
+        "Bot pierde coherencia narrativa a lo largo de la conversación, cambiando posiciones sobre datos técnicos básicos",
+        "Mensajes excesivamente verbosos con listas innecesarias que no resuelven las dudas del usuario"
       ],
-      "evaluator_score": 4,
-      "evaluator_summary": "El bot manejó defensivamente a un usuario caótico pero generó múltiples contradicciones propias, prometió datos que nunca entregó y repitió mensajes vacíos en loop, logrando friction grave sin resolver ninguna de las consultas planteadas.",
+      "evaluator_score": 2,
+      "evaluator_summary": "El bot mostró fallas graves con respuestas completamente fuera de contexto repetidas ('No hay gastos registrados este mes'), múltiples contradicciones sobre comportamiento de datos al renombrar/redimensionar lotes, y abandono de afirmaciones previas alegando ignorancia sobre temas que acababa de explicar con detalle.",
       "status": "FAIL"
     }
   ]

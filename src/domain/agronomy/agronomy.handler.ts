@@ -1917,10 +1917,11 @@ export class AgronomyHandler {
         const newFieldName = cmd.newFieldName as string | null;
         const newCrop = cmd.newCrop as string | null;
         const newDate = cmd.newDate as string | null;
+        const clearLot = !!cmd.clearLot;
 
-        // At least one change must be specified — plot, crop, or date.
-        if (!newPlotName && !newCrop && !newDate) {
-          return { messages: ['¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*'] };
+        // At least one change must be specified — plot, crop, fecha, or clear_lot.
+        if (!newPlotName && !newCrop && !newDate && !clearLot) {
+          return { messages: ['¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*\n✏️ *sin lote* (para sacar el lote)'] };
         }
 
         // Find last matching activity
@@ -1936,10 +1937,13 @@ export class AgronomyHandler {
         }
 
         // Resolve new plot only when one was provided. Crop-only / date-only
-        // edits keep the activity on its current plot.
+        // edits keep the activity on its current plot. clear_lot wins → plotId=null.
         let newPlotId: number | null = null;
         let newPlotLabel: string | null = null;
-        if (newPlotName) {
+        if (clearLot) {
+          newPlotId = null;
+          newPlotLabel = '(sin lote)';
+        } else if (newPlotName) {
           const newResolved = await this.plotDiscovery.resolveFromNames(
             userId,
             newFieldName,

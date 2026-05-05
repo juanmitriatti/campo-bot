@@ -348,8 +348,23 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         new_field: FIELD_PROP,
         new_crop: { type: 'string', description: 'Nuevo cultivo, si se quiere corregir.' },
         new_date: { type: 'string', description: 'Nueva fecha YYYY-MM-DD, si se quiere corregir.' },
+        clear_lot: { type: 'boolean', description: 'Limpiar/quitar la asignación de lote (dejar la actividad a nivel de campo). Para "sin lote", "sacale el lote", "es general del campo".' },
       },
-      required: ['new_plot'],
+      required: [],
+    },
+  },
+  {
+    name: 'edit_last_expense',
+    description: 'Corregir/editar el último gasto registrado: cambiar de lote, sacarle el lote (dejarlo a nivel de campo), o cambiar el campo. "los sueldos eran del campo entero, no del lote 1A", "el gasoil sacale el lote", "el gasto de glifosato no era del 1A".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category_filter: { type: 'string', description: 'Categoría del gasto a corregir (sueldos, agroquímicos, combustible, etc.) — opcional, ayuda cuando hay varios gastos recientes.' },
+        new_plot: { type: 'string', description: 'Nuevo lote correcto.' },
+        new_field: FIELD_PROP,
+        clear_lot: { type: 'boolean', description: 'Limpiar/quitar el lote del gasto (dejar a nivel de campo). Para "sin lote", "sacale el lote", "es general".' },
+      },
+      required: [],
     },
   },
 
