@@ -677,10 +677,10 @@ async function main() {
   let lastAuthRefresh = Date.now();
   for (const p of personas) {
     for (let i = 0; i < runs; i++) {
-      // Re-auth every ~30 min to avoid JWT expiry on long runs (despistado
-      // was hitting 401 at the end of 5x5 runs because the original token
-      // had expired ~50 min in).
-      if (Date.now() - lastAuthRefresh > 30 * 60 * 1000) {
+      // Re-auth every ~10 min to avoid JWT expiry on multi-persona runs
+      // (default JWT TTL is ~15 min and the LAST persona of 5x5 was getting
+      // 401s consistently — refresh threshold needs to be well under TTL).
+      if (Date.now() - lastAuthRefresh > 10 * 60 * 1000) {
         const fresh = await apiRegister();
         AUTH_TOKEN = fresh.token;
         lastAuthRefresh = Date.now();

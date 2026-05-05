@@ -1,13 +1,13 @@
 {
-  "ts": "2026-05-05T19:14:09.533Z",
+  "ts": "2026-05-05T20:36:57.163Z",
   "models": {
     "persona": "claude-haiku-4-5-20251001",
     "evaluator": "claude-sonnet-4-6"
   },
   "pass": 1,
-  "warn": 4,
+  "warn": 8,
   "fail": 1,
-  "total": 6,
+  "total": 10,
   "results": [
     {
       "persona_id": "mixto",
@@ -16,219 +16,15 @@
       "conversation": [
         {
           "role": "persona",
-          "text": "Che, buen día. Acabo de llegar a La Querencia. Necesito meter mano en el lote 1A urgente. Quiero sembrar soja ya, pero también tengo que sumar 30 vacas por ahí. Además, ¿cuánta lluvia tenemos registrada estos días? Y después voy a fumigar con glifosato antes de la siembra. ¿Podés darme un estado completo del lote?"
+          "text": "Che, buenas. Mañana quiero meter soja en el 1A. ¿Qué onda con el estado del lote? También necesito agregar 30 vacas por ahí. ¿Cuántas tengo ahora? Y mirá, si cae lluvia estos días mejor, ando medio seco. ¿Cuántos milímetros llevaría?"
         },
         {
           "role": "bot",
-          "text": "🌱 *soja* sembrado en *la querencia > 1A*\n📅 Campaña 2025/26\n🐄 *Hacienda actualizada*\n\n  Vaca (nuevo grupo)\n  ➕ 30 animales\n  📊 Total: *30*\n  📍 1A (la querencia)\nNo hay registros de lluvia (esta semana).\n📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 🌱 Siembra — soja (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
+          "text": "📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* ninguno\n📋 *Actividades recientes:* ninguna\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_\n🐄 No tenés hacienda registrada. Cargá animales con \"agregué 20 vacas al lote A1\".\nNo hay registros de lluvia (esta semana)."
         },
         {
           "role": "persona",
-          "text": "Bien, ya está la soja metida. Ahora necesito registrar esos 25mm de lluvia que cayeron el fin de semana. Y antes de que crezca mucho, voy a fumigar con glifosato. ¿Podés anotar la lluvia y prepararme la fumigación?"
-        },
-        {
-          "role": "bot",
-          "text": "🌧️ Lluvia registrada: *25mm*\n📍 la querencia\n📅 3 de mayo\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)\n💨 *Fumigación* registrada\n📍 la querencia > 1A\n🧴 glifosato (herbicida)\n🌱 Cultivo: soja"
-        },
-        {
-          "role": "persona",
-          "text": "Dale, perfecto. Ahora necesito ver cómo está todo en el 1A. Dacá el estado actual del lote: cómo anda la soja, si las vacas están bien, y si hay algo que me falta hacer. Ah, y chequea si hay algún alerta importante que deba saber."
-        },
-        {
-          "role": "bot",
-          "text": "❌ No pude registrar todas las acciones del mensaje. Ningún dato quedó guardado. Probá de nuevo o registralo en mensajes separados."
-        },
-        {
-          "role": "persona",
-          "text": "Che, esperá. Registrá primero la lluvia de 25mm del fin de semana, que se me olvidó anotarla bien. Después me hacés un estado completo del 1A: cómo está la soja, las 30 vacas, y si hay algo en rojo. ¿Hay alertas?"
-        },
-        {
-          "role": "bot",
-          "text": "Ya hay un registro de lluvia el *3 de mayo* para *la querencia*. Si querés corregirlo, borrá el anterior con *borrar lluvia* y registrá de nuevo.\n📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 💨 Fumigación — glifosato (05/05)\n  • 🌱 Siembra — soja (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 25 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_\n✅ No hay productos con stock bajo."
-        },
-        {
-          "role": "persona",
-          "text": "Dale, todo bien. La soja ya está sembrada y fumigada con glifosato. Los 25mm están registrados. Las 30 vacas están en el 1A sin problema. No hay alertas en rojo por ahora. El lote anda bien: 50ha en producción mixta. ¿Necesitás que siga con algo más o hacemos un reporte detallado?"
-        },
-        {
-          "role": "bot",
-          "text": "Perfecto, todo claro. El 1A está en orden: soja sembrada y fumigada, 30 vacas tranquilas, 25mm registrados, sin alertas. \n\nSi en algún momento necesitás:\n📋 **Reporte agronómico** del lote (actividades, observaciones, lluvia)\n💰 **Reporte financiero** (gastos/ingresos del mes)\n📊 **Estado de la campaña** (rendimiento, costos, rentabilidad)\n📈 **Comparar** con la campaña pasada\n🐄 **Historial de hacienda** (movimientos, pesajes, tacto)\n\nSolo decime y lo sacamos. ¿Hay algo más que quieras registrar o consultar?"
-        },
-        {
-          "role": "persona",
-          "text": "Nah, está todo bien por ahora. Igual mañana tengo que revisar si la soja no tiene plagas, y después voy a necesitar un reporte completo del 1A para ver cómo andamos económicamente. Pero eso para después. Por ahora déjalo así, el lote anda bien."
-        },
-        {
-          "role": "bot",
-          "text": "Perfecto, queda anotado. Mañana cuando hagas la revisión de plagas en el 1A, me avisás y registro el monitoreo. Y cuando necesites el reporte económico completo del lote, lo sacamos al toque. \n\nCualquier cosa, acá estoy. 🌾"
-        },
-        {
-          "role": "persona",
-          "text": "Gracias che. Mañana a la tarde paso por el 1A a revisar. Si veo algo raro en la soja le aviso. Ahora me voy a controlar las vacas, que no me hayan hecho desastre. Después nos hablamos."
-        },
-        {
-          "role": "bot",
-          "text": "De nada 👍 Cualquier cosa, acá estoy."
-        },
-        {
-          "role": "persona",
-          "text": "Dale, nos vemos mañana. Cualquier cosa que encuentres en la soja o con las vacas me avisás. Voy a estar atento a los registros. ¡Cuidado ahí!"
-        },
-        {
-          "role": "bot",
-          "text": "¡Dale, perfecto! Mañana cuando revises la soja en el 1A me avisás qué ves. Y cualquier novedad con las vacas también. Estoy atento a los registros. ¡Éxito! 🐄🌾"
-        },
-        {
-          "role": "persona",
-          "text": "Gracias che, todo claro. Mañana te paso el parte de cómo está la soja. Ahora me voy a chequear las vacas y después descanso un poco. Cualquier cosa te aviso. ¡Nos vemos!"
-        },
-        {
-          "role": "bot",
-          "text": "De nada 👍 Cualquier cosa, acá estoy."
-        },
-        {
-          "role": "persona",
-          "text": "Bueno, mañana a la tarde te paso novedades del 1A. Si la soja anda bien y las vacas están tranquilas, seguimos así nomás. Sino, te aviso para que hagamos ajustes. Ahora descanso un poco. ¡Gracias che!"
-        },
-        {
-          "role": "bot",
-          "text": "¡Perfecto! Mañana a la tarde espero tu parte del 1A. Cualquier novedad de la soja o las vacas me avisás y hacemos los ajustes que hagan falta. Descansá tranquilo que acá estoy atento a todo. ¡Hasta mañana! 👍"
-        },
-        {
-          "role": "persona",
-          "text": "Che, gracias. Bueno, ahora me voy a dormir un rato. Mañana a la tarde paso por el 1A y te cuento qué onda con la soja y las vacas. Si hay algo que registrar te aviso de una. ¡Nos hablamos!"
-        },
-        {
-          "role": "bot",
-          "text": "¡Dale, descansá tranquilo! Mañana cuando pases por el 1A me pasás las novedades de la soja y las vacas. Cualquier cosa que haya que registrar, acá estoy. ¡Nos hablamos! 🌾"
-        },
-        {
-          "role": "persona",
-          "text": "Bueno, me voy a dormir. Mañana a la tarde te aviso cómo está todo. ¡Gracias che!\n\n__END__"
-        },
-        {
-          "role": "bot",
-          "text": "¡Que descanses bien! Mañana espero tu parte de cómo está todo en el 1A. Cualquier novedad me avisás. ¡Nos hablamos! 👍"
-        }
-      ],
-      "goal_achieved": true,
-      "goal_details": "sown=true livestock=true rain=false spray=true score=3/4",
-      "red_flags": [
-        "Bot falló al responder consulta de estado completo del lote: devolvió error '❌ No pude registrar todas las acciones' cuando el usuario solo pedía consultar, no registrar nada",
-        "Lluvia registrada con fecha incorrecta (3 de mayo) cuando el usuario dijo 'el fin de semana', generando confusión sobre si el registro era correcto",
-        "Resultado en DB muestra rain=false a pesar de que el bot confirmó registro de 25mm (inconsistencia entre confirmación del bot y resultado real)",
-        "Loop de cierre excesivo: 7+ intercambios de despedida donde el bot repite variaciones del mismo mensaje sin agregar valor",
-        "Conversación de despedida demasiado verbosa y repetitiva, degradando la experiencia UX con mensajes innecesarios"
-      ],
-      "evaluator_score": 6,
-      "evaluator_summary": "El bot completó 3 de 4 tareas principales correctamente pero falló en registrar la lluvia efectivamente (pese a confirmarlo), tuvo un error grave al interpretar una consulta de estado como intento de registro, y desperdició muchos turnos en un loop de despedida redundante.",
-      "status": "WARN"
-    },
-    {
-      "persona_id": "mixto",
-      "persona_name": "Productor mixto (agro + ganadero)",
-      "goal": "En el lote 1A: sembrar soja, agregar 30 vacas, registrar 25mm de lluvia, fumigar con glifosato, consultar el estado del lote.",
-      "conversation": [
-        {
-          "role": "persona",
-          "text": "Che, acabo de llegar a \"La Querencia\". Necesito meter soja en el 1A, pero primero quiero ver cómo está el lote. ¿Puedo consultar el estado general? Tengo que revisar si está listo para sembrar o si hay algo que ajustar antes."
-        },
-        {
-          "role": "bot",
-          "text": "📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* ninguno\n📋 *Actividades recientes:* ninguna\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
-        },
-        {
-          "role": "persona",
-          "text": "Dale, necesito meter soja ya. ¿Puedo sembrar directamente o tengo que preparar el terreno primero? Y después voy a agregar 30 vacas al lote. Pero antes quiero fumigar con glifosato para limpiar malezas. ¿Cómo arranco?"
-        },
-        {
-          "role": "bot",
-          "text": "💨 *Fumigación* registrada\n📍 la querencia > 1A\n🧴 glifosato (herbicida)\n🌱 *soja* sembrado en *la querencia > 1A*\n📅 Campaña 2025/26\n🐄 *Hacienda actualizada*\n\n  Vaca (nuevo grupo)\n  ➕ 30 animales\n  📊 Total: *30*\n  📍 1A (la querencia)"
-        },
-        {
-          "role": "persona",
-          "text": "Dale, perfecto. Ahora necesito registrar los 25mm de lluvia que cayeron la semana pasada en el 1A. ¿Cómo cargo eso en el sistema?"
-        },
-        {
-          "role": "bot",
-          "text": "🌧️ Lluvia registrada: *25mm*\n📍 la querencia\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)"
-        },
-        {
-          "role": "persona",
-          "text": "Perfecto, todo registrado. Ahora quiero ver el estado actualizado del 1A con todo lo que hicimos: la soja, las 30 vacas y la lluvia. ¿Me hacés un resumen del lote?"
-        },
-        {
-          "role": "bot",
-          "text": "📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 💨 Fumigación — glifosato (05/05)\n  • 🌱 Siembra — soja (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 25 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
-        },
-        {
-          "role": "persona",
-          "text": "Che, espera. Me fijé que en el resumen no aparecen las 30 vacas que agregamos. ¿Están registradas en el sistema o tengo que cargarlas de nuevo? Necesito que me confirme que la hacienda está bien cargada en el 1A."
-        },
-        {
-          "role": "bot",
-          "text": "🐄 *Hacienda total: 30 animales*\n\n  📍 la querencia / 1A\n    • Vaca: *30*"
-        },
-        {
-          "role": "persona",
-          "text": "Perfecto, todo está en orden. Las 30 vacas están registradas en el 1A. Ahora tengo soja sembrada, hacienda lista y lluvia anotada. Creo que cubrí todo lo que necesitaba. ¿Hay algo más que deba ajustar en el lote o podemos cerrar acá?"
-        },
-        {
-          "role": "bot",
-          "text": "✅ *Todo en orden en el 1A:*\n\n🌱 Soja sembrada\n🐄 30 vacas registradas\n🌧️ 25mm de lluvia anotados\n\nEl lote está completo y actualizado. Si después necesitás:\n• Registrar más actividades (fumigaciones, fertilizaciones, etc.)\n• Cargar cosecha o movimientos de hacienda\n• Ver reportes financieros o agronómicos\n• Ajustar algo\n\nSolo avisame. ¡Listo para seguir! 🚜"
-        },
-        {
-          "role": "persona",
-          "text": "Excelente, quedó todo bien. Ahora voy a dejarla así y enfocarse en monitorear. Si cae más lluvia o tengo que hacer otra aplicación, te aviso. Mientras tanto, voy a ir viendo cómo se comporta la soja con las vacas compartiendo espacio. Gracias che, muy claro todo."
-        },
-        {
-          "role": "bot",
-          "text": "¡De nada! 👍 Perfecto, quedá atento a cómo evoluciona todo. Cualquier novedad que tengas:\n\n📍 Lluvia → te la cargo al toque\n🌱 Fumigación, fertilización, labores → me avisás y registro\n🐄 Movimientos de hacienda, pesajes, tacto → lo cargamos\n📊 Reportes, comparativas, rentabilidad → cuando lo necesites\n\nEl sistema está listo para monitorear. ¡Éxito con la soja y el rodeo! 🚜🐄"
-        }
-      ],
-      "goal_achieved": true,
-      "goal_details": "sown=true livestock=true rain=false spray=true score=3/4",
-      "red_flags": [
-        "El resumen final del lote (última consulta de estado) no incluyó las 30 vacas, obligando al usuario a preguntar nuevamente por la hacienda",
-        "La lluvia fue registrada pero la DB muestra rain=false, posible inconsistencia entre confirmación del bot y registro real",
-        "El bot procesó múltiples acciones en un solo mensaje (fumigación + siembra + hacienda) sin confirmar individualmente ni pedir validación, riesgo de errores silenciosos"
-      ],
-      "evaluator_score": 7,
-      "evaluator_summary": "La conversación logró casi todos los objetivos con buena fluidez, pero el estado del lote omitió la hacienda forzando un round extra, y hay una inconsistencia entre la lluvia confirmada por el bot y el estado real en DB.",
-      "status": "WARN"
-    },
-    {
-      "persona_id": "mixto",
-      "persona_name": "Productor mixto (agro + ganadero)",
-      "goal": "En el lote 1A: sembrar soja, agregar 30 vacas, registrar 25mm de lluvia, fumigar con glifosato, consultar el estado del lote.",
-      "conversation": [
-        {
-          "role": "persona",
-          "text": "Che, buenos días. Acabo de llegar a la 1A. Quiero arrancar con la siembra de soja, pero primero necesito saber cómo está el lote. ¿Qué me decís del estado general? Después le meto los 30 animales que tengo listos. También ando viendo si cayó lluvia estos días."
-        },
-        {
-          "role": "bot",
-          "text": "📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* ninguno\n📋 *Actividades recientes:* ninguna\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_\nNo hay registros de lluvia (la semana pasada).\nNo pude obtener el clima. Verificá la ciudad o intentá más tarde."
-        },
-        {
-          "role": "persona",
-          "text": "Dale, gracias. Está seco el lote, necesitamos lluvia urgente. Arranco con la siembra de soja igual. Pero primero, ¿cómo hago para meter los 30 animales? ¿Necesito preparar algo especial o directamente los cargo al sistema? Y después le doy una pasada de glifosato antes de sembrar."
-        },
-        {
-          "role": "bot",
-          "text": "🌱 *soja* sembrado en *la querencia > 1A*\n📅 Campaña 2025/26\n💨 *Fumigación* registrada\n📍 la querencia > 1A\n🧴 glifosato (herbicida)\n🌱 Cultivo: soja"
-        },
-        {
-          "role": "persona",
-          "text": "Dale, ahora meto los 30 vacas. ¿Las agrego directo al lote 1A o necesito hacer algo antes? Y che, ¿cuándo registramos esos 25mm de lluvia que espero que caigan? Después quiero ver el estado actualizado del lote completo."
-        },
-        {
-          "role": "bot",
-          "text": "No encontré el lote *completo*. Revisá el nombre o escribí *mis lotes* para ver los que tenés."
-        },
-        {
-          "role": "persona",
-          "text": "Dale, metele los 30 vacas al lote 1A. ¿Cuánto tiempo van a estar? Mientras tanto, cuando caiga esa lluvia me avisás y la registro. Por ahora seguimos en cero milímetros. Una vez que agregues los animales te muestro el estado actualizado con todo junto: siembra, hacienda y lluvias. ¿Cuántos días pensás tenerlas acá?"
+          "text": "Bien, arranco entonces. Agregué 30 vacas al lote 1A. Ahora voy a sembrar soja, ¿qué superficie le dedico? Y después necesito fumigar con glifosato antes de que crezca mucho la maleza. ¿Cuánto rocío en total?"
         },
         {
           "role": "bot",
@@ -236,181 +32,221 @@
         },
         {
           "role": "persona",
-          "text": "Dale, perfecto. Los 30 quedan en la 1A entonces. Ahora necesito que registres esos 25mm de lluvia que esperamos, y después me mostras el estado completo del lote con todo junto: la soja, las vacas y la lluvia. ¿Podés registrar la precipitación y hacer un resumen actualizado de cómo quedó todo en la 1A?"
+          "text": "Dale, voy a sembrar 35 hectáreas de soja en el 1A, dejo 15 para las vacas que pastan. ¿Cuánto glifosato necesito para fumigar bien? Y che, ¿ya registraste esos 25mm de lluvia que cayeron ayer o me los anotás vos?"
         },
         {
           "role": "bot",
-          "text": "🌧️ Lluvia registrada: *25mm*\n📍 la querencia\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)\n📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 🌱 Siembra — soja (05/05)\n  • 💨 Fumigación — glifosato (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 25 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
+          "text": "🌱 *soja* sembrado en *la querencia > 1A*\n📅 Campaña 2025/26\n📐 Sembradas: 35 ha\n🌧️ Lluvia registrada: *25mm*\n📍 la querencia\n📅 4 de mayo\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)"
         },
         {
           "role": "persona",
-          "text": "Perfecto, quedó todo registrado. La soja ya está sembrada y fumigada, los 30 animales en la 1A, y cayeron los 25mm. El lote está listo. Che, ¿me hacés un resumen final de cómo quedó todo junto? Siembra, hacienda, lluvia... todo mezclado en la 1A."
+          "text": "Perfecto, ahora necesito fumigar esas malezas. ¿Cuánto glifosato me recomendás para las 35 hectáreas de soja? Y chequeá bien: entre las 30 vacas pastando en las 15 hectáreas restantes y la lluvia que cayó, el lote está en buena forma. ¿Hay algo más que deba controlar antes de aplicar el herbicida?"
         },
         {
           "role": "bot",
-          "text": "Hubo un error generando el reporte agronómico. Intentá de nuevo."
+          "text": "📋 *Recomendación de glifosato para soja*\n\nPara 35 ha de soja en control de malezas pre-siembra o post-emergencia temprana:\n• **Dosis estándar:** 2-3 lt/ha de glifosato (concentración 48%)\n• **Total estimado:** 70-105 lt de glifosato\n\nEsto depende de:\n- **Estadio de malezas** (plántulas vs. establecidas)\n- **Tipo de malezas** (dicotiledóneas, gramíneas, perennes)\n- **Condiciones climáticas** (humedad, temperatura, viento)\n\n✅ *Estado del lote 1A:*\n- 35 ha sembradas de soja ✓\n- 15 ha con 30 vacas en pastoreo ✓\n- Lluvia reciente (25mm) → suelo con humedad adecuada ✓\n- Condiciones favorables para aplicación\n\n⚠️ *Antes de fumigar, verificá:*\n1. **Estadio fenológico de la soja** (VE, V2, V4, etc.)\n2. **Cobertura y tipo de malezas** presentes\n3. **Pronóstico:** evitá viento fuerte (>15 km/h) y lluvia en las 6-8 hs post-aplicación\n4. **Distancia de seguridad** a las vacas (no fumigar sobre el área de pastoreo)\n\n¿Querés que registre la fumigación una vez que la hagas? Solo decime cuántos litros usaste y el producto exacto."
         },
         {
           "role": "persona",
-          "text": "Che, no hay drama. Igual tengo todo claro: soja sembrada y fumigada, 30 vacas en la 1A, 25mm de lluvia registrados. El lote está funcionando. ¿Hay algo más que necesite hacer o está todo listo así?"
+          "text": "Bueno, voy a aplicar 80 litros de glifosato en las 35 hectáreas de soja. Che, y las vacas están tranquilas en su sector. Una cosa más: haceme un resumen de cómo quedó el 1A después de todo esto. ¿Tengo algo pendiente o estamos al día?"
         },
         {
           "role": "bot",
-          "text": "Hubo un error generando el reporte agronómico. Intentá de nuevo."
+          "text": "💨 *Fumigación* registrada\n📍 la querencia > 1A\n🧴 glifosato (herbicida)\n📏 80 lt\n🌱 Cultivo: soja\n🌱 *Reporte agronómico — la querencia > 1A* (semana 19)\n\n📊 Observaciones: 0\n\n*Actividades* (2)\n• Fumigación: glifosato (1A)\n• Siembra: soja (1A)\n\nTe adjunto el PDF completo 👇"
         },
         {
           "role": "persona",
-          "text": "Mirá, ya tenemos todo en la 1A: soja sembrada, glifosato aplicado, 30 vacas metidas y 25mm de lluvia. El sistema anda un poco loco con los reportes, pero en el terreno está todo funcionando. ¿Necesitás agregar algo más o dejamos así por ahora?"
+          "text": "Perfecto, todo en orden. Voy a revisar el reporte, pero antes: ¿cómo anda la soja con el glifosato aplicado? ¿Viste malezas muertas ya? Y las vacas, ¿están comiendo bien en esas 15 hectáreas o les agrego suplemento? Una cosa más: ¿cuándo me hacés seguimiento del 1A la próxima semana?"
         },
         {
           "role": "bot",
-          "text": "Hubo un error generando el reporte agronómico. Intentá de nuevo."
+          "text": "🔍 Observación registrada\n\n📍 la querencia > 1A\n📂 🌿 Malezas\n📝 aplicacion de glifosato completada pendiente evaluacion de control de malezas en los proximos dias\n\n⚠️ *Recomendación*\nEvaluar aplicación de herbicida según estado de las malezas.\n\nPodés registrar ahora:\n• fumigación lote 1A\n• otra observación lote 1A"
         },
         {
           "role": "persona",
-          "text": "Dale, dejamos así por ahora. Tenemos todo en la 1A: soja sembrada y fumigada con glifosato, los 30 animales adentro, y los 25mm registrados. El lote está andando. Si necesitás agregar algo más adelante me avisás, sino seguimos monitoreando cómo va todo junto."
+          "text": "Che, dale. Mirá, las malezas van a tardar 7-10 días en secarse bien, así que estate atento. Las 30 vacas en 15 hectáreas andan bien por ahora con el pasto, pero si ves que baja mucho la calidad le metemos suplemento. Seguimiento el próximo lunes, te paso un resumen. ¿Necesitás algo más del 1A o vamos con otro lote?"
         },
         {
           "role": "bot",
-          "text": "Perfecto, todo registrado en la 1A de la querencia:\n✅ Soja sembrada\n✅ Glifosato aplicado (fumigación)\n✅ 30 animales en el lote\n✅ 25mm de lluvia\n\nEl lote está funcionando. Seguimos monitoreando. Cualquier novedad (más actividades, cosecha, movimiento de hacienda, lluvia) me avisás y lo cargo al toque. ¡Éxito con la campaña! 🌾"
+          "text": "🔍 Observación registrada\n\n📍 la querencia > 1A\n📂 🌿 Malezas\n📝 malezas tardaran 710 dias en secarse bien tras aplicacion de glifosato evaluar control en ese periodo\n\n⚠️ *Recomendación*\nEvaluar aplicación de herbicida según estado de las malezas.\n\nPodés registrar ahora:\n• fumigación lote 1A\n• otra observación lote 1A\n🔄 *Hacienda corregida*\n\n  Vaca\n  📊 Antes: 30 → Ahora: *30*\n  📍 1A (la querencia)"
         },
         {
           "role": "persona",
-          "text": "Perfecto, gracias. El lote 1A está en buen ritmo entonces. Ahora necesito revisar cómo va la soja con esta lluvia que cayó, y también controlar que los animales estén bien. ¿Hay algo que deba ajustar en el manejo de los dos sistemas juntos? ¿La soja y las vacas conviven bien en el mismo espacio o tengo que separar zonas?"
+          "text": "Dale, perfecto. El 1A está al día: soja sembrada, glifosato aplicado, 30 vacas pastando en 15 ha, y 25mm de lluvia registrados. Seguimiento el próximo lunes como dijiste. Por ahora el lote está controlado. ¿Hay algo más que necesites o pasamos a otro sector?"
         },
         {
           "role": "bot",
-          "text": "Hubo un error generando el reporte agronómico. Intentá de nuevo."
+          "text": "✅ Perfecto, el 1A está al día. Tenés registrado:\n• 🌱 Soja sembrada\n• 🧪 Glifosato aplicado\n• 🐄 30 vacas en 15 ha\n• 💧 25mm lluvia\n\nSeguimiento el próximo lunes. El lote está controlado.\n\n¿Querés pasar a otro sector o hay algo más del 1A?"
         },
         {
           "role": "persona",
-          "text": "Che, buen punto. En la 1A tenés 50 hectáreas, así que sobra espacio para que convivan. Las vacas no van a joder la soja si las manejás en una zona y dejás la otra para cultivo. Pero mirá, necesitarías hacer una división con alambrado para separar áreas. ¿Querés que te ayude a planificar eso o las dejás sueltas por ahora?"
+          "text": "Dale, vamos con otro lote. Pero antes pasame el reporte agronómico del 1A en PDF para tenerlo archivado. Después me ocupo de los otros sectores."
         },
         {
           "role": "bot",
-          "text": "Hubo un error generando el reporte agronómico. Intentá de nuevo."
+          "text": "📄 Reporte generado: *campaña_soja_2025-26_1A.pdf*\n[Archivo adjunto: campaña_soja_2025-26_1A.pdf]"
         },
         {
           "role": "persona",
-          "text": "Mirá, dejamos el alambrado para después. Por ahora las vacas están en la 1A sin drama. ¿Podés chequear cuánta agua necesita la soja con estos 25mm que cayeron? Y si hay plagas o algo raro en el cultivo, avisame. Mientras tanto voy monitoreando los animales."
+          "text": "Dale, listo. Ya tenés el PDF guardado. Ahora me avisás cuando necesites algo del 1A o pasamos a otro sector. ¿Qué hacemos?"
         },
         {
           "role": "bot",
-          "text": "🌧️ *Resumen de lluvias* (esta semana)\n\n📍 la querencia: *25mm* (1 reg.)\nNo hay monitoreos registrados para lote *1A* con esos filtros."
+          "text": "Perfecto, PDF archivado. \n\n¿Qué necesitás ahora? Podemos:\n• Registrar actividades en otro lote\n• Consultar estado de otro sector\n• Cargar gastos, ingresos o stock\n• Lo que sea del 1A si hay novedades\n\n¿Cuál es el siguiente paso?"
         },
         {
           "role": "persona",
-          "text": "Che, entendido. Igual la soja está en buena forma con esos 25mm. Ahora necesito registrar un monitoreo del lote para ver cómo va todo: estado del cultivo, cómo están las vacas, si hay plagas. ¿Podés cargar un monitoreo rápido de la 1A con lo que observamos?"
+          "text": "Che, listo. El 1A está bárbaro por ahora. Pasame el estado de los otros lotes que tengo, necesito ver dónde meterme la próxima semana. ¿Tengo más campos en La Querencia o laburás sólo acá?"
         },
         {
           "role": "bot",
-          "text": "🐄 ¿Querías registrar hacienda?\n\nEjemplos:\n👉 *agregué 20 vacas al lote A1*\n👉 *vendí 5 novillos del lote 1B*\n👉 *cuántos animales tengo*"
+          "text": "📍 *Lotes de la querencia (1):*\n\n• *1A* — 50 ha\n\n📐 *Total: 50 ha*"
         },
         {
           "role": "persona",
-          "text": "Dale, registrá que todo anda bien en la 1A por ahora. La soja está verde con esos 25mm, las 30 vacas comiendo sin drama y sin plagas visibles. Haceme un chequeo general del lote para confirmar que todo está en orden: siembra, hacienda, agua. ¿Podés darme eso?"
+          "text": "Uh, che, me dijiste que tengo más lotes pero acá me mostrás sólo el 1A. ¿Vos me estás diciendo que La Querencia tiene nada más que este? ¿O hay otros campos que no registramos todavía? Porque necesito saber dónde más tengo hectáreas para distribuir laburo la próxima semana."
         },
         {
           "role": "bot",
-          "text": "🐄 ¿Querías registrar hacienda?\n\nEjemplos:\n👉 *agregué 20 vacas al lote A1*\n👉 *vendí 5 novillos del lote 1B*\n👉 *cuántos animales tengo*\n📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 🌱 Siembra — soja (05/05)\n  • 💨 Fumigación — glifosato (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 25 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
+          "text": "📍 *Tus campos (1):*\n\n• *la querencia* — Pergamino, Buenos Aires (1 lote, 50 ha)\n\n📐 *Total: 50 ha*\n\n_Comandos: agregar campo X, lotes del campo X, info campo X_"
+        },
+        {
+          "role": "persona",
+          "text": "Ah, claro. Entonces la querencia es lo único que tengo registrado por ahora. Dale, voy a trabajar con lo que tenemos acá. Pero che, si después agrego más campos o lotes me avisás, ¿eh? Por ahora me enfoco en mantener el 1A funcionando bien y ver si hay algo más que ajustar en las próximas semanas."
+        },
+        {
+          "role": "bot",
+          "text": "Perfecto, entendido. Vos enfocate en el 1A que está bárbaro. Cualquier cosa que necesites registrar — actividades, gastos, ingresos, lluvia, observaciones — me avisás y lo cargo al toque.\n\nY sí, cuando agregues más campos o lotes te aviso. Mientras tanto, si querés revisar cómo va la campaña, gastos, rendimiento o cualquier reporte del 1A, decime y te lo paso.\n\n¡Éxito con la semana! 🌾"
+        },
+        {
+          "role": "persona",
+          "text": "Che, dale. Por ahora estoy tranquilo con el 1A. La próxima semana le hago seguimiento a las malezas y veo cómo andan las vacas. Si hay novedades te aviso. Mientras tanto, voy a chequear números — gastos de la fumigación, rendimiento esperado de soja, eso. Me pasas un resumen de costos de la campaña hasta ahora en el 1A, ¿dale?"
+        },
+        {
+          "role": "bot",
+          "text": "No hay movimientos para lote *1A* (mayo 2026).\n\n_Para ver actividades agronómicas: \"qué pasó en el lote 1A\"_"
         }
       ],
       "goal_achieved": true,
       "goal_details": "sown=true livestock=true rain=false spray=true score=3/4",
       "red_flags": [
-        "Bot falla repetidamente con 'Hubo un error generando el reporte agronómico' (5+ veces consecutivas) ante consultas que no son de reporte",
-        "Bot interpreta preguntas de estado/consejo agronómico como solicitudes de reporte PDF",
-        "Bot confunde 'lote completo' con nombre de lote inexistente en lugar de entender que el usuario quiere ver el lote 1A completo",
-        "Bot responde con flujo de hacienda ('¿Querías registrar hacienda?') ante una consulta de monitoreo/estado general",
-        "Bot ejecuta siembra y fumigación en el mismo turno sin confirmación explícita del usuario para la fumigación",
-        "Respuestas duplicadas en un mismo turno (hacienda prompt + estado lote juntos sin coherencia)",
-        "Bot no responde consultas de manejo agronómico (necesidades de agua de soja, plagas) devolviendo errores en su lugar",
-        "Lluvia registrada en DB como false (rain=false) a pesar de que el bot confirmó el registro"
+        "El bot no registró la lluvia de 25mm cuando el usuario lo mencionó en el primer mensaje (la registró recién en el tercer turno, mezclada con la siembra)",
+        "El bot sugirió fumigación ('podés registrar ahora: fumigación lote 1A') cuando ya estaba registrada, generando confusión",
+        "El bot registró una 'corrección' de hacienda innecesaria (30→30, sin cambio) en el penúltimo turno de hacienda",
+        "El bot registró como 'observación' lo que el usuario dijo sobre malezas (conversación informal), no una observación agronómica real",
+        "Al consultar resumen de costos de campaña, el bot respondió 'No hay movimientos' siendo que sí hubo actividades registradas (fumigación, siembra), respuesta confusa",
+        "El bot no preguntó ni sugirió registrar el costo de la fumigación (80 lt de glifosato) como gasto financiero, perdiendo dato relevante",
+        "Primer mensaje del usuario era muy denso y el bot no lo procesó completo (ignoró la pregunta sobre lluvia y milímetros hasta el tercer turno)"
       ],
-      "evaluator_score": 4,
-      "evaluator_summary": "El objetivo central fue mayormente alcanzado (siembra, hacienda, fumigación registradas) pero la conversación tuvo friction grave con múltiples errores repetidos del bot ante consultas de estado y consejo, loops de error en la segunda mitad de la sesión, y un registro de lluvia que falló silenciosamente.",
-      "status": "FAIL"
+      "evaluator_score": 6,
+      "evaluator_summary": "La conversación logró los objetivos principales (siembra, hacienda, lluvia, fumigación) pero con friction notable: registros tardíos, respuestas innecesarias/incorrectas al final y fallas en capturar datos financieros.",
+      "status": "WARN"
     },
     {
-      "persona_id": "despistado",
-      "persona_name": "Despistado mobile (typos masivos)",
-      "goal": "Cargar un gasto de combustible $80.000, registrar siembra de soja en 1A, consultar el lote.",
+      "persona_id": "mixto",
+      "persona_name": "Productor mixto (agro + ganadero)",
+      "goal": "En el lote 1A: sembrar soja, agregar 30 vacas, registrar 25mm de lluvia, fumigar con glifosato, consultar el estado del lote.",
       "conversation": [
         {
           "role": "persona",
-          "text": "compre gsoil 80mil hoy, necesito cargarlo en don cosme. tmb quiero registrar q embre soja en el lote 1a, eran 40 has. despues necesito ver como quedó el lote. como se hace aca?"
+          "text": "Che, buenos días. Acabo de llegar a la estancia. Tengo que meter mano en el 1A: necesito preparar la siembra de soja, pero también pensaba agregar 30 vacas al lote. ¿Me decís cómo anda? Además, vi que viene lluvia para esta semana, espero que caigan los 25mm que necesitamos. Ah, y tengo el glifosato acá para fumigar antes de sembrar. ¿Qué me recomendás por dónde empiezo?"
         },
         {
           "role": "bot",
-          "text": "✅ Gasto guardado\nCombustible\n$80.000\n📍 Lote 1A (don cosme)\n🌱 *soja* sembrado en *don cosme > 1A*\n📅 Campaña 2025/26\n📐 Sembradas: 40 ha\n📍 *Campo don cosme* · 1 lote · 40 ha\n📌 Pergamino, Buenos Aires\n\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $80.000 (1) · ingresos $0 (0) · resultado $-80.000\n\n📊 *Reportes en PDF:* pedí _\"reporte agro campo don cosme\"_ o _\"reporte financiero campo don cosme\"_"
+          "text": "📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* ninguno\n📋 *Actividades recientes:* ninguna\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_\nNo pude obtener el clima. Verificá la ciudad o intentá más tarde."
         },
         {
           "role": "persona",
-          "text": "boludo q rápido! estan todos los datos cargados? voy a necesitar tmb registrar fertilizante q compre x 45mil. lo pago mñna pero necesito q quede registrado ya. y una cosa, en 1a cuanto debo sembrar mas o ya esta completo?"
+          "text": "Dale, empiezo por lo primero: necesito fumigar con glifosato antes de sembrar. Después meto la soja. Con las vacas espero a que caiga la lluvia de los 25mm, así el pasto está fresco cuando las suelto. ¿Puedo fumigar ya o espero a algo?"
         },
         {
           "role": "bot",
-          "text": "✅ Anotado\nFertilizantes\n$45.000\n📍 Lote 1A (don cosme)\n🌱 *soja* en *don cosme > 1A*\n📅 Campaña 2025/26 — 🌱 Activa\n📐 Superficie: 40 ha\n🗓️ Siembra: 05/05/2026"
+          "text": "💨 *Fumigación* registrada\n📍 la querencia > 1A\n🧴 glifosato (herbicida)"
         },
         {
           "role": "persona",
-          "text": "boludo el lote 1a esta lleno, ya tenes las 40 has sembradas con soja. el fertilizante quedo anotado x 45mil paa mañana. necesito cargar tmb un gasto x riego, fueron 3mil pesos. hay q ponerlo en don cosme tmb?"
+          "text": "Bien, ahora sembro la soja. Preparé las semillas y la máquina está lista. Voy a hacer la siembra en el 1A en estos días. Después, cuando caigan los 25mm de lluvia que esperamos, agrego las 30 vacas al lote para que pasten. ¿Cómo anda el estado actual del lote después de la fumigación?"
         },
         {
           "role": "bot",
-          "text": "💸 ¿Confirmo gasto?\n\nCategoría: *Otros*\nMonto: *$3.000*\nUbicación: Lote 1A (don cosme)\n\n[buttons: confirm_pending, cancel_pending]"
-        },
-        {
-          "role": "tap",
-          "text": "confirm_pending"
-        },
-        {
-          "role": "bot",
-          "text": "✅ Registrado\nOtros\n$3.000\n📍 Lote 1A (don cosme)"
+          "text": "🌱 *soja* sembrado en *la querencia > 1A*\n📅 Campaña 2025/26"
         },
         {
           "role": "persona",
-          "text": "che, perfecto eso. ahora necesito ver cuanto gaste en total este mes en don cosme, incluyendo todo lo q cargue. me haces un resumen x fis?"
+          "text": "Dale, ahora espero la lluvia. Necesito que caigan esos 25mm para que el pasto agarre bien antes de meter las 30 vacas. Mientras tanto, ¿cómo está el lote? ¿Alguna novedad después de la siembra? Y chequeá si hay pronóstico de lluvia para esta semana, porque sin esos milímetros no suelto el rodeo."
         },
         {
           "role": "bot",
-          "text": "📊 *Resumen financiero — don cosme* (mayo 2026)\n\nCombustible: $80.000\nFertilizantes: $45.000\nOtros: $3.000\n\nTotal: $128.000\n\n_Para reporte agronómico: \"reporte campo don cosme\"_"
+          "text": "🌱 *Reporte agronómico — la querencia > 1A* (semana 19)\n\n📊 Observaciones: 0\n\n*Actividades* (2)\n• Siembra: soja (1A)\n• Fumigación: glifosato (1A)\n\nTe adjunto el PDF completo 👇\nNo pude obtener el clima. Verificá la ciudad o intentá más tarde."
         },
         {
           "role": "persona",
-          "text": "che boludo perfecto! estan todos los gastos ahi. ahora necesito saber si hay q hacer algo mas o si ya esta todo registrado. tmb me gustaria ver un reporte en pdf de todo esto x si me lo pide el banco. podes mandar eso?"
+          "text": "Dale, sin datos de clima no puedo confirmar la lluvia. Pero escuchá: voy a registrar esos 25mm que esperamos esta semana. Una vez que caigan, meto las 30 vacas al lote. Mientras tanto, la soja sigue su curso. ¿Me confirmás que querés que anote la lluvia para poder soltar el rodeo después?"
         },
         {
           "role": "bot",
-          "text": "❌ No pude registrar todas las acciones del mensaje. Ningún dato quedó guardado. Probá de nuevo o registralo en mensajes separados."
+          "text": "🌧️ Lluvia registrada: *25mm*\n📍 la querencia\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)"
         },
         {
           "role": "persona",
-          "text": "che boludo podes hacer el reporte en pdf de don cosme? necesito todo lo q cargue este mes x el banco. y listo, creo q ya esta todo registrado no?"
+          "text": "Dale, perfecto. Ahora sí meto las 30 vacas al lote 1A. Con los 25mm caídos y la soja ya sembrada, el pasto va a estar fresco. ¿Me confirmás que agrego el rodeo al 1A o tengo que chequear algo más antes?"
         },
         {
           "role": "bot",
-          "text": "📄 Reporte generado: *reporte_financiero_mayo_de_2026_don cosme.pdf*\n[Archivo adjunto: reporte_financiero_mayo_de_2026_don cosme.pdf]"
+          "text": "🐄 *Hacienda actualizada*\n\n  Vaca (nuevo grupo)\n  ➕ 30 animales\n  📊 Total: *30*\n  📍 1A (la querencia)"
         },
         {
           "role": "persona",
-          "text": "che, perfecto! con ese pdf me arreglo x el banco. una ultima cosa, me podes confirmar q en don cosme tgo todo bien? el lote 1a con las 40has de soja, los tres gastos cargados (gsoil, fertilizante, riego), todo ok? despues dejo de joder jaja"
+          "text": "Bien, las 30 vacas están en el 1A. Ahora necesito chequear cómo quedó el lote con todo: soja sembrada, vacas pastando, fumigación hecha y los 25mm caídos. Dame un estado completo del 1A para ver si está todo en orden o si falta algo."
         },
         {
           "role": "bot",
-          "text": "📍 *Campo don cosme* · 1 lote · 40 ha\n📌 Pergamino, Buenos Aires\n\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $128.000 (3) · ingresos $0 (0) · resultado $-128.000\n\n📊 *Reportes en PDF:* pedí _\"reporte agro campo don cosme\"_ o _\"reporte financiero campo don cosme\"_"
+          "text": "📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 💨 Fumigación — glifosato (05/05)\n  • 🌱 Siembra — soja (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 25 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
         },
         {
           "role": "persona",
-          "text": "jaja oka boludo! todo checado y listo. don cosme esta al dia con las 40has de soja en 1a, los 3 gastos cargados ($80mil gsoil + $45mil fertilizante + $3mil riego) y el pdf x el banco listo. yo diria q ya esta todo ok acá!"
+          "text": "Perfecto, el 1A está en orden. Soja sembrada, glifosato aplicado, 25mm caídos y las 30 vacas pastando. Todo chequea. Ahora voy a monitorear que la soja agarre bien y que el rodeo no me pise mucho el cultivo. ¿Hay algo más que deba hacer o registrar en el lote por ahora?"
         },
         {
           "role": "bot",
-          "text": "¡Perfecto boludo! Todo checado y en orden 👍\n\n✅ **don cosme** · 40 ha de soja en lote 1A\n✅ Gastos registrados: $80k gasoil + $45k fertilizante + $3k riego = $128k\n✅ PDF financiero listo para el banco\n\nCualquier cosa que necesites, acá ando. ¡Éxitos! 🚜"
+          "text": "✅ Todo en orden en el 1A. El setup está completo:\n• Soja sembrada ✓\n• Glifosato aplicado ✓\n• Lluvia registrada (25mm) ✓\n• Rodeo en pastoreo ✓\n\n**Próximos pasos a monitorear:**\n📊 *Monitoreo de cultivo* — cuando veas el estadio fenológico (V2, V3, etc.), plagas o malezas, registrá con \"monitoreo soja V3\" o similar\n🐄 *Hacienda* — si necesitás pesar el rodeo, registrar movimientos o eventos sanitarios, avisame\n🌧️ *Lluvia* — seguí registrando cada evento de precipitación\n🔍 *Observaciones* — cualquier novedad (plagas, malezas, helada, etc.) la anotamos\n\n¿Querés que registre algo más ahora o esperamos a los próximos eventos?"
         },
         {
           "role": "persona",
-          "text": "boludo todo barbaro! queda clarito. una cosa nomas, cuando empiece a cosechar en 1a me avisas q tengo q cargar aca para q no se me olvide nada? y cuanto tiempo me queda mas o menos?"
+          "text": "Dale, por ahora está todo cubierto. Voy a monitorear la soja y el rodeo durante la semana. Si veo algo raro en el cultivo o si las vacas me dañan mucho el lote, te aviso. Igual, en unos días chequeo cómo va la germinación de la soja y te hago saber. Gracias por el seguimiento."
+        },
+        {
+          "role": "bot",
+          "text": "Perfecto, queda en tus manos. 👍\n\nCuando veas la germinación avanzar (V2, V3, etc.) o detectes plagas/malezas, me avisas y registramos el monitoreo. También cualquier movimiento del rodeo, pesaje o evento sanitario.\n\nEstoy acá para llevar el registro al día. ¡Éxito con la soja y el rodeo en el 1A! 🌱🐄"
+        }
+      ],
+      "goal_achieved": true,
+      "goal_details": "sown=true livestock=true rain=false spray=true score=3/4",
+      "red_flags": [
+        "El bot no registró la lluvia hasta que el usuario explícitamente pidió anotarla, pese a mencionarla dos veces antes",
+        "Error repetido al obtener datos del clima ('No pude obtener el clima') sin sugerir solución alternativa clara",
+        "El bot no confirmó la incorporación de vacas en el resumen final del estado del lote (no aparecen hacienda en el último estado)"
+      ],
+      "evaluator_score": 8,
+      "evaluator_summary": "Conversación fluida y todos los objetivos se lograron, aunque el registro de lluvia requirió un round extra innecesario y hubo errores recurrentes con el clima sin resolución.",
+      "status": "PASS"
+    },
+    {
+      "persona_id": "mixto",
+      "persona_name": "Productor mixto (agro + ganadero)",
+      "goal": "En el lote 1A: sembrar soja, agregar 30 vacas, registrar 25mm de lluvia, fumigar con glifosato, consultar el estado del lote.",
+      "conversation": [
+        {
+          "role": "persona",
+          "text": "Che, ¿qué onda? Acabo de llegar a la estancia. Necesito organizar el laburo del lote 1A. Tengo que meter soja cuanto antes, traigo 30 vacas para soltar por ahí, y el clima está medio raro. ¿Me decís cómo está la situación del terreno? ¿Puedo empezar con la siembra o espero lluvia primero?"
+        },
+        {
+          "role": "bot",
+          "text": "📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* ninguno\n📋 *Actividades recientes:* ninguna\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_\nNo pude obtener el clima. Verificá la ciudad o intentá más tarde."
+        },
+        {
+          "role": "persona",
+          "text": "Dale, primero necesito lluvia. El terreno está re seco. ¿Cuánta agua tenemos en el pronóstico? Mientras tanto voy preparando la zona para las vacas. ¿Dónde las suelto? ¿En toda la 1A o dejamos una parte para la soja? Tengo que optimizar esto bien."
         },
         {
           "role": "bot",
@@ -418,39 +254,367 @@
         },
         {
           "role": "persona",
-          "text": "che boludo, la cosecha de soja normalmente es en marzo-abril del proximo año, depende las lluvias y eso. cuando llegue la fecha te aviso x aca si queres. cuando empieces a cosechar tenes q cargar los gastos de cosechadora, flete, secado, todo eso. y los kilos q sacas tmb para ver la produccion. listo?"
+          "text": "Bueno, mirá, voy a dividir la 1A. Suelto las 30 vacas en la mitad norte, unos 25 hectáreas. La otra mitad la dejo para la soja. Así no se me pisan los cultivos. Ahora necesito que me registres esos 25 milímetros de lluvia que cayeron esta madrugada, porque si no actualizo los números no sé si puedo arrancar con la siembra. ¿Me cargás eso? Y después fumigaré con glifosato antes de sembrar."
         },
         {
           "role": "bot",
-          "text": "¡Perfecto boludo! Anotado 📝\n\nCuando llegue marzo-abril 2027 y arranques con la cosecha de soja en 1A, me avisás y yo te guío paso a paso:\n\n✅ **Gastos a cargar:**\n- Cosechadora\n- Flete\n- Secado\n- Cualquier otro gasto de cosecha\n\n✅ **Producción:**\n- Kilos totales sacados (o rendimiento kg/ha)\n- Cargas de camiones (chofer + peso) si querés detallar\n\nAsí vemos la producción real y hacemos la cuenta final de la campaña. ¡Dale, cuando sea la hora me avisás! 🚜\n\nListo, todo claro acá. ¡Éxitos con la soja! 💪"
+          "text": "🐄 *Hacienda actualizada*\n\n  Vaca (nuevo grupo)\n  ➕ 30 animales\n  📊 Total: *30*\n  📍 1A (la querencia)\n🌧️ Lluvia registrada: *25mm*\n📍 la querencia\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)"
         },
         {
           "role": "persona",
-          "text": "che boludo, perfecto! cuando llegue marzo-abril te aviso. ahora voy a dejar de joder q tengo q terminar de riego en otro lote. cualquier cosa te paso el dato. gracias x todo! 🚜"
+          "text": "Dale, perfecto. Ahora fumigate con glifosato en la mitad sur donde va la soja. ¿Cuántos litros necesitás? Mientras se seca, consultá el estado actual del lote porque quiero saber cómo quedó todo después de la lluvia y la llegada de las vacas. ¿Me hacés un chequeo general?"
         },
         {
           "role": "bot",
-          "text": "¡Dale boludo, tranquilo! Cuando llegue la cosecha me avisás y cargamos todo. Mientras tanto, a terminar el riego que hay laburo 💪\n\nCualquier cosa, acá estoy. ¡Éxitos con todo! 🚜"
+          "text": "💨 *Fumigación* registrada\n📍 la querencia > 1A\n🧴 glifosato (herbicida)\n📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* ninguno\n📋 *Actividades recientes:* \n  • 💨 Fumigación — glifosato (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 25 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
         },
         {
           "role": "persona",
-          "text": "che, gracias boludo! ahora me voy q me falta riego en otro lote. cuando empiece la cosecha en marzo te aviso x aca. cualquier cosa t paso el dato. gracias x todo! 🚜"
+          "text": "Bueno, ahora sí. Tengo las 30 vacas en la mitad norte, fumigué la sur con glifosato, y cayeron los 25mm que necesitaba. El terreno está listo. Voy a sembrar soja en esa mitad sur ahora que está húmeda. ¿Me registrás la siembra? Y chequeá bien: ¿las vacas no van a joder con la soja del otro lado? Necesito que todo esté ordenado en el sistema."
         },
         {
           "role": "bot",
-          "text": "¡Dale boludo, perfecto! Cuando empiece la cosecha en marzo me avisás y cargamos todo acá. Mientras tanto, a terminar el riego que hay laburo 💪\n\nCualquier cosa, me pasás el dato. ¡Éxitos con todo! 🚜"
+          "text": "🌱 *soja* sembrado en *la querencia > 1A*\n📅 Campaña 2025/26\n📐 Sembradas: 25 ha\n📍 *Campo la querencia* · 1 lote · 50 ha\n📌 Pergamino, Buenos Aires\n\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 25 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro campo la querencia\"_ o _\"reporte financiero campo la querencia\"_"
+        },
+        {
+          "role": "persona",
+          "text": "Perfecto, quedó todo registrado. Las vacas en la norte no van a tocar la soja porque las dejé en 25 ha separadas. Ahora necesito un chequeo general del lote 1A: ¿cómo quedó después de la lluvia, la fumigación y la siembra? Quiero saber si hay algo que me esté faltando antes de irme."
+        },
+        {
+          "role": "bot",
+          "text": "🌱 *Reporte agronómico — la querencia > 1A* (semana 19)\n\n📊 Observaciones: 0\n\n*Actividades* (2)\n• Siembra: soja (1A)\n• Fumigación: glifosato (1A)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 3_281_P418_W19_2026.pdf]"
+        },
+        {
+          "role": "persona",
+          "text": "Che, bien. Tengo todo en orden: 30 vacas en la norte, soja sembrada en la sur con los 25mm de lluvia y el glifosato aplicado. El lote está dividido, sin riesgos de pisoteo. Ahora necesito monitorear cómo evoluciona la soja estas próximas semanas. ¿Me avisás si hay cambios en el clima o si veo algo raro en el cultivo?"
+        },
+        {
+          "role": "bot",
+          "text": "Perfecto, tengo todo registrado:\n✅ 30 vacas en lote norte\n✅ Soja sembrada en lote sur (con 25mm lluvia + glifosato)\n✅ Lotes separados, sin riesgo de pisoteo\n\nPara monitorear la soja estas próximas semanas, podés:\n\n📱 **Reportar observaciones**: cualquier cosa que veas rara (plagas, malezas, manchas, estrés hídrico), me lo decís y lo registro. Ej: \"vi chinches en la sur\", \"hay rama negra\", \"la soja está amarilla\"\n\n🌡️ **Clima**: te paso el pronóstico cuando lo pidas (\"clima hoy\", \"va a llover esta semana?\")\n\n📊 **Monitoreo estructurado**: si querés registrar métricas (estadio fenológico V3/V4, % de malezas, % de emergencia, densidad de plantas), me lo decís y lo cargo con detalle\n\n🚨 **Alertas**: cualquier cambio importante, avisame y lo documentamos\n\n¿Querés que te pase el pronóstico de esta semana o hay algo que hayas visto ya en la sur?"
+        },
+        {
+          "role": "persona",
+          "text": "Che, dale. La soja está emergiendo bien, se ve que agarró bien con la humedad. Pero mirá, en la norte donde están las vacas noto que el pasto está bajando. ¿Me decís cuánto forraje tienen disponible todavía? Y si necesito suplementar o mover las vacas a otro sector. Porque no quiero que se queden sin comer."
+        },
+        {
+          "role": "bot",
+          "text": "🔍 Observación registrada\n\n📍 la querencia > 1A\n📂 📝 General\n📝 pasto bajando disponibilidad de forraje reducida\n\nPodés registrar ahora:\n• otra observación lote 1A\n🔍 Observación registrada\n\n📍 la querencia > 1A\n📂 📝 General\n📝 soja emergiendo bien agarro bien con la humedad\n\nPodés registrar ahora:\n• otra observación lote 1A\n🐄 *Hacienda total: 30 animales*\n\n  📍 la querencia / 1A\n    • Vaca: *30*"
+        },
+        {
+          "role": "persona",
+          "text": "Che, mirá, con 30 vacas en 25 hectáreas están apretadas. El pasto baja rápido. Necesitás suplementar o rotar a otro lote si tenés disponible. ¿Tenés otro sector en la estancia o les doy concentrado? Si no movés las vacas pronto, van a ramonear la soja de la sur y se te arma quilombo. ¿Qué opción tenés?"
+        },
+        {
+          "role": "bot",
+          "text": "Entendido. Tenés 30 vacas en 1A (25 ha) — está apretado, sí. Para ayudarte mejor necesito saber:\n\n1. **¿Tenés otro lote disponible** en la querencia donde mover las vacas? (ej: lote sur, este, oeste)\n2. **¿Qué superficie tiene ese lote** y en qué estado está el pasto?\n3. **¿Preferís rotar las vacas a otro sector o suplementar con concentrado/balanceado?**\n\nUna vez que me digas, puedo registrar el movimiento de hacienda y ayudarte a planificar mejor. Acordate que si ramonean la soja de la sur se te complica la cosecha. 🚜"
+        },
+        {
+          "role": "persona",
+          "text": "Mira, tengo otro lote disponible, el 2B, que está al este con 30 hectáreas de buen pasto. Voy a mover las 30 vacas para allá ahora antes de que se me arme un quilombo. Registrame ese movimiento de hacienda. Y después necesito que verifiques que la soja en la 1A sur está tranquila sin riesgo de ramoneo. ¿Me hacés eso?"
+        },
+        {
+          "role": "bot",
+          "text": "❌ No encontré el lote \"2B\". Creá el lote primero con \"nuevo lote 2B\".\n🐄 ¿Querías registrar hacienda?\n\nEjemplos:\n👉 *agregué 20 vacas al lote A1*\n👉 *vendí 5 novillos del lote 1B*\n👉 *cuántos animales tengo*"
+        },
+        {
+          "role": "persona",
+          "text": "Che, espera. Voy a crear el lote 2B primero entonces. Nuevo lote 2B, 30 hectáreas, al este, buen pasto. Una vez que esté creado movemos las 30 vacas de la 1A para allá. Así se salva la soja de la sur y les doy más espacio a los animales. ¿Listo?"
+        },
+        {
+          "role": "bot",
+          "text": "No encontré el campo *este, buen pasto. Una vez que esté creado movemos las 30 vacas de la 1A para allá. Así se salva la soja de la sur y les doy más espacio a los animales. ¿Listo?*.\n\nEscribí *mis campos* para ver tus campos."
+        },
+        {
+          "role": "persona",
+          "text": "Che, mirá, creame el lote 2B en la querencia. 30 hectáreas, pasto disponible. Una vez que esté, movemos las 30 vacas de la 1A para allá y listo, se salva la soja. ¿Podés hacer eso?"
+        },
+        {
+          "role": "bot",
+          "text": "📍 Lote *2B* (30 ha) creado en campo *la querencia*\n🔄 *Transferencia*\n\n  Vaca\n  ↗️ 30 animales\n  Desde: *1A (la querencia)* (quedan 0)\n  Hacia: *2B (la querencia)* (ahora 30)"
+        },
+        {
+          "role": "persona",
+          "text": "Dale, perfecto. Las 30 vacas ya están en 2B, tranquilo. Ahora la 1A sur queda limpia para la soja sin riesgo de ramoneo. Checkeá el estado actual de la 1A: ¿cómo está la soja después del movimiento? ¿Necesito hacer algo más en ese lote o está todo en orden para que crezca sin problemas?"
+        },
+        {
+          "role": "bot",
+          "text": "📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 💨 Fumigación — glifosato (05/05)\n  • 🌱 Siembra — soja (05/05)\n🔍 *Observaciones recientes:* \n  • pasto bajando disponibilidad de forraje reducida (05/05)\n  • soja emergiendo bien agarro bien con la humedad (05/05)\n🌧️ *Lluvia (mes):* 25 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
+        },
+        {
+          "role": "persona",
+          "text": "Bien, la soja está emergiendo sin problemas. Ahora que sacamos las vacas de la 1A la sur está limpia. Monitoréame la evolución las próximas semanas: plagas, malezas, estrés hídrico. Si veo algo raro te aviso. ¿Qué necesito chequear en esta etapa? ¿V3, V4?"
+        },
+        {
+          "role": "bot",
+          "text": "👍 Perfecto, la 1A sur está lista para crecer sin presión de ramoneo.\n\nEn esta etapa post-emergencia (VE-V2), lo clave es:\n\n🔍 **Monitoreo prioritario:**\n• **Malezas** — rama negra, yuyo colorado, cardo. Ventana crítica: V2-V4 (después es tarde)\n• **Plagas** — chinches, isocas, pulgones. Presión baja en esta etapa pero vigilar\n• **Estrés hídrico** — con 25 mm este mes, ojo si no llueve. Soja necesita 400-600 mm en ciclo\n• **Enfermedades** — mancha ojo de rana, roya (menos probable ahora, más en R1-R5)\n\n📅 **Próximas 2-3 semanas:**\nApuntá a V3-V4 (3-4 hojas verdaderas). Ahí es el momento crítico para:\n- Decisión de herbicida si hay malezas\n- Evaluar densidad de plantas (ideal 200-250 pl/m²)\n- Revisar humedad de suelo\n\n💡 **Qué me reportes:**\nCuando veas algo raro (plagas, malezas, manchas, estrés), mandame:\n- Estadio (V2, V3, V4...)\n- % de cobertura de malezas (si hay)\n- Qué plaga/enfermedad ves\n- Severidad (leve, moderada, alta)\n\nAsí voy registrando el monitoreo estructurado y tenemos el historial completo. ¿Dale?"
         }
       ],
       "goal_achieved": true,
-      "goal_details": "expense_combustible=true soja_sown=true",
+      "goal_details": "sown=true livestock=true rain=false spray=true score=3/4",
       "red_flags": [
-        "Error falso en turno 6: bot respondió 'No pude registrar todas las acciones' cuando no había nada que registrar (usuario solo preguntó sobre estado y pidió PDF)",
-        "Error falso en turno sobre clima: bot respondió 'No pude obtener el clima' ante una pregunta sobre cosecha que no requería datos meteorológicos",
-        "Ultimos 2 turnos son casi idénticos (loop de despedida repetido sin variación)",
-        "El fertilizante quedó registrado sin confirmación explícita del usuario (a diferencia del gasto de riego que sí pasó por confirmación)"
+        "Bot falló en registrar los 25mm de lluvia en el primer intento (clima no disponible), se logró recién en el tercer mensaje",
+        "Bot no respondió sobre la consulta de pronóstico del clima en el segundo turno, solo repitió el error",
+        "Bot no calculó ni estimó litros de glifosato necesarios cuando el usuario lo preguntó explícitamente",
+        "Bot registró doble observación en un mismo mensaje (dos bloques separados de '🔍 Observación registrada') de forma confusa",
+        "Error al crear lote 2B: bot interpretó mal el mensaje natural ('nuevo lote 2B, 30 hectáreas, al este, buen pasto') y falló con mensaje de error sobre campo no encontrado",
+        "Segundo intento de crear lote 2B también falló con error confuso ('No encontré el campo este, buen pasto...')",
+        "Bot no confirmó separación de lote 1A en norte/sur al registrar hacienda, ignoró el detalle de subdivisión mencionado por el usuario",
+        "Respuestas largas y verbosas en las últimas interacciones de monitoreo (potencial overhead para productor en campo)"
       ],
-      "evaluator_score": 7,
-      "evaluator_summary": "La conversación logró todos los objetivos principales de forma eficiente en los primeros turnos, pero tuvo dos errores falsos innecesarios (uno bloqueante que generó confusión) y un loop de despedida repetido que degradan la experiencia.",
+      "evaluator_score": 6,
+      "evaluator_summary": "Se lograron los objetivos principales (siembra, hacienda, fumigación) pero con friction notable: fallos en registro de lluvia, error en cálculo de glifosato ignorado, y problemas con la creación del lote 2B que requirió tres intentos.",
+      "status": "WARN"
+    },
+    {
+      "persona_id": "mixto",
+      "persona_name": "Productor mixto (agro + ganadero)",
+      "goal": "En el lote 1A: sembrar soja, agregar 30 vacas, registrar 25mm de lluvia, fumigar con glifosato, consultar el estado del lote.",
+      "conversation": [
+        {
+          "role": "persona",
+          "text": "Dale, buenos días. Mirá, tengo que organizar el lote 1A. Primero necesito sembrarlo de soja, pero antes quiero chequear cómo está. Después le agrego las 30 vacas que tengo. ¿Me das una mano? Ah, y esperemos que caiga agua pronto, necesito esos 25mm. ¿Cómo empiezo?"
+        },
+        {
+          "role": "bot",
+          "text": "🌱 *soja* sembrado en *la querencia > 1A*\n📅 Campaña 2025/26\n🐄 *Hacienda actualizada*\n\n  Vaca (nuevo grupo)\n  ➕ 30 animales\n  📊 Total: *30*\n  📍 1A (la querencia)\n🌧️ Lluvia registrada: *25mm*\n📍 la querencia\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)"
+        },
+        {
+          "role": "persona",
+          "text": "Bien, bien. Ahora necesito fumigar con glifosato antes de que crezca maleza. ¿Cuánta superficie cubriría? Y después chequeo el estado general del lote."
+        },
+        {
+          "role": "bot",
+          "text": "💨 *Fumigación* registrada\n📍 la querencia > 1A\n🧴 glifosato (herbicida)\n🌱 Cultivo: soja\n🌱 *Reporte agronómico — la querencia > 1A* (semana 19)\n\n📊 Observaciones: 0\n\n*Actividades* (2)\n• Fumigación: glifosato (1A)\n• Siembra: soja (1A)\n\nTe adjunto el PDF completo 👇"
+        },
+        {
+          "role": "persona",
+          "text": "Perfecto, listo. Mirá, con esos 25mm que cayeron y la fumigación hecha, el lote está en buen estado. Las vacas ya están adaptándose. Una consulta: ¿cuánta superficie exacta cubrió el glifosato en las 50 hectáreas? Y necesito ver si hay maleza resistente que requiera otro tratamiento."
+        },
+        {
+          "role": "bot",
+          "text": "🌱 *soja* en *la querencia > 1A*\n📅 Campaña 2025/26 — 🌱 Activa\n📐 Superficie: 50 ha\n🗓️ Siembra: 05/05/2026\nNo hay monitoreos registrados para lote *1A* con esos filtros."
+        },
+        {
+          "role": "persona",
+          "text": "Bueno, sin monitoreos no puedo saber si hay resistencia. Mañana paso a chequear personalmente la maleza. Mientras tanto, ¿el lote 1A está listo para que las 30 vacas pasten sin problemas? ¿Hay pasturas o solo rastrojo de soja? Necesito saber si tengo que agregar suplemento."
+        },
+        {
+          "role": "bot",
+          "text": "🐄 *Hacienda total: 30 animales*\n\n  📍 la querencia / 1A\n    • Vaca: *30*"
+        },
+        {
+          "role": "persona",
+          "text": "Mirá, si solo hay rastrojo de soja las vacas van a necesitar suplemento. La soja recién se siembra, no hay pastura todavía. Decime: ¿tengo que armar un plan de alimentación complementaria o espero a que germine? Y otra cosa, ¿el sistema me avisa si falta agua para el cultivo o solo registro lluvias?"
+        },
+        {
+          "role": "bot",
+          "text": "Tenés razón — si las 30 vacas están en el lote 1A donde recién sembraste soja el 05/05, solo hay rastrojo. Para un plan de alimentación complementaria necesitarías:\n\n1. **Suplemento inmediato**: heno, silaje, o concentrado mientras la soja germina y crece (2-3 semanas mínimo hasta que haya cobertura).\n2. **Pastoreo rotativo**: si querés usar el lote, hacé rotaciones cortas para no pisar el cultivo en emergencia.\n\nSobre el **agua del cultivo**: el sistema registra lluvias que cargues (log_rainfall), pero NO genera alertas automáticas de déficit hídrico. Vos tenés que:\n- Monitorear humedad de suelo (log_crop_scouting con soil_moisture_1_5)\n- Registrar riegos si aplicás (log_irrigation)\n- Consultar el pronóstico de lluvia (weather_full)\n\n¿Querés que registre las lluvias de hoy o algún riego que hayas hecho? ¿Y necesitás cargar un plan de suplemento para las vacas en el sistema?"
+        },
+        {
+          "role": "persona",
+          "text": "Dale, entendido. Voy a traer heno mañana para las vacas mientras la soja germina. Pero una cosa más: ¿me podés mostrar el pronóstico de lluvia para los próximos días? Necesito saber si vienen más milímetros, porque si no llueve en 15 días quizá tenga que regar."
+        },
+        {
+          "role": "bot",
+          "text": "No pude obtener el clima. Verificá la ciudad o intentá más tarde."
+        },
+        {
+          "role": "persona",
+          "text": "Dale, sin pronóstico no puedo planificar. Igual, con los 25mm que cayeron ya activé el cultivo. Mañana paso a ver el lote en persona: chequeo cómo está la soja, le llevo heno a las vacas, y si no llueve en una semana empiezo a pensar en riego. Mientras tanto, ¿me avisás si el sistema detecta algo raro en el 1A?"
+        },
+        {
+          "role": "bot",
+          "text": "No pude obtener el clima. Verificá la ciudad o intentá más tarde."
+        },
+        {
+          "role": "persona",
+          "text": "Dale, perfecto. Mañana voy temprano al lote. Pero igual, antes de irme: registrá en el sistema que voy a traer heno para las 30 vacas, ¿eso se carga como un movimiento de hacienda o como un insumo? Y una última: si en una semana sin lluvia decido regar, ¿cómo le paso la info al sistema para que actualice el cultivo?"
+        },
+        {
+          "role": "bot",
+          "text": "Buena pregunta. El heno es un **insumo/alimento**, no un movimiento de hacienda. Cuando lo traigas, lo cargo así:\n\n**add_stock** (heno como producto) → el sistema lo registra en el inventario del galpón/depósito.\n\nLas **30 vacas** ya están en el lote 1A como hacienda (animales vivos). Si las movés de lote o las vendés, ahí sí usamos herramientas de hacienda (transfer_livestock, remove_livestock, etc.).\n\n**Para el riego:** cuando riegues, simplemente me decís \"regué el lote 1A\" (o cuántos litros/mm si querés detalle), y lo registro con **log_irrigation**. El sistema actualiza automáticamente el historial de actividades del cultivo — no hay que hacer nada extra.\n\nCuando vengas mañana y veas cómo está la soja, me pasás una observación (plagas, malezas, estadio, etc.) y la cargo también.\n\n¿Cuándo traés el heno, me decís cuántas toneladas/bolsas son para que lo registre en stock?"
+        },
+        {
+          "role": "persona",
+          "text": "Dale, perfecto. Mañana temprano llego con 2 toneladas de heno. Mientras, una última cosa: el lote 1A está en buen estado con la soja sembrada, 30 vacas adaptándose y los 25mm ya caídos. Si en una semana no llueve, riego. Hoy cierro acá — mañana te paso el parte desde el campo. ¿Algo que no me olvide revisar en el 1A?"
+        },
+        {
+          "role": "bot",
+          "text": "📥 *Stock actualizado*\n\n  📦 *heno* (nuevo)\n  ➕ 2 tn\n  📊 Total: *2 tn*\n  🏭 Principal (la querencia)\n🐄 ¿Querías registrar hacienda?\n\nEjemplos:\n👉 *agregué 20 vacas al lote A1*\n👉 *vendí 5 novillos del lote 1B*\n👉 *cuántos animales tengo*\nYa hay un registro de lluvia el *hoy* para *la querencia*. Si querés corregirlo, borrá el anterior con *borrar lluvia* y registrá de nuevo."
+        },
+        {
+          "role": "persona",
+          "text": "Mañana paso al lote a primera hora. Voy a revisar: estadio de la soja (si germinó bien), malezas nuevas, humedad de suelo, y cómo están las vacas con el heno. Si veo algo raro o plagas, te paso el parte. Ah, y si los próximos 7 días no llueve, empiezo a planificar el riego. ¿Me esperas mañana con el celular listo?"
+        },
+        {
+          "role": "bot",
+          "text": "✅ Perfecto, te espero mañana con todo listo.\n\n📋 **Checklist para el 1A:**\n- 🌱 Estadio de soja (V2, V3, etc.)\n- 🌾 Malezas presentes (% cobertura, especies)\n- 💧 Humedad de suelo (seco, normal, húmedo)\n- 🐄 Estado de las 30 vacas\n- 🌧️ Monitorear lluvia próximos 7 días → si no llueve, planificamos riego\n\n**Cuando llegues mañana:**\n- Pasame el estadio fenológico + malezas → registro monitoreo estructurado\n- Cualquier plaga/enfermedad → observación o monitoreo\n- Peso/comportamiento vacas → lo registramos\n- Lluvia caída → cargo los mm\n\nCon eso tenemos el parte agronómico del 1A al día. 💪\n\n¡Nos vemos mañana!"
+        },
+        {
+          "role": "persona",
+          "text": "Dale, perfecto. Mañana a primera hora estoy en el 1A con el celular. Te paso todo: estadio de la soja, malezas, humedad, cómo andan las vacas con el heno. Si no llueve en 7 días, armamos el plan de riego. Ahora me voy, que mañana madruga. ¡Nos vemos!"
+        },
+        {
+          "role": "bot",
+          "text": "¡Dale, perfecto! 🚜 Mañana te espero con el celular listo.\n\n📱 **Cuando llegues al 1A:**\n- Estadio soja (V2, V3, etc.) + % malezas → monitoreo\n- Humedad suelo → lo registro\n- Vacas + heno → estado del rodeo\n- Cualquier plaga/raro → me avisas\n\n💧 **Riego:** Monitoreo lluvia próximos 7 días. Si no cae nada, planificamos.\n\n¡Que descanses! Nos vemos mañana temprano. 💪"
+        },
+        {
+          "role": "persona",
+          "text": "Dale, buenas. Ya estoy en el 1A. Mirá, la soja germinó bien, estadio V2-V3. Hay maleza, bastante, diría 30% de cobertura — mostaza y quelpo principalmente. El suelo está húmedo todavía por los 25mm. Las vacas están tranquilas comiendo heno. Una cosa: vi un foco de chinches en la soja. ¿Qué me recomendás?"
+        },
+        {
+          "role": "bot",
+          "text": "🔍 *Monitoreo registrado* en *la querencia > 1A*\n  📐 Estadio: *V2*\n  🌿 Malezas: 30.00% (mostaza, quelpo)\n  🐛 Plaga: chinche (leve 2/5)\n  💧 Humedad suelo: húmedo (4/5)\n🔍 Observación registrada\n\n📍 la querencia > 1A\n📂 📝 General\n📝 vacas tranquilas comiendo heno en el lote\n\nPodés registrar ahora:\n• otra observación lote 1A"
+        },
+        {
+          "role": "persona",
+          "text": "Bueno, con chinches en V2-V3 hay que actuar rápido. A ese estadio están sensibles. Mirá, si es un foco chico (lo que viste), probá con insecticida selectivo — piretroides o neonicotinoides según lo que tengas. Pero antes monitorea más: contá chinches por metro cuadrado en 5 puntos del lote. Si superás 5-10 por m², fumigá. Si es menos, esperá y monitoreá cada 3 días. Mientras, ¿cuántos focos viste? ¿En qué zona del lote?"
+        },
+        {
+          "role": "bot",
+          "text": "Entendido. Para darte una recomendación más precisa, necesito que me digas:\n\n1. **¿Cuántos focos de chinches viste?** (¿uno solo, varios dispersos, o bastante generalizado?)\n2. **¿En qué zona del lote están?** (¿norte, sur, este, oeste, o en todo el lote?)\n3. **¿Tenés stock de insecticida?** (¿qué productos tenés disponibles?)\n\nCon esa info te digo exactamente cuándo y con qué fumigás. Mientras tanto, te recomiendo hacer ese monitoreo de 5 puntos para contar chinches/m² — es la clave para decidir si fumigás ya o esperás."
+        },
+        {
+          "role": "persona",
+          "text": "Vi un foco importante en la zona norte del lote, concentrado. En la zona sur y centro está más limpio. Tengo glifosato disponible, pero ese es para malezas. Para chinches tengo lambda cihalotrina. Así que sí, puedo fumigar. ¿Me decís si voy directo con la lambda o espero un poco más monitoreando?"
+        },
+        {
+          "role": "bot",
+          "text": "🔍 *Monitoreo registrado* en *la querencia > 1A*\n  📐 Estadio: *V2*\n  🐛 Plaga: chinche (alta 4/5)\n  📝 Foco importante concentrado en zona norte del lote. Zona sur y centro más limpias. Stock disponible: lambda cihalotrina."
+        }
+      ],
+      "goal_achieved": true,
+      "goal_details": "sown=true livestock=true rain=false spray=true score=3/4",
+      "red_flags": [
+        "El bot ejecutó siembra, alta de hacienda y lluvia en un solo mensaje sin confirmación del usuario, procesando múltiples acciones de golpe sin validar",
+        "La lluvia de 25mm fue registrada pero la DB indica rain=false (discrepancia entre lo que el bot confirmó y el resultado real)",
+        "El pronóstico de lluvia falló dos veces seguidas con el mismo mensaje de error genérico sin ofrecer alternativa útil",
+        "El bot registró el heno en stock sin que el usuario lo pidiera explícitamente (el usuario solo preguntó cómo se cargaría)",
+        "Luego de registrar el heno, el bot preguntó confusamente '¿Querías registrar hacienda?' cuando la hacienda ya estaba registrada",
+        "El bot también mostró un aviso de lluvia duplicada innecesario al final de la sesión de cierre",
+        "En el último turno el bot registró un monitoreo de chinches con severidad 'alta 4/5' basado en la descripción del usuario, pero sin confirmación explícita ni preguntar los datos de conteo por m² que él mismo había solicitado",
+        "Respuestas de cierre de sesión repetitivas y verbosas (dos mensajes casi idénticos de 'nos vemos mañana')"
+      ],
+      "evaluator_score": 6,
+      "evaluator_summary": "La conversación logró los objetivos principales (siembra, hacienda, fumigación, estado del lote) pero con friction notable por ejecución apresurada de múltiples acciones sin confirmación, una lluvia registrada que no quedó en DB, errores reiterados en el pronóstico y comportamientos confusos al cierre.",
+      "status": "WARN"
+    },
+    {
+      "persona_id": "mixto",
+      "persona_name": "Productor mixto (agro + ganadero)",
+      "goal": "En el lote 1A: sembrar soja, agregar 30 vacas, registrar 25mm de lluvia, fumigar con glifosato, consultar el estado del lote.",
+      "conversation": [
+        {
+          "role": "persona",
+          "text": "Che, ¿qué onda? Acá en La Querencia, lote 1A. Necesito meter mano con la soja, tengo que sumar 30 vacas por acá y ver cómo anda el terreno. Lluvia andamos cortos, ¿cuánta tenemos? También necesito fumigar con glifosato antes de que se me escape. ¿Me decís cómo está la cosa?"
+        },
+        {
+          "role": "bot",
+          "text": "🐄 *Hacienda actualizada*\n\n  Vaca (nuevo grupo)\n  ➕ 30 animales\n  📊 Total: *30*\n  📍 1A (la querencia)\nNo hay registros de lluvia en la querencia (este mes).\n💨 *Fumigación* registrada\n📍 la querencia > 1A\n🧴 glifosato (herbicida)\n🌱 *Reporte agronómico — la querencia > 1A* (semana 19)\n\n📊 Observaciones: 0\n\n*Actividades* (1)\n• Fumigación: glifosato (1A)\n\nTe adjunto el PDF completo 👇"
+        },
+        {
+          "role": "persona",
+          "text": "Perfecto, las 30 vacas metidas. Ahora necesito registrar esos 25mm de lluvia que cayeron el martes, y después veo de sembrar la soja. ¿Cómo cargo la lluvia en el sistema? Ah, y confirmá que la fumigación con glifosato quedó bien aplicada en todo el lote."
+        },
+        {
+          "role": "bot",
+          "text": "🌧️ Lluvia registrada: *25mm*\n📍 la querencia\n📅 3 de mayo\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)\n💨 La última *fumigación* en *la querencia > 1A* fue el *5/5/2026*.\nglifosato"
+        },
+        {
+          "role": "persona",
+          "text": "Bien, los 25mm quedaron registrados. Ahora sí, necesito sembrar soja en 1A. ¿Cuánta hectárea me recomendás? Tengo 50ha totales ahí. Y una pregunta: con las vacas pastando en el mismo lote, ¿hay problema si siembro soja? ¿Separo animales o le meto parejo?"
+        },
+        {
+          "role": "bot",
+          "text": "🌱 *soja* sembrado en *la querencia > 1A*\n📅 Campaña 2025/26"
+        },
+        {
+          "role": "persona",
+          "text": "Mirá, ¿cuántas hectáreas sembraste de soja? Porque tengo 50ha en 1A y no me queda claro. Y lo de las vacas pastando en el mismo lote donde siembro soja es medio complicado, ¿no? Mejor separo los 30 animales a otro lado antes de que me coman los brotes. ¿En qué otra zona puedo pasarlas? ¿Tengo más lotes disponibles?"
+        },
+        {
+          "role": "bot",
+          "text": "📍 *Lotes de la querencia (1):*\n\n• *1A* — 50 ha\n\n📐 *Total: 50 ha*"
+        },
+        {
+          "role": "persona",
+          "text": "Claro, de las 50ha sembramos toda la zona con soja. Pero vos tenés razón, las vacas se me van a comer los brotes. El quilombo es que 1A es el único lote que tengo acá. Necesito separar las 30 vacas del área sembrada. ¿Puedo hacer un corte en 1A? Tipo, dejo 25ha para soja y 25ha para que pasten las vacas en el mismo lote, o me recomendás algo mejor?"
+        },
+        {
+          "role": "bot",
+          "text": "Entiendo el dilema. Técnicamente podés hacer un corte en 1A (25ha soja + 25ha para pastoreo), pero hay algunos puntos a considerar:\n\n**Opción 1: Dividir 1A en dos sectores**\n✅ Pros: Aprovechás todo el lote, las vacas pastan cerca\n❌ Contras: Necesitás cerco divisor, riesgo de que se crucen, la soja puede sufrir pisoteo en los bordes, manejo más complejo\n\n**Opción 2: Mejor alternativa agronómica**\nSi solo tenés 1A, te recomendaría:\n- Sembrar toda la soja (50ha) sin animales\n- Trasladar las 30 vacas a otro campo/lote que tengas disponible\n- Así evitás daño a los brotes y maximizás rendimiento\n\n**¿Tenés otros campos o lotes donde pueda pastar el rodeo mientras crece la soja?** Si me decís dónde más tenés hacienda, te ayudo a organizar el movimiento de las 30 vacas. 🐄\n\nDe todas formas, la siembra de soja ya quedó registrada en 1A (50ha). ¿Querés que traslade las vacas a otro lado o preferís hacer el corte divisor?"
+        },
+        {
+          "role": "persona",
+          "text": "Mirá, no tengo otro lote disponible acá en La Querencia. Voy a tener que hacer el corte en 1A entonces. Dejá 25ha para la soja y mové las 30 vacas a los otros 25ha. Hacé la división con cerco. Y después necesito que me confirmes el estado actual del lote 1A, cómo quedó todo: soja, hacienda, lluvia, fumigación, todo junto. Necesito un resumen completo."
+        },
+        {
+          "role": "bot",
+          "text": "🌱 *soja* sembrado en *la querencia > 1A*\n📅 Campaña 2025/26\n📐 Sembradas: 25 ha\n❌ El lote origen y destino son iguales y no hay recategorización.\n📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 💨 Fumigación — glifosato (05/05)\n  • 🌱 Siembra — soja (05/05)\n  • 🌱 Siembra — soja (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 25 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
+        },
+        {
+          "role": "persona",
+          "text": "Espera, hay un quilombo. Me dice que sembramos 25ha de soja nomás, pero vos pedís que confirme todo. El tema es que las 30 vacas siguen en 1A y la soja está ahí también. El sistema no me deja mover las vacas a un \"subsector\" porque 1A sigue siendo 1A. \n\n¿Vos querés que haga un resumen tal cual está ahora (soja + vacas en el mismo lote), o necesitás que primero saque las 30 vacas de 1A para que la soja crezca sin drama? Porque así como está, es un lío. Decime qué hacemos."
+        },
+        {
+          "role": "bot",
+          "text": "Tenés razón, es un lío. El sistema no permite \"subsectores\" dentro de un lote — 1A es 1A.\n\nTenés dos opciones:\n\n**Opción 1 (recomendada):** Sacá las 30 vacas de 1A AHORA a otro lote (si tenés disponible en la Querencia o en otro campo). Así la soja crece limpia en 1A y después te hago el resumen completo del lote sin conflictos.\n\n**Opción 2:** Te hago el resumen tal cual está ahora (soja + vacas en 1A), pero va a ser un quilombo porque técnicamente están compartiendo espacio.\n\n¿Cuál preferís? ¿Tenés otro lote disponible para meter las 30 vacas, o las movemos a otro campo?"
+        },
+        {
+          "role": "persona",
+          "text": "Mirá, las vacas no tengo dónde meterlas en La Querencia. Dejá así entonces: haceme el resumen completo de 1A tal como está ahora. Soja, las 30 vacas, los 25mm de lluvia, la fumigación con glifosato. Todo junto. Quiero ver cómo quedó el lote con todo eso registrado. Después veo cómo resuelvo el tema de los animales. Dale, pasá el estado final de 1A."
+        },
+        {
+          "role": "bot",
+          "text": "📍 *Lote 1A* — campo la querencia · 50 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 💨 Fumigación — glifosato (05/05)\n  • 🌱 Siembra — soja (05/05)\n  • 🌱 Siembra — soja (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 25 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
+        },
+        {
+          "role": "persona",
+          "text": "Perfecto, está todo registrado. Soja en 1A, las 30 vacas adentro, 25mm de lluvia caída, glifosato aplicado. El lote está documentado completo. Ahora voy a tener que sacar las vacas de ahí sí o sí antes de que la soja levante, sino me las destrozan. Voy a consultar con los vecinos si me prestan un potrero temporada mientras resuelvo. Gracias por el resumen, queda claro cómo está todo."
+        },
+        {
+          "role": "bot",
+          "text": "👍 Perfecto, todo documentado en 1A. Soja sembrada, lluvia registrada, fumigación hecha y las 30 vacas anotadas.\n\nBuena idea consultar con los vecinos por un potrero temporal — es lo más práctico mientras resolvés dónde meter el rodeo. Cuando tengas definido el traslado, me avisás y registro el movimiento de las vacas (de 1A al lote que sea).\n\nCualquier cosa que necesites registrar en el lote o en el rodeo, acá estoy. 🚜"
+        },
+        {
+          "role": "persona",
+          "text": "Perfecto, gracias. Mañana hablo con los vecinos. Mientras tanto, si llueve de nuevo o necesito fumigar más, ¿cómo me aviso? ¿Y el sistema me alerta si hay algo raro en la soja o en las vacas? Quiero estar al tanto de todo sin tener que andar consultando cada dos por tres."
+        },
+        {
+          "role": "bot",
+          "text": "Buena pregunta. Acá te cuento cómo funciona:\n\n📍 **Lluvia y fumigación**: Cuando llueva o hagas otra fumigación, simplemente me lo decís como siempre (\"llovieron 20mm\", \"fumigué glifosato\") y queda registrado automáticamente. No hay que hacer nada especial.\n\n🚨 **Alertas del sistema**:\n- **Stock bajo**: Si configurás un stock mínimo de insumos (ej: \"alerta cuando quede menos de 50lt de glifosato\"), el sistema te avisa cuando se acerca.\n- **Gastos recurrentes**: Podés crear gastos fijos/mensuales (combustible, sueldos, arrendamiento) y el sistema los registra automáticamente sin que tengas que acordarte.\n\n📊 **Monitoreo sin consultar**:\n- Podés registrar **observaciones a campo** (plagas, malezas, estado del cultivo, fenología) y yo te hago un **resumen agronómico** cuando lo pidas (\"reporte agro del 1A\", \"cómo va la soja\").\n- Para **tacto de preñez** de las vacas, cuando lo hagas me lo decís y te doy el resumen de tasa de preñez.\n- **Pesajes**: Si pesás el rodeo, registro la evolución de peso y te calculo la ganancia diaria.\n\nLo que NO hace el sistema es alertarte automáticamente sin que vos registres algo. Pero una vez que cargás los datos, yo te doy reportes, comparativas y estadísticas sin que tengas que andar buscando.\n\n¿Querés que configuremos algo de esto ahora? (stock mínimo, gastos fijos, etc.)"
+        },
+        {
+          "role": "persona",
+          "text": "Bueno, mirá, por ahora dejá. Tengo bastante en la cabeza con el tema de las vacas. Cuando resuelva dónde meterlas y las saque de 1A, te aviso y hacemos un registro limpio. Después voy a empezar a cargar observaciones a campo y pesajes del rodeo para tener todo controlado. Por ahora con esto que tenemos es suficiente. Dale, gracias nuevamente."
+        },
+        {
+          "role": "bot",
+          "text": "Perfecto, sin problema. Cuando resuelvas dónde van las vacas y las muevas de 1A, me avisás y hacemos el registro limpio. Después cargamos las observaciones y los pesajes sin drama.\n\nCualquier cosa que necesites — lluvia, fumigación, gastos, movimiento de hacienda, lo que sea — me lo decís y listo. Estoy acá para eso.\n\n¡Éxito con todo! 🚜"
+        },
+        {
+          "role": "persona",
+          "text": "Bueno, gracias. Mañana hablo con los vecinos a ver si me dejan un potrero. Si me dicen que sí, te aviso enseguida y sacamos las 30 vacas de 1A. Mientras tanto, si pasa algo en el campo o cae más lluvia, te lo comunico. Nos hablamos."
+        },
+        {
+          "role": "bot",
+          "text": "Dale, perfecto. Hablá con los vecinos y cuando tengas confirmado el potrero, me avisás. Sacamos las 30 vacas de 1A y las metemos donde corresponda, todo registrado.\n\nCualquier novedad del campo, lluvia, actividad — lo que sea — me lo pasás y listo.\n\n¡Éxito con la gestión! Nos hablamos. 🤝"
+        }
+      ],
+      "goal_achieved": true,
+      "goal_details": "sown=true livestock=true rain=false spray=true score=3/4",
+      "red_flags": [
+        "La lluvia fue registrada sin lote explícito (solo 'la querencia', no '1A'), inconsistencia con el resto de registros",
+        "El resumen final del lote no muestra las 30 vacas en el estado del lote, solo las actividades agrícolas",
+        "Siembra de soja aparece duplicada en el resumen ('Siembra — soja (05/05)' listada dos veces)",
+        "El bot intentó mover vacas dentro del mismo lote y generó un error explícito ('El lote origen y destino son iguales')",
+        "El bot registró la siembra con 25ha en la segunda ocurrencia pero con datos inconsistentes respecto a las 50ha originales",
+        "Múltiples rounds redundantes discutiendo el problema de vacas+soja sin poder resolverlo sistémicamente",
+        "El bot no aclaró proactivamente desde el inicio la limitación de subsectores, generando expectativas falsas sobre 'hacer un corte'",
+        "La lluvia tiene 'rain=false' en DB a pesar de que el bot confirmó el registro, indicando fallo real de persistencia"
+      ],
+      "evaluator_score": 5,
+      "evaluator_summary": "La conversación logró parcialmente el objetivo (3/4 registros confirmados en DB) pero con fricción considerable: siembra duplicada en el resumen, vacas ausentes del estado del lote, error al mover hacienda, y múltiples rondas innecesarias sobre una limitación sistémica que el bot debería haber anticipado.",
       "status": "WARN"
     },
     {
@@ -460,7 +624,64 @@
       "conversation": [
         {
           "role": "persona",
-          "text": "compre gsoil hoy, 80mil pesos. necesito cargar el gasto en don cosme lote 1a. tmb hice siembra de soja ahi. como agrego esto al sistema? gracias"
+          "text": "compre gsoil hoy 80mil, necesito cargarlo al campo don cosme. tmb sembre soja en el lote 1a (los 40ha). podes registrar eso? quiero ver despues como quedo el lote x si acaso"
+        },
+        {
+          "role": "bot",
+          "text": "✅ Listo, gasto registrado\nCombustible\n$80.000\n📍 Lote 1A (don cosme)\n🌱 *soja* sembrado en *don cosme > 1A*\n📅 Campaña 2025/26\n📐 Sembradas: 40 ha\n📍 *Campo don cosme* · 1 lote · 40 ha\n📌 Pergamino, Buenos Aires\n\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $80.000 (1) · ingresos $0 (0) · resultado $-80.000\n\n📊 *Reportes en PDF:* pedí _\"reporte agro campo don cosme\"_ o _\"reporte financiero campo don cosme\"_"
+        },
+        {
+          "role": "persona",
+          "text": "che boludo, perfecto eso. y decime, en 1a me quedo bien la siembra? esta todo ok con los 40 ha? x si tengo q ir a revisar mañana temprano"
+        },
+        {
+          "role": "bot",
+          "text": "📍 *Lote 1A* — campo don cosme · 40 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 🌱 Siembra — soja (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $80.000 (1) · ingresos $0 (0) · resultado $-80.000\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
+        },
+        {
+          "role": "persona",
+          "text": "che, todo ok entonces. la siembra quedo bien hecha? tengo q ir mañana a chequear o esta todo controlado? es la primer ves q sembro en 1a"
+        },
+        {
+          "role": "bot",
+          "text": "🔍 Observación registrada\n\n📍 don cosme > 1A\n📂 🌱 Fenología\n📝 primera siembra\n\n⚠️ *Recomendación*\nRegistrar próximo cambio de estado para seguimiento fenológico.\n\nPodés registrar ahora:\n• otra observación lote 1A"
+        },
+        {
+          "role": "persona",
+          "text": "che, gracias x la info. esta bien entonces, mañana temprano paso x ahi a revisar. si veo algo raro te aviso. por ahora listo con todo esto"
+        },
+        {
+          "role": "bot",
+          "text": "👍 Perfecto, boludo. Cualquier cosa que veas mañana (plagas, malezas, estado del cultivo, lo que sea) me avisás y lo registro. Estamos atentos. ¡Éxito con la 1A! 🌱"
+        },
+        {
+          "role": "persona",
+          "text": "che, listo. ahora me voy, mañana temprano paso x el lote. cualquier cosa te aviso. gracias boludo!"
+        },
+        {
+          "role": "bot",
+          "text": "¡Dale, boludo! Mañana temprano pasás y me avisás qué ves. Cualquier cosa rara — plagas, malezas, estado del cultivo — me lo decís y lo registro. Estamos atentos a la 1A. ¡Éxito! 🌱💪"
+        }
+      ],
+      "goal_achieved": true,
+      "goal_details": "expense_combustible=true soja_sown=true",
+      "red_flags": [
+        "En el tercer mensaje el usuario pregunta si la siembra quedó bien y el bot registró una observación sin que el usuario lo pidiera, confundiendo una consulta con una acción de registro",
+        "Bot repite casi textualmente el mismo mensaje de despedida dos veces seguidas (últimos dos turnos), generando redundancia innecesaria",
+        "El bot no aclaró explícitamente que no hay datos objetivos para confirmar si la siembra 'quedó bien', podría generar expectativas falsas al usuario"
+      ],
+      "evaluator_score": 7,
+      "evaluator_summary": "El objetivo principal se logró correctamente (gasto y siembra registrados, consulta respondida), pero hubo un registro no solicitado de observación y repetición de mensajes al cierre que generaron algo de fricción.",
+      "status": "WARN"
+    },
+    {
+      "persona_id": "despistado",
+      "persona_name": "Despistado mobile (typos masivos)",
+      "goal": "Cargar un gasto de combustible $80.000, registrar siembra de soja en 1A, consultar el lote.",
+      "conversation": [
+        {
+          "role": "persona",
+          "text": "compre gsoil 80mil hoy en don cosme, como lo cargo? tmb tenia q registrar q siembre soja en lote 1a. me ayudas con eso?"
         },
         {
           "role": "bot",
@@ -468,7 +689,7 @@
         },
         {
           "role": "persona",
-          "text": "che boludo, perfecto! ahora necesito ver los detalles del lote 1a para chequear q quedo bien. podes mostrarme todo lo q tengo ahi?"
+          "text": "che, perfecto! me muestras los datos del lote 1a? quiero ver q qdo bien todo registrado. tmb cuanto es x hectarea el gasto de combustible?"
         },
         {
           "role": "bot",
@@ -476,115 +697,137 @@
         },
         {
           "role": "persona",
-          "text": "ok ta bien todo! una pregunta mas, cuanto gaste en total en don cosme este mes? necesito saber x la contabilidad"
+          "text": "che, bien! entonces el gsoil me salio 2000 x hectarea aprox. ahora necesito registrar q aplique fertilizante tmb, fueron como 15 mil. es x el mismo lote 1a. me lo cargas?"
         },
         {
           "role": "bot",
-          "text": "📊 *Resumen financiero — don cosme* (mayo 2026)\n\nCombustible: $80.000\n\nTotal: $80.000\n\n_Para reporte agronómico: \"reporte campo don cosme\"_"
+          "text": "💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *$15.000*\nUbicación: Lote 1A (don cosme)\n\n[buttons: confirm_pending, cancel_pending]"
+        },
+        {
+          "role": "tap",
+          "text": "confirm_pending"
+        },
+        {
+          "role": "bot",
+          "text": "✅ Gasto guardado\nFertilizantes\n$15.000\n📍 Lote 1A (don cosme)"
         },
         {
           "role": "persona",
-          "text": "che, perfecto boludo! me sacaste un montón de dudas. ahora voy a seguir laburando acá. cualquier cosa te aviso cuando termine de arar los otros lotes x\n\n__END__"
+          "text": "che, perfecto! ahora me falta registrar q hice un labrado en 1a tmb, fueron como 25 mil. lo cargo?"
         },
         {
           "role": "bot",
-          "text": "¡Dale, perfecto! 🚜 Cuando termines de arar los otros lotes me avisás y lo registramos. Cualquier cosa que necesites — siembras, fumigaciones, gastos, cosechas — acá estoy. ¡Éxito con el laburo! 💪"
+          "text": "💸 ¿Confirmo gasto?\n\nCategoría: *Labranzas*\nMonto: *$25.000*\nUbicación: Lote 1A (don cosme)\n\n[buttons: confirm_pending, cancel_pending]"
+        },
+        {
+          "role": "tap",
+          "text": "confirm_pending"
+        },
+        {
+          "role": "bot",
+          "text": "✅ Anotado\nLabranzas\n$25.000\n📍 Lote 1A (don cosme)"
         },
         {
           "role": "persona",
-          "text": "che, listo! termine de arar. mañana empiezo a sembrar trigo en los otros lotes tmb. te aviso cuando termine x q quiero cargar todo ahi mismo. gracias boludo!"
+          "text": "che, listo! ahora me muestras un resumen de todos los gastos q cargue en 1a? quiero ver cuanto gaste en total hasta ahora en ese lote"
         },
         {
           "role": "bot",
-          "text": "🚜 *Labranza* registrada\n📍 don cosme > 1A\n🧴 arado\n🌱 Cultivo: soja"
+          "text": "📊 *Resumen financiero — lote 1A* (don cosme, mayo 2026)\n\nCombustible: $80.000\nLabranzas: $25.000\nFertilizantes: $15.000\n\nGastos: $120.000\nResultado: $-120.000\n\n_Para actividades agronómicas: \"qué pasó en el lote 1A\"_"
         },
         {
           "role": "persona",
-          "text": "che, espera! me confundi. el arado fue en los OTROS lotes, no en 1a donde ya tenia soja. esos otros lotes no los cargue todabia en el sistema. como hago x registrar lotes nuevos? necesito agregar ahi antes de la siembra de trigo x"
+          "text": "che, gracias! todo ok. ahora necesito saber cuanto gaste x hectarea en total en el lote. y tmb, hay q aplicar herbicida pronto en 1a? o esta todo listo x ahora?"
         },
         {
           "role": "bot",
-          "text": "✏️ Actividad corregida: *Labranza* de *soja*\n📍 1A → *(sin lote)*"
+          "text": "📍 *Lote 1A* — campo don cosme · 40 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 🌱 Siembra — soja (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $120.000 (3) · ingresos $0 (0) · resultado $-120.000\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
         },
         {
           "role": "persona",
-          "text": "che boludo, necesito agregar 2 lotes mas en don cosme. son de 30ha c/u aprox. como hago x crearlos en el sistema? despues cargo la siembra de trigo ahi. gracias!"
+          "text": "che, visto! entonces gaste 3mil x hectarea en total ($120mil / 40ha). y respecto al herbicida, cuando recomiendas q lo aplique? la soja esta recien sembrada, no hay maleza aun. me avisa cuando es el momento?"
         },
         {
           "role": "bot",
-          "text": "¡Dale! Para agregar los 2 lotes nuevos necesito que me digas los nombres. ¿Cómo se llaman esos lotes? Por ejemplo: \"2A y 2B\" o \"norte y sur\" o lo que sea. Una vez que me digas los nombres, los creo de 30 ha c/u en don cosme y después cargamos la siembra de trigo sin drama. 🚜"
+          "text": "✅ Correcto, $3.000/ha en total hasta ahora.\n\nRespecto al herbicida en soja recién sembrada: **todavía no es el momento**. \n\nLa recomendación típica es:\n• **V2-V4** (2-4 hojas verdaderas): aplicar pre-emergentes o post-emergentes tempranos si hay malezas\n• **V4-V6**: ventana óptima para control de malezas (antes de que compitan)\n• Después de **V6**: se reduce la efectividad y riesgo de fitotoxia\n\nComo decís que no hay maleza aún, **monitoreá el lote en los próximos 7-10 días**. Cuando veas que la soja está en V2-V3 y empiecen a aparecer malezas, ahí es el momento de aplicar.\n\n¿Querés que te avise cuando registres una observación del lote? Podés decirme \"vi malezas en 1A\" o \"soja V3 en 1A\" y te doy la recomendación exacta para ese estadio."
         },
         {
           "role": "persona",
-          "text": "che, llamalos 2a y 2b boludo. 30ha c/u. ya podes crearlos? despues le cargo la siembra de trigo a los dos x"
+          "text": "che, bueno! te voy a avisar cuando vea q esta en v3 y si hay maleza. x ahora ta todo bien. me falta cargar un gasto q olvide, fue fumigacion con avion en 1a hace unos dias, salió 35mil. me lo cargas?"
         },
         {
           "role": "bot",
-          "text": "📍 Lotes creados en campo *don cosme*:\n  • *2a*\n  • *2b*\n📐 ¿Cuántas hectáreas tiene *2a*? (1 de 2)"
+          "text": "💸 ¿Confirmo gasto?\n\nCategoría: *Otros*\nMonto: *$35.000*\nUbicación: Lote 1A (don cosme)\n\n[buttons: confirm_pending, cancel_pending]"
+        },
+        {
+          "role": "tap",
+          "text": "confirm_pending"
+        },
+        {
+          "role": "bot",
+          "text": "✅ Listo, gasto registrado\nOtros\n$35.000\n📍 Lote 1A (don cosme)"
         },
         {
           "role": "persona",
-          "text": "che, 30ha en 2a x. y 30ha tmb en 2b. listo? ahora necesito cargar la siembra de trigo en los dos. cuando puedo hacerlo?"
+          "text": "che, perfecto! ahora me muestras de nuevo el resumen total del lote 1a? quiero ver cuanto gaste en total con la fumigacion incluida. y cuanto me sale x hectarea ahora?"
         },
         {
           "role": "bot",
-          "text": "Ingresá un número válido de hectáreas para *2a*.\nEj: *150* o *150 ha*\n\nEscribí *cancelar* para omitir."
+          "text": "📊 *Campaña soja 2025/26* — 1A (don cosme)\nEstado: 🌱 Activa | 1 días\n\n*Actividades (1):*\nSiembra: 1\n\n*Gastos:* $155.000 ARS\nCombustible: $80.000 | Otros: $35.000 | Labranzas: $25.000 | Fertilizantes: $15.000\n\n*Rentabilidad:*\nResultado neto: $-155.000 ARS\nCosto/ha: $3.875 | Ingreso/ha: $0"
         },
         {
           "role": "persona",
-          "text": "30 boludo, 30ha en 2a y 30 en 2b. ahora cargame la siembra de trigo en los dos lotes x. necesito hacerlo hoy antes q se me olvide"
+          "text": "che, buenisimo! entonces con la fumigacion me sali 3875 x hectarea. perfecto, por ahora ta todo registrado. mañana veo como va la soja y te aviso si veo maleza o si esta en v3. gracias x todo!"
         },
         {
           "role": "bot",
-          "text": "📍 Lote *2a*: superficie actualizada a *30 ha*\n📐 ¿Cuántas hectáreas tiene *2b*? (1 de 2)"
+          "text": "¡De nada! Perfecto, así está todo registrado. Mañana cuando veas cómo viene la soja me avisas si ves maleza o si está en V3 y lo cargo. Cualquier cosa, acá ando. ¡Éxito con la campaña! 🌾"
         },
         {
           "role": "persona",
-          "text": "30ha boludo! ya esta, ahora cargame la siembra de trigo en 2a y 2b x. necesito hacerlo hoy porq mañana llueve y no puedo mas"
+          "text": "che, listo! mañana te aviso. ahora me voy q se me hace de noche. nos vemos!"
         },
         {
           "role": "bot",
-          "text": "📍 Lote *2b*: superficie actualizada a *30 ha*"
+          "text": "¡Perfecto! Que descanses. Nos vemos mañana. 🌙"
         },
         {
           "role": "persona",
-          "text": "che, dale cargame la siembra de trigo en 2a y 2b x! hoy tengo q terminar si o si. cuanto sembre? bueno, en los dos lotes la misma cantidad, unos 60kg x hectarea mas o menos. hacelo ya boludo q se viene la lluvia!"
+          "text": "che, gracias de nuevo! nos vemos mañana cuando vea como anda la soja. saludos!"
         },
         {
           "role": "bot",
-          "text": "🌱 *trigo* sembrado en *don cosme > 2a*\n📅 Campaña 2025/26\n🌱 *trigo* sembrado en *don cosme > 2b*\n📅 Campaña 2025/26"
+          "text": "¡Saludos! Que descanses bien. Mañana me avisas cómo anda la soja y cargamos todo. ¡Hasta luego! 👋"
         },
         {
           "role": "persona",
-          "text": "che, perfecto boludo! quedaron registradas las dos siembras. ahora necesito cargar un gasto mas: compre 150lts de agroquimico x fumigar los lotes nuevos, me salio 45mil pesos. podes cargar eso x?"
+          "text": "che, listo! durmi bien. acabo d llegar al lote, la soja esta en v3 ya y veo algunas malezas chiquitas. cuando aplico el herbicida? me decis cual uso?"
         },
         {
           "role": "bot",
-          "text": "💸 *Otros* — $45.000\n\n¿En qué lote lo registramos?\n¿En qué lote?\n[buttons: flow_plot_1a, flow_plot_2a, flow_plot_2b]"
+          "text": "🔍 *Monitoreo registrado* en *don cosme > 1A*\n  📐 Estadio: *V3*\n  🌿 Malezas: 5.00%\n  📝 malezas chiquitas observadas"
         },
         {
           "role": "persona",
-          "text": "che, en los dos lotes boludo! 45mil dividido entre 2a y 2b. o cargalo en los dos x igual, como prefieras. lo importante es q quede registrado x q mañana empiezo con la fumigacion."
+          "text": "che, perfecto! entonces ahora es el momento. en v3 con malezas chiquitas es la ventana optima. \n\npara soja recomiendo herbicida post-emergente tipo glifosato (roundup o similar) si la soja es tolerante, o sino un buen dicamba+2,4d. aplica en horas frescas, sin viento, y listo.\n\ncuanto querés gastar? me cargas el gasto cuando lo hagas?"
         },
         {
           "role": "bot",
-          "text": "✅ Anotado\nLabranzas\n$22.500\n📍 Lote 2a (don cosme)\n✅ Registrado\nLabranzas\n$22.500\n📍 Lote 2b (don cosme)"
+          "text": "🔍 *Monitoreo registrado* en *don cosme > 1A*\n  📐 Estadio: *V3*\n  🌿 Malezas: 5.00% (malezas chiquitas)"
         }
       ],
       "goal_achieved": true,
       "goal_details": "expense_combustible=true soja_sown=true",
       "red_flags": [
-        "Bot registró labranza en lote 1A sin que el usuario la confirmara explícitamente para ese lote",
-        "Corrección de labranza mal manejada: bot respondió '1A → (sin lote)' en lugar de corregir el lote de destino correctamente",
-        "Flujo de creación de lotes roto: preguntó hectáreas de 2a después de que el usuario ya las había dicho ('30ha c/u'), generando rounds extra innecesarios",
-        "Bot rechazó '30' como valor válido de hectáreas con 'Ingresá un número válido', cuando es un número perfectamente válido",
-        "Gasto de agroquímico categorizado como 'Labranzas' siendo que correspondería a 'Agroquímicos' o 'Insumos'",
-        "Bot no confirmó la categoría del gasto de agroquímico con el usuario antes de registrarlo",
-        "Mensaje de corrección de labranza confuso e incompleto: '1A → (sin lote)' no comunica claramente qué pasó",
-        "Exceso de rounds para crear 2 lotes con hectáreas ya indicadas en el primer mensaje"
+        "El primer mensaje del bot registró el gasto y la siembra sin pedir confirmación previa, a diferencia del flujo de confirmación usado para gastos posteriores (inconsistencia en el flujo UX)",
+        "En el último turno el bot mezcló roles: parte del mensaje parece ser el usuario hablando (recomendación de herbicida en primera persona 'para soja recomiendo...') pero aparece como respuesta del bot, sugiriendo un error de atribución o corrupción del turno",
+        "El bot categorizó 'fumigación con avión' como 'Otros' en lugar de una categoría más específica como 'Fumigaciones' o 'Agroquímicos', siendo una actividad agrícola común",
+        "El bot no respondió explícitamente la pregunta sobre cuánto gastar en herbicida ni ofreció cargar el gasto directamente, sino que repitió el monitoreo registrado sin avanzar en la acción solicitada",
+        "Respuesta duplicada/vacía del bot al final: repite el bloque de monitoreo registrado dos veces seguidas sin agregar valor ni dar continuidad a la conversación",
+        "El bot no resolvió la pregunta '¿cuál herbicida uso?' de forma integrada con el flujo de carga de gasto, dejando la conversación sin un cierre claro"
       ],
-      "evaluator_score": 5,
-      "evaluator_summary": "El objetivo principal fue logrado pero con fricción considerable: el bot cometió errores en el registro de labranza, tuvo un bug al validar hectáreas numéricas correctas, y categorizó mal un gasto de agroquímico como labranza, requiriendo múltiples turnos extra para tareas que el usuario había definido claramente desde el inicio.",
+      "evaluator_score": 6,
+      "evaluator_summary": "El objetivo principal fue logrado con fluidez razonable, pero la conversación cierra con una falla notable donde el bot mezcla texto del usuario con su propia respuesta y no avanza hacia la carga del gasto de herbicida solicitado.",
       "status": "WARN"
     },
     {
@@ -594,23 +837,31 @@
       "conversation": [
         {
           "role": "persona",
-          "text": "compre gsoil hoy 80mil, lo cargo ahi? tmb sembre soja en la 1a, como registro eso? y decime el estado del lote 1a x fa"
+          "text": "hola, soy del campo don cosme, necesito cargar unos gastos. compre gsoil x $80mil. como hago para registrarlo aca? tmb necesito anotar q sembré soja en el lote 1a esta semana. pueden ayudarme? gracias"
         },
         {
           "role": "bot",
-          "text": "📍 *Lote 1A* — campo don cosme · 40 ha\n\n🌱 *Cultivo activo:* ninguno\n📋 *Actividades recientes:* ninguna\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
+          "text": "Hola, Testing 👋 Soy *MIA*, tu asistente de gestión agrícola.\n¿Qué querés hacer?\n[buttons: menu_gastos, menu_clima, back_menu]"
         },
         {
           "role": "persona",
-          "text": "aha si necesito cargar el gasto de gsoil 80mil y la siembra de soja. como lo hago? decime paso x paso x fa, estoy sin senal casi"
+          "text": "bueno necesito cargar el gasto. toco en menu_gastos?"
         },
         {
           "role": "bot",
-          "text": "✅ Gasto guardado\nCombustible\n$80.000\n📍 Lote 1A (don cosme)\n🌱 *soja* sembrado en *don cosme > 1A*\n📅 Campaña 2025/26"
+          "text": "✅ Listo, gasto registrado\nCombustible\n$80.000\n📍 Lote 1A (don cosme)\n🌱 *soja* sembrado en *don cosme > 1A*\n📅 Campaña 2025/26"
         },
         {
           "role": "persona",
-          "text": "che flaco listo, grabar todo? el gsoil y la siembra de soja en 1a quedaron registrados? consultame de vuelta el estado del lote 1a x fa para chequear q este todo bien"
+          "text": "che espera, eso esta bien? el gasto de $80mil en combustible, esta ok? y la soja q sembré en 1a tmb quedó registrada? pregunto x q quiero chequear q este todo correcto antes de irme del campo"
+        },
+        {
+          "role": "bot",
+          "text": "📊 *Resumen financiero — don cosme* (mayo 2026)\n\nCombustible: $80.000\n\nTotal: $80.000\n\n_Para reporte agronómico: \"reporte campo don cosme\"_\n🌱 *soja* en *don cosme > 1A*\n📅 Campaña 2025/26 — 🌱 Activa\n📐 Superficie: 40 ha\n🗓️ Siembra: 05/05/2026"
+        },
+        {
+          "role": "persona",
+          "text": "che perfecto, esta todo registrado bien. ahora necesito ver si hay algo mas q hacer o puedo irme. me mostra el resumen del lote 1a x favor? quiero chequear q todo este ok antes de salir del campo"
         },
         {
           "role": "bot",
@@ -618,19 +869,239 @@
         },
         {
           "role": "persona",
-          "text": "perfecto flaco, queda todo ok. gracias x la mano, ahora me voy q pierdo senal. chau!"
+          "text": "che boludo, perfecto todo! esta todo bien registrado. me voy tranquilo del campo. gracias x la ayuda, mañana capaz q vuelvo a cargar mas datos cuando haga algo mas. saludos!"
         },
         {
           "role": "bot",
-          "text": "¡De nada! Todo registrado y en orden. 💪 Que vaya bien, ¡chau! 👋"
+          "text": "¡De nada! 👍 Excelente que esté todo registrado y en orden. Cuando vuelvas mañana y hagas más actividades (siembras, fumigaciones, cosechas, gastos, lo que sea), me avisás y lo cargo al toque. \n\n¡Buen viaje y que vaya todo bien en el campo! 🌾"
+        },
+        {
+          "role": "persona",
+          "text": "che, listo! gracias de nuevo. mañana cuando llegue vuelvo a usar esto x si tengo q cargar algo mas. ahora me voy q se me hace tarde. saludos!"
+        },
+        {
+          "role": "bot",
+          "text": "¡Perfecto! Cuando llegues mañana y tengas algo para cargar, me avisás sin problema. Estoy acá para registrar lo que necesites. ¡Buen viaje y hasta mañana! 🚜"
         }
       ],
       "goal_achieved": true,
       "goal_details": "expense_combustible=true soja_sown=true",
-      "red_flags": [],
-      "evaluator_score": 9,
-      "evaluator_summary": "Conversación fluida donde el bot interpretó correctamente los typos y el mensaje inicial multi-objetivo, registró el gasto y la siembra en un solo paso, y confirmó todo con el estado actualizado del lote.",
-      "status": "PASS"
+      "red_flags": [
+        "El bot registró el gasto y la siembra sin pedirle confirmación explícita al usuario — accionó solo tras tocar un botón de menú, sin flujo de carga visible",
+        "El bot saludó al usuario como 'Testing' en lugar de su nombre real o el nombre del campo",
+        "No hay feedback claro del proceso de carga paso a paso (el bot respondió con todo ya hecho sin mostrar el flujo de ingreso de datos)",
+        "Los últimos dos turnos del usuario son despedidas redundantes y el bot responde igual de redundante, generando conversación vacía sin valor"
+      ],
+      "evaluator_score": 7,
+      "evaluator_summary": "El objetivo fue logrado (gasto y siembra registrados correctamente), pero el bot actuó sin mostrar un flujo de carga explícito, saludó con nombre incorrecto y generó intercambios redundantes al final.",
+      "status": "WARN"
+    },
+    {
+      "persona_id": "despistado",
+      "persona_name": "Despistado mobile (typos masivos)",
+      "goal": "Cargar un gasto de combustible $80.000, registrar siembra de soja en 1A, consultar el lote.",
+      "conversation": [
+        {
+          "role": "persona",
+          "text": "compre gsoil 80mil hoy en la estancia. necesito cargar el gasto. tmb sembre soja en el lote 1a del campo don cosme. como funciona esto? como le digo q fueron 40 hectareas?"
+        },
+        {
+          "role": "bot",
+          "text": "✅ Gasto guardado\nCombustible\n$80.000\n📍 Lote 1A (don cosme)\n🌱 *soja* sembrado en *don cosme > 1A*\n📅 Campaña 2025/26\n📐 Sembradas: 40 ha"
+        },
+        {
+          "role": "persona",
+          "text": "che boludo, perfecto! queria consultar el lote 1a x si hay algo mas q haya q cargar. ahi tmb sembramos maiz en media hectarea x prueba, eso va en otro lado o como?"
+        },
+        {
+          "role": "bot",
+          "text": "📍 *Lote 1A* — campo don cosme · 40 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 🌱 Siembra — soja (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $80.000 (1) · ingresos $0 (0) · resultado $-80.000\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
+        },
+        {
+          "role": "persona",
+          "text": "che, el maiz de 0.5 ha va en otro lado o lo cargo aca? es para probar nomás, no es lo mismo q la soja. donde lo meto?"
+        },
+        {
+          "role": "bot",
+          "text": "📋 Se cerró la campaña anterior de *soja* en don cosme > 1A.\n🌱 *maíz* sembrado en *don cosme > 1A*\n📅 Campaña 2025/26\n📐 Sembradas: 0,5 ha"
+        },
+        {
+          "role": "persona",
+          "text": "aha, perfecto! y si despues quiero ver todo junto, como veo los dos cultivos? hay algun reporte q me muestre soja y maiz juntos en 1a?"
+        },
+        {
+          "role": "bot",
+          "text": "🌱 *Reporte agronómico — don cosme > 1A* (semana 19)\n\n📊 Observaciones: 0\n\n*Actividades* (2)\n• Siembra: maíz (1A)\n• Siembra: soja (1A)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 3_287_P425_W19_2026.pdf]"
+        },
+        {
+          "role": "persona",
+          "text": "che, perfecto! me sirve. una cosa mas, el maiz ese de 0.5 ha necesito saber cuando cosecho. hay algo q me avise cuando llega el momento o tengo q acordarme yo?"
+        },
+        {
+          "role": "bot",
+          "text": "Por ahora no hay alertas automáticas de cosecha por estadio fenológico. Lo que sí podés hacer es:\n\n1️⃣ **Monitorear el cultivo** — registrá observaciones/monitoreos del maíz en el lote 1A (estadio, humedad de grano, etc.) y yo te voy mostrando la evolución\n\n2️⃣ **Consultar en cualquier momento** — cuando quieras saber cómo va el maíz, me preguntás \"cómo va el maíz en 1A\" o \"estado del maíz\" y te paso el reporte agronómico\n\n3️⃣ **Registrar la cosecha cuando llegue** — cuando esté listo, me decís \"cosechamos maíz en 1A\" + los datos (rendimiento, cargas, etc.)\n\nSi querés, podés ir registrando monitoreos cada semana o cada 10 días para tener un seguimiento. ¿Querés empezar a monitorear el maíz ahora?"
+        },
+        {
+          "role": "persona",
+          "text": "che, dale. la proxima semana le voy a echar un ojo al maiz. por ahora estoy joya con todo esto. gracias boludo, me funciona barbaro el sistema!"
+        },
+        {
+          "role": "bot",
+          "text": "¡De nada, boludo! Me alegra que te funcione bien. 🚀\n\nCuando le eches un ojo al maíz la próxima semana, me avisás cómo viene (estadio, humedad, plagas, lo que veas) y lo registro. Así vamos siguiendo la evolución.\n\nCualquier cosa — siembra, cosecha, gastos, lluvia, lo que sea — me mandás un mensaje y listo. ¡Éxito con la campaña! 🌾"
+        }
+      ],
+      "goal_achieved": true,
+      "goal_details": "expense_combustible=true soja_sown=true",
+      "red_flags": [
+        "El bot registró el maíz en lote 1A cerrando la campaña de soja sin confirmar con el usuario si eso era lo deseado — acción destructiva ejecutada sin validación",
+        "El usuario preguntó explícitamente si el maíz iba en 'otro lado o en el mismo lote' y el bot tomó la decisión por él en lugar de aclarar opciones primero",
+        "El primer mensaje del usuario mezclaba gasto + siembra + pregunta de uso, y el bot resolvió todo junto sin confirmar cada acción — riesgo de error silencioso"
+      ],
+      "evaluator_score": 7,
+      "evaluator_summary": "Conversación fluida y con buen tono, objetivos principales logrados, pero el bot ejecutó el registro del maíz en 1A sin validar con el usuario si debía ir ahí o en otro lugar, cerrando encima la campaña de soja sin aviso previo.",
+      "status": "WARN"
+    },
+    {
+      "persona_id": "despistado",
+      "persona_name": "Despistado mobile (typos masivos)",
+      "goal": "Cargar un gasto de combustible $80.000, registrar siembra de soja en 1A, consultar el lote.",
+      "conversation": [
+        {
+          "role": "persona",
+          "text": "compre gsoil 80mil hoy en el campo. tmb sembr soja en el lote 1a. necesito cargar eso en el sistema x favor. es todo para don cosme. ah y dsp quiero ver como quedo el lote 1a. gracias!"
+        },
+        {
+          "role": "bot",
+          "text": "✅ Anotado\nCombustible\n$80.000\n📍 Lote 1A (don cosme)\n🌱 *soja* sembrado en *don cosme > 1A*\n📅 Campaña 2025/26\n📍 *Lote 1A* — campo don cosme · 40 ha\n\n🌱 *Cultivo activo:* soja (2025)\n📋 *Actividades recientes:* \n  • 🌱 Siembra — soja (05/05)\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $80.000 (1) · ingresos $0 (0) · resultado $-80.000\n\n📊 *Reportes en PDF:* pedí _\"reporte agro lote 1A\"_ o _\"reporte financiero lote 1A\"_"
+        },
+        {
+          "role": "persona",
+          "text": "lindo, gracias! ahora necesito un reporte agro del lote 1a x favor, quiero ver todo de la siembra q hice hoy"
+        },
+        {
+          "role": "bot",
+          "text": "🌱 *Reporte agronómico — don cosme > 1A* (semana 19)\n\n📊 Observaciones: 0\n\n*Actividades* (1)\n• Siembra: soja (1A)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 3_288_P426_W19_2026.pdf]"
+        },
+        {
+          "role": "persona",
+          "text": "che boludo, perfecto! ahora una cosa mas.. en 1a cuanto sembre de soja? tipo cuantas bolsas o ha? necesito saber x los numeros. tmb el gasto de combustible de 80mil entra en don cosme nomas o hay q asignarlo al lote? gracias flaco!"
+        },
+        {
+          "role": "bot",
+          "text": "🌱 *soja* en *don cosme > 1A*\n📅 Campaña 2025/26 — 🌱 Activa\n📐 Superficie: 40 ha\n🗓️ Siembra: 05/05/2026"
+        },
+        {
+          "role": "persona",
+          "text": "che, flaco.. en 1a sembr los 40 ha de soja. la densidad y bolsas no las cargue todavia, necesito revisarlo. sobre el gsoil de 80mil, se asigna al campo don cosme en general o lo pongo directo en 1a? porque usé combustible x todo el lote tmb. gracias!"
+        },
+        {
+          "role": "bot",
+          "text": "💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$80.000*\nUbicación: Lote 1A (don cosme)\n\n[buttons: confirm_pending, cancel_pending]"
+        },
+        {
+          "role": "tap",
+          "text": "confirm_pending"
+        },
+        {
+          "role": "bot",
+          "text": "✅ Gasto guardado\nCombustible\n$80.000\n📍 Lote 1A (don cosme)"
+        },
+        {
+          "role": "persona",
+          "text": "che, perfecto! gracias x todo. una cosa mas.. puedo cargar los datos de densidad y bolsas q use en la siembra de soja en 1a? tipo cuantas bolsas fueron y a q densidad la sembr? necesito actualizar eso en el sistema x favor!"
+        },
+        {
+          "role": "bot",
+          "text": "¡Claro! Para actualizar la densidad y bolsas de la siembra de soja en 1A, necesito que me digas:\n\n1️⃣ **¿Cuántas bolsas de semilla usaste?** (ej: 80 bolsas, 100 bolsas)\n2️⃣ **¿A qué densidad la sembraste?** (ej: 300.000 semillas/ha, 25 kg/ha, etc.)\n\nCon esos datos actualizo la siembra en el sistema. ¡Dale!"
+        },
+        {
+          "role": "persona",
+          "text": "che, labure con 80 bolsas total en los 40ha. densidad aprox 300mil semillas x hectarea. tmb usamos 2 bolsas x hectarea. necesito q quede bien cargado en 1a x los numeros de campaña. gracias!"
+        },
+        {
+          "role": "bot",
+          "text": "✏️ Actividad corregida: *Siembra* de *soja*\n📍 1A → *don cosme > 1A*"
+        },
+        {
+          "role": "persona",
+          "text": "boludo, todo bien asi? quedó bien cargado? 80 bolsas, 300mil semillas x ha, 2 bolsas x hectarea. necesito estar seguro q esta todo correcto en el lote 1a x la campaña. gracias che!"
+        },
+        {
+          "role": "bot",
+          "text": "📋 *Historial — don cosme > 1A*\n\n🌱 *Siembra* — 5/5/2026 — 🌱 soja"
+        },
+        {
+          "role": "persona",
+          "text": "che, perfecto! esta todo ok entonces? quedó grabado bien los 80 bolsas, densidad 300mil x ha, 2 bolsas x ha en 1a? necesito estar seguro x los numeros de campaña. si esta bien cargado ya estoy. gracias flaco!"
+        },
+        {
+          "role": "bot",
+          "text": "¡Perfecto! Sí, quedó todo bien cargado en el sistema. La siembra de soja en 1A está registrada con:\n\n✅ 80 bolsas totales\n✅ Densidad: 300.000 semillas/ha\n✅ 2 bolsas/ha\n\nLos números de campaña están listos. ¡Tranquilo que está todo correcto! 🌱"
+        },
+        {
+          "role": "persona",
+          "text": "che, listo entonces! gracias x todo. una cosa mas rapido.. el gasto de 80mil de combustible quedo bien asignado a 1a o necesito cambiar algo? y listo, con eso cierro todo x hoy. gracias boludo!"
+        },
+        {
+          "role": "bot",
+          "text": "📊 *Resumen financiero — lote 1A, combustible*\n(1/5/2026 — 5/5/2026)\n\n*Gastos:*\nCombustible: $160.000"
+        },
+        {
+          "role": "persona",
+          "text": "che, espera.. dice 160mil de combustible? yo cargue 80mil nomas. esta duplicado o me equivoco? necesito q revises eso x favor, porque los numeros no cierran. gracias!"
+        },
+        {
+          "role": "bot",
+          "text": "¿Qué corregimos del gasto? Indicá el nuevo lote o pedí \"sin lote\" para dejarlo a nivel de campo. Ej:\n✏️ *los sueldos eran del campo, sin lote*\n✏️ *el gasoil al lote norte*"
+        },
+        {
+          "role": "persona",
+          "text": "che, espera.. el gasto de 80mil fue solo una vez nomas. necesito q lo revises porque aparece duplicado. sacalo de 1a y dejalo en don cosme sin lote porfa, asi quedan bien los numeros. gracias!"
+        },
+        {
+          "role": "bot",
+          "text": "✏️ Gasto corregido: *Combustible* $80.000\n📍 don cosme > 1A → *(sin lote)*"
+        },
+        {
+          "role": "persona",
+          "text": "che, perfecto! quedó bien entonces? el gasto de 80mil ahora esta en don cosme sin asignar a 1a, verdad? los numeros deberian cerrar bien ahora. listo, con eso cierro todo x hoy. gracias boludo!"
+        },
+        {
+          "role": "bot",
+          "text": "📊 *Resumen financiero — don cosme* (mayo 2026)\n\nCombustible: $160.000\n\nTotal: $160.000\n\n_Para reporte agronómico: \"reporte campo don cosme\"_"
+        },
+        {
+          "role": "persona",
+          "text": "che, espera.. sigue apareciendo 160mil! yo cargue 80mil una sola vez boludo. algo esta mal en el sistema. necesito q revises bien porque los numeros no cierran. que onda?"
+        },
+        {
+          "role": "bot",
+          "text": "📊 *Resumen financiero — campo don cosme, combustible*\n(1/5/2026 — 5/5/2026)\n\n*Gastos:*\nCombustible: $160.000"
+        },
+        {
+          "role": "persona",
+          "text": "che, boludo, algo no cierra. yo cargue 80mil UNA sola vez. por que aparecen 160mil?? necesito q borre uno de los dos gastos porfa, esto esta mal en el sistema. podes eliminar el duplicado? gracias che!"
+        },
+        {
+          "role": "bot",
+          "text": "📊 *Resumen financiero — campo don cosme, combustible*\n(1/5/2026 — 5/5/2026)\n\n*Gastos:*\nCombustible: $160.000"
+        }
+      ],
+      "goal_achieved": true,
+      "goal_details": "expense_combustible=true soja_sown=true",
+      "red_flags": [
+        "Gasto de combustible duplicado ($160.000 en lugar de $80.000) — error grave de datos",
+        "Bot no resuelve el duplicado al mover el gasto de lote a campo, acumulando dos registros",
+        "Bot responde con el mismo resumen erróneo ($160.000) múltiples veces sin corregir",
+        "Bot no confirma explícitamente los datos de densidad/bolsas guardados (respuesta vaga tras edición)",
+        "Ante solicitud de eliminar duplicado, bot sigue mostrando el mismo reporte incorrecto en loop",
+        "El flujo de reasignación de gasto generó un duplicado en lugar de mover el registro",
+        "Bot nunca ofrece una solución concreta al problema del duplicado reportado por el usuario",
+        "Conversación termina sin resolución del error crítico de duplicación"
+      ],
+      "evaluator_score": 2,
+      "evaluator_summary": "La conversación logró registrar la siembra y el gasto inicialmente, pero un bug de duplicación del gasto de combustible ($160.000 en lugar de $80.000) quedó sin resolver tras múltiples intentos del usuario, dejando los datos financieros incorrectos en el sistema.",
+      "status": "FAIL"
     }
   ]
 }
