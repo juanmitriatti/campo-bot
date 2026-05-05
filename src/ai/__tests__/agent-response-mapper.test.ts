@@ -274,10 +274,14 @@ describe('AgentResponseMapper', () => {
       expect(parsed[0].confidence).toBe(0.90);
     });
 
-    it('returns empty array when no tools and no text', () => {
+    it('returns a fallback ParseResult when no tools and no text (defensive against empty bot replies)', () => {
       const result = makeResult([], null);
       const parsed = mapper.mapToParseResults(result, 'test');
-      expect(parsed).toHaveLength(0);
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].intent.type).toBe('unknown');
+      const conversational = (parsed[0] as { _conversationalResponse?: string })._conversationalResponse;
+      expect(conversational).toBeDefined();
+      expect(conversational!).toMatch(/no entend/i);
     });
   });
 

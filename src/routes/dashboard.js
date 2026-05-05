@@ -2691,6 +2691,147 @@ router.get("/api/ai-training/stats", async (req, res) => {
   }
 });
 
+// ─── Health Signals (weak signals over conversation_logs) ───────────────────
+
+/**
+ * Returns counts of suspicious patterns over the last N days. Designed to
+ * surface UX problems with REAL users before they complain — empty bot
+ * responses, repeat user messages within 60s (signal of "no me entendió"),
+ * AI turns where no tool fired, "no encontré" rate, top struggling users.
+ */
+router.get("/api/health-signals", async (req, res) => {
+  try {
+    const days = Math.min(parseInt(req.query.days) || 7, 90);
+    const sinceClause = `created_at >= NOW() - INTERVAL '${days} days'`;
+
+    const [
+      totalsR, emptyR, repeatR, noToolR, noEncontreR, lowConfR, topUsersR, recentEmptyR,
+    ] = await Promise.all([
+      // Total AI turns + total conversations
+      pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE ai_used = true) AS ai_turns,
+          COUNT(*) AS total_turns,
+          COUNT(DISTINCT user_id) AS users
+        FROM conversation_logs WHERE ${sinceClause}
+      `),
+      // Empty bot responses (response_text is null/empty)
+      pool.query(`
+        SELECT COUNT(*) AS n FROM conversation_logs
+        WHERE ${sinceClause} AND ai_used = true
+          AND (response_text IS NULL OR length(trim(response_text)) = 0)
+      `),
+      // User repeated the same message within 60s of the previous one
+      pool.query(`
+        WITH ordered AS (
+          SELECT user_id, message_text, created_at,
+            LAG(message_text) OVER (PARTITION BY user_id ORDER BY created_at) AS prev_msg,
+            LAG(created_at) OVER (PARTITION BY user_id ORDER BY created_at) AS prev_ts
+          FROM conversation_logs WHERE ${sinceClause}
+        )
+        SELECT COUNT(*) AS n FROM ordered
+        WHERE prev_msg IS NOT NULL
+          AND lower(trim(message_text)) = lower(trim(prev_msg))
+          AND created_at - prev_ts < INTERVAL '60 seconds'
+      `),
+      // AI turns where no tool fired (intent_command is null and no tool_calls)
+      pool.query(`
+        SELECT COUNT(*) AS n FROM conversation_logs
+        WHERE ${sinceClause} AND ai_used = true
+          AND intent_command IS NULL
+          AND (tool_calls IS NULL OR jsonb_array_length(tool_calls::jsonb) = 0)
+      `),
+      // Bot replied with "no encontré" / "no encontre" — common failure signal
+      pool.query(`
+        SELECT COUNT(*) AS n FROM conversation_logs
+        WHERE ${sinceClause} AND ai_used = true
+          AND (response_text ILIKE '%no encontré%' OR response_text ILIKE '%no encontre%')
+      `),
+      // Low-confidence AI turns (< 0.6)
+      pool.query(`
+        SELECT COUNT(*) AS n FROM conversation_logs
+        WHERE ${sinceClause} AND ai_used = true AND confidence IS NOT NULL AND confidence < 0.6
+      `),
+      // Top users by failure signals (sum of empty + no_encontre + repeat)
+      pool.query(`
+        SELECT
+          cl.user_id,
+          u.name, u.last_name, u.email,
+          COUNT(*) FILTER (WHERE response_text IS NULL OR length(trim(response_text)) = 0) AS empty,
+          COUNT(*) FILTER (WHERE response_text ILIKE '%no encontré%' OR response_text ILIKE '%no encontre%') AS no_encontre,
+          COUNT(*) FILTER (WHERE was_correct = false) AS marked_incorrect,
+          COUNT(*) AS total_turns
+        FROM conversation_logs cl
+        LEFT JOIN users u ON u.id = cl.user_id
+        WHERE ${sinceClause}
+        GROUP BY cl.user_id, u.name, u.last_name, u.email
+        HAVING COUNT(*) FILTER (WHERE response_text IS NULL OR length(trim(response_text)) = 0
+            OR response_text ILIKE '%no encontré%' OR response_text ILIKE '%no encontre%'
+            OR was_correct = false) > 0
+        ORDER BY (
+          COUNT(*) FILTER (WHERE response_text IS NULL OR length(trim(response_text)) = 0)
+          + COUNT(*) FILTER (WHERE response_text ILIKE '%no encontré%' OR response_text ILIKE '%no encontre%')
+          + COUNT(*) FILTER (WHERE was_correct = false)
+        ) DESC
+        LIMIT 15
+      `),
+      // Recent empty-response samples (for inspection)
+      pool.query(`
+        SELECT cl.id, cl.message_text, cl.intent_command, cl.created_at,
+               u.name AS user_name, u.email AS user_email
+        FROM conversation_logs cl
+        LEFT JOIN users u ON u.id = cl.user_id
+        WHERE ${sinceClause} AND ai_used = true
+          AND (response_text IS NULL OR length(trim(response_text)) = 0)
+        ORDER BY cl.created_at DESC LIMIT 20
+      `),
+    ]);
+
+    const aiTurns = parseInt(totalsR.rows[0].ai_turns) || 0;
+    const empty = parseInt(emptyR.rows[0].n) || 0;
+    const repeat = parseInt(repeatR.rows[0].n) || 0;
+    const noTool = parseInt(noToolR.rows[0].n) || 0;
+    const noEncontre = parseInt(noEncontreR.rows[0].n) || 0;
+    const lowConf = parseInt(lowConfR.rows[0].n) || 0;
+
+    res.json({
+      windowDays: days,
+      totals: {
+        aiTurns,
+        totalTurns: parseInt(totalsR.rows[0].total_turns) || 0,
+        uniqueUsers: parseInt(totalsR.rows[0].users) || 0,
+      },
+      signals: {
+        emptyResponses: { count: empty, rate: aiTurns ? +(empty / aiTurns * 100).toFixed(2) : 0 },
+        repeatMessages60s: { count: repeat },
+        noToolFired: { count: noTool, rate: aiTurns ? +(noTool / aiTurns * 100).toFixed(2) : 0 },
+        noEncontre: { count: noEncontre, rate: aiTurns ? +(noEncontre / aiTurns * 100).toFixed(2) : 0 },
+        lowConfidence: { count: lowConf, rate: aiTurns ? +(lowConf / aiTurns * 100).toFixed(2) : 0 },
+      },
+      topStrugglingUsers: topUsersR.rows.map(r => ({
+        userId: r.user_id,
+        name: [r.name, r.last_name].filter(Boolean).join(' ') || r.email || `#${r.user_id}`,
+        email: r.email,
+        emptyCount: parseInt(r.empty) || 0,
+        noEncontreCount: parseInt(r.no_encontre) || 0,
+        markedIncorrect: parseInt(r.marked_incorrect) || 0,
+        totalTurns: parseInt(r.total_turns) || 0,
+      })),
+      recentEmptyResponses: recentEmptyR.rows.map(r => ({
+        id: r.id,
+        message: r.message_text,
+        intent: r.intent_command,
+        createdAt: r.created_at,
+        user: [r.user_name].filter(Boolean).join(' ') || r.user_email || '?',
+      })),
+    });
+  } catch (error) {
+    console.error("Error fetching health signals:", error);
+    logError('admin-api', 'HEALTH_SIGNALS_FETCH', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ─── Activity Dictionary endpoints ──────────────────────────────────────────
 
 router.get("/api/ai-training/dictionary", async (req, res) => {

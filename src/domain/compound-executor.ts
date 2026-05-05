@@ -92,7 +92,36 @@ export class CompoundExecutor {
     // Force skip confirmation for expenses/incomes in compound context
     const noConfirmSettings = { ...settings, confirm_before_save: false };
 
+    // Drop exact-duplicate steps (same command + same key params). The agent
+    // sometimes fires the SAME tool twice in a single compound — Roberto's
+    // chaos run had two identical log_spraying calls in the same response,
+    // producing duplicated UI confirmations and double-prompting the user
+    // for stock deduction. Dedup is keyed on command + plot + product +
+    // quantity + unit + amount/category, which covers the cases that matter
+    // (sprays, fertilizations, expenses, incomes, livestock movements).
+    const seen = new Set<string>();
+    const deduped: ParseResult[] = [];
     for (const step of actionable) {
+      const data = (step.intent.data || {}) as Record<string, unknown>;
+      const fp = JSON.stringify([
+        step.intent.type,
+        data.command ?? '',
+        data.plotName ?? data.plot ?? '',
+        data.fieldName ?? data.field ?? '',
+        data.product ?? '',
+        data.quantity ?? '',
+        data.unit ?? '',
+        data.amount ?? '',
+        data.category ?? '',
+        data.crop ?? '',
+        data.count ?? '',
+      ]);
+      if (seen.has(fp)) continue;
+      seen.add(fp);
+      deduped.push(step);
+    }
+
+    for (const step of deduped) {
       let response: HandlerResponse | null = null;
 
       if (step.intent.type === 'command') {

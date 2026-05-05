@@ -78,6 +78,7 @@ REGLAS:
       return `- Actividades agronómicas (fumigué,sembré,coseché,aré,regué,fertilicé) son SOLO actividad, NUNCA gasto a menos que el usuario mencione un monto explícito ($, pesos, dólares)
 - fumigué/tiré/eché/apliqué+químico→log_spraying. fertilicé/aboné/metí+fertilizante→log_fertilization
 - CRÍTICO: cuando llames log_spraying/log_fertilization con un producto, NUNCA llames remove_stock o adjust_stock por el mismo producto en la misma respuesta. El sistema sugiere el descuento de stock automáticamente vía botón. Si el agente fire ambos → DOBLE DESCUENTO de stock = corrupción de datos. Aunque el usuario diga "descontá del stock" o "saqué del galpón" además de fumigar, fire SOLO log_spraying/log_fertilization
+- CRÍTICO harvest_crop loads: NUNCA inventar driver_name desde artículos ("el", "la", "los", "las", "un", "una") ni desde palabras de relleno ("che", "boludo", "rindió", "rinde"). Si el usuario NO mencionó explícitamente un nombre de chofer, NO incluir loads[]. Para "el 11D rindió 4500 kg/ha" → harvest_crop(plotName="11D", yield_kg_per_ha=4500), SIN loads. Para "Pedro trajo 30 toneladas" → loads=[{driver_name:"Pedro", weight_kg:30000}]. driver_name debe ser claramente un NOMBRE DE PERSONA
 - sembré/implanté→sow_crop. coseché/levanté→harvest_crop. aré/pasé disco→log_tillage. regué→log_irrigation
 - NUNCA llamar log_expense junto con una actividad agronómica salvo que haya monto explícito`;
     }

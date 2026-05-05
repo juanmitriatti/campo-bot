@@ -170,7 +170,19 @@ export class AgentResponseMapper {
           _conversationalResponse: result.conversationalText,
         } as ParseResult & { _conversationalResponse: string }];
       }
-      return [];
+      // Defensive fallback: agent returned NEITHER a tool call NOR text. Don't
+      // leave the user with an empty response — emit a polite "didn't get it"
+      // so they at least know to rephrase. Surfaced by qa-chaos persona runs
+      // on ambiguous follow-ups like "y la cosecha?" / "Perfecto. Confirmó...".
+      console.warn('AI_AGENT EMPTY: 0 tools + 0 text — emitting fallback for', originalText.substring(0, 80));
+      return [{
+        intent: { type: 'unknown', raw: originalText },
+        confidence: 0.50,
+        aiUsed: true,
+        source: 'ai',
+        missingFields: [],
+        _conversationalResponse: '🤔 No entendí del todo. ¿Podés reformularlo? Si querés ver qué puedo hacer escribí *menú*.',
+      } as ParseResult & { _conversationalResponse: string }];
     }
 
     // Filter: if agent returned log_expense alongside an agro activity, drop the expense
@@ -504,8 +516,21 @@ export class AgentResponseMapper {
     if (input.emergence_pct != null) cmd.emergencePct = input.emergence_pct;
     if (input.plant_density_m2 != null) cmd.plantDensityM2 = input.plant_density_m2;
 
-    // Harvest loads
-    if (input.loads != null) cmd.loads = input.loads;
+    // Harvest loads. Defensive filter: drop loads whose driver_name is an
+    // article / filler word ("el", "la", "los", "che", "rindió") — the agent
+    // sometimes mis-segments "El 11D rindió 4500 kg/ha" as driver="El",
+    // weight=11000. A real driver name is a proper noun (capitalised
+    // person's name), not a function word.
+    if (input.loads != null) {
+      const ARTICLES_FILLERS = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
+        'che', 'boludo', 'rindió', 'rinde', 'rendimiento', 'cosecha', 'lote',
+        'campo', 'mi', 'tu', 'ese', 'esa']);
+      const filtered = (input.loads as Array<{ driver_name?: string }>).filter(l => {
+        const name = (l?.driver_name || '').trim().toLowerCase();
+        return name.length > 1 && !ARTICLES_FILLERS.has(name);
+      });
+      if (filtered.length > 0) cmd.loads = filtered;
+    }
     if (input.driver_name != null) cmd.driverName = input.driver_name;
     if (input.destinatario != null) cmd.destinatario = input.destinatario;
     if (input.driver_names != null) cmd.driverNames = input.driver_names;

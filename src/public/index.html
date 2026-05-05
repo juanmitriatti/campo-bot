@@ -805,6 +805,12 @@
         </svg>
         AI Training
       </a>
+      <a class="nav-item" data-page="health" onclick="navigate('health')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        Salud Bot
+      </a>
       <a class="nav-item" data-page="errors" onclick="navigate('errors')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
@@ -1639,6 +1645,60 @@
       </div>
     </div>
 
+    <!-- ===== Health Signals Page ===== -->
+    <div class="page" id="page-health">
+      <h1 class="page-title">Salud del Bot</h1>
+      <div style="margin-bottom:16px;">
+        <label style="font-size:13px;color:var(--text-muted);margin-right:8px;">Ventana:</label>
+        <select id="health-window" onchange="loadHealthSignals()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);">
+          <option value="1">Últimas 24h</option>
+          <option value="7" selected>Últimos 7 días</option>
+          <option value="30">Últimos 30 días</option>
+          <option value="90">Últimos 90 días</option>
+        </select>
+      </div>
+      <div class="stats-grid" id="health-stats-grid">
+        <div class="loading"><div class="spinner"></div> Cargando…</div>
+      </div>
+      <div class="card" style="margin-top:20px;">
+        <div class="card-header"><h2 class="card-title">Usuarios con más fricción</h2></div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Vacías</th>
+                <th>"No encontré"</th>
+                <th>Marcadas incorrectas</th>
+                <th>Total turnos</th>
+              </tr>
+            </thead>
+            <tbody id="health-users-tbody">
+              <tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Sin datos</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:20px;">
+        <div class="card-header"><h2 class="card-title">Respuestas vacías recientes</h2></div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Usuario</th>
+                <th>Mensaje del usuario</th>
+                <th>Intent inferido</th>
+              </tr>
+            </thead>
+            <tbody id="health-empty-tbody">
+              <tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Sin datos</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== Errors Page ===== -->
     <div class="page" id="page-errors">
       <h1 class="page-title">Errores del Sistema</h1>
@@ -2099,6 +2159,10 @@
         document.getElementById('page-ai-training').classList.add('active');
         document.querySelector('[data-page="ai-training"]').classList.add('active');
         showAiTrainingTab('logs');
+      } else if (page === 'health') {
+        document.getElementById('page-health').classList.add('active');
+        document.querySelector('[data-page="health"]').classList.add('active');
+        loadHealthSignals();
       } else if (page === 'errors') {
         document.getElementById('page-errors').classList.add('active');
         document.querySelector('[data-page="errors"]').classList.add('active');
@@ -3954,6 +4018,59 @@
     // ========== ERRORS ==========
     var errorsPage = 0;
     var errorsLimit = 50;
+
+    // ─── Health signals ─────────────────────────────────────────────────
+    function loadHealthSignals() {
+      var grid = document.getElementById('health-stats-grid');
+      var usersTbody = document.getElementById('health-users-tbody');
+      var emptyTbody = document.getElementById('health-empty-tbody');
+      grid.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando…</div>';
+      var days = document.getElementById('health-window').value;
+      apiFetch('/admin/api/health-signals?days=' + days).then(function(data) {
+        if (!data) { grid.innerHTML = '<div style="color:var(--danger);">Error al cargar.</div>'; return; }
+        function pct(x) { return (x || 0).toFixed(2) + '%'; }
+        var rateColor = function(r) { return r > 5 ? 'var(--danger)' : r > 1 ? 'var(--warning)' : 'var(--success)'; };
+        var s = data.signals;
+        grid.innerHTML =
+          '<div class="stat-card"><div class="stat-value">' + data.totals.aiTurns.toLocaleString('es-AR') + '</div><div class="stat-label">Turnos IA (' + data.windowDays + 'd)</div></div>'
+          + '<div class="stat-card"><div class="stat-value">' + data.totals.uniqueUsers + '</div><div class="stat-label">Usuarios activos</div></div>'
+          + '<div class="stat-card"><div class="stat-value" style="color:' + rateColor(s.emptyResponses.rate) + ';">' + s.emptyResponses.count + '</div><div class="stat-label">Respuestas vacías (' + pct(s.emptyResponses.rate) + ')</div></div>'
+          + '<div class="stat-card"><div class="stat-value" style="color:' + rateColor(s.repeatMessages60s.count > 5 ? 6 : 0) + ';">' + s.repeatMessages60s.count + '</div><div class="stat-label">Mensajes repetidos < 60s</div></div>'
+          + '<div class="stat-card"><div class="stat-value" style="color:' + rateColor(s.noToolFired.rate) + ';">' + s.noToolFired.count + '</div><div class="stat-label">Sin tool firmada (' + pct(s.noToolFired.rate) + ')</div></div>'
+          + '<div class="stat-card"><div class="stat-value" style="color:' + rateColor(s.noEncontre.rate) + ';">' + s.noEncontre.count + '</div><div class="stat-label">"No encontré" (' + pct(s.noEncontre.rate) + ')</div></div>'
+          + '<div class="stat-card"><div class="stat-value" style="color:' + rateColor(s.lowConfidence.rate) + ';">' + s.lowConfidence.count + '</div><div class="stat-label">Baja confianza < 60%</div></div>';
+
+        if (data.topStrugglingUsers && data.topStrugglingUsers.length > 0) {
+          usersTbody.innerHTML = data.topStrugglingUsers.map(function(u) {
+            return '<tr>'
+              + '<td><strong>' + escapeHtml(u.name) + '</strong>' + (u.email ? ' <span style="color:var(--text-muted);font-size:11px;">' + escapeHtml(u.email) + '</span>' : '') + '</td>'
+              + '<td style="text-align:right;">' + (u.emptyCount || 0) + '</td>'
+              + '<td style="text-align:right;">' + (u.noEncontreCount || 0) + '</td>'
+              + '<td style="text-align:right;">' + (u.markedIncorrect || 0) + '</td>'
+              + '<td style="text-align:right;">' + (u.totalTurns || 0) + '</td>'
+              + '</tr>';
+          }).join('');
+        } else {
+          usersTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Sin usuarios con fricción ✅</td></tr>';
+        }
+
+        if (data.recentEmptyResponses && data.recentEmptyResponses.length > 0) {
+          emptyTbody.innerHTML = data.recentEmptyResponses.map(function(e) {
+            var d = new Date(e.createdAt);
+            var dateStr = d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+            var msg = (e.message || '').substring(0, 120);
+            return '<tr>'
+              + '<td style="white-space:nowrap;font-size:12px;">' + dateStr + '</td>'
+              + '<td>' + escapeHtml(e.user || '?') + '</td>'
+              + '<td style="max-width:400px;">' + escapeHtml(msg) + (e.message && e.message.length > 120 ? '…' : '') + '</td>'
+              + '<td><code>' + escapeHtml(e.intent || '-') + '</code></td>'
+              + '</tr>';
+          }).join('');
+        } else {
+          emptyTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--success);">Sin respuestas vacías ✅</td></tr>';
+        }
+      });
+    }
 
     function loadErrorStats() {
       var grid = document.getElementById('error-stats-grid');
