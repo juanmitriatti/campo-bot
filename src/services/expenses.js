@@ -1595,6 +1595,19 @@ export async function setPlotCropHarvested(cropId, harvestedAt, yieldKg = null, 
   return result.rows[0] || null;
 }
 
+/** Update yield_kg + yield_notes only — used for retroactive yield-load on a
+ * harvested campaign (active or closed). Does NOT touch dates. */
+export async function updatePlotCropYield(cropId, yieldKg, yieldNotes = null) {
+  const result = await pool.query(
+    `UPDATE plot_crops
+       SET yield_kg = $2,
+           yield_notes = COALESCE($3, yield_notes)
+     WHERE id = $1 RETURNING *`,
+    [cropId, yieldKg, yieldNotes]
+  );
+  return result.rows[0] || null;
+}
+
 export async function getCampaignExpenses(plotId, startDate, endDate = null) {
   const result = await pool.query(
     `SELECT * FROM expenses WHERE plot_id = $1 AND deleted_at IS NULL

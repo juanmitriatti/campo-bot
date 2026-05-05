@@ -899,14 +899,8 @@ export class AgronomyHandler {
       }
 
       case 'harvest_crop': {
-        if (isPlaceholder(cmd.crop)) {
-          return {
-            messages: ['🌾 ¿Qué cultivo cosechaste? (ej: soja, maíz, trigo, girasol)'],
-            sideEffects: {
-              setPendingActivity: { command: 'harvest_crop', data: { ...cmd, _needs: 'crop' } },
-            },
-          };
-        }
+        // Resolve plot FIRST so we can infer crop from the plot's active or
+        // recently-harvested campaign before deciding to ask the user.
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,
@@ -922,7 +916,33 @@ export class AgronomyHandler {
           return this.buildAskPlotResponse('cosecha', plotResult.plots, cmd);
         }
 
-        const crop = cmd.crop as string;
+        // Crop inference: when the agent didn't pass a crop, try active first,
+        // then a recently-harvested-but-no-yield campaign (so "cosechamos X kg
+        // en lote Y" works even when the campaign was already closed without a
+        // yield, which is exactly how users follow our "cargá el rinde" hint).
+        let crop = (cmd.crop as string) ?? null;
+        let retroYieldOnExisting: { id: number; crop: string } | null = null;
+        if (isPlaceholder(crop)) {
+          const active = await this.cropService.getActive(plotResult.plotId);
+          if (active) {
+            crop = active.crop;
+          } else {
+            const recentNoYield = await this.cropService.findRecentHarvestedNoYield(plotResult.plotId);
+            if (recentNoYield) {
+              crop = recentNoYield.crop;
+              retroYieldOnExisting = { id: recentNoYield.id, crop: recentNoYield.crop };
+            }
+          }
+        }
+
+        if (isPlaceholder(crop)) {
+          return {
+            messages: ['🌾 ¿Qué cultivo cosechaste? (ej: soja, maíz, trigo, girasol)'],
+            sideEffects: {
+              setPendingActivity: { command: 'harvest_crop', data: { ...cmd, _needs: 'crop' } },
+            },
+          };
+        }
         const yieldKgRaw = cmd.yieldKg != null ? Number(cmd.yieldKg) : null;
         const yieldKgPerHa = cmd.yieldKgPerHa != null ? Number(cmd.yieldKgPerHa) : null;
         const yieldNotes = (cmd.yieldNotes as string) || null;
@@ -941,6 +961,20 @@ export class AgronomyHandler {
             yieldKg = areaHa ? Math.round(yieldKgPerHa * areaHa) : null;
           } else if (yieldKgRaw != null && areaHa) {
             computedKgPerHa = Math.round(yieldKgRaw / areaHa);
+          }
+        }
+
+        // Retroactive yield-load on a recently-harvested-but-no-yield campaign
+        // (active or closed). The user said "cosechamos X kg en lote Y" without
+        // a crop and we matched a no-yield campaign earlier — load the yield
+        // there and return, instead of trying to register a new harvest (which
+        // would fail because the campaign may already be closed).
+        if (retroYieldOnExisting && yieldKg != null && yieldKg > 0) {
+          const updated = await this.cropService.updateYield(retroYieldOnExisting.id, yieldKg, yieldNotes);
+          if (updated) {
+            const kgLabel = yieldKg.toLocaleString('es-AR');
+            const perHa = computedKgPerHa ? ` (${computedKgPerHa.toLocaleString('es-AR')} kg/ha)` : '';
+            return { messages: [`✅ Rinde de *${retroYieldOnExisting.crop}* cargado en *${plotLabel}*: ${kgLabel} kg${perHa}`] };
           }
         }
 
@@ -975,6 +1009,20 @@ export class AgronomyHandler {
               : '';
             if (active) {
               return { messages: [`En *${plotLabel}* hay *${active.crop}* sembrado, no ${crop}.\nSi querés cosechar ${active.crop}, escribí:\n🌾 *cosechamos ${active.crop.toLowerCase()} en el lote ${plotResult.plotName}*${lostLoadsNote}`] };
+            }
+            // No active campaign. If there's a recent no-yield campaign with
+            // the same crop, treat this as a retroactive yield-load instead of
+            // rejecting outright. Mirrors the no-crop path above.
+            if (yieldKg != null && yieldKg > 0) {
+              const recentNoYield = await this.cropService.findRecentHarvestedNoYield(plotResult.plotId);
+              if (recentNoYield && recentNoYield.crop.toLowerCase() === crop.toLowerCase()) {
+                const updated = await this.cropService.updateYield(recentNoYield.id, yieldKg, yieldNotes);
+                if (updated) {
+                  const kgLabel = yieldKg.toLocaleString('es-AR');
+                  const perHa = computedKgPerHa ? ` (${computedKgPerHa.toLocaleString('es-AR')} kg/ha)` : '';
+                  return { messages: [`✅ Rinde de *${recentNoYield.crop}* cargado en *${plotLabel}*: ${kgLabel} kg${perHa}`] };
+                }
+              }
             }
             return { messages: [`No hay cultivo activo en *${plotLabel}* para cosechar.${lostLoadsNote}`] };
           }
