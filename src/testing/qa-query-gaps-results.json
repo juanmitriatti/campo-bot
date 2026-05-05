@@ -1,0 +1,43 @@
+{
+  "ts": "2026-05-05T12:30:50.386Z",
+  "pass": 1,
+  "warn": 0,
+  "fail": 0,
+  "total": 1,
+  "results": [
+    {
+      "test_name": "D1 \"promedio?\" stand-alone → asks OR uses context (never picks tacto silently)",
+      "category": "disambig",
+      "severity": "medium",
+      "status": "PASS",
+      "conversation": [
+        {
+          "role": "user",
+          "message": "mis campos"
+        },
+        {
+          "role": "bot",
+          "message": "📍 *Tus campos (1):*\n\n• *campo qa* — Pergamino, Buenos Aires (4 lotes, 120 ha)\n\n📐 *Total: 120 ha*\n\n_Comandos: agregar campo X, lotes del campo X, info campo X_"
+        },
+        {
+          "role": "user",
+          "message": "promedio?"
+        },
+        {
+          "role": "bot",
+          "message": "📊 *Campaña maíz 2025/26* — A3 (campo qa)\nEstado: 🌱 Activa | 1 días\n\n*Actividades (1):*\nSiembra: 1"
+        }
+      ],
+      "expected_behavior": [
+        "EITHER asks for clarification",
+        "OR uses recent plot context (campaign_stats with valid plot)",
+        "NEVER picks tacto silently"
+      ],
+      "possible_failures": [
+        "Picks tacto silently when context is agro"
+      ],
+      "actual_result": "asks=false tacto=false agroContext=true | resp: 📊 *Campaña maíz 2025/26* — A3 (campo qa)\nEstado: 🌱 Activa | 1 días\n\n*Actividades (1):*\nSiembra: 1",
+      "notes": "asks=false tacto=false agroContext=true | resp: 📊 *Campaña maíz 2025/26* — A3 (campo qa)\nEstado: 🌱 Activa | 1 días\n\n*Actividades (1):*\nSiembra: 1"
+    }
+  ]
+}

@@ -32,13 +32,25 @@ export class UserContextService {
   ) {}
 
   async loadContext(userId: UserId): Promise<UserContext> {
-    // Check cache
+    // ALWAYS read last_field/plot/recent_contexts fresh — these change every
+    // turn (updateConversationState bumps them), and a 60s cache here meant
+    // follow-up questions like "ese lote" / "promedio?" / "y la cosecha?"
+    // saw stale context from BEFORE the just-prior message had updated state.
+    // Stable lists (fields/plots/corrals/feedlots) keep their cache.
     const cached = this.cache.get(userId);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.context;
+    const cacheValid = cached && cached.expiresAt > Date.now();
+
+    if (cacheValid) {
+      const lastCtx = await this.loadLastContext(userId).catch(() => null);
+      return {
+        ...cached.context,
+        lastFieldName: lastCtx?.lastFieldName ?? null,
+        lastPlotName: lastCtx?.lastPlotName ?? null,
+        recentContexts: lastCtx?.recentContexts ?? [],
+      };
     }
 
-    // Load all in parallel — partial failure is OK
+    // Cold load — fetch everything in parallel.
     const [fieldsResult, plotsResult, lastContextResult, corralsResult, feedlotsResult] = await Promise.allSettled([
       this.entityValidator.getUserFieldNames(userId),
       this.entityValidator.getUserPlotNames(userId),
@@ -58,7 +70,9 @@ export class UserContextService {
       recentContexts: lastCtx?.recentContexts ?? [],
     };
 
-    // Cache it
+    // Cache only the stable bits (fieldNames/plotNames/etc. are folded into
+    // the cached UserContext but the dynamic last_* fields will be re-read
+    // on every subsequent call via the cacheValid branch above).
     this.cache.set(userId, { context, expiresAt: Date.now() + CACHE_TTL_MS });
 
     return context;

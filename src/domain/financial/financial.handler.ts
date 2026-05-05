@@ -6,6 +6,7 @@ import { getSetting } from '../../services/settings.service.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../../middleware/pending-field-city-handler.js';
 import { queryPlotHistory, updateConversationState } from '../../services/expenses.js';
+import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FieldSharingService } from '../sharing/field-sharing.service.js';
 import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
 import { logError } from '../../services/error-logger.js';
@@ -177,6 +178,7 @@ function buildNoPlotsBlockResponse(actionLabel: string, fieldName?: string): Han
 
 export class FinancialHandler {
   private sharingService: FieldSharingService;
+  private plotDiscovery = new PlotDiscoveryService();
 
   constructor(private service: FinancialService, sharingService?: FieldSharingService) {
     this.sharingService = sharingService ?? new FieldSharingService();
@@ -1610,11 +1612,20 @@ export class FinancialHandler {
       }
 
       case 'field_info': {
-        // If keyword is "lote", try plot lookup first (safety net)
+        // Plot lookup: route through plotDiscovery so we get fuzzy whitespace
+        // matching, "__last__" pronoun resolution AND a side-effect that
+        // updates conversation_state. Without this, follow-up questions
+        // ("ese lote", "promedio?", "y la cosecha?") infer wrong plots
+        // because field_info wasn't bumping last_plot_id.
         if (cmd.entityKeyword === 'lote') {
-          const plotInfo = await this.service.getPlotInfo(userId, cmd.fieldName as string);
-          if (plotInfo) {
-            return { messages: [this.formatPlotInfo(plotInfo)], suggestionKey: 'field_info_shown' };
+          const resolved = await this.plotDiscovery.resolveFromNamesWithContext(
+            userId, null, cmd.fieldName as string,
+          );
+          if (resolved.plotId && resolved.plotName) {
+            const plotInfo = await this.service.getPlotInfo(userId, resolved.plotName);
+            if (plotInfo) {
+              return { messages: [this.formatPlotInfo(plotInfo)], suggestionKey: 'field_info_shown' };
+            }
           }
           // Fall through to field lookup
         }

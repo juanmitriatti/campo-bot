@@ -73,6 +73,13 @@ function formatEventLine(row: PlotHistoryRow, showPlot = false): string {
   if (showPlot && row.plot_name) line += ` — 📍 ${row.plot_name}`;
   if (row.detail && row.source === 'rainfall') line += ` — ${row.detail}mm`;
   else if (row.detail && row.source !== 'observation') line += ` — ${row.detail}`;
+  // Surface the crop when known and not already in the detail string. Sow/harvest
+  // lines were silently dropping it, so "actividades del lote X" only said
+  // "Siembra — 4/5/2026" instead of "Siembra — soja — 4/5/2026".
+  if (row.crop && row.source !== 'observation' && row.source !== 'rainfall') {
+    const detailLower = (row.detail || '').toLowerCase();
+    if (!detailLower.includes(row.crop.toLowerCase())) line += ` — 🌱 ${row.crop}`;
+  }
   if (row.quantity && row.unit && row.source !== 'rainfall') line += ` (${row.quantity} ${row.unit})`;
   return line;
 }
