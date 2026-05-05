@@ -314,9 +314,14 @@ async function getActivitiesInWindow({ fieldId, plotId, dateFrom, dateTo }) {
 }
 
 async function getScoutingsForWindow({ fieldId, plotId, dateFrom, dateTo }) {
+  // Qualify plot_id with the alias `s` — without it, Postgres errors with
+  // "column reference 'plot_id' is ambiguous" because plot_crops also
+  // has a plot_id column and we LEFT JOIN it. This was the root cause of
+  // the recurring "Hubo un error generando el reporte agronómico" the
+  // QA chaos persona kept hitting.
   const plotFilter = plotId
-    ? `plot_id = $3`
-    : `plot_id IN (SELECT id FROM plots WHERE field_id = $3 AND deleted_at IS NULL)`;
+    ? `s.plot_id = $3`
+    : `s.plot_id IN (SELECT id FROM plots WHERE field_id = $3 AND deleted_at IS NULL)`;
   const { rows } = await pool.query(
     `SELECT s.*, p.name AS plot_name, pc.crop AS crop
      FROM crop_scoutings s

@@ -2250,7 +2250,13 @@ export class AgronomyHandler {
         } catch (err: unknown) {
           console.error('AGRO REPORT ERROR:', (err as Error).message);
           logError('agronomy', 'AGRO_REPORT', err as Error, { userId });
-          return { messages: ['Hubo un error generando el reporte agronómico. Intentá de nuevo.'] };
+          return { messages: [
+            'No pude generar el PDF del reporte agronómico ahora. ' +
+            'Mientras lo arreglo, podés pedir info sin PDF:\n' +
+            '• *resumen del campo X* — gastos/ingresos del mes\n' +
+            '• *info lote X* — cultivo + actividades + observaciones\n' +
+            '• *historial del lote X* — últimas actividades',
+          ] };
         }
       }
 
