@@ -374,11 +374,32 @@ export class AgentResponseMapper {
   private mapCommand(toolName: string, input: Record<string, unknown>, originalText = ''): ParseResult {
     const cmd: ParsedCommand = { command: toolName };
 
+    // Reject obviously-not-a-plot/field tokens that the agent sometimes
+    // extracts from filler words ("porfa", "x si acaso", "che", etc.).
+    // Without this, the handler returns "No encontré el lote *porfa*" and
+    // the user has to repeat themselves. Only filters single-word tokens
+    // ≤4 chars that are common discourse markers — proper plot names like
+    // "X1" or "AB" are kept (single letter + digit).
+    const FILLER_TOKENS = new Set([
+      'x', 'che', 'eh', 'ah', 'si', 'sí', 'no', 'va', 'va.', 'porfa', 'pls',
+      'plis', 'porfis', 'dale', 'ok', 'okey', 'okay', 'tmb', 'pq', 'q',
+      'gracias', 'graciax', 'graxias', 'thanks', 'lo', 'la', 'lo', 'me', 'te',
+      'mira', 'mire', 'fijate', 'acaso',
+    ]);
+    const isFiller = (s: unknown): boolean => {
+      if (typeof s !== 'string') return false;
+      const norm = s.trim().toLowerCase();
+      if (norm.length === 0) return true;
+      // Keep alphanumerics with at least one digit (real plot codes like "1A", "X1")
+      if (/\d/.test(norm)) return false;
+      return norm.length <= 4 && FILLER_TOKENS.has(norm);
+    };
+
     // Map field/plot names (tool schema uses 'field'/'plot', handlers expect 'fieldName'/'plotName')
-    if (input.field != null) cmd.fieldName = input.field;
-    if (input.fieldName != null) cmd.fieldName = input.fieldName;
-    if (input.plot != null) cmd.plotName = input.plot;
-    if (input.plotName != null) cmd.plotName = input.plotName;
+    if (input.field != null && !isFiller(input.field)) cmd.fieldName = input.field;
+    if (input.fieldName != null && !isFiller(input.fieldName)) cmd.fieldName = input.fieldName;
+    if (input.plot != null && !isFiller(input.plot)) cmd.plotName = input.plot;
+    if (input.plotName != null && !isFiller(input.plotName)) cmd.plotName = input.plotName;
     if (input.plotNames != null) cmd.plotNames = input.plotNames;
     if (input.city != null) cmd.city = input.city;
     if (input.province != null) cmd.province = input.province;
