@@ -637,7 +637,34 @@ export class AgronomyHandler {
             fieldLabel = singleField.name;
           }
         } else {
-          // Multiple fields, none explicitly mentioned — ask user which one.
+          // City fallback: when the user wrote "llovió X en {place}" but
+          // {place} is NOT one of their campo names, check if it matches the
+          // city of exactly one campo. If yes, auto-resolve to that campo
+          // instead of asking. (Real user feedback: "Llovió 3mm en el dorado"
+          // when "el dorado" was a city, not a campo name.)
+          const placeMatch = originalText.match(/\ben\s+(?:el|la|los|las)?\s*([\wáéíóúñü .'-]{3,40})\b/i);
+          const placeRaw = placeMatch?.[1]?.trim().toLowerCase() || '';
+          if (placeRaw.length >= 3) {
+            const norm = (s: string) => (s || '').toLowerCase()
+              .normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+            const placeNorm = norm(placeRaw);
+            const fieldsWithCity = await this.repo.getUserFieldsWithCity(userId).catch(() => null);
+            if (fieldsWithCity) {
+              const cityMatches = fieldsWithCity.filter(f => f.city && norm(f.city).includes(placeNorm));
+              if (cityMatches.length === 1) {
+                const matched = await this.repo.getFieldByName(userId, cityMatches[0].name);
+                if (matched) {
+                  fieldId = matched.id;
+                  fieldLabel = matched.name;
+                }
+              }
+            }
+          }
+        }
+
+        // If we still don't have a fieldId after auto-assign + city fallback,
+        // ask the user which campo (buttons ≤3, list otherwise).
+        if (!fieldId) {
           // Buttons cap at 3 on WhatsApp; switch to a list (max 10 rows) so
           // users with many campos see all options.
           const askMsg = `Llovieron *${mm}mm* 🌧️ ¿En qué campo?`;
