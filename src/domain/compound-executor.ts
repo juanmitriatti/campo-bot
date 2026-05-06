@@ -121,7 +121,39 @@ export class CompoundExecutor {
       deduped.push(step);
     }
 
-    for (const step of deduped) {
+    // Reorder: writes (mutations) BEFORE reads (queries). When the agent
+    // fires "compré urea + dame el resumen" in compound, the agent may emit
+    // them in the WRONG order — read first, then write — and the report
+    // returns stale state without the just-created expense. Forcing writes
+    // first ensures the report query sees the new row (within the same
+    // withTransaction). Within each group we preserve the original order.
+    const READ_ONLY_TOOLS = new Set([
+      'financial_report', 'monthly_result', 'field_result', 'compare_months',
+      'weekly_report', 'monthly_report', 'field_report', 'plot_report',
+      'date_range_report', 'monthly_summary',
+      'campaign_stats', 'compare_campaigns', 'crop_history', 'active_crop',
+      'query_plot_history', 'plot_activities', 'activity_stats',
+      'check_stock', 'stock_history', 'check_low_stock', 'list_warehouses',
+      'list_fields', 'list_plots', 'plot_info', 'field_info',
+      'list_livestock', 'livestock_history',
+      'tacto_summary', 'query_health_events', 'query_repro_events',
+      'query_weighings', 'query_scoutings', 'query_harvest_loads',
+      'rainfall_report', 'rainfall_range', 'compare_rainfall_months',
+      'compare_rainfall_years',
+      'list_documents', 'list_field_members',
+      'weather_full', 'weather_forecast', 'weather_field', 'weather_all',
+      'generate_agro_report', 'show_reports_menu',
+    ]);
+    const isRead = (s: ParseResult) => {
+      const data = (s.intent.data || {}) as Record<string, unknown>;
+      const cmd = (data.command as string) || '';
+      return READ_ONLY_TOOLS.has(cmd);
+    };
+    const writes = deduped.filter(s => !isRead(s));
+    const reads = deduped.filter(s => isRead(s));
+    const ordered = [...writes, ...reads];
+
+    for (const step of ordered) {
       let response: HandlerResponse | null = null;
 
       if (step.intent.type === 'command') {

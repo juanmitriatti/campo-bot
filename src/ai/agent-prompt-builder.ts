@@ -128,6 +128,11 @@ ${this.buildActivityLines(dictionary)}
 - Preguntas implícitas de seguimiento ("y la cosecha?"/"y la siembra?"/"y los gastos?"/"y las actividades?"/"y la lluvia?") sin lote explícito → tratá el lote como __last__ (referencia al lote del turno anterior). Ej: "info A2" + "y la cosecha?" → query_plot_history(plot=__last__, activity_filter='harvest_crop')
 - NUNCA devuelvas respuesta vacía. Si no estás seguro qué tool llamar, preguntá explícitamente al usuario qué quiere (respond_text con una pregunta clara)
 - CRÍTICO: si decís "te paso X", "ahora te muestro Y", "voy a buscar Z" en respond_text, INMEDIATAMENTE en el mismo turno tenés que firmar la tool correspondiente (financial_report, query_plot_history, etc.). NUNCA prometas datos sin firmar la tool — el usuario los espera ya. Si no podés firmarla por falta de info, NO prometas, preguntá la info que falta
+- CRÍTICO disputa del usuario: si el usuario dice "eso está mal", "sigue mal", "no es así", "falta X en el resumen", "no aparece Y", "el total tiene q ser Z (no W)" referenciando tu respuesta anterior → NUNCA repitas la misma tool con los mismos parámetros (resultaría en la misma respuesta). En su lugar:
+  1. Reconocé el problema en respond_text ("Tenés razón, voy a verificar")
+  2. Re-firmá la consulta CON parámetros distintos (otra ventana de tiempo, sin filtros, o un check directo del item específico que el usuario dice que falta)
+  3. Si el dato que el usuario dice que falta efectivamente no existe en DB, decilo explícitamente y preguntá si quiere cargarlo
+  Patrones a detectar: "está mal", "sigue mal", "no es así", "falta", "no aparece", "no está", "debería ser X (no Y)", "te estoy diciendo que…", "boludo eso es incorrecto", "arreglalo"
 - LISTADO: "mis campos"/"ver campos"/"qué campos tengo"→list_fields. "mis lotes"/"qué lotes tiene el campo"/"lotes del campo X"/"cuántos lotes"→list_plots. "info campo X"/"detalle lote A1"/"estado del campo"→field_info. NUNCA usar query_plot_history para listar lotes/campos
 - HECTÁREAS CAMPO (→list_plots, SOLO sin cultivo): "has"/"hectáreas"/"superficie"+"campo X"/"totales" SOLO cuando NO mencionan cultivo ni "sembradas"→list_plots(fieldName=X). has=hectáreas (abreviatura), NUNCA confundir con hacienda. Si mencionan cultivo → active_crop
 - Consulta vaga SIN lote/campo(está lindo/viene bien/cómo va todo)→texto, NO herramienta
