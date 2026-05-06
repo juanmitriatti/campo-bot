@@ -161,6 +161,31 @@ export class AgentResponseMapper {
   ): ParseResult[] {
     if (result.toolCalls.length === 0) {
       if (result.conversationalText) {
+        // Detect "false confirmation" hallucination: agent text claims an
+        // action was performed (✅ Registré X, ✅ Anotado, ✅ Guardado,
+        // 💰 Gasto registrado) but no tool actually fired → DB is unchanged
+        // and the user thinks data was saved. Replace with an honest
+        // message that explains the bot didn't process the action and asks
+        // them to retry. Real-world example caught: user wrote "llovieron
+        // 2mm en vedia", agent answered "✅ Registré 2mm en Vedia" without
+        // firing log_rainfall. Subsequent "lluvia esta semana" returned
+        // "no hay registros".
+        const FALSE_CONFIRM_RE = /✅\s*(?:Registr|Anotad|Guardad|Listo,|Cargad|Sumad|Cosechad|Sembrad)|💰\s*(?:Gasto|Ingreso)\s+registrad|🌱\s*\w+\s+sembrad|🌾\s*\w+\s+cosechad|📥\s*Stock\s+actualizad|📤\s*Stock\s+descontad|🐄\s*Hacienda\s+(?:actualizad|descontad)/i;
+        if (FALSE_CONFIRM_RE.test(result.conversationalText)) {
+          console.warn(
+            'AI_AGENT FALSE_CONFIRMATION: agent claimed success in text without firing a tool — replacing.',
+            'msg:', originalText.substring(0, 80),
+            '| text excerpt:', result.conversationalText.substring(0, 120),
+          );
+          return [{
+            intent: { type: 'unknown', raw: originalText },
+            confidence: 0.50,
+            aiUsed: true,
+            source: 'ai',
+            missingFields: [],
+            _conversationalResponse: '🤔 No alcancé a procesar tu pedido. ¿Podés reescribirlo más explícito? Ej: *"llovieron 2 mm en X"*, *"compré 50 lt de glifosato"*.',
+          } as ParseResult & { _conversationalResponse: string }];
+        }
         return [{
           intent: { type: 'unknown', raw: originalText },
           confidence: 0.90,
