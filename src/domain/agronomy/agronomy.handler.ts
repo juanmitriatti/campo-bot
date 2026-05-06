@@ -637,14 +637,34 @@ export class AgronomyHandler {
             fieldLabel = singleField.name;
           }
         } else {
-          // Multiple fields, none explicitly mentioned — ask user which one
-          const buttons = rainfallUserFields.slice(0, 3).map(f => ({
-            id: `rain_field_${f.name}_${mm}`,
-            title: f.name.slice(0, 20),
-          }));
+          // Multiple fields, none explicitly mentioned — ask user which one.
+          // Buttons cap at 3 on WhatsApp; switch to a list (max 10 rows) so
+          // users with many campos see all options.
+          const askMsg = `Llovieron *${mm}mm* 🌧️ ¿En qué campo?`;
+          if (rainfallUserFields.length <= 3) {
+            const buttons = rainfallUserFields.map(f => ({
+              id: `rain_field_${f.name}_${mm}`,
+              title: f.name.slice(0, 20),
+            }));
+            return {
+              messages: [askMsg],
+              interactive: { type: 'buttons' as const, body: 'Elegí el campo:', buttons },
+            };
+          }
           return {
-            messages: [`Llovieron *${mm}mm* 🌧️ ¿En qué campo?`],
-            interactive: { type: 'buttons' as const, body: 'Elegí el campo:', buttons },
+            messages: [askMsg],
+            interactive: {
+              type: 'list' as const,
+              body: askMsg,
+              buttonText: 'Elegir campo',
+              sections: [{
+                title: 'Tus campos',
+                rows: rainfallUserFields.slice(0, 10).map(f => ({
+                  id: `rain_field_${f.name}_${mm}`,
+                  title: f.name.substring(0, 24),
+                })),
+              }],
+            },
           };
         }
 

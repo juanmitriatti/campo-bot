@@ -260,18 +260,37 @@ function consolidateRainfallPrompts(
     .join(', ');
 
   const payloadB64 = Buffer.from(JSON.stringify(items)).toString('base64url');
-  const buttons = fieldNames.slice(0, 3).map(name => ({
-    id: `rain_batch_${name}_${payloadB64}`,
-    title: name.slice(0, 20),
-  }));
 
   // Replace all "¿En qué campo?" prompts with a single consolidated message
   const filtered = messages.filter((_, i) => !askIndices.includes(i));
-  filtered.push(`🌧️ Registré ${items.length} lluvias (${summary}). ¿En qué campo?`);
+  const consolidatedMsg = `🌧️ Registré ${items.length} lluvias (${summary}). ¿En qué campo?`;
+  filtered.push(consolidatedMsg);
 
+  // Buttons cap at 3 on WhatsApp; switch to a list when the user has more.
+  if (fieldNames.length <= 3) {
+    const buttons = fieldNames.map(name => ({
+      id: `rain_batch_${name}_${payloadB64}`,
+      title: name.slice(0, 20),
+    }));
+    return {
+      messages: filtered,
+      interactive: { type: 'buttons' as const, body: 'Elegí el campo:', buttons },
+    };
+  }
   return {
     messages: filtered,
-    interactive: { type: 'buttons' as const, body: 'Elegí el campo:', buttons },
+    interactive: {
+      type: 'list' as const,
+      body: 'Elegí el campo:',
+      buttonText: 'Elegir campo',
+      sections: [{
+        title: 'Tus campos',
+        rows: fieldNames.slice(0, 10).map(name => ({
+          id: `rain_batch_${name}_${payloadB64}`,
+          title: name.substring(0, 24),
+        })),
+      }],
+    },
   };
 }
 

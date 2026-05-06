@@ -1920,13 +1920,35 @@ export class FinancialHandler {
           if (fields.length === 1) {
             field = fields[0];
           } else {
-            const buttons = fields.slice(0, 3).map((f: any) => ({
-              id: `create_plot_${(cmd.plotName as string).replace(/\s+/g, '_')}_in_${f.name.replace(/\s+/g, '_')}`,
-              title: f.name.slice(0, 20),
-            }));
+            // Buttons cap at 3 on WhatsApp; use a list (10 rows) when the
+            // user has more than 3 campos so they can pick from all of them.
+            const plotSlugAdd = (cmd.plotName as string).replace(/\s+/g, '_');
+            const askMsgAdd = `\u00bfEn qu\u00e9 campo quer\u00e9s agregar el lote *${cmd.plotName}*?`;
+            if (fields.length <= 3) {
+              const buttons = fields.map((f: any) => ({
+                id: `create_plot_${plotSlugAdd}_in_${f.name.replace(/\s+/g, '_')}`,
+                title: f.name.slice(0, 20),
+              }));
+              return {
+                messages: [askMsgAdd],
+                interactive: { type: 'buttons' as const, body: '\u00bfEn qu\u00e9 campo?', buttons },
+              };
+            }
             return {
-              messages: [`\u00bfEn qu\u00e9 campo quer\u00e9s agregar el lote *${cmd.plotName}*?`],
-              interactive: { type: 'buttons' as const, body: '\u00bfEn qu\u00e9 campo?', buttons },
+              messages: [askMsgAdd],
+              interactive: {
+                type: 'list' as const,
+                body: askMsgAdd,
+                buttonText: 'Elegir campo',
+                sections: [{
+                  title: 'Tus campos',
+                  rows: fields.slice(0, 10).map((f: any) => ({
+                    id: `create_plot_${plotSlugAdd}_in_${f.name.replace(/\s+/g, '_')}`,
+                    title: f.name.substring(0, 24),
+                    description: f.city ? formatLocation(f.city, f.province).substring(0, 72) : undefined,
+                  })),
+                }],
+              },
             };
           }
         } else {
