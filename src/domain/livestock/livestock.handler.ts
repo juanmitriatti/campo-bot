@@ -345,7 +345,10 @@ export class LivestockHandler {
     });
 
     if (groups.length === 0) {
-      return { messages: ['🐄 No tenés hacienda registrada. Cargá animales con "agregué 20 vacas al lote A1".'] };
+      return {
+        messages: ['🐄 No tenés hacienda registrada. Cargá animales con "agregué 20 vacas al lote A1".'],
+        suggestionKey: 'livestock_empty',
+      };
     }
 
     // Group by location for readability

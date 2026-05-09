@@ -609,7 +609,12 @@ const COMMAND_PATTERNS = [
   { command: "cancel", patterns: [/^(no|cancelar|cancelo|nah)$/] },
 
   // --- Saludos y ayuda ---
-  { command: "greeting", patterns: [/^(hola|buenas|buen dia|buenas tardes|buenas noches|hey|que tal)\b/] },
+  { command: "greeting", patterns: [
+    /^(hola|buenas|buen dia|buenas tardes|buenas noches|hey|que tal)\b/,
+    // "che" alone — Argentine filler used as attention call. Anchor to $
+    // because "che, fumigué lote 3" is a registration, not a greeting.
+    /^che$/,
+  ] },
   { command: "thanks", patterns: [/^(gracias|gracia|thank|thx|genial|joya)\b/] },
   { command: "ack", patterns: [/^(ok|listo|perfecto|bien|bueno|entendido)$/] },
   // Closings: short messages that are ONLY pleasantries / farewells. Avoids
@@ -635,7 +640,38 @@ const COMMAND_PATTERNS = [
     /^como (funcionas|funciona esto|te uso|te utilizo|me ayudas|me ayudas vos)$/,
     /^para que (servis|sirves|sirve esto|te uso)$/,
     /^(quien sos|que sos|que es esto)$/,
+    // Help-seeking phrases that get a friendly redirect to the categorized menu
+    /^(una pregunta|tengo una pregunta|tengo una duda|tengo una consulta)$/,
+    /^(podrias|podes|me podes|me podrias) ayudar(me)?$/,
+    /^(no se|no entiendo|no entendi|no entendí|me explicas|me explicás|estoy perdido|estoy perdida)$/,
   ] },
+
+  // --- Crop name alone → list active crops of that type ---
+  // "soja" / "maíz" / "trigo" alone is a query about that crop.
+  // Without this trivial route, the agent fires active_crop anyway
+  // (cost) and the response ends up identical.
+  {
+    command: "active_crop",
+    patterns: [/^(soja|maiz|maíz|trigo|girasol|sorgo|cebada|avena|algodon|algodón|centeno)$/i],
+    extract: (m) => ({ crop: m[1] }),
+  },
+
+  // --- Livestock keywords alone → list inventory ---
+  // "vacas" / "hacienda" / "ganado" without verb → list_livestock.
+  // Otherwise the agent sometimes mis-routes to active_crop (vacas as
+  // a "crop") and the response is wrong.
+  {
+    command: "list_livestock",
+    patterns: [/^(vacas|hacienda|haciendas|ganado|animales)$/i],
+  },
+
+  // --- Stock keyword alone → check_stock ---
+  // "stock" / "insumos" alone → check_stock (lists everything or shows empty
+  // state with suggestion buttons).
+  {
+    command: "check_stock",
+    patterns: [/^(stock|insumos)$/i],
+  },
   { command: "menu", patterns: [/^(menu|menú|opciones)$/] },
   { command: "show_reports_menu", patterns: [
     /^(?:reportes?|informes?|ver\s+reportes?|ver\s+informes?|mis\s+reportes?)$/,

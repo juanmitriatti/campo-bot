@@ -154,6 +154,37 @@ const POST_QUERY_EMPTY: InteractiveMessage = {
   ],
 };
 
+// Empty states — when a query lands on "no hay X". Offer the most common
+// next steps so the user has a clear path instead of a dead-end message.
+const POST_CROP_EMPTY: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Querés empezar?',
+  buttons: [
+    { id: 'flow_new_activity', title: '🌱 Sembrar' },
+    { id: 'cmd_listar_campos', title: '🏡 Mis campos' },
+    { id: 'help_actividades', title: '❓ Ver ejemplos' },
+  ],
+};
+
+const POST_LIVESTOCK_EMPTY: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Querés empezar?',
+  buttons: [
+    { id: 'help_hacienda', title: '🐄 Ver ejemplos' },
+    { id: 'cmd_listar_campos', title: '🏡 Mis campos' },
+    { id: 'back_menu', title: '📋 Menú' },
+  ],
+};
+
+const POST_STOCK_EMPTY: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Querés empezar?',
+  buttons: [
+    { id: 'help_cosecha', title: '📦 Ver ejemplos' },
+    { id: 'back_menu', title: '📋 Menú' },
+  ],
+};
+
 const SUGGESTIONS: Record<string, InteractiveMessage> = {
   default_menu: MENU_LIST,
   expense_saved: POST_EXPENSE,
@@ -170,6 +201,9 @@ const SUGGESTIONS: Record<string, InteractiveMessage> = {
   weather_shown: POST_WEATHER,
   field_deleted: MENU_LIST,
   plot_deleted: MENU_LIST,
+  crop_empty: POST_CROP_EMPTY,
+  livestock_empty: POST_LIVESTOCK_EMPTY,
+  stock_empty: POST_STOCK_EMPTY,
 };
 
 // Command → suggestion key mapping for commands that don't set their own suggestionKey

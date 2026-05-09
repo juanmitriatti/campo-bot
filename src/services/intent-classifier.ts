@@ -48,6 +48,8 @@ const TRIVIAL_COMMANDS = new Set([
   'delete_last', 'delete_last_income', 'delete_specific', 'edit_specific', 'edit_last',
   'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',
   'query_plot_history',
+  // Single-word friction triggers (regex routes these directly, no AI cost)
+  'active_crop', 'list_livestock', 'check_stock',
 ]);
 
 /**

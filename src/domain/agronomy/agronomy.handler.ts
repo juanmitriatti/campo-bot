@@ -1279,7 +1279,10 @@ export class AgronomyHandler {
         if (allActive.length === 0) {
           const filterMsg = cropFilter ? ` de *${cropFilter}*` : '';
           const grupoMsg = grupoFilter ? ` en grupo *${grupoFilter}*` : '';
-          return { messages: [`No hay campañas activas${filterMsg}${grupoMsg}.\n\n_Para sembrar: "sembré ${cropFilter || 'soja'} en lote X". Para ver historial: "historial del lote X"._`] };
+          return {
+            messages: [`No hay campañas activas${filterMsg}${grupoMsg}.\n\n_Para sembrar: "sembré ${cropFilter || 'soja'} en lote X". Para ver historial: "historial del lote X"._`],
+            suggestionKey: 'crop_empty',
+          };
         }
 
         // Compute totals — prefer sowed_hectares, fallback to area_hectares

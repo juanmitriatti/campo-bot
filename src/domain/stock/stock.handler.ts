@@ -186,7 +186,10 @@ export class StockHandler {
       if (cmd.product) {
         return { messages: [`No se encontró "${cmd.product}" en el stock.`] };
       }
-      return { messages: ['📦 No tenés stock registrado. Cargá insumos con "cargué X de Y".'] };
+      return {
+        messages: ['📦 No tenés stock registrado. Cargá insumos con "cargué X de Y".'],
+        suggestionKey: 'stock_empty',
+      };
     }
 
     if (items.length === 1) {
