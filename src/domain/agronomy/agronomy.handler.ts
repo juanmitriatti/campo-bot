@@ -84,7 +84,12 @@ function resolveWeatherCity(
 
 const QUESTION_STARTS = /^(?:que|qué|cuando|cuándo|donde|dónde|como|cómo|cual|cuál|cuanto|cuánto|por\s+que|por\s+qué|quien|quién)/i;
 const FOLLOWUP_STARTS = /^(?:y\s|del\s|eso|ese|esa|ah[ií])/i;
-const STRONG_OBS_SIGNALS = /(?:observaci[oó]n|hay\s|se\s+detect|se\s+observ|presencia\s+de|se\s+ve|plaga|maleza|hongo|roya|helada|granizo|chinche|oruga|gramilla|amarill|seco|seca|sequ[ií]a|encharcam|mancha|yuyo|cardo|isoca|pulgon|pulg[oó]n|trips|bicho|clorosis|deficiencia|carencia)/i;
+// Argentine agronomic terms — when present, the message is treated as an
+// observation even if it's very short (e.g. "rama negra" is a known weed,
+// "vaquita" is a known pest). Without this bypass the wordCount<=2 guard
+// would block legitimate observations after the agent strips the verb
+// (e.g. "vi rama negra" → agent sends observation="rama negra").
+const STRONG_OBS_SIGNALS = /(?:observaci[oó]n|hay\s|se\s+detect|se\s+observ|presencia\s+de|se\s+ve|plaga|maleza|hongo|roya|helada|granizo|chinche|oruga|gramilla|amarill|seco|seca|sequ[ií]a|encharcam|mancha|yuyo|cardo|isoca|pulgon|pulg[oó]n|trips|bicho|clorosis|deficiencia|carencia|rama\s+negra|rama|alepo|cap[ií]n|gram[oó]n|gorgojo|vaquita|diabrotica|ara[nñ]uela|mosca\s+blanca|chicharrita|taladro|tiz[oó]n|septoria|fusarium|bacteriosis|virosis|nabo|mostaza|amaranthus|cebadilla|broca|alquiche|gata\s+peluda|nematod[oa]|esclerotinia|antracnosis|carb[oó]n)/i;
 
 // Livestock guard: if the text looks like a livestock operation
 // (category + quantity), reject as observation — the agent should have

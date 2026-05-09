@@ -629,6 +629,9 @@ const COMMAND_PATTERNS = [
     // the conversational fallback improvise a list (which often gets truncated).
     /^que (podes|sabes|haces|sabes hacer|podes hacer|podes ofrecer) ?(vos)?$/,
     /^que (podes|sabes) hacer( vos)?$/,
+    // 1ª persona ("yo"): "que puedo hacer", "que puedo preguntarte", etc.
+    /^que puedo (hacer|preguntar|preguntarte|consultar|usar|ver)( aca| aqui| con vos)?$/,
+    /^que cosas (puedo|podes) (hacer|usar)$/,
     /^como (funcionas|funciona esto|te uso|te utilizo|me ayudas|me ayudas vos)$/,
     /^para que (servis|sirves|sirve esto|te uso)$/,
     /^(quien sos|que sos|que es esto)$/,
