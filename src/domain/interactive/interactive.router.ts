@@ -32,6 +32,16 @@ const CALLBACK_MAP: Record<string, ParsedCommand> = {
   'cmd_historial_lote': { command: 'query_plot_history' },
   // Back to main menu
   'back_menu': { command: 'menu' },
+  // Help category sections
+  'help_gastos': { command: 'help_section', helpSection: 'help_gastos' },
+  'help_actividades': { command: 'help_section', helpSection: 'help_actividades' },
+  'help_lluvia': { command: 'help_section', helpSection: 'help_lluvia' },
+  'help_cosecha': { command: 'help_section', helpSection: 'help_cosecha' },
+  'help_hacienda': { command: 'help_section', helpSection: 'help_hacienda' },
+  'help_campos': { command: 'help_section', helpSection: 'help_campos' },
+  'help_reportes': { command: 'help_section', helpSection: 'help_reportes' },
+  'help_editar': { command: 'help_section', helpSection: 'help_editar' },
+  'help_config': { command: 'help_section', helpSection: 'help_config' },
   // Document upload entry points
   'doc_upload_factura': { command: 'start_document_upload', documentType: 'factura' },
   'doc_upload_remito': { command: 'start_document_upload', documentType: 'remito' },

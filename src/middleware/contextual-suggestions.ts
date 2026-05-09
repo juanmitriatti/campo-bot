@@ -1,5 +1,6 @@
 import type { InteractiveMessage } from '../types/index.js';
 
+// ─── Generic fallback menu ─────────────────────────────────────────────
 const MENU_LIST: InteractiveMessage = {
   type: 'list',
   body: '¿Seguimos?',
@@ -39,22 +40,136 @@ const MENU_LIST: InteractiveMessage = {
   ],
 };
 
+// ─── Per-action suggestions ────────────────────────────────────────────
+// After each completed action, surface the 2–3 most likely NEXT moves.
+// Goal: teach the bot's capabilities by showing useful follow-ups
+// instead of dumping the full menu every turn.
+
+const POST_EXPENSE: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Y ahora?',
+  buttons: [
+    { id: 'cmd_resumen_mensual', title: '📈 Resultado mes' },
+    { id: 'doc_upload_factura', title: '🧾 Cargar factura' },
+    { id: 'cmd_borrar_ultimo_gasto', title: '↩️ Borrar último' },
+  ],
+};
+
+const POST_INCOME: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Y ahora?',
+  buttons: [
+    { id: 'cmd_resumen_mensual', title: '📈 Resultado mes' },
+    { id: 'flow_new_income', title: '💸 Otro ingreso' },
+    { id: 'cmd_borrar_ultimo_ingreso', title: '↩️ Borrar último' },
+  ],
+};
+
+const POST_FIELD: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Próximo paso?',
+  buttons: [
+    { id: 'cmd_agregar_lote', title: '🌾 Crear lote' },
+    { id: 'cmd_listar_campos', title: '🏡 Mis campos' },
+    { id: 'menu_ayuda', title: '❓ Ayuda' },
+  ],
+};
+
+const POST_PLOT: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Próximo paso?',
+  buttons: [
+    { id: 'flow_new_activity', title: '🌱 Sembrar/fumigar' },
+    { id: 'flow_new_expense', title: '💰 Cargar gasto' },
+    { id: 'cmd_listar_campos', title: '🏡 Mis campos' },
+  ],
+};
+
+const POST_ACTIVITY: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Y ahora?',
+  buttons: [
+    { id: 'cmd_reporte_agro', title: '📊 Reporte agro PDF' },
+    { id: 'flow_new_activity', title: '🌾 Otra actividad' },
+    { id: 'menu_lluvia', title: '🌧️ Registrar lluvia' },
+  ],
+};
+
+const POST_RAINFALL: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Y ahora?',
+  buttons: [
+    { id: 'cmd_reporte_lluvia', title: '📊 Lluvia este mes' },
+    { id: 'menu_clima', title: '☀️ Clima 7 días' },
+    { id: 'flow_new_rainfall', title: '🌧️ Otra lluvia' },
+  ],
+};
+
+const POST_OBSERVATION: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Y ahora?',
+  buttons: [
+    { id: 'cmd_reporte_agro', title: '📊 Reporte agro PDF' },
+    { id: 'flow_new_activity', title: '🌾 Registrar actividad' },
+    { id: 'menu_lluvia', title: '🌧️ Registrar lluvia' },
+  ],
+};
+
+const POST_REPORT: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Más?',
+  buttons: [
+    { id: 'cmd_exportar_csv', title: '📥 Exportar CSV' },
+    { id: 'cmd_reporte_agro', title: '📊 Reporte agro PDF' },
+    { id: 'back_menu', title: '📋 Menú' },
+  ],
+};
+
+const POST_WEATHER: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Más?',
+  buttons: [
+    { id: 'menu_lluvia', title: '🌧️ Registrar lluvia' },
+    { id: 'cmd_reporte_lluvia', title: '📊 Lluvia este mes' },
+    { id: 'back_menu', title: '📋 Menú' },
+  ],
+};
+
+const POST_FIELD_INFO: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Y ahora?',
+  buttons: [
+    { id: 'cmd_reporte_agro', title: '📊 Reporte agro PDF' },
+    { id: 'flow_new_activity', title: '🌾 Nueva actividad' },
+    { id: 'flow_new_expense', title: '💰 Cargar gasto' },
+  ],
+};
+
+const POST_QUERY_EMPTY: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Qué querés hacer?',
+  buttons: [
+    { id: 'back_menu', title: '📋 Ver menú' },
+    { id: 'menu_ayuda', title: '❓ Ayuda' },
+  ],
+};
+
 const SUGGESTIONS: Record<string, InteractiveMessage> = {
   default_menu: MENU_LIST,
-  expense_saved: MENU_LIST,
-  income_saved: MENU_LIST,
-  field_created: MENU_LIST,
-  rainfall_logged: MENU_LIST,
-  activity_logged: MENU_LIST,
-  plot_created: MENU_LIST,
+  expense_saved: POST_EXPENSE,
+  income_saved: POST_INCOME,
+  field_created: POST_FIELD,
+  plot_created: POST_PLOT,
+  activity_logged: POST_ACTIVITY,
+  rainfall_logged: POST_RAINFALL,
+  observation_logged: POST_OBSERVATION,
+  query_result: POST_QUERY_EMPTY,
+  query_empty: POST_QUERY_EMPTY,
+  field_info_shown: POST_FIELD_INFO,
+  report_shown: POST_REPORT,
+  weather_shown: POST_WEATHER,
   field_deleted: MENU_LIST,
   plot_deleted: MENU_LIST,
-  observation_logged: MENU_LIST,
-  query_result: MENU_LIST,
-  query_empty: MENU_LIST,
-  field_info_shown: MENU_LIST,
-  report_shown: MENU_LIST,
-  weather_shown: MENU_LIST,
 };
 
 // Command → suggestion key mapping for commands that don't set their own suggestionKey

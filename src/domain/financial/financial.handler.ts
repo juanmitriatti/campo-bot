@@ -820,7 +820,7 @@ export class FinancialHandler {
         } catch (stockErr) { console.error('[financial] Stock deduction suggestion (confirm) failed:', stockErr); logError('financial', 'STOCK_DEDUCTION_SUGGEST_CONFIRM', stockErr as Error, { userId }); }
       }
 
-      return { messages };
+      return { messages, suggestionKey: 'income_saved' };
     } else {
       const expenseData = pending.data as ParsedExpense;
       const saved = await this.service.saveExpense(userId, expenseData, pending.fieldId, pending.plotId);
@@ -872,7 +872,7 @@ export class FinancialHandler {
         }
       }
 
-      return { messages };
+      return { messages, suggestionKey: 'expense_saved' };
     }
   }
 

@@ -1,7 +1,7 @@
 import { UserRepository } from '../users/user.repository.js';
 import { PlanRepository } from '../billing/plan.repository.js';
 import { pool } from '../../config/db.js';
-import { buildHelpText } from './help-text.js';
+import { buildHelpText, buildHelpMenu, HELP_SECTIONS } from './help-text.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../../middleware/pending-field-city-handler.js';
 import { getSetting } from '../../services/settings.service.js';
@@ -80,7 +80,25 @@ export class SystemHandler {
 
       case 'help': {
         const helpBotName = (await getSetting('BOT_NAME')) || 'MIA';
-        return { messages: [buildHelpText(user.name, helpBotName)] };
+        // Direct shortcut: "ayuda gastos" / "ayuda lluvia" / etc → jump
+        // straight to that section without the category picker.
+        const sectionKey = (cmd.helpSection as string) || '';
+        if (sectionKey && HELP_SECTIONS[sectionKey]) {
+          return { messages: [HELP_SECTIONS[sectionKey]] };
+        }
+        // Default: paginated category list
+        const { message, interactive } = buildHelpMenu(user.name, helpBotName);
+        return { messages: [message], interactive };
+      }
+
+      case 'help_section': {
+        const key = (cmd.helpSection as string) || '';
+        if (key && HELP_SECTIONS[key]) {
+          return { messages: [HELP_SECTIONS[key]] };
+        }
+        const helpBotName = (await getSetting('BOT_NAME')) || 'MIA';
+        const { message, interactive } = buildHelpMenu(user.name, helpBotName);
+        return { messages: [message], interactive };
       }
 
       case 'menu':
