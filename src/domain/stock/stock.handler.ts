@@ -222,6 +222,19 @@ export class StockHandler {
       .join(' · ');
     const summary = `\n\n📊 *Total*: ${totalLine}`;
 
+    // Same product spread across multiple warehouses — the user asked
+    // "cuánto X tengo" and we have it in N depots. Show product-focused
+    // header + per-depot breakdown so they see the real picture.
+    const allSameProduct = cmd.product && items.every(it => String(it.name).toLowerCase() === String(items[0].name).toLowerCase());
+    if (allSameProduct) {
+      const breakdown = items
+        .map(it => `  • *${it.current_quantity} ${it.unit}* — ${it.warehouse_name || 'Principal'} (${it.field_name || ''})`)
+        .join('\n');
+      return {
+        messages: [`📦 *${items[0].name}* — Total: *${totalLine}*\n\nRepartido en ${items.length} depósitos:\n${breakdown}`],
+      };
+    }
+
     // Multiple items — detail when ≤15, compact when more
     if (items.length <= 15) {
       const lines = items.map(it => {

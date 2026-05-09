@@ -179,15 +179,17 @@ export class StockService {
     product?: string,
     fieldName?: string,
   ): Promise<StockItemRow[]> {
-    if (product) {
-      const item = await this.findProduct(userId, product, fieldName);
-      return item ? [item] : [];
-    }
-
     let fieldId: number | undefined;
     if (fieldName) {
       const field = await this.resolveField(userId, fieldName);
       if (field) fieldId = field.id;
+    }
+
+    if (product) {
+      // Return ALL warehouses holding this product so the handler can
+      // aggregate. Returning a single item silently hid stock kept in
+      // other campos / depósitos.
+      return this.repo.findAllStockItemsFuzzy(Number(userId), product, fieldId);
     }
 
     return this.repo.getStockItems(Number(userId), fieldId);
