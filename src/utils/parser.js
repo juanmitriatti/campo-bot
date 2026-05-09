@@ -623,7 +623,16 @@ const COMMAND_PATTERNS = [
     /^(?:gracias|grax)[\s,.!]+(?:che|boludo|amigo|capo|maestro)[\s,.!]*$/i,
     /^(?:dejalo\s+as[íi]|d[eé]jalo|listo\s+nom[áa]s|qued[óo]\s+todo\s+bien)[\s,.!]*$/i,
   ] },
-  { command: "help", patterns: [/^(ayuda|help|comandos|\?)$/] },
+  { command: "help", patterns: [
+    /^(ayuda|ayudame|help|comandos|\?)$/,
+    // Open-ended capability questions — route to category menu instead of letting
+    // the conversational fallback improvise a list (which often gets truncated).
+    /^que (podes|sabes|haces|sabes hacer|podes hacer|podes ofrecer) ?(vos)?$/,
+    /^que (podes|sabes) hacer( vos)?$/,
+    /^como (funcionas|funciona esto|te uso|te utilizo|me ayudas|me ayudas vos)$/,
+    /^para que (servis|sirves|sirve esto|te uso)$/,
+    /^(quien sos|que sos|que es esto)$/,
+  ] },
   { command: "menu", patterns: [/^(menu|menú|opciones)$/] },
   { command: "show_reports_menu", patterns: [
     /^(?:reportes?|informes?|ver\s+reportes?|ver\s+informes?|mis\s+reportes?)$/,
