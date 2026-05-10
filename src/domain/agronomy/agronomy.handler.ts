@@ -958,7 +958,30 @@ export class AgronomyHandler {
           cmd.fieldName as string | null,
           cmd.plotName as string | null
         );
-        const plotResult = await this.resolveActivityPlot(userId, resolved);
+        let plotResult = await this.resolveActivityPlot(userId, resolved);
+
+        // Per-truck loads context: when the user fires "Pedro 30tn al silo de
+        // Cargill" right after a harvest, the agent emits loads[] but no plot.
+        // With multiple plots we'd ask "¿En qué lote?" — but conversation_state
+        // already knows the last plot the user touched. Use it.
+        const hasLoads = Array.isArray(cmd.loads) && (cmd.loads as unknown[]).length > 0;
+        if (plotResult.type === 'ask_user' && hasLoads && !cmd.plotName && !cmd.fieldName) {
+          const { getConversationState } = await import('../../services/expenses.js');
+          const state = await getConversationState(userId);
+          if (state?.last_plot_id) {
+            const matched = plotResult.plots.find(p => p.id === state.last_plot_id);
+            if (matched) {
+              const field = await this.repo.getFieldByName(userId, matched.field_name);
+              plotResult = {
+                type: 'resolved',
+                plotId: matched.id,
+                fieldId: field?.id ?? null,
+                plotName: matched.name,
+                fieldName: matched.field_name,
+              };
+            }
+          }
+        }
 
         if (plotResult.type === 'no_plots') {
           return this.buildNoPlotsResponse(userId, 'cosecha', cmd);
