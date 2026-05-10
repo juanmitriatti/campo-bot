@@ -192,7 +192,7 @@ describe('FinancialHandler.handleCommand', () => {
   it('monthly_report returns no data message', async () => {
     const handler = new FinancialHandler(mockService());
     const response = await handler.handleCommand({ command: 'monthly_report' }, userId, defaultUser, defaultSettings);
-    expect(response.messages[0]).toContain('No hay gastos');
+    expect(response.messages[0]).toContain('No hay movimientos');
   });
 
   it('monthly_report returns formatted report', async () => {
@@ -204,7 +204,7 @@ describe('FinancialHandler.handleCommand', () => {
     });
     const handler = new FinancialHandler(service);
     const response = await handler.handleCommand({ command: 'monthly_report' }, userId, defaultUser, defaultSettings);
-    expect(response.messages[0]).toContain('Resumen financiero');
+    expect(response.messages[0]).toContain('Movimientos del mes');
     expect(response.messages[0]).toContain('Combustible');
     expect(response.messages[0]).toContain('Semillas');
   });

@@ -1013,13 +1013,37 @@ export class FinancialHandler {
       // --- Monthly report ---
       case 'monthly_report': {
         const rows = await this.service.getMonthlyReport(userId);
-        if (rows.length === 0) {
-          return { messages: ['No hay gastos registrados este mes.'], suggestionKey: 'report_shown' };
-        }
-        const { lines, total } = formatReportRows(rows);
-        let msg = `📊 *Resumen financiero* (${currentMonthLabel()})\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}`;
+        const { getMonthlyResultByCurrency } = await import('../../services/expenses.js');
+        const pnl = await getMonthlyResultByCurrency(userId);
 
-        // Per-plot breakdown
+        const hasAny = rows.length > 0
+          || Object.values(pnl).some(v => v.ingresos > 0 || v.gastos > 0);
+        if (!hasAny) {
+          return { messages: [`No hay movimientos este mes.`], suggestionKey: 'report_shown' };
+        }
+
+        // ── Header: P&L summary per currency ──
+        let msg = `📊 *Movimientos del mes* (${currentMonthLabel()})\n`;
+        for (const [cur, v] of Object.entries(pnl)) {
+          if (v.ingresos === 0 && v.gastos === 0) continue;
+          const symbol = cur === 'ARS' ? '$' : `${cur} `;
+          const result = v.ingresos - v.gastos;
+          msg += `\n💰 Ingresos: ${symbol}${v.ingresos.toLocaleString('es-AR')}`;
+          msg += `\n💸 Gastos:   ${symbol}${v.gastos.toLocaleString('es-AR')}`;
+          msg += `\n${result >= 0 ? '📈' : '📉'} Resultado: ${result < 0 ? '-' : ''}${symbol}${Math.abs(result).toLocaleString('es-AR')}`;
+          if (Object.keys(pnl).filter(k => pnl[k].ingresos > 0 || pnl[k].gastos > 0).length > 1) {
+            msg += ` (${cur})`;
+          }
+          msg += '\n';
+        }
+
+        // ── Categorías de gastos ──
+        if (rows.length > 0) {
+          const { lines, total } = formatReportRows(rows);
+          msg += `\n*Por categoría (gastos):*\n${lines}\nTotal: $${total.toLocaleString('es-AR')}`;
+        }
+
+        // ── Per-plot breakdown ──
         const plotRows = await this.service.getMonthlyReportByPlot(userId);
         if (plotRows.length > 0) {
           msg += '\n\n📍 *Por lote:*';
@@ -1031,7 +1055,6 @@ export class FinancialHandler {
           }
         }
 
-        msg += '\n\n_Pedí "resultado mes" para ver ingresos vs gastos._';
         return { messages: [msg], suggestionKey: 'report_shown' };
       }
 

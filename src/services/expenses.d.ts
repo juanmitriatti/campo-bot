@@ -50,6 +50,7 @@ export function setFieldCity(userId: number, fieldName: string, city: string, pr
 export function getFieldByName(userId: number, fieldName: string): Promise<{ id: number; user_id: number; name: string; city: string | null; province: string | null } | null>;
 export function getUserFieldsWithCity(userId: number): Promise<Array<{ name: string; city: string; province: string | null }>>;
 export function getUserFields(userId: number): Promise<Array<{ name: string; city: string | null; province: string | null }>>;
+export function getMonthlyResultByCurrency(userId: number): Promise<Record<string, { ingresos: number; gastos: number }>>;
 export function getUserFieldCount(userId: number): Promise<number>;
 export function deleteField(userId: number, fieldName: string): Promise<boolean>;
 export function restoreField(userId: number, fieldName: string): Promise<{ id: number; user_id: number; name: string; city: string | null; province: string | null } | null>;

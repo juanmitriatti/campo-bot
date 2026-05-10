@@ -478,6 +478,31 @@ export async function getMonthlyResult(userId) {
   };
 }
 
+// Currency-aware P&L for the current month. Splits ingresos/gastos by
+// currency so we don't pretend USD 9000 + ARS 400000 = 409000.
+export async function getMonthlyResultByCurrency(userId) {
+  const incomes = await pool.query(
+    `SELECT COALESCE(currency, 'ARS') AS cur, COALESCE(SUM(amount), 0)::numeric AS total
+     FROM incomes
+     WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)})) AND deleted_at IS NULL
+       AND date_trunc('month', income_date) = date_trunc('month', NOW())
+     GROUP BY COALESCE(currency, 'ARS')`,
+    [userId]
+  );
+  const expenses = await pool.query(
+    `SELECT COALESCE(currency, 'ARS') AS cur, COALESCE(SUM(amount), 0)::numeric AS total
+     FROM expenses
+     WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)})) AND deleted_at IS NULL
+       AND date_trunc('month', expense_date) = date_trunc('month', NOW())
+     GROUP BY COALESCE(currency, 'ARS')`,
+    [userId]
+  );
+  const out = { ARS: { ingresos: 0, gastos: 0 }, USD: { ingresos: 0, gastos: 0 } };
+  for (const r of incomes.rows) out[r.cur] = out[r.cur] || { ingresos: 0, gastos: 0 }, out[r.cur].ingresos = Number(r.total);
+  for (const r of expenses.rows) out[r.cur] = out[r.cur] || { ingresos: 0, gastos: 0 }, out[r.cur].gastos = Number(r.total);
+  return out;
+}
+
 export async function getFieldResult(userId, fieldName) {
   const incomes = await pool.query(
     `SELECT COALESCE(SUM(i.amount), 0) as total
