@@ -6,7 +6,8 @@ export class PendingTransactionStore {
   private store = new Map<string, PendingTransaction>();
 
   set(phone: string, tx: PendingTransaction): void {
-    this.store.set(phone, tx);
+    // Defensive: overwrite timestamp so the 5-min TTL always works.
+    this.store.set(phone, { ...tx, timestamp: Date.now() });
   }
 
   get(phone: string): PendingTransaction | null {

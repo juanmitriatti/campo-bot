@@ -11,12 +11,14 @@ export class PendingPlotAreaStore {
   private store = new Map<string, PendingPlotArea[]>();
 
   set(phone: string, data: PendingPlotArea): void {
-    this.store.set(phone, [data]);
+    // Defensive: overwrite timestamp so the 5-min TTL always works.
+    this.store.set(phone, [{ ...data, timestamp: Date.now() }]);
   }
 
   setQueue(phone: string, items: PendingPlotArea[]): void {
     if (items.length === 0) return;
-    this.store.set(phone, items);
+    const now = Date.now();
+    this.store.set(phone, items.map(it => ({ ...it, timestamp: now })));
   }
 
   get(phone: string): PendingPlotArea | null {

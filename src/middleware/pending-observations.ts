@@ -10,7 +10,8 @@ export class PendingObservationStore {
   private store = new Map<string, PendingObservation>();
 
   set(phone: string, obs: PendingObservation): void {
-    this.store.set(phone, obs);
+    // Defensive: overwrite timestamp so the 5-min TTL always works.
+    this.store.set(phone, { ...obs, timestamp: Date.now() });
   }
 
   get(phone: string): PendingObservation | null {

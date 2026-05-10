@@ -9,7 +9,9 @@ export class PendingFieldCityStore {
   private store = new Map<string, PendingFieldCity>();
 
   set(phone: string, data: PendingFieldCity): void {
-    this.store.set(phone, data);
+    // Defensive: overwrite timestamp so the 5-min TTL always kicks in
+    // even when the caller forgot to populate it.
+    this.store.set(phone, { ...data, timestamp: Date.now() });
   }
 
   get(phone: string): PendingFieldCity | null {
