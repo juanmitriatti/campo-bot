@@ -26,7 +26,7 @@ import type {
 
 // --- Formatting helpers ---
 
-import { splitPool } from '../../utils/template.js';
+import { splitPool, interpolate } from '../../utils/template.js';
 
 const DEFAULT_EXPENSE_CONFIRMATIONS = ['✅ Listo, gasto registrado', '✅ Anotado', '✅ Gasto guardado', '✅ Registrado'];
 const DEFAULT_INCOME_CONFIRMATIONS = ['💰 Listo, ingreso registrado', '💰 Anotado', '💰 Ingreso guardado', '💰 Registrado'];
@@ -1437,7 +1437,7 @@ export class FinancialHandler {
               }
               if (plotsBefore.length === 0) {
                 const welcomeMsg = await getSetting('ONBOARDING_FIRST_PLOT_MESSAGE');
-                if (welcomeMsg) messages.push(welcomeMsg);
+                if (welcomeMsg) messages.push(interpolate(welcomeMsg, { nombre: user.name || '' }));
               }
               return { messages, suggestionKey: 'plot_created', sideEffects: loteSideEffects };
             }
@@ -1891,7 +1891,7 @@ export class FinancialHandler {
         const batchMessages = [msg];
         if (created.length > 0 && plotsBeforeBatch.length === 0) {
           const welcomeMsg = await getSetting('ONBOARDING_FIRST_PLOT_MESSAGE');
-          if (welcomeMsg) batchMessages.push(welcomeMsg);
+          if (welcomeMsg) batchMessages.push(interpolate(welcomeMsg, { nombre: user.name || '' }));
         }
         const batchSideEffects: HandlerResponse['sideEffects'] = {};
         if (created.length > 0 && !areaCadaUno) {
@@ -1994,7 +1994,7 @@ export class FinancialHandler {
         }
         if (plotsBeforeAdd.length === 0) {
           const welcomeMsg = await getSetting('ONBOARDING_FIRST_PLOT_MESSAGE');
-          if (welcomeMsg) addPlotMessages.push(welcomeMsg);
+          if (welcomeMsg) addPlotMessages.push(interpolate(welcomeMsg, { nombre: user.name || '' }));
         }
         return { messages: addPlotMessages, suggestionKey: 'plot_created', sideEffects: addPlotSideEffects };
       }
