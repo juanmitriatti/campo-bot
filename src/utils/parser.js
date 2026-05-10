@@ -761,6 +761,16 @@ const COMMAND_PATTERNS = [
       const re = /(?:quiero\s+)?(?:agregar|agrega|crear)\s+(?:los\s+)?lotes\s+(.+)/i;
       const cm = original ? original.match(re) : null;
       let raw = (cm ? cm[1] : m[1]).trim();
+
+      // Extract trailing area spec FIRST so it doesn't get misparsed as
+      // a field name. Patterns: "de 50 ha cada uno", "50 ha c/u", "50 hectáreas".
+      let area = null;
+      const areaMatch = raw.match(/\s+(?:de\s+)?(\d+(?:\.\d+)?)\s*(?:ha|hect[aá]reas?)(?:\s+(?:cada\s+(?:uno|una)|c\/u))?\s*$/i);
+      if (areaMatch) {
+        area = parseFloat(areaMatch[1]);
+        raw = raw.slice(0, raw.length - areaMatch[0].length).trim();
+      }
+
       // Extract optional field name from "en [campo]" / "en el [campo]" suffix
       let fieldName = null;
       const fieldMatch = raw.match(/\s+(?:en|al?|del?)\s+(?:(?:el|la|mi)\s+)?(?:campo\s+)?(.+)$/i);
@@ -780,6 +790,7 @@ const COMMAND_PATTERNS = [
         .filter(n => n.length > 0 && !/^\d+\s*ha$/i.test(n));
       const result = { plotNames: names };
       if (fieldName) result.fieldName = fieldName;
+      if (area) result.area = area;
       return result;
     },
   },

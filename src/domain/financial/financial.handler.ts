@@ -1870,9 +1870,19 @@ export class FinancialHandler {
             created.push({ name: plot.name, id: plot.id });
           }
         }
+
+        // If the user already gave us the area ("de 50 ha cada uno"), apply
+        // it upfront so we skip the per-plot "¿cuántas hectáreas?" queue.
+        const areaCadaUno = typeof cmd.area === 'number' && cmd.area > 0 ? cmd.area : null;
+        if (areaCadaUno) {
+          for (const c of created) {
+            await this.service.setPlotArea(c.id, areaCadaUno);
+          }
+        }
+
         let msg = '';
         if (created.length > 0) {
-          msg += `📍 Lotes creados en campo *${targetField.name}*:\n${created.map(c => `  \u2022 *${c.name}*`).join('\n')}`;
+          msg += `📍 Lotes creados en campo *${targetField.name}*:\n${created.map(c => `  \u2022 *${c.name}*${areaCadaUno ? ` \u2014 ${areaCadaUno} ha` : ''}`).join('\n')}`;
         }
         if (existing.length > 0) {
           if (created.length > 0) msg += '\n\n';
@@ -1884,7 +1894,7 @@ export class FinancialHandler {
           if (welcomeMsg) batchMessages.push(welcomeMsg);
         }
         const batchSideEffects: HandlerResponse['sideEffects'] = {};
-        if (created.length > 0) {
+        if (created.length > 0 && !areaCadaUno) {
           const now = Date.now();
           batchSideEffects.setPendingPlotAreaQueue = created.map(c => ({
             plotId: c.id, plotName: c.name, fieldName: targetField.name,
