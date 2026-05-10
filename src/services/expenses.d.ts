@@ -172,6 +172,7 @@ export interface HarvestLoadInput {
 export function saveHarvestLoads(domainEventId: number, plotCropId: number | null, loads: HarvestLoadInput[]): Promise<HarvestLoadRow[]>;
 export function getHarvestLoads(domainEventId: number): Promise<HarvestLoadRow[]>;
 export function findTodayHarvestEvent(userId: number, plotId: number): Promise<{ id: number; user_id: number; plot_id: number; plot_crop_id: number | null; event_type: string; event_date: Date; crop: string | null; created_at: Date } | null>;
+export function findHarvestsToday(userId: number): Promise<Array<{ plot_id: number; plot_name: string; field_name: string; crop: string | null }>>;
 export function updateYieldFromLoads(plotCropId: number): Promise<void>;
 export interface HarvestLoadQueryRow extends HarvestLoadRow {
   event_date: Date;

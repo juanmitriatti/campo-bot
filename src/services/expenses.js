@@ -2327,6 +2327,30 @@ export async function findTodayHarvestEvent(userId, plotId) {
   return result.rows[0] || null;
 }
 
+// All plots cosechados today by this user (one row per plot, with the
+// most recent harvest's crop). Used to disambiguate per-truck loads when
+// the user fired "Pedro 30tn" without a plot.
+export async function findHarvestsToday(userId) {
+  const result = await pool.query(
+    `SELECT DISTINCT ON (de.plot_id)
+            de.plot_id,
+            p.name AS plot_name,
+            f.name AS field_name,
+            de.crop
+     FROM domain_events de
+     JOIN plots p ON p.id = de.plot_id
+     JOIN fields f ON f.id = p.field_id
+     WHERE de.user_id = $1
+       AND de.event_type = 'harvest'
+       AND de.event_date = CURRENT_DATE
+       AND p.deleted_at IS NULL
+       AND f.deleted_at IS NULL
+     ORDER BY de.plot_id, de.created_at DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
 export async function updateYieldFromLoads(plotCropId) {
   if (!plotCropId) return;
   await pool.query(

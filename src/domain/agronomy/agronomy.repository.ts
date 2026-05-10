@@ -30,6 +30,7 @@ import {
   saveHarvestLoads as _saveHarvestLoads,
   getHarvestLoads as _getHarvestLoads,
   findTodayHarvestEvent as _findTodayHarvestEvent,
+  findHarvestsToday as _findHarvestsToday,
   updateYieldFromLoads as _updateYieldFromLoads,
   queryHarvestLoads as _queryHarvestLoads,
   getHarvestLoadsByCampaign as _getHarvestLoadsByCampaign,
@@ -165,6 +166,10 @@ export class AgronomyRepository {
 
   async findAllUserPlots(userId: UserId): Promise<Array<{ id: number; name: string; field_name: string }>> {
     return this.plots.findAllUserPlots(userId);
+  }
+
+  async findHarvestsToday(userId: UserId): Promise<Array<{ plot_id: number; plot_name: string; field_name: string; crop: string | null }>> {
+    return _findHarvestsToday(userId);
   }
 
   async getPlotById(plotId: number): Promise<{ id: number; name: string; field_name: string } | null> {
