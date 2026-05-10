@@ -1013,8 +1013,7 @@ export class FinancialHandler {
       // --- Monthly report ---
       case 'monthly_report': {
         const rows = await this.service.getMonthlyReport(userId);
-        const { getMonthlyResultByCurrency } = await import('../../services/expenses.js');
-        const pnl = await getMonthlyResultByCurrency(userId);
+        const pnl = await this.service.getMonthlyResultByCurrency(userId);
 
         const hasAny = rows.length > 0
           || Object.values(pnl).some(v => v.ingresos > 0 || v.gastos > 0);

@@ -140,6 +140,10 @@ export class FinancialService {
     return this.repo.getMonthlyResult(userId);
   }
 
+  async getMonthlyResultByCurrency(userId: UserId): Promise<Record<string, { ingresos: number; gastos: number }>> {
+    return this.repo.getMonthlyResultByCurrency(userId);
+  }
+
   async getFieldResult(userId: UserId, fieldName: string): Promise<MonthlyResult> {
     return this.repo.getFieldResult(userId, fieldName);
   }

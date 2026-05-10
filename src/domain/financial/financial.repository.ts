@@ -16,6 +16,7 @@ import {
   getMonthlyIncomeReport as _getMonthlyIncomeReport,
   getMonthlyIncomeForMonth as _getMonthlyIncomeForMonth,
   getMonthlyResult as _getMonthlyResult,
+  getMonthlyResultByCurrency as _getMonthlyResultByCurrency,
   getFieldResult as _getFieldResult,
   getFieldReport as _getFieldReport,
   setBudget as _setBudget,
@@ -175,6 +176,10 @@ export class FinancialRepository {
   async getMonthlyResult(userId: UserId): Promise<MonthlyResult> {
     const result = await _getMonthlyResult(userId);
     return { ingresos: Number(result.ingresos), gastos: Number(result.gastos) };
+  }
+
+  async getMonthlyResultByCurrency(userId: UserId): Promise<Record<string, { ingresos: number; gastos: number }>> {
+    return _getMonthlyResultByCurrency(userId);
   }
 
   async getFieldResult(userId: UserId, fieldName: string): Promise<MonthlyResult> {

@@ -12,6 +12,8 @@ function mockService(overrides: Record<string, any> = {}) {
     getMonthlyReport: vi.fn().mockResolvedValue([]),
     getWeeklyReport: vi.fn().mockResolvedValue([]),
     getMonthlyResult: vi.fn().mockResolvedValue({ ingresos: 0, gastos: 0 }),
+    getMonthlyResultByCurrency: vi.fn().mockResolvedValue({ ARS: { ingresos: 0, gastos: 0 } }),
+    getMonthlyReportByPlot: vi.fn().mockResolvedValue([]),
     getFieldResult: vi.fn().mockResolvedValue({ ingresos: 0, gastos: 0 }),
     deleteLastExpense: vi.fn().mockResolvedValue(null),
     deleteLastIncome: vi.fn().mockResolvedValue(null),
