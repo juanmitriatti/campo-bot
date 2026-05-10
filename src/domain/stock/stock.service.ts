@@ -187,9 +187,15 @@ export class StockService {
 
     if (product) {
       // Return ALL warehouses holding this product so the handler can
-      // aggregate. Returning a single item silently hid stock kept in
-      // other campos / depósitos.
-      return this.repo.findAllStockItemsFuzzy(Number(userId), product, fieldId);
+      // aggregate. findAllStockItemsFuzzy filters quantity > 0 (it was
+      // originally written for ambiguity detection); when EVERY depot
+      // has been consumed to 0 the user still wants to see "0 lt" not
+      // "no se encontró", so fall back to findProduct (which keeps the
+      // 0-stock row) for the empty case.
+      const items = await this.repo.findAllStockItemsFuzzy(Number(userId), product, fieldId);
+      if (items.length > 0) return items;
+      const fallback = await this.findProduct(userId, product, fieldName);
+      return fallback ? [fallback] : [];
     }
 
     return this.repo.getStockItems(Number(userId), fieldId);
