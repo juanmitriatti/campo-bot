@@ -2226,35 +2226,74 @@ export class AgronomyHandler {
         const hasta = cmd.hasta as string | null;
         const hasDateRange = !!(desde && hasta);
 
+        // Helper to render the user's plots inline so error messages are
+        // actionable instead of "escribí mis lotes".
+        const formatUserPlots = async (): Promise<string> => {
+          const userPlots = await this.repo.findAllUserPlots(userId);
+          if (userPlots.length === 0) return '';
+          return formatPlotListGrouped(userPlots);
+        };
+
         if (!fieldName && !plotName) {
-          return { messages: ['Indicá el campo o lote. Ejemplo:\n📋 *reporte agronómico campo norte*\n📋 *reporte agronómico lote 1*'] };
+          // Auto-resolve when the user has only 1 field with plots — no need
+          // to ask which one. Otherwise list available fields/plots so the
+          // user can pick.
+          const userFields = await this.repo.getUserFields(userId);
+          if (userFields.length === 0) {
+            return { messages: ['Primero creá un campo. Ejemplo:\n📍 *agregar campo Norte en Pergamino*'] };
+          }
+          if (userFields.length === 1) {
+            const f = await this.repo.getFieldByName(userId, userFields[0].name);
+            if (f) {
+              // Continue execution against this single field — proceed to the
+              // body below by simulating the same path.
+              cmd.fieldName = f.name;
+            }
+          } else {
+            const fieldList = userFields.map(f => `• ${f.name}`).join('\n');
+            return { messages: [`Indicá el campo o lote. Tenés ${userFields.length} campos:\n${fieldList}\n\nEjemplo:\n📋 *reporte agronómico campo ${userFields[0].name}*\n📋 *reporte agronómico lote A1*\n\nTambién podés filtrar por fecha: "reporte agro de enero a marzo".`] };
+          }
         }
+
+        const effectiveFieldName = (cmd.fieldName as string | null) ?? fieldName;
+        const effectivePlotName = plotName;
 
         let field: { id: number; name: string } | null = null;
         let filterPlotId: number | null = null;
         let filterPlotName: string | null = null;
 
-        if (plotName) {
-          const resolved = await this.plotDiscovery.resolveFromNames(userId, null, plotName);
+        if (effectivePlotName) {
+          const resolved = await this.plotDiscovery.resolveFromNames(userId, effectiveFieldName, effectivePlotName);
+
+          // Multi-field ambiguity: same plot name across 2+ fields → ask which campo
+          if (resolved.needPlotSelection && resolved.needPlotSelection.plots.length > 1 && !effectiveFieldName) {
+            const optList = resolved.needPlotSelection.plots.map(p => `• ${p.name}`).join('\n');
+            return { messages: [`Tenés varios lotes "${effectivePlotName}". ¿De qué campo?\n${optList}\n\nEjemplo:\n📋 *reporte agro lote ${effectivePlotName} en [campo]*`] };
+          }
+
           if (!resolved.plotId || resolved.autoCreated) {
             // Fallback: AI might have put a field name in the plot slot
-            const fallbackField = await this.repo.getFieldByName(userId, plotName);
+            const fallbackField = await this.repo.getFieldByName(userId, effectivePlotName);
             if (fallbackField) {
               field = fallbackField;
             } else {
-              return { messages: [`No encontré el lote "${plotName}". Revisá el nombre o escribí *mis lotes* para ver tus lotes.`] };
+              const plotsList = await formatUserPlots();
+              const tail = plotsList ? `\n\nTus lotes:\n${plotsList}` : '';
+              return { messages: [`No encontré el lote *${effectivePlotName}*.${tail}`] };
             }
           } else {
             filterPlotId = resolved.plotId;
             filterPlotName = resolved.plotName;
             field = await this.repo.getFieldByName(userId, resolved.fieldName!);
           }
-        } else {
-          field = await this.repo.getFieldByName(userId, fieldName!);
+        } else if (effectiveFieldName) {
+          field = await this.repo.getFieldByName(userId, effectiveFieldName);
         }
 
         if (!field) {
-          return { messages: [`No encontré el campo "${fieldName || plotName}". Revisá el nombre o escribí *mis campos* para ver tus campos.`] };
+          const plotsList = await formatUserPlots();
+          const tail = plotsList ? `\n\nTus lotes:\n${plotsList}` : '';
+          return { messages: [`No encontré el campo *${effectiveFieldName || effectivePlotName}*.${tail}`] };
         }
         try {
           // Fetch raw activities — date-range or current week (no cap)
