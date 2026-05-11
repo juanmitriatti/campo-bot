@@ -117,7 +117,7 @@ export default function Dashboard() {
       <div className="flex">
         <Sidebar active={view} onChange={setView} features={features} />
 
-        <main className="flex-1 px-4 md:px-8 py-6 pb-20 md:pb-6 max-w-6xl">
+        <main className="flex-1 min-w-0 px-4 md:px-8 py-6 pb-20 md:pb-6">
           {renderContent()}
         </main>
       </div>
