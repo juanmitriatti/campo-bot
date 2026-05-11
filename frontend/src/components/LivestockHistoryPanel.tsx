@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
+import {
+  ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight, Skull, Egg,
+  Repeat, BarChart3, Square,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 interface Movement {
   id: string;
@@ -55,14 +60,14 @@ const CATEGORY_LABELS: Record<string, string> = {
   novillo: 'Novillo', novillito: 'Novillito', toro: 'Toro', torito: 'Torito', buey: 'Buey',
 };
 
-const TYPE_LABELS: Record<string, { emoji: string; label: string; color: string }> = {
-  entrada: { emoji: '📥', label: 'Entrada', color: 'bg-green-100 text-green-800' },
-  salida: { emoji: '📤', label: 'Salida', color: 'bg-red-100 text-red-800' },
-  transferencia: { emoji: '🔄', label: 'Transferencia', color: 'bg-blue-100 text-blue-800' },
-  muerte: { emoji: '💀', label: 'Muerte', color: 'bg-gray-200 text-gray-800' },
-  nacimiento: { emoji: '🐣', label: 'Nacimiento', color: 'bg-yellow-100 text-yellow-800' },
-  recategorizacion: { emoji: '🔁', label: 'Recategorización', color: 'bg-purple-100 text-purple-800' },
-  ajuste: { emoji: '📊', label: 'Ajuste', color: 'bg-indigo-100 text-indigo-800' },
+const TYPE_LABELS: Record<string, { Icon: LucideIcon; label: string; color: string }> = {
+  entrada: { Icon: ArrowDownToLine, label: 'Entrada', color: 'bg-green-100 text-green-800' },
+  salida: { Icon: ArrowUpFromLine, label: 'Salida', color: 'bg-red-100 text-red-800' },
+  transferencia: { Icon: ArrowLeftRight, label: 'Transferencia', color: 'bg-blue-100 text-blue-800' },
+  muerte: { Icon: Skull, label: 'Muerte', color: 'bg-gray-200 text-gray-800' },
+  nacimiento: { Icon: Egg, label: 'Nacimiento', color: 'bg-yellow-100 text-yellow-800' },
+  recategorizacion: { Icon: Repeat, label: 'Recategorización', color: 'bg-purple-100 text-purple-800' },
+  ajuste: { Icon: BarChart3, label: 'Ajuste', color: 'bg-indigo-100 text-indigo-800' },
 };
 
 const MOVEMENT_TYPES = Object.keys(TYPE_LABELS);
@@ -252,17 +257,19 @@ export default function LivestockHistoryPanel() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {data.items.map(m => {
-                  const typeInfo = TYPE_LABELS[m.movement_type] || {
-                    emoji: '•', label: m.movement_type, color: 'bg-gray-100 text-gray-800',
-                  };
+                  const typeInfo = TYPE_LABELS[m.movement_type];
+                  const TypeIcon = typeInfo?.Icon;
+                  const typeLabel = typeInfo?.label ?? m.movement_type;
+                  const typeColor = typeInfo?.color ?? 'bg-gray-100 text-gray-800';
                   const source = describeEndpoint(m, 'source');
                   const dest = describeEndpoint(m, 'dest');
                   return (
                     <tr key={m.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{formatDate(m.movement_date)}</td>
                       <td className="px-4 py-3">
-                        <span className={`inline-block text-xs px-2 py-0.5 rounded ${typeInfo.color}`}>
-                          {typeInfo.emoji} {typeInfo.label}
+                        <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded ${typeColor}`}>
+                          {TypeIcon && <TypeIcon className="w-3.5 h-3.5" />}
+                          {typeLabel}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-gray-800">{m.count}</td>

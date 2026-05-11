@@ -1,3 +1,4 @@
+import { Wallet, DollarSign, TrendingUp, TrendingDown, Sprout } from 'lucide-react';
 import { useDashboardData } from '../../hooks/useDashboardData';
 import { useAnalyticsData } from '../../hooks/useAnalyticsData';
 import KpiCard from './KpiCard';
@@ -64,7 +65,8 @@ export default function OverviewPage({ onGoToAccount }: OverviewPageProps = {}) 
             value={formatArs(data.expenses_month_ars)}
             delta={calcDelta(data.expenses_month_ars, data.expenses_prev_month_ars)}
             tint="bg-red-50"
-            icon="💸"
+            Icon={Wallet}
+            iconColor="text-red-500"
           />
           <SparklineBar
             current={data.expenses_month_ars}
@@ -78,7 +80,8 @@ export default function OverviewPage({ onGoToAccount }: OverviewPageProps = {}) 
             value={formatArs(data.incomes_month_ars)}
             delta={calcDelta(data.incomes_month_ars, data.incomes_prev_month_ars)}
             tint="bg-green-50"
-            icon="💵"
+            Icon={DollarSign}
+            iconColor="text-green-600"
           />
           <SparklineBar
             current={data.incomes_month_ars}
@@ -91,13 +94,15 @@ export default function OverviewPage({ onGoToAccount }: OverviewPageProps = {}) 
           value={formatArs(resultado)}
           delta={calcDelta(resultado, resultadoPrev)}
           tint={resultado >= 0 ? 'bg-green-50' : 'bg-red-50'}
-          icon={resultado >= 0 ? '📈' : '📉'}
+          Icon={resultado >= 0 ? TrendingUp : TrendingDown}
+          iconColor={resultado >= 0 ? 'text-green-600' : 'text-red-500'}
         />
         <KpiCard
           label="Actividades"
           value={String(data.activities_month_count)}
           tint="bg-campo-50"
-          icon="🌱"
+          Icon={Sprout}
+          iconColor="text-campo-600"
         />
       </div>
 

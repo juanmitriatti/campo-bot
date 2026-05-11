@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Send, Mic, Square, X } from 'lucide-react';
 import type { AudioState } from '../../hooks/useAudioRecorder';
 
 interface Props {
@@ -73,9 +74,7 @@ export default function ChatInput({
           className="p-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors"
           title="Detener"
         >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <rect x="5" y="5" width="10" height="10" rx="1" />
-          </svg>
+          <Square className="w-5 h-5" fill="currentColor" />
         </button>
       </div>
     );
@@ -90,9 +89,7 @@ export default function ChatInput({
           className="p-2 rounded-full text-gray-500 hover:bg-gray-100 transition-colors"
           title="Descartar"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <X className="w-5 h-5" />
         </button>
         <audio ref={audioRef} src={audioUrl} controls className="flex-1 h-8" />
         <button
@@ -101,9 +98,7 @@ export default function ChatInput({
           className="p-2 rounded-full bg-campo-600 text-white hover:bg-campo-700 transition-colors disabled:opacity-50"
           title="Enviar audio"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-          </svg>
+          <Send className="w-5 h-5" />
         </button>
       </div>
     );
@@ -133,9 +128,7 @@ export default function ChatInput({
             className="p-2 rounded-full bg-campo-600 text-white hover:bg-campo-700 transition-colors disabled:opacity-50"
             title="Enviar"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-            </svg>
+            <Send className="w-5 h-5" />
           </button>
         ) : (
           <button
@@ -144,9 +137,7 @@ export default function ChatInput({
             className="p-2 rounded-full text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-50"
             title="Grabar audio"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-            </svg>
+            <Mic className="w-5 h-5" />
           </button>
         )}
       </div>

@@ -34,12 +34,15 @@ interface FiltersResponse {
   documentTypes: string[];
 }
 
-const TYPE_LABELS: Record<string, { label: string; emoji: string; color: string }> = {
-  factura: { label: 'Factura', emoji: '🧾', color: 'bg-blue-100 text-blue-800' },
-  remito: { label: 'Remito', emoji: '📄', color: 'bg-amber-100 text-amber-800' },
-  ticket: { label: 'Ticket', emoji: '🧮', color: 'bg-purple-100 text-purple-800' },
-  recibo: { label: 'Recibo', emoji: '🧾', color: 'bg-green-100 text-green-800' },
-  otro: { label: 'Otro', emoji: '📎', color: 'bg-gray-100 text-gray-700' },
+import { Receipt, FileText, Calculator, Paperclip } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+const TYPE_LABELS: Record<string, { label: string; Icon: LucideIcon; color: string }> = {
+  factura: { label: 'Factura', Icon: Receipt, color: 'bg-blue-100 text-blue-800' },
+  remito: { label: 'Remito', Icon: FileText, color: 'bg-amber-100 text-amber-800' },
+  ticket: { label: 'Ticket', Icon: Calculator, color: 'bg-purple-100 text-purple-800' },
+  recibo: { label: 'Recibo', Icon: Receipt, color: 'bg-green-100 text-green-800' },
+  otro: { label: 'Otro', Icon: Paperclip, color: 'bg-gray-100 text-gray-700' },
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -225,14 +228,16 @@ export default function DocumentsTable() {
             <tbody className="divide-y divide-gray-100">
               {data.data.map(d => {
                 const t = TYPE_LABELS[d.document_type] || TYPE_LABELS.otro;
+                const TIcon = t.Icon;
                 const status = STATUS_LABELS[d.processing_status] || { label: d.processing_status, color: 'text-gray-500' };
                 const ex = d.extracted_data;
                 return (
                   <tr key={d.id} className="hover:bg-gray-50 transition-colors align-top">
                     <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(d.created_at)}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block text-xs px-2 py-0.5 rounded ${t.color}`}>
-                        {t.emoji} {t.label}
+                      <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded ${t.color}`}>
+                        <TIcon className="w-3.5 h-3.5" />
+                        {t.label}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-800">

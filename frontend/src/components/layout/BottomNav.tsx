@@ -1,23 +1,28 @@
+import {
+  LayoutDashboard, Wallet, DollarSign, Sprout, Eye, Search,
+  FileText, Wheat, Paperclip, User,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { DashboardView } from './Sidebar';
 
 interface BottomNavItem {
   key: DashboardView;
   label: string;
-  icon: string;
+  Icon: LucideIcon;
   feature?: string;
 }
 
 const ITEMS: BottomNavItem[] = [
-  { key: 'overview', label: 'Resumen', icon: '📊' },
-  { key: 'expenses', label: 'Gastos', icon: '💸', feature: 'expenses' },
-  { key: 'incomes', label: 'Ingresos', icon: '💵', feature: 'incomes' },
-  { key: 'activities', label: 'Actividades', icon: '🌱', feature: 'agronomy' },
-  { key: 'observations', label: 'Obs.', icon: '👁️', feature: 'agronomy' },
-  { key: 'scoutings', label: 'Monitor.', icon: '🔍', feature: 'agronomy' },
-  { key: 'reports', label: 'Reportes', icon: '📄', feature: 'agronomy' },
-  { key: 'harvests', label: 'Cosechas', icon: '🌾', feature: 'agronomy' },
-  { key: 'documents', label: 'Docs', icon: '📎', feature: 'documents' },
-  { key: 'account', label: 'Cuenta', icon: '👤' },
+  { key: 'overview', label: 'Resumen', Icon: LayoutDashboard },
+  { key: 'expenses', label: 'Gastos', Icon: Wallet, feature: 'expenses' },
+  { key: 'incomes', label: 'Ingresos', Icon: DollarSign, feature: 'incomes' },
+  { key: 'activities', label: 'Actividades', Icon: Sprout, feature: 'agronomy' },
+  { key: 'observations', label: 'Obs.', Icon: Eye, feature: 'agronomy' },
+  { key: 'scoutings', label: 'Monitor.', Icon: Search, feature: 'agronomy' },
+  { key: 'reports', label: 'Reportes', Icon: FileText, feature: 'agronomy' },
+  { key: 'harvests', label: 'Cosechas', Icon: Wheat, feature: 'agronomy' },
+  { key: 'documents', label: 'Docs', Icon: Paperclip, feature: 'documents' },
+  { key: 'account', label: 'Cuenta', Icon: User },
 ];
 
 interface BottomNavProps {
@@ -34,20 +39,23 @@ export default function BottomNav({ active, onChange, features }: BottomNavProps
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
       <div className="flex justify-around items-center h-14">
-        {visibleItems.map(item => (
-          <button
-            key={item.key}
-            onClick={() => onChange(item.key)}
-            className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
-              active === item.key
-                ? 'text-campo-600'
-                : 'text-gray-400'
-            }`}
-          >
-            <span className="text-lg">{item.icon}</span>
-            <span className="text-[10px] font-medium leading-tight">{item.label}</span>
-          </button>
-        ))}
+        {visibleItems.map(item => {
+          const Icon = item.Icon;
+          return (
+            <button
+              key={item.key}
+              onClick={() => onChange(item.key)}
+              className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
+                active === item.key
+                  ? 'text-campo-600'
+                  : 'text-gray-400'
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+              <span className="text-[10px] font-medium leading-tight">{item.label}</span>
+            </button>
+          );
+        })}
       </div>
     </nav>
   );

@@ -49,19 +49,23 @@ interface FiltersResponse {
   fields: FieldOption[];
 }
 
-const ACTIVITY_TYPE_LABELS: Record<string, { label: string; emoji: string }> = {
-  spraying: { label: 'Fumigacion', emoji: '💨' },
-  fertilization: { label: 'Fertilizacion', emoji: '🧪' },
-  planting: { label: 'Siembra', emoji: '🌱' },
-  tillage: { label: 'Labranza', emoji: '🚜' },
-  harvest: { label: 'Cosecha', emoji: '🌾' },
-  irrigation: { label: 'Riego', emoji: '💧' },
-  tacto: { label: 'Tacto', emoji: '🩺' },
+import { Wind, FlaskConical, Sprout, Tractor, Wheat, Droplet, Stethoscope } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+const ACTIVITY_TYPE_LABELS: Record<string, { label: string; Icon: LucideIcon }> = {
+  spraying: { label: 'Fumigacion', Icon: Wind },
+  fertilization: { label: 'Fertilizacion', Icon: FlaskConical },
+  planting: { label: 'Siembra', Icon: Sprout },
+  tillage: { label: 'Labranza', Icon: Tractor },
+  harvest: { label: 'Cosecha', Icon: Wheat },
+  irrigation: { label: 'Riego', Icon: Droplet },
+  tacto: { label: 'Tacto', Icon: Stethoscope },
 };
 
-const ACTIVITY_TYPE_OPTIONS = Object.entries(ACTIVITY_TYPE_LABELS).map(([id, { label, emoji }]) => ({
+// <option> labels can't contain JSX — plain text only.
+const ACTIVITY_TYPE_OPTIONS = Object.entries(ACTIVITY_TYPE_LABELS).map(([id, { label }]) => ({
   id,
-  label: `${emoji} ${label}`,
+  label,
 }));
 
 export default function ActivityTable() {
@@ -145,9 +149,16 @@ export default function ActivityTable() {
     });
   };
 
-  const getTypeLabel = (type: string) => {
+  const renderTypeLabel = (type: string) => {
     const info = ACTIVITY_TYPE_LABELS[type];
-    return info ? `${info.emoji} ${info.label}` : type;
+    if (!info) return <>{type}</>;
+    const Icon = info.Icon;
+    return (
+      <span className="inline-flex items-center gap-1">
+        <Icon className="w-3.5 h-3.5" />
+        {info.label}
+      </span>
+    );
   };
 
   const getDetail = (a: Activity) => {
@@ -289,7 +300,7 @@ export default function ActivityTable() {
                     <tr key={a.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
-                          {getTypeLabel(a.event_type)}
+                          {renderTypeLabel(a.event_type)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">

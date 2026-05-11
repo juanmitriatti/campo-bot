@@ -26,18 +26,21 @@ interface ListResponse { data: LivestockEvent[] }
 
 interface FieldOption { id: number; name: string; plots: { id: number; name: string }[] }
 
-const HEALTH_LABELS: Record<string, { label: string; emoji: string }> = {
-  vacunacion: { label: 'Vacunación', emoji: '💉' },
-  desparasitacion: { label: 'Desparasitación', emoji: '🪱' },
-  tratamiento: { label: 'Tratamiento', emoji: '💊' },
-  revision_sanitaria: { label: 'Revisión sanitaria', emoji: '🩺' },
+import { Syringe, Bug, Pill, Stethoscope, Heart, MilkOff, Thermometer } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+const HEALTH_LABELS: Record<string, { label: string; Icon: LucideIcon }> = {
+  vacunacion: { label: 'Vacunación', Icon: Syringe },
+  desparasitacion: { label: 'Desparasitación', Icon: Bug },
+  tratamiento: { label: 'Tratamiento', Icon: Pill },
+  revision_sanitaria: { label: 'Revisión sanitaria', Icon: Stethoscope },
 };
 
-const REPRO_LABELS: Record<string, { label: string; emoji: string }> = {
-  servicio: { label: 'Servicio (entore)', emoji: '🐂' },
-  destete: { label: 'Destete', emoji: '🍼' },
-  inseminacion: { label: 'Inseminación', emoji: '💉' },
-  deteccion_celo: { label: 'Detección de celo', emoji: '🌡️' },
+const REPRO_LABELS: Record<string, { label: string; Icon: LucideIcon }> = {
+  servicio: { label: 'Servicio (entore)', Icon: Heart },
+  destete: { label: 'Destete', Icon: MilkOff },
+  inseminacion: { label: 'Inseminación', Icon: Syringe },
+  deteccion_celo: { label: 'Detección de celo', Icon: Thermometer },
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -315,7 +318,14 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
                         {(() => {
                           const opts = type === 'health_event' ? HEALTH_LABELS : REPRO_LABELS;
                           const meta = e.subtype ? opts[e.subtype] : null;
-                          return meta ? `${meta.emoji} ${meta.label}` : (e.subtype || '—');
+                          if (!meta) return e.subtype || '—';
+                          const Icon = meta.Icon;
+                          return (
+                            <span className="inline-flex items-center gap-1">
+                              <Icon className="w-3.5 h-3.5" />
+                              {meta.label}
+                            </span>
+                          );
                         })()}
                       </td>
                       <td className="py-2 pr-3 text-gray-700">{e.product || <span className="text-gray-300">—</span>}</td>

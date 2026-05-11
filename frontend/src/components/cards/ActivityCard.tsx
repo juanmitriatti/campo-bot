@@ -20,14 +20,17 @@ interface Activity {
   edited_by_name: string | null;
 }
 
-const ACTIVITY_TYPE_LABELS: Record<string, { label: string; emoji: string }> = {
-  spraying: { label: 'Fumigacion', emoji: '💨' },
-  fertilization: { label: 'Fertilizacion', emoji: '🧪' },
-  planting: { label: 'Siembra', emoji: '🌱' },
-  tillage: { label: 'Labranza', emoji: '🚜' },
-  harvest: { label: 'Cosecha', emoji: '🌾' },
-  irrigation: { label: 'Riego', emoji: '💧' },
-  tacto: { label: 'Tacto', emoji: '🩺' },
+import { Wind, FlaskConical, Sprout, Tractor, Wheat, Droplet, Stethoscope } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+const ACTIVITY_TYPE_LABELS: Record<string, { label: string; Icon: LucideIcon }> = {
+  spraying: { label: 'Fumigacion', Icon: Wind },
+  fertilization: { label: 'Fertilizacion', Icon: FlaskConical },
+  planting: { label: 'Siembra', Icon: Sprout },
+  tillage: { label: 'Labranza', Icon: Tractor },
+  harvest: { label: 'Cosecha', Icon: Wheat },
+  irrigation: { label: 'Riego', Icon: Droplet },
+  tacto: { label: 'Tacto', Icon: Stethoscope },
 };
 
 function formatDate(dateStr: string): string {
@@ -56,7 +59,8 @@ interface Props {
 
 export default function ActivityCard({ activity, onEdit }: Props) {
   const info = ACTIVITY_TYPE_LABELS[activity.event_type];
-  const typeLabel = info ? `${info.emoji} ${info.label}` : activity.event_type;
+  const Icon = info?.Icon;
+  const typeLabel = info?.label ?? activity.event_type;
   const location = [activity.field_name, activity.plot_name].filter(Boolean).join(', ');
 
   return (
@@ -64,7 +68,8 @@ export default function ActivityCard({ activity, onEdit }: Props) {
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs bg-campo-100 text-campo-800 px-1.5 py-0.5 rounded">
+            <span className="inline-flex items-center gap-1 text-xs bg-campo-100 text-campo-800 px-1.5 py-0.5 rounded">
+              {Icon && <Icon className="w-3.5 h-3.5" />}
               {typeLabel}
             </span>
             {activity.crop && (

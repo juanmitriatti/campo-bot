@@ -1,7 +1,10 @@
-const TYPE_CONFIG: Record<string, { icon: string; color: string }> = {
-  expense: { icon: '💰', color: 'text-red-600' },
-  income: { icon: '💵', color: 'text-green-600' },
-  activity: { icon: '🌱', color: 'text-campo-700' },
+import { Wallet, DollarSign, Sprout } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+const TYPE_CONFIG: Record<string, { Icon: LucideIcon; color: string }> = {
+  expense: { Icon: Wallet, color: 'text-red-600' },
+  income: { Icon: DollarSign, color: 'text-green-600' },
+  activity: { Icon: Sprout, color: 'text-campo-700' },
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -68,9 +71,10 @@ export default function RecentFeed({ items }: { items: RecentItem[] }) {
             : (item.description || '-');
           const location = [item.field_name, item.plot_name].filter(Boolean).join(', ');
 
+          const Icon = cfg.Icon;
           return (
             <li key={i} className="flex items-center gap-3 px-5 py-3">
-              <span className="text-base">{cfg.icon}</span>
+              <Icon className={`w-5 h-5 shrink-0 ${cfg.color}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-gray-800 truncate">{label}</p>
                 {location && <p className="text-xs text-gray-400 truncate">{location}</p>}
