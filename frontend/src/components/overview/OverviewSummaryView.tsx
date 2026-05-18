@@ -2,7 +2,7 @@ import { Wallet, DollarSign, TrendingUp, TrendingDown, Sprout } from 'lucide-rea
 import { useDashboardData } from '../../hooks/useDashboardData';
 import { useAnalyticsData } from '../../hooks/useAnalyticsData';
 import KpiCard from './KpiCard';
-import MonthlyTrendChart from './MonthlyTrendChart';
+import RentabilidadPorLoteChart from './charts/RentabilidadPorLoteChart';
 import CategoryDonutChart from './CategoryDonutChart';
 import RecentFeed from './RecentFeed';
 import AlertsBanner from './AlertsBanner';
@@ -91,7 +91,10 @@ export default function OverviewSummaryView({ onRecentItemClick }: Props) {
             <RecentFeed items={data.recent_items} onItemClick={onRecentItemClick} />
           </div>
           <div className="lg:col-span-8">
-            <MonthlyTrendChart data={analytics.data.monthlyTrend} />
+            <RentabilidadPorLoteChart
+              expenses={analytics.data.expenseBreakdown}
+              incomes={analytics.data.incomeBreakdown}
+            />
           </div>
         </div>
       )}
