@@ -1551,20 +1551,38 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
 
     // Last 12 months of harvest events — yield computed from quantity / area
     const { rows: harvestsMonthly } = await pool.query(
-      `SELECT
-         to_char(date_trunc('month', e.event_date), 'YYYY-MM') AS month,
-         to_char(date_trunc('month', e.event_date), 'Mon')    AS label,
-         e.crop,
-         p.name AS plot_name,
-         e.quantity::numeric AS total_kg,
-         CASE WHEN p.area_hectares > 0 THEN (e.quantity / p.area_hectares)::numeric ELSE NULL END AS yield_kg_per_ha
-       FROM domain_events e
-       JOIN plots p ON p.id = e.plot_id
-       WHERE e.user_id = $1
-         AND e.event_type = 'harvest'
-         AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
-         AND e.quantity IS NOT NULL
-       ORDER BY e.event_date`,
+      `WITH harvests AS (
+         SELECT
+           e.event_date,
+           e.crop,
+           p.name AS plot_name,
+           p.area_hectares,
+           (e.quantity * CASE LOWER(COALESCE(e.unit, 'kg'))
+                           WHEN 'tn' THEN 1000
+                           WHEN 'tonelada' THEN 1000
+                           WHEN 'toneladas' THEN 1000
+                           WHEN 't' THEN 1000
+                           WHEN 'qq' THEN 100
+                           WHEN 'quintal' THEN 100
+                           WHEN 'quintales' THEN 100
+                           ELSE 1
+                         END)::numeric AS quantity_kg
+         FROM domain_events e
+         JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
+         WHERE e.user_id = $1
+           AND e.event_type = 'harvest'
+           AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
+           AND e.quantity IS NOT NULL
+       )
+       SELECT
+         to_char(date_trunc('month', event_date), 'YYYY-MM') AS month,
+         to_char(date_trunc('month', event_date), 'Mon')    AS label,
+         crop,
+         plot_name,
+         quantity_kg AS total_kg,
+         CASE WHEN area_hectares > 0 THEN (quantity_kg / area_hectares)::numeric ELSE NULL END AS yield_kg_per_ha
+       FROM harvests
+       ORDER BY event_date`,
       [userId]
     );
 
@@ -1583,7 +1601,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
          s.pest_severity_1_5,
          s.scouting_date
        FROM crop_scoutings s
-       JOIN plots p ON p.id = s.plot_id
+       JOIN plots p ON p.id = s.plot_id AND p.deleted_at IS NULL
        JOIN fields f ON f.id = p.field_id
        WHERE s.user_id = $1
          AND s.deleted_at IS NULL
@@ -1596,10 +1614,21 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
     const { rows: yieldByCrop } = await pool.query(
       `SELECT
          e.crop,
-         AVG(e.quantity / NULLIF(p.area_hectares, 0))::numeric AS avg_kg_per_ha,
+         AVG(
+           (e.quantity * CASE LOWER(COALESCE(e.unit, 'kg'))
+                           WHEN 'tn' THEN 1000
+                           WHEN 'tonelada' THEN 1000
+                           WHEN 'toneladas' THEN 1000
+                           WHEN 't' THEN 1000
+                           WHEN 'qq' THEN 100
+                           WHEN 'quintal' THEN 100
+                           WHEN 'quintales' THEN 100
+                           ELSE 1
+                         END) / NULLIF(p.area_hectares, 0)
+         )::numeric AS avg_kg_per_ha,
          COUNT(*)::int AS harvests
        FROM domain_events e
-       JOIN plots p ON p.id = e.plot_id
+       JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
        WHERE e.user_id = $1
          AND e.event_type = 'harvest'
          AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
@@ -1622,7 +1651,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
          e.event_date AS harvested_at
        FROM harvest_loads hl
        JOIN domain_events e ON e.id = hl.domain_event_id
-       LEFT JOIN plots p ON p.id = e.plot_id
+       LEFT JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
        WHERE e.user_id = $1
          AND e.event_type = 'harvest'
          AND hl.humidity_pct IS NOT NULL
