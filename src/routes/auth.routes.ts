@@ -1579,7 +1579,9 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
       [userId, fieldId]
     );
 
-    // Last 12 months of harvest events — yield computed from quantity / area
+    // Last 12 months of harvest events — yield computed from quantity / area.
+    // Quantity falls back to SUM(harvest_loads.weight_kg) when the event itself
+    // has no aggregate quantity (users often record per-truck loads only).
     const { rows: harvestsMonthly } = await pool.query(
       `WITH harvests AS (
          SELECT
@@ -1587,22 +1589,25 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
            e.crop,
            p.name AS plot_name,
            p.area_hectares,
-           (e.quantity * CASE LOWER(COALESCE(e.unit, 'kg'))
-                           WHEN 'tn' THEN 1000
-                           WHEN 'tonelada' THEN 1000
-                           WHEN 'toneladas' THEN 1000
-                           WHEN 't' THEN 1000
-                           WHEN 'qq' THEN 100
-                           WHEN 'quintal' THEN 100
-                           WHEN 'quintales' THEN 100
-                           ELSE 1
-                         END)::numeric AS quantity_kg
+           COALESCE(
+             e.quantity * CASE LOWER(COALESCE(e.unit, 'kg'))
+                            WHEN 'tn' THEN 1000
+                            WHEN 'tonelada' THEN 1000
+                            WHEN 'toneladas' THEN 1000
+                            WHEN 't' THEN 1000
+                            WHEN 'qq' THEN 100
+                            WHEN 'quintal' THEN 100
+                            WHEN 'quintales' THEN 100
+                            ELSE 1
+                          END,
+             (SELECT SUM(hl.weight_kg) FROM harvest_loads hl WHERE hl.domain_event_id = e.id)
+           )::numeric AS quantity_kg
          FROM domain_events e
          JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
          WHERE e.user_id = $1
            AND e.event_type = 'harvest'
            AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
-           AND e.quantity IS NOT NULL
+           AND (e.quantity IS NOT NULL OR EXISTS (SELECT 1 FROM harvest_loads hl WHERE hl.domain_event_id = e.id))
            AND p.field_id = $2
        )
        SELECT
@@ -1642,33 +1647,44 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
       [userId, fieldId]
     );
 
-    // Average kg/ha by crop, last 12 months
+    // Average kg/ha by crop, last 12 months. Same quantity fallback as
+    // harvestsMonthly: when the event has no aggregate quantity, fall back
+    // to SUM(harvest_loads.weight_kg) for that event.
     const { rows: yieldByCrop } = await pool.query(
-      `SELECT
-         e.crop,
-         AVG(
-           (e.quantity * CASE LOWER(COALESCE(e.unit, 'kg'))
-                           WHEN 'tn' THEN 1000
-                           WHEN 'tonelada' THEN 1000
-                           WHEN 'toneladas' THEN 1000
-                           WHEN 't' THEN 1000
-                           WHEN 'qq' THEN 100
-                           WHEN 'quintal' THEN 100
-                           WHEN 'quintales' THEN 100
-                           ELSE 1
-                         END) / NULLIF(p.area_hectares, 0)
-         )::numeric AS avg_kg_per_ha,
+      `WITH events_kg AS (
+         SELECT
+           e.crop,
+           p.area_hectares,
+           COALESCE(
+             e.quantity * CASE LOWER(COALESCE(e.unit, 'kg'))
+                            WHEN 'tn' THEN 1000
+                            WHEN 'tonelada' THEN 1000
+                            WHEN 'toneladas' THEN 1000
+                            WHEN 't' THEN 1000
+                            WHEN 'qq' THEN 100
+                            WHEN 'quintal' THEN 100
+                            WHEN 'quintales' THEN 100
+                            ELSE 1
+                          END,
+             (SELECT SUM(hl.weight_kg) FROM harvest_loads hl WHERE hl.domain_event_id = e.id)
+           )::numeric AS quantity_kg
+         FROM domain_events e
+         JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
+         WHERE e.user_id = $1
+           AND e.event_type = 'harvest'
+           AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
+           AND (e.quantity IS NOT NULL OR EXISTS (SELECT 1 FROM harvest_loads hl WHERE hl.domain_event_id = e.id))
+           AND p.area_hectares > 0
+           AND e.crop IS NOT NULL
+           AND p.field_id = $2
+       )
+       SELECT
+         crop,
+         AVG(quantity_kg / NULLIF(area_hectares, 0))::numeric AS avg_kg_per_ha,
          COUNT(*)::int AS harvests
-       FROM domain_events e
-       JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
-       WHERE e.user_id = $1
-         AND e.event_type = 'harvest'
-         AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
-         AND e.quantity IS NOT NULL
-         AND p.area_hectares > 0
-         AND e.crop IS NOT NULL
-         AND p.field_id = $2
-       GROUP BY e.crop
+       FROM events_kg
+       WHERE quantity_kg IS NOT NULL
+       GROUP BY crop
        ORDER BY avg_kg_per_ha DESC NULLS LAST`,
       [userId, fieldId]
     );
