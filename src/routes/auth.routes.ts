@@ -355,6 +355,12 @@ router.post('/subscription/cancel', requireAuth, async (req: Request, res: Respo
 router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.auth!.userId;
+    const fieldIdRaw = req.query.field_id;
+    const fieldId = typeof fieldIdRaw === 'string' ? parseInt(fieldIdRaw, 10) : NaN;
+    if (isNaN(fieldId)) {
+      res.status(400).json({ error: 'field_id query parameter is required' });
+      return;
+    }
     const accessibleFields = `SELECT field_id FROM field_members WHERE user_id = $1`;
 
     // Current month boundaries (Argentina TZ)
@@ -372,8 +378,9 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
        WHERE (user_id = $1 OR field_id IN (${accessibleFields}))
          AND deleted_at IS NULL
          AND expense_date >= $3::date
+         AND COALESCE(field_id, (SELECT field_id FROM plots WHERE id = expenses.plot_id)) = $4
        GROUP BY COALESCE(currency, 'ARS')`,
-      [userId, monthStart, prevMonthStart]
+      [userId, monthStart, prevMonthStart, fieldId]
     );
 
     // Incomes: current + previous month, split by currency.
@@ -386,8 +393,9 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
        WHERE (user_id = $1 OR field_id IN (${accessibleFields}))
          AND deleted_at IS NULL
          AND income_date >= $3::date
+         AND COALESCE(field_id, (SELECT field_id FROM plots WHERE id = incomes.plot_id)) = $4
        GROUP BY COALESCE(currency, 'ARS')`,
-      [userId, monthStart, prevMonthStart]
+      [userId, monthStart, prevMonthStart, fieldId]
     );
 
     // Activities count this month (excluding livestock-only events shown elsewhere)
@@ -396,8 +404,9 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
        FROM domain_events
        WHERE user_id = $1
          AND event_date >= $2::date
-         AND event_type NOT IN ('health_event', 'repro_event', 'weighing')`,
-      [userId, monthStart]
+         AND event_type NOT IN ('health_event', 'repro_event', 'weighing')
+         AND (plot_id IS NULL OR plot_id IN (SELECT id FROM plots WHERE field_id = $3))`,
+      [userId, monthStart, fieldId]
     );
 
     // Recent items: last 5 expenses + incomes + activities mixed
@@ -409,6 +418,7 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
         LEFT JOIN plots p ON e.plot_id = p.id
         WHERE (e.user_id = $1 OR e.field_id IN (${accessibleFields}))
           AND e.deleted_at IS NULL
+          AND COALESCE(e.field_id, p.field_id) = $2
         ORDER BY e.expense_date DESC, e.created_at DESC LIMIT 5)
        UNION ALL
        (SELECT 'income' AS type, i.id, i.description, i.amount, i.currency, NULL AS event_type,
@@ -418,6 +428,7 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
         LEFT JOIN plots p ON i.plot_id = p.id
         WHERE (i.user_id = $1 OR i.field_id IN (${accessibleFields}))
           AND i.deleted_at IS NULL
+          AND COALESCE(i.field_id, p.field_id) = $2
         ORDER BY i.income_date DESC, i.created_at DESC LIMIT 5)
        UNION ALL
        (SELECT 'activity' AS type, de.id, NULL AS description, NULL::numeric AS amount, NULL AS currency, de.event_type,
@@ -427,9 +438,10 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
         LEFT JOIN fields f ON p.field_id = f.id
         WHERE de.user_id = $1
           AND de.event_type NOT IN ('health_event', 'repro_event', 'weighing')
+          AND p.field_id = $2
         ORDER BY de.event_date DESC, de.created_at DESC LIMIT 5)
        ORDER BY date DESC LIMIT 5`,
-      [userId]
+      [userId, fieldId]
     );
 
     const [expensesRes, incomesRes, activitiesRes, recentRes] = await Promise.all([
@@ -482,7 +494,7 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
     try {
       const { LivestockRepository } = await import('../domain/livestock/livestock.repository.js');
       const livestockRepo = new LivestockRepository();
-      const total = await livestockRepo.countTotal(userId, {});
+      const total = await livestockRepo.countTotal(userId, { fieldId });
       result.livestock_total = total;
     } catch { /* livestock feature not available */ }
 
@@ -1399,6 +1411,12 @@ router.get('/documents/:id/file', requireAuth, requireFeature('documents'), asyn
 router.get('/analytics', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.auth!.userId;
+    const fieldIdRaw = req.query.field_id;
+    const fieldId = typeof fieldIdRaw === 'string' ? parseInt(fieldIdRaw, 10) : NaN;
+    if (isNaN(fieldId)) {
+      res.status(400).json({ error: 'field_id query parameter is required' });
+      return;
+    }
 
     // Monthly trend - last 6 months
     const { rows: monthlyTrend } = await pool.query(
@@ -1417,16 +1435,18 @@ router.get('/analytics', requireAuth, async (req: Request, res: Response) => {
            WHERE user_id = $1 AND deleted_at IS NULL AND currency = 'ARS'
              AND expense_date >= m.month_start
              AND expense_date < m.month_start + interval '1 month'
+             AND (field_id = $2 OR plot_id IN (SELECT id FROM plots WHERE field_id = $2))
          ), 0)::numeric AS expenses,
          COALESCE((
            SELECT SUM(amount) FROM incomes
            WHERE user_id = $1 AND deleted_at IS NULL AND currency = 'ARS'
              AND income_date >= m.month_start
              AND income_date < m.month_start + interval '1 month'
+             AND (field_id = $2 OR plot_id IN (SELECT id FROM plots WHERE field_id = $2))
          ), 0)::numeric AS incomes
        FROM months m
        ORDER BY m.month_start`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Rainfall - last 30 days
@@ -1438,9 +1458,10 @@ router.get('/analytics', requireAuth, async (req: Request, res: Response) => {
          JOIN fields f ON f.id = r.field_id
         WHERE f.user_id = $1 AND f.deleted_at IS NULL
           AND r.rainfall_date >= CURRENT_DATE - interval '30 days'
+          AND r.field_id = $2
         GROUP BY r.rainfall_date
         ORDER BY r.rainfall_date`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Expense breakdown - current month, grouped by (plot, category, currency).
@@ -1460,9 +1481,10 @@ router.get('/analytics', requireAuth, async (req: Request, res: Response) => {
        WHERE e.user_id = $1
          AND e.deleted_at IS NULL
          AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())
+         AND COALESCE(e.field_id, p.field_id) = $2
        GROUP BY e.plot_id, p.name, f.name, e.category, e.currency
        ORDER BY total DESC`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Income breakdown - same shape as expenses (per plot, per category, per currency).
@@ -1480,9 +1502,10 @@ router.get('/analytics', requireAuth, async (req: Request, res: Response) => {
        WHERE i.user_id = $1
          AND i.deleted_at IS NULL
          AND date_trunc('month', i.income_date) = date_trunc('month', NOW())
+         AND COALESCE(i.field_id, p.field_id) = $2
        GROUP BY i.plot_id, p.name, f.name, i.category, i.currency
        ORDER BY total DESC`,
-      [userId]
+      [userId, fieldId]
     );
 
     res.json({
@@ -1522,6 +1545,12 @@ router.get('/analytics', requireAuth, async (req: Request, res: Response) => {
 router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
   try {
     const userId = req.auth!.userId;
+    const fieldIdRaw = req.query.field_id;
+    const fieldId = typeof fieldIdRaw === 'string' ? parseInt(fieldIdRaw, 10) : NaN;
+    if (isNaN(fieldId)) {
+      res.status(400).json({ error: 'field_id query parameter is required' });
+      return;
+    }
 
     // Last 12 months of rainfall, monthly total in mm
     const { rows: rainfallMonthly } = await pool.query(
@@ -1543,10 +1572,11 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
              AND f.deleted_at IS NULL
              AND r.rainfall_date >= m.month_start
              AND r.rainfall_date < m.month_start + interval '1 month'
+             AND r.field_id = $2
          ), 0) AS mm
        FROM months m
        ORDER BY m.month_start`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Last 12 months of harvest events — yield computed from quantity / area
@@ -1573,6 +1603,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
            AND e.event_type = 'harvest'
            AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
            AND e.quantity IS NOT NULL
+           AND p.field_id = $2
        )
        SELECT
          to_char(date_trunc('month', event_date), 'YYYY-MM') AS month,
@@ -1583,7 +1614,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
          CASE WHEN area_hectares > 0 THEN (quantity_kg / area_hectares)::numeric ELSE NULL END AS yield_kg_per_ha
        FROM harvests
        ORDER BY event_date`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Latest scouting per plot (joined with field for the map)
@@ -1606,8 +1637,9 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
        WHERE s.user_id = $1
          AND s.deleted_at IS NULL
          AND f.deleted_at IS NULL
+         AND p.field_id = $2
        ORDER BY s.plot_id, s.scouting_date DESC, s.id DESC`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Average kg/ha by crop, last 12 months
@@ -1635,9 +1667,10 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
          AND e.quantity IS NOT NULL
          AND p.area_hectares > 0
          AND e.crop IS NOT NULL
+         AND p.field_id = $2
        GROUP BY e.crop
        ORDER BY avg_kg_per_ha DESC NULLS LAST`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Harvest loads with humidity AND quality_metrics, last 12 months
@@ -1657,8 +1690,9 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
          AND hl.humidity_pct IS NOT NULL
          AND hl.quality_metrics IS NOT NULL
          AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
+         AND p.field_id = $2
        ORDER BY e.event_date DESC`,
-      [userId]
+      [userId, fieldId]
     );
 
     res.json({
@@ -1710,15 +1744,21 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
 router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {
     const userId = req.auth!.userId;
+    const fieldIdRaw = req.query.field_id;
+    const fieldId = typeof fieldIdRaw === 'string' ? parseInt(fieldIdRaw, 10) : NaN;
+    if (isNaN(fieldId)) {
+      res.status(400).json({ error: 'field_id query parameter is required' });
+      return;
+    }
 
     // Current stock summed by category
     const { rows: stockByCategory } = await pool.query(
       `SELECT category::text AS category, SUM(count)::int AS headcount
        FROM livestock_groups
-       WHERE user_id = $1 AND deleted_at IS NULL
+       WHERE user_id = $1 AND deleted_at IS NULL AND field_id = $2
        GROUP BY category
        ORDER BY headcount DESC`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Monthly net movements per category, last 12 months. Convention:
@@ -1749,6 +1789,11 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
          FROM livestock_movements m
          WHERE m.user_id = $1
            AND m.movement_date >= date_trunc('month', NOW()) - interval '11 months'
+           AND (
+             (m.source_group_id IS NOT NULL AND EXISTS (SELECT 1 FROM livestock_groups WHERE id = m.source_group_id AND field_id = $2))
+             OR
+             (m.dest_group_id IS NOT NULL AND EXISTS (SELECT 1 FROM livestock_groups WHERE id = m.dest_group_id AND field_id = $2))
+           )
        )
        SELECT
          to_char(months.month_start, 'YYYY-MM') AS month,
@@ -1759,7 +1804,7 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
        LEFT JOIN moves ON moves.month_start = months.month_start
        GROUP BY months.month_start, moves.category
        ORDER BY months.month_start, moves.category`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Per-group weight curve for groups currently in any corral, last 12 months
@@ -1781,8 +1826,9 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
          AND e.event_type = 'weighing'
          AND e.event_date >= NOW() - interval '12 months'
          AND e.quantity IS NOT NULL
+         AND g.field_id = $2
        ORDER BY g.id, e.event_date`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Latest avg weight per category, only weighings from last 90 days
@@ -1797,8 +1843,13 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
          AND e.event_date >= CURRENT_DATE - interval '90 days'
          AND e.animal_category IS NOT NULL
          AND e.quantity IS NOT NULL
+         AND (
+           (e.plot_id IS NOT NULL AND EXISTS (SELECT 1 FROM plots WHERE id = e.plot_id AND field_id = $2))
+           OR
+           (e.corral_id IS NOT NULL AND EXISTS (SELECT 1 FROM corrals c JOIN feedlots fl ON fl.id = c.feedlot_id WHERE c.id = e.corral_id AND fl.field_id = $2))
+         )
        ORDER BY e.animal_category, e.event_date DESC`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Health events by month + sub-type, last 12 months
@@ -1812,9 +1863,14 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
        WHERE e.user_id = $1
          AND e.event_type = 'health_event'
          AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
+         AND (
+           (e.plot_id IS NOT NULL AND EXISTS (SELECT 1 FROM plots WHERE id = e.plot_id AND field_id = $2))
+           OR
+           (e.corral_id IS NOT NULL AND EXISTS (SELECT 1 FROM corrals c JOIN feedlots fl ON fl.id = c.feedlot_id WHERE c.id = e.corral_id AND fl.field_id = $2))
+         )
        GROUP BY 1, 2, 3
        ORDER BY 1, 3`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Repro events by month + sub-type, last 12 months
@@ -1828,9 +1884,14 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
        WHERE e.user_id = $1
          AND e.event_type = 'repro_event'
          AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
+         AND (
+           (e.plot_id IS NOT NULL AND EXISTS (SELECT 1 FROM plots WHERE id = e.plot_id AND field_id = $2))
+           OR
+           (e.corral_id IS NOT NULL AND EXISTS (SELECT 1 FROM corrals c JOIN feedlots fl ON fl.id = c.feedlot_id WHERE c.id = e.corral_id AND fl.field_id = $2))
+         )
        GROUP BY 1, 2, 3
        ORDER BY 1, 3`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Feedlot occupancy per corral
@@ -1841,7 +1902,7 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
          c.capacity,
          COALESCE(SUM(g.count), 0)::int AS current_headcount
        FROM corrals c
-       JOIN feedlots f ON f.id = c.feedlot_id
+       JOIN feedlots f ON f.id = c.feedlot_id AND f.field_id = $2
        LEFT JOIN livestock_groups g
          ON g.corral_id = c.id
         AND g.deleted_at IS NULL
@@ -1850,7 +1911,7 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
          AND f.deleted_at IS NULL
        GROUP BY c.id, c.name, c.capacity
        ORDER BY c.name`,
-      [userId]
+      [userId, fieldId]
     );
 
     // Stitch monthly deltas into the headcount trend (one row per month with byCategory map).
