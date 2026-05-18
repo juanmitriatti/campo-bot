@@ -9,12 +9,13 @@ import AlertsBanner from './AlertsBanner';
 import FieldMap from './FieldMap';
 
 interface Props {
+  fieldId: number | null;
   onRecentItemClick?: (type: 'expense' | 'income' | 'activity', id: number) => void;
 }
 
-export default function OverviewSummaryView({ onRecentItemClick }: Props) {
-  const { data, loading: dashLoading, error: dashError, refresh: dashRefresh } = useDashboardData();
-  const analytics = useAnalyticsData();
+export default function OverviewSummaryView({ fieldId, onRecentItemClick }: Props) {
+  const { data, loading: dashLoading, error: dashError, refresh: dashRefresh } = useDashboardData(fieldId);
+  const analytics = useAnalyticsData(fieldId);
 
   if (dashLoading || analytics.loading) {
     return (

@@ -4,8 +4,12 @@ import ScoutingFieldMap from './charts/ScoutingFieldMap';
 import YieldByCropChart from './charts/YieldByCropChart';
 import HarvestQualityVsHumidityScatter from './charts/HarvestQualityVsHumidityScatter';
 
-export default function OverviewAgronomicView() {
-  const { data, loading, error, refresh } = useAgronomicAnalyticsData();
+interface Props {
+  fieldId: number | null;
+}
+
+export default function OverviewAgronomicView({ fieldId }: Props) {
+  const { data, loading, error, refresh } = useAgronomicAnalyticsData(fieldId);
 
   if (loading) {
     return (

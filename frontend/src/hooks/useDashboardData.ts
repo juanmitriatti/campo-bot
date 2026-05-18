@@ -3,6 +3,7 @@ import { apiRequest } from '../api/client';
 
 interface RecentItem {
   type: 'expense' | 'income' | 'activity';
+  id: number;
   description: string | null;
   amount: number | null;
   currency: string | null;
@@ -12,7 +13,18 @@ interface RecentItem {
   plot_name: string | null;
 }
 
+export interface CurrencyMap {
+  ARS: number;
+  USD: number;
+}
+
 export interface DashboardData {
+  // New shape — split by currency
+  expenses_month: CurrencyMap;
+  expenses_prev_month: CurrencyMap;
+  incomes_month: CurrencyMap;
+  incomes_prev_month: CurrencyMap;
+  // Backward-compatible flat fields (ARS only)
   expenses_month_ars: number;
   expenses_prev_month_ars: number;
   incomes_month_ars: number;
@@ -23,23 +35,24 @@ export interface DashboardData {
   livestock_total?: number;
 }
 
-export function useDashboardData() {
+export function useDashboardData(fieldId: number | null) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (fieldId == null) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const result = await apiRequest<DashboardData>('/dashboard');
+      const result = await apiRequest<DashboardData>(`/dashboard?field_id=${fieldId}`);
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar resumen');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fieldId]);
 
   useEffect(() => {
     refresh();

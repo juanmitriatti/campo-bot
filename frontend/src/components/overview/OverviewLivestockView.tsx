@@ -7,8 +7,12 @@ import FeedlotWeightCurveChart from './charts/FeedlotWeightCurveChart';
 import LivestockHealthEventsChart from './charts/LivestockHealthEventsChart';
 import LivestockReproEventsChart from './charts/LivestockReproEventsChart';
 
-export default function OverviewLivestockView() {
-  const { data, loading, error, refresh } = useLivestockAnalyticsData();
+interface Props {
+  fieldId: number | null;
+}
+
+export default function OverviewLivestockView({ fieldId }: Props) {
+  const { data, loading, error, refresh } = useLivestockAnalyticsData(fieldId);
 
   if (loading) {
     return (

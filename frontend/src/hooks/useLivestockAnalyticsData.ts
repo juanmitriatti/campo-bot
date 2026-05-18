@@ -48,23 +48,24 @@ export interface LivestockAnalyticsData {
   feedlotOccupancy: FeedlotOccupancyRow[];
 }
 
-export function useLivestockAnalyticsData() {
+export function useLivestockAnalyticsData(fieldId: number | null) {
   const [data, setData] = useState<LivestockAnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (fieldId == null) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const json = await apiRequest<LivestockAnalyticsData>('/analytics/livestock');
+      const json = await apiRequest<LivestockAnalyticsData>(`/analytics/livestock?field_id=${fieldId}`);
       setData(json);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar dashboard ganadero');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fieldId]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
