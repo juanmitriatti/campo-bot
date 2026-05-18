@@ -1707,6 +1707,213 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
   }
 });
 
+router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const userId = req.auth!.userId;
+
+    // Current stock summed by category
+    const { rows: stockByCategory } = await pool.query(
+      `SELECT category::text AS category, SUM(count)::int AS headcount
+       FROM livestock_groups
+       WHERE user_id = $1 AND deleted_at IS NULL
+       GROUP BY category
+       ORDER BY headcount DESC`,
+      [userId]
+    );
+
+    // Monthly net movements per category, last 12 months. Convention:
+    // entrada / nacimiento → +count to dest category
+    // salida   / muerte    → -count from source category
+    // For transfer / recategorizacion we use the dest category for the +,
+    // and the source category for the -.
+    const { rows: monthlyDelta } = await pool.query(
+      `WITH months AS (
+         SELECT generate_series(
+           date_trunc('month', NOW()) - interval '11 months',
+           date_trunc('month', NOW()),
+           '1 month'
+         )::date AS month_start
+       ),
+       moves AS (
+         SELECT
+           date_trunc('month', m.movement_date)::date AS month_start,
+           CASE
+             WHEN m.movement_type IN ('entrada','nacimiento') THEN (SELECT category::text FROM livestock_groups WHERE id = m.dest_group_id)
+             WHEN m.movement_type IN ('salida','muerte') THEN (SELECT category::text FROM livestock_groups WHERE id = m.source_group_id)
+             WHEN m.movement_type IN ('transferencia','recategorizacion','ajuste') THEN (SELECT category::text FROM livestock_groups WHERE id = COALESCE(m.dest_group_id, m.source_group_id))
+           END AS category,
+           CASE
+             WHEN m.movement_type IN ('entrada','nacimiento','transferencia','recategorizacion','ajuste') THEN m.count
+             ELSE -m.count
+           END AS delta
+         FROM livestock_movements m
+         WHERE m.user_id = $1
+           AND m.movement_date >= date_trunc('month', NOW()) - interval '11 months'
+       )
+       SELECT
+         to_char(months.month_start, 'YYYY-MM') AS month,
+         to_char(months.month_start, 'Mon') AS label,
+         moves.category,
+         COALESCE(SUM(moves.delta), 0)::int AS delta
+       FROM months
+       LEFT JOIN moves ON moves.month_start = months.month_start
+       GROUP BY months.month_start, moves.category
+       ORDER BY months.month_start, moves.category`,
+      [userId]
+    );
+
+    // Per-group weight curve for groups currently in any corral, last 12 months
+    const { rows: feedlotWeightCurve } = await pool.query(
+      `SELECT
+         g.id AS group_id,
+         g.category::text AS category,
+         g.breed,
+         c.name AS corral_name,
+         e.event_date,
+         e.quantity::numeric AS avg_weight_kg
+       FROM domain_events e
+       JOIN corrals c ON c.id = e.corral_id
+       JOIN livestock_groups g
+         ON g.corral_id = c.id
+        AND g.category::text = e.animal_category
+        AND g.deleted_at IS NULL
+       WHERE e.user_id = $1
+         AND e.event_type = 'weighing'
+         AND e.event_date >= NOW() - interval '12 months'
+         AND e.quantity IS NOT NULL
+       ORDER BY g.id, e.event_date`,
+      [userId]
+    );
+
+    // Latest avg weight per category, only weighings from last 90 days
+    const { rows: avgWeightByCategory } = await pool.query(
+      `SELECT DISTINCT ON (e.animal_category)
+         e.animal_category::text AS category,
+         e.quantity::numeric AS avg_weight_kg,
+         e.event_date AS last_weighed_at
+       FROM domain_events e
+       WHERE e.user_id = $1
+         AND e.event_type = 'weighing'
+         AND e.event_date >= CURRENT_DATE - interval '90 days'
+         AND e.animal_category IS NOT NULL
+         AND e.quantity IS NOT NULL
+       ORDER BY e.animal_category, e.event_date DESC`,
+      [userId]
+    );
+
+    // Health events by month + sub-type, last 12 months
+    const { rows: healthEventsMonthly } = await pool.query(
+      `SELECT
+         to_char(date_trunc('month', e.event_date), 'YYYY-MM') AS month,
+         to_char(date_trunc('month', e.event_date), 'Mon') AS label,
+         e.product_type AS type,
+         COUNT(*)::int AS n
+       FROM domain_events e
+       WHERE e.user_id = $1
+         AND e.event_type = 'health_event'
+         AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
+       GROUP BY 1, 2, 3
+       ORDER BY 1, 3`,
+      [userId]
+    );
+
+    // Repro events by month + sub-type, last 12 months
+    const { rows: reproEventsMonthly } = await pool.query(
+      `SELECT
+         to_char(date_trunc('month', e.event_date), 'YYYY-MM') AS month,
+         to_char(date_trunc('month', e.event_date), 'Mon') AS label,
+         e.product_type AS type,
+         COUNT(*)::int AS n
+       FROM domain_events e
+       WHERE e.user_id = $1
+         AND e.event_type = 'repro_event'
+         AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
+       GROUP BY 1, 2, 3
+       ORDER BY 1, 3`,
+      [userId]
+    );
+
+    // Feedlot occupancy per corral
+    const { rows: feedlotOccupancy } = await pool.query(
+      `SELECT
+         c.id AS corral_id,
+         c.name AS corral_name,
+         c.capacity,
+         COALESCE(SUM(g.count), 0)::int AS current_headcount
+       FROM corrals c
+       JOIN feedlots f ON f.id = c.feedlot_id
+       LEFT JOIN livestock_groups g
+         ON g.corral_id = c.id
+        AND g.deleted_at IS NULL
+       WHERE c.deleted_at IS NULL
+         AND f.user_id = $1
+         AND f.deleted_at IS NULL
+       GROUP BY c.id, c.name, c.capacity
+       ORDER BY c.name`,
+      [userId]
+    );
+
+    // Stitch monthly deltas into the headcount trend (one row per month with byCategory map).
+    // We don't reconstruct historic stock here — we expose the *deltas*, which is enough
+    // for an area chart of monthly movement. (Computing historic stock would require
+    // running totals back to time 0; not needed for the dashboard.)
+    const trendMap = new Map<string, { month: string; label: string; byCategory: Record<string, number> }>();
+    for (const r of monthlyDelta) {
+      const key = r.month;
+      const existing: { month: string; label: string; byCategory: Record<string, number> } = trendMap.get(key) ?? { month: r.month, label: r.label, byCategory: {} };
+      if (r.category) existing.byCategory[r.category] = (existing.byCategory[r.category] ?? 0) + Number(r.delta);
+      trendMap.set(key, existing);
+    }
+
+    // Stitch monthly health/repro event counts into the same per-month-by-type shape.
+    const eventsToMonthly = (rows: Array<{ month: string; label: string; type: string | null; n: number }>) => {
+      const map = new Map<string, { month: string; label: string; byType: Record<string, number> }>();
+      for (const r of rows) {
+        const k = r.month;
+        const ex = map.get(k) ?? { month: r.month, label: r.label, byType: {} };
+        if (r.type) ex.byType[r.type] = (ex.byType[r.type] ?? 0) + Number(r.n);
+        map.set(k, ex);
+      }
+      return [...map.values()].sort((a, b) => a.month.localeCompare(b.month));
+    };
+
+    // Group feedlot points into per-group time series
+    const groupMap = new Map<string, { groupId: string; groupLabel: string; corralName: string; points: Array<{ date: string; avgWeightKg: number }> }>();
+    for (const r of feedlotWeightCurve) {
+      const id = String(r.group_id);
+      const ex: { groupId: string; groupLabel: string; corralName: string; points: Array<{ date: string; avgWeightKg: number }> } = groupMap.get(id) ?? {
+        groupId: id,
+        groupLabel: `${r.category}${r.breed ? ' ' + r.breed : ''}`,
+        corralName: r.corral_name,
+        points: [],
+      };
+      ex.points.push({ date: r.event_date, avgWeightKg: Number(r.avg_weight_kg) });
+      groupMap.set(id, ex);
+    }
+
+    res.json({
+      stockByCategory: stockByCategory.map(r => ({ category: r.category, headcount: Number(r.headcount) })),
+      headcountTrendMonthly: [...trendMap.values()].sort((a, b) => a.month.localeCompare(b.month)),
+      feedlotWeightCurve: [...groupMap.values()],
+      avgWeightByCategory: avgWeightByCategory.map(r => ({
+        category: r.category,
+        avgWeightKg: Number(r.avg_weight_kg),
+        lastWeighedAt: r.last_weighed_at,
+      })),
+      healthEventsMonthly: eventsToMonthly(healthEventsMonthly as Array<{ month: string; label: string; type: string | null; n: number }>),
+      reproEventsMonthly: eventsToMonthly(reproEventsMonthly as Array<{ month: string; label: string; type: string | null; n: number }>),
+      feedlotOccupancy: feedlotOccupancy.map(r => ({
+        corralId: Number(r.corral_id),
+        corralName: r.corral_name,
+        capacity: r.capacity !== null ? Number(r.capacity) : null,
+        currentHeadcount: Number(r.current_headcount),
+      })),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
 // --- Map data ---
 
 router.get('/map-data', requireAuth, async (req: Request, res: Response) => {
