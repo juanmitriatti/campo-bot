@@ -149,8 +149,9 @@ export class ObservationService {
     let paramIdx = 1;
 
     if (filters.fieldId) {
+      // Match observations belonging to the field directly OR via their plot.
       paramIdx++;
-      conditions.push(`o.field_id = $${paramIdx}`);
+      conditions.push(`(o.field_id = $${paramIdx} OR o.plot_id IN (SELECT id FROM plots WHERE field_id = $${paramIdx}))`);
       params.push(filters.fieldId);
     }
     if (filters.plotId) {
@@ -201,8 +202,14 @@ export class ObservationService {
   }
 
   async getUserFieldsWithPlots(userId: number): Promise<{ id: number; name: string; plots: { id: number; name: string }[] }[]> {
+    // Include own fields AND shared (field_members). The previous query only
+    // included shared ones, so users who only owned their fields saw an empty
+    // dropdown.
     const { rows: fields } = await pool.query(
-      `SELECT id, name FROM fields WHERE id IN (SELECT field_id FROM field_members WHERE user_id = $1) AND deleted_at IS NULL ORDER BY name`,
+      `SELECT id, name FROM fields
+        WHERE (user_id = $1 OR id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+          AND deleted_at IS NULL
+        ORDER BY name`,
       [userId]
     );
     const { rows: plots } = await pool.query(
@@ -298,8 +305,12 @@ export class ObservationService {
     let paramIdx = 1;
 
     if (filters.fieldId) {
+      // An expense belongs to a field either directly (field_id) or via its
+      // plot (plot.field_id). The bot often sets only plot_id and leaves
+      // field_id null, so a strict `e.field_id = X` filter would silently
+      // drop those rows.
       paramIdx++;
-      conditions.push(`e.field_id = $${paramIdx}`);
+      conditions.push(`(e.field_id = $${paramIdx} OR e.plot_id IN (SELECT id FROM plots WHERE field_id = $${paramIdx}))`);
       params.push(filters.fieldId);
     }
     if (filters.plotId) {
@@ -372,8 +383,9 @@ export class ObservationService {
     let paramIdx = 1;
 
     if (filters.fieldId) {
+      // Match incomes belonging to the field directly OR via their plot.
       paramIdx++;
-      conditions.push(`i.field_id = $${paramIdx}`);
+      conditions.push(`(i.field_id = $${paramIdx} OR i.plot_id IN (SELECT id FROM plots WHERE field_id = $${paramIdx}))`);
       params.push(filters.fieldId);
     }
     if (filters.plotId) {

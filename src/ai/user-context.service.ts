@@ -140,7 +140,8 @@ export class UserContextService {
     const result = await pool.query(
       `SELECT c.name FROM corrals c
        JOIN feedlots fl ON c.feedlot_id = fl.id
-       WHERE fl.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1)
+       JOIN fields f ON f.id = fl.field_id
+       WHERE (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
          AND c.deleted_at IS NULL AND fl.deleted_at IS NULL
        ORDER BY c.name`,
       [userId],
@@ -151,7 +152,8 @@ export class UserContextService {
   private async loadFeedlotNames(userId: UserId): Promise<string[]> {
     const result = await pool.query(
       `SELECT fl.name FROM feedlots fl
-       WHERE fl.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1)
+       JOIN fields f ON f.id = fl.field_id
+       WHERE (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
          AND fl.deleted_at IS NULL
        ORDER BY fl.name`,
       [userId],

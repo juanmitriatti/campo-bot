@@ -1,0 +1,242 @@
+[
+  {
+    "id": "01",
+    "name": "add_stock + linked expense",
+    "category": "stock",
+    "bot_response": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*\n  🏭 Principal (consistency)\n  💰 Gasto registrado: $200.000",
+    "db_state_excerpt": "stock=100lt, mov=100/entrada, expense=$200000 (id=225, mov.expense_id=225)",
+    "asserts": [
+      {
+        "name": "bot-says-100-lt",
+        "pass": true,
+        "expected": "contains \"100 lt\"",
+        "actual": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*"
+      },
+      {
+        "name": "bot-says-gasto-200000",
+        "pass": true,
+        "expected": "contains \"200.000\"",
+        "actual": "📥 *Stock actualizado*\n\n  📦 *glifosato* (nuevo)\n  ➕ 100 lt\n  📊 Total: *100 lt*"
+      },
+      {
+        "name": "db-stock-items-count",
+        "pass": true,
+        "expected": "1",
+        "actual": "1"
+      },
+      {
+        "name": "db-stock-quantity",
+        "pass": true,
+        "expected": "100",
+        "actual": "100"
+      },
+      {
+        "name": "db-stock-movement-quantity",
+        "pass": true,
+        "expected": "100",
+        "actual": "100"
+      },
+      {
+        "name": "db-stock-movement-type",
+        "pass": true,
+        "expected": "entrada",
+        "actual": "entrada"
+      },
+      {
+        "name": "db-expense-amount",
+        "pass": true,
+        "expected": "200000",
+        "actual": "200000"
+      },
+      {
+        "name": "db-stock-movement-linked-to-expense",
+        "pass": true,
+        "expected": "225",
+        "actual": "225"
+      }
+    ],
+    "status": "CONSISTENT"
+  },
+  {
+    "id": "02",
+    "name": "harvest yield rate→total",
+    "category": "harvest",
+    "bot_response": "🌾 *soja* cosechado en *consistency > A1*\n📅 Campaña 2025/26\n📊 Rendimiento: 225.000 kg (4.500 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈",
+    "db_state_excerpt": "plot_crops.yield_kg=225000 (esperado 225000)",
+    "asserts": [
+      {
+        "name": "bot-says-225k",
+        "pass": true,
+        "expected": "contains \"225.000\"",
+        "actual": "🌾 *soja* cosechado en *consistency > A1*\n📅 Campaña 2025/26\n📊 Rendimiento: 225"
+      },
+      {
+        "name": "bot-says-4500-kg-ha",
+        "pass": true,
+        "expected": "contains \"4.500 kg/ha\"",
+        "actual": "🌾 *soja* cosechado en *consistency > A1*\n📅 Campaña 2025/26\n📊 Rendimiento: 225"
+      },
+      {
+        "name": "db-yield-kg",
+        "pass": true,
+        "expected": "225000",
+        "actual": "225000"
+      },
+      {
+        "name": "db-crop",
+        "pass": true,
+        "expected": "soja",
+        "actual": "soja"
+      }
+    ],
+    "status": "CONSISTENT"
+  },
+  {
+    "id": "03",
+    "name": "rainfall mm consistency",
+    "category": "rainfall",
+    "bot_response": "🌧️ Lluvia registrada: *25mm*\n📍 consistency\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)",
+    "db_state_excerpt": "rainfall.mm=undefined, field=consistency",
+    "asserts": [
+      {
+        "name": "bot-says-25mm",
+        "pass": true,
+        "expected": "contains \"25mm\"",
+        "actual": "🌧️ Lluvia registrada: *25mm*\n📍 consistency\n\n⚠️ *Alerta:* Acumulado hoy *25mm* "
+      },
+      {
+        "name": "db-mm",
+        "pass": true,
+        "expected": "25",
+        "actual": "25"
+      },
+      {
+        "name": "db-field-consistency",
+        "pass": true,
+        "expected": "contains \"consistency\"",
+        "actual": "consistency"
+      }
+    ],
+    "status": "CONSISTENT"
+  },
+  {
+    "id": "04",
+    "name": "batch plot area persisted",
+    "category": "plots",
+    "bot_response": "📍 Lotes creados en campo *batchtest*:\n  • *B1* — 80 ha\n  • *B2* — 80 ha\n  • *B3* — 80 ha\n¿Próximo paso?",
+    "db_state_excerpt": "plots: B1=80ha, B2=80ha, B3=80ha",
+    "asserts": [
+      {
+        "name": "bot-says-80-ha",
+        "pass": true,
+        "expected": "contains \"80 ha\"",
+        "actual": "📍 Lotes creados en campo *batchtest*:\n  • *B1* — 80 ha\n  • *B2* — 80 ha\n  • *B3"
+      },
+      {
+        "name": "db-3-plots",
+        "pass": true,
+        "expected": "3",
+        "actual": "3"
+      },
+      {
+        "name": "db-B1-area",
+        "pass": true,
+        "expected": "80",
+        "actual": "80"
+      },
+      {
+        "name": "db-B2-area",
+        "pass": true,
+        "expected": "80",
+        "actual": "80"
+      },
+      {
+        "name": "db-B3-area",
+        "pass": true,
+        "expected": "80",
+        "actual": "80"
+      }
+    ],
+    "status": "CONSISTENT"
+  },
+  {
+    "id": "05",
+    "name": "livestock purchase + linked expense",
+    "category": "livestock",
+    "bot_response": "🐄 *Hacienda actualizada*\n\n  Vaca Angus (nuevo grupo)\n  ➕ 50 animales\n  📊 Total: *50*\n  📍 A1 (consistency)\n  💸 Gasto registrado: $30.000.000 (Hacienda)",
+    "db_state_excerpt": "livestock.qty=undefined, mov.qty=undefined, mov.linked_expense=226, exp.amount=30000000",
+    "asserts": [
+      {
+        "name": "bot-says-50",
+        "pass": true,
+        "expected": "contains \"50\"",
+        "actual": "🐄 *Hacienda actualizada*\n\n  Vaca Angus (nuevo grupo)\n  ➕ 50 animales\n  📊 Total"
+      },
+      {
+        "name": "bot-says-vaca",
+        "pass": true,
+        "expected": "contains \"vaca\"",
+        "actual": "🐄 *hacienda actualizada*\n\n  vaca angus (nuevo grupo)\n  ➕ 50 animales\n  📊 total"
+      },
+      {
+        "name": "db-livestock-count",
+        "pass": true,
+        "expected": "50",
+        "actual": "50"
+      },
+      {
+        "name": "db-movement-count",
+        "pass": true,
+        "expected": "50",
+        "actual": "50"
+      },
+      {
+        "name": "db-movement-has-expense-link",
+        "pass": true,
+        "expected": "true",
+        "actual": "true"
+      },
+      {
+        "name": "db-linked-expense-amount",
+        "pass": true,
+        "expected": "30000000",
+        "actual": "30000000"
+      }
+    ],
+    "status": "CONSISTENT"
+  },
+  {
+    "id": "06",
+    "name": "USD income persisted correctly",
+    "category": "income",
+    "bot_response": "💰 Listo, ingreso registrado\nSoja\n$9.000 USD\n30 tn a $300\n📍 Lote A1 (consistency)\n📈 Resultado del mes hasta ahora\n\nIngresos: $9.000\nGastos: $30.200.000\nResultado: $-30.191.000\nMargen: -335456%",
+    "db_state_excerpt": "income.amount=9000, currency=USD, category=Soja",
+    "asserts": [
+      {
+        "name": "bot-says-9000-or-9-mil",
+        "pass": true,
+        "expected": "contains \"9\"",
+        "actual": "💰 Listo, ingreso registrado\nSoja\n$9.000 USD\n30 tn a $300\n📍 Lote A1 (consistenc"
+      },
+      {
+        "name": "db-amount",
+        "pass": true,
+        "expected": "9000",
+        "actual": "9000"
+      },
+      {
+        "name": "db-currency",
+        "pass": true,
+        "expected": "USD",
+        "actual": "USD"
+      },
+      {
+        "name": "db-category",
+        "pass": true,
+        "expected": "Soja",
+        "actual": "Soja"
+      }
+    ],
+    "status": "CONSISTENT"
+  }
+]

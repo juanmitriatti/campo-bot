@@ -34,6 +34,20 @@ export function getMonthlyReportForMonth(userId: number, month: number, year: nu
 export function getWeeklyReport(userId: number): Promise<Array<{ category: string; total: string | number }>>;
 export function getDateRangeReport(userId: number, desde: Date, hasta: Date): Promise<Array<{ category: string; total: string | number }>>;
 export function getMonthlyExpenses(userId: number): Promise<Array<{ id: number; category: string; amount: string | number; description: string; currency: string; user_id: number; field_id: number | null; expense_date: Date; created_at: Date; deleted_at: Date | null }>>;
+export interface MovementRow { id: number; date: Date | string; category: string; description: string | null; product?: string | null; amount: string | number; currency: string; quantity?: string | number | null; unit?: string | null; field_name: string | null; plot_name: string | null }
+export function getMovementsInRange(userId: number, desde: Date | string, hasta: Date | string, opts?: { fieldName?: string | null; plotName?: string | null; category?: string | null; type?: 'expenses' | 'incomes' | 'both'; limit?: number }): Promise<{ expenses: MovementRow[]; incomes: MovementRow[] }>;
+export interface MovementsFilter {
+  fieldName?: string | null; plotName?: string | null;
+  desde?: Date | string | null; hasta?: Date | string | null;
+  category?: string | null; categories?: string[]; excludeCategories?: string[];
+  currency?: string | null;
+  amountMin?: number | null; amountMax?: number | null;
+  descriptionSearch?: string | null;
+  type?: 'expenses' | 'incomes' | 'both';
+  sortBy?: 'date' | 'amount'; sortDesc?: boolean;
+  limit?: number;
+}
+export function queryMovements(userId: number, opts?: MovementsFilter): Promise<{ expenses: MovementRow[]; incomes: MovementRow[] }>;
 export function getMonthlyIncomeReport(userId: number): Promise<Array<{ category: string; total: string | number }>>;
 export function getMonthlyIncomeForMonth(userId: number, month: number, year: number): Promise<Array<{ category: string; total: string | number }>>;
 export function getMonthlyResult(userId: number): Promise<{ ingresos: string | number; gastos: string | number }>;

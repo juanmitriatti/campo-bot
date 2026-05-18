@@ -3,6 +3,7 @@ import { apiRequest } from '../api/client';
 import ObservationEditModal from './ObservationEditModal';
 import ObservationCard from './cards/ObservationCard';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useSortableTable } from '../hooks/useSortableTable';
 
 interface Observation {
   id: number;
@@ -62,15 +63,30 @@ export default function ObservationTable() {
   const [plotId, setPlotId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [obsSearch, setObsSearch] = useState('');
 
   const limit = 10;
 
   // Load filter options once
   useEffect(() => {
     apiRequest<FiltersResponse>('/observations/filters')
-      .then(r => setFields(r.fields))
+      .then(r => {
+        setFields(r.fields);
+        if (r.fields.length === 1) setFieldId(String(r.fields[0].id));
+      })
       .catch(() => {});
   }, []);
+
+  // Auto-pick the only plot when there's just one
+  useEffect(() => {
+    const allPlots = fields.flatMap(f => f.plots);
+    const candidatePlots = fieldId
+      ? fields.find(f => f.id === Number(fieldId))?.plots ?? []
+      : allPlots;
+    if (candidatePlots.length === 1 && !plotId) {
+      setPlotId(String(candidatePlots[0].id));
+    }
+  }, [fields, fieldId, plotId]);
 
   const fetchObservations = useCallback(async () => {
     setLoading(true);
@@ -106,14 +122,33 @@ export default function ObservationTable() {
   };
 
   const clearFilters = () => {
-    setFieldId('');
+    setFieldId(fields.length === 1 ? String(fields[0].id) : '');
     setPlotId('');
     setDateFrom('');
     setDateTo('');
+    setObsSearch('');
     setPage(1);
   };
 
-  const hasFilters = fieldId || plotId || dateFrom || dateTo;
+  const hasFilters = fieldId || plotId || dateFrom || dateTo || obsSearch.trim();
+
+  const filteredObservations = (data?.observations ?? []).filter(o => {
+    if (!obsSearch.trim()) return true;
+    return o.observation_text.toLowerCase().includes(obsSearch.trim().toLowerCase());
+  });
+
+  const { sorted: sortedObservations, toggleSort, arrow } = useSortableTable<typeof filteredObservations[0], 'date' | 'category' | 'observation' | 'field' | 'plot'>(filteredObservations, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'date': return row.created_at;
+        case 'category': return row.category;
+        case 'observation': return row.observation_text.toLowerCase();
+        case 'field': return (row.field_name || '').toLowerCase();
+        case 'plot': return (row.plot_name || '').toLowerCase();
+      }
+    },
+    initial: { key: 'date', direction: 'desc' },
+  });
 
   const availablePlots = fieldId
     ? fields.find(f => f.id === Number(fieldId))?.plots ?? []
@@ -175,7 +210,7 @@ export default function ObservationTable() {
             onChange={e => handleFieldChange(e.target.value)}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
           >
-            <option value="">Todos</option>
+            {fields.length !== 1 && <option value="">Todos</option>}
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
@@ -187,9 +222,19 @@ export default function ObservationTable() {
             disabled={!fieldId}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:opacity-40"
           >
-            <option value="">Todos</option>
+            {availablePlots.length !== 1 && <option value="">Todos</option>}
             {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Observación</label>
+          <input
+            type="text"
+            placeholder="Buscar texto..."
+            value={obsSearch}
+            onChange={e => setObsSearch(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm min-w-[180px]"
+          />
         </div>
         {hasFilters && (
           <button
@@ -211,7 +256,7 @@ export default function ObservationTable() {
         <>
           {isMobile ? (
             <div className="space-y-3 p-4">
-              {data.observations.map(obs => (
+              {sortedObservations.map(obs => (
                 <ObservationCard key={obs.id} observation={obs} onEdit={setEditing} />
               ))}
             </div>
@@ -220,18 +265,18 @@ export default function ObservationTable() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Observacion</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Campo</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Lote</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Categoria</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Creada</th>
+                    <th onClick={() => toggleSort('observation')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Observacion{arrow('observation')}</th>
+                    <th onClick={() => toggleSort('field')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Campo{arrow('field')}</th>
+                    <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Lote{arrow('plot')}</th>
+                    <th onClick={() => toggleSort('category')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Categoria{arrow('category')}</th>
+                    <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Creada{arrow('date')}</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Editada</th>
                     <th className="px-4 py-3 w-20" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {data.observations.map(obs => (
+                  {sortedObservations.map(obs => (
                     <tr key={obs.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 max-w-xs">
                         <p className="truncate text-gray-800">{obs.observation_text}</p>

@@ -460,6 +460,91 @@ export class AgentResponseMapper {
     if (input.include_activities != null) cmd.include_activities = input.include_activities;
     if (input.activity_filter != null) cmd.activity_filter = input.activity_filter;
 
+    // financial_report: extended params (view dispatch, thresholds, multi-turn, etc.)
+    // These were silently dropped before, causing every analytical query to fall back to aggregate.
+    if (input.view != null) cmd.view = input.view;
+    if (input.amount_min != null) cmd.amount_min = input.amount_min;
+    if (input.amount_max != null) cmd.amount_max = input.amount_max;
+    if (input.currency != null) cmd.currency = input.currency;
+    if (input.exclude_categories != null) cmd.exclude_categories = input.exclude_categories;
+    if (input.categories != null) cmd.categories = input.categories;
+    if (input.description_search != null) cmd.description_search = input.description_search;
+    if (input.sort_by != null) cmd.sort_by = input.sort_by;
+    if (input.sort_desc != null) cmd.sort_desc = input.sort_desc;
+    if (input.top_n != null) cmd.top_n = input.top_n;
+    if (input.group_by != null) cmd.group_by = input.group_by;
+    if (input.inherit != null) cmd.inherit = input.inherit;
+    if (input.compare_desde != null) cmd.compare_desde = input.compare_desde;
+    if (input.compare_hasta != null) cmd.compare_hasta = input.compare_hasta;
+    if (input.compare_category != null) { cmd.compare_category = input.compare_category; cmd.compareCategory = input.compare_category; }
+
+    // query_scoutings: structured scouting filters + view dispatch (same shape as financial_report)
+    if (input.stage_prefix != null) cmd.stagePrefix = input.stage_prefix;
+    if (input.pest_species != null) cmd.pestSpeciesQuery = input.pest_species;
+    if (input.pest_severity_min != null) cmd.pestSeverityMin = input.pest_severity_min;
+    if (input.has_pest != null) cmd.hasPest = input.has_pest;
+    if (input.weed_species_any != null) cmd.weedSpeciesAny = input.weed_species_any;
+    if (input.weed_min_pct != null) cmd.weedMinPct = input.weed_min_pct;
+    if (input.weed_max_pct != null) cmd.weedMaxPct = input.weed_max_pct;
+    if (input.has_weeds != null) cmd.hasWeeds = input.has_weeds;
+    if (input.emergence_min_pct != null) cmd.emergenceMinPct = input.emergence_min_pct;
+    if (input.emergence_max_pct != null) cmd.emergenceMaxPct = input.emergence_max_pct;
+    if (input.density_min != null) cmd.densityMin = input.density_min;
+    if (input.density_max != null) cmd.densityMax = input.density_max;
+    if (input.soil_moisture_min != null) cmd.soilMoistureMin = input.soil_moisture_min;
+    if (input.soil_moisture_max != null) cmd.soilMoistureMax = input.soil_moisture_max;
+    if (input.aggregate_metric != null) cmd.aggregateMetric = input.aggregate_metric;
+    if (input.compare_plot != null) cmd.comparePlot = input.compare_plot;
+    if (input.compare_field != null) cmd.compareField = input.compare_field;
+
+    // query_harvest_loads: unified harvest filter + view dispatch
+    if (input.driver_name != null) cmd.driverName = input.driver_name;
+    if (input.destinatario != null) cmd.destinatario = input.destinatario;
+    if (input.truck_plate != null) cmd.truckPlate = input.truck_plate;
+    if (input.weight_min_kg != null) cmd.weightMinKg = input.weight_min_kg;
+    if (input.weight_max_kg != null) cmd.weightMaxKg = input.weight_max_kg;
+    if (input.humidity_min_pct != null) cmd.humidityMinPct = input.humidity_min_pct;
+    if (input.humidity_max_pct != null) cmd.humidityMaxPct = input.humidity_max_pct;
+    if (input.protein_min_pct != null) cmd.proteinMinPct = input.protein_min_pct;
+    if (input.protein_max_pct != null) cmd.proteinMaxPct = input.protein_max_pct;
+    if (input.oil_min_pct != null) cmd.oilMinPct = input.oil_min_pct;
+    if (input.oil_max_pct != null) cmd.oilMaxPct = input.oil_max_pct;
+    if (input.gluten_min_pct != null) cmd.glutenMinPct = input.gluten_min_pct;
+    if (input.gluten_max_pct != null) cmd.glutenMaxPct = input.gluten_max_pct;
+    if (input.event_date != null && toolName === 'query_harvest_loads') cmd.eventDate = input.event_date;
+    if (input.compare_crop != null) cmd.compareCrop = input.compare_crop;
+    if (input.compare_driver != null) cmd.compareDriver = input.compare_driver;
+    if (input.compare_destinatario != null) cmd.compareDestinatario = input.compare_destinatario;
+
+    // check_stock unified filters
+    if (input.warehouse != null && toolName === 'check_stock') cmd.warehouseName = input.warehouse;
+    if (input.low_stock_only != null) cmd.lowStockOnly = input.low_stock_only;
+    if (input.quantity_min != null) cmd.quantityMin = input.quantity_min;
+    if (input.quantity_max != null) cmd.quantityMax = input.quantity_max;
+    if (input.has_min_stock != null) cmd.hasMinStock = input.has_min_stock;
+    if (input.compare_warehouse != null) cmd.compareWarehouse = input.compare_warehouse;
+    if (input.compare_product != null) cmd.compareProduct = input.compare_product;
+
+    // list_livestock unified filters
+    if (input.in_feedlot != null) cmd.inFeedlot = input.in_feedlot;
+    if (input.weight_min_kg != null && toolName === 'list_livestock') cmd.weightMinKg = input.weight_min_kg;
+    if (input.weight_max_kg != null && toolName === 'list_livestock') cmd.weightMaxKg = input.weight_max_kg;
+    if (input.count_min != null) cmd.countMin = input.count_min;
+    if (input.count_max != null) cmd.countMax = input.count_max;
+    if (input.compare_corral != null) cmd.compareCorral = input.compare_corral;
+
+    // query_plot_history (activities) unified filters
+    if (input.activity_types != null) cmd.activityTypes = input.activity_types;
+    if (input.product_search != null && toolName === 'query_plot_history') cmd.productSearch = input.product_search;
+    if (input.quantity_min != null && toolName === 'query_plot_history') cmd.quantityMin = input.quantity_min;
+    if (input.quantity_max != null && toolName === 'query_plot_history') cmd.quantityMax = input.quantity_max;
+    if (input.compare_activity_type != null) cmd.compareActivityType = input.compare_activity_type;
+
+    // rainfall_report unified filters
+    if (input.mm_min != null) cmd.mmMin = input.mm_min;
+    if (input.mm_max != null) cmd.mmMax = input.mm_max;
+    if (input.days != null && toolName === 'rainfall_report') cmd.days = input.days;
+
     // Rainfall: quantity → mm (handler expects cmd.mm)
     if (toolName === 'log_rainfall' && input.quantity != null) {
       cmd.mm = input.quantity;

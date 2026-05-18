@@ -238,86 +238,207 @@ export class FinancialHandler {
   // --- Unified financial report dispatcher ---
 
   private async handleFinancialReport(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    // Lazy import — used only for inherit + saving state
+    const { pool } = await import('../../config/db.js');
+    const { queryMovements } = await import('../../services/expenses.js');
+
+    // ── 1. Inherit prior filters when the agent flags follow-up refinement ──
+    if (cmd.inherit) {
+      const { rows } = await pool.query(
+        `SELECT last_finance_query FROM conversation_state WHERE user_id = $1`,
+        [userId],
+      );
+      const prev = rows[0]?.last_finance_query;
+      if (prev && typeof prev === 'object') {
+        // Merge: prev fills in any missing param, new wins on conflicts.
+        for (const [k, v] of Object.entries(prev)) {
+          if (cmd[k] == null) cmd[k] = v as never;
+        }
+      }
+    }
+
+    // ── 2. Legacy shortcuts (preserve existing behavior) ──
     const fieldName = cmd.fieldName as string | null;
     const plotName = cmd.plotName as string | null;
     const period = cmd.period as string | null;
-    const desde = cmd.desde as string | null;
-    const hasta = cmd.hasta as string | null;
-    const days = cmd.days as number | null;
-    const category = cmd.category as string | null;
-    const reportType = (cmd.reportType as string) || 'both';
-    const includeActivities = cmd.include_activities as boolean | null;
-    const activityFilter = cmd.activity_filter as string | null;
+    const reportType = (cmd.reportType as string) || (cmd.type as string) || 'both';
 
-    const hasDateFilter = desde || hasta || days;
-    const hasScope = fieldName || plotName;
-
-    // Weekly report shortcut
-    if (period === 'week' && !hasScope && !hasDateFilter && !category) {
+    if (period === 'week' && !fieldName && !plotName && !cmd.category && !cmd.amount_min && !cmd.amount_max) {
       return this.handleCommand({ command: 'weekly_report' }, userId, {} as any, {} as any);
     }
 
-    // Date range / category / days filters → date_range_report logic
-    if (hasDateFilter || category || period === 'year') {
-      const dateCmd: ParsedCommand = {
-        command: 'date_range_report',
-        ...(fieldName ? { fieldName } : {}),
-        ...(plotName ? { plotName } : {}),
-        ...(category ? { category } : {}),
-        reportType,
-      };
-      if (period === 'year') {
-        const nowAR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
-        dateCmd.desde = `${nowAR.getFullYear()}-01-01`;
-        dateCmd.hasta = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
-      } else {
-        if (desde) dateCmd.desde = desde;
-        if (hasta) dateCmd.hasta = hasta;
-        if (days) dateCmd.days = days;
+    // Sanity check: if plotName provided but doesn't exist for this user, surface a helpful
+    // message instead of silently returning empty results (avoids hiding typos).
+    if (plotName) {
+      const plotCheck = await pool.query(
+        `SELECT p.name, f.name AS field_name FROM plots p
+         JOIN fields f ON p.field_id = f.id
+         WHERE LOWER(p.name) = LOWER($2) AND (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+         LIMIT 1`,
+        [userId, plotName],
+      );
+      if (plotCheck.rows.length === 0) {
+        const all = await pool.query(
+          `SELECT p.name FROM plots p JOIN fields f ON p.field_id = f.id
+           WHERE f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1)
+           ORDER BY p.name LIMIT 20`,
+          [userId],
+        );
+        const names = all.rows.map(r => r.name).join(', ') || '(no tenés lotes cargados)';
+        return { messages: [`No tengo registrado un lote llamado "${plotName}". Tus lotes son: ${names}`], suggestionKey: 'report_shown' };
       }
-      const result = await this.handleCommand(dateCmd, userId, {} as any, {} as any);
-
-      // Append activities section if requested
-      if (includeActivities && result.messages.length > 0) {
-        const activitiesSection = await this.buildActivitiesSection(userId, plotName, activityFilter);
-        if (activitiesSection) {
-          result.messages[result.messages.length - 1] += '\n\n' + activitiesSection;
-        }
-      }
-      return result;
     }
-
-    // Plot-scoped (no dates) → plot_report
-    if (plotName && !fieldName) {
-      const result = await this.handleCommand({ command: 'plot_report', plotName }, userId, {} as any, {} as any);
-      if (includeActivities && result.messages.length > 0) {
-        const activitiesSection = await this.buildActivitiesSection(userId, plotName, activityFilter);
-        if (activitiesSection) {
-          result.messages[result.messages.length - 1] += '\n\n' + activitiesSection;
-        }
-      }
-      return result;
-    }
-
-    // Field-scoped (no dates) → field_report
     if (fieldName) {
-      const result = await this.handleCommand({ command: 'field_report', fieldName }, userId, {} as any, {} as any);
-      if (includeActivities && result.messages.length > 0) {
-        const activitiesSection = await this.buildActivitiesSection(userId, plotName, activityFilter);
-        if (activitiesSection) {
-          result.messages[result.messages.length - 1] += '\n\n' + activitiesSection;
-        }
+      const fieldCheck = await pool.query(
+        `SELECT id FROM fields WHERE LOWER(name) = LOWER($2) AND (user_id = $1 OR id IN (SELECT field_id FROM field_members WHERE user_id = $1)) LIMIT 1`,
+        [userId, fieldName],
+      );
+      if (fieldCheck.rows.length === 0) {
+        const all = await pool.query(
+          `SELECT name FROM fields WHERE user_id = $1 OR id IN (SELECT field_id FROM field_members WHERE user_id = $1) ORDER BY name LIMIT 20`,
+          [userId],
+        );
+        const names = all.rows.map(r => r.name).join(', ') || '(no tenés campos cargados)';
+        return { messages: [`No tengo registrado un campo llamado "${fieldName}". Tus campos son: ${names}`], suggestionKey: 'report_shown' };
       }
-      return result;
     }
 
-    // No params or period=month → monthly report (default)
-    if (reportType === 'both' && !category) {
-      return this.handleCommand({ command: 'monthly_report' }, userId, {} as any, {} as any);
+    // ── 3. Resolve date range ──
+    const nowAR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+    const todayISO = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+    let desde: string | null = (cmd.desde as string) || null;
+    let hasta: string | null = (cmd.hasta as string) || null;
+    let rangeLabel = '';
+    let isAll = false;
+    if (period === 'all') {
+      desde = '2000-01-01';
+      hasta = todayISO;
+      isAll = true;
+      rangeLabel = 'Todo el historial';
+    } else if (period === 'year') {
+      desde = `${nowAR.getFullYear()}-01-01`;
+      hasta = todayISO;
+      rangeLabel = `Año ${nowAR.getFullYear()}`;
+    } else if (cmd.days) {
+      const d = new Date();
+      d.setDate(d.getDate() - (cmd.days as number));
+      desde = d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+      hasta = todayISO;
+      rangeLabel = `últimos ${cmd.days} días`;
+    } else if (!desde && !hasta) {
+      // Period defaulting policy:
+      // - Volume views default to 'all' (no one means "tn este mes" when they just say "total de soja")
+      // - Analytical views (max, top_categories, top_locations, balance, last, compare, volume) default to 'all'
+      // - Queries with other narrowing filters (plot/field/category/amount/description) default to 'all' too —
+      //   defaulting to mes-actual silently truncates the answer (e.g. "ver gastos del lote A1" should be historical)
+      // - Pure "mostrame gastos/ingresos" without filters defaults to mes actual (the common "what's happening this month" case)
+      const analyticalViews = new Set(['max', 'top_categories', 'top_locations', 'balance', 'volume', 'last', 'compare']);
+      const hasNarrowing = !!(fieldName || plotName || cmd.category || (cmd.categories as string[] | undefined)?.length || cmd.amount_min != null || cmd.amount_max != null || cmd.description_search || cmd.currency || (cmd.exclude_categories as string[] | undefined)?.length);
+      const shouldDefaultAll = (cmd.view && analyticalViews.has(cmd.view as string)) || hasNarrowing;
+      if (shouldDefaultAll) {
+        desde = '2000-01-01';
+        hasta = todayISO;
+        isAll = true;
+        rangeLabel = 'Todo el historial';
+      } else {
+        desde = `${nowAR.getFullYear()}-${String(nowAR.getMonth() + 1).padStart(2, '0')}-01`;
+        hasta = todayISO;
+        rangeLabel = nowAR.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+      }
+    } else {
+      rangeLabel = `${desde || '...'} — ${hasta || todayISO}`;
     }
 
-    // Type filter only (e.g., "solo gastos este mes") → monthly with type context
-    return this.handleCommand({ command: 'monthly_report' }, userId, {} as any, {} as any);
+    // Date range guard — if user-supplied desde > hasta, fail loudly (the agent should
+    // re-ask). Skip when desde defaulted (period absent and no desde provided).
+    if (desde && hasta && desde > hasta) {
+      return { messages: [`El rango de fechas es inválido: ${desde} es posterior a ${hasta}. Decime qué período querés ver.`], suggestionKey: 'report_shown' };
+    }
+
+    // ── 4. Build the unified filter object ──
+    const filters = {
+      fieldName, plotName,
+      desde, hasta,
+      category: cmd.category as string | null,
+      categories: (cmd.categories as string[]) || [],
+      excludeCategories: (cmd.exclude_categories as string[]) || [],
+      currency: cmd.currency as string | null,
+      amountMin: cmd.amount_min as number | null,
+      amountMax: cmd.amount_max as number | null,
+      descriptionSearch: cmd.description_search as string | null,
+      type: (reportType === 'expenses' || reportType === 'incomes') ? reportType : 'both' as const,
+      sortBy: (cmd.sort_by as 'date' | 'amount') || 'date',
+      sortDesc: cmd.sort_desc != null ? !!cmd.sort_desc : true,
+      groupBy: (cmd.group_by as 'category' | 'plot' | 'field' | 'month') || 'category',
+      limit: 200,
+    };
+
+    // ── 5. Determine view ──
+    const hasNarrowingFilter = !!(filters.category || filters.categories.length > 0 || filters.descriptionSearch
+      || filters.amountMin != null || filters.amountMax != null
+      || filters.currency || filters.excludeCategories.length > 0);
+    let view = (cmd.view as string) || (hasNarrowingFilter ? 'detail' : 'aggregate');
+    if (cmd.compare_desde || cmd.compare_hasta || cmd.compare_category) view = 'compare';
+    if (cmd.top_n && !cmd.view) view = 'max';
+
+    // ── 6. Compare view: fetch both halves ──
+    if (view === 'compare') {
+      const a = await queryMovements(userId, filters);
+      const filtersB = { ...filters };
+      if (cmd.compare_desde) filtersB.desde = cmd.compare_desde as string;
+      if (cmd.compare_hasta) filtersB.hasta = cmd.compare_hasta as string;
+      if (cmd.compare_category) filtersB.category = cmd.compare_category as string;
+      const b = await queryMovements(userId, filtersB);
+      await this.saveFinanceQuery(userId, cmd);
+      return renderCompare(a, b, {
+        labelA: filters.category || rangeLabel,
+        labelB: (cmd.compare_category as string) || `${cmd.compare_desde || ''} — ${cmd.compare_hasta || ''}`,
+        type: filters.type,
+      });
+    }
+
+    // ── 7. Single fetch ──
+    // For balance + top_locations + volume we may need both sides regardless of `type`.
+    const fetchFilters = (view === 'balance' || view === 'top_locations')
+      ? { ...filters, type: 'both' as const }
+      : filters;
+    const rows = await queryMovements(userId, fetchFilters);
+    await this.saveFinanceQuery(userId, cmd);
+
+    const scope = buildScopeLabel(filters);
+    const ctx = { rangeLabel: isAll ? 'Todo el historial' : rangeLabel, scope, isAll, filters };
+
+    switch (view) {
+      case 'detail':         return renderDetail(rows, ctx);
+      case 'top_categories': return renderTopCategories(rows, ctx);
+      case 'top_locations':  return renderTopLocations(rows, ctx);
+      case 'max':            return renderMax(rows, ctx, (cmd.top_n as number) || 1);
+      case 'balance':        return renderBalance(rows, ctx);
+      case 'volume':         return renderVolume(rows, ctx);
+      case 'last':           return renderLast(rows, ctx, (cmd.top_n as number) || 5);
+      case 'aggregate':
+      default:               return renderAggregate(rows, ctx);
+    }
+  }
+
+  private async saveFinanceQuery(userId: UserId, cmd: ParsedCommand): Promise<void> {
+    try {
+      const { pool } = await import('../../config/db.js');
+      // Strip transient fields (inherit, command) before persisting
+      const persistable: Record<string, unknown> = {};
+      const KEEP = ['fieldName', 'plotName', 'period', 'desde', 'hasta', 'days',
+        'category', 'categories', 'exclude_categories', 'currency', 'amount_min', 'amount_max',
+        'description_search', 'type', 'reportType', 'view', 'sort_by', 'sort_desc', 'top_n', 'group_by'];
+      for (const k of KEEP) {
+        if (cmd[k] !== undefined && cmd[k] !== null) persistable[k] = cmd[k];
+      }
+      await pool.query(
+        `INSERT INTO conversation_state (user_id, last_finance_query, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET last_finance_query = $2::jsonb, updated_at = NOW()`,
+        [userId, JSON.stringify(persistable)],
+      );
+    } catch { /* non-fatal */ }
   }
 
   private async buildActivitiesSection(userId: UserId, plotName: string | null, activityFilter: string | null): Promise<string | null> {
@@ -1141,57 +1262,145 @@ export class FinancialHandler {
         const plotName = cmd.plotName as string | null;
         const category = cmd.category as string | null;
         const reportType = (cmd.reportType as string) || 'both';
+        const isAll = !!(cmd as Record<string, unknown>).isAll;
 
-        const results = await this.service.getDateRangeReport(userId, desde, hasta, {
-          fieldName, plotName, category, type: reportType,
-        });
+        // Detail-mode triggers: category filter set OR user asked "todos".
+        // In detail-mode we list individual movements; otherwise we aggregate
+        // by category (the original behavior).
+        const detailMode = !!category || isAll;
 
         const desdeStr = desde.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
         const hastaStr = hasta.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+        const rangeLabel = isAll ? 'Todo el historial' : `${desdeStr} — ${hastaStr}`;
 
-        // Build scope label
         const scopeParts: string[] = [];
         if (fieldName) scopeParts.push(`campo ${fieldName}`);
         if (plotName) scopeParts.push(`lote ${plotName}`);
         if (category) scopeParts.push(category.toLowerCase());
         const scopeLabel = scopeParts.length > 0 ? ` — ${scopeParts.join(', ')}` : '';
 
-        const hasExpenses = results.expenses.length > 0;
-        const hasIncomes = results.incomes.length > 0;
+        // Sum amounts split by currency (NEVER mix ARS and USD)
+        const sumByCurrency = (rows: Array<{ amount: string | number; currency: string }>) => {
+          const out: Record<string, number> = {};
+          for (const r of rows) {
+            const c = r.currency || 'ARS';
+            out[c] = (out[c] || 0) + Number(r.amount);
+          }
+          return out;
+        };
+        const fmtMoney = (n: number, cur: string) => cur === 'USD'
+          ? `USD ${n.toLocaleString('es-AR')}`
+          : `$${n.toLocaleString('es-AR')}`;
 
-        if (!hasExpenses && !hasIncomes) {
-          return { messages: [`No hay registros${scopeLabel} entre ${desdeStr} y ${hastaStr}.`], suggestionKey: 'report_shown' };
+        const fmtDay = (d: Date | string) => {
+          const date = new Date(d);
+          return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' });
+        };
+
+        if (detailMode) {
+          // Fetch individual movements
+          const { getMovementsInRange } = await import('../../services/expenses.js');
+          const movs = await getMovementsInRange(userId, desde, hasta, {
+            fieldName, plotName, category, type: reportType, limit: 200,
+          });
+
+          const hasE = movs.expenses.length > 0;
+          const hasI = movs.incomes.length > 0;
+          if (!hasE && !hasI) {
+            return { messages: [`No hay registros${scopeLabel} (${rangeLabel}).`], suggestionKey: 'report_shown' };
+          }
+
+          let msg = `📊 *Movimientos${scopeLabel}*\n📅 ${rangeLabel}\n`;
+          const LIST_CAP = 20;
+
+          if (hasE) {
+            const expTotalsByCur = sumByCurrency(movs.expenses);
+            msg += `\n*Gastos* (${movs.expenses.length})\n`;
+            if (movs.expenses.length <= LIST_CAP) {
+              for (const r of movs.expenses) {
+                const loc = [r.field_name, r.plot_name].filter(Boolean).join('/');
+                const tail = loc ? ` · ${loc}` : '';
+                msg += `• ${fmtDay(r.date)} — ${r.description || r.category} — ${fmtMoney(Number(r.amount), r.currency)}${tail}\n`;
+              }
+            } else {
+              msg += `_(${movs.expenses.length} movimientos — descargá CSV para verlos todos)_\n`;
+            }
+            for (const [cur, total] of Object.entries(expTotalsByCur)) {
+              msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+            }
+          }
+
+          if (hasI) {
+            const incTotalsByCur = sumByCurrency(movs.incomes);
+            msg += `\n*Ingresos* (${movs.incomes.length})\n`;
+            if (movs.incomes.length <= LIST_CAP) {
+              for (const r of movs.incomes) {
+                const loc = [r.field_name, r.plot_name].filter(Boolean).join('/');
+                const tail = loc ? ` · ${loc}` : '';
+                msg += `• ${fmtDay(r.date)} — ${r.description || r.category} — ${fmtMoney(Number(r.amount), r.currency)}${tail}\n`;
+              }
+            } else {
+              msg += `_(${movs.incomes.length} movimientos — descargá CSV para verlos todos)_\n`;
+            }
+            for (const [cur, total] of Object.entries(incTotalsByCur)) {
+              msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+            }
+          }
+
+          // Offer CSV when listing was truncated
+          const totalRows = movs.expenses.length + movs.incomes.length;
+          if (totalRows > LIST_CAP) {
+            return {
+              messages: [msg.trim()],
+              interactive: {
+                type: 'buttons',
+                body: '¿Querés descargar el detalle?',
+                buttons: [
+                  { id: 'cmd_exportar_csv', title: '📥 Exportar CSV' },
+                  { id: 'back_menu', title: '📋 Menú' },
+                ],
+              },
+              suggestionKey: 'report_shown',
+            };
+          }
+          return { messages: [msg.trim()], suggestionKey: 'report_shown' };
         }
 
-        let msg = `📊 *Resumen financiero${scopeLabel}*\n(${desdeStr} — ${hastaStr})\n`;
+        // ── Aggregate mode (no category, normal date range) ──
+        const results = await this.service.getDateRangeReport(userId, desde, hasta, {
+          fieldName, plotName, category, type: reportType,
+        });
+
+        const hasExpenses = results.expenses.length > 0;
+        const hasIncomes = results.incomes.length > 0;
+        if (!hasExpenses && !hasIncomes) {
+          return { messages: [`No hay registros${scopeLabel} (${rangeLabel}).`], suggestionKey: 'report_shown' };
+        }
+
+        let msg = `📊 *Resumen financiero${scopeLabel}*\n📅 ${rangeLabel}\n`;
 
         if (hasExpenses) {
-          msg += '\n*Gastos:*\n';
+          msg += '\n*Gastos por categoría:*\n';
           for (const r of results.expenses) {
             const monto = Number(r.total);
-            const curr = r.currency === 'USD' ? ' USD' : '';
-            msg += `${r.category}: $${monto.toLocaleString('es-AR')}${curr}\n`;
+            msg += `${r.category}: ${fmtMoney(monto, r.currency || 'ARS')}\n`;
           }
-          if (results.expenses.length > 1 || !category) {
-            msg += `*Total gastos: $${results.expenseTotal.toLocaleString('es-AR')}*\n`;
+          const expByCur = sumByCurrency(results.expenses.map(r => ({ amount: r.total, currency: r.currency || 'ARS' })));
+          for (const [cur, total] of Object.entries(expByCur)) {
+            msg += `*Total gastos ${cur}: ${fmtMoney(total, cur)}*\n`;
           }
         }
 
         if (hasIncomes) {
-          msg += '\n*Ingresos:*\n';
+          msg += '\n*Ingresos por categoría:*\n';
           for (const r of results.incomes) {
             const monto = Number(r.total);
-            const curr = r.currency === 'USD' ? ' USD' : '';
-            msg += `${r.category}: $${monto.toLocaleString('es-AR')}${curr}\n`;
+            msg += `${r.category}: ${fmtMoney(monto, r.currency || 'ARS')}\n`;
           }
-          if (results.incomes.length > 1 || !category) {
-            msg += `*Total ingresos: $${results.incomeTotal.toLocaleString('es-AR')}*\n`;
+          const incByCur = sumByCurrency(results.incomes.map(r => ({ amount: r.total, currency: r.currency || 'ARS' })));
+          for (const [cur, total] of Object.entries(incByCur)) {
+            msg += `*Total ingresos ${cur}: ${fmtMoney(total, cur)}*\n`;
           }
-        }
-
-        if (hasExpenses && hasIncomes) {
-          const resultado = results.incomeTotal - results.expenseTotal;
-          msg += `\n*Resultado: $${resultado.toLocaleString('es-AR')}*`;
         }
 
         return { messages: [msg.trim()], suggestionKey: 'report_shown' };
@@ -2163,4 +2372,522 @@ export class FinancialHandler {
         return { messages: [] };
     }
   }
+}
+
+// ─── Helpers + renderers for the unified financial_report ───────────────────
+
+interface RawRow {
+  id: number;
+  date: string | Date;
+  category: string;
+  description: string | null;
+  product?: string | null;
+  amount: string | number;
+  currency: string;
+  quantity?: string | number | null;
+  unit?: string | null;
+  field_name: string | null;
+  plot_name: string | null;
+}
+
+interface RenderCtx {
+  rangeLabel: string;
+  scope: string;
+  isAll: boolean;
+  filters: { category?: string | null; descriptionSearch?: string | null; currency?: string | null; type?: string; groupBy?: string; categories?: string[] };
+}
+
+const LIST_CAP = 20;
+
+function buildScopeLabel(f: { fieldName?: string | null; plotName?: string | null; category?: string | null; categories?: string[]; descriptionSearch?: string | null; currency?: string | null; excludeCategories?: string[]; amountMin?: number | null; amountMax?: number | null }): string {
+  const parts: string[] = [];
+  if (f.fieldName) parts.push(`campo ${f.fieldName}`);
+  if (f.plotName) parts.push(`lote ${f.plotName}`);
+  if (f.category) parts.push(f.category.toLowerCase());
+  if (f.categories && f.categories.length > 0) {
+    // Collapse long lists ("cereales" = 8 categories) into a single noun rather than dumping them
+    parts.push(f.categories.length > 3 ? `${f.categories.length} categorías` : f.categories.join('/').toLowerCase());
+  }
+  if (f.descriptionSearch) parts.push(`"${f.descriptionSearch}"`);
+  if (f.currency) parts.push(f.currency);
+  if (f.excludeCategories && f.excludeCategories.length > 0) parts.push(`sin ${f.excludeCategories.join('/').toLowerCase()}`);
+  if (f.amountMin != null && f.amountMax != null) parts.push(`$${f.amountMin.toLocaleString('es-AR')}–$${f.amountMax.toLocaleString('es-AR')}`);
+  else if (f.amountMin != null) parts.push(`> $${f.amountMin.toLocaleString('es-AR')}`);
+  else if (f.amountMax != null) parts.push(`< $${f.amountMax.toLocaleString('es-AR')}`);
+  return parts.length > 0 ? ` — ${parts.join(', ')}` : '';
+}
+
+function sumByCurrency(rows: Array<{ amount: string | number; currency: string }>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of rows) {
+    const c = r.currency || 'ARS';
+    out[c] = (out[c] || 0) + Number(r.amount);
+  }
+  return out;
+}
+
+function fmtMoney(n: number, cur: string): string {
+  return cur === 'USD' ? `USD ${n.toLocaleString('es-AR')}` : `$${n.toLocaleString('es-AR')}`;
+}
+
+function fmtDay(d: string | Date): string {
+  const date = new Date(d);
+  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' });
+}
+
+function renderMovementLine(r: RawRow): string {
+  const loc = [r.field_name, r.plot_name].filter(Boolean).join('/');
+  const tail = loc ? ` · ${loc}` : '';
+  const desc = r.description || r.product || r.category;
+  return `• ${fmtDay(r.date)} — ${desc} — ${fmtMoney(Number(r.amount), r.currency)}${tail}`;
+}
+
+function renderDetail(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderCtx): HandlerResponse {
+  const hasE = rows.expenses.length > 0;
+  const hasI = rows.incomes.length > 0;
+  if (!hasE && !hasI) {
+    return { messages: [`No hay registros${ctx.scope} (${ctx.rangeLabel}).`], suggestionKey: 'report_shown' };
+  }
+
+  let msg = `📊 *Movimientos${ctx.scope}*\n📅 ${ctx.rangeLabel}\n`;
+  let truncated = false;
+
+  if (hasE) {
+    msg += `\n*Gastos* (${rows.expenses.length})\n`;
+    if (rows.expenses.length <= LIST_CAP) {
+      for (const r of rows.expenses) msg += renderMovementLine(r) + '\n';
+    } else {
+      truncated = true;
+      msg += `_(${rows.expenses.length} movimientos — descargá CSV para verlos todos)_\n`;
+    }
+    for (const [cur, total] of Object.entries(sumByCurrency(rows.expenses))) {
+      msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+    }
+  }
+
+  if (hasI) {
+    msg += `\n*Ingresos* (${rows.incomes.length})\n`;
+    if (rows.incomes.length <= LIST_CAP) {
+      for (const r of rows.incomes) msg += renderMovementLine(r) + '\n';
+    } else {
+      truncated = true;
+      msg += `_(${rows.incomes.length} movimientos — descargá CSV para verlos todos)_\n`;
+    }
+    for (const [cur, total] of Object.entries(sumByCurrency(rows.incomes))) {
+      msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+    }
+  }
+
+  if (truncated) {
+    return {
+      messages: [msg.trim()],
+      interactive: {
+        type: 'buttons',
+        body: '¿Querés descargar el detalle?',
+        buttons: [
+          { id: 'cmd_exportar_csv', title: '📥 Exportar CSV' },
+          { id: 'back_menu', title: '📋 Menú' },
+        ],
+      },
+      suggestionKey: 'report_shown',
+    };
+  }
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
+
+function renderAggregate(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderCtx): HandlerResponse {
+  const hasE = rows.expenses.length > 0;
+  const hasI = rows.incomes.length > 0;
+  if (!hasE && !hasI) {
+    return { messages: [`No hay registros${ctx.scope} (${ctx.rangeLabel}).`], suggestionKey: 'report_shown' };
+  }
+
+  // Group by category+currency for the aggregate view
+  const aggregate = (xs: RawRow[]) => {
+    const map = new Map<string, { category: string; currency: string; total: number }>();
+    for (const r of xs) {
+      const key = `${r.category}__${r.currency || 'ARS'}`;
+      const prev = map.get(key) || { category: r.category, currency: r.currency || 'ARS', total: 0 };
+      prev.total += Number(r.amount);
+      map.set(key, prev);
+    }
+    return [...map.values()].sort((a, b) => b.total - a.total);
+  };
+
+  let msg = `📊 *Resumen financiero${ctx.scope}*\n📅 ${ctx.rangeLabel}\n`;
+
+  // If a category appears in multiple currencies, label the non-default ones
+  // explicitly so the user doesn't see two "Insumos" lines next to each other.
+  const labelLine = (r: { category: string; currency: string; total: number }, multiCurrencies: Set<string>): string => {
+    const showCur = multiCurrencies.has(r.category) && r.currency !== 'ARS';
+    const label = showCur ? `${r.category} (${r.currency})` : r.category;
+    return `${label}: ${fmtMoney(r.total, r.currency)}\n`;
+  };
+  const findMultiCurrencyCats = (agg: { category: string; currency: string; total: number }[]): Set<string> => {
+    const seen = new Map<string, Set<string>>();
+    for (const r of agg) {
+      const s = seen.get(r.category) || new Set<string>();
+      s.add(r.currency);
+      seen.set(r.category, s);
+    }
+    return new Set([...seen.entries()].filter(([, s]) => s.size > 1).map(([c]) => c));
+  };
+
+  if (hasE) {
+    const agg = aggregate(rows.expenses);
+    const multi = findMultiCurrencyCats(agg);
+    msg += '\n*Gastos por categoría:*\n';
+    for (const r of agg) msg += labelLine(r, multi);
+    for (const [cur, total] of Object.entries(sumByCurrency(rows.expenses))) {
+      msg += `*Total gastos ${cur}: ${fmtMoney(total, cur)}*\n`;
+    }
+  }
+
+  if (hasI) {
+    const agg = aggregate(rows.incomes);
+    const multi = findMultiCurrencyCats(agg);
+    msg += '\n*Ingresos por categoría:*\n';
+    for (const r of agg) msg += labelLine(r, multi);
+    for (const [cur, total] of Object.entries(sumByCurrency(rows.incomes))) {
+      msg += `*Total ingresos ${cur}: ${fmtMoney(total, cur)}*\n`;
+    }
+  }
+
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
+
+function renderTopCategories(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderCtx): HandlerResponse {
+  // Pick which side to rank. Default to gastos for 'both' (the common framing).
+  const isIncome = ctx.filters.type === 'incomes';
+  const xs = isIncome ? rows.incomes : rows.expenses;
+  const label = isIncome ? 'ingresos' : 'gastos';
+  const titleLabel = isIncome ? 'Top categorías de ingresos' : 'Top categorías de gastos';
+  if (xs.length === 0) {
+    return { messages: [`No hay ${label}${ctx.scope} (${ctx.rangeLabel}).`], suggestionKey: 'report_shown' };
+  }
+  // Rank per currency separately (mixing currencies in a ranking is misleading).
+  // Critical for ingresos: grain sales are typically USD, so an ARS-only ranking would be empty.
+  const byCurrency = new Map<string, Map<string, number>>();
+  for (const r of xs) {
+    const cur = r.currency || 'ARS';
+    const inner = byCurrency.get(cur) || new Map<string, number>();
+    inner.set(r.category, (inner.get(r.category) || 0) + Number(r.amount));
+    byCurrency.set(cur, inner);
+  }
+  // Title already says "Top categorías de gastos/ingresos", drop "de gastos/ingresos" from scope to avoid duplication
+  const scopeForTitle = ctx.scope;
+  let msg = `🏆 *${titleLabel}${scopeForTitle}*\n📅 ${ctx.rangeLabel}\n`;
+  for (const [cur, inner] of byCurrency.entries()) {
+    const ranked = [...inner.entries()].sort((a, b) => b[1] - a[1]);
+    const total = ranked.reduce((s, [, v]) => s + v, 0);
+    msg += `\n*${cur}:*\n`;
+    let i = 1;
+    for (const [cat, sum] of ranked.slice(0, 10)) {
+      const pct = Math.round((sum / total) * 100);
+      msg += `${i}. ${cat}: ${fmtMoney(sum, cur)} (${pct}%)\n`;
+      i++;
+    }
+    msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+  }
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
+
+function renderMax(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderCtx, topN: number): HandlerResponse {
+  // Respect ctx.filters.type — pick gastos / ingresos based on the request.
+  const isIncome = ctx.filters.type === 'incomes';
+  const xs = isIncome ? rows.incomes : (rows.expenses.length > 0 ? rows.expenses : rows.incomes);
+  if (xs.length === 0) {
+    return { messages: [`No hay registros${ctx.scope} (${ctx.rangeLabel}).`], suggestionKey: 'report_shown' };
+  }
+  // Sort by amount within each currency separately (can't compare ARS to USD)
+  const byCurrency = new Map<string, RawRow[]>();
+  for (const r of xs) {
+    const c = r.currency || 'ARS';
+    byCurrency.set(c, [...(byCurrency.get(c) || []), r]);
+  }
+  const kindLabel = isIncome ? 'ingreso' : 'gasto';
+  let msg = topN === 1
+    ? `🔝 *El ${kindLabel} más alto${ctx.scope}* (${ctx.rangeLabel})\n`
+    : `🔝 *Top ${topN} ${kindLabel}s más altos${ctx.scope}* (${ctx.rangeLabel})\n`;
+  for (const [cur, items] of byCurrency.entries()) {
+    items.sort((a, b) => Number(b.amount) - Number(a.amount));
+    msg += `\n*${cur}:*\n`;
+    for (const r of items.slice(0, topN)) msg += renderMovementLine(r) + '\n';
+  }
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
+
+function renderCompare(
+  a: { expenses: RawRow[]; incomes: RawRow[] },
+  b: { expenses: RawRow[]; incomes: RawRow[] },
+  opts: { labelA: string; labelB: string; type: string },
+): HandlerResponse {
+  const collectTotals = (set: { expenses: RawRow[]; incomes: RawRow[] }) => {
+    const rows = opts.type === 'incomes' ? set.incomes : set.expenses;
+    return sumByCurrency(rows);
+  };
+  const ta = collectTotals(a);
+  const tb = collectTotals(b);
+  const currencies = new Set([...Object.keys(ta), ...Object.keys(tb)]);
+  let msg = `📊 *Comparación: ${opts.labelA} vs ${opts.labelB}*\n`;
+  for (const cur of currencies) {
+    const va = ta[cur] || 0;
+    const vb = tb[cur] || 0;
+    msg += `\n${cur}:\n`;
+    msg += `• ${opts.labelA}: ${fmtMoney(va, cur)}\n`;
+    msg += `• ${opts.labelB}: ${fmtMoney(vb, cur)}\n`;
+    if (vb > 0) {
+      const pct = Math.round(((va - vb) / vb) * 100);
+      msg += `Δ: ${pct >= 0 ? '+' : ''}${pct}%\n`;
+    }
+  }
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
+
+// --- top_locations: rank by plot or field (mirror of top_categories but per-location) ---
+function renderTopLocations(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderCtx): HandlerResponse {
+  const isIncome = ctx.filters.type === 'incomes';
+  const xs = isIncome ? rows.incomes : rows.expenses;
+  const label = isIncome ? 'ingresos' : 'gastos';
+  const dim = ctx.filters.groupBy === 'field' ? 'field_name' : 'plot_name';
+  const dimLabel = ctx.filters.groupBy === 'field' ? 'campos' : 'lotes';
+  if (xs.length === 0) {
+    return { messages: [`No hay ${label}${ctx.scope} (${ctx.rangeLabel}).`], suggestionKey: 'report_shown' };
+  }
+  const byCurrency = new Map<string, Map<string, number>>();
+  for (const r of xs) {
+    const loc = (r as RawRow & Record<string, string | null>)[dim] || 'Sin asignar';
+    const cur = r.currency || 'ARS';
+    const inner = byCurrency.get(cur) || new Map<string, number>();
+    inner.set(loc, (inner.get(loc) || 0) + Number(r.amount));
+    byCurrency.set(cur, inner);
+  }
+  let msg = `🏆 *Top ${dimLabel} por ${label}${ctx.scope}*\n📅 ${ctx.rangeLabel}\n`;
+  for (const [cur, inner] of byCurrency.entries()) {
+    const ranked = [...inner.entries()].sort((a, b) => b[1] - a[1]);
+    const total = ranked.reduce((s, [, v]) => s + v, 0);
+    msg += `\n*${cur}:*\n`;
+    let i = 1;
+    for (const [loc, sum] of ranked.slice(0, 10)) {
+      const pct = total > 0 ? Math.round((sum / total) * 100) : 0;
+      msg += `${i}. ${loc}: ${fmtMoney(sum, cur)} (${pct}%)\n`;
+      i++;
+    }
+    msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+  }
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
+
+// --- balance: ingresos - gastos, optionally grouped by plot/field/category/month ---
+function renderBalance(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderCtx): HandlerResponse {
+  const { expenses, incomes } = rows;
+  if (expenses.length === 0 && incomes.length === 0) {
+    return { messages: [`No hay movimientos${ctx.scope} (${ctx.rangeLabel}).`], suggestionKey: 'report_shown' };
+  }
+  const gb = ctx.filters.groupBy;
+  const bucket = (xs: RawRow[], keyOf: (r: RawRow) => string): Map<string, Record<string, number>> => {
+    const m = new Map<string, Record<string, number>>();
+    for (const r of xs) {
+      const k = keyOf(r);
+      const cur = r.currency || 'ARS';
+      const inner = m.get(k) || {};
+      inner[cur] = (inner[cur] || 0) + Number(r.amount);
+      m.set(k, inner);
+    }
+    return m;
+  };
+  const keyOf: (r: RawRow) => string =
+    gb === 'plot' ? (r) => r.plot_name || 'Sin lote' :
+    gb === 'field' ? (r) => r.field_name || 'Sin campo' :
+    gb === 'month' ? (r) => {
+      const d = new Date(r.date);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    } :
+    gb === 'category' ? (r) => r.category || 'Sin categoría' :
+    () => '__all__';
+
+  const ePer = bucket(expenses, keyOf);
+  const iPer = bucket(incomes, keyOf);
+  const allKeys = new Set([...ePer.keys(), ...iPer.keys()]);
+
+  const netLine = (ing: Record<string, number>, gas: Record<string, number>): string => {
+    const currencies = new Set([...Object.keys(ing), ...Object.keys(gas)]);
+    const lines: string[] = [];
+    for (const cur of currencies) {
+      const i = ing[cur] || 0;
+      const g = gas[cur] || 0;
+      const net = i - g;
+      const sign = net >= 0 ? '🟢' : '🔴';
+      lines.push(`${sign} ${cur}: ingresos ${fmtMoney(i, cur)} − gastos ${fmtMoney(g, cur)} = *${fmtMoney(net, cur)}*`);
+    }
+    return lines.join('\n');
+  };
+
+  if (gb !== 'plot' && gb !== 'field' && gb !== 'category' && gb !== 'month') {
+    const ing = iPer.get('__all__') || {};
+    const gas = ePer.get('__all__') || {};
+    return {
+      messages: [`💰 *Balance${ctx.scope}*\n📅 ${ctx.rangeLabel}\n\n${netLine(ing, gas)}`],
+      suggestionKey: 'report_shown',
+    };
+  }
+
+  const groupLabel = gb === 'plot' ? 'lote' : gb === 'field' ? 'campo' : gb === 'month' ? 'mes' : 'categoría';
+  const groupsAsNet = [...allKeys].map(k => {
+    const ing = iPer.get(k) || {};
+    const gas = ePer.get(k) || {};
+    const currencies = new Set([...Object.keys(ing), ...Object.keys(gas)]);
+    const nets: Record<string, number> = {};
+    for (const cur of currencies) nets[cur] = (ing[cur] || 0) - (gas[cur] || 0);
+    const sortVal = Math.abs(nets['ARS'] || 0) + Math.abs(nets['USD'] || 0) * 1000;
+    return { k, ing, gas, sortVal };
+  }).sort((a, b) => gb === 'month' ? a.k.localeCompare(b.k) : b.sortVal - a.sortVal);
+
+  let msg = `💰 *Balance por ${groupLabel}${ctx.scope}*\n📅 ${ctx.rangeLabel}\n`;
+  for (const g of groupsAsNet.slice(0, 12)) {
+    msg += `\n*${g.k}*\n${netLine(g.ing, g.gas)}\n`;
+  }
+  const totIng: Record<string, number> = {};
+  const totGas: Record<string, number> = {};
+  for (const r of incomes) {
+    const cur = r.currency || 'ARS';
+    totIng[cur] = (totIng[cur] || 0) + Number(r.amount);
+  }
+  for (const r of expenses) {
+    const cur = r.currency || 'ARS';
+    totGas[cur] = (totGas[cur] || 0) + Number(r.amount);
+  }
+  msg += `\n━━━━━━━━━━━━━━\n*Total ${ctx.rangeLabel}:*\n${netLine(totIng, totGas)}`;
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
+
+// --- volume: physical quantity (tn / litros / bolsas / kg) per category, expenses OR incomes ---
+// Strategy: keep separate buckets per unit-family because we can't compare litros vs tn.
+// Show movements when filtered to one category; show ranked summary when scoping by all.
+function renderVolume(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderCtx): HandlerResponse {
+  const isIncome = ctx.filters.type === 'incomes' || (rows.incomes.length > 0 && rows.expenses.length === 0);
+  const xs = isIncome ? rows.incomes : rows.expenses;
+  const verb = isIncome ? 'vendido' : 'comprado';
+  if (xs.length === 0) {
+    return { messages: [`No hay registros${ctx.scope} (${ctx.rangeLabel}).`], suggestionKey: 'report_shown' };
+  }
+  // Family = mass / volume / count. We aggregate to a base unit per family so 1 kg + 1 tn add correctly.
+  type Family = 'mass' | 'volume' | 'count' | 'unknown';
+  const classify = (u: unknown): { family: Family; base: number; baseLabel: string } => {
+    const unit = String(u || '').toLowerCase().trim();
+    // mass → kg
+    if (unit === 'tn' || unit.startsWith('tonel')) return { family: 'mass', base: 1000, baseLabel: 'kg' };
+    if (unit === 'qq' || unit.startsWith('quint')) return { family: 'mass', base: 100, baseLabel: 'kg' };
+    if (unit === 'kg') return { family: 'mass', base: 1, baseLabel: 'kg' };
+    if (unit === 'bolsas') return { family: 'mass', base: 40, baseLabel: 'kg' }; // bolsa ≈ 40 kg AR
+    // volume → litros
+    if (unit === 'lt' || unit === 'l' || unit === 'litros' || unit === 'litro') return { family: 'volume', base: 1, baseLabel: 'lt' };
+    if (unit === 'ml' || unit === 'cc') return { family: 'volume', base: 0.001, baseLabel: 'lt' };
+    // count
+    if (unit === 'u' || unit === 'unidad' || unit === 'unidades') return { family: 'count', base: 1, baseLabel: 'u' };
+    return { family: 'unknown', base: 1, baseLabel: unit || '?' };
+  };
+
+  // Group by category × family. Track base-unit total + per-row details + per-currency revenue/cost.
+  type Bucket = { totalBase: number; baseLabel: string; rowsWithQty: number; totalRows: number; revenue: Record<string, number>; rows: { date: string | Date; qty: number; unit: string; baseValue: number }[] };
+  const map = new Map<string, Map<Family, Bucket>>();
+  for (const r of xs) {
+    const inner = map.get(r.category) || new Map<Family, Bucket>();
+    const { family, base, baseLabel } = classify(r.unit);
+    const b = inner.get(family) || { totalBase: 0, baseLabel, rowsWithQty: 0, totalRows: 0, revenue: {}, rows: [] };
+    b.totalRows++;
+    const qty = r.quantity != null && Number.isFinite(Number(r.quantity)) ? Number(r.quantity) : null;
+    if (qty != null && qty > 0) {
+      const baseValue = qty * base;
+      b.totalBase += baseValue;
+      b.rowsWithQty++;
+      b.rows.push({ date: r.date, qty, unit: String(r.unit || ''), baseValue });
+    }
+    const cur = r.currency || 'ARS';
+    b.revenue[cur] = (b.revenue[cur] || 0) + Number(r.amount);
+    inner.set(family, b);
+    map.set(r.category, inner);
+  }
+
+  // Format a "mass" total as the most legible unit (tn if >= 1000kg, else kg).
+  const fmtBaseTotal = (total: number, family: Family, baseLabel: string): string => {
+    if (family === 'mass') {
+      if (total >= 1000) return `${(total / 1000).toLocaleString('es-AR', { maximumFractionDigits: 2 })} tn`;
+      return `${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })} kg`;
+    }
+    if (family === 'volume') return `${total.toLocaleString('es-AR', { maximumFractionDigits: 2 })} lt`;
+    if (family === 'count') return `${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })} u`;
+    return `${total.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${baseLabel}`;
+  };
+
+  // If filtering to one category AND only one family, show detail list (more useful for "total de soja").
+  const singleCat = ctx.filters.category || (ctx.filters.categories && ctx.filters.categories.length === 1 ? ctx.filters.categories[0] : null);
+  const firstCatBuckets = singleCat ? map.get(singleCat) : null;
+  if (firstCatBuckets && firstCatBuckets.size === 1) {
+    const [family, b] = [...firstCatBuckets.entries()][0];
+    // Build a scope label that omits the category (already in the title)
+    const scopeWithoutCat = buildScopeLabel({ ...ctx.filters, category: null, categories: undefined });
+    let msg = `📦 *Total de ${singleCat} ${verb}${scopeWithoutCat}*\n📅 ${ctx.rangeLabel}\n\n`;
+    if (b.rows.length === 0) {
+      msg += '_(no hay registros con cantidad cargada)_';
+    } else {
+      const sortedRows = [...b.rows].sort((a, b2) => new Date(b2.date).getTime() - new Date(a.date).getTime());
+      for (const r of sortedRows) {
+        const qtyLabel = `${r.qty.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${r.unit || ''}`.trim();
+        msg += `• ${fmtDay(r.date)} — ${qtyLabel}\n`;
+      }
+      msg += `\n*Total ${verb}: ${fmtBaseTotal(b.totalBase, family, b.baseLabel)}*`;
+      if (b.rowsWithQty < b.totalRows) {
+        msg += `  _(${b.rowsWithQty}/${b.totalRows} registros con cantidad)_`;
+      }
+      // Avg USD/tn or USD/lt if applicable. Round to integer for legibility
+      // (avoid "USD 295,455" which looks like 295k due to es-AR decimal comma).
+      if (b.totalBase > 0 && (b.revenue['USD'] || 0) > 0) {
+        if (family === 'mass') {
+          const avgPerTn = Math.round((b.revenue['USD'] || 0) / (b.totalBase / 1000));
+          msg += `\n   • ~${fmtMoney(avgPerTn, 'USD')}/tn promedio`;
+        } else if (family === 'volume') {
+          const avgPerLt = Math.round((b.revenue['USD'] || 0) / b.totalBase);
+          msg += `\n   • ~${fmtMoney(avgPerLt, 'USD')}/lt promedio`;
+        }
+      }
+    }
+    return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+  }
+
+  // Multi-category or multi-family view: ranked summary per family
+  const ranked = [...map.entries()].sort((a, b) => {
+    const sumA = [...a[1].values()].reduce((s, x) => s + (x.totalBase || 0), 0);
+    const sumB = [...b[1].values()].reduce((s, x) => s + (x.totalBase || 0), 0);
+    return sumB - sumA;
+  });
+  let msg = `📦 *Volumen ${verb}${ctx.scope}*\n📅 ${ctx.rangeLabel}\n`;
+  for (const [cat, families] of ranked) {
+    msg += `\n*${cat}*`;
+    for (const [family, b] of families.entries()) {
+      const label = b.totalBase > 0 ? fmtBaseTotal(b.totalBase, family, b.baseLabel) : '— (sin cantidad cargada)';
+      msg += `\n   • ${label}`;
+      if (b.rowsWithQty < b.totalRows) msg += `  _(${b.rowsWithQty}/${b.totalRows})_`;
+      if (b.totalBase > 0 && (b.revenue['USD'] || 0) > 0 && family === 'mass') {
+        const avg = Math.round((b.revenue['USD'] || 0) / (b.totalBase / 1000));
+        msg += `\n     ~${fmtMoney(avg, 'USD')}/tn`;
+      }
+    }
+  }
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
+
+// --- last: most recent N records, sorted by date desc ---
+function renderLast(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderCtx, topN: number): HandlerResponse {
+  const isIncome = ctx.filters.type === 'incomes';
+  const xs = isIncome ? rows.incomes : (rows.expenses.length > 0 ? rows.expenses : rows.incomes);
+  if (xs.length === 0) {
+    return { messages: [`No hay registros${ctx.scope} (${ctx.rangeLabel}).`], suggestionKey: 'report_shown' };
+  }
+  const sorted = [...xs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, topN);
+  const kindLabel = isIncome ? 'ingreso' : 'movimiento';
+  const title = topN === 1 ? `📅 *Último ${kindLabel}${ctx.scope}*` : `📅 *Últimos ${topN} ${kindLabel}s${ctx.scope}*`;
+  let msg = title + '\n';
+  for (const r of sorted) msg += renderMovementLine(r) + '\n';
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
 }

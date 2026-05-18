@@ -3,6 +3,8 @@ import { apiRequest } from '../api/client';
 import ActivityEditModal from './ActivityEditModal';
 import ActivityCard from './cards/ActivityCard';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useRowHighlight } from '../hooks/useRowHighlight';
+import { useSortableTable } from '../hooks/useSortableTable';
 
 interface Activity {
   id: number;
@@ -68,8 +70,11 @@ const ACTIVITY_TYPE_OPTIONS = Object.entries(ACTIVITY_TYPE_LABELS).map(([id, { l
   label,
 }));
 
-export default function ActivityTable() {
+interface ActivityTableProps { highlightId?: number }
+
+export default function ActivityTable({ highlightId }: ActivityTableProps = {}) {
   const isMobile = useIsMobile();
+  const { active: activeHighlight, rowRef } = useRowHighlight(highlightId);
   const [data, setData] = useState<PaginatedResponse | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -83,6 +88,7 @@ export default function ActivityTable() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [eventType, setEventType] = useState('');
+  const [detailSearch, setDetailSearch] = useState('');
 
   const limit = 10;
 
@@ -122,11 +128,12 @@ export default function ActivityTable() {
   };
 
   const clearFilters = () => {
-    setFieldId('');
+    setFieldId(fields.length === 1 ? String(fields[0].id) : '');
     setPlotId('');
     setDateFrom('');
     setDateTo('');
     setEventType('');
+    setDetailSearch('');
     setPage(1);
   };
 
@@ -135,11 +142,32 @@ export default function ActivityTable() {
     fetchActivities();
   };
 
-  const hasFilters = fieldId || plotId || dateFrom || dateTo || eventType;
+  const hasFilters = fieldId || plotId || dateFrom || dateTo || eventType || detailSearch.trim();
 
   const availablePlots = fieldId
     ? fields.find(f => f.id === Number(fieldId))?.plots ?? []
     : [];
+
+  // Client-side filter on detail + sort
+  const filteredActivities = (data?.activities ?? []).filter(a => {
+    if (!detailSearch.trim()) return true;
+    const q = detailSearch.trim().toLowerCase();
+    return [a.product, a.notes, a.crop, a.implement, a.field_name, a.plot_name]
+      .some(v => (v || '').toLowerCase().includes(q));
+  });
+  const { sorted: sortedActivities, toggleSort, arrow } = useSortableTable<typeof filteredActivities[0], 'type' | 'date' | 'field' | 'plot' | 'crop' | 'product'>(filteredActivities, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'type': return row.event_type;
+        case 'date': return row.event_date;
+        case 'field': return (row.field_name || '').toLowerCase();
+        case 'plot': return (row.plot_name || '').toLowerCase();
+        case 'crop': return (row.crop || '').toLowerCase();
+        case 'product': return (row.product || '').toLowerCase();
+      }
+    },
+    initial: { key: 'date', direction: 'desc' },
+  });
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('es-AR', {
@@ -256,6 +284,16 @@ export default function ActivityTable() {
             {ACTIVITY_TYPE_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
         </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Detalle</label>
+          <input
+            type="text"
+            placeholder="producto, notas..."
+            value={detailSearch}
+            onChange={e => setDetailSearch(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm min-w-[160px]"
+          />
+        </div>
         {hasFilters && (
           <button
             onClick={clearFilters}
@@ -276,8 +314,14 @@ export default function ActivityTable() {
         <>
           {isMobile ? (
             <div className="space-y-3 p-4">
-              {data.activities.map(a => (
-                <ActivityCard key={a.id} activity={a} onEdit={setEditing} />
+              {sortedActivities.map(a => (
+                <div
+                  key={a.id}
+                  ref={rowRef(a.id)}
+                  className={activeHighlight === a.id ? 'ring-2 ring-campo-400 rounded-lg transition' : ''}
+                >
+                  <ActivityCard activity={a} onEdit={setEditing} />
+                </div>
               ))}
             </div>
           ) : (
@@ -285,19 +329,23 @@ export default function ActivityTable() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Campo</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Lote</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Cultivo</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Detalle</th>
+                    <th onClick={() => toggleSort('type')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Tipo{arrow('type')}</th>
+                    <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Fecha{arrow('date')}</th>
+                    <th onClick={() => toggleSort('field')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Campo{arrow('field')}</th>
+                    <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Lote{arrow('plot')}</th>
+                    <th onClick={() => toggleSort('crop')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Cultivo{arrow('crop')}</th>
+                    <th onClick={() => toggleSort('product')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Detalle{arrow('product')}</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
                     <th className="px-4 py-3 w-20" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {data.activities.map(a => (
-                    <tr key={a.id} className="hover:bg-gray-50 transition-colors">
+                  {sortedActivities.map(a => (
+                    <tr
+                      key={a.id}
+                      ref={rowRef(a.id) as unknown as React.Ref<HTMLTableRowElement>}
+                      className={`transition-colors ${activeHighlight === a.id ? 'bg-amber-50' : 'hover:bg-gray-50'}`}
+                    >
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
                           {renderTypeLabel(a.event_type)}

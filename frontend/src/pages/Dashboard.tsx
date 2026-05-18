@@ -35,6 +35,9 @@ const viewFeatureMap: Record<DashboardView, string | null> = {
 export default function Dashboard() {
   const { user, features } = useAuth();
   const [view, setView] = useState<DashboardView>('overview');
+  // When the user clicks a row in the overview "Actividad reciente" feed,
+  // we remember which row to scroll-to + highlight in the target table.
+  const [highlight, setHighlight] = useState<{ view: DashboardView; id: number } | null>(null);
 
   useEffect(() => {
     const required = viewFeatureMap[view];
@@ -43,28 +46,38 @@ export default function Dashboard() {
     }
   }, [view, features]);
 
+  const handleRecentItemClick = (type: 'expense' | 'income' | 'activity', id: number) => {
+    const target: DashboardView = type === 'expense' ? 'expenses' : type === 'income' ? 'incomes' : 'activities';
+    setHighlight({ view: target, id });
+    setView(target);
+  };
+
+  // Once we navigate into the target view, consume the highlight after the
+  // child table renders so it doesn't persist on next visit.
+  const highlightForView = highlight?.view === view ? highlight.id : undefined;
+
   if (!user) return null;
 
   const renderContent = () => {
     switch (view) {
       case 'overview':
-        return <OverviewPage onGoToAccount={() => setView('account')} />;
+        return <OverviewPage onGoToAccount={() => setView('account')} onRecentItemClick={handleRecentItemClick} />;
       case 'expenses':
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <ExpenseTable />
+            <ExpenseTable highlightId={highlightForView} />
           </div>
         );
       case 'incomes':
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <IncomeTable />
+            <IncomeTable highlightId={highlightForView} />
           </div>
         );
       case 'activities':
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <ActivityTable />
+            <ActivityTable highlightId={highlightForView} />
           </div>
         );
       case 'observations':

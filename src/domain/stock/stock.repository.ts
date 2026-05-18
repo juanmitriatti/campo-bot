@@ -47,7 +47,11 @@ export interface StockMovementRow {
 // --- Helpers ---
 
 function accessibleFieldsSql(paramIdx: number): string {
-  return `SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
+  // Own fields + shared via field_members. Previous version only returned
+  // shared fields, so owners saw empty stock lists.
+  return `SELECT id FROM fields WHERE user_id = $${paramIdx} AND deleted_at IS NULL
+          UNION
+          SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
 }
 
 // --- Repository ---
@@ -280,6 +284,86 @@ export class StockRepository {
     query += ' ORDER BY f.name, w.name, si.name';
 
     const { rows } = await pool.query(query, params);
+    return rows;
+  }
+
+  /**
+   * Unified stock query. Same architecture as queryMovements/queryScoutings/queryHarvestLoads.
+   * Returns raw rows; aggregation happens in renderers.
+   *
+   * Filters: warehouse, field, category, product (LIKE substring, accent-insensitive),
+   *   lowStockOnly (current <= min), quantityMin/Max, hasMinStock.
+   */
+  async queryStock(opts: {
+    userId: number;
+    fieldName?: string | null;
+    warehouseName?: string | null;
+    category?: string | null;
+    productSearch?: string | null;
+    lowStockOnly?: boolean | null;
+    quantityMin?: number | null;
+    quantityMax?: number | null;
+    hasMinStock?: boolean | null;
+    sortBy?: 'name' | 'quantity' | 'category' | 'warehouse';
+    sortDesc?: boolean;
+    limit?: number;
+  }): Promise<StockItemRow[]> {
+    const { userId, fieldName = null, warehouseName = null, category = null,
+      productSearch = null, lowStockOnly = null, quantityMin = null,
+      quantityMax = null, hasMinStock = null,
+      sortBy = 'name', sortDesc = false, limit = 200 } = opts;
+
+    const conditions = [
+      `w.field_id IN (${accessibleFieldsSql(1)})`,
+      'si.deleted_at IS NULL',
+      'w.deleted_at IS NULL',
+    ];
+    const params: (string | number | boolean)[] = [userId];
+    let idx = 2;
+
+    const unaccent = (col: string) => `TRANSLATE(LOWER(${col}), 'áéíóúñ', 'aeioun')`;
+
+    if (fieldName) {
+      conditions.push(`${unaccent('f.name')} = ${unaccent(`$${idx}`)}`);
+      params.push(fieldName); idx++;
+    }
+    if (warehouseName) {
+      conditions.push(`${unaccent('w.name')} LIKE '%' || ${unaccent(`$${idx}`)} || '%'`);
+      params.push(warehouseName); idx++;
+    }
+    if (category) {
+      conditions.push(`${unaccent('si.category')} = ${unaccent(`$${idx}`)}`);
+      params.push(category); idx++;
+    }
+    if (productSearch) {
+      conditions.push(`${unaccent('si.name')} LIKE '%' || ${unaccent(`$${idx}`)} || '%'`);
+      params.push(productSearch); idx++;
+    }
+    if (lowStockOnly === true) {
+      conditions.push(`si.min_stock IS NOT NULL AND si.current_quantity <= si.min_stock`);
+    }
+    if (quantityMin != null) { conditions.push(`si.current_quantity >= $${idx}`); params.push(quantityMin); idx++; }
+    if (quantityMax != null) { conditions.push(`si.current_quantity <= $${idx}`); params.push(quantityMax); idx++; }
+    if (hasMinStock === true) conditions.push(`si.min_stock IS NOT NULL`);
+    if (hasMinStock === false) conditions.push(`si.min_stock IS NULL`);
+
+    const sortCol = sortBy === 'quantity' ? 'si.current_quantity'
+      : sortBy === 'category' ? 'si.category'
+      : sortBy === 'warehouse' ? 'w.name'
+      : 'si.name';
+    const direction = sortDesc ? 'DESC' : 'ASC';
+
+    const limitParam = `$${idx}`;
+    params.push(Math.min(Math.max(limit, 1), 500));
+
+    const sql = `SELECT si.*, w.name AS warehouse_name, f.name AS field_name, f.id AS field_id
+      FROM stock_items si
+      JOIN warehouses w ON si.warehouse_id = w.id
+      JOIN fields f ON w.field_id = f.id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY ${sortCol} ${direction}, si.name ASC
+      LIMIT ${limitParam}`;
+    const { rows } = await pool.query(sql, params);
     return rows;
   }
 

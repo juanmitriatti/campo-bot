@@ -33,12 +33,169 @@ export class AgentPromptBuilder {
    * from `conversation_state`, independently of the prompt. List of all
    * fields/plots is kept so the agent still recognizes user-mentioned names.
    */
-  buildUserMessagePrefix(userContext: UserContext | null, reduced = false): string {
+  buildUserMessagePrefix(userContext: UserContext | null, reduced = false, lastFinanceQuery: Record<string, unknown> | null = null, lastScoutingQuery: Record<string, unknown> | null = null, lastHarvestQuery: Record<string, unknown> | null = null, lastStockQuery: Record<string, unknown> | null = null, lastLivestockQuery: Record<string, unknown> | null = null, lastActivityQuery: Record<string, unknown> | null = null, lastRainfallQuery: Record<string, unknown> | null = null): string {
     const today = this.todayDate();
     const parts: string[] = [`Hoy: ${today}.`];
     const ctx = this.contextLine(userContext, reduced);
     if (ctx) parts.push(ctx);
+    if (lastFinanceQuery && Object.keys(lastFinanceQuery).length > 0) {
+      const summary = this.summarizeFinanceQuery(lastFinanceQuery);
+      if (summary) parts.push(`Última consulta financiera: ${summary}. Si el usuario refina ("y...","solo...","ahora...","sin...","¿y en X?","ordenalos","el más caro"), pasá inherit:true y SOLO el delta nuevo.`);
+    }
+    if (lastScoutingQuery && Object.keys(lastScoutingQuery).length > 0) {
+      const summary = this.summarizeScoutingQuery(lastScoutingQuery);
+      if (summary) parts.push(`Última consulta de monitoreos: ${summary}. Si el usuario refina ("solo en X","ahora los que tengan plagas","ordenalos por cobertura","y arriba de 10%"), pasá inherit:true y SOLO el delta nuevo.`);
+    }
+    if (lastHarvestQuery && Object.keys(lastHarvestQuery).length > 0) {
+      const summary = this.summarizeHarvestQuery(lastHarvestQuery);
+      if (summary) parts.push(`Última consulta de cosechas/cargas: ${summary}. Si el usuario refina ("solo de Vicentin","ahora trigo","ordenalas por tn","y arriba de 60 tn"), pasá inherit:true y SOLO el delta nuevo.`);
+    }
+    if (lastStockQuery && Object.keys(lastStockQuery).length > 0) {
+      const summary = this.summarizeStockQuery(lastStockQuery);
+      if (summary) parts.push(`Última consulta de stock: ${summary}. Si el usuario refina ("solo bajo stock","ahora los de San Martin","ordenalos por cantidad","solo granos"), pasá inherit:true y SOLO el delta nuevo.`);
+    }
+    if (lastLivestockQuery && Object.keys(lastLivestockQuery).length > 0) {
+      const summary = this.summarizeLivestockQuery(lastLivestockQuery);
+      if (summary) parts.push(`Última consulta de hacienda: ${summary}. Si el usuario refina ("solo del feedlot","ahora vacas","ordenalos por peso","solo San Martin"), pasá inherit:true y SOLO el delta nuevo.`);
+    }
+    if (lastActivityQuery && Object.keys(lastActivityQuery).length > 0) {
+      const summary = this.summarizeActivityQuery(lastActivityQuery);
+      if (summary) parts.push(`Última consulta de actividades: ${summary}. Si el usuario refina ("solo soja","ahora La Esperanza","ordenalas por fecha","solo fumigaciones"), pasá inherit:true y SOLO el delta nuevo.`);
+    }
+    if (lastRainfallQuery && Object.keys(lastRainfallQuery).length > 0) {
+      const summary = this.summarizeRainfallQuery(lastRainfallQuery);
+      if (summary) parts.push(`Última consulta de lluvias: ${summary}. Si el usuario refina ("solo La Esperanza","ahora mayo","arriba de 30 mm","comparalo con X"), pasá inherit:true y SOLO el delta nuevo.`);
+    }
     return parts.join(' ');
+  }
+
+  private summarizeRainfallQuery(q: Record<string, unknown>): string {
+    const bits: string[] = [];
+    if (q.view) bits.push(`view=${q.view}`);
+    if (q.fieldName) bits.push(`field=${q.fieldName}`);
+    if (q.plotName) bits.push(`plot=${q.plotName}`);
+    if (q.period) bits.push(`period=${q.period}`);
+    if (q.mmMin != null) bits.push(`mm_min=${q.mmMin}`);
+    if (q.mmMax != null) bits.push(`mm_max=${q.mmMax}`);
+    if (q.aggregateMetric) bits.push(`metric=${q.aggregateMetric}`);
+    if (q.group_by) bits.push(`group_by=${q.group_by}`);
+    return bits.length > 0 ? bits.join(', ') : '';
+  }
+
+  private summarizeActivityQuery(q: Record<string, unknown>): string {
+    const bits: string[] = [];
+    if (q.view) bits.push(`view=${q.view}`);
+    if (q.fieldName) bits.push(`field=${q.fieldName}`);
+    if (q.plotName) bits.push(`plot=${q.plotName}`);
+    if (q.crop) bits.push(`crop=${q.crop}`);
+    if (Array.isArray(q.activityTypes) && (q.activityTypes as string[]).length > 0) bits.push(`types=[${(q.activityTypes as string[]).join(',')}]`);
+    if (q.productSearch) bits.push(`product=${q.productSearch}`);
+    if (q.quantityMin != null) bits.push(`qty_min=${q.quantityMin}`);
+    if (q.aggregateMetric) bits.push(`metric=${q.aggregateMetric}`);
+    if (q.group_by) bits.push(`group_by=${q.group_by}`);
+    if (q.period) bits.push(`period=${q.period}`);
+    return bits.length > 0 ? bits.join(', ') : '';
+  }
+
+  private summarizeLivestockQuery(q: Record<string, unknown>): string {
+    const bits: string[] = [];
+    if (q.view) bits.push(`view=${q.view}`);
+    if (q.category) bits.push(`category=${q.category}`);
+    if (q.fieldName) bits.push(`field=${q.fieldName}`);
+    if (q.plotName) bits.push(`plot=${q.plotName}`);
+    if (q.corralName) bits.push(`corral=${q.corralName}`);
+    if (q.breed) bits.push(`breed=${q.breed}`);
+    if (q.inFeedlot === true) bits.push('feedlot=true');
+    if (q.inFeedlot === false) bits.push('feedlot=false');
+    if (q.weightMinKg != null) bits.push(`wgt_min=${q.weightMinKg}`);
+    if (q.weightMaxKg != null) bits.push(`wgt_max=${q.weightMaxKg}`);
+    if (q.aggregateMetric) bits.push(`metric=${q.aggregateMetric}`);
+    if (q.group_by) bits.push(`group_by=${q.group_by}`);
+    return bits.length > 0 ? bits.join(', ') : '';
+  }
+
+  private summarizeStockQuery(q: Record<string, unknown>): string {
+    const bits: string[] = [];
+    if (q.view) bits.push(`view=${q.view}`);
+    if (q.fieldName) bits.push(`field=${q.fieldName}`);
+    if (q.warehouseName) bits.push(`warehouse=${q.warehouseName}`);
+    if (q.category) bits.push(`category=${q.category}`);
+    if (q.product) bits.push(`product=${q.product}`);
+    if (q.lowStockOnly) bits.push('low_stock=true');
+    if (q.quantityMin != null) bits.push(`qty_min=${q.quantityMin}`);
+    if (q.quantityMax != null) bits.push(`qty_max=${q.quantityMax}`);
+    if (q.aggregateMetric) bits.push(`metric=${q.aggregateMetric}`);
+    if (q.group_by) bits.push(`group_by=${q.group_by}`);
+    if (q.sort_by) bits.push(`sort=${q.sort_by}`);
+    return bits.length > 0 ? bits.join(', ') : '';
+  }
+
+  private summarizeHarvestQuery(q: Record<string, unknown>): string {
+    const bits: string[] = [];
+    if (q.view) bits.push(`view=${q.view}`);
+    if (q.crop) bits.push(`crop=${q.crop}`);
+    if (q.fieldName) bits.push(`field=${q.fieldName}`);
+    if (q.plotName) bits.push(`plot=${q.plotName}`);
+    if (q.driverName) bits.push(`driver=${q.driverName}`);
+    if (q.destinatario) bits.push(`destinatario=${q.destinatario}`);
+    if (q.truckPlate) bits.push(`patente=${q.truckPlate}`);
+    if (q.eventDate) bits.push(`date=${q.eventDate}`);
+    if (q.weightMinKg != null) bits.push(`weight_min=${q.weightMinKg}`);
+    if (q.weightMaxKg != null) bits.push(`weight_max=${q.weightMaxKg}`);
+    if (q.humidityMinPct != null) bits.push(`hum_min=${q.humidityMinPct}`);
+    if (q.humidityMaxPct != null) bits.push(`hum_max=${q.humidityMaxPct}`);
+    if (q.proteinMinPct != null) bits.push(`prot_min=${q.proteinMinPct}`);
+    if (q.oilMinPct != null) bits.push(`oil_min=${q.oilMinPct}`);
+    if (q.aggregateMetric) bits.push(`metric=${q.aggregateMetric}`);
+    if (q.group_by) bits.push(`group_by=${q.group_by}`);
+    if (q.period) bits.push(`period=${q.period}`);
+    return bits.length > 0 ? bits.join(', ') : '';
+  }
+
+  private summarizeScoutingQuery(q: Record<string, unknown>): string {
+    const bits: string[] = [];
+    if (q.view) bits.push(`view=${q.view}`);
+    if (q.fieldName) bits.push(`field=${q.fieldName}`);
+    if (q.plotName) bits.push(`plot=${q.plotName}`);
+    if (q.stageCode) bits.push(`stage=${q.stageCode}`);
+    if (q.stagePrefix) bits.push(`stage_prefix=${q.stagePrefix}`);
+    if (q.pestSpeciesQuery) bits.push(`pest=${q.pestSpeciesQuery}`);
+    if (Array.isArray(q.weedSpeciesAny) && (q.weedSpeciesAny as string[]).length > 0) bits.push(`weeds=[${(q.weedSpeciesAny as string[]).join(',')}]`);
+    if (q.hasPest === true) bits.push('has_pest=true');
+    if (q.hasWeeds === true) bits.push('has_weeds=true');
+    if (q.weedMinPct != null) bits.push(`weed_min=${q.weedMinPct}`);
+    if (q.weedMaxPct != null) bits.push(`weed_max=${q.weedMaxPct}`);
+    if (q.emergenceMinPct != null) bits.push(`emerg_min=${q.emergenceMinPct}`);
+    if (q.emergenceMaxPct != null) bits.push(`emerg_max=${q.emergenceMaxPct}`);
+    if (q.soilMoistureMax != null) bits.push(`hum_max=${q.soilMoistureMax}`);
+    if (q.soilMoistureMin != null) bits.push(`hum_min=${q.soilMoistureMin}`);
+    if (q.aggregateMetric) bits.push(`metric=${q.aggregateMetric}`);
+    if (q.sort_by) bits.push(`sort=${q.sort_by}`);
+    if (q.period) bits.push(`period=${q.period}`);
+    return bits.length > 0 ? bits.join(', ') : '';
+  }
+
+  /** Render the prior financial_report params as a compact human-readable summary for the agent. */
+  private summarizeFinanceQuery(q: Record<string, unknown>): string {
+    const bits: string[] = [];
+    const type = q.type || q.reportType;
+    if (type === 'expenses') bits.push('gastos');
+    else if (type === 'incomes') bits.push('ingresos');
+    if (q.view) bits.push(`view=${q.view}`);
+    if (q.category) bits.push(`category=${q.category}`);
+    if (Array.isArray(q.categories) && q.categories.length > 0) bits.push(`categories=[${(q.categories as string[]).slice(0, 3).join(',')}${q.categories.length > 3 ? '…' : ''}]`);
+    if (q.fieldName) bits.push(`field=${q.fieldName}`);
+    if (q.plotName) bits.push(`plot=${q.plotName}`);
+    if (q.period) bits.push(`period=${q.period}`);
+    else if (q.desde || q.hasta) bits.push(`desde=${q.desde}..hasta=${q.hasta}`);
+    if (q.currency) bits.push(`currency=${q.currency}`);
+    if (q.amount_min != null) bits.push(`amount_min=${q.amount_min}`);
+    if (q.amount_max != null) bits.push(`amount_max=${q.amount_max}`);
+    if (Array.isArray(q.exclude_categories) && q.exclude_categories.length > 0) bits.push(`exclude=[${(q.exclude_categories as string[]).join(',')}]`);
+    if (q.description_search) bits.push(`search=${q.description_search}`);
+    if (q.sort_by) bits.push(`sort_by=${q.sort_by}`);
+    if (q.top_n) bits.push(`top_n=${q.top_n}`);
+    return bits.length > 0 ? bits.join(', ') : '';
   }
 
   private todayDate(): string {
@@ -113,13 +270,419 @@ ${this.buildActivityLines(dictionary)}
 - CLIMA: "clima/pronóstico/va a llover/tiempo en X"→weather_full con city=X. SIEMPRE extraer la ciudad si el usuario la menciona, NO asumir la ubicación del usuario. Ej: "en ameghino va a llover?"→weather_full(city="Ameghino"). Si mencionan provincia ("clima en ameghino buenos aires")→agregar province. Sin ciudad ("clima"/"pronóstico")→weather_full sin city (usa ubicación del usuario)
 - UBICAR CAMPO: "ubicar/ubicación campo X en Y" / "campo X está en Y" / "corregir campo X, es en Y" → set_field_city(field=X, city=Y). CRÍTICO: si el usuario dice "agregar ubicación" / "poner ubicación" / "cambiar ubicación" / "está mal la ubicación" SIN mencionar una localidad específica, NO llames set_field_city. Usá respond_text preguntando "¿En qué localidad está el campo X?". NUNCA inventar una ciudad (ej: Pergamino, Junín) si el usuario no la dijo literalmente.
 - MONITOREO ESTRUCTURADO (log_crop_scouting vs log_observation): si el usuario reporta MÉTRICAS (estadio fenológico V3/R5/Z3, % de malezas, severidad de plaga, % afectado, % emergencia, plantas/m², humedad suelo) → log_crop_scouting. Si solo describe una observación libre sin números/estadios → log_observation. Calibración severidad: ausente=1, leve=2, moderada=3, alta=4, severa=5. Ej: "soja V3 con 15% de rama negra y presencia leve de chinche" → log_crop_scouting(crop=soja, stage_code=V3, weed_coverage_pct=15, weed_species=["rama negra"], pest_species="chinche", pest_severity_1_5=2). Ej: "vi una mancha rara en el lote A1" → log_observation (sin métricas)
-- "plagas/malezas/helada/granizo/roya/hongo/chinches/pulgones en lote X"→log_observation (REGISTRO, no consulta)
+- CRÍTICO "sanidad/sanitario": SIN palabras de animal (hacienda/vacas/toros/novillos/terneros/cabezas/rodeo/animal/vacuna/desparasit/animales) → query_scoutings (sanidad del CULTIVO es lo más común). CON cualquier palabra animal → query_health_events. "Resumen sanitario de mayo"/"reporte sanitario"/"estado sanitario" sin más contexto → query_scoutings (DEFAULT a cultivo, NUNCA a hacienda).
+- "plagas/malezas/helada/granizo/roya/hongo/chinches/pulgones en lote X"→log_observation (REGISTRO, sin verbos de consulta como "mostrame/ver/buscar/dónde/qué/cuál")
+- IMPORTANTE consulta vs registro: "Mostrame/Ver/Buscame/Filtrá/Listame + [maleza/plaga/cultivo/estadio/lote]" SIEMPRE es CONSULTA → query_scoutings (NUNCA log_observation). "Mostrame lotes con rama negra" → query_scoutings(weed_species_any:["rama negra"]). "Buscame oruga militar" → query_scoutings(pest_species:"oruga militar"). "Ver monitoreos de San Martin" → query_scoutings(field:"San Martin")
 - "cuándo/qué/hubo plagas en lote X"→query_plot_history (CONSULTA). Solo si pregunta explícita
 - "reporte agro/agronómico"/"estado del lote/campo"/"cómo va/viene/está el lote/campo"/"novedades"/"resumen agronómico"→generate_agro_report
 - "reporte/gastos/ingresos del lote X"(contexto financiero)→financial_report(plot=X). Sin contexto financiero→generate_agro_report
-- "gastos en [categoría]"/"cuánto gasté en semillas"/"gastos en combustible campo X este año"→financial_report con category/field/desde/hasta
-- "gastos últimos 30 días"/"gastos de enero a marzo"→financial_report con days o desde/hasta
-- financial_report: siempre convertir períodos a desde/hasta YYYY-MM-DD. "este año"→period:year. "último mes"→days:30. "reporte semanal"→period:week. "resultado mensual"→sin params (default month)
+- financial_report = ÚNICO tool para consultas de plata. NUNCA inventar tools. Combiná filtros + view obligatoriamente.
+
+═══ FINANCIAL_REPORT — REGLAS DURAS (leélas antes de firmar la tool) ═══
+
+PASO 1 — Elegí el VIEW correcto. ES OBLIGATORIO. Default 'aggregate' es WRONG en estos casos:
+  - "más alto/grande/caro/máximo" + (gasto/ingreso/venta/compra) → view:'max' + top_n (default 1)
+  - "más reciente"/"última"/"último" venta/ingreso/gasto → view:'last' + top_n:1
+  - "últimos N movimientos/gastos/ingresos" → view:'last' + top_n:N
+  - "en qué/cuál categoría más" + (gasté/ingresé) | "top categorías" | "ranking" → view:'top_categories'
+  - "qué lote/campo más" + (gastó/facturó/generó/movimiento) | "top lotes" → view:'top_locations' + group_by:'plot'|'field'
+  - "compará X vs Y" | "abril o mayo" | "soja vs maíz" → view:'compare' + compare_desde/hasta o compare_category
+  - "balance"/"neto"/"cuánto quedó"/"ganancia"/"resultado"/"rentabilidad"/"rentable"/"ROI" → view:'balance' (+ group_by si pregunta "por lote/campo/cultivo/mes")
+  - "hubo meses con pérdida" | "balance mensual" → view:'balance', group_by:'month'
+  - "cuántas tn/toneladas/kg/qq/litros/lt/bolsas/unidades" o "volumen vendido/comprado" → view:'volume' (NUNCA detail)
+  - Mención explícita de UNA categoría/lote/campo/descripción + sin ranking/balance → view:'detail'
+  - Sin filtros + sin ranking → view:'aggregate' (default)
+
+PASO 2 — Elegí el PERÍODO. NO defaulteás a mes actual cuando la pregunta NO TIENE qualifier temporal:
+  - Con qualifier ("mayo"/"este mes"/"abril"/"últimos N días"/"este año") → respetá el qualifier
+  - Sin qualifier PERO query analítica/totalizadora ("cuánto X"/"llevo gastado"/"total"/"histórico"/"hasta ahora"/"qué cultivo"/"qué lote"/"cuál fue"/"más alto/grande") → period:'all'
+  - Sin qualifier + query de movimientos recientes ("mostrame gastos"/"ver ingresos") → mes actual (default)
+  - Volume y top_locations sin qualifier → SIEMPRE period:'all'
+  - "todos"/"todo el historial"/"completo" → period:'all'
+
+PASO 3 — Elegí el TYPE:
+  - Sólo gastos ("gasté"/"compré"/"pagué"/"gastos") → type:'expenses'
+  - Sólo ingresos ("cobré"/"vendí"/"ingresos"/"ventas"/"facturé"/"ingresé") → type:'incomes'
+  - Balance/rentabilidad/compará gastos vs ingresos → type:'both'
+
+PASO 4 — Filtros adicionales (PASARLOS SIEMPRE si están en el mensaje, NO los ignores):
+  - field/plot: "campo X" / "lote Y" → field:'X' / plot:'Y'
+  - category (UNA): mencionada explícitamente → category:'Soja'/'Insumos'/etc.
+  - categories (MULTI): "cereales"/"granos" → categories:["Soja","Maíz","Trigo","Girasol","Sorgo","Cebada","Avena","Centeno"]
+  - currency: "en USD"/"en dólares"/"solo dólares" → currency:'USD' | "en pesos"/"en ARS" → currency:'ARS'
+  - amount_min/max OBLIGATORIO cuando hay número:
+      "mayores/arriba/más de $X" → amount_min:X
+      "menores/abajo de X" → amount_max:X
+      "entre X y Y" → amount_min:X, amount_max:Y
+      Ejemplos: "gastos arriba de 2 millones" → amount_min:2000000. "ingresos > USD 7000" → amount_min:7000, currency:'USD'
+  - description_search: cualquier producto/objeto que NO sea categoría reconocida → description_search:'<palabra>'
+      "glifosato"/"glifo"/"roundup" → description_search:'glifo'
+      "sembradora"/"tractor"/"cosechadora"/"sembradoras" → description_search:'<palabra>'
+      "buscame ventas de novillos"/"compras de soja" → description_search:'<palabra>' (CON type correspondiente)
+  - exclude_categories: "sin X"/"sacá X"/"excepto X" → exclude_categories:["X"]
+  - sort_by: "por monto" → 'amount'. "por fecha" → 'date' (default)
+  - sort_desc: "de mayor a menor"/"desc" → true (default)
+
+PASO 5 — MULTI-TURNO. Si el mensaje refina al anterior ("y...","ahora...","solo...","sin..."), pasá inherit:true + SOLO el delta nuevo:
+  Ej previo: financial_report(type:'expenses', category:'Combustible', period:'all')
+  Mensaje: "¿Y en La Esperanza?" → financial_report(inherit:true, field:'La Esperanza')
+  Mensaje: "Sacá sueldos" → financial_report(inherit:true, exclude_categories:['Sueldos'])
+  Mensaje: "Y en dólares" → financial_report(inherit:true, currency:'USD') ← NUNCA cotización del dólar acá
+  Mensaje: "Y el más caro" → financial_report(inherit:true, view:'max', top_n:1)
+
+PASO 6 — DISAMBIGUACIONES DURAS:
+  - "en dólares"/"en USD"/"solo dólares"/"que fueron en dólares" en contexto financial (después de hablar de gastos/ingresos/ventas) → currency:'USD'. NUNCA llames a la cotización del dólar acá.
+  - "cuánto está el dólar"/"precio del dólar"/"cotización del dólar"/"a cuánto está" SIN contexto financial → SÍ es cotización del dólar (otra tool, no financial_report)
+  - "vendí maíz/soja/trigo" como consulta ("cuándo vendí X") → financial_report(type:'incomes', category:X, view:'last' o 'detail'). NUNCA query_harvest_loads (esa es para registros de cosecha, no ventas)
+  - "gastos repetidos"/"gastos duplicados"/"gastos iguales" → financial_report(view:'detail') con la categoría mencionada. NUNCA expense_templates (eso es para gastos RECURRENTES configurados)
+  - "buscar X"/"buscame X" → financial_report(description_search:'X'). NUNCA active_crop a menos que pregunte por hectáreas sembradas
+  - "cabezas/animales/novillos vendidos" → livestock, NO financial_report
+  - "hectáreas sembradas" → active_crop, NO financial_report
+
+CATEGORÍAS EXACTAS (case-sensitive, no inventes):
+  GASTOS: 'Insumos' (NUNCA confundir con 'Semillas'), 'Semillas', 'Combustible', 'Agroquímicos', 'Fertilizantes', 'Sueldos', 'Maquinaria', 'Arrendamiento', 'Impuestos'
+  INGRESOS: 'Soja', 'Maíz', 'Trigo', 'Girasol', 'Sorgo', 'Cebada', 'Hacienda', 'Leche', 'Arrendamiento', 'Servicios'
+  ("arrendamiento" puede ser ambos según contexto: pago=gasto, cobro=ingreso)
+
+═══ FIN FINANCIAL_REPORT ═══
+
+═══ QUERY_SCOUTINGS — REGLAS DURAS (CUALQUIER consulta sobre monitoreos) ═══
+
+query_scoutings es el ÚNICO tool para CONSULTAR monitoreos. NUNCA llames log_observation para preguntas. NUNCA llames query_health_events ("sanidad" en contexto cultivo NO es vacunación).
+
+PASO 1 — VIEW (obligatorio):
+  - "el más alto/severo/comprometido/X" + métrica → view:'max' + aggregate_metric
+  - "el más bajo/limpio/sano/mejor X (positivo)" → view:'max' (sí, max — pero con la métrica correcta: mejor emergencia=emergence_pct max; lote más limpio=weed_coverage_pct con sort_desc:false → equivalente a min)
+  - PARA INVERSAS ("más sano/limpio/mejor"): usá view:'min' con aggregate_metric=weed_coverage_pct/pest_severity. "mejor emergencia" → view:'max', aggregate_metric:'emergence_pct'. "peor emergencia" → view:'min', aggregate_metric:'emergence_pct'
+  - "promedio/media" → view:'avg' + aggregate_metric
+  - "cantidad de X"/"cuántos monitoreos" → view:'aggregate' (devuelve conteos por categoría)
+  - "qué lote/campo tuvo más/menos X" → view:'top_locations' + group_by + aggregate_metric
+  - "compará A vs B" → view:'compare' + compare_plot:B (o compare_field)
+  - "top N"/"los 3 con más X" → view:'rank' + aggregate_metric + top_n
+  - Resumen general/list → view:'aggregate' o 'detail'
+
+PASO 2 — FILTROS (pasalos SIEMPRE que aparezcan):
+  - "lotes con X maleza"/"dónde hay yuyo colorado"/"rama negra" → weed_species_any:["yuyo colorado"] (NUNCA dump todo)
+  - "monitoreos con oruga militar"/"con chinche" → pest_species:"oruga militar" (LIKE substring)
+  - "estados V"/"estados R"/"estados Z" → stage_prefix:"V" (NO stage_code)
+  - "V3"/"R1"/"Z85" exacto → stage_code:"V3"
+  - "monitoreos en emergencia" → stage_code:"VE" (VE es el estadio de emergencia)
+  - "más de X% malezas" → weed_min_pct:X. "menos de X%" → weed_max_pct:X. "arriba de X%" → weed_min_pct
+  - "emergencia menor a X" → emergence_max_pct:X. "mayor a X" → emergence_min_pct:X
+  - "lotes secos"/"muy secos" → soil_moisture_max:2 (seco=2). "algo secos"/"medianamente secos"/"un poco secos" → soil_moisture_max:3 (incluye regular)
+  - "lotes húmedos"/"monitoreos húmedos" → soil_moisture_min:4 (húmedo=4)
+  - "X% exacto de malezas" / "exactamente N% de malezas" / "con N% de malezas" (un solo número, no "más de"/"menos de") → weed_min_pct:N, weed_max_pct:N (ambos, para que el handler renderee "=N%")
+  - "baja densidad" → density_max:10 aprox. "alta densidad" → density_min:20
+  - "hay plagas"/"qué plagas detectamos"/"monitoreos con plagas" → has_pest:true
+  - "lotes con malezas"/"qué malezas aparecieron" → has_weeds:true
+  - "plagas severas/altas" → pest_severity_min:4. "moderadas o más" → pest_severity_min:3
+  - "cobertura más alta" → view:'max', aggregate_metric:'weed_coverage_pct'
+  - "máxima severidad" → view:'max', aggregate_metric:'pest_severity'
+
+PASO 3 — PERÍODO:
+  - Sin qualifier temporal explícito → SIEMPRE period:'all'. NUNCA inventes "mayo" porque sea el mes actual. Si el usuario no dice "mayo"/"abril"/"este mes"/"últimos N días", el período es TODO.
+  - Mes específico ("de mayo"/"en abril"/"este mes") → desde/hasta YYYY-MM-DD
+  - Multi-turno: heredar si el agente lo dejó pendiente
+  - REGLA: stage_prefix/weed_species_any/pest_species/has_pest/has_weeds/threshold filters → SI el usuario no mencionó período, usá period:'all'. Estos filtros ya son "narrowing" y limitar más al mes actual oculta datos.
+
+PASO 4 — MULTI-TURNO (inherit:true SOLO cuando el usuario CLARAMENTE refina lo anterior):
+  Inherit:true PERMITIDO si el mensaje empieza con o contiene EXPLÍCITAMENTE: "y", "solo", "ahora", "ahora los", "sin", "también", "tampoco", "arriba de", "abajo de", "ordenalos", "ordená", "filtrá", "y los", "y solo", "y arriba", "y sin", "y en", "y sólo", "ese", "esos", "estos", "esa", "esas", "los mismos", "del mismo".
+  Inherit:false (NUEVA QUERY) cuando el mensaje tiene PREGUNTA COMPLETA con sujeto+verbo, aunque toque temas relacionados: "¿qué malezas aparecieron?", "¿hay plagas?", "¿cuál es el más sano?", "promedio de X", "mostrame Y", "ver Z". Estos NO son refinamientos — son queries nuevas que reinician el filtro.
+  Ejemplos:
+    Previo: query_scoutings(field:'San Martin')
+    "Solo los de B1" → inherit:true, plot:'B1' (refinamiento)
+    "Ahora los que tengan plagas" → inherit:true, has_pest:true (refinamiento)
+    "Y solo arriba de 10%" → inherit:true, weed_min_pct:10 (refinamiento)
+    "¿Qué malezas aparecieron?" → inherit:false, has_weeds:true (nueva query, NO inherit)
+    "Mostrame lotes con rama negra" → inherit:false, weed_species_any:["rama negra"] (nueva query)
+    "Promedio de cobertura" → inherit:false, view:'avg', aggregate_metric:'weed_coverage_pct' (nueva query)
+
+PASO 5 — DISAMBIGUACIONES DURAS:
+  - "sanidad/sanitario" SIN palabras de animal (hacienda/vacas/toros/novillos/terneros/vaca/animal/cabeza/vacuna/desparasit/cura) → query_scoutings. CON palabras de animal → query_health_events. DEFAULT cuando es ambiguo ("resumen sanitario", "estado sanitario", "reporte sanitario") → query_scoutings (es lo más común en agro, animales es subset).
+  - "estadio más avanzado/atrasado/avanzados" / "qué cultivo está más avanzado fenológicamente" / "ranking de estadios" → query_scoutings(view:'max'|'min', aggregate_metric:'stage'). Ordering: VE<V1..V8<VT<R1..R8<Z21..Z99 (Zadoks). Z85 > R1 > V3 > VE.
+  - "qué pasó en el lote X" → query_plot_history (broader history, NO solo scouting)
+  - "evolución del lote X" → query_scoutings(plot:X, period:'all', view:'detail', sort_by:'date', sort_desc:false). NUNCA log_observation
+  - "está aumentando la presión de malezas" → query_scoutings(period:'all', view:'detail', sort_by:'weed_coverage_pct'). NUNCA log_observation
+  - "relacioná humedad con plagas" / "lotes secos tienen más plagas" → query_scoutings(view:'aggregate', period:'all'). Interpretar la respuesta en respond_text si necesario
+  - "qué lote más sano/limpio" → view:'min', aggregate_metric:'weed_coverage_pct' (el que tiene menos maleza). Si el usuario dice "menos plagas" también puede ser pest_severity con min
+  - "lote más comprometido/riesgo/preocupa" → view:'max', aggregate_metric:'pest_severity' (lote con peor severidad de plaga)
+  - "qué lotes necesitan aplicación/intervención" → view:'rank', aggregate_metric:'pest_severity', sort_desc:true (los más afectados)
+  - "prioridad de recorrida"/"qué hay que recorrer primero"/"orden de prioridad" → view:'rank', aggregate_metric:'pest_severity', sort_desc:true (recorrer primero lo más problemático, NUNCA bottom emergencia)
+  - "lote más implantado" → view:'max', aggregate_metric:'emergence_pct'
+  - Edge: "monitoreos con roya"/"plagas severidad 5"/"100% malezas" → si filtro devuelve vacío, el handler ya muestra empty + lista de specs disponibles. NO inventes datos
+  - Edge: rango inválido ("entre mañana y ayer") → handler detecta y avisa
+  - "buscar 'orug'"/"orug"/"glifo" → pest_species:"orug" (LIKE substring match)
+
+═══ FIN QUERY_SCOUTINGS ═══
+
+═══ QUERY_HARVEST_LOADS — REGLAS DURAS (CUALQUIER consulta sobre cargas de cosecha) ═══
+
+query_harvest_loads = ÚNICO tool para CONSULTAR cargas/viajes de cosecha (camiones). NO es para registrar (eso es harvest_crop con loads[]).
+
+PASO 1 — VIEW (obligatorio):
+  - "la carga más grande/grande/pesada"/"el viaje más grande" → view:'max', aggregate_metric:'weight_kg'
+  - "mejor proteína/aceite/PH"/"calidad máxima" → view:'max', aggregate_metric:'protein_pct'|'oil_pct'|'gluten_pct'|'test_weight_kg_hl'
+  - "humedad más alta/baja" → view:'max'|'min', aggregate_metric:'humidity_pct'
+  - "humedad/proteína/aceite promedio" → view:'avg', aggregate_metric
+  - "total cosechado de X"/"cuántas tn de X" → view:'top_locations', group_by:'crop' (si pregunta general) o view:'detail' + crop:X (si pidió detalle)
+  - "qué cultivo tuvo más volumen" → view:'top_locations', group_by:'crop'
+  - "qué chofer movió más"/"ranking choferes"/"viajes de Pedro" sin name → view:'top_locations', group_by:'driver'
+  - "qué destinatario recibió más"/"cuánto a Cargill" sin filtro previo → view:'top_locations', group_by:'destinatario'
+  - "qué lote produjo más"/"qué lote rindió mejor" → view:'top_locations', group_by:'plot'
+  - "qué patente hizo más viajes" → view:'top_locations', group_by:'truck_plate', aggregate_metric:'count'
+  - "qué día tuvo más cargas" → view:'top_locations', group_by:'date', aggregate_metric:'count'
+  - "cantidad total/cuántos viajes" sin filtro → view:'aggregate' (devuelve total + breakdown)
+  - "compará X vs Y" → view:'compare' + compare_crop|compare_driver|compare_destinatario|compare_plot
+  - "promedio de tn por viaje"/"resumen cosecha" → view:'aggregate'
+  - "top N choferes/destinatarios" → view:'rank' + group_by + top_n
+  - Sin agregación → view:'detail' (lista)
+
+PASO 2 — FILTROS (pasalos SIEMPRE que aparezcan):
+  - "cargas de X" donde X es cultivo (soja/maíz/trigo/girasol) → crop:X
+  - "Pedro"/"Carlos"/"Juan" + apellido si dado → driver_name:"Pedro Gómez" (LIKE substring, alcanza "Pedro")
+  - "a Cargill"/"para Vicentin"/"de ACA"/"AGD" → destinatario:'Cargill'
+  - "patente AA123BB"/"chapa XYZ" → truck_plate
+  - "arriba de N tn"/"más de N toneladas" → weight_min_kg:N*1000. "menos de N tn" → weight_max_kg
+  - "humedad mayor a X"/"húmeda" → humidity_min_pct
+  - "humedad menor a X"/"seca" → humidity_max_pct
+  - "proteína mayor a 11" → protein_min_pct:11. Aplica solo a trigo
+  - "aceite arriba de 21" → oil_min_pct:21. Aplica solo a soja
+  - "el 9 de mayo" → event_date:'2026-05-09' (fecha exacta, NO desde/hasta)
+  - "fuera de rango de humedad" → typical fuera de 13-15% para soja/trigo, 13-16% para maíz. Si el usuario no especifica rango, asumí humidity_min_pct:15 o usá aggregate para mostrar variabilidad
+
+PASO 3 — PERÍODO:
+  - Sin qualifier temporal → period:'all' (analíticas son históricas, NUNCA inventes mes)
+  - "de mayo"/"este mes" → desde/hasta YYYY-MM-DD
+  - "el 9 de mayo" → event_date:'2026-05-09' (NO desde/hasta — fecha puntual)
+
+PASO 4 — MULTI-TURNO (inherit:true SOLO cuando refina explícitamente):
+  inherit:true PERMITIDO si: "y", "solo", "ahora", "ahora las", "sin", "también", "ordenalas", "y solo", "y arriba", "y en", "ese", "esos", "los mismos".
+  inherit:false (NUEVA QUERY) cuando hay pregunta completa con sujeto+verbo: "¿qué chofer transportó más?", "¿hay cargas con problemas?", "promedio de X", "mostrame Y", "ver Z".
+  Ejemplos:
+    Previo: query_harvest_loads(crop:'soja')
+    "Solo las de Vicentin" → inherit:true, destinatario:'Vicentin'
+    "Ordenalas por toneladas" → inherit:true, sort_by:'weight', sort_desc:true
+    "Y arriba de 60 tn" → inherit:true, weight_min_kg:60000
+    "Mostrame trigo" → inherit:false, crop:'trigo' (cambia cultivo → query nueva)
+
+PASO 5 — DISAMBIGUACIONES:
+  - "qué se cosechó en X" / "¿qué pasó en X?" → query_plot_history (broader). Pero "qué cargas/viajes de X" → query_harvest_loads
+  - "rinde/yield/promedio del lote X" → campaign_stats (eso es kg/ha del cultivo, no cargas individuales)
+  - "qué lote viene mejor/peor" sin métrica específica → query_harvest_loads(view:'top_locations', group_by:'plot') si contexto reciente fue cargas; o campaign_stats si fue agro general
+  - "cargas con descuento por humedad" → humidity_min_pct:14.5 (estándar AR: descuento sobre 14% soja, 14.5% maíz, 14% trigo — usar 14.5 como umbral universal)
+  - "mejor combinación calidad/humedad" → view:'rank', aggregate_metric:'protein_pct' (o oil_pct), filtros adicionales humidity_max
+  - "qué chofer transportó la mejor mercadería" / "qué destino recibió la mejor" / "qué lote tuvo mejor calidad" → view:'top_locations', group_by:'driver|destinatario|plot', aggregate_metric:'protein_pct' (trigo) o 'oil_pct' (soja). El handler hace AVG (no SUM) automáticamente.
+  - "promedio de tn por viaje" / "carga promedio" / "tn promedio" → view:'avg', aggregate_metric:'weight_kg'
+  - "Mostrame [cultivo]" / "Mostrame trigo" / "Mostrame soja" → SI el contexto reciente es harvest_loads (mensaje previo era query de cargas) → query_harvest_loads(crop:X). Sin contexto previo → active_crop (resumen del cultivo)
+  - "Filtrar entregas a X" / "Filtrar cargas de X" / "Solo X" → query_harvest_loads(view:'detail' o 'aggregate', destinatario:X). NUNCA usar compare aquí.
+  - "¿Hay cargas fuera de rango de humedad?" / "¿Hubo problemas de humedad?" → query_harvest_loads(humidity_min_pct:14.5) (descuento típico AR)
+  - "¿Hay diferencias entre destinos?" → view:'top_locations', group_by:'destinatario', aggregate_metric:'weight_kg' (muestra TODOS, no compare con solo 2)
+  - "Total de toneladas" / "Cantidad de viajes" → view:'aggregate' (devuelve total + breakdown)
+
+═══ FIN QUERY_HARVEST_LOADS ═══
+
+═══ CHECK_STOCK — REGLAS DURAS (CUALQUIER consulta de inventario/stock) ═══
+
+check_stock es el ÚNICO tool para CONSULTAR stock/inventario. NO es para registrar (eso es add_stock/remove_stock/adjust_stock).
+
+PASO 1 — VIEW (obligatorio):
+  - "qué producto tiene más/menos stock" / "el más abundante" → view:'max'|'min', aggregate_metric:'quantity'
+  - "qué categoría tiene más" / "qué depósito tiene más" → view:'top_locations', group_by:'category'|'warehouse'|'field'
+  - "promedio por categoría/depósito" → view:'avg', group_by:'category'|'warehouse'
+  - "top N productos" → view:'rank', top_n:N
+  - "compará X vs Y" (depósitos/categorías/campos) → view:'compare' + compare_warehouse|compare_category|compare_field
+  - "resumen stock" / "cantidad total" / "stock por categoría" → view:'aggregate'
+  - Sin agregación, lista → view:'detail' (default)
+
+PASO 2 — FILTROS (pasalos SIEMPRE que aparezcan):
+  - "agroquímicos"/"fertilizantes"/"semillas"/"combustible"/"granos" → category con esa palabra exacta capitalizada (case-insensitive en el handler)
+  - "del depósito X"/"en Galpón Norte"/"en depósito Principal" → warehouse:X
+  - "del campo X"/"de La Esperanza"/"en San Martin" → field:X
+  - "glifo"/"urea"/"gasoil"/"semilla soja" → product:X (substring, case+accent insensitive)
+  - "bajo stock"/"stock crítico"/"qué reponer"/"alertas"/"abajo del mínimo"/"requieren reposición" → low_stock_only:true
+  - "más de N kg/lt" → quantity_min:N. "menos de N" → quantity_max:N
+  - "sin mínimo definido" → has_min_stock:false. "con mínimo configurado" → has_min_stock:true
+
+PASO 3 — MULTI-TURNO (inherit:true SOLO cuando refina):
+  inherit:true si: "y","solo","ahora","sin","también","ordenalos","solo los","ahora los","ahora solo"
+  inherit:false en NUEVA query con sujeto+verbo: "¿qué hay en X?", "mostrame Y", "promedio Z"
+  Ejemplos:
+    Previo: check_stock(category:'Agroquímicos')
+    "Solo bajo stock" → inherit:true, low_stock_only:true
+    "Ahora solo San Martin" → inherit:true, field:'San Martin'
+    "Ordenalos por cantidad" → inherit:true, sort_by:'quantity', sort_desc:true
+    "Mostrame granos" → inherit:false, category:'Granos' (cambia categoría = query nueva)
+
+PASO 4 — DISAMBIGUACIONES:
+  - "promedio de stock por X" / "promedio por categoría/depósito" → view:'avg' + group_by (NUNCA aggregate — el usuario quiere número promedio, no resumen)
+  - "compará maíz vs soja" / "compará X vs Y" donde X e Y son productos → view:'compare', product:'maíz', compare_product:'soja'
+  - "¿qué hay que reponer?" / "alertas de inventario" / "stock crítico" → low_stock_only:true (view:'detail')
+  - "¿cuánto X queda?" / "¿queda atrazina?" → product:X, view:'detail'
+  - "total kg/lt de X" → category o product, view:'aggregate' (devuelve totales por unidad)
+  - "¿tenemos stock para sembrar?" / "¿alcanza para una aplicación más?" → low_stock_only:true (es preguntar por reponer)
+  - "stock inmovilizado" / "productos sobrados" / "exceso" → view:'rank', sort_desc:true (los más altos sin uso reciente). Si no hay metric clara, mostrá los de mayor cantidad
+  - "duplicados entre depósitos" → view:'aggregate' (el resumen muestra cuando el mismo nombre está en >1 warehouse)
+  - "qué depósito está más equilibrado" / "más balanceado" → view:'top_locations', group_by:'warehouse', aggregate_metric:'count'
+  - "tipos/unidades de cada categoría" → view:'aggregate'
+
+═══ FIN CHECK_STOCK ═══
+
+═══ LIST_LIVESTOCK — REGLAS DURAS (consulta del rodeo/inventario animal) ═══
+
+list_livestock = ÚNICO tool para CONSULTAR inventario/grupos de hacienda. NO movimientos (eso es livestock_history). NO sanidad/repro/pesaje (esos son sus propios tools).
+
+PASO 1 — VIEW:
+  - "cuántos animales/cabezas tenemos" / "stock hacienda" → view:'detail' o 'aggregate'
+  - "qué categoría tiene más cabezas" / "más numerosa" → view:'top_locations', group_by:'category', aggregate_metric:'count'
+  - "qué campo/lote/corral tiene más hacienda" → view:'top_locations', group_by:'field'|'plot'|'corral'
+  - "peso promedio de novillos" / "promedio peso categoría X" → view:'avg', aggregate_metric:'avg_weight_kg' + category (opt)
+  - "categoría más pesada" / "grupo con más peso por cabeza" → view:'max', aggregate_metric:'avg_weight_kg'
+  - "total estimado kg vivos" / "peso total del rodeo" → view:'aggregate' (incluye total kg) o view:'max', aggregate_metric:'total_weight_kg'
+  - "grupo más grande/chico" → view:'max'|'min', aggregate_metric:'count'
+  - "compará vacas vs novillos" → view:'compare', category:'vaca', compare_category:'novillo'
+  - "compará La Esperanza vs San Martin" → view:'compare', field:'La Esperanza', compare_field:'San Martin'
+  - "top N corrales/lotes" → view:'rank' + group_by + top_n
+
+PASO 2 — FILTROS:
+  - "vacas"/"novillos"/"terneros"/"toros"/"vaquillonas" → category:X (singular en lowercase)
+  - "del campo X"/"en La Esperanza" → field:X
+  - "del corral X"/"en Corral 1" → corral:X
+  - "del feedlot" / "del corral" sin nombre → in_feedlot:true
+  - "a campo" / "no feedlot" → in_feedlot:false
+  - "raza Angus"/"hereford" → breed:X
+  - "más de N kg promedio" → weight_min_kg
+  - "grupos de más de N animales" → count_min:N
+
+PASO 3 — MULTI-TURNO:
+  inherit:true si refina: "y","solo","ahora","sin","ordenalos","más de","arriba de"
+  inherit:false si nueva query con sujeto+verbo: "mostrame X", "qué hay en Y", "promedio Z"
+  Ejemplos:
+    Previo: list_livestock(category:'novillo')
+    "Solo los del feedlot" → inherit:true, in_feedlot:true
+    "Ahora sus pesajes" → es OTRO tool (query_weighings), inherit:false
+    "Mostrame vacas" → inherit:false, category:'vaca' (cambia categoría = query nueva)
+
+PASO 4 — DISAMBIGUACIONES:
+  - CRÍTICO "grupos"/"categorías" en contexto hacienda: "todos los grupos"/"mostrame grupos"/"ver grupos" → list_livestock (NO list_plots — "grupos" en este contexto son grupos de hacienda). "categorías del campo X"/"qué categorías hay en Y" CUANDO hay contexto reciente de hacienda → list_livestock(field:X, view:'aggregate'). SI el mensaje no tiene contexto agro/stock previo Y menciona explícitamente "hacienda"/"rodeo"/"animales"/"vacas" → list_livestock. NUNCA check_stock para "categorías" si el campo tiene hacienda.
+  - "Corral N" o solo "N" después de "qué hay en" → corral:"Corral N" (con prefijo). El handler ahora acepta "1" → "Corral 1" automáticamente, pero es más limpio pasar el nombre completo
+  - CRÍTICO compare: "compará X vs Y" SIEMPRE requiere AMBOS lados. "vacas vs novillos" → category:"vaca" + compare_category:"novillo". "La Esperanza vs San Martin" → field:"La Esperanza" + compare_field:"San Martin". NUNCA omitas el compare_X — sin él, el handler no puede comparar nada
+  - "¿qué pasó en X?" sin contexto de hacienda → query_plot_history o field_info. CON contexto reciente de hacienda → list_livestock + livestock_history (compound)
+  - "ahora sus pesajes" / "ver pesajes" / "evolución de peso" → query_weighings (otra tool, no list_livestock)
+  - "ahora sanidad" / "ver vacunaciones" → query_health_events
+  - "ahora reproducción" / "ver servicios" → query_repro_events
+  - "movimientos" / "compras y ventas" / "entradas y salidas" / "balance de animales" → livestock_history
+  - "promedio kg por categoría" → view:'avg', aggregate_metric:'avg_weight_kg', group_by:'category' (peso ponderado por cantidad)
+  - "qué grupo está más atrasado" sin métrica clara → view:'min', aggregate_metric:'avg_weight_kg' (los más livianos = menos avanzados)
+
+═══ FIN LIST_LIVESTOCK ═══
+
+═══ QUERY_PLOT_HISTORY — REGLAS DURAS (CUALQUIER consulta sobre actividades agronómicas) ═══
+
+query_plot_history = ÚNICO tool para CONSULTAR actividades (siembras, fumigaciones, fertilizaciones, cosechas, labranza, riego). NO es para registrar.
+
+PASO 1 — VIEW:
+  - "qué lote tuvo más actividades/intervenciones/manejo" → view:'top_locations', group_by:'plot'
+  - "qué cultivo recibió más aplicaciones" → view:'top_locations', group_by:'crop'
+  - "qué actividad fue más frecuente" → view:'top_locations', group_by:'activity_type'
+  - "dónde usamos más glifosato/urea/X" → view:'top_locations', group_by:'plot' + product_search:X
+  - "cantidad de fumigaciones"/"cuántas siembras" → view:'aggregate' (devuelve conteos por tipo)
+  - "promedio aplicaciones por lote" → view:'avg', aggregate_metric:'count' o quantity
+  - "última actividad/siembra/cosecha"/"la última X"/"isUltimaVez" → view:'last', top_n:1
+  - "últimas N actividades"/"últimos 3 movimientos" → view:'last' + top_n:N
+  - "timeline/secuencia/historial completo de lote X" → view:'timeline' (cronológico asc) + plot
+  - "compará soja vs trigo"/"X vs Y" → view:'compare' + compare_crop|compare_plot|compare_field|compare_activity_type
+  - "actividad más cara/grande por cantidad" → view:'max', aggregate_metric:'quantity'
+  - "top N lotes con más actividades" → view:'rank' o 'top_locations' + group_by + top_n
+  - Sin agregación → view:'detail' (lista)
+
+PASO 2 — FILTROS:
+  - "siembras" → activity_types:["planting"]
+  - "fumigaciones"/"aplicaciones" → activity_types:["spraying"]
+  - "fertilizaciones" → activity_types:["fertilization"]
+  - "cosechas" → activity_types:["harvest"]
+  - "labranza"/"preparación suelo" → activity_types:["tillage"]
+  - "riego"/"riegos" → activity_types:["irrigation"]
+  - "fumigaciones y fertilizaciones" → activity_types:["spraying","fertilization"]
+  - "actividades químicas" → activity_types:["spraying","fertilization"]
+  - "soja"/"maíz"/"trigo" en la query → crop:X (accent-insensitive en handler)
+  - "glifosato"/"urea"/"atrazina"/"ivermectina" → product_search:X (substring)
+  - "más de N litros/kg" → quantity_min:N
+
+PASO 3 — PERÍODO:
+  - Sin qualifier temporal → period:'all' (analíticas son históricas por naturaleza)
+  - "de mayo"/"este mes"/"esta semana"/"últimos N días" → desde/hasta YYYY-MM-DD
+
+PASO 4 — MULTI-TURNO (inherit:true SOLO cuando refina):
+  inherit:true si: "y","solo","ahora","sin","ordenalas","solo las","ahora las"
+  inherit:false si nueva query con sujeto+verbo: "qué pasó en X", "mostrame Y", "promedio Z"
+  Ejemplos:
+    Previo: query_plot_history(activity_types:["spraying"])
+    "Solo las de soja" → inherit:true, crop:'soja'
+    "Ahora La Esperanza" → inherit:true, field:'La Esperanza'
+    "Ordenalas por fecha" → inherit:true, sort_by:'date'
+    "Mostrame cosechas" → inherit:false, activity_types:["harvest"] (cambia tipo = query nueva)
+
+PASO 5 — DISAMBIGUACIONES:
+  - CRÍTICO "cantidad de X" / "cuántas/cuántos X" / "total de actividades" → query_plot_history(view:'aggregate' + activity_types si se mencionó tipo). NUNCA uses activity_stats — siempre query_plot_history con view='aggregate'.
+  - "qué pasó en X" SIN especificar más → query_plot_history(plot:X) — todas las actividades
+  - "qué se hizo en lote X" → query_plot_history(plot:X)
+  - "trabajos/tareas/actividades de lote X" → query_plot_history(plot:X)
+  - "historial completo de X" → query_plot_history(plot:X, view:'timeline')
+  - "secuencia de actividades en X" / "antes de cosecha" → view:'timeline' + plot
+  - "qué lotes faltan cosechar" → es active_crop (cultivos abiertos), NO query_plot_history
+  - "qué lotes ya cosechados" / "completaron ciclo" → query_plot_history(activity_types:["harvest"], view:'top_locations', group_by:'plot')
+  - "qué tareas antes de sembrar X" → query_plot_history(crop:X, view:'timeline')
+  - "consumo de insumos" → view:'aggregate' (devuelve totales por producto)
+  - "total litros aplicados" / "cuánto glifosato usamos" → view:'aggregate' + product_search (devuelve total)
+  - "actividad más frecuente" → view:'top_locations', group_by:'activity_type'
+  - "lotes sin actividades" → NO existe filtro directo. Respondé con respond_text aclarando que la consulta es invertida y mostrando los lotes que SÍ tienen actividades (para que el usuario deduzca los faltantes). Alternativamente usá list_plots para ver todos.
+
+═══ FIN QUERY_PLOT_HISTORY ═══
+
+═══ RAINFALL_REPORT — REGLAS DURAS (CUALQUIER consulta sobre lluvias/precipitaciones) ═══
+
+rainfall_report = ÚNICO tool para CONSULTAR lluvias. NO es para registrar (log_rainfall).
+
+PASO 1 — VIEW:
+  - "máxima lluvia" / "lluvia más fuerte/intensa" → view:'max'
+  - "lluvia más leve" / "min" → view:'min'
+  - "promedio mm por evento" / "promedio lluvia" → view:'avg'
+  - "qué campo/lote recibió más lluvia" → view:'top_locations', group_by:'field'|'plot'
+  - "acumulado mensual" / "lluvia por mes" → view:'monthly' (equivale a top_locations group_by=month)
+  - "top N eventos más fuertes" → view:'rank' + top_n
+  - "compará A vs B" (campos/lotes/períodos) → view:'compare' + compare_field|compare_plot|compare_desde/hasta
+  - "última lluvia" / "última registrada" → view:'last' top_n:1 (incluye días sin lluvia)
+  - "últimas N lluvias" → view:'last' top_n:N
+  - "total mm" / "cuánto llovió" / "acumulado" → view:'aggregate' (devuelve total + breakdown por campo)
+  - "cantidad de eventos" → view:'aggregate' o view:'top_locations' group_by con metric:'count'
+  - "eventos fuertes" / "lluvias importantes" → view:'detail' + mm_min:20 (umbral fuerte estándar)
+  - "ranking lotes por lluvia" → view:'top_locations' group_by:'plot' metric:'mm'
+
+PASO 2 — FILTROS:
+  - "del campo X" → field:X. "del lote Y" → plot:Y
+  - "arriba de N mm" / "más de N mm" / "eventos fuertes" → mm_min:N. "leves" → mm_max:10
+  - "esta semana"/"este mes"/"este año"/"semana pasada"/"mes pasado" → period
+  - "abril"/"mayo" / "en X mes" → desde/hasta YYYY-MM-DD
+  - "últimos N días" → days:N
+  - Sin temporal → period:'all'
+
+PASO 3 — MULTI-TURNO (inherit:true SOLO cuando refina):
+  inherit:true: "y","solo","ahora","sin","arriba de","ordenalas","comparalo con"
+  inherit:false en nueva query con sujeto+verbo
+  Ejemplos:
+    Previo: rainfall_report(field:'La Esperanza')
+    "Solo mayo" → inherit:true, period:'month' (o desde/hasta)
+    "Comparalo con San Martin" → inherit:true, compare_field:'San Martin', view:'compare'
+    "Y arriba de 30 mm" → inherit:true, mm_min:30
+    "Mostrame eventos fuertes" → inherit:false, mm_min:20 (query nueva)
+
+PASO 4 — DISAMBIGUACIONES:
+  - "cuánto llovió" sin más → view:'aggregate' period:'month' por default (consulta operativa típica del mes actual)
+  - "estamos secos?" / "hace cuánto no llueve" → view:'last' top_n:1 (la respuesta muestra días desde última lluvia)
+  - "¿campo/lote más húmedo/más seco?" → view:'top_locations' + group_by:'field'|'plot'
+  - Cruces con scouting/actividades/cosecha (relación lluvia + plagas / fumigaciones / humedad de cosecha) NO se hacen en una sola call. Si el usuario lo pide, ejecutar rainfall_report con view:'aggregate' o 'top_locations' y describir en respond_text "ahora compará vs query_scoutings/query_plot_history".
+
+═══ FIN RAINFALL_REPORT ═══
 - generate_agro_report: igual criterio que financial_report para rangos. "reporte agro de enero a marzo"→desde/hasta YYYY-MM-DD. "reporte agro última semana"→desde/hasta. "reporte agro 2025"→desde:2025-01-01,hasta:2025-12-31. "reporte agro últimos 30 días"→desde/hasta. "reporte agro" sin período→sin params (default: semana actual). El reporte SIEMPRE soporta fechas, no contestes "no se puede"
 - CULTIVOS ACTIVOS Y HECTÁREAS SEMBRADAS (→active_crop, NUNCA list_plots ni query_plot_history): "soja?"/"hay soja?"/"has sembradas"/"has de soja"/"hectáreas sembradas"/"cuántas has de maíz"/"superficie sembrada"/"qué tengo sembrado"/"qué hay sembrado"/"cultivo activo" → active_crop. REGLA DE ORO: si el mensaje menciona un cultivo (soja/maíz/trigo/girasol/sorgo/cebada/avena/centeno/algodón/maní) O "sembradas/sembrado" → SIEMPRE active_crop, NUNCA list_plots. Default: resumen breve (lotes + has). detail=true SOLO si piden "detalle"/"desglose"/"en qué lotes"/"dónde"
 - CRÍTICO FILTRO DE LOTE: si el usuario menciona "en el lote X" / "en X" / "del X" / "del lote X" en cualquier consulta (active_crop, query_plot_history, campaign_stats, rainfall_report, financial_report, field_info, etc.) → SIEMPRE pasar plotName=X (con espacios y mayúsculas tal cual escribió). NUNCA omitir el plotName y dejar que el handler liste todos los lotes. Ejemplos: "que sembramos en el 1 j?" → query_plot_history(plotName="1 j"). "que cosechamos en 11D?" → query_plot_history(plotName="11D"). "promedio del 11A" → campaign_stats(plotName="11A")

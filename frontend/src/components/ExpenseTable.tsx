@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
+import { useRowHighlight } from '../hooks/useRowHighlight';
+import { useSortableTable } from '../hooks/useSortableTable';
 import ExpenseEditModal from './ExpenseEditModal';
 import ExpenseCard from './cards/ExpenseCard';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -86,8 +88,11 @@ function formatAmount(amount: number, currency: string): string {
   return `$${new Intl.NumberFormat('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount)}`;
 }
 
-export default function ExpenseTable() {
+interface ExpenseTableProps { highlightId?: number }
+
+export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
   const isMobile = useIsMobile();
+  const { active: activeHighlight, rowRef } = useRowHighlight(highlightId);
   const [data, setData] = useState<PaginatedResponse | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -101,14 +106,34 @@ export default function ExpenseTable() {
   const [dateTo, setDateTo] = useState('');
   const [category, setCategory] = useState('');
   const [expenseType, setExpenseType] = useState('');
+  const [descSearch, setDescSearch] = useState('');
+  const [amountMin, setAmountMin] = useState('');
+  const [amountMax, setAmountMax] = useState('');
+  const [currencyFilter, setCurrencyFilter] = useState('');
 
   const limit = 10;
 
   useEffect(() => {
     apiRequest<FiltersResponse>('/observations/filters')
-      .then(r => setFields(r.fields))
+      .then(r => {
+        setFields(r.fields);
+        // If user has a single field, auto-pick it (no point in "Todos")
+        if (r.fields.length === 1) setFieldId(String(r.fields[0].id));
+      })
       .catch(() => {});
   }, []);
+
+  // Auto-pick the only plot when there's just one (within the active field
+  // OR across all fields if the field filter is "Todos").
+  useEffect(() => {
+    const allPlots = fields.flatMap(f => f.plots);
+    const candidatePlots = fieldId
+      ? fields.find(f => f.id === Number(fieldId))?.plots ?? []
+      : allPlots;
+    if (candidatePlots.length === 1 && !plotId) {
+      setPlotId(String(candidatePlots[0].id));
+    }
+  }, [fields, fieldId, plotId]);
 
   const fetchExpenses = useCallback(async () => {
     setLoading(true);
@@ -141,21 +166,53 @@ export default function ExpenseTable() {
   };
 
   const clearFilters = () => {
-    setFieldId('');
+    setFieldId(fields.length === 1 ? String(fields[0].id) : '');
     setPlotId('');
     setDateFrom('');
     setDateTo('');
     setCategory('');
     setExpenseType('');
+    setDescSearch('');
+    setAmountMin('');
+    setAmountMax('');
+    setCurrencyFilter('');
     setPage(1);
   };
+
+  // Client-side filters + sort applied on top of the paginated server response.
+  // Search/amount/currency stay client-side so the user gets instant feedback
+  // without hitting the API on every keystroke; the trade-off is that they
+  // only filter within the current page.
+  const filteredExpenses = (data?.expenses ?? []).filter(exp => {
+    if (descSearch.trim() && !(exp.description || '').toLowerCase().includes(descSearch.trim().toLowerCase())) return false;
+    if (currencyFilter && exp.currency !== currencyFilter) return false;
+    const amt = Number(exp.amount);
+    if (amountMin && amt < Number(amountMin)) return false;
+    if (amountMax && amt > Number(amountMax)) return false;
+    return true;
+  });
+  const { sorted: sortedExpenses, toggleSort, arrow } = useSortableTable<typeof filteredExpenses[0], 'date' | 'category' | 'description' | 'product' | 'field' | 'plot' | 'amount'>(filteredExpenses, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'date': return row.expense_date;
+        case 'category': return row.category || '';
+        case 'description': return (row.description || '').toLowerCase();
+        case 'product': return (row.product || '').toLowerCase();
+        case 'field': return (row.field_name || '').toLowerCase();
+        case 'plot': return (row.plot_name || '').toLowerCase();
+        case 'amount': return Number(row.amount);
+      }
+    },
+    initial: { key: 'date', direction: 'desc' },
+  });
 
   const handleSaved = () => {
     setEditing(null);
     fetchExpenses();
   };
 
-  const hasFilters = fieldId || plotId || dateFrom || dateTo || category || expenseType;
+  const hasFilters = fieldId || plotId || dateFrom || dateTo || category || expenseType
+    || descSearch.trim() || amountMin || amountMax || currencyFilter;
 
   const availablePlots = fieldId
     ? fields.find(f => f.id === Number(fieldId))?.plots ?? []
@@ -215,7 +272,7 @@ export default function ExpenseTable() {
             onChange={e => handleFieldChange(e.target.value)}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
           >
-            <option value="">Todos</option>
+            {fields.length !== 1 && <option value="">Todos</option>}
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
@@ -227,7 +284,7 @@ export default function ExpenseTable() {
             disabled={!fieldId}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:opacity-40"
           >
-            <option value="">Todos</option>
+            {availablePlots.length !== 1 && <option value="">Todos</option>}
             {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
@@ -254,6 +311,48 @@ export default function ExpenseTable() {
             <option value="varios">Varios</option>
           </select>
         </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Moneda</label>
+          <select
+            value={currencyFilter}
+            onChange={e => { setCurrencyFilter(e.target.value); setPage(1); }}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+          >
+            <option value="">Todas</option>
+            <option value="ARS">ARS</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Descripción</label>
+          <input
+            type="text"
+            placeholder="Buscar..."
+            value={descSearch}
+            onChange={e => setDescSearch(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm min-w-[160px]"
+          />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Monto mín</label>
+          <input
+            type="number"
+            placeholder="0"
+            value={amountMin}
+            onChange={e => setAmountMin(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-24"
+          />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Monto máx</label>
+          <input
+            type="number"
+            placeholder="∞"
+            value={amountMax}
+            onChange={e => setAmountMax(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-24"
+          />
+        </div>
         {hasFilters && (
           <button
             onClick={clearFilters}
@@ -274,8 +373,14 @@ export default function ExpenseTable() {
         <>
           {isMobile ? (
             <div className="space-y-3 p-4">
-              {data.expenses.map(exp => (
-                <ExpenseCard key={exp.id} expense={exp} onEdit={setEditing} />
+              {sortedExpenses.map(exp => (
+                <div
+                  key={exp.id}
+                  ref={rowRef(exp.id)}
+                  className={activeHighlight === exp.id ? 'ring-2 ring-campo-400 rounded-lg transition' : ''}
+                >
+                  <ExpenseCard expense={exp} onEdit={setEditing} />
+                </div>
               ))}
             </div>
           ) : (
@@ -283,21 +388,25 @@ export default function ExpenseTable() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
+                    <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Fecha{arrow('date')}</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Categoria</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Descripcion</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Producto</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Campo</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Lote</th>
-                    <th className="text-right px-4 py-3 font-medium text-gray-600">Monto</th>
+                    <th onClick={() => toggleSort('category')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Categoria{arrow('category')}</th>
+                    <th onClick={() => toggleSort('description')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Descripcion{arrow('description')}</th>
+                    <th onClick={() => toggleSort('product')} className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell cursor-pointer select-none hover:bg-gray-100">Producto{arrow('product')}</th>
+                    <th onClick={() => toggleSort('field')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Campo{arrow('field')}</th>
+                    <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Lote{arrow('plot')}</th>
+                    <th onClick={() => toggleSort('amount')} className="text-right px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Monto{arrow('amount')}</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
                     <th className="px-4 py-3 w-20" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {data.expenses.map(exp => (
-                    <tr key={exp.id} className="hover:bg-gray-50 transition-colors">
+                  {sortedExpenses.map(exp => (
+                    <tr
+                      key={exp.id}
+                      ref={rowRef(exp.id) as unknown as React.Ref<HTMLTableRowElement>}
+                      className={`transition-colors ${activeHighlight === exp.id ? 'bg-amber-50' : 'hover:bg-gray-50'}`}
+                    >
                       <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                         {formatDate(exp.expense_date)}
                       </td>

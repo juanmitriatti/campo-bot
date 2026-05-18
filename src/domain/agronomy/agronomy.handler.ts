@@ -84,6 +84,12 @@ function resolveWeatherCity(
 
 const QUESTION_STARTS = /^(?:que|qué|cuando|cuándo|donde|dónde|como|cómo|cual|cuál|cuanto|cuánto|por\s+que|por\s+qué|quien|quién)/i;
 const FOLLOWUP_STARTS = /^(?:y\s|del\s|eso|ese|esa|ah[ií])/i;
+// Analytical/query keywords — when present anywhere, the message is a QUERY, never an observation.
+// Catches things like "Evolución del lote A1", "Promedio de cobertura", "Relacioná humedad con plagas",
+// "Cantidad de monitoreos", "Resumen sanitario", "Comparar A1 vs B1", "Buscar 'orug'".
+const ANALYTICAL_KEYWORDS = /\b(evoluci[oó]n|promedio|m[aá]ximo|m[aá]xima|m[ií]nimo|m[ií]nima|cantidad\b|porcentaje|relacion[aá]r?|comparar?|compar[aá]|ranking|estad[ií]stica|resumen|total\s+de|aumentando|disminuyendo|tendencia|histor[ií]al)\b/i;
+// Imperative query verbs at start ("mostrame", "ver", "filtrá") — the user is asking, not registering.
+const QUERY_VERB_STARTS = /^(?:mostr[aá]r?(?:me)?|ver\s|listar?(?:me)?|filtr[aá]r?(?:me)?|filtrar|buscar?(?:me)?|busc[aá](?:me)?|cont[aá](?:me)?|sum[aá](?:me)?|sac[aá](?:me)?|dame|traem?e)/i;
 // Argentine agronomic terms — when present, the message is treated as an
 // observation even if it's very short (e.g. "rama negra" is a known weed,
 // "vaquita" is a known pest). Without this bypass the wordCount<=2 guard
@@ -113,6 +119,12 @@ function isLikelyQuestionOrFollowUp(text: string, prefixDetected?: boolean): boo
 
   // Question marks → ALWAYS block
   if (trimmed.includes('?') || trimmed.includes('¿')) return true;
+
+  // Analytical/statistical keywords or imperative query verbs → ALWAYS block
+  // (Catches "Evolución del lote A1", "Promedio de X", "Mostrame Y", "Filtrá Z" — these are
+  // queries about scoutings, not new observations to persist.)
+  if (ANALYTICAL_KEYWORDS.test(trimmed)) return true;
+  if (QUERY_VERB_STARTS.test(trimmed)) return true;
 
   // Livestock messages are never observations — block
   if (isLikelyLivestockMessage(trimmed)) return true;
@@ -445,6 +457,784 @@ export class AgronomyHandler {
     });
 
     return { messages: [confirmation] };
+  }
+
+  // --- Unified query_scoutings: filter + view dispatcher (same shape as financial_report) ---
+  private async handleQueryScoutings(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const { pool } = await import('../../config/db.js');
+    const { queryScoutings } = await import('../../services/expenses.js');
+    const renderers = await import('./scouting-renderers.js');
+
+    // ── 1. Multi-turn: inherit prior scouting query when agent flags it ──
+    if (cmd.inherit) {
+      try {
+        const { rows } = await pool.query('SELECT last_scouting_query FROM conversation_state WHERE user_id = $1', [userId]);
+        const prev = rows[0]?.last_scouting_query;
+        if (prev && typeof prev === 'object') {
+          for (const [k, v] of Object.entries(prev)) if (cmd[k] == null) cmd[k] = v as never;
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // ── 2. Resolve scope (plot/field) ──
+    const resolved = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, cmd.plotName as string | null);
+
+    // ── 3. Date range (similar to financial: analytical queries default to all-history) ──
+    const todayISO = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+    const nowAR = new Date();
+    const currentMonthStart = `${nowAR.getFullYear()}-${String(nowAR.getMonth() + 1).padStart(2, '0')}-01`;
+    const currentMonthLastDay = new Date(nowAR.getFullYear(), nowAR.getMonth() + 1, 0).toISOString().slice(0, 10);
+    let desde = (cmd.desde as string) || null;
+    let hasta = (cmd.hasta as string) || null;
+    let rangeLabel = '';
+    let isAll = false;
+
+    // Heuristic: when the agent sends EXACTLY current-month boundaries AND no explicit cmd.period,
+    // it's almost certainly defaulting (not user-explicit). With narrowing filters present, widening
+    // to all-history avoids silently dropping data from other months (e.g. "estados V" should include
+    // V2 from April, not just May).
+    const hasNarrowingFilter = !!(cmd.stagePrefix || cmd.stageCode || cmd.pestSpeciesQuery
+      || (cmd.weedSpeciesAny as string[] | undefined)?.length
+      || cmd.hasPest != null || cmd.hasWeeds != null
+      || cmd.weedMinPct != null || cmd.weedMaxPct != null
+      || cmd.emergenceMinPct != null || cmd.emergenceMaxPct != null
+      || cmd.densityMin != null || cmd.densityMax != null
+      || cmd.soilMoistureMin != null || cmd.soilMoistureMax != null
+      || cmd.pestSeverityMin != null);
+    const agentDefaultedToCurrentMonth = desde === currentMonthStart
+      && (hasta === todayISO || hasta === currentMonthLastDay)
+      && !cmd.period;
+    if (hasNarrowingFilter && agentDefaultedToCurrentMonth) {
+      desde = null;
+      hasta = null;
+    }
+
+    if (cmd.period === 'all' || (!desde && !hasta)) {
+      desde = '2000-01-01';
+      hasta = todayISO;
+      isAll = true;
+      rangeLabel = 'Todo el historial';
+    } else if (cmd.period === 'month' && !desde && !hasta) {
+      desde = currentMonthStart;
+      hasta = todayISO;
+      rangeLabel = nowAR.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+    } else {
+      rangeLabel = `${desde || '...'} — ${hasta || todayISO}`;
+    }
+    if (desde && hasta && desde > hasta) {
+      return { messages: [`Rango inválido: ${desde} es posterior a ${hasta}.`] };
+    }
+
+    // ── 4. Build filters ──
+    const aggregateMetric = (cmd.aggregateMetric as string) || null;
+    // Default sort: when picking max/min/rank, sort by the chosen metric
+    const sortBy = (cmd.sort_by as string) || (cmd.view === 'max' || cmd.view === 'min' || cmd.view === 'rank' ? (aggregateMetric || 'date') : 'date');
+    const sortDescDefault = cmd.view === 'min' ? false : true;
+    const sortDesc = cmd.sort_desc != null ? !!cmd.sort_desc : sortDescDefault;
+
+    const queryOpts = {
+      userId: Number(userId),
+      plotId: resolved.plotId ?? null,
+      fieldId: resolved.fieldId ?? null,
+      dateFrom: desde,
+      dateTo: hasta,
+      stageCode: (cmd.stageCode as string) ?? null,
+      stagePrefix: (cmd.stagePrefix as string) ?? null,
+      pestSpecies: (cmd.pestSpeciesQuery as string) ?? null,
+      pestSeverityMin: (cmd.pestSeverityMin as number) ?? (cmd.minSeverity as number) ?? null,
+      hasPest: cmd.hasPest as boolean | null | undefined,
+      weedSpeciesAny: (cmd.weedSpeciesAny as string[]) ?? null,
+      weedMinPct: (cmd.weedMinPct as number) ?? null,
+      weedMaxPct: (cmd.weedMaxPct as number) ?? null,
+      hasWeeds: cmd.hasWeeds as boolean | null | undefined,
+      emergenceMinPct: (cmd.emergenceMinPct as number) ?? null,
+      emergenceMaxPct: (cmd.emergenceMaxPct as number) ?? null,
+      densityMin: (cmd.densityMin as number) ?? null,
+      densityMax: (cmd.densityMax as number) ?? null,
+      soilMoistureMin: (cmd.soilMoistureMin as number) ?? null,
+      soilMoistureMax: (cmd.soilMoistureMax as number) ?? null,
+      sortBy,
+      sortDesc,
+      limit: 100,
+    };
+
+    // ── 5. Determine view ──
+    const view = (cmd.view as string)
+      || (cmd.comparePlot || cmd.compareField ? 'compare'
+        : aggregateMetric ? 'rank'
+        : 'detail');
+
+    // ── 6. Fetch ──
+    const rows = await queryScoutings(queryOpts);
+
+    // ── 7. Persist last query for multi-turn inheritance ──
+    void this.saveScoutingQuery(userId, cmd).catch(() => {});
+
+    const scopeBits: string[] = [];
+    if (resolved.plotName) scopeBits.push(`lote ${resolved.plotName}`);
+    else if (resolved.fieldName) scopeBits.push(`campo ${resolved.fieldName}`);
+    if (cmd.pestSpeciesQuery) scopeBits.push(cmd.pestSpeciesQuery as string);
+    if (Array.isArray(cmd.weedSpeciesAny) && (cmd.weedSpeciesAny as string[]).length > 0) scopeBits.push((cmd.weedSpeciesAny as string[]).join('/'));
+    if (cmd.stageCode) scopeBits.push(cmd.stageCode as string);
+    else if (cmd.stagePrefix) scopeBits.push(`estados ${cmd.stagePrefix as string}`);
+    if (cmd.hasPest === true) scopeBits.push('con plagas');
+    // Collapse to "=N%" when min==max, OR when min is at the hard ceiling (100% can't be exceeded)
+    const isExactWeedPct =
+      (cmd.weedMinPct != null && cmd.weedMaxPct != null && cmd.weedMinPct === cmd.weedMaxPct)
+      || (cmd.weedMinPct != null && cmd.weedMaxPct == null && Number(cmd.weedMinPct) >= 100)
+      || (cmd.weedMaxPct != null && cmd.weedMinPct == null && Number(cmd.weedMaxPct) <= 0);
+    if (isExactWeedPct) {
+      const v = cmd.weedMinPct != null ? cmd.weedMinPct : cmd.weedMaxPct;
+      scopeBits.push(`=${v}% malezas`);
+    } else {
+      if (cmd.weedMinPct != null) scopeBits.push(`>${cmd.weedMinPct}% malezas`);
+      if (cmd.weedMaxPct != null) scopeBits.push(`<${cmd.weedMaxPct}% malezas`);
+    }
+    if (cmd.emergenceMinPct != null) scopeBits.push(`emerg ≥${cmd.emergenceMinPct}%`);
+    if (cmd.emergenceMaxPct != null) scopeBits.push(`emerg ≤${cmd.emergenceMaxPct}%`);
+    if (cmd.soilMoistureMax != null) scopeBits.push(`hum ≤${cmd.soilMoistureMax}/5`);
+    if (cmd.soilMoistureMin != null) scopeBits.push(`hum ≥${cmd.soilMoistureMin}/5`);
+    const scope = scopeBits.length > 0 ? ` — ${scopeBits.join(', ')}` : '';
+
+    const ctx: renderers.ScoutingRenderCtx = {
+      rangeLabel: isAll ? 'Todo el historial' : rangeLabel,
+      scope,
+      isAll,
+      filters: {
+        plotName: resolved.plotName,
+        fieldName: resolved.fieldName,
+        aggregateMetric,
+        sortBy,
+        sortDesc,
+        weedSpeciesAny: cmd.weedSpeciesAny as string[] | null,
+        pestSpecies: cmd.pestSpeciesQuery as string | null,
+        stageCode: cmd.stageCode as string | null,
+        stagePrefix: cmd.stagePrefix as string | null,
+        hasPest: cmd.hasPest as boolean | null | undefined ?? null,
+        hasWeeds: cmd.hasWeeds as boolean | null | undefined ?? null,
+      },
+    };
+
+    // ── 8. Dispatch ──
+    if (view === 'compare') {
+      const optsB = { ...queryOpts };
+      if (cmd.comparePlot) {
+        const rB = await this.plotDiscovery.resolveFromNames(userId, null, cmd.comparePlot as string);
+        optsB.plotId = rB.plotId ?? null;
+        optsB.fieldId = rB.fieldId ?? null;
+      } else if (cmd.compareField) {
+        const rB = await this.plotDiscovery.resolveFromNames(userId, cmd.compareField as string, null);
+        optsB.fieldId = rB.fieldId ?? null;
+        optsB.plotId = null;
+      }
+      const rowsB = await queryScoutings(optsB);
+      const labelA = resolved.plotName || resolved.fieldName || 'A';
+      const labelB = (cmd.comparePlot as string) || (cmd.compareField as string) || 'B';
+      return renderers.renderScoutingCompare(rows as renderers.ScoutingRow[], rowsB as renderers.ScoutingRow[], labelA, labelB);
+    }
+
+    // Empty: fetch available species/stages for a proactive hint
+    if (rows.length === 0) {
+      const hintsRes = await queryScoutings({ userId: Number(userId), dateFrom: '2000-01-01', dateTo: todayISO, limit: 100 });
+      const weeds = new Set<string>();
+      const pests = new Set<string>();
+      const stages = new Set<string>();
+      for (const r of hintsRes) {
+        for (const w of (r.weed_species || [])) weeds.add(w);
+        if (r.pest_species) pests.add(r.pest_species);
+        if (r.stage_code) stages.add(r.stage_code);
+      }
+      return renderers.renderEmpty(ctx, { weeds: [...weeds], pests: [...pests], stages: [...stages] });
+    }
+
+    switch (view) {
+      case 'aggregate': return renderers.renderScoutingAggregate(rows as renderers.ScoutingRow[], ctx);
+      case 'max': return renderers.renderScoutingExtreme(rows as renderers.ScoutingRow[], ctx, 'max');
+      case 'min': return renderers.renderScoutingExtreme(rows as renderers.ScoutingRow[], ctx, 'min');
+      case 'avg': return renderers.renderScoutingAvg(rows as renderers.ScoutingRow[], ctx);
+      case 'rank': return renderers.renderScoutingRank(rows as renderers.ScoutingRow[], ctx, (cmd.top_n as number) || 5);
+      case 'top_locations': return renderers.renderScoutingTopLocations(rows as renderers.ScoutingRow[], ctx, (cmd.group_by as 'plot' | 'field') === 'field' ? 'field' : 'plot');
+      case 'detail':
+      default: return renderers.renderScoutingDetail(rows as renderers.ScoutingRow[], ctx);
+    }
+  }
+
+  // --- Unified query_plot_history (activities) dispatcher ---
+  private async handleQueryActivities(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const { pool } = await import('../../config/db.js');
+    const { queryActivities } = await import('../../services/expenses.js');
+    const renderers = await import('./activity-renderers.js');
+
+    // ── 1. Multi-turn inherit (exclude transient flags) ──
+    const TRANSIENT_KEYS = new Set(['view', 'top_n', 'compareCrop', 'comparePlot', 'compareField', 'compareActivityType']);
+    if (cmd.inherit) {
+      try {
+        const { rows } = await pool.query('SELECT last_activity_query FROM conversation_state WHERE user_id = $1', [userId]);
+        const prev = rows[0]?.last_activity_query;
+        if (prev && typeof prev === 'object') {
+          for (const [k, v] of Object.entries(prev)) {
+            if (TRANSIENT_KEYS.has(k)) continue;
+            if (cmd[k] == null) cmd[k] = v as never;
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // ── 2. Resolve scope ──
+    const resolved = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, cmd.plotName as string | null);
+
+    // ── 3. Date range (analytical → all-history default) ──
+    const todayISO = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+    const nowAR = new Date();
+    const currentMonthStart = `${nowAR.getFullYear()}-${String(nowAR.getMonth() + 1).padStart(2, '0')}-01`;
+    let desde = (cmd.desde as string) || null;
+    let hasta = (cmd.hasta as string) || null;
+    let rangeLabel = '';
+    let isAll = false;
+
+    // Heuristic: agent default to current-month with narrowing filter → widen
+    const hasNarrowing = !!(cmd.activityTypes || cmd.crop || cmd.productSearch || cmd.activityFilter
+      || cmd.quantityMin != null || cmd.quantityMax != null);
+    const agentDefaultedMonth = desde === currentMonthStart && (hasta === todayISO) && !cmd.period;
+    if (hasNarrowing && agentDefaultedMonth) { desde = null; hasta = null; }
+
+    if (cmd.period === 'all' || (!desde && !hasta)) {
+      desde = '2000-01-01'; hasta = todayISO; isAll = true; rangeLabel = 'Todo el historial';
+    } else {
+      rangeLabel = `${desde || '...'} — ${hasta || todayISO}`;
+    }
+    if (desde && hasta && desde > hasta) {
+      return { messages: [`Rango inválido: ${desde} es posterior a ${hasta}.`] };
+    }
+
+    // Map legacy activityFilter → activityTypes
+    const legacyMap: Record<string, string> = {
+      'log_spraying': 'spraying', 'log_fertilization': 'fertilization',
+      'sow_crop': 'planting', 'harvest_crop': 'harvest',
+      'log_tillage': 'tillage', 'log_irrigation': 'irrigation',
+      'spraying': 'spraying', 'fertilization': 'fertilization', 'planting': 'planting',
+      'harvest': 'harvest', 'tillage': 'tillage', 'irrigation': 'irrigation',
+    };
+    let activityTypes = (cmd.activityTypes as string[]) || null;
+    if (!activityTypes && cmd.activityFilter) {
+      const legacy = legacyMap[cmd.activityFilter as string];
+      if (legacy) activityTypes = [legacy];
+    }
+
+    const sortBy = (cmd.sort_by as 'date' | 'quantity' | 'type') || 'date';
+    const sortDesc = cmd.sort_desc != null ? !!cmd.sort_desc : true;
+
+    // ── 4. Query ──
+    const rows = await queryActivities({
+      userId: Number(userId),
+      plotId: resolved.plotId ?? null,
+      fieldId: resolved.fieldId ?? null,
+      crop: (cmd.crop as string) ?? null,
+      activityTypes,
+      productSearch: (cmd.productSearch as string) ?? null,
+      desde, hasta,
+      quantityMin: (cmd.quantityMin as number) ?? null,
+      quantityMax: (cmd.quantityMax as number) ?? null,
+      sortBy, sortDesc, limit: 200,
+    });
+
+    // ── 5. Persist for multi-turn ──
+    void this.saveActivityQuery(userId, cmd).catch(() => {});
+
+    // ── 6. Scope label ──
+    const scopeBits: string[] = [];
+    if (resolved.plotName) scopeBits.push(`lote ${resolved.plotName}`);
+    else if (resolved.fieldName) scopeBits.push(`campo ${resolved.fieldName}`);
+    if (cmd.crop) scopeBits.push(String(cmd.crop));
+    if (activityTypes && activityTypes.length > 0) {
+      const labels: Record<string, string> = { planting:'siembras', spraying:'fumigaciones', fertilization:'fertilizaciones', harvest:'cosechas', tillage:'labranza', irrigation:'riegos' };
+      scopeBits.push(activityTypes.map(t => labels[t] || t).join('/'));
+    }
+    if (cmd.productSearch) scopeBits.push(String(cmd.productSearch));
+    if (cmd.quantityMin != null) scopeBits.push(`>${cmd.quantityMin}`);
+    if (cmd.quantityMax != null) scopeBits.push(`<${cmd.quantityMax}`);
+    const scope = scopeBits.length > 0 ? ` — ${scopeBits.join(', ')}` : '';
+
+    const ctx: import('./activity-renderers.js').ActivityRenderCtx = {
+      scope, rangeLabel: isAll ? 'Todo el historial' : rangeLabel, isAll,
+      filters: {
+        plotName: resolved.plotName,
+        fieldName: resolved.fieldName,
+        crop: cmd.crop as string | null,
+        activityTypes,
+        productSearch: cmd.productSearch as string | null,
+        aggregateMetric: cmd.aggregateMetric as string | null,
+        groupBy: cmd.group_by as string | null,
+        sortDesc,
+      },
+    };
+
+    // ── 7. Determine view ──
+    const view = (cmd.view as string)
+      || (cmd.compareCrop || cmd.comparePlot || cmd.compareField || cmd.compareActivityType ? 'compare'
+        : cmd.group_by ? 'top_locations'
+        : cmd.isUltimaVez ? 'last'
+        : 'detail');
+
+    // ── 8. Compare ──
+    if (view === 'compare') {
+      const optsB: Parameters<typeof queryActivities>[0] = {
+        userId: Number(userId),
+        plotId: null, fieldId: null,
+        crop: (cmd.compareCrop as string) ?? (cmd.crop as string) ?? null,
+        activityTypes: cmd.compareActivityType ? [cmd.compareActivityType as string] : activityTypes,
+        desde, hasta, sortBy, sortDesc, limit: 200,
+      };
+      if (cmd.comparePlot) {
+        const rB = await this.plotDiscovery.resolveFromNames(userId, null, cmd.comparePlot as string);
+        optsB.plotId = rB.plotId ?? null;
+        optsB.fieldId = rB.fieldId ?? null;
+      } else if (cmd.compareField) {
+        const rB = await this.plotDiscovery.resolveFromNames(userId, cmd.compareField as string, null);
+        optsB.fieldId = rB.fieldId ?? null;
+      }
+      const rowsB = await queryActivities(optsB);
+      const labelA = (cmd.crop as string) || (resolved.plotName as string) || (resolved.fieldName as string) || (activityTypes?.[0] as string) || 'A';
+      const labelB = (cmd.compareCrop as string) || (cmd.comparePlot as string) || (cmd.compareField as string) || (cmd.compareActivityType as string) || 'B';
+      return renderers.renderActivityCompare(rows as import('./activity-renderers.js').ActivityRow[], rowsB as import('./activity-renderers.js').ActivityRow[], labelA, labelB);
+    }
+
+    // ── 9. Empty + proactive hint ──
+    if (rows.length === 0) {
+      const allRows = await queryActivities({ userId: Number(userId), sortDesc: true, limit: 200 });
+      const types = new Set<string>(); const crops = new Set<string>(); const plots = new Set<string>(); const products = new Set<string>();
+      for (const r of allRows) { types.add(r.event_type); if (r.crop) crops.add(r.crop); if (r.plot_name) plots.add(r.plot_name); if (r.product) products.add(r.product); }
+      return renderers.renderEmpty(ctx, { types: [...types], crops: [...crops], plots: [...plots], products: [...products] });
+    }
+
+    // ── 10. Dispatch ──
+    switch (view) {
+      case 'aggregate': return renderers.renderActivityAggregate(rows as import('./activity-renderers.js').ActivityRow[], ctx);
+      case 'max': return renderers.renderActivityExtreme(rows as import('./activity-renderers.js').ActivityRow[], ctx, 'max');
+      case 'min': return renderers.renderActivityExtreme(rows as import('./activity-renderers.js').ActivityRow[], ctx, 'min');
+      case 'avg': return renderers.renderActivityAvg(rows as import('./activity-renderers.js').ActivityRow[], ctx);
+      case 'rank': return renderers.renderActivityRank(rows as import('./activity-renderers.js').ActivityRow[], ctx, (cmd.top_n as number) || 5);
+      case 'top_locations': return renderers.renderActivityTopLocations(rows as import('./activity-renderers.js').ActivityRow[], ctx);
+      case 'last': return renderers.renderActivityLast(rows as import('./activity-renderers.js').ActivityRow[], ctx, (cmd.top_n as number) || (cmd.isUltimaVez ? 1 : 10));
+      case 'timeline': return renderers.renderActivityTimeline(rows as import('./activity-renderers.js').ActivityRow[], ctx);
+      case 'detail':
+      default: return renderers.renderActivityDetail(rows as import('./activity-renderers.js').ActivityRow[], ctx);
+    }
+  }
+
+  // --- Unified rainfall_report dispatcher ---
+  private async handleQueryRainfall(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const { pool } = await import('../../config/db.js');
+    const { queryRainfall } = await import('../../services/expenses.js');
+    const renderers = await import('./rainfall-renderers.js');
+
+    // ── 1. Inherit ──
+    const TRANSIENT_KEYS = new Set(['view', 'top_n', 'compareField', 'comparePlot', 'compare_desde', 'compare_hasta']);
+    if (cmd.inherit) {
+      try {
+        const { rows } = await pool.query('SELECT last_rainfall_query FROM conversation_state WHERE user_id = $1', [userId]);
+        const prev = rows[0]?.last_rainfall_query;
+        if (prev && typeof prev === 'object') {
+          for (const [k, v] of Object.entries(prev)) {
+            if (TRANSIENT_KEYS.has(k)) continue;
+            if (cmd[k] == null) cmd[k] = v as never;
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // ── 2. Resolve scope ──
+    const resolved = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, cmd.plotName as string | null);
+
+    // ── 3. Date range ──
+    const todayISO = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+    const nowAR = new Date();
+    let desde = (cmd.desde as string) || null;
+    let hasta = (cmd.hasta as string) || null;
+    let rangeLabel = '';
+    let isAll = false;
+    const period = cmd.period as string | undefined;
+
+    if (period === 'all') {
+      desde = '2000-01-01'; hasta = todayISO; isAll = true; rangeLabel = 'Todo el historial';
+    } else if (cmd.days != null) {
+      const d = new Date(); d.setDate(d.getDate() - Number(cmd.days));
+      desde = d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+      hasta = todayISO;
+      rangeLabel = `últimos ${cmd.days} días`;
+    } else if (period === 'week' || period === 'last_week') {
+      const d = new Date(); d.setDate(d.getDate() - (period === 'last_week' ? 14 : 7));
+      desde = d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+      hasta = todayISO;
+      rangeLabel = period === 'last_week' ? 'semana pasada' : 'esta semana';
+    } else if (period === 'month') {
+      desde = `${nowAR.getFullYear()}-${String(nowAR.getMonth() + 1).padStart(2, '0')}-01`;
+      hasta = todayISO;
+      rangeLabel = nowAR.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+    } else if (period === 'last_month') {
+      const lastM = new Date(nowAR.getFullYear(), nowAR.getMonth() - 1, 1);
+      desde = lastM.toISOString().slice(0, 10);
+      hasta = new Date(nowAR.getFullYear(), nowAR.getMonth(), 0).toISOString().slice(0, 10);
+      rangeLabel = lastM.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+    } else if (period === 'year') {
+      desde = `${nowAR.getFullYear()}-01-01`;
+      hasta = todayISO;
+      rangeLabel = `Año ${nowAR.getFullYear()}`;
+    } else if (!desde && !hasta) {
+      // Default: all-history for analytical queries (no narrowing → don't default to current month)
+      desde = '2000-01-01'; hasta = todayISO; isAll = true; rangeLabel = 'Todo el historial';
+    } else {
+      rangeLabel = `${desde || '...'} — ${hasta || todayISO}`;
+    }
+    if (desde && hasta && desde > hasta) {
+      return { messages: [`Rango inválido: ${desde} es posterior a ${hasta}.`] };
+    }
+
+    const sortBy = (cmd.sort_by as 'date' | 'mm') || 'date';
+    const sortDesc = cmd.sort_desc != null ? !!cmd.sort_desc : true;
+
+    // ── 4. Query ──
+    const rows = await queryRainfall({
+      userId: Number(userId),
+      fieldId: resolved.fieldId ?? null,
+      plotId: resolved.plotId ?? null,
+      desde, hasta,
+      mmMin: (cmd.mmMin as number) ?? null,
+      mmMax: (cmd.mmMax as number) ?? null,
+      sortBy, sortDesc, limit: 365,
+    });
+
+    void this.saveRainfallQuery(userId, cmd).catch(() => {});
+
+    // ── 5. Scope label ──
+    const scopeBits: string[] = [];
+    if (resolved.plotName) scopeBits.push(`lote ${resolved.plotName}`);
+    else if (resolved.fieldName) scopeBits.push(`campo ${resolved.fieldName}`);
+    if (cmd.mmMin != null) scopeBits.push(`>${cmd.mmMin}mm`);
+    if (cmd.mmMax != null) scopeBits.push(`<${cmd.mmMax}mm`);
+    const scope = scopeBits.length > 0 ? ` — ${scopeBits.join(', ')}` : '';
+
+    const ctx: import('./rainfall-renderers.js').RainfallRenderCtx = {
+      scope, rangeLabel: isAll ? 'Todo el historial' : rangeLabel, isAll,
+      filters: {
+        fieldName: resolved.fieldName,
+        plotName: resolved.plotName,
+        mmMin: cmd.mmMin as number | null,
+        mmMax: cmd.mmMax as number | null,
+        aggregateMetric: cmd.aggregateMetric as string | null,
+        groupBy: cmd.group_by as string | null,
+        sortDesc,
+      },
+    };
+
+    const view = (cmd.view as string)
+      || (cmd.compareField || cmd.comparePlot || cmd.compare_desde ? 'compare'
+        : cmd.group_by ? 'top_locations'
+        : 'detail');
+
+    // ── 6. Compare ──
+    if (view === 'compare') {
+      let rowsB = rows;
+      let labelA = (resolved.fieldName as string) || (resolved.plotName as string) || 'A';
+      let labelB = 'B';
+      if (cmd.compareField) {
+        const rB = await this.plotDiscovery.resolveFromNames(userId, cmd.compareField as string, null);
+        rowsB = await queryRainfall({ userId: Number(userId), fieldId: rB.fieldId ?? null, desde, hasta, sortBy, sortDesc, limit: 365 });
+        labelB = cmd.compareField as string;
+      } else if (cmd.comparePlot) {
+        const rB = await this.plotDiscovery.resolveFromNames(userId, null, cmd.comparePlot as string);
+        rowsB = await queryRainfall({ userId: Number(userId), plotId: rB.plotId ?? null, desde, hasta, sortBy, sortDesc, limit: 365 });
+        labelB = cmd.comparePlot as string;
+      } else if (cmd.compare_desde || cmd.compare_hasta) {
+        rowsB = await queryRainfall({
+          userId: Number(userId),
+          fieldId: resolved.fieldId ?? null,
+          plotId: resolved.plotId ?? null,
+          desde: (cmd.compare_desde as string) ?? null,
+          hasta: (cmd.compare_hasta as string) ?? null,
+          sortBy, sortDesc, limit: 365,
+        });
+        labelA = rangeLabel;
+        labelB = `${cmd.compare_desde || '...'} — ${cmd.compare_hasta || '...'}`;
+      }
+      return renderers.renderRainfallCompare(rows as import('./rainfall-renderers.js').RainfallRow[], rowsB as import('./rainfall-renderers.js').RainfallRow[], labelA, labelB);
+    }
+
+    // ── 7. Empty ──
+    if (rows.length === 0) {
+      const all = await queryRainfall({ userId: Number(userId), limit: 365 });
+      const fields = new Set<string>(); const plots = new Set<string>();
+      for (const r of all) { if (r.field_name) fields.add(r.field_name); if (r.plot_name) plots.add(r.plot_name); }
+      return renderers.renderEmpty(ctx, { fields: [...fields], plots: [...plots] });
+    }
+
+    // ── 8. Dispatch ──
+    switch (view) {
+      case 'aggregate': return renderers.renderRainfallAggregate(rows as import('./rainfall-renderers.js').RainfallRow[], ctx);
+      case 'max': return renderers.renderRainfallExtreme(rows as import('./rainfall-renderers.js').RainfallRow[], ctx, 'max');
+      case 'min': return renderers.renderRainfallExtreme(rows as import('./rainfall-renderers.js').RainfallRow[], ctx, 'min');
+      case 'avg': return renderers.renderRainfallAvg(rows as import('./rainfall-renderers.js').RainfallRow[], ctx);
+      case 'rank': return renderers.renderRainfallRank(rows as import('./rainfall-renderers.js').RainfallRow[], ctx, (cmd.top_n as number) || 5);
+      case 'top_locations': return renderers.renderRainfallTopLocations(rows as import('./rainfall-renderers.js').RainfallRow[], ctx);
+      case 'last': return renderers.renderRainfallLast(rows as import('./rainfall-renderers.js').RainfallRow[], ctx, (cmd.top_n as number) || 1);
+      case 'monthly': return renderers.renderRainfallMonthly(rows as import('./rainfall-renderers.js').RainfallRow[], ctx);
+      case 'detail':
+      default: return renderers.renderRainfallDetail(rows as import('./rainfall-renderers.js').RainfallRow[], ctx);
+    }
+  }
+
+  private async saveRainfallQuery(userId: UserId, cmd: ParsedCommand): Promise<void> {
+    const { pool } = await import('../../config/db.js');
+    const KEEP = ['fieldName', 'plotName', 'period', 'desde', 'hasta', 'days', 'mmMin', 'mmMax',
+      'view', 'aggregateMetric', 'sort_by', 'sort_desc', 'top_n', 'group_by'];
+    const persistable: Record<string, unknown> = {};
+    for (const k of KEEP) if (cmd[k] !== undefined && cmd[k] !== null) persistable[k] = cmd[k];
+    await pool.query(
+      `INSERT INTO conversation_state (user_id, last_rainfall_query, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET last_rainfall_query = $2::jsonb, updated_at = NOW()`,
+      [userId, JSON.stringify(persistable)],
+    );
+  }
+
+  private async saveActivityQuery(userId: UserId, cmd: ParsedCommand): Promise<void> {
+    const { pool } = await import('../../config/db.js');
+    const KEEP = ['fieldName', 'plotName', 'crop', 'period', 'desde', 'hasta',
+      'activityTypes', 'activityFilter', 'productSearch',
+      'quantityMin', 'quantityMax', 'isUltimaVez',
+      'view', 'aggregateMetric', 'sort_by', 'sort_desc', 'top_n', 'group_by'];
+    const persistable: Record<string, unknown> = {};
+    for (const k of KEEP) if (cmd[k] !== undefined && cmd[k] !== null) persistable[k] = cmd[k];
+    await pool.query(
+      `INSERT INTO conversation_state (user_id, last_activity_query, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET last_activity_query = $2::jsonb, updated_at = NOW()`,
+      [userId, JSON.stringify(persistable)],
+    );
+  }
+
+  private async saveScoutingQuery(userId: UserId, cmd: ParsedCommand): Promise<void> {
+    const { pool } = await import('../../config/db.js');
+    const KEEP = ['fieldName', 'plotName', 'period', 'desde', 'hasta', 'stageCode', 'stagePrefix',
+      'pestSpeciesQuery', 'pestSeverityMin', 'hasPest', 'weedSpeciesAny', 'weedMinPct', 'weedMaxPct', 'hasWeeds',
+      'emergenceMinPct', 'emergenceMaxPct', 'densityMin', 'densityMax', 'soilMoistureMin', 'soilMoistureMax',
+      'view', 'aggregateMetric', 'sort_by', 'sort_desc', 'top_n', 'group_by'];
+    const persistable: Record<string, unknown> = {};
+    for (const k of KEEP) if (cmd[k] !== undefined && cmd[k] !== null) persistable[k] = cmd[k];
+    await pool.query(
+      `INSERT INTO conversation_state (user_id, last_scouting_query, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET last_scouting_query = $2::jsonb, updated_at = NOW()`,
+      [userId, JSON.stringify(persistable)],
+    );
+  }
+
+  // --- Unified query_harvest_loads: filter + view dispatcher ---
+  private async handleQueryHarvestLoads(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const { pool } = await import('../../config/db.js');
+    const renderers = await import('./harvest-renderers.js');
+
+    // ── 1. Multi-turn inherit ──
+    if (cmd.inherit) {
+      try {
+        const { rows } = await pool.query('SELECT last_harvest_query FROM conversation_state WHERE user_id = $1', [userId]);
+        const prev = rows[0]?.last_harvest_query;
+        if (prev && typeof prev === 'object') {
+          for (const [k, v] of Object.entries(prev)) if (cmd[k] == null) cmd[k] = v as never;
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // ── 2. Resolve scope ──
+    let plotId: number | null = null;
+    let fieldId: number | null = null;
+    let plotName: string | null = null;
+    let fieldName: string | null = null;
+    if (cmd.plotName || cmd.fieldName) {
+      const resolved = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, cmd.plotName as string | null);
+      plotId = resolved.plotId ?? null;
+      fieldId = resolved.fieldId ?? null;
+      plotName = resolved.plotName;
+      fieldName = resolved.fieldName;
+    }
+
+    // ── 3. Date range (analytical default → all-history) ──
+    const todayISO = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+    const nowAR = new Date();
+    const currentMonthStart = `${nowAR.getFullYear()}-${String(nowAR.getMonth() + 1).padStart(2, '0')}-01`;
+    const currentMonthLastDay = new Date(nowAR.getFullYear(), nowAR.getMonth() + 1, 0).toISOString().slice(0, 10);
+    let desde = (cmd.desde as string) || null;
+    let hasta = (cmd.hasta as string) || null;
+    let rangeLabel = '';
+    let isAll = false;
+
+    // Heuristic: if agent set EXACTLY current-month boundaries without explicit cmd.period, widen.
+    const hasNarrowingFilter = !!(cmd.driverName || cmd.destinatario || cmd.truckPlate || cmd.crop
+      || cmd.weightMinKg != null || cmd.weightMaxKg != null
+      || cmd.humidityMinPct != null || cmd.humidityMaxPct != null
+      || cmd.proteinMinPct != null || cmd.proteinMaxPct != null
+      || cmd.oilMinPct != null || cmd.oilMaxPct != null
+      || cmd.glutenMinPct != null || cmd.glutenMaxPct != null
+      || cmd.eventDate);
+    const agentDefaultedToCurrentMonth = desde === currentMonthStart
+      && (hasta === todayISO || hasta === currentMonthLastDay)
+      && !cmd.period;
+    if (hasNarrowingFilter && agentDefaultedToCurrentMonth) {
+      desde = null;
+      hasta = null;
+    }
+
+    if (cmd.period === 'all' || (!desde && !hasta && !cmd.eventDate)) {
+      desde = '2000-01-01';
+      hasta = todayISO;
+      isAll = true;
+      rangeLabel = 'Todo el historial';
+    } else if (cmd.eventDate) {
+      rangeLabel = String(cmd.eventDate);
+    } else {
+      rangeLabel = `${desde || '...'} — ${hasta || todayISO}`;
+    }
+    if (desde && hasta && desde > hasta) {
+      return { messages: [`Rango inválido: ${desde} es posterior a ${hasta}.`] };
+    }
+
+    // ── 4. Sort defaults ──
+    const aggregateMetric = (cmd.aggregateMetric as string) || null;
+    const sortBy = (cmd.sort_by as string) || (cmd.view === 'max' || cmd.view === 'min' || cmd.view === 'rank' ? (aggregateMetric === 'weight_kg' ? 'weight' : aggregateMetric === 'humidity_pct' ? 'humidity' : aggregateMetric === 'protein_pct' ? 'protein' : aggregateMetric === 'oil_pct' ? 'oil' : aggregateMetric === 'gluten_pct' ? 'gluten' : 'date') : 'date');
+    const sortDescDefault = cmd.view === 'min' ? false : true;
+    const sortDesc = cmd.sort_desc != null ? !!cmd.sort_desc : sortDescDefault;
+
+    // ── 5. Query ──
+    const rows = await this.repo.queryHarvestLoads(userId, {
+      plotId, fieldId,
+      crop: (cmd.crop as string) ?? null,
+      eventDate: (cmd.eventDate as string) ?? null,
+      desde, hasta,
+      driverName: (cmd.driverName as string) ?? null,
+      destinatario: (cmd.destinatario as string) ?? null,
+      truckPlate: (cmd.truckPlate as string) ?? null,
+      weightMinKg: (cmd.weightMinKg as number) ?? null,
+      weightMaxKg: (cmd.weightMaxKg as number) ?? null,
+      humidityMinPct: (cmd.humidityMinPct as number) ?? null,
+      humidityMaxPct: (cmd.humidityMaxPct as number) ?? null,
+      proteinMinPct: (cmd.proteinMinPct as number) ?? null,
+      proteinMaxPct: (cmd.proteinMaxPct as number) ?? null,
+      oilMinPct: (cmd.oilMinPct as number) ?? null,
+      oilMaxPct: (cmd.oilMaxPct as number) ?? null,
+      glutenMinPct: (cmd.glutenMinPct as number) ?? null,
+      glutenMaxPct: (cmd.glutenMaxPct as number) ?? null,
+      sortBy, sortDesc, limit: 200,
+    } as Parameters<typeof this.repo.queryHarvestLoads>[1]);
+
+    // ── 6. Persist for multi-turn ──
+    void this.saveHarvestQuery(userId, cmd).catch(() => {});
+
+    // ── 7. Build scope ──
+    const scopeBits: string[] = [];
+    if (plotName) scopeBits.push(`lote ${plotName}`);
+    else if (fieldName) scopeBits.push(`campo ${fieldName}`);
+    if (cmd.crop) scopeBits.push(String(cmd.crop));
+    if (cmd.driverName) scopeBits.push(`chofer ${cmd.driverName}`);
+    if (cmd.destinatario) scopeBits.push(`→ ${cmd.destinatario}`);
+    if (cmd.truckPlate) scopeBits.push(`patente ${cmd.truckPlate}`);
+    if (cmd.weightMinKg != null) scopeBits.push(`>${(Number(cmd.weightMinKg) / 1000)} tn`);
+    if (cmd.weightMaxKg != null) scopeBits.push(`<${(Number(cmd.weightMaxKg) / 1000)} tn`);
+    if (cmd.humidityMinPct != null) scopeBits.push(`hum >${cmd.humidityMinPct}%`);
+    if (cmd.humidityMaxPct != null) scopeBits.push(`hum <${cmd.humidityMaxPct}%`);
+    if (cmd.proteinMinPct != null) scopeBits.push(`prot >${cmd.proteinMinPct}%`);
+    if (cmd.oilMinPct != null) scopeBits.push(`aceite >${cmd.oilMinPct}%`);
+    const scope = scopeBits.length > 0 ? ` — ${scopeBits.join(', ')}` : '';
+
+    const ctx: renderers.HarvestRenderCtx = {
+      rangeLabel: isAll ? 'Todo el historial' : rangeLabel,
+      scope, isAll,
+      filters: {
+        plotName, fieldName,
+        crop: cmd.crop as string | null,
+        driverName: cmd.driverName as string | null,
+        destinatario: cmd.destinatario as string | null,
+        truckPlate: cmd.truckPlate as string | null,
+        aggregateMetric,
+        groupBy: cmd.group_by as string | null,
+        sortDesc,
+      },
+    };
+
+    // ── 8. Determine view ──
+    const view = (cmd.view as string)
+      || (cmd.compareCrop || cmd.compareDriver || cmd.compareDestinatario || cmd.comparePlot ? 'compare'
+        : cmd.group_by ? 'top_locations'
+        : 'detail');
+
+    // ── 9. Compare view ──
+    if (view === 'compare') {
+      const queryB = { ...arguments[0] };
+      // Build B params: swap the compared dimension
+      const optsB: Record<string, unknown> = {
+        plotId, fieldId,
+        crop: cmd.compareCrop ?? cmd.crop,
+        desde, hasta,
+        driverName: cmd.compareDriver ?? cmd.driverName,
+        destinatario: cmd.compareDestinatario ?? cmd.destinatario,
+        truckPlate: cmd.truckPlate,
+        sortBy, sortDesc, limit: 200,
+      };
+      // If comparing by plot, resolve plot B
+      if (cmd.comparePlot) {
+        const rB = await this.plotDiscovery.resolveFromNames(userId, null, cmd.comparePlot as string);
+        optsB.plotId = rB.plotId ?? null;
+        optsB.fieldId = rB.fieldId ?? null;
+        optsB.crop = cmd.crop;
+      }
+      const rowsB = await this.repo.queryHarvestLoads(userId, optsB as Parameters<typeof this.repo.queryHarvestLoads>[1]);
+      void queryB;
+      const labelA = (cmd.crop as string) || (cmd.driverName as string) || (cmd.destinatario as string) || (plotName ?? 'A');
+      const labelB = (cmd.compareCrop as string) || (cmd.compareDriver as string) || (cmd.compareDestinatario as string) || (cmd.comparePlot as string) || 'B';
+      return renderers.renderHarvestCompare(rows as renderers.HarvestRow[], rowsB as renderers.HarvestRow[], String(labelA), String(labelB));
+    }
+
+    // ── 10. Empty: proactive hint with available species ──
+    if (rows.length === 0) {
+      const hints = await this.repo.queryHarvestLoads(userId, { sortBy: 'date', sortDesc: true, limit: 200 } as Parameters<typeof this.repo.queryHarvestLoads>[1]);
+      const crops = new Set<string>(); const drivers = new Set<string>(); const dests = new Set<string>(); const plots = new Set<string>();
+      for (const r of hints) {
+        if (r.crop) crops.add(r.crop);
+        if (r.driver_name) drivers.add(r.driver_name);
+        if (r.destinatario) dests.add(r.destinatario); else if (r.destination) dests.add(r.destination);
+        if (r.plot_name) plots.add(r.plot_name);
+      }
+      return renderers.renderEmpty(ctx, { crops: [...crops], drivers: [...drivers], destinatarios: [...dests], plots: [...plots] });
+    }
+
+    // ── 11. Dispatch ──
+    switch (view) {
+      case 'aggregate': return renderers.renderHarvestAggregate(rows as renderers.HarvestRow[], ctx);
+      case 'max': return renderers.renderHarvestExtreme(rows as renderers.HarvestRow[], ctx, 'max');
+      case 'min': return renderers.renderHarvestExtreme(rows as renderers.HarvestRow[], ctx, 'min');
+      case 'avg': return renderers.renderHarvestAvg(rows as renderers.HarvestRow[], ctx);
+      case 'rank': return renderers.renderHarvestRank(rows as renderers.HarvestRow[], ctx, (cmd.top_n as number) || 5);
+      case 'top_locations': return renderers.renderHarvestTopLocations(rows as renderers.HarvestRow[], ctx);
+      case 'volume': return renderers.renderHarvestVolume(rows as renderers.HarvestRow[], ctx);
+      case 'detail':
+      default: return renderers.renderHarvestDetail(rows as renderers.HarvestRow[], ctx);
+    }
+  }
+
+  private async saveHarvestQuery(userId: UserId, cmd: ParsedCommand): Promise<void> {
+    const { pool } = await import('../../config/db.js');
+    const KEEP = ['fieldName', 'plotName', 'crop', 'period', 'desde', 'hasta', 'eventDate',
+      'driverName', 'destinatario', 'truckPlate',
+      'weightMinKg', 'weightMaxKg', 'humidityMinPct', 'humidityMaxPct',
+      'proteinMinPct', 'proteinMaxPct', 'oilMinPct', 'oilMaxPct', 'glutenMinPct', 'glutenMaxPct',
+      'view', 'aggregateMetric', 'sort_by', 'sort_desc', 'top_n', 'group_by'];
+    const persistable: Record<string, unknown> = {};
+    for (const k of KEEP) if (cmd[k] !== undefined && cmd[k] !== null) persistable[k] = cmd[k];
+    await pool.query(
+      `INSERT INTO conversation_state (user_id, last_harvest_query, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET last_harvest_query = $2::jsonb, updated_at = NOW()`,
+      [userId, JSON.stringify(persistable)],
+    );
   }
 
   async handleCommand(cmd: ParsedCommand, userId: UserId, user: User, settings: UserSettings): Promise<HandlerResponse> {
@@ -787,6 +1577,15 @@ export class AgronomyHandler {
       }
 
       case 'rainfall_report': {
+        // Unified dispatch: when ANY new analytical param is present, route to new handler
+        const hasNewParam = cmd.view != null || cmd.mmMin != null || cmd.mmMax != null
+          || cmd.aggregateMetric != null || cmd.group_by != null || cmd.sort_by != null
+          || cmd.sort_desc != null || cmd.top_n != null || cmd.inherit != null
+          || cmd.compareField != null || cmd.comparePlot != null || cmd.compare_desde != null
+          || cmd.days != null || cmd.desde != null || cmd.hasta != null
+          || cmd.plotName != null || cmd.period === 'all';
+        if (hasNewParam) return this.handleQueryRainfall(cmd, userId);
+
         const periodLabel: Record<string, string> = {
           week: 'esta semana', month: 'este mes', year: 'este año',
           day: 'hoy', today: 'hoy',
@@ -1476,6 +2275,24 @@ export class AgronomyHandler {
       }
 
       case 'activity_stats': {
+        // Redirect to the unified handler — activity_stats becomes a view='aggregate' on activities.
+        // Map legacy activityFilter to the new activityTypes shape, then dispatch.
+        if (cmd.activityFilter && !cmd.activityTypes) {
+          const legacyMap: Record<string, string> = {
+            'log_spraying': 'spraying', 'log_fertilization': 'fertilization',
+            'sow_crop': 'planting', 'harvest_crop': 'harvest',
+            'log_tillage': 'tillage', 'log_irrigation': 'irrigation',
+            'spraying': 'spraying', 'fertilization': 'fertilization', 'planting': 'planting',
+            'harvest': 'harvest', 'tillage': 'tillage', 'irrigation': 'irrigation',
+          };
+          const t = legacyMap[cmd.activityFilter as string];
+          if (t) cmd.activityTypes = [t];
+        }
+        if (cmd.view == null) cmd.view = 'aggregate';
+        return this.handleQueryActivities(cmd, userId);
+      }
+
+      case '_activity_stats_legacy_disabled': {
         let statsFieldId: number | null = null;
         let statsPlotId: number | null = null;
         let statsLocationLabel: string | null = null;
@@ -1558,59 +2375,7 @@ export class AgronomyHandler {
       }
 
       case 'query_harvest_loads': {
-        let loadsPlotId: number | null = null;
-        let loadsFieldId: number | null = null;
-        let loadsLocationLabel: string | null = null;
-
-        if (cmd.plotName || cmd.fieldName) {
-          const resolved = await this.plotDiscovery.resolveFromNames(
-            userId,
-            cmd.fieldName as string | null,
-            cmd.plotName as string | null,
-          );
-          loadsFieldId = resolved.fieldId ?? null;
-          loadsPlotId = resolved.plotId ?? null;
-          loadsLocationLabel = resolved.plotName
-            ? (resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName)
-            : resolved.fieldName ?? null;
-        }
-
-        const loadRows = await this.repo.queryHarvestLoads(userId, {
-          plotId: loadsPlotId,
-          fieldId: loadsFieldId,
-          desde: cmd.desde as string | null,
-          hasta: cmd.hasta as string | null,
-          driverName: cmd.driverName as string | null,
-          destinatario: cmd.destinatario as string | null,
-        });
-
-        if (loadRows.length === 0) {
-          let emptyMsg = 'No hay cargas de cosecha registradas';
-          if (loadsLocationLabel) emptyMsg += ` en *${loadsLocationLabel}*`;
-          emptyMsg += '.';
-          return { messages: [emptyMsg] };
-        }
-
-        // Group by date+plot for display
-        const totalKg = loadRows.reduce((sum, r) => sum + Number(r.weight_kg), 0);
-        const lines: string[] = [];
-        let title = `🚛 *${loadRows.length} carga${loadRows.length > 1 ? 's' : ''}*`;
-        if (loadsLocationLabel) title += ` — ${loadsLocationLabel}`;
-        lines.push(title);
-
-        for (const r of loadRows) {
-          let line = `• ${r.driver_name} — ${Number(r.weight_kg).toLocaleString('es-AR')} kg`;
-          if (r.destinatario) line += ` → ${r.destinatario}`;
-          else if (r.destination) line += ` → ${r.destination}`;
-          if (r.truck_plate) line += ` (${r.truck_plate})`;
-          if (!loadsPlotId && r.plot_name) line += ` [${r.plot_name}]`;
-          lines.push(line);
-        }
-
-        lines.push('');
-        lines.push(`📊 *Total: ${totalKg.toLocaleString('es-AR')} kg*`);
-
-        return { messages: [lines.join('\n')] };
+        return this.handleQueryHarvestLoads(cmd, userId);
       }
 
       case 'delete_harvest_loads': {
@@ -2108,6 +2873,14 @@ export class AgronomyHandler {
       }
 
       case 'query_plot_history': {
+        // Unified dispatch path: when ANY new analytical param is present, route to new handler
+        const hasNewParam = cmd.view != null || cmd.activityTypes != null || cmd.productSearch != null
+          || cmd.quantityMin != null || cmd.quantityMax != null || cmd.aggregateMetric != null
+          || cmd.group_by != null || cmd.sort_by != null || cmd.sort_desc != null || cmd.top_n != null
+          || cmd.inherit != null || cmd.compareCrop != null || cmd.comparePlot != null
+          || cmd.compareField != null || cmd.compareActivityType != null;
+        if (hasNewParam) return this.handleQueryActivities(cmd, userId);
+
         const hasFilter = !!(cmd.activityFilter || cmd.crop);
         // If no plot/field specified and no filter → ask user which lote
         // If there IS a filter (e.g. "en qué lote sembré maíz") → search all plots
@@ -2393,50 +3166,7 @@ export class AgronomyHandler {
       // --- Crop scouting query ---
 
       case 'query_scoutings': {
-        const resolved = await this.plotDiscovery.resolveFromNames(
-          userId,
-          cmd.fieldName as string | null,
-          cmd.plotName as string | null
-        );
-        const { queryScoutings } = await import('../../services/expenses.js');
-        const desde = cmd.desde as string | undefined;
-        const hasta = cmd.hasta as string | undefined;
-        const rows = await queryScoutings({
-          userId: Number(userId),
-          plotId: resolved.plotId ?? null,
-          fieldId: resolved.fieldId ?? null,
-          dateFrom: desde ?? null,
-          dateTo: hasta ?? null,
-          minSeverity: (cmd.minSeverity as number) ?? null,
-          stageCode: (cmd.stageCode as string) ?? null,
-          limit: 20,
-        });
-
-        if (rows.length === 0) {
-          const scope = resolved.plotName ? `lote *${resolved.plotName}*` : (resolved.fieldName ? `campo *${resolved.fieldName}*` : 'tu cuenta');
-          return { messages: [`No hay monitoreos registrados para ${scope} con esos filtros.`] };
-        }
-
-        const sevLabels = ['', 'ausente', 'leve', 'moderada', 'alta', 'severa'];
-        const lines: string[] = [`🔍 *Monitoreos (${rows.length})*`];
-        for (const r of rows.slice(0, 10)) {
-          const date = r.scouting_date ? new Date(r.scouting_date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '';
-          const plot = r.plot_name || '';
-          const parts: string[] = [];
-          if (r.stage_code) parts.push(`${r.stage_code}`);
-          if (r.weed_coverage_pct != null) parts.push(`${r.weed_coverage_pct}% maleza`);
-          if (r.pest_species) {
-            const sev = r.pest_severity_1_5 ? ` ${sevLabels[r.pest_severity_1_5]}` : '';
-            parts.push(`${r.pest_species}${sev}`);
-          }
-          if (r.emergence_pct != null) parts.push(`${r.emergence_pct}% emerg.`);
-          if (r.plant_density_m2 != null) parts.push(`${r.plant_density_m2} pl/m²`);
-          if (r.soil_moisture_1_5 != null) parts.push(`humedad ${r.soil_moisture_1_5}/5`);
-          const detail = parts.length ? ` — ${parts.join(' · ')}` : '';
-          lines.push(`• ${date} *${plot}*${detail}`);
-        }
-        if (rows.length > 10) lines.push(`… (${rows.length - 10} más)`);
-        return { messages: [lines.join('\n')] };
+        return this.handleQueryScoutings(cmd, userId);
       }
 
       // --- Crop scouting (structured monitoring) ---

@@ -34,7 +34,9 @@ function normalize(text: string): string {
 export class EntityValidator {
   async validateField(userId: UserId, fieldName: string): Promise<ValidationResult> {
     const result = await pool.query(
-      'SELECT name FROM fields WHERE id IN (SELECT field_id FROM field_members WHERE user_id = $1) AND deleted_at IS NULL',
+      `SELECT name FROM fields
+        WHERE (user_id = $1 OR id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+          AND deleted_at IS NULL`,
       [userId]
     );
     const fields: string[] = result.rows.map((r: { name: string }) => r.name);
@@ -63,7 +65,10 @@ export class EntityValidator {
 
   async getUserFieldNames(userId: UserId): Promise<string[]> {
     const result = await pool.query(
-      'SELECT name FROM fields WHERE id IN (SELECT field_id FROM field_members WHERE user_id = $1) AND deleted_at IS NULL ORDER BY name',
+      `SELECT name FROM fields
+        WHERE (user_id = $1 OR id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+          AND deleted_at IS NULL
+        ORDER BY name`,
       [userId]
     );
     return result.rows.map((r: { name: string }) => r.name);
@@ -73,7 +78,8 @@ export class EntityValidator {
     const result = await pool.query(
       `SELECT p.name FROM plots p
        JOIN fields f ON p.field_id = f.id
-       WHERE f.id IN (SELECT field_id FROM field_members WHERE user_id = $1) AND p.deleted_at IS NULL AND f.deleted_at IS NULL
+       WHERE (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+         AND p.deleted_at IS NULL AND f.deleted_at IS NULL
        ORDER BY p.name`,
       [userId]
     );
@@ -84,7 +90,8 @@ export class EntityValidator {
     const result = await pool.query(
       `SELECT p.name AS plot_name, f.name AS field_name FROM plots p
        JOIN fields f ON p.field_id = f.id
-       WHERE f.id IN (SELECT field_id FROM field_members WHERE user_id = $1) AND p.deleted_at IS NULL AND f.deleted_at IS NULL
+       WHERE (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+         AND p.deleted_at IS NULL AND f.deleted_at IS NULL
        ORDER BY f.name, p.name`,
       [userId]
     );

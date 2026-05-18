@@ -337,6 +337,15 @@ export class LivestockHandler {
   // ========================
 
   private async listLivestock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    // Unified dispatch: when any new param is set, route to the rich query handler
+    const hasNewParam = cmd.view != null || cmd.inFeedlot != null || cmd.weightMinKg != null
+      || cmd.weightMaxKg != null || cmd.countMin != null || cmd.countMax != null
+      || cmd.aggregateMetric != null || cmd.group_by != null || cmd.sort_by != null
+      || cmd.sort_desc != null || cmd.top_n != null || cmd.inherit != null
+      || cmd.compareCategory != null || cmd.compareField != null || cmd.compareCorral != null
+      || cmd.breed != null;
+    if (hasNewParam) return this.handleQueryInventory(cmd, userId);
+
     const { groups, total } = await this.service.listInventory(userId, {
       fieldName: cmd.fieldName as string,
       plotName: cmd.plotName as string,
@@ -742,6 +751,162 @@ export class LivestockHandler {
         lines.join('\n'),
       ],
     };
+  }
+
+  // --- Unified inventory query (groups + view dispatch) ---
+  private async handleQueryInventory(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const { pool } = await import('../../config/db.js');
+    const renderers = await import('./livestock-renderers.js');
+
+    // ── 1. Multi-turn inherit (exclude transient flags) ──
+    const TRANSIENT_KEYS = new Set(['view', 'top_n', 'compareCategory', 'compareField', 'compareCorral']);
+    if (cmd.inherit) {
+      try {
+        const { rows } = await pool.query('SELECT last_livestock_query FROM conversation_state WHERE user_id = $1', [userId]);
+        const prev = rows[0]?.last_livestock_query;
+        if (prev && typeof prev === 'object') {
+          for (const [k, v] of Object.entries(prev)) {
+            if (TRANSIENT_KEYS.has(k)) continue;
+            if (cmd[k] == null) cmd[k] = v as never;
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // ── 2. Query base groups (uses existing listInventory for plot/field/corral resolution) ──
+    let baseGroups: import('./livestock-renderers.js').LivestockGroupRow[] = [];
+    try {
+      const r = await this.service.listInventory(userId, {
+        fieldName: cmd.fieldName as string,
+        plotName: cmd.plotName as string,
+        corralName: cmd.corralName as string,
+        category: cmd.category as string,
+      });
+      baseGroups = r.groups as unknown as import('./livestock-renderers.js').LivestockGroupRow[];
+    } catch { /* swallow not-found */ }
+
+    // ── 3. Apply in-memory filters not supported by listInventory ──
+    const applyFilters = (rows: import('./livestock-renderers.js').LivestockGroupRow[]): import('./livestock-renderers.js').LivestockGroupRow[] => {
+      let out = rows.filter(r => r.count > 0);
+      if (cmd.inFeedlot === true) out = out.filter(r => r.corral_name != null);
+      if (cmd.inFeedlot === false) out = out.filter(r => r.corral_name == null);
+      if (cmd.breed) {
+        const needle = String(cmd.breed).toLowerCase();
+        out = out.filter(r => (r.breed || '').toLowerCase().includes(needle));
+      }
+      if (cmd.weightMinKg != null) out = out.filter(r => (r.avg_weight_kg || 0) >= Number(cmd.weightMinKg));
+      if (cmd.weightMaxKg != null) out = out.filter(r => (r.avg_weight_kg || 0) <= Number(cmd.weightMaxKg));
+      if (cmd.countMin != null) out = out.filter(r => r.count >= Number(cmd.countMin));
+      if (cmd.countMax != null) out = out.filter(r => r.count <= Number(cmd.countMax));
+      return out;
+    };
+    const rows = applyFilters(baseGroups);
+
+    // ── 4. Persist for multi-turn ──
+    void this.saveLivestockQuery(userId, cmd).catch(() => {});
+
+    // ── 5. Scope label ──
+    const scopeBits: string[] = [];
+    if (cmd.fieldName) scopeBits.push(`campo ${cmd.fieldName}`);
+    if (cmd.plotName) scopeBits.push(`lote ${cmd.plotName}`);
+    if (cmd.corralName) scopeBits.push(`corral ${cmd.corralName}`);
+    if (cmd.category) scopeBits.push(String(cmd.category));
+    if (cmd.breed) scopeBits.push(String(cmd.breed));
+    if (cmd.inFeedlot === true) scopeBits.push('feedlot');
+    if (cmd.inFeedlot === false) scopeBits.push('a campo');
+    if (cmd.weightMinKg != null) scopeBits.push(`peso ≥${cmd.weightMinKg}kg`);
+    if (cmd.weightMaxKg != null) scopeBits.push(`peso ≤${cmd.weightMaxKg}kg`);
+    const scope = scopeBits.length > 0 ? ` — ${scopeBits.join(', ')}` : '';
+
+    const ctx: import('./livestock-renderers.js').LivestockRenderCtx = {
+      scope,
+      filters: {
+        fieldName: cmd.fieldName as string | null,
+        plotName: cmd.plotName as string | null,
+        corralName: cmd.corralName as string | null,
+        category: cmd.category as string | null,
+        breed: cmd.breed as string | null,
+        inFeedlot: cmd.inFeedlot as boolean | null,
+        aggregateMetric: cmd.aggregateMetric as string | null,
+        groupBy: cmd.group_by as string | null,
+        sortDesc: cmd.sort_desc != null ? !!cmd.sort_desc : true,
+      },
+    };
+
+    const view = (cmd.view as string)
+      || (cmd.compareCategory || cmd.compareField || cmd.compareCorral ? 'compare'
+        : cmd.group_by ? 'top_locations'
+        : 'detail');
+
+    // ── 6. Compare ──
+    if (view === 'compare') {
+      let rowsB = baseGroups;
+      if (cmd.compareCategory) {
+        try {
+          const r = await this.service.listInventory(userId, {
+            fieldName: cmd.fieldName as string,
+            plotName: cmd.plotName as string,
+            corralName: cmd.corralName as string,
+            category: cmd.compareCategory as string,
+          });
+          rowsB = r.groups as unknown as import('./livestock-renderers.js').LivestockGroupRow[];
+        } catch { rowsB = []; }
+      } else if (cmd.compareField) {
+        try {
+          const r = await this.service.listInventory(userId, {
+            fieldName: cmd.compareField as string,
+            category: cmd.category as string,
+          });
+          rowsB = r.groups as unknown as import('./livestock-renderers.js').LivestockGroupRow[];
+        } catch { rowsB = []; }
+      } else if (cmd.compareCorral) {
+        try {
+          const r = await this.service.listInventory(userId, {
+            corralName: cmd.compareCorral as string,
+            category: cmd.category as string,
+          });
+          rowsB = r.groups as unknown as import('./livestock-renderers.js').LivestockGroupRow[];
+        } catch { rowsB = []; }
+      }
+      const labelA = (cmd.category as string) || (cmd.fieldName as string) || (cmd.corralName as string) || 'A';
+      const labelB = (cmd.compareCategory as string) || (cmd.compareField as string) || (cmd.compareCorral as string) || 'B';
+      return renderers.renderLivestockCompare(applyFilters(rows), applyFilters(rowsB), labelA, labelB);
+    }
+
+    // ── 7. Empty ──
+    if (rows.length === 0) {
+      const all = baseGroups.length > 0 ? baseGroups : (await this.service.listInventory(userId, {})).groups as unknown as import('./livestock-renderers.js').LivestockGroupRow[];
+      const cats = new Set<string>(); const flds = new Set<string>(); const corrs = new Set<string>();
+      for (const r of all) { cats.add(r.category); if (r.field_name) flds.add(r.field_name); if (r.corral_name) corrs.add(r.corral_name); }
+      return renderers.renderEmpty(ctx, { categories: [...cats], fields: [...flds], corrals: [...corrs] });
+    }
+
+    // ── 8. Dispatch ──
+    switch (view) {
+      case 'aggregate': return renderers.renderLivestockAggregate(rows, ctx);
+      case 'max': return renderers.renderLivestockExtreme(rows, ctx, 'max');
+      case 'min': return renderers.renderLivestockExtreme(rows, ctx, 'min');
+      case 'avg': return renderers.renderLivestockAvg(rows, ctx);
+      case 'rank': return renderers.renderLivestockRank(rows, ctx, (cmd.top_n as number) || 5);
+      case 'top_locations': return renderers.renderLivestockTopLocations(rows, ctx);
+      case 'detail':
+      default: return renderers.renderLivestockDetail(rows, ctx);
+    }
+  }
+
+  private async saveLivestockQuery(userId: UserId, cmd: ParsedCommand): Promise<void> {
+    const { pool } = await import('../../config/db.js');
+    const KEEP = ['fieldName', 'plotName', 'corralName', 'category', 'breed', 'inFeedlot',
+      'weightMinKg', 'weightMaxKg', 'countMin', 'countMax',
+      'view', 'aggregateMetric', 'sort_by', 'sort_desc', 'top_n', 'group_by'];
+    const persistable: Record<string, unknown> = {};
+    for (const k of KEEP) if (cmd[k] !== undefined && cmd[k] !== null) persistable[k] = cmd[k];
+    await pool.query(
+      `INSERT INTO conversation_state (user_id, last_livestock_query, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET last_livestock_query = $2::jsonb, updated_at = NOW()`,
+      [userId, JSON.stringify(persistable)],
+    );
   }
 }
 

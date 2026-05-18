@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { useSortableTable } from '../hooks/useSortableTable';
 import { apiRequest } from '../api/client';
 
 interface QualityMetrics {
@@ -70,14 +71,31 @@ export default function HarvestLoadsTable() {
   const [dateTo, setDateTo] = useState('');
   const [driver, setDriver] = useState('');
   const [destinatario, setDestinatario] = useState('');
+  const [cropFilter, setCropFilter] = useState('');
+  const [humMin, setHumMin] = useState('');
+  const [humMax, setHumMax] = useState('');
 
   const limit = 50;
 
   useEffect(() => {
     apiRequest<{ fields: FieldOption[] }>('/observations/filters')
-      .then(r => setFields(r.fields))
+      .then(r => {
+        setFields(r.fields);
+        if (r.fields.length === 1) setFieldId(String(r.fields[0].id));
+      })
       .catch(() => {});
   }, []);
+
+  // Auto-pick the only plot if there's just one (within active field)
+  useEffect(() => {
+    const allPlots = fields.flatMap(f => f.plots);
+    const candidatePlots = fieldId
+      ? fields.find(f => f.id === Number(fieldId))?.plots ?? []
+      : allPlots;
+    if (candidatePlots.length === 1 && !plotId) {
+      setPlotId(String(candidatePlots[0].id));
+    }
+  }, [fields, fieldId, plotId]);
 
   const fetchLoads = useCallback(async () => {
     setLoading(true);
@@ -101,31 +119,41 @@ export default function HarvestLoadsTable() {
 
   useEffect(() => { fetchLoads(); }, [fetchLoads]);
 
-  const hasFilters = !!(fieldId || plotId || dateFrom || dateTo || driver || destinatario);
+  const hasFilters = !!(fieldId || plotId || dateFrom || dateTo || driver || destinatario || cropFilter || humMin || humMax);
   const clearFilters = () => {
-    setFieldId(''); setPlotId(''); setDateFrom(''); setDateTo('');
-    setDriver(''); setDestinatario(''); setPage(1);
+    setFieldId(fields.length === 1 ? String(fields[0].id) : '');
+    setPlotId(''); setDateFrom(''); setDateTo('');
+    setDriver(''); setDestinatario('');
+    setCropFilter(''); setHumMin(''); setHumMax('');
+    setPage(1);
   };
 
   const availablePlots = fieldId ? fields.find(f => f.id === Number(fieldId))?.plots ?? [] : [];
 
-  // Aggregates over the visible rows
-  const aggregates = useMemo(() => {
-    if (!data?.data?.length) return null;
-    const totalKg = data.data.reduce((acc, l) => acc + l.weightKg, 0);
-    const trips = data.data.length;
-    const drivers = new Set(data.data.map(l => l.driverName.toLowerCase().trim()));
-    const humidities = data.data.filter(l => l.humidityPct != null);
-    const avgHumidity = humidities.length
-      ? humidities.reduce((a, l) => a + (l.humidityPct as number), 0) / humidities.length
-      : null;
-    return {
-      totalKg,
-      trips,
-      drivers: drivers.size,
-      avgHumidity: avgHumidity != null ? Math.round(avgHumidity * 10) / 10 : null,
-    };
-  }, [data]);
+  // Client-side filter (cultivo, humedad range) + sort
+  const filteredLoads = (data?.data ?? []).filter(l => {
+    if (cropFilter && (l.crop || '').toLowerCase() !== cropFilter.toLowerCase()) return false;
+    if (humMin && (l.humidityPct == null || l.humidityPct < Number(humMin))) return false;
+    if (humMax && (l.humidityPct == null || l.humidityPct > Number(humMax))) return false;
+    return true;
+  });
+  const cropsAvailable = [...new Set((data?.data ?? []).map(l => l.crop).filter(Boolean) as string[])];
+
+  const { sorted: sortedLoads, toggleSort, arrow } = useSortableTable<typeof filteredLoads[0], 'date' | 'plot' | 'crop' | 'driver' | 'weight' | 'humidity' | 'destinatario' | 'truck'>(filteredLoads, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'date': return row.eventDate;
+        case 'plot': return (row.plotName || '').toLowerCase();
+        case 'crop': return (row.crop || '').toLowerCase();
+        case 'driver': return (row.driverName || '').toLowerCase();
+        case 'weight': return Number(row.weightKg);
+        case 'humidity': return row.humidityPct == null ? null : Number(row.humidityPct);
+        case 'destinatario': return (row.destinatario || '').toLowerCase();
+        case 'truck': return (row.truckPlate || '').toLowerCase();
+      }
+    },
+    initial: { key: 'date', direction: 'desc' },
+  });
 
   return (
     <div className="p-4 md:p-6">
@@ -133,27 +161,6 @@ export default function HarvestLoadsTable() {
         <h2 className="text-lg font-semibold text-gray-800">Cosechas — cargas por camión</h2>
         <span className="text-xs text-gray-400">Chofer · kg · destinatario · humedad · calidad</span>
       </div>
-
-      {aggregates && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div className="bg-gray-50 border border-gray-200 rounded p-3">
-            <div className="text-xs text-gray-500">Cargas (pág.)</div>
-            <div className="text-lg font-semibold">{aggregates.trips}</div>
-          </div>
-          <div className="bg-gray-50 border border-gray-200 rounded p-3">
-            <div className="text-xs text-gray-500">Total (pág.)</div>
-            <div className="text-lg font-semibold">{formatKg(aggregates.totalKg)}</div>
-          </div>
-          <div className="bg-gray-50 border border-gray-200 rounded p-3">
-            <div className="text-xs text-gray-500">Choferes</div>
-            <div className="text-lg font-semibold">{aggregates.drivers}</div>
-          </div>
-          <div className="bg-gray-50 border border-gray-200 rounded p-3">
-            <div className="text-xs text-gray-500">Humedad prom</div>
-            <div className="text-lg font-semibold">{aggregates.avgHumidity != null ? `${aggregates.avgHumidity}%` : '—'}</div>
-          </div>
-        </div>
-      )}
 
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded mb-4 text-sm">
         <div className="flex flex-col">
@@ -173,7 +180,7 @@ export default function HarvestLoadsTable() {
           <select value={fieldId}
             onChange={e => { setFieldId(e.target.value); setPlotId(''); setPage(1); }}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm">
-            <option value="">Todos</option>
+            {fields.length !== 1 && <option value="">Todos</option>}
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
@@ -183,7 +190,7 @@ export default function HarvestLoadsTable() {
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
             disabled={!fieldId}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:opacity-40">
-            <option value="">Todos</option>
+            {availablePlots.length !== 1 && <option value="">Todos</option>}
             {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
@@ -200,6 +207,29 @@ export default function HarvestLoadsTable() {
             onChange={e => { setDestinatario(e.target.value); setPage(1); }}
             placeholder="Acopio / Cargill…"
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-40" />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Cultivo</label>
+          <select value={cropFilter}
+            onChange={e => setCropFilter(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm">
+            <option value="">Todos</option>
+            {cropsAvailable.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Humedad mín %</label>
+          <input type="number" step="0.1" value={humMin}
+            onChange={e => setHumMin(e.target.value)}
+            placeholder="0"
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-20" />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Humedad máx %</label>
+          <input type="number" step="0.1" value={humMax}
+            onChange={e => setHumMax(e.target.value)}
+            placeholder="∞"
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-20" />
         </div>
         {hasFilters && (
           <button onClick={clearFilters}
@@ -229,18 +259,18 @@ export default function HarvestLoadsTable() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Lote / Cultivo</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Chofer</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600">Peso</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Hum.</th>
+                <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Fecha{arrow('date')}</th>
+                <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Lote / Cultivo{arrow('plot')}</th>
+                <th onClick={() => toggleSort('driver')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Chofer{arrow('driver')}</th>
+                <th onClick={() => toggleSort('weight')} className="text-right px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Peso{arrow('weight')}</th>
+                <th onClick={() => toggleSort('humidity')} className="text-right px-4 py-3 font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100">Hum.{arrow('humidity')}</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Calidad</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Destinatario</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Camión</th>
+                <th onClick={() => toggleSort('destinatario')} className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100">Destinatario{arrow('destinatario')}</th>
+                <th onClick={() => toggleSort('truck')} className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell cursor-pointer select-none hover:bg-gray-100">Camión{arrow('truck')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {data.data.map(l => (
+              {sortedLoads.map(l => (
                 <tr key={l.id} className="hover:bg-gray-50 transition-colors align-top">
                   <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(l.eventDate)}</td>
                   <td className="px-4 py-3 text-gray-800">

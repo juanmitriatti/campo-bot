@@ -176,6 +176,16 @@ export class StockHandler {
   }
 
   private async checkStock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    // ── Unified dispatch path: when ANY new param is present, route to handleQueryStock ──
+    const hasNewParam = cmd.view != null || cmd.lowStockOnly != null || cmd.category != null
+      || cmd.warehouseName != null || cmd.quantityMin != null || cmd.quantityMax != null
+      || cmd.hasMinStock != null || cmd.group_by != null || cmd.aggregateMetric != null
+      || cmd.compareWarehouse != null || cmd.compareCategory != null || cmd.compareField != null
+      || cmd.inherit != null || cmd.sort_by != null || cmd.sort_desc != null || cmd.top_n != null;
+    if (hasNewParam || (!cmd.product && !cmd.fieldName)) {
+      return this.handleQueryStock(cmd, userId);
+    }
+    // Legacy path: single-product lookup (preserves the older response shape for that case)
     const items = await stockService.checkStock(
       userId,
       cmd.product as string,
@@ -334,5 +344,144 @@ export class StockHandler {
         `⚠️ *Alertas de stock bajo* (${items.length})\n\n${lines.join('\n')}`,
       ],
     };
+  }
+
+  // --- Unified query_stock dispatcher (same shape as financial/scouting/harvest) ---
+  private async handleQueryStock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const { pool } = await import('../../config/db.js');
+    const { StockRepository } = await import('./stock.repository.js');
+    const renderers = await import('./stock-renderers.js');
+    const repo = new StockRepository();
+
+    // ── 1. Multi-turn inherit ──
+    // Transient flags (boolean intents that apply ONLY to the current turn) are deliberately
+    // excluded so they don't pollute subsequent queries: low_stock_only, has_min_stock, view, top_n.
+    // Same for compare_* (compares are always explicit per-turn).
+    const TRANSIENT_KEYS = new Set(['lowStockOnly', 'hasMinStock', 'view', 'top_n',
+      'compareWarehouse', 'compareCategory', 'compareField']);
+    if (cmd.inherit) {
+      try {
+        const { rows } = await pool.query('SELECT last_stock_query FROM conversation_state WHERE user_id = $1', [userId]);
+        const prev = rows[0]?.last_stock_query;
+        if (prev && typeof prev === 'object') {
+          for (const [k, v] of Object.entries(prev)) {
+            if (TRANSIENT_KEYS.has(k)) continue;
+            if (cmd[k] == null) cmd[k] = v as never;
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    const sortBy = (cmd.sort_by as 'name' | 'quantity' | 'category' | 'warehouse') || 'name';
+    const sortDesc = cmd.sort_desc != null ? !!cmd.sort_desc : false;
+
+    // ── 2. Query ──
+    const rows = await repo.queryStock({
+      userId: Number(userId),
+      fieldName: (cmd.fieldName as string) ?? null,
+      warehouseName: (cmd.warehouseName as string) ?? null,
+      category: (cmd.category as string) ?? null,
+      productSearch: (cmd.product as string) ?? null,
+      lowStockOnly: (cmd.lowStockOnly as boolean) ?? null,
+      quantityMin: (cmd.quantityMin as number) ?? null,
+      quantityMax: (cmd.quantityMax as number) ?? null,
+      hasMinStock: (cmd.hasMinStock as boolean) ?? null,
+      sortBy, sortDesc, limit: 200,
+    });
+
+    // ── 3. Persist for multi-turn ──
+    void this.saveStockQuery(userId, cmd).catch(() => {});
+
+    // ── 4. Build scope ──
+    const scopeBits: string[] = [];
+    if (cmd.fieldName) scopeBits.push(`campo ${cmd.fieldName}`);
+    if (cmd.warehouseName) scopeBits.push(`depósito ${cmd.warehouseName}`);
+    if (cmd.category) scopeBits.push(String(cmd.category).toLowerCase());
+    if (cmd.product) scopeBits.push(`"${cmd.product}"`);
+    if (cmd.lowStockOnly) scopeBits.push('bajo stock');
+    if (cmd.quantityMin != null) scopeBits.push(`>${cmd.quantityMin}`);
+    if (cmd.quantityMax != null) scopeBits.push(`<${cmd.quantityMax}`);
+    const scope = scopeBits.length > 0 ? ` — ${scopeBits.join(', ')}` : '';
+
+    const ctx: renderers.StockRenderCtx = {
+      scope,
+      filters: {
+        fieldName: cmd.fieldName as string | null,
+        warehouseName: cmd.warehouseName as string | null,
+        category: cmd.category as string | null,
+        productSearch: cmd.product as string | null,
+        lowStockOnly: cmd.lowStockOnly as boolean | null,
+        aggregateMetric: cmd.aggregateMetric as string | null,
+        groupBy: cmd.group_by as string | null,
+        sortDesc,
+      },
+    };
+
+    // ── 5. Determine view ──
+    const view = (cmd.view as string)
+      || (cmd.compareWarehouse || cmd.compareCategory || cmd.compareField ? 'compare'
+        : cmd.group_by ? 'top_locations'
+        : 'detail');
+
+    // ── 6. Compare ──
+    if (view === 'compare') {
+      const optsB = {
+        userId: Number(userId),
+        fieldName: (cmd.compareField as string) ?? (cmd.fieldName as string) ?? null,
+        warehouseName: (cmd.compareWarehouse as string) ?? null,
+        category: (cmd.compareCategory as string) ?? (cmd.category as string) ?? null,
+        productSearch: (cmd.compareProduct as string) ?? (cmd.product as string) ?? null,
+        lowStockOnly: (cmd.lowStockOnly as boolean) ?? null,
+        sortBy, sortDesc, limit: 200,
+      };
+      // If comparing products, query A also filtered by product (the original term)
+      if (cmd.compareProduct) {
+        const optsA = { ...optsB, productSearch: (cmd.product as string) ?? null };
+        const rowsAfiltered = await repo.queryStock(optsA);
+        const rowsB = await repo.queryStock(optsB);
+        const labelA = (cmd.product as string) || 'A';
+        const labelB = (cmd.compareProduct as string) || 'B';
+        return renderers.renderStockCompare(rowsAfiltered as renderers.StockRow[], rowsB as renderers.StockRow[], labelA, labelB);
+      }
+      const rowsB = await repo.queryStock(optsB);
+      const labelA = (cmd.warehouseName as string) || (cmd.category as string) || (cmd.fieldName as string) || (cmd.product as string) || 'A';
+      const labelB = (cmd.compareWarehouse as string) || (cmd.compareCategory as string) || (cmd.compareField as string) || (cmd.compareProduct as string) || 'B';
+      return renderers.renderStockCompare(rows as renderers.StockRow[], rowsB as renderers.StockRow[], labelA, labelB);
+    }
+
+    // ── 7. Empty + proactive hint ──
+    if (rows.length === 0) {
+      const all = await repo.queryStock({ userId: Number(userId), limit: 200 });
+      const cats = new Set<string>(); const whs = new Set<string>(); const prods = new Set<string>();
+      for (const r of all) { cats.add(r.category); if (r.warehouse_name) whs.add(r.warehouse_name); prods.add(r.name); }
+      return renderers.renderEmpty(ctx, { categories: [...cats], warehouses: [...whs], products: [...prods] });
+    }
+
+    // ── 8. Dispatch ──
+    switch (view) {
+      case 'aggregate': return renderers.renderStockAggregate(rows as renderers.StockRow[], ctx);
+      case 'max': return renderers.renderStockExtreme(rows as renderers.StockRow[], ctx, 'max');
+      case 'min': return renderers.renderStockExtreme(rows as renderers.StockRow[], ctx, 'min');
+      case 'avg': return renderers.renderStockAvg(rows as renderers.StockRow[], ctx);
+      case 'rank': return renderers.renderStockRank(rows as renderers.StockRow[], ctx, (cmd.top_n as number) || 5);
+      case 'top_locations': return renderers.renderStockTopLocations(rows as renderers.StockRow[], ctx);
+      case 'detail':
+      default: return renderers.renderStockDetail(rows as renderers.StockRow[], ctx);
+    }
+  }
+
+  private async saveStockQuery(userId: UserId, cmd: ParsedCommand): Promise<void> {
+    const { pool } = await import('../../config/db.js');
+    const KEEP = ['fieldName', 'warehouseName', 'category', 'product', 'lowStockOnly',
+      'quantityMin', 'quantityMax', 'hasMinStock',
+      'view', 'aggregateMetric', 'sort_by', 'sort_desc', 'top_n', 'group_by'];
+    const persistable: Record<string, unknown> = {};
+    for (const k of KEEP) if (cmd[k] !== undefined && cmd[k] !== null) persistable[k] = cmd[k];
+    await pool.query(
+      `INSERT INTO conversation_state (user_id, last_stock_query, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET last_stock_query = $2::jsonb, updated_at = NOW()`,
+      [userId, JSON.stringify(persistable)],
+    );
   }
 }

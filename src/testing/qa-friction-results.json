@@ -1,0 +1,436 @@
+[
+  {
+    "id": "01",
+    "prompt": "lluvia",
+    "category": "one_word",
+    "verdict": "GOOD",
+    "response_text": "No hay registros de lluvia (hoy).\n¿Y ahora?",
+    "has_buttons": true,
+    "button_count": 3,
+    "button_ids": [
+      "cmd_reporte_lluvia",
+      "menu_clima",
+      "flow_new_rainfall"
+    ],
+    "intent_command": "rainfall_report",
+    "notes": "3 buttons offered"
+  },
+  {
+    "id": "02",
+    "prompt": "soja",
+    "category": "one_word",
+    "verdict": "GOOD",
+    "response_text": "No hay campañas activas de *Soja*.\n\n_Para sembrar: \"sembré Soja en lote X\". Para ver historial: \"historial del lote X\"._\n¿Querés empezar?",
+    "has_buttons": true,
+    "button_count": 3,
+    "button_ids": [
+      "flow_new_activity",
+      "cmd_listar_campos",
+      "help_actividades"
+    ],
+    "intent_command": "rainfall_report",
+    "notes": "3 buttons offered"
+  },
+  {
+    "id": "03",
+    "prompt": "vacas",
+    "category": "one_word",
+    "verdict": "GOOD",
+    "response_text": "🐄 No tenés hacienda registrada. Cargá animales con \"agregué 20 vacas al lote A1\".\n¿Querés empezar?",
+    "has_buttons": true,
+    "button_count": 3,
+    "button_ids": [
+      "help_hacienda",
+      "cmd_listar_campos",
+      "back_menu"
+    ],
+    "intent_command": "active_crop",
+    "notes": "Routed to active_crop (+3 buttons)"
+  },
+  {
+    "id": "04",
+    "prompt": "cosecha",
+    "category": "one_word",
+    "verdict": "GOOD",
+    "response_text": "¿En qué lote?\n\n*friccion:*\n  • 1\n  • 2\n  • 3",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": "harvest_crop",
+    "notes": "Asked for plot with list (text mode)"
+  },
+  {
+    "id": "05",
+    "prompt": "gasto",
+    "category": "one_word",
+    "verdict": "OK_FALLBACK",
+    "response_text": "¿Cuánto gastaste y en qué? (ej: \"gasté 5000 en combustible\", \"pagué 50 bolsas de urea a 8000 c/u\")",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": null,
+    "notes": "Has examples but no buttons"
+  },
+  {
+    "id": "06",
+    "prompt": "siembra",
+    "category": "one_word",
+    "verdict": "OK_FALLBACK",
+    "response_text": "🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": null,
+    "notes": "Has examples but no buttons"
+  },
+  {
+    "id": "07",
+    "prompt": "fumigué",
+    "category": "one_word",
+    "verdict": "GOOD",
+    "response_text": "¿En qué lote?\n\n*friccion:*\n  • 1\n  • 2\n  • 3",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": "sow_crop",
+    "notes": "Asked for plot with list (text mode)"
+  },
+  {
+    "id": "08",
+    "prompt": "campos",
+    "category": "one_word",
+    "verdict": "GOOD",
+    "response_text": "📍 *Tus campos (1):*\n\n• *friccion* — Pergamino, Buenos Aires (3 lotes, 150 ha)\n\n📐 *Total: 150 ha*\n\n_Comandos: agregar campo X, lotes del campo X, info campo X_\n¿Y ahora?",
+    "has_buttons": true,
+    "button_count": 3,
+    "button_ids": [
+      "cmd_reporte_agro",
+      "flow_new_activity",
+      "flow_new_expense"
+    ],
+    "intent_command": "log_spraying",
+    "notes": "3 buttons offered"
+  },
+  {
+    "id": "09",
+    "prompt": "stock",
+    "category": "one_word",
+    "verdict": "GOOD",
+    "response_text": "📦 No tenés stock registrado. Cargá insumos con \"cargué X de Y\".\n¿Querés empezar?",
+    "has_buttons": true,
+    "button_count": 2,
+    "button_ids": [
+      "help_cosecha",
+      "back_menu"
+    ],
+    "intent_command": "check_stock",
+    "notes": "2 buttons offered"
+  },
+  {
+    "id": "10",
+    "prompt": "vi algo",
+    "category": "fragment",
+    "verdict": "OK_FALLBACK",
+    "response_text": "No entendí si querías registrar una observación o consultar algo.\n\nPodés escribir por ejemplo:\n👉 \"observación lote 3: malezas\"\n\nO preguntarme algo como:\n👉 \"qué pasó en el lote 3?\"",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": "log_observation",
+    "notes": "Has examples but no buttons"
+  },
+  {
+    "id": "11",
+    "prompt": "compré",
+    "category": "fragment",
+    "verdict": "OK_FALLBACK",
+    "response_text": "¿Qué compraste y cuánto? (ej: \"compré 50 bolsas de urea a 8000 c/u\", \"compré 100 lt de gasoil a 950 el litro\", \"compré 5000 pesos de semilla\")",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": null,
+    "notes": "Has examples but no buttons"
+  },
+  {
+    "id": "12",
+    "prompt": "vendí",
+    "category": "fragment",
+    "verdict": "OK_FALLBACK",
+    "response_text": "¿Qué vendiste y cuánto? (ej: \"vendí 30 tn de soja a 500 el kg\", \"vendí 5 vacas a 150000 c/u\")",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": null,
+    "notes": "Has examples but no buttons"
+  },
+  {
+    "id": "13",
+    "prompt": "200 mil",
+    "category": "fragment",
+    "verdict": "OK_FALLBACK",
+    "response_text": "¿200 mil en qué? (ej: combustible, semillas, sueldos, agroqu­ímicos)",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": null,
+    "notes": "Has examples but no buttons"
+  },
+  {
+    "id": "14",
+    "prompt": "cargar",
+    "category": "fragment",
+    "verdict": "GOOD",
+    "response_text": "¿Qué querés cargar? \n\n📦 *Stock:* \"cargué 100 lt de glifosato\"\n💰 *Gasto:* \"gasté 5000 en combustible\"\n🐄 *Hacienda:* \"agregué 10 vacas al lote 1\"",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": null,
+    "notes": "Category list (3 emoji bullets)"
+  },
+  {
+    "id": "15",
+    "prompt": "registrar",
+    "category": "fragment",
+    "verdict": "GOOD",
+    "response_text": "¿Qué querés registrar?\n\n📋 *Actividades:* siembra, cosecha, fumigación, fertilización, labranza, riego, observación, lluvia\n💰 *Finanzas:* gasto, ingreso\n🐄 *Hacienda:* animales, tacto, sanidad, reproducción, pesaje\n\nEjemplo: \"sembré soja e",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": null,
+    "notes": "Category list (3 emoji bullets)"
+  },
+  {
+    "id": "16",
+    "prompt": "che",
+    "category": "polite",
+    "verdict": "GOOD",
+    "response_text": "Hola, Testing 👋 Soy *MIA*, tu asistente de gestión agrícola.\n¿Qué querés hacer?",
+    "has_buttons": true,
+    "button_count": 3,
+    "button_ids": [
+      "menu_gastos",
+      "menu_clima",
+      "back_menu"
+    ],
+    "intent_command": "greeting",
+    "notes": "3 buttons offered"
+  },
+  {
+    "id": "17",
+    "prompt": "una pregunta",
+    "category": "polite",
+    "verdict": "GOOD",
+    "response_text": "👋 Hola, Testing, soy *MIA*.\nElegí una categoría para ver ejemplos:\nCategorías de ayuda",
+    "has_buttons": true,
+    "button_count": 9,
+    "button_ids": [
+      "help_gastos",
+      "help_actividades",
+      "help_lluvia",
+      "help_cosecha",
+      "help_hacienda",
+      "help_campos"
+    ],
+    "intent_command": "greeting",
+    "notes": "9 buttons offered"
+  },
+  {
+    "id": "18",
+    "prompt": "no se",
+    "category": "polite",
+    "verdict": "GOOD",
+    "response_text": "👋 Hola, Testing, soy *MIA*.\nElegí una categoría para ver ejemplos:\nCategorías de ayuda",
+    "has_buttons": true,
+    "button_count": 9,
+    "button_ids": [
+      "help_gastos",
+      "help_actividades",
+      "help_lluvia",
+      "help_cosecha",
+      "help_hacienda",
+      "help_campos"
+    ],
+    "intent_command": "help",
+    "notes": "Routed to help (+9 buttons)"
+  },
+  {
+    "id": "19",
+    "prompt": "no entiendo",
+    "category": "polite",
+    "verdict": "GOOD",
+    "response_text": "👋 Hola, Testing, soy *MIA*.\nElegí una categoría para ver ejemplos:\nCategorías de ayuda",
+    "has_buttons": true,
+    "button_count": 9,
+    "button_ids": [
+      "help_gastos",
+      "help_actividades",
+      "help_lluvia",
+      "help_cosecha",
+      "help_hacienda",
+      "help_campos"
+    ],
+    "intent_command": "help",
+    "notes": "Routed to help (+9 buttons)"
+  },
+  {
+    "id": "20",
+    "prompt": "podrías ayudarme",
+    "category": "polite",
+    "verdict": "GOOD",
+    "response_text": "👋 Hola, Testing, soy *MIA*.\nElegí una categoría para ver ejemplos:\nCategorías de ayuda",
+    "has_buttons": true,
+    "button_count": 9,
+    "button_ids": [
+      "help_gastos",
+      "help_actividades",
+      "help_lluvia",
+      "help_cosecha",
+      "help_hacienda",
+      "help_campos"
+    ],
+    "intent_command": "help",
+    "notes": "Routed to help (+9 buttons)"
+  },
+  {
+    "id": "21",
+    "prompt": "30 tn",
+    "category": "numbers",
+    "verdict": "OK_FALLBACK",
+    "response_text": "¿30 tn de qué cultivo vendiste? (ej: soja, maíz, trigo, girasol)",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": null,
+    "notes": "Has examples but no buttons"
+  },
+  {
+    "id": "22",
+    "prompt": "100 ha",
+    "category": "numbers",
+    "verdict": "GENERIC",
+    "response_text": "📍 Lote *3*: superficie actualizada a *100 ha*",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": "set_plot_area",
+    "notes": "No buttons, no clear next step"
+  },
+  {
+    "id": "23",
+    "prompt": "20 mm",
+    "category": "numbers",
+    "verdict": "GOOD",
+    "response_text": "🌧️ Lluvia registrada: *20mm*\n📍 friccion\n\n⚠️ *Alerta:* Acumulado hoy *20mm* ≥ umbral configurado (10mm)",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": "set_plot_area",
+    "notes": "Category list (3 emoji bullets)"
+  },
+  {
+    "id": "24",
+    "prompt": "lluv",
+    "category": "partial",
+    "verdict": "GOOD",
+    "response_text": "🌧️ *Resumen de lluvias* (hoy)\n\n📍 friccion: *20mm* (1 reg.)\n¿Y ahora?",
+    "has_buttons": true,
+    "button_count": 3,
+    "button_ids": [
+      "cmd_reporte_lluvia",
+      "menu_clima",
+      "flow_new_rainfall"
+    ],
+    "intent_command": "rainfall_report",
+    "notes": "3 buttons offered"
+  },
+  {
+    "id": "25",
+    "prompt": "fum",
+    "category": "partial",
+    "verdict": "GOOD",
+    "response_text": "¿En qué lote?\n\n*friccion:*\n  • 1\n  • 2\n  • 3",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": "rainfall_report",
+    "notes": "Asked for plot with list (text mode)"
+  },
+  {
+    "id": "26",
+    "prompt": "siembr",
+    "category": "partial",
+    "verdict": "OK_FALLBACK",
+    "response_text": "🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)",
+    "has_buttons": false,
+    "button_count": 0,
+    "button_ids": [],
+    "intent_command": "sow_crop",
+    "notes": "Has examples but no buttons"
+  },
+  {
+    "id": "27",
+    "prompt": "lote 3",
+    "category": "context_lost",
+    "verdict": "GOOD",
+    "response_text": "📍 *Lote 3* — campo friccion · 100 ha\n\n🌱 *Cultivo activo:* ninguno\n📋 *Actividades recientes:* ninguna\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 20 mm (1 reg.)\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado ",
+    "has_buttons": true,
+    "button_count": 3,
+    "button_ids": [
+      "cmd_reporte_agro",
+      "flow_new_activity",
+      "flow_new_expense"
+    ],
+    "intent_command": "sow_crop",
+    "notes": "3 buttons offered"
+  },
+  {
+    "id": "28",
+    "prompt": "reportes",
+    "category": "context_lost",
+    "verdict": "GOOD",
+    "response_text": "📊 *Reportes* — Elegí el que necesités:",
+    "has_buttons": true,
+    "button_count": 7,
+    "button_ids": [
+      "cmd_resumen_mensual",
+      "cmd_reporte_mensual",
+      "cmd_reporte_semanal",
+      "cmd_exportar_csv",
+      "cmd_reporte_agro",
+      "cmd_historial_lote"
+    ],
+    "intent_command": "plot_info",
+    "notes": "7 buttons offered"
+  },
+  {
+    "id": "29",
+    "prompt": "que hay",
+    "category": "context_lost",
+    "verdict": "GOOD",
+    "response_text": "No hay campañas activas.\n\n_Para sembrar: \"sembré soja en lote X\". Para ver historial: \"historial del lote X\"._\n¿Querés empezar?",
+    "has_buttons": true,
+    "button_count": 3,
+    "button_ids": [
+      "flow_new_activity",
+      "cmd_listar_campos",
+      "help_actividades"
+    ],
+    "intent_command": "active_crop",
+    "notes": "Routed to active_crop (+3 buttons)"
+  },
+  {
+    "id": "30",
+    "prompt": "hola que tal",
+    "category": "context_lost",
+    "verdict": "GOOD",
+    "response_text": "Hola, Testing 👋 Soy *MIA*, tu asistente de gestión agrícola.\n¿Qué querés hacer?",
+    "has_buttons": true,
+    "button_count": 3,
+    "button_ids": [
+      "menu_gastos",
+      "menu_clima",
+      "back_menu"
+    ],
+    "intent_command": "greeting",
+    "notes": "3 buttons offered"
+  }
+]

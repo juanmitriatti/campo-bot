@@ -792,7 +792,8 @@ describe("parseCommand", () => {
 
   // --- Dollar ---
   describe("dollar", () => {
-    it.each(["dolar", "dolares", "cotizacion dolar", "dolar hoy"])("%s → dollar", (input) => {
+    // Bare "dolares" no longer matches (currency filter collision)
+    it.each(["dolar", "cotizacion dolar", "dolar hoy", "dolar?", "cuanto esta el dolar"])("%s → dollar", (input) => {
       expect(parseCommand(input)).toMatchObject({ command: "dollar" });
     });
   });

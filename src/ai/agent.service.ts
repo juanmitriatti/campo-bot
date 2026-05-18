@@ -102,28 +102,36 @@ export class AgentService {
         return null;
       }
 
-      // Load user context, conversation history, and few-shot examples in parallel
+      // Load user context, conversation history, few-shot examples, AND last finance query in parallel
       const historyMaxChars = (await getSettingNumber('CONVERSATION_HISTORY_MAX_CHARS')) ?? 4000;
       const fewShotLimit = (await getSettingNumber('AGENT_FEW_SHOT_LIMIT')) ?? 5;
-      const [userContext, historyTurns, fewShotExamples, dictionary] = await Promise.allSettled([
+      const lastStatePromise = (async () => {
+        try {
+          const { pool } = await import('../config/db.js');
+          const { rows } = await pool.query('SELECT last_finance_query, last_scouting_query, last_harvest_query, last_stock_query, last_livestock_query, last_activity_query, last_rainfall_query FROM conversation_state WHERE user_id = $1', [userId]);
+          return { finance: rows[0]?.last_finance_query ?? null, scouting: rows[0]?.last_scouting_query ?? null, harvest: rows[0]?.last_harvest_query ?? null, stock: rows[0]?.last_stock_query ?? null, livestock: rows[0]?.last_livestock_query ?? null, activity: rows[0]?.last_activity_query ?? null, rainfall: rows[0]?.last_rainfall_query ?? null };
+        } catch { return { finance: null, scouting: null, harvest: null, stock: null, livestock: null, activity: null, rainfall: null }; }
+      })();
+      const [userContext, historyTurns, fewShotExamples, dictionary, lastState] = await Promise.allSettled([
         this.userContextService.loadContext(userId),
         this.historyService ? this.historyService.getRecentTurns(userId, historyMaxChars) : Promise.resolve([]),
         this.fewShotService ? this.fewShotService.getExamples(fewShotLimit) : Promise.resolve([]),
         getActivityDictionary(),
+        lastStatePromise,
       ]).then(results => [
         results[0].status === 'fulfilled' ? results[0].value : null,
         results[1].status === 'fulfilled' ? results[1].value : [],
         results[2].status === 'fulfilled' ? results[2].value : [],
         results[3].status === 'fulfilled' ? results[3].value : undefined,
+        results[4].status === 'fulfilled' ? results[4].value : { finance: null, scouting: null, harvest: null, stock: null, livestock: null, activity: null, rainfall: null },
       ] as const);
 
       // Build system prompt (stable — cacheable across users/calls).
-      // Per-user context + today's date are injected into the user message
-      // prefix so they don't invalidate the cache.
       const botName = (await getSetting('BOT_NAME')) || 'MIA';
       const systemPrompt = this.promptBuilder.build(null, dictionary, botName);
       const reducedContext = await getSettingBool('AGENT_REDUCED_CONTEXT_PROMPT_ENABLED');
-      const userPrefix = this.promptBuilder.buildUserMessagePrefix(userContext, reducedContext);
+      const ls = lastState as { finance: Record<string, unknown> | null; scouting: Record<string, unknown> | null; harvest: Record<string, unknown> | null; stock: Record<string, unknown> | null; livestock: Record<string, unknown> | null; activity: Record<string, unknown> | null; rainfall: Record<string, unknown> | null };
+      const userPrefix = this.promptBuilder.buildUserMessagePrefix(userContext, reducedContext, ls.finance, ls.scouting, ls.harvest, ls.stock, ls.livestock, ls.activity, ls.rainfall);
 
       // Load agent-specific settings
       const [model, maxTokens, timeoutMs, temperatureStr, cacheTtlSetting] = await Promise.all([
@@ -251,7 +259,7 @@ export class AgentService {
       console.log(
         `AI_AGENT (${dailyCount + 1}/${claudeLimit}):`,
         toolCalls.length > 0
-          ? `tools=[${toolCalls.map(t => t.toolName).join(',')}]`
+          ? `tools=[${toolCalls.map(t => `${t.toolName}(${JSON.stringify(t.toolInput).slice(0, 200)})`).join(',')}]`
           : `conversational="${(conversationalText ?? '').slice(0, 100)}"`,
         `TOKENS: ${usage.input_tokens}in/${usage.output_tokens}out`,
         `CACHE: ${cacheRead}read/${cacheWrite}write`,

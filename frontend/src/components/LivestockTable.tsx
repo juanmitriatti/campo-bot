@@ -82,9 +82,24 @@ export default function LivestockTable() {
 
   useEffect(() => {
     apiRequest<FiltersResponse>('/livestock/filters')
-      .then(r => { setFields(r.fields); setCorrals(r.corrals || []); })
+      .then(r => {
+        setFields(r.fields);
+        setCorrals(r.corrals || []);
+        if (r.fields.length === 1) setFieldId(String(r.fields[0].id));
+      })
       .catch(() => {});
   }, []);
+
+  // Auto-pick the only plot when there's just one
+  useEffect(() => {
+    const allPlots = fields.flatMap(f => f.plots);
+    const candidatePlots = fieldId
+      ? fields.find(f => String(f.id) === fieldId)?.plots ?? []
+      : allPlots;
+    if (candidatePlots.length === 1 && !plotId) {
+      setPlotId(String(candidatePlots[0].id));
+    }
+  }, [fields, fieldId, plotId]);
 
   const fetchLivestock = useCallback(async () => {
     setLoading(true);
@@ -148,7 +163,7 @@ export default function LivestockTable() {
             onChange={e => { setFieldId(e.target.value); setPlotId(''); setPage(1); }}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
           >
-            <option value="">Todos</option>
+            {fields.length !== 1 && <option value="">Todos</option>}
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
@@ -160,7 +175,7 @@ export default function LivestockTable() {
             disabled={!fieldId}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:bg-gray-100"
           >
-            <option value="">Todos</option>
+            {plotsForField.length !== 1 && <option value="">Todos</option>}
             {plotsForField.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>

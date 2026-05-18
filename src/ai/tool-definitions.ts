@@ -243,16 +243,47 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
 
   {
     name: 'query_harvest_loads',
-    description: 'Consultar cargas de cosecha (camiones). "cargas del lote X", "cuánto llevó Britos", "cargas a Cargill", "detalle de cosecha", "camiones del lote X".',
+    description: 'Tool UNIFICADO para CUALQUIER consulta sobre cargas de cosecha (camiones, viajes). NO es para registrar. Cubre: listas, totales, máximos/mínimos/promedios, rankings por chofer/destinatario/lote/cultivo, comparaciones, filtros por cultivo/chofer/destinatario/patente/peso/humedad/calidad, decisión logística. Combiná filtros + view + sort.',
     input_schema: {
       type: 'object',
       properties: {
+        // Scope
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        crop: { type: 'string', description: 'Filtrar por cultivo (soja, maíz, trigo, girasol, etc.).' },
+        // Period
         desde: { type: 'string', description: 'Fecha inicio YYYY-MM-DD.' },
         hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD.' },
-        driver_name: { type: 'string', description: 'Filtrar por chofer/transportista.' },
-        destinatario: { type: 'string', description: 'Filtrar por empresa destino (Cargill, ACA, etc.).' },
+        event_date: { type: 'string', description: 'Fecha exacta YYYY-MM-DD ("el 9 de mayo" → 2026-05-09).' },
+        // People / vehicles / destination
+        driver_name: { type: 'string', description: 'Chofer (substring case-insensitive). "Pedro" matchea "Pedro Gómez".' },
+        destinatario: { type: 'string', description: 'Empresa destino: Cargill, ACA, AGD, Vicentin, Bunge, etc. Substring match.' },
+        truck_plate: { type: 'string', description: 'Patente del camión (substring). Ej: "AA123BB".' },
+        // Weight / quality thresholds
+        weight_min_kg: { type: 'number', description: 'Peso mínimo en KG. "más de 60 tn" → 60000. "arriba de 100 tn" → 100000.' },
+        weight_max_kg: { type: 'number', description: 'Peso máximo en KG.' },
+        humidity_min_pct: { type: 'number', description: 'Humedad mínima %. "humedad mayor a 14" → 14.' },
+        humidity_max_pct: { type: 'number', description: 'Humedad máxima %. "humedad menor a 13" → 13.' },
+        protein_min_pct: { type: 'number', description: 'Proteína mínima % (trigo). "proteína mayor a 11" → 11.' },
+        protein_max_pct: { type: 'number', description: 'Proteína máxima % (trigo).' },
+        oil_min_pct: { type: 'number', description: 'Aceite mínimo % (soja, girasol). "aceite arriba de 21" → 21.' },
+        oil_max_pct: { type: 'number', description: 'Aceite máximo % (soja, girasol).' },
+        gluten_min_pct: { type: 'number', description: 'Gluten mínimo % (trigo).' },
+        gluten_max_pct: { type: 'number', description: 'Gluten máximo % (trigo).' },
+        // Presentation
+        view: { type: 'string', enum: ['detail', 'aggregate', 'max', 'min', 'avg', 'top_locations', 'compare', 'rank', 'volume'], description: 'detail=lista (default). aggregate=resumen totales+conteos. max=la carga con mayor X. min=la más baja. avg=promedio de X. top_locations=ranking por lote/campo/chofer/destinatario/cultivo. compare=2 grupos side-by-side. rank=top N. volume=toneladas por cultivo/chofer/destinatario (es sinónimo de top_locations con metric=weight).' },
+        aggregate_metric: { type: 'string', enum: ['weight_kg', 'humidity_pct', 'protein_pct', 'oil_pct', 'gluten_pct', 'test_weight_kg_hl', 'count'], description: 'QUÉ métrica usar en max/min/avg/rank. "carga más grande"→weight_kg. "mejor proteína"→protein_pct. "humedad promedio"→humidity_pct. "más viajes"→count.' },
+        group_by: { type: 'string', enum: ['plot', 'field', 'crop', 'driver', 'destinatario', 'truck_plate', 'date'], description: 'Agrupamiento para top_locations/aggregate/rank. "qué chofer movió más" → driver. "qué destinatario recibió más" → destinatario. "qué cultivo tuvo más volumen" → crop. "qué patente hizo más viajes" → truck_plate. "qué día tuvo más cargas" → date.' },
+        sort_by: { type: 'string', enum: ['date', 'weight', 'humidity', 'protein', 'oil', 'gluten'], description: 'Default "date".' },
+        sort_desc: { type: 'boolean', description: 'Default true. "menor a mayor" → false.' },
+        top_n: { type: 'integer', description: 'Para rank/max/min. Default 1 cuando view=max/min, 5 cuando view=rank.' },
+        // Multi-turn
+        inherit: { type: 'boolean', description: 'TRUE cuando el usuario refina la consulta previa ("solo Vicentin","ahora trigo","ordenalas por tn"). Mergea con filtros guardados.' },
+        // Compare
+        compare_crop: { type: 'string', description: 'Cultivo B para compare ("soja vs trigo" → crop=soja, compare_crop=trigo).' },
+        compare_driver: { type: 'string', description: 'Chofer B para compare.' },
+        compare_destinatario: { type: 'string', description: 'Destinatario B para compare ("ACA vs AGD" → destinatario=ACA, compare_destinatario=AGD).' },
+        compare_plot: { type: 'string', description: 'Lote B para compare.' },
       },
       required: [],
     },
@@ -438,17 +469,51 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'query_scoutings',
-    description: 'Consultar monitoreos estructurados ya registrados (NO es para registrar). Usar cuando el usuario pregunta "cómo viene la sanidad", "presión de plagas", "evolución del cultivo", "qué malezas hubo en X", "monitoreos del lote/campo X". Filtros opcionales por lote, campo, rango de fechas, severidad mínima, estadio.',
+    description: 'Tool UNIFICADO para CUALQUIER consulta sobre monitoreos/scoutings ya registrados. NO es para registrar. Cubre: listas, agregados, máximos/mínimos/promedios, rankings por lote/campo, comparaciones, filtros por maleza/plaga/estadio/severidad/humedad/densidad/emergencia, evolución temporal, decisión agronómica ("qué lote requiere aplicación"), preguntas conversacionales ("qué pasó/cómo viene/dónde apareció X"). Combiná filtros + view + sort.',
     input_schema: {
       type: 'object',
       properties: {
+        // Scope
         field: FIELD_PROP,
         plot: PLOT_PROP,
         crop: CROP_PROP,
+        // Period
         desde: { type: 'string', description: 'YYYY-MM-DD inicio.' },
         hasta: { type: 'string', description: 'YYYY-MM-DD fin.' },
-        min_severity: { type: 'integer', description: 'Severidad mínima de plaga 1-5 para filtrar (ej: solo severas: 4).' },
-        stage_code: { type: 'string', description: 'Filtrar por estadio fenológico observado.' },
+        // Stage filters
+        stage_code: { type: 'string', description: 'Estadio exacto: V3, R1, Z85, VE. Pasarlo en mayúsculas.' },
+        stage_prefix: { type: 'string', description: 'Prefijo de estadio para "estados V"/"estados R"/"estados Z" → "V"/"R"/"Z". Hace LIKE prefijo%.' },
+        // Pest filters
+        pest_species: { type: 'string', description: 'Filtrar por plaga (LIKE substring). Ej: "oruga militar", "chinche", "pulgon".' },
+        pest_severity_min: { type: 'integer', description: 'Severidad mínima 1-5. "severa"=5, "alta"=4, "moderada"=3, "leve"=2.' },
+        has_pest: { type: 'boolean', description: 'TRUE: solo monitoreos con plagas (species ≠ null OR sev≥2). FALSE: sin plagas. Para "qué plagas detectamos"/"hay plagas".' },
+        // Weed filters
+        weed_species_any: { type: 'array', items: { type: 'string' }, description: 'Lista de malezas a incluir (OR). Ej: ["rama negra"] o ["yuyo colorado","gramón"]. Para "lotes con rama negra"/"dónde hay yuyo colorado".' },
+        weed_min_pct: { type: 'number', description: 'Cobertura mínima de malezas. "más de 10%"→10, "arriba de 20%"→20.' },
+        weed_max_pct: { type: 'number', description: 'Cobertura máxima de malezas.' },
+        has_weeds: { type: 'boolean', description: 'TRUE: solo monitoreos con malezas. FALSE: limpios.' },
+        // Emergence / density
+        emergence_min_pct: { type: 'number', description: '"emergencia mayor a 90%"→90.' },
+        emergence_max_pct: { type: 'number', description: '"emergencia menor a 80%"→80.' },
+        density_min: { type: 'number', description: 'Plantas/m² mínimo.' },
+        density_max: { type: 'number', description: 'Plantas/m² máximo. "baja densidad" → density_max:10 aprox.' },
+        // Soil moisture
+        soil_moisture_min: { type: 'integer', description: '1-5. "húmedos"→soil_moisture_min:4. "muy húmedos"→5.' },
+        soil_moisture_max: { type: 'integer', description: '1-5. "secos"→soil_moisture_max:2. "muy secos"→1. "algo secos"→2.' },
+        // Presentation
+        view: { type: 'string', enum: ['detail', 'aggregate', 'max', 'min', 'avg', 'top_locations', 'compare', 'rank'], description: 'detail=lista (default). aggregate=resumen agregado. max=el más alto en una métrica. min=el más bajo. avg=promedio. top_locations=ranking por lote/campo. compare=2 lotes/períodos side by side. rank=top N por una métrica con orden.' },
+        aggregate_metric: { type: 'string', enum: ['weed_coverage_pct', 'pest_severity', 'emergence_pct', 'plant_density_m2', 'soil_moisture', 'stage'], description: 'Cuando view es max/min/avg/rank, indica QUÉ métrica agregar. "máxima cobertura de malezas"→weed_coverage_pct. "promedio densidad"→plant_density_m2. "mejor emergencia"→emergence_pct (max). "peor emergencia"→emergence_pct + sort_desc:false. "estadio más avanzado"→stage (orden fenológico VE<V<VT<R<Z).' },
+        sort_by: { type: 'string', enum: ['date', 'weed_coverage_pct', 'pest_severity', 'emergence_pct', 'plant_density_m2', 'soil_moisture'], description: 'Default "date".' },
+        sort_desc: { type: 'boolean', description: 'Default true. Para "más sano/limpio/mejor X" usar false con el sort_by relevante.' },
+        top_n: { type: 'integer', description: 'Para rank/max/min. Default 1 cuando view=max/min, 5 cuando view=rank.' },
+        group_by: { type: 'string', enum: ['plot', 'field', 'stage'], description: 'Para top_locations/aggregate. Default plot.' },
+        // Multi-turn
+        inherit: { type: 'boolean', description: 'TRUE si el usuario refina la consulta previa ("y solo en X","ahora con plagas","ordenalos"). El sistema mergea con los filtros guardados.' },
+        // Compare
+        compare_plot: { type: 'string', description: 'Plot B para view=compare (ej: "compará A1 vs B1" → plot=A1, compare_plot=B1).' },
+        compare_field: { type: 'string', description: 'Field B para view=compare.' },
+        // Legacy
+        min_severity: { type: 'integer', description: 'Alias legacy de pest_severity_min.' },
       },
       required: [],
     },
@@ -496,31 +561,75 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'rainfall_report',
-    description: 'Consultar reporte de lluvias. "cuánto llovió", "lluvia esta semana/este mes".',
+    description: 'Tool UNIFICADO para CUALQUIER consulta de lluvias/precipitaciones. NO es para registrar. Cubre: listas, totales, máximos/mínimos/promedios, rankings por lote/campo/mes, comparaciones, eventos por umbral, análisis temporales. Combiná filtros + view.',
     input_schema: {
       type: 'object',
       properties: {
-        period: { type: 'string', enum: ['today', 'week', 'month', 'year', 'last_week', 'last_month'], description: 'Período del reporte.' },
+        // Scope
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        // Period
+        period: { type: 'string', enum: ['today', 'week', 'month', 'year', 'last_week', 'last_month', 'all'], description: 'Período. all=todo el historial.' },
+        desde: { type: 'string', description: 'YYYY-MM-DD inicio.' },
+        hasta: { type: 'string', description: 'YYYY-MM-DD fin.' },
+        days: { type: 'number', description: 'Últimos N días.' },
+        // Quantity thresholds
+        mm_min: { type: 'number', description: 'Mínimo mm. "arriba de 30 mm" → 30. "eventos fuertes" → 20 aprox.' },
+        mm_max: { type: 'number', description: 'Máximo mm.' },
+        // Presentation
+        view: { type: 'string', enum: ['detail', 'aggregate', 'max', 'min', 'avg', 'top_locations', 'rank', 'compare', 'last', 'monthly'], description: 'detail=lista eventos. aggregate=total + breakdown. max=evento con más mm. min=el menor. avg=promedio por evento. top_locations=ranking por lote/campo. rank=top N eventos. compare=2 grupos. last=últimos N. monthly=acumulado por mes.' },
+        aggregate_metric: { type: 'string', enum: ['mm', 'count'], description: 'mm=total milímetros. count=cantidad de eventos.' },
+        group_by: { type: 'string', enum: ['plot', 'field', 'month'], description: '"qué campo más lluvia"→field. "qué lote más"→plot. "acumulado mensual"→month.' },
+        sort_by: { type: 'string', enum: ['date', 'mm'], description: 'Default date.' },
+        sort_desc: { type: 'boolean', description: 'Default true.' },
+        top_n: { type: 'integer', description: 'Para rank/max/min/last.' },
+        // Multi-turn
+        inherit: { type: 'boolean', description: 'TRUE cuando refina ("solo La Esperanza","ahora mayo","arriba de 30","comparalo con").' },
+        // Compare
+        compare_field: { type: 'string', description: 'Campo B para compare ("La Esperanza vs San Martin").' },
+        compare_plot: { type: 'string', description: 'Lote B.' },
+        compare_desde: { type: 'string', description: 'Fecha inicio período B (YYYY-MM-DD).' },
+        compare_hasta: { type: 'string', description: 'Fecha fin período B.' },
       },
       required: [],
     },
   },
   {
     name: 'financial_report',
-    description: 'Reporte financiero unificado. "reporte mensual", "gastos del campo X", "gastos del lote Y", "resumen semanal", "resultado del mes", "gastos últimos 30 días", "gastos en combustible este año", "ingresos de enero a marzo", "gastos por hectárea", "costo/ha".',
+    description: 'Consulta financiera unificada para gastos e ingresos. Combinás filtros (período, scope, categoría, monto, moneda, búsqueda de descripción) con un modo de presentación (view). Reemplaza a los 5 tools financieros viejos. Para multi-turno usar inherit:true.',
     input_schema: {
       type: 'object',
       properties: {
+        // Scope
         field: FIELD_PROP,
         plot: PLOT_PROP,
-        period: { type: 'string', enum: ['week', 'month', 'year'], description: 'Atajo de período. week=semanal, month=mensual (default), year=anual.' },
-        desde: { type: 'string', description: 'Fecha inicio (YYYY-MM-DD).' },
-        hasta: { type: 'string', description: 'Fecha fin (YYYY-MM-DD).' },
-        days: { type: 'number', description: 'Últimos N días (ej: 30).' },
-        category: { type: 'string', description: 'Categoría de gasto/ingreso a filtrar (Combustible, Semillas, Agroquímicos, etc.).' },
-        type: { type: 'string', enum: ['expenses', 'incomes', 'both'], description: 'Tipo: solo gastos, solo ingresos, o ambos. Default: both.' },
+        // Period
+        period: { type: 'string', enum: ['week', 'month', 'year', 'all'], description: 'week=semanal, month=mensual (default), year=anual, all=todo el historial (cuando el usuario dice "todos"/"todo"/"completo").' },
+        desde: { type: 'string', description: 'Fecha inicio YYYY-MM-DD.' },
+        hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD.' },
+        days: { type: 'number', description: 'Últimos N días.' },
+        // Filters
+        category: { type: 'string', description: 'Categoría única (filtro exacto). Ej: Combustible, Semillas, Insumos, Fertilizantes, Sueldos, Maquinaria, Arrendamiento, Impuestos, Soja, Maíz, Trigo, Hacienda. NUNCA mapear "insumos" a "Semillas" — son distintas.' },
+        categories: { type: 'array', items: { type: 'string' }, description: 'Lista de categorías a INCLUIR (OR). Usar para buckets semánticos: "cereales" → ["Soja","Maíz","Trigo","Girasol","Sorgo","Cebada","Avena","Centeno"]. "granos" igual. "agroquímicos y fertilizantes" → ["Agroquímicos","Fertilizantes"]. Si pide UNA sola categoría usar `category`, no esto.' },
+        exclude_categories: { type: 'array', items: { type: 'string' }, description: 'Categorías a EXCLUIR. Para "sin sueldos" / "sacá los sueldos" → exclude_categories:["Sueldos"].' },
+        currency: { type: 'string', enum: ['ARS', 'USD'], description: 'Filtrar por moneda. "solo en dólares" → "USD". "solo en pesos" → "ARS".' },
+        amount_min: { type: 'number', description: 'Monto mínimo. "mayores a $300.000" → 300000.' },
+        amount_max: { type: 'number', description: 'Monto máximo. "menores a 500k" → 500000.' },
+        description_search: { type: 'string', description: 'Búsqueda parcial en descripción/producto. Ej: "glifo", "sembradora", "tractor", "soja". Hace LIKE %X%.' },
+        type: { type: 'string', enum: ['expenses', 'incomes', 'both'], description: 'Solo gastos / solo ingresos / ambos. Default: both.' },
+        // Presentation
+        view: { type: 'string', enum: ['detail', 'aggregate', 'top_categories', 'top_locations', 'max', 'compare', 'balance', 'volume', 'last'], description: 'detail=lista (default si hay category/description/amount). aggregate=por categoría (default sin filtros). top_categories=ranking por categoría. top_locations=ranking por lote o campo (requiere group_by=plot|field). max=los N más caros. compare=2 períodos o categorías. balance=ingresos-gastos neto (puede combinarse con group_by=plot|field|category|month para rentabilidad). volume=toneladas vendidas por categoría (incomes). last=últimos N registros por fecha.' },
+        group_by: { type: 'string', enum: ['category', 'plot', 'field', 'month'], description: 'Dimensión de agrupamiento para top_locations y balance. plot=por lote. field=por campo. category=por categoría. month=por mes. Default depende del view: top_locations requiere plot|field, balance default es total (sin group_by).' },
+        sort_by: { type: 'string', enum: ['date', 'amount'], description: 'Ordenar por fecha (default) o monto. "ordenalos por monto" → "amount".' },
+        sort_desc: { type: 'boolean', description: 'Descendente (default true).' },
+        top_n: { type: 'number', description: 'Top N para view=max o top_categories. "los 3 más caros" → 3.' },
+        // Multi-turno
+        inherit: { type: 'boolean', description: 'TRUE cuando el usuario refina la consulta previa ("y sin sueldos"/"ahora ordenalos"/"y solo de mayo"). El handler mergea con los filtros previos guardados en conversation_state.' },
+        // Compare view (período 2 o categoría 2)
+        compare_desde: { type: 'string', description: 'Período 2 inicio YYYY-MM-DD para view=compare.' },
+        compare_hasta: { type: 'string', description: 'Período 2 fin YYYY-MM-DD para view=compare.' },
+        compare_category: { type: 'string', description: 'Categoría 2 para view=compare (ej "combustible vs insumos" → category=Combustible, compare_category=Insumos).' },
+        // Legacy / opcional
         include_activities: { type: 'boolean', description: 'Incluir actividades agronómicas en el reporte.' },
         activity_filter: { type: 'string', enum: ['spraying', 'fertilization', 'planting', 'harvest', 'tillage', 'irrigation'], description: 'Filtro de tipo de actividad.' },
       },
@@ -558,17 +667,42 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'query_plot_history',
-    description: 'Consultar historial de actividades PASADAS. "cuándo se fumigó el lote X", "historial lote A1", "qué se hizo en el lote", "última fumigación del lote X". SOLO para historial de acciones pasadas. Para consultar cultivos actualmente sembrados ("hay soja?", "dónde hay soja", "qué tengo sembrado") usar active_crop. IMPORTANTE: el parámetro plot debe contener SOLO el nombre del lote, sin cualificadores temporales. Ej: "cuándo se fumigó el lote Norte por última vez" → plot="Norte", isUltimaVez=true.',
+    description: 'Tool UNIFICADO para CUALQUIER consulta sobre actividades agronómicas (siembras, fumigaciones, fertilizaciones, cosechas, labranza, riego). Cubre: listas, totales, agregados, máximos/mínimos/promedios, rankings por lote/cultivo/tipo/producto, comparaciones, timeline, decisión operativa. NO es para registrar.',
     input_schema: {
       type: 'object',
       properties: {
+        // Scope
         plot: PLOT_PROP,
         field: FIELD_PROP,
-        crop: { type: 'string', description: 'Cultivo a buscar (maíz, soja, trigo, etc.).' },
-        timeRef: { type: 'string', description: 'Referencia temporal (últimos 30 días, este mes, etc.).' },
-        activityFilter: { type: 'string', description: 'Filtro de actividad: log_spraying, log_fertilization, sow_crop, harvest_crop, log_tillage, log_irrigation, tacto.' },
-        isUltimaVez: { type: 'boolean', description: 'true si el usuario pregunta por la última vez que se hizo algo ("por última vez", "la última", "última fumigación").' },
-        isBinaryQuestion: { type: 'boolean', description: 'true si el usuario hace una pregunta de sí/no ("¿se fumigó?", "¿se sembró?").' },
+        crop: { type: 'string', description: 'Cultivo (soja, maíz, trigo, etc.). Accent-insensitive.' },
+        // Activity filters
+        activity_types: { type: 'array', items: { type: 'string', enum: ['planting','spraying','fertilization','harvest','tillage','irrigation'] }, description: 'Lista de tipos de actividad a INCLUIR. Para "siembras"→["planting"]. "fumigaciones y fertilizaciones"→["spraying","fertilization"]. Sin esto = todas las actividades.' },
+        activityFilter: { type: 'string', description: 'Legacy: filtro SINGLE de actividad. Preferir activity_types[]. log_spraying|log_fertilization|sow_crop|harvest_crop|log_tillage|log_irrigation|tacto.' },
+        product_search: { type: 'string', description: 'Buscar producto aplicado (LIKE substring): "glifosato", "urea", "atrazina", "ivermectina". Solo en fumigaciones/fertilizaciones.' },
+        // Period
+        desde: { type: 'string', description: 'YYYY-MM-DD inicio.' },
+        hasta: { type: 'string', description: 'YYYY-MM-DD fin.' },
+        timeRef: { type: 'string', description: 'Legacy: referencia temporal libre ("últimos 30 días", "este mes").' },
+        // Quantity thresholds
+        quantity_min: { type: 'number', description: 'Cantidad mínima aplicada. "más de 100 lt" → 100.' },
+        quantity_max: { type: 'number', description: 'Cantidad máxima.' },
+        // Legacy flags
+        isUltimaVez: { type: 'boolean', description: 'Pregunta por "la última X" → equivalente a view:"last".' },
+        isBinaryQuestion: { type: 'boolean', description: 'Sí/no question ("¿se fumigó?").' },
+        // Presentation (view dispatch)
+        view: { type: 'string', enum: ['detail', 'aggregate', 'max', 'min', 'avg', 'top_locations', 'rank', 'compare', 'last', 'timeline'], description: 'detail=lista (default). aggregate=resumen por tipo/cultivo/lote. max=actividad con más X. min=la menos. avg=promedio. top_locations=ranking por lote/campo/cultivo/tipo. rank=top N. compare=2 grupos. last=últimas N. timeline=cronológico para un lote.' },
+        aggregate_metric: { type: 'string', enum: ['count', 'quantity'], description: 'count=cantidad de actividades. quantity=suma de litros/kg aplicados.' },
+        group_by: { type: 'string', enum: ['plot', 'field', 'crop', 'activity_type', 'product'], description: '"qué lote tuvo más actividades"→plot. "qué cultivo recibió más aplicaciones"→crop. "qué actividad fue más frecuente"→activity_type. "dónde usamos más glifosato"→plot/field.' },
+        sort_by: { type: 'string', enum: ['date', 'quantity', 'type'], description: 'Default date.' },
+        sort_desc: { type: 'boolean', description: 'Default true.' },
+        top_n: { type: 'integer', description: 'Para rank/max/min/last. Default 1 para max/min, 5 para rank, 10 para last.' },
+        // Multi-turn
+        inherit: { type: 'boolean', description: 'TRUE cuando refina ("solo soja", "ahora La Esperanza", "ordenalas por fecha", "solo fumigaciones").' },
+        // Compare
+        compare_crop: { type: 'string', description: 'Cultivo B ("compará soja vs trigo" → crop=soja, compare_crop=trigo).' },
+        compare_plot: { type: 'string', description: 'Lote B.' },
+        compare_field: { type: 'string', description: 'Campo B.' },
+        compare_activity_type: { type: 'string', description: 'Tipo B ("compará fumigaciones vs fertilizaciones").' },
       },
       required: [],
     },
@@ -832,12 +966,34 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'check_stock',
-    description: 'Consultar stock/inventario con cantidad, depósito, stock mínimo y calidad de grano (grado/humedad). "cuánto glifosato tengo", "inventario", "stock del campo X".',
+    description: 'Tool UNIFICADO para CUALQUIER consulta de stock/inventario. NO es para registrar. Cubre: listas, agregados, máximos/mínimos/promedios, rankings por categoría/depósito/campo, comparaciones, filtros por categoría/depósito/campo/cantidad/bajo-stock, alertas, totales por unidad. Combiná filtros + view + sort.',
     input_schema: {
       type: 'object',
       properties: {
-        product: { type: 'string', description: 'Producto a consultar. Omitir para ver todo.' },
+        // Scope
+        product: { type: 'string', description: 'Buscar producto por nombre (substring, case+accent-insensitive). Ej: "glifosato" → matches "glifosato". "glifo" → matches también.' },
         field: FIELD_PROP,
+        warehouse: { type: 'string', description: 'Filtrar por nombre de depósito ("Galpón Norte", "Principal", "depósito 1"). Substring case-insensitive.' },
+        category: { type: 'string', description: 'Categoría del producto: Agroquímicos, Fertilizantes, Semillas, Combustible, Granos, Otros.' },
+        // Threshold filters
+        low_stock_only: { type: 'boolean', description: 'TRUE: solo productos donde current_quantity ≤ min_stock. Para "bajo stock", "stock crítico", "qué reponer", "alertas".' },
+        quantity_min: { type: 'number', description: 'Cantidad mínima absoluta. "más de 1000 kg" → 1000.' },
+        quantity_max: { type: 'number', description: 'Cantidad máxima absoluta.' },
+        has_min_stock: { type: 'boolean', description: 'TRUE: productos con min_stock configurado. FALSE: sin mínimo definido.' },
+        // Presentation
+        view: { type: 'string', enum: ['detail', 'aggregate', 'max', 'min', 'avg', 'top_locations', 'rank', 'compare'], description: 'detail=lista (default). aggregate=resumen por categoría/depósito. max=producto con más X. min=el menos. avg=promedio. top_locations=ranking por categoría/depósito/campo. rank=top N. compare=2 grupos side-by-side.' },
+        aggregate_metric: { type: 'string', enum: ['quantity', 'min_stock', 'count'], description: 'QUÉ métrica usar en max/min/avg/rank. "producto con más stock"→quantity. "promedio por categoría"→quantity. "cuántos productos"→count.' },
+        group_by: { type: 'string', enum: ['category', 'warehouse', 'field', 'unit', 'product'], description: 'Agrupamiento para top_locations/aggregate. "qué categoría tiene más"→category. "qué depósito tiene más"→warehouse. "qué producto/cultivo tiene más"→product (suma cantidades del mismo nombre entre depósitos). "total kg por categoría"→category.' },
+        sort_by: { type: 'string', enum: ['name', 'quantity', 'category', 'warehouse'], description: 'Default name.' },
+        sort_desc: { type: 'boolean', description: 'Default false. "de mayor a menor"→true.' },
+        top_n: { type: 'integer', description: 'Para rank/max/min. Default 1 cuando view=max/min, 5 cuando rank.' },
+        // Multi-turn
+        inherit: { type: 'boolean', description: 'TRUE cuando el usuario refina ("solo bajo stock", "ahora los de San Martin", "ordenalos por cantidad").' },
+        // Compare
+        compare_warehouse: { type: 'string', description: 'Depósito B para compare ("Principal vs Galpón Norte").' },
+        compare_category: { type: 'string', description: 'Categoría B para compare.' },
+        compare_field: { type: 'string', description: 'Campo B para compare.' },
+        compare_product: { type: 'string', description: 'Producto B para compare ("maíz vs soja almacenada" → product=maíz, compare_product=soja).' },
       },
       required: [],
     },
@@ -1076,14 +1232,33 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'list_livestock',
-    description: 'Listar inventario de hacienda con cantidad, raza y peso promedio por grupo. Incluye lotes y corrales de feedlot. Preguntas: cuántas vacas tengo, stock de hacienda, rodeo, cuánto pesan.',
+    description: 'Tool UNIFICADO para CUALQUIER consulta del inventario/rodeo de hacienda (NO movimientos, eso es livestock_history). Cubre: listas, totales, agregados, máximos/mínimos/promedios de peso, rankings por categoría/lote/campo/corral/feedlot, comparaciones, filtros por categoría/raza/ubicación/peso, decisión productiva.',
     input_schema: {
       type: 'object',
       properties: {
-        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Filtrar por categoría, si mencionado.' },
+        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría animal. Substring-match en handler.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
-        corral: { type: 'string', description: 'Filtrar por corral del feedlot.' },
+        corral: { type: 'string', description: 'Nombre del corral.' },
+        in_feedlot: { type: 'boolean', description: 'TRUE: solo animales en feedlot (corral asignado). FALSE: solo a campo (sin corral).' },
+        breed: { type: 'string', description: 'Raza (Angus, Hereford, etc.). Substring case-insensitive.' },
+        weight_min_kg: { type: 'number', description: 'Peso promedio mínimo (kg). "más de 400 kg" → 400.' },
+        weight_max_kg: { type: 'number', description: 'Peso promedio máximo (kg).' },
+        count_min: { type: 'number', description: 'Cantidad mínima en el grupo.' },
+        count_max: { type: 'number', description: 'Cantidad máxima.' },
+        // Presentation
+        view: { type: 'string', enum: ['detail', 'aggregate', 'max', 'min', 'avg', 'top_locations', 'rank', 'compare'], description: 'detail=lista por grupo (default). aggregate=total + breakdown por categoría/ubicación. max=el grupo con más X. min=el menos. avg=promedio de X. top_locations=ranking por categoría/campo/corral. rank=top N. compare=2 grupos side-by-side.' },
+        aggregate_metric: { type: 'string', enum: ['count', 'avg_weight_kg', 'total_weight_kg'], description: 'QUÉ métrica usar. count=cabezas. avg_weight_kg=peso promedio. total_weight_kg=peso total (count*avg).' },
+        group_by: { type: 'string', enum: ['category', 'field', 'plot', 'corral', 'breed'], description: 'Para top_locations/aggregate.' },
+        sort_by: { type: 'string', enum: ['count', 'weight', 'category', 'field'], description: 'Default category.' },
+        sort_desc: { type: 'boolean', description: 'Default true.' },
+        top_n: { type: 'integer', description: 'Para rank/max/min.' },
+        // Multi-turn
+        inherit: { type: 'boolean', description: 'TRUE cuando el usuario refina ("solo del feedlot", "ahora vacas", "ordenar por peso").' },
+        // Compare
+        compare_category: { type: 'string', description: 'Categoría B ("vacas vs novillos" → category=vaca, compare_category=novillo).' },
+        compare_field: { type: 'string', description: 'Campo B.' },
+        compare_corral: { type: 'string', description: 'Corral B.' },
       },
     },
   },
@@ -1130,7 +1305,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'query_health_events',
-    description: 'Consultar historial sanitario: vacunaciones, desparasitaciones, tratamientos. Triggers: "cuándo se vacunó", "historial sanitario", "qué vacunas tiene", "última desparasitación".',
+    description: 'Consultar historial SANITARIO DE HACIENDA (vacunaciones, desparasitaciones, tratamientos de ganado). SOLO usar cuando el mensaje menciona explícitamente animales/hacienda/vacas/toros/novillos/terneros/cabezas/vacuna/desparasitación. Triggers: "cuándo se vacunó", "historial sanitario de la hacienda/vacas", "qué vacunas tiene el rodeo", "última desparasitación". NO usar para "sanitario/sanidad" del CULTIVO (eso es query_scoutings).',
     input_schema: {
       type: 'object',
       properties: {

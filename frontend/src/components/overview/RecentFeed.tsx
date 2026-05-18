@@ -19,6 +19,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
 
 interface RecentItem {
   type: 'expense' | 'income' | 'activity';
+  id: number;
   description: string | null;
   amount: number | null;
   currency: string | null;
@@ -26,6 +27,11 @@ interface RecentItem {
   date: string;
   field_name: string | null;
   plot_name: string | null;
+}
+
+interface RecentFeedProps {
+  items: RecentItem[];
+  onItemClick?: (type: RecentItem['type'], id: number) => void;
 }
 
 function formatAmount(amount: number, currency: string): string {
@@ -48,7 +54,7 @@ function timeAgo(dateStr: string): string {
   return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 }
 
-export default function RecentFeed({ items }: { items: RecentItem[] }) {
+export default function RecentFeed({ items, onItemClick }: RecentFeedProps) {
   if (!items.length) {
     return (
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
@@ -72,8 +78,14 @@ export default function RecentFeed({ items }: { items: RecentItem[] }) {
           const location = [item.field_name, item.plot_name].filter(Boolean).join(', ');
 
           const Icon = cfg.Icon;
+          const clickable = !!onItemClick && item.id != null;
           return (
-            <li key={i} className="flex items-center gap-3 px-5 py-3">
+            <li
+              key={`${item.type}-${item.id}-${i}`}
+              onClick={clickable ? () => onItemClick!(item.type, item.id) : undefined}
+              className={`flex items-center gap-3 px-5 py-3 ${clickable ? 'cursor-pointer hover:bg-gray-50 transition-colors' : ''}`}
+              title={clickable ? 'Ver detalle' : undefined}
+            >
               <Icon className={`w-5 h-5 shrink-0 ${cfg.color}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-gray-800 truncate">{label}</p>

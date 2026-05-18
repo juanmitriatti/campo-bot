@@ -351,10 +351,26 @@ export class AgronomyRepository {
   async queryHarvestLoads(userId: UserId, opts: {
     plotId?: number | null;
     fieldId?: number | null;
+    crop?: string | null;
+    eventDate?: string | null;
     desde?: string | null;
     hasta?: string | null;
     driverName?: string | null;
     destinatario?: string | null;
+    truckPlate?: string | null;
+    weightMinKg?: number | null;
+    weightMaxKg?: number | null;
+    humidityMinPct?: number | null;
+    humidityMaxPct?: number | null;
+    proteinMinPct?: number | null;
+    proteinMaxPct?: number | null;
+    oilMinPct?: number | null;
+    oilMaxPct?: number | null;
+    glutenMinPct?: number | null;
+    glutenMaxPct?: number | null;
+    sortBy?: 'date' | 'weight' | 'humidity' | 'protein' | 'oil' | 'gluten';
+    sortDesc?: boolean;
+    limit?: number;
   }): Promise<Array<{
     id: number;
     driver_name: string;
@@ -364,8 +380,12 @@ export class AgronomyRepository {
     truck_plate: string | null;
     event_date: Date;
     crop: string | null;
+    plot_id: number | null;
     plot_name: string | null;
     field_name: string | null;
+    humidity_pct: string | number | null;
+    quality_metrics: Record<string, number> | null;
+    notes?: string | null;
   }>> {
     return _queryHarvestLoads(userId, opts);
   }

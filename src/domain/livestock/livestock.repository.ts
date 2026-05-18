@@ -7,7 +7,11 @@ import type {
 } from './livestock.types.js';
 
 function accessibleFieldsSql(paramIdx: number): string {
-  return `SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
+  // Own fields + fields shared via field_members. The previous version only
+  // returned shared fields, so owners saw empty livestock lists.
+  return `SELECT id FROM fields WHERE user_id = $${paramIdx} AND deleted_at IS NULL
+          UNION
+          SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
 }
 
 /**
@@ -260,11 +264,11 @@ export class LivestockRepository {
 
     const where: string[] = [
       `m.user_id = $1`,
-      // At least one endpoint's group must be in an accessible field
+      // At least one endpoint's group must be in an accessible field (owned or shared)
       `(
-        (src.field_id IS NOT NULL AND src.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+        (src.field_id IS NOT NULL AND src.field_id IN (${accessibleFieldsSql(1)}))
         OR
-        (dst.field_id IS NOT NULL AND dst.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+        (dst.field_id IS NOT NULL AND dst.field_id IN (${accessibleFieldsSql(1)}))
       )`,
     ];
     const params: (string | number)[] = [userId];

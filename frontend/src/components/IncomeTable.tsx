@@ -3,6 +3,8 @@ import { apiRequest } from '../api/client';
 import IncomeEditModal from './IncomeEditModal';
 import IncomeCard from './cards/IncomeCard';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useRowHighlight } from '../hooks/useRowHighlight';
+import { useSortableTable } from '../hooks/useSortableTable';
 
 interface Income {
   id: number;
@@ -82,8 +84,11 @@ function formatQuantity(qty: number | null, unit: string | null): string {
   return new Intl.NumberFormat('es-AR').format(qty);
 }
 
-export default function IncomeTable() {
+interface IncomeTableProps { highlightId?: number }
+
+export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
   const isMobile = useIsMobile();
+  const { active: activeHighlight, rowRef } = useRowHighlight(highlightId);
   const [data, setData] = useState<PaginatedResponse | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -96,14 +101,33 @@ export default function IncomeTable() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [category, setCategory] = useState('');
+  const [descSearch, setDescSearch] = useState('');
+  const [amountMin, setAmountMin] = useState('');
+  const [amountMax, setAmountMax] = useState('');
+  const [currencyFilter, setCurrencyFilter] = useState('');
 
   const limit = 10;
 
   useEffect(() => {
     apiRequest<FiltersResponse>('/observations/filters')
-      .then(r => setFields(r.fields))
+      .then(r => {
+        setFields(r.fields);
+        if (r.fields.length === 1) setFieldId(String(r.fields[0].id));
+      })
       .catch(() => {});
   }, []);
+
+  // Auto-pick the only plot if the user has just one (within current field
+  // OR overall when the field filter is "Todos").
+  useEffect(() => {
+    const allPlots = fields.flatMap(f => f.plots);
+    const candidatePlots = fieldId
+      ? fields.find(f => f.id === Number(fieldId))?.plots ?? []
+      : allPlots;
+    if (candidatePlots.length === 1 && !plotId) {
+      setPlotId(String(candidatePlots[0].id));
+    }
+  }, [fields, fieldId, plotId]);
 
   const fetchIncomes = useCallback(async () => {
     setLoading(true);
@@ -135,11 +159,15 @@ export default function IncomeTable() {
   };
 
   const clearFilters = () => {
-    setFieldId('');
+    setFieldId(fields.length === 1 ? String(fields[0].id) : '');
     setPlotId('');
     setDateFrom('');
     setDateTo('');
     setCategory('');
+    setDescSearch('');
+    setAmountMin('');
+    setAmountMax('');
+    setCurrencyFilter('');
     setPage(1);
   };
 
@@ -148,11 +176,36 @@ export default function IncomeTable() {
     fetchIncomes();
   };
 
-  const hasFilters = fieldId || plotId || dateFrom || dateTo || category;
+  const hasFilters = fieldId || plotId || dateFrom || dateTo || category
+    || descSearch.trim() || amountMin || amountMax || currencyFilter;
 
   const availablePlots = fieldId
     ? fields.find(f => f.id === Number(fieldId))?.plots ?? []
     : [];
+
+  // Client-side filter + sort
+  const filteredIncomes = (data?.incomes ?? []).filter(inc => {
+    if (descSearch.trim() && !(inc.description || '').toLowerCase().includes(descSearch.trim().toLowerCase())) return false;
+    if (currencyFilter && inc.currency !== currencyFilter) return false;
+    const amt = Number(inc.amount);
+    if (amountMin && amt < Number(amountMin)) return false;
+    if (amountMax && amt > Number(amountMax)) return false;
+    return true;
+  });
+  const { sorted: sortedIncomes, toggleSort, arrow } = useSortableTable<typeof filteredIncomes[0], 'date' | 'category' | 'description' | 'field' | 'plot' | 'quantity' | 'amount'>(filteredIncomes, {
+    getValue: (row, key) => {
+      switch (key) {
+        case 'date': return row.income_date;
+        case 'category': return row.category || '';
+        case 'description': return (row.description || '').toLowerCase();
+        case 'field': return (row.field_name || '').toLowerCase();
+        case 'plot': return (row.plot_name || '').toLowerCase();
+        case 'quantity': return row.quantity == null ? null : Number(row.quantity);
+        case 'amount': return Number(row.amount);
+      }
+    },
+    initial: { key: 'date', direction: 'desc' },
+  });
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('es-AR', {
@@ -208,7 +261,7 @@ export default function IncomeTable() {
             onChange={e => handleFieldChange(e.target.value)}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
           >
-            <option value="">Todos</option>
+            {fields.length !== 1 && <option value="">Todos</option>}
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
@@ -220,7 +273,7 @@ export default function IncomeTable() {
             disabled={!fieldId}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:opacity-40"
           >
-            <option value="">Todos</option>
+            {availablePlots.length !== 1 && <option value="">Todos</option>}
             {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
@@ -234,6 +287,48 @@ export default function IncomeTable() {
             <option value="">Todas</option>
             {INCOME_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>)}
           </select>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Moneda</label>
+          <select
+            value={currencyFilter}
+            onChange={e => { setCurrencyFilter(e.target.value); setPage(1); }}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+          >
+            <option value="">Todas</option>
+            <option value="ARS">ARS</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Descripción</label>
+          <input
+            type="text"
+            placeholder="Buscar..."
+            value={descSearch}
+            onChange={e => setDescSearch(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm min-w-[160px]"
+          />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Monto mín</label>
+          <input
+            type="number"
+            placeholder="0"
+            value={amountMin}
+            onChange={e => setAmountMin(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-24"
+          />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Monto máx</label>
+          <input
+            type="number"
+            placeholder="∞"
+            value={amountMax}
+            onChange={e => setAmountMax(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-24"
+          />
         </div>
         {hasFilters && (
           <button
@@ -255,8 +350,14 @@ export default function IncomeTable() {
         <>
           {isMobile ? (
             <div className="space-y-3 p-4">
-              {data.incomes.map(inc => (
-                <IncomeCard key={inc.id} income={inc} onEdit={setEditing} />
+              {sortedIncomes.map(inc => (
+                <div
+                  key={inc.id}
+                  ref={rowRef(inc.id)}
+                  className={activeHighlight === inc.id ? 'ring-2 ring-campo-400 rounded-lg transition' : ''}
+                >
+                  <IncomeCard income={inc} onEdit={setEditing} />
+                </div>
               ))}
             </div>
           ) : (
@@ -264,20 +365,24 @@ export default function IncomeTable() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Categoria</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Descripcion</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Campo</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Lote</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Cantidad</th>
-                    <th className="text-right px-4 py-3 font-medium text-gray-600">Monto</th>
+                    <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Fecha{arrow('date')}</th>
+                    <th onClick={() => toggleSort('category')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Categoria{arrow('category')}</th>
+                    <th onClick={() => toggleSort('description')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Descripcion{arrow('description')}</th>
+                    <th onClick={() => toggleSort('field')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Campo{arrow('field')}</th>
+                    <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Lote{arrow('plot')}</th>
+                    <th onClick={() => toggleSort('quantity')} className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell cursor-pointer select-none hover:bg-gray-100">Cantidad{arrow('quantity')}</th>
+                    <th onClick={() => toggleSort('amount')} className="text-right px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Monto{arrow('amount')}</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
                     <th className="px-4 py-3 w-20" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {data.incomes.map(inc => (
-                    <tr key={inc.id} className="hover:bg-gray-50 transition-colors">
+                  {sortedIncomes.map(inc => (
+                    <tr
+                      key={inc.id}
+                      ref={rowRef(inc.id) as unknown as React.Ref<HTMLTableRowElement>}
+                      className={`transition-colors ${activeHighlight === inc.id ? 'bg-amber-50' : 'hover:bg-gray-50'}`}
+                    >
                       <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                         {formatDate(inc.income_date)}
                       </td>

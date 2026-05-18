@@ -703,9 +703,21 @@ const COMMAND_PATTERNS = [
     /^ampliar\s+(?:mi\s+)?(?:l[ií]mite|plan)$/,
   ]},
 
-  // --- Dólar ---
-  // Negative lookbehind prevents "200 dolares" (amount) from matching as dollar query
-  { command: "dollar", patterns: [/(?<!\d)(?<!\d\s)(?:dolar|dolares|cotizacion|cotizaciones)/, /precio.+dolar/, /dolar.+hoy/] },
+  // --- Dólar (cotización) ---
+  // Only match when the message is CLEARLY about the FX quote, not when "dolares" appears as a
+  // currency filter inside a financial query ("mostrame gastos en dolares", "y solo en dolares", "ingresos en USD").
+  // Negative lookahead: reject if the message contains financial verbs/nouns that imply a query, not a quote.
+  // Negative lookbehind: reject "200 dolares" (amount).
+  {
+    command: "dollar",
+    patterns: [
+      /^(?:el\s+)?(?:dolar|dólar)\s*\??$/i,
+      /^(?:cuanto|cuánto|a\s+cuanto|a\s+cuánto)\s+(?:est[áa]\s+|vale\s+)?(?:el\s+)?(?:dolar|dólar)\b/i,
+      /^(?:cotizaci[óo]n|precio)\s+(?:del?\s+)?(?:dolar|dólar)\b/i,
+      /^(?:dolar|dólar)\s+(?:hoy|blue|oficial|mep|ccl|tarjeta)\b/i,
+      /^(?:ver|mostrar?(?:me)?)\s+(?:el\s+)?(?:dolar|dólar|cotizaci[óo]n)/i,
+    ],
+  },
 
   // --- Alertas ---
   {
@@ -738,7 +750,9 @@ const COMMAND_PATTERNS = [
     command: "list_plots",
     patterns: [
       /^(?:mis\s+lotes|ver\s+lotes|listar\s+lotes)$/,
-      /(?:mostrar?|mostra|dame|decime)\s+(?:mis\s+)?lotes/,
+      // "mostrame lotes" / "mostrame mis lotes" but NOT "mostrame lotes con/que/donde/de + <agronomic stuff>"
+      // — those are scouting / filter queries the agent should handle.
+      /(?:mostrar?|mostra|dame|decime)\s+(?:mis\s+)?lotes(?:\s+(?:del?\s+)?campo\s+\w+)?\s*\??$/,
       /cuantos?\s+lotes?/,
       /cu[aá]les\s+son\s+(?:mis\s+)?lotes/,
       /q(?:ue)?\s+lotes?\s+tengo/,

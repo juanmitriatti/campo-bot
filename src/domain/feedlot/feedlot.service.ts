@@ -169,9 +169,20 @@ export class FeedlotService {
       };
     }
 
-    // Search across all user feedlots
+    // Search across all user feedlots. Be lenient with naming:
+    //   "Corral 1" / "corral 1" / "1" / "C1" — all should match a corral named "Corral 1".
     const allCorrals = await this.repo.listCorralsByUser(Number(userId));
-    const matches = allCorrals.filter(c => c.name.toLowerCase() === corralName.toLowerCase());
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '').replace(/^corral/, '');
+    const needle = norm(corralName);
+    let matches = allCorrals.filter(c => c.name.toLowerCase() === corralName.toLowerCase());
+    if (matches.length === 0) {
+      // Fall back to normalized match (strips "corral " prefix and spaces)
+      matches = allCorrals.filter(c => norm(c.name) === needle);
+    }
+    if (matches.length === 0) {
+      // Last fallback: substring match
+      matches = allCorrals.filter(c => c.name.toLowerCase().includes(corralName.toLowerCase()));
+    }
 
     if (matches.length === 0) throw new Error(`No encontré el corral "${corralName}".`);
     if (matches.length === 1) {

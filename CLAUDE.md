@@ -301,6 +301,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 
 ## Extended Documentation
 
+- **[docs/ai/query-patterns.md](docs/ai/query-patterns.md)** — **SOURCE OF TRUTH** for the 8 unified query tools (financial / scouting / harvest / stock / livestock-inv / activities / rainfall). Every supported natural-language pattern → expected view/filters. Read this before modifying ANY query handler.
 - **[docs/ai/tools.md](docs/ai/tools.md)** — Tool groups, disambiguation rules, compound actions
 - **[docs/ai/failure-patterns.md](docs/ai/failure-patterns.md)** — Known pitfalls, hallucinations, data integrity issues
 - **[docs/architecture.md](docs/architecture.md)** — Full implementation reference (AI, domain, services, DB, flows, auth, frontend)

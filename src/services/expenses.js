@@ -1,11 +1,18 @@
 import { pool } from "../config/db.js";
 
 /**
- * Helper: returns a SQL subquery fragment for accessible field IDs via field_members.
+ * Helper: returns a SQL subquery fragment for accessible field IDs
+ * (own fields + fields shared via field_members).
  * Usage: `WHERE f.id IN (${accessibleFieldsSql(paramIdx)})` with userId as param.
+ *
+ * Used to live as "only field_members" which silently blocked owners from
+ * seeing their own data — many callers had to add `(user_id = $X OR ...)`
+ * to compensate. Now the helper covers both cases consistently.
  */
 function accessibleFieldsSql(paramIdx) {
-  return `SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
+  return `SELECT id FROM fields WHERE user_id = $${paramIdx} AND deleted_at IS NULL
+          UNION
+          SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
 }
 
 export async function getOrCreateUser(phone) {
@@ -1071,9 +1078,9 @@ export async function findPlotsByGrupo(userId, grupo) {
     `SELECT p.*, f.name AS field_name
      FROM plots p
      JOIN fields f ON p.field_id = f.id
-     JOIN field_members fm ON f.id = fm.field_id AND fm.user_id = $1
      WHERE LOWER(p.grupo) LIKE '%' || LOWER($2) || '%'
        AND p.deleted_at IS NULL AND f.deleted_at IS NULL
+       AND f.id IN (${accessibleFieldsSql(1)})
      ORDER BY f.name, p.name`,
     [userId, grupo]
   );
@@ -1378,6 +1385,230 @@ export async function getDateRangeReport(userId, desde, hasta, { fieldName = nul
   }
 
   return results;
+}
+
+// --- Generic financial query builder ---
+//
+// One SQL builder that handles every dimension the user can throw at us:
+// scope (field/plot), period (desde/hasta), category (in/not in), currency,
+// amount range, description LIKE, sort, limit. The handler dispatches the
+// rendering (detail / aggregate / max / compare) on top of this raw row set.
+//
+// IMPORTANT: never sums across currencies — callers split totals by currency.
+
+function buildMovementFilters(prefix, params, opts) {
+  // prefix: 'e' or 'i'. Returns "AND ..." fragment that the caller appends.
+  let idx = params.length + 1;
+  const fragments = [];
+  const dateCol = prefix === 'e' ? 'expense_date' : 'income_date';
+
+  if (opts.desde) {
+    fragments.push(`${prefix}.${dateCol} >= $${idx}::date`);
+    params.push(opts.desde);
+    idx++;
+  }
+  if (opts.hasta) {
+    fragments.push(`${prefix}.${dateCol} <= $${idx}::date`);
+    params.push(opts.hasta);
+    idx++;
+  }
+  if (opts.fieldName) {
+    fragments.push(`LOWER(f.name) = LOWER($${idx})`);
+    params.push(opts.fieldName);
+    idx++;
+  }
+  if (opts.plotName) {
+    fragments.push(`LOWER(p.name) = LOWER($${idx})`);
+    params.push(opts.plotName);
+    idx++;
+  }
+  if (opts.category) {
+    fragments.push(`LOWER(${prefix}.category) = LOWER($${idx})`);
+    params.push(opts.category);
+    idx++;
+  }
+  if (opts.categories && opts.categories.length > 0) {
+    // Multi-category include (OR). Used by "cereales" / "frutos secos" buckets.
+    const placeholders = opts.categories.map(() => {
+      const ph = `$${idx}`;
+      idx++;
+      return ph;
+    });
+    fragments.push(`LOWER(${prefix}.category) IN (${placeholders.map(p => `LOWER(${p})`).join(', ')})`);
+    params.push(...opts.categories);
+  }
+  if (opts.excludeCategories && opts.excludeCategories.length > 0) {
+    const placeholders = opts.excludeCategories.map(() => {
+      const ph = `$${idx}`;
+      idx++;
+      return ph;
+    });
+    fragments.push(`LOWER(${prefix}.category) NOT IN (${placeholders.map(p => `LOWER(${p})`).join(', ')})`);
+    params.push(...opts.excludeCategories);
+  }
+  if (opts.currency) {
+    fragments.push(`${prefix}.currency = $${idx}`);
+    params.push(opts.currency);
+    idx++;
+  }
+  if (opts.amountMin != null) {
+    fragments.push(`${prefix}.amount >= $${idx}`);
+    params.push(opts.amountMin);
+    idx++;
+  }
+  if (opts.amountMax != null) {
+    fragments.push(`${prefix}.amount <= $${idx}`);
+    params.push(opts.amountMax);
+    idx++;
+  }
+  if (opts.descriptionSearch) {
+    // Match against description AND product (some expenses store the product there, e.g. "glifosato").
+    // incomes table doesn't have a `product` column — only expenses does. Conditional on prefix.
+    if (prefix === 'e') {
+      fragments.push(`(LOWER(${prefix}.description) LIKE LOWER($${idx}) OR LOWER(COALESCE(${prefix}.product, '')) LIKE LOWER($${idx}))`);
+    } else {
+      fragments.push(`LOWER(${prefix}.description) LIKE LOWER($${idx})`);
+    }
+    params.push(`%${opts.descriptionSearch}%`);
+    idx++;
+  }
+  return fragments.length > 0 ? ' AND ' + fragments.join(' AND ') : '';
+}
+
+export async function queryMovements(userId, opts = {}) {
+  const {
+    type = 'both',
+    sortBy = 'date',
+    sortDesc = true,
+    limit = 200,
+  } = opts;
+  const orderDir = sortDesc ? 'DESC' : 'ASC';
+  const out = { expenses: [], incomes: [] };
+
+  if (type === 'expenses' || type === 'both') {
+    const params = [userId];
+    const filtersSql = buildMovementFilters('e', params, { ...opts });
+    params.push(limit);
+    const limitIdx = params.length;
+    const expOrderCol = sortBy === 'amount' ? 'amount' : 'expense_date';
+    const sql = `
+      SELECT e.id, e.expense_date AS date, e.category,
+             COALESCE(NULLIF(e.description, ''), e.product) AS description,
+             e.product, e.amount, e.currency,
+             e.quantity, e.unit,
+             f.name AS field_name, p.name AS plot_name
+      FROM expenses e
+      LEFT JOIN fields f ON e.field_id = f.id
+      LEFT JOIN plots p ON e.plot_id = p.id
+      WHERE (e.user_id = $1 OR e.field_id IN (${accessibleFieldsSql(1)}))
+        AND e.deleted_at IS NULL
+        ${filtersSql}
+      ORDER BY e.${expOrderCol} ${orderDir}, e.id DESC
+      LIMIT $${limitIdx}
+    `;
+    const res = await pool.query(sql, params);
+    out.expenses = res.rows;
+  }
+
+  if (type === 'incomes' || type === 'both') {
+    const params = [userId];
+    const filtersSql = buildMovementFilters('i', params, { ...opts });
+    params.push(limit);
+    const limitIdx = params.length;
+    const incOrderCol = sortBy === 'amount' ? 'amount' : 'income_date';
+    const sql = `
+      SELECT i.id, i.income_date AS date, i.category, i.description,
+             NULL::text AS product, i.amount, i.currency,
+             i.quantity, i.unit,
+             f.name AS field_name, p.name AS plot_name
+      FROM incomes i
+      LEFT JOIN fields f ON i.field_id = f.id
+      LEFT JOIN plots p ON i.plot_id = p.id
+      WHERE (i.user_id = $1 OR i.field_id IN (${accessibleFieldsSql(1)}))
+        AND i.deleted_at IS NULL
+        ${filtersSql}
+      ORDER BY i.${incOrderCol} ${orderDir}, i.id DESC
+      LIMIT $${limitIdx}
+    `;
+    const res = await pool.query(sql, params);
+    out.incomes = res.rows;
+  }
+
+  return out;
+}
+
+// --- Detailed movements list (used when the user asks "todos los gastos de X") ---
+
+export async function getMovementsInRange(userId, desde, hasta, { fieldName = null, plotName = null, category = null, type = 'both', limit = 200 } = {}) {
+  const out = { expenses: [], incomes: [] };
+
+  if (type === 'expenses' || type === 'both') {
+    const expParams = [userId, desde, hasta];
+    let idx = 4;
+    const filters = [];
+    let join = '';
+    if (fieldName) {
+      filters.push(`LOWER(f.name) = LOWER($${idx})`);
+      expParams.push(fieldName);
+      idx++;
+      join += ' LEFT JOIN fields f ON e.field_id = f.id';
+    } else {
+      join += ' LEFT JOIN fields f ON e.field_id = f.id';
+    }
+    if (plotName) {
+      filters.push(`LOWER(p.name) = LOWER($${idx})`);
+      expParams.push(plotName);
+      idx++;
+      join += ' LEFT JOIN plots p ON e.plot_id = p.id';
+    } else {
+      join += ' LEFT JOIN plots p ON e.plot_id = p.id';
+    }
+    if (category) {
+      filters.push(`LOWER(e.category) = LOWER($${idx})`);
+      expParams.push(category);
+      idx++;
+    }
+    const where = filters.length ? ' AND ' + filters.join(' AND ') : '';
+    expParams.push(limit);
+    const expR = await pool.query(
+      `SELECT e.id, e.expense_date AS date, e.category, e.description, e.amount, e.currency,
+              f.name AS field_name, p.name AS plot_name
+       FROM expenses e ${join}
+       WHERE (e.user_id = $1 OR e.field_id IN (${accessibleFieldsSql(1)}))
+         AND e.deleted_at IS NULL
+         AND e.expense_date >= $2 AND e.expense_date <= $3 ${where}
+       ORDER BY e.expense_date DESC, e.id DESC
+       LIMIT $${idx}`,
+      expParams
+    );
+    out.expenses = expR.rows;
+  }
+
+  if (type === 'incomes' || type === 'both') {
+    const incParams = [userId, desde, hasta];
+    let idx = 4;
+    const filters = [];
+    let join = ' LEFT JOIN fields f ON i.field_id = f.id LEFT JOIN plots p ON i.plot_id = p.id';
+    if (fieldName) { filters.push(`LOWER(f.name) = LOWER($${idx})`); incParams.push(fieldName); idx++; }
+    if (plotName) { filters.push(`LOWER(p.name) = LOWER($${idx})`); incParams.push(plotName); idx++; }
+    if (category) { filters.push(`LOWER(i.category) = LOWER($${idx})`); incParams.push(category); idx++; }
+    const where = filters.length ? ' AND ' + filters.join(' AND ') : '';
+    incParams.push(limit);
+    const incR = await pool.query(
+      `SELECT i.id, i.income_date AS date, i.category, i.description, i.amount, i.currency,
+              f.name AS field_name, p.name AS plot_name
+       FROM incomes i ${join}
+       WHERE (i.user_id = $1 OR i.field_id IN (${accessibleFieldsSql(1)}))
+         AND i.deleted_at IS NULL
+         AND i.income_date >= $2 AND i.income_date <= $3 ${where}
+       ORDER BY i.income_date DESC, i.id DESC
+       LIMIT $${idx}`,
+      incParams
+    );
+    out.incomes = incR.rows;
+  }
+
+  return out;
 }
 
 // --- CSV export ---
@@ -1726,16 +1957,93 @@ export async function getScoutingsForPlotInRange(plotId, dateFrom, dateTo) {
   return result.rows;
 }
 
-export async function queryScoutings({ userId, plotId = null, fieldId = null, dateFrom = null, dateTo = null, minSeverity = null, stageCode = null, limit = 30 }) {
+/**
+ * Unified scouting query. Same architecture as queryMovements:
+ * one SQL builder + many filters; the handler dispatches the rendering.
+ *
+ * Supports:
+ *  - scope: plotId, fieldId
+ *  - period: dateFrom, dateTo
+ *  - structured filters: stageCode (exact), stagePrefix (LIKE 'V%'),
+ *    weedSpeciesAny[] (overlaps), pestSpecies (ILIKE), weedMinPct/weedMaxPct,
+ *    emergenceMinPct/emergenceMaxPct, densityMin/densityMax, soilMoistureMin/Max,
+ *    pestSeverityMin, hasPest (sev≥2 OR species present), hasWeeds (coverage>0)
+ *  - sort + direction + limit
+ *
+ * IMPORTANT: returns raw rows. Aggregation/max/min/avg happens in the renderer
+ * so we can compose them flexibly.
+ */
+export async function queryScoutings(opts = {}) {
+  const {
+    userId, plotId = null, fieldId = null,
+    dateFrom = null, dateTo = null,
+    minSeverity = null,           // legacy param name
+    pestSeverityMin = null,
+    stageCode = null, stagePrefix = null,
+    weedSpeciesAny = null, pestSpecies = null,
+    weedMinPct = null, weedMaxPct = null,
+    emergenceMinPct = null, emergenceMaxPct = null,
+    densityMin = null, densityMax = null,
+    soilMoistureMin = null, soilMoistureMax = null,
+    hasPest = null, hasWeeds = null,
+    sortBy = 'date', sortDesc = true,
+    limit = 50,
+  } = opts;
+
   const conditions = ['s.user_id = $1', 's.deleted_at IS NULL'];
   const params = [userId];
   let i = 1;
+
   if (plotId) { i++; conditions.push(`s.plot_id = $${i}`); params.push(plotId); }
-  if (fieldId && !plotId) { i++; conditions.push(`s.field_id = $${i}`); params.push(fieldId); }
+  if (fieldId && !plotId) {
+    i++;
+    conditions.push(`(s.field_id = $${i} OR s.plot_id IN (SELECT id FROM plots WHERE field_id = $${i}))`);
+    params.push(fieldId);
+  }
   if (dateFrom) { i++; conditions.push(`s.scouting_date >= $${i}`); params.push(dateFrom); }
   if (dateTo) { i++; conditions.push(`s.scouting_date <= $${i}`); params.push(dateTo); }
-  if (minSeverity) { i++; conditions.push(`s.pest_severity_1_5 >= $${i}`); params.push(minSeverity); }
+
+  // Pest filters
+  const effectiveSeverityMin = pestSeverityMin ?? minSeverity;
+  if (effectiveSeverityMin != null) { i++; conditions.push(`s.pest_severity_1_5 >= $${i}`); params.push(effectiveSeverityMin); }
+  if (pestSpecies) { i++; conditions.push(`LOWER(s.pest_species) LIKE LOWER($${i})`); params.push(`%${pestSpecies}%`); }
+  if (hasPest === true) { conditions.push(`(s.pest_species IS NOT NULL OR s.pest_severity_1_5 >= 2)`); }
+  if (hasPest === false) { conditions.push(`(s.pest_species IS NULL AND (s.pest_severity_1_5 IS NULL OR s.pest_severity_1_5 < 2))`); }
+
+  // Weed filters
+  if (Array.isArray(weedSpeciesAny) && weedSpeciesAny.length > 0) {
+    // any-overlap with the text[] column, case-insensitive
+    const placeholders = weedSpeciesAny.map(w => { i++; params.push(w.toLowerCase()); return `$${i}`; });
+    conditions.push(`EXISTS (SELECT 1 FROM unnest(s.weed_species) AS w WHERE LOWER(w) = ANY(ARRAY[${placeholders.join(',')}]::text[]))`);
+  }
+  if (weedMinPct != null) { i++; conditions.push(`s.weed_coverage_pct >= $${i}`); params.push(weedMinPct); }
+  if (weedMaxPct != null) { i++; conditions.push(`s.weed_coverage_pct <= $${i}`); params.push(weedMaxPct); }
+  if (hasWeeds === true) { conditions.push(`(s.weed_coverage_pct > 0 OR (s.weed_species IS NOT NULL AND array_length(s.weed_species,1) > 0))`); }
+  if (hasWeeds === false) { conditions.push(`(COALESCE(s.weed_coverage_pct,0) = 0 AND (s.weed_species IS NULL OR array_length(s.weed_species,1) IS NULL))`); }
+
+  // Emergence / density
+  if (emergenceMinPct != null) { i++; conditions.push(`s.emergence_pct >= $${i}`); params.push(emergenceMinPct); }
+  if (emergenceMaxPct != null) { i++; conditions.push(`s.emergence_pct <= $${i}`); params.push(emergenceMaxPct); }
+  if (densityMin != null) { i++; conditions.push(`s.plant_density_m2 >= $${i}`); params.push(densityMin); }
+  if (densityMax != null) { i++; conditions.push(`s.plant_density_m2 <= $${i}`); params.push(densityMax); }
+
+  // Soil moisture
+  if (soilMoistureMin != null) { i++; conditions.push(`s.soil_moisture_1_5 >= $${i}`); params.push(soilMoistureMin); }
+  if (soilMoistureMax != null) { i++; conditions.push(`s.soil_moisture_1_5 <= $${i}`); params.push(soilMoistureMax); }
+
+  // Stage
   if (stageCode) { i++; conditions.push(`s.stage_code = $${i}`); params.push(stageCode.toUpperCase()); }
+  if (stagePrefix && !stageCode) { i++; conditions.push(`s.stage_code LIKE $${i}`); params.push(`${stagePrefix.toUpperCase()}%`); }
+
+  // Sort
+  const sortColumn = sortBy === 'weed_coverage_pct' ? 's.weed_coverage_pct'
+    : sortBy === 'pest_severity' ? 's.pest_severity_1_5'
+    : sortBy === 'emergence_pct' ? 's.emergence_pct'
+    : sortBy === 'plant_density_m2' ? 's.plant_density_m2'
+    : sortBy === 'soil_moisture' ? 's.soil_moisture_1_5'
+    : 's.scouting_date';
+  const direction = sortDesc ? 'DESC' : 'ASC';
+
   i++; const limitParam = `$${i}`;
   params.push(Math.min(Math.max(limit, 1), 100));
 
@@ -1746,7 +2054,7 @@ export async function queryScoutings({ userId, plotId = null, fieldId = null, da
      LEFT JOIN fields f ON f.id = s.field_id
      LEFT JOIN plot_crops pc ON pc.id = s.plot_crop_id
      WHERE ${conditions.join(' AND ')}
-     ORDER BY s.scouting_date DESC, s.id DESC
+     ORDER BY ${sortColumn} ${direction} NULLS LAST, s.id DESC
      LIMIT ${limitParam}`,
     params
   );
@@ -2031,6 +2339,128 @@ export async function getParseMetrics() {
 }
 
 // --- Plot history query ---
+
+/**
+ * Unified rainfall query — clean SQL builder on rainfall table.
+ * Same architecture as queryMovements/queryScoutings/etc.
+ * Returns raw rows; aggregation happens in renderers.
+ */
+export async function queryRainfall(opts = {}) {
+  const {
+    userId, fieldId = null, plotId = null,
+    desde = null, hasta = null,
+    mmMin = null, mmMax = null,
+    sortBy = 'date', sortDesc = true, limit = 365,
+  } = opts;
+
+  const conditions = [
+    `r.user_id = $1`,
+    `(f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))`,
+  ];
+  const params = [userId];
+  let idx = 2;
+
+  if (plotId) { conditions.push(`r.plot_id = $${idx}`); params.push(plotId); idx++; }
+  else if (fieldId) { conditions.push(`r.field_id = $${idx}`); params.push(fieldId); idx++; }
+
+  if (desde) { conditions.push(`r.rainfall_date >= $${idx}::date`); params.push(desde); idx++; }
+  if (hasta) { conditions.push(`r.rainfall_date <= $${idx}::date`); params.push(hasta); idx++; }
+  if (mmMin != null) { conditions.push(`r.millimeters >= $${idx}`); params.push(mmMin); idx++; }
+  if (mmMax != null) { conditions.push(`r.millimeters <= $${idx}`); params.push(mmMax); idx++; }
+
+  const sortCol = sortBy === 'mm' ? 'r.millimeters' : 'r.rainfall_date';
+  const direction = sortDesc ? 'DESC' : 'ASC';
+
+  const limitParam = `$${idx}`;
+  params.push(Math.min(Math.max(limit, 1), 1000));
+
+  const sql = `
+    SELECT r.id, r.rainfall_date AS event_date, r.millimeters AS mm,
+           r.field_id, r.plot_id, f.name AS field_name, p.name AS plot_name
+    FROM rainfall r
+    LEFT JOIN fields f ON r.field_id = f.id
+    LEFT JOIN plots p ON r.plot_id = p.id
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY ${sortCol} ${direction}, r.id DESC
+    LIMIT ${limitParam}
+  `;
+  const { rows } = await pool.query(sql, params);
+  return rows;
+}
+
+/**
+ * Unified activity query — clean SQL builder on domain_events ONLY.
+ * Same architecture as queryMovements/queryScoutings/queryHarvestLoads/queryStock.
+ * Returns raw rows; aggregation happens in renderers.
+ *
+ * Activity event_types: planting, spraying, fertilization, harvest, tillage, irrigation.
+ * Filters: plot, field, crop, product (LIKE), activity_types (array), date range, qty range.
+ */
+export async function queryActivities(opts = {}) {
+  const {
+    userId, plotId = null, fieldId = null, crop = null,
+    activityTypes = null, productSearch = null,
+    desde = null, hasta = null,
+    quantityMin = null, quantityMax = null,
+    sortBy = 'date', sortDesc = true, limit = 200,
+  } = opts;
+
+  const conditions = [
+    `de.user_id = $1`,
+    `de.event_type IN ('planting','spraying','fertilization','harvest','tillage','irrigation')`,
+    `(f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))`,
+  ];
+  const params = [userId];
+  let idx = 2;
+
+  if (plotId) { conditions.push(`de.plot_id = $${idx}`); params.push(plotId); idx++; }
+  else if (fieldId) { conditions.push(`p.field_id = $${idx}`); params.push(fieldId); idx++; }
+
+  if (crop) {
+    // Accent-insensitive crop match
+    conditions.push(`TRANSLATE(LOWER(de.crop), 'áéíóúñ', 'aeioun') = TRANSLATE(LOWER($${idx}), 'áéíóúñ', 'aeioun')`);
+    params.push(crop); idx++;
+  }
+
+  if (Array.isArray(activityTypes) && activityTypes.length > 0) {
+    const placeholders = activityTypes.map(() => { const p = `$${idx}`; idx++; return p; });
+    conditions.push(`de.event_type IN (${placeholders.join(',')})`);
+    params.push(...activityTypes);
+  }
+
+  if (productSearch) {
+    conditions.push(`LOWER(de.product) LIKE '%' || LOWER($${idx}) || '%'`);
+    params.push(productSearch); idx++;
+  }
+
+  if (desde) { conditions.push(`de.event_date >= $${idx}::date`); params.push(desde); idx++; }
+  if (hasta) { conditions.push(`de.event_date <= $${idx}::date`); params.push(hasta); idx++; }
+
+  if (quantityMin != null) { conditions.push(`de.quantity >= $${idx}`); params.push(quantityMin); idx++; }
+  if (quantityMax != null) { conditions.push(`de.quantity <= $${idx}`); params.push(quantityMax); idx++; }
+
+  const sortCol = sortBy === 'quantity' ? 'de.quantity'
+    : sortBy === 'type' ? 'de.event_type'
+    : 'de.event_date';
+  const direction = sortDesc ? 'DESC' : 'ASC';
+
+  const limitParam = `$${idx}`;
+  params.push(Math.min(Math.max(limit, 1), 500));
+
+  const sql = `
+    SELECT de.id, de.event_type, de.event_date, de.crop, de.product, de.product_type,
+           de.quantity, de.unit, de.implement, de.notes, de.plot_id,
+           p.name AS plot_name, f.name AS field_name, f.id AS field_id
+    FROM domain_events de
+    LEFT JOIN plots p ON de.plot_id = p.id
+    LEFT JOIN fields f ON p.field_id = f.id
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY ${sortCol} ${direction} NULLS LAST, de.id DESC
+    LIMIT ${limitParam}
+  `;
+  const { rows } = await pool.query(sql, params);
+  return rows;
+}
 
 export async function queryPlotHistory(userId, { plotId = null, fieldId = null, desde = null, hasta = null, activityFilter = null, crop = null, limit = 20 } = {}) {
   const params = [userId];
@@ -2386,50 +2816,93 @@ export async function updateYieldFromLoads(plotCropId) {
   );
 }
 
-export async function queryHarvestLoads(userId, { plotId = null, fieldId = null, desde = null, hasta = null, driverName = null, destinatario = null } = {}) {
+/**
+ * Unified harvest-loads query. Same architecture as queryMovements and queryScoutings.
+ * Returns raw rows; aggregation/max/min/avg happens in the renderer for flexibility.
+ *
+ * Filters: plot, field, crop, date range, exact date, driver (LIKE), destinatario (LIKE),
+ *   truck_plate (LIKE), weight range (kg), humidity range, protein/oil/gluten ranges (jsonb quality).
+ * Sort: date | weight | humidity | protein | oil | gluten.
+ */
+export async function queryHarvestLoads(userId, opts = {}) {
+  const {
+    plotId = null, fieldId = null, crop = null, eventDate = null,
+    desde = null, hasta = null,
+    driverName = null, destinatario = null, truckPlate = null,
+    weightMinKg = null, weightMaxKg = null,
+    humidityMinPct = null, humidityMaxPct = null,
+    proteinMinPct = null, proteinMaxPct = null,
+    oilMinPct = null, oilMaxPct = null,
+    glutenMinPct = null, glutenMaxPct = null,
+    sortBy = 'date', sortDesc = true, limit = 200,
+  } = opts;
   const params = [userId];
   let idx = 2;
   const conditions = [`de.user_id = $1`, `de.event_type = 'harvest'`];
 
-  if (plotId) {
-    conditions.push(`de.plot_id = $${idx}`);
-    params.push(plotId);
-    idx++;
-  } else if (fieldId) {
-    conditions.push(`p.field_id = $${idx}`);
-    params.push(fieldId);
-    idx++;
-  }
-  if (desde) {
-    conditions.push(`de.event_date >= $${idx}::date`);
-    params.push(desde);
+  if (plotId) { conditions.push(`de.plot_id = $${idx}`); params.push(plotId); idx++; }
+  else if (fieldId) { conditions.push(`p.field_id = $${idx}`); params.push(fieldId); idx++; }
+
+  if (crop) {
+    // Accent-insensitive match: "maíz" must match "maiz" (and vice versa).
+    // We use unaccent-via-translate on both sides since pg's unaccent extension may not be available.
+    conditions.push(`TRANSLATE(LOWER(de.crop), 'áéíóúñ', 'aeioun') = TRANSLATE(LOWER($${idx}), 'áéíóúñ', 'aeioun')`);
+    params.push(crop);
     idx++;
   }
-  if (hasta) {
-    conditions.push(`de.event_date <= $${idx}::date`);
-    params.push(hasta);
-    idx++;
-  }
+  if (eventDate) { conditions.push(`de.event_date = $${idx}::date`); params.push(eventDate); idx++; }
+  if (desde) { conditions.push(`de.event_date >= $${idx}::date`); params.push(desde); idx++; }
+  if (hasta) { conditions.push(`de.event_date <= $${idx}::date`); params.push(hasta); idx++; }
+
+  // Accent-insensitive substring match on driver/destinatario (Pedro Gomez ≈ Pedro Gómez).
+  const unaccent = (col) => `TRANSLATE(LOWER(${col}), 'áéíóúñ', 'aeioun')`;
   if (driverName) {
-    conditions.push(`LOWER(hl.driver_name) LIKE '%' || LOWER($${idx}) || '%'`);
-    params.push(driverName);
-    idx++;
+    conditions.push(`${unaccent('hl.driver_name')} LIKE '%' || ${unaccent(`$${idx}`)} || '%'`);
+    params.push(driverName); idx++;
   }
   if (destinatario) {
-    conditions.push(`LOWER(hl.destinatario) LIKE '%' || LOWER($${idx}) || '%'`);
-    params.push(destinatario);
-    idx++;
+    conditions.push(`${unaccent('hl.destinatario')} LIKE '%' || ${unaccent(`$${idx}`)} || '%'`);
+    params.push(destinatario); idx++;
   }
+  if (truckPlate) { conditions.push(`LOWER(hl.truck_plate) LIKE '%' || LOWER($${idx}) || '%'`); params.push(truckPlate); idx++; }
 
+  if (weightMinKg != null) { conditions.push(`hl.weight_kg >= $${idx}`); params.push(weightMinKg); idx++; }
+  if (weightMaxKg != null) { conditions.push(`hl.weight_kg <= $${idx}`); params.push(weightMaxKg); idx++; }
+
+  if (humidityMinPct != null) { conditions.push(`hl.humidity_pct >= $${idx}`); params.push(humidityMinPct); idx++; }
+  if (humidityMaxPct != null) { conditions.push(`hl.humidity_pct <= $${idx}`); params.push(humidityMaxPct); idx++; }
+
+  // Quality metrics are stored in JSONB. Use ->>'key' to extract as text then cast to numeric.
+  if (proteinMinPct != null) { conditions.push(`(hl.quality_metrics->>'protein_pct')::numeric >= $${idx}`); params.push(proteinMinPct); idx++; }
+  if (proteinMaxPct != null) { conditions.push(`(hl.quality_metrics->>'protein_pct')::numeric <= $${idx}`); params.push(proteinMaxPct); idx++; }
+  if (oilMinPct != null) { conditions.push(`(hl.quality_metrics->>'oil_pct')::numeric >= $${idx}`); params.push(oilMinPct); idx++; }
+  if (oilMaxPct != null) { conditions.push(`(hl.quality_metrics->>'oil_pct')::numeric <= $${idx}`); params.push(oilMaxPct); idx++; }
+  if (glutenMinPct != null) { conditions.push(`(hl.quality_metrics->>'gluten_pct')::numeric >= $${idx}`); params.push(glutenMinPct); idx++; }
+  if (glutenMaxPct != null) { conditions.push(`(hl.quality_metrics->>'gluten_pct')::numeric <= $${idx}`); params.push(glutenMaxPct); idx++; }
+
+  const sortCol = sortBy === 'weight' ? 'hl.weight_kg'
+    : sortBy === 'humidity' ? 'hl.humidity_pct'
+    : sortBy === 'protein' ? `(hl.quality_metrics->>'protein_pct')::numeric`
+    : sortBy === 'oil' ? `(hl.quality_metrics->>'oil_pct')::numeric`
+    : sortBy === 'gluten' ? `(hl.quality_metrics->>'gluten_pct')::numeric`
+    : 'de.event_date';
+  const direction = sortDesc ? 'DESC' : 'ASC';
+
+  // limitParam = next slot (idx already points to next available)
+  const limitParam = `$${idx}`;
+  params.push(Math.min(Math.max(limit, 1), 500));
+
+  // Access: own field OR shared via field_members.
   const sql = `
-    SELECT hl.*, de.event_date, de.crop, p.name as plot_name, f.name as field_name
+    SELECT hl.*, de.event_date, de.crop, de.plot_id, p.name as plot_name, f.name as field_name
     FROM harvest_loads hl
     JOIN domain_events de ON hl.domain_event_id = de.id
     LEFT JOIN plots p ON de.plot_id = p.id
     LEFT JOIN fields f ON p.field_id = f.id
-    JOIN field_members fm ON f.id = fm.field_id AND fm.user_id = $1
     WHERE ${conditions.join(' AND ')}
-    ORDER BY de.event_date DESC, hl.id
+      AND (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+    ORDER BY ${sortCol} ${direction} NULLS LAST, hl.id DESC
+    LIMIT ${limitParam}
   `;
   const result = await pool.query(sql, params);
   return result.rows;

@@ -163,8 +163,13 @@ describe("parseCommand", () => {
   });
 
   describe("dollar", () => {
-    it.each(["dolar", "cotizacion dolar", "dolares"])("'%s' → dollar", (t) => {
+    // Bare "dolares" no longer matches (collided with currency filter in "mostrame gastos en dolares")
+    it.each(["dolar", "cotizacion dolar", "dolar?", "cuanto esta el dolar", "dolar hoy", "precio del dolar"])("'%s' → dollar", (t) => {
       expect(parseCommand(t)).toMatchObject({ command: "dollar" });
+    });
+    it.each(["mostrame gastos en dolares", "filtrá ingresos en dolares", "y solo en dolares"])("'%s' → NOT dollar (currency filter)", (t) => {
+      const r = parseCommand(t);
+      expect(r?.command).not.toBe("dollar");
     });
   });
 

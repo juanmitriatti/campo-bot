@@ -34,10 +34,22 @@ interface FiltersResponse {
   fields: FieldOption[];
 }
 
+interface WarehouseOption {
+  id: number;
+  name: string;
+  fieldId: number;
+  fieldName: string | null;
+}
+
+interface WarehousesResponse {
+  warehouses: WarehouseOption[];
+}
+
 const STOCK_CATEGORIES: Record<string, string> = {
-  agroquimicos: 'Agroquimicos',
+  agroquimicos: 'Agroquímicos',
   fertilizantes: 'Fertilizantes',
   semillas: 'Semillas',
+  granos: 'Granos',
   combustible: 'Combustible',
   otros: 'Otros',
 };
@@ -51,15 +63,41 @@ export default function StockTable() {
   const [editing, setEditing] = useState<StockItem | null>(null);
 
   const [fields, setFields] = useState<FieldOption[]>([]);
+  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [fieldId, setFieldId] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
+  const [category, setCategory] = useState('');
+  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [search, setSearch] = useState('');
 
   const limit = 15;
 
   useEffect(() => {
     apiRequest<FiltersResponse>('/observations/filters')
-      .then(r => setFields(r.fields))
+      .then(r => {
+        setFields(r.fields);
+        if (r.fields.length === 1) setFieldId(String(r.fields[0].id));
+      })
+      .catch(() => {});
+    apiRequest<WarehousesResponse>('/warehouses')
+      .then(r => {
+        setWarehouses(r.warehouses);
+        if (r.warehouses.length === 1) setWarehouseId(String(r.warehouses[0].id));
+      })
       .catch(() => {});
   }, []);
+
+  // Auto-clear depósito when field changes (depósito belongs to field)
+  useEffect(() => {
+    if (warehouseId && fieldId) {
+      const w = warehouses.find(w => String(w.id) === warehouseId);
+      if (w && String(w.fieldId) !== fieldId) setWarehouseId('');
+    }
+  }, [fieldId, warehouseId, warehouses]);
+
+  const availableWarehouses = fieldId
+    ? warehouses.filter(w => String(w.fieldId) === fieldId)
+    : warehouses;
 
   const fetchStock = useCallback(async () => {
     setLoading(true);
@@ -67,14 +105,25 @@ export default function StockTable() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (fieldId) params.set('fieldId', fieldId);
+      if (warehouseId) params.set('warehouseId', warehouseId);
+      if (category) params.set('category', category);
       const result = await apiRequest<PaginatedResponse>(`/stock?${params}`);
-      setData(result);
+      // Client-side filters (cheap — pageItems is already small):
+      let items = result.items;
+      if (lowStockOnly) {
+        items = items.filter(i => i.min_stock != null && Number(i.current_quantity) <= Number(i.min_stock));
+      }
+      if (search.trim()) {
+        const q = search.trim().toLowerCase();
+        items = items.filter(i => i.name.toLowerCase().includes(q));
+      }
+      setData({ ...result, items });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al cargar stock');
     } finally {
       setLoading(false);
     }
-  }, [page, fieldId]);
+  }, [page, fieldId, warehouseId, category, lowStockOnly, search]);
 
   useEffect(() => {
     fetchStock();
@@ -85,7 +134,7 @@ export default function StockTable() {
     fetchStock();
   };
 
-  const hasFilters = !!fieldId;
+  const hasFilters = !!fieldId || !!warehouseId || !!category || lowStockOnly || !!search.trim();
 
   if (loading && !data) {
     return (
@@ -115,13 +164,65 @@ export default function StockTable() {
             onChange={e => { setFieldId(e.target.value); setPage(1); }}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
           >
-            <option value="">Todos</option>
+            {fields.length !== 1 && <option value="">Todos</option>}
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Depósito</label>
+          <select
+            value={warehouseId}
+            onChange={e => { setWarehouseId(e.target.value); setPage(1); }}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+          >
+            {availableWarehouses.length !== 1 && <option value="">Todos</option>}
+            {availableWarehouses.map(w => (
+              <option key={w.id} value={w.id}>
+                {fieldId ? w.name : `${w.name} (${w.fieldName})`}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Categoría</label>
+          <select
+            value={category}
+            onChange={e => { setCategory(e.target.value); setPage(1); }}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+          >
+            <option value="">Todas</option>
+            {Object.entries(STOCK_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-gray-500 mb-1">Buscar</label>
+          <input
+            type="text"
+            placeholder="Nombre del producto"
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm min-w-[180px]"
+          />
+        </div>
+        <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer pb-1.5">
+          <input
+            type="checkbox"
+            checked={lowStockOnly}
+            onChange={e => { setLowStockOnly(e.target.checked); setPage(1); }}
+            className="w-4 h-4 text-campo-600 rounded border-gray-300 focus:ring-campo-500"
+          />
+          <span className="text-amber-700 font-medium">Solo bajo stock</span>
+        </label>
         {hasFilters && (
           <button
-            onClick={() => { setFieldId(''); setPage(1); }}
+            onClick={() => {
+              setFieldId(fields.length === 1 ? String(fields[0].id) : '');
+              setWarehouseId(warehouses.length === 1 ? String(warehouses[0].id) : '');
+              setCategory('');
+              setLowStockOnly(false);
+              setSearch('');
+              setPage(1);
+            }}
             className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline py-1.5"
           >
             Limpiar
