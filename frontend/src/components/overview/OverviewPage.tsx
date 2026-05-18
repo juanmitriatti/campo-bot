@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useOverviewTab } from '../../hooks/useOverviewTab';
 import OverviewTabs from './OverviewTabs';
 import OverviewSummaryView from './OverviewSummaryView';
+import OverviewAgronomicView from './OverviewAgronomicView';
 import SubscriptionBanner from './SubscriptionBanner';
 import EmailVerifyBanner from './EmailVerifyBanner';
 
@@ -46,7 +47,7 @@ export default function OverviewPage({ onGoToAccount, onRecentItemClick }: Overv
       </div>
 
       {tab === 'resumen' && <OverviewSummaryView onRecentItemClick={onRecentItemClick} />}
-      {tab === 'agronomico' && showAgronomic && <div className="text-sm text-gray-500 py-8 text-center">Dashboard agronómico — próximamente</div>}
+      {tab === 'agronomico' && showAgronomic && <OverviewAgronomicView />}
       {tab === 'ganadero' && showLivestock && <div className="text-sm text-gray-500 py-8 text-center">Dashboard ganadero — próximamente</div>}
     </div>
   );
