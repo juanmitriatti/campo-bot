@@ -1982,7 +1982,7 @@ router.get('/map-data', requireAuth, async (req: Request, res: Response) => {
     const userId = req.auth!.userId;
 
     const { rows: fields } = await pool.query(
-      `SELECT f.id, f.name, f.lat, f.lng, f.polygon, f.city
+      `SELECT f.id, f.name, f.latitude AS lat, f.longitude AS lng, f.polygon, f.city
          FROM fields f
         WHERE (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
           AND f.deleted_at IS NULL
