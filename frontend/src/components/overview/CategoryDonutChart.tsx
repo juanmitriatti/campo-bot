@@ -157,7 +157,7 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
       </div>
 
       {chartData.length === 0 ? (
-        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-12">{emptyText}</p>
+        <p className="text-sm text-gray-400 dark:text-gray-300 text-center py-12">{emptyText}</p>
       ) : (
         <div className="flex flex-col lg:flex-row items-center gap-4">
           <div className="w-full lg:w-1/2 h-64 relative">
@@ -185,7 +185,7 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Total</span>
+              <span className="text-xs text-gray-500 dark:text-gray-300">Total</span>
               <span className="text-lg font-bold text-gray-800 dark:text-gray-100">{formatMoney(total, currency)}</span>
             </div>
           </div>
@@ -203,7 +203,7 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
                   </div>
                   <div className="text-right shrink-0">
                     <span className="font-medium text-gray-800 dark:text-gray-100">{formatMoney(d.value, currency)}</span>
-                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">({pct.toFixed(0)}%)</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-300 ml-1">({pct.toFixed(0)}%)</span>
                   </div>
                 </li>
               );

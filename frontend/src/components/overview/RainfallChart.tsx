@@ -21,7 +21,7 @@ export default function RainfallChart({ data }: { data: RainfallData[] }) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Lluvias - Últimos 30 días</h3>
-        <p className="text-sm text-gray-400 dark:text-gray-500 py-8 text-center">Sin registros de lluvia</p>
+        <p className="text-sm text-gray-400 dark:text-gray-300 py-8 text-center">Sin registros de lluvia</p>
       </div>
     );
   }

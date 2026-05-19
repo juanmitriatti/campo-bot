@@ -159,24 +159,24 @@ export default function HarvestLoadsTable() {
     <div className="p-4 md:p-6">
       <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Cosechas — cargas por camión</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-500">Chofer · kg · destinatario · humedad · calidad</span>
+        <span className="text-xs text-gray-400 dark:text-gray-300">Chofer · kg · destinatario · humedad · calidad</span>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded mb-4 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Desde</label>
           <input type="date" value={dateFrom}
             onChange={e => { setDateFrom(e.target.value); setPage(1); }}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Hasta</label>
           <input type="date" value={dateTo}
             onChange={e => { setDateTo(e.target.value); setPage(1); }}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Campo</label>
           <select value={fieldId}
             onChange={e => { setFieldId(e.target.value); setPlotId(''); setPage(1); }}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm">
@@ -185,7 +185,7 @@ export default function HarvestLoadsTable() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Lote</label>
           <select value={plotId}
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
             disabled={!fieldId}
@@ -195,21 +195,21 @@ export default function HarvestLoadsTable() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Chofer</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Chofer</label>
           <input type="text" value={driver}
             onChange={e => { setDriver(e.target.value); setPage(1); }}
             placeholder="Nombre"
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm w-32" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Destinatario</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Destinatario</label>
           <input type="text" value={destinatario}
             onChange={e => { setDestinatario(e.target.value); setPage(1); }}
             placeholder="Acopio / Cargill…"
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm w-40" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Cultivo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Cultivo</label>
           <select value={cropFilter}
             onChange={e => setCropFilter(e.target.value)}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm">
@@ -218,14 +218,14 @@ export default function HarvestLoadsTable() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Humedad mín %</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Humedad mín %</label>
           <input type="number" step="0.1" value={humMin}
             onChange={e => setHumMin(e.target.value)}
             placeholder="0"
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm w-20" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Humedad máx %</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Humedad máx %</label>
           <input type="number" step="0.1" value={humMax}
             onChange={e => setHumMax(e.target.value)}
             placeholder="∞"
@@ -239,7 +239,7 @@ export default function HarvestLoadsTable() {
         )}
       </div>
 
-      {loading && !data && <div className="text-sm text-gray-500 dark:text-gray-400">Cargando cosechas…</div>}
+      {loading && !data && <div className="text-sm text-gray-500 dark:text-gray-300">Cargando cosechas…</div>}
 
       {error && (
         <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded p-3 mb-3">
@@ -248,7 +248,7 @@ export default function HarvestLoadsTable() {
       )}
 
       {!loading && data && data.data.length === 0 && !error && (
-        <div className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
+        <div className="text-sm text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
           No hay cargas de cosecha. Pedile al bot:<br />
           <span className="font-mono text-gray-700 dark:text-gray-200">"coseché lote norte: Juan 28000kg al 14% hum, Pedro 31000kg para Cargill"</span>
         </div>
@@ -272,10 +272,10 @@ export default function HarvestLoadsTable() {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {sortedLoads.map(l => (
                 <tr key={l.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors align-top">
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">{formatDate(l.eventDate)}</td>
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">{formatDate(l.eventDate)}</td>
                   <td className="px-4 py-3 text-gray-800 dark:text-gray-100">
                     <div className="font-medium">{l.plotName || <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
-                    <div className="text-xs text-gray-400 dark:text-gray-500">
+                    <div className="text-xs text-gray-400 dark:text-gray-300">
                       {l.fieldName && <span>{l.fieldName}</span>}
                       {l.crop && <span> · {l.crop}</span>}
                     </div>
@@ -291,7 +291,7 @@ export default function HarvestLoadsTable() {
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden md:table-cell">
                     {l.destinatario || l.destination || <span className="text-gray-300 dark:text-gray-600">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell">
                     {l.truckPlate || <span className="text-gray-300 dark:text-gray-600">—</span>}
                   </td>
                 </tr>

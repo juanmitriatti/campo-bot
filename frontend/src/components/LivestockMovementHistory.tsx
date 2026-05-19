@@ -76,12 +76,12 @@ export default function LivestockMovementHistory({ group, onClose }: Props) {
               <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
                 Movimientos · {categoryLabel}
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-300">
                 {group.plot_name} · {group.field_name} · {group.count} animales
                 {group.breed && ` · ${group.breed}`}
               </p>
             </div>
-            <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
+            <button onClick={onClose} className="text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
           </div>
 
           {loading ? (
@@ -89,7 +89,7 @@ export default function LivestockMovementHistory({ group, onClose }: Props) {
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-campo-600" />
             </div>
           ) : movements.length === 0 ? (
-            <p className="text-center text-gray-500 dark:text-gray-400 py-8">No hay movimientos registrados</p>
+            <p className="text-center text-gray-500 dark:text-gray-300 py-8">No hay movimientos registrados</p>
           ) : (
             <div className="space-y-2">
               {movements.map(m => {
@@ -110,19 +110,19 @@ export default function LivestockMovementHistory({ group, onClose }: Props) {
                       <div>
                         <p className="text-sm text-gray-800 dark:text-gray-100">{sign}{m.count} animales</p>
                         {m.avg_weight_kg != null && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">~{m.avg_weight_kg} kg/cabeza</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-300">~{m.avg_weight_kg} kg/cabeza</p>
                         )}
                         {(m.unit_price_ars != null || m.unit_price_usd != null) && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                          <p className="text-xs text-gray-500 dark:text-gray-300">
                             {m.unit_price_ars != null && `$${m.unit_price_ars.toLocaleString('es-AR')} ARS`}
                             {m.unit_price_usd != null && ` US$${m.unit_price_usd.toLocaleString('es-AR')}`}
                           </p>
                         )}
-                        {m.reason && <p className="text-xs text-gray-500 dark:text-gray-400">{m.reason}</p>}
-                        {m.notes && <p className="text-xs text-gray-400 dark:text-gray-500 italic">{m.notes}</p>}
+                        {m.reason && <p className="text-xs text-gray-500 dark:text-gray-300">{m.reason}</p>}
+                        {m.notes && <p className="text-xs text-gray-400 dark:text-gray-300 italic">{m.notes}</p>}
                       </div>
                     </div>
-                    <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">{formatDate(m.movement_date)}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-300 whitespace-nowrap">{formatDate(m.movement_date)}</span>
                   </div>
                 );
               })}

@@ -59,7 +59,7 @@ export default function RecentFeed({ items, onItemClick }: RecentFeedProps) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-6">
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Actividad reciente</h3>
-        <p className="text-sm text-gray-400 dark:text-gray-500">Sin actividad reciente</p>
+        <p className="text-sm text-gray-400 dark:text-gray-300">Sin actividad reciente</p>
       </div>
     );
   }
@@ -89,7 +89,7 @@ export default function RecentFeed({ items, onItemClick }: RecentFeedProps) {
               <Icon className={`w-5 h-5 shrink-0 ${cfg.color}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-gray-800 dark:text-gray-100 truncate">{label}</p>
-                {location && <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{location}</p>}
+                {location && <p className="text-xs text-gray-400 dark:text-gray-300 truncate">{location}</p>}
               </div>
               <div className="text-right shrink-0">
                 {item.amount != null && (
@@ -97,7 +97,7 @@ export default function RecentFeed({ items, onItemClick }: RecentFeedProps) {
                     {item.type === 'expense' ? '-' : ''}{formatAmount(item.amount, item.currency || 'ARS')}
                   </p>
                 )}
-                <p className="text-xs text-gray-400 dark:text-gray-500">{timeAgo(item.date)}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-300">{timeAgo(item.date)}</p>
               </div>
             </li>
           );

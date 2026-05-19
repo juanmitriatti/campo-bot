@@ -157,7 +157,7 @@ export default function LivestockTable() {
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Campo</label>
           <select
             value={fieldId}
             onChange={e => { setFieldId(e.target.value); setPlotId(''); setPage(1); }}
@@ -168,7 +168,7 @@ export default function LivestockTable() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Lote</label>
           <select
             value={plotId}
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
@@ -181,7 +181,7 @@ export default function LivestockTable() {
         </div>
         {corrals.length > 0 && (
           <div className="flex flex-col">
-            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Corral</label>
+            <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Corral</label>
             <select
               value={corralId}
               onChange={e => { setCorralId(e.target.value); setPage(1); }}
@@ -193,7 +193,7 @@ export default function LivestockTable() {
           </div>
         )}
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Categoría</label>
           <select
             value={category}
             onChange={e => { setCategory(e.target.value); setPage(1); }}
@@ -224,7 +224,7 @@ export default function LivestockTable() {
 
       {/* Table */}
       {!data || data.items.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-12 text-gray-500 dark:text-gray-300">
           <p className="text-lg">{hasFilters ? 'No hay hacienda con estos filtros' : 'No tenés hacienda registrada'}</p>
           {!hasFilters && <p className="text-sm mt-1">Cargá animales por WhatsApp o Telegram con "agregué 20 vacas al lote norte"</p>}
         </div>
@@ -248,7 +248,7 @@ export default function LivestockTable() {
                   <tr key={group.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                     <td className="px-4 py-3">
                       <p className="text-gray-800 font-medium">{CATEGORY_LABELS[group.category] || group.category}</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 sm:hidden">
+                      <p className="text-xs text-gray-400 dark:text-gray-300 sm:hidden">
                         {group.corral_name ? `🔲 ${group.corral_name}` : group.plot_name} · {group.field_name}
                         {group.breed && ` · ${group.breed}`}
                       </p>

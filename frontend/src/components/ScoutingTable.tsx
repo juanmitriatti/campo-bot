@@ -172,27 +172,27 @@ export default function ScoutingTable() {
     <div className="p-4 md:p-6">
       <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Monitoreos del cultivo</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-500">Datos estructurados — fenología, malezas, plagas, densidad, emergencia, humedad</span>
+        <span className="text-xs text-gray-400 dark:text-gray-300">Datos estructurados — fenología, malezas, plagas, densidad, emergencia, humedad</span>
       </div>
 
       {aggregates && aggregates.total > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Total filtrados</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">Total filtrados</div>
             <div className="text-lg font-semibold">{aggregates.total}</div>
           </div>
           <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Cobertura malezas (prom)</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">Cobertura malezas (prom)</div>
             <div className="text-lg font-semibold">{aggregates.avgWeed != null ? `${aggregates.avgWeed}%` : '—'}</div>
           </div>
           <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Plaga más severa</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">Plaga más severa</div>
             <div className={`text-lg font-semibold ${severityColor(aggregates.maxSev)}`}>
               {aggregates.maxSev != null ? `${aggregates.maxSevSpecies || '—'} (${SEV_LABELS[aggregates.maxSev]})` : '—'}
             </div>
           </div>
           <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Densidad prom (pl/m²)</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">Densidad prom (pl/m²)</div>
             <div className="text-lg font-semibold">{aggregates.avgDensity != null ? aggregates.avgDensity : '—'}</div>
           </div>
         </div>
@@ -229,14 +229,14 @@ export default function ScoutingTable() {
         </button>
       </div>
 
-      {loading && <div className="text-sm text-gray-500 dark:text-gray-400">Cargando monitoreos…</div>}
+      {loading && <div className="text-sm text-gray-500 dark:text-gray-300">Cargando monitoreos…</div>}
 
       {error && (
         <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded p-3 mb-3">{error}</div>
       )}
 
       {!loading && filtered.length === 0 && !error && (
-        <div className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
+        <div className="text-sm text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
           No hay monitoreos. Pedile al bot:<br />
           <span className="font-mono text-gray-700 dark:text-gray-200">"soja V3 con 15% de rama negra y presencia leve de chinche"</span>
         </div>
@@ -246,7 +246,7 @@ export default function ScoutingTable() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+              <tr className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
                 <th onClick={() => toggleSort('date')} className="py-2 pr-3 cursor-pointer select-none hover:text-gray-700">Fecha{arrow('date')}</th>
                 <th onClick={() => toggleSort('plot')} className="py-2 pr-3 cursor-pointer select-none hover:text-gray-700">Lote{arrow('plot')}</th>
                 <th onClick={() => toggleSort('crop')} className="py-2 pr-3 hidden md:table-cell cursor-pointer select-none hover:text-gray-700">Cultivo{arrow('crop')}</th>
@@ -264,14 +264,14 @@ export default function ScoutingTable() {
                   <td className="py-2 pr-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{fmtDate(s.scoutingDate)}</td>
                   <td className="py-2 pr-3 text-gray-800 dark:text-gray-100">
                     <div className="font-medium">{s.plotName || '—'}</div>
-                    {s.fieldName && <div className="text-xs text-gray-400 dark:text-gray-500">{s.fieldName}</div>}
+                    {s.fieldName && <div className="text-xs text-gray-400 dark:text-gray-300">{s.fieldName}</div>}
                   </td>
                   <td className="py-2 pr-3 text-gray-600 hidden md:table-cell">{s.crop || '—'}</td>
                   <td className="py-2 pr-3 font-mono text-gray-800 dark:text-gray-100">{s.stageCode || '—'}</td>
                   <td className="py-2 pr-3 text-gray-700 dark:text-gray-200">
                     {s.weedCoveragePct != null ? <span>{s.weedCoveragePct}%</span> : '—'}
                     {s.weedSpecies && s.weedSpecies.length > 0 && (
-                      <div className="text-xs text-gray-400 dark:text-gray-500">{s.weedSpecies.join(', ')}</div>
+                      <div className="text-xs text-gray-400 dark:text-gray-300">{s.weedSpecies.join(', ')}</div>
                     )}
                   </td>
                   <td className="py-2 pr-3">
@@ -279,7 +279,7 @@ export default function ScoutingTable() {
                       <>
                         <div className={severityColor(s.pestSeverity)}>{s.pestSpecies}</div>
                         {s.pestSeverity != null && (
-                          <div className="text-xs text-gray-500 dark:text-gray-400">{SEV_LABELS[s.pestSeverity]} ({s.pestSeverity}/5){s.pestAffectedPct != null ? ` · ${s.pestAffectedPct}%` : ''}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-300">{SEV_LABELS[s.pestSeverity]} ({s.pestSeverity}/5){s.pestAffectedPct != null ? ` · ${s.pestAffectedPct}%` : ''}</div>
                         )}
                       </>
                     ) : '—'}
@@ -294,7 +294,7 @@ export default function ScoutingTable() {
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-300">
                 {sortedScoutings.length} monitoreos en total
               </p>
               <div className="flex items-center gap-2">

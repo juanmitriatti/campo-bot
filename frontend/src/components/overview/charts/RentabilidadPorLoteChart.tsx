@@ -42,7 +42,7 @@ export default function RentabilidadPorLoteChart({ expenses, incomes }: Props) {
       <div className="flex items-start justify-between mb-1 flex-wrap gap-2">
         <div>
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Rentabilidad por lote</h3>
-          <p className="text-xs text-gray-400 dark:text-gray-500">Margen neto (ingresos − gastos) · mes actual</p>
+          <p className="text-xs text-gray-400 dark:text-gray-300">Margen neto (ingresos − gastos) · mes actual</p>
         </div>
         <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
           {(['ARS', 'USD'] as const).map(c => (
@@ -59,7 +59,7 @@ export default function RentabilidadPorLoteChart({ expenses, incomes }: Props) {
       </div>
 
       {data.length === 0 ? (
-        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-12">Aún no hay gastos ni ingresos asignados a lotes este mes.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-300 text-center py-12">Aún no hay gastos ni ingresos asignados a lotes este mes.</p>
       ) : (
         <ResponsiveContainer width="100%" height={chartHeight}>
           <BarChart data={data} layout="vertical" margin={{ top: 5, right: 60, left: 10, bottom: 5 }}>

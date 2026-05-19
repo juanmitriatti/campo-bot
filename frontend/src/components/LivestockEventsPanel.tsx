@@ -172,17 +172,17 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
       {aggregates && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Eventos</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">Eventos</div>
             <div className="text-lg font-semibold">{aggregates.total}</div>
           </div>
           {type === 'weighing' && 'avgWeight' in aggregates && (
             <>
               <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
-                <div className="text-xs text-gray-500 dark:text-gray-400">Peso promedio</div>
+                <div className="text-xs text-gray-500 dark:text-gray-300">Peso promedio</div>
                 <div className="text-lg font-semibold">{aggregates.avgWeight != null ? `${aggregates.avgWeight} kg` : '—'}</div>
               </div>
               <div className="bg-gray-50 border border-gray-200 rounded p-3 col-span-2">
-                <div className="text-xs text-gray-500 dark:text-gray-400">GDPV (últimos 2)</div>
+                <div className="text-xs text-gray-500 dark:text-gray-300">GDPV (últimos 2)</div>
                 <div className="text-lg font-semibold">
                   {aggregates.gdpv
                     ? `${aggregates.gdpv.value.toFixed(2)} kg/día (${aggregates.gdpv.days}d)`
@@ -194,11 +194,11 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
           {type !== 'weighing' && 'animalsTotal' in aggregates && (
             <>
               <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
-                <div className="text-xs text-gray-500 dark:text-gray-400">Tipos distintos</div>
+                <div className="text-xs text-gray-500 dark:text-gray-300">Tipos distintos</div>
                 <div className="text-lg font-semibold">{aggregates.subtypes}</div>
               </div>
               <div className="bg-gray-50 border border-gray-200 rounded p-3 col-span-2">
-                <div className="text-xs text-gray-500 dark:text-gray-400">Animales totales</div>
+                <div className="text-xs text-gray-500 dark:text-gray-300">Animales totales</div>
                 <div className="text-lg font-semibold">{aggregates.animalsTotal}</div>
               </div>
             </>
@@ -208,7 +208,7 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
 
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded mb-4 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Campo</label>
           <select value={fieldId}
             onChange={e => { setFieldId(e.target.value); setPlotId(''); }}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm">
@@ -217,7 +217,7 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Lote</label>
           <select value={plotId}
             onChange={e => setPlotId(e.target.value)}
             disabled={!fieldId}
@@ -227,7 +227,7 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Categoría</label>
           <select value={category} onChange={e => setCategory(e.target.value)}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm">
             <option value="">Todas</option>
@@ -236,7 +236,7 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
         </div>
         {subtypeOptions && (
           <div className="flex flex-col">
-            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
+            <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Tipo</label>
             <select value={subtype} onChange={e => setSubtype(e.target.value)}
               className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm">
               <option value="">Todos</option>
@@ -245,12 +245,12 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
           </div>
         )}
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Desde</label>
           <input type="date" value={desde} onChange={e => setDesde(e.target.value)}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Hasta</label>
           <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
@@ -262,7 +262,7 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
         )}
       </div>
 
-      {loading && data.length === 0 && <div className="text-sm text-gray-500 dark:text-gray-400">Cargando…</div>}
+      {loading && data.length === 0 && <div className="text-sm text-gray-500 dark:text-gray-300">Cargando…</div>}
 
       {error && (
         <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded p-3 mb-3">
@@ -271,7 +271,7 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
       )}
 
       {!loading && data.length === 0 && !error && (
-        <div className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
+        <div className="text-sm text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
           {emptyHint}
         </div>
       )}
@@ -280,7 +280,7 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+              <tr className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
                 <th className="py-2 pr-3">Fecha</th>
                 {type === 'weighing' ? (
                   <>
@@ -341,14 +341,14 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
                         </td>
                       )}
                       {type === 'health_event' && (
-                        <td className="py-2 pr-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">
+                        <td className="py-2 pr-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell">
                           {e.implement || <span className="text-gray-300 dark:text-gray-600">—</span>}
                         </td>
                       )}
                     </>
                   )}
                   <td className="py-2 pr-3 text-gray-600 dark:text-gray-300">{describeLocation(e)}</td>
-                  <td className="py-2 pr-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">
+                  <td className="py-2 pr-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell">
                     {e.notes ? <span className="italic">{e.notes}</span> : <span className="text-gray-300 dark:text-gray-600">—</span>}
                   </td>
                 </tr>

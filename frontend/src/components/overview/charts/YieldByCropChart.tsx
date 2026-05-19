@@ -26,7 +26,7 @@ export default function YieldByCropChart({ data }: Props) {
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Rendimiento por cultivo (kg/ha promedio · 12 meses)</h3>
       {rows.length === 0 ? (
-        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-12">Aún no hay cosechas en los últimos 12 meses.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-300 text-center py-12">Aún no hay cosechas en los últimos 12 meses.</p>
       ) : (
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={rows} layout="vertical" margin={{ top: 5, right: 30, left: 30, bottom: 5 }}>

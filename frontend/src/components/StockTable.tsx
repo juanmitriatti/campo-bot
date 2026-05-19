@@ -162,7 +162,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Campo</label>
           <select
             value={fieldId}
             onChange={e => { setFieldId(e.target.value); setPage(1); }}
@@ -173,7 +173,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Depósito</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Depósito</label>
           <select
             value={warehouseId}
             onChange={e => { setWarehouseId(e.target.value); setPage(1); }}
@@ -188,7 +188,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Categoría</label>
           <select
             value={category}
             onChange={e => { setCategory(e.target.value); setPage(1); }}
@@ -199,7 +199,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Buscar</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Buscar</label>
           <input
             type="text"
             placeholder="Nombre del producto"
@@ -236,7 +236,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
 
       {/* Table */}
       {!data || data.items.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-12 text-gray-500 dark:text-gray-300">
           <p className="text-lg">{hasFilters ? 'No hay stock con estos filtros' : 'No tenes stock registrado'}</p>
           {!hasFilters && <p className="text-sm mt-1">Carga insumos por WhatsApp o Telegram con "cargue X de Y"</p>}
         </div>
@@ -311,7 +311,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
           {/* Pagination */}
           {data.totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">{data.total} productos en total</p>
+              <p className="text-sm text-gray-500 dark:text-gray-300">{data.total} productos en total</p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}

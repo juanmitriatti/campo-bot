@@ -35,11 +35,11 @@ export default function ObservationCard({ observation, onEdit }: Props) {
             <span className="text-xs bg-campo-100 dark:bg-campo-900/30 text-campo-800 dark:text-campo-300 px-1.5 py-0.5 rounded">
               {CATEGORY_LABELS[observation.category] || observation.category}
             </span>
-            <span className="text-xs text-gray-400 dark:text-gray-500">{formatDate(observation.created_at)}</span>
+            <span className="text-xs text-gray-400 dark:text-gray-300">{formatDate(observation.created_at)}</span>
           </div>
           <p className="text-sm text-gray-700 dark:text-gray-200">{observation.observation_text}</p>
           {location && (
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 truncate">{location}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-300 mt-1.5 truncate">{location}</p>
           )}
         </div>
         <button

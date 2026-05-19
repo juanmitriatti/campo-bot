@@ -237,7 +237,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Desde</label>
           <input
             type="date"
             value={dateFrom}
@@ -246,7 +246,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Hasta</label>
           <input
             type="date"
             value={dateTo}
@@ -255,7 +255,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Campo</label>
           <select
             value={fieldId}
             onChange={e => handleFieldChange(e.target.value)}
@@ -266,7 +266,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Lote</label>
           <select
             value={plotId}
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
@@ -278,7 +278,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoria</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Categoria</label>
           <select
             value={category}
             onChange={e => { setCategory(e.target.value); setPage(1); }}
@@ -289,7 +289,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Moneda</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Moneda</label>
           <select
             value={currencyFilter}
             onChange={e => { setCurrencyFilter(e.target.value); setPage(1); }}
@@ -301,7 +301,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Descripción</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Descripción</label>
           <input
             type="text"
             placeholder="Buscar..."
@@ -311,7 +311,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Monto mín</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Monto mín</label>
           <input
             type="number"
             placeholder="0"
@@ -321,7 +321,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Monto máx</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Monto máx</label>
           <input
             type="number"
             placeholder="∞"
@@ -342,7 +342,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
 
       {/* Content */}
       {!data || data.incomes.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-12 text-gray-500 dark:text-gray-300">
           <p className="text-lg">{hasFilters ? 'No hay ingresos con estos filtros' : 'No tenes ingresos todavia'}</p>
           {!hasFilters && <p className="text-sm mt-1">Los ingresos que registres por WhatsApp apareceran aca</p>}
         </div>
@@ -383,7 +383,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
                       ref={rowRef(inc.id) as unknown as React.Ref<HTMLTableRowElement>}
                       className={`transition-colors ${activeHighlight === inc.id ? 'bg-amber-50 dark:bg-amber-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
                     >
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">
                         {formatDate(inc.income_date)}
                       </td>
                       <td className="px-4 py-3">
@@ -409,7 +409,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
                       <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-green-700 dark:text-green-400">
                         {formatAmount(inc.amount, inc.currency)}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell whitespace-nowrap">
                         {inc.user_name || '-'}
                         {inc.edited_by_name && <span className="block text-gray-400">editado por {inc.edited_by_name}</span>}
                       </td>
@@ -431,7 +431,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
           {/* Pagination */}
           {data.totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-300">
                 {data.total} ingresos en total
               </p>
               <div className="flex items-center gap-2">

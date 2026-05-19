@@ -28,7 +28,7 @@ export default function LivestockTab() {
             className={`pb-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
               subTab === t.key
                 ? 'border-campo-600 text-campo-700 dark:text-campo-400'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-100'
+                : 'border-transparent text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-100'
             }`}
           >
             {t.label}

@@ -85,7 +85,7 @@ export default function FeedlotPanel() {
 
   if (feedlots.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+      <div className="text-center py-12 text-gray-500 dark:text-gray-300">
         <p className="text-lg">No tenés feedlots registrados</p>
         <p className="text-sm mt-1">Creá un feedlot por WhatsApp o Telegram con "crear feedlot en campo X"</p>
       </div>
@@ -104,14 +104,14 @@ export default function FeedlotPanel() {
               <p className="font-medium text-gray-800 dark:text-gray-100">
                 🏗️ {feedlot.name}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-300">
                 {feedlot.field_name}
                 {feedlot.capacity != null && ` · Cap: ${feedlot.capacity}`}
                 {' · '}{feedlot.corral_count} {feedlot.corral_count === 1 ? 'corral' : 'corrales'}
               </p>
             </div>
             <svg
-              className={`w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform ${expandedFeedlot === feedlot.id ? 'rotate-180' : ''}`}
+              className={`w-5 h-5 text-gray-400 dark:text-gray-300 transition-transform ${expandedFeedlot === feedlot.id ? 'rotate-180' : ''}`}
               fill="none" viewBox="0 0 24 24" stroke="currentColor"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -125,7 +125,7 @@ export default function FeedlotPanel() {
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-campo-600" />
                 </div>
               ) : (corrals[feedlot.id]?.length || 0) === 0 ? (
-                <p className="text-sm text-gray-400 dark:text-gray-500 py-2 pl-2">Sin corrales. Creá uno con "crear corral X"</p>
+                <p className="text-sm text-gray-400 dark:text-gray-300 py-2 pl-2">Sin corrales. Creá uno con "crear corral X"</p>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
@@ -142,7 +142,7 @@ export default function FeedlotPanel() {
                         <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">
                           {corral.capacity != null ? corral.capacity : <span className="text-gray-300 dark:text-gray-600">-</span>}
                         </td>
-                        <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">
+                        <td className="px-3 py-2 text-gray-500 dark:text-gray-300 hidden sm:table-cell">
                           {corral.notes || <span className="text-gray-300 dark:text-gray-600">-</span>}
                         </td>
                       </tr>

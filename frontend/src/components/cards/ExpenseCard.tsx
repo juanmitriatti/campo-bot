@@ -66,7 +66,7 @@ export default function ExpenseCard({ expense, onEdit }: Props) {
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-300 truncate">{expense.description || '-'}</p>
           {productLine && <p className="text-xs text-purple-700 mt-0.5 truncate">{productLine}</p>}
-          <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+          <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400 dark:text-gray-300">
             <span>{formatDate(expense.expense_date)}</span>
             {location && <><span>·</span><span className="truncate">{location}</span></>}
           </div>

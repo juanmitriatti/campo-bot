@@ -54,7 +54,7 @@ export default function FieldMap() {
         className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
       >
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Mis campos</h3>
-        <span className="text-gray-400 dark:text-gray-500 text-xs">{collapsed ? 'Mostrar' : 'Ocultar'}</span>
+        <span className="text-gray-400 dark:text-gray-300 text-xs">{collapsed ? 'Mostrar' : 'Ocultar'}</span>
       </button>
       {!collapsed && (
         <div style={{ height: window.innerWidth < 768 ? 300 : 400 }}>

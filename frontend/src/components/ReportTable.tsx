@@ -94,10 +94,10 @@ export default function ReportTable() {
     <div className="p-4 md:p-6">
       <div className="flex items-baseline justify-between mb-4">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Reportes agronómicos</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-500">PDFs generados desde el bot (se conservan 30 días)</span>
+        <span className="text-xs text-gray-400 dark:text-gray-300">PDFs generados desde el bot (se conservan 30 días)</span>
       </div>
 
-      {loading && <div className="text-sm text-gray-500 dark:text-gray-400">Cargando reportes…</div>}
+      {loading && <div className="text-sm text-gray-500 dark:text-gray-300">Cargando reportes…</div>}
 
       {error && (
         <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md p-3 mb-3">
@@ -106,7 +106,7 @@ export default function ReportTable() {
       )}
 
       {!loading && reports.length === 0 && !error && (
-        <div className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded-md p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
+        <div className="text-sm text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded-md p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
           Todavía no tenés reportes generados. Pedile al bot:
           <br />
           <span className="font-mono text-gray-700 dark:text-gray-200">"reporte agro del campo X"</span> o
@@ -118,7 +118,7 @@ export default function ReportTable() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+              <tr className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
                 <th className="py-2 pr-3">Alcance</th>
                 <th className="py-2 pr-3">Período</th>
                 <th className="py-2 pr-3 hidden md:table-cell">Generado</th>
@@ -130,7 +130,7 @@ export default function ReportTable() {
                 <tr key={r.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                   <td className="py-2 pr-3 text-gray-800 dark:text-gray-100">{scopeLabel(r)}</td>
                   <td className="py-2 pr-3 text-gray-600 dark:text-gray-300">{periodLabel(r)}</td>
-                  <td className="py-2 pr-3 text-gray-500 dark:text-gray-400 hidden md:table-cell">{formatDate(r.createdAt)}</td>
+                  <td className="py-2 pr-3 text-gray-500 dark:text-gray-300 hidden md:table-cell">{formatDate(r.createdAt)}</td>
                   <td className="py-2 pr-3 text-right">
                     <button
                       onClick={() => handleDownload(r)}

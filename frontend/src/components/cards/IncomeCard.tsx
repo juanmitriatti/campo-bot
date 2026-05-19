@@ -62,7 +62,7 @@ export default function IncomeCard({ income, onEdit }: Props) {
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-300 truncate">{income.description || '-'}</p>
           {quantityLine && <p className="text-xs text-emerald-700 mt-0.5 truncate">{quantityLine}</p>}
-          <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+          <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400 dark:text-gray-300">
             <span>{formatDate(income.income_date)}</span>
             {location && <><span>·</span><span className="truncate">{location}</span></>}
           </div>

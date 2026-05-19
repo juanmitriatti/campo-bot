@@ -261,7 +261,7 @@ export default function ChannelLinking() {
   };
 
   if (loading) {
-    return <div className="p-6 text-gray-500 dark:text-gray-400">Cargando…</div>;
+    return <div className="p-6 text-gray-500 dark:text-gray-300">Cargando…</div>;
   }
 
   function statusLabel(s: string): string {
@@ -279,7 +279,7 @@ export default function ChannelLinking() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Mi cuenta</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
           Vinculá tu WhatsApp y/o Telegram para usar el bot desde tus chats.
         </p>
       </div>
@@ -296,7 +296,7 @@ export default function ChannelLinking() {
                   ✅ Vinculado — <span className="font-mono">{status.phone_number}</span>
                 </p>
               ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">No vinculado</p>
+                <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">No vinculado</p>
               )}
             </div>
           </div>
@@ -343,7 +343,7 @@ export default function ChannelLinking() {
               className="w-full max-w-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
               disabled={waBusy}
             />
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-gray-500 dark:text-gray-300">
               Te vamos a mandar un código de 6 dígitos a este número.
             </p>
             {waError && <p className="text-xs text-red-600">{waError}</p>}
@@ -425,7 +425,7 @@ export default function ChannelLinking() {
                   ✅ Vinculado — <span className="font-mono">{status.telegram_id}</span>
                 </p>
               ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">No vinculado</p>
+                <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">No vinculado</p>
               )}
             </div>
           </div>
@@ -470,7 +470,7 @@ export default function ChannelLinking() {
                 >
                   Abrir Telegram y vincular
                 </a>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <p className="text-xs text-gray-500 dark:text-gray-300">
                   Tocá el botón. Se abre Telegram, tocás "Iniciar" y la cuenta queda vinculada automáticamente.
                 </p>
                 <button
@@ -498,7 +498,7 @@ export default function ChannelLinking() {
                   <p className="text-gray-700 dark:text-gray-200">
                     Plan actual: <span className="font-medium">{sub.plan?.display_name ?? '—'}</span>
                   </p>
-                  <p className="text-gray-500 dark:text-gray-400">
+                  <p className="text-gray-500 dark:text-gray-300">
                     Estado: <span className={`font-medium ${
                       sub.subscription.status === 'active' ? 'text-green-700' :
                       sub.subscription.status === 'trial' ? 'text-blue-700' :

@@ -45,7 +45,7 @@ export default function FeedlotWeightCurveChart({ groups }: Props) {
         )}
       </div>
       {groups.length === 0 ? (
-        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-12">No hay pesajes de animales en corrales.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-300 text-center py-12">No hay pesajes de animales en corrales.</p>
       ) : (
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={rows} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>

@@ -10,7 +10,7 @@ export default function FieldSelector({ fields, value, onChange }: Props) {
   if (fields.length === 0) return null;
   return (
     <div className="flex items-center gap-2">
-      <label className="text-xs text-gray-500 dark:text-gray-400">Campo:</label>
+      <label className="text-xs text-gray-500 dark:text-gray-300">Campo:</label>
       <select
         value={value ?? ''}
         onChange={(e) => onChange(Number(e.target.value))}

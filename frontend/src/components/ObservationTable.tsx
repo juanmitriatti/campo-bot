@@ -186,7 +186,7 @@ export default function ObservationTable() {
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Desde</label>
           <input
             type="date"
             value={dateFrom}
@@ -195,7 +195,7 @@ export default function ObservationTable() {
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Hasta</label>
           <input
             type="date"
             value={dateTo}
@@ -204,7 +204,7 @@ export default function ObservationTable() {
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Campo</label>
           <select
             value={fieldId}
             onChange={e => handleFieldChange(e.target.value)}
@@ -215,7 +215,7 @@ export default function ObservationTable() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Lote</label>
           <select
             value={plotId}
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
@@ -227,7 +227,7 @@ export default function ObservationTable() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Observación</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Observación</label>
           <input
             type="text"
             placeholder="Buscar texto..."
@@ -248,7 +248,7 @@ export default function ObservationTable() {
 
       {/* Content */}
       {!data || data.observations.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-12 text-gray-500 dark:text-gray-300">
           <p className="text-lg">{hasFilters ? 'No hay observaciones con estos filtros' : 'No tenes observaciones todavia'}</p>
           {!hasFilters && <p className="text-sm mt-1">Las observaciones que registres por WhatsApp apareceran aca</p>}
         </div>
@@ -292,13 +292,13 @@ export default function ObservationTable() {
                           {CATEGORY_LABELS[obs.category] || obs.category}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">
                         {formatDate(obs.created_at)}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell whitespace-nowrap">
                         {obs.user_name || '-'}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">
                         {obs.updated_at ? formatDate(obs.updated_at) : '-'}
                       </td>
                       <td className="px-4 py-3">
@@ -319,7 +319,7 @@ export default function ObservationTable() {
           {/* Pagination */}
           {data.totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-300">
                 {data.total} observaciones en total
               </p>
               <div className="flex items-center gap-2">

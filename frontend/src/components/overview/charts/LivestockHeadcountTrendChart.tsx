@@ -31,7 +31,7 @@ export default function LivestockHeadcountTrendChart({ data }: Props) {
       <h3 className="text-sm font-semibold text-gray-700 mb-1">Evolución de cabezas (delta mensual)</h3>
       <p className="text-xs text-gray-400 mb-3">Altas (+) y bajas (−) por categoría, 12 meses</p>
       {!hasAnything ? (
-        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-12">Sin movimientos en los últimos 12 meses.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-300 text-center py-12">Sin movimientos en los últimos 12 meses.</p>
       ) : (
         <ResponsiveContainer width="100%" height={300}>
           <AreaChart data={rows} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>

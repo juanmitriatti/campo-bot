@@ -233,7 +233,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Desde</label>
           <input
             type="date"
             value={dateFrom}
@@ -242,7 +242,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Hasta</label>
           <input
             type="date"
             value={dateTo}
@@ -251,7 +251,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Campo</label>
           <select
             value={fieldId}
             onChange={e => handleFieldChange(e.target.value)}
@@ -262,7 +262,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Lote</label>
           <select
             value={plotId}
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
@@ -274,7 +274,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Tipo</label>
           <select
             value={eventType}
             onChange={e => { setEventType(e.target.value); setPage(1); }}
@@ -285,7 +285,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Detalle</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Detalle</label>
           <input
             type="text"
             placeholder="producto, notas..."
@@ -306,7 +306,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
 
       {/* Content */}
       {!data || data.activities.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-12 text-gray-500 dark:text-gray-300">
           <p className="text-lg">{hasFilters ? 'No hay actividades con estos filtros' : 'No tenes actividades todavia'}</p>
           {!hasFilters && <p className="text-sm mt-1">Las actividades que registres por WhatsApp apareceran aca</p>}
         </div>
@@ -351,7 +351,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
                           {renderTypeLabel(a.event_type)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">
                         {formatDate(a.event_date)}
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
@@ -366,9 +366,9 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
                       <td className="px-4 py-3 max-w-xs">
                         <p className="truncate text-gray-800 dark:text-gray-100">{getDetail(a)}</p>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell whitespace-nowrap">
                         {a.user_name || '-'}
-                        {a.edited_by_name && <span className="block text-gray-400 dark:text-gray-500">editado por {a.edited_by_name}</span>}
+                        {a.edited_by_name && <span className="block text-gray-400 dark:text-gray-300">editado por {a.edited_by_name}</span>}
                       </td>
                       <td className="px-4 py-3">
                         <button
@@ -388,7 +388,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
           {/* Pagination */}
           {data.totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-300">
                 {data.total} actividades en total
               </p>
               <div className="flex items-center gap-2">

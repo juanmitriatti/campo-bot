@@ -46,7 +46,7 @@ const TYPE_LABELS: Record<string, { label: string; Icon: LucideIcon; color: stri
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  pending: { label: 'Procesando…', color: 'text-gray-500 dark:text-gray-400' },
+  pending: { label: 'Procesando…', color: 'text-gray-500 dark:text-gray-300' },
   processed: { label: 'Procesado', color: 'text-green-700 dark:text-green-400' },
   error: { label: 'Error', color: 'text-red-700 dark:text-red-400' },
 };
@@ -142,21 +142,21 @@ export default function DocumentsTable() {
     <div className="p-4 md:p-6">
       <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Documentos</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-500">Facturas, remitos, tickets — extraídos por IA desde tus chats</span>
+        <span className="text-xs text-gray-400 dark:text-gray-300">Facturas, remitos, tickets — extraídos por IA desde tus chats</span>
       </div>
 
       {stats && (
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Mostrados</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">Mostrados</div>
             <div className="text-lg font-semibold">{data?.total ?? 0}</div>
           </div>
           <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Procesados (pág.)</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">Procesados (pág.)</div>
             <div className="text-lg font-semibold">{stats.processed} / {data?.data.length}</div>
           </div>
           <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Total ARS (pág.)</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">Total ARS (pág.)</div>
             <div className="text-lg font-semibold">{formatAmount(stats.totalAmount)}</div>
           </div>
         </div>
@@ -164,7 +164,7 @@ export default function DocumentsTable() {
 
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded mb-4 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Tipo</label>
           <select
             value={filterType}
             onChange={e => { setFilterType(e.target.value); setPage(1); }}
@@ -177,13 +177,13 @@ export default function DocumentsTable() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Desde</label>
           <input type="date" value={filterDesde}
             onChange={e => { setFilterDesde(e.target.value); setPage(1); }}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Hasta</label>
           <input type="date" value={filterHasta}
             onChange={e => { setFilterHasta(e.target.value); setPage(1); }}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
@@ -196,7 +196,7 @@ export default function DocumentsTable() {
         )}
       </div>
 
-      {loading && !data && <div className="text-sm text-gray-500 dark:text-gray-400">Cargando documentos…</div>}
+      {loading && !data && <div className="text-sm text-gray-500 dark:text-gray-300">Cargando documentos…</div>}
 
       {error && (
         <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3 mb-3">
@@ -205,7 +205,7 @@ export default function DocumentsTable() {
       )}
 
       {!loading && data && data.data.length === 0 && !error && (
-        <div className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
+        <div className="text-sm text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
           No hay documentos. Mandale al bot una <strong>foto o PDF</strong> de una factura/remito por WhatsApp y aparece acá.
         </div>
       )}
@@ -233,7 +233,7 @@ export default function DocumentsTable() {
                 const ex = d.extracted_data;
                 return (
                   <tr key={d.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors align-top">
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">{formatDate(d.created_at)}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">{formatDate(d.created_at)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded ${t.color}`}>
                         <TIcon className="w-3.5 h-3.5" />
@@ -251,15 +251,15 @@ export default function DocumentsTable() {
                         ? formatAmount(ex.total_amount, ex.currency)
                         : <span className="text-gray-300 dark:text-gray-600">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden md:table-cell">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden md:table-cell">
                       {ex?.invoice_number && <div>#{ex.invoice_number}</div>}
-                      {ex?.date && <div className="text-gray-400 dark:text-gray-500">{ex.date}</div>}
+                      {ex?.date && <div className="text-gray-400 dark:text-gray-300">{ex.date}</div>}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell whitespace-nowrap">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell whitespace-nowrap">
                       <div className="truncate max-w-[180px]" title={d.original_filename || ''}>
                         {d.original_filename || `documento-${d.id}`}
                       </div>
-                      <div className="text-gray-400 dark:text-gray-500">{formatBytes(d.file_size_bytes)} · {d.source_channel}</div>
+                      <div className="text-gray-400 dark:text-gray-300">{formatBytes(d.file_size_bytes)} · {d.source_channel}</div>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-xs ${status.color}`}>{status.label}</span>
@@ -285,7 +285,7 @@ export default function DocumentsTable() {
 
           {data.totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">{data.total} documentos en total</p>
+              <p className="text-sm text-gray-500 dark:text-gray-300">{data.total} documentos en total</p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}

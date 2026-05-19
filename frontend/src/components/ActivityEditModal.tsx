@@ -146,9 +146,9 @@ export default function ActivityEditModal({ activity, onClose, onSaved }: Props)
 
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Campo</label>
               {loadingFields ? (
-                <p className="text-sm text-gray-400 dark:text-gray-500">Cargando...</p>
+                <p className="text-sm text-gray-400 dark:text-gray-300">Cargando...</p>
               ) : (
                 <select
                   value={selectedFieldId}
@@ -161,7 +161,7 @@ export default function ActivityEditModal({ activity, onClose, onSaved }: Props)
               )}
             </div>
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Lote</label>
               <select
                 value={selectedPlotId}
                 onChange={e => setSelectedPlotId(e.target.value ? Number(e.target.value) : '')}
@@ -177,27 +177,27 @@ export default function ActivityEditModal({ activity, onClose, onSaved }: Props)
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Tipo</label>
                 <select value={eventType} onChange={e => setEventType(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none">
                   {ACTIVITY_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Fecha</label>
                 <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cultivo</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Cultivo</label>
                 <input type="text" value={crop} onChange={e => setCrop(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
                   placeholder="Ej: Soja" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Producto</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Producto</label>
                 <input type="text" value={product} onChange={e => setProduct(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
                   placeholder="Ej: Glifosato" />
@@ -205,26 +205,26 @@ export default function ActivityEditModal({ activity, onClose, onSaved }: Props)
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cantidad</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Cantidad</label>
                 <input type="number" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
                   placeholder="Ej: 2.5" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Unidad</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Unidad</label>
                 <input type="text" value={unit} onChange={e => setUnit(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
                   placeholder="Ej: lt/ha" />
               </div>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Implemento</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Implemento</label>
               <input type="text" value={implement} onChange={e => setImplement(e.target.value)}
                 className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
                 placeholder="Ej: Pulverizadora" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Notas</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Notas</label>
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
                 className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none resize-none"
                 placeholder="Notas adicionales..." />
@@ -232,19 +232,19 @@ export default function ActivityEditModal({ activity, onClose, onSaved }: Props)
             {eventType === 'tacto' && (
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Preñadas</label>
+                  <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Preñadas</label>
                   <input type="number" value={pregnantCount} onChange={e => setPregnantCount(e.target.value)}
                     className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
                     placeholder="0" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Vacías</label>
+                  <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Vacías</label>
                   <input type="number" value={openCountVal} onChange={e => setOpenCountVal(e.target.value)}
                     className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
                     placeholder="0" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Dudosas</label>
+                  <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Dudosas</label>
                   <input type="number" value={uncertainCount} onChange={e => setUncertainCount(e.target.value)}
                     className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
                     placeholder="0" />

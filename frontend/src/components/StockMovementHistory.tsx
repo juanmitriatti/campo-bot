@@ -50,9 +50,9 @@ export default function StockMovementHistory({ item, onClose }: Props) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Movimientos de {item.name}</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Stock actual: {item.current_quantity} {item.unit}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-300">Stock actual: {item.current_quantity} {item.unit}</p>
             </div>
-            <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
+            <button onClick={onClose} className="text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
           </div>
 
           {loading ? (
@@ -60,7 +60,7 @@ export default function StockMovementHistory({ item, onClose }: Props) {
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-campo-600" />
             </div>
           ) : movements.length === 0 ? (
-            <p className="text-center text-gray-500 dark:text-gray-400 py-8">No hay movimientos registrados</p>
+            <p className="text-center text-gray-500 dark:text-gray-300 py-8">No hay movimientos registrados</p>
           ) : (
             <div className="space-y-2">
               {movements.map(m => {
@@ -74,10 +74,10 @@ export default function StockMovementHistory({ item, onClose }: Props) {
                       </span>
                       <div>
                         <p className="text-sm text-gray-800 dark:text-gray-100">{sign}{m.quantity} {item.unit}</p>
-                        {m.reason && <p className="text-xs text-gray-500 dark:text-gray-400">{m.reason}</p>}
+                        {m.reason && <p className="text-xs text-gray-500 dark:text-gray-300">{m.reason}</p>}
                       </div>
                     </div>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">{formatDate(m.movement_date)}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-300">{formatDate(m.movement_date)}</span>
                   </div>
                 );
               })}

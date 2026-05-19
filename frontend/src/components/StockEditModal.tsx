@@ -57,31 +57,31 @@ export default function StockEditModal({ item, onClose, onSaved }: Props) {
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Editar producto</h3>
-            <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
+            <button onClick={onClose} className="text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
           </div>
 
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Nombre</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Nombre</label>
               <input type="text" value={name} onChange={e => setName(e.target.value)}
                 className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Categoria</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Categoria</label>
                 <select value={category} onChange={e => setCategory(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none">
                   {STOCK_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Unidad</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Unidad</label>
                 <input type="text" value={unit} onChange={e => setUnit(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
               </div>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Stock minimo (alerta)</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Stock minimo (alerta)</label>
               <input type="number" step="0.01" value={minStock} onChange={e => setMinStock(e.target.value)} placeholder="Sin alerta"
                 className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
             </div>

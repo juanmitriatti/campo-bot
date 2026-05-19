@@ -94,7 +94,7 @@ export default function KpiCard({
                   className={`px-1.5 py-0.5 transition-colors ${
                     c === currency
                       ? 'bg-campo-600 text-white'
-                      : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                      : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                   }`}
                 >
                   {c}

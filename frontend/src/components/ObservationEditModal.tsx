@@ -74,11 +74,11 @@ export default function ObservationEditModal({ observation, onClose, onSaved }: 
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Editar observación</h3>
-            <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
+            <button onClick={onClose} className="text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
           </div>
 
           {/* Metadata */}
-          <div className="text-sm text-gray-500 dark:text-gray-400 mb-3 space-y-1">
+          <div className="text-sm text-gray-500 dark:text-gray-300 mb-3 space-y-1">
             {observation.field_name && <p>Campo: <span className="font-medium text-gray-700 dark:text-gray-200">{observation.field_name}</span></p>}
             {observation.plot_name && <p>Lote: <span className="font-medium text-gray-700 dark:text-gray-200">{observation.plot_name}</span></p>}
             <p>Categoría: <span className="font-medium text-gray-700 dark:text-gray-200">{observation.category}</span></p>

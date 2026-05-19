@@ -165,7 +165,7 @@ export default function LivestockHistoryPanel() {
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Campo</label>
           <select
             value={fieldId}
             onChange={e => { setFieldId(e.target.value); setPlotId(''); setPage(1); }}
@@ -176,7 +176,7 @@ export default function LivestockHistoryPanel() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Lote</label>
           <select
             value={plotId}
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
@@ -188,7 +188,7 @@ export default function LivestockHistoryPanel() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Categoría</label>
           <select
             value={category}
             onChange={e => { setCategory(e.target.value); setPage(1); }}
@@ -201,7 +201,7 @@ export default function LivestockHistoryPanel() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Tipo</label>
           <select
             value={movementType}
             onChange={e => { setMovementType(e.target.value); setPage(1); }}
@@ -214,12 +214,12 @@ export default function LivestockHistoryPanel() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Desde</label>
           <input type="date" value={desde} onChange={e => { setDesde(e.target.value); setPage(1); }}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Hasta</label>
           <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setPage(1); }}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
@@ -238,7 +238,7 @@ export default function LivestockHistoryPanel() {
 
       {/* Table */}
       {!data || data.items.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-12 text-gray-500 dark:text-gray-300">
           <p className="text-lg dark:text-gray-200">{hasFilters ? 'No hay movimientos con estos filtros' : 'No hay movimientos registrados'}</p>
         </div>
       ) : (
@@ -279,12 +279,12 @@ export default function LivestockHistoryPanel() {
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden md:table-cell">
                         {dest || <span className="text-gray-300 dark:text-gray-600">-</span>}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 hidden lg:table-cell">
                         {m.avg_weight_kg != null && <span className="mr-2">~{m.avg_weight_kg} kg</span>}
                         {m.unit_price_ars != null && <span className="mr-2">${m.unit_price_ars.toLocaleString('es-AR')} ARS</span>}
                         {m.unit_price_usd != null && <span className="mr-2">US${m.unit_price_usd.toLocaleString('es-AR')}</span>}
                         {m.reason && <span className="mr-2">{m.reason}</span>}
-                        {m.notes && <span className="italic text-gray-400 dark:text-gray-500">{m.notes}</span>}
+                        {m.notes && <span className="italic text-gray-400 dark:text-gray-300">{m.notes}</span>}
                         {(m.linked_expense_id || m.linked_income_id) && (
                           <div className="mt-1 text-[11px] text-campo-600">
                             {m.linked_expense_id && <>🔗 Gasto #{m.linked_expense_id}</>}
@@ -300,14 +300,14 @@ export default function LivestockHistoryPanel() {
           </div>
 
           {/* Mobile: show source/dest under row */}
-          <div className="md:hidden px-4 py-2 text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700">
+          <div className="md:hidden px-4 py-2 text-xs text-gray-400 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700">
             Ampliá la pantalla para ver origen/destino.
           </div>
 
           {/* Pagination */}
           {data.totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">{data.total} movimientos en total</p>
+              <p className="text-sm text-gray-500 dark:text-gray-300">{data.total} movimientos en total</p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
