@@ -26,7 +26,12 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       type: 'object',
       properties: {
         amount: { type: 'number', description: 'Monto. lucas=miles, palos=millones, mil=x1000.' },
-        category: { type: 'string', enum: [...EXPENSE_CATEGORIES], description: 'Categoría del gasto.' },
+        category: { type: 'string', description: 'Categoría del gasto. Debería corresponder a una de las categorías existentes del usuario (te las pasamos en el contexto). Si no encontrás match exacto, OMITÍ este parámetro y el sistema le va a preguntar al usuario.' },
+        category_match: {
+          type: 'string',
+          enum: ['exact', 'new'],
+          description: "Decisión sobre la categoría: 'exact' si el texto del usuario coincide LITERALMENTE (case-insensitive) con una categoría del listado del usuario. 'new' SOLO si el usuario pidió explícitamente crear una nueva categoría con un nombre dado (ej. 'creá la categoría X'). Si ninguna de las dos aplica, OMITÍ este parámetro y también omití 'category' — el sistema le va a preguntar al usuario.",
+        },
         description: { type: 'string', description: 'Descripción breve del gasto.' },
         currency: { type: 'string', enum: ['ARS', 'USD'], description: 'Moneda. Default ARS. "dólares/USD"→USD.' },
         expense_type: { type: 'string', enum: ['insumo', 'varios'], description: 'insumo=producto almacenable (Roundup,urea,semilla). varios=servicio/labranza (siembra directa,pulverización). Default: inferir de categoría.' },
@@ -48,7 +53,12 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       type: 'object',
       properties: {
         amount: { type: 'number', description: 'Monto total.' },
-        category: { type: 'string', enum: [...INCOME_CATEGORIES], description: 'Categoría del ingreso.' },
+        category: { type: 'string', description: 'Categoría del ingreso. Debería corresponder a una de las categorías existentes del usuario (te las pasamos en el contexto). Si no encontrás match exacto, OMITÍ este parámetro y el sistema le va a preguntar al usuario.' },
+        category_match: {
+          type: 'string',
+          enum: ['exact', 'new'],
+          description: "Decisión sobre la categoría del ingreso: 'exact' si el texto coincide LITERALMENTE con una existente. 'new' SOLO si el usuario pidió crear una nueva con un nombre dado. Si no, OMITÍ este parámetro y omití 'category' — el sistema le pregunta al usuario.",
+        },
         description: { type: 'string', description: 'Descripción breve del ingreso.' },
         currency: { type: 'string', enum: ['ARS', 'USD'], description: 'Moneda. Default ARS.' },
         quantity: { type: 'number', description: 'Cantidad vendida (ej: 30 tn).' },

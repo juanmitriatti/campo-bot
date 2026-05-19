@@ -45,11 +45,15 @@ describe('TOOL_DEFINITIONS', () => {
     }
   });
 
-  it('log_expense has enum for category with all expense categories', () => {
+  it('log_expense category is free-form string and has category_match enum', () => {
     const tool = TOOL_DEFINITIONS.find(t => t.name === 'log_expense')!;
-    const catProp = tool.input_schema.properties!.category as { enum: string[] };
-    expect(catProp.enum).toContain('Combustible');
-    expect(catProp.enum).toContain('Otros');
+    const catProp = tool.input_schema.properties!.category as { type: string; enum?: string[] };
+    expect(catProp.type).toBe('string');
+    expect(catProp.enum).toBeUndefined();
+
+    const matchProp = tool.input_schema.properties!.category_match as { type: string; enum: string[] };
+    expect(matchProp.enum).toContain('exact');
+    expect(matchProp.enum).toContain('new');
   });
 
   it('log_rainfall requires quantity', () => {
