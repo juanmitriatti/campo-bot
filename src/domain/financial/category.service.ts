@@ -1,4 +1,5 @@
 import type { CategoryRepository, CategoryKind, UserCategory } from './category.repository.js';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../../constants/agro-terms.js';
 
 export type MatchIntent = 'exact' | 'new' | 'unknown';
 
@@ -6,15 +7,11 @@ export type MatchResult =
   | { kind: 'matched'; category: UserCategory }
   | { kind: 'needs-confirmation'; suggestions: UserCategory[] };
 
-const DEFAULT_EXPENSE_CATEGORIES = [
-  'Semillas', 'Fertilizantes', 'Agroquímicos', 'Combustible',
-  'Sueldos', 'Maquinaria', 'Servicios', 'Insumos', 'Otros',
-];
-
-const DEFAULT_INCOME_CATEGORIES = [
-  'Venta de soja', 'Venta de maíz', 'Venta de trigo', 'Venta de girasol',
-  'Venta de hacienda', 'Arrendamiento', 'Otros',
-];
+// Bootstrap defaults reuse the project-wide canonical lists so the dashboard
+// filters and the new per-user catalog stay consistent. Users can add more
+// custom categories on top of these via the "Categorías" tab.
+const DEFAULT_EXPENSE_CATEGORIES: readonly string[] = EXPENSE_CATEGORIES;
+const DEFAULT_INCOME_CATEGORIES: readonly string[] = INCOME_CATEGORIES;
 
 export const TOP_N_FOR_PROMPT = 8;
 export const SUGGESTIONS_FOR_BUTTONS = 7;

@@ -70,13 +70,16 @@ describe('CategoryService.bootstrapDefaults', () => {
     svc = new CategoryService(repo);
   });
 
-  it('seeds 9 expense defaults on first call when listActive is empty', async () => {
+  it('seeds the project-wide expense defaults on first call when listActive is empty', async () => {
     await svc.bootstrapDefaults(1, 'expense');
-    expect(repo.create).toHaveBeenCalledTimes(9);
+    // Sourced from EXPENSE_CATEGORIES in agro-terms.ts (11 entries today).
+    expect(repo.create).toHaveBeenCalled();
     const inserted = vi.mocked(repo.create).mock.calls.map(([, , n]) => n);
     expect(inserted).toContain('Semillas');
     expect(inserted).toContain('Combustible');
     expect(inserted).toContain('Otros');
+    expect(inserted).toContain('Arrendamiento');
+    expect(inserted).toContain('Hacienda');
   });
 
   it('does nothing when the user already has categories', async () => {
