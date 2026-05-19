@@ -81,7 +81,7 @@ export default function KpiCard({
   const deltaSign = displayDelta != null && displayDelta >= 0 ? '+' : '';
 
   return (
-    <div className={`${tint} rounded-xl border border-gray-100 dark:border-gray-700 p-5 shadow-sm`}>
+    <div className={`${tint} dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 shadow-sm`}>
       <div className="flex items-center justify-between mb-3 gap-2">
         <span className="text-sm font-medium text-gray-600 dark:text-gray-300 truncate">{label}</span>
         <div className="flex items-center gap-2 shrink-0">
