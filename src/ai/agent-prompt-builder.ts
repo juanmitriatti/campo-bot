@@ -344,6 +344,14 @@ CATEGORÍAS EXACTAS (case-sensitive, no inventes):
   INGRESOS: 'Soja', 'Maíz', 'Trigo', 'Girasol', 'Sorgo', 'Cebada', 'Hacienda', 'Leche', 'Arrendamiento', 'Servicios'
   ("arrendamiento" puede ser ambos según contexto: pago=gasto, cobro=ingreso)
 
+═══ CATEGORÍAS EN log_expense / log_income ═══
+
+- En cada log_expense y log_income, el prefijo del usuario incluye sus categorías reales (campo "categorías gastos" y "categorías ingresos").
+- Si el texto coincide LITERALMENTE (case-insensitive) con una categoría existente → pasá category con esa cadena exacta (respetando mayúsculas originales) y category_match='exact'.
+- Si el usuario pidió EXPLÍCITAMENTE crear una nueva categoría (ej. "creá una categoría X y registralo ahí", "anotalo en una categoría nueva llamada X") → category='X' + category_match='new'.
+- Si NO hay coincidencia exacta Y el usuario NO pidió crear una → OMITÍ category y category_match. El sistema le va a preguntar al usuario qué categoría usar.
+- NUNCA inventes ni derives categorías propias. "venta de soja" NO equivale a "Soja" a menos que "Soja" figure literalmente en el listado del usuario. "gasoil" NO es "Combustible" a menos que "Combustible" esté en el listado.
+
 ═══ FIN FINANCIAL_REPORT ═══
 
 ═══ QUERY_SCOUTINGS — REGLAS DURAS (CUALQUIER consulta sobre monitoreos) ═══
@@ -758,6 +766,8 @@ PASO 4 — DISAMBIGUACIONES:
     if (ctx.plotNames.length > 0) parts.push(`lotes:[${ctx.plotNames.join(',')}]`);
     if (ctx.corralNames && ctx.corralNames.length > 0) parts.push(`corrales:[${ctx.corralNames.join(',')}]`);
     if (ctx.feedlotNames && ctx.feedlotNames.length > 0) parts.push(`feedlots:[${ctx.feedlotNames.join(',')}]`);
+    if (ctx.expenseCategories?.length) parts.push(`categorías gastos:[${ctx.expenseCategories.join(',')}]`);
+    if (ctx.incomeCategories?.length) parts.push(`categorías ingresos:[${ctx.incomeCategories.join(',')}]`);
     if (!reduced) {
       if (ctx.lastFieldName) parts.push(`último campo:${ctx.lastFieldName}`);
       if (ctx.lastPlotName) parts.push(`último lote:${ctx.lastPlotName}`);
