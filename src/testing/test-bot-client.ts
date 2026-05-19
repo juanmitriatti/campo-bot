@@ -41,7 +41,7 @@ export class TestBotClient {
 
   /** Register a new user (ignores 409 if already exists). */
   async register(email: string, password: string, name = 'Eval User'): Promise<void> {
-    const res = await this.fetchWithTimeout(`${this.baseUrl}/auth/register`, {
+    const res = await this.fetchWithTimeout(`${this.baseUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, last_name: 'Test', email, password }),
@@ -60,7 +60,7 @@ export class TestBotClient {
 
   /** Login and store JWT token + userId. */
   async login(email: string, password: string): Promise<void> {
-    const res = await this.fetchWithTimeout(`${this.baseUrl}/auth/login`, {
+    const res = await this.fetchWithTimeout(`${this.baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),

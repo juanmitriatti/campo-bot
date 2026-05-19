@@ -213,6 +213,28 @@ export async function dbHasObservation(client: TestBotClient, filter: DbObservat
   };
 }
 
+export interface DbCategoryFilter {
+  kind: string;
+  name: string;
+}
+
+/** Check that at least one user_category matches the filter for the current user. */
+export async function dbHasCategory(client: TestBotClient, filter: DbCategoryFilter): Promise<AssertionResult> {
+  const sql = `
+    SELECT COUNT(*)::int AS n FROM user_categories
+    WHERE user_id = $1 AND kind = $2 AND LOWER(name) = LOWER($3) AND deleted_at IS NULL
+  `;
+  const rows = await client.queryDb(sql, [client.userId, filter.kind, filter.name]);
+  const n = (rows[0] as { n: number }).n;
+  return {
+    pass: n > 0,
+    name: 'dbHasCategory',
+    message: n > 0
+      ? `Found category: kind=${filter.kind} name=${filter.name}`
+      : `No category matching kind=${filter.kind} name=${filter.name}`,
+  };
+}
+
 /** Verify exact row count in a table for the current user. */
 export async function dbRowCount(client: TestBotClient, table: string, expectedCount: number): Promise<AssertionResult> {
   // Sanitize table name to prevent injection

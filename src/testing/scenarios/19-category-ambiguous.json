@@ -1,0 +1,42 @@
+{
+  "name": "19-category-ambiguous",
+  "description": "Category picker: tap existing category → expense saved; tap + Otra → inline create → new category + expense saved",
+  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "steps": [
+    {
+      "send": "gasté 50000 en honorarios del contador",
+      "expect": {
+        "hasButtons": true,
+        "responseNotContains": ["registrad"]
+      }
+    },
+    {
+      "tapTitle": "Otros",
+      "expect": {
+        "responseContains": ["Otros"],
+        "dbExpense": { "amount": 50000, "category": "Otros" }
+      }
+    },
+    {
+      "send": "gasté 300000 en análisis de suelo del campo",
+      "expect": {
+        "hasButtons": true,
+        "responseNotContains": ["registrad"]
+      }
+    },
+    {
+      "tapTitle": "+ Otra",
+      "expect": {
+        "responseContains": ["cómo se llama"]
+      }
+    },
+    {
+      "send": "Análisis de suelo",
+      "expect": {
+        "responseContains": ["Análisis de suelo"],
+        "dbCategory": { "kind": "expense", "name": "Análisis de suelo" },
+        "dbExpense": { "category": "Análisis de suelo" }
+      }
+    }
+  ]
+}

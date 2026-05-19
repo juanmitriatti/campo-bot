@@ -276,8 +276,15 @@ export class AgentResponseMapper {
     const amount = typeof input.amount === 'number' ? input.amount : 0;
 
     if (amount > 0) {
-      const rawCategory = typeof input.category === 'string' ? input.category : '';
-      let category = matchCategory(rawCategory, EXPENSE_CATEGORIES) ?? 'Otros';
+      const rawCategory = typeof input.category === 'string' ? input.category.trim() : '';
+      const categoryMatch = typeof input.category_match === 'string' ? input.category_match : undefined;
+
+      // When the agent omits both category and category_match, it means "ask the user" →
+      // pass category='' and no category_match so CategoryService shows the picker buttons.
+      // When category is provided, try to normalize it against known constants first.
+      let category = rawCategory
+        ? (matchCategory(rawCategory, EXPENSE_CATEGORIES) ?? rawCategory)
+        : '';
       const currency: Currency = input.currency === 'USD' ? 'USD' : 'ARS';
       // Determine expense_type: explicit from agent, or infer from category, or infer from product
       let expenseType: 'insumo' | 'varios' = 'varios';
@@ -297,7 +304,7 @@ export class AgentResponseMapper {
         }
       }
 
-      const data: ParsedExpense & { field?: string; plot?: string } = {
+      const data: ParsedExpense & { field?: string; plot?: string; category_match?: string } = {
         type: 'expense',
         amount,
         category,
@@ -305,6 +312,7 @@ export class AgentResponseMapper {
         currency,
         expenseType,
       };
+      if (categoryMatch) (data as Record<string, unknown>).category_match = categoryMatch;
       if (typeof input.product === 'string') data.product = input.product;
       if (typeof input.quantity === 'number') data.quantity = input.quantity;
       if (typeof input.unit === 'string') data.unit = input.unit;
@@ -348,10 +356,15 @@ export class AgentResponseMapper {
     const amount = typeof input.amount === 'number' ? input.amount : 0;
 
     if (amount > 0) {
-      const rawCategory = typeof input.category === 'string' ? input.category : '';
-      const category = matchCategory(rawCategory, INCOME_CATEGORIES) ?? 'Otros';
+      const rawCategory = typeof input.category === 'string' ? input.category.trim() : '';
+      const categoryMatch = typeof input.category_match === 'string' ? input.category_match : undefined;
+      // When agent omits category → '' → CategoryService will show picker buttons.
+      // When category is provided, normalize against known constants; keep original if not found.
+      const category = rawCategory
+        ? (matchCategory(rawCategory, INCOME_CATEGORIES) ?? rawCategory)
+        : '';
       const currency: Currency = input.currency === 'USD' ? 'USD' : 'ARS';
-      const data: ParsedIncome & { field?: string; plot?: string } = {
+      const data: ParsedIncome & { field?: string; plot?: string; category_match?: string } = {
         type: 'income',
         amount,
         category,
@@ -361,6 +374,7 @@ export class AgentResponseMapper {
         unit: typeof input.unit === 'string' ? input.unit : null,
         unit_price: typeof input.unit_price === 'number' ? input.unit_price : null,
       };
+      if (categoryMatch) (data as Record<string, unknown>).category_match = categoryMatch;
       if (typeof input.field === 'string') data.field = input.field;
       if (typeof input.plot === 'string') data.plot = input.plot;
       if (typeof input.event_date === 'string') data.incomeDate = input.event_date;

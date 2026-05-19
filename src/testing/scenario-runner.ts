@@ -15,6 +15,7 @@ import {
   dbHasIncome,
   dbHasActivity,
   dbHasObservation,
+  dbHasCategory,
   dbRowCount,
   type AssertionResult,
 } from './assertions.js';
@@ -24,6 +25,8 @@ import {
 export interface ScenarioStep {
   send?: string;
   tap?: string;
+  /** Tap the button whose title matches this string (case-insensitive). Resolves the ID from the previous step's response. */
+  tapTitle?: string;
   wait?: number;
   expect?: StepExpect;
 }
@@ -40,6 +43,7 @@ export interface StepExpect {
   dbActivity?: { eventType?: string; crop?: string; plot?: string };
   dbObservation?: { textContains?: string; category?: string };
   dbRowCount?: { table: string; count: number };
+  dbCategory?: { kind: string; name: string };
 }
 
 export interface Scenario {
@@ -73,6 +77,8 @@ export class ScenarioRunner {
   private scenariosDir: string;
   private setupSequences: Map<string, ScenarioStep[]> = new Map();
   private verbose: boolean;
+  /** Holds the last SendResult so tapTitle can resolve button IDs from the previous response. */
+  private lastResult: SendResult | null = null;
 
   constructor(client: TestBotClient, scenariosDir: string, verbose = false) {
     this.client = client;
@@ -119,6 +125,7 @@ export class ScenarioRunner {
     try {
       // Reset user data
       await this.client.reset();
+      this.lastResult = null;
 
       // Run setup sequences
       if (scenario.setup) {
@@ -230,7 +237,21 @@ export class ScenarioRunner {
     } else if (step.tap) {
       action = `tap: "${step.tap}"`;
       result = await this.client.tap(step.tap);
+    } else if (step.tapTitle) {
+      // Resolve button ID by title from the previous response
+      const titleLower = step.tapTitle.toLowerCase();
+      const prevButtons = this.lastResult ? TestBotClient.allButtons(this.lastResult) : [];
+      const matched = prevButtons.find(b => b.title.toLowerCase() === titleLower);
+      if (!matched) {
+        const available = prevButtons.map(b => `"${b.title}"`).join(', ');
+        throw new Error(`tapTitle: no button titled "${step.tapTitle}" found in previous response. Available: [${available || 'none'}]`);
+      }
+      action = `tapTitle: "${step.tapTitle}" (id: ${matched.id.slice(0, 40)}...)`;
+      result = await this.client.tap(matched.id);
     }
+
+    // Track last result for tapTitle resolution
+    if (result) this.lastResult = result;
 
     if (this.verbose && result && stepIndex >= 0) {
       const preview = TestBotClient.allText(result).slice(0, 120);
@@ -274,6 +295,9 @@ export class ScenarioRunner {
       }
       if (e.dbRowCount) {
         assertions.push(await dbRowCount(this.client, e.dbRowCount.table, e.dbRowCount.count));
+      }
+      if (e.dbCategory) {
+        assertions.push(await dbHasCategory(this.client, e.dbCategory));
       }
     }
 

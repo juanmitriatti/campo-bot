@@ -73,7 +73,11 @@ describe('AgentResponseMapper', () => {
       expect(parsed[0].missingFields).toContain('amount');
     });
 
-    it('defaults unknown category to Otros', () => {
+    it('preserves non-standard category name for DB lookup (category picker flow)', () => {
+      // When agent sends a category not in the hardcoded EXPENSE_CATEGORIES list and no
+      // category_match, the mapper now passes the original name through so that
+      // CategoryService can look it up in the user's custom category table and show the
+      // picker buttons if it's not found there.
       const result = makeResult([{
         toolName: 'log_expense',
         toolInput: { amount: 1000, category: 'Almuerzo', description: 'almuerzo' },
@@ -82,7 +86,7 @@ describe('AgentResponseMapper', () => {
 
       const parsed = mapper.mapToParseResults(result, 'almuerzo');
       if (parsed[0].intent.type === 'expense') {
-        expect(parsed[0].intent.data.category).toBe('Otros');
+        expect(parsed[0].intent.data.category).toBe('Almuerzo');
       }
     });
   });

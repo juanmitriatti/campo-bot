@@ -1471,6 +1471,7 @@ router.post('/reset', async (req: Request, res: Response) => {
     await client.query(`DELETE FROM fields WHERE user_id = $1`, [numericUserId]);
 
     // Layer 5: non-FK user data
+    await client.query(`DELETE FROM user_categories WHERE user_id = $1`, [numericUserId]);
     await client.query(`DELETE FROM budgets WHERE user_id = $1`, [numericUserId]);
     await client.query(`DELETE FROM unparsed_messages WHERE user_id = $1`, [numericUserId]);
     await client.query(`DELETE FROM ai_usage WHERE user_id = $1`, [numericUserId]);
