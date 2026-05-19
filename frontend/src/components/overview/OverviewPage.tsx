@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useOverviewTab } from '../../hooks/useOverviewTab';
 import { useUserFields } from '../../hooks/useUserFields';
 import { useSelectedField } from '../../hooks/useSelectedField';
+import { useDashboardData } from '../../hooks/useDashboardData';
 import OverviewTabs from './OverviewTabs';
 import OverviewSummaryView from './OverviewSummaryView';
 import OverviewAgronomicView from './OverviewAgronomicView';
@@ -11,17 +12,26 @@ import OverviewLivestockView from './OverviewLivestockView';
 import FieldSelector from './FieldSelector';
 import SubscriptionBanner from './SubscriptionBanner';
 import EmailVerifyBanner from './EmailVerifyBanner';
+import AlertsBanner from './AlertsBanner';
 
 interface OverviewPageProps {
   onGoToAccount?: () => void;
   onRecentItemClick?: (type: 'expense' | 'income' | 'activity', id: number) => void;
+  onGoToStock?: (opts: { lowStockOnly: boolean }) => void;
+  onGoToLivestock?: () => void;
 }
 
-export default function OverviewPage({ onGoToAccount, onRecentItemClick }: OverviewPageProps = {}) {
+export default function OverviewPage({
+  onGoToAccount,
+  onRecentItemClick,
+  onGoToStock,
+  onGoToLivestock,
+}: OverviewPageProps = {}) {
   const { features } = useAuth();
   const [tab, setTab] = useOverviewTab();
   const { fields, loading: fieldsLoading } = useUserFields();
   const [fieldId, setFieldId] = useSelectedField();
+  const { data: dashData } = useDashboardData(fieldId);
 
   const showAgronomic = features.includes('agronomy');
   const showLivestock = features.includes('livestock');
@@ -46,6 +56,13 @@ export default function OverviewPage({ onGoToAccount, onRecentItemClick }: Overv
 
   return (
     <div className="space-y-6">
+      <AlertsBanner
+        stockAlerts={dashData?.stock_alerts_count}
+        livestockTotal={dashData?.livestock_total}
+        onStockClick={onGoToStock ? () => onGoToStock({ lowStockOnly: true }) : undefined}
+        onLivestockClick={onGoToLivestock}
+      />
+
       <EmailVerifyBanner />
       <SubscriptionBanner onGoToAccount={onGoToAccount ?? (() => {})} />
 

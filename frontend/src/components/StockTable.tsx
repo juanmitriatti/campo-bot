@@ -54,7 +54,11 @@ const STOCK_CATEGORIES: Record<string, string> = {
   otros: 'Otros',
 };
 
-export default function StockTable() {
+interface StockTableProps {
+  initialLowStockOnly?: boolean;
+}
+
+export default function StockTable({ initialLowStockOnly = false }: StockTableProps = {}) {
   const [data, setData] = useState<PaginatedResponse | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -67,7 +71,7 @@ export default function StockTable() {
   const [fieldId, setFieldId] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
   const [category, setCategory] = useState('');
-  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [lowStockOnly, setLowStockOnly] = useState(initialLowStockOnly);
   const [search, setSearch] = useState('');
 
   const limit = 15;

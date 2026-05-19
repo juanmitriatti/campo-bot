@@ -38,6 +38,9 @@ export default function Dashboard() {
   // When the user clicks a row in the overview "Actividad reciente" feed,
   // we remember which row to scroll-to + highlight in the target table.
   const [highlight, setHighlight] = useState<{ view: DashboardView; id: number } | null>(null);
+  // When the user clicks the "stock bajo" alert in the overview banner,
+  // open the Stock tab with the low-stock filter pre-checked.
+  const [stockLowStockOnly, setStockLowStockOnly] = useState(false);
 
   useEffect(() => {
     const required = viewFeatureMap[view];
@@ -52,6 +55,16 @@ export default function Dashboard() {
     setView(target);
   };
 
+  const handleGoToStock = ({ lowStockOnly }: { lowStockOnly: boolean }) => {
+    setStockLowStockOnly(lowStockOnly);
+    setView('stock');
+  };
+
+  const handleGoToLivestock = () => {
+    setStockLowStockOnly(false);
+    setView('livestock');
+  };
+
   // Once we navigate into the target view, consume the highlight after the
   // child table renders so it doesn't persist on next visit.
   const highlightForView = highlight?.view === view ? highlight.id : undefined;
@@ -61,7 +74,14 @@ export default function Dashboard() {
   const renderContent = () => {
     switch (view) {
       case 'overview':
-        return <OverviewPage onGoToAccount={() => setView('account')} onRecentItemClick={handleRecentItemClick} />;
+        return (
+          <OverviewPage
+            onGoToAccount={() => setView('account')}
+            onRecentItemClick={handleRecentItemClick}
+            onGoToStock={handleGoToStock}
+            onGoToLivestock={handleGoToLivestock}
+          />
+        );
       case 'expenses':
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -101,7 +121,7 @@ export default function Dashboard() {
       case 'stock':
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <StockTable />
+            <StockTable initialLowStockOnly={stockLowStockOnly} />
           </div>
         );
       case 'livestock':

@@ -5,7 +5,6 @@ import KpiCard from './KpiCard';
 import RentabilidadPorLoteChart from './charts/RentabilidadPorLoteChart';
 import CategoryDonutChart from './CategoryDonutChart';
 import RecentFeed from './RecentFeed';
-import AlertsBanner from './AlertsBanner';
 import FieldMap from './FieldMap';
 
 interface Props {
@@ -100,7 +99,6 @@ export default function OverviewSummaryView({ fieldId, onRecentItemClick }: Prop
         </div>
       )}
 
-      <AlertsBanner stockAlerts={data.stock_alerts_count} livestockTotal={data.livestock_total} />
     </div>
   );
 }
