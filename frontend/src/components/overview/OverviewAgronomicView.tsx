@@ -1,6 +1,5 @@
 import { useAgronomicAnalyticsData } from '../../hooks/useAgronomicAnalyticsData';
 import RainfallYieldTrendChart from './charts/RainfallYieldTrendChart';
-import ScoutingFieldMap from './charts/ScoutingFieldMap';
 import YieldByCropChart from './charts/YieldByCropChart';
 import HarvestQualityVsHumidityScatter from './charts/HarvestQualityVsHumidityScatter';
 
@@ -33,16 +32,7 @@ export default function OverviewAgronomicView({ fieldId }: Props) {
   return (
     <div className="space-y-6">
       <RainfallYieldTrendChart rainfall={data.rainfallMonthly} harvests={data.harvestsMonthly} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-8">
-          <ScoutingFieldMap scoutings={data.scoutingByPlot} />
-        </div>
-        <div className="lg:col-span-4">
-          <YieldByCropChart data={data.yieldByCrop} />
-        </div>
-      </div>
-
+      <YieldByCropChart data={data.yieldByCrop} />
       <HarvestQualityVsHumidityScatter loads={data.harvestQualityLoads} />
     </div>
   );
