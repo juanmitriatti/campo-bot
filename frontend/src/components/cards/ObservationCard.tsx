@@ -28,18 +28,18 @@ export default function ObservationCard({ observation, onEdit }: Props) {
   const location = [observation.field_name, observation.plot_name].filter(Boolean).join(', ');
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs bg-campo-100 text-campo-800 px-1.5 py-0.5 rounded">
+            <span className="text-xs bg-campo-100 dark:bg-campo-900/30 text-campo-800 dark:text-campo-300 px-1.5 py-0.5 rounded">
               {CATEGORY_LABELS[observation.category] || observation.category}
             </span>
-            <span className="text-xs text-gray-400">{formatDate(observation.created_at)}</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">{formatDate(observation.created_at)}</span>
           </div>
-          <p className="text-sm text-gray-700">{observation.observation_text}</p>
+          <p className="text-sm text-gray-700 dark:text-gray-200">{observation.observation_text}</p>
           {location && (
-            <p className="text-xs text-gray-400 mt-1.5 truncate">{location}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 truncate">{location}</p>
           )}
         </div>
         <button

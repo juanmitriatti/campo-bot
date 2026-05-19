@@ -38,17 +38,17 @@ import { Receipt, FileText, Calculator, Paperclip } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 const TYPE_LABELS: Record<string, { label: string; Icon: LucideIcon; color: string }> = {
-  factura: { label: 'Factura', Icon: Receipt, color: 'bg-blue-100 text-blue-800' },
-  remito: { label: 'Remito', Icon: FileText, color: 'bg-amber-100 text-amber-800' },
-  ticket: { label: 'Ticket', Icon: Calculator, color: 'bg-purple-100 text-purple-800' },
-  recibo: { label: 'Recibo', Icon: Receipt, color: 'bg-green-100 text-green-800' },
-  otro: { label: 'Otro', Icon: Paperclip, color: 'bg-gray-100 text-gray-700' },
+  factura: { label: 'Factura', Icon: Receipt, color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' },
+  remito: { label: 'Remito', Icon: FileText, color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' },
+  ticket: { label: 'Ticket', Icon: Calculator, color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' },
+  recibo: { label: 'Recibo', Icon: Receipt, color: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' },
+  otro: { label: 'Otro', Icon: Paperclip, color: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300' },
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  pending: { label: 'Procesando…', color: 'text-gray-500' },
-  processed: { label: 'Procesado', color: 'text-green-700' },
-  error: { label: 'Error', color: 'text-red-700' },
+  pending: { label: 'Procesando…', color: 'text-gray-500 dark:text-gray-400' },
+  processed: { label: 'Procesado', color: 'text-green-700 dark:text-green-400' },
+  error: { label: 'Error', color: 'text-red-700 dark:text-red-400' },
 };
 
 function formatBytes(bytes: number): string {
@@ -141,34 +141,34 @@ export default function DocumentsTable() {
   return (
     <div className="p-4 md:p-6">
       <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gray-800">Documentos</h2>
-        <span className="text-xs text-gray-400">Facturas, remitos, tickets — extraídos por IA desde tus chats</span>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Documentos</h2>
+        <span className="text-xs text-gray-400 dark:text-gray-500">Facturas, remitos, tickets — extraídos por IA desde tus chats</span>
       </div>
 
       {stats && (
         <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="bg-gray-50 border border-gray-200 rounded p-3">
-            <div className="text-xs text-gray-500">Mostrados</div>
+          <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
+            <div className="text-xs text-gray-500 dark:text-gray-400">Mostrados</div>
             <div className="text-lg font-semibold">{data?.total ?? 0}</div>
           </div>
-          <div className="bg-gray-50 border border-gray-200 rounded p-3">
-            <div className="text-xs text-gray-500">Procesados (pág.)</div>
+          <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
+            <div className="text-xs text-gray-500 dark:text-gray-400">Procesados (pág.)</div>
             <div className="text-lg font-semibold">{stats.processed} / {data?.data.length}</div>
           </div>
-          <div className="bg-gray-50 border border-gray-200 rounded p-3">
-            <div className="text-xs text-gray-500">Total ARS (pág.)</div>
+          <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
+            <div className="text-xs text-gray-500 dark:text-gray-400">Total ARS (pág.)</div>
             <div className="text-lg font-semibold">{formatAmount(stats.totalAmount)}</div>
           </div>
         </div>
       )}
 
-      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded mb-4 text-sm">
+      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded mb-4 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Tipo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
           <select
             value={filterType}
             onChange={e => { setFilterType(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             <option value="">Todos</option>
             {types.map(t => (
@@ -177,16 +177,16 @@ export default function DocumentsTable() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
           <input type="date" value={filterDesde}
             onChange={e => { setFilterDesde(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
           <input type="date" value={filterHasta}
             onChange={e => { setFilterHasta(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         {hasFilters && (
           <button onClick={clearFilters}
@@ -196,7 +196,7 @@ export default function DocumentsTable() {
         )}
       </div>
 
-      {loading && !data && <div className="text-sm text-gray-500">Cargando documentos…</div>}
+      {loading && !data && <div className="text-sm text-gray-500 dark:text-gray-400">Cargando documentos…</div>}
 
       {error && (
         <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3 mb-3">
@@ -205,61 +205,61 @@ export default function DocumentsTable() {
       )}
 
       {!loading && data && data.data.length === 0 && !error && (
-        <div className="text-sm text-gray-500 bg-gray-50 rounded p-6 text-center border border-dashed border-gray-300">
+        <div className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
           No hay documentos. Mandale al bot una <strong>foto o PDF</strong> de una factura/remito por WhatsApp y aparece acá.
         </div>
       )}
 
       {data && data.data.length > 0 && (
-        <div className="overflow-x-auto bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Proveedor</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600">Monto</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">N° / Fecha doc</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Archivo</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Estado</th>
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Fecha</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Tipo</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Proveedor</th>
+                <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Monto</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden md:table-cell">N° / Fecha doc</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden lg:table-cell">Archivo</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Estado</th>
                 <th className="px-4 py-3 w-24" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {data.data.map(d => {
                 const t = TYPE_LABELS[d.document_type] || TYPE_LABELS.otro;
                 const TIcon = t.Icon;
                 const status = STATUS_LABELS[d.processing_status] || { label: d.processing_status, color: 'text-gray-500' };
                 const ex = d.extracted_data;
                 return (
-                  <tr key={d.id} className="hover:bg-gray-50 transition-colors align-top">
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(d.created_at)}</td>
+                  <tr key={d.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors align-top">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">{formatDate(d.created_at)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded ${t.color}`}>
                         <TIcon className="w-3.5 h-3.5" />
                         {t.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-800">
-                      {ex?.vendor || <span className="text-gray-300">—</span>}
+                    <td className="px-4 py-3 text-gray-800 dark:text-gray-100">
+                      {ex?.vendor || <span className="text-gray-300 dark:text-gray-600">—</span>}
                       {d.linked_expense_id != null && (
                         <span className="block text-xs text-campo-600 mt-1">🔗 Vinculado a gasto #{d.linked_expense_id}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-gray-800">
+                    <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-gray-800 dark:text-gray-100">
                       {typeof ex?.total_amount === 'number'
                         ? formatAmount(ex.total_amount, ex.currency)
-                        : <span className="text-gray-300">—</span>}
+                        : <span className="text-gray-300 dark:text-gray-600">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs hidden md:table-cell">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden md:table-cell">
                       {ex?.invoice_number && <div>#{ex.invoice_number}</div>}
-                      {ex?.date && <div className="text-gray-400">{ex.date}</div>}
+                      {ex?.date && <div className="text-gray-400 dark:text-gray-500">{ex.date}</div>}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell whitespace-nowrap">
                       <div className="truncate max-w-[180px]" title={d.original_filename || ''}>
                         {d.original_filename || `documento-${d.id}`}
                       </div>
-                      <div className="text-gray-400">{formatBytes(d.file_size_bytes)} · {d.source_channel}</div>
+                      <div className="text-gray-400 dark:text-gray-500">{formatBytes(d.file_size_bytes)} · {d.source_channel}</div>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-xs ${status.color}`}>{status.label}</span>
@@ -284,21 +284,21 @@ export default function DocumentsTable() {
           </table>
 
           {data.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-              <p className="text-sm text-gray-500">{data.total} documentos en total</p>
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-500 dark:text-gray-400">{data.total} documentos en total</p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 dark:text-gray-200 dark:bg-gray-800 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Anterior
                 </button>
-                <span className="text-sm text-gray-600">{page} / {data.totalPages}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">{page} / {data.totalPages}</span>
                 <button
                   onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
                   disabled={page >= data.totalPages}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 dark:text-gray-200 dark:bg-gray-800 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Siguiente
                 </button>

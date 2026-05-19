@@ -40,11 +40,11 @@ function calcDelta(current: number, previous: number): number | null {
 
 function CurrencyRow({ amount, prev, currency }: { amount: number; prev: number; currency: Currency }) {
   const d = calcDelta(amount, prev);
-  const dColor = d != null && d >= 0 ? 'text-green-600' : 'text-red-600';
+  const dColor = d != null && d >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
   const dSign = d != null && d >= 0 ? '+' : '';
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <span className="text-xl font-bold text-gray-900">{formatMoney(amount, currency)}</span>
+      <span className="text-xl font-bold text-gray-900 dark:text-gray-100">{formatMoney(amount, currency)}</span>
       {d != null && isFinite(d) && (
         <span className={`text-[11px] ${dColor}`}>
           {dSign}{Math.round(d)}%
@@ -77,16 +77,16 @@ export default function KpiCard({
     displayDelta = calcDelta(v.current, v.prev);
   }
 
-  const deltaColor = displayDelta != null && displayDelta >= 0 ? 'text-green-600' : 'text-red-600';
+  const deltaColor = displayDelta != null && displayDelta >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
   const deltaSign = displayDelta != null && displayDelta >= 0 ? '+' : '';
 
   return (
-    <div className={`${tint} rounded-xl border border-gray-100 p-5 shadow-sm`}>
+    <div className={`${tint} rounded-xl border border-gray-100 dark:border-gray-700 p-5 shadow-sm`}>
       <div className="flex items-center justify-between mb-3 gap-2">
-        <span className="text-sm font-medium text-gray-600 truncate">{label}</span>
+        <span className="text-sm font-medium text-gray-600 dark:text-gray-300 truncate">{label}</span>
         <div className="flex items-center gap-2 shrink-0">
           {currencies && !isDual && (
-            <div className="inline-flex rounded-md border border-gray-200 overflow-hidden bg-white/70 text-[10px] font-semibold">
+            <div className="inline-flex rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden bg-white/70 dark:bg-gray-700/70 text-[10px] font-semibold">
               {(['ARS', 'USD'] as const).map(c => (
                 <button
                   key={c}
@@ -94,7 +94,7 @@ export default function KpiCard({
                   className={`px-1.5 py-0.5 transition-colors ${
                     c === currency
                       ? 'bg-campo-600 text-white'
-                      : 'text-gray-500 hover:bg-gray-50'
+                      : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
                   }`}
                 >
                   {c}
@@ -113,7 +113,7 @@ export default function KpiCard({
         </div>
       ) : (
         <>
-          <p className="text-2xl font-bold text-gray-900">{displayValue}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{displayValue}</p>
           {displayDelta != null && isFinite(displayDelta) && (
             <p className={`text-xs mt-1 ${deltaColor}`}>
               {deltaSign}{Math.round(displayDelta)}% vs mes anterior

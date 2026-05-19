@@ -79,7 +79,7 @@ export default function SubscriptionBanner({ onGoToAccount }: { onGoToAccount: (
     const days = daysUntil(current_period_end);
     if (days < 0) return null;
     return (
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
         <div className="flex items-center gap-2">
           <span>🛑</span>
           <span>

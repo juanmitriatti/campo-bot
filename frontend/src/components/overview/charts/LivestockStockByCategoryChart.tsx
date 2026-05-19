@@ -9,10 +9,10 @@ export default function LivestockStockByCategoryChart({ data }: Props) {
   const total = data.reduce((s, r) => s + r.headcount, 0);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Stock por categoría</h3>
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Stock por categoría</h3>
       {data.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-12">Aún no hay hacienda registrada.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-12">Aún no hay hacienda registrada.</p>
       ) : (
         <div className="h-56 relative">
           <ResponsiveContainer width="100%" height="100%">
@@ -24,7 +24,7 @@ export default function LivestockStockByCategoryChart({ data }: Props) {
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-xs text-gray-500">Total</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Total</span>
             <span className="text-lg font-bold text-gray-800">{total}</span>
           </div>
         </div>

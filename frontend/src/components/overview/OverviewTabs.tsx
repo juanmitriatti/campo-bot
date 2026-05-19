@@ -18,7 +18,7 @@ export default function OverviewTabs({ active, onChange, showAgronomic, showLive
   if (showLivestock) tabs.push({ key: 'ganadero', label: 'Ganadero' });
 
   return (
-    <div className="flex items-center gap-1 border-b border-gray-200">
+    <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">
       {tabs.map(t => {
         const isActive = t.key === active;
         return (
@@ -30,8 +30,8 @@ export default function OverviewTabs({ active, onChange, showAgronomic, showLive
             className={[
               'px-3 py-2 text-sm font-medium transition-colors -mb-px',
               isActive
-                ? 'border-b-2 border-campo-600 text-campo-700'
-                : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700',
+                ? 'border-b-2 border-campo-600 text-campo-700 dark:text-campo-400'
+                : 'border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-100',
             ].join(' ')}
           >
             {t.label}

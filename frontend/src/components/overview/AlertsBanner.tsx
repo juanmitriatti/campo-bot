@@ -37,7 +37,7 @@ export default function AlertsBanner({
     items.push({
       Icon: AlertTriangle,
       text: `${stockAlerts} producto${stockAlerts > 1 ? 's' : ''} con stock bajo`,
-      color: 'text-amber-700 bg-amber-50 border-amber-200 hover:bg-amber-100',
+      color: 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/40',
       onClick: onStockClick,
     });
   }
@@ -46,7 +46,7 @@ export default function AlertsBanner({
     items.push({
       Icon: Beef,
       text: `${new Intl.NumberFormat('es-AR').format(livestockTotal)} animales en total`,
-      color: 'text-campo-700 bg-campo-50 border-campo-200 hover:bg-campo-100',
+      color: 'text-campo-700 dark:text-campo-300 bg-campo-50 dark:bg-campo-900/30 border-campo-200 dark:border-campo-800 hover:bg-campo-100 dark:hover:bg-campo-900/40',
       onClick: onLivestockClick,
     });
   }

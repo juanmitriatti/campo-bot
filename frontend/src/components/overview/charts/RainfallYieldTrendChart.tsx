@@ -54,10 +54,10 @@ export default function RainfallYieldTrendChart({ rainfall, harvests }: Props) {
   const hasAnything = rainfall.some(r => r.mm > 0) || harvests.some(h => h.yieldKgPerHa != null);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Lluvias y rendimiento (12 meses)</h3>
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Lluvias y rendimiento (12 meses)</h3>
       {!hasAnything ? (
-        <p className="text-sm text-gray-400 text-center py-12">Aún no hay lluvias ni cosechas en los últimos 12 meses.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-12">Aún no hay lluvias ni cosechas en los últimos 12 meses.</p>
       ) : (
         <ResponsiveContainer width="100%" height={280}>
           <ComposedChart data={data} margin={{ top: 5, right: 30, left: 0, bottom: 0 }}>

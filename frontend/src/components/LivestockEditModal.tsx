@@ -52,36 +52,36 @@ export default function LivestockEditModal({ group, onClose, onSaved }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md">
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">Editar grupo · {categoryLabel}</h3>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Editar grupo · {categoryLabel}</h3>
+            <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
           </div>
 
-          <p className="text-xs text-gray-500 mb-4">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
             Cantidad actual: <strong>{group.count} animales</strong>.
             Para cambiar la cantidad usá los comandos del bot (agregué/vendí/transferí/etc).
           </p>
 
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Raza</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Raza</label>
               <input type="text" value={breed} onChange={e => setBreed(e.target.value)}
                 placeholder="Ej: Angus, Hereford..."
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
+                className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Peso promedio (kg)</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Peso promedio (kg)</label>
               <input type="number" step="0.1" value={avgWeight} onChange={e => setAvgWeight(e.target.value)}
                 placeholder="Sin promedio"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
+                className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Notas</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Notas</label>
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
                 placeholder="Observaciones del grupo..."
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none resize-none" />
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none resize-none dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600" />
             </div>
           </div>
 
@@ -89,7 +89,7 @@ export default function LivestockEditModal({ group, onClose, onSaved }: Props) {
 
           <div className="flex justify-end gap-2 mt-4">
             <button onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md hover:bg-gray-50">
+              className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
               Cancelar
             </button>
             <button onClick={handleSave} disabled={saving}

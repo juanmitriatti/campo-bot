@@ -57,19 +57,19 @@ function timeAgo(dateStr: string): string {
 export default function RecentFeed({ items, onItemClick }: RecentFeedProps) {
   if (!items.length) {
     return (
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Actividad reciente</h3>
-        <p className="text-sm text-gray-400">Sin actividad reciente</p>
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-6">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Actividad reciente</h3>
+        <p className="text-sm text-gray-400 dark:text-gray-500">Sin actividad reciente</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
       <div className="px-5 pt-5 pb-3">
-        <h3 className="text-sm font-semibold text-gray-700">Actividad reciente</h3>
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Actividad reciente</h3>
       </div>
-      <ul className="divide-y divide-gray-50">
+      <ul className="divide-y divide-gray-50 dark:divide-gray-700">
         {items.map((item, i) => {
           const cfg = TYPE_CONFIG[item.type] || TYPE_CONFIG.activity;
           const label = item.type === 'activity'
@@ -83,13 +83,13 @@ export default function RecentFeed({ items, onItemClick }: RecentFeedProps) {
             <li
               key={`${item.type}-${item.id}-${i}`}
               onClick={clickable ? () => onItemClick!(item.type, item.id) : undefined}
-              className={`flex items-center gap-3 px-5 py-3 ${clickable ? 'cursor-pointer hover:bg-gray-50 transition-colors' : ''}`}
+              className={`flex items-center gap-3 px-5 py-3 ${clickable ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors' : ''}`}
               title={clickable ? 'Ver detalle' : undefined}
             >
               <Icon className={`w-5 h-5 shrink-0 ${cfg.color}`} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-800 truncate">{label}</p>
-                {location && <p className="text-xs text-gray-400 truncate">{location}</p>}
+                <p className="text-sm text-gray-800 dark:text-gray-100 truncate">{label}</p>
+                {location && <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{location}</p>}
               </div>
               <div className="text-right shrink-0">
                 {item.amount != null && (
@@ -97,7 +97,7 @@ export default function RecentFeed({ items, onItemClick }: RecentFeedProps) {
                     {item.type === 'expense' ? '-' : ''}{formatAmount(item.amount, item.currency || 'ARS')}
                   </p>
                 )}
-                <p className="text-xs text-gray-400">{timeAgo(item.date)}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">{timeAgo(item.date)}</p>
               </div>
             </li>
           );

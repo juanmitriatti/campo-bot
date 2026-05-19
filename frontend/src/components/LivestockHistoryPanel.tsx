@@ -61,13 +61,13 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const TYPE_LABELS: Record<string, { Icon: LucideIcon; label: string; color: string }> = {
-  entrada: { Icon: ArrowDownToLine, label: 'Entrada', color: 'bg-green-100 text-green-800' },
-  salida: { Icon: ArrowUpFromLine, label: 'Salida', color: 'bg-red-100 text-red-800' },
-  transferencia: { Icon: ArrowLeftRight, label: 'Transferencia', color: 'bg-blue-100 text-blue-800' },
-  muerte: { Icon: Skull, label: 'Muerte', color: 'bg-gray-200 text-gray-800' },
-  nacimiento: { Icon: Egg, label: 'Nacimiento', color: 'bg-yellow-100 text-yellow-800' },
-  recategorizacion: { Icon: Repeat, label: 'Recategorización', color: 'bg-purple-100 text-purple-800' },
-  ajuste: { Icon: BarChart3, label: 'Ajuste', color: 'bg-indigo-100 text-indigo-800' },
+  entrada: { Icon: ArrowDownToLine, label: 'Entrada', color: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' },
+  salida: { Icon: ArrowUpFromLine, label: 'Salida', color: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' },
+  transferencia: { Icon: ArrowLeftRight, label: 'Transferencia', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' },
+  muerte: { Icon: Skull, label: 'Muerte', color: 'bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200' },
+  nacimiento: { Icon: Egg, label: 'Nacimiento', color: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300' },
+  recategorizacion: { Icon: Repeat, label: 'Recategorización', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' },
+  ajuste: { Icon: BarChart3, label: 'Ajuste', color: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300' },
 };
 
 const MOVEMENT_TYPES = Object.keys(TYPE_LABELS);
@@ -153,7 +153,7 @@ export default function LivestockHistoryPanel() {
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-700 text-sm">
+      <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md p-4 text-red-700 dark:text-red-300 text-sm">
         {error}
         <button onClick={fetchMovements} className="ml-2 underline">Reintentar</button>
       </div>
@@ -163,36 +163,36 @@ export default function LivestockHistoryPanel() {
   return (
     <div>
       {/* Filter bar */}
-      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm">
+      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
           <select
             value={fieldId}
             onChange={e => { setFieldId(e.target.value); setPlotId(''); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             <option value="">Todos</option>
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
           <select
             value={plotId}
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
             disabled={!fieldId}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:bg-gray-100"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm disabled:bg-gray-100 dark:disabled:bg-gray-700"
           >
             <option value="">Todos</option>
             {plotsForField.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Categoría</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
           <select
             value={category}
             onChange={e => { setCategory(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             <option value="">Todas</option>
             {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
@@ -201,11 +201,11 @@ export default function LivestockHistoryPanel() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Tipo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
           <select
             value={movementType}
             onChange={e => { setMovementType(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             <option value="">Todos</option>
             {MOVEMENT_TYPES.map(t => (
@@ -214,14 +214,14 @@ export default function LivestockHistoryPanel() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
           <input type="date" value={desde} onChange={e => { setDesde(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
           <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         {hasFilters && (
           <button
@@ -238,24 +238,24 @@ export default function LivestockHistoryPanel() {
 
       {/* Table */}
       {!data || data.items.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          <p className="text-lg">{hasFilters ? 'No hay movimientos con estos filtros' : 'No hay movimientos registrados'}</p>
+        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+          <p className="text-lg dark:text-gray-200">{hasFilters ? 'No hay movimientos con estos filtros' : 'No hay movimientos registrados'}</p>
         </div>
       ) : (
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Cantidad</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Origen</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Destino</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Detalle</th>
+                <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Fecha</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Tipo</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Cantidad</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden md:table-cell">Origen</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden md:table-cell">Destino</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden lg:table-cell">Detalle</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {data.items.map(m => {
                   const typeInfo = TYPE_LABELS[m.movement_type];
                   const TypeIcon = typeInfo?.Icon;
@@ -264,27 +264,27 @@ export default function LivestockHistoryPanel() {
                   const source = describeEndpoint(m, 'source');
                   const dest = describeEndpoint(m, 'dest');
                   return (
-                    <tr key={m.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{formatDate(m.movement_date)}</td>
+                    <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{formatDate(m.movement_date)}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded ${typeColor}`}>
                           {TypeIcon && <TypeIcon className="w-3.5 h-3.5" />}
                           {typeLabel}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-800">{m.count}</td>
-                      <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                        {source || <span className="text-gray-300">-</span>}
+                      <td className="px-4 py-3 text-right font-medium text-gray-800 dark:text-gray-100">{m.count}</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden md:table-cell">
+                        {source || <span className="text-gray-300 dark:text-gray-600">-</span>}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                        {dest || <span className="text-gray-300">-</span>}
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden md:table-cell">
+                        {dest || <span className="text-gray-300 dark:text-gray-600">-</span>}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">
                         {m.avg_weight_kg != null && <span className="mr-2">~{m.avg_weight_kg} kg</span>}
                         {m.unit_price_ars != null && <span className="mr-2">${m.unit_price_ars.toLocaleString('es-AR')} ARS</span>}
                         {m.unit_price_usd != null && <span className="mr-2">US${m.unit_price_usd.toLocaleString('es-AR')}</span>}
                         {m.reason && <span className="mr-2">{m.reason}</span>}
-                        {m.notes && <span className="italic text-gray-400">{m.notes}</span>}
+                        {m.notes && <span className="italic text-gray-400 dark:text-gray-500">{m.notes}</span>}
                         {(m.linked_expense_id || m.linked_income_id) && (
                           <div className="mt-1 text-[11px] text-campo-600">
                             {m.linked_expense_id && <>🔗 Gasto #{m.linked_expense_id}</>}
@@ -300,14 +300,14 @@ export default function LivestockHistoryPanel() {
           </div>
 
           {/* Mobile: show source/dest under row */}
-          <div className="md:hidden px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
+          <div className="md:hidden px-4 py-2 text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700">
             Ampliá la pantalla para ver origen/destino.
           </div>
 
           {/* Pagination */}
           {data.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-              <p className="text-sm text-gray-500">{data.total} movimientos en total</p>
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-500 dark:text-gray-400">{data.total} movimientos en total</p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -316,7 +316,7 @@ export default function LivestockHistoryPanel() {
                 >
                   Anterior
                 </button>
-                <span className="text-sm text-gray-600">{page} / {data.totalPages}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">{page} / {data.totalPages}</span>
                 <button
                   onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
                   disabled={page >= data.totalPages}

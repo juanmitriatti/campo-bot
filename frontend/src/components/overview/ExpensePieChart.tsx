@@ -17,7 +17,7 @@ const CustomTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   const { name, value } = payload[0];
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-2 shadow-lg text-sm">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 shadow-lg text-sm">
       <p className="font-semibold">{name}</p>
       <p>{formatCompact(value)}</p>
     </div>
@@ -27,9 +27,9 @@ const CustomTooltip = ({ active, payload }: any) => {
 export default function ExpensePieChart({ data }: { data: CategoryData[] }) {
   if (!data || data.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Gastos por categoria</h3>
-        <p className="text-sm text-gray-400 text-center py-8">Sin gastos este mes</p>
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Gastos por categoria</h3>
+        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin gastos este mes</p>
       </div>
     );
   }
@@ -37,8 +37,8 @@ export default function ExpensePieChart({ data }: { data: CategoryData[] }) {
   const chartData = data.map(d => ({ name: d.category, value: d.total }));
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Gastos por categoria</h3>
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Gastos por categoria</h3>
       <ResponsiveContainer width="100%" height={250}>
         <PieChart>
           <Pie

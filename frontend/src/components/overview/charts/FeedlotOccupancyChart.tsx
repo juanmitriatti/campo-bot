@@ -10,10 +10,10 @@ function occupancyColor(pct: number): string {
 
 export default function FeedlotOccupancyChart({ data }: Props) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Ocupación de corrales</h3>
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Ocupación de corrales</h3>
       {data.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-12">Sin corrales.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-12">Sin corrales.</p>
       ) : (
         <ul className="space-y-2 max-h-56 overflow-y-auto">
           {data.map(c => {

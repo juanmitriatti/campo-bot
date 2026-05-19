@@ -145,7 +145,7 @@ export default function LivestockTable() {
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-700 text-sm">
+      <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md p-4 text-red-700 dark:text-red-300 text-sm">
         {error}
         <button onClick={fetchLivestock} className="ml-2 underline">Reintentar</button>
       </div>
@@ -155,25 +155,25 @@ export default function LivestockTable() {
   return (
     <div>
       {/* Filter bar */}
-      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm">
+      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
           <select
             value={fieldId}
             onChange={e => { setFieldId(e.target.value); setPlotId(''); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             {fields.length !== 1 && <option value="">Todos</option>}
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
           <select
             value={plotId}
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
             disabled={!fieldId}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:bg-gray-100"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm disabled:bg-gray-100 dark:disabled:bg-gray-700"
           >
             {plotsForField.length !== 1 && <option value="">Todos</option>}
             {plotsForField.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -181,11 +181,11 @@ export default function LivestockTable() {
         </div>
         {corrals.length > 0 && (
           <div className="flex flex-col">
-            <label className="text-xs text-gray-500 mb-1">Corral</label>
+            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Corral</label>
             <select
               value={corralId}
               onChange={e => { setCorralId(e.target.value); setPage(1); }}
-              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+              className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
             >
               <option value="">Todos</option>
               {corrals.map(c => <option key={c.id} value={c.id}>{c.name}{c.field_name ? ` (${c.field_name})` : ''}</option>)}
@@ -193,11 +193,11 @@ export default function LivestockTable() {
           </div>
         )}
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Categoría</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
           <select
             value={category}
             onChange={e => { setCategory(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             <option value="">Todas</option>
             {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
@@ -217,14 +217,14 @@ export default function LivestockTable() {
 
       {/* Totals banner */}
       {data && data.items.length > 0 && (
-        <div className="px-4 py-2 bg-campo-50 border-b border-campo-100 text-sm text-campo-800">
+        <div className="px-4 py-2 bg-campo-50 dark:bg-campo-900/30 border-b border-campo-100 dark:border-campo-800 text-sm text-campo-800 dark:text-campo-300">
           Total: <strong>{data.totalAnimals}</strong> animales en <strong>{data.totalGroups}</strong> {data.totalGroups === 1 ? 'grupo' : 'grupos'}
         </div>
       )}
 
       {/* Table */}
       {!data || data.items.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
           <p className="text-lg">{hasFilters ? 'No hay hacienda con estos filtros' : 'No tenés hacienda registrada'}</p>
           {!hasFilters && <p className="text-sm mt-1">Cargá animales por WhatsApp o Telegram con "agregué 20 vacas al lote norte"</p>}
         </div>
@@ -233,39 +233,39 @@ export default function LivestockTable() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Categoría</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Cantidad</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Ubicación</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Campo</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Raza</th>
+                <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Categoría</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Cantidad</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden sm:table-cell">Ubicación</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden md:table-cell">Campo</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden lg:table-cell">Raza</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Peso prom.</th>
                   <th className="px-4 py-3 w-32" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {data.items.map(group => (
-                  <tr key={group.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={group.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                     <td className="px-4 py-3">
                       <p className="text-gray-800 font-medium">{CATEGORY_LABELS[group.category] || group.category}</p>
-                      <p className="text-xs text-gray-400 sm:hidden">
+                      <p className="text-xs text-gray-400 dark:text-gray-500 sm:hidden">
                         {group.corral_name ? `🔲 ${group.corral_name}` : group.plot_name} · {group.field_name}
                         {group.breed && ` · ${group.breed}`}
                       </p>
                     </td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-800">
+                    <td className="px-4 py-3 text-right font-medium text-gray-800 dark:text-gray-100">
                       {group.count}
                     </td>
-                    <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden sm:table-cell">
                       {group.corral_name
                         ? <span>🔲 {group.corral_name}</span>
                         : group.plot_name}
                     </td>
-                    <td className="px-4 py-3 text-gray-600 hidden md:table-cell">{group.field_name}</td>
-                    <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden md:table-cell">{group.field_name}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden lg:table-cell">
                       {group.breed || <span className="text-gray-300">-</span>}
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-600 hidden lg:table-cell">
+                    <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300 hidden lg:table-cell">
                       {group.avg_weight_kg != null
                         ? <span>{group.avg_weight_kg} kg</span>
                         : <span className="text-gray-300">-</span>}
@@ -294,7 +294,7 @@ export default function LivestockTable() {
 
           {/* Pagination */}
           {data.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
               <p className="text-sm text-gray-500">{data.totalGroups} grupos en total</p>
               <div className="flex items-center gap-2">
                 <button
@@ -304,7 +304,7 @@ export default function LivestockTable() {
                 >
                   Anterior
                 </button>
-                <span className="text-sm text-gray-600">{page} / {data.totalPages}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">{page} / {data.totalPages}</span>
                 <button
                   onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
                   disabled={page >= data.totalPages}

@@ -29,7 +29,7 @@ export default function EmailVerifyBanner() {
   };
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-300">
       <div className="flex items-center gap-2">
         <span>📧</span>
         <span>

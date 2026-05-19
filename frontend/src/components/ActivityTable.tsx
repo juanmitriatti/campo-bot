@@ -221,7 +221,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-700 text-sm">
+      <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md p-4 text-red-700 dark:text-red-300 text-sm">
         {error}
         <button onClick={fetchActivities} className="ml-2 underline">Reintentar</button>
       </div>
@@ -231,67 +231,67 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
   return (
     <div>
       {/* Filter bar */}
-      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm">
+      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
           <input
             type="date"
             value={dateFrom}
             onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
           <input
             type="date"
             value={dateTo}
             onChange={e => { setDateTo(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
           <select
             value={fieldId}
             onChange={e => handleFieldChange(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             <option value="">Todos</option>
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
           <select
             value={plotId}
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
             disabled={!fieldId}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:opacity-40"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm disabled:opacity-40"
           >
             <option value="">Todos</option>
             {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Tipo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
           <select
             value={eventType}
             onChange={e => { setEventType(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             <option value="">Todos</option>
             {ACTIVITY_TYPE_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Detalle</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Detalle</label>
           <input
             type="text"
             placeholder="producto, notas..."
             value={detailSearch}
             onChange={e => setDetailSearch(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm min-w-[160px]"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm min-w-[160px]"
           />
         </div>
         {hasFilters && (
@@ -306,7 +306,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
 
       {/* Content */}
       {!data || data.activities.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
           <p className="text-lg">{hasFilters ? 'No hay actividades con estos filtros' : 'No tenes actividades todavia'}</p>
           {!hasFilters && <p className="text-sm mt-1">Las actividades que registres por WhatsApp apareceran aca</p>}
         </div>
@@ -328,47 +328,47 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th onClick={() => toggleSort('type')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Tipo{arrow('type')}</th>
-                    <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Fecha{arrow('date')}</th>
-                    <th onClick={() => toggleSort('field')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Campo{arrow('field')}</th>
-                    <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Lote{arrow('plot')}</th>
-                    <th onClick={() => toggleSort('crop')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Cultivo{arrow('crop')}</th>
-                    <th onClick={() => toggleSort('product')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Detalle{arrow('product')}</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
+                  <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                    <th onClick={() => toggleSort('type')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Tipo{arrow('type')}</th>
+                    <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Fecha{arrow('date')}</th>
+                    <th onClick={() => toggleSort('field')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Campo{arrow('field')}</th>
+                    <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Lote{arrow('plot')}</th>
+                    <th onClick={() => toggleSort('crop')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Cultivo{arrow('crop')}</th>
+                    <th onClick={() => toggleSort('product')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Detalle{arrow('product')}</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden lg:table-cell">Registrado por</th>
                     <th className="px-4 py-3 w-20" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {sortedActivities.map(a => (
                     <tr
                       key={a.id}
                       ref={rowRef(a.id) as unknown as React.Ref<HTMLTableRowElement>}
-                      className={`transition-colors ${activeHighlight === a.id ? 'bg-amber-50' : 'hover:bg-gray-50'}`}
+                      className={`transition-colors ${activeHighlight === a.id ? 'bg-amber-50 dark:bg-amber-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
                     >
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className="inline-block bg-campo-100 text-campo-800 text-xs px-2 py-0.5 rounded">
                           {renderTypeLabel(a.event_type)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
                         {formatDate(a.event_date)}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                         {a.field_name || '-'}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                         {a.plot_name || '-'}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                         {a.crop || '-'}
                       </td>
                       <td className="px-4 py-3 max-w-xs">
-                        <p className="truncate text-gray-800">{getDetail(a)}</p>
+                        <p className="truncate text-gray-800 dark:text-gray-100">{getDetail(a)}</p>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell whitespace-nowrap">
                         {a.user_name || '-'}
-                        {a.edited_by_name && <span className="block text-gray-400">editado por {a.edited_by_name}</span>}
+                        {a.edited_by_name && <span className="block text-gray-400 dark:text-gray-500">editado por {a.edited_by_name}</span>}
                       </td>
                       <td className="px-4 py-3">
                         <button
@@ -387,25 +387,25 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
 
           {/* Pagination */}
           {data.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-              <p className="text-sm text-gray-500">
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 {data.total} actividades en total
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 dark:text-gray-200 dark:bg-gray-800 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   Anterior
                 </button>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-gray-600 dark:text-gray-300">
                   {page} / {data.totalPages}
                 </span>
                 <button
                   onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
                   disabled={page >= data.totalPages}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 dark:text-gray-200 dark:bg-gray-800 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   Siguiente
                 </button>

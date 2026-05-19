@@ -150,7 +150,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-700 text-sm">
+      <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md p-4 text-red-700 dark:text-red-300 text-sm">
         {error}
         <button onClick={fetchStock} className="ml-2 underline">Reintentar</button>
       </div>
@@ -160,24 +160,24 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
   return (
     <div>
       {/* Filter bar */}
-      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm">
+      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
           <select
             value={fieldId}
             onChange={e => { setFieldId(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             {fields.length !== 1 && <option value="">Todos</option>}
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Depósito</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Depósito</label>
           <select
             value={warehouseId}
             onChange={e => { setWarehouseId(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             {availableWarehouses.length !== 1 && <option value="">Todos</option>}
             {availableWarehouses.map(w => (
@@ -188,27 +188,27 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Categoría</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
           <select
             value={category}
             onChange={e => { setCategory(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             <option value="">Todas</option>
             {Object.entries(STOCK_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Buscar</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Buscar</label>
           <input
             type="text"
             placeholder="Nombre del producto"
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm min-w-[180px]"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm min-w-[180px]"
           />
         </div>
-        <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer pb-1.5">
+        <label className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200 cursor-pointer pb-1.5">
           <input
             type="checkbox"
             checked={lowStockOnly}
@@ -236,7 +236,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
 
       {/* Table */}
       {!data || data.items.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
           <p className="text-lg">{hasFilters ? 'No hay stock con estos filtros' : 'No tenes stock registrado'}</p>
           {!hasFilters && <p className="text-sm mt-1">Carga insumos por WhatsApp o Telegram con "cargue X de Y"</p>}
         </div>
@@ -245,18 +245,18 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Producto</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Categoria</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Cantidad</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Unidad</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Deposito</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Campo</th>
+                <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Producto</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden md:table-cell">Categoria</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Cantidad</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden sm:table-cell">Unidad</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden md:table-cell">Deposito</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden lg:table-cell">Campo</th>
                   <th className="text-center px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Min</th>
                   <th className="px-4 py-3 w-32" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {data.items.map(item => {
                   const isLow = item.min_stock != null && item.current_quantity <= item.min_stock;
                   return (
@@ -275,9 +275,9 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
                       <td className={`px-4 py-3 text-right font-medium ${isLow ? 'text-red-600' : 'text-gray-800'}`}>
                         {item.current_quantity}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">{item.unit}</td>
-                      <td className="px-4 py-3 text-gray-600 hidden md:table-cell">{item.warehouse_name}</td>
-                      <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">{item.field_name}</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden sm:table-cell">{item.unit}</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden md:table-cell">{item.warehouse_name}</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden lg:table-cell">{item.field_name}</td>
                       <td className="px-4 py-3 text-center hidden md:table-cell">
                         {item.min_stock != null ? (
                           <span className={`text-xs ${isLow ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
@@ -310,8 +310,8 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
 
           {/* Pagination */}
           {data.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-              <p className="text-sm text-gray-500">{data.total} productos en total</p>
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-500 dark:text-gray-400">{data.total} productos en total</p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -320,7 +320,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
                 >
                   Anterior
                 </button>
-                <span className="text-sm text-gray-600">{page} / {data.totalPages}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">{page} / {data.totalPages}</span>
                 <button
                   onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
                   disabled={page >= data.totalPages}

@@ -20,10 +20,10 @@ export default function QuickActions() {
           <button
             key={a.label}
             onClick={() => navigate(a.path)}
-            className="flex items-center gap-2.5 bg-white border border-gray-200 rounded-lg px-4 py-3 hover:bg-campo-50 hover:border-campo-200 transition-colors text-left"
+            className="flex items-center gap-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3 hover:bg-campo-50 dark:hover:bg-campo-900/30 hover:border-campo-200 dark:hover:border-campo-800 transition-colors text-left"
           >
             <Icon className="w-5 h-5 text-campo-600" />
-            <span className="text-sm font-medium text-gray-700">{a.label}</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{a.label}</span>
           </button>
         );
       })}

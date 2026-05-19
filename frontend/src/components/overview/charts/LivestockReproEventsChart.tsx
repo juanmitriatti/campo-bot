@@ -34,10 +34,10 @@ export default function LivestockReproEventsChart({ data }: Props) {
   const hasAnything = data.some(m => Object.values(m.byType).some(v => v > 0));
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Reproducción — eventos mensuales</h3>
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Reproducción — eventos mensuales</h3>
       {!hasAnything ? (
-        <p className="text-sm text-gray-400 text-center py-12">Sin eventos reproductivos en 12 meses.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-12">Sin eventos reproductivos en 12 meses.</p>
       ) : (
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={rows} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>

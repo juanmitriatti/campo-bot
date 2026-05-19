@@ -123,11 +123,11 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
   const total = chartData.reduce((s, d) => s + d.value, 0);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-5">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{title}</h3>
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+          <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
             {currencies.map(c => (
               <button
                 key={c}
@@ -135,7 +135,7 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
                 className={`px-3 py-1 text-xs font-medium transition-colors ${
                   c === currency
                     ? 'bg-campo-600 text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
               >
                 {c}
@@ -145,7 +145,7 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
           <select
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
-            className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:border-campo-500 focus:ring-1 focus:ring-campo-500"
+            className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:border-campo-500 focus:ring-1 focus:ring-campo-500"
           >
             {plotOptions.map(opt => (
               <option key={opt.key} value={opt.key}>
@@ -157,7 +157,7 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
       </div>
 
       {chartData.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-12">{emptyText}</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-12">{emptyText}</p>
       ) : (
         <div className="flex flex-col lg:flex-row items-center gap-4">
           <div className="w-full lg:w-1/2 h-64 relative">
@@ -185,8 +185,8 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-xs text-gray-500">Total</span>
-              <span className="text-lg font-bold text-gray-800">{formatMoney(total, currency)}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Total</span>
+              <span className="text-lg font-bold text-gray-800 dark:text-gray-100">{formatMoney(total, currency)}</span>
             </div>
           </div>
           <ul className="w-full lg:w-1/2 space-y-1.5 text-sm">
@@ -199,11 +199,11 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
                       className="w-3 h-3 rounded-sm shrink-0"
                       style={{ background: COLORS[i % COLORS.length] }}
                     />
-                    <span className="text-gray-700 truncate">{d.name}</span>
+                    <span className="text-gray-700 dark:text-gray-200 truncate">{d.name}</span>
                   </div>
                   <div className="text-right shrink-0">
-                    <span className="font-medium text-gray-800">{formatMoney(d.value, currency)}</span>
-                    <span className="text-xs text-gray-400 ml-1">({pct.toFixed(0)}%)</span>
+                    <span className="font-medium text-gray-800 dark:text-gray-100">{formatMoney(d.value, currency)}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">({pct.toFixed(0)}%)</span>
                   </div>
                 </li>
               );

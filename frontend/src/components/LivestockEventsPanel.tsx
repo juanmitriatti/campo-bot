@@ -166,23 +166,23 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
   return (
     <div className="p-4 md:p-6">
       <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gray-800">{title}</h2>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">{title}</h2>
       </div>
 
       {aggregates && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div className="bg-gray-50 border border-gray-200 rounded p-3">
-            <div className="text-xs text-gray-500">Eventos</div>
+          <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
+            <div className="text-xs text-gray-500 dark:text-gray-400">Eventos</div>
             <div className="text-lg font-semibold">{aggregates.total}</div>
           </div>
           {type === 'weighing' && 'avgWeight' in aggregates && (
             <>
-              <div className="bg-gray-50 border border-gray-200 rounded p-3">
-                <div className="text-xs text-gray-500">Peso promedio</div>
+              <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
+                <div className="text-xs text-gray-500 dark:text-gray-400">Peso promedio</div>
                 <div className="text-lg font-semibold">{aggregates.avgWeight != null ? `${aggregates.avgWeight} kg` : '—'}</div>
               </div>
               <div className="bg-gray-50 border border-gray-200 rounded p-3 col-span-2">
-                <div className="text-xs text-gray-500">GDPV (últimos 2)</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">GDPV (últimos 2)</div>
                 <div className="text-lg font-semibold">
                   {aggregates.gdpv
                     ? `${aggregates.gdpv.value.toFixed(2)} kg/día (${aggregates.gdpv.days}d)`
@@ -193,12 +193,12 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
           )}
           {type !== 'weighing' && 'animalsTotal' in aggregates && (
             <>
-              <div className="bg-gray-50 border border-gray-200 rounded p-3">
-                <div className="text-xs text-gray-500">Tipos distintos</div>
+              <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
+                <div className="text-xs text-gray-500 dark:text-gray-400">Tipos distintos</div>
                 <div className="text-lg font-semibold">{aggregates.subtypes}</div>
               </div>
               <div className="bg-gray-50 border border-gray-200 rounded p-3 col-span-2">
-                <div className="text-xs text-gray-500">Animales totales</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Animales totales</div>
                 <div className="text-lg font-semibold">{aggregates.animalsTotal}</div>
               </div>
             </>
@@ -206,53 +206,53 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
         </div>
       )}
 
-      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded mb-4 text-sm">
+      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded mb-4 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
           <select value={fieldId}
             onChange={e => { setFieldId(e.target.value); setPlotId(''); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm">
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm">
             <option value="">Todos</option>
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
           <select value={plotId}
             onChange={e => setPlotId(e.target.value)}
             disabled={!fieldId}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:opacity-40">
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm disabled:opacity-40">
             <option value="">Todos</option>
             {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Categoría</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
           <select value={category} onChange={e => setCategory(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm">
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm">
             <option value="">Todas</option>
             {Object.entries(CATEGORY_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
         {subtypeOptions && (
           <div className="flex flex-col">
-            <label className="text-xs text-gray-500 mb-1">Tipo</label>
+            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
             <select value={subtype} onChange={e => setSubtype(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm">
+              className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm">
               <option value="">Todos</option>
               {Object.entries(subtypeOptions).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </div>
         )}
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
           <input type="date" value={desde} onChange={e => setDesde(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
           <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         {hasFilters && (
           <button onClick={clearFilters}
@@ -262,16 +262,16 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
         )}
       </div>
 
-      {loading && data.length === 0 && <div className="text-sm text-gray-500">Cargando…</div>}
+      {loading && data.length === 0 && <div className="text-sm text-gray-500 dark:text-gray-400">Cargando…</div>}
 
       {error && (
-        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3 mb-3">
+        <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded p-3 mb-3">
           {error} <button onClick={fetchData} className="ml-2 underline">Reintentar</button>
         </div>
       )}
 
       {!loading && data.length === 0 && !error && (
-        <div className="text-sm text-gray-500 bg-gray-50 rounded p-6 text-center border border-dashed border-gray-300">
+        <div className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
           {emptyHint}
         </div>
       )}
@@ -280,7 +280,7 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+              <tr className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
                 <th className="py-2 pr-3">Fecha</th>
                 {type === 'weighing' ? (
                   <>
@@ -303,18 +303,18 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
             </thead>
             <tbody>
               {data.map(e => (
-                <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50 align-top">
-                  <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{fmtDate(e.eventDate)}</td>
+                <tr key={e.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 align-top">
+                  <td className="py-2 pr-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{fmtDate(e.eventDate)}</td>
                   {type === 'weighing' ? (
                     <>
-                      <td className="py-2 pr-3 text-right font-medium text-gray-800 whitespace-nowrap">
+                      <td className="py-2 pr-3 text-right font-medium text-gray-800 dark:text-gray-100 whitespace-nowrap">
                         {e.quantity != null ? `${e.quantity} kg` : '—'}
                       </td>
-                      <td className="py-2 pr-3 text-gray-700">{describeAnimals(e)}</td>
+                      <td className="py-2 pr-3 text-gray-700 dark:text-gray-200">{describeAnimals(e)}</td>
                     </>
                   ) : (
                     <>
-                      <td className="py-2 pr-3 text-gray-800">
+                      <td className="py-2 pr-3 text-gray-800 dark:text-gray-100">
                         {(() => {
                           const opts = type === 'health_event' ? HEALTH_LABELS : REPRO_LABELS;
                           const meta = e.subtype ? opts[e.subtype] : null;
@@ -328,28 +328,28 @@ export default function LivestockEventsPanel({ type, title, emptyHint }: PanelPr
                           );
                         })()}
                       </td>
-                      <td className="py-2 pr-3 text-gray-700">{e.product || <span className="text-gray-300">—</span>}</td>
-                      <td className="py-2 pr-3 text-gray-700">{describeAnimals(e)}</td>
+                      <td className="py-2 pr-3 text-gray-700 dark:text-gray-200">{e.product || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
+                      <td className="py-2 pr-3 text-gray-700 dark:text-gray-200">{describeAnimals(e)}</td>
                       {type === 'health_event' && (
                         <td className="py-2 pr-3 text-gray-600 hidden md:table-cell">
-                          {e.quantity != null && e.unit ? `${e.quantity} ${e.unit}` : <span className="text-gray-300">—</span>}
+                          {e.quantity != null && e.unit ? `${e.quantity} ${e.unit}` : <span className="text-gray-300 dark:text-gray-600">—</span>}
                         </td>
                       )}
                       {type === 'repro_event' && (
                         <td className="py-2 pr-3 text-gray-600 hidden md:table-cell">
-                          {e.implement || <span className="text-gray-300">—</span>}
+                          {e.implement || <span className="text-gray-300 dark:text-gray-600">—</span>}
                         </td>
                       )}
                       {type === 'health_event' && (
-                        <td className="py-2 pr-3 text-gray-500 text-xs hidden lg:table-cell">
-                          {e.implement || <span className="text-gray-300">—</span>}
+                        <td className="py-2 pr-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">
+                          {e.implement || <span className="text-gray-300 dark:text-gray-600">—</span>}
                         </td>
                       )}
                     </>
                   )}
-                  <td className="py-2 pr-3 text-gray-600">{describeLocation(e)}</td>
-                  <td className="py-2 pr-3 text-gray-500 text-xs hidden lg:table-cell">
-                    {e.notes ? <span className="italic">{e.notes}</span> : <span className="text-gray-300">—</span>}
+                  <td className="py-2 pr-3 text-gray-600 dark:text-gray-300">{describeLocation(e)}</td>
+                  <td className="py-2 pr-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">
+                    {e.notes ? <span className="italic">{e.notes}</span> : <span className="text-gray-300 dark:text-gray-600">—</span>}
                   </td>
                 </tr>
               ))}

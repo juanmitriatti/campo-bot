@@ -261,7 +261,7 @@ export default function ChannelLinking() {
   };
 
   if (loading) {
-    return <div className="p-6 text-gray-500">Cargando…</div>;
+    return <div className="p-6 text-gray-500 dark:text-gray-400">Cargando…</div>;
   }
 
   function statusLabel(s: string): string {
@@ -278,25 +278,25 @@ export default function ChannelLinking() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-gray-800">Mi cuenta</h2>
-        <p className="text-sm text-gray-500 mt-1">
+        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Mi cuenta</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Vinculá tu WhatsApp y/o Telegram para usar el bot desde tus chats.
         </p>
       </div>
 
       {/* WhatsApp card */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
             <div className="text-3xl">💬</div>
             <div>
-              <h3 className="font-semibold text-gray-800">WhatsApp</h3>
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">WhatsApp</h3>
               {status?.whatsapp_verified ? (
                 <p className="text-sm text-green-700 mt-1">
                   ✅ Vinculado — <span className="font-mono">{status.phone_number}</span>
                 </p>
               ) : (
-                <p className="text-sm text-gray-500 mt-1">No vinculado</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">No vinculado</p>
               )}
             </div>
           </div>
@@ -305,7 +305,7 @@ export default function ChannelLinking() {
               <button
                 onClick={() => { setWaStep('enter-phone'); setWaPhone(''); setWaError(null); }}
                 disabled={waBusy}
-                className="text-xs text-gray-600 hover:text-gray-800 disabled:opacity-50"
+                className="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white disabled:opacity-50"
                 title="Si perdiste acceso a este WhatsApp, vinculá un número nuevo"
               >
                 Cambiar número
@@ -332,7 +332,7 @@ export default function ChannelLinking() {
 
         {waStep === 'enter-phone' && (
           <div className="mt-4 space-y-3">
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
               Tu número de WhatsApp
             </label>
             <input
@@ -340,10 +340,10 @@ export default function ChannelLinking() {
               value={waPhone}
               onChange={e => setWaPhone(e.target.value)}
               placeholder="+54 9 11 1234 5678"
-              className="w-full max-w-xs border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
+              className="w-full max-w-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
               disabled={waBusy}
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               Te vamos a mandar un código de 6 dígitos a este número.
             </p>
             {waError && <p className="text-xs text-red-600">{waError}</p>}
@@ -358,7 +358,7 @@ export default function ChannelLinking() {
               <button
                 onClick={() => { setWaStep('idle'); setWaError(null); }}
                 disabled={waBusy}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50"
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
               >
                 Cancelar
               </button>
@@ -368,7 +368,7 @@ export default function ChannelLinking() {
 
         {waStep === 'enter-code' && (
           <div className="mt-4 space-y-3">
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
               Pegá el código que te llegó por WhatsApp
             </label>
             <input
@@ -378,7 +378,7 @@ export default function ChannelLinking() {
               value={waCode}
               onChange={e => setWaCode(e.target.value.replace(/\D/g, ''))}
               placeholder="123456"
-              className="w-32 border border-gray-300 rounded-md px-3 py-2 text-lg tracking-widest text-center font-mono focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
+              className="w-32 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-lg tracking-widest text-center font-mono focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
               disabled={waBusy}
             />
             {waExpiresAt && (
@@ -398,7 +398,7 @@ export default function ChannelLinking() {
               <button
                 onClick={() => { setWaStep('enter-phone'); setWaCode(''); setWaError(null); }}
                 disabled={waBusy}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50"
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
               >
                 Cambiar número
               </button>
@@ -407,25 +407,25 @@ export default function ChannelLinking() {
         )}
 
         {waStep === 'success' && (
-          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-            <p className="text-sm text-green-800">✅ ¡Listo! Ya podés escribirle al bot por WhatsApp.</p>
+          <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-md">
+            <p className="text-sm text-green-800 dark:text-green-300">✅ ¡Listo! Ya podés escribirle al bot por WhatsApp.</p>
           </div>
         )}
       </div>
 
       {/* Telegram card */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
             <div className="text-3xl">✈️</div>
             <div>
-              <h3 className="font-semibold text-gray-800">Telegram</h3>
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Telegram</h3>
               {status?.telegram_verified ? (
                 <p className="text-sm text-green-700 mt-1">
                   ✅ Vinculado — <span className="font-mono">{status.telegram_id}</span>
                 </p>
               ) : (
-                <p className="text-sm text-gray-500 mt-1">No vinculado</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">No vinculado</p>
               )}
             </div>
           </div>
@@ -434,7 +434,7 @@ export default function ChannelLinking() {
               <button
                 onClick={startTelegram}
                 disabled={tgBusy}
-                className="text-xs text-gray-600 hover:text-gray-800 disabled:opacity-50"
+                className="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white disabled:opacity-50"
                 title="Si perdiste acceso a este Telegram, generá un link nuevo"
               >
                 Vincular otra cuenta
@@ -470,7 +470,7 @@ export default function ChannelLinking() {
                 >
                   Abrir Telegram y vincular
                 </a>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
                   Tocá el botón. Se abre Telegram, tocás "Iniciar" y la cuenta queda vinculada automáticamente.
                 </p>
                 <button
@@ -488,17 +488,17 @@ export default function ChannelLinking() {
 
       {/* Subscription card */}
       {sub?.payments_enabled && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-start gap-3">
             <div className="text-3xl">💳</div>
             <div className="flex-1">
-              <h3 className="font-semibold text-gray-800">Suscripción</h3>
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Suscripción</h3>
               {sub.subscription ? (
                 <div className="mt-2 space-y-1 text-sm">
-                  <p className="text-gray-700">
+                  <p className="text-gray-700 dark:text-gray-200">
                     Plan actual: <span className="font-medium">{sub.plan?.display_name ?? '—'}</span>
                   </p>
-                  <p className="text-gray-500">
+                  <p className="text-gray-500 dark:text-gray-400">
                     Estado: <span className={`font-medium ${
                       sub.subscription.status === 'active' ? 'text-green-700' :
                       sub.subscription.status === 'trial' ? 'text-blue-700' :
@@ -526,7 +526,7 @@ export default function ChannelLinking() {
                   <div className="flex gap-2 text-xs">
                     <button
                       onClick={() => setBillingPeriod('monthly')}
-                      className={`px-3 py-1 rounded-full border ${billingPeriod === 'monthly' ? 'bg-campo-600 text-white border-campo-600' : 'bg-white text-gray-700 border-gray-300'}`}
+                      className={`px-3 py-1 rounded-full border ${billingPeriod === 'monthly' ? 'bg-campo-600 text-white border-campo-600' : 'bg-white dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-gray-700 border-gray-300'}`}
                     >Mensual ${sub.plan.price_ars.toLocaleString('es-AR')}</button>
                     {sub.plan.price_ars_yearly && (
                       <button
@@ -562,11 +562,11 @@ export default function ChannelLinking() {
       )}
 
       {/* Data export card */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-start gap-3">
           <div className="text-3xl">📦</div>
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-800">Exportar mis datos</h3>
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100">Exportar mis datos</h3>
             <p className="text-sm text-gray-500 mt-1">
               Descargá un ZIP con todo lo que registraste: campos, lotes, gastos, ingresos, actividades, observaciones, monitoreos, hacienda, stock, documentos. Un CSV por sección + un metadata.json con tu cuenta.
             </p>
@@ -582,7 +582,7 @@ export default function ChannelLinking() {
       </div>
 
       {/* Danger zone */}
-      <div className="bg-white rounded-lg shadow-sm border border-red-200 p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-red-200 dark:border-red-800 p-6">
         <div className="flex items-start gap-3">
           <div className="text-3xl">⚠️</div>
           <div className="flex-1">
@@ -594,13 +594,13 @@ export default function ChannelLinking() {
             {!deleteOpen ? (
               <button
                 onClick={() => setDeleteOpen(true)}
-                className="mt-3 px-4 py-2 border border-red-300 text-red-700 rounded-md text-sm font-medium hover:bg-red-50"
+                className="mt-3 px-4 py-2 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 rounded-md text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/30"
               >
                 Eliminar mi cuenta
               </button>
             ) : (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md space-y-3">
-                <p className="text-sm text-red-800 font-medium">
+              <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md space-y-3">
+                <p className="text-sm text-red-800 dark:text-red-300 font-medium">
                   Esta acción es definitiva. Confirmá con tu contraseña actual.
                 </p>
                 <input
@@ -608,7 +608,7 @@ export default function ChannelLinking() {
                   value={deletePassword}
                   onChange={e => setDeletePassword(e.target.value)}
                   placeholder="Contraseña actual"
-                  className="w-full max-w-xs border border-red-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none"
+                  className="w-full max-w-xs border border-red-300 dark:border-red-700 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none"
                   disabled={deleteBusy}
                 />
                 {deleteError && <p className="text-xs text-red-700">{deleteError}</p>}
@@ -623,7 +623,7 @@ export default function ChannelLinking() {
                   <button
                     onClick={() => { setDeleteOpen(false); setDeletePassword(''); setDeleteError(null); }}
                     disabled={deleteBusy}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
                   >
                     Cancelar
                   </button>

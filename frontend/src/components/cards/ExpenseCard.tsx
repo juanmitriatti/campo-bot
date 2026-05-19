@@ -53,20 +53,20 @@ export default function ExpenseCard({ expense, onEdit }: Props) {
     : null;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-semibold text-gray-900">
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               {formatAmount(expense.amount, expense.currency)}
             </span>
-            <span className="text-xs bg-campo-100 text-campo-800 px-1.5 py-0.5 rounded">
+            <span className="text-xs bg-campo-100 dark:bg-campo-900/30 text-campo-800 dark:text-campo-300 px-1.5 py-0.5 rounded">
               {CATEGORY_LABELS[expense.category] || expense.category}
             </span>
           </div>
-          <p className="text-sm text-gray-600 truncate">{expense.description || '-'}</p>
+          <p className="text-sm text-gray-600 dark:text-gray-300 truncate">{expense.description || '-'}</p>
           {productLine && <p className="text-xs text-purple-700 mt-0.5 truncate">{productLine}</p>}
-          <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400">
+          <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400 dark:text-gray-500">
             <span>{formatDate(expense.expense_date)}</span>
             {location && <><span>·</span><span className="truncate">{location}</span></>}
           </div>

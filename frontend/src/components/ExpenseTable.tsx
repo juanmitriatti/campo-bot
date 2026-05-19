@@ -236,7 +236,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-700 text-sm">
+      <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md p-4 text-red-700 dark:text-red-300 text-sm">
         {error}
         <button onClick={fetchExpenses} className="ml-2 underline">Reintentar</button>
       </div>
@@ -246,65 +246,65 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
   return (
     <div>
       {/* Filter bar */}
-      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm">
+      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
           <input
             type="date"
             value={dateFrom}
             onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
           <input
             type="date"
             value={dateTo}
             onChange={e => { setDateTo(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
           <select
             value={fieldId}
             onChange={e => handleFieldChange(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             {fields.length !== 1 && <option value="">Todos</option>}
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
           <select
             value={plotId}
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
             disabled={!fieldId}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:opacity-40"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm disabled:opacity-40"
           >
             {availablePlots.length !== 1 && <option value="">Todos</option>}
             {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Categoria</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoria</label>
           <select
             value={category}
             onChange={e => { setCategory(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             <option value="">Todas</option>
             {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Tipo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
           <select
             value={expenseType}
             onChange={e => { setExpenseType(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             <option value="">Todos</option>
             <option value="insumo">Insumo</option>
@@ -312,11 +312,11 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Moneda</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Moneda</label>
           <select
             value={currencyFilter}
             onChange={e => { setCurrencyFilter(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
           >
             <option value="">Todas</option>
             <option value="ARS">ARS</option>
@@ -324,33 +324,33 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Descripción</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Descripción</label>
           <input
             type="text"
             placeholder="Buscar..."
             value={descSearch}
             onChange={e => setDescSearch(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm min-w-[160px]"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm min-w-[160px]"
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Monto mín</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Monto mín</label>
           <input
             type="number"
             placeholder="0"
             value={amountMin}
             onChange={e => setAmountMin(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-24"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm w-24"
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Monto máx</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Monto máx</label>
           <input
             type="number"
             placeholder="∞"
             value={amountMax}
             onChange={e => setAmountMax(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-24"
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm w-24"
           />
         </div>
         {hasFilters && (
@@ -365,7 +365,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
 
       {/* Content */}
       {!data || data.expenses.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
           <p className="text-lg">{hasFilters ? 'No hay gastos con estos filtros' : 'No tenes gastos todavia'}</p>
           {!hasFilters && <p className="text-sm mt-1">Los gastos que registres por WhatsApp apareceran aca</p>}
         </div>
@@ -387,34 +387,34 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Fecha{arrow('date')}</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
-                    <th onClick={() => toggleSort('category')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Categoria{arrow('category')}</th>
-                    <th onClick={() => toggleSort('description')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Descripcion{arrow('description')}</th>
-                    <th onClick={() => toggleSort('product')} className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell cursor-pointer select-none hover:bg-gray-100">Producto{arrow('product')}</th>
-                    <th onClick={() => toggleSort('field')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Campo{arrow('field')}</th>
-                    <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Lote{arrow('plot')}</th>
-                    <th onClick={() => toggleSort('amount')} className="text-right px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Monto{arrow('amount')}</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Registrado por</th>
+                  <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                    <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Fecha{arrow('date')}</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Tipo</th>
+                    <th onClick={() => toggleSort('category')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Categoria{arrow('category')}</th>
+                    <th onClick={() => toggleSort('description')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Descripcion{arrow('description')}</th>
+                    <th onClick={() => toggleSort('product')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden lg:table-cell cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Producto{arrow('product')}</th>
+                    <th onClick={() => toggleSort('field')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Campo{arrow('field')}</th>
+                    <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Lote{arrow('plot')}</th>
+                    <th onClick={() => toggleSort('amount')} className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Monto{arrow('amount')}</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden lg:table-cell">Registrado por</th>
                     <th className="px-4 py-3 w-20" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {sortedExpenses.map(exp => (
                     <tr
                       key={exp.id}
                       ref={rowRef(exp.id) as unknown as React.Ref<HTMLTableRowElement>}
-                      className={`transition-colors ${activeHighlight === exp.id ? 'bg-amber-50' : 'hover:bg-gray-50'}`}
+                      className={`transition-colors ${activeHighlight === exp.id ? 'bg-amber-50 dark:bg-amber-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
                     >
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
                         {formatDate(exp.expense_date)}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-block text-xs px-2 py-0.5 rounded ${
                           exp.expense_type === 'insumo'
-                            ? 'bg-purple-100 text-purple-800'
-                            : 'bg-gray-100 text-gray-700'
+                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
                         }`}>
                           {exp.expense_type === 'insumo' ? 'Insumo' : 'Varios'}
                         </span>
@@ -425,7 +425,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
                         </span>
                       </td>
                       <td className="px-4 py-3 max-w-xs">
-                        <p className="truncate text-gray-800">{exp.description || '-'}</p>
+                        <p className="truncate text-gray-800 dark:text-gray-100">{exp.description || '-'}</p>
                         {(exp.linked_from_livestock || exp.linked_from_document) && (
                           <p className="text-[11px] text-campo-600 mt-0.5">
                             {exp.linked_from_livestock && '🔗 Auto-creado por hacienda'}
@@ -433,26 +433,26 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden lg:table-cell">
                         {exp.product ? (
                           <span>
                             {exp.product}
-                            {exp.quantity && exp.unit && <span className="text-xs text-gray-400 ml-1">({exp.quantity} {exp.unit})</span>}
+                            {exp.quantity && exp.unit && <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">({exp.quantity} {exp.unit})</span>}
                           </span>
                         ) : '-'}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                         {exp.field_name || '-'}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                         {exp.plot_name || '-'}
                       </td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-gray-800">
+                      <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-gray-800 dark:text-gray-100">
                         {formatAmount(exp.amount, exp.currency)}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell whitespace-nowrap">
                         {exp.user_name || '-'}
-                        {exp.edited_by_name && <span className="block text-gray-400">editado por {exp.edited_by_name}</span>}
+                        {exp.edited_by_name && <span className="block text-gray-400 dark:text-gray-500">editado por {exp.edited_by_name}</span>}
                       </td>
                       <td className="px-4 py-3">
                         <button
@@ -471,25 +471,25 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
 
           {/* Pagination */}
           {data.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-              <p className="text-sm text-gray-500">
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 {data.total} gastos en total
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 dark:text-gray-200 dark:bg-gray-800 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   Anterior
                 </button>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-gray-600 dark:text-gray-300">
                   {page} / {data.totalPages}
                 </span>
                 <button
                   onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
                   disabled={page >= data.totalPages}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 dark:text-gray-200 dark:bg-gray-800 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   Siguiente
                 </button>

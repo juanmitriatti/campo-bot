@@ -64,7 +64,7 @@ export default function ActivityCard({ activity, onEdit }: Props) {
   const location = [activity.field_name, activity.plot_name].filter(Boolean).join(', ');
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -73,11 +73,11 @@ export default function ActivityCard({ activity, onEdit }: Props) {
               {typeLabel}
             </span>
             {activity.crop && (
-              <span className="text-xs text-gray-500">{activity.crop}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{activity.crop}</span>
             )}
           </div>
-          <p className="text-sm text-gray-600 truncate">{getDetail(activity)}</p>
-          <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400">
+          <p className="text-sm text-gray-600 dark:text-gray-300 truncate">{getDetail(activity)}</p>
+          <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400 dark:text-gray-500">
             <span>{formatDate(activity.event_date)}</span>
             {location && <><span>·</span><span className="truncate">{location}</span></>}
           </div>

@@ -37,7 +37,7 @@ export default function BottomNav({ active, onChange, features }: BottomNavProps
   );
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-lg z-50">
       <div className="flex justify-around items-center h-14">
         {visibleItems.map(item => {
           const Icon = item.Icon;
@@ -48,7 +48,7 @@ export default function BottomNav({ active, onChange, features }: BottomNavProps
               className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
                 active === item.key
                   ? 'text-campo-600'
-                  : 'text-gray-400'
+                  : 'text-gray-400 dark:text-gray-500'
               }`}
             >
               <Icon className="w-5 h-5" />

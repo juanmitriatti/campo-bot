@@ -92,11 +92,11 @@ export default function HarvestQualityVsHumidityScatter({ loads }: Props) {
   }, [points]);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
       <h3 className="text-sm font-semibold text-gray-700 mb-1">Calidad vs humedad de cosecha</h3>
       <p className="text-xs text-gray-400 mb-3">Una carga = un punto · línea punteada = humedad base AR</p>
       {points.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-12">No hay cargas con humedad y calidad cargadas.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-12">No hay cargas con humedad y calidad cargadas.</p>
       ) : (
         <ResponsiveContainer width="100%" height={300}>
           <ScatterChart margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>

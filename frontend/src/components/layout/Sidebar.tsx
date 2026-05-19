@@ -43,7 +43,7 @@ export default function Sidebar({ active, onChange, features }: SidebarProps) {
   const { subscribed, loading, subscribe, unsubscribe } = usePushNotifications();
 
   return (
-    <aside className="hidden md:flex flex-col w-56 bg-white border-r border-gray-200 min-h-[calc(100vh-3.5rem)]">
+    <aside className="hidden md:flex flex-col w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 min-h-[calc(100vh-3.5rem)]">
       <nav className="flex flex-col gap-1 p-3 pt-5">
         {visibleItems.map(item => {
           const Icon = item.Icon;
@@ -53,8 +53,8 @@ export default function Sidebar({ active, onChange, features }: SidebarProps) {
               onClick={() => onChange(item.key)}
               className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors text-left ${
                 active === item.key
-                  ? 'bg-campo-50 text-campo-700'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                  ? 'bg-campo-50 text-campo-700 dark:bg-campo-900/30 dark:text-campo-400'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white'
               }`}
             >
               <Icon className="w-5 h-5 shrink-0" />
@@ -63,11 +63,11 @@ export default function Sidebar({ active, onChange, features }: SidebarProps) {
           );
         })}
       </nav>
-      <div className="mt-auto p-3 border-t border-gray-200">
+      <div className="mt-auto p-3 border-t border-gray-200 dark:border-gray-700">
         <button
           onClick={subscribed ? unsubscribe : subscribe}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 w-full disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 w-full disabled:opacity-50"
           title={subscribed ? 'Desactivar notificaciones' : 'Activar notificaciones'}
         >
           {subscribed ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}

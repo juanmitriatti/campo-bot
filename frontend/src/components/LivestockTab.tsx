@@ -20,15 +20,15 @@ export default function LivestockTab() {
 
   return (
     <div>
-      <div className="px-6 pt-4 pb-2 flex gap-4 text-sm border-b border-gray-100 overflow-x-auto">
+      <div className="px-6 pt-4 pb-2 flex gap-4 text-sm border-b border-gray-100 dark:border-gray-700 overflow-x-auto">
         {TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setSubTab(t.key)}
             className={`pb-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
               subTab === t.key
-                ? 'border-campo-600 text-campo-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'border-campo-600 text-campo-700 dark:text-campo-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-100'
             }`}
           >
             {t.label}

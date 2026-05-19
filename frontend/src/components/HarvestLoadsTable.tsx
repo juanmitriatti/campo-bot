@@ -158,78 +158,78 @@ export default function HarvestLoadsTable() {
   return (
     <div className="p-4 md:p-6">
       <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gray-800">Cosechas — cargas por camión</h2>
-        <span className="text-xs text-gray-400">Chofer · kg · destinatario · humedad · calidad</span>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Cosechas — cargas por camión</h2>
+        <span className="text-xs text-gray-400 dark:text-gray-500">Chofer · kg · destinatario · humedad · calidad</span>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded mb-4 text-sm">
+      <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded mb-4 text-sm">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Desde</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
           <input type="date" value={dateFrom}
             onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Hasta</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
           <input type="date" value={dateTo}
             onChange={e => { setDateTo(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Campo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Campo</label>
           <select value={fieldId}
             onChange={e => { setFieldId(e.target.value); setPlotId(''); setPage(1); }}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm">
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm">
             {fields.length !== 1 && <option value="">Todos</option>}
             {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Lote</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lote</label>
           <select value={plotId}
             onChange={e => { setPlotId(e.target.value); setPage(1); }}
             disabled={!fieldId}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:opacity-40">
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm disabled:opacity-40">
             {availablePlots.length !== 1 && <option value="">Todos</option>}
             {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Chofer</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Chofer</label>
           <input type="text" value={driver}
             onChange={e => { setDriver(e.target.value); setPage(1); }}
             placeholder="Nombre"
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-32" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm w-32" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Destinatario</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Destinatario</label>
           <input type="text" value={destinatario}
             onChange={e => { setDestinatario(e.target.value); setPage(1); }}
             placeholder="Acopio / Cargill…"
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-40" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm w-40" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Cultivo</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Cultivo</label>
           <select value={cropFilter}
             onChange={e => setCropFilter(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm">
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm">
             <option value="">Todos</option>
             {cropsAvailable.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Humedad mín %</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Humedad mín %</label>
           <input type="number" step="0.1" value={humMin}
             onChange={e => setHumMin(e.target.value)}
             placeholder="0"
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-20" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm w-20" />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 mb-1">Humedad máx %</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">Humedad máx %</label>
           <input type="number" step="0.1" value={humMax}
             onChange={e => setHumMax(e.target.value)}
             placeholder="∞"
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-20" />
+            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm w-20" />
         </div>
         {hasFilters && (
           <button onClick={clearFilters}
@@ -239,60 +239,60 @@ export default function HarvestLoadsTable() {
         )}
       </div>
 
-      {loading && !data && <div className="text-sm text-gray-500">Cargando cosechas…</div>}
+      {loading && !data && <div className="text-sm text-gray-500 dark:text-gray-400">Cargando cosechas…</div>}
 
       {error && (
-        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3 mb-3">
+        <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded p-3 mb-3">
           {error} <button onClick={fetchLoads} className="ml-2 underline">Reintentar</button>
         </div>
       )}
 
       {!loading && data && data.data.length === 0 && !error && (
-        <div className="text-sm text-gray-500 bg-gray-50 rounded p-6 text-center border border-dashed border-gray-300">
+        <div className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
           No hay cargas de cosecha. Pedile al bot:<br />
-          <span className="font-mono text-gray-700">"coseché lote norte: Juan 28000kg al 14% hum, Pedro 31000kg para Cargill"</span>
+          <span className="font-mono text-gray-700 dark:text-gray-200">"coseché lote norte: Juan 28000kg al 14% hum, Pedro 31000kg para Cargill"</span>
         </div>
       )}
 
       {data && data.data.length > 0 && (
-        <div className="overflow-x-auto bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Fecha{arrow('date')}</th>
-                <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Lote / Cultivo{arrow('plot')}</th>
-                <th onClick={() => toggleSort('driver')} className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Chofer{arrow('driver')}</th>
-                <th onClick={() => toggleSort('weight')} className="text-right px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100">Peso{arrow('weight')}</th>
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Fecha{arrow('date')}</th>
+                <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Lote / Cultivo{arrow('plot')}</th>
+                <th onClick={() => toggleSort('driver')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Chofer{arrow('driver')}</th>
+                <th onClick={() => toggleSort('weight')} className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Peso{arrow('weight')}</th>
                 <th onClick={() => toggleSort('humidity')} className="text-right px-4 py-3 font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100">Hum.{arrow('humidity')}</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Calidad</th>
-                <th onClick={() => toggleSort('destinatario')} className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100">Destinatario{arrow('destinatario')}</th>
-                <th onClick={() => toggleSort('truck')} className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell cursor-pointer select-none hover:bg-gray-100">Camión{arrow('truck')}</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden lg:table-cell">Calidad</th>
+                <th onClick={() => toggleSort('destinatario')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100">Destinatario{arrow('destinatario')}</th>
+                <th onClick={() => toggleSort('truck')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden lg:table-cell cursor-pointer select-none hover:bg-gray-100">Camión{arrow('truck')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {sortedLoads.map(l => (
-                <tr key={l.id} className="hover:bg-gray-50 transition-colors align-top">
-                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(l.eventDate)}</td>
-                  <td className="px-4 py-3 text-gray-800">
-                    <div className="font-medium">{l.plotName || <span className="text-gray-300">—</span>}</div>
-                    <div className="text-xs text-gray-400">
+                <tr key={l.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors align-top">
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">{formatDate(l.eventDate)}</td>
+                  <td className="px-4 py-3 text-gray-800 dark:text-gray-100">
+                    <div className="font-medium">{l.plotName || <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">
                       {l.fieldName && <span>{l.fieldName}</span>}
                       {l.crop && <span> · {l.crop}</span>}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-700">{l.driverName}</td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-gray-800">{formatKg(l.weightKg)}</td>
-                  <td className="px-4 py-3 text-right text-gray-600 hidden md:table-cell">
-                    {l.humidityPct != null ? `${l.humidityPct}%` : <span className="text-gray-300">—</span>}
+                  <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{l.driverName}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-gray-800 dark:text-gray-100">{formatKg(l.weightKg)}</td>
+                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300 hidden md:table-cell">
+                    {l.humidityPct != null ? `${l.humidityPct}%` : <span className="text-gray-300 dark:text-gray-600">—</span>}
                   </td>
                   <td className="px-4 py-3 text-gray-600 text-xs hidden lg:table-cell">
-                    {describeQuality(l.qualityMetrics) || <span className="text-gray-300">—</span>}
+                    {describeQuality(l.qualityMetrics) || <span className="text-gray-300 dark:text-gray-600">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                    {l.destinatario || l.destination || <span className="text-gray-300">—</span>}
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden md:table-cell">
+                    {l.destinatario || l.destination || <span className="text-gray-300 dark:text-gray-600">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell">
-                    {l.truckPlate || <span className="text-gray-300">—</span>}
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">
+                    {l.truckPlate || <span className="text-gray-300 dark:text-gray-600">—</span>}
                   </td>
                 </tr>
               ))}
@@ -300,16 +300,16 @@ export default function HarvestLoadsTable() {
           </table>
 
           {data.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
               <p className="text-sm text-gray-500">{data.total} cargas en total</p>
               <div className="flex items-center gap-2">
                 <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40">
+                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 dark:text-gray-200 dark:bg-gray-800 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40">
                   Anterior
                 </button>
-                <span className="text-sm text-gray-600">{page} / {data.totalPages}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">{page} / {data.totalPages}</span>
                 <button onClick={() => setPage(p => Math.min(data.totalPages, p + 1))} disabled={page >= data.totalPages}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40">
+                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 dark:text-gray-200 dark:bg-gray-800 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40">
                   Siguiente
                 </button>
               </div>

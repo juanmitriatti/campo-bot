@@ -9,8 +9,8 @@ interface RainfallData {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-lg text-sm">
-      <p className="font-semibold text-gray-700 mb-1">{label}</p>
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 shadow-lg text-sm">
+      <p className="font-semibold text-gray-700 dark:text-gray-200 mb-1">{label}</p>
       <p className="text-blue-600">{payload[0].value} mm</p>
     </div>
   );
@@ -19,9 +19,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export default function RainfallChart({ data }: { data: RainfallData[] }) {
   if (!data || data.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Lluvias - Últimos 30 días</h3>
-        <p className="text-sm text-gray-400 py-8 text-center">Sin registros de lluvia</p>
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Lluvias - Últimos 30 días</h3>
+        <p className="text-sm text-gray-400 dark:text-gray-500 py-8 text-center">Sin registros de lluvia</p>
       </div>
     );
   }
@@ -30,9 +30,9 @@ export default function RainfallChart({ data }: { data: RainfallData[] }) {
   const maxMm = Math.max(...data.map(d => d.mm));
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-700">Lluvias - Últimos 30 días</h3>
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Lluvias - Últimos 30 días</h3>
         <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
           {totalMm.toFixed(1)} mm total
         </span>

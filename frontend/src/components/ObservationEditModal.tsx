@@ -70,18 +70,18 @@ export default function ObservationEditModal({ observation, onClose, onSaved }: 
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">Editar observación</h3>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Editar observación</h3>
+            <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
           </div>
 
           {/* Metadata */}
-          <div className="text-sm text-gray-500 mb-3 space-y-1">
-            {observation.field_name && <p>Campo: <span className="font-medium text-gray-700">{observation.field_name}</span></p>}
-            {observation.plot_name && <p>Lote: <span className="font-medium text-gray-700">{observation.plot_name}</span></p>}
-            <p>Categoría: <span className="font-medium text-gray-700">{observation.category}</span></p>
+          <div className="text-sm text-gray-500 dark:text-gray-400 mb-3 space-y-1">
+            {observation.field_name && <p>Campo: <span className="font-medium text-gray-700 dark:text-gray-200">{observation.field_name}</span></p>}
+            {observation.plot_name && <p>Lote: <span className="font-medium text-gray-700 dark:text-gray-200">{observation.plot_name}</span></p>}
+            <p>Categoría: <span className="font-medium text-gray-700 dark:text-gray-200">{observation.category}</span></p>
           </div>
 
           {/* Edit area */}
@@ -89,7 +89,7 @@ export default function ObservationEditModal({ observation, onClose, onSaved }: 
             value={text}
             onChange={e => setText(e.target.value)}
             rows={4}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none resize-none"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none resize-none dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
             placeholder="Texto de la observación..."
           />
 
@@ -98,7 +98,7 @@ export default function ObservationEditModal({ observation, onClose, onSaved }: 
           <div className="flex justify-end gap-2 mt-4">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+              className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
               Cancelar
             </button>
@@ -114,10 +114,10 @@ export default function ObservationEditModal({ observation, onClose, onSaved }: 
 
         {/* History section */}
         {!loadingHistory && history.length > 0 && (
-          <div className="border-t border-gray-200">
+          <div className="border-t border-gray-200 dark:border-gray-700">
             <button
               onClick={() => setShowHistory(!showHistory)}
-              className="w-full px-6 py-3 text-left text-sm text-gray-600 hover:bg-gray-50 flex items-center justify-between"
+              className="w-full px-6 py-3 text-left text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between"
             >
               <span>Historial de ediciones ({history.length})</span>
               <span className="text-xs">{showHistory ? '▲' : '▼'}</span>
