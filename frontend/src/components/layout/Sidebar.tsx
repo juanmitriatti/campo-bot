@@ -2,11 +2,11 @@ import { usePushNotifications } from '../../hooks/usePushNotifications';
 import {
   LayoutDashboard, Wallet, DollarSign, Sprout, Eye, Search,
   FileText, Wheat, Package, Beef, Paperclip, User,
-  Bell, BellOff,
+  Bell, BellOff, Tag,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-export type DashboardView = 'overview' | 'expenses' | 'incomes' | 'activities' | 'observations' | 'scoutings' | 'reports' | 'harvests' | 'stock' | 'livestock' | 'documents' | 'account';
+export type DashboardView = 'overview' | 'expenses' | 'incomes' | 'activities' | 'observations' | 'scoutings' | 'reports' | 'harvests' | 'stock' | 'livestock' | 'documents' | 'categories' | 'account';
 
 interface NavItem {
   key: DashboardView;
@@ -27,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'stock', label: 'Stock', Icon: Package, feature: 'stock' },
   { key: 'livestock', label: 'Hacienda', Icon: Beef, feature: 'livestock' },
   { key: 'documents', label: 'Documentos', Icon: Paperclip, feature: 'documents' },
+  { key: 'categories', label: 'Categorías', Icon: Tag },
   { key: 'account', label: 'Mi cuenta', Icon: User },
 ];
 
