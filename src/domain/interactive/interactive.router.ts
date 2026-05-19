@@ -92,6 +92,46 @@ export class InteractiveRouter {
       }
     }
 
+    // Category pick: cat_pick_exp_<payload>_<categoryId> → pick_category (expense)
+    if (callbackId.startsWith('cat_pick_exp_')) {
+      const rest = callbackId.slice('cat_pick_exp_'.length);
+      const lastUnderscore = rest.lastIndexOf('_');
+      if (lastUnderscore > 0) {
+        return {
+          type: 'command',
+          data: { command: 'pick_category', kind: 'expense', payload: rest.slice(0, lastUnderscore), categoryId: rest.slice(lastUnderscore + 1) },
+        };
+      }
+    }
+
+    // Category pick: cat_pick_inc_<payload>_<categoryId> → pick_category (income)
+    if (callbackId.startsWith('cat_pick_inc_')) {
+      const rest = callbackId.slice('cat_pick_inc_'.length);
+      const lastUnderscore = rest.lastIndexOf('_');
+      if (lastUnderscore > 0) {
+        return {
+          type: 'command',
+          data: { command: 'pick_category', kind: 'income', payload: rest.slice(0, lastUnderscore), categoryId: rest.slice(lastUnderscore + 1) },
+        };
+      }
+    }
+
+    // Category create inline: cat_new_exp_<payload> → create_category (expense)
+    if (callbackId.startsWith('cat_new_exp_')) {
+      return {
+        type: 'command',
+        data: { command: 'create_category', kind: 'expense', payload: callbackId.slice('cat_new_exp_'.length) },
+      };
+    }
+
+    // Category create inline: cat_new_inc_<payload> → create_category (income)
+    if (callbackId.startsWith('cat_new_inc_')) {
+      return {
+        type: 'command',
+        data: { command: 'create_category', kind: 'income', payload: callbackId.slice('cat_new_inc_'.length) },
+      };
+    }
+
     return null;
   }
 }

@@ -1297,6 +1297,24 @@ async function processTextMessage(
   const sessionId = `tg_${userId}_${new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })}`;
   conversationObserver.logMessageReceived(userId, { phone, messageType: 'text', messageLength: text.length }, sessionId);
 
+  // --- Check awaiting_new_category_name (inline category creation) ---
+  {
+    const rawState = await pool.query(
+      `SELECT flow_state, flow_data FROM conversation_state WHERE user_id = $1`,
+      [userId],
+    );
+    if (rawState.rows[0]?.flow_state === 'awaiting_new_category_name') {
+      const flowData = rawState.rows[0].flow_data as { kind: 'expense' | 'income'; payload: string };
+      if (isCancelIntent(text)) {
+        await conversationEngine.clearFlow(userId);
+        return [{ type: 'text', text: '❌ Operación cancelada.' }];
+      }
+      await conversationEngine.clearFlow(userId);
+      const response = await financialHandler.resumeCreateCategory(userId, text, flowData);
+      return collectResponse(response);
+    }
+  }
+
   // --- Check active conversation flow ---
   const flowCtx = await conversationEngine.getFlowContext(userId);
 

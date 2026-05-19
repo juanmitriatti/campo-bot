@@ -1307,6 +1307,29 @@ router.post('/', async (req: Request, res: Response) => {
     // Track last activity for user management
     pool.query('UPDATE users SET last_message_at = NOW() WHERE id = $1', [userId]).catch(() => {});
 
+    // --- Check awaiting_new_category_name (inline category creation) ---
+    {
+      const rawState = await pool.query(
+        `SELECT flow_state, flow_data FROM conversation_state WHERE user_id = $1`,
+        [userId],
+      );
+      if (rawState.rows[0]?.flow_state === 'awaiting_new_category_name') {
+        const flowData = rawState.rows[0].flow_data as { kind: 'expense' | 'income'; payload: string };
+        if (isCancelIntent(text)) {
+          await conversationEngine.clearFlow(userId);
+          await sendMessage(phone, '❌ Operación cancelada.');
+          res.sendStatus(200);
+          return;
+        }
+        await conversationEngine.clearFlow(userId);
+        const response = await financialHandler.resumeCreateCategory(userId, text, flowData);
+        await sendResponse(phone, response);
+        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', 'create_category', 'awaiting_new_category_name', 0, false, Date.now() - startTime, !!response.interactive).catch(() => {});
+        res.sendStatus(200);
+        return;
+      }
+    }
+
     // --- Check active conversation flow ---
     const flowCtx = await conversationEngine.getFlowContext(userId);
 

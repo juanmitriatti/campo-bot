@@ -53,6 +53,10 @@ export class CategoryService {
     }
   }
 
+  async findById(userId: number, id: number): Promise<import('./category.repository.js').UserCategory | null> {
+    return this.repo.findById(userId, id);
+  }
+
   async bump(categoryId: number): Promise<void> {
     await this.repo.bump(categoryId);
   }

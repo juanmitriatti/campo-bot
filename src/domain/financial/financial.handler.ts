@@ -2515,6 +2515,95 @@ export class FinancialHandler {
         return { messages: [] };
     }
   }
+
+  // --- Category pick/create (interactive button callbacks) ---
+
+  async pickCategory(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const kind = (cmd.kind as string) as 'expense' | 'income';
+    const categoryId = Number(cmd.categoryId);
+    const category = await this.categoryService.findById(userId as number, categoryId);
+    if (!category || category.kind !== kind) {
+      return { messages: ['No encontré esa categoría. Probá registrar el gasto/ingreso de nuevo.'] };
+    }
+    if (kind === 'expense') {
+      const { data, fieldId, plotId } = decodePendingExpensePayload(cmd.payload as string);
+      data.category = category.name;
+      await this.service.saveExpense(userId, data, fieldId, plotId);
+      this.categoryService.bump(category.id).catch(() => {});
+      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
+      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
+      return { messages: [await buildExpenseConfirmation(data, resFieldName, resPlotName)] };
+    } else {
+      const { data, fieldId, plotId } = decodePendingIncomePayload(cmd.payload as string);
+      data.category = category.name;
+      await this.service.saveIncome(userId, data, fieldId, plotId);
+      this.categoryService.bump(category.id).catch(() => {});
+      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
+      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
+      return { messages: [await buildIncomeConfirmation(data, resFieldName, resPlotName)] };
+    }
+  }
+
+  async createCategoryInline(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const kind = (cmd.kind as string) as 'expense' | 'income';
+    const { pool: dbPool } = await import('../../config/db.js');
+    await dbPool.query(
+      `INSERT INTO conversation_state (user_id, flow_state, flow_step, flow_data, updated_at)
+       VALUES ($1, 'awaiting_new_category_name', 0, $2::jsonb, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET
+         flow_state = 'awaiting_new_category_name',
+         flow_step = 0,
+         flow_data = $2::jsonb,
+         updated_at = NOW()`,
+      [userId, JSON.stringify({ kind, payload: cmd.payload })],
+    );
+    return {
+      messages: [`¿Cómo se llama la nueva categoría de ${kind === 'expense' ? 'gasto' : 'ingreso'}?`],
+    };
+  }
+
+  async resumeCreateCategory(userId: UserId, name: string, flowData: { kind: 'expense' | 'income'; payload: string }): Promise<HandlerResponse> {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length > 60) {
+      return { messages: ['El nombre tiene que tener entre 1 y 60 caracteres. Probá de nuevo:'] };
+    }
+    const cat = await this.categoryService.match(userId as number, flowData.kind, trimmed, 'new');
+    if (cat.kind !== 'matched') {
+      return { messages: ['No pude crear la categoría. Probá de nuevo o cancelá.'] };
+    }
+    if (flowData.kind === 'expense') {
+      const { data, fieldId, plotId } = decodePendingExpensePayload(flowData.payload);
+      data.category = cat.category.name;
+      await this.service.saveExpense(userId, data, fieldId, plotId);
+      this.categoryService.bump(cat.category.id).catch(() => {});
+      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
+      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
+      return { messages: [`✅ Categoría '${cat.category.name}' creada.\n${await buildExpenseConfirmation(data, resFieldName, resPlotName)}`] };
+    } else {
+      const { data, fieldId, plotId } = decodePendingIncomePayload(flowData.payload);
+      data.category = cat.category.name;
+      await this.service.saveIncome(userId, data, fieldId, plotId);
+      this.categoryService.bump(cat.category.id).catch(() => {});
+      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
+      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
+      return { messages: [`✅ Categoría '${cat.category.name}' creada.\n${await buildIncomeConfirmation(data, resFieldName, resPlotName)}`] };
+    }
+  }
+
+  private async lookupFieldName(userId: UserId, fieldId: number): Promise<string | null> {
+    const { pool: dbPool } = await import('../../config/db.js');
+    const { rows } = await dbPool.query('SELECT name FROM fields WHERE id = $1 AND user_id = $2', [fieldId, userId]);
+    return rows[0]?.name ?? null;
+  }
+
+  private async lookupPlotName(userId: UserId, plotId: number): Promise<string | null> {
+    const { pool: dbPool } = await import('../../config/db.js');
+    const { rows } = await dbPool.query(
+      `SELECT p.name FROM plots p JOIN fields f ON f.id = p.field_id WHERE p.id = $1 AND f.user_id = $2`,
+      [plotId, userId],
+    );
+    return rows[0]?.name ?? null;
+  }
 }
 
 // ─── Helpers + renderers for the unified financial_report ───────────────────
