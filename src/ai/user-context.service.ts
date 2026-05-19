@@ -1,5 +1,7 @@
 import { pool } from '../config/db.js';
 import { EntityValidator } from '../services/entity-validator.js';
+import { CategoryRepository } from '../domain/financial/category.repository.js';
+import { CategoryService, TOP_N_FOR_PROMPT } from '../domain/financial/category.service.js';
 import type { UserId } from '../types/index.js';
 
 export interface ContextStackEntry {
@@ -15,6 +17,8 @@ export interface UserContext {
   lastFieldName: string | null;
   lastPlotName: string | null;
   recentContexts: ContextStackEntry[];
+  expenseCategories: string[];
+  incomeCategories: string[];
 }
 
 interface CacheEntry {
@@ -40,6 +44,17 @@ export class UserContextService {
     const cached = this.cache.get(userId);
     const cacheValid = cached && cached.expiresAt > Date.now();
 
+    const _categoryRepo = new CategoryRepository();
+    const _categoryService = new CategoryService(_categoryRepo);
+    await Promise.all([
+      _categoryService.bootstrapDefaults(userId, 'expense'),
+      _categoryService.bootstrapDefaults(userId, 'income'),
+    ]);
+    const [_expenseCategories, _incomeCategories] = await Promise.all([
+      _categoryRepo.topN(userId, 'expense', TOP_N_FOR_PROMPT),
+      _categoryRepo.topN(userId, 'income', TOP_N_FOR_PROMPT),
+    ]);
+
     if (cacheValid) {
       const lastCtx = await this.loadLastContext(userId).catch(() => null);
       return {
@@ -47,6 +62,8 @@ export class UserContextService {
         lastFieldName: lastCtx?.lastFieldName ?? null,
         lastPlotName: lastCtx?.lastPlotName ?? null,
         recentContexts: lastCtx?.recentContexts ?? [],
+        expenseCategories: _expenseCategories.map(c => c.name),
+        incomeCategories: _incomeCategories.map(c => c.name),
       };
     }
 
@@ -68,6 +85,8 @@ export class UserContextService {
       lastFieldName: lastCtx?.lastFieldName ?? null,
       lastPlotName: lastCtx?.lastPlotName ?? null,
       recentContexts: lastCtx?.recentContexts ?? [],
+      expenseCategories: _expenseCategories.map(c => c.name),
+      incomeCategories: _incomeCategories.map(c => c.name),
     };
 
     // Cache only the stable bits (fieldNames/plotNames/etc. are folded into
