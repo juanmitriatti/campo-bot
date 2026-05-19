@@ -18,6 +18,8 @@ import { requireAuth } from '../middleware/auth.middleware.js';
 import type { Request, Response, NextFunction } from 'express';
 import { logError } from '../services/error-logger.js';
 import { pool } from '../config/db.js';
+import { CategoryRepository, type CategoryKind } from '../domain/financial/category.repository.js';
+import { CategoryService } from '../domain/financial/category.service.js';
 import { asUserId } from '../types/index.js';
 import type { FeatureKey } from '../types/index.js';
 
@@ -31,6 +33,8 @@ const accountDeletionService = new AccountDeletionService();
 const dataExportService = new DataExportService();
 const subscriptionService = new SubscriptionService();
 const passwordRecoveryService = new PasswordRecoveryService();
+const categoryRepo = new CategoryRepository();
+const categoryService = new CategoryService(categoryRepo);
 
 function requireFeature(feature: FeatureKey) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -2110,5 +2114,98 @@ function handleError(err: unknown, res: Response): void {
   logError('auth', 'ROUTE_ERROR', err as Error);
   res.status(500).json({ error: 'Error interno del servidor' });
 }
+
+// --- Categories ---
+
+function parseKind(raw: unknown, res: Response): CategoryKind | null {
+  if (raw === 'expense' || raw === 'income') return raw;
+  res.status(400).json({ error: "kind query parameter must be 'expense' or 'income'" });
+  return null;
+}
+
+router.get('/categories', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const kind = parseKind(req.query.kind, res);
+    if (!kind) return;
+    const userId = req.auth!.userId;
+    await categoryService.bootstrapDefaults(userId, kind);
+    const list = await categoryRepo.listActive(userId, kind);
+    res.json({
+      categories: list.map(c => ({
+        id: c.id,
+        kind: c.kind,
+        name: c.name,
+        usageCount: c.usageCount,
+        lastUsedAt: c.lastUsedAt,
+      })),
+    });
+  } catch (err) { handleError(err, res); }
+});
+
+router.post('/categories', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const kind = parseKind(req.body?.kind, res);
+    if (!kind) return;
+    const name = String(req.body?.name ?? '').trim();
+    if (!name || name.length > 60) {
+      res.status(400).json({ error: 'name is required and must be ≤ 60 chars' });
+      return;
+    }
+    const userId = req.auth!.userId;
+    const existing = await categoryRepo.findByName(userId, kind, name);
+    if (existing) {
+      res.status(409).json({ error: 'Ya existe una categoría con ese nombre', category: existing });
+      return;
+    }
+    const created = await categoryRepo.create(userId, kind, name);
+    res.status(201).json({ category: created });
+  } catch (err) { handleError(err, res); }
+});
+
+router.patch('/categories/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'invalid id' }); return; }
+    const name = String(req.body?.name ?? '').trim();
+    if (!name || name.length > 60) {
+      res.status(400).json({ error: 'name is required and must be ≤ 60 chars' });
+      return;
+    }
+    const userId = req.auth!.userId;
+    const renamed = await categoryRepo.rename(userId, id, name);
+    if (!renamed) { res.status(404).json({ error: 'category not found' }); return; }
+    res.json({ category: renamed });
+  } catch (err: any) {
+    if (err?.code === '23505') {
+      res.status(409).json({ error: 'Ya existe una categoría con ese nombre' });
+      return;
+    }
+    handleError(err, res);
+  }
+});
+
+router.delete('/categories/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'invalid id' }); return; }
+    const userId = req.auth!.userId;
+    const cat = await categoryRepo.findById(userId, id);
+    if (!cat) { res.status(404).json({ error: 'category not found' }); return; }
+
+    const reassignToRaw = req.query.reassignTo;
+    if (reassignToRaw) {
+      const targetId = parseInt(String(reassignToRaw), 10);
+      if (isNaN(targetId)) { res.status(400).json({ error: 'invalid reassignTo' }); return; }
+      const target = await categoryRepo.findById(userId, targetId);
+      if (!target || target.kind !== cat.kind) {
+        res.status(400).json({ error: 'reassignTo must point to an existing category of the same kind' });
+        return;
+      }
+      await categoryRepo.reassign(userId, cat.kind, cat.name, target.name);
+    }
+    await categoryRepo.softDelete(userId, id);
+    res.json({ ok: true });
+  } catch (err) { handleError(err, res); }
+});
 
 export default router;
