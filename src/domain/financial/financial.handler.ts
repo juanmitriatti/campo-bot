@@ -1,4 +1,6 @@
 import { FinancialService } from './financial.service.js';
+import { CategoryRepository } from './category.repository.js';
+import { CategoryService } from './category.service.js';
 import { generateCSV } from '../../utils/csv.js';
 import { recordAlert } from '../../services/alert.service.js';
 import { getActivityLabel } from '../agronomy/activity.service.js';
@@ -174,11 +176,84 @@ function buildNoPlotsBlockResponse(actionLabel: string, fieldName?: string): Han
   };
 }
 
+// --- Category pending payload helpers ---
+
+export function encodePendingExpensePayload(p: { data: ParsedExpense; fieldId: number | null; plotId: number | null }): string {
+  const json = JSON.stringify({
+    a: p.data.amount,
+    c: p.data.currency,
+    d: p.data.description,
+    f: p.fieldId,
+    p: p.plotId,
+    ed: p.data.expenseDate ?? null,
+    et: p.data.expenseType ?? null,
+    pr: p.data.product ?? null,
+    q: p.data.quantity ?? null,
+    u: p.data.unit ?? null,
+  });
+  return Buffer.from(json, 'utf8').toString('base64url');
+}
+
+export function decodePendingExpensePayload(b64: string): { data: ParsedExpense; fieldId: number | null; plotId: number | null } {
+  const o = JSON.parse(Buffer.from(b64, 'base64url').toString('utf8'));
+  return {
+    fieldId: o.f ?? null,
+    plotId: o.p ?? null,
+    data: {
+      type: 'expense',
+      amount: o.a,
+      currency: o.c,
+      description: o.d,
+      category: '',
+      expenseDate: o.ed ?? null,
+      expenseType: o.et ?? null,
+      product: o.pr ?? null,
+      quantity: o.q ?? null,
+      unit: o.u ?? null,
+    },
+  };
+}
+
+export function encodePendingIncomePayload(p: { data: ParsedIncome; fieldId: number | null; plotId: number | null }): string {
+  const json = JSON.stringify({
+    a: p.data.amount,
+    c: p.data.currency,
+    d: p.data.description,
+    f: p.fieldId,
+    p: p.plotId,
+    id: p.data.incomeDate ?? null,
+    q: p.data.quantity ?? null,
+    u: p.data.unit ?? null,
+    up: p.data.unit_price ?? null,
+  });
+  return Buffer.from(json, 'utf8').toString('base64url');
+}
+
+export function decodePendingIncomePayload(b64: string): { data: ParsedIncome; fieldId: number | null; plotId: number | null } {
+  const o = JSON.parse(Buffer.from(b64, 'base64url').toString('utf8'));
+  return {
+    fieldId: o.f ?? null,
+    plotId: o.p ?? null,
+    data: {
+      type: 'income',
+      amount: o.a,
+      currency: o.c,
+      description: o.d,
+      category: '',
+      incomeDate: o.id ?? null,
+      quantity: o.q ?? null,
+      unit: o.u ?? null,
+      unit_price: o.up ?? null,
+    },
+  };
+}
+
 // --- Handler ---
 
 export class FinancialHandler {
   private sharingService: FieldSharingService;
   private plotDiscovery = new PlotDiscoveryService();
+  private readonly categoryService = new CategoryService(new CategoryRepository());
 
   constructor(private service: FinancialService, sharingService?: FieldSharingService) {
     this.sharingService = sharingService ?? new FieldSharingService();
@@ -612,6 +687,39 @@ export class FinancialHandler {
       };
     }
 
+    // --- Category resolution ---
+    const rawExpenseCategory = (data as ParsedExpense & { category_match?: string }).category_match === 'new'
+      ? data.category
+      : data.category ?? null;
+    const expenseCategoryIntent = (data as ParsedExpense & { category_match?: string }).category_match === 'new'
+      ? 'new' as const
+      : (data as ParsedExpense & { category_match?: string }).category_match === 'exact'
+        ? 'exact' as const
+        : 'unknown' as const;
+    const expenseCatMatch = await this.categoryService.match(
+      userId as number, 'expense', rawExpenseCategory, expenseCategoryIntent,
+    );
+
+    if (expenseCatMatch.kind === 'needs-confirmation') {
+      const payload = encodePendingExpensePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
+      const buttons = expenseCatMatch.suggestions.map(c => ({
+        id: `cat_pick_exp_${payload}_${c.id}`,
+        title: c.name,
+      }));
+      buttons.push({ id: `cat_new_exp_${payload}`, title: '+ Otra' });
+      return {
+        messages: [],
+        interactive: {
+          type: 'buttons' as const,
+          body: `¿En qué categoría va este gasto de $${Number(data.amount).toLocaleString('es-AR')}?`,
+          buttons,
+        },
+      };
+    }
+
+    data.category = expenseCatMatch.category.name;
+    const matchedExpenseCategoryId = expenseCatMatch.category.id;
+
     if (settings.confirm_before_save) {
       const pendingMsg = buildPendingMessage('expense', data, resFieldName, resPlotName);
       return {
@@ -631,6 +739,7 @@ export class FinancialHandler {
     }
 
     const saved = await this.service.saveExpense(userId, data, fieldId, plotId);
+    this.categoryService.bump(matchedExpenseCategoryId).catch(() => {});
     const messages = [await buildExpenseConfirmation(data, resFieldName, resPlotName)];
 
     if (settings.budget_alerts) {
@@ -807,6 +916,39 @@ export class FinancialHandler {
       };
     }
 
+    // --- Category resolution ---
+    const rawIncomeCategory = (data as ParsedIncome & { category_match?: string }).category_match === 'new'
+      ? data.category
+      : data.category ?? null;
+    const incomeCategoryIntent = (data as ParsedIncome & { category_match?: string }).category_match === 'new'
+      ? 'new' as const
+      : (data as ParsedIncome & { category_match?: string }).category_match === 'exact'
+        ? 'exact' as const
+        : 'unknown' as const;
+    const incomeCatMatch = await this.categoryService.match(
+      userId as number, 'income', rawIncomeCategory, incomeCategoryIntent,
+    );
+
+    if (incomeCatMatch.kind === 'needs-confirmation') {
+      const payload = encodePendingIncomePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
+      const buttons = incomeCatMatch.suggestions.map(c => ({
+        id: `cat_pick_inc_${payload}_${c.id}`,
+        title: c.name,
+      }));
+      buttons.push({ id: `cat_new_inc_${payload}`, title: '+ Otra' });
+      return {
+        messages: [],
+        interactive: {
+          type: 'buttons' as const,
+          body: `¿En qué categoría va este ingreso de $${Number(data.amount).toLocaleString('es-AR')}?`,
+          buttons,
+        },
+      };
+    }
+
+    data.category = incomeCatMatch.category.name;
+    const matchedIncomeCategoryId = incomeCatMatch.category.id;
+
     if (settings.confirm_before_save) {
       const pendingMsg = buildPendingMessage('income', data, resFieldName, resPlotName);
       return {
@@ -826,6 +968,7 @@ export class FinancialHandler {
     }
 
     const savedIncome = await this.service.saveIncome(userId, data, fieldId, plotId);
+    this.categoryService.bump(matchedIncomeCategoryId).catch(() => {});
     const messages = [await buildIncomeConfirmation(data, resFieldName, resPlotName)];
     const { ingresos, gastos } = await this.service.getMonthlyResult(userId);
     if (gastos > 0) {

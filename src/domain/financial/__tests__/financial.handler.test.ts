@@ -1,6 +1,20 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FinancialHandler } from '../financial.handler.js';
 import type { ParsedExpense, ParsedIncome, UserSettings, User, UserId } from '../../../types/index.js';
+
+// Mock CategoryService so tests don't hit the DB
+vi.mock('../category.repository.js', () => ({
+  CategoryRepository: vi.fn().mockImplementation(() => ({})),
+}));
+
+vi.mock('../category.service.js', () => ({
+  CategoryService: vi.fn().mockImplementation(() => ({
+    match: vi.fn().mockImplementation((_userId: unknown, _kind: unknown, name: unknown) =>
+      Promise.resolve({ kind: 'matched', category: { id: 1, name: name || 'Otros', userId: _userId, kind: _kind, usageCount: 0, lastUsedAt: null } })
+    ),
+    bump: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mockService(overrides: Record<string, any> = {}) {
