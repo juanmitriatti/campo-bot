@@ -84,43 +84,43 @@ export default function Dashboard() {
         );
       case 'expenses':
         return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <ExpenseTable highlightId={highlightForView} />
           </div>
         );
       case 'incomes':
         return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <IncomeTable highlightId={highlightForView} />
           </div>
         );
       case 'activities':
         return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <ActivityTable highlightId={highlightForView} />
           </div>
         );
       case 'observations':
         return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <ObservationTable />
           </div>
         );
       case 'scoutings':
         return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <ScoutingTable />
           </div>
         );
       case 'reports':
         return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <ReportTable />
           </div>
         );
       case 'stock':
         return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <StockTable initialLowStockOnly={stockLowStockOnly} />
           </div>
         );
@@ -128,13 +128,13 @@ export default function Dashboard() {
         return <LivestockTab />;
       case 'documents':
         return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <DocumentsTable />
           </div>
         );
       case 'harvests':
         return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <HarvestLoadsTable />
           </div>
         );
@@ -144,7 +144,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
       <Navbar />
 
       <div className="flex">
