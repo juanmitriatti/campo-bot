@@ -73,6 +73,7 @@ export class LivestockHandler {
         case 'livestock_post_repro_hist': return await this.postActionReproHist(cmd, userId);
         case 'livestock_post_resumen_mes': return await this.postActionResumenMes(cmd, userId);
         case 'livestock_post_new_event': return await this.postActionNewEvent(cmd, userId);
+        case 'livestock_post_undo_movement': return await this.postActionUndoMovement(cmd, userId);
         default:
           return { messages: ['Comando de hacienda no reconocido.'] };
       }
@@ -146,6 +147,16 @@ export class LivestockHandler {
 
   async postActionResumenMes(_cmd: ParsedCommand, _userId: UserId): Promise<HandlerResponse> {
     return { messages: ['📊 Para ver el resumen del mes, escribí *resumen del mes*.'] };
+  }
+
+  async postActionUndoMovement(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const movementId = cmd.movementId as string;
+    try {
+      const r = await this.service.undoMovement(userId, movementId);
+      return { messages: [`↩️ ${r.label} aplicado.`] };
+    } catch (err: unknown) {
+      return { messages: [err instanceof Error ? err.message : String(err)] };
+    }
   }
 
   async postActionNewEvent(cmd: ParsedCommand, _userId: UserId): Promise<HandlerResponse> {

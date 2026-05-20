@@ -264,6 +264,9 @@ export class InteractiveRouter {
     if (callbackId === 'lv_post_resumen_mes') {
       return { type: 'command', data: { command: 'livestock_post_resumen_mes' } };
     }
+    if (callbackId.startsWith('lv_post_undo_movement_')) {
+      return { type: 'command', data: { command: 'livestock_post_undo_movement', movementId: callbackId.slice('lv_post_undo_movement_'.length) } };
+    }
     if (callbackId.startsWith('lv_post_new_event_')) {
       // format: lv_post_new_event_<groupId>_<subKind>
       const rest = callbackId.slice('lv_post_new_event_'.length);

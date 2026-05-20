@@ -802,4 +802,59 @@ export class LivestockService {
   async findGroupsByCategory(userId: UserId, category: string | null) {
     return this.repo.findGroupsByCategory(Number(userId), category);
   }
+
+  /**
+   * Undo a livestock movement by inserting a compensating row + adjusting group counts.
+   * Refuses when the reversal would leave a group with negative count.
+   * Ajuste is not undoable (would need previous-count history).
+   */
+  async undoMovement(userId: UserId, movementId: string): Promise<{ reversed: boolean; label: string }> {
+    const m = await this.repo.findMovementById(movementId);
+    if (!m) throw new Error('No encontré el movimiento.');
+
+    if (m.movement_type === 'ajuste') {
+      throw new Error('Los ajustes manuales no se pueden deshacer automáticamente.');
+    }
+
+    if (m.movement_type === 'entrada' || m.movement_type === 'nacimiento') {
+      if (!m.dest_group_id) throw new Error('Movimiento sin grupo destino — no se puede deshacer.');
+      const g = await this.repo.getGroupById(m.dest_group_id);
+      if (!g || g.count < m.count) {
+        throw new Error(`No se puede deshacer: actualmente hay ${g?.count ?? 0} animales, restaría a un negativo.`);
+      }
+      await this.repo.applySingleMovement(Number(userId), 'salida', m.dest_group_id, m.count, {
+        reason: `Reversa del movimiento ${m.id}`,
+      });
+      return { reversed: true, label: `Salida de ${m.count} animales (reversa de ${m.movement_type})` };
+    }
+
+    if (m.movement_type === 'salida' || m.movement_type === 'muerte') {
+      if (!m.source_group_id) throw new Error('Movimiento sin grupo origen — no se puede deshacer.');
+      await this.repo.applySingleMovement(Number(userId), 'entrada', m.source_group_id, m.count, {
+        reason: `Reversa del movimiento ${m.id}`,
+      });
+      return { reversed: true, label: `Entrada de ${m.count} animales (reversa de ${m.movement_type})` };
+    }
+
+    if (m.movement_type === 'transferencia' || m.movement_type === 'recategorizacion') {
+      if (!m.source_group_id || !m.dest_group_id) {
+        throw new Error('Movimiento de transferencia incompleto — no se puede deshacer.');
+      }
+      const destGroup = await this.repo.getGroupById(m.dest_group_id);
+      if (!destGroup || destGroup.count < m.count) {
+        throw new Error(`No se puede deshacer: el destino tiene ${destGroup?.count ?? 0} animales, restaría a un negativo.`);
+      }
+      await this.repo.applyTransferMovement(
+        Number(userId),
+        m.movement_type,
+        m.dest_group_id,
+        m.source_group_id,
+        m.count,
+        { reason: `Reversa del movimiento ${m.id}` },
+      );
+      return { reversed: true, label: `${m.movement_type} de ${m.count} animales (reversa)` };
+    }
+
+    throw new Error('Tipo de movimiento no se puede deshacer.');
+  }
 }

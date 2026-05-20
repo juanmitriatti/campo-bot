@@ -605,6 +605,34 @@ export class LivestockRepository {
     return rows[0].n;
   }
 
+  async findMovementById(movementId: string): Promise<{
+    id: string;
+    movement_type: string;
+    count: number;
+    source_group_id: string | null;
+    dest_group_id: string | null;
+    avg_weight_kg: number | null;
+  } | null> {
+    const { rows } = await pool.query(
+      `SELECT id::text AS id, movement_type, count,
+              source_group_id::text AS source_group_id,
+              dest_group_id::text AS dest_group_id,
+              avg_weight_kg
+       FROM livestock_movements WHERE id = $1`,
+      [movementId]
+    );
+    return rows[0] ?? null;
+  }
+
+  async softDeleteDomainEvent(userId: number, eventId: number): Promise<boolean> {
+    const { rowCount } = await pool.query(
+      `UPDATE domain_events SET deleted_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+      [eventId, userId]
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
   async findGroupsByCategory(
     userId: number,
     category: string | null,
