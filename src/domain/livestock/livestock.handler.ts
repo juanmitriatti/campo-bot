@@ -10,6 +10,7 @@ import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FeedlotService } from '../feedlot/feedlot.service.js';
 import { saveDomainEvent, queryLivestockEvents, updateLivestockGroupWeight } from '../../services/expenses.js';
 import { encodeLivestockPayload, decodeLivestockPayload } from './livestock-payload.js';
+import { buildPostActionButtons } from './livestock-post-actions.js';
 import type {
   UserId,
   User,
@@ -178,9 +179,9 @@ export class LivestockHandler {
     if (!category) return { messages: ['Necesito saber la categoría. Ej: "agregué 20 vacas al lote A1".'] };
     if (!count || count <= 0) return { messages: ['Necesito la cantidad. Ej: "agregué 20 vacas al lote A1".'] };
 
-    let group, created, financial;
+    let group, created, financial, movement;
     try {
-      ({ group, created, financial } = await this.service.addAnimals(userId, {
+      ({ group, created, financial, movement } = await this.service.addAnimals(userId, {
         category,
         count,
         fieldName: cmd.fieldName as string,
@@ -218,18 +219,26 @@ export class LivestockHandler {
       ? `\n\n💡 Si hacés engorde a corral, podés crear un feedlot con "nuevo feedlot en ${group.field_name || '<campo>'}".`
       : '';
 
-    return {
-      messages: [
-        `🐄 *Hacienda actualizada*\n\n` +
-        `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}${newLabel}\n` +
-        `  ➕ ${count} animales\n` +
-        `  📊 Total: *${group.count}*\n` +
-        `  📍 ${fmtLoc(group)}` +
-        financialLine +
-        askPriceLine +
-        nudgeLine,
-      ],
-    };
+    const body =
+      `🐄 *Hacienda actualizada*\n\n` +
+      `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}${newLabel}\n` +
+      `  ➕ ${count} animales\n` +
+      `  📊 Total: *${group.count}*\n` +
+      `  📍 ${fmtLoc(group)}` +
+      financialLine +
+      askPriceLine +
+      nudgeLine;
+
+    const buttons = buildPostActionButtons('add', {
+      groupId: String(group.id),
+      movementId: movement?.id ? String(movement.id) : undefined,
+      plotId: group.plot_id,
+      corralId: group.corral_id,
+    });
+
+    return buttons.length > 0
+      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons } }
+      : { messages: [body] };
   }
 
   // ========================
@@ -242,9 +251,9 @@ export class LivestockHandler {
     if (!category) return { messages: ['Necesito la categoría. Ej: "vendí 5 vacas del lote A1".'] };
     if (!count || count <= 0) return { messages: ['Necesito la cantidad. Ej: "vendí 5 vacas del lote A1".'] };
 
-    let group, financial;
+    let group, financial, movement;
     try {
-      ({ group, financial } = await this.service.removeAnimals(userId, {
+      ({ group, financial, movement } = await this.service.removeAnimals(userId, {
         category,
         count,
         fieldName: cmd.fieldName as string,
@@ -272,17 +281,26 @@ export class LivestockHandler {
     const askPriceLine = (isSale && !hasPrice && !financial)
       ? '\n\n¿A cuánto fue la venta? Así registro el ingreso.'
       : '';
-    return {
-      messages: [
-        `🐄 *Hacienda descontada*\n\n` +
-        `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}\n` +
-        `  ➖ ${count} animales\n` +
-        `  📊 Quedan: *${group.count}*\n` +
-        `  📍 ${fmtLoc(group)}` +
-        financialLine +
-        askPriceLine,
-      ],
-    };
+
+    const body =
+      `🐄 *Hacienda descontada*\n\n` +
+      `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}\n` +
+      `  ➖ ${count} animales\n` +
+      `  📊 Quedan: *${group.count}*\n` +
+      `  📍 ${fmtLoc(group)}` +
+      financialLine +
+      askPriceLine;
+
+    const buttons = buildPostActionButtons('remove', {
+      movementId: movement?.id ? String(movement.id) : undefined,
+      plotId: group.plot_id,
+      corralId: group.corral_id,
+      isSale,
+    });
+
+    return buttons.length > 0
+      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons } }
+      : { messages: [body] };
   }
 
   // ========================
@@ -357,15 +375,23 @@ export class LivestockHandler {
 
     const mvLabel = LIVESTOCK_MOVEMENT_LABEL[movement.movement_type];
     const breed = sourceGroup.breed ? ` ${sourceGroup.breed}` : '';
-    return {
-      messages: [
-        `${mvLabel.emoji} *${mvLabel.label}*\n\n` +
-        `  ${LIVESTOCK_CATEGORY_LABEL[sourceGroup.category]}${breed}\n` +
-        `  ↗️ ${count} animales\n` +
-        `  Desde: *${fmtLoc(sourceGroup)}* (quedan ${sourceGroup.count})\n` +
-        `  Hacia: *${fmtLoc(destGroup)}* (ahora ${destGroup.count})`,
-      ],
-    };
+    const body =
+      `${mvLabel.emoji} *${mvLabel.label}*\n\n` +
+      `  ${LIVESTOCK_CATEGORY_LABEL[sourceGroup.category]}${breed}\n` +
+      `  ↗️ ${count} animales\n` +
+      `  Desde: *${fmtLoc(sourceGroup)}* (quedan ${sourceGroup.count})\n` +
+      `  Hacia: *${fmtLoc(destGroup)}* (ahora ${destGroup.count})`;
+
+    const buttons = buildPostActionButtons('transfer', {
+      groupId: String(destGroup.id),
+      movementId: movement?.id ? String(movement.id) : undefined,
+      plotId: destGroup.plot_id,
+      corralId: destGroup.corral_id,
+    });
+
+    return buttons.length > 0
+      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons } }
+      : { messages: [body] };
   }
 
   // ========================
@@ -717,7 +743,7 @@ export class LivestockHandler {
       );
     }
 
-    await saveDomainEvent(userId, {
+    const event = await saveDomainEvent(userId, {
       plotId: loc.plotId,
       corralId: loc.corralId,
       eventType: 'health_event',
@@ -753,7 +779,15 @@ export class LivestockHandler {
       lines.push('  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás.');
     }
 
-    return { messages: [lines.join('\n')] };
+    const body = lines.join('\n');
+    const buttons = buildPostActionButtons('health', {
+      eventId: event?.id as number | undefined,
+      plotId: loc.plotId,
+      corralId: loc.corralId,
+    });
+    return buttons.length > 0
+      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons } }
+      : { messages: [body] };
   }
 
   private async queryHealthEvents(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
@@ -829,7 +863,7 @@ export class LivestockHandler {
       );
     }
 
-    await saveDomainEvent(userId, {
+    const event = await saveDomainEvent(userId, {
       plotId: loc.plotId,
       corralId: loc.corralId,
       eventType: 'repro_event',
@@ -863,7 +897,15 @@ export class LivestockHandler {
       lines.push('  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás.');
     }
 
-    return { messages: [lines.join('\n')] };
+    const body = lines.join('\n');
+    const buttons = buildPostActionButtons('repro', {
+      eventId: event?.id as number | undefined,
+      plotId: loc.plotId,
+      corralId: loc.corralId,
+    });
+    return buttons.length > 0
+      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons } }
+      : { messages: [body] };
   }
 
   private async queryReproEvents(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
@@ -937,7 +979,7 @@ export class LivestockHandler {
       );
     }
 
-    await saveDomainEvent(userId, {
+    const event = await saveDomainEvent(userId, {
       plotId: loc.plotId,
       corralId: loc.corralId,
       eventType: 'weighing',
@@ -975,7 +1017,15 @@ export class LivestockHandler {
       lines.push(`  📅 ${dateStr}`);
     }
 
-    return { messages: [lines.join('\n')] };
+    const body = lines.join('\n');
+    const buttons = buildPostActionButtons('weigh', {
+      eventId: event?.id as number | undefined,
+      plotId: loc.plotId,
+      corralId: loc.corralId,
+    });
+    return buttons.length > 0
+      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons } }
+      : { messages: [body] };
   }
 
   private async queryWeighings(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
