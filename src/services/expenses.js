@@ -1127,6 +1127,7 @@ export async function getPlotInfo(userId, plotName) {
     pool.query(
       `SELECT event_type, event_date, product, crop
        FROM domain_events WHERE plot_id = $1
+         AND deleted_at IS NULL
        ORDER BY event_date DESC LIMIT 3`,
       [plot.id]
     ),
@@ -1814,6 +1815,7 @@ export async function getAllActiveCrops(userId, cropFilter = null, grupo = null)
               (ARRAY_AGG(de.event_type ORDER BY de.event_date DESC))[1] AS last_activity_type
        FROM domain_events de
        WHERE de.plot_crop_id = pc.id
+         AND de.deleted_at IS NULL
      ) act ON true
      WHERE f.id IN (${accessibleFieldsSql(1)})
        AND pc.end_date IS NULL
@@ -1886,7 +1888,7 @@ export async function getCampaignIncomes(plotId, startDate, endDate = null) {
 
 export async function getCampaignActivities(plotCropId) {
   const result = await pool.query(
-    `SELECT * FROM domain_events WHERE plot_crop_id = $1 ORDER BY event_date`,
+    `SELECT * FROM domain_events WHERE plot_crop_id = $1 AND deleted_at IS NULL ORDER BY event_date`,
     [plotCropId]
   );
   return result.rows;
@@ -2092,7 +2094,7 @@ export async function saveDomainEvent(userId, data) {
  * Returns rows with plot_name, field_name, corral info joined.
  */
 export async function queryLivestockEvents(userId, eventType, { fieldId = null, plotId = null, corralId = null, category = null, subtype = null, desde = null, hasta = null, limit = 30 } = {}) {
-  const conditions = ['de.user_id = $1', 'de.event_type = $2'];
+  const conditions = ['de.user_id = $1', 'de.event_type = $2', 'de.deleted_at IS NULL'];
   const params = [userId, eventType];
   let idx = 3;
 
@@ -2156,6 +2158,7 @@ export async function getDomainEventsByPlot(plotId, limit = 20) {
      LEFT JOIN plots p ON de.plot_id = p.id
      LEFT JOIN fields f ON p.field_id = f.id
      WHERE de.plot_id = $1
+       AND de.deleted_at IS NULL
      ORDER BY de.event_date DESC, de.created_at DESC
      LIMIT $2`,
     [plotId, limit]
@@ -2170,6 +2173,7 @@ export async function getDomainEventsByUser(userId, limit = 20) {
      LEFT JOIN plots p ON de.plot_id = p.id
      LEFT JOIN fields f ON p.field_id = f.id
      WHERE de.user_id = $1
+       AND de.deleted_at IS NULL
      ORDER BY de.event_date DESC, de.created_at DESC
      LIMIT $2`,
     [userId, limit]
@@ -2186,6 +2190,7 @@ export async function getDomainEventsByFieldDateRange(fieldId, desde, hasta) {
      WHERE p.field_id = $1
        AND de.event_date >= $2::date
        AND de.event_date <= $3::date
+       AND de.deleted_at IS NULL
      ORDER BY de.event_date DESC, de.created_at DESC`,
     [fieldId, desde, hasta]
   );
@@ -2201,6 +2206,7 @@ export async function getDomainEventsByPlotDateRange(plotId, desde, hasta) {
      WHERE de.plot_id = $1
        AND de.event_date >= $2::date
        AND de.event_date <= $3::date
+       AND de.deleted_at IS NULL
      ORDER BY de.event_date DESC, de.created_at DESC`,
     [plotId, desde, hasta]
   );
@@ -2214,6 +2220,7 @@ export async function getLastDomainEvent(userId) {
      LEFT JOIN plots p ON de.plot_id = p.id
      LEFT JOIN fields f ON p.field_id = f.id
      WHERE de.user_id = $1
+       AND de.deleted_at IS NULL
      ORDER BY de.created_at DESC
      LIMIT 1`,
     [userId]
@@ -2222,7 +2229,7 @@ export async function getLastDomainEvent(userId) {
 }
 
 export async function findLastDomainEventFiltered(userId, filters = {}) {
-  const conditions = ['de.user_id = $1'];
+  const conditions = ['de.user_id = $1', 'de.deleted_at IS NULL'];
   const params = [userId];
   let idx = 1;
 
@@ -2409,6 +2416,7 @@ export async function queryActivities(opts = {}) {
     `de.user_id = $1`,
     `de.event_type IN ('planting','spraying','fertilization','harvest','tillage','irrigation')`,
     `(f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))`,
+    `de.deleted_at IS NULL`,
   ];
   const params = [userId];
   let idx = 2;
@@ -2579,7 +2587,7 @@ export async function queryPlotHistory(userId, { plotId = null, fieldId = null, 
       FROM domain_events de
       LEFT JOIN plots p ON de.plot_id = p.id
       LEFT JOIN fields f ON p.field_id = f.id
-      WHERE de.user_id = $1 ${deLoc} ${deDate} ${deAct} ${deCrop}
+      WHERE de.user_id = $1 AND de.deleted_at IS NULL ${deLoc} ${deDate} ${deAct} ${deCrop}
     `);
   }
 
@@ -2621,7 +2629,7 @@ export async function queryPlotHistory(userId, { plotId = null, fieldId = null, 
 export async function getTactoSummary(userId, { fieldId = null, plotId = null, corralId = null, desde = null, hasta = null } = {}) {
   const params = [userId];
   let idx = 2;
-  const conditions = [`de.user_id = $1`, `de.event_type = 'tacto'`];
+  const conditions = [`de.user_id = $1`, `de.event_type = 'tacto'`, `de.deleted_at IS NULL`];
 
   if (corralId) {
     conditions.push(`de.corral_id = $${idx}`);
@@ -2682,7 +2690,7 @@ export async function getTactoSummary(userId, { fieldId = null, plotId = null, c
 export async function getActivityStats(userId, { fieldId = null, plotId = null, activityFilter = null, desde = null, hasta = null, grupo = null } = {}) {
   const params = [userId];
   let idx = 2;
-  const conditions = [`de.user_id = $1`, `de.event_type != 'tacto'`];
+  const conditions = [`de.user_id = $1`, `de.event_type != 'tacto'`, `de.deleted_at IS NULL`];
 
   if (activityFilter) {
     conditions.push(`de.event_type = $${idx}`);
@@ -2776,6 +2784,7 @@ export async function findTodayHarvestEvent(userId, plotId) {
     `SELECT * FROM domain_events
      WHERE user_id = $1 AND plot_id = $2 AND event_type = 'harvest'
        AND event_date = CURRENT_DATE
+       AND deleted_at IS NULL
      ORDER BY created_at DESC LIMIT 1`,
     [userId, plotId]
   );
@@ -2798,6 +2807,7 @@ export async function findHarvestsToday(userId) {
      WHERE de.user_id = $1
        AND de.event_type = 'harvest'
        AND de.event_date = CURRENT_DATE
+       AND de.deleted_at IS NULL
        AND p.deleted_at IS NULL
        AND f.deleted_at IS NULL
      ORDER BY de.plot_id, de.created_at DESC`,
@@ -2838,7 +2848,7 @@ export async function queryHarvestLoads(userId, opts = {}) {
   } = opts;
   const params = [userId];
   let idx = 2;
-  const conditions = [`de.user_id = $1`, `de.event_type = 'harvest'`];
+  const conditions = [`de.user_id = $1`, `de.event_type = 'harvest'`, `de.deleted_at IS NULL`];
 
   if (plotId) { conditions.push(`de.plot_id = $${idx}`); params.push(plotId); idx++; }
   else if (fieldId) { conditions.push(`p.field_id = $${idx}`); params.push(fieldId); idx++; }
@@ -2914,6 +2924,7 @@ export async function getHarvestLoadsByCampaign(plotCropId) {
      FROM harvest_loads hl
      JOIN domain_events de ON hl.domain_event_id = de.id
      WHERE hl.plot_crop_id = $1
+       AND de.deleted_at IS NULL
      ORDER BY de.event_date, hl.id`,
     [plotCropId]
   );
@@ -2931,6 +2942,7 @@ export async function deleteHarvestLoads(userId, plotId, { eventDate, driverName
     'de.user_id = $1',
     'de.plot_id = $2',
     "de.event_type = 'harvest'",
+    'de.deleted_at IS NULL',
   ];
   const params = [userId, plotId];
   let paramIdx = 3;

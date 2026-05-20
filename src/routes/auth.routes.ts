@@ -409,6 +409,7 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
        WHERE user_id = $1
          AND event_date >= $2::date
          AND event_type NOT IN ('health_event', 'repro_event', 'weighing')
+         AND deleted_at IS NULL
          AND (plot_id IS NULL OR plot_id IN (SELECT id FROM plots WHERE field_id = $3))`,
       [userId, monthStart, fieldId]
     );
@@ -442,6 +443,7 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
         LEFT JOIN fields f ON p.field_id = f.id
         WHERE de.user_id = $1
           AND de.event_type NOT IN ('health_event', 'repro_event', 'weighing')
+          AND de.deleted_at IS NULL
           AND p.field_id = $2
         ORDER BY de.event_date DESC, de.created_at DESC LIMIT 5)
        ORDER BY date DESC LIMIT 5`,
@@ -1610,6 +1612,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
          JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
          WHERE e.user_id = $1
            AND e.event_type = 'harvest'
+           AND e.deleted_at IS NULL
            AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
            AND (e.quantity IS NOT NULL OR EXISTS (SELECT 1 FROM harvest_loads hl WHERE hl.domain_event_id = e.id))
            AND p.field_id = $2
@@ -1676,6 +1679,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
          JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
          WHERE e.user_id = $1
            AND e.event_type = 'harvest'
+           AND e.deleted_at IS NULL
            AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
            AND (e.quantity IS NOT NULL OR EXISTS (SELECT 1 FROM harvest_loads hl WHERE hl.domain_event_id = e.id))
            AND p.area_hectares > 0
@@ -1707,6 +1711,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
        LEFT JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
        WHERE e.user_id = $1
          AND e.event_type = 'harvest'
+         AND e.deleted_at IS NULL
          AND hl.humidity_pct IS NOT NULL
          AND hl.quality_metrics IS NOT NULL
          AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
@@ -1844,6 +1849,7 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
         AND g.deleted_at IS NULL
        WHERE e.user_id = $1
          AND e.event_type = 'weighing'
+         AND e.deleted_at IS NULL
          AND e.event_date >= NOW() - interval '12 months'
          AND e.quantity IS NOT NULL
          AND g.field_id = $2
@@ -1860,6 +1866,7 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
        FROM domain_events e
        WHERE e.user_id = $1
          AND e.event_type = 'weighing'
+         AND e.deleted_at IS NULL
          AND e.event_date >= CURRENT_DATE - interval '90 days'
          AND e.animal_category IS NOT NULL
          AND e.quantity IS NOT NULL
@@ -1882,6 +1889,7 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
        FROM domain_events e
        WHERE e.user_id = $1
          AND e.event_type = 'health_event'
+         AND e.deleted_at IS NULL
          AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
          AND (
            (e.plot_id IS NOT NULL AND EXISTS (SELECT 1 FROM plots WHERE id = e.plot_id AND field_id = $2))
@@ -1903,6 +1911,7 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
        FROM domain_events e
        WHERE e.user_id = $1
          AND e.event_type = 'repro_event'
+         AND e.deleted_at IS NULL
          AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
          AND (
            (e.plot_id IS NOT NULL AND EXISTS (SELECT 1 FROM plots WHERE id = e.plot_id AND field_id = $2))

@@ -104,6 +104,7 @@ const EXPORT_TABLES: ExportTable[] = [
             LEFT JOIN plots p ON p.id = de.plot_id
             LEFT JOIN fields f ON f.id = p.field_id
             WHERE de.user_id = $1
+              AND de.deleted_at IS NULL
             ORDER BY de.id`,
   },
   {
@@ -147,6 +148,7 @@ const EXPORT_TABLES: ExportTable[] = [
             LEFT JOIN plots p ON p.id = de.plot_id
             LEFT JOIN fields f ON f.id = p.field_id
             WHERE de.user_id = $1
+              AND de.deleted_at IS NULL
             ORDER BY hl.id`,
   },
   {

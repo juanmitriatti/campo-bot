@@ -307,6 +307,7 @@ async function getActivitiesInWindow({ fieldId, plotId, dateFrom, dateTo }) {
      LEFT JOIN plots p ON p.id = de.plot_id
      WHERE ${plotFilter}
        AND de.event_date BETWEEN $1 AND $2
+       AND de.deleted_at IS NULL
      ORDER BY de.event_date DESC, de.id DESC`,
     [dateFrom, dateTo, plotId || fieldId],
   );

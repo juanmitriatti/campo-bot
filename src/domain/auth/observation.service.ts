@@ -229,7 +229,7 @@ export class ObservationService {
     const offset = (page - 1) * limit;
 
     // Show activities from own data + activities on plots in accessible fields
-    const conditions = ['(de.user_id = $1 OR de.plot_id IN (SELECT p.id FROM plots p WHERE p.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1)))'];
+    const conditions = ['(de.user_id = $1 OR de.plot_id IN (SELECT p.id FROM plots p WHERE p.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1)))', 'de.deleted_at IS NULL'];
     const params: (number | string)[] = [userId];
     let paramIdx = 1;
 
@@ -594,7 +594,7 @@ export class ObservationService {
     data: { event_type?: string; event_date?: string; crop?: string | null; product?: string | null; quantity?: number | null; unit?: string | null; implement?: string | null; notes?: string | null; pregnant_count?: number | null; open_count?: number | null; uncertain_count?: number | null; plot_id?: number | null }
   ): Promise<ActivityRow> {
     const { rows } = await pool.query(
-      `SELECT * FROM domain_events WHERE id = $1`,
+      `SELECT * FROM domain_events WHERE id = $1 AND deleted_at IS NULL`,
       [activityId]
     );
     if (rows.length === 0) {

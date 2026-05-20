@@ -269,6 +269,7 @@ async function getMonthActivitiesCount(userId, monthsAgo) {
       WHERE (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
         AND de.event_date >= date_trunc('month', NOW()) - make_interval(months => $2)
         AND de.event_date <  date_trunc('month', NOW()) - make_interval(months => $2 - 1)
+        AND de.deleted_at IS NULL
         AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
     [userId, monthsAgo]
   );
@@ -623,6 +624,7 @@ async function monitoringReminderTick() {
            WHERE de.plot_id = ao.plot_id
              AND de.event_type IN ('fumigacion', 'pulverizacion', 'aplicacion')
              AND de.created_at > ao.created_at
+             AND de.deleted_at IS NULL
          )
        ORDER BY ao.plot_id, ao.created_at DESC`
     );
@@ -679,6 +681,7 @@ async function pestEscalationTick() {
            WHERE de.plot_id = ao.plot_id
              AND de.event_type IN ('fumigacion', 'pulverizacion', 'aplicacion')
              AND de.created_at >= NOW() - INTERVAL '14 days'
+             AND de.deleted_at IS NULL
          )
        GROUP BY ao.user_id, ao.plot_id, p.name, f.name, u.phone_number
        HAVING COUNT(*) >= 3`

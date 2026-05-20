@@ -1321,6 +1321,7 @@ router.get("/api/agro/fields/:id/activities", async (req, res) => {
     }
 
     params.push(limit, offset);
+    conditions.push('de.deleted_at IS NULL');
     const result = await pool.query(
       `SELECT de.*, p.name AS plot_name, u.name AS user_name
        FROM domain_events de
@@ -2155,6 +2156,7 @@ router.get("/api/analytics/overview", async (req, res) => {
         SELECT COUNT(*) AS total
         FROM domain_events
         WHERE created_at >= NOW() - $1::int * INTERVAL '1 day'
+          AND deleted_at IS NULL
       `, [days]),
       // AI usage (Haiku 4.5: input 0.80/M, cache read 0.08/M, cache write 1.00/M, output 4.00/M)
       pool.query(`
