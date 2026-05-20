@@ -9,6 +9,7 @@ import type { LivestockCategory, LivestockGroupRow } from './livestock.types.js'
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FeedlotService } from '../feedlot/feedlot.service.js';
 import { saveDomainEvent, queryLivestockEvents, updateLivestockGroupWeight } from '../../services/expenses.js';
+import { encodeLivestockPayload } from './livestock-payload.js';
 import type {
   UserId,
   User,
@@ -438,12 +439,70 @@ export class LivestockHandler {
     return { plotId: null, corralId: null, label: 'Sin ubicación' };
   }
 
+  private async resolveEventLocationOrAsk(
+    cmd: ParsedCommand,
+    userId: UserId,
+  ): Promise<
+    | { plotId: number | null; corralId: number | null; label: string; autoResolved?: boolean; knownGroupCount?: number }
+    | { needsLocationPick: true; options: Array<{ plotId: number | null; corralId: number | null; label: string; groupCount: number }> }
+    | { error: string }
+  > {
+    if (cmd.corralName || cmd.plotName) {
+      const r = await this.resolveEventLocation(cmd, userId);
+      if ('error' in r) return r;
+      return { plotId: r.plotId, corralId: r.corralId, label: r.label };
+    }
+
+    const category = (cmd.category as string | null) ?? null;
+    const groups = await this.service.findGroupsByCategory(userId, category);
+
+    if (groups.length === 0) {
+      return { error: 'No tenés hacienda registrada con esos criterios. Primero agregá animales con "agregué N <categoría> al lote X".' };
+    }
+
+    if (groups.length === 1) {
+      const g = groups[0];
+      return {
+        plotId: g.plot_id,
+        corralId: g.corral_id,
+        label: g.location_label,
+        autoResolved: true,
+        knownGroupCount: g.count,
+      };
+    }
+
+    return {
+      needsLocationPick: true,
+      options: groups.slice(0, 7).map(g => ({
+        plotId: g.plot_id,
+        corralId: g.corral_id,
+        label: g.location_label,
+        groupCount: g.count,
+      })),
+    };
+  }
+
   private async logHealthEvent(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const healthType = cmd.healthType as string;
     if (!healthType) return { messages: ['Necesito el tipo de evento sanitario (vacunación, desparasitación, tratamiento).'] };
 
-    const loc = await this.resolveEventLocation(cmd, userId);
+    const loc = await this.resolveEventLocationOrAsk(cmd, userId);
     if ('error' in loc) return { messages: [loc.error] };
+
+    if ('needsLocationPick' in loc) {
+      const payload = encodeLivestockPayload({ cmd, step: 'pick_loc' });
+      return {
+        messages: [],
+        interactive: {
+          type: 'buttons' as const,
+          body: '¿En qué ubicación lo registramos?',
+          buttons: loc.options.map(o => ({
+            id: `lv_pick_loc_health_${payload}_${o.plotId ?? 'null'}_${o.corralId ?? 'null'}`,
+            title: `${o.label} (${o.groupCount})`.slice(0, 24),
+          })),
+        },
+      };
+    }
 
     const category = cmd.category as string | null;
     const animalsAffected = typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected : null;
@@ -478,7 +537,7 @@ export class LivestockHandler {
     }
     if (doseQuantity) lines.push(`  💊 ${doseQuantity} ${doseUnit || ''}/animal`);
     if (veterinarian) lines.push(`  👨‍⚕️ ${veterinarian}`);
-    lines.push(`  📍 ${loc.label}`);
+    lines.push(`  📍 ${loc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
     if (cmd.notes) lines.push(`  📝 ${cmd.notes}`);
     if (cmd.eventDate) {
       const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
@@ -529,8 +588,23 @@ export class LivestockHandler {
     const reproType = cmd.reproType as string;
     if (!reproType) return { messages: ['Necesito el tipo de evento reproductivo (servicio, destete, inseminación, detección de celo).'] };
 
-    const loc = await this.resolveEventLocation(cmd, userId);
+    const loc = await this.resolveEventLocationOrAsk(cmd, userId);
     if ('error' in loc) return { messages: [loc.error] };
+
+    if ('needsLocationPick' in loc) {
+      const payload = encodeLivestockPayload({ cmd, step: 'pick_loc' });
+      return {
+        messages: [],
+        interactive: {
+          type: 'buttons' as const,
+          body: '¿En qué ubicación lo registramos?',
+          buttons: loc.options.map(o => ({
+            id: `lv_pick_loc_repro_${payload}_${o.plotId ?? 'null'}_${o.corralId ?? 'null'}`,
+            title: `${o.label} (${o.groupCount})`.slice(0, 24),
+          })),
+        },
+      };
+    }
 
     const category = cmd.category as string | null;
     const animalsAffected = typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected : null;
@@ -561,7 +635,7 @@ export class LivestockHandler {
     }
     if (sireInfo) lines.push(`  🐂 ${sireInfo}`);
     if (method) lines.push(`  🔬 Método: ${method}`);
-    lines.push(`  📍 ${loc.label}`);
+    lines.push(`  📍 ${loc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
     if (cmd.notes) lines.push(`  📝 ${cmd.notes}`);
     if (cmd.eventDate) {
       const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
@@ -612,8 +686,23 @@ export class LivestockHandler {
     const avgWeightKg = typeof cmd.avg_weight_kg === 'number' ? cmd.avg_weight_kg : null;
     if (!avgWeightKg) return { messages: ['Necesito el peso promedio en kg. Ej: "pesé los novillos, 380 kg promedio".'] };
 
-    const loc = await this.resolveEventLocation(cmd, userId);
+    const loc = await this.resolveEventLocationOrAsk(cmd, userId);
     if ('error' in loc) return { messages: [loc.error] };
+
+    if ('needsLocationPick' in loc) {
+      const payload = encodeLivestockPayload({ cmd, step: 'pick_loc' });
+      return {
+        messages: [],
+        interactive: {
+          type: 'buttons' as const,
+          body: '¿En qué ubicación lo registramos?',
+          buttons: loc.options.map(o => ({
+            id: `lv_pick_loc_weigh_${payload}_${o.plotId ?? 'null'}_${o.corralId ?? 'null'}`,
+            title: `${o.label} (${o.groupCount})`.slice(0, 24),
+          })),
+        },
+      };
+    }
 
     const category = cmd.category as string | null;
     const animalsWeighed = typeof cmd.animalsWeighed === 'number' ? cmd.animalsWeighed : null;
@@ -630,7 +719,6 @@ export class LivestockHandler {
       notes: cmd.notes || null,
     });
 
-    // Update livestock_groups.avg_weight_kg if matching group found
     if (category) {
       await updateLivestockGroupWeight(userId, {
         category,
@@ -647,7 +735,7 @@ export class LivestockHandler {
       lines.push(`  🐄 ${LIVESTOCK_CATEGORY_LABEL[category as LivestockCategory] || category}`);
     }
     lines.push(`  📊 Peso promedio: *${avgWeightKg} kg*`);
-    lines.push(`  📍 ${loc.label}`);
+    lines.push(`  📍 ${loc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
     if (cmd.notes) lines.push(`  📝 ${cmd.notes}`);
     if (cmd.eventDate) {
       const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
