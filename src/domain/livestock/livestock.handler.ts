@@ -74,6 +74,7 @@ export class LivestockHandler {
         case 'livestock_post_resumen_mes': return await this.postActionResumenMes(cmd, userId);
         case 'livestock_post_new_event': return await this.postActionNewEvent(cmd, userId);
         case 'livestock_post_undo_movement': return await this.postActionUndoMovement(cmd, userId);
+        case 'livestock_post_undo_event': return await this.postActionUndoEvent(cmd, userId);
         default:
           return { messages: ['Comando de hacienda no reconocido.'] };
       }
@@ -157,6 +158,14 @@ export class LivestockHandler {
     } catch (err: unknown) {
       return { messages: [err instanceof Error ? err.message : String(err)] };
     }
+  }
+
+  async postActionUndoEvent(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const eventId = Number(cmd.eventId);
+    if (!Number.isFinite(eventId)) return { messages: ['ID de evento inválido.'] };
+    const ok = await this.service.softDeleteDomainEvent(userId, eventId);
+    if (!ok) return { messages: ['No encontré ese evento para deshacer.'] };
+    return { messages: ['↩️ Evento eliminado.'] };
   }
 
   async postActionNewEvent(cmd: ParsedCommand, _userId: UserId): Promise<HandlerResponse> {

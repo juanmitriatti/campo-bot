@@ -803,6 +803,10 @@ export class LivestockService {
     return this.repo.findGroupsByCategory(Number(userId), category);
   }
 
+  async softDeleteDomainEvent(userId: UserId, eventId: number): Promise<boolean> {
+    return this.repo.softDeleteDomainEvent(Number(userId), eventId);
+  }
+
   /**
    * Undo a livestock movement by inserting a compensating row + adjusting group counts.
    * Refuses when the reversal would leave a group with negative count.
