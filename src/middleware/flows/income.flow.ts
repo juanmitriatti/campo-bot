@@ -4,24 +4,19 @@ import { FinancialRepository } from '../../domain/financial/financial.repository
 import { getSuggestions } from '../contextual-suggestions.js';
 import { buildPlotPromptGrouped, buildPlotInteractiveGrouped, validatePlotAsync } from './field-step-helpers.js';
 import { EntityValidator } from '../../services/entity-validator.js';
-import { INCOME_CATEGORIES } from '../../constants/agro-terms.js';
+import { CategoryRepository } from '../../domain/financial/category.repository.js';
+import { CategoryService } from '../../domain/financial/category.service.js';
+import { logError } from '../../services/error-logger.js';
 import type { FlowDefinition, FlowStep } from './flow.interface.js';
 import type { UserId, ParsedIncome, InteractiveMessage } from '../../types/index.js';
 
 const entityValidator = new EntityValidator();
 
-const categoryList: InteractiveMessage = {
-  type: 'list',
-  body: '¿De qué es el ingreso?',
-  buttonText: 'Ver categorías',
-  sections: [{
-    title: 'Categorías',
-    rows: INCOME_CATEGORIES.map(c => ({
-      id: `flow_cat_${c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`,
-      title: c,
-    })),
-  }],
-};
+const NEW_CATEGORY_SENTINEL = '__NEW_CATEGORY__';
+const NEW_CATEGORY_BUTTON_TITLE = '+ Crear nueva';
+
+const categoryRepo = new CategoryRepository();
+const categoryService = new CategoryService(categoryRepo);
 
 const financialService = new FinancialService(new FinancialRepository());
 
@@ -39,15 +34,44 @@ const steps: FlowStep[] = [
   {
     field: 'category',
     prompt: '¿De qué es el ingreso?',
-    interactive: categoryList,
+    interactiveAsync: async (_data, userId) => {
+      await categoryService.bootstrapDefaults(userId, 'income');
+      const cats = await categoryRepo.listActive(userId, 'income');
+      return {
+        type: 'list',
+        body: '¿De qué es el ingreso?',
+        buttonText: 'Ver categorías',
+        sections: [{
+          title: 'Categorías',
+          rows: [
+            ...cats.map(c => ({ id: `flow_cat_${c.id}`, title: c.name })),
+            { id: 'flow_cat_new', title: NEW_CATEGORY_BUTTON_TITLE },
+          ],
+        }],
+      };
+    },
+    validate: () => ({ value: '' }), // sync fallback unused; validateAsync below takes over
+    validateAsync: async (input, _data, userId) => {
+      const trimmed = input.trim();
+      if (!trimmed) return { error: 'Decime la categoría o tocá una de la lista.' };
+      if (trimmed.toLowerCase() === NEW_CATEGORY_BUTTON_TITLE.toLowerCase()) {
+        return { value: NEW_CATEGORY_SENTINEL };
+      }
+      const existing = await categoryRepo.findByName(userId, 'income', trimmed);
+      if (existing) return { value: existing.name };
+      if (trimmed.length > 60) return { error: 'El nombre es muy largo (máx 60 caracteres).' };
+      return { value: trimmed };
+    },
+  },
+  {
+    field: 'categoryNewName',
+    prompt: '¿Cómo se llama la nueva categoría?',
+    skipIf: (data) => data.category !== NEW_CATEGORY_SENTINEL,
     validate: (input) => {
-      const lower = input.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const match = INCOME_CATEGORIES.find(c =>
-        c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').startsWith(lower) ||
-        lower.startsWith(c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
-      );
-      if (!match) return { error: 'Categoría no válida. Elegí una de la lista.' };
-      return { value: match };
+      const trimmed = input.trim();
+      if (!trimmed) return { error: 'No puede estar vacío.' };
+      if (trimmed.length > 60) return { error: 'Demasiado largo (máx 60 caracteres).' };
+      return { value: trimmed };
     },
   },
   {
@@ -102,9 +126,12 @@ export const incomeFlow: FlowDefinition = {
   buildConfirmation(data) {
     const amountInfo = data.amount as { amount: number; currency: string };
     const currency = amountInfo.currency === 'USD' ? ' USD' : '';
+    const finalCategory = data.category === NEW_CATEGORY_SENTINEL
+      ? (data.categoryNewName as string)
+      : (data.category as string);
     let msg = '\ud83d\udcb0 *Confirmar ingreso:*\n\n';
     msg += `Monto: *$${Number(amountInfo.amount).toLocaleString('es-AR')}${currency}*\n`;
-    msg += `Categoría: *${data.category}*\n`;
+    msg += `Categoría: *${finalCategory}*\n`;
     if (data.quantity) msg += `Cantidad: *${data.quantity} tn*\n`;
     if (data.plotName) msg += `Lote: *${data.plotName}*\n`;
     if (data.description) msg += `Detalle: ${data.description}\n`;
@@ -154,10 +181,21 @@ export const incomeFlow: FlowDefinition = {
       }
     }
 
+    const finalCategory = data.category === NEW_CATEGORY_SENTINEL
+      ? (data.categoryNewName as string)
+      : (data.category as string);
+    try {
+      const res = await categoryService.match(userId, 'income', finalCategory, 'new');
+      if (res.kind === 'matched') {
+        await categoryService.bump(res.category.id);
+      }
+    } catch (catErr) {
+      logError('income-flow', 'CAT_PERSIST', catErr as Error);
+    }
     const incomeData: ParsedIncome = {
       type: 'income',
       amount: amountInfo.amount,
-      category: data.category as string,
+      category: finalCategory,
       description: (data.description as string) || '',
       currency: amountInfo.currency as 'ARS' | 'USD',
       quantity: quantity,
