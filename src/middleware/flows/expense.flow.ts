@@ -44,7 +44,7 @@ const steps: FlowStep[] = [
         sections: [{
           title: 'Categorías',
           rows: [
-            ...cats.map(c => ({ id: `flow_cat_${c.id}`, title: c.name })),
+            ...cats.map(c => ({ id: 'flow_cat_' + c.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '_'), title: c.name })),
             { id: 'flow_cat_new', title: NEW_CATEGORY_BUTTON_TITLE },
           ],
         }],
@@ -53,9 +53,16 @@ const steps: FlowStep[] = [
     validateAsync: async (input, _data, userId) => {
       const trimmed = input.trim();
       if (!trimmed) return { error: 'Decime la categoría o tocá una de la lista.' };
-      if (trimmed.toLowerCase() === NEW_CATEGORY_BUTTON_TITLE.toLowerCase()) {
+      // Match special sentinels first: 'new' (suffix of flow_cat_new) or the button title literal
+      if (trimmed.toLowerCase() === 'new' || trimmed.toLowerCase() === NEW_CATEGORY_BUTTON_TITLE.toLowerCase()) {
         return { value: NEW_CATEGORY_SENTINEL };
       }
+      // The controller may pass the slug of the button id when the user tapped a list row.
+      // Try to find by slug match against active categories.
+      const all = await categoryRepo.listActive(userId, 'expense');
+      const norm = (x: string) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '_');
+      const bySlug = all.find(c => norm(c.name) === trimmed.toLowerCase());
+      if (bySlug) return { value: bySlug.name };
       const existing = await categoryRepo.findByName(userId, 'expense', trimmed);
       if (existing) return { value: existing.name };
       if (trimmed.length > 60) return { error: 'El nombre es muy largo (máx 60 caracteres).' };
