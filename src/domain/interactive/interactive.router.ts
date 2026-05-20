@@ -188,6 +188,44 @@ export class InteractiveRouter {
       };
     }
 
+    // Gap 4 — pick location for sanidad/repro/pesaje
+    // Format: lv_pick_loc_<kind>_<payload>_<plotIdOrNull>_<corralIdOrNull>
+    const pickLocMatch = callbackId.match(/^lv_pick_loc_(health|repro|weigh)_/);
+    if (pickLocMatch) {
+      const kind = pickLocMatch[1];
+      const rest = callbackId.slice(`lv_pick_loc_${kind}_`.length);
+      const parts = rest.split('_');
+      if (parts.length >= 3) {
+        const corralIdStr = parts[parts.length - 1];
+        const plotIdStr = parts[parts.length - 2];
+        const payload = parts.slice(0, -2).join('_');
+        return {
+          type: 'command',
+          data: { command: 'livestock_pick_location', kind, payload, plotIdStr, corralIdStr },
+        };
+      }
+    }
+
+    // Gap 5 — apply animals_affected (all/skip)
+    // Format: lv_animals_<mode>_<kind>_<payload>
+    if (callbackId.startsWith('lv_animals_all_') || callbackId.startsWith('lv_animals_skip_')) {
+      const mode = callbackId.startsWith('lv_animals_all_') ? 'all' : 'skip';
+      const prefix = `lv_animals_${mode}_`;
+      const rest = callbackId.slice(prefix.length);
+      const underscoreIdx = rest.indexOf('_');
+      if (underscoreIdx > 0) {
+        return {
+          type: 'command',
+          data: {
+            command: 'livestock_apply_animals',
+            kind: rest.slice(0, underscoreIdx),
+            payload: rest.slice(underscoreIdx + 1),
+            mode,
+          },
+        };
+      }
+    }
+
     return null;
   }
 }

@@ -9,7 +9,7 @@ import type { LivestockCategory, LivestockGroupRow } from './livestock.types.js'
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FeedlotService } from '../feedlot/feedlot.service.js';
 import { saveDomainEvent, queryLivestockEvents, updateLivestockGroupWeight } from '../../services/expenses.js';
-import { encodeLivestockPayload } from './livestock-payload.js';
+import { encodeLivestockPayload, decodeLivestockPayload } from './livestock-payload.js';
 import type {
   UserId,
   User,
@@ -60,6 +60,8 @@ export class LivestockHandler {
         case 'query_repro_events': return await this.queryReproEvents(cmd, userId);
         case 'log_weighing': return await this.logWeighing(cmd, userId);
         case 'query_weighings': return await this.queryWeighings(cmd, userId);
+        case 'livestock_pick_location': return await this.pickLocation(cmd, userId);
+        case 'livestock_apply_animals': return await this.applyAnimalsAffected(cmd, userId);
         default:
           return { messages: ['Comando de hacienda no reconocido.'] };
       }
@@ -447,6 +449,16 @@ export class LivestockHandler {
     | { needsLocationPick: true; options: Array<{ plotId: number | null; corralId: number | null; label: string; groupCount: number }> }
     | { error: string }
   > {
+    const resolvedPlotId = (cmd as Record<string, unknown>).__resolvedPlotId as number | null | undefined;
+    const resolvedCorralId = (cmd as Record<string, unknown>).__resolvedCorralId as number | null | undefined;
+    if (resolvedPlotId != null || resolvedCorralId != null) {
+      return {
+        plotId: resolvedPlotId ?? null,
+        corralId: resolvedCorralId ?? null,
+        label: 'Ubicación seleccionada',
+      };
+    }
+
     if (cmd.corralName || cmd.plotName) {
       const r = await this.resolveEventLocation(cmd, userId);
       if ('error' in r) return r;
@@ -480,6 +492,46 @@ export class LivestockHandler {
         groupCount: g.count,
       })),
     };
+  }
+
+  async pickLocation(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const kind = cmd.kind as 'health' | 'repro' | 'weigh';
+    const plotId = cmd.plotIdStr === 'null' ? null : Number(cmd.plotIdStr);
+    const corralId = cmd.corralIdStr === 'null' ? null : Number(cmd.corralIdStr);
+    const payload = decodeLivestockPayload(cmd.payload as string);
+    const rebuilt = { ...payload.cmd } as ParsedCommand & Record<string, unknown>;
+    rebuilt.__resolvedPlotId = plotId;
+    rebuilt.__resolvedCorralId = corralId;
+
+    switch (kind) {
+      case 'health': return this.logHealthEvent(rebuilt, userId);
+      case 'repro':  return this.logReproEvent(rebuilt, userId);
+      case 'weigh':  return this.logWeighing(rebuilt, userId);
+      default: return { messages: ['Tipo de evento no reconocido.'] };
+    }
+  }
+
+  async applyAnimalsAffected(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const kind = cmd.kind as 'health' | 'repro' | 'weigh';
+    const mode = cmd.mode as 'all' | 'skip';
+    const payload = decodeLivestockPayload(cmd.payload as string);
+    const rebuilt = { ...payload.cmd } as ParsedCommand & Record<string, unknown>;
+    if (payload.resolvedLocation) {
+      if (payload.resolvedLocation.plotId != null) rebuilt.__resolvedPlotId = payload.resolvedLocation.plotId;
+      if (payload.resolvedLocation.corralId != null) rebuilt.__resolvedCorralId = payload.resolvedLocation.corralId;
+    }
+    if (mode === 'all' && payload.knownGroupCount) {
+      if (kind === 'weigh') rebuilt.animalsWeighed = payload.knownGroupCount;
+      else rebuilt.animalsAffected = payload.knownGroupCount;
+    } else {
+      rebuilt.__animalsAffectedSkipped = true;
+    }
+    switch (kind) {
+      case 'health': return this.logHealthEvent(rebuilt, userId);
+      case 'repro':  return this.logReproEvent(rebuilt, userId);
+      case 'weigh':  return this.logWeighing(rebuilt, userId);
+      default: return { messages: ['Tipo de evento no reconocido.'] };
+    }
   }
 
   private buildAnimalsAffectedAskResponse(
@@ -535,7 +587,7 @@ export class LivestockHandler {
     const doseUnit = cmd.doseUnit as string | null;
     const veterinarian = cmd.implement as string | null;
 
-    if (animalsAffected == null) {
+    if (animalsAffected == null && !(cmd as Record<string, unknown>).__animalsAffectedSkipped) {
       return this.buildAnimalsAffectedAskResponse(
         cmd,
         { plotId: loc.plotId, corralId: loc.corralId, label: loc.label },
@@ -647,7 +699,7 @@ export class LivestockHandler {
     const sireInfo = cmd.sireInfo as string | null;
     const method = cmd.method as string | null;
 
-    if (animalsAffected == null) {
+    if (animalsAffected == null && !(cmd as Record<string, unknown>).__animalsAffectedSkipped) {
       return this.buildAnimalsAffectedAskResponse(
         cmd,
         { plotId: loc.plotId, corralId: loc.corralId, label: loc.label },
@@ -755,7 +807,7 @@ export class LivestockHandler {
     const category = cmd.category as string | null;
     const animalsWeighed = typeof cmd.animalsWeighed === 'number' ? cmd.animalsWeighed : null;
 
-    if (animalsWeighed == null) {
+    if (animalsWeighed == null && !(cmd as Record<string, unknown>).__animalsAffectedSkipped) {
       return this.buildAnimalsAffectedAskResponse(
         cmd,
         { plotId: loc.plotId, corralId: loc.corralId, label: loc.label },
