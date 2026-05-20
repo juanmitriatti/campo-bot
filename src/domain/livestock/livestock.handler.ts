@@ -482,6 +482,30 @@ export class LivestockHandler {
     };
   }
 
+  private buildAnimalsAffectedAskResponse(
+    cmd: ParsedCommand,
+    resolvedLocation: { plotId: number | null; corralId: number | null; label: string },
+    knownGroupCount: number | undefined,
+    kind: 'health' | 'repro' | 'weigh',
+  ): HandlerResponse {
+    const payload = encodeLivestockPayload({
+      cmd, step: 'animals', resolvedLocation, knownGroupCount,
+    });
+    const buttons: Array<{ id: string; title: string }> = [];
+    if (knownGroupCount && knownGroupCount > 0) {
+      buttons.push({ id: `lv_animals_all_${kind}_${payload}`, title: `Todos (${knownGroupCount})` });
+    }
+    buttons.push({ id: `lv_animals_skip_${kind}_${payload}`, title: 'Saltar' });
+    return {
+      messages: [],
+      interactive: {
+        type: 'buttons' as const,
+        body: '¿A cuántos animales?',
+        buttons,
+      },
+    };
+  }
+
   private async logHealthEvent(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const healthType = cmd.healthType as string;
     if (!healthType) return { messages: ['Necesito el tipo de evento sanitario (vacunación, desparasitación, tratamiento).'] };
@@ -510,6 +534,15 @@ export class LivestockHandler {
     const doseQuantity = typeof cmd.doseQuantity === 'number' ? cmd.doseQuantity : null;
     const doseUnit = cmd.doseUnit as string | null;
     const veterinarian = cmd.implement as string | null;
+
+    if (animalsAffected == null) {
+      return this.buildAnimalsAffectedAskResponse(
+        cmd,
+        { plotId: loc.plotId, corralId: loc.corralId, label: loc.label },
+        'knownGroupCount' in loc ? loc.knownGroupCount : undefined,
+        'health',
+      );
+    }
 
     await saveDomainEvent(userId, {
       plotId: loc.plotId,
@@ -542,6 +575,9 @@ export class LivestockHandler {
     if (cmd.eventDate) {
       const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
       lines.push(`  📅 ${dateStr}`);
+    }
+    if (animalsAffected == null) {
+      lines.push('  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás.');
     }
 
     return { messages: [lines.join('\n')] };
@@ -611,6 +647,15 @@ export class LivestockHandler {
     const sireInfo = cmd.sireInfo as string | null;
     const method = cmd.method as string | null;
 
+    if (animalsAffected == null) {
+      return this.buildAnimalsAffectedAskResponse(
+        cmd,
+        { plotId: loc.plotId, corralId: loc.corralId, label: loc.label },
+        'knownGroupCount' in loc ? loc.knownGroupCount : undefined,
+        'repro',
+      );
+    }
+
     await saveDomainEvent(userId, {
       plotId: loc.plotId,
       corralId: loc.corralId,
@@ -640,6 +685,9 @@ export class LivestockHandler {
     if (cmd.eventDate) {
       const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
       lines.push(`  📅 ${dateStr}`);
+    }
+    if (animalsAffected == null) {
+      lines.push('  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás.');
     }
 
     return { messages: [lines.join('\n')] };
@@ -707,6 +755,15 @@ export class LivestockHandler {
     const category = cmd.category as string | null;
     const animalsWeighed = typeof cmd.animalsWeighed === 'number' ? cmd.animalsWeighed : null;
 
+    if (animalsWeighed == null) {
+      return this.buildAnimalsAffectedAskResponse(
+        cmd,
+        { plotId: loc.plotId, corralId: loc.corralId, label: loc.label },
+        'knownGroupCount' in loc ? loc.knownGroupCount : undefined,
+        'weigh',
+      );
+    }
+
     await saveDomainEvent(userId, {
       plotId: loc.plotId,
       corralId: loc.corralId,
@@ -737,6 +794,9 @@ export class LivestockHandler {
     lines.push(`  📊 Peso promedio: *${avgWeightKg} kg*`);
     lines.push(`  📍 ${loc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
     if (cmd.notes) lines.push(`  📝 ${cmd.notes}`);
+    if (animalsWeighed == null) {
+      lines.push('  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás.');
+    }
     if (cmd.eventDate) {
       const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
       lines.push(`  📅 ${dateStr}`);
