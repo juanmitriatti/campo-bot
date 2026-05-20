@@ -40,7 +40,7 @@ export class AgentPromptBuilder {
     if (ctx) parts.push(ctx);
     if (lastFinanceQuery && Object.keys(lastFinanceQuery).length > 0) {
       const summary = this.summarizeFinanceQuery(lastFinanceQuery);
-      if (summary) parts.push(`Última consulta financiera: ${summary}. Si el usuario refina ("y...","solo...","ahora...","sin...","¿y en X?","ordenalos","el más caro"), pasá inherit:true y SOLO el delta nuevo.`);
+      if (summary) parts.push(`Última consulta financiera: ${summary}. Si el usuario refina ("y...","solo...","ahora...","sin...","¿y en X?","ordenalos","el más caro","comparado con","contra X"), pasá inherit:true y SOLO el delta nuevo. Para "¿comparado con X?"/"contra Y" usá inherit:true + view:'compare' + compare_plot/compare_field/compare_category según corresponda — NO heredes el view anterior.`);
     }
     if (lastScoutingQuery && Object.keys(lastScoutingQuery).length > 0) {
       const summary = this.summarizeScoutingQuery(lastScoutingQuery);
@@ -329,6 +329,12 @@ PASO 5 — MULTI-TURNO. Si el mensaje refina al anterior ("y...","ahora...","sol
   Mensaje: "Sacá sueldos" → financial_report(inherit:true, exclude_categories:['Sueldos'])
   Mensaje: "Y en dólares" → financial_report(inherit:true, currency:'USD') ← NUNCA cotización del dólar acá
   Mensaje: "Y el más caro" → financial_report(inherit:true, view:'max', top_n:1)
+  PIVOTES DE COMPARACIÓN (siempre pasar view:'compare' explícito, NO confiar en inherit):
+  Ej previo: financial_report(view:'balance', plot:'A1', period:'all')
+  Mensaje: "¿Y comparado con A2?" → financial_report(inherit:true, view:'compare', compare_plot:'A2')
+  Mensaje: "Comparalo contra B1" → financial_report(inherit:true, view:'compare', compare_plot:'B1')
+  Mensaje: "Y contra el año pasado" → financial_report(inherit:true, view:'compare', compare_desde:'<año_anterior_desde>', compare_hasta:'<año_anterior_hasta>')
+  Mensaje: "Comparalo con San Martín" → financial_report(inherit:true, view:'compare', compare_field:'San Martín')
 
 PASO 6 — DISAMBIGUACIONES DURAS:
   - "en dólares"/"en USD"/"solo dólares"/"que fueron en dólares" en contexto financial (después de hablar de gastos/ingresos/ventas) → currency:'USD'. NUNCA llames a la cotización del dólar acá.

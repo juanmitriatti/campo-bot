@@ -525,8 +525,8 @@ export class AgentResponseMapper {
     if (input.soil_moisture_min != null) cmd.soilMoistureMin = input.soil_moisture_min;
     if (input.soil_moisture_max != null) cmd.soilMoistureMax = input.soil_moisture_max;
     if (input.aggregate_metric != null) cmd.aggregateMetric = input.aggregate_metric;
-    if (input.compare_plot != null) cmd.comparePlot = input.compare_plot;
-    if (input.compare_field != null) cmd.compareField = input.compare_field;
+    if (input.compare_plot != null) { cmd.compare_plot = input.compare_plot; cmd.comparePlot = input.compare_plot; }
+    if (input.compare_field != null) { cmd.compare_field = input.compare_field; cmd.compareField = input.compare_field; }
 
     // query_harvest_loads: unified harvest filter + view dispatch
     if (input.driver_name != null) cmd.driverName = input.driver_name;

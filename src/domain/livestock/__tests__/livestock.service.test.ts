@@ -8,10 +8,13 @@ const userId = 42 as UserId;
 // ---- Repo mock ----
 const makeRepoMock = () => ({
   findGroup: vi.fn(),
+  findGroupInCorral: vi.fn(),
+  listGroupsAtLocation: vi.fn().mockResolvedValue([]),
   getGroupById: vi.fn(),
   listGroups: vi.fn(),
   countTotal: vi.fn(),
   createGroup: vi.fn(),
+  createGroupInCorral: vi.fn(),
   updateGroupMetadata: vi.fn(),
   getMovementsForGroup: vi.fn(),
   getRecentMovements: vi.fn(),
@@ -128,6 +131,7 @@ describe('LivestockService.addAnimals', () => {
 
   it('adds to existing group without creating', async () => {
     const existing = makeGroup({ id: 'g1', count: 10 });
+    repo.listGroupsAtLocation.mockResolvedValueOnce([existing]);
     repo.findGroup.mockResolvedValueOnce(existing);
     repo.createGroup.mockResolvedValue(existing);
     repo.applySingleMovement.mockResolvedValue({
@@ -188,6 +192,7 @@ describe('LivestockService.removeAnimals', () => {
 
   it('removes from existing group', async () => {
     const group = makeGroup({ id: 'g1', count: 20 });
+    repo.listGroupsAtLocation.mockResolvedValue([group]);
     repo.findGroup.mockResolvedValue(group);
     repo.applySingleMovement.mockResolvedValue({
       group: { ...group, count: 15 },
@@ -218,7 +223,9 @@ describe('LivestockService.removeAnimals', () => {
   });
 
   it('propagates insufficient-stock error from the repo', async () => {
-    repo.findGroup.mockResolvedValue(makeGroup({ id: 'g1', count: 3 }));
+    const grp = makeGroup({ id: 'g1', count: 3 });
+    repo.listGroupsAtLocation.mockResolvedValue([grp]);
+    repo.findGroup.mockResolvedValue(grp);
     repo.applySingleMovement.mockRejectedValue(new Error('Cantidad insuficiente. Disponible: 3 animales'));
 
     await expect(
@@ -245,7 +252,7 @@ describe('LivestockService.transferAnimals', () => {
 
     const source = makeGroup({ id: 'gs', plot_id: 10, count: 30 });
     const dest = makeGroup({ id: 'gd', plot_id: 20, count: 0 });
-    repo.findGroup.mockResolvedValueOnce(source);
+    repo.listGroupsAtLocation.mockResolvedValueOnce([source]);
     repo.findGroup.mockResolvedValueOnce(dest);
     repo.createGroup.mockResolvedValue(dest);
 
@@ -280,7 +287,7 @@ describe('LivestockService.transferAnimals', () => {
 
     const source = makeGroup({ id: 'gs', plot_id: 10, category: 'ternero', count: 15 });
     const dest = makeGroup({ id: 'gd', plot_id: 10, category: 'novillito', count: 0 });
-    repo.findGroup.mockResolvedValueOnce(source);
+    repo.listGroupsAtLocation.mockResolvedValueOnce([source]);
     repo.findGroup.mockResolvedValueOnce(dest);
     repo.createGroup.mockResolvedValue(dest);
 
@@ -354,6 +361,7 @@ describe('LivestockService.recordDeath & recordBirth', () => {
 
   it('records a death against an existing group', async () => {
     const group = makeGroup({ id: 'g1', count: 25 });
+    repo.listGroupsAtLocation.mockResolvedValue([group]);
     repo.findGroup.mockResolvedValue(group);
     repo.applySingleMovement.mockResolvedValue({
       group: { ...group, count: 23 },

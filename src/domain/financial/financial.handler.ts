@@ -453,7 +453,7 @@ export class FinancialHandler {
       || filters.amountMin != null || filters.amountMax != null
       || filters.currency || filters.excludeCategories.length > 0);
     let view = (cmd.view as string) || (hasNarrowingFilter ? 'detail' : 'aggregate');
-    if (cmd.compare_desde || cmd.compare_hasta || cmd.compare_category) view = 'compare';
+    if (cmd.compare_desde || cmd.compare_hasta || cmd.compare_category || cmd.compare_plot || cmd.compare_field) view = 'compare';
     if (cmd.top_n && !cmd.view) view = 'max';
 
     // ── 6. Compare view: fetch both halves ──
@@ -463,13 +463,23 @@ export class FinancialHandler {
       if (cmd.compare_desde) filtersB.desde = cmd.compare_desde as string;
       if (cmd.compare_hasta) filtersB.hasta = cmd.compare_hasta as string;
       if (cmd.compare_category) filtersB.category = cmd.compare_category as string;
+      // Pivot to a different plot/field on the B side. If the agent gave a compare_plot/field,
+      // override the A-side filter so we're not comparing X to itself.
+      if (cmd.compare_plot) filtersB.plotName = cmd.compare_plot as string;
+      if (cmd.compare_field) filtersB.fieldName = cmd.compare_field as string;
       const b = await queryMovements(userId, filtersB);
       await this.saveFinanceQuery(userId, cmd);
-      return renderCompare(a, b, {
-        labelA: filters.category || rangeLabel,
-        labelB: (cmd.compare_category as string) || `${cmd.compare_desde || ''} — ${cmd.compare_hasta || ''}`,
-        type: filters.type,
-      });
+      const labelA =
+        filters.plotName ||
+        filters.fieldName ||
+        filters.category ||
+        rangeLabel;
+      const labelB =
+        (cmd.compare_plot as string) ||
+        (cmd.compare_field as string) ||
+        (cmd.compare_category as string) ||
+        `${cmd.compare_desde || ''} — ${cmd.compare_hasta || ''}`;
+      return renderCompare(a, b, { labelA, labelB, type: filters.type });
     }
 
     // ── 7. Single fetch ──

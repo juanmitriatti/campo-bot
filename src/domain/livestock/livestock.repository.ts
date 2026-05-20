@@ -55,6 +55,42 @@ export class LivestockRepository {
     return rows[0] || null;
   }
 
+  /**
+   * Find all non-deleted groups at a location (plot OR corral) for a given
+   * category, regardless of breed. Caller is expected to disambiguate when
+   * the result has more than one row.
+   */
+  async listGroupsAtLocation(
+    location: { plotId?: number; corralId?: number },
+    category: LivestockCategory
+  ): Promise<LivestockGroupRow[]> {
+    if (location.corralId) {
+      const { rows } = await pool.query(
+        `SELECT lg.*, c.name AS corral_name, fl.name AS feedlot_name, f.name AS field_name
+         FROM livestock_groups lg
+         JOIN corrals c ON lg.corral_id = c.id
+         JOIN feedlots fl ON c.feedlot_id = fl.id
+         JOIN fields f ON lg.field_id = f.id
+         WHERE lg.corral_id = $1
+           AND lg.category = $2
+           AND lg.deleted_at IS NULL`,
+        [location.corralId, category]
+      );
+      return rows;
+    }
+    const { rows } = await pool.query(
+      `SELECT lg.*, p.name AS plot_name, f.name AS field_name
+       FROM livestock_groups lg
+       LEFT JOIN plots p ON lg.plot_id = p.id
+       JOIN fields f ON lg.field_id = f.id
+       WHERE lg.plot_id = $1
+         AND lg.category = $2
+         AND lg.deleted_at IS NULL`,
+      [location.plotId, category]
+    );
+    return rows;
+  }
+
   async getGroupById(id: string): Promise<LivestockGroupRow | null> {
     const { rows } = await pool.query(
       `SELECT lg.*, p.name AS plot_name, f.name AS field_name,

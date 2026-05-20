@@ -218,16 +218,38 @@ export class LivestockService {
     return this.repo.createGroup(Number(userId), loc.fieldId, loc.plotId, category, breed, opts);
   }
 
-  /** Find group at a resolved location */
+  /**
+   * Find group at a resolved location.
+   * When `breed` is provided, performs a strict match (breed-aware).
+   * When `breed` is null (user didn't mention raza), falls back to a lenient
+   * match: returns the unique group at that location with that category, or
+   * throws if multiple breeds coexist so the user can disambiguate.
+   */
   private async findGroupAtLocation(
     loc: ResolvedLocation,
     category: LivestockCategory,
     breed: string | null
   ): Promise<LivestockGroupRow | null> {
-    if (loc.type === 'corral') {
-      return this.repo.findGroupInCorral(loc.corralId, category, breed);
+    if (breed) {
+      if (loc.type === 'corral') {
+        return this.repo.findGroupInCorral(loc.corralId, category, breed);
+      }
+      return this.repo.findGroup(loc.plotId, category, breed);
     }
-    return this.repo.findGroup(loc.plotId, category, breed);
+    const candidates = await this.repo.listGroupsAtLocation(
+      loc.type === 'corral' ? { corralId: loc.corralId } : { plotId: loc.plotId },
+      category,
+    );
+    const nonEmpty = candidates.filter((g) => g.count > 0);
+    if (nonEmpty.length === 0) return null;
+    if (nonEmpty.length === 1) return nonEmpty[0];
+    const breedList = nonEmpty
+      .map((g) => `${g.breed ?? 'sin raza'} (${g.count})`)
+      .join(', ');
+    const locLabel = loc.type === 'corral' ? `corral ${loc.corralName}` : `lote ${loc.plotName}`;
+    throw new Error(
+      `Hay ${LIVESTOCK_CATEGORY_LABEL[category] ?? category} de varias razas en el ${locLabel}: ${breedList}. ¿De cuál? Decime la raza.`
+    );
   }
 
   /** Attach human-readable location names to a group */
@@ -369,7 +391,13 @@ export class LivestockService {
 
     const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
 
-    const existing = await this.findGroupAtLocation(loc, category, opts.breed ?? null);
+    // Use the strict (breed-aware) lookup for the existing check — when adding without
+    // breed, this targets the "sin raza" group specifically and won't error out when
+    // a same-category Angus group also exists. The lenient lookup is reserved for
+    // remove/transfer/death/etc., where the user expects "any vaca at A1" semantics.
+    const existing = loc.type === 'corral'
+      ? await this.repo.findGroupInCorral(loc.corralId, category, opts.breed ?? null)
+      : await this.repo.findGroup(loc.plotId, category, opts.breed ?? null);
     const created = !existing;
 
     const group = await this.ensureGroupAtLocation(userId, loc, category, opts.breed ?? null, {

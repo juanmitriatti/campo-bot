@@ -278,6 +278,22 @@ function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Strip conversational corrections like "perdón, fue en X" / "no, en X" /
+ * "en realidad X" so the plot resolver sees just the plot name (or
+ * "plot field" hint). Returns null if no known correction prefix matches.
+ */
+export function stripPlotCorrectionPrefix(input: string): string | null {
+  const m = input
+    .trim()
+    .match(
+      /^(?:perd[oó]n,?\s+|disculp[áa],?\s+|no,?\s+|en\s+realidad,?\s+|s[ií],?\s+)(?:fue\s+|era\s+|es\s+)?(?:en\s+(?:el\s+lote\s+|el\s+|lote\s+)?|el\s+lote\s+|lote\s+)?(.+)$/i,
+    );
+  if (!m) return null;
+  const stripped = m[1].trim();
+  return stripped.length > 0 ? stripped : null;
+}
+
 export async function validatePlotAsync(
   input: string,
   _data: Record<string, unknown>,
@@ -285,6 +301,23 @@ export async function validatePlotAsync(
 ): Promise<FlowStepValidationResult> {
   const val = input.trim();
   if (val.length < 1) return { error: 'Ingresá un nombre de lote válido.' };
+
+  // If the user is correcting ("perdón, fue en B1"), try the stripped variant first.
+  // Falls through to the original input if the stripped variant doesn't resolve.
+  const corrected = stripPlotCorrectionPrefix(input);
+  if (corrected) {
+    const plotsWithFields = await entityValidator.getUserPlotsWithFields(userId);
+    const normalizedCorrected = normalize(corrected);
+    const exactCorrected = plotsWithFields.filter((p) => normalize(p.plotName) === normalizedCorrected);
+    if (exactCorrected.length === 1) return { value: exactCorrected[0].plotName };
+    if (exactCorrected.length > 1) {
+      const hint = extractFieldHint(corrected, plotsWithFields);
+      if (hint) {
+        _data._resolvedFieldHint = hint.fieldName;
+        return { value: hint.plotName };
+      }
+    }
+  }
 
   const plotsWithFields = await entityValidator.getUserPlotsWithFields(userId);
 
