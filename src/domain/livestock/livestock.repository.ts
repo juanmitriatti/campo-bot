@@ -604,4 +604,41 @@ export class LivestockRepository {
     );
     return rows[0].n;
   }
+
+  async findGroupsByCategory(
+    userId: number,
+    category: string | null,
+  ): Promise<Array<{ id: string; plot_id: number | null; corral_id: number | null; count: number; location_label: string }>> {
+    const params: unknown[] = [userId];
+    let categoryFilter = '';
+    if (category) {
+      params.push(category);
+      categoryFilter = ' AND g.category::text = $2';
+    }
+    const { rows } = await pool.query(
+      `SELECT
+         g.id::text AS id,
+         g.plot_id,
+         g.corral_id,
+         g.count,
+         COALESCE(
+           CASE WHEN g.corral_id IS NOT NULL THEN
+             (SELECT 'Corral ' || c.name || ' (' || f.name || ')'
+                FROM corrals c JOIN feedlots ft ON ft.id = c.feedlot_id JOIN fields f ON f.id = ft.field_id
+               WHERE c.id = g.corral_id)
+             END,
+           CASE WHEN g.plot_id IS NOT NULL THEN
+             (SELECT f.name || ' > ' || p.name
+                FROM plots p JOIN fields f ON f.id = p.field_id
+               WHERE p.id = g.plot_id)
+             END
+         ) AS location_label
+       FROM livestock_groups g
+       WHERE g.user_id = $1 AND g.deleted_at IS NULL${categoryFilter}
+         AND g.count > 0
+       ORDER BY g.count DESC`,
+      params
+    );
+    return rows;
+  }
 }

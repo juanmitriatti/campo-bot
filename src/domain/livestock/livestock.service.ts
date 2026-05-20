@@ -798,4 +798,8 @@ export class LivestockService {
   async countUserMovements(userId: UserId): Promise<number> {
     return this.repo.countUserMovements(Number(userId));
   }
+
+  async findGroupsByCategory(userId: UserId, category: string | null) {
+    return this.repo.findGroupsByCategory(Number(userId), category);
+  }
 }
