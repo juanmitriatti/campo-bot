@@ -63,6 +63,8 @@ export class LivestockHandler {
         case 'query_weighings': return await this.queryWeighings(cmd, userId);
         case 'livestock_pick_location': return await this.pickLocation(cmd, userId);
         case 'livestock_apply_animals': return await this.applyAnimalsAffected(cmd, userId);
+        case 'livestock_create_continue': return await this.createAndContinue(cmd, userId);
+        case 'livestock_create_cancel': return await this.createCancel(cmd, userId);
         default:
           return { messages: ['Comando de hacienda no reconocido.'] };
       }
@@ -70,6 +72,39 @@ export class LivestockHandler {
       const msg = err instanceof Error ? err.message : 'Error en operación de hacienda';
       return { messages: [`❌ ${msg}`] };
     }
+  }
+
+  async createAndContinue(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const subType = cmd.subType as 'corral' | 'plot' | 'feedlot' | 'field';
+    const payload = decodeLivestockPayload(cmd.payload as string);
+    const { missingName } = payload;
+    if (!missingName) return { messages: ['No tengo info para crear. Probá registrar la operación de nuevo.'] };
+
+    try {
+      if (subType === 'corral') {
+        const feedlots = await this.feedlotService.listFeedlots(userId);
+        if (feedlots.length !== 1) {
+          return { messages: ['Tenés más de un feedlot. Decime cuál usar: "crear corral X en campo Y".'] };
+        }
+        await this.feedlotService.createCorral(userId, missingName, feedlots[0].field_name || null, {});
+      } else if (subType === 'feedlot') {
+        const fieldName = (payload.cmd.fieldName as string | undefined) || payload.fieldName;
+        if (!fieldName) return { messages: ['Necesito saber el campo para crear el feedlot.'] };
+        await this.feedlotService.createFeedlot(userId, fieldName, 'Feedlot', {});
+        await this.feedlotService.createCorral(userId, missingName, fieldName, {});
+      } else if (subType === 'plot') {
+        return { messages: ['Para esta versión, creá el lote primero con "nuevo lote X en <campo>" y volvé a intentar.'] };
+      } else if (subType === 'field') {
+        return { messages: ['Para esta versión, creá el campo primero con "nuevo campo X" y volvé a intentar.'] };
+      }
+      return this.handleCommand(payload.cmd, userId, {} as User, {} as UserSettings);
+    } catch (err: unknown) {
+      return { messages: [`Hubo un problema creando: ${err instanceof Error ? err.message : String(err)}`] };
+    }
+  }
+
+  async createCancel(_cmd: ParsedCommand, _userId: UserId): Promise<HandlerResponse> {
+    return { messages: ['Cancelado. Si querés volver a intentarlo, registrá la operación de nuevo.'] };
   }
 
   /**

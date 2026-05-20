@@ -226,6 +226,23 @@ export class InteractiveRouter {
       }
     }
 
+    // Gap 3 — create-and-continue (corral / plot / feedlot / field)
+    const createMatch = callbackId.match(/^lv_create_(corral|plot|feedlot|field)_continue_/);
+    if (createMatch) {
+      const subType = createMatch[1];
+      return {
+        type: 'command',
+        data: {
+          command: 'livestock_create_continue',
+          subType,
+          payload: callbackId.slice(`lv_create_${subType}_continue_`.length),
+        },
+      };
+    }
+    if (callbackId === 'lv_create_cancel') {
+      return { type: 'command', data: { command: 'livestock_create_cancel' } };
+    }
+
     return null;
   }
 }

@@ -65,6 +65,7 @@ const LIVESTOCK_COMMANDS = new Set([
   'log_repro_event', 'query_repro_events',
   'log_weighing', 'query_weighings',
   'livestock_pick_location', 'livestock_apply_animals',
+  'livestock_create_continue', 'livestock_create_cancel',
 ]);
 
 const FEEDLOT_COMMANDS = new Set([
