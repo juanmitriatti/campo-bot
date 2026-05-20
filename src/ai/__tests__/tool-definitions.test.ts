@@ -26,14 +26,14 @@ describe('TOOL_DEFINITIONS', () => {
     }
   });
 
-  it('financial tools have amount in properties', () => {
+  it('financial tools expose amount but do not require it (agent never invents missing values)', () => {
     const expense = TOOL_DEFINITIONS.find(t => t.name === 'log_expense')!;
     expect(expense.input_schema.properties).toHaveProperty('amount');
-    expect(expense.input_schema.required).toContain('amount');
+    expect(expense.input_schema.required).not.toContain('amount');
 
     const income = TOOL_DEFINITIONS.find(t => t.name === 'log_income')!;
     expect(income.input_schema.properties).toHaveProperty('amount');
-    expect(income.input_schema.required).toContain('amount');
+    expect(income.input_schema.required).not.toContain('amount');
   });
 
   it('activity tools have field and plot properties', () => {

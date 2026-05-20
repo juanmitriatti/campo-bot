@@ -21,7 +21,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // ========================
   {
     name: 'log_expense',
-    description: 'Registrar gasto agrícola. Verbos: gasté, pagué, compré + monto.',
+    description: 'Registrar gasto agrícola. Verbos: gasté, pagué, compré + monto. NUNCA inventes el monto: si el usuario solo dio cantidad+unidad (ej "compré 5 tn de urea") sin precio, OMITÍ amount — el sistema le va a preguntar.',
     input_schema: {
       type: 'object',
       properties: {
@@ -43,12 +43,12 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         plot: PLOT_PROP,
         event_date: DATE_PROP,
       },
-      required: ['amount', 'description'],
+      required: ['description'],
     },
   },
   {
     name: 'log_income',
-    description: 'Registrar ingreso. Verbos: vendí, cobré + monto.',
+    description: 'Registrar ingreso. Verbos: vendí, cobré + monto. NUNCA inventes el monto: si el usuario solo dijo cantidad+unidad ("vendí 2 tn de soja") sin precio ni total, OMITÍ amount — el sistema le va a preguntar.',
     input_schema: {
       type: 'object',
       properties: {
@@ -68,7 +68,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         plot: PLOT_PROP,
         event_date: DATE_PROP,
       },
-      required: ['amount', 'description'],
+      required: ['description'],
     },
   },
 

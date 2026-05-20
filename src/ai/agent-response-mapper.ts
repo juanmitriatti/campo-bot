@@ -330,7 +330,8 @@ export class AgentResponseMapper {
       };
     }
 
-    // Partial expense — no amount
+    // Partial expense — agent omitted amount. Preserve quantity/unit/product/etc.
+    // so the flow doesn't make the user repeat them.
     const missingFields: string[] = [];
     if (!input.amount) missingFields.push('amount');
     if (!input.category) missingFields.push('category');
@@ -343,6 +344,14 @@ export class AgentResponseMapper {
           ...(amount > 0 ? { amount } : {}),
           ...(input.category ? { category: input.category as string } : {}),
           ...(input.currency === 'USD' ? { currency: 'USD' as Currency } : { currency: 'ARS' as Currency }),
+          ...(typeof input.quantity === 'number' ? { quantity: input.quantity } : {}),
+          ...(typeof input.unit === 'string' ? { unit: input.unit } : {}),
+          ...(typeof input.unit_price === 'number' ? { unit_price: input.unit_price } : {}),
+          ...(typeof input.product === 'string' ? { product: input.product } : {}),
+          ...(typeof input.expense_type === 'string' ? { expense_type: input.expense_type } : {}),
+          ...(typeof input.field === 'string' ? { field: input.field } : {}),
+          ...(typeof input.plot === 'string' ? { plot: input.plot } : {}),
+          ...(typeof input.description === 'string' ? { description: input.description } : {}),
         },
       },
       confidence: 0.60,
@@ -388,7 +397,9 @@ export class AgentResponseMapper {
       };
     }
 
-    // Partial income
+    // Partial income — agent omitted amount (most common: "vendí 2 tn de maní"
+    // without a price). Keep quantity/unit/category/etc. so the flow doesn't
+    // make the user repeat them.
     const missingFields: string[] = [];
     if (!input.amount) missingFields.push('amount');
     if (!input.category) missingFields.push('category');
@@ -401,6 +412,12 @@ export class AgentResponseMapper {
           ...(amount > 0 ? { amount } : {}),
           ...(input.category ? { category: input.category as string } : {}),
           ...(input.currency === 'USD' ? { currency: 'USD' as Currency } : { currency: 'ARS' as Currency }),
+          ...(typeof input.quantity === 'number' ? { quantity: input.quantity } : {}),
+          ...(typeof input.unit === 'string' ? { unit: input.unit } : {}),
+          ...(typeof input.unit_price === 'number' ? { unit_price: input.unit_price } : {}),
+          ...(typeof input.field === 'string' ? { field: input.field } : {}),
+          ...(typeof input.plot === 'string' ? { plot: input.plot } : {}),
+          ...(typeof input.description === 'string' ? { description: input.description } : {}),
         },
       },
       confidence: 0.60,

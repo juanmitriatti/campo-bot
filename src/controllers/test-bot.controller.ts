@@ -1152,6 +1152,11 @@ async function processTextMessage(
     if (intent.data.amount) prefillData.amount = intent.data.amount;
     if (intent.data.currency) prefillData.currency = intent.data.currency;
     if (intent.data.category) prefillData.category = intent.data.category;
+    if ((intent.data as any).quantity != null) prefillData.quantity = (intent.data as any).quantity;
+    if ((intent.data as any).unit) prefillData.unit = (intent.data as any).unit;
+    if ((intent.data as any).unit_price != null) prefillData.unit_price = (intent.data as any).unit_price;
+    if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
+    if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
     const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
     conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
     return collectResponse(result.response);
@@ -1167,6 +1172,11 @@ async function processTextMessage(
     if (intent.data.amount) prefillData.amount = intent.data.amount;
     if (intent.data.currency) prefillData.currency = intent.data.currency;
     if (intent.data.category) prefillData.category = intent.data.category;
+    if ((intent.data as any).quantity != null) prefillData.quantity = (intent.data as any).quantity;
+    if ((intent.data as any).unit) prefillData.unit = (intent.data as any).unit;
+    if ((intent.data as any).unit_price != null) prefillData.unit_price = (intent.data as any).unit_price;
+    if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
+    if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
     const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
     conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
     return collectResponse(result.response);

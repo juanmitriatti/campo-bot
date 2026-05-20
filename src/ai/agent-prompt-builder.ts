@@ -352,6 +352,16 @@ CATEGORÍAS EXACTAS (case-sensitive, no inventes):
 - Si NO hay coincidencia exacta Y el usuario NO pidió crear una → OMITÍ category y category_match. El sistema le va a preguntar al usuario qué categoría usar.
 - NUNCA inventes ni derives categorías propias. "venta de soja" NO equivale a "Soja" a menos que "Soja" figure literalmente en el listado del usuario. "gasoil" NO es "Combustible" a menos que "Combustible" esté en el listado.
 
+═══ AMOUNT EN log_expense / log_income — REGLA DURA ═══
+
+NUNCA inventes el monto (amount). Solo pasalo cuando el usuario lo dijo EXPLÍCITAMENTE como cantidad de plata:
+- "gasté 50k" / "pagué 200 mil" / "cobré 1.4M" / "5000 dólares" / "un palo" → amount=50000/200000/1400000/5000/1000000
+- "compré 5 tn de urea a 8000 c/u" → unit_price=8000 quantity=5 unit=tn — el handler calcula amount=40000. ESTO SÍ VALE.
+- "vendí 2 tn de maní" SIN precio → quantity=2 unit=tn category según reglas arriba, AMOUNT VACÍO y UNIT_PRICE VACÍO. El sistema le va a preguntar el precio.
+- "compré semillas" SIN monto → AMOUNT VACÍO. El sistema pregunta.
+
+"5 tn" / "2 kg" / "100 bolsas" / "3 lt" SON CANTIDADES (quantity), NUNCA montos en pesos. NO interpretes "2 tn" como "2 mil pesos" — eso es alucinación.
+
 ═══ FIN FINANCIAL_REPORT ═══
 
 ═══ QUERY_SCOUTINGS — REGLAS DURAS (CUALQUIER consulta sobre monitoreos) ═══

@@ -1823,6 +1823,11 @@ router.post('/', async (req: Request, res: Response) => {
       if (intent.data.amount) prefillData.amount = intent.data.amount;
       if (intent.data.currency) prefillData.currency = intent.data.currency;
       if (intent.data.category) prefillData.category = intent.data.category;
+      if ((intent.data as any).quantity != null) prefillData.quantity = (intent.data as any).quantity;
+      if ((intent.data as any).unit) prefillData.unit = (intent.data as any).unit;
+      if ((intent.data as any).unit_price != null) prefillData.unit_price = (intent.data as any).unit_price;
+      if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
+      if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
       const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
       conversationObserver.logFlowStarted(userId, 'expense_flow', { trigger: 'partial_parse', prefillFields: Object.keys(prefillData) });
       await sendResponse(phone, result.response);
@@ -1846,6 +1851,11 @@ router.post('/', async (req: Request, res: Response) => {
       if (intent.data.amount) prefillData.amount = intent.data.amount;
       if (intent.data.currency) prefillData.currency = intent.data.currency;
       if (intent.data.category) prefillData.category = intent.data.category;
+      if ((intent.data as any).quantity != null) prefillData.quantity = (intent.data as any).quantity;
+      if ((intent.data as any).unit) prefillData.unit = (intent.data as any).unit;
+      if ((intent.data as any).unit_price != null) prefillData.unit_price = (intent.data as any).unit_price;
+      if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
+      if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
       const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
       conversationObserver.logFlowStarted(userId, 'income_flow', { trigger: 'partial_parse', prefillFields: Object.keys(prefillData) });
       await sendResponse(phone, result.response);
