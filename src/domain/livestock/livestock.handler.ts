@@ -66,6 +66,13 @@ export class LivestockHandler {
         case 'livestock_apply_animals': return await this.applyAnimalsAffected(cmd, userId);
         case 'livestock_create_continue': return await this.createAndContinue(cmd, userId);
         case 'livestock_create_cancel': return await this.createCancel(cmd, userId);
+        case 'livestock_post_stock': return await this.postActionStock(cmd, userId);
+        case 'livestock_post_weigh': return await this.postActionWeigh(cmd, userId);
+        case 'livestock_post_gdpv': return await this.postActionGdpv(cmd, userId);
+        case 'livestock_post_health_hist': return await this.postActionHealthHist(cmd, userId);
+        case 'livestock_post_repro_hist': return await this.postActionReproHist(cmd, userId);
+        case 'livestock_post_resumen_mes': return await this.postActionResumenMes(cmd, userId);
+        case 'livestock_post_new_event': return await this.postActionNewEvent(cmd, userId);
         default:
           return { messages: ['Comando de hacienda no reconocido.'] };
       }
@@ -106,6 +113,50 @@ export class LivestockHandler {
 
   async createCancel(_cmd: ParsedCommand, _userId: UserId): Promise<HandlerResponse> {
     return { messages: ['Cancelado. Si querés volver a intentarlo, registrá la operación de nuevo.'] };
+  }
+
+  // ========================
+  // POST-ACTION CALLBACKS
+  // ========================
+
+  async postActionStock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const plotId = cmd.plotIdStr === 'null' ? null : Number(cmd.plotIdStr);
+    const corralId = cmd.corralIdStr === 'null' ? null : Number(cmd.corralIdStr);
+    const rebuilt = { command: 'list_livestock' } as ParsedCommand & Record<string, unknown>;
+    if (plotId != null) rebuilt.__resolvedPlotId = plotId;
+    if (corralId != null) rebuilt.__resolvedCorralId = corralId;
+    return this.listLivestock(rebuilt, userId);
+  }
+
+  async postActionWeigh(_cmd: ParsedCommand, _userId: UserId): Promise<HandlerResponse> {
+    return { messages: ['⚖️ Decime el peso promedio (ej: "los novillos del corral 1 a 380 kg").'] };
+  }
+
+  async postActionGdpv(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    return this.queryWeighings({ ...(cmd as ParsedCommand), command: 'query_weighings' } as ParsedCommand, userId);
+  }
+
+  async postActionHealthHist(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    return this.queryHealthEvents({ ...(cmd as ParsedCommand), command: 'query_health_events' } as ParsedCommand, userId);
+  }
+
+  async postActionReproHist(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    return this.queryReproEvents({ ...(cmd as ParsedCommand), command: 'query_repro_events' } as ParsedCommand, userId);
+  }
+
+  async postActionResumenMes(_cmd: ParsedCommand, _userId: UserId): Promise<HandlerResponse> {
+    return { messages: ['📊 Para ver el resumen del mes, escribí *resumen del mes*.'] };
+  }
+
+  async postActionNewEvent(cmd: ParsedCommand, _userId: UserId): Promise<HandlerResponse> {
+    const subKind = cmd.subKind as 'health' | 'repro';
+    return {
+      messages: [
+        subKind === 'health'
+          ? '💉 Decime el evento sanitario (ej: "vacuné a 20 vacas contra aftosa").'
+          : '🐂 Decime el evento reproductivo (ej: "eché el toro a 30 vacas").',
+      ],
+    };
   }
 
   /**

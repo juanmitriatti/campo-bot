@@ -243,6 +243,39 @@ export class InteractiveRouter {
       return { type: 'command', data: { command: 'livestock_create_cancel' } };
     }
 
+    // Gap 8 — post-action shortcuts
+    if (callbackId.startsWith('lv_post_stock_')) {
+      const rest = callbackId.slice('lv_post_stock_'.length);
+      const parts = rest.split('_');
+      return { type: 'command', data: { command: 'livestock_post_stock', plotIdStr: parts[0], corralIdStr: parts[1] } };
+    }
+    if (callbackId.startsWith('lv_post_weigh_')) {
+      return { type: 'command', data: { command: 'livestock_post_weigh', groupId: callbackId.slice('lv_post_weigh_'.length) } };
+    }
+    if (callbackId.startsWith('lv_post_gdpv_')) {
+      return { type: 'command', data: { command: 'livestock_post_gdpv', groupId: callbackId.slice('lv_post_gdpv_'.length) } };
+    }
+    if (callbackId.startsWith('lv_post_health_hist_')) {
+      return { type: 'command', data: { command: 'livestock_post_health_hist', groupId: callbackId.slice('lv_post_health_hist_'.length) } };
+    }
+    if (callbackId.startsWith('lv_post_repro_hist_')) {
+      return { type: 'command', data: { command: 'livestock_post_repro_hist', groupId: callbackId.slice('lv_post_repro_hist_'.length) } };
+    }
+    if (callbackId === 'lv_post_resumen_mes') {
+      return { type: 'command', data: { command: 'livestock_post_resumen_mes' } };
+    }
+    if (callbackId.startsWith('lv_post_new_event_')) {
+      // format: lv_post_new_event_<groupId>_<subKind>
+      const rest = callbackId.slice('lv_post_new_event_'.length);
+      const lastUnderscore = rest.lastIndexOf('_');
+      if (lastUnderscore > 0) {
+        return {
+          type: 'command',
+          data: { command: 'livestock_post_new_event', groupId: rest.slice(0, lastUnderscore), subKind: rest.slice(lastUnderscore + 1) },
+        };
+      }
+    }
+
     return null;
   }
 }
