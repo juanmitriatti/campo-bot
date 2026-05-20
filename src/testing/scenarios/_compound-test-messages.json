@@ -1,0 +1,155 @@
+{
+  "_doc": "Long realistic compound messages for QA. Each entry covers a persona (encargado, ganadero, contador, multi_campo, mixto) and tests multiple tools firing in one shot. Generated 2026-05-20. Use with the test-bot endpoint POST /api/test-bot.",
+  "messages": [
+    {
+      "persona": "encargado",
+      "message": "Che, arrancamos temprano en La Esperanza. En A1 sembramos 45 ha de soja DM 4012, usamos 32 bolsas. Después metimos una pasada de glifosato con 90 lt y 2 lt de 2,4D. Pagué el flete del camión 180 lucas en combustible y anotá 18 mm que cayeron a la siesta.",
+      "expected_tools": ["sow_crop", "log_spraying", "log_expense", "log_rainfall"],
+      "notes": "Compound 4 acciones. sow_crop hectares=45, gasto categoría Combustible, lluvia sin campo explícito → La Esperanza por contexto."
+    },
+    {
+      "persona": "encargado",
+      "message": "Hoy terminé de fertilizar B1 en San Martin con 120 kg/ha de urea sobre el maíz. Salieron 8 tn de urea del galpón. También fumigamos con atrazina 3 lt/ha. Cargá un gasto de 850 lucas en agroquímicos. Llovieron 25 mm anoche en San Martin.",
+      "expected_tools": ["log_fertilization", "remove_stock", "log_spraying", "log_expense", "log_rainfall"],
+      "notes": "5 acciones. remove_stock baja 8 tn (8000 kg) urea, log_expense Agroquímicos."
+    },
+    {
+      "persona": "encargado",
+      "message": "Che, en A1 vi el cultivo de soja en V4, hay como 15% de cobertura de rama negra y presencia leve de chinche, severidad 2. La densidad anda en 28 pl/m². Después metí 40 lt de glifosato en el mismo lote. Anotá observación que el lote del fondo viene atrasado.",
+      "expected_tools": ["log_crop_scouting", "log_spraying", "log_observation"],
+      "notes": "Monitoreo estructurado (métricas) + spraying + observación libre. NO confundir con log_observation general."
+    },
+    {
+      "persona": "encargado",
+      "message": "Terminé la siembra de A2 con maíz AX 7822, 50 ha, sembré 24 bolsas. Compré 200 lt de gasoil a 850 c/u que descargué en el tanque del Principal. Pagué 80 lucas de jornal al tractorista. Llovieron 8mm el lunes, 12mm el martes y 22mm el miércoles.",
+      "expected_tools": ["sow_crop", "log_expense", "add_stock", "log_expense", "log_rainfall_batch"],
+      "notes": "Multi-día rainfall → log_rainfall_batch (no 3 sueltos). add_stock con unit_price → auto-expense Insumos. Sueldo del tractorista → Sueldos."
+    },
+    {
+      "persona": "encargado",
+      "message": "Che, hoy en La Esperanza pasamos el rolo en A2, 30 ha. Después regamos A1 con el pivot porque venía seco. Saqué 60 lt de glifosato del galpón para la pulverizadora. Y anotá que el encargado del campo de al lado dice que ellos ya cosecharon. ¿Cuánto llovió la última semana?",
+      "expected_tools": ["log_tillage", "log_irrigation", "remove_stock", "log_observation", "rainfall_report"],
+      "notes": "Múltiples actividades + consulta al final."
+    },
+    {
+      "persona": "ganadero",
+      "message": "Pasé 25 novillos del Corral 1 al Corral 3, los más livianos. Después vacuné las 95 vaquillonas Brangus del Corral 2 contra aftosa, dosis 2 ml por animal. Vendí 30 novillos Angus a 4500 pesos el kilo, salieron de la balanza con 420 kg promedio. Pesame los terneros del 3 mañana.",
+      "expected_tools": ["transfer_livestock", "log_health_event", "remove_livestock", "log_observation"],
+      "notes": "Transfer entre corrales. log_health_event con disease_or_vaccine=aftosa. remove_livestock con unit_price → auto-income Hacienda."
+    },
+    {
+      "persona": "ganadero",
+      "message": "Che, ayer parieron 12 vacas en B1 de San Martin, todos los terneros vivos. Murió una vaca vieja que andaba mal hace rato. También compré 50 vaquillonas Brangus a 380 lucas cada una, las metí en el Corral 2. Vacuné toda la categoría con ivermectina, 1 cc cada 50 kg.",
+      "expected_tools": ["record_livestock_birth", "record_livestock_death", "add_livestock", "log_health_event"],
+      "notes": "add_livestock con unit_price_ars=380000 → auto-expense Hacienda. Health event = desparasitación."
+    },
+    {
+      "persona": "ganadero",
+      "message": "Pesé los 180 novillos del Corral 1 hoy, dieron 432 kg promedio. La GDPV está en 1.1 kg/día, bien. Después eché el toro en B1 con las 80 vacas Hereford, entore arrancó. Consultame cuánto pesaban hace 30 días y qué vacuna les dimos la última vez.",
+      "expected_tools": ["log_weighing", "log_repro_event", "query_weighings", "query_health_events"],
+      "notes": "log_weighing: weight=432 (promedio por animal), animals_weighed=180. log_repro_event(servicio). 2 queries históricas."
+    },
+    {
+      "persona": "ganadero",
+      "message": "Recategoricé 40 terneros del Corral 3 que ya están como novillitos, pasalos a novillos en el mismo corral. Además vendí 15 vaquillonas del Corral 2 a 950 mil pesos cada una. Inseminé 60 vacas en B1 con semen importado, IATF, raza Angus. Listame toda la hacienda activa.",
+      "expected_tools": ["transfer_livestock", "remove_livestock", "log_repro_event", "list_livestock"],
+      "notes": "transfer_livestock con dest_category=novillos sin destination → recategorización auto."
+    },
+    {
+      "persona": "ganadero",
+      "message": "Che, los terneros del Corral 3 vienen flacos, hay 3 con diarrea. Traté esos 3 con antibiótico, una dosis de 5 cc. Desparasité los 95 del Corral 2 con ivermectina. Mové 20 vaquillonas Brangus a B2 de San Martin, hay pasto bueno ahí. ¿Cuándo se vacunó por última vez el Corral 1?",
+      "expected_tools": ["log_health_event", "log_health_event", "transfer_livestock", "query_health_events"],
+      "notes": "Dos health events distintos + transfer feedlot→campo + query."
+    },
+    {
+      "persona": "contador",
+      "message": "Cargame estos gastos del mes: 450 lucas en sueldos al personal, 180 mil de impuestos municipales, 1.2 palos de arrendamiento de La Esperanza, 320 lucas de combustible, 95 mil de mantenimiento de maquinaria. Pasame el balance del mes para ver cómo venimos.",
+      "expected_tools": ["log_expense", "log_expense", "log_expense", "log_expense", "log_expense", "financial_report"],
+      "notes": "5 gastos en distintas categorías + reporte. 1.2 palos = 1.200.000."
+    },
+    {
+      "persona": "contador",
+      "message": "Pagué lo siguiente hoy: 280 mil al ingeniero agrónomo (servicios), 145 lucas en MAP, 90 lucas en glifosato y 60 mil en repuestos del tractor. Vendí 150 tn de soja a 350 mil la tonelada a ACA. Quiero saber gastos del lote A1 en lo que va del año.",
+      "expected_tools": ["log_expense", "log_expense", "log_expense", "log_expense", "log_income", "financial_report"],
+      "notes": "4 gastos + 1 venta grande + query filtrada por plot."
+    },
+    {
+      "persona": "contador",
+      "message": "Consultá cuánto gastamos en agroquímicos este año y cuánto en fertilizantes. Después cargá una venta de 80 tn de maíz a 220 mil la tn, comprador Cargill. Y un gasto de 1 palo y medio en arrendamiento de San Martin. ¿Cómo vamos de balance vs el año pasado?",
+      "expected_tools": ["financial_report", "financial_report", "log_income", "log_expense", "financial_report"],
+      "notes": "Multi-query + venta + gasto + comparativo. 1 palo y medio = 1.500.000."
+    },
+    {
+      "persona": "contador",
+      "message": "Cargame los gastos de cosecha: 850 lucas en flete de camiones, 320 mil en peones de cosecha, 180 lucas en gasoil para la cosechadora. Después vendí 220 tn de soja a Bunge a 380 mil la tn, descontame 5% de comisión. Quiero ver gastos vs ingresos del último mes.",
+      "expected_tools": ["log_expense", "log_expense", "log_expense", "log_income", "financial_report"],
+      "notes": "3 gastos cosecha + venta con comisión + reporte mensual."
+    },
+    {
+      "persona": "multi_campo",
+      "message": "En La Esperanza A1 cosechamos soja, rindió 38 qq/ha en 45 ha. Vendí 80 tn a 360 mil la tn a ACA con el camión de Mariano Toro, humedad 13.5%. Paralelamente en San Martin B1 fumigamos el maíz con atrazina, 90 lt. Llovieron 15 mm en La Esperanza y 22 mm en San Martin.",
+      "expected_tools": ["harvest_crop", "log_income", "log_spraying", "log_rainfall", "log_rainfall"],
+      "notes": "Cosecha yield_kg_per_ha=3800 + loads[] con humidity_pct=13.5 + venta + spraying en otro campo + 2 lluvias distintas (NO batch, campos distintos)."
+    },
+    {
+      "persona": "multi_campo",
+      "message": "Cosechamos maíz en B1 de San Martin, salieron 5 camiones: Juan Pérez 28 tn al 14%, Mariano Toro 32 tn al 14.5%, Luis Gómez 30 tn, Carlos Díaz 29 tn, Pedro Sosa 31 tn. Destinatario ACA todos. Después en La Esperanza sembré 35 ha de soja en A2 con DM 4012, 22 bolsas.",
+      "expected_tools": ["harvest_crop", "sow_crop"],
+      "notes": "Harvest con 5 loads[]. Sow en otro campo/plot. Validar loads[] con humidity solo donde se mencionó."
+    },
+    {
+      "persona": "multi_campo",
+      "message": "Pasame el cultivo activo en A1 y B1. Después cargá 60 lt de glifosato sacados del galpón Principal para San Martin. Anotá gasto de 420 lucas en semillas de soja que compré para la próxima campaña. Y consultá cómo viene la sanidad de los cultivos de La Esperanza este mes.",
+      "expected_tools": ["active_crop", "active_crop", "remove_stock", "log_expense", "query_scoutings"],
+      "notes": "2 active_crop (distintos plots) + stock + gasto Semillas + query scouting field=La Esperanza."
+    },
+    {
+      "persona": "multi_campo",
+      "message": "Generame el reporte agronómico de toda La Esperanza del último trimestre. Mientras tanto, en San Martin B2 sembré sorgo, 40 ha, usé 12 bolsas. Compré 5 bolsas de semilla a 85 lucas cada una y las metí en el galpón. Llovió 30 mm en San Martin ayer.",
+      "expected_tools": ["generate_agro_report", "sow_crop", "add_stock", "log_rainfall"],
+      "notes": "Reporte agro con date range + sow + add_stock unit_price → auto-expense Semillas + rainfall."
+    },
+    {
+      "persona": "multi_campo",
+      "message": "Listame los campos y los lotes de cada uno. Después en La Esperanza pesé 50 vaquillonas que tenemos en A2, dieron 320 kg promedio. Y en Corral 1 vacuné los 180 novillos contra brucelosis. Mové 10 novillos del Corral 1 al Corral 3. Consultá los pesajes del último mes.",
+      "expected_tools": ["list_fields", "list_plots", "log_weighing", "log_health_event", "transfer_livestock", "query_weighings"],
+      "notes": "Mix info + hacienda en distintas ubicaciones + query."
+    },
+    {
+      "persona": "mixto",
+      "message": "Che, sembré 40 ha de soja en A1, pará, en realidad fueron 45 ha. Usé 28 bolsas de DM 4012. Después fumigué ahí mismo con 100 lt de glifosato. Ah, y cargá un gasto de 320 lucas en agroquímicos, no, perdón, eran 380 lucas. Llovieron 20 mm en el mismo campo.",
+      "expected_tools": ["sow_crop", "log_spraying", "log_expense", "log_rainfall"],
+      "notes": "Auto-correcciones mid-message: 'pará, fueron 45 ha' y 'no, perdón, eran 380 lucas'. 'ahí mismo' → A1."
+    },
+    {
+      "persona": "mixto",
+      "message": "Cosechamos soja en el lote del fondo, digo, en A1, rindió 42 qq/ha en 45 ha. Vendí la mitad a 350 mil la tn. ¿Cuánto gastamos en ese lote este año? Después en el otro campo, el de las vacas, vacuné 80 animales contra aftosa. Saqué 8 lt de glifosato del galpón, lo usé ahí.",
+      "expected_tools": ["harvest_crop", "log_income", "financial_report", "log_health_event", "remove_stock", "log_spraying"],
+      "notes": "Auto-corrección 'el lote del fondo, digo A1'. 'el de las vacas' = San Martin. 'ahí' al final ambiguo."
+    },
+    {
+      "persona": "mixto",
+      "message": "Anotá un gasto de medio palo en combustible, no, era en agroquímicos. Después pasame el clima de Pergamino para mañana. Ah, y sembrá 30 ha en A2 con maíz, no, espera, era con soja DM 4012, 18 bolsas. Llovieron 12 mm ahí. ¿Cuándo se fumigó A1 la última vez?",
+      "expected_tools": ["log_expense", "weather_full", "sow_crop", "log_rainfall", "query_plot_history"],
+      "notes": "Corrección categoría + cultivo. 'ahí' → A2. weather_full(city=Pergamino)."
+    },
+    {
+      "persona": "mixto",
+      "message": "Saqué del galpón 40 lt de gasoil, después fijate cuánto queda. Vendí 25 novillos del Corral 1 a... esperá, no, eran 30 novillos, a 1.8 palos cada uno. Listame qué hacienda me queda en el feedlot. Y carga una observación que el comedero del 1 está roto.",
+      "expected_tools": ["remove_stock", "check_stock", "remove_livestock", "list_livestock", "log_observation"],
+      "notes": "Stock + check + corrección 25→30 + venta con unit_price=1800000 → auto-income Hacienda + list feedlot + obs."
+    },
+    {
+      "persona": "mixto",
+      "message": "Che, llovieron 15 mm en La Esperanza el lunes, 8 mm el martes y nada el resto. En B1 monitoreé el maíz, está en V6, hay 20% de yuyo colorado y presión moderada de cogollero, severidad 3. Vendí 40 tn de soja, no, perdón, era trigo, a 280 mil la tn. ¿Qué cosechamos en A1 este año?",
+      "expected_tools": ["log_rainfall_batch", "log_crop_scouting", "log_income", "query_harvest_loads"],
+      "notes": "Batch rainfall (2 días) + scouting V6 + corrección cultivo (soja→trigo) + query harvest A1."
+    },
+    {
+      "persona": "mixto",
+      "message": "Agregué 30 terneros Angus al A1. Perdón eran 25. Después llovieron 20 mm ahí. Gasté 50 lucas en gasoil, no, 80 lucas. Listame la hacienda de A1.",
+      "expected_tools": ["add_livestock", "remove_livestock+add_livestock", "log_rainfall", "log_expense", "list_livestock"],
+      "notes": "Test del fix post-error correction: add+correction (revert+redo), pronombre 'ahí', gasto+correction (pending overwrite)."
+    }
+  ]
+}
