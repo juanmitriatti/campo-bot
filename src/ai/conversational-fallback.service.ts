@@ -160,11 +160,12 @@ export class ConversationalFallbackService {
       return { response: responseText, aiUsed: true, rateLimited: false, usage };
     } catch (err) {
       const isTimeout = err instanceof Error && err.name === 'AbortError';
-      if (!isTimeout) {
-        logError('conv_fallback', 'FALLBACK_ERROR', err instanceof Error ? err : new Error(String(err)), {
-          context: { action: 'respond', userId },
-        });
-      }
+      logError(
+        'conv_fallback',
+        isTimeout ? 'FALLBACK_TIMEOUT' : 'FALLBACK_ERROR',
+        err instanceof Error ? err : new Error(String(err)),
+        { context: { action: 'respond', userId } },
+      );
       console.log('CONV_FALLBACK: error —', isTimeout ? 'timeout' : (err instanceof Error ? err.message : String(err)));
       return { response: RATE_LIMIT_RESPONSE, aiUsed: false, rateLimited: false };
     }

@@ -2395,6 +2395,180 @@ router.get("/api/analytics/bot-performance", async (req, res) => {
   }
 });
 
+// ─── GET /dashboard/api/analytics/ai-observability ───────────────────────────
+//
+// Live observability for the AI pipeline: timeout rate, conv_fallback rate,
+// latency percentiles, errors per hour, top users by cost. All scoped to the
+// last N days (default 1 day = "today").
+
+router.get("/api/analytics/ai-observability", async (req, res) => {
+  const days = Math.min(Math.max(parseInt(req.query.days) || 1, 1), 30);
+
+  try {
+    const [agentR, errorR, latencyR, fallbackR, errorsHourlyR, costR] = await Promise.all([
+      // Agent call totals (used to compute timeout/error rates).
+      // source='ai' covers both agent_tool_use AND intent_extraction pipelines.
+      // event_type='fallback_ai' is the conversational fallback (separate code path).
+      pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE source = 'ai' AND event_type = 'intent_detected') AS agent_calls,
+          COUNT(*) FILTER (WHERE source = 'command' AND event_type = 'intent_detected') AS command_calls,
+          COUNT(*) FILTER (WHERE event_type = 'fallback_ai') AS fallback_events,
+          COUNT(*) FILTER (WHERE event_type = 'intent_detected') AS total_messages,
+          COUNT(*) FILTER (WHERE event_type = 'error') AS error_events
+        FROM conversation_events
+        WHERE created_at >= NOW() - $1::int * INTERVAL '1 day'
+      `, [days]),
+      // Error counts from error_logs by type
+      pool.query(`
+        SELECT error_type, COUNT(*) AS n
+        FROM error_logs
+        WHERE service IN ('ai_agent', 'conv_fallback')
+          AND created_at >= NOW() - $1::int * INTERVAL '1 day'
+        GROUP BY error_type
+        ORDER BY n DESC
+      `, [days]),
+      // Latency percentiles (only inbound messages with measured time)
+      pool.query(`
+        SELECT
+          COUNT(*) AS n,
+          AVG(processing_time_ms)::int AS avg_ms,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY processing_time_ms)::int AS p50_ms,
+          PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY processing_time_ms)::int AS p95_ms,
+          PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY processing_time_ms)::int AS p99_ms
+        FROM conversation_logs
+        WHERE created_at >= NOW() - $1::int * INTERVAL '1 day'
+          AND processing_time_ms IS NOT NULL
+          AND direction = 'inbound'
+      `, [days]),
+      // Per-source rate breakdown
+      pool.query(`
+        SELECT source, COUNT(*) AS n
+        FROM conversation_events
+        WHERE event_type = 'intent_detected'
+          AND created_at >= NOW() - $1::int * INTERVAL '1 day'
+          AND source IS NOT NULL
+        GROUP BY source
+      `, [days]),
+      // Errors per hour (last 24h, hourly buckets)
+      pool.query(`
+        SELECT
+          DATE_TRUNC('hour', created_at) AS hour,
+          COUNT(*) AS n,
+          COUNT(*) FILTER (WHERE error_type LIKE '%TIMEOUT%') AS timeouts,
+          COUNT(*) FILTER (WHERE error_type NOT LIKE '%TIMEOUT%') AS other_errors
+        FROM error_logs
+        WHERE service IN ('ai_agent', 'conv_fallback')
+          AND created_at >= NOW() - INTERVAL '24 hours'
+        GROUP BY DATE_TRUNC('hour', created_at)
+        ORDER BY hour ASC
+      `),
+      // Top 10 users by AI cost in the window (Haiku 4.5 pricing)
+      pool.query(`
+        SELECT
+          u.id, COALESCE(u.name, '') AS name, COALESCE(u.phone_number, '') AS phone,
+          COUNT(*) AS calls,
+          SUM(au.input_tokens) AS input_tokens,
+          SUM(au.output_tokens) AS output_tokens,
+          SUM(au.cache_read_tokens) AS cache_read_tokens,
+          SUM(au.cache_write_tokens) AS cache_write_tokens
+        FROM ai_usage au
+        JOIN users u ON u.id = au.user_id
+        WHERE au.created_at >= NOW() - $1::int * INTERVAL '1 day'
+        GROUP BY u.id, u.name, u.phone_number
+        ORDER BY (SUM(au.input_tokens) * 0.80 + SUM(au.output_tokens) * 4.00 +
+                  SUM(au.cache_read_tokens) * 0.08 + SUM(au.cache_write_tokens) * 1.00) DESC
+        LIMIT 10
+      `, [days]),
+    ]);
+
+    const a = agentR.rows[0];
+    const totalMsgs = parseInt(a.total_messages) || 0;
+    const agentCalls = parseInt(a.agent_calls) || 0;
+    const fallbackEvents = parseInt(a.fallback_events) || 0;
+
+    const errorsByType = errorR.rows.reduce((acc, r) => {
+      acc[r.error_type] = parseInt(r.n);
+      return acc;
+    }, {});
+    const agentTimeouts = errorsByType.AGENT_TIMEOUT || 0;
+    const agentErrors = errorsByType.AGENT_ERROR || 0;
+    const fallbackTimeouts = errorsByType.FALLBACK_TIMEOUT || 0;
+    const fallbackErrors = errorsByType.FALLBACK_ERROR || 0;
+
+    const sourceRates = fallbackR.rows.reduce((acc, r) => {
+      acc[r.source] = parseInt(r.n);
+      return acc;
+    }, {});
+
+    const lat = latencyR.rows[0];
+
+    const topUsers = costR.rows.map(r => {
+      const inTok = parseInt(r.input_tokens) || 0;
+      const outTok = parseInt(r.output_tokens) || 0;
+      const crTok = parseInt(r.cache_read_tokens) || 0;
+      const cwTok = parseInt(r.cache_write_tokens) || 0;
+      const cost = (inTok * 0.80 + outTok * 4.00 + crTok * 0.08 + cwTok * 1.00) / 1_000_000;
+      return {
+        userId: r.id,
+        name: r.name || '(sin nombre)',
+        phone: r.phone,
+        calls: parseInt(r.calls),
+        inputTokens: inTok,
+        outputTokens: outTok,
+        cacheReadTokens: crTok,
+        cacheWriteTokens: cwTok,
+        costUsd: Math.round(cost * 10000) / 10000,
+      };
+    });
+
+    res.json({
+      period: { days },
+      agent: {
+        calls: agentCalls,
+        timeouts: agentTimeouts,
+        errors: agentErrors,
+        timeoutRate: agentCalls > 0 ? Math.round((agentTimeouts / agentCalls) * 1000) / 10 : 0,
+        errorRate: agentCalls > 0 ? Math.round((agentErrors / agentCalls) * 1000) / 10 : 0,
+        successRate: agentCalls > 0
+          ? Math.round(((agentCalls - agentTimeouts - agentErrors) / agentCalls) * 1000) / 10
+          : 100,
+      },
+      fallback: {
+        events: fallbackEvents,
+        timeouts: fallbackTimeouts,
+        errors: fallbackErrors,
+        rate: totalMsgs > 0 ? Math.round((fallbackEvents / totalMsgs) * 1000) / 10 : 0,
+      },
+      latency: {
+        n: parseInt(lat.n) || 0,
+        avgMs: lat.avg_ms,
+        p50Ms: lat.p50_ms,
+        p95Ms: lat.p95_ms,
+        p99Ms: lat.p99_ms,
+      },
+      sources: sourceRates,
+      errorsHourly: errorsHourlyR.rows.map(r => ({
+        hour: r.hour,
+        total: parseInt(r.n),
+        timeouts: parseInt(r.timeouts),
+        otherErrors: parseInt(r.other_errors),
+      })),
+      topUsersByCost: topUsers,
+      totals: {
+        messages: totalMsgs,
+        agentCalls,
+        fallbackEvents,
+        errorsAll: agentTimeouts + agentErrors + fallbackTimeouts + fallbackErrors,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching AI observability:", error);
+    logError('admin-api', 'AI_OBSERVABILITY_FETCH', error);
+    res.status(500).json({ error: "Internal server error", detail: error.message });
+  }
+});
+
 // ─── GET /dashboard/api/audit-log ────────────────────────────────────────────
 
 router.get("/api/audit-log", async (req, res) => {

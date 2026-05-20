@@ -269,11 +269,14 @@ export class AgentService {
       return { toolCalls, conversationalText, usage, truncated };
     } catch (err) {
       const isTimeout = err instanceof Error && err.name === 'AbortError';
-      if (!isTimeout) {
-        logError('ai_agent', 'AGENT_ERROR', err instanceof Error ? err : new Error(String(err)), {
-          context: { action: 'extract', userId },
-        });
-      }
+      // Log BOTH timeouts and other errors — observability dashboard needs the timeout rate.
+      // The error_type field distinguishes them so the UI can count separately.
+      logError(
+        'ai_agent',
+        isTimeout ? 'AGENT_TIMEOUT' : 'AGENT_ERROR',
+        err instanceof Error ? err : new Error(String(err)),
+        { context: { action: 'extract', userId } },
+      );
       console.log('AI_AGENT: fallback to regex —', isTimeout ? 'timeout' : (err instanceof Error ? err.message : String(err)));
       return null;
     }

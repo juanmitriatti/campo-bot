@@ -1825,6 +1825,52 @@
     <div class="page" id="page-ai-settings">
       <h1 class="page-title">Configuracion de IA</h1>
       <p style="color:var(--text-secondary);margin-bottom:20px;">Modelos, tokens, timeouts y prompts del pipeline de IA. Los cambios se aplican inmediatamente.</p>
+
+      <!-- === OBSERVABILIDAD EN VIVO === -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:8px 0 12px;">
+        <h2 style="font-size:18px;margin:0;">Observabilidad en vivo</h2>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <select id="obs-window" onchange="loadAiObservability()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);font-size:13px;">
+            <option value="1" selected>Ultimas 24h</option>
+            <option value="7">Ultimos 7 dias</option>
+            <option value="30">Ultimos 30 dias</option>
+          </select>
+          <button class="btn btn-sm" onclick="loadAiObservability()" style="padding:6px 12px;">Refrescar</button>
+        </div>
+      </div>
+
+      <div class="stats-grid" id="obs-cards" style="margin-bottom:20px;">
+        <div class="loading"><div class="spinner"></div> Cargando...</div>
+      </div>
+
+      <h3 style="font-size:15px;margin:20px 0 10px;color:var(--text-secondary);">Latencia (procesamiento del mensaje)</h3>
+      <div class="stats-grid" id="obs-latency-cards" style="margin-bottom:20px;"></div>
+
+      <h3 style="font-size:15px;margin:20px 0 10px;color:var(--text-secondary);">Errores por hora (ultimas 24h)</h3>
+      <div class="table-container" style="margin-bottom:24px;">
+        <div class="table-responsive">
+          <table>
+            <thead><tr><th>Hora</th><th>Timeouts</th><th>Otros errores</th><th>Total</th></tr></thead>
+            <tbody id="obs-errors-hourly-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <h3 style="font-size:15px;margin:20px 0 10px;color:var(--text-secondary);">Top 10 usuarios por costo de IA (USD)</h3>
+      <div class="table-container" style="margin-bottom:24px;">
+        <div class="table-responsive">
+          <table>
+            <thead><tr>
+              <th>Usuario</th><th>Telefono</th><th>Llamadas</th>
+              <th>Input</th><th>Output</th><th>Cache R/W</th><th>Costo USD</th>
+            </tr></thead>
+            <tbody id="obs-top-users-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- === SETTINGS GROUPS === -->
+      <h2 style="font-size:18px;margin:24px 0 12px;border-top:1px solid var(--border);padding-top:20px;">Configuracion</h2>
       <div id="ai-settings-groups-container">
         <div class="loading"><div class="spinner"></div> Cargando configuracion...</div>
       </div>
@@ -2177,6 +2223,7 @@
         document.getElementById('page-ai-settings').classList.add('active');
         document.querySelector('[data-page="ai-settings"]').classList.add('active');
         loadAiSettings();
+        loadAiObservability();
       } else if (page === 'agro-field' && id) {
         document.getElementById('page-agro-field-detail').classList.add('active');
         document.querySelector('[data-page="agronomy"]').classList.add('active');
@@ -3844,6 +3891,84 @@
     function loadAiSettings() {
       var aiGroups = ['ai', 'audio', 'limits'];
       renderSettingsGroups('ai-settings-groups-container', aiGroups, null, 'btn-save-ai-settings', 'saveAiSettings');
+    }
+
+    function loadAiObservability() {
+      var sel = document.getElementById('obs-window');
+      var days = sel ? parseInt(sel.value) || 1 : 1;
+      var cardsEl = document.getElementById('obs-cards');
+      var latencyEl = document.getElementById('obs-latency-cards');
+      var hourlyEl = document.getElementById('obs-errors-hourly-body');
+      var usersEl = document.getElementById('obs-top-users-body');
+      if (cardsEl) cardsEl.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando...</div>';
+      apiFetch('/admin/api/analytics/ai-observability?days=' + days)
+        .then(function(d) {
+          if (d.error) throw new Error(d.error);
+          var pct = function(n) { return (n == null) ? '—' : n.toFixed(1) + '%'; };
+          var ms = function(n) { return (n == null) ? '—' : n + ' ms'; };
+          var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+
+          // Status colors: green if good, yellow if borderline, red if bad
+          var statusColor = function(rate, warn, crit) {
+            if (rate == null) return 'var(--text-secondary)';
+            if (rate >= crit) return 'var(--danger)';
+            if (rate >= warn) return 'var(--warning)';
+            return 'var(--success)';
+          };
+          var agentTOColor = statusColor(d.agent.timeoutRate, 3, 8);
+          var agentErrColor = statusColor(d.agent.errorRate, 2, 5);
+          var fallbackColor = statusColor(d.fallback.rate, 5, 15);
+
+          cardsEl.innerHTML =
+            '<div class="card stat-card"><div class="label">Mensajes</div><div class="value">' + d.totals.messages.toLocaleString('es-AR') + '</div><div class="sublabel">' + d.totals.agentCalls + ' llamadas al agente</div></div>' +
+            '<div class="card stat-card"><div class="label">Tasa Timeout Agente</div><div class="value" style="color:' + agentTOColor + ';">' + pct(d.agent.timeoutRate) + '</div><div class="sublabel">' + d.agent.timeouts + ' timeouts / ' + d.agent.calls + ' calls</div></div>' +
+            '<div class="card stat-card"><div class="label">Tasa Error Agente</div><div class="value" style="color:' + agentErrColor + ';">' + pct(d.agent.errorRate) + '</div><div class="sublabel">' + d.agent.errors + ' errores</div></div>' +
+            '<div class="card stat-card"><div class="label">Tasa Conv. Fallback</div><div class="value" style="color:' + fallbackColor + ';">' + pct(d.fallback.rate) + '</div><div class="sublabel">' + d.fallback.events + ' eventos</div></div>' +
+            '<div class="card stat-card"><div class="label">Exito Agente</div><div class="value" style="color:var(--success);">' + pct(d.agent.successRate) + '</div><div class="sublabel">healthy &gt; 90%</div></div>';
+
+          // Latency cards
+          var lat = d.latency;
+          var p95Color = statusColor(lat.p95Ms, 5000, 10000);
+          latencyEl.innerHTML =
+            '<div class="card stat-card"><div class="label">Promedio</div><div class="value">' + ms(lat.avgMs) + '</div><div class="sublabel">' + (lat.n || 0).toLocaleString('es-AR') + ' mensajes</div></div>' +
+            '<div class="card stat-card"><div class="label">P50 (mediana)</div><div class="value">' + ms(lat.p50Ms) + '</div></div>' +
+            '<div class="card stat-card"><div class="label">P95</div><div class="value" style="color:' + p95Color + ';">' + ms(lat.p95Ms) + '</div><div class="sublabel">healthy &lt; 5s</div></div>' +
+            '<div class="card stat-card"><div class="label">P99</div><div class="value">' + ms(lat.p99Ms) + '</div></div>';
+
+          // Errors hourly
+          if (!d.errorsHourly || d.errorsHourly.length === 0) {
+            hourlyEl.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-secondary);padding:20px;">Sin errores en las ultimas 24h.</td></tr>';
+          } else {
+            hourlyEl.innerHTML = d.errorsHourly.map(function(r) {
+              var dt = new Date(r.hour);
+              var label = pad(dt.getHours()) + ':00';
+              return '<tr><td>' + label + '</td>' +
+                '<td>' + r.timeouts + '</td>' +
+                '<td>' + r.otherErrors + '</td>' +
+                '<td><strong>' + r.total + '</strong></td></tr>';
+            }).join('');
+          }
+
+          // Top users
+          if (!d.topUsersByCost || d.topUsersByCost.length === 0) {
+            usersEl.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:20px;">Sin actividad de IA en el periodo.</td></tr>';
+          } else {
+            usersEl.innerHTML = d.topUsersByCost.map(function(u) {
+              return '<tr>' +
+                '<td><a href="javascript:void(0)" onclick="navigate(\'user-detail\', ' + u.userId + ')" style="color:var(--primary);">' + (u.name || '—') + '</a></td>' +
+                '<td><code style="font-size:11px;">' + (u.phone || '—') + '</code></td>' +
+                '<td>' + u.calls.toLocaleString('es-AR') + '</td>' +
+                '<td>' + (u.inputTokens || 0).toLocaleString('es-AR') + '</td>' +
+                '<td>' + (u.outputTokens || 0).toLocaleString('es-AR') + '</td>' +
+                '<td>' + ((u.cacheReadTokens || 0) + (u.cacheWriteTokens || 0)).toLocaleString('es-AR') + '</td>' +
+                '<td><strong>$' + u.costUsd.toFixed(4) + '</strong></td>' +
+                '</tr>';
+            }).join('');
+          }
+        })
+        .catch(function(err) {
+          cardsEl.innerHTML = '<div class="card stat-card" style="border-left:4px solid var(--danger);"><div class="label">Error</div><div class="value" style="font-size:14px;">' + (err.message || 'No se pudieron cargar metricas') + '</div></div>';
+        });
     }
 
     function uploadReportLogo() {
