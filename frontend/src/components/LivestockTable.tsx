@@ -247,7 +247,7 @@ export default function LivestockTable() {
                 {data.items.map(group => (
                   <tr key={group.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                     <td className="px-4 py-3">
-                      <p className="text-gray-800 font-medium">{CATEGORY_LABELS[group.category] || group.category}</p>
+                      <p className="text-gray-800 dark:text-gray-100 font-medium">{CATEGORY_LABELS[group.category] || group.category}</p>
                       <p className="text-xs text-gray-400 dark:text-gray-300 sm:hidden">
                         {group.corral_name ? `🔲 ${group.corral_name}` : group.plot_name} · {group.field_name}
                         {group.breed && ` · ${group.breed}`}

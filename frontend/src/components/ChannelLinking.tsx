@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Sun, Moon } from 'lucide-react';
 import { apiRequest, ApiError } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../hooks/useTheme';
 
 interface VerificationStatus {
   whatsapp_verified: boolean;
@@ -32,6 +34,34 @@ interface SubscriptionStatus {
 }
 
 type WaStep = 'idle' | 'enter-phone' | 'enter-code' | 'success';
+
+function AppearanceCard() {
+  const [theme, , toggleTheme] = useTheme();
+  const isDark = theme === 'dark';
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div className="text-3xl">{isDark ? '🌙' : '🌞'}</div>
+          <div>
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100">Apariencia</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
+              Modo actual: <span className="font-medium">{isDark ? 'Oscuro' : 'Claro'}</span>
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900 border border-gray-300 bg-white rounded-md px-4 py-2 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:text-white dark:border-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600"
+        >
+          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          Cambiar a modo {isDark ? 'claro' : 'oscuro'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function ChannelLinking() {
   const [status, setStatus] = useState<VerificationStatus | null>(null);
@@ -283,6 +313,8 @@ export default function ChannelLinking() {
           Vinculá tu WhatsApp y/o Telegram para usar el bot desde tus chats.
         </p>
       </div>
+
+      <AppearanceCard />
 
       {/* WhatsApp card */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">

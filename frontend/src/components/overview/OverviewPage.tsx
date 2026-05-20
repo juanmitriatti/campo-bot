@@ -5,7 +5,6 @@ import { useOverviewTab } from '../../hooks/useOverviewTab';
 import { useUserFields } from '../../hooks/useUserFields';
 import { useSelectedField } from '../../hooks/useSelectedField';
 import { useDashboardData } from '../../hooks/useDashboardData';
-import { useTheme } from '../../hooks/useTheme';
 import OverviewTabs from './OverviewTabs';
 import OverviewSummaryView from './OverviewSummaryView';
 import OverviewAgronomicView from './OverviewAgronomicView';
@@ -14,7 +13,6 @@ import FieldSelector from './FieldSelector';
 import SubscriptionBanner from './SubscriptionBanner';
 import EmailVerifyBanner from './EmailVerifyBanner';
 import AlertsBanner from './AlertsBanner';
-import ThemeToggle from './ThemeToggle';
 
 interface OverviewPageProps {
   onGoToAccount?: () => void;
@@ -34,7 +32,6 @@ export default function OverviewPage({
   const { fields, loading: fieldsLoading } = useUserFields();
   const [fieldId, setFieldId] = useSelectedField();
   const { data: dashData } = useDashboardData(fieldId);
-  const [theme, , toggleTheme] = useTheme();
 
   const showAgronomic = features.includes('agronomy');
   const showLivestock = features.includes('livestock');
@@ -75,22 +72,19 @@ export default function OverviewPage({
         </div>
       ) : (
         <>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-4 flex-wrap">
-                <OverviewTabs active={tab} onChange={setTab} showAgronomic={showAgronomic} showLivestock={showLivestock} />
-                <FieldSelector fields={fields} value={fieldId} onChange={setFieldId} />
-              </div>
-              <button
-                onClick={reload}
-                className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800 border border-gray-200 bg-white rounded-md px-3 py-1.5 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
-                title="Recargar datos"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Actualizar
-              </button>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-4 flex-wrap">
+              <OverviewTabs active={tab} onChange={setTab} showAgronomic={showAgronomic} showLivestock={showLivestock} />
+              <FieldSelector fields={fields} value={fieldId} onChange={setFieldId} />
             </div>
-            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            <button
+              onClick={reload}
+              className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800 border border-gray-200 bg-white rounded-md px-3 py-1.5 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+              title="Recargar datos"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Actualizar
+            </button>
           </div>
 
           {tab === 'resumen' && <OverviewSummaryView fieldId={fieldId} onRecentItemClick={onRecentItemClick} />}

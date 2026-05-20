@@ -392,9 +392,9 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
                         </span>
                       </td>
                       <td className="px-4 py-3 max-w-xs">
-                        <p className="truncate text-gray-800">{inc.description || '-'}</p>
+                        <p className="truncate text-gray-800 dark:text-gray-100">{inc.description || '-'}</p>
                         {inc.linked_from_livestock && (
-                          <p className="text-[11px] text-campo-600 mt-0.5">🔗 Auto-creado por venta de hacienda</p>
+                          <p className="text-[11px] text-campo-600 dark:text-campo-400 mt-0.5">🔗 Auto-creado por venta de hacienda</p>
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-300">

@@ -262,7 +262,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
                   return (
                     <tr key={item.id} className={`hover:bg-gray-50 transition-colors ${isLow ? 'bg-red-50' : ''}`}>
                       <td className="px-4 py-3">
-                        <p className="text-gray-800 font-medium">{item.name}</p>
+                        <p className="text-gray-800 dark:text-gray-100 font-medium">{item.name}</p>
                         <p className="text-xs text-gray-400 md:hidden">
                           {STOCK_CATEGORIES[item.category] || item.category} · {item.warehouse_name} · {item.field_name}
                         </p>
@@ -272,7 +272,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
                           {STOCK_CATEGORIES[item.category] || item.category}
                         </span>
                       </td>
-                      <td className={`px-4 py-3 text-right font-medium ${isLow ? 'text-red-600' : 'text-gray-800'}`}>
+                      <td className={`px-4 py-3 text-right font-medium ${isLow ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'}`}>
                         {item.current_quantity}
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden sm:table-cell">{item.unit}</td>
