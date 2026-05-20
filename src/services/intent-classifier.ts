@@ -252,7 +252,12 @@ export class IntentClassifier {
               (primary as any)._truncated = true;
             }
 
-            if (primary.confidence >= minConfidence || (primary as any)._conversationalResponse) {
+            // Accept partial intents (expense_partial / income_partial) regardless
+            // of confidence — they are valid "I know what you meant but need
+            // more info" results that should trigger the flow, NOT the conversational
+            // fallback. Their lower confidence (0.60) is by design.
+            const isPartial = primary.intent.type === 'expense_partial' || primary.intent.type === 'income_partial';
+            if (primary.confidence >= minConfidence || (primary as any)._conversationalResponse || isPartial) {
               return primary;
             }
           }
