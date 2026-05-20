@@ -50,10 +50,12 @@ jobs:
           submodules: recursive
           token: ${{ secrets.LANDING_REPO_TOKEN || github.token }}
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Install Railway CLI
-        run: |
-          curl -fsSL https://railway.com/install.sh | bash
-          echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
+        run: npm install -g @railway/cli
 
       # Bundles the SHA with the uploaded code so /api/health can report it.
       # Railway only injects RAILWAY_GIT_COMMIT_SHA on its native GitHub
