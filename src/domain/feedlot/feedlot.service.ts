@@ -46,6 +46,11 @@ export class FeedlotService {
     return this.repo.listFeedlots(Number(userId));
   }
 
+  async countUserFeedlots(userId: UserId): Promise<number> {
+    const list = await this.listFeedlots(userId);
+    return list.length;
+  }
+
   async deleteFeedlot(userId: UserId, fieldName: string): Promise<FeedlotRow> {
     if (!fieldName) throw new Error('Decime de qué campo querés borrar el feedlot.');
 

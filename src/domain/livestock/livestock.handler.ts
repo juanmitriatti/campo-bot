@@ -33,6 +33,7 @@ function fmtAmount(amount: number, currency: Currency): string {
 export class LivestockHandler {
   private service: LivestockService;
   private plotDiscovery = new PlotDiscoveryService();
+  private feedlotService = new FeedlotService();
 
   constructor(service?: LivestockService) {
     this.service = service ?? new LivestockService();
@@ -71,6 +72,67 @@ export class LivestockHandler {
     }
   }
 
+  /**
+   * When a livestock movement fails because a corral / lote / feedlot / campo
+   * doesn't exist, surface Sí/No buttons so the user can create the missing
+   * location and continue the operation. Returns null when the error is not
+   * a recognized "not found" case.
+   */
+  private async maybeOfferCreateAndContinue(
+    cmd: ParsedCommand,
+    userId: UserId,
+    errorMsg: string,
+  ): Promise<HandlerResponse | null> {
+    const corralMatch = errorMsg.match(/No encontré el corral "([^"]+)"/);
+    const plotMatch = errorMsg.match(/No encontré el lote "([^"]+)"/);
+    const fieldMatch = errorMsg.match(/No encontré el campo "([^"]+)"/);
+    const noLotesMatch = errorMsg.match(/El campo "([^"]+)" no tiene lotes/);
+
+    let missingType: 'corral' | 'plot' | 'feedlot' | 'field' | null = null;
+    let missingName = '';
+    if (corralMatch) { missingType = 'corral'; missingName = corralMatch[1]; }
+    else if (plotMatch) { missingType = 'plot'; missingName = plotMatch[1]; }
+    else if (fieldMatch) { missingType = 'field'; missingName = fieldMatch[1]; }
+    else if (noLotesMatch) { missingType = 'plot'; missingName = 'A1'; }
+    if (!missingType) return null;
+
+    const feedlotCount = await this.feedlotService.countUserFeedlots(userId);
+    const payload = encodeLivestockPayload({
+      cmd, step: 'create_loc', missingType, missingName,
+      fieldName: cmd.fieldName as string | undefined,
+    });
+
+    let body = '';
+    let yesId = '';
+    if (missingType === 'corral') {
+      if (feedlotCount === 0) {
+        body = `🔍 No encontré el corral *${missingName}* (no tenés feedlots). ¿Querés que cree el feedlot y el corral, y registre la operación?`;
+        yesId = `lv_create_feedlot_continue_${payload}`;
+      } else {
+        body = `🔍 No encontré el corral *${missingName}*. ¿Querés que lo cree y continúe?`;
+        yesId = `lv_create_corral_continue_${payload}`;
+      }
+    } else if (missingType === 'plot') {
+      body = `🔍 No encontré el lote *${missingName}*. ¿Querés que lo cree y continúe?`;
+      yesId = `lv_create_plot_continue_${payload}`;
+    } else if (missingType === 'field') {
+      body = `🔍 No encontré el campo *${missingName}*. ¿Querés que lo cree y continúe?`;
+      yesId = `lv_create_field_continue_${payload}`;
+    }
+
+    return {
+      messages: [],
+      interactive: {
+        type: 'buttons' as const,
+        body,
+        buttons: [
+          { id: yesId, title: 'Sí, crear y continuar' },
+          { id: 'lv_create_cancel', title: 'No, cancelar' },
+        ],
+      },
+    };
+  }
+
   // ========================
   // ADD
   // ========================
@@ -81,19 +143,27 @@ export class LivestockHandler {
     if (!category) return { messages: ['Necesito saber la categoría. Ej: "agregué 20 vacas al lote A1".'] };
     if (!count || count <= 0) return { messages: ['Necesito la cantidad. Ej: "agregué 20 vacas al lote A1".'] };
 
-    const { group, created, financial } = await this.service.addAnimals(userId, {
-      category,
-      count,
-      fieldName: cmd.fieldName as string,
-      plotName: cmd.plotName as string,
-      corralName: cmd.corralName as string,
-      breed: cmd.breed as string,
-      avg_weight_kg: cmd.avg_weight_kg as number,
-      unit_price_ars: cmd.unit_price_ars as number,
-      unit_price_usd: cmd.unit_price_usd as number,
-      reason: cmd.reason as string,
-      movement_date: cmd.eventDate as string,
-    });
+    let group, created, financial;
+    try {
+      ({ group, created, financial } = await this.service.addAnimals(userId, {
+        category,
+        count,
+        fieldName: cmd.fieldName as string,
+        plotName: cmd.plotName as string,
+        corralName: cmd.corralName as string,
+        breed: cmd.breed as string,
+        avg_weight_kg: cmd.avg_weight_kg as number,
+        unit_price_ars: cmd.unit_price_ars as number,
+        unit_price_usd: cmd.unit_price_usd as number,
+        reason: cmd.reason as string,
+        movement_date: cmd.eventDate as string,
+      }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const offer = await this.maybeOfferCreateAndContinue(cmd, userId, msg);
+      if (offer) return offer;
+      throw err;
+    }
 
     const newLabel = created ? ' (nuevo grupo)' : '';
     const breed = group.breed ? ` ${group.breed}` : '';
@@ -137,18 +207,26 @@ export class LivestockHandler {
     if (!category) return { messages: ['Necesito la categoría. Ej: "vendí 5 vacas del lote A1".'] };
     if (!count || count <= 0) return { messages: ['Necesito la cantidad. Ej: "vendí 5 vacas del lote A1".'] };
 
-    const { group, financial } = await this.service.removeAnimals(userId, {
-      category,
-      count,
-      fieldName: cmd.fieldName as string,
-      plotName: cmd.plotName as string,
-      corralName: cmd.corralName as string,
-      breed: cmd.breed as string,
-      unit_price_ars: cmd.unit_price_ars as number,
-      unit_price_usd: cmd.unit_price_usd as number,
-      reason: cmd.reason as string,
-      movement_date: cmd.eventDate as string,
-    });
+    let group, financial;
+    try {
+      ({ group, financial } = await this.service.removeAnimals(userId, {
+        category,
+        count,
+        fieldName: cmd.fieldName as string,
+        plotName: cmd.plotName as string,
+        corralName: cmd.corralName as string,
+        breed: cmd.breed as string,
+        unit_price_ars: cmd.unit_price_ars as number,
+        unit_price_usd: cmd.unit_price_usd as number,
+        reason: cmd.reason as string,
+        movement_date: cmd.eventDate as string,
+      }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const offer = await this.maybeOfferCreateAndContinue(cmd, userId, msg);
+      if (offer) return offer;
+      throw err;
+    }
 
     const breed = group.breed ? ` ${group.breed}` : '';
     const financialLine = financial
@@ -219,20 +297,28 @@ export class LivestockHandler {
       return { messages: ['Necesito el destino (lote o corral).'] };
     }
 
-    const { sourceGroup, destGroup, movement } = await this.service.transferAnimals(userId, {
-      category,
-      count,
-      sourceField: cmd.sourceField as string,
-      sourcePlot: effectiveSourcePlot || undefined,
-      sourceCorral: effectiveSourceCorral || undefined,
-      destField: cmd.destField as string,
-      destPlot: effectiveDestPlot || undefined,
-      destCorral: effectiveDestCorral || undefined,
-      breed: cmd.breed as string,
-      destCategory: destCategory || undefined,
-      reason: cmd.reason as string,
-      movement_date: cmd.eventDate as string,
-    });
+    let sourceGroup, destGroup, movement;
+    try {
+      ({ sourceGroup, destGroup, movement } = await this.service.transferAnimals(userId, {
+        category,
+        count,
+        sourceField: cmd.sourceField as string,
+        sourcePlot: effectiveSourcePlot || undefined,
+        sourceCorral: effectiveSourceCorral || undefined,
+        destField: cmd.destField as string,
+        destPlot: effectiveDestPlot || undefined,
+        destCorral: effectiveDestCorral || undefined,
+        breed: cmd.breed as string,
+        destCategory: destCategory || undefined,
+        reason: cmd.reason as string,
+        movement_date: cmd.eventDate as string,
+      }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const offer = await this.maybeOfferCreateAndContinue(cmd, userId, msg);
+      if (offer) return offer;
+      throw err;
+    }
 
     const mvLabel = LIVESTOCK_MOVEMENT_LABEL[movement.movement_type];
     const breed = sourceGroup.breed ? ` ${sourceGroup.breed}` : '';
