@@ -561,6 +561,7 @@ export class FinancialHandler {
     user: User,
     fieldName?: string | null,
     plotName?: string | null,
+    bulkMode?: boolean,
   ): Promise<HandlerResponse> {
     // Block if user has no fields
     const userFields = await this.service.getUserFields(userId);
@@ -592,8 +593,9 @@ export class FinancialHandler {
       resPlotName = null;
     }
 
-    // If the referenced field/plot doesn't exist, redirect to flow for plot selection
-    if (resolution.notFound) {
+    // If the referenced field/plot doesn't exist, redirect to flow for plot selection.
+    // EXCEPT bulk mode (compound with 2+ writes): save without flow.
+    if (resolution.notFound && !bulkMode) {
       const label = resolution.notFound.type === 'field' ? 'campo' : 'lote';
       const name = resolution.notFound.name;
       const currency = data.currency === 'USD' ? 'USD' : 'ARS';
@@ -619,7 +621,7 @@ export class FinancialHandler {
 
     // Hybrid plot assignment: try to auto-assign plot
     if (!plotId) {
-      if (resolution.needPlotSelection) {
+      if (resolution.needPlotSelection && !bulkMode) {
         // 2+ plots in field → redirect to expense flow at plot step
         const currency = data.currency === 'USD' ? 'USD' : 'ARS';
         return {
@@ -675,7 +677,7 @@ export class FinancialHandler {
     // when this is a field-level expense (sueldos/arrendamiento/etc.) and
     // we already have a field — then save at field level (plot_id NULL)
     // without forcing the user through plot selection.
-    if (!plotId && !(isFieldLevelExpense && fieldId)) {
+    if (!plotId && !(isFieldLevelExpense && fieldId) && !bulkMode) {
       const currency = data.currency === 'USD' ? 'USD' : 'ARS';
       return {
         messages: [],
@@ -833,6 +835,7 @@ export class FinancialHandler {
     settings: UserSettings,
     fieldName?: string | null,
     plotName?: string | null,
+    bulkMode?: boolean,
   ): Promise<HandlerResponse> {
     // Block if user has no fields
     const userFields = await this.service.getUserFields(userId);
@@ -849,8 +852,9 @@ export class FinancialHandler {
     const resolution = await this.service.resolveField(userId, fieldName, plotName);
     let { fieldId, fieldName: resFieldName, plotId, plotName: resPlotName } = resolution;
 
-    // If the referenced field/plot doesn't exist, redirect to flow for plot selection
-    if (resolution.notFound) {
+    // If the referenced field/plot doesn't exist, redirect to flow for plot selection.
+    // EXCEPT bulk mode (compound with 2+ writes): save without flow.
+    if (resolution.notFound && !bulkMode) {
       const label = resolution.notFound.type === 'field' ? 'campo' : 'lote';
       const name = resolution.notFound.name;
       const currency = data.currency === 'USD' ? 'USD' : 'ARS';
@@ -875,7 +879,7 @@ export class FinancialHandler {
 
     // Hybrid plot assignment: try to auto-assign plot
     if (!plotId) {
-      if (resolution.needPlotSelection) {
+      if (resolution.needPlotSelection && !bulkMode) {
         // 2+ plots in field → redirect to income flow at plot step
         const currency = data.currency === 'USD' ? 'USD' : 'ARS';
         return {
@@ -925,8 +929,9 @@ export class FinancialHandler {
       }
     }
 
-    // No plot resolved → redirect to income flow so user picks one
-    if (!plotId) {
+    // No plot resolved → redirect to income flow so user picks one.
+    // Bulk mode (compound with 2+ writes): save at user level without flow.
+    if (!plotId && !bulkMode) {
       const currency = data.currency === 'USD' ? 'USD' : 'ARS';
       return {
         messages: [],

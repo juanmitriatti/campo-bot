@@ -76,12 +76,13 @@ export class CompoundExecutor {
   }
 
   private async _runSteps(
-    actionable: ParseResult[],
+    actionableIn: ParseResult[],
     userId: UserId,
     user: User,
     settings: UserSettings,
     originalText?: string,
   ): Promise<CompoundResult> {
+    let actionable = actionableIn;
     const messages: string[] = [];
     let lastSideEffects: HandlerResponse['sideEffects'];
     let lastInteractive: HandlerResponse['interactive'];
@@ -91,6 +92,21 @@ export class CompoundExecutor {
 
     // Force skip confirmation for expenses/incomes in compound context
     const noConfirmSettings = { ...settings, confirm_before_save: false };
+
+    // Bulk mode: when the compound has 2+ financial writes, handlers should
+    // skip the "¿En qué lote?" pending flow and save at field/user level instead
+    // of stopping the whole compound for one missing plot. The plot can be
+    // assigned later via edit_last_expense.
+    const financialWriteCount = actionable.filter((s) =>
+      s.intent.type === 'expense' || s.intent.type === 'income'
+    ).length;
+    const bulkMode = financialWriteCount >= 2;
+
+    // Pre-execution consolidation: when the agent fires multiple log_rainfall
+    // calls for the SAME field on different dates ("8mm el lunes, 14mm el martes,
+    // 5mm anoche en La Esperanza"), collapse them into one log_rainfall_batch
+    // call so the dedup logic doesn't reject day-2 and day-3.
+    actionable = consolidateSameFieldRainfalls(actionable);
 
     // Drop exact-duplicate steps (same command + same key params). The agent
     // sometimes fires the SAME tool twice in a single compound — Roberto's
@@ -164,13 +180,13 @@ export class CompoundExecutor {
         const expData = step.intent.data as ParsedExpense & { field?: string; plot?: string };
         response = await this.financialHandler.handleExpense(
           userId, expData, originalText ?? '', noConfirmSettings, user,
-          expData.field, expData.plot,
+          expData.field, expData.plot, bulkMode,
         );
       } else if (step.intent.type === 'income' && this.financialHandler) {
         const incData = step.intent.data as ParsedIncome & { field?: string; plot?: string };
         response = await this.financialHandler.handleIncome(
           userId, incData, originalText ?? '', noConfirmSettings,
-          incData.field, incData.plot,
+          incData.field, incData.plot, bulkMode,
         );
       }
 
