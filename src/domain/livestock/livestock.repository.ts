@@ -596,4 +596,12 @@ export class LivestockRepository {
       [movementId, expenseId, incomeId]
     );
   }
+
+  async countUserMovements(userId: number): Promise<number> {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM livestock_movements WHERE user_id = $1`,
+      [userId]
+    );
+    return rows[0].n;
+  }
 }

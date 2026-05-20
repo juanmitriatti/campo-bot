@@ -794,4 +794,8 @@ export class LivestockService {
     const movements = await this.repo.getMovementsForGroup(group.id, 50);
     return { group, movements };
   }
+
+  async countUserMovements(userId: UserId): Promise<number> {
+    return this.repo.countUserMovements(Number(userId));
+  }
 }

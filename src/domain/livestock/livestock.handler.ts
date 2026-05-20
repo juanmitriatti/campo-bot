@@ -102,6 +102,14 @@ export class LivestockHandler {
     const askPriceLine = (isPurchase && !hasPrice && !financial)
       ? '\n\n¿A cuánto fue la compra? Así registro el gasto.'
       : '';
+
+    const movementsCount = await this.service.countUserMovements(userId);
+    const isFirstRecord = movementsCount === 1;
+    const destIsPlot = group.plot_id != null;
+    const nudgeLine = (isFirstRecord && destIsPlot)
+      ? `\n\n💡 Si hacés engorde a corral, podés crear un feedlot con "nuevo feedlot en ${group.field_name || '<campo>'}".`
+      : '';
+
     return {
       messages: [
         `🐄 *Hacienda actualizada*\n\n` +
@@ -110,7 +118,8 @@ export class LivestockHandler {
         `  📊 Total: *${group.count}*\n` +
         `  📍 ${fmtLoc(group)}` +
         financialLine +
-        askPriceLine,
+        askPriceLine +
+        nudgeLine,
       ],
     };
   }
