@@ -102,6 +102,19 @@ export class CategoryRepository {
     return rows[0].n;
   }
 
+  async findSimilarExcludingExact(userId: number, kind: CategoryKind, name: string): Promise<UserCategory[]> {
+    // Returns all active categories of the user/kind EXCEPT one with an exact
+    // (case-insensitive) name match — the service handles exact matches separately.
+    const { rows } = await pool.query(
+      `SELECT id, user_id, kind, name, usage_count, last_used_at
+       FROM user_categories
+       WHERE user_id = $1 AND kind = $2 AND deleted_at IS NULL
+         AND lower(name) <> lower($3)`,
+      [userId, kind, name]
+    );
+    return rows.map(mapRow);
+  }
+
   async reassign(userId: number, kind: CategoryKind, fromName: string, toName: string): Promise<number> {
     const table = kind === 'expense' ? 'expenses' : 'incomes';
     const { rowCount } = await pool.query(

@@ -175,6 +175,46 @@ export const expenseFlow: FlowDefinition = {
     const finalCategory = data.category === NEW_CATEGORY_SENTINEL
       ? (data.categoryNewName as string)
       : (data.category as string);
+
+    // Similarity check (only when creating a brand new one — i.e., user took the
+    // "+ Crear nueva" path or typed free text not in the catalog).
+    const isFreshCreate = data.category === NEW_CATEGORY_SENTINEL
+      || !(await categoryRepo.findByName(userId, 'expense', finalCategory));
+    if (isFreshCreate) {
+      const similar = await categoryService.findSimilar(userId, 'expense', finalCategory);
+      if (similar) {
+        const { encodePendingExpensePayload } = await import('../../domain/financial/financial.handler.js');
+        const payload = encodePendingExpensePayload({
+          data: {
+            type: 'expense',
+            amount: amountInfo.amount,
+            currency: amountInfo.currency as 'ARS' | 'USD',
+            description: (data.description as string) || '',
+            category: finalCategory,
+            expenseDate: (data.expenseDate as string) ?? null,
+            expenseType: (data.expenseType as 'insumo' | 'varios') ?? null,
+            product: (data.product as string) ?? null,
+            quantity: (data.quantity as number) ?? null,
+            unit: (data.unit as string) ?? null,
+          },
+          fieldId,
+          plotId,
+        });
+        return {
+          messages: [],
+          interactive: {
+            type: 'buttons' as const,
+            body: `Ya tenés una categoría parecida: *${similar.name}*.\n¿Usás esa o creás *${finalCategory}* como nueva?`,
+            buttons: [
+              { id: `cat_sim_use_exp_${payload}_${similar.id}`, title: `Usar ${similar.name}` },
+              { id: `cat_sim_new_exp_${payload}_${encodeURIComponent(finalCategory)}`, title: `Crear ${finalCategory}` },
+              { id: 'cat_sim_cancel', title: 'Cancelar' },
+            ],
+          },
+        };
+      }
+    }
+
     // Ensure the category exists in user_categories + bump usage
     try {
       const res = await categoryService.match(userId, 'expense', finalCategory, 'new');

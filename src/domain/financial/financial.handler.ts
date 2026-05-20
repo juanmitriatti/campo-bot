@@ -696,6 +696,27 @@ export class FinancialHandler {
       : (data as ParsedExpense & { category_match?: string }).category_match === 'exact'
         ? 'exact' as const
         : 'unknown' as const;
+
+    // When the agent claims it's a new category, first check for a similar existing one
+    if (expenseCategoryIntent === 'new' && rawExpenseCategory && rawExpenseCategory.trim()) {
+      const similar = await this.categoryService.findSimilar(userId as number, 'expense', rawExpenseCategory);
+      if (similar) {
+        const payload = encodePendingExpensePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
+        return {
+          messages: [],
+          interactive: {
+            type: 'buttons' as const,
+            body: `Ya tenés una categoría parecida: *${similar.name}*.\n¿Usás esa o creás *${rawExpenseCategory.trim()}* como nueva?`,
+            buttons: [
+              { id: `cat_sim_use_exp_${payload}_${similar.id}`, title: `Usar ${similar.name}` },
+              { id: `cat_sim_new_exp_${payload}_${encodeURIComponent(rawExpenseCategory.trim())}`, title: `Crear ${rawExpenseCategory.trim()}` },
+              { id: 'cat_sim_cancel', title: 'Cancelar' },
+            ],
+          },
+        };
+      }
+    }
+
     const expenseCatMatch = await this.categoryService.match(
       userId as number, 'expense', rawExpenseCategory, expenseCategoryIntent,
     );
@@ -925,6 +946,27 @@ export class FinancialHandler {
       : (data as ParsedIncome & { category_match?: string }).category_match === 'exact'
         ? 'exact' as const
         : 'unknown' as const;
+
+    // When the agent claims it's a new category, first check for a similar existing one
+    if (incomeCategoryIntent === 'new' && rawIncomeCategory && rawIncomeCategory.trim()) {
+      const similar = await this.categoryService.findSimilar(userId as number, 'income', rawIncomeCategory);
+      if (similar) {
+        const payload = encodePendingIncomePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
+        return {
+          messages: [],
+          interactive: {
+            type: 'buttons' as const,
+            body: `Ya tenés una categoría parecida: *${similar.name}*.\n¿Usás esa o creás *${rawIncomeCategory.trim()}* como nueva?`,
+            buttons: [
+              { id: `cat_sim_use_inc_${payload}_${similar.id}`, title: `Usar ${similar.name}` },
+              { id: `cat_sim_new_inc_${payload}_${encodeURIComponent(rawIncomeCategory.trim())}`, title: `Crear ${rawIncomeCategory.trim()}` },
+              { id: 'cat_sim_cancel', title: 'Cancelar' },
+            ],
+          },
+        };
+      }
+    }
+
     const incomeCatMatch = await this.categoryService.match(
       userId as number, 'income', rawIncomeCategory, incomeCategoryIntent,
     );
@@ -2567,6 +2609,26 @@ export class FinancialHandler {
     if (!trimmed || trimmed.length > 60) {
       return { messages: ['El nombre tiene que tener entre 1 y 60 caracteres. Probá de nuevo:'] };
     }
+
+    // Similarity check before creating
+    const similar = await this.categoryService.findSimilar(userId as number, flowData.kind, trimmed);
+    if (similar) {
+      const payload = flowData.payload;
+      const kindPrefix = flowData.kind === 'expense' ? 'exp' : 'inc';
+      return {
+        messages: [],
+        interactive: {
+          type: 'buttons' as const,
+          body: `Ya tenés una categoría parecida: *${similar.name}*.\n¿Usás esa o creás *${trimmed}* como nueva?`,
+          buttons: [
+            { id: `cat_sim_use_${kindPrefix}_${payload}_${similar.id}`, title: `Usar ${similar.name}` },
+            { id: `cat_sim_new_${kindPrefix}_${payload}_${encodeURIComponent(trimmed)}`, title: `Crear ${trimmed}` },
+            { id: 'cat_sim_cancel', title: 'Cancelar' },
+          ],
+        },
+      };
+    }
+
     const cat = await this.categoryService.match(userId as number, flowData.kind, trimmed, 'new');
     if (cat.kind !== 'matched') {
       return { messages: ['No pude crear la categoría. Probá de nuevo o cancelá.'] };
@@ -2588,6 +2650,64 @@ export class FinancialHandler {
       const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
       return { messages: [`✅ Categoría '${cat.category.name}' creada.\n${await buildIncomeConfirmation(data, resFieldName, resPlotName)}`] };
     }
+  }
+
+  async categorySimilarUse(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const kind = cmd.kind as 'expense' | 'income';
+    const categoryId = Number(cmd.categoryId);
+    const category = await this.categoryService.findById(userId as number, categoryId);
+    if (!category || category.kind !== kind) {
+      return { messages: ['No encontré esa categoría. Probá registrar el gasto/ingreso de nuevo.'] };
+    }
+
+    if (kind === 'expense') {
+      const { data, fieldId, plotId } = decodePendingExpensePayload(cmd.payload as string);
+      data.category = category.name;
+      await this.service.saveExpense(userId, data, fieldId, plotId);
+      this.categoryService.bump(category.id).catch(() => {});
+      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
+      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
+      return { messages: [await buildExpenseConfirmation(data, resFieldName, resPlotName)] };
+    } else {
+      const { data, fieldId, plotId } = decodePendingIncomePayload(cmd.payload as string);
+      data.category = category.name;
+      await this.service.saveIncome(userId, data, fieldId, plotId);
+      this.categoryService.bump(category.id).catch(() => {});
+      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
+      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
+      return { messages: [await buildIncomeConfirmation(data, resFieldName, resPlotName)] };
+    }
+  }
+
+  async categorySimilarNew(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const kind = cmd.kind as 'expense' | 'income';
+    const newName = decodeURIComponent(cmd.newName as string);
+    const cat = await this.categoryService.match(userId as number, kind, newName, 'new');
+    if (cat.kind !== 'matched') {
+      return { messages: ['No pude crear la categoría. Probá de nuevo.'] };
+    }
+
+    if (kind === 'expense') {
+      const { data, fieldId, plotId } = decodePendingExpensePayload(cmd.payload as string);
+      data.category = cat.category.name;
+      await this.service.saveExpense(userId, data, fieldId, plotId);
+      this.categoryService.bump(cat.category.id).catch(() => {});
+      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
+      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
+      return { messages: [`✅ Categoría '${cat.category.name}' creada.\n${await buildExpenseConfirmation(data, resFieldName, resPlotName)}`] };
+    } else {
+      const { data, fieldId, plotId } = decodePendingIncomePayload(cmd.payload as string);
+      data.category = cat.category.name;
+      await this.service.saveIncome(userId, data, fieldId, plotId);
+      this.categoryService.bump(cat.category.id).catch(() => {});
+      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
+      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
+      return { messages: [`✅ Categoría '${cat.category.name}' creada.\n${await buildIncomeConfirmation(data, resFieldName, resPlotName)}`] };
+    }
+  }
+
+  async categorySimilarCancel(_cmd: ParsedCommand, _userId: UserId): Promise<HandlerResponse> {
+    return { messages: ['Cancelado. Si querés volver a intentarlo, registrá el gasto/ingreso de nuevo.'] };
   }
 
   private async lookupFieldName(userId: UserId, fieldId: number): Promise<string | null> {

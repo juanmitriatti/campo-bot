@@ -2157,8 +2157,21 @@ router.post('/categories', requireAuth, async (req: Request, res: Response) => {
       res.status(409).json({ error: 'Ya existe una categoría con ese nombre', category: existing });
       return;
     }
+    // Similarity check — skip when caller explicitly confirms it's a new one
+    const confirmAsNew = req.body?.confirmAsNew === true;
+    if (!confirmAsNew) {
+      const similar = await categoryService.findSimilar(userId, kind, name);
+      if (similar) {
+        res.status(200).json({
+          similar: { id: similar.id, name: similar.name, usageCount: similar.usageCount },
+          proposedName: name,
+          created: false,
+        });
+        return;
+      }
+    }
     const created = await categoryRepo.create(userId, kind, name);
-    res.status(201).json({ category: created });
+    res.status(201).json({ category: created, created: true });
   } catch (err) { handleError(err, res); }
 });
 

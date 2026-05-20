@@ -25,6 +25,7 @@ const FINANCIAL_COMMANDS = new Set([
   'restore_field', 'rename_plot', 'restore_plot',
   'create_expense_template', 'list_expense_templates', 'delete_expense_template',
   'pick_category', 'create_category',
+  'category_similar_use', 'category_similar_new', 'category_similar_cancel',
 ]);
 
 const AGRONOMY_COMMANDS = new Set([
@@ -140,6 +141,15 @@ export class DomainRouter {
     }
     if (command === 'create_category') {
       return this.financialHandler.createCategoryInline(cmd, userId);
+    }
+    if (command === 'category_similar_use') {
+      return this.financialHandler.categorySimilarUse(cmd, userId);
+    }
+    if (command === 'category_similar_new') {
+      return this.financialHandler.categorySimilarNew(cmd, userId);
+    }
+    if (command === 'category_similar_cancel') {
+      return this.financialHandler.categorySimilarCancel(cmd, userId);
     }
 
     if (FINANCIAL_COMMANDS.has(command)) {

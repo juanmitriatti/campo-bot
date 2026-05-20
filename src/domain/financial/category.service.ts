@@ -1,5 +1,6 @@
 import type { CategoryRepository, CategoryKind, UserCategory } from './category.repository.js';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../../constants/agro-terms.js';
+import { levenshtein, normalizeForSimilarity } from '../../utils/levenshtein.js';
 
 export type MatchIntent = 'exact' | 'new' | 'unknown';
 
@@ -56,5 +57,42 @@ export class CategoryService {
 
   async bump(categoryId: number): Promise<void> {
     await this.repo.bump(categoryId);
+  }
+
+  /**
+   * Look for an existing category whose name is "similar" to the candidate
+   * (typo or plural/singular). Returns the best match if any.
+   *
+   * Heuristic: normalize both sides, then accept if EITHER:
+   *  - Levenshtein distance ≤ 2 (typos like "Combustibe" ≈ "Combustible")
+   *  - One normalized string contains the other AND the length diff is ≤ 3
+   *    (plurals: "Sueldo" inside "Sueldos"; "Maíz" inside "Maíces")
+   *
+   * Skips itself on case-insensitive exact match (handled by match()).
+   */
+  async findSimilar(userId: number, kind: CategoryKind, name: string): Promise<UserCategory | null> {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length < 3) return null;
+    const candidates = await this.repo.findSimilarExcludingExact(userId, kind, trimmed);
+    if (candidates.length === 0) return null;
+
+    const normCandidate = normalizeForSimilarity(trimmed);
+    let best: UserCategory | null = null;
+    let bestScore = Infinity;
+    for (const c of candidates) {
+      const normC = normalizeForSimilarity(c.name);
+      if (!normC) continue;
+      const dist = levenshtein(normCandidate, normC);
+      const lenDiff = Math.abs(normCandidate.length - normC.length);
+      const contains = normC.includes(normCandidate) || normCandidate.includes(normC);
+
+      // Accept criteria: small Levenshtein OR substring with small length diff
+      const matches = dist <= 2 || (contains && lenDiff <= 3);
+      if (matches && dist < bestScore) {
+        best = c;
+        bestScore = dist;
+      }
+    }
+    return best;
   }
 }

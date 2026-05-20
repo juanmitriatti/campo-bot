@@ -16,13 +16,42 @@ function CategoriesTable({ kind }: { kind: CategoryKind }) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [similarMatch, setSimilarMatch] = useState<{ id: number; name: string; proposedName: string } | null>(null);
 
   if (loading) return <p className="text-sm text-gray-500 dark:text-gray-300 p-4">Cargando…</p>;
   if (error) return <p className="text-sm text-red-700 dark:text-red-300 p-4">{error}</p>;
 
   const onCreate = async () => {
-    try { await create(newName); setNewName(''); setShowCreate(false); setFeedback(null); }
-    catch (e) { setFeedback(e instanceof Error ? e.message : 'Error'); }
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      const r = await create(name);
+      if (r.created) {
+        setNewName(''); setShowCreate(false); setFeedback(null);
+      } else if ('similar' in r) {
+        setSimilarMatch({ id: r.similar.id, name: r.similar.name, proposedName: r.proposedName });
+      }
+    } catch (e) {
+      setFeedback(e instanceof Error ? e.message : 'Error');
+    }
+  };
+
+  const onUseExisting = () => {
+    // The existing category is already in the catalog, nothing to create
+    setSimilarMatch(null);
+    setNewName(''); setShowCreate(false); setFeedback(null);
+  };
+
+  const onCreateAnyway = async () => {
+    if (!similarMatch) return;
+    try {
+      const r = await create(similarMatch.proposedName, { confirmAsNew: true });
+      if (r.created) {
+        setSimilarMatch(null); setNewName(''); setShowCreate(false); setFeedback(null);
+      }
+    } catch (e) {
+      setFeedback(e instanceof Error ? e.message : 'Error');
+    }
   };
 
   const onRename = async (id: number) => {
@@ -54,7 +83,7 @@ function CategoriesTable({ kind }: { kind: CategoryKind }) {
 
       {feedback && <p className="text-xs text-red-700 dark:text-red-300">{feedback}</p>}
 
-      {showCreate && (
+      {showCreate && !similarMatch && (
         <div className="flex gap-2 items-center bg-gray-50 dark:bg-gray-900 p-3 rounded-md">
           <input
             value={newName}
@@ -65,6 +94,26 @@ function CategoriesTable({ kind }: { kind: CategoryKind }) {
           />
           <button onClick={onCreate} disabled={!newName.trim()} className="text-xs bg-campo-600 text-white rounded-md px-3 py-1.5 disabled:opacity-50">Crear</button>
           <button onClick={() => { setShowCreate(false); setNewName(''); }} className="text-xs text-gray-600 dark:text-gray-300">Cancelar</button>
+        </div>
+      )}
+
+      {similarMatch && (
+        <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md p-3 space-y-2">
+          <p className="text-sm text-amber-800 dark:text-amber-200">
+            Ya tenés una categoría parecida: <strong>{similarMatch.name}</strong>.
+            ¿Querés usarla o crear <strong>{similarMatch.proposedName}</strong> como nueva?
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={onUseExisting} className="text-xs bg-campo-600 text-white rounded-md px-3 py-1.5">
+              Usar "{similarMatch.name}"
+            </button>
+            <button onClick={onCreateAnyway} className="text-xs border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1.5 text-gray-700 dark:text-gray-200">
+              Crear "{similarMatch.proposedName}" igual
+            </button>
+            <button onClick={() => setSimilarMatch(null)} className="text-xs text-gray-500 dark:text-gray-400">
+              Cancelar
+            </button>
+          </div>
         </div>
       )}
 

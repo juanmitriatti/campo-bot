@@ -191,6 +191,45 @@ export const incomeFlow: FlowDefinition = {
     const finalCategory = data.category === NEW_CATEGORY_SENTINEL
       ? (data.categoryNewName as string)
       : (data.category as string);
+
+    // Similarity check (only when creating a brand new one — i.e., user took the
+    // "+ Crear nueva" path or typed free text not in the catalog).
+    const isFreshCreate = data.category === NEW_CATEGORY_SENTINEL
+      || !(await categoryRepo.findByName(userId, 'income', finalCategory));
+    if (isFreshCreate) {
+      const similar = await categoryService.findSimilar(userId, 'income', finalCategory);
+      if (similar) {
+        const { encodePendingIncomePayload } = await import('../../domain/financial/financial.handler.js');
+        const payload = encodePendingIncomePayload({
+          data: {
+            type: 'income',
+            amount: amountInfo.amount,
+            currency: amountInfo.currency as 'ARS' | 'USD',
+            description: (data.description as string) || '',
+            category: finalCategory,
+            incomeDate: (data.incomeDate as string) ?? null,
+            quantity: quantity,
+            unit: quantity ? 'tn' : null,
+            unit_price: quantity ? Math.round(amountInfo.amount / quantity) : null,
+          },
+          fieldId,
+          plotId,
+        });
+        return {
+          messages: [],
+          interactive: {
+            type: 'buttons' as const,
+            body: `Ya tenés una categoría parecida: *${similar.name}*.\n¿Usás esa o creás *${finalCategory}* como nueva?`,
+            buttons: [
+              { id: `cat_sim_use_inc_${payload}_${similar.id}`, title: `Usar ${similar.name}` },
+              { id: `cat_sim_new_inc_${payload}_${encodeURIComponent(finalCategory)}`, title: `Crear ${finalCategory}` },
+              { id: 'cat_sim_cancel', title: 'Cancelar' },
+            ],
+          },
+        };
+      }
+    }
+
     try {
       const res = await categoryService.match(userId, 'income', finalCategory, 'new');
       if (res.kind === 'matched') {

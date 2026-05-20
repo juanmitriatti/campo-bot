@@ -132,6 +132,62 @@ export class InteractiveRouter {
       };
     }
 
+    // Category similarity: use existing (expense)
+    if (callbackId.startsWith('cat_sim_use_exp_')) {
+      const rest = callbackId.slice('cat_sim_use_exp_'.length);
+      const lastUnderscore = rest.lastIndexOf('_');
+      if (lastUnderscore > 0) {
+        return {
+          type: 'command',
+          data: { command: 'category_similar_use', kind: 'expense', payload: rest.slice(0, lastUnderscore), categoryId: rest.slice(lastUnderscore + 1) },
+        };
+      }
+    }
+
+    // Category similarity: use existing (income)
+    if (callbackId.startsWith('cat_sim_use_inc_')) {
+      const rest = callbackId.slice('cat_sim_use_inc_'.length);
+      const lastUnderscore = rest.lastIndexOf('_');
+      if (lastUnderscore > 0) {
+        return {
+          type: 'command',
+          data: { command: 'category_similar_use', kind: 'income', payload: rest.slice(0, lastUnderscore), categoryId: rest.slice(lastUnderscore + 1) },
+        };
+      }
+    }
+
+    // Category similarity: create new anyway (expense)
+    if (callbackId.startsWith('cat_sim_new_exp_')) {
+      const rest = callbackId.slice('cat_sim_new_exp_'.length);
+      const lastUnderscore = rest.lastIndexOf('_');
+      if (lastUnderscore > 0) {
+        return {
+          type: 'command',
+          data: { command: 'category_similar_new', kind: 'expense', payload: rest.slice(0, lastUnderscore), newName: rest.slice(lastUnderscore + 1) },
+        };
+      }
+    }
+
+    // Category similarity: create new anyway (income)
+    if (callbackId.startsWith('cat_sim_new_inc_')) {
+      const rest = callbackId.slice('cat_sim_new_inc_'.length);
+      const lastUnderscore = rest.lastIndexOf('_');
+      if (lastUnderscore > 0) {
+        return {
+          type: 'command',
+          data: { command: 'category_similar_new', kind: 'income', payload: rest.slice(0, lastUnderscore), newName: rest.slice(lastUnderscore + 1) },
+        };
+      }
+    }
+
+    // Category similarity: cancel
+    if (callbackId === 'cat_sim_cancel') {
+      return {
+        type: 'command',
+        data: { command: 'category_similar_cancel' },
+      };
+    }
+
     return null;
   }
 }

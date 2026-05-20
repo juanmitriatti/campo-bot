@@ -13,6 +13,19 @@ export interface Category {
 
 interface ListResponse { categories: Category[]; }
 
+export interface SimilarCategoryResponse {
+  similar: { id: number; name: string; usageCount: number };
+  proposedName: string;
+  created: false;
+}
+
+export interface CreatedCategoryResponse {
+  category: Category;
+  created: true;
+}
+
+export type CreateResult = SimilarCategoryResponse | CreatedCategoryResponse;
+
 export function useCategories(kind: CategoryKind) {
   const [data, setData] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,9 +46,15 @@ export function useCategories(kind: CategoryKind) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const create = useCallback(async (name: string) => {
-    await apiRequest('/categories', { method: 'POST', body: { kind, name } });
-    await refresh();
+  const create = useCallback(async (name: string, opts: { confirmAsNew?: boolean } = {}): Promise<CreateResult> => {
+    const r = await apiRequest<CreateResult>('/categories', {
+      method: 'POST',
+      body: { kind, name, ...(opts.confirmAsNew ? { confirmAsNew: true } : {}) },
+    });
+    if (r.created) {
+      await refresh();
+    }
+    return r;
   }, [kind, refresh]);
 
   const rename = useCallback(async (id: number, name: string) => {
