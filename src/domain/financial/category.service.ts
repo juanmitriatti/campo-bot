@@ -95,4 +95,44 @@ export class CategoryService {
     }
     return best;
   }
+
+  /**
+   * Detect EXISTING duplicate pairs in the user's catalog. Same heuristic as
+   * findSimilar (Levenshtein ≤ 2 OR substring with small length diff), but
+   * applied pairwise across ALL active categories of the kind.
+   *
+   * Returns pairs (deduplicated). The "keep" entry is the one with higher
+   * usage_count; ties broken by lower id (older row). The caller can use this
+   * to surface merge suggestions in the dashboard.
+   */
+  async findDuplicatePairs(
+    userId: number,
+    kind: CategoryKind,
+  ): Promise<Array<{ keep: UserCategory; drop: UserCategory }>> {
+    const all = await this.repo.listActive(userId, kind);
+    const pairs: Array<{ keep: UserCategory; drop: UserCategory }> = [];
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) {
+        const a = all[i];
+        const b = all[j];
+        if (!areSimilar(a.name, b.name)) continue;
+        const aWins = a.usageCount > b.usageCount
+          || (a.usageCount === b.usageCount && a.id < b.id);
+        pairs.push(aWins ? { keep: a, drop: b } : { keep: b, drop: a });
+      }
+    }
+    return pairs;
+  }
+}
+
+/** Shared similarity check used by both findSimilar and findDuplicatePairs. */
+function areSimilar(name1: string, name2: string): boolean {
+  if (name1.toLowerCase() === name2.toLowerCase()) return false;
+  const n1 = normalizeForSimilarity(name1);
+  const n2 = normalizeForSimilarity(name2);
+  if (n1.length < 3 || n2.length < 3) return false;
+  const dist = levenshtein(n1, n2);
+  const lenDiff = Math.abs(n1.length - n2.length);
+  const contains = n1.includes(n2) || n2.includes(n1);
+  return dist <= 2 || (contains && lenDiff <= 3);
 }

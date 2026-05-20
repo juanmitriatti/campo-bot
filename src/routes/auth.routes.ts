@@ -2221,4 +2221,19 @@ router.delete('/categories/:id', requireAuth, async (req: Request, res: Response
   } catch (err) { handleError(err, res); }
 });
 
+router.get('/categories/duplicates', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const kind = parseKind(req.query.kind, res);
+    if (!kind) return;
+    const userId = req.auth!.userId;
+    const pairs = await categoryService.findDuplicatePairs(userId, kind);
+    res.json({
+      pairs: pairs.map(p => ({
+        keep: { id: p.keep.id, name: p.keep.name, usageCount: p.keep.usageCount },
+        drop: { id: p.drop.id, name: p.drop.name, usageCount: p.drop.usageCount },
+      })),
+    });
+  } catch (err) { handleError(err, res); }
+});
+
 export default router;

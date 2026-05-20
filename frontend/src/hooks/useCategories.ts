@@ -26,8 +26,16 @@ export interface CreatedCategoryResponse {
 
 export type CreateResult = SimilarCategoryResponse | CreatedCategoryResponse;
 
+export interface DuplicatePair {
+  keep: { id: number; name: string; usageCount: number };
+  drop: { id: number; name: string; usageCount: number };
+}
+
+interface DuplicatesResponse { pairs: DuplicatePair[]; }
+
 export function useCategories(kind: CategoryKind) {
   const [data, setData] = useState<Category[]>([]);
+  const [duplicates, setDuplicates] = useState<DuplicatePair[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,8 +43,12 @@ export function useCategories(kind: CategoryKind) {
     setLoading(true);
     setError(null);
     try {
-      const r = await apiRequest<ListResponse>(`/categories?kind=${kind}`);
-      setData(r.categories);
+      const [list, dupes] = await Promise.all([
+        apiRequest<ListResponse>(`/categories?kind=${kind}`),
+        apiRequest<DuplicatesResponse>(`/categories/duplicates?kind=${kind}`).catch(() => ({ pairs: [] })),
+      ]);
+      setData(list.categories);
+      setDuplicates(dupes.pairs);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar categorías');
     } finally {
@@ -68,5 +80,11 @@ export function useCategories(kind: CategoryKind) {
     await refresh();
   }, [refresh]);
 
-  return { data, loading, error, refresh, create, rename, remove };
+  /** Merge `dropId` into `keepId`: reassigns transactions then soft-deletes the duplicate. */
+  const merge = useCallback(async (dropId: number, keepId: number) => {
+    await apiRequest(`/categories/${dropId}?reassignTo=${keepId}`, { method: 'DELETE' });
+    await refresh();
+  }, [refresh]);
+
+  return { data, duplicates, loading, error, refresh, create, rename, remove, merge };
 }

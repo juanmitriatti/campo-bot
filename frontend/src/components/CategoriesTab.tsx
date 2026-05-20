@@ -10,13 +10,28 @@ function fmtDate(iso: string | null): string {
 }
 
 function CategoriesTable({ kind }: { kind: CategoryKind }) {
-  const { data, loading, error, create, rename, remove } = useCategories(kind);
+  const { data, duplicates, loading, error, create, rename, remove, merge } = useCategories(kind);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [similarMatch, setSimilarMatch] = useState<{ id: number; name: string; proposedName: string } | null>(null);
+  const [mergingId, setMergingId] = useState<number | null>(null);
+  const [dismissedPairs, setDismissedPairs] = useState<Set<string>>(new Set());
+
+  const onMerge = async (dropId: number, keepId: number) => {
+    setMergingId(dropId);
+    try { await merge(dropId, keepId); }
+    catch (e) { setFeedback(e instanceof Error ? e.message : 'Error'); }
+    finally { setMergingId(null); }
+  };
+
+  const onKeepSeparate = (dropId: number, keepId: number) => {
+    setDismissedPairs(prev => new Set(prev).add(`${dropId}-${keepId}`));
+  };
+
+  const visibleDuplicates = duplicates.filter(p => !dismissedPairs.has(`${p.drop.id}-${p.keep.id}`));
 
   if (loading) return <p className="text-sm text-gray-500 dark:text-gray-300 p-4">Cargando…</p>;
   if (error) return <p className="text-sm text-red-700 dark:text-red-300 p-4">{error}</p>;
@@ -80,6 +95,37 @@ function CategoriesTable({ kind }: { kind: CategoryKind }) {
           Nueva categoría
         </button>
       </div>
+
+      {visibleDuplicates.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-amber-800 dark:text-amber-300">💡 Posibles duplicados ({visibleDuplicates.length})</p>
+          {visibleDuplicates.map(p => {
+            const key = `${p.drop.id}-${p.keep.id}`;
+            const isMerging = mergingId === p.drop.id;
+            return (
+              <div key={key} className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md p-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="flex-1 min-w-[200px] text-amber-800 dark:text-amber-200">
+                  <strong>{p.keep.name}</strong> ({p.keep.usageCount} usos) ≈ <strong>{p.drop.name}</strong> ({p.drop.usageCount} usos)
+                </span>
+                <button
+                  onClick={() => onMerge(p.drop.id, p.keep.id)}
+                  disabled={isMerging}
+                  className="bg-campo-600 text-white rounded-md px-2.5 py-1 disabled:opacity-50 hover:bg-campo-700"
+                  title={`Reasigna los ${p.drop.usageCount} movimientos de "${p.drop.name}" a "${p.keep.name}" y elimina "${p.drop.name}"`}
+                >
+                  {isMerging ? 'Fusionando…' : `Fusionar en "${p.keep.name}"`}
+                </button>
+                <button
+                  onClick={() => onKeepSeparate(p.drop.id, p.keep.id)}
+                  className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white"
+                >
+                  Mantener separadas
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {feedback && <p className="text-xs text-red-700 dark:text-red-300">{feedback}</p>}
 
