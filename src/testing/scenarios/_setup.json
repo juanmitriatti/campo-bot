@@ -15,5 +15,9 @@
   "sow-soja-norte": [
     { "send": "sembré soja en lote Norte" },
     { "wait": 500 }
+  ],
+  "seed-livestock-single": [
+    { "send": "agregué 50 vacas Angus al lote Norte" },
+    { "wait": 500 }
   ]
 }

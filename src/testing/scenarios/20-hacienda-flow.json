@@ -1,0 +1,14 @@
+{
+  "name": "hacienda-auto-resolve-location",
+  "description": "Vacunación sin ubicación: cuando hay un solo grupo, el bot auto-resuelve y guarda el evento.",
+  "setup": ["add-field-esperanza", "add-plot-norte", "seed-livestock-single"],
+  "steps": [
+    {
+      "send": "vacuné 50 vacas contra aftosa",
+      "expect": {
+        "responseContains": ["Evento sanitario registrado", "aftosa"],
+        "dbActivity": { "eventType": "health_event" }
+      }
+    }
+  ]
+}
