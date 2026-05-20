@@ -2367,8 +2367,19 @@ export async function queryRainfall(opts = {}) {
   const params = [userId];
   let idx = 2;
 
-  if (plotId) { conditions.push(`r.plot_id = $${idx}`); params.push(plotId); idx++; }
-  else if (fieldId) { conditions.push(`r.field_id = $${idx}`); params.push(fieldId); idx++; }
+  // When querying by plot, ALSO include field-level rainfalls (plot_id IS NULL)
+  // because rainfall is often registered at the field level — a "lluvia en lote A1"
+  // query should surface lluvias del campo La Esperanza even if no plot was tagged.
+  if (plotId && fieldId) {
+    conditions.push(`(r.plot_id = $${idx} OR (r.plot_id IS NULL AND r.field_id = $${idx + 1}))`);
+    params.push(plotId);
+    params.push(fieldId);
+    idx += 2;
+  } else if (plotId) {
+    conditions.push(`r.plot_id = $${idx}`); params.push(plotId); idx++;
+  } else if (fieldId) {
+    conditions.push(`r.field_id = $${idx}`); params.push(fieldId); idx++;
+  }
 
   if (desde) { conditions.push(`r.rainfall_date >= $${idx}::date`); params.push(desde); idx++; }
   if (hasta) { conditions.push(`r.rainfall_date <= $${idx}::date`); params.push(hasta); idx++; }

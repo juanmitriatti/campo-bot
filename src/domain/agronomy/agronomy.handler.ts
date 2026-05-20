@@ -1499,7 +1499,7 @@ export class AgronomyHandler {
           const dateLabel = rainfallDate
             ? new Date(rainfallDate + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long', timeZone: 'America/Argentina/Buenos_Aires' })
             : 'hoy';
-          return { messages: [`Ya hay un registro de lluvia el *${dateLabel}* para *${dupLabel}*. Si querés corregirlo, borrá el anterior con *borrar lluvia* y registrá de nuevo.`] };
+          return { messages: [`🌧️ *${mm}mm* en *${dupLabel}* (${dateLabel}) — _ya estaba cargado, omitido_. Si querés corregir el monto, decime "borrar lluvia" y volvé a registrarla.`] };
         }
 
         let msg = `\ud83c\udf27\ufe0f Lluvia registrada: *${mm}mm*`;

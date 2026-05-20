@@ -365,3 +365,67 @@ function consolidateLivestockMessages(
     `${emoji} *${header}*\n\n${lines.join('\n')}\n  ${locationLine}`,
   ];
 }
+
+/**
+ * Pre-execution consolidation: when the agent emits multiple log_rainfall steps
+ * targeting the SAME field on different dates ("8mm el lunes, 14mm el martes, 5mm
+ * anoche en La Esperanza"), collapse them into one log_rainfall_batch step. Without
+ * this, the first call succeeds and the rest hit the same-day dedup or get noisy
+ * "ya hay un registro" messages mid-compound.
+ */
+function consolidateSameFieldRainfalls(actionable: ParseResult[]): ParseResult[] {
+  const rainSteps: { idx: number; data: ParsedCommand }[] = [];
+  actionable.forEach((r, idx) => {
+    if (r.intent.type === 'command' && (r.intent.data as ParsedCommand).command === 'log_rainfall') {
+      rainSteps.push({ idx, data: r.intent.data as ParsedCommand });
+    }
+  });
+  if (rainSteps.length < 2) return actionable;
+
+  // Group by fieldName (must be set on ALL of them; if any lacks field, leave to
+  // the post-execution consolidator that handles the ask-prompt path).
+  const allHaveField = rainSteps.every(s => typeof s.data.fieldName === 'string' && s.data.fieldName.length > 0);
+  if (!allHaveField) return actionable;
+
+  const firstField = (rainSteps[0].data.fieldName as string).toLowerCase().trim();
+  const sameField = rainSteps.every(s => (s.data.fieldName as string).toLowerCase().trim() === firstField);
+  if (!sameField) return actionable;
+
+  // Build the batch step and replace ALL rainfall steps with a single batch step
+  // at the position of the first one.
+  const items = rainSteps.map(s => ({
+    mm: Number(s.data.mm ?? s.data.quantity ?? 0),
+    date: typeof s.data.eventDate === 'string' ? s.data.eventDate : null,
+  })).filter(it => it.mm > 0);
+  if (items.length < 2) return actionable;
+
+  const batchStep: ParseResult = {
+    intent: {
+      type: 'command',
+      data: {
+        command: 'log_rainfall_batch',
+        fieldName: rainSteps[0].data.fieldName,
+        items,
+      } as ParsedCommand,
+    },
+    confidence: 1,
+    aiUsed: true,
+    source: 'ai',
+    missingFields: [],
+  };
+
+  const rainIdxSet = new Set(rainSteps.map(s => s.idx));
+  const result: ParseResult[] = [];
+  let inserted = false;
+  actionable.forEach((r, idx) => {
+    if (rainIdxSet.has(idx)) {
+      if (!inserted) {
+        result.push(batchStep);
+        inserted = true;
+      }
+      return;
+    }
+    result.push(r);
+  });
+  return result;
+}
