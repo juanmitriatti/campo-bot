@@ -72,6 +72,9 @@ app.use('/api/test-bot', requireAuth, testBotRoutes);
 app.use('/api/map', mapRoutes);
 app.use('/map', express.static(path.join(__dirname, 'public/map')));
 
+// Public sample PDFs (temporary share — remove after demo)
+app.use('/samples', express.static(path.join(__dirname, 'public/samples')));
+
 // Admin dashboard: protect API, then serve legacy dashboard
 app.use('/admin/api', requireAuth, requireRole('admin'));
 app.use('/admin', dashboard);
