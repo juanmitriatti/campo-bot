@@ -23,12 +23,23 @@ const CATEGORY_LABELS = {
 };
 
 const ACTIVITY_LABELS = {
-  spraying: 'Fumigacion',
-  fertilization: 'Fertilizacion',
+  spraying: 'Fumigación',
+  fertilization: 'Fertilización',
   planting: 'Siembra',
   tillage: 'Labranza',
   harvest: 'Cosecha',
   irrigation: 'Riego',
+  // Livestock events also surface in the unified domain_events stream and
+  // need friendly Spanish labels (previously they leaked as snake_case).
+  weighing: 'Pesaje',
+  health_event: 'Sanidad',
+  repro_event: 'Reproducción',
+  livestock_birth: 'Nacimiento',
+  livestock_death: 'Muerte',
+  livestock_movement: 'Movimiento hacienda',
+  observation: 'Observación',
+  scouting: 'Monitoreo',
+  tacto: 'Tacto',
 };
 
 const fmtNumAR = (n) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(Math.round(Number(n || 0)));
@@ -395,10 +406,12 @@ function computeKPIs({ plots, activities, financial, filterPlotId }) {
 }
 
 function pctDelta(curr, prev) {
-  if (prev == null || prev === 0) return curr > 0 ? { sign: '+', pct: 100, arrow: '▲' } : null;
+  // ASCII-safe sign/arrow tokens. Helvetica (default PDFKit font) doesn't ship
+  // glyphs for ▲▼−●, so they used to render as garbage like "9@" / "%²" / "%Ï".
+  if (prev == null || prev === 0) return curr > 0 ? { sign: '+', pct: 100, arrow: '+' } : null;
   const d = ((curr - prev) / prev) * 100;
-  if (Math.abs(d) < 0.1) return { sign: '=', pct: 0, arrow: '•' };
-  return { sign: d > 0 ? '+' : '−', pct: Math.abs(d).toFixed(1), arrow: d > 0 ? '▲' : '▼' };
+  if (Math.abs(d) < 0.1) return { sign: '=', pct: 0, arrow: '=' };
+  return { sign: d > 0 ? '+' : '-', pct: Math.abs(d).toFixed(1), arrow: d > 0 ? '+' : '-' };
 }
 
 function computeInsights({ kpis, plots, prevKpis, activities }) {
@@ -605,7 +618,7 @@ function renderComparison(doc, { kpis, prevKpis }) {
   const colW = [180, 120, 120, 75];
   let y = doc.y;
   doc.fontSize(9).font('Helvetica-Bold').fillColor(COLORS.gray);
-  ['Métrica', 'Actual', 'Anterior', 'Δ'].forEach((h, i) => {
+  ['Métrica', 'Actual', 'Anterior', 'Variación'].forEach((h, i) => {
     const x = 50 + colW.slice(0, i).reduce((a, b) => a + b, 0);
     doc.text(h, x + 4, y + 4, { width: colW[i] - 8 });
   });
@@ -617,11 +630,11 @@ function renderComparison(doc, { kpis, prevKpis }) {
     doc.text(fmt(curr), 54 + colW[0], y + 4, { width: colW[1] - 8, align: 'right' });
     doc.text(fmt(prev), 54 + colW[0] + colW[1], y + 4, { width: colW[2] - 8, align: 'right' });
     if (delta) {
-      const color = delta.arrow === '▲' ? COLORS.primary : (delta.arrow === '▼' ? COLORS.danger : COLORS.gray);
-      doc.fillColor(color).text(`${delta.arrow} ${delta.sign}${delta.pct}%`, 54 + colW[0] + colW[1] + colW[2], y + 4, { width: colW[3] - 8, align: 'right' });
+      const color = delta.arrow === '+' ? COLORS.primary : (delta.arrow === '-' ? COLORS.danger : COLORS.gray);
+      doc.fillColor(color).text(`${delta.sign}${delta.pct}%`, 54 + colW[0] + colW[1] + colW[2], y + 4, { width: colW[3] - 8, align: 'right' });
       doc.fillColor('#000');
     } else {
-      doc.fillColor(COLORS.gray).text('—', 54 + colW[0] + colW[1] + colW[2], y + 4, { width: colW[3] - 8, align: 'right' });
+      doc.fillColor(COLORS.gray).text('-', 54 + colW[0] + colW[1] + colW[2], y + 4, { width: colW[3] - 8, align: 'right' });
       doc.fillColor('#000');
     }
     y += 16;
@@ -635,9 +648,12 @@ function renderInsights(doc, insights) {
   sectionTitle(doc, 'Insights del período');
   doc.fontSize(10).font('Helvetica');
   for (const line of insights) {
-    doc.fillColor(COLORS.secondary).text('●', 54, doc.y, { continued: true, width: 14 });
-    doc.fillColor('#000').text(' ' + line, { width: 485 });
-    doc.moveDown(0.2);
+    // Single text call with a left-margin start. The previous version set
+    // width:14 on a "continued: true" call, which made PDFKit wrap every
+    // subsequent character at 14px — one letter per line, vertically.
+    doc.fillColor(COLORS.secondary).text('*', 54, doc.y, { continued: true });
+    doc.fillColor('#000').text('  ' + line, { width: 485, indent: 0 });
+    doc.moveDown(0.25);
   }
   doc.moveDown(0.3);
 }
@@ -693,9 +709,17 @@ function _renderTimelineDot(doc, act) {
   const x0 = 54;
   const y0 = doc.y + 4;
   doc.circle(x0 + 3, y0, 3).fillAndStroke(color, color);
-  doc.fillColor('#000').fontSize(9).font('Helvetica-Bold').text(`${dateStr}  ${typeLabel}`, x0 + 14, doc.y, { continued: true });
-  doc.font('Helvetica').text(`${detail ? ' — ' + detail : ''}${qty}`);
-  doc.moveDown(0.2);
+  // The previous version used continued:true + a possibly-empty trailing text(),
+  // which left the line "open" when the activity had no product/qty (Labranza,
+  // Reproducción) — making the NEXT entry render on the same visual line.
+  // Build the full line as one string with the bold label inlined.
+  const tail = `${detail ? ' — ' + detail : ''}${qty}`;
+  doc.fillColor('#000').fontSize(9).font('Helvetica-Bold')
+    .text(`${dateStr}  ${typeLabel}`, x0 + 14, doc.y, { continued: tail.length > 0 });
+  if (tail.length > 0) {
+    doc.font('Helvetica').text(tail);
+  }
+  doc.moveDown(0.35);
 }
 
 function renderTimeline(doc, activities) {
@@ -713,9 +737,15 @@ function renderTimeline(doc, activities) {
     const plot = a.plot_name ? ` · ${a.plot_name}` : '';
     const y = doc.y;
     doc.circle(58, y + 7, 4).fillAndStroke(color, color);
-    doc.fillColor('#000').fontSize(10).font('Helvetica-Bold').text(`${dateStr}  ${typeLabel}`, 72, y, { continued: true });
-    doc.font('Helvetica').text(`${detail ? ' — ' + detail : ''}${qty}${plot}`);
-    doc.moveDown(0.2);
+    // Same fix as _renderTimelineDot: avoid leaving the line "open" with
+    // continued:true when there's nothing to append after the bold label.
+    const tail = `${detail ? ' — ' + detail : ''}${qty}${plot}`;
+    doc.fillColor('#000').fontSize(10).font('Helvetica-Bold')
+      .text(`${dateStr}  ${typeLabel}`, 72, y, { continued: tail.length > 0 });
+    if (tail.length > 0) {
+      doc.font('Helvetica').text(tail);
+    }
+    doc.moveDown(0.35);
   }
   doc.moveDown(0.3);
 }

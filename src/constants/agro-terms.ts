@@ -178,6 +178,16 @@ export const ACTIVITY_TYPES: readonly ActivityTypeEntry[] = [
   { id: 'harvest', label: 'Cosecha', emoji: '\ud83c\udf3e' },
   { id: 'irrigation', label: 'Riego', emoji: '\ud83d\udca7' },
   { id: 'tacto', label: 'Tacto', emoji: '\ud83e\ude7a' },
+  // Livestock domain_events surface in agro reports — without these entries
+  // they leak as snake_case ("weighing", "health_event", "repro_event").
+  { id: 'weighing', label: 'Pesaje', emoji: '\u2696\ufe0f' },
+  { id: 'health_event', label: 'Sanidad', emoji: '\ud83d\udc89' },
+  { id: 'repro_event', label: 'Reproducción', emoji: '\ud83d\udc2e' },
+  { id: 'livestock_birth', label: 'Nacimiento', emoji: '\ud83d\udc23' },
+  { id: 'livestock_death', label: 'Muerte', emoji: '\ud83d\udc80' },
+  { id: 'livestock_movement', label: 'Movimiento hacienda', emoji: '\ud83d\udd04' },
+  { id: 'observation', label: 'Observación', emoji: '\ud83d\udd0d' },
+  { id: 'scouting', label: 'Monitoreo', emoji: '\ud83d\udd0e' },
 ] as const;
 
 /** id or label → { emoji, label } lookup */
