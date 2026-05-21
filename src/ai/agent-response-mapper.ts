@@ -273,7 +273,16 @@ export class AgentResponseMapper {
   }
 
   private mapExpense(input: Record<string, unknown>, originalText: string): ParseResult {
-    const amount = typeof input.amount === 'number' ? input.amount : 0;
+    // Auto-compute amount when the agent passes quantity + unit_price instead
+    // of a precomputed amount (same defensive pattern as mapIncome).
+    let amount = typeof input.amount === 'number' ? input.amount : 0;
+    if (
+      amount <= 0 &&
+      typeof input.quantity === 'number' && input.quantity > 0 &&
+      typeof input.unit_price === 'number' && input.unit_price > 0
+    ) {
+      amount = Math.round(input.quantity * input.unit_price * 100) / 100;
+    }
 
     if (amount > 0) {
       const rawCategory = typeof input.category === 'string' ? input.category.trim() : '';
@@ -362,7 +371,19 @@ export class AgentResponseMapper {
   }
 
   private mapIncome(input: Record<string, unknown>, originalText: string): ParseResult {
-    const amount = typeof input.amount === 'number' ? input.amount : 0;
+    // Auto-compute amount when the agent passes quantity + unit_price instead of
+    // a precomputed amount. "vendí 25 tn de maíz a 900 USD" → quantity=25,
+    // unit_price=900, amount = 25 × 900 = 22500. Without this fallback the
+    // handler treats it as income_partial and asks "¿Cuánto cobraste?" — the
+    // exact loop the Martin QA report surfaced.
+    let amount = typeof input.amount === 'number' ? input.amount : 0;
+    if (
+      amount <= 0 &&
+      typeof input.quantity === 'number' && input.quantity > 0 &&
+      typeof input.unit_price === 'number' && input.unit_price > 0
+    ) {
+      amount = Math.round(input.quantity * input.unit_price * 100) / 100;
+    }
 
     if (amount > 0) {
       const rawCategory = typeof input.category === 'string' ? input.category.trim() : '';

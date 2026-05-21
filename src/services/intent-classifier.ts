@@ -93,15 +93,32 @@ export class IntentClassifier {
   }
 
   /**
-   * Lightweight check: does this text parse as an income or expense?
-   * Regex-only, no AI. Used by flow interruption logic to detect financial
-   * intents that should cancel an active flow.
+   * Lightweight check: does this text look like a NEW income/expense intent?
+   * Used by flow interruption logic to escape a pending flow when the user
+   * sends a fresh financial action mid-flow.
+   *
+   * IMPORTANT: this MUST tolerate compound messages that the structured parser
+   * rejects as "esComplejo" (e.g. "vendí 25 tn de maíz a 900 USD y 10 tn de
+   * soja a 1000 USD"). Otherwise the pending flow eats the compound, the
+   * agent never sees it, and the user gets stuck in a single-field "¿cuánto?"
+   * loop. We accept any income/expense verb + a number as enough signal to
+   * cancel the pending flow and let the AI agent re-route.
    */
   detectsFinancialIntent(text: string): boolean {
     const cleaned = stripFillerPhrases(text);
     const preprocessed = this.parser.preprocess(cleaned);
-    return !!(this.parser.parseIncome(preprocessed) || this.parser.parseIncome(cleaned) ||
-              this.parser.parseExpense(preprocessed) || this.parser.parseExpense(cleaned));
+    if (
+      this.parser.parseIncome(preprocessed) || this.parser.parseIncome(cleaned) ||
+      this.parser.parseExpense(preprocessed) || this.parser.parseExpense(cleaned)
+    ) {
+      return true;
+    }
+    // Compound / complex fallback: income or expense verb + any number.
+    const lower = cleaned.toLowerCase();
+    const hasIncomeVerb = /\b(vend[ií]|cobr[eé]|ingres[eéo]|entr[oó]|factur[eé])\b/.test(lower);
+    const hasExpenseVerb = /\b(gast[eé]|pagu[eé]|compr[eé]|abon[eé])\b/.test(lower);
+    const hasNumber = /\d/.test(lower);
+    return (hasIncomeVerb || hasExpenseVerb) && hasNumber;
   }
 
   async classify(
