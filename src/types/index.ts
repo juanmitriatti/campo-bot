@@ -494,7 +494,14 @@ export interface HandlerResponse {
     setPendingPlotArea?: { plotId: number; plotName: string; fieldName: string };
     setPendingPlotAreaQueue?: Array<{ plotId: number; plotName: string; fieldName: string }>;
     setFieldDuplicate?: { name: string; city: string | null };
-    setPendingActivity?: { command: string; data: Record<string, unknown> };
+    setPendingActivity?: {
+      command: string;
+      data: Record<string, unknown>;
+      /** Unified multi-slot completion: required slots that are still missing. */
+      missing?: string[];
+      /** Optional Spanish prompt to show the user when asking for the missing slots. */
+      askPrompt?: string;
+    };
     setPendingStockEntry?: {
       expenseId: number;
       product: string;

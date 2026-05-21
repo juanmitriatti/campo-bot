@@ -115,10 +115,20 @@ export class IntentClassifier {
     }
     // Compound / complex fallback: income or expense verb + any number.
     const lower = cleaned.toLowerCase();
-    const hasIncomeVerb = /\b(vend[ií]|cobr[eé]|ingres[eéo]|entr[oó]|factur[eé])\b/.test(lower);
+    const hasIncomeVerb = /\b(vend[ií]|cobr[eé]|ingres[eéo]|entr[oó]|factur[eé]|me\s+pagaron|me\s+pag[oó]|salieron?\s+a|sali[oó]\s+a)\b/.test(lower);
     const hasExpenseVerb = /\b(gast[eé]|pagu[eé]|compr[eé]|abon[eé])\b/.test(lower);
+    // "Action verbs" that signal the user is RE-asserting / correcting a financial
+    // record they already mentioned (e.g. "eran 25 toneladas no kilos" / "lo que
+    // te cargué eran X"). Without these the pending flow eats the correction.
+    const hasCorrectionVerb = /\b(cargu[eé]|registr[eé]|anot[eé]|cambi[eé]|corrij[oa]|corregi)\b/.test(lower);
+    const hasCorrectionPattern = /\b(eran?|fue(?:ron)?|en\s+realidad|perd[oó]n)\b.*\d/.test(lower);
+    const hasUnitWithNumber = /\d+\s*(?:kilos?|kg|toneladas?|tn|litros?|lt|cc|bolsas?|qq)\b/.test(lower);
     const hasNumber = /\d/.test(lower);
-    return (hasIncomeVerb || hasExpenseVerb) && hasNumber;
+    return (
+      ((hasIncomeVerb || hasExpenseVerb) && hasNumber) ||
+      (hasCorrectionVerb && hasUnitWithNumber) ||
+      (hasCorrectionPattern && hasUnitWithNumber)
+    );
   }
 
   async classify(

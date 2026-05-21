@@ -2435,6 +2435,36 @@ export class AgronomyHandler {
         const eventType = eventTypeMap[cmd.command];
         const { label: actLabel } = getActivityLabel(eventType);
 
+        // Required-slot guard (unified pending-action pattern). When the agent
+        // fires e.g. "Fertilicé hoy" with no product/plot/quantity, we used to
+        // save an empty event and hallucinate crop from active. Now we detect
+        // the gap and ask the user, persisting the partial command in
+        // pendingActStore so the next message merges via the SlotExtractor.
+        if (cmd.command === 'log_spraying' || cmd.command === 'log_fertilization') {
+          const missing: string[] = [];
+          if (!cmd.product) missing.push('product');
+          if (!cmd.plotName && !cmd.fieldName) missing.push('plot');
+          if (!cmd.quantity) missing.push('quantity');
+          if (missing.length > 0) {
+            const askParts: string[] = [];
+            if (missing.includes('product')) askParts.push('¿qué producto?');
+            if (missing.includes('quantity')) askParts.push('¿qué cantidad?');
+            if (missing.includes('plot')) askParts.push('¿en qué lote?');
+            const askPrompt = `🧪 ${actLabel} — me faltan datos: ${askParts.join(' ')}`;
+            return {
+              messages: [askPrompt],
+              sideEffects: {
+                setPendingActivity: {
+                  command: cmd.command,
+                  data: { ...cmd },
+                  missing,
+                  askPrompt,
+                },
+              },
+            };
+          }
+        }
+
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,

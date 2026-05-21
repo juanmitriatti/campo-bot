@@ -977,6 +977,51 @@ async function processTextMessage(
     if (actInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
       pendingActStore.clear(phone);
       // Fall through to normal processing
+    } else if (pendingAct.missing && pendingAct.missing.length > 0) {
+      // Unified multi-slot completion: run the SlotExtractor against the new
+      // message and merge any newly-extracted slots into pending.data. If all
+      // required slots are filled → re-execute. Otherwise → ask for what's
+      // still missing. Works for log_fertilization, log_spraying, log_income,
+      // log_expense, sow_crop, etc. — wherever the handler set `missing`.
+      const { processPendingAction } = await import('../middleware/pending-action-processor.js');
+      const result = processPendingAction(text, pendingAct);
+      if (result.next === null) {
+        // All required slots filled → re-route the command
+        pendingActStore.clear(phone);
+        const merged = { ...pendingAct.data } as ParsedCommand;
+        // Apply the slots we just extracted (processPendingAction already
+        // merged them into next.data — but next is null here, so re-merge
+        // manually from the original pending + extracted).
+        const slotKeysToCmd: Record<string, string[]> = {
+          plot: ['plot', 'plotName'], field: ['field', 'fieldName'],
+          unit_price: ['unit_price', 'unitPrice'],
+        };
+        for (const [k, v] of Object.entries(result.extracted)) {
+          if (v == null) continue;
+          const targets = slotKeysToCmd[k] || [k];
+          for (const t of targets) {
+            if ((merged as Record<string, unknown>)[t] == null) {
+              (merged as Record<string, unknown>)[t] = v;
+            }
+          }
+        }
+        delete (merged as Record<string, unknown>)._needs;
+        const cmdResult = await agronomyHandler.handleCommand(merged, userId, user, settings);
+        if (cmdResult.sideEffects?.setPendingActivity) {
+          const next = cmdResult.sideEffects.setPendingActivity;
+          pendingActStore.set(phone, {
+            command: next.command,
+            data: next.data,
+            timestamp: Date.now(),
+            missing: (next as { missing?: string[] }).missing,
+            askPrompt: (next as { askPrompt?: string }).askPrompt,
+          });
+        }
+        return collectResponse(cmdResult);
+      }
+      // Still missing slots → update pending state, re-ask
+      pendingActStore.set(phone, result.next);
+      return [{ type: 'text', text: result.next.askPrompt || 'Me falta algún dato. ¿Me lo pasás?' }];
     } else if (pendingAct.data._needs === 'crop') {
       const crop = extractCropFromText(text);
       if (crop) {
@@ -986,7 +1031,13 @@ async function processTextMessage(
         const result = await agronomyHandler.handleCommand(merged, userId, user, settings);
         if (result.sideEffects?.setPendingActivity) {
           const next = result.sideEffects.setPendingActivity;
-          pendingActStore.set(phone, { command: next.command, data: next.data, timestamp: Date.now() });
+          pendingActStore.set(phone, {
+            command: next.command,
+            data: next.data,
+            timestamp: Date.now(),
+            missing: (next as { missing?: string[] }).missing,
+            askPrompt: (next as { askPrompt?: string }).askPrompt,
+          });
         }
         if (result.sideEffects?.setPendingCampaignClose) {
           pendingCampaignCloseStore.set(phone, result.sideEffects.setPendingCampaignClose);
@@ -1056,7 +1107,13 @@ async function processTextMessage(
         }
         if (result.lastSideEffects.setPendingActivity) {
           const act = result.lastSideEffects.setPendingActivity;
-          pendingActStore.set(phone, { command: act.command, data: act.data, timestamp: Date.now() });
+          pendingActStore.set(phone, {
+            command: act.command,
+            data: act.data,
+            timestamp: Date.now(),
+            missing: (act as { missing?: string[] }).missing,
+            askPrompt: (act as { askPrompt?: string }).askPrompt,
+          });
         }
         if (result.lastSideEffects.setPendingFieldCity) {
           pendingCityStore.set(phone, { fieldName: result.lastSideEffects.setPendingFieldCity.fieldName, timestamp: Date.now() });
@@ -1264,7 +1321,13 @@ async function processTextMessage(
       }
       if (response.sideEffects?.setPendingActivity) {
         const act = response.sideEffects.setPendingActivity;
-        pendingActStore.set(phone, { command: act.command, data: act.data, timestamp: Date.now() });
+        pendingActStore.set(phone, {
+          command: act.command,
+          data: act.data,
+          timestamp: Date.now(),
+          missing: act.missing,
+          askPrompt: act.askPrompt,
+        });
       }
       if (response.sideEffects?.setPendingFieldCity) {
         pendingCityStore.set(phone, {
