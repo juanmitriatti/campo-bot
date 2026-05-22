@@ -1585,6 +1585,49 @@ router.post('/', async (req: Request, res: Response) => {
       if (actInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
         pendingActStore.clear(phone);
         // Fall through to normal processing
+      } else if (pendingAct.missing && pendingAct.missing.length > 0) {
+        // Unified multi-slot completion (replicated from test-bot controller).
+        const { processPendingAction } = await import('../middleware/pending-action-processor.js');
+        const result = processPendingAction(text, pendingAct);
+        if (result.next === null) {
+          pendingActStore.clear(phone);
+          const merged = { ...pendingAct.data } as ParsedCommand;
+          const slotKeysToCmd: Record<string, string[]> = {
+            plot: ['plot', 'plotName'], field: ['field', 'fieldName'],
+            unit_price: ['unit_price', 'unitPrice'],
+          };
+          for (const [k, v] of Object.entries(result.extracted)) {
+            if (v == null) continue;
+            const targets = slotKeysToCmd[k] || [k];
+            for (const t of targets) {
+              if ((merged as Record<string, unknown>)[t] == null) {
+                (merged as Record<string, unknown>)[t] = v;
+              }
+            }
+          }
+          delete (merged as Record<string, unknown>)._needs;
+          const cmdResult = await agronomyHandler.handleCommand(merged, userId, user, settings);
+          if (cmdResult.sideEffects?.setPendingActivity) {
+            const next = cmdResult.sideEffects.setPendingActivity;
+            pendingActStore.set(phone, {
+              command: next.command,
+              data: next.data,
+              timestamp: Date.now(),
+              missing: next.missing,
+              askPrompt: next.askPrompt,
+            });
+          }
+          if (cmdResult.sideEffects?.setPendingCampaignClose) {
+            pendingCampaignCloseStore.set(phone, cmdResult.sideEffects.setPendingCampaignClose);
+          }
+          for (const m of cmdResult.messages || []) await sendMessage(phone, m);
+          res.sendStatus(200);
+          return;
+        }
+        pendingActStore.set(phone, result.next);
+        await sendMessage(phone, result.next.askPrompt || 'Me falta algún dato. ¿Me lo pasás?');
+        res.sendStatus(200);
+        return;
       } else if (pendingAct.data._needs === 'crop') {
         const crop = extractCropFromText(text);
         if (crop) {
@@ -1594,7 +1637,13 @@ router.post('/', async (req: Request, res: Response) => {
           const result = await agronomyHandler.handleCommand(merged, userId, user, settings);
           if (result.sideEffects?.setPendingActivity) {
             const next = result.sideEffects.setPendingActivity;
-            pendingActStore.set(phone, { command: next.command, data: next.data, timestamp: Date.now() });
+            pendingActStore.set(phone, {
+              command: next.command,
+              data: next.data,
+              timestamp: Date.now(),
+              missing: next.missing,
+              askPrompt: next.askPrompt,
+            });
           }
           if (result.sideEffects?.setPendingCampaignClose) {
             pendingCampaignCloseStore.set(phone, result.sideEffects.setPendingCampaignClose);
@@ -1696,7 +1745,13 @@ router.post('/', async (req: Request, res: Response) => {
             }
             if (result.lastSideEffects.setPendingActivity) {
               const act = result.lastSideEffects.setPendingActivity;
-              pendingActStore.set(phone, { command: act.command, data: act.data, timestamp: Date.now() });
+              pendingActStore.set(phone, {
+                command: act.command,
+                data: act.data,
+                timestamp: Date.now(),
+                missing: act.missing,
+                askPrompt: act.askPrompt,
+              });
             }
             if (result.lastSideEffects.setPendingFieldCity) {
               pendingCityStore.set(phone, { fieldName: result.lastSideEffects.setPendingFieldCity.fieldName, timestamp: Date.now() });
@@ -1994,7 +2049,13 @@ router.post('/', async (req: Request, res: Response) => {
         // Store pending activity for plot disambiguation follow-up
         if (response.sideEffects?.setPendingActivity) {
           const act = response.sideEffects.setPendingActivity;
-          pendingActStore.set(phone, { command: act.command, data: act.data, timestamp: Date.now() });
+          pendingActStore.set(phone, {
+            command: act.command,
+            data: act.data,
+            timestamp: Date.now(),
+            missing: act.missing,
+            askPrompt: act.askPrompt,
+          });
           console.log(`[PENDING_ACT] Stored pending ${act.command} for user ${userId}`);
         }
         // Store pending field city for next-message assignment

@@ -1689,7 +1689,12 @@ export class AgronomyHandler {
           return {
             messages: ['🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)'],
             sideEffects: {
-              setPendingActivity: { command: 'sow_crop', data: { ...cmd, _needs: 'crop' } },
+              setPendingActivity: {
+                command: 'sow_crop',
+                data: { ...cmd, _needs: 'crop' },
+                missing: ['crop'],
+                askPrompt: '🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)',
+              },
             },
           };
         }
@@ -1823,7 +1828,12 @@ export class AgronomyHandler {
           return {
             messages: ['🌾 ¿Qué cultivo cosechaste? (ej: soja, maíz, trigo, girasol)'],
             sideEffects: {
-              setPendingActivity: { command: 'harvest_crop', data: { ...cmd, _needs: 'crop' } },
+              setPendingActivity: {
+                command: 'harvest_crop',
+                data: { ...cmd, _needs: 'crop' },
+                missing: ['crop'],
+                askPrompt: '🌾 ¿Qué cultivo cosechaste? (ej: soja, maíz, trigo, girasol)',
+              },
             },
           };
         }

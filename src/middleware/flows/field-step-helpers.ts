@@ -401,6 +401,27 @@ export async function validatePlotAsync(
     return { value: hint.plotName };
   }
 
+  // Last-chance fallback: run the unified SlotExtractor against the input.
+  // Catches patterns the strict matcher doesn't handle ("era todo de maíz del
+  // lote B1" — the user gave plot AND category in the same correction). If
+  // the extractor finds a plot token that matches an existing one, accept.
+  // ALSO: if the message contains a category hint, store it on _data so the
+  // financial handler picks it up on re-validation.
+  try {
+    const { extractSlots } = await import('../slot-extractor.js');
+    const slots = extractSlots(input);
+    const slotPlot = slots.plot as string | undefined;
+    if (slotPlot) {
+      const normalizedSlot = normalize(slotPlot);
+      const m = plotsWithFields.find((p) => normalize(p.plotName) === normalizedSlot);
+      if (m) {
+        if (slots.category) _data._extractedCategory = slots.category;
+        if (slots.crop) _data._extractedCrop = slots.crop;
+        return { value: m.plotName };
+      }
+    }
+  } catch { /* extractor not critical — fall through to the listing */ }
+
   // Show grouped list of available plots
   const fieldNames = [...new Set(plotsWithFields.map(p => p.fieldName))];
   let listText = '';
