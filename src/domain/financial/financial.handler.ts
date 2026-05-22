@@ -12,6 +12,7 @@ import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FieldSharingService } from '../sharing/field-sharing.service.js';
 import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
 import { logError } from '../../services/error-logger.js';
+import { pool } from '../../config/db.js';
 import type {
   UserId,
   User,
@@ -24,6 +25,7 @@ import type {
   HandlerResponse,
   PlotInfoData,
   FlowState,
+  Currency,
 } from '../../types/index.js';
 
 // --- Formatting helpers ---
@@ -863,7 +865,10 @@ export class FinancialHandler {
       }
     }
 
-    return { messages, suggestionKey: 'expense_saved' };
+    const expenseBulkPlotHint = bulkMode && !plotId && fieldId
+      ? { savedFinanceWithoutPlot: { kind: 'expense' as const, id: saved.id as number, fieldId } }
+      : {};
+    return { messages, suggestionKey: 'expense_saved', ...expenseBulkPlotHint };
   }
 
   // --- Income flow ---
@@ -1134,7 +1139,10 @@ export class FinancialHandler {
       } catch (stockErr) { console.error('[financial] Stock deduction suggestion failed:', stockErr); logError('financial', 'STOCK_DEDUCTION_SUGGEST', stockErr as Error, { userId }); }
     }
 
-    return { messages, suggestionKey: 'income_saved' };
+    const incomeBulkPlotHint = bulkMode && !plotId && fieldId
+      ? { savedFinanceWithoutPlot: { kind: 'income' as const, id: savedIncome.id as number, fieldId } }
+      : {};
+    return { messages, suggestionKey: 'income_saved', ...incomeBulkPlotHint };
   }
 
   // --- Confirm pending ---
@@ -2625,9 +2633,151 @@ export class FinancialHandler {
         };
       }
 
+      // Bulk plot reassignment after a compound that saved 1+ records at field
+      // level (field has 2+ plots → couldn't auto-resolve). The interactive
+      // router builds a "bap_<plotId>_<eIds>_<iIds>" callback; one tap routes
+      // here and we UPDATE all records in a single transaction.
+      case 'assign_bulk_plot': {
+        const plotId = cmd.plotId as number | null; // null = leave at field level
+        const expenseIds = (cmd.expenseIds as number[] | undefined) ?? [];
+        const incomeIds = (cmd.incomeIds as number[] | undefined) ?? [];
+        return this.handleAssignBulkPlot(userId, plotId, expenseIds, incomeIds);
+      }
+
+      // Re-execution endpoints for the unified pending action system. When the
+      // user originally fired a partial log_income/log_expense (missing amount
+      // or price) in a compound, the CompoundExecutor sets a pending state
+      // with command='log_income' or 'log_expense' + missing=['amount']. After
+      // the user replies with the missing amount, pending-action-processor
+      // merges and re-routes here.
+      case 'log_income': {
+        const data = this.cmdToParsedIncome(cmd);
+        return this.handleIncome(
+          userId,
+          data,
+          (cmd.description as string) || '',
+          settings,
+          (cmd.field as string) ?? (cmd.fieldName as string) ?? null,
+          (cmd.plot as string) ?? (cmd.plotName as string) ?? null,
+          false,
+        );
+      }
+      case 'log_expense': {
+        const data = this.cmdToParsedExpense(cmd);
+        return this.handleExpense(
+          userId,
+          data,
+          (cmd.description as string) || '',
+          settings,
+          user,
+          (cmd.field as string) ?? (cmd.fieldName as string) ?? null,
+          (cmd.plot as string) ?? (cmd.plotName as string) ?? null,
+          false,
+        );
+      }
+
       default:
         return { messages: [] };
     }
+  }
+
+  /** Coerce a re-routed ParsedCommand back into the ParsedIncome shape that handleIncome expects. */
+  private cmdToParsedIncome(cmd: ParsedCommand): ParsedIncome {
+    const c = cmd as unknown as Record<string, unknown>;
+    const amount = typeof c.amount === 'number' ? c.amount
+      : (typeof c.quantity === 'number' && typeof c.unit_price === 'number' ? c.quantity * c.unit_price : 0);
+    return {
+      type: 'income',
+      amount,
+      category: (c.category as string) || '',
+      description: (c.description as string) || '',
+      currency: (c.currency === 'USD' ? 'USD' : 'ARS') as Currency,
+      quantity: typeof c.quantity === 'number' ? c.quantity : null,
+      unit: typeof c.unit === 'string' ? c.unit : null,
+      unit_price: typeof c.unit_price === 'number' ? c.unit_price : null,
+      ...(typeof c.incomeDate === 'string' ? { incomeDate: c.incomeDate } : {}),
+    } as ParsedIncome;
+  }
+
+  /** Coerce a re-routed ParsedCommand back into the ParsedExpense shape that handleExpense expects. */
+  private cmdToParsedExpense(cmd: ParsedCommand): ParsedExpense {
+    const c = cmd as unknown as Record<string, unknown>;
+    const amount = typeof c.amount === 'number' ? c.amount
+      : (typeof c.quantity === 'number' && typeof c.unit_price === 'number' ? c.quantity * c.unit_price : 0);
+    return {
+      type: 'expense',
+      amount,
+      category: (c.category as string) || '',
+      description: (c.description as string) || '',
+      currency: (c.currency === 'USD' ? 'USD' : 'ARS') as Currency,
+      expenseType: (c.expenseType as 'insumo' | 'varios') || 'varios',
+      product: (c.product as string) || null,
+      quantity: typeof c.quantity === 'number' ? c.quantity : null,
+      unit: typeof c.unit === 'string' ? c.unit : null,
+      unit_price: typeof c.unit_price === 'number' ? c.unit_price : null,
+      ...(typeof c.expenseDate === 'string' ? { expenseDate: c.expenseDate } : {}),
+    } as ParsedExpense;
+  }
+
+  /**
+   * Update plot_id (and optionally field_id) for a batch of expenses + incomes
+   * the user picked via a single tap. We re-filter by user_id for safety so
+   * crafted callback payloads can't touch other users' rows.
+   */
+  private async handleAssignBulkPlot(
+    userId: UserId,
+    plotId: number | null,
+    expenseIds: number[],
+    incomeIds: number[],
+  ): Promise<HandlerResponse> {
+    if (expenseIds.length === 0 && incomeIds.length === 0) {
+      return { messages: ['No encontré registros para reasignar.'] };
+    }
+
+    let plotName: string | null = null;
+    let fieldId: number | null = null;
+    if (plotId != null) {
+      const plotRes = await pool.query(
+        `SELECT p.id, p.name, p.field_id, f.user_id
+         FROM plots p JOIN fields f ON f.id = p.field_id
+         WHERE p.id = $1 AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
+        [plotId],
+      );
+      const plot = plotRes.rows[0];
+      if (!plot || Number(plot.user_id) !== Number(userId)) {
+        return { messages: ['No pude asignar al lote (ya no existe o no es tuyo).'] };
+      }
+      plotName = plot.name as string;
+      fieldId = plot.field_id as number;
+    }
+
+    let expensesUpdated = 0;
+    let incomesUpdated = 0;
+    if (expenseIds.length > 0) {
+      const res = await pool.query(
+        `UPDATE expenses SET plot_id = $1${fieldId != null ? ', field_id = COALESCE(field_id, $4)' : ''}
+         WHERE user_id = $2 AND id = ANY($3::int[]) AND deleted_at IS NULL`,
+        fieldId != null ? [plotId, userId, expenseIds, fieldId] : [plotId, userId, expenseIds],
+      );
+      expensesUpdated = res.rowCount ?? 0;
+    }
+    if (incomeIds.length > 0) {
+      const res = await pool.query(
+        `UPDATE incomes SET plot_id = $1${fieldId != null ? ', field_id = COALESCE(field_id, $4)' : ''}
+         WHERE user_id = $2 AND id = ANY($3::int[]) AND deleted_at IS NULL`,
+        fieldId != null ? [plotId, userId, incomeIds, fieldId] : [plotId, userId, incomeIds],
+      );
+      incomesUpdated = res.rowCount ?? 0;
+    }
+
+    const total = expensesUpdated + incomesUpdated;
+    if (plotId == null) {
+      return { messages: [`✅ Listo, dejé ${total} registro${total === 1 ? '' : 's'} a nivel campo.`] };
+    }
+    const parts: string[] = [];
+    if (incomesUpdated > 0) parts.push(`${incomesUpdated} ingreso${incomesUpdated === 1 ? '' : 's'}`);
+    if (expensesUpdated > 0) parts.push(`${expensesUpdated} gasto${expensesUpdated === 1 ? '' : 's'}`);
+    return { messages: [`✅ Asigné ${parts.join(' + ')} al *Lote ${plotName}*.`] };
   }
 
   // --- Category pick/create (interactive button callbacks) ---

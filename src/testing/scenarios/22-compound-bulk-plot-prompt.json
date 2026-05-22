@@ -1,0 +1,15 @@
+{
+  "name": "compound-bulk-plot-prompt",
+  "description": "Compound sales with 2+ plots in the field → bot asks ONCE for plot assignment at the end (Fix A)",
+  "setup": ["add-field-esperanza", "add-plots-multi"],
+  "steps": [
+    {
+      "send": "vendí 25 tn de maíz a 900 USD y 10 tn de soja a 1000 USD",
+      "expect": {
+        "responseContains": ["a nivel campo", "la esperanza"],
+        "hasInteractive": true,
+        "dbRowCount": { "table": "incomes", "count": 2 }
+      }
+    }
+  ]
+}

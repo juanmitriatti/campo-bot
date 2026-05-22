@@ -1,8 +1,8 @@
 import { DomainRouter } from './router.js';
 import { logError } from '../services/error-logger.js';
-import { withTransaction } from '../config/db.js';
+import { withTransaction, pool } from '../config/db.js';
 import type { FinancialHandler } from './financial/financial.handler.js';
-import type { ParseResult, ParsedCommand, ParsedExpense, ParsedIncome, UserId, User, UserSettings, HandlerResponse } from '../types/index.js';
+import type { ParseResult, ParsedCommand, ParsedExpense, ParsedIncome, UserId, User, UserSettings, HandlerResponse, InteractiveMessage } from '../types/index.js';
 import { LIVESTOCK_CATEGORY_LABEL } from './livestock/livestock.types.js';
 import type { LivestockCategory } from './livestock/livestock.types.js';
 
@@ -25,6 +25,11 @@ const LIVESTOCK_COMMANDS = new Set([
 
 /** Intent types that can be executed in a compound action */
 const COMPOUND_TYPES = new Set(['command', 'expense', 'income']);
+
+/** Intent types that are "partial" (missing amount/price) — surfaced after the compound
+ *  with a "💡 falta el precio de X" message + pending action wired into the unified
+ *  pending system so the user's next message completes the registration. */
+const PARTIAL_TYPES = new Set(['expense_partial', 'income_partial']);
 
 /**
  * Executes multiple ParseResults sequentially from a single agent response,
@@ -50,13 +55,18 @@ export class CompoundExecutor {
     settings: UserSettings,
     originalText?: string,
   ): Promise<CompoundResult | null> {
-    // Filter to actionable types only
+    // Split into executable steps vs partials (missing amount/price).
     const actionable = results.filter(r => COMPOUND_TYPES.has(r.intent.type));
-    if (actionable.length <= 1) return null;
+    const partials = results.filter(r => PARTIAL_TYPES.has(r.intent.type));
+    // Activate compound flow if there are 2+ actionables, OR a mix of actionable + partial.
+    // (One actionable alone is the single-action path; one partial alone is handled by the
+    //  controller's standard intent path. Mixed = the user's "vendí X y vendí Y [no price]" case.)
+    if (actionable.length + partials.length <= 1) return null;
+    if (actionable.length === 0 && partials.length === 0) return null;
 
     try {
       return await withTransaction(async () =>
-        this._runSteps(actionable, userId, user, settings, originalText),
+        this._runSteps(actionable, partials, userId, user, settings, originalText),
       );
     } catch (err) {
       const label = err instanceof Error ? err.message : String(err);
@@ -77,6 +87,7 @@ export class CompoundExecutor {
 
   private async _runSteps(
     actionableIn: ParseResult[],
+    partials: ParseResult[],
     userId: UserId,
     user: User,
     settings: UserSettings,
@@ -89,6 +100,11 @@ export class CompoundExecutor {
     let lastAttachment: HandlerResponse['attachment'];
     let lastSuggestionKey: string | undefined;
     let stoppedAtFlow = false;
+    // Bulk plot tracking: every handleExpense/handleIncome that saved in bulk
+    // mode WITHOUT a plot (field has 2+ plots) emits savedFinanceWithoutPlot.
+    // We collect across steps and append a single "¿a qué lote los asigno?"
+    // prompt at the end so the user can assign all of them with one tap.
+    const bulkSaved: Array<{ kind: 'expense' | 'income'; id: number; fieldId: number }> = [];
 
     // Force skip confirmation for expenses/incomes in compound context
     const noConfirmSettings = { ...settings, confirm_before_save: false };
@@ -196,6 +212,7 @@ export class CompoundExecutor {
       if (response.interactive) lastInteractive = response.interactive;
       if (response.attachment) lastAttachment = response.attachment;
       if (response.suggestionKey) lastSuggestionKey = response.suggestionKey;
+      if (response.savedFinanceWithoutPlot) bulkSaved.push(response.savedFinanceWithoutPlot);
 
       // If this step triggers a flow, stop here — flow needs user input
       if (response.sideEffects?.startFlow) {
@@ -211,15 +228,157 @@ export class CompoundExecutor {
     }
 
     const consolidated = consolidateRainfallPrompts(messages, actionable, lastInteractive);
+    let finalMessages = consolidateLivestockMessages(consolidated.messages, actionable);
+    let finalInteractive = consolidated.interactive ?? lastInteractive;
+
+    // Fix B — surface income_partial / expense_partial that the agent fired
+    // without a price. Append a clear "💡 falta el precio de X" line per
+    // partial AND wire ONE pending action (first partial) so the user's next
+    // message gets routed through the unified pending system to complete it.
+    if (partials.length > 0 && !stoppedAtFlow) {
+      for (const p of partials) {
+        finalMessages.push(buildPartialMessage(p));
+      }
+      const pendingFromPartial = buildPendingFromFirstPartial(partials);
+      if (pendingFromPartial && !lastSideEffects?.setPendingActivity) {
+        lastSideEffects = { ...(lastSideEffects ?? {}), setPendingActivity: pendingFromPartial };
+      }
+    }
+
+    // Fix A — when bulk mode saved 1+ records WITHOUT plot, ask once at the
+    // end "¿A qué lote los asigno?" with buttons/list. Single tap updates
+    // all of them via the assign_bulk_plot command.
+    if (bulkSaved.length > 0 && !stoppedAtFlow) {
+      const plotPrompt = await this.buildBulkPlotPrompt(bulkSaved, userId);
+      if (plotPrompt) {
+        finalMessages.push(plotPrompt.message);
+        // Bulk-plot interactive replaces any prior interactive: the prompt
+        // is the user's next-step UI, and any leftover interactive from a
+        // step (e.g. stock dedup) would be stale at this point.
+        finalInteractive = plotPrompt.interactive;
+      }
+    }
+
     return {
-      messages: consolidateLivestockMessages(consolidated.messages, actionable),
+      messages: finalMessages,
       lastSideEffects,
       stoppedAtFlow,
-      lastInteractive: consolidated.interactive ?? lastInteractive,
+      lastInteractive: finalInteractive,
       lastAttachment,
       lastSuggestionKey,
     };
   }
+
+  /**
+   * Build the "¿A qué lote los asigno?" prompt. Works across multiple fields:
+   * if all bulk-saved records share one fieldId, the buttons/list use that
+   * field's plots. If they span multiple fields, fall back to all user plots
+   * (still tag with field name for clarity).
+   *
+   * Returns null when no useful prompt can be built (field unknown, or only
+   * one plot exists — in that case auto-resolve already happened).
+   */
+  private async buildBulkPlotPrompt(
+    bulkSaved: Array<{ kind: 'expense' | 'income'; id: number; fieldId: number }>,
+    userId: UserId,
+  ): Promise<{ message: string; interactive: InteractiveMessage } | null> {
+    const fieldIds = Array.from(new Set(bulkSaved.map(s => s.fieldId)));
+    if (fieldIds.length !== 1) return null; // Multi-field: skip the prompt, user can edit later
+    const fieldId = fieldIds[0];
+
+    const plotsRes = await pool.query(
+      `SELECT id, name FROM plots WHERE field_id = $1 AND deleted_at IS NULL ORDER BY name`,
+      [fieldId],
+    );
+    const plots = plotsRes.rows as Array<{ id: number; name: string }>;
+    if (plots.length < 2) return null; // Should have been auto-resolved upstream
+
+    const fieldRes = await pool.query(
+      `SELECT name FROM fields WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+      [fieldId, userId],
+    );
+    const fieldName = (fieldRes.rows[0]?.name as string) ?? 'el campo';
+
+    const eIds = bulkSaved.filter(s => s.kind === 'expense').map(s => s.id);
+    const iIds = bulkSaved.filter(s => s.kind === 'income').map(s => s.id);
+    const eIdsStr = eIds.join(',') || 'n';
+    const iIdsStr = iIds.join(',') || 'n';
+
+    const summary = [
+      iIds.length > 0 ? `${iIds.length} ingreso${iIds.length === 1 ? '' : 's'}` : null,
+      eIds.length > 0 ? `${eIds.length} gasto${eIds.length === 1 ? '' : 's'}` : null,
+    ].filter(Boolean).join(' + ');
+    const body = `💡 Guardé ${summary} a nivel campo *${fieldName}*. ¿A qué lote los asigno?`;
+
+    // Each button id: bap_<plotId>_<expenseIds>_<incomeIds>. Plot "0" + "n" markers
+    // mean "leave at field level".
+    const optionRows = [
+      ...plots.map(p => ({ id: `bap_${p.id}_${eIdsStr}_${iIdsStr}`, title: p.name.slice(0, 24) })),
+      { id: `bap_0_${eIdsStr}_${iIdsStr}`, title: 'Dejar a nivel campo' },
+    ];
+
+    // WhatsApp buttons cap at 3. Use list when there are more plots.
+    if (optionRows.length <= 3) {
+      return {
+        message: body,
+        interactive: {
+          type: 'buttons',
+          body: '¿A qué lote?',
+          buttons: optionRows.map(r => ({ id: r.id, title: r.title.slice(0, 20) })),
+        },
+      };
+    }
+    return {
+      message: body,
+      interactive: {
+        type: 'list',
+        body: '¿A qué lote?',
+        buttonText: 'Elegir',
+        sections: [{
+          title: 'Lotes',
+          rows: optionRows.map(r => ({ id: r.id, title: r.title })),
+        }],
+      },
+    };
+  }
+}
+
+/**
+ * Compose a "💡 No registré X — me falta el precio" message for a partial
+ * income/expense parse result. Stays short + accurate even when category is
+ * empty (uses "la venta" / "el gasto" fallback).
+ */
+function buildPartialMessage(p: ParseResult): string {
+  const data = ((p.intent as { data?: Record<string, unknown> }).data ?? {}) as Record<string, unknown>;
+  const isIncome = p.intent.type === 'income_partial';
+  const verb = isIncome ? 'No registré' : 'No anoté';
+  const label = (data.category as string) || (isIncome ? 'la venta' : 'el gasto');
+  const qty = typeof data.quantity === 'number' ? data.quantity : null;
+  const unit = typeof data.unit === 'string' ? data.unit : null;
+  const qtyLabel = qty != null && unit ? ` (${qty} ${unit})` : '';
+  return `💡 ${verb} *${label}*${qtyLabel} — me falta el precio. Decímelo y lo guardo.`;
+}
+
+/**
+ * Wire the FIRST partial into the unified pending action system so the user's
+ * next message (e.g. "900 dolares" or "900") completes the registration. We
+ * limit to ONE pending because pendingActStore holds a single entry per user;
+ * if multiple partials, the rest are informed via message but the user has to
+ * re-type them. Trade-off in favor of simplicity.
+ */
+function buildPendingFromFirstPartial(partials: ParseResult[]): NonNullable<HandlerResponse['sideEffects']>['setPendingActivity'] | null {
+  if (partials.length === 0) return null;
+  const p = partials[0];
+  const data = ((p.intent as { data?: Record<string, unknown> }).data ?? {}) as Record<string, unknown>;
+  const isIncome = p.intent.type === 'income_partial';
+  const command = isIncome ? 'log_income' : 'log_expense';
+  const cat = (data.category as string) || (isIncome ? 'la venta' : 'el gasto');
+  return {
+    command,
+    data: { ...data },
+    missing: ['amount'],
+    askPrompt: `¿Cuánto cobraste por *${cat}*? (decime el monto o el precio por unidad)`,
+  };
 }
 
 /**

@@ -486,6 +486,14 @@ export interface HandlerResponse {
   attachment?: AttachmentPayload;
   interactive?: InteractiveMessage;
   suggestionKey?: string;
+  /**
+   * Set by handleExpense / handleIncome when they save a record in BULK mode
+   * (inside a compound action) AND the plot couldn't be auto-resolved (field
+   * has 2+ plots). The CompoundExecutor collects these and, after the loop,
+   * asks ONCE "¿a qué lote los asigno?" so all bulk-saved records get a plot
+   * via a single user tap.
+   */
+  savedFinanceWithoutPlot?: { kind: 'expense' | 'income'; id: number; fieldId: number };
   sideEffects?: {
     setPending?: PendingTransaction;
     startFlow?: { state: FlowState; data?: Record<string, unknown> };

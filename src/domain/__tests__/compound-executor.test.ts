@@ -363,3 +363,133 @@ describe('CompoundExecutor', () => {
     expect(result!.messages).toEqual(['Campo creado.']);
   });
 });
+
+// --- Fix A: bulk plot prompt ------------------------------------------------
+import { pool } from '../../config/db.js';
+
+function makePartialIncome(extra: Record<string, unknown> = {}): ParseResult {
+  return {
+    intent: {
+      type: 'income_partial' as const,
+      data: { type: 'income' as const, category: 'Soja', quantity: 2, unit: 'tn', currency: 'ARS' as const, ...extra },
+    } as any,
+    confidence: 0.60,
+    aiUsed: true,
+    source: 'ai',
+    missingFields: ['amount'],
+  };
+}
+
+describe('CompoundExecutor — bulk plot prompt (Fix A)', () => {
+  it('appends a plot-assignment prompt when 2 incomes saved without plot + field has 3 plots', async () => {
+    // Mock pool: first call returns 3 plots, second returns field name.
+    (pool.query as any) = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 11, name: 'A1' }, { id: 12, name: 'A2' }, { id: 13, name: 'A3' }] })
+      .mockResolvedValueOnce({ rows: [{ name: 'la esperanza' }] });
+
+    const mockFinancial = {
+      handleIncome: vi.fn()
+        .mockResolvedValueOnce({ messages: ['💰 Maíz $22.500 USD'], savedFinanceWithoutPlot: { kind: 'income', id: 100, fieldId: 34 } } as HandlerResponse)
+        .mockResolvedValueOnce({ messages: ['💰 Soja $10.000 USD'], savedFinanceWithoutPlot: { kind: 'income', id: 101, fieldId: 34 } } as HandlerResponse),
+    };
+
+    const executor = new CompoundExecutor({ routeCommand: vi.fn() } as any, mockFinancial as any);
+    const results = [makeIncomeResult({ category: 'Maíz' }), makeIncomeResult({ category: 'Soja' })];
+
+    const result = await executor.execute(results, 1 as UserId, mockUser, mockSettings);
+
+    expect(result).not.toBeNull();
+    const prompt = result!.messages.find(m => m.includes('a nivel campo') && m.includes('la esperanza'));
+    expect(prompt).toBeDefined();
+    expect(result!.lastInteractive).toBeDefined();
+    // Field has 3 plots → 3 plot buttons + "Dejar a nivel campo" = 4 options → uses list interactive
+    expect(result!.lastInteractive!.type).toBe('list');
+    const rows = (result!.lastInteractive as any).sections[0].rows;
+    expect(rows.map((r: any) => r.title)).toEqual(['A1', 'A2', 'A3', 'Dejar a nivel campo']);
+    // Each button payload encodes incomeIds (100, 101) and no expense ids ('n')
+    expect(rows[0].id).toBe('bap_11_n_100,101');
+    expect(rows[3].id).toBe('bap_0_n_100,101');
+  });
+
+  it('skips the prompt when only 1 plot exists (auto-resolve should have happened upstream)', async () => {
+    (pool.query as any) = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 11, name: 'Norte' }] }); // only 1 plot
+
+    const mockFinancial = {
+      handleIncome: vi.fn()
+        .mockResolvedValueOnce({ messages: ['💰 Maíz'], savedFinanceWithoutPlot: { kind: 'income', id: 100, fieldId: 34 } } as HandlerResponse)
+        .mockResolvedValueOnce({ messages: ['💰 Soja'], savedFinanceWithoutPlot: { kind: 'income', id: 101, fieldId: 34 } } as HandlerResponse),
+    };
+
+    const executor = new CompoundExecutor({ routeCommand: vi.fn() } as any, mockFinancial as any);
+    const result = await executor.execute(
+      [makeIncomeResult({ category: 'Maíz' }), makeIncomeResult({ category: 'Soja' })],
+      1 as UserId, mockUser, mockSettings,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.messages.find(m => m.includes('a nivel campo'))).toBeUndefined();
+    expect(result!.lastInteractive).toBeUndefined();
+  });
+
+  it('uses buttons interactive when ≤2 plots (3 options total including "Dejar a nivel campo")', async () => {
+    (pool.query as any) = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 11, name: 'A1' }, { id: 12, name: 'A2' }] })
+      .mockResolvedValueOnce({ rows: [{ name: 'Norte' }] });
+
+    const mockFinancial = {
+      handleExpense: vi.fn()
+        .mockResolvedValueOnce({ messages: ['💸 g1'], savedFinanceWithoutPlot: { kind: 'expense', id: 200, fieldId: 34 } } as HandlerResponse)
+        .mockResolvedValueOnce({ messages: ['💸 g2'], savedFinanceWithoutPlot: { kind: 'expense', id: 201, fieldId: 34 } } as HandlerResponse),
+    };
+
+    const executor = new CompoundExecutor({ routeCommand: vi.fn() } as any, mockFinancial as any);
+    const result = await executor.execute([makeExpenseResult(), makeExpenseResult()], 1 as UserId, mockUser, mockSettings);
+
+    expect(result!.lastInteractive!.type).toBe('buttons');
+    expect((result!.lastInteractive as any).buttons).toHaveLength(3);
+  });
+});
+
+// --- Fix B: partial income/expense -----------------------------------------
+describe('CompoundExecutor — partial income/expense (Fix B)', () => {
+  it('triggers compound flow even with 1 actionable + 1 partial', async () => {
+    const mockFinancial = {
+      handleIncome: vi.fn().mockResolvedValueOnce({ messages: ['💰 Maní'] } as HandlerResponse),
+    };
+    const executor = new CompoundExecutor({ routeCommand: vi.fn() } as any, mockFinancial as any);
+
+    const result = await executor.execute(
+      [makeIncomeResult({ category: 'Maní' }), makePartialIncome({ category: 'Soja' })],
+      1 as UserId, mockUser, mockSettings,
+    );
+
+    // Not null because partial + actionable >= 2
+    expect(result).not.toBeNull();
+    expect(mockFinancial.handleIncome).toHaveBeenCalledTimes(1);
+  });
+
+  it('appends "falta el precio" message and wires setPendingActivity for the first partial', async () => {
+    const mockFinancial = {
+      handleIncome: vi.fn().mockResolvedValueOnce({ messages: ['💰 Maní'] } as HandlerResponse),
+    };
+    const executor = new CompoundExecutor({ routeCommand: vi.fn() } as any, mockFinancial as any);
+
+    const result = await executor.execute(
+      [makeIncomeResult({ category: 'Maní' }), makePartialIncome({ category: 'Soja', quantity: 2, unit: 'tn' })],
+      1 as UserId, mockUser, mockSettings,
+    );
+
+    expect(result!.messages.find(m => m.includes('Soja') && m.includes('falta el precio'))).toBeDefined();
+    expect(result!.lastSideEffects?.setPendingActivity?.command).toBe('log_income');
+    expect(result!.lastSideEffects?.setPendingActivity?.missing).toEqual(['amount']);
+    expect(result!.lastSideEffects?.setPendingActivity?.data.category).toBe('Soja');
+    expect(result!.lastSideEffects?.setPendingActivity?.data.quantity).toBe(2);
+  });
+
+  it('returns null when total results <= 1 (single partial without companion stays in single-action path)', async () => {
+    const executor = new CompoundExecutor({ routeCommand: vi.fn() } as any, { handleIncome: vi.fn() } as any);
+    const result = await executor.execute([makePartialIncome()], 1 as UserId, mockUser, mockSettings);
+    expect(result).toBeNull();
+  });
+});

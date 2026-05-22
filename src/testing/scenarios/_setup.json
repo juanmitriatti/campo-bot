@@ -19,5 +19,15 @@
   "seed-livestock-single": [
     { "send": "agregué 50 vacas Angus al lote Norte" },
     { "wait": 500 }
+  ],
+  "add-plots-multi": [
+    { "send": "agregar lotes A1, A2 y A3 al campo La Esperanza" },
+    { "wait": 500 },
+    { "send": "50" },
+    { "wait": 300 },
+    { "send": "50" },
+    { "wait": 300 },
+    { "send": "50" },
+    { "wait": 300 }
   ]
 }

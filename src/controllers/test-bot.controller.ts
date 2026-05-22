@@ -1476,6 +1476,7 @@ router.post('/reset', async (req: Request, res: Response) => {
     pendingStockDeductionStore.delete(phone);
     pendingFieldLocationStore.clear(phone);
     pendingCampaignCloseStore.delete(phone);
+    pendingPlotAreaStore.clear(phone);
 
     // 2. Hard-delete all DB records in a transaction (FK-safe order)
     await client.query('BEGIN');

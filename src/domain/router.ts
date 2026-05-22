@@ -26,6 +26,8 @@ const FINANCIAL_COMMANDS = new Set([
   'create_expense_template', 'list_expense_templates', 'delete_expense_template',
   'pick_category', 'create_category',
   'category_similar_use', 'category_similar_new', 'category_similar_cancel',
+  'assign_bulk_plot',
+  'log_income', 'log_expense',
 ]);
 
 const AGRONOMY_COMMANDS = new Set([

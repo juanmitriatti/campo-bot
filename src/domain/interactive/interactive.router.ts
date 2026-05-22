@@ -188,6 +188,27 @@ export class InteractiveRouter {
       };
     }
 
+    // Bulk plot assignment after a compound that saved 2+ financial records
+    // at field level. Format: bap_<plotId>_<expenseIds>_<incomeIds>
+    //   plotId="0" → leave at field level
+    //   expenseIds / incomeIds: comma-separated or "n" for none
+    // Example: bap_45_123,124_456  → assign expenses [123,124] + income [456] to plot 45
+    const bapMatch = callbackId.match(/^bap_(\d+)_([\d,]+|n)_([\d,]+|n)$/);
+    if (bapMatch) {
+      const plotId = parseInt(bapMatch[1], 10); // 0 means "leave at field level"
+      const expenseIds = bapMatch[2] === 'n' ? [] : bapMatch[2].split(',').map(s => parseInt(s, 10)).filter(n => !Number.isNaN(n));
+      const incomeIds = bapMatch[3] === 'n' ? [] : bapMatch[3].split(',').map(s => parseInt(s, 10)).filter(n => !Number.isNaN(n));
+      return {
+        type: 'command',
+        data: {
+          command: 'assign_bulk_plot',
+          plotId: plotId === 0 ? null : plotId,
+          expenseIds,
+          incomeIds,
+        },
+      };
+    }
+
     // Gap 4 — pick location for sanidad/repro/pesaje
     // Format: lv_pick_loc_<kind>_<payload>_<plotIdOrNull>_<corralIdOrNull>
     const pickLocMatch = callbackId.match(/^lv_pick_loc_(health|repro|weigh)_/);
