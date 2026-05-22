@@ -146,11 +146,26 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - **Goal**: replace 4 ad-hoc multi-turn helpers (`_needs:'crop'`, `expense_flow`, `extractAmountCorrection`, agent `respond_text`) with one mechanism that absorbs all of them.
 - **Architecture**: handler detects required-missing slots → returns `setPendingActivity({ command, data, missing: ['product','plot','quantity'], askPrompt })`. Controller intercepts the next user message, runs `extractSlots(text)` from `src/middleware/slot-extractor.ts` (12 slot types: amount, category, plot, field, crop, quantity, unit, unit_price, product, currency, count, hectares — reuses `normalizarMonto`, `detectarCategoria`, `extractCropFromText`, `stripPlotCorrectionPrefix`), merges into `pending.data`, and either (a) re-routes the command when all required slots are filled or (b) re-asks for what's still missing via the auto-generated Spanish prompt.
 - **Files**: `src/middleware/slot-extractor.ts` (extractors, ~170 LOC), `src/middleware/pending-action-processor.ts` (merge + re-prompt logic, ~110 LOC), `src/middleware/pending-activities.ts` (storage shape with `missing?: string[]` + `askPrompt?: string`).
-- **Opted-in handlers**: `log_spraying`, `log_fertilization` (guard at top of case in `agronomy.handler.ts` returns pending when product/plot/quantity missing). `sow_crop` and `harvest_crop` retain the legacy `_needs:'crop'` path AND also include `missing: ['crop']` so both controller branches work.
+- **Opted-in handlers** (May 22 update):
+  - `log_spraying`: product + plot + quantity
+  - `log_fertilization`: product + plot + quantity
+  - `log_tillage`: plot + (implement OR product)
+  - `log_irrigation`: plot + quantity (mm)
+  - `log_health_event` (vacunación/desparasitación): nombre vacuna/antiparasitario required
+  - `add_stock`: product + quantity + unit
+  - `sow_crop` / `harvest_crop` (dual path): legacy `_needs:'crop'` + new `missing: ['crop']`
 - **Plot fallback in expense/income flow**: `validatePlotAsync` in `src/middleware/flows/field-step-helpers.ts` now calls `extractSlots()` as a LAST RESORT before failing — catches "era todo de maíz del lote B1" (gives plot=B1 + stashes `_extractedCategory='Maíz'` for later use).
+- **Single-slot fallback**: in `pending-action-processor.ts`, when only ONE slot is missing and the SlotExtractor finds nothing, the whole short message (≤ 60 chars, no special punctuation) is taken as the answer. Catches bare-word replies like "aftosa" to "¿qué vacuna?".
+- **Cross-domain routing**: re-execution after merge goes through `DomainRouter.routeCommand`, not `agronomyHandler` directly — so `add_stock`, livestock, and future tools all work through the same code path.
 - **Escape patterns**: any `isCancelIntent(text)` clears the pending. Any `detectsFinancialIntent(text)` (now also matches "cargué/registré + qty+unit" via the May 2026 widening) also clears so the user can pivot to a brand-new financial action mid-pending.
 - **Wired into**: `test-bot.controller.ts`, `telegram.controller.ts`, `whatsapp.controller.ts` — same code shape in each, ~50 LOC per controller. The legacy `_needs:'crop'` branch is preserved as a fallback below the new unified branch so old code keeps working.
 - **Known limitation**: when the agent auto-resolves a plot from conversation context and the user contradicts it in the next message, the existing value blocks the override (the merge only fills NULL slots). Edge case — doesn't affect normal flows.
+
+### Admin AI Training — auto-flag + bulk feedback (May 22)
+- `/admin → AI Training → Logs` adds the **"⚠️ Sospechosas (auto-flag)"** filter alongside Todos/Sin revisar/Revisados. Server-side query in `GET /admin/api/ai-training/logs?suspicious=true` matches: empty response, "no entendí" / "no encontré" / "me faltan" / "no pude" / "fallback" / "sin reconocer" in response_text, processing_time_ms > 8000, or confidence < 0.5.
+- Each row has a checkbox. Header checkbox toggles all. **"Marcar OK" / "Marcar Mal"** bulk buttons hit `PATCH /admin/api/ai-training/logs/bulk-feedback` (body `{ ids: number[], was_correct: boolean }`) and update many rows in one query. Live counter "(N seleccionados)" between the buttons.
+- Each row that matches the suspicious heuristic shows a **⚠️** chip next to the date column, regardless of which filter is active — so you can spot bad rows even in the "Todos" view.
+- Suggested workflow: weekly, filter "Sospechosas" → bulk-mark obvious mistakes → click "Promover" on edge cases that need a training example.
 
 ### Harvest Loads
 - `harvest_crop` accepts optional `loads[]` (per-truck: driver_name, weight_kg, destination?, destinatario?, truck_plate?, humidity_pct?, quality_metrics?). Only driver+weight required.
