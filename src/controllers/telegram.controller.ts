@@ -1516,7 +1516,11 @@ async function processTextMessage(
           }
         }
         delete (merged as Record<string, unknown>)._needs;
-        const cmdResult = await agronomyHandler.handleCommand(merged, userId, user, settings);
+        // Route through DomainRouter so any tool (agronomy, stock, livestock,
+        // financial, etc.) can be re-executed via the unified pending path —
+        // not just agronomy.
+        const routed = await domainRouter.routeCommand(merged, userId, user, settings);
+        const cmdResult = routed ?? { messages: ['No pude completar el registro. Probá de nuevo.'] };
         if (cmdResult.sideEffects?.setPendingActivity) {
           const next = cmdResult.sideEffects.setPendingActivity;
           pendingActStore.set(phone, {

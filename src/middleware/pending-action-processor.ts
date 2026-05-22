@@ -47,6 +47,19 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
   const slotCtx = deriveSlotContext(pending.command);
   const extracted = extractSlots(text, slotCtx);
 
+  // Single-slot fallback: when only one slot is missing and the SlotExtractor
+  // couldn't pull anything (or pulled the wrong thing), treat a short message
+  // as the answer to that slot directly. E.g. pending.missing=['product']
+  // (asked "¿qué vacuna?") and user replies "aftosa" — the regex needs "con
+  // aftosa" to match. This fallback handles bare-word answers.
+  const missing = pending.missing ?? [];
+  if (missing.length === 1 && extracted[missing[0] as SlotName] == null) {
+    const cleaned = text.trim();
+    if (cleaned.length > 0 && cleaned.length <= 60 && /^[A-Za-záéíóúñ0-9][\wáéíóúñ\s.,-]*$/i.test(cleaned)) {
+      (extracted as Record<string, unknown>)[missing[0]] = cleaned;
+    }
+  }
+
   // Merge extracted into pending.data WITHOUT overwriting slots already filled
   // — unless the new value is for a slot in `missing` (then the merge IS the
   // whole point). The "no overwrite" rule prevents an extractor from clobbering

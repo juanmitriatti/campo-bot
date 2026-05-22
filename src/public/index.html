@@ -1524,12 +1524,17 @@
               <option value="">Todos</option>
               <option value="false">Sin revisar</option>
               <option value="true">Revisados</option>
+              <option value="suspicious">⚠️ Sospechosas (auto-flag)</option>
             </select>
+            <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="bulkMarkSelected(true)">✓ Marcar OK</button>
+            <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="bulkMarkSelected(false)">✗ Marcar Mal</button>
+            <span id="bulk-count" style="font-size:12px;color:var(--text-muted);"></span>
           </div>
           <div style="overflow-x:auto;">
             <table>
               <thead>
                 <tr>
+                  <th><input type="checkbox" id="bulk-select-all" onclick="toggleBulkSelectAll(this)"></th>
                   <th>Fecha</th>
                   <th>Mensaje</th>
                   <th>Respuesta IA</th>
@@ -1540,7 +1545,7 @@
                 </tr>
               </thead>
               <tbody id="ai-logs-table-body">
-                <tr><td colspan="7"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>
+                <tr><td colspan="8"><div class="loading"><div class="spinner"></div> Cargando...</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -4392,14 +4397,18 @@
       if (resetOffset) aiLogsState.offset = 0;
       var filter = document.getElementById('ai-logs-filter').value;
       var url = '/admin/api/ai-training/logs?limit=' + aiLogsState.limit + '&offset=' + aiLogsState.offset;
-      if (filter) url += '&reviewed=' + filter;
+      if (filter === 'suspicious') {
+        url += '&suspicious=true';
+      } else if (filter) {
+        url += '&reviewed=' + filter;
+      }
       apiFetch(url).then(function(data) {
         if (!data) return;
         aiLogsState.total = data.total || 0;
         updateAiLogsPagination();
         var tbody = document.getElementById('ai-logs-table-body');
         if (!data.logs || data.logs.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">Sin logs</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">Sin logs</td></tr>';
           return;
         }
         tbody.innerHTML = data.logs.map(function(l) {
@@ -4435,8 +4444,15 @@
           var userParts = [l.user_name, l.user_last_name].filter(Boolean).join(' ');
           var userLabel = userParts || l.user_email || ('#' + (l.user_id || '?'));
           var userCell = '<span title="' + escapeHtml(l.user_email || '') + '">' + escapeHtml(userLabel) + '</span>';
+          // Auto-flag chip: visual cue when this row matches the suspicious heuristic.
+          var sus = (!l.response_text || l.response_text === '' ||
+                     /no entend|no encontr|me falta|me faltan|no pude|cancelar para salir|fall(é|o)|fallback|sin reconocer/i.test(l.response_text || '') ||
+                     (l.processing_time_ms != null && l.processing_time_ms > 8000) ||
+                     (l.confidence != null && l.confidence < 0.5));
+          var susChip = sus ? '<span title="auto-flag: respuesta vacía / no entendí / lenta / confianza baja" style="color:var(--warning);font-weight:700;margin-right:4px;">⚠️</span>' : '';
           return '<tr>' +
-            '<td style="white-space:nowrap;">' + dateStr + '</td>' +
+            '<td><input type="checkbox" class="bulk-row-check" data-log-id="' + l.id + '" onclick="updateBulkCount()"></td>' +
+            '<td style="white-space:nowrap;">' + susChip + dateStr + '</td>' +
             '<td style="max-width:250px;overflow:hidden;white-space:pre-wrap;word-break:break-word;vertical-align:top;min-width:250px;">' + escapeHtml(l.message_text || '') + '</td>' +
             '<td style="max-width:400px;overflow:auto;text-overflow:clip;font-size:12px;white-space:pre-wrap;word-break:break-word;vertical-align:top;min-width:250px;"><div style="max-height:120px;overflow:auto;display:block;">' + responseStr + '</div></td>' +
             '<td style="max-width:160px;font-size:11px;word-break:break-word;vertical-align:top;">' + '<code style="font-size:11px;">' + intentStr + '</code>' + modeBadge + toolCallsStr + '</td>' +
@@ -4454,6 +4470,34 @@
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ was_correct: correct })
       }).then(function() { loadAiTrainingLogs(); });
+    }
+
+    function toggleBulkSelectAll(chk) {
+      var checks = document.querySelectorAll('.bulk-row-check');
+      checks.forEach(function(c) { c.checked = chk.checked; });
+      updateBulkCount();
+    }
+    function updateBulkCount() {
+      var checked = document.querySelectorAll('.bulk-row-check:checked').length;
+      var el = document.getElementById('bulk-count');
+      if (el) el.textContent = checked > 0 ? '(' + checked + ' seleccionados)' : '';
+    }
+    function bulkMarkSelected(correct) {
+      var checks = document.querySelectorAll('.bulk-row-check:checked');
+      var ids = Array.prototype.slice.call(checks).map(function(c) { return parseInt(c.getAttribute('data-log-id'), 10); });
+      if (ids.length === 0) { alert('Seleccioná al menos una fila.'); return; }
+      if (!confirm('Marcar ' + ids.length + ' conversaciones como ' + (correct ? 'correctas' : 'incorrectas') + '?')) return;
+      apiFetch('/admin/api/ai-training/logs/bulk-feedback', {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ids: ids, was_correct: correct })
+      }).then(function(r) {
+        if (r && r.updated != null) {
+          var el = document.getElementById('bulk-count');
+          if (el) el.textContent = '';
+          loadAiTrainingLogs();
+        }
+      });
     }
 
     function markLogIncorrect(logId) {

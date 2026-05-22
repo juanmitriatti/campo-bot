@@ -64,9 +64,31 @@ export class StockHandler {
     const quantity = cmd.quantity as number;
     const unit = cmd.unit as string;
 
-    if (!product) return { messages: ['Necesito el nombre del producto. Ej: "cargué 500lt de glifosato"'] };
-    if (!quantity || quantity <= 0) return { messages: ['Necesito la cantidad. Ej: "cargué 500lt de glifosato"'] };
-    if (!unit) return { messages: ['Necesito la unidad. Ej: "cargué 500lt de glifosato"'] };
+    // Unified pending-action guard. When the user says "Cargá stock" without
+    // specifying product/quantity/unit, persist the partial cmd and let the
+    // SlotExtractor merge the next message. Same pattern as fertilization.
+    const missing: string[] = [];
+    if (!product) missing.push('product');
+    if (!quantity || quantity <= 0) missing.push('quantity');
+    if (!unit) missing.push('unit');
+    if (missing.length > 0) {
+      const askParts: string[] = [];
+      if (missing.includes('product')) askParts.push('¿qué producto?');
+      if (missing.includes('quantity')) askParts.push('¿qué cantidad?');
+      if (missing.includes('unit')) askParts.push('¿qué unidad? (lt, kg, bolsas...)');
+      const askPrompt = `📦 Cargar stock — me faltan datos: ${askParts.join(' ')}`;
+      return {
+        messages: [askPrompt],
+        sideEffects: {
+          setPendingActivity: {
+            command: 'add_stock',
+            data: { ...cmd },
+            missing,
+            askPrompt,
+          },
+        },
+      };
+    }
 
     const { item, movement, created } = await stockService.addStock(userId, product, quantity, unit, {
       fieldName: cmd.fieldName as string,

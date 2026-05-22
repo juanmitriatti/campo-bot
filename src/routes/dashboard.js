@@ -2704,11 +2704,28 @@ router.get("/api/ai-training/logs", async (req, res) => {
     const offset = parseInt(req.query.offset) || 0;
     const reviewed = req.query.reviewed; // 'true', 'false', or unset
 
+    const suspicious = req.query.suspicious === 'true';
     let whereClause = `WHERE cl.ai_used = true`;
     if (reviewed === 'true') {
       whereClause += ` AND cl.was_correct IS NOT NULL`;
     } else if (reviewed === 'false') {
       whereClause += ` AND cl.was_correct IS NULL`;
+    }
+    // Auto-flag heuristic: conversations where the bot likely failed.
+    // - Response empty or null (agent timeout / silent fallback)
+    // - Response contains "no entendí" / "no encontré" / "me faltan" / "no pude" / "cancelar"
+    // - Processing time > 8s (cold cache / slow Anthropic)
+    // - Confidence < 0.5 (low-quality intent)
+    // The query is intentionally broad — we want to surface candidates, not
+    // hide false positives. Admin still labels each manually.
+    if (suspicious) {
+      whereClause += ` AND (
+        cl.response_text IS NULL
+        OR cl.response_text = ''
+        OR cl.response_text ~* '(no entend|no encontr|me falta|me faltan|no pude|cancelar para salir|fall(é|o)|fallback|sin reconocer)'
+        OR (cl.processing_time_ms IS NOT NULL AND cl.processing_time_ms > 8000)
+        OR (cl.confidence IS NOT NULL AND cl.confidence < 0.5)
+      )`;
     }
 
     const countQuery = `SELECT COUNT(*)::int AS total FROM conversation_logs cl ${whereClause}`;
@@ -2760,6 +2777,30 @@ router.patch("/api/ai-training/logs/:id/feedback", async (req, res) => {
   } catch (error) {
     console.error("Error saving feedback:", error);
     logError('admin-api', 'FEEDBACK_SAVE', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Bulk-mark multiple logs in one call. Body: { ids: number[], was_correct: bool }
+router.patch("/api/ai-training/logs/bulk-feedback", async (req, res) => {
+  try {
+    const { ids, was_correct } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "ids[] requerido" });
+    }
+    if (was_correct === undefined) {
+      return res.status(400).json({ error: "was_correct requerido" });
+    }
+    const numericIds = ids.map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n));
+    if (numericIds.length === 0) return res.status(400).json({ error: "ids no numéricos" });
+    const result = await pool.query(
+      `UPDATE conversation_logs SET was_correct = $1 WHERE id = ANY($2::int[]) RETURNING id`,
+      [was_correct, numericIds],
+    );
+    res.json({ updated: result.rowCount, ids: result.rows.map((r) => r.id) });
+  } catch (error) {
+    console.error("Error bulk feedback:", error);
+    logError('admin-api', 'BULK_FEEDBACK', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

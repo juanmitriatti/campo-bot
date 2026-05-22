@@ -2450,15 +2450,29 @@ export class AgronomyHandler {
         // save an empty event and hallucinate crop from active. Now we detect
         // the gap and ask the user, persisting the partial command in
         // pendingActStore so the next message merges via the SlotExtractor.
-        if (cmd.command === 'log_spraying' || cmd.command === 'log_fertilization') {
+        //
+        // Required-slot rules per activity type:
+        //   spraying:      product + plot + quantity
+        //   fertilization: product + plot + quantity
+        //   tillage:       plot + (implement OR product)   (qty optional)
+        //   irrigation:    plot + quantity                 (mm)
+        {
           const missing: string[] = [];
-          if (!cmd.product) missing.push('product');
+          const needsProduct = cmd.command === 'log_spraying' || cmd.command === 'log_fertilization';
+          const needsQuantity = cmd.command === 'log_spraying' || cmd.command === 'log_fertilization' || cmd.command === 'log_irrigation';
+          const needsImplementOrProduct = cmd.command === 'log_tillage';
+          if (needsProduct && !cmd.product) missing.push('product');
+          if (needsImplementOrProduct && !cmd.implement && !cmd.product) missing.push('product');
           if (!cmd.plotName && !cmd.fieldName) missing.push('plot');
-          if (!cmd.quantity) missing.push('quantity');
+          if (needsQuantity && !cmd.quantity) missing.push('quantity');
           if (missing.length > 0) {
             const askParts: string[] = [];
-            if (missing.includes('product')) askParts.push('¿qué producto?');
-            if (missing.includes('quantity')) askParts.push('¿qué cantidad?');
+            if (missing.includes('product')) {
+              askParts.push(needsImplementOrProduct ? '¿con qué implemento o producto?' : '¿qué producto?');
+            }
+            if (missing.includes('quantity')) {
+              askParts.push(cmd.command === 'log_irrigation' ? '¿cuántos mm?' : '¿qué cantidad?');
+            }
             if (missing.includes('plot')) askParts.push('¿en qué lote?');
             const askPrompt = `🧪 ${actLabel} — me faltan datos: ${askParts.join(' ')}`;
             return {

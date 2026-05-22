@@ -780,6 +780,27 @@ export class LivestockHandler {
     const healthType = cmd.healthType as string;
     if (!healthType) return { messages: ['Necesito el tipo de evento sanitario (vacunación, desparasitación, tratamiento).'] };
 
+    // Required-slot guard (unified pending-action pattern). vacunación and
+    // desparasitación need the disease/vaccine name to be meaningful — without
+    // it we'd save a hollow "Vacunación: ???" row.
+    const needsDisease = healthType === 'vacunacion' || healthType === 'desparasitacion';
+    if (needsDisease && !cmd.diseaseOrVaccine) {
+      const askPrompt = healthType === 'vacunacion'
+        ? '💉 ¿Contra qué vacuna fue? (ej: aftosa, brucelosis, IBR)'
+        : '💊 ¿Con qué antiparasitario? (ej: ivermectina, doramectina)';
+      return {
+        messages: [askPrompt],
+        sideEffects: {
+          setPendingActivity: {
+            command: 'log_health_event',
+            data: { ...cmd },
+            missing: ['product'],
+            askPrompt,
+          },
+        },
+      };
+    }
+
     const loc = await this.resolveEventLocationOrAsk(cmd, userId);
     if ('error' in loc) return { messages: [loc.error] };
 
