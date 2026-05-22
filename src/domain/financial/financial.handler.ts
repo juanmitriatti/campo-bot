@@ -332,6 +332,26 @@ export class FinancialHandler {
       }
     }
 
+    // ── 1.5 Defensive type override (belt-and-suspenders for the agent prompt). ──
+    // If the original user message contains an unambiguous income/expense verb
+    // and the agent picked the OPPOSITE type (usually via stale inherit), force
+    // the correct type. The prompt should catch this 99% of the time but a
+    // defensive guard here prevents user-visible "asked about sales, got
+    // expenses" failures.
+    const rawText = (cmd.originalText as string | undefined) ?? (cmd.text as string | undefined) ?? '';
+    if (rawText) {
+      const lower = rawText.toLowerCase();
+      const hasIncomeVerb = /\b(vend[ií]|cobr[eé]|ingres[eéo]|entr[oó]|factur[eé]|recib[ií]|ventas?|facturaci[oó]n)\b/.test(lower);
+      const hasExpenseVerb = /\b(gast[eé]|pagu[eé]|compr[eé]|abon[eé]|gastos?)\b/.test(lower);
+      if (hasIncomeVerb && !hasExpenseVerb && cmd.type === 'expenses') {
+        console.log(`[financial_report] OVERRIDE: user message "${rawText.slice(0, 60)}" implies incomes but agent set expenses → forcing incomes`);
+        cmd.type = 'incomes';
+      } else if (hasExpenseVerb && !hasIncomeVerb && cmd.type === 'incomes') {
+        console.log(`[financial_report] OVERRIDE: user message "${rawText.slice(0, 60)}" implies expenses but agent set incomes → forcing expenses`);
+        cmd.type = 'expenses';
+      }
+    }
+
     // ── 2. Legacy shortcuts (preserve existing behavior) ──
     const fieldName = cmd.fieldName as string | null;
     const plotName = cmd.plotName as string | null;
@@ -735,6 +755,26 @@ export class FinancialHandler {
 
     if (expenseCatMatch.kind === 'needs-confirmation') {
       const payload = encodePendingExpensePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
+      const body = `¿En qué categoría va este gasto de $${Number(data.amount).toLocaleString('es-AR')}?`;
+      // Buttons cap at 3 visible on WhatsApp. When the user has more than 3
+      // categories we switch to an interactive list (up to 10 rows) so they
+      // see all options, not just the most-used 2 + "+ Otra".
+      if (expenseCatMatch.suggestions.length > 3) {
+        const rows = expenseCatMatch.suggestions.map(c => ({
+          id: `cat_pick_exp_${payload}_${c.id}`,
+          title: c.name.slice(0, 24),
+        }));
+        rows.push({ id: `cat_new_exp_${payload}`, title: '+ Otra' });
+        return {
+          messages: [],
+          interactive: {
+            type: 'list' as const,
+            body,
+            buttonText: 'Elegir categoría',
+            sections: [{ title: 'Tus categorías', rows }],
+          },
+        };
+      }
       const buttons = expenseCatMatch.suggestions.map(c => ({
         id: `cat_pick_exp_${payload}_${c.id}`,
         title: c.name,
@@ -744,7 +784,7 @@ export class FinancialHandler {
         messages: [],
         interactive: {
           type: 'buttons' as const,
-          body: `¿En qué categoría va este gasto de $${Number(data.amount).toLocaleString('es-AR')}?`,
+          body,
           buttons,
         },
       };
@@ -988,6 +1028,23 @@ export class FinancialHandler {
 
     if (incomeCatMatch.kind === 'needs-confirmation') {
       const payload = encodePendingIncomePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
+      const body = `¿En qué categoría va este ingreso de $${Number(data.amount).toLocaleString('es-AR')}?`;
+      if (incomeCatMatch.suggestions.length > 3) {
+        const rows = incomeCatMatch.suggestions.map(c => ({
+          id: `cat_pick_inc_${payload}_${c.id}`,
+          title: c.name.slice(0, 24),
+        }));
+        rows.push({ id: `cat_new_inc_${payload}`, title: '+ Otra' });
+        return {
+          messages: [],
+          interactive: {
+            type: 'list' as const,
+            body,
+            buttonText: 'Elegir categoría',
+            sections: [{ title: 'Tus categorías', rows }],
+          },
+        };
+      }
       const buttons = incomeCatMatch.suggestions.map(c => ({
         id: `cat_pick_inc_${payload}_${c.id}`,
         title: c.name,
@@ -997,7 +1054,7 @@ export class FinancialHandler {
         messages: [],
         interactive: {
           type: 'buttons' as const,
-          body: `¿En qué categoría va este ingreso de $${Number(data.amount).toLocaleString('es-AR')}?`,
+          body,
           buttons,
         },
       };

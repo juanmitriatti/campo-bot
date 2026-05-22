@@ -26,6 +26,28 @@ const CROP_SYNONYMS: Record<string, string> = {
   cotton: 'algodón', algodon: 'algodón',
   rye: 'centeno',
 };
+/**
+ * Reject placeholder strings the agent sometimes emits when it doesn't know a
+ * value (despite the prompt forbidding them). Treats them as if the param were
+ * absent so the handler triggers its pending-action flow instead of saving
+ * literal garbage like a category called "NEWCATEGORY".
+ */
+const PLACEHOLDER_TOKENS = new Set([
+  'newcategory', 'new_category', 'new category', 'new',
+  '<unknown>', 'unknown', 'desconocido', 'desconocida',
+  '?', '??', '???',
+  'cultivo', 'crop', 'producto', 'product',
+  'categoria', 'categoría', 'category',
+  'ninguna', 'ninguno', 'none', 'null', 'undefined',
+  'sin definir', 'sin especificar', 'placeholder',
+]);
+export function isPlaceholderCategory(input: unknown): boolean {
+  if (typeof input !== 'string') return false;
+  const trimmed = input.trim().toLowerCase();
+  if (!trimmed) return true;
+  return PLACEHOLDER_TOKENS.has(trimmed);
+}
+
 export function normalizeCropName(input: unknown): unknown {
   if (typeof input !== 'string') return input;
   const lower = input.trim().toLowerCase();
@@ -285,8 +307,13 @@ export class AgentResponseMapper {
     }
 
     if (amount > 0) {
-      const rawCategory = typeof input.category === 'string' ? input.category.trim() : '';
-      const categoryMatch = typeof input.category_match === 'string' ? input.category_match : undefined;
+      let rawCategory = typeof input.category === 'string' ? input.category.trim() : '';
+      let categoryMatch = typeof input.category_match === 'string' ? input.category_match : undefined;
+      // Reject agent-emitted placeholders before normalization (see income mapper for rationale).
+      if (isPlaceholderCategory(rawCategory)) {
+        rawCategory = '';
+        categoryMatch = undefined;
+      }
 
       // When the agent omits both category and category_match, it means "ask the user" →
       // pass category='' and no category_match so CategoryService shows the picker buttons.
@@ -386,8 +413,15 @@ export class AgentResponseMapper {
     }
 
     if (amount > 0) {
-      const rawCategory = typeof input.category === 'string' ? input.category.trim() : '';
-      const categoryMatch = typeof input.category_match === 'string' ? input.category_match : undefined;
+      let rawCategory = typeof input.category === 'string' ? input.category.trim() : '';
+      let categoryMatch = typeof input.category_match === 'string' ? input.category_match : undefined;
+      // Reject agent-emitted placeholder strings ("NEWCATEGORY", "new", etc.).
+      // If the agent didn't actually know the category, we want the system to
+      // ask the user via CategoryService — not save a literal "NEWCATEGORY".
+      if (isPlaceholderCategory(rawCategory)) {
+        rawCategory = '';
+        categoryMatch = undefined;
+      }
       // When agent omits category → '' → CategoryService will show picker buttons.
       // When category is provided, normalize against known constants; keep original if not found.
       const category = rawCategory

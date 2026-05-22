@@ -15,7 +15,10 @@ const DEFAULT_EXPENSE_CATEGORIES: readonly string[] = EXPENSE_CATEGORIES;
 const DEFAULT_INCOME_CATEGORIES: readonly string[] = INCOME_CATEGORIES;
 
 export const TOP_N_FOR_PROMPT = 8;
-export const SUGGESTIONS_FOR_BUTTONS = 7;
+// 9 categorías + 1 "+ Otra" = 10 filas. Es el límite de WhatsApp interactive list.
+// Antes era 7, pero solo se usaban como botones (max 3 visible). Ahora la UI
+// usa LIST cuando hay más de 3, por lo que aprovechamos el espacio.
+export const SUGGESTIONS_FOR_BUTTONS = 9;
 
 export class CategoryService {
   constructor(private readonly repo: CategoryRepository) {}
