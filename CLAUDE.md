@@ -140,7 +140,17 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 
 ### Sow Crop
 - `sow_crop` accepts optional `hectares` param for partial-plot sowing → `plot_crops.sowed_hectares`
-- **Missing-crop pending state** (structural): `crop` is OPTIONAL in `sow_crop`/`harvest_crop` schema. Prompt orders agent to OMIT the param when the user didn't name a crop and explicitly bans inferring from active_crop / past sowings. When the handler sees `isPlaceholder(cmd.crop)`, it returns `setPendingActivity({ ...cmd, _needs: 'crop' })` + asks "🌱 ¿Qué cultivo sembraste?". The 3 controllers (whatsapp/telegram/test-bot) intercept the next message: `extractCropFromText()` (in `src/utils/crops.ts`) tries to map it to a canonical crop. On match → re-runs `handleCommand` with merged data (which may then ask for plot via the existing flow). On miss → re-asks. Cancel and other-intent inputs still escape via the existing `isCancelIntent` / `parseCommandOnly` checks.
+- **Missing-crop pending state** (structural): `crop` is OPTIONAL in `sow_crop`/`harvest_crop` schema. Prompt orders agent to OMIT the param when the user didn't name a crop and explicitly bans inferring from active_crop / past sowings. When the handler sees `isPlaceholder(cmd.crop)`, it returns `setPendingActivity({ ...cmd, _needs: 'crop', missing: ['crop'], askPrompt: '...' })` + asks "🌱 ¿Qué cultivo sembraste?". The 3 controllers (whatsapp/telegram/test-bot) intercept the next message: `extractCropFromText()` (in `src/utils/crops.ts`) tries to map it to a canonical crop. On match → re-runs `handleCommand` with merged data. On miss → re-asks. The new unified `missing[]` array (added May 2026) also routes through `processPendingAction` — see "Unified Pending Action System" below.
+
+### Unified Pending Action System (May 2026)
+- **Goal**: replace 4 ad-hoc multi-turn helpers (`_needs:'crop'`, `expense_flow`, `extractAmountCorrection`, agent `respond_text`) with one mechanism that absorbs all of them.
+- **Architecture**: handler detects required-missing slots → returns `setPendingActivity({ command, data, missing: ['product','plot','quantity'], askPrompt })`. Controller intercepts the next user message, runs `extractSlots(text)` from `src/middleware/slot-extractor.ts` (12 slot types: amount, category, plot, field, crop, quantity, unit, unit_price, product, currency, count, hectares — reuses `normalizarMonto`, `detectarCategoria`, `extractCropFromText`, `stripPlotCorrectionPrefix`), merges into `pending.data`, and either (a) re-routes the command when all required slots are filled or (b) re-asks for what's still missing via the auto-generated Spanish prompt.
+- **Files**: `src/middleware/slot-extractor.ts` (extractors, ~170 LOC), `src/middleware/pending-action-processor.ts` (merge + re-prompt logic, ~110 LOC), `src/middleware/pending-activities.ts` (storage shape with `missing?: string[]` + `askPrompt?: string`).
+- **Opted-in handlers**: `log_spraying`, `log_fertilization` (guard at top of case in `agronomy.handler.ts` returns pending when product/plot/quantity missing). `sow_crop` and `harvest_crop` retain the legacy `_needs:'crop'` path AND also include `missing: ['crop']` so both controller branches work.
+- **Plot fallback in expense/income flow**: `validatePlotAsync` in `src/middleware/flows/field-step-helpers.ts` now calls `extractSlots()` as a LAST RESORT before failing — catches "era todo de maíz del lote B1" (gives plot=B1 + stashes `_extractedCategory='Maíz'` for later use).
+- **Escape patterns**: any `isCancelIntent(text)` clears the pending. Any `detectsFinancialIntent(text)` (now also matches "cargué/registré + qty+unit" via the May 2026 widening) also clears so the user can pivot to a brand-new financial action mid-pending.
+- **Wired into**: `test-bot.controller.ts`, `telegram.controller.ts`, `whatsapp.controller.ts` — same code shape in each, ~50 LOC per controller. The legacy `_needs:'crop'` branch is preserved as a fallback below the new unified branch so old code keeps working.
+- **Known limitation**: when the agent auto-resolves a plot from conversation context and the user contradicts it in the next message, the existing value blocks the override (the merge only fills NULL slots). Edge case — doesn't affect normal flows.
 
 ### Harvest Loads
 - `harvest_crop` accepts optional `loads[]` (per-truck: driver_name, weight_kg, destination?, destinatario?, truck_plate?, humidity_pct?, quality_metrics?). Only driver+weight required.
@@ -268,6 +278,9 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/middleware/conversation-engine.ts` — Flow FSM (startFlow, processFlowMessage, clearFlow). Includes `extractRenameCorrection()` for mid-flow name corrections
 - `src/middleware/pending-field-location.ts` — 3-option field location (city/map/share)
 - `src/middleware/pending-plot-area.ts` — Queue-based hectares assignment
+- `src/middleware/slot-extractor.ts` — **Unified slot extractors** for 12 slot types. Single source for amount/category/plot/field/crop/quantity/unit/unit_price/product/currency/count/hectares. Reuses existing helpers. Used by `pending-action-processor` and `validatePlotAsync` fallback.
+- `src/middleware/pending-action-processor.ts` — Merges extracted slots into a pending action's `data`, returns updated pending (when slots still missing) OR null (when ready to execute). Auto-generates Spanish ask-prompts for remaining slots.
+- `src/middleware/pending-activities.ts` — Store + `PendingActivity` type with `missing?: string[]` + `askPrompt?: string`. 5-min TTL.
 
 ### Controllers + Routes
 - `src/controllers/whatsapp.controller.ts` — WhatsApp webhook (with channel-verification gate when REQUIRE_VERIFIED_CHANNEL=true)
