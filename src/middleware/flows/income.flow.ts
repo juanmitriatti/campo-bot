@@ -23,7 +23,7 @@ const financialService = new FinancialService(new FinancialRepository());
 const steps: FlowStep[] = [
   {
     field: 'amount',
-    prompt: '¿Cuánto cobraste? (ej: 500000, 1.5 palos, 3000 dólares)',
+    prompt: '¿Cuánto fue? (ej: 500000, 1.5M, 1 palo y medio, USD 3000)',
     validate: (input) => {
       const amount = normalizarMonto(input);
       if (!amount || amount <= 0) return { error: 'No entendí el monto. Probá con un número, ej: 500000 o 1.5 palos' };
