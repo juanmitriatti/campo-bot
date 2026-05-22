@@ -2588,6 +2588,40 @@ router.get("/api/audit-log", async (req, res) => {
 
 // ─── AI Training endpoints ───────────────────────────────────────────────────
 
+/**
+ * Accepts both shapes for `expected_output`:
+ *   - Legacy single-tool: `{ intent: 'log_expense', amount, ... }`
+ *   - Multi-tool:        `{ tool_calls: [{ tool, input }, ...] }` (1..N calls)
+ * Returns `{ ok: true }` on success, `{ ok: false, error }` on rejection.
+ */
+function validateExpectedOutput(output) {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) {
+    return { ok: false, error: 'expected_output must be a JSON object' };
+  }
+  if (Array.isArray(output.tool_calls)) {
+    if (output.tool_calls.length === 0) {
+      return { ok: false, error: 'expected_output.tool_calls cannot be empty' };
+    }
+    for (let i = 0; i < output.tool_calls.length; i++) {
+      const c = output.tool_calls[i];
+      if (!c || typeof c !== 'object') {
+        return { ok: false, error: `tool_calls[${i}] must be an object` };
+      }
+      if (typeof c.tool !== 'string' || c.tool.trim() === '') {
+        return { ok: false, error: `tool_calls[${i}].tool must be a non-empty string` };
+      }
+      if (c.input != null && (typeof c.input !== 'object' || Array.isArray(c.input))) {
+        return { ok: false, error: `tool_calls[${i}].input must be an object` };
+      }
+    }
+    return { ok: true };
+  }
+  if (typeof output.intent !== 'string' || output.intent.trim() === '') {
+    return { ok: false, error: 'expected_output must have either a non-empty "intent" string or a "tool_calls" array' };
+  }
+  return { ok: true };
+}
+
 // List training examples with pagination + intent filter
 router.get("/api/ai-training/examples", async (req, res) => {
   try {
@@ -2632,6 +2666,8 @@ router.post("/api/ai-training/examples", async (req, res) => {
     if (!input || !expected_output || !intent) {
       return res.status(400).json({ error: "input, expected_output, and intent are required" });
     }
+    const validation = validateExpectedOutput(expected_output);
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
 
     const result = await pool.query(
       `INSERT INTO ai_training_examples (input, expected_output, intent, is_active, source)
@@ -2653,6 +2689,10 @@ router.put("/api/ai-training/examples/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { input, expected_output, intent, is_active } = req.body;
+    if (expected_output !== undefined && expected_output !== null) {
+      const validation = validateExpectedOutput(expected_output);
+      if (!validation.ok) return res.status(400).json({ error: validation.error });
+    }
 
     const result = await pool.query(
       `UPDATE ai_training_examples

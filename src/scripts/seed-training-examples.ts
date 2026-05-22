@@ -130,6 +130,121 @@ const EXAMPLES: Example[] = [
     expected_output: { intent: 'add_plot', confidence: 0.95, plotName: 'este', field: 'la esperanza' },
     intent: 'add_plot',
   },
+
+  // ─── Compound actions (multi-tool) ─────────────────────────────────────────
+  // Teach the agent that one user turn can fire N tool calls. Without these
+  // demonstrations Haiku copies the single-tool pattern and silently drops
+  // the second/third action of a compound message.
+
+  // 2× log_income (granos diferentes)
+  {
+    input: 'vendí 25 toneladas de maíz a 900 dólares y 10 toneladas de soja a 1000 dólares',
+    expected_output: {
+      tool_calls: [
+        { tool: 'log_income', input: { category: 'Maíz', quantity: 25, unit: 'tn', unit_price: 900, currency: 'USD', description: 'venta maíz' } },
+        { tool: 'log_income', input: { category: 'Soja', quantity: 10, unit: 'tn', unit_price: 1000, currency: 'USD', description: 'venta soja' } },
+      ],
+    },
+    intent: 'log_income,log_income',
+  },
+
+  // 2× log_expense (insumos diferentes)
+  {
+    input: 'compré 20 bolsas de urea a 8000 cada una y 100 litros de glifosato a 950 el litro',
+    expected_output: {
+      tool_calls: [
+        { tool: 'log_expense', input: { category: 'fertilizantes', expense_type: 'insumo', product: 'urea', quantity: 20, unit: 'bolsas', unit_price: 8000, amount: 160000, currency: 'ARS', description: 'urea' } },
+        { tool: 'log_expense', input: { category: 'agroquimicos', expense_type: 'insumo', product: 'glifosato', quantity: 100, unit: 'lt', unit_price: 950, amount: 95000, currency: 'ARS', description: 'glifosato' } },
+      ],
+    },
+    intent: 'log_expense,log_expense',
+  },
+
+  // 2× sow_crop (lotes diferentes)
+  {
+    input: 'sembré soja en el lote A1 y maíz en el lote B2',
+    expected_output: {
+      tool_calls: [
+        { tool: 'sow_crop', input: { crop: 'soja', plot: 'A1' } },
+        { tool: 'sow_crop', input: { crop: 'maíz', plot: 'B2' } },
+      ],
+    },
+    intent: 'sow_crop,sow_crop',
+  },
+
+  // 2× harvest_crop (cosechas con rinde)
+  {
+    input: 'cosechamos soja en A1 con 4000 kg por hectárea y maíz en B2 con 8500 kg/ha',
+    expected_output: {
+      tool_calls: [
+        { tool: 'harvest_crop', input: { crop: 'soja', plot: 'A1', yield_kg_per_ha: 4000 } },
+        { tool: 'harvest_crop', input: { crop: 'maíz', plot: 'B2', yield_kg_per_ha: 8500 } },
+      ],
+    },
+    intent: 'harvest_crop,harvest_crop',
+  },
+
+  // sow_crop + log_expense (actividad + costo asociado)
+  {
+    input: 'sembré soja en el lote norte y la semilla costó 500 mil pesos',
+    expected_output: {
+      tool_calls: [
+        { tool: 'sow_crop', input: { crop: 'soja', plot: 'norte' } },
+        { tool: 'log_expense', input: { category: 'semillas', expense_type: 'insumo', product: 'semilla soja', amount: 500000, currency: 'ARS', description: 'semilla soja', plot: 'norte' } },
+      ],
+    },
+    intent: 'sow_crop,log_expense',
+  },
+
+  // log_spraying + log_fertilization (dos actividades agronómicas en distintos lotes)
+  {
+    input: 'fumigué el lote A1 con glifosato y fertilicé el B2 con urea',
+    expected_output: {
+      tool_calls: [
+        { tool: 'log_spraying', input: { product: 'glifosato', product_type: 'herbicida', plot: 'A1' } },
+        { tool: 'log_fertilization', input: { product: 'urea', plot: 'B2' } },
+      ],
+    },
+    intent: 'log_spraying,log_fertilization',
+  },
+
+  // add_field + add_plot + sow_crop (creación + actividad, 3 tools)
+  {
+    input: 'agregá el campo La Esperanza en Pergamino, lote A de 50 hectáreas y sembré soja en A',
+    expected_output: {
+      tool_calls: [
+        { tool: 'add_field', input: { name: 'La Esperanza', city: 'Pergamino' } },
+        { tool: 'add_plot', input: { plotName: 'A', hectares: 50, field: 'La Esperanza' } },
+        { tool: 'sow_crop', input: { crop: 'soja', plot: 'A', field: 'La Esperanza' } },
+      ],
+    },
+    intent: 'add_field,add_plot,sow_crop',
+  },
+
+  // 2× add_livestock (categorías de hacienda diferentes)
+  {
+    input: 'ingresaron 50 vacas y 20 novillos al feedlot principal',
+    expected_output: {
+      tool_calls: [
+        { tool: 'add_livestock', input: { category: 'vaca', count: 50, location_type: 'feedlot', location_name: 'principal' } },
+        { tool: 'add_livestock', input: { category: 'novillo', count: 20, location_type: 'feedlot', location_name: 'principal' } },
+      ],
+    },
+    intent: 'add_livestock,add_livestock',
+  },
+
+  // Multi-rainfall (varios días en un mensaje)
+  {
+    input: 'llovió 20mm el lunes, 35mm el martes y 12mm el miércoles en La Esperanza',
+    expected_output: {
+      tool_calls: [
+        { tool: 'log_rainfall', input: { amount: 20, field: 'La Esperanza', event_date_relative: 'lunes' } },
+        { tool: 'log_rainfall', input: { amount: 35, field: 'La Esperanza', event_date_relative: 'martes' } },
+        { tool: 'log_rainfall', input: { amount: 12, field: 'La Esperanza', event_date_relative: 'miércoles' } },
+      ],
+    },
+    intent: 'log_rainfall,log_rainfall,log_rainfall',
+  },
 ];
 
 async function seed() {

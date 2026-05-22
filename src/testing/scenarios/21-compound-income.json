@@ -1,0 +1,14 @@
+{
+  "name": "compound-income",
+  "description": "Agent handles compound action: TWO log_income calls in one message (regression test for the bug where only the second sale was registered)",
+  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "steps": [
+    {
+      "send": "vendí 25 toneladas de maíz a 900 dólares y 10 toneladas de soja a 1000 dólares",
+      "expect": {
+        "responseContains": ["maíz", "soja"],
+        "dbRowCount": { "table": "incomes", "count": 2 }
+      }
+    }
+  ]
+}

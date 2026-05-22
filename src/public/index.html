@@ -1580,10 +1580,13 @@
           <div id="add-example-form" style="display:none;padding:16px 20px;border-bottom:1px solid var(--border);">
             <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
               <div><label style="font-size:12px;display:block;margin-bottom:4px;">Input</label><input id="new-ex-input" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);width:300px;" placeholder="Mensaje del usuario"></div>
-              <div><label style="font-size:12px;display:block;margin-bottom:4px;">Intent</label><input id="new-ex-intent" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);width:160px;" placeholder="log_expense"></div>
-              <div><label style="font-size:12px;display:block;margin-bottom:4px;">Output JSON</label><input id="new-ex-output" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);width:300px;" placeholder='{"intent":"log_expense","confidence":1.0}'></div>
+              <div><label style="font-size:12px;display:block;margin-bottom:4px;">Intent</label><input id="new-ex-intent" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);width:160px;" placeholder="log_expense (o log_income,log_income para compuesto)"></div>
+              <div style="flex:1;min-width:300px;"><label style="font-size:12px;display:block;margin-bottom:4px;">Output JSON</label><textarea id="new-ex-output" rows="4" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);width:100%;font-family:monospace;font-size:12px;" placeholder='Single: {"intent":"log_expense","amount":50000,"category":"urea"}&#10;Compound: {"tool_calls":[{"tool":"log_income","input":{"category":"Maíz","quantity":25,"unit":"tn","unit_price":900,"currency":"USD"}},{"tool":"log_income","input":{"category":"Soja","quantity":10,"unit":"tn","unit_price":1000,"currency":"USD"}}]}'></textarea></div>
               <button class="btn btn-primary" onclick="saveNewExample()">Guardar</button>
               <button class="btn" onclick="document.getElementById('add-example-form').style.display='none'">Cancelar</button>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:8px;">
+              💡 Para acciones compuestas (vendí X y vendí Y, sembré A y B), usá la forma <code>{"tool_calls":[{"tool":"...","input":{...}}, ...]}</code> con 1..N llamadas. Cada ejemplo se enseña al agente como UN solo turno con N tool_use blocks.
             </div>
           </div>
           <div style="overflow-x:auto;">

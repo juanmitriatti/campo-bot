@@ -8,6 +8,25 @@ interface TrainingExample {
   intent: string;
 }
 
+interface MultiToolCall {
+  tool: string;
+  input?: Record<string, unknown>;
+}
+
+/**
+ * `expected_output` may take two shapes:
+ *   - Legacy single-tool: `{ intent, confidence?, ...toolInput }`
+ *   - Multi-tool:        `{ tool_calls: [{ tool, input }, ...] }` (1..N calls,
+ *                         enables compound-action demos like "vendí X y vendí Y").
+ */
+function isMultiToolOutput(output: Record<string, unknown>): output is { tool_calls: MultiToolCall[] } {
+  const tc = output?.tool_calls;
+  if (!Array.isArray(tc) || tc.length === 0) return false;
+  return tc.every(
+    t => t != null && typeof t === 'object' && typeof (t as MultiToolCall).tool === 'string',
+  );
+}
+
 export class FewShotService {
   /**
    * Load active training examples from DB. Order is **deterministic per day**
@@ -30,12 +49,14 @@ export class FewShotService {
   }
 
   /**
-   * Format examples as alternating user/assistant message pairs
-   * for injection into the Anthropic messages array.
+   * Legacy JSON format (used by intent-extractor when AGENT_ENABLED=false).
+   * Multi-tool examples are skipped because the JSON extractor models only
+   * ONE intent per assistant turn.
    */
   formatAsMessages(examples: TrainingExample[]): Anthropic.MessageParam[] {
     const messages: Anthropic.MessageParam[] = [];
     for (const ex of examples) {
+      if (isMultiToolOutput(ex.expected_output)) continue;
       messages.push({ role: 'user', content: ex.input });
       messages.push({
         role: 'assistant',
@@ -47,39 +68,61 @@ export class FewShotService {
 
   /**
    * Format examples as tool_use message triplets for the Agent pipeline.
-   * Each example becomes:
+   *
+   * Single-tool example becomes:
    *   1. user: "gasté 50mil en gasoil"
    *   2. assistant: [{ type: 'tool_use', name: 'log_expense', input: {...} }]
    *   3. user: [{ type: 'tool_result', tool_use_id: '...', content: 'OK' }]
    *
-   * The expected_output JSONB has { intent, amount, category, ... } —
-   * 'intent' becomes the tool name, the rest becomes tool input.
+   * Multi-tool example becomes ONE assistant turn with N tool_use blocks +
+   * ONE matching user turn with N tool_result blocks (canonical Anthropic
+   * shape for multiple tools fired in a single response). Teaches the agent
+   * to emit compound actions like "vendí 25 tn de maíz a 900 USD y 10 tn de
+   * soja a 1000 USD" → 2× log_income in one turn.
    */
   formatAsToolUseMessages(examples: TrainingExample[]): Anthropic.MessageParam[] {
     const messages: Anthropic.MessageParam[] = [];
     for (const ex of examples) {
-      const { intent, confidence: _c, ...toolInput } = ex.expected_output as Record<string, unknown>;
-      const toolName = (typeof intent === 'string' ? intent : ex.intent) || 'unknown';
-      const fakeId = `fewshot_${ex.id}`;
+      const toolUseBlocks: Array<{ type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }> = [];
+      const toolResultBlocks: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = [];
 
-      messages.push({ role: 'user', content: ex.input });
-      messages.push({
-        role: 'assistant',
-        content: [{
+      if (isMultiToolOutput(ex.expected_output)) {
+        ex.expected_output.tool_calls.forEach((c, i) => {
+          const id = `fewshot_${ex.id}_${i}`;
+          toolUseBlocks.push({
+            type: 'tool_use',
+            id,
+            name: c.tool,
+            input: (c.input ?? {}) as Record<string, unknown>,
+          });
+          toolResultBlocks.push({
+            type: 'tool_result',
+            tool_use_id: id,
+            content: 'OK',
+          });
+        });
+      } else {
+        const { intent, confidence: _c, ...toolInput } = ex.expected_output as Record<string, unknown>;
+        const toolName = (typeof intent === 'string' ? intent : ex.intent) || 'unknown';
+        const id = `fewshot_${ex.id}`;
+        toolUseBlocks.push({
           type: 'tool_use',
-          id: fakeId,
+          id,
           name: toolName,
           input: toolInput,
-        }],
-      });
-      messages.push({
-        role: 'user',
-        content: [{
+        });
+        toolResultBlocks.push({
           type: 'tool_result',
-          tool_use_id: fakeId,
+          tool_use_id: id,
           content: 'OK',
-        }],
-      });
+        });
+      }
+
+      if (toolUseBlocks.length === 0) continue;
+
+      messages.push({ role: 'user', content: ex.input });
+      messages.push({ role: 'assistant', content: toolUseBlocks });
+      messages.push({ role: 'user', content: toolResultBlocks });
     }
     return messages;
   }
