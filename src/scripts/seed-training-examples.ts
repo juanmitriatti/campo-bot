@@ -148,6 +148,20 @@ const EXAMPLES: Example[] = [
     intent: 'log_income,log_income',
   },
 
+  // 2× log_income — uno con precio + uno sin precio (compound parcial)
+  // Esta demo es CRÍTICA: enseña al agente a NO dropear el ítem sin precio
+  // y a NO atribuir el precio del segundo ítem al primero.
+  {
+    input: 'vendí 5 toneladas de soja y 1 tonelada de maíz a 400 dólares',
+    expected_output: {
+      tool_calls: [
+        { tool: 'log_income', input: { category: 'Soja', quantity: 5, unit: 'tn', currency: 'USD', description: 'venta soja' } },
+        { tool: 'log_income', input: { category: 'Maíz', quantity: 1, unit: 'tn', unit_price: 400, currency: 'USD', description: 'venta maíz' } },
+      ],
+    },
+    intent: 'log_income,log_income',
+  },
+
   // 2× log_expense (insumos diferentes)
   {
     input: 'compré 20 bolsas de urea a 8000 cada una y 100 litros de glifosato a 950 el litro',
