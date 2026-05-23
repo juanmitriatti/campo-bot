@@ -307,9 +307,21 @@ export class LivestockHandler {
       corralId: group.corral_id,
     });
 
+    // bulkMode: when this add happened inside a compound AND the group got
+    // saved without a plot (only field auto-resolved), emit savedRecordsWithoutPlot
+    // so the post-compound bulk-plot prompt offers reassignment with one tap.
+    // Without this, the user sees "📍 — (la esperanza)" and has no way to
+    // assign a plot retroactively.
+    const bulkExtras = ((cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true
+      && group.plot_id == null
+      && group.corral_id == null
+      && group.field_id)
+      ? { savedRecordsWithoutPlot: [{ kind: 'livestock' as const, id: group.id as number, fieldId: group.field_id as number }] }
+      : {};
+
     return buttons.length > 0
-      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons } }
-      : { messages: [body] };
+      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons }, ...bulkExtras }
+      : { messages: [body], ...bulkExtras };
   }
 
   // ========================
@@ -804,19 +816,32 @@ export class LivestockHandler {
     const loc = await this.resolveEventLocationOrAsk(cmd, userId);
     if ('error' in loc) return { messages: [loc.error] };
 
+    const inBulk = (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true;
+
+    let resolvedLoc: { plotId: number | null; corralId: number | null; label: string; knownGroupCount?: number };
     if ('needsLocationPick' in loc) {
-      const payload = encodeLivestockPayload({ cmd, step: 'pick_loc' });
-      return {
-        messages: [],
-        interactive: {
-          type: 'buttons' as const,
-          body: '¿En qué ubicación lo registramos?',
-          buttons: loc.options.map(o => ({
-            id: `lv_pick_loc_health_${payload}_${o.plotId ?? 'null'}_${o.corralId ?? 'null'}`,
-            title: `${o.label} (${o.groupCount})`.slice(0, 24),
-          })),
-        },
-      };
+      // bulkMode: auto-pick FIRST option (most populated group usually) so
+      // the event saves. Without this, in a compound the location-pick
+      // interactive stays in lastInteractive but the event is never persisted.
+      if (inBulk && loc.options.length > 0) {
+        const first = loc.options[0];
+        resolvedLoc = { plotId: first.plotId, corralId: first.corralId, label: first.label, knownGroupCount: first.groupCount };
+      } else {
+        const payload = encodeLivestockPayload({ cmd, step: 'pick_loc' });
+        return {
+          messages: [],
+          interactive: {
+            type: 'buttons' as const,
+            body: '¿En qué ubicación lo registramos?',
+            buttons: loc.options.map(o => ({
+              id: `lv_pick_loc_health_${payload}_${o.plotId ?? 'null'}_${o.corralId ?? 'null'}`,
+              title: `${o.label} (${o.groupCount})`.slice(0, 24),
+            })),
+          },
+        };
+      }
+    } else {
+      resolvedLoc = { plotId: loc.plotId, corralId: loc.corralId, label: loc.label, knownGroupCount: 'knownGroupCount' in loc ? loc.knownGroupCount : undefined };
     }
 
     const category = cmd.category as string | null;
@@ -827,17 +852,20 @@ export class LivestockHandler {
     const veterinarian = cmd.implement as string | null;
 
     if (animalsAffected == null && !(cmd as Record<string, unknown>).__animalsAffectedSkipped) {
-      return this.buildAnimalsAffectedAskResponse(
-        cmd,
-        { plotId: loc.plotId, corralId: loc.corralId, label: loc.label },
-        'knownGroupCount' in loc ? loc.knownGroupCount : undefined,
-        'health',
-      );
+      // bulkMode: don't ask — save with animals_affected=null. The user can edit later.
+      if (!inBulk) {
+        return this.buildAnimalsAffectedAskResponse(
+          cmd,
+          { plotId: resolvedLoc.plotId, corralId: resolvedLoc.corralId, label: resolvedLoc.label },
+          resolvedLoc.knownGroupCount,
+          'health',
+        );
+      }
     }
 
     const event = await saveDomainEvent(userId, {
-      plotId: loc.plotId,
-      corralId: loc.corralId,
+      plotId: resolvedLoc.plotId,
+      corralId: resolvedLoc.corralId,
       eventType: 'health_event',
       eventDate: cmd.eventDate || null,
       productType: healthType,
@@ -861,7 +889,7 @@ export class LivestockHandler {
     }
     if (doseQuantity) lines.push(`  💊 ${doseQuantity} ${doseUnit || ''}/animal`);
     if (veterinarian) lines.push(`  👨‍⚕️ ${veterinarian}`);
-    lines.push(`  📍 ${loc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
+    lines.push(`  📍 ${resolvedLoc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
     if (cmd.notes) lines.push(`  📝 ${cmd.notes}`);
     if (cmd.eventDate) {
       const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
@@ -874,8 +902,8 @@ export class LivestockHandler {
     const body = lines.join('\n');
     const buttons = buildPostActionButtons('health', {
       eventId: event?.id as number | undefined,
-      plotId: loc.plotId,
-      corralId: loc.corralId,
+      plotId: resolvedLoc.plotId,
+      corralId: resolvedLoc.corralId,
     });
     return buttons.length > 0
       ? { messages: [], interactive: { type: 'buttons' as const, body, buttons } }
@@ -926,19 +954,29 @@ export class LivestockHandler {
     const loc = await this.resolveEventLocationOrAsk(cmd, userId);
     if ('error' in loc) return { messages: [loc.error] };
 
+    const inBulk = (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true;
+
+    let resolvedLoc: { plotId: number | null; corralId: number | null; label: string; knownGroupCount?: number };
     if ('needsLocationPick' in loc) {
-      const payload = encodeLivestockPayload({ cmd, step: 'pick_loc' });
-      return {
-        messages: [],
-        interactive: {
-          type: 'buttons' as const,
-          body: '¿En qué ubicación lo registramos?',
-          buttons: loc.options.map(o => ({
-            id: `lv_pick_loc_repro_${payload}_${o.plotId ?? 'null'}_${o.corralId ?? 'null'}`,
-            title: `${o.label} (${o.groupCount})`.slice(0, 24),
-          })),
-        },
-      };
+      if (inBulk && loc.options.length > 0) {
+        const first = loc.options[0];
+        resolvedLoc = { plotId: first.plotId, corralId: first.corralId, label: first.label, knownGroupCount: first.groupCount };
+      } else {
+        const payload = encodeLivestockPayload({ cmd, step: 'pick_loc' });
+        return {
+          messages: [],
+          interactive: {
+            type: 'buttons' as const,
+            body: '¿En qué ubicación lo registramos?',
+            buttons: loc.options.map(o => ({
+              id: `lv_pick_loc_repro_${payload}_${o.plotId ?? 'null'}_${o.corralId ?? 'null'}`,
+              title: `${o.label} (${o.groupCount})`.slice(0, 24),
+            })),
+          },
+        };
+      }
+    } else {
+      resolvedLoc = { plotId: loc.plotId, corralId: loc.corralId, label: loc.label, knownGroupCount: 'knownGroupCount' in loc ? loc.knownGroupCount : undefined };
     }
 
     const category = cmd.category as string | null;
@@ -947,17 +985,19 @@ export class LivestockHandler {
     const method = cmd.method as string | null;
 
     if (animalsAffected == null && !(cmd as Record<string, unknown>).__animalsAffectedSkipped) {
-      return this.buildAnimalsAffectedAskResponse(
-        cmd,
-        { plotId: loc.plotId, corralId: loc.corralId, label: loc.label },
-        'knownGroupCount' in loc ? loc.knownGroupCount : undefined,
-        'repro',
-      );
+      if (!inBulk) {
+        return this.buildAnimalsAffectedAskResponse(
+          cmd,
+          { plotId: resolvedLoc.plotId, corralId: resolvedLoc.corralId, label: resolvedLoc.label },
+          resolvedLoc.knownGroupCount,
+          'repro',
+        );
+      }
     }
 
     const event = await saveDomainEvent(userId, {
-      plotId: loc.plotId,
-      corralId: loc.corralId,
+      plotId: resolvedLoc.plotId,
+      corralId: resolvedLoc.corralId,
       eventType: 'repro_event',
       eventDate: cmd.eventDate || null,
       productType: reproType,
@@ -979,7 +1019,7 @@ export class LivestockHandler {
     }
     if (sireInfo) lines.push(`  🐂 ${sireInfo}`);
     if (method) lines.push(`  🔬 Método: ${method}`);
-    lines.push(`  📍 ${loc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
+    lines.push(`  📍 ${resolvedLoc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
     if (cmd.notes) lines.push(`  📝 ${cmd.notes}`);
     if (cmd.eventDate) {
       const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
@@ -992,8 +1032,8 @@ export class LivestockHandler {
     const body = lines.join('\n');
     const buttons = buildPostActionButtons('repro', {
       eventId: event?.id as number | undefined,
-      plotId: loc.plotId,
-      corralId: loc.corralId,
+      plotId: resolvedLoc.plotId,
+      corralId: resolvedLoc.corralId,
     });
     return buttons.length > 0
       ? { messages: [], interactive: { type: 'buttons' as const, body, buttons } }
