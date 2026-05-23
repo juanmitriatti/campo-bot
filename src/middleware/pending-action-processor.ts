@@ -84,12 +84,44 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
     filledByThisTurn.push(key);
   }
 
+  // ALSO merge "adjacent" extracted slots that aren't in `missing` but are
+  // commonly needed to compute it. Example: pending.missing=['amount'] for a
+  // partial income, user replies "550 USD por tonelada" → extractor pulls
+  // unit_price+currency (not amount). If we don't merge these, the cross-fill
+  // below (qty*unit_price → amount) has nothing to work with. We still
+  // respect the no-overwrite rule.
+  const ADJACENT_SLOTS: SlotName[] = ['unit_price', 'quantity', 'unit', 'currency', 'amount'];
+  for (const slot of ADJACENT_SLOTS) {
+    if (missing.includes(slot)) continue; // already handled above
+    const value = (extracted as Record<string, unknown>)[slot];
+    if (value == null) continue;
+    const targetKeys = slotToCmdKeys(slot);
+    for (const target of targetKeys) {
+      if (data[target] == null) data[target] = value;
+    }
+  }
+
   const stillMissing = missing.filter((s) => !filledByThisTurn.includes(s as SlotName)) as SlotName[];
 
   // Special case: when amount + quantity + unit_price are all in flight, the
   // handler may treat unit_price as the missing slot but the user provides
   // amount directly. Cross-fill.
   if (stillMissing.includes('amount' as SlotName) && data.amount != null) {
+    stillMissing.splice(stillMissing.indexOf('amount' as SlotName), 1);
+  }
+
+  // Cross-fill #2 — CRITICAL: when a partial financial action queued with
+  // `missing: ['amount']` (the income_partial / expense_partial path) gets a
+  // reply like "550 USD por tonelada", the slot-extractor pulls unit_price
+  // but NOT amount. If the partial already had `quantity` (from the original
+  // compound message), we can compute amount = quantity * unit_price right
+  // here and treat 'amount' as filled. Without this, the bot saves `$0` for
+  // the partial then re-asks plot — silent data corruption seen in QA suite
+  // qa-broad-coverage-30 tests A04 + E22.
+  if (stillMissing.includes('amount' as SlotName)
+      && typeof data.quantity === 'number' && data.quantity > 0
+      && typeof data.unit_price === 'number' && data.unit_price > 0) {
+    data.amount = Math.round(data.quantity * data.unit_price * 100) / 100;
     stillMissing.splice(stillMissing.indexOf('amount' as SlotName), 1);
   }
 

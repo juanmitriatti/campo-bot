@@ -1582,7 +1582,15 @@ router.post('/', async (req: Request, res: Response) => {
         return;
       }
       const actInterruptCmd = intentClassifier.parseCommandOnly(text);
-      if (actInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
+      // Guard: if the pending is for a financial action (log_income/log_expense)
+      // and it's WAITING for amount/price/quantity, the user's reply WILL look
+      // like a financial intent ("550 USD por tonelada"). Don't escape — let
+      // the pending-action processor merge the slots. Without this guard the
+      // pending gets silently cleared and the partial saves as $0.
+      const expectsFinancialSlot = pendingAct.missing
+        && (pendingAct.command === 'log_income' || pendingAct.command === 'log_expense')
+        && pendingAct.missing.some(s => s === 'amount' || s === 'quantity' || s === 'unit_price' || s === 'unit');
+      if (!expectsFinancialSlot && (actInterruptCmd || intentClassifier.detectsFinancialIntent(text))) {
         pendingActStore.clear(phone);
         // Fall through to normal processing
       } else if (pendingAct.missing && pendingAct.missing.length > 0) {

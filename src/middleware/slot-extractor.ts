@@ -199,13 +199,28 @@ function extractCount(text: string): number | null {
  * palos" → 1_500_000).
  */
 function extractUnitPrice(text: string): number | null {
-  // "a X (palos|mil|dólares|...)"
-  const m = text.match(
+  // Form 1: "a X (palos|mil|dólares|...)" — the canonical "a 8 mil c/u" / "a 550 USD".
+  // Form 2: bare "X UNIT por TN/KG/BOLSA" / "X UNIT c/u" / "X UNIT cada una" — common
+  // pending-answer phrasing where the user replies just "550 USD por tonelada"
+  // without the leading "a". Without this the partial-financial queue answers
+  // got an empty unit_price → silent $0 saves.
+  const formAt = text.match(
     /\ba\s+([\d.,]+(?:\s*(?:mil|lucas?|palos?|millones|millon))?)\s*(?:la\s+tn|la\s+tonelada|el\s+kg|c\/u|cada\s+una?|por\s+unidad|d[oó]lares?|usd|pesos?)?/i,
   );
-  if (!m) return null;
-  const n = normalizarMonto(m[1]);
-  return n && n > 0 ? n : null;
+  if (formAt) {
+    const n = normalizarMonto(formAt[1]);
+    if (n && n > 0) return n;
+  }
+  // Form 2 — must include a "por X" / "c/u" / "cada uno" qualifier so we don't
+  // misread a single dollar amount (which is the TOTAL, not per-unit).
+  const formBare = text.match(
+    /^([\d.,]+(?:\s*(?:mil|lucas?|palos?|millones|millon))?)\s*(?:d[oó]lares?|usd|pesos?)?\s*(?:por\s+(?:tonelada|tn|kg|kilo|bolsa|unidad|cabeza|cabezas|cada\s+\w+)|c\/u|cada\s+(?:una?|kg|tonelada|bolsa|cabeza))/i,
+  );
+  if (formBare) {
+    const n = normalizarMonto(formBare[1]);
+    if (n && n > 0) return n;
+  }
+  return null;
 }
 
 /**
