@@ -118,13 +118,15 @@ export class CompoundExecutor {
     // Force skip confirmation for expenses/incomes in compound context
     const noConfirmSettings = { ...settings, confirm_before_save: false };
 
-    // Bulk mode: ANY compound action with 2+ writes triggers bulk semantics —
-    // handlers should NOT stop the train asking for missing plot/category/etc.
-    // Instead they save what they can (at field or user level), defer prompts,
-    // and the post-compound bulk-plot handler asks ONCE at the end.
-    // Previously this was financialWriteCount>=2 which left non-financial
-    // compounds (e.g. spray + sow + observation) stopping at the first flow.
-    const bulkMode = actionable.length >= 2;
+    // Bulk mode: ANY compound action with 2+ items (actionable OR partials)
+    // triggers bulk semantics — handlers should NOT stop the train asking for
+    // missing plot/category/etc. Counting partials too is critical: when a
+    // compound is [complete income, partial income], without including the
+    // partial we'd get bulkMode=false, and the complete income would trigger
+    // its own "¿En qué lote?" flow that eats the user's next reply intended
+    // for the partial. That defeats the serial queue. See test
+    // 06_2x_venta_one_no_price in qa-repeated-combos-20.
+    const bulkMode = actionable.length + partials.length >= 2;
 
     // Pre-execution consolidation: when the agent fires multiple log_rainfall
     // calls for the SAME field on different dates ("8mm el lunes, 14mm el martes,
