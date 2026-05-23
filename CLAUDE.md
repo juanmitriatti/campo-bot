@@ -37,6 +37,8 @@ Orchestrated by `src/services/intent-classifier.ts`:
 
 Kill switches: `AGENT_ENABLED=true` → agent | `AGENT_ENABLED=false` + `AI_INTENT_ENABLED=true` → JSON | Both false → regex-only
 
+**Compound actions**: when the agent fires N tool_use blocks in one response, `CompoundExecutor` (`src/domain/compound-executor.ts`) runs them sequentially inside `withTransaction`. When `actionable.length >= 2`, **bulkMode** is set → handlers MUST NOT block (no `startFlow` / no `setPendingActivity` / no `setPendingObservation`). The executor strips any blocking side-effects + suppresses the handler's own prompt + adds one short "💡 No pude completar X" advisory + keeps going. After the loop, the post-compound bulk-plot prompt asks ONCE for plot assignment for any records saved at field-level. See "Compound Actions & bulkMode" below for the full contract.
+
 ## AI Agent Disambiguation Rules
 
 These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool selection:
@@ -161,6 +163,54 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - **Wired into**: `test-bot.controller.ts`, `telegram.controller.ts`, `whatsapp.controller.ts` — same code shape in each, ~50 LOC per controller. The legacy `_needs:'crop'` branch is preserved as a fallback below the new unified branch so old code keeps working.
 - **Known limitation**: when the agent auto-resolves a plot from conversation context and the user contradicts it in the next message, the existing value blocks the override (the merge only fills NULL slots). Edge case — doesn't affect normal flows.
 
+### Compound Actions & bulkMode (May 23)
+
+**Contract**: when the agent fires N tools in one response, `CompoundExecutor` runs them all, NEVER stops mid-stream, and asks ONCE at the end for any missing plot assignment. Three layers:
+
+**1. CompoundExecutor (`src/domain/compound-executor.ts`)**:
+- `bulkMode = actionable.length >= 2` (any 2+ compound — NOT just 2+ financial; lowered May 23).
+- Wraps every step in `withTransaction`. One throw → rollback all + "❌ No pude registrar todas las acciones..." message.
+- Pre-execution: dedup identical steps, reorder writes-before-reads, consolidate same-field rainfalls into `log_rainfall_batch`.
+- Per step, passes `bulkMode` to handlers: `routeCommand(cmd, ..., bulkMode)` → router sets `cmd._bulkMode = true` so any downstream handler can read it.
+- **Interceptor (safety net)**: if any handler returns `startFlow`/`setPendingActivity`/`setPendingObservation` in bulkMode → strip those side-effects, clear `response.messages` + `response.interactive` (which carried the blocking prompt), and inject one short `💡 No pude completar *<command>* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.` so the user sees what was skipped without losing the rest of the compound.
+- Post-loop: build the bulk-plot prompt if any `savedRecordsWithoutPlot[]` were collected (see §3 below). Also surfaces `income_partial`/`expense_partial` with a "💡 falta el precio de X" message + wires the FIRST partial into `setPendingActivity` so the user's next message completes it.
+
+**2. Handler-level bulkMode awareness (when present, saves at field-level)**:
+- `handleExpense` + `handleIncome` (`financial.handler.ts`): when `bulkMode && !plotId && fieldId`, save with `plot_id=null` + emit `savedFinanceWithoutPlot`. Confirm flow is force-disabled (`noConfirmSettings`).
+- `add_field` (`financial.handler.ts:2025+`): when `_bulkMode && city is ambiguous/missing`, create the field NOW (take first lookup match for city or skip city) instead of starting `field_flow`. Without this, onboarding compounds like "Tengo el campo X en Y..." were stuck — the field flow blocked subsequent plot/sow/etc. tools that depended on the field existing.
+- `log_observation` (`agronomy.handler.ts:3380+`): when `_bulkMode && multiple plots`, pass `allowNoPlot=true` to `saveObservation`, save at field-level + emit `savedRecordsWithoutPlot[{kind:'observation', id, fieldId}]`. The legacy "Indicá el lote" guard is bypassed only in this context.
+- Other agronomy/livestock/stock handlers don't yet have explicit bulkMode awareness — they fall back to the interceptor (record not saved, but compound continues).
+
+**3. Post-compound bulk-plot prompt (`HandlerResponse.savedRecordsWithoutPlot[]`)**:
+- Shape: `Array<{ kind: 'expense'|'income'|'activity'|'observation'|'scouting'|'livestock'|'rainfall'|'stock_movement'; id: number; fieldId: number }>`.
+- Legacy single-record `savedFinanceWithoutPlot` is kept for back-compat but new code emits the array.
+- When the loop ends with records collected AND the field has 2+ plots, the executor builds an interactive list/buttons message: `💡 Guardé N gastos + M ingresos + ... a nivel campo *X*. ¿A qué lote los asigno?` with one button per plot + "Dejar a nivel campo".
+- Button payload **V2** (`bap2_<base64url(byKindMap)>_<plotId>`) carries the record IDs grouped by kind. Decoded by `InteractiveRouter` → command `assign_bulk_plot` with `{plotId, records: {kind: number[]}}`.
+- `FinancialHandler.handleAssignBulkPlot`: dispatches across tables by kind: `expenses`, `incomes`, `domain_events`, `agro_observations`, `crop_scoutings`, `rainfall`, `livestock_groups`. user_id-scoped UPDATEs. Returns "✅ Asigné 2 ingresos + 1 gasto al *Lote A1*."
+- Legacy `bap_*` parser stays for in-flight buttons.
+
+**4. Partial financial in compound (`income_partial` / `expense_partial`)**:
+- `agent-response-mapper.mapIncome`/`mapExpense` returns `income_partial`/`expense_partial` when amount=0 AND no `quantity*unit_price` to compute from.
+- CompoundExecutor doesn't drop partials — it appends a `💡 No registré *<categoría>* (qty unit) — me falta el precio. Decímelo y lo guardo.` message AND wires the FIRST partial via `setPendingActivity({command:'log_income'|'log_expense', missing:['amount'], askPrompt:'¿Cuánto cobraste por X?'})`. The unified pending system handles the next message.
+- `log_income` + `log_expense` were added to `FINANCIAL_COMMANDS` in DomainRouter so the pending re-execution path works.
+
+**5. Critical mapper bugfix (May 23)**:
+- `agent-response-mapper.ts:246-253` filter that drops spurious `log_expense`/`log_income` when there's a sibling agro activity was too aggressive: it only checked `input.amount > 0` and dropped calls with `quantity+unit_price` (mapper would auto-compute later). Result: a 4-tool compound like "gasté + vendí 20tn maíz a 200 USD + fumigué + agregué ganado" lost the maíz income → `bulkMode=false` → expense triggered single-action plot flow → 0 writes. **Fix**: also keep when `qty>0 && unit_price>0` (computable). This was the silent killer for many tests.
+
+**Agent prompt rules wired to this (in `agent-prompt-builder.ts`)**:
+- **COMPLETITUD EN MENSAJES LARGOS** — counts verbs, demands one tool per verb, lists verbs to count, includes 4-tool + 5-tool CRÍTICO examples.
+- **COMPOUND CON UN ÍTEM SIN PRECIO** — proximity rule: a single price applies ONLY to the item immediately preceding it (not all items).
+- **EXCEPCIÓN COMPOUND** in ANTI-HALLUCINACIÓN — in compound, NEVER consolidate missing-data asks into a single respond_text. Emit one tool per verb (partials allowed).
+- **ONBOARDING DECLARATIVO** — "Tengo el campo X" / "Doy de alta" / "Arranco con" / "Cargá el campo" treated same as "agregar campo X". Forces add_field + add_plots_batch + activity in one turn. PROHIBIDO emitir solo add_field y abandonar las plots/actividades.
+- **HECTÁREAS POR LOTE** — heterogeneous list → hectares as aligned array; homogeneous → number.
+- **MAÍZ vs MANÍ** — explicit disambig because Haiku was mapping "maiz" (sin tilde) to "Maní".
+
+**Multi-tool few-shots** (see `seed-training-examples.ts`):
+- `expected_output` now supports `{tool_calls: [{tool, input}, ...]}` for N-tool demos.
+- `FewShotService.formatAsToolUseMessages` emits ONE assistant turn with N `tool_use` blocks + N matching `tool_result` blocks (canonical Anthropic multi-tool shape).
+- Seeded compound demos covering ranges from 2 to 5 tool calls across all domains (incomes, expenses, sow/harvest, spray/fertil, livestock, observation, scouting, rainfall, onboarding).
+- Daily rotation `ORDER BY md5(id::text || CURRENT_DATE::text)` — bump `AGENT_FEW_SHOT_LIMIT` (default 5, currently set to 18 locally) so more compound demos enter the daily rotation. Prod still at 5 — if compound miss-rate stays high, bump.
+
 ### Admin AI Training — auto-flag + bulk feedback (May 22)
 - `/admin → AI Training → Logs` adds the **"⚠️ Sospechosas (auto-flag)"** filter alongside Todos/Sin revisar/Revisados. Server-side query in `GET /admin/api/ai-training/logs?suspicious=true` matches: empty response, "no entendí" / "no encontré" / "me faltan" / "no pude" / "fallback" / "sin reconocer" in response_text, processing_time_ms > 8000, or confidence < 0.5.
 - Each row has a checkbox. Header checkbox toggles all. **"Marcar OK" / "Marcar Mal"** bulk buttons hit `PATCH /admin/api/ai-training/logs/bulk-feedback` (body `{ ids: number[], was_correct: boolean }`) and update many rows in one query. Live counter "(N seleccionados)" between the buttons.
@@ -283,8 +333,9 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/domain/feedlot/` — Feedlot/corral CRUD
 - `src/domain/auth/` — Auth + `ChannelVerificationService` (OTP/deep-link) + `AccountDeletionService` (soft-delete + PII release)
 - `src/domain/billing/` — Plans + `FeatureGate` + `PaymentProvider` interface + `MercadoPagoProvider` + `SubscriptionService`
-- `src/domain/router.ts` — **DomainRouter**: routes commands to handlers. New commands MUST be added to the appropriate `*_COMMANDS` set here or they will silently fail (return null)
-- `src/domain/compound-executor.ts` — Sequential execution of multiple tool calls inside a single `withTransaction` boundary; per-step throws → rollback all + user-facing apology message
+- `src/domain/router.ts` — **DomainRouter**: routes commands to handlers. New commands MUST be added to the appropriate `*_COMMANDS` set here or they will silently fail (return null). Also accepts optional `bulkMode` flag and writes it to `cmd._bulkMode` so any handler can read it.
+- `src/domain/compound-executor.ts` — Sequential execution inside `withTransaction`. Sets `bulkMode = actionable.length >= 2`. Has the bulkMode interceptor (strips blocking side-effects + suppresses prompts), collects `savedRecordsWithoutPlot[]` across kinds, surfaces partials, and builds the post-compound bulk-plot prompt with base64 `bap2_*` button payload.
+- `src/domain/interactive/interactive.router.ts` — Dispatches button callbacks to commands. `bap2_<base64>_<plotId>` → `assign_bulk_plot` with kind-grouped record ids. Legacy `bap_*` parser kept.
 
 ### Services & Middleware
 - `src/services/intent-classifier.ts` — Pipeline orchestrator
@@ -312,6 +363,9 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/testing/scenarios/*.json` — 18 test scenarios + `_setup.json` reusable sequences
 - `src/testing/qa-adversarial-30.ts` — 30 adversarial QA scenarios (run: `npx tsx src/testing/qa-adversarial-30.ts`)
 - `src/testing/qa-adversarial-advanced-40.ts` — 40 advanced adversarial scenarios (run: `npx tsx src/testing/qa-adversarial-advanced-40.ts`)
+- `src/testing/qa-compound-mixed-25.ts` — 25 multi-domain compound conversations (May 23)
+- `src/testing/qa-bulk-extended-20.ts` — 20 conversations verifying bulkMode interceptor across handlers (May 23)
+- `src/testing/qa-onboarding-25.ts` — 25 first-impression cases (resets to ZERO state between tests; verifies new-user onboarding works in ONE message)
 
 ### Config & Utils
 - `src/config/db.js` — `pool` (with AsyncLocalStorage hijack for transactions) + `withTransaction(fn)` helper
@@ -368,3 +422,20 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - Setup: 2 fields (La Esperanza + San Martin), 6 plots, 4 crops, livestock, stock warehouse
 - Categories: silent corruption (01-08), memory drift (09-16), temporal contradictions (17-22), entity collisions (23-30), cross-domain confusion (31-36), edge cases (37-40)
 - Last run: **73% pass rate** (29 PASS, 0 FAIL, 11 WARN)
+
+### QA Compound Mixed Testing (25 multi-domain conversations, May 23)
+- `npx tsx src/testing/qa-compound-mixed-25.ts` — 25 compounds each mixing 4+ different action domains (gastos, ingresos, actividades, hacienda, cosecha, monitoreos, stock).
+- 10 with complete data, 15 with partial. Verifies the compound executor + post-compound bulk-plot prompt + partial-pending wire end-to-end.
+- Last run: **14/25 (56%) PASS** — many fails are assertion-strict on substrings (bot says "Combustible" when test expected "gasoil"). Real pass-by-DB-writes is higher.
+
+### QA Bulk-Mode Extended Testing (20 conversations, May 23)
+- `npx tsx src/testing/qa-bulk-extended-20.ts` — 20 NEW compounds focused on verifying the bulkMode interceptor works for non-financial handlers (agronomy, livestock, stock).
+- 8 complete + 12 partial. Tests that the bot NEVER stops mid-compound (no flow, no pending in bulk).
+- Last run: **16/20 (80%) PASS** — 12/15 partials pass. Remaining fails are handler-level conflicts (crop mismatch, repro-no-bull) orthogonal to bulkMode.
+- Asserts a "graceful ask" response as PASS for partial cases (the agent asking for missing data IS acceptable UX).
+
+### QA Onboarding Testing (25 first-impression cases, May 23)
+- `npx tsx src/testing/qa-onboarding-25.ts` — 25 brand-new-user scenarios. **Each test resets to ZERO state** then sends ONE compound message creating field + plots + activities + livestock + stock from nothing.
+- Targets the most common onboarding patterns: "Tengo el campo X en Y con lotes A, B, C. Sembré soja en A".
+- Last run: **22/25 (88%) PASS** — best suite result. Average 0.8 fields + 1.5 plots + 1.7 records per single onboarding message.
+- Critical for first-impression UX: a new user can dump their entire setup in one message and the bot persists it cleanly.
