@@ -1984,7 +1984,10 @@ export class FinancialHandler {
         }
 
         const fieldName = (cmd.fieldName as string).trim();
-        const labelAdd = cmd.entityKeyword === 'campo' ? 'Campo' : (cmd.entityKeyword === 'parcela' ? 'Parcela' : 'Lote');
+        // Label default: 'Campo'. The earlier 'Lote' default was wrong for
+        // add_field (the user typed "campo X" but the bot replied "Lote X creado").
+        // 'Parcela' / 'Lote' overrides apply only when entityKeyword is set.
+        const labelAdd = cmd.entityKeyword === 'parcela' ? 'Parcela' : (cmd.entityKeyword === 'lote' ? 'Lote' : 'Campo');
 
         // Check if field already exists — ask user what to do (never silent overwrite)
         const existing = await this.service.getFieldByName(userId, fieldName);
@@ -2021,6 +2024,32 @@ export class FinancialHandler {
               suggestionKey: 'field_created',
             };
           }
+        }
+
+        // BULK MODE EXCEPTION (onboarding): in compound the user typed everything
+        // in one go — do NOT start the field_flow (it would block subsequent
+        // tools that depend on this field). Create the field NOW; if the user
+        // provided a city, take the FIRST candidate from the lookup. The
+        // post-compound flow can ask for the precise location later.
+        if ((cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true) {
+          const createdField = await this.service.getOrCreateField(userId, fieldName);
+          let cityMsg = '';
+          if (cmd.city) {
+            const lookup = localidadLookup.lookup(cmd.city as string);
+            if (lookup.matches.length > 0) {
+              const loc = lookup.matches[0];
+              await this.service.setFieldCity(userId, fieldName, loc.nombre, loc.provincia);
+              cityMsg = ` en *${formatLocation(loc.nombre, loc.provincia)}*`;
+            } else {
+              cityMsg = ` (ubicación "${cmd.city}" pendiente)`;
+            }
+          } else {
+            cityMsg = ' (sin ubicación todavía)';
+          }
+          return {
+            messages: [`📍 ${labelAdd} *${createdField.name}* creado${cityMsg}`],
+            suggestionKey: 'field_created',
+          };
         }
 
         // No city or non-exact match: start field_flow with name pre-filled

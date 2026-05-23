@@ -310,6 +310,38 @@ const EXAMPLES: Example[] = [
     intent: 'log_income,log_expense,log_spraying,add_livestock,log_observation',
   },
 
+  // ─── Onboarding declarativo (NEW — fixes "Tengo el campo X..." dropping plots) ───
+  // Without these, Haiku emits only add_field for "Tengo el campo X con lotes Y, Z. Sembré..."
+  // and drops the plots + activity. These demos teach the canonical 3-4 tool emission.
+
+  // Onboarding declarativo: "Tengo el campo X con lotes Y, Z. Sembré soja en Y"
+  {
+    input: 'Tengo el campo La Esperanza en Pergamino, con lotes Norte 150 ha, Sur 80 ha. Sembré soja en Norte',
+    expected_output: {
+      tool_calls: [
+        { tool: 'add_field', input: { name: 'La Esperanza', city: 'Pergamino' } },
+        { tool: 'add_plots_batch', input: { plotNames: ['Norte', 'Sur'], hectares: [150, 80], field: 'La Esperanza' } },
+        { tool: 'sow_crop', input: { crop: 'soja', plot: 'Norte', field: 'La Esperanza' } },
+      ],
+    },
+    intent: 'add_field,add_plots_batch,sow_crop',
+  },
+
+  // Onboarding completo: "Doy de alta campo X" + plots + sow + livestock + expense (5 tools)
+  {
+    input: 'Doy de alta campo Don Tito en Junín con lotes A 100 ha, B 150 ha, C 80 ha. Sembré soja en A, agregué 50 vacas Angus en C y gasté 80 mil en gasoil',
+    expected_output: {
+      tool_calls: [
+        { tool: 'add_field', input: { name: 'Don Tito', city: 'Junín' } },
+        { tool: 'add_plots_batch', input: { plotNames: ['A', 'B', 'C'], hectares: [100, 150, 80], field: 'Don Tito' } },
+        { tool: 'sow_crop', input: { crop: 'soja', plot: 'A', field: 'Don Tito' } },
+        { tool: 'add_livestock', input: { category: 'vaca', count: 50, breed: 'Angus', plot: 'C', field: 'Don Tito' } },
+        { tool: 'log_expense', input: { category: 'combustible', expense_type: 'insumo', product: 'gasoil', amount: 80000, currency: 'ARS', description: 'gasoil' } },
+      ],
+    },
+    intent: 'add_field,add_plots_batch,sow_crop,add_livestock,log_expense',
+  },
+
   // 4 tools — hacienda focus (weighing + repro + income + expense)
   {
     input: 'pesé 40 terneros con 250 kg promedio, inseminé 20 vacas con IATF, vendí 15 novillos a 1500 USD cada uno, compré 5 bolsas de antiparasitario por 80 mil',
