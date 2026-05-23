@@ -132,7 +132,7 @@ export class CompoundExecutor {
     // calls for the SAME field on different dates ("8mm el lunes, 14mm el martes,
     // 5mm anoche en La Esperanza"), collapse them into one log_rainfall_batch
     // call so the dedup logic doesn't reject day-2 and day-3.
-    actionable = consolidateSameFieldRainfalls(actionable);
+    actionable = await consolidateSameFieldRainfalls(actionable, userId);
 
     // Drop exact-duplicate steps (same command + same key params). The agent
     // sometimes fires the SAME tool twice in a single compound — Roberto's
@@ -648,7 +648,7 @@ function consolidateLivestockMessages(
  * this, the first call succeeds and the rest hit the same-day dedup or get noisy
  * "ya hay un registro" messages mid-compound.
  */
-function consolidateSameFieldRainfalls(actionable: ParseResult[]): ParseResult[] {
+async function consolidateSameFieldRainfalls(actionable: ParseResult[], userId: UserId): Promise<ParseResult[]> {
   const rainSteps: { idx: number; data: ParsedCommand }[] = [];
   actionable.forEach((r, idx) => {
     if (r.intent.type === 'command' && (r.intent.data as ParsedCommand).command === 'log_rainfall') {
@@ -656,6 +656,19 @@ function consolidateSameFieldRainfalls(actionable: ParseResult[]): ParseResult[]
     }
   });
   if (rainSteps.length < 2) return actionable;
+
+  // R02 fix: when none have field, try auto-resolve to user's single field.
+  const noneHaveField = rainSteps.every(s => !s.data.fieldName);
+  if (noneHaveField) {
+    try {
+      const { pool } = await import('../config/db.js');
+      const fr = await pool.query(`SELECT name FROM fields WHERE user_id=$1 AND deleted_at IS NULL`, [userId]);
+      if (fr.rows.length === 1) {
+        const singleField = String(fr.rows[0].name);
+        rainSteps.forEach(s => { s.data.fieldName = singleField; });
+      }
+    } catch { /* non-fatal */ }
+  }
 
   // Group by fieldName (must be set on ALL of them; if any lacks field, leave to
   // the post-execution consolidator that handles the ask-prompt path).

@@ -1635,12 +1635,24 @@ export const RAINFALL_REJECTED_DUPLICATE = { _rejected: 'duplicate_rainfall' };
 export async function saveRainfall(userId, mm, fieldId = null, rainfallDate = null) {
   const effectiveDate = rainfallDate || null; // null → CURRENT_DATE via SQL default
   const existing = await pool.query(
-    `SELECT id FROM rainfall
+    `SELECT id, millimeters FROM rainfall
      WHERE user_id = $1 AND COALESCE(field_id, 0) = COALESCE($2, 0)
        AND rainfall_date = COALESCE($3::date, CURRENT_DATE)`,
     [userId, fieldId, effectiveDate]
   );
-  if (existing.rows.length > 0) return RAINFALL_REJECTED_DUPLICATE;
+  // R01 fix: instead of rejecting duplicate, SUM the new mm into existing entry.
+  // Multiple rains the same day in same field are now aggregated (e.g. morning +
+  // afternoon = total daily mm). Also handles "30mm en S1 y 22mm en S2" when
+  // both plots belong to same field — the field-level total becomes 52mm.
+  if (existing.rows.length > 0) {
+    const prev = Number(existing.rows[0].millimeters);
+    const updated = prev + Number(mm);
+    const upd = await pool.query(
+      `UPDATE rainfall SET millimeters = $1 WHERE id = $2 RETURNING *`,
+      [updated, existing.rows[0].id]
+    );
+    return { ...upd.rows[0], _accumulated: true, _previous_mm: prev };
+  }
 
   if (effectiveDate) {
     const result = await pool.query(

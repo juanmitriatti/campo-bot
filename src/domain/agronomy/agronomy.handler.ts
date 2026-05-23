@@ -1536,13 +1536,16 @@ export class AgronomyHandler {
         const rainfallDate = cmd.eventDate ? String(cmd.eventDate) : null;
         const saved = await this.repo.saveRainfall(userId, mm, fieldId, rainfallDate);
 
-        // Handle dedup rejection
-        if (saved === RAINFALL_REJECTED_DUPLICATE) {
+        // R01 fix: dedup now accumulates (no more REJECTED). If the saved row has
+        // `_accumulated`, surface the new total to the user.
+        if (saved && (saved as any)._accumulated) {
           const dupLabel = fieldLabel || 'tu campo';
           const dateLabel = rainfallDate
             ? new Date(rainfallDate + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long', timeZone: 'America/Argentina/Buenos_Aires' })
             : 'hoy';
-          return { messages: [`🌧️ *${mm}mm* en *${dupLabel}* (${dateLabel}) — _ya estaba cargado, omitido_. Si querés corregir el monto, decime "borrar lluvia" y volvé a registrarla.`] };
+          const prev = (saved as any)._previous_mm;
+          const total = (saved as any).millimeters;
+          return { messages: [`🌧️ *+${mm}mm* en *${dupLabel}* (${dateLabel}) — acumulado: ${prev}mm + ${mm}mm = *${total}mm*`] };
         }
 
         let msg = `\ud83c\udf27\ufe0f Lluvia registrada: *${mm}mm*`;
@@ -1593,16 +1596,16 @@ export class AgronomyHandler {
         let saved = 0;
         for (const it of items) {
           const result = await this.repo.saveRainfall(userId, it.mm, field.id, it.date);
-          if (result === RAINFALL_REJECTED_DUPLICATE) {
-            const dateLabel = it.date
-              ? new Date(it.date + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short', timeZone: 'America/Argentina/Buenos_Aires' })
-              : 'hoy';
-            lines.push(`  • ${it.mm}mm el ${dateLabel} — _ya estaba cargado, omitido_`);
-            continue;
-          }
           const dateLabel = it.date
             ? new Date(it.date + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short', timeZone: 'America/Argentina/Buenos_Aires' })
             : 'hoy';
+          if (result && (result as any)._accumulated) {
+            const totalDay = (result as any).millimeters;
+            lines.push(`  • +${it.mm}mm el ${dateLabel} → total día: ${totalDay}mm`);
+            total += it.mm;
+            saved += 1;
+            continue;
+          }
           lines.push(`  • ${it.mm}mm el ${dateLabel}`);
           total += it.mm;
           saved += 1;
