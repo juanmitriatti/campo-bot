@@ -1031,7 +1031,7 @@ const COMMAND_PATTERNS = [
     extract: (m, _norm, original) => {
       const re = /(?:renombrar|cambiar\s+(?:el\s+)?nombre(?:\s+del?)?)\s+campo\s+(.+?)\s+(?:a|por)\s+(.+)/i;
       const cm = original ? original.match(re) : null;
-      return { oldName: (cm ? cm[1] : m[1]).trim(), newName: (cm ? cm[2] : m[2]).trim() };
+      return { oldName: (cm ? cm[1] : m[1]).trim(), newName: (cm ? cm[2] : m[2]).trim(), entityKeyword: 'campo' };
     },
   },
   // --- Renombrar lote ---
@@ -1151,9 +1151,10 @@ const COMMAND_PATTERNS = [
     },
   },
 
-  // --- Borrar último gasto/ingreso ---
-  { command: "delete_last", patterns: [/(?:borr(?:ar|a)|elimin(?:ar|a))\s+ultimo\s+gasto/] },
-  { command: "delete_last_income", patterns: [/(?:borr(?:ar|a)|elimin(?:ar|a))\s+ultimo\s+ingreso/] },
+  // --- Borrar último gasto/ingreso/actividad ---
+  { command: "delete_last", patterns: [/(?:borr(?:ar|a)|elimin(?:ar|a))\s+(?:el\s+|la\s+)?(?:ultim[oa]|ultima)\s+gasto/] },
+  { command: "delete_last_income", patterns: [/(?:borr(?:ar|a)|elimin(?:ar|a))\s+(?:el\s+|la\s+)?(?:ultim[oa]|ultima)\s+ingreso/] },
+  { command: "delete_last_activity", patterns: [/(?:borr(?:ar|a)|elimin(?:ar|a))\s+(?:el\s+|la\s+)?(?:ultim[oa]|ultima)\s+(?:actividad|siembra|fumigaci[oó]n|fertilizaci[oó]n|cosecha|labranza|riego)/] },
 
   // --- Editar gasto específico ---
   {

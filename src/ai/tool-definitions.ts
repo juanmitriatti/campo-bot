@@ -378,6 +378,17 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
 
   {
+    name: 'delete_last_activity',
+    description: 'BORRAR la última actividad registrada (no editar). "borrá la última actividad", "borrá la última fumigación", "eliminá la última siembra", "borrá la cosecha que registré recién". activity_filter opcional para refinar tipo. NUNCA confundir con edit_last_activity — borrar elimina del DB, editar modifica campos.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        activity_filter: { type: 'string', enum: ['spraying', 'fertilization', 'planting', 'harvest', 'tillage', 'irrigation', 'tacto'], description: 'Tipo de actividad (opcional).' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'edit_last_activity',
     description: 'Corregir/editar la última actividad registrada. Cambiar de lote, corregir cultivo o fecha. "la siembra era en lote B", "corregí la última actividad al lote norte", "me equivoqué de lote en la fumigación".',
     input_schema: {

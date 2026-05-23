@@ -83,10 +83,10 @@ const steps: FlowStep[] = [
   },
   {
     field: 'plotName',
-    prompt: '¿En qué lote?',
+    prompt: '¿En qué lote? (escribí *campo* o tocá Confirmar para registrarlo a nivel de campo)',
     promptAsync: async (_data, userId) => {
       const plots = await entityValidator.getUserPlotsWithFields(userId);
-      return buildPlotPromptGrouped(plots);
+      return buildPlotPromptGrouped(plots) + '\n\n_Tocá Confirmar para registrarlo a nivel de campo (sin lote)._';
     },
     interactiveAsync: async (_data, userId) => {
       const plots = await entityValidator.getUserPlotsWithFields(userId);
@@ -96,6 +96,7 @@ const steps: FlowStep[] = [
       return { value: input.trim() };
     },
     validateAsync: validatePlotAsync,
+    optional: true,
   },
   {
     field: 'description',

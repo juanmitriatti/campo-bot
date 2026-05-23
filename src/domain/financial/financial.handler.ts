@@ -2173,7 +2173,10 @@ export class FinancialHandler {
       }
 
       case 'rename_field': {
-        const labelRen = cmd.entityKeyword === 'campo' ? 'Campo' : 'Lote';
+        // Default to "Campo" — this case ONLY handles field renames. Plot renames
+        // go to case 'rename_plot'. The entityKeyword check was a holdover from
+        // when both paths shared a label.
+        const labelRen = cmd.entityKeyword === 'lote' ? 'Lote' : 'Campo';
         // Check ownership before renaming
         const fieldToRename = await this.service.getFieldByName(userId, cmd.oldName as string);
         if (!fieldToRename) {

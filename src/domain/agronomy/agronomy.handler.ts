@@ -2851,6 +2851,25 @@ export class AgronomyHandler {
         return { messages: [lines.join('\n')] };
       }
 
+      case 'delete_last_activity': {
+        // Find + delete the user's last activity. Optional filter narrows by type
+        // (siembra/fumigación/etc) when the user said "borrá la última fumigación".
+        const delFilter = normalizeActivityFilter(cmd.activityFilter as string | null);
+        const lastActivity = await this.repo.findLastDomainEventFiltered(userId, {
+          eventType: delFilter || undefined,
+        });
+        if (!lastActivity) {
+          const filterDesc = delFilter ? ` de tipo ${delFilter}` : '';
+          return { messages: [`No hay actividades${filterDesc} para borrar.`] };
+        }
+        const { deleteDomainEvent } = await import('../../services/expenses.js');
+        await deleteDomainEvent(lastActivity.id);
+        const typeLabel = ({ planting: 'Siembra', spraying: 'Fumigación', fertilization: 'Fertilización', harvest: 'Cosecha', tillage: 'Labranza', irrigation: 'Riego' } as Record<string, string>)[lastActivity.event_type as string] || lastActivity.event_type;
+        const cropPart = lastActivity.crop ? ` de ${lastActivity.crop}` : '';
+        const plotPart = lastActivity.plot_name ? ` en ${lastActivity.plot_name}` : '';
+        return { messages: [`🗑️ ${typeLabel}${cropPart}${plotPart} eliminada.`] };
+      }
+
       case 'edit_last_activity': {
         // Normalize activity filter from AI tool enum to DB event_type
         const editFilter = normalizeActivityFilter(cmd.activityFilter as string | null);

@@ -52,11 +52,29 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
   // as the answer to that slot directly. E.g. pending.missing=['product']
   // (asked "¿qué vacuna?") and user replies "aftosa" — the regex needs "con
   // aftosa" to match. This fallback handles bare-word answers.
+  // CRITICAL: slot-aware validation. Numeric slots (quantity/amount/unit_price/
+  // count/hectares) must receive a number — otherwise a date like "el 15 de
+  // mayo" gets stored as quantity and crashes downstream with "invalid input
+  // syntax for type numeric". Also bail when the user clearly types a
+  // correction pattern instead of a slot value.
   const missing = pending.missing ?? [];
+  const NUMERIC_SLOTS = new Set<SlotName>(['quantity' as SlotName, 'amount' as SlotName, 'unit_price' as SlotName, 'count' as SlotName, 'hectares' as SlotName]);
+  const CORRECTION_PREFIX = /^(no,?|perd[oó]n|en realidad|quise decir|mejor|cambio)\b/i;
   if (missing.length === 1 && extracted[missing[0] as SlotName] == null) {
     const cleaned = text.trim();
-    if (cleaned.length > 0 && cleaned.length <= 60 && /^[A-Za-záéíóúñ0-9][\wáéíóúñ\s.,-]*$/i.test(cleaned)) {
-      (extracted as Record<string, unknown>)[missing[0]] = cleaned;
+    if (cleaned.length > 0 && cleaned.length <= 60
+        && /^[A-Za-záéíóúñ0-9][\wáéíóúñ\s.,-]*$/i.test(cleaned)
+        && !CORRECTION_PREFIX.test(cleaned)) {
+      const slot = missing[0] as SlotName;
+      if (NUMERIC_SLOTS.has(slot)) {
+        const numMatch = cleaned.match(/^[0-9]+(?:[.,][0-9]+)?$/);
+        if (numMatch) {
+          (extracted as Record<string, unknown>)[slot] = parseFloat(cleaned.replace(',', '.'));
+        }
+        // numeric slot but non-numeric text → leave unfilled, controller will re-ask
+      } else {
+        (extracted as Record<string, unknown>)[slot] = cleaned;
+      }
     }
   }
 

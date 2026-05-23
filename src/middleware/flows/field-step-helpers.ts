@@ -302,6 +302,20 @@ export async function validatePlotAsync(
   const val = input.trim();
   if (val.length < 1) return { error: 'Ingresá un nombre de lote válido.' };
 
+  // Bug 4 fix: if user types a known category mid-flow (likely a category
+  // correction or late category fill), capture it on _data and return error
+  // re-asking for plot. The conversation engine's mid-flow correction logic
+  // already updates category from "no, es X" patterns — this handles the
+  // bare-word case ("agroquímicos") when the original gasto had no category.
+  if (!_data.category || _data.category === '') {
+    const { detectarCategoria } = await import('../../utils/parser.js');
+    const maybeCat = detectarCategoria(val);
+    if (maybeCat) {
+      _data.category = maybeCat;
+      return { error: `✏️ Categoría capturada: *${maybeCat}*. Ahora indicá el lote (o tocá *Confirmar* para registrarlo a nivel de campo).` };
+    }
+  }
+
   // If the user is correcting ("perdón, fue en B1"), try the stripped variant first.
   // Falls through to the original input if the stripped variant doesn't resolve.
   const corrected = stripPlotCorrectionPrefix(input);

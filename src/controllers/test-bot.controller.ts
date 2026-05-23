@@ -992,7 +992,14 @@ async function processTextMessage(
       // still missing. Works for log_fertilization, log_spraying, log_income,
       // log_expense, sow_crop, etc. — wherever the handler set `missing`.
       const { processPendingAction } = await import('../middleware/pending-action-processor.js');
-      const result = processPendingAction(text, pendingAct);
+      let result;
+      try {
+        result = processPendingAction(text, pendingAct);
+      } catch (err) {
+        console.error('[pending-processor] threw:', (err as Error).message);
+        pendingActStore.clear(phone);
+        return [{ type: 'text', text: 'No pude interpretar tu respuesta. Probá de nuevo o escribí *cancelar*.' }];
+      }
       if (result.next === null) {
         // All required slots filled → re-route the command
         pendingActStore.clear(phone);

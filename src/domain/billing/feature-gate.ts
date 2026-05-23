@@ -139,6 +139,7 @@ export class FeatureGate {
       log_tacto: 'agronomy',
       tacto_summary: 'agronomy',
       edit_last_activity: 'agronomy',
+      delete_last_activity: 'agronomy',
       close_campaign: 'agronomy',
       campaign_stats: 'agronomy',
       compare_campaigns: 'agronomy',
