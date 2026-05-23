@@ -318,26 +318,34 @@ export class FieldSharingService {
       return { success: false, message: 'Solo el dueño del campo puede quitar miembros.' };
     }
 
-    // Try phone lookup first
+    // Try phone, email, or name lookup
     let target: { id: number; name: string | null; phone_number: string } | null = null;
-    const { rows: phoneRows } = await pool.query(
-      `SELECT id, name, phone_number FROM users WHERE phone_number = $1`,
-      [identifier]
-    );
-    if (phoneRows.length > 0) {
-      target = phoneRows[0];
-    } else {
+    const trimmed = identifier.trim();
+    const looksLikeEmail = /@/.test(trimmed);
+    if (looksLikeEmail) {
+      const { rows: emailRows } = await pool.query(
+        `SELECT id, name, phone_number FROM users WHERE LOWER(email) = LOWER($1)`,
+        [trimmed]
+      );
+      if (emailRows.length > 0) target = emailRows[0];
+    }
+    if (!target) {
+      const { rows: phoneRows } = await pool.query(
+        `SELECT id, name, phone_number FROM users WHERE phone_number = $1`,
+        [trimmed]
+      );
+      if (phoneRows.length > 0) target = phoneRows[0];
+    }
+    if (!target) {
       // Try name lookup within field members
       const { rows: nameRows } = await pool.query(
         `SELECT u.id, u.name, u.phone_number
          FROM field_members fm
          JOIN users u ON fm.user_id = u.id
          WHERE fm.field_id = $1 AND LOWER(u.name) = LOWER($2) AND fm.role = 'member'`,
-        [fieldId, identifier.trim()]
+        [fieldId, trimmed]
       );
-      if (nameRows.length > 0) {
-        target = nameRows[0];
-      }
+      if (nameRows.length > 0) target = nameRows[0];
     }
 
     if (!target) {

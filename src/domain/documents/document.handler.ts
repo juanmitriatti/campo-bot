@@ -40,12 +40,16 @@ export class DocumentHandler {
 
     const lines = rows.map(d => {
       const emoji = typeEmojis[d.document_type] || '📄';
-      const ext = d.extracted_data;
-      const supplier = ext?.supplier ? ` - ${ext.supplier}` : '';
-      const amount = ext?.total_amount ? ` $${ext.total_amount.toLocaleString('es-AR')}` : '';
+      const ext = d.extracted_data ?? {};
+      // Tolerant key matching: support both EN (supplier/total_amount) + ES (proveedor/monto)
+      const supplierRaw = ext.supplier ?? ext.proveedor ?? ext.vendor ?? ext.emisor ?? null;
+      const amountRaw = ext.total_amount ?? ext.monto ?? ext.amount ?? ext.total ?? null;
+      const fileName = d.original_filename ?? null;
+      const supplier = supplierRaw ? ` — *${supplierRaw}*` : fileName ? ` — _${fileName}_` : '';
+      const amount = amountRaw && !isNaN(Number(amountRaw)) ? ` · $${Number(amountRaw).toLocaleString('es-AR')}` : '';
       const date = new Date(d.created_at).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
-      const linked = d.linked_expense_id ? ' ✅' : '';
-      return `${emoji} #${d.id}${supplier}${amount}${linked}\n   _${date}_`;
+      const linked = d.linked_expense_id ? ' ✅ vinculado' : '';
+      return `${emoji} #${d.id}${supplier}${amount}\n   📅 ${date}${linked}`;
     });
 
     return {

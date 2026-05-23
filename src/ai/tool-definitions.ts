@@ -659,7 +659,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'generate_agro_report',
-    description: 'Generar reporte agronómico con observaciones y actividades. "reporte agro", "reporte agronómico del lote X", "estado del lote X", "cómo va el lote X", "novedades del campo", "resumen agronómico", "informe del lote", "reporte de actividades", "qué se hizo en el campo". Soporta rango de fechas.',
+    description: 'Generar reporte agronómico (PDF/archivo adjunto) con observaciones y actividades. ÚNICO tool que produce el PDF. Triggers: "reporte agro", "reporte agronómico del lote X", "estado del lote X", "cómo va el lote X", "novedades del campo", "resumen agronómico", "informe del lote", "reporte de actividades", "qué se hizo en el campo", "PDF del reporte", "generame el PDF", "dame el PDF", "envíame el PDF". CUALQUIER mención de "PDF" + "reporte" SIEMPRE → generate_agro_report. Soporta rango de fechas.',
     input_schema: {
       type: 'object',
       properties: {

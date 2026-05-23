@@ -3138,6 +3138,15 @@ export class AgronomyHandler {
         const hasta = cmd.hasta as string | null;
         const hasDateRange = !!(desde && hasta);
 
+        // D03 fix: reject out-of-range dates BEFORE generating PDF.
+        {
+          const { validateDate } = await import('../../utils/value-validator.js');
+          const desdeCheck = validateDate(desde, 'fecha desde del reporte');
+          if (!desdeCheck.ok) return { messages: [desdeCheck.reason] };
+          const hastaCheck = validateDate(hasta, 'fecha hasta del reporte');
+          if (!hastaCheck.ok) return { messages: [hastaCheck.reason] };
+        }
+
         // Helper to render the user's plots inline so error messages are
         // actionable instead of "escribí mis lotes".
         const formatUserPlots = async (): Promise<string> => {
