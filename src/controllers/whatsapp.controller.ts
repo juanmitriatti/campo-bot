@@ -1606,6 +1606,14 @@ router.post('/', async (req: Request, res: Response) => {
             }
           }
           delete (merged as Record<string, unknown>)._needs;
+          // Carry the pending's command into merged so routeCommand can dispatch.
+          // Partial intents (income_partial / expense_partial) never put a
+          // `command` in `data` — it lives only on the pending itself. Without
+          // this, every multi-turn financial completion routed to undefined →
+          // "No pude completar el registro" + silent data drop.
+          if (!(merged as Record<string, unknown>).command) {
+            (merged as Record<string, unknown>).command = pendingAct.command;
+          }
           // Route through DomainRouter so any tool (agronomy, stock, livestock,
           // financial, etc.) can be re-executed via the unified pending path.
           const routed = await domainRouter.routeCommand(merged, userId, user, settings);
@@ -1633,6 +1641,14 @@ router.post('/', async (req: Request, res: Response) => {
           pendingActStore.clear(phone);
           const merged = { ...pendingAct.data, crop } as ParsedCommand;
           delete (merged as Record<string, unknown>)._needs;
+          // Carry the pending's command into merged so routeCommand can dispatch.
+          // Partial intents (income_partial / expense_partial) never put a
+          // `command` in `data` — it lives only on the pending itself. Without
+          // this, every multi-turn financial completion routed to undefined →
+          // "No pude completar el registro" + silent data drop.
+          if (!(merged as Record<string, unknown>).command) {
+            (merged as Record<string, unknown>).command = pendingAct.command;
+          }
           const result = await agronomyHandler.handleCommand(merged, userId, user, settings);
           if (result.sideEffects?.setPendingActivity) {
             const next = result.sideEffects.setPendingActivity;

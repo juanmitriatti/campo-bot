@@ -65,8 +65,11 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
   // whole point). The "no overwrite" rule prevents an extractor from clobbering
   // a confirmed value on a later turn (e.g. the user already said "soja", the
   // next turn mentions "trigo en la región" — keep soja).
+  // NOTE: `missing` was already declared above for the single-slot fallback;
+  // reuse it here (previously this line re-declared it as `const missing` and
+  // tsx/esbuild silently bailed on the transform — breaking every multi-turn
+  // pending answer with a 500 error).
   const data = { ...pending.data };
-  const missing = pending.missing ?? [];
   const filledByThisTurn: SlotName[] = [];
 
   for (const slot of missing) {
