@@ -103,8 +103,18 @@ export class StockRepository {
     const params: (string | number)[] = [userId];
 
     if (warehouseName) {
-      params.push(warehouseName);
-      query += ` AND LOWER(w.name) = LOWER($${params.length})`;
+      // Strip the "galpón " / "deposito " / "silo " prefix when the agent
+      // includes the entity keyword. Names in DB are stored without the
+      // entity word (user typed "crear galpón Central" → stored as "Central").
+      // Also accent-strip for tolerance (Galpón / galpon both work).
+      const normalized = warehouseName
+        .toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/^(galp[oó]n|dep[oó]sito|silo)\s+/i, '')
+        .trim();
+      params.push(normalized);
+      // Apply the same normalization on the DB side.
+      query += ` AND LOWER(REGEXP_REPLACE(TRANSLATE(w.name, 'áéíóúñÁÉÍÓÚÑ', 'aeiounAEIOUN'), '^(galpón|galpon|depósito|deposito|silo)\\s+', '', 'i')) = $${params.length}`;
     }
     if (fieldName) {
       params.push(fieldName);

@@ -1,5 +1,5 @@
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
-import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES } from '../constants/agro-terms.js';
+import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES, type IncomeCategory } from '../constants/agro-terms.js';
 import type { AgentResult } from './agent.service.js';
 import { validateToolCall, type ValidationOptions } from './agent-output-validator.js';
 
@@ -431,9 +431,32 @@ export class AgentResponseMapper {
       }
       // When agent omits category → '' → CategoryService will show picker buttons.
       // When category is provided, normalize against known constants; keep original if not found.
-      const category = rawCategory
+      let category = rawCategory
         ? (matchCategory(rawCategory, INCOME_CATEGORIES) ?? rawCategory)
         : '';
+      // Crop-derived fallback: if the resolved category isn't a known income
+      // category (Soja/Maíz/Trigo/etc.) BUT the description / rawCategory
+      // contains a crop keyword, use the crop name as the income category.
+      // Fixes the trigo→"Otros" gap when the agent passes things like
+      // "venta_granos" / "venta trigo" / generic descriptions.
+      const cropKeywords: Record<string, string> = {
+        soja: 'Soja', soya: 'Soja',
+        maiz: 'Maíz', maíz: 'Maíz',
+        trigo: 'Trigo',
+        girasol: 'Girasol',
+        sorgo: 'Sorgo',
+        cebada: 'Cebada',
+      };
+      if (!INCOME_CATEGORIES.includes(category as IncomeCategory)) {
+        const description = typeof input.description === 'string' ? input.description : '';
+        const haystack = `${rawCategory} ${description} ${originalText}`.toLowerCase();
+        for (const [kw, cropCat] of Object.entries(cropKeywords)) {
+          if (new RegExp(`\\b${kw}\\b`, 'i').test(haystack)) {
+            category = cropCat;
+            break;
+          }
+        }
+      }
       const currency: Currency = input.currency === 'USD' ? 'USD' : 'ARS';
       const data: ParsedIncome & { field?: string; plot?: string; category_match?: string } = {
         type: 'income',

@@ -224,11 +224,17 @@ export class LivestockService {
    * When `breed` is null (user didn't mention raza), falls back to a lenient
    * match: returns the unique group at that location with that category, or
    * throws if multiple breeds coexist so the user can disambiguate.
+   *
+   * `bulkMode=true` switches the multi-breed path: instead of throwing, pick
+   * the group with the HIGHEST count (most likely target). Used when this
+   * call happens inside a compound action — the compound must keep moving;
+   * the user can edit later if the picked group was wrong.
    */
   private async findGroupAtLocation(
     loc: ResolvedLocation,
     category: LivestockCategory,
-    breed: string | null
+    breed: string | null,
+    bulkMode = false,
   ): Promise<LivestockGroupRow | null> {
     if (breed) {
       if (loc.type === 'corral') {
@@ -243,6 +249,10 @@ export class LivestockService {
     const nonEmpty = candidates.filter((g) => g.count > 0);
     if (nonEmpty.length === 0) return null;
     if (nonEmpty.length === 1) return nonEmpty[0];
+    if (bulkMode) {
+      // Auto-pick: largest group wins. Don't block the compound.
+      return [...nonEmpty].sort((a, b) => b.count - a.count)[0];
+    }
     const breedList = nonEmpty
       .map((g) => `${g.breed ?? 'sin raza'} (${g.count})`)
       .join(', ');
@@ -454,6 +464,9 @@ export class LivestockService {
       reason?: string | null;
       notes?: string | null;
       movement_date?: string | null;
+      /** When true (compound action), auto-pick the largest group on
+       *  multi-breed ambiguity instead of throwing. */
+      bulkMode?: boolean;
     },
   ): Promise<{ group: LivestockGroupRow; movement: LivestockMovementRow; financial?: LinkedFinancialRecord }> {
     const category = LivestockService.normalizeCategory(opts.category);
@@ -463,7 +476,7 @@ export class LivestockService {
     const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
     const locLabel = loc.type === 'corral' ? `corral ${loc.corralName}` : `lote ${loc.plotName}`;
 
-    const group = await this.findGroupAtLocation(loc, category, opts.breed ?? null);
+    const group = await this.findGroupAtLocation(loc, category, opts.breed ?? null, opts.bulkMode === true);
     if (!group) {
       throw new Error(
         `No hay ${category}${opts.breed ? ` (${opts.breed})` : ''} en el ${locLabel}.`

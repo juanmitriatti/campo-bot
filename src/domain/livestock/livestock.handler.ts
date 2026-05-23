@@ -347,6 +347,10 @@ export class LivestockHandler {
         unit_price_usd: cmd.unit_price_usd as number,
         reason: cmd.reason as string,
         movement_date: cmd.eventDate as string,
+        // In compound (bulkMode), if multiple breeds coexist, auto-pick the
+        // largest group instead of throwing. Without this the compound stops
+        // mid-stream and subsequent steps are lost.
+        bulkMode: (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true,
       }));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
