@@ -327,6 +327,28 @@ const EXAMPLES: Example[] = [
     intent: 'add_field,add_plots_batch,sow_crop',
   },
 
+  // Venta de hacienda — debe ir a remove_livestock (auto-crea el ingreso), NUNCA log_income
+  {
+    input: 'vendí 5 vacas a 1500 USD cada una en Loma',
+    expected_output: {
+      tool_calls: [
+        { tool: 'remove_livestock', input: { category: 'vaca', count: 5, unit_price_usd: 1500, plot: 'Loma' } },
+      ],
+    },
+    intent: 'remove_livestock',
+  },
+
+  // Compra de hacienda — debe ir a add_livestock (auto-crea el gasto), NUNCA log_expense
+  {
+    input: 'compré 10 vaquillonas Angus a 1200 USD cada una en Norte',
+    expected_output: {
+      tool_calls: [
+        { tool: 'add_livestock', input: { category: 'vaquillona', count: 10, breed: 'Angus', unit_price_usd: 1200, plot: 'Norte' } },
+      ],
+    },
+    intent: 'add_livestock',
+  },
+
   // Onboarding completo: "Doy de alta campo X" + plots + sow + livestock + expense (5 tools)
   {
     input: 'Doy de alta campo Don Tito en Junín con lotes A 100 ha, B 150 ha, C 80 ha. Sembré soja en A, agregué 50 vacas Angus en C y gasté 80 mil en gasoil',
