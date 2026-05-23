@@ -615,6 +615,19 @@ export class FinancialHandler {
     plotName?: string | null,
     bulkMode?: boolean,
   ): Promise<HandlerResponse> {
+    // Hardening: reject negative/absurd amounts + out-of-range dates BEFORE
+    // doing any DB work or starting a flow.
+    {
+      const { validateAmount, validateDate } = await import('../../utils/value-validator.js');
+      // Defensive: agent strips '-' sign before sending. Detect minus prefix in original text.
+      if (/(?:^|\s)-\s*\d/.test(text)) {
+        return { messages: ['El monto del gasto no puede ser negativo. Si querés deshacer un gasto, decime "borrar último gasto".'] };
+      }
+      const amtCheck = validateAmount(data.amount, 'monto del gasto');
+      if (!amtCheck.ok) return { messages: [amtCheck.reason] };
+      const dateCheck = validateDate(data.expenseDate ?? null, 'fecha del gasto');
+      if (!dateCheck.ok) return { messages: [dateCheck.reason] };
+    }
     // Block if user has no fields
     const userFields = await this.service.getUserFields(userId);
     if (userFields.length === 0) {
@@ -912,6 +925,17 @@ export class FinancialHandler {
     plotName?: string | null,
     bulkMode?: boolean,
   ): Promise<HandlerResponse> {
+    // Hardening: reject negative/absurd amounts + out-of-range dates first.
+    {
+      const { validateAmount, validateDate } = await import('../../utils/value-validator.js');
+      if (/(?:^|\s)-\s*\d/.test(text)) {
+        return { messages: ['El monto del ingreso no puede ser negativo.'] };
+      }
+      const amtCheck = validateAmount(data.amount, 'monto del ingreso');
+      if (!amtCheck.ok) return { messages: [amtCheck.reason] };
+      const dateCheck = validateDate((data as { incomeDate?: string | null }).incomeDate ?? null, 'fecha del ingreso');
+      if (!dateCheck.ok) return { messages: [dateCheck.reason] };
+    }
     // Block if user has no fields
     const userFields = await this.service.getUserFields(userId);
     if (userFields.length === 0) {

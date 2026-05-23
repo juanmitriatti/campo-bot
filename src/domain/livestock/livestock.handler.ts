@@ -249,6 +249,14 @@ export class LivestockHandler {
     const count = cmd.count as number;
     if (!category) return { messages: ['Necesito saber la categoría. Ej: "agregué 20 vacas al lote A1".'] };
     if (!count || count <= 0) return { messages: ['Necesito la cantidad. Ej: "agregué 20 vacas al lote A1".'] };
+    // Hardening: reject absurd counts + out-of-range movement dates.
+    {
+      const { validateLivestockCount, validateDate } = await import('../../utils/value-validator.js');
+      const cntCheck = validateLivestockCount(count);
+      if (!cntCheck.ok) return { messages: [cntCheck.reason] };
+      const dateCheck = validateDate((cmd.eventDate as string) ?? null, 'fecha del movimiento');
+      if (!dateCheck.ok) return { messages: [dateCheck.reason] };
+    }
 
     let group, created, financial, movement;
     try {

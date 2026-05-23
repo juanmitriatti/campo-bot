@@ -1416,10 +1416,12 @@ export class AgronomyHandler {
       case 'log_rainfall': {
         const mm = cmd.mm as number;
 
-        // Validate mm range
-        if (mm <= 0 || mm > 500) {
-          return { messages: ['El valor debe estar entre 1 y 500mm.'] };
-        }
+        // Validate mm range + date range (hardening)
+        const { validateRainfallMm, validateDate } = await import('../../utils/value-validator.js');
+        const mmCheck = validateRainfallMm(mm);
+        if (!mmCheck.ok) return { messages: [mmCheck.reason] };
+        const dateCheck = validateDate(cmd.eventDate as string ?? null, 'fecha de la lluvia');
+        if (!dateCheck.ok) return { messages: [dateCheck.reason] };
 
         // Block if user has no fields
         const rainfallUserFields = await this.repo.getUserFields(userId);
@@ -1731,6 +1733,12 @@ export class AgronomyHandler {
       // --- Crops ---
 
       case 'sow_crop': {
+        // Hardening: date range guard.
+        {
+          const { validateDate } = await import('../../utils/value-validator.js');
+          const dateCheck = validateDate(cmd.eventDate as string ?? null, 'fecha de siembra');
+          if (!dateCheck.ok) return { messages: [dateCheck.reason] };
+        }
         if (isPlaceholder(cmd.crop)) {
           return {
             messages: ['🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)'],
@@ -1801,6 +1809,12 @@ export class AgronomyHandler {
       }
 
       case 'harvest_crop': {
+        // Hardening: date range guard.
+        {
+          const { validateDate } = await import('../../utils/value-validator.js');
+          const dateCheck = validateDate(cmd.eventDate as string ?? null, 'fecha de cosecha');
+          if (!dateCheck.ok) return { messages: [dateCheck.reason] };
+        }
         // Resolve plot FIRST so we can infer crop from the plot's active or
         // recently-harvested campaign before deciding to ask the user.
         const resolved = await this.plotDiscovery.resolveFromNames(
@@ -2482,6 +2496,12 @@ export class AgronomyHandler {
       case 'log_fertilization':
       case 'log_tillage':
       case 'log_irrigation': {
+        // Hardening: date range guard.
+        {
+          const { validateDate } = await import('../../utils/value-validator.js');
+          const dateCheck = validateDate(cmd.eventDate as string ?? null, 'fecha de la actividad');
+          if (!dateCheck.ok) return { messages: [dateCheck.reason] };
+        }
         const eventTypeMap: Record<string, ActivityType> = {
           log_spraying: 'spraying',
           log_fertilization: 'fertilization',
