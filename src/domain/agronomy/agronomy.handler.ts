@@ -1279,7 +1279,13 @@ export class AgronomyHandler {
         }
         const resolved = resolveWeatherCity(cmd, user);
         if (resolved.clarify) return { messages: [resolved.clarify] };
-        const weatherCity = resolved.city;
+        let weatherCity = resolved.city;
+        // Bug W fix: fall back to user's first field with city when no explicit/profile city.
+        if (!weatherCity) {
+          const { pool: wpool } = await import('../../config/db.js');
+          const fr = await wpool.query(`SELECT city FROM fields WHERE user_id=$1 AND city IS NOT NULL AND deleted_at IS NULL ORDER BY id LIMIT 1`, [userId]);
+          if (fr.rows[0]?.city) weatherCity = String(fr.rows[0].city);
+        }
         if (!weatherCity && !process.env.WEATHER_CITY) {
           return { messages: ['No tengo tu ubicaci\u00f3n. Escrib\u00ed algo como:\n\ud83d\udccd *estoy en Jun\u00edn*\n\nO ped\u00ed el clima de una ciudad:\n\ud83c\udf24\ufe0f *clima en Pergamino*'] };
         }
@@ -1305,7 +1311,12 @@ export class AgronomyHandler {
         }
         const resolved = resolveWeatherCity(cmd, user);
         if (resolved.clarify) return { messages: [resolved.clarify] };
-        const fcCity = resolved.city;
+        let fcCity = resolved.city;
+        if (!fcCity) {
+          const { pool: wpool } = await import('../../config/db.js');
+          const fr = await wpool.query(`SELECT city FROM fields WHERE user_id=$1 AND city IS NOT NULL AND deleted_at IS NULL ORDER BY id LIMIT 1`, [userId]);
+          if (fr.rows[0]?.city) fcCity = String(fr.rows[0].city);
+        }
         if (!fcCity && !process.env.WEATHER_CITY) {
           return { messages: ['No tengo tu ubicaci\u00f3n. Escrib\u00ed algo como:\n\ud83d\udccd *estoy en Jun\u00edn*\n\nO ped\u00ed el clima de una ciudad:\n\ud83c\udf24\ufe0f *clima en Pergamino*'] };
         }

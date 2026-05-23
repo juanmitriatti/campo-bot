@@ -1791,7 +1791,8 @@ export class FinancialHandler {
         msg += `\ud83d\udcdd *${template.name}*\n`;
         msg += `\ud83d\udcb0 $${template.amount.toLocaleString('es-AR')}${currLabel}\n`;
         msg += `\ud83d\udd04 Frecuencia: ${freqLabel}\n`;
-        msg += `\ud83d\udcc5 Pr\u00f3ximo: ${new Date(template.next_run_date + 'T12:00:00').toLocaleDateString('es-AR')}`;
+        const nextRunStr1 = typeof template.next_run_date === 'string' ? template.next_run_date : new Date(template.next_run_date as unknown as string | Date).toISOString().slice(0, 10);
+        msg += `\ud83d\udcc5 Pr\u00f3ximo: ${new Date(nextRunStr1 + 'T12:00:00').toLocaleDateString('es-AR')}`;
         if (template.field_name) msg += `\n\ud83d\udccd ${template.field_name}`;
         if (template.plot_name) msg += ` - ${template.plot_name}`;
         return { messages: [msg] };
@@ -1811,7 +1812,8 @@ export class FinancialHandler {
           const freqLabel = t.recurrence_type === 'weekly' ? 'semanal' : t.recurrence_type === 'biweekly' ? 'quincenal' : 'mensual';
           const currLabel = t.currency === 'USD' ? ' USD' : '';
           msg += `\n\u2022 *${t.name}* — $${t.amount.toLocaleString('es-AR')}${currLabel} (${freqLabel})`;
-          const nextDate = new Date(t.next_run_date + 'T12:00:00').toLocaleDateString('es-AR');
+          const nextRunRaw = typeof t.next_run_date === 'string' ? t.next_run_date : new Date(t.next_run_date as unknown as string | Date).toISOString().slice(0, 10);
+          const nextDate = new Date(nextRunRaw + 'T12:00:00').toLocaleDateString('es-AR');
           msg += `\n  Pr\u00f3ximo: ${nextDate}`;
           if (t.field_name) msg += ` | ${t.field_name}`;
           if (t.plot_name) msg += ` - ${t.plot_name}`;

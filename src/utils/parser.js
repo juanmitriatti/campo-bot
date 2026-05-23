@@ -726,17 +726,24 @@ const COMMAND_PATTERNS = [
   },
   {
     command: "set_rain_threshold",
-    patterns: [/(?:alerta|umbral)\s+(?:de\s+)?lluvia\s+(\d+)\s*(?:mm)?/, /lluvia\s+(?:alerta|umbral)\s+(\d+)\s*(?:mm)?/],
+    patterns: [
+      /(?:alerta|umbral)\s+(?:de\s+)?lluvia\s+(\d+)\s*(?:mm)?/,
+      /lluvia\s+(?:alerta|umbral)\s+(\d+)\s*(?:mm)?/,
+      /alertame\s+(?:cuando\s+)?(?:lluev[ae]n?|llueva)\s+(?:m[aá]s\s+de\s+)?(\d+)\s*mm/i,
+      /avisame\s+(?:cuando\s+)?(?:lluev[ae]n?|llueva)\s+(?:m[aá]s\s+de\s+)?(\d+)\s*mm/i,
+    ],
     extract: (m) => ({ mm: parseInt(m[1]) }),
   },
   {
     command: "_toggle_alert",
     patterns: [
-      /^(activar|desactivar|habilitar|deshabilitar)\s+(?:alertas?\s+(?:de\s+)?)?(lluvia|presupuesto|resumen\s+semanal|resumen)/,
-      /^(activar|desactivar|habilitar|deshabilitar)\s+(lluvia|presupuesto|resumen\s+semanal|resumen)$/,
+      // Support both "activar" and "activá/desactivá/activa" (vos + tú forms) +
+      // optional articles "el/la/los/las" and "alertas? de"
+      /^(activar|activ[aá]|desactivar|desactiv[aá]|habilitar|habilit[aá]|deshabilitar|deshabilit[aá])\s+(?:el\s+|la\s+|los\s+|las\s+)?(?:alertas?\s+(?:de\s+)?)?(?:el\s+|la\s+)?(lluvia|presupuesto|resumen\s+semanal|resumen)/,
+      /^(activar|activ[aá]|desactivar|desactiv[aá]|habilitar|habilit[aá]|deshabilitar|deshabilit[aá])\s+(?:el\s+|la\s+)?(lluvia|presupuesto|resumen\s+semanal|resumen)$/,
     ],
     extract: (m) => {
-      const enable = /^(activar|habilitar)/.test(m[1]);
+      const enable = /^(activar|activ[aá]|habilitar|habilit[aá])/.test(m[1]);
       const type = m[2].trim();
       if (/lluvia/.test(type)) return { command: enable ? "enable_rain_alerts" : "disable_rain_alerts" };
       if (/presupuesto/.test(type)) return { command: enable ? "enable_budget_alerts" : "disable_budget_alerts" };
