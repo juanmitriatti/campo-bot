@@ -100,11 +100,13 @@ export class CompoundExecutor {
     let lastAttachment: HandlerResponse['attachment'];
     let lastSuggestionKey: string | undefined;
     let stoppedAtFlow = false;
-    // Bulk plot tracking: every handleExpense/handleIncome that saved in bulk
-    // mode WITHOUT a plot (field has 2+ plots) emits savedFinanceWithoutPlot.
-    // We collect across steps and append a single "¿a qué lote los asigno?"
-    // prompt at the end so the user can assign all of them with one tap.
-    const bulkSaved: Array<{ kind: 'expense' | 'income'; id: number; fieldId: number }> = [];
+    // Bulk plot tracking: any handler that saved in bulkMode WITHOUT a plot
+    // emits savedRecordsWithoutPlot. We collect across steps and append a
+    // single "¿a qué lote los asigno?" prompt at the end so the user can
+    // assign all of them — across kinds: expense, income, activity, livestock,
+    // observation, scouting, etc. — with one tap.
+    type BulkRec = { kind: 'expense' | 'income' | 'activity' | 'observation' | 'scouting' | 'livestock' | 'rainfall' | 'stock_movement'; id: number; fieldId: number };
+    const bulkSaved: BulkRec[] = [];
 
     // Force skip confirmation for expenses/incomes in compound context
     const noConfirmSettings = { ...settings, confirm_before_save: false };
@@ -207,13 +209,49 @@ export class CompoundExecutor {
 
       if (!response) continue;
 
+      // bulkMode interceptor: if a non-financial handler tried to STOP the
+      // compound (startFlow / setPendingActivity / setPendingObservation),
+      // strip those side-effects AND clear the response messages/interactive
+      // (which would carry the blocking prompt). Inject one short "no pude
+      // completar X" advisory so the user knows that step needs follow-up.
+      if (bulkMode && response.sideEffects) {
+        const se = response.sideEffects;
+        const wouldBlock = !!(se.startFlow || se.setPendingActivity || se.setPendingObservation);
+        if (wouldBlock) {
+          const stepCommand = (step.intent.type === 'command'
+            ? (step.intent.data as ParsedCommand).command
+            : step.intent.type) ?? 'acción';
+          messages.push(`💡 No pude completar *${stepCommand}* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.`);
+          // Drop blocking sideEffects AND clear messages/interactive that
+          // carried the prompt — otherwise the user sees both the "no pude"
+          // and the original "¿En qué lote?" question, which is confusing.
+          // Other side-effects (campaign close, stock entry) are preserved.
+          response = {
+            ...response,
+            messages: [], // suppress the handler's own prompt
+            interactive: undefined,
+            sideEffects: {
+              ...se,
+              startFlow: undefined,
+              setPendingActivity: undefined,
+              setPendingObservation: undefined,
+            },
+          };
+        }
+      }
+
       messages.push(...response.messages);
       if (response.interactive) lastInteractive = response.interactive;
       if (response.attachment) lastAttachment = response.attachment;
       if (response.suggestionKey) lastSuggestionKey = response.suggestionKey;
+      // Legacy single-record shape (handleExpense/handleIncome).
       if (response.savedFinanceWithoutPlot) bulkSaved.push(response.savedFinanceWithoutPlot);
+      // New multi-record shape: any handler can push 0..N records.
+      if (response.savedRecordsWithoutPlot) bulkSaved.push(...response.savedRecordsWithoutPlot);
 
-      // If this step triggers a flow, stop here — flow needs user input
+      // If this step triggers a flow, stop here — flow needs user input.
+      // (After the bulkMode interceptor above, this branch only fires for
+      //  non-bulk paths or for flows the interceptor couldn't strip.)
       if (response.sideEffects?.startFlow) {
         lastSideEffects = response.sideEffects;
         stoppedAtFlow = true;
@@ -269,20 +307,18 @@ export class CompoundExecutor {
   }
 
   /**
-   * Build the "¿A qué lote los asigno?" prompt. Works across multiple fields:
-   * if all bulk-saved records share one fieldId, the buttons/list use that
-   * field's plots. If they span multiple fields, fall back to all user plots
-   * (still tag with field name for clarity).
-   *
-   * Returns null when no useful prompt can be built (field unknown, or only
-   * one plot exists — in that case auto-resolve already happened).
+   * Build the "¿A qué lote los asigno?" prompt. Works across:
+   *   - any kind (expense, income, activity, livestock, observation, scouting)
+   *   - any count of records of any kind (encoded via base64 payload, no 256-char limit risk)
+   * Returns null when no useful prompt can be built (multi-field, or only
+   * one plot exists — in that case the handlers auto-resolved already).
    */
   private async buildBulkPlotPrompt(
-    bulkSaved: Array<{ kind: 'expense' | 'income'; id: number; fieldId: number }>,
+    bulkSaved: Array<{ kind: string; id: number; fieldId: number }>,
     userId: UserId,
   ): Promise<{ message: string; interactive: InteractiveMessage } | null> {
-    const fieldIds = Array.from(new Set(bulkSaved.map(s => s.fieldId)));
-    if (fieldIds.length !== 1) return null; // Multi-field: skip the prompt, user can edit later
+    const fieldIds = Array.from(new Set(bulkSaved.map(s => s.fieldId).filter(id => id > 0)));
+    if (fieldIds.length !== 1) return null;
     const fieldId = fieldIds[0];
 
     const plotsRes = await pool.query(
@@ -290,7 +326,7 @@ export class CompoundExecutor {
       [fieldId],
     );
     const plots = plotsRes.rows as Array<{ id: number; name: string }>;
-    if (plots.length < 2) return null; // Should have been auto-resolved upstream
+    if (plots.length < 2) return null;
 
     const fieldRes = await pool.query(
       `SELECT name FROM fields WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
@@ -298,25 +334,49 @@ export class CompoundExecutor {
     );
     const fieldName = (fieldRes.rows[0]?.name as string) ?? 'el campo';
 
-    const eIds = bulkSaved.filter(s => s.kind === 'expense').map(s => s.id);
-    const iIds = bulkSaved.filter(s => s.kind === 'income').map(s => s.id);
-    const eIdsStr = eIds.join(',') || 'n';
-    const iIdsStr = iIds.join(',') || 'n';
+    // Group ids by kind so the button callback can route each kind to the
+    // right UPDATE statement.
+    const byKind: Record<string, number[]> = {};
+    for (const r of bulkSaved) {
+      (byKind[r.kind] ?? (byKind[r.kind] = [])).push(r.id);
+    }
 
-    const summary = [
-      iIds.length > 0 ? `${iIds.length} ingreso${iIds.length === 1 ? '' : 's'}` : null,
-      eIds.length > 0 ? `${eIds.length} gasto${eIds.length === 1 ? '' : 's'}` : null,
-    ].filter(Boolean).join(' + ');
+    // Human-readable summary line per kind.
+    const KIND_LABEL: Record<string, [string, string]> = {
+      expense: ['gasto', 'gastos'],
+      income: ['ingreso', 'ingresos'],
+      activity: ['actividad', 'actividades'],
+      observation: ['observación', 'observaciones'],
+      scouting: ['monitoreo', 'monitoreos'],
+      livestock: ['movimiento de hacienda', 'movimientos de hacienda'],
+      rainfall: ['lluvia', 'lluvias'],
+      stock_movement: ['movimiento de stock', 'movimientos de stock'],
+    };
+    const summaryParts: string[] = [];
+    for (const [kind, ids] of Object.entries(byKind)) {
+      const labels = KIND_LABEL[kind] ?? [kind, `${kind}s`];
+      summaryParts.push(`${ids.length} ${ids.length === 1 ? labels[0] : labels[1]}`);
+    }
+    const summary = summaryParts.join(' + ');
     const body = `💡 Guardé ${summary} a nivel campo *${fieldName}*. ¿A qué lote los asigno?`;
 
-    // Each button id: bap_<plotId>_<expenseIds>_<incomeIds>. Plot "0" + "n" markers
-    // mean "leave at field level".
+    // Encode payload as base64 so we can carry any number of records of any kind
+    // without hitting the 256-char button.id limit. Format: bap2_<base64({recs})>_<plotId>
+    // The plotId is appended outside the base64 so we can have one button per plot
+    // but share the same record payload.
+    const recordsPayload = Buffer.from(JSON.stringify(byKind)).toString('base64url');
+
     const optionRows = [
-      ...plots.map(p => ({ id: `bap_${p.id}_${eIdsStr}_${iIdsStr}`, title: p.name.slice(0, 24) })),
-      { id: `bap_0_${eIdsStr}_${iIdsStr}`, title: 'Dejar a nivel campo' },
+      ...plots.map(p => ({
+        id: `bap2_${recordsPayload}_${p.id}`,
+        title: p.name.slice(0, 24),
+      })),
+      {
+        id: `bap2_${recordsPayload}_0`, // 0 = leave at field-level
+        title: 'Dejar a nivel campo',
+      },
     ];
 
-    // WhatsApp buttons cap at 3. Use list when there are more plots.
     if (optionRows.length <= 3) {
       return {
         message: body,
@@ -333,10 +393,7 @@ export class CompoundExecutor {
         type: 'list',
         body: '¿A qué lote?',
         buttonText: 'Elegir',
-        sections: [{
-          title: 'Lotes',
-          rows: optionRows.map(r => ({ id: r.id, title: r.title })),
-        }],
+        sections: [{ title: 'Lotes', rows: optionRows.map(r => ({ id: r.id, title: r.title })) }],
       },
     };
   }

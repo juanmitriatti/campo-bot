@@ -188,14 +188,33 @@ export class InteractiveRouter {
       };
     }
 
-    // Bulk plot assignment after a compound that saved 2+ financial records
-    // at field level. Format: bap_<plotId>_<expenseIds>_<incomeIds>
-    //   plotId="0" → leave at field level
-    //   expenseIds / incomeIds: comma-separated or "n" for none
-    // Example: bap_45_123,124_456  → assign expenses [123,124] + income [456] to plot 45
+    // Bulk plot assignment after a compound — V2 (any kind, any count).
+    // Format: bap2_<base64url(byKindMap)>_<plotId>
+    //   plotId="0" → leave at field-level
+    //   byKindMap = { expense?: number[], income?: number[], activity?: number[], ... }
+    const bap2Match = callbackId.match(/^bap2_([A-Za-z0-9_-]+)_(\d+)$/);
+    if (bap2Match) {
+      try {
+        const byKind = JSON.parse(Buffer.from(bap2Match[1], 'base64url').toString('utf-8')) as Record<string, number[]>;
+        const plotId = parseInt(bap2Match[2], 10);
+        return {
+          type: 'command',
+          data: {
+            command: 'assign_bulk_plot',
+            plotId: plotId === 0 ? null : plotId,
+            records: byKind,
+          },
+        };
+      } catch {
+        // fall through
+      }
+    }
+
+    // Legacy bulk plot assignment (V1 — expenses + incomes only). Kept for
+    // in-flight buttons rendered before V2 ship.
     const bapMatch = callbackId.match(/^bap_(\d+)_([\d,]+|n)_([\d,]+|n)$/);
     if (bapMatch) {
-      const plotId = parseInt(bapMatch[1], 10); // 0 means "leave at field level"
+      const plotId = parseInt(bapMatch[1], 10);
       const expenseIds = bapMatch[2] === 'n' ? [] : bapMatch[2].split(',').map(s => parseInt(s, 10)).filter(n => !Number.isNaN(n));
       const incomeIds = bapMatch[3] === 'n' ? [] : bapMatch[3].split(',').map(s => parseInt(s, 10)).filter(n => !Number.isNaN(n));
       return {
@@ -203,8 +222,7 @@ export class InteractiveRouter {
         data: {
           command: 'assign_bulk_plot',
           plotId: plotId === 0 ? null : plotId,
-          expenseIds,
-          incomeIds,
+          records: { expense: expenseIds, income: incomeIds },
         },
       };
     }

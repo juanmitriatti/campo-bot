@@ -98,7 +98,11 @@ describe('CompoundExecutor', () => {
     expect(result!.messages).toEqual(['OK 1', 'OK 3']);
   });
 
-  it('stops at startFlow sideEffect', async () => {
+  it('bulkMode strips startFlow sideEffects so the compound never stops mid-stream', async () => {
+    // With bulkMode active (actionable.length >= 2), the CompoundExecutor
+    // strips startFlow/setPendingActivity/setPendingObservation so the
+    // compound keeps running. Each blocked step gets a "no pude completar X"
+    // message and execution continues.
     const mockRouter = {
       routeCommand: vi.fn()
         .mockResolvedValueOnce({ messages: ['Campo creado.'] } as HandlerResponse)
@@ -106,7 +110,7 @@ describe('CompoundExecutor', () => {
           messages: ['Iniciando flujo...'],
           sideEffects: { startFlow: { state: 'field_flow', data: { name: 'Test' } } },
         } as HandlerResponse)
-        .mockResolvedValueOnce({ messages: ['Should not execute'] } as HandlerResponse),
+        .mockResolvedValueOnce({ messages: ['3er paso ejecutado'] } as HandlerResponse),
     };
 
     const executor = new CompoundExecutor(mockRouter as any);
@@ -119,10 +123,13 @@ describe('CompoundExecutor', () => {
     const result = await executor.execute(results, 1 as UserId, mockUser, mockSettings);
 
     expect(result).not.toBeNull();
-    expect(result!.stoppedAtFlow).toBe(true);
-    expect(result!.messages).toEqual(['Campo creado.', 'Iniciando flujo...']);
-    expect(result!.lastSideEffects?.startFlow?.state).toBe('field_flow');
-    expect(mockRouter.routeCommand).toHaveBeenCalledTimes(2);
+    // The interceptor stripped startFlow so the train continued to step 3.
+    expect(result!.stoppedAtFlow).toBe(false);
+    expect(mockRouter.routeCommand).toHaveBeenCalledTimes(3);
+    // The "no pude completar X" advisory was injected for the blocked step.
+    expect(result!.messages.some(m => m.includes('No pude completar'))).toBe(true);
+    // The 3rd step still ran.
+    expect(result!.messages.some(m => m.includes('3er paso ejecutado'))).toBe(true);
   });
 
   it('returns null for single command (fall through)', async () => {
@@ -406,9 +413,13 @@ describe('CompoundExecutor — bulk plot prompt (Fix A)', () => {
     expect(result!.lastInteractive!.type).toBe('list');
     const rows = (result!.lastInteractive as any).sections[0].rows;
     expect(rows.map((r: any) => r.title)).toEqual(['A1', 'A2', 'A3', 'Dejar a nivel campo']);
-    // Each button payload encodes incomeIds (100, 101) and no expense ids ('n')
-    expect(rows[0].id).toBe('bap_11_n_100,101');
-    expect(rows[3].id).toBe('bap_0_n_100,101');
+    // V2 button payload: bap2_<base64({income:[100,101]})>_<plotId>
+    expect(rows[0].id).toMatch(/^bap2_[A-Za-z0-9_-]+_11$/);
+    expect(rows[3].id).toMatch(/^bap2_[A-Za-z0-9_-]+_0$/); // 0 = leave at field-level
+    // Decode the payload and verify it carries the two income ids.
+    const payloadStr = rows[0].id.match(/^bap2_([A-Za-z0-9_-]+)_/)![1];
+    const decoded = JSON.parse(Buffer.from(payloadStr, 'base64url').toString('utf-8'));
+    expect(decoded.income).toEqual([100, 101]);
   });
 
   it('skips the prompt when only 1 plot exists (auto-resolve should have happened upstream)', async () => {

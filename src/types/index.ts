@@ -487,12 +487,27 @@ export interface HandlerResponse {
   interactive?: InteractiveMessage;
   suggestionKey?: string;
   /**
-   * Set by handleExpense / handleIncome when they save a record in BULK mode
-   * (inside a compound action) AND the plot couldn't be auto-resolved (field
-   * has 2+ plots). The CompoundExecutor collects these and, after the loop,
-   * asks ONCE "¿a qué lote los asigno?" so all bulk-saved records get a plot
-   * via a single user tap.
+   * Set by any handler that saved a record in BULK mode (compound action)
+   * WITHOUT a plot — either because the user didn't specify, or because the
+   * field has 2+ plots and we can't auto-resolve. The CompoundExecutor
+   * collects these and, after the loop, asks ONCE "¿a qué lote los asigno?"
+   * so all bulk-saved records get a plot via a single tap.
+   *
+   * `kind` controls which table assign_bulk_plot UPDATEs:
+   *   - expense / income → expenses / incomes
+   *   - activity         → domain_events (sow/harvest/spray/fertil/tillage/irrigation)
+   *   - observation      → agro_observations
+   *   - scouting         → crop_scoutings
+   *   - livestock        → livestock_groups (location_id = plot_id)
+   *   - rainfall         → rainfall
+   *   - stock_movement   → stock_movements (no plot — included for completeness; assignment is no-op)
    */
+  savedRecordsWithoutPlot?: Array<{
+    kind: 'expense' | 'income' | 'activity' | 'observation' | 'scouting' | 'livestock' | 'rainfall' | 'stock_movement';
+    id: number;
+    fieldId: number;
+  }>;
+  /** @deprecated Use `savedRecordsWithoutPlot` instead. Kept for legacy callers. */
   savedFinanceWithoutPlot?: { kind: 'expense' | 'income'; id: number; fieldId: number };
   sideEffects?: {
     setPending?: PendingTransaction;

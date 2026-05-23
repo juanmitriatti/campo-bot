@@ -69,9 +69,12 @@ export const SAVE_REJECTED_DUPLICATE = { _rejected: 'duplicate' };
  */
 export const SAVE_REJECTED_NO_PLOT = { _rejected: 'no_plot' };
 
-export async function saveObservation(userId, { fieldId, plotId, text, category, source, observationDate }) {
-  // Guard: observations MUST have a plot — never store with plot_id = NULL
-  if (!plotId) {
+export async function saveObservation(userId, { fieldId, plotId, text, category, source, observationDate, allowNoPlot }) {
+  // Guard: observations normally MUST have a plot — never store with plot_id = NULL.
+  // BulkMode (compound action) callers can pass allowNoPlot=true to save at
+  // field-level intentionally; the post-compound bulk-plot handler can then
+  // let the user assign a plot retroactively.
+  if (!plotId && !allowNoPlot) {
     console.warn(`[obs-guard] Rejected observation without plot_id for user ${userId}`);
     logWarning('observations', 'REJECTED_NO_PLOT', `Observation without plot_id`, { userId });
     return SAVE_REJECTED_NO_PLOT;

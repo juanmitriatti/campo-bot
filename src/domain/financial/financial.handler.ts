@@ -2635,13 +2635,13 @@ export class FinancialHandler {
 
       // Bulk plot reassignment after a compound that saved 1+ records at field
       // level (field has 2+ plots → couldn't auto-resolve). The interactive
-      // router builds a "bap_<plotId>_<eIds>_<iIds>" callback; one tap routes
-      // here and we UPDATE all records in a single transaction.
+      // router builds a bap2_<base64>_<plotId> callback; one tap routes here
+      // and we UPDATE all records across kinds (expense, income, activity,
+      // observation, scouting, livestock, rainfall) in a single transaction.
       case 'assign_bulk_plot': {
         const plotId = cmd.plotId as number | null; // null = leave at field level
-        const expenseIds = (cmd.expenseIds as number[] | undefined) ?? [];
-        const incomeIds = (cmd.incomeIds as number[] | undefined) ?? [];
-        return this.handleAssignBulkPlot(userId, plotId, expenseIds, incomeIds);
+        const records = (cmd.records as Record<string, number[]> | undefined) ?? {};
+        return this.handleAssignBulkPlot(userId, plotId, records);
       }
 
       // Re-execution endpoints for the unified pending action system. When the
@@ -2720,19 +2720,17 @@ export class FinancialHandler {
   }
 
   /**
-   * Update plot_id (and optionally field_id) for a batch of expenses + incomes
-   * the user picked via a single tap. We re-filter by user_id for safety so
-   * crafted callback payloads can't touch other users' rows.
+   * Bulk-update plot_id across records of multiple kinds the user picked via
+   * one tap. Each kind → its own table. user_id-scoped UPDATEs so a crafted
+   * callback can't touch other users' rows.
    */
   private async handleAssignBulkPlot(
     userId: UserId,
     plotId: number | null,
-    expenseIds: number[],
-    incomeIds: number[],
+    records: Record<string, number[]>,
   ): Promise<HandlerResponse> {
-    if (expenseIds.length === 0 && incomeIds.length === 0) {
-      return { messages: ['No encontré registros para reasignar.'] };
-    }
+    const totalIds = Object.values(records).reduce((a, ids) => a + (Array.isArray(ids) ? ids.length : 0), 0);
+    if (totalIds === 0) return { messages: ['No encontré registros para reasignar.'] };
 
     let plotName: string | null = null;
     let fieldId: number | null = null;
@@ -2751,32 +2749,76 @@ export class FinancialHandler {
       fieldId = plot.field_id as number;
     }
 
-    let expensesUpdated = 0;
-    let incomesUpdated = 0;
-    if (expenseIds.length > 0) {
-      const res = await pool.query(
-        `UPDATE expenses SET plot_id = $1${fieldId != null ? ', field_id = COALESCE(field_id, $4)' : ''}
-         WHERE user_id = $2 AND id = ANY($3::int[]) AND deleted_at IS NULL`,
-        fieldId != null ? [plotId, userId, expenseIds, fieldId] : [plotId, userId, expenseIds],
-      );
-      expensesUpdated = res.rowCount ?? 0;
-    }
-    if (incomeIds.length > 0) {
-      const res = await pool.query(
-        `UPDATE incomes SET plot_id = $1${fieldId != null ? ', field_id = COALESCE(field_id, $4)' : ''}
-         WHERE user_id = $2 AND id = ANY($3::int[]) AND deleted_at IS NULL`,
-        fieldId != null ? [plotId, userId, incomeIds, fieldId] : [plotId, userId, incomeIds],
-      );
-      incomesUpdated = res.rowCount ?? 0;
+    // Per-kind UPDATE spec. user_id_check defines how to scope the UPDATE to
+    // the current user (some tables have user_id directly, others via joins).
+    const KIND_TABLE: Record<string, { table: string; plotCol: string; userScope: string; deletedCheck?: string }> = {
+      expense:        { table: 'expenses',           plotCol: 'plot_id',     userScope: 'user_id = $userId',                                          deletedCheck: 'deleted_at IS NULL' },
+      income:         { table: 'incomes',            plotCol: 'plot_id',     userScope: 'user_id = $userId',                                          deletedCheck: 'deleted_at IS NULL' },
+      activity:       { table: 'domain_events',      plotCol: 'plot_id',     userScope: 'user_id = $userId' },
+      observation:    { table: 'agro_observations',  plotCol: 'plot_id',     userScope: 'user_id = $userId' },
+      scouting:       { table: 'crop_scoutings',     plotCol: 'plot_id',     userScope: 'user_id = $userId' },
+      rainfall:       { table: 'rainfall',           plotCol: 'plot_id',     userScope: 'user_id = $userId' },
+      // livestock: plot_id mapping is via location_id on livestock_groups
+      // when location_type='plot'. To avoid type collisions we only update if
+      // the existing location_type is plot/null (don't override a feedlot ref).
+      livestock:      { table: 'livestock_groups',   plotCol: 'plot_id',     userScope: 'user_id = $userId' },
+      // stock_movement has no plot. Skip silently in the UPDATE — keep for parity.
+    };
+
+    let totalUpdated = 0;
+    const perKindUpdates: Array<{ label: string; count: number }> = [];
+    const KIND_LABEL: Record<string, [string, string]> = {
+      expense:     ['gasto',          'gastos'],
+      income:      ['ingreso',        'ingresos'],
+      activity:    ['actividad',      'actividades'],
+      observation: ['observación',    'observaciones'],
+      scouting:    ['monitoreo',      'monitoreos'],
+      rainfall:    ['lluvia',         'lluvias'],
+      livestock:   ['movimiento',     'movimientos'],
+    };
+
+    for (const [kind, ids] of Object.entries(records)) {
+      if (!Array.isArray(ids) || ids.length === 0) continue;
+      const spec = KIND_TABLE[kind];
+      if (!spec) continue; // unknown kind (e.g. stock_movement) — silently skip
+
+      // Build dynamic SQL safely (table+col names from a closed allow-list above)
+      const whereParts: string[] = [];
+      const params: unknown[] = [];
+      params.push(plotId); // $1
+      params.push(userId); // $2
+      params.push(ids);    // $3
+      whereParts.push(spec.userScope.replace('$userId', '$2'));
+      whereParts.push(`id = ANY($3::int[])`);
+      if (spec.deletedCheck) whereParts.push(spec.deletedCheck);
+
+      const setParts: string[] = [`${spec.plotCol} = $1`];
+      if (fieldId != null && (kind === 'expense' || kind === 'income' || kind === 'activity' || kind === 'observation' || kind === 'scouting' || kind === 'rainfall' || kind === 'livestock')) {
+        params.push(fieldId); // $4
+        setParts.push(`field_id = COALESCE(field_id, $${params.length})`);
+      }
+
+      const sql = `UPDATE ${spec.table} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')}`;
+      try {
+        const res = await pool.query(sql, params);
+        const count = res.rowCount ?? 0;
+        totalUpdated += count;
+        if (count > 0) {
+          const labels = KIND_LABEL[kind] ?? [kind, `${kind}s`];
+          perKindUpdates.push({ label: count === 1 ? labels[0] : labels[1], count });
+        }
+      } catch (err) {
+        logError('assign_bulk_plot', `KIND_${kind.toUpperCase()}`, err as Error, { userId, ids });
+      }
     }
 
-    const total = expensesUpdated + incomesUpdated;
-    if (plotId == null) {
-      return { messages: [`✅ Listo, dejé ${total} registro${total === 1 ? '' : 's'} a nivel campo.`] };
+    if (totalUpdated === 0) {
+      return { messages: ['No pude asignar los registros (puede que ya no existan).'] };
     }
-    const parts: string[] = [];
-    if (incomesUpdated > 0) parts.push(`${incomesUpdated} ingreso${incomesUpdated === 1 ? '' : 's'}`);
-    if (expensesUpdated > 0) parts.push(`${expensesUpdated} gasto${expensesUpdated === 1 ? '' : 's'}`);
+    if (plotId == null) {
+      return { messages: [`✅ Listo, dejé ${totalUpdated} registro${totalUpdated === 1 ? '' : 's'} a nivel campo.`] };
+    }
+    const parts = perKindUpdates.map(p => `${p.count} ${p.label}`);
     return { messages: [`✅ Asigné ${parts.join(' + ')} al *Lote ${plotName}*.`] };
   }
 

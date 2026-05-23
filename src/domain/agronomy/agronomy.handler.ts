@@ -3378,20 +3378,41 @@ export class AgronomyHandler {
             }
             console.log(`[HYBRID] Auto-assigned plot_id=${resolved.plotId} (single plot) for user ${userId}`);
           } else {
-            // Multiple plots: ask user to specify, save pending observation for follow-up
-            console.log(`[HYBRID] Multiple plots (${userPlots.length}) → asking user ${userId}`);
+            // Multiple plots → normally ask the user via setPendingObservation.
+            // BULK MODE EXCEPTION: in compound, never block — save the
+            // observation at field-level (plot_id=null) using the user's
+            // first field. The post-compound bulk-plot prompt will let
+            // them assign a plot retroactively if they want.
             const category = detectObservationCategory(obsText);
-            return {
-              messages: [`¿En qué lote?\n\n${formatPlotListGrouped(userPlots)}\n\nEjemplo:\n👉 *observación lote 1: ${obsText}*`],
-              suggestionKey: 'default_menu',
-              sideEffects: {
-                setPendingObservation: { text: obsText, category },
-              },
-            };
+            if ((cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode) {
+              const userFields = await this.repo.getUserFields(userId);
+              const fallbackField = userFields[0];
+              if (fallbackField) {
+                resolved.fieldId = fallbackField.id;
+                resolved.fieldName = fallbackField.name;
+                resolved.plotId = null;
+                resolved.plotName = null;
+                console.log(`[BULK] log_observation: saving at field-level for user ${userId} (field=${fallbackField.name})`);
+                // fall through to the save block below
+              } else {
+                // No field at all: can't save — silently skip in bulk mode.
+                return { messages: ['💡 No anoté la observación (no hay campo).'], suggestionKey: 'default_menu' };
+              }
+            } else {
+              console.log(`[HYBRID] Multiple plots (${userPlots.length}) → asking user ${userId}`);
+              return {
+                messages: [`¿En qué lote?\n\n${formatPlotListGrouped(userPlots)}\n\nEjemplo:\n👉 *observación lote 1: ${obsText}*`],
+                suggestionKey: 'default_menu',
+                sideEffects: {
+                  setPendingObservation: { text: obsText, category },
+                },
+              };
+            }
           }
         }
 
         const category = detectObservationCategory(obsText);
+        const bulkModeFlag = (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true;
 
         const saved = await saveObservation(userId, {
           fieldId: resolved.fieldId,
@@ -3400,6 +3421,7 @@ export class AgronomyHandler {
           category,
           source: 'text',
           observationDate: cmd.eventDate as string | null,
+          allowNoPlot: bulkModeFlag, // bulkMode → save at field-level without plot
         });
 
         // Typed rejection handling
@@ -3436,6 +3458,15 @@ export class AgronomyHandler {
           category,
           observationText: saved.observation_text,
         });
+        // In bulkMode WITHOUT a plot, register the saved id so the post-compound
+        // bulk-plot prompt can let the user assign a plot retroactively.
+        if (bulkModeFlag && !resolved.plotId && resolved.fieldId && saved.id) {
+          return {
+            messages: [message],
+            suggestionKey: 'observation_logged',
+            savedRecordsWithoutPlot: [{ kind: 'observation', id: saved.id as number, fieldId: resolved.fieldId as number }],
+          };
+        }
         return { messages: [message], suggestionKey: 'observation_logged' };
       }
 
