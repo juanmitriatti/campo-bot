@@ -172,8 +172,8 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - Wraps every step in `withTransaction`. One throw → rollback all + "❌ No pude registrar todas las acciones..." message.
 - Pre-execution: dedup identical steps, reorder writes-before-reads, consolidate same-field rainfalls into `log_rainfall_batch`.
 - Per step, passes `bulkMode` to handlers: `routeCommand(cmd, ..., bulkMode)` → router sets `cmd._bulkMode = true` so any downstream handler can read it.
-- **Interceptor (safety net)**: if any handler returns `startFlow`/`setPendingActivity`/`setPendingObservation` in bulkMode → strip those side-effects, clear `response.messages` + `response.interactive` (which carried the blocking prompt), and inject one short `💡 No pude completar *<command>* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.` so the user sees what was skipped without losing the rest of the compound.
-- Post-loop: build the bulk-plot prompt if any `savedRecordsWithoutPlot[]` were collected (see §3 below). Also surfaces `income_partial`/`expense_partial` with a "💡 falta el precio de X" message + wires the FIRST partial into `setPendingActivity` so the user's next message completes it.
+- **Interceptor (safety net + queue capture)**: if any handler returns `startFlow`/`setPendingActivity`/`setPendingObservation` in bulkMode → strip those side-effects from the immediate response. When the blocked side-effect was `setPendingActivity` (recoverable — has command + missing slots), **CAPTURE it into the serial pendingQueue** with a context-tagged askPrompt (e.g. `👇 Baja de hacienda (2 vacas): ¿en qué lote?`) so it gets asked AFTER the current pending completes. For `startFlow`/`setPendingObservation` (non-recoverable, different mechanism) inject a `💡 No pude completar *<command>*` advisory.
+- Post-loop: build the bulk-plot prompt if any `savedRecordsWithoutPlot[]` were collected (see §3 below). Also collects `income_partial`/`expense_partial` into the queue (one item each, context-tagged). Promote queue: first item → `setPendingActivity` + askPrompt added to finalMessages so the user sees it immediately. Rest → `nextInQueue`. Lead announcement `💡 Tengo *N acciones pendientes* — te las pregunto una por una.` when queue > 1.
 
 **2. Handler-level bulkMode awareness (when present, saves at field-level)**:
 - `handleExpense` + `handleIncome` (`financial.handler.ts`): when `bulkMode && !plotId && fieldId`, save with `plot_id=null` + emit `savedFinanceWithoutPlot`. Confirm flow is force-disabled (`noConfirmSettings`).
@@ -191,8 +191,19 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 
 **4. Partial financial in compound (`income_partial` / `expense_partial`)**:
 - `agent-response-mapper.mapIncome`/`mapExpense` returns `income_partial`/`expense_partial` when amount=0 AND no `quantity*unit_price` to compute from.
-- CompoundExecutor doesn't drop partials — it appends a `💡 No registré *<categoría>* (qty unit) — me falta el precio. Decímelo y lo guardo.` message AND wires the FIRST partial via `setPendingActivity({command:'log_income'|'log_expense', missing:['amount'], askPrompt:'¿Cuánto cobraste por X?'})`. The unified pending system handles the next message.
-- `log_income` + `log_expense` were added to `FINANCIAL_COMMANDS` in DomainRouter so the pending re-execution path works.
+- CompoundExecutor collects ALL partials into the serial pendingQueue (one item per partial) — not just the first. Each gets a context-tagged askPrompt like `👇 Venta de *Soja* (10 tn): ¿cuánto fue el precio?`.
+- `log_income` + `log_expense` are in `FINANCIAL_COMMANDS` in DomainRouter so the pending re-execution path works.
+
+**4b. Serial Pending Queue (May 23, hotfix `58ae007`)**:
+- **Why**: when a compound left 2+ items needing follow-up, the prior design only wired the FIRST partial and the user's single reply would apply to ALL items — conflating data (e.g. "vendí 2 vacas y compré glifosato" → "Lote A2 y precio 100mil" → both vacas AND glifosato got 100k each).
+- **Type**: `PendingActivity.nextInQueue?: Array<Omit<PendingActivity, 'timestamp'|'nextInQueue'>>` (see `src/middleware/pending-activities.ts`).
+- **Build**: CompoundExecutor populates `pendingQueue` from (a) interceptor-captured setPendingActivity items + (b) income_partial/expense_partial items. Each item gets a `describeQueueItem()` label so the user knows WHICH action is being asked about.
+- **Promote**: first item → `setPendingActivity.askPrompt` + appended to finalMessages immediately. Rest → `setPendingActivity.nextInQueue`. Lead announcement `💡 Tengo N acciones pendientes — te las pregunto una por una.` when queue > 1.
+- **Advance**: shared helper `src/middleware/pending-queue-advancer.ts` used by all 3 controllers. After pending re-routes successfully, decides: (a) if the re-routed cmd set its OWN new pending, append our remaining queue to it (don't lose items); (b) else pop next from queue → set as new pending → send its askPrompt.
+- **Critical fixes in `58ae007`**:
+  - `pending-action-processor.ts:69` had a duplicate `const missing = pending.missing ?? []` (line 55 already declared it) that silently broke tsx/esbuild transform → EVERY multi-turn pending answer returned 500. Pre-existing bug.
+  - When a queue item for `log_income`/`log_expense` got its slots filled and was re-routed, the merged ParsedCommand did NOT carry the `command` field (partials store command on the pending, not in `data`) → `routeCommand(undefined)` → null → "No pude completar el registro" + silent data drop. Fix: `if (!merged.command) merged.command = pendingAct.command;` in all 3 controllers BEFORE calling routeCommand.
+- **All 9 setPendingActivity write-sites** across 3 controllers now copy `nextInQueue` too (otherwise queue items would be lost when re-set).
 
 **5. Critical mapper bugfix (May 23)**:
 - `agent-response-mapper.ts:246-253` filter that drops spurious `log_expense`/`log_income` when there's a sibling agro activity was too aggressive: it only checked `input.amount > 0` and dropped calls with `quantity+unit_price` (mapper would auto-compute later). Result: a 4-tool compound like "gasté + vendí 20tn maíz a 200 USD + fumigué + agregué ganado" lost the maíz income → `bulkMode=false` → expense triggered single-action plot flow → 0 writes. **Fix**: also keep when `qty>0 && unit_price>0` (computable). This was the silent killer for many tests.
@@ -345,8 +356,9 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/middleware/pending-field-location.ts` — 3-option field location (city/map/share)
 - `src/middleware/pending-plot-area.ts` — Queue-based hectares assignment
 - `src/middleware/slot-extractor.ts` — **Unified slot extractors** for 12 slot types. Single source for amount/category/plot/field/crop/quantity/unit/unit_price/product/currency/count/hectares. Reuses existing helpers. Used by `pending-action-processor` and `validatePlotAsync` fallback.
-- `src/middleware/pending-action-processor.ts` — Merges extracted slots into a pending action's `data`, returns updated pending (when slots still missing) OR null (when ready to execute). Auto-generates Spanish ask-prompts for remaining slots.
-- `src/middleware/pending-activities.ts` — Store + `PendingActivity` type with `missing?: string[]` + `askPrompt?: string`. 5-min TTL.
+- `src/middleware/pending-action-processor.ts` — Merges extracted slots into a pending action's `data`, returns updated pending (when slots still missing) OR null (when ready to execute). Auto-generates Spanish ask-prompts for remaining slots. **CAUTION**: pre-existing duplicate `const missing` declaration was silently breaking tsx transform → 500 on every pending answer. Fixed `58ae007`.
+- `src/middleware/pending-activities.ts` — Store + `PendingActivity` type with `missing?: string[]` + `askPrompt?: string` + `nextInQueue?: Array<...>`. 5-min TTL. The `nextInQueue` is the serial pending queue — items wait for the current pending to complete before being asked.
+- `src/middleware/pending-queue-advancer.ts` — Shared helper used by all 3 controllers. After a pending completes + re-routes, decides whether to (a) merge remaining queue into a new pending the re-route set, (b) pop next queue item as new pending + return its askPrompt, or (c) clear (queue empty).
 
 ### Controllers + Routes
 - `src/controllers/whatsapp.controller.ts` — WhatsApp webhook (with channel-verification gate when REQUIRE_VERIFIED_CHANNEL=true)
@@ -366,6 +378,8 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/testing/qa-compound-mixed-25.ts` — 25 multi-domain compound conversations (May 23)
 - `src/testing/qa-bulk-extended-20.ts` — 20 conversations verifying bulkMode interceptor across handlers (May 23)
 - `src/testing/qa-onboarding-25.ts` — 25 first-impression cases (resets to ZERO state between tests; verifies new-user onboarding works in ONE message)
+- `src/testing/qa-serial-conversations-20.ts` — 20 multi-turn scenarios verifying the serial pending queue (NEW May 23)
+- `src/testing/qa-repeated-combos-20.ts` — 20 repetition-focused scenarios (NEW May 23)
 
 ### Config & Utils
 - `src/config/db.js` — `pool` (with AsyncLocalStorage hijack for transactions) + `withTransaction(fn)` helper
@@ -439,3 +453,14 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - Targets the most common onboarding patterns: "Tengo el campo X en Y con lotes A, B, C. Sembré soja en A".
 - Last run: **22/25 (88%) PASS** — best suite result. Average 0.8 fields + 1.5 plots + 1.7 records per single onboarding message.
 - Critical for first-impression UX: a new user can dump their entire setup in one message and the bot persists it cleanly.
+
+### QA Serial Conversations (20 multi-turn scenarios, May 23)
+- `npx tsx src/testing/qa-serial-conversations-20.ts` — 20 compound messages where some items have missing data; the test answers the bot's follow-up questions one-at-a-time and verifies each item ends up with the right data (no conflation).
+- **Discovered TWO production-blocking bugs** later fixed in `58ae007`:
+  1. `pending-action-processor.ts` had a duplicate `const missing` that crashed tsx transform → every multi-turn pending answer returned 500
+  2. Re-routing `log_income`/`log_expense` pendings lost the `command` field → silent data drop
+- After the fixes the serial queue mechanism works end-to-end across 2-6 item compounds.
+
+### QA Repeated Combos (20 repetition-focused scenarios, May 23)
+- `npx tsx src/testing/qa-repeated-combos-20.ts` — 20 NEW scenarios focused on REPEATED action types (2x compra + 2x venta, 3x fumigación, 3x hacienda, etc.) — verifies the agent emits N tools when the user repeats a verb N times, plus diverse real-farmer-style combinations.
+- Setup shared across tests (does NOT reset between cases); each test measures DB deltas to verify correct attribution.
