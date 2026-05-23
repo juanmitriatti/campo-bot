@@ -291,6 +291,8 @@ ${this.buildActivityLines(dictionary)}
 - CRÍTICO "sanidad/sanitario": SIN palabras de animal (hacienda/vacas/toros/novillos/terneros/cabezas/rodeo/animal/vacuna/desparasit/animales) → query_scoutings (sanidad del CULTIVO es lo más común). CON cualquier palabra animal → query_health_events. "Resumen sanitario de mayo"/"reporte sanitario"/"estado sanitario" sin más contexto → query_scoutings (DEFAULT a cultivo, NUNCA a hacienda).
 - "plagas/malezas/helada/granizo/roya/hongo/chinches/pulgones en lote X"→log_observation (REGISTRO, sin verbos de consulta como "mostrame/ver/buscar/dónde/qué/cuál")
 - IMPORTANTE consulta vs registro: "Mostrame/Ver/Buscame/Filtrá/Listame + [maleza/plaga/cultivo/estadio/lote]" SIEMPRE es CONSULTA → query_scoutings (NUNCA log_observation). "Mostrame lotes con rama negra" → query_scoutings(weed_species_any:["rama negra"]). "Buscame oruga militar" → query_scoutings(pest_species:"oruga militar"). "Ver monitoreos de San Martin" → query_scoutings(field:"San Martin")
+- CRÍTICO MONITOREOS vs ACTIVIDADES: "cuántos monitoreos hice"/"cuántos monitoreos"/"resumen de monitoreos"/"monitoreos del lote X" → SIEMPRE query_scoutings (NUNCA activity_stats, NUNCA query_plot_history). Los monitoreos viven en crop_scoutings, NO en domain_events. activity_stats no los cuenta. Esta regla DOMINA sobre "cuántos X hice" genérico.
+- CRÍTICO COSECHA EN KG/TN vs CONTAR EVENTOS: "cuántos kg/tn/qq de X coseché"/"cuánto X coseché"/"total cosechado de X"/"rinde total de X" → SIEMPRE query_harvest_loads(crop:X, view:'aggregate') — suma los kg de cada load. activity_stats sólo cuenta eventos (1 cosecha = 1, NO kg). PROHIBIDO usar activity_stats para preguntas de TONELAJE/KILAJE; activity_stats sólo aplica a "cuántas cosechas hice" (conteo de eventos, no de volumen).
 - "cuándo/qué/hubo plagas en lote X"→query_plot_history (CONSULTA). Solo si pregunta explícita
 - "reporte agro/agronómico"/"estado del lote/campo"/"cómo va/viene/está el lote/campo"/"novedades"/"resumen agronómico"→generate_agro_report
 - "reporte/gastos/ingresos del lote X"(contexto financiero)→financial_report(plot=X). Sin contexto financiero→generate_agro_report
@@ -317,6 +319,17 @@ PASO 2 — Elegí el PERÍODO. NO defaulteás a mes actual cuando la pregunta NO
   - Sin qualifier + query de movimientos recientes ("mostrame gastos"/"ver ingresos") → mes actual (default)
   - Volume y top_locations sin qualifier → SIEMPRE period:'all'
   - "todos"/"todo el historial"/"completo" → period:'all'
+
+  SEMÁNTICA TEMPORAL EXACTA (CRÍTICA — usá estos valores literales de period):
+  - "este mes" / "del mes" / "mes corriente" / "del mes actual" / "balance del mes" / "balance este mes" / "este mes corriente" → period:'month' (mes CALENDARIO actual: del día 1 al hoy)
+  - "mes pasado" / "el mes pasado" / "balance del mes pasado" / "del mes pasado" / "mes anterior" → period:'last_month' (mes CALENDARIO anterior COMPLETO: del 1 al último día del mes previo. NUNCA es un sliding window de los últimos 30 días)
+  - "esta semana" / "balance de la semana" → period:'week'
+  - "semana pasada" / "la semana anterior" → period:'last_week'
+  - "este año" / "del año" / "balance anual" / "balance del año" → period:'year'
+  - Mes ESPECÍFICO ("en marzo"/"de abril"/"febrero") → desde:'YYYY-03-01', hasta:'YYYY-03-31' (con YYYY = año actual salvo que el usuario diga otro)
+  - "últimos N días" → days:N
+  - "balance" SOLO (sin qualifier temporal) → period:'all' (histórico completo, neto de todo)
+  - REGLA DE ORO: "del mes"/"este mes"/"mes pasado" SIEMPRE significan mes calendario, NO ventanas deslizantes. "los últimos 30 días" SÍ es ventana deslizante (→ days:30)
 
 PASO 3 — Elegí el TYPE:
   - Sólo gastos ("gasté"/"compré"/"pagué"/"gastos") → type:'expenses'
@@ -814,6 +827,8 @@ PASO 4 — DISAMBIGUACIONES:
 - CONSULTA COSECHA/CARGAS: "cargas del lote X"/"cuánto llevó fulano"/"camiones a Cargill"/"detalle cosecha"/"cosecha del lote X?"/"ver cosecha de X"/"mostrar cargas X" (consulta sin datos nuevos) → query_harvest_loads. NUNCA query_plot_history para cargas de camiones. "Cosecha del lote X" SIN lista de choferes/pesos → query_harvest_loads, NO harvest_crop
 - ELIMINAR CARGAS: "borrar/eliminar cargas del lote X"/"esas cargas están de más"/"duplicado"/"borrar camiones sin destino" → delete_harvest_loads. Si dicen "sin destino" → only_without_destination=true. Si mencionan choferes → driver_names[]
 - ACTIVIDADES STATS: "cuántas fumigaciones"/"cuántas siembras"/"actividades del mes"/"resumen actividades"/"estadísticas actividades"/"cuántas veces fumigué/sembré" → activity_stats. Para consultas tipo "cuándo fumigué" (fecha específica) → query_plot_history
+- CRÍTICO MONITOREOS (NO activity_stats): "cuántos monitoreos"/"cuántos monitoreos hice"/"monitoreos del lote X"/"resumen monitoreos"/"estadísticas monitoreos" → query_scoutings(view:'aggregate'), NUNCA activity_stats. Los monitoreos son crop_scoutings, no son domain_events. Mismo con: "evolución del cultivo/lote"/"cómo viene el cultivo/lote"/"presión de plagas" → query_scoutings
+- CRÍTICO COSECHA EN KG/TN (NO activity_stats ni query_plot_history): "cuántos kg/tn/qq de X coseché"/"cuántos kg/tn cosechamos"/"total cosechado"/"rinde total"/"cosecha de soja/maíz/trigo en kg" → query_harvest_loads(crop:X, view:'aggregate'). activity_stats sólo cuenta eventos (1 cosecha), NO suma kg de loads. Para "cuántas cosechas hice" (conteo de eventos) sí activity_stats; para "cuántos kg" siempre query_harvest_loads
 - GRUPO LOTES (asignación): "asignar grupo X al lote Y"/"el lote Y es del grupo X"/"los lotes A, B son de X"/"titularidad de los lotes es X"/"lotes A y B pertenecen a X"/"el dueño de los lotes A,B es X"/"cambiar grupo del lote" → set_plot_grupo(plots=[...], grupo=X). SIEMPRE usar array plots aunque sea un solo lote. NUNCA responder conversacional si hay nombres de lotes + nombre de grupo/titular
 - GRUPO LOTES (consultas): "cuántas has/hectáreas del grupo X"/"lotes del grupo X"/"superficie de la sociedad X"/"has de la titularidad X" → list_plots(grupo=X). "actividades del grupo X"/"fumigaciones grupo X" → activity_stats(grupo=X). "qué hay sembrado en grupo X"/"soja del grupo X" → active_crop(grupo=X)`;
   }

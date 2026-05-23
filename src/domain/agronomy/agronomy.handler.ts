@@ -808,8 +808,37 @@ export class AgronomyHandler {
     }
 
     // ── 10. Dispatch ──
+    // Helper: when scope is harvest-only, also sum kg from harvest_loads (the per-truck table)
+    // so "cuántos kg de soja coseché" returns the volume even if the agent picked activity_stats.
+    const augmentWithHarvestLoads = async (resp: HandlerResponse): Promise<HandlerResponse> => {
+      const isHarvestScope = activityTypes && activityTypes.length === 1 && activityTypes[0] === 'harvest';
+      if (!isHarvestScope) return resp;
+      try {
+        const eventIds = (rows as Array<{ id: number; event_type: string }>)
+          .filter(r => r.event_type === 'harvest')
+          .map(r => r.id);
+        if (eventIds.length === 0) return resp;
+        const loadRows = await pool.query(
+          `SELECT COALESCE(SUM(weight_kg), 0)::numeric AS total_kg, COUNT(*) AS loads
+           FROM harvest_loads WHERE domain_event_id = ANY($1::int[])`,
+          [eventIds],
+        );
+        const totalKg = Number(loadRows.rows[0]?.total_kg || 0);
+        const nLoads = Number(loadRows.rows[0]?.loads || 0);
+        if (totalKg <= 0) return resp;
+        const tn = (totalKg / 1000).toLocaleString('es-AR', { maximumFractionDigits: 2 });
+        const kgFmt = Math.round(totalKg).toLocaleString('es-AR');
+        const extra = `\n\n🌾 *Total cosechado*: ${kgFmt} kg (≈ ${tn} tn) — ${nLoads} carga${nLoads === 1 ? '' : 's'}`;
+        const messages = [...(resp.messages || [])];
+        if (messages.length > 0) messages[messages.length - 1] = String(messages[messages.length - 1]) + extra;
+        else messages.push(extra.trimStart());
+        return { ...resp, messages };
+      } catch {
+        return resp;
+      }
+    };
     switch (view) {
-      case 'aggregate': return renderers.renderActivityAggregate(rows as import('./activity-renderers.js').ActivityRow[], ctx);
+      case 'aggregate': return augmentWithHarvestLoads(renderers.renderActivityAggregate(rows as import('./activity-renderers.js').ActivityRow[], ctx));
       case 'max': return renderers.renderActivityExtreme(rows as import('./activity-renderers.js').ActivityRow[], ctx, 'max');
       case 'min': return renderers.renderActivityExtreme(rows as import('./activity-renderers.js').ActivityRow[], ctx, 'min');
       case 'avg': return renderers.renderActivityAvg(rows as import('./activity-renderers.js').ActivityRow[], ctx);

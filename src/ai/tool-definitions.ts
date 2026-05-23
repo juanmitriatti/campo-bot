@@ -362,7 +362,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
 
   {
     name: 'activity_stats',
-    description: 'Resumen/estadísticas de actividades: cuántas fumigaciones, siembras, cosechas, etc. por período. "cuántas fumigaciones hice", "resumen de actividades del mes", "actividades este año", "cuántas veces fumigué", "estadísticas de actividades", "actividades del grupo Pérez".',
+    description: 'Conteo de eventos de actividad por período: cuántas fumigaciones, siembras, cosechas, tillage, riego. Cuenta EVENTOS (1 cosecha = 1), NO suma kg. "cuántas fumigaciones hice", "resumen de actividades del mes", "actividades este año", "cuántas veces fumigué", "estadísticas de actividades", "actividades del grupo Pérez". NO usar para: (a) "cuántos monitoreos" → query_scoutings; (b) "cuántos kg/tn/qq cosechados" o "rinde total" → query_harvest_loads.',
     input_schema: {
       type: 'object',
       properties: {

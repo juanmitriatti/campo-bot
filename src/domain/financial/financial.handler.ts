@@ -416,6 +416,32 @@ export class FinancialHandler {
       desde = `${nowAR.getFullYear()}-01-01`;
       hasta = todayISO;
       rangeLabel = `Año ${nowAR.getFullYear()}`;
+    } else if (period === 'month') {
+      desde = `${nowAR.getFullYear()}-${String(nowAR.getMonth() + 1).padStart(2, '0')}-01`;
+      hasta = todayISO;
+      rangeLabel = nowAR.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+    } else if (period === 'last_month') {
+      const lm = new Date(nowAR.getFullYear(), nowAR.getMonth() - 1, 1);
+      const lmEnd = new Date(nowAR.getFullYear(), nowAR.getMonth(), 0);
+      desde = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, '0')}-01`;
+      hasta = `${lmEnd.getFullYear()}-${String(lmEnd.getMonth() + 1).padStart(2, '0')}-${String(lmEnd.getDate()).padStart(2, '0')}`;
+      rangeLabel = lm.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+    } else if (period === 'week') {
+      const wkStart = new Date(nowAR);
+      const dow = (wkStart.getDay() + 6) % 7;
+      wkStart.setDate(wkStart.getDate() - dow);
+      desde = `${wkStart.getFullYear()}-${String(wkStart.getMonth() + 1).padStart(2, '0')}-${String(wkStart.getDate()).padStart(2, '0')}`;
+      hasta = todayISO;
+      rangeLabel = 'esta semana';
+    } else if (period === 'last_week') {
+      const wkStart = new Date(nowAR);
+      const dow = (wkStart.getDay() + 6) % 7;
+      wkStart.setDate(wkStart.getDate() - dow - 7);
+      const wkEnd = new Date(wkStart);
+      wkEnd.setDate(wkEnd.getDate() + 6);
+      desde = `${wkStart.getFullYear()}-${String(wkStart.getMonth() + 1).padStart(2, '0')}-${String(wkStart.getDate()).padStart(2, '0')}`;
+      hasta = `${wkEnd.getFullYear()}-${String(wkEnd.getMonth() + 1).padStart(2, '0')}-${String(wkEnd.getDate()).padStart(2, '0')}`;
+      rangeLabel = 'semana pasada';
     } else if (cmd.days) {
       const d = new Date();
       d.setDate(d.getDate() - (cmd.days as number));
