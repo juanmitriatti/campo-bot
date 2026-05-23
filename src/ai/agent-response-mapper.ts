@@ -242,12 +242,19 @@ export class AgentResponseMapper {
     const hasAgroActivity = filteredCalls.some(tc => AGRO_ACTIVITY_TOOLS.has(tc.toolName));
     if (hasAgroActivity) {
       // Only drop spurious expense/income calls that have NO explicit amount
-      // (Haiku hallucination). Keep them if the user mentioned a real amount.
+      // AND no quantity*unit_price the mapper could auto-compute later.
+      // Otherwise we'd drop valid compound items like "vendí 20 tn de maíz a 200 USD"
+      // (no precomputed amount, but quantity=20 + unit_price=200 → mapper produces 4000).
+      // Dropping these silently turns "1 expense + 1 income" into "1 expense", which
+      // flips compound bulkMode=false and triggers the single-action plot prompt.
       filteredCalls = filteredCalls.filter(tc => {
         if (tc.toolName !== 'log_expense' && tc.toolName !== 'log_income') return true;
         const input = tc.toolInput as Record<string, unknown>;
         const amount = typeof input.amount === 'number' ? input.amount : 0;
-        return amount > 0; // keep if agent extracted a real amount
+        const qty = typeof input.quantity === 'number' ? input.quantity : 0;
+        const unitPrice = typeof input.unit_price === 'number' ? input.unit_price : 0;
+        const computable = qty > 0 && unitPrice > 0;
+        return amount > 0 || computable; // keep if real amount OR computable from qty*price
       });
       if (filteredCalls.length === 0) filteredCalls = result.toolCalls; // safety: don't drop everything
     }

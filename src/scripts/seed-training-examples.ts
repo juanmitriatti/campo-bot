@@ -259,6 +259,70 @@ const EXAMPLES: Example[] = [
     },
     intent: 'log_rainfall,log_rainfall,log_rainfall',
   },
+
+  // ─── 4-5 tools multi-domain demos (NEW — to fix "Haiku drops actions") ─────
+  // Without these, the agent emits only 1-2 tools when a message has 4+ verbs
+  // across distinct domains. The QA suite (qa-compound-mixed-25) exposed this:
+  // 1/10 pass on "complete" 4+ tool messages. These demos teach Haiku that
+  // 4-5 tools in one turn is normal.
+
+  // 4 tools — gastos + ingresos + actividades + hacienda (THE canonical multi-domain demo)
+  {
+    input: 'gasté 50 mil en gasoil, vendí 20 tn de maíz a 200 USD por tonelada, fumigué Norte con glifosato 3 lt/ha, agregué 10 vaquillonas Angus en Sur',
+    expected_output: {
+      tool_calls: [
+        { tool: 'log_expense', input: { category: 'combustible', expense_type: 'insumo', product: 'gasoil', amount: 50000, currency: 'ARS', description: 'gasoil' } },
+        { tool: 'log_income', input: { category: 'Maíz', quantity: 20, unit: 'tn', unit_price: 200, currency: 'USD', description: 'venta maíz' } },
+        { tool: 'log_spraying', input: { product: 'glifosato', product_type: 'herbicida', quantity: 3, unit: 'lt/ha', plot: 'Norte' } },
+        { tool: 'add_livestock', input: { category: 'vaquillona', count: 10, breed: 'Angus', plot: 'Sur' } },
+      ],
+    },
+    intent: 'log_expense,log_income,log_spraying,add_livestock',
+  },
+
+  // 5 tools — actividades agro (sow + fertil + spray + rainfall + scouting)
+  {
+    input: 'sembré soja en Norte, fertilicé Sur con urea 100 kg/ha, fumigué Fondo con 2,4D 1.5 lt/ha, llovieron 25mm en La Esperanza, monitoreé Norte soja V3 con 15% de rama negra',
+    expected_output: {
+      tool_calls: [
+        { tool: 'sow_crop', input: { crop: 'soja', plot: 'Norte' } },
+        { tool: 'log_fertilization', input: { product: 'urea', quantity: 100, unit: 'kg/ha', plot: 'Sur' } },
+        { tool: 'log_spraying', input: { product: '2,4D', product_type: 'herbicida', quantity: 1.5, unit: 'lt/ha', plot: 'Fondo' } },
+        { tool: 'log_rainfall', input: { amount: 25, field: 'La Esperanza' } },
+        { tool: 'log_crop_scouting', input: { crop: 'soja', stage_code: 'V3', plot: 'Norte', weed_coverage_pct: 15, weed_species: ['rama negra'] } },
+      ],
+    },
+    intent: 'sow_crop,log_fertilization,log_spraying,log_rainfall,log_crop_scouting',
+  },
+
+  // 5 tools — mix con observación (ingreso + gasto + actividad + hacienda + obs)
+  {
+    input: 'vendí 25 tn de maíz a 200 USD por tonelada, gasté 80 mil en herbicida, fumigué Norte con glifosato 2 lt/ha, agregué 50 vacas Angus en Sur, observé liebres en Fondo',
+    expected_output: {
+      tool_calls: [
+        { tool: 'log_income', input: { category: 'Maíz', quantity: 25, unit: 'tn', unit_price: 200, currency: 'USD', description: 'venta maíz' } },
+        { tool: 'log_expense', input: { category: 'agroquimicos', expense_type: 'insumo', product: 'herbicida', amount: 80000, currency: 'ARS', description: 'herbicida' } },
+        { tool: 'log_spraying', input: { product: 'glifosato', product_type: 'herbicida', quantity: 2, unit: 'lt/ha', plot: 'Norte' } },
+        { tool: 'add_livestock', input: { category: 'vaca', count: 50, breed: 'Angus', plot: 'Sur' } },
+        { tool: 'log_observation', input: { text: 'liebres', category: 'plaga', plot: 'Fondo' } },
+      ],
+    },
+    intent: 'log_income,log_expense,log_spraying,add_livestock,log_observation',
+  },
+
+  // 4 tools — hacienda focus (weighing + repro + income + expense)
+  {
+    input: 'pesé 40 terneros con 250 kg promedio, inseminé 20 vacas con IATF, vendí 15 novillos a 1500 USD cada uno, compré 5 bolsas de antiparasitario por 80 mil',
+    expected_output: {
+      tool_calls: [
+        { tool: 'log_weighing', input: { category: 'ternero', animals_weighed: 40, avg_weight_kg: 250 } },
+        { tool: 'log_repro_event', input: { repro_type: 'inseminacion', count: 20, method: 'IATF', category: 'vaca' } },
+        { tool: 'log_income', input: { category: 'Hacienda', quantity: 15, unit: 'cabezas', unit_price: 1500, currency: 'USD', description: 'venta novillos' } },
+        { tool: 'log_expense', input: { category: 'sanidad', expense_type: 'insumo', product: 'antiparasitario', quantity: 5, unit: 'bolsas', amount: 80000, currency: 'ARS', description: 'antiparasitario' } },
+      ],
+    },
+    intent: 'log_weighing,log_repro_event,log_income,log_expense',
+  },
 ];
 
 async function seed() {
