@@ -1849,9 +1849,11 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     if (intent.type === 'command' && intent.data.command === 'cancel') {
+      const { clearMultiTurnState } = await import('../middleware/multi-turn-state.js');
+      await clearMultiTurnState(userId);
       if (!pending) {
-        await sendMessage(phone, 'No hay nada pendiente para cancelar.');
-        conversationLogger.log(userId, phone, text, 'No hay nada pendiente para cancelar.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
+        await sendMessage(phone, 'Listo, contexto limpio. ¿Qué hacemos?');
+        conversationLogger.log(userId, phone, text, 'Listo, contexto limpio.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
         res.sendStatus(200);
         return;
       }

@@ -468,9 +468,10 @@ export class AgronomyHandler {
     // ── 1. Multi-turn: inherit prior scouting query when agent flags it ──
     if (cmd.inherit) {
       try {
-        const { rows } = await pool.query('SELECT last_scouting_query FROM conversation_state WHERE user_id = $1', [userId]);
+        const { rows } = await pool.query('SELECT last_scouting_query, updated_at FROM conversation_state WHERE user_id = $1', [userId]);
         const prev = rows[0]?.last_scouting_query;
-        if (prev && typeof prev === 'object') {
+        const { isFreshMultiTurnEntry } = await import('../../middleware/multi-turn-state.js');
+        if (prev && typeof prev === 'object' && isFreshMultiTurnEntry(rows[0]?.updated_at)) {
           for (const [k, v] of Object.entries(prev)) if (cmd[k] == null) cmd[k] = v as never;
         }
       } catch { /* non-fatal */ }
@@ -669,9 +670,10 @@ export class AgronomyHandler {
     const TRANSIENT_KEYS = new Set(['view', 'top_n', 'compareCrop', 'comparePlot', 'compareField', 'compareActivityType']);
     if (cmd.inherit) {
       try {
-        const { rows } = await pool.query('SELECT last_activity_query FROM conversation_state WHERE user_id = $1', [userId]);
+        const { rows } = await pool.query('SELECT last_activity_query, updated_at FROM conversation_state WHERE user_id = $1', [userId]);
         const prev = rows[0]?.last_activity_query;
-        if (prev && typeof prev === 'object') {
+        const { isFreshMultiTurnEntry } = await import('../../middleware/multi-turn-state.js');
+        if (prev && typeof prev === 'object' && isFreshMultiTurnEntry(rows[0]?.updated_at)) {
           for (const [k, v] of Object.entries(prev)) {
             if (TRANSIENT_KEYS.has(k)) continue;
             if (cmd[k] == null) cmd[k] = v as never;
@@ -861,9 +863,10 @@ export class AgronomyHandler {
     const TRANSIENT_KEYS = new Set(['view', 'top_n', 'compareField', 'comparePlot', 'compare_desde', 'compare_hasta']);
     if (cmd.inherit) {
       try {
-        const { rows } = await pool.query('SELECT last_rainfall_query FROM conversation_state WHERE user_id = $1', [userId]);
+        const { rows } = await pool.query('SELECT last_rainfall_query, updated_at FROM conversation_state WHERE user_id = $1', [userId]);
         const prev = rows[0]?.last_rainfall_query;
-        if (prev && typeof prev === 'object') {
+        const { isFreshMultiTurnEntry } = await import('../../middleware/multi-turn-state.js');
+        if (prev && typeof prev === 'object' && isFreshMultiTurnEntry(rows[0]?.updated_at)) {
           for (const [k, v] of Object.entries(prev)) {
             if (TRANSIENT_KEYS.has(k)) continue;
             if (cmd[k] == null) cmd[k] = v as never;

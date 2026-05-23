@@ -320,13 +320,17 @@ export class FinancialHandler {
     const { queryMovements } = await import('../../services/expenses.js');
 
     // ── 1. Inherit prior filters when the agent flags follow-up refinement ──
+    // FQR-2: only inherit when the stored query is fresh (<5min). Stale state
+    // poisons cross-topic queries ("cuánto llovió" → "y el mes pasado?" used to
+    // pull in financial leftovers).
     if (cmd.inherit) {
       const { rows } = await pool.query(
-        `SELECT last_finance_query FROM conversation_state WHERE user_id = $1`,
+        `SELECT last_finance_query, updated_at FROM conversation_state WHERE user_id = $1`,
         [userId],
       );
       const prev = rows[0]?.last_finance_query;
-      if (prev && typeof prev === 'object') {
+      const { isFreshMultiTurnEntry } = await import('../../middleware/multi-turn-state.js');
+      if (prev && typeof prev === 'object' && isFreshMultiTurnEntry(rows[0]?.updated_at)) {
         // Merge: prev fills in any missing param, new wins on conflicts.
         for (const [k, v] of Object.entries(prev)) {
           if (cmd[k] == null) cmd[k] = v as never;

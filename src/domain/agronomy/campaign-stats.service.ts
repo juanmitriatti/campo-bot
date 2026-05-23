@@ -114,8 +114,48 @@ export class CampaignStatsService {
     // specified, so questions like "promedio?" right after talking about a
     // lote work without re-typing the name.
     const resolved = await this.plotDiscovery.resolveFromNamesWithContext(userId, fieldName ?? null, plotName ?? null);
-    if (!resolved.plotId) {
-      return 'No pude identificar el lote. Indicá el lote para ver las estadísticas de la campaña.';
+    let resolvedPlotId = resolved.plotId;
+    let resolvedPlotName = resolved.plotName;
+
+    // FQR-4: auto-pick when only ONE active campaign matches the crop/season filter,
+    // or list all active campaigns when the query is broad ("cómo viene la campaña").
+    if (!resolvedPlotId) {
+      const { pool } = await import('../../config/db.js');
+      const params: unknown[] = [userId];
+      const conds = ['f.user_id = $1', 'p.deleted_at IS NULL', 'pc.harvested_at IS NULL'];
+      if (crop) {
+        conds.push(`TRANSLATE(LOWER(pc.crop), 'áéíóúñ', 'aeioun') = TRANSLATE(LOWER($${params.length + 1}), 'áéíóúñ', 'aeioun')`);
+        params.push(crop);
+      }
+      if (seasonYear) {
+        conds.push(`(pc.season_year::text = $${params.length + 1} OR pc.season_year::text || '/' || (pc.season_year + 1)::text = $${params.length + 1})`);
+        params.push(seasonYear);
+      }
+      const matches = await pool.query(
+        `SELECT DISTINCT p.id, p.name, pc.crop, pc.season_year FROM plots p
+         JOIN fields f ON p.field_id = f.id
+         JOIN plot_crops pc ON pc.plot_id = p.id
+         WHERE ${conds.join(' AND ')}
+         ORDER BY p.name
+         LIMIT 10`,
+        params,
+      );
+      if (matches.rows.length === 1) {
+        resolvedPlotId = Number(matches.rows[0].id);
+        resolvedPlotName = String(matches.rows[0].name);
+      } else if (matches.rows.length > 1) {
+        // Broad query — return a panorama of all active campaigns.
+        const list = matches.rows
+          .map((r: { name: string; crop: string; season_year: number }) =>
+            `  • *${r.name}* — ${r.crop} (${r.season_year}/${r.season_year + 1})`,
+          )
+          .join('\n');
+        return `🌱 *Campañas activas* (${matches.rows.length})\n${list}\n\n💡 Pedí "campaña <lote>" para ver detalles de cada una.`;
+      }
+    }
+
+    if (!resolvedPlotId) {
+      return 'No tenés campañas activas. Cuando siembres en un lote, te puedo dar estadísticas.';
     }
 
     // Find campaign
@@ -123,7 +163,7 @@ export class CampaignStatsService {
 
     if (crop || seasonYear) {
       // Search history for matching campaign
-      const history = await this.cropService.getHistory(resolved.plotId);
+      const history = await this.cropService.getHistory(resolvedPlotId);
       for (const row of history) {
         if (crop && row.crop.toLowerCase() !== crop.toLowerCase()) continue;
         if (seasonYear) {
@@ -135,19 +175,19 @@ export class CampaignStatsService {
       }
     } else {
       // Default: active or last harvested campaign
-      campaign = await this.cropService.getActive(resolved.plotId);
+      campaign = await this.cropService.getActive(resolvedPlotId);
       if (!campaign) {
-        const history = await this.cropService.getHistory(resolved.plotId);
+        const history = await this.cropService.getHistory(resolvedPlotId);
         if (history.length > 0) campaign = history[0];
       }
     }
 
     if (!campaign) {
-      return `No encontré una campaña${crop ? ` de ${crop}` : ''} en *${resolved.plotName}*.`;
+      return `No encontré una campaña${crop ? ` de ${crop}` : ''} en *${resolvedPlotName}*.`;
     }
 
     // Get plot info for area
-    const plotInfo = await getPlotById(resolved.plotId, userId);
+    const plotInfo = await getPlotById(resolvedPlotId, userId);
     const areaHa = plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : null;
 
     const state = getCampaignState(campaign);
@@ -158,9 +198,9 @@ export class CampaignStatsService {
     // Fetch data in parallel
     const [activities, expenses, incomes, observations, harvestLoads, scoutings] = await Promise.all([
       getCampaignActivities(campaign.id),
-      getCampaignExpenses(resolved.plotId, campaign.start_date, campaign.end_date),
-      getCampaignIncomes(resolved.plotId, campaign.start_date, campaign.end_date),
-      getCampaignObservations(resolved.plotId, campaign.start_date, campaign.end_date),
+      getCampaignExpenses(resolvedPlotId, campaign.start_date, campaign.end_date),
+      getCampaignIncomes(resolvedPlotId, campaign.start_date, campaign.end_date),
+      getCampaignObservations(resolvedPlotId, campaign.start_date, campaign.end_date),
       getHarvestLoadsByCampaign(campaign.id),
       getScoutingsForPlotCampaign(campaign.id),
     ]);
@@ -285,7 +325,7 @@ export class CampaignStatsService {
 
     return {
       crop: campaign.crop,
-      plot: resolved.plotName || '',
+      plot: resolvedPlotName || '',
       field: resolved.fieldName || '',
       seasonLabel: formatSeasonLabel(campaign.season_year, campaign.season_type),
       startDate: formatDateAR(campaign.start_date),

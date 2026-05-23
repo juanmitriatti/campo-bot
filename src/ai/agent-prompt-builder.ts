@@ -276,6 +276,19 @@ ${lines.join('\n')}
 - gasté/compré/pagué+monto→log_expense. vendí/cobré+producto→log_income
 - ⚠️ EXCEPCIÓN CRÍTICA HACIENDA (DOMINA sobre la regla anterior): "vendí N vacas/novillos/terneros/vaquillonas/toros/torito/buey/vaquillona/ternera a $X c/u" → SIEMPRE remove_livestock (count, unit_price_ars/usd) — NUNCA log_income(Hacienda). El sistema crea el ingreso linkeado automáticamente. Si firmás log_income directo, el inventario NO se decrementa (ghost cattle). Análogo: "compré N animales a $X c/u" → add_livestock con unit_price_*, NUNCA log_expense directo. Esta excepción aplica al COMPOUND también: 2 ventas hacienda en compound = 2 remove_livestock, no 2 log_income. Lista de categorías hacienda: vaca/vacas, novillo/novillos, ternero/terneros, ternera/terneras, vaquillona/vaquillonas, toro/toros, torito/toritos, buey/bueyes.
 - TIPOS DE GASTO: Si mencionan producto concreto (Roundup,urea,semilla X,gasoil,glifosato)→expense_type=insumo + capturar product/quantity/unit. Si mencionan servicio (labré,pagué la siembra,servicio de fumigación,pulverización terrestre)→expense_type=varios, category=labranzas. Default=varios
+- CRÍTICO COMPOUND DE CONSULTAS (REGLA DE PARIDAD PARA QUERIES): cuando el usuario pregunta varias cosas en UN mensaje ("X y Y", "X, Y y Z"), emití UNA tool por cada pregunta. NUNCA dropees la 2da/3ra query. Ejemplos:
+  · "cuántas vacas tengo y cuánto pesan" → list_livestock(category:'vaca') + query_weighings(category:'vaca'). 2 tools.
+  · "viajes de cosecha y monitoreos del lote N1" → query_harvest_loads(plot:'N1') + query_scoutings(plot:'N1'). 2 tools.
+  · "stock + alertas de stock bajo" → check_stock + check_low_stock. 2 tools.
+  · "rinde de soja y precio promedio" → campaign_stats(crop:'soja') + query_harvest_loads(crop:'soja', view:'avg', aggregate_metric:'humidity_pct'). 2 tools.
+  Aunque el dominio sea distinto, EMITÍ AMBAS. PROHIBIDO consolidar en una sola tool.
+- CRÍTICO REFINAMIENTO TEMPORAL/FILTRO ("solo X" / "y de Y" / "y arriba de"): cuando el usuario refina la consulta anterior con un AÑADIDO sin nombrar nuevo período, pasá inherit:true PARA NO PERDER el scope previo. Ejemplos:
+  · Prev: query_plot_history(activity_types=['planting'], desde:'2026-05-01', hasta:'2026-05-31')
+    "solo fumigaciones" → query_plot_history(inherit:true, activity_types=['spraying']) — heredás período mayo.
+  · Prev: financial_report(period:'month')
+    "y solo de soja" → financial_report(inherit:true, category:'Soja') — heredás "month".
+  NUNCA dejes que un refinamiento sin período EXPLÍCITO vuelva a "Todo el historial".
+- CRÍTICO CATEGORÍAS DE GASTO — MAPEO LITERAL: "sueldos"→category="Sueldos" (NUNCA "labranzas"). "combustible"/"gasoil"/"nafta"→category="Combustible". "agroquímicos"/"glifosato"/"herbicida"/"fungicida"→category="Agroquímicos". "fertilizantes"/"urea"/"fosfato"→category="Fertilizantes". "semillas"→category="Semillas". "labranzas"/"laboreo"/"servicio de fumigación"→category="Labranzas". Las categorías son strings literales del enum — NUNCA inferir una distinta. En queries multi-categoría ("gastos de X, Y, Z") pasá categories:["Sueldos","Combustible","Agroquímicos"] con los nombres EXACTOS, JAMÁS sustituís "sueldos" por "labranzas" ni similar.
 - Categorías insumo: agroquimicos,fertilizantes,semillas,combustible → siempre expense_type=insumo
 - PRECIO UNITARIO en log_expense: cuando el usuario dice "a X c/u", "a X el kg/bolsa/lt", "cada uno a X" → capturar unit_price y amount=quantity*unit_price. Ej: "50 bolsas de urea a 8000 c/u"→quantity=50, unit=bolsas, unit_price=8000, amount=400000. "2000 lt de gasoil a 950 el litro"→quantity=2000, unit=lt, unit_price=950, amount=1900000
 ${this.buildActivityLines(dictionary)}

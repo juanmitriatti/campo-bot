@@ -1709,8 +1709,10 @@ async function processTextMessage(
     return collectResponse(response);
   }
   if (intent.type === 'command' && intent.data.command === 'cancel') {
+    const { clearMultiTurnState } = await import('../middleware/multi-turn-state.js');
+    await clearMultiTurnState(userId);
     if (!pending) {
-      return [{ type: 'text', text: 'No hay nada pendiente para cancelar.' }];
+      return [{ type: 'text', text: 'Listo, contexto limpio. ¿Qué hacemos?' }];
     }
     pendingStore.clear(phone);
     conversationLogger.log(userId, phone, text, 'Operacion cancelada.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});

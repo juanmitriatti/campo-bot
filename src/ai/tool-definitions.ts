@@ -1274,17 +1274,19 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'livestock_history',
-    description: 'Mostrar historial de movimientos de hacienda con fecha, cantidad, peso, precio y motivo. "historial vacas lote A1", "historial novillos corral 1", "movimientos novillos".',
+    description: 'Historial/movimientos de hacienda (ventas, muertes, nacimientos, transferencias, recategorizaciones, ajustes). "historial vacas lote A1", "historial novillos corral 1", "movimientos novillos", "movimientos de hacienda en marzo", "qué movimientos hubo este mes", "ventas de hacienda". Pasá category+plot cuando el usuario los nombra. Si pregunta GENÉRICA ("movimientos de hacienda", "historial de hacienda", "qué pasó con la hacienda") OMITÍ category y plot — el sistema devuelve un resumen agregado de todos los grupos.',
     input_schema: {
       type: 'object',
       properties: {
-        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría del animal.' },
+        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría del animal (opcional — omitir para agregado).' },
         breed: { type: 'string', description: 'Raza, si se quiere filtrar.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
         corral: { type: 'string', description: 'Nombre del corral del feedlot (alternativa a plot).' },
+        desde: { type: 'string', description: 'Fecha desde YYYY-MM-DD (opcional).' },
+        hasta: { type: 'string', description: 'Fecha hasta YYYY-MM-DD (opcional).' },
       },
-      required: ['category'],
+      required: [],
     },
   },
 

@@ -1221,8 +1221,10 @@ export class LivestockHandler {
     const category = cmd.category as string;
     const plot = cmd.plotName as string;
     const corral = cmd.corralName as string;
+    // FQR-3: when no category+location specified, return aggregate movements across all groups.
+    // Lets "movimientos de hacienda en marzo" / "historial de hacienda" return useful data.
     if (!category || (!plot && !corral)) {
-      return { messages: ['Necesito categoría y lote/corral. Ej: "historial vacas lote A1" o "historial novillos corral 1".'] };
+      return this.aggregateLivestockMovements(cmd, userId);
     }
 
     const { group, movements } = await this.service.getHistory(userId, {
@@ -1269,6 +1271,69 @@ export class LivestockHandler {
     };
   }
 
+  // --- FQR-3: aggregate livestock movements when no scope filter present ---
+  private async aggregateLivestockMovements(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const { pool } = await import('../../config/db.js');
+    const params: unknown[] = [userId];
+    const conds = ['lm.user_id = $1'];
+    if (cmd.desde) { conds.push(`lm.movement_date >= $${params.length + 1}::date`); params.push(cmd.desde); }
+    if (cmd.hasta) { conds.push(`lm.movement_date <= $${params.length + 1}::date`); params.push(cmd.hasta); }
+    const result = await pool.query(
+      `SELECT lm.movement_type, lm.count, lm.movement_date,
+              COALESCE(sg.category, dg.category) AS category,
+              COALESCE(sg.breed, dg.breed) AS breed,
+              COALESCE(sp.name, dp.name) AS plot_name,
+              COALESCE(sf.name, df.name) AS field_name,
+              lm.unit_price_ars, lm.unit_price_usd, lm.reason
+       FROM livestock_movements lm
+       LEFT JOIN livestock_groups sg ON lm.source_group_id = sg.id
+       LEFT JOIN plots sp ON sg.plot_id = sp.id
+       LEFT JOIN fields sf ON sp.field_id = sf.id
+       LEFT JOIN livestock_groups dg ON lm.dest_group_id = dg.id
+       LEFT JOIN plots dp ON dg.plot_id = dp.id
+       LEFT JOIN fields df ON dp.field_id = df.id
+       WHERE ${conds.join(' AND ')}
+       ORDER BY lm.movement_date DESC, lm.created_at DESC
+       LIMIT 30`,
+      params,
+    );
+    const rows = result.rows;
+    const period = cmd.desde || cmd.hasta ? `${cmd.desde || '...'} — ${cmd.hasta || 'hoy'}` : 'todo el historial';
+    if (rows.length === 0) {
+      return { messages: [`🐄 No hay movimientos de hacienda registrados (${period}).`] };
+    }
+    // Aggregate counts by type
+    const totals: Record<string, number> = {};
+    for (const r of rows) {
+      const type = String(r.movement_type);
+      totals[type] = (totals[type] || 0) + Number(r.count);
+    }
+    const typeLabels: Record<string, string> = {
+      entrada: '➕ Entradas', salida: '➖ Ventas/salidas', muerte: '💀 Muertes',
+      nacimiento: '🐣 Nacimientos', transferencia: '↔️ Transferencias',
+      recategorizacion: '🔄 Recategorizaciones', ajuste: '⚙️ Ajustes',
+    };
+    const summary = Object.entries(totals)
+      .map(([t, n]) => `  • ${typeLabels[t] || t}: *${n}*`)
+      .join('\n');
+    const recent = rows.slice(0, 10).map(r => {
+      const d = new Date(r.movement_date).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const sign = ['entrada', 'nacimiento'].includes(r.movement_type) ? '+' : ['salida', 'muerte'].includes(r.movement_type) ? '-' : '↔';
+      const loc = r.plot_name ? ` (${r.field_name || ''} > ${r.plot_name})` : '';
+      const cat = r.category || 'hacienda';
+      const price = r.unit_price_usd ? ` · US$${Number(r.unit_price_usd).toLocaleString('es-AR')}/cab`
+        : r.unit_price_ars ? ` · $${Number(r.unit_price_ars).toLocaleString('es-AR')}/cab` : '';
+      const reason = r.reason ? ` · ${r.reason}` : '';
+      return `  ${d}: ${sign}${r.count} ${cat}${loc}${price}${reason}`;
+    });
+    const more = rows.length > 10 ? `\n_…y ${rows.length - 10} más._` : '';
+    return {
+      messages: [
+        `🐄 *Movimientos de hacienda* (${period})\n\n*Totales:*\n${summary}\n\n*Últimos:*\n${recent.join('\n')}${more}`,
+      ],
+    };
+  }
+
   // --- Unified inventory query (groups + view dispatch) ---
   private async handleQueryInventory(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const { pool } = await import('../../config/db.js');
@@ -1278,9 +1343,10 @@ export class LivestockHandler {
     const TRANSIENT_KEYS = new Set(['view', 'top_n', 'compareCategory', 'compareField', 'compareCorral']);
     if (cmd.inherit) {
       try {
-        const { rows } = await pool.query('SELECT last_livestock_query FROM conversation_state WHERE user_id = $1', [userId]);
+        const { rows } = await pool.query('SELECT last_livestock_query, updated_at FROM conversation_state WHERE user_id = $1', [userId]);
         const prev = rows[0]?.last_livestock_query;
-        if (prev && typeof prev === 'object') {
+        const { isFreshMultiTurnEntry } = await import('../../middleware/multi-turn-state.js');
+        if (prev && typeof prev === 'object' && isFreshMultiTurnEntry(rows[0]?.updated_at)) {
           for (const [k, v] of Object.entries(prev)) {
             if (TRANSIENT_KEYS.has(k)) continue;
             if (cmd[k] == null) cmd[k] = v as never;
