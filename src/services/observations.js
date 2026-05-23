@@ -69,6 +69,18 @@ export const SAVE_REJECTED_DUPLICATE = { _rejected: 'duplicate' };
  */
 export const SAVE_REJECTED_NO_PLOT = { _rejected: 'no_plot' };
 
+/**
+ * @param {number} userId
+ * @param {{
+ *   fieldId: number | null,
+ *   plotId: number | null,
+ *   text: string,
+ *   category: string,
+ *   source?: string,
+ *   observationDate?: string | null,
+ *   allowNoPlot?: boolean
+ * }} params
+ */
 export async function saveObservation(userId, { fieldId, plotId, text, category, source, observationDate, allowNoPlot }) {
   // Guard: observations normally MUST have a plot — never store with plot_id = NULL.
   // BulkMode (compound action) callers can pass allowNoPlot=true to save at

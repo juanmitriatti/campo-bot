@@ -480,7 +480,7 @@ describe('CompoundExecutor — partial income/expense (Fix B)', () => {
     expect(mockFinancial.handleIncome).toHaveBeenCalledTimes(1);
   });
 
-  it('appends "falta el precio" message and wires setPendingActivity for the first partial', async () => {
+  it('wires setPendingActivity with context-tagged askPrompt for the first partial', async () => {
     const mockFinancial = {
       handleIncome: vi.fn().mockResolvedValueOnce({ messages: ['💰 Maní'] } as HandlerResponse),
     };
@@ -491,11 +491,15 @@ describe('CompoundExecutor — partial income/expense (Fix B)', () => {
       1 as UserId, mockUser, mockSettings,
     );
 
-    expect(result!.messages.find(m => m.includes('Soja') && m.includes('falta el precio'))).toBeDefined();
+    // The setPendingActivity now carries the context-tagged askPrompt
+    // instead of a separate "falta el precio" message in finalMessages.
     expect(result!.lastSideEffects?.setPendingActivity?.command).toBe('log_income');
     expect(result!.lastSideEffects?.setPendingActivity?.missing).toEqual(['amount']);
     expect(result!.lastSideEffects?.setPendingActivity?.data.category).toBe('Soja');
     expect(result!.lastSideEffects?.setPendingActivity?.data.quantity).toBe(2);
+    // The askPrompt mentions Soja (item context) + "precio" (what's missing).
+    expect(result!.lastSideEffects?.setPendingActivity?.askPrompt).toMatch(/Soja/);
+    expect(result!.lastSideEffects?.setPendingActivity?.askPrompt).toMatch(/precio/);
   });
 
   it('returns null when total results <= 1 (single partial without companion stays in single-action path)', async () => {

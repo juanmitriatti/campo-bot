@@ -14,6 +14,23 @@ export interface PendingActivity {
   missing?: string[];
   /** Plain-Spanish prompt to show when asking for the still-missing slots. */
   askPrompt?: string;
+  /**
+   * Serial queue of follow-up items waiting their turn. When the CURRENT
+   * pending completes (all slots filled + re-routed successfully), the
+   * controller pops the FIRST item from this array and sets it as the new
+   * current pending — sending its askPrompt to the user.
+   *
+   * Used when a compound action had multiple items each needing follow-up
+   * (e.g. "vendi 2 vacas y compre glifosato" → vacas need plot, gasto needs
+   * price). Without the queue, the answers would conflate (one reply
+   * applied to all items). With the queue, the bot asks them one at a time.
+   *
+   * Each queued item carries its own command/data/missing/askPrompt — same
+   * shape as the top-level pending but without timestamp (filled when
+   * promoted to current) or its own nextInQueue (the parent's tail becomes
+   * the child's tail).
+   */
+  nextInQueue?: Array<Omit<PendingActivity, 'timestamp' | 'nextInQueue'>>;
 }
 
 const PENDING_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes

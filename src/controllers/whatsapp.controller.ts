@@ -1610,20 +1610,16 @@ router.post('/', async (req: Request, res: Response) => {
           // financial, etc.) can be re-executed via the unified pending path.
           const routed = await domainRouter.routeCommand(merged, userId, user, settings);
           const cmdResult = routed ?? { messages: ['No pude completar el registro. Probá de nuevo.'] };
-          if (cmdResult.sideEffects?.setPendingActivity) {
-            const next = cmdResult.sideEffects.setPendingActivity;
-            pendingActStore.set(phone, {
-              command: next.command,
-              data: next.data,
-              timestamp: Date.now(),
-              missing: next.missing,
-              askPrompt: next.askPrompt,
-            });
-          }
+          // Advance the serial pending queue if there were more items waiting
+          // (e.g. "vendi vaca y compre X" left both as queued pendings — when
+          // the vaca completes, the gasto's askPrompt fires next).
+          const { advanceQueueAfterCompletion } = await import('../middleware/pending-queue-advancer.js');
+          const advanced = advanceQueueAfterCompletion(pendingActStore, phone, pendingAct, cmdResult);
           if (cmdResult.sideEffects?.setPendingCampaignClose) {
             pendingCampaignCloseStore.set(phone, cmdResult.sideEffects.setPendingCampaignClose);
           }
           for (const m of cmdResult.messages || []) await sendMessage(phone, m);
+          if (advanced.askPrompt) await sendMessage(phone, advanced.askPrompt);
           res.sendStatus(200);
           return;
         }
@@ -1646,6 +1642,7 @@ router.post('/', async (req: Request, res: Response) => {
               timestamp: Date.now(),
               missing: next.missing,
               askPrompt: next.askPrompt,
+              nextInQueue: next.nextInQueue,
             });
           }
           if (result.sideEffects?.setPendingCampaignClose) {
@@ -1754,6 +1751,7 @@ router.post('/', async (req: Request, res: Response) => {
                 timestamp: Date.now(),
                 missing: act.missing,
                 askPrompt: act.askPrompt,
+                nextInQueue: act.nextInQueue,
               });
             }
             if (result.lastSideEffects.setPendingFieldCity) {
@@ -2058,6 +2056,7 @@ router.post('/', async (req: Request, res: Response) => {
             timestamp: Date.now(),
             missing: act.missing,
             askPrompt: act.askPrompt,
+            nextInQueue: act.nextInQueue,
           });
           console.log(`[PENDING_ACT] Stored pending ${act.command} for user ${userId}`);
         }

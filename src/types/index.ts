@@ -524,6 +524,17 @@ export interface HandlerResponse {
       missing?: string[];
       /** Optional Spanish prompt to show the user when asking for the missing slots. */
       askPrompt?: string;
+      /**
+       * Serial queue of follow-up items processed AFTER this current pending
+       * completes. Each item: { command, data, missing?, askPrompt? }. Used
+       * when a compound action has multiple items needing follow-up.
+       */
+      nextInQueue?: Array<{
+        command: string;
+        data: Record<string, unknown>;
+        missing?: string[];
+        askPrompt?: string;
+      }>;
     };
     setPendingStockEntry?: {
       expenseId: number;

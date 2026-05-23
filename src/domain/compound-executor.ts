@@ -107,6 +107,13 @@ export class CompoundExecutor {
     // observation, scouting, etc. — with one tap.
     type BulkRec = { kind: 'expense' | 'income' | 'activity' | 'observation' | 'scouting' | 'livestock' | 'rainfall' | 'stock_movement'; id: number; fieldId: number };
     const bulkSaved: BulkRec[] = [];
+    // Serial pending queue: when multiple items in the compound need follow-up
+    // (partials with missing price, handlers that returned setPendingActivity
+    // before the interceptor stripped it), we collect them all and process
+    // serially in the next turns — one item at a time, so the user's answers
+    // can't conflate across items.
+    type QueueItem = { command: string; data: Record<string, unknown>; missing?: string[]; askPrompt?: string };
+    const pendingQueue: QueueItem[] = [];
 
     // Force skip confirmation for expenses/incomes in compound context
     const noConfirmSettings = { ...settings, confirm_before_save: false };
@@ -211,9 +218,13 @@ export class CompoundExecutor {
 
       // bulkMode interceptor: if a non-financial handler tried to STOP the
       // compound (startFlow / setPendingActivity / setPendingObservation),
-      // strip those side-effects AND clear the response messages/interactive
-      // (which would carry the blocking prompt). Inject one short "no pude
-      // completar X" advisory so the user knows that step needs follow-up.
+      // strip those side-effects from the immediate response (so the compound
+      // doesn't stop). When the handler returned a setPendingActivity with
+      // missing-slot info, CAPTURE it into the serial pendingQueue — the
+      // controller will surface its askPrompt AFTER the current pending
+      // completes (or as the lead item if there's no current).
+      // For startFlow / setPendingObservation (which can't be merged into the
+      // pending-action processor), just inject a "💡 no pude" advisory.
       if (bulkMode && response.sideEffects) {
         const se = response.sideEffects;
         const wouldBlock = !!(se.startFlow || se.setPendingActivity || se.setPendingObservation);
@@ -221,11 +232,27 @@ export class CompoundExecutor {
           const stepCommand = (step.intent.type === 'command'
             ? (step.intent.data as ParsedCommand).command
             : step.intent.type) ?? 'acción';
-          messages.push(`💡 No pude completar *${stepCommand}* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.`);
+          // Capture the setPendingActivity into the queue (recoverable: user
+          // can answer the missing slots in a future turn). Tag the askPrompt
+          // with the action context so the user knows which item is being
+          // asked about.
+          if (se.setPendingActivity) {
+            const pa = se.setPendingActivity;
+            const contextLabel = describeQueueItem(stepCommand, pa.data);
+            pendingQueue.push({
+              command: pa.command,
+              data: pa.data,
+              missing: pa.missing,
+              askPrompt: contextLabel ? `👇 ${contextLabel}: ${pa.askPrompt ?? 'me faltan datos'}` : pa.askPrompt,
+            });
+          } else {
+            // startFlow / setPendingObservation: can't queue (different
+            // mechanism). Just advise the user.
+            messages.push(`💡 No pude completar *${stepCommand}* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.`);
+          }
           // Drop blocking sideEffects AND clear messages/interactive that
-          // carried the prompt — otherwise the user sees both the "no pude"
-          // and the original "¿En qué lote?" question, which is confusing.
-          // Other side-effects (campaign close, stock entry) are preserved.
+          // carried the prompt — otherwise the user sees both the captured
+          // ask AND the original handler's blocking question.
           response = {
             ...response,
             messages: [], // suppress the handler's own prompt
@@ -268,18 +295,51 @@ export class CompoundExecutor {
     let finalMessages = consolidateLivestockMessages(consolidated.messages, actionable);
     let finalInteractive = consolidated.interactive ?? lastInteractive;
 
-    // Fix B — surface income_partial / expense_partial that the agent fired
-    // without a price. Append a clear "💡 falta el precio de X" line per
-    // partial AND wire ONE pending action (first partial) so the user's next
-    // message gets routed through the unified pending system to complete it.
+    // Surface income_partial / expense_partial: queue each one (NOT just the
+    // first) so they get processed serially. Each partial becomes its own
+    // queue item with context-tagged askPrompt.
     if (partials.length > 0 && !stoppedAtFlow) {
       for (const p of partials) {
-        finalMessages.push(buildPartialMessage(p));
+        const data = ((p.intent as { data?: Record<string, unknown> }).data ?? {}) as Record<string, unknown>;
+        const isIncome = p.intent.type === 'income_partial';
+        const cat = (data.category as string) || (isIncome ? 'la venta' : 'el gasto');
+        const qty = typeof data.quantity === 'number' ? data.quantity : null;
+        const unit = typeof data.unit === 'string' ? data.unit : null;
+        const qtyTag = qty != null && unit ? ` (${qty} ${unit})` : '';
+        pendingQueue.push({
+          command: isIncome ? 'log_income' : 'log_expense',
+          data: { ...data },
+          missing: ['amount'],
+          askPrompt: `👇 ${isIncome ? 'Venta' : 'Gasto'} de *${cat}*${qtyTag}: ¿cuánto fue el precio?`,
+        });
       }
-      const pendingFromPartial = buildPendingFromFirstPartial(partials);
-      if (pendingFromPartial && !lastSideEffects?.setPendingActivity) {
-        lastSideEffects = { ...(lastSideEffects ?? {}), setPendingActivity: pendingFromPartial };
+    }
+
+    // Promote the queue into setPendingActivity: first item is current pending,
+    // the rest waits in `nextInQueue`. When the user answers the current item
+    // and it re-routes successfully, the controller pops the next from the
+    // queue and asks its question. Repeats until empty.
+    if (pendingQueue.length > 0 && !stoppedAtFlow && !lastSideEffects?.setPendingActivity) {
+      const [first, ...rest] = pendingQueue;
+      // Lead announcement so the user knows multiple items are pending.
+      if (pendingQueue.length > 1) {
+        finalMessages.push(`💡 Tengo *${pendingQueue.length} acciones pendientes* — te las pregunto una por una.`);
       }
+      // Show the FIRST item's askPrompt RIGHT NOW so the user knows what to
+      // answer. Controllers store the pending but only display the askPrompt
+      // when the queue ADVANCES — for the leading item we need to surface it
+      // here, in the compound's own response messages.
+      if (first.askPrompt) finalMessages.push(first.askPrompt);
+      lastSideEffects = {
+        ...(lastSideEffects ?? {}),
+        setPendingActivity: {
+          command: first.command,
+          data: first.data,
+          missing: first.missing,
+          askPrompt: first.askPrompt,
+          ...(rest.length > 0 ? { nextInQueue: rest } : {}),
+        },
+      };
     }
 
     // Fix A — when bulk mode saved 1+ records WITHOUT plot, ask once at the
@@ -400,41 +460,39 @@ export class CompoundExecutor {
 }
 
 /**
- * Compose a "💡 No registré X — me falta el precio" message for a partial
- * income/expense parse result. Stays short + accurate even when category is
- * empty (uses "la venta" / "el gasto" fallback).
+ * Build a short context label for a queued pending item so the askPrompt
+ * makes clear WHICH action is being asked about (e.g. "Venta de 2 vacas" vs
+ * "Gasto en glifosato"). Without this, in a multi-pending queue the user
+ * would see consecutive "¿en qué lote?" / "¿cuánto?" with no clue which
+ * item each refers to.
  */
-function buildPartialMessage(p: ParseResult): string {
-  const data = ((p.intent as { data?: Record<string, unknown> }).data ?? {}) as Record<string, unknown>;
-  const isIncome = p.intent.type === 'income_partial';
-  const verb = isIncome ? 'No registré' : 'No anoté';
-  const label = (data.category as string) || (isIncome ? 'la venta' : 'el gasto');
-  const qty = typeof data.quantity === 'number' ? data.quantity : null;
-  const unit = typeof data.unit === 'string' ? data.unit : null;
-  const qtyLabel = qty != null && unit ? ` (${qty} ${unit})` : '';
-  return `💡 ${verb} *${label}*${qtyLabel} — me falta el precio. Decímelo y lo guardo.`;
-}
-
-/**
- * Wire the FIRST partial into the unified pending action system so the user's
- * next message (e.g. "900 dolares" or "900") completes the registration. We
- * limit to ONE pending because pendingActStore holds a single entry per user;
- * if multiple partials, the rest are informed via message but the user has to
- * re-type them. Trade-off in favor of simplicity.
- */
-function buildPendingFromFirstPartial(partials: ParseResult[]): NonNullable<HandlerResponse['sideEffects']>['setPendingActivity'] | null {
-  if (partials.length === 0) return null;
-  const p = partials[0];
-  const data = ((p.intent as { data?: Record<string, unknown> }).data ?? {}) as Record<string, unknown>;
-  const isIncome = p.intent.type === 'income_partial';
-  const command = isIncome ? 'log_income' : 'log_expense';
-  const cat = (data.category as string) || (isIncome ? 'la venta' : 'el gasto');
-  return {
-    command,
-    data: { ...data },
-    missing: ['amount'],
-    askPrompt: `¿Cuánto cobraste por *${cat}*? (decime el monto o el precio por unidad)`,
-  };
+function describeQueueItem(command: string, data: Record<string, unknown>): string | null {
+  const c = command.toLowerCase();
+  const cat = (data.category as string) || (data.crop as string) || (data.product as string);
+  const qty = typeof data.quantity === 'number' ? data.quantity : (typeof data.count === 'number' ? data.count : null);
+  const unit = data.unit as string;
+  const qtyStr = qty != null ? (unit ? `${qty} ${unit}` : `${qty}`) : '';
+  switch (c) {
+    case 'log_spraying': return `Fumigación${cat ? ` con ${cat}` : ''}${qtyStr ? ` (${qtyStr})` : ''}`;
+    case 'log_fertilization': return `Fertilización${cat ? ` con ${cat}` : ''}${qtyStr ? ` (${qtyStr})` : ''}`;
+    case 'log_tillage': return `Labranza`;
+    case 'log_irrigation': return `Riego`;
+    case 'sow_crop': return `Siembra${cat ? ` de ${cat}` : ''}`;
+    case 'harvest_crop': return `Cosecha${cat ? ` de ${cat}` : ''}`;
+    case 'log_observation': return `Observación`;
+    case 'log_crop_scouting': return `Monitoreo`;
+    case 'log_health_event': return `Evento sanitario${cat ? ` (${cat})` : ''}`;
+    case 'log_repro_event': return `Evento reproductivo`;
+    case 'log_weighing': return `Pesaje${qtyStr ? ` (${qtyStr})` : ''}`;
+    case 'add_livestock': return `Alta de hacienda${cat ? ` (${qty ?? ''} ${cat})`.trim() : ''}`;
+    case 'remove_livestock': return `Baja de hacienda${cat ? ` (${qty ?? ''} ${cat})`.trim() : ''}`;
+    case 'add_stock': return `Carga de stock${cat ? ` (${cat})` : ''}`;
+    case 'remove_stock': return `Descuento de stock${cat ? ` (${cat})` : ''}`;
+    case 'log_income': return `Venta${cat ? ` de ${cat}` : ''}${qtyStr ? ` (${qtyStr})` : ''}`;
+    case 'log_expense': return `Gasto${cat ? ` en ${cat}` : ''}`;
+    case 'log_rainfall': return `Lluvia`;
+    default: return null;
+  }
 }
 
 /**

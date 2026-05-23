@@ -1011,17 +1011,11 @@ async function processTextMessage(
         // not just agronomy.
         const routed = await domainRouter.routeCommand(merged, userId, user, settings);
         const cmdResult = routed ?? { messages: ['No pude completar el registro. Probá de nuevo.'] };
-        if (cmdResult.sideEffects?.setPendingActivity) {
-          const next = cmdResult.sideEffects.setPendingActivity;
-          pendingActStore.set(phone, {
-            command: next.command,
-            data: next.data,
-            timestamp: Date.now(),
-            missing: (next as { missing?: string[] }).missing,
-            askPrompt: (next as { askPrompt?: string }).askPrompt,
-          });
-        }
-        return collectResponse(cmdResult);
+        const { advanceQueueAfterCompletion } = await import('../middleware/pending-queue-advancer.js');
+        const advanced = advanceQueueAfterCompletion(pendingActStore, phone, pendingAct, cmdResult);
+        const items = collectResponse(cmdResult);
+        if (advanced.askPrompt) items.push({ type: 'text', text: advanced.askPrompt });
+        return items;
       }
       // Still missing slots → update pending state, re-ask
       pendingActStore.set(phone, result.next);
@@ -1041,6 +1035,7 @@ async function processTextMessage(
             timestamp: Date.now(),
             missing: (next as { missing?: string[] }).missing,
             askPrompt: (next as { askPrompt?: string }).askPrompt,
+            nextInQueue: (next as { nextInQueue?: Array<{ command: string; data: Record<string, unknown>; missing?: string[]; askPrompt?: string }> }).nextInQueue,
           });
         }
         if (result.sideEffects?.setPendingCampaignClose) {
@@ -1117,6 +1112,7 @@ async function processTextMessage(
             timestamp: Date.now(),
             missing: (act as { missing?: string[] }).missing,
             askPrompt: (act as { askPrompt?: string }).askPrompt,
+            nextInQueue: (act as { nextInQueue?: Array<{ command: string; data: Record<string, unknown>; missing?: string[]; askPrompt?: string }> }).nextInQueue,
           });
         }
         if (result.lastSideEffects.setPendingFieldCity) {
@@ -1331,6 +1327,7 @@ async function processTextMessage(
           timestamp: Date.now(),
           missing: act.missing,
           askPrompt: act.askPrompt,
+          nextInQueue: act.nextInQueue,
         });
       }
       if (response.sideEffects?.setPendingFieldCity) {
