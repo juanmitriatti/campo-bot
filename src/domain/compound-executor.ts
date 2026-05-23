@@ -109,14 +109,13 @@ export class CompoundExecutor {
     // Force skip confirmation for expenses/incomes in compound context
     const noConfirmSettings = { ...settings, confirm_before_save: false };
 
-    // Bulk mode: when the compound has 2+ financial writes, handlers should
-    // skip the "¿En qué lote?" pending flow and save at field/user level instead
-    // of stopping the whole compound for one missing plot. The plot can be
-    // assigned later via edit_last_expense.
-    const financialWriteCount = actionable.filter((s) =>
-      s.intent.type === 'expense' || s.intent.type === 'income'
-    ).length;
-    const bulkMode = financialWriteCount >= 2;
+    // Bulk mode: ANY compound action with 2+ writes triggers bulk semantics —
+    // handlers should NOT stop the train asking for missing plot/category/etc.
+    // Instead they save what they can (at field or user level), defer prompts,
+    // and the post-compound bulk-plot handler asks ONCE at the end.
+    // Previously this was financialWriteCount>=2 which left non-financial
+    // compounds (e.g. spray + sow + observation) stopping at the first flow.
+    const bulkMode = actionable.length >= 2;
 
     // Pre-execution consolidation: when the agent fires multiple log_rainfall
     // calls for the SAME field on different dates ("8mm el lunes, 14mm el martes,
@@ -191,7 +190,7 @@ export class CompoundExecutor {
       if (step.intent.type === 'command') {
         const data = step.intent.data as ParsedCommand;
         if (originalText) data.originalText = originalText;
-        response = await this.router.routeCommand(data, userId, user, settings);
+        response = await this.router.routeCommand(data, userId, user, settings, bulkMode);
       } else if (step.intent.type === 'expense' && this.financialHandler) {
         const expData = step.intent.data as ParsedExpense & { field?: string; plot?: string };
         response = await this.financialHandler.handleExpense(

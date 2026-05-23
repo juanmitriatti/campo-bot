@@ -122,9 +122,14 @@ export class DomainRouter {
     cmd: ParsedCommand,
     userId: UserId,
     user: User,
-    settings: UserSettings
+    settings: UserSettings,
+    bulkMode?: boolean,
   ): Promise<HandlerResponse | null> {
     const command = cmd.command;
+    // Surface bulkMode to every downstream handler so they can skip flows /
+    // pending prompts when running inside a compound action. Handlers that
+    // don't care about it can ignore the flag.
+    if (bulkMode) (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode = true;
 
     // System commands are always allowed (help, greeting, settings)
     if (SYSTEM_COMMANDS.has(command)) {
