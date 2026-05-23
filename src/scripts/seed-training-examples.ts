@@ -349,6 +349,56 @@ const EXAMPLES: Example[] = [
     intent: 'add_livestock',
   },
 
+  // Más variaciones de venta hacienda — distintos phrasings/categorías/monedas
+  {
+    input: 'vendí 8 novillos a 1900 USD por cabeza',
+    expected_output: {
+      tool_calls: [
+        { tool: 'remove_livestock', input: { category: 'novillo', count: 8, unit_price_usd: 1900 } },
+      ],
+    },
+    intent: 'remove_livestock',
+  },
+  {
+    input: 'vendí 12 terneros a 850000 pesos cada uno',
+    expected_output: {
+      tool_calls: [
+        { tool: 'remove_livestock', input: { category: 'ternero', count: 12, unit_price_ars: 850000 } },
+      ],
+    },
+    intent: 'remove_livestock',
+  },
+  {
+    input: 'vendí 3 toros a 2200 dólares cada uno',
+    expected_output: {
+      tool_calls: [
+        { tool: 'remove_livestock', input: { category: 'toro', count: 3, unit_price_usd: 2200 } },
+      ],
+    },
+    intent: 'remove_livestock',
+  },
+  // Compound venta hacienda — 2 ventas distintas categorías/precios
+  {
+    input: 'vendí 5 novillos a 1800 USD c/u y vendí 3 vacas a 1500 USD c/u',
+    expected_output: {
+      tool_calls: [
+        { tool: 'remove_livestock', input: { category: 'novillo', count: 5, unit_price_usd: 1800 } },
+        { tool: 'remove_livestock', input: { category: 'vaca', count: 3, unit_price_usd: 1500 } },
+      ],
+    },
+    intent: 'remove_livestock,remove_livestock',
+  },
+  // Compra hacienda más variaciones
+  {
+    input: 'compré 15 vaquillonas Hereford a 1400 USD c/u para Norte',
+    expected_output: {
+      tool_calls: [
+        { tool: 'add_livestock', input: { category: 'vaquillona', count: 15, breed: 'Hereford', unit_price_usd: 1400, plot: 'Norte' } },
+      ],
+    },
+    intent: 'add_livestock',
+  },
+
   // Onboarding completo: "Doy de alta campo X" + plots + sow + livestock + expense (5 tools)
   {
     input: 'Doy de alta campo Don Tito en Junín con lotes A 100 ha, B 150 ha, C 80 ha. Sembré soja en A, agregué 50 vacas Angus en C y gasté 80 mil en gasoil',
