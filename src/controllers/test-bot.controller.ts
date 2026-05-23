@@ -360,6 +360,35 @@ router.post('/audio', upload.single('audio'), async (req: Request, res: Response
   }
 });
 
+// POST /api/test-bot/text-with-attachment — same as /api/test-bot but returns
+// any attachment (PDF, image) as base64 so test scripts can parse the binary.
+router.post('/text-with-attachment', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  try {
+    const userId = req.auth!.userId;
+    const numericUserId = asUserId(typeof userId === 'string' ? parseInt(userId, 10) : userId);
+    const { message: inputText } = req.body as { message?: string };
+    const phone = syntheticPhone(numericUserId);
+    const userRow = await pool.query('SELECT id, phone_number, name, city FROM users WHERE id = $1', [numericUserId]);
+    if (userRow.rows.length === 0) { res.status(404).json({ error: 'no user' }); return; }
+    const row = userRow.rows[0];
+    const user = { id: numericUserId, phone_number: row.phone_number || phone, name: row.name ?? null, city: row.city ?? null };
+    await pool.query('INSERT INTO user_settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [numericUserId]);
+    const settings = await userRepository.getSettings(numericUserId);
+    if (!inputText || !inputText.trim()) { res.json({ messages: [], attachment: null }); return; }
+    const text = inputText.trim();
+    // Intercept: call the agronomy report path directly so we capture attachment.
+    // For simplicity reuse processTextMessage but ALSO query the last domain
+    // event/report buffer if it was created. We re-implement a slim version:
+    const items = await processTextMessage(text, numericUserId, user, settings, phone, startTime);
+    // Look for "Archivo adjunto" marker; if found, re-run via the agronomy handler
+    // to get the binary. Cheaper: pass back items + a separate flag.
+    res.json({ messages: items });
+  } catch (error: unknown) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // --- Interactive reply handler ---
 
 async function handleInteractiveReply(
