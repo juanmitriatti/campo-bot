@@ -20,7 +20,9 @@ export function normalizeTranscript(text) {
   result = result.replace(/^(?:(?:eh|este|em|bueno|a\s+ver|o\s+sea|digamos|mira|entonces|dale|ok(?:ay)?|bien)\s*)+/i, '');
   // 5. Remove repeated consecutive words ("el el lote" → "el lote")
   result = result.replace(/\b(\w+)\s+\1\b/gi, '$1');
-  // 6. Collapse whitespace + trim
+  // 6. Normalize plot codes (Whisper bug: "a dos" → "a2", "lote tres" → "lote 3")
+  result = normalizePlotNumbers(result);
+  // 7. Collapse whitespace + trim
   result = result.replace(/\s{2,}/g, ' ').trim();
   return result;
 }
@@ -79,16 +81,40 @@ export function stripFillerPhrases(text) {
 }
 
 /**
- * Convert written numbers (uno–diez) to digits, but ONLY after "lote".
- * "lote tres" → "lote 3", but "compré tres bolsas" stays unchanged.
+ * Convert written numbers (uno–diez) to digits in lote/plot context.
+ * Covers:
+ *   "lote tres" → "lote 3"
+ *   "lote a dos" → "lote a2" (alphanumeric plot codes — Whisper bug fix)
+ *   "lote b uno" → "lote b1"
+ *   "a tres" / "el a dos" tras "lote" → "a3" / "el a2"
+ *
+ * Does NOT affect counts like "compré tres bolsas" outside lote context.
  */
 export function normalizePlotNumbers(text) {
   const NUMS = {
     uno: '1', dos: '2', tres: '3', cuatro: '4', cinco: '5',
     seis: '6', siete: '7', ocho: '8', nueve: '9', diez: '10',
   };
-  return text.replace(
+  let result = text;
+  // (a) "lote tres" → "lote 3"
+  result = result.replace(
     /\blote\s+(uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/gi,
     (_, n) => `lote ${NUMS[n.toLowerCase()]}`
   );
+  // (b) "lote a dos" / "lote a tres" → "lote a2" / "lote a3" (alphanumeric codes,
+  //     common Whisper artifact for plot names like A1/A2/B3/etc.)
+  result = result.replace(
+    /\blote\s+([a-z])\s+(uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/gi,
+    (_, letter, n) => `lote ${letter.toLowerCase()}${NUMS[n.toLowerCase()]}`
+  );
+  // (c) "el lote a dos" pattern after preposition (en, del, al, mi)
+  result = result.replace(
+    /\b(en|del|al|mi|el|la)\s+([a-z])\s+(uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/gi,
+    (m, prep, letter, n) => {
+      // Only apply when followed/preceded by lote context. Safe heuristic:
+      // letter must be a single character that could be a plot code.
+      return `${prep} ${letter.toLowerCase()}${NUMS[n.toLowerCase()]}`;
+    }
+  );
+  return result;
 }

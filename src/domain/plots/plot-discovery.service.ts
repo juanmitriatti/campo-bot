@@ -33,9 +33,18 @@ export class PlotDiscoveryService {
     plotName: string | null,
   ): Promise<PlotDiscoveryResult> {
     const result = await this.resolveFromNames(userId, campoName, plotName);
-    if (result.plotId || campoName || plotName) return result;
-    const fromState = await this._resolveFromConversationState(userId);
-    return fromState.plotId ? fromState : result;
+    if (result.plotId) return result;
+    // Fall back to recent context_stack when:
+    //   (a) nothing was specified, OR
+    //   (b) what was specified didn't resolve (e.g. Whisper transcribed "A2"
+    //       as "a dos" and the plot lookup failed). Previously we only fell
+    //       back in case (a), so users hit dead-end "no encontré el lote"
+    //       prompts even when bot just talked about that plot a turn ago.
+    if (!result.plotId) {
+      const fromState = await this._resolveFromConversationState(userId);
+      if (fromState.plotId) return fromState;
+    }
+    return result;
   }
 
   async resolveFromNames(userId: UserId, campoName: string | null, plotName: string | null): Promise<PlotDiscoveryResult> {
