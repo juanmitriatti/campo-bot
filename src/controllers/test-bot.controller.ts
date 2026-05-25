@@ -539,7 +539,7 @@ async function handleInteractiveReply(
     if (response.sideEffects?.setPendingStockDeduction) {
       pendingStockDeductionStore.set(phone, response.sideEffects.setPendingStockDeduction as Record<string, unknown>);
     }
-    conversationLogger.log(userId, phone, '[confirm_pending]', response.messages[0] ?? null, 'command', 'confirm').catch(() => {});
+    conversationLogger.log(userId, phone, '[confirm_pending]', response.messages[0] ?? response.interactive?.body ?? null, 'command', 'confirm').catch(() => {});
     return collectResponse(response);
   }
 
@@ -1228,7 +1228,7 @@ async function processTextMessage(
     if (response.sideEffects?.setPendingStockEntry) {
       pendingStockEntryStore.set(phone, response.sideEffects.setPendingStockEntry as Record<string, unknown>);
     }
-    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
     return collectResponse(response);
   }
   if (intent.type === 'command' && intent.data.command === 'cancel') {
@@ -1277,7 +1277,7 @@ async function processTextMessage(
     if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
     if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
     const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
-    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
     return collectResponse(result.response);
   }
 
@@ -1297,7 +1297,7 @@ async function processTextMessage(
     if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
     if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
     const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
-    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
     return collectResponse(result.response);
   }
 
@@ -1427,7 +1427,7 @@ async function processTextMessage(
         lastQueryType: intent.data.command.startsWith('query_') ? intent.data.command : null,
         lastTimeReference: (intent.data.timeLabel as string) ?? null,
       }).catch(() => {});
-      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
       const items = collectResponse(response);
       if (plotAreaPromptCmd) items.push({ type: 'text', text: plotAreaPromptCmd });
       return items;
@@ -1463,7 +1463,7 @@ async function processTextMessage(
     }
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
     updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
-    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
     return collectResponse(response);
   }
 
@@ -1496,7 +1496,7 @@ async function processTextMessage(
     }
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
     updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
-    conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
+    conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
     return collectResponse(response);
   }
 

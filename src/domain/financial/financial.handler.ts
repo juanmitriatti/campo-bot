@@ -13,6 +13,7 @@ import { FieldSharingService } from '../sharing/field-sharing.service.js';
 import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
 import { logError } from '../../services/error-logger.js';
 import { pool } from '../../config/db.js';
+import { formatMoney } from '../../utils/format-money.js';
 import type {
   UserId,
   User,
@@ -93,8 +94,7 @@ function formatEventDate(dateStr: string | null | undefined): string | null {
 
 async function buildExpenseConfirmation(data: ParsedExpense, fieldName: string | null, plotName: string | null = null): Promise<string> {
   const pool = await getConfirmationPool('expense');
-  const currency = data.currency === 'USD' ? 'USD' : '';
-  let msg = `${pickRandom(pool)}\n${data.category}\n$${Number(data.amount).toLocaleString('es-AR')} ${currency}`.trim();
+  let msg = `${pickRandom(pool)}\n${data.category}\n${formatMoney(Number(data.amount), data.currency)}`;
   const loc = buildLocationLabel(fieldName, plotName);
   if (loc) msg += `\n\ud83d\udccd ${loc}`;
   const dateLabel = formatEventDate(data.expenseDate);
@@ -104,11 +104,10 @@ async function buildExpenseConfirmation(data: ParsedExpense, fieldName: string |
 
 async function buildIncomeConfirmation(data: ParsedIncome | Record<string, unknown>, fieldName: string | null, plotName: string | null = null): Promise<string> {
   const pool = await getConfirmationPool('income');
-  const currency = (data.currency as string) === 'USD' ? 'USD' : '';
-  let msg = `${pickRandom(pool)}\n${data.category}\n$${Number(data.amount).toLocaleString('es-AR')} ${currency}`.trim();
+  let msg = `${pickRandom(pool)}\n${data.category}\n${formatMoney(Number(data.amount), data.currency as string)}`;
   if (data.quantity && data.unit) {
     msg += `\n${data.quantity} ${data.unit}`;
-    if (data.unit_price) msg += ` a $${Number(data.unit_price).toLocaleString('es-AR')}`;
+    if (data.unit_price) msg += ` a ${formatMoney(Number(data.unit_price), data.currency as string)}`;
   }
   const loc = buildLocationLabel(fieldName, plotName);
   if (loc) msg += `\n\ud83d\udccd ${loc}`;
@@ -120,13 +119,12 @@ async function buildIncomeConfirmation(data: ParsedIncome | Record<string, unkno
 function buildPendingMessage(type: 'expense' | 'income', data: ParsedExpense | ParsedIncome, fieldName: string | null, plotName: string | null = null): string {
   const emoji = type === 'income' ? '\ud83d\udcb0' : '\ud83d\udcb8';
   const label = type === 'income' ? 'ingreso' : 'gasto';
-  const currency = data.currency === 'USD' ? ' USD' : '';
   let msg = `${emoji} \u00bfConfirmo ${label}?\n\n`;
   msg += `Categor\u00eda: *${data.category}*\n`;
-  msg += `Monto: *$${Number(data.amount).toLocaleString('es-AR')}${currency}*\n`;
+  msg += `Monto: *${formatMoney(Number(data.amount), data.currency)}*\n`;
   if ('quantity' in data && data.quantity && data.unit) {
     msg += `Detalle: ${data.quantity} ${data.unit}`;
-    if (data.unit_price) msg += ` a $${Number(data.unit_price).toLocaleString('es-AR')}`;
+    if (data.unit_price) msg += ` a ${formatMoney(Number(data.unit_price), data.currency)}`;
     msg += '\n';
   }
   const loc = buildLocationLabel(fieldName, plotName);
@@ -670,7 +668,7 @@ export class FinancialHandler {
       const name = resolution.notFound.name;
       const currency = data.currency === 'USD' ? 'USD' : 'ARS';
       return {
-        messages: [`\u26a0\ufe0f No encontré el ${label} *${name}*.\n\n\ud83d\udcb8 *${data.category}* \u2014 $${data.amount.toLocaleString('es-AR')}${currency === 'USD' ? ' USD' : ''}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
+        messages: [`\u26a0\ufe0f No encontré el ${label} *${name}*.\n\n\ud83d\udcb8 *${data.category}* \u2014 ${formatMoney(data.amount, data.currency)}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
         sideEffects: {
           startFlow: {
             state: 'expense_flow' as FlowState,
@@ -695,7 +693,7 @@ export class FinancialHandler {
         // 2+ plots in field → redirect to expense flow at plot step
         const currency = data.currency === 'USD' ? 'USD' : 'ARS';
         return {
-          messages: [`\ud83d\udcb8 *${data.category}* \u2014 $${data.amount.toLocaleString('es-AR')}${currency === 'USD' ? ' USD' : ''}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
+          messages: [`\ud83d\udcb8 *${data.category}* \u2014 ${formatMoney(data.amount, data.currency)}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
           sideEffects: {
             startFlow: {
               state: 'expense_flow' as FlowState,
@@ -963,7 +961,7 @@ export class FinancialHandler {
       const name = resolution.notFound.name;
       const currency = data.currency === 'USD' ? 'USD' : 'ARS';
       return {
-        messages: [`\u26a0\ufe0f No encontré el ${label} *${name}*.\n\n\ud83d\udcb0 *${data.category}* \u2014 $${data.amount.toLocaleString('es-AR')}${currency === 'USD' ? ' USD' : ''}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
+        messages: [`\u26a0\ufe0f No encontré el ${label} *${name}*.\n\n\ud83d\udcb0 *${data.category}* \u2014 ${formatMoney(data.amount, data.currency)}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
         sideEffects: {
           startFlow: {
             state: 'income_flow' as FlowState,
@@ -987,7 +985,7 @@ export class FinancialHandler {
         // 2+ plots in field → redirect to income flow at plot step
         const currency = data.currency === 'USD' ? 'USD' : 'ARS';
         return {
-          messages: [`\ud83d\udcb0 *${data.category}* \u2014 $${data.amount.toLocaleString('es-AR')}${currency === 'USD' ? ' USD' : ''}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
+          messages: [`\ud83d\udcb0 *${data.category}* \u2014 ${formatMoney(data.amount, data.currency)}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
           sideEffects: {
             startFlow: {
               state: 'income_flow' as FlowState,
@@ -1822,7 +1820,7 @@ export class FinancialHandler {
         const currLabel = template.currency === 'USD' ? ' USD' : '';
         let msg = `\u2705 Gasto recurrente creado\n\n`;
         msg += `\ud83d\udcdd *${template.name}*\n`;
-        msg += `\ud83d\udcb0 $${template.amount.toLocaleString('es-AR')}${currLabel}\n`;
+        msg += `\ud83d\udcb0 ${formatMoney(template.amount, template.currency)}\n`;
         msg += `\ud83d\udd04 Frecuencia: ${freqLabel}\n`;
         const nextRunStr1 = typeof template.next_run_date === 'string' ? template.next_run_date : new Date(template.next_run_date as unknown as string | Date).toISOString().slice(0, 10);
         msg += `\ud83d\udcc5 Pr\u00f3ximo: ${new Date(nextRunStr1 + 'T12:00:00').toLocaleDateString('es-AR')}`;
@@ -1844,7 +1842,7 @@ export class FinancialHandler {
         for (const t of templates) {
           const freqLabel = t.recurrence_type === 'weekly' ? 'semanal' : t.recurrence_type === 'biweekly' ? 'quincenal' : 'mensual';
           const currLabel = t.currency === 'USD' ? ' USD' : '';
-          msg += `\n\u2022 *${t.name}* — $${t.amount.toLocaleString('es-AR')}${currLabel} (${freqLabel})`;
+          msg += `\n\u2022 *${t.name}* — ${formatMoney(t.amount, t.currency)} (${freqLabel})`;
           const nextRunRaw = typeof t.next_run_date === 'string' ? t.next_run_date : new Date(t.next_run_date as unknown as string | Date).toISOString().slice(0, 10);
           const nextDate = new Date(nextRunRaw + 'T12:00:00').toLocaleDateString('es-AR');
           msg += `\n  Pr\u00f3ximo: ${nextDate}`;

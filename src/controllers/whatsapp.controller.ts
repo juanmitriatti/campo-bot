@@ -459,7 +459,7 @@ router.post('/', async (req: Request, res: Response) => {
               pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
             }
             await sendResponse(phone, result.response);
-            conversationLogger.log(userId, phone, '[confirm]', result.response.messages[0] ?? null, 'flow', 'flow_confirm', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+            conversationLogger.log(userId, phone, '[confirm]', result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'flow_confirm', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
           } else if (callbackId === 'flow_cancel') {
             const durationMs = flowCtx.startedAt ? Date.now() - new Date(flowCtx.startedAt).getTime() : undefined;
             conversationObserver.logFlowAbandoned(userId, flowCtx.state, flowCtx.step, 'cancelled', { durationMs, filledFields: Object.keys(flowCtx.data) });
@@ -474,14 +474,14 @@ router.post('/', async (req: Request, res: Response) => {
               await conversationEngine.setFlowContext(userId, result.nextContext);
             }
             await sendResponse(phone, result.response);
-            conversationLogger.log(userId, phone, '[skip]', result.response.messages[0] ?? null, 'flow', 'flow_skip', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+            conversationLogger.log(userId, phone, '[skip]', result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'flow_skip', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
           } else if (callbackId === 'flow_back') {
             const result = await conversationEngine.goBack(userId, flowCtx);
             if (result.nextContext) {
               await conversationEngine.setFlowContext(userId, result.nextContext);
             }
             await sendResponse(phone, result.response);
-            conversationLogger.log(userId, phone, '[back]', result.response.messages[0] ?? null, 'flow', 'flow_back', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+            conversationLogger.log(userId, phone, '[back]', result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'flow_back', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
           } else if (callbackId.startsWith('flow_new_')) {
             // Start a new flow: flow_new_expense → expense_flow
             const flowName = callbackId.replace('flow_new_', '') + '_flow';
@@ -496,7 +496,7 @@ router.post('/', async (req: Request, res: Response) => {
             const result = await conversationEngine.startFlow(userId, flowName as FlowState, prefillData);
             conversationObserver.logFlowStarted(userId, flowName, { trigger: 'interactive_button' });
             await sendResponse(phone, result.response);
-            conversationLogger.log(userId, phone, `[start:${flowName}]`, result.response.messages[0] ?? null, 'flow', 'flow_start', flowName, 0, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+            conversationLogger.log(userId, phone, `[start:${flowName}]`, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'flow_start', flowName, 0, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
           } else if (callbackId.startsWith('flow_cat_')) {
             // Category selection within flow
             const value = callbackId.replace('flow_cat_', '');
@@ -509,7 +509,7 @@ router.post('/', async (req: Request, res: Response) => {
                 await conversationEngine.clearFlow(userId);
               }
               await sendResponse(phone, result.response);
-              conversationLogger.log(userId, phone, `[cat:${value}]`, result.response.messages[0] ?? null, 'flow', 'flow_cat', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+              conversationLogger.log(userId, phone, `[cat:${value}]`, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'flow_cat', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
             }
           } else if (callbackId.startsWith('flow_field_loc_')) {
             // Location method buttons → pass full ID to flow engine
@@ -521,7 +521,7 @@ router.post('/', async (req: Request, res: Response) => {
                 await conversationEngine.clearFlow(userId);
               }
               await sendResponse(phone, result.response);
-              conversationLogger.log(userId, phone, `[loc:${callbackId}]`, result.response.messages[0] ?? null, 'flow', 'flow_field_loc', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+              conversationLogger.log(userId, phone, `[loc:${callbackId}]`, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'flow_field_loc', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
             }
           } else if (callbackId.startsWith('flow_field_')) {
             // Field selection within flow
@@ -534,7 +534,7 @@ router.post('/', async (req: Request, res: Response) => {
                 await conversationEngine.clearFlow(userId);
               }
               await sendResponse(phone, result.response);
-              conversationLogger.log(userId, phone, `[field:${value}]`, result.response.messages[0] ?? null, 'flow', 'flow_field', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+              conversationLogger.log(userId, phone, `[field:${value}]`, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'flow_field', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
             }
           } else if (callbackId.startsWith('flow_plot_')) {
             // Plot selection within flow
@@ -562,7 +562,7 @@ router.post('/', async (req: Request, res: Response) => {
                 await conversationEngine.clearFlow(userId);
               }
               await sendResponse(phone, result.response);
-              conversationLogger.log(userId, phone, `[plot:${value}]`, result.response.messages[0] ?? null, 'flow', 'flow_plot', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+              conversationLogger.log(userId, phone, `[plot:${value}]`, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'flow_plot', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
             }
           } else if (callbackId.startsWith('flow_activity_')) {
             // Activity type selection within flow
@@ -575,7 +575,7 @@ router.post('/', async (req: Request, res: Response) => {
                 await conversationEngine.clearFlow(userId);
               }
               await sendResponse(phone, result.response);
-              conversationLogger.log(userId, phone, `[activity:${value}]`, result.response.messages[0] ?? null, 'flow', 'flow_activity', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+              conversationLogger.log(userId, phone, `[activity:${value}]`, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'flow_activity', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
             }
           }
           res.sendStatus(200);
@@ -593,7 +593,7 @@ router.post('/', async (req: Request, res: Response) => {
             const response = await domainRouter.routeCommand(pendingAction._destructiveCommand, userId, user, settings);
             if (response) {
               await sendResponse(phone, response);
-              conversationLogger.log(userId, phone, `[confirm_destructive]`, response.messages[0] ?? null, 'command', pendingAction._destructiveCommand.command, null, null, false, Date.now() - startTime, !!response.interactive).catch(() => {});
+              conversationLogger.log(userId, phone, `[confirm_destructive]`, response.messages[0] ?? response.interactive?.body ?? null, 'command', pendingAction._destructiveCommand.command, null, null, false, Date.now() - startTime, !!response.interactive).catch(() => {});
             }
           }
           res.sendStatus(200);
@@ -637,7 +637,7 @@ router.post('/', async (req: Request, res: Response) => {
             pendingStockEntryStore.set(phone, response.sideEffects.setPendingStockEntry as Record<string, unknown>);
           }
           await sendResponse(phone, response);
-          conversationLogger.log(userId, phone, `[confirm_pending]`, response.messages[0] ?? null, 'command', 'confirm', null, null, false, Date.now() - startTime, !!response.interactive).catch(() => {});
+          conversationLogger.log(userId, phone, `[confirm_pending]`, response.messages[0] ?? response.interactive?.body ?? null, 'command', 'confirm', null, null, false, Date.now() - startTime, !!response.interactive).catch(() => {});
           res.sendStatus(200);
           return;
         }
@@ -1119,7 +1119,7 @@ router.post('/', async (req: Request, res: Response) => {
           const response = await domainRouter.routeCommand(intent.data, user.id, user, settings);
           if (response) {
             await sendResponse(phone, response);
-            conversationLogger.log(user.id, phone, `[interactive:${callbackId}]`, response.messages[0] ?? null, 'command', intent.data.command, null, null, false, Date.now() - startTime, !!response.interactive).catch(() => {});
+            conversationLogger.log(user.id, phone, `[interactive:${callbackId}]`, response.messages[0] ?? response.interactive?.body ?? null, 'command', intent.data.command, null, null, false, Date.now() - startTime, !!response.interactive).catch(() => {});
           }
         }
         res.sendStatus(200);
@@ -1324,7 +1324,7 @@ router.post('/', async (req: Request, res: Response) => {
         await conversationEngine.clearFlow(userId);
         const response = await financialHandler.resumeCreateCategory(userId, text, flowData);
         await sendResponse(phone, response);
-        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', 'create_category', 'awaiting_new_category_name', 0, false, Date.now() - startTime, !!response.interactive).catch(() => {});
+        conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'command', 'create_category', 'awaiting_new_category_name', 0, false, Date.now() - startTime, !!response.interactive).catch(() => {});
         res.sendStatus(200);
         return;
       }
@@ -1377,7 +1377,7 @@ router.post('/', async (req: Request, res: Response) => {
             await conversationEngine.setFlowContext(userId, result.nextContext);
           }
           await sendResponse(phone, result.response);
-          conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'back', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+          conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'back', flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
           res.sendStatus(200);
           return;
         }
@@ -1443,7 +1443,7 @@ router.post('/', async (req: Request, res: Response) => {
             pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
           }
           await sendResponse(phone, result.response);
-          conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', null, flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
+          conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', null, flowCtx.state, flowCtx.step, false, Date.now() - startTime, !!result.response.interactive).catch(() => {});
           res.sendStatus(200);
           return;
         }
@@ -1674,7 +1674,7 @@ router.post('/', async (req: Request, res: Response) => {
           }
           await sendResponse(phone, result);
           console.log(`[PENDING_CROP] Resolved crop="${crop}" for pending ${pendingAct.command}, user ${userId}`);
-          conversationLogger.log(userId, phone, text, result.messages[0] ?? null, 'command', pendingAct.command, null, null, false, Date.now() - startTime).catch(() => {});
+          conversationLogger.log(userId, phone, text, result.messages[0] ?? result.interactive?.body ?? null, 'command', pendingAct.command, null, null, false, Date.now() - startTime).catch(() => {});
           res.sendStatus(200);
           return;
         }
@@ -1695,7 +1695,7 @@ router.post('/', async (req: Request, res: Response) => {
           }
           await sendResponse(phone, actResult);
           console.log(`[PENDING_ACT] Resolved plot_id=${actResolved.plotId} for pending ${pendingAct.command}, user ${userId}`);
-          conversationLogger.log(userId, phone, text, actResult.messages[0] ?? null, 'command', pendingAct.command, null, null, false, Date.now() - startTime).catch(() => {});
+          conversationLogger.log(userId, phone, text, actResult.messages[0] ?? actResult.interactive?.body ?? null, 'command', pendingAct.command, null, null, false, Date.now() - startTime).catch(() => {});
           res.sendStatus(200);
           return;
         }
@@ -1843,7 +1843,7 @@ router.post('/', async (req: Request, res: Response) => {
       pendingStore.clear(phone);
       const response = await financialHandler.handleConfirm(userId, pending, settings, user);
       await sendResponse(phone, response);
-      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -1913,7 +1913,7 @@ router.post('/', async (req: Request, res: Response) => {
       const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
       conversationObserver.logFlowStarted(userId, 'expense_flow', { trigger: 'partial_parse', prefillFields: Object.keys(prefillData) });
       await sendResponse(phone, result.response);
-      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
+      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -1941,7 +1941,7 @@ router.post('/', async (req: Request, res: Response) => {
       const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
       conversationObserver.logFlowStarted(userId, 'income_flow', { trigger: 'partial_parse', prefillFields: Object.keys(prefillData) });
       await sendResponse(phone, result.response);
-      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
+      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -2063,7 +2063,7 @@ router.post('/', async (req: Request, res: Response) => {
           }
           conversationObserver.logFlowStarted(userId, state, { trigger: 'command', prefillFields: data ? Object.keys(data) : [] });
           await sendResponse(phone, flowResult.response);
-          conversationLogger.log(userId, phone, text, flowResult.response.messages[0] ?? null, 'flow', 'flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
+          conversationLogger.log(userId, phone, text, flowResult.response.messages[0] ?? flowResult.response.interactive?.body ?? null, 'flow', 'flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
           res.sendStatus(200);
           return;
         }
@@ -2128,7 +2128,7 @@ router.post('/', async (req: Request, res: Response) => {
           lastTimeReference: (intent.data.timeLabel as string) ?? null,
         }).catch(() => {});
         await sendResponse(phone, response);
-        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
+        conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
         res.sendStatus(200);
         return;
       }
@@ -2159,7 +2159,7 @@ router.post('/', async (req: Request, res: Response) => {
         conversationObserver.logFlowStarted(userId, state, { trigger: 'expense_plot_selection', prefillFields: data ? Object.keys(data) : [] });
         await sendResponse(phone, response);
         await sendResponse(phone, flowResult.response);
-        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'flow', 'expense_flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
+        conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'flow', 'expense_flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
         res.sendStatus(200);
         return;
       }
@@ -2173,7 +2173,7 @@ router.post('/', async (req: Request, res: Response) => {
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
       await sendResponse(phone, response);
-      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -2203,7 +2203,7 @@ router.post('/', async (req: Request, res: Response) => {
         conversationObserver.logFlowStarted(userId, state, { trigger: 'income_plot_selection', prefillFields: data ? Object.keys(data) : [] });
         await sendResponse(phone, response);
         await sendResponse(phone, flowResult.response);
-        conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'flow', 'income_flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
+        conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'flow', 'income_flow_start', state, 0, aiUsed, Date.now() - startTime, !!flowResult.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
         res.sendStatus(200);
         return;
       }
@@ -2217,7 +2217,7 @@ router.post('/', async (req: Request, res: Response) => {
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
       await sendResponse(phone, response);
-      conversationLogger.log(userId, phone, text, response.messages[0] ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
+      conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }

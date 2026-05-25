@@ -65,7 +65,8 @@ function formatDate(iso: string): string {
 }
 
 function formatAmount(amount: number, currency = 'ARS'): string {
-  if (currency === 'USD') return `US$${amount.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
+  // Convention: peso uses "$", dollar uses "USD " (never "$" + "USD" suffix).
+  if (currency === 'USD') return `USD ${amount.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
   return `$${amount.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
 }
 
