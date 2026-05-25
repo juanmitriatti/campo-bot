@@ -136,7 +136,7 @@ export class StockHandler {
     const newLabel = created ? ' (nuevo)' : '';
     return {
       messages: [
-        `📥 *Stock actualizado*\n\n` +
+        `📥 *Stock registrado*\n\n` +
         `  📦 *${item.name}*${newLabel}\n` +
         `  ➕ ${quantity} ${unit}\n` +
         `  📊 Total: *${item.current_quantity} ${item.unit}*\n` +

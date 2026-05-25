@@ -1,0 +1,118 @@
+{
+  "totals": {
+    "livestock_initial": {
+      "vacas": 80,
+      "novillos": 40,
+      "terneros": 20
+    },
+    "livestock_sales": [
+      {
+        "date": "2025-12-15",
+        "category": "novillo",
+        "count": 5,
+        "unit_price_usd": 1600,
+        "total_usd": 8000
+      },
+      {
+        "date": "2026-02-10",
+        "category": "vaca",
+        "count": 3,
+        "unit_price_usd": 1400,
+        "total_usd": 4200
+      },
+      {
+        "date": "2026-03-22",
+        "category": "novillo",
+        "count": 8,
+        "unit_price_usd": 1700,
+        "total_usd": 13600
+      },
+      {
+        "date": "2026-04-18",
+        "category": "vaca",
+        "count": 5,
+        "unit_price_usd": 1500,
+        "total_usd": 7500
+      }
+    ],
+    "livestock_deaths": [
+      {
+        "date": "2026-01-08",
+        "category": "ternero",
+        "count": 2
+      },
+      {
+        "date": "2026-03-15",
+        "category": "vaca",
+        "count": 1
+      }
+    ],
+    "livestock_births": [
+      {
+        "date": "2026-02-25",
+        "count": 6
+      },
+      {
+        "date": "2026-04-05",
+        "count": 4
+      }
+    ],
+    "livestock_final": {
+      "vacas": 71,
+      "novillos": 27,
+      "terneros": 28
+    },
+    "total_sold_usd": 33300,
+    "total_dead": 3,
+    "total_born": 10,
+    "stock_movements": {
+      "urea_in": 1700,
+      "urea_out": 700,
+      "urea_final": 1000,
+      "glifo_in": 300,
+      "glifo_out": 150,
+      "glifo_final": 150,
+      "semilla_in": 500,
+      "semilla_out": 350,
+      "semilla_final": 150
+    },
+    "scoutings_total": 9,
+    "scoutings_by_plot": {
+      "N1": 4,
+      "N2": 3,
+      "N3": 2
+    },
+    "avg_weed_pct": 11.6,
+    "max_pest_severity": 5,
+    "has_rama_negra": true,
+    "has_chinche": true,
+    "harvest_loads_total": 5,
+    "harvest_kg_soja": 91700,
+    "harvest_kg_trigo": 40500,
+    "harvest_drivers": [
+      "Pedro Gómez",
+      "Luis Mora",
+      "Juan Pérez"
+    ],
+    "harvest_destinatarios": [
+      "Cargill",
+      "Vicentin",
+      "ACA"
+    ],
+    "vacunaciones_count": 2,
+    "desparasitaciones_count": 2,
+    "servicios_count": 1,
+    "destetes_count": 1,
+    "pesajes_count": 3,
+    "pesaje_promedio_vacas": 460
+  },
+  "failures": [
+    {
+      "name": "Q04_ventas_hacienda",
+      "query": "cuánto vendí de hacienda",
+      "reason": "expected USD 33300; text=🐄 *Movimientos de hacienda* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *21*\n  • 🐣 Nacimientos: *10*\n  • 💀 Muertes: *3*\n\n*Últimos:*\n  18/4/2026: -5 vaca (don v2 > N1) · US$1.500/cab\n  5/4",
+      "response": "🐄 *Movimientos de hacienda* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *21*\n  • 🐣 Nacimientos: *10*\n  • 💀 Muertes: *3*\n\n*Últimos:*\n  18/4/2026: -5 vaca (don v2 > N1) · US$1.500/cab\n  5/4/2026: +4 ternero (don v2 > N1)\n  22/3/2026: -8 novillo (don v2 > N2) · US$1.700/cab\n  15/3/2026: -1 vaca (don v2 > N1) · rayo\n  25/2/2026: +6 ternero (don v2 > N1)\n  10/2/2026: -3 vaca (don v2 > N1) · US$1.400/cab\n  8/1/2026: -2 ternero (don v2 > N1) · fiebre\n  15/12/2025: -5 novillo (don v2 > N2) · US$1.600/cab"
+    }
+  ],
+  "passRate": 0.9666666666666667
+}

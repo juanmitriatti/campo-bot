@@ -1,0 +1,261 @@
+{
+  "summary": {
+    "pass": 24,
+    "fail": 6,
+    "total": 30
+  },
+  "results": [
+    {
+      "name": "L01_list_all",
+      "description": "Listar todos los documentos",
+      "category": "list",
+      "pass": true,
+      "reasons": [],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    },
+    {
+      "name": "L02_facturas_only",
+      "description": "Filtrar facturas",
+      "category": "list",
+      "pass": false,
+      "reasons": [
+        "leak: /syngenta/i"
+      ],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    },
+    {
+      "name": "L03_remitos_only",
+      "description": "Filtrar remitos",
+      "category": "list",
+      "pass": true,
+      "reasons": [],
+      "response": "Los remitos son comprobantes de movimiento de stock (entrada/salida de insumos, granos, etc.). \n\nEn el sistema, los remitos se registran cuando:\n- 📦 Cargás stock (add_stock)\n- 📤 Sacás stock (remove_stock)\n- 🔄 Ajustás inventario (adjust_stock)\n\nPara ver el **historial de movimientos de stock**, podés decirme:\n- \"movimientos de glifosato\"\n- \"historial de urea\"\n- \"stock de gasoil\"\n\n¿Qué producto querés consultar?"
+    },
+    {
+      "name": "L04_by_proveedor",
+      "description": "Filtrar por proveedor",
+      "category": "list",
+      "pass": true,
+      "reasons": [],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    },
+    {
+      "name": "L05_by_proveedor_caps",
+      "description": "Provider lowercase",
+      "category": "list",
+      "pass": true,
+      "reasons": [],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    },
+    {
+      "name": "L06_by_month",
+      "description": "Filtrar por mes",
+      "category": "list",
+      "pass": true,
+      "reasons": [],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    },
+    {
+      "name": "L07_by_amount",
+      "description": "Filtrar por monto",
+      "category": "list",
+      "pass": false,
+      "reasons": [
+        "missing: /bayer|120|factura/i"
+      ],
+      "response": "No hay registros — > $100.000 (mayo de 2026).\n¿Más?"
+    },
+    {
+      "name": "L08_no_docs_response",
+      "description": "Sin matches",
+      "category": "list",
+      "pass": true,
+      "reasons": [],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    },
+    {
+      "name": "U01_intent_factura",
+      "description": "Bot pide foto factura",
+      "category": "upload",
+      "pass": true,
+      "reasons": [],
+      "response": "Perfecto, enviame la foto de la factura y te la cargo al sistema. ¿De qué es la factura? (gasto, compra de insumo, etc.)"
+    },
+    {
+      "name": "U02_intent_remito",
+      "description": "Bot pide foto remito",
+      "category": "upload",
+      "pass": true,
+      "reasons": [],
+      "response": "Perfecto, enviame la foto del remito y lo cargo al inventario de stock. ¿Qué producto/insumo recibiste?"
+    },
+    {
+      "name": "U03_can_upload_pdf",
+      "description": "PDF support query",
+      "category": "upload",
+      "pass": true,
+      "reasons": [],
+      "response": "Sí, podés subir un PDF. Dependiendo de qué sea, te ayudo a cargarlo:\n\n📄 **Si es una factura de gasto** (compra de insumos, combustible, etc.) → enviame la foto/PDF y registro los gastos en el sistema.\n\n📦 **Si es un remito de entrada de stock** (recepción de semillas, fertilizantes, agroquímicos, etc.) → enviame la foto/PDF y lo cargo al inventario.\n\n📊 **Si querés generar un reporte en PDF** (financiero, agronómico, de campaña) → decime qué tipo de reporte necesitás y te lo genero.\n\n¿Cuál es tu caso?"
+    },
+    {
+      "name": "U04_what_extracts",
+      "description": "Help: extraction details",
+      "category": "upload",
+      "pass": true,
+      "reasons": [],
+      "response": "De una factura extraigo estos datos para registrar el gasto:\n\n📋 **Datos principales:**\n• **Proveedor** — quién emitió la factura (Syngenta, Bayer, YPF, Cargill, etc.)\n• **Monto total** — cuánto pagaste (en pesos o dólares)\n• **Categoría** — tipo de gasto (Agroquímicos, Combustible, Fertilizantes, Labranzas, Maquinaria, Arrendamiento, Impuestos, Hacienda)\n• **Descripción** — qué compraste (gasoil, urea, glifosato, semilla, servicio de fumigación, etc.)\n• **Fecha** — cuándo fue la compra\n• **Lote/Campo** — dónde se aplicó o usó (opcional)\n\n🔍 **Datos adicionales (si vienen en la factura):**\n• **Producto específico** — nombre exacto (ej: \"Roundup\", \"Urea 46%\", \"Semilla DM 4012\")\n• **Cantidad** — cuánto compraste (kg, lt, bolsas, tn)\n• **Precio unitario** — costo por unidad (si viene desglosado)\n• **Moneda** — pesos (ARS) o dólares (USD)\n\nEnviame la foto/PDF de la factura y extraigo esos datos para cargarlos al sistema. 📸"
+    },
+    {
+      "name": "U05_quality_required",
+      "description": "Quality requirement",
+      "category": "upload",
+      "pass": true,
+      "reasons": [],
+      "response": "Si la foto está borrosa, depende de cuánto se vea:\n\n✅ **Sirve si:**\n• Se leen los números principales (monto, fecha, cantidad)\n• Se identifica el proveedor o tipo de gasto\n• Aunque falten detalles menores, los datos clave son legibles\n\n❌ **No sirve si:**\n• No se ve el monto total\n• No se identifica qué se compró\n• Los números están completamente ilegibles\n\n**Mi recomendación:** Enviame la foto igual. Si está lo suficientemente clara para extraer los datos principales (qué, cuánto, cuándo), la cargo. Si está muy borrosa, te aviso y me pedís que la retomes con mejor luz.\n\n¿Querés enviar la factura?"
+    },
+    {
+      "name": "U06_help_doc",
+      "description": "Help section",
+      "category": "upload",
+      "pass": true,
+      "reasons": [],
+      "response": "📄 **Ayuda con documentos**\n\nPuedo ayudarte con:\n\n✅ **Ver documentos procesados**\n\"Mis facturas\" / \"Documentos\" / \"Qué documentos tengo\"\n\n✅ **Vincular factura a gasto**\n\"Vincular factura 5 al gasto 42\" (si ya registraste el gasto y querés asociar la factura)\n\n✅ **Cargar nuevos gastos desde factura**\nEnviame la foto de la factura y te digo qué datos extraigo:\n• Proveedor\n• Monto (en pesos o dólares)\n• Qué compraste (producto/servicio)\n• Fecha\n• Lote (si aplica)\n\nLuego registro el gasto automáticamente.\n\n¿Qué necesitás?"
+    },
+    {
+      "name": "V01_link_to_expense",
+      "description": "Link factura → expense",
+      "category": "link",
+      "pass": true,
+      "reasons": [],
+      "response": "Para vincular la factura de YPF al gasto de gasoil, necesito los IDs de ambos:\n\n• **ID de la factura** (número de documento)\n• **ID del gasto** (número del registro de gasto)\n\n¿Podés proporcionarme esos números? Así puedo hacer la vinculación correctamente."
+    },
+    {
+      "name": "V02_link_without_existing",
+      "description": "Link inexistente",
+      "category": "link",
+      "pass": true,
+      "reasons": [],
+      "response": "No encontré un gasto inexistente para vincular. \n\nPara vincular una factura a un gasto, necesito:\n• **ID de la factura** (número del documento)\n• **ID del gasto existente** (número del registro)\n\n¿Querés que registre un nuevo gasto de Bayer primero? Si es así, decime:\n- ¿Cuánto fue el monto?\n- ¿Qué producto/servicio de Bayer compraste? (herbicida, fungicida, insecticida, etc.)\n- ¿En qué lote o campo?\n\nLuego vinculo la factura automáticamente."
+    },
+    {
+      "name": "V03_show_unlinked",
+      "description": "Pending links",
+      "category": "link",
+      "pass": false,
+      "reasons": [
+        "missing: /pendient|vincul|factura|sin asoci/i"
+      ],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    },
+    {
+      "name": "V04_after_link",
+      "description": "Verificar gasto post-link",
+      "category": "link",
+      "pass": true,
+      "reasons": [],
+      "response": "No hay registros — combustible (Todo el historial).\n¿Más?"
+    },
+    {
+      "name": "Q01_total_facturas",
+      "description": "Total facturas",
+      "category": "query",
+      "pass": true,
+      "reasons": [],
+      "response": "No hay registros (Año 2026).\n¿Más?"
+    },
+    {
+      "name": "Q02_compound_facturas_gastos",
+      "description": "Multi-domain",
+      "category": "query",
+      "pass": false,
+      "reasons": [
+        "missing: /factura|gasto|mes/i"
+      ],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026\nNo hay registros (mayo de 2026).\n¿Más?"
+    },
+    {
+      "name": "Q03_ranking_proveedores",
+      "description": "Ranking facturas",
+      "category": "query",
+      "pass": false,
+      "reasons": [
+        "missing: /bayer|ypf|provee|top|ranking/i"
+      ],
+      "response": "No hay gastos (Todo el historial).\n¿Más?"
+    },
+    {
+      "name": "Q04_avg_factura",
+      "description": "Promedio facturas",
+      "category": "query",
+      "pass": true,
+      "reasons": [],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    },
+    {
+      "name": "E01_compound_doc_query_multi",
+      "description": "Multi-query sobre docs",
+      "category": "edge",
+      "pass": true,
+      "reasons": [],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    },
+    {
+      "name": "E02_explicit_pdf_format",
+      "description": "Filter por mime",
+      "category": "edge",
+      "pass": true,
+      "reasons": [],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    },
+    {
+      "name": "E03_recent_uploads",
+      "description": "Top N recientes",
+      "category": "edge",
+      "pass": true,
+      "reasons": [],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    },
+    {
+      "name": "E04_delete_document",
+      "description": "Delete document",
+      "category": "edge",
+      "pass": true,
+      "reasons": [],
+      "response": "No tengo una herramienta para eliminar documentos/facturas del sistema. Las facturas que subiste quedan registradas en tu historial.\n\nSi necesitás desvincular una factura de un gasto específico o si hay un error en los datos, podés:\n- **Desvincular factura de un gasto**: decime el ID del gasto y te ayudo\n- **Registrar un gasto nuevo**: si querés corregir un monto o categoría\n\n¿Qué necesitás hacer con la factura de Bayer?"
+    },
+    {
+      "name": "E05_quota_status",
+      "description": "Quota query",
+      "category": "edge",
+      "pass": true,
+      "reasons": [],
+      "response": "No tengo información sobre límites de documentos por día en el sistema. Eso depende de la configuración de tu cuenta y el plan que tengas.\n\nTe recomiendo que:\n- Revises la sección de **Configuración** o **Ayuda** en la app\n- Contactes al **soporte técnico** si necesitás aumentar el límite\n\n¿Hay algo más en lo que pueda ayudarte con tus registros agrícolas?"
+    },
+    {
+      "name": "I01_send_text_as_doc",
+      "description": "Text-as-image",
+      "category": "invalid",
+      "pass": false,
+      "reasons": [
+        "missing: /foto|imagen|envi|requier|no puedo/i"
+      ],
+      "response": "Entendido. Veo que querés procesar ese texto como una factura, pero necesito que me des los detalles concretos del documento:\n\n- **Número de factura** (si tiene)\n- **Fecha** de emisión\n- **Proveedor** (quién emitió)\n- **Concepto/Descripción** (qué se compró)\n- **Monto total** (en pesos o dólares)\n- **Categoría** (Agroquímicos, Combustible, Fertilizantes, Labranzas, Maquinaria, Impuestos, Arrendamiento, Hacienda)\n- **Lote** (si aplica a uno específico)\n\nCon esos datos registro la factura y el gasto asociado. ¿Me pasás esa información?"
+    },
+    {
+      "name": "I02_negative_link",
+      "description": "Reverse link",
+      "category": "invalid",
+      "pass": true,
+      "reasons": [],
+      "response": "Para desvincular una factura de un gasto, necesito que me indiques:\n\n- **ID de la factura** (número de documento)\n- **ID del gasto** (número del gasto registrado)\n\n¿Podés proporcionarme esos datos? Alternativamente, si querés ver tus facturas y gastos vinculados, puedo mostrarte el listado."
+    },
+    {
+      "name": "I03_typo_factura",
+      "description": "Typo en facturas",
+      "category": "invalid",
+      "pass": true,
+      "reasons": [],
+      "response": "📂 *Tus documentos* (6 total)\n\n📋 #6 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #5 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #4 — *YPF* · $50.000\n   📅 23/5/2026\n\n📋 #3 — *Syngenta*\n   📅 23/5/2026\n\n🧾 #2 — *Bayer* · $120.000\n   📅 23/5/2026\n\n🧾 #1 — *YPF* · $50.000\n   📅 23/5/2026"
+    }
+  ]
+}

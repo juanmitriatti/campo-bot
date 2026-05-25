@@ -171,8 +171,9 @@ export class SystemHandler {
             type: 'buttons',
             body: '\ud83d\udcb0 *Ingresos* \u2014 \u00bfQu\u00e9 quer\u00e9s hacer?',
             buttons: [
+              { id: 'cmd_ingresos_mes', title: 'Ingresos del Mes' },
+              { id: 'cmd_reporte_ingresos', title: 'Reporte' },
               { id: 'cmd_borrar_ultimo_ingreso', title: 'Borrar \u00daltimo' },
-              { id: 'back_menu', title: 'Volver al Men\u00fa' },
             ],
           },
         };

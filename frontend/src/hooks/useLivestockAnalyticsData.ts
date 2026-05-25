@@ -36,6 +36,9 @@ export interface FeedlotOccupancyRow {
   corralName: string;
   capacity: number | null;
   currentHeadcount: number;
+  feedlotName?: string | null;
+  fieldName?: string | null;
+  animalsDescription?: string;
 }
 
 export interface LivestockAnalyticsData {
@@ -54,11 +57,13 @@ export function useLivestockAnalyticsData(fieldId: number | null) {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (fieldId == null) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const json = await apiRequest<LivestockAnalyticsData>(`/analytics/livestock?field_id=${fieldId}`);
+      const url = fieldId == null
+        ? '/analytics/livestock?field_id=all'
+        : `/analytics/livestock?field_id=${fieldId}`;
+      const json = await apiRequest<LivestockAnalyticsData>(url);
       setData(json);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar dashboard ganadero');

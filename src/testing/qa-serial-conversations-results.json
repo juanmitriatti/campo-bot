@@ -1,0 +1,332 @@
+[
+  {
+    "name": "01_complete_4_mixed",
+    "desc": "4 mixed: gasto+ingreso+actividad+hacienda all complete",
+    "category": "complete",
+    "compound": "gasté 30 mil en gasoil, vendí 10 tn de soja a 480 USD por tonelada, fumigué A1 con glifosato 3 lt/ha, agregué 20 vaquillonas Angus en A2",
+    "answers": [],
+    "status": "PASS",
+    "reason": "e=1 i=1 d=1 lm=1 (sum=4, want>=4)",
+    "turns": [
+      "USER: gasté 30 mil en gasoil, vendí 10 tn de soja a 480 USD por tonelada, fumigué A1 con glifosato 3 lt/ha, agregué 20 vaquillonas Angus en A2",
+      "BOT: ✅ Listo, gasto registrado\nCombustible\n$30.000\n📍 la esperanza\n💰 Listo, ingreso registrado\nSoja\n$4.800 USD\n10 tn a $480\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $4.800\nGastos: $30.000\nResultado: $-25.200\nMargen: -525%\n\n📦 Tenés *200bolsas* de *soja* en stock.\n¿..."
+    ]
+  },
+  {
+    "name": "02_complete_5_agro",
+    "desc": "sow + spray + fertil + livestock + monitoreo complete",
+    "category": "complete",
+    "compound": "sembré girasol en A2, fumigué A1 con glifosato 2 lt/ha, fertilicé A3 con urea 100 kg/ha, agregué 15 terneros Angus en A1, monitoreé A1 soja V4 con 5% malezas",
+    "answers": [],
+    "status": "PASS",
+    "reason": "d=3 s=1 lm=1 (sum=5, want>=4)",
+    "turns": [
+      "USER: sembré girasol en A2, fumigué A1 con glifosato 2 lt/ha, fertilicé A3 con urea 100 kg/ha, agregué 15 terneros Angus en A1, monitoreé A1 soja V4 con 5% malezas",
+      "BOT: 🌱 *girasol* sembrado en *la esperanza > A2*\n📅 Campaña 2025/26\n💨 *Fumigación* registrada\n📍 la esperanza > A1\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n\n📦 Tenés 150 lt de *glifosato* en Principal.\n¿Descontar *200 lt*?\n🧪 *Fertilización* registrada\n📍 la esperanza > A3\n🧴 urea\n📏 100..."
+    ]
+  },
+  {
+    "name": "03_complete_harvest_sale_scouting",
+    "desc": "cosecha + venta + scouting complete",
+    "category": "complete",
+    "compound": "coseché soja en A1 con 4500 kg/ha, vendí 30 tn de soja a 450 USD por tonelada, monitoreé A2 maíz V6 sin plagas",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "d=0 i=1 s=1 (sum=2, want>=3)",
+    "turns": [
+      "USER: coseché soja en A1 con 4500 kg/ha, vendí 30 tn de soja a 450 USD por tonelada, monitoreé A2 maíz V6 sin plagas",
+      "BOT: No hay cultivo activo en *la esperanza > A1* para cosechar.\n💰 Listo, ingreso registrado\nSoja\n$13.500 USD\n30 tn a $450\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $18.300\nGastos: $30.000\nResultado: $-11.700\nMargen: -64%\n\n📦 Tenés *200bolsas* de *soja* en stock.\n¿D..."
+    ]
+  },
+  {
+    "name": "04_complete_stock_spray_fert_expense",
+    "desc": "stock + spray + fertilization + expense complete",
+    "category": "complete",
+    "compound": "saqué 40 lt de glifosato del galpón Principal, fumigué A1 con glifosato 2 lt/ha, fertilicé A2 con urea 80 kg/ha, gasté 50 mil en gasoil",
+    "answers": [],
+    "status": "PASS",
+    "reason": "sm=1 d=2 e=1 (sum=4, want>=4)",
+    "turns": [
+      "USER: saqué 40 lt de glifosato del galpón Principal, fumigué A1 con glifosato 2 lt/ha, fertilicé A2 con urea 80 kg/ha, gasté 50 mil en gasoil",
+      "BOT: 📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 40 lt\n  📊 Quedan: *110 lt*\n  🏭 Principal (la esperanza)\n💨 *Fumigación* registrada\n📍 la esperanza > A1\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n\n📦 Tenés 110 lt de *glifosato* en Principal.\n¿Descontar *200 lt*?\n🧪 *Fertilización* registra..."
+    ]
+  },
+  {
+    "name": "05_complete_lluvia_monitoreo_lvstk_venta",
+    "desc": "lluvia + monitoreo + livestock + venta complete",
+    "category": "complete",
+    "compound": "llovieron 25 mm en La Esperanza, monitoreé A1 soja V5 con 8% rama negra, agregué 10 vacas Hereford en A3, vendí 5 tn de maíz a 220 USD por tonelada",
+    "answers": [],
+    "status": "PASS",
+    "reason": "r=1 s=1 lm=1 i=1 (sum=4, want>=4)",
+    "turns": [
+      "USER: llovieron 25 mm en La Esperanza, monitoreé A1 soja V5 con 8% rama negra, agregué 10 vacas Hereford en A3, vendí 5 tn de maíz a 220 USD por tonelada",
+      "BOT: 🌧️ Lluvia registrada: *25mm*\n📍 la esperanza\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)\n🔍 *Monitoreo registrado* en *la esperanza > A1*\n  📐 Estadio: *V5*\n  🌿 Malezas: 8.00% (rama negra)\n💰 Registrado\nMaíz\n$1.100 USD\n5 tn a $220\n📍 la esperanza\n📈 Resultado..."
+    ]
+  },
+  {
+    "name": "06_partial_soja_urea_prices",
+    "desc": "vendí soja + compré urea (both need qty+price)",
+    "category": "partial",
+    "compound": "vendí soja y compré urea",
+    "answers": [
+      "5 tn a 480 USD",
+      "30 bolsas a 8mil"
+    ],
+    "status": "FAIL",
+    "reason": "No urea expense found. expenses=[{\"category\":\"Combustible\",\"product\":\"gasoil\",\"amount\":\"50000\",\"quantity\":null,\"unit_price\":null,\"currency\":\"ARS\"},{\"category\":\"Combustible\",\"product\":\"gasoil\",\"amount\":\"30000\",\"quantity\":null,\"unit_price\":null,\"currency\":\"ARS\"}]",
+    "turns": [
+      "USER: vendí soja y compré urea",
+      "BOT: 💡 Tengo *2 acciones pendientes* — te las pregunto una por una.\n👇 Venta de *Soja*: ¿cuánto fue el precio?",
+      "USER: 5 tn a 480 USD",
+      "BOT: No pude completar el registro. Probá de nuevo.\n👇 Gasto de *Fertilizantes*: ¿cuánto fue el precio?",
+      "USER: 30 bolsas a 8mil",
+      "BOT: No pude completar el registro. Probá de nuevo."
+    ]
+  },
+  {
+    "name": "07_partial_vacas_glifosato",
+    "desc": "vendí 2 vacas + compré glifosato (vacas need plot/price; gasto needs price)",
+    "category": "partial",
+    "compound": "vendí 2 vacas y compré glifosato",
+    "answers": [
+      "en A2 a 1500 dolares cada una",
+      "80 mil pesos"
+    ],
+    "status": "FAIL",
+    "reason": "expect-fn threw: Query failed: 500",
+    "turns": [
+      "USER: vendí 2 vacas y compré glifosato",
+      "BOT: ❌ Decime en qué lote. Opciones: A1, A2, A3.\n👇 Gasto de *Agroquímicos*: ¿cuánto fue el precio?",
+      "USER: en A2 a 1500 dolares cada una",
+      "BOT: No pude completar el registro. Probá de nuevo."
+    ]
+  },
+  {
+    "name": "08_partial_fumigue_semilla",
+    "desc": "fumigué + compré semilla",
+    "category": "partial",
+    "compound": "fumigué y compré semilla",
+    "answers": [
+      "en A1 con glifosato 3 lt/ha",
+      "100 bolsas de soja a 12mil c/u"
+    ],
+    "status": "FAIL",
+    "reason": "d=1 e=0 semExp=undefined",
+    "turns": [
+      "USER: fumigué y compré semilla",
+      "BOT: Necesito más detalles para registrar estas 2 acciones:\n\n👉 **Fumigación**: ¿En qué lote? (A1, A2 o A3) ¿Qué producto usaste? ¿Cuánto aplicaste?\n\n👉 **Compra de semilla**: ¿Qué cultivo? (soja, maíz, etc.) ¿Cuántas bolsas/kg? ¿Cuánto costó?",
+      "USER: en A1 con glifosato 3 lt/ha",
+      "BOT: 💨 *Fumigación* registrada\n📍 la esperanza > A1\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n\n📦 Tenés 110 lt de *glifosato* en Principal.\n¿Descontar *300 lt*?\n💨 *Fumigación* registrada\n📍 la esperanza > A1\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n\n📦 Tenés 110 lt de *glifosato* en Principal...."
+    ]
+  },
+  {
+    "name": "09_partial_sembre_hacienda",
+    "desc": "sembré + agregué hacienda",
+    "category": "partial",
+    "compound": "sembré y agregué hacienda",
+    "answers": [
+      "trigo en A3",
+      "40 vaquillonas Hereford en A2"
+    ],
+    "status": "FAIL",
+    "reason": "d=1 lm=0",
+    "turns": [
+      "USER: sembré y agregué hacienda",
+      "BOT: Necesito más detalles para registrar estas 2 acciones:\n\n👉 **Siembra**: ¿Qué cultivo? (soja, maíz, trigo, etc.) ¿En qué lote? (A1, A2 o A3)\n\n👉 **Hacienda**: ¿Qué categoría? (vaca, novillo, ternero, vaquillona, etc.) ¿Cuántos animales? ¿En qué lote?",
+      "USER: trigo en A3",
+      "BOT: 🌱 *trigo* sembrado en *la esperanza > A3*\n📅 Campaña 2025/26"
+    ]
+  },
+  {
+    "name": "10_partial_coseche_vendi",
+    "desc": "coseché + vendí",
+    "category": "partial",
+    "compound": "coseché y vendí",
+    "answers": [
+      "soja en A1 con 4500 kg/ha",
+      "50 toneladas a 480 USD"
+    ],
+    "status": "FAIL",
+    "reason": "d=0 i=0 sojaInc={\"category\":\"Soja\",\"amount\":\"13500\",\"quantity\":\"30\",\"unit_price\":\"450\",\"currency\":\"USD\"}",
+    "turns": [
+      "USER: coseché y vendí",
+      "BOT: Necesito más detalles para registrar estas 2 acciones:\n\n👉 **Cosecha**: ¿Qué cultivo cosechaste? (soja, maíz, trigo, etc.) ¿En qué lote? ¿Cuánto fue el rendimiento (kg/ha o toneladas totales)?\n\n👉 **Venta**: ¿Qué vendiste? ¿Cuánto? ¿A qué precio?",
+      "USER: soja en A1 con 4500 kg/ha",
+      "BOT: No hay cultivo activo en *la esperanza > A1* para cosechar."
+    ]
+  },
+  {
+    "name": "11_partial_monitoree_fumigue",
+    "desc": "monitoreé + fumigué",
+    "category": "partial",
+    "compound": "monitoreé y fumigué",
+    "answers": [
+      "A1 con soja V3 sin plagas",
+      "A2 con glifosato 2 lt/ha"
+    ],
+    "status": "PASS",
+    "reason": "s=1 d=1",
+    "turns": [
+      "USER: monitoreé y fumigué",
+      "BOT: 🔍 *Monitoreo registrado* en *la esperanza > A1*\n👇 Fumigación: 🧪 Fumigación — me faltan datos: ¿qué producto? ¿qué cantidad?",
+      "USER: A1 con soja V3 sin plagas",
+      "BOT: Me falta la cantidad. ¿Me lo decís?",
+      "USER: A2 con glifosato 2 lt/ha",
+      "BOT: 💨 *Fumigación* registrada\n📍 la esperanza > A1\n🧴 soja V3 sin plagas\n📏 2 lt"
+    ]
+  },
+  {
+    "name": "12_partial_vacas_novillos_one_loc",
+    "desc": "agregué 50 vacas y 30 novillos (one loc)",
+    "category": "partial",
+    "compound": "agregué 50 vacas y 30 novillos",
+    "answers": [
+      "en A2",
+      "en A2"
+    ],
+    "status": "FAIL",
+    "reason": "expect-fn threw: Query failed: 500",
+    "turns": [
+      "USER: agregué 50 vacas y 30 novillos",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  Vaca\n  ➕ 50 animales\n  📊 Total: *100*\n  📍 A1 (la esperanza)"
+    ]
+  },
+  {
+    "name": "13_partial_stock_cosecha",
+    "desc": "saqué stock + coseché",
+    "category": "partial",
+    "compound": "saqué stock y coseché",
+    "answers": [
+      "60 lt de glifosato del galpón Principal",
+      "soja en A1 con 4200 kg/ha"
+    ],
+    "status": "FAIL",
+    "reason": "sm=0 d=0",
+    "turns": [
+      "USER: saqué stock y coseché",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  Vaca\n  ➕ 50 animales\n  📊 Total: *200*\n  📍 A1 (la esperanza)"
+    ]
+  },
+  {
+    "name": "14_partial_4_serial",
+    "desc": "gasoil + vendí maíz + fumigué + terneros (4 partials)",
+    "category": "partial",
+    "compound": "gasté en gasoil, vendí maíz, fumigué y agregué terneros",
+    "answers": [
+      "25 mil pesos",
+      "20 tn a 220 USD por tonelada",
+      "en A1 con glifosato 2 lt/ha",
+      "15 terneros Angus en A2"
+    ],
+    "status": "PASS",
+    "reason": "e=0 i=0 d=0 lm=3 (sum=3, want>=3)",
+    "turns": [
+      "USER: gasté en gasoil, vendí maíz, fumigué y agregué terneros",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  Vaca\n  ➕ 50 animales\n  📊 Total: *300*\n  📍 A1 (la esperanza)"
+    ]
+  },
+  {
+    "name": "15_partial_qty_unit_no_price",
+    "desc": "vendí 10 tn soja + compré 50 bolsas urea (both have qty+unit, no price)",
+    "category": "partial",
+    "compound": "vendí 10 tn de soja y compré 50 bolsas de urea",
+    "answers": [
+      "480 USD la tonelada",
+      "9 mil cada una"
+    ],
+    "status": "FAIL",
+    "reason": "No 50-bolsa urea expense. expenses=[{\"category\":\"Combustible\",\"product\":\"gasoil\",\"amount\":\"50000\",\"quantity\":null,\"unit_price\":null,\"currency\":\"ARS\"},{\"category\":\"Combustible\",\"product\":\"gasoil\",\"amount\":\"30000\",\"quantity\":null,\"unit_price\":null,\"currency\":\"ARS\"}]",
+    "turns": [
+      "USER: vendí 10 tn de soja y compré 50 bolsas de urea",
+      "BOT: 💡 Tengo *2 acciones pendientes* — te las pregunto una por una.\n👇 Venta de *Soja* (10 tn): ¿cuánto fue el precio?\n🐄 *Hacienda actualizada*\n\n  Novillo\n  ➕ 30 animales\n  📊 Total: *150*\n  📍 A1 (la esperanza)",
+      "USER: 480 USD la tonelada",
+      "BOT: No pude completar el registro. Probá de nuevo.\n👇 Gasto de *Fertilizantes* (50 bolsas): ¿cuánto fue el precio?",
+      "USER: 9 mil cada una",
+      "BOT: No pude completar el registro. Probá de nuevo."
+    ]
+  },
+  {
+    "name": "16_mixed_spray_complete_income_partial",
+    "desc": "fumigué A1 (complete) + vendí maíz (partial)",
+    "category": "mixed",
+    "compound": "fumigué A1 con glifosato 3 lt/ha y vendí maíz",
+    "answers": [
+      "20 tn a 200 USD por tonelada"
+    ],
+    "status": "FAIL",
+    "reason": "d=1 i=0 maizInc={\"category\":\"Maíz\",\"amount\":\"1100\",\"quantity\":\"5\",\"unit_price\":\"220\"}",
+    "turns": [
+      "USER: fumigué A1 con glifosato 3 lt/ha y vendí maíz",
+      "BOT: 💨 *Fumigación* registrada\n📍 la esperanza > A1\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n\n📦 Tenés 110 lt de *glifosato* en Principal.\n¿Descontar *300 lt*?\n💨 *Fumigación* registrada\n📍 la esperanza > A1\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n\n📦 Tenés 110 lt de *glifosato* en Principal...."
+    ]
+  },
+  {
+    "name": "17_mixed_income_complete_expense_partial",
+    "desc": "vendí soja complete + compré gasoil partial",
+    "category": "mixed",
+    "compound": "vendí 15 tn de soja a 450 USD por tonelada y compré gasoil",
+    "answers": [
+      "60 mil pesos"
+    ],
+    "status": "FAIL",
+    "reason": "i=0 e=0 sojaInc=undefined",
+    "turns": [
+      "USER: vendí 15 tn de soja a 450 USD por tonelada y compré gasoil",
+      "BOT: 💰 *Soja* — $6.750 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+      "USER: 60 mil pesos",
+      "BOT: 💰 *Maíz* — $60.000\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "18_mixed_livestock_complete_income_partial",
+    "desc": "agregué 20 vacas (complete) + vendí novillos (partial)",
+    "category": "mixed",
+    "compound": "agregué 20 vacas Hereford en A1 y vendí novillos",
+    "answers": [
+      "5 cabezas a 1800 USD"
+    ],
+    "status": "FAIL",
+    "reason": "lm=1 i=0 latestInc={\"category\":\"Maíz\",\"amount\":\"1100\",\"quantity\":\"5\",\"unit_price\":\"220\",\"currency\":\"USD\"}",
+    "turns": [
+      "USER: agregué 20 vacas Hereford en A1 y vendí novillos",
+      "BOT: Necesito la cantidad. Ej: \"vendí 5 vacas del lote A1\".\n🐄 *Hacienda actualizada*\n\n  Vaca Hereford (nuevo grupo)\n  ➕ 20 animales\n  📊 Total: *20*\n  📍 A1 (la esperanza)"
+    ]
+  },
+  {
+    "name": "19_mixed_sow_complete_2_partials",
+    "desc": "sembré A1 (complete) + vendí lo de antes (partial) + flete (partial)",
+    "category": "mixed",
+    "compound": "sembré soja en A1, vendí lo que cosecharon antes y gasté en flete",
+    "answers": [
+      "20 tn de soja a 450 USD por tonelada",
+      "150 mil pesos"
+    ],
+    "status": "FAIL",
+    "reason": "d=1 i=0 e=0 (sum=1, want>=3)",
+    "turns": [
+      "USER: sembré soja en A1, vendí lo que cosecharon antes y gasté en flete",
+      "BOT: 🌱 *soja* sembrado en *la esperanza > A1*\n📅 Campaña 2025/26"
+    ]
+  },
+  {
+    "name": "20_mixed_onboarding_2_partials",
+    "desc": "NEW field+plot onboarding + vendí trigo + compré urea (2 partials)",
+    "category": "mixed",
+    "compound": "tengo el campo nuevo Los Olmos en Junín, con lote único A 80 ha. Vendí trigo y compré urea",
+    "answers": [
+      "10 tn a 200 USD por tonelada",
+      "30 bolsas a 8 mil cada una"
+    ],
+    "status": "FAIL",
+    "reason": "f=1 p=1 i=0 e=0 fields=1 trigo=undefined urea=undefined",
+    "turns": [
+      "USER: tengo el campo nuevo Los Olmos en Junín, con lote único A 80 ha. Vendí trigo y compré urea",
+      "BOT: 📍 Campo *Los Olmos* creado en *Junín, Buenos Aires*\n📍 Lote *A* (80 ha) creado en campo *Los Olmos*\n💡 Tengo *2 acciones pendientes* — te las pregunto una por una.\n👇 Venta de *la venta*: ¿cuánto fue el precio?\n¿Próximo paso?",
+      "USER: 10 tn a 200 USD por tonelada",
+      "BOT: No pude completar el registro. Probá de nuevo.\n👇 Gasto de *el gasto*: ¿cuánto fue el precio?",
+      "USER: 30 bolsas a 8 mil cada una",
+      "BOT: No pude completar el registro. Probá de nuevo."
+    ]
+  }
+]

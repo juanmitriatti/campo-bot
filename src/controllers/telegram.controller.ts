@@ -454,7 +454,7 @@ router.post('/', async (req: Request, res: Response) => {
       const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://campo-bot-production.up.railway.app';
       await sendTelegramMessage(
         chatId,
-        `Hola 👋\n\nPara usar Campo Bot tenés que registrarte en la app y vincular este Telegram desde tu perfil:\n\n🔗 ${publicUrl}/register\n\nUna vez generado el link de vinculación, tocalo y volvemos a hablar.`,
+        `Hola 👋 Bienvenido a Campo Bot.\n\nPara empezar a usarme, seguí estos 2 pasos en orden:\n\n*1.* Creá tu cuenta acá 👉 ${publicUrl}/register\n*2.* Desde la app, andá a *Mi cuenta* → *Vincular Telegram* y vas a recibir un link mágico. Tocalo y este chat queda vinculado.\n\nUna vez vinculado, escribime de nuevo y ya podés cargar gastos, lluvias, hacienda, cosechas y más.`,
       );
       return;
     }

@@ -43,6 +43,19 @@ export default function Dashboard() {
   // When the user clicks the "stock bajo" alert in the overview banner,
   // open the Stock tab with the low-stock filter pre-checked.
   const [stockLowStockOnly, setStockLowStockOnly] = useState(false);
+  // One-shot welcome toast after registering. Register page leaves a flag in
+  // sessionStorage; we read it once on mount, show the message, then clear.
+  const [welcomeEmail, setWelcomeEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const flag = sessionStorage.getItem('campo:postRegisterToast');
+      if (flag) {
+        setWelcomeEmail(flag);
+        sessionStorage.removeItem('campo:postRegisterToast');
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     const required = viewFeatureMap[view];
@@ -82,6 +95,7 @@ export default function Dashboard() {
             onRecentItemClick={handleRecentItemClick}
             onGoToStock={handleGoToStock}
             onGoToLivestock={handleGoToLivestock}
+            onGoToActivities={() => setView('activities')}
           />
         );
       case 'expenses':
@@ -150,6 +164,24 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
       <Navbar />
+
+      {welcomeEmail && (
+        <div className="bg-campo-50 dark:bg-campo-900/30 border-b border-campo-200 dark:border-campo-800 text-campo-800 dark:text-campo-200 text-sm">
+          <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+            <span>
+              <span className="font-semibold">¡Bienvenido!</span> Te mandamos un email a <span className="font-mono">{welcomeEmail}</span> para verificar tu cuenta.
+            </span>
+            <button
+              type="button"
+              onClick={() => setWelcomeEmail(null)}
+              className="text-campo-700 dark:text-campo-300 hover:text-campo-900 dark:hover:text-campo-100 transition-colors"
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex">
         <Sidebar active={view} onChange={setView} features={features} />

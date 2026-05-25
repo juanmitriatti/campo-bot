@@ -1,0 +1,459 @@
+{
+  "summary": {
+    "pass": 25,
+    "fail": 5,
+    "total": 30
+  },
+  "tests": [
+    {
+      "name": "V01_vacuna_corral",
+      "description": "vacuna en corral → log_health_event (NO add_livestock)",
+      "category": "corral-health",
+      "turns": [
+        {
+          "message": "crear feedlot Sur en La Margarita",
+          "response": "🏗️ *Feedlot creado*\n\n  📛 Sur\n  📍 la margarita\n\nCreá corrales con \"crear corral 1\".\n🐄 *Hacienda actualizada*\n\n  Novillo Hereford\n  ➕ 40 animales\n  📊 Total: *80*\n  📍 K2 (la margarita)",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "crear corral A1 en feedlot Sur",
+          "response": "🔲 *Corral creado*\n\n  📛 A1\n  🏗️ Sur (la margarita)",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "agregué 50 novillos al corral A1",
+          "response": "🐄 *Hacienda actualizada*\n\n  Novillo (nuevo grupo)\n  ➕ 50 animales\n  📊 Total: *50*\n  📍 Corral A1 (Sur — la margarita)",
+          "pass": true,
+          "note": "add_livestock OK"
+        },
+        {
+          "message": "vacuné los novillos del corral A1 contra aftosa",
+          "response": "🐄 *Hacienda actualizada*\n\n  Novillo\n  ➕ 50 animales\n  📊 Total: *150*\n  📍 Corral A1 (Sur — la margarita)",
+          "pass": false,
+          "note": "health no add_livestock"
+        }
+      ],
+      "overallPass": false
+    },
+    {
+      "name": "V02_desparasit_corral",
+      "description": "desparasitación en corral",
+      "category": "corral-health",
+      "turns": [
+        {
+          "message": "desparasité los novillos del corral A1 con ivermectina",
+          "response": "🐄 *Hacienda actualizada*\n\n  Novillo\n  ➕ 50 animales\n  📊 Total: *250*\n  📍 Corral A1 (Sur — la margarita)",
+          "pass": false,
+          "note": "health event"
+        }
+      ],
+      "overallPass": false
+    },
+    {
+      "name": "V03_compound_2health_corral",
+      "description": "2 health events: corral + plot",
+      "category": "corral-health",
+      "turns": [
+        {
+          "message": "vacuné los novillos del corral A1 contra brucelosis y a los de K2 contra aftosa",
+          "response": "🐄 *Hacienda actualizada*\n\n  Novillo\n  ➕ 50 animales\n  📊 Total: *350*\n  📍 Corral A1 (Sur — la margarita)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V04_transfer_plot_to_corral",
+      "description": "transferir N novillos de K2 al corral A1",
+      "category": "corral-transfer",
+      "turns": [
+        {
+          "message": "pasá 15 novillos de K2 al corral A1",
+          "response": "💉 *Evento sanitario registrado*\n  Tipo: Vacunación\n  🦠 aftosa\n  🐄 50 Novillos\n  📍 Feedlot Sur > A1",
+          "pass": false,
+          "note": "es transfer"
+        }
+      ],
+      "overallPass": false
+    },
+    {
+      "name": "V05_transfer_corral_to_plot",
+      "description": "transferir corral→plot (reverso)",
+      "category": "corral-transfer",
+      "turns": [
+        {
+          "message": "saqué 5 novillos del corral A1 y los mandé a K2",
+          "response": "🐄 *Hacienda actualizada*\n\n  Novillo\n  ➕ 50 animales\n  📊 Total: *475*\n  📍 Corral A1 (Sur — la margarita)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V06_feedlot_3corrales",
+      "description": "crear feedlot con 3 corrales (mayor exigencia)",
+      "category": "compound-feedlot",
+      "turns": [
+        {
+          "message": "crear feedlot Norte en La Margarita con corrales 1, 2 y 3",
+          "response": "❌ Hay Novillo de varias razas en el lote K2: sin raza (5), Hereford (50). ¿De cuál? Decime la raza.\n❌ El campo \"la margarita\" ya tiene un feedlot: \"Sur\".\n🔲 *Corral creado*\n\n  📛 1\n  🏗️ Sur (la margarita)\n🔄 *Transferencia*\n\n  Novillo\n  ↗️ 5 animales\n  Desde: *Corral A1 (Sur — la margarita)* (quedan 520)\n  Hacia: *K2 (la margarita)* (ahora 10)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V07_list_after_compound",
+      "description": "verificar los 3 corrales se crearon",
+      "category": "compound-feedlot",
+      "turns": [
+        {
+          "message": "cuántos corrales tengo en el feedlot Norte",
+          "response": "🔲 *Corrales (2)*\n\n  🔲 *1* — Sur (la margarita)\n  🔲 *A1* — Sur (la margarita)",
+          "pass": true,
+          "note": "menciona los corrales"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V08_feedlot_corral_livestock",
+      "description": "feedlot+corral+livestock 3-tool compound",
+      "category": "compound-feedlot",
+      "turns": [
+        {
+          "message": "crear feedlot Este en La Margarita con corral B1 y meté 20 novillos en B1",
+          "response": "❌ El campo \"la margarita\" ya tiene un feedlot: \"Sur\".\n🔲 *Corral creado*\n\n  📛 B1\n  🏗️ Sur (la margarita)\n🐄 *Hacienda actualizada*\n\n  Novillo (nuevo grupo)\n  ➕ 20 animales\n  📊 Total: *20*\n  📍 Corral B1 (Sur — la margarita)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V09_weather_no_city_uses_field",
+      "description": "clima sin ciudad → usa campo La Margarita en Pergamino",
+      "category": "weather-fallback",
+      "turns": [
+        {
+          "message": "cómo está el clima",
+          "response": "☀️ *Clima en Pergamino*\n\n🌡️ 13°C (ST 12°C)\n💧 Humedad: 67%\n💨 Viento: 11 km/h\nCielo claro\n\n⛅ *Pronóstico Pergamino*\n\n*domingo*: ⛅ 6°/17° 💨14km/h\n*lunes*: ⛅ 9°/19° 💨10km/h\n*martes*: ☀️ 10°/20° 💨8km/h\n¿Más?",
+          "pass": true,
+          "note": "usa field city"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V10_weather_forecast_field",
+      "description": "pronóstico sin ciudad",
+      "category": "weather-fallback",
+      "turns": [
+        {
+          "message": "va a llover mañana",
+          "response": "☀️ *Clima en Pergamino*\n\n🌡️ 13°C (ST 12°C)\n💧 Humedad: 67%\n💨 Viento: 11 km/h\nCielo claro\n\n⛅ *Pronóstico Pergamino*\n\n*domingo*: ⛅ 6°/17° 💨14km/h\n*lunes*: ⛅ 9°/19° 💨10km/h\n*martes*: ☀️ 10°/20° 💨8km/h\n¿Más?",
+          "pass": true,
+          "note": "usa field city"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V11_weather_spray_advice_field",
+      "description": "consejo spray sin ciudad",
+      "category": "weather-fallback",
+      "turns": [
+        {
+          "message": "hay viento mañana para fumigar",
+          "response": "☀️ *Clima en Pergamino*\n\n🌡️ 13°C (ST 12°C)\n💧 Humedad: 67%\n💨 Viento: 11 km/h\nCielo claro\n\n⛅ *Pronóstico Pergamino*\n\n*domingo*: ⛅ 6°/17° 💨14km/h\n*lunes*: ⛅ 9°/19° 💨10km/h\n*martes*: ☀️ 10°/20° 💨8km/h\n¿Más?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V12_multi_city_2",
+      "description": "clima en 2 ciudades",
+      "category": "weather-multi",
+      "turns": [
+        {
+          "message": "clima en Pergamino y Rosario",
+          "response": "☀️ *Clima en Pergamino*\n\n🌡️ 13°C (ST 12°C)\n💧 Humedad: 67%\n💨 Viento: 11 km/h\nCielo claro\n\n⛅ *Pronóstico Pergamino*\n\n*domingo*: ⛅ 6°/17° 💨14km/h\n*lunes*: ⛅ 9°/19° 💨10km/h\n*martes*: ☀️ 10°/20° 💨8km/h\n¿Más?",
+          "pass": false,
+          "note": "ambas ciudades"
+        }
+      ],
+      "overallPass": false
+    },
+    {
+      "name": "V13_multi_city_3",
+      "description": "clima en 3 ciudades",
+      "category": "weather-multi",
+      "turns": [
+        {
+          "message": "cómo está el clima en Junín, Pergamino y Rosario",
+          "response": "🤔 Hay varias localidades con ese nombre:\n• Junín, Buenos Aires\n• Junín, Mendoza\n\nDecime otra vez aclarando la provincia, ej: *clima en Junín Buenos Aires*",
+          "pass": false,
+          "note": "3 ciudades"
+        }
+      ],
+      "overallPass": false
+    },
+    {
+      "name": "V14_set_rain_threshold_natural",
+      "description": "alertame cuando llueva más de N mm (forma natural)",
+      "category": "settings-rain",
+      "turns": [
+        {
+          "message": "alertame cuando llueva más de 30 mm",
+          "response": "🌧️ Umbral de alerta de lluvia actualizado a *30mm*\nVas a recibir alertas cuando se pronostiquen lluvias de 30mm o más.",
+          "pass": true,
+          "note": "configura threshold"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V15_set_rain_threshold_avisame",
+      "description": "\"avisame cuando llueva\"",
+      "category": "settings-rain",
+      "turns": [
+        {
+          "message": "avisame cuando llueva más de 15 mm",
+          "response": "🌧️ Umbral de alerta de lluvia actualizado a *15mm*\nVas a recibir alertas cuando se pronostiquen lluvias de 15mm o más.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V16_activa_resumen_vos",
+      "description": "\"activá resumen semanal\" (vos)",
+      "category": "settings-summary",
+      "turns": [
+        {
+          "message": "activá el resumen semanal",
+          "response": "📊 Resumen semanal *activado*.",
+          "pass": true,
+          "note": "es resumen no expense template"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V17_desactiva_resumen",
+      "description": "\"desactivá el resumen semanal\"",
+      "category": "settings-summary",
+      "turns": [
+        {
+          "message": "desactivá el resumen semanal",
+          "response": "📊 Resumen semanal *desactivado*.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V18_share_with_phone",
+      "description": "compartí con número de teléfono → no fake success",
+      "category": "sharing",
+      "turns": [
+        {
+          "message": "compartí el campo La Margarita con +5491133334444",
+          "response": "🔗 *Código de invitación para la margarita:*\n\n`MPXC5G`\n\nCompartí este código con quien quieras darle acceso. La otra persona debe escribir:\n*unirme MPXC5G*\n\n⏳ El código vence en 7 días.",
+          "pass": true,
+          "note": "genera código sin fake"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V19_share_with_email",
+      "description": "compartí con email",
+      "category": "sharing",
+      "turns": [
+        {
+          "message": "compartí el campo La Margarita con juan@example.com",
+          "response": "🔗 *Código de invitación para la margarita:*\n\n`UQPFS4`\n\nCompartí este código con quien quieras darle acceso. La otra persona debe escribir:\n*unirme UQPFS4*\n\n⏳ El código vence en 7 días.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V20_recurring_no_invalid_date",
+      "description": "gasto fijo no muestra \"Invalid Date\"",
+      "category": "templates-date",
+      "turns": [
+        {
+          "message": "crear gasto fijo mensual de combustible 100 mil",
+          "response": "✅ Gasto recurrente creado\n\n📝 *combustible mensual*\n💰 $100.000\n🔄 Frecuencia: mensual\n📅 Próximo: 1/6/2026",
+          "pass": true,
+          "note": "fecha válida"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V21_recurring_weekly",
+      "description": "gasto fijo semanal",
+      "category": "templates-date",
+      "turns": [
+        {
+          "message": "crear gasto recurrente semanal de jornal 80 mil",
+          "response": "✅ Gasto recurrente creado\n\n📝 *jornal semanal*\n💰 $80.000\n🔄 Frecuencia: semanal\n📅 Próximo: 25/5/2026",
+          "pass": true,
+          "note": "fecha válida"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V22_list_recurrings_no_invalid",
+      "description": "listar gastos recurrentes sin Invalid Date",
+      "category": "templates-date",
+      "turns": [
+        {
+          "message": "mis gastos fijos",
+          "response": "🔄 *Gastos recurrentes activos*\n\n• *jornal semanal* — $80.000 (semanal)\n  Próximo: 25/5/2026\n• *combustible mensual* — $100.000 (mensual)\n  Próximo: 1/6/2026",
+          "pass": true,
+          "note": "lista sin Invalid Date"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V23_tacto_corral",
+      "description": "tacto en corral (no plot)",
+      "category": "tacto-extras",
+      "turns": [
+        {
+          "message": "hice tacto a las vacas del corral A1, 18 preñadas de 25",
+          "response": "🩺 *Tacto* registrado\n📍 Feedlot Sur > A1\n🐄 25 vacas revisadas\n✅ Preñadas: *18*\n❌ Vacías: *7*\n📊 Tasa de preñez: *72%*",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V24_pesaje_corral",
+      "description": "pesaje en corral",
+      "category": "pesaje-extras",
+      "turns": [
+        {
+          "message": "los novillos del corral A1 pesan 380 kg promedio",
+          "response": "¿A cuántos animales?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V25_compound_health_repro_corral",
+      "description": "health + repro en corral compound",
+      "category": "corral-multi",
+      "turns": [
+        {
+          "message": "vacuné los novillos del corral A1 contra clostridial y también eché el toro en K2",
+          "response": "¿A cuántos animales?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V26_rainfall_to_corral",
+      "description": "lluvia + actividad en corral compound",
+      "category": "misc",
+      "turns": [
+        {
+          "message": "llovieron 25 mm en La Margarita y agregué 10 terneros al corral A1",
+          "response": "🌧️ Lluvia registrada: *25mm*\n📍 la margarita\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (15mm)\n🐄 *Hacienda actualizada*\n\n  Ternero (nuevo grupo)\n  ➕ 10 animales\n  📊 Total: *10*\n  📍 Corral A1 (Sur — la margarita)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V27_delete_feedlot",
+      "description": "borrar feedlot",
+      "category": "feedlot-cleanup",
+      "turns": [
+        {
+          "message": "borrar feedlot del campo La Margarita",
+          "response": "🗑️ Feedlot \"Sur\" del campo la margarita eliminado.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V28_grupos_then_activity",
+      "description": "grupos + actividad sobre grupo",
+      "category": "grupos",
+      "turns": [
+        {
+          "message": "los lotes K1 y K3 son del grupo Familia A",
+          "response": "🏷️ 2 lotes asignados al grupo *Familia A*:\n  • K1\n  • K3",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "cuánto sembré del grupo Familia A",
+          "response": "🌱 *Cultivos activos*\n1 lote · 80 ha\n\n🌱 Activa *maíz* en *la margarita > K1* — 80 ha — 2025/26\n    últ: Siembra 23/05/2026",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V29_compound_template_query",
+      "description": "crear template + consultar",
+      "category": "templates-multi",
+      "turns": [
+        {
+          "message": "crear gasto fijo mensual de luz 50 mil y mostrame mis gastos fijos",
+          "response": "✅ Gasto recurrente creado\n\n📝 *luz*\n💰 $50.000\n🔄 Frecuencia: mensual\n📅 Próximo: 1/6/2026\n🔄 *Gastos recurrentes activos*\n\n• *jornal semanal* — $80.000 (semanal)\n  Próximo: 25/5/2026\n• *combustible mensual* — $100.000 (mensual)\n  Próximo: 1/6/2026\n• *luz* — $50.000 (mensual)\n  Próximo: 1/6/2026",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "V30_share_then_list",
+      "description": "compartir + listar miembros",
+      "category": "sharing-multi",
+      "turns": [
+        {
+          "message": "compartir campo La Margarita",
+          "response": "🔗 *Código de invitación para la margarita:*\n\n`SG4ZBC`\n\nCompartí este código con quien quieras darle acceso. La otra persona debe escribir:\n*unirme SG4ZBC*\n\n⏳ El código vence en 7 días.",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "quién tiene acceso al campo La Margarita",
+          "response": "👥 *Miembros de la margarita:*\n\n👑 Dueño: Don Perif V2",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    }
+  ]
+}

@@ -38,12 +38,16 @@ const TRIVIAL_COMMANDS = new Set([
   'add_field', 'add_plot', 'add_plots_batch', 'delete_field', 'delete_plot',
   'rename_field', 'field_info', 'plot_info',
   'set_field_city', 'add_field_city',
-  'set_plot_area', 'restore_field',
+  'set_plot_area', 'set_plot_grupo', 'restore_field',
   'set_city', 'set_name', 'set_budget',
   'show_alerts', 'set_rain_threshold',
   'enable_rain_alerts', 'disable_rain_alerts',
   'enable_budget_alerts', 'disable_budget_alerts',
   'enable_weekly_summary', 'disable_weekly_summary',
+  // _toggle_alert is the parser-internal meta-command that rewrites itself to
+  // one of the alert/summary commands above. Listed here defensively so the
+  // fast-path stays trivial even if a code path forgets to apply the rewrite.
+  '_toggle_alert',
   'export_csv',
   'delete_last', 'delete_last_income', 'delete_specific', 'edit_specific', 'edit_last',
   'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',

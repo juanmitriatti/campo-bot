@@ -1,0 +1,404 @@
+[
+  {
+    "name": "W01_vendi_5_vacas_1500usd",
+    "group": "W_P0_intensive",
+    "status": "FAIL",
+    "reason": "no salida matching predicate; rows=[]",
+    "compound": "vendí 5 vacas a 1500 USD cada una en Lote 1",
+    "turns": [
+      "🔍 No encontré el lote *Lote 1*. ¿Querés que lo cree y continúe?"
+    ]
+  },
+  {
+    "name": "W02_vendi_3_novillos_1800usd",
+    "group": "W_P0_intensive",
+    "status": "FAIL",
+    "reason": "no salida matching predicate; rows=[]",
+    "compound": "vendí 3 novillos a 1800 dólares cada uno en Lote 2",
+    "turns": [
+      "🔍 No encontré el lote *Lote 1*. ¿Querés que lo cree y continúe?"
+    ]
+  },
+  {
+    "name": "W03_vendi_7_terneros_pesos",
+    "group": "W_P0_intensive",
+    "status": "FAIL",
+    "reason": "no salida matching predicate; rows=[]",
+    "compound": "vendí 7 terneros a 900000 pesos cada uno en Lote 3",
+    "turns": [
+      "🔍 No encontré el lote *Lote 1*. ¿Querés que lo cree y continúe?"
+    ]
+  },
+  {
+    "name": "W04_vendi_2_toros_por_cabeza",
+    "group": "W_P0_intensive",
+    "status": "FAIL",
+    "reason": "no salida matching predicate; rows=[]",
+    "compound": "vendí 2 toros a 2500 USD por cabeza en Lote 1",
+    "turns": [
+      "🔍 No encontré el lote *Lote 1*. ¿Querés que lo cree y continúe?"
+    ]
+  },
+  {
+    "name": "W05_compre_8_vaquillonas",
+    "group": "W_P0_intensive",
+    "status": "FAIL",
+    "reason": "no entrada matching predicate; rows=[]",
+    "compound": "compré 8 vaquillonas Angus a 1300 USD cada una para Lote 1",
+    "turns": [
+      "🔍 No encontré el lote *Lote 1*. ¿Querés que lo cree y continúe?"
+    ]
+  },
+  {
+    "name": "W06_compound_2_ventas",
+    "group": "W_P0_intensive",
+    "status": "FAIL",
+    "reason": "novillos=false vacas=false",
+    "compound": "vendí 6 novillos a 1900 USD c/u y vendí 4 vacas a 1600 USD c/u en Lote 1",
+    "turns": [
+      "🔍 No encontré el lote *Lote 1*. ¿Querés que lo cree y continúe?"
+    ]
+  },
+  {
+    "name": "W07_compound_venta_compra",
+    "group": "W_P0_intensive",
+    "status": "FAIL",
+    "reason": "venta=false compra=false",
+    "compound": "vendí 4 toros Limousin a 2200 USD c/u en Lote 1 y compré 6 vaquillonas Brangus a 1100 USD c/u para Lote 2",
+    "turns": [
+      "🔍 No encontré el lote *Lote 1*. ¿Querés que lo cree y continúe?"
+    ]
+  },
+  {
+    "name": "W08_vendi_grandes_numeros",
+    "group": "W_P0_intensive",
+    "status": "FAIL",
+    "reason": "no salida matching predicate; rows=[]",
+    "compound": "vendí 15 vacas a 1.450.000 pesos cada una en Lote 1",
+    "turns": [
+      "🔍 No encontré el lote *Lote 1*. ¿Querés que lo cree y continúe?"
+    ]
+  },
+  {
+    "name": "W09_compre_animal_singular",
+    "group": "W_P0_intensive",
+    "status": "FAIL",
+    "reason": "no entrada matching predicate; rows=[]",
+    "compound": "compré 1 toro reproductor a 5000 USD para Lote 1",
+    "turns": [
+      "🔍 No encontré el lote *Lote 1*. ¿Querés que lo cree y continúe?"
+    ]
+  },
+  {
+    "name": "W10_venta_breed_specific",
+    "group": "W_P0_intensive",
+    "status": "FAIL",
+    "reason": "expect-fn threw: Query failed: 500",
+    "compound": "vendí 5 vacas Angus a 1700 USD c/u en Lote 1",
+    "turns": [
+      "🔍 No encontré el lote *Lote 1*. ¿Querés que lo cree y continúe?"
+    ]
+  },
+  {
+    "name": "X11_la_semana_pasada",
+    "group": "X_dates_v2",
+    "status": "FAIL",
+    "reason": "i=0",
+    "compound": "la semana pasada vendí 25 tn de soja a 460 USD por tonelada",
+    "turns": [
+      "Para registrar un ingreso primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nNecesitás un campo para registrar un ingreso."
+    ]
+  },
+  {
+    "name": "X12_el_lunes",
+    "group": "X_dates_v2",
+    "status": "FAIL",
+    "reason": "e=0",
+    "compound": "el lunes compré 60 bolsas urea a 9000 c/u",
+    "turns": [
+      "Para registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nNecesitás un campo para registrar un gasto."
+    ]
+  },
+  {
+    "name": "X13_fechas_chain_4",
+    "group": "X_dates_v2",
+    "status": "FAIL",
+    "reason": "d=0 e=0 (esperado d+e >= 3 actions)",
+    "compound": "ayer fumigué Lote 1 con glifosato 3 lt/ha, anteayer compré 40 bolsas urea a 8500, hoy sembré avena en Lote 3 y la semana pasada gasté 50mil en repuestos",
+    "turns": [
+      "Para registrar fumigación primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nPara registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar siembra primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nPara registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nNecesitás un campo para registrar un gasto."
+    ]
+  },
+  {
+    "name": "X14_mes_actual_query",
+    "group": "X_dates_v2",
+    "status": "FAIL",
+    "reason": "query=false e=0",
+    "compound": "cuánto vendí este mes y registrá un gasto de 80mil en sueldos hoy",
+    "turns": [
+      "Para registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nNo hay registros (mayo de 2026).\nNecesitás un campo para registrar un gasto."
+    ]
+  },
+  {
+    "name": "X15_ayer_vs_today_no_dedup",
+    "group": "X_dates_v2",
+    "status": "FAIL",
+    "reason": "r=0 (esperado 2 lluvias diferentes)",
+    "compound": "llovieron 15mm ayer en La Magdalena y 22mm hoy en La Magdalena",
+    "turns": [
+      "No encontré el campo *La Magdalena*."
+    ]
+  },
+  {
+    "name": "Y16_reporte_agro",
+    "group": "Y_reports",
+    "status": "FAIL",
+    "reason": "noWrites=true isReport=false",
+    "compound": "generame el reporte agronómico de este mes",
+    "turns": [
+      "Primero creá un campo. Ejemplo:\n📍 *agregar campo Norte en Pergamino*\n¿Más?"
+    ]
+  },
+  {
+    "name": "Y17_export_csv",
+    "group": "Y_reports",
+    "status": "FAIL",
+    "reason": "isExport=false",
+    "compound": "exportá los gastos del último mes en CSV",
+    "turns": [
+      "No hay registros (mayo de 2026).\n¿Más?"
+    ]
+  },
+  {
+    "name": "Y18_resumen_mensual",
+    "group": "Y_reports",
+    "status": "FAIL",
+    "reason": "noWrites=true hasResumen=false",
+    "compound": "mostrame el resumen del mes",
+    "turns": [
+      "No hay registros (mayo de 2026).\n¿Más?"
+    ]
+  },
+  {
+    "name": "Y19_campaign_stats",
+    "group": "Y_reports",
+    "status": "PASS",
+    "reason": "isCampaign=true",
+    "compound": "cómo viene la campaña de soja",
+    "turns": [
+      "No pude identificar el lote. Indicá el lote para ver las estadísticas de la campaña."
+    ]
+  },
+  {
+    "name": "Y20_historico_lote",
+    "group": "Y_reports",
+    "status": "FAIL",
+    "reason": "hasHistory=false",
+    "compound": "mostrame el historial del Lote 1",
+    "turns": [
+      "No encontré el lote *1*. Revisá el nombre o escribí *mis lotes* para ver los que tenés.\n¿Qué querés hacer?"
+    ]
+  },
+  {
+    "name": "Z21_6_actions_full",
+    "group": "Z_long_compound",
+    "status": "FAIL",
+    "reason": "i=0 e=0 d=0 lm=0 s=0",
+    "compound": "vendí 12 tn de maíz a 200 USD c/u, compré 80 bolsas urea a 9mil, fumigué Lote 1 con glifosato 3 lt/ha, agregué 10 vaquillonas Hereford en Lote 2, monitoreé Lote 3 con V5 sin plagas, gasté 60mil en gasoil",
+    "turns": [
+      "Para registrar un ingreso primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar fumigación primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nPara registrar monitoreo primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nPara registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nNecesitás un campo para registrar un gasto."
+    ]
+  },
+  {
+    "name": "Z22_7_agro_chain",
+    "group": "Z_long_compound",
+    "status": "FAIL",
+    "reason": "d=0 r=0 s=0 o=0",
+    "compound": "sembré avena en Lote 3, fumigué Lote 1 con 2,4D 1.5 lt/ha, fertilicé Lote 2 con urea 100 kg/ha, llovieron 18mm, monitoreé Lote 1 V6, observé liebres en Lote 3, aré Lote 2",
+    "turns": [
+      "Para registrar siembra primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nPara registrar fumigación primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nPara registrar fertilización primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nPara registrar lluvia primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar monitoreo primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nNo entendí si querías registrar una observación o consultar algo.\n\nPodés escribir por ejemplo:\n👉 \"observación lote 3: malezas\"\n\nO preguntarme algo como:\n👉 \"qué pasó en el lote 3?\"\nPara registrar labranza primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nNecesitás un campo para registrar labranza."
+    ]
+  },
+  {
+    "name": "Z23_5_hacienda_chain",
+    "group": "Z_long_compound",
+    "status": "FAIL",
+    "reason": "lm=0 d=1",
+    "compound": "agregué 20 vaquillonas Hereford en Lote 2, vacuné 50 vacas contra aftosa, pesé 40 terneros 250 kg promedio, vendí 8 novillos a 1900 USD c/u, eché el toro Centauro en Lote 1",
+    "turns": [
+      "No tenés hacienda registrada con esos criterios. Primero agregá animales con \"agregué N <categoría> al lote X\".\nNo tenés hacienda registrada con esos criterios. Primero agregá animales con \"agregué N <categoría> al lote X\".\n❌ Necesito que me digas en qué lote o corral. Ej: \"agregá 20 vacas al lote A1\" o \"al corral 1\".\n🐂 *Evento reproductivo registrado*\n  Tipo: Servicio (entore)\n  🐂 toro Centauro\n  📍 Sin ubicación\n  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás."
+    ]
+  },
+  {
+    "name": "Z24_5_financial_pure",
+    "group": "Z_long_compound",
+    "status": "FAIL",
+    "reason": "i=0 e=0",
+    "compound": "vendí 15 tn soja a 480 USD c/u, vendí 10 tn maíz a 200 USD c/u, compré 50 bolsas DAP a 12mil, compré 100 lt gasoil a 850, gasté 80mil en mantenimiento",
+    "turns": [
+      "Para registrar un ingreso primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar un ingreso primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nNecesitás un campo para registrar un gasto."
+    ]
+  },
+  {
+    "name": "Z25_8_max_mixed",
+    "group": "Z_long_compound",
+    "status": "FAIL",
+    "reason": "i=0 e=0 d=0 r=0 s=0 o=0 lm=0",
+    "compound": "vendí 15 tn cebada a 165 USD, compré 80 bolsas DAP a 9mil, fumigué Lote 1 con 2,4D 1.5 lt/ha, agregué 20 terneros en Lote 3, monitoreé Lote 2 V5 sin plagas, llovieron 22mm, observé encharcamiento en Lote 1, gasté 50mil en repuestos",
+    "turns": [
+      "Para registrar un ingreso primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar fumigación primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nPara registrar monitoreo primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nPara registrar lluvia primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPrimero necesitás crear un lote.\n\nEjemplo:\n👉 *agregar lote 1*\nPara registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nNecesitás un campo para registrar un gasto."
+    ]
+  },
+  {
+    "name": "Z26_5_stock_chain",
+    "group": "Z_long_compound",
+    "status": "FAIL",
+    "reason": "sm=0 d=0",
+    "compound": "agregué 100 bolsas urea al galpón Big a 9mil c/u, agregué 50 lt cipermetrina a 1200 c/u, saqué 30 bolsas semilla maíz del galpón Big, saqué 50 lt 2,4D del galpón Big para Lote 1, fumigué Lote 1 con 2,4D 1.5 lt/ha",
+    "turns": [
+      "❌ Depósito \"Big\" no encontrado\n❌ No tenés campos registrados\n❌ No se encontró \"semilla maíz\" en el stock\n❌ No se encontró \"2,4D\" en el stock\nPara registrar fumigación primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nNecesitás un campo para registrar fumigación."
+    ]
+  },
+  {
+    "name": "Z27_5_query_then_writes",
+    "group": "Z_long_compound",
+    "status": "FAIL",
+    "reason": "e=0 i=0 lm=0 d=0",
+    "compound": "cuánto gasté este mes, gasté 30mil en gasoil, agregué 5 terneros en Lote 3, vendí 12 tn soja a 470 USD c/u, fumigué Lote 2 con 2,4D 1 lt/ha",
+    "turns": [
+      "Para registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar un ingreso primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nPara registrar fumigación primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nNo hay registros (mayo de 2026).\nNecesitás un campo para registrar fumigación."
+    ]
+  },
+  {
+    "name": "Z28_5_partials_serial",
+    "group": "Z_long_compound",
+    "status": "PASS",
+    "reason": "asked=true writes=0",
+    "compound": "vendí soja, compré urea, fumigué, agregué hacienda, gasté en algo",
+    "turns": [
+      "Necesito saber la categoría. Ej: \"agregué 20 vacas al lote A1\".\n👇 Fumigación con herbicida: 🧪 Fumigación — me faltan datos: ¿qué cantidad? ¿en qué lote?",
+      "Me falta el lote. ¿Me lo decís?",
+      "Para registrar fumigación primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nNecesitás un campo para registrar fumigación."
+    ]
+  },
+  {
+    "name": "AA29_eche_toro_simple",
+    "group": "AA_repro",
+    "status": "PASS",
+    "reason": "repro=1",
+    "compound": "eché el toro Don Pedro en Lote 1",
+    "turns": [
+      "¿A cuántos animales?"
+    ]
+  },
+  {
+    "name": "AA30_inseminacion_iatf",
+    "group": "AA_repro",
+    "status": "PASS",
+    "reason": "repro=3",
+    "compound": "inseminé 20 vacas con IATF en Lote 1",
+    "turns": [
+      "🐂 *Evento reproductivo registrado*\n  Tipo: Servicio (entore)\n  🐂 Don Pedro\n  📍 Sin ubicación\n  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás."
+    ]
+  },
+  {
+    "name": "AA31_destete",
+    "group": "AA_repro",
+    "status": "PASS",
+    "reason": "repro=6",
+    "compound": "desteté 25 terneros en Lote 3",
+    "turns": [
+      "🐂 *Evento reproductivo registrado*\n  Tipo: Servicio (entore)\n  🐂 Don Pedro\n  📍 Sin ubicación\n  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás."
+    ]
+  },
+  {
+    "name": "AA32_repro_compound",
+    "group": "AA_repro",
+    "status": "PASS",
+    "reason": "repro=8 (esperado >=2)",
+    "compound": "eché el toro Maximo en Lote 1, inseminé 15 vacas con monta natural y detecté 8 vacas en celo",
+    "turns": [
+      "🐂 *Evento reproductivo registrado*\n  Tipo: Servicio (entore)\n  🐂 toro Maximo\n  📍 Sin ubicación\n  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás."
+    ]
+  },
+  {
+    "name": "AA33_tacto_event",
+    "group": "AA_repro",
+    "status": "PASS",
+    "reason": "d=2 (debería haber 1 tacto event)",
+    "compound": "hice tacto en 40 vacas, 32 preñadas y 8 vacías en Lote 1",
+    "turns": [
+      "Para registrar tacto primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*\nNecesitás un campo para registrar tacto."
+    ]
+  },
+  {
+    "name": "BB34_decimal_quantity",
+    "group": "BB_novel_edges",
+    "status": "FAIL",
+    "reason": "i=0",
+    "compound": "vendí 2.5 toneladas de soja a 480 USD por tonelada",
+    "turns": [
+      "Para registrar un ingreso primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nNecesitás un campo para registrar un ingreso."
+    ]
+  },
+  {
+    "name": "BB35_currency_symbol",
+    "group": "BB_novel_edges",
+    "status": "FAIL",
+    "reason": "e=0",
+    "compound": "gasté $80.000 en gasoil",
+    "turns": [
+      "Para registrar un gasto primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nNecesitás un campo para registrar un gasto."
+    ]
+  },
+  {
+    "name": "BB36_uppercase_message",
+    "group": "BB_novel_edges",
+    "status": "FAIL",
+    "reason": "i=0",
+    "compound": "VENDÍ 10 TN DE SOJA A 470 USD POR TONELADA",
+    "turns": [
+      "Para registrar un ingreso primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nNecesitás un campo para registrar un ingreso."
+    ]
+  },
+  {
+    "name": "BB37_question_only",
+    "group": "BB_novel_edges",
+    "status": "PASS",
+    "reason": "noWrites=true hasInfo=true",
+    "compound": "qué cultivo tiene el Lote 1",
+    "turns": [
+      "No hay campañas activas.\n\n_Para sembrar: \"sembré soja en lote X\". Para ver historial: \"historial del lote X\"._\n¿Querés empezar?"
+    ]
+  },
+  {
+    "name": "BB38_mixed_observation_scouting",
+    "group": "BB_novel_edges",
+    "status": "FAIL",
+    "reason": "o=0 s=0 (alguno debe ser >= 1)",
+    "compound": "vi unas malezas raras en Lote 1",
+    "turns": [
+      "Primero necesitás crear un lote.\n\nEjemplo:\n👉 *agregar lote 1*"
+    ]
+  },
+  {
+    "name": "BB39_correction_inline",
+    "group": "BB_novel_edges",
+    "status": "FAIL",
+    "reason": "i=0",
+    "compound": "vendí 8 tn de maíz a 200 USD c/u, no eran 8, eran 12",
+    "turns": [
+      "Para registrar un ingreso primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*\nNecesitás un campo para registrar un ingreso."
+    ]
+  },
+  {
+    "name": "BB40_emoji_only_action",
+    "group": "BB_novel_edges",
+    "status": "FAIL",
+    "reason": "no salida matching predicate; rows=[]",
+    "compound": "🐄 vendí 5 vacas a 1500 USD c/u en Lote 1",
+    "turns": [
+      "🔍 No encontré el lote *Lote 1*. ¿Querés que lo cree y continúe?"
+    ]
+  }
+]

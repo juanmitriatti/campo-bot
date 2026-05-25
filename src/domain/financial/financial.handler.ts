@@ -32,8 +32,13 @@ import type {
 
 import { splitPool, interpolate } from '../../utils/template.js';
 
-const DEFAULT_EXPENSE_CONFIRMATIONS = ['✅ Listo, gasto registrado', '✅ Anotado', '✅ Gasto guardado', '✅ Registrado'];
-const DEFAULT_INCOME_CONFIRMATIONS = ['💰 Listo, ingreso registrado', '💰 Anotado', '💰 Ingreso guardado', '💰 Registrado'];
+// Single canonical confirmation per domain. Previously we randomly picked
+// from 4 variants ("Anotado", "Gasto guardado", "Registrado"...) which made
+// the bot feel inconsistent — users couldn't grep their chat history for a
+// known string and the verb tense varied. The admin setting still wins if
+// the user wants to override.
+const DEFAULT_EXPENSE_CONFIRMATIONS = ['✅ Gasto registrado'];
+const DEFAULT_INCOME_CONFIRMATIONS = ['💰 Ingreso registrado'];
 
 async function getConfirmationPool(type: 'expense' | 'income'): Promise<string[]> {
   const key = type === 'expense' ? 'EXPENSE_CONFIRMATIONS_MESSAGE' : 'INCOME_CONFIRMATIONS_MESSAGE';
@@ -1764,7 +1769,11 @@ export class FinancialHandler {
         return { messages: [`\u270f\ufe0f Gasto actualizado: ${edited.category}\n$${edited.oldAmount.toLocaleString('es-AR')} \u2192 $${(cmd.amount as number).toLocaleString('es-AR')}`] };
       }
 
-      case 'edit_last': {
+      case 'edit_last':
+      // edit_last_amount is the clearer alias kept in sync — same behavior:
+      // amount-only edit of the most recent expense. Use edit_last_expense
+      // (separate case ~line 1334) for full-field editing (category, plot...).
+      case 'edit_last_amount': {
         const edited = await this.service.editLastExpense(userId, cmd.amount as number);
         if (!edited) {
           return { messages: ['No hay gastos para editar.'] };

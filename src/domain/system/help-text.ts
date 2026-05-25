@@ -164,7 +164,7 @@ _Escribí "menú" para volver._`,
 • "agregar campo La Esperanza en Pergamino"
 • "mis campos"
 • "info campo La Esperanza"
-• "renombrar campo X a Y"
+• "renombrar campo La Esperanza a Don Pedro"
 • "borrar campo X"
 
 *Lotes*

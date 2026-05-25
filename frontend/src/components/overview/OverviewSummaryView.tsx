@@ -10,9 +10,11 @@ import FieldMap from './FieldMap';
 interface Props {
   fieldId: number | null;
   onRecentItemClick?: (type: 'expense' | 'income' | 'activity', id: number) => void;
+  /** Called when the user clicks "Ver todas →" in the recent activity card. */
+  onSeeAllActivities?: () => void;
 }
 
-export default function OverviewSummaryView({ fieldId, onRecentItemClick }: Props) {
+export default function OverviewSummaryView({ fieldId, onRecentItemClick, onSeeAllActivities }: Props) {
   const { data, loading: dashLoading, error: dashError, refresh: dashRefresh } = useDashboardData(fieldId);
   const analytics = useAnalyticsData(fieldId);
 
@@ -88,7 +90,7 @@ export default function OverviewSummaryView({ fieldId, onRecentItemClick }: Prop
           <FieldMap />
         </div>
         <div className="lg:col-span-4">
-          <RecentFeed items={data.recent_items} onItemClick={onRecentItemClick} />
+          <RecentFeed items={data.recent_items} onItemClick={onRecentItemClick} onSeeAll={onSeeAllActivities} />
         </div>
       </div>
 

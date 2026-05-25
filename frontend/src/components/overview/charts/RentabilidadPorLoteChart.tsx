@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, LabelList } from 'recharts';
 import type { BreakdownRow } from '../../../hooks/useAnalyticsData';
 import { computeRentabilidadPorLote } from './computeRentabilidadPorLote';
+import { useCurrency } from '../../../context/CurrencyContext';
 
 interface Props {
   expenses: BreakdownRow[];
@@ -21,7 +22,7 @@ const GASTOS_COLOR = '#ef4444'; // red-500
 const INGRESOS_COLOR = '#22c55e'; // green-500
 
 export default function RentabilidadPorLoteChart({ expenses, incomes }: Props) {
-  const [currency, setCurrency] = useState<'ARS' | 'USD'>('ARS');
+  const { currency } = useCurrency();
 
   const data = useMemo(
     () => {
@@ -35,27 +36,16 @@ export default function RentabilidadPorLoteChart({ expenses, incomes }: Props) {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-      <div className="flex items-start justify-between mb-3 flex-wrap gap-2">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Rentabilidad por lote</h3>
-          <p className="text-xs text-gray-400 dark:text-gray-300">Gastos vs Ingresos · mes actual</p>
-        </div>
-        <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
-          {(['ARS', 'USD'] as const).map(c => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setCurrency(c)}
-              className={`px-3 py-1 text-xs font-medium transition-colors ${c === currency ? 'bg-campo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Rentabilidad por lote</h3>
+        <p className="text-xs text-gray-400 dark:text-gray-300">Gastos vs Ingresos · mes actual · {currency}</p>
       </div>
 
       {data.length === 0 ? (
-        <p className="text-sm text-gray-400 dark:text-gray-300 text-center py-12">Aún no hay gastos ni ingresos asignados a lotes este mes.</p>
+        <div className="text-center py-12 px-4">
+          <p className="text-sm text-gray-500 dark:text-gray-300 font-medium mb-1">Sin datos por lote este mes</p>
+          <p className="text-xs text-gray-400 dark:text-gray-400">Asigná gastos e ingresos a lotes para ver la rentabilidad por unidad productiva. Desde el bot: "gasté X en gasoil en lote A1".</p>
+        </div>
       ) : (
         <ResponsiveContainer width="100%" height={360}>
           <BarChart data={data} margin={{ top: 20, right: 20, left: 10, bottom: 60 }} barGap={4} barCategoryGap="20%">

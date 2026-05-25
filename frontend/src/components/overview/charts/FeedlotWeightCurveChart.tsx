@@ -45,7 +45,10 @@ export default function FeedlotWeightCurveChart({ groups }: Props) {
         )}
       </div>
       {groups.length === 0 ? (
-        <p className="text-sm text-gray-400 dark:text-gray-300 text-center py-12">No hay pesajes de animales en corrales.</p>
+        <div className="text-center py-12 px-4">
+          <p className="text-sm text-gray-500 dark:text-gray-300 font-medium mb-1">Sin pesajes en corral</p>
+          <p className="text-xs text-gray-400 dark:text-gray-400">Registrá pesajes de los animales en corral para seguir la evolución. Desde el bot: "pesé los novillos del corral 1, peso promedio 380 kg".</p>
+        </div>
       ) : (
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={rows} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>

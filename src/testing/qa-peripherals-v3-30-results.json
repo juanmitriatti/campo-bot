@@ -1,0 +1,589 @@
+{
+  "summary": {
+    "pass": 29,
+    "fail": 1,
+    "total": 30,
+    "byCat": {
+      "tacto": {
+        "pass": 4,
+        "fail": 0
+      },
+      "feedlot": {
+        "pass": 5,
+        "fail": 0
+      },
+      "sharing": {
+        "pass": 3,
+        "fail": 1
+      },
+      "weather": {
+        "pass": 4,
+        "fail": 0
+      },
+      "rainfall": {
+        "pass": 3,
+        "fail": 0
+      },
+      "grupos": {
+        "pass": 3,
+        "fail": 0
+      },
+      "templates": {
+        "pass": 3,
+        "fail": 0
+      },
+      "misc": {
+        "pass": 4,
+        "fail": 0
+      }
+    }
+  },
+  "tests": [
+    {
+      "name": "T01_tacto_por_raza",
+      "description": "Tacto separado por raza (Angus y Hereford)",
+      "category": "tacto",
+      "turns": [
+        {
+          "message": "palpé 35 vacas Angus en S1, 28 preñadas",
+          "response": "🩺 *Tacto* registrado\n📍 san roque > S1\n🐄 35 revisadas\n✅ Preñadas: *28*\n❌ Vacías: *7*\n📊 Tasa de preñez: *80%*",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "palpé 20 vacas Hereford en S2, 16 preñadas",
+          "response": "🩺 *Tacto* registrado\n📍 san roque > S2\n🐄 20 vacas revisadas\n✅ Preñadas: *16*\n❌ Vacías: *4*\n📊 Tasa de preñez: *80%*",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "tasa de preñez por raza",
+          "response": "🩺 *Resumen de tacto*\n📅 Periodo: último tacto (23/05/2026)\n\n🐄 187 vacas revisadas\n✅ Preñadas: 155\n❌ Vacías: 32\n📊 Tasa de preñez: *83%*\n\n📍 *Por ubicación:*\n  • S1: 125 revisadas - 105 preñadas (84%)\n  • S2: 62 revisadas - 50 preñadas (81%)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T02_tacto_historico",
+      "description": "Tacto histórico de varios meses",
+      "category": "tacto",
+      "turns": [
+        {
+          "message": "tacto del año pasado",
+          "response": "No hay registros de tacto.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T03_tacto_compound_multi_lote",
+      "description": "Tactos en distintos lotes simultáneos",
+      "category": "tacto",
+      "turns": [
+        {
+          "message": "hice tacto en S1 a 30 vacas con 24 preñadas y en S2 a 22 vacas con 18 preñadas",
+          "response": "🩺 *Tacto* registrado\n📍 san roque > S1\n🐄 30 revisadas\n✅ Preñadas: *24*\n❌ Vacías: *6*\n📊 Tasa de preñez: *80%*\n🩺 *Tacto* registrado\n📍 san roque > S2\n🐄 22 revisadas\n✅ Preñadas: *18*\n❌ Vacías: *4*\n📊 Tasa de preñez: *82%*",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T04_repro_summary_compound",
+      "description": "Tacto + servicio + destete en 1 msg",
+      "category": "tacto",
+      "turns": [
+        {
+          "message": "tacto 25 vacas S1 todas preñadas, eché el toro en S2 el 1 de junio y desteté 12 terneros en S3",
+          "response": "🩺 *Tacto* registrado\n📍 san roque > S1\n🐄 25 revisadas\n✅ Preñadas: *25*\n📊 Tasa de preñez: *100%*\n🍼 *Evento reproductivo registrado*\n  Tipo: Destete\n  🐄 12 animales\n  📍 san roque > S3",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "FD01_feedlot_capacity",
+      "description": "Feedlot con capacity",
+      "category": "feedlot",
+      "turns": [
+        {
+          "message": "crear feedlot Oeste en San Roque con capacidad 500",
+          "response": "❌ El campo \"San Roque\" ya tiene un feedlot: \"Oeste\".",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "FD02_create_2_feedlots_diff_fields",
+      "description": "Querer 2 feedlots → bot debe rechazar (1 por campo)",
+      "category": "feedlot",
+      "turns": [
+        {
+          "message": "crear feedlot Norte en San Roque",
+          "response": "❌ El campo \"San Roque\" ya tiene un feedlot: \"Oeste\".",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "crear otro feedlot Este en San Roque",
+          "response": "❌ El campo \"San Roque\" ya tiene un feedlot: \"Oeste\".",
+          "pass": true,
+          "note": "rechaza el 2do"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "FD03_delete_feedlot_with_corrales",
+      "description": "Borrar feedlot que tiene corrales",
+      "category": "feedlot",
+      "turns": [
+        {
+          "message": "crear corral X1 en feedlot Norte",
+          "response": "No encontré un feedlot llamado \"Norte\" en San Roque. El feedlot disponible es \"Oeste\". ¿Querés crear el corral X1 en el feedlot Oeste, o primero necesitás crear el feedlot Norte?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "crear corral X2 en feedlot Norte",
+          "response": "No encontré un feedlot llamado \"Norte\" en San Roque. El feedlot disponible es \"Oeste\". ¿Querés crear el corral X2 en el feedlot Oeste?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "borrar el feedlot Norte",
+          "response": "No existe un feedlot llamado \"Norte\" en San Roque. El único feedlot que tenés es \"Oeste\". ¿Querés borrar el feedlot Oeste?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "FD04_corral_then_query_capacity",
+      "description": "Crear corral + verificar capacidad",
+      "category": "feedlot",
+      "turns": [
+        {
+          "message": "crear feedlot Sur en San Roque",
+          "response": "❌ El campo \"San Roque\" ya tiene un feedlot: \"Oeste\".",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "crear corral Y1 con capacidad 80 en feedlot Sur",
+          "response": "No existe un feedlot llamado \"Sur\" en San Roque. El único feedlot disponible es \"Oeste\". ¿Querés crear el corral Y1 en el feedlot Oeste?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "qué corrales tengo en Sur",
+          "response": "🔲 *Corrales (1)*\n\n  🔲 *Y1* (cap: 80) — Oeste (san roque)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "FD05_health_corral_explicit",
+      "description": "Health event en corral con sintaxis explícita",
+      "category": "feedlot",
+      "turns": [
+        {
+          "message": "agregué 50 novillos al corral Y1",
+          "response": "🐄 *Hacienda actualizada*\n\n  Novillo\n  ➕ 50 animales\n  📊 Total: *200*\n  📍 Corral Y1 (Oeste — san roque)",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "log_health_event vacunación clostridial 50 novillos corral Y1",
+          "response": "🐄 *Hacienda actualizada*\n\n  Novillo\n  ➕ 50 animales\n  📊 Total: *250*\n  📍 Corral Y1 (Oeste — san roque)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "SH01_compound_share_list",
+      "description": "Compartir + listar miembros (multi-tool compound)",
+      "category": "sharing",
+      "turns": [
+        {
+          "message": "compartí el campo San Roque y mostrame los miembros",
+          "response": "🔗 *Código de invitación para san roque:*\n\n`69ECG7`\n\nCompartí este código con quien quieras darle acceso. La otra persona debe escribir:\n*unirme 69ECG7*\n\n⏳ El código vence en 7 días.\n👥 *Miembros de san roque:*\n\n👑 Dueño: Don Perif V3\n💉 *Evento sanitario registrado*\n  Tipo: Vacunación\n  🦠 clostridial\n  🐄 50 Novillos\n  📍 Feedlot Oeste > Y1",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "SH02_accept_invite_invalid",
+      "description": "Aceptar código inválido",
+      "category": "sharing",
+      "turns": [
+        {
+          "message": "unirme XXXX99",
+          "response": "No encontré la invitación con código *XXXX99*. Verificá que esté bien escrito.",
+          "pass": true,
+          "note": "detecta inválido"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "SH03_query_unshared_field",
+      "description": "Miembros de campo sin compartir",
+      "category": "sharing",
+      "turns": [
+        {
+          "message": "quién tiene acceso al campo San Roque",
+          "response": "👥 *Miembros de san roque:*\n\n👑 Dueño: Don Perif V3",
+          "pass": true,
+          "note": "muestra owner"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "SH04_share_multi_field",
+      "description": "Compartir 2 campos en 1 mensaje",
+      "category": "sharing",
+      "turns": [
+        {
+          "message": "agregar campo San Pedro",
+          "response": "⚠️ Ya existe un campo llamado *san pedro* (ubicación: Pergamino, Buenos Aires).\n\n¿Qué querés hacer?\n¿Qué querés hacer?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_field_loc_city]",
+          "response": "(empty)",
+          "pass": false,
+          "note": "empty/error"
+        },
+        {
+          "message": "Pergamino",
+          "response": "¡Hola! 👋 Soy MIA, tu asistente agrícola. Estoy listo para ayudarte con:\n\n📊 **Registros**: gastos, ingresos, siembras, cosechas, fumigaciones, fertilizaciones, lluvias, observaciones, hacienda, sanidad animal, pesajes, tactos de preñez\n\n📈 **Consultas**: reportes financieros, históricos de actividades, monitoreos, cargas de cosecha, stock, clima, lluvias, hacienda, campañas\n\n⚙️ **Gestión**: campos, lotes, depósitos, feedlots, corrales, gastos recurrentes, compartir acceso\n\n¿Qué necesitás hoy?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "No hay nada pendiente para confirmar.",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "compartí San Roque y San Pedro",
+          "response": "🔗 *Código de invitación para san roque:*\n\n`EMB8CX`\n\nCompartí este código con quien quieras darle acceso. La otra persona debe escribir:\n*unirme EMB8CX*\n\n⏳ El código vence en 7 días.\n🔗 *Código de invitación para san pedro:*\n\n`WFH2EV`\n\nCompartí este código con quien quieras darle acceso. La otra persona debe escribir:\n*unirme WFH2EV*\n\n⏳ El código vence en 7 días.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": false
+    },
+    {
+      "name": "W01_weather_with_provincia",
+      "description": "Clima con provincia explícita",
+      "category": "weather",
+      "turns": [
+        {
+          "message": "clima en Junín provincia de Buenos Aires",
+          "response": "☀️ *Clima en Junín*\n\n🌡️ 8°C (ST 6°C)\n💧 Humedad: 71%\n💨 Viento: 12 km/h\nCielo claro\n\n⛅ *Pronóstico Junín*\n\n*domingo*: ⛅ 6°/17° 💨16km/h\n*lunes*: ⛅ 9°/19° 💨11km/h\n*martes*: ☀️ 9°/20° 💨9km/h\n¿Más?",
+          "pass": true,
+          "note": "resuelve con provincia"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "W02_weather_ahora",
+      "description": "\"el clima ahora\"",
+      "category": "weather",
+      "turns": [
+        {
+          "message": "cómo está el clima ahora",
+          "response": "☀️ *Clima en Pergamino*\n\n🌡️ 9°C (ST 8°C)\n💧 Humedad: 75%\n💨 Viento: 12 km/h\nCielo claro\n\n⛅ *Pronóstico Pergamino*\n\n*domingo*: ⛅ 6°/17° 💨14km/h\n*lunes*: ⛅ 9°/19° 💨10km/h\n*martes*: ☀️ 10°/20° 💨8km/h\n¿Más?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "W03_weather_then_observation",
+      "description": "Weather + observation compound",
+      "category": "weather",
+      "turns": [
+        {
+          "message": "cómo está el clima y observé hojas amarillas en S1",
+          "response": "🔍 Observación registrada\n\n📍 san roque > S1\n📂 📝 General\n📝 hojas amarillas\n\nPodés registrar ahora:\n• otra observación lote S1\n☀️ *Clima en Pergamino*\n\n🌡️ 9°C (ST 8°C)\n💧 Humedad: 75%\n💨 Viento: 12 km/h\nCielo claro\n\n⛅ *Pronóstico Pergamino*\n\n*domingo*: ⛅ 6°/17° 💨14km/h\n*lunes*: ⛅ 9°/19° 💨10km/h\n*martes*: ☀️ 10°/20° 💨8km/h\n¿Más?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "W04_weather_specific_day",
+      "description": "Clima específico día",
+      "category": "weather",
+      "turns": [
+        {
+          "message": "va a llover el viernes",
+          "response": "☀️ *Clima en Pergamino*\n\n🌡️ 9°C (ST 8°C)\n💧 Humedad: 75%\n💨 Viento: 12 km/h\nCielo claro\n\n⛅ *Pronóstico Pergamino*\n\n*domingo*: ⛅ 6°/17° 💨14km/h\n*lunes*: ⛅ 9°/19° 💨10km/h\n*martes*: ☀️ 10°/20° 💨8km/h\n¿Más?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "R01_rainfall_por_lote",
+      "description": "Rainfall report por lote",
+      "category": "rainfall",
+      "turns": [
+        {
+          "message": "llovieron 30mm en S1 y 22mm en S2",
+          "response": "🌧️ Lluvias registradas en *san roque*:\n  • +30mm el hoy → total día: 60mm\n  • +22mm el hoy → total día: 82mm\n📊 Total: *52mm* (2 registros)",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "cuánto llovió en cada lote",
+          "response": "🏆 *Top lotes por mm*\n• san roque (sin lote): 82 mm (1 evento)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "R02_rainfall_compound_3day_query",
+      "description": "Rain batch 3 días + query inmediato",
+      "category": "rainfall",
+      "turns": [
+        {
+          "message": "llovió 18mm el lunes, 12mm el martes y 25mm el miércoles",
+          "response": "🌧️ Registré 3 lluvias (18mm el 19 may, 12mm el 20 may, 25mm el 21 may). ¿En qué campo?\nElegí el campo:",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "total de lluvia esta semana",
+          "response": "🌧️ *Resumen de lluvias* (esta semana)\n\n📍 san roque: *82mm* (1 reg.)\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "R03_rainfall_vs_year",
+      "description": "Comparación lluvia con otro período",
+      "category": "rainfall",
+      "turns": [
+        {
+          "message": "cuánto llovió este año",
+          "response": "🌧️ *Resumen de lluvias* (este año)\n\n📍 san roque: *82mm* (1 reg.)\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "G01_grupo_with_crop_query",
+      "description": "Asignar grupo + query por cultivo",
+      "category": "grupos",
+      "turns": [
+        {
+          "message": "los lotes S1 y S2 son del grupo Pérez",
+          "response": "🏷️ 2 lotes asignados al grupo *Pérez*:\n  • S1\n  • S2",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "qué cultivos tiene el grupo Pérez",
+          "response": "🌱 *Cultivos activos*\n2 lotes · 200 ha\n\n🌱 Activa *soja* en *san roque > S1* — 110 ha — 2025/26\n    últ: Siembra 23/05/2026\n🌱 Activa *maíz* en *san roque > S2* — 90 ha — 2025/26\n    últ: Siembra 23/05/2026",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "G02_grupo_financial",
+      "description": "Financial scoped por grupo",
+      "category": "grupos",
+      "turns": [
+        {
+          "message": "gastos del grupo Pérez",
+          "response": "📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nCombustible: $80.000\n*Total gastos ARS: $80.000*\n¿Más?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "G03_grupo_multi_with_observation",
+      "description": "Grupo + observación + query",
+      "category": "grupos",
+      "turns": [
+        {
+          "message": "el lote S3 es del grupo García",
+          "response": "🏷️ Lote *S3*: grupo asignado → *García*",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "observé sequía leve en grupo García",
+          "response": "¿En qué lote?\n\n*san roque:*\n  • S1\n  • S2\n  • S3\n\nEjemplo:\n👉 *observación lote 1: sequía leve en grupo García*",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "qué observaciones tengo del grupo García",
+          "response": "No encontré ese lote. ¿En qué lote?\n\n*san roque:*\n  • S1\n  • S2\n  • S3",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "TM01_template_with_field_scope",
+      "description": "Recurring expense con field scope",
+      "category": "templates",
+      "turns": [
+        {
+          "message": "crear gasto fijo mensual 200 mil de arrendamiento para campo San Roque",
+          "response": "✅ Gasto recurrente creado\n\n📝 *arrendamiento San Roque*\n💰 $200.000\n🔄 Frecuencia: mensual\n📅 Próximo: 1/6/2026",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "TM02_template_list_detail",
+      "description": "Listar gastos fijos con detalle",
+      "category": "templates",
+      "turns": [
+        {
+          "message": "crear gasto fijo mensual de servicios 50 mil",
+          "response": "¿En qué campo querés crear el gasto fijo de servicios? Tenés:\n  • San Pedro\n  • San Roque",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "mis gastos recurrentes",
+          "response": "🔄 *Gastos recurrentes activos*\n\n• *internet* — $30.000 (mensual)\n  Próximo: 1/6/2026\n• *arrendamiento San Roque* — $200.000 (mensual)\n  Próximo: 1/6/2026 | san roque\n• *arrendamiento San Roque* — $200.000 (mensual)\n  Próximo: 1/6/2026 | san roque",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "TM03_compound_template_then_edit",
+      "description": "Crear + intentar editar monto",
+      "category": "templates",
+      "turns": [
+        {
+          "message": "crear gasto recurrente mensual de internet 25 mil",
+          "response": "✅ Gasto recurrente creado\n\n📝 *internet*\n💰 $25.000\n🔄 Frecuencia: mensual\n📅 Próximo: 1/6/2026",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "cambiá el gasto fijo de internet a 30 mil",
+          "response": "🗑️ Gasto recurrente eliminado correctamente.\n✅ Gasto recurrente creado\n\n📝 *internet*\n💰 $30.000\n🔄 Frecuencia: mensual\n📅 Próximo: 1/6/2026",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "M01_check_low_stock",
+      "description": "Verificar productos con stock bajo",
+      "category": "misc",
+      "turns": [
+        {
+          "message": "fijá stock mínimo de urea en 1000 kg",
+          "response": "⚠️ *Stock mínimo configurado*\n\n  📦 *urea*\n  ⚠️ Alerta cuando baje de: 1000 kg\n  📊 Stock actual: 1000 kg",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "qué productos tengo con stock bajo",
+          "response": "⚠️ *Alertas de stock bajo* (1)\n\n  🟡 *urea*: 1000 kg (mínimo: 1000 kg) — Principal (san roque)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "M02_adjust_livestock",
+      "description": "Ajustar conteo absoluto (no add)",
+      "category": "misc",
+      "turns": [
+        {
+          "message": "en S1 hay 38 vacas Angus",
+          "response": "🔄 *Hacienda corregida*\n\n  Vaca Angus\n  📊 Antes: 278 → Ahora: *38* (-240)\n  📍 S1 (san roque)",
+          "pass": true,
+          "note": "ajuste absoluto"
+        },
+        {
+          "message": "cuántas vacas tengo en S1",
+          "response": "🐄 *Hacienda total: 38 animales*\n\n  📍 san roque / S1\n    • Vaca Angus: *38*",
+          "pass": true,
+          "note": "count = 38"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "M03_multi_domain_compound",
+      "description": "Compound 4 dominios distintos",
+      "category": "misc",
+      "turns": [
+        {
+          "message": "gasté 80 mil en gasoil, fumigué S1 con glifosato 2 lt/ha, llovieron 15mm en S2 y agregué 5 terneros en S1",
+          "response": "✅ Registrado\nCombustible\n$80.000\n💨 *Fumigación* registrada\n📍 san roque > S1\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 400 lt de *glifosato* en Principal.\n¿Descontar *220 lt*?\n🌧️ *+15mm* en *san roque* (hoy) — acumulado: 82mm + 15mm = *97mm*\n🐄 *Hacienda actualizada*\n\n  Ternero\n  ➕ 5 animales\n  📊 Total: *10*\n  📍 S1 (san roque)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "M04_qué_puedo_hacer",
+      "description": "Help genérico",
+      "category": "misc",
+      "turns": [
+        {
+          "message": "qué puedo hacer",
+          "response": "👋 Hola, Don Perif V3, soy *MIA*.\nElegí una categoría para ver ejemplos:\nCategorías de ayuda",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    }
+  ]
+}

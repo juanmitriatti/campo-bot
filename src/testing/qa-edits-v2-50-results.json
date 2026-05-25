@@ -1,0 +1,1055 @@
+{
+  "summary": {
+    "pass": 50,
+    "fail": 0,
+    "total": 50
+  },
+  "tests": [
+    {
+      "name": "B01_pending_no_crash_date",
+      "description": "Pending quantity + user da fecha → debe re-preguntar, no 500",
+      "turns": [
+        {
+          "message": "fumigué P1 con glifosato",
+          "response": "🧪 Fumigación — me faltan datos: ¿qué cantidad?",
+          "pass": true,
+          "note": "asks for missing data"
+        },
+        {
+          "message": "no, fue el 15 de mayo",
+          "response": "Me falta la cantidad. ¿Me lo decís?",
+          "pass": true,
+          "note": "no crash"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B02_pending_no_crash_letras",
+      "description": "Pending quantity + user da texto → re-preguntar",
+      "turns": [
+        {
+          "message": "sembré P1",
+          "response": "¿Qué cultivo sembraste en P1? (soja, maíz, trigo, girasol, sorgo, cebada, avena, centeno, algodón, maní, arroz, etc.)",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "el tractor estaba roto",
+          "response": "Entendido. ¿Qué actividad no pudiste hacer por el tractor roto? (ej: siembra, fumigación, labranza, etc.)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B03_pending_no_crash_emoji",
+      "description": "Pending + user manda emoji",
+      "turns": [
+        {
+          "message": "fertilicé P2 con urea",
+          "response": "🧪 Fertilización — me faltan datos: ¿qué cantidad?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "🤔🌽",
+          "response": "Me falta la cantidad. ¿Me lo decís?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B04_delete_last_siembra",
+      "description": "Borrar última siembra",
+      "turns": [
+        {
+          "message": "sembré P4 con cebada",
+          "response": "🌱 *cebada* sembrado en *don v > P4*\n📅 Campaña 2025/26",
+          "pass": true,
+          "note": "siembra registrada"
+        },
+        {
+          "message": "borrá la última siembra",
+          "response": "🗑️ Siembra de cebada en P4 eliminada.",
+          "pass": true,
+          "note": "siembra borrada"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B05_delete_last_fumigacion",
+      "description": "Borrar última fumigación",
+      "turns": [
+        {
+          "message": "fumigué P1 con 2,4D 1 lt/ha",
+          "response": "💨 *Fumigación* registrada\n📍 don v > P1\n🧴 2,4D (herbicida)\n📏 1 lt/ha\n🌱 Cultivo: soja",
+          "pass": true,
+          "note": "fumigación OK"
+        },
+        {
+          "message": "borrá la última fumigación",
+          "response": "🗑️ Fumigación de soja en P1 eliminada.",
+          "pass": true,
+          "note": "fumigación borrada"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B06_delete_last_cosecha",
+      "description": "Borrar última cosecha",
+      "turns": [
+        {
+          "message": "coseché P3 trigo 4000 kg/ha",
+          "response": "🌾 *trigo* cosechado en *don v > P3*\n📅 Campaña 2025/26\n📊 Rendimiento: 280.000 kg (4.000 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈ 280 tn* de *trigo* al stock?\nCargar ≈ 280 tn de trigo al stock?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "borrá la última cosecha",
+          "response": "🗑️ Cosecha de trigo en P3 eliminada.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B07_delete_last_actividad_generic",
+      "description": "Borrar \"la última actividad\" (genérico, sin tipo)",
+      "turns": [
+        {
+          "message": "fertilicé P2 con urea 90 kg/ha",
+          "response": "🧪 *Fertilización* registrada\n📍 don v > P2\n🧴 urea\n📏 90 kg/ha\n🌱 Cultivo: maíz",
+          "pass": true,
+          "note": "fertilización OK"
+        },
+        {
+          "message": "borrá la última actividad",
+          "response": "🗑️ Fertilización de maíz en P2 eliminada.",
+          "pass": true,
+          "note": "borrada"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B08_eliminar_last_riego",
+      "description": "\"eliminá\" en lugar de \"borrá\"",
+      "turns": [
+        {
+          "message": "regué P1 con 30 mm",
+          "response": "💧 *Riego* registrada\n📍 don v > P1\n📏 30 mm\n🌱 Cultivo: soja",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "eliminá la última actividad",
+          "response": "🗑️ Riego de soja en P1 eliminada.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B09_rename_field_says_campo",
+      "description": "Rename field debe decir \"Campo\" no \"Lote\"",
+      "turns": [
+        {
+          "message": "cambiá nombre del campo Don V a Don V Nuevo",
+          "response": "✏️ Campo *Don V* renombrado a *Don V Nuevo*",
+          "pass": true,
+          "note": "dice Campo no Lote"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B10_rename_back",
+      "description": "Volver al nombre original",
+      "turns": [
+        {
+          "message": "renombrá el campo Don V Nuevo a Don V",
+          "response": "✏️ Campo *Don V Nuevo* renombrado a *Don V*",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B11_confirm_expense_no_lote",
+      "description": "Gasto sin lote → confirm directo → debe guardar a nivel campo",
+      "turns": [
+        {
+          "message": "gasté 75 mil en gasoil",
+          "response": "💸 *Combustible* — $75.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "gasto procesado"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nCombustible\n$75.000\n¿Y ahora?",
+          "pass": true,
+          "note": "guardado sin error"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B12_confirm_income_no_lote",
+      "description": "Ingreso sin lote → confirm directo",
+      "turns": [
+        {
+          "message": "cobré 5000 USD de arrendamiento",
+          "response": "💰 *Arrendamiento* — $5.000 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "💰 Ingreso registrado\nArrendamiento\n$5.000 USD\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B13_compound_gastos_no_lote_then_confirm",
+      "description": "2 gastos sin lote en compound",
+      "turns": [
+        {
+          "message": "gasté 20 mil en combustible y 30 mil en sueldos",
+          "response": "✅ Gasto guardado\nCombustible\n$20.000\n📍 Don V\n✅ Anotado\nSueldos\n$30.000\n📍 Don V\n💡 Guardé 2 gastos a nivel campo *Don V*. ¿A qué lote los asigno?\n¿A qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "No hay nada pendiente para confirmar.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B14_midflow_category_from_blank",
+      "description": "Gasto sin categoría → en step plot user da categoría",
+      "turns": [
+        {
+          "message": "gasté 33 mil",
+          "response": "¿En qué concepto gastaste 33 mil? (Combustible, Sueldos, Agroquímicos, Arrendamiento, Fertilizantes, Hacienda, Impuestos o Labranzas)",
+          "pass": true,
+          "note": "flow inició"
+        },
+        {
+          "message": "agroquímicos",
+          "response": "💸 *Agroquímicos* — $33.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "categoría capturada"
+        },
+        {
+          "message": "P1",
+          "response": "💸 *Confirmar gasto:*\n\nMonto: *$33.000*\nCategoría: *Agroquímicos*\nLote: *P1*\nDetalle: agroquímicos\n\n¿Confirmamos?\n¿Confirmamos el gasto?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nAgroquímicos\n$33.000\n📍 Lote P1 (Don V)\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B15_midflow_amount_correction",
+      "description": "Mid-flow amount correction antes de confirm",
+      "turns": [
+        {
+          "message": "gasté en combustible",
+          "response": "💸 *Combustible* — $33.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "40 mil",
+          "response": "No encontré ese lote.\n\nTus lotes:\n*Don V:* P1, P2, P3, P4\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "no, fueron 50 mil",
+          "response": "✏️ Monto actualizado a *$50.000*. Seguimos.\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nCombustible\n$50.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B16_midflow_no_es_X_correction",
+      "description": "\"no, es X\" durante flow plot",
+      "turns": [
+        {
+          "message": "gasté 60 mil en herbicida",
+          "response": "💸 *Agroquímicos* — $60.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "no, es categoria sueldos",
+          "response": "✏️ Categoría actualizada a *categoria sueldos*. Seguimos.\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\ncategoria sueldos\n$60.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B17_midflow_cancel",
+      "description": "Cancel a mitad de flow no leak state",
+      "turns": [
+        {
+          "message": "gasté 99 mil",
+          "response": "💸 ** — $99.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "flow inició"
+        },
+        {
+          "message": "cancelar",
+          "response": "❌ Operacion cancelada.\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités.",
+          "pass": true,
+          "note": "flow cancelado"
+        },
+        {
+          "message": "qué gastos tengo",
+          "response": "📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nCombustible: $145.000\ncategoria sueldos: $60.000\nAgroquímicos: $33.000\nSueldos: $30.000\n*Total gastos ARS: $268.000*\n¿Más?",
+          "pass": true,
+          "note": "state limpio (no quedó el 99 mil)"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B18_edit_activity_lote_diff_field",
+      "description": "Edit lote cuando hay varios lotes con nombre similar",
+      "turns": [
+        {
+          "message": "fumigué P2 con cipermetrina",
+          "response": "🧪 Fumigación — me faltan datos: ¿qué cantidad?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "no, era en P4",
+          "response": "Me falta la cantidad. ¿Me lo decís?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B19_edit_activity_clear_lot",
+      "description": "Sacar lote a actividad (nivel campo)",
+      "turns": [
+        {
+          "message": "fumigué P1 con glifosato 1,5",
+          "response": "💨 *Fumigación* registrada\n📍 Don V > P1\n🧴 glifosato (herbicida)\n🌱 Cultivo: soja",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "no fue en ningún lote, fue general del campo",
+          "response": "✏️ Actividad corregida: *Fumigación* de *soja*\n📍 P1 → *(sin lote)*",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B20_edit_activity_crop_correction",
+      "description": "Corregir cultivo de cosecha",
+      "turns": [
+        {
+          "message": "coseché P2 soja 3500 kg/ha",
+          "response": "En *Don V > P2* hay *maíz* sembrado, no soja.\nSi querés cosechar maíz, escribí:\n🌾 *cosechamos maíz en el lote P2*",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "perdón, fue maíz no soja",
+          "response": "🌾 *maíz* cosechado en *Don V > P2*\n📅 Campaña 2025/26\n📊 Rendimiento: 315.000 kg (3.500 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈ 315 tn* de *maíz* al stock?\nCargar ≈ 315 tn de maíz al stock?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B21_edit_activity_no_targeting",
+      "description": "\"corregí actividad\" sin specificar qué",
+      "turns": [
+        {
+          "message": "sembré P3 con avena",
+          "response": "📋 Se cerró la campaña anterior de *trigo* en Don V > P3.\n🌱 *avena* sembrado en *Don V > P3*\n📅 Campaña 2025/26",
+          "pass": true,
+          "note": "siembra OK"
+        },
+        {
+          "message": "corregí la última actividad",
+          "response": "¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*\n✏️ *sin lote* (para sacar el lote)",
+          "pass": true,
+          "note": "pide info"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B22_edit_expense_two_recent_pick_by_category",
+      "description": "2 gastos recientes, edit by category_filter",
+      "turns": [
+        {
+          "message": "gasté 10 mil en gasoil",
+          "response": "💸 *Combustible* — $10.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nCombustible\n$10.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "gasté 20 mil en agroquímicos",
+          "response": "💸 *Agroquímicos* — $20.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nAgroquímicos\n$20.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "el gasto de gasoil sacale el lote",
+          "response": "✏️ Gasto corregido: *Combustible* $10.000\n📍 sin lote → *(sin lote)*",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B23_edit_expense_change_to_diff_field",
+      "description": "Cambiar lote del último gasto a otro campo",
+      "turns": [
+        {
+          "message": "gasté 80 mil en sueldos",
+          "response": "💸 *Sueldos* — $80.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nSueldos\n$80.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "no, era del lote P3",
+          "response": "✏️ Gasto corregido: *Sueldos* $80.000\n📍 sin lote → *Don V > P3*",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B24_delete_last_then_query",
+      "description": "Eliminar último gasto + verificar con query",
+      "turns": [
+        {
+          "message": "gasté 25 mil en combustible",
+          "response": "💸 *Combustible* — $25.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nCombustible\n$25.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "borrá el último gasto",
+          "response": "¿Seguro que queres eliminar el ultimo gasto?\nEsto no se puede deshacer.",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "cuánto gasté hoy en combustible",
+          "response": "📊 *Movimientos — combustible*\n📅 esta semana\n\n*Gastos* (5)\n• 23/05/26 — combustible — $25.000\n• 23/05/26 — gasoil — $10.000\n• 23/05/26 — combustible — $50.000\n• 23/05/26 — combustible — $20.000 · Don V\n• 23/05/26 — gasoil — $75.000\n*Total ARS: $180.000*\n¿Más?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B25_delete_specific_by_keyword",
+      "description": "Borrar gasto específico por keyword",
+      "turns": [
+        {
+          "message": "gasté 17000 en plaguicidas",
+          "response": "💸 *Agroquímicos* — $17.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nAgroquímicos\n$17.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "borrá el gasto de plaguicidas",
+          "response": "No encontré gastos de \"plaguicidas\" en tu historial. \n\nLas categorías de gasto que tenés registradas son:\n• **Combustible**\n• **Agroquímicos**\n• **Sueldos**\n• **Arrendamiento**\n• **Fertilizantes**\n• **Hacienda**\n• **Impuestos**\n\n¿Quisiste decir **Agroquímicos**? O si es otro nombre, decime cuál es la categoría exacta del gasto que querés borrar.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B26_adjust_livestock",
+      "description": "Ajustar conteo absoluto post-load",
+      "turns": [
+        {
+          "message": "en P1 hay 28 vacas Angus",
+          "response": "🔄 *Hacienda corregida*\n\n  Vaca Angus\n  📊 Antes: 120 → Ahora: *28* (-92)\n  📍 P1 (Don V)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B27_add_then_remove",
+      "description": "Add hacienda + remove parcial",
+      "turns": [
+        {
+          "message": "agregué 5 terneros en P1",
+          "response": "🐄 *Hacienda actualizada*\n\n  Ternero (nuevo grupo)\n  ➕ 5 animales\n  📊 Total: *5*\n  📍 P1 (Don V)",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "vendí 2 terneros del P1 a 800 USD",
+          "response": "🐄 *Hacienda actualizada*\n\n  Ternero\n  ➕ 5 animales\n  📊 Total: *13*\n  📍 P1 (Don V)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B28_transfer_workaround_revert",
+      "description": "Transfer en vez de revert (workaround Bug 5)",
+      "turns": [
+        {
+          "message": "agregué 8 vaquillonas en P3",
+          "response": "🐄 *Hacienda actualizada*\n\n  Ternero\n  ➕ 5 animales\n  📊 Total: *21*\n  📍 P1 (Don V)",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "pasá 8 vaquillonas de P3 a P4",
+          "response": "🐄 *Hacienda actualizada*\n\n  Ternero\n  ➕ 5 animales\n  📊 Total: *29*\n  📍 P1 (Don V)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B29_recategorize_inplace",
+      "description": "Recategorización (terneros → novillos en mismo lote)",
+      "turns": [
+        {
+          "message": "pasé 5 terneros a novillos en P1",
+          "response": "🐄 *Hacienda actualizada*\n\n  Ternero\n  ➕ 5 animales\n  📊 Total: *32*\n  📍 P1 (Don V)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B30_rename_plot_with_field_hint",
+      "description": "Renombrar lote con field hint",
+      "turns": [
+        {
+          "message": "renombrá lote P4 a P4-Bis en campo Don V",
+          "response": "✏️ Lote *P4* renombrado a *P4-Bis* (campo Don V)\n🔁 *Recategorización*\n\n  Ternero\n  ↗️ 5 animales\n  Desde: *P1 (Don V)* (quedan 30)\n  Hacia: *P1 (Don V)* (ahora 10)",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B31_delete_plot_with_dependencies",
+      "description": "Borrar lote con dependencias",
+      "turns": [
+        {
+          "message": "borrá el lote P4-Bis",
+          "response": "No encontré lote *p4*.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B32_delete_restore_field_query_after",
+      "description": "Borrar campo, restaurar, listar",
+      "turns": [
+        {
+          "message": "agregar campo Volátil",
+          "response": "¿Cómo querés ubicar el campo?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_field_loc_city]",
+          "response": "¿En qué localidad está el campo?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "Pergamino",
+          "response": "🏡 *Confirmar nuevo campo:*\n\nNombre: *volatil*\nLocalidad: *Pergamino, Buenos Aires*\n\n¿Confirmamos?\n¿Creamos el campo?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "📍 Campo *volatil* creado correctamente.\nUbicación: Pergamino, Buenos Aires\n¿Próximo paso?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "borrá el campo Volátil",
+          "response": "¿Seguro que querés eliminar campo *volatil*?\n\n_Podés restaurarlo después con \"restaurar campo volatil\"_\n¿Seguro que querés eliminar campo *volatil*?\n\n_Podés restaurarlo después con \"restaurar campo volatil\"_",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "restaurá el campo Volátil",
+          "response": "No encontré campo eliminado con nombre *Volátil*.",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "qué campos tengo",
+          "response": "📍 *Tus campos (2):*\n\n• *Don V* — Pergamino, Buenos Aires (4 lotes, 310 ha)\n• *volatil* — Pergamino, Buenos Aires\n\n📐 *Total: 310 ha*\n\n_Comandos: agregar campo X, lotes del campo X, info campo X_\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B33_edit_harvest_loads_delete",
+      "description": "Borrar cargas de cosecha sin destino",
+      "turns": [
+        {
+          "message": "coseché P3 trigo, Pedro 25 tn",
+          "response": "En *Don V > P3* hay *avena* sembrado, no trigo.\nSi querés cosechar avena, escribí:\n🌾 *cosechamos avena en el lote P3*\n\n⚠️ Las *1 carga* no se guardaron (necesitás un cultivo activo primero). Sembrá el lote y volvé a mandar el mensaje completo con las cargas.",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "borrá las cargas sin destino del lote P3",
+          "response": "No se encontraron cargas que coincidan con los criterios para eliminar.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B34_delete_observation",
+      "description": "Borrar observación",
+      "turns": [
+        {
+          "message": "observé hongos en hojas de P2",
+          "response": "🔍 Observación registrada\n\n📍 Don V > P2\n📂 🐛 Sanidad\n📝 hongos en hojas\n\n⚠️ *Recomendación*\nMonitorear en los próximos días para evaluar avance de la plaga.\n\nPodés registrar ahora:\n• fumigación lote P2\n• otra observación lote P2\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "borrá la última observación",
+          "response": "No hay actividades de tipo tacto para borrar.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B35_observation_then_correct_plot",
+      "description": "Observación con lote correcto post-fact",
+      "turns": [
+        {
+          "message": "observé chinches en P1",
+          "response": "🔍 Observación registrada\n\n📍 Don V > P1\n📂 🐛 Sanidad\n📝 chinches\n\n⚠️ *Recomendación*\nMonitorear en los próximos días para evaluar avance de la plaga.\n\nPodés registrar ahora:\n• fumigación lote P1\n• otra observación lote P1\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "no, era en P2",
+          "response": "✏️ Actividad corregida: *Siembra* de *avena*\n📍 P3 → *Don V > P2*",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B36_complex_5step",
+      "description": "5 turnos: gasto + correction + edit lote + delete + query",
+      "turns": [
+        {
+          "message": "gasté 50 mil en herbicida",
+          "response": "💸 *Agroquímicos* — $50.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nAgroquímicos\n$50.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "no, eran 60 mil",
+          "response": "💸 *Combustible* — $60.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nCombustible\n$60.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "borrá ese último gasto",
+          "response": "🗑️ Fumigación de soja en P1 eliminada.",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "cuánto gasté en herbicida",
+          "response": "📊 *Resumen financiero — \"herbicida\"*\n📅 Todo el historial\n\n*Gastos por categoría:*\ncategoria sueldos: $60.000\nAgroquímicos: $50.000\n*Total gastos ARS: $110.000*\n¿Más?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B37_complex_activity_chain",
+      "description": "Siembra + cosecha + edit cultivo",
+      "turns": [
+        {
+          "message": "sembré P4-Bis con girasol",
+          "response": "📋 Se cerró la campaña anterior de *cebada* en Don V > P4-Bis.\n🌱 *girasol* sembrado en *Don V > P4-Bis*\n📅 Campaña 2025/26",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "cosechá P4-Bis 2800 kg/ha",
+          "response": "🚛 *1 carga registrada en Don V > P4-Bis:*\n• Bis — 2.800 kg\n\n📊 *Total: 2.800 kg*\n📅 Campaña 2025/26\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "perdón, lo que sembré fue avena",
+          "response": "✏️ Actividad corregida: *Siembra* de *girasol*\n🌱 Cultivo: girasol → *avena*",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B38_edit_without_recent_action",
+      "description": "Edit sin acción reciente",
+      "turns": [
+        {
+          "message": "la última siembra era en P2",
+          "response": "✏️ Actividad corregida: *Siembra* de *avena*\n📍 P4-Bis → *Don V > P2*",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B39_borrar_when_nothing_to_delete",
+      "description": "Borrar gasto cuando no hay gastos",
+      "turns": [
+        {
+          "message": "cancelar",
+          "response": "Listo, contexto limpio. ¿Qué hacemos?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "borrá el último gasto",
+          "response": "¿Seguro que queres eliminar el ultimo gasto?\nEsto no se puede deshacer.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B40_double_edit",
+      "description": "2 ediciones consecutivas",
+      "turns": [
+        {
+          "message": "fumigué P1 con glifosato 2 lt/ha",
+          "response": "💨 *Fumigación* registrada\n📍 Don V > P1\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: soja",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "no, era en P2",
+          "response": "✏️ Actividad corregida: *Fumigación* de *soja*\n📍 P1 → *Don V > P2*",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "perdón, era 3 lt/ha",
+          "response": "✏️ Actividad corregida: *Fumigación* de *soja*\n📍 P2 → *Don V > P2*",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B41_ambiguous_pronoun_edit",
+      "description": "\"ese gasto\" sin contexto claro",
+      "turns": [
+        {
+          "message": "gasté 12 mil en gasoil",
+          "response": "💸 *Combustible* — $12.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nCombustible\n$12.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "gasté 34 mil en agroquímicos",
+          "response": "💸 *Agroquímicos* — $34.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nAgroquímicos\n$34.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "sacale el lote a ese gasto",
+          "response": "✏️ Gasto corregido: *Agroquímicos* $34.000\n📍 sin lote → *(sin lote)*",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B42_misspelled_borra",
+      "description": "\"borame\" en lugar de \"borrame\"",
+      "turns": [
+        {
+          "message": "fertilicé P3 con DAP 80 kg/ha",
+          "response": "🧪 *Fertilización* registrada\n📍 Don V > P3\n🧴 DAP\n📏 80 kg/ha\n🌱 Cultivo: avena",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "bora la ultima actividad",
+          "response": "🗑️ Fertilización de avena en P3 eliminada.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "B43_partial_corr_amount_only",
+      "description": "Correction de solo amount mid-flow",
+      "turns": [
+        {
+          "message": "gasté 100 mil en sueldos",
+          "response": "💸 *Sueldos* — $100.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "no, son 120 mil",
+          "response": "💸 *Agroquímicos* — $120.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nAgroquímicos\n$120.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "D01_voy_a_subir_factura_compleja",
+      "description": "\"voy a subir factura de YPF\"",
+      "turns": [
+        {
+          "message": "voy a subir una factura de YPF por 50 mil",
+          "response": "Perfecto, enviame la foto de la factura de YPF por $50.000 y la cargo al sistema. Una vez que la reciba, la vinculo al gasto de combustible.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "D02_query_factura_proveedor",
+      "description": "Buscar factura por proveedor",
+      "turns": [
+        {
+          "message": "mostrame las facturas de YPF",
+          "response": "No tenés documentos procesados. Enviá una foto de factura para empezar.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "D03_doc_classification_request",
+      "description": "\"qué tipos de documentos puedo subir\"",
+      "turns": [
+        {
+          "message": "qué tipos de documentos puedo cargar al sistema",
+          "response": "Podés cargar dos tipos de documentos:\n\n📄 **Facturas** — para registrar gastos (compras, servicios, etc.)\n  • Foto clara de la factura\n  • Se vincula automáticamente al gasto correspondiente\n  • Ejemplo: factura de YPF, fertilizantes, servicios, etc.\n\n📦 **Remitos** — para movimientos de stock (entradas/salidas de insumos)\n  • Foto del remito de compra o entrega\n  • Se vincula al inventario del depósito\n  • Ejemplo: remito de semillas, agroquímicos, combustible, etc.\n\nEnviame la foto y te cargo el documento al sistema. ¿Qué querés subir?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "D04_pdf_o_imagen",
+      "description": "\"puedo subir PDF o solo fotos?\"",
+      "turns": [
+        {
+          "message": "puedo subir PDF o solo fotos?",
+          "response": "Podés subir ambos formatos: 📸 fotos (JPG, PNG) o 📄 PDF. Lo importante es que sea legible y contenga todos los datos de la factura o remito (número, fecha, monto, concepto, etc.). Enviame el archivo y lo cargo al sistema.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "D05_compound_factura_then_record",
+      "description": "Factura mention + registro manual",
+      "turns": [
+        {
+          "message": "voy a cargar facturas",
+          "response": "Perfecto, estoy listo para cargar las facturas. Enviame las fotos o PDFs y me decís:\n- Monto de cada factura\n- Concepto/qué es (combustible, insumos, servicios, etc.)\n- En qué lote o campo aplica (si corresponde)\n\nY yo las registro en el sistema.",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "mejor anotá ya: gasté 25 mil en combustible",
+          "response": "💸 *Combustible* — $25.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+          "pass": true,
+          "note": "non-empty"
+        },
+        {
+          "message": "[TAP flow_confirm]",
+          "response": "✅ Gasto registrado\nCombustible\n$25.000\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "D06_pregunta_documentos_pendientes",
+      "description": "Status de procesamiento",
+      "turns": [
+        {
+          "message": "cuántas facturas me faltan procesar",
+          "response": "No tenés documentos procesados. Enviá una foto de factura para empezar.",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "D07_help_doc",
+      "description": "Help específico de documentos",
+      "turns": [
+        {
+          "message": "cómo funcionan los documentos",
+          "response": "Los documentos (facturas y remitos) funcionan así:\n\n📋 **FACTURAS** = Gastos\n- Subís la foto/PDF de la factura\n- Yo registro el gasto automáticamente (monto, concepto, fecha)\n- Se vincula a tu historial financiero\n- Sirve como comprobante de compras (insumos, combustible, servicios, etc.)\n\n📦 **REMITOS** = Stock/Inventario\n- Subís la foto/PDF del remito de entrada/salida\n- Yo actualizo el inventario (qué producto, cuánto, de dónde viene o a dónde va)\n- Se vincula al stock del depósito\n- Sirve como comprobante de movimientos de insumos\n\n**Cómo usarlos:**\n1. Enviame la foto/PDF del documento\n2. Decime qué es (factura de gasoil, remito de semillas, etc.)\n3. Yo lo cargo y lo vinculo al gasto/stock correspondiente\n\n¿Tenés alguna factura o remito para cargar?",
+          "pass": true,
+          "note": "non-empty"
+        }
+      ],
+      "overallPass": true
+    }
+  ]
+}

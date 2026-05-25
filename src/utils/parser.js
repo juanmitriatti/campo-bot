@@ -841,6 +841,31 @@ const COMMAND_PATTERNS = [
     },
   },
   {
+    // "asignar grupo X al lote A" / "el lote A es del grupo X" / "lotes 1A, 1B son de X"
+    // Fast-path that skips the AI agent for clear titularidad/grupo phrasings.
+    command: "set_plot_grupo",
+    patterns: [
+      // "(los )lotes A, B son del grupo X" / "...son de X" / "...pertenecen al grupo X"
+      /(?:los\s+)?lotes\s+(.+?)\s+(?:son\s+(?:de|del)\s+(?:grupo\s+|sociedad\s+|titularidad\s+)?|pertenecen\s+al?\s+(?:grupo\s+)?)(.+)/,
+      // "el lote A es del grupo X" / "lote A es de X"
+      /(?:el\s+)?lote\s+(.+?)\s+es\s+(?:de|del)\s+(?:grupo\s+|sociedad\s+|titularidad\s+)?(.+)/,
+      // "asignar grupo X al lote A" / "asigna grupo X a lotes A, B"
+      /asign(?:ar|a)\s+(?:grupo|sociedad|titularidad)\s+(.+?)\s+a(?:l)?\s+(?:los\s+)?lotes?\s+(.+)/,
+    ],
+    extract: (m, _norm, _original) => {
+      // The "asignar" pattern flips the order (grupo first, plots second).
+      const isAsignar = /^asign(?:ar|a)/i.test(m[0]);
+      const grupo = (isAsignar ? m[1] : m[2]).trim();
+      const plotsRaw = (isAsignar ? m[2] : m[1]).trim();
+      const plotNames = plotsRaw
+        .split(/\s*,\s*|\s+y\s+/)
+        .map(s => s.trim())
+        .filter(Boolean);
+      if (plotNames.length === 0 || !grupo) return null;
+      return { plotNames, grupo };
+    },
+  },
+  {
     // "agregar lote D" / "crear el lote norte" — no field specified (handler auto-assigns)
     // (.+?) stops before " y " + action verb to avoid swallowing compound messages
     command: "add_plot",

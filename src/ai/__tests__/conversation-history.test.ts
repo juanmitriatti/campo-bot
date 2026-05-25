@@ -54,15 +54,19 @@ describe('ConversationHistoryService', () => {
     expect(turns.some(t => t.content === 'recent')).toBe(true);
   });
 
-  it('handles null response_text gracefully', async () => {
+  it('filters out rows with null/empty response_text (prevents agent re-firing prior turns)', async () => {
+    // Real SQL has `WHERE response_text IS NOT NULL AND response_text <> ''`,
+    // so the rows array shouldn't include those in production. We still defend
+    // in code by skipping any sneaky null rows that slip through.
     mockQuery.mockResolvedValue({
       rows: [
         { message_text: 'hello', response_text: null },
+        { message_text: 'world', response_text: '' },
       ],
     });
 
     const turns = await service.getRecentTurns(1 as any);
-    expect(turns).toEqual([{ role: 'user', content: 'hello' }]);
+    expect(turns).toEqual([]);
   });
 
   it('returns empty array when maxChars is 0', async () => {

@@ -41,11 +41,14 @@ export function useDashboardData(fieldId: number | null) {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (fieldId == null) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const result = await apiRequest<DashboardData>(`/dashboard?field_id=${fieldId}`);
+      // fieldId === null → "Todos los campos" view: aggregate across all user fields.
+      const url = fieldId == null
+        ? '/dashboard?field_id=all'
+        : `/dashboard?field_id=${fieldId}`;
+      const result = await apiRequest<DashboardData>(url);
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar resumen');

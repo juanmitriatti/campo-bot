@@ -1,0 +1,352 @@
+[
+  {
+    "name": "01_complete_quad_basic",
+    "category": "complete",
+    "domains": [
+      "gastos",
+      "ingresos",
+      "actividades",
+      "hacienda"
+    ],
+    "message": "Hoy gasté 50 mil en gasoil, vendí 20 tn de maíz a 200 USD por tonelada, fumigué Norte con glifosato 3 lt/ha, agregué 10 vaquillonas Angus en Sur",
+    "status": "FAIL",
+    "reason": "wrote=4, missing=[gasoil,vaquillona]",
+    "response": "✅ Anotado\nCombustible\n$50.000\n📍 la esperanza\n💰 Registrado\nMaíz\n$4.000 USD\n20 tn a $200\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $4.000\nGastos: $50.000\nResultado: $-46.000\nMargen: -1150%\n💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 150 lt de *glifosato* en Principal.\n¿Descontar *450 lt*?\n💡 Guardé 1 ingreso + 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "02_complete_sow_harvest_health_stock",
+    "category": "complete",
+    "domains": [
+      "actividades",
+      "cosecha",
+      "hacienda",
+      "stock"
+    ],
+    "message": "Sembré trigo en Sur, coseché soja en Norte con 4500 kg/ha, vacuné 50 vacas contra aftosa, agregué 30 bolsas de soja al galpón Principal",
+    "status": "PASS",
+    "reason": "4+ writes (4)",
+    "response": "📋 Se cerró la campaña anterior de *maíz* en la esperanza > Sur.\n🌱 *trigo* sembrado en *la esperanza > Sur*\n📅 Campaña 2025/26\n🌾 *soja* cosechado en *la esperanza > Norte*\n📅 Campaña 2025/26\n📊 Rendimiento: 675.000 kg (4.500 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈ 675 tn* de *soja* al stock?\n📥 *Stock actualizado*\n\n  📦 *soja*\n  ➕ 30 bolsas\n  📊 Total: *230 bolsas*\n  🏭 Principal (la esperanza)\n💉 *Evento sanitario registrado*\n  Tipo: Vacunación\n  🦠 aftosa\n  🐄 50 Vacas\n  📍 la esperanza > Norte (auto)"
+  },
+  {
+    "name": "03_complete_4xagro",
+    "category": "complete",
+    "domains": [
+      "actividades",
+      "monitoreos",
+      "gastos",
+      "cosecha"
+    ],
+    "message": "Coseché maíz en Sur con 8500 kg/ha, monitoreé Norte soja V3 con 15% de rama negra, fumigué Fondo con 2,4D 1,5 lt/ha, gasté 200 mil en agroquímicos",
+    "status": "WARN",
+    "reason": "wrote=3 (expected ≥4)",
+    "response": "En *la esperanza > Sur* hay *trigo* sembrado, no maíz.\nSi querés cosechar trigo, escribí:\n🌾 *cosechamos trigo en el lote Sur*\n🔍 *Monitoreo registrado* en *la esperanza > Norte*\n  📐 Estadio: *V3*\n  🌿 Malezas: 15.00% (rama negra)\n💨 *Fumigación* registrada\n📍 la esperanza > Fondo\n🧴 2,4D (herbicida)\n📏 1.5 lt/ha\n🌱 Cultivo: trigo\n✅ Anotado\nAgroquímicos\n$200.000\n📍 la esperanza\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "04_complete_full_livestock_chain",
+    "category": "complete",
+    "domains": [
+      "hacienda",
+      "hacienda",
+      "ingresos",
+      "gastos"
+    ],
+    "message": "Pesé 40 terneros 250 kg promedio, inseminé 20 vacas con IATF, vendí 15 novillos a 1500 dólares cada uno, compré 5 bolsas de antiparasitario por 80 mil",
+    "status": "FAIL",
+    "reason": "wrote=4, missing=[250,novillos]",
+    "response": "❌ Decime en qué lote. Opciones: Fondo, Norte, Sur.\n📥 *Stock actualizado*\n\n  📦 *antiparasitario* (nuevo)\n  ➕ 5 bolsas\n  📊 Total: *5 bolsas*\n  🏭 Principal (la esperanza)\n  💰 Gasto registrado: $80.000\n💉 *Evento reproductivo registrado*\n  Tipo: Inseminación artificial\n  🐄 20 Vacas\n  🔬 Método: IATF\n  📍 la esperanza > Norte (auto)"
+  },
+  {
+    "name": "05_complete_stock_spraying_fertil_expense",
+    "category": "complete",
+    "domains": [
+      "stock",
+      "actividades",
+      "actividades",
+      "gastos"
+    ],
+    "message": "Saqué 40 lt de glifosato del galpón Principal, fumigué Norte con eso, fertilicé Sur con urea 120 kg/ha, gasté 30 mil en gasoil",
+    "status": "FAIL",
+    "reason": "wrote=4, missing=[gasoil]",
+    "response": "📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 40 lt\n  📊 Quedan: *110 lt*\n  🏭 Principal (la esperanza)\n💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato\n📏 40 lt\n🌱 Cultivo: soja\n\n📦 Tenés 110 lt de *glifosato* en Principal.\n¿Descontar *40 lt*?\n🧪 *Fertilización* registrada\n📍 la esperanza > Sur\n🧴 urea\n📏 120 kg/ha\n🌱 Cultivo: trigo\n✅ Anotado\nCombustible\n$30.000\n📍 la esperanza\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "06_complete_harvest_income_scouting_expense",
+    "category": "complete",
+    "domains": [
+      "cosecha",
+      "ingresos",
+      "monitoreos",
+      "gastos"
+    ],
+    "message": "Coseché soja en Norte con 4200 kg/ha, vendí 80 tn a 450 USD por tonelada, monitoreé Sur maíz V8 sin plagas, gasté 30 mil en combustible",
+    "status": "WARN",
+    "reason": "wrote=3 (expected ≥4)",
+    "response": "🌾 *soja* cosechado en *la esperanza > Norte*\n📅 Campaña 2025/26\n📊 Rendimiento: 630.000 kg (4.200 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈ 630 tn* de *soja* al stock?\n💰 Registrado\nSoja\n$36.000 USD\n80 tn a $450\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $40.000\nGastos: $360.000\nResultado: $-320.000\nMargen: -800%\n\n📦 Tenés *230bolsas* de *soja* en stock.\n¿Descontar *80tn*?\n🔍 *Monitoreo registrado* en *la esperanza > Sur*\n  📐 Estadio: *V8*\n✅ Listo, gasto registrado\nCombustible\n$30.000\n📍 la esperanza\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "07_complete_rainfall_sow_livestock_expense",
+    "category": "complete",
+    "domains": [
+      "actividades",
+      "actividades",
+      "hacienda",
+      "gastos"
+    ],
+    "message": "Llovieron 25 mm anoche en La Esperanza, sembré girasol en Fondo, agregué 25 vacas Brangus en Norte, compré 100 bolsas de urea a 9 mil cada una",
+    "status": "FAIL",
+    "reason": "wrote=5, missing=[25 mm]",
+    "response": "🌧️ Lluvia registrada: *25mm*\n📍 la esperanza\n📅 21 de mayo\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)\n📋 Se cerró la campaña anterior de *trigo* en la esperanza > Fondo.\n🌱 *girasol* sembrado en *la esperanza > Fondo*\n📅 Campaña 2025/26\n📥 *Stock actualizado*\n\n  📦 *urea*\n  ➕ 100 bolsas\n  📊 Total: *180 bolsas*\n  🏭 Principal (la esperanza)\n  💰 Gasto registrado: $900.000\n🐄 *Hacienda actualizada*\n\n  Vaca Brangus (nuevo grupo)\n  ➕ 25 animales\n  📊 Total: *25*\n  📍 Norte (la esperanza)"
+  },
+  {
+    "name": "08_complete_pesaje_repro_income_stock",
+    "category": "complete",
+    "domains": [
+      "hacienda",
+      "hacienda",
+      "ingresos",
+      "stock"
+    ],
+    "message": "Pesé 30 vacas con 420 kg promedio, eché el toro Don Pancho en Norte, vendí 10 toros a 2000 USD cada uno, saqué 100 bolsas de semilla del galpón",
+    "status": "FAIL",
+    "reason": "wrote=1, missing=[420,Don Pancho]",
+    "response": "❌ No hay toro en el lote Norte.\n❌ No se encontró \"semilla\" en el stock\n¿A cuántos animales?"
+  },
+  {
+    "name": "09_complete_spray_fertil_expense_observation",
+    "category": "complete",
+    "domains": [
+      "actividades",
+      "actividades",
+      "gastos",
+      "monitoreos"
+    ],
+    "message": "Fumigué Norte con 2,4D 1,5 lt/ha, fertilicé Sur con urea 100 kg/ha, gasté 80 mil en herbicidas, vi liebres en Fondo",
+    "status": "PASS",
+    "reason": "4+ writes (4)",
+    "response": "💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 2,4D (herbicida)\n📏 1.5 lt/ha\n🌱 Cultivo: soja\n🧪 *Fertilización* registrada\n📍 la esperanza > Sur\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: trigo\n✅ Listo, gasto registrado\nAgroquímicos\n$80.000\n📍 la esperanza\n🔍 Observación registrada\n\n📍 la esperanza > Fondo\n📂 📝 General\n📝 vi liebres en fondo\n\nPodés registrar ahora:\n• otra observación lote Fondo\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "10_complete_tillage_sow_expense_livestock",
+    "category": "complete",
+    "domains": [
+      "actividades",
+      "actividades",
+      "gastos",
+      "hacienda"
+    ],
+    "message": "Aré Norte con rastra, sembré soja en Norte, gasté 150 mil en gasoil de la sembradora, traté 50 vacas con ivermectina contra parásitos",
+    "status": "FAIL",
+    "reason": "wrote=4, missing=[gasoil]",
+    "response": "🚜 *Labranza* registrada\n📍 la esperanza > Norte\n🧴 rastra\n🌱 Cultivo: soja\n🌱 *soja* sembrado en *la esperanza > Norte*\n📅 Campaña 2025/26\n✅ Gasto guardado\nCombustible\n$150.000\n📍 Lote Norte (la esperanza)\n💉 *Evento sanitario registrado*\n  Tipo: Tratamiento\n  🦠 ivermectina\n  🐄 50 Vacas\n  📍 la esperanza > Norte"
+  },
+  {
+    "name": "11_partial_missing_prices_quad",
+    "category": "partial",
+    "domains": [
+      "ingresos",
+      "ingresos",
+      "gastos",
+      "gastos"
+    ],
+    "message": "Vendí 30 tn de maíz y 20 tn de soja a 950 USD, gasté en gasoil, compré urea",
+    "status": "WARN",
+    "reason": "wrote=2, ask=true, missing=[falta]",
+    "response": "💰 Listo, ingreso registrado\nMaíz\n$28.500 USD\n30 tn a $950\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $68.500\nGastos: $1.520.000\nResultado: $-1.451.500\nMargen: -2119%\n💰 Listo, ingreso registrado\nSoja\n$19.000 USD\n20 tn a $950\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $87.500\nGastos: $1.520.000\nResultado: $-1.432.500\nMargen: -1637%\n\n📦 Tenés *230bolsas* de *soja* en stock.\n¿Descontar *20tn*?\n💡 Guardé 1 ingreso a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "12_partial_missing_plots",
+    "category": "partial",
+    "domains": [
+      "actividades",
+      "actividades",
+      "ingresos",
+      "gastos"
+    ],
+    "message": "Fumigué con glifosato 3 lt/ha, sembré soja, vendí maíz a 200 USD por tonelada, gasté 50 mil en agroquímicos",
+    "status": "PASS",
+    "reason": "wrote=1, ask=true",
+    "response": "¿En qué lote?\n\n*la esperanza:*\n  • Fondo\n  • Norte\n  • Sur\n¿En qué lote?\n\n*la esperanza:*\n  • Fondo\n  • Norte\n  • Sur\n✅ Anotado\nAgroquímicos\n$50.000\n📍 la esperanza\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "13_partial_missing_crops_in_activities",
+    "category": "partial",
+    "domains": [
+      "actividades",
+      "cosecha",
+      "ingresos",
+      "monitoreos"
+    ],
+    "message": "Sembré en Sur, coseché en Norte con 4500 kg/ha, vendí 20 tn a 300 USD por tonelada, observé chinches en Fondo",
+    "status": "PASS",
+    "reason": "wrote=1, ask=true",
+    "response": "🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)\n🌾 *soja* cosechado en *la esperanza > Norte*\n📅 Campaña 2025/26\n📊 Rendimiento: 675.000 kg (4.500 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈ 675 tn* de *soja* al stock?\n🔍 Observación registrada\n\n📍 la esperanza > Fondo\n📂 🐛 Sanidad\n📝 chinches observadas\n\n⚠️ *Recomendación*\nMonitorear en los próximos días para evaluar avance de la plaga.\n\nPodés registrar ahora:\n• fumigación lote Fondo\n• otra observación lote Fondo\n¿En qué categoría va este ingreso de $6.000?"
+  },
+  {
+    "name": "14_partial_no_quantities",
+    "category": "partial",
+    "domains": [
+      "ingresos",
+      "gastos",
+      "stock",
+      "actividades"
+    ],
+    "message": "Vendí soja a buen precio, gasté en semillas, compré bolsas de urea, fumigué Norte",
+    "status": "PASS",
+    "reason": "wrote=0, ask=true",
+    "response": "📦 Cargar stock — me faltan datos: ¿qué cantidad?\n🧪 Fumigación — me faltan datos: ¿qué producto? ¿qué cantidad?"
+  },
+  {
+    "name": "15_partial_hacienda_incomplete",
+    "category": "partial",
+    "domains": [
+      "hacienda",
+      "ingresos",
+      "hacienda",
+      "hacienda"
+    ],
+    "message": "Agregué vacas Angus en Norte, vendí novillos, vacuné, pesé los terneros",
+    "status": "PASS",
+    "reason": "wrote=0, ask=true",
+    "response": "¿Cuántas vacas Angus agregaste en Norte?"
+  },
+  {
+    "name": "16_partial_stock_incomplete",
+    "category": "partial",
+    "domains": [
+      "stock",
+      "stock",
+      "gastos",
+      "actividades"
+    ],
+    "message": "Saqué semilla del galpón, agregué bolsas, compré agroquímico, fumigué Sur",
+    "status": "PASS",
+    "reason": "wrote=0, ask=true",
+    "response": "Necesito más detalles para registrar:\n\n1️⃣ **Semilla del galpón** — ¿Qué producto y cuántas bolsas/kg sacaste?\n\n2️⃣ **Bolsas agregadas** — ¿Qué producto? ¿Cuántas bolsas? ¿A qué precio (si las compraste)?\n\n3️⃣ **Agroquímico comprado** — ¿Qué producto? ¿Cuánto (lt/kg)? ¿Cuánto pagaste?\n\n4️⃣ **Fumigación en Sur** — ¿Qué producto aplicaste? ¿Cuánto (lt/ha)?"
+  },
+  {
+    "name": "17_partial_cosecha_incomplete",
+    "category": "partial",
+    "domains": [
+      "cosecha",
+      "ingresos",
+      "monitoreos",
+      "actividades"
+    ],
+    "message": "Coseché en Norte, vendí parte a 380 USD por tonelada, monitoreé Sur, llovió un poco",
+    "status": "WARN",
+    "reason": "wrote=0, ask=true, missing=[falta]",
+    "response": "Para registrar la cosecha en Norte necesito saber: ¿qué cultivo cosechaste? ¿cuántas toneladas o kg/ha?"
+  },
+  {
+    "name": "18_partial_4x_no_specifics",
+    "category": "partial",
+    "domains": [
+      "actividades",
+      "hacienda",
+      "hacienda",
+      "hacienda"
+    ],
+    "message": "Fumigué Norte, inseminé vacas, vacuné, pesé los terneros",
+    "status": "PASS",
+    "reason": "wrote=0, ask=true",
+    "response": "Para registrar la fumigación en Norte necesito: ¿qué producto aplicaste? ¿cuánto (lt/ha o lt total)?\n\nPara la inseminación de vacas: ¿cuántas vacas inseminaste? ¿qué método (IA, IATF, monta natural)?\n\nPara la vacunación: ¿cuántas vacas vacunaste? ¿contra qué enfermedad o vacuna?\n\nPara el pesaje de terneros: ¿cuántos terneros pesaste? ¿cuál fue el peso promedio en kg?"
+  },
+  {
+    "name": "19_partial_ambiguous_compound",
+    "category": "partial",
+    "domains": [
+      "gastos",
+      "actividades",
+      "hacienda",
+      "ingresos"
+    ],
+    "message": "Compré bolsas, sembré, agregué vacas, vendí maíz",
+    "status": "PASS",
+    "reason": "wrote=0, ask=true",
+    "response": "Necesito más detalles para registrar estas acciones:\n\n1️⃣ **Compré bolsas** — ¿De qué producto (semilla, fertilizante)? ¿Cuántas bolsas? ¿Cuánto pagaste?\n\n2️⃣ **Sembré** — ¿Qué cultivo? ¿En qué lote? ¿Cuántas hectáreas?\n\n3️⃣ **Agregué vacas** — ¿Cuántas vacas? ¿En qué lote? ¿Qué raza?\n\n4️⃣ **Vendí maíz** — ¿Cuántas toneladas? ¿A qué precio por tonelada?"
+  },
+  {
+    "name": "20_partial_stock_sow_repro_pesaje",
+    "category": "partial",
+    "domains": [
+      "stock",
+      "actividades",
+      "hacienda",
+      "hacienda"
+    ],
+    "message": "Saqué del galpón para sembrar Norte, regué Sur, eché el toro, pesé los terneros",
+    "status": "PASS",
+    "reason": "wrote=0, ask=true",
+    "response": "Para registrar estas acciones necesito más detalles:\n\n1️⃣ **Saqué del galpón para sembrar Norte** — ¿Qué producto sacaste? ¿Cuánto (kg, lt, bolsas)?\n\n2️⃣ **Regué Sur** — ¿Cuánta agua (mm, lt, m³)?\n\n3️⃣ **Eché el toro** — ¿Cuántas vacas/vaquillonas? ¿En qué lote? ¿Qué toro (nombre, raza, caravana)?\n\n4️⃣ **Pesé los terneros** — ¿Cuántos terneros pesaste? ¿Cuál fue el peso promedio en kg?"
+  },
+  {
+    "name": "21_partial_informal_compound",
+    "category": "partial",
+    "domains": [
+      "ingresos",
+      "gastos",
+      "actividades",
+      "hacienda"
+    ],
+    "message": "Vendí algo de soja, compré urea, ayer fumigué Norte con un herbicida, agregué unos terneros en Sur",
+    "status": "PASS",
+    "reason": "wrote=0, ask=true",
+    "response": "Para registrar estas acciones necesito algunos detalles:\n\n1️⃣ **Vendí soja** — ¿Cuántas toneladas? ¿A qué precio por tonelada (en pesos o dólares)?\n\n2️⃣ **Compré urea** — ¿Cuántos kg o bolsas? ¿Cuánto pagaste?\n\n3️⃣ **Ayer fumigué Norte** — ¿Qué herbicida exactamente? ¿Cuánto aplicaste (lt/ha)?\n\n4️⃣ **Agregué terneros en Sur** — ¿Cuántos terneros? ¿Qué raza?"
+  },
+  {
+    "name": "22_partial_stock_monitor_income_expense",
+    "category": "partial",
+    "domains": [
+      "stock",
+      "monitoreos",
+      "ingresos",
+      "gastos"
+    ],
+    "message": "Saqué un poco de glifosato, monitoreé Norte con plagas, vendí parte de la cosecha, gasté en combustible",
+    "status": "PASS",
+    "reason": "wrote=0, ask=true",
+    "response": "Para registrar estas acciones necesito algunos detalles:\n\n1️⃣ **Saqué glifosato** — ¿Cuánto (litros)? ¿De qué depósito/galpón?\n\n2️⃣ **Monitoreé Norte con plagas** — ¿Qué plaga viste? ¿Cuál es la severidad (leve, moderada, alta, severa)? ¿Qué porcentaje de plantas afectadas?\n\n3️⃣ **Vendí parte de la cosecha** — ¿Qué cultivo? ¿Cuántas toneladas? ¿A qué precio por tonelada?\n\n4️⃣ **Gasté en combustible** — ¿Cuánto (en pesos o dólares)?"
+  },
+  {
+    "name": "23_partial_cosecha_with_3_partials",
+    "category": "partial",
+    "domains": [
+      "cosecha",
+      "ingresos",
+      "gastos",
+      "monitoreos"
+    ],
+    "message": "Coseché soja en Norte con 4500 kg/ha, vendí parte, gasté en cosechadora, monitoreé que venía bien",
+    "status": "PASS",
+    "reason": "wrote=0, ask=true",
+    "response": "🌾 *soja* cosechado en *la esperanza > Norte*\n📅 Campaña 2025/26\n📊 Rendimiento: 675.000 kg (4.500 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈ 675 tn* de *soja* al stock?\nCargar ≈ 675 tn de soja al stock?"
+  },
+  {
+    "name": "24_partial_4x_partial_data",
+    "category": "partial",
+    "domains": [
+      "actividades",
+      "hacienda",
+      "monitoreos",
+      "ingresos"
+    ],
+    "message": "Aré Norte ayer, vacuné el ganado, monitoreé soja, vendí 5 tn",
+    "status": "PASS",
+    "reason": "wrote=2, ask=true",
+    "response": "🚜 *Labranza* registrada\n📍 la esperanza > Norte\n🧴 arado\n🌱 Cultivo: soja\n📅 20/5/2026\n💉 ¿Contra qué vacuna fue? (ej: aftosa, brucelosis, IBR)\n🔍 *Monitoreo registrado* en *la esperanza > Norte*"
+  },
+  {
+    "name": "25_partial_long_informal_4plus",
+    "category": "partial",
+    "domains": [
+      "ingresos",
+      "actividades",
+      "hacienda",
+      "stock"
+    ],
+    "message": "Che, ayer pasaron muchas cosas: vendí 15 tn de trigo a 180 USD por tonelada, fumigué Norte con un herbicida nuevo, agregué 12 terneros en Sur, perdí 30 lt de gasoil del galpón Principal",
+    "status": "WARN",
+    "reason": "wrote=2, ask=true, missing=[tern]",
+    "response": "💰 Ingreso guardado\nTrigo\n$2.700 USD\n15 tn a $180\n📍 la esperanza\n📅 21/05/2026\n📈 Resultado del mes hasta ahora\n\nIngresos: $90.200\nGastos: $1.570.000\nResultado: $-1.479.800\nMargen: -1641%\n🧪 Fumigación — me faltan datos: ¿qué cantidad?\n❌ No se encontró \"gasoil\" en el stock\n💡 Guardé 1 ingreso a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  }
+]

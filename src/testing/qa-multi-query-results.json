@@ -1,0 +1,662 @@
+{
+  "summary": {
+    "pass": 39,
+    "partialPass": 0,
+    "fail": 1,
+    "total": 40
+  },
+  "tests": [
+    {
+      "name": "T01_compound_vacas+pesaje",
+      "description": "2 queries en 1 mensaje: count + último peso",
+      "turns": [
+        {
+          "message": "cuántas vacas tengo y cuánto pesan",
+          "response": "🐄 *Hacienda total: 101 animales*\n\n  📍 don v2 / N1\n    • Vaca Angus: *71*\n\n  📍 don v2 / N3\n    • Vaca Hereford: *30* (410.00 kg prom.)\n    ⚖️ Peso estimado: 12.300 kg\n⚖️ *Pesajes*\n\n  📅 10/5/2026: 460 kg (80 vaca) — 📍 don v2 > N1\n  📅 15/3/2026: 445 kg (80 vaca) — 📍 don v2 > N1\n  📅 10/1/2026: 420 kg (80 vaca) — 📍 don v2 > N1\n\n  📈 GDPV (últimos 2 pesajes): *0.27 kg/día* (56 días)",
+          "pass": true,
+          "note": "esperaba vacas+kg"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T02_compound_2_categories",
+      "description": "gasoil + sueldos en 1 mensaje",
+      "turns": [
+        {
+          "message": "cuánto gasté en gasoil y cuánto en sueldos",
+          "response": "No hay registros — combustible (Todo el historial).\n¿Más?",
+          "pass": false,
+          "note": "esperaba ambas categorías"
+        }
+      ],
+      "overallPass": false
+    },
+    {
+      "name": "T03_multiturn_type_pivot",
+      "description": "\"vendí soja\" → \"y de trigo?\" (pivot crop, inherit type)",
+      "turns": [
+        {
+          "message": "cuánto vendí de soja",
+          "response": "No hay registros — soja (Todo el historial).\n¿Más?",
+          "pass": true,
+          "note": "soja en T1"
+        },
+        {
+          "message": "y de trigo?",
+          "response": "No hay registros — trigo (Todo el historial).\n¿Más?",
+          "pass": true,
+          "note": "trigo en T2"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T04_compound_stock_2_items",
+      "description": "urea y glifosato",
+      "turns": [
+        {
+          "message": "stock de urea y de glifosato",
+          "response": "📦 *urea*\n\n  📊 Cantidad: *1000 kg*\n  🏭 Centro (don v2)\n📦 *glifosato*\n\n  📊 Cantidad: *350 lt*\n  🏭 Centro (don v2)",
+          "pass": true,
+          "note": "esperaba ambos productos"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T05_refine_progressive",
+      "description": "\"monitoreos N1\" → \"con plagas\" → \"severos\"",
+      "turns": [
+        {
+          "message": "monitoreos del lote N1",
+          "response": "🔍 *Monitoreos — lote N1* (4)\n📅 Todo el historial\n• 30/03/26 *N1* — R5 · chinche alta · hum 3/5\n• 25/02/26 *N1* — R1 · 15% maleza rama negra/yuyo colorado · chinche moderada\n• 20/01/26 *N1* — V3 · 8% maleza rama negra · hum 4/5\n• 15/12/25 *N1* — VE · 85% emerg. · 28 pl/m²\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y con plagas?",
+          "response": "🔍 *Monitoreos — lote N1, con plagas* (2)\n📅 Todo el historial\n• 30/03/26 *N1* — R5 · chinche alta · hum 3/5\n• 25/02/26 *N1* — R1 · 15% maleza rama negra/yuyo colorado · chinche moderada\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y los severos?",
+          "response": "No hay monitoreos — lote N1, con plagas (Todo el historial).\n\nDatos cargados: malezas: avena negra, rama negra, yuyo colorado, quinoa | plagas: chinche, oruga cogollera | estadios: Z39, Z25, R5, R2, R1, V8, V3, V4, VE.\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T06_cross_domain_cosecha_ingreso",
+      "description": "cosecha + ingreso de soja en 1 mensaje",
+      "turns": [
+        {
+          "message": "cuántos kg de soja coseché y cuánto vendí",
+          "response": "📊 *Resumen cosechas — soja* (3 cargas)\n📅 Todo el historial\n\n🌾 *Por cultivo:*\n  • soja: 91,7 tn (3 cargas)\n\n📍 *Por destinatario:*\n  • Cargill: 60,5 tn (2)\n  • Vicentin: 31,2 tn (1)\n\n💧 Humedad promedio: 13.77% (3/3 con dato)\n\n📊 *Total: 91,7 tn*\nNo hay registros — soja (Todo el historial).\n¿Más?",
+          "pass": true,
+          "note": "esperaba cosecha+venta"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T07_compound_3_categories",
+      "description": "3 categorías de gasto en 1 mensaje",
+      "turns": [
+        {
+          "message": "gastos de combustible, sueldos y agroquímicos",
+          "response": "No hay registros — combustible/sueldos/agroquímicos (mayo de 2026).\n¿Más?",
+          "pass": true,
+          "note": "esperaba 3 cat"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T08_multiturn_periods",
+      "description": "\"este mes\" → \"mes pasado\" → \"total\"",
+      "turns": [
+        {
+          "message": "cuánto llovió este mes",
+          "response": "No hay registros de lluvia (este mes).\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y el mes pasado?",
+          "response": "No hay registros de lluvia (el mes pasado).\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y en total?",
+          "response": "🌧️ No hay lluvias registradas — campo don v2 (Todo el historial).",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T09_compound_what_where",
+      "description": "qué cultivos + en qué lotes",
+      "turns": [
+        {
+          "message": "qué cultivos tengo y en qué lotes",
+          "response": "🌱 *Cultivos activos*\n3 lotes · 490 ha\n\n🌱 Activa *soja* en *don v2 > N1* — 180 ha — 2025/26\n    últ: Siembra 23/05/2026\n🌱 Activa *maíz* en *don v2 > N2* — 220 ha — 2025/26\n    últ: Siembra 23/05/2026\n🌱 Activa *trigo* en *don v2 > N3* — 90 ha — 2025/26\n    últ: Siembra 23/05/2026",
+          "pass": true,
+          "note": "esperaba cultivos+lotes"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T10_multiturn_balance_periods",
+      "description": "balance este mes → mes pasado → comparalos",
+      "turns": [
+        {
+          "message": "balance este mes",
+          "response": "No hay movimientos (mayo de 2026).\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y el mes pasado?",
+          "response": "💰 *Balance por categoría*\n📅 abril de 2026\n\n*Hacienda*\n🟢 USD: ingresos USD 7.500 − gastos USD 0 = *USD 7.500*\n\n━━━━━━━━━━━━━━\n*Total abril de 2026:*\n🟢 USD: ingresos USD 7.500 − gastos USD 0 = *USD 7.500*\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "comparalos",
+          "response": "📊 *Comparación: abril de 2026 vs 2026-04-01 — 2026-04-30*\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T11_compound_lluvia_monitor",
+      "description": "2 dominios distintos en 1 msg",
+      "turns": [
+        {
+          "message": "lluvias y monitoreos del lote N1",
+          "response": "🌧️ No hay lluvias registradas — lote N1 (Todo el historial).\n🔍 *Monitoreos — lote N1* (4)\n📅 Todo el historial\n• 30/03/26 *N1* — R5 · chinche alta · hum 3/5\n• 25/02/26 *N1* — R1 · 15% maleza rama negra/yuyo colorado · chinche moderada\n• 20/01/26 *N1* — V3 · 8% maleza rama negra · hum 4/5\n• 15/12/25 *N1* — VE · 85% emerg. · 28 pl/m²\n¿Más?",
+          "pass": true,
+          "note": "esperaba al menos uno"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T12_specific_date",
+      "description": "qué pasó el 10 de marzo",
+      "turns": [
+        {
+          "message": "qué pasó el 10 de marzo",
+          "response": "¿De qué lote querés ver el historial?\nElegí un lote:",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T13_compound_hacienda_in_out",
+      "description": "vendí + quedan en 1 msg",
+      "turns": [
+        {
+          "message": "cuántas vacas vendí y cuántas me quedan",
+          "response": "🐄 *Movimientos de hacienda* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *21*\n  • 🐣 Nacimientos: *10*\n  • 💀 Muertes: *3*\n\n*Últimos:*\n  18/4/2026: -5 vaca (don v2 > N1) · US$1.500/cab\n  5/4/2026: +4 ternero (don v2 > N1)\n  22/3/2026: -8 novillo (don v2 > N2) · US$1.700/cab\n  15/3/2026: -1 vaca (don v2 > N1) · rayo\n  25/2/2026: +6 ternero (don v2 > N1)\n  10/2/2026: -3 vaca (don v2 > N1) · US$1.400/cab\n  8/1/2026: -2 ternero (don v2 > N1) · fiebre\n  15/12/2025: -5 novillo (don v2 > N2) · US$1.600/cab\n🐄 *Hacienda total: 101 animales*\n\n  📍 don v2 / N1\n    • Vaca Angus: *71*\n\n  📍 don v2 / N3\n    • Vaca Hereford: *30* (410.00 kg prom.)\n    ⚖️ Peso estimado: 12.300 kg",
+          "pass": true,
+          "note": "esperaba vacas"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T14_refine_progressive_harvest",
+      "description": "viajes → soja → Cargill → ordenalos",
+      "turns": [
+        {
+          "message": "viajes de cosecha",
+          "response": "🚛 *5 cargas*\n📅 Todo el historial\n• 15/05/26 — Luis Mora · 18,5 tn · trigo · → ACA · [N3] · 13.9% hum\n• 15/05/26 — Juan Pérez · 22 tn · trigo · → ACA · [N3] · 14.2% hum\n• 05/05/26 — Pedro Gómez · 31,2 tn · soja · → Vicentin · [N1] · 13.8% hum\n• 10/04/26 — Luis Mora · 28,5 tn · soja · → Cargill · [N1] · 14% hum\n• 10/04/26 — Pedro Gómez · 32 tn · soja · → Cargill · [N1] · 13.5% hum\n\n📊 *Total: 132,2 tn*\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "solo de soja",
+          "response": "🚛 *3 cargas — soja*\n📅 Todo el historial\n• 05/05/26 — Pedro Gómez · 31,2 tn · soja · → Vicentin · [N1] · 13.8% hum\n• 10/04/26 — Luis Mora · 28,5 tn · soja · → Cargill · [N1] · 14% hum\n• 10/04/26 — Pedro Gómez · 32 tn · soja · → Cargill · [N1] · 13.5% hum\n\n📊 *Total: 91,7 tn*\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "solo a Cargill",
+          "response": "🚛 *2 cargas — soja, → Cargill*\n📅 Todo el historial\n• 10/04/26 — Luis Mora · 28,5 tn · soja · → Cargill · [N1] · 14% hum\n• 10/04/26 — Pedro Gómez · 32 tn · soja · → Cargill · [N1] · 13.5% hum\n\n📊 *Total: 60,5 tn*\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "ordenalos por peso",
+          "response": "🚛 *2 cargas — soja, → Cargill*\n📅 Todo el historial\n• 10/04/26 — Pedro Gómez · 32 tn · soja · → Cargill · [N1] · 13.5% hum\n• 10/04/26 — Luis Mora · 28,5 tn · soja · → Cargill · [N1] · 14% hum\n\n📊 *Total: 60,5 tn*\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T15_compound_metrics",
+      "description": "humedad + proteína promedio en 1 msg",
+      "turns": [
+        {
+          "message": "promedio de humedad y proteína de la cosecha",
+          "response": "📈 *Promedio humedad (%) — soja, → Cargill*: 13,75% (2 cargas)\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T16_cross_rinde_precio",
+      "description": "rinde + precio en 1 msg",
+      "turns": [
+        {
+          "message": "rinde de soja y precio promedio de venta",
+          "response": "📊 *Campaña soja 2025/26* — N1 (don v2)\nEstado: 🌱 Activa | 1 días\n\n*Actividades (1):*\nSiembra: 1\n📈 *Promedio peso (tn) — soja*: 30,57 tn (3 cargas)\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T17_multiturn_stock_action_query",
+      "description": "consulta → acción de carga → consulta",
+      "turns": [
+        {
+          "message": "hay stock bajo?",
+          "response": "✅ No hay productos con stock bajo.",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "agregame 50 lt de glifosato al stock",
+          "response": "📥 *Stock actualizado*\n\n  📦 *glifosato*\n  ➕ 50 lt\n  📊 Total: *400 lt*\n  🏭 Centro (don v2)",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y ahora cómo está el glifosato?",
+          "response": "📦 *glifosato*\n\n  📊 Cantidad: *400 lt*\n  🏭 Centro (don v2)",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T18_compound_extremes",
+      "description": "más + menos en 1 msg",
+      "turns": [
+        {
+          "message": "en qué lote más llovió y dónde menos",
+          "response": "🌧️ No hay lluvias registradas — campo don v2 (Todo el historial).",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T19_multiturn_ingresos_gastos_balance",
+      "description": "ingresos+gastos → balance",
+      "turns": [
+        {
+          "message": "ingresos y gastos del mes",
+          "response": "No hay registros (mayo de 2026).\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "cuál es el balance",
+          "response": "No hay movimientos (mayo de 2026).\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T20_refine_periods_types",
+      "description": "actividades → fumigaciones → mes anterior",
+      "turns": [
+        {
+          "message": "actividades de mayo",
+          "response": "📊 *Resumen actividades — campo don v2* (5)\n📅 2026-05-01 — 2026-05-23\n\n🗂️ *Por tipo:*\n  🌱 Siembra: 3\n  🌾 Cosecha: 2\n\n🌾 *Por cultivo:*\n  • trigo: 2\n  • soja: 2\n  • maíz: 1\n\n📍 *Por lote:*\n  • N3: 2\n  • N1: 2\n  • N2: 1",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "solo fumigaciones",
+          "response": "📊 *Resumen actividades — campo don v2* (5)\n📅 2026-05-01 — 2026-05-23\n\n🗂️ *Por tipo:*\n  🌱 Siembra: 3\n  🌾 Cosecha: 2\n\n🌾 *Por cultivo:*\n  • trigo: 2\n  • soja: 2\n  • maíz: 1\n\n📍 *Por lote:*\n  • N3: 2\n  • N1: 2\n  • N2: 1",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y de abril?",
+          "response": "📊 *Resumen actividades — campo don v2* (1)\n📅 2026-04-01 — 2026-04-30\n\n🗂️ *Por tipo:*\n  🌾 Cosecha: 1\n\n🌾 *Por cultivo:*\n  • soja: 1",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T21_compound_3_activities",
+      "description": "3 tipos de actividad del año",
+      "turns": [
+        {
+          "message": "fumigaciones, fertilizaciones y cosechas del año",
+          "response": "📊 *Resumen actividades — campo don v2* (6)\n📅 Todo el historial\n\n🗂️ *Por tipo:*\n  🌱 Siembra: 3\n  🌾 Cosecha: 3\n\n🌾 *Por cultivo:*\n  • soja: 3\n  • trigo: 2\n  • maíz: 1\n\n📍 *Por lote:*\n  • N1: 3\n  • N3: 2\n  • N2: 1",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T22_broad_lote_history",
+      "description": "todo lo del lote",
+      "turns": [
+        {
+          "message": "todo lo que pasó en N1",
+          "response": "📍 *don v2 > N1*\n\nÚltimas actividades:\n\n🌱 *Siembra* — 23/5/2026 — 🌱 soja\n⚖️ *Pesaje* — 10/5/2026 (460 kg)\n🌾 *Cosecha* — 5/5/2026 — 🌱 soja (31200 kg)\n💉 *Sanidad* — 25/4/2026 — ivermectina\n🐮 *Reproducción* — 15/4/2026\n\n_...y 5 más_\n\n💡 Podés preguntar:\n• \"última vez que se fumigó\"\n• \"qué pasó esta semana\"\n• \"¿hubo lluvias este mes?\"\n¿Qué querés hacer?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T23_date_range_activities",
+      "description": "rango específico de fechas",
+      "turns": [
+        {
+          "message": "actividades del 1 de marzo al 30 de abril",
+          "response": "📊 *Resumen actividades — campo don v2* (1)\n📅 2026-03-01 — 2026-04-30\n\n🗂️ *Por tipo:*\n  🌾 Cosecha: 1\n\n🌾 *Por cultivo:*\n  • soja: 1",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T24_compound_3_categories_livestock",
+      "description": "3 categorías hacienda en 1 msg",
+      "turns": [
+        {
+          "message": "cuántas vacas, novillos y terneros tengo",
+          "response": "📊 *Resumen hacienda — vaca* — total *101 cabezas* · ~12.300 kg\n\n🐮 *Por categoría:*\n  • Vacas: 101 cabezas (~12.300 kg)\n\n📍 *Por ubicación:*\n  • don v2 / N1: 71 cabezas\n  • don v2 / N3: 30 cabezas\n📊 *Resumen hacienda — novillo* — total *27 cabezas*\n\n🐮 *Por categoría:*\n  • Novillos: 27 cabezas\n📊 *Resumen hacienda — ternero* — total *28 cabezas*\n\n🐮 *Por categoría:*\n  • Terneros: 28 cabezas",
+          "pass": true,
+          "note": "esperaba 3 categorías"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T25_specific_period_drill",
+      "description": "movimientos hacienda mes específico",
+      "turns": [
+        {
+          "message": "movimientos de hacienda en marzo",
+          "response": "🐄 *Movimientos de hacienda* (2026-03-01 — 2026-03-31)\n\n*Totales:*\n  • ➖ Ventas/salidas: *8*\n  • 💀 Muertes: *1*\n\n*Últimos:*\n  22/3/2026: -8 novillo (don v2 > N2) · US$1.700/cab\n  15/3/2026: -1 vaca (don v2 > N1) · rayo",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T26_refine_scouting_extremes",
+      "description": "monitoreos → más afectado → más sano",
+      "turns": [
+        {
+          "message": "monitoreos de soja",
+          "response": "🔍 *Monitoreos — campo don v2* (9)\n📅 Todo el historial\n• 08/05/26 *N3* — Z39 · 18% maleza avena negra\n• 15/04/26 *N3* — Z25 · 88% emerg. · hum 3/5\n• 30/03/26 *N1* — R5 · chinche alta · hum 3/5\n• 20/03/26 *N2* — R2 · 12% maleza · oruga cogollera severa\n• 25/02/26 *N1* — R1 · 15% maleza rama negra/yuyo colorado · chinche moderada\n• 15/02/26 *N2* — V8 · oruga cogollera leve\n• 20/01/26 *N1* — V3 · 8% maleza rama negra · hum 4/5\n• 10/01/26 *N2* — V4 · 5% maleza quinoa · 92% emerg.\n• 15/12/25 *N1* — VE · 85% emerg. · 28 pl/m²\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "cuál fue el más afectado",
+          "response": "🔝 *Máxima severidad de plaga — campo don v2*\nN2 — 5/5 (severa) (20/03/26)\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y el más sano?",
+          "response": "🔻 *Mínima severidad de plaga — campo don v2*\nN2 — 2/5 (leve) (15/02/26)\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T27_compound_per_plot_financial",
+      "description": "gasto+ingreso del lote N1",
+      "turns": [
+        {
+          "message": "cuánto gasté en N1 y cuánto ingresé del N1",
+          "response": "No hay registros — lote N1 (Todo el historial).\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T28_conversational_rodeo",
+      "description": "\"cómo va el rodeo\"",
+      "turns": [
+        {
+          "message": "cómo va el rodeo",
+          "response": "📊 *Resumen hacienda* — total *156 cabezas* · ~12.300 kg\n\n🐮 *Por categoría:*\n  • Vacas: 101 cabezas (~12.300 kg)\n  • Terneros: 28 cabezas\n  • Novillos: 27 cabezas\n\n📍 *Por ubicación:*\n  • don v2 / N1: 99 cabezas\n  • don v2 / N3: 30 cabezas\n  • don v2 / N2: 27 cabezas",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T29_conversational_campana",
+      "description": "\"cómo viene la campaña\"",
+      "turns": [
+        {
+          "message": "cómo viene la campaña",
+          "response": "📊 *Campaña soja 2025/26* — N1 (don v2)\nEstado: 🌱 Activa | 1 días\n\n*Actividades (1):*\nSiembra: 1",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T30_refine_rankings",
+      "description": "ranking lluvia → ranking gastos",
+      "turns": [
+        {
+          "message": "ranking de lotes por lluvia",
+          "response": "🌧️ No hay lluvias registradas — campo don v2 (Todo el historial).",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y ahora por gastos?",
+          "response": "No hay gastos (Todo el historial).\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T31_specific_product_activity",
+      "description": "fumigaciones de soja con glifosato",
+      "turns": [
+        {
+          "message": "fumigaciones de soja con glifosato",
+          "response": "No hay actividades — campo don v2, soja, fumigaciones, glifosato (Todo el historial).\n\nDatos cargados: tipos: Siembra, Cosecha | cultivos: trigo, maíz, soja | lotes: N3, N2, N1.",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T32_compound_last_x",
+      "description": "última lluvia + último monitoreo",
+      "turns": [
+        {
+          "message": "última lluvia y último monitoreo",
+          "response": "🌧️ No hay lluvias registradas — campo don v2 (Todo el historial).\n🔍 *Monitoreos — campo don v2* (9)\n📅 Todo el historial\n• 08/05/26 *N3* — Z39 · 18% maleza avena negra\n• 15/04/26 *N3* — Z25 · 88% emerg. · hum 3/5\n• 30/03/26 *N1* — R5 · chinche alta · hum 3/5\n• 20/03/26 *N2* — R2 · 12% maleza · oruga cogollera severa\n• 25/02/26 *N1* — R1 · 15% maleza rama negra/yuyo colorado · chinche moderada\n• 15/02/26 *N2* — V8 · oruga cogollera leve\n• 20/01/26 *N1* — V3 · 8% maleza rama negra · hum 4/5\n• 10/01/26 *N2* — V4 · 5% maleza quinoa · 92% emerg.\n• 15/12/25 *N1* — VE · 85% emerg. · 28 pl/m²\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T33_refine_filters",
+      "description": "lluvias filtradas con refinamiento",
+      "turns": [
+        {
+          "message": "lluvias arriba de 30 mm",
+          "response": "🌧️ No hay lluvias registradas — campo don v2, >30mm (Todo el historial).",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "solo de febrero",
+          "response": "🌧️ No hay lluvias registradas — campo don v2, >30mm (2026-02-01 — 2026-02-28).",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T34_compound_health_what+who",
+      "description": "qué vacuna + a cuántos",
+      "turns": [
+        {
+          "message": "qué vacuna apliqué y a cuántos animales",
+          "response": "💉 *Historial sanitario*\n\n  📅 10/3/2026: Vacunación — brucelosis (80 vaca) — 📍 don v2 > N1\n  📅 20/12/2025: Vacunación — aftosa (80 vaca) — 📍 don v2 > N1",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T35_compound_3_agro",
+      "description": "sembrado + fertilizado + cosechado",
+      "turns": [
+        {
+          "message": "cuánto sembré de soja, cuánto fertilicé y cuánto coseché",
+          "response": "🌱 *Soja*\n1 lote · 180 ha\n\n🌱 Activa *soja* en *don v2 > N1* — 180 ha — 2025/26\n    últ: Siembra 23/05/2026\nNo hay actividades — campo don v2, soja, fertilizaciones (Todo el historial).\n\nDatos cargados: tipos: Siembra, Cosecha | cultivos: trigo, maíz, soja | lotes: N3, N2, N1.\n📊 *Resumen cosechas — soja* (3 cargas)\n📅 Todo el historial\n\n🌾 *Por cultivo:*\n  • soja: 91,7 tn (3 cargas)\n\n📍 *Por destinatario:*\n  • Cargill: 60,5 tn (2)\n  • Vicentin: 31,2 tn (1)\n\n💧 Humedad promedio: 13.77% (3/3 con dato)\n\n📊 *Total: 91,7 tn*\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T36_multiturn_year_to_crop",
+      "description": "balance año → solo soja → solo trigo",
+      "turns": [
+        {
+          "message": "balance del año",
+          "response": "💰 *Balance por categoría*\n📅 Año 2026\n\n*Hacienda*\n🟢 USD: ingresos USD 25.300 − gastos USD 0 = *USD 25.300*\n\n━━━━━━━━━━━━━━\n*Total Año 2026:*\n🟢 USD: ingresos USD 25.300 − gastos USD 0 = *USD 25.300*\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y solo de soja?",
+          "response": "No hay movimientos — soja (Año 2026).\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y de trigo?",
+          "response": "No hay movimientos — trigo (Año 2026).\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T37_period_harvests",
+      "description": "todas las cosechas de mayo",
+      "turns": [
+        {
+          "message": "todas las cosechas de mayo",
+          "response": "🚛 *3 cargas*\n📅 2026-05-01 — 2026-05-31\n• 15/05/26 — Luis Mora · 18,5 tn · trigo · → ACA · [N3] · 13.9% hum\n• 15/05/26 — Juan Pérez · 22 tn · trigo · → ACA · [N3] · 14.2% hum\n• 05/05/26 — Pedro Gómez · 31,2 tn · soja · → Vicentin · [N1] · 13.8% hum\n\n📊 *Total: 71,7 tn*\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T38_compound_stock_with_alert",
+      "description": "stock + alertas en 1 msg",
+      "turns": [
+        {
+          "message": "mostrame stock y alertas de stock bajo",
+          "response": "📦 *Stock* (3 productos)\n• *glifosato* · 400 lt · agroquimico · Centro (don v2)\n• *semilla de soja* · 150 kg · semilla · Centro (don v2)\n• *urea* · 1.000 kg · fertilizante · Centro (don v2)\n\n📊 *Total*: 400 lt · 1.150 kg\n✅ No hay productos con stock bajo.",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T39_refine_top_pivot",
+      "description": "top 3 cosecha → top 3 malezas",
+      "turns": [
+        {
+          "message": "los 3 lotes con más cosecha",
+          "response": "🏆 *Top lotes por peso (tn)*\n• N1: 91,7 tn (3 cargas)\n• N3: 40,5 tn (2 cargas)\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        },
+        {
+          "message": "y los 3 con más malezas?",
+          "response": "🏆 *Top lotes por cobertura de malezas (%) — campo don v2*\n• N3 — max 18% (avg 18, 2 monitoreos)\n• N1 — max 15% (avg 11.5, 4 monitoreos)\n• N2 — max 12% (avg 8.5, 3 monitoreos)\n¿Más?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    },
+    {
+      "name": "T40_broad_summary",
+      "description": "resumen general",
+      "turns": [
+        {
+          "message": "dame un resumen general del campo",
+          "response": "📍 *Campo don v2* · 3 lotes · 490 ha\n📌 Pergamino, Buenos Aires\n\n🔍 *Observaciones recientes:* \n  • predio en general muy seco, falta agua (23/05)\n  • trigo N3 emergencia desigual, sectores ralos [N3] (23/05)\n  • cosecha de soja N1 ok pero rinde menor al esperado [N1] (23/05)\n  • lote N3 con algo de helada matinal, plantas resentidas [N3] (23/05)\n  • roya leve en hojas inferiores de soja N1, hay que monitorear [N1] (23/05)\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PDF:* pedí _\"reporte agro campo don v2\"_ o _\"reporte financiero campo don v2\"_\n¿Y ahora?",
+          "pass": true,
+          "note": "non-empty response"
+        }
+      ],
+      "overallPass": true
+    }
+  ]
+}

@@ -15,5 +15,17 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Split the largest deps into their own chunks so the dashboard bundle
+    // shrinks. recharts (~250kb) and leaflet (~150kb) are dashboard-only.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          recharts: ['recharts'],
+          leaflet: ['leaflet', 'react-leaflet'],
+          react: ['react', 'react-dom', 'react-router-dom'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 700,
   },
 });

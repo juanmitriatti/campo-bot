@@ -411,7 +411,7 @@ router.post('/', async (req: Request, res: Response) => {
       const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://campo-bot-production.up.railway.app';
       await sendMessage(
         phone,
-        `Hola 👋\n\nPara usar Campo Bot tenés que registrarte y vincular este número desde la app:\n\n🔗 ${publicUrl}/register\n\nUna vez registrado, vinculá tu WhatsApp desde tu perfil y volvé a escribirme.`,
+        `Hola 👋 Bienvenido a Campo Bot.\n\nPara empezar a usarme, seguí estos 2 pasos en orden:\n\n*1.* Creá tu cuenta acá 👉 ${publicUrl}/register\n*2.* Desde la app, andá a *Mi cuenta* → *Vincular WhatsApp* y te mando un código a este número.\n\nUna vez vinculado, escribime de nuevo y ya podés cargar gastos, lluvias, hacienda, cosechas y más.`,
       );
       res.sendStatus(200);
       return;

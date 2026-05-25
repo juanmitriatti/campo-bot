@@ -11,7 +11,10 @@ export default function AvgWeightByCategoryChart({ data }: Props) {
       <h3 className="text-sm font-semibold text-gray-700 mb-1">Peso promedio</h3>
       <p className="text-xs text-gray-400 mb-3">Último pesaje por categoría · 90 días</p>
       {data.length === 0 ? (
-        <p className="text-sm text-gray-400 dark:text-gray-300 text-center py-12">Sin pesajes recientes.</p>
+        <div className="text-center py-12 px-4">
+          <p className="text-sm text-gray-500 dark:text-gray-300 font-medium mb-1">Sin pesajes recientes</p>
+          <p className="text-xs text-gray-400 dark:text-gray-400">Registrá pesajes para ver el peso promedio por categoría.</p>
+        </div>
       ) : (
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>

@@ -1,0 +1,249 @@
+{
+  "summary": {
+    "pass": 26,
+    "fail": 4,
+    "total": 30
+  },
+  "results": [
+    {
+      "name": "O01_basic_share",
+      "description": "Owner share basic",
+      "category": "owner",
+      "pass": true,
+      "note": "code 9UX8QS",
+      "response": "🔗 *Código de invitación para compartido:*\n\n`9UX8QS`\n\nCompartí este código con quien quieras darle acceso. La otra persona debe escribir:\n*unirme 9UX8QS*\n\n⏳ El código vence en 7 días."
+    },
+    {
+      "name": "O02_share_renames",
+      "description": "Share with alt phrasing",
+      "category": "owner",
+      "pass": true,
+      "note": "genera código o info",
+      "response": "🔗 *Código de invitación para compartido:*\n\n`PWKUQF`\n\nCompartí este código con quien quieras darle acceso. La otra persona debe escribir:\n*unirme PWKUQF*\n\n⏳ El código vence en 7 días."
+    },
+    {
+      "name": "O03_share_nonexistent_field",
+      "description": "Share campo que no existe",
+      "category": "owner",
+      "pass": true,
+      "note": "rechaza inexistente",
+      "response": "No encontré el campo *Inexistente*.\nEscribí *mis campos* para ver los que tenés."
+    },
+    {
+      "name": "O04_share_again_new_code",
+      "description": "Compartir 2da vez genera código nuevo",
+      "category": "owner",
+      "pass": true,
+      "note": "código nuevo (≠ 9UX8QS)",
+      "response": "🔗 *Código de invitación para compartido:*\n\n`5GY7KA`\n\nCompartí este código con quien quieras darle acceso. La otra persona debe escribir:\n*unirme 5GY7KA*\n\n⏳ El código vence en 7 días."
+    },
+    {
+      "name": "O05_share_with_contact",
+      "description": "Compartir mencionando contacto",
+      "category": "owner",
+      "pass": true,
+      "note": "genera código",
+      "response": "🔗 *Código de invitación para compartido:*\n\n`53AJQK`\n\nCompartí este código con quien quieras darle acceso. La otra persona debe escribir:\n*unirme 53AJQK*\n\n⏳ El código vence en 7 días."
+    },
+    {
+      "name": "M01_basic_accept",
+      "description": "Member acepta código",
+      "category": "member",
+      "pass": true,
+      "note": "B aceptó",
+      "response": "🤝 Ahora tenés acceso al campo *compartido*.\nPodés registrar gastos, ingresos, actividades y ver reportes de este campo."
+    },
+    {
+      "name": "M02_accept_invalid_code",
+      "description": "Member intenta código inválido",
+      "category": "member",
+      "pass": true,
+      "note": "rechaza inválido",
+      "response": "No encontré la invitación con código *XXXXXX*. Verificá que esté bien escrito."
+    },
+    {
+      "name": "M03_accept_no_code",
+      "description": "Member sin código",
+      "category": "member",
+      "pass": true,
+      "note": "pide código",
+      "response": "Para unirte a un campo compartido, necesito el código de invitación de 6 caracteres. \n\n¿Cuál es el código que te pasaron?"
+    },
+    {
+      "name": "M04_accept_lowercase",
+      "description": "Aceptar código en minúsculas",
+      "category": "member",
+      "pass": false,
+      "note": "acepta lowercase",
+      "response": "Ya tenés acceso al campo *compartido*."
+    },
+    {
+      "name": "M05_double_accept",
+      "description": "Aceptar 2 veces el mismo código",
+      "category": "member",
+      "pass": false,
+      "note": "detecta doble",
+      "response": "Ya tenés acceso al campo *compartido*."
+    },
+    {
+      "name": "V01_member_lists_fields",
+      "description": "Member ve \"mis campos\" incluye compartido",
+      "category": "view",
+      "pass": true,
+      "note": "lista incluye campo compartido",
+      "response": "📍 *Tus campos (2):*\n\n• *compartido* — Pergamino, Buenos Aires (1 lote, 100 ha)\n• *compartido2* — Pergamino, Buenos Aires\n\n📐 *Total: 100 ha*\n\n_Comandos: agregar campo X, lotes del campo X, info campo X_\n¿Y ahora?"
+    },
+    {
+      "name": "V02_member_lists_plots",
+      "description": "Member ve lotes del campo compartido",
+      "category": "view",
+      "pass": true,
+      "note": "ve lote C1",
+      "response": "📍 *Tus lotes (1) en 1 campo:*\n\n• *compartido* (100 ha)\n  └ C1 — 100 ha\n\n📐 *Total: 100 ha*\n¿Y ahora?"
+    },
+    {
+      "name": "V03_member_query_expenses",
+      "description": "Member ve gastos del campo compartido",
+      "category": "view",
+      "pass": true,
+      "note": "ve datos financieros",
+      "response": "📊 *Resumen financiero — campo Compartido*\n📅 Todo el historial\n\n*Gastos por categoría:*\nCombustible: $100.000\nAgroquímicos: $30.000\n*Total gastos ARS: $130.000*\n¿Más?"
+    },
+    {
+      "name": "V04_member_query_livestock",
+      "description": "Member ve hacienda del campo",
+      "category": "view",
+      "pass": true,
+      "note": "ve hacienda",
+      "response": "🐄 *Hacienda total: 40 animales*\n\n  📍 compartido / C1\n    • Vaca Angus: *40*"
+    },
+    {
+      "name": "W01_member_logs_expense",
+      "description": "Member registra gasto en campo compartido",
+      "category": "write",
+      "pass": true,
+      "note": "puede escribir",
+      "response": "⚠️ No encontré el lote *C1*.\n\n💸 *Agroquímicos* — $30.000\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    },
+    {
+      "name": "W02_member_logs_activity",
+      "description": "Member registra actividad en lote del owner",
+      "category": "write",
+      "pass": true,
+      "note": "fumigación OK",
+      "response": "💨 *Fumigación* registrada\n📍 compartido > C1\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: soja"
+    },
+    {
+      "name": "W03_member_logs_rainfall",
+      "description": "Member registra lluvia",
+      "category": "write",
+      "pass": true,
+      "note": "lluvia registrada",
+      "response": "🌧️ *+15mm* en *compartido* (hoy) — acumulado: 15mm + 15mm = *30mm*"
+    },
+    {
+      "name": "W04_owner_sees_member_data",
+      "description": "Owner ve gasto agregado por member",
+      "category": "write",
+      "pass": true,
+      "note": "owner ve cambio",
+      "response": "📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nCombustible: $100.000\nAgroquímicos: $30.000\n*Total gastos ARS: $130.000*\n¿Más?"
+    },
+    {
+      "name": "P01_member_cannot_delete_field",
+      "description": "Member NO puede borrar campo del owner",
+      "category": "permission",
+      "pass": true,
+      "note": "permission rejected",
+      "response": "Solo el dueño del campo *compartido* puede eliminarlo."
+    },
+    {
+      "name": "P02_member_cannot_share",
+      "description": "Member NO puede compartir el campo del owner",
+      "category": "permission",
+      "pass": true,
+      "note": "cannot reshare",
+      "response": "Solo el dueño del campo puede compartirlo."
+    },
+    {
+      "name": "P03_member_cannot_rename",
+      "description": "Member NO puede renombrar campo",
+      "category": "permission",
+      "pass": true,
+      "note": "cannot rename",
+      "response": "Solo el dueño del campo *Compartido* puede renombrarlo."
+    },
+    {
+      "name": "L01_owner_lists_members",
+      "description": "Owner ve lista de miembros",
+      "category": "manage",
+      "pass": true,
+      "note": "ve miembros",
+      "response": "👥 *Miembros de compartido:*\n\n👑 Dueño: Owner A\n👤 Miembro: Member B (desde 23/5/2026)"
+    },
+    {
+      "name": "L02_owner_revokes_member",
+      "description": "Owner quita member",
+      "category": "manage",
+      "pass": false,
+      "note": "intenta quitar",
+      "response": "Member B ya no tiene acceso al campo."
+    },
+    {
+      "name": "L03_revoked_member_no_access",
+      "description": "Member quitado YA NO ve datos",
+      "category": "manage",
+      "pass": false,
+      "note": "still sees!",
+      "response": "📍 *Tus campos (1):*\n\n• *compartido2* — Pergamino, Buenos Aires\n\n_Comandos: agregar campo X, lotes del campo X, info campo X_\n¿Y ahora?"
+    },
+    {
+      "name": "E01_self_accept",
+      "description": "Owner intenta aceptar SU PROPIO código",
+      "category": "edge",
+      "pass": true,
+      "note": "detecta self",
+      "response": "No podés usar tu propio código de invitación."
+    },
+    {
+      "name": "E02_accept_with_spaces",
+      "description": "Código con espacios extra",
+      "category": "edge",
+      "pass": true,
+      "note": "maneja espacios",
+      "response": "🤝 Ahora tenés acceso al campo *compartido*.\nPodés registrar gastos, ingresos, actividades y ver reportes de este campo."
+    },
+    {
+      "name": "E03_share_then_revoke_invite",
+      "description": "Owner genera código, lo expira/revoca",
+      "category": "edge",
+      "pass": true,
+      "note": "manual revoke OK",
+      "response": ""
+    },
+    {
+      "name": "E04_list_members_nonexistent",
+      "description": "Miembros de campo inexistente",
+      "category": "edge",
+      "pass": true,
+      "note": "detecta inexistente",
+      "response": "No encontré el campo *INEXISTENTE*."
+    },
+    {
+      "name": "F01_share_multi_field",
+      "description": "Owner crea 2do campo + comparte ambos",
+      "category": "multi",
+      "pass": true,
+      "note": "genera código nuevo",
+      "response": "🔗 *Código de invitación para compartido2:*\n\n`7KUP4K`\n\nCompartí este código con quien quieras darle acceso. La otra persona debe escribir:\n*unirme 7KUP4K*\n\n⏳ El código vence en 7 días."
+    },
+    {
+      "name": "F02_member_accepts_2_codes",
+      "description": "Member acepta 2 campos diferentes",
+      "category": "multi",
+      "pass": true,
+      "note": "2 campos visibles",
+      "response": "📍 *Tus campos (2):*\n\n• *compartido* — Pergamino, Buenos Aires (1 lote, 100 ha)\n• *compartido2* — Pergamino, Buenos Aires\n\n📐 *Total: 100 ha*\n\n_Comandos: agregar campo X, lotes del campo X, info campo X_\n¿Y ahora?"
+    }
+  ]
+}

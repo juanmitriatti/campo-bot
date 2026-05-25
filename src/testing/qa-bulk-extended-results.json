@@ -1,0 +1,182 @@
+[
+  {
+    "name": "01_complete_4mixed_gas_inc_act_lvstk",
+    "category": "complete",
+    "message": "Hoy gasté 30 mil en gasoil, vendí 15 tn de soja a 480 USD por tonelada, fumigué Norte con glifosato 3 lt/ha, agregué 20 vaquillonas Angus en Sur",
+    "status": "PASS",
+    "wrote": 4,
+    "reason": "wrote=4 (min 4)",
+    "response": "✅ Listo, gasto registrado\nCombustible\n$30.000\n📍 la esperanza\n💰 Registrado\nSoja\n$7.200 USD\n15 tn a $480\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $7.200\nGastos: $30.000\nResultado: $-22.800\nMargen: -317%\n\n📦 Tenés *200bolsas* de *soja* en stock.\n¿Descontar *15tn*?\n💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 150 lt de *glifosato* en Principal.\n¿Descontar *450 lt*?\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "02_complete_5_agro_focus",
+    "category": "complete",
+    "message": "Sembré girasol en Norte, fertilicé Sur con urea 100 kg/ha, fumigué Fondo con 2,4D 1,5 lt/ha, agregué 30 terneros en Norte, vi liebres en Fondo",
+    "status": "PASS",
+    "wrote": 5,
+    "reason": "wrote=5 (min 5)",
+    "response": "📋 Se cerró la campaña anterior de *soja* en la esperanza > Norte.\n🌱 *girasol* sembrado en *la esperanza > Norte*\n📅 Campaña 2025/26\n🧪 *Fertilización* registrada\n📍 la esperanza > Sur\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: maíz\n💨 *Fumigación* registrada\n📍 la esperanza > Fondo\n🧴 2,4D (herbicida)\n📏 1.5 lt/ha\n🌱 Cultivo: trigo\n🔍 Observación registrada\n\n📍 la esperanza > Fondo\n📂 📝 General\n📝 vi liebres en fondo\n\nPodés registrar ahora:\n• otra observación lote Fondo\n🐄 *Hacienda actualizada*\n\n  Ternero (nuevo grupo)\n  ➕ 30 animales\n  📊 Total: *30*\n  📍 Norte (la esperanza)"
+  },
+  {
+    "name": "03_complete_6_full_chain",
+    "category": "complete",
+    "message": "Coseché soja en Norte con 4500 kg/ha, vendí 100 tn a 450 USD por tonelada, gasté 200 mil en cosechadora, monitoreé Norte V8 sin plagas, fumigué Sur con un fungicida, agregué 25 vacas",
+    "status": "FAIL",
+    "wrote": 4,
+    "reason": "wrote=4 < min 5",
+    "response": "En *la esperanza > Norte* hay *girasol* sembrado, no soja.\nSi querés cosechar girasol, escribí:\n🌾 *cosechamos girasol en el lote Norte*\n💰 Anotado\nSoja\n$45.000 USD\n100 tn a $450\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $52.200\nGastos: $30.000\nResultado: $22.200\nMargen: 43%\n\n📦 Tenés *200bolsas* de *soja* en stock.\n¿Descontar *100tn*?\n✅ Anotado\nMaquinaria\n$200.000\n📍 la esperanza\n🔍 *Monitoreo registrado* en *la esperanza > Norte*\n  📐 Estadio: *V8*\n💡 No pude completar *log_spraying* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "04_complete_livestock_chain",
+    "category": "complete",
+    "message": "Agregué 50 vacas Brangus en Norte, vacuné 50 vacas contra brucelosis, pesé 30 terneros 280 kg promedio, vendí 10 novillos a 1800 USD cada uno",
+    "status": "PASS",
+    "wrote": 6,
+    "reason": "wrote=6 (min 3)",
+    "response": "🐄 *Hacienda actualizada*\n\n  Vaca Brangus\n  ➕ 50 animales\n  📊 Total: *100*\n  📍 Norte (la esperanza)"
+  },
+  {
+    "name": "05_complete_stock_activity",
+    "category": "complete",
+    "message": "Saqué 80 lt de glifosato del galpón Principal, agregué 50 bolsas de urea al galpón Principal, fumigué Norte con glifosato 2 lt/ha, fertilicé Sur con urea 100 kg/ha",
+    "status": "PASS",
+    "wrote": 8,
+    "reason": "wrote=8 (min 4)",
+    "response": "💰 Listo, ingreso registrado\nHacienda\n$18.000 USD\n10 cabezas a $1.800\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $88.200\nGastos: $230.000\nResultado: $-141.800\nMargen: -161%\n📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 80 lt\n  📊 Quedan: *70 lt*\n  🏭 Principal (la esperanza)\n📥 *Stock actualizado*\n\n  📦 *urea* (nuevo)\n  ➕ 50 bolsas\n  📊 Total: *50 bolsas*\n  🏭 Principal (la esperanza)\n💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: girasol\n\n📦 Tenés 70 lt de *glifosato* en Principal.\n¿Descontar *300 lt*?\n🧪 *Fertilización* registrada\n📍 la esperanza > Sur\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: maíz\n💡 Guardé 1 ingreso a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "06_complete_rainfall_4",
+    "category": "complete",
+    "message": "Llovieron 30 mm en La Esperanza, monitoreé Norte soja V5 con 10% rama negra, fumigué Sur con un herbicida, gasté 50 mil en combustible",
+    "status": "FAIL",
+    "wrote": 3,
+    "reason": "wrote=3 < min 4",
+    "response": "🌧️ Lluvia registrada: *30mm*\n📍 la esperanza\n\n⚠️ *Alerta:* Acumulado hoy *30mm* ≥ umbral configurado (10mm)\n🔍 *Monitoreo registrado* en *la esperanza > Norte*\n  📐 Estadio: *V5*\n  🌿 Malezas: 10.00% (rama negra)\n💡 No pude completar *log_spraying* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.\n✅ Registrado\nCombustible\n$50.000\n📍 la esperanza\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "07_complete_monitoring_4",
+    "category": "complete",
+    "message": "Monitoreé Norte soja V4 con 8% malezas, vi orugas en Sur, observación en Fondo: estado del trigo bueno, gasté 25 mil en monitoreo",
+    "status": "PASS",
+    "wrote": 4,
+    "reason": "wrote=4 (min 3)",
+    "response": "🔍 *Monitoreo registrado* en *la esperanza > Norte*\n  📐 Estadio: *V4*\n  🌿 Malezas: 8.00%\n🔍 Observación registrada\n\n📍 la esperanza > Sur\n📂 🐛 Sanidad\n📝 vi orugas en sur\n\n⚠️ *Recomendación*\nMonitorear en los próximos días para evaluar avance de la plaga.\n\nPodés registrar ahora:\n• fumigación lote Sur\n• otra observación lote Sur\n🔍 Observación registrada\n\n📍 la esperanza > Fondo\n📂 🌱 Fenología\n📝 estado del trigo bueno\n\n⚠️ *Recomendación*\nRegistrar próximo cambio de estado para seguimiento fenológico.\n\nPodés registrar ahora:\n• otra observación lote Fondo\n✅ Registrado\nAgroquímicos\n$25.000\n📍 la esperanza\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "08_complete_harvest_chain",
+    "category": "complete",
+    "message": "Coseché maíz en Sur con 8500 kg/ha, vendí 50 tn de maíz a 220 USD por tonelada, llovieron 12 mm en La Esperanza, monitoreé Norte V7 normal, gasté 80 mil en flete",
+    "status": "PASS",
+    "wrote": 4,
+    "reason": "wrote=4 (min 4)",
+    "response": "🌾 *maíz* cosechado en *la esperanza > Sur*\n📅 Campaña 2025/26\n📊 Rendimiento: 680.000 kg (8.500 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈ 680 tn* de *maíz* al stock?\n💰 Anotado\nMaíz\n$11.000 USD\n50 tn a $220\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $99.200\nGastos: $305.000\nResultado: $-205.800\nMargen: -207%\n🌧️ *12mm* en *la esperanza* (hoy) — _ya estaba cargado, omitido_. Si querés corregir el monto, decime \"borrar lluvia\" y volvé a registrarla.\n🔍 *Monitoreo registrado* en *la esperanza > Norte*\n  📐 Estadio: *V7*\n  📝 normal\n✅ Listo, gasto registrado\nLabranzas\n$80.000\n📍 la esperanza\n💡 Guardé 1 ingreso + 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "09_partial_spray_no_plot",
+    "category": "partial",
+    "message": "Fumigué con glifosato 2 lt/ha, vendí 20 tn de trigo a 200 USD por tonelada, agregué 10 terneros, gasté 60 mil en gasoil",
+    "status": "PASS",
+    "wrote": 2,
+    "reason": "wrote=2 (min 2)",
+    "response": "💡 No pude completar *log_spraying* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.\n💰 Ingreso guardado\nOtros\n$4.000 USD\n20 tn a $200\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $103.200\nGastos: $385.000\nResultado: $-281.800\nMargen: -273%\n❌ Necesito que me digas en qué lote o corral. Ej: \"agregá 20 vacas al lote A1\" o \"al corral 1\".\n✅ Gasto guardado\nCombustible\n$60.000\n📍 la esperanza\n💡 Guardé 1 ingreso + 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "10_partial_obs_no_plot",
+    "category": "partial",
+    "message": "Observé liebres, fumigué con un herbicida nuevo, gasté 100 mil en agroquímicos, agregué 50 vacas en Sur",
+    "status": "PASS",
+    "wrote": 2,
+    "reason": "wrote=2 (min 2)",
+    "response": "No entendí si querías registrar una observación o consultar algo.\n\nPodés escribir por ejemplo:\n👉 \"observación lote 3: malezas\"\n\nO preguntarme algo como:\n👉 \"qué pasó en el lote 3?\"\n💡 No pude completar *log_spraying* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.\n✅ Anotado\nAgroquímicos\n$100.000\n📍 la esperanza\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "11_partial_livestock_no_loc",
+    "category": "partial",
+    "message": "Agregué 30 vacas, vacuné el ganado contra aftosa, vendí 15 toros a 1800 USD cada uno, gasté 90 mil en sanidad",
+    "status": "PASS",
+    "wrote": 2,
+    "reason": "wrote=2 (min 2)",
+    "response": "❌ No hay toro en el lote Sur.\n✅ Listo, gasto registrado\nHacienda\n$90.000\n📍 Lote Sur (la esperanza)\n¿A cuántos animales?"
+  },
+  {
+    "name": "12_partial_multi_spray",
+    "category": "partial",
+    "message": "Fumigué Norte con glifosato, fumigué con 2,4D, fertilicé Sur con urea, gasté 70 mil en herbicida",
+    "status": "PASS",
+    "wrote": 1,
+    "reason": "wrote=1, agent asked for clarification (acceptable UX for partial input)",
+    "response": "💡 No pude completar *log_spraying* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.\n💡 No pude completar *log_spraying* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.\n💡 No pude completar *log_fertilization* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.\n✅ Anotado\nAgroquímicos\n$70.000\n📍 la esperanza\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "13_partial_income_no_price",
+    "category": "partial",
+    "message": "Vendí soja, gasté 40 mil en gasoil, fumigué Norte con glifosato 3 lt/ha, agregué 20 vacas en Sur",
+    "status": "WARN",
+    "wrote": 3,
+    "reason": "wrote=3 (min 2), missing=[falta el precio]",
+    "response": "✅ Gasto guardado\nCombustible\n$40.000\n📍 la esperanza\n💨 *Fumigación* registrada\n📍 la esperanza > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: girasol\n\n📦 Tenés 70 lt de *glifosato* en Principal.\n¿Descontar *450 lt*?\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "14_partial_sow_no_crop",
+    "category": "partial",
+    "message": "Sembré algo en Norte, fumigué Sur con un químico, vendí 5 tn a 300 USD por tonelada, gasté 25 mil en semillas",
+    "status": "PASS",
+    "wrote": 0,
+    "reason": "wrote=0, agent asked for clarification (acceptable UX for partial input)",
+    "response": "¿Qué cultivo sembraste en Norte? Y en la fumigación de Sur, ¿qué producto químico usaste y a qué dosis?"
+  },
+  {
+    "name": "15_partial_3_partials_1_complete",
+    "category": "partial",
+    "message": "Compré bolsas, vendí maíz, fumigué, agregué 50 terneros en Norte",
+    "status": "PASS",
+    "wrote": 1,
+    "reason": "wrote=1 (min 1)",
+    "response": "💡 No pude completar *log_spraying* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.\n🐄 *Hacienda actualizada*\n\n  Ternero\n  ➕ 50 animales\n  📊 Total: *80*\n  📍 Norte (la esperanza)"
+  },
+  {
+    "name": "16_partial_informal_monitoreo",
+    "category": "partial",
+    "message": "Vi algo raro en el lote Norte, fumigué con glifosato, vendí 10 tn de soja a 480 USD por tonelada, gasté 30 mil en algo",
+    "status": "PASS",
+    "wrote": 0,
+    "reason": "wrote=0, agent asked for clarification (acceptable UX for partial input)",
+    "response": "No encontré el lote *norte, fumigue con glifosato, vendi 10 tn de soja a 480 usd por tonelada, gaste 30 mil en algo*. Revisá el nombre o escribí *mis lotes* para ver los que tenés.\n¿Qué querés hacer?"
+  },
+  {
+    "name": "17_partial_stock_no_detail",
+    "category": "partial",
+    "message": "Saqué algo del galpón, fumigué Norte, agregué 20 terneros en Sur, gasté 40 mil en combustible",
+    "status": "PASS",
+    "wrote": 0,
+    "reason": "wrote=0, agent asked for clarification (acceptable UX for partial input)",
+    "response": "¿Qué producto sacaste del galpón y en qué cantidad?"
+  },
+  {
+    "name": "18_partial_hacienda_incomplete",
+    "category": "partial",
+    "message": "Pesé los terneros, inseminé las vacas, vendí novillos, gasté 80 mil en vet",
+    "status": "PASS",
+    "wrote": 0,
+    "reason": "wrote=0, agent asked for clarification (acceptable UX for partial input)",
+    "response": "Necesito el peso promedio en kg. Ej: \"pesé los novillos, 380 kg promedio\".\nNecesito la cantidad. Ej: \"vendí 5 vacas del lote A1\".\n¿En qué categoría va este gasto de $80.000?"
+  },
+  {
+    "name": "19_partial_6_actions_long",
+    "category": "partial",
+    "message": "Hoy estuvimos a full: coseché en Norte 4000 kg/ha, vendí parte a 480 USD, gasté 100 mil en cosechadora, llovieron 20 mm, monitoreé Sur que venía bien, agregué 15 vaquillonas en Sur",
+    "status": "PASS",
+    "wrote": 4,
+    "reason": "wrote=4 (min 3)",
+    "response": "🚛 *1 carga registrada en la esperanza > Norte:*\n• Norte — 4.000 kg\n\n📊 *Total: 4.000 kg*\n📅 Campaña 2025/26\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n✅ Listo, gasto registrado\nMaquinaria\n$100.000\n📍 la esperanza\n🌧️ *20mm* en *la esperanza* (hoy) — _ya estaba cargado, omitido_. Si querés corregir el monto, decime \"borrar lluvia\" y volvé a registrarla.\n🔍 Observación registrada\n\n📍 la esperanza > Sur\n📂 📝 General\n📝 \n\nPodés registrar ahora:\n• otra observación lote Sur\n💡 Guardé 1 gasto a nivel campo *la esperanza*. ¿A qué lote los asigno?\n¿A qué lote?"
+  },
+  {
+    "name": "20_partial_ambiguous_short",
+    "category": "partial",
+    "message": "compré urea, sembré, vacuné las vacas, saqué glifosato del galpón",
+    "status": "FAIL",
+    "wrote": 0,
+    "reason": "wrote=0 < min 1",
+    "response": "💡 No pude completar *sow_crop* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.\n💡 No pude completar *log_health_event* automáticamente — me faltan datos. Después podés repetirla aclarando lote/producto/cantidad.\nNecesito la cantidad. Ej: \"usé 50lt de glifosato\""
+  }
+]

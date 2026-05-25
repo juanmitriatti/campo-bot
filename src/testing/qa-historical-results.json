@@ -1,0 +1,92 @@
+{
+  "totals": {
+    "expenses_total_ARS": 3570000,
+    "expenses_total_USD": 0,
+    "incomes_total_ARS": 0,
+    "incomes_total_USD": 68400,
+    "by_month": {
+      "2025-12": {
+        "exp_ars": 450000,
+        "exp_usd": 0,
+        "inc_ars": 0,
+        "inc_usd": 16000,
+        "rain_mm": 43
+      },
+      "2026-01": {
+        "exp_ars": 535000,
+        "exp_usd": 0,
+        "inc_ars": 0,
+        "inc_usd": 4400,
+        "rain_mm": 47
+      },
+      "2026-02": {
+        "exp_ars": 520000,
+        "exp_usd": 0,
+        "inc_ars": 0,
+        "inc_usd": 9000,
+        "rain_mm": 72
+      },
+      "2026-03": {
+        "exp_ars": 890000,
+        "exp_usd": 0,
+        "inc_ars": 0,
+        "inc_usd": 21600,
+        "rain_mm": 55
+      },
+      "2026-04": {
+        "exp_ars": 755000,
+        "exp_usd": 0,
+        "inc_ars": 0,
+        "inc_usd": 5400,
+        "rain_mm": 61
+      },
+      "2026-05": {
+        "exp_ars": 420000,
+        "exp_usd": 0,
+        "inc_ars": 0,
+        "inc_usd": 12000,
+        "rain_mm": 38
+      }
+    },
+    "by_category_exp": {
+      "Combustible": 620000,
+      "Sueldos": 1650000,
+      "Agroquímicos": 270000,
+      "Fertilizantes": 180000,
+      "Semillas": 500000,
+      "Maquinaria": 350000
+    },
+    "by_category_inc": {
+      "Soja": 37600,
+      "Maíz": 4400,
+      "Hacienda": 21000,
+      "Trigo": 5400
+    },
+    "rainfall_total_mm": 316,
+    "livestock_initial": {
+      "vacas": 100,
+      "novillos": 50
+    }
+  },
+  "failures": [
+    {
+      "name": "Q10_vacas_en_A1",
+      "query": "cuántas vacas tengo en A1",
+      "reason": "expected 100 vacas en A1; text=🐄 *Hacienda total: 400 animales*\n\n  📍 don historico / A1\n    • Vaca Angus: *400*",
+      "response": "🐄 *Hacienda total: 400 animales*\n\n  📍 don historico / A1\n    • Vaca Angus: *400*"
+    },
+    {
+      "name": "Q17_gastos_lote_A2",
+      "query": "cuánto gasté en el lote A2",
+      "reason": "expected financial response; text=No hay registros — lote A2 (Todo el historial).\n¿Más?",
+      "response": "No hay registros — lote A2 (Todo el historial).\n¿Más?"
+    },
+    {
+      "name": "Q20_comparar_marzo_abril",
+      "query": "compará marzo vs abril",
+      "reason": "bothMonths=false hasNumbers=true; text=📊 *Comparación: mayo de 2026 vs 2026-04-01 — 2026-04-30*\n\nARS:\n• mayo de 2026: $420.000\n• 2026-04-01 — 2026-04-30: $755.000\nΔ: -44%\n¿Más?",
+      "response": "📊 *Comparación: mayo de 2026 vs 2026-04-01 — 2026-04-30*\n\nARS:\n• mayo de 2026: $420.000\n• 2026-04-01 — 2026-04-30: $755.000\nΔ: -44%\n¿Más?"
+    }
+  ],
+  "passRate": 0.85
+}

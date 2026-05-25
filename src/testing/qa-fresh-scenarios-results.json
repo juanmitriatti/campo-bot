@@ -1,0 +1,421 @@
+[
+  {
+    "name": "F01_voice_input_style",
+    "desc": "che, gasté como 80 lucas en gasoil y vendí soja a 480 USD, 12 tn",
+    "group": "F_conv",
+    "compound": "che, hoy gasté como 80 lucas en gasoil y vendí soja a buen precio, como 480 dolar la tonelada, fueron 12 toneladas",
+    "answers": [],
+    "status": "PASS",
+    "reason": "e=1 i=1 (want e>=1, i>=1)",
+    "turns": [
+      "USER: che, hoy gasté como 80 lucas en gasoil y vendí soja a buen precio, como 480 dolar la tonelada, fueron 12 toneladas",
+      "BOT: ✅ Registrado\nCombustible\n$80.000\n📍 el rincon\n💰 Listo, ingreso registrado\nSoja\n$5.760 USD\n12 tn a $480\n📍 el rincon\n📈 Resultado del mes hasta ahora\n\nIngresos: $5.760\nGastos: $80.000\nResultado: $-74.240\nMargen: -1289%\n💡 Guardé 1 gasto + 1 ingreso a nivel campo *el rincon*. ¿A qué lote los asigno?\n¿A qué lote?"
+    ]
+  },
+  {
+    "name": "F02_abbreviations",
+    "desc": "fum/fert/siembra con abreviaturas",
+    "group": "F_conv",
+    "compound": "fum Loma glifo 3lt/ha, fert Bajo urea 100kg/ha, sembré sorgo en Frente",
+    "answers": [],
+    "status": "PASS",
+    "reason": "d=3 (want>=2; ideal=3)",
+    "turns": [
+      "USER: fum Loma glifo 3lt/ha, fert Bajo urea 100kg/ha, sembré sorgo en Frente",
+      "BOT: 💨 *Fumigación* registrada\n📍 el rincon > Loma\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: sorgo\n🧪 *Fertilización* registrada\n📍 el rincon > Bajo\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: cebada\n📋 Se cerró la campaña anterior de *soja* en el rincon > Frente.\n🌱 *sorgo* sembrado en *el rincon > Frente*\n📅 Campaña 2025/26"
+    ]
+  },
+  {
+    "name": "F03_time_relative_chain",
+    "desc": "anteayer/ayer/hoy with 3 actions",
+    "group": "F_conv",
+    "compound": "anteayer vendí 18 tn trigo a 180 USD, ayer compré 50 bolsas urea a 9mil, hoy sembré avena en Atrás",
+    "answers": [],
+    "status": "PASS",
+    "reason": "i=1 e=1 d=1 (sum=3, want all>=1)",
+    "turns": [
+      "USER: anteayer vendí 18 tn trigo a 180 USD, ayer compré 50 bolsas urea a 9mil, hoy sembré avena en Atrás",
+      "BOT: 💰 Ingreso guardado\nTrigo\n$3.240 USD\n18 tn a $180\n📍 el rincon\n📅 21/05/2026\n📈 Resultado del mes hasta ahora\n\nIngresos: $9.000\nGastos: $80.000\nResultado: $-71.000\nMargen: -789%\n✅ Gasto guardado\nFertilizantes\n$450.000\n📍 el rincon\n📅 22/05/2026\n\n📦 ¿Querés cargar *50bolsas de urea* al stock del Depósito Norte?\n📋 Se ce..."
+    ]
+  },
+  {
+    "name": "F04_currency_mix",
+    "desc": "venta USD + compra ARS, no conflation",
+    "group": "F_conv",
+    "compound": "vendí 25 tn soja a 480 USD y compré 80 bolsas urea a 8500 pesos",
+    "answers": [],
+    "status": "PASS",
+    "reason": "i=1 e=1; soja={ccy:USD,price:480} urea={ccy:ARS,price:8500}",
+    "turns": [
+      "USER: vendí 25 tn soja a 480 USD y compré 80 bolsas urea a 8500 pesos",
+      "BOT: 💰 Listo, ingreso registrado\nSoja\n$12.000 USD\n25 tn a $480\n📍 el rincon\n📈 Resultado del mes hasta ahora\n\nIngresos: $21.000\nGastos: $530.000\nResultado: $-509.000\nMargen: -2424%\n✅ Listo, gasto registrado\nFertilizantes\n$680.000\n📍 el rincon\n\n📦 ¿Querés cargar *80bolsas de urea* al stock del Depósito Norte?\n💡 Guardé 1 in..."
+    ]
+  },
+  {
+    "name": "F05_numbers_as_words",
+    "desc": "veinte toneladas a quinientos dólares",
+    "group": "F_conv",
+    "compound": "vendí veinte toneladas de soja a quinientos dólares la tonelada y compré cien litros de glifosato a mil pesos",
+    "answers": [],
+    "status": "PASS",
+    "reason": "i=1 e=1; soja={\"category\":\"Soja\",\"quantity\":\"20\",\"unit_price\":\"500\"}",
+    "turns": [
+      "USER: vendí veinte toneladas de soja a quinientos dólares la tonelada y compré cien litros de glifosato a mil pesos",
+      "BOT: 💰 Ingreso guardado\nSoja\n$10.000 USD\n20 tn a $500\n📍 el rincon\n📈 Resultado del mes hasta ahora\n\nIngresos: $31.000\nGastos: $1.210.000\nResultado: $-1.179.000\nMargen: -3803%\n✅ Anotado\nAgroquímicos\n$100.000\n📍 el rincon\n\n📦 ¿Querés cargar *100lt de glifosato* al stock del Depósito Norte?\n💡 Guardé 1 ingreso a nivel campo ..."
+    ]
+  },
+  {
+    "name": "G06_breed_autopick_largest",
+    "desc": "REGRESSION (e4eebc3): vendí 5 vacas en Loma → auto-pick Hereford (largest)",
+    "group": "G_hacienda",
+    "compound": "vendí 5 vacas a 1500 USD cada una en Loma",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "lm=0; remove5 found=false breed='' (want Hereford = largest group)",
+    "turns": [
+      "USER: vendí 5 vacas a 1500 USD cada una en Loma",
+      "BOT: 💰 ¿Confirmo ingreso?\n\nCategoría: *Hacienda*\nMonto: *$7.500 USD*\nUbicación: Lote Loma (el rincon)\n"
+    ]
+  },
+  {
+    "name": "G07_mixed_health_chain",
+    "desc": "vacuna aftosa + vacuna brucelosis + desparasitación doramectina",
+    "group": "G_hacienda",
+    "compound": "vacuné 60 vacas Hereford contra aftosa en Loma, vacuné 50 novillos contra brucelosis en Bajo, desparasité 40 terneros con doramectina en Frente",
+    "answers": [],
+    "status": "PASS",
+    "reason": "he=4; 3/3 found",
+    "turns": [
+      "USER: vacuné 60 vacas Hereford contra aftosa en Loma, vacuné 50 novillos contra brucelosis en Bajo, desparasité 40 terneros con doramectina en Frente",
+      "BOT: 💉 *Evento sanitario registrado*\n  Tipo: Vacunación\n  🦠 aftosa\n  🐄 60 Vacas\n  📍 el rincon > Loma"
+    ]
+  },
+  {
+    "name": "G08_birth_sale_transfer",
+    "desc": "nacieron + venta + transfer",
+    "group": "G_hacienda",
+    "compound": "nacieron 12 terneros de las vacas Hereford en Loma, vendí 8 novillos a 1700 USD c/u en Bajo, transferí 20 terneros de Frente a Bajo",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "lm=3; MISSING:transfer-20",
+    "turns": [
+      "USER: nacieron 12 terneros de las vacas Hereford en Loma, vendí 8 novillos a 1700 USD c/u en Bajo, transferí 20 terneros de Frente a Bajo",
+      "BOT: 🐣 *Nacimiento registrado*\n\n  Ternero Hereford\n  ➕ 12 animales\n  📊 Total: *12*\n  📍 Loma (el rincon)\n🔄 *Transferencia*\n\n  Ternero\n  ↗️ 20 animales\n  Desde: *Frente (el rincon)* (quedan 80)\n  Hacia: *Bajo (el rincon)* (ahora 20)"
+    ]
+  },
+  {
+    "name": "G09_all_livestock_partials",
+    "desc": "add vaquillonas+vacuné las vacas+vendí novillos+pesé terneros (no plot for some)",
+    "group": "G_hacienda",
+    "compound": "agregué 30 vaquillonas, vacuné las vacas, vendí 10 novillos, pesé 50 terneros 230 kg",
+    "answers": [
+      "en Bajo",
+      "aftosa",
+      "en Bajo a 1700 USD",
+      "en Frente"
+    ],
+    "status": "WARN",
+    "reason": "lm=2 he=1 (sum=3, want>=3 from queue resolution)",
+    "turns": [
+      "USER: agregué 30 vaquillonas, vacuné las vacas, vendí 10 novillos, pesé 50 terneros 230 kg",
+      "BOT: 👇 Evento sanitario (vaca): 💉 ¿Contra qué vacuna fue? (ej: aftosa, brucelosis, IBR)\n⚖️ *Pesaje registrado*\n  🐄 50 Terneros\n  📊 Peso promedio: *230 kg*\n  📍 el rincon > Bajo",
+      "USER: en Bajo",
+      "BOT: 💉 ¿Contra qué vacuna fue? (ej: aftosa, brucelosis, IBR)",
+      "USER: aftosa",
+      "BOT: 💉 ¿Contra qué vacuna fue? (ej: aftosa, brucelosis, IBR)",
+      "USER: en Bajo a 1700 USD",
+      "BOT: 💉 ¿Contra qué vacuna fue? (ej: aftosa, brucelosis, IBR)",
+      "USER: en Frente",
+      "BOT: 💉 ¿Contra qué vacuna fue? (ej: aftosa, brucelosis, IBR)"
+    ]
+  },
+  {
+    "name": "G10_repro_chain_sire",
+    "desc": "toro Toro Negro Angus + IATF + detección celo",
+    "group": "G_hacienda",
+    "compound": "eché el toro Toro Negro Angus en Loma, inseminé 25 vacas con IATF en Loma, detecté 18 vacas en celo en Loma",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "he=2 repro_events=2 (want>=3)",
+    "turns": [
+      "USER: eché el toro Toro Negro Angus en Loma, inseminé 25 vacas con IATF en Loma, detecté 18 vacas en celo en Loma",
+      "BOT: 🐂 *Evento reproductivo registrado*\n  Tipo: Servicio (entore)\n  🐂 Toro Negro Angus\n  📍 el rincon > Loma\n  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás."
+    ]
+  },
+  {
+    "name": "H11_warehouse_name_variants",
+    "desc": "REGRESSION (e4eebc3): galpón norte / Norte / Galpón Norte all resolve",
+    "group": "H_stock_fin",
+    "compound": "agregué 100 bolsas urea al galpón norte, saqué 30 lt 2,4D del Norte, agregué 50 lt cipermetrina al Galpón Norte",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "expect-fn threw: Query failed: 500",
+    "turns": [
+      "USER: agregué 100 bolsas urea al galpón norte, saqué 30 lt 2,4D del Norte, agregué 50 lt cipermetrina al Galpón Norte",
+      "BOT: 📥 *Stock actualizado*\n\n  📦 *urea* (nuevo)\n  ➕ 100 bolsas\n  📊 Total: *100 bolsas*\n  🏭 Norte (el rincon)\n📤 *Stock descontado*\n\n  📦 *2,4D*\n  ➖ 30 lt\n  📊 Quedan: *150 lt*\n  🏭 Norte (el rincon)\n📥 *Stock actualizado*\n\n  📦 *cipermetrina* (nuevo)\n  ➕ 50 lt\n  📊 Total: *50 lt*\n  🏭 Norte (el rincon)\n🐂 *Evento reprodu..."
+    ]
+  },
+  {
+    "name": "H12_grain_sale_with_stock",
+    "desc": "venta de soja 80 tn (no stock soja loaded yet; expect income only)",
+    "group": "H_stock_fin",
+    "compound": "vendí 80 tn de soja a 480 USD por tonelada",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "i=0 soja=undefined",
+    "turns": [
+      "USER: vendí 80 tn de soja a 480 USD por tonelada",
+      "BOT: 💰 *Soja* — $38.400 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "H13_multi_product_stock_add_with_price",
+    "desc": "3 stock adds, each with unit_price → 3 stock + 3 linked expenses",
+    "group": "H_stock_fin",
+    "compound": "agregué 200 lt fipronil al galpón Norte a 1500 c/u, agregué 100 bolsas atrazina a 4500 c/u, agregué 50 bolsas roundup max a 18mil c/u",
+    "answers": [],
+    "status": "PASS",
+    "reason": "sm=3 e=3 (want sm>=3 + e>=3 ideal; min 2 each)",
+    "turns": [
+      "USER: agregué 200 lt fipronil al galpón Norte a 1500 c/u, agregué 100 bolsas atrazina a 4500 c/u, agregué 50 bolsas roundup max a 18mil c/u",
+      "BOT: 📥 *Stock actualizado*\n\n  📦 *fipronil* (nuevo)\n  ➕ 200 lt\n  📊 Total: *200 lt*\n  🏭 Norte (el rincon)\n  💰 Gasto registrado: $300.000\n📥 *Stock actualizado*\n\n  📦 *atrazina* (nuevo)\n  ➕ 100 bolsas\n  📊 Total: *100 bolsas*\n  🏭 Norte (el rincon)\n  💰 Gasto registrado: $450.000\n📥 *Stock actualizado*\n\n  📦 *roundup max*..."
+    ]
+  },
+  {
+    "name": "H14_stock_out_activities_chain",
+    "desc": "saqué 40 lt 2,4D + fumi Loma 2 lt/ha + saqué 60 DAP + fert Bajo 150 kg/ha",
+    "group": "H_stock_fin",
+    "compound": "saqué 40 lt 2,4D del galpón Norte, fumigué Loma con eso 2 lt/ha, saqué 60 bolsas DAP del galpón Norte, fertilicé Bajo con DAP 150 kg/ha",
+    "answers": [],
+    "status": "PASS",
+    "reason": "sm=2 (want>=2) d=2 (want>=2)",
+    "turns": [
+      "USER: saqué 40 lt 2,4D del galpón Norte, fumigué Loma con eso 2 lt/ha, saqué 60 bolsas DAP del galpón Norte, fertilicé Bajo con DAP 150 kg/ha",
+      "BOT: 📤 *Stock descontado*\n\n  📦 *2,4D*\n  ➖ 40 lt\n  📊 Quedan: *110 lt*\n  🏭 Norte (el rincon)\n💨 *Fumigación* registrada\n📍 el rincon > Loma\n🧴 2,4D (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: sorgo\n\n📦 Tenés 110 lt de *2,4D* en Norte.\n¿Descontar *360 lt*?\n📤 *Stock descontado*\n\n  📦 *DAP*\n  ➖ 60 bolsas\n  📊 Quedan: *90 bolsas*\n  \ud83c..."
+    ]
+  },
+  {
+    "name": "H15_stock_query_plus_add",
+    "desc": "query stock + add stock (mixed action)",
+    "group": "H_stock_fin",
+    "compound": "qué hay en el galpón Norte y agregar 80 bolsas urea a 8500 c/u",
+    "answers": [],
+    "status": "PASS",
+    "reason": "sm=1 (want>=1; ideal 1 add + N reads)",
+    "turns": [
+      "USER: qué hay en el galpón Norte y agregar 80 bolsas urea a 8500 c/u",
+      "BOT: 📥 *Stock actualizado*\n\n  📦 *urea*\n  ➕ 80 bolsas\n  📊 Total: *180 bolsas*\n  🏭 Norte (el rincon)\n  💰 Gasto registrado: $680.000\n📦 *Stock — depósito Norte* (8 productos)\n• *2,4D* · 110 lt · otros\n• *DAP* · 90 bolsas · fertilizantes\n• *atrazina* · 100 bolsas · agroquimicos\n• *cipermetrina* · 50 lt · agroquimicos\n• *fi..."
+    ]
+  },
+  {
+    "name": "I16_cosecha_inmediata",
+    "desc": "coseché sorgo en Loma 5800 kg/ha + vendí 100 tn a 150 USD/tn",
+    "group": "I_cosecha",
+    "compound": "coseché sorgo en Loma 5800 kg/ha, vendí 100 tn a 150 USD por tonelada",
+    "answers": [],
+    "status": "PASS",
+    "reason": "d=1 i=1 venta100x150=true; incomes=[{\"category\":\"Sorgo\",\"quantity\":\"100\",\"unit_price\":\"150\"},{\"category\":\"Hacienda\",\"quantity\":\"8\",\"unit_price\":\"1700.00\"}]",
+    "turns": [
+      "USER: coseché sorgo en Loma 5800 kg/ha, vendí 100 tn a 150 USD por tonelada",
+      "BOT: 🚛 *1 carga registrada en el rincon > Loma:*\n• Loma — 5.800 kg\n\n📊 *Total: 5.800 kg*\n📅 Campaña 2025/26\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n💰 Registrado\nSorgo\n$15.000 USD\n100 tn a $150\n📍 el rincon\n📈 Resultado del mes hasta ahora\n\nIngresos: $59.600\nGastos: $3.640.000\nResultado..."
+    ]
+  },
+  {
+    "name": "I17_cosecha_3_loads",
+    "desc": "cosecha soja Frente + 3 destinos (Juan/Pedro/Roberto)",
+    "group": "I_cosecha",
+    "compound": "coseché soja en Frente, Juan llevó 25 tn al acopio, Pedro 30 tn al silo, Roberto 18 tn a la cooperativa",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "expect-fn threw: Query failed: 500",
+    "turns": [
+      "USER: coseché soja en Frente, Juan llevó 25 tn al acopio, Pedro 30 tn al silo, Roberto 18 tn a la cooperativa",
+      "BOT: En *el rincon > Frente* hay *sorgo* sembrado, no soja.\nSi querés cosechar sorgo, escribí:\n🌾 *cosechamos sorgo en el lote Frente*\n\n⚠️ Las *3 cargas* no se guardaron (necesitás un cultivo activo primero). Sembrá el lote y volvé a mandar el mensaje completo con las cargas."
+    ]
+  },
+  {
+    "name": "I18_cosecha_partial_venta_partial",
+    "desc": "cosecha sin yield + venta sin price → 2 partials serial",
+    "group": "I_cosecha",
+    "compound": "coseché cebada en Bajo y vendí 40 tn de cebada",
+    "answers": [
+      "3500 kg/ha",
+      "165 USD por tonelada"
+    ],
+    "status": "FAIL",
+    "reason": "d=1 i=0; cebada=undefined",
+    "turns": [
+      "USER: coseché cebada en Bajo y vendí 40 tn de cebada",
+      "BOT: 🌾 *cebada* cosechado en *el rincon > Bajo*\n📅 Campaña 2025/26\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\"."
+    ]
+  },
+  {
+    "name": "I19_cosecha_venta_stock_gasto",
+    "desc": "cosecha maíz + venta + add stock + gasto (4 records)",
+    "group": "I_cosecha",
+    "compound": "coseché maíz en Atrás 8200 kg/ha, vendí 50 tn a 200 USD por tonelada, agregué 200 bolsas maíz al galpón Norte, gasté 90 mil en cosechadora",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "d=0 i=1 sm=1 e=1 (sum=3, want all>=1)",
+    "turns": [
+      "USER: coseché maíz en Atrás 8200 kg/ha, vendí 50 tn a 200 USD por tonelada, agregué 200 bolsas maíz al galpón Norte, gasté 90 mil en cosechadora",
+      "BOT: En *el rincon > Atrás* hay *avena* sembrado, no maíz.\nSi querés cosechar avena, escribí:\n🌾 *cosechamos avena en el lote Atrás*\n\n⚠️ Las *1 carga* no se guardaron (necesitás un cultivo activo primero). Sembrá el lote y volvé a mandar el mensaje completo con las cargas.\n💰 Ingreso guardado\nMaíz\n$10.000 USD\n50 tn a $200\n\ud83d..."
+    ]
+  },
+  {
+    "name": "I20_cosecha_crop_mismatch",
+    "desc": "coseché trigo en Loma (Loma=sorgo) → expect warning, no crash",
+    "group": "I_cosecha",
+    "compound": "coseché trigo en Loma 3200 kg/ha",
+    "answers": [],
+    "status": "PASS",
+    "reason": "bot responded; warned-about-mismatch=true",
+    "turns": [
+      "USER: coseché trigo en Loma 3200 kg/ha",
+      "BOT: En *el rincon > Loma* hay *sorgo* sembrado, no trigo.\nSi querés cosechar sorgo, escribí:\n🌾 *cosechamos sorgo en el lote Loma*"
+    ]
+  },
+  {
+    "name": "J21_trigo_income_category",
+    "desc": "REGRESSION (e4eebc3): vendí 30 tn trigo → category=\"Trigo\" NOT \"Otros\"",
+    "group": "J_edge",
+    "compound": "vendí 30 tn de trigo a 180 USD por tonelada",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "i=0 trigo found=false category='' (want 'Trigo', NOT 'Otros')",
+    "turns": [
+      "USER: vendí 30 tn de trigo a 180 USD por tonelada",
+      "BOT: 💰 *Trigo* — $5.400 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "J22_ambiguous_no_save",
+    "desc": "\"hice algunas cosas en el campo\" → no save expected",
+    "group": "J_edge",
+    "compound": "hice algunas cosas en el campo hoy",
+    "answers": [],
+    "status": "PASS",
+    "reason": "sum=0 (want 0); bot asked for detail=true",
+    "turns": [
+      "USER: hice algunas cosas en el campo hoy",
+      "BOT: Perfecto, contame qué hiciste hoy en el campo. Podés decirme:\n\n📋 Actividades agronómicas: siembras, cosechas, fumigaciones, fertilizaciones, labranzas, riegos\n💰 Gastos e ingresos: compras, ventas, pagos\n🐄 Hacienda: agregaste/vendiste/moviste animales\n📊 Observaciones: plagas, malezas, estado del cultivo\n🌧️ Lluvia: ..."
+    ]
+  },
+  {
+    "name": "J23_long_natural_lang",
+    "desc": "narrative paragraph: 4 actions",
+    "group": "J_edge",
+    "compound": "estuvimos a full hoy, fumigamos el lote Loma temprano con un herbicida que se llama glifosato, le tiramos 3 lt por hectárea, después fertilizamos Bajo con DAP a razón de 120 kg por hectárea, gastamos como 150 mil pesos en gasoil y agregamos 25 terneros Angus al lote Atrás",
+    "answers": [],
+    "status": "PASS",
+    "reason": "d=2 e=1 lm=1 (sum=4, want d>=2,e>=1,lm>=1)",
+    "turns": [
+      "USER: estuvimos a full hoy, fumigamos el lote Loma temprano con un herbicida que se llama glifosato, le tiramos 3 lt por hectárea, después fertilizamos Bajo con DAP a razón de 120 kg por hectárea, gastamos como 150 mil pesos en gasoil y agregamos 25 terneros Angus al lote Atrás",
+      "BOT: 💨 *Fumigación* registrada\n📍 el rincon > Loma\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: sorgo\n🧪 *Fertilización* registrada\n📍 el rincon > Bajo\n🧴 DAP\n📏 120 kg/ha\n🌱 Cultivo: cebada\n✅ Anotado\nCombustible\n$150.000\n📍 el rincon\n💡 Guardé 1 gasto a nivel campo *el rincon*. ¿A qué lote los asigno?\n¿A qué lote?"
+    ]
+  },
+  {
+    "name": "J24_quoted_strings",
+    "desc": "comillas alrededor de descriptores no rompen parsing",
+    "group": "J_edge",
+    "compound": "vendí \"soja de la nueva cosecha\" 30 tn a 480 USD y compré \"urea granulada\" 80 bolsas a 9mil",
+    "answers": [],
+    "status": "PASS",
+    "reason": "i=1 e=1; soja30x480=true",
+    "turns": [
+      "USER: vendí \"soja de la nueva cosecha\" 30 tn a 480 USD y compré \"urea granulada\" 80 bolsas a 9mil",
+      "BOT: 💰 Registrado\nSoja\n$14.400 USD\n30 tn a $480\n📍 el rincon\n📈 Resultado del mes hasta ahora\n\nIngresos: $84.000\nGastos: $3.880.000\nResultado: $-3.796.000\nMargen: -4519%\n✅ Anotado\nFertilizantes\n$720.000\n📍 el rincon\n\n📦 ¿Querés cargar *80bolsas de urea granulada* al stock del Depósito Norte?\n💡 Guardé 1 ingreso a nivel cam..."
+    ]
+  },
+  {
+    "name": "J25_dedup_identical",
+    "desc": "compré 30 bolsas urea x 8mil REPETIDO 2 veces → dedup check",
+    "group": "J_edge",
+    "compound": "compré 30 bolsas urea a 8mil, compré 30 bolsas urea a 8mil",
+    "answers": [],
+    "status": "PASS",
+    "reason": "expenses_with_30x8000=1 diff.e=1 (acceptable: 1 or 2)",
+    "turns": [
+      "USER: compré 30 bolsas urea a 8mil, compré 30 bolsas urea a 8mil",
+      "BOT: ✅ Anotado\nFertilizantes\n$240.000\n📍 el rincon\n\n📦 ¿Querés cargar *30bolsas de urea* al stock del Depósito Norte?\n✅ Anotado\nFertilizantes\n$240.000\n📍 el rincon\n\n📦 ¿Querés cargar *30bolsas de urea* al stock del Depósito Norte?"
+    ]
+  },
+  {
+    "name": "J26_4_partials_cross_domain",
+    "desc": "4 partials cross-domain, serial answers",
+    "group": "J_edge",
+    "compound": "fumigué con glifosato, vendí cebada, vacuné, gasté en gasoil",
+    "answers": [
+      "Bajo 2 lt/ha",
+      "15 tn a 160 USD",
+      "40 vacas Hereford contra aftosa en Loma",
+      "70 mil"
+    ],
+    "status": "FAIL",
+    "reason": "d=0 i=0 he=0 e=0 (sum=0, want>=3)",
+    "turns": [
+      "USER: fumigué con glifosato, vendí cebada, vacuné, gasté en gasoil",
+      "BOT: 💡 Tengo *2 acciones pendientes* — te las pregunto una por una.\n👇 Fumigación con glifosato: 🧪 Fumigación — me faltan datos: ¿qué cantidad? ¿en qué lote?",
+      "USER: Bajo 2 lt/ha",
+      "BOT: Me falta el lote. ¿Me lo decís?",
+      "USER: 15 tn a 160 USD",
+      "BOT: ¿En qué lote?\n\n*el rincon:*\n  • Atrás\n  • Bajo\n  • Frente\n  • Loma",
+      "USER: 40 vacas Hereford contra aftosa en Loma",
+      "BOT: No encontré ese lote. ¿En qué lote?\n\n*el rincon:*\n  • Atrás\n  • Bajo\n  • Frente\n  • Loma",
+      "USER: 70 mil",
+      "BOT: No encontré ese lote. ¿En qué lote?\n\n*el rincon:*\n  • Atrás\n  • Bajo\n  • Frente\n  • Loma"
+    ]
+  },
+  {
+    "name": "J27_cosecha_multi_truck_sale",
+    "desc": "cosecha + 1 truck + venta",
+    "group": "J_edge",
+    "compound": "coseché soja en Frente 4200 kg/ha, Mario trajo 35 tn al silo, vendí 25 tn a 480 USD por tonelada",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "expect-fn threw: Query failed: 500",
+    "turns": [
+      "USER: coseché soja en Frente 4200 kg/ha, Mario trajo 35 tn al silo, vendí 25 tn a 480 USD por tonelada",
+      "BOT: En *el rincon > Frente* hay *sorgo* sembrado, no soja.\nSi querés cosechar sorgo, escribí:\n🌾 *cosechamos sorgo en el lote Frente*\n\n⚠️ Las *1 carga* no se guardaron (necesitás un cultivo activo primero). Sembrá el lote y volvé a mandar el mensaje completo con las cargas.\n💰 Ingreso guardado\nSoja\n$12.000 USD\n25 tn a $480..."
+    ]
+  },
+  {
+    "name": "J28_hacienda_multi_step_purchase",
+    "desc": "compré 20 vacas Aberdeen Angus + vacuné + pesé",
+    "group": "J_edge",
+    "compound": "compré 20 vacas Aberdeen Angus a 1600 USD cada una para Loma, las vacuné contra aftosa y las pesé al ingreso 380 kg promedio",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "lm=2 add20=false he=2 (sum=4, want all>=1 ideally he>=2 for vacuna+pesaje)",
+    "turns": [
+      "USER: compré 20 vacas Aberdeen Angus a 1600 USD cada una para Loma, las vacuné contra aftosa y las pesé al ingreso 380 kg promedio",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  Vaca Aberdeen Angus\n  ➕ 20 animales\n  📊 Total: *40*\n  📍 Loma (el rincon)\n  💸 Gasto registrado: USD 32.000 (Hacienda)"
+    ]
+  },
+  {
+    "name": "J29_8_action_mega_mix",
+    "desc": "8-action across ALL domains",
+    "group": "J_edge",
+    "compound": "vendí 20 tn maíz a 200 USD, compré 50 bolsas urea a 8mil, fumigué Loma con 2,4D 1.5 lt/ha, agregué 15 vaquillonas en Bajo, monitoreé Frente con V6 sin plagas, llovieron 18 mm en El Rincón, observé hongos en Atrás, gasté 70 mil en gasoil",
+    "answers": [],
+    "status": "PASS",
+    "reason": "e=3 i=1 d=3 lm=2 s=1 r=1 o=1 (sum=12, want>=7 across domains)",
+    "turns": [
+      "USER: vendí 20 tn maíz a 200 USD, compré 50 bolsas urea a 8mil, fumigué Loma con 2,4D 1.5 lt/ha, agregué 15 vaquillonas en Bajo, monitoreé Frente con V6 sin plagas, llovieron 18 mm en El Rincón, observé hongos en Atrás, gasté 70 mil en gasoil",
+      "BOT: 💰 Registrado\nMaíz\n$4.000 USD\n20 tn a $200\n📍 el rincon\n📈 Resultado del mes hasta ahora\n\nIngresos: $100.000\nGastos: $4.936.000\nResultado: $-4.836.000\nMargen: -4836%\n\n📦 Tenés *200bolsas* de *maíz* en stock.\n¿Descontar *20tn*?\n✅ Anotado\nFertilizantes\n$400.000\n📍 el rincon\n\n📦 ¿Querés cargar *50bolsas de urea* al stock ..."
+    ]
+  },
+  {
+    "name": "J30_report_plus_register",
+    "desc": "pedido de resumen + registro de gasto en 1 mensaje",
+    "group": "J_edge",
+    "compound": "dame el resumen del mes y registrá un gasto de 50mil en repuestos",
+    "answers": [],
+    "status": "PASS",
+    "reason": "e=1 expenses_50k=1",
+    "turns": [
+      "USER: dame el resumen del mes y registrá un gasto de 50mil en repuestos",
+      "BOT: ✅ Anotado\nMaquinaria\n$50.000\n📍 el rincon\n📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nFertilizantes: $2.490.000\nInsumos: $2.330.000\nCombustible: $300.000\nMaquinaria: $140.000\nAgroquímicos: $100.000\nHacienda: USD 96.000\n*Total gastos ARS: $5.360.000*\n*Total gastos USD: USD 96.000*\n\n*Ingresos por cat..."
+    ]
+  }
+]

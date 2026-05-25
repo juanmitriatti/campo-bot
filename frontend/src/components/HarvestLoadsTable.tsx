@@ -108,6 +108,9 @@ export default function HarvestLoadsTable() {
       if (dateTo) params.set('dateTo', dateTo);
       if (driver) params.set('driver', driver);
       if (destinatario) params.set('destinatario', destinatario);
+      if (cropFilter) params.set('crop', cropFilter);
+      if (humMin) params.set('humidityMin', humMin);
+      if (humMax) params.set('humidityMax', humMax);
       const result = await apiRequest<PaginatedResponse>(`/harvest-loads?${params}`);
       setData(result);
     } catch (err) {
@@ -115,7 +118,7 @@ export default function HarvestLoadsTable() {
     } finally {
       setLoading(false);
     }
-  }, [page, fieldId, plotId, dateFrom, dateTo, driver, destinatario]);
+  }, [page, fieldId, plotId, dateFrom, dateTo, driver, destinatario, cropFilter, humMin, humMax]);
 
   useEffect(() => { fetchLoads(); }, [fetchLoads]);
 
@@ -289,7 +292,18 @@ export default function HarvestLoadsTable() {
                     {describeQuality(l.qualityMetrics) || <span className="text-gray-300 dark:text-gray-600">—</span>}
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden md:table-cell">
-                    {l.destinatario || l.destination || <span className="text-gray-300 dark:text-gray-600">—</span>}
+                    {l.destinatario ? (
+                      <>
+                        {l.destinatario}
+                        {l.destination && l.destination !== l.destinatario && (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">· {l.destination.replace(/_/g, ' ')}</span>
+                        )}
+                      </>
+                    ) : l.destination ? (
+                      <span className="text-gray-500 dark:text-gray-400">{l.destination.replace(/_/g, ' ')}</span>
+                    ) : (
+                      <span className="text-gray-300 dark:text-gray-600">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell">
                     {l.truckPlate || <span className="text-gray-300 dark:text-gray-600">—</span>}

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import type { BreakdownRow } from '../../hooks/useAnalyticsData';
+import { useCurrency } from '../../context/CurrencyContext';
 
 interface Props {
   title: string;
@@ -30,39 +31,8 @@ function formatMoney(n: number, currency: string): string {
 }
 
 export default function CategoryDonutChart({ title, data, emptyText = 'Sin movimientos este mes' }: Props) {
-  // Always offer ARS + USD plus any other currency seen in data. Showing the
-  // toggle even when one side is empty keeps the two donuts (Gastos/Ingresos)
-  // visually aligned and lets the user click to confirm "sin movimientos".
-  const currencies = useMemo(() => {
-    const set = new Set<string>(['ARS', 'USD']);
-    for (const r of data) set.add(r.currency);
-    const list = [...set];
-    list.sort((a, b) => {
-      if (a === 'ARS') return -1;
-      if (b === 'ARS') return 1;
-      if (a === 'USD') return -1;
-      if (b === 'USD') return 1;
-      return a.localeCompare(b);
-    });
-    return list;
-  }, [data]);
-
-  // Default to whichever currency actually has data; otherwise ARS.
-  const defaultCurrency = useMemo(() => {
-    const arsHas = data.some(r => r.currency === 'ARS' && r.total > 0);
-    if (arsHas) return 'ARS';
-    const usdHas = data.some(r => r.currency === 'USD' && r.total > 0);
-    if (usdHas) return 'USD';
-    return 'ARS';
-  }, [data]);
-
-  const [currency, setCurrency] = useState<string>(defaultCurrency);
+  const { currency } = useCurrency();
   const [selected, setSelected] = useState<string>(ALL);
-
-  // Sync default when the data loads (first paint may have empty data).
-  useEffect(() => {
-    setCurrency(defaultCurrency);
-  }, [defaultCurrency]);
 
   // Filter rows by selected currency
   const currencyData = useMemo(
@@ -123,37 +93,20 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
   const total = chartData.reduce((s, d) => s + d.value, 0);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-5">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-5 min-h-[340px] flex flex-col">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{title}</h3>
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
-            {currencies.map(c => (
-              <button
-                key={c}
-                onClick={() => setCurrency(c)}
-                className={`px-3 py-1 text-xs font-medium transition-colors ${
-                  c === currency
-                    ? 'bg-campo-600 text-white'
-                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-          <select
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-            className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:border-campo-500 focus:ring-1 focus:ring-campo-500"
-          >
-            {plotOptions.map(opt => (
-              <option key={opt.key} value={opt.key}>
-                {opt.label} — {formatMoney(opt.total, currency)}
-              </option>
-            ))}
-          </select>
-        </div>
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:border-campo-500 focus:ring-1 focus:ring-campo-500"
+        >
+          {plotOptions.map(opt => (
+            <option key={opt.key} value={opt.key}>
+              {opt.label} — {formatMoney(opt.total, currency)}
+            </option>
+          ))}
+        </select>
       </div>
 
       {chartData.length === 0 ? (
@@ -193,18 +146,18 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
             {chartData.map((d, i) => {
               const pct = total > 0 ? (d.value / total) * 100 : 0;
               return (
-                <li key={d.name} className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span
-                      className="w-3 h-3 rounded-sm shrink-0"
-                      style={{ background: COLORS[i % COLORS.length] }}
-                    />
-                    <span className="text-gray-700 dark:text-gray-200 truncate">{d.name}</span>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="font-medium text-gray-800 dark:text-gray-100">{formatMoney(d.value, currency)}</span>
-                    <span className="text-xs text-gray-400 dark:text-gray-300 ml-1">({pct.toFixed(0)}%)</span>
-                  </div>
+                <li
+                  key={d.name}
+                  className="grid items-center gap-2"
+                  style={{ gridTemplateColumns: '12px minmax(0,1fr) auto 44px' }}
+                >
+                  <span
+                    className="w-3 h-3 rounded-sm shrink-0"
+                    style={{ background: COLORS[i % COLORS.length] }}
+                  />
+                  <span className="text-gray-700 dark:text-gray-200 truncate">{d.name}</span>
+                  <span className="font-medium text-gray-800 dark:text-gray-100 tabular-nums text-right">{formatMoney(d.value, currency)}</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-300 tabular-nums text-right">{pct.toFixed(0)}%</span>
                 </li>
               );
             })}

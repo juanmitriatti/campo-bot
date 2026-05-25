@@ -1,0 +1,410 @@
+[
+  {
+    "name": "A01_5x_expense_chain",
+    "desc": "5 compras complete",
+    "group": "A_financial",
+    "compound": "compré 100 bolsas urea a 8mil, compré 200 lt glifosato a 950, compré 50 bolsas semilla soja a 12mil, compré 200 lt gasoil a 800, compré 50 bolsas atrazina a 5mil",
+    "answers": [],
+    "status": "PASS",
+    "reason": "e=5 (want>=5)",
+    "turns": [
+      "USER: compré 100 bolsas urea a 8mil, compré 200 lt glifosato a 950, compré 50 bolsas semilla soja a 12mil, compré 200 lt gasoil a 800, compré 50 bolsas atrazina a 5mil",
+      "BOT: ✅ Registrado\nFertilizantes\n$800.000\n📍 la pampa\n\n📦 ¿Querés cargar *100bolsas de urea* al stock del Depósito Central?\n✅ Gasto guardado\nAgroquímicos\n$190.000\n📍 la pampa\n\n📦 ¿Querés cargar *200lt de glifosato* al stock del Depósito Central?\n✅ Listo, gasto registrado\nSemillas\n$600.000\n📍 la pampa\n\n📦 ¿Querés cargar *50bo..."
+    ]
+  },
+  {
+    "name": "A02_3sales_2expenses_mix",
+    "desc": "3 ventas USD + 2 gastos ARS",
+    "group": "A_financial",
+    "compound": "vendí 30 tn soja a 480 USD, vendí 20 tn maíz a 200 USD, vendí 15 tn trigo a 180 USD, compré urea por 200mil, gasté 80mil en gasoil",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "i=2 e=2; soja=true maiz=true trigo=false",
+    "turns": [
+      "USER: vendí 30 tn soja a 480 USD, vendí 20 tn maíz a 200 USD, vendí 15 tn trigo a 180 USD, compré urea por 200mil, gasté 80mil en gasoil",
+      "BOT: 💰 Ingreso guardado\nSoja\n$14.400 USD\n30 tn a $480\n📍 la pampa\n📈 Resultado del mes hasta ahora\n\nIngresos: $14.400\nGastos: $2.000.000\nResultado: $-1.985.600\nMargen: -13789%\n\n📦 Tenés *500bolsas* de *soja* en stock.\n¿Descontar *30tn*?\n💰 Anotado\nMaíz\n$4.000 USD\n20 tn a $200\n📍 la pampa\n📈 Resultado del mes hasta ahora\n\nI..."
+    ]
+  },
+  {
+    "name": "A03_3_financial_field_level",
+    "desc": "3 financial sin plot (bulk-plot prompt expected)",
+    "group": "A_financial",
+    "compound": "gasté 50mil en gasoil, vendí 10 tn soja a 480 USD, gasté 30mil en repuestos",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "e=1 (want>=2) i=1 (want>=1)",
+    "turns": [
+      "USER: gasté 50mil en gasoil, vendí 10 tn soja a 480 USD, gasté 30mil en repuestos",
+      "BOT: ✅ Registrado\nCombustible\n$50.000\n📍 la pampa\n💰 Anotado\nSoja\n$4.800 USD\n10 tn a $480\n📍 la pampa\n📈 Resultado del mes hasta ahora\n\nIngresos: $23.200\nGastos: $2.330.000\nResultado: $-2.306.800\nMargen: -9943%\n\n📦 Tenés *500bolsas* de *soja* en stock.\n¿Descontar *10tn*?\n💡 Guardé 1 gasto a nivel campo *la pampa*. ¿A qué lo..."
+    ]
+  },
+  {
+    "name": "A04_2_ventas_one_no_price",
+    "desc": "2 ventas, una sin precio → serial follow-up",
+    "group": "A_financial",
+    "compound": "vendí 25 tn maíz a 200 USD y vendí 8 tn girasol",
+    "answers": [
+      "550 USD por tonelada"
+    ],
+    "status": "FAIL",
+    "reason": "No girasol income. incomes=[{\"category\":\"Maíz\",\"quantity\":\"25\",\"unit_price\":\"200\"},{\"category\":\"Soja\",\"quantity\":\"10\",\"unit_price\":\"480\"},{\"category\":\"Maíz\",\"quantity\":\"20\",\"unit_price\":\"200\"},{\"category\":\"Soja\",\"quantity\":\"30\",\"unit_price\":\"480\"}]",
+    "turns": [
+      "USER: vendí 25 tn maíz a 200 USD y vendí 8 tn girasol",
+      "BOT: 💰 Anotado\nMaíz\n$5.000 USD\n25 tn a $200\n📍 la pampa\n📈 Resultado del mes hasta ahora\n\nIngresos: $28.200\nGastos: $2.330.000\nResultado: $-2.301.800\nMargen: -8162%\n👇 Venta de *Girasol* (8 tn): ¿cuánto fue el precio?\n💡 Guardé 1 ingreso a nivel campo *la pampa*. ¿A qué lote los asigno?\n¿A qué lote?",
+      "USER: 550 USD por tonelada",
+      "BOT: 💰 *Girasol* — $0 USD\n\n¿En qué lote lo registramos?"
+    ]
+  },
+  {
+    "name": "A05_gasto_recurrente_mix",
+    "desc": "creá gasto fijo + compré urea (mix templates + expense)",
+    "group": "A_financial",
+    "compound": "creá gasto fijo de 50mil pesos en sueldos mensual y compré 30 bolsas urea a 8mil",
+    "answers": [],
+    "status": "PASS",
+    "reason": "e=1 urea=true",
+    "turns": [
+      "USER: creá gasto fijo de 50mil pesos en sueldos mensual y compré 30 bolsas urea a 8mil",
+      "BOT: ✅ Gasto recurrente creado\n\n📝 *sueldos*\n💰 $50.000\n🔄 Frecuencia: mensual\n📅 Próximo: Invalid Date\n✅ Anotado\nFertilizantes\n$240.000\n📍 la pampa\n\n📦 ¿Querés cargar *30bolsas de urea* al stock del Depósito Central?\n✅ Anotado\nFertilizantes\n$240.000\n📍 la pampa\n\n📦 ¿Querés cargar *30bolsas de urea* al stock del Depósito Ce..."
+    ]
+  },
+  {
+    "name": "B06_3_actividades_distinct_plots",
+    "desc": "fumi + fert + siembra (3 distintos)",
+    "group": "B_agronomy",
+    "compound": "fumigué Norte con glifosato 3 lt/ha, fertilicé Centro con urea 100 kg/ha, sembré avena en Este",
+    "answers": [],
+    "status": "PASS",
+    "reason": "d=3 (want>=3)",
+    "turns": [
+      "USER: fumigué Norte con glifosato 3 lt/ha, fertilicé Centro con urea 100 kg/ha, sembré avena en Este",
+      "BOT: 💨 *Fumigación* registrada\n📍 la pampa > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 300 lt de *glifosato* en Central.\n¿Descontar *360 lt*?\n🧪 *Fertilización* registrada\n📍 la pampa > Centro\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: maíz\n📋 Se cerró la campaña anterior de *girasol* en la pampa > Este.\n\ud83c..."
+    ]
+  },
+  {
+    "name": "B07_siembra_spray_scout_same_plot",
+    "desc": "sembré + fumigué + monitoreé al mismo plot Sur",
+    "group": "B_agronomy",
+    "compound": "sembré sorgo en Sur, fumigué Sur con atrazina 2 lt/ha y monitoreé Sur V3 con 5% rama negra",
+    "answers": [],
+    "status": "PASS",
+    "reason": "d=2 (want>=2) s=1 (want>=1)",
+    "turns": [
+      "USER: sembré sorgo en Sur, fumigué Sur con atrazina 2 lt/ha y monitoreé Sur V3 con 5% rama negra",
+      "BOT: 📋 Se cerró la campaña anterior de *trigo* en la pampa > Sur.\n🌱 *sorgo* sembrado en *la pampa > Sur*\n📅 Campaña 2025/26\n💨 *Fumigación* registrada\n📍 la pampa > Sur\n🧴 atrazina (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: sorgo\n\n📦 Tenés 100 lt de *atrazina* en Central.\n¿Descontar *180 lt*?\n🔍 *Monitoreo registrado* en *la pamp..."
+    ]
+  },
+  {
+    "name": "B08_2scouts_cosecha_obs",
+    "desc": "2 monitoreos + cosecha + observación liebres",
+    "group": "B_agronomy",
+    "compound": "monitoreé Norte con V6 sin plagas, monitoreé Centro V7 con 10% chinches, coseché soja en Norte 4200 kg/ha, vi liebres en Sur",
+    "answers": [],
+    "status": "PASS",
+    "reason": "s=2 d=1 o=1 (sum=4, want s>=2,d>=1,sum>=4)",
+    "turns": [
+      "USER: monitoreé Norte con V6 sin plagas, monitoreé Centro V7 con 10% chinches, coseché soja en Norte 4200 kg/ha, vi liebres en Sur",
+      "BOT: 🔍 *Monitoreo registrado* en *la pampa > Norte*\n  📐 Estadio: *V6*\n🔍 *Monitoreo registrado* en *la pampa > Centro*\n  📐 Estadio: *V7*\n  🐛 Plaga: chinche (leve 2/5), 10.00% afectado\n🚛 *1 carga registrada en la pampa > Norte:*\n• Norte — 4.200 kg\n\n📊 *Total: 4.200 kg*\n📅 Campaña 2025/26\n\nLa campaña sigue abierta. Cuand..."
+    ]
+  },
+  {
+    "name": "B09_labranza_riego_2_sprays",
+    "desc": "aré + regué + 2 sprays distintos",
+    "group": "B_agronomy",
+    "compound": "aré Norte ayer, regué Centro con 30mm de riego, fumigué Sur con glifosato 2 lt/ha, fumigué Este con 2,4D 1 lt/ha",
+    "answers": [],
+    "status": "PASS",
+    "reason": "d=4 (want>=4 activities: aré, regué, 2 fumi)",
+    "turns": [
+      "USER: aré Norte ayer, regué Centro con 30mm de riego, fumigué Sur con glifosato 2 lt/ha, fumigué Este con 2,4D 1 lt/ha",
+      "BOT: 🚜 *Labranza* registrada\n📍 la pampa > Norte\n🧴 arado\n🌱 Cultivo: soja\n📅 21/5/2026\n💧 *Riego* registrada\n📍 la pampa > Centro\n📏 30 mm\n🌱 Cultivo: maíz\n💨 *Fumigación* registrada\n📍 la pampa > Sur\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: sorgo\n\n📦 Tenés 300 lt de *glifosato* en Central.\n¿Descontar *180 lt*?\n💨 ..."
+    ]
+  },
+  {
+    "name": "B10_lluvia_cosecha_chain",
+    "desc": "lluvia + monitoreo + cosecha + venta",
+    "group": "B_agronomy",
+    "compound": "llovieron 35mm en La Pampa, monitoreé Norte V8 normal, coseché soja en Norte 4500 kg/ha, vendí 60 tn a 480 USD",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "r=1 s=1 d=0 i=1 (sum=3, want>=4)",
+    "turns": [
+      "USER: llovieron 35mm en La Pampa, monitoreé Norte V8 normal, coseché soja en Norte 4500 kg/ha, vendí 60 tn a 480 USD",
+      "BOT: 🌧️ Lluvia registrada: *35mm*\n📍 la pampa\n\n⚠️ *Alerta:* Acumulado hoy *35mm* ≥ umbral configurado (10mm)\n🔍 *Monitoreo registrado* en *la pampa > Norte*\n  📐 Estadio: *V8*\n  📝 normal\n🚛 *1 carga agregada en la pampa > Norte:*\n• Norte — 4.500 kg\n\n📊 *Total: 4.500 kg*\n\nLa campaña sigue abierta. Cuando quieras cerrarla, ..."
+    ]
+  },
+  {
+    "name": "C11_3_add_distinct_plots",
+    "desc": "3 add livestock distinct breed/plot",
+    "group": "C_livestock",
+    "compound": "agregué 30 vaquillonas Hereford en Norte, agregué 20 novillos Brangus en Centro, agregué 15 terneros Angus en Sur",
+    "answers": [],
+    "status": "PASS",
+    "reason": "lm=4; all 3 correct",
+    "turns": [
+      "USER: agregué 30 vaquillonas Hereford en Norte, agregué 20 novillos Brangus en Centro, agregué 15 terneros Angus en Sur",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  Vaquillona Hereford\n  ➕ 30 animales\n  📊 Total: *60*\n  📍 Norte (la pampa)"
+    ]
+  },
+  {
+    "name": "C12_2vac_1desparasit",
+    "desc": "2 vacunas + 1 desparasitación",
+    "group": "C_livestock",
+    "compound": "vacuné 80 vacas contra aftosa en Norte, vacuné 60 novillos contra brucelosis en Centro, desparasité 50 terneros con ivermectina en Sur",
+    "answers": [],
+    "status": "PASS",
+    "reason": "he=3; all 3 events=[{\"product\":\"ivermectina\",\"notes\":null},{\"product\":\"brucelosis\",\"notes\":null},{\"product\":\"aftosa\",\"notes\":null}]",
+    "turns": [
+      "USER: vacuné 80 vacas contra aftosa en Norte, vacuné 60 novillos contra brucelosis en Centro, desparasité 50 terneros con ivermectina en Sur",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  Vaquillona Hereford\n  ➕ 30 animales\n  📊 Total: *120*\n  📍 Norte (la pampa)"
+    ]
+  },
+  {
+    "name": "C13_repro_chain",
+    "desc": "toro + IATF + detección celo (3 repro events)",
+    "group": "C_livestock",
+    "compound": "eché el toro Don Pancho en Norte, inseminé 30 vacas con IATF en Centro, detecté celo en 15 vaquillonas en Sur",
+    "answers": [],
+    "status": "PASS",
+    "reason": "he=6 (want>=3); repro_events=3 events=[{\"event_type\":\"repro_event\",\"product\":null,\"notes\":null},{\"event_type\":\"repro_event\",\"product\":null,\"notes\":null},{\"event_type\":\"repro_event\",\"product\":\"Don Pancho\",\"notes\":null}]",
+    "turns": [
+      "USER: eché el toro Don Pancho en Norte, inseminé 30 vacas con IATF en Centro, detecté celo en 15 vaquillonas en Sur",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  Vaquillona Hereford\n  ➕ 30 animales\n  📊 Total: *180*\n  📍 Norte (la pampa)"
+    ]
+  },
+  {
+    "name": "C14_pesaje_venta_sanidad",
+    "desc": "pesaje + venta hacienda USD + vacuna",
+    "group": "C_livestock",
+    "compound": "pesé 50 terneros 250 kg promedio en Sur, vendí 10 novillos a 1800 USD cada uno en Centro, vacuné 80 vacas contra ibr en Norte",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "expect-fn threw: Query failed: 500",
+    "turns": [
+      "USER: pesé 50 terneros 250 kg promedio en Sur, vendí 10 novillos a 1800 USD cada uno en Centro, vacuné 80 vacas contra ibr en Norte",
+      "BOT: ❌ Hay Novillo de varias razas en el lote Centro: Brangus (80), Angus (240). ¿De cuál? Decime la raza.\n⚖️ *Pesaje registrado*\n  🐄 50 Terneros\n  📊 Peso promedio: *250 kg*\n  📍 la pampa > Sur"
+    ]
+  },
+  {
+    "name": "C15_add_remove_repro",
+    "desc": "add + venta (remove) + toro",
+    "group": "C_livestock",
+    "compound": "agregué 20 vacas Angus en Norte, vendí 5 vacas a 1500 USD cada una en Norte, eché el toro Camilo en Norte",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "lm=3 add20=true rem5=false he=1",
+    "turns": [
+      "USER: agregué 20 vacas Angus en Norte, vendí 5 vacas a 1500 USD cada una en Norte, eché el toro Camilo en Norte",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  Vaca Angus\n  ➕ 20 animales\n  📊 Total: *835*\n  📍 Norte (la pampa)"
+    ]
+  },
+  {
+    "name": "D16_3_in_1_out",
+    "desc": "3 entradas + 1 salida stock",
+    "group": "D_stock",
+    "compound": "agregué 100 bolsas semilla maíz al galpón Central a 15mil c/u, agregué 50 lt fipronil al galpón Central, agregué 30 lt cipermetrina al galpón Central, saqué 50 lt de glifosato del galpón Central",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "sm=1 (want>=4)",
+    "turns": [
+      "USER: agregué 100 bolsas semilla maíz al galpón Central a 15mil c/u, agregué 50 lt fipronil al galpón Central, agregué 30 lt cipermetrina al galpón Central, saqué 50 lt de glifosato del galpón Central",
+      "BOT: ❌ Depósito \"galpón Central\" no encontrado\n❌ Depósito \"galpón Central\" no encontrado\n❌ Depósito \"galpón Central\" no encontrado\n📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 50 lt\n  📊 Quedan: *250 lt*\n  🏭 Central (la pampa)\n🐂 *Evento reproductivo registrado*\n  Tipo: Servicio (entore)\n  🐂 toro Camilo\n  📍 la pampa > Nor..."
+    ]
+  },
+  {
+    "name": "D17_stockout_activity_chain",
+    "desc": "stock-out → fumigación → stock-out → fertilización",
+    "group": "D_stock",
+    "compound": "saqué 60 lt de glifosato del galpón Central, fumigué Norte con eso 3 lt/ha, saqué 30 bolsas urea del galpón Central, fertilicé Centro 100 kg/ha",
+    "answers": [],
+    "status": "PASS",
+    "reason": "sm=2 (want>=2) d=2 (want>=2)",
+    "turns": [
+      "USER: saqué 60 lt de glifosato del galpón Central, fumigué Norte con eso 3 lt/ha, saqué 30 bolsas urea del galpón Central, fertilicé Centro 100 kg/ha",
+      "BOT: 📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 60 lt\n  📊 Quedan: *190 lt*\n  🏭 Central (la pampa)\n💨 *Fumigación* registrada\n📍 la pampa > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 190 lt de *glifosato* en Central.\n¿Descontar *360 lt*?\n📤 *Stock descontado*\n\n  📦 *urea*\n  ➖ 30 bolsas\n  📊 Queda..."
+    ]
+  },
+  {
+    "name": "D18_grano_sale",
+    "desc": "venta de granos (income, no stock movement guaranteed)",
+    "group": "D_stock",
+    "compound": "vendí 100 tn de soja a 480 USD por tonelada",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "i=0 soja=undefined",
+    "turns": [
+      "USER: vendí 100 tn de soja a 480 USD por tonelada",
+      "BOT: 💰 *Soja* — $48.000 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "D19_stock_partial_chain",
+    "desc": "saqué stock + agregué stock (both partial)",
+    "group": "D_stock",
+    "compound": "saqué glifosato y agregué semilla",
+    "answers": [
+      "60 lt glifosato",
+      "50 bolsas semilla soja a 12mil c/u"
+    ],
+    "status": "WARN",
+    "reason": "sm=1 (want>=1, ideally 2)",
+    "turns": [
+      "USER: saqué glifosato y agregué semilla",
+      "BOT: Necesito más detalles para registrar:\n\n1. **Glifosato**: ¿Cuántos litros sacaste? ¿De qué galpón/depósito?\n2. **Semilla**: ¿Qué tipo de semilla (soja, maíz, etc.)? ¿Cuántas bolsas o kg? ¿A qué galpón/depósito?\n\nCon esos datos registro ambas operaciones.",
+      "USER: 60 lt glifosato",
+      "BOT: 📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 60 lt\n  📊 Quedan: *130 lt*\n  🏭 Central (la pampa)"
+    ]
+  },
+  {
+    "name": "D20_stock_multi_chain",
+    "desc": "add stock + saqué + compré (expense+stock)",
+    "group": "D_stock",
+    "compound": "agregué 200 lt gasoil al galpón Central a 850 el litro, saqué 50 lt para fumigación, compré 100 lt extras a 950 c/u",
+    "answers": [],
+    "status": "PASS",
+    "reason": "sm=3 e=2 (sum=5, want>=2)",
+    "turns": [
+      "USER: agregué 200 lt gasoil al galpón Central a 850 el litro, saqué 50 lt para fumigación, compré 100 lt extras a 950 c/u",
+      "BOT: 📥 *Stock actualizado*\n\n  📦 *gasoil* (nuevo)\n  ➕ 200 lt\n  📊 Total: *200 lt*\n  🏭 Central (la pampa)\n  💰 Gasto registrado: $170.000\n📤 *Stock descontado*\n\n  📦 *gasoil*\n  ➖ 50 lt\n  📊 Quedan: *150 lt*\n  🏭 Central (la pampa)\n📥 *Stock actualizado*\n\n  📦 *gasoil*\n  ➕ 100 lt\n  📊 Total: *250 lt*\n  🏭 Central (la pampa)..."
+    ]
+  },
+  {
+    "name": "E21_6action_mega",
+    "desc": "6-action mega: gasto+venta+spray+livestock+scout+gasto",
+    "group": "E_mixed",
+    "compound": "compré 100 bolsas urea a 8mil, vendí 20 tn soja a 480 USD, fumigué Norte glifosato 3 lt/ha, agregué 15 vacas en Centro, monitoreé Sur V5 sin plagas, gasté 60mil en gasoil",
+    "answers": [],
+    "status": "PASS",
+    "reason": "e=2 i=1 d=1 lm=1 s=1 (sum=6, want>=6 with all domains)",
+    "turns": [
+      "USER: compré 100 bolsas urea a 8mil, vendí 20 tn soja a 480 USD, fumigué Norte glifosato 3 lt/ha, agregué 15 vacas en Centro, monitoreé Sur V5 sin plagas, gasté 60mil en gasoil",
+      "BOT: ✅ Anotado\nFertilizantes\n$800.000\n📍 la pampa\n\n📦 ¿Querés cargar *100bolsas de urea* al stock del Depósito Central?\n💰 Ingreso guardado\nSoja\n$9.600 USD\n20 tn a $480\n📍 la pampa\n📈 Resultado del mes hasta ahora\n\nIngresos: $81.600\nGastos: $3.635.000\nResultado: $-3.553.400\nMargen: -4355%\n\n📦 Tenés *500bolsas* de *soja* en ..."
+    ]
+  },
+  {
+    "name": "E22_partial_complete_no_conflation",
+    "desc": "2 ventas (1 sin price) + 1 expense + 1 livestock",
+    "group": "E_mixed",
+    "compound": "vendí 10 tn maíz a 200 USD, vendí 8 tn trigo, compré gasoil por 60mil, agregué 12 terneros en Sur",
+    "answers": [
+      "180 USD por tonelada"
+    ],
+    "status": "FAIL",
+    "reason": "i=1 e=1 lm=1; maiz=200 trigo=undefined",
+    "turns": [
+      "USER: vendí 10 tn maíz a 200 USD, vendí 8 tn trigo, compré gasoil por 60mil, agregué 12 terneros en Sur",
+      "BOT: 💰 Registrado\nMaíz\n$2.000 USD\n10 tn a $200\n📍 la pampa\n📈 Resultado del mes hasta ahora\n\nIngresos: $83.600\nGastos: $3.695.000\nResultado: $-3.611.400\nMargen: -4320%\n✅ Anotado\nCombustible\n$60.000\n📍 la pampa\n👇 Venta de *Otros* (8 tn): ¿cuánto fue el precio?\n💡 Guardé 1 ingreso + 1 gasto a nivel campo *la pampa*. ¿A qué ...",
+      "USER: 180 USD por tonelada",
+      "BOT: 💰 *Otros* — $0\n\n¿En qué lote lo registramos?"
+    ]
+  },
+  {
+    "name": "E23_2_add_livestock_no_location",
+    "desc": "REGRESSION: 2 add_livestock sin location → bulk-plot prompt",
+    "group": "E_mixed",
+    "compound": "agregué 30 vaquillonas Hereford y agregué 25 novillos Charolais",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "lm=0; vaquillonas-30=true (plot=Norte) novillos-25=false (plot=undefined)",
+    "turns": [
+      "USER: agregué 30 vaquillonas Hereford y agregué 25 novillos Charolais",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  ➕ 30 Vaquillona\n  ➕ 25 Novillo\n  📍 —"
+    ]
+  },
+  {
+    "name": "E24_health_no_location",
+    "desc": "REGRESSION: 2 health events sin location → auto-pick first",
+    "group": "E_mixed",
+    "compound": "vacuné contra aftosa y desparasité con ivermectina",
+    "answers": [],
+    "status": "PASS",
+    "reason": "he=2; aftosa=true iver=true events=[{\"product\":\"aftosa\",\"notes\":null},{\"product\":\"aftosa\",\"notes\":null},{\"product\":\"ivermectina\",\"notes\":null}]",
+    "turns": [
+      "USER: vacuné contra aftosa y desparasité con ivermectina",
+      "BOT: 💉 *Evento sanitario registrado*\n  Tipo: Vacunación\n  🦠 aftosa\n  📍 la pampa > Norte\n  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás."
+    ]
+  },
+  {
+    "name": "E25_4_all_partials",
+    "desc": "4 partials serial",
+    "group": "E_mixed",
+    "compound": "compré algo, vendí cosecha, fumigué, agregué hacienda",
+    "answers": [
+      "50 bolsas urea a 8mil",
+      "20 tn soja a 480 USD",
+      "Norte con glifosato 2 lt/ha",
+      "20 terneros Angus en Sur"
+    ],
+    "status": "FAIL",
+    "reason": "e=0 i=0 d=2 lm=0 (sum=2, want>=3)",
+    "turns": [
+      "USER: compré algo, vendí cosecha, fumigué, agregué hacienda",
+      "BOT: 💉 *Evento sanitario registrado*\n  Tipo: Vacunación\n  🦠 aftosa\n  📍 la pampa > Norte\n  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás."
+    ]
+  },
+  {
+    "name": "E26_agronomy_rain_chain",
+    "desc": "lluvia + spray + fert + scout",
+    "group": "E_mixed",
+    "compound": "llovieron 20mm, fumigué Norte con glifosato 2 lt/ha, fertilicé Centro con urea 100 kg/ha, monitoreé Sur V4 con 15% malezas",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "r=0 d=3 s=1 (sum=4, want r>=1,d>=2,s>=1)",
+    "turns": [
+      "USER: llovieron 20mm, fumigué Norte con glifosato 2 lt/ha, fertilicé Centro con urea 100 kg/ha, monitoreé Sur V4 con 15% malezas",
+      "BOT: 🌧️ *20mm* en *la pampa* (hoy) — _ya estaba cargado, omitido_. Si querés corregir el monto, decime \"borrar lluvia\" y volvé a registrarla.\n💨 *Fumigación* registrada\n📍 la pampa > Norte\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 130 lt de *glifosato* en Central.\n¿Descontar *240 lt*?\n🧪 *Fertilización..."
+    ]
+  },
+  {
+    "name": "E27_compound_with_dates",
+    "desc": "ayer fumigué + hoy sembré + anteayer llovieron",
+    "group": "E_mixed",
+    "compound": "ayer fumigué Norte con glifosato 3 lt/ha, hoy sembré avena en Sur, anteayer llovieron 12mm",
+    "answers": [],
+    "status": "PASS",
+    "reason": "d=2 r=1 (sum=3, want d>=2,r>=1)",
+    "turns": [
+      "USER: ayer fumigué Norte con glifosato 3 lt/ha, hoy sembré avena en Sur, anteayer llovieron 12mm",
+      "BOT: 💨 *Fumigación* registrada\n📍 la pampa > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: soja\n📅 21/5/2026\n\n📦 Tenés 130 lt de *glifosato* en Central.\n¿Descontar *360 lt*?\n📋 Se cerró la campaña anterior de *sorgo* en la pampa > Sur.\n🌱 *avena* sembrado en *la pampa > Sur*\n📅 Campaña 2025/26\n🌧️ Lluvia registrada..."
+    ]
+  },
+  {
+    "name": "E28_stock_sale_harvest",
+    "desc": "cosecha + venta + add stock",
+    "group": "E_mixed",
+    "compound": "coseché trigo en Sur 3500 kg/ha, vendí 20 tn de trigo a 180 USD por tonelada, agregué 200 bolsas trigo al galpón Central",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "d=0 i=1 sm=1 trigo=undefined",
+    "turns": [
+      "USER: coseché trigo en Sur 3500 kg/ha, vendí 20 tn de trigo a 180 USD por tonelada, agregué 200 bolsas trigo al galpón Central",
+      "BOT: En *la pampa > Sur* hay *avena* sembrado, no trigo.\nSi querés cosechar avena, escribí:\n🌾 *cosechamos avena en el lote Sur*\n\n⚠️ Las *1 carga* no se guardaron (necesitás un cultivo activo primero). Sembrá el lote y volvé a mandar el mensaje completo con las cargas.\n💰 Registrado\nOtros\n$3.600 USD\n20 tn a $180\n📍 la pampa..."
+    ]
+  },
+  {
+    "name": "E29_livestock_financial_chain",
+    "desc": "compra vacas + venta novillos + vacuna",
+    "group": "E_mixed",
+    "compound": "compré 10 vacas Hereford a 1500 USD c/u en Norte, vendí 5 novillos a 1800 USD cada uno en Centro, vacuné 50 vacas contra aftosa en Norte",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "lm=1 add10=false rem5=true he=1",
+    "turns": [
+      "USER: compré 10 vacas Hereford a 1500 USD c/u en Norte, vendí 5 novillos a 1800 USD cada uno en Centro, vacuné 50 vacas contra aftosa en Norte",
+      "BOT: ❌ Hay Novillo de varias razas en el lote Centro: Brangus (80), Angus (240). ¿De cuál? Decime la raza.\n💉 *Evento sanitario registrado*\n  Tipo: Vacunación\n  🦠 aftosa\n  🐄 50 Vacas\n  📍 la pampa > Norte"
+    ]
+  },
+  {
+    "name": "E30_stress_7_same_plot",
+    "desc": "7 actions, mostly same plot Norte",
+    "group": "E_mixed",
+    "compound": "fumigué Norte con glifosato 3 lt/ha, fertilicé Norte con urea 100 kg/ha, monitoreé Norte V5 sin plagas, observé liebres en Norte, vi malezas en Norte, gasté 50mil en gasoil, llovieron 15mm",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "d=2 s=1 o=1 e=1 r=0 (sum=5, want d>=2,s>=1,e>=1,r>=1,sum>=6)",
+    "turns": [
+      "USER: fumigué Norte con glifosato 3 lt/ha, fertilicé Norte con urea 100 kg/ha, monitoreé Norte V5 sin plagas, observé liebres en Norte, vi malezas en Norte, gasté 50mil en gasoil, llovieron 15mm",
+      "BOT: 💨 *Fumigación* registrada\n📍 la pampa > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 130 lt de *glifosato* en Central.\n¿Descontar *360 lt*?\n🧪 *Fertilización* registrada\n📍 la pampa > Norte\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: soja\n🔍 *Monitoreo registrado* en *la pampa > Norte*\n  📐 Estadio: *V5*\n..."
+    ]
+  }
+]

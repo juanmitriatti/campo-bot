@@ -1,4 +1,7 @@
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { useUserFields } from '../../hooks/useUserFields';
+import { useSelectedField } from '../../hooks/useSelectedField';
+import FieldSelector from '../overview/FieldSelector';
 import {
   LayoutDashboard, Wallet, DollarSign, Sprout, Eye, Search,
   FileText, Wheat, Package, Beef, Paperclip, User,
@@ -42,10 +45,14 @@ export default function Sidebar({ active, onChange, features }: SidebarProps) {
     item => !item.feature || features.includes(item.feature)
   );
   const { subscribed, loading, subscribe, unsubscribe } = usePushNotifications();
+  const { fields } = useUserFields();
+  const [fieldId, setFieldId] = useSelectedField();
 
   return (
     <aside className="hidden md:flex flex-col w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 min-h-[calc(100vh-3.5rem)]">
-      <nav className="flex flex-col gap-1 p-3 pt-5">
+      <FieldSelector fields={fields} value={fieldId} onChange={setFieldId} variant="sidebar" />
+      <div className="border-b border-gray-100 dark:border-gray-700 mx-3" />
+      <nav className="flex flex-col gap-1 p-3 pt-3">
         {visibleItems.map(item => {
           const Icon = item.Icon;
           return (

@@ -223,8 +223,8 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         quantity: { type: 'number', description: 'Cantidad cosechada (ej: 50 tn).' },
         unit: UNIT_PROP,
         warehouse: { type: 'string', description: 'Nombre del depósito/silo destino.' },
-        yield_kg: { type: 'number', description: 'Rendimiento TOTAL en kg (ej: 200000). Si dicen tn→x1000, qq→x100. Solo total, NO por hectárea.' },
-        yield_kg_per_ha: { type: 'number', description: 'Rendimiento en kg/ha (ej: 4100). Usar si dicen "X kilos por hectárea" o "rindió X qq/ha" (convertir qq→kg). Mutuamente excluyente con yield_kg.' },
+        yield_kg: { type: 'number', description: 'Rendimiento TOTAL en kg (ej: 200000 kg = 200 tn = 2000 qq). Si dicen tn→x1000, qq→x100. Solo total, NO por hectárea. MUTUAMENTE EXCLUYENTE con yield_kg_per_ha — nunca mandar ambos.' },
+        yield_kg_per_ha: { type: 'number', description: 'Rendimiento POR HECTÁREA en kg/ha. CRÍTICO: si dicen "rindió 41 qq/ha" mandar 4100 (qq × 100 = kg/ha). Ejemplos: "41 qq/ha" → 4100; "4100 kg/ha" → 4100; "4.1 tn/ha" → 4100. MUTUAMENTE EXCLUYENTE con yield_kg — nunca mandar ambos.' },
         yield_notes: { type: 'string', description: 'Notas sobre el rendimiento.' },
         loads: {
           type: 'array',
@@ -234,8 +234,8 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
             properties: {
               driver_name: { type: 'string', description: 'Nombre del chofer/transportista.' },
               weight_kg: { type: 'number', description: 'Peso en kg. "31.320" argentino = 31320 kg. Si dicen tn x1000, qq x100.' },
-              destination: { type: 'string', enum: ['silo', 'acopio', 'venta_directa'], description: 'Destino de la carga.' },
-              destinatario: { type: 'string', description: 'Empresa destino (Cargill, ACA, etc.).' },
+              destination: { type: 'string', enum: ['silo', 'acopio', 'venta_directa'], description: 'CATEGORÍA del destino. Usar SOLO cuando el usuario no menciona nombre propio del destinatario (ej: "fue al silo", "fue a acopio"). Si menciona nombre (Cargill, ACA, etc.) usar destinatario en su lugar y dejar este campo vacío.' },
+              destinatario: { type: 'string', description: 'NOMBRE PROPIO del destinatario (Cargill, ACA, Bunge, "silo del vecino", etc.). PREFERIR este campo sobre destination cuando hay un nombre. Si lo mandas, omití destination — sino aparecen duplicados.' },
               truck_plate: { type: 'string', description: 'Patente si la mencionan.' },
               humidity_pct: { type: 'number', description: 'Humedad medida % (ej: "al 14%", "13.5 de humedad"). Argentina típicamente: soja 13.5% base, trigo 14%, maíz 14.5%.' },
               quality_metrics: { type: 'object', description: 'Métricas de calidad específicas del cultivo. Soja: {oil_pct}. Trigo: {protein_pct, gluten_pct, test_weight_kg_hl}. Girasol: {oil_pct}. Pasarlas SOLO si el usuario las menciona explícitamente.' },

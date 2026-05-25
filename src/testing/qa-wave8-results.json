@@ -1,0 +1,403 @@
+[
+  {
+    "name": "P01_correction_within_message",
+    "group": "P_compound_edges",
+    "status": "FAIL",
+    "reason": "i=0 (≥1: tolerar 1 ingreso; corrección puede no procesarse pero no debe duplicar)",
+    "compound": "vendí 10 tn de soja a 480 USD por tonelada, perdón eran 12 tn no 10",
+    "turns": [
+      "💰 *Soja* — $5.760 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "P02_question_then_action",
+    "group": "P_compound_edges",
+    "status": "PASS",
+    "reason": "query=true e=1",
+    "compound": "cuánto vendí este mes y registrá un gasto de 50 mil en semilla",
+    "turns": [
+      "✅ Anotado\nFertilizantes\n$50.000\n📍 la querencia\nNo hay registros (mayo de 2026).\n💡 Guardé 1 gasto a nivel campo *la querencia*. ¿A qué lote los asigno?\n¿A qué lote?"
+    ]
+  },
+  {
+    "name": "P03_negation",
+    "group": "P_compound_edges",
+    "status": "FAIL",
+    "reason": "i=0 (debería ser 1, NUNCA 2)",
+    "compound": "no vendí soja, vendí 15 tn de maíz a 200 USD por tonelada",
+    "turns": [
+      "💰 *Maíz* — $3.000 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "P04_units_mixed_scale",
+    "group": "P_compound_edges",
+    "status": "PASS",
+    "reason": "i=1 e=1",
+    "compound": "vendí 80 qq de soja a 48 USD por quintal y compré 500 kg de urea a 1200 el kg",
+    "turns": [
+      "💰 Anotado\nSoja\n$3.840 USD\n80 qq a $48\n📍 la querencia\n📈 Resultado del mes hasta ahora\n\nIngresos: $3.840\nGastos: $50.000\nResultado: $-46.160\nMargen: -1202%\n\n📦 Tenés *200bolsas* de *semilla soja* en stock.\n¿Descontar *80qq*?\n✅ Registrado\nFertilizantes\n$600.000\n📍 la querencia\n\n📦 ¿Querés cargar *500kg de urea* al stock del Depósito Central?\n✅ Registrado\nFertilizantes\n$600.000\n📍 la querencia\n\n📦 ¿Querés cargar *500kg de urea* al stock del Depósito Central?"
+    ]
+  },
+  {
+    "name": "P05_pronoun_chain",
+    "group": "P_compound_edges",
+    "status": "PASS",
+    "reason": "d=2 (spray + fertil)",
+    "compound": "fumigué Norte con glifosato 3 lt/ha y fertilicé ahí mismo con urea 100 kg/ha",
+    "turns": [
+      "💨 *Fumigación* registrada\n📍 la querencia > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 150 lt de *glifosato* en Central.\n¿Descontar *300 lt*?\n🧪 *Fertilización* registrada\n📍 la querencia > Norte\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: soja\n💨 *Fumigación* registrada\n📍 la querencia > Norte\n🧴 glifosato (herbicida)\n📏 3 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 150 lt de *glifosato* en Central.\n¿Descontar *300 lt*?"
+    ]
+  },
+  {
+    "name": "P06_past_and_future_tense",
+    "group": "P_compound_edges",
+    "status": "PASS",
+    "reason": "d=2 hasFutureWarning=false",
+    "compound": "ayer fumigué Sur con 2,4D 2 lt/ha y mañana voy a sembrar avena en Este",
+    "turns": [
+      "💨 *Fumigación* registrada\n📍 la querencia > Sur\n🧴 2,4D (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: maíz\n📅 21/5/2026\n📋 Se cerró la campaña anterior de *trigo* en la querencia > Este.\n🌱 *avena* sembrado en *la querencia > Este*\n📅 Campaña 2025/26"
+    ]
+  },
+  {
+    "name": "P07_emojis",
+    "group": "P_compound_edges",
+    "status": "PASS",
+    "reason": "i=1 e=1",
+    "compound": "💰 vendí 8 tn de maíz a 220 USD/tn 🌽 y compré 50 bolsas urea a 9mil 💸",
+    "turns": [
+      "💰 Anotado\nMaíz\n$1.760 USD\n8 tn a $220\n📍 la querencia\n📈 Resultado del mes hasta ahora\n\nIngresos: $5.600\nGastos: $650.000\nResultado: $-644.400\nMargen: -11507%\n✅ Listo, gasto registrado\nFertilizantes\n$450.000\n📍 la querencia\n\n📦 ¿Querés cargar *50bolsas de urea* al stock del Depósito Central?\n💡 Guardé 1 ingreso a nivel campo *la querencia*. ¿A qué lote los asigno?\n¿A qué lote?"
+    ]
+  },
+  {
+    "name": "P08_three_distinct_currencies_in_one",
+    "group": "P_compound_edges",
+    "status": "PASS",
+    "reason": "incomeUSD=true expenseARS=true",
+    "compound": "vendí 20 tn soja a 480 USD por tonelada y gasté 80 mil pesos en gasoil",
+    "turns": [
+      "💰 Listo, ingreso registrado\nSoja\n$9.600 USD\n20 tn a $480\n📍 la querencia\n📈 Resultado del mes hasta ahora\n\nIngresos: $15.200\nGastos: $1.100.000\nResultado: $-1.084.800\nMargen: -7137%\n\n📦 Tenés *200bolsas* de *semilla soja* en stock.\n¿Descontar *20tn*?\n✅ Registrado\nCombustible\n$80.000\n📍 la querencia\n💡 Guardé 1 gasto a nivel campo *la querencia*. ¿A qué lote los asigno?\n¿A qué lote?"
+    ]
+  },
+  {
+    "name": "Q09_vendi_5_vacas_unit_price",
+    "group": "Q_hacienda_p0",
+    "status": "FAIL",
+    "reason": "no remove_livestock matching count=5 unit_price_usd=1500 found in last 90s: [{\"movement_type\":\"entrada\",\"count\":60,\"unit_price_usd\":null,\"linked_income_id\":null},{\"movement_type\":\"entrada\",\"count\":60,\"unit_price_usd\":null,\"linked_income_id\":null},{\"movement_type\":\"entrada\",\"count\":40,\"unit_price_usd\":null,\"linked_income_id\":null}]",
+    "compound": "vendí 5 vacas a 1500 USD cada una en Norte",
+    "turns": [
+      "🐄 *Hacienda descontada*\n\n  Vaca Angus\n  ➖ 5 animales\n  📊 Quedan: *235*\n  📍 Norte (la querencia)\n  💰 Ingreso registrado: USD 7.500 (Hacienda)"
+    ]
+  },
+  {
+    "name": "Q10_compre_10_vaquillonas",
+    "group": "Q_hacienda_p0",
+    "status": "FAIL",
+    "reason": "no add_livestock count=10 unit_price=1200 found: [{\"movement_type\":\"entrada\",\"count\":60,\"unit_price_usd\":null,\"linked_expense_id\":null},{\"movement_type\":\"entrada\",\"count\":60,\"unit_price_usd\":null,\"linked_expense_id\":null},{\"movement_type\":\"entrada\",\"count\":40,\"unit_price_usd\":null,\"linked_expense_id\":null}]",
+    "compound": "compré 10 vaquillonas Angus a 1200 USD cada una para Norte",
+    "turns": [
+      "🐄 *Hacienda descontada*\n\n  Vaca Angus\n  ➖ 5 animales\n  📊 Quedan: *225*\n  📍 Norte (la querencia)\n  💰 Ingreso registrado: USD 7.500 (Hacienda)"
+    ]
+  },
+  {
+    "name": "Q11_vendi_compound_two_categorias",
+    "group": "Q_hacienda_p0",
+    "status": "FAIL",
+    "reason": "expect-fn threw: Query failed: 500 — {\"error\":\"column \\\"category\\\" does not exist\"}",
+    "compound": "vendí 4 novillos a 1900 USD c/u y vendí 3 vacas Angus a 1500 USD c/u en Norte",
+    "turns": [
+      "❌ No hay novillo en el lote Norte.\n🐄 *Hacienda descontada*\n\n  Vaca Angus\n  ➖ 3 animales\n  📊 Quedan: *217*\n  📍 Norte (la querencia)\n  💰 Ingreso registrado: USD 4.500 (Hacienda)"
+    ]
+  },
+  {
+    "name": "Q12_venta_pesos_arg",
+    "group": "Q_hacienda_p0",
+    "status": "FAIL",
+    "reason": "lm=0",
+    "compound": "vendí 6 terneros a 850000 pesos cada uno",
+    "turns": [
+      "❌ No hay ternero en el lote Norte."
+    ]
+  },
+  {
+    "name": "Q13_venta_no_price_queue",
+    "group": "Q_hacienda_p0",
+    "status": "FAIL",
+    "reason": "match=false askedForPrice=true text=\"🐄 *Hacienda descontada*\n\n  Vaca Angus\n  ➖ 3 animales\n  📊 Quedan: *214*\n  📍 Norte (la querencia)\n\n¿A cuánto fue la ven\"",
+    "compound": "vendí 3 vacas en Norte",
+    "turns": [
+      "🐄 *Hacienda descontada*\n\n  Vaca Angus\n  ➖ 3 animales\n  📊 Quedan: *214*\n  📍 Norte (la querencia)\n\n¿A cuánto fue la venta? Así registro el ingreso.",
+      "🐄 *Hacienda descontada*\n\n  Vaca Angus\n  ➖ 3 animales\n  📊 Quedan: *211*\n  📍 Norte (la querencia)\n  💰 Ingreso registrado: USD 4.800 (Hacienda)"
+    ]
+  },
+  {
+    "name": "R14_stock_long_product_name",
+    "group": "R_stock",
+    "status": "PASS",
+    "reason": "npk found=true items=[{\"name\":\"Fertilizante Compuesto NPK 15-15-15\"},{\"name\":\"urea\"},{\"name\":\"glifosato\"}]",
+    "compound": "agregar 50 bolsas de Fertilizante Compuesto NPK 15-15-15 al galpón Central a 18mil cada una",
+    "turns": [
+      "📥 *Stock actualizado*\n\n  📦 *Fertilizante Compuesto NPK 15-15-15* (nuevo)\n  ➕ 50 bolsas\n  📊 Total: *50 bolsas*\n  🏭 Central (la querencia)\n  💰 Gasto registrado: $900.000\n🐄 *Hacienda descontada*\n\n  Vaca Angus\n  ➖ 3 animales\n  📊 Quedan: *208*\n  📍 Norte (la querencia)\n  💰 Ingreso registrado: USD 4.800 (Hacienda)"
+    ]
+  },
+  {
+    "name": "R15_stock_transfer",
+    "group": "R_stock",
+    "status": "PASS",
+    "reason": "w=1 (esperado ≥1 warehouse nuevo; transfer es bonus)",
+    "compound": "crear galpón Secundario en La Querencia y moví 50 bolsas de urea del galpón Central al Secundario",
+    "turns": [
+      "🏭 Depósito *Secundario* creado correctamente.\n📤 *Stock descontado*\n\n  📦 *urea*\n  ➖ 50 bolsas\n  📊 Quedan: *50 bolsas*\n  🏭 Central (la querencia)\n📥 *Stock actualizado*\n\n  📦 *urea* (nuevo)\n  ➕ 50 bolsas\n  📊 Total: *50 bolsas*\n  🏭 Secundario (la querencia)"
+    ]
+  },
+  {
+    "name": "R16_stock_alert_plus_add",
+    "group": "R_stock",
+    "status": "PASS",
+    "reason": "sm=1",
+    "compound": "qué tengo en stock bajo y agregar 80 lt de cipermetrina al galpón Central a 1500 c/u",
+    "turns": [
+      "📥 *Stock actualizado*\n\n  📦 *cipermetrina* (nuevo)\n  ➕ 80 lt\n  📊 Total: *80 lt*\n  🏭 Central (la querencia)\n  💰 Gasto registrado: $120.000\n✅ No hay productos con stock bajo."
+    ]
+  },
+  {
+    "name": "R17_stock_negative_safety",
+    "group": "R_stock",
+    "status": "PASS",
+    "reason": "warning=true sm=0",
+    "compound": "saqué 5000 lt de glifosato del galpón Central",
+    "turns": [
+      "❌ Stock insuficiente. Disponible: 150 lt"
+    ]
+  },
+  {
+    "name": "R18_stock_query_multi",
+    "group": "R_stock",
+    "status": "PASS",
+    "reason": "mentionsAll=true",
+    "compound": "cuánto glifosato tengo, cuánta urea tengo y cuánta semilla soja",
+    "turns": [
+      "📦 *glifosato*\n\n  📊 Cantidad: *150 lt*\n  🏭 Central (la querencia)\n📦 *urea* — Total: *100 bolsas*\n\nRepartido en 2 depósitos:\n  • *50 bolsas* — Central (la querencia)\n  • *50 bolsas* — Secundario (la querencia)\n📦 *semilla soja*\n\n  📊 Cantidad: *200 bolsas*\n  🏭 Central (la querencia)"
+    ]
+  },
+  {
+    "name": "S19_viernes_pasado",
+    "group": "S_dates",
+    "status": "FAIL",
+    "reason": "i=0",
+    "compound": "el viernes pasado vendí 15 tn de soja a 470 USD por tonelada",
+    "turns": [
+      "💰 *Soja* — $7.050 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "S20_hace_2_meses",
+    "group": "S_dates",
+    "status": "FAIL",
+    "reason": "e=0",
+    "compound": "hace 2 meses compré 100 bolsas urea a 8500 c/u",
+    "turns": [
+      "💸 *Fertilizantes* — $850.000\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "S21_dates_multiple_distinct",
+    "group": "S_dates",
+    "status": "PASS",
+    "reason": "unique_dates=3 rows=[{\"expense_date\":\"2026-05-23T03:00:00.000Z\"},{\"expense_date\":\"2026-05-21T03:00:00.000Z\"},{\"expense_date\":\"2026-05-22T03:00:00.000Z\"},{\"expense_date\":\"2026-05-23T03:00:00.000Z\"},{\"expense_date\":\"2026-05-23T03:00:00.000Z\"}]",
+    "compound": "ayer gasté 50mil en gasoil, anteayer 80mil en repuestos y hoy compré 30 bolsas urea a 8mil c/u",
+    "turns": [
+      "✅ Registrado\nCombustible\n$50.000\n📍 la querencia\n📅 22/05/2026\n✅ Registrado\nMaquinaria\n$80.000\n📍 la querencia\n📅 21/05/2026\n✅ Gasto guardado\nFertilizantes\n$240.000\n📍 la querencia\n\n📦 ¿Querés cargar *30bolsas de urea* al stock del Depósito Central?\n💡 Guardé 2 gastos a nivel campo *la querencia*. ¿A qué lote los asigno?\n¿A qué lote?"
+    ]
+  },
+  {
+    "name": "S22_temporal_in_query",
+    "group": "S_dates",
+    "status": "PASS",
+    "reason": "query=true e=1",
+    "compound": "cuánto gasté en los últimos 7 días y agregar gasto de 30mil en alimento animal",
+    "turns": [
+      "✅ Registrado\nHacienda\n$30.000\n📍 la querencia\n📊 *Resumen financiero*\n📅 últimos 7 días\n\n*Gastos por categoría:*\nFertilizantes: $1.340.000\nInsumos: $1.020.000\nCombustible: $130.000\nMaquinaria: $80.000\nHacienda: $30.000\nHacienda (USD): USD 24.000\n*Total gastos ARS: $2.600.000*\n*Total gastos USD: USD 24.000*\n💡 Guardé 1 gasto a nivel campo *la querencia*. ¿A qué lote los asigno?\n¿A qué lote?"
+    ]
+  },
+  {
+    "name": "S23_future_date_should_warn",
+    "group": "S_dates",
+    "status": "PASS",
+    "reason": "futureWarning=true d=0",
+    "compound": "la semana que viene voy a sembrar avena en Norte",
+    "turns": [
+      "Anotado: vas a sembrar avena en Norte la próxima semana. Cuando lo hagas, decime y registro la siembra. 🌾"
+    ]
+  },
+  {
+    "name": "T24_two_aggregation_queries",
+    "group": "T_reports",
+    "status": "PASS",
+    "reason": "noWrites=true hasFinancial=true",
+    "compound": "cuánto vendí en soja este mes y cuánto gasté en agroquímicos este mes",
+    "turns": [
+      "📊 *Resumen financiero — soja*\n📅 Todo el historial\n\n*Ingresos por categoría:*\nSoja: USD 13.440\n*Total ingresos USD: USD 13.440*\nNo hay registros — agroquímicos (Todo el historial).\n¿Más?"
+    ]
+  },
+  {
+    "name": "T25_period_comparison",
+    "group": "T_reports",
+    "status": "PASS",
+    "reason": "noWrites=true isCompare=true",
+    "compound": "compará mis ingresos de marzo vs abril",
+    "turns": [
+      "📊 *Comparación: 2026-03-01 — 2026-03-31 vs 2026-04-01 — 2026-04-30*\n¿Más?"
+    ]
+  },
+  {
+    "name": "T26_query_no_writes_strict",
+    "group": "T_reports",
+    "status": "PASS",
+    "reason": "e=0 i=0 d=0 o=0 (todos deben ser 0)",
+    "compound": "mostrame el resumen financiero del último mes",
+    "turns": [
+      "📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nFertilizantes: $1.340.000\nInsumos: $1.020.000\nCombustible: $130.000\nMaquinaria: $80.000\nHacienda: $30.000\nHacienda (USD): USD 24.000\n*Total gastos ARS: $2.600.000*\n*Total gastos USD: USD 24.000*\n\n*Ingresos por categoría:*\nHacienda: USD 44.100\nSoja: USD 13.440\nMaíz: USD 1.760\n*Total ingresos USD: USD 59.300*\n¿Más?"
+    ]
+  },
+  {
+    "name": "T27_comparative_crops",
+    "group": "T_reports",
+    "status": "FAIL",
+    "reason": "hasYieldInfo=false",
+    "compound": "cuánto rindió el soja vs el maíz este año",
+    "turns": [
+      "No pude identificar el lote. Indicá el lote para comparar campañas.\nNo pude identificar el lote. Indicá el lote para comparar campañas."
+    ]
+  },
+  {
+    "name": "T28_report_with_format",
+    "group": "T_reports",
+    "status": "FAIL",
+    "reason": "isAgroReport=false",
+    "compound": "generame el reporte agronómico en PDF de los últimos 3 meses",
+    "turns": [
+      "No pude identificar el lote. Indicá el lote para ver las estadísticas de la campaña."
+    ]
+  },
+  {
+    "name": "U29_birth_then_vaccinate",
+    "group": "U_livestock_chain",
+    "status": "PASS",
+    "reason": "nacimientos=1 health=1",
+    "compound": "nacieron 8 terneros de las vacas Angus en Norte y vacuné los terneros contra brucelosis",
+    "turns": [
+      "🐣 *Nacimiento registrado*\n\n  Ternero Angus\n  ➕ 8 animales\n  📊 Total: *8*\n  📍 Norte (la querencia)\n💉 *Evento sanitario registrado*\n  Tipo: Vacunación\n  🦠 brucelosis\n  🐄 8 Terneros\n  📍 la querencia > Norte"
+    ]
+  },
+  {
+    "name": "U30_weigh_then_sell",
+    "group": "U_livestock_chain",
+    "status": "PASS",
+    "reason": "weighing=2 sold=2",
+    "compound": "pesé 20 novillos 380 kg promedio en Sur y vendí 10 a 1850 USD c/u",
+    "turns": [
+      "⚖️ *Pesaje registrado*\n  🐄 20 Novillos\n  📊 Peso promedio: *380 kg*\n  📍 la querencia > Sur"
+    ]
+  },
+  {
+    "name": "U31_full_lifecycle",
+    "group": "U_livestock_chain",
+    "status": "PASS",
+    "reason": "purchases=9 events=[{\"event_type\":\"health_event\",\"c\":2},{\"event_type\":\"weighing\",\"c\":5}]",
+    "compound": "compré 10 vaquillonas Hereford a 1400 USD c/u para Norte, las vacuné contra aftosa y las pesé al ingreso 320 kg promedio",
+    "turns": [
+      "⚖️ *Pesaje registrado*\n  🐄 20 Novillos\n  📊 Peso promedio: *380 kg*\n  📍 la querencia > Sur"
+    ]
+  },
+  {
+    "name": "U32_repro_chain",
+    "group": "U_livestock_chain",
+    "status": "FAIL",
+    "reason": "repro_events=1 (esperado ≥2)",
+    "compound": "eché el toro Centauro en Norte, detecté 5 vacas en celo y inseminé 3 con IATF",
+    "turns": [
+      "⚖️ *Pesaje registrado*\n  🐄 20 Novillos\n  📊 Peso promedio: *380 kg*\n  📍 la querencia > Sur"
+    ]
+  },
+  {
+    "name": "U33_death_record",
+    "group": "U_livestock_chain",
+    "status": "PASS",
+    "reason": "deaths=1 rows=[{\"count\":2,\"reason\":\"neumonía\"}]",
+    "compound": "se murieron 2 terneros en Norte por neumonía",
+    "turns": [
+      "🐣 *Nacimiento registrado*\n\n  Ternero Angus\n  ➕ 8 animales\n  📊 Total: *16*\n  📍 Norte (la querencia)\n💀 *Baja registrada*\n\n  Ternero Angus\n  ➖ 2 animales\n  📊 Quedan: *14*\n  📍 Norte (la querencia)\n  📝 neumonía\n🐂 *Evento reproductivo registrado*\n  Tipo: Servicio (entore)\n  🐂 toro Centauro\n  📍 la querencia > Norte\n  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás."
+    ]
+  },
+  {
+    "name": "V34_dictation_style",
+    "group": "V_communication",
+    "status": "PASS",
+    "reason": "d=2",
+    "compound": "estuve haciendo varias cosas hoy primero fumigué Norte con glifosato dos litros por hectárea después fertilicé Sur con urea cien kilos por hectárea",
+    "turns": [
+      "💨 *Fumigación* registrada\n📍 la querencia > Norte\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 150 lt de *glifosato* en Central.\n¿Descontar *200 lt*?\n🧪 *Fertilización* registrada\n📍 la querencia > Sur\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: maíz\n💨 *Fumigación* registrada\n📍 la querencia > Norte\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 150 lt de *glifosato* en Central.\n¿Descontar *200 lt*?"
+    ]
+  },
+  {
+    "name": "V35_bullet_list",
+    "group": "V_communication",
+    "status": "PASS",
+    "reason": "i=1 e=2",
+    "compound": "- vendí 20 tn maíz a 200 USD/tn\n- compré 50 bolsas urea a 8500 c/u\n- gasté 30mil en gasoil",
+    "turns": [
+      "💰 Anotado\nMaíz\n$4.000 USD\n20 tn a $200\n📍 la querencia\n📈 Resultado del mes hasta ahora\n\nIngresos: $137.300\nGastos: $2.666.000\nResultado: $-2.528.700\nMargen: -1842%\n✅ Anotado\nFertilizantes\n$425.000\n📍 la querencia\n\n📦 ¿Querés cargar *50bolsas de urea* al stock del Depósito Central?\n✅ Gasto guardado\nCombustible\n$30.000\n📍 la querencia\n💡 Guardé 1 ingreso + 1 gasto a nivel campo *la querencia*. ¿A qué lote los asigno?\n¿A qué lote?"
+    ]
+  },
+  {
+    "name": "V36_numbered_list",
+    "group": "V_communication",
+    "status": "PASS",
+    "reason": "d=1 r=1 s=1",
+    "compound": "1) fumigué Este con 2,4D 1.5 lt/ha\n2) llovieron 18mm en La Querencia\n3) monitoreé Sur V5 sin plagas",
+    "turns": [
+      "💨 *Fumigación* registrada\n📍 la querencia > Este\n🧴 2,4D (herbicida)\n📏 1.5 lt/ha\n🌱 Cultivo: avena\n🌧️ Lluvia registrada: *18mm*\n📍 la querencia\n\n⚠️ *Alerta:* Acumulado hoy *18mm* ≥ umbral configurado (10mm)\n🔍 *Monitoreo registrado* en *la querencia > Sur*\n  📐 Estadio: *V5*"
+    ]
+  },
+  {
+    "name": "V37_apologetic_correction",
+    "group": "V_communication",
+    "status": "FAIL",
+    "reason": "e=0",
+    "compound": "compré 30 bolsas urea a 8500 c/u, perdón eran 35 bolsas",
+    "turns": [
+      "💸 *Fertilizantes* — $297.500\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "V38_spanglish",
+    "group": "V_communication",
+    "status": "PASS",
+    "reason": "i=1 e=0 asks=true",
+    "compound": "sold 25 tn de soja at 480 USD per ton y buy 100 lt de glifosato para A1",
+    "turns": [
+      "💰 Registrado\nSoja\n$12.000 USD\n25 tn a $480\n📍 la querencia\n📈 Resultado del mes hasta ahora\n\nIngresos: $149.300\nGastos: $3.121.000\nResultado: $-2.971.700\nMargen: -1990%\n\n📦 Tenés *200bolsas* de *semilla soja* en stock.\n¿Descontar *25tn*?\n📥 *Stock actualizado*\n\n  📦 *glifosato*\n  ➕ 100 lt\n  📊 Total: *250 lt*\n  🏭 Central (la querencia)\nDescontar 25tn de Soja del stock?"
+    ]
+  },
+  {
+    "name": "V39_extremely_concise",
+    "group": "V_communication",
+    "status": "PASS",
+    "reason": "i=0 asks=true",
+    "compound": "venta soja 20tn 480usd",
+    "turns": [
+      "💰 *Soja* — $9.600 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "V40_question_at_end",
+    "group": "V_communication",
+    "status": "FAIL",
+    "reason": "i=0",
+    "compound": "vendí 15 tn de maíz a 200 USD por tonelada, está bien?",
+    "turns": [
+      "💰 *Maíz* — $3.000 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  }
+]

@@ -1,0 +1,293 @@
+{
+  "summary": {
+    "pass": 23,
+    "fail": 7,
+    "total": 30
+  },
+  "results": [
+    {
+      "name": "G01_gasoil",
+      "description": "Gasto básico gasoil",
+      "category": "gasto",
+      "pass": true,
+      "reasons": [],
+      "transcript": "gaste cincunta mil pesos en gasoil",
+      "response": "💸 *Combustible* — $50.000\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    },
+    {
+      "name": "G02_sueldos",
+      "description": "Sueldos",
+      "category": "gasto",
+      "pass": true,
+      "reasons": [],
+      "transcript": "pago a doscientos mil pesos en soldas",
+      "response": "💸 *Sueldos* — $200.000\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    },
+    {
+      "name": "G03_agroquim",
+      "description": "Compra herbicida",
+      "category": "gasto",
+      "pass": true,
+      "reasons": [],
+      "transcript": "compre herbicida por cuarenta mil pesos",
+      "response": "💸 *Agroquímicos* — $40.000\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    },
+    {
+      "name": "G04_dolares",
+      "description": "Gasto en USD",
+      "category": "gasto",
+      "pass": true,
+      "reasons": [],
+      "transcript": "gastae quinientus dolars en fertilizant",
+      "response": "💸 *Fertilizantes* — $500 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    },
+    {
+      "name": "G05_compound_gasto_lote",
+      "description": "Gasto con lote",
+      "category": "gasto",
+      "pass": true,
+      "reasons": [],
+      "transcript": "gas de acento mil y combustible para el lote a",
+      "response": "✅ Gasto guardado\nAgroquímicos\n$1.000\n📍 Lote AA (audio)\n👇 Gasto de *Combustible*: ¿cuánto fue el precio?\n¿Y ahora?"
+    },
+    {
+      "name": "A01_fumigacion",
+      "description": "Fumigación",
+      "category": "agro",
+      "pass": true,
+      "reasons": [],
+      "transcript": "fumiguelo de aconglifosado a dos litros por hectare",
+      "response": "💨 *Fumigación* registrada\n📍 audio > AA\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: soja"
+    },
+    {
+      "name": "A02_fertilizacion",
+      "description": "Fertilización urea",
+      "category": "agro",
+      "pass": true,
+      "reasons": [],
+      "transcript": "fertilizar la leche con urea de 100 kilos por hectarea",
+      "response": "🧪 *Fertilización* registrada\n📍 audio > AA\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: soja"
+    },
+    {
+      "name": "A03_siembra",
+      "description": "Siembra maíz",
+      "category": "agro",
+      "pass": true,
+      "reasons": [],
+      "transcript": "sembre mais en ello de bibi",
+      "response": "🌱 *maíz* sembrado en *audio > BB*\n📅 Campaña 2025/26"
+    },
+    {
+      "name": "A04_cosecha",
+      "description": "Cosecha con rinde",
+      "category": "agro",
+      "pass": true,
+      "reasons": [],
+      "transcript": "casa che soja en el lodo de aconun rinde de tres mil kilos por hectare",
+      "response": "🌾 *soja* cosechado en *audio > AA*\n📅 Campaña 2025/26\n📊 Rendimiento: 300.000 kg (3.000 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈ 300 tn* de *soja* al stock?\nCargar ≈ 300 tn de soja al stock?"
+    },
+    {
+      "name": "A05_observacion",
+      "description": "Observación",
+      "category": "agro",
+      "pass": true,
+      "reasons": [],
+      "transcript": "observe ojas amarillas en el lado de a",
+      "response": "🔍 Observación registrada\n\n📍 audio > AA\n📂 📝 General\n📝 hojas amarillas\n\nPodés registrar ahora:\n• otra observación lote AA\n¿Y ahora?"
+    },
+    {
+      "name": "A06_monitoreo",
+      "description": "Monitoreo con métricas",
+      "category": "agro",
+      "pass": true,
+      "reasons": [],
+      "transcript": "monitorea soja en el load en estadio vitres con quince por ciento de melisa",
+      "response": "🔍 *Monitoreo registrado* en *audio > AA*\n  📐 Estadio: *V3*\n  🌿 Malezas: 15.00% (melisa)"
+    },
+    {
+      "name": "H01_add_vacas",
+      "description": "Agregar vacas",
+      "category": "hacienda",
+      "pass": true,
+      "reasons": [],
+      "transcript": "agregue des vacas en el lote a",
+      "response": "🐄 *Hacienda actualizada*\n\n  Vaca (nuevo grupo)\n  ➕ 10 animales\n  📊 Total: *10*\n  📍 AA (audio)"
+    },
+    {
+      "name": "H02_vender_novillos",
+      "description": "Venta novillos USD",
+      "category": "hacienda",
+      "pass": false,
+      "reasons": [
+        "missing: /novillo|5|1500|venta/i"
+      ],
+      "transcript": "veinticinco novelas a mil cuantos dolares cada uno",
+      "response": "🔍 No encontré el lote *A*. ¿Querés que lo cree y continúe?"
+    },
+    {
+      "name": "H03_tacto",
+      "description": "Tacto preñez",
+      "category": "hacienda",
+      "pass": true,
+      "reasons": [],
+      "transcript": "hice tacto evainte vacus en el lo de ay diciacho esten prinatis",
+      "response": "¿En qué lote?\n\n*audio:*\n  • AA\n  • BB\n\nEjemplo:\n👉 *observación lote 1: hice tacto evainte vacus en el lo de ay diciacho esten prinatis*"
+    },
+    {
+      "name": "H04_consultar_vacas",
+      "description": "Query count",
+      "category": "hacienda",
+      "pass": false,
+      "reasons": [
+        "missing: /vaca|hacienda|total/i"
+      ],
+      "transcript": "coontus vacus tengo",
+      "response": "Podés registrar gastos, lluvias, actividades o pedir reportes de tus campos. Probá por ejemplo: \"reporte campo norte\" o \"gasté 50mil en gasoil\".\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités."
+    },
+    {
+      "name": "Q01_listar_campos",
+      "description": "List fields",
+      "category": "query",
+      "pass": true,
+      "reasons": [],
+      "transcript": "mostre mis campos",
+      "response": "Podés registrar gastos, lluvias, actividades o pedir reportes de tus campos. Probá por ejemplo: \"reporte campo norte\" o \"gasté 50mil en gasoil\".\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités."
+    },
+    {
+      "name": "Q02_balance_mes",
+      "description": "Balance query",
+      "category": "query",
+      "pass": true,
+      "reasons": [],
+      "transcript": "cual es el balance del mes",
+      "response": "Podés registrar gastos, lluvias, actividades o pedir reportes de tus campos. Probá por ejemplo: \"reporte campo norte\" o \"gasté 50mil en gasoil\".\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités."
+    },
+    {
+      "name": "Q03_gastos_total",
+      "description": "Gastos total",
+      "category": "query",
+      "pass": true,
+      "reasons": [],
+      "transcript": "cuanto gaste en total",
+      "response": "Podés registrar gastos, lluvias, actividades o pedir reportes de tus campos. Probá por ejemplo: \"reporte campo norte\" o \"gasté 50mil en gasoil\".\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités."
+    },
+    {
+      "name": "Q04_clima",
+      "description": "Weather query",
+      "category": "query",
+      "pass": false,
+      "reasons": [
+        "missing: /clima|temperatura|pronóst|°C/i"
+      ],
+      "transcript": "como va a estar el clima manana",
+      "response": "Podés registrar gastos, lluvias, actividades o pedir reportes de tus campos. Probá por ejemplo: \"reporte campo norte\" o \"gasté 50mil en gasoil\".\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités."
+    },
+    {
+      "name": "Q05_que_sembre",
+      "description": "Active crop query",
+      "category": "query",
+      "pass": true,
+      "reasons": [],
+      "transcript": "que sembre en el lodo de a",
+      "response": "No encontré el lote *lodo*.\n\nTus lotes:\n*audio:*\n  • AA\n  • BB\n¿Y ahora?"
+    },
+    {
+      "name": "R01_lluvia_simple",
+      "description": "Lluvia básica",
+      "category": "rain",
+      "pass": true,
+      "reasons": [],
+      "transcript": "la virgen veinte milimetros en el campo audio",
+      "response": "¿En qué lote?\n\n*audio:*\n  • AA\n  • BB\n\nEjemplo:\n👉 *observación lote 1: la virgen veinte milimetros en el*"
+    },
+    {
+      "name": "R02_lluvia_lote",
+      "description": "Lluvia en lote",
+      "category": "rain",
+      "pass": true,
+      "reasons": [],
+      "transcript": "la virentrine 2 y 5 milimetros en el lot bibi",
+      "response": "¿En qué lote?\n\n*audio:*\n  • AA\n  • BB\n\nEjemplo:\n👉 *observación lote 1: la virentrine 2 y 5 milimetros en el lot bibi*"
+    },
+    {
+      "name": "R03_query_lluvia",
+      "description": "Query lluvia",
+      "category": "rain",
+      "pass": true,
+      "reasons": [],
+      "transcript": "cuanto lavio es de mes",
+      "response": "Podés registrar gastos, lluvias, actividades o pedir reportes de tus campos. Probá por ejemplo: \"reporte campo norte\" o \"gasté 50mil en gasoil\".\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités."
+    },
+    {
+      "name": "M01_compound_2",
+      "description": "2 acciones",
+      "category": "compound",
+      "pass": false,
+      "reasons": [
+        "missing: /(combust|gasoil).+(fumig|glifosato)|gasoil.+glifo/is"
+      ],
+      "transcript": "gas de cincun tamil y gasoil y fumigal lo de acon glifosato dos litros por hectare",
+      "response": "Podés registrar gastos, lluvias, actividades o pedir reportes de tus campos. Probá por ejemplo: \"reporte campo norte\" o \"gasté 50mil en gasoil\".\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités."
+    },
+    {
+      "name": "M02_compound_3",
+      "description": "3 acciones distintas",
+      "category": "compound",
+      "pass": false,
+      "reasons": [
+        "missing: /(trigo|sembr).+(lluvia|mm).+(ternero|hacienda)/is"
+      ],
+      "transcript": "sembre trigo en el lo de a la viren vente milimetros y agrega a cinco ternuras",
+      "response": "No encontré el lote *lo*.\n\nTus lotes:\n*audio:*\n  • AA\n  • BB\n¿Y ahora?"
+    },
+    {
+      "name": "M03_compound_query_action",
+      "description": "Query + add",
+      "category": "compound",
+      "pass": false,
+      "reasons": [
+        "missing: /vaca|hacienda|10/i"
+      ],
+      "transcript": "conchas vacas tengo y agregame de esmos",
+      "response": "Podés registrar gastos, lluvias, actividades o pedir reportes de tus campos. Probá por ejemplo: \"reporte campo norte\" o \"gasté 50mil en gasoil\".\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités."
+    },
+    {
+      "name": "E01_audio_corto",
+      "description": "Audio muy corto",
+      "category": "edge",
+      "pass": true,
+      "reasons": [],
+      "transcript": "cancelar",
+      "response": "Listo, contexto limpio. ¿Qué hacemos?"
+    },
+    {
+      "name": "E02_numero_complejo",
+      "description": "Número compuesto",
+      "category": "edge",
+      "pass": false,
+      "reasons": [
+        "missing: /maquinaria|1\\.200|1200|millón/i"
+      ],
+      "transcript": "gaste un millon de cientos mil pesos en maquinaria",
+      "response": "Podés registrar gastos, lluvias, actividades o pedir reportes de tus campos. Probá por ejemplo: \"reporte campo norte\" o \"gasté 50mil en gasoil\".\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités."
+    },
+    {
+      "name": "E03_fecha_explicit",
+      "description": "Fecha mencionada",
+      "category": "edge",
+      "pass": true,
+      "reasons": [],
+      "transcript": "el quince de mayo gaste treinta mil en gasoil",
+      "response": "Podés registrar gastos, lluvias, actividades o pedir reportes de tus campos. Probá por ejemplo: \"reporte campo norte\" o \"gasté 50mil en gasoil\".\n📋 *Menú principal*\nElegí una opción o escribí directamente lo que necesités."
+    },
+    {
+      "name": "E04_saludo",
+      "description": "Audio conversacional",
+      "category": "edge",
+      "pass": true,
+      "reasons": [],
+      "transcript": "hola como estas",
+      "response": "Hola, Don Audio 👋 Soy *MIA*, tu asistente de gestión agrícola.\n¿Qué querés hacer?"
+    }
+  ]
+}

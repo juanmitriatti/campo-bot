@@ -2,6 +2,7 @@ import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency 
 import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES, type IncomeCategory } from '../constants/agro-terms.js';
 import type { AgentResult } from './agent.service.js';
 import { validateToolCall, type ValidationOptions } from './agent-output-validator.js';
+import { buildFallbackMessage } from '../utils/fuzzy-suggest.js';
 
 /**
  * Parse Argentine-format weight to kg.
@@ -222,13 +223,16 @@ export class AgentResponseMapper {
       // so they at least know to rephrase. Surfaced by qa-chaos persona runs
       // on ambiguous follow-ups like "y la cosecha?" / "Perfecto. Confirmó...".
       console.warn('AI_AGENT EMPTY: 0 tools + 0 text — emitting fallback for', originalText.substring(0, 80));
+      // Use the fuzzy-suggest helper to upgrade the generic "no entendí"
+      // into an actionable message with up to 2 example phrases close to
+      // what the user typed (Levenshtein distance ≤ 1-2).
       return [{
         intent: { type: 'unknown', raw: originalText },
         confidence: 0.50,
         aiUsed: true,
         source: 'ai',
         missingFields: [],
-        _conversationalResponse: '🤔 No entendí del todo. ¿Podés reformularlo? Si querés ver qué puedo hacer escribí *menú*.',
+        _conversationalResponse: buildFallbackMessage(originalText),
       } as ParseResult & { _conversationalResponse: string }];
     }
 

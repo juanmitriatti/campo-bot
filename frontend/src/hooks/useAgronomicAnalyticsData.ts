@@ -59,11 +59,14 @@ export function useAgronomicAnalyticsData(fieldId: number | null) {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (fieldId == null) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const json = await apiRequest<AgronomicAnalyticsData>(`/analytics/agronomic?field_id=${fieldId}`);
+      // fieldId === null → "Todos los campos" view: aggregate across all user fields.
+      const url = fieldId == null
+        ? '/analytics/agronomic?field_id=all'
+        : `/analytics/agronomic?field_id=${fieldId}`;
+      const json = await apiRequest<AgronomicAnalyticsData>(url);
       setData(json);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar dashboard agronómico');

@@ -83,6 +83,7 @@ export class FeatureGate {
       delete_specific: 'expenses',
       edit_specific: 'expenses',
       edit_last: 'expenses',
+      edit_last_amount: 'expenses', // alias for edit_last (same feature gate)
       create_expense_template: 'expenses',
       list_expense_templates: 'expenses',
       delete_expense_template: 'expenses',

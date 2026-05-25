@@ -16,7 +16,12 @@ const FINANCIAL_COMMANDS = new Set([
   'monthly_result', 'field_result', 'compare_months',
   'weekly_report', 'monthly_report', 'field_report', 'plot_report', 'date_range_report',
   'set_budget',
+  // edit_last: regex/trivial path → quick amount-only edit of the latest expense.
+  // edit_last_expense: AI agent tool → full editor (category, amount, plot, etc.).
+  // Both route through FinancialHandler; the naming gap is historical, but they
+  // are NOT duplicates — different scopes and different code paths.
   'delete_last', 'delete_last_income', 'delete_specific', 'edit_specific', 'edit_last',
+  'edit_last_amount', // alias for edit_last (clearer name, same behavior)
   'edit_last_expense',
   'export_csv',
   'set_field_city', 'add_field_city', 'add_field', 'list_fields',

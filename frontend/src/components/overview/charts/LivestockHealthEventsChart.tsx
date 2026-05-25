@@ -32,14 +32,19 @@ export default function LivestockHealthEventsChart({ data }: Props) {
   }), [data, types]);
 
   const hasAnything = data.some(m => Object.values(m.byType).some(v => v > 0));
+  const nonZeroMonths = data.filter(m => Object.values(m.byType).some(v => v > 0)).length;
+  const chartHeight = nonZeroMonths <= 2 ? 160 : 260;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Sanidad — eventos mensuales</h3>
       {!hasAnything ? (
-        <p className="text-sm text-gray-400 dark:text-gray-300 text-center py-12">Sin eventos sanitarios en 12 meses.</p>
+        <div className="text-center py-12 px-4">
+          <p className="text-sm text-gray-500 dark:text-gray-300 font-medium mb-1">Sin eventos sanitarios</p>
+          <p className="text-xs text-gray-400 dark:text-gray-400">Registrá vacunaciones, desparasitaciones o tratamientos para ver la evolución mensual.</p>
+        </div>
       ) : (
-        <ResponsiveContainer width="100%" height={260}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
           <BarChart data={rows} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="label" tick={{ fontSize: 11 }} />

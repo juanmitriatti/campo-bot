@@ -1,18 +1,36 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import { AuthProvider } from './context/AuthContext';
+import { CurrencyProvider } from './context/CurrencyContext';
 import ProtectedRoute from './components/ProtectedRoute';
+
+// Auth pages stay eager — they're tiny and almost always the first route a
+// signed-out user hits, so we'd rather avoid the lazy-chunk waterfall here.
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
-import Dashboard from './pages/Dashboard';
-import Chat from './pages/Chat';
+
+// Dashboard pulls in recharts + leaflet + all dashboard tabs — keep it lazy
+// so the login bundle stays slim. Chat is also heavy enough to split.
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Chat = lazy(() => import('./pages/Chat'));
+
+function PageFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-campo-600" />
+    </div>
+  );
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <CurrencyProvider>
+        <Suspense fallback={<PageFallback />}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -36,6 +54,8 @@ export default function App() {
             }
           />
         </Routes>
+        </Suspense>
+        </CurrencyProvider>
       </AuthProvider>
     </BrowserRouter>
   );

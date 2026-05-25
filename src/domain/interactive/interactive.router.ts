@@ -17,6 +17,8 @@ const CALLBACK_MAP: Record<string, ParsedCommand> = {
   'cmd_reporte_mensual': { command: 'monthly_report' },
   'cmd_borrar_ultimo_gasto': { command: 'delete_last' },
   // Sub-menu: Ingresos
+  'cmd_ingresos_mes': { command: 'monthly_result' },
+  'cmd_reporte_ingresos': { command: 'monthly_report' },
   'cmd_borrar_ultimo_ingreso': { command: 'delete_last_income' },
   // Sub-menu: Lluvia
   'cmd_registrar_lluvia': { command: 'prompt_rainfall' },

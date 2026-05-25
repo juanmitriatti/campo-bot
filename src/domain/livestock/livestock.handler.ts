@@ -299,7 +299,7 @@ export class LivestockHandler {
       : '';
 
     const body =
-      `🐄 *Hacienda actualizada*\n\n` +
+      `🐄 *Hacienda registrada*\n\n` +
       `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}${newLabel}\n` +
       `  ➕ ${count} animales\n` +
       `  📊 Total: *${group.count}*\n` +

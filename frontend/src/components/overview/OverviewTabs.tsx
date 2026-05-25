@@ -13,9 +13,9 @@ interface Props {
 }
 
 export default function OverviewTabs({ active, onChange, showAgronomic, showLivestock }: Props) {
-  const tabs: TabSpec[] = [{ key: 'resumen', label: 'Resumen' }];
-  if (showAgronomic) tabs.push({ key: 'agronomico', label: 'Agronómico' });
-  if (showLivestock) tabs.push({ key: 'ganadero', label: 'Ganadero' });
+  const tabs: TabSpec[] = [{ key: 'resumen', label: 'Vista general' }];
+  if (showAgronomic) tabs.push({ key: 'agronomico', label: 'Vista agronómica' });
+  if (showLivestock) tabs.push({ key: 'ganadero', label: 'Vista ganadera' });
 
   return (
     <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">

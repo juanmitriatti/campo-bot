@@ -1833,14 +1833,17 @@ export class AgronomyHandler {
           const harvestsToday = await this.repo.findHarvestsToday(userId);
 
           if (harvestsToday.length === 1) {
+            // Don't silently auto-assign — confirm with the user. Previously we
+            // pegged the cargas to the only same-day cosecha without asking,
+            // which created mis-attributed loads when the user actually meant
+            // something else (different lot, or a sale, etc.).
             const h = harvestsToday[0];
-            const field = await this.repo.getFieldByName(userId, h.field_name);
-            plotResult = {
-              type: 'resolved',
-              plotId: h.plot_id,
-              fieldId: field?.id ?? null,
-              plotName: h.plot_name,
-              fieldName: h.field_name,
+            const cropLabel = h.crop ? ` (${h.crop})` : '';
+            const loadsCount = (cmd.loads as unknown[]).length;
+            return {
+              messages: [
+                `🚛 Hoy cosechaste en *${h.plot_name}*${cropLabel} (en ${h.field_name}).\n\n¿Sumo estas ${loadsCount} carga${loadsCount > 1 ? 's' : ''} a esa cosecha?\n\n_Si sí, reenviá el mensaje aclarando el lote: "Pedro 30 tn en lote ${h.plot_name}". Si era otra cosa (otra venta, otro lote), avisame._`,
+              ],
             };
           } else if (harvestsToday.length >= 2) {
             // Multiple cosechas hoy — ask which one with crop hint
@@ -1902,13 +1905,29 @@ export class AgronomyHandler {
         const yieldNotes = (cmd.yieldNotes as string) || null;
         const plotLabel = plotResult.fieldName ? `${plotResult.fieldName} > ${plotResult.plotName}` : plotResult.plotName;
 
-        // Resolve effective yield: if user gave rate (kg/ha), compute total; if total, use as-is
+        // Resolve effective yield: if user gave rate (kg/ha), compute total; if total, use as-is.
+        // When BOTH come, validate they agree (within 5% tolerance). Disagreement is almost
+        // always a hallucination from the agent — bail and ask the user which one is right
+        // instead of silently picking one.
         let yieldKg = yieldKgRaw;
         let computedKgPerHa: number | null = null;
         if (yieldKgPerHa != null || yieldKgRaw != null) {
           const { getPlotById: getPlotForYield } = await import('../../services/expenses.js');
           const plotForYield = await getPlotForYield(plotResult.plotId, userId);
           const areaHa = plotForYield?.area_hectares ? Number(plotForYield.area_hectares) : null;
+
+          if (yieldKgPerHa != null && yieldKgRaw != null && areaHa) {
+            const impliedTotal = Math.round(yieldKgPerHa * areaHa);
+            const diffPct = Math.abs(impliedTotal - yieldKgRaw) / Math.max(impliedTotal, yieldKgRaw);
+            if (diffPct > 0.05) {
+              return { messages: [
+                `🤔 Me mandaste dos rindes distintos para *${plotLabel}* (${areaHa} ha):\n` +
+                `   • Total: ${yieldKgRaw.toLocaleString('es-AR')} kg\n` +
+                `   • Por hectárea: ${yieldKgPerHa.toLocaleString('es-AR')} kg/ha (= ${impliedTotal.toLocaleString('es-AR')} kg)\n\n` +
+                `¿Cuál uso? Reenvialo con uno solo.`
+              ] };
+            }
+          }
 
           if (yieldKgPerHa != null) {
             computedKgPerHa = yieldKgPerHa;
@@ -1945,7 +1964,12 @@ export class AgronomyHandler {
           if (existingEvent.plot_crop_id) {
             const activeCrop = await this.cropService.getActive(plotResult.plotId);
             if (activeCrop && activeCrop.crop.toLowerCase() !== crop.toLowerCase()) {
-              return { messages: [`En *${plotLabel}* hay *${activeCrop.crop}* sembrado, no ${crop}.\nSi querés cosechar ${activeCrop.crop}, escribí:\n🌾 *cosechamos ${activeCrop.crop.toLowerCase()} en el lote ${plotResult.plotName}*`] };
+              // Crop mismatch — be explicit about losing the loads the user sent
+              // so they can re-send the right command with all the load data.
+              const lostLoadsNote = loads && loads.length > 0
+                ? `\n\n⚠️ Las *${loads.length} carga${loads.length > 1 ? 's' : ''}* no se guardaron. Reenvialas en un solo mensaje junto al cultivo correcto.`
+                : '';
+              return { messages: [`En *${plotLabel}* hay *${activeCrop.crop}* sembrado, no ${crop}.\nSi querés cosechar ${activeCrop.crop}, escribí:\n🌾 *cosechamos ${activeCrop.crop.toLowerCase()} en el lote ${plotResult.plotName}*${lostLoadsNote}`] };
             }
             if (activeCrop) harvested = activeCrop;
           }
@@ -2028,8 +2052,17 @@ export class AgronomyHandler {
               }).join(' · ')}`
             : '';
 
+          // When appending, fetch the full set of loads on the event so we can
+          // show the user the running total — otherwise the second message looks
+          // identical to a brand-new harvest registration and confuses them.
+          let runningTotalLine = '';
+          if (isAppend) {
+            const allLoads = await this.repo.getHarvestLoads(savedEvent.id);
+            const fullTotalKg = allLoads.reduce((sum, l) => sum + Number((l as { weight_kg: number }).weight_kg), 0);
+            runningTotalLine = `\n📦 *Total acumulado en esta cosecha:* ${allLoads.length} carga${allLoads.length > 1 ? 's' : ''} = ${fullTotalKg.toLocaleString('es-AR')} kg`;
+          }
           const header = isAppend
-            ? `🚛 *${loads.length} carga${loads.length > 1 ? 's' : ''} agregada${loads.length > 1 ? 's' : ''} en ${plotLabel}:*`
+            ? `🚛 *Sumé ${loads.length} carga${loads.length > 1 ? 's' : ''} a la cosecha de hoy en ${plotLabel}:*`
             : `🚛 *${loads.length} carga${loads.length > 1 ? 's' : ''} registrada${loads.length > 1 ? 's' : ''} en ${plotLabel}:*`;
           // Average humidity if at least one load reports it
           const humidityLoads = loads.filter(l => l.humidity_pct != null);
@@ -2040,7 +2073,8 @@ export class AgronomyHandler {
             ? `\n💧 *Humedad promedio:* ${avgHumidity}% (${humidityLoads.length}/${loads.length} cargas)`
             : '';
 
-          let loadsMsg = `${header}\n${loadLines.join('\n')}\n\n📊 *Total: ${totalKg.toLocaleString('es-AR')} kg*${humLine}${qualityLine}`;
+          const thisBatchLabel = isAppend ? '*En este mensaje:*' : '*Total:*';
+          let loadsMsg = `${header}\n${loadLines.join('\n')}\n\n📊 ${thisBatchLabel} ${totalKg.toLocaleString('es-AR')} kg${runningTotalLine}${humLine}${qualityLine}`;
 
           if (harvested && !isAppend) {
             const label = formatSeasonLabel(harvested.season_year, harvested.season_type);

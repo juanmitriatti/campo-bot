@@ -47,8 +47,11 @@ const TYPE_LABELS: Record<string, { label: string; Icon: LucideIcon; color: stri
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   pending: { label: 'Procesando…', color: 'text-gray-500 dark:text-gray-300' },
+  processing: { label: 'Procesando…', color: 'text-gray-500 dark:text-gray-300' },
   processed: { label: 'Procesado', color: 'text-green-700 dark:text-green-400' },
+  completed: { label: 'Procesado', color: 'text-green-700 dark:text-green-400' },
   error: { label: 'Error', color: 'text-red-700 dark:text-red-400' },
+  failed: { label: 'Error', color: 'text-red-700 dark:text-red-400' },
 };
 
 function formatBytes(bytes: number): string {

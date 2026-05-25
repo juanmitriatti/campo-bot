@@ -1,0 +1,293 @@
+[
+  {
+    "name": "01_2x_compra_distinct_prices",
+    "desc": "2x compra: urea 30 bolsas a 8mil + glifosato 100 lt a 950",
+    "category": "repeated-same",
+    "compound": "compré 30 bolsas de urea a 8mil y compré 100 lt de glifosato a 950",
+    "answers": [],
+    "status": "PASS",
+    "reason": "e=2; urea: qty=30 price=8000 amt=240000; glifo: qty=100 price=950 amt=95000",
+    "turns": [
+      "USER: compré 30 bolsas de urea a 8mil y compré 100 lt de glifosato a 950",
+      "BOT: ✅ Registrado\nFertilizantes\n$240.000\n📍 la esperanza\n\n📦 ¿Querés cargar *30bolsas de urea* al stock del Depósito Principal?\n✅ Listo, gasto registrado\nAgroquímicos\n$95.000\n📍 la esperanza\n\n📦 ¿Querés cargar *100lt de glifosato* al stock del Depósito Principal?\n✅ Listo, gasto regist..."
+    ]
+  },
+  {
+    "name": "02_3x_venta_distinct_crops",
+    "desc": "3x venta: soja 20tn 480USD + maíz 15tn 200USD + trigo 10tn 180USD",
+    "category": "repeated-same",
+    "compound": "vendí 20 tn de soja a 480 USD, vendí 15 tn de maíz a 200 USD, vendí 10 tn de trigo a 180 USD",
+    "answers": [],
+    "status": "PASS",
+    "reason": "i=3; all 3 distinct qty+price CAT: trigo-cat=Otros",
+    "turns": [
+      "USER: vendí 20 tn de soja a 480 USD, vendí 15 tn de maíz a 200 USD, vendí 10 tn de trigo a 180 USD",
+      "BOT: 💰 Listo, ingreso registrado\nSoja\n$9.600 USD\n20 tn a $480\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $9.600\nGastos: $335.000\nResultado: $-325.400\nMargen: -3390%\n\n📦 Tenés *300bolsas* de *soja* en stock.\n¿Descontar *20tn*?\n💰 Ingreso guardado\nMaíz\n$3.000 USD\n15 tn..."
+    ]
+  },
+  {
+    "name": "03_3x_fumigacion_distinct_plots_products",
+    "desc": "3x fumigación: A1 glifosato + A2 2,4D + A3 atrazina",
+    "category": "repeated-same",
+    "compound": "fumigué A1 con glifosato 2 lt/ha, fumigué A2 con 2,4D 1.5 lt/ha, fumigué A3 con atrazina 3 lt/ha",
+    "answers": [],
+    "status": "PASS",
+    "reason": "d=3; all 3 sprays at correct plots+products",
+    "turns": [
+      "USER: fumigué A1 con glifosato 2 lt/ha, fumigué A2 con 2,4D 1.5 lt/ha, fumigué A3 con atrazina 3 lt/ha",
+      "BOT: 💨 *Fumigación* registrada\n📍 la esperanza > A1\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 200 lt de *glifosato* en Principal.\n¿Descontar *200 lt*?\n💨 *Fumigación* registrada\n📍 la esperanza > A2\n🧴 2,4D (herbicida)\n📏 1.5 lt/ha\n🌱 Cultivo: maíz\n💨 *Fumigación..."
+    ]
+  },
+  {
+    "name": "04_3x_hacienda_add_distinct_plots_categories",
+    "desc": "3x add livestock: 20 vacas Hereford A1 + 30 novillos Brangus A2 + 15 terneros Angus A3",
+    "category": "repeated-same",
+    "compound": "agregué 20 vacas Hereford en A1, agregué 30 novillos Brangus en A2, agregué 15 terneros Angus en A3",
+    "answers": [],
+    "status": "PASS",
+    "reason": "lm=4; all 3 at correct plots/breeds",
+    "turns": [
+      "USER: agregué 20 vacas Hereford en A1, agregué 30 novillos Brangus en A2, agregué 15 terneros Angus en A3",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  Vaca Hereford\n  ➕ 20 animales\n  📊 Total: *40*\n  📍 A1 (la esperanza)"
+    ]
+  },
+  {
+    "name": "05_3x_cosecha_partial_yields",
+    "desc": "3x cosecha at A1/A2/A3 with rates",
+    "category": "repeated-same",
+    "compound": "coseché en A1 con 4500, en A2 con 8500, en A3 con 3800",
+    "answers": [
+      "kg/ha en todas"
+    ],
+    "status": "PASS",
+    "reason": "d=3; harvests at A1=true, A2=true, A3=true. events=[{\"id\":828,\"plot_name\":\"A3\",\"crop\":\"trigo\",\"quantity\":\"304000\",\"unit\":\"kg\"},{\"id\":827,\"plot_name\":\"A2\",\"crop\":\"maíz\",\"quantity\":\"1275000\",\"unit\":\"kg\"},{\"id\":826,\"plot_name\":\"A1\",\"crop\":\"soja\",\"quantity\":\"450000\",\"unit\":\"kg\"}]",
+    "turns": [
+      "USER: coseché en A1 con 4500, en A2 con 8500, en A3 con 3800",
+      "BOT: 🌾 *soja* cosechado en *la esperanza > A1*\n📅 Campaña 2025/26\n📊 Rendimiento: 450.000 kg (4.500 kg/ha)\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n\n📦 ¿Querés cargar *≈ 450 tn* de *soja* al stock?\n🌾 *maíz* cosechado en *la esperanza > A2*\n📅 Camp..."
+    ]
+  },
+  {
+    "name": "06_2x_venta_one_no_price",
+    "desc": "vendí 15tn soja 480USD + vendí 8tn girasol (no price)",
+    "category": "repeated-partial",
+    "compound": "vendí 15 tn de soja a 480 USD y vendí 8 tn de girasol",
+    "answers": [
+      "550 USD por tonelada"
+    ],
+    "status": "FAIL",
+    "reason": "No 8tn girasol income. incomes=[{\"category\":\"Otros\",\"amount\":\"1800\",\"quantity\":\"10\",\"unit_price\":\"180\",\"currency\":\"USD\"},{\"category\":\"Maíz\",\"amount\":\"3000\",\"quantity\":\"15\",\"unit_price\":\"200\",\"currency\":\"USD\"},{\"category\":\"Soja\",\"amount\":\"9600\",\"quantity\":\"20\",\"unit_price\":\"480\",\"currency\":\"USD\"}]",
+    "turns": [
+      "USER: vendí 15 tn de soja a 480 USD y vendí 8 tn de girasol",
+      "BOT: 💰 *Soja* — $7.200 USD\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+      "USER: 550 USD por tonelada",
+      "BOT: No encontré ese lote.\n\nTus lotes:\n*la esperanza:* A1, A2, A3\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "07_3x_compra_two_partial",
+    "desc": "3x compra: urea (no qty+price) + 50lt glifo a 1200 + semilla (no qty+price)",
+    "category": "repeated-partial",
+    "compound": "compré urea, compré 50 lt de glifosato a 1200 y compré semilla",
+    "answers": [
+      "100 bolsas a 8mil",
+      "300 mil pesos"
+    ],
+    "status": "FAIL",
+    "reason": "e=0; MISSING: glifo 50lt,semilla  urea={\"category\":\"Fertilizantes\",\"product\":\"urea\",\"amount\":\"240000\",\"quantity\":\"30\",\"unit_price\":\"8000\"} glifo=undefined sem=undefined",
+    "turns": [
+      "USER: compré urea, compré 50 lt de glifosato a 1200 y compré semilla",
+      "BOT: 💸 *Agroquímicos* — $60.000\n\n¿En qué lote lo registramos?\n¿En qué lote?",
+      "USER: 100 bolsas a 8mil",
+      "BOT: No encontré ese lote.\n\nTus lotes:\n*la esperanza:* A1, A2, A3\n¿En qué lote?",
+      "USER: 300 mil pesos",
+      "BOT: 💸 ** — $300.000\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+    ]
+  },
+  {
+    "name": "08_2x_add_livestock_no_location",
+    "desc": "agregué 25 vacas Brangus + 15 novillos Angus (both no location)",
+    "category": "repeated-partial",
+    "compound": "agregué 25 vacas Brangus y 15 novillos Angus",
+    "answers": [
+      "en A2",
+      "en A3"
+    ],
+    "status": "FAIL",
+    "reason": "No 25-Brangus add. movs=[{\"count\":30,\"movement_type\":\"entrada\",\"category\":\"novillo\",\"breed\":\"Brangus\",\"plot_name\":\"A2\",\"created_at\":\"2026-05-23T13:08:00.133Z\"},{\"count\":20,\"movement_type\":\"entrada\",\"category\":\"vaca\",\"breed\":\"Hereford\",\"plot_name\":\"A1\",\"created_at\":\"2026-05-23T13:08:00.133Z\"},{\"count\":15,\"movement_type\":\"entrada\",\"category\":\"ternero\",\"breed\":\"Angus\",\"plot_name\":\"A3\",\"created_at\":\"2026-05-23T13:08:00.133Z\"},{\"count\":20,\"movement_type\":\"entrada\",\"category\":\"vaca\",\"breed\":\"Hereford\",\"plot_name\":\"A1\",\"created_at\":\"2026-05-23T13:07:56.831Z\"},{\"count\":20,\"movement_type\":\"entrada\",\"category\":\"vaca\",\"breed\":\"Hereford\",\"plot_name\":\"A1\",\"created_at\":\"2026-05-23T13:07:56.772Z\"},{\"count\":30,\"movement_type\":\"entrada\",\"category\":\"novillo\",\"breed\":\"Brangus\",\"plot_name\":\"A2\",\"created_at\":\"2026-05-23T13:07:56.772Z\"},{\"count\":15,\"movement_type\":\"entrada\",\"category\":\"ternero\",\"breed\":\"Angus\",\"plot_name\":\"A3\",\"created_at\":\"2026-05-23T13:07:56.772Z\"},{\"count\":50,\"movement_type\":\"entrada\",\"category\":\"novillo\",\"breed\":\"Angus\",\"plot_name\":\"A2\",\"created_at\":\"2026-05-23T13:07:38.948Z\"},{\"count\":80,\"movement_type\":\"entrada\",\"category\":\"vaca\",\"breed\":\"Angus\",\"plot_name\":\"A1\",\"created_at\":\"2026-05-23T13:07:38.948Z\"},{\"count\":40,\"movement_type\":\"entrada\",\"category\":\"ternero\",\"breed\":\"Angus\",\"plot_name\":\"A1\",\"created_at\":\"2026-05-23T13:07:38.948Z\"},{\"count\":80,\"movement_type\":\"entrada\",\"category\":\"vaca\",\"breed\":\"Angus\",\"plot_name\":\"A1\",\"created_at\":\"2026-05-23T13:07:36.269Z\"},{\"count\":40,\"movement_type\":\"entrada\",\"category\":\"ternero\",\"breed\":null,\"plot_name\":\"A1\",\"created_at\":\"2026-05-23T13:07:36.204Z\"},{\"count\":80,\"movement_type\":\"entrada\",\"category\":\"vaca\",\"breed\":\"Angus\",\"plot_name\":\"A1\",\"created_at\":\"2026-05-23T13:07:36.204Z\"},{\"count\":50,\"movement_type\":\"entrada\",\"category\":\"novillo\",\"breed\":\"Angus\",\"plot_name\":\"A2\",\"created_at\":\"2026-05-23T13:07:36.204Z\"},{\"count\":80,\"movement_type\":\"entrada\",\"category\":\"vaca\",\"breed\":\"Angus\",\"plot_name\":\"A1\",\"created_at\":\"2026-05-23T13:07:31.919Z\"},{\"count\":50,\"movement_type\":\"entrada\",\"category\":\"novillo\",\"breed\":\"Angus\",\"plot_name\":\"A2\",\"created_at\":\"2026-05-23T13:07:31.873Z\"},{\"count\":80,\"movement_type\":\"entrada\",\"category\":\"vaca\",\"breed\":\"Angus\",\"plot_name\":\"A1\",\"created_at\":\"2026-05-23T13:07:31.873Z\"},{\"count\":80,\"movement_type\":\"entrada\",\"category\":\"vaca\",\"breed\":\"Angus\",\"plot_name\":\"A1\",\"created_at\":\"2026-05-23T13:07:29.552Z\"}]",
+    "turns": [
+      "USER: agregué 25 vacas Brangus y 15 novillos Angus",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  ➕ 25 Vaca\n  ➕ 15 Novillo\n  📍 — (la esperanza)"
+    ]
+  },
+  {
+    "name": "09_2x_fumigacion_one_no_product",
+    "desc": "fumigué A1 con glifosato 2lt/ha + fumigué A2 (no product)",
+    "category": "repeated-partial",
+    "compound": "fumigué A1 con glifosato 2 lt/ha y fumigué A2",
+    "answers": [
+      "con atrazina 3 lt/ha"
+    ],
+    "status": "FAIL",
+    "reason": "d=1; MISSING: A2+atrazina  events=[{\"id\":829,\"plot_name\":\"A1\",\"product\":\"glifosato\"},{\"id\":825,\"plot_name\":\"A3\",\"product\":\"atrazina\"},{\"id\":824,\"plot_name\":\"A2\",\"product\":\"2,4D\"},{\"id\":823,\"plot_name\":\"A1\",\"product\":\"glifosato\"}]",
+    "turns": [
+      "USER: fumigué A1 con glifosato 2 lt/ha y fumigué A2",
+      "BOT: 💨 *Fumigación* registrada\n📍 la esperanza > A1\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés 200 lt de *glifosato* en Principal.\n¿Descontar *200 lt*?\n👇 Fumigación: 🧪 Fumigación — me faltan datos: ¿qué producto? ¿qué cantidad?\n💨 *Fumigación* registrada\n📍 la e...",
+      "USER: con atrazina 3 lt/ha",
+      "BOT: Me falta el producto. ¿Me lo decís?"
+    ]
+  },
+  {
+    "name": "10_3x_cosecha_all_no_yield",
+    "desc": "3x cosecha at A1/A2/A3 — all missing yield. Provide one-by-one",
+    "category": "repeated-partial",
+    "compound": "coseché soja en A1, maíz en A2 y trigo en A3",
+    "answers": [
+      "4500 kg/ha",
+      "8500 kg/ha",
+      "3800 kg/ha"
+    ],
+    "status": "FAIL",
+    "reason": "d=0;   events=[{\"id\":828,\"plot_name\":\"A3\",\"crop\":\"trigo\",\"quantity\":\"304000\",\"unit\":\"kg\"},{\"id\":827,\"plot_name\":\"A2\",\"crop\":\"maíz\",\"quantity\":\"1275000\",\"unit\":\"kg\"},{\"id\":826,\"plot_name\":\"A1\",\"crop\":\"soja\",\"quantity\":\"450000\",\"unit\":\"kg\"}]",
+    "turns": [
+      "USER: coseché soja en A1, maíz en A2 y trigo en A3",
+      "BOT: 🌾 *soja* cosechado en *la esperanza > A1*\n📅 Campaña 2025/26\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n🌾 *maíz* cosechado en *la esperanza > A2*\n📅 Campaña 2025/26\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime \"cerrar campaña\".\n🌾..."
+    ]
+  },
+  {
+    "name": "11_compra_compra_hacienda_scouting",
+    "desc": "2x compra + 1 livestock + 1 scouting (all complete)",
+    "category": "mixed-diverse",
+    "compound": "compré 50 bolsas urea a 8mil, compré gasoil 200 lt a 950, agregué 20 vaquillonas Hereford en A2, monitoreé A1 con V4 sin plagas",
+    "answers": [],
+    "status": "PASS",
+    "reason": "e=2 lm=1 s=1 (sum=4, want>=4)",
+    "turns": [
+      "USER: compré 50 bolsas urea a 8mil, compré gasoil 200 lt a 950, agregué 20 vaquillonas Hereford en A2, monitoreé A1 con V4 sin plagas",
+      "BOT: ✅ Anotado\nFertilizantes\n$400.000\n📍 la esperanza\n\n📦 ¿Querés cargar *50bolsas de urea* al stock del Depósito Principal?\n✅ Listo, gasto registrado\nCombustible\n$190.000\n📍 la esperanza\n\n📦 ¿Querés cargar *200lt de gasoil* al stock del Depósito Principal?\n🔍 *Monitoreo registrado* e..."
+    ]
+  },
+  {
+    "name": "12_venta_venta_cosecha_gasto",
+    "desc": "2x venta + cosecha + gasto (all complete)",
+    "category": "mixed-diverse",
+    "compound": "vendí 30 tn soja a 480 USD, vendí 25 tn maíz a 200 USD, coseché trigo en A3 con 3500 kg/ha, gasté 150mil en cosechadora",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "i=2 d=0 e=1; all correct",
+    "turns": [
+      "USER: vendí 30 tn soja a 480 USD, vendí 25 tn maíz a 200 USD, coseché trigo en A3 con 3500 kg/ha, gasté 150mil en cosechadora",
+      "BOT: 💰 Registrado\nSoja\n$14.400 USD\n30 tn a $480\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $28.800\nGastos: $925.000\nResultado: $-896.200\nMargen: -3112%\n\n📦 Tenés *300bolsas* de *soja* en stock.\n¿Descontar *30tn*?\n💰 Anotado\nMaíz\n$5.000 USD\n25 tn a $200\n📍 la esperanz..."
+    ]
+  },
+  {
+    "name": "13_3x_livestock_health",
+    "desc": "3x health: vacuné aftosa + vacuné brucelosis + desparasité ivermectina",
+    "category": "mixed-diverse",
+    "compound": "vacuné 50 vacas contra aftosa, vacuné 30 novillos contra brucelosis, desparasité 40 terneros con ivermectina",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "he=0; MISSING: aftosa,brucelosis,ivermectina events=[]",
+    "turns": [
+      "USER: vacuné 50 vacas contra aftosa, vacuné 30 novillos contra brucelosis, desparasité 40 terneros con ivermectina",
+      "BOT: ¿En qué ubicación lo registramos?"
+    ]
+  },
+  {
+    "name": "14_2x_scouting_1_spray",
+    "desc": "2x monitoreo + 1 fumigación",
+    "category": "mixed-diverse",
+    "compound": "monitoreé A1 con V3 con 10% rama negra, monitoreé A2 con V5 sin plagas, fumigué A1 con glifosato 2 lt/ha",
+    "answers": [],
+    "status": "PASS",
+    "reason": "s=2 d=1; A1+V3=true A2+V5=true scoutings=[{\"stage_code\":\"V5\",\"weed_coverage_pct\":null,\"plot_name\":\"A2\"},{\"stage_code\":\"V3\",\"weed_coverage_pct\":\"10.00\",\"plot_name\":\"A1\"},{\"stage_code\":\"V4\",\"weed_coverage_pct\":null,\"plot_name\":\"A1\"}]",
+    "turns": [
+      "USER: monitoreé A1 con V3 con 10% rama negra, monitoreé A2 con V5 sin plagas, fumigué A1 con glifosato 2 lt/ha",
+      "BOT: 🔍 *Monitoreo registrado* en *la esperanza > A1*\n  📐 Estadio: *V3*\n  🌿 Malezas: 10.00% (rama negra)\n🔍 *Monitoreo registrado* en *la esperanza > A2*\n  📐 Estadio: *V5*\n💨 *Fumigación* registrada\n📍 la esperanza > A1\n🧴 glifosato (herbicida)\n📏 2 lt/ha\n🌱 Cultivo: soja\n\n📦 Tenés..."
+    ]
+  },
+  {
+    "name": "15_lluvia_monitoreo_cosecha_venta_chain",
+    "desc": "lluvia + monitoreo + cosecha + venta (4 actions)",
+    "category": "mixed-diverse",
+    "compound": "llovieron 25mm en La Esperanza, monitoreé A1 V8 normal, coseché soja en A1 4200 kg/ha, vendí 50 tn a 480 USD",
+    "answers": [],
+    "status": "FAIL",
+    "reason": "r=1 s=1 d=0 i=1 (sum=3, want>=4)",
+    "turns": [
+      "USER: llovieron 25mm en La Esperanza, monitoreé A1 V8 normal, coseché soja en A1 4200 kg/ha, vendí 50 tn a 480 USD",
+      "BOT: 🌧️ Lluvia registrada: *25mm*\n📍 la esperanza\n\n⚠️ *Alerta:* Acumulado hoy *25mm* ≥ umbral configurado (10mm)\n🔍 *Monitoreo registrado* en *la esperanza > A1*\n  📐 Estadio: *V8*\n  📝 normal\n🌾 *soja* cosechado en *la esperanza > A1*\n📅 Campaña 2025/26\n📊 Rendimiento: 420.000 kg (4..."
+    ]
+  },
+  {
+    "name": "16_2x_stock_out_2x_venta",
+    "desc": "2x stock-out + 2x venta",
+    "category": "mixed-diverse",
+    "compound": "saqué 60 lt de glifosato, saqué 80 bolsas de urea, vendí 20 tn de maíz a 200 USD, vendí 30 tn de trigo a 180 USD",
+    "answers": [],
+    "status": "PASS",
+    "reason": "sm=2 (want>=2) i=2 (want>=2)",
+    "turns": [
+      "USER: saqué 60 lt de glifosato, saqué 80 bolsas de urea, vendí 20 tn de maíz a 200 USD, vendí 30 tn de trigo a 180 USD",
+      "BOT: 📤 *Stock descontado*\n\n  📦 *glifosato*\n  ➖ 60 lt\n  📊 Quedan: *140 lt*\n  🏭 Principal (la esperanza)\n📤 *Stock descontado*\n\n  📦 *urea*\n  ➖ 80 bolsas\n  📊 Quedan: *20 bolsas*\n  🏭 Principal (la esperanza)\n💰 Anotado\nMaíz\n$4.000 USD\n20 tn a $200\n📍 la esperanza\n📈 Resultado del m..."
+    ]
+  },
+  {
+    "name": "17_compra_sow_fert_observation",
+    "desc": "compra + sembré + fertilicé + observación liebres",
+    "category": "mixed-diverse",
+    "compound": "compré 100 bolsas semilla soja a 12mil, sembré en A1, fertilicé A2 con urea 100 kg/ha, vi liebres en A3",
+    "answers": [],
+    "status": "PASS",
+    "reason": "e=1 d=2 o=1 s=0 (sum=4, want>=4)",
+    "turns": [
+      "USER: compré 100 bolsas semilla soja a 12mil, sembré en A1, fertilicé A2 con urea 100 kg/ha, vi liebres en A3",
+      "BOT: ✅ Gasto guardado\nSemillas\n$1.200.000\n📍 la esperanza\n\n📦 ¿Querés cargar *100bolsas de semilla soja* al stock del Depósito Principal?\n🌱 *soja* sembrado en *la esperanza > A1*\n📅 Campaña 2025/26\n🧪 *Fertilización* registrada\n📍 la esperanza > A2\n🧴 urea\n📏 100 kg/ha\n🌱 Cultivo: ma..."
+    ]
+  },
+  {
+    "name": "18_hacienda_repro_pesaje_sanidad_partial",
+    "desc": "add livestock + inseminación + pesaje + vacuna (last partial)",
+    "category": "mixed-diverse",
+    "compound": "agregué 20 vacas Angus en A1, inseminé 30 vacas con IATF, pesé 40 terneros 250 kg promedio, vacuné contra brucelosis",
+    "answers": [
+      "50 vacas"
+    ],
+    "status": "FAIL",
+    "reason": "lm=2 he=1 (want lm>=1, he>=2)",
+    "turns": [
+      "USER: agregué 20 vacas Angus en A1, inseminé 30 vacas con IATF, pesé 40 terneros 250 kg promedio, vacuné contra brucelosis",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  Vaca Angus\n  ➕ 20 animales\n  📊 Total: *520*\n  📍 A1 (la esperanza)"
+    ]
+  },
+  {
+    "name": "19_4_partials_no_conflation",
+    "desc": "4 partials: vendí soja + compré urea + agregué hacienda + monitoreé",
+    "category": "mixed-diverse",
+    "compound": "vendí soja, compré urea, agregué hacienda, monitoreé",
+    "answers": [
+      "25 tn a 460 USD",
+      "40 bolsas a 7mil",
+      "30 vacas Hereford en A3",
+      "A1 V5 sin plagas"
+    ],
+    "status": "FAIL",
+    "reason": "i=0 e=0 lm=2 s=0 (sum=2); no conflation; soja={\"category\":\"Maíz\",\"quantity\":\"25\",\"unit_price\":\"200\"} urea=undefined",
+    "turns": [
+      "USER: vendí soja, compré urea, agregué hacienda, monitoreé",
+      "BOT: 🐄 *Hacienda actualizada*\n\n  Vaca Angus\n  ➕ 20 animales\n  📊 Total: *560*\n  📍 A1 (la esperanza)"
+    ]
+  },
+  {
+    "name": "20_giant_6_actions_all_complete",
+    "desc": "giant compound: 6 actions all complete (venta+compra+spray+livestock+scouting+gasto)",
+    "category": "mixed-diverse",
+    "compound": "vendí 20 tn soja a 480 USD, compré 80 bolsas urea a 8mil, fumigué A1 con glifosato 3 lt/ha, agregué 15 vacas Hereford en A2, monitoreé A3 V5 sin plagas, gasté 60mil en gasoil",
+    "answers": [],
+    "status": "PASS",
+    "reason": "i=1 e=2 d=1 lm=1 s=1 (sum=6, want>=5 with all domains)",
+    "turns": [
+      "USER: vendí 20 tn soja a 480 USD, compré 80 bolsas urea a 8mil, fumigué A1 con glifosato 3 lt/ha, agregué 15 vacas Hereford en A2, monitoreé A3 V5 sin plagas, gasté 60mil en gasoil",
+      "BOT: 💰 Registrado\nSoja\n$9.600 USD\n20 tn a $480\n📍 la esperanza\n📈 Resultado del mes hasta ahora\n\nIngresos: $76.800\nGastos: $2.275.000\nResultado: $-2.198.200\nMargen: -2862%\n\n📦 Tenés *300bolsas* de *soja* en stock.\n¿Descontar *20tn*?\n✅ Listo, gasto registrado\nFertilizantes\n$640.000\n📍..."
+    ]
+  }
+]

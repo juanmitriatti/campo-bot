@@ -1,0 +1,251 @@
+{
+  "summary": {
+    "pass": 24,
+    "fail": 5,
+    "total": 29
+  },
+  "results": [
+    {
+      "name": "A01_agro_basic",
+      "description": "Reporte agro básico",
+      "category": "agro",
+      "pass": false,
+      "reasons": [
+        "missing: /Actividades?\\s*\\(/"
+      ],
+      "response": "🌱 *Reporte agronómico — don pdf* (semana 21)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (8)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 66_442_W21_2026.pdf]\n¿Más?"
+    },
+    {
+      "name": "A02_agro_field",
+      "description": "Reporte por campo",
+      "category": "agro",
+      "pass": true,
+      "reasons": [],
+      "response": "🌱 *Reporte agronómico — don pdf* (semana 21)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (8)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 66_442_W21_2026.pdf]\n¿Más?"
+    },
+    {
+      "name": "A03_agro_lote",
+      "description": "Reporte por lote",
+      "category": "agro",
+      "pass": true,
+      "reasons": [],
+      "response": "🌱 *Reporte agronómico — don pdf > L1* (semana 21)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (4)\n• Fumigación: glifosato (L1)\n• Siembra: soja (L1)\n• Fumigación: glifosato (L1)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 66_442_P697_W21_2026.pdf]\n¿Más?"
+    },
+    {
+      "name": "A04_agro_rango_fechas",
+      "description": "Rango de fechas custom",
+      "category": "agro",
+      "pass": true,
+      "reasons": [],
+      "response": "🌱 *Reporte agronómico — don pdf* (2026-03-01 a 2026-05-31)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (8)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 66_442_2026-03-01_2026-05-31.pdf]\n¿Más?"
+    },
+    {
+      "name": "A05_agro_este_mes",
+      "description": "Reporte mes corriente",
+      "category": "agro",
+      "pass": false,
+      "reasons": [
+        "missing: /Actividades?\\s*\\(/"
+      ],
+      "response": "🌱 *Reporte agronómico — don pdf* (2026-05-01 a 2026-05-23)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (8)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 66_442_2026-05-01_2026-05-23.pdf]\n¿Más?"
+    },
+    {
+      "name": "A06_agro_year_2026",
+      "description": "Reporte año completo",
+      "category": "agro",
+      "pass": true,
+      "reasons": [],
+      "response": "🌱 *Reporte agronómico — don pdf* (2026-01-01 a 2026-12-31)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (8)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 66_442_2026-01-01_2026-12-31.pdf]\n¿Más?"
+    },
+    {
+      "name": "A07_agro_with_obs",
+      "description": "Debe incluir observaciones",
+      "category": "agro",
+      "pass": true,
+      "reasons": [],
+      "response": "🌱 *Reporte agronómico — don pdf* (semana 21)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (8)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 66_442_W21_2026.pdf]\n¿Más?"
+    },
+    {
+      "name": "A08_agro_compound_share",
+      "description": "Generate + share command",
+      "category": "agro",
+      "pass": false,
+      "reasons": [
+        "no attachment marker"
+      ],
+      "response": "🌱 *Campañas activas* (2)\n  • *L1* — soja (2025/2026)\n  • *L2* — maíz (2025/2026)\n\n💡 Pedí \"campaña <lote>\" para ver detalles de cada una.\n🌱 *Reporte agronómico — don pdf* (semana 21)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (8)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n¿Más?"
+    },
+    {
+      "name": "F01_fin_basic",
+      "description": "Financial report básico",
+      "category": "financial",
+      "pass": true,
+      "reasons": [],
+      "response": "📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nCombustible: $200.000\nAgroquímicos: $100.000\n*Total gastos ARS: $300.000*\n\n*Ingresos por categoría:*\nSoja: USD 4.000\n*Total ingresos USD: USD 4.000*\n¿Más?"
+    },
+    {
+      "name": "F02_fin_month",
+      "description": "Financial del mes",
+      "category": "financial",
+      "pass": true,
+      "reasons": [],
+      "response": "📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nCombustible: $200.000\nAgroquímicos: $100.000\n*Total gastos ARS: $300.000*\n\n*Ingresos por categoría:*\nSoja: USD 4.000\n*Total ingresos USD: USD 4.000*\n¿Más?"
+    },
+    {
+      "name": "F03_fin_field",
+      "description": "Financial por campo",
+      "category": "financial",
+      "pass": true,
+      "reasons": [],
+      "response": "📊 *Resumen financiero — campo don pdf*\n📅 Todo el historial\n\n*Gastos por categoría:*\nAgroquímicos: $100.000\n*Total gastos ARS: $100.000*\n\n*Ingresos por categoría:*\nSoja: USD 4.000\n*Total ingresos USD: USD 4.000*\n¿Más?"
+    },
+    {
+      "name": "F04_fin_balance",
+      "description": "Balance anual (con datos)",
+      "category": "financial",
+      "pass": true,
+      "reasons": [],
+      "response": "💰 *Balance por categoría*\n📅 Año 2026\n\n*Soja*\n🟢 USD: ingresos USD 4.000 − gastos USD 0 = *USD 4.000*\n\n*Combustible*\n🔴 ARS: ingresos $0 − gastos $200.000 = *$-200.000*\n\n*Agroquímicos*\n🔴 ARS: ingresos $0 − gastos $100.000 = *$-100.000*\n\n━━━━━━━━━━━━━━\n*Total Año 2026:*\n🟢 USD: ingresos USD 4.000 − gastos USD 0 = *USD 4.000*\n🔴 ARS: ingresos $0 − gastos $300.000 = *$-300.000*\n¿Más?"
+    },
+    {
+      "name": "F05_fin_specific_period",
+      "description": "Período específico",
+      "category": "financial",
+      "pass": true,
+      "reasons": [],
+      "response": "📊 *Resumen financiero*\n📅 2026-05-01 — 2026-05-23\n\n*Gastos por categoría:*\nCombustible: $200.000\nAgroquímicos: $100.000\n*Total gastos ARS: $300.000*\n¿Más?"
+    },
+    {
+      "name": "F06_fin_per_category",
+      "description": "Breakdown por categoría",
+      "category": "financial",
+      "pass": true,
+      "reasons": [],
+      "response": "🏆 *Top categorías de gastos*\n📅 mayo de 2026\n\n*ARS:*\n1. Combustible: $200.000 (67%)\n2. Agroquímicos: $100.000 (33%)\n*Total ARS: $300.000*\n¿Más?"
+    },
+    {
+      "name": "C01_campaign_basic",
+      "description": "Campaign stats lote",
+      "category": "campaign",
+      "pass": true,
+      "reasons": [],
+      "response": "📊 *Campaña soja 2025/26* — L1 (don pdf)\nEstado: 🌱 Activa | 1 días\n\n*Actividades (4):*\nSiembra: 2 | Fumigación: 2\n\n*Gastos:* $100.000 ARS\nAgroquímicos: $100.000\n\n*Rentabilidad:*\nResultado neto: $-100.000 ARS\nCosto/ha: $1.000 | Ingreso/ha: $0\n\n🔍 *Monitoreo (2):*\n• Estadio observado: *V3* (23/05/2026)\n• Cobertura malezas (prom): 12%\n\n*Observaciones:* 2"
+    },
+    {
+      "name": "C02_campaign_compare",
+      "description": "Compare campaigns",
+      "category": "campaign",
+      "pass": true,
+      "reasons": [],
+      "response": "El lote *L1* no tiene suficientes campañas para comparar."
+    },
+    {
+      "name": "C03_campaign_actual",
+      "description": "Campaign overview",
+      "category": "campaign",
+      "pass": true,
+      "reasons": [],
+      "response": "📊 *Campaña soja 2025/26* — L1 (don pdf)\nEstado: 🌱 Activa | 1 días\n\n*Actividades (4):*\nSiembra: 2 | Fumigación: 2\n\n*Gastos:* $100.000 ARS\nAgroquímicos: $100.000\n\n*Rentabilidad:*\nResultado neto: $-100.000 ARS\nCosto/ha: $1.000 | Ingreso/ha: $0\n\n🔍 *Monitoreo (2):*\n• Estadio observado: *V3* (23/05/2026)\n• Cobertura malezas (prom): 12%\n\n*Observaciones:* 2"
+    },
+    {
+      "name": "C04_campaign_after_harvest",
+      "description": "Stats post-cosecha",
+      "category": "campaign",
+      "pass": true,
+      "reasons": [],
+      "response": "No hay cargas de cosecha — lote L1 (Todo el historial).\n¿Más?"
+    },
+    {
+      "name": "E01_agro_lote_empty",
+      "description": "Reporte de lote sin actividad",
+      "category": "empty",
+      "pass": true,
+      "reasons": [],
+      "response": "🌱 *Reporte agronómico — don pdf > L3* (semana 21)\n\n📊 Observaciones: 0\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 66_442_P699_W21_2026.pdf]\n¿Más?"
+    },
+    {
+      "name": "E02_fin_empty_period",
+      "description": "Período sin datos",
+      "category": "empty",
+      "pass": true,
+      "reasons": [],
+      "response": "No hay registros (2020-01-01 — 2020-12-31).\n¿Más?"
+    },
+    {
+      "name": "E03_campaign_no_data",
+      "description": "Stats sin cosecha",
+      "category": "empty",
+      "pass": true,
+      "reasons": [],
+      "response": "No hay cargas de cosecha — lote L3 (Todo el historial).\n¿Más?"
+    },
+    {
+      "name": "D01_date_today_only",
+      "description": "Hoy solamente",
+      "category": "date",
+      "pass": true,
+      "reasons": [],
+      "response": "🌱 *Reporte agronómico — don pdf* (2026-05-23 a 2026-05-23)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (8)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 66_442_2026-05-23_2026-05-23.pdf]\n¿Más?"
+    },
+    {
+      "name": "D02_date_future_year",
+      "description": "Año futuro absurdo — debe rechazar",
+      "category": "date",
+      "pass": false,
+      "reasons": [
+        "missing: /fuera de rango|inválid|3000|no.*válid/i"
+      ],
+      "response": "La fecha desde del reporte 2999 es muy futura (máximo 2031). Revisá la fecha y volvé a intentar.\n¿Más?"
+    },
+    {
+      "name": "D03_date_invalid_range",
+      "description": "Rango invertido",
+      "category": "date",
+      "pass": true,
+      "reasons": [],
+      "response": "La fecha \"de mayo a marzo\" no es válida — mayo es posterior a marzo. ¿Quisiste decir \"de marzo a mayo\" (2026-03-01 a 2026-05-31)? O ¿de otro año?"
+    },
+    {
+      "name": "M01_agro_then_fin",
+      "description": "Agro report turn 1",
+      "category": "multi",
+      "pass": true,
+      "reasons": [],
+      "response": "🌱 *Reporte agronómico — don pdf* (semana 21)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (8)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 66_442_W21_2026.pdf]\n¿Más?"
+    },
+    {
+      "name": "M02_fin_after_agro",
+      "description": "Financial after agro",
+      "category": "multi",
+      "pass": true,
+      "reasons": [],
+      "response": "📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nCombustible: $200.000\nAgroquímicos: $100.000\n*Total gastos ARS: $300.000*\n\n*Ingresos por categoría:*\nSoja: USD 4.000\n*Total ingresos USD: USD 4.000*\n¿Más?"
+    },
+    {
+      "name": "M03_compound_2reports",
+      "description": "2 reportes en 1 msg",
+      "category": "multi",
+      "pass": true,
+      "reasons": [],
+      "response": "🌱 *Reporte agronómico — don pdf* (2026-05-01 a 2026-05-31)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (8)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n📊 *Resumen financiero — campo don pdf*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nAgroquímicos: $100.000\n*Total gastos ARS: $100.000*\n\n*Ingresos por categoría:*\nSoja: USD 4.000\n*Total ingresos USD: USD 4.000*\n¿Más?"
+    },
+    {
+      "name": "M04_share_after_report",
+      "description": "Re-share PDF",
+      "category": "multi",
+      "pass": false,
+      "reasons": [
+        "missing: /comparti|reporte|share|envi/i"
+      ],
+      "response": "🌱 *Campañas activas* (2)\n  • *L1* — soja (2025/2026)\n  • *L2* — maíz (2025/2026)\n\n💡 Pedí \"campaña <lote>\" para ver detalles de cada una."
+    },
+    {
+      "name": "AT01_explicit_pdf",
+      "description": "PDF explicit request",
+      "category": "attachment",
+      "pass": true,
+      "reasons": [],
+      "response": "🌱 *Reporte agronómico — don pdf* (semana 21)\n\n📊 Observaciones: 1\n\n*Detalle por lote*\n\n🌱 L1\n• hojas amarillas\n\n*Actividades* (8)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n• Fertilización: urea (L2)\n• Fumigación: glifosato (L1)\n• Siembra: maíz (L2)\n• Siembra: soja (L1)\n\nTe adjunto el PDF completo 👇\n[Archivo adjunto: 66_442_W21_2026.pdf]\n¿Más?"
+    }
+  ]
+}
