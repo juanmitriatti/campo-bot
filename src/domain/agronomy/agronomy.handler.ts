@@ -3666,7 +3666,7 @@ export class AgronomyHandler {
         .map(([cat, amt]) => `${cat}: $${amt.toLocaleString('es-AR')}`)
         .join(' | ');
       let expLine = `\n*Gastos:* $${s.expenses.totalARS.toLocaleString('es-AR')} ARS`;
-      if (s.expenses.totalUSD > 0) expLine += ` + US$${s.expenses.totalUSD.toLocaleString('es-AR')}`;
+      if (s.expenses.totalUSD > 0) expLine += ` + USD ${s.expenses.totalUSD.toLocaleString('es-AR')}`;
       lines.push(expLine);
       lines.push(byCatStr);
     }
@@ -3674,7 +3674,7 @@ export class AgronomyHandler {
     // Incomes
     if (s.incomes.count > 0) {
       let incLine = `\n*Ingresos:* $${s.incomes.totalARS.toLocaleString('es-AR')} ARS`;
-      if (s.incomes.totalUSD > 0) incLine += ` + US$${s.incomes.totalUSD.toLocaleString('es-AR')}`;
+      if (s.incomes.totalUSD > 0) incLine += ` + USD ${s.incomes.totalUSD.toLocaleString('es-AR')}`;
       lines.push(incLine);
     }
 
@@ -3723,7 +3723,7 @@ export class AgronomyHandler {
       if (s.profitability.costPerHaARS != null) profLine += `\nCosto/ha: $${s.profitability.costPerHaARS.toLocaleString('es-AR')}`;
       if (s.profitability.incomePerHaARS != null) profLine += ` | Ingreso/ha: $${s.profitability.incomePerHaARS.toLocaleString('es-AR')}`;
       if (s.profitability.costPerTnARS != null) profLine += `\nCosto/tn: $${s.profitability.costPerTnARS.toLocaleString('es-AR')}`;
-      if (s.profitability.costPerTnUSD != null) profLine += ` (US$${s.profitability.costPerTnUSD.toLocaleString('es-AR')}/tn)`;
+      if (s.profitability.costPerTnUSD != null) profLine += ` (USD ${s.profitability.costPerTnUSD.toLocaleString('es-AR')}/tn)`;
       if (s.profitability.incomePerTnARS != null) profLine += ` | Ingreso/tn: $${s.profitability.incomePerTnARS.toLocaleString('es-AR')}`;
       lines.push(profLine);
     }

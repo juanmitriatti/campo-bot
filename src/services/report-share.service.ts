@@ -33,7 +33,7 @@ export class ReportShareService {
     if (stats.expenses.count > 0) {
       doc.fontSize(14).text('Gastos', { underline: true });
       doc.fontSize(10).text(`Total ARS: $${stats.expenses.totalARS.toLocaleString('es-AR')}`);
-      if (stats.expenses.totalUSD > 0) doc.text(`Total USD: US$${stats.expenses.totalUSD.toLocaleString('es-AR')}`);
+      if (stats.expenses.totalUSD > 0) doc.text(`Total USD: ${stats.expenses.totalUSD.toLocaleString('es-AR')}`);
       const sortedCats = Object.entries(stats.expenses.byCategory).sort(([, a], [, b]) => b - a);
       for (const [cat, amt] of sortedCats) {
         doc.text(`  • ${cat}: $${amt.toLocaleString('es-AR')}`);
@@ -45,7 +45,7 @@ export class ReportShareService {
     if (stats.incomes.count > 0) {
       doc.fontSize(14).text('Ingresos', { underline: true });
       doc.fontSize(10).text(`Total ARS: $${stats.incomes.totalARS.toLocaleString('es-AR')}`);
-      if (stats.incomes.totalUSD > 0) doc.text(`Total USD: US$${stats.incomes.totalUSD.toLocaleString('es-AR')}`);
+      if (stats.incomes.totalUSD > 0) doc.text(`Total USD: ${stats.incomes.totalUSD.toLocaleString('es-AR')}`);
       doc.moveDown();
     }
 

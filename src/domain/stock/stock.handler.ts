@@ -125,8 +125,10 @@ export class StockHandler {
         if (expense?.id) {
           await stockService.linkMovementToExpense(movement.id, expense.id);
         }
-        const currSymbol = currency === 'USD' ? 'U$D' : '$';
-        expenseLine = `\n  💰 Gasto registrado: ${currSymbol}${totalAmount.toLocaleString('es-AR')}`;
+        const moneyLabel = currency === 'USD'
+          ? `USD ${totalAmount.toLocaleString('es-AR')}`
+          : `$${totalAmount.toLocaleString('es-AR')}`;
+        expenseLine = `\n  💰 Gasto registrado: ${moneyLabel}`;
       } catch (err) {
         console.error('[STOCK_HANDLER] Failed to create linked expense:', (err as Error).message);
         // Best-effort: stock insert succeeded, expense failed — don't fail the whole operation

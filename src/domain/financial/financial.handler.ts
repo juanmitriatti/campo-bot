@@ -1817,7 +1817,6 @@ export class FinancialHandler {
         });
 
         const freqLabel = recurrenceType === 'weekly' ? 'semanal' : recurrenceType === 'biweekly' ? 'quincenal' : 'mensual';
-        const currLabel = template.currency === 'USD' ? ' USD' : '';
         let msg = `\u2705 Gasto recurrente creado\n\n`;
         msg += `\ud83d\udcdd *${template.name}*\n`;
         msg += `\ud83d\udcb0 ${formatMoney(template.amount, template.currency)}\n`;
@@ -1841,7 +1840,6 @@ export class FinancialHandler {
         let msg = `\ud83d\udd04 *Gastos recurrentes activos*\n`;
         for (const t of templates) {
           const freqLabel = t.recurrence_type === 'weekly' ? 'semanal' : t.recurrence_type === 'biweekly' ? 'quincenal' : 'mensual';
-          const currLabel = t.currency === 'USD' ? ' USD' : '';
           msg += `\n\u2022 *${t.name}* — ${formatMoney(t.amount, t.currency)} (${freqLabel})`;
           const nextRunRaw = typeof t.next_run_date === 'string' ? t.next_run_date : new Date(t.next_run_date as unknown as string | Date).toISOString().slice(0, 10);
           const nextDate = new Date(nextRunRaw + 'T12:00:00').toLocaleDateString('es-AR');
