@@ -93,7 +93,7 @@ describe('FinancialHandler.handleExpense', () => {
     const response = await handler.handleExpense(userId, sampleExpense, 'pagué 50mil en gasoil', defaultSettings, defaultUser);
 
     expect(response.messages).toHaveLength(1);
-    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
+    expect(response.messages[0]).toMatch(/registrad/i);
     expect(response.messages[0]).toContain('Combustible');
     expect(response.sideEffects?.setPending).toBeUndefined();
     expect(service.saveExpense).toHaveBeenCalledOnce();
@@ -134,7 +134,7 @@ describe('FinancialHandler.handleExpense', () => {
     );
 
     expect(response.messages).toHaveLength(2);
-    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
+    expect(response.messages[0]).toMatch(/registrad/i);
     expect(response.messages[1]).toContain('90%');
   });
 
@@ -159,7 +159,7 @@ describe('FinancialHandler.handleIncome', () => {
 
     const response = await handler.handleIncome(userId, sampleIncome, 'vendí soja', defaultSettings);
 
-    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
+    expect(response.messages[0]).toMatch(/registrad/i);
     expect(response.messages[0]).toContain('Soja');
     expect(service.saveIncome).toHaveBeenCalledOnce();
   });
@@ -187,7 +187,7 @@ describe('FinancialHandler.handleConfirm', () => {
       type: 'expense', data: sampleExpense, fieldId: null, fieldName: null, timestamp: Date.now(),
     }, defaultSettings, defaultUser);
 
-    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
+    expect(response.messages[0]).toMatch(/registrad/i);
     expect(service.saveExpense).toHaveBeenCalledOnce();
   });
 
@@ -199,7 +199,7 @@ describe('FinancialHandler.handleConfirm', () => {
       type: 'income', data: sampleIncome, fieldId: null, fieldName: null, timestamp: Date.now(),
     }, defaultSettings, defaultUser);
 
-    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
+    expect(response.messages[0]).toMatch(/registrad/i);
     expect(service.saveIncome).toHaveBeenCalledOnce();
   });
 });
@@ -289,7 +289,7 @@ describe('FinancialHandler — conversational memory (P2)', () => {
 
     const response = await handler.handleExpense(userId, sampleExpense, 'y 30mil en semillas', defaultSettings, defaultUser);
 
-    expect(response.messages[0]).toMatch(/Listo|Anotado|guardado|Registrado/);
+    expect(response.messages[0]).toMatch(/registrad/i);
     expect(service.saveExpense).toHaveBeenCalledWith(userId, sampleExpense, 10, 20);
   });
 
