@@ -1,0 +1,232 @@
+{
+  "passed": 1,
+  "total": 10,
+  "ts": "2026-05-26T02:37:33.535Z",
+  "results": [
+    {
+      "id": "C01_gastos_rapidos_USD",
+      "description": "GASTOS — 2 audios USD seguidos: el segundo debe avisar \"cancelé el anterior\" y mostrar \"USD X\" (nunca \"$X USD\")",
+      "pass": false,
+      "steps": [
+        {
+          "step": 0,
+          "ok": false,
+          "reason": "missing: /USD\\s*800/i",
+          "transcript": "gas de ocho cintas dolares en gasoil para el lote 1 a",
+          "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *USD 8.000*\nUbicación: Lote 1A (martin)\n"
+        },
+        {
+          "step": 1,
+          "ok": true,
+          "reason": "all expectations met",
+          "transcript": "gaste mil cuenintas dolares en fertilizante para el lote das bie",
+          "response": "🔁 Cancelé el gasto anterior (Combustible USD 8.000) para registrar el nuevo. Confirmá abajo o cancelá si fue un error.\n💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *USD 1.500*\nUbicación: Lote 2B (martin)\n"
+        }
+      ]
+    },
+    {
+      "id": "C02_ingreso_pesos_simple",
+      "description": "INGRESO en pesos: confirmá y verificá que entró bien al DB",
+      "pass": false,
+      "steps": [
+        {
+          "step": 0,
+          "ok": false,
+          "reason": "missing: /\\$\\s*500\\.?000/i",
+          "transcript": "registrar cuenintas mil pesos de ingreso por venta de soja en el lotuno a",
+          "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Soja*\nMonto: *$150.000*\nUbicación: Lote 1A (martin)\n"
+        },
+        {
+          "step": 1,
+          "ok": true,
+          "reason": "all expectations met",
+          "response": "💰 Ingreso guardado\nSoja\n$150.000\n📍 Lote 1A (martin)\n¿Y ahora?"
+        }
+      ],
+      "dbCheck": {
+        "ok": false,
+        "reason": "no 500k ARS income saved"
+      }
+    },
+    {
+      "id": "C03_ingreso_dolares_chain",
+      "description": "INGRESOS USD — 3 audios encadenados, cada nuevo auto-cancela",
+      "pass": false,
+      "steps": [
+        {
+          "step": 0,
+          "ok": true,
+          "reason": "all expectations met",
+          "transcript": "registrar veinte mil dolares de ingreso en soja para el lotuno a",
+          "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Soja*\nMonto: *USD 20.000*\nUbicación: Lote 1A (martin)\n"
+        },
+        {
+          "step": 1,
+          "ok": true,
+          "reason": "all expectations met",
+          "transcript": "registrar cuarenta mil dolares de ingreso en maiz para el lote de aspe",
+          "response": "🔁 Cancelé el ingreso anterior (Soja USD 20.000) para registrar el nuevo. Confirmá abajo o cancelá si fue un error.\n💰 ¿Confirmo ingreso?\n\nCategoría: *Maíz*\nMonto: *USD 40.000*\nUbicación: Lote J2 (martin)\n"
+        },
+        {
+          "step": 2,
+          "ok": false,
+          "reason": "missing: /USD\\s*70\\.?000/i",
+          "transcript": "registrarse tende a mil dolares de ingreso en trigo para el lote de dos",
+          "response": "🔁 Cancelé el ingreso anterior (Maíz USD 40.000) para registrar el nuevo. Confirmá abajo o cancelá si fue un error.\n💰 ¿Confirmo ingreso?\n\nCategoría: *Trigo*\nMonto: *USD 10.000*\nUbicación: Lote 2B (martin)\n"
+        }
+      ]
+    },
+    {
+      "id": "C04_siembra",
+      "description": "SIEMBRA: registra cultivo en el lote, debe guardar plot_crop activo",
+      "pass": false,
+      "steps": [
+        {
+          "step": 0,
+          "ok": true,
+          "reason": "all expectations met",
+          "transcript": "sembre soja en el lodo uno e",
+          "response": "🌱 *Soja* sembrado en *martin > 1A*\n📅 Campaña 2025/26"
+        }
+      ],
+      "dbCheck": {
+        "ok": false,
+        "reason": "DB check threw: DB query failed: 500"
+      }
+    },
+    {
+      "id": "C05_fumigacion",
+      "description": "FUMIGACIÓN con glifosato 2 lt/ha en lote 1A",
+      "pass": false,
+      "steps": [
+        {
+          "step": 0,
+          "ok": false,
+          "reason": "missing: /glifosato/i",
+          "transcript": "fumigael lotuno aconglifosado a dos litros por hectare",
+          "response": "💨 *Fumigación* registrada\n📍 martin > 1A\n🧴 Glifosado (herbicida)\n📏 2 L/ha\n🌱 Cultivo: Soja"
+        }
+      ],
+      "dbCheck": {
+        "ok": false,
+        "reason": "expected glifosato, got Glifosado"
+      }
+    },
+    {
+      "id": "C06_fertilizacion",
+      "description": "FERTILIZACIÓN urea 80 kg/ha en lote 2B",
+      "pass": false,
+      "steps": [
+        {
+          "step": 0,
+          "ok": false,
+          "reason": "missing: /urea/i",
+          "transcript": "fertilidad en los 100 kilometros por hectarea",
+          "response": "No entiendo bien la consulta, che. ¿Querés hablar de **fertilidad del suelo** (análisis de tierra, nutrientes) o de **rendimiento/productividad** (kg o tn por hectárea)?\n\nRepiteme con más contexto y te ayudo. Por ejemplo: \"¿cómo mejoro la fertilidad "
+        }
+      ],
+      "dbCheck": {
+        "ok": false,
+        "reason": "no fertilization event"
+      }
+    },
+    {
+      "id": "C07_cosecha_con_rinde",
+      "description": "COSECHA de soja con rinde 3500 kg/ha en lote 1A",
+      "pass": false,
+      "steps": [
+        {
+          "step": 0,
+          "ok": false,
+          "reason": "missing: /cosech/i",
+          "transcript": "cosa que soja en el lote 1 a con un rinde de tres mil quinientas kilos por hectare",
+          "response": "¿En qué lote?\n\n*martin:*\n  • 1A\n  • 2B\n  • J2\n\nEjemplo:\n👉 *observación lote 1: cosa que soja con un rinde de tres mil quinientas kilos por hectare*"
+        }
+      ],
+      "dbCheck": {
+        "ok": false,
+        "reason": "DB check threw: DB query failed: 500"
+      }
+    },
+    {
+      "id": "C08_cosecha_cargas",
+      "description": "COSECHA de maíz con 2 cargas por chofer en lote 2B",
+      "pass": false,
+      "steps": [
+        {
+          "step": 0,
+          "ok": false,
+          "reason": "missing: /ma[ií]z/i",
+          "transcript": "cassechumas maize en el lote das bebredos levo treinta mil kilos y contraras vinte cinco mil kilos",
+          "response": "No hay cultivo activo en *martin > 2B* para cosechar."
+        }
+      ],
+      "dbCheck": {
+        "ok": false,
+        "reason": "expected 2+ loads, got 0"
+      }
+    },
+    {
+      "id": "C09_compound_siembra_fertilizacion",
+      "description": "COMPOUND en un audio: siembra + fertilización → 2 tools",
+      "pass": false,
+      "steps": [
+        {
+          "step": 0,
+          "ok": false,
+          "reason": "missing: /siembr|sembr/i",
+          "transcript": "sembre maes en el lote j2 y fertila que el lote 2 b con uria a c en kilos por hectory",
+          "response": "📍 *Lote J2* — campo martin · 60 ha\n\n🌱 *Cultivo activo:* ninguno\n📋 *Actividades recientes:* ninguna\n🔍 *Observaciones recientes:* ninguna\n🌧️ *Lluvia (mes):* 0 mm\n\n💰 *Resumen mes:* gastos $0 (0) · ingresos $0 (0) · resultado $0\n\n📊 *Reportes en PD"
+        }
+      ],
+      "dbCheck": {
+        "ok": false,
+        "reason": "no planting event"
+      }
+    },
+    {
+      "id": "C10_ciclo_gasto_actividad_ingreso",
+      "description": "CICLO MIXTO — gasto USD + fumigación + ingreso USD: cada uno debe quedar bien",
+      "pass": true,
+      "steps": [
+        {
+          "step": 0,
+          "ok": true,
+          "reason": "all expectations met",
+          "transcript": "gaste mille dollars en glyphosato para el lotuno a",
+          "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *USD 1.000*\nUbicación: Lote 1A (martin)\n"
+        },
+        {
+          "step": 1,
+          "ok": true,
+          "reason": "all expectations met",
+          "response": "✅ Registrado\nAgroquímicos\nUSD 1.000\n📍 Lote 1A (martin)\n¿Y ahora?"
+        },
+        {
+          "step": 2,
+          "ok": true,
+          "reason": "all expectations met",
+          "transcript": "fumiguelote uno aconglifosato a tres litros por hectare",
+          "response": "💨 *Fumigación* registrada\n📍 martin > 1A\n🧴 Glifosato (herbicida)\n📏 3 L/ha\n🌱 Cultivo: Soja"
+        },
+        {
+          "step": 3,
+          "ok": true,
+          "reason": "all expectations met",
+          "transcript": "registrar 5 mil dolares de ingreso por venta de soja en el lotuno a",
+          "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Soja*\nMonto: *USD 5.000*\nUbicación: Lote 1A (martin)\n"
+        },
+        {
+          "step": 4,
+          "ok": true,
+          "reason": "all expectations met",
+          "response": "💰 Ingreso guardado\nSoja\nUSD 5.000\n📍 Lote 1A (martin)\n📈 Resultado del mes hasta ahora\n\nIngresos: $155.000\nGastos: $1.000\nResultado: $154.000\nMargen: 99%\n¿Y ahora?"
+        }
+      ],
+      "dbCheck": {
+        "ok": true,
+        "reason": "1000 USD expense + 5000 USD income both saved"
+      }
+    }
+  ]
+}
