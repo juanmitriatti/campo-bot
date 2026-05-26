@@ -14,7 +14,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { MessageDedup } from '../middleware/dedup.js';
-import { PendingTransactionStore } from '../middleware/pending-transactions.js';
+import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
@@ -67,7 +67,7 @@ import { PendingDocumentStore } from '../middleware/pending-documents.js';
 import { PendingDocumentUploadStore } from '../middleware/pending-document-upload.js';
 import type { DocumentUploadIntent } from '../middleware/pending-document-upload.js';
 import { formatExtractionSummary, buildSuggestedExpenses, buildPostExtractionButtons } from '../domain/documents/document.helpers.js';
-import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, UserId } from '../types/index.js';
+import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, UserId, PendingTransaction } from '../types/index.js';
 
 // --- Wire up dependencies ---
 
@@ -2163,8 +2163,9 @@ router.post('/', async (req: Request, res: Response) => {
         res.sendStatus(200);
         return;
       }
+      let replacedPendingExpense: PendingTransaction | null = null;
       if (response.sideEffects?.setPending) {
-        pendingStore.set(phone, response.sideEffects.setPending);
+        replacedPendingExpense = pendingStore.set(phone, response.sideEffects.setPending);
       }
       if (response.sideEffects?.setPendingStockEntry) {
         pendingStockEntryStore.set(phone, response.sideEffects.setPendingStockEntry as Record<string, unknown>);
@@ -2172,6 +2173,11 @@ router.post('/', async (req: Request, res: Response) => {
       // Learn from successful expense (fire-and-forget)
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
+      if (replacedPendingExpense) {
+        // Tell the user we cancelled their previous "¿Confirmo?" card so they don't
+        // tap the old one and confirm the wrong transaction.
+        await sendMessage(phone, describeReplacedPending(replacedPendingExpense));
+      }
       await sendResponse(phone, response);
       conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
@@ -2207,8 +2213,9 @@ router.post('/', async (req: Request, res: Response) => {
         res.sendStatus(200);
         return;
       }
+      let replacedPendingIncome: PendingTransaction | null = null;
       if (response.sideEffects?.setPending) {
-        pendingStore.set(phone, response.sideEffects.setPending);
+        replacedPendingIncome = pendingStore.set(phone, response.sideEffects.setPending);
       }
       if (response.sideEffects?.setPendingStockDeduction) {
         pendingStockDeductionStore.set(phone, response.sideEffects.setPendingStockDeduction as Record<string, unknown>);
@@ -2216,6 +2223,9 @@ router.post('/', async (req: Request, res: Response) => {
       // Learn from successful income (fire-and-forget)
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
+      if (replacedPendingIncome) {
+        await sendMessage(phone, describeReplacedPending(replacedPendingIncome));
+      }
       await sendResponse(phone, response);
       conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);

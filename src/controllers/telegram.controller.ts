@@ -13,7 +13,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { MessageDedup } from '../middleware/dedup.js';
-import { PendingTransactionStore } from '../middleware/pending-transactions.js';
+import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
@@ -74,7 +74,7 @@ import { PendingDocumentStore } from '../middleware/pending-documents.js';
 import { PendingDocumentUploadStore } from '../middleware/pending-document-upload.js';
 import type { DocumentUploadIntent } from '../middleware/pending-document-upload.js';
 import { formatExtractionSummary, buildSuggestedExpenses, buildPostExtractionButtons } from '../domain/documents/document.helpers.js';
-import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveButton, InteractiveListSection, UserId } from '../types/index.js';
+import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveButton, InteractiveListSection, UserId, PendingTransaction } from '../types/index.js';
 import { asUserId } from '../types/index.js';
 import type { SpeechToTextProvider } from '../services/audio/providers/speech-provider.interface.js';
 
@@ -1719,7 +1719,10 @@ async function processTextMessage(
     return [{ type: 'text', text: '\u274c Operacion cancelada.' }];
   }
 
-  if (pending) pendingStore.clear(phone);
+  // Note: we used to blanket-clear here, but that fought with the auto-cancel
+  // path in pendingStore.set() which needs to see the previous pending so it can
+  // warn the user 'cancelé el anterior'. The store auto-expires after 5 min and
+  // set() overwrites; nothing else needs this preemptive clear.
 
   // --- Phase 3: trial expired (access-gate blocked AI / writes) ---
   if (intent.type === 'trial_expired') {
@@ -1939,8 +1942,9 @@ async function processTextMessage(
       items.push(...collectResponse(flowResult.response));
       return items;
     }
+    let replacedPendingExpense: PendingTransaction | null = null;
     if (response.sideEffects?.setPending) {
-      pendingStore.set(phone, response.sideEffects.setPending);
+      replacedPendingExpense = pendingStore.set(phone, response.sideEffects.setPending);
     }
     if (response.sideEffects?.setPendingStockEntry) {
       pendingStockEntryStore.set(phone, response.sideEffects.setPendingStockEntry as Record<string, unknown>);
@@ -1948,7 +1952,12 @@ async function processTextMessage(
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
     updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
     conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
-    return collectResponse(response);
+    const itemsExp = collectResponse(response);
+    if (replacedPendingExpense) {
+      // Prepend a warning so the user knows the older "¿Confirmo?" card is dead.
+      itemsExp.unshift({ type: 'text', text: describeReplacedPending(replacedPendingExpense) });
+    }
+    return itemsExp;
   }
 
   // --- Handle income ---
@@ -1972,8 +1981,9 @@ async function processTextMessage(
       items.push(...collectResponse(flowResult.response));
       return items;
     }
+    let replacedPendingIncome: PendingTransaction | null = null;
     if (response.sideEffects?.setPending) {
-      pendingStore.set(phone, response.sideEffects.setPending);
+      replacedPendingIncome = pendingStore.set(phone, response.sideEffects.setPending);
     }
     if (response.sideEffects?.setPendingStockDeduction) {
       pendingStockDeductionStore.set(phone, response.sideEffects.setPendingStockDeduction as Record<string, unknown>);
@@ -1981,7 +1991,11 @@ async function processTextMessage(
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
     updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
     conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
-    return collectResponse(response);
+    const itemsInc = collectResponse(response);
+    if (replacedPendingIncome) {
+      itemsInc.unshift({ type: 'text', text: describeReplacedPending(replacedPendingIncome) });
+    }
+    return itemsInc;
   }
 
   // --- Unknown → Conversational fallback ---
