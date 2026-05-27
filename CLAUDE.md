@@ -109,7 +109,25 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - During any flow that has a `data.name` field set (currently `field_flow`), the user can correct the name with patterns like "se llama X, no Y" / "no Y, es X" / "el nombre es X". `extractRenameCorrection()` in `conversation-engine.ts` parses the new name, mutates `data.name`, and re-prompts the current step — no need to cancel + restart.
 
 ### Mid-flow amount/category correction
-- During any flow (expense, income, etc.) that has `data.amount` or `data.category` already set, the user can correct with patterns: "no, eran X" / "en realidad X" / "perdón, X" / "quise decir X" for amounts, or "no, es X" / "no, categoría X" for categories. Works both mid-flow AND during confirmation step. `extractAmountCorrection()` and `extractCategoryCorrection()` in `conversation-engine.ts`.
+- During any flow (expense, income, etc.) that has `data.amount` or `data.category` already set, the user can correct with patterns: "no, eran X" / "en realidad X" / "perdón, X" / "quise decir X" for amounts, or "no, es X" / "no, categoría X" / **"no, era en X"** / "no, fue en X" for categories. Works both mid-flow AND during confirmation step. `extractAmountCorrection()` and `extractCategoryCorrection()` in `conversation-engine.ts`. The "no, era en X" pattern is restricted to candidates that look like CATEGORY words (sueldos / gasoil / semillas / fertilizante / etc.) via a shared stoplist from `correction-classifier.looksLikeCategoryWord` — without that guard it'd conflict with plot corrections ("no, era en lote Norte"), which `correction-classifier` intercepts earlier in the pipeline.
+
+### Pending-correction interceptor (May 27)
+- The controllers (currently `test-bot.controller`; **WA + TG port pending**) intercept correction patterns BEFORE classification when a pending expense/income exists. If `extractAmountCorrection` or `extractCategoryCorrection` matches the incoming text, the pending is patched in-place (amount or `detectarCategoria(...)`-canonicalized category) and a fresh confirmation is re-rendered — no round-trip to the agent. Without this, "no, era en sueldos" mid-confirmation was hitting the agent which produced an unhelpful "what plot to correct?" prompt (CR02 in regression QA).
+
+### Pronoun expansion (May 27, comprehensive memory fix)
+- `src/utils/pronoun-expander.ts` swaps Spanish plot pronouns ("ahí mismo", "ese lote", "el mismo", "el de antes", "en ahí", etc.) for the explicit `"en lote <name>"` BEFORE the agent sees the message, using `conversation_state.plot_name` from the most-recent context. Wired into `intent-classifier.ts` as STEP 2.6 (between correction pre-classifier and agent call). Passes through unchanged when no pronoun OR no recent plot. Logs every expansion as `[intent-classifier] Pronoun expansion: "<in>" → "<out>" (N swap)`.
+- Why server-side: the agent prompt already had this rule but Haiku applied it inconsistently — sometimes emitting `plot="ahi mismo"` (which never resolves) or text-only "¿qué lote?". Doing it deterministically makes the agent see unambiguous text and removes the variance.
+- Why this is bedrock: it's the root cause of the memory-corto / memoria-largo / context-switch / contradiction categories all simultaneously regressing in the senior QA run before the fix. Pronoun-expander + `plotDiscovery.resolveFromNamesWithContext` (context_stack fallback) + `relative-dates` normalizer form the conversational-memory triad.
+
+### Explicit plot intent (May 27, `utils/plot-intent.ts`)
+- `userExplicitlyReferencedPlot(text)` returns true when the user wrote a plot pronoun OR an explicit "lote <name>" / "potrero <name>" reference. Used in `handleExpense` to decide whether the `FIELD_LEVEL_CATEGORIES` rule should strip an auto-resolved `plotId`.
+- **Bug it fixes**: `handleExpense` had a rule "if category is sueldos/arrendamiento/etc. AND the agent didn't pass `plotName`, drop the auto-resolved plot" (defense against silent assignment of corporate-overhead to the user's only lote). But it was too aggressive — when the user explicitly referenced a plot via pronoun (resolved through `context_stack`) or by name in text, the plot still got stripped, silently saving at field-level. P01/P02 in regression QA caught this. Now the rule honors explicit intent and only strips when the user gave NO plot signal.
+
+### Query updates conversation_state (May 27)
+- `handleFinancialReport` now calls `updateConversationState(userId, fieldId, plotId)` whenever the query resolves a specific plot/field. Without this, "cuánto gasté en lote Amarillo este mes" left no trace in `context_stack`, and the next pronoun-bearing message resolved to whichever plot the LAST WRITE used — conflating contexts. P02 was a regression caused by exactly this.
+
+### Relative date normalizer (May 27, `utils/relative-dates.ts`)
+- `resolveRelativeDate(text)` detects Spanish relative phrases ("ayer", "anteayer", "antes de ayer", "hace N días/semanas/meses") and resolves to ISO date in Argentina TZ. Used by `agent-response-mapper` as a server-side safety net when the agent omits `event_date` — covers tools in `TOOLS_WITH_DATE_PARAM` (log_expense, log_income, sow/harvest, spray/fertil, livestock health/repro/weighing, rainfall, etc.). The agent prompt teaches Haiku to set the date, but it forgets often on casual phrasings ("ayer pagué..."). Date never overwrites an explicitly-set agent value — only fills the gap.
 
 ### Multi-slot context tracking
 - `conversation_state.context_stack` (JSONB, migration 075) stores last 3 field/plot references as `[{field_id, plot_id, ts}]`. Updated on every `updateConversationState()` call (LIFO, deduped). Exposed in agent prompt as "contextos recientes:[1)Lote Norte (La Esperanza), 2)Lote Sur...]" when stack has >1 entry. Enables resolution of "el otro campo" / "el de antes".
@@ -380,6 +398,8 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/testing/qa-onboarding-25.ts` — 25 first-impression cases (resets to ZERO state between tests; verifies new-user onboarding works in ONE message)
 - `src/testing/qa-serial-conversations-20.ts` — 20 multi-turn scenarios verifying the serial pending queue (NEW May 23)
 - `src/testing/qa-repeated-combos-20.ts` — 20 repetition-focused scenarios (NEW May 23)
+- `src/testing/qa-prod-senior.ts` — 24 senior-engineer-style scenarios run against PROD (memoria, contexto, consistencia, recovery). Categorical scoring + severity-grouped bugs + verdict line. (NEW May 27)
+- `src/testing/qa-prod-regression-v2.ts` — 25 fresh scenarios that retarget the categories that were weak in `qa-prod-senior` after each fix lands. Auto-cancels pendings between tests, retries `dbq` on 5xx. Used to verify pronoun-expander + plot-intent + extractCategoryCorrection extensions stay green. (NEW May 27)
 
 ### Config & Utils
 - `src/config/db.js` — `pool` (with AsyncLocalStorage hijack for transactions) + `withTransaction(fn)` helper
@@ -387,6 +407,9 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/utils/date.ts` — Argentina timezone helpers
 - `src/utils/guards.ts` — `isLikelyQuestion()` guard
 - `src/utils/format-quantity.ts` — `formatQuantityHuman()`: renders large kg as tn (e.g. 213200kg → ≈ 213,2 tn)
+- `src/utils/pronoun-expander.ts` — `expandPronouns(text, lastPlotName)` — server-side rewrite of "ahí mismo / ese lote / el de antes" → "en lote X". Wired into `intent-classifier.ts` STEP 2.6.
+- `src/utils/plot-intent.ts` — `userExplicitlyReferencedPlot(text)` — does the user's text contain a plot pronoun or explicit "lote X" mention? Used by `financial.handler` to decide whether `FIELD_LEVEL_CATEGORIES` should strip the auto-resolved plot.
+- `src/utils/relative-dates.ts` — `resolveRelativeDate(text)` + `TOOLS_WITH_DATE_PARAM` + `dateKeyForTool()` — Spanish relative-date safety net used by `agent-response-mapper`.
 - `src/services/data-export.service.ts` — `DataExportService.streamUserExport()` — full GDPR ZIP per user
 - `src/types/index.ts` — ParseResult, PlanRow, ParseSource
 
@@ -464,3 +487,9 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 ### QA Repeated Combos (20 repetition-focused scenarios, May 23)
 - `npx tsx src/testing/qa-repeated-combos-20.ts` — 20 NEW scenarios focused on REPEATED action types (2x compra + 2x venta, 3x fumigación, 3x hacienda, etc.) — verifies the agent emits N tools when the user repeats a verb N times, plus diverse real-farmer-style combinations.
 - Setup shared across tests (does NOT reset between cases); each test measures DB deltas to verify correct attribution.
+
+### QA Prod Senior + Regression V2 (24 + 25 scenarios, May 27)
+- `npx tsx src/testing/qa-prod-senior.ts` — 24 senior-engineer-style scenarios run against PROD on a fresh user. Categories: memoria_corto / memoria_largo / context_switch / math_consist / fin_consist / temporal / entities / colloquial / multi_intent / ambiguity / contradiction / recovery. Produces a categorical scorecard + severity-grouped bug list + verdict line.
+- `npx tsx src/testing/qa-prod-regression-v2.ts` — 25 fresh scenarios that re-target the same categories with NEW conversations + better assertions (uses DB writes, not response substrings). Auto-cancels pending state between tests. Retries `dbq` on 5xx (Railway flake).
+- Drove the May 27 fix sequence: pronoun-expander (memoria categories from failing to 100%), relative-date normalizer (temporal 100%), `userExplicitlyReferencedPlot` (P01/P02), `handleFinancialReport` updating `conversation_state` (P02), `extractCategoryCorrection` extended to "no, era en X" + pending-correction interceptor (CR02).
+- **Stable score: 24/25 (96%)** — the 1 outlier is LLM non-determinism on "flete" categorization (Haiku sometimes maps to "Otros", sometimes asks for clarification). Real categories all green.

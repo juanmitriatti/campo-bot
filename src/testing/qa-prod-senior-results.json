@@ -1,24 +1,24 @@
 {
-  "overall": 63,
+  "overall": 92,
   "total": 24,
-  "pass": 15,
-  "email": "qa-senior-1779848595372@campo.test",
-  "ts": "2026-05-27T02:24:26.681Z",
+  "pass": 22,
+  "email": "qa-senior-1779878148095@campo.test",
+  "ts": "2026-05-27T10:37:17.834Z",
   "categoryScores": {
     "memoria_corto": {
-      "pass": 0,
+      "pass": 1,
       "total": 3,
-      "score": 0
+      "score": 33
     },
     "memoria_largo": {
-      "pass": 1,
+      "pass": 2,
       "total": 2,
-      "score": 50
+      "score": 100
     },
     "context_switch": {
-      "pass": 1,
+      "pass": 2,
       "total": 2,
-      "score": 50
+      "score": 100
     },
     "math_consist": {
       "pass": 3,
@@ -31,9 +31,9 @@
       "score": 100
     },
     "temporal": {
-      "pass": 1,
+      "pass": 2,
       "total": 2,
-      "score": 50
+      "score": 100
     },
     "entities": {
       "pass": 2,
@@ -41,9 +41,9 @@
       "score": 100
     },
     "colloquial": {
-      "pass": 1,
+      "pass": 2,
       "total": 2,
-      "score": 50
+      "score": 100
     },
     "multi_intent": {
       "pass": 1,
@@ -56,14 +56,14 @@
       "score": 100
     },
     "contradiction": {
-      "pass": 0,
+      "pass": 1,
       "total": 1,
-      "score": 0
+      "score": 100
     },
     "recovery": {
-      "pass": 2,
+      "pass": 3,
       "total": 3,
-      "score": 67
+      "score": 100
     }
   },
   "results": [
@@ -74,7 +74,7 @@
       "pass": false,
       "severity": "High",
       "details": "missing: amount=50000 en lote Norte",
-      "response": "💸 *Sueldos* — $50.000\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$50.000*\nUbicación: la quinta\n"
     },
     {
       "id": "M02",
@@ -83,16 +83,15 @@
       "pass": false,
       "severity": "High",
       "details": "missing: 200k pesos en Sur via \"ese lote\"",
-      "response": "Respondé *SI* para confirmar o *NO* para cancelar."
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *$200.000*\nUbicación: Lote Norte (la quinta)\n\n✅ Registrado\nFertilizantes\n$200.000\n📍 Lote Norte (la quinta)\n¿Y ahora?"
     },
     {
       "id": "M03",
       "category": "memoria_corto",
       "description": "Bot recuerda crop activo después de siembra",
-      "pass": false,
-      "severity": "Medium",
-      "details": "missing: /soja/i / /Este/i",
-      "response": "Estás en medio de un registro. Escribí *cancelar* si querés salir y preguntar.\n💸 *Confirmar gasto:*\n\nMonto: *$50.000*\nCategoría: *Sueldos*\nLote: *Sur*\nDetalle: sueldos\n\n¿Confirmamos?\n¿Confirmamos el gasto?"
+      "pass": true,
+      "details": "OK",
+      "response": "✅ Sí\nÚltima siembra en *la quinta > Este*: *26/5/2026*\nCultivo: soja\n¿Qué querés hacer?"
     },
     {
       "id": "L01",
@@ -100,25 +99,23 @@
       "description": "Recuerda gastos hechos hace N turnos",
       "pass": true,
       "details": "OK",
-      "response": "Estás en medio de un registro. Escribí *cancelar* si querés salir y preguntar.\n💸 *Confirmar gasto:*\n\nMonto: *$50.000*\nCategoría: *Sueldos*\nLote: *Sur*\nDetalle: sueldos\n\n¿Confirmamos?\n¿Confirmamos el gasto?"
+      "response": "📊 *Movimientos — lote Norte*\n📅 Todo el historial\n\n*Gastos* (2)\n• 26/05/26 — fertilizantes — $200.000 · la quinta/Norte\n• 26/05/26 — gasoil — $100.000 · la quinta/Norte\n*Total ARS: $300.000*\n¿Más?"
     },
     {
       "id": "L02",
       "category": "memoria_largo",
       "description": "Total acumulado correcto",
-      "pass": false,
-      "severity": "Critical",
-      "details": "missing: /350\\.?000|350k|3\\.5/i",
-      "response": "Respondé *SI* para confirmar o *NO* para cancelar."
+      "pass": true,
+      "details": "OK",
+      "response": "📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nFertilizantes: $200.000\nCombustible: $100.000\nSueldos: $50.000\n*Total gastos ARS: $350.000*\n¿Más?"
     },
     {
       "id": "CS01",
       "category": "context_switch",
       "description": "Cambia de tema y vuelve al anterior",
-      "pass": false,
-      "severity": "High",
-      "details": "missing: /Sur|fertiliz|200/i",
-      "response": "Respondé *SI* para confirmar o *NO* para cancelar."
+      "pass": true,
+      "details": "OK",
+      "response": "📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nFertilizantes: $200.000\nCombustible: $100.000\nSueldos: $50.000\n*Total gastos ARS: $350.000*\n¿Más?"
     },
     {
       "id": "CS02",
@@ -126,7 +123,7 @@
       "description": "Resume tras saludo intermedio",
       "pass": true,
       "details": "OK",
-      "response": "📅 *Último movimiento — maquinaria*\n• 25/05/26 — mantenimiento del tractor — $80.000 · la quinta/Este\n¿Más?"
+      "response": "📅 *Último movimiento — \"tractor\"*\n• 26/05/26 — mantenimiento del tractor — $80.000 · la quinta/Este\n¿Más?"
     },
     {
       "id": "MC01",
@@ -134,7 +131,7 @@
       "description": "Multiplicación quantity × unit_price",
       "pass": true,
       "details": "OK",
-      "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Soja*\nMonto: *USD 6.000*\nDetalle: 15 tn a USD 400\nUbicación: Lote Norte (la quinta)\n\n💰 Ingreso guardado\nSoja\nUSD 6.000\n15 tn a USD 400\n📍 Lote Norte (la quinta)\n📈 Resultado del mes hasta ahora\n\nIngresos: $6.000\nGastos: $180.000\nResultado: $-174.000\nMargen: -2900%"
+      "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Soja*\nMonto: *USD 6.000*\nDetalle: 15 tn a USD 400\nUbicación: Lote Norte (la quinta)\n\n💰 Ingreso guardado\nSoja\nUSD 6.000\n15 tn a USD 400\n📍 Lote Norte (la quinta)\n📈 Resultado del mes hasta ahora\n\nIngresos: $6.000\nGastos: $430.000\nResultado: $-424.000\nMargen: -7067%"
     },
     {
       "id": "MC02",
@@ -142,7 +139,7 @@
       "description": "Suma de operaciones del mismo tipo",
       "pass": true,
       "details": "OK",
-      "response": "📊 *Movimientos — soja, USD*\n📅 mayo de 2026\n\n*Ingresos* (2)\n• 25/05/26 — venta soja — USD 1.500 · la quinta/Norte\n• 25/05/26 — venta soja — USD 6.000 · la quinta/Norte\n*Total USD: USD 7.500*\n¿Más?"
+      "response": "📊 *Resumen financiero — soja, USD*\n📅 mayo de 2026\n\n*Ingresos por categoría:*\nSoja: USD 7.500\n*Total ingresos USD: USD 7.500*\n¿Más?"
     },
     {
       "id": "MC03",
@@ -150,7 +147,7 @@
       "description": "No mezcla pesos y dólares en suma",
       "pass": true,
       "details": "OK",
-      "response": "💰 *Balance por categoría*\n📅 mayo de 2026\n\n*Soja*\n🟢 USD: ingresos USD 7.500 − gastos USD 0 = *USD 7.500*\n\n*Combustible*\n🔴 ARS: ingresos $0 − gastos $100.000 = *$-100.000*\n\n*Maquinaria*\n🔴 ARS: ingresos $0 − gastos $80.000 = *$-80.000*\n\n━━━━━━━━━━━━━━\n*Total mayo de 2026:*\n🟢 USD: ingresos USD 7.5"
+      "response": "💰 *Balance por categoría*\n📅 mayo de 2026\n\n*Soja*\n🟢 USD: ingresos USD 7.500 − gastos USD 0 = *USD 7.500*\n\n*Fertilizantes*\n🔴 ARS: ingresos $0 − gastos $200.000 = *$-200.000*\n\n*Combustible*\n🔴 ARS: ingresos $0 − gastos $100.000 = *$-100.000*\n\n*Maquinaria*\n🔴 ARS: ingresos $0 − gastos $80.000 = *$-8"
     },
     {
       "id": "FC01",
@@ -158,16 +155,15 @@
       "description": "Mensaje duplicado NO debe duplicar",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Maquinaria*\nMonto: *$7.500*\nUbicación: Lote Norte (la quinta)\n\n✅ Gasto guardado\nMaquinaria\n$7.500\n📍 Lote Norte (la quinta)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Maquinaria*\nMonto: *$7.500*\nUbicación: Lote Norte (la quinta)\n\n✅ Listo, gasto registrado\nMaquinaria\n$7.500\n📍 Lote Norte (la quinta)\n¿Y ahora?"
     },
     {
       "id": "T01",
       "category": "temporal",
       "description": "Entiende \"ayer\"",
-      "pass": false,
-      "severity": "High",
-      "details": "missing: 05-26",
-      "response": "expense_date=2026-05-25 (expected ~2026-05-26)"
+      "pass": true,
+      "details": "OK",
+      "response": "expense_date=2026-05-26 (expected ~2026-05-26)"
     },
     {
       "id": "T02",
@@ -175,7 +171,7 @@
       "description": "Pregunta \"este mes\" vs \"todo el historial\"",
       "pass": true,
       "details": "OK",
-      "response": "mes=📊 *Resumen financiero — ARS*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nCombustible: $100.000\nMaquina | total=📊 *Resumen financiero*\n📅 Todo el historial\n\n*Gastos por categoría:*\nCombustible: $100.000\nMaquinar"
+      "response": "mes=📊 *Movimientos — ARS*\n📅 mayo de 2026\n\n*Gastos* (7)\n• 26/05/26 — revisión del tractor — $7.500 · la | total=📊 *Resumen financiero*\n📅 Todo el historial\n\n*Gastos por categoría:*\nFertilizantes: $200.000\nCombus"
     },
     {
       "id": "E01",
@@ -183,7 +179,7 @@
       "description": "Distingue Maíz vs Maní (sin tilde)",
       "pass": true,
       "details": "OK",
-      "response": "✅ Sí\nÚltima siembra en *la quinta > Sur*: *25/5/2026*\nCultivo: maíz\n¿Qué querés hacer?"
+      "response": "✅ Sí\nÚltima siembra en *la quinta > Sur*: *26/5/2026*\nCultivo: maíz\n¿Qué querés hacer?"
     },
     {
       "id": "E02",
@@ -199,16 +195,15 @@
       "description": "\"medio palo de pesos\"",
       "pass": true,
       "details": "OK",
-      "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Arrendamiento*\nMonto: *$500.000*\nUbicación: Lote Norte (la quinta)\n\n💰 Registrado\nArrendamiento\n$500.000\n📍 Lote Norte (la quinta)\n📈 Resultado del mes hasta ahora\n\nIngresos: $507.500\nGastos: $220.000\nResultado: $287.500\nMargen: 57%\n¿Y ahora?"
+      "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Arrendamiento*\nMonto: *$500.000*\nUbicación: Lote Norte (la quinta)\n\n💰 Anotado\nArrendamiento\n$500.000\n📍 Lote Norte (la quinta)\n📈 Resultado del mes hasta ahora\n\nIngresos: $507.500\nGastos: $470.000\nResultado: $37.500\nMargen: 7%\n¿Y ahora?"
     },
     {
       "id": "CL02",
       "category": "colloquial",
       "description": "\"un palo verde\" = USD 1.000.000",
-      "pass": false,
-      "severity": "Low",
-      "details": "missing: /USD\\s*1\\.?000\\.?000|1.*M.*USD/i",
-      "response": "¿Qué vendiste? ¿Soja, maíz, hacienda, o algo más? Necesito saber el producto para registrar el ingreso."
+      "pass": true,
+      "details": "OK",
+      "response": "¿En qué categoría va este ingreso de USD 1.000.000?"
     },
     {
       "id": "MI01",
@@ -216,7 +211,7 @@
       "description": "Compound 3 acciones distintas",
       "pass": true,
       "details": "OK",
-      "response": "✅ Gasto guardado\nCombustible\n$30.000\n📍 Lote Norte (la quinta)\n💰 Registrado\nMaíz\nUSD 2.000\n8 tn a USD 250\n📍 Lote Sur (la quinta)\n📈 Resultado del mes hasta ahora\n\nIngresos: $509.500\nGastos: $250.000\nResultado: $259.500\nMargen: 51%\n💨 *Fumigación* registrada\n📍 la quinta > Este\n🧴 glifosato (herbic"
+      "response": "✅ Anotado\nCombustible\n$30.000\n📍 Lote Norte (la quinta)\n💰 Listo, ingreso registrado\nMaíz\nUSD 2.000\n8 tn a USD 250\n📍 Lote Sur (la quinta)\n📈 Resultado del mes hasta ahora\n\nIngresos: $509.500\nGastos: $500.000\nResultado: $9.500\nMargen: 2%\n💨 *Fumigación* registrada\n📍 la quinta > Este\n🧴 glifosato (h"
     },
     {
       "id": "A01",
@@ -238,10 +233,9 @@
       "id": "CR01",
       "category": "contradiction",
       "description": "Corrige amount mid-flow",
-      "pass": false,
-      "severity": "Critical",
-      "details": "missing: expected single 200, got []",
-      "response": "💸 *Combustible* — USD 200\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+      "pass": true,
+      "details": "OK",
+      "response": "🔁 Cancelé el gasto anterior (Combustible USD 100) para registrar el nuevo. Confirmá abajo o cancelá si fue un error.\n💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *USD 200*\nUbicación: Lote Norte (la quinta)\n"
     },
     {
       "id": "R01",
@@ -249,16 +243,15 @@
       "description": "Lote inexistente → bot lista válidos",
       "pass": true,
       "details": "OK",
-      "response": "💸 *Combustible* — $10.000\n\n¿En qué lote lo registramos?\n¿En qué lote?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$10.000*\nUbicación: Lote Norte (la quinta)\n"
     },
     {
       "id": "R02",
       "category": "recovery",
       "description": "Cosecha sin cultivo activo → mensaje claro",
-      "pass": false,
-      "severity": "Medium",
-      "details": "missing: /(no\\s+hay|cultivo|sembr|soja|trigo)/i",
-      "response": "💸 *Confirmar gasto:*\n\nMonto: *$10.000*\nCategoría: *Combustible*\nLote: *Norte*\nDetalle: gasoil\n\n¿Confirmamos?\n¿Confirmamos el gasto?"
+      "pass": true,
+      "details": "OK",
+      "response": "No hay cultivo activo en *la quinta > Norte* para cosechar."
     },
     {
       "id": "X01",
