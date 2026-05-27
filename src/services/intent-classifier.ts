@@ -11,6 +11,8 @@ import type { AgentService } from '../ai/agent.service.js';
 import type { AgentResponseMapper } from '../ai/agent-response-mapper.js';
 import type { UserContextService } from '../ai/user-context.service.js';
 import { detectCorrection } from '../ai/correction-classifier.js';
+import { expandPronouns } from '../utils/pronoun-expander.js';
+import { getConversationState } from './expenses.js';
 import type { UserId, UserSettings, ParseResult } from '../types/index.js';
 
 /**
@@ -236,13 +238,37 @@ export class IntentClassifier {
     }
 
     // =========================================================================
+    // STEP 2.6 — Pronoun expansion (deterministic pre-agent rewrite)
+    // Swap "ahí mismo / ese lote / el mismo" → "en lote <name>" when we have
+    // a recent plot in conversation_state. The agent prompt already has this
+    // rule but Haiku applies it inconsistently — doing it server-side means
+    // the agent gets unambiguous text and zero work to do. Pass-through when
+    // no pronoun is found OR no recent plot exists.
+    // =========================================================================
+    let agentInputText = text;
+    try {
+      const convState = await getConversationState(userId);
+      const lastPlotName: string | null = convState?.plot_name ?? null;
+      if (lastPlotName) {
+        const { expanded, replaced } = expandPronouns(text, lastPlotName);
+        if (replaced > 0) {
+          console.log(`[intent-classifier] Pronoun expansion: "${text}" → "${expanded}" (${replaced} swap)`);
+          agentInputText = expanded;
+        }
+      }
+    } catch (expErr) {
+      // Non-fatal: if conversation_state read fails, just send original text.
+      console.warn('[intent-classifier] Pronoun expansion skipped:', (expErr as Error).message);
+    }
+
+    // =========================================================================
     // STEP 3a — AI Agent (tool_use) — runs when AGENT_ENABLED=true
     // =========================================================================
     const agentEnabled = await getSettingBool('AGENT_ENABLED');
     if (agentEnabled && this.agentService && this.responseMapper) {
       try {
         const minConfidence = (await getSettingNumber('AI_INTENT_MIN_CONFIDENCE')) ?? 0.70;
-        const agentResult = await this.agentService.extract(text, preprocessed, userId, settings);
+        const agentResult = await this.agentService.extract(agentInputText, preprocessed, userId, settings);
         if (agentResult) {
           const validationEnabled = await getSettingBool('AGENT_OUTPUT_VALIDATION_ENABLED');
           const validateCrop = validationEnabled && (await getSettingBool('AGENT_VALIDATE_CROP'));
