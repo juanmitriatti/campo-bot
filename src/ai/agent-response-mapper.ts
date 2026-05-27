@@ -1,5 +1,6 @@
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
 import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES, EXPENSE_KEYWORD_MAP, type IncomeCategory } from '../constants/agro-terms.js';
+import { resolveRelativeDate, TOOLS_WITH_DATE_PARAM, dateKeyForTool } from '../utils/relative-dates.js';
 import type { AgentResult } from './agent.service.js';
 import { validateToolCall, type ValidationOptions } from './agent-output-validator.js';
 import { buildFallbackMessage } from '../utils/fuzzy-suggest.js';
@@ -279,6 +280,22 @@ export class AgentResponseMapper {
       { toolName, input: toolInput as Record<string, unknown>, originalText },
       validationOptions,
     );
+
+    // Safety net for relative dates: agent often forgets to set event_date
+    // when user says "ayer pagué...", "hace 3 días", "anteayer cargué..." etc.
+    // Detect it from the user text and inject the resolved ISO date so the
+    // handler doesn't default to CURRENT_DATE. Only fills when:
+    //   1. Tool accepts a date param (gastos / actividades / livestock / etc.)
+    //   2. Agent did NOT already set it (we never overwrite an explicit date)
+    if (TOOLS_WITH_DATE_PARAM.has(toolName)) {
+      const dateKey = dateKeyForTool(toolName);
+      const inputAsRec = input as Record<string, unknown>;
+      const agentSetDate = typeof inputAsRec[dateKey] === 'string' && (inputAsRec[dateKey] as string).length > 0;
+      if (!agentSetDate) {
+        const resolved = resolveRelativeDate(originalText);
+        if (resolved) inputAsRec[dateKey] = resolved;
+      }
+    }
 
     if (toolName === 'log_expense') {
       return this.mapExpense(input, originalText);

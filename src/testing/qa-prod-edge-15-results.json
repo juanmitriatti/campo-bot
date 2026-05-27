@@ -1,0 +1,106 @@
+{
+  "passed": 9,
+  "total": 14,
+  "email": "qa-edge-1779846429158@campo.test",
+  "ts": "2026-05-27T01:47:48.712Z",
+  "results": [
+    {
+      "id": "E01_compound_mix",
+      "description": "Gasto USD + ingreso ARS en compound",
+      "pass": true,
+      "details": "OK",
+      "response": "✅ Listo, gasto registrado\nCombustible\nUSD 500\n📍 Lote N1 (edge)\n💰 Ingreso guardado\nSoja\n$8.000.000\n10 tn a $800.000\n📍 Lote N1 (edge)\n📈 Resultado del mes hasta ahora\n\nIngresos: $8.000.000\nGastos: $500\nResultado: $7.999.500\nMargen: 100%\n¿Y"
+    },
+    {
+      "id": "E02_compound_2gastos",
+      "description": "Compound con 2 monedas diferentes",
+      "pass": true,
+      "details": "OK",
+      "response": "✅ Listo, gasto registrado\nAgroquímicos\n$100.000\n📍 Lote N1 (edge)\n✅ Anotado\nAgroquímicos\nUSD 200\n📍 Lote N1 (edge)\n¿Y ahora?"
+    },
+    {
+      "id": "E03_livestock_usd",
+      "description": "Hacienda con precio USD → expense USD",
+      "pass": false,
+      "details": "missing: /vaca|Angus|hacienda/i, /20/",
+      "response": "🔒 Esta función no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones disponibles."
+    },
+    {
+      "id": "E04_stock_usd",
+      "description": "Stock con USD unit_price",
+      "pass": false,
+      "details": "missing: /glifosato|stock|500\\s*l/i, /USD/i",
+      "response": "🔒 Esta función no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones disponibles."
+    },
+    {
+      "id": "E06_cosecha_rinde",
+      "description": "Cosecha + rinde",
+      "pass": false,
+      "details": "missing: /cosech|soja|4\\.?200/i",
+      "response": "🔒 Esta función no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones disponibles."
+    },
+    {
+      "id": "E07_cosecha_cargas",
+      "description": "Cosecha con cargas — debería extraer ambas",
+      "pass": false,
+      "details": "missing: /cosech|ma[ií]z/i",
+      "response": "🔒 Esta función no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones disponibles."
+    },
+    {
+      "id": "E08_cancel_mid",
+      "description": "Cancelar pending",
+      "pass": false,
+      "details": "missing: /cancel/i",
+      "response": "¿En qué categoría va este gasto de USD 50?"
+    },
+    {
+      "id": "E09_post_cancel",
+      "description": "No avisa de cancel porque ya cancelamos",
+      "pass": true,
+      "details": "OK",
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *USD 100*\nUbicación: Lote N1 (edge)\n\n✅ Gasto guardado\nFertilizantes\nUSD 100\n📍 Lote N1 (edge)\n¿Y ahora?"
+    },
+    {
+      "id": "E10_resultado_separado",
+      "description": "Resultado separa monedas",
+      "pass": true,
+      "details": "OK",
+      "response": "💰 *Balance por categoría*\n📅 mayo de 2026\n\n*Soja*\n🟢 ARS: ingresos $8.000.000 − gastos $0 = *$8.000.000*\n\n*Combustible*\n🔴 USD: ingresos USD 0 − gastos USD 500 = *USD -500*\n\n*Agroquímicos*\n🔴 USD: ingresos USD 0 − gastos USD 200 = *USD -20"
+    },
+    {
+      "id": "E11_ingresos_cat",
+      "description": "Breakdown por categoría",
+      "pass": true,
+      "details": "OK",
+      "response": "🏆 *Top categorías de ingresos*\n📅 mayo de 2026\n\n*ARS:*\n1. Soja: $8.000.000 (100%)\n*Total ARS: $8.000.000*\n¿Más?"
+    },
+    {
+      "id": "E12_filtro_lote_usd",
+      "description": "Filtro lote + USD",
+      "pass": true,
+      "details": "OK",
+      "response": "📊 *Resumen financiero — lote N1, USD*\n📅 Todo el historial\n\n*Gastos por categoría:*\nCombustible: USD 500\nAgroquímicos: USD 200\nFertilizantes: USD 100\n*Total gastos USD: USD 800*\n¿Más?"
+    },
+    {
+      "id": "E13_list_gastos",
+      "description": "Listado de gastos",
+      "pass": true,
+      "details": "OK",
+      "response": "📊 *Movimientos*\n📅 mayo de 2026\n\n*Gastos* (4)\n• 25/05/26 — fertilizante — USD 100 · edge/N1\n• 25/05/26 — glifosato — USD 200 · edge/N1\n• 25/05/26 — sueldos — $100.000 · edge/N1\n• 25/05/26 — gasoil — USD 500 · edge/N1\n*Total USD: USD 800*\n*"
+    },
+    {
+      "id": "E14_amount_enorme",
+      "description": "10M USD",
+      "pass": true,
+      "details": "OK",
+      "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Arrendamiento*\nMonto: *USD 10.000.000*\nUbicación: Lote N1 (edge)\n\n💰 Listo, ingreso registrado\nArrendamiento\nUSD 10.000.000\n📍 Lote N1 (edge)\n📈 Resultado del mes hasta ahora\n\nIngresos: $18.000.000\nGastos:"
+    },
+    {
+      "id": "E15_amount_zero",
+      "description": "Rechazar amount 0",
+      "pass": true,
+      "details": "OK",
+      "response": "¿Cuánto gastaste? (ej: 50000, 50mil, 200 dólares)"
+    }
+  ]
+}

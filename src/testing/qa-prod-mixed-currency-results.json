@@ -1,0 +1,148 @@
+{
+  "passed": 18,
+  "total": 20,
+  "email": "qa-mix-1779846364981@campo.test",
+  "ts": "2026-05-27T01:46:51.792Z",
+  "results": [
+    {
+      "id": "T01_gasto_ars",
+      "description": "Gasto ARS sin mencionar moneda → debe ser $",
+      "pass": true,
+      "details": "OK",
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$50.000*\nUbicación: Lote A1 (mix)\n\n✅ Gasto guardado\nCombustible\n$50.000\n📍 Lote A1 (mix)\n¿Y ahora?"
+    },
+    {
+      "id": "T02_gasto_usd",
+      "description": "Gasto en USD → \"USD 500\" sin $",
+      "pass": true,
+      "details": "OK",
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *USD 500*\nUbicación: Lote A1 (mix)\n\n✅ Listo, gasto registrado\nAgroquímicos\nUSD 500\n📍 Lote A1 (mix)\n¿Y ahora?"
+    },
+    {
+      "id": "T03_gasto_uds_informal",
+      "description": "Gasto con \"u$s\" → USD",
+      "pass": true,
+      "details": "OK",
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *USD 1.200*\nUbicación: Lote A2 (mix)\n\n✅ Listo, gasto registrado\nFertilizantes\nUSD 1.200\n📍 Lote A2 (mix)\n¿Y ahora?"
+    },
+    {
+      "id": "T04_gasto_palos",
+      "description": "Gasto ARS \"1.5 palos\" = $1.500.000",
+      "pass": true,
+      "details": "OK",
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$1.500.000*\nUbicación: Lote A1 (mix)\n\n✅ Listo, gasto registrado\nSueldos\n$1.500.000\n📍 Lote A1 (mix)\n¿Y ahora?"
+    },
+    {
+      "id": "T05_gasto_usd_pequeno",
+      "description": "Gasto 300 USD",
+      "pass": true,
+      "details": "OK",
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Semillas*\nMonto: *USD 300*\nUbicación: Lote A2 (mix)\n\n✅ Registrado\nSemillas\nUSD 300\n📍 Lote A2 (mix)\n¿Y ahora?"
+    },
+    {
+      "id": "T06_ingreso_ars",
+      "description": "Ingreso ARS por venta de soja, total = 5 × 800k = 4M",
+      "pass": true,
+      "details": "OK",
+      "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Soja*\nMonto: *$4.000.000*\nDetalle: 5 tn a $800.000\nUbicación: Lote A1 (mix)\n\n💰 Ingreso guardado\nSoja\n$4.000.000\n5 tn a $800.000\n📍 Lote A1 (mix)\n📈 Resultado del mes hasta ahora\n\nIngresos: $4.000.000\nGast"
+    },
+    {
+      "id": "T07_ingreso_usd",
+      "description": "Ingreso USD por venta de maíz, total = 10 × 250 = 2500",
+      "pass": true,
+      "details": "OK",
+      "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Maíz*\nMonto: *USD 2.500*\nDetalle: 10 tn a USD 250\nUbicación: Lote A2 (mix)\n\n💰 Anotado\nMaíz\nUSD 2.500\n10 tn a USD 250\n📍 Lote A2 (mix)\n📈 Resultado del mes hasta ahora\n\nIngresos: $4.002.500\nGastos: $1.552."
+    },
+    {
+      "id": "T08_ingreso_usd_arrendamiento",
+      "description": "Arrendamiento 8000 USD",
+      "pass": true,
+      "details": "OK",
+      "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Arrendamiento*\nMonto: *USD 8.000*\nUbicación: Lote A1 (mix)\n\n💰 Registrado\nArrendamiento\nUSD 8.000\n📍 Lote A1 (mix)\n📈 Resultado del mes hasta ahora\n\nIngresos: $4.010.500\nGastos: $1.552.000\nResultado: $2.45"
+    },
+    {
+      "id": "T09_ingreso_medio_palo",
+      "description": "Ingreso ARS \"medio palo\" = $500.000",
+      "pass": true,
+      "details": "OK",
+      "response": "¿En qué categoría va este ingreso de $500.000?"
+    },
+    {
+      "id": "T10_ingreso_trigo_usd",
+      "description": "Trigo 20 × 220 USD = 4400 USD",
+      "pass": true,
+      "details": "OK",
+      "response": "💰 ¿Confirmo ingreso?\n\nCategoría: *Trigo*\nMonto: *USD 4.400*\nDetalle: 20 tn a USD 220\nUbicación: Lote A1 (mix)\n\n💰 Ingreso guardado\nTrigo\nUSD 4.400\n20 tn a USD 220\n📍 Lote A1 (mix)\n📈 Resultado del mes hasta ahora\n\nIngresos: $4.014.900\nGast"
+    },
+    {
+      "id": "T11_gastos_mes",
+      "description": "Debe diferenciar ARS y USD, sin mezclarlos",
+      "pass": true,
+      "details": "OK",
+      "response": "📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nSueldos: $1.500.000\nCombustible: $50.000\nFertilizantes: USD 1.200\nAgroquímicos: USD 500\nSemillas: USD 300\n*Total gastos USD: USD 2.000*\n*Total gastos ARS: $1.550.000*\n¿Más?"
+    },
+    {
+      "id": "T12_ingresos_mes",
+      "description": "Ingresos del mes en pesos correcto",
+      "pass": false,
+      "details": "missing: /\\$\\s*4\\.?500\\.?000|4\\.500\\.000|4\\.5\\s*M/i",
+      "response": "📊 *Resumen financiero*\n📅 mayo de 2026\n\n*Ingresos por categoría:*\nSoja: $4.000.000\nArrendamiento: USD 8.000\nTrigo: USD 4.400\nMaíz: USD 2.500\n*Total ingresos USD: USD 14.900*\n*Total ingresos ARS: $4.000.000*\n¿Más?"
+    },
+    {
+      "id": "T13_gastos_usd",
+      "description": "Filtro de gastos solo USD",
+      "pass": false,
+      "details": "missing: /d[oó]lar/i",
+      "response": "📊 *Movimientos — USD*\n📅 mayo de 2026\n\n*Gastos* (3)\n• 25/05/26 — semillas — USD 300 · mix/A2\n• 25/05/26 — compra urea — USD 1.200 · mix/A2\n• 25/05/26 — glifosato — USD 500 · mix/A1\n*Total USD: USD 2.000*\n¿Más?"
+    },
+    {
+      "id": "T14_ingresos_usd",
+      "description": "Filtro de ingresos solo USD = 14.900",
+      "pass": true,
+      "details": "OK",
+      "response": "📊 *Movimientos — USD*\n📅 mayo de 2026\n\n*Ingresos* (3)\n• 25/05/26 — venta trigo — USD 4.400 · mix/A1\n• 25/05/26 — arrendamiento lote A1 — USD 8.000 · mix/A1\n• 25/05/26 — venta maíz — USD 2.500 · mix/A2\n*Total USD: USD 14.900*\n¿Más?"
+    },
+    {
+      "id": "T15_resultado",
+      "description": "Resultado mes — ARS y USD separados",
+      "pass": true,
+      "details": "OK",
+      "response": "💰 *Balance por categoría*\n📅 mayo de 2026\n\n*Arrendamiento*\n🟢 USD: ingresos USD 8.000 − gastos USD 0 = *USD 8.000*\n\n*Trigo*\n🟢 USD: ingresos USD 4.400 − gastos USD 0 = *USD 4.400*\n\n*Soja*\n🟢 ARS: ingresos $4.000.000 − gastos $0 = *$4.000.0"
+    },
+    {
+      "id": "T16_cat_agroquim",
+      "description": "Filtro categoría agroquímicos",
+      "pass": true,
+      "details": "OK",
+      "response": "📊 *Movimientos — agroquímicos*\n📅 mayo de 2026\n\n*Gastos* (1)\n• 25/05/26 — glifosato — USD 500 · mix/A1\n*Total USD: USD 500*\n¿Más?"
+    },
+    {
+      "id": "T17_list_ingresos_usd",
+      "description": "Listado de ingresos USD muestra los 3",
+      "pass": true,
+      "details": "OK",
+      "response": "📊 *Movimientos — USD*\n📅 mayo de 2026\n\n*Ingresos* (3)\n• 25/05/26 — venta trigo — USD 4.400 · mix/A1\n• 25/05/26 — arrendamiento lote A1 — USD 8.000 · mix/A1\n• 25/05/26 — venta maíz — USD 2.500 · mix/A2\n*Total USD: USD 14.900*\n¿Más?"
+    },
+    {
+      "id": "T18_ventas_soja",
+      "description": "Ventas soja = $4M ARS (T06)",
+      "pass": true,
+      "details": "OK",
+      "response": "📊 *Movimientos — soja*\n📅 mayo de 2026\n\n*Ingresos* (1)\n• 25/05/26 — venta soja — $4.000.000 · mix/A1\n*Total ARS: $4.000.000*\n¿Más?"
+    },
+    {
+      "id": "T19_ingresos_a2",
+      "description": "Ingresos lote A2 (USD + ARS)",
+      "pass": true,
+      "details": "OK",
+      "response": "📊 *Resumen financiero — lote A2*\n📅 mayo de 2026\n\n*Ingresos por categoría:*\nMaíz: USD 2.500\n*Total ingresos USD: USD 2.500*\n¿Más?"
+    },
+    {
+      "id": "T20_gastos_a1",
+      "description": "Gastos lote A1 (USD + ARS)",
+      "pass": true,
+      "details": "OK",
+      "response": "📊 *Resumen financiero — lote A1*\n📅 mayo de 2026\n\n*Gastos por categoría:*\nSueldos: $1.500.000\nCombustible: $50.000\nAgroquímicos: USD 500\n*Total gastos ARS: $1.550.000*\n*Total gastos USD: USD 500*\n¿Más?"
+    }
+  ]
+}

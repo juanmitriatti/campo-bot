@@ -87,7 +87,19 @@ export class PlotDiscoveryService {
       };
     }
 
-    // Nothing specified — auto-assign if user has exactly 1 plot total
+    // Nothing specified — try recent context_stack first. This is the bedrock
+    // of conversational memory: if the user just talked about lote Norte and
+    // now says "y otros 50000 en sueldos ahi mismo" or just "y 50k en sueldos"
+    // (no pronoun, no plot), we want to attach to Norte rather than asking
+    // "¿En qué lote?" again. The stack is LIFO with a 3-entry depth and a
+    // short TTL implicit in conversation_state.updated_at — fresh users have
+    // an empty stack so fall-through behavior is unchanged.
+    const fromStack = await this._resolveFromConversationState(userId);
+    if (fromStack.plotId) {
+      return fromStack;
+    }
+
+    // Then auto-assign if user has exactly 1 plot total
     const allPlots = await findAllUserPlots(userId);
     if (allPlots.length === 1) {
       const plot = allPlots[0];
