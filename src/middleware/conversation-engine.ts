@@ -7,6 +7,7 @@ import type { FlowDefinition, FlowStep, FlowStepValidationSuccess } from './flow
 import { getSettingNumber } from '../services/settings.service.js';
 import { logError } from '../services/error-logger.js';
 import { normalizarMonto } from '../utils/parser.js';
+import { looksLikeCategoryWord } from '../ai/correction-classifier.js';
 
 // Defaults — overridden by system_settings at runtime
 const DEFAULT_FLOW_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -84,18 +85,44 @@ export function extractAmountCorrection(text: string): number | null {
 }
 
 /**
- * Detect mid-flow category corrections like "no, es gasoil" / "no, categoría insumos".
- * Returns the corrected category string (raw, will be re-validated by the step) or null.
+ * Detect mid-flow category corrections.
+ *
+ * Patterns covered:
+ *   - "no, es <X>"
+ *   - "no, era en <X>" / "no, fue en <X>"   (user-style category correction)
+ *   - "no, categoría <X>"
+ *   - "cambiar a <X>" / "en realidad categoría <X>"
+ *
+ * The "no, era en X" pattern is intentionally restricted to candidates that
+ * look like CATEGORY words (sueldos, gasoil, semillas, fertilizante, ...)
+ * via a shared stoplist in correction-classifier. Without that guard the
+ * pattern would gobble up "no, era en lote Norte" — which is a plot
+ * correction handled elsewhere. The correction-classifier runs FIRST in
+ * the intent pipeline and catches plot corrections; here we accept the
+ * leftovers that look like category swaps.
  */
 export function extractCategoryCorrection(text: string): string | null {
   const t = text.trim();
   if (!t) return null;
   // "no, es X" / "no, categoría X" / "cambiar a X" / "en realidad X"
-  const m = t.match(
+  const m1 = t.match(
     /^(?:no,?\s*(?:es|categor[ií]a)|cambiar\s+a|en\s+realidad\s+categor[ií]a)\s+(.+)$/i,
   );
-  if (!m) return null;
-  return m[1].trim() || null;
+  if (m1) return m1[1].trim() || null;
+
+  // "no, era en X" / "no, fue en X" — only when X is a category word.
+  // Without the stoplist guard this would conflict with plot corrections
+  // ("no, era en lote Norte") — but those are intercepted earlier by the
+  // correction-classifier. Here we only fire when the candidate looks
+  // unambiguously category-shaped.
+  const m2 = t.match(
+    /^no,?\s*(?:era|fue|fui|fuimos)\s+en\s+(?:el\s+|la\s+)?([\p{L}][\p{L}\s\-]*?)\s*[.!?]?\s*$/iu,
+  );
+  if (m2) {
+    const candidate = m2[1].trim();
+    if (looksLikeCategoryWord(candidate)) return candidate || null;
+  }
+  return null;
 }
 
 export interface FlowMessageResult {

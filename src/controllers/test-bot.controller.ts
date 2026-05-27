@@ -1125,6 +1125,42 @@ async function processTextMessage(
   // --- Check pending confirmation ---
   const pending = pendingStore.get(phone);
 
+  // --- Pending correction intercept (category / amount mid-confirmation) ---
+  // Before sending to the classifier: if there's a pending gasto/ingreso and
+  // the user's text is a category or amount correction ("no, era en sueldos"
+  // / "no, eran 75 mil"), patch the pending in-place and re-render the
+  // confirmation. Without this the message falls through to the agent which
+  // is sometimes inconsistent (CR02: it asked for a plot instead of fixing
+  // the category).
+  if (pending && (pending.type === 'expense' || pending.type === 'income')) {
+    const { extractCategoryCorrection, extractAmountCorrection } = await import('../middleware/conversation-engine.js');
+    const correctedCat = extractCategoryCorrection(text);
+    const correctedAmt = extractAmountCorrection(text);
+    if (correctedCat || correctedAmt) {
+      const updated: any = { ...pending, data: { ...pending.data, timestamp: Date.now() } };
+      if (correctedCat) {
+        const { detectarCategoria, detectarCategoriaIngreso } = await import('../utils/parser.js');
+        const canonical = pending.type === 'income'
+          ? (detectarCategoriaIngreso(correctedCat) || correctedCat)
+          : (detectarCategoria(correctedCat) || correctedCat);
+        updated.data.category = canonical;
+      }
+      if (correctedAmt) updated.data.amount = correctedAmt;
+      pendingStore.set(phone, updated);
+      const verb = pending.type === 'expense' ? 'gasto' : 'ingreso';
+      const emoji = pending.type === 'expense' ? '💸' : '💰';
+      const { formatMoney } = await import('../utils/format-money.js');
+      const loc = updated.plotName ? `Lote ${updated.plotName} (${updated.fieldName})` : updated.fieldName || '—';
+      const body = `${emoji} ¿Confirmo ${verb}?\n\nCategoría: *${updated.data.category}*\nMonto: *${formatMoney(updated.data.amount, updated.data.currency)}*\nUbicación: ${loc}`;
+      const items: BotResponseItem[] = [
+        { type: 'text', text: body },
+        { type: 'interactive', interactive: { type: 'buttons', body: '¿Confirmás?', buttons: [{ id: 'confirm_pending', title: 'Confirmar' }, { id: 'cancel_pending', title: 'Cancelar' }] } } as BotResponseItem,
+      ];
+      conversationLogger.log(userId, phone, text, body, 'command', 'correction_applied', null, null, false, Date.now() - startTime, true, 1.0).catch(() => {});
+      return items;
+    }
+  }
+
   const lowConfidenceThreshold = (await getSettingNumber('CONFIDENCE_LOW_CONFIRM')) ?? 0.70;
   const unknownFallbackThreshold = (await getSettingNumber('CONFIDENCE_UNKNOWN_FALLBACK')) ?? 0.50;
 

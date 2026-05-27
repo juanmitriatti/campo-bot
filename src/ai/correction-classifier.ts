@@ -196,7 +196,7 @@ const CATEGORY_STOPLIST: ReadonlySet<string> = new Set([
   'pesos', 'peso', 'dolares', 'dólares', 'dolar', 'dólar', 'usd', 'ars',
 ]);
 
-function looksLikeCategoryWord(candidate: string): boolean {
+export function looksLikeCategoryWord(candidate: string): boolean {
   if (!candidate) return false;
   // Normalize: lowercase + strip accents
   const normalized = candidate.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
