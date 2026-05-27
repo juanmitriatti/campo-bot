@@ -462,6 +462,50 @@ export async function deleteIncome(incomeId) {
   );
 }
 
+/** See findExpenseByCriteria — same shape, against the incomes table. */
+export async function findIncomeByCriteria(userId, { amount = null, category = null, date = null } = {}) {
+  if (amount == null && !category && !date) return null;
+  const params = [userId];
+  const conditions = ['user_id = $1', 'deleted_at IS NULL'];
+  let idx = 2;
+  if (amount != null) {
+    const tol = Math.max(0.01, Math.abs(amount) * 0.005);
+    conditions.push(`amount BETWEEN $${idx} AND $${idx + 1}`);
+    params.push(amount - tol, amount + tol);
+    idx += 2;
+  }
+  if (category) {
+    conditions.push(`LOWER(category) = LOWER($${idx})`);
+    params.push(category);
+    idx++;
+  }
+  if (date) {
+    conditions.push(`income_date::text = $${idx}`);
+    params.push(date);
+    idx++;
+  }
+  const result = await pool.query(
+    `SELECT * FROM incomes WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 1`,
+    params,
+  );
+  return result.rows[0] || null;
+}
+
+/** Update arbitrary editable fields of an income. Pass only what changes. */
+export async function updateIncomeFields(incomeId, { amount = null, category = null, incomeDate = null, fieldId = undefined, plotId = undefined } = {}) {
+  const sets = [];
+  const params = [];
+  let idx = 1;
+  if (amount != null) { sets.push(`amount = $${idx++}`); params.push(amount); }
+  if (category) { sets.push(`category = $${idx++}`); params.push(category); }
+  if (incomeDate) { sets.push(`income_date = $${idx++}`); params.push(incomeDate); }
+  if (fieldId !== undefined) { sets.push(`field_id = $${idx++}`); params.push(fieldId); }
+  if (plotId !== undefined) { sets.push(`plot_id = $${idx++}`); params.push(plotId); }
+  if (sets.length === 0) return;
+  params.push(incomeId);
+  await pool.query(`UPDATE incomes SET ${sets.join(', ')} WHERE id = $${idx}`, params);
+}
+
 // --- Monthly result (income - expenses) ---
 
 export async function getMonthlyResult(userId) {
@@ -1284,6 +1328,58 @@ export async function findExpenseByFilter(userId, filter) {
     [userId, `%${filter.toLowerCase()}%`]
   );
   return result.rows[0] || null;
+}
+
+/**
+ * Find an expense by structured criteria (any combination of amount + category
+ * + date). At least one criterion must be present. Returns the MOST RECENT
+ * match. amount uses ±0.5% tolerance so "el de 0.5" matches a $0.50 expense
+ * stored as 0.500000 etc.
+ *
+ * Use this for the user-flow "borra el gasto de X" / "edita el de Y a Z" —
+ * findExpenseByFilter is for fuzzy text search; this one is for typed slots.
+ */
+export async function findExpenseByCriteria(userId, { amount = null, category = null, date = null } = {}) {
+  if (amount == null && !category && !date) return null;
+  const params = [userId];
+  const conditions = ['user_id = $1', 'deleted_at IS NULL'];
+  let idx = 2;
+  if (amount != null) {
+    const tol = Math.max(0.01, Math.abs(amount) * 0.005);
+    conditions.push(`amount BETWEEN $${idx} AND $${idx + 1}`);
+    params.push(amount - tol, amount + tol);
+    idx += 2;
+  }
+  if (category) {
+    conditions.push(`LOWER(category) = LOWER($${idx})`);
+    params.push(category);
+    idx++;
+  }
+  if (date) {
+    conditions.push(`expense_date::text = $${idx}`);
+    params.push(date);
+    idx++;
+  }
+  const result = await pool.query(
+    `SELECT * FROM expenses WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 1`,
+    params,
+  );
+  return result.rows[0] || null;
+}
+
+/** Update arbitrary editable fields of an expense. Pass only what changes. */
+export async function updateExpenseFields(expenseId, { amount = null, category = null, expenseDate = null, fieldId = undefined, plotId = undefined } = {}) {
+  const sets = [];
+  const params = [];
+  let idx = 1;
+  if (amount != null) { sets.push(`amount = $${idx++}`); params.push(amount); }
+  if (category) { sets.push(`category = $${idx++}`); params.push(category); }
+  if (expenseDate) { sets.push(`expense_date = $${idx++}`); params.push(expenseDate); }
+  if (fieldId !== undefined) { sets.push(`field_id = $${idx++}`); params.push(fieldId); }
+  if (plotId !== undefined) { sets.push(`plot_id = $${idx++}`); params.push(plotId); }
+  if (sets.length === 0) return;
+  params.push(expenseId);
+  await pool.query(`UPDATE expenses SET ${sets.join(', ')} WHERE id = $${idx}`, params);
 }
 
 // --- Date range report (flexible: optional field, plot, category filters) ---

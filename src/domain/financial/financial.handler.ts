@@ -1355,15 +1355,19 @@ export class FinancialHandler {
         return this.handleFinancialReport(cmd, userId);
       }
 
-      // --- Edit last expense: clear lot or reassign ---
+      // --- Edit last expense: full editor (amount, category, date, lot/field) ---
       case 'edit_last_expense': {
         const categoryFilter = cmd.categoryFilter as string | null;
+        const newAmount = cmd.newAmount as number | null;
+        const newCategoryRaw = cmd.newCategory as string | null;
+        const newDate = cmd.newDate as string | null;
         const newPlotName = cmd.newPlotName as string | null;
         const newFieldName = cmd.newFieldName as string | null;
         const clearLot = !!cmd.clearLot;
 
-        if (!newPlotName && !clearLot && !newFieldName) {
-          return { messages: ['¿Qué corregimos del gasto? Indicá el nuevo lote o pedí "sin lote" para dejarlo a nivel de campo. Ej:\n✏️ *los sueldos eran del campo, sin lote*\n✏️ *el gasoil al lote norte*'] };
+        // At least one editable field required
+        if (newAmount == null && !newCategoryRaw && !newDate && !newPlotName && !clearLot && !newFieldName) {
+          return { messages: ['¿Qué corregimos del gasto? Decime el nuevo monto, categoría, lote o fecha. Ej:\n✏️ *no eran 30 mil eran 50 mil*\n✏️ *el último era de febrero*\n✏️ *el gasoil al lote norte*'] };
         }
 
         const last = await this.service.findLastExpenseByCategory(userId, categoryFilter);
@@ -1372,12 +1376,13 @@ export class FinancialHandler {
           return { messages: [`No encontré un gasto reciente${filterDesc} para editar.`] };
         }
 
-        let newPlotId: number | null = null;
-        let newFieldId: number | null = null;
+        // Resolve plot/field changes
+        let newPlotId: number | null | undefined = undefined;
+        let newFieldId: number | null | undefined = undefined;
         let newPlotLabel: string | null = null;
         if (clearLot) {
           newPlotId = null;
-          newFieldId = last.field_id;  // keep field_id, drop plot_id
+          newFieldId = last.field_id;
           newPlotLabel = '(sin lote)';
         } else if (newPlotName) {
           const resolved = await this.plotDiscovery.resolveFromNames(userId, newFieldName, newPlotName);
@@ -1389,14 +1394,217 @@ export class FinancialHandler {
           newPlotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
         }
 
-        await this.service.updateExpensePlot(last.id, newFieldId, newPlotId);
+        // Canonicalize category if changing
+        let newCategory: string | null = null;
+        if (newCategoryRaw) {
+          const { detectarCategoria } = await import('../../utils/parser.js');
+          newCategory = detectarCategoria(newCategoryRaw) || newCategoryRaw;
+        }
 
-        const oldLabel = last.plot_name ? (last.field_name ? `${last.field_name} > ${last.plot_name}` : last.plot_name) : (last.field_name || 'sin lote');
-        return {
-          messages: [
-            `✏️ Gasto corregido: *${last.category}* $${Number(last.amount).toLocaleString('es-AR')}\n📍 ${oldLabel} → *${newPlotLabel}*`,
-          ],
-        };
+        await this.service.editLastExpenseFull(userId, {
+          newAmount,
+          newCategory,
+          newDate,
+          newFieldId,
+          newPlotId,
+        }, categoryFilter);
+
+        // Build a focused message showing what changed
+        const { formatMoney } = await import('../../utils/format-money.js');
+        const parts: string[] = [];
+        if (newAmount != null) parts.push(`💵 ${formatMoney(Number(last.amount), last.currency || 'ARS')} → ${formatMoney(newAmount, last.currency || 'ARS')}`);
+        if (newCategory) parts.push(`🏷️ *${last.category}* → *${newCategory}*`);
+        if (newDate) parts.push(`📅 → ${newDate}`);
+        if (newPlotLabel) {
+          const oldLabel = last.plot_name ? (last.field_name ? `${last.field_name} > ${last.plot_name}` : last.plot_name) : (last.field_name || 'sin lote');
+          parts.push(`📍 ${oldLabel} → *${newPlotLabel}*`);
+        }
+        return { messages: [`✏️ Gasto corregido (${last.category}):\n${parts.join('\n')}`] };
+      }
+
+      // --- Edit specific expense by filter ---
+      case 'edit_specific_expense': {
+        const filterAmount = cmd.filterAmount as number | null;
+        const filterCategory = cmd.filterCategory as string | null;
+        const filterDate = cmd.filterDate as string | null;
+        const newAmount = cmd.newAmount as number | null;
+        const newCategoryRaw = cmd.newCategory as string | null;
+        const newDate = cmd.newDate as string | null;
+        const newPlotName = cmd.newPlotName as string | null;
+        const newFieldName = cmd.newFieldName as string | null;
+        const clearLot = !!cmd.clearLot;
+
+        if (filterAmount == null && !filterCategory && !filterDate) {
+          return { messages: ['¿Cuál gasto querés editar? Decime monto, categoría o fecha. Ej:\n✏️ *cambia el de 30 mil por 50 mil*\n✏️ *editar gasto de gasoil a 40 mil*'] };
+        }
+        if (newAmount == null && !newCategoryRaw && !newDate && !newPlotName && !clearLot && !newFieldName) {
+          return { messages: ['¿A qué lo cambio? Decime el nuevo monto, categoría, lote o fecha.'] };
+        }
+
+        let newPlotId: number | null | undefined = undefined;
+        let newFieldId: number | null | undefined = undefined;
+        if (clearLot) { newPlotId = null; }
+        else if (newPlotName) {
+          const resolved = await this.plotDiscovery.resolveFromNames(userId, newFieldName, newPlotName);
+          if (!resolved.plotId) return { messages: [`No encontré el lote *${newPlotName}*.`] };
+          newPlotId = resolved.plotId;
+          newFieldId = resolved.fieldId;
+        }
+
+        let newCategory: string | null = null;
+        if (newCategoryRaw) {
+          const { detectarCategoria } = await import('../../utils/parser.js');
+          newCategory = detectarCategoria(newCategoryRaw) || newCategoryRaw;
+        }
+
+        const edited = await this.service.editSpecificExpenseFull(
+          userId,
+          { amount: filterAmount, category: filterCategory, date: filterDate },
+          { newAmount, newCategory, newDate, newFieldId, newPlotId },
+        );
+        if (!edited) {
+          const desc = [filterAmount && `monto ${filterAmount}`, filterCategory && `cat. ${filterCategory}`, filterDate && `fecha ${filterDate}`].filter(Boolean).join(', ');
+          return { messages: [`No encontré un gasto con ${desc}.`] };
+        }
+        const { formatMoney } = await import('../../utils/format-money.js');
+        const parts: string[] = [];
+        if (newAmount != null) parts.push(`💵 → ${formatMoney(newAmount, 'ARS')}`);
+        if (newCategory) parts.push(`🏷️ → *${newCategory}*`);
+        if (newDate) parts.push(`📅 → ${newDate}`);
+        return { messages: [`✏️ Gasto corregido (${edited.oldCategory} ${formatMoney(edited.oldAmount, 'ARS')}):\n${parts.join('\n')}`] };
+      }
+
+      // --- Delete last expense (with optional category filter) ---
+      case 'delete_last_expense': {
+        const categoryFilter = cmd.categoryFilter as string | null;
+        const last = categoryFilter
+          ? await this.service.findLastExpenseByCategory(userId, categoryFilter)
+          : await (async () => {
+              const deleted = await this.service.deleteLastExpense(userId);
+              return deleted ? { deleted: true, category: deleted.category, amount: deleted.amount } : null;
+            })();
+        if (categoryFilter) {
+          const row = last as any;
+          if (!row) return { messages: [`No encontré un gasto de tipo *${categoryFilter}* para borrar.`] };
+          await this.service.deleteExpense(row.id);
+          const { formatMoney } = await import('../../utils/format-money.js');
+          return { messages: [`🗑️ Gasto eliminado: ${row.category} ${formatMoney(Number(row.amount), row.currency || 'ARS')}`] };
+        }
+        if (!last) return { messages: ['No hay gastos para borrar.'] };
+        const r = last as { category: string; amount: number };
+        const { formatMoney } = await import('../../utils/format-money.js');
+        return { messages: [`🗑️ Gasto eliminado: ${r.category} ${formatMoney(r.amount, 'ARS')}`] };
+      }
+
+      // --- Delete specific expense by filter ---
+      case 'delete_specific_expense': {
+        const filterAmount = cmd.filterAmount as number | null;
+        const filterCategory = cmd.filterCategory as string | null;
+        const filterDate = cmd.filterDate as string | null;
+        if (filterAmount == null && !filterCategory && !filterDate) {
+          return { messages: ['¿Cuál gasto querés borrar? Decime monto, categoría o fecha. Ej:\n🗑️ *borra el de 30 mil*\n🗑️ *elimina el gasto de gasoil*'] };
+        }
+        const deleted = await this.service.deleteSpecificExpenseByCriteria(userId, {
+          amount: filterAmount, category: filterCategory, date: filterDate,
+        });
+        if (!deleted) {
+          const desc = [filterAmount != null && `monto ${filterAmount}`, filterCategory && `cat. ${filterCategory}`, filterDate && `fecha ${filterDate}`].filter(Boolean).join(', ');
+          return { messages: [`No encontré un gasto con ${desc}.`] };
+        }
+        const { formatMoney } = await import('../../utils/format-money.js');
+        return { messages: [`🗑️ Gasto eliminado: ${deleted.category} ${formatMoney(deleted.amount, 'ARS')}`] };
+      }
+
+      // --- Edit last income (full editor) ---
+      case 'edit_last_income': {
+        const newAmount = cmd.newAmount as number | null;
+        const newCategoryRaw = cmd.newCategory as string | null;
+        const newDate = cmd.newDate as string | null;
+        const newPlotName = cmd.newPlotName as string | null;
+        const newFieldName = cmd.newFieldName as string | null;
+        const clearLot = !!cmd.clearLot;
+        if (newAmount == null && !newCategoryRaw && !newDate && !newPlotName && !clearLot && !newFieldName) {
+          return { messages: ['¿Qué corregimos del ingreso? Decime el nuevo monto, categoría, lote o fecha.'] };
+        }
+        let newPlotId: number | null | undefined = undefined;
+        let newFieldId: number | null | undefined = undefined;
+        if (clearLot) { newPlotId = null; }
+        else if (newPlotName) {
+          const resolved = await this.plotDiscovery.resolveFromNames(userId, newFieldName, newPlotName);
+          if (!resolved.plotId) return { messages: [`No encontré el lote *${newPlotName}*.`] };
+          newPlotId = resolved.plotId;
+          newFieldId = resolved.fieldId;
+        }
+        let newCategory: string | null = null;
+        if (newCategoryRaw) {
+          const { detectarCategoriaIngreso } = await import('../../utils/parser.js');
+          newCategory = detectarCategoriaIngreso(newCategoryRaw) || newCategoryRaw;
+        }
+        const edited = await this.service.editLastIncomeFull(userId, { newAmount, newCategory, newDate, newFieldId, newPlotId });
+        if (!edited) return { messages: ['No hay ingresos para editar.'] };
+        const { formatMoney } = await import('../../utils/format-money.js');
+        const parts: string[] = [];
+        if (newAmount != null) parts.push(`💵 ${formatMoney(edited.oldAmount, 'ARS')} → ${formatMoney(newAmount, 'ARS')}`);
+        if (newCategory) parts.push(`🏷️ → *${newCategory}*`);
+        if (newDate) parts.push(`📅 → ${newDate}`);
+        return { messages: [`✏️ Ingreso corregido (${edited.category}):\n${parts.join('\n')}`] };
+      }
+
+      // --- Edit specific income by filter ---
+      case 'edit_specific_income': {
+        const filterAmount = cmd.filterAmount as number | null;
+        const filterCategory = cmd.filterCategory as string | null;
+        const filterDate = cmd.filterDate as string | null;
+        const newAmount = cmd.newAmount as number | null;
+        const newCategoryRaw = cmd.newCategory as string | null;
+        const newDate = cmd.newDate as string | null;
+        const newPlotName = cmd.newPlotName as string | null;
+        const newFieldName = cmd.newFieldName as string | null;
+        const clearLot = !!cmd.clearLot;
+        if (filterAmount == null && !filterCategory && !filterDate) return { messages: ['¿Cuál ingreso querés editar?'] };
+        if (newAmount == null && !newCategoryRaw && !newDate && !newPlotName && !clearLot && !newFieldName) return { messages: ['¿A qué lo cambio?'] };
+        let newPlotId: number | null | undefined = undefined;
+        let newFieldId: number | null | undefined = undefined;
+        if (clearLot) { newPlotId = null; }
+        else if (newPlotName) {
+          const resolved = await this.plotDiscovery.resolveFromNames(userId, newFieldName, newPlotName);
+          if (!resolved.plotId) return { messages: [`No encontré el lote *${newPlotName}*.`] };
+          newPlotId = resolved.plotId;
+          newFieldId = resolved.fieldId;
+        }
+        let newCategory: string | null = null;
+        if (newCategoryRaw) {
+          const { detectarCategoriaIngreso } = await import('../../utils/parser.js');
+          newCategory = detectarCategoriaIngreso(newCategoryRaw) || newCategoryRaw;
+        }
+        const edited = await this.service.editSpecificIncomeFull(
+          userId,
+          { amount: filterAmount, category: filterCategory, date: filterDate },
+          { newAmount, newCategory, newDate, newFieldId, newPlotId },
+        );
+        if (!edited) return { messages: ['No encontré un ingreso con esos criterios.'] };
+        const { formatMoney } = await import('../../utils/format-money.js');
+        const parts: string[] = [];
+        if (newAmount != null) parts.push(`💵 → ${formatMoney(newAmount, 'ARS')}`);
+        if (newCategory) parts.push(`🏷️ → *${newCategory}*`);
+        if (newDate) parts.push(`📅 → ${newDate}`);
+        return { messages: [`✏️ Ingreso corregido (${edited.oldCategory} ${formatMoney(edited.oldAmount, 'ARS')}):\n${parts.join('\n')}`] };
+      }
+
+      // --- Delete specific income by filter ---
+      case 'delete_specific_income': {
+        const filterAmount = cmd.filterAmount as number | null;
+        const filterCategory = cmd.filterCategory as string | null;
+        const filterDate = cmd.filterDate as string | null;
+        if (filterAmount == null && !filterCategory && !filterDate) {
+          return { messages: ['¿Cuál ingreso querés borrar? Decime monto, categoría o fecha.'] };
+        }
+        const deleted = await this.service.deleteSpecificIncomeByCriteria(userId, {
+          amount: filterAmount, category: filterCategory, date: filterDate,
+        });
+        if (!deleted) return { messages: ['No encontré un ingreso con esos criterios.'] };
+        const { formatMoney } = await import('../../utils/format-money.js');
+        return { messages: [`🗑️ Ingreso eliminado: ${deleted.category} ${formatMoney(deleted.amount, 'ARS')}`] };
       }
 
       // --- Result / Rentability ---

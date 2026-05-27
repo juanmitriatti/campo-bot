@@ -6,6 +6,10 @@ import {
   deleteExpense as _deleteExpense,
   deleteIncome as _deleteIncome,
   updateExpenseAmount as _updateExpenseAmount,
+  updateExpenseFields as _updateExpenseFields,
+  updateIncomeFields as _updateIncomeFields,
+  findExpenseByCriteria as _findExpenseByCriteria,
+  findIncomeByCriteria as _findIncomeByCriteria,
   findExpenseByFilter as _findExpenseByFilter,
   getMonthlyReport as _getMonthlyReport,
   getMonthlyReportByPlot as _getMonthlyReportByPlot,
@@ -123,6 +127,30 @@ export class FinancialRepository {
 
   async deleteIncome(incomeId: number): Promise<void> {
     await _deleteIncome(incomeId);
+  }
+
+  // --- Structured edit / find ---
+
+  async findExpenseByCriteria(userId: UserId, criteria: { amount?: number | null; category?: string | null; date?: string | null }): Promise<ExpenseRow | null> {
+    const row = await _findExpenseByCriteria(userId, criteria);
+    if (!row) return null;
+    row.amount = Number(row.amount);
+    return row as ExpenseRow;
+  }
+
+  async findIncomeByCriteria(userId: UserId, criteria: { amount?: number | null; category?: string | null; date?: string | null }): Promise<IncomeRow | null> {
+    const row = await _findIncomeByCriteria(userId, criteria);
+    if (!row) return null;
+    row.amount = Number(row.amount);
+    return row as IncomeRow;
+  }
+
+  async updateExpenseFields(expenseId: number, fields: { amount?: number | null; category?: string | null; expenseDate?: string | null; fieldId?: number | null; plotId?: number | null }): Promise<void> {
+    await _updateExpenseFields(expenseId, fields);
+  }
+
+  async updateIncomeFields(incomeId: number, fields: { amount?: number | null; category?: string | null; incomeDate?: string | null; fieldId?: number | null; plotId?: number | null }): Promise<void> {
+    await _updateIncomeFields(incomeId, fields);
   }
 
   // --- Reports ---

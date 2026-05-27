@@ -407,14 +407,109 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'edit_last_expense',
-    description: 'Corregir/editar el último gasto registrado: cambiar de lote, sacarle el lote (dejarlo a nivel de campo), o cambiar el campo. "los sueldos eran del campo entero, no del lote 1A", "el gasoil sacale el lote", "el gasto de glifosato no era del 1A".',
+    description: 'Corregir/editar el ÚLTIMO gasto registrado: cambiar monto, categoría, fecha, lote o campo. Triggers: "perdón no era 0.5 era 0.7", "no eran 30 mil eran 50 mil", "el último gasto era 100 mil", "los sueldos eran del campo entero, no del lote 1A", "el gasoil sacale el lote", "el gasto de glifosato no era del 1A", "cambia el último gasto a 50000", "el último era de febrero". Cuando el usuario corrige inmediatamente después de confirmar, ESTO es lo que querés llamar — NO log_expense (eso crearía un duplicado).',
     input_schema: {
       type: 'object',
       properties: {
         category_filter: { type: 'string', description: 'Categoría del gasto a corregir (sueldos, agroquímicos, combustible, etc.) — opcional, ayuda cuando hay varios gastos recientes.' },
+        new_amount: { type: 'number', description: 'Nuevo monto correcto (use cuando el usuario dice "perdón eran X" / "no era X era Y").' },
+        new_category: { type: 'string', description: 'Nueva categoría correcta (sueldos, gasoil, semillas, etc.).' },
+        new_date: DATE_PROP,
         new_plot: { type: 'string', description: 'Nuevo lote correcto.' },
         new_field: FIELD_PROP,
         clear_lot: { type: 'boolean', description: 'Limpiar/quitar el lote del gasto (dejar a nivel de campo). Para "sin lote", "sacale el lote", "es general".' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'edit_specific_expense',
+    description: 'Corregir/editar un gasto ESPECÍFICO identificado por monto, categoría o fecha (no el último). Triggers: "edita el gasto de 500 mil a 600 mil", "cambia el de gasoil por 80 mil", "el gasto del lunes era de 40 mil", "el de 30 mil de semillas en realidad fue 35 mil". Buscá por los filtros que el usuario provea.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filter_amount: { type: 'number', description: 'Monto actual del gasto a buscar (ej. el "0.5" en "borra el de 0.5").' },
+        filter_category: { type: 'string', description: 'Categoría actual del gasto a buscar (gasoil, sueldos, etc.).' },
+        filter_date: DATE_PROP,
+        new_amount: { type: 'number', description: 'Nuevo monto correcto.' },
+        new_category: { type: 'string', description: 'Nueva categoría correcta.' },
+        new_date: DATE_PROP,
+        new_plot: { type: 'string', description: 'Nuevo lote correcto.' },
+        new_field: FIELD_PROP,
+        clear_lot: { type: 'boolean', description: 'Limpiar el lote del gasto.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'delete_last_expense',
+    description: 'BORRAR el ÚLTIMO gasto registrado. Triggers: "borrá el último gasto", "elimina el último gasto", "saca el último gasto", "removí el gasto que acabo de cargar". NO confundir con delete_last_activity (que es para actividades agronómicas como siembras o fumigaciones).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category_filter: { type: 'string', description: 'Categoría del gasto (opcional — ayuda cuando hay varios recientes).' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'delete_specific_expense',
+    description: 'BORRAR un gasto ESPECÍFICO identificado por monto, categoría o fecha. Triggers: "borra el gasto de 0.5", "borrame el de 30 mil", "elimina el gasto de gasoil", "borra el de sueldos del lunes", "saca el de 500 mil". NO usar delete_last_activity para esto.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filter_amount: { type: 'number', description: 'Monto del gasto a borrar (ej. "borra el de 0.5" → filter_amount=0.5).' },
+        filter_category: { type: 'string', description: 'Categoría del gasto a borrar.' },
+        filter_date: DATE_PROP,
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'edit_last_income',
+    description: 'Corregir/editar el ÚLTIMO ingreso registrado: cambiar monto, categoría, fecha, lote o campo. Triggers: "perdón el ingreso era 100 mil", "no eran 50 mil eran 60 mil", "el último ingreso era de febrero", "el cobro de soja sacale el lote".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category_filter: { type: 'string', description: 'Categoría del ingreso (cosecha, venta, etc.) — opcional.' },
+        new_amount: { type: 'number' },
+        new_category: { type: 'string' },
+        new_date: DATE_PROP,
+        new_plot: { type: 'string', description: 'Nuevo lote correcto.' },
+        new_field: FIELD_PROP,
+        clear_lot: { type: 'boolean', description: 'Quitar el lote.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'edit_specific_income',
+    description: 'Corregir/editar un INGRESO específico por monto, categoría o fecha. Triggers: "edita el ingreso de 200 mil a 250 mil", "cambia el cobro de soja por 300 mil".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filter_amount: { type: 'number' },
+        filter_category: { type: 'string' },
+        filter_date: DATE_PROP,
+        new_amount: { type: 'number' },
+        new_category: { type: 'string' },
+        new_date: DATE_PROP,
+        new_plot: { type: 'string' },
+        new_field: FIELD_PROP,
+        clear_lot: { type: 'boolean' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'delete_specific_income',
+    description: 'BORRAR un INGRESO específico identificado por monto, categoría o fecha. Triggers: "borra el ingreso de 200 mil", "elimina el cobro de soja", "saca el ingreso del lunes".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filter_amount: { type: 'number' },
+        filter_category: { type: 'string' },
+        filter_date: DATE_PROP,
       },
       required: [],
     },

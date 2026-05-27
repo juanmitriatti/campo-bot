@@ -23,6 +23,10 @@ const FINANCIAL_COMMANDS = new Set([
   'delete_last', 'delete_last_income', 'delete_specific', 'edit_specific', 'edit_last',
   'edit_last_amount', // alias for edit_last (clearer name, same behavior)
   'edit_last_expense',
+  // May 28 — agent-driven edit/delete tools (full editor support: amount,
+  // category, date, plot, field). See utils/financial-edit.md if needed.
+  'delete_last_expense', 'delete_specific_expense', 'delete_specific_income',
+  'edit_specific_expense', 'edit_last_income', 'edit_specific_income',
   'export_csv',
   'set_field_city', 'add_field_city', 'add_field', 'list_fields',
   'delete_field', 'rename_field', 'field_info',

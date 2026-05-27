@@ -48,6 +48,10 @@ export class FinancialService {
     return { category: last.category, amount: Number(last.amount) };
   }
 
+  async deleteExpense(expenseId: number): Promise<void> {
+    await this.repo.deleteExpense(expenseId);
+  }
+
   async findLastExpenseByCategory(userId: UserId, categoryFilter: string | null) {
     return this.repo.findLastExpenseByCategory(userId, categoryFilter);
   }
@@ -90,6 +94,103 @@ export class FinancialService {
     if (!last) return null;
     await this.repo.deleteIncome(last.id);
     return { category: last.category, amount: Number(last.amount) };
+  }
+
+  // --- Structured edit / delete (handle the new agent tools) ---
+
+  async deleteSpecificExpenseByCriteria(userId: UserId, criteria: { amount?: number | null; category?: string | null; date?: string | null }): Promise<{ category: string; amount: number } | null> {
+    const row = await this.repo.findExpenseByCriteria(userId, criteria);
+    if (!row) return null;
+    await this.repo.deleteExpense(row.id);
+    return { category: row.category, amount: Number(row.amount) };
+  }
+
+  async deleteSpecificIncomeByCriteria(userId: UserId, criteria: { amount?: number | null; category?: string | null; date?: string | null }): Promise<{ category: string; amount: number } | null> {
+    const row = await this.repo.findIncomeByCriteria(userId, criteria);
+    if (!row) return null;
+    await this.repo.deleteIncome(row.id);
+    return { category: row.category, amount: Number(row.amount) };
+  }
+
+  /**
+   * Full edit of the most-recent expense — supports any combination of new
+   * amount, category, date, plot or field. Replaces the narrow editLastExpense
+   * (amount-only) and updateExpensePlot (plot-only) for agent callers.
+   */
+  async editLastExpenseFull(
+    userId: UserId,
+    fields: { newAmount?: number | null; newCategory?: string | null; newDate?: string | null; newFieldId?: number | null; newPlotId?: number | null },
+    categoryFilter: string | null = null,
+  ): Promise<{ id: number; category: string; oldAmount: number; newAmount: number | null; oldCategory: string; newCategory: string | null } | null> {
+    const last = categoryFilter
+      ? await this.repo.findLastExpenseByCategory(userId, categoryFilter)
+      : await this.repo.getLastExpense(userId);
+    if (!last) return null;
+    await this.repo.updateExpenseFields(last.id, {
+      amount: fields.newAmount ?? null,
+      category: fields.newCategory ?? null,
+      expenseDate: fields.newDate ?? null,
+      fieldId: fields.newFieldId === undefined ? undefined : fields.newFieldId,
+      plotId: fields.newPlotId === undefined ? undefined : fields.newPlotId,
+    });
+    return {
+      id: last.id,
+      category: last.category,
+      oldAmount: Number(last.amount),
+      newAmount: fields.newAmount ?? null,
+      oldCategory: last.category,
+      newCategory: fields.newCategory ?? null,
+    };
+  }
+
+  async editSpecificExpenseFull(
+    userId: UserId,
+    criteria: { amount?: number | null; category?: string | null; date?: string | null },
+    fields: { newAmount?: number | null; newCategory?: string | null; newDate?: string | null; newFieldId?: number | null; newPlotId?: number | null },
+  ): Promise<{ id: number; oldAmount: number; oldCategory: string } | null> {
+    const row = await this.repo.findExpenseByCriteria(userId, criteria);
+    if (!row) return null;
+    await this.repo.updateExpenseFields(row.id, {
+      amount: fields.newAmount ?? null,
+      category: fields.newCategory ?? null,
+      expenseDate: fields.newDate ?? null,
+      fieldId: fields.newFieldId === undefined ? undefined : fields.newFieldId,
+      plotId: fields.newPlotId === undefined ? undefined : fields.newPlotId,
+    });
+    return { id: row.id, oldAmount: Number(row.amount), oldCategory: row.category };
+  }
+
+  async editLastIncomeFull(
+    userId: UserId,
+    fields: { newAmount?: number | null; newCategory?: string | null; newDate?: string | null; newFieldId?: number | null; newPlotId?: number | null },
+  ): Promise<{ id: number; category: string; oldAmount: number } | null> {
+    const last = await this.repo.getLastIncome(userId);
+    if (!last) return null;
+    await this.repo.updateIncomeFields(last.id, {
+      amount: fields.newAmount ?? null,
+      category: fields.newCategory ?? null,
+      incomeDate: fields.newDate ?? null,
+      fieldId: fields.newFieldId === undefined ? undefined : fields.newFieldId,
+      plotId: fields.newPlotId === undefined ? undefined : fields.newPlotId,
+    });
+    return { id: last.id, category: last.category, oldAmount: Number(last.amount) };
+  }
+
+  async editSpecificIncomeFull(
+    userId: UserId,
+    criteria: { amount?: number | null; category?: string | null; date?: string | null },
+    fields: { newAmount?: number | null; newCategory?: string | null; newDate?: string | null; newFieldId?: number | null; newPlotId?: number | null },
+  ): Promise<{ id: number; oldAmount: number; oldCategory: string } | null> {
+    const row = await this.repo.findIncomeByCriteria(userId, criteria);
+    if (!row) return null;
+    await this.repo.updateIncomeFields(row.id, {
+      amount: fields.newAmount ?? null,
+      category: fields.newCategory ?? null,
+      incomeDate: fields.newDate ?? null,
+      fieldId: fields.newFieldId === undefined ? undefined : fields.newFieldId,
+      plotId: fields.newPlotId === undefined ? undefined : fields.newPlotId,
+    });
+    return { id: row.id, oldAmount: Number(row.amount), oldCategory: row.category };
   }
 
   // --- Budget operations ---
