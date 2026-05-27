@@ -1,5 +1,5 @@
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
-import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES, type IncomeCategory } from '../constants/agro-terms.js';
+import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES, EXPENSE_KEYWORD_MAP, type IncomeCategory } from '../constants/agro-terms.js';
 import type { AgentResult } from './agent.service.js';
 import { validateToolCall, type ValidationOptions } from './agent-output-validator.js';
 import { buildFallbackMessage } from '../utils/fuzzy-suggest.js';
@@ -348,6 +348,24 @@ export class AgentResponseMapper {
         if (inferred) {
           if (category === 'Otros') category = inferred.category;
           if (expenseType === 'varios') expenseType = inferred.expenseType;
+        }
+      }
+
+      // When the agent left category empty (conservative on informal phrasings
+      // like "sueldos del lote A1" or "semillas para el lote A2"), recover it
+      // from the original text via the keyword map. Avoids triggering the
+      // category-picker prompt for words that are clearly a known category.
+      if (!category) {
+        const haystack = `${productStr} ${originalText}`
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '');
+        for (const [kw, cat] of Object.entries(EXPENSE_KEYWORD_MAP)) {
+          if (new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(haystack)) {
+            category = cat;
+            if (INSUMO_CATEGORIES.has(cat) && expenseType === 'varios') expenseType = 'insumo';
+            break;
+          }
         }
       }
 

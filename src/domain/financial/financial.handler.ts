@@ -803,7 +803,7 @@ export class FinancialHandler {
 
     if (expenseCatMatch.kind === 'needs-confirmation') {
       const payload = encodePendingExpensePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
-      const body = `¿En qué categoría va este gasto de $${Number(data.amount).toLocaleString('es-AR')}?`;
+      const body = `¿En qué categoría va este gasto de ${formatMoney(Number(data.amount), data.currency)}?`;
       // Buttons cap at 3 visible on WhatsApp. When the user has more than 3
       // categories we switch to an interactive list (up to 10 rows) so they
       // see all options, not just the most-used 2 + "+ Otra".
@@ -1090,7 +1090,7 @@ export class FinancialHandler {
 
     if (incomeCatMatch.kind === 'needs-confirmation') {
       const payload = encodePendingIncomePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
-      const body = `¿En qué categoría va este ingreso de $${Number(data.amount).toLocaleString('es-AR')}?`;
+      const body = `¿En qué categoría va este ingreso de ${formatMoney(Number(data.amount), data.currency)}?`;
       if (incomeCatMatch.suggestions.length > 3) {
         const rows = incomeCatMatch.suggestions.map(c => ({
           id: `cat_pick_inc_${payload}_${c.id}`,
