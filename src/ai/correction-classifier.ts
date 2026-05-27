@@ -40,22 +40,27 @@ const CORRECTION_PREFIX = /^(no|perdon|disculpa|disculpame|me\s+equivoque|en\s+r
  * (in normalized form — the handler resolves it via PlotDiscoveryService
  * which is already case/accent-insensitive).
  */
+// Capture group 1 = keyword (lote/campo/parcela/potrero) when present, else
+// undefined. Capture group 2 = candidate. Knowing whether the keyword fired
+// lets us safely skip the category-stoplist check when the user was explicit
+// ("no, era en lote Sueldos" stays a plot correction even if "sueldos" is
+// in the stoplist — they literally named their lote "Sueldos").
 const PLOT_CORRECTION_PATTERNS: Array<{ name: string; re: RegExp }> = [
   {
     name: 'no_era_fue_en',
-    re: /^\s*no\s*,?\s+(?:era|fue|fui|fuimos)\s+en\s+(?:el\s+|la\s+)?(?:lote|campo|parcela|potrero)?\s*([\p{L}\p{N}][\p{L}\p{N}\s\-]*?)\s*[.!?]?\s*$/u,
+    re: /^\s*no\s*,?\s+(?:era|fue|fui|fuimos)\s+en\s+(?:el\s+|la\s+)?(lote|campo|parcela|potrero)?\s*([\p{L}\p{N}][\p{L}\p{N}\s\-]*?)\s*[.!?]?\s*$/u,
   },
   {
     name: 'no_verb_en',
-    re: /^\s*no\s*,?\s+(?:las\s+|los\s+|lo\s+|la\s+)?(?:sembre|sembramos|coseche|cosechamos|fumigue|fumigamos|fertilice|fertilizamos|are|aramos|regue|regamos)\s+en\s+(?:el\s+|la\s+)?(?:lote|campo|parcela|potrero)?\s*([\p{L}\p{N}][\p{L}\p{N}\s\-]*?)\s*[.!?]?\s*$/u,
+    re: /^\s*no\s*,?\s+(?:las\s+|los\s+|lo\s+|la\s+)?(?:sembre|sembramos|coseche|cosechamos|fumigue|fumigamos|fertilice|fertilizamos|are|aramos|regue|regamos)\s+en\s+(?:el\s+|la\s+)?(lote|campo|parcela|potrero)?\s*([\p{L}\p{N}][\p{L}\p{N}\s\-]*?)\s*[.!?]?\s*$/u,
   },
   {
     name: 'perdon_era_en',
-    re: /^\s*(?:perdon|disculpa|disculpame)\s*,?\s+(?:era|fue|fui)\s+en\s+(?:el\s+|la\s+)?(?:lote|campo)?\s*([\p{L}\p{N}][\p{L}\p{N}\s\-]*?)\s*[.!?]?\s*$/u,
+    re: /^\s*(?:perdon|disculpa|disculpame)\s*,?\s+(?:era|fue|fui)\s+en\s+(?:el\s+|la\s+)?(lote|campo)?\s*([\p{L}\p{N}][\p{L}\p{N}\s\-]*?)\s*[.!?]?\s*$/u,
   },
   {
     name: 'me_equivoque_era_en',
-    re: /^\s*me\s+equivoque\s*,?\s+(?:era|fue|fui)\s+en\s+(?:el\s+|la\s+)?(?:lote|campo)?\s*([\p{L}\p{N}][\p{L}\p{N}\s\-]*?)\s*[.!?]?\s*$/u,
+    re: /^\s*me\s+equivoque\s*,?\s+(?:era|fue|fui)\s+en\s+(?:el\s+|la\s+)?(lote|campo)?\s*([\p{L}\p{N}][\p{L}\p{N}\s\-]*?)\s*[.!?]?\s*$/u,
   },
 ];
 
@@ -95,11 +100,20 @@ export function detectCorrection(text: string): DetectedCorrection | null {
   for (const { name, re } of PLOT_CORRECTION_PATTERNS) {
     const match = normalized.match(re);
     if (match) {
-      const rawCandidate = match[1]?.trim();
+      const keywordMatched = !!match[1];        // "lote" / "campo" / etc. fired
+      const rawCandidate = match[2]?.trim();
       if (!rawCandidate) continue;
       const candidate = stripCommonNoise(rawCandidate);
       if (!candidate) continue;
       if (isLonePronoun(candidate)) continue;
+      // Don't treat known expense/income category words as plot names UNLESS
+      // the user was explicit with the keyword (then we trust they meant a
+      // plot literally named that). Without the keyword the regex is too
+      // greedy: "no, era en sueldos" would otherwise be routed as a plot
+      // correction with newPlot=Sueldos, and the handler would fail with
+      // "no encontré el lote sueldos", swallowing what was clearly a
+      // CATEGORY correction.
+      if (!keywordMatched && looksLikeCategoryWord(candidate)) continue;
       // Recover the source-form spelling from the original text so the
       // handler sees what the user actually typed (case, accents).
       const recovered = recoverFromOriginal(candidate, text) ?? titleCase(candidate);
@@ -150,4 +164,46 @@ function stripCommonNoise(s: string): string {
 
 function isLonePronoun(s: string): boolean {
   return /^(ah[ií]|all[aá]|all[ií]|ese|esa|aqu[ií]|aca|ah[ií]\s+mismo)$/i.test(s);
+}
+
+/**
+ * Words that signal a CATEGORY correction (not a plot correction). When the
+ * user says "no, era en sueldos" / "no, era en semillas" they're correcting
+ * the expense category — not naming a plot. Without this check the regex
+ * "no era en X" would route them as `edit_last_activity(newPlot=sueldos)`,
+ * which fails since no plot has that name.
+ *
+ * List covers the typical expense categories (Combustible, Sueldos, etc.),
+ * common income categories (Cosecha, Venta), and frequent product nouns
+ * (gasoil, semillas, herbicida, etc.) that show up in correction phrases.
+ * All entries are accent-stripped + lowercased to match the normalized form.
+ */
+const CATEGORY_STOPLIST: ReadonlySet<string> = new Set([
+  // Expense categories
+  'sueldos', 'sueldo', 'arrendamiento', 'alquiler', 'servicios', 'impuestos',
+  'contabilidad', 'administracion', 'administración', 'gastos', 'gasto',
+  'combustible', 'gasoil', 'nafta', 'fertilizante', 'fertilizantes',
+  'semillas', 'semilla', 'herbicida', 'herbicidas', 'fungicida', 'fungicidas',
+  'insecticida', 'insecticidas', 'agroquimico', 'agroquimicos', 'agroquímico', 'agroquímicos',
+  'flete', 'fletes', 'mantenimiento', 'reparaciones', 'reparacion', 'reparación',
+  'seguros', 'seguro', 'otros', 'varios',
+  // Income categories
+  'cosecha', 'venta', 'ventas', 'ingreso', 'ingresos', 'arrendamientos',
+  // Compound categories (e.g. "labranza", "fumigacion")
+  'labranza', 'labranzas', 'fumigacion', 'fumigación', 'fumigaciones',
+  'siembra', 'siembras', 'pulverizacion', 'pulverización',
+  // Plain currency words
+  'pesos', 'peso', 'dolares', 'dólares', 'dolar', 'dólar', 'usd', 'ars',
+]);
+
+function looksLikeCategoryWord(candidate: string): boolean {
+  if (!candidate) return false;
+  // Normalize: lowercase + strip accents
+  const normalized = candidate.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  // Direct match
+  if (CATEGORY_STOPLIST.has(normalized)) return true;
+  // Match on first token (handles "sueldos del mes" type phrasings)
+  const firstToken = normalized.split(/\s+/)[0];
+  if (firstToken && CATEGORY_STOPLIST.has(firstToken)) return true;
+  return false;
 }

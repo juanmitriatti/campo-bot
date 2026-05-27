@@ -110,6 +110,34 @@ describe('detectCorrection — does NOT trigger on non-corrections', () => {
   it('returns null for "no, era ahí" (lone pronoun is not a plot reference)', () => {
     expect(detectCorrection('no, era ahí')).toBeNull();
   });
+
+  it('returns null for "no, era en sueldos" (category, not plot)', () => {
+    // Without the category stoplist, the regex matches "sueldos" as plot — wrong!
+    expect(detectCorrection('no, era en sueldos')).toBeNull();
+  });
+
+  it('returns null for "no, era en gasoil" (category)', () => {
+    expect(detectCorrection('no, era en gasoil')).toBeNull();
+  });
+
+  it('returns null for "no, era en semillas" (category)', () => {
+    expect(detectCorrection('no, era en semillas')).toBeNull();
+  });
+
+  it('returns null for "no, era en fertilizante" (category)', () => {
+    expect(detectCorrection('no, era en fertilizante')).toBeNull();
+  });
+
+  it('returns null for "no, era en herbicida" (category)', () => {
+    expect(detectCorrection('no, era en herbicida')).toBeNull();
+  });
+
+  it('still catches plot correction with category-looking word inside name', () => {
+    // e.g., user names their plot "Sueldos" — they need the explicit keyword
+    const r = detectCorrection('no, era en lote sueldos');
+    // With keyword present, the regex captures only what's AFTER "lote"
+    expect(r?.newPlot?.toLowerCase()).toBe('sueldos');
+  });
 });
 
 describe('detectCorrection — case insensitivity', () => {

@@ -354,11 +354,12 @@ const TESTS: TestCase[] = [
     // Auto-confirm any pendings
     if (/¿Confirmo/i.test(r)) await stepTap('confirm_pending');
     if (/¿Confirmo/i.test(r)) await stepTap('confirm_pending');
-    // Espera a que se procese
-    await new Promise(r => setTimeout(r, 1500));
+    // Wait for compound to finish writing
+    await new Promise(r => setTimeout(r, 2500));
     const expVerde = await dbq(`SELECT amount::int FROM expenses WHERE user_id=$1 AND amount=12000`, [USER_ID]);
     const expAmar = await dbq(`SELECT amount::int FROM expenses WHERE user_id=$1 AND amount=18000`, [USER_ID]);
-    const rain = await dbq(`SELECT mm FROM rainfall WHERE user_id=$1 AND mm=14`, [USER_ID]);
+    // rainfall table uses `millimeters` not `mm`
+    const rain = await dbq(`SELECT millimeters::int FROM rainfall WHERE user_id=$1 AND millimeters=14`, [USER_ID]);
     const all3 = expVerde.length > 0 && expAmar.length > 0 && rain.length > 0;
     return makeResult({ ok: all3, missing: all3 ? [] : [`12k=${expVerde.length>0} 18k=${expAmar.length>0} 14mm=${rain.length>0}`], violated: [] }, r, 'High');
   }},
@@ -366,10 +367,11 @@ const TESTS: TestCase[] = [
   { id: 'MI02', category: 'multi_intent', description: 'Compound: siembra + gasto en una sola frase', run: async () => {
     const r = await step('sembré maíz en el lote Verde y gasté 95 mil pesos en semillas ahí mismo');
     if (/¿Confirmo gasto/i.test(r)) await stepTap('confirm_pending');
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, 2500));
     const exp = await dbq(`SELECT amount::int FROM expenses WHERE user_id=$1 AND amount=95000 AND plot_id IN
       (SELECT id FROM plots WHERE name='Verde' AND field_id IN (SELECT id FROM fields WHERE user_id=$1))`, [USER_ID]);
-    const sow = await dbq(`SELECT crop FROM plot_crops WHERE plot_id IN (SELECT id FROM plots WHERE name='Verde' AND field_id IN (SELECT id FROM fields WHERE user_id=$1)) AND crop ILIKE 'ma%' AND closed_at IS NULL`, [USER_ID]);
+    // plot_crops uses `harvested_at` not `closed_at`
+    const sow = await dbq(`SELECT crop FROM plot_crops WHERE plot_id IN (SELECT id FROM plots WHERE name='Verde' AND field_id IN (SELECT id FROM fields WHERE user_id=$1)) AND crop ILIKE 'ma%' AND harvested_at IS NULL`, [USER_ID]);
     const ok = exp.length > 0 && sow.length > 0;
     return makeResult({ ok, missing: ok ? [] : [`semillas 95k Verde=${exp.length>0} siembra maíz Verde=${sow.length>0}`], violated: [] }, r, 'High');
   }},
