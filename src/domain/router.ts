@@ -41,7 +41,9 @@ const FINANCIAL_COMMANDS = new Set([
 
 const AGRONOMY_COMMANDS = new Set([
   'weather_full', 'weather_forecast', 'weather_field', 'weather_all',
-  'log_rainfall', 'log_rainfall_batch', 'delete_last_rainfall',
+  'log_rainfall', 'log_rainfall_batch', 'delete_last_rainfall', 'edit_last_rainfall',
+  'edit_last_observation', 'delete_last_observation',
+  'delete_last_scouting',
   'rainfall_report', 'rainfall_range',
   'compare_rainfall_months', 'compare_rainfall_years',
   'sow_crop', 'harvest_crop', 'active_crop', 'crop_history', 'close_campaign', 'campaign_stats', 'compare_campaigns', 'activity_stats',

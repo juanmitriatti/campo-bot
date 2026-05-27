@@ -23,8 +23,22 @@ import type { UserId, UserSettings, ParseResult } from '../types/index.js';
 const COMPOUND_ACTION_PATTERN = /\by\b\s+(?:(?:también|además|después|luego)\s+)?(?:agreg|cre[aeé]|registr|gast[éeoa]|compr[éeoa]|vend[íieoa]|cobr|pagu[ée]|fumig|sembr|cosech|fertiliz|reg[oó]|ar[eé]|llov|anot|poné|pon[eé]|met[eéi]|carg)/i;
 
 /**
- * Commands that are trivial to detect via regex and don't need LLM.
- * These bypass the AI extractor entirely to save cost/latency.
+ * Commands that bypass the agent entirely. The regex parser already produces
+ * a high-confidence answer for these — sending them to the LLM only adds
+ * latency and cost without improving quality.
+ *
+ * Rule of thumb (revisited May 28):
+ *   - Stable canonical phrases (1-3 dominant fraseos, regex catches them
+ *     precisely) → keep in trivial bypass. The agent already has equivalent
+ *     tools for when users phrase it differently (the regex MISS path falls
+ *     through to the agent, which now has the full edit/delete/CRUD surface).
+ *   - Multi-fraseo expressions where users vary wildly (e.g. "borrame el de
+ *     X" vs "saca el de X" vs "eliminá ese gasto") → DON'T put in trivial,
+ *     let the agent handle. The agent's edit_last_* / delete_specific_*
+ *     tools (May 28) cover these.
+ *
+ * Net effect: agent surface fully covers what regex covers (and more). Regex
+ * is a fast path, not a gatekeeper. When regex misses, the agent picks up.
  */
 const TRIVIAL_COMMANDS = new Set([
   'confirm', 'cancel',
@@ -36,7 +50,9 @@ const TRIVIAL_COMMANDS = new Set([
   'start_expense_flow', 'start_income_flow',
   'request_more_messages',
   'start_document_upload',
-  // Field/plot CRUD — regex handles these precisely, AI would misclassify
+  // Field/plot CRUD — regex handles the canonical phrasings; agent has parallel
+  // tools (add_field, delete_field, rename_field, set_field_city, etc.) for
+  // when the regex misses.
   'add_field', 'add_plot', 'add_plots_batch', 'delete_field', 'delete_plot',
   'rename_field', 'field_info', 'plot_info',
   'set_field_city', 'add_field_city',
@@ -46,15 +62,15 @@ const TRIVIAL_COMMANDS = new Set([
   'enable_rain_alerts', 'disable_rain_alerts',
   'enable_budget_alerts', 'disable_budget_alerts',
   'enable_weekly_summary', 'disable_weekly_summary',
-  // _toggle_alert is the parser-internal meta-command that rewrites itself to
-  // one of the alert/summary commands above. Listed here defensively so the
-  // fast-path stays trivial even if a code path forgets to apply the rewrite.
   '_toggle_alert',
   'export_csv',
+  // Edit/delete — canonical "borrar ultimo gasto" / "editar gasto X a Y" go
+  // through regex. Variations like "borrame el de 0.5" / "saca ese gasto"
+  // miss the regex and fall through to the agent (which now has
+  // delete_specific_expense + edit_last_expense covering them — May 28).
   'delete_last', 'delete_last_income', 'delete_specific', 'edit_specific', 'edit_last',
   'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',
   'query_plot_history',
-  // Single-word friction triggers (regex routes these directly, no AI cost)
   'active_crop', 'list_livestock', 'check_stock',
 ]);
 

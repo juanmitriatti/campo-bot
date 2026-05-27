@@ -1624,6 +1624,95 @@ export class AgronomyHandler {
         return { messages: [`\ud83d\uddd1\ufe0f Registro de lluvia eliminado: ${deleted.millimeters}mm`] };
       }
 
+      // --- Edit last rainfall (May 28) ---
+      case 'edit_last_rainfall': {
+        const newMm = (cmd.new_mm ?? cmd.newMm ?? null) as number | null;
+        const newDate = cmd.newDate as string | null;
+        const newPlotName = cmd.newPlotName as string | null;
+        const newFieldName = cmd.newFieldName as string | null;
+        const clearLot = !!cmd.clearLot;
+        if (newMm == null && !newDate && !newPlotName && !clearLot && !newFieldName) {
+          return { messages: ['Que corregimos de la lluvia? Decime los nuevos mm, fecha, lote o campo.'] };
+        }
+        const last = await this.repo.getLastRainfall(userId);
+        if (!last) return { messages: ['No hay lluvias registradas para editar.'] };
+        let newPlotId: number | undefined = undefined;
+        let newFieldId: number | undefined = undefined;
+        let newPlotLabel: string | null = null;
+        if (clearLot) { newPlotLabel = '(sin lote)'; }
+        else if (newPlotName) {
+          const resolved = await this.plotDiscovery.resolveFromNames(userId, newFieldName, newPlotName);
+          if (!resolved.plotId) return { messages: [`No encontre el lote *${newPlotName}*.`] };
+          newPlotId = resolved.plotId;
+          newFieldId = resolved.fieldId ?? undefined;
+          newPlotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+        }
+        await this.repo.updateRainfallFields(last.id, {
+          millimeters: newMm,
+          rainfallDate: newDate,
+          fieldId: newFieldId,
+          plotId: clearLot ? null : newPlotId,
+        });
+        const parts: string[] = [];
+        if (newMm != null) parts.push(`\ud83d\udca7 ${last.millimeters}mm -> *${newMm}mm*`);
+        if (newDate) parts.push(`\ud83d\udcc5 -> ${newDate}`);
+        if (newPlotLabel) parts.push(`\ud83d\udccd -> *${newPlotLabel}*`);
+        return { messages: [`\u270f\ufe0f Lluvia corregida:\n${parts.join('\n')}`] };
+      }
+
+      // --- Edit / delete observation (May 28) ---
+      case 'edit_last_observation': {
+        const newText = (cmd.new_text ?? cmd.newText ?? null) as string | null;
+        const newDate = cmd.newDate as string | null;
+        const newPlotName = cmd.newPlotName as string | null;
+        const newFieldName = cmd.newFieldName as string | null;
+        const clearLot = !!cmd.clearLot;
+        if (!newText && !newDate && !newPlotName && !clearLot && !newFieldName) {
+          return { messages: ['Que corregimos de la observacion? Decime el nuevo texto, fecha, lote o campo.'] };
+        }
+        const last = await this.repo.getLastObservation(userId);
+        if (!last) return { messages: ['No hay observaciones para editar.'] };
+        let newPlotId: number | undefined = undefined;
+        let newFieldId: number | undefined = undefined;
+        let newPlotLabel: string | null = null;
+        if (clearLot) { newPlotLabel = '(sin lote)'; }
+        else if (newPlotName) {
+          const resolved = await this.plotDiscovery.resolveFromNames(userId, newFieldName, newPlotName);
+          if (!resolved.plotId) return { messages: [`No encontre el lote *${newPlotName}*.`] };
+          newPlotId = resolved.plotId;
+          newFieldId = resolved.fieldId ?? undefined;
+          newPlotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+        }
+        await this.repo.updateObservationFields(last.id, {
+          observationText: newText,
+          observationDate: newDate,
+          fieldId: newFieldId,
+          plotId: clearLot ? null : newPlotId,
+        });
+        const parts: string[] = [];
+        if (newText) parts.push(`\ud83d\udcdd -> "${newText}"`);
+        if (newDate) parts.push(`\ud83d\udcc5 -> ${newDate}`);
+        if (newPlotLabel) parts.push(`\ud83d\udccd -> *${newPlotLabel}*`);
+        return { messages: [`\u270f\ufe0f Observacion corregida:\n${parts.join('\n')}`] };
+      }
+
+      case 'delete_last_observation': {
+        const last = await this.repo.getLastObservation(userId);
+        if (!last) return { messages: ['No hay observaciones para borrar.'] };
+        await this.repo.deleteObservation(last.id);
+        const preview = last.observation_text.slice(0, 60);
+        return { messages: [`\ud83d\uddd1\ufe0f Observacion eliminada: "${preview}${last.observation_text.length > 60 ? '...' : ''}"`] };
+      }
+
+      // --- Delete crop scouting (May 28) ---
+      case 'delete_last_scouting': {
+        const last = await this.repo.getLastScouting(userId);
+        if (!last) return { messages: ['No hay monitoreos para borrar.'] };
+        await this.repo.deleteScouting(last.id);
+        const stage = last.stage_code ? ` ${last.stage_code}` : '';
+        return { messages: [`\ud83d\uddd1\ufe0f Monitoreo eliminado${stage} (${last.scouting_date || 'hoy'})`] };
+      }
+
       case 'rainfall_report': {
         // Unified dispatch: when ANY new analytical param is present, route to new handler
         const hasNewParam = cmd.view != null || cmd.mmMin != null || cmd.mmMax != null

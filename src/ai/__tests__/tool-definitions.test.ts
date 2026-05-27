@@ -2,11 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { TOOL_DEFINITIONS, TOOL_NAMES } from '../tool-definitions.js';
 
 describe('TOOL_DEFINITIONS', () => {
-  it('has 91 tools', () => {
-    // 85 → 91 on May 28: added 6 financial edit/delete tools
-    // (delete_last_expense, delete_specific_expense, delete_specific_income,
-    // edit_specific_expense, edit_last_income, edit_specific_income)
-    expect(TOOL_DEFINITIONS).toHaveLength(91);
+  it('has 97 tools', () => {
+    // 85 → 91 on May 28 (morning): added 6 financial edit/delete tools
+    //   (delete_last_expense, delete_specific_expense, delete_specific_income,
+    //   edit_specific_expense, edit_last_income, edit_specific_income)
+    // 91 → 97 on May 28 (afternoon): added 6 non-financial edit/delete tools
+    //   (delete_last_income, edit_last_observation, delete_last_observation,
+    //   edit_last_rainfall, delete_last_rainfall, delete_last_scouting)
+    expect(TOOL_DEFINITIONS).toHaveLength(97);
   });
 
   it('all tools have unique names', () => {

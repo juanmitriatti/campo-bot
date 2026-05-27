@@ -1790,6 +1790,69 @@ export async function deleteLastRainfall(userId) {
   return last.rows[0];
 }
 
+export async function getLastRainfall(userId) {
+  const result = await pool.query(
+    `SELECT * FROM rainfall WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    [userId],
+  );
+  return result.rows[0] || null;
+}
+
+export async function updateRainfallFields(rainfallId, { millimeters = null, rainfallDate = null, fieldId = undefined, plotId = undefined } = {}) {
+  const sets = [];
+  const params = [];
+  let idx = 1;
+  if (millimeters != null) { sets.push(`millimeters = $${idx++}`); params.push(millimeters); }
+  if (rainfallDate) { sets.push(`rainfall_date = $${idx++}`); params.push(rainfallDate); }
+  if (fieldId !== undefined) { sets.push(`field_id = $${idx++}`); params.push(fieldId); }
+  if (plotId !== undefined) { sets.push(`plot_id = $${idx++}`); params.push(plotId); }
+  if (sets.length === 0) return;
+  params.push(rainfallId);
+  await pool.query(`UPDATE rainfall SET ${sets.join(', ')} WHERE id = $${idx}`, params);
+}
+
+// --- Observation last/delete/update primitives (hard delete — no soft delete in schema) ---
+
+export async function getLastObservation(userId) {
+  const result = await pool.query(
+    `SELECT * FROM agro_observations WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    [userId],
+  );
+  return result.rows[0] || null;
+}
+
+export async function deleteObservation(observationId) {
+  await pool.query(`DELETE FROM agro_observations WHERE id = $1`, [observationId]);
+}
+
+export async function updateObservationFields(observationId, { observationText = null, observationDate = null, fieldId = undefined, plotId = undefined } = {}) {
+  const sets = [];
+  const params = [];
+  let idx = 1;
+  if (observationText != null) { sets.push(`observation_text = $${idx++}`); params.push(observationText); }
+  if (observationDate) { sets.push(`observation_date = $${idx++}`); params.push(observationDate); }
+  if (fieldId !== undefined) { sets.push(`field_id = $${idx++}`); params.push(fieldId); }
+  if (plotId !== undefined) { sets.push(`plot_id = $${idx++}`); params.push(plotId); }
+  if (sets.length === 0) return;
+  sets.push('updated_at = NOW()');
+  params.push(observationId);
+  await pool.query(`UPDATE agro_observations SET ${sets.join(', ')} WHERE id = $${idx}`, params);
+}
+
+// --- Crop scouting last/delete/update primitives (soft delete) ---
+
+export async function getLastScouting(userId) {
+  const result = await pool.query(
+    `SELECT * FROM crop_scoutings WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`,
+    [userId],
+  );
+  return result.rows[0] || null;
+}
+
+export async function deleteScouting(scoutingId) {
+  await pool.query(`UPDATE crop_scoutings SET deleted_at = NOW() WHERE id = $1`, [scoutingId]);
+}
+
 function rainfallDateCondition(period) {
   switch (period) {
     case "week": return "AND r.rainfall_date >= date_trunc('week', NOW())";

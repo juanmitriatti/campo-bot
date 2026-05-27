@@ -3,6 +3,13 @@ import {
   RAINFALL_REJECTED_DUPLICATE as _RAINFALL_REJECTED_DUPLICATE,
   getDailyRainfallTotal as _getDailyRainfallTotal,
   deleteLastRainfall as _deleteLastRainfall,
+  getLastRainfall as _getLastRainfall,
+  updateRainfallFields as _updateRainfallFields,
+  getLastObservation as _getLastObservation,
+  deleteObservation as _deleteObservation,
+  updateObservationFields as _updateObservationFields,
+  getLastScouting as _getLastScouting,
+  deleteScouting as _deleteScouting,
   getRainfallPeriod as _getRainfallPeriod,
   getRainfallAllLocations as _getRainfallAllLocations,
   getRainfallForMonth as _getRainfallForMonth,
@@ -100,6 +107,40 @@ export class AgronomyRepository {
     const result = await _deleteLastRainfall(userId);
     if (!result) return null;
     return { millimeters: Number(result.millimeters) };
+  }
+
+  // ─── Last/edit/delete primitives for observation, rainfall, scouting (May 28) ───
+
+  async getLastRainfall(userId: UserId): Promise<{ id: number; millimeters: number; rainfall_date: string; field_id: number | null; plot_id: number | null } | null> {
+    const row = await _getLastRainfall(userId);
+    if (!row) return null;
+    return { ...row, millimeters: Number(row.millimeters) };
+  }
+
+  async updateRainfallFields(rainfallId: number, fields: { millimeters?: number | null; rainfallDate?: string | null; fieldId?: number | null; plotId?: number | null }): Promise<void> {
+    await _updateRainfallFields(rainfallId, fields);
+  }
+
+  async getLastObservation(userId: UserId): Promise<{ id: number; observation_text: string; field_id: number | null; plot_id: number | null; observation_date: string | null } | null> {
+    const row = await _getLastObservation(userId);
+    return row || null;
+  }
+
+  async deleteObservation(observationId: number): Promise<void> {
+    await _deleteObservation(observationId);
+  }
+
+  async updateObservationFields(observationId: number, fields: { observationText?: string | null; observationDate?: string | null; fieldId?: number | null; plotId?: number | null }): Promise<void> {
+    await _updateObservationFields(observationId, fields);
+  }
+
+  async getLastScouting(userId: UserId): Promise<{ id: number; plot_id: number; stage_code: string | null; scouting_date: string | null } | null> {
+    const row = await _getLastScouting(userId);
+    return row || null;
+  }
+
+  async deleteScouting(scoutingId: number): Promise<void> {
+    await _deleteScouting(scoutingId);
   }
 
   async getRainfallPeriod(userId: UserId, period: string, fieldId: number | null): Promise<RainfallSummary> {

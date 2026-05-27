@@ -502,6 +502,77 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'delete_last_income',
+    description: 'BORRAR el ÚLTIMO ingreso registrado. Triggers: "borrá el último ingreso", "elimina el último cobro", "saca el ingreso que cargué recién", "borrame la última venta". NO confundir con delete_last_activity.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category_filter: { type: 'string', description: 'Categoría del ingreso (cosecha, venta) — opcional.' },
+      },
+      required: [],
+    },
+  },
+  // ─── Observation edit/delete (May 28 — symmetry with expense/income) ───
+  {
+    name: 'edit_last_observation',
+    description: 'Corregir/editar la ÚLTIMA observación agronómica registrada. Triggers: "la observación era en lote X"/"corregí la última observación"/"el texto era M no L"/"perdón la observación era diferente"/"sacale el lote a la observación". Soporta cambiar texto, fecha, lote, o quitar el lote.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        new_text: { type: 'string', description: 'Nuevo texto de la observación.' },
+        new_date: DATE_PROP,
+        new_plot: { type: 'string', description: 'Nuevo lote correcto.' },
+        new_field: FIELD_PROP,
+        clear_lot: { type: 'boolean', description: 'Quitar el lote (dejar a nivel de campo).' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'delete_last_observation',
+    description: 'BORRAR la ÚLTIMA observación registrada. Triggers: "borrá la última observación"/"elimina la observación que cargué"/"saca esa nota"/"borrame la observación".',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  // ─── Rainfall edit/delete (May 28) ───
+  {
+    name: 'edit_last_rainfall',
+    description: 'Corregir/editar el ÚLTIMO registro de lluvia. Triggers: "perdón eran 30mm no 20"/"no era 20mm era 25"/"la última lluvia era en otro lote"/"era de ayer no de hoy". Soporta cambiar mm, fecha, lote o campo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        new_mm: { type: 'number', description: 'Nuevos milímetros correctos.' },
+        new_date: DATE_PROP,
+        new_plot: { type: 'string', description: 'Nuevo lote correcto.' },
+        new_field: FIELD_PROP,
+        clear_lot: { type: 'boolean', description: 'Quitar el lote (dejar a nivel de campo).' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'delete_last_rainfall',
+    description: 'BORRAR el ÚLTIMO registro de lluvia. Triggers: "borrá la última lluvia"/"elimina la lluvia que cargué"/"saca esa lluvia"/"borrame el registro de lluvia".',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  // ─── Crop scouting delete (May 28) ───
+  {
+    name: 'delete_last_scouting',
+    description: 'BORRAR el ÚLTIMO monitoreo (crop scouting) registrado. Triggers: "borrá el último monitoreo"/"elimina ese scouting"/"saca la última observación de plagas/malezas con métricas".',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: 'delete_specific_income',
     description: 'BORRAR un INGRESO específico identificado por monto, categoría o fecha. Triggers: "borra el ingreso de 200 mil", "elimina el cobro de soja", "saca el ingreso del lunes".',
     input_schema: {
