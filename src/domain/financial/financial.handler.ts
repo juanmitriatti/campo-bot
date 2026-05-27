@@ -830,16 +830,22 @@ export class FinancialHandler {
 
     if (expenseCatMatch.kind === 'needs-confirmation') {
       const payload = encodePendingExpensePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
+      // Telegram limits callback_data to 64 bytes; the JSON-then-base64url
+      // payload is ~150-200 bytes. Register it server-side and embed a
+      // short opaque token (~8 chars) in callback_data instead. The
+      // interactive router resolves token → payload on tap.
+      const { callbackPayloadStore } = await import('../../middleware/callback-payload-store.js');
+      const token = callbackPayloadStore.set(payload);
       const body = `¿En qué categoría va este gasto de ${formatMoney(Number(data.amount), data.currency)}?`;
       // Buttons cap at 3 visible on WhatsApp. When the user has more than 3
       // categories we switch to an interactive list (up to 10 rows) so they
       // see all options, not just the most-used 2 + "+ Otra".
       if (expenseCatMatch.suggestions.length > 3) {
         const rows = expenseCatMatch.suggestions.map(c => ({
-          id: `cat_pick_exp_${payload}_${c.id}`,
+          id: `cat_pick_exp_${token}_${c.id}`,
           title: c.name.slice(0, 24),
         }));
-        rows.push({ id: `cat_new_exp_${payload}`, title: '+ Otra' });
+        rows.push({ id: `cat_new_exp_${token}`, title: '+ Otra' });
         return {
           messages: [],
           interactive: {
@@ -851,10 +857,10 @@ export class FinancialHandler {
         };
       }
       const buttons = expenseCatMatch.suggestions.map(c => ({
-        id: `cat_pick_exp_${payload}_${c.id}`,
+        id: `cat_pick_exp_${token}_${c.id}`,
         title: c.name,
       }));
-      buttons.push({ id: `cat_new_exp_${payload}`, title: '+ Otra' });
+      buttons.push({ id: `cat_new_exp_${token}`, title: '+ Otra' });
       return {
         messages: [],
         interactive: {
@@ -1117,13 +1123,16 @@ export class FinancialHandler {
 
     if (incomeCatMatch.kind === 'needs-confirmation') {
       const payload = encodePendingIncomePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
+      // See expense picker comment — Telegram callback_data 64-byte limit fix.
+      const { callbackPayloadStore } = await import('../../middleware/callback-payload-store.js');
+      const token = callbackPayloadStore.set(payload);
       const body = `¿En qué categoría va este ingreso de ${formatMoney(Number(data.amount), data.currency)}?`;
       if (incomeCatMatch.suggestions.length > 3) {
         const rows = incomeCatMatch.suggestions.map(c => ({
-          id: `cat_pick_inc_${payload}_${c.id}`,
+          id: `cat_pick_inc_${token}_${c.id}`,
           title: c.name.slice(0, 24),
         }));
-        rows.push({ id: `cat_new_inc_${payload}`, title: '+ Otra' });
+        rows.push({ id: `cat_new_inc_${token}`, title: '+ Otra' });
         return {
           messages: [],
           interactive: {
@@ -1135,10 +1144,10 @@ export class FinancialHandler {
         };
       }
       const buttons = incomeCatMatch.suggestions.map(c => ({
-        id: `cat_pick_inc_${payload}_${c.id}`,
+        id: `cat_pick_inc_${token}_${c.id}`,
         title: c.name,
       }));
-      buttons.push({ id: `cat_new_inc_${payload}`, title: '+ Otra' });
+      buttons.push({ id: `cat_new_inc_${token}`, title: '+ Otra' });
       return {
         messages: [],
         interactive: {

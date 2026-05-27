@@ -312,8 +312,39 @@ async function sendBotResponse(chatId: string | number, items: BotResponseItem[]
         }
       }
     } catch (err) {
-      console.error('[telegram] Error sending response item:', err);
-      logError('telegram', 'SEND_RESPONSE', err as Error);
+      // Critical: a failed sendTelegram* call here used to be COMPLETELY silent
+      // (just console.error + logError). Result: the bot generated a response,
+      // logged it in conversation_logs, but the user never saw anything. This
+      // bit user 30 (Juan, May 27) when callback_data exceeded Telegram's
+      // 64-byte limit on category-picker buttons — bot said "¿En qué
+      // categoría?" in the admin panel but the user got nothing.
+      //
+      // Now we try to send a fallback plaintext message so the user at least
+      // sees SOMETHING and isn't left in the dark. If even that fails, we
+      // surface the original error to the user with a generic apology.
+      const errAny = err as any;
+      const errMsg = String(errAny?.message || err || 'unknown');
+      console.error('[telegram] Error sending response item:', err, '— attempting fallback');
+      logError('telegram', 'SEND_RESPONSE', err as Error, {
+        context: { chatId, itemType: item.type, errMsg },
+      });
+      try {
+        // Extract the body text if we have it, so the user at least sees the
+        // message even without the buttons.
+        const bodyText = item.type === 'interactive' && item.interactive?.body
+          ? item.interactive.body
+          : (item.text || '');
+        if (bodyText) {
+          // Strip markdown that might have caused the original error
+          const plain = bodyText.replace(/[*_`]/g, '');
+          await sendTelegramMessage(chatId, plain);
+        } else {
+          await sendTelegramMessage(chatId, '⚠️ Hubo un problema mostrando esta respuesta. Probá de nuevo o pedímelo de otra forma.');
+        }
+      } catch (fallbackErr) {
+        console.error('[telegram] Fallback message also failed:', fallbackErr);
+        logError('telegram', 'SEND_RESPONSE_FALLBACK', fallbackErr as Error, { context: { chatId } });
+      }
     }
   }
 }

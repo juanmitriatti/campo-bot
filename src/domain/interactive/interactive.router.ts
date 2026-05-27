@@ -1,4 +1,5 @@
 import type { Intent, ParsedCommand } from '../../types/index.js';
+import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 
 const CALLBACK_MAP: Record<string, ParsedCommand> = {
   // Main menu options
@@ -94,43 +95,55 @@ export class InteractiveRouter {
       }
     }
 
-    // Category pick: cat_pick_exp_<payload>_<categoryId> → pick_category (expense)
+    // Category pick: cat_pick_exp_<token-or-payload>_<categoryId> → pick_category (expense)
+    // Since May 28: the first part is normally a short token (~8 chars) that
+    // resolves to a payload via callbackPayloadStore. We fall back to treating
+    // it as the inline payload itself for backward-compat with in-flight
+    // buttons issued before the fix.
     if (callbackId.startsWith('cat_pick_exp_')) {
       const rest = callbackId.slice('cat_pick_exp_'.length);
       const lastUnderscore = rest.lastIndexOf('_');
       if (lastUnderscore > 0) {
+        const tokenOrPayload = rest.slice(0, lastUnderscore);
+        const payload = callbackPayloadStore.get(tokenOrPayload) ?? tokenOrPayload;
         return {
           type: 'command',
-          data: { command: 'pick_category', kind: 'expense', payload: rest.slice(0, lastUnderscore), categoryId: rest.slice(lastUnderscore + 1) },
+          data: { command: 'pick_category', kind: 'expense', payload, categoryId: rest.slice(lastUnderscore + 1) },
         };
       }
     }
 
-    // Category pick: cat_pick_inc_<payload>_<categoryId> → pick_category (income)
+    // Category pick: cat_pick_inc_<token-or-payload>_<categoryId> → pick_category (income)
     if (callbackId.startsWith('cat_pick_inc_')) {
       const rest = callbackId.slice('cat_pick_inc_'.length);
       const lastUnderscore = rest.lastIndexOf('_');
       if (lastUnderscore > 0) {
+        const tokenOrPayload = rest.slice(0, lastUnderscore);
+        const payload = callbackPayloadStore.get(tokenOrPayload) ?? tokenOrPayload;
         return {
           type: 'command',
-          data: { command: 'pick_category', kind: 'income', payload: rest.slice(0, lastUnderscore), categoryId: rest.slice(lastUnderscore + 1) },
+          data: { command: 'pick_category', kind: 'income', payload, categoryId: rest.slice(lastUnderscore + 1) },
         };
       }
     }
 
-    // Category create inline: cat_new_exp_<payload> → create_category (expense)
+    // Category create inline: cat_new_exp_<token-or-payload> → create_category (expense)
     if (callbackId.startsWith('cat_new_exp_')) {
+      const tokenOrPayload = callbackId.slice('cat_new_exp_'.length);
+      const payload = callbackPayloadStore.get(tokenOrPayload) ?? tokenOrPayload;
       return {
         type: 'command',
-        data: { command: 'create_category', kind: 'expense', payload: callbackId.slice('cat_new_exp_'.length) },
+        data: { command: 'create_category', kind: 'expense', payload },
       };
     }
 
-    // Category create inline: cat_new_inc_<payload> → create_category (income)
+    // Category create inline: cat_new_inc_<token-or-payload> → create_category (income)
     if (callbackId.startsWith('cat_new_inc_')) {
+      const tokenOrPayload = callbackId.slice('cat_new_inc_'.length);
+      const payload = callbackPayloadStore.get(tokenOrPayload) ?? tokenOrPayload;
       return {
         type: 'command',
-        data: { command: 'create_category', kind: 'income', payload: callbackId.slice('cat_new_inc_'.length) },
+        data: { command: 'create_category', kind: 'income', payload },
       };
     }
 
