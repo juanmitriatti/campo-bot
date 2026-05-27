@@ -373,9 +373,13 @@ export class FinancialHandler {
 
     // Sanity check: if plotName provided but doesn't exist for this user, surface a helpful
     // message instead of silently returning empty results (avoids hiding typos).
+    // When the plot DOES exist, also update conversation_state so subsequent
+    // pronouns ("ese lote", "ahí mismo") resolve to this plot — otherwise a
+    // query like "cuánto gasté en lote Amarillo" leaves no trace and the next
+    // pronoun picks up the previous write's plot, conflating contexts.
     if (plotName) {
       const plotCheck = await pool.query(
-        `SELECT p.name, f.name AS field_name FROM plots p
+        `SELECT p.id, p.name, p.field_id, f.name AS field_name FROM plots p
          JOIN fields f ON p.field_id = f.id
          WHERE LOWER(p.name) = LOWER($2) AND (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
          LIMIT 1`,
@@ -391,6 +395,13 @@ export class FinancialHandler {
         const names = all.rows.map(r => r.name).join(', ') || '(no tenés lotes cargados)';
         return { messages: [`No tengo registrado un lote llamado "${plotName}". Tus lotes son: ${names}`], suggestionKey: 'report_shown' };
       }
+      // Update conversation_state so pronouns in next message resolve to this plot
+      try {
+        const { updateConversationState } = await import('../../services/expenses.js');
+        await updateConversationState(userId, plotCheck.rows[0].field_id, plotCheck.rows[0].id);
+      } catch {
+        // Non-fatal: state update failure shouldn't block the query
+      }
     }
     if (fieldName) {
       const fieldCheck = await pool.query(
@@ -404,6 +415,13 @@ export class FinancialHandler {
         );
         const names = all.rows.map(r => r.name).join(', ') || '(no tenés campos cargados)';
         return { messages: [`No tengo registrado un campo llamado "${fieldName}". Tus campos son: ${names}`], suggestionKey: 'report_shown' };
+      }
+      // Update conversation_state if only field was specified (no plot)
+      if (!plotName) {
+        try {
+          const { updateConversationState } = await import('../../services/expenses.js');
+          await updateConversationState(userId, fieldCheck.rows[0].id, null);
+        } catch { /* non-fatal */ }
       }
     }
 
@@ -651,11 +669,20 @@ export class FinancialHandler {
     // plot, drop the auto-resolved plot. Otherwise "sueldos $300k" gets
     // silently assigned to the user's only lote, which is data corruption
     // (the QA "Pedro despistado" persona caught it).
+    //
+    // BUT: only strip when the user gave NO plot signal at all. If the agent
+    // didn't pass plotName but the text contains an explicit plot reference
+    // (a name like "lote Verde" OR a pronoun like "ahí mismo" / "ese lote"
+    // resolved through context_stack), honor the intent — stripping would
+    // silently lose data. See utils/plot-intent.ts.
     const FIELD_LEVEL_CATEGORIES = new Set([
       'sueldos', 'arrendamiento', 'alquiler', 'servicios', 'impuestos',
       'contabilidad', 'administración', 'administracion', 'gastos generales',
     ]);
-    const isFieldLevelExpense = !plotName && FIELD_LEVEL_CATEGORIES.has((data.category || '').toLowerCase());
+    const { userExplicitlyReferencedPlot } = await import('../../utils/plot-intent.js');
+    const isFieldLevelExpense = !plotName
+      && FIELD_LEVEL_CATEGORIES.has((data.category || '').toLowerCase())
+      && !userExplicitlyReferencedPlot(text);
     if (isFieldLevelExpense && plotId) {
       plotId = null;
       resPlotName = null;
