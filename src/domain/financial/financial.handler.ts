@@ -661,7 +661,14 @@ export class FinancialHandler {
       return buildNoPlotsBlockResponse('un gasto', userFields[0]?.name);
     }
 
-    const resolution = await this.service.resolveField(userId, fieldName, plotName);
+    // Tighter plot auto-resolution (May 28): only fall back to context_stack
+    // when the user's text has a continuation signal ("y otros 50k"),
+    // explicit "lote/potrero" word, or a plot pronoun. Without a signal,
+    // we'd silently save against whatever plot the user last interacted with —
+    // see user 30 hitting this on 2026-05-28 with "Gaste 1 peso en girasoles".
+    const { hasPlotContextSignal } = await import('../../utils/plot-context-signals.js');
+    const allowContextStackFallback = !plotName && !fieldName ? hasPlotContextSignal(text) : true;
+    const resolution = await this.service.resolveField(userId, fieldName, plotName, { allowContextStackFallback });
     let { fieldId, fieldName: resFieldName, plotId, plotName: resPlotName } = resolution;
 
     // Field-level expenses: when the category is a corporate-overhead one
@@ -719,8 +726,13 @@ export class FinancialHandler {
       if (resolution.needPlotSelection && !bulkMode) {
         // 2+ plots in field → redirect to expense flow at plot step
         const currency = data.currency === 'USD' ? 'USD' : 'ARS';
+        // When category was dropped by the crop-name guard (May 28), avoid
+        // rendering an empty "** \u2014 $X" header — just ask for the plot.
+        const expHeader = data.category
+          ? `\ud83d\udcb8 *${data.category}* \u2014 ${formatMoney(data.amount, data.currency)}\n\n`
+          : `\ud83d\udcb8 ${formatMoney(data.amount, data.currency)} (sin categor\u00eda a\u00fan)\n\n`;
         return {
-          messages: [`\ud83d\udcb8 *${data.category}* \u2014 ${formatMoney(data.amount, data.currency)}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
+          messages: [`${expHeader}\u00bfEn qu\u00e9 lote lo registramos?`],
           sideEffects: {
             startFlow: {
               state: 'expense_flow' as FlowState,
@@ -984,7 +996,10 @@ export class FinancialHandler {
       return buildNoPlotsBlockResponse('un ingreso', userFields[0]?.name);
     }
 
-    const resolution = await this.service.resolveField(userId, fieldName, plotName);
+    // See handleExpense — same context-stack gating.
+    const { hasPlotContextSignal } = await import('../../utils/plot-context-signals.js');
+    const incomeAllowContextStackFallback = !plotName && !fieldName ? hasPlotContextSignal(text) : true;
+    const resolution = await this.service.resolveField(userId, fieldName, plotName, { allowContextStackFallback: incomeAllowContextStackFallback });
     let { fieldId, fieldName: resFieldName, plotId, plotName: resPlotName } = resolution;
 
     // If the referenced field/plot doesn't exist, redirect to flow for plot selection.
@@ -1018,7 +1033,7 @@ export class FinancialHandler {
         // 2+ plots in field → redirect to income flow at plot step
         const currency = data.currency === 'USD' ? 'USD' : 'ARS';
         return {
-          messages: [`\ud83d\udcb0 *${data.category}* \u2014 ${formatMoney(data.amount, data.currency)}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
+          messages: [`${data.category ? `\ud83d\udcb0 *${data.category}* \u2014 ${formatMoney(data.amount, data.currency)}\n\n` : `\ud83d\udcb0 ${formatMoney(data.amount, data.currency)} (sin categor\u00eda a\u00fan)\n\n`}\u00bfEn qu\u00e9 lote lo registramos?`],
           sideEffects: {
             startFlow: {
               state: 'income_flow' as FlowState,

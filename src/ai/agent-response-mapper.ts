@@ -1,9 +1,48 @@
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
 import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES, EXPENSE_KEYWORD_MAP, type IncomeCategory } from '../constants/agro-terms.js';
 import { resolveRelativeDate, TOOLS_WITH_DATE_PARAM, dateKeyForTool } from '../utils/relative-dates.js';
+import { extractCropFromText } from '../utils/crops.js';
 import type { AgentResult } from './agent.service.js';
 import { validateToolCall, type ValidationOptions } from './agent-output-validator.js';
 import { buildFallbackMessage } from '../utils/fuzzy-suggest.js';
+
+/**
+ * When the user's expense text is just a crop name with no category keyword,
+ * Haiku tends to invent a category (e.g. "girasol" → "Agroquímicos"). This
+ * guard detects that case so we can drop the agent's category and let the
+ * handler ask the user via the picker.
+ *
+ * Returns true when:
+ *   - originalText mentions a known crop (girasol, soja, maíz, etc.), AND
+ *   - originalText does NOT mention any category keyword (gasoil, sueldos,
+ *     fertilizantes, etc. — anything in EXPENSE_KEYWORD_MAP), AND
+ *   - originalText does NOT mention any of the canonical expense categories
+ *     directly (Sueldos, Combustible, Agroquímicos, etc.).
+ *
+ * Trigger example: "gasté 1 peso en girasol" → true (only crop, no category)
+ * Non-trigger:     "gasté 80 mil de semilla de girasol" → false (semilla → Semillas)
+ * Non-trigger:     "gasté 1 peso en sueldos" → false (sueldos is a category)
+ */
+function userMentionedCropButNoCategory(originalText: string | null | undefined): boolean {
+  if (!originalText) return false;
+  const norm = originalText.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // Does the text contain a known crop name?
+  const tokens = norm.split(/[\s,.!?;:]+/).filter(Boolean);
+  const hasCrop = tokens.some(t => extractCropFromText(t) !== null);
+  if (!hasCrop) return false;
+  // Does the text contain ANY expense category keyword? If yes, the agent's
+  // category is probably right — don't drop it.
+  for (const kw of Object.keys(EXPENSE_KEYWORD_MAP)) {
+    const re = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (re.test(norm)) return false;
+  }
+  // Does the text contain any canonical category name directly?
+  for (const cat of EXPENSE_CATEGORIES) {
+    const re = new RegExp(`\\b${cat.toLowerCase()}\\b`, 'i');
+    if (re.test(norm)) return false;
+  }
+  return true;
+}
 
 /**
  * Parse Argentine-format weight to kg.
@@ -339,6 +378,17 @@ export class AgentResponseMapper {
       let categoryMatch = typeof input.category_match === 'string' ? input.category_match : undefined;
       // Reject agent-emitted placeholders before normalization (see income mapper for rationale).
       if (isPlaceholderCategory(rawCategory)) {
+        rawCategory = '';
+        categoryMatch = undefined;
+      }
+      // Reject agent-invented categories when the user only mentioned a crop
+      // name. Haiku tends to associate "girasol"/"soja"/"maíz" with farming
+      // and pick "Agroquímicos" or similar out of thin air — user 30 hit this
+      // on 2026-05-28 ("Gaste 1 peso en girasoles" → category=Agroquímicos).
+      // When this guard fires, the category picker takes over and asks the
+      // user which category to use, with their own categories as options.
+      if (rawCategory && userMentionedCropButNoCategory(originalText)) {
+        console.warn(`[AGENT_GUARD] dropped log_expense category="${rawCategory}" — user text was crop-only (no category keyword)`);
         rawCategory = '';
         categoryMatch = undefined;
       }

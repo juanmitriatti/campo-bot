@@ -47,7 +47,12 @@ export class PlotDiscoveryService {
     return result;
   }
 
-  async resolveFromNames(userId: UserId, campoName: string | null, plotName: string | null): Promise<PlotDiscoveryResult> {
+  async resolveFromNames(
+    userId: UserId,
+    campoName: string | null,
+    plotName: string | null,
+    options?: { allowContextStackFallback?: boolean },
+  ): Promise<PlotDiscoveryResult> {
     // Case: pronoun reference → conversation state
     if (plotName === '__last__') {
       return this._resolveFromConversationState(userId);
@@ -87,16 +92,22 @@ export class PlotDiscoveryService {
       };
     }
 
-    // Nothing specified — try recent context_stack first. This is the bedrock
-    // of conversational memory: if the user just talked about lote Norte and
-    // now says "y otros 50000 en sueldos ahi mismo" or just "y 50k en sueldos"
-    // (no pronoun, no plot), we want to attach to Norte rather than asking
-    // "¿En qué lote?" again. The stack is LIFO with a 3-entry depth and a
-    // short TTL implicit in conversation_state.updated_at — fresh users have
-    // an empty stack so fall-through behavior is unchanged.
-    const fromStack = await this._resolveFromConversationState(userId);
-    if (fromStack.plotId) {
-      return fromStack;
+    // Nothing specified — fall back to recent context_stack ONLY when the
+    // caller opts in (options.allowContextStackFallback === true). This is
+    // the bedrock of conversational memory: when the user just talked about
+    // lote Norte and now says "y otros 50000 en sueldos" (continuation,
+    // signaled by the leading "y"), inheriting Norte is correct.
+    //
+    // But: silently inheriting on FRESH messages with no continuation signal
+    // ("Gaste 1 peso en girasoles") guesses wrong — see user 30, 2026-05-28.
+    // The handler decides via hasPlotContextSignal(originalText). When the
+    // signal is absent and the user has multiple plots, we fall through to
+    // needPlotSelection (asks the user).
+    if (options?.allowContextStackFallback !== false) {
+      const fromStack = await this._resolveFromConversationState(userId);
+      if (fromStack.plotId) {
+        return fromStack;
+      }
     }
 
     // Then auto-assign if user has exactly 1 plot total

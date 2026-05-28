@@ -19,8 +19,13 @@ export class FinancialService {
 
   // --- Field + Plot resolution ---
 
-  async resolveFieldAndPlot(userId: UserId, fieldName?: string | null, plotName?: string | null): Promise<FieldInfo> {
-    const result = await this.plotDiscovery.resolve(userId, fieldName, plotName);
+  async resolveFieldAndPlot(
+    userId: UserId,
+    fieldName?: string | null,
+    plotName?: string | null,
+    options?: { allowContextStackFallback?: boolean },
+  ): Promise<FieldInfo> {
+    const result = await this.plotDiscovery.resolveFromNames(userId, fieldName ?? null, plotName ?? null, options);
     return {
       fieldId: result.fieldId, fieldName: result.fieldName,
       plotId: result.plotId, plotName: result.plotName,
@@ -31,8 +36,13 @@ export class FinancialService {
   }
 
   // Backward compat wrapper
-  async resolveField(userId: UserId, fieldName?: string | null, plotName?: string | null): Promise<FieldInfo> {
-    return this.resolveFieldAndPlot(userId, fieldName, plotName);
+  async resolveField(
+    userId: UserId,
+    fieldName?: string | null,
+    plotName?: string | null,
+    options?: { allowContextStackFallback?: boolean },
+  ): Promise<FieldInfo> {
+    return this.resolveFieldAndPlot(userId, fieldName, plotName, options);
   }
 
   // --- Expense operations ---
