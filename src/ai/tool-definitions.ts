@@ -379,22 +379,30 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
 
   {
     name: 'delete_last_activity',
-    description: 'BORRAR la última actividad registrada (no editar). "borrá la última actividad", "borrá la última fumigación", "eliminá la última siembra", "borrá la cosecha que registré recién". activity_filter opcional para refinar tipo. NUNCA confundir con edit_last_activity — borrar elimina del DB, editar modifica campos.',
+    description: 'BORRAR la última actividad/evento registrado (no editar). Cubre actividades agronómicas Y eventos de hacienda. Triggers: "borrá la última actividad", "borrá la última fumigación", "eliminá la última siembra", "borrá la cosecha que registré recién", "borrá el último evento sanitario", "elimina la última vacunación", "borrá el último tacto", "elimina la última pesada", "borrá ese servicio del toro". activity_filter opcional para refinar tipo. NUNCA confundir con edit_last_activity — borrar elimina del DB, editar modifica campos.',
     input_schema: {
       type: 'object',
       properties: {
-        activity_filter: { type: 'string', enum: ['spraying', 'fertilization', 'planting', 'harvest', 'tillage', 'irrigation', 'tacto'], description: 'Tipo de actividad (opcional).' },
+        activity_filter: {
+          type: 'string',
+          enum: ['spraying', 'fertilization', 'planting', 'harvest', 'tillage', 'irrigation', 'tacto', 'health_event', 'repro_event', 'weighing'],
+          description: 'Tipo de actividad/evento (opcional). health_event para vacunación/desparasitación/curación. repro_event para servicio/IA/destete/detección de celo. weighing para pesajes. tacto para palpación/preñez.',
+        },
       },
       required: [],
     },
   },
   {
     name: 'edit_last_activity',
-    description: 'Corregir/editar la última actividad registrada. Cambiar de lote, corregir cultivo o fecha. "la siembra era en lote B", "corregí la última actividad al lote norte", "me equivoqué de lote en la fumigación".',
+    description: 'Corregir/editar la última actividad/evento registrado. Cubre actividades agronómicas Y eventos de hacienda. Cambiar de lote, corregir cultivo, fecha, o sacar el lote. Triggers: "la siembra era en lote B", "corregí la última actividad al lote norte", "me equivoqué de lote en la fumigación", "el tacto era en otro lote", "la pesada era del lote sur", "el evento sanitario era ayer".',
     input_schema: {
       type: 'object',
       properties: {
-        activity_filter: { type: 'string', enum: ['spraying', 'fertilization', 'planting', 'harvest', 'tillage', 'irrigation', 'tacto'], description: 'Tipo de actividad a buscar (opcional).' },
+        activity_filter: {
+          type: 'string',
+          enum: ['spraying', 'fertilization', 'planting', 'harvest', 'tillage', 'irrigation', 'tacto', 'health_event', 'repro_event', 'weighing'],
+          description: 'Tipo de actividad/evento a buscar (opcional). health_event para vacunación/desparasitación/curación. repro_event para servicio/IA/destete. weighing para pesajes. tacto para palpación/preñez.',
+        },
         crop: CROP_PROP,
         new_plot: { type: 'string', description: 'Nuevo lote correcto.' },
         new_field: FIELD_PROP,

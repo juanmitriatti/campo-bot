@@ -3009,8 +3009,10 @@ export class AgronomyHandler {
       }
 
       case 'delete_last_activity': {
-        // Find + delete the user's last activity. Optional filter narrows by type
-        // (siembra/fumigación/etc) when the user said "borrá la última fumigación".
+        // Find + delete the user's last activity/event. Optional filter narrows
+        // by type — covers both agronomic activities (siembra/fumigación/etc.)
+        // AND livestock events (health/repro/weighing/tacto) which share the
+        // domain_events table.
         const delFilter = normalizeActivityFilter(cmd.activityFilter as string | null);
         const lastActivity = await this.repo.findLastDomainEventFiltered(userId, {
           eventType: delFilter || undefined,
@@ -3021,10 +3023,18 @@ export class AgronomyHandler {
         }
         const { deleteDomainEvent } = await import('../../services/expenses.js');
         await deleteDomainEvent(lastActivity.id);
-        const typeLabel = ({ planting: 'Siembra', spraying: 'Fumigación', fertilization: 'Fertilización', harvest: 'Cosecha', tillage: 'Labranza', irrigation: 'Riego' } as Record<string, string>)[lastActivity.event_type as string] || lastActivity.event_type;
+        const typeLabels: Record<string, string> = {
+          planting: 'Siembra', spraying: 'Fumigación', fertilization: 'Fertilización',
+          harvest: 'Cosecha', tillage: 'Labranza', irrigation: 'Riego',
+          health_event: 'Evento sanitario', repro_event: 'Evento reproductivo',
+          weighing: 'Pesaje', tacto: 'Tacto',
+        };
+        const typeLabel = typeLabels[lastActivity.event_type as string] || lastActivity.event_type;
         const cropPart = lastActivity.crop ? ` de ${lastActivity.crop}` : '';
         const plotPart = lastActivity.plot_name ? ` en ${lastActivity.plot_name}` : '';
-        return { messages: [`🗑️ ${typeLabel}${cropPart}${plotPart} eliminada.`] };
+        // Use neutral wording — "eliminada/eliminado" depends on gender which
+        // varies across types (Siembra feminine, Pesaje masculine, etc.).
+        return { messages: [`🗑️ Borré: ${typeLabel}${cropPart}${plotPart}.`] };
       }
 
       case 'edit_last_activity': {

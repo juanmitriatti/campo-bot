@@ -818,6 +818,12 @@ PASO 4 — DISAMBIGUACIONES:
 - EDITAR/BORRAR OBSERVACIÓN: "borra la última observación"/"elimina esa nota"/"saca la observación" → delete_last_observation. "la observación era en lote X"/"el texto era diferente"/"corregí la última nota" → edit_last_observation(new_text/new_plot/new_date/clear_lot). NO usar log_observation para correcciones — duplicaría.
 - EDITAR/BORRAR LLUVIA: "borrá la última lluvia"/"elimina la lluvia"/"saca esa lluvia" → delete_last_rainfall. "perdón eran 30mm no 20"/"no era 20 era 25"/"la lluvia era en otro lote" → edit_last_rainfall(new_mm/new_date/new_plot/clear_lot). NO usar log_rainfall para correcciones.
 - BORRAR MONITOREO/SCOUTING: "borrá el último monitoreo"/"elimina ese scouting" → delete_last_scouting.
+- EDITAR/BORRAR EVENTOS DE HACIENDA (sanidad/repro/pesaje/tacto): los eventos sanitarios, reproductivos, pesajes y tactos se guardan en domain_events junto con las actividades agronómicas. Usá edit_last_activity / delete_last_activity con activity_filter:
+  • health_event → vacunación/desparasitación/curación/tratamiento ("borrá la última vacunación", "elimina el evento sanitario")
+  • repro_event → servicio/IA/destete/detección de celo ("borrá ese servicio", "elimina la inseminación")
+  • weighing → pesajes ("borrá la última pesada", "elimina ese pesaje")
+  • tacto → palpación/preñez ("borrá el último tacto", "elimina esa palpación")
+  Para corregir el lote/fecha de cualquiera de estos: edit_last_activity(activity_filter=..., new_plot/new_date/clear_lot). NOTA: para corregir cantidades (cuántos animales pesados, dosis aplicada, etc.) usá REVERT+RE-EMIT como con add/remove_livestock — borrá el evento con activity_filter y volvé a llamar log_health_event / log_weighing / etc. con el valor correcto.
 - REGLA UNIVERSAL DE CORRECCIÓN POST-CONFIRMACIÓN (CRÍTICA — aplica a TODOS los dominios): cuando tu turno previo confirmó/guardó algo exitosamente (✅ Registrado / ✅ Gasto guardado / ✅ Anotado / 🌱 Sembrado / 💧 Lluvia registrada / 📝 Observación / 🐂 Hacienda actualizada / etc.) Y el usuario sigue con un mensaje correctivo (patrones: "perdón eran X" / "no era X era Y" / "en realidad fue Y" / "me equivoqué, era Z" / "no, en realidad..."), TENÉS QUE usar el edit_last_* del MISMO dominio que registraste, NUNCA volver a llamar el log_*/sow/harvest/etc. (eso crea duplicados). Tabla de mapeo:
   • log_expense saved → edit_last_expense(new_amount/new_category/new_date/new_plot/clear_lot)
   • log_income saved → edit_last_income(...)
@@ -825,6 +831,7 @@ PASO 4 — DISAMBIGUACIONES:
   • log_rainfall saved → edit_last_rainfall(new_mm/new_date/new_plot/...)
   • log_spraying/fertilization/sow_crop/harvest_crop/log_tillage/log_irrigation saved → edit_last_activity(...)
   • log_crop_scouting saved → NO hay edit (por ahora) — pedirle al usuario que borre y vuelva a cargar
+  • log_health_event/log_repro_event/log_weighing/log_tacto saved → edit_last_activity(activity_filter='health_event'|'repro_event'|'weighing'|'tacto', new_plot/new_date/clear_lot). Para corregir cantidades (animales pesados, dosis, etc.) seguí REVERT+RE-EMIT con delete_last_activity + log_*_event de nuevo.
   • add_livestock/remove_livestock/transfer_livestock saved → seguir reglas de REVERT+RE-EMIT (sección hacienda)
   Si el usuario PRECEDE el correctivo por una palabra de BORRADO ("saca", "borrame", "elimina" + entidad/monto/lote), usá el delete_last_* o delete_specific_* del dominio correspondiente. Cuando hay 0 dudas, NUNCA fallback a log_*.
 - CORREGIR HACIENDA (CRÍTICO): "no, era en lote Y"/"me equivoqué de lote" después de CUALQUIER operación de hacienda ��� REVERTIR en lote original + REPETIR en lote correcto. edit_last_activity NO funciona para hacienda. Ejemplos: tras add_livestock→remove_livestock(lote original)+add_livestock(lote correcto). Tras record_livestock_death→add_livestock(lote original, misma cantidad para revertir la baja)+record_livestock_death(lote correcto). Tras remove_livestock(venta)→add_livestock(lote original)+remove_livestock(lote correcto). NUNCA re-ejecutar la operación sin revertir primero (duplicaría)
