@@ -1030,25 +1030,15 @@ async function processTextMessage(
         return [{ type: 'text', text: 'No pude interpretar tu respuesta. Probá de nuevo o escribí *cancelar*.' }];
       }
       if (result.next === null) {
-        // All required slots filled → re-route the command
+        // All required slots filled → re-route the command. Use the
+        // processor's finalData (already merged + overwrites applied like
+        // currency) rather than re-merging from the stale pending.data.
+        // The previous logic re-merged with no-overwrite, which silently
+        // discarded slots the processor had explicitly overwritten — e.g.
+        // currency 'ARS' → 'USD' when the user clarified "100 mil dólares"
+        // after a partial that defaulted ARS.
         pendingActStore.clear(phone);
-        const merged = { ...pendingAct.data } as ParsedCommand;
-        // Apply the slots we just extracted (processPendingAction already
-        // merged them into next.data — but next is null here, so re-merge
-        // manually from the original pending + extracted).
-        const slotKeysToCmd: Record<string, string[]> = {
-          plot: ['plot', 'plotName'], field: ['field', 'fieldName'],
-          unit_price: ['unit_price', 'unitPrice'],
-        };
-        for (const [k, v] of Object.entries(result.extracted)) {
-          if (v == null) continue;
-          const targets = slotKeysToCmd[k] || [k];
-          for (const t of targets) {
-            if ((merged as Record<string, unknown>)[t] == null) {
-              (merged as Record<string, unknown>)[t] = v;
-            }
-          }
-        }
+        const merged = { ...result.finalData } as ParsedCommand;
         delete (merged as Record<string, unknown>)._needs;
           // Carry the pending's command into merged so routeCommand can dispatch.
           // Partial intents (income_partial / expense_partial) never put a

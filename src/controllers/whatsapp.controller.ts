@@ -1598,21 +1598,11 @@ router.post('/', async (req: Request, res: Response) => {
         const { processPendingAction } = await import('../middleware/pending-action-processor.js');
         const result = processPendingAction(text, pendingAct);
         if (result.next === null) {
+          // Use processor's finalData (already merged + overwrites applied).
+          // See test-bot.controller for the rationale — currency etc. need to
+          // overwrite the agent's default.
           pendingActStore.clear(phone);
-          const merged = { ...pendingAct.data } as ParsedCommand;
-          const slotKeysToCmd: Record<string, string[]> = {
-            plot: ['plot', 'plotName'], field: ['field', 'fieldName'],
-            unit_price: ['unit_price', 'unitPrice'],
-          };
-          for (const [k, v] of Object.entries(result.extracted)) {
-            if (v == null) continue;
-            const targets = slotKeysToCmd[k] || [k];
-            for (const t of targets) {
-              if ((merged as Record<string, unknown>)[t] == null) {
-                (merged as Record<string, unknown>)[t] = v;
-              }
-            }
-          }
+          const merged = { ...result.finalData } as ParsedCommand;
           delete (merged as Record<string, unknown>)._needs;
           // Carry the pending's command into merged so routeCommand can dispatch.
           // Partial intents (income_partial / expense_partial) never put a

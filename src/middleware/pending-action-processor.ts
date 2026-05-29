@@ -34,6 +34,17 @@ export interface PendingProcessResult {
   extracted: ExtractedSlots;
   /** Human-readable list of slots still missing after merge. Empty when ready to execute. */
   stillMissing: SlotName[];
+  /**
+   * Fully merged data — includes pending.data + extracted slots + any
+   * overwrites (currency, etc.) applied by the processor. Callers should
+   * use this directly when re-routing the command rather than re-merging
+   * from the (now-stale) pending.data. Without this, a "later turn
+   * overrides earlier default" — like the user clarifying "100 mil
+   * dólares" after the agent defaulted currency to ARS — is silently
+   * lost because the controller's own merge applies no-overwrite to
+   * pending.data again.
+   */
+  finalData: Record<string, unknown>;
 }
 
 /**
@@ -152,7 +163,7 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
   }
 
   if (stillMissing.length === 0) {
-    return { next: null, extracted, stillMissing: [] };
+    return { next: null, extracted, stillMissing: [], finalData: data };
   }
 
   return {
@@ -165,6 +176,7 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
     },
     extracted,
     stillMissing,
+    finalData: data,
   };
 }
 
