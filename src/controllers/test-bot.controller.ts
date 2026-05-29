@@ -1306,18 +1306,18 @@ async function processTextMessage(
     if (!hasExpenses) {
       return [{ type: 'text', text: '\ud83d\udd12 El registro de gastos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
     }
-    const prefillData: Record<string, unknown> = {};
-    if (intent.data.amount) prefillData.amount = intent.data.amount;
-    if (intent.data.currency) prefillData.currency = intent.data.currency;
-    if (intent.data.category) prefillData.category = intent.data.category;
-    if ((intent.data as any).quantity != null) prefillData.quantity = (intent.data as any).quantity;
-    if ((intent.data as any).unit) prefillData.unit = (intent.data as any).unit;
-    if ((intent.data as any).unit_price != null) prefillData.unit_price = (intent.data as any).unit_price;
-    if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
-    if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
-    const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
-    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
-    return collectResponse(result.response);
+    // Slot-extractor pending (May 28) — replaces rigid expense_flow.
+    const { planExpensePartialPending } = await import('../middleware/financial-partial-pending.js');
+    const planExp = planExpensePartialPending(intent.data as any);
+    pendingActStore.set(phone, {
+      command: planExp.command,
+      data: planExp.data,
+      timestamp: Date.now(),
+      missing: planExp.missing,
+      askPrompt: planExp.askPrompt,
+    });
+    conversationLogger.log(userId, phone, text, planExp.askPrompt, 'pending', 'expense_partial', null, 0, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
+    return [{ type: 'text', text: planExp.askPrompt }];
   }
 
   if (intent.type === 'income_partial') {
@@ -1326,21 +1326,20 @@ async function processTextMessage(
     if (!hasIncomes) {
       return [{ type: 'text', text: '\ud83d\udd12 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
     }
-    const prefillData: Record<string, unknown> = {};
-    if (intent.data.amount) prefillData.amount = intent.data.amount;
-    if (intent.data.currency) prefillData.currency = intent.data.currency;
-    if (intent.data.category) prefillData.category = intent.data.category;
-    if ((intent.data as any).quantity != null) prefillData.quantity = (intent.data as any).quantity;
-    if ((intent.data as any).unit) prefillData.unit = (intent.data as any).unit;
-    if ((intent.data as any).unit_price != null) prefillData.unit_price = (intent.data as any).unit_price;
-    if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
-    if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
-    const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
-    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence).catch(() => {});
-    return collectResponse(result.response);
+    const { planIncomePartialPending } = await import('../middleware/financial-partial-pending.js');
+    const planInc = planIncomePartialPending(intent.data as any);
+    pendingActStore.set(phone, {
+      command: planInc.command,
+      data: planInc.data,
+      timestamp: Date.now(),
+      missing: planInc.missing,
+      askPrompt: planInc.askPrompt,
+    });
+    conversationLogger.log(userId, phone, text, planInc.askPrompt, 'pending', 'income_partial', null, 0, aiUsed, Date.now() - startTime, false, confidence).catch(() => {});
+    return [{ type: 'text', text: planInc.askPrompt }];
   }
 
-  // --- Ambiguous → disambiguation buttons ---
+    // --- Ambiguous → disambiguation buttons ---
   if (intent.type === 'ambiguous') {
     const buttons = intent.candidates.slice(0, 3).map((c, i) => ({
       id: `disambig_${i}`,

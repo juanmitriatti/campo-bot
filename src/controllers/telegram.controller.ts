@@ -1778,18 +1778,21 @@ async function processTextMessage(
     if (!hasExpenses) {
       return [{ type: 'text', text: '🔒 El registro de gastos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
     }
-    const prefillData: Record<string, unknown> = {};
-    if (intent.data.amount) prefillData.amount = intent.data.amount;
-    if (intent.data.currency) prefillData.currency = intent.data.currency;
-    if (intent.data.category) prefillData.category = intent.data.category;
-    if ((intent.data as any).quantity != null) prefillData.quantity = (intent.data as any).quantity;
-    if ((intent.data as any).unit) prefillData.unit = (intent.data as any).unit;
-    if ((intent.data as any).unit_price != null) prefillData.unit_price = (intent.data as any).unit_price;
-    if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
-    if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
-    const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
-    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
-    return collectResponse(result.response);
+    // Slot-extractor pending (May 28 fix) — REPLACES the rigid expense_flow.
+    // The flow only accepted slots in a fixed order and escaped to plot_info /
+    // similar when the user provided data out of order. The slot-extractor
+    // pending accepts any slot at any time and asks for whatever's missing.
+    const { planExpensePartialPending } = await import('../middleware/financial-partial-pending.js');
+    const plan = planExpensePartialPending(intent.data as any);
+    pendingActStore.set(phone, {
+      command: plan.command,
+      data: plan.data,
+      timestamp: Date.now(),
+      missing: plan.missing,
+      askPrompt: plan.askPrompt,
+    });
+    conversationLogger.log(userId, phone, text, plan.askPrompt, 'pending', 'expense_partial', null, 0, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
+    return [{ type: 'text', text: plan.askPrompt }];
   }
 
   if (intent.type === 'income_partial') {
@@ -1798,18 +1801,18 @@ async function processTextMessage(
     if (!hasIncomes) {
       return [{ type: 'text', text: '🔒 El registro de ingresos no esta disponible en tu plan actual.\n\nEscribi *plan* para ver las opciones.' }];
     }
-    const prefillData: Record<string, unknown> = {};
-    if (intent.data.amount) prefillData.amount = intent.data.amount;
-    if (intent.data.currency) prefillData.currency = intent.data.currency;
-    if (intent.data.category) prefillData.category = intent.data.category;
-    if ((intent.data as any).quantity != null) prefillData.quantity = (intent.data as any).quantity;
-    if ((intent.data as any).unit) prefillData.unit = (intent.data as any).unit;
-    if ((intent.data as any).unit_price != null) prefillData.unit_price = (intent.data as any).unit_price;
-    if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
-    if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
-    const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
-    conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
-    return collectResponse(result.response);
+    // Slot-extractor pending — see expense_partial comment for rationale.
+    const { planIncomePartialPending } = await import('../middleware/financial-partial-pending.js');
+    const incPlan = planIncomePartialPending(intent.data as any);
+    pendingActStore.set(phone, {
+      command: incPlan.command,
+      data: incPlan.data,
+      timestamp: Date.now(),
+      missing: incPlan.missing,
+      askPrompt: incPlan.askPrompt,
+    });
+    conversationLogger.log(userId, phone, text, incPlan.askPrompt, 'pending', 'income_partial', null, 0, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
+    return [{ type: 'text', text: incPlan.askPrompt }];
   }
 
   // --- Ambiguous → disambiguation buttons ---

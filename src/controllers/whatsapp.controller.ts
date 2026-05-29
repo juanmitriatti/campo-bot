@@ -1889,7 +1889,11 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    // --- Handle partial parse → redirect to conversation flow ---
+    // --- Handle partial parse → slot-extractor pending (May 28 fix) ---
+    // Was: rigid expense_flow / income_flow that escaped when the user
+    // answered out of order ("Lote a2" while flow was asking for amount
+    // → routed to plot_info, income lost — user 4 incident 2026-05-28).
+    // Now: slot-extractor pending accepts any slot at any time.
     if (intent.type === 'expense_partial') {
       if (await checkPrerequisiteBlock(userId, phone, 'registrar un gasto')) {
         res.sendStatus(200);
@@ -1901,19 +1905,17 @@ router.post('/', async (req: Request, res: Response) => {
         res.sendStatus(200);
         return;
       }
-      const prefillData: Record<string, unknown> = {};
-      if (intent.data.amount) prefillData.amount = intent.data.amount;
-      if (intent.data.currency) prefillData.currency = intent.data.currency;
-      if (intent.data.category) prefillData.category = intent.data.category;
-      if ((intent.data as any).quantity != null) prefillData.quantity = (intent.data as any).quantity;
-      if ((intent.data as any).unit) prefillData.unit = (intent.data as any).unit;
-      if ((intent.data as any).unit_price != null) prefillData.unit_price = (intent.data as any).unit_price;
-      if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
-      if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
-      const result = await conversationEngine.startFlow(userId, 'expense_flow', prefillData);
-      conversationObserver.logFlowStarted(userId, 'expense_flow', { trigger: 'partial_parse', prefillFields: Object.keys(prefillData) });
-      await sendResponse(phone, result.response);
-      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'expense_partial', 'expense_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
+      const { planExpensePartialPending } = await import('../middleware/financial-partial-pending.js');
+      const planExp = planExpensePartialPending(intent.data as any);
+      pendingActStore.set(phone, {
+        command: planExp.command,
+        data: planExp.data,
+        timestamp: Date.now(),
+        missing: planExp.missing,
+        askPrompt: planExp.askPrompt,
+      });
+      await sendMessage(phone, planExp.askPrompt);
+      conversationLogger.log(userId, phone, text, planExp.askPrompt, 'pending', 'expense_partial', null, 0, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
@@ -1929,19 +1931,17 @@ router.post('/', async (req: Request, res: Response) => {
         res.sendStatus(200);
         return;
       }
-      const prefillData: Record<string, unknown> = {};
-      if (intent.data.amount) prefillData.amount = intent.data.amount;
-      if (intent.data.currency) prefillData.currency = intent.data.currency;
-      if (intent.data.category) prefillData.category = intent.data.category;
-      if ((intent.data as any).quantity != null) prefillData.quantity = (intent.data as any).quantity;
-      if ((intent.data as any).unit) prefillData.unit = (intent.data as any).unit;
-      if ((intent.data as any).unit_price != null) prefillData.unit_price = (intent.data as any).unit_price;
-      if ((intent.data as any).product) prefillData.product = (intent.data as any).product;
-      if ((intent.data as any).description) prefillData.description = (intent.data as any).description;
-      const result = await conversationEngine.startFlow(userId, 'income_flow', prefillData);
-      conversationObserver.logFlowStarted(userId, 'income_flow', { trigger: 'partial_parse', prefillFields: Object.keys(prefillData) });
-      await sendResponse(phone, result.response);
-      conversationLogger.log(userId, phone, text, result.response.messages[0] ?? result.response.interactive?.body ?? null, 'flow', 'income_partial', 'income_flow', 0, aiUsed, Date.now() - startTime, !!result.response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
+      const { planIncomePartialPending } = await import('../middleware/financial-partial-pending.js');
+      const planInc = planIncomePartialPending(intent.data as any);
+      pendingActStore.set(phone, {
+        command: planInc.command,
+        data: planInc.data,
+        timestamp: Date.now(),
+        missing: planInc.missing,
+        askPrompt: planInc.askPrompt,
+      });
+      await sendMessage(phone, planInc.askPrompt);
+      conversationLogger.log(userId, phone, text, planInc.askPrompt, 'pending', 'income_partial', null, 0, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode).catch(() => {});
       res.sendStatus(200);
       return;
     }
