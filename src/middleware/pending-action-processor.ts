@@ -108,14 +108,22 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
   // unit_price+currency (not amount). If we don't merge these, the cross-fill
   // below (qty*unit_price → amount) has nothing to work with. We still
   // respect the no-overwrite rule.
-  const ADJACENT_SLOTS: SlotName[] = ['unit_price', 'quantity', 'unit', 'currency', 'amount'];
+  // Adjacent slots that we also merge if extracted, even when not in `missing`.
+  // This handles cases like a partial income with missing=['amount'] where the
+  // user replies "Lote a2" — without 'plot' here, the plot would be extracted
+  // but silently dropped (user 4 incident, 2026-05-28).
+  const ADJACENT_SLOTS: SlotName[] = ['unit_price', 'quantity', 'unit', 'currency', 'amount', 'plot', 'field', 'category', 'crop'];
+  // Currency CAN overwrite — the agent often defaults to ARS on a partial
+  // intent ("10tn de soja"), and the user clarifies later ("100 mil dolares").
+  // Without an overwrite the saved record has the wrong currency.
+  const OVERWRITABLE: ReadonlySet<SlotName> = new Set(['currency' as SlotName]);
   for (const slot of ADJACENT_SLOTS) {
     if (missing.includes(slot)) continue; // already handled above
     const value = (extracted as Record<string, unknown>)[slot];
     if (value == null) continue;
     const targetKeys = slotToCmdKeys(slot);
     for (const target of targetKeys) {
-      if (data[target] == null) data[target] = value;
+      if (data[target] == null || OVERWRITABLE.has(slot)) data[target] = value;
     }
   }
 

@@ -74,15 +74,17 @@ export function planIncomePartialPending(data: ParsedIncome & Record<string, unk
   const hasAmount = typeof data.amount === 'number' && data.amount > 0;
   const hasQty = typeof data.quantity === 'number' && data.quantity > 0;
   const hasUnitPrice = typeof data.unit_price === 'number' && data.unit_price > 0;
-  // Required: either total amount OR (quantity + unit_price) so we can compute.
+  // Use 'amount' as the umbrella missing slot whenever we can't compute the
+  // total. The pending-action-processor's cross-fill #2 handles the case
+  // where the user provides unit_price (qty × unit_price → amount). Setting
+  // missing=['amount'] also accepts a direct total like "100 mil dólares".
   if (!hasAmount && !(hasQty && hasUnitPrice)) {
-    if (!hasUnitPrice && hasQty) missing.push('unit_price');
-    else if (!hasQty && hasUnitPrice) missing.push('quantity');
-    else missing.push('amount');
+    missing.push('amount');
   }
   if (!data.category) missing.push('category');
-  // Plot/field is OPTIONAL for incomes (some sales are field-level / no lot)
-  // — we don't add it to missing by default.
+  // Plot/field is OPTIONAL for incomes (some sales are field-level). The
+  // ADJACENT_SLOTS merge in pending-action-processor still picks plot up if
+  // the user mentions it later — they just don't have to.
   return {
     command: 'log_income',
     data: { ...data, command: 'log_income' },
@@ -93,12 +95,11 @@ export function planIncomePartialPending(data: ParsedIncome & Record<string, unk
 
 export function planExpensePartialPending(data: ParsedExpense & Record<string, unknown>): PartialPendingPlan {
   const missing: string[] = [];
-  if (!(typeof data.amount === 'number' && data.amount > 0)) {
-    // Allow quantity + unit_price as alternative (mapper computes total)
-    if (!(typeof data.quantity === 'number' && data.quantity > 0
-       && typeof data.unit_price === 'number' && data.unit_price > 0)) {
-      missing.push('amount');
-    }
+  const hasAmount = typeof data.amount === 'number' && data.amount > 0;
+  const hasQty = typeof data.quantity === 'number' && data.quantity > 0;
+  const hasUnitPrice = typeof data.unit_price === 'number' && data.unit_price > 0;
+  if (!hasAmount && !(hasQty && hasUnitPrice)) {
+    missing.push('amount');
   }
   if (!data.category) missing.push('category');
   return {

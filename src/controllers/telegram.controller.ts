@@ -1572,6 +1572,27 @@ async function processTextMessage(
         // controller for full comment).
         const { advanceQueueAfterCompletion } = await import('../middleware/pending-queue-advancer.js');
         const advanced = advanceQueueAfterCompletion(pendingActStore, phone, pendingAct, cmdResult);
+        // Forward sideEffects from the re-routed command. Without this, a
+        // re-routed log_income / log_expense returns a confirmation pending
+        // (setPending) but the controller never registers it — the user's
+        // confirm tap then says "no hay nada pendiente" and data drops.
+        if (cmdResult.sideEffects?.setPending) {
+          pendingStore.set(phone, cmdResult.sideEffects.setPending);
+        }
+        if (cmdResult.sideEffects?.setPendingActivity) {
+          const next = cmdResult.sideEffects.setPendingActivity;
+          pendingActStore.set(phone, {
+            command: next.command,
+            data: next.data,
+            timestamp: Date.now(),
+            missing: (next as { missing?: string[] }).missing,
+            askPrompt: (next as { askPrompt?: string }).askPrompt,
+          });
+        }
+        if (cmdResult.sideEffects?.setPendingObservation) {
+          const obs = cmdResult.sideEffects.setPendingObservation;
+          pendingObsStore.set(phone, { text: obs.text, category: obs.category, timestamp: Date.now() });
+        }
         if (cmdResult.sideEffects?.setPendingCampaignClose) {
           pendingCampaignCloseStore.set(phone, cmdResult.sideEffects.setPendingCampaignClose);
         }
