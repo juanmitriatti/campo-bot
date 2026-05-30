@@ -1723,6 +1723,25 @@ router.post('/', async (req: Request, res: Response) => {
     // --- Check pending confirmation first ---
     const pending = pendingStore.get(phone);
 
+    // --- Pending correction intercept (category / amount mid-confirmation) ---
+    // If there's a pending gasto/ingreso and the user's text is a category or
+    // amount correction ("no, era en sueldos" / "no, eran 75 mil"), patch the
+    // pending in-place and re-render the confirmation without hitting the agent
+    // (CR02 fix — previously the message fell through to the agent which
+    // sometimes replied with "¿en qué lote?" instead of fixing the field).
+    if (pending && (pending.type === 'expense' || pending.type === 'income')) {
+      const { tryApplyPendingCorrection } = await import('../middleware/pending-correction-interceptor.js');
+      const corr = tryApplyPendingCorrection(text, pending as any);
+      if (corr.applied) {
+        pendingStore.set(phone, corr.updatedPending as any);
+        await sendMessage(phone, corr.body!);
+        await sendInteractiveButtons(phone, '¿Confirmás?', corr.buttons!);
+        conversationLogger.log(userId, phone, text, corr.body!, 'command', 'correction_applied', null, null, false, Date.now() - startTime, true, 1.0).catch(() => {});
+        res.sendStatus(200);
+        return;
+      }
+    }
+
     // Load confidence thresholds from settings (cached 5 min)
     const lowConfidenceThreshold = (await getSettingNumber('CONFIDENCE_LOW_CONFIRM')) ?? 0.70;
     const unknownFallbackThreshold = (await getSettingNumber('CONFIDENCE_UNKNOWN_FALLBACK')) ?? 0.50;
