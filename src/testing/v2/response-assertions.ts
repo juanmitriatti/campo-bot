@@ -11,12 +11,13 @@ export function classifyResponse(text: string): 'question' | 'statement' {
   const t = text.toLowerCase();
   // A confirmation line ("registrado/registrada") with no trailing question wins as statement.
   const hasConfirmation = /registrad[oa]|guardad[oa]|✅|💰/.test(t);
+  // A confirmation PROMPT ("¿Confirmo gasto?", "confirmá", etc.) is also a statement —
+  // the bot understood the data and is asking the user to approve, not asking for missing info.
+  const hasConfirmPrompt = /confirm|¿confirmo|confirmá|confirmas|dale\?|está bien\?|es correcto/.test(t);
   const hasQuestion = ASK_MARKERS.some((m) => t.includes(m));
-  if (hasQuestion && !hasConfirmation) return 'question';
-  if (hasQuestion && hasConfirmation) {
-    // confirmation + a follow-up suggestion question → still a statement (it registered)
-    return 'statement';
-  }
+  // Return 'question' ONLY when there is a question marker AND neither a confirmation nor a
+  // confirm-prompt is present (those indicate the bot has all the data it needs).
+  if (hasQuestion && !hasConfirmation && !hasConfirmPrompt) return 'question';
   return 'statement';
 }
 

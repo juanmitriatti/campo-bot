@@ -34,9 +34,9 @@ function cost(model: string, t: Record<string, number>): number {
   return ((t.in || 0) * p.in + (t.out || 0) * p.out + (t.cread || 0) * p.cr + (t.cwrite || 0) * p.cw) / 1e6;
 }
 
-function rateByAxis(results: { axes: string[]; status: string }[], axis: string): number {
+function rateByAxis(results: { axes: string[]; status: string }[], axis: string): number | 'n/a' {
   const subset = results.filter((r) => r.axes.includes(axis));
-  if (!subset.length) return 0;
+  if (!subset.length) return 'n/a';
   return Math.round((subset.filter((r) => r.status === 'PASS').length / subset.length) * 100);
 }
 
@@ -62,7 +62,11 @@ async function main() {
   const pct = (r: { status: string }[]) => Math.round((r.filter((x) => x.status === 'PASS').length / r.length) * 100);
   console.log(`  PASS global:  ${a}=${pct(ra)}%   ${b}=${pct(rb)}%`);
   for (const axis of ['comprension', 'contexto', 'repreguntas']) {
-    console.log(`  ${axis.padEnd(12)} ${a}=${rateByAxis(ra, axis)}%   ${b}=${rateByAxis(rb, axis)}%`);
+    const ra_ = rateByAxis(ra, axis);
+    const rb_ = rateByAxis(rb, axis);
+    const fmtA = typeof ra_ === 'number' ? `${ra_}%` : ra_;
+    const fmtB = typeof rb_ === 'number' ? `${rb_}%` : rb_;
+    console.log(`  ${axis.padEnd(12)} ${a}=${fmtA}   ${b}=${fmtB}`);
   }
   const ca = cost(a, parseTokens(tags[a])), cb = cost(b, parseTokens(tags[b]));
   const callsA = parseTokens(tags[a]).calls || 1, callsB = parseTokens(tags[b]).calls || 1;

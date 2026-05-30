@@ -14,4 +14,7 @@ describe('classifyResponse', () => {
   it('treats an "Observación registrada" confirmation as a statement', () => {
     expect(classifyResponse('🔍 Observación registrada 📝 la soja está amarilla')).toBe('statement');
   });
+  it('treats a confirmation PROMPT as a statement, not a question', () => {
+    expect(classifyResponse('💸 ¿Confirmo gasto de $50.000 en Combustible?')).toBe('statement');
+  });
 });
