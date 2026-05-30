@@ -15,7 +15,9 @@
     "qa:p0:channel": "npx tsx src/testing/qa-p0/qa-p0-channel-verify.ts",
     "qa:p0:export": "npx tsx src/testing/qa-p0/qa-p0-export-delete.ts",
     "qa:p0:billing": "npx tsx src/testing/qa-p0/qa-p0-billing.ts",
-    "qa:p0": "npm run qa:p0:atomicity && npm run qa:p0:channel && npm run qa:p0:export && npm run qa:p0:billing"
+    "qa:p0": "npm run qa:p0:atomicity && npm run qa:p0:channel && npm run qa:p0:export && npm run qa:p0:billing",
+    "qa:v2": "tsx src/testing/v2/runner.ts --tag local",
+    "qa:v2:compare": "tsx src/testing/v2/compare.ts claude-haiku-4-5-20251001 claude-sonnet-4-6"
   },
   "keywords": [],
   "author": "",
