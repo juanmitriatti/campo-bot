@@ -41,22 +41,22 @@ async function plotIdByName(ctx: AssertContext, plotName: string): Promise<numbe
 }
 
 /** Generic: assert exactly `n` rows match the filter in `table`. */
-export function dbRowCount(table: string, filter: Record<string, FilterVal>, n: number): Assertion {
+export function dbRowCount(table: string, filter: Record<string, FilterVal>, n: number, opts: { includeDeleted?: boolean } = {}): Assertion {
   return {
     label: `dbRowCount(${table}, ${JSON.stringify(filter)}) == ${n}`,
     run: async (ctx) => {
-      const got = await countRows(ctx, table, filter);
+      const got = await countRows(ctx, table, filter, opts);
       return { ok: got === n, detail: `expected ${n}, got ${got}` };
     },
   };
 }
 
 /** Assert NO row matches (anti-corruption / anti-duplicate). */
-export function dbNone(table: string, filter: Record<string, FilterVal>): Assertion {
+export function dbNone(table: string, filter: Record<string, FilterVal>, opts: { includeDeleted?: boolean } = {}): Assertion {
   return {
     label: `dbNone(${table}, ${JSON.stringify(filter)})`,
     run: async (ctx) => {
-      const got = await countRows(ctx, table, filter);
+      const got = await countRows(ctx, table, filter, opts);
       return { ok: got === 0, detail: `expected 0, got ${got}` };
     },
   };
