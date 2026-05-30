@@ -71,6 +71,10 @@ se exponen. Para aserciones de routing exactas donde el outcome de DB no alcance
 agregar un campo `_debug: { commands: [...] }` (solo cuando un flag/header test-only está
 presente). Bajo riesgo (endpoint de test). Se decide por escenario; no es la base.
 
+**Decisión (2026-05-29):** NO se construye en la implementación inicial. Las aserciones por
+estado de DB cubren routing por outcome. Queda como mejora futura opcional si algún escenario
+la necesita.
+
 ## 4. Fuente de escenarios — por fases
 
 ### Fase 1 — Medidor real (grounded en prod) ⭐ máxima prioridad
