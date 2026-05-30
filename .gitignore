@@ -3,3 +3,7 @@ dist/
 .env
 *.log
 .DS_Store
+
+# QA suite v2 run artifacts (logs + per-model results)
+ab-results/
+!ab-results/v2/.gitkeep
