@@ -101,6 +101,17 @@ export function extractAmountCorrection(text: string): number | null {
  * the intent pipeline and catches plot corrections; here we accept the
  * leftovers that look like category swaps.
  */
+/**
+ * Strip a trailing negation suffix the user appends to disambiguate a correction,
+ * e.g. "sueldos no gasoil" → "sueldos" ("era en sueldos NO gasoil"). Without this,
+ * the leftover old category ("gasoil") gets matched by detectarCategoria and the
+ * correction silently saves the very category the user was correcting away from.
+ * Safe because no real category contains a standalone " no " token.
+ */
+function stripTrailingNegation(s: string): string {
+  return s.replace(/[\s,]+no\s+\S.*$/i, '').trim();
+}
+
 export function extractCategoryCorrection(text: string): string | null {
   const t = text.trim();
   if (!t) return null;
@@ -108,7 +119,7 @@ export function extractCategoryCorrection(text: string): string | null {
   const m1 = t.match(
     /^(?:no,?\s*(?:es|categor[ií]a)|cambiar\s+a|en\s+realidad\s+categor[ií]a)\s+(.+)$/i,
   );
-  if (m1) return m1[1].trim() || null;
+  if (m1) return stripTrailingNegation(m1[1].trim()) || null;
 
   // "no, era en X" / "no, fue en X" — only when X is a category word.
   // Without the stoplist guard this would conflict with plot corrections
@@ -119,7 +130,7 @@ export function extractCategoryCorrection(text: string): string | null {
     /^no,?\s*(?:era|fue|fui|fuimos)\s+en\s+(?:el\s+|la\s+)?([\p{L}][\p{L}\s\-]*?)\s*[.!?]?\s*$/iu,
   );
   if (m2) {
-    const candidate = m2[1].trim();
+    const candidate = stripTrailingNegation(m2[1].trim());
     if (looksLikeCategoryWord(candidate)) return candidate || null;
   }
   return null;
