@@ -2706,31 +2706,54 @@ export class FinancialHandler {
           };
         }
         const plotsBeforeBatch = await this.service.findAllUserPlots(userId);
-        const created: Array<{ name: string; id: number }> = [];
+        const created: Array<{ name: string; id: number; area: number | null }> = [];
         const existing: string[] = [];
         const existingPlots = await this.service.getPlotsByField(targetField.id);
-        for (const name of plotNames) {
+
+        // Resolve per-plot hectares from three sources, in priority order:
+        //   (1) embedded in the name ("Norte 120 has") — requires an explicit ha UNIT so
+        //       we never mangle legit numeric names like "Lote 3" / "1A";
+        //   (2) an aligned `hectares` array ([120,85,60]);
+        //   (3) a uniform `hectares`/`area` number ("de 50 ha cada uno").
+        // Plots are always created with a CLEAN name (never "Norte 120 has").
+        const splitNameArea = (raw: string): { name: string; area: number | null } => {
+          const m = raw.match(/^(.+?)[\s,]+(\d+(?:[.,]\d+)?)\s*(?:has?\.?|hect[aá]reas?)$/i);
+          if (m) {
+            const a = parseFloat(m[2].replace(',', '.'));
+            if (a > 0 && a < 100000) return { name: m[1].trim(), area: a };
+          }
+          return { name: raw.trim(), area: null };
+        };
+        const hectaresParam = (cmd as Record<string, unknown>).hectares;
+        const uniformAreaParam = typeof hectaresParam === 'number' && hectaresParam > 0
+          ? hectaresParam
+          : (typeof cmd.area === 'number' && cmd.area > 0 ? cmd.area : null);
+        const parsed = plotNames.map(splitNameArea);
+        const areaFor = (i: number): number | null => {
+          if (parsed[i].area != null) return parsed[i].area;
+          if (Array.isArray(hectaresParam) && hectaresParam[i] != null) {
+            const a = Number(hectaresParam[i]);
+            return a > 0 && a < 100000 ? a : null;
+          }
+          return uniformAreaParam;
+        };
+
+        for (let i = 0; i < parsed.length; i++) {
+          const name = parsed[i].name;
           const already = existingPlots.some(p => p.name.toLowerCase() === name.toLowerCase());
           if (already) {
             existing.push(name);
           } else {
             const plot = await this.service.getOrCreatePlot(targetField.id, name);
-            created.push({ name: plot.name, id: plot.id });
-          }
-        }
-
-        // If the user already gave us the area ("de 50 ha cada uno"), apply
-        // it upfront so we skip the per-plot "¿cuántas hectáreas?" queue.
-        const areaCadaUno = typeof cmd.area === 'number' && cmd.area > 0 ? cmd.area : null;
-        if (areaCadaUno) {
-          for (const c of created) {
-            await this.service.setPlotArea(c.id, areaCadaUno);
+            const area = areaFor(i);
+            if (area != null) await this.service.setPlotArea(plot.id, area);
+            created.push({ name: plot.name, id: plot.id, area });
           }
         }
 
         let msg = '';
         if (created.length > 0) {
-          msg += `📍 Lotes creados en campo *${targetField.name}*:\n${created.map(c => `  \u2022 *${c.name}*${areaCadaUno ? ` \u2014 ${areaCadaUno} ha` : ''}`).join('\n')}`;
+          msg += `📍 Lotes creados en campo *${targetField.name}*:\n${created.map(c => `  \u2022 *${c.name}*${c.area != null ? ` \u2014 ${c.area} ha` : ''}`).join('\n')}`;
         }
         if (existing.length > 0) {
           if (created.length > 0) msg += '\n\n';
@@ -2742,9 +2765,9 @@ export class FinancialHandler {
           if (welcomeMsg) batchMessages.push(interpolate(welcomeMsg, { nombre: user.name || '' }));
         }
         const batchSideEffects: HandlerResponse['sideEffects'] = {};
-        if (created.length > 0 && !areaCadaUno) {
-          const now = Date.now();
-          batchSideEffects.setPendingPlotAreaQueue = created.map(c => ({
+        const needArea = created.filter(c => c.area == null);
+        if (needArea.length > 0) {
+          batchSideEffects.setPendingPlotAreaQueue = needArea.map(c => ({
             plotId: c.id, plotName: c.name, fieldName: targetField.name,
           }));
         }
