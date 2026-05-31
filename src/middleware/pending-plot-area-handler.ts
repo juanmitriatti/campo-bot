@@ -6,9 +6,16 @@ export interface PendingPlotAreaResult {
   handled: boolean; // true = message consumed (don't fall through to pipeline)
 }
 
-function parseHectares(text: string): number | null {
-  const cleaned = text.replace(/,/g, '.').replace(/\s*ha\s*/i, '').trim();
-  const val = parseFloat(cleaned);
+export function parseHectares(text: string): number | null {
+  // Decimal comma → dot, then pull every number out. A bare parseFloat takes the
+  // FIRST token, which breaks mid-message corrections like "40, ah no eran 60"
+  // (the user means 60). When a correction cue is present, prefer the LAST number.
+  const cleaned = text.replace(/,/g, '.');
+  const nums = cleaned.match(/\d+(?:\.\d+)?/g);
+  if (!nums || nums.length === 0) return null;
+  const hasCorrection = /\b(no|perd[oó]n|en\s+realidad|eran?|mejor\s+dicho|quise\s+decir|digo)\b/i.test(text);
+  const pick = hasCorrection ? nums[nums.length - 1] : nums[0];
+  const val = parseFloat(pick);
   if (isNaN(val) || val <= 0 || val >= 100000) return null;
   return val;
 }
