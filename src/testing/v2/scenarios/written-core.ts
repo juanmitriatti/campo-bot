@@ -257,4 +257,30 @@ export const WRITTEN_CORE: Scenario[] = [
       dbRowCount('stock_items', {}, 1),
     ],
   },
+
+  // ──────────────────────────────────────────────────────────────────
+  // SCENARIO 11: mid-confirmation category correction (pending-correction
+  // interceptor). Reproduces the real prod failure "no, era en sueldos" that
+  // fell through to the agent on WhatsApp. Exercises the shared helper end-to-end
+  // through test-bot: the expense starts as Combustible (gasoil), the user
+  // corrects the category to sueldos before confirming, and the SAVED expense
+  // must have category Sueldos — not Combustible.
+  // ──────────────────────────────────────────────────────────────────
+  {
+    id: 'context-correction-mid-confirm',
+    source: 'written',
+    domains: ['gastos'],
+    axes: ['repreguntas', 'contexto'],
+    seed: FIELD_SEED,
+    turns: [
+      { send: 'gasté 50000 en gasoil' },     // → pending confirm, category Combustible
+      { send: 'no, era en sueldos' },          // → interceptor patches category to Sueldos
+      { tap: 'confirm_pending' },              // → save
+    ],
+    assert: [
+      // The corrected category must be persisted, and the wrong one must NOT.
+      dbExpense({ amount: 50000, category: 'Sueldos' }),
+      dbNone('expenses', { category: 'Combustible' }),
+    ],
+  },
 ];
