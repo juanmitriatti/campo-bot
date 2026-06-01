@@ -14,6 +14,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
+import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
@@ -1592,7 +1593,7 @@ router.post('/', async (req: Request, res: Response) => {
       const expectsFinancialSlot = pendingAct.missing
         && (pendingAct.command === 'log_income' || pendingAct.command === 'log_expense')
         && pendingAct.missing.some(s => s === 'amount' || s === 'quantity' || s === 'unit_price' || s === 'unit');
-      if (!expectsFinancialSlot && (actInterruptCmd || intentClassifier.detectsFinancialIntent(text))) {
+      if (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text))) {
         pendingActStore.clear(phone);
         // Fall through to normal processing
       } else if (pendingAct.missing && pendingAct.missing.length > 0) {

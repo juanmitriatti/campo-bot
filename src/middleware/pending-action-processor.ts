@@ -27,6 +27,35 @@
 import type { PendingActivity } from './pending-activities.js';
 import { extractSlots, type ExtractedSlots, type SlotName } from './slot-extractor.js';
 
+/**
+ * Commands that START a brand-new write and therefore legitimately interrupt a
+ * pending activity (the user pivoted). A pending with missing slots must NOT be
+ * escaped just because the reply happens to parse as a READ/query command —
+ * "maíz" parses as a crop query, "lote A" as a plot query, "280" as a number —
+ * those are ANSWERS to the pending, not pivots. Escaping on them was the cause
+ * of the compound-siembra and gasto-plot data loss. Only a real new write (or a
+ * financial intent, handled separately) should clear the pending.
+ */
+const NEW_ACTION_WRITE_COMMANDS: ReadonlySet<string> = new Set([
+  'add_field', 'add_plot', 'add_plots_batch',
+  'sow_crop', 'harvest_crop', 'log_spraying', 'log_fertilization',
+  'log_tillage', 'log_irrigation', 'log_rainfall', 'log_observation',
+  'log_crop_scouting',
+  'log_expense', 'log_income', 'set_budget',
+  'add_livestock', 'remove_livestock', 'transfer_livestock', 'adjust_livestock',
+  'record_livestock_birth', 'record_livestock_death',
+  'log_health_event', 'log_repro_event', 'log_weighing', 'log_tacto',
+  'add_stock', 'create_warehouse',
+]);
+
+/**
+ * True when a parsed command should interrupt an open pending (a genuine new
+ * write), as opposed to a read/query that is really the pending's answer.
+ */
+export function isNewActionInterrupt(cmd: { command?: string } | null | undefined): boolean {
+  return !!cmd?.command && NEW_ACTION_WRITE_COMMANDS.has(cmd.command);
+}
+
 export interface PendingProcessResult {
   /** Updated pending state (merged). null = pending fully satisfied → caller should re-route the command. */
   next: PendingActivity | null;

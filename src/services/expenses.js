@@ -2454,6 +2454,28 @@ export async function updateDomainEventPlot(eventId, plotId, editedBy, extraFiel
 }
 
 /**
+ * Keep plot_crops in sync when a planting event's crop or plot is corrected via
+ * edit_last_activity. Without this, "la siembra de soja era trigo" updated the
+ * domain_event but left plot_crops (the active campaign / "cultivo activo")
+ * showing soja — an inconsistency the user sees immediately.
+ */
+export async function syncPlotCropFromEdit(plotCropId, { crop = null, plotId = null } = {}) {
+  if (!plotCropId) return null;
+  const sets = [];
+  const params = [];
+  let idx = 0;
+  if (crop != null) { idx++; sets.push(`crop = $${idx}`); params.push(crop); }
+  if (plotId != null) { idx++; sets.push(`plot_id = $${idx}`); params.push(plotId); }
+  if (sets.length === 0) return null;
+  idx++;
+  const result = await pool.query(
+    `UPDATE plot_crops SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+    [...params, plotCropId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
  * Soft-delete a domain_event and keep dependent state consistent.
  *
  * Previously this hard-deleted the row, which (a) violated the harvest_loads FK

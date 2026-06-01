@@ -3138,6 +3138,17 @@ export class AgronomyHandler {
         // Update the event (plotId may be null when the user only fixed crop/date)
         await this.repo.updateDomainEventPlot(lastEvent.id, newPlotId, userId, extraFields);
 
+        // Keep plot_crops in sync for siembra corrections — otherwise the
+        // "cultivo activo" of the lote stays on the old crop/plot while the
+        // event shows the new one (silent inconsistency the user sees).
+        const editedPlotCropId = (lastEvent as { plot_crop_id?: number | null }).plot_crop_id;
+        if (lastEvent.event_type === 'planting' && editedPlotCropId) {
+          try {
+            const { syncPlotCropFromEdit } = await import('../../services/expenses.js');
+            await syncPlotCropFromEdit(editedPlotCropId, { crop: newCrop || null, plotId: newPlotId });
+          } catch { /* non-blocking */ }
+        }
+
         const { label: editActLabel } = getActivityLabel(lastEvent.event_type);
         const oldPlotLabel = lastEvent.plot_name || 'sin lote';
 
