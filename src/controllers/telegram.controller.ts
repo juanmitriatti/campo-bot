@@ -12,6 +12,7 @@ import { AgronomyRepository } from '../domain/agronomy/agronomy.repository.js';
 import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
+import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
@@ -1405,7 +1406,7 @@ async function processTextMessage(
         return items;
       }
 
-      if (effectiveCmd || intentClassifier.detectsFinancialIntent(text)) {
+      if (!isPlotAnswerToFlow(flowCtx.state, text) && (effectiveCmd || intentClassifier.detectsFinancialIntent(text))) {
         await conversationEngine.clearFlow(userId);
       } else {
         const result = await conversationEngine.processFlowMessage(userId, text, flowCtx);

@@ -14,6 +14,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { logError } from '../services/error-logger.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
+import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
 import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
@@ -881,7 +882,9 @@ async function processTextMessage(
       }
 
       // Intent-first interruption: any non-safe command OR financial intent cancels the flow
-      if (effectiveCmd || intentClassifier.detectsFinancialIntent(text)) {
+      // — UNLESS the flow is asking for a plot and the user answered with one
+      // ("lote A"), in which case it's the answer, not an interruption.
+      if (!isPlotAnswerToFlow(flowCtx.state, text) && (effectiveCmd || intentClassifier.detectsFinancialIntent(text))) {
         await conversationEngine.clearFlow(userId);
         // Fall through to normal intent processing below
       } else {

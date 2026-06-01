@@ -268,8 +268,11 @@ export class LivestockHandler {
         corralName: cmd.corralName as string,
         breed: cmd.breed as string,
         avg_weight_kg: cmd.avg_weight_kg as number,
+        total_weight_kg: cmd.total_weight_kg as number,
         unit_price_ars: cmd.unit_price_ars as number,
         unit_price_usd: cmd.unit_price_usd as number,
+        price_per_kg_ars: cmd.price_per_kg_ars as number,
+        price_per_kg_usd: cmd.price_per_kg_usd as number,
         reason: cmd.reason as string,
         movement_date: cmd.eventDate as string,
       }));
@@ -286,7 +289,7 @@ export class LivestockHandler {
       ? `\n  💸 Gasto registrado: ${fmtAmount(financial.amount, financial.currency)} (Hacienda)`
       : '';
     const isPurchase = cmd.isPurchase === true;
-    const hasPrice = !!(cmd.unit_price_ars || cmd.unit_price_usd);
+    const hasPrice = !!(cmd.unit_price_ars || cmd.unit_price_usd || cmd.price_per_kg_ars || cmd.price_per_kg_usd);
     const askPriceLine = (isPurchase && !hasPrice && !financial)
       ? '\n\n¿A cuánto fue la compra? Así registro el gasto.'
       : '';
@@ -351,8 +354,12 @@ export class LivestockHandler {
         plotName: cmd.plotName as string,
         corralName: cmd.corralName as string,
         breed: cmd.breed as string,
+        avg_weight_kg: cmd.avg_weight_kg as number,
+        total_weight_kg: cmd.total_weight_kg as number,
         unit_price_ars: cmd.unit_price_ars as number,
         unit_price_usd: cmd.unit_price_usd as number,
+        price_per_kg_ars: cmd.price_per_kg_ars as number,
+        price_per_kg_usd: cmd.price_per_kg_usd as number,
         reason: cmd.reason as string,
         movement_date: cmd.eventDate as string,
         // In compound (bulkMode), if multiple breeds coexist, auto-pick the
@@ -372,7 +379,7 @@ export class LivestockHandler {
       ? `\n  💰 Ingreso registrado: ${fmtAmount(financial.amount, financial.currency)} (Hacienda)`
       : '';
     const isSale = cmd.isSale === true;
-    const hasPrice = !!(cmd.unit_price_ars || cmd.unit_price_usd);
+    const hasPrice = !!(cmd.unit_price_ars || cmd.unit_price_usd || cmd.price_per_kg_ars || cmd.price_per_kg_usd);
     const askPriceLine = (isSale && !hasPrice && !financial)
       ? '\n\n¿A cuánto fue la venta? Así registro el ingreso.'
       : '';
@@ -790,12 +797,27 @@ export class LivestockHandler {
       buttons.push({ id: `lv_animals_all_${kind}_${payload}`, title: `Todos (${knownGroupCount})` });
     }
     buttons.push({ id: `lv_animals_skip_${kind}_${payload}`, title: 'Saltar' });
+    // Register a unified pending so a TEXT reply ("las 280 vacas", "todas, 50")
+    // is captured as the answer. Previously this only offered buttons and no
+    // pending, so a typed count fell through to the classifier and the event
+    // (servicio/vacunación/pesaje) was silently lost.
+    const pendingCommand = (cmd.command as string | null) || (
+      kind === 'health' ? 'log_health_event' : kind === 'repro' ? 'log_repro_event' : 'log_weighing'
+    );
     return {
       messages: [],
       interactive: {
         type: 'buttons' as const,
         body: '¿A cuántos animales?',
         buttons,
+      },
+      sideEffects: {
+        setPendingActivity: {
+          command: pendingCommand,
+          data: { ...cmd, command: pendingCommand },
+          missing: ['count'],
+          askPrompt: '¿A cuántos animales?',
+        },
       },
     };
   }
@@ -857,7 +879,7 @@ export class LivestockHandler {
     }
 
     const category = cmd.category as string | null;
-    const animalsAffected = typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected : null;
+    const animalsAffected = typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected : (typeof cmd.count === 'number' ? cmd.count : null);
     const diseaseOrVaccine = cmd.diseaseOrVaccine as string | null;
     const doseQuantity = typeof cmd.doseQuantity === 'number' ? cmd.doseQuantity : null;
     const doseUnit = cmd.doseUnit as string | null;
@@ -992,7 +1014,7 @@ export class LivestockHandler {
     }
 
     const category = cmd.category as string | null;
-    const animalsAffected = typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected : null;
+    const animalsAffected = typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected : (typeof cmd.count === 'number' ? cmd.count : null);
     const sireInfo = cmd.sireInfo as string | null;
     const method = cmd.method as string | null;
 

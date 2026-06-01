@@ -141,23 +141,27 @@ export class CompoundExecutor {
     // for stock deduction. Dedup is keyed on command + plot + product +
     // quantity + unit + amount/category, which covers the cases that matter
     // (sprays, fertilizations, expenses, incomes, livestock movements).
+    // Fingerprint = intent type + the FULL normalized command data (every
+    // meaningful field), not a hardcoded subset. The old subset missed fields
+    // like disease/vaccine, avg_weight_kg, animal_category, dose, etc., so two
+    // identical vacunaciones deduped correctly but a single price/weight that
+    // differed between otherwise-similar tools could be wrongly collapsed —
+    // and, worse, a NEW field (any future tool) would never enter the key.
+    // Hashing the whole payload makes dedup exact: identical → dropped,
+    // anything different in ANY field → kept. Internal flags (keys starting
+    // with "_", e.g. _bulkMode) are volatile and excluded.
     const seen = new Set<string>();
     const deduped: ParseResult[] = [];
     for (const step of actionable) {
       const data = (step.intent.data || {}) as Record<string, unknown>;
-      const fp = JSON.stringify([
-        step.intent.type,
-        data.command ?? '',
-        data.plotName ?? data.plot ?? '',
-        data.fieldName ?? data.field ?? '',
-        data.product ?? '',
-        data.quantity ?? '',
-        data.unit ?? '',
-        data.amount ?? '',
-        data.category ?? '',
-        data.crop ?? '',
-        data.count ?? '',
-      ]);
+      const stable: Record<string, unknown> = {};
+      for (const key of Object.keys(data).sort()) {
+        if (key.startsWith('_')) continue;
+        const v = data[key];
+        if (v === undefined || v === null || v === '') continue;
+        stable[key] = v;
+      }
+      const fp = JSON.stringify([step.intent.type, stable]);
       if (seen.has(fp)) continue;
       seen.add(fp);
       deduped.push(step);

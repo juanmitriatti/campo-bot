@@ -790,6 +790,8 @@ export class AgentResponseMapper {
     if (input.new_text != null) cmd.newText = input.new_text;       // edit_last_observation
     if (input.new_mm != null) cmd.newMm = input.new_mm;             // edit_last_rainfall
     if (input.activity_filter != null && (toolName === 'edit_last_activity' || toolName === 'delete_last_activity')) cmd.activityFilter = input.activity_filter;
+    // Target plot of the record being edited/deleted (distinct from new_plot).
+    if (input.target_plot != null && (toolName === 'edit_last_activity' || toolName === 'delete_last_activity')) cmd.targetPlotName = input.target_plot;
     if (input.category_filter != null) cmd.categoryFilter = input.category_filter;
     if (input.clear_lot != null) cmd.clearLot = input.clear_lot;
     // Filter fields for delete_specific / edit_specific
@@ -801,8 +803,11 @@ export class AgentResponseMapper {
     if (input.count != null) cmd.count = input.count;
     if (input.breed != null) cmd.breed = input.breed;
     if (input.avg_weight_kg != null) cmd.avg_weight_kg = input.avg_weight_kg;
+    if (input.total_weight_kg != null) cmd.total_weight_kg = input.total_weight_kg;
     if (input.unit_price_ars != null) cmd.unit_price_ars = input.unit_price_ars;
     if (input.unit_price_usd != null) cmd.unit_price_usd = input.unit_price_usd;
+    if (input.price_per_kg_ars != null) cmd.price_per_kg_ars = input.price_per_kg_ars;
+    if (input.price_per_kg_usd != null) cmd.price_per_kg_usd = input.price_per_kg_usd;
     if (input.is_purchase != null) cmd.isPurchase = input.is_purchase;
     if (input.is_sale != null) cmd.isSale = input.is_sale;
     if (input.source_field != null) cmd.sourceField = input.source_field;

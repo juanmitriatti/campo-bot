@@ -13,6 +13,7 @@ import { AgronomyRepository } from '../domain/agronomy/agronomy.repository.js';
 import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
+import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
@@ -1420,7 +1421,8 @@ router.post('/', async (req: Request, res: Response) => {
         }
 
         // Intent-first interruption: any non-safe command OR financial intent cancels the flow
-        if (effectiveCmd || intentClassifier.detectsFinancialIntent(text)) {
+        // — UNLESS the flow is asking for a plot and the user answered with one.
+        if (!isPlotAnswerToFlow(flowCtx.state, text) && (effectiveCmd || intentClassifier.detectsFinancialIntent(text))) {
           const durationMs = flowCtx.startedAt ? Date.now() - new Date(flowCtx.startedAt).getTime() : undefined;
           console.log(`[FLOW_INTERRUPT] User ${userId} flow ${flowCtx.state} interrupted by ${effectiveCmd?.command ?? 'financial_intent'}`);
           conversationObserver.logFlowAbandoned(userId, flowCtx.state, flowCtx.step, 'intent_interrupt', {
