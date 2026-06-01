@@ -965,7 +965,8 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        plotNames: { type: 'array', items: { type: 'string' }, description: 'Lista de nombres de lotes a crear.' },
+        plotNames: { type: 'array', items: { type: 'string' }, description: 'Lista de nombres de lotes a crear. SOLO el nombre — NUNCA incluyas las hectáreas en el nombre (mal: "Norte 120 has"; bien: "Norte" + hectares:[120]).' },
+        hectares: { description: 'Superficie por lote. Un número si todos comparten la misma ("de 50 ha cada uno" → 50), o un array alineado a plotNames si difieren ("A 120 has, B 85 has" → [120,85]).' },
         field: { type: 'string', description: 'Campo donde crear los lotes.' },
       },
       required: ['plotNames'],
