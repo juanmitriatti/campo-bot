@@ -290,7 +290,7 @@ export class AgronomyRepository {
     return _deleteDomainEvent(eventId) as Promise<DomainEventRow | null>;
   }
 
-  async findLastDomainEventFiltered(userId: UserId, filters: { eventType?: string; crop?: string } = {}): Promise<(DomainEventRow & { plot_name: string | null; field_name: string | null }) | null> {
+  async findLastDomainEventFiltered(userId: UserId, filters: { eventType?: string; crop?: string; plotId?: number } = {}): Promise<(DomainEventRow & { plot_name: string | null; field_name: string | null }) | null> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return _findLastDomainEventFiltered(userId, filters) as Promise<any>;
   }

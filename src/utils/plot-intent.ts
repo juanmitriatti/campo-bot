@@ -52,3 +52,25 @@ export function userExplicitlyReferencedPlot(text: string | null | undefined): b
   const normalized = text.toLowerCase();
   return PLOT_INTENT_PATTERNS.some(re => re.test(normalized));
 }
+
+/**
+ * Flows whose current step asks the user for a plot ("¿En qué lote?"). When one
+ * of these is active and the user answers with a plot reference ("lote A",
+ * "ahí mismo"), that reply is the ANSWER — not a command interruption.
+ */
+const PLOT_COLLECTING_FLOWS: ReadonlySet<string> = new Set([
+  'expense_flow', 'income_flow', 'activity_flow', 'rainfall_flow',
+]);
+
+/**
+ * True when an active plot-collecting flow should consume `text` as its plot
+ * answer instead of letting it cancel the flow. This closes the #1 data-loss
+ * bug: "gasté 120 mil en X" → "¿en qué lote?" → "lote A" used to parse as a
+ * plot QUERY command, cancel the flow, hit the classifier as a query, and drop
+ * the expense. Now the plot-ish reply stays inside the flow and the record is
+ * saved. General by design — any plot-collecting flow inherits it.
+ */
+export function isPlotAnswerToFlow(flowState: string | null | undefined, text: string): boolean {
+  if (!flowState || !PLOT_COLLECTING_FLOWS.has(flowState)) return false;
+  return userExplicitlyReferencedPlot(text);
+}

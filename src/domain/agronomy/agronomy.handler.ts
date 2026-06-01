@@ -164,6 +164,7 @@ export class AgronomyHandler {
     | { type: 'ask_user'; plots: Array<{ id: number; name: string; field_name: string }> }
   > {
     if (resolved.plotId) {
+      this.recordPlotContext(userId, resolved.fieldId, resolved.plotId);
       return { type: 'resolved', plotId: resolved.plotId, fieldId: resolved.fieldId, plotName: resolved.plotName, fieldName: resolved.fieldName };
     }
 
@@ -176,6 +177,7 @@ export class AgronomyHandler {
     if (userPlots.length === 1) {
       const p = userPlots[0];
       const field = await this.repo.getFieldByName(userId, p.field_name);
+      this.recordPlotContext(userId, field?.id ?? null, p.id);
       return {
         type: 'resolved',
         plotId: p.id,
@@ -186,6 +188,26 @@ export class AgronomyHandler {
     }
 
     return { type: 'ask_user', plots: userPlots };
+  }
+
+  /**
+   * Record the resolved field/plot into conversation_state.context_stack so the
+   * NEXT message's pronoun ("ahí mismo", "ese lote", "el de antes") resolves to
+   * the lote this activity actually touched. Without this, agro activities left
+   * no trace and "ahí mismo" fell back to whatever the last FINANCIAL write
+   * used — resolving pronouns to the wrong plot. Fire-and-forget: a context
+   * write must never block or fail an activity registration. This is the single
+   * chokepoint for ALL agro writes that go through resolveActivityPlot, so new
+   * activity types inherit it automatically.
+   */
+  private recordPlotContext(userId: UserId, fieldId: number | null, plotId: number | null): void {
+    if (!plotId) return;
+    void (async () => {
+      try {
+        const { updateConversationState } = await import('../../services/expenses.js');
+        await updateConversationState(userId, fieldId, plotId);
+      } catch { /* non-blocking */ }
+    })();
   }
 
   /**
@@ -3014,8 +3036,20 @@ export class AgronomyHandler {
         // AND livestock events (health/repro/weighing/tacto) which share the
         // domain_events table.
         const delFilter = normalizeActivityFilter(cmd.activityFilter as string | null);
+        // Disambiguate the target by the crop + plot the user named, so
+        // "borrá la siembra de girasol del lote 3" hits THAT record instead of
+        // blindly the most recent activity.
+        const delCropFilter = (cmd.crop as string | null) || undefined;
+        let delPlotId: number | undefined;
+        const delTargetPlot = (cmd.targetPlotName as string | null) || null;
+        if (delTargetPlot) {
+          const r = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, delTargetPlot);
+          if (r.plotId) delPlotId = r.plotId;
+        }
         const lastActivity = await this.repo.findLastDomainEventFiltered(userId, {
           eventType: delFilter || undefined,
+          crop: delCropFilter,
+          plotId: delPlotId,
         });
         if (!lastActivity) {
           const filterDesc = delFilter ? ` de tipo ${delFilter}` : '';
@@ -3052,10 +3086,20 @@ export class AgronomyHandler {
           return { messages: ['¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*\n✏️ *sin lote* (para sacar el lote)'] };
         }
 
+        // Disambiguate the target by the plot the user named as the SUBJECT of
+        // the correction ("la siembra del lote 1 era trigo"), not the new plot.
+        let editTargetPlotId: number | undefined;
+        const editTargetPlot = (cmd.targetPlotName as string | null) || null;
+        if (editTargetPlot) {
+          const r = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, editTargetPlot);
+          if (r.plotId) editTargetPlotId = r.plotId;
+        }
+
         // Find last matching activity
         const lastEvent = await this.repo.findLastDomainEventFiltered(userId, {
           eventType: editFilter || undefined,
           crop: editCropFilter || undefined,
+          plotId: editTargetPlotId,
         });
 
         if (!lastEvent) {

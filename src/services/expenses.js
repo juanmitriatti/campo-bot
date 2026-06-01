@@ -1,4 +1,4 @@
-import { pool } from "../config/db.js";
+import { pool, withTransaction } from "../config/db.js";
 
 /**
  * Helper: returns a SQL subquery fragment for accessible field IDs
@@ -2414,6 +2414,13 @@ export async function findLastDomainEventFiltered(userId, filters = {}) {
     conditions.push(`de.crop ILIKE $${idx}`);
     params.push(`%${filters.crop}%`);
   }
+  // Narrow by the plot the user named ("la cosecha del lote 3") so corrections
+  // and deletes hit the referenced record instead of blindly the most recent.
+  if (filters.plotId) {
+    idx++;
+    conditions.push(`de.plot_id = $${idx}`);
+    params.push(filters.plotId);
+  }
 
   const result = await pool.query(
     `SELECT de.*, p.name as plot_name, f.name as field_name, p.field_id
@@ -2446,12 +2453,58 @@ export async function updateDomainEventPlot(eventId, plotId, editedBy, extraFiel
   return result.rows[0] || null;
 }
 
+/**
+ * Soft-delete a domain_event and keep dependent state consistent.
+ *
+ * Previously this hard-deleted the row, which (a) violated the harvest_loads FK
+ * for cosechas with cargas → 500, and (b) left plot_crops out of sync (a deleted
+ * siembra still showed as "cultivo activo", a deleted cosecha left the campaign
+ * marked harvested). Now we run a single transaction that:
+ *   - harvest  → removes its harvest_loads and re-opens the plot_crop
+ *                (harvested_at / yield_kg / yield_notes / end_date cleared) so
+ *                the campaign returns to "activa".
+ *   - planting → deletes the plot_crop it created (only if not yet harvested),
+ *                freeing the unique-active slot so the lote can be re-sown.
+ *   - any type → sets deleted_at so it disappears from every query.
+ * The cleanup is keyed off the event itself, so it generalises to any future
+ * event type that links to dependent rows.
+ */
 export async function deleteDomainEvent(eventId) {
-  const result = await pool.query(
-    `DELETE FROM domain_events WHERE id = $1 RETURNING *`,
-    [eventId]
-  );
-  return result.rows[0] || null;
+  return withTransaction(async () => {
+    const { rows } = await pool.query(
+      `SELECT * FROM domain_events WHERE id = $1 AND deleted_at IS NULL`,
+      [eventId]
+    );
+    const event = rows[0];
+    if (!event) return null;
+
+    if (event.event_type === 'harvest') {
+      // Cargas son datos hoja de la cosecha → se borran con ella.
+      await pool.query(`DELETE FROM harvest_loads WHERE domain_event_id = $1`, [eventId]);
+      if (event.plot_crop_id) {
+        await pool.query(
+          `UPDATE plot_crops
+              SET harvested_at = NULL, yield_kg = NULL, yield_notes = NULL,
+                  end_date = NULL
+            WHERE id = $1`,
+          [event.plot_crop_id]
+        );
+      }
+    } else if (event.event_type === 'planting' && event.plot_crop_id) {
+      // Una siembra borrada libera el lote SOLO si todavía no se cosechó; si ya
+      // hay cosecha encima, dejamos la campaña intacta y solo borramos el evento.
+      await pool.query(
+        `DELETE FROM plot_crops WHERE id = $1 AND harvested_at IS NULL`,
+        [event.plot_crop_id]
+      );
+    }
+
+    const result = await pool.query(
+      `UPDATE domain_events SET deleted_at = NOW() WHERE id = $1 RETURNING *`,
+      [eventId]
+    );
+    return result.rows[0] || null;
+  });
 }
 
 // --- Audio transcription logs ---

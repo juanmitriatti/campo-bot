@@ -279,13 +279,46 @@ export class LivestockService {
    */
   private static resolvePriceTotal(
     count: number,
-    opts: { unit_price_ars?: number | null; unit_price_usd?: number | null }
-  ): { amount: number; currency: Currency } | null {
+    opts: {
+      unit_price_ars?: number | null;
+      unit_price_usd?: number | null;
+      price_per_kg_ars?: number | null;
+      price_per_kg_usd?: number | null;
+      total_weight_kg?: number | null;
+      avg_weight_kg?: number | null;
+    }
+  ): { amount: number; currency: Currency; quantity: number; unit: string; unitPrice: number } | null {
+    // PRICE-PER-KILO path (how AR livestock is normally sold): amount =
+    // total kilos × price/kg. Total kilos come from total_weight_kg, or from
+    // avg_weight_kg × count. We MUST NOT fall back to count × price/kg — that
+    // was the original bug (registered ~400× too little). If a $/kg price was
+    // given but no weight, we can't compute and return null (no silent wrong
+    // amount); the prompt instructs the agent to always capture the weight.
+    const perKg = (opts.price_per_kg_ars && opts.price_per_kg_ars > 0)
+      ? { price: opts.price_per_kg_ars, currency: 'ARS' as Currency }
+      : (opts.price_per_kg_usd && opts.price_per_kg_usd > 0)
+        ? { price: opts.price_per_kg_usd, currency: 'USD' as Currency }
+        : null;
+    if (perKg) {
+      const totalKg = (opts.total_weight_kg && opts.total_weight_kg > 0)
+        ? opts.total_weight_kg
+        : (opts.avg_weight_kg && opts.avg_weight_kg > 0 ? opts.avg_weight_kg * count : null);
+      if (!totalKg) return null;
+      return {
+        amount: Math.round(totalKg * perKg.price * 100) / 100,
+        currency: perKg.currency,
+        quantity: Math.round(totalKg * 100) / 100,
+        unit: 'kg',
+        unitPrice: perKg.price,
+      };
+    }
+
+    // PER-HEAD path (existing behaviour): amount = count × price/head.
     if (opts.unit_price_ars && opts.unit_price_ars > 0) {
-      return { amount: Math.round(count * opts.unit_price_ars * 100) / 100, currency: 'ARS' };
+      return { amount: Math.round(count * opts.unit_price_ars * 100) / 100, currency: 'ARS', quantity: count, unit: 'cabeza', unitPrice: opts.unit_price_ars };
     }
     if (opts.unit_price_usd && opts.unit_price_usd > 0) {
-      return { amount: Math.round(count * opts.unit_price_usd * 100) / 100, currency: 'USD' };
+      return { amount: Math.round(count * opts.unit_price_usd * 100) / 100, currency: 'USD', quantity: count, unit: 'cabeza', unitPrice: opts.unit_price_usd };
     }
     return null;
   }
@@ -305,10 +338,20 @@ export class LivestockService {
     count: number,
     breed: string | null,
     movementDate: string | null | undefined,
+    pricing?: {
+      price_per_kg_ars?: number | null;
+      price_per_kg_usd?: number | null;
+      total_weight_kg?: number | null;
+      avg_weight_kg?: number | null;
+    },
   ): Promise<LinkedFinancialRecord | null> {
     const price = LivestockService.resolvePriceTotal(count, {
       unit_price_ars: movement.unit_price_ars,
       unit_price_usd: movement.unit_price_usd,
+      price_per_kg_ars: pricing?.price_per_kg_ars,
+      price_per_kg_usd: pricing?.price_per_kg_usd,
+      total_weight_kg: pricing?.total_weight_kg,
+      avg_weight_kg: pricing?.avg_weight_kg,
     });
     if (!price) return null;
 
@@ -345,9 +388,10 @@ export class LivestockService {
           currency: price.currency,
           category: 'Hacienda',
           description,
-          quantity: count,
-          unit: label,
-          unit_price: movement.unit_price_ars ?? movement.unit_price_usd,
+          // When sold $/kg, the income reads as total kg × $/kg; otherwise per head.
+          quantity: price.unit === 'kg' ? price.quantity : count,
+          unit: price.unit === 'kg' ? 'kg' : label,
+          unit_price: price.unitPrice,
           incomeDate: movementDate ?? null,
         },
         fieldId,
@@ -388,8 +432,11 @@ export class LivestockService {
       corralName?: string | null;
       breed?: string | null;
       avg_weight_kg?: number | null;
+      total_weight_kg?: number | null;
       unit_price_ars?: number | null;
       unit_price_usd?: number | null;
+      price_per_kg_ars?: number | null;
+      price_per_kg_usd?: number | null;
       reason?: string | null;
       notes?: string | null;
       movement_date?: string | null;
@@ -442,6 +489,12 @@ export class LivestockService {
       opts.count,
       opts.breed ?? null,
       opts.movement_date,
+      {
+        price_per_kg_ars: opts.price_per_kg_ars,
+        price_per_kg_usd: opts.price_per_kg_usd,
+        total_weight_kg: opts.total_weight_kg,
+        avg_weight_kg: opts.avg_weight_kg,
+      },
     ) ?? undefined;
 
     return { group: updated, movement, created, financial };
@@ -459,8 +512,12 @@ export class LivestockService {
       plotName?: string | null;
       corralName?: string | null;
       breed?: string | null;
+      avg_weight_kg?: number | null;
+      total_weight_kg?: number | null;
       unit_price_ars?: number | null;
       unit_price_usd?: number | null;
+      price_per_kg_ars?: number | null;
+      price_per_kg_usd?: number | null;
       reason?: string | null;
       notes?: string | null;
       movement_date?: string | null;
@@ -509,6 +566,12 @@ export class LivestockService {
       opts.count,
       opts.breed ?? null,
       opts.movement_date,
+      {
+        price_per_kg_ars: opts.price_per_kg_ars,
+        price_per_kg_usd: opts.price_per_kg_usd,
+        total_weight_kg: opts.total_weight_kg,
+        avg_weight_kg: opts.avg_weight_kg,
+      },
     ) ?? undefined;
 
     return { group: updated, movement, financial };
