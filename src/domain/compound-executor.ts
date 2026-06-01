@@ -150,13 +150,22 @@ export class CompoundExecutor {
     // Hashing the whole payload makes dedup exact: identical → dropped,
     // anything different in ANY field → kept. Internal flags (keys starting
     // with "_", e.g. _bulkMode) are volatile and excluded.
+    // Volatile/descriptive fields that don't change the IDENTITY of a write —
+    // the agent often fills them on one duplicate but not the other (e.g. a
+    // `reason`/`notes` on the first add_livestock only), which would otherwise
+    // defeat dedup and double-count. Two writes that match on everything except
+    // these ARE the same action.
+    const VOLATILE_KEYS = new Set([
+      'reason', 'notes', 'description', 'isPurchase', 'isSale',
+      'is_purchase', 'is_sale', 'category_match', 'confidence',
+    ]);
     const seen = new Set<string>();
     const deduped: ParseResult[] = [];
     for (const step of actionable) {
       const data = (step.intent.data || {}) as Record<string, unknown>;
       const stable: Record<string, unknown> = {};
       for (const key of Object.keys(data).sort()) {
-        if (key.startsWith('_')) continue;
+        if (key.startsWith('_') || VOLATILE_KEYS.has(key)) continue;
         const v = data[key];
         if (v === undefined || v === null || v === '') continue;
         stable[key] = v;

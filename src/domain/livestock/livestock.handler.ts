@@ -1134,7 +1134,12 @@ export class LivestockHandler {
     }
 
     const category = cmd.category as string | null;
-    const animalsWeighed = typeof cmd.animalsWeighed === 'number' ? cmd.animalsWeighed : null;
+    // Accept the count filled via the unified pending ('¿a cuántos?' → text
+    // reply "los 30") through animalsAffected/count, not only animalsWeighed.
+    const animalsWeighed = typeof cmd.animalsWeighed === 'number' ? cmd.animalsWeighed
+      : typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected
+      : typeof cmd.count === 'number' ? cmd.count
+      : null;
 
     if (animalsWeighed == null && !(cmd as Record<string, unknown>).__animalsAffectedSkipped) {
       return this.buildAnimalsAffectedAskResponse(
