@@ -189,8 +189,13 @@ function extractCount(text: string): number | null {
   const m = text.match(
     /(\d+)\s*(?:cabezas?|animales?|vacas?|terneros?|terneras?|vaquillonas?|novillos?|novillitos?|toros?|toritos?|bueyes?)\b/i,
   );
-  if (!m) return null;
-  return parseInt(m[1], 10);
+  if (m) return parseInt(m[1], 10);
+  // Bare count reply to "¿a cuántos animales?" — "30", "los 30", "unas 40",
+  // "son 50". Anchored so it only fires on a short numeric answer, never on a
+  // number buried in a longer sentence.
+  const bare = text.match(/^\s*(?:a\s+)?(?:los|las|unos|unas|son|eran|fueron|todas?\s+)?\s*(\d{1,6})\s*(?:animales?|cabezas?|reses?)?\s*$/i);
+  if (bare) return parseInt(bare[1], 10);
+  return null;
 }
 
 /**

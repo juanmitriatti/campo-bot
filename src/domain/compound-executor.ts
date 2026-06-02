@@ -176,6 +176,45 @@ export class CompoundExecutor {
       deduped.push(step);
     }
 
+    // Livestock-add de-duplication: "N vacas con M terneros" makes the agent
+    // sometimes emit add_livestock for the FIRST category TWICE (once with a
+    // plot, once without), which the generic dedup misses (they differ on the
+    // plot field) → the mother category gets double-counted (vaca=160). Two
+    // add_livestock with the same category+breed+count in ONE message are a
+    // duplicate unless they target DIFFERENT explicit plots — a farmer dictating
+    // one message never means "add 80 vacas, then another 80 vacas" to the same
+    // place. Collapse them, preferring the step that carries an explicit plot.
+    {
+      const addKey = (s: ParseResult): string | null => {
+        const d = (s.intent.data || {}) as Record<string, unknown>;
+        if (d.command !== 'add_livestock') return null;
+        return [d.category ?? '', d.breed ?? '', d.count ?? '', d.corralName ?? d.corral ?? ''].join('|');
+      };
+      const explicitPlot = (s: ParseResult): string => {
+        const d = (s.intent.data || {}) as Record<string, unknown>;
+        return String(d.plotName ?? d.plot ?? '');
+      };
+      const byKey = new Map<string, ParseResult[]>();
+      for (const s of deduped) {
+        const k = addKey(s);
+        if (k) { (byKey.get(k) ?? byKey.set(k, []).get(k)!).push(s); }
+      }
+      const drop = new Set<ParseResult>();
+      for (const group of byKey.values()) {
+        if (group.length < 2) continue;
+        const plots = new Set(group.map(explicitPlot).filter(p => p !== ''));
+        // More than one DISTINCT explicit plot → genuinely different adds, keep all.
+        if (plots.size > 1) continue;
+        // Same (or unspecified) destination → duplicates. Keep the one WITH an
+        // explicit plot if any, drop the rest.
+        const keep = group.find(s => explicitPlot(s) !== '') ?? group[0];
+        for (const s of group) if (s !== keep) drop.add(s);
+      }
+      if (drop.size > 0) {
+        for (let i = deduped.length - 1; i >= 0; i--) if (drop.has(deduped[i])) deduped.splice(i, 1);
+      }
+    }
+
     // Reorder: writes (mutations) BEFORE reads (queries). When the agent
     // fires "compré urea + dame el resumen" in compound, the agent may emit
     // them in the WRONG order — read first, then write — and the report
