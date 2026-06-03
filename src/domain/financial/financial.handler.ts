@@ -1492,10 +1492,10 @@ export class FinancialHandler {
         }
         const { formatMoney } = await import('../../utils/format-money.js');
         const parts: string[] = [];
-        if (newAmount != null) parts.push(`💵 → ${formatMoney(newAmount, 'ARS')}`);
+        if (newAmount != null) parts.push(`💵 → ${formatMoney(newAmount, edited.currency)}`);
         if (newCategory) parts.push(`🏷️ → *${newCategory}*`);
         if (newDate) parts.push(`📅 → ${newDate}`);
-        return { messages: [`✏️ Gasto corregido (${edited.oldCategory} ${formatMoney(edited.oldAmount, 'ARS')}):\n${parts.join('\n')}`] };
+        return { messages: [`✏️ Gasto corregido (${edited.oldCategory} ${formatMoney(edited.oldAmount, edited.currency)}):\n${parts.join('\n')}`] };
       }
 
       // --- Delete last expense (with optional category filter) ---
@@ -1515,9 +1515,9 @@ export class FinancialHandler {
           return { messages: [`🗑️ Gasto eliminado: ${row.category} ${formatMoney(Number(row.amount), row.currency || 'ARS')}`] };
         }
         if (!last) return { messages: ['No hay gastos para borrar.'] };
-        const r = last as { category: string; amount: number };
+        const r = last as { category: string; amount: number; currency: string };
         const { formatMoney } = await import('../../utils/format-money.js');
-        return { messages: [`🗑️ Gasto eliminado: ${r.category} ${formatMoney(r.amount, 'ARS')}`] };
+        return { messages: [`🗑️ Gasto eliminado: ${r.category} ${formatMoney(r.amount, r.currency)}`] };
       }
 
       // --- Delete specific expense by filter ---
@@ -1536,7 +1536,7 @@ export class FinancialHandler {
           return { messages: [`No encontré un gasto con ${desc}.`] };
         }
         const { formatMoney } = await import('../../utils/format-money.js');
-        return { messages: [`🗑️ Gasto eliminado: ${deleted.category} ${formatMoney(deleted.amount, 'ARS')}`] };
+        return { messages: [`🗑️ Gasto eliminado: ${deleted.category} ${formatMoney(deleted.amount, deleted.currency)}`] };
       }
 
       // --- Edit last income (full editor) ---
@@ -1568,7 +1568,7 @@ export class FinancialHandler {
         if (!edited) return { messages: ['No hay ingresos para editar.'] };
         const { formatMoney } = await import('../../utils/format-money.js');
         const parts: string[] = [];
-        if (newAmount != null) parts.push(`💵 ${formatMoney(edited.oldAmount, 'ARS')} → ${formatMoney(newAmount, 'ARS')}`);
+        if (newAmount != null) parts.push(`💵 ${formatMoney(edited.oldAmount, edited.currency)} → ${formatMoney(newAmount, edited.currency)}`);
         if (newCategory) parts.push(`🏷️ → *${newCategory}*`);
         if (newDate) parts.push(`📅 → ${newDate}`);
         return { messages: [`✏️ Ingreso corregido (${edited.category}):\n${parts.join('\n')}`] };
@@ -1609,10 +1609,10 @@ export class FinancialHandler {
         if (!edited) return { messages: ['No encontré un ingreso con esos criterios.'] };
         const { formatMoney } = await import('../../utils/format-money.js');
         const parts: string[] = [];
-        if (newAmount != null) parts.push(`💵 → ${formatMoney(newAmount, 'ARS')}`);
+        if (newAmount != null) parts.push(`💵 → ${formatMoney(newAmount, edited.currency)}`);
         if (newCategory) parts.push(`🏷️ → *${newCategory}*`);
         if (newDate) parts.push(`📅 → ${newDate}`);
-        return { messages: [`✏️ Ingreso corregido (${edited.oldCategory} ${formatMoney(edited.oldAmount, 'ARS')}):\n${parts.join('\n')}`] };
+        return { messages: [`✏️ Ingreso corregido (${edited.oldCategory} ${formatMoney(edited.oldAmount, edited.currency)}):\n${parts.join('\n')}`] };
       }
 
       // --- Delete specific income by filter ---
@@ -1628,7 +1628,7 @@ export class FinancialHandler {
         });
         if (!deleted) return { messages: ['No encontré un ingreso con esos criterios.'] };
         const { formatMoney } = await import('../../utils/format-money.js');
-        return { messages: [`🗑️ Ingreso eliminado: ${deleted.category} ${formatMoney(deleted.amount, 'ARS')}`] };
+        return { messages: [`🗑️ Ingreso eliminado: ${deleted.category} ${formatMoney(deleted.amount, deleted.currency)}`] };
       }
 
       // --- Result / Rentability ---
@@ -1999,7 +1999,7 @@ export class FinancialHandler {
         if (!deleted) {
           return { messages: ['No hay gastos para borrar.'] };
         }
-        return { messages: [`\ud83d\uddd1\ufe0f Gasto eliminado: ${deleted.category} $${deleted.amount.toLocaleString('es-AR')}`] };
+        return { messages: [`\ud83d\uddd1\ufe0f Gasto eliminado: ${deleted.category} ${formatMoney(deleted.amount, deleted.currency)}`] };
       }
 
       case 'delete_last_income': {
@@ -2007,7 +2007,7 @@ export class FinancialHandler {
         if (!deleted) {
           return { messages: ['No hay ingresos para borrar.'] };
         }
-        return { messages: [`\ud83d\uddd1\ufe0f Ingreso eliminado: ${deleted.category} $${deleted.amount.toLocaleString('es-AR')}`] };
+        return { messages: [`\ud83d\uddd1\ufe0f Ingreso eliminado: ${deleted.category} ${formatMoney(deleted.amount, deleted.currency)}`] };
       }
 
       case 'delete_specific': {
@@ -2015,7 +2015,7 @@ export class FinancialHandler {
         if (!deleted) {
           return { messages: [`No encontr\u00e9 un gasto con "${cmd.filter}".`] };
         }
-        return { messages: [`\ud83d\uddd1\ufe0f Gasto eliminado: ${deleted.category} $${deleted.amount.toLocaleString('es-AR')}`] };
+        return { messages: [`\ud83d\uddd1\ufe0f Gasto eliminado: ${deleted.category} ${formatMoney(deleted.amount, deleted.currency)}`] };
       }
 
       case 'edit_specific': {
@@ -2023,7 +2023,7 @@ export class FinancialHandler {
         if (!edited) {
           return { messages: [`No encontr\u00e9 un gasto con "${cmd.filter}".`] };
         }
-        return { messages: [`\u270f\ufe0f Gasto actualizado: ${edited.category}\n$${edited.oldAmount.toLocaleString('es-AR')} \u2192 $${(cmd.amount as number).toLocaleString('es-AR')}`] };
+        return { messages: [`\u270f\ufe0f Gasto actualizado: ${edited.category}\n${formatMoney(edited.oldAmount, edited.currency)} \u2192 ${formatMoney(cmd.amount as number, edited.currency)}`] };
       }
 
       case 'edit_last':
@@ -2035,7 +2035,7 @@ export class FinancialHandler {
         if (!edited) {
           return { messages: ['No hay gastos para editar.'] };
         }
-        return { messages: [`\u270f\ufe0f Gasto actualizado: ${edited.category}\n$${edited.oldAmount.toLocaleString('es-AR')} \u2192 $${(cmd.amount as number).toLocaleString('es-AR')}`] };
+        return { messages: [`\u270f\ufe0f Gasto actualizado: ${edited.category}\n${formatMoney(edited.oldAmount, edited.currency)} \u2192 ${formatMoney(cmd.amount as number, edited.currency)}`] };
       }
 
       // --- Expense Templates (recurring) ---

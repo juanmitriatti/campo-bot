@@ -51,7 +51,7 @@ export function validateAmount(amount: number | null | undefined, fieldLabel = '
     return { ok: false, reason: `El ${fieldLabel} no puede ser negativo. Si querés deshacer un gasto, decime "borrar último gasto".` };
   }
   if (amount > LIMITS.amount_max) {
-    return { ok: false, reason: `El ${fieldLabel} ($${amount.toLocaleString('es-AR')}) excede el máximo razonable. Revisá si los números son correctos.` };
+    return { ok: false, reason: `El ${fieldLabel} (${amount.toLocaleString('es-AR')}) excede el máximo razonable. Revisá si los números son correctos.` };
   }
   return { ok: true };
 }

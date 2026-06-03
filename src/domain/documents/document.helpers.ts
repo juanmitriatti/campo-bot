@@ -1,5 +1,6 @@
 import type { DocumentExtraction, ParsedExpense, Currency } from '../../types/index.js';
 import type { DocumentUploadIntent } from '../../middleware/pending-document-upload.js';
+import { formatMoney } from '../../utils/format-money.js';
 
 const TYPE_LABELS: Record<string, string> = {
   factura: '🧾 Factura',
@@ -25,9 +26,10 @@ export function formatExtractionSummary(extraction: DocumentExtraction, docId: n
   if (extraction.line_items && extraction.line_items.length > 0) {
     parts.push('');
     parts.push('*Detalle:*');
+    const curr = extraction.currency || 'ARS';
     for (const item of extraction.line_items) {
       const qty = item.quantity ? `${item.quantity}${item.unit ? ' ' + item.unit : ''}` : '';
-      const price = item.total ? ` - $${item.total.toLocaleString('es-AR')}` : '';
+      const price = item.total ? ` - ${formatMoney(item.total, curr)}` : '';
       parts.push(`  • ${item.product}${qty ? ' (' + qty + ')' : ''}${price}`);
     }
   }
@@ -35,11 +37,11 @@ export function formatExtractionSummary(extraction: DocumentExtraction, docId: n
   if (extraction.total_amount) {
     const curr = extraction.currency || 'ARS';
     parts.push('');
-    parts.push(`*Total: ${curr} $${extraction.total_amount.toLocaleString('es-AR')}*`);
+    parts.push(`*Total: ${formatMoney(extraction.total_amount, curr)}*`);
   }
 
   if (extraction.tax_amount) {
-    parts.push(`_IVA: $${extraction.tax_amount.toLocaleString('es-AR')}_`);
+    parts.push(`_IVA: ${formatMoney(extraction.tax_amount, extraction.currency || 'ARS')}_`);
   }
 
   if (!extraction.total_amount && extraction.raw_text_summary) {

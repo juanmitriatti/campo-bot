@@ -1224,6 +1224,7 @@ async function saveDocExpensesTg(
   fieldId: number | null, plotId: number | null,
 ): Promise<BotResponseItem[]> {
   const { saveExpense } = await import('../services/expenses.js');
+  const { formatMoney } = await import('../utils/format-money.js');
   const messages: string[] = [];
   let firstExpenseId: number | null = null;
   for (const exp of pending.suggestedExpenses) {
@@ -1239,7 +1240,7 @@ async function saveDocExpensesTg(
       unit: exp.unit || null,
     }, fieldId, plotId);
     if (!firstExpenseId && saved?.id) firstExpenseId = saved.id;
-    messages.push(`✅ Gasto registrado: $${exp.amount?.toLocaleString('es-AR')} - ${exp.description}`);
+    messages.push(`✅ Gasto registrado: ${formatMoney(Number(exp.amount), exp.currency || 'ARS')} - ${exp.description}`);
   }
   if (firstExpenseId) {
     await documentServiceTg.linkToExpense(pending.documentId, firstExpenseId, userId).catch(() => {});

@@ -1,4 +1,5 @@
 import { normalizarMonto } from '../../utils/parser.js';
+import { formatMoney } from '../../utils/format-money.js';
 import { FinancialService } from '../../domain/financial/financial.service.js';
 import { FinancialRepository } from '../../domain/financial/financial.repository.js';
 import { getSuggestions } from '../contextual-suggestions.js';
@@ -118,12 +119,11 @@ export const expenseFlow: FlowDefinition = {
 
   buildConfirmation(data) {
     const amountInfo = data.amount as { amount: number; currency: string };
-    const currency = amountInfo.currency === 'USD' ? ' USD' : '';
     const finalCategory = data.category === NEW_CATEGORY_SENTINEL
       ? (data.categoryNewName as string)
       : (data.category as string);
     let msg = '\ud83d\udcb8 *Confirmar gasto:*\n\n';
-    msg += `Monto: *$${Number(amountInfo.amount).toLocaleString('es-AR')}${currency}*\n`;
+    msg += `Monto: *${formatMoney(Number(amountInfo.amount), amountInfo.currency)}*\n`;
     msg += `Categoría: *${finalCategory}*\n`;
     if (data.plotName) msg += `Lote: *${data.plotName}*\n`;
     if (data.description) msg += `Detalle: ${data.description}\n`;
@@ -240,10 +240,9 @@ export const expenseFlow: FlowDefinition = {
 
     const saved = await financialService.saveExpense(userId, expenseData, fieldId, plotId);
 
-    const currency = amountInfo.currency === 'USD' ? ' USD' : '';
     let msg = '\u2705 Gasto registrado\n';
     msg += `${data.category}\n`;
-    msg += `$${Number(amountInfo.amount).toLocaleString('es-AR')}${currency}`;
+    msg += `${formatMoney(Number(amountInfo.amount), amountInfo.currency)}`;
     if (resolvedPlotName && resolvedFieldName) {
       msg += `\n\ud83d\udccd Lote ${resolvedPlotName} (${resolvedFieldName})`;
     } else if (resolvedPlotName) {

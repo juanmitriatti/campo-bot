@@ -1,5 +1,6 @@
 import { DocumentService } from './document.service.js';
 import { formatExtractionSummary, buildSuggestedExpenses } from './document.helpers.js';
+import { formatMoney } from '../../utils/format-money.js';
 import type { ParsedCommand, UserId, User, UserSettings, HandlerResponse } from '../../types/index.js';
 
 export class DocumentHandler {
@@ -44,9 +45,10 @@ export class DocumentHandler {
       // Tolerant key matching: support both EN (supplier/total_amount) + ES (proveedor/monto)
       const supplierRaw = ext.supplier ?? ext.proveedor ?? ext.vendor ?? ext.emisor ?? null;
       const amountRaw = ext.total_amount ?? ext.monto ?? ext.amount ?? ext.total ?? null;
+      const docCurrency = ext.currency ?? ext.moneda ?? 'ARS';
       const fileName = d.original_filename ?? null;
       const supplier = supplierRaw ? ` — *${supplierRaw}*` : fileName ? ` — _${fileName}_` : '';
-      const amount = amountRaw && !isNaN(Number(amountRaw)) ? ` · $${Number(amountRaw).toLocaleString('es-AR')}` : '';
+      const amount = amountRaw && !isNaN(Number(amountRaw)) ? ` · ${formatMoney(Number(amountRaw), docCurrency)}` : '';
       const date = new Date(d.created_at).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
       const linked = d.linked_expense_id ? ' ✅ vinculado' : '';
       return `${emoji} #${d.id}${supplier}${amount}\n   📅 ${date}${linked}`;

@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import { CampaignStatsService } from '../domain/agronomy/campaign-stats.service.js';
 import { pool } from '../config/db.js';
+import { formatMoney } from '../utils/format-money.js';
 import type { UserId } from '../types/index.js';
 
 export class ReportShareService {
@@ -191,7 +192,7 @@ export class ReportShareService {
       for (const e of expenses) {
         const date = new Date(e.expense_date).toLocaleDateString('es-AR');
         doc.text(
-          `${date} | ${e.description || '-'} | $${Number(e.amount).toLocaleString('es-AR')} ${e.currency} | ${e.category || '-'}`,
+          `${date} | ${e.description || '-'} | ${formatMoney(Number(e.amount), e.currency)} | ${e.category || '-'}`,
         );
       }
       doc.moveDown();
@@ -204,7 +205,7 @@ export class ReportShareService {
       for (const i of incomes) {
         const date = new Date(i.income_date).toLocaleDateString('es-AR');
         doc.text(
-          `${date} | ${i.description || '-'} | $${Number(i.amount).toLocaleString('es-AR')} ${i.currency} | ${i.category || '-'}`,
+          `${date} | ${i.description || '-'} | ${formatMoney(Number(i.amount), i.currency)} | ${i.category || '-'}`,
         );
       }
       doc.moveDown();
