@@ -35,20 +35,35 @@ jobs:
     timeout-minutes: 15
     environment: production
     steps:
-      # Submodule (landing) is private. We need an auth token with read access
-      # to juanmitriatti/campo-chat-bot so railway up can upload its contents.
-      # Configure secret LANDING_REPO_TOKEN (PAT or fine-grained token).
-      - name: Configure submodule auth
-        if: env.LANDING_REPO_TOKEN != ''
+      # The `landing` submodule is a SEPARATE PRIVATE repo (campo-chat-bot).
+      # GITHUB_TOKEN is scoped to THIS repo only and cannot read it, so a PAT
+      # with read access to campo-chat-bot must be stored as the repo secret
+      # LANDING_REPO_TOKEN. Fail fast with a clear message if it's missing or
+      # expired (otherwise checkout dies with a cryptic "Authentication failed").
+      - name: Require submodule token
         env:
           LANDING_REPO_TOKEN: ${{ secrets.LANDING_REPO_TOKEN }}
         run: |
-          git config --global url."https://x-access-token:${LANDING_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
+          if [ -z "$LANDING_REPO_TOKEN" ]; then
+            echo "::error title=Missing LANDING_REPO_TOKEN::The private 'landing' submodule (campo-chat-bot) can't be fetched. Create a fine-grained PAT with read access to juanmitriatti/campo-chat-bot (Repository contents: Read) and add it as the repo secret LANDING_REPO_TOKEN. Until then, deploy manually with 'railway up --detach'."
+            exit 1
+          fi
 
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-          token: ${{ secrets.LANDING_REPO_TOKEN || github.token }}
+          # Auth header for github.com fetches, INCLUDING the private submodule.
+          # Must be a PAT that can read campo-chat-bot — github.token alone
+          # cannot (it is scoped to this repo, which is why the old
+          # "|| github.token" fallback produced the cryptic exit-128 failure).
+          token: ${{ secrets.LANDING_REPO_TOKEN }}
+
+      - name: Verify landing submodule is present
+        run: |
+          if [ ! -f landing/package.json ]; then
+            echo "::error title=Landing submodule empty::actions/checkout did not populate 'landing' — LANDING_REPO_TOKEN likely lacks access to campo-chat-bot or has expired. Regenerate the PAT and update the secret."
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:
