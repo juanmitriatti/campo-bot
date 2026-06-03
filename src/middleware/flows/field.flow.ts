@@ -125,7 +125,10 @@ export const fieldFlow: FlowDefinition = {
     let msg = '🏡 *Confirmar nuevo campo:*\n\n';
     msg += `Nombre: *${data.name}*\n`;
 
-    if (method === 'city' && data.city) {
+    if (data.city) {
+      // Show the captured locality regardless of how it was provided — a
+      // pre-filled city (e.g. "tengo un campo en Pergamino") doesn't set
+      // locationMethod='city', and omitting it made users think it was lost.
       const province = data._province as string | null;
       msg += `Localidad: *${formatLocation(data.city as string, province)}*\n`;
     } else if (method === 'map') {

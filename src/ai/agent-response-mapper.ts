@@ -602,6 +602,23 @@ export class AgentResponseMapper {
   }
 
   private mapCommand(toolName: string, input: Record<string, unknown>, originalText = ''): ParseResult {
+    // Rename override: "el lote X se llama Y" / "...pasa a llamarse Y" is a
+    // RENAME, but Haiku maps it to add_plot (creating a duplicate lote). Catch
+    // the phrasing server-side and rewrite to rename_plot before mapping.
+    if ((toolName === 'add_plot' || toolName === 'add_field' || toolName === 'add_plots_batch') && originalText) {
+      const rn = originalText.match(/(?:^|\b)(?:el\s+)?lote\s+(.+?)\s+(?:ahora\s+)?(?:se\s+llama|pasa\s+a\s+llamarse)\s+(.+?)\s*$/i);
+      if (rn) {
+        const oldName = rn[1].trim();
+        const newName = rn[2].trim().replace(/^lote\s+/i, '');
+        if (oldName && newName && oldName.toLowerCase() !== newName.toLowerCase()) {
+          return {
+            intent: { type: 'command', data: { command: 'rename_plot', oldName, newName, fieldName: null } },
+            confidence: 0.95, aiUsed: true, source: 'ai', missingFields: [],
+          } as ParseResult;
+        }
+      }
+    }
+
     const cmd: ParsedCommand = { command: toolName };
 
     // Reject obviously-not-a-plot/field tokens that the agent sometimes
@@ -637,6 +654,21 @@ export class AgentResponseMapper {
     if (input.oldName != null) cmd.oldName = input.oldName;
     if (input.newName != null) cmd.newName = input.newName;
     if (input.entityKeyword != null) cmd.entityKeyword = input.entityKeyword;
+
+    // City recovery net for field creation: Haiku reliably extracts the city
+    // for "agregá/doy de alta el campo X en Y" but often DROPS it for "cargá el
+    // campo X en Y". When we have a field name, no city, and a single-clause
+    // message ending in "...en <lugar>", recover the locality (the handler still
+    // validates it via localidadLookup, so a bad guess just becomes a re-ask).
+    if (toolName === 'add_field' && !cmd.city && cmd.fieldName && originalText && !/[,]/.test(originalText)) {
+      const m = originalText.match(/\ben\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ.'\s-]*?)\s*[?.!¡¿]*$/);
+      if (m) {
+        const cand = m[1].trim();
+        if (cand.length >= 3 && cand.toLowerCase() !== String(cmd.fieldName).toLowerCase()) {
+          cmd.city = cand;
+        }
+      }
+    }
 
     // Activity fields
     if (input.product != null) cmd.product = input.product;

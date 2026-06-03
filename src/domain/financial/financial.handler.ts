@@ -185,6 +185,15 @@ function formatTotalsLine(label: string, totalsByCurrency: Record<string, number
   return entries.map(([cur, v]) => `${label}: ${formatMoney(v, cur)}`).join('\n');
 }
 
+// Consistent lote-name casing: an all-lowercase name ("norte", "la loma") gets
+// Title-Cased so it matches the agent path; names with any uppercase or digit
+// ("Sur", "A1", "1A", "Lote 3") are preserved as the user intended.
+function tidyPlotName(name: string): string {
+  const n = (name || '').trim();
+  if (!n || /[A-ZÁÉÍÓÚÜÑ0-9]/.test(n)) return n;
+  return n.replace(/\b([a-záéíóúüñ])([a-záéíóúüñ]*)/g, (_m, a, b) => a.toUpperCase() + b);
+}
+
 // Gastos/Ingresos/Resultado lines for a plot/field, one set per currency that
 // appears in either side — so USD and ARS are never collapsed under "$".
 function renderResultBlock(expByCurrency: Record<string, number>, incomeByCurrency: Record<string, number>): string {
@@ -2289,6 +2298,12 @@ export class FinancialHandler {
       case 'add_field': {
         const kwAdd = (cmd.entityKeyword as string) || 'campo';
 
+        // Guard: never crash on a missing name (e.g. the field name got dropped
+        // upstream as a "filler" token like "X"). Ask for it instead of throwing.
+        if (!cmd.fieldName || (typeof cmd.fieldName === 'string' && cmd.fieldName.trim() === '')) {
+          return { messages: [`¿Cómo se llama el ${kwAdd === 'lote' ? 'lote' : 'campo'}?\nEj: *agregar ${kwAdd === 'lote' ? 'lote Norte' : 'campo La Esperanza'}*`] };
+        }
+
         // Smart lote flow: when user says "agregar lote X" without specifying field
         if (kwAdd === 'lote') {
           const fields = await this.service.getUserFields(userId);
@@ -2305,19 +2320,19 @@ export class FinancialHandler {
             const field = await this.service.getFieldByName(userId, fields[0].name);
             if (field) {
               const plotsBefore = await this.service.findAllUserPlots(userId);
-              const plot = await this.service.getOrCreatePlot(field.id, cmd.fieldName as string);
+              const plot = await this.service.getOrCreatePlot(field.id, tidyPlotName(cmd.fieldName as string));
               const messages: string[] = [];
               const loteSideEffects: HandlerResponse['sideEffects'] = {};
               if (cmd.hectares) {
                 await this.service.setPlotArea(plot.id, cmd.hectares as number);
-                messages.push(`📍 Lote *${cmd.fieldName}* (${cmd.hectares} ha) creado en campo *${fields[0].name}*`);
+                messages.push(`📍 Lote *${plot.name}* (${cmd.hectares} ha) creado en campo *${fields[0].name}*`);
               } else {
-                messages.push(`📍 Lote *${cmd.fieldName}* creado en campo *${fields[0].name}*`);
+                messages.push(`📍 Lote *${plot.name}* creado en campo *${fields[0].name}*`);
                 loteSideEffects.setPendingPlotArea = { plotId: plot.id, plotName: plot.name, fieldName: fields[0].name };
               }
               if (plotsBefore.length === 0) {
                 const welcomeMsg = await getSetting('ONBOARDING_FIRST_PLOT_MESSAGE');
-                if (welcomeMsg) messages.push(interpolate(welcomeMsg, { nombre: user.name || '' }));
+                if (welcomeMsg) messages.push(interpolate(welcomeMsg, { nombre: user.name || '' }).replace(/\n{3,}/g, '\n\n').trim());
               }
               return { messages, suggestionKey: 'plot_created', sideEffects: loteSideEffects };
             }
@@ -2481,6 +2496,49 @@ export class FinancialHandler {
       }
 
       case 'delete_field': {
+        // "borr\u00e1/elimin\u00e1 el lote X" (sin nombrar campo) reaches here with
+        // entityKeyword='lote' and fieldName=the LOTE name. Treat it as a plot
+        // deletion, auto-resolving the field (the common 1-field / 1-match case)
+        // instead of failing with "No encontr\u00e9 el campo X".
+        if (cmd.entityKeyword === 'lote') {
+          const targetName = cmd.fieldName as string;
+          const matches = await this.service.findPlotByNameAcrossFields(userId, targetName);
+          if (matches.length === 0) {
+            return { messages: [`No encontr\u00e9 el lote *${targetName}*.\n\nEscrib\u00ed *mis lotes* para verlos.`] };
+          }
+          if (matches.length > 1) {
+            const bodyMsg = `Ten\u00e9s varios lotes llamados *${targetName}*. \u00bfDe qu\u00e9 campo quer\u00e9s borrarlo?`;
+            return {
+              messages: [bodyMsg],
+              interactive: {
+                type: 'buttons',
+                body: bodyMsg,
+                buttons: matches.slice(0, 3).map(p => ({
+                  id: `confirm_delete_plot_${targetName.replace(/\s+/g, '_')}_in_${(p.field_name as string).replace(/\s+/g, '_')}`,
+                  title: (p.field_name as string).substring(0, 20),
+                })),
+              },
+            };
+          }
+          const onlyPlot = matches[0];
+          const isOwnerPlot = await this.sharingService.isOwner(userId, onlyPlot.field_id);
+          if (!isOwnerPlot) {
+            return { messages: [`Solo el due\u00f1o del campo *${onlyPlot.field_name}* puede eliminar sus lotes.`] };
+          }
+          const confirmMsg = `\u00bfSeguro que quer\u00e9s eliminar el lote *${onlyPlot.name}* del campo *${onlyPlot.field_name}*?\nLos registros asociados quedar\u00e1n sin lote.\n\n_Pod\u00e9s restaurarlo despu\u00e9s con "restaurar lote ${onlyPlot.name} del campo ${onlyPlot.field_name}"_`;
+          return {
+            messages: [confirmMsg],
+            interactive: {
+              type: 'buttons',
+              body: confirmMsg,
+              buttons: [
+                { id: `confirm_delete_plot_${(onlyPlot.name as string).replace(/\s+/g, '_')}_in_${(onlyPlot.field_name as string).replace(/\s+/g, '_')}`, title: 'Confirmar' },
+                { id: 'cancel_action', title: 'Cancelar' },
+              ],
+            },
+          };
+        }
+
         const labelDel = cmd.entityKeyword === 'campo' ? 'Campo' : 'Lote';
         const exists = await this.service.getFieldByName(userId, cmd.fieldName as string);
         if (!exists) {
@@ -2749,6 +2807,21 @@ export class FinancialHandler {
         if (!plotNames || plotNames.length === 0) {
           return { messages: ['No pude detectar los nombres de los lotes.\n\nEscrib\u00ed: *agregar lotes A, B y C*'] };
         }
+        // Server-side defense: "agreg\u00e1 los lotes A, B y C de 40 has cada uno"
+        // sometimes leaves the homogeneous area spec ("40 has cada uno") sitting
+        // in fieldName (the agent/regex misreads it as the campo). Detect it,
+        // use it as the uniform area, and drop the bogus field so we auto-resolve
+        // the user's single field instead of failing "No encontr\u00e9 el campo".
+        if (typeof cmd.fieldName === 'string') {
+          const areaSpec = cmd.fieldName.match(/^(?:de\s+)?(\d+(?:[.,]\d+)?)\s*(?:has?\.?|hect[a\u00e1]reas?)(?:\s+(?:cada\s+(?:uno|una)|c\/u|cu))?\s*$/i);
+          if (areaSpec) {
+            const a = parseFloat(areaSpec[1].replace(',', '.'));
+            if (a > 0 && a < 100000 && (cmd as Record<string, unknown>).hectares == null && cmd.area == null) {
+              cmd.area = a;
+            }
+            delete cmd.fieldName;
+          }
+        }
         const fields = await this.service.getUserFields(userId);
         if (fields.length === 0) {
           return { messages: ['No ten\u00e9s campos registrados.\n\nPrimero cre\u00e1 un campo:\n\ud83d\udccd *agregar campo [nombre]*'] };
@@ -2808,7 +2881,7 @@ export class FinancialHandler {
           if (already) {
             existing.push(name);
           } else {
-            const plot = await this.service.getOrCreatePlot(targetField.id, name);
+            const plot = await this.service.getOrCreatePlot(targetField.id, tidyPlotName(name));
             const area = areaFor(i);
             if (area != null) await this.service.setPlotArea(plot.id, area);
             created.push({ name: plot.name, id: plot.id, area });
@@ -2826,7 +2899,7 @@ export class FinancialHandler {
         const batchMessages = [msg];
         if (created.length > 0 && plotsBeforeBatch.length === 0) {
           const welcomeMsg = await getSetting('ONBOARDING_FIRST_PLOT_MESSAGE');
-          if (welcomeMsg) batchMessages.push(interpolate(welcomeMsg, { nombre: user.name || '' }));
+          if (welcomeMsg) batchMessages.push(interpolate(welcomeMsg, { nombre: user.name || '' }).replace(/\n{3,}/g, '\n\n').trim());
         }
         const batchSideEffects: HandlerResponse['sideEffects'] = {};
         const needArea = created.filter(c => c.area == null);
@@ -2843,6 +2916,17 @@ export class FinancialHandler {
           return {
             messages: ['Necesitás indicar el nombre del lote.\n\n📍 Escribí *agregar lote [nombre] en campo [campo]*'],
           };
+        }
+        // Server-side defense: "agregá el lote norte de 10 has" sometimes leaves
+        // the area spec ("10 has") in fieldName. Treat it as hectares and drop
+        // the bogus field so we auto-resolve the user's single campo.
+        if (typeof cmd.fieldName === 'string') {
+          const areaSpec = cmd.fieldName.match(/^(?:de\s+)?(\d+(?:[.,]\d+)?)\s*(?:has?\.?|hect[aá]reas?)(?:\s+(?:cada\s+(?:uno|una)|c\/u|cu))?\s*$/i);
+          if (areaSpec) {
+            const a = parseFloat(areaSpec[1].replace(',', '.'));
+            if (a > 0 && a < 100000 && cmd.hectares == null) cmd.hectares = a;
+            delete cmd.fieldName;
+          }
         }
         // Auto-split: if plotName contains commas or " y ", redirect to add_plots_batch
         if (typeof cmd.plotName === 'string' && /[,]|\sy\s/.test(cmd.plotName)) {
@@ -2908,7 +2992,7 @@ export class FinancialHandler {
         const existingPlots = await this.service.getPlotsByField(field.id);
         const plotExists = existingPlots.some(p => p.name.toLowerCase() === (cmd.plotName as string).toLowerCase());
         const plotsBeforeAdd = await this.service.findAllUserPlots(userId);
-        const plot = await this.service.getOrCreatePlot(field.id, cmd.plotName as string);
+        const plot = await this.service.getOrCreatePlot(field.id, tidyPlotName(cmd.plotName as string));
         // Update conversation state so "ahí"/"ese lote" references the new plot
         await updateConversationState(userId, field.id, plot.id);
         if (plotExists) {
@@ -2929,7 +3013,7 @@ export class FinancialHandler {
         }
         if (plotsBeforeAdd.length === 0) {
           const welcomeMsg = await getSetting('ONBOARDING_FIRST_PLOT_MESSAGE');
-          if (welcomeMsg) addPlotMessages.push(interpolate(welcomeMsg, { nombre: user.name || '' }));
+          if (welcomeMsg) addPlotMessages.push(interpolate(welcomeMsg, { nombre: user.name || '' }).replace(/\n{3,}/g, '\n\n').trim());
         }
         return { messages: addPlotMessages, suggestionKey: 'plot_created', sideEffects: addPlotSideEffects };
       }

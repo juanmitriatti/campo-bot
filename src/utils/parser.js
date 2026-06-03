@@ -786,7 +786,7 @@ const COMMAND_PATTERNS = [
       // Extract trailing area spec FIRST so it doesn't get misparsed as
       // a field name. Patterns: "de 50 ha cada uno", "50 ha c/u", "50 hectáreas".
       let area = null;
-      const areaMatch = raw.match(/\s+(?:de\s+)?(\d+(?:\.\d+)?)\s*(?:ha|hect[aá]reas?)(?:\s+(?:cada\s+(?:uno|una)|c\/u))?\s*$/i);
+      const areaMatch = raw.match(/\s+(?:de\s+)?(\d+(?:\.\d+)?)\s*(?:has?|hect[aá]reas?)(?:\s+(?:cada\s+(?:uno|una)|c\/u|cu))?\s*$/i);
       if (areaMatch) {
         area = parseFloat(areaMatch[1]);
         raw = raw.slice(0, raw.length - areaMatch[0].length).trim();
@@ -1071,10 +1071,13 @@ const COMMAND_PATTERNS = [
     command: "rename_plot",
     patterns: [
       /(?:renombrar|cambiar\s+(?:el\s+)?nombre(?:\s+del?)?)\s+lote\s+(.+?)\s+(?:a|por)\s+(.+?)(?:\s+(?:en|del?)\s+(?:campo\s+)?(.+))?$/,
+      // "el lote Norte se llama Lote 1" / "el lote Norte ahora se llama X" / "...pasa a llamarse X"
+      /(?:el\s+)?lote\s+(.+?)\s+(?:ahora\s+)?(?:se\s+llama|pasa\s+a\s+llamarse)\s+(.+?)(?:\s+(?:en|del?)\s+(?:campo\s+)?(.+))?$/,
     ],
     extract: (m, _norm, original) => {
-      const re = /(?:renombrar|cambiar\s+(?:el\s+)?nombre(?:\s+del?)?)\s+lote\s+(.+?)\s+(?:a|por)\s+(.+?)(?:\s+(?:en|del?)\s+(?:campo\s+)?(.+))?$/i;
-      const cm = original ? original.match(re) : null;
+      const reA = /(?:renombrar|cambiar\s+(?:el\s+)?nombre(?:\s+del?)?)\s+lote\s+(.+?)\s+(?:a|por)\s+(.+?)(?:\s+(?:en|del?)\s+(?:campo\s+)?(.+))?$/i;
+      const reB = /(?:el\s+)?lote\s+(.+?)\s+(?:ahora\s+)?(?:se\s+llama|pasa\s+a\s+llamarse)\s+(.+?)(?:\s+(?:en|del?)\s+(?:campo\s+)?(.+))?$/i;
+      const cm = original ? (original.match(reA) || original.match(reB)) : null;
       return {
         oldName: (cm ? cm[1] : m[1]).trim(),
         newName: (cm ? cm[2] : m[2]).trim(),
