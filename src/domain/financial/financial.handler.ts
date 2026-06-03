@@ -132,26 +132,72 @@ function buildPendingMessage(type: 'expense' | 'income', data: ParsedExpense | P
   return msg;
 }
 
-function formatResult(ingresos: number, gastos: number, label: string): string {
-  const resultado = ingresos - gastos;
-  const margen = ingresos > 0 ? Math.round((resultado / ingresos) * 100) : 0;
-  let msg = `\ud83d\udcc8 ${label}\n\n`;
-  msg += `Ingresos: $${ingresos.toLocaleString('es-AR')}\n`;
-  msg += `Gastos: $${gastos.toLocaleString('es-AR')}\n`;
-  msg += `Resultado: $${resultado.toLocaleString('es-AR')}\n`;
-  if (ingresos > 0) msg += `Margen: ${margen}%`;
-  return msg;
+type ResultByCurrency = Record<string, { ingresos: number; gastos: number }>;
+
+// Render an ingresos/gastos/resultado block per currency, so USD and ARS are
+// never summed together (and USD never shows the "$" sign). A single-currency
+// dataset reads exactly like the old single-block output.
+function formatResultByCurrency(byCurrency: ResultByCurrency, label: string): string {
+  const active = Object.entries(byCurrency).filter(([, v]) => v.ingresos !== 0 || v.gastos !== 0);
+  let msg = `\ud83d\udcc8 ${label}\n`;
+  if (active.length === 0) return `${msg}\nSin movimientos.`;
+  const multi = active.length > 1;
+  for (const [cur, v] of active) {
+    const resultado = v.ingresos - v.gastos;
+    const margen = v.ingresos > 0 ? Math.round((resultado / v.ingresos) * 100) : 0;
+    msg += multi ? `\n*${cur}*\n` : '\n';
+    msg += `Ingresos: ${formatMoney(v.ingresos, cur)}\n`;
+    msg += `Gastos: ${formatMoney(v.gastos, cur)}\n`;
+    msg += `Resultado: ${formatMoney(resultado, cur)}\n`;
+    if (v.ingresos > 0) msg += `Margen: ${margen}%\n`;
+  }
+  return msg.trimEnd();
 }
 
-function formatReportRows(rows: CategoryTotal[]): { lines: string; total: number } {
-  let total = 0;
-  let lines = '';
-  rows.forEach((r) => {
+// Category breakdown, grouped by currency. Returns the rendered lines plus a
+// per-currency totals map so callers can print currency-correct "Total" lines.
+function formatReportRows(
+  rows: Array<CategoryTotal & { currency?: string }>,
+): { lines: string; total: number; totalsByCurrency: Record<string, number> } {
+  const byCur: Record<string, Array<{ category: string; total: number }>> = {};
+  const totalsByCurrency: Record<string, number> = {};
+  for (const r of rows) {
+    const cur = r.currency || 'ARS';
     const monto = Number(r.total);
-    total += monto;
-    lines += `${r.category}: $${monto.toLocaleString('es-AR')}\n`;
-  });
-  return { lines, total };
+    (byCur[cur] ??= []).push({ category: r.category, total: monto });
+    totalsByCurrency[cur] = (totalsByCurrency[cur] || 0) + monto;
+  }
+  const currencies = Object.keys(byCur);
+  const multi = currencies.length > 1;
+  let lines = '';
+  for (const cur of currencies) {
+    if (multi) lines += `_(${cur})_\n`;
+    for (const r of byCur[cur]) lines += `${r.category}: ${formatMoney(r.total, cur)}\n`;
+  }
+  const total = Object.values(totalsByCurrency).reduce((a, b) => a + b, 0);
+  return { lines, total, totalsByCurrency };
+}
+
+// Render "Total: $X" / "Total: USD Y" line(s) honoring each currency.
+function formatTotalsLine(label: string, totalsByCurrency: Record<string, number>): string {
+  const entries = Object.entries(totalsByCurrency).filter(([, v]) => v !== 0);
+  if (entries.length === 0) return `${label}: ${formatMoney(0, 'ARS')}`;
+  return entries.map(([cur, v]) => `${label}: ${formatMoney(v, cur)}`).join('\n');
+}
+
+// Gastos/Ingresos/Resultado lines for a plot/field, one set per currency that
+// appears in either side — so USD and ARS are never collapsed under "$".
+function renderResultBlock(expByCurrency: Record<string, number>, incomeByCurrency: Record<string, number>): string {
+  const currencies = [...new Set([...Object.keys(expByCurrency), ...Object.keys(incomeByCurrency)])];
+  let s = '';
+  for (const cur of currencies) {
+    const g = expByCurrency[cur] || 0;
+    const i = incomeByCurrency[cur] || 0;
+    if (g) s += `\nGastos: ${formatMoney(g, cur)}`;
+    if (i) s += `\nIngresos: ${formatMoney(i, cur)}`;
+    if (g || i) s += `\nResultado: ${formatMoney(i - g, cur)}`;
+  }
+  return s;
 }
 
 function buildNoFieldsBlockResponse(actionLabel: string): HandlerResponse {
@@ -1197,9 +1243,9 @@ export class FinancialHandler {
     const savedIncome = await this.service.saveIncome(userId, data, fieldId, plotId);
     this.categoryService.bump(matchedIncomeCategoryId).catch(() => {});
     const messages = [await buildIncomeConfirmation(data, resFieldName, resPlotName)];
-    const { ingresos, gastos } = await this.service.getMonthlyResult(userId);
-    if (gastos > 0) {
-      messages.push(formatResult(ingresos, gastos, 'Resultado del mes hasta ahora'));
+    const byCur = await this.service.getMonthlyResultByCurrency(userId);
+    if (Object.values(byCur).some(v => v.gastos > 0)) {
+      messages.push(formatResultByCurrency(byCur, 'Resultado del mes hasta ahora'));
     }
 
     // Grain sale → suggest stock deduction
@@ -1265,9 +1311,9 @@ export class FinancialHandler {
       const incomeData = pending.data as ParsedIncome;
       const savedIncome = await this.service.saveIncome(userId, incomeData, pending.fieldId, pending.plotId);
       const messages = [await buildIncomeConfirmation(incomeData, pending.fieldName, pending.plotName)];
-      const { ingresos, gastos } = await this.service.getMonthlyResult(userId);
-      if (gastos > 0) {
-        messages.push(formatResult(ingresos, gastos, 'Resultado del mes hasta ahora'));
+      const byCur = await this.service.getMonthlyResultByCurrency(userId);
+      if (Object.values(byCur).some(v => v.gastos > 0)) {
+        messages.push(formatResultByCurrency(byCur, 'Resultado del mes hasta ahora'));
       }
 
       // Grain sale → suggest stock deduction (mirror of the handleIncome path so the
@@ -1633,11 +1679,11 @@ export class FinancialHandler {
 
       // --- Result / Rentability ---
       case 'monthly_result': {
-        const { ingresos, gastos } = await this.service.getMonthlyResult(userId);
-        if (ingresos === 0 && gastos === 0) {
+        const byCur = await this.service.getMonthlyResultByCurrency(userId);
+        if (Object.values(byCur).every(v => v.ingresos === 0 && v.gastos === 0)) {
           return { messages: ['No hay movimientos este mes.'], suggestionKey: 'report_shown' };
         }
-        return { messages: [formatResult(ingresos, gastos, `📊 Resultado financiero (${currentMonthLabel()})`)], suggestionKey: 'report_shown' };
+        return { messages: [formatResultByCurrency(byCur, `📊 Resultado financiero (${currentMonthLabel()})`)], suggestionKey: 'report_shown' };
       }
 
       case 'field_result': {
@@ -1650,13 +1696,13 @@ export class FinancialHandler {
           if (plotResult.ingresos === 0 && plotResult.gastos === 0) {
             return { messages: [`No hay movimientos para lote *${plotResult.plotName}* este mes.`], suggestionKey: 'report_shown' };
           }
-          return { messages: [formatResult(plotResult.ingresos, plotResult.gastos, `📊 Resultado financiero — lote ${plotResult.plotName} (${plotResult.fieldName}, ${currentMonthLabel()})`)], suggestionKey: 'report_shown' };
+          return { messages: [formatResultByCurrency(plotResult.byCurrency, `📊 Resultado financiero — lote ${plotResult.plotName} (${plotResult.fieldName}, ${currentMonthLabel()})`)], suggestionKey: 'report_shown' };
         }
-        const { ingresos, gastos } = await this.service.getFieldResult(userId, cmd.fieldName as string);
-        if (ingresos === 0 && gastos === 0) {
+        const fieldResult = await this.service.getFieldResult(userId, cmd.fieldName as string);
+        if (fieldResult.ingresos === 0 && fieldResult.gastos === 0) {
           return { messages: [`No hay movimientos para ${cmd.fieldName} este mes.`], suggestionKey: 'report_shown' };
         }
-        return { messages: [formatResult(ingresos, gastos, `📊 Resultado financiero — ${cmd.fieldName} (${currentMonthLabel()})`)], suggestionKey: 'report_shown' };
+        return { messages: [formatResultByCurrency(fieldResult.byCurrency, `📊 Resultado financiero — ${cmd.fieldName} (${currentMonthLabel()})`)], suggestionKey: 'report_shown' };
       }
 
       // --- Compare months ---
@@ -1667,8 +1713,20 @@ export class FinancialHandler {
           this.service.getMonthlyReportForMonth(userId, cmd.mes1 as number, year),
           this.service.getMonthlyReportForMonth(userId, cmd.mes2 as number, year),
         ]);
-        const map1 = Object.fromEntries(gastos1.map((r) => [r.category, Number(r.total)]));
-        const map2 = Object.fromEntries(gastos2.map((r) => [r.category, Number(r.total)]));
+        // Sum per category across currencies (the % trend is relative, so this
+        // is fine) but keep absolute totals split per currency for display.
+        const sumByCat = (rows: Array<CategoryTotal & { currency?: string }>) => {
+          const m: Record<string, number> = {};
+          for (const r of rows) m[r.category] = (m[r.category] || 0) + Number(r.total);
+          return m;
+        };
+        const sumByCurrency = (rows: Array<CategoryTotal & { currency?: string }>) => {
+          const m: Record<string, number> = {};
+          for (const r of rows) { const c = r.currency || 'ARS'; m[c] = (m[c] || 0) + Number(r.total); }
+          return m;
+        };
+        const map1 = sumByCat(gastos1);
+        const map2 = sumByCat(gastos2);
         const allCats = [...new Set([...Object.keys(map1), ...Object.keys(map2)])];
 
         if (allCats.length === 0) {
@@ -1697,8 +1755,10 @@ export class FinancialHandler {
           const totalSign = totalPct >= 0 ? '+' : '';
           msg += `\nTotal: ${totalSign}${totalPct}%`;
         }
-        msg += `\n\n${mes1Name}: $${total1.toLocaleString('es-AR')}`;
-        msg += `\n${mes2Name}: $${total2.toLocaleString('es-AR')}`;
+        const moneyList = (m: Record<string, number>) =>
+          Object.entries(m).filter(([, v]) => v !== 0).map(([c, v]) => formatMoney(v, c)).join(' + ') || formatMoney(0, 'ARS');
+        msg += `\n\n${mes1Name}: ${moneyList(sumByCurrency(gastos1))}`;
+        msg += `\n${mes2Name}: ${moneyList(sumByCurrency(gastos2))}`;
         return { messages: [msg], suggestionKey: 'report_shown' };
       }
 
@@ -1708,8 +1768,8 @@ export class FinancialHandler {
         if (rows.length === 0) {
           return { messages: ['No hay gastos registrados esta semana.'], suggestionKey: 'report_shown' };
         }
-        const { lines, total } = formatReportRows(rows);
-        return { messages: [`📊 *Resumen financiero* (${currentWeekLabel()})\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}\n\n_Pedí "resumen mes" para ver el mes completo._`], suggestionKey: 'report_shown' };
+        const { lines, totalsByCurrency } = formatReportRows(rows);
+        return { messages: [`📊 *Resumen financiero* (${currentWeekLabel()})\n\n${lines}\n${formatTotalsLine('Total', totalsByCurrency)}\n\n_Pedí "resumen mes" para ver el mes completo._`], suggestionKey: 'report_shown' };
       }
 
       // --- Monthly report ---
@@ -1740,19 +1800,31 @@ export class FinancialHandler {
 
         // ── Categorías de gastos ──
         if (rows.length > 0) {
-          const { lines, total } = formatReportRows(rows);
-          msg += `\n*Por categoría (gastos):*\n${lines}\nTotal: $${total.toLocaleString('es-AR')}`;
+          const { lines, totalsByCurrency } = formatReportRows(rows);
+          msg += `\n*Por categoría (gastos):*\n${lines}\n${formatTotalsLine('Total', totalsByCurrency)}`;
         }
 
-        // ── Per-plot breakdown ──
+        // ── Per-plot breakdown (one line per plot, per currency) ──
         const plotRows = await this.service.getMonthlyReportByPlot(userId);
         if (plotRows.length > 0) {
           msg += '\n\n📍 *Por lote:*';
+          // Group the (plot, currency) rows back under each plot so a lote with
+          // both ARS and USD movements shows one line per currency.
+          const byPlot = new Map<string, { plot_name: string; field_name: string; rows: typeof plotRows }>();
           for (const pr of plotRows) {
-            const resultado = pr.income_total - pr.expense_total;
-            msg += `\n• ${pr.plot_name} (${pr.field_name}): gastos $${pr.expense_total.toLocaleString('es-AR')}`;
-            if (pr.income_total > 0) msg += `, ingresos $${pr.income_total.toLocaleString('es-AR')}`;
-            if (pr.income_total > 0 || pr.expense_total > 0) msg += ` → $${resultado.toLocaleString('es-AR')}`;
+            const key = `${pr.field_name}|${pr.plot_name}`;
+            if (!byPlot.has(key)) byPlot.set(key, { plot_name: pr.plot_name, field_name: pr.field_name, rows: [] });
+            byPlot.get(key)!.rows.push(pr);
+          }
+          for (const { plot_name, field_name, rows: prRows } of byPlot.values()) {
+            const parts = prRows.map((pr) => {
+              const resultado = pr.income_total - pr.expense_total;
+              let s = `gastos ${formatMoney(pr.expense_total, pr.currency)}`;
+              if (pr.income_total > 0) s += `, ingresos ${formatMoney(pr.income_total, pr.currency)}`;
+              if (pr.income_total > 0 || pr.expense_total > 0) s += ` → ${formatMoney(resultado, pr.currency)}`;
+              return s;
+            });
+            msg += `\n• ${plot_name} (${field_name}): ${parts.join(' | ')}`;
           }
         }
 
@@ -1774,14 +1846,10 @@ export class FinancialHandler {
         if (report.rows.length === 0 && report.incomeTotal === 0) {
           return { messages: [`No hay movimientos para lote *${report.plotName}* (${currentMonthLabel()}).\n\n_Para ver actividades agronómicas: "qué pasó en el lote ${report.plotName}"_`], suggestionKey: 'report_shown' };
         }
-        const { lines: plotLines, total: plotTotal } = formatReportRows(report.rows);
+        const { lines: plotLines, totalsByCurrency: plotExpByCur } = formatReportRows(report.rows);
         let plotMsg = `📊 *Resumen financiero — lote ${report.plotName}* (${report.fieldName}, ${currentMonthLabel()})\n`;
-        if (report.rows.length > 0) plotMsg += `\n${plotLines}\nGastos: $${plotTotal.toLocaleString('es-AR')}`;
-        if (report.incomeTotal > 0) plotMsg += `\nIngresos: $${report.incomeTotal.toLocaleString('es-AR')}`;
-        if (report.rows.length > 0 || report.incomeTotal > 0) {
-          const resultado = report.incomeTotal - plotTotal;
-          plotMsg += `\nResultado: $${resultado.toLocaleString('es-AR')}`;
-        }
+        if (report.rows.length > 0) plotMsg += `\n${plotLines}`;
+        plotMsg += renderResultBlock(plotExpByCur, report.incomeByCurrency);
         plotMsg += `\n\n_Para actividades agronómicas: "qué pasó en el lote ${report.plotName}"_`;
         return { messages: [plotMsg], suggestionKey: 'report_shown' };
       }
@@ -1795,14 +1863,10 @@ export class FinancialHandler {
             if (plotReport.rows.length === 0 && plotReport.incomeTotal === 0) {
               return { messages: [`No hay movimientos para lote *${plotReport.plotName}* (${currentMonthLabel()}).\n\n_Para actividades agronómicas: "qué pasó en el lote ${plotReport.plotName}"_`], suggestionKey: 'report_shown' };
             }
-            const { lines: pLines, total: pTotal } = formatReportRows(plotReport.rows);
+            const { lines: pLines, totalsByCurrency: pExpByCur } = formatReportRows(plotReport.rows);
             let pMsg = `📊 *Resumen financiero — lote ${plotReport.plotName}* (${plotReport.fieldName}, ${currentMonthLabel()})\n`;
-            if (plotReport.rows.length > 0) pMsg += `\n${pLines}\nGastos: $${pTotal.toLocaleString('es-AR')}`;
-            if (plotReport.incomeTotal > 0) pMsg += `\nIngresos: $${plotReport.incomeTotal.toLocaleString('es-AR')}`;
-            if (plotReport.rows.length > 0 || plotReport.incomeTotal > 0) {
-              const pResultado = plotReport.incomeTotal - pTotal;
-              pMsg += `\nResultado: $${pResultado.toLocaleString('es-AR')}`;
-            }
+            if (plotReport.rows.length > 0) pMsg += `\n${pLines}`;
+            pMsg += renderResultBlock(pExpByCur, plotReport.incomeByCurrency);
             pMsg += `\n\n_Para actividades agronómicas: "qué pasó en el lote ${plotReport.plotName}"_`;
             return { messages: [pMsg], suggestionKey: 'report_shown' };
           }
@@ -1811,8 +1875,8 @@ export class FinancialHandler {
         if (rows.length === 0) {
           return { messages: [`No hay gastos registrados para ${cmd.fieldName} (${currentMonthLabel()}).\n\n_Para reporte agronómico: "reporte campo ${cmd.fieldName}"_`], suggestionKey: 'report_shown' };
         }
-        const { lines, total } = formatReportRows(rows);
-        return { messages: [`📊 *Resumen financiero — ${cmd.fieldName}* (${currentMonthLabel()})\n\n${lines}\nTotal: $${total.toLocaleString('es-AR')}\n\n_Para reporte agronómico: "reporte campo ${cmd.fieldName}"_`], suggestionKey: 'report_shown' };
+        const { lines, totalsByCurrency } = formatReportRows(rows);
+        return { messages: [`📊 *Resumen financiero — ${cmd.fieldName}* (${currentMonthLabel()})\n\n${lines}\n${formatTotalsLine('Total', totalsByCurrency)}\n\n_Para reporte agronómico: "reporte campo ${cmd.fieldName}"_`], suggestionKey: 'report_shown' };
       }
 
       // --- Date range report (flexible: field, plot, category, type filters) ---

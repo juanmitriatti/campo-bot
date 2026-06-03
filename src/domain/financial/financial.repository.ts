@@ -155,29 +155,30 @@ export class FinancialRepository {
 
   // --- Reports ---
 
-  async getMonthlyReport(userId: UserId): Promise<CategoryTotal[]> {
+  async getMonthlyReport(userId: UserId): Promise<Array<CategoryTotal & { currency: string }>> {
     const rows = await _getMonthlyReport(userId);
-    return rows.map((r: CategoryTotal) => ({ category: r.category, total: Number(r.total) }));
+    return rows.map((r: any) => ({ category: r.category, total: Number(r.total), currency: r.currency || 'ARS' }));
   }
 
-  async getMonthlyReportByPlot(userId: UserId): Promise<Array<{ plot_name: string; field_name: string; expense_total: number; income_total: number }>> {
+  async getMonthlyReportByPlot(userId: UserId): Promise<Array<{ plot_name: string; field_name: string; currency: string; expense_total: number; income_total: number }>> {
     const rows = await _getMonthlyReportByPlot(userId);
     return rows.map((r: any) => ({
       plot_name: r.plot_name,
       field_name: r.field_name,
+      currency: r.currency || 'ARS',
       expense_total: Number(r.expense_total),
       income_total: Number(r.income_total),
     }));
   }
 
-  async getMonthlyReportForMonth(userId: UserId, month: number, year: number): Promise<CategoryTotal[]> {
+  async getMonthlyReportForMonth(userId: UserId, month: number, year: number): Promise<Array<CategoryTotal & { currency: string }>> {
     const rows = await _getMonthlyReportForMonth(userId, month, year);
-    return rows.map((r: CategoryTotal) => ({ category: r.category, total: Number(r.total) }));
+    return rows.map((r: any) => ({ category: r.category, total: Number(r.total), currency: r.currency || 'ARS' }));
   }
 
-  async getWeeklyReport(userId: UserId): Promise<CategoryTotal[]> {
+  async getWeeklyReport(userId: UserId): Promise<Array<CategoryTotal & { currency: string }>> {
     const rows = await _getWeeklyReport(userId);
-    return rows.map((r: CategoryTotal) => ({ category: r.category, total: Number(r.total) }));
+    return rows.map((r: any) => ({ category: r.category, total: Number(r.total), currency: r.currency || 'ARS' }));
   }
 
   async getDateRangeReport(userId: UserId, desde: Date, hasta: Date, opts?: { fieldName?: string | null; plotName?: string | null; category?: string | null; type?: string }): Promise<any> {
@@ -210,14 +211,14 @@ export class FinancialRepository {
     return _getMonthlyResultByCurrency(userId);
   }
 
-  async getFieldResult(userId: UserId, fieldName: string): Promise<MonthlyResult> {
-    const result = await _getFieldResult(userId, fieldName);
-    return { ingresos: Number(result.ingresos), gastos: Number(result.gastos) };
+  async getFieldResult(userId: UserId, fieldName: string): Promise<MonthlyResult & { byCurrency: Record<string, { ingresos: number; gastos: number }> }> {
+    const result: any = await _getFieldResult(userId, fieldName);
+    return { ingresos: Number(result.ingresos), gastos: Number(result.gastos), byCurrency: result.byCurrency || {} };
   }
 
-  async getFieldReport(userId: UserId, fieldName: string): Promise<CategoryTotal[]> {
+  async getFieldReport(userId: UserId, fieldName: string): Promise<Array<CategoryTotal & { currency: string }>> {
     const rows = await _getFieldReport(userId, fieldName);
-    return rows.map((r: CategoryTotal) => ({ category: r.category, total: Number(r.total) }));
+    return rows.map((r: any) => ({ category: r.category, total: Number(r.total), currency: r.currency || 'ARS' }));
   }
 
   // --- Budgets ---
@@ -326,11 +327,11 @@ export class FinancialRepository {
     return this.plots.getPlotInfo(userId, plotName);
   }
 
-  async getPlotReport(userId: UserId, plotName: string): Promise<{ rows: CategoryTotal[]; plotName: string; fieldName: string; incomeTotal: number } | null> {
+  async getPlotReport(userId: UserId, plotName: string): Promise<{ rows: Array<CategoryTotal & { currency: string }>; plotName: string; fieldName: string; incomeTotal: number; incomeByCurrency: Record<string, number> } | null> {
     return this.plots.getPlotReport(userId, plotName);
   }
 
-  async getPlotResult(userId: UserId, plotName: string): Promise<{ ingresos: number; gastos: number; plotName: string; fieldName: string } | null> {
+  async getPlotResult(userId: UserId, plotName: string): Promise<{ ingresos: number; gastos: number; byCurrency: Record<string, { ingresos: number; gastos: number }>; plotName: string; fieldName: string } | null> {
     return this.plots.getPlotResult(userId, plotName);
   }
 

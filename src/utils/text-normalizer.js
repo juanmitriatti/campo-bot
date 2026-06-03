@@ -14,6 +14,13 @@ export function normalizeTranscript(text) {
   result = result.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   // 2. Strip emojis
   result = result.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{200D}\u{20E3}]/gu, '');
+  // 2.5. Collapse thousands separators inside numbers BEFORE punctuation is
+  // stripped, so dictated amounts like "100.000 dólares" (Whisper writes digits
+  // with separators) aren't shattered into "100 000" — which the parser reads
+  // as 100. Only fires on a separator sitting between a digit and a 3-digit
+  // group, so decimals ("5.5", "13.5") and times ("3.30") are left intact.
+  // Runs twice to cover chained groups ("1.000.000" → "1000000").
+  for (let i = 0; i < 2; i++) result = result.replace(/(\d)[.,](?=\d{3}(?:\D|$))/g, '$1');
   // 3. Remove punctuation separators (. , ; : ! ¡ ¿ ?)
   result = result.replace(/[.,;:!¡¿?]+/g, ' ');
   // 4. Strip leading filler words (common Whisper artifacts in Spanish)

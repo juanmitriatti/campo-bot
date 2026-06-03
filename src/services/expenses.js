@@ -173,12 +173,12 @@ export async function getUsersWithRainAlerts() {
 
 export async function getMonthlyReport(userId) {
   const result = await pool.query(
-    `SELECT category, SUM(amount) as total
+    `SELECT category, COALESCE(currency, 'ARS') as currency, SUM(amount) as total
      FROM expenses
      WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND date_trunc('month', expense_date) = date_trunc('month', NOW())
-     GROUP BY category
+     GROUP BY category, COALESCE(currency, 'ARS')
      ORDER BY total DESC`,
     [userId]
   );
@@ -194,32 +194,32 @@ export async function getMonthlyReportByPlot(userId) {
        SELECT p.id FROM plots p WHERE p.field_id IN (SELECT field_id FROM accessible_fields) AND p.deleted_at IS NULL
      ),
      plot_expenses AS (
-       SELECT plot_id, COALESCE(SUM(amount), 0) as total
+       SELECT plot_id, COALESCE(currency, 'ARS') as currency, COALESCE(SUM(amount), 0) as total
        FROM expenses
        WHERE deleted_at IS NULL AND plot_id IN (SELECT id FROM accessible_plots)
        AND date_trunc('month', expense_date) = date_trunc('month', NOW())
-       GROUP BY plot_id
+       GROUP BY plot_id, COALESCE(currency, 'ARS')
      ),
      plot_incomes AS (
-       SELECT plot_id, COALESCE(SUM(amount), 0) as total
+       SELECT plot_id, COALESCE(currency, 'ARS') as currency, COALESCE(SUM(amount), 0) as total
        FROM incomes
        WHERE deleted_at IS NULL AND plot_id IN (SELECT id FROM accessible_plots)
        AND date_trunc('month', income_date) = date_trunc('month', NOW())
-       GROUP BY plot_id
+       GROUP BY plot_id, COALESCE(currency, 'ARS')
      ),
-     all_plots AS (
-       SELECT plot_id FROM plot_expenses
+     pairs AS (
+       SELECT plot_id, currency FROM plot_expenses
        UNION
-       SELECT plot_id FROM plot_incomes
+       SELECT plot_id, currency FROM plot_incomes
      )
-     SELECT p.name as plot_name, f.name as field_name,
+     SELECT p.name as plot_name, f.name as field_name, pr.currency as currency,
             COALESCE(pe.total, 0) as expense_total,
             COALESCE(pi.total, 0) as income_total
-     FROM all_plots ap
-     JOIN plots p ON ap.plot_id = p.id AND p.deleted_at IS NULL
+     FROM pairs pr
+     JOIN plots p ON pr.plot_id = p.id AND p.deleted_at IS NULL
      JOIN fields f ON p.field_id = f.id AND f.deleted_at IS NULL
-     LEFT JOIN plot_expenses pe ON pe.plot_id = ap.plot_id
-     LEFT JOIN plot_incomes pi ON pi.plot_id = ap.plot_id
+     LEFT JOIN plot_expenses pe ON pe.plot_id = pr.plot_id AND pe.currency = pr.currency
+     LEFT JOIN plot_incomes pi ON pi.plot_id = pr.plot_id AND pi.currency = pr.currency
      ORDER BY COALESCE(pe.total, 0) + COALESCE(pi.total, 0) DESC`,
     [userId]
   );
@@ -228,13 +228,13 @@ export async function getMonthlyReportByPlot(userId) {
 
 export async function getMonthlyReportForMonth(userId, month, year) {
   const result = await pool.query(
-    `SELECT category, SUM(amount) as total
+    `SELECT category, COALESCE(currency, 'ARS') as currency, SUM(amount) as total
      FROM expenses
      WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND EXTRACT(MONTH FROM expense_date) = $2
      AND EXTRACT(YEAR FROM expense_date) = $3
-     GROUP BY category
+     GROUP BY category, COALESCE(currency, 'ARS')
      ORDER BY total DESC`,
     [userId, month + 1, year]
   );
@@ -556,26 +556,29 @@ export async function getMonthlyResultByCurrency(userId) {
 
 export async function getFieldResult(userId, fieldName) {
   const incomes = await pool.query(
-    `SELECT COALESCE(SUM(i.amount), 0) as total
+    `SELECT COALESCE(i.currency, 'ARS') as currency, COALESCE(SUM(i.amount), 0) as total
      FROM incomes i
      JOIN fields f ON i.field_id = f.id
      WHERE f.id IN (${accessibleFieldsSql(1)}) AND i.deleted_at IS NULL
      AND LOWER(f.name) = LOWER($2)
-     AND date_trunc('month', i.income_date) = date_trunc('month', NOW())`,
+     AND date_trunc('month', i.income_date) = date_trunc('month', NOW())
+     GROUP BY COALESCE(i.currency, 'ARS')`,
     [userId, fieldName]
   );
   const expenses = await pool.query(
-    `SELECT COALESCE(SUM(e.amount), 0) as total
+    `SELECT COALESCE(e.currency, 'ARS') as currency, COALESCE(SUM(e.amount), 0) as total
      FROM expenses e
      JOIN fields f ON e.field_id = f.id
      WHERE f.id IN (${accessibleFieldsSql(1)}) AND e.deleted_at IS NULL
      AND LOWER(f.name) = LOWER($2)
-     AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())`,
+     AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())
+     GROUP BY COALESCE(e.currency, 'ARS')`,
     [userId, fieldName]
   );
   return {
-    ingresos: Number(incomes.rows[0].total),
-    gastos: Number(expenses.rows[0].total)
+    ingresos: incomes.rows.reduce((a, r) => a + Number(r.total), 0),
+    gastos: expenses.rows.reduce((a, r) => a + Number(r.total), 0),
+    byCurrency: mergeResultByCurrency(incomes.rows, expenses.rows),
   };
 }
 
@@ -661,12 +664,12 @@ export async function checkBudgetAlert(total, limit, category, userName, userId,
 
 export async function getWeeklyReport(userId) {
   const result = await pool.query(
-    `SELECT category, SUM(amount) as total
+    `SELECT category, COALESCE(currency, 'ARS') as currency, SUM(amount) as total
      FROM expenses
      WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND expense_date >= date_trunc('week', NOW())
-     GROUP BY category
+     GROUP BY category, COALESCE(currency, 'ARS')
      ORDER BY total DESC`,
     [userId]
   );
@@ -919,7 +922,7 @@ export async function getFieldInfo(userId, fieldName) {
 
 export async function getFieldReport(userId, fieldName) {
   const result = await pool.query(
-    `SELECT e.category, SUM(e.amount) as total
+    `SELECT e.category, COALESCE(e.currency, 'ARS') as currency, SUM(e.amount) as total
      FROM expenses e
      JOIN fields f ON e.field_id = f.id
      WHERE f.id IN (${accessibleFieldsSql(1)})
@@ -927,7 +930,7 @@ export async function getFieldReport(userId, fieldName) {
      AND f.deleted_at IS NULL
      AND LOWER(f.name) = LOWER($2)
      AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())
-     GROUP BY e.category
+     GROUP BY e.category, COALESCE(e.currency, 'ARS')
      ORDER BY total DESC`,
     [userId, fieldName]
   );
@@ -940,28 +943,32 @@ export async function getPlotReport(userId, plotName) {
   const plot = plots[0];
   const [expenseResult, incomeResult] = await Promise.all([
     pool.query(
-      `SELECT e.category, SUM(e.amount) as total
+      `SELECT e.category, COALESCE(e.currency, 'ARS') as currency, SUM(e.amount) as total
        FROM expenses e
        WHERE e.plot_id = $1
        AND e.deleted_at IS NULL
        AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())
-       GROUP BY e.category ORDER BY total DESC`,
+       GROUP BY e.category, COALESCE(e.currency, 'ARS') ORDER BY total DESC`,
       [plot.id]
     ),
     pool.query(
-      `SELECT COALESCE(SUM(i.amount), 0) as total
+      `SELECT COALESCE(i.currency, 'ARS') as currency, COALESCE(SUM(i.amount), 0) as total
        FROM incomes i
        WHERE i.plot_id = $1
        AND i.deleted_at IS NULL
-       AND date_trunc('month', i.income_date) = date_trunc('month', NOW())`,
+       AND date_trunc('month', i.income_date) = date_trunc('month', NOW())
+       GROUP BY COALESCE(i.currency, 'ARS')`,
       [plot.id]
     ),
   ]);
+  const incomeByCurrency = {};
+  for (const r of incomeResult.rows) incomeByCurrency[r.currency] = Number(r.total);
   return {
     rows: expenseResult.rows,
     plotName: plot.name,
     fieldName: plot.field_name,
-    incomeTotal: Number(incomeResult.rows[0].total),
+    incomeTotal: incomeResult.rows.reduce((a, r) => a + Number(r.total), 0),
+    incomeByCurrency,
   };
 }
 
@@ -970,27 +977,40 @@ export async function getPlotResult(userId, plotName) {
   if (plots.length === 0) return null;
   const plot = plots[0];
   const incomes = await pool.query(
-    `SELECT COALESCE(SUM(i.amount), 0) as total
+    `SELECT COALESCE(i.currency, 'ARS') as currency, COALESCE(SUM(i.amount), 0) as total
      FROM incomes i
      WHERE i.plot_id = $1
      AND i.deleted_at IS NULL
-     AND date_trunc('month', i.income_date) = date_trunc('month', NOW())`,
+     AND date_trunc('month', i.income_date) = date_trunc('month', NOW())
+     GROUP BY COALESCE(i.currency, 'ARS')`,
     [plot.id]
   );
   const expenses = await pool.query(
-    `SELECT COALESCE(SUM(e.amount), 0) as total
+    `SELECT COALESCE(e.currency, 'ARS') as currency, COALESCE(SUM(e.amount), 0) as total
      FROM expenses e
      WHERE e.plot_id = $1
      AND e.deleted_at IS NULL
-     AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())`,
+     AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())
+     GROUP BY COALESCE(e.currency, 'ARS')`,
     [plot.id]
   );
+  const byCurrency = mergeResultByCurrency(incomes.rows, expenses.rows);
   return {
-    ingresos: Number(incomes.rows[0].total),
-    gastos: Number(expenses.rows[0].total),
+    ingresos: incomes.rows.reduce((a, r) => a + Number(r.total), 0),
+    gastos: expenses.rows.reduce((a, r) => a + Number(r.total), 0),
+    byCurrency,
     plotName: plot.name,
     fieldName: plot.field_name,
   };
+}
+
+/** Merge per-currency income/expense rows into { ARS:{ingresos,gastos}, USD:{...} }. */
+function mergeResultByCurrency(incomeRows, expenseRows) {
+  const out = {};
+  const ensure = (c) => (out[c] ??= { ingresos: 0, gastos: 0 });
+  for (const r of incomeRows) ensure(r.currency).ingresos = Number(r.total);
+  for (const r of expenseRows) ensure(r.currency).gastos = Number(r.total);
+  return out;
 }
 
 // --- Plots ---

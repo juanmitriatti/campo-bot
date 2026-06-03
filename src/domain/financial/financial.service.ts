@@ -220,19 +220,19 @@ export class FinancialService {
 
   // --- Reports (delegating to repository) ---
 
-  async getMonthlyReport(userId: UserId): Promise<CategoryTotal[]> {
+  async getMonthlyReport(userId: UserId): Promise<Array<CategoryTotal & { currency: string }>> {
     return this.repo.getMonthlyReport(userId);
   }
 
-  async getMonthlyReportByPlot(userId: UserId): Promise<Array<{ plot_name: string; field_name: string; expense_total: number; income_total: number }>> {
+  async getMonthlyReportByPlot(userId: UserId): Promise<Array<{ plot_name: string; field_name: string; currency: string; expense_total: number; income_total: number }>> {
     return this.repo.getMonthlyReportByPlot(userId);
   }
 
-  async getMonthlyReportForMonth(userId: UserId, month: number, year: number): Promise<CategoryTotal[]> {
+  async getMonthlyReportForMonth(userId: UserId, month: number, year: number): Promise<Array<CategoryTotal & { currency: string }>> {
     return this.repo.getMonthlyReportForMonth(userId, month, year);
   }
 
-  async getWeeklyReport(userId: UserId): Promise<CategoryTotal[]> {
+  async getWeeklyReport(userId: UserId): Promise<Array<CategoryTotal & { currency: string }>> {
     return this.repo.getWeeklyReport(userId);
   }
 
@@ -240,11 +240,11 @@ export class FinancialService {
     return this.repo.getDateRangeReport(userId, desde, hasta, opts);
   }
 
-  async getFieldReport(userId: UserId, fieldName: string): Promise<CategoryTotal[]> {
+  async getFieldReport(userId: UserId, fieldName: string): Promise<Array<CategoryTotal & { currency: string }>> {
     return this.repo.getFieldReport(userId, fieldName);
   }
 
-  async getPlotReport(userId: UserId, plotName: string): Promise<{ rows: CategoryTotal[]; plotName: string; fieldName: string; incomeTotal: number } | null> {
+  async getPlotReport(userId: UserId, plotName: string): Promise<{ rows: Array<CategoryTotal & { currency: string }>; plotName: string; fieldName: string; incomeTotal: number; incomeByCurrency: Record<string, number> } | null> {
     return this.repo.getPlotReport(userId, plotName);
   }
 
@@ -256,11 +256,11 @@ export class FinancialService {
     return this.repo.getMonthlyResultByCurrency(userId);
   }
 
-  async getFieldResult(userId: UserId, fieldName: string): Promise<MonthlyResult> {
+  async getFieldResult(userId: UserId, fieldName: string): Promise<MonthlyResult & { byCurrency: Record<string, { ingresos: number; gastos: number }> }> {
     return this.repo.getFieldResult(userId, fieldName);
   }
 
-  async getPlotResult(userId: UserId, plotName: string): Promise<{ ingresos: number; gastos: number; plotName: string; fieldName: string } | null> {
+  async getPlotResult(userId: UserId, plotName: string): Promise<{ ingresos: number; gastos: number; byCurrency: Record<string, { ingresos: number; gastos: number }>; plotName: string; fieldName: string } | null> {
     return this.repo.getPlotResult(userId, plotName);
   }
 

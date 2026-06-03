@@ -1,5 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { stripFillerPhrases } from "./text-normalizer.js";
+import { stripFillerPhrases, normalizeTranscript } from "./text-normalizer.js";
+
+describe("normalizeTranscript — thousands separators in dictated amounts", () => {
+  it.each([
+    ["Vendí 100.000 dólares", "vendi 100000 dolares"],
+    ["venta de 1.000.000 de pesos", "venta de 1000000 de pesos"],
+    ["cobré 250.500 dolares", "cobre 250500 dolares"],
+    ["100.000 y 250.500", "100000 y 250500"],
+  ])("%s → %s (separator collapsed, not shattered)", (input, expected) => {
+    expect(normalizeTranscript(input)).toBe(expected);
+  });
+
+  it("does not collapse a 2-digit group like a time (3.30)", () => {
+    expect(normalizeTranscript("a las 3.30 pm")).toContain("3 30");
+  });
+});
 
 describe("stripFillerPhrases", () => {
   describe("info/datos prefix stripping", () => {
