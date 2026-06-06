@@ -2088,7 +2088,14 @@ export class AgronomyHandler {
           savedEvent = existingEvent;
           isAppend = true;
         } else {
-          // Normal flow: register harvest
+          // Normal flow: register harvest.
+          // P1-3: when the user confirmed "registrar siembra + cosecha" (button),
+          // create the sow first so a named-crop harvest with no prior sow isn't
+          // a dead-end.
+          if ((cmd as ParsedCommand & { _autoSow?: boolean })._autoSow && crop && !(await this.cropService.getActive(plotResult.plotId))) {
+            await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, null);
+            await this.repo.saveDomainEvent(userId, { plotId: plotResult.plotId, eventType: 'planting', eventDate: null, crop });
+          }
           const harvestedResult = await this.cropService.harvestCrop(plotResult.plotId, crop, cmd.eventDate as Date | undefined, yieldKg, yieldNotes);
 
           if (!harvestedResult) {
@@ -2112,6 +2119,27 @@ export class AgronomyHandler {
                   return { messages: [`✅ Rinde de *${recentNoYield.crop}* cargado en *${plotLabel}*: ${kgLabel} kg${perHa}`] };
                 }
               }
+            }
+            // P1-3: instead of a dead-end, OFFER to register the sow + harvest
+            // in one tap (only when a crop was named and we haven't already
+            // auto-sowed this turn). Naive users just want to log "coseché maíz".
+            if (crop && !(cmd as ParsedCommand & { _autoSow?: boolean })._autoSow) {
+              const payload = Buffer.from(JSON.stringify({
+                plot: plotResult.plotName, field: plotResult.fieldName,
+                crop, yieldKg: yieldKg ?? null, yieldNotes: yieldNotes ?? null,
+              })).toString('base64url');
+              const body = `🌾 No tengo una siembra de *${crop}* registrada en *${plotLabel}*. ¿La registro y cargo la cosecha?`;
+              return {
+                messages: [body],
+                interactive: {
+                  type: 'buttons',
+                  body,
+                  buttons: [
+                    { id: `sowharv_${payload}`, title: 'Sí, registrar' },
+                    { id: 'cancel_action', title: 'No' },
+                  ],
+                },
+              };
             }
             return { messages: [`No hay cultivo activo en *${plotLabel}* para cosechar.${lostLoadsNote}`] };
           }

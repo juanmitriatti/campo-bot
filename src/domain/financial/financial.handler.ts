@@ -862,14 +862,26 @@ export class FinancialHandler {
     }
 
     // --- Category resolution ---
-    const rawExpenseCategory = (data as ParsedExpense & { category_match?: string }).category_match === 'new'
+    let rawExpenseCategory = (data as ParsedExpense & { category_match?: string }).category_match === 'new'
       ? data.category
       : data.category ?? null;
-    const expenseCategoryIntent = (data as ParsedExpense & { category_match?: string }).category_match === 'new'
-      ? 'new' as const
+    let expenseCategoryIntent: 'new' | 'exact' | 'unknown' = (data as ParsedExpense & { category_match?: string }).category_match === 'new'
+      ? 'new'
       : (data as ParsedExpense & { category_match?: string }).category_match === 'exact'
-        ? 'exact' as const
-        : 'unknown' as const;
+        ? 'exact'
+        : 'unknown';
+
+    // P1-2: a continuation expense with NO category ("y 30 lucas más ahí mismo",
+    // "otro gasto de 5 mil") means "same category as the last gasto". Reuse it
+    // instead of re-asking — the user already told us when they logged the first.
+    if ((!rawExpenseCategory || !String(rawExpenseCategory).trim()) &&
+        /\b(m[aá]s|otro|otra|tambi[eé]n|igual|lo\s+mismo|de\s+nuevo|aparte|sum[aá]le?)\b/i.test(text)) {
+      const lastExp = await this.service.getLastExpenseRow(userId);
+      if (lastExp?.category) {
+        rawExpenseCategory = lastExp.category;
+        expenseCategoryIntent = 'exact';
+      }
+    }
 
     // When the agent claims it's a new category, first check for a similar existing one
     if (expenseCategoryIntent === 'new' && rawExpenseCategory && rawExpenseCategory.trim()) {

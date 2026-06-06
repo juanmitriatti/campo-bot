@@ -66,6 +66,11 @@ export class FinancialService {
     return this.repo.findLastExpenseByCategory(userId, categoryFilter);
   }
 
+  /** Most recent expense (non-destructive) — used to reuse category on "X más". */
+  async getLastExpenseRow(userId: UserId) {
+    return this.repo.getLastExpense(userId);
+  }
+
   async updateExpensePlot(expenseId: number, fieldId: number | null, plotId: number | null): Promise<void> {
     return this.repo.updateExpensePlot(expenseId, fieldId, plotId);
   }

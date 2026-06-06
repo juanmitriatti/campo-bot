@@ -95,6 +95,30 @@ export class InteractiveRouter {
       }
     }
 
+    // Sow+harvest offer: sowharv_<base64url> → harvest_crop with _autoSow so the
+    // handler registers the missing siembra first (P1-3: harvest with no prior sow).
+    const sowHarvMatch = callbackId.match(/^sowharv_([A-Za-z0-9_-]+)$/);
+    if (sowHarvMatch) {
+      try {
+        const p = JSON.parse(Buffer.from(sowHarvMatch[1], 'base64url').toString('utf-8')) as { plot?: string; field?: string; crop?: string; yieldKg?: number | null; yieldNotes?: string | null };
+        if (p.crop) {
+          return {
+            type: 'command',
+            data: {
+              command: 'harvest_crop',
+              plotName: p.plot ?? null, fieldName: p.field ?? null,
+              crop: p.crop,
+              ...(p.yieldKg != null ? { yieldKg: p.yieldKg } : {}),
+              ...(p.yieldNotes ? { yieldNotes: p.yieldNotes } : {}),
+              _autoSow: true,
+            },
+          };
+        }
+      } catch {
+        // fall through
+      }
+    }
+
     // Category pick: cat_pick_exp_<token-or-payload>_<categoryId> → pick_category (expense)
     // Since May 28: the first part is normally a short token (~8 chars) that
     // resolves to a payload via callbackPayloadStore. We fall back to treating
