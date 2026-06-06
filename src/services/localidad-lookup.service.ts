@@ -119,6 +119,25 @@ class LocalidadLookupService {
       return { status: 'suggestions', matches: startsWithMatches };
     }
 
+    // 2.5 Word-contains fallback: colloquial names are often a WORD inside the
+    // official census name ("Bolívar" → "San Carlos de Bolívar", "Carlos Tejedor"
+    // etc.). Match the input as a whole word within a locality name. Only for
+    // inputs ≥4 chars to avoid noise.
+    if (normCity.length >= 4) {
+      const wordRe = new RegExp(`(?:^|\\s)${normCity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`);
+      const containsMatches: Localidad[] = [];
+      const seenC = new Set<string>();
+      for (const { norm, loc } of this.allNormalized!) {
+        if (wordRe.test(norm)) {
+          if (normProvince && !(normalize(loc.provincia).includes(normProvince) || normProvince.includes(normalize(loc.provincia)))) continue;
+          const key = `${norm}|${normalize(loc.provincia)}`;
+          if (!seenC.has(key)) { seenC.add(key); containsMatches.push(loc); if (containsMatches.length >= 6) break; }
+        }
+      }
+      if (containsMatches.length === 1) return { status: 'exact', matches: containsMatches };
+      if (containsMatches.length > 1) return { status: 'disambiguate', matches: containsMatches };
+    }
+
     // 3. Levenshtein suggestions (distance <= 3, max 5)
     const fuzzyMatches: Array<{ loc: Localidad; dist: number }> = [];
     const seenFuzzy = new Set<string>();

@@ -90,6 +90,38 @@ export function isPlaceholderCategory(input: unknown): boolean {
   return PLACEHOLDER_TOKENS.has(trimmed);
 }
 
+/**
+ * Safety net for the harvest-goes-chatty case: when the agent returns no tool
+ * but the message is clearly a past-tense cosecha WITH a yield, synthesize a
+ * harvest_crop command. Conservative: skips questions, requires a cosecha verb +
+ * a yield number. Crop/plot are optional (the handler resolves the active crop /
+ * single plot). Returns null when it's not unambiguously a harvest.
+ */
+export function synthesizeHarvestFromText(text: string): ParseResult | null {
+  if (!text || !text.trim()) return null;
+  if (/\?\s*$/.test(text.trim())) return null; // a question, not a registration
+  const t = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (!/\b(coseche|cosechamos|cosecho|cosechaste|trille|trillamos|levante\s+la\s+cosecha|saque\s+\d)\b/.test(t)) return null;
+  // Yield: "40 qq/ha", "200 tn", "5000 kg", or "rindio 42 qq"
+  const m = t.match(/(\d[\d.,]*)\s*(tn|toneladas?|qq|quintales?|kg|kilos?)\b/) || t.match(/rind\w*\s+(?:de\s+)?(\d[\d.,]*)\s*(tn|qq|kg)?/);
+  if (!m) return null;
+  const num = parseFloat(m[1].replace(/\./g, '').replace(',', '.'));
+  if (!num || num <= 0) return null;
+  const unit = (m[2] || 'kg').toLowerCase();
+  const toKg = unit.startsWith('tn') || unit.startsWith('tonel') ? num * 1000
+    : unit.startsWith('qq') || unit.startsWith('quint') ? num * 100
+    : num;
+  const perHa = /\/\s*ha\b|por\s+hect[aá]rea|qq\/ha|kg\/ha|tn\/ha/.test(t);
+  const crop = extractCropFromText(text);
+  const plotM = text.match(/\b(?:en|del?)\s+(?:el\s+|los\s+|la\s+)?(?:lote|potrero|parcela)\s+([^\s,.;]+(?:\s+[^\s,.;]+){0,2})/i);
+  const cmd: ParsedCommand = { command: 'harvest_crop' };
+  if (crop) cmd.crop = crop as string;
+  if (plotM) cmd.plotName = plotM[1].trim();
+  if (perHa) (cmd as Record<string, unknown>).yieldKgPerHa = Math.round(toKg);
+  else (cmd as Record<string, unknown>).yieldKg = Math.round(toKg);
+  return { intent: { type: 'command', data: cmd }, confidence: 0.6, aiUsed: true, source: 'ai', missingFields: [] };
+}
+
 export function normalizeCropName(input: unknown): unknown {
   if (typeof input !== 'string') return input;
   const lower = input.trim().toLowerCase();
@@ -224,6 +256,15 @@ export class AgentResponseMapper {
     validationOptions: ValidationOptions = {},
   ): ParseResult[] {
     if (result.toolCalls.length === 0) {
+      // Harvest safety net: the agent sometimes goes chatty on a clear cosecha
+      // with a yield ("coseché trigo, 40 qq/ha…") and never fires harvest_crop →
+      // silent data loss (LLM variance). If the message is unambiguously a
+      // harvest with a yield, synthesize the command instead of just chatting.
+      const synthHarvest = synthesizeHarvestFromText(originalText);
+      if (synthHarvest) {
+        console.warn('[HARVEST_NET] agent went chatty on a harvest — synthesizing harvest_crop for:', originalText.slice(0, 80));
+        return [synthHarvest];
+      }
       if (result.conversationalText) {
         // Detect "false confirmation" hallucination: agent text claims an
         // action was performed (✅ Registré X, ✅ Anotado, ✅ Guardado,
