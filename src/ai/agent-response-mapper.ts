@@ -2,6 +2,7 @@ import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency 
 import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES, EXPENSE_KEYWORD_MAP, type IncomeCategory } from '../constants/agro-terms.js';
 import { resolveRelativeDate, TOOLS_WITH_DATE_PARAM, dateKeyForTool } from '../utils/relative-dates.js';
 import { extractCropFromText } from '../utils/crops.js';
+import { normalizarMonto } from '../utils/parser.js';
 import type { AgentResult } from './agent.service.js';
 import { validateToolCall, type ValidationOptions } from './agent-output-validator.js';
 import { buildFallbackMessage } from '../utils/fuzzy-suggest.js';
@@ -807,6 +808,21 @@ export class AgentResponseMapper {
     if (input.name != null && !cmd.product) cmd.warehouseName = input.name; // create_warehouse: name → warehouseName
     if (input.unit_price_ars != null) cmd.unit_price_ars = input.unit_price_ars;
     if (input.unit_price_usd != null) cmd.unit_price_usd = input.unit_price_usd;
+
+    // Livestock price recovery: "vendí 8 vacas a 900 USD" / "compré 5 toros a
+    // 1.2 palos" — Haiku only sets unit_price_* when "cada uno/una" is explicit,
+    // so the natural "a $X" silently dropped the linked income/expense. Recover
+    // it as the per-head price (matches the explicit "cada una" behaviour).
+    if ((toolName === 'add_livestock' || toolName === 'remove_livestock')
+        && cmd.unit_price_ars == null && cmd.unit_price_usd == null && originalText) {
+      const m = originalText.match(/\ba\s+(?:\$|us\$)?\s*([\d][\d.,]*\s*(?:millones?|millon|palos?|palo|mil|lucas|luca)?)\s*(usd|u\$s|d[oó]lares?|d[oó]lar)?/i);
+      if (m) {
+        const amt = normalizarMonto(m[1]);
+        if (amt && amt > 0) {
+          if (m[2]) cmd.unit_price_usd = amt; else cmd.unit_price_ars = amt;
+        }
+      }
+    }
 
     // Sharing
     if (input.phone != null) cmd.phone = input.phone;

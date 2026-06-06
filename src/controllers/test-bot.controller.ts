@@ -303,7 +303,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // --- Text message ---
     if (!inputText || !inputText.trim()) {
-      res.json({ messages: [] });
+      res.json({ messages: [{ type: 'text', text: '🤔 No te entendí. Contame qué querés hacer — ej: *gasté 50 mil en gasoil*, *sembré soja en el lote 1*, o escribí *menú*.' }] });
       return;
     }
 

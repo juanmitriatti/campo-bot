@@ -41,12 +41,19 @@ function looksLikeOtherAction(text: string): boolean {
   // because é isn't a \w, so the verb would never match. Normalize to plain ASCII.
   const lower = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   // Financial / agro / livestock action verbs that clearly aren't a has answer.
-  const actionVerb = /\b(gaste|pague|compre|abone|vendi|cobre|ingres[eo]|facture|sembre|fumig[uoe]|fertilice|coseche|llovio|cayo|agrega|suma|carga|registra|anota|borra|elimina|saca)\b/;
+  const actionVerb = /\b(gaste|pague|compre|abone|vendi|cobre|ingres[eo]|facture|sembre|fumig[uoe]|fertilice|coseche|llovio|cayo|agrega|suma|carga|registra|anota|borra|elimina|saca|tengo|hay|nacieron|nacio|pario|parieron|vacune|desparasite|pese|eche)\b/;
   if (actionVerb.test(lower)) return true;
   // A money/unit token strongly implies a financial/stock entry, not a plot
   // size. (Deliberately excludes "mil/palos/lucas" — those are ambiguous with
   // large hectárea figures; financial uses of them carry a verb anyway.)
   if (/\b(pesos?|dolares?|usd|kg|kilos?|toneladas?|tn|litros?|bolsas?|qq)\b/.test(lower)) return true;
+  // A number + a livestock/registration noun is never a plot size
+  // ("tengo 100 vacas en el lote Uno" was setting the lote to 100 ha and
+  // dropping the animals).
+  if (/\d/.test(lower) && /\b(vacas?|novillos?|novillitos?|terneros?|terneras?|toros?|toritos?|vaquillonas?|bueyes?|animales?|cabezas?)\b/.test(lower)) return true;
+  // "...en (el) lote/potrero X" — the user is naming a DIFFERENT lote, not
+  // answering the area for the one we asked about.
+  if (/\ben\s+(?:el\s+|los\s+)?(?:lote|potrero|parcela)\s+\S+/.test(lower)) return true;
   return false;
 }
 

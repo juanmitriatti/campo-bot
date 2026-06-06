@@ -36,6 +36,18 @@ describe('handlePendingPlotArea', () => {
     expect(store.remaining(PHONE)).toBe(0);   // queue cleared so it doesn't re-eat
   });
 
+  it.each([
+    'tengo 100 vacas en el lote Uno',
+    'agregué 30 terneros en el lote A',
+    'compré 120 novillos',
+  ])('does NOT grab a livestock count as hectares: "%s"', async (msg) => {
+    seed(store, ['A', 'B']);
+    const { svc, calls } = makeService();
+    const r = await handlePendingPlotArea(msg, PHONE, store, svc);
+    expect(r.handled).toBe(false);   // escapes to the pipeline
+    expect(calls).toHaveLength(0);   // no bogus area written
+  });
+
   it('"todos 40" applies to every pending lote and clears the queue', async () => {
     seed(store, ['A', 'B', 'C']);
     const { svc, calls } = makeService();
