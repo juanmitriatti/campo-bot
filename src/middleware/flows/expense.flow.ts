@@ -258,7 +258,7 @@ export const expenseFlow: FlowDefinition = {
           userId, saved.id, expenseData.product, expenseData.quantity, expenseData.unit, fieldId,
         );
         if (suggestion) {
-          msg += `\n\n📦 ¿Querés cargar *${expenseData.quantity}${expenseData.unit} de ${expenseData.product}* al stock del Depósito ${suggestion.warehouseName}?`;
+          msg += `\n\n📦 ¿Querés cargar *${expenseData.quantity} ${expenseData.unit} de ${expenseData.product}* al stock del Depósito ${suggestion.warehouseName}?`;
           return {
             messages: [],
             interactive: {

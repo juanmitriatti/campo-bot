@@ -987,7 +987,7 @@ export class FinancialHandler {
         );
         if (suggestion) {
           messages.push(
-            `\n📦 ¿Querés cargar *${data.quantity}${data.unit} de ${data.product}* al stock del Depósito ${suggestion.warehouseName}?`
+            `\n📦 ¿Querés cargar *${data.quantity} ${data.unit} de ${data.product}* al stock del Depósito ${suggestion.warehouseName}?`
           );
           return {
             messages,
@@ -1398,7 +1398,7 @@ export class FinancialHandler {
           );
           if (suggestion) {
             messages.push(
-              `\n📦 ¿Querés cargar *${expenseData.quantity}${expenseData.unit} de ${expenseData.product}* al stock del Depósito ${suggestion.warehouseName}?`
+              `\n📦 ¿Querés cargar *${expenseData.quantity} ${expenseData.unit} de ${expenseData.product}* al stock del Depósito ${suggestion.warehouseName}?`
             );
             return {
               messages,

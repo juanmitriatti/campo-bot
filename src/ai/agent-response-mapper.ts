@@ -655,6 +655,20 @@ export class AgentResponseMapper {
     if (input.newName != null) cmd.newName = input.newName;
     if (input.entityKeyword != null) cmd.entityKeyword = input.entityKeyword;
 
+    // Name+city recovery for "(tengo otro) campo en <city> que se llama <name>"
+    // — Haiku often drops the name and/or city for this phrasing, so the field
+    // is never created and a follow-up "agregá lotes al campo <name>" fails.
+    if (toolName === 'add_field' && originalText) {
+      if (!cmd.fieldName) {
+        const mn = originalText.match(/(?:que\s+)?se\s+llama\s+(?:el\s+|la\s+)?([A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9.'\s-]*?)\s*[?.!]*$/i);
+        if (mn) cmd.fieldName = mn[1].trim().replace(/^(?:campo|lote)\s+/i, '');
+      }
+      if (!cmd.city) {
+        const mc = originalText.match(/\ben\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ.'\s-]*?)\s+que\s+se\s+llama\b/i);
+        if (mc) cmd.city = mc[1].trim();
+      }
+    }
+
     // City recovery net for field creation: Haiku reliably extracts the city
     // for "agregá/doy de alta el campo X en Y" but often DROPS it for "cargá el
     // campo X en Y". When we have a field name, no city, and a single-clause

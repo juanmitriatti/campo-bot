@@ -238,7 +238,11 @@ function isCancelIntent(text: string): boolean {
 function collectResponse(response: HandlerResponse): BotResponseItem[] {
   const items: BotResponseItem[] = [];
 
+  // Skip a plain message that duplicates the interactive body (confirmations,
+  // plot prompts) — otherwise the same paragraph renders twice.
+  const interactiveBody = response.interactive?.body?.trim();
   for (const msg of response.messages) {
+    if (interactiveBody && msg.trim() === interactiveBody) continue;
     items.push({ type: 'text', text: msg });
   }
 

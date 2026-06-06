@@ -201,7 +201,11 @@ function isCancelIntent(text: string): boolean {
 // --- Response helper ---
 
 async function sendResponse(phone: string, response: HandlerResponse): Promise<void> {
+  // Skip a plain message that duplicates the interactive body (confirmations,
+  // plot prompts) — otherwise WhatsApp shows the same paragraph twice.
+  const interactiveBody = response.interactive?.body?.trim();
   for (const msg of response.messages) {
+    if (interactiveBody && msg.trim() === interactiveBody) continue;
     await sendMessage(phone, msg);
   }
   if (response.attachment) {
