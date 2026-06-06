@@ -50,6 +50,15 @@ describe('looksLikeNewActionOrQuery', () => {
     expect(looksLikeNewActionOrQuery(t)).toBe(true);
   });
 
+  it.each([
+    'tengo 200 vacas en el lote norte',
+    '30 terneros en El Alto',
+    '120 cabezas',
+    'aparte 30 terneros',
+  ])('livestock registration: "%s" → true', (t) => {
+    expect(looksLikeNewActionOrQuery(t)).toBe(true);
+  });
+
   // Bare answers to a pending/flow prompt must NOT be treated as new intents:
   it.each(['40', '40 has', 'lote norte', 'Norte', 'todos 40', 'Norte 40, Sur 30', 'aftosa', 'soja', '320', 'saltar'])('bare answer: "%s" → false', (t) => {
     expect(looksLikeNewActionOrQuery(t)).toBe(false);

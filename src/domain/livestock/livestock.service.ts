@@ -530,10 +530,28 @@ export class LivestockService {
     if (!category) throw new Error(`Categoría no reconocida: "${opts.category}".`);
     if (!opts.count || opts.count <= 0) throw new Error('La cantidad debe ser mayor a 0.');
 
-    const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
+    let loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
     const locLabel = loc.type === 'corral' ? `corral ${loc.corralName}` : `lote ${loc.plotName}`;
 
-    const group = await this.findGroupAtLocation(loc, category, opts.breed ?? null, opts.bulkMode === true);
+    let group = await this.findGroupAtLocation(loc, category, opts.breed ?? null, opts.bulkMode === true);
+    if (!group) {
+      // Fallback: the resolved location is often an INHERITED context plot (the
+      // last lote the user mentioned) which may not hold this category. If exactly
+      // ONE plot-group of this category exists anywhere, use it — a sale of "30
+      // vacas" shouldn't fail because the last message was about terneros in Sur.
+      const candidates = (await this.repo.listGroups(Number(userId), { category: category as LivestockCategory }))
+        .filter(g => g.count > 0 && g.plot_id != null && (!opts.breed || (g.breed ?? '').toLowerCase() === String(opts.breed).toLowerCase()));
+      if (candidates.length === 1) {
+        group = candidates[0];
+        loc = {
+          type: 'plot',
+          fieldId: group.field_id,
+          fieldName: group.field_name ?? '',
+          plotId: group.plot_id as number,
+          plotName: group.plot_name ?? '',
+        };
+      }
+    }
     if (!group) {
       throw new Error(
         `No hay ${category}${opts.breed ? ` (${opts.breed})` : ''} en el ${locLabel}.`

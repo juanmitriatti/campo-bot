@@ -76,6 +76,10 @@ export function looksLikeNewActionOrQuery(text: string): boolean {
   if (!t) return false;
   if (ACTION_VERB.test(t)) return true;
   if (QUERY_INTENT.test(t)) return true;
+  // Livestock registration ("tengo 100 vacas", "30 terneros", "120 cabezas") —
+  // a number + an animal noun. Lets it abandon a stuck flow/pending (e.g. the
+  // field-city step) instead of being swallowed as a bad locality.
+  if (/\d/.test(t) && /\b(vacas?|novillos?|novillitos?|terneros?|terneras?|toros?|toritos?|vaquillonas?|bueyes?|animales?|cabezas?)\b/.test(t)) return true;
   // A genuine multi-word question ("va a llover el finde?", "cuánto tengo?").
   if (/\?\s*$/.test(text.trim()) && t.split(/\s+/).length >= 3) return true;
   return false;

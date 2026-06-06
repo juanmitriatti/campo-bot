@@ -343,6 +343,11 @@ export async function validatePlotAsync(
   // Flatten to unique plot names for numeric selection
   const uniquePlotNames = [...new Set(plotsWithFields.map(p => p.plotName))];
   const normalizedInput = normalize(input);
+  // A natural answer ("en el Norte", "el Norte", "lote Norte", "al Sur") should
+  // match the bare plot name — without this the confirm-flow re-asked forever
+  // and the expense was lost. Tried as a FALLBACK so plots whose names start
+  // with an article ("El Bajo") still match on the raw input first.
+  const strippedInput = normalizedInput.replace(/^(?:en\s+)?(?:el|la|los|las)\s+|^en\s+|^al?\s+|^del?\s+|^(?:el\s+|la\s+)?(?:lote|potrero|parcela)\s+/, '').trim();
 
   // Numeric selection — only if the ENTIRE input is a number (avoid "1B" → 1)
   const num = /^\d+$/.test(input.trim()) ? parseInt(input, 10) : NaN;
@@ -354,8 +359,11 @@ export async function validatePlotAsync(
     // Ambiguous — fall through to disambiguation
   }
 
-  // Exact match
-  const exactMatches = plotsWithFields.filter(p => normalize(p.plotName) === normalizedInput);
+  // Exact match (raw input first, then article-stripped fallback)
+  let exactMatches = plotsWithFields.filter(p => normalize(p.plotName) === normalizedInput);
+  if (exactMatches.length === 0 && strippedInput && strippedInput !== normalizedInput) {
+    exactMatches = plotsWithFields.filter(p => normalize(p.plotName) === strippedInput);
+  }
   if (exactMatches.length === 1) return { value: exactMatches[0].plotName };
 
   if (exactMatches.length > 1) {
