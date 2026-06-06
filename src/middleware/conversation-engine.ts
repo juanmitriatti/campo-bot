@@ -615,6 +615,15 @@ export class ConversationEngine {
   /**
    * Get the current step's prompt response (for re-prompting after safe interruptions).
    */
+  /** The `field` name of the step the flow is currently awaiting (or null). */
+  getCurrentStepField(ctx: FlowContext): string | null {
+    if (!ctx || ctx.state === 'idle' || ctx.state === 'confirming') return null;
+    const flow = this.registry.get(ctx.state as FlowState);
+    if (!flow) return null;
+    const stepDef = flow.steps[ctx.step];
+    return stepDef?.field ?? null;
+  }
+
   async getCurrentStepPrompt(ctx: FlowContext, userId: UserId): Promise<HandlerResponse | null> {
     if (ctx.state === 'confirming') {
       const originFlow = ctx.originFlow ?? ctx.state;

@@ -15,6 +15,7 @@ import { UserRepository } from '../domain/users/user.repository.js';
 import { logError } from '../services/error-logger.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
+import { isAffirmation, looksLikeNewActionOrQuery } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
@@ -850,6 +851,32 @@ async function processTextMessage(
         return collectResponse(result.response);
       }
 
+      // P0-1: an affirmation ("si/dale/ok/listo") while the flow is awaiting the
+      // OPTIONAL plot ("\u00bfen qu\u00e9 lote?") means "register at field level" \u2014 same as
+      // tapping Confirmar. Without this, "si" reached the global confirm handler,
+      // got "no hay nada pendiente", and the record was silently dropped.
+      if (conversationEngine.getCurrentStepField(flowCtx) === 'plotName' && isAffirmation(text)) {
+        const result = await conversationEngine.executeConfirm(userId, flowCtx);
+        if (result.response.sideEffects?.setPendingStockEntry) {
+          pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
+        }
+        if (result.response.sideEffects?.setPendingFieldLocation) {
+          const loc = result.response.sideEffects.setPendingFieldLocation;
+          pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
+        }
+        return collectResponse(result.response);
+      }
+
+      // P0-3: a clearly-different NEW action or query mid-flow ("va a llover?",
+      // "c\u00f3mo vamos?", "vend\u00ed 10 novillos") abandons the flow and gets processed
+      // normally \u2014 instead of the "est\u00e1s en medio de un registro" nudge that
+      // bricked clima/reportes/queries until the user typed "cancelar". A plot
+      // answer ("lote A") is exempt \u2014 that's the flow's expected input.
+      if (!isPlotAnswerToFlow(flowCtx.state, text) && looksLikeNewActionOrQuery(text)) {
+        await conversationEngine.clearFlow(userId);
+        // fall through to normal processing below
+      } else {
+
       // Smart interruption: check if the user typed a known command mid-flow
       const interruptCmd = intentClassifier.parseCommandOnly(text);
       // During field_flow name step, suppress ONLY field_info
@@ -901,6 +928,7 @@ async function processTextMessage(
         }
         return collectResponse(result.response);
       }
+      } // end P0-3 else (message was not a new action/query)
     }
   }
 
@@ -958,7 +986,7 @@ async function processTextMessage(
     }
     // Escape hatch: if the message looks like a known command, clear pending and fall through
     const obsInterruptCmd = intentClassifier.parseCommandOnly(text);
-    if (obsInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
+    if (obsInterruptCmd || intentClassifier.detectsFinancialIntent(text) || looksLikeNewActionOrQuery(text)) {
       pendingObsStore.clear(phone);
       // Fall through to normal processing below
     } else {
@@ -1015,7 +1043,7 @@ async function processTextMessage(
       const expectsFinancialSlot = pendingAct.missing
         && (pendingAct.command === 'log_income' || pendingAct.command === 'log_expense')
         && pendingAct.missing.some(s => s === 'amount' || s === 'quantity' || s === 'unit_price' || s === 'unit');
-      if (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text))) {
+      if (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text) || looksLikeNewActionOrQuery(text))) {
       pendingActStore.clear(phone);
       // Fall through to normal processing
     } else if (pendingAct.missing && pendingAct.missing.length > 0) {

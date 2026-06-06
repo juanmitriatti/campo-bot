@@ -13,6 +13,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
+import { isAffirmation, looksLikeNewActionOrQuery } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
@@ -1382,6 +1383,23 @@ async function processTextMessage(
         return collectResponse(result.response);
       }
 
+      // P0-1: affirmation while awaiting the OPTIONAL plot \u2192 register at field
+      // level (same as tapping Confirmar), never the global confirm handler.
+      if (conversationEngine.getCurrentStepField(flowCtx) === 'plotName' && isAffirmation(text)) {
+        const result = await conversationEngine.executeConfirm(userId, flowCtx);
+        if (result.response.sideEffects?.setPendingStockEntry) {
+          pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
+        }
+        return collectResponse(result.response);
+      }
+
+      // P0-3: a clearly-different new action or query mid-flow abandons the flow
+      // and gets processed normally, instead of the "est\u00e1s en medio" nudge.
+      if (!isPlotAnswerToFlow(flowCtx.state, text) && looksLikeNewActionOrQuery(text)) {
+        await conversationEngine.clearFlow(userId);
+        // fall through to normal processing below
+      } else {
+
       const interruptCmd = intentClassifier.parseCommandOnly(text);
       const isFlowNameStep = flowCtx.state === 'field_flow' && flowCtx.step === 0;
       const effectiveCmd = (isFlowNameStep && interruptCmd?.command === 'field_info') ? null : interruptCmd;
@@ -1422,6 +1440,7 @@ async function processTextMessage(
         }
         return collectResponse(result.response);
       }
+      } // end P0-3 else (message was not a new action/query)
     }
   }
 
@@ -1478,7 +1497,7 @@ async function processTextMessage(
       return [{ type: 'text', text: '\u274c Observacion cancelada.' }];
     }
     const obsInterruptCmd = intentClassifier.parseCommandOnly(text);
-    if (obsInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
+    if (obsInterruptCmd || intentClassifier.detectsFinancialIntent(text) || looksLikeNewActionOrQuery(text)) {
       pendingObsStore.clear(phone);
     } else {
       const obsResolved = await plotDiscovery.resolveExisting(userId, text);
@@ -1534,7 +1553,7 @@ async function processTextMessage(
       const expectsFinancialSlot = pendingAct.missing
         && (pendingAct.command === 'log_income' || pendingAct.command === 'log_expense')
         && pendingAct.missing.some(s => s === 'amount' || s === 'quantity' || s === 'unit_price' || s === 'unit');
-      if (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text))) {
+      if (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text) || looksLikeNewActionOrQuery(text))) {
       pendingActStore.clear(phone);
       // Fall through to normal processing
     } else if (pendingAct.missing && pendingAct.missing.length > 0) {

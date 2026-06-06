@@ -100,8 +100,12 @@ export async function saveObservation(userId, { fieldId, plotId, text, category,
     return SAVE_REJECTED_FINANCIAL;
   }
 
-  // Single source of truth: normalizeObservationText for BOTH columns
+  // normalized_text is for DEDUP only (plot ref + accents + punctuation stripped).
+  // observation_text must keep the user's REAL text for display — storing the
+  // normalized form here mangled notes ("el lote Norte está muy lindo, buena
+  // humedad" → "ela muy lindo buena humedad").
   const normalizedText = normalizeObservationText(text);
+  const displayText = (text || '').trim();
   const dedupKey = `${userId}:${plotId || 0}:${normalizedText}`;
 
   // In-memory dedup (catches same-request / rapid-fire duplicates)
@@ -131,7 +135,7 @@ export async function saveObservation(userId, { fieldId, plotId, text, category,
   const result = await pool.query(
     `INSERT INTO agro_observations (user_id, field_id, plot_id, observation_text, normalized_text, category, source, observation_date)
      VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::date, CURRENT_DATE)) RETURNING *`,
-    [userId, fieldId || null, plotId || null, normalizedText, normalizedText, category || 'general', source || 'text', observationDate || null]
+    [userId, fieldId || null, plotId || null, displayText, normalizedText, category || 'general', source || 'text', observationDate || null]
   );
   _recentInserts.set(dedupKey, Date.now());
   return result.rows[0];

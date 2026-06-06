@@ -14,6 +14,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
+import { isAffirmation, looksLikeNewActionOrQuery } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
@@ -1385,6 +1386,25 @@ router.post('/', async (req: Request, res: Response) => {
           return;
         }
 
+        // P0-1: affirmation while awaiting the OPTIONAL plot → register at field
+        // level (same as tapping Confirmar), never the global confirm handler.
+        if (conversationEngine.getCurrentStepField(flowCtx) === 'plotName' && isAffirmation(text)) {
+          const result = await conversationEngine.executeConfirm(userId, flowCtx);
+          if (result.response.sideEffects?.setPendingStockEntry) {
+            pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
+          }
+          await sendResponse(phone, result.response);
+          res.sendStatus(200);
+          return;
+        }
+
+        // P0-3: a clearly-different new action or query mid-flow abandons the
+        // flow and gets processed normally, instead of the "estás en medio" nudge.
+        if (!isPlotAnswerToFlow(flowCtx.state, text) && looksLikeNewActionOrQuery(text)) {
+          await conversationEngine.clearFlow(userId);
+          // fall through to normal processing below
+        } else {
+
         // Smart interruption: check if the user typed a known command mid-flow
         const interruptCmd = intentClassifier.parseCommandOnly(text);
         // During field_flow name step, suppress ONLY field_info
@@ -1451,6 +1471,7 @@ router.post('/', async (req: Request, res: Response) => {
           res.sendStatus(200);
           return;
         }
+        } // end P0-3 else (message was not a new action/query)
       }
     }
 
@@ -1524,7 +1545,7 @@ router.post('/', async (req: Request, res: Response) => {
 
       // Escape hatch: if the message looks like a known command, clear pending and fall through
       const obsInterruptCmd = intentClassifier.parseCommandOnly(text);
-      if (obsInterruptCmd || intentClassifier.detectsFinancialIntent(text)) {
+      if (obsInterruptCmd || intentClassifier.detectsFinancialIntent(text) || looksLikeNewActionOrQuery(text)) {
         pendingObsStore.clear(phone);
         // Fall through to normal processing below
       } else {
@@ -1594,7 +1615,7 @@ router.post('/', async (req: Request, res: Response) => {
       const expectsFinancialSlot = pendingAct.missing
         && (pendingAct.command === 'log_income' || pendingAct.command === 'log_expense')
         && pendingAct.missing.some(s => s === 'amount' || s === 'quantity' || s === 'unit_price' || s === 'unit');
-      if (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text))) {
+      if (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text) || looksLikeNewActionOrQuery(text))) {
         pendingActStore.clear(phone);
         // Fall through to normal processing
       } else if (pendingAct.missing && pendingAct.missing.length > 0) {
