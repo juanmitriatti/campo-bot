@@ -14,7 +14,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
-import { isAffirmation, looksLikeNewActionOrQuery } from '../middleware/conversation-guards.js';
+import { isAffirmation, looksLikeNewActionOrQuery, isContentlessMessage } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore, describeReplacedPending, resolveReplacedPending } from '../middleware/pending-transactions.js';
@@ -1298,6 +1298,14 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     if (!text) {
+      res.sendStatus(200);
+      return;
+    }
+
+    // Contentless message (only emojis/punctuation) → gentle hint, not a blank
+    // reply or a full greeting.
+    if (isContentlessMessage(text)) {
+      await sendMessage(phone, '🤔 No te entendí. Contame qué querés hacer — ej: *gasté 50 mil en gasoil*, *sembré soja en el lote 1*, o escribí *menú*.');
       res.sendStatus(200);
       return;
     }

@@ -58,6 +58,19 @@ const QUERY_INTENT = /\b(clima|pronostico|va a llover|lluvia\?|temperatura|repor
  * Deliberately conservative on bare answers: "40", "40 has", "lote norte",
  * "todos 40", "aftosa", "soja" do NOT match (no action verb, no query word).
  */
+/**
+ * The message carries no actionable text — empty, whitespace, or only
+ * emojis/punctuation ("   ", "🚜🌽", "..."). Used to give a gentle hint instead
+ * of a blank reply or a full greeting.
+ */
+export function isContentlessMessage(text: string): boolean {
+  if (!text || !text.trim()) return true;
+  const stripped = text
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}\u{200D}\u{20E3}]/gu, '')
+    .replace(/[\s\p{P}\p{S}]/gu, '');
+  return stripped.length === 0;
+}
+
 export function looksLikeNewActionOrQuery(text: string): boolean {
   const t = norm(text);
   if (!t) return false;

@@ -13,7 +13,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
-import { isAffirmation, looksLikeNewActionOrQuery } from '../middleware/conversation-guards.js';
+import { isAffirmation, looksLikeNewActionOrQuery, isContentlessMessage } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore, describeReplacedPending, resolveReplacedPending } from '../middleware/pending-transactions.js';
@@ -1330,6 +1330,11 @@ async function processTextMessage(
   startTime: number,
 ): Promise<BotResponseItem[]> {
   console.log('[telegram] TEXT:', text);
+
+  // Contentless message (empty / only emojis or punctuation) → gentle hint.
+  if (isContentlessMessage(text)) {
+    return [{ type: 'text', text: '🤔 No te entendí. Contame qué querés hacer — ej: *gasté 50 mil en gasoil*, *sembré soja en el lote 1*, o escribí *menú*.' }];
+  }
 
   pool.query('UPDATE users SET last_message_at = NOW() WHERE id = $1', [userId]).catch(() => {});
 

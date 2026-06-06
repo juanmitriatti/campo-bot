@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { isAffirmation, isNegationOrCancel, looksLikeNewActionOrQuery } from '../conversation-guards.js';
+import { isAffirmation, isNegationOrCancel, looksLikeNewActionOrQuery, isContentlessMessage } from '../conversation-guards.js';
+
+describe('isContentlessMessage', () => {
+  it.each(['', '   ', '...', '??', '🚜🌽', '👍', '— ', '\n\n'])('"%s" → true', (t) => {
+    expect(isContentlessMessage(t)).toBe(true);
+  });
+  it.each(['gasté 50 mil', 'soja', 'lote norte', '40', 'hola', 'sí 🚜'])('"%s" → false', (t) => {
+    expect(isContentlessMessage(t)).toBe(false);
+  });
+});
 
 describe('isAffirmation', () => {
   it.each(['si', 'sí', 'SI', 'dale', 'ok', 'okey', 'listo', 'confirmo', 'confirmar', 'dale!', 'sip', 'de una', 'ya está'])('"%s" → true', (t) => {

@@ -377,6 +377,23 @@ export class ConversationEngine {
       };
     }
 
+    // Field-location shortcut: at the "¿cómo querés ubicar el campo?" step, a user
+    // who TYPES a locality (instead of tapping "Escribir localidad") should go
+    // straight to city validation — not get bounced with "elegí una opción".
+    if (stepDef.field === 'locationMethod') {
+      const t = text.trim().toLowerCase();
+      const isMethodOrControl = /^flow_field_loc_|^(localidad|ciudad|escribir|mapa|dibujar|compartir|gps|cancelar|volver|atr[aá]s|no)\b|ubicaci[oó]n/i.test(t);
+      const looksLikeLocality = !isMethodOrControl && /[a-záéíóúñ]/i.test(t) && t.length >= 2 && t.length <= 40;
+      if (looksLikeLocality) {
+        const cityIdx = flow.steps.findIndex(s => s.field === 'city');
+        if (cityIdx >= 0) {
+          ctx.data.locationMethod = 'city';
+          ctx.step = cityIdx;
+          return this.processFlowMessage(userId, text, ctx);
+        }
+      }
+    }
+
     // Mid-flow rename: if the user corrects the name ("se llama X, no Y" /
     // "no se llama Y, es X") and we already have a `name` in flow data, update
     // it and re-prompt the current step so the user doesn't have to cancel +
