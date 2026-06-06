@@ -343,11 +343,25 @@ export async function validatePlotAsync(
   // Flatten to unique plot names for numeric selection
   const uniquePlotNames = [...new Set(plotsWithFields.map(p => p.plotName))];
   const normalizedInput = normalize(input);
-  // A natural answer ("en el Norte", "el Norte", "lote Norte", "al Sur") should
-  // match the bare plot name — without this the confirm-flow re-asked forever
-  // and the expense was lost. Tried as a FALLBACK so plots whose names start
-  // with an article ("El Bajo") still match on the raw input first.
-  const strippedInput = normalizedInput.replace(/^(?:en\s+)?(?:el|la|los|las)\s+|^en\s+|^al?\s+|^del?\s+|^(?:el\s+|la\s+)?(?:lote|potrero|parcela)\s+/, '').trim();
+  // A natural answer ("en el Norte", "el Norte", "lote Norte", "al Sur", "en La
+  // Loma") should match the plot name. Generate progressive strip candidates and
+  // try each — CRUCIAL: stripping only the connector ("en La Loma" → "la loma")
+  // is tried BEFORE stripping the article, so plots NAMED with an article
+  // ("La Loma", "El Bajo") still match.
+  const stripCandidates: string[] = [normalizedInput];
+  for (const re of [
+    // 1) strip "lote/potrero" (+ optional connector/article) → real name
+    /^en\s+(?:el\s+|la\s+|los\s+)?(?:lote|potrero|parcela)\s+/, /^(?:el\s+|la\s+|los\s+)?(?:lote|potrero|parcela)\s+/,
+    // 2) connector ONLY (keeps article-named plots: "en La Loma" → "la loma")
+    /^en\s+/, /^al\s+/, /^a\s+la\s+/, /^a\s+/, /^del?\s+/,
+    // 3) connector + article ("en el Norte" → "norte")
+    /^en\s+el\s+/, /^en\s+la\s+/, /^en\s+los\s+/,
+    // 4) leading article only
+    /^(?:el|la|los|las)\s+/,
+  ]) {
+    const c = normalizedInput.replace(re, '').trim();
+    if (c && c !== normalizedInput && !stripCandidates.includes(c)) stripCandidates.push(c);
+  }
 
   // Numeric selection — only if the ENTIRE input is a number (avoid "1B" → 1)
   const num = /^\d+$/.test(input.trim()) ? parseInt(input, 10) : NaN;
@@ -359,10 +373,12 @@ export async function validatePlotAsync(
     // Ambiguous — fall through to disambiguation
   }
 
-  // Exact match (raw input first, then article-stripped fallback)
-  let exactMatches = plotsWithFields.filter(p => normalize(p.plotName) === normalizedInput);
-  if (exactMatches.length === 0 && strippedInput && strippedInput !== normalizedInput) {
-    exactMatches = plotsWithFields.filter(p => normalize(p.plotName) === strippedInput);
+  // Exact match — try each strip candidate in order (raw first, so an
+  // article-named plot matches before the article gets stripped).
+  let exactMatches: typeof plotsWithFields = [];
+  for (const cand of stripCandidates) {
+    exactMatches = plotsWithFields.filter(p => normalize(p.plotName) === cand);
+    if (exactMatches.length >= 1) break;
   }
   if (exactMatches.length === 1) return { value: exactMatches[0].plotName };
 
