@@ -1557,7 +1557,14 @@ async function processTextMessage(
       const expectsFinancialSlot = pendingAct.missing
         && (pendingAct.command === 'log_income' || pendingAct.command === 'log_expense')
         && pendingAct.missing.some(s => s === 'amount' || s === 'quantity' || s === 'unit_price' || s === 'unit');
-      if (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text) || looksLikeNewActionOrQuery(text))) {
+      // A NEW action with its own verb or a query (looksLikeNewActionOrQuery)
+      // escapes even a financial-slot pending — only a BARE answer like
+      // "800 USD" should fill the slot. Without pulling it out of the
+      // !expectsFinancialSlot guard, "vendí 10 novillos a 800 USD" donated
+      // its 800 to a stuck "¿cuánto fue?" soja pending (silent data loss).
+      const _escapePending = looksLikeNewActionOrQuery(text)
+        || (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text)));
+      if (_escapePending) {
       pendingActStore.clear(phone);
       // Fall through to normal processing
     } else if (pendingAct.missing && pendingAct.missing.length > 0) {
