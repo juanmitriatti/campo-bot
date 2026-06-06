@@ -31,6 +31,11 @@ function looksLikeNonCity(text: string): boolean {
   // Numbers-first content ("52 ha", "3000 kg", "$50000", "us$3000")
   if (/^(?:\$|us\$|usd)\s*\d/i.test(t)) return true;
   if (/^\d[\d.,]*\s*(ha|hect|kg|tn|qq|mm|lt|cc|bolsas|pesos|dolares|usd|ars)/i.test(t)) return true;
+  // Registration content: a number + a farm noun is never a locality
+  // ("tengo 100 vacas y 30 terneros en el lote Norte" was being eaten as a city).
+  if (/\d/.test(t) && /\b(vacas?|novillos?|novillitos?|terneros?|terneras?|toros?|toritos?|vaquillonas?|bueyes?|animales?|cabezas?|lote|potrero|parcela|hect[aá]reas?)\b/.test(t)) return true;
+  // Declarative "tengo / hay / son N ..."
+  if (/^(?:tengo|hay|son|tenemos|tiene)\s+\d/.test(t)) return true;
   // Listas con ":" — típico de cosecha "lote 1A: Britos 30 tn, Pérez 25 tn"
   if (/:/.test(t) && /\d/.test(t)) return true;
   // Pregunta o reporte

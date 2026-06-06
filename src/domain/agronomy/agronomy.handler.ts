@@ -2698,7 +2698,10 @@ export class AgronomyHandler {
         {
           const missing: string[] = [];
           const needsProduct = cmd.command === 'log_spraying' || cmd.command === 'log_fertilization';
-          const needsQuantity = cmd.command === 'log_spraying' || cmd.command === 'log_fertilization' || cmd.command === 'log_irrigation';
+          // Quantity (dose) is OPTIONAL for spraying/fertilization — an agro verb
+          // without an amount should register the labor event (CLAUDE.md), not
+          // block. Only irrigation truly needs the mm.
+          const needsQuantity = cmd.command === 'log_irrigation';
           const needsImplementOrProduct = cmd.command === 'log_tillage';
           if (needsProduct && !cmd.product) missing.push('product');
           if (needsImplementOrProduct && !cmd.implement && !cmd.product) missing.push('product');

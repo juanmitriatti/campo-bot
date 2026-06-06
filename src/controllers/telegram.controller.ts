@@ -16,7 +16,7 @@ import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
 import { isAffirmation, looksLikeNewActionOrQuery } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { MessageDedup } from '../middleware/dedup.js';
-import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
+import { PendingTransactionStore, describeReplacedPending, resolveReplacedPending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
@@ -2051,8 +2051,10 @@ async function processTextMessage(
     conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
     const itemsExp = collectResponse(response);
     if (replacedPendingExpense) {
-      // Prepend a warning so the user knows the older "¿Confirmo?" card is dead.
-      itemsExp.unshift({ type: 'text', text: describeReplacedPending(replacedPendingExpense) });
+      // Auto-commit the old pending if it was complete (don't discard data),
+      // otherwise warn it was cancelled.
+      const replMsgExp = await resolveReplacedPending(replacedPendingExpense, p => financialHandler.handleConfirm(userId, p, settings, user).then(() => {}));
+      itemsExp.unshift({ type: 'text', text: replMsgExp });
     }
     return itemsExp;
   }
@@ -2090,7 +2092,8 @@ async function processTextMessage(
     conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode, 'telegram').catch(() => {});
     const itemsInc = collectResponse(response);
     if (replacedPendingIncome) {
-      itemsInc.unshift({ type: 'text', text: describeReplacedPending(replacedPendingIncome) });
+      const replMsgInc = await resolveReplacedPending(replacedPendingIncome, p => financialHandler.handleConfirm(userId, p, settings, user).then(() => {}));
+      itemsInc.unshift({ type: 'text', text: replMsgInc });
     }
     return itemsInc;
   }

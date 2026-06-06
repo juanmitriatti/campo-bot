@@ -51,3 +51,39 @@ export function describeReplacedPending(prev: PendingTransaction): string {
   const detail = hasMoney ? ` (${cat.trim()} ${money})`.replace(/\(\s+/, '(') : (cat ? ` (${cat.trim()})` : '');
   return `🔁 Cancelé el ${kind} anterior${detail} para registrar el nuevo. Confirmá abajo o cancelá si fue un error.`;
 }
+
+/** A replaced pending is "complete" when it could be saved as-is (amount + category). */
+function isCompletePending(prev: PendingTransaction): boolean {
+  const d = (prev as unknown as { data?: { amount?: number; category?: string } }).data ?? {};
+  return (prev.type === 'expense' || prev.type === 'income')
+    && typeof d.amount === 'number' && d.amount > 0
+    && !!(d.category && String(d.category).trim());
+}
+
+function describeCommittedPending(prev: PendingTransaction): string {
+  const kind = prev.type === 'income' ? 'ingreso' : 'gasto';
+  const data = (prev as unknown as { data?: { amount?: number; category?: string; currency?: string } }).data ?? {};
+  const money = formatMoney(data.amount as number, data.currency ?? 'ARS');
+  const cat = data.category ? `${data.category} ` : '';
+  return `✅ Guardé el ${kind} anterior (${cat}${money}) y registro el nuevo.`;
+}
+
+/**
+ * When a new expense/income replaces an unconfirmed pending: if the old pending
+ * was COMPLETE, auto-commit it (don't discard the user's data) and announce it;
+ * otherwise just describe that it was cancelled. Returns the message to prepend.
+ */
+export async function resolveReplacedPending(
+  prev: PendingTransaction,
+  commit: (p: PendingTransaction) => Promise<void>,
+): Promise<string> {
+  if (isCompletePending(prev)) {
+    try {
+      await commit(prev);
+      return describeCommittedPending(prev);
+    } catch {
+      return describeReplacedPending(prev);
+    }
+  }
+  return describeReplacedPending(prev);
+}

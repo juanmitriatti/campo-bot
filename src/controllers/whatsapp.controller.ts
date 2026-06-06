@@ -17,7 +17,7 @@ import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
 import { isAffirmation, looksLikeNewActionOrQuery } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { MessageDedup } from '../middleware/dedup.js';
-import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
+import { PendingTransactionStore, describeReplacedPending, resolveReplacedPending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
@@ -2242,9 +2242,9 @@ router.post('/', async (req: Request, res: Response) => {
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
       if (replacedPendingExpense) {
-        // Tell the user we cancelled their previous "¿Confirmo?" card so they don't
-        // tap the old one and confirm the wrong transaction.
-        await sendMessage(phone, describeReplacedPending(replacedPendingExpense));
+        // Auto-commit the previous pending if complete (don't discard data),
+        // else warn it was cancelled.
+        await sendMessage(phone, await resolveReplacedPending(replacedPendingExpense, p => financialHandler.handleConfirm(userId, p, settings, user).then(() => {})));
       }
       await sendResponse(phone, response);
       conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});
@@ -2292,7 +2292,7 @@ router.post('/', async (req: Request, res: Response) => {
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
       updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
       if (replacedPendingIncome) {
-        await sendMessage(phone, describeReplacedPending(replacedPendingIncome));
+        await sendMessage(phone, await resolveReplacedPending(replacedPendingIncome, p => financialHandler.handleConfirm(userId, p, settings, user).then(() => {})));
       }
       await sendResponse(phone, response);
       conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode).catch(() => {});

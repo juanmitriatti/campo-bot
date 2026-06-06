@@ -17,7 +17,7 @@ import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
 import { isAffirmation, looksLikeNewActionOrQuery } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
-import { PendingTransactionStore, describeReplacedPending } from '../middleware/pending-transactions.js';
+import { PendingTransactionStore, describeReplacedPending, resolveReplacedPending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
@@ -1543,7 +1543,7 @@ async function processTextMessage(
     updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
     conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
     const itemsExp = collectResponse(response);
-    if (replacedPendingExpense) itemsExp.unshift({ type: 'text', text: describeReplacedPending(replacedPendingExpense) });
+    if (replacedPendingExpense) itemsExp.unshift({ type: 'text', text: await resolveReplacedPending(replacedPendingExpense, p => financialHandler.handleConfirm(userId, p, settings, user).then(() => {})) });
     return itemsExp;
   }
 
@@ -1579,7 +1579,7 @@ async function processTextMessage(
     updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
     conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence).catch(() => {});
     const itemsInc = collectResponse(response);
-    if (replacedPendingIncome) itemsInc.unshift({ type: 'text', text: describeReplacedPending(replacedPendingIncome) });
+    if (replacedPendingIncome) itemsInc.unshift({ type: 'text', text: await resolveReplacedPending(replacedPendingIncome, p => financialHandler.handleConfirm(userId, p, settings, user).then(() => {})) });
     return itemsInc;
   }
 

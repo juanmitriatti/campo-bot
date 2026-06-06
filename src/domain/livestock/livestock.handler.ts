@@ -644,9 +644,17 @@ export class LivestockHandler {
       sections.push(`  ${locKey}\n${lines.join('\n')}${weightLabel}`);
     }
 
+    // Header must reflect any filter — calling a filtered count "total" was
+    // misleading ("cuántas vacas?" → "Hacienda total: 190" while there were 228).
+    const catLabel = cmd.category ? (LIVESTOCK_CATEGORY_LABEL[cmd.category as keyof typeof LIVESTOCK_CATEGORY_LABEL] ?? String(cmd.category)) : null;
+    const header = catLabel
+      ? `🐄 *${catLabel}: ${total}*`
+      : (cmd.fieldName || cmd.plotName || cmd.corralName)
+        ? `🐄 *${total} animales* (filtrado)`
+        : `🐄 *Hacienda total: ${total} animales*`;
     return {
       messages: [
-        `🐄 *Hacienda total: ${total} animales*\n\n${sections.join('\n\n')}`,
+        `${header}\n\n${sections.join('\n\n')}`,
       ],
     };
   }
