@@ -539,18 +539,21 @@ export class LivestockService {
       // last lote the user mentioned) which may not hold this category. If exactly
       // ONE plot-group of this category exists anywhere, use it — a sale of "30
       // vacas" shouldn't fail because the last message was about terneros in Sur.
-      const candidates = (await this.repo.listGroups(Number(userId), { category: category as LivestockCategory }))
-        .filter(g => g.count > 0 && g.plot_id != null && (!opts.breed || (g.breed ?? '').toLowerCase() === String(opts.breed).toLowerCase()));
-      if (candidates.length === 1) {
-        group = candidates[0];
-        loc = {
-          type: 'plot',
-          fieldId: group.field_id,
-          fieldName: group.field_name ?? '',
-          plotId: group.plot_id as number,
-          plotName: group.plot_name ?? '',
-        };
-      }
+      // Defensive: any failure here falls through to the original "No hay…" error.
+      try {
+        const candidates = (await this.repo.listGroups(Number(userId), { category: category as LivestockCategory }))
+          .filter(g => g.count > 0 && g.plot_id != null && (!opts.breed || (g.breed ?? '').toLowerCase() === String(opts.breed).toLowerCase()));
+        if (candidates.length === 1) {
+          group = candidates[0];
+          loc = {
+            type: 'plot',
+            fieldId: group.field_id,
+            fieldName: group.field_name ?? '',
+            plotId: group.plot_id as number,
+            plotName: group.plot_name ?? '',
+          };
+        }
+      } catch { /* keep group=null → original error below */ }
     }
     if (!group) {
       throw new Error(
