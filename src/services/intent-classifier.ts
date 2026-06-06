@@ -183,8 +183,13 @@ export class IntentClassifier {
     // STEP 1 — HARD RULE: Observation prefix ALWAYS wins, bypasses everything
     // =========================================================================
     if (OBSERVATION_PREFIX.test(cleaned)) {
+      // Use parseObservation ONLY to detect the plot/field — its observationText
+      // is plot-stripped by a fragile mid-text regex that mangled real notes
+      // ("el lote Norte está muy lindo, buena humedad" → "elá muy lindo…").
+      // The DISPLAY text is the user's words minus the "observación:" prefix.
+      const strippedText = cleaned.replace(OBSERVATION_PREFIX, '').trim();
       const obs = this.parser.parseObservation(cleaned) || this.parser.parseObservation(preprocessed);
-      if (obs) {
+      if (obs && strippedText.length >= 3) {
         return {
           intent: {
             type: 'command',
@@ -192,7 +197,7 @@ export class IntentClassifier {
               command: 'log_observation',
               fieldName: obs.fieldName,
               plotName: obs.plotName,
-              observation: obs.observationText,
+              observation: strippedText,
               prefixDetected: true,  // signals handler to skip question guard
             },
           },
@@ -203,7 +208,6 @@ export class IntentClassifier {
         };
       }
       // Prefix found but parser couldn't extract → treat as bare observation with full text
-      const strippedText = cleaned.replace(OBSERVATION_PREFIX, '').trim();
       if (strippedText.length >= 3) {
         const plotName = this.parser.detectPlot(strippedText);
         return {
