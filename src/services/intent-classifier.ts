@@ -282,6 +282,25 @@ export class IntentClassifier {
     }
 
     // =========================================================================
+    // STEP 2.7 — Budget SET intent (deterministic, pre-agent)
+    // The agent has NO set_budget tool, so "poné límite de $1M en fertilizante"
+    // was being stolen into a recurring expense template (phantom $1M/month), and
+    // budget phrasings that DID fall to regex saved a corrupt category ("De").
+    // Resolve it here with the shared category map so the agent never sees it.
+    // Only fires on a real SET (carries an amount); budget queries fall through.
+    // =========================================================================
+    const budgetCmd = this.parser.parseBudget(text) || this.parser.parseBudget(preprocessed);
+    if (budgetCmd) {
+      return {
+        intent: { type: 'command', data: budgetCmd as import('../types/index.js').ParsedCommand },
+        confidence: 0.95,
+        aiUsed: false,
+        source: 'regex',
+        missingFields: [],
+      };
+    }
+
+    // =========================================================================
     // STEP 3a — AI Agent (tool_use) — runs when AGENT_ENABLED=true
     // =========================================================================
     const agentEnabled = await getSettingBool('AGENT_ENABLED');

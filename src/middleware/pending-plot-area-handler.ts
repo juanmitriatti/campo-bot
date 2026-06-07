@@ -57,6 +57,24 @@ function looksLikeOtherAction(text: string): boolean {
   return false;
 }
 
+// Is this message a plausible answer to "how many hectares?" — i.e. a (mostly)
+// bare number, optionally with unit words / filler / a correction cue? We strip
+// every digit, unit word, connector and correction word; if NOTHING meaningful
+// remains, it's a hectares answer. If real words survive ("crear depósito galpón
+// 3"), it's a DIFFERENT intent and must NOT be eaten as an area — even though it
+// contains a digit. This inverts the old "re-prompt on anything" trap.
+function isBareHectaresAnswer(text: string): boolean {
+  const t = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (!/\d/.test(t)) return false; // no number → not a hectares answer
+  const residue = t
+    .replace(/\d+(?:[.,]\d+)?/g, ' ')
+    // units + connectors + filler + correction cues
+    .replace(/\b(has?|hectareas?|hectarea|tiene|tienen|son|es|de|del|aprox|aproximadamente|como|mas|menos|o|y|el|la|lote|mide|alrededor|unas?|unos?|ah|no|nono|eran?|perdon|realidad|mejor|dicho|quise|decir|digo|seran?|cerca)\b/g, ' ')
+    .replace(/[^a-z]/g, ' ')
+    .trim();
+  return residue.length === 0;
+}
+
 function buildPrompt(item: PendingPlotArea): string {
   const total = item.total ?? 1;
   const counter = total > 1 ? ` (${item.seq ?? 1} de ${total})` : '';
@@ -163,7 +181,18 @@ export async function handlePendingPlotArea(
     }
   }
 
-  // ── Single number answer for the current lote ──
+  // ── Is this even a hectares answer? ──
+  // Positive matching: only stay inside the hectares interaction when the message
+  // is a (mostly) bare number. Anything else — a command, a query, a greeting, a
+  // sentence that merely happens to contain a digit ("creá el galpón 3") — must
+  // NOT be trapped. We clear the queue and fall through so the pipeline handles it.
+  // This kills the old "re-prompt forever, eat every following message" bug.
+  if (!isBareHectaresAnswer(text)) {
+    store.clear(phone);
+    return { messages: [], handled: false };
+  }
+
+  // ── Bare-number answer for the current lote ──
   const hectares = parseHectares(text);
   if (hectares !== null) {
     await financialService.setPlotArea(pending.plotId, hectares);
@@ -173,7 +202,8 @@ export async function handlePendingPlotArea(
     return { messages: [confirmMsg], handled: true };
   }
 
-  // Invalid input → re-prompt (blocking, do NOT fall through)
+  // Looked like a number but it's out of range (0, negative, ≥100000) → re-prompt,
+  // keep the queue so the user can retry. (Genuine number-fumble, not a pivot.)
   return {
     messages: [`Ingresá un número válido de hectáreas para *${pending.plotName}*.\nEj: *150* o *150 ha*\n\nEscribí *saltar* para cargarla después, o *cancelar* para omitir todas.`],
     handled: true,

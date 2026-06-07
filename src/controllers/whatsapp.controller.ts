@@ -14,7 +14,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
-import { isAffirmation, looksLikeNewActionOrQuery, isContentlessMessage } from '../middleware/conversation-guards.js';
+import { isAffirmation, looksLikeNewActionOrQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore, describeReplacedPending, resolveReplacedPending } from '../middleware/pending-transactions.js';
@@ -229,6 +229,29 @@ async function sendResponse(phone: string, response: HandlerResponse): Promise<v
       await sendInteractiveButtons(phone, suggestion.body, suggestion.buttons);
     }
   }
+}
+
+/**
+ * P0-2/P0-3: save a complete expense/income parked at the optional plot step at
+ * FIELD LEVEL instead of dropping it when the user pivots or says "sin lote".
+ * Returns the confirmation HandlerResponse, or null when not applicable.
+ */
+async function commitFinancialFlowFieldLevelWa(
+  userId: UserId,
+  flowCtx: any,
+  phone: string,
+): Promise<HandlerResponse | null> {
+  if (!['expense_flow', 'income_flow'].includes(flowCtx.state)) return null;
+  if (conversationEngine.getCurrentStepField(flowCtx) !== 'plotName') return null;
+  const result = await conversationEngine.executeConfirm(userId, flowCtx);
+  if (result.response.sideEffects?.setPendingStockEntry) {
+    pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
+  }
+  if (result.response.sideEffects?.setPendingFieldLocation) {
+    const loc = result.response.sideEffects.setPendingFieldLocation;
+    pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
+  }
+  return result.response;
 }
 
 // --- Document expense saving helpers ---
@@ -1410,9 +1433,23 @@ router.post('/', async (req: Request, res: Response) => {
           return;
         }
 
+        // P0-3: explicit "sin lote / no importa / a nivel campo" at the plot step
+        // → save at field level instead of looping the plot question forever.
+        if (conversationEngine.getCurrentStepField(flowCtx) === 'plotName' && wantsFieldLevelSave(text)) {
+          const committed = await commitFinancialFlowFieldLevelWa(userId, flowCtx, phone);
+          if (committed) {
+            await sendResponse(phone, committed);
+            res.sendStatus(200);
+            return;
+          }
+        }
+
         // P0-3: a clearly-different new action or query mid-flow abandons the
         // flow and gets processed normally, instead of the "estás en medio" nudge.
         if (!isPlotAnswerToFlow(flowCtx.state, text) && looksLikeNewActionOrQuery(text)) {
+          // P0-2: commit a complete expense/income at field level before abandoning.
+          const committed = await commitFinancialFlowFieldLevelWa(userId, flowCtx, phone);
+          if (committed) await sendResponse(phone, committed);
           await conversationEngine.clearFlow(userId);
           // fall through to normal processing below
         } else {
@@ -1463,8 +1500,15 @@ router.post('/', async (req: Request, res: Response) => {
             durationMs,
             filledFields: Object.keys(flowCtx.data),
           });
+          // P0-2: commit a complete expense/income at field level before abandoning
+          // \u2014 saving beats the silent drop. Only show "se cancel\u00f3" if nothing was saved.
+          const committed = await commitFinancialFlowFieldLevelWa(userId, flowCtx, phone);
           await conversationEngine.clearFlow(userId);
-          await sendMessage(phone, '\u21a9\ufe0f Se cancel\u00f3 el flujo anterior.');
+          if (committed) {
+            await sendResponse(phone, committed);
+          } else {
+            await sendMessage(phone, '\u21a9\ufe0f Se cancel\u00f3 el flujo anterior.');
+          }
           // Fall through to normal intent processing below
         } else {
           // No intent detected → process within active flow

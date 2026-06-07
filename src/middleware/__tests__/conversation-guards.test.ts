@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { isAffirmation, isNegationOrCancel, looksLikeNewActionOrQuery, isContentlessMessage } from '../conversation-guards.js';
+import { isAffirmation, isNegationOrCancel, looksLikeNewActionOrQuery, isContentlessMessage, wantsFieldLevelSave } from '../conversation-guards.js';
+
+describe('wantsFieldLevelSave', () => {
+  it.each([
+    'sin lote', 'no importa el lote', 'no importa', 'a nivel campo', 'dejalo así',
+    'como sea', 'cualquier lote', 'no aplica', 'sin asignar', 'da igual el lote',
+  ])('"%s" → true', (t) => expect(wantsFieldLevelSave(t)).toBe(true));
+  it.each(['lote norte', 'si', 'no', '40', 'el lote 1', 'cancelar'])('"%s" → false', (t) =>
+    expect(wantsFieldLevelSave(t)).toBe(false));
+});
 
 describe('isContentlessMessage', () => {
   it.each(['', '   ', '...', '??', '🚜🌽', '👍', '— ', '\n\n'])('"%s" → true', (t) => {

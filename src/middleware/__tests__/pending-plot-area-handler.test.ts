@@ -82,4 +82,40 @@ describe('handlePendingPlotArea', () => {
     expect(r.handled).toBe(true);
     expect(store.remaining(PHONE)).toBe(0);
   });
+
+  // P0-1: the hectares queue must NOT swallow unrelated commands/queries. The old
+  // behaviour re-prompted forever on any non-number, eating every following message.
+  it.each([
+    'crear un depósito llamado Galpón Central',
+    'quiero crear un depósito',
+    'listar campos',
+    'mis campos',
+    'hola',
+    'qué puedo hacer?',
+    'creá el galpón 3',          // has a digit but is clearly a command, not an area
+  ])('escapes the queue for a non-hectares message: "%s"', async (msg) => {
+    seed(store, ['A', 'B', 'C']);
+    const { svc, calls } = makeService();
+    const r = await handlePendingPlotArea(msg, PHONE, store, svc);
+    expect(r.handled).toBe(false);          // falls through to the pipeline
+    expect(calls).toHaveLength(0);          // nothing written as hectares
+    expect(store.remaining(PHONE)).toBe(0); // queue cleared, won't re-eat
+  });
+
+  it('re-prompts (does NOT escape) on a genuine but invalid number attempt', async () => {
+    seed(store, ['A', 'B']);
+    const { svc, calls } = makeService();
+    const r = await handlePendingPlotArea('0', PHONE, store, svc);
+    expect(r.handled).toBe(true);           // still in the hectares interaction
+    expect(calls).toHaveLength(0);
+    expect(store.remaining(PHONE)).toBe(2); // queue intact for a retry
+  });
+
+  it('still accepts a mid-answer correction "40, ah no eran 60" → 60', async () => {
+    seed(store, ['A', 'B']);
+    const { svc, calls } = makeService();
+    const r = await handlePendingPlotArea('40, ah no eran 60', PHONE, store, svc);
+    expect(r.handled).toBe(true);
+    expect(calls).toEqual([{ plotId: 1, ha: 60 }]);
+  });
 });

@@ -13,7 +13,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
-import { isAffirmation, looksLikeNewActionOrQuery, isContentlessMessage } from '../middleware/conversation-guards.js';
+import { isAffirmation, looksLikeNewActionOrQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { PendingTransactionStore, describeReplacedPending, resolveReplacedPending } from '../middleware/pending-transactions.js';
@@ -1321,6 +1321,28 @@ async function loadRemitoStockTg(
 
 // --- Main text message pipeline (same logic as test-bot) ---
 
+/**
+ * P0-2/P0-3: save a complete expense/income parked at the optional plot step at
+ * FIELD LEVEL instead of dropping it when the user pivots or says "sin lote".
+ */
+async function commitFinancialFlowFieldLevel(
+  userId: UserId,
+  flowCtx: any,
+  phone: string,
+): Promise<BotResponseItem[]> {
+  if (!['expense_flow', 'income_flow'].includes(flowCtx.state)) return [];
+  if (conversationEngine.getCurrentStepField(flowCtx) !== 'plotName') return [];
+  const result = await conversationEngine.executeConfirm(userId, flowCtx);
+  if (result.response.sideEffects?.setPendingStockEntry) {
+    pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
+  }
+  if (result.response.sideEffects?.setPendingFieldLocation) {
+    const loc = result.response.sideEffects.setPendingFieldLocation;
+    pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
+  }
+  return collectResponse(result.response);
+}
+
 async function processTextMessage(
   text: string,
   userId: UserId,
@@ -1402,10 +1424,23 @@ async function processTextMessage(
         return collectResponse(result.response);
       }
 
+      // P0-3: explicit "sin lote / no importa / a nivel campo" at the plot step \u2192
+      // save at field level instead of looping the plot question forever.
+      if (conversationEngine.getCurrentStepField(flowCtx) === 'plotName' && wantsFieldLevelSave(text)) {
+        const items = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
+        if (items.length > 0) return items;
+      }
+
       // P0-3: a clearly-different new action or query mid-flow abandons the flow
       // and gets processed normally, instead of the "est\u00e1s en medio" nudge.
       if (!isPlotAnswerToFlow(flowCtx.state, text) && looksLikeNewActionOrQuery(text)) {
+        // P0-2: commit a complete expense/income at field level before abandoning.
+        const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
         await conversationEngine.clearFlow(userId);
+        if (committed.length > 0) {
+          const rest = await processTextMessage(text, userId, user, settings, phone, startTime);
+          return [...committed, ...rest];
+        }
         // fall through to normal processing below
       } else {
 
@@ -1436,7 +1471,13 @@ async function processTextMessage(
       }
 
       if (!isPlotAnswerToFlow(flowCtx.state, text) && (effectiveCmd || intentClassifier.detectsFinancialIntent(text))) {
+        // P0-2: commit a complete expense/income at field level before abandoning.
+        const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
         await conversationEngine.clearFlow(userId);
+        if (committed.length > 0) {
+          const rest = await processTextMessage(text, userId, user, settings, phone, startTime);
+          return [...committed, ...rest];
+        }
       } else {
         const result = await conversationEngine.processFlowMessage(userId, text, flowCtx);
         if (result.nextContext) {

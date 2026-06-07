@@ -33,6 +33,25 @@ export function isAffirmation(text: string): boolean {
   return /^(si|sip|dale|ok|oka|okey|listo|confirm\w*)\b/.test(t);
 }
 
+/**
+ * At a "¿en qué lote?" step, the user explicitly wants to save WITHOUT a plot
+ * (at field level): "sin lote", "no importa el lote", "a nivel campo", "dejalo
+ * así", "como sea". Used so income/expense gets saved instead of looping on the
+ * plot question forever (which silently dropped the record on pivot). Distinct
+ * from a bare "no" (that's cancel, handled by isNegationOrCancel).
+ */
+export function wantsFieldLevelSave(text: string): boolean {
+  const t = norm(text).replace(/[!.]+$/, '');
+  const EXACT = new Set([
+    'sin lote', 'a nivel campo', 'nivel campo', 'el campo', 'todo el campo',
+    'no importa', 'no importa el lote', 'no interesa', 'no aplica', 'cualquiera',
+    'cualquier lote', 'como sea', 'dejalo asi', 'asi nomas', 'sin asignar',
+    'no se el lote', 'ningun lote', 'sin lugar', 'no se cual', 'da igual',
+  ]);
+  if (EXACT.has(t)) return true;
+  return /\b(sin\s+lote|a\s+nivel\s+(?:de\s+)?campo|sin\s+asignar(?:lo)?|ning[uú]n\s+lote|no\s+importa\s+el\s+lote|dejalo\s+(?:asi|sin\s+lote)|da\s+igual\s+el\s+lote|cualquier\s+lote)\b/.test(t);
+}
+
 /** The user said "no / cancel". */
 export function isNegationOrCancel(text: string): boolean {
   const t = norm(text).replace(/[!.]+$/, '');

@@ -15,7 +15,7 @@ import { UserRepository } from '../domain/users/user.repository.js';
 import { logError } from '../services/error-logger.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
-import { isAffirmation, looksLikeNewActionOrQuery, isContentlessMessage } from '../middleware/conversation-guards.js';
+import { isAffirmation, looksLikeNewActionOrQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { PendingTransactionStore, describeReplacedPending, resolveReplacedPending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
@@ -786,6 +786,31 @@ async function handleInteractiveReply(
 
 // --- Main text message pipeline ---
 
+/**
+ * P0-2/P0-3: when an expense/income flow is parked at the OPTIONAL plot step, its
+ * amount+category are already captured. Save it at FIELD LEVEL (plot_id=null) via
+ * executeConfirm instead of silently dropping the record when the user pivots or
+ * explicitly says "sin lote". Returns the confirmation items, or [] when the flow
+ * is not a financial flow waiting on the plot.
+ */
+async function commitFinancialFlowFieldLevel(
+  userId: UserId,
+  flowCtx: any,
+  phone: string,
+): Promise<BotResponseItem[]> {
+  if (!['expense_flow', 'income_flow'].includes(flowCtx.state)) return [];
+  if (conversationEngine.getCurrentStepField(flowCtx) !== 'plotName') return [];
+  const result = await conversationEngine.executeConfirm(userId, flowCtx);
+  if (result.response.sideEffects?.setPendingStockEntry) {
+    pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
+  }
+  if (result.response.sideEffects?.setPendingFieldLocation) {
+    const loc = result.response.sideEffects.setPendingFieldLocation;
+    pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
+  }
+  return collectResponse(result.response);
+}
+
 async function processTextMessage(
   text: string,
   userId: UserId,
@@ -878,13 +903,29 @@ async function processTextMessage(
         return collectResponse(result.response);
       }
 
+      // P0-3: explicit "sin lote / no importa / a nivel campo" at the plot step \u2192
+      // save at field level instead of looping the plot question forever (which
+      // silently dropped the income/expense). Same effect as tapping Confirmar.
+      if (conversationEngine.getCurrentStepField(flowCtx) === 'plotName' && wantsFieldLevelSave(text)) {
+        const items = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
+        if (items.length > 0) return items;
+      }
+
       // P0-3: a clearly-different NEW action or query mid-flow ("va a llover?",
       // "c\u00f3mo vamos?", "vend\u00ed 10 novillos") abandons the flow and gets processed
       // normally \u2014 instead of the "est\u00e1s en medio de un registro" nudge that
       // bricked clima/reportes/queries until the user typed "cancelar". A plot
       // answer ("lote A") is exempt \u2014 that's the flow's expected input.
       if (!isPlotAnswerToFlow(flowCtx.state, text) && looksLikeNewActionOrQuery(text)) {
+        // P0-2: a complete expense/income parked at the plot step must NOT be lost
+        // just because the user pivoted to another action/query. Commit it at
+        // field level first, then process the pivot.
+        const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
         await conversationEngine.clearFlow(userId);
+        if (committed.length > 0) {
+          const rest = await processTextMessage(text, userId, user, settings, phone, startTime);
+          return [...committed, ...rest];
+        }
         // fall through to normal processing below
       } else {
 
@@ -924,7 +965,13 @@ async function processTextMessage(
       // — UNLESS the flow is asking for a plot and the user answered with one
       // ("lote A"), in which case it's the answer, not an interruption.
       if (!isPlotAnswerToFlow(flowCtx.state, text) && (effectiveCmd || intentClassifier.detectsFinancialIntent(text))) {
+        // P0-2: commit a complete expense/income at field level before abandoning.
+        const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
         await conversationEngine.clearFlow(userId);
+        if (committed.length > 0) {
+          const rest = await processTextMessage(text, userId, user, settings, phone, startTime);
+          return [...committed, ...rest];
+        }
         // Fall through to normal intent processing below
       } else {
         // No intent detected → process within active flow

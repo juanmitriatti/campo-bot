@@ -387,6 +387,69 @@ export function detectarCategoriaIngreso(texto) {
   return fuzzyLookup(normalized, INCOME_KEYWORD_MAP);
 }
 
+/**
+ * Parse a budget-SET intent: "presupuesto / límite / tope / techo (de gasto) de
+ * $X para Y" in any word order. Returns { command:'set_budget', category, amount }
+ * or null.
+ *
+ * Why this exists (root cause of two P0s):
+ *  - The agent has NO set_budget tool, so it silently stole "poné límite de $1M
+ *    en fertilizante" into a *recurring expense template* (phantom $1M/month).
+ *  - The old regex `/presupuesto\s+(\w+)\s+(.+)/` took the word right after
+ *    "presupuesto" as the category → "presupuesto DE 500 mil para gasoil" saved
+ *    category literally as "De" (and the UPSERT overwrote prior budgets).
+ *
+ * This resolves the category through detectarCategoria() (the same fuzzy map the
+ * rest of the app uses) from an explicit "para/en X" clause, a "de X" clause, or
+ * the leftover words — never the raw connector. Only fires on a real SET (needs
+ * a money amount); budget *queries* (no amount) return null and fall through.
+ */
+export function parseBudget(texto) {
+  const norm = normalizeText(texto);
+  if (!/\b(presupuesto|presup|limite|tope|techo)\b/.test(norm)) return null;
+  // Not a budget-alert toggle ("activar/desactivar alertas de presupuesto").
+  if (/\b(activ\w*|desactiv\w*|habilit\w*|deshabilit\w*|alerta)\b/.test(norm)) return null;
+  // A clear expense/income verb means the word "presupuesto" is incidental, not a
+  // set-budget command ("gasté 500 mil, casi me paso del presupuesto").
+  if (/\b(gaste|pague|pago|compre|compro|vendi|vendo|cobre|cobro|abone|ingrese|ingreso|factur\w*)\b/.test(norm)) return null;
+
+  // normalizarMonto chokes when the number is embedded in extra words
+  // ("300000 en semillas" → null), so pull each money-like token and take the
+  // largest normalized value. No token → it's a query, not a set.
+  const moneyTokens = texto.match(/\$?\s*\d[\d.,]*\s*(?:mil(?:lones?)?|millon\w*|palos?|lucas?|k|m)?/gi) || [];
+  let amount = 0;
+  for (const tok of moneyTokens) {
+    const v = normalizarMonto(tok);
+    if (v && v > amount) amount = v;
+  }
+  if (!amount || amount <= 0) return null;
+
+  // Category candidates, most specific first.
+  const candidates = [];
+  const paraM = norm.match(/\b(?:para|en)\s+(?:el\s+|la\s+|los\s+|las\s+)?([a-zñ][a-zñ ]*?)(?=\s+(?:de|por|al|mensual|cada|presupuesto)\b|\s*$)/);
+  if (paraM) candidates.push(paraM[1].trim());
+  const deM = norm.match(/\bde\s+(?:el\s+|la\s+)?([a-zñ][a-zñ ]*?)(?=\s+(?:de|por|al|mensual|cada|para)\b|\s*$)/);
+  if (deM) candidates.push(deM[1].trim());
+  const leftover = norm
+    .replace(/\b(presupuesto|presup|limite|tope|techo|mensual|por mes|de gasto|gasto|el|la|los|las|un|una|de|del|para|en|por|al|cada|poner|pone|quiero|configurar|fijar|establecer|me|mi|monto)\b/g, ' ')
+    .replace(/\d+(?:[.,]\d+)?/g, ' ')
+    .replace(/[^a-zñ ]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (leftover) candidates.push(leftover);
+
+  for (const c of candidates) {
+    if (!c) continue;
+    const cat = detectarCategoria(c);
+    if (cat) return { command: 'set_budget', category: cat, amount };
+  }
+  // No fuzzy hit — keep the budget anyway with the first candidate title-cased
+  // (better than dropping it; the user can rename the category later).
+  const raw = candidates.find(Boolean);
+  if (raw && raw.length >= 3) {
+    return { command: 'set_budget', category: raw.charAt(0).toUpperCase() + raw.slice(1), amount };
+  }
+  return null;
+}
+
 // --- Milímetros de lluvia ---
 export function parseMilimetros(texto) {
   const lower = texto.toLowerCase().replace(/,/g, ".");
@@ -1165,14 +1228,15 @@ const COMMAND_PATTERNS = [
   },
 
   // --- Presupuesto ---
+  // Delegates to parseBudget() so "presupuesto de X para Y", "límite de $X en Y",
+  // "tope Y X" all resolve the category via detectarCategoria (not the raw "de").
   {
     command: "set_budget",
-    patterns: [/presupuesto\s+(\w+)\s+(.+)/],
-    extract: (m, _normalized, original) => {
-      const category = detectarCategoria(m[1]) || m[1].charAt(0).toUpperCase() + m[1].slice(1);
-      const amount = normalizarMonto(m[2]);
-      if (!amount) return null;
-      return { category, amount };
+    patterns: [/\b(?:presupuesto|presup|limite|tope|techo)\b/],
+    extract: (_m, _normalized, original) => {
+      const parsed = parseBudget(original);
+      if (!parsed) return null;
+      return { category: parsed.category, amount: parsed.amount };
     },
   },
 

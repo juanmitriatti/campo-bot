@@ -14,6 +14,7 @@ import {
   fixCommonTypos,
   expandNumbers,
   parsearObservacion,
+  parseBudget,
 } from '../utils/parser.js';
 import { applySynonyms } from '../utils/synonyms.js';
 import { normalizePlotNumbers } from '../utils/text-normalizer.js';
@@ -34,6 +35,11 @@ export class ParserService {
 
   parseCommand(text: string): ParsedCommand | null {
     return parseCommand(text) as ParsedCommand | null;
+  }
+
+  /** Budget-SET intent ("presupuesto/límite/tope de $X para Y"). Null on queries. */
+  parseBudget(text: string): { command: 'set_budget'; category: string; amount: number } | null {
+    return parseBudget(text) as { command: 'set_budget'; category: string; amount: number } | null;
   }
 
   parseExpense(text: string): ParsedExpense | null {
