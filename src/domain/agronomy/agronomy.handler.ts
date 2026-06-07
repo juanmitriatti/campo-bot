@@ -481,6 +481,51 @@ export class AgronomyHandler {
     return { messages: [confirmation] };
   }
 
+  /**
+   * Save a pending activity at FIELD LEVEL (plot_id = null) — used when the user
+   * pivots away from the "¿en qué lote?" prompt without answering, so the record
+   * isn't silently lost. Only the location-agnostic activity types
+   * (spraying/fertilization/tillage/irrigation) can be saved without a plot;
+   * sow/harvest/scouting/tacto genuinely need a plot, so this returns null and
+   * the caller falls back to a "dejé pendiente" notice (no silent loss either way).
+   */
+  async savePendingActivityFieldLevel(
+    userId: UserId,
+    pending: PendingActivity,
+  ): Promise<HandlerResponse | null> {
+    const FIELD_LEVEL_TYPES: Record<string, ActivityType> = {
+      log_spraying: 'spraying',
+      log_fertilization: 'fertilization',
+      log_tillage: 'tillage',
+      log_irrigation: 'irrigation',
+    };
+    const eventType = FIELD_LEVEL_TYPES[pending.command];
+    if (!eventType) return null; // sow/harvest/scouting/tacto need a plot
+    const cmd = pending.data;
+    await this.repo.saveDomainEvent(userId, {
+      plotId: null,
+      plotCropId: null,
+      eventType,
+      eventDate: cmd.eventDate as Date | null,
+      crop: (cmd.crop as string) ?? null,
+      product: cmd.product as string | null,
+      productType: cmd.productType as string | null,
+      quantity: cmd.quantity as number | null,
+      unit: cmd.unit as string | null,
+      implement: cmd.implement as string | null,
+    });
+    const confirmation = formatActivityConfirmation(eventType, 'sin lote', {
+      product: cmd.product as string | null,
+      productType: cmd.productType as string | null,
+      quantity: cmd.quantity as number | null,
+      unit: cmd.unit as string | null,
+      crop: (cmd.crop as string) ?? null,
+      implement: cmd.implement as string | null,
+      eventDate: cmd.eventDate as Date | null,
+    });
+    return { messages: [confirmation] };
+  }
+
   // --- Unified query_scoutings: filter + view dispatcher (same shape as financial_report) ---
   private async handleQueryScoutings(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const { pool } = await import('../../config/db.js');

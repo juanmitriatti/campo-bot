@@ -280,6 +280,24 @@ export class LivestockHandler {
       const msg = err instanceof Error ? err.message : String(err);
       const offer = await this.maybeOfferCreateAndContinue(cmd, userId, msg);
       if (offer) return offer;
+      // Plot ambiguous / unspecified ("Decime en qué lote. Opciones: …"): instead
+      // of a dead error that saves nothing AND keeps no state (so a pivot loses
+      // the whole alta), set a pending so the next "Norte" completes it — and a
+      // pivot triggers the pivot-flush deferred notice (no silent data loss).
+      if (/Decime en qu[eé] lote/i.test(msg)) {
+        return {
+          messages: [msg],
+          suggestionKey: 'default_menu',
+          sideEffects: {
+            setPendingActivity: {
+              command: 'add_livestock',
+              data: { ...cmd },
+              missing: ['plot'],
+              askPrompt: msg,
+            },
+          },
+        };
+      }
       throw err;
     }
 

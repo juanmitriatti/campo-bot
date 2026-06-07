@@ -1608,6 +1608,7 @@ export class FinancialHandler {
 
       // --- Edit last income (full editor) ---
       case 'edit_last_income': {
+        const incomeCategoryFilter = cmd.categoryFilter as string | null;
         const newAmount = cmd.newAmount as number | null;
         const newCategoryRaw = cmd.newCategory as string | null;
         const newDate = cmd.newDate as string | null;
@@ -1616,6 +1617,14 @@ export class FinancialHandler {
         const clearLot = !!cmd.clearLot;
         if (newAmount == null && !newCategoryRaw && !newDate && !newPlotName && !clearLot && !newFieldName) {
           return { messages: ['¿Qué corregimos del ingreso? Decime el nuevo monto, categoría, lote o fecha.'] };
+        }
+        // Referent given ("el de soja") but no matching income → say so instead of
+        // silently editing an unrelated income (P1: wrong-row correction).
+        if (incomeCategoryFilter) {
+          const match = await this.service.findLastIncomeByCategory(userId, incomeCategoryFilter);
+          if (!match) {
+            return { messages: [`No encontré un ingreso reciente de tipo *${incomeCategoryFilter}* para editar.`] };
+          }
         }
         let newPlotId: number | null | undefined = undefined;
         let newFieldId: number | null | undefined = undefined;
@@ -1631,7 +1640,7 @@ export class FinancialHandler {
           const { detectarCategoriaIngreso } = await import('../../utils/parser.js');
           newCategory = detectarCategoriaIngreso(newCategoryRaw) || newCategoryRaw;
         }
-        const edited = await this.service.editLastIncomeFull(userId, { newAmount, newCategory, newDate, newFieldId, newPlotId });
+        const edited = await this.service.editLastIncomeFull(userId, { newAmount, newCategory, newDate, newFieldId, newPlotId }, incomeCategoryFilter);
         if (!edited) return { messages: ['No hay ingresos para editar.'] };
         const { formatMoney } = await import('../../utils/format-money.js');
         const parts: string[] = [];

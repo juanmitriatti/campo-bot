@@ -1618,7 +1618,15 @@ async function processTextMessage(
       const _escapePending = looksLikeNewActionOrQuery(text)
         || (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text)));
       if (_escapePending) {
+      // P0: don't silently drop the pending activity on pivot — save field-level
+      // where possible, else tell the user it's deferred. Then process the pivot.
+      const { flushPendingActivityOnPivot } = await import('../middleware/pending-activity-pivot.js');
+      const pivotNotes = await flushPendingActivityOnPivot(userId, pendingAct, agronomyHandler);
       pendingActStore.clear(phone);
+      if (pivotNotes.length > 0) {
+        const rest = await processTextMessage(text, userId, user, settings, phone, startTime);
+        return [...pivotNotes.map(t => ({ type: 'text' as const, text: t })), ...rest];
+      }
       // Fall through to normal processing
     } else if (pendingAct.missing && pendingAct.missing.length > 0) {
       // Unified multi-slot completion (replicated from test-bot controller).

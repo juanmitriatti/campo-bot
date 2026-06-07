@@ -6,7 +6,8 @@ import type { FlowDefinition, FlowStep, FlowStepValidationSuccess } from './flow
 
 import { getSettingNumber } from '../services/settings.service.js';
 import { logError } from '../services/error-logger.js';
-import { normalizarMonto, detectarCategoria } from '../utils/parser.js';
+import { normalizarMonto, detectarCategoria, detectarCategoriaIngreso } from '../utils/parser.js';
+import { resolveRelativeDate } from '../utils/relative-dates.js';
 import { looksLikeCategoryWord } from '../ai/correction-classifier.js';
 
 // Defaults — overridden by system_settings at runtime
@@ -98,19 +99,55 @@ export function extractAmountCorrection(text: string): number | null {
  */
 export function extractReferencedAmountCorrection(
   text: string,
-): { categoryFilter: string; newAmount: number } | null {
+): { kind: 'expense' | 'income'; categoryFilter: string; newAmount: number } | null {
   const t = text.trim();
   if (!t) return null;
   const m = t.match(
-    /^(?:no,?\s*|perd[oó]n,?\s*|en\s+realidad,?\s*)?el\s+(?:gasto\s+)?(?:de\s+)?([\p{L}][\p{L}\s\-]*?)\s+(?:eran?|fue(?:ron)?|son|sal[ií](?:an|eron)?|costaron?|costaban?)\s+(.+)$/iu,
+    /^(?:no,?\s*|perd[oó]n,?\s*|en\s+realidad,?\s*)?el\s+(?:(gasto|ingreso|venta)\s+)?(?:de\s+)?([\p{L}][\p{L}\s\-]*?)\s+(?:eran?|fue(?:ron)?|son|sal[ií](?:an|eron)?|costaron?|costaban?)\s+(.+)$/iu,
   );
   if (!m) return null;
-  const referent = m[1].trim();
-  const newAmount = normalizarMonto(m[2]);
+  const explicitKind = m[1] ? m[1].toLowerCase() : null; // "gasto" | "ingreso" | "venta"
+  const referent = m[2].trim();
+  // Strip accents on the amount before normalizarMonto — "1 millón" (accented)
+  // otherwise matches the "mil" multiplier → 1000. The main parser pipeline
+  // normalizes first; this direct call must too.
+  const amountStr = m[3].normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const newAmount = normalizarMonto(amountStr);
   if (!newAmount || newAmount <= 0) return null;
-  const cat = detectarCategoria(referent);
-  if (!cat && !looksLikeCategoryWord(referent)) return null; // not an expense referent
-  return { categoryFilter: cat || referent, newAmount };
+
+  // Explicit "el ingreso/venta de X" → income; "el gasto de X" → expense.
+  if (explicitKind === 'ingreso' || explicitKind === 'venta') {
+    const incCat = detectarCategoriaIngreso(referent);
+    return { kind: 'income', categoryFilter: incCat || referent, newAmount };
+  }
+  if (explicitKind === 'gasto') {
+    const expCat = detectarCategoria(referent);
+    return { kind: 'expense', categoryFilter: expCat || referent, newAmount };
+  }
+
+  // No explicit kind: resolve by category map. Expense categories (gasoil,
+  // semillas, sueldos…) win; otherwise an income/crop category (soja, maíz…).
+  const expCat = detectarCategoria(referent);
+  if (expCat) return { kind: 'expense', categoryFilter: expCat, newAmount };
+  const incCat = detectarCategoriaIngreso(referent);
+  if (incCat) return { kind: 'income', categoryFilter: incCat, newAmount };
+  if (looksLikeCategoryWord(referent)) return { kind: 'expense', categoryFilter: referent, newAmount };
+  return null;
+}
+
+/**
+ * Detect "el último era de ayer" / "la última fue anteayer" / "no, era de hace 3
+ * días" — a relative-date correction of the LAST record. Returns the resolved ISO
+ * date or null. Guarded so it never fires on a NEW dated action ("fumigué ayer"):
+ * requires an explicit "el/la último/a" reference OR a correction prefix.
+ */
+export function extractLastRecordDateCorrection(text: string): string | null {
+  const hasReldate = /\b(ayer|anteayer|antes\s+de\s+ayer|hace\s+\d+\s+(?:d[ií]as?|semanas?|meses?))\b/i.test(text);
+  if (!hasReldate) return null;
+  const lastRef = /\b(?:el|la)\s+[úu]ltim[oa]\b/i.test(text);
+  const corrDate = /^(?:no,?|perd[óo]n,?|en\s+realidad,?)\s+(?:era|fue|es)\s+(?:de\s+)?(?:ayer|anteayer|antes\s+de\s+ayer|hace\s+)/i.test(text.trim());
+  if (!lastRef && !corrDate) return null;
+  return resolveRelativeDate(text);
 }
 
 /**

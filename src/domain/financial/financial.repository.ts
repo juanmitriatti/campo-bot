@@ -125,6 +125,25 @@ export class FinancialRepository {
     return row as IncomeRow;
   }
 
+  /** Most recent income, optionally filtered by category (mirror of the expense side). */
+  async findLastIncomeByCategory(userId: UserId, categoryFilter: string | null): Promise<IncomeRow | null> {
+    const { pool } = await import('../../config/db.js');
+    const params: unknown[] = [userId];
+    let where = `i.user_id = $1 AND i.deleted_at IS NULL`;
+    if (categoryFilter) {
+      params.push(`%${categoryFilter}%`);
+      where += ` AND i.category ILIKE $${params.length}`;
+    }
+    const result = await pool.query(
+      `SELECT i.* FROM incomes i WHERE ${where} ORDER BY i.id DESC LIMIT 1`,
+      params,
+    );
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    row.amount = Number(row.amount);
+    return row as IncomeRow;
+  }
+
   async deleteIncome(incomeId: number): Promise<void> {
     await _deleteIncome(incomeId);
   }

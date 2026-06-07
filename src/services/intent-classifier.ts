@@ -11,7 +11,7 @@ import type { AgentService } from '../ai/agent.service.js';
 import type { AgentResponseMapper } from '../ai/agent-response-mapper.js';
 import type { UserContextService } from '../ai/user-context.service.js';
 import { detectCorrection } from '../ai/correction-classifier.js';
-import { extractReferencedAmountCorrection } from '../middleware/conversation-engine.js';
+import { extractReferencedAmountCorrection, extractLastRecordDateCorrection } from '../middleware/conversation-engine.js';
 import { expandPronouns } from '../utils/pronoun-expander.js';
 import { getConversationState } from './expenses.js';
 import type { UserId, UserSettings, ParseResult } from '../types/index.js';
@@ -273,12 +273,33 @@ export class IntentClassifier {
           intent: {
             type: 'command',
             data: {
-              command: 'edit_last_expense',
+              command: refCorr.kind === 'income' ? 'edit_last_income' : 'edit_last_expense',
               categoryFilter: refCorr.categoryFilter,
               newAmount: refCorr.newAmount,
             } as import('../types/index.js').ParsedCommand,
           },
           confidence: 0.9,
+          aiUsed: false,
+          source: 'regex',
+          missingFields: [],
+        };
+      }
+    }
+
+    // =========================================================================
+    // STEP 2.55b — Relative-date correction of the last record
+    // "el último era de ayer" / "no, fue anteayer" → edit_last_activity(newDate).
+    // The agent treated this as a question; here we apply it deterministically.
+    // =========================================================================
+    {
+      const newDate = extractLastRecordDateCorrection(text);
+      if (newDate) {
+        return {
+          intent: {
+            type: 'command',
+            data: { command: 'edit_last_activity', newDate } as import('../types/index.js').ParsedCommand,
+          },
+          confidence: 0.88,
           aiUsed: false,
           source: 'regex',
           missingFields: [],

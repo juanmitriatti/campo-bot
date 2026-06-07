@@ -176,11 +176,18 @@ export class FinancialService {
     return { id: row.id, oldAmount: Number(row.amount), oldCategory: row.category, currency: row.currency };
   }
 
+  async findLastIncomeByCategory(userId: UserId, categoryFilter: string | null) {
+    return this.repo.findLastIncomeByCategory(userId, categoryFilter);
+  }
+
   async editLastIncomeFull(
     userId: UserId,
     fields: { newAmount?: number | null; newCategory?: string | null; newDate?: string | null; newFieldId?: number | null; newPlotId?: number | null },
+    categoryFilter: string | null = null,
   ): Promise<{ id: number; category: string; oldAmount: number; currency: string } | null> {
-    const last = await this.repo.getLastIncome(userId);
+    const last = categoryFilter
+      ? await this.repo.findLastIncomeByCategory(userId, categoryFilter)
+      : await this.repo.getLastIncome(userId);
     if (!last) return null;
     await this.repo.updateIncomeFields(last.id, {
       amount: fields.newAmount ?? null,

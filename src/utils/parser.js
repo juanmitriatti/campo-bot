@@ -1094,10 +1094,15 @@ const COMMAND_PATTERNS = [
     // "agregar campo X en Y, lotes A,B" don't smuggle the rest into city.
     patterns: [/(?:agregar|agrega|nuevo|crear)\s+(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!en\s)\w+){0,3})(?:\s+en\s+([^,]+))?/],
     extract: (m, _norm, original) => {
-      // If the original message contains additional clauses after the city
-      // (lotes/sembré/llovió/etc.), defer to the agent — don't try to handle
-      // it here, since trivial parsing will smuggle garbage.
-      if (original && /,\s+(lotes?|sembr[ée]|fumig[ué]|coseché|cosech[ée]|llov[ií][oó]?|fertilic[ée]|y\s+\w)/i.test(original)) {
+      // If the original message contains additional clauses (lotes/sembré/etc.),
+      // defer to the agent — trivial parsing would smuggle "Junín con lotes A"
+      // into the city and DROP the lotes. The agent's ONBOARDING rule turns
+      // "agregar campo X en Y con lotes A,B" into add_field + add_plots_batch.
+      if (original && (
+        /,\s+(lotes?|sembr[ée]|fumig[ué]|coseché|cosech[ée]|llov[ií][oó]?|fertilic[ée]|y\s+\w)/i.test(original)
+        || /\bcon\s+(?:los\s+|el\s+|un\s+)?lotes?\b/i.test(original)
+        || /\b(sembr[ée]|fumig[ué]|cosech[ée]|fertilic[ée]|llov[ií])/i.test(original)
+      )) {
         return null;
       }
       return {
