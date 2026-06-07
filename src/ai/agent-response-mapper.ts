@@ -371,11 +371,13 @@ export class AgentResponseMapper {
     if (TOOLS_WITH_DATE_PARAM.has(toolName)) {
       const dateKey = dateKeyForTool(toolName);
       const inputAsRec = input as Record<string, unknown>;
-      const agentSetDate = typeof inputAsRec[dateKey] === 'string' && (inputAsRec[dateKey] as string).length > 0;
-      if (!agentSetDate) {
-        const resolved = resolveRelativeDate(originalText);
-        if (resolved) inputAsRec[dateKey] = resolved;
-      }
+      // When the user text carries a relative/weekday phrase, OVERRIDE the agent's
+      // date with the server-computed one. The agent is unreliable on relative and
+      // named-weekday dates (it landed weekdays +1 day, computed against UTC); our
+      // resolver is deterministic and AR-local. Absolute dates ("el 3 de junio")
+      // aren't matched by resolveRelativeDate → the agent's value is kept.
+      const resolved = resolveRelativeDate(originalText);
+      if (resolved) inputAsRec[dateKey] = resolved;
     }
 
     if (toolName === 'log_expense') {

@@ -1616,6 +1616,7 @@ async function processTextMessage(
       // !expectsFinancialSlot guard, "vendí 10 novillos a 800 USD" donated
       // its 800 to a stuck "¿cuánto fue?" soja pending (silent data loss).
       const _escapePending = looksLikeNewActionOrQuery(text)
+        || isOtherItemCorrectionOrDelete(text)
         || (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text)));
       if (_escapePending) {
       // P0: don't silently drop the pending activity on pivot — save field-level

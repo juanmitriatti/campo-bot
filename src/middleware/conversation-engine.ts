@@ -81,7 +81,16 @@ export function extractAmountCorrection(text: string): number | null {
     /^(?:no,?\s*(?:eran?|son|fue(?:ron)?)|en\s+realidad|perd[oó]n,?\s*|quise\s+decir)\s+(.+)$/i,
   );
   if (!m) return null;
-  const amount = normalizarMonto(m[1]);
+  let amount = normalizarMonto(m[1]) ?? 0;
+  // m[1] may still carry nested cue words ("perdón, en realidad 15000" → m[1] =
+  // "en realidad 15000"), which normalizarMonto chokes on. Fall back to pulling
+  // the money token. Without this, a SECOND consecutive correction was misread as
+  // a brand-new expense → duplicate row.
+  if (!amount || amount <= 0) {
+    const stripped = m[1].normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const toks = stripped.match(/\d[\d.,]*\s*(?:mil(?:lones?)?|millon\w*|palos?|lucas?|k|m)?/gi) || [];
+    for (const tok of toks) { const v = normalizarMonto(tok); if (v && v > amount) amount = v; }
+  }
   return amount && amount > 0 ? amount : null;
 }
 

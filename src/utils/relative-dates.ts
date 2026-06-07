@@ -93,8 +93,26 @@ export function resolveRelativeDate(text: string | null | undefined): string | n
     if (n != null && n > 0 && n <= 12) return daysAgo(n * 30);
   }
 
+  // Named weekday: "el lunes", "este martes", "el viernes pasado". Resolve to the
+  // most-recent PAST occurrence relative to AR-local today (the agent computed
+  // these against UTC and landed them +1 day — silent corruption). "pasado" on
+  // the same weekday → the previous week's.
+  const mWd = t.match(/\b(?:el\s+|este\s+|del\s+)?(domingo|lunes|martes|miercoles|jueves|viernes|sabado)(\s+pasado)?\b/);
+  if (mWd) {
+    const target = WEEKDAYS[mWd[1]];
+    const pasado = !!mWd[2];
+    const today = getNowArgentina().getDay();
+    let diff = (today - target + 7) % 7; // 0 = today
+    if (diff === 0 && pasado) diff = 7;
+    return daysAgo(diff);
+  }
+
   return null;
 }
+
+const WEEKDAYS: Record<string, number> = {
+  domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6,
+};
 
 /**
  * Tools that accept an event_date / expense_date / income_date param. When
