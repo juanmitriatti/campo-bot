@@ -6,7 +6,7 @@ import type { FlowDefinition, FlowStep, FlowStepValidationSuccess } from './flow
 
 import { getSettingNumber } from '../services/settings.service.js';
 import { logError } from '../services/error-logger.js';
-import { normalizarMonto } from '../utils/parser.js';
+import { normalizarMonto, detectarCategoria } from '../utils/parser.js';
 import { looksLikeCategoryWord } from '../ai/correction-classifier.js';
 
 // Defaults — overridden by system_settings at runtime
@@ -82,6 +82,35 @@ export function extractAmountCorrection(text: string): number | null {
   if (!m) return null;
   const amount = normalizarMonto(m[1]);
   return amount && amount > 0 ? amount : null;
+}
+
+/**
+ * Detect an amount correction that ALSO names which expense it refers to:
+ * "no, el de urea eran 99 mil" / "el de gasoil eran 70 mil" / "perdón, el gasto
+ * de semillas era 30 mil". Returns { categoryFilter, newAmount } so the handler
+ * can target the RIGHT row (and say "no encuentro ese gasto" when there's none)
+ * instead of silently editing the most-recent expense of a different category.
+ *
+ * Guarded to genuine expense referents: the captured word must resolve to a
+ * known category OR look category-shaped. "el de norte era 50" (a plot/area)
+ * → detectarCategoria('norte') is null and it's not category-shaped → returns
+ * null, so plot corrections (handled earlier) are never hijacked.
+ */
+export function extractReferencedAmountCorrection(
+  text: string,
+): { categoryFilter: string; newAmount: number } | null {
+  const t = text.trim();
+  if (!t) return null;
+  const m = t.match(
+    /^(?:no,?\s*|perd[oó]n,?\s*|en\s+realidad,?\s*)?el\s+(?:gasto\s+)?(?:de\s+)?([\p{L}][\p{L}\s\-]*?)\s+(?:eran?|fue(?:ron)?|son|sal[ií](?:an|eron)?|costaron?|costaban?)\s+(.+)$/iu,
+  );
+  if (!m) return null;
+  const referent = m[1].trim();
+  const newAmount = normalizarMonto(m[2]);
+  if (!newAmount || newAmount <= 0) return null;
+  const cat = detectarCategoria(referent);
+  if (!cat && !looksLikeCategoryWord(referent)) return null; // not an expense referent
+  return { categoryFilter: cat || referent, newAmount };
 }
 
 /**

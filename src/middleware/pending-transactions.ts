@@ -53,7 +53,7 @@ export function describeReplacedPending(prev: PendingTransaction): string {
 }
 
 /** A replaced pending is "complete" when it could be saved as-is (amount + category). */
-function isCompletePending(prev: PendingTransaction): boolean {
+export function isCompletePending(prev: PendingTransaction): boolean {
   const d = (prev as unknown as { data?: { amount?: number; category?: string } }).data ?? {};
   return (prev.type === 'expense' || prev.type === 'income')
     && typeof d.amount === 'number' && d.amount > 0

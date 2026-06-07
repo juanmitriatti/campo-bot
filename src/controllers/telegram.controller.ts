@@ -16,7 +16,7 @@ import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
 import { isAffirmation, looksLikeNewActionOrQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { MessageDedup } from '../middleware/dedup.js';
-import { PendingTransactionStore, describeReplacedPending, resolveReplacedPending } from '../middleware/pending-transactions.js';
+import { PendingTransactionStore, describeReplacedPending, resolveReplacedPending, isCompletePending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
@@ -1330,8 +1330,11 @@ async function commitFinancialFlowFieldLevel(
   flowCtx: any,
   phone: string,
 ): Promise<BotResponseItem[]> {
-  if (!['expense_flow', 'income_flow'].includes(flowCtx.state)) return [];
-  if (conversationEngine.getCurrentStepField(flowCtx) !== 'plotName') return [];
+  const origin = flowCtx.originFlow ?? flowCtx.state;
+  if (!['expense_flow', 'income_flow'].includes(origin)) return [];
+  const atPlot = conversationEngine.getCurrentStepField(flowCtx) === 'plotName';
+  const atConfirm = flowCtx.state === 'confirming';
+  if (!atPlot && !atConfirm) return [];
   const result = await conversationEngine.executeConfirm(userId, flowCtx);
   if (result.response.sideEffects?.setPendingStockEntry) {
     pendingStockEntryStore.set(phone, result.response.sideEffects.setPendingStockEntry);
@@ -1340,7 +1343,11 @@ async function commitFinancialFlowFieldLevel(
     const loc = result.response.sideEffects.setPendingFieldLocation;
     pendingFieldLocationStore.set(phone, { fieldId: loc.fieldId, fieldName: loc.fieldName });
   }
-  return collectResponse(result.response);
+  const kind = origin === 'income_flow' ? 'ingreso' : 'gasto';
+  const note = flowCtx.data?.plotName
+    ? `💡 Guardé el ${kind} antes de seguir.`
+    : `💡 Guardé el ${kind} a nivel campo (sin lote).`;
+  return [{ type: 'text', text: note }, ...collectResponse(result.response)];
 }
 
 async function processTextMessage(
@@ -1741,6 +1748,18 @@ async function processTextMessage(
         { type: 'interactive', interactive: { type: 'buttons', body: '¿Confirmás?', buttons: corr.buttons! } } as BotResponseItem,
       ];
     }
+  }
+
+  // P0: auto-commit a COMPLETE pending gasto/ingreso before a pivot to a query or
+  // different-domain action, so it isn't lost. (New financial action → handled by
+  // the replaced-pending path.)
+  if (pending && isCompletePending(pending as any)
+      && looksLikeNewActionOrQuery(text) && !intentClassifier.detectsFinancialIntent(text)) {
+    pendingStore.clear(phone);
+    try { await financialHandler.handleConfirm(userId, pending, settings, user); } catch { /* best-effort */ }
+    const kind = (pending as any).type === 'income' ? 'ingreso' : 'gasto';
+    const rest = await processTextMessage(text, userId, user, settings, phone, startTime);
+    return [{ type: 'text', text: `💡 Guardé el ${kind} antes de seguir.` }, ...rest];
   }
 
   const lowConfidenceThreshold = (await getSettingNumber('CONFIDENCE_LOW_CONFIRM')) ?? 0.70;

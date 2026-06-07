@@ -11,6 +11,7 @@ import type { AgentService } from '../ai/agent.service.js';
 import type { AgentResponseMapper } from '../ai/agent-response-mapper.js';
 import type { UserContextService } from '../ai/user-context.service.js';
 import { detectCorrection } from '../ai/correction-classifier.js';
+import { extractReferencedAmountCorrection } from '../middleware/conversation-engine.js';
 import { expandPronouns } from '../utils/pronoun-expander.js';
 import { getConversationState } from './expenses.js';
 import type { UserId, UserSettings, ParseResult } from '../types/index.js';
@@ -250,6 +251,34 @@ export class IntentClassifier {
         return {
           intent: { type: 'command', data },
           confidence: 0.92,
+          aiUsed: false,
+          source: 'regex',
+          missingFields: [],
+        };
+      }
+    }
+
+    // =========================================================================
+    // STEP 2.55 — Referenced amount correction (deterministic, pre-agent)
+    // "no, el de urea eran 99 mil" carries the referent (urea) AND the amount.
+    // Haiku frequently drops the referent → edit_last_expense with no
+    // categoryFilter → it silently edited the most-recent expense of a DIFFERENT
+    // category. Capture both here so the handler targets the right row (or says
+    // "no encontré un gasto de X").
+    // =========================================================================
+    {
+      const refCorr = extractReferencedAmountCorrection(text);
+      if (refCorr) {
+        return {
+          intent: {
+            type: 'command',
+            data: {
+              command: 'edit_last_expense',
+              categoryFilter: refCorr.categoryFilter,
+              newAmount: refCorr.newAmount,
+            } as import('../types/index.js').ParsedCommand,
+          },
+          confidence: 0.9,
           aiUsed: false,
           source: 'regex',
           missingFields: [],
