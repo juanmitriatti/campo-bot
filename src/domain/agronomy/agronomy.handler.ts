@@ -1480,9 +1480,18 @@ export class AgronomyHandler {
             fieldId = field.id;
             fieldLabel = field.name;
           } else {
-            return {
-              messages: [`No encontré el campo *${cmd.fieldName}*.\nPara crearlo: *agregar campo ${cmd.fieldName}*`],
-            };
+            // Not a field — the agent often mis-classifies a PLOT as a field
+            // ("cayeron 30mm en Norte"). Resolve it as a plot → parent field so
+            // the rainfall isn't lost (rain is tracked at field level).
+            const asPlot = await this.repo.findPlotByNameAcrossFields(userId, cmd.fieldName as string);
+            if (asPlot.length > 0) {
+              fieldId = asPlot[0].field_id;
+              fieldLabel = asPlot[0].field_name;
+            } else {
+              return {
+                messages: [`No encontré el campo *${cmd.fieldName}*.\nPara crearlo: *agregar campo ${cmd.fieldName}*`],
+              };
+            }
           }
         } else if (cmd.plotName && plotExplicit) {
           // "lote X" → resolve to parent field
@@ -2013,7 +2022,7 @@ export class AgronomyHandler {
         }
         const yieldKgRaw = cmd.yieldKg != null ? Number(cmd.yieldKg) : null;
         const yieldKgPerHa = cmd.yieldKgPerHa != null ? Number(cmd.yieldKgPerHa) : null;
-        const yieldNotes = (cmd.yieldNotes as string) || null;
+        let yieldNotes = (cmd.yieldNotes as string) || null;
         const plotLabel = plotResult.fieldName ? `${plotResult.fieldName} > ${plotResult.plotName}` : plotResult.plotName;
 
         // Resolve effective yield: if user gave rate (kg/ha), compute total; if total, use as-is.
@@ -2043,6 +2052,12 @@ export class AgronomyHandler {
           if (yieldKgPerHa != null) {
             computedKgPerHa = yieldKgPerHa;
             yieldKg = areaHa ? Math.round(yieldKgPerHa * areaHa) : null;
+            // No plot area → can't compute the total. Persist the rate in notes
+            // so the yield isn't lost (the campaign report can still show it).
+            if (!areaHa) {
+              const rateNote = `rinde: ${yieldKgPerHa.toLocaleString('es-AR')} kg/ha (falta cargar superficie del lote)`;
+              yieldNotes = yieldNotes ? `${yieldNotes} · ${rateNote}` : rateNote;
+            }
           } else if (yieldKgRaw != null && areaHa) {
             computedKgPerHa = Math.round(yieldKgRaw / areaHa);
           }

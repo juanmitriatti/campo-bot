@@ -879,6 +879,17 @@ export class AgentResponseMapper {
     if (input.yield_kg != null) cmd.yieldKg = input.yield_kg;
     if (input.yield_kg_per_ha != null) cmd.yieldKgPerHa = input.yield_kg_per_ha;
     if (input.yield_notes != null) cmd.yieldNotes = input.yield_notes;
+    // Harvest yield backfill: the agent often puts the total in quantity+unit
+    // ("coseché maíz, 200 tn" → quantity:200, unit:'tn') instead of yield_kg, so
+    // the yield was never persisted. Convert quantity→kg into the right field.
+    if (toolName === 'harvest_crop' && cmd.yieldKg == null && cmd.yieldKgPerHa == null && input.quantity != null) {
+      const u = String(input.unit ?? '').toLowerCase();
+      const perHa = /\/\s*ha\b/.test(u) || /por\s*hect/.test(u);
+      const kg = normalizeToKg(Number(input.quantity), u.replace(/\s*\/\s*ha\b/, '').trim() || 'kg');
+      if (kg != null && kg > 0) {
+        if (perHa) cmd.yieldKgPerHa = kg; else cmd.yieldKg = kg;
+      }
+    }
     if (input.season_year != null) cmd.seasonYear = input.season_year;
     if (input.season_year_1 != null) cmd.seasonYear1 = input.season_year_1;
     if (input.season_year_2 != null) cmd.seasonYear2 = input.season_year_2;
