@@ -32,7 +32,7 @@ import { ChannelVerificationService, VerificationError } from '../domain/auth/ch
 import { pool } from '../config/db.js';
 import { logError } from '../services/error-logger.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
-import { ConversationEngine, buildTimeoutMessage } from '../middleware/conversation-engine.js';
+import { ConversationEngine, buildTimeoutMessage, isOtherItemCorrectionOrDelete } from '../middleware/conversation-engine.js';
 import { ConversationLogger } from '../middleware/conversation-logger.js';
 import { FlowRegistry } from '../middleware/flows/flow-registry.js';
 import { expenseFlow } from '../middleware/flows/expense.flow.js';
@@ -1440,7 +1440,7 @@ async function processTextMessage(
 
       // P0-3: a clearly-different new action or query mid-flow abandons the flow
       // and gets processed normally, instead of the "est\u00e1s en medio" nudge.
-      if (!isPlotAnswerToFlow(flowCtx.state, text) && looksLikeNewActionOrQuery(text)) {
+      if (!isPlotAnswerToFlow(flowCtx.state, text) && (looksLikeNewActionOrQuery(text) || isOtherItemCorrectionOrDelete(text))) {
         // P0-2: commit a complete expense/income at field level before abandoning.
         const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
         await conversationEngine.clearFlow(userId);
@@ -1762,7 +1762,8 @@ async function processTextMessage(
   // different-domain action, so it isn't lost. (New financial action → handled by
   // the replaced-pending path.)
   if (pending && isCompletePending(pending as any)
-      && looksLikeNewActionOrQuery(text) && !intentClassifier.detectsFinancialIntent(text)) {
+      && ((looksLikeNewActionOrQuery(text) && !intentClassifier.detectsFinancialIntent(text))
+          || isOtherItemCorrectionOrDelete(text))) {
     pendingStore.clear(phone);
     try { await financialHandler.handleConfirm(userId, pending, settings, user); } catch { /* best-effort */ }
     const kind = (pending as any).type === 'income' ? 'ingreso' : 'gasto';

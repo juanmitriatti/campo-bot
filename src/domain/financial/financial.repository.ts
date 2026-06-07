@@ -85,8 +85,11 @@ export class FinancialRepository {
     const params: any[] = [userId];
     let where = `e.user_id = $1 AND e.deleted_at IS NULL`;
     if (categoryFilter) {
+      // Match the referent against category OR description OR product, so two
+      // expenses in the same category (e.g. "grasa" vs "repuestos", both
+      // Maquinaria) are still distinguishable by what the user actually named.
       params.push(`%${categoryFilter}%`);
-      where += ` AND e.category ILIKE $${params.length}`;
+      where += ` AND (e.category ILIKE $${params.length} OR e.description ILIKE $${params.length} OR e.product ILIKE $${params.length})`;
     }
     const result = await pool.query(
       `SELECT e.*, f.name AS field_name, p.name AS plot_name
@@ -132,7 +135,7 @@ export class FinancialRepository {
     let where = `i.user_id = $1 AND i.deleted_at IS NULL`;
     if (categoryFilter) {
       params.push(`%${categoryFilter}%`);
-      where += ` AND i.category ILIKE $${params.length}`;
+      where += ` AND (i.category ILIKE $${params.length} OR i.description ILIKE $${params.length} OR i.product ILIKE $${params.length})`;
     }
     const result = await pool.query(
       `SELECT i.* FROM incomes i WHERE ${where} ORDER BY i.id DESC LIMIT 1`,

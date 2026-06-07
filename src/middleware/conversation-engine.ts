@@ -115,22 +115,18 @@ export function extractReferencedAmountCorrection(
   const newAmount = normalizarMonto(amountStr);
   if (!newAmount || newAmount <= 0) return null;
 
-  // Explicit "el ingreso/venta de X" → income; "el gasto de X" → expense.
+  // categoryFilter carries the RAW referent ("grasa", "urea", "soja") — the
+  // handler matches it against category OR description OR product, so two items
+  // in the same category ("grasa" vs "repuestos", both Maquinaria) are still
+  // told apart. detectarCategoria* is used ONLY to pick expense vs income.
   if (explicitKind === 'ingreso' || explicitKind === 'venta') {
-    const incCat = detectarCategoriaIngreso(referent);
-    return { kind: 'income', categoryFilter: incCat || referent, newAmount };
+    return { kind: 'income', categoryFilter: referent, newAmount };
   }
   if (explicitKind === 'gasto') {
-    const expCat = detectarCategoria(referent);
-    return { kind: 'expense', categoryFilter: expCat || referent, newAmount };
+    return { kind: 'expense', categoryFilter: referent, newAmount };
   }
-
-  // No explicit kind: resolve by category map. Expense categories (gasoil,
-  // semillas, sueldos…) win; otherwise an income/crop category (soja, maíz…).
-  const expCat = detectarCategoria(referent);
-  if (expCat) return { kind: 'expense', categoryFilter: expCat, newAmount };
-  const incCat = detectarCategoriaIngreso(referent);
-  if (incCat) return { kind: 'income', categoryFilter: incCat, newAmount };
+  if (detectarCategoria(referent)) return { kind: 'expense', categoryFilter: referent, newAmount };
+  if (detectarCategoriaIngreso(referent)) return { kind: 'income', categoryFilter: referent, newAmount };
   if (looksLikeCategoryWord(referent)) return { kind: 'expense', categoryFilter: referent, newAmount };
   return null;
 }
@@ -148,6 +144,21 @@ export function extractLastRecordDateCorrection(text: string): string | null {
   const corrDate = /^(?:no,?|perd[óo]n,?|en\s+realidad,?)\s+(?:era|fue|es)\s+(?:de\s+)?(?:ayer|anteayer|antes\s+de\s+ayer|hace\s+)/i.test(text.trim());
   if (!lastRef && !corrDate) return null;
   return resolveRelativeDate(text);
+}
+
+/**
+ * True when the message is a correction or delete that names a DIFFERENT, already
+ * recorded item (not the current pending's slot answer): "no, el alambre fueron
+ * 15000", "el último era de ayer", "borrá el gasto de grasa", "eliminá el de
+ * gasoil". Used so an open flow / pending confirmation does NOT swallow it as its
+ * own slot answer (which silently dropped the correction/delete — P1-B).
+ */
+export function isOtherItemCorrectionOrDelete(text: string): boolean {
+  if (extractReferencedAmountCorrection(text)) return true;
+  if (extractLastRecordDateCorrection(text)) return true;
+  // Delete naming a referent: "borrá el gasto de grasa", "eliminá el de gasoil".
+  if (/\b(borr|elimin|saca|quit)\w*/i.test(text) && /\b(gasto|ingreso|el\s+de|la\s+de)\b/i.test(text)) return true;
+  return false;
 }
 
 /**

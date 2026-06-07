@@ -48,6 +48,12 @@ export class FinancialService {
   // --- Expense operations ---
 
   async saveExpense(userId: UserId, data: ParsedExpense, fieldId: number | null, plotId: number | null = null): Promise<{ id: number }> {
+    // Never persist a blank category (bulk/guarded save paths could leak ''):
+    // derive it from the description, else default to "Otros".
+    if (!data.category || !String(data.category).trim()) {
+      const { detectarCategoria } = await import('../../utils/parser.js');
+      data.category = detectarCategoria(String(data.description ?? '')) || 'Otros';
+    }
     return this.repo.saveExpense(userId, data, fieldId, plotId);
   }
 
@@ -101,6 +107,11 @@ export class FinancialService {
   // --- Income operations ---
 
   async saveIncome(userId: UserId, data: ParsedIncome, fieldId: number | null, plotId: number | null = null): Promise<{ id: number }> {
+    // Never persist a blank category (bulk/guarded save paths could leak '').
+    if (!data.category || !String(data.category).trim()) {
+      const { detectarCategoriaIngreso } = await import('../../utils/parser.js');
+      data.category = detectarCategoriaIngreso(String((data as { description?: string }).description ?? '')) || 'Otros';
+    }
     return this.repo.saveIncome(userId, data, fieldId, plotId);
   }
 

@@ -35,7 +35,7 @@ import { getSetting, getSettingNumber, getSettingBool } from '../services/settin
 import { pool } from '../config/db.js';
 import { logError, logWarning } from '../services/error-logger.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
-import { ConversationEngine, buildTimeoutMessage } from '../middleware/conversation-engine.js';
+import { ConversationEngine, buildTimeoutMessage, isOtherItemCorrectionOrDelete } from '../middleware/conversation-engine.js';
 import { ConversationLogger } from '../middleware/conversation-logger.js';
 import { FlowRegistry } from '../middleware/flows/flow-registry.js';
 import { expenseFlow } from '../middleware/flows/expense.flow.js';
@@ -1453,7 +1453,7 @@ router.post('/', async (req: Request, res: Response) => {
 
         // P0-3: a clearly-different new action or query mid-flow abandons the
         // flow and gets processed normally, instead of the "estás en medio" nudge.
-        if (!isPlotAnswerToFlow(flowCtx.state, text) && looksLikeNewActionOrQuery(text)) {
+        if (!isPlotAnswerToFlow(flowCtx.state, text) && (looksLikeNewActionOrQuery(text) || isOtherItemCorrectionOrDelete(text))) {
           // P0-2: commit a complete expense/income at field level before abandoning.
           const committed = await commitFinancialFlowFieldLevelWa(userId, flowCtx, phone);
           if (committed) await sendResponse(phone, committed);
@@ -1846,7 +1846,8 @@ router.post('/', async (req: Request, res: Response) => {
     // or different-domain action, so it isn't lost. (New financial action → handled
     // by the replaced-pending path.) Falls through to process the pivot afterwards.
     if (pending && isCompletePending(pending as any)
-        && looksLikeNewActionOrQuery(text) && !intentClassifier.detectsFinancialIntent(text)) {
+        && ((looksLikeNewActionOrQuery(text) && !intentClassifier.detectsFinancialIntent(text))
+            || isOtherItemCorrectionOrDelete(text))) {
       pendingStore.clear(phone);
       try { await financialHandler.handleConfirm(userId, pending, settings, user); } catch { /* best-effort */ }
       const kind = (pending as any).type === 'income' ? 'ingreso' : 'gasto';

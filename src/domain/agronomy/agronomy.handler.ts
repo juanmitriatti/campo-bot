@@ -3250,8 +3250,7 @@ export class AgronomyHandler {
         }
         if (newCrop) editLines.push(`🌱 Cultivo: ${lastEvent.crop || '?'} → *${newCrop}*`);
         if (newDate) {
-          const dateStr = new Date(newDate).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
-          editLines.push(`📅 Fecha: *${dateStr}*`);
+          editLines.push(`📅 Fecha: *${formatDateAR(newDate as string)}*`);
         }
 
         return { messages: [editLines.join('\n')] };

@@ -418,7 +418,14 @@ export class FinancialHandler {
 
     // ── 2. Legacy shortcuts (preserve existing behavior) ──
     const fieldName = cmd.fieldName as string | null;
-    const plotName = cmd.plotName as string | null;
+    let plotName = cmd.plotName as string | null;
+    // "__last__" sentinel from the pronoun parser ("ahí"/"ese lote") on the QUERY
+    // path: resolve to the most recent plot from context; if none, treat as no
+    // plot (don't error on the literal sentinel — P1-D).
+    if (plotName === '__last__') {
+      const recentCtx = await this.service.getRecentFinancialContext(userId).catch(() => null);
+      plotName = recentCtx?.plotName ?? null;
+    }
     const period = cmd.period as string | null;
     const reportType = (cmd.reportType as string) || (cmd.type as string) || 'both';
 

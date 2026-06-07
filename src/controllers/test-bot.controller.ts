@@ -31,7 +31,7 @@ import { FeatureGate } from '../domain/billing/feature-gate.js';
 import { getSettingNumber, getSettingBool } from '../services/settings.service.js';
 import { pool } from '../config/db.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
-import { ConversationEngine, buildTimeoutMessage } from '../middleware/conversation-engine.js';
+import { ConversationEngine, buildTimeoutMessage, isOtherItemCorrectionOrDelete } from '../middleware/conversation-engine.js';
 import { ConversationLogger } from '../middleware/conversation-logger.js';
 import { FlowRegistry } from '../middleware/flows/flow-registry.js';
 import { expenseFlow } from '../middleware/flows/expense.flow.js';
@@ -925,10 +925,11 @@ async function processTextMessage(
       // normally \u2014 instead of the "est\u00e1s en medio de un registro" nudge that
       // bricked clima/reportes/queries until the user typed "cancelar". A plot
       // answer ("lote A") is exempt \u2014 that's the flow's expected input.
-      if (!isPlotAnswerToFlow(flowCtx.state, text) && looksLikeNewActionOrQuery(text)) {
+      if (!isPlotAnswerToFlow(flowCtx.state, text) && (looksLikeNewActionOrQuery(text) || isOtherItemCorrectionOrDelete(text))) {
         // P0-2: a complete expense/income parked at the plot step must NOT be lost
         // just because the user pivoted to another action/query. Commit it at
-        // field level first, then process the pivot.
+        // field level first, then process the pivot. (P1-B: also abandon for a
+        // correction/delete of a DIFFERENT item so the flow doesn't eat it.)
         const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
         await conversationEngine.clearFlow(userId);
         if (committed.length > 0) {
@@ -1276,7 +1277,8 @@ async function processTextMessage(
   // a NEW financial action is left to the replaced-pending path, which keeps the
   // "guardé el anterior y registro el nuevo" UX.)
   if (pending && isCompletePending(pending as any)
-      && looksLikeNewActionOrQuery(text) && !intentClassifier.detectsFinancialIntent(text)) {
+      && ((looksLikeNewActionOrQuery(text) && !intentClassifier.detectsFinancialIntent(text))
+          || isOtherItemCorrectionOrDelete(text))) {
     pendingStore.clear(phone);
     try { await financialHandler.handleConfirm(userId, pending, settings, user); } catch { /* best-effort */ }
     const kind = (pending as any).type === 'income' ? 'ingreso' : 'gasto';
