@@ -11,7 +11,7 @@ import type { AgentService } from '../ai/agent.service.js';
 import type { AgentResponseMapper } from '../ai/agent-response-mapper.js';
 import type { UserContextService } from '../ai/user-context.service.js';
 import { detectCorrection } from '../ai/correction-classifier.js';
-import { extractReferencedAmountCorrection, extractLastRecordDateCorrection } from '../middleware/conversation-engine.js';
+import { extractReferencedAmountCorrection, extractLastRecordDateCorrection, extractActivityQuantityCorrection } from '../middleware/conversation-engine.js';
 import { expandPronouns } from '../utils/pronoun-expander.js';
 import { getConversationState } from './expenses.js';
 import type { UserId, UserSettings, ParseResult } from '../types/index.js';
@@ -298,6 +298,28 @@ export class IntentClassifier {
           intent: {
             type: 'command',
             data: { command: 'edit_last_activity', newDate } as import('../types/index.js').ParsedCommand,
+          },
+          confidence: 0.88,
+          aiUsed: false,
+          source: 'regex',
+          missingFields: [],
+        };
+      }
+    }
+
+    // =========================================================================
+    // STEP 2.55c — Activity dose/quantity correction
+    // "no, eran 5.5 litros" after a spray/fert → edit_last_activity(newQuantity).
+    // The activity correction engine only handled lote/cultivo/fecha; the dose
+    // (safety-relevant) was silently ignored (P1-B).
+    // =========================================================================
+    {
+      const qtyCorr = extractActivityQuantityCorrection(text);
+      if (qtyCorr) {
+        return {
+          intent: {
+            type: 'command',
+            data: { command: 'edit_last_activity', newQuantity: qtyCorr.quantity, newUnit: qtyCorr.unit } as import('../types/index.js').ParsedCommand,
           },
           confidence: 0.88,
           aiUsed: false,

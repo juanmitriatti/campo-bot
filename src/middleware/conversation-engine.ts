@@ -156,6 +156,29 @@ export function extractLastRecordDateCorrection(text: string): string | null {
 }
 
 /**
+ * Detect a DOSE/quantity correction of the last activity: "no, eran 5.5 litros",
+ * "la fumigación eran 5 kg", "perdón, fueron 2 litros". Returns { quantity, unit }
+ * or null. Guarded to AGRO units (litros/kg/cc/…) and a correction phrasing, and
+ * rejects money so it never steals an amount correction. Dose is safety-relevant
+ * and the activity correction engine previously ignored it (P1-B).
+ */
+export function extractActivityQuantityCorrection(
+  text: string,
+): { quantity: number; unit: string } | null {
+  const t = text.trim();
+  const isCorrection = /^(?:no,?\s*|perd[oó]n,?\s*|en\s+realidad,?\s*|la\s+[\wáéíóúñ]+\s+)?(?:eran?|fueron?|son|era|fue)\s+/i.test(t)
+    || /\b(?:eran?|fueron?|son|era|fue)\s+\d/i.test(t);
+  if (!isCorrection) return null;
+  // Reject money — that's an amount correction, not a dose.
+  if (/[$]|\bpesos?\b|\bd[oó]lares?\b|\busd\b|\bmil\b|\bpalos?\b|\blucas?\b|\bmillon\w*\b/i.test(t)) return null;
+  const m = t.match(/\b(\d+(?:[.,]\d+)?)\s*(litros?|lts?|lt|kg|kilos?|cc|tn|toneladas?|qq|quintales?|bolsas?)\b/i);
+  if (!m) return null;
+  const quantity = parseFloat(m[1].replace(',', '.'));
+  if (!(quantity > 0)) return null;
+  return { quantity, unit: m[2].toLowerCase() };
+}
+
+/**
  * True when the message is a correction or delete that names a DIFFERENT, already
  * recorded item (not the current pending's slot answer): "no, el alambre fueron
  * 15000", "el último era de ayer", "borrá el gasto de grasa", "eliminá el de

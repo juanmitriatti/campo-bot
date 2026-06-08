@@ -26,7 +26,16 @@ export function tryApplyPendingCorrection(
   }
   const correctedCat = extractCategoryCorrection(text);
   const correctedAmt = extractAmountCorrection(text);
-  if (!correctedCat && !correctedAmt) return { applied: false };
+  // Currency correction ("no, eran en dólares" / "perdón, eran USD"). Without
+  // this, the message fell through to the agent which emitted a NEW income that
+  // replaced the pending → the old ARS pending got auto-committed as a duplicate
+  // ghost alongside the new USD row (P1-D). Patch the currency in place instead.
+  let correctedCurrency: 'USD' | 'ARS' | null = null;
+  if (/\b(no|perd[oó]n|realidad|eran?|fueron?|son|era|fue)\b/i.test(text)) {
+    if (/\b(d[oó]lar(?:es)?|usd|u\$?d|u\$s)\b/i.test(text)) correctedCurrency = 'USD';
+    else if (/\b(pesos?|en\s+pesos|ars)\b/i.test(text)) correctedCurrency = 'ARS';
+  }
+  if (!correctedCat && !correctedAmt && !correctedCurrency) return { applied: false };
 
   const data = (pending.data ?? {}) as Record<string, unknown>;
   const updated: Record<string, unknown> = { ...pending, data: { ...data, timestamp: Date.now() } };
@@ -40,6 +49,7 @@ export function tryApplyPendingCorrection(
     updatedData.category = canonical;
   }
   if (correctedAmt) updatedData.amount = correctedAmt;
+  if (correctedCurrency) updatedData.currency = correctedCurrency;
 
   const verb = pending.type === 'expense' ? 'gasto' : 'ingreso';
   const emoji = pending.type === 'expense' ? '💸' : '💰';

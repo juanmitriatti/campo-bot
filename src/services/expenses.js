@@ -2464,6 +2464,8 @@ export async function updateDomainEventPlot(eventId, plotId, editedBy, extraFiel
   if (extraFields.crop !== undefined) { idx++; sets.push(`crop = $${idx}`); params.push(extraFields.crop); }
   if (extraFields.eventDate !== undefined) { idx++; sets.push(`event_date = $${idx}`); params.push(extraFields.eventDate); }
   if (extraFields.eventType !== undefined) { idx++; sets.push(`event_type = $${idx}`); params.push(extraFields.eventType); }
+  if (extraFields.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(extraFields.quantity); }
+  if (extraFields.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(extraFields.unit); }
 
   idx++;
   const result = await pool.query(

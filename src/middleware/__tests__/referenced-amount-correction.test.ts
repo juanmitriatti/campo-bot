@@ -49,3 +49,19 @@ describe('isOtherItemCorrectionOrDelete', () => {
   ])('"%s" → true', (t) => expect(isOtherItemCorrectionOrDelete(t)).toBe(true));
   it.each(['Norte', 'lote 3', 'sí', '50'])('"%s" → false', (t) => expect(isOtherItemCorrectionOrDelete(t)).toBe(false));
 });
+
+import { extractActivityQuantityCorrection } from '../conversation-engine.js';
+describe('extractActivityQuantityCorrection', () => {
+  it.each([
+    ['no, eran 5.5 litros', 5.5, 'litros'],
+    ['la fumigación eran 5 kg', 5, 'kg'],
+    ['perdón, fueron 2 litros', 2, 'litros'],
+  ])('"%s" → %f %s', (t, q, u) => {
+    const r = extractActivityQuantityCorrection(t as string);
+    expect(r?.quantity).toBe(q);
+    expect(r?.unit).toBe(u);
+  });
+  it('rejects money: "no, eran 5 mil"', () => expect(extractActivityQuantityCorrection('no, eran 5 mil')).toBeNull());
+  it('rejects money with currency: "no, eran 5000 dólares"', () => expect(extractActivityQuantityCorrection('no, eran 5000 dólares')).toBeNull());
+  it('null on a new activity "fumigué 3 litros"', () => expect(extractActivityQuantityCorrection('fumigué 3 litros')).toBeNull());
+});

@@ -3173,11 +3173,13 @@ export class AgronomyHandler {
         const newFieldName = cmd.newFieldName as string | null;
         const newCrop = cmd.newCrop as string | null;
         const newDate = cmd.newDate as string | null;
+        const newQuantity = cmd.newQuantity != null ? Number(cmd.newQuantity) : null;
+        const newUnit = (cmd.newUnit as string | null) || null;
         const clearLot = !!cmd.clearLot;
 
-        // At least one change must be specified — plot, crop, fecha, or clear_lot.
-        if (!newPlotName && !newCrop && !newDate && !clearLot) {
-          return { messages: ['¿Qué corregimos? Indicá el nuevo lote, cultivo o fecha. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*\n✏️ *sin lote* (para sacar el lote)'] };
+        // At least one change must be specified — plot, crop, fecha, dosis, or clear_lot.
+        if (!newPlotName && !newCrop && !newDate && !clearLot && (newQuantity == null || !(newQuantity > 0))) {
+          return { messages: ['¿Qué corregimos? Indicá el nuevo lote, cultivo, fecha o dosis. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*\n✏️ *no, eran 5 litros*\n✏️ *sin lote* (para sacar el lote)'] };
         }
 
         // Disambiguate the target by the plot the user named as the SUBJECT of
@@ -3225,9 +3227,13 @@ export class AgronomyHandler {
         }
 
         // Build extra fields to update
-        const extraFields: { crop?: string; eventDate?: string } = {};
+        const extraFields: { crop?: string; eventDate?: string; quantity?: number; unit?: string } = {};
         if (newCrop) extraFields.crop = newCrop;
         if (newDate) extraFields.eventDate = newDate;
+        if (newQuantity != null && newQuantity > 0) {
+          extraFields.quantity = newQuantity;
+          if (newUnit) extraFields.unit = newUnit;
+        }
 
         // Update the event (plotId may be null when the user only fixed crop/date)
         await this.repo.updateDomainEventPlot(lastEvent.id, newPlotId, userId, extraFields);
@@ -3254,6 +3260,12 @@ export class AgronomyHandler {
         if (newCrop) editLines.push(`🌱 Cultivo: ${lastEvent.crop || '?'} → *${newCrop}*`);
         if (newDate) {
           editLines.push(`📅 Fecha: *${formatDateAR(newDate as string)}*`);
+        }
+        if (newQuantity != null && newQuantity > 0) {
+          const oldQ = (lastEvent as { quantity?: number | null }).quantity;
+          const oldU = (lastEvent as { unit?: string | null }).unit || '';
+          const uLabel = newUnit || oldU;
+          editLines.push(`📏 Dosis: ${oldQ != null ? `${oldQ} ${oldU}` : '?'} → *${newQuantity} ${uLabel}*`);
         }
 
         return { messages: [editLines.join('\n')] };
