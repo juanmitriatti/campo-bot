@@ -56,7 +56,11 @@ export function advanceQueueAfterCompletion(
     const [head, ...tail] = remaining;
     store.set(phone, {
       command: head.command,
-      data: head.data,
+      // Tag as queue-sourced so the controller re-routes a financial item in
+      // bulkMode (save field-level) even when it's the LAST one with no
+      // nextInQueue — otherwise the last partial returns an income/expense flow
+      // the queue path can't store, and the record is lost (P0-1).
+      data: { ...head.data, _fromQueue: true },
       timestamp: Date.now(),
       missing: head.missing,
       askPrompt: head.askPrompt,

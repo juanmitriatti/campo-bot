@@ -1651,7 +1651,11 @@ async function processTextMessage(
         // Route through DomainRouter so any tool (agronomy, stock, livestock,
         // financial, etc.) can be re-executed via the unified pending path —
         // not just agronomy.
-        const routed = await domainRouter.routeCommand(merged, userId, user, settings);
+        const _mc = (merged as Record<string, unknown>).command;
+        const _queueBulk = (_mc === 'log_income' || _mc === 'log_expense')
+          && ((Array.isArray(pendingAct.nextInQueue) && pendingAct.nextInQueue.length > 0)
+              || (pendingAct.data as Record<string, unknown>)?._fromQueue === true);
+        const routed = await domainRouter.routeCommand(merged, userId, user, settings, _queueBulk);
         const cmdResult = routed ?? { messages: ['No pude completar el registro. Probá de nuevo.'] };
         // Advance the serial pending queue (multi-item compounds — see whatsapp
         // controller for full comment).

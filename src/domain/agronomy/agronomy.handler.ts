@@ -270,7 +270,10 @@ export class AgronomyHandler {
       messages: [`¿En qué lote?\n\n${formatPlotListGrouped(plots)}`],
       suggestionKey: 'default_menu',
       sideEffects: {
-        setPendingActivity: { command: cmd.command, data: { ...cmd } },
+        // missing:['plot'] routes the answer through the unified slot processor,
+        // which strips correction prefixes ("no, en Sur") and "en"/articles — the
+        // legacy path only accepted a bare token and dropped "no, en Sur" (P1-A).
+        setPendingActivity: { command: cmd.command, data: { ...cmd }, missing: ['plot'], askPrompt: `¿En qué lote?\n\n${formatPlotListGrouped(plots)}` },
       },
     };
   }

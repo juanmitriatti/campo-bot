@@ -101,11 +101,22 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
   const NUMERIC_SLOTS = new Set<SlotName>(['quantity' as SlotName, 'amount' as SlotName, 'unit_price' as SlotName, 'count' as SlotName, 'hectares' as SlotName]);
   const CORRECTION_PREFIX = /^(no,?|perd[oó]n|en realidad|quise decir|mejor|cambio)\b/i;
   if (missing.length === 1 && extracted[missing[0] as SlotName] == null) {
+    const slot = missing[0] as SlotName;
     const cleaned = text.trim();
-    if (cleaned.length > 0 && cleaned.length <= 60
-        && /^[A-Za-záéíóúñ0-9][\wáéíóúñ\s.,-]*$/i.test(cleaned)
-        && !CORRECTION_PREFIX.test(cleaned)) {
-      const slot = missing[0] as SlotName;
+    const shapeOk = cleaned.length > 0 && cleaned.length <= 60
+      && /^[A-Za-záéíóúñ0-9][\wáéíóúñ\s.,-]*$/i.test(cleaned);
+    if (shapeOk && (slot === 'plot' || slot === 'field')) {
+      // Plot/field answers commonly carry a correction prefix and/or "en":
+      // "no, en Sur", "en el Norte", "mejor el lote A". Strip them and use the
+      // remainder as the name — otherwise the CORRECTION_PREFIX bail below drops
+      // the whole activity (P1-A).
+      const stripped = cleaned
+        .replace(/^(no,?|perd[oó]n,?|en\s+realidad,?|mejor,?|cambio,?)\s*/i, '')
+        .replace(/^(en\s+(?:el\s+|la\s+|los\s+|las\s+)?|el\s+|la\s+)/i, '')
+        .replace(/^lote\s+/i, '')
+        .trim();
+      if (stripped) (extracted as Record<string, unknown>)[slot] = stripped;
+    } else if (shapeOk && !CORRECTION_PREFIX.test(cleaned)) {
       if (NUMERIC_SLOTS.has(slot)) {
         const numMatch = cleaned.match(/^[0-9]+(?:[.,][0-9]+)?$/);
         if (numMatch) {

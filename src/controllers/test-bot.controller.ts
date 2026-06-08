@@ -1167,7 +1167,16 @@ async function processTextMessage(
         // Route through DomainRouter so any tool (agronomy, stock, livestock,
         // financial, etc.) can be re-executed via the unified pending path —
         // not just agronomy.
-        const routed = await domainRouter.routeCommand(merged, userId, user, settings);
+        // P0: a financial pending with queued siblings re-routes in bulkMode so
+        // income/expense SAVE at field-level instead of asking "¿en qué lote?".
+        // That plot-ask spawned a parallel pending that desynced the serial queue
+        // and lost BOTH sales. Field-level + the post-loop bulk-plot prompt is the
+        // designed multi-item UX.
+        const _mc = (merged as Record<string, unknown>).command;
+        const _queueBulk = (_mc === 'log_income' || _mc === 'log_expense')
+          && ((Array.isArray(pendingAct.nextInQueue) && pendingAct.nextInQueue.length > 0)
+              || (pendingAct.data as Record<string, unknown>)?._fromQueue === true);
+        const routed = await domainRouter.routeCommand(merged, userId, user, settings, _queueBulk);
         const cmdResult = routed ?? { messages: ['No pude completar el registro. Probá de nuevo.'] };
         const { advanceQueueAfterCompletion } = await import('../middleware/pending-queue-advancer.js');
         const advanced = advanceQueueAfterCompletion(pendingActStore, phone, pendingAct, cmdResult);

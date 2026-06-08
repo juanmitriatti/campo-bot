@@ -960,7 +960,7 @@ export class FinancialHandler {
     data.category = expenseCatMatch.category.name;
     const matchedExpenseCategoryId = expenseCatMatch.category.id;
 
-    if (settings.confirm_before_save) {
+    if (settings.confirm_before_save && !bulkMode) {
       const pendingMsg = buildPendingMessage('expense', data, resFieldName, resPlotName);
       return {
         messages: [],
@@ -1250,7 +1250,7 @@ export class FinancialHandler {
     data.category = incomeCatMatch.category.name;
     const matchedIncomeCategoryId = incomeCatMatch.category.id;
 
-    if (settings.confirm_before_save) {
+    if (settings.confirm_before_save && !bulkMode) {
       const pendingMsg = buildPendingMessage('income', data, resFieldName, resPlotName);
       return {
         messages: [],
@@ -3210,7 +3210,9 @@ export class FinancialHandler {
           settings,
           (cmd.field as string) ?? (cmd.fieldName as string) ?? null,
           (cmd.plot as string) ?? (cmd.plotName as string) ?? null,
-          false,
+          // Honor bulkMode set by routeCommand (e.g. serial-queue re-route) so a
+          // priced partial income saves at field-level instead of asking plot.
+          (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true,
         );
       }
       case 'log_expense': {
@@ -3223,7 +3225,7 @@ export class FinancialHandler {
           user,
           (cmd.field as string) ?? (cmd.fieldName as string) ?? null,
           (cmd.plot as string) ?? (cmd.plotName as string) ?? null,
-          false,
+          (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true,
         );
       }
 
