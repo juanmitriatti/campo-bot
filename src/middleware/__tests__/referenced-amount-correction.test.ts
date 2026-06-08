@@ -65,3 +65,21 @@ describe('extractActivityQuantityCorrection', () => {
   it('rejects money with currency: "no, eran 5000 dólares"', () => expect(extractActivityQuantityCorrection('no, eran 5000 dólares')).toBeNull());
   it('null on a new activity "fumigué 3 litros"', () => expect(extractActivityQuantityCorrection('fumigué 3 litros')).toBeNull());
 });
+
+import { extractCurrencyCorrection } from '../conversation-engine.js';
+import { resolveAllRelativeDates } from '../../utils/relative-dates.js';
+describe('extractCurrencyCorrection', () => {
+  it.each(['no, eran dólares', 'perdón, en USD', 'eran u$d'])('"%s" → USD', (t) => expect(extractCurrencyCorrection(t)).toBe('USD'));
+  it.each(['no, eran pesos', 'era en pesos'])('"%s" → ARS', (t) => expect(extractCurrencyCorrection(t)).toBe('ARS'));
+  it('null on a new sale "vendí 10 tn de soja"', () => expect(extractCurrencyCorrection('vendí 10 tn de soja')).toBeNull());
+});
+describe('resolveAllRelativeDates', () => {
+  it('orders multiple weekday phrases', () => {
+    const r = resolveAllRelativeDates('cayeron 61mm el lunes, 62 el martes y 63 el sabado');
+    expect(r).toHaveLength(3);
+    expect(r.every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))).toBe(true);
+    expect(new Set(r).size).toBe(3); // all distinct
+  });
+  it('single phrase → one date', () => expect(resolveAllRelativeDates('llovió el martes')).toHaveLength(1));
+  it('no phrase → empty', () => expect(resolveAllRelativeDates('vendí soja')).toEqual([]));
+});

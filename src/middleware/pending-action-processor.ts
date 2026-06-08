@@ -100,22 +100,39 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
   const missing = pending.missing ?? [];
   const NUMERIC_SLOTS = new Set<SlotName>(['quantity' as SlotName, 'amount' as SlotName, 'unit_price' as SlotName, 'count' as SlotName, 'hectares' as SlotName]);
   const CORRECTION_PREFIX = /^(no,?|perd[oó]n|en realidad|quise decir|mejor|cambio)\b/i;
-  if (missing.length === 1 && extracted[missing[0] as SlotName] == null) {
-    const slot = missing[0] as SlotName;
+  // Compute the slots that are STILL empty — a pending may list several required
+  // slots ('product','plot','quantity') while data already holds most of them, so
+  // effectively only ONE is missing. Using this (not raw missing.length) lets the
+  // plot/field strip fire even when the pending carried extra already-filled slots
+  // (#15: "no, en Sur" on a spray that already had product+quantity).
+  const pdata = (pending.data ?? {}) as Record<string, unknown>;
+
+  const stillEmpty = missing.filter((s) => {
+    if (extracted[s as SlotName] != null) return false;
+    return slotToCmdKeys(s as SlotName).every((k) => pdata[k] == null);
+  });
+  if (stillEmpty.length === 1) {
+    const slot = stillEmpty[0] as SlotName;
     const cleaned = text.trim();
     const shapeOk = cleaned.length > 0 && cleaned.length <= 60
       && /^[A-Za-záéíóúñ0-9][\wáéíóúñ\s.,-]*$/i.test(cleaned);
     if (shapeOk && (slot === 'plot' || slot === 'field')) {
       // Plot/field answers commonly carry a correction prefix and/or "en":
       // "no, en Sur", "en el Norte", "mejor el lote A". Strip them and use the
-      // remainder as the name — otherwise the CORRECTION_PREFIX bail below drops
-      // the whole activity (P1-A).
+      // remainder as the name — otherwise the CORRECTION_PREFIX bail drops the
+      // whole activity (P1-A / #15).
       const stripped = cleaned
         .replace(/^(no,?|perd[oó]n,?|en\s+realidad,?|mejor,?|cambio,?)\s*/i, '')
         .replace(/^(en\s+(?:el\s+|la\s+|los\s+|las\s+)?|el\s+|la\s+)/i, '')
         .replace(/^lote\s+/i, '')
         .trim();
-      if (stripped) (extracted as Record<string, unknown>)[slot] = stripped;
+      if (stripped) {
+        (extracted as Record<string, unknown>)[slot] = stripped;
+        // "en Este" also makes the field-extractor fire (field="Este") — a false
+        // positive for a PLOT answer. Drop it so the re-route doesn't look for a
+        // nonexistent FIELD named after the plot (#15: spray dropped on "no, en Este").
+        if (slot === 'plot') delete (extracted as Record<string, unknown>).field;
+      }
     } else if (shapeOk && !CORRECTION_PREFIX.test(cleaned)) {
       if (NUMERIC_SLOTS.has(slot)) {
         const numMatch = cleaned.match(/^[0-9]+(?:[.,][0-9]+)?$/);
@@ -213,6 +230,10 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
       timestamp: Date.now(),
       missing: stillMissing,
       askPrompt: buildAskPromptForMissing(stillMissing, pending.askPrompt),
+      // Preserve the serial queue across a still-missing re-ask. Without this, a
+      // pivot/garbage answer that couldn't fill the slot re-asked but DROPPED the
+      // queued siblings → the rest of a multi-item compound was silently lost (N1).
+      ...(pending.nextInQueue && pending.nextInQueue.length > 0 ? { nextInQueue: pending.nextInQueue } : {}),
     },
     extracted,
     stillMissing,

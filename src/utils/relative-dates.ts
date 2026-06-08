@@ -115,6 +115,40 @@ const WEEKDAYS: Record<string, number> = {
 };
 
 /**
+ * Resolve ALL relative/weekday date phrases in a message, in left-to-right order.
+ * Used for multi-day messages ("61mm el lunes, 62 el martes y 63 el sábado") so
+ * each entry gets ITS OWN date instead of all collapsing onto the first (N2).
+ * Overlapping phrases are masked as consumed ("anteayer" won't also yield "ayer").
+ */
+export function resolveAllRelativeDates(text: string | null | undefined): string[] {
+  if (!text) return [];
+  let t = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const patterns: RegExp[] = [
+    /\bantes?\s+de\s+ayer\b/,
+    /\banteayer\b/,
+    /\bhace\s+\w+\s+(?:dias?|semanas?|meses?)\b/,
+    /\bayer\b/,
+    /\b(?:domingo|lunes|martes|miercoles|jueves|viernes|sabado)(?:\s+pasado)?\b/,
+  ];
+  const hits: Array<{ pos: number; iso: string }> = [];
+  let guard = 0;
+  while (guard++ < 30) {
+    let best: { index: number; str: string } | null = null;
+    for (const re of patterns) {
+      const m = re.exec(t);
+      if (m && (best === null || m.index < best.index)) best = { index: m.index, str: m[0] };
+    }
+    if (!best) break;
+    const iso = resolveRelativeDate(best.str);
+    if (iso) hits.push({ pos: best.index, iso });
+    // Mask the consumed region so it isn't re-matched (and a longer phrase doesn't
+    // leave a shorter one behind).
+    t = t.slice(0, best.index) + ' '.repeat(best.str.length) + t.slice(best.index + best.str.length);
+  }
+  return hits.sort((a, b) => a.pos - b.pos).map((h) => h.iso);
+}
+
+/**
  * Tools that accept an event_date / expense_date / income_date param. When
  * the agent omits it AND the user text has a relative phrase, the mapper
  * should inject the resolved ISO date so the handler doesn't default to

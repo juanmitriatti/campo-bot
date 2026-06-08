@@ -156,6 +156,18 @@ export function extractLastRecordDateCorrection(text: string): string | null {
 }
 
 /**
+ * Detect a currency correction ("no, eran dólares" / "perdón, en pesos" / "eran
+ * USD"). Returns 'USD' | 'ARS' | null. Requires a correction/era cue so it
+ * doesn't fire on a brand-new "vendí ... dólares" (that's parsed inline).
+ */
+export function extractCurrencyCorrection(text: string): 'USD' | 'ARS' | null {
+  if (!/\b(no|perd[oó]n|realidad|eran?|fueron?|son|era|fue|en)\b/i.test(text)) return null;
+  if (/\b(d[oó]lar(?:es)?|usd|u\$?d|u\$s|verdes)\b/i.test(text)) return 'USD';
+  if (/\b(pesos?|moneda\s+nacional|ars)\b/i.test(text)) return 'ARS';
+  return null;
+}
+
+/**
  * Detect a DOSE/quantity correction of the last activity: "no, eran 5.5 litros",
  * "la fumigación eran 5 kg", "perdón, fueron 2 litros". Returns { quantity, unit }
  * or null. Guarded to AGRO units (litros/kg/cc/…) and a correction phrasing, and
@@ -414,12 +426,16 @@ export class ConversationEngine {
         return this.executeConfirm(userId, ctx);
       }
 
+      const corrCurrencyConf = extractCurrencyCorrection(text);
+
       // Allow amount correction during confirmation ("no, eran 20000")
       if (ctx.data.amount != null) {
         const correctedAmount = extractAmountCorrection(text);
         if (correctedAmount) {
           if (typeof ctx.data.amount === 'object' && (ctx.data.amount as Record<string, unknown>).currency) {
-            ctx.data.amount = { amount: correctedAmount, currency: (ctx.data.amount as Record<string, unknown>).currency };
+            ctx.data.amount = { amount: correctedAmount, currency: corrCurrencyConf ?? (ctx.data.amount as Record<string, unknown>).currency };
+          } else if (corrCurrencyConf) {
+            ctx.data.amount = { amount: correctedAmount, currency: corrCurrencyConf };
           } else {
             ctx.data.amount = correctedAmount;
           }
@@ -459,6 +475,27 @@ export class ConversationEngine {
               nextContext: ctx,
             };
           }
+        }
+      }
+
+      // Currency-only correction during confirmation ("no, eran dólares")
+      if (corrCurrencyConf && ctx.data.amount != null) {
+        const amtVal = typeof ctx.data.amount === 'object'
+          ? (ctx.data.amount as Record<string, unknown>).amount
+          : ctx.data.amount;
+        ctx.data.amount = { amount: amtVal, currency: corrCurrencyConf };
+        const originFlow = ctx.originFlow ?? ctx.state;
+        const flow = this.registry.get(originFlow as FlowState);
+        if (flow) {
+          await this.stateRepo.setFlowContext(userId, ctx);
+          const confirmation = flow.buildConfirmation(ctx.data);
+          return {
+            response: {
+              messages: [`✏️ Moneda actualizada a *${corrCurrencyConf}*.`, ...confirmation.messages],
+              interactive: confirmation.interactive,
+            },
+            nextContext: ctx,
+          };
         }
       }
 
@@ -525,13 +562,38 @@ export class ConversationEngine {
       }
     }
 
+    // Mid-flow currency correction: "no, eran dólares" while answering another
+    // step (e.g. the plot question) — patch currency, keep the amount, re-prompt.
+    if (ctx.data.amount != null) {
+      const corrCur = extractCurrencyCorrection(text);
+      // Only when it's NOT also an amount correction (that path handles currency too).
+      if (corrCur && extractAmountCorrection(text) == null) {
+        const amtVal = typeof ctx.data.amount === 'object'
+          ? (ctx.data.amount as Record<string, unknown>).amount
+          : ctx.data.amount;
+        ctx.data.amount = { amount: amtVal, currency: corrCur };
+        const prompt = await this.resolvePrompt(stepDef, ctx.data, userId);
+        const interactive = await this.resolveInteractive(stepDef, ctx.data, userId);
+        return {
+          response: {
+            messages: interactive ? [`✏️ Moneda actualizada a *${corrCur}*. Seguimos.`] : [`✏️ Moneda actualizada a *${corrCur}*.\n\n${prompt}`],
+            interactive,
+          },
+          nextContext: ctx,
+        };
+      }
+    }
+
     // Mid-flow amount correction: "no, eran 20000" updates amount without restarting
     if (stepDef.field !== 'amount' && ctx.data.amount != null) {
       const correctedAmount = extractAmountCorrection(text);
+      const corrCurWithAmt = extractCurrencyCorrection(text);
       if (correctedAmount) {
         // Preserve currency if amount is an object (expense flow), otherwise store plain number
         if (typeof ctx.data.amount === 'object' && (ctx.data.amount as Record<string, unknown>).currency) {
-          ctx.data.amount = { amount: correctedAmount, currency: (ctx.data.amount as Record<string, unknown>).currency };
+          ctx.data.amount = { amount: correctedAmount, currency: corrCurWithAmt ?? (ctx.data.amount as Record<string, unknown>).currency };
+        } else if (corrCurWithAmt) {
+          ctx.data.amount = { amount: correctedAmount, currency: corrCurWithAmt };
         } else {
           ctx.data.amount = correctedAmount;
         }

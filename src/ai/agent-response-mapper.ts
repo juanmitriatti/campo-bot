@@ -1,6 +1,6 @@
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
 import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES, EXPENSE_KEYWORD_MAP, type IncomeCategory } from '../constants/agro-terms.js';
-import { resolveRelativeDate, TOOLS_WITH_DATE_PARAM, dateKeyForTool } from '../utils/relative-dates.js';
+import { resolveRelativeDate, resolveAllRelativeDates, TOOLS_WITH_DATE_PARAM, dateKeyForTool } from '../utils/relative-dates.js';
 import { extractCropFromText } from '../utils/crops.js';
 import { normalizarMonto } from '../utils/parser.js';
 import type { AgentResult } from './agent.service.js';
@@ -345,13 +345,29 @@ export class AgentResponseMapper {
       if (filteredCalls.length === 0) filteredCalls = result.toolCalls; // safety: don't drop everything
     }
 
-    return filteredCalls.map(tc => this.mapToolCall(tc, originalText, validationOptions));
+    // Multi-day dates: when the message has several relative/weekday phrases AND
+    // exactly that many date-bearing calls (e.g. "61mm el lunes, 62 el martes,
+    // 63 el sábado" → 3 log_rainfall), assign each call ITS OWN date in order.
+    // Otherwise all calls collapsed onto the first phrase (N2).
+    const allDates = resolveAllRelativeDates(originalText);
+    const dateBearing = filteredCalls.filter(tc => TOOLS_WITH_DATE_PARAM.has(tc.toolName));
+    const perEntryDates = allDates.length > 1 && allDates.length === dateBearing.length;
+    if (perEntryDates) {
+      let di = 0;
+      for (const tc of filteredCalls) {
+        if (TOOLS_WITH_DATE_PARAM.has(tc.toolName)) {
+          (tc.toolInput as Record<string, unknown>)[dateKeyForTool(tc.toolName)] = allDates[di++];
+        }
+      }
+    }
+    return filteredCalls.map(tc => this.mapToolCall(tc, originalText, validationOptions, perEntryDates));
   }
 
   private mapToolCall(
     toolCall: AgentResult['toolCalls'][0],
     originalText: string,
     validationOptions: ValidationOptions = {},
+    skipDateOverride = false,
   ): ParseResult {
     const { toolName, toolInput } = toolCall;
     // Validate agent output against the user text. Per-field rules ship behind
@@ -368,7 +384,7 @@ export class AgentResponseMapper {
     // handler doesn't default to CURRENT_DATE. Only fills when:
     //   1. Tool accepts a date param (gastos / actividades / livestock / etc.)
     //   2. Agent did NOT already set it (we never overwrite an explicit date)
-    if (TOOLS_WITH_DATE_PARAM.has(toolName)) {
+    if (TOOLS_WITH_DATE_PARAM.has(toolName) && !skipDateOverride) {
       const dateKey = dateKeyForTool(toolName);
       const inputAsRec = input as Record<string, unknown>;
       // When the user text carries a relative/weekday phrase, OVERRIDE the agent's
@@ -376,6 +392,7 @@ export class AgentResponseMapper {
       // named-weekday dates (it landed weekdays +1 day, computed against UTC); our
       // resolver is deterministic and AR-local. Absolute dates ("el 3 de junio")
       // aren't matched by resolveRelativeDate → the agent's value is kept.
+      // skipDateOverride: a per-entry date was already assigned (multi-day msg).
       const resolved = resolveRelativeDate(originalText);
       if (resolved) inputAsRec[dateKey] = resolved;
     }
