@@ -1151,15 +1151,21 @@ export function startScheduler() {
     monthlyTick();
   });
 
-  // Daily weather alerts — every minute (checks global_settings.daily_weather_hour HH:MM match)
-  cron.schedule("* * * * *", () => {
-    weatherAlertTick();
-  });
-
-  // Proactive alerts (monitoring reminders + pest escalation) — every hour at :00 (checks hour internally)
-  cron.schedule("0 * * * *", () => {
-    proactiveAlertsTick();
-  });
+  // ── ALERTAS DESACTIVADAS (a pedido del usuario) ──────────────────────────
+  // Weather alerts (lluvia / VIENTO / ventana seca) + proactive alerts
+  // (monitoreo / plagas / hectáreas / stock bajo / fenología) están frenadas.
+  // Para reactivarlas, descomentar los dos bloques de abajo.
+  //
+  // // Daily weather alerts — every minute (checks global_settings.daily_weather_hour HH:MM match)
+  // cron.schedule("* * * * *", () => {
+  //   weatherAlertTick();
+  // });
+  //
+  // // Proactive alerts (monitoring reminders + pest escalation) — every hour at :00 (checks hour internally)
+  // cron.schedule("0 * * * *", () => {
+  //   proactiveAlertsTick();
+  // });
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Daily cleanup (conversation logs TTL + mini-memory expiry) — every hour at :00 (checks hour === 3 internally)
   cron.schedule("0 * * * *", () => {
@@ -1181,7 +1187,7 @@ export function startScheduler() {
     subscriptionSweepTick().catch(err => console.error("[scheduler] subscription sweep failed:", err));
   });
 
-  console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily weather alerts + proactive alerts (incl. low stock, phenology) + daily cleanup + flow reminders + expense templates + subscription sweep");
+  console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily cleanup + flow reminders + expense templates + subscription sweep. ALERTAS (clima/viento/seca + proactivas) DESACTIVADAS.");
 }
 
 async function subscriptionSweepTick() {
