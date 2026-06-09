@@ -263,11 +263,21 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - Conversion happens in `normalizeToKg(quantity, unit)` (agent-response-mapper.ts) + ad-hoc in agro-report.js + the regex fallback. Examples: "rindió 42 qq" → 4200 kg, "200 qq de soja" → 20000 kg.
 
 ### Weather Alerts (scheduled 06:00 AR)
+- ⚠️ **DISABLED (Jun 2026, user request)**: the `weatherAlertTick` (rain/wind/dry) and `proactiveAlertsTick` (monitoring/pest/hectares/low-stock/phenology) cron registrations are commented out in `startScheduler()` (`src/services/scheduler.js`). Summaries, flow reminders, cleanup, expense templates and subscription sweep still run. To re-enable, uncomment the two blocks.
 - Rain: today + next 2 days, threshold `user_settings.rain_alert_mm` (default 10mm)
 - Wind: days with `wind ≥ wind_alert_kmh` (default 20) — for spraying decisions
 - Dry window: N consecutive days < 1mm (default 3 days via `dry_window_days`) — for application/sowing planning
 - All alerts include "_Es un pronóstico, puede cambiar._" disclaimer
 - Dedup: 24h per city+day per alert type. Channel: Telegram-first, WhatsApp fallback
+
+### Audio (Whisper) domain glossary
+- `src/services/audio/audio.types.ts` exports `DEFAULT_WHISPER_PROMPT` — an Argentine agro/livestock vocabulary string passed as the OpenAI Whisper `prompt` param (in `openai-whisper.provider.js`) to bias transcription toward the right spelling (otherwise it mangles "desteté"→"de este", "parieron"→"valieron", "novillos"→"navijas", "vaquillonas"→"vaquillanas"). Overridable via `WHISPER_PROMPT` env. Most audio-path "wrong tool" errors trace back to bad transcription, not handlers.
+
+### Conversational lexicon (synonym source of truth)
+- `src/utils/lexicon.ts` is the SINGLE source of truth for the correction/pivot/guard synonym sets (correction cues, currency incl. slang "verdes"/"mangos", dose units, copulas, delete verbs). **Add a new synonym THERE, not in scattered handler regexes.** Consumed by the `extract*Correction` family in `conversation-engine.ts`, `pending-correction-interceptor`, `pending-action-processor`. All matchers accent-insensitive.
+
+### Message idempotency
+- `src/middleware/dedup.ts` `MessageDedup` is time-windowed (10-min TTL, age-based eviction) — dedups Telegram `update_id` / callback ids so a webhook RETRY of a slow audio doesn't double-write (one "320 madres" audio once created the herd twice). Still per-process; multi-replica would need a shared store.
 
 ### AI Cost & Caching
 - Agent settings live under the `ai` group in admin (`/admin/#settings`, section **"Configuración de IA"**): `AGENT_ENABLED`, `AGENT_MODEL`, `AGENT_MAX_TOKENS` (default 1500), `AGENT_TIMEOUT_MS`, `AGENT_TEMPERATURE`, `AGENT_CACHE_TTL` (`short`/`long`), `AGENT_FEW_SHOT_LIMIT` (default 5).
@@ -409,7 +419,9 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/utils/format-quantity.ts` — `formatQuantityHuman()`: renders large kg as tn (e.g. 213200kg → ≈ 213,2 tn)
 - `src/utils/pronoun-expander.ts` — `expandPronouns(text, lastPlotName)` — server-side rewrite of "ahí mismo / ese lote / el de antes" → "en lote X". Wired into `intent-classifier.ts` STEP 2.6.
 - `src/utils/plot-intent.ts` — `userExplicitlyReferencedPlot(text)` — does the user's text contain a plot pronoun or explicit "lote X" mention? Used by `financial.handler` to decide whether `FIELD_LEVEL_CATEGORIES` should strip the auto-resolved plot.
-- `src/utils/relative-dates.ts` — `resolveRelativeDate(text)` + `TOOLS_WITH_DATE_PARAM` + `dateKeyForTool()` — Spanish relative-date safety net used by `agent-response-mapper`.
+- `src/utils/relative-dates.ts` — `resolveRelativeDate(text)` (incl. named weekdays "el lunes", AR-local) + `resolveAllRelativeDates(text)` (ordered, for multi-day messages so each entry keeps its own date) + `TOOLS_WITH_DATE_PARAM` + `dateKeyForTool()`. The mapper OVERRIDES the agent's date when a relative/weekday phrase is present (agent landed weekdays +1).
+- `src/utils/lexicon.ts` — **single source of truth** for conversational synonym sets: `CORRECTION_CUES`/`CORRECTION_ALT`, `COPULA_ALT`, `detectCurrencyTerm` (USD/ARS incl. slang verdes/mangos), `UNIT_TERMS`/`QUANTITY_UNIT_RE`, `MONEY_HINT_RE`, `hasDeleteVerb`, `stripAnswerPrefix`, `normLex`. Add synonyms here, not in handler regexes.
+- `src/middleware/dedup.ts` — `MessageDedup` time-windowed (10-min TTL) idempotency for webhook update_id/callback ids.
 - `src/services/data-export.service.ts` — `DataExportService.streamUserExport()` — full GDPR ZIP per user
 - `src/types/index.ts` — ParseResult, PlanRow, ParseSource
 
