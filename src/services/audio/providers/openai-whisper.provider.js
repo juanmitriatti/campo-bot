@@ -29,6 +29,9 @@ export class OpenAIWhisperProvider {
     formData.append('file', new Blob([new Uint8Array(audioBuffer)], { type: mimeType }), `audio.${ext}`);
     formData.append('model', config.openaiWhisperModel);
     formData.append('language', config.language);
+    // Domain glossary → biases transcription toward Argentine agro/livestock
+    // spelling (otherwise "desteté"→"de este", "novillos"→"navijas", etc.).
+    if (config.whisperPrompt) formData.append('prompt', config.whisperPrompt);
 
     const response = await axios.post(
       `${config.openaiBaseUrl}/audio/transcriptions`,
