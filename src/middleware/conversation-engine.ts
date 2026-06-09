@@ -8,6 +8,10 @@ import { getSettingNumber } from '../services/settings.service.js';
 import { logError } from '../services/error-logger.js';
 import { normalizarMonto, detectarCategoria, detectarCategoriaIngreso } from '../utils/parser.js';
 import { resolveRelativeDate } from '../utils/relative-dates.js';
+import {
+  CORRECTION_PREFIX_RE, CORRECTION_ALT, COPULA_ALT, detectCurrencyTerm, QUANTITY_UNIT_RE,
+  MONEY_HINT_RE, hasDeleteVerb, startsWithCorrectionCue, normLex,
+} from '../utils/lexicon.js';
 import { looksLikeCategoryWord } from '../ai/correction-classifier.js';
 
 // Defaults — overridden by system_settings at runtime
@@ -76,9 +80,12 @@ export function extractRenameCorrection(text: string): string | null {
 export function extractAmountCorrection(text: string): number | null {
   const t = text.trim();
   if (!t) return null;
-  // Patterns: "no, eran X" / "no, son X" / "en realidad X" / "perdón X" / "quise decir X" / "no X"
-  const m = t.match(
-    /^(?:no,?\s*(?:eran?|son|fue(?:ron)?)|en\s+realidad|perd[oó]n,?\s*|quise\s+decir)\s+(.+)$/i,
+  // A correction cue (optionally + copula) OR a bare copula, then the value.
+  // Cue/copula lists come from lexicon (add synonyms there). normalizarMonto
+  // returns null when there's no number, so this only fires on amount corrections.
+  const nt = normLex(t);
+  const m = nt.match(
+    new RegExp(`^(?:(?:${CORRECTION_ALT})\\b,?\\s+(?:(?:${COPULA_ALT})\\s+)?|(?:${COPULA_ALT})\\s+)(.+)$`, 'i'),
   );
   if (!m) return null;
   let amount = normalizarMonto(m[1]) ?? 0;
@@ -109,10 +116,12 @@ export function extractAmountCorrection(text: string): number | null {
 export function extractReferencedAmountCorrection(
   text: string,
 ): { kind: 'expense' | 'income'; categoryFilter: string; newAmount: number } | null {
-  const t = text.trim();
+  const t = normLex(text).trim();
   if (!t) return null;
+  // "[corrección] el [gasto|ingreso|venta] de <referente> <copula> <monto>".
+  // Correction-cue + copula lists from lexicon (accent-free on normalized text).
   const m = t.match(
-    /^(?:no,?\s*|perd[oó]n,?\s*|en\s+realidad,?\s*)?el\s+(?:(gasto|ingreso|venta)\s+)?(?:de\s+)?([\p{L}][\p{L}\s\-]*?)\s+(?:eran?|fue(?:ron)?|son|sal[ií](?:an|eron)?|costaron?|costaban?)\s+(.+)$/iu,
+    new RegExp(`^(?:(?:${CORRECTION_ALT}),?\\s*)?el\\s+(gasto|ingreso|venta)?\\s*(?:de\\s+)?([a-zñ][a-zñ\\s\\-]*?)\\s+(?:${COPULA_ALT})\\s+(.+)$`, 'i'),
   );
   if (!m) return null;
   const explicitKind = m[1] ? m[1].toLowerCase() : null; // "gasto" | "ingreso" | "venta"
@@ -147,10 +156,11 @@ export function extractReferencedAmountCorrection(
  * requires an explicit "el/la último/a" reference OR a correction prefix.
  */
 export function extractLastRecordDateCorrection(text: string): string | null {
-  const hasReldate = /\b(ayer|anteayer|antes\s+de\s+ayer|hace\s+\d+\s+(?:d[ií]as?|semanas?|meses?))\b/i.test(text);
+  const nt = normLex(text);
+  const hasReldate = /\b(ayer|anteayer|antes\s+de\s+ayer|hace\s+\d+\s+(?:dias?|semanas?|meses?))\b/i.test(nt);
   if (!hasReldate) return null;
-  const lastRef = /\b(?:el|la)\s+[úu]ltim[oa]\b/i.test(text);
-  const corrDate = /^(?:no,?|perd[óo]n,?|en\s+realidad,?)\s+(?:era|fue|es)\s+(?:de\s+)?(?:ayer|anteayer|antes\s+de\s+ayer|hace\s+)/i.test(text.trim());
+  const lastRef = /\b(?:el|la)\s+ultim[oa]\b/i.test(nt);
+  const corrDate = new RegExp(`^(?:${CORRECTION_ALT}),?\\s+(?:${COPULA_ALT})\\s+(?:de\\s+)?(?:ayer|anteayer|antes\\s+de\\s+ayer|hace\\s+)`, 'i').test(nt.trim());
   if (!lastRef && !corrDate) return null;
   return resolveRelativeDate(text);
 }
@@ -161,10 +171,13 @@ export function extractLastRecordDateCorrection(text: string): string | null {
  * doesn't fire on a brand-new "vendí ... dólares" (that's parsed inline).
  */
 export function extractCurrencyCorrection(text: string): 'USD' | 'ARS' | null {
-  if (!/\b(no|perd[oó]n|realidad|eran?|fueron?|son|era|fue|en)\b/i.test(text)) return null;
-  if (/\b(d[oó]lar(?:es)?|usd|u\$?d|u\$s|verdes)\b/i.test(text)) return 'USD';
-  if (/\b(pesos?|moneda\s+nacional|ars)\b/i.test(text)) return 'ARS';
-  return null;
+  // Require a correction / copula / "en" cue so it doesn't fire on a brand-new
+  // sale ("vendí ... dólares" is parsed inline). Currency synonyms (verdes,
+  // mangos, …) live in lexicon.detectCurrencyTerm — add new ones THERE.
+  const t = normLex(text);
+  const cueRe = new RegExp(`\\b(?:${COPULA_ALT}|en)\\b`, 'i');
+  if (!startsWithCorrectionCue(text) && !cueRe.test(t)) return null;
+  return detectCurrencyTerm(text);
 }
 
 /**
@@ -177,13 +190,14 @@ export function extractCurrencyCorrection(text: string): 'USD' | 'ARS' | null {
 export function extractActivityQuantityCorrection(
   text: string,
 ): { quantity: number; unit: string } | null {
-  const t = text.trim();
-  const isCorrection = /^(?:no,?\s*|perd[oó]n,?\s*|en\s+realidad,?\s*|la\s+[\wáéíóúñ]+\s+)?(?:eran?|fueron?|son|era|fue)\s+/i.test(t)
-    || /\b(?:eran?|fueron?|son|era|fue)\s+\d/i.test(t);
+  const t = normLex(text);
+  // Correction phrasing: a leading correction cue / "la fumigación …" + a copula,
+  // or a bare copula before a number. Cue + copula + unit lists come from lexicon.
+  const isCorrection = new RegExp(`^(?:(?:${CORRECTION_ALT}),?\\s*|la\\s+[a-zñ]+\\s+)?(?:${COPULA_ALT})\\s+`, 'i').test(t)
+    || new RegExp(`\\b(?:${COPULA_ALT})\\s+\\d`, 'i').test(t);
   if (!isCorrection) return null;
-  // Reject money — that's an amount correction, not a dose.
-  if (/[$]|\bpesos?\b|\bd[oó]lares?\b|\busd\b|\bmil\b|\bpalos?\b|\blucas?\b|\bmillon\w*\b/i.test(t)) return null;
-  const m = t.match(/\b(\d+(?:[.,]\d+)?)\s*(litros?|lts?|lt|kg|kilos?|cc|tn|toneladas?|qq|quintales?|bolsas?)\b/i);
+  if (MONEY_HINT_RE.test(t)) return null;       // it's an AMOUNT correction, not a dose
+  const m = t.match(QUANTITY_UNIT_RE);
   if (!m) return null;
   const quantity = parseFloat(m[1].replace(',', '.'));
   if (!(quantity > 0)) return null;
@@ -200,8 +214,9 @@ export function extractActivityQuantityCorrection(
 export function isOtherItemCorrectionOrDelete(text: string): boolean {
   if (extractReferencedAmountCorrection(text)) return true;
   if (extractLastRecordDateCorrection(text)) return true;
-  // Delete naming a referent: "borrá el gasto de grasa", "eliminá el de gasoil".
-  if (/\b(borr|elimin|saca|quit)\w*/i.test(text) && /\b(gasto|ingreso|el\s+de|la\s+de)\b/i.test(text)) return true;
+  // Delete naming a referent: "borrá el gasto de grasa", "anulá el de gasoil",
+  // "dá de baja el ingreso de soja". Delete verbs come from lexicon.hasDeleteVerb.
+  if (hasDeleteVerb(text) && /\b(gasto|ingreso|venta|compra|el\s+de|la\s+de)\b/i.test(normLex(text))) return true;
   return false;
 }
 

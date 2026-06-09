@@ -26,6 +26,7 @@
 
 import type { PendingActivity } from './pending-activities.js';
 import { extractSlots, type ExtractedSlots, type SlotName } from './slot-extractor.js';
+import { stripAnswerPrefix } from '../utils/lexicon.js';
 
 /**
  * Commands that START a brand-new write and therefore legitimately interrupt a
@@ -121,11 +122,7 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
       // "no, en Sur", "en el Norte", "mejor el lote A". Strip them and use the
       // remainder as the name — otherwise the CORRECTION_PREFIX bail drops the
       // whole activity (P1-A / #15).
-      const stripped = cleaned
-        .replace(/^(no,?|perd[oó]n,?|en\s+realidad,?|mejor,?|cambio,?)\s*/i, '')
-        .replace(/^(en\s+(?:el\s+|la\s+|los\s+|las\s+)?|el\s+|la\s+)/i, '')
-        .replace(/^lote\s+/i, '')
-        .trim();
+      const stripped = stripAnswerPrefix(cleaned);
       if (stripped) {
         (extracted as Record<string, unknown>)[slot] = stripped;
         // "en Este" also makes the field-extractor fire (field="Este") — a false
