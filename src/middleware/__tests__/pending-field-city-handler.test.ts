@@ -21,7 +21,7 @@ describe('pending-field-city escape hatch', () => {
     ['Llovió 20mm anoche', 'lluvia'],
     ['$50000 en gasoil', 'gasto con $'],
     ['Hoy hice un montón: fumigué 1A con glifo', 'mensaje muy largo'],
-    ['Florentino Ameghino, Buenos Aires, Argentina', 'tres comas en input'],
+    ['Cosecha: Britos 30, Pérez 25, García 40', 'lista con comas y números'],
   ];
 
   for (const [text, label] of cases) {
@@ -41,6 +41,15 @@ describe('pending-field-city escape hatch', () => {
   it('NO aborta para "está en X"', async () => {
     const fs = { setFieldCity: vi.fn().mockResolvedValue(undefined) } as unknown as FinancialService;
     const result = await handlePendingCity('está en Pergamino', { fieldName: 'Test' }, userId, fs);
+    expect(result.messages[0]).not.toMatch(/Dejé pendiente/i);
+  });
+
+  it('NO aborta para "Ciudad, Provincia, País" (texto puro con comas)', async () => {
+    // El test viejo afirmaba lo contrario y codificaba el bug: una respuesta
+    // de localidad perfectamente válida se rechazaba por tener 2 comas. Solo
+    // las listas con DÍGITOS deben escapar.
+    const fs = { setFieldCity: vi.fn().mockResolvedValue(undefined) } as unknown as FinancialService;
+    const result = await handlePendingCity('Florentino Ameghino, Buenos Aires, Argentina', { fieldName: 'Test' }, userId, fs);
     expect(result.messages[0]).not.toMatch(/Dejé pendiente/i);
   });
 });

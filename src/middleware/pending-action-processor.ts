@@ -101,6 +101,12 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
   const missing = pending.missing ?? [];
   const NUMERIC_SLOTS = new Set<SlotName>(['quantity' as SlotName, 'amount' as SlotName, 'unit_price' as SlotName, 'count' as SlotName, 'hectares' as SlotName]);
   const CORRECTION_PREFIX = /^(no,?|perd[oó]n|en realidad|quise decir|mejor|cambio)\b/i;
+  // Frases que claramente NO son la respuesta al slot (duda, demora, saludo,
+  // pregunta). Sin este guard, "después te digo" se guardaba como nombre de
+  // producto/categoría — dato basura silencioso. Las consultas/acciones nuevas
+  // ya escapan ANTES en el controller (looksLikeNewActionOrQuery); esto cubre
+  // el residuo conversacional corto que no escapa.
+  const NON_ANSWER_RE = /^(?:hola|buenas|buen\s+d[ií]a|gracias|despu[eé]s\s+te\s+digo|despu[eé]s\s+veo|ahora\s+no|m[aá]s\s+tarde|luego\s+te|esper[aá]|dejame\s+pensar|no\s+s[eé]\b|ni\s+idea|qu[eé]\s|c[oó]mo\s|por\s+qu[eé])/i;
   // Compute the slots that are STILL empty — a pending may list several required
   // slots ('product','plot','quantity') while data already holds most of them, so
   // effectively only ONE is missing. Using this (not raw missing.length) lets the
@@ -130,7 +136,7 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
         // nonexistent FIELD named after the plot (#15: spray dropped on "no, en Este").
         if (slot === 'plot') delete (extracted as Record<string, unknown>).field;
       }
-    } else if (shapeOk && !CORRECTION_PREFIX.test(cleaned)) {
+    } else if (shapeOk && !CORRECTION_PREFIX.test(cleaned) && !NON_ANSWER_RE.test(cleaned) && !/\?/.test(cleaned)) {
       if (NUMERIC_SLOTS.has(slot)) {
         const numMatch = cleaned.match(/^[0-9]+(?:[.,][0-9]+)?$/);
         if (numMatch) {
@@ -139,6 +145,7 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
         // numeric slot but non-numeric text → leave unfilled, controller will re-ask
       } else {
         (extracted as Record<string, unknown>)[slot] = cleaned;
+        console.log(`[INTERCEPT] single-slot fallback: slot=${slot} consumed="${cleaned.slice(0, 60)}" (command=${pending.command})`);
       }
     }
   }

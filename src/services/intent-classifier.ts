@@ -21,7 +21,12 @@ import type { UserId, UserSettings, ParseResult } from '../types/index.js';
  * Example: "agregar lote mdp y agregarle un gasto de 100mil en gasoil"
  * These should go to the AI agent, not regex (which can only handle one action).
  */
-const COMPOUND_ACTION_PATTERN = /\by\b\s+(?:(?:también|además|después|luego)\s+)?(?:agreg|cre[aeé]|registr|gast[éeoa]|compr[éeoa]|vend[íieoa]|cobr|pagu[ée]|fumig|sembr|cosech|fertiliz|reg[oó]|ar[eé]|llov|anot|poné|pon[eé]|met[eéi]|carg)/i;
+// Separadores aceptados: "y", "e" (fumigué e hice...), coma y punto y coma —
+// "fumigué lote norte, después registrá 50mil en gasoil" esquivaba el detector
+// (solo aceptaba "y") y el bypass trivial se robaba la primera mitad. El verbo
+// de acción inmediatamente después del separador evita falsos positivos con
+// comas descriptivas ("gasté 50 mil, en gasoil" no matchea).
+const COMPOUND_ACTION_PATTERN = /(?:\by\b|\be\b|,|;)\s*(?:(?:tambi[eé]n|adem[aá]s|despu[eé]s|luego|aparte|encima)\s+)?(?:agreg|cre[aeé]|registr|gast[éeoa]|compr[éeoa]|vend[íieoa]|cobr|pagu[ée]|fumig|sembr|cosech|fertiliz|reg[oó]|ar[eé]|llov|anot|poné|pon[eé]|met[eéi]|carg)/i;
 
 /**
  * Commands that bypass the agent entirely. The regex parser already produces

@@ -183,8 +183,15 @@ export function normalizeToKg(quantity: number | null | undefined, unit: string 
   if (quantity == null || !Number.isFinite(Number(quantity))) return null;
   const q = Number(quantity);
   const u = (unit || '').toLowerCase().trim();
-  if (u === 'tn' || u.startsWith('tonel')) return q * 1000;
+  // "t" / "ton" son abreviaturas comunes de tonelada — sin esto caían al
+  // default kg y el rinde quedaba ÷1000 silenciosamente.
+  if (u === 'tn' || u === 't' || u === 'ton' || u === 'tons' || u.startsWith('tonel')) return q * 1000;
   if (u === 'qq' || u.startsWith('quint')) return q * 100;
+  if (u !== '' && u !== 'kg' && u !== 'kgs' && u !== 'kilo' && u !== 'kilos' && u !== 'k') {
+    // Unidad no reconocida asumida como kg — visible en logs para detectar
+    // nuevas abreviaturas antes de que corrompan rindes.
+    console.warn(`[INTERCEPT] normalizeToKg: unidad desconocida "${unit}" asumida como kg (q=${q})`);
+  }
   return q;
 }
 
@@ -340,9 +347,22 @@ export class AgentResponseMapper {
         const qty = typeof input.quantity === 'number' ? input.quantity : 0;
         const unitPrice = typeof input.unit_price === 'number' ? input.unit_price : 0;
         const computable = qty > 0 && unitPrice > 0;
-        return amount > 0 || computable; // keep if real amount OR computable from qty*price
+        const keep = amount > 0 || computable; // keep if real amount OR computable from qty*price
+        if (!keep) {
+          // Drop visible en logs — antes era 100% silencioso y un gasto
+          // legítimo descartado era indistinguible de "nunca existió".
+          console.warn(`AI_MAPPER DROP: ${tc.toolName} sin monto computable junto a actividad agro — input=${JSON.stringify(input).slice(0, 150)} text="${originalText.slice(0, 100)}"`);
+        }
+        return keep;
       });
       if (filteredCalls.length === 0) filteredCalls = result.toolCalls; // safety: don't drop everything
+    }
+
+    // Texto conversacional + tools: hoy el texto se descarta (la confirmación
+    // del handler ES la respuesta). Logueamos para medir cuánto contexto se
+    // pierde antes de decidir si vale renderizarlo.
+    if (result.conversationalText && filteredCalls.length > 0) {
+      console.log(`[INTERCEPT] mapper: texto conversacional descartado junto a ${filteredCalls.length} tool(s): "${result.conversationalText.slice(0, 120)}"`);
     }
 
     // Multi-day dates: when the message has several relative/weekday phrases AND

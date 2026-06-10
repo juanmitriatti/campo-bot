@@ -44,8 +44,11 @@ function looksLikeNonCity(text: string): boolean {
   if (/\?/.test(t)) return true;
   // Mensajes muy largos (> 60 chars) raramente son una localidad
   if (t.length > 60) return true;
-  // Múltiples comas separando datos (no es "Ciudad, Provincia")
-  if ((t.match(/,/g) || []).length >= 2) return true;
+  // Múltiples comas separando DATOS — pero "Pergamino, Buenos Aires, Argentina"
+  // es una respuesta de localidad perfectamente válida. Solo escapamos cuando
+  // además hay dígitos (listas tipo "A: 30, B: 40, C: 50"); texto puro con
+  // comas se intenta como localidad (el lookup contra el censo decide).
+  if ((t.match(/,/g) || []).length >= 2 && /\d/.test(t)) return true;
   // SQL / inyección — empieza con keywords destructivos
   if (/^(drop|delete|select|insert|update|truncate|ignore\s+all)\b/.test(t)) return true;
   // Muy corto o sin letras

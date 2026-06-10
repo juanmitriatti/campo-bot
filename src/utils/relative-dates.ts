@@ -98,9 +98,10 @@ export function resolveRelativeDate(text: string | null | undefined): string | n
     return daysAgo(30);
   }
 
-  // el finde / el fin de semana (pasado) → el sábado más reciente
+  // el finde / el fin de semana (pasado) → el sábado más reciente.
+  // Suprimido con intención futura ("el finde voy a sembrar").
   const mWeekend = t.match(/\b(?:el\s+)?(?:finde|fin\s+de\s+semana)(\s+pasado)?\b/);
-  if (mWeekend) {
+  if (mWeekend && !hasFutureIntent(t)) {
     const pasado = !!mWeekend[1];
     const today = getNowArgentina().getDay();
     let diff = (today - 6 + 7) % 7; // 0 = hoy es sábado
@@ -135,8 +136,11 @@ export function resolveRelativeDate(text: string | null | undefined): string | n
   // the same weekday → the previous week's.
   const mWd = t.match(/\b(?:el\s+|este\s+|del\s+)?(domingo|lunes|martes|miercoles|jueves|viernes|sabado)(\s+pasado)?\b/);
   if (mWd) {
-    const target = WEEKDAYS[mWd[1]];
+    // "el sábado cosecho" / "el lunes voy a pagar" = plan futuro — NO retroceder
+    // al sábado/lunes pasado. "pasado" explícito gana sobre el marcador futuro.
     const pasado = !!mWd[2];
+    if (!pasado && hasFutureIntent(t)) return null;
+    const target = WEEKDAYS[mWd[1]];
     const today = getNowArgentina().getDay();
     let diff = (today - target + 7) % 7; // 0 = today
     if (diff === 0 && pasado) diff = 7;
@@ -149,6 +153,20 @@ export function resolveRelativeDate(text: string | null | undefined): string | n
 const WEEKDAYS: Record<string, number> = {
   domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6,
 };
+
+/**
+ * Marcadores de intención FUTURA. "El sábado cosecho" / "el lunes voy a pagar"
+ * son planes, no registros — resolver el día de semana al PASADO los registraba
+ * la semana anterior (corrupción silenciosa de fecha). Cuando el texto trae
+ * uno de estos, las ramas de día-de-semana/finde NO resuelven (la fecha queda
+ * en hoy, que es el default seguro). "ayer/anteayer/hace N" siguen resolviendo
+ * porque son inequívocamente pasado.
+ */
+const FUTURE_INTENT_RE = /\b(que\s+viene|proxim[oa]s?|man[ãa]na|pasado\s+man[ãa]na|voy\s+a|vamos\s+a|va\s+a\s+(?!llover)|ire|iremos|tengo\s+que|tenemos\s+que|hay\s+que|pienso|planeo|programo|agendar|recordame|cosecho|siembro|fumigo|aplico|pago|vendo|compro|empiezo|arranco)\b/;
+
+function hasFutureIntent(normalizedText: string): boolean {
+  return FUTURE_INTENT_RE.test(normalizedText);
+}
 
 /**
  * Resolve ALL relative/weekday date phrases in a message, in left-to-right order.
@@ -165,13 +183,20 @@ export function resolveAllRelativeDates(text: string | null | undefined): string
     /\bhace\s+\w+\s+(?:dias?|semanas?|meses?)\b/,
     /\bla\s+semana\s+pasada\b/,
     /\b(?:el\s+)?mes\s+pasado\b/,
-    /\b(?:el\s+)?(?:finde|fin\s+de\s+semana)(?:\s+pasado)?\b/,
+    // Finde: con intención futura solo la variante con "pasado" explícito.
+    ...(hasFutureIntent(t)
+      ? [/\b(?:el\s+)?(?:finde|fin\s+de\s+semana)\s+pasado\b/]
+      : [/\b(?:el\s+)?(?:finde|fin\s+de\s+semana)(?:\s+pasado)?\b/]),
     /\bla\s+noche\s+pasada\b/,
     /\banoche\b/,
     /\besta\s+(?:manana|madrugada|tarde|noche)\b/,
     /\bhoy\s+(?:temprano|a\s+la\s+manana)\b/,
     /\bayer\b/,
-    /\b(?:domingo|lunes|martes|miercoles|jueves|viernes|sabado)(?:\s+pasado)?\b/,
+    // Días de semana: con intención futura ("el sábado cosecho" = plan) solo
+    // resuelve la variante con "pasado" explícito.
+    ...(hasFutureIntent(t)
+      ? [/\b(?:domingo|lunes|martes|miercoles|jueves|viernes|sabado)\s+pasado\b/]
+      : [/\b(?:domingo|lunes|martes|miercoles|jueves|viernes|sabado)(?:\s+pasado)?\b/]),
   ];
   const hits: Array<{ pos: number; iso: string }> = [];
   let guard = 0;

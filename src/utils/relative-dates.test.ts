@@ -64,6 +64,28 @@ describe('resolveRelativeDate — frases nuevas', () => {
   });
 });
 
+describe('resolveRelativeDate — intención futura NO retrocede', () => {
+  it('"el sábado cosecho" (plan) → null, no el sábado pasado', () => {
+    expect(resolveRelativeDate('el sábado cosecho el lote sur')).toBeNull();
+  });
+  it('"el lunes voy a pagar el alquiler" → null', () => {
+    expect(resolveRelativeDate('el lunes voy a pagar el alquiler')).toBeNull();
+  });
+  it('"el finde vamos a sembrar" → null', () => {
+    expect(resolveRelativeDate('el finde vamos a sembrar maíz')).toBeNull();
+  });
+  it('"el sábado pasado coseché" (pasado explícito) SÍ resuelve aunque haya verbo presente', () => {
+    const r = resolveRelativeDate('el sábado pasado coseché el lote sur');
+    expect(r).not.toBeNull();
+  });
+  it('"el lunes pagué el alquiler" (pretérito) sigue resolviendo', () => {
+    expect(resolveRelativeDate('el lunes pagué el alquiler')).not.toBeNull();
+  });
+  it('"ayer" con verbo futuro cercano sigue resolviendo (ayer es inequívoco)', () => {
+    expect(resolveRelativeDate('ayer llovió y mañana voy a sembrar')).toBe(isoDaysAgo(1));
+  });
+});
+
 describe('resolveAllRelativeDates — frases nuevas en mensajes multi-día', () => {
   it('mezcla anoche + la semana pasada en orden', () => {
     const dates = resolveAllRelativeDates('anoche 20mm y la semana pasada 35mm');
