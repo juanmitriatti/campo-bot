@@ -14,7 +14,7 @@
  * multi-turn references keep working.
  */
 
-import { extractCropFromText } from '../utils/crops.js';
+import { extractAllCropsFromText } from '../utils/crops.js';
 
 export interface ValidationContext {
   toolName: string;
@@ -97,9 +97,10 @@ const PRONOUN_PATTERNS: RegExp[] = [
   /\bahi\b/,
   /\balla\b/,
   /\balli\b/,
-  /\bese\s+(lote|campo|mismo)\b/,
+  // Sincronizado con utils/pronoun-expander.ts: ese/este/aquel/aquella + lote/campo/potrero/parcela
+  /\b(ese|este|aquel|aquella|esa)\s+(lote|campo|potrero|parcela|mismo)\b/,
   /\besa\s+misma\b/,
-  /\bel\s+(mismo|de\s+antes)\b/,
+  /\bel\s+(mismo|otro|anterior|de\s+(antes|recien|hoy))\b/,
   /\bla\s+(misma|de\s+antes)\b/,
   /\bahi\s+(adentro|mismo)\b/,
   /\ben\s+ese\b/,
@@ -153,9 +154,13 @@ function shouldStripCrop(input: Record<string, unknown>, originalText: string): 
   const trimmed = cropValue.trim();
   if (trimmed === '' || trimmed === '__last__') return false;
 
-  const cropFromText = extractCropFromText(originalText);
-  if (!cropFromText) return true;
-  return normalize(cropFromText) !== normalize(trimmed);
+  // TODOS los cultivos del texto, no solo el primero: en compounds multi-cultivo
+  // ("sembré soja en Norte y maíz en Sur") la versión singular validaba el
+  // segundo tool contra "soja" y descartaba "maíz" como alucinación.
+  const cropsInText = extractAllCropsFromText(originalText);
+  if (cropsInText.length === 0) return true;
+  const normTrimmed = normalize(trimmed);
+  return !cropsInText.some(c => normalize(c) === normTrimmed);
 }
 
 /**
@@ -202,16 +207,37 @@ function shouldStripField(
 }
 
 /**
- * Returns true if `value` is one of the user's known names AND appears as a
- * whole word in the original text (accent-insensitive, case-insensitive).
+ * Returns true if `value` is one of the user's known names AND appears in the
+ * original text (accent-insensitive, case-insensitive).
+ *
+ * Acepta dos formas:
+ *  1. El nombre COMPLETO como palabra entera ("Lote Norte Grande" en el texto).
+ *  2. Algún token significativo del nombre (≥3 letras o numérico) como palabra
+ *     entera — el productor dice "fumigué el norte" y el agente resuelve el
+ *     nombre canónico "Lote Norte Grande" desde su contexto; exigir el nombre
+ *     completo descartaba esa resolución legítima. Tokens genéricos ("lote",
+ *     "campo", "potrero", "el", "la") no cuentan.
  * Word-boundary check prevents false positives like "1B" matching "1B12".
  */
+const GENERIC_NAME_TOKENS = new Set(['lote', 'campo', 'potrero', 'parcela', 'chacra', 'el', 'la', 'los', 'las', 'de', 'del', 'don', 'dona', 'san', 'santa']);
+
+function wholeWordInText(token: string, normText: string): boolean {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}([^\\p{L}\\p{N}_]|$)`, 'iu');
+  return re.test(normText);
+}
+
 function mentionedInText(value: string, originalText: string, knownNames: string[]): boolean {
   const normValue = normalize(value);
   const known = knownNames.find(n => normalize(n) === normValue);
   if (!known) return false;
 
-  const escaped = normValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}([^\\p{L}\\p{N}_]|$)`, 'iu');
-  return re.test(normalize(originalText));
+  const normText = normalize(originalText);
+  if (wholeWordInText(normValue, normText)) return true;
+
+  // Matching parcial por token significativo del nombre canónico.
+  const tokens = normValue.split(/\s+/).filter(t =>
+    !GENERIC_NAME_TOKENS.has(t) && (/\d/.test(t) || t.length >= 3),
+  );
+  return tokens.some(t => wholeWordInText(t, normText));
 }

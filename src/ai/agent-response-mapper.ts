@@ -373,10 +373,19 @@ export class AgentResponseMapper {
     // Validate agent output against the user text. Per-field rules ship behind
     // their own flags in `validationOptions`; when none are enabled this is a
     // passthrough.
-    const { input } = validateToolCall(
+    const { input, droppedFields } = validateToolCall(
       { toolName, input: toolInput as Record<string, unknown>, originalText },
       validationOptions,
     );
+    if (droppedFields.length > 0) {
+      // Cada strip tiene que ser visible en logs: el bug de "el otro lote"
+      // (plot legítimo descartado como alucinación) estuvo invisible hasta
+      // que un usuario lo sufrió en vivo porque los drops eran silenciosos.
+      const dropped = droppedFields
+        .map(f => `${f}="${String((toolInput as Record<string, unknown>)[f] ?? '')}"`)
+        .join(', ');
+      console.warn(`AI_VALIDATOR DROP: tool=${toolName} ${dropped} text="${originalText.slice(0, 120)}"`);
+    }
 
     // Safety net for relative dates: agent often forgets to set event_date
     // when user says "ayer pagué...", "hace 3 días", "anteayer cargué..." etc.

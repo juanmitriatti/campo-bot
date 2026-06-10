@@ -71,3 +71,29 @@ export function extractCropFromText(text: string): string | null {
   }
   return null;
 }
+
+/**
+ * TODOS los cultivos canónicos mencionados en el texto, en orden de aparición.
+ * Necesario para validar compounds multi-cultivo ("sembré soja en Norte y maíz
+ * en Sur"): la versión singular devolvía solo "soja" y el validador descartaba
+ * el "maíz" del segundo tool como alucinación del agente.
+ */
+export function extractAllCropsFromText(text: string): string[] {
+  if (!text) return [];
+  const normalized = stripAccents(text.toLowerCase()).trim();
+  if (normalized === '') return [];
+
+  const found: string[] = [];
+  const tokens = normalized.split(/[\s,.;:!?¡¿]+/).filter(Boolean);
+  for (const token of tokens) {
+    let crop: string | null = null;
+    if (CROP_SYNONYMS[token]) crop = CROP_SYNONYMS[token];
+    else {
+      for (const k of KNOWN_CROPS) {
+        if (stripAccents(k) === token) { crop = k; break; }
+      }
+    }
+    if (crop && !found.includes(crop)) found.push(crop);
+  }
+  return found;
+}
