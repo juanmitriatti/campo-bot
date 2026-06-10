@@ -240,7 +240,35 @@ export class IntentClassifier {
     // STEP 2 — Trivial command bypass (cheap regex, no API call needed)
     // =========================================================================
     const trivialCmd = this.classifyTrivial(cleaned, preprocessed);
-    if (trivialCmd) return trivialCmd;
+    if (trivialCmd) {
+      // Rejoin de pregunta-de-lote huérfana: cuando el agente preguntó
+      // "¿en qué lote...?" vía respond_text (sin dejar pending machine-readable)
+      // y el usuario contesta "lote Norte" a secas, el bypass trivial lo
+      // clasificaba como plot_info y mostraba la ficha del lote — la acción
+      // original se perdía (visto live: "agregar 40 terneros" → pregunta →
+      // "lote norte" → ficha del lote, terneros nunca guardados). Si la última
+      // respuesta del bot (< 5 min) fue una pregunta de ubicación abierta,
+      // reconstruimos "<mensaje original> en lote <X>" y re-clasificamos —
+      // determinístico, mismo espíritu que el pronoun-expander.
+      const td = trivialCmd.intent;
+      const rejoinDepth = (opts as { _rejoinDepth?: number } | undefined)?._rejoinDepth ?? 0;
+      if (
+        rejoinDepth === 0 &&
+        td.type === 'command' &&
+        (td.data.command === 'plot_info' || td.data.command === 'field_info')
+      ) {
+        const reconstructed = await this.reconstructFromOpenLocationQuestion(
+          userId,
+          (td.data.plotName as string) ?? (td.data.fieldName as string) ?? null,
+          td.data.command === 'field_info',
+        );
+        if (reconstructed) {
+          console.log(`[intent-classifier] Open-question rejoin: "${text}" → "${reconstructed}"`);
+          return this.classify(reconstructed, userId, settings, { ...(opts ?? {}), _rejoinDepth: 1 } as never);
+        }
+      }
+      return trivialCmd;
+    }
 
     // =========================================================================
     // STEP 2.5 — Correction pre-classifier (server-side, behind flag)
@@ -507,6 +535,43 @@ export class IntentClassifier {
       };
     }
     return null;
+  }
+
+  /**
+   * Si la ÚLTIMA respuesta del bot (< 5 min) fue una pregunta de ubicación
+   * abierta ("¿En qué lote querés agregar...?") emitida por respond_text —
+   * o sea, SIN pending machine-readable — y el usuario contesta solo con el
+   * lote/campo, reconstruye el comando completo: "<mensaje original> en lote X".
+   * Devuelve null cuando no aplica (caso normal: la referencia pelada a un
+   * lote sigue siendo plot_info).
+   */
+  private async reconstructFromOpenLocationQuestion(
+    userId: UserId,
+    locName: string | null,
+    isField: boolean,
+  ): Promise<string | null> {
+    if (!locName) return null;
+    try {
+      const { pool } = await import('../config/db.js');
+      const { rows } = await pool.query(
+        `SELECT message_text, response_text, created_at
+         FROM conversation_logs
+         WHERE user_id = $1 AND message_text IS NOT NULL AND response_text IS NOT NULL
+         ORDER BY created_at DESC LIMIT 1`,
+        [userId],
+      );
+      if (rows.length === 0) return null;
+      const { message_text: lastMsg, response_text: lastResp, created_at: ts } = rows[0];
+      if (Date.now() - new Date(ts).getTime() > 5 * 60 * 1000) return null;
+      const askedLocation = /[¿?]\s*(?:en\s+)?qu[eé]\s+(?:lote|campo|potrero|ubicaci[oó]n)/i.test(lastResp ?? '');
+      if (!askedLocation) return null;
+      if (!lastMsg || lastMsg.length > 200) return null;
+      // El mensaje original tiene que parecer una acción, no otra consulta de lote.
+      if (/^\s*(?:lote|campo|potrero)\b/i.test(lastMsg)) return null;
+      return `${lastMsg} en ${isField ? 'campo' : 'lote'} ${locName}`;
+    } catch {
+      return null;
+    }
   }
 
   /**

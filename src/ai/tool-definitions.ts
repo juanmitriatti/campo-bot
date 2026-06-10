@@ -1313,7 +1313,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // ========================
   {
     name: 'add_livestock',
-    description: 'Registrar ingreso/compra de hacienda (vacas, terneros, novillos, etc.) en un lote o corral de feedlot. Verbos: agregué, compré, metí, ingresé + N animales. Requiere lote o corral.',
+    description: 'Registrar ingreso/compra de hacienda (vacas, terneros, novillos, etc.) en un lote o corral de feedlot. Verbos: agregué, compré, metí, ingresé + N animales. Si el usuario NO dijo lote/corral, llamá la tool IGUAL omitiendo esos params — el sistema le pregunta la ubicación. NUNCA preguntes el lote con respond_text.',
     input_schema: {
       type: 'object',
       properties: {
