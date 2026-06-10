@@ -406,6 +406,48 @@ export class LivestockService {
     }
   }
 
+  /**
+   * Adjunta el precio a un movimiento ya registrado (el alta/venta se guardó
+   * sin precio y el usuario lo contesta en el mensaje siguiente, vía el
+   * pending "¿a cuánto fue la compra?"). Crea el gasto/ingreso vinculado igual
+   * que si el precio hubiera venido en la operación original.
+   *
+   * Sin esto, la respuesta del usuario ("la compra fue a mil pesos por vaca")
+   * llegaba al agente SIN pending y Haiku la mapeaba a edit_last_expense —
+   * editando el último gasto que existiera (visto live: corrompió un gasto de
+   * agroquímicos en USD).
+   */
+  async attachPriceToMovement(
+    userId: UserId,
+    movementId: string,
+    unitPrice: number,
+    currency: Currency,
+    kind: 'expense' | 'income',
+  ): Promise<{ financial: LinkedFinancialRecord | null; count: number; category: LivestockCategory }> {
+    const row = await this.repo.findMovementForPricing(Number(userId), movementId);
+    if (!row) throw new Error('No encontré ese movimiento de hacienda para ponerle precio.');
+    if (row.linked_expense_id || row.linked_income_id) {
+      throw new Error('Ese movimiento ya tiene un registro financiero vinculado.');
+    }
+
+    const ars = currency === 'ARS' ? unitPrice : null;
+    const usd = currency === 'USD' ? unitPrice : null;
+    await this.repo.setMovementUnitPrice(movementId, ars, usd);
+
+    // createLinkedFinancialRecord solo lee id + unit_price_* del movimiento.
+    const movement = {
+      id: row.id,
+      unit_price_ars: ars,
+      unit_price_usd: usd,
+    } as unknown as LivestockMovementRow;
+
+    const financial = await this.createLinkedFinancialRecord(
+      userId, movement, kind, row.field_id, row.plot_id,
+      row.category, row.count, row.breed, row.movement_date,
+    );
+    return { financial, count: row.count, category: row.category };
+  }
+
   /** Get human-readable location label */
   static formatLocation(group: LivestockGroupRow): string {
     if (group.corral_name) {

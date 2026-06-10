@@ -42,6 +42,43 @@ export class LivestockHandler {
   }
 
   /**
+   * Re-ejecución del pending "¿a cuánto fue la compra/venta?" — adjunta el
+   * precio al movimiento y crea el gasto/ingreso vinculado. El precio llega
+   * vía slot-extractor como unit_price (o amount, que el processor cross-fillea).
+   */
+  private async setLivestockPrice(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const c = cmd as unknown as Record<string, unknown>;
+    const movementId = String(c.movementId ?? '');
+    const kind: 'expense' | 'income' = c.kind === 'income' ? 'income' : 'expense';
+    const unitPrice = typeof c.unit_price === 'number' && c.unit_price > 0
+      ? c.unit_price
+      : (typeof c.amount === 'number' && c.amount > 0 ? c.amount : null);
+    const currency: Currency = c.currency === 'USD' ? 'USD' : 'ARS';
+
+    if (!movementId) return { messages: ['No encontré el movimiento de hacienda para ponerle precio.'] };
+    if (!unitPrice) {
+      return { messages: ['💰 Necesito el precio (ej: "350 mil por cabeza" o "1500 USD").'] };
+    }
+
+    try {
+      const r = await this.service.attachPriceToMovement(userId, movementId, unitPrice, currency, kind);
+      if (!r.financial) {
+        return { messages: ['No pude registrar el precio — probá de nuevo con "350 mil por cabeza".'] };
+      }
+      const label = kind === 'expense' ? '💸 Gasto registrado' : '💰 Ingreso registrado';
+      const catLabel = LIVESTOCK_CATEGORY_LABEL[r.category] ?? r.category;
+      return {
+        messages: [
+          `${label}: ${fmtAmount(r.financial.amount, r.financial.currency)} (Hacienda)\n` +
+          `  ${r.count} ${catLabel}${r.count > 1 ? 's' : ''} a ${fmtAmount(unitPrice, currency)} c/u`,
+        ],
+      };
+    } catch (err) {
+      return { messages: [(err as Error).message] };
+    }
+  }
+
+  /**
    * Alimenta el context_stack después de una operación de hacienda que quedó
    * en un lote concreto, para que el próximo "ahí mismo / ese lote" resuelva
    * bien. Los paths que pasan por plotDiscovery ya lo hacen — esto cubre los
@@ -76,6 +113,7 @@ export class LivestockHandler {
       switch (cmd.command) {
         case 'add_livestock': return await this.addLivestock(cmd, userId);
         case 'remove_livestock': return await this.removeLivestock(cmd, userId);
+        case 'set_livestock_price': return await this.setLivestockPrice(cmd, userId);
         case 'transfer_livestock': return await this.transferLivestock(cmd, userId);
         case 'record_livestock_death': return await this.recordDeath(cmd, userId);
         case 'record_livestock_birth': return await this.recordBirth(cmd, userId);
@@ -376,9 +414,27 @@ export class LivestockHandler {
       ? { savedRecordsWithoutPlot: [{ kind: 'livestock' as const, id: group.id as number, fieldId: group.field_id as number }] }
       : {};
 
+    // Cuando preguntamos el precio, dejamos un pending REAL apuntando al
+    // movimiento. Sin esto la pregunta era texto huérfano y la respuesta
+    // ("la compra fue a mil pesos por vaca") llegaba al agente sin contexto —
+    // Haiku la mapeaba a edit_last_expense y corrompía el último gasto que
+    // existiera (visto live: pisó un gasto de agroquímicos en USD).
+    const priceSideEffects = (askPriceLine && movement?.id)
+      ? {
+          sideEffects: {
+            setPendingActivity: {
+              command: 'set_livestock_price',
+              data: { movementId: String(movement.id), kind: 'expense' },
+              missing: ['unit_price'],
+              askPrompt: '💰 ¿A cuánto fue la compra? (precio por cabeza, ej: "350 mil" o "1500 USD")',
+            },
+          },
+        }
+      : {};
+
     return buttons.length > 0
-      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons }, ...bulkExtras }
-      : { messages: [body], ...bulkExtras };
+      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons }, ...bulkExtras, ...priceSideEffects }
+      : { messages: [body], ...bulkExtras, ...priceSideEffects };
   }
 
   // ========================
@@ -448,9 +504,24 @@ export class LivestockHandler {
       isSale,
     });
 
+    // Pending real para la respuesta al "¿a cuánto fue la venta?" — espejo
+    // del pending de compra en addLivestock (ver comentario ahí).
+    const priceSideEffects = (askPriceLine && movement?.id)
+      ? {
+          sideEffects: {
+            setPendingActivity: {
+              command: 'set_livestock_price',
+              data: { movementId: String(movement.id), kind: 'income' },
+              missing: ['unit_price'],
+              askPrompt: '💰 ¿A cuánto fue la venta? (precio por cabeza, ej: "400 mil" o "1500 USD")',
+            },
+          },
+        }
+      : {};
+
     return buttons.length > 0
-      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons } }
-      : { messages: [body] };
+      ? { messages: [], interactive: { type: 'buttons' as const, body, buttons }, ...priceSideEffects }
+      : { messages: [body], ...priceSideEffects };
   }
 
   // ========================

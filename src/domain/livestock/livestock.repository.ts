@@ -613,6 +613,42 @@ export class LivestockRepository {
     return rows[0].n;
   }
 
+  /**
+   * Movimiento + datos del grupo para adjuntar precio a posteriori (pending
+   * "¿a cuánto fue la compra?"). User-scoped.
+   */
+  async findMovementForPricing(userId: number, movementId: string): Promise<{
+    id: string;
+    count: number;
+    movement_type: string;
+    movement_date: string | null;
+    linked_expense_id: number | null;
+    linked_income_id: number | null;
+    category: LivestockCategory;
+    breed: string | null;
+    field_id: number;
+    plot_id: number | null;
+  } | null> {
+    const { rows } = await pool.query(
+      `SELECT m.id::text AS id, m.count, m.movement_type,
+              m.movement_date::text AS movement_date,
+              m.linked_expense_id, m.linked_income_id,
+              g.category, g.breed, g.field_id, g.plot_id
+       FROM livestock_movements m
+       JOIN livestock_groups g ON g.id = COALESCE(m.dest_group_id, m.source_group_id)
+       WHERE m.id = $2 AND m.user_id = $1`,
+      [userId, movementId],
+    );
+    return rows[0] ?? null;
+  }
+
+  async setMovementUnitPrice(movementId: string, ars: number | null, usd: number | null): Promise<void> {
+    await pool.query(
+      `UPDATE livestock_movements SET unit_price_ars = $2, unit_price_usd = $3 WHERE id = $1`,
+      [movementId, ars, usd],
+    );
+  }
+
   async findMovementById(movementId: string): Promise<{
     id: string;
     movement_type: string;
