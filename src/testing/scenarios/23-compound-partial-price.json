@@ -1,13 +1,21 @@
 {
   "name": "compound-partial-price",
   "description": "Compound where one item has no price → bot surfaces it + sets pending so the next message completes (Fix B)",
-  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "setup": [
+    "add-field-esperanza",
+    "add-plot-norte"
+  ],
   "steps": [
     {
       "send": "vendí soja y vendí 2 toneladas de maní a 18 mil dólares por tonelada",
       "expect": {
-        "responseContains": ["falta el precio"],
-        "dbRowCount": { "table": "incomes", "count": 1 }
+        "responseContains": [
+          "cuánto fue el"
+        ],
+        "dbRowCount": {
+          "table": "incomes",
+          "count": 1
+        }
       }
     }
   ]

@@ -55,4 +55,39 @@ describe('expandPronouns', () => {
     const { expanded } = expandPronouns('vendí 20tn ahi mismo', 'Lote Norte Grande');
     expect(expanded).toBe('vendí 20tn en lote Lote Norte Grande');
   });
+
+  it('swaps "ese mismo lote"', () => {
+    const { expanded } = expandPronouns('fumigué ese mismo lote', 'A1');
+    expect(expanded).toBe('fumigué en lote A1');
+  });
+
+  describe('el otro lote (prevPlotName)', () => {
+    it('swaps "el otro lote" to the previous plot', () => {
+      const { expanded, replaced } = expandPronouns('y 30k de semillas en el otro lote', 'Norte', 'Sur');
+      expect(expanded).toBe('y 30k de semillas en lote Sur');
+      expect(replaced).toBe(1);
+    });
+
+    it('"el otro" tras preposición sin sustantivo', () => {
+      const { expanded } = expandPronouns('sembré maíz en el otro', 'Norte', 'Sur');
+      expect(expanded).toBe('sembré maíz en lote Sur');
+    });
+
+    it('"el otro día" (temporal) NO se expande', () => {
+      const { expanded, replaced } = expandPronouns('el otro día fumigué', 'Norte', 'Sur');
+      expect(expanded).toBe('el otro día fumigué');
+      expect(replaced).toBe(0);
+    });
+
+    it('"el otro lote" sin prevPlotName pasa sin tocar', () => {
+      const { expanded, replaced } = expandPronouns('gasté 20k en el otro lote', 'Norte');
+      expect(expanded).toBe('gasté 20k en el otro lote');
+      expect(replaced).toBe(0);
+    });
+
+    it('mezcla: "ahí mismo" → último, "el otro lote" → anterior', () => {
+      const { expanded } = expandPronouns('20mm ahí mismo y 35mm en el otro lote', 'Norte', 'Sur');
+      expect(expanded).toBe('20mm en lote Norte y 35mm en lote Sur');
+    });
+  });
 });

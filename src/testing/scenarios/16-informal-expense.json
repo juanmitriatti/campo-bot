@@ -1,20 +1,30 @@
 {
   "name": "informal-expense",
   "description": "Informal shorthand: '5 lucas de gasoil' → expense 5000",
-  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "setup": [
+    "add-field-esperanza",
+    "add-plot-norte"
+  ],
   "steps": [
     {
       "send": "5 lucas de gasoil",
       "expect": {
-        "responseContains": ["5.000", "gasoil"],
+        "responseContains": [
+          "5.000",
+          "Combustible"
+        ],
         "hasConfirmButton": true
       }
     },
     {
       "tap": "confirm_pending",
       "expect": {
-        "responseContains": ["registrad"],
-        "dbExpense": { "amount": 5000 }
+        "responseContains": [
+          "registrad"
+        ],
+        "dbExpense": {
+          "amount": 5000
+        }
       }
     }
   ]

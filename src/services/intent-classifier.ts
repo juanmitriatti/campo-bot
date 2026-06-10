@@ -157,7 +157,13 @@ export class IntentClassifier {
   async classify(
     text: string,
     userId: UserId,
-    settings: UserSettings
+    settings: UserSettings,
+    opts?: {
+      /** askPrompt del pending activo (si hay). Se inyecta en el prefix del
+       *  agente para que sepa que hay una pregunta abierta sin responder y no
+       *  conflacione el mensaje nuevo con la respuesta esperada. */
+      pendingHint?: string | null;
+    },
   ): Promise<ParseResult> {
     // =========================================================================
     // STEP 0 — Access gate (Phase 3). Read subscription state in real time;
@@ -341,8 +347,28 @@ export class IntentClassifier {
     try {
       const convState = await getConversationState(userId);
       const lastPlotName: string | null = convState?.plot_name ?? null;
-      if (lastPlotName) {
-        const { expanded, replaced } = expandPronouns(text, lastPlotName);
+
+      // "el otro lote" → segundo lote del context_stack. Lookup lazy: solo
+      // pagamos la query extra cuando el texto realmente dice "el otro".
+      let prevPlotName: string | null = null;
+      if (/\bel\s+otro\b/i.test(text)) {
+        const stack: Array<{ field_id?: number; plot_id?: number }> =
+          (convState as { context_stack?: Array<{ field_id?: number; plot_id?: number }> } | null)?.context_stack ?? [];
+        const prevEntry = stack.find(
+          (e) => e.plot_id && e.plot_id !== convState?.last_plot_id,
+        );
+        if (prevEntry?.plot_id) {
+          const { pool } = await import('../config/db.js');
+          const { rows } = await pool.query(
+            'SELECT name FROM plots WHERE id = $1 AND deleted_at IS NULL',
+            [prevEntry.plot_id],
+          );
+          prevPlotName = rows[0]?.name ?? null;
+        }
+      }
+
+      if (lastPlotName || prevPlotName) {
+        const { expanded, replaced } = expandPronouns(text, lastPlotName, prevPlotName);
         if (replaced > 0) {
           console.log(`[intent-classifier] Pronoun expansion: "${text}" → "${expanded}" (${replaced} swap)`);
           agentInputText = expanded;
@@ -379,7 +405,7 @@ export class IntentClassifier {
     if (agentEnabled && this.agentService && this.responseMapper) {
       try {
         const minConfidence = (await getSettingNumber('AI_INTENT_MIN_CONFIDENCE')) ?? 0.70;
-        const agentResult = await this.agentService.extract(agentInputText, preprocessed, userId, settings);
+        const agentResult = await this.agentService.extract(agentInputText, preprocessed, userId, settings, opts?.pendingHint ?? null);
         if (agentResult) {
           const validationEnabled = await getSettingBool('AGENT_OUTPUT_VALIDATION_ENABLED');
           const validateCrop = validationEnabled && (await getSettingBool('AGENT_VALIDATE_CROP'));

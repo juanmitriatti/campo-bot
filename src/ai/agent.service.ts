@@ -15,6 +15,10 @@ import type { UserId, UserSettings, AiUsage } from '../types/index.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
+  // Reintentos explícitos ante errores transitorios (429 rate-limit, 529 overloaded,
+  // 5xx) con backoff exponencial del SDK. El AbortController de extract() sigue
+  // siendo el techo total — AGENT_TIMEOUT_MS debe dar margen para 1-2 reintentos.
+  maxRetries: 2,
 });
 
 /**
@@ -78,6 +82,7 @@ export class AgentService {
     _preprocessed: string,
     userId: UserId,
     settings: UserSettings,
+    pendingHint: string | null = null,
   ): Promise<AgentResult | null> {
     try {
       // Check kill switch
@@ -143,8 +148,8 @@ export class AgentService {
       ]);
 
       const resolvedModel = model || 'claude-haiku-4-5-20251001';
-      const resolvedMaxTokens = maxTokens || 400;
-      const resolvedTimeout = timeoutMs || 8000;
+      const resolvedMaxTokens = maxTokens || 1500;
+      const resolvedTimeout = timeoutMs || 12000;
       const resolvedTemperature = temperatureStr != null ? Number(temperatureStr) : 0;
       // "short" → 5-min TTL (1.25x write), "long" → 1-hour TTL (2x write but lasts 12x longer).
       // We apply the same cache_control object to all 3 breakpoints (system, tools, few-shot).
@@ -160,7 +165,14 @@ export class AgentService {
         ? withFewShotCacheBoundary(this.fewShotService.formatAsToolUseMessages(fewShotExamples), cacheControl)
         : [];
 
-      const userContent = userPrefix ? `${userPrefix}\n\n${text}` : text;
+      // Si hay una pregunta pendiente sin responder (pending activo), avisarle
+      // al agente — sin esto, respondía sin saber que hay un slot abierto y
+      // podía conflacionar el mensaje nuevo con la respuesta esperada. Va en
+      // el mensaje de usuario (fuera del prefix cacheado), así no rompe cache.
+      const pendingLine = pendingHint
+        ? `[Hay una pregunta pendiente al usuario sin responder: "${pendingHint.slice(0, 150)}". Si este mensaje NO la responde, procesalo como acción nueva.]\n`
+        : '';
+      const userContent = userPrefix ? `${userPrefix}\n${pendingLine}\n${text}` : `${pendingLine}${text}`;
       const messages: Anthropic.MessageParam[] = [
         ...fewShotPairs,
         ...historyTurns.map(t => ({
@@ -269,13 +281,15 @@ export class AgentService {
       return { toolCalls, conversationalText, usage, truncated };
     } catch (err) {
       const isTimeout = err instanceof Error && err.name === 'AbortError';
+      const apiStatus = err instanceof Anthropic.APIError ? err.status : undefined;
       // Log BOTH timeouts and other errors — observability dashboard needs the timeout rate.
       // The error_type field distinguishes them so the UI can count separately.
+      // apiStatus (429/529/5xx) llega acá ya habiendo agotado los maxRetries del SDK.
       logError(
         'ai_agent',
         isTimeout ? 'AGENT_TIMEOUT' : 'AGENT_ERROR',
         err instanceof Error ? err : new Error(String(err)),
-        { context: { action: 'extract', userId } },
+        { context: { action: 'extract', userId, apiStatus } },
       );
       console.log('AI_AGENT: fallback to regex —', isTimeout ? 'timeout' : (err instanceof Error ? err.message : String(err)));
       return null;

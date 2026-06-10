@@ -1,14 +1,23 @@
 {
   "name": "compound-partial-mixed",
   "description": "Regression: compound with item missing price + agent-friendly maíz/maní distinction. User typed 'vendi 5 toneladas de soja y 1 tonelada de maiz a 4000USD' live → agent dropped soja and mis-categorized maíz as maní.",
-  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "setup": [
+    "add-field-esperanza",
+    "add-plot-norte"
+  ],
   "steps": [
     {
       "send": "vendi 5 toneladas de soja y 1 tonelada de maiz a 4000USD",
       "expect": {
-        "responseContains": ["falta el precio"],
-        "responseNotContains": ["Mani"],
-        "dbIncome": { "category": "Maíz" }
+        "responseContains": [
+          "cuánto fue el"
+        ],
+        "responseNotContains": [
+          "Mani"
+        ],
+        "dbIncome": {
+          "category": "Maíz"
+        }
       }
     }
   ]

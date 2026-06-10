@@ -118,6 +118,18 @@ const pendingDocumentStore = new PendingDocumentStore();
 const pendingDocUploadStore = new PendingDocumentUploadStore();
 const pendingFieldLocationStore = new PendingFieldLocationStore();
 import { pendingCampaignCloseStore } from '../middleware/pending-campaign-close.js';
+import { withUserLock } from '../middleware/user-lock.js';
+
+/** Rellena los 4 pending stores desde DB (pending_states) tras un restart.
+ *  Una query indexada por store — costo despreciable frente al pipeline AI. */
+async function hydratePendingStores(phone: string): Promise<void> {
+  await Promise.all([
+    pendingStore.hydrate(phone),
+    pendingObsStore.hydrate(phone),
+    pendingActStore.hydrate(phone),
+    pendingCityStore.hydrate(phone),
+  ]);
+}
 
 /** Resolve field/plot for document expense saving. */
 async function resolveDocPlotWa(userId: UserId): Promise<
@@ -417,8 +429,27 @@ router.get('/', (req: Request, res: Response) => {
   res.sendStatus(403);
 });
 
-// POST /webhook — Message handler
-router.post('/', async (req: Request, res: Response) => {
+// POST /webhook — Message handler.
+// Serializado por usuario: mensajes del mismo número se procesan en orden
+// (dos mensajes rápidos pisaban el pending del primero); usuarios distintos
+// siguen en paralelo. Antes de procesar se hidratan los pending stores desde
+// DB para que un restart no pierda los pendings en vuelo.
+router.post('/', (req: Request, res: Response) => {
+  const lockPhone: string | undefined = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from;
+  if (!lockPhone) {
+    void handleWhatsAppWebhook(req, res);
+    return;
+  }
+  void withUserLock(`wa:${lockPhone}`, async () => {
+    await hydratePendingStores(lockPhone);
+    await handleWhatsAppWebhook(req, res);
+  }).catch((err) => {
+    console.error('WA LOCK ERROR:', (err as Error).message);
+    if (!res.headersSent) res.sendStatus(500);
+  });
+});
+
+async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void> {
   const startTime = Date.now();
   try {
     const entry = req.body?.entry;
@@ -1867,7 +1898,9 @@ router.post('/', async (req: Request, res: Response) => {
     const enriched = await enrichWithContext(text, userId);
 
     // Classify intent (now returns ParseResult with confidence)
-    const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings);
+    const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings, {
+      pendingHint: pendingActStore.get(phone)?.askPrompt ?? null,
+    });
     const { intent: rawIntent, aiUsed, confidence } = parseResult;
     const agentMode = (parseResult as any)._agentMode as string | undefined;
     const toolCallsData = (parseResult as any)._toolCalls as object[] | undefined;
@@ -2413,6 +2446,6 @@ router.post('/', async (req: Request, res: Response) => {
     logError('whatsapp', 'WEBHOOK_ERROR', err, { context: { responseData: err.response?.data } });
     res.sendStatus(500);
   }
-});
+}
 
 export default router;

@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import fs from 'fs';
 
 const PRICING: Record<string, { in: number; out: number; cr: number; cw: number }> = {
-  'claude-haiku-4-5-20251001': { in: 0.80, out: 4.00, cr: 0.08, cw: 1.00 },
+  'claude-haiku-4-5-20251001': { in: 1.00, out: 5.00, cr: 0.10, cw: 1.25 },
   'claude-sonnet-4-6':          { in: 3.00, out: 15.00, cr: 0.30, cw: 3.75 },
 };
 

@@ -3366,13 +3366,19 @@ export class FinancialHandler {
     }
 
     if (totalUpdated === 0) {
-      return { messages: ['No pude asignar los registros (puede que ya no existan).'] };
+      return { messages: ['No pude asignar los registros (puede que ya no existan o hayan sido borrados).'] };
     }
+    // Botón stale parcial: algunos registros fueron borrados entre que se
+    // renderizó el botón y el tap. Avisamos cuántos quedaron afuera en vez de
+    // confirmar como si hubiese salido todo.
+    const skippedNote = totalUpdated < totalIds
+      ? `\n⚠️ ${totalIds - totalUpdated} registro${totalIds - totalUpdated === 1 ? '' : 's'} ya no existía${totalIds - totalUpdated === 1 ? '' : 'n'} (probablemente borrado${totalIds - totalUpdated === 1 ? '' : 's'} después de generar los botones).`
+      : '';
     if (plotId == null) {
-      return { messages: [`✅ Listo, dejé ${totalUpdated} registro${totalUpdated === 1 ? '' : 's'} a nivel campo.`] };
+      return { messages: [`✅ Listo, dejé ${totalUpdated} registro${totalUpdated === 1 ? '' : 's'} a nivel campo.${skippedNote}`] };
     }
     const parts = perKindUpdates.map(p => `${p.count} ${p.label}`);
-    return { messages: [`✅ Asigné ${parts.join(' + ')} al *Lote ${plotName}*.`] };
+    return { messages: [`✅ Asigné ${parts.join(' + ')} al *Lote ${plotName}*.${skippedNote}`] };
   }
 
   // --- Category pick/create (interactive button callbacks) ---

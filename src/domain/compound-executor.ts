@@ -1,4 +1,5 @@
 import { DomainRouter } from './router.js';
+import { callbackPayloadStore } from '../middleware/callback-payload-store.js';
 import { logError } from '../services/error-logger.js';
 import { withTransaction, pool } from '../config/db.js';
 import type { FinancialHandler } from './financial/financial.handler.js';
@@ -474,11 +475,16 @@ export class CompoundExecutor {
     const summary = summaryParts.join(' + ');
     const body = `💡 Guardé ${summary} a nivel campo *${fieldName}*. ¿A qué lote los asigno?`;
 
-    // Encode payload as base64 so we can carry any number of records of any kind
-    // without hitting the 256-char button.id limit. Format: bap2_<base64({recs})>_<plotId>
-    // The plotId is appended outside the base64 so we can have one button per plot
-    // but share the same record payload.
-    const recordsPayload = Buffer.from(JSON.stringify(byKind)).toString('base64url');
+    // Encode payload as base64 and register it in the callbackPayloadStore,
+    // embedding only the short token (~8 chars) in callback_data. Telegram caps
+    // callback_data at 64 BYTES — inline base64 with 3+ records overflowed it
+    // and the sendMessage fallaba con HTTP 400 silencioso (el usuario no veía
+    // los botones). Format: bap2_<token>_<plotId>. The router resolves token →
+    // payload via callbackPayloadStore (with inline-base64 fallback for any
+    // in-flight buttons rendered before this change).
+    const recordsPayload = callbackPayloadStore.set(
+      Buffer.from(JSON.stringify(byKind)).toString('base64url'),
+    );
 
     const optionRows = [
       ...plots.map(p => ({
@@ -602,7 +608,12 @@ function consolidateRainfallPrompts(
     })
     .join(', ');
 
-  const payloadB64 = Buffer.from(JSON.stringify(items)).toString('base64url');
+  // Token corto en vez de base64 inline: Telegram limita callback_data a 64
+  // bytes y 3+ días de lluvia + nombre de campo largo lo superaban (HTTP 400
+  // silencioso, el usuario no veía los botones). El router resuelve el token.
+  const payloadB64 = callbackPayloadStore.set(
+    Buffer.from(JSON.stringify(items)).toString('base64url'),
+  );
 
   // Replace all "¿En qué campo?" prompts with a single consolidated message
   const filtered = messages.filter((_, i) => !askIndices.includes(i));

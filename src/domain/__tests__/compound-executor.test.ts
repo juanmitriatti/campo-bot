@@ -413,13 +413,19 @@ describe('CompoundExecutor — bulk plot prompt (Fix A)', () => {
     expect(result!.lastInteractive!.type).toBe('list');
     const rows = (result!.lastInteractive as any).sections[0].rows;
     expect(rows.map((r: any) => r.title)).toEqual(['A1', 'A2', 'A3', 'Dejar a nivel campo']);
-    // V2 button payload: bap2_<base64({income:[100,101]})>_<plotId>
+    // V2 button payload: bap2_<token>_<plotId> — el payload base64 vive en el
+    // callbackPayloadStore (límite de 64 bytes de callback_data en Telegram).
     expect(rows[0].id).toMatch(/^bap2_[A-Za-z0-9_-]+_11$/);
     expect(rows[3].id).toMatch(/^bap2_[A-Za-z0-9_-]+_0$/); // 0 = leave at field-level
-    // Decode the payload and verify it carries the two income ids.
-    const payloadStr = rows[0].id.match(/^bap2_([A-Za-z0-9_-]+)_/)![1];
+    // Resolve the token via the store (same as InteractiveRouter), decode, and
+    // verify it carries the two income ids.
+    const tokenStr = rows[0].id.match(/^bap2_([A-Za-z0-9_-]+)_/)![1];
+    const { callbackPayloadStore } = await import('../../middleware/callback-payload-store.js');
+    const payloadStr = callbackPayloadStore.get(tokenStr) ?? tokenStr;
     const decoded = JSON.parse(Buffer.from(payloadStr, 'base64url').toString('utf-8'));
     expect(decoded.income).toEqual([100, 101]);
+    // El token debe entrar holgado en los 64 bytes de Telegram.
+    expect(Buffer.byteLength(rows[0].id, 'utf-8')).toBeLessThanOrEqual(64);
   });
 
   it('skips the prompt when only 1 plot exists (auto-resolve should have happened upstream)', async () => {

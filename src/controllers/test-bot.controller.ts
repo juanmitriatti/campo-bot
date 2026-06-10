@@ -118,6 +118,17 @@ const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
 const pendingFieldLocationStore = new PendingFieldLocationStore();
 import { pendingCampaignCloseStore } from '../middleware/pending-campaign-close.js';
 import type { PendingCampaignClose } from '../middleware/pending-campaign-close.js';
+import { withUserLock } from '../middleware/user-lock.js';
+
+/** Rellena los 4 pending stores desde DB (pending_states) tras un restart. */
+async function hydratePendingStores(phone: string): Promise<void> {
+  await Promise.all([
+    pendingStore.hydrate(phone),
+    pendingObsStore.hydrate(phone),
+    pendingActStore.hydrate(phone),
+    pendingCityStore.hydrate(phone),
+  ]);
+}
 const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
@@ -266,6 +277,18 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 
 
 // POST /api/test-bot — text + interactive replies
 router.post('/', async (req: Request, res: Response) => {
+  // Mismo lock por usuario + hidratación de pendings que WA/TG, para que el
+  // test-bot ejercite el pipeline real (incluida la persistencia de pendings).
+  const lockUserId = req.auth!.userId;
+  const lockNumericId = asUserId(typeof lockUserId === 'string' ? parseInt(lockUserId, 10) : lockUserId);
+  const lockPhone = syntheticPhone(lockNumericId);
+  await withUserLock(`tb:${lockPhone}`, async () => {
+    await hydratePendingStores(lockPhone);
+    await handleTestBotMessage(req, res);
+  });
+});
+
+async function handleTestBotMessage(req: Request, res: Response): Promise<void> {
   const startTime = Date.now();
   try {
     const userId = req.auth!.userId;
@@ -316,7 +339,7 @@ router.post('/', async (req: Request, res: Response) => {
     logError('test-bot', 'WEBHOOK_ERROR', err);
     res.status(500).json({ error: err.message || 'Error interno del servidor' });
   }
-});
+}
 
 // POST /api/test-bot/audio — multipart audio upload
 router.post('/audio', upload.single('audio'), async (req: Request, res: Response) => {
@@ -1302,7 +1325,9 @@ async function processTextMessage(
   await enrichWithContext(text, userId);
 
   // Classify intent
-  const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings);
+  const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings, {
+    pendingHint: pendingActStore.get(phone)?.askPrompt ?? null,
+  });
   const { intent: rawIntent, aiUsed, confidence } = parseResult;
   const agentMode = (parseResult as any)._agentMode as string | undefined;
   const toolCallsData = (parseResult as any)._toolCalls as object[] | undefined;

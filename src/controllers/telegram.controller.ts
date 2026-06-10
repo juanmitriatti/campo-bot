@@ -136,6 +136,17 @@ const pendingDocumentStoreTg = new PendingDocumentStore();
 const pendingDocUploadStoreTg = new PendingDocumentUploadStore();
 const pendingFieldLocationStore = new PendingFieldLocationStore();
 import { pendingCampaignCloseStore } from '../middleware/pending-campaign-close.js';
+import { withUserLock } from '../middleware/user-lock.js';
+
+/** Rellena los 4 pending stores desde DB (pending_states) tras un restart. */
+async function hydratePendingStores(phone: string): Promise<void> {
+  await Promise.all([
+    pendingStore.hydrate(phone),
+    pendingObsStore.hydrate(phone),
+    pendingActStore.hydrate(phone),
+    pendingCityStore.hydrate(phone),
+  ]);
+}
 const plotDiscovery = new PlotDiscoveryService();
 const learningService = new LearningService();
 const contextResolver = new ContextResolver();
@@ -403,10 +414,27 @@ async function processDocumentWithIntentTg(
 const router = express.Router();
 
 // POST /telegram — Telegram webhook
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', (req: Request, res: Response) => {
   // Telegram expects 200 quickly; process async
   res.sendStatus(200);
 
+  // Serialización por usuario + hidratación de pendings desde DB. Mensajes del
+  // mismo chat se procesan en orden (dos updates rápidos pisaban el pending del
+  // primero); chats distintos siguen en paralelo. La hidratación repuebla los
+  // pending stores tras un restart (tabla pending_states).
+  const lockChatId: string | number | undefined =
+    req.body?.callback_query?.message?.chat?.id ?? req.body?.message?.chat?.id;
+  if (lockChatId == null) {
+    void handleTelegramUpdate(req);
+    return;
+  }
+  void withUserLock(`tg:${lockChatId}`, async () => {
+    await hydratePendingStores(tgPhone(lockChatId));
+    await handleTelegramUpdate(req);
+  }).catch((err) => console.error('TG LOCK ERROR:', (err as Error).message));
+});
+
+async function handleTelegramUpdate(req: Request): Promise<void> {
   const startTime = Date.now();
   try {
     const update = req.body;
@@ -668,7 +696,7 @@ router.post('/', async (req: Request, res: Response) => {
     console.error('[telegram] ERROR:', err.stack || err.message);
     logError('telegram', 'WEBHOOK_ERROR', err);
   }
-});
+}
 
 // --- Interactive reply handler (same logic as test-bot) ---
 
@@ -1781,7 +1809,9 @@ async function processTextMessage(
 
   await enrichWithContext(text, userId);
 
-  const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings);
+  const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings, {
+    pendingHint: pendingActStore.get(phone)?.askPrompt ?? null,
+  });
   const { intent: rawIntent, aiUsed, confidence } = parseResult;
   const agentMode = (parseResult as any)._agentMode as string | undefined;
   const toolCallsData = (parseResult as any)._toolCalls as object[] | undefined;

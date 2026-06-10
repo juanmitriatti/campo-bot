@@ -3,6 +3,7 @@ import { getSetting, getSettingNumber, getSettingBool } from '../services/settin
 import { saveAiFallbackLog } from '../services/expenses.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { PlanRepository } from '../domain/billing/plan.repository.js';
+import { ConversationHistoryService } from './conversation-history.service.js';
 import { logError } from '../services/error-logger.js';
 import type { UserId, UserSettings, AiUsage } from '../types/index.js';
 
@@ -69,10 +70,12 @@ export interface FallbackResult {
 export class ConversationalFallbackService {
   private userRepo: UserRepository;
   private planRepo: PlanRepository;
+  private historyService: ConversationHistoryService;
 
   constructor(userRepo?: UserRepository) {
     this.userRepo = userRepo ?? new UserRepository();
     this.planRepo = new PlanRepository();
+    this.historyService = new ConversationHistoryService();
   }
 
   async respond(
@@ -118,6 +121,16 @@ export class ConversationalFallbackService {
       const resolvedTemperature = temperature ?? DEFAULT_TEMPERATURE;
       const resolvedSystemPrompt = systemPrompt || SYSTEM_PROMPT;
 
+      // Historia reciente (budget chico: 1500 chars) — sin esto el fallback era
+      // single-turn y las repreguntas ("¿y para la roya qué uso?") perdían todo
+      // el contexto previo. Best-effort: si falla, seguimos sin historia.
+      let historyTurns: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+      try {
+        historyTurns = await this.historyService.getRecentTurns(userId, 1500);
+      } catch {
+        historyTurns = [];
+      }
+
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), resolvedTimeout);
 
@@ -129,7 +142,10 @@ export class ConversationalFallbackService {
             max_tokens: resolvedMaxTokens,
             temperature: resolvedTemperature,
             system: resolvedSystemPrompt,
-            messages: [{ role: 'user', content: text }],
+            messages: [
+              ...historyTurns.map(t => ({ role: t.role, content: t.content })),
+              { role: 'user', content: text },
+            ],
           },
           { signal: controller.signal },
         );

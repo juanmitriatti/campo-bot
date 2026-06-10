@@ -78,11 +78,14 @@ export class InteractiveRouter {
       return { type: 'command', data: { command: 'log_rainfall', fieldName: rainMatch[1], mm: parseFloat(rainMatch[2]) } };
     }
 
-    // Batched callbacks: rain_batch_<fieldName>_<base64> → log_rainfall_batch
+    // Batched callbacks: rain_batch_<fieldName>_<tokenOrBase64> → log_rainfall_batch.
+    // El builder ahora registra el payload en callbackPayloadStore (límite de 64
+    // bytes de Telegram); el fallback inline-base64 cubre botones en vuelo.
     const rainBatchMatch = callbackId.match(/^rain_batch_(.+)_([A-Za-z0-9_-]+)$/);
     if (rainBatchMatch) {
       try {
-        const json = Buffer.from(rainBatchMatch[2], 'base64url').toString('utf-8');
+        const resolved = callbackPayloadStore.get(rainBatchMatch[2]) ?? rainBatchMatch[2];
+        const json = Buffer.from(resolved, 'base64url').toString('utf-8');
         const items = JSON.parse(json) as Array<{ mm: number; date: string | null }>;
         if (Array.isArray(items) && items.length > 0) {
           return {
@@ -228,13 +231,16 @@ export class InteractiveRouter {
     }
 
     // Bulk plot assignment after a compound — V2 (any kind, any count).
-    // Format: bap2_<base64url(byKindMap)>_<plotId>
+    // Format: bap2_<tokenOrBase64>_<plotId>
     //   plotId="0" → leave at field-level
     //   byKindMap = { expense?: number[], income?: number[], activity?: number[], ... }
+    // El builder registra el payload en callbackPayloadStore y embebe solo el
+    // token (límite Telegram 64 bytes); fallback inline-base64 para botones viejos.
     const bap2Match = callbackId.match(/^bap2_([A-Za-z0-9_-]+)_(\d+)$/);
     if (bap2Match) {
       try {
-        const byKind = JSON.parse(Buffer.from(bap2Match[1], 'base64url').toString('utf-8')) as Record<string, number[]>;
+        const resolvedBap2 = callbackPayloadStore.get(bap2Match[1]) ?? bap2Match[1];
+        const byKind = JSON.parse(Buffer.from(resolvedBap2, 'base64url').toString('utf-8')) as Record<string, number[]>;
         const plotId = parseInt(bap2Match[2], 10);
         return {
           type: 'command',

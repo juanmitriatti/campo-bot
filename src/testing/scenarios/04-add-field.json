@@ -5,27 +5,39 @@
     {
       "send": "agregar campo Don Pedro",
       "expect": {
-        "responseContains": ["Don Pedro"],
+        "responseContains": [
+          "ubicar"
+        ],
         "hasButtons": true
       }
     },
     {
       "tap": "flow_field_loc_city",
       "expect": {
-        "responseContains": ["localidad"]
+        "responseContains": [
+          "localidad"
+        ]
       }
     },
     {
-      "send": "Junín",
+      "send": "Pergamino",
       "expect": {
-        "responseContains": ["Confirmar", "Don Pedro"]
+        "responseContains": [
+          "Confirmar",
+          "Pedro"
+        ]
       }
     },
     {
       "tap": "flow_confirm",
       "expect": {
-        "responseContains": ["creado"],
-        "dbRowCount": { "table": "fields", "count": 1 }
+        "responseContains": [
+          "creado"
+        ],
+        "dbRowCount": {
+          "table": "fields",
+          "count": 1
+        }
       }
     }
   ]

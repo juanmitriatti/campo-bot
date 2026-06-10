@@ -1,13 +1,21 @@
 {
   "name": "log-spraying",
   "description": "Register spraying activity with product",
-  "setup": ["add-field-esperanza", "add-plot-norte", "sow-soja-norte"],
+  "setup": [
+    "add-field-esperanza",
+    "add-plot-norte",
+    "sow-soja-norte"
+  ],
   "steps": [
     {
       "send": "fumigué lote Norte con glifosato 3 lt/ha",
       "expect": {
-        "responseContains": ["glifosato"],
-        "dbActivity": { "eventType": "spray" }
+        "responseContains": [
+          "glifosato"
+        ],
+        "dbActivity": {
+          "eventType": "spraying"
+        }
       }
     }
   ]

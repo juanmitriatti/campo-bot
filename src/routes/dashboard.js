@@ -24,13 +24,13 @@ router.get("/api/stats", async (req, res) => {
   try {
     const [usersR, aiCostR, activeR] = await Promise.all([
       pool.query("SELECT COUNT(*) AS total FROM users"),
-      // Haiku 4.5: input 0.80/M, cache read 0.08/M (10%), cache write 1.00/M (125%), output 4.00/M
+      // Haiku 4.5: input 1.00/M, cache read 0.10/M (10%), cache write 1.25/M (125%), output 5.00/M
       pool.query(
         `SELECT COALESCE(SUM(
-           input_tokens / 1000000.0 * 0.80
-           + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08
-           + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00
-           + output_tokens / 1000000.0 * 4.0
+           input_tokens / 1000000.0 * 1.00
+           + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.10
+           + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.25
+           + output_tokens / 1000000.0 * 5.0
          ), 0) AS total
          FROM ai_usage
          WHERE date_trunc('month', created_at) = date_trunc('month', CURRENT_DATE)`
@@ -117,10 +117,10 @@ router.get("/api/users", async (req, res) => {
     );
 
     // Haiku 4.5 pricing: input 1x, cache_read 0.1x, cache_write 1.25x, output flat
-    const INPUT_COST_PER_M = 0.80;
-    const CACHE_READ_COST_PER_M = 0.08;   // 10% of input rate
-    const CACHE_WRITE_COST_PER_M = 1.00;  // 125% of input rate (5-min TTL)
-    const OUTPUT_COST_PER_M = 4.00;
+    const INPUT_COST_PER_M = 1.00;
+    const CACHE_READ_COST_PER_M = 0.10;   // 10% of input rate
+    const CACHE_WRITE_COST_PER_M = 1.25;  // 125% of input rate (5-min TTL)
+    const OUTPUT_COST_PER_M = 5.00;
     const calcCost = (inputTokens, outputTokens, cacheRead = 0, cacheWrite = 0) =>
       +(
         inputTokens / 1_000_000 * INPUT_COST_PER_M +
@@ -360,20 +360,20 @@ router.get("/api/users/:id/ai-usage", async (req, res) => {
     const [todayR, monthR, totalR] = await Promise.all([
       pool.query(
         `SELECT COUNT(*) AS count,
-                COALESCE(SUM(input_tokens / 1000000.0 * 0.80 + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08 + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00 + output_tokens / 1000000.0 * 4.00), 0) AS cost
+                COALESCE(SUM(input_tokens / 1000000.0 * 1.00 + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.10 + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.25 + output_tokens / 1000000.0 * 5.00), 0) AS cost
          FROM ai_usage WHERE user_id = $1 AND created_at::date = CURRENT_DATE`,
         [id]
       ),
       pool.query(
         `SELECT COUNT(*) AS count,
-                COALESCE(SUM(input_tokens / 1000000.0 * 0.80 + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08 + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00 + output_tokens / 1000000.0 * 4.00), 0) AS cost
+                COALESCE(SUM(input_tokens / 1000000.0 * 1.00 + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.10 + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.25 + output_tokens / 1000000.0 * 5.00), 0) AS cost
          FROM ai_usage WHERE user_id = $1
            AND date_trunc('month', created_at) = date_trunc('month', CURRENT_DATE)`,
         [id]
       ),
       pool.query(
         `SELECT COUNT(*) AS count,
-                COALESCE(SUM(input_tokens / 1000000.0 * 0.80 + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08 + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00 + output_tokens / 1000000.0 * 4.00), 0) AS cost
+                COALESCE(SUM(input_tokens / 1000000.0 * 1.00 + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.10 + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.25 + output_tokens / 1000000.0 * 5.00), 0) AS cost
          FROM ai_usage WHERE user_id = $1`,
         [id]
       ),
@@ -2158,17 +2158,17 @@ router.get("/api/analytics/overview", async (req, res) => {
         WHERE created_at >= NOW() - $1::int * INTERVAL '1 day'
           AND deleted_at IS NULL
       `, [days]),
-      // AI usage (Haiku 4.5: input 0.80/M, cache read 0.08/M, cache write 1.00/M, output 4.00/M)
+      // AI usage (Haiku 4.5: input 1.00/M, cache read 0.10/M, cache write 1.25/M, output 5.00/M)
       pool.query(`
         SELECT
           COUNT(*) AS calls,
           COALESCE(SUM(input_tokens), 0) AS input_tokens,
           COALESCE(SUM(output_tokens), 0) AS output_tokens,
           COALESCE(SUM(
-            input_tokens / 1000000.0 * 0.80
-            + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08
-            + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00
-            + output_tokens / 1000000.0 * 4.00
+            input_tokens / 1000000.0 * 1.00
+            + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.10
+            + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.25
+            + output_tokens / 1000000.0 * 5.00
           ), 0) AS cost_usd
         FROM ai_usage
         WHERE created_at >= NOW() - $1::int * INTERVAL '1 day'
@@ -2234,10 +2234,10 @@ router.get("/api/analytics/ai-tokens", async (req, res) => {
           SUM(input_tokens) AS input_tokens,
           SUM(output_tokens) AS output_tokens,
           SUM(
-            input_tokens / 1000000.0 * 0.80
-            + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.08
-            + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.00
-            + output_tokens / 1000000.0 * 4.00
+            input_tokens / 1000000.0 * 1.00
+            + COALESCE(cache_read_tokens, 0) / 1000000.0 * 0.10
+            + COALESCE(cache_write_tokens, 0) / 1000000.0 * 1.25
+            + output_tokens / 1000000.0 * 5.00
           ) AS cost_usd
         FROM ai_usage
         WHERE created_at >= NOW() - $1::int * INTERVAL '1 day'
@@ -2476,8 +2476,8 @@ router.get("/api/analytics/ai-observability", async (req, res) => {
         JOIN users u ON u.id = au.user_id
         WHERE au.created_at >= NOW() - $1::int * INTERVAL '1 day'
         GROUP BY u.id, u.name, u.phone_number
-        ORDER BY (SUM(au.input_tokens) * 0.80 + SUM(au.output_tokens) * 4.00 +
-                  SUM(au.cache_read_tokens) * 0.08 + SUM(au.cache_write_tokens) * 1.00) DESC
+        ORDER BY (SUM(au.input_tokens) * 1.00 + SUM(au.output_tokens) * 5.00 +
+                  SUM(au.cache_read_tokens) * 0.10 + SUM(au.cache_write_tokens) * 1.25) DESC
         LIMIT 10
       `, [days]),
     ]);
@@ -2508,7 +2508,7 @@ router.get("/api/analytics/ai-observability", async (req, res) => {
       const outTok = parseInt(r.output_tokens) || 0;
       const crTok = parseInt(r.cache_read_tokens) || 0;
       const cwTok = parseInt(r.cache_write_tokens) || 0;
-      const cost = (inTok * 0.80 + outTok * 4.00 + crTok * 0.08 + cwTok * 1.00) / 1_000_000;
+      const cost = (inTok * 1.00 + outTok * 5.00 + crTok * 0.10 + cwTok * 1.25) / 1_000_000;
       return {
         userId: r.id,
         name: r.name || '(sin nombre)',

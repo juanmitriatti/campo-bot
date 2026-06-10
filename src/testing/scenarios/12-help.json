@@ -5,8 +5,10 @@
     {
       "send": "ayuda",
       "expect": {
-        "responseNotContains": ["error"],
-        "hasButtons": true
+        "responseNotContains": [
+          "error"
+        ],
+        "hasList": true
       }
     }
   ]

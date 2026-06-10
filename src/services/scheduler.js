@@ -1187,6 +1187,15 @@ export function startScheduler() {
     subscriptionSweepTick().catch(err => console.error("[scheduler] subscription sweep failed:", err));
   });
 
+  // Pending-states sweep — borra filas vencidas del espejo en DB de los
+  // pending stores (los pendings viven 5 min; barremos > 1h de viejos).
+  cron.schedule("30 * * * *", () => {
+    import("../middleware/pending-persistence.js")
+      .then(m => m.sweepExpiredPendingStates())
+      .then(n => { if (n > 0) console.log(`[scheduler] pending_states sweep: ${n} filas borradas`); })
+      .catch(err => console.error("[scheduler] pending_states sweep failed:", err));
+  });
+
   console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily cleanup + flow reminders + expense templates + subscription sweep. ALERTAS (clima/viento/seca + proactivas) DESACTIVADAS.");
 }
 

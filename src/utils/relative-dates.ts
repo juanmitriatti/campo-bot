@@ -15,6 +15,11 @@
  *   - "hace N semanas" / "hace una semana" → today - N*7 days
  *   - "hace un mes" / "hace N meses" → today - N*30 days (approx)
  *   - "ayer/anteayer + a la mañana/noche" → same day as bare ayer/anteayer
+ *   - "anoche" / "ayer a la noche" → today - 1 day
+ *   - "esta mañana" / "esta madrugada" / "hoy temprano" → today
+ *   - "la semana pasada" → today - 7 days (approx, single-date contexts)
+ *   - "el mes pasado" → today - 30 days (approx, single-date contexts)
+ *   - "el finde" / "el fin de semana (pasado)" → most recent past Saturday
  *
  * Returns null when no relative phrase is found, so callers can leave the
  * default date alone.
@@ -72,6 +77,37 @@ export function resolveRelativeDate(text: string | null | undefined): string | n
     return daysAgo(1);
   }
 
+  // anoche / la noche pasada → yesterday's date
+  if (/\banoche\b/.test(t) || /\bla\s+noche\s+pasada\b/.test(t)) {
+    return daysAgo(1);
+  }
+
+  // esta mañana / esta madrugada / hoy temprano / hoy a la mañana → today
+  // ("mañana" a secas es futuro y queda fuera a propósito — no registramos fechas futuras acá)
+  if (/\besta\s+(?:manana|madrugada|tarde|noche)\b/.test(t) || /\bhoy\s+(?:temprano|a\s+la\s+manana)\b/.test(t)) {
+    return daysAgo(0);
+  }
+
+  // la semana pasada → ~7 días atrás (aprox; el usuario rara vez precisa el día exacto)
+  if (/\bla\s+semana\s+pasada\b/.test(t)) {
+    return daysAgo(7);
+  }
+
+  // el mes pasado → ~30 días atrás (aprox)
+  if (/\b(?:el\s+)?mes\s+pasado\b/.test(t)) {
+    return daysAgo(30);
+  }
+
+  // el finde / el fin de semana (pasado) → el sábado más reciente
+  const mWeekend = t.match(/\b(?:el\s+)?(?:finde|fin\s+de\s+semana)(\s+pasado)?\b/);
+  if (mWeekend) {
+    const pasado = !!mWeekend[1];
+    const today = getNowArgentina().getDay();
+    let diff = (today - 6 + 7) % 7; // 0 = hoy es sábado
+    if (diff === 0 && pasado) diff = 7;
+    return daysAgo(diff);
+  }
+
   // hace N días / hace N dias
   const mDays = t.match(/\bhace\s+(\w+)\s+d[ií]as?\b/);
   if (mDays) {
@@ -127,6 +163,13 @@ export function resolveAllRelativeDates(text: string | null | undefined): string
     /\bantes?\s+de\s+ayer\b/,
     /\banteayer\b/,
     /\bhace\s+\w+\s+(?:dias?|semanas?|meses?)\b/,
+    /\bla\s+semana\s+pasada\b/,
+    /\b(?:el\s+)?mes\s+pasado\b/,
+    /\b(?:el\s+)?(?:finde|fin\s+de\s+semana)(?:\s+pasado)?\b/,
+    /\bla\s+noche\s+pasada\b/,
+    /\banoche\b/,
+    /\besta\s+(?:manana|madrugada|tarde|noche)\b/,
+    /\bhoy\s+(?:temprano|a\s+la\s+manana)\b/,
     /\bayer\b/,
     /\b(?:domingo|lunes|martes|miercoles|jueves|viernes|sabado)(?:\s+pasado)?\b/,
   ];

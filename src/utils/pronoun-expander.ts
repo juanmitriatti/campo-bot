@@ -30,9 +30,9 @@ const TOKEN_END = String.raw`(?=\s|$|[.,!?;:])`;
 const PRONOUN_PATTERNS: ReadonlyArray<RegExp> = [
   // "ahí mismo" / "ahi mismo" / "alli mismo" / "allá mismo"
   new RegExp(String.raw`\b(?:ah[ií]|all[íi]|all[áa])\s+mismo\b`, 'gi'),
-  // "(el) mismo lote / campo / potrero" — consume the "el" article if present
-  // so "en el mismo lote" → "en en lote X" → collapsed to "en lote X" below.
-  new RegExp(String.raw`\b(?:el\s+)?mismo\s+(?:lote|campo|potrero)\b`, 'gi'),
+  // "(el/ese/este) mismo lote / campo / potrero" — consume the article/demonstrative
+  // if present so "en el mismo lote" → "en en lote X" → collapsed to "en lote X" below.
+  new RegExp(String.raw`\b(?:el\s+|ese\s+|este\s+)?mismo\s+(?:lote|campo|potrero)\b`, 'gi'),
   // "el mismo" without noun — keeps natural flow ("y el mismo" → "y en lote X")
   new RegExp(String.raw`\bel\s+mismo\b`, 'gi'),
   // "ese / este / aquel + lote/campo" — explicit pronoun + noun
@@ -45,27 +45,61 @@ const PRONOUN_PATTERNS: ReadonlyArray<RegExp> = [
   new RegExp(String.raw`\b(?:en|a|del?)\s+all[íi]${TOKEN_END}`, 'gi'),
 ];
 
+/** Pronoun phrases that refer to the SECOND-most-recent plot ("el otro").
+ *  Only expand when the caller can provide a distinct previous plot from
+ *  the context_stack — otherwise these pass through untouched. */
+const OTHER_PLOT_PATTERNS: ReadonlyArray<RegExp> = [
+  // "el otro lote / campo / potrero / parcela"
+  new RegExp(String.raw`\bel\s+otro\s+(?:lote|campo|potrero|parcela)\b`, 'gi'),
+  // "en el otro" / "al otro" / "del otro" sin sustantivo — solo tras preposición
+  // clara de lugar para no comerse "el otro día" (que es temporal).
+  new RegExp(String.raw`\b(?:en|a|del?)\s+el\s+otro${TOKEN_END}`, 'gi'),
+];
+
 /**
  * Returns { expanded: string, replaced: number } — expanded is the new
  * text, replaced is the count of pronoun phrases swapped out. When
  * replaced=0 the text is identical to the input.
+ *
+ * `prevPlotName` (optional) is the SECOND-most-recent plot from the
+ * context_stack; when present, "el otro lote" expands to it.
  */
-export function expandPronouns(text: string, lastPlotName: string | null | undefined): { expanded: string; replaced: number } {
-  if (!text || !lastPlotName) return { expanded: text, replaced: 0 };
+export function expandPronouns(
+  text: string,
+  lastPlotName: string | null | undefined,
+  prevPlotName?: string | null,
+): { expanded: string; replaced: number } {
+  if (!text || (!lastPlotName && !prevPlotName)) return { expanded: text, replaced: 0 };
   let out = text;
   let replaced = 0;
 
-  // Build the explicit phrase we'll use to replace pronouns. Includes the
-  // "en lote" prefix so the agent's lote-extraction sees it correctly.
-  const replacement = `en lote ${lastPlotName}`;
+  // "el otro lote" se resuelve PRIMERO (al segundo lote del stack) para que
+  // los patrones de "mismo/ese lote" no se lo roben hacia el lote más reciente.
+  if (prevPlotName) {
+    const otherReplacement = `en lote ${prevPlotName}`;
+    for (const pat of OTHER_PLOT_PATTERNS) {
+      const before = out;
+      out = out.replace(pat, otherReplacement);
+      if (out !== before) {
+        const matches = before.match(pat);
+        if (matches) replaced += matches.length;
+      }
+    }
+  }
 
-  for (const pat of PRONOUN_PATTERNS) {
-    const before = out;
-    out = out.replace(pat, replacement);
-    if (out !== before) {
-      // Count actual replacements
-      const matches = before.match(pat);
-      if (matches) replaced += matches.length;
+  if (lastPlotName) {
+    // Build the explicit phrase we'll use to replace pronouns. Includes the
+    // "en lote" prefix so the agent's lote-extraction sees it correctly.
+    const replacement = `en lote ${lastPlotName}`;
+
+    for (const pat of PRONOUN_PATTERNS) {
+      const before = out;
+      out = out.replace(pat, replacement);
+      if (out !== before) {
+        // Count actual replacements
+        const matches = before.match(pat);
+        if (matches) replaced += matches.length;
+      }
     }
   }
 

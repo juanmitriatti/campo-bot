@@ -22,14 +22,17 @@ export class ConversationHistoryService {
   async getRecentTurns(userId: UserId, maxChars = 4000): Promise<ConversationTurn[]> {
     if (maxChars <= 0) return [];
 
+    // LIMIT 40: el budget de 4000 chars nunca necesita más filas que eso, y sin
+    // límite la query traía TODO el historial del usuario para tirarlo después.
     const { rows } = await pool.query(
-      `SELECT message_text, response_text
+      `SELECT message_text, response_text, tool_calls
        FROM conversation_logs
        WHERE user_id = $1
          AND message_text IS NOT NULL
          AND response_text IS NOT NULL
          AND response_text <> ''
-       ORDER BY created_at DESC`,
+       ORDER BY created_at DESC
+       LIMIT 40`,
       [userId],
     );
 
@@ -44,7 +47,14 @@ export class ConversationHistoryService {
     for (const row of reversed) {
       if (!row.message_text || !row.response_text) continue;
       turns.push({ role: 'user', content: row.message_text });
-      turns.push({ role: 'assistant', content: row.response_text });
+      // Append a compact summary of the tools the agent fired on that turn so
+      // the NEXT turn knows WHAT got registered, not just what the bot said.
+      // Without this, "y otro de 30 mil" relies on the response prose alone —
+      // frágil cuando la respuesta no nombra la herramienta usada.
+      turns.push({
+        role: 'assistant',
+        content: row.response_text + this.toolCallSuffix(row.tool_calls),
+      });
     }
 
     // Truncate from the front (oldest) to stay within char budget. Always
@@ -60,5 +70,24 @@ export class ConversationHistoryService {
     }
 
     return turns;
+  }
+
+  /**
+   * Compact "[acciones: tool1, tool2]" suffix from the stored tool_calls JSON.
+   * Best-effort: any parse problem returns '' so history never breaks on a
+   * malformed row. Names only — inputs would blow the char budget.
+   */
+  private toolCallSuffix(toolCalls: unknown): string {
+    try {
+      const parsed = typeof toolCalls === 'string' ? JSON.parse(toolCalls) : toolCalls;
+      if (!Array.isArray(parsed) || parsed.length === 0) return '';
+      const names = parsed
+        .map((tc: { toolName?: string; name?: string }) => tc?.toolName ?? tc?.name)
+        .filter((n): n is string => typeof n === 'string' && n.length > 0);
+      if (names.length === 0) return '';
+      return `\n[acciones ejecutadas: ${names.join(', ')}]`;
+    } catch {
+      return '';
+    }
   }
 }

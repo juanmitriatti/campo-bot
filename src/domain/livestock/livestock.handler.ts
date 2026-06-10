@@ -8,7 +8,8 @@ import {
 import type { LivestockCategory, LivestockGroupRow } from './livestock.types.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FeedlotService } from '../feedlot/feedlot.service.js';
-import { saveDomainEvent, queryLivestockEvents, updateLivestockGroupWeight } from '../../services/expenses.js';
+import { saveDomainEvent, queryLivestockEvents, updateLivestockGroupWeight, updateConversationState } from '../../services/expenses.js';
+import { pool } from '../../config/db.js';
 import { encodeLivestockPayload, decodeLivestockPayload } from './livestock-payload.js';
 import { buildPostActionButtons } from './livestock-post-actions.js';
 import type {
@@ -38,6 +39,31 @@ export class LivestockHandler {
 
   constructor(service?: LivestockService) {
     this.service = service ?? new LivestockService();
+  }
+
+  /**
+   * Alimenta el context_stack después de una operación de hacienda que quedó
+   * en un lote concreto, para que el próximo "ahí mismo / ese lote" resuelva
+   * bien. Los paths que pasan por plotDiscovery ya lo hacen — esto cubre los
+   * que toman el lote del GRUPO (livestock_groups.plot_id) sin discovery.
+   * Best-effort: nunca bloquea la operación por bookkeeping de memoria.
+   */
+  private async bumpConversationContext(
+    userId: UserId,
+    plotId: number | null | undefined,
+    fieldId?: number | null,
+  ): Promise<void> {
+    try {
+      if (!plotId) return;
+      let fid = fieldId ?? null;
+      if (fid == null) {
+        const { rows } = await pool.query('SELECT field_id FROM plots WHERE id = $1 AND deleted_at IS NULL', [plotId]);
+        fid = rows[0]?.field_id ?? null;
+      }
+      if (fid != null) await updateConversationState(userId, fid, plotId);
+    } catch {
+      // nunca romper una operación de hacienda por la memoria conversacional
+    }
   }
 
   async handleCommand(
@@ -301,6 +327,8 @@ export class LivestockHandler {
       throw err;
     }
 
+    await this.bumpConversationContext(userId, group.plot_id, group.field_id);
+
     const newLabel = created ? ' (nuevo grupo)' : '';
     const breed = group.breed ? ` ${group.breed}` : '';
     const financialLine = financial
@@ -391,6 +419,8 @@ export class LivestockHandler {
       if (offer) return offer;
       throw err;
     }
+
+    await this.bumpConversationContext(userId, group.plot_id, group.field_id);
 
     const breed = group.breed ? ` ${group.breed}` : '';
     const financialLine = financial
@@ -493,6 +523,8 @@ export class LivestockHandler {
       throw err;
     }
 
+    await this.bumpConversationContext(userId, destGroup.plot_id, destGroup.field_id);
+
     const mvLabel = LIVESTOCK_MOVEMENT_LABEL[movement.movement_type];
     const breed = sourceGroup.breed ? ` ${sourceGroup.breed}` : '';
     const body =
@@ -535,6 +567,8 @@ export class LivestockHandler {
       movement_date: cmd.eventDate as string,
     });
 
+    await this.bumpConversationContext(userId, group.plot_id, group.field_id);
+
     const breed = group.breed ? ` ${group.breed}` : '';
     return {
       messages: [
@@ -563,6 +597,8 @@ export class LivestockHandler {
       breed: cmd.breed as string,
       movement_date: cmd.eventDate as string,
     });
+
+    await this.bumpConversationContext(userId, group.plot_id, group.field_id);
 
     const breed = group.breed ? ` ${group.breed}` : '';
     return {
@@ -596,6 +632,8 @@ export class LivestockHandler {
       reason: cmd.reason as string,
       movement_date: cmd.eventDate as string,
     });
+
+    await this.bumpConversationContext(userId, group.plot_id, group.field_id);
 
     const breed = group.breed ? ` ${group.breed}` : '';
     const diff = count - previousCount;
@@ -938,6 +976,8 @@ export class LivestockHandler {
       notes: cmd.notes || null,
     });
 
+    await this.bumpConversationContext(userId, resolvedLoc.plotId);
+
     const typeLabel = HEALTH_TYPE_LABEL[healthType] || healthType;
     const lines: string[] = [`💉 *Evento sanitario registrado*`];
     lines.push(`  Tipo: ${typeLabel}`);
@@ -1068,6 +1108,8 @@ export class LivestockHandler {
       notes: cmd.notes || null,
     });
 
+    await this.bumpConversationContext(userId, resolvedLoc.plotId);
+
     const typeLabel = REPRO_TYPE_LABEL[reproType] || reproType;
     const emoji = reproType === 'destete' ? '🍼' : reproType === 'inseminacion' ? '💉' : '🐂';
     const lines: string[] = [`${emoji} *Evento reproductivo registrado*`];
@@ -1196,6 +1238,8 @@ export class LivestockHandler {
         avgWeightKg,
       });
     }
+
+    await this.bumpConversationContext(userId, loc.plotId);
 
     const lines: string[] = ['⚖️ *Pesaje registrado*'];
     if (animalsWeighed && category) {

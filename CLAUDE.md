@@ -19,7 +19,7 @@ campo-bot is a WhatsApp and Telegram-based agricultural management assistant for
 - `npx tsx src/scripts/create-admin.ts --email <e> --name <n> --password <p>` — Bootstrap admin user
 - `npx tsx src/scripts/seed-dummy-data.ts --user-id <id> [--reset]` — Seed dummy data
 - `npx tsx src/scripts/run-migrations.ts` — Manually run pending DB migrations (auto-runs on startup)
-- `npm run eval` — Run conversational eval (18 scenarios against local Docker, real pipeline + DB)
+- `npm run eval` — Run conversational eval (25 scenarios against local Docker, real pipeline + DB)
 - `npm run eval:verbose` — Same with step-by-step detail
 - `npx tsx src/testing/run-eval.ts --scenario basic-expense` — Run a single eval scenario
 
@@ -112,7 +112,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - During any flow (expense, income, etc.) that has `data.amount` or `data.category` already set, the user can correct with patterns: "no, eran X" / "en realidad X" / "perdón, X" / "quise decir X" for amounts, or "no, es X" / "no, categoría X" / **"no, era en X"** / "no, fue en X" for categories. Works both mid-flow AND during confirmation step. `extractAmountCorrection()` and `extractCategoryCorrection()` in `conversation-engine.ts`. The "no, era en X" pattern is restricted to candidates that look like CATEGORY words (sueldos / gasoil / semillas / fertilizante / etc.) via a shared stoplist from `correction-classifier.looksLikeCategoryWord` — without that guard it'd conflict with plot corrections ("no, era en lote Norte"), which `correction-classifier` intercepts earlier in the pipeline.
 
 ### Pending-correction interceptor (May 27)
-- The controllers (currently `test-bot.controller`; **WA + TG port pending**) intercept correction patterns BEFORE classification when a pending expense/income exists. If `extractAmountCorrection` or `extractCategoryCorrection` matches the incoming text, the pending is patched in-place (amount or `detectarCategoria(...)`-canonicalized category) and a fresh confirmation is re-rendered — no round-trip to the agent. Without this, "no, era en sueldos" mid-confirmation was hitting the agent which produced an unhelpful "what plot to correct?" prompt (CR02 in regression QA).
+- The 3 controllers (test-bot, whatsapp, telegram — **ported everywhere, no longer pending**) intercept correction patterns BEFORE classification when a pending expense/income exists. If `extractAmountCorrection` or `extractCategoryCorrection` matches the incoming text, the pending is patched in-place (amount or `detectarCategoria(...)`-canonicalized category) and a fresh confirmation is re-rendered — no round-trip to the agent. Without this, "no, era en sueldos" mid-confirmation was hitting the agent which produced an unhelpful "what plot to correct?" prompt (CR02 in regression QA).
 
 ### Pronoun expansion (May 27, comprehensive memory fix)
 - `src/utils/pronoun-expander.ts` swaps Spanish plot pronouns ("ahí mismo", "ese lote", "el mismo", "el de antes", "en ahí", etc.) for the explicit `"en lote <name>"` BEFORE the agent sees the message, using `conversation_state.plot_name` from the most-recent context. Wired into `intent-classifier.ts` as STEP 2.6 (between correction pre-classifier and agent call). Passes through unchanged when no pronoun OR no recent plot. Logs every expansion as `[intent-classifier] Pronoun expansion: "<in>" → "<out>" (N swap)`.
@@ -127,7 +127,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - `handleFinancialReport` now calls `updateConversationState(userId, fieldId, plotId)` whenever the query resolves a specific plot/field. Without this, "cuánto gasté en lote Amarillo este mes" left no trace in `context_stack`, and the next pronoun-bearing message resolved to whichever plot the LAST WRITE used — conflating contexts. P02 was a regression caused by exactly this.
 
 ### Relative date normalizer (May 27, `utils/relative-dates.ts`)
-- `resolveRelativeDate(text)` detects Spanish relative phrases ("ayer", "anteayer", "antes de ayer", "hace N días/semanas/meses") and resolves to ISO date in Argentina TZ. Used by `agent-response-mapper` as a server-side safety net when the agent omits `event_date` — covers tools in `TOOLS_WITH_DATE_PARAM` (log_expense, log_income, sow/harvest, spray/fertil, livestock health/repro/weighing, rainfall, etc.). The agent prompt teaches Haiku to set the date, but it forgets often on casual phrasings ("ayer pagué..."). Date never overwrites an explicitly-set agent value — only fills the gap.
+- `resolveRelativeDate(text)` detects Spanish relative phrases ("ayer", "anteayer", "antes de ayer", "hace N días/semanas/meses", and since Jun 2026 also "anoche", "la noche pasada", "esta mañana/madrugada/tarde/noche", "hoy temprano", "la semana pasada" ≈ −7d, "el mes pasado" ≈ −30d, "el finde / fin de semana (pasado)" → most recent past Saturday) and resolves to ISO date in Argentina TZ. Used by `agent-response-mapper` as a server-side safety net when the agent omits `event_date` — covers tools in `TOOLS_WITH_DATE_PARAM` (log_expense, log_income, sow/harvest, spray/fertil, livestock health/repro/weighing, rainfall, etc.). The agent prompt teaches Haiku to set the date, but it forgets often on casual phrasings ("ayer pagué..."). Date never overwrites an explicitly-set agent value — only fills the gap.
 
 ### Multi-slot context tracking
 - `conversation_state.context_stack` (JSONB, migration 075) stores last 3 field/plot references as `[{field_id, plot_id, ts}]`. Updated on every `updateConversationState()` call (LIFO, deduped). Exposed in agent prompt as "contextos recientes:[1)Lote Norte (La Esperanza), 2)Lote Sur...]" when stack has >1 entry. Enables resolution of "el otro campo" / "el de antes".
@@ -279,11 +279,23 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 ### Message idempotency
 - `src/middleware/dedup.ts` `MessageDedup` is time-windowed (10-min TTL, age-based eviction) — dedups Telegram `update_id` / callback ids so a webhook RETRY of a slow audio doesn't double-write (one "320 madres" audio once created the herd twice). Still per-process; multi-replica would need a shared store.
 
+### Pending persistence + per-user serialization (Jun 2026)
+- **Pending stores persist to DB** (`pending_states` table, migration 097): the 4 stores (`PendingActivityStore`, `PendingTransactionStore`, `PendingObservationStore`, `PendingFieldCityStore`) keep their synchronous Map API but write-through to DB via `src/middleware/pending-persistence.ts` (`PendingMirror`). Controllers call `hydratePendingStores(phone)` at message entry (fill-if-missing) so a Railway restart no longer wipes in-flight pendings. Tombstones (60s) prevent a hydrate from resurrecting a just-cleared pending whose DELETE is in flight. Hourly sweep at :30 in scheduler.
+- **Per-user message serialization** (`src/middleware/user-lock.ts` `withUserLock`): the 3 controllers chain message processing per phone/chat-id so two rapid messages from the same user can't interleave and overwrite each other's pending. Different users still run in parallel. In-process only (single-replica deploy).
+- **Pending hint to agent**: when a pending is active and a message still reaches the agent, `classify(..., { pendingHint })` injects a `[Hay una pregunta pendiente...]` line into the user prefix (uncached zone) so the agent knows there's an open slot question.
+
+### Button payload tokens (Telegram 64-byte limit)
+- `bap2_*` (bulk plot assign) and `rain_batch_*` callbacks now embed a short token from `callbackPayloadStore` instead of inline base64 — inline payloads with 3+ records exceeded Telegram's 64-byte `callback_data` cap (silent HTTP 400, user saw no buttons). `InteractiveRouter` resolves token→payload with inline-base64 fallback for in-flight buttons.
+- `assign_bulk_plot` reports partially-stale taps: when some record IDs no longer exist (deleted after the buttons rendered), the confirmation appends "⚠️ N registros ya no existían" instead of confirming as if everything was assigned.
+
 ### AI Cost & Caching
 - Agent settings live under the `ai` group in admin (`/admin/#settings`, section **"Configuración de IA"**): `AGENT_ENABLED`, `AGENT_MODEL`, `AGENT_MAX_TOKENS` (default 1500), `AGENT_TIMEOUT_MS`, `AGENT_TEMPERATURE`, `AGENT_CACHE_TTL` (`short`/`long`), `AGENT_FEW_SHOT_LIMIT` (default 5).
 - Prompt caching: three cache_control breakpoints (system, tools, last few-shot). User context + today's date injected via `buildUserMessagePrefix()` so the cached prefix stays stable across users/calls.
 - Few-shots rotate daily via `ORDER BY md5(id::text || CURRENT_DATE::text)` — deterministic per day, varied across days. No random reshuffles.
-- `ai_usage` persists `cache_read_tokens` + `cache_write_tokens` (migration 070). Dashboard cost uses 4-term Haiku pricing: input 0.80, cache read 0.08 (10%), cache write 1.00 (125%), output 4.00 per M. Log line `AI_AGENT CACHE: Nread/Nwrite` shows real cache hits in Railway logs.
+- `ai_usage` persists `cache_read_tokens` + `cache_write_tokens` (migration 070). Dashboard cost uses 4-term Haiku 4.5 pricing (corrected Jun 2026): input 1.00, cache read 0.10 (10%), cache write 1.25 (125%), output 5.00 per M. Log line `AI_AGENT CACHE: Nread/Nwrite` shows real cache hits in Railway logs.
+- Anthropic client uses explicit `maxRetries: 2` (SDK exponential backoff on 429/529/5xx). `AGENT_TIMEOUT_MS` default is 12000 — it's the TOTAL budget including retries (8000 was cutting them off). `AGENT_MAX_TOKENS` code default is 1500 (was 400, which truncated 4-5 tool compounds).
+- Conversational fallback (`conversational-fallback.service.ts`) now includes recent history (1500-char budget via `ConversationHistoryService`) — it was single-turn and follow-up questions lost all context.
+- `ConversationHistoryService.getRecentTurns` appends `[acciones ejecutadas: tool1, tool2]` to assistant turns (from `conversation_logs.tool_calls`) so the next agent turn knows WHAT was registered, not just what the bot said. Query is bounded with LIMIT 40.
 
 ## Account Lifecycle & Billing (P0 hardening — Mayo 2026)
 
@@ -400,7 +412,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/testing/test-bot-client.ts` — HTTP client wrapping test-bot API (send/tap/reset/queryDb)
 - `src/testing/assertions.ts` — Deterministic assertions (responseContains, dbHasExpense, dbHasActivity, etc.)
 - `src/testing/scenario-runner.ts` — Loads JSON scenarios, runs setup→steps→assertions→report
-- `src/testing/scenarios/*.json` — 18 test scenarios + `_setup.json` reusable sequences
+- `src/testing/scenarios/*.json` — 25 test scenarios + `_setup.json` reusable sequences
 - `src/testing/qa-adversarial-30.ts` — 30 adversarial QA scenarios (run: `npx tsx src/testing/qa-adversarial-30.ts`)
 - `src/testing/qa-adversarial-advanced-40.ts` — 40 advanced adversarial scenarios (run: `npx tsx src/testing/qa-adversarial-advanced-40.ts`)
 - `src/testing/qa-compound-mixed-25.ts` — 25 multi-domain compound conversations (May 23)
@@ -417,7 +429,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/utils/date.ts` — Argentina timezone helpers
 - `src/utils/guards.ts` — `isLikelyQuestion()` guard
 - `src/utils/format-quantity.ts` — `formatQuantityHuman()`: renders large kg as tn (e.g. 213200kg → ≈ 213,2 tn)
-- `src/utils/pronoun-expander.ts` — `expandPronouns(text, lastPlotName)` — server-side rewrite of "ahí mismo / ese lote / el de antes" → "en lote X". Wired into `intent-classifier.ts` STEP 2.6.
+- `src/utils/pronoun-expander.ts` — `expandPronouns(text, lastPlotName, prevPlotName?)` — server-side rewrite of "ahí mismo / ese (mismo) lote / el de antes" → "en lote X", plus "el otro lote / en el otro" → second-most-recent plot from `context_stack` (prevPlotName, lazy lookup in intent-classifier only when text says "el otro"; "el otro día" temporal is excluded). Wired into `intent-classifier.ts` STEP 2.6.
 - `src/utils/plot-intent.ts` — `userExplicitlyReferencedPlot(text)` — does the user's text contain a plot pronoun or explicit "lote X" mention? Used by `financial.handler` to decide whether `FIELD_LEVEL_CATEGORIES` should strip the auto-resolved plot.
 - `src/utils/relative-dates.ts` — `resolveRelativeDate(text)` (incl. named weekdays "el lunes", AR-local) + `resolveAllRelativeDates(text)` (ordered, for multi-day messages so each entry keeps its own date) + `TOOLS_WITH_DATE_PARAM` + `dateKeyForTool()`. The mapper OVERRIDES the agent's date when a relative/weekday phrase is present (agent landed weekdays +1).
 - `src/utils/lexicon.ts` — **single source of truth** for conversational synonym sets: `CORRECTION_CUES`/`CORRECTION_ALT`, `COPULA_ALT`, `detectCurrencyTerm` (USD/ARS incl. slang verdes/mangos), `UNIT_TERMS`/`QUANTITY_UNIT_RE`, `MONEY_HINT_RE`, `hasDeleteVerb`, `stripAnswerPrefix`, `normLex`. Add synonyms here, not in handler regexes.
@@ -449,7 +461,8 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - Single file: `npx vitest run src/utils/parser.test.js`
 
 ### Conversational Eval (end-to-end, real pipeline)
-- 18 scenarios testing key intents against local Docker (real DB, real AI pipeline, no mocks)
+- 25 scenarios testing key intents against local Docker (real DB, real AI pipeline, no mocks)
+- **Last run (Jun 2026): 24/25 (96%)** — the 1 fail is LLM non-determinism on the price-proximity rule ("vendí A y B a $X" → Haiku sometimes prices both items instead of only the adjacent one). Jun 2026: 10 scenarios had drifted assertions (eventType "sow"/"spray" vs DB "planting"/"spraying", category picker is now a list not buttons, confirm cards show category not description, "Junín" became ambiguous in the localidad census) — fixed, the eval is a useful signal again.
 - Requires: `docker compose up -d` (app on :3000 + DB on :5433)
 - Run: `npm run eval` — auto-registers test user, resets between scenarios, exits 1 on failure
 - Single: `npx tsx src/testing/run-eval.ts --scenario basic-expense`
