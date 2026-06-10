@@ -449,7 +449,12 @@ export class IntentClassifier {
               // If context load fails, skip plot/field validation rather than blocking the call
             }
           }
-          const parseResults = this.responseMapper.mapToParseResults(agentResult, text, {
+          // IMPORTANTE: validar contra agentInputText (texto post pronoun-expander),
+          // NO contra el original. "en el otro lote" se expande server-side a
+          // "en lote Norte" — si validamos contra el original, el plot que NUESTRO
+          // código inyectó se descarta como alucinación del agente y el handler
+          // re-pregunta el lote (visto live con AGENT_VALIDATE_PLOT_FIELD=true).
+          const parseResults = this.responseMapper.mapToParseResults(agentResult, agentInputText, {
             validateCrop,
             validatePlotField,
             userPlots,
