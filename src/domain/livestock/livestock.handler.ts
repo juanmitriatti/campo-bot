@@ -782,6 +782,17 @@ export class LivestockHandler {
     const groups = await this.service.findGroupsByCategory(userId, category);
 
     if (groups.length === 0) {
+      // Decirle QUÉ tiene en vez del genérico "no tenés hacienda" — cuando el
+      // mismatch es de categoría (pidió "novillos" y tiene "vacas"), el listado
+      // le permite auto-corregirse en el próximo mensaje.
+      const inventory = await this.service.listInventory(userId, {});
+      if (inventory.groups.length > 0) {
+        const have = inventory.groups
+          .slice(0, 5)
+          .map(g => `${g.count} ${LIVESTOCK_CATEGORY_LABEL[g.category] ?? g.category}${g.count === 1 ? '' : 's'} (${fmtLoc(g)})`)
+          .join(', ');
+        return { error: `No encontré ${category ? `"${category}s"` : 'esa categoría'} en tu hacienda. Tenés: ${have}. Repetí el registro con la categoría correcta.` };
+      }
       return { error: 'No tenés hacienda registrada con esos criterios. Primero agregá animales con "agregué N <categoría> al lote X".' };
     }
 

@@ -6,6 +6,14 @@ import type {
   LivestockMovementRow,
 } from './livestock.types.js';
 
+/** Gemelas de género: "terneros" en el habla del campo abarca también terneras
+ *  (masculino genérico). Usado por findGroupsByCategory para no fallar el
+ *  lookup cuando el usuario alterna el género de la categoría. */
+const GENDER_TWIN: Record<string, string> = {
+  ternero: 'ternera',
+  ternera: 'ternero',
+};
+
 function accessibleFieldsSql(paramIdx: number): string {
   // Own fields + fields shared via field_members. The previous version only
   // returned shared fields, so owners saw empty livestock lists.
@@ -640,8 +648,18 @@ export class LivestockRepository {
     const params: unknown[] = [userId];
     let categoryFilter = '';
     if (category) {
-      params.push(category);
-      categoryFilter = ' AND g.category::text = $2';
+      // Fallback de género: en el campo "40 terneros" es el genérico del
+      // conjunto — si el usuario cargó "terneras" y después dice "desteté 40
+      // terneros", el match exacto devolvía 0 y el evento moría con "no tenés
+      // hacienda" (visto live). Matcheamos la categoría Y su gemela de género.
+      const twin = GENDER_TWIN[category];
+      if (twin) {
+        params.push([category, twin]);
+        categoryFilter = ' AND g.category::text = ANY($2)';
+      } else {
+        params.push(category);
+        categoryFilter = ' AND g.category::text = $2';
+      }
     }
     const { rows } = await pool.query(
       `SELECT
