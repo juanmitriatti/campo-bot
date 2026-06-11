@@ -72,6 +72,10 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - Birth verbs only (nacieron/parieron/nació) → `record_livestock_birth`
 - "pasé N terneros a novillos" → `transfer_livestock` (recategorización auto-detected). Handler auto-resolves: if no destination and `dest_category` set → same-location recategorization. If no source and only one group of that category exists → auto-resolves source.
 - `add_livestock` / `remove_livestock` with `unit_price_ars|usd` → auto-creates linked expense/income (category "Hacienda"). Stored in `livestock_movements.linked_expense_id` / `linked_income_id`.
+- **add_livestock SIN lote (Jun 2026)**: el agente llama la tool igual omitiendo plot/corral — el handler pregunta con pending real. PROHIBIDO en prompt/tool-description que el agente pregunte el lote vía respond_text (pregunta huérfana → la respuesta "lote norte" se la robaba el bypass trivial como plot_info). Backstop determinístico: `reconstructFromOpenLocationQuestion` en intent-classifier — si la última respuesta del bot (<5 min) fue "¿en qué lote...?" sin pending y el usuario contesta "lote X" a secas, se reconstruye "<msg original> en lote X" y se re-clasifica.
+- **Precio diferido (`set_livestock_price`, Jun 2026)**: cuando add/remove pregunta "¿a cuánto fue la compra/venta?", deja `setPendingActivity({command:'set_livestock_price', data:{movementId, kind}, missing:['unit_price']})`. La respuesta la consume el pending-processor y `attachPriceToMovement` crea el gasto/ingreso vinculado a ESE movimiento. Sin esto, la respuesta iba al agente a ciegas y Haiku la mapeaba a `edit_last_expense` — corrompió un gasto ajeno en vivo. **Regla general: NINGUNA pregunta al usuario puede ser texto suelto — siempre pending machine-readable o botones.**
+- **Gemelas de género (`GENDER_TWIN`, Jun 2026)**: `findGroupsByCategory` matchea ternero↔ternera (el masculino genérico del campo) — "desteté 40 terneros" con "terneras" registradas resolvía 0 grupos. Cuando el lookup da 0 pero hay hacienda, el error lista el inventario real ("Tenés: 40 terneras (Sur)...") para auto-corrección.
+- **Memoria conversacional**: los 9 write paths de hacienda llaman `bumpConversationContext` (alimenta `context_stack`) cuando el lote vino del grupo sin pasar por plotDiscovery — sin esto "ahí mismo" tras una operación de hacienda resolvía al lote equivocado.
 
 ### Sanidad Animal (livestock health)
 - vacuné/desparasité/curé/traté + animales → `log_health_event`. health_type: vacuné=vacunacion, desparasité=desparasitacion, curé/traté=tratamiento, revisé=revision_sanitaria
@@ -95,7 +99,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - Handler uses `localidadLookup` to disambiguate ambiguous names (ej: Ameghino in Bs As vs La Pampa).
 
 ### Pending field-city escape hatch
-- `pending-field-city-handler.looksLikeNonCity()` aborts the loop when the user types something that clearly isn't a locality (agro verbs, lists with `:`, queries with `?`, messages > 60 chars, SQL keywords, multiple commas). When triggered, the bot tells the user "Dejé pendiente la ubicación de X" and clears the pending state so subsequent registrations work.
+- `pending-field-city-handler.looksLikeNonCity()` aborts the loop when the user types something that clearly isn't a locality (agro verbs, lists with `:`, queries with `?`, messages > 60 chars, SQL keywords, multiple commas **WITH digits** — "Pergamino, Buenos Aires, Argentina" is a valid locality answer and resolves; only data-lists escape, Jun 2026). When triggered, the bot tells the user "Dejé pendiente la ubicación de X" and clears the pending state so subsequent registrations work.
 - Add new escape patterns here, NOT in the agent prompt.
 
 ### Crop name synonyms (anglicismos)
@@ -115,7 +119,8 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - The 3 controllers (test-bot, whatsapp, telegram — **ported everywhere, no longer pending**) intercept correction patterns BEFORE classification when a pending expense/income exists. If `extractAmountCorrection` or `extractCategoryCorrection` matches the incoming text, the pending is patched in-place (amount or `detectarCategoria(...)`-canonicalized category) and a fresh confirmation is re-rendered — no round-trip to the agent. Without this, "no, era en sueldos" mid-confirmation was hitting the agent which produced an unhelpful "what plot to correct?" prompt (CR02 in regression QA).
 
 ### Pronoun expansion (May 27, comprehensive memory fix)
-- `src/utils/pronoun-expander.ts` swaps Spanish plot pronouns ("ahí mismo", "ese lote", "el mismo", "el de antes", "en ahí", etc.) for the explicit `"en lote <name>"` BEFORE the agent sees the message, using `conversation_state.plot_name` from the most-recent context. Wired into `intent-classifier.ts` as STEP 2.6 (between correction pre-classifier and agent call). Passes through unchanged when no pronoun OR no recent plot. Logs every expansion as `[intent-classifier] Pronoun expansion: "<in>" → "<out>" (N swap)`.
+- `src/utils/pronoun-expander.ts` swaps Spanish plot pronouns ("ahí mismo", "ese (mismo) lote", "el mismo", "el de antes", "en ahí", etc.) for the explicit `"en lote <name>"` BEFORE the agent sees the message, using `conversation_state.plot_name` from the most-recent context. Since Jun 2026 also "el otro lote / en el otro" → SECOND-most-recent plot from `context_stack` (prevPlotName, lazy lookup only when text says "el otro"; temporal "el otro día" excluded). Wired into `intent-classifier.ts` as STEP 2.6 (between correction pre-classifier and agent call). Passes through unchanged when no pronoun OR no recent plot. Logs every expansion as `[intent-classifier] Pronoun expansion: "<in>" → "<out>" (N swap)`.
+- **CRITICAL coupling**: everything downstream that validates agent output against "what the user said" MUST use the EXPANDED text (`agentInputText`), not the original — `agent-output-validator` once vetoed the plot our own expander injected (live bug).
 - Why server-side: the agent prompt already had this rule but Haiku applied it inconsistently — sometimes emitting `plot="ahi mismo"` (which never resolves) or text-only "¿qué lote?". Doing it deterministically makes the agent see unambiguous text and removes the variance.
 - Why this is bedrock: it's the root cause of the memory-corto / memoria-largo / context-switch / contradiction categories all simultaneously regressing in the senior QA run before the fix. Pronoun-expander + `plotDiscovery.resolveFromNamesWithContext` (context_stack fallback) + `relative-dates` normalizer form the conversational-memory triad.
 
@@ -127,7 +132,8 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - `handleFinancialReport` now calls `updateConversationState(userId, fieldId, plotId)` whenever the query resolves a specific plot/field. Without this, "cuánto gasté en lote Amarillo este mes" left no trace in `context_stack`, and the next pronoun-bearing message resolved to whichever plot the LAST WRITE used — conflating contexts. P02 was a regression caused by exactly this.
 
 ### Relative date normalizer (May 27, `utils/relative-dates.ts`)
-- `resolveRelativeDate(text)` detects Spanish relative phrases ("ayer", "anteayer", "antes de ayer", "hace N días/semanas/meses", and since Jun 2026 also "anoche", "la noche pasada", "esta mañana/madrugada/tarde/noche", "hoy temprano", "la semana pasada" ≈ −7d, "el mes pasado" ≈ −30d, "el finde / fin de semana (pasado)" → most recent past Saturday) and resolves to ISO date in Argentina TZ. Used by `agent-response-mapper` as a server-side safety net when the agent omits `event_date` — covers tools in `TOOLS_WITH_DATE_PARAM` (log_expense, log_income, sow/harvest, spray/fertil, livestock health/repro/weighing, rainfall, etc.). The agent prompt teaches Haiku to set the date, but it forgets often on casual phrasings ("ayer pagué..."). Date never overwrites an explicitly-set agent value — only fills the gap.
+- `resolveRelativeDate(text)` detects Spanish relative phrases ("ayer", "anteayer", "antes de ayer", "hace N días/semanas/meses", and since Jun 2026 also "anoche", "la noche pasada", "esta mañana/madrugada/tarde/noche", "hoy temprano", "la semana pasada" ≈ −7d, "el mes pasado" ≈ −30d, "el finde / fin de semana (pasado)" → most recent past Saturday) and resolves to ISO date in Argentina TZ.
+- **Future-intent suppression (Jun 2026)**: `FUTURE_INTENT_RE` ("voy a", "que viene", "mañana", present-tense plan verbs like "cosecho/pago/siembro") suprime la resolución de día-de-semana/finde — "el sábado cosecho" es un plan, NO se registra el sábado pasado. "pasado" explícito ("el sábado pasado coseché") siempre gana. "ayer/anteayer/hace N" no se suprimen (inequívocamente pasado). Tests en `relative-dates.test.ts`. Used by `agent-response-mapper` as a server-side safety net when the agent omits `event_date` — covers tools in `TOOLS_WITH_DATE_PARAM` (log_expense, log_income, sow/harvest, spray/fertil, livestock health/repro/weighing, rainfall, etc.). The agent prompt teaches Haiku to set the date, but it forgets often on casual phrasings ("ayer pagué..."). Date never overwrites an explicitly-set agent value — only fills the gap.
 
 ### Multi-slot context tracking
 - `conversation_state.context_stack` (JSONB, migration 075) stores last 3 field/plot references as `[{field_id, plot_id, ts}]`. Updated on every `updateConversationState()` call (LIFO, deduped). Exposed in agent prompt as "contextos recientes:[1)Lote Norte (La Esperanza), 2)Lote Sur...]" when stack has >1 entry. Enables resolution of "el otro campo" / "el de antes".
@@ -238,7 +244,7 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - `expected_output` now supports `{tool_calls: [{tool, input}, ...]}` for N-tool demos.
 - `FewShotService.formatAsToolUseMessages` emits ONE assistant turn with N `tool_use` blocks + N matching `tool_result` blocks (canonical Anthropic multi-tool shape).
 - Seeded compound demos covering ranges from 2 to 5 tool calls across all domains (incomes, expenses, sow/harvest, spray/fertil, livestock, observation, scouting, rainfall, onboarding).
-- Daily rotation `ORDER BY md5(id::text || CURRENT_DATE::text)` — bump `AGENT_FEW_SHOT_LIMIT` (default 5, currently set to 18 locally) so more compound demos enter the daily rotation. Prod still at 5 — if compound miss-rate stays high, bump.
+- Daily rotation `ORDER BY md5(id::text || CURRENT_DATE::text)` — bump `AGENT_FEW_SHOT_LIMIT` (code default 5; **prod is at 15**, verified Jun 2026) so more compound demos enter the daily rotation.
 
 ### Admin AI Training — auto-flag + bulk feedback (May 22)
 - `/admin → AI Training → Logs` adds the **"⚠️ Sospechosas (auto-flag)"** filter alongside Todos/Sin revisar/Revisados. Server-side query in `GET /admin/api/ai-training/logs?suspicious=true` matches: empty response, "no entendí" / "no encontré" / "me faltan" / "no pude" / "fallback" / "sin reconocer" in response_text, processing_time_ms > 8000, or confidence < 0.5.
@@ -287,6 +293,12 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 ### Button payload tokens (Telegram 64-byte limit)
 - `bap2_*` (bulk plot assign) and `rain_batch_*` callbacks now embed a short token from `callbackPayloadStore` instead of inline base64 — inline payloads with 3+ records exceeded Telegram's 64-byte `callback_data` cap (silent HTTP 400, user saw no buttons). `InteractiveRouter` resolves token→payload with inline-base64 fallback for in-flight buttons.
 - `assign_bulk_plot` reports partially-stale taps: when some record IDs no longer exist (deleted after the buttons rendered), the confirmation appends "⚠️ N registros ya no existían" instead of confirming as if everything was assigned.
+
+### Interceptor observability (Jun 2026 — PRINCIPLE)
+**Any layer that consumes, drops, rewrites or vetoes a message/tool-call MUST log it** (`[INTERCEPT]`, `AI_VALIDATOR DROP`, `AI_MAPPER DROP`). The Jun 2026 live-testing round found 5 production bugs whose common root was silent interception — a vetoed plot, a dropped expense, a swallowed answer were indistinguishable from "never happened". Current logged interceptors: output-validator strips, mapper sibling-expense drops, mapper conversational-text drops alongside tools, single-slot fallback consumption, unknown units in `normalizeToKg`, pronoun expansions, open-question rejoins. When adding a new interceptor, log its interception path from day one.
+- `COMPOUND_ACTION_PATTERN` (intent-classifier) accepts `y` / `e` / `,` / `;` as separators (an action verb must follow) — "fumigué lote norte, después registrá 50mil" no longer slips past into the trivial bypass.
+- Single-slot fallback (pending-action-processor) has a `NON_ANSWER_RE` guard: short doubt/delay phrases ("después te digo", questions with "?") are NOT taken as slot values.
+- `normalizeToKg` accepts `t`/`ton` as tonelada (used to default to kg, ÷1000 silent error).
 
 ### AI Cost & Caching
 - Agent settings live under the `ai` group in admin (`/admin/#settings`, section **"Configuración de IA"**): `AGENT_ENABLED`, `AGENT_MODEL`, `AGENT_MAX_TOKENS` (default 1500), `AGENT_TIMEOUT_MS`, `AGENT_TEMPERATURE`, `AGENT_CACHE_TTL` (`short`/`long`), `AGENT_FEW_SHOT_LIMIT` (default 5).
@@ -366,9 +378,10 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 
 ### AI Pipeline
 - `src/ai/agent.service.ts` — Claude tool_use agent (primary). `AgentResult.truncated` exposed when stop_reason=max_tokens
-- `src/ai/tool-definitions.ts` — 82 tool definitions with typed schemas
+- `src/ai/tool-definitions.ts` — 97 tool definitions with typed schemas
 - `src/ai/agent-prompt-builder.ts` — Compact system prompt with disambiguation rules
-- `src/ai/agent-response-mapper.ts` — AgentResult → ParseResult[] conversion
+- `src/ai/agent-response-mapper.ts` — AgentResult → ParseResult[] conversion. Mutating layers here LOG every drop/override (`AI_MAPPER DROP`, `[INTERCEPT]`) — keep it that way; silent vetoes were the worst bug class of Jun 2026
+- `src/ai/agent-output-validator.ts` — **anti-hallucination layer** (flags `AGENT_OUTPUT_VALIDATION_ENABLED` + `AGENT_VALIDATE_CROP`/`AGENT_VALIDATE_PLOT_FIELD`, all ON in prod): strips crop/plot/field the agent inferred without backing in the user text. Invariants (Jun 2026 hardening, own 15-test suite): validates against the pronoun-EXPANDED text (agentInputText — our expander's injections are trusted), accepts ALL crops in the text (multi-crop compounds), accepts partial plot-name tokens ("el norte" validates "Lote Norte Grande"; generic tokens like "lote"/"campo" don't count), every strip logs `AI_VALIDATOR DROP`
 - `src/ai/intent-extractor.ts` — JSON extraction (legacy fallback)
 - `src/ai/few-shot.service.ts` — Training examples as tool_use triplets
 - `src/ai/user-context.service.ts` — User fields/plots with 60s cache
@@ -397,7 +410,9 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 - `src/middleware/pending-plot-area.ts` — Queue-based hectares assignment
 - `src/middleware/slot-extractor.ts` — **Unified slot extractors** for 12 slot types. Single source for amount/category/plot/field/crop/quantity/unit/unit_price/product/currency/count/hectares. Reuses existing helpers. Used by `pending-action-processor` and `validatePlotAsync` fallback.
 - `src/middleware/pending-action-processor.ts` — Merges extracted slots into a pending action's `data`, returns updated pending (when slots still missing) OR null (when ready to execute). Auto-generates Spanish ask-prompts for remaining slots. **CAUTION**: pre-existing duplicate `const missing` declaration was silently breaking tsx transform → 500 on every pending answer. Fixed `58ae007`.
-- `src/middleware/pending-activities.ts` — Store + `PendingActivity` type with `missing?: string[]` + `askPrompt?: string` + `nextInQueue?: Array<...>`. 5-min TTL. The `nextInQueue` is the serial pending queue — items wait for the current pending to complete before being asked.
+- `src/middleware/pending-activities.ts` — Store + `PendingActivity` type with `missing?: string[]` + `askPrompt?: string` + `nextInQueue?: Array<...>`. 5-min TTL. The `nextInQueue` is the serial pending queue — items wait for the current pending to complete before being asked. **DB-persisted since Jun 2026** via `PendingMirror` (write-through; controllers hydrate at message entry).
+- `src/middleware/pending-persistence.ts` — `PendingMirror` (write-through mirror of the 4 pending stores to the `pending_states` table, migration 097) + `sweepExpiredPendingStates` (hourly cron). Fill-if-missing hydration + 60s tombstones. Survives restarts/deploys.
+- `src/middleware/user-lock.ts` — `withUserLock(key, fn)`: per-user promise-chain serialization in the 3 webhook controllers. Rapid messages from the same user process in order; different users stay parallel.
 - `src/middleware/pending-queue-advancer.ts` — Shared helper used by all 3 controllers. After a pending completes + re-routes, decides whether to (a) merge remaining queue into a new pending the re-route set, (b) pop next queue item as new pending + return its askPrompt, or (c) clear (queue empty).
 
 ### Controllers + Routes
@@ -456,7 +471,7 @@ All 13 features are independently toggleable per plan via admin UI (`PUT /dashbo
 ## Tests
 
 ### Unit Tests (vitest)
-- 1280 total, 0 failures. Baseline: 1280 passing.
+- 1769 total. **Local baseline: 1753 passing + 16 env-dependent fails** (intent-classifier/stt tests that need seeded DB state — they return `trial_expired` without it; they PASS in CI, which is the deploy gate). Don't chase those 16 locally; compare against this baseline after changes.
 - Run: `npm test`
 - Single file: `npx vitest run src/utils/parser.test.js`
 
