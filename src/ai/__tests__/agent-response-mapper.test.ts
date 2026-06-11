@@ -89,6 +89,33 @@ describe('AgentResponseMapper', () => {
         expect(parsed[0].intent.data.category).toBe('Almuerzo');
       }
     });
+
+    it('deriva categoría inválida del agente vía keyword map ("Flete" → "Otros")', () => {
+      // Haiku a veces pone el producto como categoría ("Flete"/"Transporte"),
+      // que no existe en el enum → el handler lo rechazaba ("no está en tu
+      // listado") y el gasto se trababa en el picker (fails C02/P03/L01 del QA prod).
+      const result = makeResult([{
+        toolName: 'log_expense',
+        toolInput: { amount: 10000, category: 'Flete', description: 'flete de granos' },
+        toolUseId: 'test_flete',
+      }]);
+      const parsed = mapper.mapToParseResults(result, '10 mil de flete');
+      if (parsed[0].intent.type === 'expense') {
+        expect(parsed[0].intent.data.category).toBe('Otros');
+      }
+    });
+
+    it('"transporte" como categoría del agente → "Otros"', () => {
+      const result = makeResult([{
+        toolName: 'log_expense',
+        toolInput: { amount: 5000, category: 'Transporte', description: 'transporte' },
+        toolUseId: 'test_transp',
+      }]);
+      const parsed = mapper.mapToParseResults(result, 'gasté 5 mil en transporte');
+      if (parsed[0].intent.type === 'expense') {
+        expect(parsed[0].intent.data.category).toBe('Otros');
+      }
+    });
   });
 
   describe('income mapping', () => {

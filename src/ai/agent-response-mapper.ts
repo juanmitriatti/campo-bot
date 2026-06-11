@@ -486,9 +486,36 @@ export class AgentResponseMapper {
       // When the agent omits both category and category_match, it means "ask the user" →
       // pass category='' and no category_match so CategoryService shows the picker buttons.
       // When category is provided, try to normalize it against known constants first.
-      let category = rawCategory
-        ? (matchCategory(rawCategory, EXPENSE_CATEGORIES) ?? rawCategory)
-        : '';
+      // Cuando el agente pone una categoría que NO existe en el enum (ej "Flete",
+      // "Transporte" — Haiku inventa el producto como categoría), NO la pasamos
+      // cruda (el handler la rechaza con "X no está en tu listado" y se traba el
+      // gasto). Primero intentamos el enum; si falla, derivamos del keyword map
+      // (flete→Otros); si tampoco, queda '' y actúa el fallback del texto / picker.
+      let category = '';
+      if (rawCategory) {
+        const matched = matchCategory(rawCategory, EXPENSE_CATEGORIES);
+        if (matched) {
+          category = matched;
+        } else {
+          // No está en el enum. Si es un keyword conocido que mapea a una
+          // categoría real (flete/transporte/seguro→Otros), derivamos —
+          // antes "Flete" se pasaba crudo y el handler lo rechazaba. Si NO
+          // es un keyword conocido, lo PRESERVAMOS: puede ser una categoría
+          // custom del usuario ("Almuerzo") que CategoryService busca en su
+          // tabla o, si no existe, muestra el picker.
+          const normRaw = rawCategory.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+          let derived = '';
+          for (const [kw, cat] of Object.entries(EXPENSE_KEYWORD_MAP)) {
+            if (normRaw.includes(kw)) { derived = cat; break; }
+          }
+          if (derived) {
+            console.log(`[INTERCEPT] mapper: categoría "${rawCategory}" del agente → "${derived}" (keyword map)`);
+            category = derived;
+          } else {
+            category = rawCategory; // custom del usuario → preservar para lookup
+          }
+        }
+      }
       const currency: Currency = input.currency === 'USD' ? 'USD' : 'ARS';
       // Determine expense_type: explicit from agent, or infer from category, or infer from product
       let expenseType: 'insumo' | 'varios' = 'varios';
