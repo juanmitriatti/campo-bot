@@ -999,6 +999,18 @@ export class AgentResponseMapper {
     if (input.price_per_kg_usd != null) cmd.price_per_kg_usd = input.price_per_kg_usd;
     if (input.is_purchase != null) cmd.isPurchase = input.is_purchase;
     if (input.is_sale != null) cmd.isSale = input.is_sale;
+    // is_purchase / is_sale DETERMINÍSTICO desde el verbo — Haiku se olvida de
+    // setear el flag y el handler no pregunta el precio (visto live: "compré 20
+    // vacas para el Norte" → add_livestock SIN is_purchase → no preguntó precio).
+    // El verbo manda; no dependemos de que el agente lo marque.
+    if (toolName === 'add_livestock' && cmd.isPurchase == null && originalText
+        && /\b(compr[eé]|adquir[íi]|merqu[eé])\b/i.test(originalText.normalize('NFD').replace(/[̀-ͯ]/g, ''))) {
+      cmd.isPurchase = true;
+    }
+    if (toolName === 'remove_livestock' && cmd.isSale == null && originalText
+        && /\b(vend[íi]|remat[eé])\b/i.test(originalText.normalize('NFD').replace(/[̀-ͯ]/g, ''))) {
+      cmd.isSale = true;
+    }
     if (input.source_field != null) cmd.sourceField = input.source_field;
     if (input.source_plot != null) cmd.sourcePlot = input.source_plot;
     if (input.source_corral != null) cmd.sourceCorral = input.source_corral;

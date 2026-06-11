@@ -166,9 +166,21 @@ function shouldStripCrop(input: Record<string, unknown>, originalText: string): 
 /**
  * Strip `plot` when the agent's value isn't grounded in the user's text:
  *  - `__last__` requires an explicit pronoun in the text.
- *  - Any other value must (a) be one of the user's known plots, AND (b)
- *    appear as a whole word in the user's text.
- * If we don't have the user's plot list, we can't validate safely → no strip.
+ *  - Any other value must be one of the user's known plots AND either
+ *    (a) appear as a whole word in the text, OR (b) the text contains a
+ *    deictic/pronoun reference ("ahí", "el otro", "el mismo", "ese lote"...).
+ *
+ * Rationale (SOLUCIÓN GENERALIZADA, Jun 2026): el agente resuelve plots desde
+ * el contexto cuando el usuario usa un deíctico ("el otro lote", "ahí también").
+ * El pronoun-expander cubre frases conocidas, pero por audio/variantes siempre
+ * se le escapan algunas; cuando eso pasa, el agente igual resuelve bien por
+ * contexto pero ESTE validador lo dropeaba como alucinación → el dato caía en
+ * el lote equivocado (visto live: "en el otro lote sembré maíz" → maíz a Norte).
+ * Regla: si el lote es REAL del usuario y hay CUALQUIER deíctico de lugar en el
+ * texto, es resolución de contexto legítima, no invención → no dropear. Solo se
+ * dropea un lote conocido cuando NO está en el texto Y NO hay deíctico (ahí sí
+ * huele a invención pura: "gasté en sueldos" + plot fantasma).
+ * Si no tenemos la lista de lotes, no podemos validar → no strip.
  */
 function shouldStripPlot(
   input: Record<string, unknown>,
@@ -185,7 +197,11 @@ function shouldStripPlot(
   }
 
   if (!options.userPlots || options.userPlots.length === 0) return false;
-  return !mentionedInText(trimmed, ctx.originalText, options.userPlots);
+  const isKnown = options.userPlots.some(n => normalize(n) === normalize(trimmed));
+  if (!isKnown) return true; // no es un lote del usuario → invención → dropear
+  if (mentionedInText(trimmed, ctx.originalText, options.userPlots)) return false;
+  // Lote real pero no literal en el texto: aceptar si hay deíctico (contexto).
+  return !hasPronounReference(ctx.originalText);
 }
 
 function shouldStripField(
@@ -203,7 +219,12 @@ function shouldStripField(
   }
 
   if (!options.userFields || options.userFields.length === 0) return false;
-  return !mentionedInText(trimmed, ctx.originalText, options.userFields);
+  // Misma regla generalizada que el plot: campo real + deíctico = contexto, no
+  // invención. Cubre "el otro lote" donde el agente infiere también el campo.
+  const isKnown = options.userFields.some(n => normalize(n) === normalize(trimmed));
+  if (!isKnown) return true;
+  if (mentionedInText(trimmed, ctx.originalText, options.userFields)) return false;
+  return !hasPronounReference(ctx.originalText);
 }
 
 /**

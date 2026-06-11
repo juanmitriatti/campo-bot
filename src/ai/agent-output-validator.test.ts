@@ -102,6 +102,42 @@ describe('agent-output-validator — plot/field', () => {
     expect(r.input.plot).toBeUndefined();
   });
 
+  describe('resolución de contexto (deíctico) — solución generalizada Jun 2026', () => {
+    it('"el otro lote" + plot real NO se dropea aunque no esté literal', () => {
+      // Bug live: "en el otro lote sembré maíz" → agente resuelve plot=Sur,
+      // el validador lo dropeaba → maíz al lote equivocado.
+      const r = validateToolCall(
+        { toolName: 'sow_crop', input: { plot: 'Sur', crop: 'maíz' }, originalText: 'en el otro lote sembre maiz' },
+        OPTS,
+      );
+      expect(r.input.plot).toBe('Sur');
+    });
+
+    it('"ahí también" + plot real se mantiene (variante que el expander pudo no cubrir)', () => {
+      const r = validateToolCall(
+        { toolName: 'log_spraying', input: { plot: 'Norte' }, originalText: 'ahi tambien fumigue con glifosato' },
+        OPTS,
+      );
+      expect(r.input.plot).toBe('Norte');
+    });
+
+    it('SIN deíctico ni mención → sigue dropeando (anti-alucinación intacta)', () => {
+      const r = validateToolCall(
+        { toolName: 'log_expense', input: { plot: 'Norte' }, originalText: 'gasté 50 mil en sueldos' },
+        OPTS,
+      );
+      expect(r.input.plot).toBeUndefined();
+    });
+
+    it('plot inexistente + deíctico → dropea igual (no es lote del usuario)', () => {
+      const r = validateToolCall(
+        { toolName: 'log_spraying', input: { plot: 'Fantasma' }, originalText: 'ahi fumigue' },
+        OPTS,
+      );
+      expect(r.input.plot).toBeUndefined();
+    });
+  });
+
   it('__last__ se mantiene con pronombre ("ahí")', () => {
     const r = validateToolCall(
       { toolName: 'sow_crop', input: { plot: '__last__', crop: 'soja' }, originalText: 'ahí también sembré soja' },
