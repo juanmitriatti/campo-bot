@@ -1724,6 +1724,7 @@ async function processTextMessage(
 
 // POST /api/test-bot/reset — hard-delete ALL user data for clean QA testing
 router.post('/reset', async (req: Request, res: Response) => {
+  if (!testEndpointGate(req, res)) return;
   const client = await pool.connect();
   try {
     const userId = req.auth!.userId;
@@ -1858,7 +1859,38 @@ router.post('/reset', async (req: Request, res: Response) => {
 });
 
 // Query DB endpoint for test assertions (SELECT + UPDATE for test setup)
+/**
+ * Gate de endpoints de testing peligrosos (query-db ejecuta SQL arbitrario
+ * sin scoping por usuario; reset hace hard-delete). Antes solo pedían
+ * `requireAuth` → CUALQUIER usuario logueado en PROD podía leer datos ajenos y
+ * auto-upgradear su plan (hallazgo de seguridad QA Jun 2026).
+ *
+ * Regla:
+ *  - Si `TEST_BOT_SECRET` está seteado → exigir header `x-test-secret` igual.
+ *  - Si NO está seteado y estamos en Railway (prod) → BLOQUEAR (fail-safe:
+ *    prod nunca queda abierto por olvidar setear la env).
+ *  - Si NO está seteado y NO es prod (docker local) → permitir (conveniencia
+ *    de dev; las QA locales corren contra localhost sin secreto).
+ */
+function testEndpointGate(req: Request, res: Response): boolean {
+  const secret = process.env.TEST_BOT_SECRET;
+  const isProd = !!process.env.RAILWAY_GIT_COMMIT_SHA;
+  if (secret) {
+    if (req.headers['x-test-secret'] !== secret) {
+      res.status(403).json({ error: 'Forbidden: invalid test secret' });
+      return false;
+    }
+    return true;
+  }
+  if (isProd) {
+    res.status(404).json({ error: 'Not found' });
+    return false;
+  }
+  return true;
+}
+
 router.post('/query-db', async (req: Request, res: Response) => {
+  if (!testEndpointGate(req, res)) return;
   const userId = req.auth?.userId;
   if (!userId) {
     res.status(401).json({ error: 'Not authenticated' });

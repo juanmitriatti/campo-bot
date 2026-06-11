@@ -31,6 +31,13 @@ const NAME = 'QARegV2';
 let TOKEN = '';
 let USER_ID = 0;
 
+/** Fecha relativa en TZ Argentina (no UTC) — toISOML() de noche rolaba de día
+ *  y producía falsos negativos en los tests temporales (corridas post-21:00 ART). */
+function daysAgoAR(n: number): string {
+  const ms = Date.now() - n * 24 * 60 * 60 * 1000;
+  return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+}
+
 // ── Auth + HTTP ───────────────────────────────────────────────────────
 
 async function register(): Promise<void> {
@@ -72,7 +79,7 @@ async function tap(buttonId: string): Promise<{ messages: any[] }> {
 async function dbq(sql: string, params: unknown[] = [], attempt = 1): Promise<any[]> {
   try {
     const res = await fetch(`${BASE_URL}/api/test-bot/query-db`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}`, 'x-test-secret': process.env.TEST_BOT_SECRET ?? '' },
       body: JSON.stringify({ sql, params }),
     });
     // Railway sometimes returns transient 500/502/504 — retry with backoff
@@ -292,7 +299,7 @@ const TESTS: TestCase[] = [
 
   { id: 'T01', category: 'temporal', description: '"ayer" se resuelve a fecha real', run: async () => {
     await stepAndConfirm('ayer pagué 35 mil pesos en sueldos en el lote Verde');
-    const yesterday = new Date(Date.now() - 24*60*60*1000).toISOString().substring(0, 10);
+    const yesterday = daysAgoAR(1);
     const saved = await dbq(
       `SELECT amount::int, expense_date::text FROM expenses WHERE user_id=$1 AND amount=35000
         AND expense_date::text = $2`,
@@ -303,7 +310,7 @@ const TESTS: TestCase[] = [
 
   { id: 'T02', category: 'temporal', description: '"anteayer" se resuelve a hace 2 días', run: async () => {
     await stepAndConfirm('anteayer cargué 45 mil pesos de gasoil para el lote Rojo');
-    const twoDaysAgo = new Date(Date.now() - 2*24*60*60*1000).toISOString().substring(0, 10);
+    const twoDaysAgo = daysAgoAR(2);
     const saved = await dbq(
       `SELECT amount::int, expense_date::text FROM expenses WHERE user_id=$1 AND amount=45000
         AND expense_date::text = $2`,
@@ -314,7 +321,7 @@ const TESTS: TestCase[] = [
 
   { id: 'T03', category: 'temporal', description: '"hace 3 días" se resuelve a fecha relativa', run: async () => {
     await stepAndConfirm('hace 3 días gasté 22 mil pesos en herbicida en el lote Amarillo');
-    const threeDaysAgo = new Date(Date.now() - 3*24*60*60*1000).toISOString().substring(0, 10);
+    const threeDaysAgo = daysAgoAR(3);
     const saved = await dbq(
       `SELECT amount::int, expense_date::text FROM expenses WHERE user_id=$1 AND amount=22000
         AND expense_date::text = $2`,

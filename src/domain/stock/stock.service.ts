@@ -82,9 +82,13 @@ export class StockService {
       undefined, opts.expenseId, undefined, opts.movementDate,
     );
 
-    // Add warehouse/field context
+    // Add warehouse/field context. field_id es necesario para que el gasto
+    // auto-creado por la compra de stock se atribuya al campo — sin esto el
+    // gasto quedaba huérfano y el resumen POR CAMPO lo excluía (el reporte
+    // global sí lo veía → inconsistencia, hallazgo QA Jun 2026).
     updatedItem.warehouse_name = warehouse.name;
     updatedItem.field_name = warehouse.field_name;
+    updatedItem.field_id = (warehouse as { field_id?: number }).field_id ?? updatedItem.field_id;
 
     return { item: updatedItem, movement, created };
   }

@@ -69,7 +69,7 @@ async function tap(buttonId: string): Promise<{ messages: any[] }> {
 
 async function dbq(sql: string, params: unknown[] = []): Promise<any[]> {
   const res = await fetch(`${BASE_URL}/api/test-bot/query-db`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}`, 'x-test-secret': process.env.TEST_BOT_SECRET ?? '' },
     body: JSON.stringify({ sql, params }),
   });
   if (!res.ok) throw new Error(`DB query failed: ${res.status}`);
@@ -284,7 +284,8 @@ const TESTS: TestCase[] = [
 
   { id: 'T01', category: 'temporal', description: 'Entiende "ayer"', run: async () => {
     const r = await stepAndConfirm('ayer pagué 25000 pesos en sueldos para Norte');
-    const expectedDate = new Date(Date.now() - 24*60*60*1000).toISOString().slice(0,10);
+    // Fecha en TZ Argentina (no UTC) — toISOString() de noche rolaba de día → falso negativo.
+    const expectedDate = new Date(Date.now() - 24*60*60*1000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
     const saved = await dbq(
       `SELECT expense_date::text FROM expenses WHERE user_id=$1 AND amount=25000 ORDER BY id DESC LIMIT 1`,
       [USER_ID],

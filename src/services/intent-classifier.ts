@@ -400,8 +400,27 @@ export class IntentClassifier {
         }
       }
 
-      if (lastPlotName || prevPlotName) {
-        const { expanded, replaced } = expandPronouns(text, lastPlotName, prevPlotName);
+      // Antecedente INTRA-MENSAJE (MI02): si el propio mensaje ya nombra un lote
+      // explícito ANTES del pronombre, ese es el antecedente correcto — NO el
+      // contexto del turno anterior. "sembré maíz en el lote Verde y gasté ahí
+      // mismo" → "ahí mismo" = Verde, no el lote del mensaje previo (que el
+      // expander tomaba de conversation_state, mandando el gasto al lote viejo).
+      let effectiveLastPlot = lastPlotName;
+      const pronounPos = text.search(/\b(?:ah[ií]|all[íi]|all[áa]|ese|este|aquel|aquella|esa|el\s+mismo|la\s+misma)\b/i);
+      if (pronounPos > 0) {
+        const before = text.slice(0, pronounPos);
+        const mentions = before.match(/\b(?:lote|potrero|parcela)\s+([A-Za-z0-9ñáéíóúÑÁÉÍÓÚ][\w-]*)/gi);
+        if (mentions && mentions.length > 0) {
+          const last = mentions[mentions.length - 1].match(/\b(?:lote|potrero|parcela)\s+([A-Za-z0-9ñáéíóúÑÁÉÍÓÚ][\w-]*)/i);
+          if (last?.[1]) {
+            effectiveLastPlot = last[1];
+            console.log(`[intent-classifier] Antecedente intra-mensaje: pronombre → "${last[1]}" (de la misma frase, no contexto previo)`);
+          }
+        }
+      }
+
+      if (effectiveLastPlot || prevPlotName) {
+        const { expanded, replaced } = expandPronouns(text, effectiveLastPlot, prevPlotName);
         if (replaced > 0) {
           console.log(`[intent-classifier] Pronoun expansion: "${text}" → "${expanded}" (${replaced} swap)`);
           agentInputText = expanded;

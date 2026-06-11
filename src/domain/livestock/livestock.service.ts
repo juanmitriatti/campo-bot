@@ -108,7 +108,9 @@ export class LivestockService {
     fieldName?: string | null,
     plotName?: string | null,
     corralName?: string | null,
+    opts: { askWhenAmbiguous?: boolean } = {},
   ): Promise<ResolvedLocation> {
+    const { askWhenAmbiguous } = opts;
     if (corralName) {
       const ref = await this.feedlotService.resolveCorral(userId, corralName, fieldName);
       return {
@@ -133,7 +135,26 @@ export class LivestockService {
       };
     }
 
-    // Neither specified — try auto-resolve via plot (existing behavior)
+    // Neither specified. Para add_livestock (askWhenAmbiguous) NO caemos al
+    // context_stack: crear inventario en el "último lote usado" sin que el
+    // usuario lo haya nombrado es asignación silenciosa (hallazgo QA Jun 2026,
+    // "agregar 35 terneros" → fue a B2 sin preguntar). Con 2+ lotes preguntamos;
+    // con 1 auto-resolvemos. El pronoun-expander ya convirtió cualquier "ahí
+    // mismo" a "en lote X" ANTES, así que la continuidad real llega con plotName.
+    if (askWhenAmbiguous && !fieldName) {
+      const { findAllUserPlots } = await import('../../services/expenses.js');
+      const plots = await findAllUserPlots(userId);
+      if (plots.length === 0) {
+        throw new Error('No tenés lotes todavía. Creá uno con "nuevo lote A1 en <campo>".');
+      }
+      if (plots.length > 1) {
+        const names = plots.slice(0, 8).map((p: { name: string }) => p.name).join(', ');
+        throw new Error(`Decime en qué lote. Opciones: ${names}.`);
+      }
+      // exactamente 1 lote → resolver ese
+    }
+
+    // try auto-resolve via plot (existing behavior / single-plot users)
     const plot = await this.resolvePlot(userId, fieldName, null);
     return {
       type: 'plot',
@@ -488,7 +509,9 @@ export class LivestockService {
     if (!category) throw new Error(`Categoría no reconocida: "${opts.category}". Usá vaca, vaquillona, ternero, novillo, toro, etc.`);
     if (!opts.count || opts.count <= 0) throw new Error('La cantidad debe ser mayor a 0.');
 
-    const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
+    // askWhenAmbiguous: en alta de hacienda, si no hay lote/corral explícito y
+    // el usuario tiene 2+ lotes, preguntar en vez de auto-asignar al último.
+    const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName, { askWhenAmbiguous: true });
 
     // Use the strict (breed-aware) lookup for the existing check — when adding without
     // breed, this targets the "sin raza" group specifically and won't error out when

@@ -27,6 +27,7 @@
 import type { PendingActivity } from './pending-activities.js';
 import { extractSlots, type ExtractedSlots, type SlotName } from './slot-extractor.js';
 import { stripAnswerPrefix } from '../utils/lexicon.js';
+import { normalizarMonto } from '../utils/parser.js';
 
 /**
  * Commands that START a brand-new write and therefore legitimately interrupt a
@@ -141,8 +142,18 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
         const numMatch = cleaned.match(/^[0-9]+(?:[.,][0-9]+)?$/);
         if (numMatch) {
           (extracted as Record<string, unknown>)[slot] = parseFloat(cleaned.replace(',', '.'));
+        } else {
+          // "500 mil" / "medio palo" / "1,5 millones": el slot numérico esperaba
+          // dígitos puros y rechazaba estas formas argentinas → la respuesta al
+          // pending se perdía (visto live: precio de compra de hacienda "500 mil"
+          // rechazado, gasto vinculado nunca creado). normalizarMonto las cubre.
+          const money = normalizarMonto(cleaned);
+          if (money != null && money > 0) {
+            (extracted as Record<string, unknown>)[slot] = money;
+            console.log(`[INTERCEPT] single-slot numeric fallback: slot=${slot} "${cleaned.slice(0, 40)}" → ${money}`);
+          }
+          // sigue sin número → leave unfilled, controller will re-ask
         }
-        // numeric slot but non-numeric text → leave unfilled, controller will re-ask
       } else {
         (extracted as Record<string, unknown>)[slot] = cleaned;
         console.log(`[INTERCEPT] single-slot fallback: slot=${slot} consumed="${cleaned.slice(0, 60)}" (command=${pending.command})`);

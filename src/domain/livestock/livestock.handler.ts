@@ -9,6 +9,7 @@ import type { LivestockCategory, LivestockGroupRow } from './livestock.types.js'
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FeedlotService } from '../feedlot/feedlot.service.js';
 import { saveDomainEvent, queryLivestockEvents, updateLivestockGroupWeight, updateConversationState } from '../../services/expenses.js';
+import { formatDateAR } from '../../utils/date.js';
 import { pool } from '../../config/db.js';
 import { encodeLivestockPayload, decodeLivestockPayload } from './livestock-payload.js';
 import { buildPostActionButtons } from './livestock-post-actions.js';
@@ -1074,7 +1075,7 @@ export class LivestockHandler {
     lines.push(`  📍 ${resolvedLoc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
     if (cmd.notes) lines.push(`  📝 ${cmd.notes}`);
     if (cmd.eventDate) {
-      const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const dateStr = formatDateAR(cmd.eventDate as string);
       lines.push(`  📅 ${dateStr}`);
     }
     if (animalsAffected == null) {
@@ -1110,7 +1111,7 @@ export class LivestockHandler {
     }
 
     const lines = rows.map((r: Record<string, unknown>) => {
-      const date = new Date(r.event_date as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const date = formatDateAR(r.event_date as string);
       const typeLabel = HEALTH_TYPE_LABEL[r.product_type as string] || r.product_type;
       const disease = r.product ? ` — ${r.product}` : '';
       const count = r.animals_affected ? ` (${r.animals_affected} ${r.animal_category || 'animales'})` : '';
@@ -1206,7 +1207,7 @@ export class LivestockHandler {
     lines.push(`  📍 ${resolvedLoc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
     if (cmd.notes) lines.push(`  📝 ${cmd.notes}`);
     if (cmd.eventDate) {
-      const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const dateStr = formatDateAR(cmd.eventDate as string);
       lines.push(`  📅 ${dateStr}`);
     }
     if (animalsAffected == null) {
@@ -1242,7 +1243,7 @@ export class LivestockHandler {
     }
 
     const lines = rows.map((r: Record<string, unknown>) => {
-      const date = new Date(r.event_date as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const date = formatDateAR(r.event_date as string);
       const typeLabel = REPRO_TYPE_LABEL[r.product_type as string] || r.product_type;
       const sire = r.product ? ` — ${r.product}` : '';
       const count = r.animals_affected ? ` (${r.animals_affected} ${r.animal_category || 'animales'})` : '';
@@ -1336,7 +1337,7 @@ export class LivestockHandler {
       lines.push('  ⚠️ Sin cantidad de animales — agregalo más tarde si lo necesitás.');
     }
     if (cmd.eventDate) {
-      const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const dateStr = formatDateAR(cmd.eventDate as string);
       lines.push(`  📅 ${dateStr}`);
     }
 
@@ -1368,7 +1369,7 @@ export class LivestockHandler {
     }
 
     const lines = rows.map((r: Record<string, unknown>) => {
-      const date = new Date(r.event_date as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const date = formatDateAR(r.event_date as string);
       const weight = r.quantity ? `${r.quantity} kg` : '—';
       const count = r.animals_affected ? ` (${r.animals_affected} ${r.animal_category || 'animales'})` : '';
       const location = r.corral_name
@@ -1428,9 +1429,7 @@ export class LivestockHandler {
 
     const lines = movements.map(m => {
       const mv = LIVESTOCK_MOVEMENT_LABEL[m.movement_type];
-      const date = new Date(m.movement_date).toLocaleDateString('es-AR', {
-        timeZone: 'America/Argentina/Buenos_Aires',
-      });
+      const date = formatDateAR(m.movement_date);
       const sign = ['entrada', 'nacimiento'].includes(m.movement_type)
         ? '+'
         : ['salida', 'muerte'].includes(m.movement_type)
@@ -1504,7 +1503,7 @@ export class LivestockHandler {
       .map(([t, n]) => `  • ${typeLabels[t] || t}: *${n}*`)
       .join('\n');
     const recent = rows.slice(0, 10).map(r => {
-      const d = new Date(r.movement_date).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const d = formatDateAR(r.movement_date);
       const sign = ['entrada', 'nacimiento'].includes(r.movement_type) ? '+' : ['salida', 'muerte'].includes(r.movement_type) ? '-' : '↔';
       const loc = r.plot_name ? ` (${r.field_name || ''} > ${r.plot_name})` : '';
       const cat = r.category || 'hacienda';
