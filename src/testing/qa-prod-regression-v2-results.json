@@ -1,20 +1,20 @@
 {
-  "overall": 84,
+  "overall": 96,
   "total": 25,
-  "pass": 21,
-  "email": "qa-regv2-1781193982135@campo.test",
+  "pass": 24,
+  "email": "qa-regv2-1781195178876@campo.test",
   "byCategory": {
     "memoria_corto": {
-      "pass": 3,
-      "fail": 1
+      "pass": 4,
+      "fail": 0
     },
     "memoria_largo": {
-      "pass": 1,
-      "fail": 1
+      "pass": 2,
+      "fail": 0
     },
     "context_switch": {
-      "pass": 1,
-      "fail": 1
+      "pass": 2,
+      "fail": 0
     },
     "temporal": {
       "pass": 3,
@@ -51,22 +51,21 @@
       "category": "memoria_corto",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$25.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Listo, gasto registrado\nSueldos\n$25.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$25.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Registrado\nSueldos\n$25.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
     },
     {
       "id": "P02",
       "category": "memoria_corto",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *$150.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Anotado\nFertilizantes\n$150.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *$150.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Gasto guardado\nFertilizantes\n$150.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "P03",
       "category": "memoria_corto",
-      "pass": false,
-      "severity": "High",
-      "details": "missing: 20k flete en Rojo via \"el mismo\"",
-      "response": "¿En qué categoría registro el flete? Las opciones disponibles son:\n• Agroquímicos\n• Arrendamiento\n• Combustible\n• Fertilizantes\n• Hacienda\n• Impuestos\n• Labranzas\n• Maquinaria\n\nO si prefieres, puedo c"
+      "pass": true,
+      "details": "OK",
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Otros*\nMonto: *$20.000*\nUbicación: Lote Rojo (don pedro)\n\n✅ Anotado\nOtros\n$20.000\n📍 Lote Rojo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "P04",
@@ -78,32 +77,30 @@
     {
       "id": "L01",
       "category": "memoria_largo",
-      "pass": false,
-      "severity": "High",
-      "details": "missing: 15k flete en Amarillo después de 5 turnos",
-      "response": "¿En qué categoría registro el flete de $15.000? Las opciones disponibles son:\n• Agroquímicos\n• Arrendamiento\n• Combustible\n• Fertilizantes\n• Hacienda\n• Impuestos\n• Labranzas\n• Maquinaria\n\nO si prefier"
+      "pass": true,
+      "details": "OK",
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Otros*\nMonto: *$15.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Anotado\nOtros\n$15.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "L02",
       "category": "memoria_largo",
       "pass": true,
       "details": "OK",
-      "response": "📊 *Resumen financiero — lote Rojo*\n📅 junio de 2026\n\n*Gastos por categoría:*\nSemillas: $240.000\nCombustible: $80.000\n*Total gastos ARS: $320.000*\n¿Más?"
+      "response": "📊 *Resumen financiero — lote Rojo*\n📅 junio de 2026\n\n*Gastos por categoría:*\nSemillas: $240.000\nCombustible: $80.000\nSueldos: $50.000\nOtros: $20.000\n*Total gastos ARS: $390.000*\n¿Más?"
     },
     {
       "id": "C01",
       "category": "context_switch",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *$60.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Listo, gasto registrado\nAgroquímicos\n$60.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *$60.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Gasto guardado\nAgroquímicos\n$60.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "C02",
       "category": "context_switch",
-      "pass": false,
-      "severity": "Critical",
-      "details": "missing: 10k flete en Amarillo (último contexto)",
-      "response": "⚠️ *Categoría no disponible*\n\n\"Flete\" no está en tu listado de categorías de gasto. Las opciones son:\n• Agroquímicos\n• Arrendamiento\n• Combustible\n• Fertilizantes\n• Hacienda\n• Impuestos\n• Labranzas\n• "
+      "pass": true,
+      "details": "OK",
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Otros*\nMonto: *$10.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Gasto guardado\nOtros\n$10.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "T01",
@@ -143,17 +140,17 @@
     {
       "id": "MI01",
       "category": "multi_intent",
-      "pass": false,
-      "severity": "High",
-      "details": "missing: 12k=true 18k=false 14mm=true",
-      "response": "✅ Registrado\nCombustible\n$12.000\n📍 Lote Verde (don pedro)\n🌧️ Lluvia registrada: *14mm*\n📍 don pedro\n¿Y ahora?"
+      "pass": true,
+      "details": "OK",
+      "response": "✅ Gasto guardado\nCombustible\n$12.000\n📍 Lote Verde (don pedro)\n✅ Listo, gasto registrado\nCombustible\n$18.000\n📍 Lote Amarillo (don pedro)\n🌧️ Lluvia registrada: *14mm*\n📍 don pedro\n¿Y ahora?"
     },
     {
       "id": "MI02",
       "category": "multi_intent",
-      "pass": true,
-      "details": "OK",
-      "response": "🌱 *maíz* sembrado en *don pedro > Verde*\n📅 Campaña 2025/26\n✅ Anotado\nSemillas\n$95.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
+      "pass": false,
+      "severity": "High",
+      "details": "missing: semillas 95k Verde=false siembra maíz Verde=true",
+      "response": "🌱 *maíz* sembrado en *don pedro > Verde*\n📅 Campaña 2025/26\n✅ Anotado\nSemillas\n$95.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "CR01",
@@ -174,14 +171,14 @@
       "category": "recovery",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$8.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Registrado\nCombustible\n$8.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$8.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Listo, gasto registrado\nCombustible\n$8.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
     },
     {
       "id": "R02",
       "category": "recovery",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$9.000*\nUbicación: Lote Rojo (don pedro)\n\n✅ Anotado\nSueldos\n$9.000\n📍 Lote Rojo (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$9.000*\nUbicación: Lote Rojo (don pedro)\n\n✅ Gasto guardado\nSueldos\n$9.000\n📍 Lote Rojo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "R03",
@@ -195,14 +192,14 @@
       "category": "colloquial",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *$500.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Listo, gasto registrado\nAgroquímicos\n$500.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *$500.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Anotado\nAgroquímicos\n$500.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
     },
     {
       "id": "CL02",
       "category": "colloquial",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *$1.000.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Gasto guardado\nFertilizantes\n$1.000.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Fertilizantes*\nMonto: *$1.000.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Listo, gasto registrado\nFertilizantes\n$1.000.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "CL03",
@@ -216,14 +213,14 @@
       "category": "fin_consist",
       "pass": true,
       "details": "OK",
-      "response": "📊 *Resumen financiero*\n📅 junio de 2026\n\n*Gastos por categoría:*\nFertilizantes: $1.150.000\nAgroquímicos: $612.000\nCombustible: $340.000\nSemillas: $335.000\nSueldos: $102.000\nOtros: $7.000\nSemillas (US"
+      "response": "📊 *Resumen financiero*\n📅 junio de 2026\n\n*Gastos por categoría:*\nFertilizantes: $1.150.000\nAgroquímicos: $612.000\nCombustible: $358.000\nSemillas: $335.000\nSueldos: $177.000\nOtros: $52.000\nSemillas (U"
     },
     {
       "id": "F02",
       "category": "fin_consist",
       "pass": true,
       "details": "OK",
-      "response": "📊 *Resumen financiero — lote Verde*\n📅 Todo el historial\n\n*Gastos por categoría:*\nAgroquímicos: $500.000\nCombustible: $215.000\nSemillas: $95.000\nSueldos: $60.000\nSemillas (USD): USD 5.000\n*Total gast"
+      "response": "📊 *Resumen financiero — lote Verde*\n📅 Todo el historial\n\n*Gastos por categoría:*\nAgroquímicos: $500.000\nCombustible: $215.000\nSueldos: $85.000\nSemillas: USD 5.000\n*Total gastos ARS: $800.000*\n*Total"
     }
   ]
 }

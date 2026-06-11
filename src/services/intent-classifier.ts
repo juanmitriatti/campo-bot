@@ -406,7 +406,11 @@ export class IntentClassifier {
       // mismo" → "ahí mismo" = Verde, no el lote del mensaje previo (que el
       // expander tomaba de conversation_state, mandando el gasto al lote viejo).
       let effectiveLastPlot = lastPlotName;
-      const pronounPos = text.search(/\b(?:ah[ií]|all[íi]|all[áa]|ese|este|aquel|aquella|esa|el\s+mismo|la\s+misma)\b/i);
+      // Lookahead en vez de \b final: \b es ASCII y la "í" de "ahí"/"allí" no es
+      // word-char, así que \b después de "ahí" NUNCA matchea → la detección no
+      // se disparaba y el pronombre se expandía al contexto VIEJO (bug MI02 en
+      // vivo: "...en lote Verde y gasté ahí mismo" mandaba el gasto a Amarillo).
+      const pronounPos = text.search(/\b(?:ah[ií]|all[íi]|all[áa]|ese|este|aquel|aquella|esa|el\s+mismo|la\s+misma)(?=\s|$|[.,;:!?])/i);
       if (pronounPos > 0) {
         const before = text.slice(0, pronounPos);
         const mentions = before.match(/\b(?:lote|potrero|parcela)\s+([A-Za-z0-9ñáéíóúÑÁÉÍÓÚ][\w-]*)/gi);
