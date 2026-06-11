@@ -28,8 +28,15 @@
  *  ((?=\s|$|[.,!?;:])) to assert end-of-token without relying on \b. */
 const TOKEN_END = String.raw`(?=\s|$|[.,!?;:])`;
 const PRONOUN_PATTERNS: ReadonlyArray<RegExp> = [
-  // "ahí mismo" / "ahi mismo" / "alli mismo" / "allá mismo"
-  new RegExp(String.raw`\b(?:ah[ií]|all[íi]|all[áa])\s+mismo\b`, 'gi'),
+  // "ahí mismo / también / igual" — variantes de continuidad de lugar. "ahí
+  // también fumigué" (común por audio, Whisper transcribe "ahí también") no
+  // se expandía → el agente resolvía el lote por contexto pero el validador
+  // anti-alucinación lo dropeaba (no estaba literal en el texto). Reportado live.
+  new RegExp(String.raw`\b(?:ah[ií]|all[íi]|all[áa])\s+(?:mismo|tambi[eé]n|igual)\b`, 'gi'),
+  // "ahí / allí / allá" seguido de un VERBO de acción agro (sembré, fumigué,
+  // apliqué, coseché...) — "ahí sembré soja". El \s+ va DENTRO del lookahead
+  // para no comerse el espacio antes del verbo (el match es solo "ahí").
+  new RegExp(String.raw`\b(?:ah[ií]|all[íi]|all[áa])(?=\s+(?:sembr|fumig|aplic|cosech|fertiliz|pulveric|ar[eé]|rastr|disqu|reg[uoó]|pas[eé]|met[íi]|agregu|cargu|gast[eé]|pagu[eé]|vend[íi]|compr[eé]))`, 'gi'),
   // "(el/ese/este) mismo lote / campo / potrero" — consume the article/demonstrative
   // if present so "en el mismo lote" → "en en lote X" → collapsed to "en lote X" below.
   new RegExp(String.raw`\b(?:el\s+|ese\s+|este\s+)?mismo\s+(?:lote|campo|potrero)\b`, 'gi'),

@@ -61,6 +61,34 @@ describe('expandPronouns', () => {
     expect(expanded).toBe('fumigué en lote A1');
   });
 
+  describe('ahí también / igual + ahí + verbo (reportado live por audio)', () => {
+    it('"ahi tambien fumigue" → en lote X (Whisper transcribe "ahí también")', () => {
+      const { expanded } = expandPronouns('ahi tambien fumigue con glifosato 3 litros por hectarea', 'Norte');
+      expect(expanded).toBe('en lote Norte fumigue con glifosato 3 litros por hectarea');
+    });
+    it('"ahí también fumigué" (con acentos)', () => {
+      const { expanded } = expandPronouns('ahí también fumigué con glifosato', 'Norte');
+      expect(expanded).toBe('en lote Norte fumigué con glifosato');
+    });
+    it('"ahi igual sembre" → en lote X', () => {
+      const { expanded } = expandPronouns('ahi igual sembre maiz', 'Sur');
+      expect(expanded).toBe('en lote Sur sembre maiz');
+    });
+    it('"ahi sembre soja" (ahí + verbo, sin adverbio) → en lote X', () => {
+      const { expanded } = expandPronouns('ahi sembre soja', 'Norte');
+      expect(expanded).toBe('en lote Norte sembre soja');
+    });
+    it('"ahí coseché trigo" → en lote X', () => {
+      const { expanded } = expandPronouns('ahí coseché trigo', 'Norte');
+      expect(expanded).toBe('en lote Norte coseché trigo');
+    });
+    it('"ahí" sin verbo agro NO se expande (evita falsos positivos)', () => {
+      const { expanded, replaced } = expandPronouns('quedó ahí guardado', 'Norte');
+      expect(replaced).toBe(0);
+      expect(expanded).toBe('quedó ahí guardado');
+    });
+  });
+
   describe('el otro lote (prevPlotName)', () => {
     it('swaps "el otro lote" to the previous plot', () => {
       const { expanded, replaced } = expandPronouns('y 30k de semillas en el otro lote', 'Norte', 'Sur');
