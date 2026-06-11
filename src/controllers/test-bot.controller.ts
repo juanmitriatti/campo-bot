@@ -1,6 +1,8 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 import { IntentClassifier } from '../services/intent-classifier.js';
 import { DomainRouter } from '../domain/router.js';
 import { CompoundExecutor } from '../domain/compound-executor.js';
@@ -1872,9 +1874,18 @@ router.post('/reset', async (req: Request, res: Response) => {
  *  - Si NO está seteado y NO es prod (docker local) → permitir (conveniencia
  *    de dev; las QA locales corren contra localhost sin secreto).
  */
+// Discriminador de prod CONFIABLE: el CI escribe `.deploy-sha` en el build
+// (existe en Railway, ausente en docker local). RAILWAY_GIT_COMMIT_SHA NO está
+// en runtime — solo en build —, por eso el primer intento de gate falló y el
+// endpoint quedó abierto. Resuelto una vez al cargar el módulo.
+const IS_PROD_RUNTIME: boolean = (() => {
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_SERVICE_ID) return true;
+  try { return fs.existsSync(path.join(process.cwd(), '.deploy-sha')); } catch { return false; }
+})();
+
 function testEndpointGate(req: Request, res: Response): boolean {
   const secret = process.env.TEST_BOT_SECRET;
-  const isProd = !!process.env.RAILWAY_GIT_COMMIT_SHA;
+  const isProd = IS_PROD_RUNTIME;
   if (secret) {
     if (req.headers['x-test-secret'] !== secret) {
       res.status(403).json({ error: 'Forbidden: invalid test secret' });
