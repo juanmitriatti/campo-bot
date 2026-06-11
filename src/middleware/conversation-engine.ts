@@ -249,21 +249,27 @@ function stripTrailingNegation(s: string): string {
 }
 
 export function extractCategoryCorrection(text: string): string | null {
-  const t = text.trim();
+  // Normalizar acentos para el matching: los cues del lexicon son accent-free
+  // ("perdon"), así que "perdón fue en X" no matcheaba. El candidato sin acento
+  // está bien — detectarCategoria lo canonicaliza después.
+  const t = text.trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
   if (!t) return null;
-  // "no, es X" / "no, categoría X" / "cambiar a X" / "en realidad X"
+  // "no, es X" / "no, categoría X" / "cambiar a X" / "en realidad categoría X"
   const m1 = t.match(
     /^(?:no,?\s*(?:es|categor[ií]a)|cambiar\s+a|en\s+realidad\s+categor[ií]a)\s+(.+)$/i,
   );
   if (m1) return stripTrailingNegation(m1[1].trim()) || null;
 
-  // "no, era en X" / "no, fue en X" — only when X is a category word.
-  // Without the stoplist guard this would conflict with plot corrections
-  // ("no, era en lote Norte") — but those are intercepted earlier by the
-  // correction-classifier. Here we only fire when the candidate looks
-  // unambiguously category-shaped.
+  // "<cue(s)> (era|fue) en X" — acepta CUALQUIER prefijo de corrección del
+  // lexicon, encadenado ("no, en realidad era en X", "perdón fue en X",
+  // "en realidad era en X"). Antes solo aceptaba un "no," literal, por lo que
+  // "no, en realidad era en fertilizante" se ignoraba y persistía la categoría
+  // vieja (hallazgo QA Jun 2026 — asimetría con extractAmountCorrection, que ya
+  // usaba CORRECTION_ALT). El "era/fue" es opcional ("no, en realidad en X").
+  // El guard looksLikeCategoryWord evita comerse correcciones de lote
+  // ("no, era en lote Norte"), que ya intercepta el correction-classifier.
   const m2 = t.match(
-    /^no,?\s*(?:era|fue|fui|fuimos)\s+en\s+(?:el\s+|la\s+)?([\p{L}][\p{L}\s\-]*?)\s*[.!?]?\s*$/iu,
+    new RegExp(`^(?:(?:${CORRECTION_ALT})\\b,?\\s+)+(?:(?:era|fue|fui|fuimos)\\s+)?en\\s+(?:el\\s+|la\\s+)?([\\p{L}][\\p{L}\\s\\-]*?)\\s*[.!?]?\\s*$`, 'iu'),
   );
   if (m2) {
     const candidate = stripTrailingNegation(m2[1].trim());

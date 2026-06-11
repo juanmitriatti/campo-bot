@@ -1,8 +1,8 @@
 {
-  "overall": 96,
+  "overall": 100,
   "total": 25,
-  "pass": 24,
-  "email": "qa-regv2-1781195178876@campo.test",
+  "pass": 25,
+  "email": "qa-regv2-1781195991513@campo.test",
   "byCategory": {
     "memoria_corto": {
       "pass": 4,
@@ -25,8 +25,8 @@
       "fail": 0
     },
     "multi_intent": {
-      "pass": 1,
-      "fail": 1
+      "pass": 2,
+      "fail": 0
     },
     "contradiction": {
       "pass": 2,
@@ -51,7 +51,7 @@
       "category": "memoria_corto",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$25.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Registrado\nSueldos\n$25.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$25.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Listo, gasto registrado\nSueldos\n$25.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
     },
     {
       "id": "P02",
@@ -65,7 +65,7 @@
       "category": "memoria_corto",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Otros*\nMonto: *$20.000*\nUbicación: Lote Rojo (don pedro)\n\n✅ Anotado\nOtros\n$20.000\n📍 Lote Rojo (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Otros*\nMonto: *$20.000*\nUbicación: Lote Rojo (don pedro)\n\n✅ Listo, gasto registrado\nOtros\n$20.000\n📍 Lote Rojo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "P04",
@@ -79,21 +79,21 @@
       "category": "memoria_largo",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Otros*\nMonto: *$15.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Anotado\nOtros\n$15.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Otros*\nMonto: *$15.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Registrado\nOtros\n$15.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "L02",
       "category": "memoria_largo",
       "pass": true,
       "details": "OK",
-      "response": "📊 *Resumen financiero — lote Rojo*\n📅 junio de 2026\n\n*Gastos por categoría:*\nSemillas: $240.000\nCombustible: $80.000\nSueldos: $50.000\nOtros: $20.000\n*Total gastos ARS: $390.000*\n¿Más?"
+      "response": "📊 *Resumen financiero — lote Rojo*\n📅 junio de 2026\n\n*Gastos por categoría:*\nSemillas: $240.000\nCombustible: $80.000\nOtros: $20.000\n*Total gastos ARS: $340.000*\n¿Más?"
     },
     {
       "id": "C01",
       "category": "context_switch",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *$60.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Gasto guardado\nAgroquímicos\n$60.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *$60.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Registrado\nAgroquímicos\n$60.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "C02",
@@ -142,15 +142,14 @@
       "category": "multi_intent",
       "pass": true,
       "details": "OK",
-      "response": "✅ Gasto guardado\nCombustible\n$12.000\n📍 Lote Verde (don pedro)\n✅ Listo, gasto registrado\nCombustible\n$18.000\n📍 Lote Amarillo (don pedro)\n🌧️ Lluvia registrada: *14mm*\n📍 don pedro\n¿Y ahora?"
+      "response": "✅ Registrado\nCombustible\n$12.000\n📍 Lote Verde (don pedro)\n✅ Gasto guardado\nCombustible\n$18.000\n📍 Lote Amarillo (don pedro)\n🌧️ Lluvia registrada: *14mm*\n📍 don pedro\n¿Y ahora?"
     },
     {
       "id": "MI02",
       "category": "multi_intent",
-      "pass": false,
-      "severity": "High",
-      "details": "missing: semillas 95k Verde=false siembra maíz Verde=true",
-      "response": "🌱 *maíz* sembrado en *don pedro > Verde*\n📅 Campaña 2025/26\n✅ Anotado\nSemillas\n$95.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
+      "pass": true,
+      "details": "OK",
+      "response": "🌱 *maíz* sembrado en *don pedro > Verde*\n📅 Campaña 2025/26\n✅ Registrado\nSemillas\n$95.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
     },
     {
       "id": "CR01",
@@ -164,35 +163,35 @@
       "category": "contradiction",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$33.000*\nUbicación: Lote Amarillo (don pedro)\n¿Confirmás?\n✅ Gasto guardado\nSueldos\n$33.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$33.000*\nUbicación: Lote Amarillo (don pedro)\n¿Confirmás?\n✅ Listo, gasto registrado\nSueldos\n$33.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "R01",
       "category": "recovery",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$8.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Listo, gasto registrado\nCombustible\n$8.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Combustible*\nMonto: *$8.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Registrado\nCombustible\n$8.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
     },
     {
       "id": "R02",
       "category": "recovery",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$9.000*\nUbicación: Lote Rojo (don pedro)\n\n✅ Gasto guardado\nSueldos\n$9.000\n📍 Lote Rojo (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Sueldos*\nMonto: *$9.000*\nUbicación: Lote Rojo (don pedro)\n\n✅ Listo, gasto registrado\nSueldos\n$9.000\n📍 Lote Rojo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "R03",
       "category": "recovery",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Otros*\nMonto: *$7.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Gasto guardado\nOtros\n$7.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Otros*\nMonto: *$7.000*\nUbicación: Lote Amarillo (don pedro)\n\n✅ Anotado\nOtros\n$7.000\n📍 Lote Amarillo (don pedro)\n¿Y ahora?"
     },
     {
       "id": "CL01",
       "category": "colloquial",
       "pass": true,
       "details": "OK",
-      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *$500.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Anotado\nAgroquímicos\n$500.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
+      "response": "💸 ¿Confirmo gasto?\n\nCategoría: *Agroquímicos*\nMonto: *$500.000*\nUbicación: Lote Verde (don pedro)\n\n✅ Listo, gasto registrado\nAgroquímicos\n$500.000\n📍 Lote Verde (don pedro)\n¿Y ahora?"
     },
     {
       "id": "CL02",
@@ -213,14 +212,14 @@
       "category": "fin_consist",
       "pass": true,
       "details": "OK",
-      "response": "📊 *Resumen financiero*\n📅 junio de 2026\n\n*Gastos por categoría:*\nFertilizantes: $1.150.000\nAgroquímicos: $612.000\nCombustible: $358.000\nSemillas: $335.000\nSueldos: $177.000\nOtros: $52.000\nSemillas (U"
+      "response": "📊 *Resumen financiero*\n📅 junio de 2026\n\n*Gastos por categoría:*\nFertilizantes: $1.150.000\nAgroquímicos: $612.000\nCombustible: $358.000\nSemillas: $335.000\nSueldos: $102.000\nOtros: $52.000\nSemillas (U"
     },
     {
       "id": "F02",
       "category": "fin_consist",
       "pass": true,
       "details": "OK",
-      "response": "📊 *Resumen financiero — lote Verde*\n📅 Todo el historial\n\n*Gastos por categoría:*\nAgroquímicos: $500.000\nCombustible: $215.000\nSueldos: $85.000\nSemillas: USD 5.000\n*Total gastos ARS: $800.000*\n*Total"
+      "response": "📊 *Resumen financiero — lote Verde*\n📅 Todo el historial\n\n*Gastos por categoría:*\nAgroquímicos: $500.000\nCombustible: $215.000\nSemillas: $95.000\nSueldos: $60.000\nSemillas (USD): USD 5.000\n*Total gast"
     }
   ]
 }

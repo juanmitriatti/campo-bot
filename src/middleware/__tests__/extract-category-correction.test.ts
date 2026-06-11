@@ -61,4 +61,24 @@ describe('extractCategoryCorrection', () => {
     expect(extractCategoryCorrection('')).toBeNull();
     expect(extractCategoryCorrection('   ')).toBeNull();
   });
+
+  // QA Jun 2026: el cue "en realidad" se reconocía para monto pero NO para
+  // categoría → "no, en realidad era en fertilizante" se ignoraba y persistía
+  // la categoría vieja (dato silenciosamente equivocado). Ahora acepta cualquier
+  // cue del lexicon, encadenado, con "era/fue" opcional.
+  it('"no, en realidad era en fertilizante" → fertilizante', () => {
+    expect(extractCategoryCorrection('no, en realidad era en fertilizante')).toBe('fertilizante');
+  });
+  it('"en realidad era en fertilizante" (sin "no") → fertilizante', () => {
+    expect(extractCategoryCorrection('en realidad era en fertilizante')).toBe('fertilizante');
+  });
+  it('"no, en realidad en fertilizante" ("era" opcional) → fertilizante', () => {
+    expect(extractCategoryCorrection('no, en realidad en fertilizante')).toBe('fertilizante');
+  });
+  it('"perdón fue en combustible" → combustible', () => {
+    expect(extractCategoryCorrection('perdón fue en combustible')).toBe('combustible');
+  });
+  it('sigue rechazando lote: "no, en realidad era en lote Norte" → null', () => {
+    expect(extractCategoryCorrection('no, en realidad era en lote Norte')).toBeNull();
+  });
 });
