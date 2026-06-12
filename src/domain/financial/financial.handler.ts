@@ -2008,7 +2008,7 @@ export class FinancialHandler {
               msg += `_(${movs.expenses.length} movimientos — descargá CSV para verlos todos)_\n`;
             }
             for (const [cur, total] of Object.entries(expTotalsByCur)) {
-              msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+              msg += `*Total: ${fmtMoney(total, cur)}*\n`;
             }
           }
 
@@ -2025,7 +2025,7 @@ export class FinancialHandler {
               msg += `_(${movs.incomes.length} movimientos — descargá CSV para verlos todos)_\n`;
             }
             for (const [cur, total] of Object.entries(incTotalsByCur)) {
-              msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+              msg += `*Total: ${fmtMoney(total, cur)}*\n`;
             }
           }
 
@@ -2069,7 +2069,7 @@ export class FinancialHandler {
           }
           const expByCur = sumByCurrency(results.expenses.map(r => ({ amount: r.total, currency: r.currency || 'ARS' })));
           for (const [cur, total] of Object.entries(expByCur)) {
-            msg += `*Total gastos ${cur}: ${fmtMoney(total, cur)}*\n`;
+            msg += `*Total gastos: ${fmtMoney(total, cur)}*\n`;
           }
         }
 
@@ -2081,7 +2081,7 @@ export class FinancialHandler {
           }
           const incByCur = sumByCurrency(results.incomes.map(r => ({ amount: r.total, currency: r.currency || 'ARS' })));
           for (const [cur, total] of Object.entries(incByCur)) {
-            msg += `*Total ingresos ${cur}: ${fmtMoney(total, cur)}*\n`;
+            msg += `*Total ingresos: ${fmtMoney(total, cur)}*\n`;
           }
         }
 
@@ -3636,7 +3636,7 @@ function renderDetail(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: Rend
       msg += `_(${rows.expenses.length} movimientos — descargá CSV para verlos todos)_\n`;
     }
     for (const [cur, total] of Object.entries(sumByCurrency(rows.expenses))) {
-      msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+      msg += `*Total: ${fmtMoney(total, cur)}*\n`;
     }
   }
 
@@ -3649,7 +3649,7 @@ function renderDetail(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: Rend
       msg += `_(${rows.incomes.length} movimientos — descargá CSV para verlos todos)_\n`;
     }
     for (const [cur, total] of Object.entries(sumByCurrency(rows.incomes))) {
-      msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+      msg += `*Total: ${fmtMoney(total, cur)}*\n`;
     }
   }
 
@@ -3714,7 +3714,7 @@ function renderAggregate(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: R
     msg += '\n*Gastos por categoría:*\n';
     for (const r of agg) msg += labelLine(r, multi);
     for (const [cur, total] of Object.entries(sumByCurrency(rows.expenses))) {
-      msg += `*Total gastos ${cur}: ${fmtMoney(total, cur)}*\n`;
+      msg += `*Total gastos: ${fmtMoney(total, cur)}*\n`;
     }
   }
 
@@ -3724,7 +3724,7 @@ function renderAggregate(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: R
     msg += '\n*Ingresos por categoría:*\n';
     for (const r of agg) msg += labelLine(r, multi);
     for (const [cur, total] of Object.entries(sumByCurrency(rows.incomes))) {
-      msg += `*Total ingresos ${cur}: ${fmtMoney(total, cur)}*\n`;
+      msg += `*Total ingresos: ${fmtMoney(total, cur)}*\n`;
     }
   }
 
@@ -3762,7 +3762,7 @@ function renderTopCategories(rows: { expenses: RawRow[]; incomes: RawRow[] }, ct
       msg += `${i}. ${cat}: ${fmtMoney(sum, cur)} (${pct}%)\n`;
       i++;
     }
-    msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+    msg += `*Total: ${fmtMoney(total, cur)}*\n`;
   }
   return { messages: [msg.trim()], suggestionKey: 'report_shown' };
 }
@@ -3848,7 +3848,7 @@ function renderTopLocations(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx
       msg += `${i}. ${loc}: ${fmtMoney(sum, cur)} (${pct}%)\n`;
       i++;
     }
-    msg += `*Total ${cur}: ${fmtMoney(total, cur)}*\n`;
+    msg += `*Total: ${fmtMoney(total, cur)}*\n`;
   }
   return { messages: [msg.trim()], suggestionKey: 'report_shown' };
 }
