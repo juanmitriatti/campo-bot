@@ -33,7 +33,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
-import { isAffirmation, looksLikeNewActionOrQuery, hasActionVerbOrQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
+import { isAffirmation, looksLikeNewActionOrQuery, hasActionVerbOrQuery, isReadOnlyQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { PendingTransactionStore, resolveReplacedPending, isCompletePending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
@@ -699,6 +699,22 @@ export async function processTextMessage(
       || isOtherItemCorrectionOrDelete(text)
       || (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text)));
     if (escapePending) {
+      // Una consulta read-only NO mata un pending recuperable (con missing[]):
+      // se responde la consulta y se vuelve a preguntar el slot — paridad con
+      // los taps de botones, que nunca tocaban el pending. Sin esto, "cuánta
+      // hacienda tengo" en medio del "¿a cuánto fue la compra?" borraba el
+      // pending de precio y la respuesta posterior iba al agente a ciegas.
+      if (isReadOnlyQuery(text) && pendingAct.missing && pendingAct.missing.length > 0) {
+        console.log(`[INTERCEPT] read-only query during pending(${pendingAct.command}) — answering + keeping pending`);
+        pendingActStore.clear(phone);
+        const rest = await processTextMessage(text, ctx);
+        // Restaurar solo si la consulta no instaló un pending nuevo.
+        if (!pendingActStore.get(phone)) {
+          pendingActStore.set(phone, { ...pendingAct, timestamp: Date.now() });
+          if (pendingAct.askPrompt) rest.push({ type: 'text', text: pendingAct.askPrompt });
+        }
+        return rest;
+      }
       // P0: don't silently drop the pending activity on pivot — save field-level
       // where possible, else tell the user it's deferred. Then process the pivot.
       const { flushPendingActivityOnPivot } = await import('../middleware/pending-activity-pivot.js');
@@ -1090,6 +1106,12 @@ export async function processTextMessage(
       if (applied.plotAreaPrompt) items.push({ type: 'text', text: applied.plotAreaPrompt });
       return items;
     }
+    // routeCommand devolvió null: comando no registrado en ningún *_COMMANDS
+    // set (o tool alucinada por el agente, ej. edit_last_livestock). NUNCA
+    // responder con silencio — visto live: el bot "dejaba de contestar".
+    console.error(`[${ctx.channel}] ROUTER NULL: command=${intent.data.command} — no handler registered`);
+    conversationLogger.log(userId, phone, text, null, 'command', `${intent.data.command} (unrouted)`, null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
+    return [{ type: 'text', text: '🤔 No pude procesar eso. Probá decirlo de otra forma — ej: *"la compra de los toros fue a 2 millones por cabeza"* — o escribí *ayuda*.' }];
   }
 
   // --- Handle expense ---

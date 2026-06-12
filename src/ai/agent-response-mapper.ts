@@ -893,6 +893,13 @@ export class AgentResponseMapper {
     if (input.compare_warehouse != null) cmd.compareWarehouse = input.compare_warehouse;
     if (input.compare_product != null) cmd.compareProduct = input.compare_product;
 
+    // set_livestock_price (precio tardio de hacienda — el handler auto-resuelve
+    // el movimiento sin precio; category/currency ya se mapean arriba)
+    if (toolName === 'set_livestock_price') {
+      if (input.unit_price != null) (cmd as Record<string, unknown>).unit_price = input.unit_price;
+      if (input.kind != null) (cmd as Record<string, unknown>).kind = input.kind;
+    }
+
     // list_livestock unified filters
     if (input.in_feedlot != null) cmd.inFeedlot = input.in_feedlot;
     if (input.weight_min_kg != null && toolName === 'list_livestock') cmd.weightMinKg = input.weight_min_kg;

@@ -125,3 +125,28 @@ export function hasActionVerbOrQuery(text: string): boolean {
   if (!t) return false;
   return ACTION_VERB.test(t) || QUERY_INTENT.test(t);
 }
+
+/**
+ * Consulta read-only pura: tiene palabra de query y NINGÚN verbo de acción.
+ * "cuánta hacienda tengo" → true; "vendí 10 novillos" → false; "cuánto gasté
+ * y registrá 50 mil" → false (hay verbo).
+ *
+ * Usada en el escape de pendings: una consulta read-only en medio de un
+ * pending recuperable (con missing[]) debe RESPONDERSE sin matar el pending —
+ * paridad con los taps de botones, que nunca lo tocaban. Sin esto, "cuánta
+ * hacienda tengo" en medio del "¿a cuánto fue la compra?" borraba el pending
+ * y la respuesta de precio posterior iba al agente a ciegas (alucinó
+ * edit_last_livestock → router null → silencio total, visto live Jun 2026).
+ */
+// Interrogativo inmediatamente antes (≤2 palabras) de un verbo de acción =
+// pregunta sobre el PASADO ("cuánto gasté este mes", "qué sembré en el norte"),
+// no una acción nueva.
+const INTERROGATIVE_VERB_RE = /(^|\s)(cuanto|cuanta|cuantos|cuantas|que|cual|cuales|cuando|donde|como)\s+(\w+\s+){0,2}(gaste|pague|pago|compre|compro|vendi|vendo|cobre|cobro|ingrese|facture|sembre|plante|fumigue|fertilice|coseche|aplique|regue|pese|vacune|desparasite)\b/;
+
+export function isReadOnlyQuery(text: string): boolean {
+  const t = norm(text);
+  if (!t) return false;
+  if (!QUERY_INTENT.test(t)) return false;
+  if (!ACTION_VERB.test(t)) return true;
+  return INTERROGATIVE_VERB_RE.test(t);
+}

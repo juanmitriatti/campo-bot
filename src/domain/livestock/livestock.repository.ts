@@ -642,6 +642,46 @@ export class LivestockRepository {
     return rows[0] ?? null;
   }
 
+  /**
+   * Último movimiento de compra/venta SIN registro financiero vinculado, para
+   * cuando el usuario da el precio más tarde sin pending activo ("los toros me
+   * salieron 2 millones por cabeza"). Filtros opcionales: categoría del grupo
+   * y tipo (entrada=compra / salida=venta). Ventana de 7 días — un movimiento
+   * más viejo sin precio probablemente sea intencional.
+   */
+  async findLatestUnpricedMovement(
+    userId: number,
+    category?: string | null,
+    movementType?: 'entrada' | 'salida' | null,
+  ): Promise<{
+    id: string;
+    count: number;
+    movement_type: string;
+    movement_date: string | null;
+    category: LivestockCategory;
+    breed: string | null;
+    field_id: number;
+    plot_id: number | null;
+  } | null> {
+    const { rows } = await pool.query(
+      `SELECT m.id::text AS id, m.count, m.movement_type,
+              m.movement_date::text AS movement_date,
+              g.category, g.breed, g.field_id, g.plot_id
+       FROM livestock_movements m
+       JOIN livestock_groups g ON g.id = COALESCE(m.dest_group_id, m.source_group_id)
+       WHERE m.user_id = $1
+         AND m.linked_expense_id IS NULL AND m.linked_income_id IS NULL
+         AND m.movement_type IN ('entrada', 'salida')
+         AND m.created_at > NOW() - INTERVAL '7 days'
+         AND ($2::text IS NULL OR g.category = $2)
+         AND ($3::text IS NULL OR m.movement_type = $3)
+       ORDER BY m.created_at DESC
+       LIMIT 1`,
+      [userId, category ?? null, movementType ?? null],
+    );
+    return rows[0] ?? null;
+  }
+
   async setMovementUnitPrice(movementId: string, ars: number | null, usd: number | null): Promise<void> {
     await pool.query(
       `UPDATE livestock_movements SET unit_price_ars = $2, unit_price_usd = $3 WHERE id = $1`,

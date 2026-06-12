@@ -1469,6 +1469,20 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'set_livestock_price',
+    description: 'Asignar precio a una compra/venta de hacienda YA REGISTRADA antes (precio tardío). Triggers: "los toros me salieron 2 millones por cabeza", "las vaquillonas las pagué 480 mil", "la venta de los novillos fue a 1200 USD por cabeza", "esa compra fue a 500 mil cada una". El sistema busca el último movimiento de esa categoría SIN precio y le vincula el gasto/ingreso. NO usar para operaciones nuevas que mencionan compra/venta + cantidad + precio juntos (eso es add_livestock/remove_livestock con unit_price_ars/usd). NUNCA usar edit_last_expense/edit_last_income para precios de hacienda.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        unit_price: { type: 'number', description: 'Precio POR CABEZA. "2 millones por cabeza" → 2000000.' },
+        currency: { type: 'string', enum: ['ARS', 'USD'], description: 'Default ARS. "dólares"/"USD"/"verdes" → USD.' },
+        category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría mencionada ("los toros" → toro). Ayuda a encontrar el movimiento correcto.' },
+        kind: { type: 'string', enum: ['expense', 'income'], description: 'expense=fue una compra ("me salieron", "pagué"). income=fue una venta ("los vendí a"). Omitir si no está claro — el sistema lo infiere del movimiento.' },
+      },
+      required: ['unit_price'],
+    },
+  },
+  {
     name: 'livestock_history',
     description: 'Historial/movimientos de hacienda (ventas, muertes, nacimientos, transferencias, recategorizaciones, ajustes). "historial vacas lote A1", "historial novillos corral 1", "movimientos novillos", "movimientos de hacienda en marzo", "qué movimientos hubo este mes", "ventas de hacienda". Pasá category+plot cuando el usuario los nombra. Si pregunta GENÉRICA ("movimientos de hacienda", "historial de hacienda", "qué pasó con la hacienda") OMITÍ category y plot — el sistema devuelve un resumen agregado de todos los grupos.',
     input_schema: {

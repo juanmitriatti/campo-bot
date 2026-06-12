@@ -49,17 +49,37 @@ export class LivestockHandler {
    */
   private async setLivestockPrice(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const c = cmd as unknown as Record<string, unknown>;
-    const movementId = String(c.movementId ?? '');
-    const kind: 'expense' | 'income' = c.kind === 'income' ? 'income' : 'expense';
-    const unitPrice = typeof c.unit_price === 'number' && c.unit_price > 0
-      ? c.unit_price
-      : (typeof c.amount === 'number' && c.amount > 0 ? c.amount : null);
-    const currency: Currency = c.currency === 'USD' ? 'USD' : 'ARS';
+    let movementId = String(c.movementId ?? '');
+    const rawNum = (v: unknown): number | null => {
+      const n = typeof v === 'string' ? parseFloat(v) : (typeof v === 'number' ? v : NaN);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const unitPrice = rawNum(c.unit_price) ?? rawNum(c.unit_price_ars) ?? rawNum(c.unit_price_usd) ?? rawNum(c.amount);
+    const currency: Currency = (c.currency === 'USD' || rawNum(c.unit_price_usd)) ? 'USD' : 'ARS';
+    let kind: 'expense' | 'income' | null =
+      c.kind === 'income' ? 'income' : (c.kind === 'expense' ? 'expense' : null);
 
-    if (!movementId) return { messages: ['No encontré el movimiento de hacienda para ponerle precio.'] };
     if (!unitPrice) {
       return { messages: ['💰 Necesito el precio (ej: "350 mil por cabeza" o "1500 USD").'] };
     }
+
+    // Sin movementId (el agente lo llamó por un precio tardío, sin pending):
+    // auto-resolver al último movimiento de compra/venta sin precio. Visto
+    // live: "los toros me salieron 2 millones por cabeza" después de que una
+    // consulta intermedia matara el pending — terminaba en una tool alucinada
+    // (edit_last_livestock) y silencio.
+    if (!movementId) {
+      const category = LivestockService.normalizeCategory(c.category as string | undefined);
+      const movementType = kind === 'income' ? 'salida' : (kind === 'expense' ? 'entrada' : null);
+      const found = await this.service.findLatestUnpricedMovement(Number(userId), category, movementType);
+      if (!found) {
+        return { messages: ['No encontré una compra o venta de hacienda reciente sin precio. Si es una operación nueva, decime por ej: "compré 5 toros a 2 millones por cabeza".'] };
+      }
+      movementId = found.id;
+      if (!kind) kind = found.movement_type === 'salida' ? 'income' : 'expense';
+      console.log(`[INTERCEPT] set_livestock_price auto-resolved movement=${movementId} (${found.movement_type}, ${found.category} x${found.count})`);
+    }
+    if (!kind) kind = 'expense';
 
     try {
       const r = await this.service.attachPriceToMovement(userId, movementId, unitPrice, currency, kind);

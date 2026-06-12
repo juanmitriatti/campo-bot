@@ -438,6 +438,15 @@ export class LivestockService {
    * editando el último gasto que existiera (visto live: corrompió un gasto de
    * agroquímicos en USD).
    */
+  /** Delegado para el auto-resolve de precio tardio (ver handler.setLivestockPrice). */
+  async findLatestUnpricedMovement(
+    userId: number,
+    category?: string | null,
+    movementType?: 'entrada' | 'salida' | null,
+  ): Promise<Awaited<ReturnType<LivestockRepository['findLatestUnpricedMovement']>>> {
+    return this.repo.findLatestUnpricedMovement(userId, category, movementType);
+  }
+
   async attachPriceToMovement(
     userId: UserId,
     movementId: string,
