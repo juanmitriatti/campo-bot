@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stripFillerPhrases, normalizeTranscript } from "./text-normalizer.js";
+import { stripFillerPhrases, normalizeTranscript, correctSttDomainWords } from "./text-normalizer.js";
 
 describe("normalizeTranscript — thousands separators in dictated amounts", () => {
   it.each([
@@ -80,5 +80,30 @@ describe("stripFillerPhrases", () => {
     ])("%s → %s (unchanged)", (input, expected) => {
       expect(stripFillerPhrases(input)).toBe(expected);
     });
+  });
+});
+
+describe("correctSttDomainWords — manglings conocidos de Whisper", () => {
+  it.each([
+    ["compre 15 vacuiciones para el lote sur", "compre 15 vaquillonas para el lote sur"],
+    ["las vaquillanas parieron", "las vaquillonas parieron"],
+    ["vendi 10 navijas", "vendi 10 novillos"],
+    ["fumigue con clifosato", "fumigue con glifosato"],
+    ["desparasite con ibermectina", "desparasite con ivermectina"],
+    ["vacune contra aftoza", "vacune contra aftosa"],
+    ["pase los terneros al fidlot", "pase los terneros al feedlot"],
+  ])("%s → %s", (input, expected) => {
+    expect(correctSttDomainWords(input)).toBe(expected);
+  });
+
+  it("no toca palabras reales (cero falsos positivos)", () => {
+    const real = "me valieron 500 las vacas de este lote y compre vaquillonas";
+    expect(correctSttDomainWords(real)).toBe(real);
+  });
+
+  it("integrado en normalizeTranscript (audio end-to-end)", () => {
+    expect(normalizeTranscript("Compré 15 vacuiciones para el lote Sur.")).toBe(
+      "compre 15 vaquillonas para el lote sur"
+    );
   });
 });

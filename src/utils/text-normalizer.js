@@ -25,6 +25,10 @@ export function normalizeTranscript(text) {
   result = result.replace(/[.,;:!¡¿?]+/g, ' ');
   // 4. Strip leading filler words (common Whisper artifacts in Spanish)
   result = result.replace(/^(?:(?:eh|este|em|bueno|a\s+ver|o\s+sea|digamos|mira|entonces|dale|ok(?:ay)?|bien)\s*)+/i, '');
+  // 4.5. Known STT manglings of domain vocabulary (Whisper mishears despite the
+  // glossary prompt — "vacuiciones" salió en vivo con "vaquillonas" EN el prompt).
+  // Corre después del lowercase + accent-strip del paso 1.
+  result = correctSttDomainWords(result);
   // 5. Remove repeated consecutive words ("el el lote" → "el lote")
   result = result.replace(/\b(\w+)\s+\1\b/gi, '$1');
   // 6. Normalize plot codes (Whisper bug: "a dos" → "a2", "lote tres" → "lote 3")
@@ -32,6 +36,54 @@ export function normalizeTranscript(text) {
   // 7. Collapse whitespace + trim
   result = result.replace(/\s{2,}/g, ' ').trim();
   return result;
+}
+
+// ============================================================================
+// STT domain-word corrections
+// ============================================================================
+// REGLA DE ENTRADA: solo palabras SIN SENTIDO en español (que no pueden
+// significar otra cosa) — eso garantiza cero falsos positivos. NUNCA agregar
+// palabras reales ("valieron"→"parieron" rompería "me valieron 500"; "de este"
+// →"desteté" rompería media lengua). Keys en minúscula y sin acentos (corre
+// después del paso 1 de normalizeTranscript). Visto en vivo: "vacuiciones"
+// (vaquillonas, Jun 2026), "navijas" (novillos), "vaquillanas" (vaquillonas).
+const STT_DOMAIN_CORRECTIONS = new Map([
+  // vaquillona(s)
+  ['vacuiciones', 'vaquillonas'],
+  ['vacuicion', 'vaquillona'],
+  ['vaquillanas', 'vaquillonas'],
+  ['vaquillana', 'vaquillona'],
+  ['vaquichonas', 'vaquillonas'],
+  ['baquillonas', 'vaquillonas'],
+  ['baquillona', 'vaquillona'],
+  ['bakillonas', 'vaquillonas'],
+  // novillo(s) / novillito(s)
+  ['navijas', 'novillos'],
+  ['nobillos', 'novillos'],
+  ['nobillo', 'novillo'],
+  ['nobillitos', 'novillitos'],
+  ['noviyos', 'novillos'],
+  // agroquímicos
+  ['clifosato', 'glifosato'],
+  ['cliposato', 'glifosato'],
+  ['glifosfato', 'glifosato'],
+  ['grifosato', 'glifosato'],
+  // sanidad
+  ['ibermectina', 'ivermectina'],
+  ['hibermectina', 'ivermectina'],
+  ['aftoza', 'aftosa'],
+  ['brucelozis', 'brucelosis'],
+  ['bruselosis', 'brucelosis'],
+  // infraestructura
+  ['fidlot', 'feedlot'],
+  ['fitlot', 'feedlot'],
+  ['fedlot', 'feedlot'],
+]);
+
+/** Reemplaza palabra-por-palabra los manglings conocidos de STT. Exportada
+ *  para tests. */
+export function correctSttDomainWords(text) {
+  return text.replace(/[a-zñ]+/g, (w) => STT_DOMAIN_CORRECTIONS.get(w) ?? w);
 }
 
 /**

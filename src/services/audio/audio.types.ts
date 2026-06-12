@@ -50,15 +50,20 @@ export interface AudioConfig {
  * "novillos"→"navijas", "vaquillonas"→"vaquillanas"). Whisper uses it as a style/
  * vocabulary hint. Keep < ~220 tokens. Override via WHISPER_PROMPT env.
  */
+// Frases de ejemplo > lista de palabras: Whisper sesga mejor con vocabulario en
+// contexto natural. "vaquillonas" suelto igual salió "vacuiciones" en vivo
+// (Jun 2026) — por eso además hay un mapa determinístico de manglings conocidos
+// en text-normalizer.js (STT_DOMAIN_CORRECTIONS). Capa 1: este prompt. Capa 2: el mapa.
 export const DEFAULT_WHISPER_PROMPT =
-  'Mensaje de un productor agropecuario argentino sobre su campo. ' +
-  'Vocabulario: campo, lote, potrero, hectáreas, has; gasoil, nafta, urea, fosfato, ' +
-  'glifosato, fertilizante, agroquímico, semilla; sembré, fumigué, fertilicé, coseché, ' +
-  'aré, rastré, regué; soja, maíz, trigo, girasol, sorgo, cebada; ' +
-  'hacienda, vaca, vaquillona, novillo, novillito, ternero, ternera, toro, madres, cabezas; ' +
-  'desteté, parieron, nació, entoré, eché el toro, servicio, inseminé, IATF, vacuné, ' +
-  'desparasité, pesaje, kilos promedio, rinde, quintales; lluvia, milímetros; ' +
-  'pesos, dólares, palos, lucas, mil.';
+  'Mensaje de un productor agropecuario argentino sobre su campo. Ejemplos: ' +
+  'compré diez vaquillonas para el lote sur; las vaquillonas me salieron 500 mil por cabeza; ' +
+  'vendí novillos y novillitos; desteté los terneros y las terneras; parieron las vacas; ' +
+  'eché el toro, entoré, servicio, inseminé con IATF; vacuné contra aftosa y brucelosis; ' +
+  'desparasité con ivermectina; pesaje, kilos promedio, cabezas, madres, hacienda, feedlot, corral; ' +
+  'sembré soja, maíz, trigo, girasol, sorgo, cebada en el potrero de cien hectáreas; ' +
+  'fumigué con glifosato, fertilicé con urea y fosfato, coseché y el rinde fue en quintales; ' +
+  'aré, rastré, regué; cayeron veinte milímetros de lluvia; ' +
+  'gasté en gasoil, nafta, agroquímicos, semillas; pesos, dólares, palos, lucas, mil.';
 
 export function getAudioConfig(): AudioConfig {
   return {
