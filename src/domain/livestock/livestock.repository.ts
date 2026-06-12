@@ -673,8 +673,8 @@ export class LivestockRepository {
          AND m.linked_expense_id IS NULL AND m.linked_income_id IS NULL
          AND m.movement_type IN ('entrada', 'salida')
          AND m.created_at > NOW() - INTERVAL '7 days'
-         AND ($2::text IS NULL OR g.category = $2)
-         AND ($3::text IS NULL OR m.movement_type = $3)
+         AND ($2::text IS NULL OR g.category::text = $2)
+         AND ($3::text IS NULL OR m.movement_type::text = $3)
        ORDER BY m.created_at DESC
        LIMIT 1`,
       [userId, category ?? null, movementType ?? null],
