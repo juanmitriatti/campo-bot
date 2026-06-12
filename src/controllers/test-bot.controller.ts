@@ -17,7 +17,7 @@ import { UserRepository } from '../domain/users/user.repository.js';
 import { logError } from '../services/error-logger.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
-import { isAffirmation, looksLikeNewActionOrQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
+import { isAffirmation, looksLikeNewActionOrQuery, hasActionVerbOrQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { PendingTransactionStore, describeReplacedPending, resolveReplacedPending, isCompletePending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
@@ -1141,7 +1141,11 @@ async function processTextMessage(
       // "800 USD" should fill the slot. Without pulling it out of the
       // !expectsFinancialSlot guard, "vendí 10 novillos a 800 USD" donated
       // its 800 to a stuck "¿cuánto fue?" soja pending (silent data loss).
-      const _escapePending = looksLikeNewActionOrQuery(text)
+      // When waiting for a financial slot, the answer is EXPECTED to be
+      // money-shaped (and may contain unit words like "por cabeza"). Use the
+      // stricter escape (real verb/query only) so a bare price answer fills the
+      // slot instead of escaping to the agent and corrupting the last income.
+      const _escapePending = (expectsFinancialSlot ? hasActionVerbOrQuery(text) : looksLikeNewActionOrQuery(text))
         || isOtherItemCorrectionOrDelete(text)
         || (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text)));
       if (_escapePending) {

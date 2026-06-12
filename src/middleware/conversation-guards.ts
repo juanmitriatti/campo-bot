@@ -98,8 +98,30 @@ export function looksLikeNewActionOrQuery(text: string): boolean {
   // Livestock registration ("tengo 100 vacas", "30 terneros", "120 cabezas") —
   // a number + an animal noun. Lets it abandon a stuck flow/pending (e.g. the
   // field-city step) instead of being swallowed as a bad locality.
-  if (/\d/.test(t) && /\b(vacas?|novillos?|novillitos?|terneros?|terneras?|toros?|toritos?|vaquillonas?|bueyes?|animales?|cabezas?)\b/.test(t)) return true;
+  // EXCLUDE price-unit phrases: "X por cabeza / por animal / por vaca" is a
+  // UNIT PRICE ("per head"), NOT a count — otherwise "500000 pesos por cabeza"
+  // (a price answer to a livestock-purchase pending) escaped and corrupted the
+  // last income via edit_last_income (seen live, Jun 2026).
+  if (/\d/.test(t)
+      && /\b(vacas?|novillos?|novillitos?|terneros?|terneras?|toros?|toritos?|vaquillonas?|bueyes?|animales?|cabezas?)\b/.test(t)
+      && !/\b(por|la|el|cada)\s+(vaca|novillo\w*|ternero?\w*|toro|vaquillona|cabeza|animal)\b/.test(t)) return true;
   // A genuine multi-word question ("va a llover el finde?", "cuánto tengo?").
   if (/\?\s*$/.test(text.trim()) && t.split(/\s+/).length >= 3) return true;
   return false;
+}
+
+/**
+ * Stricter sibling of looksLikeNewActionOrQuery: ONLY a genuine action verb or
+ * query word counts — the bare number+animal heuristic and the trailing-question
+ * heuristic are intentionally excluded.
+ *
+ * Used at financial-slot pendings (waiting for amount/price/quantity) where the
+ * user's reply is EXPECTED to be money-shaped and may legitimately contain
+ * animal/unit words ("500000 pesos por cabeza" = price per head). Only a real
+ * new verb ("vendí 10 novillos a 800") or a query should abandon such a pending.
+ */
+export function hasActionVerbOrQuery(text: string): boolean {
+  const t = norm(text);
+  if (!t) return false;
+  return ACTION_VERB.test(t) || QUERY_INTENT.test(t);
 }
