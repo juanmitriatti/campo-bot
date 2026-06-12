@@ -283,7 +283,7 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
             await saveAudioTranscriptionLog(userId, {
               durationSeconds,
               provider: provider.name || audioConfig.provider,
-              model: audioConfig.openaiWhisperModel,
+              model: (result as { model?: string }).model || audioConfig.openaiWhisperModel,
               costUsd,
             });
             console.log(`[telegram] audio logged: ${durationSeconds}s, $${costUsd.toFixed(6)} USD`);

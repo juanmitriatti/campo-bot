@@ -235,7 +235,7 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
           await saveAudioTranscriptionLog(user.id, {
             durationSeconds,
             provider: result.providerName || audioConfig.provider,
-            model: audioConfig.openaiWhisperModel,
+            model: (result as { model?: string }).model || audioConfig.openaiWhisperModel,
             costUsd,
           });
           console.log(`[audio] logged: ${durationSeconds}s, $${costUsd.toFixed(6)} USD`);

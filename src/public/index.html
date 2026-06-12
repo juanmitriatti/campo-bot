@@ -3874,6 +3874,18 @@
               html += '<input type="checkbox" id="' + inputId + '" data-key="' + item.key + '" data-type="boolean"' + checked + '>';
               html += (checked ? 'Habilitado' : 'Deshabilitado');
               html += '</label>';
+            } else if (s.options && s.options.length) {
+              // Select con opciones predefinidas (ej: modelo de transcripción STT)
+              html += '<select id="' + inputId + '" data-key="' + item.key + '" data-type="string" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;">';
+              var hasCurrent = false;
+              for (var o = 0; o < s.options.length; o++) {
+                if (s.options[o] === s.value) hasCurrent = true;
+                html += '<option value="' + escapeHtml(s.options[o]) + '"' + (s.options[o] === s.value ? ' selected' : '') + '>' + escapeHtml(s.options[o]) + '</option>';
+              }
+              if (!hasCurrent && s.value) {
+                html += '<option value="' + escapeHtml(s.value) + '" selected>' + escapeHtml(s.value) + ' (custom)</option>';
+              }
+              html += '</select>';
             } else if (item.key.indexOf('PROMPT') !== -1 || item.key.indexOf('prompt') !== -1 || item.key.indexOf('MESSAGE') !== -1) {
               html += '<textarea id="' + inputId + '" data-key="' + item.key + '" data-type="' + s.type + '" rows="4" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;resize:vertical;">' + escapeHtml(s.value) + '</textarea>';
             } else {

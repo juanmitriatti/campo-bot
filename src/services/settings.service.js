@@ -30,7 +30,7 @@ const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
 const SETTING_DEFINITIONS = {
   // Audio
   MAX_AUDIO_DURATION_SECONDS: { default: '120', type: 'number', group: 'audio', label: 'Duración máxima de audio (seg)', description: 'Límite de duración para los audios de WhatsApp que el bot acepta transcribir. Audios más largos se rechazan.' },
-  OPENAI_WHISPER_MODEL: { default: 'whisper-1', type: 'string', group: 'audio', label: 'Modelo Whisper', description: 'Modelo de OpenAI usado para la transcripción de voz a texto. "whisper-1" es el estándar.' },
+  OPENAI_WHISPER_MODEL: { default: 'whisper-1', type: 'select', options: ['whisper-1', 'gpt-4o-mini-transcribe', 'gpt-4o-transcribe'], group: 'audio', label: 'Modelo de transcripción (STT)', description: 'Modelo de OpenAI para voz a texto. whisper-1: clásico/estable ($0.006/min). gpt-4o-mini-transcribe: mejor español, mitad de precio ($0.003/min). gpt-4o-transcribe: máxima calidad ($0.006/min). El cambio aplica en ≤5 min (cache de settings), sin deploy. El glosario agro y las correcciones de manglings aplican igual con cualquiera.' },
   SPEECH_TIMEOUT_MS: { default: '30000', type: 'number', group: 'audio', label: 'Timeout transcripción (ms)', description: 'Tiempo máximo de espera para que la API de transcripción responda antes de cancelar.' },
   MAX_AUDIO_PER_HOUR: { default: '10', type: 'number', group: 'limits', label: 'Máx audios por hora por usuario', description: 'Rate limit de audios por usuario por hora. Previene abuso del servicio de transcripción.' },
 
@@ -269,6 +269,7 @@ export async function getAllSettings() {
       label: def.label,
       description: def.description || null,
       default: def.default,
+      options: def.options || null,
     };
   }
 

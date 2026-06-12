@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getAudioConfig } from '../audio.types.js';
+import { getSetting } from '../../settings.service.js';
 
 const MIME_TO_EXT = {
   'audio/ogg': 'ogg',
@@ -24,10 +25,19 @@ export class OpenAIWhisperProvider {
     const config = getAudioConfig();
     const start = Date.now();
 
+    // El modelo se resuelve por SETTING (admin → DB, cache 5 min) con fallback a
+    // env/default. Antes getAudioConfig() leía solo env y el setting del
+    // dashboard "Modelo de transcripción" estaba MUERTO — cambiarlo no hacía nada.
+    let model = config.openaiWhisperModel;
+    try {
+      const dbModel = await getSetting('OPENAI_WHISPER_MODEL');
+      if (dbModel) model = dbModel;
+    } catch { /* settings table unavailable → env/default */ }
+
     const ext = getExtension(mimeType);
     const formData = new FormData();
     formData.append('file', new Blob([new Uint8Array(audioBuffer)], { type: mimeType }), `audio.${ext}`);
-    formData.append('model', config.openaiWhisperModel);
+    formData.append('model', model);
     formData.append('language', config.language);
     // Domain glossary → biases transcription toward Argentine agro/livestock
     // spelling (otherwise "desteté"→"de este", "novillos"→"navijas", etc.).
@@ -46,6 +56,7 @@ export class OpenAIWhisperProvider {
       text: response.data.text,
       language: config.language,
       durationMs: Date.now() - start,
+      model,
     };
   }
 }

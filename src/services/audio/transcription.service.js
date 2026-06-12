@@ -40,6 +40,7 @@ export class TranscriptionService {
         sizeBytes: media.sizeBytes,
         estimatedDurationSeconds: this.downloadService.estimateDurationSeconds(media.sizeBytes),
         providerName: this.provider.name,
+        model: result.model || null,
       };
     } catch (err) {
       if (!(err instanceof AudioTooLongError)) {
