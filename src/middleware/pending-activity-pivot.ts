@@ -54,9 +54,16 @@ export async function flushPendingActivityOnPivot(
     /* fall through to the deferred notice */
   }
   // 2. Otherwise, at least tell the user it wasn't recorded (no silent loss).
+  //    Incluimos la cantidad/categoría cuando la tenemos, para que el usuario
+  //    reconozca exactamente qué quedó sin registrar (visto live: pidió "40
+  //    terneros", pivoteó, y no le quedó claro qué pasó con ellos).
   const label = describePendingActivity(pending);
   if (label) {
-    return [`💡 Dejé pendiente *${label}*. Escribime el lote cuando quieras y la registro.`];
+    const d = (pending.data ?? {}) as Record<string, unknown>;
+    const qty = typeof d.count === 'number' ? d.count : (typeof d.quantity === 'number' ? d.quantity : null);
+    const cat = typeof d.category === 'string' ? d.category : null;
+    const detail = qty != null ? ` (${qty}${cat ? ' ' + cat : ''})` : '';
+    return [`💡 Dejé pendiente *${label}*${detail}. Decime el lote cuando quieras y lo registro.`];
   }
   return [];
 }

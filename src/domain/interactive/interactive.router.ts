@@ -33,6 +33,9 @@ const CALLBACK_MAP: Record<string, ParsedCommand> = {
   'cmd_exportar_csv': { command: 'export_csv' },
   'cmd_reporte_agro': { command: 'generate_agro_report' },
   'cmd_historial_lote': { command: 'query_plot_history' },
+  // Post-acción hacienda / stock (botones de "¿y ahora?")
+  'cmd_listar_hacienda': { command: 'list_livestock' },
+  'cmd_ver_stock': { command: 'check_stock' },
   // Back to main menu
   'back_menu': { command: 'menu' },
   // Help category sections

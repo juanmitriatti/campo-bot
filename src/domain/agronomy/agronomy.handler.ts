@@ -320,14 +320,13 @@ export class AgronomyHandler {
         crop,
       });
 
-      const msgs: string[] = [];
-      if (closedPrevious) {
-        msgs.push(`📋 Se cerró la campaña anterior de *${closedPrevious.crop}* en ${plotLabel}.`);
-      }
+      // Acción principal PRIMERO (la siembra), el cierre de campaña previa
+      // como nota integrada — antes el cierre iba primero y a veces el usuario
+      // solo veía "se cerró la campaña" sin la confirmación de lo que sembró.
       let sowMsg = `🌱 *${crop}* sembrado en *${plotLabel}*\n📅 Campaña ${label}`;
       if (sowedHa) sowMsg += `\n📐 Sembradas: ${sowedHa.toLocaleString('es-AR')} ha`;
-      msgs.push(sowMsg);
-      return { messages: msgs };
+      if (closedPrevious) sowMsg += `\n📋 _Cerré la campaña anterior de ${closedPrevious.crop}._`;
+      return { messages: [sowMsg] };
     }
 
     if (pending.command === 'harvest_crop') {
@@ -1953,10 +1952,7 @@ export class AgronomyHandler {
           crop,
         });
 
-        const msgs: string[] = [];
-        if (closedPrevious) {
-          msgs.push(`📋 Se cerró la campaña anterior de *${closedPrevious.crop}* en ${plotLabel}.`);
-        }
+        // Acción principal PRIMERO; el cierre de campaña previa como nota.
         let sowMsg = `🌱 *${crop}* sembrado en *${plotLabel}*\n📅 Campaña ${label}`;
         if (sowedHa) sowMsg += `\n📐 Sembradas: ${sowedHa.toLocaleString('es-AR')} ha`;
 
@@ -1972,8 +1968,8 @@ export class AgronomyHandler {
           } catch { /* non-critical */ }
         }
 
-        msgs.push(sowMsg);
-        return { messages: msgs };
+        if (closedPrevious) sowMsg += `\n📋 _Cerré la campaña anterior de ${closedPrevious.crop}._`;
+        return { messages: [sowMsg] };
       }
 
       case 'harvest_crop': {

@@ -185,6 +185,39 @@ const POST_STOCK_EMPTY: InteractiveMessage = {
   ],
 };
 
+// Post-acción para registros de hacienda (alta/baja/transfer/sanidad/repro/peso).
+const POST_LIVESTOCK: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Y ahora?',
+  buttons: [
+    { id: 'cmd_listar_hacienda', title: '🐄 Ver hacienda' },
+    { id: 'help_hacienda', title: '💉 Sanidad / pesaje' },
+    { id: 'back_menu', title: '📋 Menú' },
+  ],
+};
+
+// Post-acción para movimientos de stock (carga/uso).
+const POST_STOCK: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Y ahora?',
+  buttons: [
+    { id: 'cmd_ver_stock', title: '📦 Ver stock' },
+    { id: 'help_cosecha', title: '➕ Cargar / usar más' },
+    { id: 'back_menu', title: '📋 Menú' },
+  ],
+};
+
+// Post-cosecha: lo más útil es ver la campaña y su rinde.
+const POST_HARVEST: InteractiveMessage = {
+  type: 'buttons',
+  body: '¿Y ahora?',
+  buttons: [
+    { id: 'cmd_reporte_agro', title: '📊 Reporte agro PDF' },
+    { id: 'flow_new_activity', title: '🌾 Otra actividad' },
+    { id: 'back_menu', title: '📋 Menú' },
+  ],
+};
+
 const SUGGESTIONS: Record<string, InteractiveMessage> = {
   default_menu: MENU_LIST,
   expense_saved: POST_EXPENSE,
@@ -204,6 +237,9 @@ const SUGGESTIONS: Record<string, InteractiveMessage> = {
   crop_empty: POST_CROP_EMPTY,
   livestock_empty: POST_LIVESTOCK_EMPTY,
   stock_empty: POST_STOCK_EMPTY,
+  livestock_logged: POST_LIVESTOCK,
+  stock_logged: POST_STOCK,
+  harvest_logged: POST_HARVEST,
 };
 
 // Command → suggestion key mapping for commands that don't set their own suggestionKey
@@ -231,6 +267,34 @@ const COMMAND_SUGGESTION_MAP: Record<string, string> = {
   rainfall_range: 'rainfall_logged',
   plot_activities: 'activity_logged',
   query_plot_history: 'query_result',
+  // Actividades agro que antes terminaban "secas" (sin próximos pasos) — Jun 2026.
+  // El handler no setea suggestionKey y caían a default_menu (tipo 'list', que el
+  // render de sugerencias ignora porque solo muestra 'buttons').
+  sow_crop: 'activity_logged',
+  harvest_crop: 'harvest_logged',
+  log_spraying: 'activity_logged',
+  log_fertilization: 'activity_logged',
+  log_tillage: 'activity_logged',
+  log_irrigation: 'activity_logged',
+  log_activity: 'activity_logged',
+  log_rainfall: 'rainfall_logged',
+  log_crop_scouting: 'observation_logged',
+  log_observation: 'observation_logged',
+  // Hacienda — los handlers que ya devuelven botones propios (buildPostActionButtons)
+  // ganan; estos cubren los casos que terminaban secos.
+  add_livestock: 'livestock_logged',
+  remove_livestock: 'livestock_logged',
+  transfer_livestock: 'livestock_logged',
+  record_livestock_death: 'livestock_logged',
+  record_livestock_birth: 'livestock_logged',
+  adjust_livestock: 'livestock_logged',
+  log_health_event: 'livestock_logged',
+  log_repro_event: 'livestock_logged',
+  log_weighing: 'livestock_logged',
+  set_livestock_price: 'livestock_logged',
+  // Stock
+  add_stock: 'stock_logged',
+  remove_stock: 'stock_logged',
 };
 
 export function getSuggestions(completedAction: string): InteractiveMessage | null {
