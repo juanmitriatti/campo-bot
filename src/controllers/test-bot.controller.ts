@@ -1134,7 +1134,7 @@ async function processTextMessage(
       // the pending-action processor merge the slots. Without this guard the
       // pending gets silently cleared and the partial saves as $0.
       const expectsFinancialSlot = pendingAct.missing
-        && (pendingAct.command === 'log_income' || pendingAct.command === 'log_expense')
+        && (pendingAct.command === 'log_income' || pendingAct.command === 'log_expense' || pendingAct.command === 'set_livestock_price')
         && pendingAct.missing.some(s => s === 'amount' || s === 'quantity' || s === 'unit_price' || s === 'unit');
       // A NEW action with its own verb or a query (looksLikeNewActionOrQuery)
       // escapes even a financial-slot pending — only a BARE answer like
