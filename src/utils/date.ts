@@ -25,6 +25,17 @@ function toDateAR(date: Date | string): Date {
   if (typeof date === 'string') {
     return /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T12:00:00Z`) : new Date(date);
   }
+  // node-postgres devuelve las columnas DATE como Date a MEDIANOCHE (UTC,
+  // porque el proceso corre en UTC). Formatear eso en ART (UTC-3) lo corre al
+  // día ANTERIOR — off-by-one visto live: vacunación guardada el 12/06 se
+  // mostraba "11/06". Una fecha-calendario no es un instante: la anclamos a
+  // mediodía para que ninguna conversión de zona cruce la medianoche. (Un
+  // timestamp real que caiga exactamente en 00:00:00.000 es despreciable.)
+  if (date instanceof Date
+      && date.getUTCHours() === 0 && date.getUTCMinutes() === 0
+      && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0) {
+    return new Date(date.getTime() + 12 * 3600 * 1000);
+  }
   return date;
 }
 

@@ -234,6 +234,20 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
     stillMissing.splice(stillMissing.indexOf('amount' as SlotName), 1);
   }
 
+  // Cross-fill #3 — el pending espera unit_price ("¿a cuánto fue la compra?")
+  // y el usuario contesta con un monto sin calificador per-unit ("si 500000
+  // pesos"). En contexto de esa pregunta, el monto ES el precio por unidad.
+  // Visto live (Jun 2026): 2 audios con el precio re-preguntados porque el
+  // extractor llenaba amount pero no unit_price.
+  if (stillMissing.includes('unit_price' as SlotName)
+      && data.unit_price == null
+      && typeof data.amount === 'number' && data.amount > 0) {
+    data.unit_price = data.amount;
+    (data as Record<string, unknown>).unitPrice = data.amount;
+    console.log(`[INTERCEPT] cross-fill amount→unit_price: ${data.amount} (command=${pending.command})`);
+    stillMissing.splice(stillMissing.indexOf('unit_price' as SlotName), 1);
+  }
+
   if (stillMissing.length === 0) {
     return { next: null, extracted, stillMissing: [], finalData: data };
   }

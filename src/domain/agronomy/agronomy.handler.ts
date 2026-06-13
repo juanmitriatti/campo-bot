@@ -2,6 +2,7 @@ import fs from 'fs';
 import { AgronomyRepository, RAINFALL_REJECTED_DUPLICATE } from './agronomy.repository.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { CropService, detectCropFromText, formatSeasonLabel, getSeasonTypeForCrop, getCampaignStateLabel, getCampaignState } from '../plots/crop.service.js';
+import { formatPlotLocation, cap } from '../../utils/format-location.js';
 import { CampaignStatsService } from './campaign-stats.service.js';
 import type { CampaignStats, CampaignComparison } from './campaign-stats.service.js';
 import { FeedlotService } from '../feedlot/feedlot.service.js';
@@ -290,7 +291,7 @@ export class AgronomyHandler {
     plotName: string | null,
     fieldName: string | null,
   ): Promise<HandlerResponse> {
-    const plotLabel = fieldName ? `${fieldName} > ${plotName}` : plotName;
+    const plotLabel = formatPlotLocation(fieldName, plotName);
     const cmd = pending.data;
 
     const EVENT_TYPE_MAP: Record<string, ActivityType> = {
@@ -323,8 +324,8 @@ export class AgronomyHandler {
       // Acción principal PRIMERO (la siembra), el cierre de campaña previa
       // como nota integrada — antes el cierre iba primero y a veces el usuario
       // solo veía "se cerró la campaña" sin la confirmación de lo que sembró.
-      let sowMsg = `🌱 *${crop}* sembrado en *${plotLabel}*\n📅 Campaña ${label}`;
-      if (sowedHa) sowMsg += `\n📐 Sembradas: ${sowedHa.toLocaleString('es-AR')} ha`;
+      let sowMsg = `🌱 *Siembra registrada*\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
+      if (sowedHa) sowMsg += `\n📐 ${sowedHa.toLocaleString('es-AR')} ha sembradas`;
       if (closedPrevious) sowMsg += `\n📋 _Cerré la campaña anterior de ${closedPrevious.crop}._`;
       return { messages: [sowMsg] };
     }
@@ -355,8 +356,8 @@ export class AgronomyHandler {
       });
 
       const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
-      let msg = `🌾 *${crop}* cosechado en *${plotLabel}*\n📅 Campaña ${label}`;
-      msg += `\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime "cerrar campaña".`;
+      let msg = `🌾 *Cosecha registrada*\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
+      msg += `\n\n_La campaña sigue abierta — decime "cerrar campaña" cuando quieras cerrarla._`;
       return { messages: [msg] };
     }
 
@@ -1723,7 +1724,7 @@ export class AgronomyHandler {
           if (!resolved.plotId) return { messages: [`No encontre el lote *${newPlotName}*.`] };
           newPlotId = resolved.plotId;
           newFieldId = resolved.fieldId ?? undefined;
-          newPlotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+          newPlotLabel = formatPlotLocation(resolved.fieldName, resolved.plotName);
         }
         await this.repo.updateRainfallFields(last.id, {
           millimeters: newMm,
@@ -1759,7 +1760,7 @@ export class AgronomyHandler {
           if (!resolved.plotId) return { messages: [`No encontre el lote *${newPlotName}*.`] };
           newPlotId = resolved.plotId;
           newFieldId = resolved.fieldId ?? undefined;
-          newPlotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+          newPlotLabel = formatPlotLocation(resolved.fieldName, resolved.plotName);
         }
         await this.repo.updateObservationFields(last.id, {
           observationText: newText,
@@ -1941,7 +1942,7 @@ export class AgronomyHandler {
         }
         const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, sowedHa);
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
-        const plotLabel = plotResult.fieldName ? `${plotResult.fieldName} > ${plotResult.plotName}` : plotResult.plotName;
+        const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
 
         // Save domain event for planting
         await this.repo.saveDomainEvent(userId, {
@@ -1953,8 +1954,8 @@ export class AgronomyHandler {
         });
 
         // Acción principal PRIMERO; el cierre de campaña previa como nota.
-        let sowMsg = `🌱 *${crop}* sembrado en *${plotLabel}*\n📅 Campaña ${label}`;
-        if (sowedHa) sowMsg += `\n📐 Sembradas: ${sowedHa.toLocaleString('es-AR')} ha`;
+        let sowMsg = `🌱 *Siembra registrada*\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
+        if (sowedHa) sowMsg += `\n📐 ${sowedHa.toLocaleString('es-AR')} ha sembradas`;
 
         // Warn if sowed hectares exceed plot area
         if (sowedHa) {
@@ -2067,7 +2068,7 @@ export class AgronomyHandler {
         const yieldKgRaw = cmd.yieldKg != null ? Number(cmd.yieldKg) : null;
         const yieldKgPerHa = cmd.yieldKgPerHa != null ? Number(cmd.yieldKgPerHa) : null;
         let yieldNotes = (cmd.yieldNotes as string) || null;
-        const plotLabel = plotResult.fieldName ? `${plotResult.fieldName} > ${plotResult.plotName}` : plotResult.plotName;
+        const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
 
         // Resolve effective yield: if user gave rate (kg/ha), compute total; if total, use as-is.
         // When BOTH come, validate they agree (within 5% tolerance). Disagreement is almost
@@ -2288,7 +2289,7 @@ export class AgronomyHandler {
         }
 
         const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
-        let harvestMsg = `🌾 *${crop}* cosechado en *${plotLabel}*\n📅 Campaña ${label}`;
+        let harvestMsg = `🌾 *Cosecha registrada*\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
         if (yieldKg || computedKgPerHa) {
           if (yieldKg) harvestMsg += `\n📊 Rendimiento: ${yieldKg.toLocaleString('es-AR')} kg`;
           if (computedKgPerHa) harvestMsg += yieldKg ? ` (${computedKgPerHa.toLocaleString('es-AR')} kg/ha)` : `\n📊 Rendimiento: ${computedKgPerHa.toLocaleString('es-AR')} kg/ha`;
@@ -2364,7 +2365,7 @@ export class AgronomyHandler {
 
         if (resolved.plotId) {
           const active = await this.cropService.getActive(resolved.plotId);
-          const plotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+          const plotLabel = formatPlotLocation(resolved.fieldName, resolved.plotName);
 
           if (!active) {
             // Helpful hint so the user has a path forward — the chaos persona
@@ -2434,11 +2435,11 @@ export class AgronomyHandler {
         const cropLabel = cropFilter ? `${cropFilter}` : 'Cultivos activos';
         const lines: string[] = [`🌱 *${cropLabel}*`];
 
-        // Summary line
+        // Summary line (en itálica para separarla visualmente del detalle)
         const summaryParts: string[] = [];
         summaryParts.push(`${allActive.length} lote${allActive.length > 1 ? 's' : ''}`);
         if (totalHa > 0) summaryParts.push(`${totalHa.toLocaleString('es-AR')} ha`);
-        lines.push(summaryParts.join(' · '));
+        lines.push(`_${summaryParts.join(' · ')}_`);
 
         // Default to detail when few results; regex fallback for large lists
         const acOriginal = ((cmd.originalText as string) || '').toLowerCase();
@@ -2455,26 +2456,30 @@ export class AgronomyHandler {
           for (const row of allActive) {
             const label = formatSeasonLabel(row.season_year, row.season_type);
             const stateLabel = getCampaignStateLabel(row);
-            const plotLabel = `${row.field_name} > ${row.plot_name}`;
+            const plotLabel = formatPlotLocation(row.field_name, row.plot_name);
             const sowedHa = row.sowed_hectares ? Number(row.sowed_hectares) : null;
             const plotHa = row.area_hectares ? Number(row.area_hectares) : null;
             const effectiveHa = sowedHa ?? plotHa;
             const haStr = effectiveHa ? `${effectiveHa.toLocaleString('es-AR')} ha` : '';
 
-            let detailLine = `${stateLabel} *${row.crop}* en *${plotLabel}*`;
-            if (haStr) detailLine += ` — ${haStr}`;
-            detailLine += ` — ${label}`;
+            // El emoji de estado (🌱 activa / 🌾 cosechada-abierta / ✅ cerrada)
+            // hace de viñeta — conserva el estado sin la palabra "Activa" robótica.
+            const stateEmoji = getCampaignStateLabel(row).split(' ')[0] || '🌱';
+            // Línea 1: cultivo + ubicación natural. Línea 2 (indentada): ha · campaña + extras.
+            let detailLine = `${stateEmoji} *${cap(row.crop)}* — ${plotLabel}`;
+            const metaParts: string[] = [];
+            if (haStr) metaParts.push(haStr);
+            metaParts.push(`campaña ${label}`);
 
-            const extras: string[] = [];
             if (row.yield_kg) {
               const kgPerHa = effectiveHa ? Math.round(Number(row.yield_kg) / effectiveHa) : null;
-              extras.push(`rinde: ${Number(row.yield_kg).toLocaleString('es-AR')} kg${kgPerHa ? ` (${kgPerHa.toLocaleString('es-AR')} kg/ha)` : ''}`);
+              metaParts.push(`rinde ${Number(row.yield_kg).toLocaleString('es-AR')} kg${kgPerHa ? ` (${kgPerHa.toLocaleString('es-AR')} kg/ha)` : ''}`);
             }
             if (row.last_activity_date && row.last_activity_type) {
               const { label: actLabel } = getActivityLabel(row.last_activity_type);
-              extras.push(`últ: ${actLabel} ${formatDateAR(row.last_activity_date)}`);
+              metaParts.push(`últ. ${actLabel} ${formatDateAR(row.last_activity_date)}`);
             }
-            if (extras.length > 0) detailLine += `\n    ${extras.join(' · ')}`;
+            detailLine += `\n   ${metaParts.join(' · ')}`;
 
             lines.push(detailLine);
           }
@@ -2494,7 +2499,7 @@ export class AgronomyHandler {
         }
 
         const history = await this.cropService.getHistory(resolved.plotId);
-        const plotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+        const plotLabel = formatPlotLocation(resolved.fieldName, resolved.plotName);
 
         if (history.length === 0) {
           return { messages: [`No hay historial de cultivos en *${plotLabel}*.`] };
@@ -2520,7 +2525,7 @@ export class AgronomyHandler {
         }
 
         const active = await this.cropService.getActive(resolved.plotId);
-        const plotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+        const plotLabel = formatPlotLocation(resolved.fieldName, resolved.plotName);
 
         if (!active) {
           return { messages: [`No hay campaña abierta en *${plotLabel}*.`] };
@@ -2608,7 +2613,7 @@ export class AgronomyHandler {
           statsFieldId = resolved.fieldId ?? null;
           statsPlotId = resolved.plotId ?? null;
           statsLocationLabel = resolved.plotName
-            ? (resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName)
+            ? (formatPlotLocation(resolved.fieldName, resolved.plotName))
             : resolved.fieldName ?? null;
         }
 
@@ -2707,9 +2712,7 @@ export class AgronomyHandler {
 
         const delTotal = deleted.reduce((sum, r) => sum + Number(r.weight_kg), 0);
         const delLines: string[] = [];
-        const delLabel = delResolved.fieldName
-          ? `${delResolved.fieldName} > ${delResolved.plotName}`
-          : delResolved.plotName;
+        const delLabel = formatPlotLocation(delResolved.fieldName, delResolved.plotName);
         delLines.push(`🗑️ *${deleted.length} carga${deleted.length > 1 ? 's' : ''} eliminada${deleted.length > 1 ? 's' : ''} de ${delLabel}:*`);
         for (const r of deleted) {
           let line = `• ${r.driver_name} — ${Number(r.weight_kg).toLocaleString('es-AR')} kg`;
@@ -2825,9 +2828,7 @@ export class AgronomyHandler {
           implement: cmd.implement as string | null,
         });
 
-        const plotLabel = plotResult.fieldName
-          ? `${plotResult.fieldName} > ${plotResult.plotName}`
-          : plotResult.plotName;
+        const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
 
         const confirmation = formatActivityConfirmation(eventType, plotLabel, {
           product: cmd.product as string | null,
@@ -2931,9 +2932,7 @@ export class AgronomyHandler {
           }
 
           tactoPlotId = plotResult.plotId;
-          tactoLabel = plotResult.fieldName
-            ? `${plotResult.fieldName} > ${plotResult.plotName}`
-            : plotResult.plotName;
+          tactoLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
         }
 
         // Extract counts
@@ -3217,9 +3216,7 @@ export class AgronomyHandler {
             return { messages: [`No encontré el lote *${newPlotName}*. Revisá el nombre o escribí *mis lotes*.`] };
           }
           newPlotId = newResolved.plotId;
-          newPlotLabel = newResolved.fieldName
-            ? `${newResolved.fieldName} > ${newResolved.plotName}`
-            : newResolved.plotName;
+          newPlotLabel = formatPlotLocation(newResolved.fieldName, newResolved.plotName);
         }
 
         // Build extra fields to update
@@ -3278,9 +3275,7 @@ export class AgronomyHandler {
         }
 
         const events = await this.repo.getDomainEventsByPlot(resolved.plotId);
-        const plotLabel = resolved.fieldName
-          ? `${resolved.fieldName} > ${resolved.plotName}`
-          : resolved.plotName;
+        const plotLabel = formatPlotLocation(resolved.fieldName, resolved.plotName);
 
         if (events.length === 0) {
           return { messages: [`No hay actividades registradas en *${plotLabel}*.`] };
@@ -3381,7 +3376,7 @@ export class AgronomyHandler {
         });
 
         const plotLabel = resolved.plotName
-          ? (resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName)
+          ? (formatPlotLocation(resolved.fieldName, resolved.plotName))
           : 'todos los lotes';
 
         // Derive time label from original text
@@ -3663,7 +3658,7 @@ export class AgronomyHandler {
 
         // Build human-readable confirmation
         const lines: string[] = [];
-        const plotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+        const plotLabel = formatPlotLocation(resolved.fieldName, resolved.plotName);
         lines.push(`🔍 *Monitoreo registrado* en *${plotLabel}*`);
         if (saved.stage_code) {
           lines.push(`  📐 Estadio: *${saved.stage_code}*`);
@@ -3828,7 +3823,7 @@ export class AgronomyHandler {
 
         let locationLabel = 'General';
         if (resolved.plotName && resolved.fieldName) {
-          locationLabel = `${resolved.fieldName} > ${resolved.plotName}`;
+          locationLabel = formatPlotLocation(resolved.fieldName, resolved.plotName);
         } else if (resolved.fieldName) {
           locationLabel = resolved.fieldName;
         } else if (resolved.plotName) {

@@ -225,6 +225,19 @@ function extractUnitPrice(text: string): number | null {
     const n = normalizarMonto(formBare[1]);
     if (n && n > 0) return n;
   }
+  // Form 3 — número + calificador per-unit en CUALQUIER posición. Cubre la
+  // respuesta conversacional típica al "¿a cuánto fue la compra?": "me
+  // salieron 500000 pesos cada una", "fueron 2 millones por cabeza", "las
+  // pagué 480 mil c/u". Las forms 1/2 exigían "a X" o número al inicio (^) —
+  // visto live: 2 audios con el precio re-preguntados hasta que el usuario
+  // mandó el número pelado (Jun 2026).
+  const formAnywhere = text.match(
+    /([\d.,]+(?:\s*(?:mil|lucas?|palos?|millones|millon))?)\s*(?:d[oó]lares?|usd|pesos?)?\s*(?:c\/u|cada\s+un[oa]|por\s+cabeza|por\s+animal|por\s+unidad|la\s+unidad|por\s+(?:tonelada|tn|kg|kilo|bolsa))/i,
+  );
+  if (formAnywhere) {
+    const n = normalizarMonto(formAnywhere[1]);
+    if (n && n > 0) return n;
+  }
   return null;
 }
 
