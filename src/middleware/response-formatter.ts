@@ -1,4 +1,5 @@
 import type { ObservationCategory } from '../types/index.js';
+import { formatPlotLocation } from '../utils/format-location.js';
 
 // ============================================================================
 // Observation Response
@@ -102,7 +103,7 @@ export function formatAgroReportResponse(data: AgroReportResponseData): string {
   const lines: string[] = [];
 
   const titleScope = data.filterPlotName
-    ? `${data.fieldName} > ${data.filterPlotName}`
+    ? formatPlotLocation(data.fieldName, data.filterPlotName)
     : data.fieldName;
   const periodLabel = data.desde && data.hasta
     ? `${data.desde} a ${data.hasta}`

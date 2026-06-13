@@ -10,6 +10,7 @@ import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FeedlotService } from '../feedlot/feedlot.service.js';
 import { saveDomainEvent, queryLivestockEvents, updateLivestockGroupWeight, updateConversationState } from '../../services/expenses.js';
 import { formatDateAR } from '../../utils/date.js';
+import { formatPlotLocation } from '../../utils/format-location.js';
 import { pool } from '../../config/db.js';
 import { encodeLivestockPayload, decodeLivestockPayload } from './livestock-payload.js';
 import { buildPostActionButtons } from './livestock-post-actions.js';
@@ -836,9 +837,7 @@ export class LivestockHandler {
     );
 
     if (resolved.plotId) {
-      const label = resolved.fieldName
-        ? `${resolved.fieldName} > ${resolved.plotName}`
-        : resolved.plotName || '—';
+      const label = formatPlotLocation(resolved.fieldName, resolved.plotName);
       return { plotId: resolved.plotId, corralId: null, label };
     }
 
@@ -1138,7 +1137,7 @@ export class LivestockHandler {
       const location = r.corral_name
         ? `Corral ${r.corral_name}`
         : r.plot_name
-        ? `${r.field_name || ''} > ${r.plot_name}`
+        ? formatPlotLocation(r.field_name, r.plot_name)
         : '';
       return `  📅 ${date}: ${typeLabel}${disease}${count}${location ? ` — 📍 ${location}` : ''}`;
     });
@@ -1270,7 +1269,7 @@ export class LivestockHandler {
       const location = r.corral_name
         ? `Corral ${r.corral_name}`
         : r.plot_name
-        ? `${r.field_name || ''} > ${r.plot_name}`
+        ? formatPlotLocation(r.field_name, r.plot_name)
         : '';
       return `  📅 ${date}: ${typeLabel}${sire}${count}${location ? ` — 📍 ${location}` : ''}`;
     });
@@ -1395,7 +1394,7 @@ export class LivestockHandler {
       const location = r.corral_name
         ? `Corral ${r.corral_name}`
         : r.plot_name
-        ? `${r.field_name || ''} > ${r.plot_name}`
+        ? formatPlotLocation(r.field_name, r.plot_name)
         : '';
       return `  📅 ${date}: ${weight}${count}${location ? ` — 📍 ${location}` : ''}`;
     });
@@ -1525,7 +1524,7 @@ export class LivestockHandler {
     const recent = rows.slice(0, 10).map(r => {
       const d = formatDateAR(r.movement_date);
       const sign = ['entrada', 'nacimiento'].includes(r.movement_type) ? '+' : ['salida', 'muerte'].includes(r.movement_type) ? '-' : '↔';
-      const loc = r.plot_name ? ` (${r.field_name || ''} > ${r.plot_name})` : '';
+      const loc = r.plot_name ? ` (${formatPlotLocation(r.field_name, r.plot_name)})` : '';
       const cat = r.category || 'hacienda';
       const price = r.unit_price_usd ? ` · US$${Number(r.unit_price_usd).toLocaleString('es-AR')}/cab`
         : r.unit_price_ars ? ` · $${Number(r.unit_price_ars).toLocaleString('es-AR')}/cab` : '';

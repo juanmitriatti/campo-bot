@@ -9,12 +9,15 @@
  * No incluye markdown — el call-site decide si lo envuelve en *bold* o le
  * antepone un emoji 📍.
  */
+// Acepta `unknown` porque varias filas de query (livestock, financial) tienen
+// field_name/plot_name sin tipar — el viejo `${x || ''}` coercía igual. Se
+// coerce con String() internamente, tratando null/undefined/'' como vacío.
 export function formatPlotLocation(
-  fieldName: string | null | undefined,
-  plotName: string | null | undefined,
+  fieldName: unknown,
+  plotName: unknown,
 ): string {
-  const plot = (plotName ?? '').trim();
-  const field = (fieldName ?? '').trim();
+  const plot = (fieldName == null && plotName == null) ? '' : String(plotName ?? '').trim();
+  const field = String(fieldName ?? '').trim();
   if (!plot) return field || '—';
   return field ? `lote ${plot} (${field})` : `lote ${plot}`;
 }

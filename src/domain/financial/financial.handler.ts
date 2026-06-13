@@ -1,4 +1,5 @@
 import { FinancialService } from './financial.service.js';
+import { formatPlotLocation } from '../../utils/format-location.js';
 import { CategoryRepository } from './category.repository.js';
 import { CategoryService } from './category.service.js';
 import { generateCSV } from '../../utils/csv.js';
@@ -1489,7 +1490,7 @@ export class FinancialHandler {
           }
           newPlotId = resolved.plotId;
           newFieldId = resolved.fieldId;
-          newPlotLabel = resolved.fieldName ? `${resolved.fieldName} > ${resolved.plotName}` : resolved.plotName;
+          newPlotLabel = formatPlotLocation(resolved.fieldName, resolved.plotName);
         }
 
         // Canonicalize category if changing
@@ -1514,7 +1515,7 @@ export class FinancialHandler {
         if (newCategory) parts.push(`🏷️ *${last.category}* → *${newCategory}*`);
         if (newDate) parts.push(`📅 → ${newDate}`);
         if (newPlotLabel) {
-          const oldLabel = last.plot_name ? (last.field_name ? `${last.field_name} > ${last.plot_name}` : last.plot_name) : (last.field_name || 'sin lote');
+          const oldLabel = last.plot_name ? formatPlotLocation(last.field_name, last.plot_name) : (last.field_name || 'sin lote');
           parts.push(`📍 ${oldLabel} → *${newPlotLabel}*`);
         }
         return { messages: [`✏️ Gasto corregido (${last.category}):\n${parts.join('\n')}`] };

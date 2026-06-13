@@ -2375,9 +2375,9 @@ export class AgronomyHandler {
           }
 
           const label = formatSeasonLabel(active.season_year, active.season_type);
-          const stateLabel = getCampaignStateLabel(active);
-          const lines: string[] = [`🌱 *${active.crop}* en *${plotLabel}*`];
-          lines.push(`📅 Campaña ${label} — ${stateLabel}`);
+          const stateEmoji = getCampaignStateLabel(active).split(' ')[0] || '🌱';
+          const lines: string[] = [`${stateEmoji} *${cap(active.crop)}* — ${plotLabel}`];
+          lines.push(`📅 Campaña ${label}`);
 
           const { getPlotById } = await import('../../services/expenses.js');
           const plotInfo = await getPlotById(resolved.plotId);
