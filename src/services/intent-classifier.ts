@@ -1,6 +1,7 @@
 import { ParserService } from './parser.service.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { stripFillerPhrases } from '../utils/text-normalizer.js';
+import { looksLikeNewActionOrQuery } from '../middleware/conversation-guards.js';
 import { getSettingNumber, getSettingBool } from './settings.service.js';
 import { isSafeFallbackCommand } from './intent-safety.js';
 import { getUserAccessMode } from './access-gate.service.js';
@@ -79,6 +80,15 @@ const TRIVIAL_COMMANDS = new Set([
   'query_plot_history',
   'active_crop', 'list_livestock', 'check_stock',
 ]);
+
+/**
+ * Saludo de apertura + nombre/muletilla opcional, para PELARLO del mensaje y
+ * ver si lo que queda es una acción real ("buenas anotame 150k de soja" → la
+ * parte tras "buenas" es la acción). Las variantes largas ("buenas tardes")
+ * van PRIMERO en la alternancia para que matcheen antes que "buenas" sola.
+ * El nombre del bot / muletillas ("mia", "che", "capo") también se pelan.
+ */
+const GREETING_LEAD_RE = /^(?:buenas\s+(?:tardes|noches|d[ií]as?)|buen(?:os)?\s+d[ií]as?|que\s+tal|buenas|buenos|hola|hey|holis|wenas)\b[\s,.!¡]*(?:mia|che|capo|maestro|crack|genio|amigo|señor|señora)?[\s,.!¡]*/i;
 
 /**
  * Observation prefix pattern — matches "observación:", "obs:", "nota:" etc.
@@ -559,6 +569,27 @@ export class IntentClassifier {
 
     const cmd = this.parser.parseCommand(cleaned) || this.parser.parseCommand(preprocessed);
     if (cmd && TRIVIAL_COMMANDS.has(cmd.command as string)) {
+      // GUARD anti-saludo-goloso: el regex de greeting/thanks matchea cualquier
+      // mensaje que EMPIECE con "buenas/hola/gracias" sin mirar qué sigue. Visto
+      // live (Martin, Jun 2026): "buenas anotame 150000 dolares de soja..." →
+      // greeting → el ingreso se perdió. Si tras quitar el saludo queda contenido
+      // real (número, intención financiera, o comando NO trivial), no es un
+      // saludo: devolvemos null para que lo agarre el agente.
+      if (cmd.command === 'greeting' || cmd.command === 'thanks') {
+        const remainder = cleaned.replace(GREETING_LEAD_RE, '').trim();
+        if (remainder) {
+          const sub = this.parser.parseCommand(remainder);
+          const carriesAction =
+            /\d/.test(remainder) ||
+            this.detectsFinancialIntent(remainder) ||
+            looksLikeNewActionOrQuery(remainder) ||
+            (sub != null && !TRIVIAL_COMMANDS.has(sub.command as string));
+          if (carriesAction) {
+            console.log(`[intent-classifier] greeting+action detected — "${cleaned.slice(0, 50)}" → al agente (no greeting)`);
+            return null;
+          }
+        }
+      }
       return {
         intent: { type: 'command', data: cmd },
         confidence: 0.95,

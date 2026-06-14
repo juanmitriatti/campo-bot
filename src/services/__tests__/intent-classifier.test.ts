@@ -256,6 +256,31 @@ describe('IntentClassifier — AI intent extraction via mock extractor', () => {
     expect(aiUsed).toBe(false);
   });
 
+  // Guard anti-saludo-goloso (Martin, Jun 2026): "buenas anotame 150000 dolares
+  // de soja..." se clasificaba como greeting y el ingreso se perdía. Un saludo
+  // que PREFIJA una acción real NO debe cortocircuitar a greeting.
+  it('greeting + acción real NO se trata como greeting (va al extractor)', async () => {
+    const classifierWithAI = new IntentClassifier(parser, mockUserRepo, mockExtractor);
+    mockExtractor.extract.mockResolvedValueOnce({
+      intent: { type: 'income', data: { type: 'income', amount: 150000, currency: 'USD', category: 'Soja', description: 'soja' } },
+      confidence: 0.9, missingFields: [],
+    });
+    await classifierWithAI.classify('buenas anotame 150000 dolares de soja para el lote 1', userId, defaultSettings);
+    // El extractor AI SÍ debe haber sido llamado (no quedó atrapado en greeting)
+    expect(mockExtractor.extract).toHaveBeenCalled();
+  });
+
+  it('saludo puro (con nombre/muletilla) SIGUE siendo greeting', async () => {
+    const classifierWithAI = new IntentClassifier(parser, mockUserRepo, mockExtractor);
+    for (const msg of ['hola mia', 'buen dia mia', 'buenas tardes', 'hola como va', 'buenas che']) {
+      mockExtractor.extract.mockClear();
+      const { intent } = await classifierWithAI.classify(msg, userId, defaultSettings);
+      expect(intent.type).toBe('command');
+      if (intent.type === 'command') expect(intent.data.command).toBe('greeting');
+      expect(mockExtractor.extract).not.toHaveBeenCalled();
+    }
+  });
+
   it('falls back to regex when AI throws error', async () => {
     mockExtractor.extract.mockRejectedValueOnce(new Error('API error'));
 
