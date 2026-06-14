@@ -145,7 +145,7 @@ export class LivestockService {
       const { findAllUserPlots } = await import('../../services/expenses.js');
       const plots = await findAllUserPlots(userId);
       if (plots.length === 0) {
-        throw new Error('No tenés lotes todavía. Creá uno con "nuevo lote A1 en <campo>".');
+        throw new Error('No tenés lotes todavía. Creá uno con "agregar lote Norte en campo X".');
       }
       if (plots.length > 1) {
         const names = plots.slice(0, 8).map((p: { name: string }) => p.name).join(', ');
@@ -180,12 +180,12 @@ export class LivestockService {
       throw new Error(
         result.notFound.type === 'field'
           ? `No encontré el campo "${result.notFound.name}". Creá el campo primero con "nuevo campo ${result.notFound.name}".`
-          : `No encontré el lote "${result.notFound.name}". Creá el lote primero con "nuevo lote ${result.notFound.name}".`
+          : `No encontré el lote "${result.notFound.name}". Creá el lote primero con "agregar lote ${result.notFound.name} en campo X".`
       );
     }
     if (result.needPlotCreation) {
       throw new Error(
-        `El campo "${result.fieldName}" no tiene lotes. Creá un lote primero con "nuevo lote A1 en ${result.fieldName}".`
+        `El campo "${result.fieldName}" no tiene lotes. Creá un lote primero con "agregar lote Norte en campo ${result.fieldName}".`
       );
     }
     if (result.needPlotSelection) {

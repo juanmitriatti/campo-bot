@@ -1027,7 +1027,17 @@ export async function getOrCreatePlot(fieldId, name) {
     `INSERT INTO plots (field_id, name) VALUES ($1, $2) RETURNING *`,
     [fieldId, name]
   );
-  return result.rows[0];
+  const inserted = result.rows[0];
+  // Registrar aliases para resolución flexible — antes solo lo hacía
+  // plotDiscovery en algunas rutas, y los lotes creados por add_plot quedaban
+  // sin alias ("Lote Norte" no resolvía por "norte"). Best-effort.
+  try {
+    const norm = String(name).trim().toLowerCase();
+    await addPlotAlias(inserted.id, norm);
+    if (norm.startsWith('lote ')) await addPlotAlias(inserted.id, norm.slice(5));
+    if (/^\d+$/.test(norm)) await addPlotAlias(inserted.id, `lote ${norm}`);
+  } catch { /* alias best-effort, no bloquea la creación */ }
+  return inserted;
 }
 
 export async function getPlotByName(fieldId, plotName) {
@@ -1050,13 +1060,21 @@ export async function getPlotsByField(fieldId) {
 }
 
 export async function findPlotByNameAcrossFields(userId, plotName) {
-  // Whitespace-insensitive match (see getPlotByName).
+  // Whitespace-insensitive match (see getPlotByName) + convención "Lote X":
+  // un lote guardado como "Lote Norte" matchea la consulta "norte" (el usuario
+  // omite naturalmente el prefijo "lote"). El OR es estrictamente aditivo y
+  // acotado — "norte" matchea "lotenorte" SOLO porque "lotenorte" = "lote" +
+  // "norte", no es un substring difuso. Bug visto live (Jun 2026): "fumigué el
+  // norte" no resolvía a "Lote Norte" y preguntaba "¿en qué lote?".
   const result = await pool.query(
     `SELECT p.*, f.name as field_name, f.id as field_id
      FROM plots p
      JOIN fields f ON p.field_id = f.id
      WHERE f.id IN (${accessibleFieldsSql(1)})
-       AND REGEXP_REPLACE(LOWER(p.name), '\\s+', '', 'g') = REGEXP_REPLACE(LOWER($2), '\\s+', '', 'g')
+       AND (
+         REGEXP_REPLACE(LOWER(p.name), '\\s+', '', 'g') = REGEXP_REPLACE(LOWER($2), '\\s+', '', 'g')
+         OR REGEXP_REPLACE(LOWER(p.name), '\\s+', '', 'g') = 'lote' || REGEXP_REPLACE(LOWER($2), '\\s+', '', 'g')
+       )
        AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
     [userId, plotName]
   );

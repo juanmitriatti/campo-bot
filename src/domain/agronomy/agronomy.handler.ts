@@ -242,9 +242,17 @@ export class AgronomyHandler {
       return {
         messages: [
           `El campo *${f.name}* todavía no tiene lotes cargados.\n\n` +
-          `Creá uno con:\n📍 *agregar lote [nombre] en campo ${f.name}${haHint}*\n\n` +
+          `Creá uno con:\n📍 *agregar lote Norte en campo ${f.name}${haHint}*\n\n` +
           `Después reintentá la ${activityLabel}.`,
         ],
+        // Botón contextual: el usuario necesita CREAR un lote, no "otra
+        // actividad". Sin esto, el pipeline aplicaba las sugerencias genéricas
+        // de la actividad (Reporte/Otra actividad/Lluvia) — ninguna servía.
+        interactive: {
+          type: 'buttons',
+          body: '👇 Creá tu primer lote para continuar',
+          buttons: [{ id: 'cmd_agregar_lote', title: '🌾 Crear lote' }],
+        },
       };
     }
 
@@ -253,9 +261,14 @@ export class AgronomyHandler {
     return {
       messages: [
         `Tus campos (${someFields}${more}) todavía no tienen lotes cargados.\n\n` +
-        `Creá uno con:\n📍 *agregar lote [nombre] en campo [cuál]${haHint}*\n\n` +
+        `Creá uno con:\n📍 *agregar lote Norte en campo [cuál]${haHint}*\n\n` +
         `Después reintentá la ${activityLabel}.`,
       ],
+      interactive: {
+        type: 'buttons',
+        body: '👇 Creá un lote para continuar',
+        buttons: [{ id: 'cmd_agregar_lote', title: '🌾 Crear lote' }],
+      },
     };
   }
 

@@ -33,6 +33,11 @@ const steps: FlowStep[] = [
       if (/^(?:mis\s+(?:campos|lotes)|ver\s+|listar\s+|cuantos?\s+|mostrar?\s+|ayuda|menu|clima)/.test(lower)) {
         return { error: 'Eso parece una consulta. Escribí *cancelar* para salir del flujo.' };
       }
+      // Reject vague intent phrases ("quiero anotar mis cosas") — visto live: se
+      // guardaban como NOMBRE del campo. Un nombre propio no arranca con esto.
+      if (/^(?:quiero|necesito|quisiera|me\s+gustar[ií]a|dame|mostrame|pasame|deci(?:me)?)\b/.test(lower)) {
+        return { error: 'Decime solo el *nombre* del campo (ej: *La Esperanza*). Si querés hacer otra cosa, escribí *cancelar*.' };
+      }
       // Reject financial patterns (expense/income)
       if (/\b(?:gast[eéo]|pag[uée]|compr[eéo]|vend[ií]|cobr[eé])\b/.test(lower) && /\d/.test(lower)) {
         return { error: 'Eso parece un gasto o ingreso. Escribí *cancelar* para salir y registrarlo.' };
@@ -80,6 +85,17 @@ const steps: FlowStep[] = [
     validateAsync: async (input, data) => {
       const city = input.trim();
       if (city.length < 2) return { error: 'La localidad tiene que tener al menos 2 caracteres.' };
+
+      // Guard anti-trampa: si el usuario tipea un comando/consulta en vez de la
+      // localidad, no lo tires al lookup (daría "No encontré la localidad
+      // 'agregr lote sur'"). Prefijos tolerantes a typos. Visto live (Jun 2026).
+      const lower = city.toLowerCase();
+      if (/^(?:agreg\w*|crea\w*|nuev\w*|borr\w*|elimin\w*|saca\w*|quit\w*|renombr\w*|a[ñn]ad\w*)\s/.test(lower)) {
+        return { error: 'Eso parece un comando, no una localidad. Escribí *cancelar* para salir del flujo y ejecutarlo.' };
+      }
+      if (/^(?:mis\s+|ver\s+|listar|cuantos?|mostrar?|ayuda|menu|clima|que\s)/.test(lower)) {
+        return { error: 'Eso parece una consulta, no una localidad. Escribí *cancelar* para salir del flujo.' };
+      }
 
       const result = localidadLookup.lookup(city);
 

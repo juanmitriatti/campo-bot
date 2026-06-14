@@ -1105,10 +1105,19 @@ const COMMAND_PATTERNS = [
       )) {
         return null;
       }
+      // Re-matchear contra el texto ORIGINAL para preservar las mayúsculas del
+      // nombre propio ("La Loma" debe quedar "La Loma", no "la loma"). `m` viene
+      // del texto normalizado (minúsculas, sin acentos) — solo sirve para
+      // detectar el comando. Bug visto live (Jun 2026): el campo se guardaba en
+      // minúscula. Char-class incluye acentos para nombres como "La Peña".
+      const reOrig = /(?:agregar|agrega|nuevo|crear)\s+(?:lote|campo|parcela)\s+((?:[\wáéíóúüñ]+)(?:\s+(?!en\s)[\wáéíóúüñ]+){0,3})(?:\s+en\s+([^,]+))?/i;
+      const om = original ? original.match(reOrig) : null;
+      const nameSrc = (om && om[1]) ? om[1] : m[2];
+      const citySrc = (om && om[2] != null) ? om[2] : m[3];
       return {
         entityKeyword: m[1],
-        fieldName: m[2].trim(),
-        city: m[3] ? m[3].trim().charAt(0).toUpperCase() + m[3].trim().slice(1) : null,
+        fieldName: nameSrc.trim(),
+        city: citySrc ? citySrc.trim().charAt(0).toUpperCase() + citySrc.trim().slice(1) : null,
       };
     },
   },

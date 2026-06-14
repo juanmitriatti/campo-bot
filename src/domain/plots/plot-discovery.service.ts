@@ -58,6 +58,14 @@ export class PlotDiscoveryService {
       return this._resolveFromConversationState(userId);
     }
 
+    // Pelar artículo de apertura del lote ("el norte" → "norte", "la loma" →
+    // "loma") — combinado con el match "lote "+query del repo, "fumigué el
+    // norte" resuelve a "Lote Norte". No tocar si queda vacío.
+    if (plotName) {
+      const stripped = plotName.replace(/^(?:el|la|los|las)\s+/i, '').trim();
+      if (stripped) plotName = stripped;
+    }
+
     // Case: Both campo + plot specified
     if (campoName && plotName) {
       return this._resolveBoth(userId, campoName, plotName);

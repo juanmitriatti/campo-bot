@@ -189,7 +189,7 @@ export class LivestockHandler {
         await this.feedlotService.createFeedlot(userId, fieldName, 'Feedlot', {});
         await this.feedlotService.createCorral(userId, missingName, fieldName, {});
       } else if (subType === 'plot') {
-        return { messages: ['Para esta versión, creá el lote primero con "nuevo lote X en <campo>" y volvé a intentar.'] };
+        return { messages: ['Para esta versión, creá el lote primero con "agregar lote Norte en campo X" y volvé a intentar.'] };
       } else if (subType === 'field') {
         return { messages: ['Para esta versión, creá el campo primero con "nuevo campo X" y volvé a intentar.'] };
       }
