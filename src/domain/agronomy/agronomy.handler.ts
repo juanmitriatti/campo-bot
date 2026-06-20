@@ -22,7 +22,8 @@ import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.se
 import { formatHistoryResponse } from './plot-query.service.js';
 import { formatDateAR } from '../../utils/date.js';
 import { formatQuantityHuman } from '../../utils/format-quantity.js';
-import { localidadLookup } from '../../services/localidad-lookup.service.js';
+import { localidadLookup, type Localidad } from '../../services/localidad-lookup.service.js';
+import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import { isPlaceholder } from '../../utils/guards.js';
 import { validateStageCode } from './stage-code-validator.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
@@ -43,13 +44,14 @@ function normalizeActivityFilter(raw: string | null): string | null {
 
 /**
  * Resolve a weather query to a concrete city name using localidadLookup.
- * Returns { city } when unambiguous, { clarify } when the user needs to specify a province.
+ * Returns { city } when unambiguous, { options } when the user must pick among
+ * several localities (homónimos / sugerencias) — surfaced as tappable buttons.
  * Falls back to user.city when no explicit city was provided.
  */
 function resolveWeatherCity(
   cmd: ParsedCommand,
   user: User,
-): { city: string | null; clarify?: string } {
+): { city: string | null; options?: Localidad[]; rawCity?: string; optionsKind?: 'disambiguate' | 'suggestions' } {
   const rawCity = typeof cmd.city === 'string' ? cmd.city.trim() : '';
   if (!rawCity) return { city: user.city ?? null };
 
@@ -61,23 +63,49 @@ function resolveWeatherCity(
     return { city: result.matches[0].nombre };
   }
   if (result.status === 'disambiguate') {
-    const options = result.matches.slice(0, 6).map(m => `• ${m.nombre}, ${m.provincia}`).join('\n');
-    return {
-      city: null,
-      clarify:
-        `🤔 Hay varias localidades con ese nombre:\n${options}\n\n` +
-        `Decime otra vez aclarando la provincia, ej: *clima en ${result.matches[0].nombre} ${result.matches[0].provincia}*`,
-    };
+    return { city: null, rawCity, options: result.matches.slice(0, 6), optionsKind: 'disambiguate' };
   }
   if (result.status === 'suggestions' && result.matches.length > 0) {
-    const options = result.matches.slice(0, 4).map(m => `• ${m.nombre}, ${m.provincia}`).join('\n');
-    return {
-      city: null,
-      clarify: `🤔 No encontré "${rawCity}" exacto. ¿Querías decir?\n${options}`,
-    };
+    return { city: null, rawCity, options: result.matches.slice(0, 6), optionsKind: 'suggestions' };
   }
   // not_found → try OpenWeather with the raw name anyway (it's tolerant)
   return { city: rawCity };
+}
+
+/**
+ * Build a tappable picker for ambiguous weather cities. Each option re-fires
+ * weather_full with the chosen locality + province (resolved to an exact match).
+ * Uses a list (button-style menu) because homónimos differ only by province, and
+ * a 20-char button title can't show "Florentino Ameghino" + provincia together;
+ * the list row keeps the locality as title and the provincia as description.
+ * The callback embeds a short token (callbackPayloadStore) to respect Telegram's
+ * 64-byte callback_data limit.
+ */
+function buildWeatherCityPicker(
+  rawCity: string,
+  options: Localidad[],
+  kind: 'disambiguate' | 'suggestions',
+): HandlerResponse {
+  const rows = options.map(m => {
+    const token = callbackPayloadStore.set(JSON.stringify({ c: m.nombre, p: m.provincia }));
+    return {
+      id: `wcity_${token}`,
+      title: m.nombre.slice(0, 24),
+      description: m.provincia.slice(0, 72),
+    };
+  });
+  const header = kind === 'disambiguate'
+    ? `🤔 Hay varias localidades con ese nombre. ¿Cuál?`
+    : `🤔 No encontré "${rawCity}" exacto. ¿Quisiste decir alguna de estas?`;
+  return {
+    messages: [header],
+    interactive: {
+      type: 'list',
+      body: 'Elegí la localidad para ver el clima:',
+      buttonText: 'Ver opciones',
+      sections: [{ title: 'Localidades', rows }],
+    },
+  };
 }
 
 // --- Observation safety guard ---
@@ -1361,7 +1389,7 @@ export class AgronomyHandler {
           return { messages: ['El clima no est\u00e1 configurado todav\u00eda.'] };
         }
         const resolved = resolveWeatherCity(cmd, user);
-        if (resolved.clarify) return { messages: [resolved.clarify] };
+        if (resolved.options) return buildWeatherCityPicker(resolved.rawCity ?? '', resolved.options, resolved.optionsKind ?? 'disambiguate');
         let weatherCity = resolved.city;
         // Bug W fix: fall back to user's first field with city when no explicit/profile city.
         if (!weatherCity) {
@@ -1393,7 +1421,7 @@ export class AgronomyHandler {
           return { messages: ['El clima no est\u00e1 configurado todav\u00eda.'] };
         }
         const resolved = resolveWeatherCity(cmd, user);
-        if (resolved.clarify) return { messages: [resolved.clarify] };
+        if (resolved.options) return buildWeatherCityPicker(resolved.rawCity ?? '', resolved.options, resolved.optionsKind ?? 'disambiguate');
         let fcCity = resolved.city;
         if (!fcCity) {
           const { pool: wpool } = await import('../../config/db.js');

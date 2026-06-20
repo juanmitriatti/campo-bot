@@ -75,6 +75,22 @@ export class InteractiveRouter {
       return { type: 'command', data: { command: 'query_plot_history', plotId: parseInt(historialMatch[1], 10) } };
     }
 
+    // Weather city pick: wcity_<token> → weather_full with the chosen locality +
+    // provincia (resuelve a exact). El token apunta a {c,p} en callbackPayloadStore
+    // (respeta el límite de 64 bytes de callback_data de Telegram).
+    const wcityMatch = callbackId.match(/^wcity_([A-Za-z0-9_-]+)$/);
+    if (wcityMatch) {
+      const payload = callbackPayloadStore.get(wcityMatch[1]);
+      if (payload) {
+        try {
+          const { c, p } = JSON.parse(payload) as { c: string; p: string };
+          if (c) return { type: 'command', data: { command: 'weather_full', city: c, province: p ?? null } };
+        } catch {
+          // fall through to null
+        }
+      }
+    }
+
     // Dynamic callbacks: rain_field_<fieldName>_<mm> → log_rainfall with field + mm
     const rainMatch = callbackId.match(/^rain_field_(.+)_(\d+(?:\.\d+)?)$/);
     if (rainMatch) {
