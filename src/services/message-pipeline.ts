@@ -898,7 +898,11 @@ export async function processTextMessage(
           items.push({ type: 'interactive', interactive: { type: 'buttons', body: suggestion.body, buttons: suggestion.buttons } } as BotResponseItem);
         }
       }
-      conversationLogger.log(userId, phone, text, result.messages.join('\n\n') || null, 'command', 'compound', null, null, aiUsed, Date.now() - startTime, !!result.lastInteractive, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
+      // Observability: when a compound ends with ONLY an interactive (buttons/list)
+      // and no text messages, fall back to the interactive body so the row isn't
+      // logged with an empty response_text — otherwise it's indistinguishable from
+      // a true mute in any log review (parity with the other log sites).
+      conversationLogger.log(userId, phone, text, result.messages.join('\n\n') || result.lastInteractive?.body || null, 'command', 'compound', null, null, aiUsed, Date.now() - startTime, !!result.lastInteractive, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
       return items;
     }
   }
