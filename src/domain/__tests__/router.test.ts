@@ -4,7 +4,7 @@ vi.mock('../../config/db.js', () => ({
   pool: { query: vi.fn(), connect: vi.fn() },
 }));
 
-import { DomainRouter } from '../router.js';
+import { DomainRouter, getRouterStats, resetRouterStats } from '../router.js';
 import type { UserId, User, UserSettings, HandlerResponse } from '../../types/index.js';
 
 function mockHandler(response: HandlerResponse = { messages: ['ok'] }) {
@@ -121,5 +121,42 @@ describe('DomainRouter.routeCommand', () => {
 
     expect(result?.messages[0]).toContain('🔒');
     expect(financial.handleCommand).not.toHaveBeenCalled();
+  });
+});
+
+describe('DomainRouter tool-selection telemetry', () => {
+  function freshRouter() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new DomainRouter(mockHandler() as any, mockHandler() as any, mockHandler() as any, mockFeatureGate);
+  }
+
+  it('counts successful routes by command', async () => {
+    resetRouterStats();
+    const router = freshRouter();
+    await router.routeCommand({ command: 'monthly_report' }, userId, user, settings);
+    expect(getRouterStats().selected['monthly_report']).toBe(1);
+    expect(getRouterStats().unroutedUnknown).toBe(0);
+  });
+
+  it('counts an unknown/hallucinated name as unrouted + unknown', async () => {
+    resetRouterStats();
+    const router = freshRouter();
+    const result = await router.routeCommand({ command: 'nonexistent_xyz' }, userId, user, settings);
+    expect(result).toBeNull();
+    expect(getRouterStats().unrouted['nonexistent_xyz']).toBe(1);
+    expect(getRouterStats().unroutedUnknown).toBe(1);
+    expect(getRouterStats().unroutedKnownTool).toBe(0);
+  });
+
+  it('flags a real tool missing from every *_COMMANDS set as a registration bug (known_tool)', async () => {
+    resetRouterStats();
+    const router = freshRouter();
+    // respond_text is a defined tool (in TOOL_NAMES) but is handled at the mapper
+    // as conversational text and never registered in a *_COMMANDS set, so routing
+    // it exercises the known-tool-but-unrouted branch.
+    const result = await router.routeCommand({ command: 'respond_text' }, userId, user, settings);
+    expect(result).toBeNull();
+    expect(getRouterStats().unroutedKnownTool).toBe(1);
+    expect(getRouterStats().unroutedUnknown).toBe(0);
   });
 });

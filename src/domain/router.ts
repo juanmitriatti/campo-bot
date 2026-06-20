@@ -7,6 +7,7 @@ import { DocumentHandler } from './documents/document.handler.js';
 import { LivestockHandler } from './livestock/livestock.handler.js';
 import { FeedlotHandler } from './feedlot/feedlot.handler.js';
 import { FeatureGate } from './billing/feature-gate.js';
+import { TOOL_NAMES } from '../ai/tool-definitions.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../types/index.js';
 
 // --- Command routing sets ---
@@ -102,6 +103,52 @@ const SYSTEM_COMMANDS = new Set([
   'set_name', 'set_city',
 ]);
 
+// Financial-handler commands dispatched ahead of the *_COMMANDS sets (category
+// inline flow). Mirrored here only so router telemetry can attribute them.
+const FINANCIAL_SPECIAL_COMMANDS = new Set([
+  'pick_category', 'create_category',
+  'category_similar_use', 'category_similar_new', 'category_similar_cancel',
+]);
+
+/**
+ * Read-only mirror of the dispatch chain in routeCommand(), used ONLY for
+ * tool-selection telemetry. Returns the domain a command routes to, or null if
+ * no *_COMMANDS set claims it (→ unrouted). Must stay in sync with the dispatch
+ * order in routeCommand(); a divergence only mislabels a log line, it never
+ * changes routing behavior.
+ */
+function classifyDomain(command: string): string | null {
+  if (SYSTEM_COMMANDS.has(command)) return 'system';
+  if (FINANCIAL_SPECIAL_COMMANDS.has(command) || FINANCIAL_COMMANDS.has(command)) return 'financial';
+  if (AGRONOMY_COMMANDS.has(command)) return 'agronomy';
+  if (SHARING_COMMANDS.has(command)) return 'sharing';
+  if (STOCK_COMMANDS.has(command)) return 'stock';
+  if (DOCUMENT_COMMANDS.has(command)) return 'document';
+  if (LIVESTOCK_COMMANDS.has(command)) return 'livestock';
+  if (FEEDLOT_COMMANDS.has(command)) return 'feedlot';
+  return null;
+}
+
+// Lightweight per-process tool-selection telemetry so the router stops being a
+// black box. Every successful route bumps its command counter; every
+// fallthrough bumps `unrouted`, split by whether the command is a real tool
+// missing from a *_COMMANDS set (a registration bug) vs an unknown/hallucinated
+// name. Exposed via getRouterStats() for an admin endpoint / eval harness.
+export interface RouterStats {
+  selected: Record<string, number>;
+  unrouted: Record<string, number>;
+  unroutedKnownTool: number;
+  unroutedUnknown: number;
+}
+const routerStats: RouterStats = { selected: {}, unrouted: {}, unroutedKnownTool: 0, unroutedUnknown: 0 };
+export function getRouterStats(): RouterStats { return routerStats; }
+export function resetRouterStats(): void {
+  routerStats.selected = {};
+  routerStats.unrouted = {};
+  routerStats.unroutedKnownTool = 0;
+  routerStats.unroutedUnknown = 0;
+}
+
 export class DomainRouter {
   private featureGate: FeatureGate;
   private sharingHandler: SharingHandler;
@@ -141,6 +188,15 @@ export class DomainRouter {
     // pending prompts when running inside a compound action. Handlers that
     // don't care about it can ignore the flag.
     if (bulkMode) (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode = true;
+
+    // Tool-selection telemetry (additive — never changes routing). Emitted at
+    // the router so ALL six callers (pipeline single/flow/pending/destructive +
+    // compound-executor) are covered, not just the main path.
+    const routedDomain = classifyDomain(command);
+    if (routedDomain) {
+      routerStats.selected[command] = (routerStats.selected[command] ?? 0) + 1;
+      console.log(`ROUTER_SELECT command=${command} domain=${routedDomain} bulk=${bulkMode ? 1 : 0}`);
+    }
 
     // System commands are always allowed (help, greeting, settings)
     if (SYSTEM_COMMANDS.has(command)) {
@@ -204,6 +260,20 @@ export class DomainRouter {
       return this.feedlotHandler.handleCommand(cmd, userId, user, settings);
     }
 
+    // No *_COMMANDS set claimed this command. NEVER fail silently here — each of
+    // the six routeCommand callers consumes a bare null differently and some
+    // dropped it without a trace. Log at the SOURCE so every unrouted case is
+    // observable, and distinguish a real-but-unregistered tool (a registration
+    // bug — add it to the right *_COMMANDS set) from an unknown/hallucinated
+    // name. Callers still receive null; the contract is unchanged.
+    const isKnownTool = TOOL_NAMES.has(command);
+    routerStats.unrouted[command] = (routerStats.unrouted[command] ?? 0) + 1;
+    if (isKnownTool) routerStats.unroutedKnownTool++;
+    else routerStats.unroutedUnknown++;
+    console.error(
+      `ROUTER_UNROUTED command=${command} known_tool=${isKnownTool} bulk=${bulkMode ? 1 : 0}` +
+        (isKnownTool ? ' — REGISTRATION BUG: tool exists but no *_COMMANDS set claims it' : ''),
+    );
     return null;
   }
 }

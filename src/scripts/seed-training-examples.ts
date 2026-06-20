@@ -414,18 +414,20 @@ const EXAMPLES: Example[] = [
     intent: 'add_field,add_plots_batch,sow_crop,add_livestock,log_expense',
   },
 
-  // 4 tools — hacienda focus (weighing + repro + income + expense)
+  // 4 tools — hacienda focus (weighing + repro + venta hacienda + compra insumo)
   {
     input: 'pesé 40 terneros con 250 kg promedio, inseminé 20 vacas con IATF, vendí 15 novillos a 1500 USD cada uno, compré 5 bolsas de antiparasitario por 80 mil',
     expected_output: {
       tool_calls: [
         { tool: 'log_weighing', input: { category: 'ternero', animals_weighed: 40, avg_weight_kg: 250 } },
         { tool: 'log_repro_event', input: { repro_type: 'inseminacion', count: 20, method: 'IATF', category: 'vaca' } },
-        { tool: 'log_income', input: { category: 'Hacienda', quantity: 15, unit: 'cabezas', unit_price: 1500, currency: 'USD', description: 'venta novillos' } },
-        { tool: 'log_expense', input: { category: 'sanidad', expense_type: 'insumo', product: 'antiparasitario', quantity: 5, unit: 'bolsas', amount: 80000, currency: 'ARS', description: 'antiparasitario' } },
+        // Venta de hacienda → remove_livestock (auto-crea el ingreso linkeado). NUNCA log_income(Hacienda): el inventario no se decrementa (ghost cattle).
+        { tool: 'remove_livestock', input: { category: 'novillo', count: 15, unit_price_usd: 1500 } },
+        // Compra de insumo: category OMITIDA (no es categoría literal del listado del usuario) — el sistema deriva del texto o muestra el selector.
+        { tool: 'log_expense', input: { expense_type: 'insumo', product: 'antiparasitario', quantity: 5, unit: 'bolsas', amount: 80000, currency: 'ARS', description: 'antiparasitario' } },
       ],
     },
-    intent: 'log_weighing,log_repro_event,log_income,log_expense',
+    intent: 'log_weighing,log_repro_event,remove_livestock,log_expense',
   },
 ];
 
