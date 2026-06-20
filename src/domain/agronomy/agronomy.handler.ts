@@ -42,10 +42,30 @@ function normalizeActivityFilter(raw: string | null): string | null {
   return ACTIVITY_FILTER_MAP[stripped] ?? ACTIVITY_FILTER_MAP[raw] ?? stripped;
 }
 
+// Static province prominence (≈ 2022 census population, descending). Used ONLY
+// to order ambiguous weather options so the most likely one shows first — never
+// to auto-resolve. Lower index = more prominent. Unknown provinces sort last.
+const PROVINCE_PROMINENCE: string[] = [
+  'buenos aires', 'cordoba', 'santa fe', 'ciudad autonoma de buenos aires',
+  'mendoza', 'tucuman', 'salta', 'entre rios', 'misiones', 'chaco', 'corrientes',
+  'santiago del estero', 'san juan', 'jujuy', 'rio negro', 'neuquen', 'formosa',
+  'chubut', 'san luis', 'catamarca', 'la rioja', 'la pampa', 'santa cruz',
+  'tierra del fuego',
+];
+function provinceRank(provincia: string): number {
+  const norm = provincia.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const i = PROVINCE_PROMINENCE.indexOf(norm);
+  return i === -1 ? PROVINCE_PROMINENCE.length : i;
+}
+function byProvinceProminence(a: Localidad, b: Localidad): number {
+  return provinceRank(a.provincia) - provinceRank(b.provincia);
+}
+
 /**
  * Resolve a weather query to a concrete city name using localidadLookup.
  * Returns { city } when unambiguous, { options } when the user must pick among
- * several localities (homónimos / sugerencias) — surfaced as tappable buttons.
+ * several localities (homónimos / sugerencias) — surfaced as tappable buttons,
+ * ordered by province prominence so the most likely shows first.
  * Falls back to user.city when no explicit city was provided.
  */
 function resolveWeatherCity(
@@ -63,10 +83,12 @@ function resolveWeatherCity(
     return { city: result.matches[0].nombre };
   }
   if (result.status === 'disambiguate') {
-    return { city: null, rawCity, options: result.matches.slice(0, 6), optionsKind: 'disambiguate' };
+    const ordered = [...result.matches].sort(byProvinceProminence).slice(0, 6);
+    return { city: null, rawCity, options: ordered, optionsKind: 'disambiguate' };
   }
   if (result.status === 'suggestions' && result.matches.length > 0) {
-    return { city: null, rawCity, options: result.matches.slice(0, 6), optionsKind: 'suggestions' };
+    const ordered = [...result.matches].sort(byProvinceProminence).slice(0, 6);
+    return { city: null, rawCity, options: ordered, optionsKind: 'suggestions' };
   }
   // not_found → try OpenWeather with the raw name anyway (it's tolerant)
   return { city: rawCity };
