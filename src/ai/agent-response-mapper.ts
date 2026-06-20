@@ -981,6 +981,7 @@ export class AgentResponseMapper {
     if (input.new_field != null) cmd.newFieldName = input.new_field;
     if (input.new_crop != null) cmd.newCrop = input.new_crop;
     if (input.new_date != null) cmd.newDate = input.new_date;
+    if (input.new_hectares != null) cmd.newHectares = input.new_hectares; // edit_last_activity: corregir superficie sembrada
     if (input.new_amount != null) cmd.newAmount = input.new_amount;
     if (input.new_category != null) cmd.newCategory = input.new_category;
     if (input.new_text != null) cmd.newText = input.new_text;       // edit_last_observation

@@ -2504,13 +2504,14 @@ export async function updateDomainEventPlot(eventId, plotId, editedBy, extraFiel
  * domain_event but left plot_crops (the active campaign / "cultivo activo")
  * showing soja — an inconsistency the user sees immediately.
  */
-export async function syncPlotCropFromEdit(plotCropId, { crop = null, plotId = null } = {}) {
+export async function syncPlotCropFromEdit(plotCropId, { crop = null, plotId = null, sowedHectares = null } = {}) {
   if (!plotCropId) return null;
   const sets = [];
   const params = [];
   let idx = 0;
   if (crop != null) { idx++; sets.push(`crop = $${idx}`); params.push(crop); }
   if (plotId != null) { idx++; sets.push(`plot_id = $${idx}`); params.push(plotId); }
+  if (sowedHectares != null) { idx++; sets.push(`sowed_hectares = $${idx}`); params.push(sowedHectares); }
   if (sets.length === 0) return null;
   idx++;
   const result = await pool.query(

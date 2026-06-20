@@ -389,6 +389,21 @@ describe('AgentResponseMapper', () => {
       }
     });
 
+    it('maps edit_last_activity new_hectares to cmd.newHectares (edit sown area)', () => {
+      const result = makeResult([{
+        toolName: 'edit_last_activity',
+        toolInput: { activity_filter: 'planting', new_hectares: 20 },
+        toolUseId: 'edit_ha_1',
+      }]);
+      const parsed = mapper.mapToParseResults(result, 'sembré solo 20 ha, no 35');
+      expect(parsed[0].intent.type).toBe('command');
+      if (parsed[0].intent.type === 'command') {
+        expect(parsed[0].intent.data.command).toBe('edit_last_activity');
+        expect(parsed[0].intent.data.activityFilter).toBe('planting');
+        expect((parsed[0].intent.data as Record<string, unknown>).newHectares).toBe(20);
+      }
+    });
+
     it('crop normalization: anglicismo (soybean → soja) must survive validation', () => {
       // The agent normalizes anglicismos; the validator must recognize the
       // English form as backing for the Spanish output.

@@ -396,7 +396,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'edit_last_activity',
-    description: 'Corregir/editar la última actividad/evento registrado. Cubre actividades agronómicas Y eventos de hacienda. Cambiar de lote, corregir cultivo, fecha, o sacar el lote. Triggers: "la siembra era en lote B", "corregí la última actividad al lote norte", "me equivoqué de lote en la fumigación", "el tacto era en otro lote", "la pesada era del lote sur", "el evento sanitario era ayer".',
+    description: 'Corregir/editar la última actividad/evento registrado. Cubre actividades agronómicas Y eventos de hacienda. Cambiar de lote, corregir cultivo, fecha, superficie sembrada, o sacar el lote. Triggers: "la siembra era en lote B", "corregí la última actividad al lote norte", "me equivoqué de lote en la fumigación", "el tacto era en otro lote", "la pesada era del lote sur", "el evento sanitario era ayer", "sembré solo 20 ha, no 35", "eran 30 ha sembradas", "sembré la mitad del lote".',
     input_schema: {
       type: 'object',
       properties: {
@@ -411,6 +411,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         new_field: FIELD_PROP,
         new_crop: { type: 'string', description: 'Nuevo cultivo, si se quiere corregir.' },
         new_date: { type: 'string', description: 'Nueva fecha YYYY-MM-DD, si se quiere corregir.' },
+        new_hectares: { type: 'number', description: 'Nueva superficie SEMBRADA en hectáreas, para corregir las ha de una siembra: "sembré solo 20 ha, no 35", "eran 30 ha sembradas", "no, fueron 15 ha". Solo aplica a siembras (planting). Si el usuario dice una fracción del lote ("la mitad", "un tercio", "el 30%") sin número, OMITILO — el sistema lo calcula desde la superficie del lote.' },
         clear_lot: { type: 'boolean', description: 'Limpiar/quitar la asignación de lote (dejar la actividad a nivel de campo). Para "sin lote", "sacale el lote", "es general del campo".' },
       },
       required: [],

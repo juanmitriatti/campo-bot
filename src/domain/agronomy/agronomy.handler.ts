@@ -1949,9 +1949,26 @@ export class AgronomyHandler {
         }
 
         const crop = cmd.crop as string;
-        const sowedHa = cmd.hectares != null ? Number(cmd.hectares) : null;
+        let sowedHa = cmd.hectares != null ? Number(cmd.hectares) : null;
         if (sowedHa != null && sowedHa <= 0) {
           return { messages: ['⚠️ La superficie sembrada debe ser mayor a 0 ha.'] };
+        }
+        // Partial-plot language without an explicit number: "sembré la mitad del
+        // lote" / "un tercio" / "el 30%". Resolve to ha from the plot area so the
+        // campaign stores the real sown surface instead of silently using the
+        // full lote (the live friction Juan hit).
+        if (sowedHa == null) {
+          const sowOriginalText = (cmd.originalText as string | null) || '';
+          const { hasPartialAreaCue, resolvePartialArea } = await import('../../utils/partial-area.js');
+          if (hasPartialAreaCue(sowOriginalText)) {
+            try {
+              const { getPlotById } = await import('../../services/expenses.js');
+              const plotInfo = await getPlotById(plotResult.plotId, userId);
+              const areaHa = plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : null;
+              const partial = resolvePartialArea(sowOriginalText, areaHa);
+              if (partial != null) sowedHa = partial;
+            } catch { /* non-blocking — sow without partial area */ }
+          }
         }
         const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, sowedHa);
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
@@ -3185,8 +3202,19 @@ export class AgronomyHandler {
         const newUnit = (cmd.newUnit as string | null) || null;
         const clearLot = !!cmd.clearLot;
 
-        // At least one change must be specified — plot, crop, fecha, dosis, or clear_lot.
-        if (!newPlotName && !newCrop && !newDate && !clearLot && (newQuantity == null || !(newQuantity > 0))) {
+        // Sown-area correction ("sembré solo 20 ha, no 35" / "sembré la mitad del lote").
+        // Agent param first; deterministic backstop from the raw text (the agent
+        // forgets new_hectares often). A fraction-of-plot ("la mitad") is resolved
+        // later once we know the target plot's area.
+        const editOriginalText = (cmd.originalText as string | null) || '';
+        const { extractExplicitHectares, hasPartialAreaCue, resolvePartialArea } = await import('../../utils/partial-area.js');
+        let newHectares: number | null = cmd.newHectares != null ? Number(cmd.newHectares) : null;
+        if (newHectares == null) newHectares = extractExplicitHectares(editOriginalText);
+        const wantsPartialArea = newHectares == null && hasPartialAreaCue(editOriginalText);
+
+        // At least one change must be specified — plot, crop, fecha, dosis, superficie, fracción, o clear_lot.
+        if (!newPlotName && !newCrop && !newDate && !clearLot && (newQuantity == null || !(newQuantity > 0))
+            && (newHectares == null || !(newHectares > 0)) && !wantsPartialArea) {
           return { messages: ['¿Qué corregimos? Indicá el nuevo lote, cultivo, fecha o dosis. Ej:\n✏️ *la siembra era en lote B*\n✏️ *no, era maíz*\n✏️ *no, eran 5 litros*\n✏️ *sin lote* (para sacar el lote)'] };
         }
 
@@ -3244,14 +3272,29 @@ export class AgronomyHandler {
         // Update the event (plotId may be null when the user only fixed crop/date)
         await this.repo.updateDomainEventPlot(lastEvent.id, newPlotId, userId, extraFields);
 
+        // Resolve a fraction-of-plot ("la mitad del lote") into hectares now that
+        // we know the target planting's plot and can read its area.
+        let appliedHectares: number | null = (lastEvent.event_type === 'planting' && newHectares != null && newHectares > 0)
+          ? newHectares
+          : null;
+        if (lastEvent.event_type === 'planting' && appliedHectares == null && wantsPartialArea) {
+          try {
+            const { getPlotById } = await import('../../services/expenses.js');
+            const ev = lastEvent as { plot_id?: number | null };
+            const plotInfo = ev.plot_id ? await getPlotById(ev.plot_id, userId) : null;
+            const areaHa = plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : null;
+            appliedHectares = resolvePartialArea(editOriginalText, areaHa);
+          } catch { /* non-blocking — fall through without area edit */ }
+        }
+
         // Keep plot_crops in sync for siembra corrections — otherwise the
-        // "cultivo activo" of the lote stays on the old crop/plot while the
-        // event shows the new one (silent inconsistency the user sees).
+        // "cultivo activo" of the lote stays on the old crop/plot/superficie while
+        // the event shows the new one (silent inconsistency the user sees).
         const editedPlotCropId = (lastEvent as { plot_crop_id?: number | null }).plot_crop_id;
         if (lastEvent.event_type === 'planting' && editedPlotCropId) {
           try {
             const { syncPlotCropFromEdit } = await import('../../services/expenses.js');
-            await syncPlotCropFromEdit(editedPlotCropId, { crop: newCrop || null, plotId: newPlotId });
+            await syncPlotCropFromEdit(editedPlotCropId, { crop: newCrop || null, plotId: newPlotId, sowedHectares: appliedHectares });
           } catch { /* non-blocking */ }
         }
 
@@ -3272,6 +3315,14 @@ export class AgronomyHandler {
           const oldU = (lastEvent as { unit?: string | null }).unit || '';
           const uLabel = newUnit || oldU;
           editLines.push(`📏 Dosis: ${oldQ != null ? `${oldQ} ${oldU}` : '?'} → *${newQuantity} ${uLabel}*`);
+        }
+        if (appliedHectares != null) {
+          editLines.push(`📐 Superficie sembrada: *${appliedHectares.toLocaleString('es-AR')} ha*`);
+        } else if ((newHectares != null && newHectares > 0) || wantsPartialArea) {
+          // User asked to fix the sown area but the target isn't a siembra (or we
+          // couldn't resolve a fraction without the plot's area). Be explicit
+          // instead of silently confirming an edit that didn't touch the area.
+          editLines.push(`ℹ️ La superficie sembrada solo se puede corregir sobre una *siembra*. Probá: "sembré X ha en lote <nombre>".`);
         }
 
         return { messages: [editLines.join('\n')] };
