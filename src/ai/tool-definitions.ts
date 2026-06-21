@@ -1115,7 +1115,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'add_stock',
-    description: 'Cargar stock/insumo al depósito. "cargué/entraron 500lt de glifosato", "recibí 200kg de urea". Si el usuario menciona precio (compré X a $Y), pasar unit_price_ars/usd — el sistema crea el gasto automáticamente, NO llamar log_expense por separado.',
+    description: 'Cargar stock de INSUMOS/productos al depósito (semillas, agroquímicos, fertilizantes, combustible). "cargué/entraron 500lt de glifosato", "recibí 200kg de urea". NUNCA para hacienda/animales (eso es add_livestock). Si el usuario menciona precio (compré X a $Y), pasar unit_price_ars/usd — el sistema crea el gasto automáticamente, NO llamar log_expense por separado.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1134,7 +1134,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'remove_stock',
-    description: 'Descargar/usar stock. "usé/saqué 50lt de glifosato", "gasté 100kg de urea".',
+    description: 'Descargar/usar stock de INSUMOS del depósito (agroquímicos/fertilizantes/semillas/combustible). "usé/saqué 50lt de glifosato", "gasté 100kg de urea". NUNCA para animales — sacar/vender hacienda es remove_livestock.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1150,7 +1150,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'adjust_stock',
-    description: 'Ajustar stock a cantidad exacta. "tengo 200lt de glifosato", "el stock de urea es 500kg".',
+    description: 'Ajustar stock de INSUMOS a cantidad exacta (agroquímicos/fertilizantes/semillas/combustible). "tengo 200lt de glifosato", "el stock de urea es 500kg". NUNCA para animales — ajustar conteo de hacienda es adjust_livestock.',
     input_schema: {
       type: 'object',
       properties: {
