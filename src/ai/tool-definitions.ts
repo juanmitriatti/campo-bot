@@ -668,7 +668,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'query_scoutings',
-    description: 'Tool UNIFICADO para CUALQUIER consulta sobre monitoreos/scoutings ya registrados. NO es para registrar. Cubre: listas, agregados, máximos/mínimos/promedios, rankings por lote/campo, comparaciones, filtros por maleza/plaga/estadio/severidad/humedad/densidad/emergencia, evolución temporal, decisión agronómica ("qué lote requiere aplicación"), preguntas conversacionales ("qué pasó/cómo viene/dónde apareció X"). Combiná filtros + view + sort.',
+    description: 'Consulta de MONITOREOS/scoutings del CULTIVO ya registrados: malezas, plagas, enfermedades de planta, estadio fenológico, emergencia, humedad de suelo, densidad. Cubre: listas, agregados, máximos/mínimos/promedios, rankings por lote/campo, comparaciones, evolución temporal del monitoreo, decisión agronómica ("qué lote requiere aplicación", "cómo viene la sanidad del cultivo", "presión de plagas", "dónde apareció X maleza/plaga"). Es la SANIDAD DEL CULTIVO (planta) — la sanidad de la hacienda (animales) es query_health_events. NO es para registrar. Combiná filtros + view + sort.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1439,7 +1439,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'list_livestock',
-    description: 'Tool UNIFICADO para CUALQUIER consulta del inventario/rodeo de hacienda (NO movimientos, eso es livestock_history). Cubre: listas, totales, agregados, máximos/mínimos/promedios de peso, rankings por categoría/lote/campo/corral/feedlot, comparaciones, filtros por categoría/raza/ubicación/peso, decisión productiva.',
+    description: 'Consulta del INVENTARIO ACTUAL del rodeo: cuántos animales hay HOY por categoría/lote/campo/corral/feedlot, totales, pesos promedio, rankings, filtros por categoría/raza/ubicación/peso. Triggers: "cuántas vacas tengo", "inventario de hacienda", "rodeo del campo X", "cuántos novillos en el corral 1". Es el stock ACTUAL (cuánto hay ahora) — los movimientos históricos (ventas/muertes/nacimientos/transferencias) son livestock_history.',
     input_schema: {
       type: 'object',
       properties: {
