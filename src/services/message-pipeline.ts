@@ -876,7 +876,14 @@ export async function processTextMessage(
   if (compoundResults && compoundResults.length > 1) {
     const executor = new CompoundExecutor(domainRouter, financialHandler);
     const result = await executor.execute(compoundResults, userId, user, settings, text);
-    if (result && result.messages.length > 0) {
+    // Return whenever the compound produced ANY output — text OR interactive.
+    // Guarding on messages.length alone let interactive-only compounds (e.g. a
+    // pure multi-category livestock add "N vacas y M terneros", whose handlers
+    // return buttons with no text) fall through to the single-action path,
+    // which re-executed parseResults[0] a SECOND time → silent herd
+    // double-counting (the first group entered twice). lastInteractive is
+    // populated by the executor for exactly this case.
+    if (result && (result.messages.length > 0 || result.lastInteractive)) {
       if (truncatedFlag) {
         result.messages.push('⚠️ El mensaje era largo y se cortó. Si te quedaron acciones sin registrar, repetilas en un mensaje aparte.');
       }
