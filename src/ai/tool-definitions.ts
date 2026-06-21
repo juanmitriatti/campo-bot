@@ -253,7 +253,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
 
   {
     name: 'query_harvest_loads',
-    description: 'Tool UNIFICADO para CUALQUIER consulta sobre cargas de cosecha (camiones, viajes). NO es para registrar. Cubre: listas, totales, máximos/mínimos/promedios, rankings por chofer/destinatario/lote/cultivo, comparaciones, filtros por cultivo/chofer/destinatario/patente/peso/humedad/calidad, decisión logística. Combiná filtros + view + sort.',
+    description: 'Consulta de VOLUMEN cosechado y CARGAS/camiones: kg/tn/qq cosechados, cargas por chofer/destinatario/patente/lote/cultivo, calidad (humedad/proteína/aceite), rankings, promedios y comparaciones de cargas, decisión logística. Triggers: "cuántos kg/tn de X coseché", "rinde/total cosechado", "cargas de cosecha", "viajes de Pedro", "qué chofer movió más", "humedad promedio". Es la única tool de KILAJE/TONELAJE cosechado. NO es para registrar (eso es harvest_crop). Combiná filtros + view + sort.',
     input_schema: {
       type: 'object',
       properties: {
@@ -331,7 +331,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
 
   {
     name: 'campaign_stats',
-    description: 'Obtener estadísticas completas de una campaña: actividades, gastos, ingresos, rendimiento, rentabilidad. "cómo va la campaña", "cuánto gasté en la soja", "rendimiento del trigo", "rentabilidad del maíz", "estadísticas de la campaña", "resultado de la soja".',
+    description: 'Resumen AGREGADO económico-productivo de una CAMPAÑA de cultivo: rinde (kg/ha), gastos + ingresos + rentabilidad de ese cultivo en su campaña. Triggers: "cómo va la campaña", "rinde/rendimiento del trigo", "rentabilidad/resultado del maíz", "cuánto gasté en la soja", "estadísticas de la campaña". Es el balance de la campaña, no eventos individuales ni cargas.',
     input_schema: {
       type: 'object',
       properties: {
@@ -362,7 +362,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
 
   {
     name: 'activity_stats',
-    description: 'Conteo de eventos de actividad por período: cuántas fumigaciones, siembras, cosechas, tillage, riego. Cuenta EVENTOS (1 cosecha = 1), NO suma kg. "cuántas fumigaciones hice", "resumen de actividades del mes", "actividades este año", "cuántas veces fumigué", "estadísticas de actividades", "actividades del grupo Pérez". NO usar para: (a) "cuántos monitoreos" → query_scoutings; (b) "cuántos kg/tn/qq cosechados" o "rinde total" → query_harvest_loads.',
+    description: 'CONTEO de cuántas VECES se hizo una actividad en un período: cuenta EVENTOS (1 cosecha = 1 evento), NUNCA suma kg ni mide rinde. Triggers: "cuántas fumigaciones hice", "cuántas veces fumigué", "resumen de actividades del mes", "actividades este año", "estadísticas de actividades". Solo cuenta eventos de campo (siembra/fumigación/fertilización/cosecha/labranza/riego).',
     input_schema: {
       type: 'object',
       properties: {
@@ -866,7 +866,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'query_plot_history',
-    description: 'Tool UNIFICADO para CUALQUIER consulta sobre actividades agronómicas (siembras, fumigaciones, fertilizaciones, cosechas, labranza, riego). Cubre: listas, totales, agregados, máximos/mínimos/promedios, rankings por lote/cultivo/tipo/producto, comparaciones, timeline, decisión operativa. NO es para registrar.',
+    description: 'Consulta del HISTORIAL / TIMELINE de actividades de un lote: CUÁNDO se hizo cada cosa y en qué secuencia (siembras, fumigaciones, fertilizaciones, cosechas, labranza, riego). Triggers: "cuándo se fumigó/sembró/cosechó", "qué se hizo en el lote X", "historial del lote", "qué pasó en X", "en qué lote sembré Y". Devuelve eventos con FECHA — es la única tool de "cuándo/qué se hizo". NO es para registrar.',
     input_schema: {
       type: 'object',
       properties: {
