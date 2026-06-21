@@ -14,6 +14,7 @@ import type { UserContextService } from '../ai/user-context.service.js';
 import { detectCorrection } from '../ai/correction-classifier.js';
 import { extractReferencedAmountCorrection, extractLastRecordDateCorrection, extractActivityQuantityCorrection } from '../middleware/conversation-engine.js';
 import { expandPronouns } from '../utils/pronoun-expander.js';
+import { resolveSelfCorrection } from '../utils/self-correction.js';
 import { getConversationState } from './expenses.js';
 import type { UserId, UserSettings, ParseResult } from '../types/index.js';
 
@@ -443,6 +444,24 @@ export class IntentClassifier {
     } catch (expErr) {
       // Non-fatal: if conversation_state read fails, just send original text.
       console.warn('[intent-classifier] Pronoun expansion skipped:', (expErr as Error).message);
+    }
+
+    // =========================================================================
+    // STEP 2.6b — Self-correction normalizer (deterministic pre-agent rewrite)
+    // Resolves EMBEDDED crop / number self-corrections that the anchored
+    // standalone pre-classifiers (STEP 2.5/2.55c) don't match:
+    //   "sembré soja ... no era maíz, 100 has" → "sembré maíz ..., 100 has".
+    // Composes after pronoun expansion. Money/category/date corrections keep
+    // their own handlers. Logged per the interceptor-observability principle.
+    // =========================================================================
+    try {
+      const corrected = resolveSelfCorrection(agentInputText);
+      if (corrected !== agentInputText) {
+        console.log(`[intent-classifier] Self-correction: "${agentInputText}" → "${corrected}"`);
+        agentInputText = corrected;
+      }
+    } catch (scErr) {
+      console.warn('[intent-classifier] Self-correction skipped:', (scErr as Error).message);
     }
 
     // =========================================================================
