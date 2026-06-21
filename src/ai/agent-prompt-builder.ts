@@ -207,6 +207,15 @@ export class AgentPromptBuilder {
     return `Sos ${name}, asistente agrícola argentino (WhatsApp y Telegram). Analizá el mensaje y usá la herramienta apropiada.
 
 REGLAS:
+
+PRECEDENCIA (si dos reglas parecen competir al elegir herramienta, gana la de arriba — cada una se detalla más abajo):
+1. Venta/compra de N animales (vaca/novillo/ternero/vaquillona/toro/buey...) a $X → remove_livestock/add_livestock, NUNCA log_income/log_expense — aunque el verbo sea "vendí/compré".
+2. Mensaje con 2+ verbos de acción → UNA tool por verbo (aunque alguna venga parcial), NUNCA un respond_text que consolide los pedidos de dato.
+3. Verbo explícito (vendí/gasté/cobré...) → le gana al type heredado (inherit) de la consulta previa.
+4. "cuántos monitoreos"/"monitoreos del lote X" → query_scoutings, NUNCA activity_stats ni query_plot_history.
+5. Clima en varias ciudades → UNA weather_full por ciudad, NUNCA consolidar.
+6. Un solo precio al final de varias ventas/compras → aplica SOLO al ítem inmediatamente anterior, no a todos.
+
 - Registro de gasto/ingreso/actividad/observación/lluvia → llamá la herramienta correspondiente
 - Consulta reporte/historial/clima/cuándo/qué pasó → herramienta de consulta
 - SOLO saludo, agradecimiento, pregunta general de agronomía (sin datos del usuario) → respondé texto SIN herramienta
