@@ -435,13 +435,21 @@ async function seed() {
   console.log(`Seeding ${EXAMPLES.length} training examples...`);
 
   for (const ex of EXAMPLES) {
-    // Upsert: skip if same input already exists
+    // Upsert keyed on `input`: UPDATE if it already exists so edits to an
+    // already-seeded example actually propagate on re-run. Previously this
+    // SKIPped existing rows, so a corrected expected_output (e.g. the
+    // ghost-cattle few-shot) silently never reached the DB — re-running the
+    // seed did nothing and the bad example stayed live in the rotation.
     const existing = await pool.query(
       `SELECT id FROM ai_training_examples WHERE input = $1`,
       [ex.input],
     );
     if (existing.rows.length > 0) {
-      console.log(`  SKIP (exists): "${ex.input.slice(0, 50)}..."`);
+      await pool.query(
+        `UPDATE ai_training_examples SET expected_output = $2, intent = $3, is_active = true WHERE input = $1`,
+        [ex.input, JSON.stringify(ex.expected_output), ex.intent],
+      );
+      console.log(`  UPDATED: [${ex.intent}] "${ex.input.slice(0, 50)}"`);
       continue;
     }
 
