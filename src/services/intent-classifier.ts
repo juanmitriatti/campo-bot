@@ -198,6 +198,26 @@ export class IntentClassifier {
       };
     }
 
+    // =========================================================================
+    // STEP 0.4 — Self-correction normalizer (deterministic). MUST run BEFORE the
+    // correction pre-classifiers (STEP 2.5 / 2.55c): an EMBEDDED self-correction
+    // ("compré 100 lt ... no eran 120 lt", "sembré soja ... no era maíz") is
+    // rewritten here ("compré 120 lt ...") so the pre-classifiers see a clean
+    // fresh registration instead of misfiring it as a quantity/crop correction
+    // of a PRIOR record. Standalone corrections ("no, eran 120") are left
+    // untouched (no prior token to replace) → their dedicated pre-classifiers
+    // still handle them. Composes with pronoun expansion (STEP 2.6) downstream.
+    // =========================================================================
+    try {
+      const selfCorrected = resolveSelfCorrection(text);
+      if (selfCorrected !== text) {
+        console.log(`[intent-classifier] Self-correction: "${text}" → "${selfCorrected}"`);
+        text = selfCorrected;
+      }
+    } catch (scErr) {
+      console.warn('[intent-classifier] Self-correction skipped:', (scErr as Error).message);
+    }
+
     // 0. Strip audio transcription filler phrases + preprocess
     const cleaned = stripFillerPhrases(text);
     const preprocessed = this.parser.preprocess(cleaned);
@@ -444,24 +464,6 @@ export class IntentClassifier {
     } catch (expErr) {
       // Non-fatal: if conversation_state read fails, just send original text.
       console.warn('[intent-classifier] Pronoun expansion skipped:', (expErr as Error).message);
-    }
-
-    // =========================================================================
-    // STEP 2.6b — Self-correction normalizer (deterministic pre-agent rewrite)
-    // Resolves EMBEDDED crop / number self-corrections that the anchored
-    // standalone pre-classifiers (STEP 2.5/2.55c) don't match:
-    //   "sembré soja ... no era maíz, 100 has" → "sembré maíz ..., 100 has".
-    // Composes after pronoun expansion. Money/category/date corrections keep
-    // their own handlers. Logged per the interceptor-observability principle.
-    // =========================================================================
-    try {
-      const corrected = resolveSelfCorrection(agentInputText);
-      if (corrected !== agentInputText) {
-        console.log(`[intent-classifier] Self-correction: "${agentInputText}" → "${corrected}"`);
-        agentInputText = corrected;
-      }
-    } catch (scErr) {
-      console.warn('[intent-classifier] Self-correction skipped:', (scErr as Error).message);
     }
 
     // =========================================================================
