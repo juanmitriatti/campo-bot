@@ -26,6 +26,8 @@ import { CompoundExecutor } from '../domain/compound-executor.js';
 import { InteractiveRouter } from '../domain/interactive/interactive.router.js';
 import { FinancialHandler } from '../domain/financial/financial.handler.js';
 import { FinancialService } from '../domain/financial/financial.service.js';
+import { LivestockRepository } from '../domain/livestock/livestock.repository.js';
+import { extractCountCorrection } from '../utils/self-correction.js';
 import { FinancialRepository } from '../domain/financial/financial.repository.js';
 import { AgronomyHandler } from '../domain/agronomy/agronomy.handler.js';
 import { AgronomyRepository } from '../domain/agronomy/agronomy.repository.js';
@@ -726,6 +728,28 @@ export async function processTextMessage(
       }
       // Fall through to normal processing
     } else if (pendingAct.missing && pendingAct.missing.length > 0) {
+      // C3 fix: a QUANTITY correction ("no, perdón, eran 8") during a livestock
+      // price-pending must correct the movement count — NOT be parsed as a
+      // price. Without this it fell into the slot-merge below, found no valid
+      // unit_price in "eran 8", and silently re-asked the price, leaving the
+      // inventory at the wrong (uncorrected) count.
+      const lvMovementId = (pendingAct.data as Record<string, unknown> | undefined)?.movementId;
+      if (pendingAct.command === 'set_livestock_price' && lvMovementId) {
+        const newCount = extractCountCorrection(text);
+        if (newCount != null) {
+          const corr = await new LivestockRepository().correctUnpricedMovementCount(userId, String(lvMovementId), newCount);
+          if (corr && corr !== 'not_found' && corr !== 'already_priced') {
+            console.log(`[INTERCEPT] livestock count correction during price-pending: movement=${lvMovementId} ${corr.oldCount}→${corr.newCount} (${corr.category})`);
+            const verb = corr.movementType === 'entrada' ? 'compra' : 'venta';
+            const ask = pendingAct.askPrompt || '💰 ¿A cuánto fue? (precio por cabeza)';
+            const msg = `✏️ Corregí la ${verb} a *${corr.newCount} ${corr.category}*.\n\n${ask}`;
+            // Keep the price-pending intact (still need the price for the new
+            // count). Observability via the [INTERCEPT] log above; the response
+            // is returned to the user so this is not a silent mute.
+            return [{ type: 'text', text: msg }];
+          }
+        }
+      }
       // Unified multi-slot completion: run the SlotExtractor against the new
       // message and merge any newly-extracted slots into pending.data. If all
       // required slots are filled → re-execute. Otherwise → ask for what's

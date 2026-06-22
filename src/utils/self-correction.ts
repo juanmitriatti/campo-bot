@@ -1,4 +1,27 @@
 import { extractCropFromText } from './crops.js';
+import { CORRECTION_ALT } from './lexicon.js';
+
+// A bare COUNT correction ("no, perdón, eran 8" / "no, eran 8 vacas"): a
+// correction cue (or the copula "eran/son/fueron") followed by an integer, with
+// NO price markers. Used to distinguish a quantity correction from a price
+// answer while a livestock price-pending is open (bug: "vendí 5 → ¿precio? →
+// no, eran 8" silently kept 5 instead of correcting to 8).
+const PRICE_MARKER_RE = /[$]|\busd\b|d[oó]lar|peso|\bmil\b|\bpalos?\b|\blucas?\b|c\/u|cabeza|\bcada\b|\bkg\b|\blt\b|por\s+(?:cabeza|cero|tonelada|kilo)/iu;
+const COUNT_CORRECTION_RE = new RegExp(`\\b(?:${CORRECTION_ALT}|eran|son|fueron|fue)\\b[^\\d]{0,15}?(\\d{1,5})\\b`, 'iu');
+
+/**
+ * Extracts the corrected COUNT from a quantity-correction message, or null when
+ * the message isn't a count correction (no cue) or is actually a price answer
+ * (has $/USD/mil/palo/per-head markers → let the price slot handle it).
+ */
+export function extractCountCorrection(text: string): number | null {
+  if (!text) return null;
+  if (PRICE_MARKER_RE.test(text)) return null; // it's a price, not a count
+  const m = COUNT_CORRECTION_RE.exec(text);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) && n > 0 && n < 100000 ? n : null;
+}
 
 /**
  * Unified pre-agent self-correction normalizer.

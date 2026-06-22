@@ -1,5 +1,31 @@
 import { describe, it, expect } from 'vitest';
-import { resolveSelfCorrection } from '../self-correction.js';
+import { resolveSelfCorrection, extractCountCorrection } from '../self-correction.js';
+
+describe('extractCountCorrection', () => {
+  it('the reported bug: "no, perdón, eran 8" → 8', () => {
+    expect(extractCountCorrection('no, perdón, eran 8')).toBe(8);
+  });
+  it('"no, eran 8 vacas" → 8 (animal word is not a price marker)', () => {
+    expect(extractCountCorrection('no, eran 8 vacas')).toBe(8);
+  });
+  it('"mejor dicho son 12" → 12', () => {
+    expect(extractCountCorrection('mejor dicho son 12')).toBe(12);
+  });
+  // must NOT treat a price answer as a count
+  it('"no, eran 800 mil" → null (price)', () => {
+    expect(extractCountCorrection('no, eran 800 mil')).toBeNull();
+  });
+  it('"1500 USD" → null (price)', () => {
+    expect(extractCountCorrection('1500 USD')).toBeNull();
+  });
+  it('"a 350 mil por cabeza" → null (price)', () => {
+    expect(extractCountCorrection('a 350 mil por cabeza')).toBeNull();
+  });
+  it('no cue → null', () => {
+    expect(extractCountCorrection('8')).toBeNull();
+    expect(extractCountCorrection('dale')).toBeNull();
+  });
+});
 
 describe('resolveSelfCorrection — crop', () => {
   it('the reported bug: soja → maíz embedded', () => {
