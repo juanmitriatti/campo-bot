@@ -1,4 +1,4 @@
-import { pool } from '../../config/db.js';
+import { pool, withTransaction } from '../../config/db.js';
 import type {
   LivestockCategory,
   LivestockMovementType,
@@ -640,6 +640,42 @@ export class LivestockRepository {
       [userId, movementId],
     );
     return rows[0] ?? null;
+  }
+
+  /**
+   * Correct the COUNT of an as-yet-UNPRICED movement (the user is mid price-
+   * pending and corrects the quantity: "vendí 5 → ¿precio? → no, eran 8").
+   * Adjusts both the movement and its group count by the delta, in the same
+   * direction as the movement (entrada=+, salida=−). Refuses if the movement
+   * already has a linked expense/income (then the count is locked to the saved
+   * financial record). Returns the before/after or a status string.
+   */
+  async correctUnpricedMovementCount(
+    userId: number,
+    movementId: string,
+    newCount: number,
+  ): Promise<{ oldCount: number; newCount: number; category: LivestockCategory; movementType: string } | 'not_found' | 'already_priced'> {
+    const m = await this.findMovementForPricing(userId, movementId);
+    if (!m) return 'not_found';
+    if (m.linked_expense_id || m.linked_income_id) return 'already_priced';
+    if (newCount === m.count) {
+      return { oldCount: m.count, newCount, category: m.category, movementType: m.movement_type };
+    }
+    const delta = newCount - m.count;
+    const sign = m.movement_type === 'entrada' ? 1 : -1;
+    await withTransaction(async () => {
+      await pool.query(
+        `UPDATE livestock_movements SET count = $1 WHERE id = $2 AND user_id = $3`,
+        [newCount, movementId, userId],
+      );
+      await pool.query(
+        `UPDATE livestock_groups SET count = GREATEST(0, count + $1), updated_at = NOW()
+         WHERE id = (SELECT COALESCE(dest_group_id, source_group_id)
+                     FROM livestock_movements WHERE id = $2)`,
+        [delta * sign, movementId],
+      );
+    });
+    return { oldCount: m.count, newCount, category: m.category, movementType: m.movement_type };
   }
 
   /**
