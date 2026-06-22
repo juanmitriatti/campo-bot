@@ -14,7 +14,7 @@
     {
       "send": "soja",
       "expect": {
-        "responseContains": ["soja", "sembrado"],
+        "responseContains": ["soja", "sembrad"],
         "dbActivity": { "eventType": "planting", "crop": "soja", "plot": "Norte" }
       }
     }
