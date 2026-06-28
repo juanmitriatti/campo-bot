@@ -58,13 +58,13 @@ export class PlotDiscoveryService {
       return this._resolveFromConversationState(userId);
     }
 
-    // Pelar artículo de apertura del lote ("el norte" → "norte", "la loma" →
-    // "loma") — combinado con el match "lote "+query del repo, "fumigué el
-    // norte" resuelve a "Lote Norte". No tocar si queda vacío.
-    if (plotName) {
-      const stripped = plotName.replace(/^(?:el|la|los|las)\s+/i, '').trim();
-      if (stripped) plotName = stripped;
-    }
+    // NOTE: el pelado de artículo de apertura ("el norte" → "norte") se hace
+    // AHORA como FALLBACK dentro de _lookupPlotByName / _resolvePlotOnly, NO acá
+    // arriba mutando el nombre. Pelarlo de entrada rompía lotes cuyo nombre
+    // REAL arranca con artículo ("El Bajo", "La Loma", "El Monte", "Los Álamos"
+    // — nombres de lote comunísimos en el campo argentino): "El Bajo" se
+    // convertía en "Bajo" y no matcheaba el lote guardado "El Bajo". Bug de
+    // pérdida silenciosa de datos en compounds de siembra (Jun 2026).
 
     // Case: Both campo + plot specified
     if (campoName && plotName) {
@@ -186,12 +186,28 @@ export class PlotDiscoveryService {
     return { fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false };
   }
 
+  /**
+   * Buscar un lote por nombre dentro de un campo, probando PRIMERO el nombre tal
+   * cual ("El Bajo") y, SOLO si no matchea, el nombre sin artículo de apertura
+   * ("el norte" → "norte", combinado con la convención "Lote X" del repo). Así
+   * preservamos nombres literales con artículo y seguimos resolviendo "el norte".
+   */
+  private async _lookupPlotByName(fieldId: number, plotName: string): Promise<Awaited<ReturnType<typeof getPlotByName>>> {
+    const direct = await getPlotByName(fieldId, plotName);
+    if (direct) return direct;
+    const stripped = plotName.replace(/^(?:el|la|los|las)\s+/i, '').trim();
+    if (stripped && stripped !== plotName) {
+      return getPlotByName(fieldId, stripped);
+    }
+    return null;
+  }
+
   private async _resolveBoth(userId: UserId, campoName: string, plotName: string): Promise<PlotDiscoveryResult> {
     const field = await getFieldByName(userId, campoName);
     if (!field) {
       return { fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false, notFound: { type: 'field', name: campoName } };
     }
-    const plot = await getPlotByName(field.id, plotName);
+    const plot = await this._lookupPlotByName(field.id, plotName);
     if (!plot) {
       // If field has exactly 1 plot, auto-resolve to it (agent may have hallucinated field name as plot)
       const fieldPlots = await getPlotsByField(field.id);
@@ -208,8 +224,16 @@ export class PlotDiscoveryService {
   }
 
   private async _resolvePlotOnly(userId: UserId, plotName: string): Promise<PlotDiscoveryResult> {
-    // 1. Direct name match across fields
-    const plots = await findPlotByNameAcrossFields(userId, plotName);
+    // 1. Direct name match across fields — probamos el nombre tal cual primero
+    // ("El Bajo") y, si no hay match, sin artículo de apertura ("el norte" →
+    // "norte"). Ver _lookupPlotByName para el porqué.
+    let plots = await findPlotByNameAcrossFields(userId, plotName);
+    if (plots.length === 0) {
+      const stripped = plotName.replace(/^(?:el|la|los|las)\s+/i, '').trim();
+      if (stripped && stripped !== plotName) {
+        plots = await findPlotByNameAcrossFields(userId, stripped);
+      }
+    }
     if (plots.length === 1) {
       await this._registerAliases(plots[0].id, plotName);
       await updateConversationState(userId, plots[0].field_id, plots[0].id);

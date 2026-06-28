@@ -74,6 +74,46 @@ describe('PlotDiscoveryService', () => {
     });
   });
 
+  describe('resolveFromNames — article-prefixed plot names (regression Jun 2026)', () => {
+    it('resolves a plot whose real name starts with an article ("El Bajo") via direct match', async () => {
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'El Ombú' });
+      // getPlotByName matches "El Bajo" on the FIRST (un-stripped) call
+      mocks.getPlotByName.mockResolvedValue({ id: 30, field_id: 10, name: 'El Bajo' });
+
+      const result = await service.resolveFromNames(userId, 'El Ombú', 'El Bajo');
+
+      expect(result.plotId).toBe(30);
+      expect(result.notFound).toBeUndefined();
+      // The un-stripped name was tried first
+      expect(mocks.getPlotByName).toHaveBeenCalledWith(10, 'El Bajo');
+    });
+
+    it('still resolves "el norte" → "Lote Norte" by stripping the article as a FALLBACK', async () => {
+      mocks.getFieldByName.mockResolvedValue({ id: 10, name: 'El Ombú' });
+      // Un-stripped "el norte" misses; stripped "norte" hits (repo "Lote X" convention)
+      mocks.getPlotByName.mockImplementation(async (_fieldId: number, name: string) =>
+        name === 'norte' ? { id: 40, field_id: 10, name: 'Lote Norte' } : null,
+      );
+
+      const result = await service.resolveFromNames(userId, 'El Ombú', 'el norte');
+
+      expect(result.plotId).toBe(40);
+      expect(mocks.getPlotByName).toHaveBeenCalledWith(10, 'el norte'); // tried original
+      expect(mocks.getPlotByName).toHaveBeenCalledWith(10, 'norte');    // then stripped
+    });
+
+    it('plot-only: resolves "La Loma" directly without stripping it to "Loma"', async () => {
+      mocks.findPlotByNameAcrossFields.mockResolvedValue([
+        { id: 50, field_id: 10, name: 'La Loma', field_name: 'El Ombú' },
+      ]);
+
+      const result = await service.resolveFromNames(userId, null, 'La Loma');
+
+      expect(result.plotId).toBe(50);
+      expect(mocks.findPlotByNameAcrossFields).toHaveBeenCalledWith(userId, 'La Loma');
+    });
+  });
+
   describe('resolveFromNames — plot only', () => {
     it('finds direct name match across fields', async () => {
       mocks.findPlotByNameAcrossFields.mockResolvedValue([

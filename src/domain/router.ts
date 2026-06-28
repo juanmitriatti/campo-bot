@@ -8,9 +8,21 @@ import { LivestockHandler } from './livestock/livestock.handler.js';
 import { FeedlotHandler } from './feedlot/feedlot.handler.js';
 import { FeatureGate } from './billing/feature-gate.js';
 import { TOOL_NAMES } from '../ai/tool-definitions.js';
+import { invalidateUserContext } from '../ai/user-context.service.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../types/index.js';
 
 // --- Command routing sets ---
+
+// Commands that mutate the user's stable entity lists (fields/plots/corrals/
+// feedlots) cached by UserContextService. After any of these runs, the cache
+// MUST be invalidated so the NEXT message's anti-hallucination validator sees
+// the new entity — otherwise it strips the just-created plot the user named and
+// the activity is silently dropped (multi-siembra data-loss bug, Jun 2026).
+const ENTITY_LIST_MUTATING_COMMANDS = new Set([
+  'add_field', 'add_plot', 'add_plots_batch',
+  'create_feedlot', 'create_corral',
+  'add_livestock', // can auto-create a feedlot + corral when none exist
+]);
 
 const FINANCIAL_COMMANDS = new Set([
   'financial_report',
@@ -233,7 +245,9 @@ export class DomainRouter {
     }
 
     if (FINANCIAL_COMMANDS.has(command)) {
-      return this.financialHandler.handleCommand(cmd, userId, user, settings);
+      const res = await this.financialHandler.handleCommand(cmd, userId, user, settings);
+      if (ENTITY_LIST_MUTATING_COMMANDS.has(command)) invalidateUserContext(userId);
+      return res;
     }
 
     if (AGRONOMY_COMMANDS.has(command)) {
@@ -253,11 +267,15 @@ export class DomainRouter {
     }
 
     if (LIVESTOCK_COMMANDS.has(command)) {
-      return this.livestockHandler.handleCommand(cmd, userId, user, settings);
+      const res = await this.livestockHandler.handleCommand(cmd, userId, user, settings);
+      if (ENTITY_LIST_MUTATING_COMMANDS.has(command)) invalidateUserContext(userId);
+      return res;
     }
 
     if (FEEDLOT_COMMANDS.has(command)) {
-      return this.feedlotHandler.handleCommand(cmd, userId, user, settings);
+      const res = await this.feedlotHandler.handleCommand(cmd, userId, user, settings);
+      if (ENTITY_LIST_MUTATING_COMMANDS.has(command)) invalidateUserContext(userId);
+      return res;
     }
 
     // No *_COMMANDS set claimed this command. NEVER fail silently here — each of

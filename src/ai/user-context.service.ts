@@ -28,8 +28,24 @@ interface CacheEntry {
 
 const CACHE_TTL_MS = 60_000; // 60 seconds
 
+// Module-level cache so it can be invalidated from anywhere (handlers, router)
+// WITHOUT importing the singleton instance — which would create a circular
+// import (handlers → message-pipeline → handlers). See invalidateUserContext().
+const contextCache = new Map<number, CacheEntry>();
+
+/**
+ * Drop the cached stable lists (fieldNames/plotNames/corralNames/feedlotNames)
+ * for a user. MUST be called after a command creates a field/plot/corral/feedlot,
+ * otherwise the next message's anti-hallucination validator runs against a stale
+ * list and STRIPS the just-created plot the user explicitly named — silently
+ * dropping the activity. (Root cause of the multi-siembra data-loss bug, Jun 2026.)
+ */
+export function invalidateUserContext(userId: number): void {
+  contextCache.delete(userId);
+}
+
 export class UserContextService {
-  private cache = new Map<number, CacheEntry>();
+  private cache = contextCache;
 
   constructor(
     private entityValidator: EntityValidator,

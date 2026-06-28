@@ -259,6 +259,11 @@ router.post('/reset', async (req: Request, res: Response) => {
       `DELETE FROM warehouses WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`,
       [numericUserId],
     );
+    // corrals have FK to feedlots (corrals_feedlot_id_fkey) — delete them first.
+    await client.query(
+      `DELETE FROM corrals WHERE feedlot_id IN (SELECT id FROM feedlots WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1))`,
+      [numericUserId],
+    );
     await client.query(
       `DELETE FROM feedlots WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`,
       [numericUserId],

@@ -25,6 +25,7 @@ import { formatQuantityHuman } from '../../utils/format-quantity.js';
 import { localidadLookup, type Localidad } from '../../services/localidad-lookup.service.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import { isPlaceholder } from '../../utils/guards.js';
+import { userExplicitlyReferencedPlot } from '../../utils/plot-intent.js';
 import { validateStageCode } from './stage-code-validator.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
 import type { PendingActivity } from '../../middleware/pending-activities.js';
@@ -816,7 +817,15 @@ export class AgronomyHandler {
     }
 
     // ── 2. Resolve scope ──
-    const resolved = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, cmd.plotName as string | null);
+    // "dónde sembré maíz?" / "última fumigación" (sin nombrar lote) deben
+    // BUSCAR EN TODOS los lotes, no acotarse silenciosamente al lote del
+    // context_stack (el último tocado) — si el maíz está en otro lote, scopear
+    // al contexto devuelve "no hay actividades" falso. Solo usamos el fallback
+    // de contexto cuando el usuario referenció un lote (nombre o pronombre).
+    // Los follow-ups multi-turno ya heredan plotName arriba (cmd.inherit), así
+    // que la continuidad de "y las fumigaciones?" no se rompe.
+    const qaAllowCtx = userExplicitlyReferencedPlot(cmd.originalText as string | null);
+    const resolved = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, cmd.plotName as string | null, { allowContextStackFallback: qaAllowCtx });
 
     // ── 3. Date range (analytical → all-history default) ──
     const todayISO = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
@@ -2436,11 +2445,17 @@ export class AgronomyHandler {
       }
 
       case 'active_crop': {
-        // If plot specified → show that plot's active crop detail
+        // If plot specified → show that plot's active crop detail.
+        // "qué tengo sembrado?" (sin nombrar lote) es una pregunta GENERAL:
+        // debe listar TODOS los cultivos, no caer al lote del context_stack
+        // (el último sembrado) y mostrar uno solo. Solo usamos el fallback de
+        // contexto cuando el usuario REFERENCIÓ un lote (nombre o pronombre).
+        const acAllowCtx = userExplicitlyReferencedPlot(cmd.originalText as string | null);
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,
-          cmd.plotName as string | null
+          cmd.plotName as string | null,
+          { allowContextStackFallback: acAllowCtx }
         );
 
         if (resolved.plotId) {
