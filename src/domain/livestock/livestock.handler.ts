@@ -14,6 +14,8 @@ import { formatPlotLocation } from '../../utils/format-location.js';
 import { pool } from '../../config/db.js';
 import { encodeLivestockPayload, decodeLivestockPayload } from './livestock-payload.js';
 import { buildPostActionButtons } from './livestock-post-actions.js';
+import { livestockLocationIntent } from '../../utils/livestock-location-intent.js';
+import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import type {
   UserId,
   User,
@@ -152,6 +154,8 @@ export class LivestockHandler {
         case 'livestock_apply_animals': return await this.applyAnimalsAffected(cmd, userId);
         case 'livestock_create_continue': return await this.createAndContinue(cmd, userId);
         case 'livestock_create_cancel': return await this.createCancel(cmd, userId);
+        case 'livestock_place_choice': return await this.placeLocationChoice(cmd, userId);
+        case 'livestock_place_corral': return await this.placeCorralChoice(cmd, userId);
         case 'livestock_post_stock': return await this.postActionStock(cmd, userId);
         case 'livestock_post_weigh': return await this.postActionWeigh(cmd, userId);
         case 'livestock_post_gdpv': return await this.postActionGdpv(cmd, userId);
@@ -327,6 +331,122 @@ export class LivestockHandler {
   }
 
   // ========================
+  // LOCATION: LOTE vs FEEDLOT (deterministic)
+  // ========================
+
+  /** Ambiguous location → ask with Lote/Feedlot buttons (no orphan free-text). */
+  private async askLivestockLocationType(
+    cmd: ParsedCommand,
+    _userId: UserId,
+    category: string,
+    count: number,
+  ): Promise<HandlerResponse> {
+    const token = callbackPayloadStore.set(encodeLivestockPayload({ cmd, step: 'pick_loc' }));
+    const label = LIVESTOCK_CATEGORY_LABEL[category as LivestockCategory] || category;
+    return {
+      messages: [],
+      interactive: {
+        type: 'buttons' as const,
+        body: `🐄 ¿Dónde van ${count} ${label}? Elegí:`,
+        buttons: [
+          { id: `lv_loc_lote_${token}`, title: '🌾 En un lote' },
+          { id: `lv_loc_feedlot_${token}`, title: '🏗️ En un feedlot' },
+        ],
+      },
+    };
+  }
+
+  /** Button tap on the Lote/Feedlot prompt. */
+  async placeLocationChoice(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const stored = callbackPayloadStore.get(cmd.payload as string);
+    if (!stored) return { messages: ['Esa opción expiró. Volvé a registrar la hacienda (ej: "agregá 50 vacas").'] };
+    const { cmd: origCmd } = decodeLivestockPayload(stored);
+    if (cmd.placeChoice === 'feedlot') {
+      return this.placeLivestockInFeedlot(origCmd, userId);
+    }
+    // Lote: re-run forzando el camino de lote (sin re-preguntar lote-vs-feedlot).
+    return this.addLivestock({ ...origCmd, __forcePlotPath: true } as ParsedCommand, userId);
+  }
+
+  /** Deterministic feedlot placement: auto-create feedlot+corral if none, pick corral. */
+  private async placeLivestockInFeedlot(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    let fieldName = (cmd.fieldName as string | null) || null;
+    if (!fieldName) {
+      const { getUserFields } = await import('../../services/expenses.js');
+      const fields = await getUserFields(userId);
+      if (fields.length === 0) return { messages: ['Primero creá un campo: *nuevo campo La Esperanza*.'] };
+      if (fields.length === 1) fieldName = fields[0].name;
+      else {
+        const names = fields.map((f: { name: string }) => f.name).join(', ');
+        return { messages: [`¿En qué campo está el feedlot? Tenés: ${names}.\nDecime, ej: "...en el campo ${fields[0].name}".`] };
+      }
+    }
+
+    const norm = (s: string | null | undefined) => (s || '').toLowerCase().trim();
+    const feedlots = await this.feedlotService.listFeedlots(userId);
+    const fl = feedlots.find(f => norm(f.field_name) === norm(fieldName));
+
+    let corralName: string;
+    let note = '';
+    try {
+      if (!fl) {
+        await this.feedlotService.createFeedlot(userId, fieldName, `Feedlot ${fieldName}`);
+        const c = await this.feedlotService.createCorral(userId, '1', fieldName);
+        corralName = c.name;
+        note = '🏗️ Feedlot y corral creados.\n';
+      } else {
+        const corrals = await this.feedlotService.listCorrals(userId, fieldName);
+        if (corrals.length === 0) {
+          const c = await this.feedlotService.createCorral(userId, '1', fieldName);
+          corralName = c.name;
+          note = '🔲 Corral creado.\n';
+        } else if (corrals.length === 1) {
+          corralName = corrals[0].name;
+        } else {
+          return this.askLivestockCorral(cmd, fieldName, corrals);
+        }
+      }
+    } catch (err: unknown) {
+      return { messages: [`No pude preparar el feedlot: ${err instanceof Error ? err.message : String(err)}`] };
+    }
+
+    const placed = await this.addLivestock({ ...cmd, corralName, fieldName } as ParsedCommand, userId);
+    if (note && placed.messages && placed.messages.length > 0) {
+      placed.messages[0] = note + placed.messages[0];
+    }
+    return placed;
+  }
+
+  /** Feedlot has 2+ corrales → ask which one (buttons, no free-text). */
+  private async askLivestockCorral(
+    cmd: ParsedCommand,
+    fieldName: string,
+    corrals: Array<{ name: string }>,
+  ): Promise<HandlerResponse> {
+    // One token per corral: each carries the original cmd + the chosen corral,
+    // so the callback_data is just `lv_loc_corralpick_<token>` (no name to parse
+    // out — base64url tokens contain '_', which would break inline delimiters).
+    const buttons = corrals.slice(0, 8).map(c => {
+      const token = callbackPayloadStore.set(
+        encodeLivestockPayload({ cmd: { ...cmd, fieldName, corralName: c.name } as ParsedCommand, step: 'pick_loc' }),
+      );
+      return { id: `lv_loc_corralpick_${token}`, title: c.name.slice(0, 24) };
+    });
+    return {
+      messages: [],
+      interactive: { type: 'buttons' as const, body: `🏗️ ¿En qué corral del feedlot (${fieldName})?`, buttons },
+    };
+  }
+
+  /** Button tap selecting a specific corral. */
+  async placeCorralChoice(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const stored = callbackPayloadStore.get(cmd.payload as string);
+    if (!stored) return { messages: ['Esa opción expiró. Volvé a registrar la hacienda.'] };
+    const { cmd: origCmd } = decodeLivestockPayload(stored);
+    return this.addLivestock({ ...origCmd } as ParsedCommand, userId);
+  }
+
+  // ========================
   // ADD
   // ========================
 
@@ -342,6 +462,24 @@ export class LivestockHandler {
       if (!cntCheck.ok) return { messages: [cntCheck.reason] };
       const dateCheck = validateDate((cmd.eventDate as string) ?? null, 'fecha del movimiento');
       if (!dateCheck.ok) return { messages: [dateCheck.reason] };
+    }
+
+    // Resolución determinística lote-vs-feedlot. Cuando el agente NO pasó una
+    // ubicación concreta (ni plot ni corral) y el usuario habla de feedlot o
+    // duda ("no sé si lote o feedlot"), decidimos NOSOTROS — no el LLM con
+    // texto suelto (eso daba resultados no determinísticos: a veces lote, a
+    // veces feedlot). Ver utils/livestock-location-intent.ts.
+    const skipLocPrompt = (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true
+      || cmd.__forcePlotPath === true
+      || cmd.__resolvedCorralId != null || cmd.__resolvedPlotId != null;
+    if (!skipLocPrompt && !cmd.plotName && !cmd.corralName) {
+      const locIntent = livestockLocationIntent(cmd.originalText as string | null);
+      if (locIntent === 'ambiguous') {
+        return this.askLivestockLocationType(cmd, userId, category, count);
+      }
+      if (locIntent === 'feedlot') {
+        return this.placeLivestockInFeedlot(cmd, userId);
+      }
     }
 
     let group, created, financial, movement;

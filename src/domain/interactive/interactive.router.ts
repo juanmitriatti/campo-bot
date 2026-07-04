@@ -346,6 +346,29 @@ export class InteractiveRouter {
       return { type: 'command', data: { command: 'livestock_create_cancel' } };
     }
 
+    // Deterministic lote-vs-feedlot choice (token from callbackPayloadStore).
+    const locTypeMatch = callbackId.match(/^lv_loc_(lote|feedlot)_(.+)$/);
+    if (locTypeMatch) {
+      return {
+        type: 'command',
+        data: {
+          command: 'livestock_place_choice',
+          placeChoice: locTypeMatch[1] === 'feedlot' ? 'feedlot' : 'lote',
+          payload: locTypeMatch[2],
+        },
+      };
+    }
+    // Specific corral choice: lv_loc_corralpick_<token> (token carries the corral).
+    if (callbackId.startsWith('lv_loc_corralpick_')) {
+      return {
+        type: 'command',
+        data: {
+          command: 'livestock_place_corral',
+          payload: callbackId.slice('lv_loc_corralpick_'.length),
+        },
+      };
+    }
+
     // Gap 8 — post-action shortcuts
     if (callbackId.startsWith('lv_post_stock_')) {
       const rest = callbackId.slice('lv_post_stock_'.length);
