@@ -8,7 +8,11 @@ import { getSetting } from '../../services/settings.service.js';
 import { interpolate } from '../../utils/template.js';
 import type { FinancialService } from '../financial/financial.service.js';
 import { logError } from '../../services/error-logger.js';
+import { GrainPriceService, formatGrainBoard, normalizeGrainCrop } from '../../services/grain-price.service.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse, InteractiveMessage } from '../../types/index.js';
+
+// Singleton a nivel módulo: el caché de 30 min de la pizarra vive acá.
+const grainPriceService = new GrainPriceService();
 
 export class SystemHandler {
   private financialService: FinancialService | null;
@@ -292,6 +296,24 @@ export class SystemHandler {
           console.error('DOLLAR API ERROR:', (e as Error).message);
           logError('system', 'DOLLAR_API', e as Error);
           return { messages: ['No pude obtener la cotizaci\u00f3n del d\u00f3lar. Intent\u00e1 m\u00e1s tarde.'] };
+        }
+      }
+
+      case 'grain_prices': {
+        try {
+          const requested = normalizeGrainCrop(cmd.crop as string | null);
+          if (requested === 'unsupported') {
+            return { messages: [`Por ahora solo tengo cotización de *soja, maíz y trigo* (Matba-Rofex no publica disponible de ${cmd.crop}).\nPedime *pizarra* para verlos.`] };
+          }
+          const board = await grainPriceService.getBoard();
+          if (!board) {
+            return { messages: ['No pude consultar la pizarra en este momento. Probá de nuevo en unos minutos.'] };
+          }
+          return { messages: [formatGrainBoard(board, requested)] };
+        } catch (e: unknown) {
+          console.error('GRAIN_PRICES ERROR:', (e as Error).message);
+          logError('system', 'GRAIN_PRICES', e as Error);
+          return { messages: ['No pude consultar la pizarra en este momento. Probá de nuevo en unos minutos.'] };
         }
       }
 

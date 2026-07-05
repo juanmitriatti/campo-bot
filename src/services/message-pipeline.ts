@@ -40,6 +40,7 @@ import { isNewActionInterrupt } from '../middleware/pending-action-processor.js'
 import { PendingTransactionStore, resolveReplacedPending, isCompletePending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
+import { TypedPendingStore } from '../middleware/typed-pending-store.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
 import { PendingFieldLocationStore } from '../middleware/pending-field-location.js';
@@ -144,18 +145,33 @@ export const pendingActStore = new PendingActivityStore();
 export const pendingCityStore = new PendingFieldCityStore();
 export const pendingPlotAreaStore = new PendingPlotAreaStore();
 export const pendingFieldLocationStore = new PendingFieldLocationStore();
-export const pendingStockEntryStore = new Map<string, Record<string, unknown>>();
-export const pendingStockDeductionStore = new Map<string, Record<string, unknown>>();
+// Antes: Maps pelados sin TTL ni persistencia. Un restart de Railway vaciaba
+// el store y el tap "Sí, descontar" confirmaba un descuento que nunca ocurrió
+// (bug "📤 Stock descontado." falso). Ahora: contrato único TypedPendingStore
+// (TTL 30 min + espejo en pending_states + hidratación al inicio del mensaje).
+export const pendingStockEntryStore = new TypedPendingStore<Record<string, unknown>>('stock_entry');
+export const pendingStockDeductionStore = new TypedPendingStore<Record<string, unknown>>('stock_deduction');
 export const pendingDocumentStore = new PendingDocumentStore();
 export const pendingDocUploadStore = new PendingDocumentUploadStore();
 export { pendingCampaignCloseStore };
 
 export async function hydratePendingStores(phone: string): Promise<void> {
+  // TODOS los stores se hidratan — antes solo 4 de 11 persistían y un restart
+  // de Railway perdía plot-area/field-location/stock/documentos/campaign-close
+  // en vuelo (con el bug estrella del tap "Sí, descontar" confirmando un
+  // descuento que nunca ocurrió).
   await Promise.all([
     pendingStore.hydrate(phone),
     pendingObsStore.hydrate(phone),
     pendingActStore.hydrate(phone),
     pendingCityStore.hydrate(phone),
+    pendingPlotAreaStore.hydrate(phone),
+    pendingFieldLocationStore.hydrate(phone),
+    pendingStockEntryStore.hydrate(phone),
+    pendingStockDeductionStore.hydrate(phone),
+    pendingDocumentStore.hydrate(phone),
+    pendingDocUploadStore.hydrate(phone),
+    pendingCampaignCloseStore.hydrate(phone),
   ]);
 }
 

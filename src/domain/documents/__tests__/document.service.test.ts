@@ -239,14 +239,21 @@ describe('PendingDocumentStore', () => {
     const { PendingDocumentStore } = await import('../../../middleware/pending-documents.js');
     const store = new PendingDocumentStore();
 
-    store.set('user1', {
-      documentId: 1,
-      extraction: {} as DocumentExtraction,
-      suggestedExpenses: [],
-      timestamp: Date.now() - 6 * 60 * 1000, // 6 minutes ago
-    });
-
-    expect(store.get('user1')).toBeUndefined();
+    // Contrato nuevo (TypedPendingStore): set() SIEMPRE pisa timestamp, así
+    // que la expiración se testea avanzando el reloj, no backdateando.
+    vi.useFakeTimers();
+    try {
+      store.set('user1', {
+        documentId: 1,
+        extraction: {} as DocumentExtraction,
+        suggestedExpenses: [],
+        timestamp: Date.now(),
+      });
+      vi.advanceTimersByTime(31 * 60 * 1000); // TTL 30 min
+      expect(store.get('user1')).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -330,11 +337,17 @@ describe('PendingDocumentUploadStore', () => {
     const { PendingDocumentUploadStore } = await import('../../../middleware/pending-document-upload.js');
     const store = new PendingDocumentUploadStore();
 
-    store.set('user1', {
-      intent: 'factura' as DocumentUploadIntent,
-      timestamp: Date.now() - 6 * 60 * 1000, // 6 minutes ago
-    });
-    expect(store.get('user1')).toBeUndefined();
+    vi.useFakeTimers();
+    try {
+      store.set('user1', {
+        intent: 'factura' as DocumentUploadIntent,
+        timestamp: Date.now(),
+      });
+      vi.advanceTimersByTime(31 * 60 * 1000); // TTL 30 min
+      expect(store.get('user1')).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not return other users data', async () => {

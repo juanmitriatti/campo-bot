@@ -1,29 +1,32 @@
+import { TypedPendingStore } from './typed-pending-store.js';
+
 export interface PendingFieldLocation {
   fieldId: number;
   fieldName: string;
   timestamp: number;
 }
 
-const PENDING_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-
+/**
+ * Espera de ubicación de campo (ciudad/mapa/compartir). Delegado al contrato
+ * único TypedPendingStore (TTL 30 min + espejo DB) — antes era Map propio sin
+ * persistencia: un deploy en medio de la pregunta perdía el pending.
+ */
 export class PendingFieldLocationStore {
-  private store = new Map<string, PendingFieldLocation>();
+  private inner = new TypedPendingStore<Omit<PendingFieldLocation, 'timestamp'>>('field_location');
 
   set(key: string, data: Omit<PendingFieldLocation, 'timestamp'>): void {
-    this.store.set(key, { ...data, timestamp: Date.now() });
+    this.inner.set(key, data);
   }
 
   get(key: string): PendingFieldLocation | null {
-    const entry = this.store.get(key);
-    if (!entry) return null;
-    if (Date.now() - entry.timestamp > PENDING_TIMEOUT_MS) {
-      this.store.delete(key);
-      return null;
-    }
-    return entry;
+    return (this.inner.get(key) as PendingFieldLocation | undefined) ?? null;
   }
 
   clear(key: string): void {
-    this.store.delete(key);
+    this.inner.clear(key);
+  }
+
+  async hydrate(key: string): Promise<void> {
+    return this.inner.hydrate(key);
   }
 }

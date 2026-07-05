@@ -1,3 +1,5 @@
+import { TypedPendingStore } from './typed-pending-store.js';
+
 export type DocumentUploadIntent = 'factura' | 'remito' | 'ticket';
 
 export interface PendingDocumentUpload {
@@ -13,36 +15,27 @@ export interface PendingDocumentUpload {
   timestamp: number;
 }
 
-const EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
-
 /**
- * In-memory store for pending document upload actions.
- * Two states:
- *   A) User chose "Cargar factura" from menu → intent is set, waiting for image
- *   B) User sent unprompted image → mediaRef is set, waiting for intent choice
+ * Pending de subida de documentos (dos estados: intent elegido esperando
+ * imagen, o imagen recibida esperando intent). Delegado al contrato único
+ * TypedPendingStore (TTL 30 min + espejo DB).
  */
 export class PendingDocumentUploadStore {
-  private store = new Map<string, PendingDocumentUpload>();
+  private inner = new TypedPendingStore<Omit<PendingDocumentUpload, 'timestamp'>>('document_upload');
 
   set(key: string, data: PendingDocumentUpload): void {
-    this.store.set(key, data);
-    setTimeout(() => {
-      if (this.store.get(key)?.timestamp === data.timestamp) {
-        this.store.delete(key);
-      }
-    }, EXPIRY_MS);
+    this.inner.set(key, data);
   }
 
   get(key: string): PendingDocumentUpload | undefined {
-    const data = this.store.get(key);
-    if (data && Date.now() - data.timestamp > EXPIRY_MS) {
-      this.store.delete(key);
-      return undefined;
-    }
-    return data;
+    return this.inner.get(key) as PendingDocumentUpload | undefined;
   }
 
   clear(key: string): void {
-    this.store.delete(key);
+    this.inner.clear(key);
+  }
+
+  async hydrate(key: string): Promise<void> {
+    return this.inner.hydrate(key);
   }
 }

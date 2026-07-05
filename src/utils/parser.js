@@ -782,6 +782,19 @@ const COMMAND_PATTERNS = [
     ],
   },
 
+  // --- Pizarra de granos (precio de mercado) ---
+  // Anclado ^...$ para no robar mensajes financieros ("vendí soja a 320",
+  // "precio de la soja que vendí"). El agente cubre los fraseos largos.
+  {
+    command: "grain_prices",
+    patterns: [
+      /^pizarra(?:\s+de\s+granos)?\s*\??$/i,
+      /^(?:precio|cotizaci[óo]n)(?:es)?\s+(?:de\s+|del?\s+)?(?:la\s+|el\s+)?(?:soja|ma[ií]z|trigo|granos?)\s*(?:hoy)?\s*\??$/i,
+      /^a\s+cu[aá]nto\s+(?:est[áa]|cotiza)\s+(?:la\s+|el\s+)?(?:soja|ma[ií]z|trigo)\s*(?:hoy)?\s*\??$/i,
+      /^cu[aá]nto\s+(?:vale|est[áa])\s+(?:la\s+|el\s+)?(?:soja|ma[ií]z|trigo)\s*(?:hoy)?\s*\??$/i,
+    ],
+  },
+
   // --- Alertas ---
   {
     command: "show_alerts",

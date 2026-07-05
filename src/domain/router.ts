@@ -105,7 +105,7 @@ const FEEDLOT_COMMANDS = new Set([
 ]);
 
 const SYSTEM_COMMANDS = new Set([
-  'greeting', 'help', 'help_section', 'thanks', 'ack', 'dollar',
+  'greeting', 'help', 'help_section', 'thanks', 'ack', 'dollar', 'grain_prices',
   'menu', 'show_expense_menu', 'show_income_menu', 'show_agro_menu',
   'show_fields_menu', 'show_rain_menu', 'show_reports_menu',
   'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',

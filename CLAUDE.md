@@ -99,6 +99,9 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - "clima/pronóstico/va a llover en X" → `weather_full(city=X, province?)`. NEVER fall back to user.city if query mentions a city.
 - Handler uses `localidadLookup` to disambiguate ambiguous names (ej: Ameghino in Bs As vs La Pampa).
 
+### Pizarra de granos (Jul 2026)
+- "pizarra" / "a cuánto está la soja" / "precio del maíz hoy" → `grain_prices(crop?)` — precio de MERCADO (Matba-Rofex Rosario), NUNCA `active_crop` (qué hay sembrado) ni `financial_report` ("a cuánto VENDÍ"). Fuente: API pública `apicem.matbarofex.com.ar/api/v2/closing-prices` — Disponible (contado ≈ pizarra) + 2 futuros más cercanos, USD/tn, caché 30 min (`src/services/grain-price.service.ts`, singleton en SystemHandler). Regex trivial anclado en parser.js (no roba "vendí soja a 320"). Permitido para usuarios con trial vencido (costo cero). Granos: soja/maíz/trigo (girasol/sorgo/cebada no tienen disponible en la fuente → mensaje honesto).
+
 ### Pending field-city escape hatch
 - `pending-field-city-handler.looksLikeNonCity()` aborts the loop when the user types something that clearly isn't a locality (agro verbs, lists with `:`, queries with `?`, messages > 60 chars, SQL keywords, multiple commas **WITH digits** — "Pergamino, Buenos Aires, Argentina" is a valid locality answer and resolves; only data-lists escape, Jun 2026). When triggered, the bot tells the user "Dejé pendiente la ubicación de X" and clears the pending state so subsequent registrations work.
 - Add new escape patterns here, NOT in the agent prompt.
@@ -292,8 +295,9 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 ### Message idempotency
 - `src/middleware/dedup.ts` `MessageDedup` is time-windowed (10-min TTL, age-based eviction) — dedups Telegram `update_id` / callback ids so a webhook RETRY of a slow audio doesn't double-write (one "320 madres" audio once created the herd twice). Still per-process; multi-replica would need a shared store.
 
-### Pending persistence + per-user serialization (Jun 2026)
+### Pending persistence + per-user serialization (Jun 2026; contrato único Jul 2026)
 - **Pending stores persist to DB** (`pending_states` table, migration 097): the 4 stores (`PendingActivityStore`, `PendingTransactionStore`, `PendingObservationStore`, `PendingFieldCityStore`) keep their synchronous Map API but write-through to DB via `src/middleware/pending-persistence.ts` (`PendingMirror`). Controllers call `hydratePendingStores(phone)` at message entry (fill-if-missing) so a Railway restart no longer wipes in-flight pendings. Tombstones (60s) prevent a hydrate from resurrecting a just-cleared pending whose DELETE is in flight. Hourly sweep at :30 in scheduler.
+- **Contrato único (Jul 2026)**: `src/middleware/typed-pending-store.ts` (`TypedPendingStore<T>`: TTL 30 min default + mirror + hydrate + `delete` alias de `clear`). Migrados: los 3 Maps pelados (stock_entry, stock_deduction — causa del "📤 Stock descontado." falso —, campaign_close) + field-location + documents + doc-upload (delegan al genérico) + plot-area (mirror manual, cola entera como payload). `hydratePendingStores` cubre los 11. **Todo pending simple nuevo usa TypedPendingStore — NUNCA un Map suelto ni otra clase ad-hoc.** TTL de pending-activities también 30 min (antes 5: la respuesta a los 6 min iba al agente a ciegas).
 - **Per-user message serialization** (`src/middleware/user-lock.ts` `withUserLock`): the 3 controllers chain message processing per phone/chat-id so two rapid messages from the same user can't interleave and overwrite each other's pending. Different users still run in parallel. In-process only (single-replica deploy).
 - **Pending hint to agent**: when a pending is active and a message still reaches the agent, `classify(..., { pendingHint })` injects a `[Hay una pregunta pendiente...]` line into the user prefix (uncached zone) so the agent knows there's an open slot question.
 

@@ -759,6 +759,17 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'grain_prices',
+    description: 'Pizarra de granos / precio de MERCADO (Matba-Rofex Rosario): "a cuánto está la soja", "pizarra", "precio del maíz hoy", "cotización del trigo", "cuánto vale la soja". SOLO precios de mercado — NUNCA usar para "qué tengo sembrado" (eso es active_crop) ni para consultas de gastos/ingresos propios (financial_report). Granos disponibles: soja, maíz, trigo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        crop: { type: 'string', description: 'Grano puntual si el usuario nombró uno (soja/maíz/trigo). Omitir para la pizarra completa.' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'rainfall_report',
     description: 'Tool UNIFICADO para CUALQUIER consulta de lluvias/precipitaciones. NO es para registrar. Cubre: listas, totales, máximos/mínimos/promedios, rankings por lote/campo/mes, comparaciones, eventos por umbral, análisis temporales. Combiná filtros + view.',
     input_schema: {
