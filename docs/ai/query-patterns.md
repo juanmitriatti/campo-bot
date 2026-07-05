@@ -178,6 +178,9 @@ Tool: `query_harvest_loads` · Renderers: `harvest-renderers.ts`
 | "Soja con aceite >21%" | `crop:'soja', oil_min_pct:21` |
 | "Descuento por humedad" | `humidity_min_pct:14.5` (AR standard) |
 | "Mostrame trigo" en harvest context | `query_harvest_loads(crop:'trigo')` |
+| "¿Cuánta soja tengo en Cargill?" (saldo por acopio) | `view:'aggregate', crop:'soja', destinatario:'Cargill'` |
+| "¿Cuánto entregué a cada acopio?" | `view:'top_locations', group_by:'destinatario', aggregate_metric:'weight_kg'` |
+| "¿Qué tengo en el acopio / en Vicentin?" | `view:'aggregate', destinatario:'Vicentin'` — NUNCA check_stock (eso es insumos en depósito propio) |
 
 ### Multi-turn
 ```

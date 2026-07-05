@@ -1196,7 +1196,26 @@ export function startScheduler() {
       .catch(err => console.error("[scheduler] pending_states sweep failed:", err));
   });
 
-  console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily cleanup + flow reminders + expense templates + subscription sweep. ALERTAS (clima/viento/seca + proactivas) DESACTIVADAS.");
+  // Recordatorios de labores ("el sábado tengo que fumigar") — cada hora a
+  // los :10; el tick valida la franja 07-21 AR internamente. Telegram-first
+  // con fallback WhatsApp (mismo canal que el resto de las alertas).
+  cron.schedule("10 * * * *", () => {
+    import("./reminder.service.js")
+      .then(m => m.reminderTick(async (userId, contact, message) => {
+        const result = await sendAlertWithRetryMultiChannel(
+          userId,
+          { phone: contact.phone, telegramId: contact.telegramId },
+          message,
+          "reminder",
+          {},
+        );
+        return !!result.sent;
+      }))
+      .then(n => { if (n > 0) console.log(`[scheduler] recordatorios enviados: ${n}`); })
+      .catch(err => console.error("[scheduler] reminder tick failed:", err));
+  });
+
+  console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily cleanup + flow reminders + expense templates + subscription sweep + task reminders. ALERTAS (clima/viento/seca + proactivas) DESACTIVADAS.");
 }
 
 async function subscriptionSweepTick() {

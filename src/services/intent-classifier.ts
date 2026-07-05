@@ -59,7 +59,7 @@ const EXPIRED_ALLOWED_COMMANDS = new Set([
 const TRIVIAL_COMMANDS = new Set([
   'confirm', 'cancel',
   'greeting', 'thanks', 'ack',
-  'menu', 'help', 'dollar', 'grain_prices',
+  'menu', 'help', 'dollar', 'grain_prices', 'list_reminders',
   'list_fields', 'list_plots',
   'show_expense_menu', 'show_income_menu', 'show_agro_menu',
   'show_fields_menu', 'show_rain_menu', 'show_reports_menu',

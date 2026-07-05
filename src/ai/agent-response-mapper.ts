@@ -772,6 +772,15 @@ export class AgentResponseMapper {
     if (input.newName != null) cmd.newName = input.newName;
     if (input.entityKeyword != null) cmd.entityKeyword = input.entityKeyword;
 
+    // Recordatorios (create/list/complete_reminder): description/due_date/cancel
+    // no estaban en el mapeo genérico y llegaban vacíos al handler aunque el
+    // agente los emitiera perfecto.
+    if (toolName === 'create_reminder' || toolName === 'complete_reminder') {
+      if (typeof input.description === 'string') cmd.description = input.description;
+      if (typeof input.due_date === 'string') cmd.due_date = input.due_date;
+      if (typeof input.cancel === 'boolean') cmd.cancel = input.cancel;
+    }
+
     // Name+city recovery for "(tengo otro) campo en <city> que se llama <name>"
     // — Haiku often drops the name and/or city for this phrasing, so the field
     // is never created and a follow-up "agregá lotes al campo <name>" fails.

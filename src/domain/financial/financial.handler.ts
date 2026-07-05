@@ -210,6 +210,22 @@ function renderResultBlock(expByCurrency: Record<string, number>, incomeByCurren
   return s;
 }
 
+/**
+ * Adjunta la PRIMERA ACCIÓN DIFERIDA al rebote "necesitás un campo/lote": el
+ * texto original se stashea y el pipeline lo re-inyecta solo cuando el usuario
+ * termina el setup (campo+lote). Antes el gasto inicial se descartaba y había
+ * que re-tipearlo de memoria.
+ */
+function withDeferredFirstAction(resp: HandlerResponse, rawText: string | null | undefined): HandlerResponse {
+  const originalText = rawText?.trim();
+  if (!originalText) return resp;
+  return {
+    ...resp,
+    sideEffects: { ...resp.sideEffects, setDeferredFirstAction: { originalText } },
+    messages: [...(resp.messages ?? []), '_Apenas tengas el campo y el lote creados, retomo esto solo._'],
+  };
+}
+
 function buildNoFieldsBlockResponse(actionLabel: string): HandlerResponse {
   return {
     messages: [`Para registrar ${actionLabel} primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*`],
@@ -718,7 +734,7 @@ export class FinancialHandler {
     // Block if user has no fields
     const userFields = await this.service.getUserFields(userId);
     if (userFields.length === 0) {
-      return buildNoFieldsBlockResponse('un gasto');
+      return withDeferredFirstAction(buildNoFieldsBlockResponse('un gasto'), text);
     }
 
     // Block if user has no plots at all
@@ -1065,7 +1081,7 @@ export class FinancialHandler {
     // Block if user has no fields
     const userFields = await this.service.getUserFields(userId);
     if (userFields.length === 0) {
-      return buildNoFieldsBlockResponse('un ingreso');
+      return withDeferredFirstAction(buildNoFieldsBlockResponse('un ingreso'), text);
     }
 
     // Block if user has no plots at all

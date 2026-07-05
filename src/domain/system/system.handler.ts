@@ -317,6 +317,40 @@ export class SystemHandler {
         }
       }
 
+      case 'create_reminder': {
+        const desc = (cmd.description as string | null)?.trim();
+        if (!desc) {
+          return { messages: ['¿Qué te recuerdo y cuándo? Ej: *"acordame el sábado de fumigar el lote 5"*.'] };
+        }
+        const { createReminder, resolveFutureDate } = await import('../../services/reminder.service.js');
+        const dueDate = (cmd.due_date as string | null)
+          || resolveFutureDate(cmd.originalText as string | null)
+          || resolveFutureDate(desc);
+        if (!dueDate) {
+          return { messages: [`¿Para cuándo te lo recuerdo? Decime la frase completa con la fecha, ej: *"acordame el viernes de ${desc}"*.`] };
+        }
+        const r = await createReminder(Number(userId), desc, dueDate);
+        const dd = `${r.due_date.slice(8, 10)}/${r.due_date.slice(5, 7)}`;
+        return { messages: [`⏰ Listo, te lo recuerdo el *${dd}*:\n"${r.description}"\n\n_"mis recordatorios" para ver todos._`] };
+      }
+
+      case 'list_reminders': {
+        const { listReminders, formatReminderList } = await import('../../services/reminder.service.js');
+        const rs = await listReminders(Number(userId));
+        return { messages: [formatReminderList(rs)] };
+      }
+
+      case 'complete_reminder': {
+        const { completeReminder } = await import('../../services/reminder.service.js');
+        const done = await completeReminder(Number(userId), {
+          id: cmd.reminderId ? Number(cmd.reminderId) : null,
+          descriptionLike: (cmd.description as string | null) || null,
+          cancel: cmd.cancel === true,
+        });
+        if (!done) return { messages: ['No encontré ese recordatorio pendiente. *mis recordatorios* para ver la lista.'] };
+        return { messages: [done.status === 'cancelled' ? `🗑️ Cancelado: "${done.description}"` : `✅ Hecho: "${done.description}"`] };
+      }
+
       case 'show_alerts': {
         const dayNames = ['Domingo', 'Lunes', 'Martes', 'Mi\u00e9rcoles', 'Jueves', 'Viernes', 'S\u00e1bado'];
         let msg = '\u2699\ufe0f *Tu configuraci\u00f3n de alertas*\n\n';

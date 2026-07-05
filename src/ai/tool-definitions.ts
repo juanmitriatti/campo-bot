@@ -267,7 +267,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         event_date: { type: 'string', description: 'Fecha exacta YYYY-MM-DD ("el 9 de mayo" → 2026-05-09).' },
         // People / vehicles / destination
         driver_name: { type: 'string', description: 'Chofer (substring case-insensitive). "Pedro" matchea "Pedro Gómez".' },
-        destinatario: { type: 'string', description: 'Empresa destino: Cargill, ACA, AGD, Vicentin, Bunge, etc. Substring match.' },
+        destinatario: { type: 'string', description: 'Empresa destino/acopio: Cargill, ACA, AGD, Vicentin, Bunge, etc. Substring match. TAMBIÉN para saldo entregado: "cuánta soja TENGO EN Cargill" / "qué tengo en el acopio" → destinatario + view aggregate (grano entregado, NUNCA check_stock que es insumos propios).' },
         truck_plate: { type: 'string', description: 'Patente del camión (substring). Ej: "AA123BB".' },
         // Weight / quality thresholds
         weight_min_kg: { type: 'number', description: 'Peso mínimo en KG. "más de 60 tn" → 60000. "arriba de 100 tn" → 100000.' },
@@ -754,6 +754,35 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         field: FIELD_PROP,
         city: { type: 'string', description: 'Nombre de ciudad/localidad mencionada explícitamente. Ej: "clima en Ameghino" → city="Ameghino". Omitir si el usuario no menciona ciudad (se usa su ubicación).' },
         province: { type: 'string', description: 'Provincia, solo si el usuario la menciona para desambiguar. Ej: "clima en Ameghino Buenos Aires" → province="Buenos Aires".' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'create_reminder',
+    description: 'Recordatorio de una labor/tarea FUTURA: "el sábado tengo que fumigar", "acordame de vacunar el martes", "la semana que viene siembro el lote 3", "mañana pago el arrendamiento". Un plan a futuro NUNCA se registra como actividad/gasto hecho (eso es solo para verbos en pasado). description = la tarea completa (incluí el lote/campo si lo nombró). due_date = fecha ISO calculada de la frase ("el sábado" → el próximo sábado).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        description: { type: 'string', description: 'La tarea a recordar, texto completo. Ej: "fumigar el lote 5 con glifosato".' },
+        due_date: { type: 'string', description: 'Fecha del recordatorio YYYY-MM-DD (calculada: "mañana", "el sábado" → próximo sábado, "en 3 días").' },
+      },
+      required: ['description'],
+    },
+  },
+  {
+    name: 'list_reminders',
+    description: 'Ver recordatorios/agenda pendiente: "mis recordatorios", "qué tengo pendiente esta semana", "qué tenía que hacer", "mi agenda".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'complete_reminder',
+    description: 'Marcar un recordatorio como hecho o cancelarlo — SOLO cuando el usuario habla explícitamente del recordatorio ("listo el recordatorio", "ya está lo de fumigar, sacalo", "cancelá el recordatorio del sábado"). Si el usuario reporta la labor hecha ("fumigué el lote 5"), registrá la ACTIVIDAD con su tool normal, NO esta.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        description: { type: 'string', description: 'Palabras clave del recordatorio a marcar (ej: "fumigar"). Omitir para el más próximo.' },
+        cancel: { type: 'boolean', description: 'true si quiere CANCELARLO (no hacerlo) en vez de marcarlo hecho.' },
       },
       required: [],
     },

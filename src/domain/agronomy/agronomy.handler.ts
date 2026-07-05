@@ -277,14 +277,22 @@ export class AgronomyHandler {
     const haNum = cmd.hectares != null ? Number(cmd.hectares) : null;
     const haHint = haNum && haNum > 0 ? ` de ${haNum} ha` : '';
 
+    const deferOriginal = (cmd.originalText as string | undefined)?.trim();
+    // Stash de primera acción: el pipeline re-inyecta este texto solo cuando
+    // exista campo+lote (wrapper de processTextMessage) — la siembra/actividad
+    // inicial ya no se pierde en el rebote del onboarding.
+    const deferFx = deferOriginal ? { setDeferredFirstAction: { originalText: deferOriginal } } : undefined;
+    const deferNote = deferOriginal ? '\n\n_Apenas tengas el campo y el lote creados, retomo esto solo._' : '';
+
     if (fields.length === 0) {
       return {
-        messages: [`Para registrar ${activityLabel} primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*`],
+        messages: [`Para registrar ${activityLabel} primero necesitás crear un campo y un lote.\n\n📍 Escribí *agregar campo [nombre]*${deferNote}`],
         interactive: {
           type: 'buttons',
           body: `Necesitás un campo para registrar ${activityLabel}.`,
           buttons: [{ id: 'cmd_agregar_campo', title: 'Crear Campo' }],
         },
+        sideEffects: deferFx,
       };
     }
 
@@ -294,8 +302,9 @@ export class AgronomyHandler {
         messages: [
           `El campo *${f.name}* todavía no tiene lotes cargados.\n\n` +
           `Creá uno con:\n📍 *agregar lote Norte en campo ${f.name}${haHint}*\n\n` +
-          `Después reintentá la ${activityLabel}.`,
+          `Después la retomo solo.`,
         ],
+        sideEffects: deferFx,
         // Botón contextual: el usuario necesita CREAR un lote, no "otra
         // actividad". Sin esto, el pipeline aplicaba las sugerencias genéricas
         // de la actividad (Reporte/Otra actividad/Lluvia) — ninguna servía.

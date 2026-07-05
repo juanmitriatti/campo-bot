@@ -159,6 +159,42 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('primera acción diferida — onboarding no descarta el gasto (Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('deferred-first');
+      // usuario CERO: sin campos ni lotes
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('gasto sin campos → stash; al crear campo+lote se re-inyecta solo', async () => {
+      // 1. Primer mensaje: gasto → el agente lo mapea, el handler bloquea y stashea
+      h.fakeAgent.enqueueTool('log_expense', { amount: 50000, category: 'Combustible', description: 'gasoil' });
+      const blocked = await h.send('gasté 50 mil en gasoil');
+      const blockedText = h.allText(blocked);
+      expect(blockedText).toMatch(/necesitás crear un campo/i);
+      expect(blockedText).toMatch(/retomo esto solo/i);
+
+      // 2. Crear campo por SQL (simula el flujo de alta) — todavía sin lote
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
+
+      // 3. Crear el lote por el pipeline (comando trivial) → dispara el replay.
+      //    El replay re-corre el gasto: encolar la respuesta del agente para él.
+      h.fakeAgent.enqueueTool('add_plot', { plotName: 'Norte', field: 'La Esperanza' });
+      h.fakeAgent.enqueueTool('log_expense', { amount: 50000, category: 'Combustible', description: 'gasoil' });
+      const done = await h.send('agregar lote Norte al campo La Esperanza');
+      const doneText = h.allText(done);
+      expect(doneText).toMatch(/Retomo lo que me habías pedido/i);
+      expect(doneText).toMatch(/50/); // el monto reaparece
+
+      // 4. El stash se consumió (no re-dispara en el próximo mensaje)
+      const again = await h.send('hola');
+      expect(h.allText(again)).not.toMatch(/Retomo lo que me habías pedido/i);
+      void f;
+    });
+  });
+
   describe('trial vencido — readonly de verdad (Jul 2026)', () => {
     let h: PipelineHarness;
 

@@ -782,6 +782,16 @@ const COMMAND_PATTERNS = [
     ],
   },
 
+  // --- Recordatorios (listar) ---
+  {
+    command: "list_reminders",
+    patterns: [
+      /^(?:mis\s+)?recordatorios\s*\??$/i,
+      /^(?:mi\s+)?agenda\s*\??$/i,
+      /^(?:que|qué)\s+ten(?:go|ia|ía)\s+(?:pendiente|que\s+hacer)\s*\??$/i,
+    ],
+  },
+
   // --- Pizarra de granos (precio de mercado) ---
   // Anclado ^...$ para no robar mensajes financieros ("vendí soja a 320",
   // "precio de la soja que vendí"). El agente cubre los fraseos largos.

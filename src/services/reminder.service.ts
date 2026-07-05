@@ -1,0 +1,205 @@
+/**
+ * reminder.service.ts — Recordatorios de labores futuras.
+ *
+ * "El sábado tengo que fumigar el lote 5" NO es una fumigación hecha: es un
+ * PLAN. El agente lo captura con create_reminder(description, due_date) y el
+ * scheduler avisa el día que corresponde (tick horario, franja 07-21 AR,
+ * Telegram-first con fallback WhatsApp via sendAlertWithRetryMultiChannel).
+ *
+ * Resolución de fecha: el agente manda due_date ISO. Red de seguridad
+ * server-side: resolveFutureDate() entiende "mañana", "pasado mañana",
+ * "el sábado / el viernes que viene", "en N días" — SIEMPRE hacia adelante
+ * (a diferencia de relative-dates.ts, que resuelve hacia atrás para
+ * registros). Sin fecha resoluble → el handler pide la fecha (sin estado:
+ * el usuario re-manda la frase completa).
+ */
+import { pool } from '../config/db.js';
+import { getNowArgentina, getTodayISO } from '../utils/date.js';
+
+export interface TaskReminder {
+  id: number;
+  description: string;
+  due_date: string; // YYYY-MM-DD
+  status: 'pending' | 'sent' | 'done' | 'cancelled';
+  plot_name?: string | null;
+  field_name?: string | null;
+}
+
+const WEEKDAYS: Record<string, number> = {
+  domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6,
+};
+
+function toISO(d: Date): string {
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+}
+
+/**
+ * Resuelve una frase de fecha FUTURA a ISO (AR). Devuelve null si no hay
+ * señal de fecha. "el sábado" = el PRÓXIMO sábado (si hoy es sábado → el que
+ * viene, un recordatorio para "hoy" se dice "hoy").
+ */
+export function resolveFutureDate(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const t = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const now = getNowArgentina();
+
+  if (/\bhoy\b/.test(t)) return toISO(now);
+  if (/\bpasado\s+manana\b/.test(t)) {
+    const d = new Date(now); d.setDate(d.getDate() + 2); return toISO(d);
+  }
+  if (/\bmanana\b/.test(t)) {
+    const d = new Date(now); d.setDate(d.getDate() + 1); return toISO(d);
+  }
+  const inDays = t.match(/\ben\s+(\d{1,2})\s+dias?\b/);
+  if (inDays) {
+    const d = new Date(now); d.setDate(d.getDate() + Number(inDays[1])); return toISO(d);
+  }
+  let weeks: number | null = null;
+  if (/\ben\s+(?:una|1)\s+semana\b/.test(t)) weeks = 1;
+  else {
+    const mw = t.match(/\ben\s+(\d)\s+semanas\b/);
+    if (mw) weeks = Number(mw[1]);
+  }
+  if (weeks) {
+    const d = new Date(now); d.setDate(d.getDate() + 7 * weeks); return toISO(d);
+  }
+  const wd = t.match(/\b(?:el\s+|este\s+)?(domingo|lunes|martes|miercoles|jueves|viernes|sabado)\b/);
+  if (wd) {
+    const target = WEEKDAYS[wd[1]];
+    const d = new Date(now);
+    let delta = (target - d.getDay() + 7) % 7;
+    if (delta === 0) delta = 7; // "el sábado" dicho un sábado = el próximo
+    d.setDate(d.getDate() + delta);
+    return toISO(d);
+  }
+  return null;
+}
+
+export async function createReminder(
+  userId: number,
+  description: string,
+  dueDate: string,
+  opts: { fieldId?: number | null; plotId?: number | null } = {},
+): Promise<TaskReminder> {
+  const { rows } = await pool.query(
+    `INSERT INTO task_reminders (user_id, description, due_date, field_id, plot_id)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id, description, due_date::text, status`,
+    [userId, description, dueDate, opts.fieldId ?? null, opts.plotId ?? null],
+  );
+  return rows[0];
+}
+
+export async function listReminders(userId: number): Promise<TaskReminder[]> {
+  const { rows } = await pool.query(
+    `SELECT r.id, r.description, r.due_date::text, r.status, p.name AS plot_name, f.name AS field_name
+     FROM task_reminders r
+     LEFT JOIN plots p ON p.id = r.plot_id
+     LEFT JOIN fields f ON f.id = r.field_id
+     WHERE r.user_id = $1 AND r.status IN ('pending', 'sent')
+     ORDER BY r.due_date, r.id`,
+    [userId],
+  );
+  return rows;
+}
+
+/** Marca done/cancelled. Sin id → la más próxima pendiente. Devuelve la afectada o null. */
+export async function completeReminder(
+  userId: number,
+  opts: { id?: number | null; descriptionLike?: string | null; cancel?: boolean } = {},
+): Promise<TaskReminder | null> {
+  const newStatus = opts.cancel ? 'cancelled' : 'done';
+  let target: { rows: TaskReminder[] };
+  if (opts.id) {
+    target = await pool.query(
+      `SELECT id, description, due_date::text, status FROM task_reminders
+       WHERE user_id = $1 AND id = $2 AND status IN ('pending','sent')`,
+      [userId, opts.id],
+    );
+  } else if (opts.descriptionLike) {
+    target = await pool.query(
+      `SELECT id, description, due_date::text, status FROM task_reminders
+       WHERE user_id = $1 AND status IN ('pending','sent') AND description ILIKE '%' || $2 || '%'
+       ORDER BY due_date LIMIT 1`,
+      [userId, opts.descriptionLike],
+    );
+  } else {
+    target = await pool.query(
+      `SELECT id, description, due_date::text, status FROM task_reminders
+       WHERE user_id = $1 AND status IN ('pending','sent')
+       ORDER BY due_date LIMIT 1`,
+      [userId],
+    );
+  }
+  if (target.rows.length === 0) return null;
+  const r = target.rows[0];
+  await pool.query(`UPDATE task_reminders SET status = $2 WHERE id = $1`, [r.id, newStatus]);
+  return { ...r, status: newStatus as TaskReminder['status'] };
+}
+
+function fmtDue(iso: string): string {
+  const today = getTodayISO();
+  if (iso === today) return 'HOY';
+  const d = new Date(iso + 'T12:00:00');
+  const tomorrow = new Date(new Date(today + 'T12:00:00').getTime() + 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const dd = `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+  const day = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'][d.getDay()];
+  if (iso === tomorrow) return `mañana (${day} ${dd})`;
+  return `${day} ${dd}`;
+}
+
+export function formatReminderList(reminders: TaskReminder[]): string {
+  if (reminders.length === 0) {
+    return '📋 No tenés recordatorios pendientes.\n\n_Para crear uno: "acordame el sábado de fumigar el lote 5"._';
+  }
+  const lines = ['⏰ *Tus recordatorios*', ''];
+  const today = getTodayISO();
+  for (const r of reminders) {
+    const overdue = r.due_date < today ? ' ⚠️ vencido' : '';
+    const loc = r.plot_name ? ` (lote ${r.plot_name})` : r.field_name ? ` (${r.field_name})` : '';
+    lines.push(`• ${r.description}${loc} — *${fmtDue(r.due_date)}*${overdue}`);
+  }
+  lines.push('');
+  lines.push('_"listo el recordatorio de X" para marcarlo hecho._');
+  return lines.join('\n');
+}
+
+/**
+ * Tick del scheduler (horario): envía los recordatorios que vencen HOY (o
+ * quedaron vencidos sin avisar) dentro de la franja 07-21 AR y los marca
+ * 'sent'. Devuelve cuántos mandó.
+ */
+export async function reminderTick(
+  send: (userId: number, contact: { phone: string | null; telegramId: string | null }, message: string) => Promise<boolean>,
+): Promise<number> {
+  const hour = getNowArgentina().getHours();
+  if (hour < 7 || hour >= 21) return 0;
+  const today = getTodayISO();
+  const { rows } = await pool.query(
+    `SELECT r.id, r.description, r.due_date::text, r.user_id, u.phone_number, u.telegram_id,
+            p.name AS plot_name, f.name AS field_name
+     FROM task_reminders r
+     JOIN users u ON u.id = r.user_id AND u.deleted_at IS NULL
+     LEFT JOIN plots p ON p.id = r.plot_id
+     LEFT JOIN fields f ON f.id = r.field_id
+     WHERE r.status = 'pending' AND r.due_date <= $1
+     ORDER BY r.id
+     LIMIT 200`,
+    [today],
+  );
+  let sent = 0;
+  for (const r of rows) {
+    const loc = r.plot_name ? ` (lote ${r.plot_name})` : r.field_name ? ` (${r.field_name})` : '';
+    const when = r.due_date === today ? 'hoy' : `desde el ${r.due_date.slice(8, 10)}/${r.due_date.slice(5, 7)}`;
+    const msg = `⏰ *Recordatorio* (${when}):\n${r.description}${loc}\n\n_"listo el recordatorio" cuando lo hagas, o "mis recordatorios" para ver todos._`;
+    try {
+      const ok = await send(r.user_id, { phone: r.phone_number, telegramId: r.telegram_id }, msg);
+      if (ok) {
+        await pool.query(`UPDATE task_reminders SET status = 'sent', sent_at = NOW() WHERE id = $1`, [r.id]);
+        sent++;
+      }
+    } catch (err) {
+      console.error(`[reminders] send failed for #${r.id}:`, (err as Error).message);
+    }
+  }
+  return sent;
+}

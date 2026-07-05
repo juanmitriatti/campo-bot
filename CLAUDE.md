@@ -99,6 +99,15 @@ These rules are implemented in `src/ai/agent-prompt-builder.ts` and drive tool s
 - "clima/pronóstico/va a llover en X" → `weather_full(city=X, province?)`. NEVER fall back to user.city if query mentions a city.
 - Handler uses `localidadLookup` to disambiguate ambiguous names (ej: Ameghino in Bs As vs La Pampa).
 
+### Recordatorios de labores (Jul 2026, migración 098)
+- **Plan futuro ≠ registro**: "el sábado tengo que fumigar" / "acordame mañana de pagar X" / "la semana que viene siembro" → `create_reminder(description, due_date)` — JAMÁS log_spraying/log_expense/sow_crop (regla CRÍTICA en agent-prompt-builder; registrar un plan como hecho corrompe datos). "mis recordatorios" → `list_reminders` (trivial regex, costo cero). "listo/cancelá el recordatorio" → `complete_reminder` (pero "fumigué X" = actividad normal). Tabla `task_reminders`; `src/services/reminder.service.ts` (con `resolveFutureDate`: SIEMPRE hacia adelante, a diferencia de relative-dates que resuelve al pasado); tick horario a los :10 (franja 07-21 AR, Telegram-first) en scheduler. Los campos description/due_date/cancel necesitan mapeo explícito en agent-response-mapper (el genérico no los copia).
+
+### Grano por acopiador
+- "cuánta soja tengo en Cargill" / "qué tengo en el acopio" → `query_harvest_loads(destinatario, view:'aggregate')` — grano ENTREGADO, NUNCA `check_stock` (insumos propios). "cuánto entregué a cada acopio" → `group_by:'destinatario'`. Patrones en docs/ai/query-patterns.md (fuente de verdad).
+
+### Primera acción diferida (onboarding, Jul 2026)
+- Un write que rebota por "no tenés campos/lotes" (gasto/ingreso en financial.handler, actividades en agronomy `buildNoPlotsResponse`) emite `sideEffects.setDeferredFirstAction={originalText}` → `deferredFirstActionStore` (TypedPendingStore). El **wrapper de `processTextMessage`** re-inyecta el texto original automáticamente cuando el usuario ya tiene campo+lote ("🔁 Retomo lo que me habías pedido"). Antes el primer gasto de un usuario nuevo se descartaba y había que re-tipearlo tras crear campo y lote. Consumo antes del replay (no loopea); las llamadas recursivas internas del pipeline usan `processTextMessageInner` (no re-disparan el replay).
+
 ### Pizarra de granos (Jul 2026)
 - "pizarra" / "a cuánto está la soja" / "precio del maíz hoy" → `grain_prices(crop?)` — precio de MERCADO (Matba-Rofex Rosario), NUNCA `active_crop` (qué hay sembrado) ni `financial_report` ("a cuánto VENDÍ"). Fuente: API pública `apicem.matbarofex.com.ar/api/v2/closing-prices` — Disponible (contado ≈ pizarra) + 2 futuros más cercanos, USD/tn, caché 30 min (`src/services/grain-price.service.ts`, singleton en SystemHandler). Regex trivial anclado en parser.js (no roba "vendí soja a 320"). Permitido para usuarios con trial vencido (costo cero). Granos: soja/maíz/trigo (girasol/sorgo/cebada no tienen disponible en la fuente → mensaje honesto).
 

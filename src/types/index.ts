@@ -517,6 +517,9 @@ export interface HandlerResponse {
     setPendingPlotArea?: { plotId: number; plotName: string; fieldName: string };
     setPendingPlotAreaQueue?: Array<{ plotId: number; plotName: string; fieldName: string }>;
     setFieldDuplicate?: { name: string; city: string | null };
+    /** Primera acción diferida del onboarding: el write que rebotó por "no
+     *  tenés campos/lotes" se re-inyecta solo cuando existan campo+lote. */
+    setDeferredFirstAction?: { originalText: string };
     setPendingActivity?: {
       command: string;
       data: Record<string, unknown>;

@@ -154,6 +154,10 @@ export const pendingStockDeductionStore = new TypedPendingStore<Record<string, u
 export const pendingDocumentStore = new PendingDocumentStore();
 export const pendingDocUploadStore = new PendingDocumentUploadStore();
 export { pendingCampaignCloseStore };
+// Primera acción diferida del onboarding: el "gasté 50 mil en gasoil" que
+// rebotó por no tener campos/lotes se guarda acá y se re-inyecta solo cuando
+// el usuario termina de crear campo+lote (ver wrapper de processTextMessage).
+export const deferredFirstActionStore = new TypedPendingStore<{ originalText: string }>('deferred_first_action');
 
 export async function hydratePendingStores(phone: string): Promise<void> {
   // TODOS los stores se hidratan — antes solo 4 de 11 persistían y un restart
@@ -172,6 +176,7 @@ export async function hydratePendingStores(phone: string): Promise<void> {
     pendingDocumentStore.hydrate(phone),
     pendingDocUploadStore.hydrate(phone),
     pendingCampaignCloseStore.hydrate(phone),
+    deferredFirstActionStore.hydrate(phone),
   ]);
 }
 
@@ -378,6 +383,10 @@ export function applySideEffects(
   if (fx.setPendingCampaignClose) {
     pendingCampaignCloseStore.set(phone, fx.setPendingCampaignClose);
   }
+  if (fx.setDeferredFirstAction?.originalText) {
+    deferredFirstActionStore.set(phone, { originalText: fx.setDeferredFirstAction.originalText });
+    console.log(`[deferred-first-action] stashed for ${phone}: "${fx.setDeferredFirstAction.originalText.slice(0, 80)}"`);
+  }
   if (fx.setFieldDuplicate) {
     const dup = fx.setFieldDuplicate;
     pendingStore.set(phone, {
@@ -427,7 +436,49 @@ export async function commitFinancialFlowFieldLevel(
 // processTextMessage — EL pipeline de texto canónico
 // ============================================================
 
+/**
+ * Wrapper exportado: corre el pipeline y, si hay una PRIMERA ACCIÓN DIFERIDA
+ * (un write que rebotó por "no tenés campos/lotes" durante el onboarding) y el
+ * usuario YA tiene campo+lote, la re-inyecta automáticamente — antes el gasto
+ * inicial se descartaba y el usuario tenía que re-tipearlo de memoria tras
+ * crear campo y lote (fricción de primer uso detectada en la auditoría Jul 2026).
+ */
 export async function processTextMessage(
+  text: string,
+  ctx: ChannelContext,
+): Promise<BotResponseItem[]> {
+  const items = await processTextMessageInner(text, ctx);
+
+  try {
+    const stash = deferredFirstActionStore.get(ctx.phone);
+    if (stash?.originalText && stash.originalText !== text) {
+      const { rows } = await pool.query(
+        `SELECT COUNT(DISTINCT f.id)::int AS fields, COUNT(p.id)::int AS plots
+         FROM fields f
+         LEFT JOIN plots p ON p.field_id = f.id AND p.deleted_at IS NULL
+         WHERE f.user_id = $1 AND f.deleted_at IS NULL`,
+        [ctx.userId],
+      );
+      if (rows[0].fields >= 1 && rows[0].plots >= 1) {
+        // Consumir ANTES del replay: si el replay volviera a bloquear, se
+        // re-stashea solo; y nunca puede loopear (una re-entrada por mensaje).
+        deferredFirstActionStore.clear(ctx.phone);
+        console.log(`[deferred-first-action] replaying for ${ctx.phone}: "${stash.originalText.slice(0, 80)}"`);
+        items.push({ type: 'text', text: `🔁 *Retomo lo que me habías pedido:*
+_"${stash.originalText}"_` });
+        const replayed = await processTextMessageInner(stash.originalText, ctx);
+        items.push(...replayed);
+      }
+    }
+  } catch (err) {
+    // La acción diferida es best-effort: jamás rompe el mensaje actual.
+    console.warn('[deferred-first-action] replay failed:', (err as Error).message);
+  }
+
+  return items;
+}
+
+async function processTextMessageInner(
   text: string,
   ctx: ChannelContext,
 ): Promise<BotResponseItem[]> {
@@ -531,7 +582,7 @@ export async function processTextMessage(
         const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
         await conversationEngine.clearFlow(userId);
         if (committed.length > 0) {
-          const rest = await processTextMessage(text, ctx);
+          const rest = await processTextMessageInner(text, ctx);
           return [...committed, ...rest];
         }
         // fall through to normal processing below
@@ -577,7 +628,7 @@ export async function processTextMessage(
         const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
         await conversationEngine.clearFlow(userId);
         if (committed.length > 0) {
-          const rest = await processTextMessage(text, ctx);
+          const rest = await processTextMessageInner(text, ctx);
           return [...committed, ...rest];
         }
         // Fall through to normal intent processing below
@@ -725,7 +776,7 @@ export async function processTextMessage(
       if (isReadOnlyQuery(text) && pendingAct.missing && pendingAct.missing.length > 0) {
         console.log(`[INTERCEPT] read-only query during pending(${pendingAct.command}) — answering + keeping pending`);
         pendingActStore.clear(phone);
-        const rest = await processTextMessage(text, ctx);
+        const rest = await processTextMessageInner(text, ctx);
         // Restaurar solo si la consulta no instaló un pending nuevo.
         if (!pendingActStore.get(phone)) {
           pendingActStore.set(phone, { ...pendingAct, timestamp: Date.now() });
@@ -739,7 +790,7 @@ export async function processTextMessage(
       const pivotNotes = await flushPendingActivityOnPivot(userId, pendingAct, agronomyHandler);
       pendingActStore.clear(phone);
       if (pivotNotes.length > 0) {
-        const rest = await processTextMessage(text, ctx);
+        const rest = await processTextMessageInner(text, ctx);
         return [...pivotNotes.map(t => ({ type: 'text' as const, text: t })), ...rest];
       }
       // Fall through to normal processing
@@ -883,7 +934,7 @@ export async function processTextMessage(
     pendingStore.clear(phone);
     try { await financialHandler.handleConfirm(userId, pending, settings, user); } catch { /* best-effort */ }
     const kind = (pending as any).type === 'income' ? 'ingreso' : 'gasto';
-    const rest = await processTextMessage(text, ctx);
+    const rest = await processTextMessageInner(text, ctx);
     return [{ type: 'text', text: `💡 Guardé el ${kind} antes de seguir.` }, ...rest];
   }
 
