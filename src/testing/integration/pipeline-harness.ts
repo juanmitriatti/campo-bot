@@ -42,8 +42,28 @@ export interface PipelineHarness {
   cleanup(): Promise<void>;
 }
 
+// Settings que definen el CAMINO del pipeline — el harness los fija en
+// paridad con producción para que los tests ejerciten las mismas capas en
+// cualquier entorno (la DB fresca de CI trae AGENT_ENABLED apagado y sin esto
+// el classifier ni llama al FakeAgent: los tests pasan/fallan por el motivo
+// equivocado). El cache de settings (5 min) no molesta: el upsert corre en
+// beforeAll, antes de la primera lectura del proceso vitest.
+const HARNESS_SETTINGS: Record<string, string> = {
+  AGENT_ENABLED: 'true',
+  AGENT_OUTPUT_VALIDATION_ENABLED: 'true',
+  AGENT_VALIDATE_CROP: 'true',
+  AGENT_VALIDATE_PLOT_FIELD: 'true',
+};
+
 export async function createPipelineHarness(slug: string): Promise<PipelineHarness> {
   const email = `it-${slug}@pipeline-harness.test.local`;
+  for (const [key, value] of Object.entries(HARNESS_SETTINGS)) {
+    await pool.query(
+      `INSERT INTO system_settings (key, value) VALUES ($1, $2)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [key, value],
+    );
+  }
   // Usuario limpio, plan enterprise (features completas), SIN fila de
   // subscription → grandfathered → el access gate lo deja pasar.
   await deleteUserByEmail(email);

@@ -15,6 +15,24 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # DB real: habilita los tests de integración del pipeline (FakeAgent, sin
+    # API de Anthropic) — ver src/testing/integration/. Espejo del job en deploy.yml.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: campo
+          POSTGRES_PASSWORD: campo123
+          POSTGRES_DB: campo_bot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://campo:campo123@localhost:5432/campo_bot
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +43,11 @@ jobs:
 
       - name: Install backend deps
         run: npm ci
+
+      - name: Init DB (base schema + migrations)
+        run: |
+          psql "$DATABASE_URL" -f init.sql
+          npx tsx src/scripts/run-migrations.ts
 
       - name: Run tests
         run: npm test
