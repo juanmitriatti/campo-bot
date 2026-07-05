@@ -9,6 +9,7 @@ import { FeedlotHandler } from './feedlot/feedlot.handler.js';
 import { FeatureGate } from './billing/feature-gate.js';
 import { TOOL_NAMES } from '../ai/tool-definitions.js';
 import { invalidateUserContext } from '../ai/user-context.service.js';
+import { tipEngine } from '../services/tip-engine.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../types/index.js';
 
 // --- Command routing sets ---
@@ -107,6 +108,7 @@ const FEEDLOT_COMMANDS = new Set([
 const SYSTEM_COMMANDS = new Set([
   'greeting', 'help', 'help_section', 'thanks', 'ack', 'dollar', 'grain_prices',
   'create_reminder', 'list_reminders', 'complete_reminder',
+  'disable_tips', 'enable_tips',
   'menu', 'show_expense_menu', 'show_income_menu', 'show_agro_menu',
   'show_fields_menu', 'show_rain_menu', 'show_reports_menu',
   'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',
@@ -211,6 +213,28 @@ export class DomainRouter {
       routerStats.selected[command] = (routerStats.selected[command] ?? 0) + 1;
       console.log(`ROUTER_SELECT command=${command} domain=${routedDomain} bulk=${bulkMode ? 1 : 0}`);
     }
+
+    const response = await this.dispatchCommand(cmd, userId, user, settings, bulkMode);
+
+    // Tips contextuales de primera vez (descubrimiento por goteo) — un solo
+    // hook acá cubre los 3 canales, pendings re-ruteados y botones. Fail-open:
+    // un tip jamás rompe la respuesta. Ver services/tip-engine.ts.
+    if (response) {
+      const tip = await tipEngine.maybeGetTip(cmd, response, Number(userId), user);
+      if (tip) response.messages = [...(response.messages ?? []), tip];
+    }
+
+    return response;
+  }
+
+  private async dispatchCommand(
+    cmd: ParsedCommand,
+    userId: UserId,
+    user: User,
+    settings: UserSettings,
+    bulkMode?: boolean,
+  ): Promise<HandlerResponse | null> {
+    const command = cmd.command;
 
     // System commands are always allowed (help, greeting, settings)
     if (SYSTEM_COMMANDS.has(command)) {

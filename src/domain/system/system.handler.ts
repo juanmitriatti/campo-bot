@@ -317,6 +317,16 @@ export class SystemHandler {
         }
       }
 
+      case 'disable_tips': {
+        await pool.query(`UPDATE user_settings SET tips_enabled = FALSE WHERE user_id = $1`, [userId]);
+        return { messages: ['👍 Listo, no te muestro más consejos.\n\n_Si los querés de vuelta: "dame tips de nuevo"._'] };
+      }
+
+      case 'enable_tips': {
+        await pool.query(`UPDATE user_settings SET tips_enabled = TRUE WHERE user_id = $1`, [userId]);
+        return { messages: ['💡 Consejos activados de nuevo — te voy mostrando capacidades a medida que uses el bot.'] };
+      }
+
       case 'create_reminder': {
         const desc = (cmd.description as string | null)?.trim();
         if (!desc) {

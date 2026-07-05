@@ -41,6 +41,7 @@ import { PendingTransactionStore, resolveReplacedPending, isCompletePending } fr
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { TypedPendingStore } from '../middleware/typed-pending-store.js';
+import { tipEngine } from './tip-engine.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
 import { PendingFieldLocationStore } from '../middleware/pending-field-location.js';
@@ -1033,6 +1034,9 @@ async function processTextMessageInner(
     pendingStore.clear(phone);
     const response = await financialHandler.handleConfirm(userId, pending, settings, user);
     applySideEffects(response.sideEffects, phone);
+    // Tips: la confirmación bypasea routeCommand — disparar acá con el comando
+    // equivalente para que el flujo con confirm ON también enseñe capacidades.
+    await appendTipAfterConfirm(pending, response, userId, user);
     conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'command', 'confirm', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
     return collectResponse(response);
   }
@@ -1298,6 +1302,21 @@ async function processTextMessageInner(
   return [];
 }
 
+/** Tips tras confirmar un gasto/ingreso (la confirmación bypasea el router). */
+async function appendTipAfterConfirm(
+  pending: { type?: string } | null | undefined,
+  response: HandlerResponse,
+  userId: UserId,
+  user: ChannelContext['user'],
+): Promise<void> {
+  try {
+    const command = pending?.type === 'income' ? 'log_income' : pending?.type === 'expense' ? 'log_expense' : null;
+    if (!command) return;
+    const tip = await tipEngine.maybeGetTip({ command } as ParsedCommand, response, Number(userId), user as import('../types/index.js').User);
+    if (tip) response.messages = [...(response.messages ?? []), tip];
+  } catch { /* fail-open */ }
+}
+
 // ============================================================
 // handleInteractiveReply — manejo canónico de botones
 // ============================================================
@@ -1448,6 +1467,7 @@ export async function handleInteractiveReply(
     pendingStore.clear(phone);
     const response = await financialHandler.handleConfirm(userId, pendingTx, settings, user);
     applySideEffects(response.sideEffects, phone);
+    await appendTipAfterConfirm(pendingTx, response, userId, user);
     conversationLogger.log(userId, phone, '[confirm_pending]', response.messages[0] ?? response.interactive?.body ?? null, 'command', 'confirm', null, null, false, null, false, null, null, null, ctx.channel).catch(() => {});
     return collectResponse(response);
   }

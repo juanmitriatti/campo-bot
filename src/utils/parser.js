@@ -782,6 +782,22 @@ const COMMAND_PATTERNS = [
     ],
   },
 
+  // --- Tips: opt-out / opt-in por usuario ---
+  {
+    command: "disable_tips",
+    patterns: [
+      /^no\s+(?:me\s+)?(?:des|mandes|quiero)\s+(?:m[aá]s\s+)?(?:tips|consejos|sugerencias)\b/i,
+      /^no\s+m[aá]s\s+(?:tips|consejos|sugerencias)\s*\.?$/i,
+      /^(?:sacame|quitame|apag[aá])\s+(?:los\s+)?(?:tips|consejos)\b/i,
+    ],
+  },
+  {
+    command: "enable_tips",
+    patterns: [
+      /^(?:dame|quiero|activ[aá]|prend[eé])\s+(?:los\s+)?(?:tips|consejos|sugerencias)(?:\s+de\s+nuevo)?\s*\.?$/i,
+    ],
+  },
+
   // --- Recordatorios (listar) ---
   {
     command: "list_reminders",
