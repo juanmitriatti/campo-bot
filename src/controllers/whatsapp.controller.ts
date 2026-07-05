@@ -198,7 +198,7 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
       const { getUserAccessMode, trialExpiredCopy } = await import('../services/access-gate.service.js');
       if (await getUserAccessMode(user.id) === 'trial_expired_readonly') {
         console.log(`[TRIAL_EXPIRED] user=${user.id} channel=audio source=whatsapp`);
-        await sendMessage(phone, trialExpiredCopy());
+        await sendMessage(phone, await trialExpiredCopy());
         res.sendStatus(200);
         return;
       }

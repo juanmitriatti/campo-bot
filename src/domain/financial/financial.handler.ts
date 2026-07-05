@@ -441,13 +441,16 @@ export class FinancialHandler {
     // query like "cuánto gasté en lote Amarillo" leaves no trace and the next
     // pronoun picks up the previous write's plot, conflating contexts.
     if (plotName) {
-      const plotCheck = await pool.query(
-        `SELECT p.id, p.name, p.field_id, f.name AS field_name FROM plots p
-         JOIN fields f ON p.field_id = f.id
-         WHERE LOWER(p.name) = LOWER($2) AND (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
-         LIMIT 1`,
-        [userId, plotName],
-      );
+      // Lookup canónico via entity-matcher (antes: LOWER=LOWER inline que
+      // fallaba con acentos, espacios y artículos — divergía de plotDiscovery).
+      const { findPlotByNameAcrossFields } = await import('../../services/expenses.js');
+      const { entityNameCandidates } = await import('../../utils/entity-matcher.js');
+      let plotRows: Array<{ id: number; name: string; field_id: number; field_name: string }> = [];
+      for (const candidate of entityNameCandidates(plotName)) {
+        plotRows = await findPlotByNameAcrossFields(userId, candidate);
+        if (plotRows.length > 0) break;
+      }
+      const plotCheck = { rows: plotRows };
       if (plotCheck.rows.length === 0) {
         const all = await pool.query(
           `SELECT p.name FROM plots p JOIN fields f ON p.field_id = f.id
@@ -467,10 +470,10 @@ export class FinancialHandler {
       }
     }
     if (fieldName) {
-      const fieldCheck = await pool.query(
-        `SELECT id FROM fields WHERE LOWER(name) = LOWER($2) AND (user_id = $1 OR id IN (SELECT field_id FROM field_members WHERE user_id = $1)) LIMIT 1`,
-        [userId, fieldName],
-      );
+      // Lookup canónico via getFieldByName (acentos + artículos, entity-matcher).
+      const { getFieldByName } = await import('../../services/expenses.js');
+      const fieldRow = await getFieldByName(userId, fieldName);
+      const fieldCheck = { rows: fieldRow ? [fieldRow] : [] };
       if (fieldCheck.rows.length === 0) {
         const all = await pool.query(
           `SELECT name FROM fields WHERE user_id = $1 OR id IN (SELECT field_id FROM field_members WHERE user_id = $1) ORDER BY name LIMIT 20`,

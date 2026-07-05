@@ -35,7 +35,14 @@ export interface PendingActivity {
 
 import { PendingMirror } from './pending-persistence.js';
 
-const PENDING_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+// 30 min (antes 5): el productor está arriba del tractor — una respuesta a los
+// 6 minutos ("aftosa") caía a un pending YA expirado en silencio y el texto iba
+// al agente A CIEGAS (la clase de bug que corrompió un gasto en vivo, Jun 2026:
+// set_livestock_price → edit_last_expense). Los escapes del pipeline
+// (isCancelIntent, hasActionVerbOrQuery, detectsFinancialIntent) siguen
+// cubriendo el caso "el usuario cambió de tema" — el TTL no es la defensa
+// contra eso, es solo higiene de estado.
+const PENDING_TIMEOUT_MS = 30 * 60 * 1000;
 
 export class PendingActivityStore {
   private store = new Map<string, PendingActivity>();

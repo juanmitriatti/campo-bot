@@ -60,7 +60,7 @@ export async function processDocumentWithIntent(
   const { getUserAccessMode, trialExpiredCopy } = await import('./access-gate.service.js');
   if (await getUserAccessMode(Number(userId)) === 'trial_expired_readonly') {
     console.log(`[TRIAL_EXPIRED] user=${userId} channel=document source=${ctx.channel}`);
-    return [{ type: 'text', text: trialExpiredCopy() }];
+    return [{ type: 'text', text: await trialExpiredCopy() }];
   }
   const { document: doc, extraction, isExisting } = await documentService.processDocument(
     userId, buffer, mediaMime, filename, ctx.channel, caption,

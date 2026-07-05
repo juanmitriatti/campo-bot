@@ -93,8 +93,8 @@ describe('getUserAccessMode', () => {
 });
 
 describe('trialExpiredCopy', () => {
-  it('mentions data preservation and dashboard link', () => {
-    const copy = trialExpiredCopy();
+  it('mentions data preservation and dashboard link', async () => {
+    const copy = await trialExpiredCopy();
     expect(copy.toLowerCase()).toContain('prueba');
     expect(copy.toLowerCase()).toContain('dashboard');
     expect(copy.toLowerCase()).toMatch(/datos.+guardad/);

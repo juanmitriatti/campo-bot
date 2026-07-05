@@ -101,15 +101,22 @@ export async function isTrialExpired(userId: number): Promise<boolean> {
 
 /**
  * User-facing copy when an action is blocked because the trial expired.
- * Productor-friendly, no jargon. Tells them where to act (manual contact
- * during soft-launch, no payment integration yet).
+ * Productor-friendly, no jargon. Usa PUBLIC_URL (setting) — antes la URL de
+ * Railway estaba hardcodeada y un cambio de dominio dejaba el link muerto.
  */
-export function trialExpiredCopy(): string {
+export async function trialExpiredCopy(): Promise<string> {
+  let base = 'https://campo-bot-production.up.railway.app';
+  try {
+    const { getSetting } = await import('./settings.service.js');
+    const publicUrl = await getSetting('PUBLIC_URL');
+    if (publicUrl && /^https?:\/\//.test(publicUrl)) base = publicUrl.replace(/\/$/, '');
+  } catch { /* fallback al default */ }
   return (
     '⏳ *Tu prueba terminó*\n\n' +
-    'Para seguir usando funciones inteligentes completas (IA, audios, ' +
-    'documentos, agronomía), escribinos y activamos tu plan:\n' +
-    'https://campo-bot-production.up.railway.app/dashboard\n\n' +
-    'Tus datos siguen guardados — nada se pierde.'
+    'Para seguir usando las funciones completas (IA, audios, documentos, ' +
+    'agronomía), activá tu plan desde tu panel:\n' +
+    `${base}/dashboard\n\n` +
+    'Tus datos siguen guardados — nada se pierde. Podés seguir consultando ' +
+    'tus campos y lotes con *mis campos* / *mis lotes*.'
   );
 }

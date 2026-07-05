@@ -82,11 +82,10 @@ const ENTITY_CREATION_TOOLS = new Set([
   'delete_corral',
 ]);
 
-const COMBINING_MARKS = /[̀-ͯ]/g;
-
-function normalize(s: string): string {
-  return s.normalize('NFD').replace(COMBINING_MARKS, '').toLowerCase().trim();
-}
+// Normalización canónica compartida (entity-matcher) — la MISMA que usan los
+// lookups SQL de lotes/campos. Si el validador normaliza distinto que el
+// resolver, un nombre puede pasar la validación y no resolver (o viceversa).
+import { normalizeEntityName as normalize } from '../utils/entity-matcher.js';
 
 /**
  * Pronoun phrases that legitimately reference the previous plot/field.

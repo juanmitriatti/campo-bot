@@ -983,7 +983,7 @@ export async function processTextMessage(
   // --- Phase 3: trial expired (access-gate blocked AI / writes) ---
   if (intent.type === 'trial_expired') {
     const { trialExpiredCopy } = await import('./access-gate.service.js');
-    const reply = trialExpiredCopy();
+    const reply = await trialExpiredCopy();
     conversationLogger.log(userId, phone, text, reply, 'trial_expired', null, null, null, aiUsed, Date.now() - startTime, false, 0, toolCallsData, agentMode, ctx.channel).catch(() => {});
     return [{ type: 'text', text: reply }];
   }
@@ -1235,6 +1235,16 @@ export async function processTextMessage(
 // handleInteractiveReply — manejo canónico de botones
 // ============================================================
 
+// Respuesta única para taps sobre botones vencidos/desconocidos. REGLA: un tap
+// NUNCA se responde con silencio (return []) — en Telegram los botones viejos
+// persisten para siempre y un [] deja al usuario mirando el spinner. Los
+// payloads con token (callbackPayloadStore) expiran a los 10 min; los flows y
+// pendings tienen su propio TTL — todos esos caminos muertos terminan acá.
+const STALE_BUTTON_ITEM: BotResponseItem = {
+  type: 'text',
+  text: '⏰ Ese botón ya venció (era de una conversación anterior). No hice ningún cambio.\nEscribime lo que necesitás y lo resolvemos — o mandá *menú*.',
+};
+
 export async function handleInteractiveReply(
   callbackId: string,
   ctx: ChannelContext,
@@ -1336,7 +1346,11 @@ export async function handleInteractiveReply(
         }
       }
     }
-    return [];
+    // Botón flow_* sin flow activo (formulario cerrado/expirado). Antes:
+    // return [] → SILENCIO total en Telegram (los botones viejos persisten
+    // para siempre). NUNCA silencio en un tap.
+    console.warn(`[INTERCEPT] tap flow_* sin flow activo: ${callbackId} (phone=${phone})`);
+    return [STALE_BUTTON_ITEM];
   }
 
   // --- Destructive command confirmation ---
@@ -1347,7 +1361,8 @@ export async function handleInteractiveReply(
       const response = await domainRouter.routeCommand(pendingAction._destructiveCommand, userId, user, settings);
       if (response) return collectResponse(response);
     }
-    return [];
+    console.warn(`[INTERCEPT] confirm_destructive sin pending (phone=${phone})`);
+    return [{ type: 'text', text: '⚠️ Esa confirmación ya venció — *no borré nada*. Si querés borrarlo, pedímelo de nuevo.' }];
   }
 
   if (callbackId === 'cancel_destructive' || callbackId === 'cancel_action' || callbackId === 'cancel_pending') {
@@ -1428,7 +1443,8 @@ export async function handleInteractiveReply(
       }
       return [{ type: 'text', text: `No encontre el campo *${fieldName}*.` }];
     }
-    return [];
+    console.warn(`[INTERCEPT] tap con payload no parseable: ${callbackId} (phone=${phone})`);
+    return [STALE_BUTTON_ITEM];
   }
 
   // --- Confirm delete field ---
@@ -1467,7 +1483,8 @@ export async function handleInteractiveReply(
       }
       return [{ type: 'text', text: `No encontre el campo *${fieldName}*.` }];
     }
-    return [];
+    console.warn(`[INTERCEPT] tap con payload no parseable: ${callbackId} (phone=${phone})`);
+    return [STALE_BUTTON_ITEM];
   }
 
   // --- Stock entry suggestion (from insumo expense) ---
@@ -1510,6 +1527,11 @@ export async function handleInteractiveReply(
           pendingStockDeductionStore.delete(phone);
           return [{ type: 'text', text: `📤 Stock descontado: *${item.name}* → ${item.current_quantity} ${item.unit}` }];
         }
+        // Store vacío (restart/expiró): NUNCA confirmar un descuento que no
+        // ocurrió. Antes este camino caía al "📤 Stock descontado." genérico
+        // de abajo — mentira al usuario, el stock quedaba sin tocar.
+        console.warn(`[INTERCEPT] stock_deduct_yes sin pending (phone=${phone}) — respondiendo honesto, SIN descontar`);
+        return [{ type: 'text', text: '⚠️ Esa operación ya no está disponible (pasó mucho tiempo o se reinició el sistema). *El stock NO fue descontado.*\nSi querés descontarlo, decime: _"descontá X lt de <producto>"_.' }];
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Error al descontar stock';
         return [{ type: 'text', text: `❌ ${msg}` }];
@@ -1528,7 +1550,9 @@ export async function handleInteractiveReply(
       }
     }
     pendingStockDeductionStore.delete(phone);
-    return [{ type: 'text', text: accepted ? '📤 Stock descontado.' : '👍 OK, no se descontó del stock.' }];
+    // Solo llega acá el camino "No" — todos los caminos "Sí" retornan arriba
+    // (con descuento real o con el aviso honesto de expiración).
+    return [{ type: 'text', text: '👍 OK, no se descontó del stock.' }];
   }
 
   // --- Grain stock entry suggestion (from harvest) ---
@@ -1599,5 +1623,8 @@ export async function handleInteractiveReply(
     const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
     if (response) return collectResponse(response);
   }
-  return [];
+  // Fall-through final: token vencido (bap2_*, rain_batch_*, cat_pick_*...),
+  // callback desconocido o router null. Antes: [] → silencio absoluto.
+  console.warn(`[INTERCEPT] tap sin ruta: ${callbackId} (phone=${phone})`);
+  return [STALE_BUTTON_ITEM];
 }

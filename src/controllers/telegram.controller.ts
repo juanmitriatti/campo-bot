@@ -256,7 +256,7 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
       const { getUserAccessMode, trialExpiredCopy } = await import('../services/access-gate.service.js');
       if (await getUserAccessMode(Number(userId)) === 'trial_expired_readonly') {
         console.log(`[TRIAL_EXPIRED] user=${userId} channel=audio source=telegram`);
-        await sendTelegramMessage(chatId, trialExpiredCopy());
+        await sendTelegramMessage(chatId, await trialExpiredCopy());
         return;
       }
       const hasAudio = await featureGate.hasFeature(userId, 'audio');

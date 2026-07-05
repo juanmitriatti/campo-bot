@@ -1,5 +1,6 @@
 import { pool, withTransaction } from "../config/db.js";
 import { getTodayISO } from "../utils/date.js";
+import { sqlNormalizedName, normalizeEntityName, stripLeadingArticle } from "../utils/entity-matcher.js";
 
 /**
  * Helper: returns a SQL subquery fragment for accessible field IDs
@@ -725,24 +726,24 @@ export async function setFieldPolygon(fieldId, polygon, lat, lng, city, province
 }
 
 export async function getFieldByName(userId, fieldName) {
-  // Normalize accents for matching (e.g., "El Trébol" → "el trebol")
-  const normalized = fieldName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  // Match canónico (entity-matcher): case/acento/whitespace-insensitive.
+  // El SQL anterior comparaba el nombre YA normalizado contra LOWER(name)
+  // (con acentos) — "El Trébol" solo resolvía por el loop fuzzy O(N).
   const result = await pool.query(
-    `SELECT * FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND LOWER(name) = $2 AND deleted_at IS NULL`,
-    [userId, normalized]
+    `SELECT * FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$2::text')} AND deleted_at IS NULL`,
+    [userId, fieldName]
   );
   if (result.rows[0]) return result.rows[0];
 
-  // Fuzzy fallback: strip Spanish articles (el/la/los/las) from both sides and retry
-  const stripArticles = (s) => s.replace(/^(el|la|los|las)\s+/i, '').trim();
-  const stripped = stripArticles(normalized);
+  // Fallback: artículo de apertura pelado en AMBOS lados ("Trébol" matchea
+  // "El Trébol" y viceversa). Literal-primero/artículo-después, ver entity-matcher.
   const fuzzy = await pool.query(
     `SELECT * FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND deleted_at IS NULL`,
     [userId]
   );
+  const target = normalizeEntityName(stripLeadingArticle(fieldName));
   for (const row of fuzzy.rows) {
-    const rowNorm = row.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    if (rowNorm === normalized || stripArticles(rowNorm) === stripped) {
+    if (normalizeEntityName(stripLeadingArticle(row.name)) === target) {
       return row;
     }
   }
@@ -1017,8 +1018,10 @@ function mergeResultByCurrency(incomeRows, expenseRows) {
 // --- Plots ---
 
 export async function getOrCreatePlot(fieldId, name) {
+  // Check de existencia con la MISMA normalización canónica que getPlotByName
+  // (antes era LOWER plano: "El  Bajo" y "el bajo" creaban lotes duplicados).
   const existing = await pool.query(
-    `SELECT * FROM plots WHERE field_id = $1 AND LOWER(name) = LOWER($2) AND deleted_at IS NULL`,
+    `SELECT * FROM plots WHERE field_id = $1 AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$2::text')} AND deleted_at IS NULL`,
     [fieldId, name]
   );
   if (existing.rows.length > 0) return existing.rows[0];
@@ -1031,8 +1034,11 @@ export async function getOrCreatePlot(fieldId, name) {
   // Registrar aliases para resolución flexible — antes solo lo hacía
   // plotDiscovery en algunas rutas, y los lotes creados por add_plot quedaban
   // sin alias ("Lote Norte" no resolvía por "norte"). Best-effort.
+  // OJO: normalizeEntityName (SIN acentos) — antes era trim().toLowerCase()
+  // (CON acentos) y findPlotByAlias buscaba sin acentos → "Ñandú" registraba
+  // un alias que jamás matcheaba su propia búsqueda.
   try {
-    const norm = String(name).trim().toLowerCase();
+    const norm = normalizeEntityName(name);
     await addPlotAlias(inserted.id, norm);
     if (norm.startsWith('lote ')) await addPlotAlias(inserted.id, norm.slice(5));
     if (/^\d+$/.test(norm)) await addPlotAlias(inserted.id, `lote ${norm}`);
@@ -1041,10 +1047,12 @@ export async function getOrCreatePlot(fieldId, name) {
 }
 
 export async function getPlotByName(fieldId, plotName) {
-  // Whitespace-insensitive match so "11 d", "11D", "11 D" all hit "11D".
+  // Normalización canónica (entity-matcher): case/acento/whitespace-insensitive,
+  // así "11 d"="11D" y "La Cañada"="la canada". Antes solo colapsaba espacios
+  // (sin acentos) — divergía de getFieldByName y del validador.
   const result = await pool.query(
     `SELECT * FROM plots WHERE field_id = $1
-       AND REGEXP_REPLACE(LOWER(name), '\\s+', '', 'g') = REGEXP_REPLACE(LOWER($2), '\\s+', '', 'g')
+       AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$2::text')}
        AND deleted_at IS NULL`,
     [fieldId, plotName]
   );
@@ -1072,8 +1080,8 @@ export async function findPlotByNameAcrossFields(userId, plotName) {
      JOIN fields f ON p.field_id = f.id
      WHERE f.id IN (${accessibleFieldsSql(1)})
        AND (
-         REGEXP_REPLACE(LOWER(p.name), '\\s+', '', 'g') = REGEXP_REPLACE(LOWER($2), '\\s+', '', 'g')
-         OR REGEXP_REPLACE(LOWER(p.name), '\\s+', '', 'g') = 'lote' || REGEXP_REPLACE(LOWER($2), '\\s+', '', 'g')
+         ${sqlNormalizedName('p.name')} = ${sqlNormalizedName('$2::text')}
+         OR ${sqlNormalizedName('p.name')} = 'lote' || ${sqlNormalizedName('$2::text')}
        )
        AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
     [userId, plotName]
@@ -1233,12 +1241,15 @@ export async function getPlotInfo(userId, plotName) {
 // --- Plot aliases & conversation state ---
 
 export async function findPlotByAlias(userId, normalizedAlias) {
+  // Normalizamos TAMBIÉN el lado columna: hay aliases legacy escritos con
+  // acentos (el write-site viejo usaba trim().toLowerCase() sin NFD) que un
+  // lookup exacto jamás matchearía. Ver entity-matcher.
   const result = await pool.query(
     `SELECT p.*, f.name as field_name, f.id as field_id
      FROM plot_aliases pa
      JOIN plots p ON pa.plot_id = p.id
      JOIN fields f ON p.field_id = f.id
-     WHERE f.id IN (${accessibleFieldsSql(1)}) AND pa.alias = $2
+     WHERE f.id IN (${accessibleFieldsSql(1)}) AND ${sqlNormalizedName('pa.alias')} = ${sqlNormalizedName('$2::text')}
        AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
     [userId, normalizedAlias]
   );

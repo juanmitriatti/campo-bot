@@ -48,6 +48,14 @@ const COMPOUND_ACTION_PATTERN = /(?:\by\b|\be\b|,|;)\s*(?:(?:tambi[eé]n|adem[a�
  * Net effect: agent surface fully covers what regex covers (and more). Regex
  * is a fast path, not a gatekeeper. When regex misses, the agent picks up.
  */
+// Comandos que un usuario con trial VENCIDO puede seguir usando: costo cero
+// (sin IA) y read-only o inocuos. Subset estricto de TRIVIAL_COMMANDS.
+const EXPIRED_ALLOWED_COMMANDS = new Set([
+  'greeting', 'thanks', 'ack', 'menu', 'help', 'dollar',
+  'cancel', 'confirm',
+  'list_fields', 'list_plots',
+]);
+
 const TRIVIAL_COMMANDS = new Set([
   'confirm', 'cancel',
   'greeting', 'thanks', 'ack',
@@ -122,6 +130,16 @@ export class IntentClassifier {
   }
 
   /**
+   * TEST-ONLY seam: reemplaza el agente por un doble determinístico
+   * (FakeAgentService) para testear el pipeline COMPLETO — interceptores,
+   * mapper, validator, handlers, DB — sin pegarle a la API de Anthropic.
+   * Ver src/testing/integration/. NO usar fuera de tests.
+   */
+  setAgentServiceForTests(svc: Pick<AgentService, 'extract'>): void {
+    this.agentService = svc as AgentService;
+  }
+
+  /**
    * Lightweight command-only parse. Returns ParsedCommand if the text matches a known command, null otherwise.
    * Does NOT run income/expense parsers or AI extraction.
    */
@@ -188,14 +206,25 @@ export class IntentClassifier {
     // =========================================================================
     const accessMode = await getUserAccessMode(Number(userId));
     if (accessMode === 'trial_expired_readonly') {
-      console.log(`[TRIAL_EXPIRED] user=${userId} raw="${text.slice(0, 80)}"`);
-      return {
-        intent: { type: 'trial_expired', raw: text },
-        confidence: 0,
-        aiUsed: false,
-        source: 'command',
-        missingFields: [],
-      };
+      // El modo se llama READONLY: los comandos triviales de costo cero
+      // (saludo, menú, ayuda, listar campos/lotes, dólar, cancelar) SIGUEN
+      // funcionando — antes el gate bloqueaba hasta "hola", contradiciendo
+      // el "tus datos siguen guardados" del propio mensaje de venta. Solo
+      // se bloquea lo que cuesta plata (IA/audio/docs) o escribe datos.
+      const trivialCmd = this.parseCommandOnly(text);
+      const allowed = trivialCmd && EXPIRED_ALLOWED_COMMANDS.has(trivialCmd.command as string);
+      if (!allowed) {
+        console.log(`[TRIAL_EXPIRED] user=${userId} raw="${text.slice(0, 80)}"`);
+        return {
+          intent: { type: 'trial_expired', raw: text },
+          confidence: 0,
+          aiUsed: false,
+          source: 'command',
+          missingFields: [],
+        };
+      }
+      console.log(`[TRIAL_EXPIRED] user=${userId} allow trivial="${trivialCmd.command}"`);
+      // fall through — el bypass trivial (STEP 2) lo resuelve sin IA
     }
 
     // =========================================================================

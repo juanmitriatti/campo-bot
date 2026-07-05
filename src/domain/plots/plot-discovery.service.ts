@@ -12,6 +12,7 @@ import {
   findAllUserPlots,
 } from '../../services/expenses.js';
 import { detectarLote, normalizeText } from '../../utils/parser.js';
+import { stripLeadingArticle, normalizeEntityName } from '../../utils/entity-matcher.js';
 import type { UserId, PlotDiscoveryResult } from '../../types/index.js';
 
 export class PlotDiscoveryService {
@@ -195,8 +196,8 @@ export class PlotDiscoveryService {
   private async _lookupPlotByName(fieldId: number, plotName: string): Promise<Awaited<ReturnType<typeof getPlotByName>>> {
     const direct = await getPlotByName(fieldId, plotName);
     if (direct) return direct;
-    const stripped = plotName.replace(/^(?:el|la|los|las)\s+/i, '').trim();
-    if (stripped && stripped !== plotName) {
+    const stripped = stripLeadingArticle(plotName);
+    if (stripped !== plotName) {
       return getPlotByName(fieldId, stripped);
     }
     return null;
@@ -229,8 +230,8 @@ export class PlotDiscoveryService {
     // "norte"). Ver _lookupPlotByName para el porqué.
     let plots = await findPlotByNameAcrossFields(userId, plotName);
     if (plots.length === 0) {
-      const stripped = plotName.replace(/^(?:el|la|los|las)\s+/i, '').trim();
-      if (stripped && stripped !== plotName) {
+      const stripped = stripLeadingArticle(plotName);
+      if (stripped !== plotName) {
         plots = await findPlotByNameAcrossFields(userId, stripped);
       }
     }
@@ -412,7 +413,9 @@ export class PlotDiscoveryService {
   }
 
   private async _registerAliases(plotId: number, plotName: string): Promise<void> {
-    const normalized = normalizeText(plotName);
+    // normalizeEntityName (entity-matcher) — la MISMA normalización que usa
+    // getOrCreatePlot al escribir y findPlotByAlias al leer. No usar otra.
+    const normalized = normalizeEntityName(plotName);
     await addPlotAlias(plotId, normalized);
 
     // If numeric ("3"), also register "lote 3"
