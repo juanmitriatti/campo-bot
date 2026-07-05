@@ -217,7 +217,9 @@ describe('PendingDocumentStore', () => {
     };
 
     store.set('user1', action);
-    expect(store.get('user1')).toEqual(action);
+    // set() renueva el timestamp (contrato TypedPendingStore) — comparar los
+    // datos, no el timestamp exacto (difería por 1ms y flakeaba en CI).
+    expect(store.get('user1')).toEqual({ ...action, timestamp: expect.any(Number) });
   });
 
   it('clears pending actions', async () => {
@@ -308,7 +310,8 @@ describe('PendingDocumentUploadStore', () => {
 
     const data = { intent: 'factura' as DocumentUploadIntent, timestamp: Date.now() };
     store.set('user1', data);
-    expect(store.get('user1')).toEqual(data);
+    // set() renueva el timestamp (TypedPendingStore) — no comparar el exacto.
+    expect(store.get('user1')).toEqual({ ...data, timestamp: expect.any(Number) });
   });
 
   it('stores and retrieves mediaRef state (State B)', async () => {
