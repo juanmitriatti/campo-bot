@@ -159,6 +159,56 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('guard anti-pisada de campaña (regresión "me cerró la campaña", Jul 2026)', () => {
+    let h: PipelineHarness;
+    let plotId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('sow-guard');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'los aromos') RETURNING id`, [h.userId]);
+      const p = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, '3b', 140) RETURNING id`, [(f[0] as { id: number }).id]);
+      plotId = (p[0] as { id: number }).id;
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('sembrar cultivo distinto en lote con campaña activa PREGUNTA (no cierra en silencio)', async () => {
+      // 1. Siembra soja 10 ha en 3b
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: '3b', hectares: 10 });
+      await h.send('sembré 10 ha de soja en 3b');
+
+      // 2. Maíz en el MISMO lote (heredado/explícito) → guard con botones
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'maíz', plot: '3b', hectares: 130 });
+      const ask = await h.send('y sembré 130 ha de maíz en 3b');
+      const buttons = h.allButtons(ask);
+      expect(h.allText(ask)).toMatch(/ya tiene \*Soja\* activa/i);
+      const yesBtn = buttons.find(b => b.id.startsWith('sow_replace_') && b.id !== 'sow_replace_cancel');
+      expect(yesBtn, 'botón Sí, reemplazar').toBeTruthy();
+      expect(buttons.some(b => b.id === 'sow_replace_cancel')).toBe(true);
+
+      // La soja SIGUE activa (nada se cerró todavía)
+      let active = await h.q(`SELECT crop FROM plot_crops WHERE plot_id = $1 AND end_date IS NULL`, [plotId]);
+      expect(active.length).toBe(1);
+      expect(String(active[0].crop)).toMatch(/soja/i);
+
+      // 3. Cancelar → sin cambios
+      const cancel = await h.tap('sow_replace_cancel');
+      expect(h.allText(cancel)).toMatch(/no toqué nada/i);
+      active = await h.q(`SELECT crop FROM plot_crops WHERE plot_id = $1 AND end_date IS NULL`, [plotId]);
+      expect(String(active[0].crop)).toMatch(/soja/i);
+
+      // 4. Reintento y confirmo reemplazo → maíz activa + nota de cierre
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'maíz', plot: '3b', hectares: 130 });
+      const ask2 = await h.send('sembré 130 ha de maíz en 3b');
+      const yes2 = h.allButtons(ask2).find(b => b.id.startsWith('sow_replace_') && b.id !== 'sow_replace_cancel')!;
+      const done = await h.tap(yes2.id);
+      expect(h.allText(done)).toMatch(/Siembra registrada/i);
+      expect(h.allText(done)).toMatch(/Cerré la campaña anterior de soja/i);
+      active = await h.q(`SELECT crop FROM plot_crops WHERE plot_id = $1 AND end_date IS NULL`, [plotId]);
+      expect(active.length).toBe(1);
+      expect(String(active[0].crop)).toMatch(/ma[ií]z/i);
+    });
+  });
+
   describe('set_field_city con ciudad ambigua muestra opciones (regresión "Junin", Jul 2026)', () => {
     let h: PipelineHarness;
 

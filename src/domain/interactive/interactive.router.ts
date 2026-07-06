@@ -346,6 +346,17 @@ export class InteractiveRouter {
       return { type: 'command', data: { command: 'livestock_create_cancel' } };
     }
 
+    // Guard anti-pisada de campaña (sembrar cultivo distinto en lote con activa)
+    if (callbackId.startsWith('sow_replace_')) {
+      if (callbackId === 'sow_replace_cancel') {
+        return { type: 'command', data: { command: 'sow_replace_cancel' } };
+      }
+      return {
+        type: 'command',
+        data: { command: 'sow_replace_confirm', payload: callbackId.slice('sow_replace_'.length) },
+      };
+    }
+
     // Deterministic lote-vs-feedlot choice (token from callbackPayloadStore).
     const locTypeMatch = callbackId.match(/^lv_loc_(lote|feedlot)_(.+)$/);
     if (locTypeMatch) {

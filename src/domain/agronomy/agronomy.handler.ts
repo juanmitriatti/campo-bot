@@ -243,6 +243,43 @@ export class AgronomyHandler {
   }
 
   /**
+   * Guard anti-pisada de campaña: si el lote tiene un cultivo ACTIVO distinto
+   * al que se quiere sembrar, devuelve la pregunta con botones (Sí reemplazar /
+   * No cancelar) en vez de cerrar la campaña en silencio. Devuelve null cuando
+   * no hay conflicto (o cuando no corresponde preguntar: bulkMode, force flag,
+   * o mismo cultivo — ese caso lo dedupea startCrop).
+   */
+  private async buildSowReplaceGuard(
+    cmd: ParsedCommand,
+    plotId: number,
+    fieldName: string | null,
+    plotName: string | null,
+    newCrop: string,
+  ): Promise<HandlerResponse | null> {
+    if ((cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true) return null;
+    if (cmd.__forceReplaceCampaign === true) return null;
+    const active = await this.cropService.getActive(plotId);
+    if (!active || active.crop.toLowerCase() === newCrop.toLowerCase()) return null;
+
+    const plotLabel = formatPlotLocation(fieldName, plotName);
+    const haNote = active.sowed_hectares ? ` (${Number(active.sowed_hectares).toLocaleString('es-AR')} ha` : ' (';
+    const dateNote = active.start_date ? `${active.sowed_hectares ? ', ' : ''}sembrad${cap(active.crop).endsWith('a') ? 'a' : 'o'} ${formatDateAR(active.start_date)})` : ')';
+    const token = callbackPayloadStore.set(JSON.stringify({ ...cmd, command: 'sow_crop' }));
+    console.log(`[INTERCEPT] sow-replace guard: lote ${plotId} tiene ${active.crop} activa, siembra nueva=${newCrop} — preguntando`);
+    return {
+      messages: [],
+      interactive: {
+        type: 'buttons' as const,
+        body: `⚠️ El ${plotLabel} ya tiene *${cap(active.crop)}* activa${haNote}${dateNote}.\n\n¿Reemplazo esa campaña por *${cap(newCrop)}*?\n\n_Si va en otro lote, decime: "sembré ${cmd.hectares ?? 'X'} ha de ${newCrop} en lote <nombre>". Convivencia de 2 cultivos en el mismo lote: todavía no lo soporto._`,
+        buttons: [
+          { id: `sow_replace_${token}`, title: 'Sí, reemplazar' },
+          { id: 'sow_replace_cancel', title: 'No, cancelar' },
+        ],
+      },
+    };
+  }
+
+  /**
    * Record the resolved field/plot into conversation_state.context_stack so the
    * NEXT message's pronoun ("ahí mismo", "ese lote", "el de antes") resolves to
    * the lote this activity actually touched. Without this, agro activities left
@@ -383,6 +420,8 @@ export class AgronomyHandler {
         return { messages: ['🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)'] };
       }
       const sowedHa = cmd.hectares != null ? Number(cmd.hectares) : null;
+      const pendingGuard = await this.buildSowReplaceGuard(cmd as ParsedCommand, plotId, fieldName, plotName, crop);
+      if (pendingGuard) return pendingGuard;
       const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotId, crop, undefined, sowedHa);
       const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
 
@@ -1981,6 +2020,21 @@ export class AgronomyHandler {
 
       // --- Crops ---
 
+      case 'sow_replace_confirm': {
+        // Tap "Sí, reemplazar" del guard anti-pisada: re-corre la siembra con
+        // el force flag (ahí sí startCrop cierra la campaña previa con nota).
+        const stored = callbackPayloadStore.get(cmd.payload as string);
+        if (!stored) {
+          return { messages: ['⏰ Esa confirmación venció. Volvé a mandarme la siembra (ej: "sembré 130 ha de maíz en lote 3b").'] };
+        }
+        const savedCmd = JSON.parse(stored) as ParsedCommand;
+        return this.handleCommand({ ...savedCmd, __forceReplaceCampaign: true } as ParsedCommand, userId, user, settings);
+      }
+
+      case 'sow_replace_cancel': {
+        return { messages: ['👍 No toqué nada — la campaña activa sigue como estaba.\nSi la siembra va en otro lote, decime: *"sembré X ha de <cultivo> en lote <nombre>"*.'] };
+      }
+
       case 'sow_crop': {
         // Hardening: date range guard.
         {
@@ -2038,6 +2092,15 @@ export class AgronomyHandler {
             } catch { /* non-blocking — sow without partial area */ }
           }
         }
+        // GUARD anti-pisada (Jul 2026): sembrar un cultivo DISTINTO en un lote
+        // con campaña activa cerraba la anterior EN SILENCIO — en vivo, "y
+        // sembré 130ha de maíz" heredó el lote del contexto y pisó la soja de
+        // 10ha sembrada minutos antes. Ahora preguntamos con botones (regla:
+        // nada de preguntas sueltas). En bulkMode no se puede bloquear → se
+        // mantiene el auto-close con nota, como siempre.
+        const replaceGuard = await this.buildSowReplaceGuard(cmd, plotResult.plotId, plotResult.fieldName, plotResult.plotName, crop);
+        if (replaceGuard) return replaceGuard;
+
         const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, sowedHa);
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
         const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
