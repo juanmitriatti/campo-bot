@@ -2271,6 +2271,22 @@ export class FinancialHandler {
 
       // --- Fields ---
       case 'set_field_city': {
+        // Respuesta informativa según el resultado del lookup. Antes las ramas
+        // non-exact DESCARTABAN el resultado y re-preguntaban el genérico
+        // "¿En qué ciudad/localidad está X?" — el usuario decía "Junin" (válido
+        // pero ambiguo: Bs As / Mendoza / San Luis) y recibía la MISMA pregunta
+        // sin pista de qué estuvo mal (visto en vivo, Jul 2026).
+        const cityAskFor = (lookup: ReturnType<typeof localidadLookup.lookup>, rawCity: string): string => {
+          if (lookup.status === 'disambiguate') {
+            const options = lookup.matches.map(m => `• ${m.nombre}, ${m.provincia}`).join('\n');
+            return `Hay varias localidades llamadas *${rawCity}*:\n\n${options}\n\nEscribí el nombre con la provincia, ej: *${lookup.matches[0].nombre}, ${lookup.matches[0].provincia}*`;
+          }
+          if (lookup.status === 'suggestions') {
+            const suggestions = lookup.matches.map(m => `• ${m.nombre}, ${m.provincia}`).join('\n');
+            return `No encontré "${rawCity}". ¿Quisiste decir?\n\n${suggestions}`;
+          }
+          return `No encontré la localidad "${rawCity}" en el listado argentino. Revisá el nombre e intentá de nuevo.`;
+        };
         const cityFieldName = cmd.fieldName as string | null;
         const cityValue = cmd.city as string | null;
 
@@ -2289,9 +2305,9 @@ export class FinancialHandler {
                 await this.service.setFieldCity(userId, singleField.name, loc.nombre, loc.provincia);
                 return { messages: [`\ud83d\udccd Campo *${singleField.name}* ubicado en *${formatLocation(loc.nombre, loc.provincia)}*`] };
               }
-              // Non-exact: save as-is, enter pending for correction
+              // Non-exact: mostrar QU\u00c9 pas\u00f3 con la ciudad dada + pending para la respuesta
               return {
-                messages: [`\u00bfEn qu\u00e9 ciudad/localidad est\u00e1 tu campo *${singleField.name}*?`],
+                messages: [cityAskFor(lookup, cityValue)],
                 sideEffects: { setPendingFieldCity: { fieldName: singleField.name } },
               };
             }
@@ -2326,9 +2342,9 @@ export class FinancialHandler {
           await this.service.setFieldCity(userId, cityFieldName, loc.nombre, loc.provincia);
           return { messages: [`\ud83d\udccd ${labelCity} *${cityFieldName}* ubicado en *${formatLocation(loc.nombre, loc.provincia)}*`] };
         }
-        // Non-exact: enter pending state for re-prompt
+        // Non-exact: mostrar QU\u00c9 pas\u00f3 con la ciudad dada + pending para la respuesta
         return {
-          messages: [`\u00bfEn qu\u00e9 ciudad/localidad est\u00e1 *${cityFieldName}*?`],
+          messages: [cityAskFor(lookupResult, cityValue)],
           sideEffects: { setPendingFieldCity: { fieldName: cityFieldName } },
         };
       }

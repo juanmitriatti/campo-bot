@@ -159,6 +159,35 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('set_field_city con ciudad ambigua muestra opciones (regresión "Junin", Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('city-ambigua');
+      await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'los aromos')`, [h.userId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"el campo está en Junin" → lista Junín Bs As / Mendoza (no re-pregunta genérica)', async () => {
+      h.fakeAgent.enqueueTool('set_field_city', { field: 'los aromos', city: 'Junin' });
+      const items = await h.send('El campo esta ubicado en Junin');
+      const text = h.allText(items);
+      expect(text).toMatch(/varias localidades/i);
+      expect(text).toContain('Junín, Buenos Aires');
+      expect(text).toContain('Junín, Mendoza');
+      expect(text).not.toMatch(/¿En qué ciudad\/localidad/); // la re-pregunta ciega era el bug
+
+      // La respuesta con provincia resuelve vía el pending (sin agente)
+      const callsBefore = h.fakeAgent.calls.length;
+      const done = await h.send('Junín, Buenos Aires');
+      expect(h.fakeAgent.calls.length).toBe(callsBefore); // consumida por el pending handler
+      expect(h.allText(done)).toMatch(/ubicado en .*Junín, Buenos Aires/i);
+      const row = await h.q(`SELECT city, province FROM fields WHERE user_id = $1`, [h.userId]);
+      expect(row[0].city).toBe('Junín');
+      expect(row[0].province).toBe('Buenos Aires');
+    });
+  });
+
   describe('primera acción diferida — onboarding no descarta el gasto (Jul 2026)', () => {
     let h: PipelineHarness;
 
