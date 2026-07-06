@@ -20,8 +20,48 @@ const authHeaders = {
   "Content-Type": "application/json"
 };
 
+// ── Circuit breaker por token inválido ─────────────────────────────────────
+// Cuando el token de Cloud API vence, CADA envío da 401 y cada AxiosError
+// crudo dumpeaba ~200 líneas al log. Un weekly summary sobre N usuarios
+// inundó Railway (rate limit: ~30k líneas descartadas) y nos dejó ciegos
+// justo durante un debugging en vivo (Jul 2026). Tras 3 auth-fails seguidos
+// el breaker se abre 15 min: los envíos fallan al instante con UNA línea,
+// sin pegarle a Meta. Se cierra solo al vencer el cooldown (y el próximo
+// éxito resetea el contador). Renovar el token: Meta Business → WhatsApp.
+const AUTH_FAILS_TO_OPEN = 3;
+const BREAKER_COOLDOWN_MS = 15 * 60 * 1000;
+let consecutiveAuthFails = 0;
+let breakerOpenUntil = 0;
+
+function whatsappBreakerCheck() {
+  if (Date.now() < breakerOpenUntil) {
+    throw new Error('WhatsApp deshabilitado temporalmente: token inválido (circuit breaker abierto, renovar WHATSAPP_TOKEN en Meta)');
+  }
+}
+
+function whatsappTrackResult(err) {
+  const status = err?.response?.status;
+  if (status === 401 || status === 403) {
+    consecutiveAuthFails++;
+    if (consecutiveAuthFails >= AUTH_FAILS_TO_OPEN && Date.now() >= breakerOpenUntil) {
+      breakerOpenUntil = Date.now() + BREAKER_COOLDOWN_MS;
+      console.error(`[whatsapp] TOKEN INVÁLIDO (${consecutiveAuthFails} auth-fails seguidos) — breaker ABIERTO 15 min. Renovar WHATSAPP_TOKEN en Meta Business Manager.`);
+    }
+  } else {
+    consecutiveAuthFails = 0;
+  }
+}
+
+/** Error compacto: una línea con status + detalle de Meta, sin el dump axios. */
+function compactWhatsappError(err, action) {
+  const status = err?.response?.status ?? 'network';
+  const metaMsg = err?.response?.data?.error?.message ?? err?.message ?? 'unknown';
+  return new Error(`WhatsApp ${action} failed: ${status} — ${String(metaMsg).slice(0, 200)}`);
+}
+
 export async function sendMessage(to, text) {
   to = formatArgNumber(to);
+  whatsappBreakerCheck();
   try {
     await axios.post(
       `${API_BASE}/messages`,
@@ -33,12 +73,15 @@ export async function sendMessage(to, text) {
       },
       { headers: authHeaders }
     );
+    consecutiveAuthFails = 0;
   } catch (err) {
-    logError('whatsapp', 'SEND_MESSAGE_ERROR', err, {
+    whatsappTrackResult(err);
+    const compact = compactWhatsappError(err, 'sendMessage');
+    logError('whatsapp', 'SEND_MESSAGE_ERROR', compact, {
       phone: to,
       context: { action: 'sendMessage', status: err.response?.status },
     });
-    throw err;
+    throw compact;
   }
 }
 

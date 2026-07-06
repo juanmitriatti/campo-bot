@@ -393,7 +393,7 @@ async function processUser(user) {
     await sendMessage(user.phone_number, report);
     console.log(`[scheduler] Weekly summary sent to user ${user.id} (${user.phone_number})`);
   } catch (err) {
-    console.error(`[scheduler] Error sending weekly summary to user ${user.id}:`, err);
+    console.error(`[scheduler] Error sending weekly summary to user ${user.id}: ${err?.message ?? err}`);
     logError('scheduler', 'WEEKLY_SUMMARY_SEND', err, { userId: user.id });
   }
 }
@@ -1105,7 +1105,7 @@ async function monthlyTick() {
         );
         console.log(`[scheduler] Monthly summary sent to user ${user.id}`);
       } catch (err) {
-        console.error(`[scheduler] Error sending monthly summary to user ${user.id}:`, err);
+        console.error(`[scheduler] Error sending monthly summary to user ${user.id}: ${err?.message ?? err}`);
         logError('scheduler', 'MONTHLY_SUMMARY_SEND', err, { userId: user.id });
       }
     }
