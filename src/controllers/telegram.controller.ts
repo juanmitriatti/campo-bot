@@ -140,6 +140,8 @@ router.post('/', (req: Request, res: Response) => {
 
 async function handleTelegramUpdate(req: Request): Promise<void> {
   const startTime = Date.now();
+  // Para el catch final: si ya sabemos a quién responder, avisamos del fallo.
+  let notifyChatId: string | number | null = null;
   try {
     const update = req.body;
 
@@ -150,6 +152,7 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
       const callbackId = cbQuery.data;
 
       if (!chatId || !callbackId) return;
+      notifyChatId = chatId;
 
       // Dedup on callback query id
       if (dedup.isDuplicate(`cb_${cbQuery.id}`)) return;
@@ -186,6 +189,7 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
 
     const chatId = message.chat?.id;
     if (!chatId) return;
+    notifyChatId = chatId;
 
     // Dedup on update_id
     if (dedup.isDuplicate(String(update.update_id))) return;
@@ -407,6 +411,13 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
     const err = error as Error;
     console.error('[telegram] ERROR:', err.stack || err.message);
     logError('telegram', 'WEBHOOK_ERROR', err);
+    // NEVER-SILENT (Jul 2026): avisar el fallo en vez de dejar al usuario
+    // mirando el chat — un silencio es indistinguible de un registro exitoso.
+    if (notifyChatId != null) {
+      try {
+        await sendTelegramMessage(notifyChatId, '⚠️ Algo falló procesando tu mensaje y *no guardé nada*. Probá de nuevo en un momento.');
+      } catch { /* el canal también falló */ }
+    }
   }
 }
 

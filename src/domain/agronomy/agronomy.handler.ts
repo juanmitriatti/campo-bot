@@ -26,6 +26,7 @@ import { localidadLookup, type Localidad } from '../../services/localidad-lookup
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import { isPlaceholder } from '../../utils/guards.js';
 import { userExplicitlyReferencedPlot } from '../../utils/plot-intent.js';
+import { hasPlotContextSignal } from '../../utils/plot-context-signals.js';
 import { validateStageCode } from './stage-code-validator.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
 import type { PendingActivity } from '../../middleware/pending-activities.js';
@@ -256,10 +257,23 @@ export class AgronomyHandler {
     plotName: string | null,
     newCrop: string,
   ): Promise<HandlerResponse | null> {
-    if ((cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true) return null;
     if (cmd.__forceReplaceCampaign === true) return null;
     const active = await this.cropService.getActive(plotId);
     if (!active || active.crop.toLowerCase() === newCrop.toLowerCase()) return null;
+
+    // bulkMode: no se puede bloquear a mitad de un compound, pero ANTES el
+    // bypass dejaba el auto-close silencioso — "sembré 10 ha de soja en 3b y
+    // 130 de maíz" en UN mensaje pisaba la soja igual (el guard solo protegía
+    // el caso de 2 mensajes). Ahora en compound la siembra conflictiva se
+    // SALTEA con aviso: nada se destruye, el resto del compound sigue, y el
+    // usuario decide aparte.
+    if ((cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true) {
+      const bulkLabel = formatPlotLocation(fieldName, plotName);
+      console.log(`[INTERCEPT] sow-replace guard (bulk): salteo siembra de ${newCrop} en lote ${plotId} — tiene ${active.crop} activa`);
+      return {
+        messages: [`💡 No sembré *${cap(newCrop)}* en ${bulkLabel}: ya tiene *${cap(active.crop)}* activa. Si querés reemplazarla, mandámelo aparte: _"sembré ${cmd.hectares ?? 'X'} ha de ${newCrop} en ${plotName ?? 'ese lote'}"_.`],
+      };
+    }
 
     const plotLabel = formatPlotLocation(fieldName, plotName);
     const haNote = active.sowed_hectares ? ` (${Number(active.sowed_hectares).toLocaleString('es-AR')} ha` : ' (';
@@ -2143,10 +2157,17 @@ export class AgronomyHandler {
         }
         // Resolve plot FIRST so we can infer crop from the plot's active or
         // recently-harvested campaign before deciding to ask the user.
+        // Herencia de contexto SOLO con señal (mismo criterio que gastos):
+        // "coseché 3000 kg" a secas tras consultar OTRO lote heredaba ese lote
+        // y escribía cosecha+rinde+botón de cierre en la campaña equivocada
+        // (hermano del bug de siembra, auditoría Jul 2026). Con señal ("y
+        // coseché...", "ahí") sí hereda; sin señal y 2+ lotes → pregunta.
+        const harvestAllowCtx = hasPlotContextSignal(cmd.originalText as string | null);
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,
-          cmd.plotName as string | null
+          cmd.plotName as string | null,
+          { allowContextStackFallback: harvestAllowCtx }
         );
         let plotResult = await this.resolveActivityPlot(userId, resolved);
 
@@ -2701,6 +2722,27 @@ export class AgronomyHandler {
         // If crop specified, verify match
         if (cmd.crop && active.crop.toLowerCase() !== (cmd.crop as string).toLowerCase()) {
           return { messages: [`La campaña activa en *${plotLabel}* es de *${active.crop}*, no de ${cmd.crop}.`] };
+        }
+
+        // Lote heredado del CONTEXTO (el usuario no lo nombró) + cierre =
+        // destructivo por adivinanza: "cerrá la campaña" cerraba la del último
+        // lote tocado sin confirmar (auditoría Jul 2026). Confirmación con los
+        // botones de cierre que ya existen (campaign_close_yes_/no_ + store).
+        if (!cmd.plotName && !cmd.fieldName) {
+          return {
+            messages: [],
+            interactive: {
+              type: 'buttons' as const,
+              body: `¿Cierro la campaña de *${cap(active.crop)}* en *${plotLabel}*?`,
+              buttons: [
+                { id: 'campaign_close_yes_ctx', title: 'Sí, cerrar' },
+                { id: 'campaign_close_no_ctx', title: 'No' },
+              ],
+            },
+            sideEffects: {
+              setPendingCampaignClose: { plotCropId: active.id, crop: active.crop, plotName: plotLabel },
+            },
+          };
         }
 
         const closed = await this.cropService.closeCampaign(active.id);

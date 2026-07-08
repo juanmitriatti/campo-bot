@@ -159,6 +159,138 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('Ronda 1 — auditoría profunda (Jul 2026)', () => {
+    let h: PipelineHarness;
+    let fieldId: number;
+    let sojaPlotId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('ronda1');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Ronda') RETURNING id`, [h.userId]);
+      fieldId = (f[0] as { id: number }).id;
+      const p1 = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'R1') RETURNING id`, [fieldId]);
+      sojaPlotId = (p1[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'R2')`, [fieldId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('R1.2: tap del category picker con token vencido → mensaje honesto (no crash mudo)', async () => {
+      const cat = await h.q(
+        `INSERT INTO user_categories (user_id, kind, name) VALUES ($1, 'expense', 'Combustible') RETURNING id`,
+        [h.userId],
+      );
+      const items = await h.tap(`cat_pick_exp_TOKENVENCIDO123_${(cat[0] as { id: number }).id}`);
+      const text = h.allText(items);
+      expect(items.length).toBeGreaterThan(0); // nunca silencio
+      expect(text).toMatch(/venció/i);
+      expect(text).toMatch(/no se guardó nada/i);
+    });
+
+    it('R1.3: pivot durante "¿cuántos litros?" NO se come el mensaje ni descuenta', async () => {
+      const { pendingStockDeductionStore } = await import('../../../services/message-pipeline.js');
+      pendingStockDeductionStore.set(h.phone, { product: 'glifosato', unit: 'lt', awaitingQuantity: true });
+
+      h.fakeAgent.enqueueTool('log_expense', { amount: 80000, category: 'Combustible', description: 'gasoil', plot: 'R1' });
+      const items = await h.send('gasté 80 mil en gasoil en R1');
+      const text = h.allText(items);
+      expect(text).toMatch(/Dejé sin descontar/i);            // aviso del descuento diferido
+      expect(h.fakeAgent.calls.length).toBeGreaterThan(0);     // el mensaje SÍ se procesó
+      expect(text).not.toMatch(/Stock descontado/i);           // y NO descontó 80000 lt
+      pendingStockDeductionStore.clear(h.phone);
+    });
+
+    it('R1.3b: "vendí 10 novillos" ya no cancela por el substring "no"', async () => {
+      const { pendingStockDeductionStore } = await import('../../../services/message-pipeline.js');
+      pendingStockDeductionStore.set(h.phone, { product: 'glifosato', unit: 'lt', awaitingQuantity: true });
+      h.fakeAgent.enqueueTool('remove_livestock', { category: 'novillo', count: 10 });
+      const items = await h.send('vendí 10 novillos');
+      const text = h.allText(items);
+      expect(text).not.toMatch(/OK, no se descontó/i); // antes: cancel accidental por "NOvillos"
+      expect(text).toMatch(/Dejé sin descontar/i);     // ahora: pivot con aviso
+      pendingStockDeductionStore.clear(h.phone);
+    });
+
+    it('R1.4: pivot durante "¿en qué localidad?" procesa el mensaje (antes se perdía)', async () => {
+      const { pendingCityStore } = await import('../../../services/message-pipeline.js');
+      pendingCityStore.set(h.phone, { fieldName: 'La Ronda' });
+      h.fakeAgent.enqueueTool('log_expense', { amount: 200000, category: 'Semillas', description: 'semilla', plot: 'R1' });
+      const items = await h.send('gasté 200 mil en semilla en R1');
+      const text = h.allText(items);
+      expect(text).toMatch(/Dejé pendiente la ubicación/i);   // el aviso sigue
+      expect(h.fakeAgent.calls.some(c => c.text.includes('200'))).toBe(true); // y el gasto SE PROCESÓ
+      pendingCityStore.clear(h.phone);
+    });
+
+    it('R1.5: "coseché 3000 kg" sin señal NO hereda el lote del contexto — pregunta', async () => {
+      // contexto apuntando a R1 (como si la última consulta lo hubiera tocado)
+      await h.q(
+        `INSERT INTO conversation_state (user_id, last_field_id, last_plot_id, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET last_field_id = $2, last_plot_id = $3, updated_at = NOW()`,
+        [h.userId, fieldId, sojaPlotId],
+      );
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', yield_kg: 3000 }); // sin plot
+      const items = await h.send('coseché 3000 kg de soja');
+      const text = h.allText(items);
+      // Sin señal de contexto y con 2 lotes → debe PREGUNTAR, no escribir en R1
+      expect(text).toMatch(/qué lote/i);
+      const harvests = await h.q(`SELECT COUNT(*)::int AS n FROM domain_events WHERE user_id = $1 AND event_type = 'harvest'`, [h.userId]);
+      expect((harvests[0] as { n: number }).n).toBe(0);
+    });
+
+    it('R1.5b: "cerrá la campaña" por contexto pide confirmación (no cierra a ciegas)', async () => {
+      // aislar del test anterior: cancelar el pending de cosecha + cola limpia
+      const { pendingActStore } = await import('../../../services/message-pipeline.js');
+      pendingActStore.clear(h.phone);
+      h.fakeAgent.reset();
+      // campaña activa en R1 + contexto apuntando ahí (el ask de R1.5 limpió
+      // last_plot_id — lo re-seteamos para simular "recién hablé de R1")
+      await h.q(
+        `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date) VALUES ($1, 'soja', 2025, 'gruesa', NOW())`,
+        [sojaPlotId],
+      );
+      await h.q(
+        `UPDATE conversation_state SET last_field_id = $2, last_plot_id = $3, updated_at = NOW() WHERE user_id = $1`,
+        [h.userId, fieldId, sojaPlotId],
+      );
+      h.fakeAgent.enqueueTool('close_campaign', {}); // sin plot ni field
+      const items = await h.send('cerrá la campaña');
+      const buttons = h.allButtons(items);
+      expect(h.allText(items)).toMatch(/¿Cierro la campaña de \*Soja\*/i);
+      expect(buttons.some(b => b.id === 'campaign_close_yes_ctx')).toBe(true);
+      // sigue activa hasta confirmar
+      const active = await h.q(`SELECT COUNT(*)::int AS n FROM plot_crops WHERE plot_id = $1 AND end_date IS NULL`, [sojaPlotId]);
+      expect((active[0] as { n: number }).n).toBe(1);
+      // confirmar con el botón cierra
+      const done = await h.tap('campaign_close_yes_ctx');
+      expect(h.allText(done)).toMatch(/cerrada/i);
+      const after = await h.q(`SELECT COUNT(*)::int AS n FROM plot_crops WHERE plot_id = $1 AND end_date IS NULL`, [sojaPlotId]);
+      expect((after[0] as { n: number }).n).toBe(0);
+    });
+
+    it('R1.6: compound "sembré soja en R2 y maíz en R2" NO pisa — saltea con aviso', async () => {
+      const { pendingActStore } = await import('../../../services/message-pipeline.js');
+      pendingActStore.clear(h.phone);
+      h.fakeAgent.reset();
+      h.fakeAgent.enqueue([
+        { toolName: 'sow_crop', toolInput: { crop: 'soja', plot: 'R2', hectares: 10 } },
+        { toolName: 'sow_crop', toolInput: { crop: 'maíz', plot: 'R2', hectares: 130 } },
+      ]);
+      const items = await h.send('sembré 10 ha de soja en R2 y 130 ha de maíz en R2');
+      const text = h.allText(items);
+      expect(text).toMatch(/Siembra registrada/i);          // la soja entró
+      expect(text).toMatch(/No sembré \*Maíz\*/i);           // el maíz se salteó con aviso
+      expect(text).not.toMatch(/Cerré la campaña anterior/i); // NADA se pisó
+      const r2 = await h.q(
+        `SELECT pc.crop FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id
+         WHERE p.name = 'R2' AND p.field_id = $1 AND pc.end_date IS NULL`,
+        [fieldId],
+      );
+      expect(r2.length).toBe(1);
+      expect(String((r2[0] as { crop: string }).crop)).toMatch(/soja/i);
+    });
+  });
+
   describe('guard anti-pisada de campaña (regresión "me cerró la campaña", Jul 2026)', () => {
     let h: PipelineHarness;
     let plotId: number;

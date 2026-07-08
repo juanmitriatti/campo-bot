@@ -128,6 +128,8 @@ router.post('/', (req: Request, res: Response) => {
 
 async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void> {
   const startTime = Date.now();
+  // Para el catch final: si ya sabemos a quién responder, avisamos del fallo.
+  let notifyPhone: string | null = null;
   try {
     const entry = req.body?.entry;
     const message = entry?.[0]?.changes?.[0]?.value?.messages?.[0];
@@ -144,6 +146,7 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
     }
 
     const phone: string = message.from;
+    notifyPhone = phone;
     let text: string | undefined = message.text?.body;
 
     // --- Channel verification gate ---
@@ -377,6 +380,14 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
     const err = error as Error;
     console.error('[whatsapp] ERROR:', err.stack || err.message);
     logError('whatsapp', 'WEBHOOK_ERROR', err);
+    // NEVER-SILENT (Jul 2026): este catch era la única grieta del principio —
+    // cualquier throw de un handler dejaba al usuario SIN respuesta, y un
+    // silencio es indistinguible de un registro exitoso. Best-effort.
+    if (notifyPhone) {
+      try {
+        await sendMessage(notifyPhone, '⚠️ Algo falló procesando tu mensaje y *no guardé nada*. Probá de nuevo en un momento.');
+      } catch { /* el canal también falló — nada más que hacer */ }
+    }
     if (!res.headersSent) res.sendStatus(200);
   }
 }

@@ -657,6 +657,17 @@ async function processTextMessageInner(
     }
     const cityResult = await handlePendingCity(text, pendingCity, userId, financialService);
     if (cityResult.clearPending) pendingCityStore.clear(phone);
+    if (cityResult.escaped) {
+      // Pivot: el mensaje NO era una ciudad — procesarlo de verdad además de
+      // avisar (antes "gasté 200 mil en semilla" moría acá y el usuario creía
+      // que se registró). El pending ya se limpió → sin recursión infinita.
+      console.log(`[INTERCEPT] pending-city pivot: "${text.slice(0, 60)}" — mensaje sigue al pipeline`);
+      const rest = await processTextMessageInner(text, ctx);
+      return [
+        ...cityResult.messages.map(msg => ({ type: 'text' as const, text: msg })),
+        ...rest,
+      ];
+    }
     return cityResult.messages.map(msg => ({ type: 'text' as const, text: msg }));
   }
 
@@ -667,10 +678,19 @@ async function processTextMessageInner(
   }
 
   // --- Check pending stock deduction quantity ---
+  // Blindado (Jul 2026): este branch era el ÚNICO pending sin escape de pivot
+  // y con tres fallas juntas — se comía cualquier mensaje ("gasté 80 mil en
+  // gasoil" → perdido), extraía los dígitos iniciales de una frase ajena y los
+  // descontaba como litros (corrupción), y cancelaba por SUBSTRING "no"
+  // ("vendí 10 NOvillos" → cancelado). Reglas nuevas:
+  //   - Solo una respuesta NUMÉRICA PURA ("3", "3,5", "20 lt") descuenta.
+  //   - Cancel estricto via isCancelIntent (no substrings).
+  //   - Cualquier otro texto = pivot: se difiere el descuento CON aviso y el
+  //     mensaje sigue al pipeline (no se pierde).
   const pendingDeduction = pendingStockDeductionStore.get(phone) as Record<string, unknown> | undefined;
   if (pendingDeduction && (pendingDeduction as any).awaitingQuantity) {
-    const qtyMatch = text.trim().match(/^[\d.,]+/);
-    const qty = qtyMatch ? parseFloat(qtyMatch[0].replace(',', '.')) : NaN;
+    const bareQty = text.trim().match(/^([\d]+(?:[.,]\d+)?)\s*(?:lt|l|litros?|kg|kilos?|un|unidades?)?\s*$/i);
+    const qty = bareQty ? parseFloat(bareQty[1].replace(',', '.')) : NaN;
     if (!isNaN(qty) && qty > 0) {
       try {
         (pendingDeduction as any).totalQuantity = qty;
@@ -685,12 +705,22 @@ async function processTextMessageInner(
         pendingStockDeductionStore.delete(phone);
         return [{ type: 'text', text: `❌ ${msg}` }];
       }
-    } else if (/cancel|no|salir/i.test(text.trim())) {
+    }
+    if (isCancelIntent(text)) {
       pendingStockDeductionStore.delete(phone);
       return [{ type: 'text', text: '👍 OK, no se descontó del stock.' }];
-    } else {
-      return [{ type: 'text', text: `Decime la cantidad en ${pendingDeduction.unit || 'lt'}. Ej: *3*` }];
     }
+    // Pivot: liberar el mensaje al pipeline y avisar que el descuento quedó sin hacer.
+    pendingStockDeductionStore.delete(phone);
+    console.log(`[INTERCEPT] stock-deduction pivot: "${text.slice(0, 60)}" — descuento diferido, mensaje sigue al pipeline`);
+    const pivotItems = await (async () => {
+      const rest = await processTextMessageInner(text, ctx);
+      return rest;
+    })();
+    return [
+      { type: 'text' as const, text: `💡 Dejé sin descontar el stock de *${pendingDeduction.product ?? 'ese producto'}* — si lo usaste, decime después: _"descontá X ${pendingDeduction.unit || 'lt'} de ${pendingDeduction.product ?? '<producto>'}"_.` },
+      ...pivotItems,
+    ];
   }
 
   // --- Check pending observation (plot disambiguation) ---

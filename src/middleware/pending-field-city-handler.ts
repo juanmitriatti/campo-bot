@@ -9,6 +9,10 @@ interface PendingCity {
 export interface PendingCityResult {
   messages: string[];
   clearPending: boolean;
+  /** true cuando el input NO era una ciudad (pivot): el pipeline debe
+   *  RE-PROCESAR el mensaje además de mostrar el aviso — antes el gasto o
+   *  registro del pivot se perdía en silencio (Jul 2026). */
+  escaped?: boolean;
 }
 
 export function formatLocation(city: string, province: string | null): string {
@@ -94,9 +98,10 @@ export async function handlePendingCity(
   if (looksLikeNonCity(text)) {
     return {
       messages: [
-        `Dejé pendiente la ubicación de *${pending.fieldName}*. Cuando quieras asignarla, escribí:\n📍 *ubicar campo ${pending.fieldName} en [localidad]*`,
+        `💡 Dejé pendiente la ubicación de *${pending.fieldName}* — asignala después con: *ubicar campo ${pending.fieldName} en [localidad]*`,
       ],
       clearPending: true,
+      escaped: true,
     };
   }
 

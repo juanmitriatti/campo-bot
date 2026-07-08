@@ -271,8 +271,20 @@ export function encodePendingExpensePayload(p: { data: ParsedExpense; fieldId: n
   return Buffer.from(json, 'utf8').toString('base64url');
 }
 
-export function decodePendingExpensePayload(b64: string): { data: ParsedExpense; fieldId: number | null; plotId: number | null } {
-  const o = JSON.parse(Buffer.from(b64, 'base64url').toString('utf8'));
+// Devuelven NULL cuando el payload no decodifica: pasa cuando el token del
+// callbackPayloadStore venció (10 min) o hubo un deploy y el router pasó el
+// token crudo como payload. Antes el JSON.parse tiraba sin try → catch mudo
+// del controller → el usuario tocaba la categoría y NADA (gasto perdido).
+export function decodePendingExpensePayload(b64: string): { data: ParsedExpense; fieldId: number | null; plotId: number | null } | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let o: any;
+  try {
+    o = JSON.parse(Buffer.from(b64, 'base64url').toString('utf8'));
+  } catch {
+    console.warn(`[INTERCEPT] pending-expense payload no decodifica (token vencido?): "${String(b64).slice(0, 24)}"`);
+    return null;
+  }
+  if (!o || typeof o !== 'object' || o.a == null) return null;
   return {
     fieldId: o.f ?? null,
     plotId: o.p ?? null,
@@ -306,8 +318,16 @@ export function encodePendingIncomePayload(p: { data: ParsedIncome; fieldId: num
   return Buffer.from(json, 'utf8').toString('base64url');
 }
 
-export function decodePendingIncomePayload(b64: string): { data: ParsedIncome; fieldId: number | null; plotId: number | null } {
-  const o = JSON.parse(Buffer.from(b64, 'base64url').toString('utf8'));
+export function decodePendingIncomePayload(b64: string): { data: ParsedIncome; fieldId: number | null; plotId: number | null } | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let o: any;
+  try {
+    o = JSON.parse(Buffer.from(b64, 'base64url').toString('utf8'));
+  } catch {
+    console.warn(`[INTERCEPT] pending-income payload no decodifica (token vencido?): "${String(b64).slice(0, 24)}"`);
+    return null;
+  }
+  if (!o || typeof o !== 'object' || o.a == null) return null;
   return {
     fieldId: o.f ?? null,
     plotId: o.p ?? null,
@@ -3427,7 +3447,9 @@ export class FinancialHandler {
       return { messages: ['No encontré esa categoría. Probá registrar el gasto/ingreso de nuevo.'] };
     }
     if (kind === 'expense') {
-      const { data, fieldId, plotId } = decodePendingExpensePayload(cmd.payload as string);
+      const decoded = decodePendingExpensePayload(cmd.payload as string);
+      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
+      const { data, fieldId, plotId } = decoded;
       data.category = category.name;
       await this.service.saveExpense(userId, data, fieldId, plotId);
       this.categoryService.bump(category.id).catch(() => {});
@@ -3435,7 +3457,9 @@ export class FinancialHandler {
       const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
       return { messages: [await buildExpenseConfirmation(data, resFieldName, resPlotName)] };
     } else {
-      const { data, fieldId, plotId } = decodePendingIncomePayload(cmd.payload as string);
+      const decoded = decodePendingIncomePayload(cmd.payload as string);
+      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
+      const { data, fieldId, plotId } = decoded;
       data.category = category.name;
       await this.service.saveIncome(userId, data, fieldId, plotId);
       this.categoryService.bump(category.id).catch(() => {});
@@ -3493,7 +3517,9 @@ export class FinancialHandler {
       return { messages: ['No pude crear la categoría. Probá de nuevo o cancelá.'] };
     }
     if (flowData.kind === 'expense') {
-      const { data, fieldId, plotId } = decodePendingExpensePayload(flowData.payload);
+      const decoded = decodePendingExpensePayload(flowData.payload);
+      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
+      const { data, fieldId, plotId } = decoded;
       data.category = cat.category.name;
       await this.service.saveExpense(userId, data, fieldId, plotId);
       this.categoryService.bump(cat.category.id).catch(() => {});
@@ -3501,7 +3527,9 @@ export class FinancialHandler {
       const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
       return { messages: [`✅ Categoría '${cat.category.name}' creada.\n${await buildExpenseConfirmation(data, resFieldName, resPlotName)}`] };
     } else {
-      const { data, fieldId, plotId } = decodePendingIncomePayload(flowData.payload);
+      const decoded = decodePendingIncomePayload(flowData.payload);
+      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
+      const { data, fieldId, plotId } = decoded;
       data.category = cat.category.name;
       await this.service.saveIncome(userId, data, fieldId, plotId);
       this.categoryService.bump(cat.category.id).catch(() => {});
@@ -3520,7 +3548,9 @@ export class FinancialHandler {
     }
 
     if (kind === 'expense') {
-      const { data, fieldId, plotId } = decodePendingExpensePayload(cmd.payload as string);
+      const decoded = decodePendingExpensePayload(cmd.payload as string);
+      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
+      const { data, fieldId, plotId } = decoded;
       data.category = category.name;
       await this.service.saveExpense(userId, data, fieldId, plotId);
       this.categoryService.bump(category.id).catch(() => {});
@@ -3528,7 +3558,9 @@ export class FinancialHandler {
       const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
       return { messages: [await buildExpenseConfirmation(data, resFieldName, resPlotName)] };
     } else {
-      const { data, fieldId, plotId } = decodePendingIncomePayload(cmd.payload as string);
+      const decoded = decodePendingIncomePayload(cmd.payload as string);
+      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
+      const { data, fieldId, plotId } = decoded;
       data.category = category.name;
       await this.service.saveIncome(userId, data, fieldId, plotId);
       this.categoryService.bump(category.id).catch(() => {});
@@ -3547,7 +3579,9 @@ export class FinancialHandler {
     }
 
     if (kind === 'expense') {
-      const { data, fieldId, plotId } = decodePendingExpensePayload(cmd.payload as string);
+      const decoded = decodePendingExpensePayload(cmd.payload as string);
+      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
+      const { data, fieldId, plotId } = decoded;
       data.category = cat.category.name;
       await this.service.saveExpense(userId, data, fieldId, plotId);
       this.categoryService.bump(cat.category.id).catch(() => {});
@@ -3555,7 +3589,9 @@ export class FinancialHandler {
       const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
       return { messages: [`✅ Categoría '${cat.category.name}' creada.\n${await buildExpenseConfirmation(data, resFieldName, resPlotName)}`] };
     } else {
-      const { data, fieldId, plotId } = decodePendingIncomePayload(cmd.payload as string);
+      const decoded = decodePendingIncomePayload(cmd.payload as string);
+      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
+      const { data, fieldId, plotId } = decoded;
       data.category = cat.category.name;
       await this.service.saveIncome(userId, data, fieldId, plotId);
       this.categoryService.bump(cat.category.id).catch(() => {});
