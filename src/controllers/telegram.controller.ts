@@ -297,6 +297,14 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
           }
 
           if (transcript.trim()) {
+            // Eco de transcripción (configurable): el usuario ve qué entendió
+            // el STT y puede corregir — antes una transcripción mala era invisible.
+            try {
+              const { buildTranscriptEcho } = await import('../services/audio/transcript-echo.js');
+              const echo = await buildTranscriptEcho(transcript);
+              if (echo) await sendTelegramMessage(chatId, echo);
+            } catch { /* best-effort: el eco jamás bloquea el procesamiento */ }
+
             const items = await processTextMessage(transcript, ctx);
             await sendBotResponse(chatId, items);
           }

@@ -317,6 +317,61 @@ export class SystemHandler {
         }
       }
 
+      case 'show_plan': {
+        // El CTA de los feature-gates y del trial vencido dice "Escribí *plan*"
+        // — este comando cierra ese loop (era un CTA roto, ronda 3 Jul 2026).
+        // Costo cero, disponible con trial vencido.
+        try {
+          const plan = await this.planRepo.getUserPlan(userId);
+          const planName = plan?.display_name ?? 'Gratis';
+
+          let trialLine = '';
+          try {
+            const { rows } = await pool.query(
+              `SELECT status, trial_ends_at FROM subscriptions
+               WHERE user_id = $1 AND status IN ('trial','active','past_due')
+               ORDER BY created_at DESC LIMIT 1`,
+              [userId],
+            );
+            if (rows[0]?.status === 'trial' && rows[0].trial_ends_at) {
+              const days = Math.ceil((new Date(rows[0].trial_ends_at).getTime() - Date.now()) / 86400000);
+              trialLine = days > 0
+                ? ` _(prueba — te quedan ${days} día${days === 1 ? '' : 's'})_`
+                : ' _(prueba vencida)_';
+            } else if (rows[0]?.status === 'past_due') {
+              trialLine = ' _(pago pendiente)_';
+            }
+          } catch { /* sin tabla subscriptions o sin fila: mostramos solo el plan */ }
+
+          const aiLimit = plan?.daily_ai_limit != null ? Number(plan.daily_ai_limit) : null;
+          const limitLine = aiLimit ? `\n🤖 Consultas con IA por día: ${aiLimit}` : '';
+
+          // Enterprise se asigna a mano (precio 0 en la tabla) — no se lista.
+          const all = (await this.planRepo.getAllPlans()).filter(p => p.name !== 'enterprise');
+          const planLines = all.map(p => {
+            const price = Number(p.price_ars) > 0 ? `$${Number(p.price_ars).toLocaleString('es-AR')}/mes` : 'sin costo';
+            const current = plan?.id === p.id ? ' ← tu plan' : '';
+            return `• *${p.display_name}* — ${price}${current}`;
+          }).join('\n');
+
+          let base = 'https://campo-bot-production.up.railway.app';
+          const publicUrl = await getSetting('PUBLIC_URL');
+          if (publicUrl && /^https?:\/\//.test(publicUrl)) base = publicUrl.replace(/\/$/, '');
+
+          return {
+            messages: [
+              `📋 Tu plan: *${planName}*${trialLine}${limitLine}\n\n` +
+              `*Planes disponibles:*\n${planLines}\n\n` +
+              `Para cambiar de plan entrá a tu panel:\n${base}/dashboard`,
+            ],
+          };
+        } catch (e: unknown) {
+          console.error('SHOW_PLAN ERROR:', (e as Error).message);
+          logError('system', 'SHOW_PLAN', e as Error);
+          return { messages: ['No pude consultar tu plan en este momento. Probá de nuevo en unos minutos.'] };
+        }
+      }
+
       case 'disable_tips': {
         await pool.query(`UPDATE user_settings SET tips_enabled = FALSE WHERE user_id = $1`, [userId]);
         return { messages: ['👍 Listo, no te muestro más consejos.\n\n_Si los querés de vuelta: "dame tips de nuevo"._'] };

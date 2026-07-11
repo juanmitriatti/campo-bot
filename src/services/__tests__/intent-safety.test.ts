@@ -90,23 +90,39 @@ describe('isSafeFallbackCommand', () => {
 
 describe('fallbackBlockedCopy', () => {
   it('uses non-technical language (no quota/credits/tokens)', () => {
-    const copy = fallbackBlockedCopy('ai_required');
-    expect(copy.toLowerCase()).not.toContain('quota');
-    expect(copy.toLowerCase()).not.toContain('credit');
-    expect(copy.toLowerCase()).not.toContain('token');
-    // Spanish productor agro-friendly
-    expect(copy).toContain('mañana');
+    for (const reason of ['ai_required', 'ai_error', 'ai_rate_limited', 'unparseable_complex'] as const) {
+      const copy = fallbackBlockedCopy(reason);
+      expect(copy.toLowerCase()).not.toContain('quota');
+      expect(copy.toLowerCase()).not.toContain('credit');
+      expect(copy.toLowerCase()).not.toContain('token');
+      expect(copy.length).toBeGreaterThan(0);
+    }
   });
 
-  it('hints at simple things the user can still do', () => {
-    const copy = fallbackBlockedCopy('ai_required');
+  it('hints at simple things the user can still do (rate limit)', () => {
+    const copy = fallbackBlockedCopy('ai_rate_limited');
     // Should mention an example simple command (menú, lluvia, lote)
     expect(copy.toLowerCase()).toMatch(/menú|lluvia|lote/);
+    expect(copy).toContain('tope diario'); // única causa donde el tope es verdad
+  });
+
+  // Ronda 3 (Jul 2026): copy honesto por causa — el tope diario solo se
+  // menciona cuando ES la causa; un error del agente admite el problema.
+  it('ai_error admite el problema técnico y NO culpa al usuario ni al tope', () => {
+    const copy = fallbackBlockedCopy('ai_error');
+    expect(copy.toLowerCase()).toContain('problema');
+    expect(copy).not.toContain('tope diario');
+    expect(copy.toLowerCase()).not.toContain('no entend');
+  });
+
+  it('ai_required (low confidence) no menciona el tope diario', () => {
+    const copy = fallbackBlockedCopy('ai_required');
+    expect(copy).not.toContain('tope diario');
   });
 
   it('handles unparseable_complex variant', () => {
     const copy = fallbackBlockedCopy('unparseable_complex');
-    expect(copy).toContain('mañana');
+    expect(copy.toLowerCase()).toContain('pausada');
     expect(copy.length).toBeGreaterThan(0);
   });
 });

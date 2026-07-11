@@ -736,6 +736,9 @@ const COMMAND_PATTERNS = [
     patterns: [/^(stock|insumos)$/i],
   },
   { command: "menu", patterns: [/^(menu|menú|opciones)$/] },
+  // El CTA de los feature-gates dice "Escribí *plan*" — este comando tiene que
+  // existir y ser trivial (costo cero, disponible con trial vencido).
+  { command: "show_plan", patterns: [/^(?:mi\s+)?plan(?:es)?$/, /^ver\s+plan(?:es)?$/] },
   { command: "show_reports_menu", patterns: [
     /^(?:reportes?|informes?|ver\s+reportes?|ver\s+informes?|mis\s+reportes?)$/,
     /^(?:quiero|necesito|dame|mostrar?|mostra)\s+(?:un\s+)?(?:reportes?|informes?)$/,

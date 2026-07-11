@@ -102,6 +102,36 @@ export function hasDeleteVerb(text: string): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Deferral — "después te digo" durante un pending (ronda 3, Jul 2026).
+// El usuario difiere la respuesta a un slot pendiente. NO es cancelación (el
+// pending se mantiene) ni una respuesta (no se consume como valor). Distinto
+// de NON_ANSWER_RE del pending-processor: eso incluye saludos y preguntas;
+// esto es SOLO la intención explícita de contestar más tarde.
+// ─────────────────────────────────────────────────────────────────────────────
+const DEFERRAL_RE = new RegExp(
+  '^(?:' +
+  [
+    'despu[eé]s\\s+te\\s+(?:digo|paso|aviso|confirmo)',
+    'despu[eé]s\\s+(?:veo|lo\\s+veo|me\\s+fijo)',
+    'luego\\s+te\\s+(?:digo|paso|aviso)',
+    'm[aá]s\\s+tarde(?:\\s+te\\s+(?:digo|paso|aviso))?',
+    'ahora\\s+no(?:\\s+(?:s[eé]|puedo|tengo))?',
+    'ma[ñn]ana\\s+te\\s+(?:digo|paso|aviso|confirmo)',
+    'todav[ií]a\\s+no\\s+(?:s[eé]|lo\\s+s[eé]|lo\\s+tengo)',
+    'no\\s+s[eé]\\s+todav[ií]a',
+    'cuando\\s+(?:sepa|lo\\s+tenga|me\\s+entere)\\s+te\\s+(?:digo|paso|aviso)',
+    'dejame\\s+(?:pensar|ver|fijarme)',
+    'me\\s+fijo\\s+y\\s+te\\s+(?:digo|paso|aviso)',
+  ].join('|') +
+  ')\\b',
+  'i',
+);
+/** ¿El mensaje es un "te contesto después" (diferir, no cancelar ni responder)? */
+export function isDeferralIntent(text: string): boolean {
+  return DEFERRAL_RE.test(normLex(text).trim());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 

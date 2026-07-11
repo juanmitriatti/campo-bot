@@ -54,12 +54,14 @@ const EXPIRED_ALLOWED_COMMANDS = new Set([
   'greeting', 'thanks', 'ack', 'menu', 'help', 'dollar', 'grain_prices',
   'cancel', 'confirm',
   'list_fields', 'list_plots',
+  // El CTA del gate de trial vencido manda a "plan" — tiene que funcionar ahí.
+  'show_plan',
 ]);
 
 const TRIVIAL_COMMANDS = new Set([
   'confirm', 'cancel',
   'greeting', 'thanks', 'ack',
-  'menu', 'help', 'dollar', 'grain_prices', 'list_reminders',
+  'menu', 'help', 'dollar', 'grain_prices', 'list_reminders', 'show_plan',
   'disable_tips', 'enable_tips',
   'list_fields', 'list_plots',
   'show_expense_menu', 'show_income_menu', 'show_agro_menu',
@@ -569,6 +571,11 @@ export class IntentClassifier {
     // =========================================================================
     // STEP 3a — AI Agent (tool_use) — runs when AGENT_ENABLED=true
     // =========================================================================
+    // Causa REAL de que la IA no diera resultado (ronda 3, Jul 2026): el copy
+    // del fallback bloqueado decía "alcanzaste tu tope diario" para TODAS las
+    // causas — mentía cuando el agente había fallado (timeout/5xx/créditos).
+    // null = la IA corrió pero no interpretó (low confidence) o no aplica.
+    let aiUnavailableCause: 'ai_error' | 'ai_rate_limited' | null = null;
     const agentEnabled = await getSettingBool('AGENT_ENABLED');
     if (agentEnabled && this.agentService && this.responseMapper) {
       try {
@@ -628,11 +635,17 @@ export class IntentClassifier {
               return primary;
             }
           }
+        } else {
+          // Con AGENT_ENABLED=true, el único camino a null en agent.extract es
+          // el tope diario del plan (el kill switch es el mismo setting que ya
+          // chequeamos acá arriba).
+          aiUnavailableCause = 'ai_rate_limited';
         }
         // Fall through to JSON extractor or regex
       } catch (agentErr) {
         console.error('[intent-classifier] Agent failed, falling back:', agentErr);
         logError('intent-classifier', 'AGENT_FAILED', agentErr as Error, { userId });
+        aiUnavailableCause = 'ai_error';
       }
     }
 
@@ -659,7 +672,7 @@ export class IntentClassifier {
     // =========================================================================
     // STEP 4 — Full regex chain (FALLBACK when AI disabled/failed/low-confidence)
     // =========================================================================
-    return this.classifyWithRegex(text, cleaned, preprocessed, userId);
+    return this.classifyWithRegex(text, cleaned, preprocessed, userId, aiUnavailableCause);
   }
 
   /**
@@ -757,6 +770,7 @@ export class IntentClassifier {
     cleaned: string,
     preprocessed: string,
     userId: UserId,
+    aiUnavailableCause: 'ai_error' | 'ai_rate_limited' | null = null,
   ): Promise<ParseResult> {
     // Try all structured commands (including non-trivial ones)
     const cmd = this.parser.parseCommand(cleaned) || this.parser.parseCommand(preprocessed);
@@ -764,11 +778,14 @@ export class IntentClassifier {
       // Phase 2: only allow safe commands through the regex fallback. Anything
       // that mutates structured data or requires AI to disambiguate is blocked.
       if (!isSafeFallbackCommand(cmd.command as string)) {
-        console.log(`[FALLBACK_BLOCKED] user=${userId} command=${cmd.command} reason=ai_required raw="${text.slice(0, 80)}"`);
+        // Copy honesto por causa (ronda 3): si la IA FALLÓ, el problema es
+        // nuestro — no del usuario ni de su tope diario.
+        const reason = aiUnavailableCause ?? 'ai_required';
+        console.log(`[FALLBACK_BLOCKED] user=${userId} command=${cmd.command} reason=${reason} raw="${text.slice(0, 80)}"`);
         return {
           intent: {
             type: 'fallback_blocked',
-            reason: 'ai_required',
+            reason,
             raw: text,
             attemptedCommand: cmd.command as string,
           },
@@ -836,7 +853,19 @@ export class IntentClassifier {
       };
     }
 
-    // Nothing matched
+    // Nothing matched. Si la IA FALLÓ (no "no entendió": falló), responder
+    // "No entendí del todo" culpa al usuario por un problema nuestro — copy
+    // honesto vía fallback_blocked(ai_error) en su lugar (ronda 3, Jul 2026).
+    if (aiUnavailableCause === 'ai_error') {
+      console.log(`[FALLBACK_BLOCKED] user=${userId} command=none reason=ai_error raw="${text.slice(0, 80)}"`);
+      return {
+        intent: { type: 'fallback_blocked', reason: 'ai_error', raw: text },
+        confidence: 0,
+        aiUsed: false,
+        source: 'command',
+        missingFields: [],
+      };
+    }
     const unknownResult: ParseResult = {
       intent: { type: 'unknown', raw: text },
       confidence: 0,

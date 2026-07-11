@@ -22,7 +22,12 @@ let toolUseSeq = 0;
 export class FakeAgentService {
   /** Todas las invocaciones recibidas, en orden. */
   public calls: FakeAgentCall[] = [];
-  private queue: AgentResult[] = [];
+  private queue: Array<AgentResult | Error> = [];
+
+  /** Programa un FALLO del agente en el próximo turno (timeout/5xx/créditos). */
+  enqueueError(message = 'fake anthropic 529'): void {
+    this.queue.push(new Error(message));
+  }
 
   /** Programa la respuesta del PRÓXIMO turno del agente. */
   enqueue(
@@ -57,6 +62,7 @@ export class FakeAgentService {
   ): Promise<AgentResult | null> {
     this.calls.push({ text, pendingHint, userId });
     const next = this.queue.shift();
+    if (next instanceof Error) throw next;
     if (next) return next;
     // Sin respuesta programada: el test no esperaba que el agente fuera
     // llamado en este turno. Devolvemos texto marcador para que el fallo

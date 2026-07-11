@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectCurrencyTerm, hasDeleteVerb, stripAnswerPrefix } from '../lexicon.js';
+import { detectCurrencyTerm, hasDeleteVerb, stripAnswerPrefix, isDeferralIntent } from '../lexicon.js';
 import {
   extractCurrencyCorrection, extractAmountCorrection, extractActivityQuantityCorrection,
   isOtherItemCorrectionOrDelete,
@@ -46,6 +46,32 @@ describe('delete synonyms', () => {
     'eliminá el de semillas',
   ])('"%s" → isOtherItemCorrectionOrDelete', (t) => expect(isOtherItemCorrectionOrDelete(t)).toBe(true));
   it('hasDeleteVerb("deshacer")', () => expect(hasDeleteVerb('deshacé eso')).toBe(true));
+});
+
+describe('isDeferralIntent (R3.5 — salida diferida de pendings)', () => {
+  it.each([
+    'después te digo',
+    'despues te paso',
+    'más tarde',
+    'ahora no puedo',
+    'ahora no sé',
+    'mañana te confirmo',
+    'todavía no lo sé',
+    'no sé todavía',
+    'dejame fijarme',
+    'me fijo y te aviso',
+    'cuando sepa te digo',
+  ])('"%s" → deferral', (t) => expect(isDeferralIntent(t)).toBe(true));
+
+  it.each([
+    'aftosa',              // respuesta válida a un slot
+    '500 mil',             // monto
+    'lote norte',          // plot
+    'cancelar',            // cancelación, no deferral
+    'no',                  // negación a secas ≠ diferir
+    'no era en el norte',  // corrección
+    'cuánto gasté este mes', // query
+  ])('"%s" NO es deferral', (t) => expect(isDeferralIntent(t)).toBe(false));
 });
 
 describe('stripAnswerPrefix', () => {

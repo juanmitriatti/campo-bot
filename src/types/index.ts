@@ -70,7 +70,7 @@ export type Intent =
    * user-friendly "no pude procesar esto sin IA" message instead of
    * silently degrading or guessing.
    */
-  | { type: 'fallback_blocked'; reason: 'ai_required' | 'unparseable_complex'; raw: string; attemptedCommand?: string }
+  | { type: 'fallback_blocked'; reason: 'ai_required' | 'unparseable_complex' | 'ai_error' | 'ai_rate_limited'; raw: string; attemptedCommand?: string }
   /**
    * Phase 3 — emitted at the very top of the pipeline when the user's
    * trial has expired and they have no active paid subscription. The

@@ -512,6 +512,69 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(text).toMatch(/dashboard/i);
       expect(h.fakeAgent.calls.length).toBe(0); // la IA nunca se llamó (no gastamos plata en vencidos)
     });
+
+    it('R3.1: "plan" funciona con trial vencido — el CTA del gate no puede estar roto', async () => {
+      const items = await h.send('plan');
+      const text = h.allText(items);
+      expect(text).toMatch(/tu plan/i);
+      expect(text).toMatch(/dashboard/);
+      expect(text).not.toMatch(/prueba terminó/i); // no lo bloquea el gate
+      expect(h.fakeAgent.calls.length).toBe(0); // costo cero
+    });
+  });
+
+  describe('Ronda 3 — copy honesto de IA caída (Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('ronda3-ai-down');
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('R3.3: el agente FALLA → el bot admite el problema técnico (no "no entendí" ni "tope diario")', async () => {
+      h.fakeAgent.enqueueError('fake anthropic 529 overloaded');
+      const items = await h.send('gasté 50 mil en gasoil');
+      const text = h.allText(items);
+      expect(text).toMatch(/problema técnico/i);
+      expect(text).not.toMatch(/no entend/i); // no culpar al usuario
+      expect(text).not.toMatch(/tope diario/i); // no mentir sobre el límite
+    });
+  });
+
+  describe('Ronda 3 — salida diferida de pendings (Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('ronda3-deferral');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'Santa Rosa') RETURNING id`, [h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [(f[0] as { id: number }).id]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('R3.5: "después te digo" durante un pending → ack + el pending sigue vivo y la respuesta tardía completa', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { plot: 'Norte', field: 'Santa Rosa' }); // agente omite crop
+      const ask = await h.send('sembré en el lote Norte');
+      expect(h.allText(ask)).toMatch(/qué cultivo/i);
+      const callsAfterAsk = h.fakeAgent.calls.length;
+
+      // Diferir NO cancela, NO se consume como cultivo, NO re-pregunta a secas
+      const deferred = await h.send('después te digo');
+      expect(h.fakeAgent.calls.length).toBe(callsAfterAsk); // sin agente
+      expect(h.allText(deferred)).toMatch(/queda pendiente/i);
+      expect(h.allText(deferred)).not.toMatch(/qué cultivo/i); // no insiste en el momento
+
+      // La respuesta tardía completa el pending original
+      const done = await h.send('soja');
+      expect(h.fakeAgent.calls.length).toBe(callsAfterAsk);
+      const crops = await h.q(
+        `SELECT pc.crop FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id
+         JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1`,
+        [h.userId],
+      );
+      expect(crops.length).toBe(1);
+      expect(String(crops[0].crop)).toMatch(/soja/i);
+      expect(h.allText(done)).toMatch(/soja/i);
+    });
   });
 
   describe('pronoun-expander ↔ validator (la interacción que causó el veto en vivo, May 2026)', () => {

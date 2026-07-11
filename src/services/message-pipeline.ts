@@ -788,6 +788,20 @@ async function processTextMessageInner(
       pendingActStore.clear(phone);
       return [{ type: 'text', text: '❌ Actividad cancelada.' }];
     }
+    // Salida diferida (ronda 3, Jul 2026): "después te digo" NO es cancelar ni
+    // una respuesta al slot. Antes el NON_ANSWER_RE del processor correctamente
+    // no la consumía… y el bot re-preguntaba lo mismo sin registrar la
+    // intención del usuario. Ahora: ack + el pending sigue vivo con TTL
+    // renovado (30 min). Si expira, el dato queda sin cargar — decisión del
+    // usuario, no un silencio nuestro.
+    {
+      const { isDeferralIntent } = await import('../utils/lexicon.js');
+      if (isDeferralIntent(text)) {
+        console.log(`[INTERCEPT] deferral during pending(${pendingAct.command}): "${text.slice(0, 60)}" — pending se mantiene`);
+        pendingActStore.set(phone, { ...pendingAct, timestamp: Date.now() });
+        return [{ type: 'text', text: '👍 Dale, queda pendiente. Cuando lo tengas mandámelo y lo completo — o escribí *cancelar* si preferís dejarlo.' }];
+      }
+    }
     const actInterruptCmd = intentClassifier.parseCommandOnly(text);
     // Guard: if the pending is for a financial action (log_income/log_expense)
     // and it's WAITING for amount/price/quantity, the user's reply WILL look

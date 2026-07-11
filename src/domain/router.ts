@@ -107,6 +107,7 @@ const FEEDLOT_COMMANDS = new Set([
 
 const SYSTEM_COMMANDS = new Set([
   'greeting', 'help', 'help_section', 'thanks', 'ack', 'dollar', 'grain_prices',
+  'show_plan',
   'create_reminder', 'list_reminders', 'complete_reminder',
   'disable_tips', 'enable_tips',
   'menu', 'show_expense_menu', 'show_income_menu', 'show_agro_menu',

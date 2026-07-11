@@ -77,11 +77,19 @@ export function isSafeFallbackCommand(command: string | null | undefined): boole
 
 /**
  * Documented rationale for callers that want to surface why a command was
- * blocked. Currently only ai_required (we don't have other reasons yet),
- * but kept as a discriminator so Phase 3 can add 'trial_expired' without
- * touching this module.
+ * blocked. Since Jul 2026 (ronda 3) the classifier distinguishes la CAUSA
+ * real de que la IA no corriera, y el copy es honesto por causa:
+ * - ai_error: la llamada al agente falló (timeout / 5xx / créditos) — problema
+ *   NUESTRO, se le dice al usuario que pruebe en unos minutos.
+ * - ai_rate_limited: tope diario del plan alcanzado (única causa de null con
+ *   el agente habilitado).
+ * - ai_required: la IA corrió pero no interpretó con confianza (o no aplicó)
+ *   — NUNCA culpar al tope acá: antes este copy decía "alcanzaste tu tope
+ *   diario" para TODAS las causas, mintiendo cuando el agente simplemente
+ *   había fallado (auditoría Jul 2026).
+ * - unparseable_complex: mensaje complejo con la IA pausada por kill switch.
  */
-export type FallbackBlockReason = 'ai_required' | 'unparseable_complex';
+export type FallbackBlockReason = 'ai_required' | 'unparseable_complex' | 'ai_error' | 'ai_rate_limited';
 
 /**
  * User-facing copy for the fallback_blocked intent. Bot controllers call
@@ -93,17 +101,29 @@ export function fallbackBlockedCopy(reason: FallbackBlockReason, attemptedComman
   // attemptedCommand is informative for logs but we don't surface it in copy.
   void attemptedCommand;
   switch (reason) {
-    case 'ai_required':
+    case 'ai_error':
+      return (
+        '🤖 Estoy con un problema técnico para procesar mensajes en este momento. ' +
+        'No es tu mensaje — es un problema mío.\n\n' +
+        'Probá de nuevo en unos minutos. Tus datos están guardados y no se pierde nada.'
+      );
+    case 'ai_rate_limited':
       return (
         '🤖 No pude procesar ese mensaje porque requiere análisis avanzado y ' +
         'hoy alcanzaste tu tope diario.\n\n' +
         'Probá de nuevo mañana, o pasame algo simple por ahora ' +
         '(ej. "menú", "lluvia esta semana", "lote norte").'
       );
+    case 'ai_required':
+      return (
+        '🤖 No pude interpretar ese mensaje con confianza.\n\n' +
+        'Probá reformularlo más simple o en partes (ej. "gasté 50 mil en gasoil", ' +
+        '"sembré soja en lote norte").'
+      );
     case 'unparseable_complex':
       return (
         '🤖 No pude entender ese mensaje sin análisis avanzado y la IA está ' +
-        'pausada. Volvé a intentar mañana o probá una versión más simple.'
+        'pausada. Volvé a intentar más tarde o probá una versión más simple.'
       );
   }
 }

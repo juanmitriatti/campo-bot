@@ -229,6 +229,14 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
         text = normalizeTranscript(result.transcription);  // Clean STT artifacts before pipeline
         console.log('FROM:', phone, 'AUDIO TRANSCRIBED:', text);
 
+        // Eco de transcripción (configurable): el usuario ve qué entendió el
+        // STT y puede corregir — sin esto una transcripción mala era invisible.
+        try {
+          const { buildTranscriptEcho } = await import('../services/audio/transcript-echo.js');
+          const echo = await buildTranscriptEcho(text);
+          if (echo) await sendMessage(phone, echo);
+        } catch { /* best-effort: el eco jamás bloquea el procesamiento */ }
+
         // Log audio transcription cost
         try {
           const durationSeconds = result.estimatedDurationSeconds || 0;
