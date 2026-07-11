@@ -6,7 +6,11 @@ export interface PendingObservation {
   timestamp: number;
 }
 
-const PENDING_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+// 30 min (antes 5) — unificado con el resto de los pendings (Jul 2026): la
+// respuesta tardía a un pending expirado va al agente A CIEGAS (la clase que
+// corrompió un gasto en vivo). El productor está arriba del tractor: 5 min no
+// alcanzan. Los escapes de pivot siguen cubriendo el cambio de tema.
+const PENDING_TIMEOUT_MS = 30 * 60 * 1000;
 
 export class PendingObservationStore {
   private store = new Map<string, PendingObservation>();

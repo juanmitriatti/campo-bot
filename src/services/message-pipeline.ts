@@ -317,6 +317,14 @@ export async function hasNoPrerequisites(userId: UserId): Promise<{ blocked: boo
 
 export const DESTRUCTIVE_COMMANDS = new Set([
   'delete_last', 'delete_last_income', 'delete_specific',
+  // Deletes del path del AGENTE (Jul 2026): borraban AL TOQUE sin confirmar
+  // ni cota temporal — "borrá la última actividad" podía eliminar una siembra
+  // de hace 5 días creyendo que era la de recién. Ahora TODOS confirman, y el
+  // prompt muestra QUÉ va a borrar (preview + fecha) para que el usuario vea
+  // si es el registro que cree.
+  'delete_last_expense', 'delete_last_activity', 'delete_last_observation',
+  'delete_last_rainfall', 'delete_last_scouting',
+  'delete_specific_expense', 'delete_specific_income',
 ]);
 
 export const SAFE_INTERRUPTION_COMMANDS = new Set([
@@ -1184,10 +1192,21 @@ async function processTextMessageInner(
     if (DESTRUCTIVE_COMMANDS.has(intent.data.command)) {
       const actionLabels: Record<string, string> = {
         delete_last: 'eliminar el ultimo gasto',
+        delete_last_expense: 'eliminar el ultimo gasto',
         delete_last_income: 'eliminar el ultimo ingreso',
         delete_specific: 'eliminar un registro',
+        delete_specific_expense: 'eliminar ese gasto',
+        delete_specific_income: 'eliminar ese ingreso',
+        delete_last_activity: 'eliminar la ultima actividad',
+        delete_last_observation: 'eliminar la ultima observacion',
+        delete_last_rainfall: 'eliminar la ultima lluvia',
+        delete_last_scouting: 'eliminar el ultimo monitoreo',
       };
       const label = actionLabels[intent.data.command] || 'realizar esta accion';
+      // Preview del objetivo: mostrar QUÉ se va a borrar (con fecha) — el
+      // registro "de recién" puede haber fallado en silencio y el último real
+      // ser uno de hace días.
+      const preview = await buildDeletePreview(intent.data.command, userId);
       pendingStore.set(phone, {
         type: 'expense',
         data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
@@ -1196,7 +1215,7 @@ async function processTextMessageInner(
         _destructiveCommand: intent.data,
       } as any);
       return [interactiveButtons(
-        `¿Seguro que queres ${label}?\nEsto no se puede deshacer.`,
+        `¿Seguro que queres ${label}?${preview ? `\n\n${preview}` : ''}\nEsto no se puede deshacer.`,
         [
           { id: `confirm_destructive_${intent.data.command}`, title: 'Confirmar' },
           { id: 'cancel_destructive', title: 'Cancelar' },
@@ -1330,6 +1349,38 @@ async function processTextMessageInner(
   }
 
   return [];
+}
+
+/**
+ * Preview del registro que un delete_last_* va a borrar: "🗑️ Gasto: Combustible
+ * $80.000 — 05/07". Devuelve '' si no se puede determinar (el confirm sale
+ * igual, solo sin detalle). Best-effort: jamás rompe el flujo.
+ */
+async function buildDeletePreview(command: string, userId: UserId): Promise<string> {
+  try {
+    const fmt = (d: unknown) => {
+      const dt = d instanceof Date ? d : new Date(String(d));
+      return isNaN(dt.getTime()) ? '' : ` — ${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    };
+    if (command === 'delete_last' || command === 'delete_last_expense') {
+      const { rows } = await pool.query(
+        `SELECT category, amount, currency, created_at FROM expenses WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`, [userId]);
+      if (rows[0]) return `🗑️ Gasto: ${rows[0].category || 's/cat'} ${rows[0].currency === 'USD' ? `${Number(rows[0].amount).toLocaleString('es-AR')} USD` : `$${Number(rows[0].amount).toLocaleString('es-AR')}`}${fmt(rows[0].created_at)}`;
+    } else if (command === 'delete_last_income') {
+      const { rows } = await pool.query(
+        `SELECT category, amount, currency, created_at FROM incomes WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`, [userId]);
+      if (rows[0]) return `🗑️ Ingreso: ${rows[0].category || 's/cat'} ${rows[0].currency === 'USD' ? `${Number(rows[0].amount).toLocaleString('es-AR')} USD` : `$${Number(rows[0].amount).toLocaleString('es-AR')}`}${fmt(rows[0].created_at)}`;
+    } else if (command === 'delete_last_activity') {
+      const { rows } = await pool.query(
+        `SELECT event_type, crop, event_date, created_at FROM domain_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, [userId]);
+      if (rows[0]) return `🗑️ Actividad: ${rows[0].event_type}${rows[0].crop ? ` (${rows[0].crop})` : ''}${fmt(rows[0].event_date ?? rows[0].created_at)}`;
+    } else if (command === 'delete_last_rainfall') {
+      const { rows } = await pool.query(
+        `SELECT millimeters AS mm, rainfall_date AS rain_date, created_at FROM rainfall WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, [userId]);
+      if (rows[0]) return `🗑️ Lluvia: ${rows[0].mm}mm${fmt(rows[0].rain_date ?? rows[0].created_at)}`;
+    }
+  } catch { /* best-effort */ }
+  return '';
 }
 
 /** Tips tras confirmar un gasto/ingreso (la confirmación bypasea el router). */

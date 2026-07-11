@@ -131,6 +131,31 @@ export class IntentClassifier {
   }
 
   /**
+   * ¿Cuál fue el ÚLTIMO registro del usuario? (activity/expense/income/rainfall)
+   * Los pre-classifiers de corrección lo usan para rutear "no, era en lote X" /
+   * "fue ayer en realidad" al edit_last_* CORRECTO — antes hardcodeaban
+   * edit_last_activity y una corrección post-gasto movía de lote la actividad
+   * de días atrás mientras el gasto quedaba mal (doble corrupción, auditoría
+   * Jul 2026). Fallback 'activity' si no hay nada (comportamiento previo).
+   */
+  private async findLastEditableRecordKind(userId: UserId): Promise<'activity' | 'expense' | 'income' | 'rainfall'> {
+    try {
+      const { rows } = await pool.query(
+        `SELECT kind FROM (
+           SELECT 'activity'::text AS kind, MAX(created_at) AS ts FROM domain_events WHERE user_id = $1
+           UNION ALL SELECT 'expense', MAX(created_at) FROM expenses WHERE user_id = $1 AND deleted_at IS NULL
+           UNION ALL SELECT 'income', MAX(created_at) FROM incomes WHERE user_id = $1 AND deleted_at IS NULL
+           UNION ALL SELECT 'rainfall', MAX(created_at) FROM rainfall WHERE user_id = $1
+         ) t WHERE ts IS NOT NULL ORDER BY ts DESC LIMIT 1`,
+        [userId],
+      );
+      return (rows[0]?.kind as 'activity' | 'expense' | 'income' | 'rainfall') ?? 'activity';
+    } catch {
+      return 'activity';
+    }
+  }
+
+  /**
    * TEST-ONLY seam: reemplaza el agente por un doble determinístico
    * (FakeAgentService) para testear el pipeline COMPLETO — interceptores,
    * mapper, validator, handlers, DB — sin pegarle a la API de Anthropic.
@@ -345,7 +370,22 @@ export class IntentClassifier {
     if (await getSettingBool('AGENT_CORRECTION_PRE_CLASSIFIER_ENABLED')) {
       const correction = detectCorrection(text);
       if (correction) {
-        const data: import('../types/index.js').ParsedCommand = { command: 'edit_last_activity' };
+        // Target-aware (Jul 2026): "no, era en lote X" aplica al ÚLTIMO
+        // registro real. newCrop siempre es actividad (solo ellas tienen
+        // cultivo); newPlot solo → rutear por kind. Lluvia sin lote propio →
+        // edit_last_rainfall igual acepta newPlotName.
+        let corrCommand = 'edit_last_activity';
+        if (!correction.newCrop && correction.newPlot) {
+          const kind = await this.findLastEditableRecordKind(userId);
+          corrCommand = kind === 'expense' ? 'edit_last_expense'
+            : kind === 'income' ? 'edit_last_income'
+            : kind === 'rainfall' ? 'edit_last_rainfall'
+            : 'edit_last_activity';
+          if (corrCommand !== 'edit_last_activity') {
+            console.log(`[intent-classifier] Correction target-aware: newPlot → ${corrCommand} (último registro: ${kind})`);
+          }
+        }
+        const data: import('../types/index.js').ParsedCommand = { command: corrCommand };
         if (correction.newPlot) data.newPlotName = correction.newPlot;
         if (correction.newCrop) data.newCrop = correction.newCrop;
         return {
@@ -394,10 +434,21 @@ export class IntentClassifier {
     {
       const newDate = extractLastRecordDateCorrection(text);
       if (newDate) {
+        // Target-aware (Jul 2026): "fue ayer en realidad" corrige la fecha del
+        // ÚLTIMO registro, sea actividad, gasto, ingreso o lluvia — antes
+        // siempre editaba una actividad aunque lo último fuera una lluvia.
+        const dateKind = await this.findLastEditableRecordKind(userId);
+        const dateCommand = dateKind === 'expense' ? 'edit_last_expense'
+          : dateKind === 'income' ? 'edit_last_income'
+          : dateKind === 'rainfall' ? 'edit_last_rainfall'
+          : 'edit_last_activity';
+        if (dateCommand !== 'edit_last_activity') {
+          console.log(`[intent-classifier] Correction target-aware: newDate → ${dateCommand} (último registro: ${dateKind})`);
+        }
         return {
           intent: {
             type: 'command',
-            data: { command: 'edit_last_activity', newDate } as import('../types/index.js').ParsedCommand,
+            data: { command: dateCommand, newDate } as import('../types/index.js').ParsedCommand,
           },
           confidence: 0.88,
           aiUsed: false,

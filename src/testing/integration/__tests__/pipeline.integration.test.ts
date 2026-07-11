@@ -291,6 +291,82 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('Ronda 2 — integridad de datos (Jul 2026)', () => {
+    let h: PipelineHarness;
+    let fieldId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('ronda2');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'Dos Rondas') RETURNING id`, [h.userId]);
+      fieldId = (f[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'D1')`, [fieldId]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'D2')`, [fieldId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('R2.1: "no, era en lote D2" tras un GASTO corrige el gasto (no una actividad vieja)', async () => {
+      const d1 = await h.q(`SELECT id FROM plots WHERE field_id = $1 AND name = 'D1'`, [fieldId]);
+      const d1Id = (d1[0] as { id: number }).id;
+      // actividad VIEJA en D1 (ayer) + gasto RECIÉN en D1
+      await h.q(
+        `INSERT INTO domain_events (user_id, plot_id, event_type, event_date, created_at) VALUES ($1, $2, 'spraying', NOW() - INTERVAL '1 day', NOW() - INTERVAL '1 day')`,
+        [h.userId, d1Id],
+      );
+      await h.q(
+        `INSERT INTO expenses (user_id, field_id, plot_id, amount, currency, category, description) VALUES ($1, $2, $3, 80000, 'ARS', 'Combustible', 'gasoil')`,
+        [h.userId, fieldId, d1Id],
+      );
+
+      const items = await h.send('no, era en lote D2');
+      expect(h.fakeAgent.calls.length).toBe(0); // determinístico, sin agente
+
+      const exp = await h.q(`SELECT p.name AS plot FROM expenses e JOIN plots p ON p.id = e.plot_id WHERE e.user_id = $1`, [h.userId]);
+      expect(String((exp[0] as { plot: string }).plot)).toBe('D2');  // el GASTO se movió
+      const act = await h.q(`SELECT p.name AS plot FROM domain_events d JOIN plots p ON p.id = d.plot_id WHERE d.user_id = $1`, [h.userId]);
+      expect(String((act[0] as { plot: string }).plot)).toBe('D1');  // la actividad NO se tocó
+      void items;
+    });
+
+    it('R2.2: delete del agente confirma con preview antes de borrar', async () => {
+      h.fakeAgent.enqueueTool('delete_last_activity', {});
+      const ask = await h.send('borrá la última actividad');
+      const text = h.allText(ask);
+      expect(text).toMatch(/Seguro que queres eliminar la ultima actividad/i);
+      expect(text).toMatch(/Actividad: spraying/i); // preview del objetivo
+      // NO borró todavía
+      let acts = await h.q(`SELECT COUNT(*)::int AS n FROM domain_events WHERE user_id = $1`, [h.userId]);
+      expect((acts[0] as { n: number }).n).toBe(1);
+      // Confirmar borra
+      const done = await h.tap('confirm_destructive_delete_last_activity');
+      expect(h.allText(done)).toMatch(/eliminad|borrad|borré/i);
+      acts = await h.q(`SELECT COUNT(*)::int AS n FROM domain_events WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+      expect((acts[0] as { n: number }).n).toBe(0); // soft-deleted
+    });
+
+    it('R2.4: plotNames numéricos del LLM no crashean — se coercionan a strings', async () => {
+      h.fakeAgent.enqueueTool('add_plots_batch', { field: 'Dos Rondas', plotNames: [7, 8], hectares: [50, 60] });
+      const items = await h.send('agregá los lotes 7 y 8');
+      const text = h.allText(items);
+      expect(text).toMatch(/Lotes creados|creado/i);
+      const plots = await h.q(`SELECT name FROM plots WHERE field_id = $1 AND name IN ('7','8') ORDER BY name`, [fieldId]);
+      expect(plots.length).toBe(2);
+    });
+
+    it('R2.5: el contexto NO hereda un lote borrado', async () => {
+      const { plotDiscovery } = await import('../../../services/message-pipeline.js');
+      const p = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Borrado') RETURNING id`, [fieldId]);
+      const pid = (p[0] as { id: number }).id;
+      await h.q(
+        `INSERT INTO conversation_state (user_id, last_field_id, last_plot_id, updated_at) VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET last_field_id = $2, last_plot_id = $3, updated_at = NOW()`,
+        [h.userId, fieldId, pid],
+      );
+      await h.q(`UPDATE plots SET deleted_at = NOW() WHERE id = $1`, [pid]);
+      const resolved = await plotDiscovery.resolveFromNames(h.userId, null, null);
+      expect(resolved.plotId).not.toBe(pid); // jamás el borrado
+    });
+  });
+
   describe('guard anti-pisada de campaña (regresión "me cerró la campaña", Jul 2026)', () => {
     let h: PipelineHarness;
     let plotId: number;

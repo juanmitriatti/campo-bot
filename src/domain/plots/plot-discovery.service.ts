@@ -165,7 +165,11 @@ export class PlotDiscoveryService {
     const state = await getConversationState(userId);
     if (state?.last_plot_id) {
       const plot = await getPlotById(state.last_plot_id);
-      if (plot) {
+      // getPlotById NO filtra deleted_at (otros callers necesitan lotes
+      // borrados, ej. restore). Acá SÍ: heredar un lote borrado del contexto
+      // asignaba el gasto a un plot_id soft-deleted → invisible en TODOS los
+      // reportes (agujero negro de datos, auditoría Jul 2026).
+      if (plot && !(plot as { deleted_at?: Date | null }).deleted_at) {
         return {
           fieldId: plot.field_id,
           fieldName: plot.field_name,

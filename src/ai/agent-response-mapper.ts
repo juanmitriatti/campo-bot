@@ -383,6 +383,48 @@ export class AgentResponseMapper {
     return filteredCalls.map(tc => this.mapToolCall(tc, originalText, validationOptions, perEntryDates));
   }
 
+  /**
+   * Coerción de TIPOS del tool_input (Jul 2026): la API de Anthropic NO valida
+   * los tipos del schema — Haiku emite números donde van strings (lotes "1",
+   * "2", "3" como number JSON) y strings donde van arrays. Eso reventaba
+   * .trim()/.match()/.map() aguas abajo → throw → silencio (auditoría null-
+   * safety). Normalizamos EN EL BORDE, una sola vez, para todos los handlers.
+   */
+  private coerceToolInputTypes(input: Record<string, unknown>): Record<string, unknown> {
+    const out = { ...input };
+    // Campos string: número → string ("agregá el lote 3" → plot: 3)
+    for (const k of ['field', 'fieldName', 'plot', 'plotName', 'city', 'province', 'crop', 'corral', 'category', 'product', 'oldName', 'newName', 'description']) {
+      if (typeof out[k] === 'number') {
+        console.warn(`[INTERCEPT] AI_MAPPER COERCE: ${k}=${out[k]} (number→string)`);
+        out[k] = String(out[k]);
+      }
+    }
+    // plotNames: string "A1, A2 y A3" → array; elementos numéricos → strings
+    if (out.plotNames != null && !Array.isArray(out.plotNames)) {
+      if (typeof out.plotNames === 'string') {
+        console.warn(`[INTERCEPT] AI_MAPPER COERCE: plotNames string → split`);
+        out.plotNames = out.plotNames.split(/\s*(?:,|;|\sy\s)\s*/).map(x => x.trim()).filter(Boolean);
+      } else {
+        console.warn(`[INTERCEPT] AI_MAPPER COERCE: plotNames tipo inválido (${typeof out.plotNames}) → drop`);
+        delete out.plotNames;
+      }
+    }
+    if (Array.isArray(out.plotNames)) {
+      out.plotNames = (out.plotNames as unknown[]).map(x => String(x));
+    }
+    // hectares como array (add_plots_batch): strings → números
+    if (Array.isArray(out.hectares)) {
+      out.hectares = (out.hectares as unknown[]).map(x => (typeof x === 'string' ? parseFloat(x.replace(',', '.')) : x));
+    }
+    // loads: si no es array, dropear con log (antes .filter reventaba y se
+    // perdía el parse ENTERO del mensaje al caer al regex fallback)
+    if (out.loads != null && !Array.isArray(out.loads)) {
+      console.warn(`[INTERCEPT] AI_MAPPER COERCE: loads tipo inválido (${typeof out.loads}) → drop`);
+      delete out.loads;
+    }
+    return out;
+  }
+
   private mapToolCall(
     toolCall: AgentResult['toolCalls'][0],
     originalText: string,
@@ -393,10 +435,11 @@ export class AgentResponseMapper {
     // Validate agent output against the user text. Per-field rules ship behind
     // their own flags in `validationOptions`; when none are enabled this is a
     // passthrough.
-    const { input, droppedFields } = validateToolCall(
+    const { input: validatedInput, droppedFields } = validateToolCall(
       { toolName, input: toolInput as Record<string, unknown>, originalText },
       validationOptions,
     );
+    const input = this.coerceToolInputTypes(validatedInput);
     if (droppedFields.length > 0) {
       // Cada strip tiene que ser visible en logs: el bug de "el otro lote"
       // (plot legítimo descartado como alucinación) estuvo invisible hasta
