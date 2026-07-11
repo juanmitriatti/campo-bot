@@ -111,12 +111,18 @@ export async function trialExpiredCopy(): Promise<string> {
     const publicUrl = await getSetting('PUBLIC_URL');
     if (publicUrl && /^https?:\/\//.test(publicUrl)) base = publicUrl.replace(/\/$/, '');
   } catch { /* fallback al default */ }
+  let supportLine = '';
+  try {
+    const { getSupportLine } = await import('./support-contact.js');
+    supportLine = await getSupportLine();
+  } catch { /* sin línea de soporte */ }
   return (
     '⏳ *Tu prueba terminó*\n\n' +
     'Para seguir usando las funciones completas (IA, audios, documentos, ' +
     'agronomía), activá tu plan desde tu panel:\n' +
     `${base}/dashboard\n\n` +
     'Tus datos siguen guardados — nada se pierde. Podés seguir consultando ' +
-    'tus campos y lotes con *mis campos* / *mis lotes*.'
+    'tus campos y lotes con *mis campos* / *mis lotes*.' +
+    (supportLine ? `\n\n${supportLine}` : '')
   );
 }

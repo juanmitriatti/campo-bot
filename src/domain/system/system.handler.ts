@@ -92,7 +92,9 @@ export class SystemHandler {
         }
         // Default: paginated category list
         const { message, interactive } = buildHelpMenu(user.name, helpBotName);
-        return { messages: [message], interactive };
+        const { getSupportLine } = await import('../../services/support-contact.js');
+        const helpSupport = await getSupportLine();
+        return { messages: [helpSupport ? `${message}\n\n${helpSupport}` : message], interactive };
       }
 
       case 'help_section': {
@@ -358,11 +360,15 @@ export class SystemHandler {
           const publicUrl = await getSetting('PUBLIC_URL');
           if (publicUrl && /^https?:\/\//.test(publicUrl)) base = publicUrl.replace(/\/$/, '');
 
+          const { getSupportLine } = await import('../../services/support-contact.js');
+          const supportLine = await getSupportLine();
+
           return {
             messages: [
               `📋 Tu plan: *${planName}*${trialLine}${limitLine}\n\n` +
               `*Planes disponibles:*\n${planLines}\n\n` +
-              `Para cambiar de plan entrá a tu panel:\n${base}/dashboard`,
+              `Para cambiar de plan entrá a tu panel:\n${base}/dashboard` +
+              (supportLine ? `\n\n${supportLine}` : ''),
             ],
           };
         } catch (e: unknown) {
