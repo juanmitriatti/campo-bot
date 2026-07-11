@@ -252,17 +252,30 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
     return { next: null, extracted, stillMissing: [], finalData: data };
   }
 
+  // ¿La pregunta va a ser la MISMA que la anterior? (mismo missing set → cero
+  // progreso). Preservar el askPrompt original del handler cuando existe: es
+  // más informativo que la plantilla ("¿En qué lote?" + lista de lotes reales
+  // vs "Me falta el lote" a secas — el loop de prod mostraba la genérica).
+  const sameMissingSet = stillMissing.length === (pending.missing ?? []).length
+    && stillMissing.every((s) => (pending.missing ?? []).includes(s));
+
   return {
     next: {
       command: pending.command,
       data,
       timestamp: Date.now(),
       missing: stillMissing,
-      askPrompt: buildAskPromptForMissing(stillMissing, pending.askPrompt),
+      askPrompt: sameMissingSet && pending.askPrompt
+        ? pending.askPrompt
+        : buildAskPromptForMissing(stillMissing, pending.askPrompt),
       // Preserve the serial queue across a still-missing re-ask. Without this, a
       // pivot/garbage answer that couldn't fill the slot re-asked but DROPPED the
       // queued siblings → the rest of a multi-item compound was silently lost (N1).
       ...(pending.nextInQueue && pending.nextInQueue.length > 0 ? { nextInQueue: pending.nextInQueue } : {}),
+      // Escalera de escalamiento: si no hubo progreso, el intento cuenta; con
+      // progreso parcial (llenó un slot pero faltan otros) se resetea.
+      attempts: sameMissingSet ? (pending.attempts ?? 0) + 1 : 0,
+      ...(pending.lastRejected ? { lastRejected: pending.lastRejected } : {}),
     },
     extracted,
     stillMissing,
@@ -281,7 +294,7 @@ function deriveSlotContext(command: string): { type?: 'expense' | 'income' | 'ac
  * Most cmd shapes use the same camelCase but a few have aliases (plot vs
  * plotName, field vs fieldName).
  */
-function slotToCmdKeys(slot: SlotName): string[] {
+export function slotToCmdKeys(slot: SlotName): string[] {
   switch (slot) {
     case 'plot': return ['plot', 'plotName'];
     case 'field': return ['field', 'fieldName'];
@@ -292,7 +305,7 @@ function slotToCmdKeys(slot: SlotName): string[] {
   }
 }
 
-const SLOT_LABEL: Record<SlotName, string> = {
+export const SLOT_LABEL: Record<SlotName, string> = {
   amount: 'el monto',
   category: 'la categoría',
   plot: 'el lote',

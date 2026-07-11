@@ -31,6 +31,17 @@ export interface PendingActivity {
    * the child's tail).
    */
   nextInQueue?: Array<Omit<PendingActivity, 'timestamp' | 'nextInQueue'>>;
+  /**
+   * Escalera de escalamiento (Jul 2026): re-asks SIN PROGRESO para el missing
+   * set actual. Se incrementa cuando (a) la respuesta no llenó ningún slot, o
+   * (b) la respuesta se consumió pero el handler la rechazó (lote inexistente)
+   * y re-pidió el mismo slot. Se resetea a 0 cuando hay progreso real.
+   * Regla dura: con attempts >= 2 NUNCA se repite la misma pregunta — el
+   * mensaje escala al agente con el pending como contexto estructurado.
+   */
+  attempts?: number;
+  /** Última respuesta consumida que el handler NO pudo resolver (razón del re-ask). */
+  lastRejected?: { slot: string; value: string };
 }
 
 import { PendingMirror } from './pending-persistence.js';

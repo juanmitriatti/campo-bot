@@ -538,6 +538,10 @@ export interface HandlerResponse {
         missing?: string[];
         askPrompt?: string;
       }>;
+      /** Escalera de escalamiento: re-asks sin progreso (lo setea el pipeline, no los handlers). */
+      attempts?: number;
+      /** Última respuesta consumida que el handler no pudo resolver. */
+      lastRejected?: { slot: string; value: string };
     };
     setPendingStockEntry?: {
       expenseId: number;

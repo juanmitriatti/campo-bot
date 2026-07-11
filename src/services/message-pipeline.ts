@@ -374,6 +374,8 @@ export function applySideEffects(
       missing: act.missing,
       askPrompt: act.askPrompt,
       nextInQueue: act.nextInQueue,
+      attempts: act.attempts,
+      lastRejected: act.lastRejected,
     });
   }
   if (fx.setPendingFieldCity) {
@@ -910,6 +912,56 @@ async function processTextMessageInner(
               || (pendingAct.data as Record<string, unknown>)?._fromQueue === true);
         const routed = await domainRouter.routeCommand(merged, userId, user, settings, queueBulk);
         const cmdResult = routed ?? { messages: ['No pude completar el registro. Probá de nuevo.'] };
+
+        // ─── ESCALERA DE ESCALAMIENTO: no-progreso tras re-ruteo (Jul 2026) ───
+        // El handler consumió la respuesta pero re-pidió slots del MISMO comando
+        // (ej: contestó "5b" y el lote 5b no existe). Tres defectos corregidos:
+        // (a) DESENVENENAR: el handler re-setea el pending con el valor NO
+        //     resuelto todavía en data (plot="otro lote") → el cálculo de slots
+        //     vacíos lo veía "lleno" y ni una respuesta VÁLIDA posterior podía
+        //     llenarlo — loop infinito visto en prod ("Me falta el lote" x3);
+        // (b) RAZÓN: el re-ask no decía POR QUÉ la respuesta anterior no sirvió;
+        // (c) INTENTOS: attempts viaja en el pending → loop-breaker corta en 2
+        //     y escala al agente con contexto (nivel 3).
+        let rejectionNote: string | null = null;
+        {
+          const reSet = (cmdResult.sideEffects as Record<string, any> | undefined)?.setPendingActivity;
+          if (reSet && reSet.command === pendingAct.command && Array.isArray(reSet.missing) && reSet.missing.length > 0) {
+            const { slotToCmdKeys, SLOT_LABEL } = await import('../middleware/pending-action-processor.js');
+            const rejectedSlot = reSet.missing.find((s: string) =>
+              slotToCmdKeys(s as never).some((k) => (merged as Record<string, unknown>)[k] != null));
+            if (rejectedSlot) {
+              const attemptedValue = String(
+                slotToCmdKeys(rejectedSlot as never)
+                  .map((k) => (merged as Record<string, unknown>)[k])
+                  .find((v) => v != null) ?? '',
+              );
+              // (a) limpiar los valores no resueltos del pending re-seteado
+              for (const s of reSet.missing) {
+                for (const k of slotToCmdKeys(s as never)) delete (reSet.data as Record<string, unknown>)[k];
+              }
+              reSet.attempts = (pendingAct.attempts ?? 0) + 1;
+              reSet.lastRejected = { slot: rejectedSlot, value: attemptedValue };
+              console.log(`[INTERCEPT] pending no-progress: ${pendingAct.command} slot=${rejectedSlot} value="${attemptedValue.slice(0, 40)}" attempts=${reSet.attempts}`);
+              // Nivel 3: al 2do fallo NUNCA repetir la pregunta — escalar al agente.
+              if (reSet.attempts >= 2) {
+                return escalatePendingToAgent(text, ctx, { ...pendingAct, lastRejected: reSet.lastRejected });
+              }
+              // (b) Nivel 1: la razón antecede al re-ask del handler
+              const label = (SLOT_LABEL as Record<string, string>)[rejectedSlot] ?? rejectedSlot;
+              const lookupSlots = new Set(['plot', 'field', 'crop', 'product']);
+              rejectionNote = lookupSlots.has(rejectedSlot)
+                ? `🤔 No encontré ${label} «${attemptedValue}».`
+                : `🤔 No pude usar «${attemptedValue}» como ${label}.`;
+              if (rejectedSlot === 'plot') {
+                rejectionNote += ` Si es un lote nuevo, decime *"crear lote ${attemptedValue}"* y lo cargamos.`;
+              } else if (rejectedSlot === 'field') {
+                rejectionNote += ` Si es un campo nuevo, decime *"agregar campo ${attemptedValue}"*.`;
+              }
+            }
+          }
+        }
+
         const { advanceQueueAfterCompletion } = await import('../middleware/pending-queue-advancer.js');
         const advanced = advanceQueueAfterCompletion(pendingActStore, phone, pendingAct, cmdResult);
         // Forward ALL sideEffects from the re-routed command (incl. setPending
@@ -917,10 +969,16 @@ async function processTextMessageInner(
         // here and test-bot didn't; unified now).
         applySideEffects(cmdResult.sideEffects, phone);
         const items = collectResponse(cmdResult);
+        if (rejectionNote) items.unshift({ type: 'text', text: rejectionNote });
         if (advanced.askPrompt) items.push({ type: 'text', text: advanced.askPrompt });
         return items;
       }
-      // Still missing slots → update pending state, re-ask
+      // Still missing slots → update pending state, re-ask. Loop-breaker: si ya
+      // re-preguntamos 2 veces sin progreso (la respuesta no llenó nada), la
+      // tercera NO es la misma pregunta — escala al agente con contexto.
+      if ((result.next.attempts ?? 0) >= 2) {
+        return escalatePendingToAgent(text, ctx, pendingAct);
+      }
       pendingActStore.set(phone, result.next);
       return [{ type: 'text', text: result.next.askPrompt || 'Me falta algún dato. ¿Me lo pasás?' }];
     } else if (pendingAct.data._needs === 'crop') {
@@ -999,9 +1057,12 @@ async function processTextMessageInner(
   // command data — antes SOLO whatsapp lo hacía; unificado para los 3 canales.
   const enriched = await enrichWithContext(text, userId);
 
-  // Classify intent
+  // Classify intent. El hint de escalamiento (nivel 3 de la escalera) tiene
+  // prioridad: lleva el pending completo + instrucción de rescate al agente.
+  const escalationHint = pendingEscalationHints.get(phone) ?? null;
+  if (escalationHint) pendingEscalationHints.delete(phone);
   const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings, {
-    pendingHint: pendingActStore.get(phone)?.askPrompt ?? null,
+    pendingHint: escalationHint ?? pendingActStore.get(phone)?.askPrompt ?? null,
   });
   const { intent: rawIntent, aiUsed, confidence } = parseResult;
   const agentMode = (parseResult as any)._agentMode as string | undefined;
@@ -1363,6 +1424,58 @@ async function processTextMessageInner(
   }
 
   return [];
+}
+
+/**
+ * Nivel 3 de la escalera de escalamiento (Jul 2026): tras 2 re-asks sin
+ * progreso, el turno del usuario va al AGENTE con el pending como contexto
+ * estructurado — en vez de repetir la misma pregunta por tercera vez.
+ *
+ * Diferencia CRÍTICA con el bug de Jun 2026 (respuestas al agente "a ciegas"
+ * que corrompieron un gasto): acá el agente recibe TODO el estado — comando,
+ * datos ya confirmados, slot faltante, valor rechazado y el inventario real
+ * del usuario — inyectado (a) inline en el texto (así el output-validator
+ * acepta los tokens que nosotros mismos aportamos, mismo principio que el
+ * pronoun-expander) y (b) como pendingHint con la instrucción de rescate.
+ */
+const pendingEscalationHints = new Map<string, string>();
+
+async function escalatePendingToAgent(
+  text: string,
+  ctx: ChannelContext,
+  pendingAct: import('../middleware/pending-activities.js').PendingActivity,
+): Promise<BotResponseItem[]> {
+  const { phone, userId } = ctx;
+  pendingActStore.clear(phone);
+
+  // Datos ya confirmados, sin claves internas
+  const data = Object.fromEntries(
+    Object.entries(pendingAct.data ?? {}).filter(([k, v]) => v != null && !k.startsWith('_') && k !== 'command'),
+  );
+  const missing = (pendingAct.missing ?? []).join(', ');
+  const rejected = pendingAct.lastRejected
+    ? ` Contestó «${pendingAct.lastRejected.value}» como ${pendingAct.lastRejected.slot} pero no existe/no resolvió.`
+    : '';
+
+  // Inventario real cuando falta lote/campo — el agente necesita saber QUÉ hay
+  let inventory = '';
+  if ((pendingAct.missing ?? []).some((s) => s === 'plot' || s === 'field')) {
+    try {
+      const plots = await agronomyRepository.findAllUserPlots(userId);
+      if (plots.length > 0) {
+        inventory = ` Lotes existentes del usuario: ${plots.map((p: { name: string; field_name: string }) => `${p.name} (${p.field_name})`).join(', ')}.`;
+      }
+    } catch { /* sin inventario, el hint sigue sirviendo */ }
+  }
+
+  const contextTag = `[contexto: estaba completando ${pendingAct.command} con ${JSON.stringify(data)}; falta ${missing}]`;
+  const hint =
+    `RESCATE DE PENDING: el usuario intenta completar ${pendingAct.command} y el sistema no pudo resolver su respuesta 2 veces.${rejected}${inventory} ` +
+    `NO repitas la misma pregunta. Explicale qué pasa y resolvé: si nombró un lote/campo que no existe, ofrecé crearlo (add_plot/add_field) o preguntale si quiso decir uno existente; si ahora tenés todos los datos, ejecutá la acción original completa.`;
+
+  pendingEscalationHints.set(phone, hint);
+  console.log(`[INTERCEPT] pending escalation → agent: ${pendingAct.command} missing=[${missing}] text="${text.slice(0, 60)}"`);
+  return processTextMessageInner(`${text} ${contextTag}`, ctx);
 }
 
 /**

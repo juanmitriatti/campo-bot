@@ -169,8 +169,13 @@ export class AgentService {
       // al agente — sin esto, respondía sin saber que hay un slot abierto y
       // podía conflacionar el mensaje nuevo con la respuesta esperada. Va en
       // el mensaje de usuario (fuera del prefix cacheado), así no rompe cache.
+      // El hint de RESCATE (escalera de escalamiento, Jul 2026) viaja completo
+      // y sin el framing de "pregunta pendiente" — es una instrucción de rescate
+      // con el estado del pending, no una pregunta abierta.
       const pendingLine = pendingHint
-        ? `[Hay una pregunta pendiente al usuario sin responder: "${pendingHint.slice(0, 150)}". Si este mensaje NO la responde, procesalo como acción nueva.]\n`
+        ? (pendingHint.startsWith('RESCATE DE PENDING')
+          ? `[${pendingHint}]\n`
+          : `[Hay una pregunta pendiente al usuario sin responder: "${pendingHint.slice(0, 150)}". Si este mensaje NO la responde, procesalo como acción nueva.]\n`)
         : '';
       const userContent = userPrefix ? `${userPrefix}\n${pendingLine}\n${text}` : `${pendingLine}${text}`;
       const messages: Anthropic.MessageParam[] = [

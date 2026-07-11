@@ -541,6 +541,70 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('escalera de escalamiento de pendings (anti-loop "Me falta el lote", Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('pending-escal');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'los aromos') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, '1A')`, [fid]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, '3b')`, [fid]);
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year) SELECT p.id, 'soja', 2026 FROM plots p JOIN fields fl ON fl.id = p.field_id WHERE fl.user_id = $1 AND p.name = '3b'`, [h.userId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('repro conversación real: "En otro lote" no envenena el pending — un "3b" posterior completa', async () => {
+      // "quiero registrar una cosecha" → agente omite plot → "¿En qué lote?"
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja' });
+      const ask = await h.send('quiero registrar una cosecha de soja');
+      expect(h.allText(ask)).toMatch(/qué lote/i);
+      const callsAfterAsk = h.fakeAgent.calls.length;
+
+      // "En otro lote" se consume como nombre de lote ("otro lote") y no resuelve.
+      // ANTES: el pending quedaba con data.plot="otro lote" → ni una respuesta
+      // VÁLIDA posterior podía llenar el slot (loop infinito visto en prod).
+      const junk = await h.send('En otro lote');
+      // Nivel 1: el re-ask tiene que DECIR que no encontró ese lote y mostrar los reales
+      expect(h.allText(junk)).toMatch(/no encontré/i);
+      expect(h.allText(junk)).toMatch(/1A/);
+
+      // La respuesta válida "3b" tiene que completar la cosecha (sin loop)
+      const done = await h.send('3b');
+      expect(h.fakeAgent.calls.length).toBe(callsAfterAsk); // todo determinístico
+      expect(h.allText(done)).not.toMatch(/me falta el lote/i);
+      const events = await h.q(
+        `SELECT event_type FROM domain_events WHERE user_id = $1 AND event_type = 'harvest'`,
+        [h.userId],
+      );
+      expect(events.length).toBe(1);
+    });
+
+    it('nivel 3: al 2do fallo el mensaje escala al AGENTE con el pending como contexto (nunca 3ra re-pregunta igual)', async () => {
+      h.fakeAgent.enqueueTool('log_spraying', { product: 'glifosato', quantity: 10, unit: 'lt' }); // sin plot
+      const ask = await h.send('fumigué con 10 litros de glifosato');
+      expect(h.allText(ask)).toMatch(/qué lote/i);
+      const callsAfterAsk = h.fakeAgent.calls.length;
+
+      // Fallo 1: lote inexistente → razón + re-ask (determinístico, sin agente)
+      const fail1 = await h.send('7c');
+      expect(h.allText(fail1)).toMatch(/no encontré/i);
+      expect(h.fakeAgent.calls.length).toBe(callsAfterAsk);
+
+      // Fallo 2: NUNCA la misma pregunta por 3ra vez — escala al agente con
+      // hint RESCATE + tag [contexto: ...] inline (validador acepta los tokens)
+      h.fakeAgent.enqueue([], 'No tenés un lote 7c — ¿querés que lo cree en los aromos?');
+      const fail2 = await h.send('7c');
+      expect(h.fakeAgent.calls.length).toBe(callsAfterAsk + 1);
+      const rescueCall = h.fakeAgent.calls[h.fakeAgent.calls.length - 1];
+      expect(rescueCall.pendingHint).toMatch(/RESCATE DE PENDING/);
+      expect(rescueCall.pendingHint).toMatch(/7c/); // el valor rechazado viaja
+      expect(rescueCall.pendingHint).toMatch(/1A/); // el inventario real viaja
+      expect(rescueCall.text).toMatch(/\[contexto: estaba completando log_spraying/);
+      expect(h.allText(fail2)).toMatch(/7c/); // la respuesta del agente llegó al usuario
+    });
+  });
+
   describe('Ronda 3 — salida diferida de pendings (Jul 2026)', () => {
     let h: PipelineHarness;
 
