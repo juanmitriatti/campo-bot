@@ -3800,7 +3800,8 @@
       limits: 'Limites',
       system: 'Sistema',
       onboarding: 'Onboarding',
-      mensajes: 'Mensajes del Bot'
+      mensajes: 'Mensajes del Bot',
+      payments: 'Pagos'
     };
 
     // AI-related setting groups shown in the dedicated "Config. de IA" page
@@ -3904,7 +3905,9 @@
     }
 
     function loadSettings() {
-      var allGroups = ['mensajes', 'agro_report', 'bot', 'ai', 'audio', 'limits', 'agronomy', 'system', 'onboarding'];
+      // 'payments' faltaba acá — los settings de MP existían en backend desde la
+      // migración 078 pero el admin nunca los mostró (checklist de lanzamiento).
+      var allGroups = ['mensajes', 'agro_report', 'bot', 'ai', 'audio', 'limits', 'agronomy', 'system', 'onboarding', 'payments'];
       renderSettingsGroups('settings-groups-container', allGroups, function(g) { return !AI_SETTING_GROUPS[g]; }, 'btn-save-settings', 'saveSettings');
     }
 
