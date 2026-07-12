@@ -44,7 +44,7 @@ export class AuthService {
   }
 
   async register(body: RegisterBody): Promise<{ user: AuthUser; tokens: TokenPair }> {
-    const { name, last_name, email, password, plan_id } = body;
+    const { name, last_name, email, password } = body;
 
     if (!name || !email || !password) {
       throw new AuthError(400, 'El email, nombre y contraseña son obligatorios');
@@ -58,17 +58,14 @@ export class AuthService {
       throw new AuthError(409, 'Ya existe una cuenta con este email');
     }
 
-    // Resolve plan
-    let planId: number;
-    if (plan_id) {
-      const plan = await this.plans.getPlanById(plan_id);
-      if (!plan) throw new AuthError(400, 'Plan no encontrado');
-      planId = plan.id;
-    } else {
-      const allPlans = await this.plans.getAllPlans();
-      const freePlan = allPlans.find(p => p.name === 'free');
-      planId = freePlan ? freePlan.id : 1;
-    }
+    // SEGURIDAD (Jul 2026): el registro público NO acepta plan_id — lo honraba
+    // y cualquiera podía auto-asignarse Enterprise ($0, todas las features) con
+    // un POST, esquivando trial y cobro para siempre. Todos arrancan en free +
+    // trial TRIAL_PLAN_NAME (abajo); los planes pagos se asignan vía checkout
+    // de MercadoPago y Enterprise a mano desde admin.
+    const allPlans = await this.plans.getAllPlans();
+    const freePlan = allPlans.find(p => p.name === 'free');
+    const planId = freePlan ? freePlan.id : 1;
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
@@ -88,10 +85,8 @@ export class AuthService {
     // plan that was already assigned above.
     if (this.subscriptions) {
       try {
-        if (!body.plan_id) {
-          const trialPlanName = (await getSetting('TRIAL_PLAN_NAME')) || 'pro';
-          await this.subscriptions.createTrialIfMissing(asUserId(user.id), trialPlanName);
-        }
+        const trialPlanName = (await getSetting('TRIAL_PLAN_NAME')) || 'pro';
+        await this.subscriptions.createTrialIfMissing(asUserId(user.id), trialPlanName);
       } catch (err) {
         logError('auth', 'TRIAL_BOOTSTRAP_FAILED', err as Error, { userId: user.id });
       }

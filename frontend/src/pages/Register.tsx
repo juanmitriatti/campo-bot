@@ -1,21 +1,6 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { apiRequest } from '../api/client';
-
-interface PlanOption {
-  id: number;
-  name: string;
-  display_name: string;
-  price_ars: number;
-}
-
-const PLAN_DESCRIPTIONS: Record<string, string> = {
-  free: 'Gastos, ingresos y campos',
-  pro: '+ Presupuestos, lluvias, clima, CSV',
-  pro_plus: '+ Agronomía, IA, audio',
-  enterprise: 'Todo + Campos compartidos',
-};
 
 // Storage key used by Dashboard to show a one-shot welcome toast on first
 // arrival after registering.
@@ -26,8 +11,6 @@ export default function Register() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedPlan, setSelectedPlan] = useState<number | null>(null);
-  const [plans, setPlans] = useState<PlanOption[]>([]);
   const [loading, setLoading] = useState(false);
   // Toggle that flips after the first failed submit. While `false`, we don't
   // show an inline error for short passwords (user is still typing). After a
@@ -35,19 +18,6 @@ export default function Register() {
   const [showPasswordError, setShowPasswordError] = useState(false);
   const { register, error, clearError } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    apiRequest<PlanOption[]>('/plans')
-      .then(data => {
-        setPlans(data);
-        // Pick the free plan as the default selection so the radios always
-        // show one option highlighted (previously the default was `undefined`
-        // and we leaned on string comparisons to fake it).
-        const freePlan = data.find(p => p.name === 'free');
-        if (freePlan) setSelectedPlan(freePlan.id);
-      })
-      .catch(() => {});
-  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -60,7 +30,9 @@ export default function Register() {
 
     setLoading(true);
     try {
-      await register(name, email, password, selectedPlan ?? undefined, lastName || undefined);
+      // Sin selector de plan (Jul 2026): todos arrancan con el trial completo
+      // (el backend ignora plan_id — elegir Enterprise gratis era un agujero).
+      await register(name, email, password, undefined, lastName || undefined);
       // Drop a one-shot flag so the dashboard can show the welcome toast.
       try { sessionStorage.setItem(POST_REGISTER_FLAG, email); } catch { /* SSR */ }
       navigate('/dashboard');
@@ -168,34 +140,8 @@ export default function Register() {
             )}
           </div>
 
-          {/* Plan selector */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Plan</label>
-            <div className="space-y-2">
-              {plans.map(plan => {
-                const isSelected = selectedPlan === plan.id;
-                return (
-                  <label
-                    key={plan.id}
-                    className={`flex items-start gap-3 p-3 border rounded-md cursor-pointer transition-colors ${
-                      isSelected ? 'border-campo-500 bg-campo-50' : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="plan"
-                      checked={isSelected}
-                      onChange={() => setSelectedPlan(plan.id)}
-                      className="mt-0.5 accent-campo-600"
-                    />
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">{plan.display_name}</p>
-                      <p className="text-xs text-gray-500">{PLAN_DESCRIPTIONS[plan.name] || ''}</p>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
+          <div className="bg-campo-50 border border-campo-200 rounded-md px-3 py-2.5 text-sm text-campo-800">
+            🎁 <span className="font-semibold">14 días gratis con todas las funciones</span> — agronomía, hacienda, stock, audios e IA. Sin tarjeta. Después elegís el plan que te quede cómodo.
           </div>
 
           <button
