@@ -3801,13 +3801,14 @@
       system: 'Sistema',
       onboarding: 'Onboarding',
       mensajes: 'Mensajes del Bot',
-      payments: 'Pagos'
+      payments: 'Pagos',
+      email: 'Email'
     };
 
     // AI-related setting groups shown in the dedicated "Config. de IA" page
     var AI_SETTING_GROUPS = { ai: true, audio: true, limits: true };
 
-    function renderSettingsGroups(containerId, groupOrder, filterFn, saveBtnId, saveFn) {
+    function renderSettingsGroups(containerId, groupOrder, filterFn, saveBtnId, saveFn, includeUnknownGroups) {
       var container = document.getElementById(containerId);
       container.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando configuracion...</div>';
 
@@ -3826,9 +3827,20 @@
           groups[group].push({ key: key, setting: s });
         }
 
+        // Grupos que el backend define pero la lista hardcodeada no conoce se
+        // agregan al final (solo en la página principal de settings) —
+        // 'payments' y 'email' fueron invisibles e inconfigurables por meses
+        // por faltar en la lista (misma clase de bug 2 veces).
+        var order = groupOrder.slice();
+        if (includeUnknownGroups) {
+          for (var known in groups) {
+            if (order.indexOf(known) === -1) order.push(known);
+          }
+        }
+
         var html = '';
-        for (var g = 0; g < groupOrder.length; g++) {
-          var groupKey = groupOrder[g];
+        for (var g = 0; g < order.length; g++) {
+          var groupKey = order[g];
           if (filterFn && !filterFn(groupKey)) continue;
           var items = groups[groupKey];
           if (!items) continue;
@@ -3907,8 +3919,8 @@
     function loadSettings() {
       // 'payments' faltaba acá — los settings de MP existían en backend desde la
       // migración 078 pero el admin nunca los mostró (checklist de lanzamiento).
-      var allGroups = ['mensajes', 'agro_report', 'bot', 'ai', 'audio', 'limits', 'agronomy', 'system', 'onboarding', 'payments'];
-      renderSettingsGroups('settings-groups-container', allGroups, function(g) { return !AI_SETTING_GROUPS[g]; }, 'btn-save-settings', 'saveSettings');
+      var allGroups = ['mensajes', 'agro_report', 'bot', 'ai', 'audio', 'limits', 'agronomy', 'system', 'onboarding', 'payments', 'email'];
+      renderSettingsGroups('settings-groups-container', allGroups, function(g) { return !AI_SETTING_GROUPS[g]; }, 'btn-save-settings', 'saveSettings', true);
     }
 
     function loadAiSettings() {
