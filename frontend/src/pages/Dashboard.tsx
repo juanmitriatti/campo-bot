@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { apiRequest } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/layout/Sidebar';
@@ -46,16 +47,39 @@ export default function Dashboard() {
   // One-shot welcome toast after registering. Register page leaves a flag in
   // sessionStorage; we read it once on mount, show the message, then clear.
   const [welcomeEmail, setWelcomeEmail] = useState<string | null>(null);
+  // Onboarding guiado (Jul 2026): el bot SOLO funciona por WhatsApp/Telegram
+  // (REQUIRE_VERIFIED_CHANNEL) pero la vinculación vivía escondida en "Mi
+  // cuenta" — el usuario se registraba, caía a un dashboard vacío y nadie le
+  // decía el paso siguiente. true = sin ningún canal verificado.
+  const [needsChannel, setNeedsChannel] = useState(false);
+
+  const refreshChannelStatus = async () => {
+    try {
+      const s = await apiRequest<{ whatsapp_verified: boolean; telegram_verified: boolean }>('/verify/status');
+      setNeedsChannel(!s.whatsapp_verified && !s.telegram_verified);
+    } catch { /* sin señal: no mostramos el banner */ }
+  };
 
   useEffect(() => {
+    let postRegister = false;
     try {
       const flag = sessionStorage.getItem('campo:postRegisterToast');
       if (flag) {
+        postRegister = true;
         setWelcomeEmail(flag);
         sessionStorage.removeItem('campo:postRegisterToast');
       }
     } catch { /* ignore */ }
+    // Recién registrado → directo al paso de conexión, no al dashboard vacío.
+    if (postRegister) setView('account');
+    void refreshChannelStatus();
   }, []);
+
+  // Al salir de "Mi cuenta" re-chequeamos: si acaba de vincular, el banner
+  // desaparece sin recargar la página.
+  useEffect(() => {
+    if (view !== 'account') void refreshChannelStatus();
+  }, [view]);
 
   useEffect(() => {
     const required = viewFeatureMap[view];
@@ -178,6 +202,23 @@ export default function Dashboard() {
               aria-label="Cerrar"
             >
               ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {needsChannel && view !== 'account' && (
+        <div className="bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-sm">
+          <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+            <span>
+              <span className="font-semibold">⚠️ Te falta un paso:</span> el asistente funciona por WhatsApp o Telegram y todavía no conectaste el tuyo.
+            </span>
+            <button
+              type="button"
+              onClick={() => setView('account')}
+              className="shrink-0 px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white font-medium transition-colors"
+            >
+              Conectar ahora
             </button>
           </div>
         </div>
