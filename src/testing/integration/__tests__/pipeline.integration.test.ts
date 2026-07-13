@@ -466,16 +466,25 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       // 2. Crear campo por SQL (simula el flujo de alta) — todavía sin lote
       const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
 
-      // 3. Crear el lote por el pipeline (comando trivial) → dispara el replay.
-      //    El replay re-corre el gasto: encolar la respuesta del agente para él.
+      // 3. Crear el lote por el pipeline (comando trivial). El alta deja
+      //    abierta la pregunta de hectáreas → el replay ESPERA su turno
+      //    (fricción real Jul 2026: la pregunta de ha y el "Retomo" llegaban
+      //    juntos y la respuesta del usuario era ambigua).
       h.fakeAgent.enqueueTool('add_plot', { plotName: 'Norte', field: 'La Esperanza' });
+      const created = await h.send('agregar lote Norte al campo La Esperanza');
+      const createdText = h.allText(created);
+      expect(createdText).toMatch(/hectáreas/i); // la pregunta de ha llega SOLA
+      expect(createdText).not.toMatch(/Retomo lo que me habías pedido/i);
+
+      // 4. Respondida (salteada) la pregunta de ha → AHORA sí retoma el gasto.
+      //    El replay re-corre el gasto: encolar la respuesta del agente para él.
       h.fakeAgent.enqueueTool('log_expense', { amount: 50000, category: 'Combustible', description: 'gasoil' });
-      const done = await h.send('agregar lote Norte al campo La Esperanza');
+      const done = await h.send('saltar');
       const doneText = h.allText(done);
       expect(doneText).toMatch(/Retomo lo que me habías pedido/i);
       expect(doneText).toMatch(/50/); // el monto reaparece
 
-      // 4. El stash se consumió (no re-dispara en el próximo mensaje)
+      // 5. El stash se consumió (no re-dispara en el próximo mensaje)
       const again = await h.send('hola');
       expect(h.allText(again)).not.toMatch(/Retomo lo que me habías pedido/i);
       void f;

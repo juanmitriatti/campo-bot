@@ -470,7 +470,25 @@ export async function processTextMessage(
          WHERE f.user_id = $1 AND f.deleted_at IS NULL`,
         [ctx.userId],
       );
-      if (rows[0].fields >= 1 && rows[0].plots >= 1) {
+      // El replay ESPERA su turno (fricción del primer usuario, Jul 2026): si
+      // el mensaje que creó campo+lotes dejó una pregunta abierta (cola de
+      // hectáreas "¿cuántas ha tiene Norte?", localidad del campo, confirm,
+      // flow), replayar en el mismo turno mezcla dos conversaciones — el
+      // usuario recibía la pregunta de ha Y el "🔁 Retomo..." juntos, y su
+      // respuesta era ambigua. El stash se conserva y el wrapper re-chequea en
+      // CADA mensaje: apenas se despeja la última pregunta, retoma solo.
+      const openQuestion = Boolean(
+        pendingPlotAreaStore.get(ctx.phone)
+        || pendingActStore.get(ctx.phone)
+        || pendingStore.get(ctx.phone)
+        || pendingObsStore.get(ctx.phone)
+        || pendingCityStore.get(ctx.phone)
+        // getFlowContext SIEMPRE devuelve objeto — 'idle' significa sin flow.
+        || (await conversationEngine.getFlowContext(ctx.userId)).state !== 'idle',
+      );
+      if (openQuestion) {
+        console.log(`[deferred-first-action] replay postponed for ${ctx.phone}: pregunta abierta`);
+      } else if (rows[0].fields >= 1 && rows[0].plots >= 1) {
         // Consumir ANTES del replay: si el replay volviera a bloquear, se
         // re-stashea solo; y nunca puede loopear (una re-entrada por mensaje).
         deferredFirstActionStore.clear(ctx.phone);
