@@ -1111,6 +1111,7 @@ async function processTextMessageInner(
         result.messages.push('⚠️ El mensaje era largo y se cortó. Si te quedaron acciones sin registrar, repetilas en un mensaje aparte.');
       }
       const items: BotResponseItem[] = result.messages.map(m => ({ type: 'text' as const, text: m }));
+      let compoundPlotAreaPrompt: string | null = null;
       if (result.stoppedAtFlow && result.lastSideEffects?.startFlow) {
         const { state, data } = result.lastSideEffects.startFlow;
         const flowResult = await conversationEngine.startFlow(userId, state, data);
@@ -1118,16 +1119,22 @@ async function processTextMessageInner(
         items.push(...collectResponse(flowResult.response));
       } else if (result.lastSideEffects) {
         const applied = applySideEffects(result.lastSideEffects, phone);
-        if (applied.plotAreaPrompt) items.push({ type: 'text', text: applied.plotAreaPrompt });
+        compoundPlotAreaPrompt = applied.plotAreaPrompt;
       }
       if (result.lastInteractive) {
         items.push({ type: 'interactive', interactive: result.lastInteractive } as BotResponseItem);
-      } else if (result.lastSuggestionKey) {
+      } else if (result.lastSuggestionKey && !compoundPlotAreaPrompt) {
+        // Sin sugerencias cuando hay una pregunta abierta: los botones de
+        // "¿Próximo paso?" DESPUÉS de "¿Cuántas ha tiene Norte?" competían con
+        // la pregunta y el usuario tocaba un botón dejándola huérfana (QA Jul 2026).
         const suggestion = getSuggestions(result.lastSuggestionKey);
         if (suggestion && suggestion.type === 'buttons') {
           items.push({ type: 'interactive', interactive: { type: 'buttons', body: suggestion.body, buttons: suggestion.buttons } } as BotResponseItem);
         }
       }
+      // La pregunta de hectáreas SIEMPRE es lo último del burst — lo último
+      // que ve el usuario es lo que le estamos preguntando.
+      if (compoundPlotAreaPrompt) items.push({ type: 'text', text: compoundPlotAreaPrompt });
       // Observability: when a compound ends with ONLY an interactive (buttons/list)
       // and no text messages, fall back to the interactive body so the row isn't
       // logged with an empty response_text — otherwise it's indistinguishable from
@@ -1350,6 +1357,9 @@ async function processTextMessageInner(
         lastTimeReference: (intent.data.timeLabel as string) ?? null,
       }).catch(() => {});
       conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
+      // Con pregunta de ha pendiente, sin botones de sugerencia (competían con
+      // la pregunta) — la pregunta va última en el burst.
+      if (applied.plotAreaPrompt) response.suggestionKey = undefined;
       const items = collectResponse(response);
       if (applied.plotAreaPrompt) items.push({ type: 'text', text: applied.plotAreaPrompt });
       return items;
@@ -1623,6 +1633,15 @@ export async function handleInteractiveReply(
       }
       return collectResponse(result.response);
     }
+    // Tap "🏠 Dejar a nivel campo" del picker de lote (gastos/ingresos): mismo
+    // efecto que escribir "a nivel campo" — commit sin lote (fricción QA Jul
+    // 2026: la fila no existía en el flow single; el bulk sí la tenía).
+    if (callbackId === 'flow_plot_field_level' && flowCtx.state !== 'idle') {
+      const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
+      if (committed.length > 0) return committed;
+      // No era un flow financiero commiteable — seguir el camino normal (el
+      // valor "field level" no matchea ningún lote y el flow re-pregunta).
+    }
     // flow_cat_, flow_field_, flow_activity_ → feed into flow
     const prefixes = ['flow_cat_', 'flow_field_', 'flow_plot_', 'flow_activity_'] as const;
     for (const prefix of prefixes) {
@@ -1746,7 +1765,8 @@ export async function handleInteractiveReply(
         const plot = await financialService.getOrCreatePlot(field.id, plotName);
         const response: HandlerResponse = {
           messages: [`📍 Lote *${plot.name}* creado en campo *${field.name}*`],
-          suggestionKey: 'plot_created',
+          // Sin suggestionKey: la pregunta de hectáreas que sigue debe ser lo
+          // último del burst, sin botones compitiendo.
           sideEffects: { setPendingPlotArea: { plotId: plot.id, plotName: plot.name, fieldName: field.name } },
         };
         const items = collectResponse(response);

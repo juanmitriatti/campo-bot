@@ -91,7 +91,7 @@ const steps: FlowStep[] = [
     },
     interactiveAsync: async (_data, userId) => {
       const plots = await entityValidator.getUserPlotsWithFields(userId);
-      return buildPlotInteractiveGrouped(plots);
+      return buildPlotInteractiveGrouped(plots, undefined, true);
     },
     validate: (input) => {
       return { value: input.trim() };

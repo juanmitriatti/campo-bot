@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login, error, clearError } = useAuth();
   const navigate = useNavigate();
@@ -32,7 +33,9 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-campo-700">Campo Bot</h1>
+          <a href="/" className="inline-block">
+            <h1 className="text-3xl font-bold text-campo-700">Campo Bot</h1>
+          </a>
           <p className="text-gray-500 mt-1">Iniciá sesión en tu cuenta</p>
         </div>
 
@@ -62,16 +65,25 @@ export default function Login() {
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
               Contraseña
             </label>
-            <input
-              id="password"
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
-              placeholder="Mínimo 8 caracteres"
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 pr-16 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
+                placeholder="Tu contraseña"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(v => !v)}
+                className="absolute inset-y-0 right-2 text-xs text-gray-500 hover:text-gray-700 px-1"
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              >
+                {showPassword ? 'Ocultar' : 'Ver'}
+              </button>
+            </div>
           </div>
 
           <button

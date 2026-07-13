@@ -87,6 +87,11 @@ export class AuthService {
       try {
         const trialPlanName = (await getSetting('TRIAL_PLAN_NAME')) || 'pro';
         await this.subscriptions.createTrialIfMissing(asUserId(user.id), trialPlanName);
+        // El trial cambia el plan del usuario (free → trial plan) DESPUÉS del
+        // INSERT — refrescar para que la respuesta del register refleje el plan
+        // real (el frontend leía plan_id=free aunque el trial Pro+ ya existía).
+        const fresh = await this.auth.getUserById(user.id);
+        if (fresh) user = fresh;
       } catch (err) {
         logError('auth', 'TRIAL_BOOTSTRAP_FAILED', err as Error, { userId: user.id });
       }

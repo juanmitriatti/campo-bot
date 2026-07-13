@@ -33,7 +33,7 @@ export default function ForgotPassword() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-campo-700">Campo Bot</h1>
+          <a href="/" className="inline-block"><h1 className="text-3xl font-bold text-campo-700">Campo Bot</h1></a>
           <p className="text-gray-500 mt-1">Recuperá tu contraseña</p>
         </div>
 

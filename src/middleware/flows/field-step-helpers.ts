@@ -176,6 +176,9 @@ export function buildPlotInteractive(
 export function buildPlotInteractiveGrouped(
   plots: PlotWithField[],
   body = '¿En qué lote?',
+  // Gastos/ingresos pueden guardarse sin lote (a nivel campo) — el picker lo
+  // ofrece como fila. Actividades agro NO (necesitan lote): no pasar el flag.
+  includeFieldLevel = false,
 ): InteractiveMessage | null {
   if (plots.length === 0) return null;
   const fieldNames = [...new Set(plots.map(p => p.fieldName))];
@@ -209,6 +212,12 @@ export function buildPlotInteractiveGrouped(
       });
     totalRows += rows.length;
     sections.push({ title: fn, rows });
+  }
+  if (includeFieldLevel) {
+    sections.push({
+      title: 'Sin lote',
+      rows: [{ id: 'flow_plot_field_level', title: '🏠 Dejar a nivel campo' }],
+    });
   }
   return {
     type: 'list' as const,
