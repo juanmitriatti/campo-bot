@@ -223,11 +223,15 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
           );
           hasFields = rows.length > 0;
         } catch { /* ante la duda, el copy genérico */ }
+        // Copys configurables desde admin (grupo "Mensajes del Bot").
+        const { interpolate } = await import('../utils/template.js');
+        const botName = (await getSetting('BOT_NAME')) || 'MIA';
+        const template = hasFields
+          ? await getSetting('TG_LINKED_WELCOME_MESSAGE')
+          : await getSetting('TG_LINKED_WELCOME_NO_FIELDS_MESSAGE');
         const greeting = r.already_linked
           ? '✅ Tu cuenta ya estaba vinculada. ¡Listo para operar!'
-          : hasFields
-            ? '✅ *Cuenta vinculada*\n\nYa podés usar Campo Bot por Telegram. Probá con *menu* o escribí algo como "gasté 50 mil en gasoil".'
-            : '✅ *Cuenta vinculada*\n\nPara arrancar, contame de tu campo — podés decirme todo junto:\n\n👉 _"Tengo el campo La Esperanza en Pergamino con los lotes Norte y Sur"_\n\nY de ahí en más registrá lo que quieras como te salga: gastos, siembras, lluvias, hacienda… por texto o audio.';
+          : interpolate(template || '✅ *Cuenta vinculada*', { botName });
         await sendTelegramMessage(chatId, greeting);
       } catch (err) {
         if (err instanceof VerificationError) {
