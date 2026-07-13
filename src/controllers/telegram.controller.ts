@@ -208,9 +208,26 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
           String(chatId),
           message.from?.first_name ?? null,
         );
+        // Bienvenida consciente del estado (fricción real del primer usuario,
+        // Jul 2026): al recién registrado SIN campos el copy viejo le sugería
+        // "gasté 50 mil en gasoil" — que rebota inmediatamente con "primero
+        // necesitás crear un campo". El bot se contradecía en sus primeros dos
+        // mensajes. Sin campos → el primer paso es contar el campo (el agente
+        // soporta el alta completa en UN mensaje).
+        let hasFields = true;
+        try {
+          const { pool } = await import('../config/db.js');
+          const { rows } = await pool.query(
+            'SELECT 1 FROM fields WHERE user_id = $1 AND deleted_at IS NULL LIMIT 1',
+            [r.user_id],
+          );
+          hasFields = rows.length > 0;
+        } catch { /* ante la duda, el copy genérico */ }
         const greeting = r.already_linked
           ? '✅ Tu cuenta ya estaba vinculada. ¡Listo para operar!'
-          : '✅ *Cuenta vinculada*\n\nYa podés usar Campo Bot por Telegram. Probá con *menu* o escribí algo como "gasté 50 mil en gasoil".';
+          : hasFields
+            ? '✅ *Cuenta vinculada*\n\nYa podés usar Campo Bot por Telegram. Probá con *menu* o escribí algo como "gasté 50 mil en gasoil".'
+            : '✅ *Cuenta vinculada*\n\nPara arrancar, contame de tu campo — podés decirme todo junto:\n\n👉 _"Tengo el campo La Esperanza en Pergamino con los lotes Norte y Sur"_\n\nY de ahí en más registrá lo que quieras como te salga: gastos, siembras, lluvias, hacienda… por texto o audio.';
         await sendTelegramMessage(chatId, greeting);
       } catch (err) {
         if (err instanceof VerificationError) {
