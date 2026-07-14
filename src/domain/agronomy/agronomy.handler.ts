@@ -2404,6 +2404,18 @@ export class AgronomyHandler {
           });
         }
 
+        // Rinde en el path de dedup/append: la cosecha de hoy YA existía y el
+        // mensaje nuevo trae el rinde ("el maíz me dio 100tn") — persistirlo.
+        // Antes se MOSTRABA en la respuesta pero no se guardaba en ningún lado:
+        // plot_crops.yield_kg quedaba NULL y campaign_stats respondía
+        // "Rendimiento: no registrado" 30 segundos después (visto en prod).
+        if (isAppend && yieldKg != null && yieldKg > 0) {
+          const appendPcId = (savedEvent.plot_crop_id as number | null) ?? harvested?.id ?? null;
+          if (appendPcId) {
+            await this.cropService.updateYield(appendPcId, yieldKg, yieldNotes);
+          }
+        }
+
         // Save loads if provided
         if (loads && loads.length > 0) {
           const plotCropId = (savedEvent.plot_crop_id as number) || null;

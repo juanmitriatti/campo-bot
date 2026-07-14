@@ -666,6 +666,40 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('rinde en cosecha repetida — dedup/append persiste el yield (repro "me dio 100tn", Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('harvest-yield-append');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 100) RETURNING id`, [fid]);
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year) SELECT p.id, 'maíz', 2026 FROM plots p WHERE p.field_id = $1`, [fid]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('cosecha sin rinde + "me dio 100tn" el mismo día → el rinde SE PERSISTE (antes solo se mostraba)', async () => {
+      // 1. Cosecha inicial sin rinde (crea el evento de hoy)
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'maíz', plot: 'Norte' });
+      const first = await h.send('coseché el maíz del lote Norte');
+      expect(h.allText(first)).toMatch(/cosecha/i);
+
+      // 2. El rinde llega en un segundo mensaje — cae en el path de dedup
+      //    (evento de cosecha de hoy ya existe). ANTES: se mostraba en la
+      //    respuesta pero plot_crops.yield_kg quedaba NULL y "qué rinde tuve"
+      //    decía "no registrado".
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'maíz', plot: 'Norte', yield_kg: 100000 });
+      await h.send('el maiz me dio 100tn');
+
+      const pc = await h.q(
+        `SELECT pc.yield_kg FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id
+         JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1`,
+        [h.userId],
+      );
+      expect(Number(pc[0].yield_kg)).toBe(100000);
+    });
+  });
+
   describe('Ronda 3 — copy honesto de IA caída (Jul 2026)', () => {
     let h: PipelineHarness;
 
