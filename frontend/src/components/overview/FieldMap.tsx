@@ -96,7 +96,15 @@ export default function FieldMap() {
                   ? (fieldPlots.some(p => p.cropStatus === 'active') ? 'active'
                      : fieldPlots.some(p => p.cropStatus === 'harvested') ? 'harvested' : 'idle')
                   : 'idle';
-                const positions: LatLngExpression[] = field.polygon.map((p: any) => [p.lat, p.lng]);
+                // El polígono viene en DOS formatos según quién lo guardó:
+                // [{lat, lng}, ...] (editor web) o [[lat, lng], ...] (bot).
+                // Solo objetos crasheaba Leaflet con el formato de pares
+                // ([undefined, undefined] → _projectLatlngs TypeError) y el
+                // error boundary tumbaba TODO el dashboard.
+                const positions = (field.polygon as any[])
+                  .map((p: any): [number, number] => Array.isArray(p) ? [p[0], p[1]] : [p?.lat, p?.lng])
+                  .filter((pt) => typeof pt[0] === 'number' && typeof pt[1] === 'number' && isFinite(pt[0]) && isFinite(pt[1])) as LatLngExpression[];
+                if (positions.length < 3) return null; // sin 3 vértices no hay polígono
                 return (
                   <Polygon
                     key={`poly-${field.id}`}

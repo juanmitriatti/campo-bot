@@ -6,6 +6,7 @@ import RentabilidadPorLoteChart from './charts/RentabilidadPorLoteChart';
 import CategoryDonutChart from './CategoryDonutChart';
 import RecentFeed from './RecentFeed';
 import FieldMap from './FieldMap';
+import SectionErrorBoundary from '../SectionErrorBoundary';
 
 interface Props {
   fieldId: number | null;
@@ -87,7 +88,9 @@ export default function OverviewSummaryView({ fieldId, onRecentItemClick, onSeeA
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         <div className="lg:col-span-8">
-          <FieldMap />
+          <SectionErrorBoundary label="el mapa de campos">
+            <FieldMap />
+          </SectionErrorBoundary>
         </div>
         <div className="lg:col-span-4">
           <RecentFeed items={data.recent_items} onItemClick={onRecentItemClick} onSeeAll={onSeeAllActivities} />
