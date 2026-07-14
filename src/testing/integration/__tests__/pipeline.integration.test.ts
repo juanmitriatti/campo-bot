@@ -578,6 +578,24 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       }
     });
 
+    it('el menú principal ofrece Nueva Actividad y respeta el tope de 10 filas de WhatsApp', async () => {
+      const menu = await h.send('menú');
+      const interactive = menu.find(i => i.type === 'interactive')?.interactive as
+        { sections?: Array<{ rows: Array<{ id: string }> }> } | undefined;
+      expect(interactive?.sections).toBeTruthy();
+      const rows = (interactive!.sections ?? []).flatMap(s => s.rows);
+      expect(rows.length).toBeLessThanOrEqual(10); // Cloud API rechaza >10 (fallaba mudo en WA)
+      const ids = rows.map(r => r.id);
+      expect(ids).toContain('flow_new_activity'); // actividades descubribles desde el menú
+      expect(ids).toContain('menu_documentos');
+
+      // La fila de documentos abre el picker factura/remito
+      const docs = await h.tap('menu_documentos');
+      const raw = JSON.stringify(docs);
+      expect(raw).toMatch(/doc_upload_factura/);
+      expect(raw).toMatch(/doc_upload_remito/);
+    });
+
     it('el picker NO ofrece eventos de hacienda; el tap del botón viejo redirige sin evento fantasma', async () => {
       const start = await h.tap('flow_new_activity');
       const raw = JSON.stringify(start);

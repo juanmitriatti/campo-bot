@@ -108,11 +108,16 @@ export class SystemHandler {
       }
 
       case 'menu':
+        // MAXIMO 10 filas totales: la Cloud API de WhatsApp rechaza listas mas
+        // largas (el menu anterior tenia 12 -> probablemente ni se mostraba en
+        // WA; en Telegram si porque renderiza distinto). Dolar y Configuracion
+        // salieron (se escriben: "dolar" / via ayuda) para hacerle lugar a
+        // Actividad — el flow no era descubrible desde ningun menu (QA Jul 2026).
         return {
           messages: [],
           interactive: {
             type: 'list',
-            body: '\ud83d\udccb *Men\u00fa principal*\nEleg\u00ed una opci\u00f3n o escrib\u00ed directamente lo que necesit\u00e9s.',
+            body: '\ud83d\udccb *Men\u00fa principal*\nEleg\u00ed una opci\u00f3n o escrib\u00ed directamente lo que necesit\u00e9s (ej: *dolar*, *pizarra*, *ayuda*).',
             buttonText: 'Ver opciones',
             sections: [
               {
@@ -120,13 +125,8 @@ export class SystemHandler {
                 rows: [
                   { id: 'flow_new_expense', title: '\ud83d\udcb8 Nuevo Gasto', description: 'Registrar paso a paso' },
                   { id: 'flow_new_income', title: '\ud83d\udcb0 Nuevo Ingreso', description: 'Registrar paso a paso' },
-                ],
-              },
-              {
-                title: 'Documentos',
-                rows: [
-                  { id: 'doc_upload_factura', title: '🧾 Cargar Factura', description: 'Registrar gastos desde factura' },
-                  { id: 'doc_upload_remito', title: '📋 Cargar Remito', description: 'Cargar stock desde remito' },
+                  { id: 'flow_new_activity', title: '\ud83c\udf31 Nueva Actividad', description: 'Siembra, fumigaci\u00f3n, cosecha\u2026' },
+                  { id: 'menu_documentos', title: '\ud83e\uddfe Cargar Documento', description: 'Factura o remito desde una foto' },
                 ],
               },
               {
@@ -134,7 +134,6 @@ export class SystemHandler {
                 rows: [
                   { id: 'cmd_resumen_mensual', title: '\ud83d\udcc8 Resultado Mes', description: 'Ingresos vs gastos' },
                   { id: 'menu_reportes', title: '\ud83d\udcca Reportes', description: 'Semanal, CSV, agron\u00f3mico' },
-                  { id: 'menu_dolar', title: '\ud83d\udcb5 D\u00f3lar', description: 'Cotizaci\u00f3n actual' },
                 ],
               },
               {
@@ -148,10 +147,23 @@ export class SystemHandler {
               {
                 title: 'Sistema',
                 rows: [
-                  { id: 'menu_config', title: '\u2699\ufe0f Configuraci\u00f3n', description: 'Alertas y preferencias' },
-                  { id: 'menu_ayuda', title: '\u2753 Ayuda', description: 'Ver todos los comandos' },
+                  { id: 'menu_ayuda', title: '\u2753 Ayuda', description: 'Comandos y configuraci\u00f3n' },
                 ],
               },
+            ],
+          },
+        };
+
+      case 'show_documents_menu':
+        return {
+          messages: [],
+          interactive: {
+            type: 'buttons',
+            body: '\ud83d\udcc4 \u00bfQu\u00e9 documento quer\u00e9s cargar?\n\nSacale una foto y te registro los datos solos.',
+            buttons: [
+              { id: 'doc_upload_factura', title: '\ud83e\uddfe Factura' },
+              { id: 'doc_upload_remito', title: '\ud83d\udccb Remito' },
+              { id: 'back_menu', title: 'Volver' },
             ],
           },
         };
@@ -253,8 +265,8 @@ export class SystemHandler {
             type: 'buttons',
             body: '\ud83c\udf31 *Agronom\u00eda* \u2014 \u00bfQu\u00e9 quer\u00e9s hacer?',
             buttons: [
+              { id: 'flow_new_activity', title: '\ud83c\udf31 Actividad' },
               { id: 'cmd_reporte_agro', title: 'Reporte Agro' },
-              { id: 'menu_lluvia', title: 'Lluvia' },
               { id: 'back_menu', title: 'Volver' },
             ],
           },

@@ -162,6 +162,23 @@ export async function sendInteractiveButtons(to, body, buttons) {
 
 export async function sendInteractiveList(to, body, buttonText, sections) {
   to = formatArgNumber(to);
+  // La Cloud API rechaza listas con más de 10 filas TOTALES (el request entero
+  // falla y el usuario no ve NADA). Truncar con log en vez de fallar mudo —
+  // el menú principal viajó meses con 12 filas sin que nadie lo viera en WA.
+  let totalRows = 0;
+  const capped = [];
+  for (const s of sections) {
+    const remaining = 10 - totalRows;
+    if (remaining <= 0) break;
+    const rows = s.rows.slice(0, remaining);
+    totalRows += rows.length;
+    capped.push({ ...s, rows });
+  }
+  const originalTotal = sections.reduce((n, s) => n + s.rows.length, 0);
+  if (originalTotal > 10) {
+    console.warn(`[INTERCEPT] WA list truncada: ${originalTotal} filas → 10 (body="${String(body).slice(0, 40)}")`);
+  }
+  sections = capped;
   try {
     await axios.post(
       `${API_BASE}/messages`,

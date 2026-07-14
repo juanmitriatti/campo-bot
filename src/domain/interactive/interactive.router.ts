@@ -13,6 +13,7 @@ const CALLBACK_MAP: Record<string, ParsedCommand> = {
   'menu_config': { command: 'show_alerts' },
   'menu_ayuda': { command: 'help' },
   'menu_dolar': { command: 'dollar' },
+  'menu_documentos': { command: 'show_documents_menu' },
   // Sub-menu: Gastos
   'cmd_resumen_mensual': { command: 'monthly_result' },
   'cmd_reporte_mensual': { command: 'monthly_report' },
