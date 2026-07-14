@@ -4233,6 +4233,17 @@ export class AgronomyHandler {
       lines.push(profLine);
     }
 
+    // Hacienda aparte: excluida del margen del cultivo, visible igual.
+    if (s.livestockAside) {
+      const la = s.livestockAside;
+      const parts: string[] = [];
+      if (la.expensesARS > 0) parts.push(`compras $${la.expensesARS.toLocaleString('es-AR')}`);
+      if (la.expensesUSD > 0) parts.push(`compras ${la.expensesUSD.toLocaleString('es-AR')} USD`);
+      if (la.incomesARS > 0) parts.push(`ventas $${la.incomesARS.toLocaleString('es-AR')}`);
+      if (la.incomesUSD > 0) parts.push(`ventas ${la.incomesUSD.toLocaleString('es-AR')} USD`);
+      lines.push(`\n🐄 *Hacienda (aparte):* ${parts.join(' | ')}\n_No entra en la rentabilidad del cultivo._`);
+    }
+
     // Scouting (structured monitoring)
     if (s.scouting && s.scouting.count > 0) {
       const sevLabels = ['', 'ausente', 'leve', 'moderada', 'alta', 'severa'];

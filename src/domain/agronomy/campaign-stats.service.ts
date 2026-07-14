@@ -43,6 +43,17 @@ export interface CampaignStats {
     count: number;
   };
 
+  /** Movimientos categoría Hacienda en el lote durante la campaña — EXCLUIDOS
+   * del margen del cultivo (la hacienda tiene su propia economía), mostrados
+   * aparte para no ocultar datos. null cuando no hubo ninguno. */
+  livestockAside: {
+    expensesARS: number;
+    expensesUSD: number;
+    incomesARS: number;
+    incomesUSD: number;
+    count: number;
+  } | null;
+
   yield: {
     kg: number | null;
     kgPerHa: number | null;
@@ -221,12 +232,28 @@ export class CampaignStatsService {
       };
     });
 
+    // Los movimientos de HACIENDA no entran en la economía del CULTIVO: una
+    // compra de terneros en el mismo lote mostraba un maíz con -$19,4M de
+    // resultado (visto en prod). Se acumulan aparte y el formatter los muestra
+    // como línea separada — excluidos del margen, no ocultos.
+    const isLivestockCat = (c: unknown) => String(c ?? '').toLowerCase() === 'hacienda';
+    const livestockAside = { expensesARS: 0, expensesUSD: 0, incomesARS: 0, incomesUSD: 0, count: 0 };
+    let excludedExpCount = 0;
+    let excludedIncCount = 0;
+
     // Aggregate expenses
     let expTotalARS = 0;
     let expTotalUSD = 0;
     const expByCategory: Record<string, number> = {};
     for (const e of expenses) {
       const amt = Number(e.amount);
+      if (isLivestockCat(e.category)) {
+        livestockAside.count++;
+        excludedExpCount++;
+        if (e.currency === 'USD') livestockAside.expensesUSD += amt;
+        else livestockAside.expensesARS += amt;
+        continue;
+      }
       if (e.currency === 'USD') {
         expTotalUSD += amt;
       } else {
@@ -241,6 +268,13 @@ export class CampaignStatsService {
     let incTotalUSD = 0;
     for (const i of incomes) {
       const amt = Number(i.amount);
+      if (isLivestockCat(i.category)) {
+        livestockAside.count++;
+        excludedIncCount++;
+        if (i.currency === 'USD') livestockAside.incomesUSD += amt;
+        else livestockAside.incomesARS += amt;
+        continue;
+      }
       if (i.currency === 'USD') {
         incTotalUSD += amt;
       } else {
@@ -334,8 +368,9 @@ export class CampaignStatsService {
       state,
       durationDays,
       activities: { total: actList.length, byType: actByType, list: actList },
-      expenses: { totalARS: expTotalARS, totalUSD: expTotalUSD, byCategory: expByCategory, count: expenses.length },
-      incomes: { totalARS: incTotalARS, totalUSD: incTotalUSD, count: incomes.length },
+      expenses: { totalARS: expTotalARS, totalUSD: expTotalUSD, byCategory: expByCategory, count: expenses.length - excludedExpCount },
+      incomes: { totalARS: incTotalARS, totalUSD: incTotalUSD, count: incomes.length - excludedIncCount },
+      livestockAside: livestockAside.count > 0 ? livestockAside : null,
       yield: { kg: yieldKg, kgPerHa: yieldKgPerHa, notes: campaign.yield_notes || null, loads: loadsList, avgHumidity },
       profitability: { netARS, costPerHaARS: costPerHa, incomePerHaARS: incomePerHa, costPerTnARS, costPerTnUSD, incomePerTnARS },
       observations: { count: obsList.length, list: obsList },

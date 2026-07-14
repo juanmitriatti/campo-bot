@@ -1215,7 +1215,26 @@ export function startScheduler() {
       .catch(err => console.error("[scheduler] reminder tick failed:", err));
   });
 
-  console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily cleanup + flow reminders + expense templates + subscription sweep + task reminders. ALERTAS (clima/viento/seca + proactivas) DESACTIVADAS.");
+  // Drip de descubrimiento del trial — cada hora a los :40; el tick gatea por
+  // TRIAL_DRIP_HOUR internamente (hora configurable sin re-registrar el cron).
+  // Telegram-first con fallback WhatsApp, mismo canal que los recordatorios.
+  cron.schedule("40 * * * *", () => {
+    import("./trial-drip.service.js")
+      .then(m => m.trialDripTick(async (userId, contact, message) => {
+        const result = await sendAlertWithRetryMultiChannel(
+          userId,
+          { phone: contact.phone, telegramId: contact.telegramId },
+          message,
+          "trial_drip",
+          {},
+        );
+        return !!result.sent;
+      }))
+      .then(n => { if (n > 0) console.log(`[scheduler] trial drip enviados: ${n}`); })
+      .catch(err => console.error("[scheduler] trial drip tick failed:", err));
+  });
+
+  console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily cleanup + flow reminders + expense templates + subscription sweep + task reminders + trial drip. ALERTAS (clima/viento/seca + proactivas) DESACTIVADAS.");
 }
 
 async function subscriptionSweepTick() {
