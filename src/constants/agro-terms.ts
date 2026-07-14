@@ -168,16 +168,26 @@ export interface ActivityTypeEntry {
   id: string;
   label: string;
   emoji: string;
+  /**
+   * true = el flow genérico de actividades (activity_flow) puede registrarla
+   * con sus preguntas lote/producto/cantidad. Los eventos de hacienda y los
+   * de observación/monitoreo NO: tienen sus propios caminos con datos propios
+   * (animales, categorías, métricas) — ofrecerlos en el picker generaba
+   * eventos fantasma sin datos (visto en prod: "Movimiento hacienda" pedía
+   * "¿cuánto aplicaste?" y guardaba un domain_event sin tocar el inventario).
+   * Sin el flag, la entrada existe SOLO como etiqueta para reportes.
+   */
+  flow?: boolean;
 }
 
 export const ACTIVITY_TYPES: readonly ActivityTypeEntry[] = [
-  { id: 'spraying', label: 'Fumigación', emoji: '\ud83d\udca8' },
-  { id: 'fertilization', label: 'Fertilización', emoji: '\ud83e\uddea' },
-  { id: 'planting', label: 'Siembra', emoji: '\ud83c\udf31' },
-  { id: 'tillage', label: 'Labranza', emoji: '\ud83d\ude9c' },
-  { id: 'harvest', label: 'Cosecha', emoji: '\ud83c\udf3e' },
-  { id: 'irrigation', label: 'Riego', emoji: '\ud83d\udca7' },
-  { id: 'tacto', label: 'Tacto', emoji: '\ud83e\ude7a' },
+  { id: 'spraying', label: 'Fumigación', emoji: '\ud83d\udca8', flow: true },
+  { id: 'fertilization', label: 'Fertilización', emoji: '\ud83e\uddea', flow: true },
+  { id: 'planting', label: 'Siembra', emoji: '\ud83c\udf31', flow: true },
+  { id: 'tillage', label: 'Labranza', emoji: '\ud83d\ude9c', flow: true },
+  { id: 'harvest', label: 'Cosecha', emoji: '\ud83c\udf3e', flow: true },
+  { id: 'irrigation', label: 'Riego', emoji: '\ud83d\udca7', flow: true },
+  { id: 'tacto', label: 'Tacto', emoji: '\ud83e\ude7a', flow: true },
   // Livestock domain_events surface in agro reports — without these entries
   // they leak as snake_case ("weighing", "health_event", "repro_event").
   { id: 'weighing', label: 'Pesaje', emoji: '\u2696\ufe0f' },
@@ -189,6 +199,9 @@ export const ACTIVITY_TYPES: readonly ActivityTypeEntry[] = [
   { id: 'observation', label: 'Observación', emoji: '\ud83d\udd0d' },
   { id: 'scouting', label: 'Monitoreo', emoji: '\ud83d\udd0e' },
 ] as const;
+
+/** Subset que el activity_flow ofrece en su picker y sabe registrar. */
+export const FLOW_ACTIVITY_TYPES: readonly ActivityTypeEntry[] = ACTIVITY_TYPES.filter(a => a.flow === true);
 
 /** id or label → { emoji, label } lookup */
 export const ACTIVITY_LABEL_MAP: Record<string, { emoji: string; label: string }> = {};

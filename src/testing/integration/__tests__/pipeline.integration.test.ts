@@ -532,6 +532,73 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('activity_flow — consistencia de TODOS los tipos del picker (Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('activity-flow-all');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Rural') RETURNING id`, [h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [(f[0] as { id: number }).id]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('los 7 tipos agro completan el flow (picker→lote→[producto→cantidad]→confirmar) y guardan su evento', async () => {
+      // tillage/harvest saltean producto/cantidad (skipIf del flow)
+      const FLOW_TYPES = [
+        { id: 'spraying', asksProduct: true },
+        { id: 'fertilization', asksProduct: true },
+        { id: 'planting', asksProduct: true },
+        { id: 'tillage', asksProduct: false },
+        { id: 'harvest', asksProduct: false },
+        { id: 'irrigation', asksProduct: true },
+        { id: 'tacto', asksProduct: true },
+      ];
+      for (const t of FLOW_TYPES) {
+        const start = await h.tap('flow_new_activity');
+        expect(h.allText(start)).toMatch(/qué actividad/i);
+        const askPlot = await h.tap(`flow_activity_${t.id}`);
+        expect(h.allText(askPlot)).toMatch(/lote/i);
+        let next = await h.send('Norte');
+        if (t.asksProduct) {
+          expect(h.allText(next)).toMatch(/producto/i);
+          next = await h.tap('flow_skip'); // producto
+          next = await h.tap('flow_skip'); // cantidad
+        }
+        // Confirmación: UNA sola pregunta (sin el doble "¿Confirmamos?")
+        const confText = h.allText(next);
+        expect(confText).toMatch(/Registramos la actividad/i);
+        expect(confText).not.toMatch(/¿Confirmamos\?/);
+        const done = await h.tap('flow_confirm');
+        expect(h.allText(done)).toMatch(/Actividad registrada/i);
+        const ev = await h.q(
+          `SELECT id FROM domain_events WHERE user_id = $1 AND event_type = $2`,
+          [h.userId, t.id],
+        );
+        expect(ev.length).toBe(1); // exactamente un evento por tipo
+      }
+    });
+
+    it('el picker NO ofrece eventos de hacienda; el tap del botón viejo redirige sin evento fantasma', async () => {
+      const start = await h.tap('flow_new_activity');
+      const raw = JSON.stringify(start);
+      expect(raw).not.toMatch(/livestock_movement|Movimiento hacienda|health_event|weighing/);
+
+      // Tap de un botón EN VUELO de una sesión vieja (el picker anterior sí
+      // ofrecía "Movimiento hacienda") → redirect amigable, no el interrogatorio
+      // de producto/cantidad que vio el usuario en prod.
+      const redirect = await h.tap('flow_activity_livestock_movement');
+      expect(h.allText(redirect)).toMatch(/contandomelo directo/i);
+      expect(h.allText(redirect)).not.toMatch(/qué producto/i);
+
+      await h.send('cancelar');
+      const ghosts = await h.q(
+        `SELECT 1 FROM domain_events WHERE user_id = $1 AND event_type = 'livestock_movement'`,
+        [h.userId],
+      );
+      expect(ghosts.length).toBe(0); // sin evento fantasma
+    });
+  });
+
   describe('Ronda 3 — copy honesto de IA caída (Jul 2026)', () => {
     let h: PipelineHarness;
 

@@ -2,16 +2,28 @@ import { saveDomainEvent as dbSaveDomainEvent, findPlotByNameAcrossFields } from
 import { getSuggestions } from '../contextual-suggestions.js';
 import { buildPlotPromptGrouped, buildPlotInteractiveGrouped, validatePlotAsync } from './field-step-helpers.js';
 import { EntityValidator } from '../../services/entity-validator.js';
-import { ACTIVITY_TYPES } from '../../constants/agro-terms.js';
+import { ACTIVITY_TYPES, FLOW_ACTIVITY_TYPES } from '../../constants/agro-terms.js';
 import type { FlowDefinition, FlowStep } from './flow.interface.js';
 import type { UserId, InteractiveMessage } from '../../types/index.js';
 
 const entityValidator = new EntityValidator();
 
+// SOLO los tipos que este flow sabe registrar (lote/producto/cantidad). Los
+// eventos de hacienda/observacion/monitoreo estaban en el picker por compartir
+// la lista con las etiquetas de reportes — elegir "Movimiento hacienda" pedia
+// "cuanto aplicaste?" y guardaba un evento fantasma sin tocar el inventario.
 const activityTypeMap: Record<string, string> = {};
-for (const a of ACTIVITY_TYPES) {
+for (const a of FLOW_ACTIVITY_TYPES) {
   activityTypeMap[a.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')] = a.id;
   activityTypeMap[a.id] = a.id;
+}
+// Tipos que existen pero NO van por este flow → redirect amigable si los tipean.
+const nonFlowTypeMap: Record<string, string> = {};
+for (const a of ACTIVITY_TYPES) {
+  if (!a.flow) {
+    nonFlowTypeMap[a.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')] = a.id;
+    nonFlowTypeMap[a.id] = a.id;
+  }
 }
 
 const activityButtons: InteractiveMessage = {
@@ -20,7 +32,7 @@ const activityButtons: InteractiveMessage = {
   buttonText: 'Ver actividades',
   sections: [{
     title: 'Actividades',
-    rows: ACTIVITY_TYPES.map(a => ({
+    rows: FLOW_ACTIVITY_TYPES.map(a => ({
       id: `flow_activity_${a.id}`,
       title: a.label,
     })),
@@ -34,10 +46,14 @@ const steps: FlowStep[] = [
     interactive: activityButtons,
     validate: (input) => {
       const lower = input.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      // Pesaje/sanidad/hacienda/etc: se registran contandolo al bot, no por este flow.
+      if (nonFlowTypeMap[lower]) {
+        return { error: 'Eso se registra contandomelo directo — ej: *"pase 20 terneros al lote Sur"*, *"vacune 40 vacas contra aftosa"*, *"pese los novillos a 380 kg"*. Elegi una actividad de la lista, o escribi *cancelar* y contamelo.' };
+      }
       const match = activityTypeMap[lower];
       if (!match) {
         // Try partial match
-        const partial = ACTIVITY_TYPES.find(a =>
+        const partial = FLOW_ACTIVITY_TYPES.find(a =>
           a.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').startsWith(lower) ||
           a.id.startsWith(lower)
         );
@@ -118,12 +134,12 @@ export const activityFlow: FlowDefinition = {
       const q = data.quantity as { quantity: number; unit: string | null };
       msg += `Cantidad: *${q.quantity}${q.unit ? ' ' + q.unit : ''}*\n`;
     }
-    msg += '\n¿Confirmamos?';
-
     return {
-      messages: [msg],
+      messages: [msg.trimEnd()],
       interactive: {
         type: 'buttons',
+        // Una sola pregunta de confirmación — antes el texto terminaba en
+        // "¿Confirmamos?" Y los botones decían "¿Registramos la actividad?".
         body: '¿Registramos la actividad?',
         buttons: [
           { id: 'flow_confirm', title: 'Confirmar' },
