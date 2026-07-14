@@ -1,5 +1,4 @@
 import { Router } from "express";
-import express from "express";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -13,10 +12,47 @@ import { getActivityDictionary, updateActivitySynonyms } from "../services/activ
 
 const router = Router();
 
-// ─── Static files ────────────────────────────────────────────────────────────
+// ─── Admin shell (gated) ─────────────────────────────────────────────────────
+// El HTML real del panel vive DETRÁS de la API protegida (requireAuth +
+// requireRole('admin') se aplican a /admin/api/* en app.ts). Antes el shell
+// completo (menú, secciones, estructura) se servía a CUALQUIERA sin login —
+// reconnaissance gratis, reportado por el usuario Jul 2026. /admin ahora
+// sirve solo un loader mínimo que pide el shell con el JWT de localStorage;
+// sin token válido de admin → redirect a /login sin filtrar nada.
+// (El static de src/public se quitó: index.html es el único archivo y es
+// autocontenido; /map y /samples se sirven por sus propias rutas en app.ts.)
 
-router.use("/", express.static("src/public"));
-router.get("/", (req, res) => res.sendFile("index.html", { root: "src/public" }));
+const ADMIN_LOADER = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>MIA Admin</title>
+<meta name="robots" content="noindex,nofollow">
+<style>html,body{height:100%;margin:0;background:#111827;display:flex;align-items:center;justify-content:center;color:#6b7280;font-family:system-ui,sans-serif;font-size:14px}</style>
+</head><body>Cargando…<script>
+(async () => {
+  try {
+    const t = localStorage.getItem('accessToken');
+    if (!t) { location.replace('/login'); return; }
+    const r = await fetch('/admin/api/shell', { headers: { Authorization: 'Bearer ' + t } });
+    if (!r.ok) { location.replace('/login'); return; }
+    const html = await r.text();
+    document.open(); document.write(html); document.close();
+  } catch { location.replace('/login'); }
+})();
+</script></body></html>`;
+
+router.get("/", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.type("html").send(ADMIN_LOADER);
+});
+// El shell real, solo para admins autenticados (guard montado en app.ts).
+router.get("/api/shell", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.sendFile("index.html", { root: "src/public" });
+});
+// Cualquier otro path bajo /admin (ex-static): mismo loader — nada filtrable.
+router.get(/^\/(?!api\/).*/, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.type("html").send(ADMIN_LOADER);
+});
 
 // ─── GET /dashboard/api/stats ────────────────────────────────────────────────
 
