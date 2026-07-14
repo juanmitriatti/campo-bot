@@ -44,14 +44,23 @@ export async function flushPendingActivityOnPivot(
   pending: PendingActivity,
   agronomyHandler: AgronomyHandler,
 ): Promise<string[]> {
+  // Guardar a nivel campo SOLO si lo único que falta es la ubicación. Si
+  // faltan datos de negocio (producto, cantidad, cultivo...), guardar igual
+  // crea un registro HUECO — visto en prod: "🧪 Fertilización registrada, 📍
+  // sin lote" SIN PRODUCTO, porque el usuario preguntó qué lotes tenía en
+  // medio del pending. En ese caso corresponde el aviso, no un save.
+  const missing = pending.missing ?? [];
+  const onlyLocationMissing = missing.every((s) => s === 'plot' || s === 'field');
   // 1. Try an actual field-level save (spray/fert/tillage/irrigation).
-  try {
-    const saved = await agronomyHandler.savePendingActivityFieldLevel(userId, pending);
-    if (saved && saved.messages && saved.messages.length > 0) {
-      return ['💡 Lo guardé a nivel campo antes de seguir:', ...saved.messages];
+  if (onlyLocationMissing) {
+    try {
+      const saved = await agronomyHandler.savePendingActivityFieldLevel(userId, pending);
+      if (saved && saved.messages && saved.messages.length > 0) {
+        return ['💡 Lo guardé a nivel campo antes de seguir:', ...saved.messages];
+      }
+    } catch {
+      /* fall through to the deferred notice */
     }
-  } catch {
-    /* fall through to the deferred notice */
   }
   // 2. Otherwise, at least tell the user it wasn't recorded (no silent loss).
   //    Incluimos la cantidad/categoría cuando la tenemos, para que el usuario
@@ -63,7 +72,10 @@ export async function flushPendingActivityOnPivot(
     const qty = typeof d.count === 'number' ? d.count : (typeof d.quantity === 'number' ? d.quantity : null);
     const cat = typeof d.category === 'string' ? d.category : null;
     const detail = qty != null ? ` (${qty}${cat ? ' ' + cat : ''})` : '';
-    return [`💡 Dejé pendiente *${label}*${detail}. Decime el lote cuando quieras y lo registro.`];
+    const faltan = missing.length > 0 && !onlyLocationMissing
+      ? ' Me faltaban datos (producto/cantidad) — contámelo completo cuando quieras.'
+      : ' Decime el lote cuando quieras y lo registro.';
+    return [`💡 Dejé pendiente *${label}*${detail}.${faltan}`];
   }
   return [];
 }

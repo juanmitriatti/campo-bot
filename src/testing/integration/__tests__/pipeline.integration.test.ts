@@ -617,6 +617,55 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('consulta read-only durante un pending de actividad (repro fertilización, Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('pending-roq');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Ceibo') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [fid]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Sur')`, [fid]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"qué lotes tengo…?" en medio del pending responde la consulta y RE-PREGUNTA — no guarda un registro hueco', async () => {
+      // Fertilización sin producto ni lote → pending missing[product, plot]
+      h.fakeAgent.enqueueTool('log_fertilization', {});
+      const ask = await h.send('fertilizacion');
+      const askText = h.allText(ask);
+      expect(askText).toMatch(/producto|lote/i);
+      // Sin botones "¿Y ahora?" compitiendo con la pregunta
+      expect(askText).not.toMatch(/¿Y ahora\?/);
+
+      // Consulta read-only en medio del pending — ANTES: pivote + "guardé a
+      // nivel campo" una fertilización SIN PRODUCTO (registro hueco).
+      const query = await h.send('que lotes tengo para registrar esa fertilizacion?');
+      const queryText = h.allText(query);
+      expect(queryText).not.toMatch(/guardé.*a nivel campo/i);
+      expect(queryText).toMatch(/Norte/);
+      expect(queryText).toMatch(/Sur/);
+
+      // No se guardó ningún evento hueco
+      const events = await h.q(
+        `SELECT 1 FROM domain_events WHERE user_id = $1 AND event_type = 'fertilization'`,
+        [h.userId],
+      );
+      expect(events.length).toBe(0);
+
+      // El pending sigue vivo: la respuesta con producto+lote lo completa
+      const done = await h.send('urea 200 kg en lote Norte');
+      expect(h.fakeAgent.calls.length).toBe(1); // slot-processor, no agente
+      const saved = await h.q(
+        `SELECT product FROM domain_events WHERE user_id = $1 AND event_type = 'fertilization'`,
+        [h.userId],
+      );
+      expect(saved.length).toBe(1);
+      expect(String(saved[0].product ?? '')).toMatch(/urea/i);
+      void done;
+    });
+  });
+
   describe('Ronda 3 — copy honesto de IA caída (Jul 2026)', () => {
     let h: PipelineHarness;
 

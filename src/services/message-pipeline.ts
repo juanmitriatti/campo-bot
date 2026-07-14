@@ -1357,9 +1357,14 @@ async function processTextMessageInner(
         lastTimeReference: (intent.data.timeLabel as string) ?? null,
       }).catch(() => {});
       conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'command', intent.data.command, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
-      // Con pregunta de ha pendiente, sin botones de sugerencia (competían con
-      // la pregunta) — la pregunta va última en el burst.
-      if (applied.plotAreaPrompt) response.suggestionKey = undefined;
+      // Con una pregunta abierta (hectáreas pendientes O un setPendingActivity
+      // preguntando slots), sin botones de sugerencia — "¿Y ahora?" después de
+      // "¿qué producto? ¿en qué lote?" competía con la pregunta (visto en prod).
+      const leavesOpenQuestion = Boolean(
+        applied.plotAreaPrompt
+        || (response.sideEffects as Record<string, unknown> | undefined)?.setPendingActivity,
+      );
+      if (leavesOpenQuestion) response.suggestionKey = undefined;
       const items = collectResponse(response);
       if (applied.plotAreaPrompt) items.push({ type: 'text', text: applied.plotAreaPrompt });
       return items;
