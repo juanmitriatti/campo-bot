@@ -444,7 +444,13 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
     // mirando el chat — un silencio es indistinguible de un registro exitoso.
     if (notifyChatId != null) {
       try {
-        await sendTelegramMessage(notifyChatId, '⚠️ Algo falló procesando tu mensaje y *no guardé nada*. Probá de nuevo en un momento.');
+        let failMsg = '⚠️ Algo falló procesando tu mensaje y *no guardé nada*. Probá de nuevo en un momento.';
+        try {
+          const { getSupportLine } = await import('../services/support-contact.js');
+          const support = await getSupportLine();
+          if (support) failMsg += `\n\n${support}`;
+        } catch { /* sin línea de soporte */ }
+        await sendTelegramMessage(notifyChatId, failMsg);
       } catch { /* el canal también falló */ }
     }
   }

@@ -1200,7 +1200,16 @@ async function processTextMessageInner(
   // --- Phase 2: regex fallback refused to parse a complex intent ---
   if (intent.type === 'fallback_blocked') {
     const { fallbackBlockedCopy } = await import('./intent-safety.js');
-    const reply = fallbackBlockedCopy(intent.reason, intent.attemptedCommand);
+    let reply = fallbackBlockedCopy(intent.reason, intent.attemptedCommand);
+    // En los momentos de FALLA es cuando el usuario quiere soporte — la línea
+    // se muestra acá (y en los catch de los controllers), no en el camino feliz.
+    if (intent.reason === 'ai_error') {
+      try {
+        const { getSupportLine } = await import('./support-contact.js');
+        const support = await getSupportLine();
+        if (support) reply += `\n\n${support}`;
+      } catch { /* sin línea de soporte */ }
+    }
     conversationLogger.log(userId, phone, text, reply, 'fallback_blocked', intent.attemptedCommand ?? null, null, null, aiUsed, Date.now() - startTime, false, 0, toolCallsData, agentMode, ctx.channel).catch(() => {});
     return [{ type: 'text', text: reply }];
   }

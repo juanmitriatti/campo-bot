@@ -54,6 +54,7 @@ const HARNESS_SETTINGS: Record<string, string> = {
   AGENT_VALIDATE_CROP: 'true',
   AGENT_VALIDATE_PLOT_FIELD: 'true',
   AGENT_CORRECTION_PRE_CLASSIFIER_ENABLED: 'true',
+  SUPPORT_CONTACT: 'soporte@test.local',
 };
 
 export async function createPipelineHarness(slug: string): Promise<PipelineHarness> {

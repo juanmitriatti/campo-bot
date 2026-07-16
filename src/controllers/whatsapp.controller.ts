@@ -393,7 +393,13 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
     // silencio es indistinguible de un registro exitoso. Best-effort.
     if (notifyPhone) {
       try {
-        await sendMessage(notifyPhone, '⚠️ Algo falló procesando tu mensaje y *no guardé nada*. Probá de nuevo en un momento.');
+        let failMsg = '⚠️ Algo falló procesando tu mensaje y *no guardé nada*. Probá de nuevo en un momento.';
+        try {
+          const { getSupportLine } = await import('../services/support-contact.js');
+          const support = await getSupportLine();
+          if (support) failMsg += `\n\n${support}`;
+        } catch { /* sin línea de soporte */ }
+        await sendMessage(notifyPhone, failMsg);
       } catch { /* el canal también falló — nada más que hacer */ }
     }
     if (!res.headersSent) res.sendStatus(200);

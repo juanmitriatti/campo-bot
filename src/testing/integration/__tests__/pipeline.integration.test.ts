@@ -715,6 +715,8 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(text).toMatch(/problema técnico/i);
       expect(text).not.toMatch(/no entend/i); // no culpar al usuario
       expect(text).not.toMatch(/tope diario/i); // no mentir sobre el límite
+      // El momento de falla es cuando el usuario necesita soporte
+      expect(text).toMatch(/Soporte: soporte@test\.local/);
     });
   });
 
