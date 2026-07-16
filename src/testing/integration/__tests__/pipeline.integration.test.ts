@@ -697,6 +697,16 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         [h.userId],
       );
       expect(Number(pc[0].yield_kg)).toBe(100000);
+
+      // El EVENTO también recibe la cantidad — los gráficos del dashboard leen
+      // domain_events.quantity y mostraban "Aún no hay cosechas" con el rinde
+      // solo en plot_crops (visto en prod).
+      const ev = await h.q(
+        `SELECT quantity, unit FROM domain_events WHERE user_id = $1 AND event_type = 'harvest'`,
+        [h.userId],
+      );
+      expect(Number(ev[0].quantity)).toBe(100000);
+      expect(String(ev[0].unit)).toBe('kg');
     });
   });
 

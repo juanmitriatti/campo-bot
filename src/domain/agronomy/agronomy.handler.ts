@@ -2414,6 +2414,11 @@ export class AgronomyHandler {
           if (appendPcId) {
             await this.cropService.updateYield(appendPcId, yieldKg, yieldNotes);
           }
+          // También el EVENTO (solo si estaba NULL): los gráficos del dashboard
+          // leen domain_events.quantity/harvest_loads — con el rinde solo en
+          // plot_crops mostraban "Aún no hay cosechas" mientras el bot listaba
+          // la cosecha (visto en prod). Tres fuentes, todas consistentes.
+          await this.repo.fillHarvestEventQuantity(savedEvent.id, yieldKg);
         }
 
         // Save loads if provided

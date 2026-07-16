@@ -44,6 +44,7 @@ import {
   deleteHarvestLoads as _deleteHarvestLoads,
 } from '../../services/expenses.js';
 import { PlotRepository } from '../plots/plot.repository.js';
+import { pool } from '../../config/db.js';
 import type { UserId, FieldRow, PlotRow, PlotCropRow, DomainEventRow, PlotHistoryRow } from '../../types/index.js';
 
 export const RAINFALL_REJECTED_DUPLICATE = _RAINFALL_REJECTED_DUPLICATE;
@@ -387,6 +388,17 @@ export class AgronomyRepository {
 
   async updateYieldFromLoads(plotCropId: number): Promise<void> {
     return _updateYieldFromLoads(plotCropId);
+  }
+
+  /** Completa la cantidad de un evento de cosecha que quedó sin ella (path de
+   * dedup: el rinde llegó en un mensaje posterior). Solo llena NULL — nunca
+   * pisa una cantidad ya registrada. */
+  async fillHarvestEventQuantity(eventId: number, quantityKg: number): Promise<void> {
+    await pool.query(
+      `UPDATE domain_events SET quantity = $2, unit = 'kg'
+       WHERE id = $1 AND quantity IS NULL`,
+      [eventId, quantityKg],
+    );
   }
 
   async queryHarvestLoads(userId: UserId, opts: {

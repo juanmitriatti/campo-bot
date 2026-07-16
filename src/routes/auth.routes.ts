@@ -1649,15 +1649,17 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
                             WHEN 'quintales' THEN 100
                             ELSE 1
                           END,
-             (SELECT SUM(hl.weight_kg) FROM harvest_loads hl WHERE hl.domain_event_id = e.id)
+             (SELECT SUM(hl.weight_kg) FROM harvest_loads hl WHERE hl.domain_event_id = e.id),
+             pc.yield_kg
            )::numeric AS quantity_kg
          FROM domain_events e
          JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
+         LEFT JOIN plot_crops pc ON pc.id = e.plot_crop_id
          WHERE e.user_id = $1
            AND e.event_type = 'harvest'
            AND e.deleted_at IS NULL
            AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
-           AND (e.quantity IS NOT NULL OR EXISTS (SELECT 1 FROM harvest_loads hl WHERE hl.domain_event_id = e.id))
+           AND (e.quantity IS NOT NULL OR pc.yield_kg IS NOT NULL OR EXISTS (SELECT 1 FROM harvest_loads hl WHERE hl.domain_event_id = e.id))
            AND p.field_id = ANY($2::int[])
        )
        SELECT
@@ -1716,15 +1718,17 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
                             WHEN 'quintales' THEN 100
                             ELSE 1
                           END,
-             (SELECT SUM(hl.weight_kg) FROM harvest_loads hl WHERE hl.domain_event_id = e.id)
+             (SELECT SUM(hl.weight_kg) FROM harvest_loads hl WHERE hl.domain_event_id = e.id),
+             pc.yield_kg
            )::numeric AS quantity_kg
          FROM domain_events e
          JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
+         LEFT JOIN plot_crops pc ON pc.id = e.plot_crop_id
          WHERE e.user_id = $1
            AND e.event_type = 'harvest'
            AND e.deleted_at IS NULL
            AND e.event_date >= date_trunc('month', NOW()) - interval '11 months'
-           AND (e.quantity IS NOT NULL OR EXISTS (SELECT 1 FROM harvest_loads hl WHERE hl.domain_event_id = e.id))
+           AND (e.quantity IS NOT NULL OR pc.yield_kg IS NOT NULL OR EXISTS (SELECT 1 FROM harvest_loads hl WHERE hl.domain_event_id = e.id))
            AND p.area_hectares > 0
            AND e.crop IS NOT NULL
            AND p.field_id = ANY($2::int[])
