@@ -173,7 +173,7 @@ export class AgentService {
       // y sin el framing de "pregunta pendiente" — es una instrucción de rescate
       // con el estado del pending, no una pregunta abierta.
       const pendingLine = pendingHint
-        ? (pendingHint.startsWith('RESCATE DE PENDING')
+        ? (pendingHint.startsWith('RESCATE DE PENDING') || pendingHint.startsWith('ACLARACIÓN EN CURSO')
           ? `[${pendingHint}]\n`
           : `[Hay una pregunta pendiente al usuario sin responder: "${pendingHint.slice(0, 150)}". Si este mensaje NO la responde, procesalo como acción nueva.]\n`)
         : '';

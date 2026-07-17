@@ -225,6 +225,9 @@ export class IntentClassifier {
        *  agente para que sepa que hay una pregunta abierta sin responder y no
        *  conflacione el mensaje nuevo con la respuesta esperada. */
       pendingHint?: string | null;
+      /** Modo conversacional pegajoso activo: fuerza el camino del agente
+       *  (saltea el trivial bypass) y viaja al agente como hint de aclaración. */
+      clarificationHint?: string | null;
     },
   ): Promise<ParseResult> {
     // =========================================================================
@@ -332,8 +335,12 @@ export class IntentClassifier {
     // =========================================================================
     // STEP 2 — Trivial command bypass (cheap regex, no API call needed)
     // =========================================================================
+    const forceAgentByLock = !!opts?.clarificationHint;
     const trivialCmd = this.classifyTrivial(cleaned, preprocessed);
-    if (trivialCmd) {
+    if (trivialCmd && forceAgentByLock) {
+      console.log(`[CONV-LOCK] skip trivial bypass (lock) cmd=${(trivialCmd.intent as { data?: { command?: string } }).data?.command ?? '?'} text="${text.slice(0, 60)}"`);
+    }
+    if (trivialCmd && !forceAgentByLock) {
       // Rejoin de pregunta-de-lote huérfana: cuando el agente preguntó
       // "¿en qué lote...?" vía respond_text (sin dejar pending machine-readable)
       // y el usuario contesta "lote Norte" a secas, el bypass trivial lo
@@ -580,7 +587,7 @@ export class IntentClassifier {
     if (agentEnabled && this.agentService && this.responseMapper) {
       try {
         const minConfidence = (await getSettingNumber('AI_INTENT_MIN_CONFIDENCE')) ?? 0.70;
-        const agentResult = await this.agentService.extract(agentInputText, preprocessed, userId, settings, opts?.pendingHint ?? null);
+        const agentResult = await this.agentService.extract(agentInputText, preprocessed, userId, settings, opts?.pendingHint ?? opts?.clarificationHint ?? null);
         if (agentResult) {
           const validationEnabled = await getSettingBool('AGENT_OUTPUT_VALIDATION_ENABLED');
           const validateCrop = validationEnabled && (await getSettingBool('AGENT_VALIDATE_CROP'));

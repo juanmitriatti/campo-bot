@@ -86,6 +86,14 @@ import { saveObservation, SAVE_REJECTED_DUPLICATE } from './observations.js';
 import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
 import { formatObservationResponse } from '../middleware/response-formatter.js';
 import { pendingCampaignCloseStore } from '../middleware/pending-campaign-close.js';
+import {
+  conversationLockStore,
+  isConversationLockActive,
+  bumpConversationLock,
+  resetConversationLock,
+  CLARIFICATION_HINT,
+  LOCK_RELEASED_SUFFIX,
+} from '../middleware/conversation-lock-store.js';
 import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveButton, InteractiveListSection, UserId, PendingTransaction, ParsedCommand } from '../types/index.js';
 
 // ============================================================
@@ -178,6 +186,7 @@ export async function hydratePendingStores(phone: string): Promise<void> {
     pendingDocUploadStore.hydrate(phone),
     pendingCampaignCloseStore.hydrate(phone),
     deferredFirstActionStore.hydrate(phone),
+    conversationLockStore.hydrate(phone),
   ]);
 }
 
@@ -1079,19 +1088,29 @@ async function processTextMessageInner(
   // prioridad: lleva el pending completo + instrucción de rescate al agente.
   const escalationHint = pendingEscalationHints.get(phone) ?? null;
   if (escalationHint) pendingEscalationHints.delete(phone);
+  const lockActive = await isConversationLockActive(phone);
   const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings, {
     pendingHint: escalationHint ?? pendingActStore.get(phone)?.askPrompt ?? null,
+    clarificationHint: lockActive ? CLARIFICATION_HINT : null,
   });
   const { intent: rawIntent, aiUsed, confidence } = parseResult;
   const agentMode = (parseResult as any)._agentMode as string | undefined;
   const toolCallsData = (parseResult as any)._toolCalls as object[] | undefined;
 
-  // Handle conversational response from Agent
+  // Handle conversational response from Agent. El agente respondió una aclaración
+  // sin ejecutar acción → entrar/bump el lock conversacional (modo pegajoso). Al
+  // tope de turnos, libera y ofrece el menú para no atrapar al usuario.
   if ((parseResult as any)._conversationalResponse) {
-    const convResponse = (parseResult as any)._conversationalResponse as string;
+    let convResponse = (parseResult as any)._conversationalResponse as string;
+    const { released } = await bumpConversationLock(phone);
+    if (released) convResponse += `\n\n${LOCK_RELEASED_SUFFIX}`;
     conversationLogger.log(userId, phone, text, convResponse, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
     return [{ type: 'text', text: convResponse }];
   }
+
+  // Llegamos acá → el turno NO fue conversacional: hubo una acción/comando real.
+  // Si veníamos en lock, reseteamos el contador (progreso) y seguimos en lock.
+  resetConversationLock(phone);
 
   // --- Handle compound actions from Agent (multiple tool calls) ---
   const compoundResults = (parseResult as any)._compoundResults as ParseResult[] | undefined;

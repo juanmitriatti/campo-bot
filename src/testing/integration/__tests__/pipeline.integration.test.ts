@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createPipelineHarness, type PipelineHarness } from '../pipeline-harness.js';
+import { conversationLockStore } from '../../../middleware/conversation-lock-store.js';
 
 let dbAvailable = true;
 try {
@@ -871,6 +872,107 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       );
       if (exp.length > 0) {
         expect(exp[0].plot).toBe('Amarillo');
+      }
+    });
+  });
+
+  describe('conversation lock (modo pegajoso)', () => {
+    it('mantiene la conversación en la IA y libera al tope de turnos', async () => {
+      const h = await createPipelineHarness('convlock-cap');
+      try {
+        // 5 respuestas conversacionales programadas (una por turno lockeado)
+        for (let i = 0; i < 5; i++) h.fakeAgent.enqueue([], '¿Qué querés registrar? ¿un gasto, una actividad...?');
+
+        // turno 1: mensaje ambiguo → agente conversacional → ENTRA al lock
+        await h.send('quiero registrar algo');
+        expect(h.fakeAgent.calls.length).toBe(1);
+
+        // turno 2: 'hola' es TRIVIAL, pero el lock lo manda al agente con hint
+        await h.send('hola');
+        expect(h.fakeAgent.calls.length).toBe(2);
+        expect(h.fakeAgent.calls[1].pendingHint).toContain('ACLARACIÓN EN CURSO');
+
+        // turnos 3 y 4: siguen en lock (cada 'hola' va al agente)
+        await h.send('hola');
+        await h.send('hola');
+        expect(h.fakeAgent.calls.length).toBe(4);
+
+        // turno 5: alcanza el tope (default 5) → libera + ofrece menú
+        const items = await h.send('hola');
+        expect(h.fakeAgent.calls.length).toBe(5);
+        expect(h.allText(items)).toContain('menú');
+
+        // lock liberado: el próximo 'hola' lo maneja el trivial bypass (NO al agente)
+        await h.send('hola');
+        expect(h.fakeAgent.calls.length).toBe(5); // no creció
+        expect(conversationLockStore.has(h.phone)).toBe(false);
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    it('una acción real resetea el contador pero sigue en lock', async () => {
+      const h = await createPipelineHarness('convlock-reset');
+      try {
+        const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
+        await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [f[0].id]);
+
+        // turno 1: conversacional → entra al lock (turns=1)
+        h.fakeAgent.enqueue([], '¿Qué querés registrar?');
+        await h.send('quiero registrar algo');
+        expect(conversationLockStore.get(h.phone)?.turns).toBe(1);
+
+        // turno 2: acción real (gasto) → reset a 0, SIGUE en lock
+        h.fakeAgent.enqueue([{ toolName: 'log_expense', toolInput: { amount: 5000, category: 'Combustible', description: 'gasoil' } }]);
+        await h.send('gasté 5000 en gasoil');
+        expect(conversationLockStore.get(h.phone)?.turns).toBe(0);
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    it('un pending activo se resuelve antes que el lock', async () => {
+      const h = await createPipelineHarness('convlock-pending');
+      try {
+        const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
+        await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [f[0].id]);
+
+        // entrar al lock
+        h.fakeAgent.enqueue([], '¿Qué querés registrar?');
+        await h.send('quiero registrar algo');
+
+        // sow_crop SIN cultivo → deja un pending machine-readable (missing: crop)
+        h.fakeAgent.enqueue([{ toolName: 'sow_crop', toolInput: { plot: 'Norte' } }]);
+        await h.send('sembré en el lote Norte');
+
+        // responder el pending: 'soja' lo consume el pending-processor ANTES de classify
+        const callsBefore = h.fakeAgent.calls.length;
+        await h.send('soja');
+        expect(h.fakeAgent.calls.length).toBe(callsBefore); // el agente NO fue llamado
+        const crops = await h.q(
+          `SELECT crop FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id JOIN fields fi ON fi.id = p.field_id WHERE fi.user_id = $1`,
+          [h.userId],
+        );
+        expect(crops.map(c => c.crop)).toContain('soja');
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    it('con el kill switch apagado, no hay lock (comportamiento actual)', async () => {
+      const { setSetting } = await import('../../../services/settings.service.js');
+      const h = await createPipelineHarness('convlock-off');
+      await setSetting('CONVERSATION_LOCK_ENABLED', 'false');
+      try {
+        h.fakeAgent.enqueue([], '¿Qué querés registrar?');
+        await h.send('quiero registrar algo'); // conversacional, pero SIN activar lock
+        const before = h.fakeAgent.calls.length;
+        await h.send('hola'); // trivial bypass normal → NO va al agente
+        expect(h.fakeAgent.calls.length).toBe(before);
+        expect(conversationLockStore.has(h.phone)).toBe(false);
+      } finally {
+        await setSetting('CONVERSATION_LOCK_ENABLED', 'true');
+        await h.cleanup();
       }
     });
   });
