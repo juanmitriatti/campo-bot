@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveFutureDate, formatReminderList, resolveFutureTime } from '../reminder.service.js';
+import { resolveFutureDate, formatReminderList, resolveFutureTime, resolveRelativeFutureTime } from '../reminder.service.js';
 import { getTodayISO } from '../../utils/date.js';
 
 function addDays(iso: string, n: number): string {
@@ -113,5 +113,39 @@ describe('resolveFutureTime — hora en español argentino', () => {
   it('"12 de la noche" → medianoche', () => {
     expect(resolveFutureTime('a las 12 de la noche')).toEqual({ time: '00:00' });
     expect(resolveFutureTime('a las 12 de la madrugada')).toEqual({ time: '00:00' });
+  });
+});
+
+describe('resolveRelativeFutureTime — offsets relativos ("en un minuto")', () => {
+  // now inyectable: 2026-07-18 19:04 AR
+  const now = new Date('2026-07-18T19:04:00');
+
+  it('en un minuto / en N minutos', () => {
+    expect(resolveRelativeFutureTime('recordame que vaya a vedia en un minuto', now))
+      .toEqual({ time: '19:05', dueDate: '2026-07-18' });
+    expect(resolveRelativeFutureTime('en 5 minutos', now))
+      .toEqual({ time: '19:09', dueDate: '2026-07-18' });
+    expect(resolveRelativeFutureTime('en 45 min', now))
+      .toEqual({ time: '19:49', dueDate: '2026-07-18' });
+  });
+
+  it('en media hora / en una hora / en N horas / hora y media', () => {
+    expect(resolveRelativeFutureTime('en media hora', now)).toEqual({ time: '19:34', dueDate: '2026-07-18' });
+    expect(resolveRelativeFutureTime('en una hora', now)).toEqual({ time: '20:04', dueDate: '2026-07-18' });
+    expect(resolveRelativeFutureTime('en 3 horas', now)).toEqual({ time: '22:04', dueDate: '2026-07-18' });
+    expect(resolveRelativeFutureTime('en una hora y media', now)).toEqual({ time: '20:34', dueDate: '2026-07-18' });
+  });
+
+  it('rollover de medianoche → dueDate de mañana', () => {
+    const late = new Date('2026-07-18T23:50:00');
+    expect(resolveRelativeFutureTime('en 15 minutos', late)).toEqual({ time: '00:05', dueDate: '2026-07-19' });
+    expect(resolveRelativeFutureTime('en 2 horas', late)).toEqual({ time: '01:50', dueDate: '2026-07-19' });
+  });
+
+  it('sin frase relativa → null (no roba "en 3 días" ni horas absolutas)', () => {
+    expect(resolveRelativeFutureTime('el sábado a las 14:30', now)).toBeNull();
+    expect(resolveRelativeFutureTime('en 3 días', now)).toBeNull();
+    expect(resolveRelativeFutureTime('en una semana', now)).toBeNull();
+    expect(resolveRelativeFutureTime(null, now)).toBeNull();
   });
 });

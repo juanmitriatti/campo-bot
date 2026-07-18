@@ -408,23 +408,38 @@ export class SystemHandler {
         if (!desc) {
           return { messages: ['¿Qué te recuerdo y cuándo? Ej: *"acordame el sábado a las 14:30 de fumigar el lote 5"*.'] };
         }
-        const { createReminder, resolveFutureDate, resolveFutureTime } = await import('../../services/reminder.service.js');
+        const { createReminder, resolveFutureDate, resolveFutureTime, resolveRelativeFutureTime } = await import('../../services/reminder.service.js');
         const { getTodayISO, getNowArgentina } = await import('../../utils/date.js');
-        const dueDate = (cmd.due_date as string | null)
+
+        // Offset relativo ("en un minuto / en media hora") PRIMERO y PISA al
+        // agente: el modelo no tiene reloj y en prod alucinó due_time=23:59
+        // para "en un minuto" (Jul 18). Mismo precedente que relative-dates
+        // (el server overridea los días de semana que el agente erraba).
+        const relative = resolveRelativeFutureTime(cmd.originalText as string | null)
+          ?? resolveRelativeFutureTime(desc);
+        if (relative && cmd.due_time && cmd.due_time !== relative.time) {
+          console.log(`[INTERCEPT] reminder relative-time override: agent=${cmd.due_time} → server=${relative.time} (${relative.dueDate})`);
+        }
+
+        const dueDate = relative?.dueDate
+          || (cmd.due_date as string | null)
           || resolveFutureDate(cmd.originalText as string | null)
           || resolveFutureDate(desc);
         if (!dueDate) {
           return { messages: [`¿Para cuándo te lo recuerdo? Decime la frase completa con la fecha, ej: *"acordame el viernes a las 9 de ${desc}"*.`] };
         }
 
-        // Hora: agente (due_time) → red de seguridad server-side (texto original).
-        // El valor del agente nunca se pisa; si no es HH:MM válido, se re-parsea.
+        // Hora: relativo (server) → agente (due_time) → red de seguridad
+        // server-side sobre el texto. Fuera del caso relativo, el valor del
+        // agente nunca se pisa; si no es HH:MM válido, se re-parsea.
         const agentTime = (cmd.due_time as string | null) ?? null;
-        let resolved = /^\d{2}:\d{2}$/.test(agentTime ?? '')
-          ? { time: agentTime as string }
-          : resolveFutureTime(agentTime)
-            ?? resolveFutureTime(cmd.originalText as string | null)
-            ?? resolveFutureTime(desc);
+        let resolved = relative
+          ? { time: relative.time }
+          : /^\d{2}:\d{2}$/.test(agentTime ?? '')
+            ? { time: agentTime as string }
+            : resolveFutureTime(agentTime)
+              ?? resolveFutureTime(cmd.originalText as string | null)
+              ?? resolveFutureTime(desc);
 
         // 1-11 sin AM/PM → botones (NUNCA adivinar, NUNCA pregunta de texto suelto)
         if (resolved && 'ambiguous' in resolved) {

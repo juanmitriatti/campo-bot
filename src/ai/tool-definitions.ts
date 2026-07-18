@@ -766,7 +766,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       properties: {
         description: { type: 'string', description: 'La tarea a recordar, texto completo. Ej: "fumigar el lote 5 con glifosato".' },
         due_date: { type: 'string', description: 'Fecha del recordatorio YYYY-MM-DD (calculada: "mañana", "el sábado" → próximo sábado, "en 3 días").' },
-        due_time: { type: 'string', description: 'Hora del recordatorio HH:MM (24h), SOLO si el usuario la dijo ("a las 14:30" → "14:30", "a las 8 de la noche" → "20:00"). Si no dijo hora, OMITIR — el sistema la pregunta. NUNCA inventarla.' },
+        due_time: { type: 'string', description: 'Hora del recordatorio HH:MM (24h), SOLO si el usuario dijo una hora ABSOLUTA ("a las 14:30" → "14:30", "a las 8 de la noche" → "20:00"). Frases RELATIVAS ("en un minuto", "en media hora", "en 2 horas") → OMITIR due_time Y due_date: el sistema los calcula con el reloj real. Si no dijo hora, OMITIR — el sistema la pregunta. NUNCA inventarla.' },
       },
       required: ['description'],
     },

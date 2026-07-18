@@ -78,6 +78,47 @@ export function resolveFutureDate(text: string | null | undefined): string | nul
 
 export type ResolvedTime = { time: string } | { ambiguous: true; hour: number; minute: number } | null;
 
+/**
+ * Offsets relativos: "en un minuto / en 5 minutos / en media hora / en una
+ * hora (y media) / en 2 horas" → hora Y fecha calculadas desde ahora (AR),
+ * con rollover a mañana si cruza medianoche. Devuelve null si no hay frase
+ * relativa de MINUTOS/HORAS ("en 3 días"/"en una semana" son de
+ * resolveFutureDate, no de acá).
+ *
+ * Por qué existe: el agente NO tiene reloj — con "en un minuto" alucinó
+ * due_time=23:59 en prod (Jul 18). Las frases relativas REQUIEREN conocer
+ * la hora actual, así que se resuelven server-side y PISAN el valor del
+ * agente (mismo precedente que relative-dates con los días de semana).
+ */
+export function resolveRelativeFutureTime(
+  text: string | null | undefined,
+  now: Date = getNowArgentina(),
+): { time: string; dueDate: string } | null {
+  if (!text) return null;
+  const t = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  let offsetMin: number | null = null;
+  const mMin = t.match(/\ben\s+(un|una|\d{1,3})\s+min(?:utos?)?\b/);
+  const mHalf = t.match(/\ben\s+media\s+hora\b/);
+  const mHour = t.match(/\ben\s+(un|una|\d{1,2})\s+horas?(\s+y\s+media)?\b/);
+  if (mMin) {
+    offsetMin = /^\d+$/.test(mMin[1]) ? Number(mMin[1]) : 1;
+  } else if (mHalf) {
+    offsetMin = 30;
+  } else if (mHour) {
+    const h = /^\d+$/.test(mHour[1]) ? Number(mHour[1]) : 1;
+    offsetMin = h * 60 + (mHour[2] ? 30 : 0);
+  }
+  if (offsetMin == null || offsetMin <= 0) return null;
+
+  const target = new Date(now.getTime() + offsetMin * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    time: `${pad(target.getHours())}:${pad(target.getMinutes())}`,
+    dueDate: `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`,
+  };
+}
+
 const MOMENT_WORDS: Array<[RegExp, string]> = [
   [/\bal\s+mediod[ií]a\b/, '12:00'],
   [/\ba\s+la\s+tardecita\b/, '18:00'],

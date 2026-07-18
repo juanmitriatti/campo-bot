@@ -35,7 +35,11 @@ export class AgentPromptBuilder {
    */
   buildUserMessagePrefix(userContext: UserContext | null, reduced = false, lastFinanceQuery: Record<string, unknown> | null = null, lastScoutingQuery: Record<string, unknown> | null = null, lastHarvestQuery: Record<string, unknown> | null = null, lastStockQuery: Record<string, unknown> | null = null, lastLivestockQuery: Record<string, unknown> | null = null, lastActivityQuery: Record<string, unknown> | null = null, lastRainfallQuery: Record<string, unknown> | null = null): string {
     const today = this.todayDate();
-    const parts: string[] = [`Hoy: ${today}.`];
+    // Hora AR incluida: sin reloj, el agente alucinaba horas ("en un minuto"
+    // → due_time=23:59 en prod; "qué hora es" → hora inventada). Va en el
+    // prefix (zona no cacheada), no en el system prompt — no rompe el cache.
+    const nowHM = new Date().toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false });
+    const parts: string[] = [`Hoy: ${today}, ${nowHM}hs (hora argentina).`];
     const ctx = this.contextLine(userContext, reduced);
     if (ctx) parts.push(ctx);
     if (lastFinanceQuery && Object.keys(lastFinanceQuery).length > 0) {

@@ -1277,5 +1277,38 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         await h.cleanup();
       }
     });
+
+    it('offset relativo ("en un minuto") pisa el due_time alucinado del agente', async () => {
+      // Bug de prod (Jul 18): el agente no tiene reloj y para "en un minuto"
+      // mandó due_time=23:59 inventado — el recordatorio llegaba 5 horas tarde.
+      // El server calcula now+offset y PISA el valor del agente.
+      const h = await createPipelineHarness('rem-relativo');
+      try {
+        const { getNowArgentina } = await import('../../../utils/date.js');
+        h.fakeAgent.enqueueTool('create_reminder', {
+          description: 'ir a vedia', due_date: '2026-07-18', due_time: '23:59',
+        });
+        const before = getNowArgentina();
+        const items = await h.send('recordame que tengo que ir a vedia en un minuto');
+        const after = getNowArgentina();
+
+        const rows = await h.q(
+          `SELECT to_char(due_time, 'HH24:MI') AS t, due_date::text AS d FROM task_reminders WHERE user_id = $1`,
+          [h.userId],
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0].t).not.toBe('23:59');
+        // now+1min, tolerando el cruce de minuto durante el request
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const expected = [before, after].map(d => {
+          const t = new Date(d.getTime() + 60_000);
+          return `${pad(t.getHours())}:${pad(t.getMinutes())}`;
+        });
+        expect(expected).toContain(rows[0].t);
+        expect(h.allText(items)).toContain(rows[0].t);
+      } finally {
+        await h.cleanup();
+      }
+    });
   });
 });
