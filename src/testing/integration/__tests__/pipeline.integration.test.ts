@@ -975,5 +975,65 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         await h.cleanup();
       }
     });
+
+    it('I1 regresión: con lock activo + confirm card abierta, "confirmar" va al handler determinístico (NO al agente)', async () => {
+      // Verifica el fix del finding I1 del code review: cuando hay una tarjeta
+      // de confirmación pendiente (pending tx de gasto/ingreso), el lock cede y
+      // "confirmar" llega al handler determinístico en vez del agente.
+      // confirm_before_save es true por default (migration 004, DEFAULT true).
+      const h = await createPipelineHarness('convlock-confirm-yield');
+      try {
+        // Setup: campo + lote para que el gasto se resuelva sin preguntar.
+        const [f] = await h.q(
+          `INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`,
+          [h.userId],
+        );
+        await h.q(
+          `INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`,
+          [f.id],
+        );
+
+        // Turno 1: mensaje ambiguo → agente conversacional → ENTRA al lock.
+        h.fakeAgent.enqueue([], '¿Qué querés registrar? ¿un gasto, una actividad...?');
+        await h.send('quiero registrar algo');
+        expect(conversationLockStore.has(h.phone)).toBe(true);
+
+        // Turno 2: gasto con confirm_before_save=true → el agente devuelve la tool
+        // y el handler produce la tarjeta de confirmación + deja un pending tx.
+        h.fakeAgent.enqueue([
+          { toolName: 'log_expense', toolInput: { amount: 50000, category: 'Combustible', description: 'gasoil' } },
+        ]);
+        const confirmItems = await h.send('gasté 50 mil en gasoil');
+        // La tarjeta de confirmación debe aparecer con los botones Confirmar/Cancelar.
+        const allButtons = h.allButtons(confirmItems);
+        expect(allButtons.some(b => b.id === 'confirm_pending')).toBe(true);
+
+        // Verificar que la tarjeta de confirmación se renderizó correctamente.
+        expect(h.allText(confirmItems)).toMatch(/50[\s.]?000|Combustible|gasoil/i);
+
+        // Turno 3 (el bug): lock activo + pending tx → "confirmar" debe llegar
+        // al handler determinístico, NO al agente.
+        const callsBefore = h.fakeAgent.calls.length;
+        const confirmResponse = await h.send('confirmar');
+        // CRÍTICO: el agente NO debe haber sido llamado (el trivial bypass manejó "confirmar").
+        expect(h.fakeAgent.calls.length).toBe(callsBefore);
+
+        // El gasto debe estar en la base de datos.
+        const expenses = await h.q(
+          `SELECT e.amount, e.description FROM expenses e
+           JOIN fields f ON f.id = e.field_id
+           WHERE f.user_id = $1 AND e.deleted_at IS NULL`,
+          [h.userId],
+        );
+        expect(expenses.length).toBe(1);
+        expect(Number(expenses[0].amount)).toBe(50000);
+
+        // La respuesta de confirmación debe ser afirmativa (no un error ni el agente).
+        const allText = h.allText(confirmResponse);
+        expect(allText).toMatch(/gasoil|gasto|Combustible|50|✅/i);
+      } finally {
+        await h.cleanup();
+      }
+    });
   });
 });

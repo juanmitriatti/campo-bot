@@ -1089,9 +1089,16 @@ async function processTextMessageInner(
   const escalationHint = pendingEscalationHints.get(phone) ?? null;
   if (escalationHint) pendingEscalationHints.delete(phone);
   const lockActive = await isConversationLockActive(phone);
+  // Cuando hay una tarjeta de confirmación pendiente (confirm card de un gasto/ingreso),
+  // el lock cede para que "confirmar"/"cancelar" lleguen a su handler determinístico
+  // (paridad con "pendings activos ganan"). Sin esto, el "sí" iba al agente y la
+  // transacción confirmada-por-texto quedaba sin procesar.
+  if (lockActive && pending) {
+    console.log(`[CONV-LOCK] yield (pending tx activa) phone=${phone} pendingType=${(pending as any).type}`);
+  }
   const parseResult: ParseResult = await intentClassifier.classify(text, userId, settings, {
     pendingHint: escalationHint ?? pendingActStore.get(phone)?.askPrompt ?? null,
-    clarificationHint: lockActive ? CLARIFICATION_HINT : null,
+    clarificationHint: (lockActive && !pending) ? CLARIFICATION_HINT : null,
   });
   const { intent: rawIntent, aiUsed, confidence } = parseResult;
   const agentMode = (parseResult as any)._agentMode as string | undefined;
