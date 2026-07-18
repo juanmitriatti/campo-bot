@@ -29,7 +29,8 @@ export default function OverviewPage({
   onGoToLivestock,
   onGoToActivities,
 }: OverviewPageProps = {}) {
-  const { features } = useAuth();
+  const { features, user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { currency, setCurrency } = useCurrency();
   const [tab, setTab] = useOverviewTab();
   const { fields, loading: fieldsLoading } = useUserFields();
@@ -82,12 +83,21 @@ export default function OverviewPage({
           <pre className="bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2 text-xs font-mono text-gray-700 dark:text-gray-200 mb-4 whitespace-pre-wrap">
 agregar campo La Esperanza en Pergamino con lotes 1A, 1B y 1C
           </pre>
-          <a
-            href="/chat"
-            className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-medium text-sm rounded-md px-4 py-2 transition-colors"
-          >
-            Abrir chat de prueba →
-          </a>
+          {isAdmin ? (
+            <a
+              href="/chat"
+              className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-medium text-sm rounded-md px-4 py-2 transition-colors"
+            >
+              Abrir chat de prueba →
+            </a>
+          ) : (
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              Escribile al bot por WhatsApp o Telegram:{' '}
+              <span className="font-mono bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded px-1.5 py-0.5 text-xs text-gray-700 dark:text-gray-200">
+                "tengo el campo La Esperanza en Pergamino"
+              </span>
+            </p>
+          )}
         </div>
       ) : (
         <>

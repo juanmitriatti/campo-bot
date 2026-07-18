@@ -13,6 +13,7 @@ export default function Navbar() {
 
   if (!user) return null;
 
+  const isAdmin = user.role === 'admin';
   const isChat = location.pathname === '/chat';
 
   return (
@@ -32,12 +33,14 @@ export default function Navbar() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate(isChat ? '/dashboard' : '/chat')}
-            className="text-sm px-3 py-1.5 rounded bg-campo-600 hover:bg-campo-500 transition-colors"
-          >
-            {isChat ? 'Dashboard' : 'Chat'}
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => navigate(isChat ? '/dashboard' : '/chat')}
+              className="text-sm px-3 py-1.5 rounded bg-campo-600 hover:bg-campo-500 transition-colors"
+            >
+              {isChat ? 'Dashboard' : 'Chat'}
+            </button>
+          )}
           <span className="text-sm text-campo-100 hidden sm:inline">
             {user.name || user.email}
           </span>

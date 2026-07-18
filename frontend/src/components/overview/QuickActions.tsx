@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Wallet, DollarSign, Sprout, BarChart3 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const ACTIONS: Array<{ label: string; Icon: LucideIcon; path: string }> = [
   { label: 'Registrar gasto', Icon: Wallet, path: '/chat' },
@@ -10,7 +11,10 @@ const ACTIONS: Array<{ label: string; Icon: LucideIcon; path: string }> = [
 ];
 
 export default function QuickActions() {
+  const { user } = useAuth();
   const navigate = useNavigate();
+
+  if (user?.role !== 'admin') return null;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
