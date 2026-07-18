@@ -1,9 +1,11 @@
 import { Router } from 'express';
+import bcrypt from 'bcrypt';
 import { AuthService, AuthError } from '../domain/auth/auth.service.js';
 import { ObservationService, ObservationError } from '../domain/auth/observation.service.js';
 import { ChannelVerificationService, VerificationError } from '../domain/auth/channel-verification.service.js';
 import { AccountDeletionService, AccountDeletionError } from '../domain/auth/account-deletion.service.js';
 import { PasswordRecoveryService, PasswordRecoveryError } from '../domain/auth/password-recovery.service.js';
+import { TokenRepository } from '../domain/auth/token.repository.js';
 import {
   sendVerificationEmail,
   confirmVerificationToken,
@@ -36,6 +38,7 @@ const subscriptionService = new SubscriptionService();
 const passwordRecoveryService = new PasswordRecoveryService();
 const categoryRepo = new CategoryRepository();
 const categoryService = new CategoryService(categoryRepo);
+const tokenRepository = new TokenRepository();
 
 function requireFeature(feature: FeatureKey) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -2294,6 +2297,55 @@ router.delete('/push/unsubscribe', requireAuth, async (req: Request, res: Respon
   } catch (err) {
     handleError(err, res);
   }
+});
+
+// --- Cambio de contraseña (Mi cuenta) ---
+router.post('/me/password', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { currentPassword, newPassword } = (req.body ?? {}) as { currentPassword?: string; newPassword?: string };
+    if (!newPassword || newPassword.length < 8) {
+      res.status(400).json({ error: 'La nueva contraseña debe tener al menos 8 caracteres.' }); return;
+    }
+    const u = await pool.query(`SELECT password_hash FROM users WHERE id = $1 AND deleted_at IS NULL`, [req.auth!.userId]);
+    if (u.rows.length === 0 || !u.rows[0].password_hash) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
+    const okPass = await bcrypt.compare(currentPassword ?? '', u.rows[0].password_hash);
+    if (!okPass) { res.status(403).json({ error: 'La contraseña actual no es correcta.' }); return; }
+    const hash = await bcrypt.hash(newPassword, 10);
+    await pool.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, req.auth!.userId]);
+    await tokenRepository.revokeAllUserTokens(req.auth!.userId);
+    console.log(`[account] password changed user=${req.auth!.userId} (tokens revocados)`);
+    res.json({ ok: true, message: 'Contraseña actualizada. Volvé a iniciar sesión.' });
+  } catch (err) { handleError(err, res); }
+});
+
+// --- Recordatorios (tab del dashboard) ---
+router.get('/reminders', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const showAll = req.query.status === 'all';
+    const { rows } = await pool.query(
+      `SELECT r.id, r.description, r.due_date::text, to_char(r.due_time, 'HH24:MI') AS due_time,
+              r.status, r.sent_at, p.name AS plot_name, f.name AS field_name
+       FROM task_reminders r
+       LEFT JOIN plots p ON p.id = r.plot_id
+       LEFT JOIN fields f ON f.id = r.field_id
+       WHERE r.user_id = $1 ${showAll ? '' : `AND r.status IN ('pending','sent')`}
+       ORDER BY CASE WHEN r.status IN ('pending','sent') THEN 0 ELSE 1 END, r.due_date, r.due_time NULLS LAST, r.id`,
+      [req.auth!.userId],
+    );
+    res.json({ reminders: rows });
+  } catch (err) { handleError(err, res); }
+});
+
+router.patch('/reminders/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    const action = req.body?.action as string;
+    if (isNaN(id) || !['done', 'cancel'].includes(action)) { res.status(400).json({ error: 'Acción inválida' }); return; }
+    const { completeReminder } = await import('../services/reminder.service.js');
+    const r = await completeReminder(req.auth!.userId, { id, cancel: action === 'cancel' });
+    if (!r) { res.status(404).json({ error: 'Recordatorio no encontrado' }); return; }
+    res.json({ reminder: r });
+  } catch (err) { handleError(err, res); }
 });
 
 function handleError(err: unknown, res: Response): void {

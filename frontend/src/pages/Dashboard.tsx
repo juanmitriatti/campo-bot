@@ -18,6 +18,7 @@ import HarvestLoadsTable from '../components/HarvestLoadsTable';
 import ChannelLinking from '../components/ChannelLinking';
 import CategoriesTab from '../components/CategoriesTab';
 import FieldsTab from '../components/FieldsTab';
+import RemindersTab from '../components/RemindersTab';
 import type { DashboardView } from '../components/layout/Sidebar';
 
 const viewFeatureMap: Record<DashboardView, string | null> = {
@@ -34,6 +35,7 @@ const viewFeatureMap: Record<DashboardView, string | null> = {
   livestock: 'livestock',
   documents: 'documents',
   categories: null,
+  reminders: null,
   account: null,
 };
 
@@ -184,6 +186,8 @@ export default function Dashboard() {
         );
       case 'categories':
         return <CategoriesTab />;
+      case 'reminders':
+        return <RemindersTab />;
       case 'account':
         return <ChannelLinking />;
     }

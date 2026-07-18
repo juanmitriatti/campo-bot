@@ -5,11 +5,11 @@ import FieldSelector from '../overview/FieldSelector';
 import {
   LayoutDashboard, Wallet, DollarSign, Sprout, Eye, Search,
   FileText, Wheat, Package, Beef, Paperclip, User,
-  Bell, BellOff, Tag, Map,
+  Bell, BellOff, Tag, Map, Clock,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-export type DashboardView = 'overview' | 'fields' | 'expenses' | 'incomes' | 'activities' | 'observations' | 'scoutings' | 'reports' | 'harvests' | 'stock' | 'livestock' | 'documents' | 'categories' | 'account';
+export type DashboardView = 'overview' | 'fields' | 'expenses' | 'incomes' | 'activities' | 'observations' | 'scoutings' | 'reports' | 'harvests' | 'stock' | 'livestock' | 'documents' | 'categories' | 'reminders' | 'account';
 
 interface NavItem {
   key: DashboardView;
@@ -32,6 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'livestock', label: 'Hacienda', Icon: Beef, feature: 'livestock' },
   { key: 'documents', label: 'Documentos', Icon: Paperclip, feature: 'documents' },
   { key: 'categories', label: 'Categorías', Icon: Tag },
+  { key: 'reminders', label: 'Recordatorios', Icon: Clock },
   { key: 'account', label: 'Mi cuenta', Icon: User },
 ];
 

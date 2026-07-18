@@ -169,3 +169,52 @@ describe('dashboard prelaunch — campos y lotes (Task 2)', () => {
     } finally { await cleanupUser(u.email); }
   });
 });
+
+describe('dashboard prelaunch — password y recordatorios (Task 3)', () => {
+  beforeAll(async () => { appUp = await appReachable(); });
+
+  it('cambio de contraseña: actual mala 403, corta 400, éxito revoca tokens', async () => {
+    if (!appUp) return;
+    const u = await registerTestUser('passwd');
+    try {
+      const bad = await api(u.token)('/me/password', { method: 'POST', body: JSON.stringify({ currentPassword: 'incorrecta', newPassword: 'nuevapass123' }) });
+      expect(bad.status).toBe(403);
+      const short = await api(u.token)('/me/password', { method: 'POST', body: JSON.stringify({ currentPassword: 'testpass123', newPassword: 'corta' }) });
+      expect(short.status).toBe(400);
+      const ok = await api(u.token)('/me/password', { method: 'POST', body: JSON.stringify({ currentPassword: 'testpass123', newPassword: 'nuevapass123' }) });
+      expect(ok.status).toBe(200);
+      const tokens = await pool.query(`SELECT COUNT(*)::int AS n FROM refresh_tokens WHERE user_id = $1 AND revoked_at IS NULL`, [u.userId]);
+      expect(tokens.rows[0].n).toBe(0);
+      // Login con la nueva funciona
+      const relogin = await fetch(`${BASE}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: u.email, password: 'nuevapass123' }) });
+      expect(relogin.status).toBe(200);
+    } finally { await cleanupUser(u.email); }
+  });
+
+  it('reminders: listar (open por default) + done + cancel + scoping', async () => {
+    if (!appUp) return;
+    const u = await registerTestUser('reminders');
+    const other = await registerTestUser('reminders-b');
+    try {
+      const r1 = await pool.query(`INSERT INTO task_reminders (user_id, description, due_date, due_time) VALUES ($1, 'fumigar lote 5', '2099-01-05', '14:30') RETURNING id`, [u.userId]);
+      const r2 = await pool.query(`INSERT INTO task_reminders (user_id, description, due_date, status) VALUES ($1, 'ya hecho', '2020-01-01', 'done') RETURNING id`, [u.userId]);
+
+      const open = await (await api(u.token)('/reminders')).json();
+      expect(open.reminders).toHaveLength(1);
+      expect(open.reminders[0].due_time).toBe('14:30');
+      const all = await (await api(u.token)('/reminders?status=all')).json();
+      expect(all.reminders).toHaveLength(2);
+
+      // Scoping: el otro usuario no puede tocarlo
+      const forbidden = await api(other.token)(`/reminders/${r1.rows[0].id}`, { method: 'PATCH', body: JSON.stringify({ action: 'done' }) });
+      expect(forbidden.status).toBe(404);
+
+      // done
+      const done = await api(u.token)(`/reminders/${r1.rows[0].id}`, { method: 'PATCH', body: JSON.stringify({ action: 'done' }) });
+      expect(done.status).toBe(200);
+      const st = await pool.query(`SELECT status FROM task_reminders WHERE id = $1`, [r1.rows[0].id]);
+      expect(st.rows[0].status).toBe('done');
+      void r2;
+    } finally { await cleanupUser(u.email); await cleanupUser(other.email); }
+  });
+});

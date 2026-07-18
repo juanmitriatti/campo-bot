@@ -290,6 +290,45 @@ export default function ChannelLinking() {
     }
   };
 
+  // ---------- Cambio de contraseña ----------
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwRepeat, setPwRepeat] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState(false);
+
+  const changePassword = async () => {
+    setPwError(null);
+    if (pwNew.length < 8) {
+      setPwError('La nueva contraseña debe tener al menos 8 caracteres.');
+      return;
+    }
+    if (pwNew !== pwRepeat) {
+      setPwError('Las contraseñas no coinciden.');
+      return;
+    }
+    setPwBusy(true);
+    try {
+      await apiRequest('/me/password', {
+        method: 'POST',
+        body: { currentPassword: pwCurrent, newPassword: pwNew },
+      });
+      setPwSuccess(true);
+      setPwCurrent('');
+      setPwNew('');
+      setPwRepeat('');
+      setTimeout(() => {
+        logout();
+        navigate('/login');
+      }, 2000);
+    } catch (err) {
+      setPwError(err instanceof ApiError ? err.message : 'No pude cambiar la contraseña.');
+    } finally {
+      setPwBusy(false);
+    }
+  };
+
   if (loading) {
     return <div className="p-6 text-gray-500 dark:text-gray-300">Cargando…</div>;
   }
@@ -315,6 +354,66 @@ export default function ChannelLinking() {
       </div>
 
       <AppearanceCard />
+
+      {/* Contraseña card */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="text-3xl">🔒</div>
+          <div>
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100">Contraseña</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">Cambiá tu contraseña de acceso al dashboard.</p>
+          </div>
+        </div>
+        {pwSuccess ? (
+          <p className="text-green-700 dark:text-green-400 text-sm font-medium">
+            ✅ Contraseña actualizada. Vas a tener que iniciar sesión de nuevo.
+          </p>
+        ) : (
+          <div className="space-y-3 max-w-sm">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Contraseña actual</label>
+              <input
+                type="password"
+                value={pwCurrent}
+                onChange={e => setPwCurrent(e.target.value)}
+                disabled={pwBusy}
+                placeholder="Tu contraseña actual"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Nueva contraseña</label>
+              <input
+                type="password"
+                value={pwNew}
+                onChange={e => setPwNew(e.target.value)}
+                disabled={pwBusy}
+                placeholder="Mínimo 8 caracteres"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Repetir nueva contraseña</label>
+              <input
+                type="password"
+                value={pwRepeat}
+                onChange={e => setPwRepeat(e.target.value)}
+                disabled={pwBusy}
+                placeholder="Repetí la nueva contraseña"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              />
+            </div>
+            {pwError && <p className="text-red-600 dark:text-red-400 text-xs">{pwError}</p>}
+            <button
+              onClick={changePassword}
+              disabled={pwBusy || !pwCurrent || !pwNew || !pwRepeat}
+              className="px-4 py-2 rounded-md bg-campo-600 hover:bg-campo-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              {pwBusy ? 'Cambiando…' : 'Cambiar contraseña'}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* WhatsApp card */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
