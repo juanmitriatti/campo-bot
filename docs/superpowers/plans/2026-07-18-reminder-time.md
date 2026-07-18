@@ -26,7 +26,7 @@
 ### Task 1: Migración + `resolveFutureTime` + `createReminder` con hora + `reminderTick` por minuto
 
 **Files:**
-- Create: `src/migrations/100_task_reminders_time.sql`
+- Create: `src/migrations/101_task_reminders_time.sql`
 - Modify: `src/services/reminder.service.ts`
 - Modify: `src/services/scheduler.js:1202` (cron `10 * * * *` → `* * * * *`)
 - Test: `src/services/__tests__/reminder.service.test.ts` (agregar describes)
@@ -205,7 +205,7 @@ Expected: PASS (los describes previos + los 7 nuevos).
 
 - [ ] **Step 5: Create the migration**
 
-Create `src/migrations/100_task_reminders_time.sql`:
+Create `src/migrations/101_task_reminders_time.sql`:
 
 ```sql
 -- Recordatorios con hora y minutos: "acordame el sábado a las 14:30 de
@@ -300,10 +300,10 @@ Run: `npx tsc --noEmit 2>&1 | grep -c "error TS"` — comparar contra el conteo 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/migrations/100_task_reminders_time.sql src/services/reminder.service.ts src/services/scheduler.js src/services/__tests__/reminder.service.test.ts
+git add src/migrations/101_task_reminders_time.sql src/services/reminder.service.ts src/services/scheduler.js src/services/__tests__/reminder.service.test.ts
 git commit -m "feat(reminders): due_time + resolveFutureTime + tick por minuto
 
-Migración 100 (due_time TIME nullable, AR-local). resolveFutureTime parsea
+Migración 101 (due_time TIME nullable, AR-local). resolveFutureTime parsea
 hora argentina (14:30 / 8 y media de la mañana / mediodía) con marcador de
 ambigüedad AM/PM para 1-11 sin calificador. reminderTick pasa a por-minuto:
 con-hora dispara exacto sin franja; legacy sin-hora mantiene franja 07-21.
@@ -642,7 +642,7 @@ Expected: mismos fails pre-existentes que en HEAD antes de la feature (comparar 
 - [ ] **Step 2: Migración aplica limpia en Docker local**
 
 Run: `docker compose restart app 2>/dev/null || docker compose up -d; sleep 8; docker compose logs app --tail 20 | grep -i "migra\|100_"`
-Expected: `100_task_reminders_time.sql` aplicada (o ya presente en `schema_migrations`). Verificar: `docker compose exec -T db psql -U campo -d campo_bot -c "\d task_reminders" | grep due_time` → muestra la columna `time`.
+Expected: `101_task_reminders_time.sql` aplicada (o ya presente en `schema_migrations`). Verificar: `docker compose exec -T db psql -U campo -d campo_bot -c "\d task_reminders" | grep due_time` → muestra la columna `time`.
 
 - [ ] **Step 3: Smoke del tick por minuto**
 
