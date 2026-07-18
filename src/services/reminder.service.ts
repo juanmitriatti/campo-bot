@@ -101,9 +101,13 @@ export function resolveFutureTime(text: string | null | undefined): ResolvedTime
   }
 
   // "a las 14:30" / "a la 1:15" / "14.30hs" / "a las 8" / "8hs" / "a las 8 y media"
+  // FIX M1: lookaheads negativos evitan que "14.300 pesos" matchee como hora.
+  // (?!\d) tras el grupo de hora evita backtrack a "1" cuando el token es "14.xxx".
+  // (?!\.\d{3}) bloquea el token completo "14.300" (separador de miles).
+  // (?!\d) en el grupo de minutos evita que "300" → "30" si seguido de otro dígito.
   const m = t.match(
-    /\b(?:a\s+las?\s+)(\d{1,2})(?:[:.](\d{2}))?(?:\s*hs?\b)?(?:\s+(y\s+media|y\s+cuarto|menos\s+cuarto))?/,
-  ) ?? t.match(/\b(\d{1,2})[:.](\d{2})\s*hs?\b/) ?? t.match(/\b(\d{1,2})\s*hs\b(?:\s+(y\s+media|y\s+cuarto|menos\s+cuarto))?/);
+    /\b(?:a\s+las?\s+)(\d{1,2})(?!\d)(?!\.\d{3})(?:[:.](\d{2})(?!\d))?(?:\s*hs?\b)?(?:\s+(y\s+media|y\s+cuarto|menos\s+cuarto))?/,
+  ) ?? t.match(/\b(\d{1,2})[:.](\d{2})(?!\d)\s*hs?\b/) ?? t.match(/\b(\d{1,2})\s*hs\b(?:\s+(y\s+media|y\s+cuarto|menos\s+cuarto))?/);
   if (!m) return null;
 
   let hour = Number(m[1]);
@@ -111,13 +115,44 @@ export function resolveFutureTime(text: string | null | undefined): ResolvedTime
   const fraction = (m[3] ?? m[2]) as string | undefined; // según cuál regex matcheó
   if (typeof fraction === 'string' && /y\s+media/.test(fraction)) minute = 30;
   else if (typeof fraction === 'string' && /y\s+cuarto/.test(fraction)) minute = 15;
-  else if (typeof fraction === 'string' && /menos\s+cuarto/.test(fraction)) { minute = 45; hour = hour - 1; }
+  else if (typeof fraction === 'string' && /menos\s+cuarto/.test(fraction)) {
+    // FIX M2: capturar la hora HABLADA antes del decremento para que la verificación
+    // de ambigüedad opere sobre el valor original. "a la 1 menos cuarto" → spokenHour=1
+    // (rango 1-11 sin calificador) → ambiguo, no se resuelve silenciosamente a 00:45.
+    const spokenHour = hour;
+    minute = 45;
+    hour = hour - 1;
+    if (hour < 0) return null;
+
+    const isAMEarly = /de\s+la\s+madrugada/.test(t);
+    const isAMNormal = /de\s+la\s+manana/.test(t);
+    const isAM = isAMEarly || isAMNormal;
+    const isNoche = /de\s+la\s+noche/.test(t);
+    const isPM = /de\s+la\s+tarde/.test(t) || isNoche;
+    if (isPM && hour < 12) hour += 12;
+    // FIX M3: "12 de la noche" / "12 de la madrugada" → medianoche (00:XX)
+    if (isNoche && hour === 12) hour = 0;
+    if (isAMEarly && hour === 12) hour = 0;
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+    if (!isAM && !isPM && spokenHour >= 1 && spokenHour <= 11) {
+      return { ambiguous: true, hour, minute };
+    }
+    if (hour > 23 || minute > 59 || hour < 0) return null;
+    return { time: `${pad(hour)}:${pad(minute)}` };
+  }
   if (hour > 23 || minute > 59 || hour < 0) return null;
 
-  const isAM = /de\s+la\s+(manana|madrugada)/.test(t);
-  const isPM = /de\s+la\s+(tarde|noche)/.test(t);
+  const isAMEarly = /de\s+la\s+madrugada/.test(t);
+  const isAMNormal = /de\s+la\s+manana/.test(t);
+  const isAM = isAMEarly || isAMNormal;
+  const isNoche = /de\s+la\s+noche/.test(t);
+  const isPM = /de\s+la\s+tarde/.test(t) || isNoche;
   if (isPM && hour < 12) hour += 12;
-  if (isAM && hour === 12) hour = 0;
+  // FIX M3: "12 de la noche" / "12 de la madrugada" → medianoche (00:XX)
+  if (isNoche && hour === 12) hour = 0;
+  if (isAMEarly && hour === 12) hour = 0;
+  // "12 de la mañana" en AR coloquial = mediodía → se deja en 12 (isAMNormal no zeroes 12)
 
   const pad = (n: number) => String(n).padStart(2, '0');
   // 1-11 sin calificador ni formato 24h explícito (":MM" cuenta como explícito

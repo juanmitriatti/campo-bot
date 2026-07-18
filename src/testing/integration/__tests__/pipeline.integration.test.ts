@@ -6,13 +6,16 @@
  *
  * Requiere DB (Docker local :5433 o CI). Si no hay DB, se saltea entera.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createPipelineHarness, type PipelineHarness } from '../pipeline-harness.js';
 import { conversationLockStore } from '../../../middleware/conversation-lock-store.js';
 
 let dbAvailable = true;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let pool: any;
 try {
-  const { pool } = await import('../../../config/db.js');
+  const mod = await import('../../../config/db.js');
+  pool = mod.pool;
   await pool.query('SELECT 1');
 } catch {
   dbAvailable = false;
@@ -1034,6 +1037,169 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       } finally {
         await h.cleanup();
       }
+    });
+  });
+
+  describe('reminderTick — regresión (con-hora / futuro / legacy-franja / dedup)', () => {
+    /**
+     * Tests de integración directa de reminderTick (no pasan por el pipeline
+     * de mensajes). Se insertan filas a mano, se llama el tick con un send falso
+     * que graba llamadas y devuelve true, y se verifica el estado final en DB.
+     *
+     * Por qué acá y no en reminder.service.test.ts: necesitan una DB real para
+     * validar el UPDATE pending→sent y la lógica de dedup.
+     */
+    let testUserId: number;
+
+    beforeAll(async () => {
+      // Usuario mínimo para FK — sin pasar por el harness (no necesitamos pipeline).
+      // Eliminamos primero por si quedó de una corrida anterior.
+      const existing = await pool.query(
+        `SELECT id FROM users WHERE email = 'remtick@pipeline-harness.test.local'`,
+      );
+      if (existing.rows.length > 0) {
+        const eid = existing.rows[0].id as number;
+        await pool.query(`DELETE FROM task_reminders WHERE user_id = $1`, [eid]);
+        await pool.query(`DELETE FROM user_settings WHERE user_id = $1`, [eid]);
+        await pool.query(`DELETE FROM users WHERE id = $1`, [eid]);
+      }
+      const r = await pool.query(
+        `INSERT INTO users (name, email, password_hash, plan_id)
+         VALUES ('ReminderTick Test', 'remtick@pipeline-harness.test.local', 'x', 4)
+         RETURNING id`,
+      );
+      testUserId = r.rows[0].id as number;
+    });
+
+    afterAll(async () => {
+      await pool.query(`DELETE FROM task_reminders WHERE user_id = $1`, [testUserId]);
+      await pool.query(`DELETE FROM users WHERE id = $1`, [testUserId]);
+    });
+
+    beforeEach(async () => {
+      // Limpiar recordatorios entre tests para evitar interferencia
+      await pool.query(`DELETE FROM task_reminders WHERE user_id = $1`, [testUserId]);
+    });
+
+    it('con-hora llegada → dispara y pasa a sent', async () => {
+      const { getNowArgentina } = await import('../../../utils/date.js');
+      const { reminderTick } = await import('../../../services/reminder.service.js');
+
+      const now = getNowArgentina();
+      const today = now.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+      // Hora que YA pasó (1 minuto antes de ahora, redondeado al minuto)
+      const pastH = String(now.getHours()).padStart(2, '0');
+      const pastMin = String(Math.max(0, now.getMinutes() - 1)).padStart(2, '0');
+      const dueTime = `${pastH}:${pastMin}`;
+
+      await pool.query(
+        `INSERT INTO task_reminders (user_id, description, due_date, due_time, status)
+         VALUES ($1, 'test con-hora', $2, $3::time, 'pending')`,
+        [testUserId, today, dueTime],
+      );
+
+      const calls: number[] = [];
+      const sent = await reminderTick(async (userId) => { calls.push(userId); return true; });
+
+      expect(sent).toBeGreaterThanOrEqual(1);
+      expect(calls).toContain(testUserId);
+
+      const { rows } = await pool.query(
+        `SELECT status FROM task_reminders WHERE user_id = $1`,
+        [testUserId],
+      );
+      expect(rows[0].status).toBe('sent');
+    });
+
+    it('con-hora futura hoy → NO dispara', async () => {
+      const { getNowArgentina } = await import('../../../utils/date.js');
+      const { reminderTick } = await import('../../../services/reminder.service.js');
+
+      const now = getNowArgentina();
+      const today = now.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+      // Hora futura: 2 horas después
+      const futureH = String((now.getHours() + 2) % 24).padStart(2, '0');
+      const futureTime = `${futureH}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      await pool.query(
+        `INSERT INTO task_reminders (user_id, description, due_date, due_time, status)
+         VALUES ($1, 'test futuro hoy', $2, $3::time, 'pending')`,
+        [testUserId, today, futureTime],
+      );
+
+      const calls: number[] = [];
+      await reminderTick(async (userId) => { calls.push(userId); return true; });
+
+      expect(calls).not.toContain(testUserId);
+
+      const { rows } = await pool.query(
+        `SELECT status FROM task_reminders WHERE user_id = $1`,
+        [testUserId],
+      );
+      expect(rows[0].status).toBe('pending');
+    });
+
+    it('legacy sin hora → dispara sólo en franja 07-21 AR', async () => {
+      const { getNowArgentina } = await import('../../../utils/date.js');
+      const { reminderTick } = await import('../../../services/reminder.service.js');
+
+      const now = getNowArgentina();
+      const hour = now.getHours();
+      const inWindow = hour >= 7 && hour < 21;
+      const today = now.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+
+      await pool.query(
+        `INSERT INTO task_reminders (user_id, description, due_date, due_time, status)
+         VALUES ($1, 'test legacy', $2, NULL, 'pending')`,
+        [testUserId, today],
+      );
+
+      const calls: number[] = [];
+      await reminderTick(async (userId) => { calls.push(userId); return true; });
+
+      if (inWindow) {
+        expect(calls).toContain(testUserId);
+        const { rows } = await pool.query(
+          `SELECT status FROM task_reminders WHERE user_id = $1`,
+          [testUserId],
+        );
+        expect(rows[0].status).toBe('sent');
+      } else {
+        expect(calls).not.toContain(testUserId);
+        const { rows } = await pool.query(
+          `SELECT status FROM task_reminders WHERE user_id = $1`,
+          [testUserId],
+        );
+        expect(rows[0].status).toBe('pending');
+      }
+    });
+
+    it('dedup: segunda llamada a reminderTick no reenvía nada', async () => {
+      const { getNowArgentina } = await import('../../../utils/date.js');
+      const { reminderTick } = await import('../../../services/reminder.service.js');
+
+      const now = getNowArgentina();
+      const today = now.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const pastH = String(now.getHours()).padStart(2, '0');
+      const pastMin = String(Math.max(0, now.getMinutes() - 1)).padStart(2, '0');
+      const dueTime = `${pastH}:${pastMin}`;
+
+      await pool.query(
+        `INSERT INTO task_reminders (user_id, description, due_date, due_time, status)
+         VALUES ($1, 'test dedup', $2, $3::time, 'pending')`,
+        [testUserId, today, dueTime],
+      );
+
+      // Primera llamada: debe disparar
+      const first = await reminderTick(async () => true);
+      expect(first).toBeGreaterThanOrEqual(1);
+
+      // Segunda llamada: la fila ya es 'sent' → no debe disparar nada
+      const secondCalls: number[] = [];
+      const second = await reminderTick(async (userId) => { secondCalls.push(userId); return true; });
+
+      expect(second).toBe(0);
+      expect(secondCalls).not.toContain(testUserId);
     });
   });
 

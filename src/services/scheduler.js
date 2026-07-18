@@ -950,6 +950,12 @@ async function dailyCleanupTick() {
 
 const conversationStateRepoForReminder = new ConversationStateRepository();
 
+// Guard de solapamiento del tick de recordatorios: el cron por-minuto NO
+// serializa invocaciones — un batch lento de envíos (>60s de reintentos)
+// dejaba que un segundo tick seleccionara las mismas filas 'pending' antes
+// del UPDATE a 'sent' → mensaje duplicado. Single-replica: boolean alcanza.
+let reminderTickRunning = false;
+
 async function flowReminderTick() {
   try {
     const timeoutNotifyEnabled = (await getSettingBool('FLOW_TIMEOUT_NOTIFICATION_ENABLED')) ?? true;
@@ -1201,6 +1207,8 @@ export function startScheduler() {
   // internamente con-hora (exacto, sin franja) de legacy sin-hora (franja
   // 07-21 AR). Telegram-first con fallback WhatsApp.
   cron.schedule("* * * * *", () => {
+    if (reminderTickRunning) return;
+    reminderTickRunning = true;
     import("./reminder.service.js")
       .then(m => m.reminderTick(async (userId, contact, message) => {
         const result = await sendAlertWithRetryMultiChannel(
@@ -1213,7 +1221,8 @@ export function startScheduler() {
         return !!result.sent;
       }))
       .then(n => { if (n > 0) console.log(`[scheduler] recordatorios enviados: ${n}`); })
-      .catch(err => console.error("[scheduler] reminder tick failed:", err));
+      .catch(err => console.error("[scheduler] reminder tick failed:", err))
+      .finally(() => { reminderTickRunning = false; });
   });
 
   // Drip de descubrimiento del trial — cada hora a los :40; el tick gatea por

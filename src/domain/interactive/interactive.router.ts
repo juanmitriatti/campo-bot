@@ -440,7 +440,7 @@ export class InteractiveRouter {
     if (remtmwMatch) {
       if (remtmwMatch[2] === 'no') {
         // Usuario eligió no reprogramar — respuesta amigable vía noop_reminder_cancel
-        console.log(`[INTERCEPT] remtmw_ no: usuario canceló la reprogramación de recordatorio`);
+        console.log(`[reminders] remtmw_ no: usuario canceló la reprogramación de recordatorio`);
         return { type: 'command', data: { command: 'noop_reminder_cancel' } };
       }
       const payload = callbackPayloadStore.get(remtmwMatch[1]);

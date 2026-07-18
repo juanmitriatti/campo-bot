@@ -99,4 +99,19 @@ describe('resolveFutureTime — hora en español argentino', () => {
     expect(resolveFutureTime('comprar 8 bolsas')).toBeNull();
     expect(resolveFutureTime('pagar 14 mil')).toBeNull();
   });
+
+  it('no parsea montos con separador de miles ("14.300 pesos")', () => {
+    expect(resolveFutureTime('acordame pagar a las 14.300 pesos')).toBeNull();
+  });
+
+  it('"a la 1 menos cuarto" sin calificador → ambiguo (00:45 vs 12:45)', () => {
+    // spokenHour=1 está en rango 1-11, no hay AM/PM → ambiguo.
+    // Los botones del handler usan hour y hour+12: 0→00:45, 0+12→12:45.
+    expect(resolveFutureTime('a la 1 menos cuarto')).toEqual({ ambiguous: true, hour: 0, minute: 45 });
+  });
+
+  it('"12 de la noche" → medianoche', () => {
+    expect(resolveFutureTime('a las 12 de la noche')).toEqual({ time: '00:00' });
+    expect(resolveFutureTime('a las 12 de la madrugada')).toEqual({ time: '00:00' });
+  });
 });

@@ -488,7 +488,7 @@ export class SystemHandler {
 
       case 'noop_reminder_cancel': {
         // Tap de "❌ No, dejalo" en la pregunta de hora pasada: confirmamos que no hicimos nada.
-        console.log('[INTERCEPT] noop_reminder_cancel: usuario eligió no reprogramar el recordatorio');
+        console.log('[reminders] noop_reminder_cancel: usuario eligió no reprogramar el recordatorio');
         return { messages: ['👍 Listo, no guardé el recordatorio.'] };
       }
 
