@@ -156,7 +156,7 @@ export default function FieldsTab() {
                       onChange={e => setFieldNameDraft(e.target.value)}
                       className="text-base font-semibold border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2 py-1 w-full focus:ring-2 focus:ring-campo-500 outline-none"
                       autoFocus
-                      onKeyDown={e => { if (e.key === 'Enter') void savePlot(f.id); if (e.key === 'Escape') cancelEditField(); }}
+                      onKeyDown={e => { if (e.key === 'Enter') void saveField(f.id); if (e.key === 'Escape') cancelEditField(); }}
                     />
                     {fieldNameError && <p className="text-xs text-red-600 dark:text-red-400">{fieldNameError}</p>}
                     <div className="flex gap-2">

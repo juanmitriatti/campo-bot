@@ -120,6 +120,17 @@ describe('dashboard prelaunch — campos y lotes (Task 2)', () => {
       // Hectáreas inválidas → 400
       const badHa = await api(a.token)(`/plots/${plotId}`, { method: 'PATCH', body: JSON.stringify({ hectares: -5 }) });
       expect(badHa.status).toBe(400);
+
+      // FIX 2: cosechado-pero-no-cerrado (harvested_at SET, end_date NULL) debe aparecer como activeCrop
+      // La consulta CORRECTA usa end_date IS NULL (ciclo de vida real de la campaña)
+      await pool.query(
+        `INSERT INTO plot_crops (plot_id, crop, season_year, start_date, harvested_at, end_date)
+         VALUES ($1, 'soja', 2024, CURRENT_DATE, CURRENT_DATE, NULL)`,
+        [plotId],
+      );
+      const treeAfterHarvest = await (await api(a.token)('/fields-tree')).json();
+      // El cultivo cosechado pero NO cerrado debe seguir siendo visible como activo
+      expect(treeAfterHarvest.fields[0].plots.find((p: { id: number }) => p.id === plotId)?.activeCrop).toBe('soja');
     } finally { await cleanupUser(a.email); await cleanupUser(b.email); }
   });
 

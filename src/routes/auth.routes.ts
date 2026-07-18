@@ -604,7 +604,7 @@ router.get('/fields-tree', requireAuth, requireFeature('fields'), async (req: Re
       `SELECT f.id, f.name, f.city,
               COALESCE(json_agg(json_build_object(
                 'id', p.id, 'name', p.name, 'hectares', p.area_hectares,
-                'activeCrop', (SELECT pc.crop FROM plot_crops pc WHERE pc.plot_id = p.id AND pc.harvested_at IS NULL ORDER BY pc.id DESC LIMIT 1)
+                'activeCrop', (SELECT pc.crop FROM plot_crops pc WHERE pc.plot_id = p.id AND pc.end_date IS NULL ORDER BY pc.id DESC LIMIT 1)
               ) ORDER BY p.name) FILTER (WHERE p.id IS NOT NULL), '[]') AS plots
        FROM fields f
        LEFT JOIN plots p ON p.field_id = f.id AND p.deleted_at IS NULL
@@ -667,7 +667,11 @@ router.patch('/plots/:id', requireAuth, requireFeature('fields'), async (req: Re
     if (name !== undefined) { vals.push(name); sets.push(`name = $${vals.length}`); }
     if (hectares !== undefined) { vals.push(hectares); sets.push(`area_hectares = $${vals.length}`); }
     vals.push(id);
-    const r = await pool.query(`UPDATE plots SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING id, name, area_hectares`, vals);
+    vals.push(req.auth!.userId);
+    const r = await pool.query(
+      `UPDATE plots SET ${sets.join(', ')} WHERE id = $${vals.length - 1} AND field_id IN (SELECT id FROM fields WHERE user_id = $${vals.length} AND deleted_at IS NULL) RETURNING id, name, area_hectares`,
+      vals,
+    );
     res.json({ plot: r.rows[0] });
   } catch (err) { handleError(err, res); }
 });
