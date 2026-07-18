@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, Pencil, X, Check } from 'lucide-react';
 import { apiRequest, ApiError } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../hooks/useTheme';
@@ -80,8 +80,7 @@ export default function ChannelLinking() {
   const [tgBusy, setTgBusy] = useState(false);
   const [tgError, setTgError] = useState<string | null>(null);
 
-  // Export + delete state
-  const [exportBusy, setExportBusy] = useState(false);
+  // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -93,8 +92,25 @@ export default function ChannelLinking() {
   const [subError, setSubError] = useState<string | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
 
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Perfil editable
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profileCity, setProfileCity] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileSuccess, setProfileSuccess] = useState(false);
+  // Local shadow of user profile (refreshed after save)
+  const [localUser, setLocalUser] = useState<{ name: string | null; city: string | null; email: string | null } | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      setLocalUser({ name: user.name, city: user.city, email: user.email });
+    }
+  }, [user]);
 
   const refreshStatus = async () => {
     try {
@@ -238,35 +254,6 @@ export default function ChannelLinking() {
     }
   };
 
-  // ---------- Data export ----------
-  const downloadExport = async () => {
-    setExportBusy(true);
-    try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/auth/me/export', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const today = new Date().toISOString().slice(0, 10);
-      a.download = `campo-bot-export-${today}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert(`No pude descargar el export: ${(err as Error).message}`);
-    } finally {
-      setExportBusy(false);
-    }
-  };
-
   // ---------- Delete account ----------
   const confirmDelete = async () => {
     setDeleteError(null);
@@ -336,6 +323,45 @@ export default function ChannelLinking() {
     }
   };
 
+  // ---------- Perfil ----------
+  const startEditProfile = () => {
+    setProfileName(localUser?.name ?? '');
+    setProfileCity(localUser?.city ?? '');
+    setProfileEmail(localUser?.email ?? '');
+    setProfileError(null);
+    setProfileSuccess(false);
+    setProfileEditing(true);
+  };
+
+  const cancelEditProfile = () => {
+    setProfileEditing(false);
+    setProfileError(null);
+  };
+
+  const saveProfile = async () => {
+    setProfileError(null);
+    setProfileBusy(true);
+    try {
+      const body: Record<string, string> = {};
+      if (profileName !== (localUser?.name ?? '')) body.name = profileName;
+      if (profileCity !== (localUser?.city ?? '')) body.city = profileCity;
+      if (profileEmail !== (localUser?.email ?? '')) body.email = profileEmail;
+      if (Object.keys(body).length === 0) { setProfileEditing(false); return; }
+      const result = await apiRequest<{ user: { id: number; name: string | null; city: string | null; email: string | null } }>(
+        '/me',
+        { method: 'PATCH', body },
+      );
+      setLocalUser({ name: result.user.name, city: result.user.city, email: result.user.email });
+      setProfileSuccess(true);
+      setProfileEditing(false);
+      setTimeout(() => setProfileSuccess(false), 3000);
+    } catch (err) {
+      setProfileError(err instanceof ApiError ? err.message : 'No pude guardar los cambios.');
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
   if (loading) {
     return <div className="p-6 text-gray-500 dark:text-gray-300">Cargando…</div>;
   }
@@ -358,6 +384,120 @@ export default function ChannelLinking() {
         <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
           Vinculá tu WhatsApp y/o Telegram para usar el bot desde tus chats.
         </p>
+      </div>
+
+      {/* Tu perfil card */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="text-3xl">👤</div>
+            <div>
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Tu perfil</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">Nombre, ciudad y email de tu cuenta.</p>
+            </div>
+          </div>
+          {!profileEditing && (
+            <button
+              type="button"
+              onClick={startEditProfile}
+              className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors"
+              title="Editar perfil"
+            >
+              <Pencil className="w-4 h-4" />
+              <span className="hidden sm:inline">Editar</span>
+            </button>
+          )}
+        </div>
+
+        {profileSuccess && (
+          <div className="mt-3 flex items-center gap-2 text-green-700 dark:text-green-400 text-sm">
+            <Check className="w-4 h-4" />
+            Perfil actualizado correctamente.
+          </div>
+        )}
+
+        {!profileEditing ? (
+          <dl className="mt-4 space-y-2 text-sm">
+            <div className="flex gap-2">
+              <dt className="w-20 text-gray-500 dark:text-gray-400 shrink-0">Nombre</dt>
+              <dd className="text-gray-800 dark:text-gray-100">{localUser?.name || <span className="italic text-gray-400">—</span>}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="w-20 text-gray-500 dark:text-gray-400 shrink-0">Ciudad</dt>
+              <dd className="text-gray-800 dark:text-gray-100">{localUser?.city || <span className="italic text-gray-400">—</span>}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="w-20 text-gray-500 dark:text-gray-400 shrink-0">Email</dt>
+              <dd className="text-gray-800 dark:text-gray-100 font-mono text-xs">{localUser?.email || <span className="italic text-gray-400">—</span>}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="w-20 text-gray-500 dark:text-gray-400 shrink-0">Teléfono</dt>
+              <dd className="text-gray-500 dark:text-gray-400 italic text-xs">Se cambia desde la card de WhatsApp, más abajo.</dd>
+            </div>
+          </dl>
+        ) : (
+          <div className="mt-4 space-y-3 max-w-sm">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Nombre</label>
+              <input
+                type="text"
+                value={profileName}
+                onChange={e => setProfileName(e.target.value)}
+                disabled={profileBusy}
+                placeholder="Tu nombre"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Ciudad</label>
+              <input
+                type="text"
+                value={profileCity}
+                onChange={e => setProfileCity(e.target.value)}
+                disabled={profileBusy}
+                placeholder="Tu ciudad"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Email</label>
+              <input
+                type="email"
+                value={profileEmail}
+                onChange={e => setProfileEmail(e.target.value)}
+                disabled={profileBusy}
+                placeholder="tu@email.com"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              />
+              {profileEmail !== (localUser?.email ?? '') && (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  ⚠️ Si cambiás el email, vas a tener que verificarlo de nuevo.
+                </p>
+              )}
+            </div>
+            {profileError && <p className="text-red-600 dark:text-red-400 text-xs">{profileError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={saveProfile}
+                disabled={profileBusy}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-campo-600 hover:bg-campo-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                <Check className="w-4 h-4" />
+                {profileBusy ? 'Guardando…' : 'Guardar'}
+              </button>
+              <button
+                type="button"
+                onClick={cancelEditProfile}
+                disabled={profileBusy}
+                className="flex items-center gap-1.5 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <AppearanceCard />
@@ -698,26 +838,6 @@ export default function ChannelLinking() {
           </div>
         </div>
       )}
-
-      {/* Data export card */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <div className="flex items-start gap-3">
-          <div className="text-3xl">📦</div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-gray-800 dark:text-gray-100">Exportar mis datos</h3>
-            <p className="text-sm text-gray-500 mt-1">
-              Descargá un ZIP con todo lo que registraste: campos, lotes, gastos, ingresos, actividades, observaciones, monitoreos, hacienda, stock, documentos. Un CSV por sección + un metadata.json con tu cuenta.
-            </p>
-            <button
-              onClick={downloadExport}
-              disabled={exportBusy}
-              className="mt-3 px-4 py-2 bg-campo-600 text-white rounded-md text-sm font-medium hover:bg-campo-700 disabled:opacity-50"
-            >
-              {exportBusy ? 'Generando ZIP…' : 'Descargar ZIP'}
-            </button>
-          </div>
-        </div>
-      </div>
 
       {/* Danger zone */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-red-200 dark:border-red-800 p-6">

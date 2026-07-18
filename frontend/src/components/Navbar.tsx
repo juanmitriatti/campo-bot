@@ -1,7 +1,12 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { CircleUser } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-export default function Navbar() {
+interface NavbarProps {
+  onUserClick?: () => void;
+}
+
+export default function Navbar({ onUserClick }: NavbarProps) {
   const { user, plan, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -9,6 +14,14 @@ export default function Navbar() {
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleUserClick = () => {
+    if (onUserClick) {
+      onUserClick();
+    } else {
+      navigate('/dashboard');
+    }
   };
 
   if (!user) return null;
@@ -41,9 +54,16 @@ export default function Navbar() {
               {isChat ? 'Dashboard' : 'Chat'}
             </button>
           )}
-          <span className="text-sm text-campo-100 hidden sm:inline">
-            {user.name || user.email}
-          </span>
+          {/* Nombre visible en desktop; ícono de perfil en mobile */}
+          <button
+            type="button"
+            onClick={handleUserClick}
+            className="flex items-center gap-1.5 text-sm text-campo-100 hover:text-white hover:underline transition-colors"
+            title="Ir a Mi cuenta"
+          >
+            <CircleUser className="w-4 h-4 sm:hidden" aria-hidden="true" />
+            <span className="hidden sm:inline">{user.name || user.email}</span>
+          </button>
           <button
             onClick={handleLogout}
             className="text-sm bg-campo-800 hover:bg-campo-900 px-3 py-1.5 rounded transition-colors"

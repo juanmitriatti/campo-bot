@@ -199,13 +199,45 @@ router.get('/me', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+// --- Perfil (Mi cuenta): nombre / ciudad / email ---
 router.patch('/me', requireAuth, async (req: Request, res: Response) => {
   try {
-    const user = await authService.updateProfile(req.auth!.userId, req.body);
-    res.json({ user });
-  } catch (err) {
-    handleError(err, res);
-  }
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : undefined;
+    const city = typeof req.body?.city === 'string' ? req.body.city.trim() : undefined;
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : undefined;
+    if (name === '') { res.status(400).json({ error: 'El nombre no puede quedar vacío.' }); return; }
+    if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(400).json({ error: 'Ese email no parece válido.' }); return;
+    }
+    if (name === undefined && city === undefined && email === undefined) {
+      res.status(400).json({ error: 'Nada para actualizar.' }); return;
+    }
+    let emailChanged = false;
+    if (email !== undefined) {
+      const cur = await pool.query(`SELECT email FROM users WHERE id = $1`, [req.auth!.userId]);
+      emailChanged = (cur.rows[0]?.email ?? '').toLowerCase() !== email;
+      if (emailChanged) {
+        const dup = await pool.query(`SELECT 1 FROM users WHERE LOWER(email) = $1 AND id <> $2`, [email, req.auth!.userId]);
+        if (dup.rows.length > 0) { res.status(409).json({ error: 'Ese email ya está en uso.' }); return; }
+      }
+    }
+    const sets: string[] = []; const vals: unknown[] = [];
+    if (name !== undefined) { vals.push(name); sets.push(`name = $${vals.length}`); }
+    if (city !== undefined) { vals.push(city || null); sets.push(`city = $${vals.length}`); }
+    if (email !== undefined && emailChanged) {
+      vals.push(email); sets.push(`email = $${vals.length}`);
+      sets.push(`email_verified_at = NULL`); // el banner de verificación se re-dispara
+    }
+    if (sets.length === 0) { res.json({ user: null, unchanged: true }); return; }
+    vals.push(req.auth!.userId);
+    const r = await pool.query(
+      `UPDATE users SET ${sets.join(', ')} WHERE id = $${vals.length} AND deleted_at IS NULL RETURNING id, name, city, email`,
+      vals,
+    );
+    if (r.rows.length === 0) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
+    console.log(`[account] perfil actualizado user=${req.auth!.userId}${emailChanged ? ' (email cambiado, verificación reseteada)' : ''}`);
+    res.json({ user: r.rows[0] });
+  } catch (err) { handleError(err, res); }
 });
 
 // --- Channel verification (WhatsApp OTP + Telegram deep-link) ---

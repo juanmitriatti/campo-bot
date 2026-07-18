@@ -195,7 +195,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
-      <Navbar />
+      <Navbar onUserClick={() => setView('account')} />
 
       {welcomeEmail && (
         <div className="bg-campo-50 dark:bg-campo-900/30 border-b border-campo-200 dark:border-campo-800 text-campo-800 dark:text-campo-200 text-sm">

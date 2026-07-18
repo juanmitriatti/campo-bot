@@ -176,6 +176,42 @@ describe('dashboard prelaunch — campos y lotes (Task 2)', () => {
   });
 });
 
+describe('dashboard ux-polish — perfil (PATCH /me)', () => {
+  beforeAll(async () => { appUp = await appReachable(); if (!appUp) console.warn('[routes-test] SKIP — app en :3000 no responde'); });
+
+  it('edita nombre y ciudad', async () => {
+    if (!appUp) return;
+    const u = await registerTestUser('perfil');
+    try {
+      const r = await api(u.token)('/me', { method: 'PATCH', body: JSON.stringify({ name: 'Juan Test', city: 'Pergamino' }) });
+      expect(r.status).toBe(200);
+      const row = await pool.query(`SELECT name, city FROM users WHERE id = $1`, [u.userId]);
+      expect(row.rows[0]).toMatchObject({ name: 'Juan Test', city: 'Pergamino' });
+    } finally { await cleanupUser(u.email); }
+  });
+
+  it('email: duplicado 409, inválido 400, cambio resetea verificación', async () => {
+    if (!appUp) return;
+    const a = await registerTestUser('perfil-a');
+    const b = await registerTestUser('perfil-b');
+    try {
+      const dup = await api(a.token)('/me', { method: 'PATCH', body: JSON.stringify({ email: b.email.toUpperCase() }) });
+      expect(dup.status).toBe(409);
+      const bad = await api(a.token)('/me', { method: 'PATCH', body: JSON.stringify({ email: 'no-es-un-mail' }) });
+      expect(bad.status).toBe(400);
+      // marcar verificado, cambiar email → vuelve a NULL
+      await pool.query(`UPDATE users SET email_verified_at = NOW() WHERE id = $1`, [a.userId]);
+      const nuevo = `nuevo-${Date.now()}@routes-test.local`;
+      const ok = await api(a.token)('/me', { method: 'PATCH', body: JSON.stringify({ email: nuevo }) });
+      expect(ok.status).toBe(200);
+      const row = await pool.query(`SELECT email, email_verified_at FROM users WHERE id = $1`, [a.userId]);
+      expect(row.rows[0].email).toBe(nuevo);
+      expect(row.rows[0].email_verified_at).toBeNull();
+      await pool.query(`UPDATE users SET email = $2 WHERE id = $1`, [a.userId, a.email]); // restaurar para cleanup
+    } finally { await cleanupUser(a.email); await cleanupUser(b.email); }
+  });
+});
+
 describe('dashboard prelaunch — password y recordatorios (Task 3)', () => {
   beforeAll(async () => {
     appUp = await appReachable();
