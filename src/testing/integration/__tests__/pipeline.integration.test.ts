@@ -1116,15 +1116,20 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const { reminderTick } = await import('../../../services/reminder.service.js');
 
       const now = getNowArgentina();
-      const today = now.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
-      // Hora futura: 2 horas después
+      // Hora futura: 2 horas después. Si cruza medianoche (22:00-23:59), el
+      // string wrappea ("00:MM" <= "22:MM" lexicográfico) y el test flakearía
+      // — en ese caso la fila va con due_date de MAÑANA (sigue siendo futuro).
+      const wraps = now.getHours() + 2 >= 24;
+      const dueDay = new Date(now);
+      if (wraps) dueDay.setDate(dueDay.getDate() + 1);
+      const futureDate = dueDay.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
       const futureH = String((now.getHours() + 2) % 24).padStart(2, '0');
       const futureTime = `${futureH}:${String(now.getMinutes()).padStart(2, '0')}`;
 
       await pool.query(
         `INSERT INTO task_reminders (user_id, description, due_date, due_time, status)
          VALUES ($1, 'test futuro hoy', $2, $3::time, 'pending')`,
-        [testUserId, today, futureTime],
+        [testUserId, futureDate, futureTime],
       );
 
       const calls: number[] = [];
