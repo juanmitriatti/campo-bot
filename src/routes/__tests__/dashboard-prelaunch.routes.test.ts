@@ -198,12 +198,13 @@ describe('dashboard prelaunch — password y recordatorios (Task 3)', () => {
     try {
       const r1 = await pool.query(`INSERT INTO task_reminders (user_id, description, due_date, due_time) VALUES ($1, 'fumigar lote 5', '2099-01-05', '14:30') RETURNING id`, [u.userId]);
       const r2 = await pool.query(`INSERT INTO task_reminders (user_id, description, due_date, status) VALUES ($1, 'ya hecho', '2020-01-01', 'done') RETURNING id`, [u.userId]);
+      const r3 = await pool.query(`INSERT INTO task_reminders (user_id, description, due_date) VALUES ($1, 'regar almácigo', '2099-03-10') RETURNING id`, [u.userId]);
 
       const open = await (await api(u.token)('/reminders')).json();
-      expect(open.reminders).toHaveLength(1);
+      expect(open.reminders).toHaveLength(2);
       expect(open.reminders[0].due_time).toBe('14:30');
       const all = await (await api(u.token)('/reminders?status=all')).json();
-      expect(all.reminders).toHaveLength(2);
+      expect(all.reminders).toHaveLength(3);
 
       // Scoping: el otro usuario no puede tocarlo
       const forbidden = await api(other.token)(`/reminders/${r1.rows[0].id}`, { method: 'PATCH', body: JSON.stringify({ action: 'done' }) });
@@ -214,7 +215,14 @@ describe('dashboard prelaunch — password y recordatorios (Task 3)', () => {
       expect(done.status).toBe(200);
       const st = await pool.query(`SELECT status FROM task_reminders WHERE id = $1`, [r1.rows[0].id]);
       expect(st.rows[0].status).toBe('done');
-      void r2;
+
+      // cancel
+      const cancel = await api(u.token)(`/reminders/${r3.rows[0].id}`, { method: 'PATCH', body: JSON.stringify({ action: 'cancel' }) });
+      expect(cancel.status).toBe(200);
+      const stCancel = await pool.query(`SELECT status FROM task_reminders WHERE id = $1`, [r3.rows[0].id]);
+      expect(stCancel.rows[0].status).toBe('cancelled');
+
+      void r2; // solo existe para verificar que el filtro default (open) lo excluye
     } finally { await cleanupUser(u.email); await cleanupUser(other.email); }
   });
 });

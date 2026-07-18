@@ -2300,6 +2300,7 @@ router.delete('/push/unsubscribe', requireAuth, async (req: Request, res: Respon
 });
 
 // --- Cambio de contraseña (Mi cuenta) ---
+const BCRYPT_ROUNDS = 12; // mismo work-factor que auth.service
 router.post('/me/password', requireAuth, async (req: Request, res: Response) => {
   try {
     const { currentPassword, newPassword } = (req.body ?? {}) as { currentPassword?: string; newPassword?: string };
@@ -2310,7 +2311,7 @@ router.post('/me/password', requireAuth, async (req: Request, res: Response) => 
     if (u.rows.length === 0 || !u.rows[0].password_hash) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
     const okPass = await bcrypt.compare(currentPassword ?? '', u.rows[0].password_hash);
     if (!okPass) { res.status(403).json({ error: 'La contraseña actual no es correcta.' }); return; }
-    const hash = await bcrypt.hash(newPassword, 10);
+    const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await pool.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, req.auth!.userId]);
     await tokenRepository.revokeAllUserTokens(req.auth!.userId);
     console.log(`[account] password changed user=${req.auth!.userId} (tokens revocados)`);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sun, Moon } from 'lucide-react';
 import { apiRequest, ApiError } from '../api/client';
@@ -297,6 +297,13 @@ export default function ChannelLinking() {
   const [pwBusy, setPwBusy] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSuccess, setPwSuccess] = useState(false);
+  const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (logoutTimerRef.current !== null) clearTimeout(logoutTimerRef.current);
+    };
+  }, []);
 
   const changePassword = async () => {
     setPwError(null);
@@ -318,7 +325,7 @@ export default function ChannelLinking() {
       setPwCurrent('');
       setPwNew('');
       setPwRepeat('');
-      setTimeout(() => {
+      logoutTimerRef.current = setTimeout(() => {
         logout();
         navigate('/login');
       }, 2000);
