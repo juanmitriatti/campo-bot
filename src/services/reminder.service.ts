@@ -20,6 +20,7 @@ export interface TaskReminder {
   id: number;
   description: string;
   due_date: string; // YYYY-MM-DD
+  due_time?: string | null; // HH:MM (AR) — null = legacy sin hora
   status: 'pending' | 'sent' | 'done' | 'cancelled';
   plot_name?: string | null;
   field_name?: string | null;
@@ -75,23 +76,77 @@ export function resolveFutureDate(text: string | null | undefined): string | nul
   return null;
 }
 
+export type ResolvedTime = { time: string } | { ambiguous: true; hour: number; minute: number } | null;
+
+const MOMENT_WORDS: Array<[RegExp, string]> = [
+  [/\bal\s+mediod[ií]a\b/, '12:00'],
+  [/\ba\s+la\s+tardecita\b/, '18:00'],
+  [/\btemprano\b/, '07:00'],
+  [/\ba\s+la\s+noche\b/, '21:00'],
+];
+
+/**
+ * Resuelve una frase de HORA a { time: 'HH:MM' } (24h). Hora 1-11 sin
+ * calificador AM/PM → { ambiguous } (el handler pregunta con botones — NUNCA
+ * adivinamos: "a las 8" puede ser 08:00 o 20:00). Sin señal de hora → null.
+ * Solo detecta horas con marcador explícito ("a las", "hs", ":") — un número
+ * suelto ("8 bolsas") no es una hora.
+ */
+export function resolveFutureTime(text: string | null | undefined): ResolvedTime {
+  if (!text) return null;
+  const t = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  for (const [re, time] of MOMENT_WORDS) {
+    if (re.test(t)) return { time };
+  }
+
+  // "a las 14:30" / "a la 1:15" / "14.30hs" / "a las 8" / "8hs" / "a las 8 y media"
+  const m = t.match(
+    /\b(?:a\s+las?\s+)(\d{1,2})(?:[:.](\d{2}))?(?:\s*hs?\b)?(?:\s+(y\s+media|y\s+cuarto|menos\s+cuarto))?/,
+  ) ?? t.match(/\b(\d{1,2})[:.](\d{2})\s*hs?\b/) ?? t.match(/\b(\d{1,2})\s*hs\b(?:\s+(y\s+media|y\s+cuarto|menos\s+cuarto))?/);
+  if (!m) return null;
+
+  let hour = Number(m[1]);
+  let minute = m[2] != null && /^\d{2}$/.test(m[2]) ? Number(m[2]) : 0;
+  const fraction = (m[3] ?? m[2]) as string | undefined; // según cuál regex matcheó
+  if (typeof fraction === 'string' && /y\s+media/.test(fraction)) minute = 30;
+  else if (typeof fraction === 'string' && /y\s+cuarto/.test(fraction)) minute = 15;
+  else if (typeof fraction === 'string' && /menos\s+cuarto/.test(fraction)) { minute = 45; hour = hour - 1; }
+  if (hour > 23 || minute > 59 || hour < 0) return null;
+
+  const isAM = /de\s+la\s+(manana|madrugada)/.test(t);
+  const isPM = /de\s+la\s+(tarde|noche)/.test(t);
+  if (isPM && hour < 12) hour += 12;
+  if (isAM && hour === 12) hour = 0;
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  // 1-11 sin calificador ni formato 24h explícito (":MM" cuenta como explícito
+  // solo si la hora ya es >= 12): ambiguo → botones.
+  if (!isAM && !isPM && hour >= 1 && hour <= 11) {
+    return { ambiguous: true, hour, minute };
+  }
+  return { time: `${pad(hour)}:${pad(minute)}` };
+}
+
 export async function createReminder(
   userId: number,
   description: string,
   dueDate: string,
-  opts: { fieldId?: number | null; plotId?: number | null } = {},
+  opts: { fieldId?: number | null; plotId?: number | null; dueTime?: string | null } = {},
 ): Promise<TaskReminder> {
   const { rows } = await pool.query(
-    `INSERT INTO task_reminders (user_id, description, due_date, field_id, plot_id)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id, description, due_date::text, status`,
-    [userId, description, dueDate, opts.fieldId ?? null, opts.plotId ?? null],
+    `INSERT INTO task_reminders (user_id, description, due_date, due_time, field_id, plot_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, description, due_date::text, to_char(due_time, 'HH24:MI') AS due_time, status`,
+    [userId, description, dueDate, opts.dueTime ?? null, opts.fieldId ?? null, opts.plotId ?? null],
   );
   return rows[0];
 }
 
 export async function listReminders(userId: number): Promise<TaskReminder[]> {
   const { rows } = await pool.query(
-    `SELECT r.id, r.description, r.due_date::text, r.status, p.name AS plot_name, f.name AS field_name
+    `SELECT r.id, r.description, r.due_date::text, to_char(r.due_time, 'HH24:MI') AS due_time, r.status,
+            p.name AS plot_name, f.name AS field_name
      FROM task_reminders r
      LEFT JOIN plots p ON p.id = r.plot_id
      LEFT JOIN fields f ON f.id = r.field_id
@@ -156,7 +211,8 @@ export function formatReminderList(reminders: TaskReminder[]): string {
   for (const r of reminders) {
     const overdue = r.due_date < today ? ' ⚠️ vencido' : '';
     const loc = r.plot_name ? ` (lote ${r.plot_name})` : r.field_name ? ` (${r.field_name})` : '';
-    lines.push(`• ${r.description}${loc} — *${fmtDue(r.due_date)}*${overdue}`);
+    const hora = r.due_time ? ` a las ${r.due_time}` : '';
+    lines.push(`• ${r.description}${loc} — *${fmtDue(r.due_date)}${hora}*${overdue}`);
   }
   lines.push('');
   lines.push('_"listo el recordatorio de X" para marcarlo hecho._');
@@ -164,32 +220,47 @@ export function formatReminderList(reminders: TaskReminder[]): string {
 }
 
 /**
- * Tick del scheduler (horario): envía los recordatorios que vencen HOY (o
- * quedaron vencidos sin avisar) dentro de la franja 07-21 AR y los marca
- * 'sent'. Devuelve cuántos mandó.
+ * Tick del scheduler (POR MINUTO desde Jul 2026): dos poblaciones.
+ *  - CON due_time: dispara cuando llega la hora exacta (o quedó vencido) —
+ *    SIN franja horaria, el usuario eligió la hora.
+ *  - SIN due_time (legacy): comportamiento original — franja 07-21 AR,
+ *    dispara a la mañana del día que vence.
+ * Dedup: pending → sent (igual que siempre).
  */
 export async function reminderTick(
   send: (userId: number, contact: { phone: string | null; telegramId: string | null }, message: string) => Promise<boolean>,
 ): Promise<number> {
-  const hour = getNowArgentina().getHours();
-  if (hour < 7 || hour >= 21) return 0;
+  const now = getNowArgentina();
+  const hour = now.getHours();
   const today = getTodayISO();
+  const nowHM = `${String(hour).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const legacyInWindow = hour >= 7 && hour < 21;
+
   const { rows } = await pool.query(
-    `SELECT r.id, r.description, r.due_date::text, r.user_id, u.phone_number, u.telegram_id,
+    `SELECT r.id, r.description, r.due_date::text, to_char(r.due_time, 'HH24:MI') AS due_time,
+            r.user_id, u.phone_number, u.telegram_id,
             p.name AS plot_name, f.name AS field_name
      FROM task_reminders r
      JOIN users u ON u.id = r.user_id AND u.deleted_at IS NULL
      LEFT JOIN plots p ON p.id = r.plot_id
      LEFT JOIN fields f ON f.id = r.field_id
-     WHERE r.status = 'pending' AND r.due_date <= $1
+     WHERE r.status = 'pending'
+       AND (
+         -- Con hora: vencidos de días anteriores, u hoy cuando la hora llegó
+         (r.due_time IS NOT NULL AND (r.due_date < $1 OR (r.due_date = $1 AND to_char(r.due_time, 'HH24:MI') <= $2)))
+         -- Legacy sin hora: igual que siempre, gateado por franja en JS
+         OR (r.due_time IS NULL AND r.due_date <= $1 AND $3)
+       )
      ORDER BY r.id
      LIMIT 200`,
-    [today],
+    [today, nowHM, legacyInWindow],
   );
+
   let sent = 0;
   for (const r of rows) {
     const loc = r.plot_name ? ` (lote ${r.plot_name})` : r.field_name ? ` (${r.field_name})` : '';
-    const when = r.due_date === today ? 'hoy' : `desde el ${r.due_date.slice(8, 10)}/${r.due_date.slice(5, 7)}`;
+    const hora = r.due_time ? ` a las ${r.due_time}` : '';
+    const when = r.due_date === today ? `hoy${hora}` : `desde el ${r.due_date.slice(8, 10)}/${r.due_date.slice(5, 7)}${hora}`;
     const msg = `⏰ *Recordatorio* (${when}):\n${r.description}${loc}\n\n_"listo el recordatorio" cuando lo hagas, o "mis recordatorios" para ver todos._`;
     try {
       const ok = await send(r.user_id, { phone: r.phone_number, telegramId: r.telegram_id }, msg);

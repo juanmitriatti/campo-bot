@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveFutureDate, formatReminderList } from '../reminder.service.js';
+import { resolveFutureDate, formatReminderList, resolveFutureTime } from '../reminder.service.js';
 import { getTodayISO } from '../../utils/date.js';
 
 function addDays(iso: string, n: number): string {
@@ -52,5 +52,51 @@ describe('formatReminderList', () => {
     ]);
     expect(out).toContain('vencido');
     expect(out).toContain('HOY');
+  });
+});
+
+describe('resolveFutureTime — hora en español argentino', () => {
+  it('formas explícitas 24h', () => {
+    expect(resolveFutureTime('acordame a las 14:30 de fumigar')).toEqual({ time: '14:30' });
+    expect(resolveFutureTime('a las 14.30')).toEqual({ time: '14:30' });
+    expect(resolveFutureTime('14:30hs')).toEqual({ time: '14:30' });
+    expect(resolveFutureTime('a las 20')).toEqual({ time: '20:00' });
+    expect(resolveFutureTime('a las 12')).toEqual({ time: '12:00' });
+  });
+
+  it('calificador AM/PM resuelve horas chicas', () => {
+    expect(resolveFutureTime('a las 8 de la mañana')).toEqual({ time: '08:00' });
+    expect(resolveFutureTime('a las 8 de la noche')).toEqual({ time: '20:00' });
+    expect(resolveFutureTime('a las 3 de la tarde')).toEqual({ time: '15:00' });
+    expect(resolveFutureTime('a las 2 de la madrugada')).toEqual({ time: '02:00' });
+  });
+
+  it('fracciones: y media / y cuarto / menos cuarto', () => {
+    expect(resolveFutureTime('a las 8 y media de la mañana')).toEqual({ time: '08:30' });
+    expect(resolveFutureTime('a las 5 y cuarto de la tarde')).toEqual({ time: '17:15' });
+    expect(resolveFutureTime('a las 8 menos cuarto de la noche')).toEqual({ time: '19:45' });
+  });
+
+  it('palabras de momento del día', () => {
+    expect(resolveFutureTime('al mediodía')).toEqual({ time: '12:00' });
+    expect(resolveFutureTime('a la tardecita')).toEqual({ time: '18:00' });
+    expect(resolveFutureTime('temprano')).toEqual({ time: '07:00' });
+    expect(resolveFutureTime('a la noche')).toEqual({ time: '21:00' });
+  });
+
+  it('hora 1-11 sin calificador → marcador ambiguo (se pregunta con botones)', () => {
+    expect(resolveFutureTime('a las 8')).toEqual({ ambiguous: true, hour: 8, minute: 0 });
+    expect(resolveFutureTime('a las 8 y media')).toEqual({ ambiguous: true, hour: 8, minute: 30 });
+  });
+
+  it('sin señal de hora → null', () => {
+    expect(resolveFutureTime('acordame el sábado de fumigar')).toBeNull();
+    expect(resolveFutureTime('fumigar el lote 5')).toBeNull();
+    expect(resolveFutureTime(null)).toBeNull();
+  });
+
+  it('no confunde cantidades con horas', () => {
+    expect(resolveFutureTime('comprar 8 bolsas')).toBeNull();
+    expect(resolveFutureTime('pagar 14 mil')).toBeNull();
   });
 });

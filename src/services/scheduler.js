@@ -1196,10 +1196,11 @@ export function startScheduler() {
       .catch(err => console.error("[scheduler] pending_states sweep failed:", err));
   });
 
-  // Recordatorios de labores ("el sábado tengo que fumigar") — cada hora a
-  // los :10; el tick valida la franja 07-21 AR internamente. Telegram-first
-  // con fallback WhatsApp (mismo canal que el resto de las alertas).
-  cron.schedule("10 * * * *", () => {
+  // Recordatorios de labores ("el sábado a las 14:30 tengo que fumigar") —
+  // POR MINUTO desde Jul 2026 (precisión exacta para due_time). El tick separa
+  // internamente con-hora (exacto, sin franja) de legacy sin-hora (franja
+  // 07-21 AR). Telegram-first con fallback WhatsApp.
+  cron.schedule("* * * * *", () => {
     import("./reminder.service.js")
       .then(m => m.reminderTick(async (userId, contact, message) => {
         const result = await sendAlertWithRetryMultiChannel(
