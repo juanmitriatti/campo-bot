@@ -401,20 +401,95 @@ export class SystemHandler {
       }
 
       case 'create_reminder': {
+        // Promueve el slot `time` mergeado desde el pending-processor (llega como cmd.time)
+        if (!cmd.due_time && typeof cmd.time === 'string') cmd.due_time = cmd.time;
+
         const desc = (cmd.description as string | null)?.trim();
         if (!desc) {
-          return { messages: ['¿Qué te recuerdo y cuándo? Ej: *"acordame el sábado de fumigar el lote 5"*.'] };
+          return { messages: ['¿Qué te recuerdo y cuándo? Ej: *"acordame el sábado a las 14:30 de fumigar el lote 5"*.'] };
         }
-        const { createReminder, resolveFutureDate } = await import('../../services/reminder.service.js');
+        const { createReminder, resolveFutureDate, resolveFutureTime } = await import('../../services/reminder.service.js');
+        const { getTodayISO, getNowArgentina } = await import('../../utils/date.js');
         const dueDate = (cmd.due_date as string | null)
           || resolveFutureDate(cmd.originalText as string | null)
           || resolveFutureDate(desc);
         if (!dueDate) {
-          return { messages: [`¿Para cuándo te lo recuerdo? Decime la frase completa con la fecha, ej: *"acordame el viernes de ${desc}"*.`] };
+          return { messages: [`¿Para cuándo te lo recuerdo? Decime la frase completa con la fecha, ej: *"acordame el viernes a las 9 de ${desc}"*.`] };
         }
-        const r = await createReminder(Number(userId), desc, dueDate);
+
+        // Hora: agente (due_time) → red de seguridad server-side (texto original).
+        // El valor del agente nunca se pisa; si no es HH:MM válido, se re-parsea.
+        const agentTime = (cmd.due_time as string | null) ?? null;
+        let resolved = /^\d{2}:\d{2}$/.test(agentTime ?? '')
+          ? { time: agentTime as string }
+          : resolveFutureTime(agentTime)
+            ?? resolveFutureTime(cmd.originalText as string | null)
+            ?? resolveFutureTime(desc);
+
+        // 1-11 sin AM/PM → botones (NUNCA adivinar, NUNCA pregunta de texto suelto)
+        if (resolved && 'ambiguous' in resolved) {
+          const { callbackPayloadStore } = await import('../../middleware/callback-payload-store.js');
+          const pad = (n: number) => String(n).padStart(2, '0');
+          const am = `${pad(resolved.hour)}:${pad(resolved.minute)}`;
+          const pm = `${pad(resolved.hour + 12)}:${pad(resolved.minute)}`;
+          const token = callbackPayloadStore.set(JSON.stringify({ d: desc, dd: dueDate }));
+          return {
+            messages: [],
+            interactive: {
+              type: 'buttons',
+              body: `⏰ "${desc}" el ${dueDate.slice(8, 10)}/${dueDate.slice(5, 7)} — ¿a la mañana o a la noche?`,
+              buttons: [
+                { id: `remt_${token}_${am}`, title: `🌅 ${am}` },
+                { id: `remt_${token}_${pm}`, title: `🌆 ${pm}` },
+              ],
+            },
+          };
+        }
+
+        // Sin hora → pending machine-readable (missing:['time']) — regla dura
+        if (!resolved) {
+          return {
+            messages: ['⏰ ¿A qué hora te lo recuerdo? (ej: *"a las 14:30"* o *"a las 8 de la mañana"*)'],
+            sideEffects: {
+              setPendingActivity: {
+                command: 'create_reminder',
+                data: { description: desc, due_date: dueDate },
+                missing: ['time'],
+                askPrompt: '⏰ ¿A qué hora te lo recuerdo? (ej: "a las 14:30")',
+              },
+            },
+          };
+        }
+
+        const dueTime = resolved.time;
+        // Hora pasada HOY → ofrecer mañana con botones (no guardar ciego)
+        const now = getNowArgentina();
+        const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        if (dueDate === getTodayISO() && dueTime < nowHM) {
+          const { callbackPayloadStore } = await import('../../middleware/callback-payload-store.js');
+          const token = callbackPayloadStore.set(JSON.stringify({ d: desc, dd: dueDate, t: dueTime }));
+          return {
+            messages: [],
+            interactive: {
+              type: 'buttons',
+              body: `⏰ Las ${dueTime} de hoy ya pasaron. ¿Te lo recuerdo *mañana* a las ${dueTime}?`,
+              buttons: [
+                { id: `remtmw_${token}_si`, title: '👍 Sí, mañana' },
+                { id: `remtmw_${token}_no`, title: '❌ No, dejalo' },
+              ],
+            },
+          };
+        }
+
+        const r = await createReminder(Number(userId), desc, dueDate, { dueTime });
         const dd = `${r.due_date.slice(8, 10)}/${r.due_date.slice(5, 7)}`;
-        return { messages: [`⏰ Listo, te lo recuerdo el *${dd}*:\n"${r.description}"\n\n_"mis recordatorios" para ver todos._`] };
+        return { messages: [`⏰ Listo, te lo recuerdo el *${dd}* a las *${dueTime}*:\n"${r.description}"\n\n_"mis recordatorios" para ver todos._`] };
+      }
+
+      case 'noop_reminder_cancel': {
+        // Tap de "❌ No, dejalo" en la pregunta de hora pasada: confirmamos que no hicimos nada.
+        console.log('[INTERCEPT] noop_reminder_cancel: usuario eligió no reprogramar el recordatorio');
+        return { messages: ['👍 Listo, no guardé el recordatorio.'] };
       }
 
       case 'list_reminders': {

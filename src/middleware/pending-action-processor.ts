@@ -318,6 +318,7 @@ export const SLOT_LABEL: Record<SlotName, string> = {
   currency: 'la moneda',
   count: 'la cantidad de animales',
   hectares: 'las hectáreas',
+  time: 'la hora',
 };
 
 function buildAskPromptForMissing(missing: SlotName[], fallback?: string): string {

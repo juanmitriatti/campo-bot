@@ -16,6 +16,7 @@
 import { normalizarMonto, detectarCategoria, detectarCategoriaIngreso } from '../utils/parser.js';
 import { extractCropFromText } from '../utils/crops.ts';
 import { stripPlotCorrectionPrefix } from './flows/field-step-helpers.js';
+import { resolveFutureTime } from '../services/reminder.service.js';
 
 /** Canonical slot names. Add here when a new shared slot type is introduced. */
 export type SlotName =
@@ -30,7 +31,8 @@ export type SlotName =
   | 'product'
   | 'currency'
   | 'count'
-  | 'hectares';
+  | 'hectares'
+  | 'time';
 
 export type ExtractedSlots = Partial<Record<SlotName, unknown>>;
 
@@ -89,6 +91,9 @@ export function extractSlots(
 
   const count = extractCount(stripped);
   if (count != null) out.count = count;
+
+  const time = extractTime(stripped);
+  if (time) out.time = time;
 
   return out;
 }
@@ -251,4 +256,15 @@ function extractProductName(text: string): string | null {
   );
   if (!m) return null;
   return m[1].trim();
+}
+
+/**
+ * Hora para recordatorios ("a las 14:30", "a las 3 de la tarde"). Devuelve
+ * SOLO horas inequívocas en HH:MM — el caso ambiguo (1-11 sin AM/PM) NO se
+ * extrae acá: el handler lo detecta vía resolveFutureTime y pregunta con
+ * botones. Import dinámico no: reminder.service es liviano y sin ciclos.
+ */
+function extractTime(text: string): string | null {
+  const r = resolveFutureTime(text);
+  return r && 'time' in r ? r.time : null;
 }

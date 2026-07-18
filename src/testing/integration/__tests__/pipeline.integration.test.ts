@@ -1036,4 +1036,75 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       }
     });
   });
+
+  describe('recordatorios con hora', () => {
+    it('crea con fecha y hora explícitas', async () => {
+      const h = await createPipelineHarness('rem-hora');
+      try {
+        h.fakeAgent.enqueueTool('create_reminder', {
+          description: 'fumigar el lote 5', due_date: '2099-01-05', due_time: '14:30',
+        });
+        const items = await h.send('acordame el 5 de enero a las 14:30 de fumigar el lote 5');
+        expect(h.allText(items)).toContain('14:30');
+        const rows = await h.q(
+          `SELECT to_char(due_time, 'HH24:MI') AS t FROM task_reminders WHERE user_id = $1`,
+          [h.userId],
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0].t).toBe('14:30');
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    it('sin hora → pregunta con pending; "a las 3 de la tarde" la completa', async () => {
+      const h = await createPipelineHarness('rem-pending');
+      try {
+        h.fakeAgent.enqueueTool('create_reminder', {
+          description: 'vacunar las vacas', due_date: '2099-01-05',
+        });
+        const ask = await h.send('acordame el 5 de enero de vacunar las vacas');
+        expect(h.allText(ask)).toContain('hora');
+
+        // La respuesta la consume el pending-processor — el agente NO se llama
+        const callsBefore = h.fakeAgent.calls.length;
+        const done = await h.send('a las 3 de la tarde');
+        expect(h.fakeAgent.calls.length).toBe(callsBefore);
+        expect(h.allText(done)).toContain('15:00');
+        const rows = await h.q(
+          `SELECT to_char(due_time, 'HH24:MI') AS t FROM task_reminders WHERE user_id = $1`,
+          [h.userId],
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0].t).toBe('15:00');
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    it('hora ambigua ("a las 8") → botones AM/PM → tap crea con 20:00', async () => {
+      const h = await createPipelineHarness('rem-ampm');
+      try {
+        h.fakeAgent.enqueueTool('create_reminder', {
+          description: 'regar la huerta', due_date: '2099-01-05', due_time: 'a las 8',
+        });
+        const items = await h.send('acordame el 5 de enero a las 8 de regar la huerta');
+        const buttons = h.allButtons(items);
+        expect(buttons.length).toBe(2);
+        const pm = buttons.find(b => b.title.includes('20:00'));
+        expect(pm).toBeTruthy();
+
+        const after = await h.tap(pm!.id);
+        expect(h.allText(after)).toContain('20:00');
+        const rows = await h.q(
+          `SELECT to_char(due_time, 'HH24:MI') AS t FROM task_reminders WHERE user_id = $1`,
+          [h.userId],
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0].t).toBe('20:00');
+      } finally {
+        await h.cleanup();
+      }
+    });
+  });
 });

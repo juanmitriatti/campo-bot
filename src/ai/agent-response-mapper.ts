@@ -821,6 +821,7 @@ export class AgentResponseMapper {
     if (toolName === 'create_reminder' || toolName === 'complete_reminder') {
       if (typeof input.description === 'string') cmd.description = input.description;
       if (typeof input.due_date === 'string') cmd.due_date = input.due_date;
+      if (typeof input.due_time === 'string') cmd.due_time = input.due_time;
       if (typeof input.cancel === 'boolean') cmd.cancel = input.cancel;
     }
 

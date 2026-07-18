@@ -420,6 +420,46 @@ export class InteractiveRouter {
       }
     }
 
+    // Recordatorio — desambiguación AM/PM: remt_<token>_<HH:MM>
+    const remtMatch = callbackId.match(/^remt_([A-Za-z0-9_-]+)_(\d{2}:\d{2})$/);
+    if (remtMatch) {
+      const payload = callbackPayloadStore.get(remtMatch[1]);
+      if (payload) {
+        try {
+          const { d, dd } = JSON.parse(payload) as { d: string; dd: string };
+          return { type: 'command', data: { command: 'create_reminder', description: d, due_date: dd, due_time: remtMatch[2] } };
+        } catch { /* fall through */ }
+      }
+      // Token vencido o payload corrupto → pipeline aplica STALE_BUTTON_ITEM
+      console.log(`[INTERCEPT] remt_ token vencido o payload inválido: ${callbackId}`);
+      return null;
+    }
+
+    // Recordatorio — hora pasada hoy: remtmw_<token>_si|no
+    const remtmwMatch = callbackId.match(/^remtmw_([A-Za-z0-9_-]+)_(si|no)$/);
+    if (remtmwMatch) {
+      if (remtmwMatch[2] === 'no') {
+        // Usuario eligió no reprogramar — respuesta amigable vía noop_reminder_cancel
+        console.log(`[INTERCEPT] remtmw_ no: usuario canceló la reprogramación de recordatorio`);
+        return { type: 'command', data: { command: 'noop_reminder_cancel' } };
+      }
+      const payload = callbackPayloadStore.get(remtmwMatch[1]);
+      if (!payload) {
+        console.log(`[INTERCEPT] remtmw_ token vencido: ${callbackId}`);
+        return null; // → STALE_BUTTON_ITEM
+      }
+      try {
+        const { d, dd, t } = JSON.parse(payload) as { d: string; dd: string; t: string };
+        const next = new Date(dd + 'T12:00:00');
+        next.setDate(next.getDate() + 1);
+        const tomorrow = next.toISOString().slice(0, 10);
+        return { type: 'command', data: { command: 'create_reminder', description: d, due_date: tomorrow, due_time: t } };
+      } catch {
+        console.log(`[INTERCEPT] remtmw_ payload corrupto: ${callbackId}`);
+        return null; // → STALE_BUTTON_ITEM
+      }
+    }
+
     return null;
   }
 }
