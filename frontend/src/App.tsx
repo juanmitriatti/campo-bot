@@ -48,7 +48,7 @@ export default function App() {
           <Route
             path="/chat"
             element={
-              <ProtectedRoute allowedRoles={['end_user', 'admin']}>
+              <ProtectedRoute allowedRoles={['admin']}>
                 <Chat />
               </ProtectedRoute>
             }

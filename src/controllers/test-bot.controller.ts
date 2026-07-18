@@ -95,6 +95,14 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 async function handleTestBotMessage(req: Request, res: Response): Promise<void> {
+  // Prod: el chat de prueba es solo-admin — un usuario final que descubra la
+  // URL no debe poder escribir datos reales por acá. No-prod (docker/CI/eval)
+  // sigue abierto: el eval usa este endpoint con usuarios de prueba.
+  if (IS_PROD_RUNTIME && req.auth?.role !== 'admin') {
+    console.warn(`[test-bot] blocked non-admin in prod: user=${req.auth?.userId}`);
+    res.status(403).json({ error: 'Solo disponible para administradores.' });
+    return;
+  }
   const startTime = Date.now();
   try {
     const { message: inputText, interactiveReplyId } = req.body as { message?: string; interactiveReplyId?: string };
@@ -141,6 +149,14 @@ function stripAttachment<T extends object>(item: T): T {
 
 // POST /api/test-bot/audio — multipart audio upload
 router.post('/audio', upload.single('audio'), async (req: Request, res: Response) => {
+  // Prod: el chat de prueba es solo-admin — un usuario final que descubra la
+  // URL no debe poder escribir datos reales por acá. No-prod (docker/CI/eval)
+  // sigue abierto: el eval usa este endpoint con usuarios de prueba.
+  if (IS_PROD_RUNTIME && req.auth?.role !== 'admin') {
+    console.warn(`[test-bot] blocked non-admin in prod: user=${req.auth?.userId}`);
+    res.status(403).json({ error: 'Solo disponible para administradores.' });
+    return;
+  }
   const startTime = Date.now();
   try {
     if (!req.file) {
