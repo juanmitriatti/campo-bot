@@ -22,6 +22,7 @@ import { CategoryRepository, type CategoryKind } from '../domain/financial/categ
 import { CategoryService } from '../domain/financial/category.service.js';
 import { asUserId } from '../types/index.js';
 import type { FeatureKey } from '../types/index.js';
+import { sqlNormalizedName } from '../utils/entity-matcher.js';
 
 const router = Router();
 const authService = new AuthService();
@@ -593,6 +594,123 @@ router.get('/activities', requireAuth, requireFeature('agronomy'), async (req: R
   } catch (err) {
     handleError(err, res);
   }
+});
+
+// --- Campos y lotes (tab Campos del dashboard) ---
+
+router.get('/fields-tree', requireAuth, requireFeature('fields'), async (req: Request, res: Response) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT f.id, f.name, f.city,
+              COALESCE(json_agg(json_build_object(
+                'id', p.id, 'name', p.name, 'hectares', p.area_hectares,
+                'activeCrop', (SELECT pc.crop FROM plot_crops pc WHERE pc.plot_id = p.id AND pc.harvested_at IS NULL ORDER BY pc.id DESC LIMIT 1)
+              ) ORDER BY p.name) FILTER (WHERE p.id IS NOT NULL), '[]') AS plots
+       FROM fields f
+       LEFT JOIN plots p ON p.field_id = f.id AND p.deleted_at IS NULL
+       WHERE f.user_id = $1 AND f.deleted_at IS NULL
+       GROUP BY f.id ORDER BY f.name`,
+      [req.auth!.userId],
+    );
+    res.json({ fields: rows });
+  } catch (err) { handleError(err, res); }
+});
+
+router.patch('/fields/:id', requireAuth, requireFeature('fields'), async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    if (isNaN(id) || !name) { res.status(400).json({ error: 'Nombre inválido' }); return; }
+    // Unicidad case/acento-insensible dentro del usuario (entity-matcher)
+    const dup = await pool.query(
+      `SELECT 1 FROM fields WHERE user_id = $1 AND id <> $2 AND deleted_at IS NULL
+       AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$3::text')}`,
+      [req.auth!.userId, id, name],
+    );
+    if (dup.rows.length > 0) { res.status(409).json({ error: 'Ya tenés un campo con ese nombre' }); return; }
+    const r = await pool.query(
+      `UPDATE fields SET name = $1 WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL RETURNING id, name`,
+      [name, id, req.auth!.userId],
+    );
+    if (r.rows.length === 0) { res.status(404).json({ error: 'Campo no encontrado' }); return; }
+    res.json({ field: r.rows[0] });
+  } catch (err) { handleError(err, res); }
+});
+
+router.patch('/plots/:id', requireAuth, requireFeature('fields'), async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : undefined;
+    const hectares = req.body?.hectares != null ? Number(req.body.hectares) : undefined;
+    if (name === '') { res.status(400).json({ error: 'Nombre inválido' }); return; }
+    if (hectares !== undefined && (!isFinite(hectares) || hectares <= 0 || hectares > 100000)) {
+      res.status(400).json({ error: 'Hectáreas inválidas (0 a 100.000)' }); return;
+    }
+    if (name === undefined && hectares === undefined) { res.status(400).json({ error: 'Nada para actualizar' }); return; }
+    // Ownership via JOIN + field_id para la unicidad
+    const own = await pool.query(
+      `SELECT p.field_id FROM plots p JOIN fields f ON f.id = p.field_id
+       WHERE p.id = $1 AND f.user_id = $2 AND p.deleted_at IS NULL`,
+      [id, req.auth!.userId],
+    );
+    if (own.rows.length === 0) { res.status(404).json({ error: 'Lote no encontrado' }); return; }
+    if (name !== undefined) {
+      const dup = await pool.query(
+        `SELECT 1 FROM plots WHERE field_id = $1 AND id <> $2 AND deleted_at IS NULL
+         AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$3::text')}`,
+        [own.rows[0].field_id, id, name],
+      );
+      if (dup.rows.length > 0) { res.status(409).json({ error: 'Ya hay un lote con ese nombre en ese campo' }); return; }
+    }
+    const sets: string[] = []; const vals: unknown[] = [];
+    if (name !== undefined) { vals.push(name); sets.push(`name = $${vals.length}`); }
+    if (hectares !== undefined) { vals.push(hectares); sets.push(`area_hectares = $${vals.length}`); }
+    vals.push(id);
+    const r = await pool.query(`UPDATE plots SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING id, name, area_hectares`, vals);
+    res.json({ plot: r.rows[0] });
+  } catch (err) { handleError(err, res); }
+});
+
+// --- Soft-delete de registros (paridad con "borrá el último gasto" del bot) ---
+
+router.delete('/expenses/:id', requireAuth, requireFeature('expenses'), async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const r = await pool.query(
+      `UPDATE expenses SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING id`,
+      [id, req.auth!.userId],
+    );
+    if (r.rows.length === 0) { res.status(404).json({ error: 'Gasto no encontrado' }); return; }
+    res.json({ deleted: true });
+  } catch (err) { handleError(err, res); }
+});
+
+router.delete('/incomes/:id', requireAuth, requireFeature('incomes'), async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const r = await pool.query(
+      `UPDATE incomes SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING id`,
+      [id, req.auth!.userId],
+    );
+    if (r.rows.length === 0) { res.status(404).json({ error: 'Ingreso no encontrado' }); return; }
+    res.json({ deleted: true });
+  } catch (err) { handleError(err, res); }
+});
+
+router.delete('/activities/:id', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const r = await pool.query(
+      `UPDATE domain_events SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING id`,
+      [id, req.auth!.userId],
+    );
+    if (r.rows.length === 0) { res.status(404).json({ error: 'Actividad no encontrada' }); return; }
+    res.json({ deleted: true });
+  } catch (err) { handleError(err, res); }
 });
 
 // --- Edit routes ---

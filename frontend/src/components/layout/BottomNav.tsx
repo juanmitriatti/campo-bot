@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Wallet, DollarSign, Sprout, Eye, Search,
-  FileText, Wheat, Paperclip, User, Tag,
+  FileText, Wheat, Paperclip, User, Tag, Map,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { DashboardView } from './Sidebar';
@@ -14,6 +14,7 @@ interface BottomNavItem {
 
 const ITEMS: BottomNavItem[] = [
   { key: 'overview', label: 'Resumen', Icon: LayoutDashboard },
+  { key: 'fields', label: 'Campos', Icon: Map },
   { key: 'expenses', label: 'Gastos', Icon: Wallet, feature: 'expenses' },
   { key: 'incomes', label: 'Ingresos', Icon: DollarSign, feature: 'incomes' },
   { key: 'activities', label: 'Actividades', Icon: Sprout, feature: 'agronomy' },

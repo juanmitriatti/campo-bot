@@ -20,7 +20,7 @@ interface Activity {
   edited_by_name: string | null;
 }
 
-import { Wind, FlaskConical, Sprout, Tractor, Wheat, Droplet, Stethoscope } from 'lucide-react';
+import { Wind, FlaskConical, Sprout, Tractor, Wheat, Droplet, Stethoscope, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 const ACTIVITY_TYPE_LABELS: Record<string, { label: string; Icon: LucideIcon }> = {
@@ -55,9 +55,10 @@ function getDetail(a: Activity): string {
 interface Props {
   activity: Activity;
   onEdit: (a: Activity) => void;
+  onDelete?: (a: Activity) => void;
 }
 
-export default function ActivityCard({ activity, onEdit }: Props) {
+export default function ActivityCard({ activity, onEdit, onDelete }: Props) {
   const info = ACTIVITY_TYPE_LABELS[activity.event_type];
   const Icon = info?.Icon;
   const typeLabel = info?.label ?? activity.event_type;
@@ -82,12 +83,19 @@ export default function ActivityCard({ activity, onEdit }: Props) {
             {location && <><span>·</span><span className="truncate">{location}</span></>}
           </div>
         </div>
-        <button
-          onClick={() => onEdit(activity)}
-          className="text-campo-600 hover:text-campo-800 text-xs font-medium ml-2 shrink-0"
-        >
-          Editar
-        </button>
+        <div className="flex items-center gap-2 ml-2 shrink-0">
+          <button
+            onClick={() => onEdit(activity)}
+            className="text-campo-600 hover:text-campo-800 text-xs font-medium"
+          >
+            Editar
+          </button>
+          {onDelete && (
+            <button onClick={() => onDelete(activity)} className="text-red-400 hover:text-red-600" title="Eliminar">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

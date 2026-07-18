@@ -5,6 +5,7 @@ import { useSortableTable } from '../hooks/useSortableTable';
 import ExpenseEditModal from './ExpenseEditModal';
 import ExpenseCard from './cards/ExpenseCard';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { Trash2 } from 'lucide-react';
 
 interface Expense {
   id: number;
@@ -98,6 +99,8 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Expense | null>(null);
+  const [deleting, setDeleting] = useState<Expense | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [fields, setFields] = useState<FieldOption[]>([]);
   const [fieldId, setFieldId] = useState('');
@@ -209,6 +212,18 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
   const handleSaved = () => {
     setEditing(null);
     fetchExpenses();
+  };
+
+  const handleDelete = async (id: number) => {
+    setDeleteError(null);
+    try {
+      await apiRequest(`/expenses/${id}`, { method: 'DELETE' });
+      setDeleting(null);
+      fetchExpenses();
+    } catch (err: unknown) {
+      const b = err instanceof Error ? err.message : 'No se pudo eliminar';
+      setDeleteError(b);
+    }
   };
 
   const hasFilters = fieldId || plotId || dateFrom || dateTo || category || expenseType
@@ -379,7 +394,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
                   ref={rowRef(exp.id)}
                   className={activeHighlight === exp.id ? 'ring-2 ring-campo-400 rounded-lg transition' : ''}
                 >
-                  <ExpenseCard expense={exp} onEdit={setEditing} />
+                  <ExpenseCard expense={exp} onEdit={setEditing} onDelete={e => { setDeleting(e); setDeleteError(null); }} />
                 </div>
               ))}
             </div>
@@ -455,12 +470,21 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
                         {exp.edited_by_name && <span className="block text-gray-400 dark:text-gray-300">editado por {exp.edited_by_name}</span>}
                       </td>
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => setEditing(exp)}
-                          className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline"
-                        >
-                          Editar
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setEditing(exp)}
+                            className="text-campo-600 hover:text-campo-800 text-xs font-medium hover:underline"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => { setDeleting(exp); setDeleteError(null); }}
+                            className="text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -504,6 +528,30 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
           onClose={() => setEditing(null)}
           onSaved={handleSaved}
         />
+      )}
+      {deleting && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">¿Eliminar este registro?</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-1">
+              {deleting.expense_date ? new Date(deleting.expense_date).toLocaleDateString('es-AR') : ''} · {deleting.category} · {formatAmount(deleting.amount, deleting.currency)}
+            </p>
+            {deleting.description && <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">{deleting.description}</p>}
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Esta acción lo saca de tus listados y reportes.</p>
+            {deleteError && <p className="text-sm text-red-600 dark:text-red-400 mb-3">{deleteError}</p>}
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setDeleting(null)} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
+                Cancelar
+              </button>
+              <button
+                onClick={() => void handleDelete(deleting.id)}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

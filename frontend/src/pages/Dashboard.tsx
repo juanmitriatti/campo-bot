@@ -17,10 +17,12 @@ import DocumentsTable from '../components/DocumentsTable';
 import HarvestLoadsTable from '../components/HarvestLoadsTable';
 import ChannelLinking from '../components/ChannelLinking';
 import CategoriesTab from '../components/CategoriesTab';
+import FieldsTab from '../components/FieldsTab';
 import type { DashboardView } from '../components/layout/Sidebar';
 
 const viewFeatureMap: Record<DashboardView, string | null> = {
   overview: null,
+  fields: null,
   expenses: 'expenses',
   incomes: 'incomes',
   activities: 'agronomy',
@@ -122,6 +124,8 @@ export default function Dashboard() {
             onGoToActivities={() => setView('activities')}
           />
         );
+      case 'fields':
+        return <FieldsTab />;
       case 'expenses':
         return (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">

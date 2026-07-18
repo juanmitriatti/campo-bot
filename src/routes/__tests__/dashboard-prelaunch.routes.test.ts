@@ -78,3 +78,83 @@ describe('dashboard prelaunch — seguridad (Task 1)', () => {
     expect(r.status).toBe(404);
   });
 });
+
+describe('dashboard prelaunch — campos y lotes (Task 2)', () => {
+  beforeAll(async () => { appUp = await appReachable(); });
+
+  it('fields-tree: scoping + rename campo/lote + hectáreas', async () => {
+    if (!appUp) return;
+    const a = await registerTestUser('fields-a');
+    const b = await registerTestUser('fields-b');
+    try {
+      const f = await pool.query(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Vieja') RETURNING id`, [a.userId]);
+      const fieldId = f.rows[0].id;
+      const p = await pool.query(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 50) RETURNING id`, [fieldId]);
+      const plotId = p.rows[0].id;
+
+      // GET árbol
+      const tree = await (await api(a.token)('/fields-tree')).json();
+      expect(tree.fields).toHaveLength(1);
+      expect(tree.fields[0].plots[0].name).toBe('Norte');
+
+      // El usuario B no ve nada, y no puede editar lo de A
+      const treeB = await (await api(b.token)('/fields-tree')).json();
+      expect(treeB.fields).toHaveLength(0);
+      const forbidden = await api(b.token)(`/fields/${fieldId}`, { method: 'PATCH', body: JSON.stringify({ name: 'Robado' }) });
+      expect(forbidden.status).toBe(404);
+
+      // Rename campo + lote + hectáreas
+      const r1 = await api(a.token)(`/fields/${fieldId}`, { method: 'PATCH', body: JSON.stringify({ name: 'La Nueva' }) });
+      expect(r1.status).toBe(200);
+      const r2 = await api(a.token)(`/plots/${plotId}`, { method: 'PATCH', body: JSON.stringify({ name: 'Norte Grande', hectares: 62.5 }) });
+      expect(r2.status).toBe(200);
+      const row = await pool.query(`SELECT p.name, p.area_hectares, f.name AS fname FROM plots p JOIN fields f ON f.id = p.field_id WHERE p.id = $1`, [plotId]);
+      expect(row.rows[0]).toMatchObject({ name: 'Norte Grande', fname: 'La Nueva' });
+      expect(Number(row.rows[0].area_hectares)).toBe(62.5);
+
+      // Colisión de nombre (case/acento-insensible) → 409
+      await pool.query(`INSERT INTO plots (field_id, name) VALUES ($1, 'Sur')`, [fieldId]);
+      const dup = await api(a.token)(`/plots/${plotId}`, { method: 'PATCH', body: JSON.stringify({ name: 'sur' }) });
+      expect(dup.status).toBe(409);
+
+      // Hectáreas inválidas → 400
+      const badHa = await api(a.token)(`/plots/${plotId}`, { method: 'PATCH', body: JSON.stringify({ hectares: -5 }) });
+      expect(badHa.status).toBe(400);
+    } finally { await cleanupUser(a.email); await cleanupUser(b.email); }
+  });
+
+  it('soft-delete de gasto/ingreso/actividad + desaparecen del listado', async () => {
+    if (!appUp) return;
+    const u = await registerTestUser('deletes');
+    try {
+      const e = await pool.query(`INSERT INTO expenses (user_id, amount, category, description) VALUES ($1, 5000, 'Combustible', 'gasoil') RETURNING id`, [u.userId]);
+      const i = await pool.query(`INSERT INTO incomes (user_id, amount, category, description) VALUES ($1, 90000, 'Granos', 'venta soja') RETURNING id`, [u.userId]);
+      const d = await pool.query(`INSERT INTO domain_events (user_id, event_type, event_date) VALUES ($1, 'spraying', CURRENT_DATE) RETURNING id`, [u.userId]);
+
+      for (const [path, id] of [[`/expenses/${e.rows[0].id}`, e.rows[0].id], [`/incomes/${i.rows[0].id}`, i.rows[0].id], [`/activities/${d.rows[0].id}`, d.rows[0].id]] as const) {
+        const r = await api(u.token)(String(path), { method: 'DELETE' });
+        expect(r.status).toBe(200);
+      }
+      const gone = await pool.query(
+        `SELECT (SELECT deleted_at FROM expenses WHERE id = $1) AS e,
+                (SELECT deleted_at FROM incomes WHERE id = $2) AS i,
+                (SELECT deleted_at FROM domain_events WHERE id = $3) AS d`,
+        [e.rows[0].id, i.rows[0].id, d.rows[0].id],
+      );
+      expect(gone.rows[0].e).not.toBeNull();
+      expect(gone.rows[0].i).not.toBeNull();
+      expect(gone.rows[0].d).not.toBeNull();
+
+      // El listado ya no los devuelve
+      const list = await (await api(u.token)('/expenses?page=1&limit=10')).json();
+      const ids = (list.expenses ?? list.items ?? []).map((x: { id: number }) => x.id);
+      expect(ids).not.toContain(e.rows[0].id);
+
+      // Cross-user → 404
+      const other = await registerTestUser('deletes-b');
+      const r404 = await api(other.token)(`/expenses/${e.rows[0].id}`, { method: 'DELETE' });
+      expect(r404.status).toBe(404);
+      await cleanupUser(other.email);
+    } finally { await cleanupUser(u.email); }
+  });
+});

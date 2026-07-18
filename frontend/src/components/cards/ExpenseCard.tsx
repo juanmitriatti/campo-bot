@@ -1,3 +1,5 @@
+import { Trash2 } from 'lucide-react';
+
 interface Expense {
   id: number;
   category: string;
@@ -40,9 +42,10 @@ function formatDate(dateStr: string): string {
 interface Props {
   expense: Expense;
   onEdit: (e: Expense) => void;
+  onDelete?: (e: Expense) => void;
 }
 
-export default function ExpenseCard({ expense, onEdit }: Props) {
+export default function ExpenseCard({ expense, onEdit, onDelete }: Props) {
   const location = [expense.field_name, expense.plot_name].filter(Boolean).join(', ');
   const productLine = expense.product
     ? [
@@ -71,12 +74,19 @@ export default function ExpenseCard({ expense, onEdit }: Props) {
             {location && <><span>·</span><span className="truncate">{location}</span></>}
           </div>
         </div>
-        <button
-          onClick={() => onEdit(expense)}
-          className="text-campo-600 hover:text-campo-800 text-xs font-medium ml-2 shrink-0"
-        >
-          Editar
-        </button>
+        <div className="flex items-center gap-2 ml-2 shrink-0">
+          <button
+            onClick={() => onEdit(expense)}
+            className="text-campo-600 hover:text-campo-800 text-xs font-medium"
+          >
+            Editar
+          </button>
+          {onDelete && (
+            <button onClick={() => onDelete(expense)} className="text-red-400 hover:text-red-600" title="Eliminar">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
