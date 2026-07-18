@@ -56,7 +56,10 @@ async function cleanupUser(email: string): Promise<void> {
 }
 
 describe('dashboard prelaunch — seguridad (Task 1)', () => {
-  beforeAll(async () => { appUp = await appReachable(); });
+  beforeAll(async () => {
+    appUp = await appReachable();
+    if (!appUp) console.warn('[routes-test] SKIP — app en :3000 no responde (levantar docker compose)');
+  });
 
   it('POST /api/test-bot en no-prod sigue abierto para usuarios comunes', async () => {
     if (!appUp) return; // skip sin docker
@@ -80,7 +83,10 @@ describe('dashboard prelaunch — seguridad (Task 1)', () => {
 });
 
 describe('dashboard prelaunch — campos y lotes (Task 2)', () => {
-  beforeAll(async () => { appUp = await appReachable(); });
+  beforeAll(async () => {
+    appUp = await appReachable();
+    if (!appUp) console.warn('[routes-test] SKIP — app en :3000 no responde (levantar docker compose)');
+  });
 
   it('fields-tree: scoping + rename campo/lote + hectáreas', async () => {
     if (!appUp) return;
@@ -171,7 +177,10 @@ describe('dashboard prelaunch — campos y lotes (Task 2)', () => {
 });
 
 describe('dashboard prelaunch — password y recordatorios (Task 3)', () => {
-  beforeAll(async () => { appUp = await appReachable(); });
+  beforeAll(async () => {
+    appUp = await appReachable();
+    if (!appUp) console.warn('[routes-test] SKIP — app en :3000 no responde (levantar docker compose)');
+  });
 
   it('cambio de contraseña: actual mala 403, corta 400, éxito revoca tokens', async () => {
     if (!appUp) return;

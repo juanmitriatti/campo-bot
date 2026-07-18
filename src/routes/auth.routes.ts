@@ -25,6 +25,7 @@ import { CategoryService } from '../domain/financial/category.service.js';
 import { asUserId } from '../types/index.js';
 import type { FeatureKey } from '../types/index.js';
 import { sqlNormalizedName } from '../utils/entity-matcher.js';
+import { invalidateUserContext } from '../ai/user-context.service.js';
 
 const router = Router();
 const authService = new AuthService();
@@ -636,6 +637,8 @@ router.patch('/fields/:id', requireAuth, requireFeature('fields'), async (req: R
       [name, id, req.auth!.userId],
     );
     if (r.rows.length === 0) { res.status(404).json({ error: 'Campo no encontrado' }); return; }
+    // Invalidar caché de contexto: el validador anti-alucinación trabaja con la lista vieja hasta 60s
+    invalidateUserContext(asUserId(req.auth!.userId));
     res.json({ field: r.rows[0] });
   } catch (err) { handleError(err, res); }
 });
@@ -675,6 +678,8 @@ router.patch('/plots/:id', requireAuth, requireFeature('fields'), async (req: Re
       `UPDATE plots SET ${sets.join(', ')} WHERE id = $${vals.length - 1} AND field_id IN (SELECT id FROM fields WHERE user_id = $${vals.length} AND deleted_at IS NULL) RETURNING id, name, area_hectares`,
       vals,
     );
+    // Invalidar caché de contexto: el validador anti-alucinación trabaja con la lista vieja hasta 60s
+    invalidateUserContext(asUserId(req.auth!.userId));
     res.json({ plot: r.rows[0] });
   } catch (err) { handleError(err, res); }
 });
@@ -690,6 +695,8 @@ router.delete('/expenses/:id', requireAuth, requireFeature('expenses'), async (r
       [id, req.auth!.userId],
     );
     if (r.rows.length === 0) { res.status(404).json({ error: 'Gasto no encontrado' }); return; }
+    // Invalidar caché de contexto: el validador anti-alucinación trabaja con la lista vieja hasta 60s
+    invalidateUserContext(asUserId(req.auth!.userId));
     res.json({ deleted: true });
   } catch (err) { handleError(err, res); }
 });
@@ -703,6 +710,8 @@ router.delete('/incomes/:id', requireAuth, requireFeature('incomes'), async (req
       [id, req.auth!.userId],
     );
     if (r.rows.length === 0) { res.status(404).json({ error: 'Ingreso no encontrado' }); return; }
+    // Invalidar caché de contexto: el validador anti-alucinación trabaja con la lista vieja hasta 60s
+    invalidateUserContext(asUserId(req.auth!.userId));
     res.json({ deleted: true });
   } catch (err) { handleError(err, res); }
 });
@@ -716,6 +725,8 @@ router.delete('/activities/:id', requireAuth, requireFeature('agronomy'), async 
       [id, req.auth!.userId],
     );
     if (r.rows.length === 0) { res.status(404).json({ error: 'Actividad no encontrada' }); return; }
+    // Invalidar caché de contexto: el validador anti-alucinación trabaja con la lista vieja hasta 60s
+    invalidateUserContext(asUserId(req.auth!.userId));
     res.json({ deleted: true });
   } catch (err) { handleError(err, res); }
 });
