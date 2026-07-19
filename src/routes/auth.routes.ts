@@ -204,7 +204,9 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
   try {
     const name = typeof req.body?.name === 'string' ? req.body.name.trim() : undefined;
     const city = typeof req.body?.city === 'string' ? req.body.city.trim() : undefined;
-    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : undefined;
+    // FIX M1: guardar el email tal como lo tipea el usuario (solo .trim()),
+    // NO lowercasearlo — el login es case-sensitive y toLowerCase aquí lockea al usuario.
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : undefined;
     if (name === '') { res.status(400).json({ error: 'El nombre no puede quedar vacío.' }); return; }
     if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       res.status(400).json({ error: 'Ese email no parece válido.' }); return;
@@ -215,9 +217,11 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
     let emailChanged = false;
     if (email !== undefined) {
       const cur = await pool.query(`SELECT email FROM users WHERE id = $1`, [req.auth!.userId]);
-      emailChanged = (cur.rows[0]?.email ?? '').toLowerCase() !== email;
+      // Comparación case-insensitive para detectar si cambió (pero guardamos verbatim)
+      emailChanged = (cur.rows[0]?.email ?? '').toLowerCase() !== email.toLowerCase();
       if (emailChanged) {
-        const dup = await pool.query(`SELECT 1 FROM users WHERE LOWER(email) = $1 AND id <> $2`, [email, req.auth!.userId]);
+        // Dup-check case-insensitive: LOWER ambos lados, NO pasamos email lowercased
+        const dup = await pool.query(`SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) AND id <> $2`, [email, req.auth!.userId]);
         if (dup.rows.length > 0) { res.status(409).json({ error: 'Ese email ya está en uso.' }); return; }
       }
     }
@@ -230,10 +234,20 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
     }
     if (sets.length === 0) { res.json({ user: null, unchanged: true }); return; }
     vals.push(req.auth!.userId);
-    const r = await pool.query(
-      `UPDATE users SET ${sets.join(', ')} WHERE id = $${vals.length} AND deleted_at IS NULL RETURNING id, name, city, email`,
-      vals,
-    );
+    let r;
+    try {
+      r = await pool.query(
+        `UPDATE users SET ${sets.join(', ')} WHERE id = $${vals.length} AND deleted_at IS NULL RETURNING id, name, city, email`,
+        vals,
+      );
+    } catch (dbErr: unknown) {
+      // FIX M4: race entre dos requests que compiten por el mismo email → 409 en lugar de 500
+      if ((dbErr as { code?: string }).code === '23505') {
+        res.status(409).json({ error: 'Ese email ya está en uso.' });
+        return;
+      }
+      throw dbErr;
+    }
     if (r.rows.length === 0) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
     console.log(`[account] perfil actualizado user=${req.auth!.userId}${emailChanged ? ' (email cambiado, verificación reseteada)' : ''}`);
     res.json({ user: r.rows[0] });

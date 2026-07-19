@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
@@ -41,6 +42,7 @@ const viewFeatureMap: Record<DashboardView, string | null> = {
 
 export default function Dashboard() {
   const { user, features } = useAuth();
+  const location = useLocation();
   const [view, setView] = useState<DashboardView>('overview');
   // When the user clicks a row in the overview "Actividad reciente" feed,
   // we remember which row to scroll-to + highlight in the target table.
@@ -76,6 +78,8 @@ export default function Dashboard() {
     } catch { /* ignore */ }
     // Recién registrado → directo al paso de conexión, no al dashboard vacío.
     if (postRegister) setView('account');
+    // FIX M2: navegar desde /chat con { state: { view: 'account' } } abre la vista correcta.
+    else if ((location.state as { view?: string } | null)?.view === 'account') setView('account');
     void refreshChannelStatus();
   }, []);
 

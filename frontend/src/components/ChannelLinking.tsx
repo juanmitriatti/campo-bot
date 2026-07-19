@@ -846,7 +846,7 @@ export default function ChannelLinking() {
           <div className="flex-1">
             <h3 className="font-semibold text-red-700">Eliminar mi cuenta</h3>
             <p className="text-sm text-gray-600 mt-1">
-              Tu cuenta se marca como eliminada y se desvinculan WhatsApp/Telegram. Tus datos quedan 30 días por si te arrepentís, después se borran definitivamente. Recomendamos descargar el export antes.
+              Tu cuenta se marca como eliminada y se desvinculan WhatsApp/Telegram. Tus datos quedan 30 días por si te arrepentís, después se borran definitivamente.
             </p>
 
             {!deleteOpen ? (

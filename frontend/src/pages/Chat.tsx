@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import ChatBubble from '../components/chat/ChatBubble';
 import ChatInput from '../components/chat/ChatInput';
@@ -13,6 +14,7 @@ function nextId(): string {
 }
 
 export default function Chat() {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -129,7 +131,7 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-100">
-      <Navbar />
+      <Navbar onUserClick={() => navigate('/dashboard', { state: { view: 'account' } })} />
 
       {/* Chat header */}
       <div className="bg-campo-700 text-white px-4 py-2 shadow-sm">
