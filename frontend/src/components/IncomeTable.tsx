@@ -6,6 +6,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useRowHighlight } from '../hooks/useRowHighlight';
 import { useSortableTable } from '../hooks/useSortableTable';
 import { Trash2 } from 'lucide-react';
+import TabHeader from './TabHeader';
 
 interface Income {
   id: number;
@@ -248,6 +249,11 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
 
   return (
     <div>
+      <TabHeader
+        title="Ingresos"
+        description="Tus ventas y cobros."
+        botHint="vendí 200 quintales de soja a 290 mil el quintal"
+      />
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
@@ -397,7 +403,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
                       ref={rowRef(inc.id) as unknown as React.Ref<HTMLTableRowElement>}
                       className={`transition-colors ${activeHighlight === inc.id ? 'bg-amber-50 dark:bg-amber-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
                     >
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-sm whitespace-nowrap">
                         {formatDate(inc.income_date)}
                       </td>
                       <td className="px-4 py-3">
@@ -423,7 +429,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
                       <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-green-700 dark:text-green-400">
                         {formatAmount(inc.amount, inc.currency)}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-sm hidden lg:table-cell whitespace-nowrap">
                         {inc.user_name || '-'}
                         {inc.edited_by_name && <span className="block text-gray-400">editado por {inc.edited_by_name}</span>}
                       </td>

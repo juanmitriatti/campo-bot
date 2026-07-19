@@ -37,9 +37,9 @@ export default function ObservationCard({ observation, onEdit }: Props) {
             </span>
             <span className="text-xs text-gray-400 dark:text-gray-300">{formatDate(observation.created_at)}</span>
           </div>
-          <p className="text-sm text-gray-700 dark:text-gray-200">{observation.observation_text}</p>
+          <p className="text-base text-gray-700 dark:text-gray-200">{observation.observation_text}</p>
           {location && (
-            <p className="text-xs text-gray-400 dark:text-gray-300 mt-1.5 truncate">{location}</p>
+            <p className="text-sm text-gray-400 dark:text-gray-300 mt-1.5 truncate">{location}</p>
           )}
         </div>
         <button

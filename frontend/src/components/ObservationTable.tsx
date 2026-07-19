@@ -4,6 +4,7 @@ import ObservationEditModal from './ObservationEditModal';
 import ObservationCard from './cards/ObservationCard';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useSortableTable } from '../hooks/useSortableTable';
+import TabHeader from './TabHeader';
 
 interface Observation {
   id: number;
@@ -183,6 +184,11 @@ export default function ObservationTable() {
 
   return (
     <div>
+      <TabHeader
+        title="Observaciones"
+        description="Notas libres sobre lo que ves en el campo — el bot las guarda con fecha y lote."
+        botHint="observación: apareció pulgón en la loma del 5"
+      />
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
@@ -248,9 +254,12 @@ export default function ObservationTable() {
 
       {/* Content */}
       {!data || data.observations.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-300">
-          <p className="text-lg">{hasFilters ? 'No hay observaciones con estos filtros' : 'No tenes observaciones todavia'}</p>
-          {!hasFilters && <p className="text-sm mt-1">Las observaciones que registres por WhatsApp apareceran aca</p>}
+        <div className="text-sm text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-6 text-center border border-dashed border-gray-300 dark:border-gray-600">
+          {hasFilters ? 'No hay observaciones con estos filtros.' : (
+            <>No hay observaciones. Mandale al bot:<br />
+            <span className="font-mono text-gray-700 dark:text-gray-200">"observación: apareció pulgón en la loma del 5"</span><br />
+            <span className="text-xs">— o simplemente contale lo que ves en el campo.</span></>
+          )}
         </div>
       ) : (
         <>
@@ -292,13 +301,13 @@ export default function ObservationTable() {
                           {CATEGORY_LABELS[obs.category] || obs.category}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-sm whitespace-nowrap">
                         {formatDate(obs.created_at)}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-sm hidden lg:table-cell whitespace-nowrap">
                         {obs.user_name || '-'}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-sm whitespace-nowrap">
                         {obs.updated_at ? formatDate(obs.updated_at) : '-'}
                       </td>
                       <td className="px-4 py-3">

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { apiRequest } from '../api/client';
+import TabHeader from './TabHeader';
 
 interface ExtractedData {
   vendor?: string;
@@ -144,10 +145,11 @@ export default function DocumentsTable() {
 
   return (
     <div className="p-4 md:p-6">
-      <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Documentos</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-300">Facturas, remitos, tickets — extraídos por IA desde tus chats</span>
-      </div>
+      <TabHeader
+        title="Documentos"
+        description="Facturas y remitos que le mandaste al bot por foto."
+        botHint="Sacale una foto a una factura y mandásela al bot"
+      />
 
       {stats && (
         <div className="grid grid-cols-3 gap-3 mb-4">

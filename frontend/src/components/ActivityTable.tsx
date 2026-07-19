@@ -5,6 +5,7 @@ import ActivityCard from './cards/ActivityCard';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useRowHighlight } from '../hooks/useRowHighlight';
 import { useSortableTable } from '../hooks/useSortableTable';
+import TabHeader from './TabHeader';
 
 interface Activity {
   id: number;
@@ -243,6 +244,11 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
 
   return (
     <div>
+      <TabHeader
+        title="Actividades"
+        description="Siembras, fumigaciones, fertilizaciones, cosechas y demás labores."
+        botHint="fumigué el lote Norte con 2 litros de glifosato"
+      />
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
@@ -364,7 +370,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
                           {renderTypeLabel(a.event_type)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-sm whitespace-nowrap">
                         {formatDate(a.event_date)}
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
@@ -379,7 +385,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
                       <td className="px-4 py-3 max-w-xs">
                         <p className="truncate text-gray-800 dark:text-gray-100">{getDetail(a)}</p>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-sm hidden lg:table-cell whitespace-nowrap">
                         {a.user_name || '-'}
                         {a.edited_by_name && <span className="block text-gray-400 dark:text-gray-300">editado por {a.edited_by_name}</span>}
                       </td>

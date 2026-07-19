@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSortableTable } from '../hooks/useSortableTable';
 import { apiRequest } from '../api/client';
+import TabHeader from './TabHeader';
 
 interface QualityMetrics {
   oil_pct?: number;
@@ -160,10 +161,11 @@ export default function HarvestLoadsTable() {
 
   return (
     <div className="p-4 md:p-6">
-      <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Cosechas — cargas por camión</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-300">Chofer · kg · destinatario · humedad · calidad</span>
-      </div>
+      <TabHeader
+        title="Cosechas"
+        description="Cada camión que salió: chofer, kilos, humedad, destino."
+        botHint="cosechamos el lote 3: Ramírez 28.500 kg a Cargill"
+      />
 
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded mb-4 text-sm">
         <div className="flex flex-col">
@@ -275,7 +277,7 @@ export default function HarvestLoadsTable() {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {sortedLoads.map(l => (
                 <tr key={l.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors align-top">
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">{formatDate(l.eventDate)}</td>
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-sm whitespace-nowrap">{formatDate(l.eventDate)}</td>
                   <td className="px-4 py-3 text-gray-800 dark:text-gray-100">
                     <div className="font-medium">{l.plotName || <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
                     <div className="text-xs text-gray-400 dark:text-gray-300">
@@ -305,7 +307,7 @@ export default function HarvestLoadsTable() {
                       <span className="text-gray-300 dark:text-gray-600">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell">
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-sm hidden lg:table-cell">
                     {l.truckPlate || <span className="text-gray-300 dark:text-gray-600">—</span>}
                   </td>
                 </tr>

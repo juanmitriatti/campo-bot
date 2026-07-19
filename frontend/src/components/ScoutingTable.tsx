@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { apiRequest } from '../api/client';
 import { useSortableTable } from '../hooks/useSortableTable';
+import TabHeader from './TabHeader';
 
 interface Scouting {
   id: number;
@@ -170,10 +171,10 @@ export default function ScoutingTable() {
 
   return (
     <div className="p-4 md:p-6">
-      <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Monitoreos del cultivo</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-300">Datos estructurados — fenología, malezas, plagas, densidad, emergencia, humedad</span>
-      </div>
+      <TabHeader
+        title="Monitoreos"
+        description="Monitoreos estructurados del cultivo: estadio, malezas, plagas, humedad."
+      />
 
       {aggregates && aggregates.total > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">

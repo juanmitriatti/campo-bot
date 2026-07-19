@@ -6,6 +6,7 @@ import ExpenseEditModal from './ExpenseEditModal';
 import ExpenseCard from './cards/ExpenseCard';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { Trash2 } from 'lucide-react';
+import TabHeader from './TabHeader';
 
 interface Expense {
   id: number;
@@ -260,6 +261,11 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
 
   return (
     <div>
+      <TabHeader
+        title="Gastos"
+        description="Todos tus gastos registrados. Podés editar o eliminar cualquiera."
+        botHint="gasté 80 mil en gasoil"
+      />
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
@@ -422,7 +428,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
                       ref={rowRef(exp.id) as unknown as React.Ref<HTMLTableRowElement>}
                       className={`transition-colors ${activeHighlight === exp.id ? 'bg-amber-50 dark:bg-amber-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
                     >
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-sm whitespace-nowrap">
                         {formatDate(exp.expense_date)}
                       </td>
                       <td className="px-4 py-3">
@@ -442,7 +448,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
                       <td className="px-4 py-3 max-w-xs">
                         <p className="truncate text-gray-800 dark:text-gray-100">{exp.description || '-'}</p>
                         {(exp.linked_from_livestock || exp.linked_from_document) && (
-                          <p className="text-[11px] text-campo-600 mt-0.5">
+                          <p className="text-xs text-campo-600 mt-0.5">
                             {exp.linked_from_livestock && '🔗 Auto-creado por hacienda'}
                             {exp.linked_from_document && (exp.linked_from_livestock ? ' · ' : '') + '📎 Vinculado a documento'}
                           </p>
@@ -452,7 +458,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
                         {exp.product ? (
                           <span>
                             {exp.product}
-                            {exp.quantity && exp.unit && <span className="text-xs text-gray-400 dark:text-gray-300 ml-1">({exp.quantity} {exp.unit})</span>}
+                            {exp.quantity && exp.unit && <span className="text-sm text-gray-400 dark:text-gray-300 ml-1">({exp.quantity} {exp.unit})</span>}
                           </span>
                         ) : '-'}
                       </td>
@@ -465,7 +471,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
                       <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-gray-800 dark:text-gray-100">
                         {formatAmount(exp.amount, exp.currency)}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-xs hidden lg:table-cell whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-300 text-sm hidden lg:table-cell whitespace-nowrap">
                         {exp.user_name || '-'}
                         {exp.edited_by_name && <span className="block text-gray-400 dark:text-gray-300">editado por {exp.edited_by_name}</span>}
                       </td>

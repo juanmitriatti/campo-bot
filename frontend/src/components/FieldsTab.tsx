@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
 import { Pencil } from 'lucide-react';
+import TabHeader from './TabHeader';
 
 interface Plot {
   id: number;
@@ -133,15 +134,27 @@ export default function FieldsTab() {
 
   if (fields.length === 0) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-500 dark:text-gray-400 text-sm">
-        Todavía no tenés campos. Creálos desde el chat:{' '}
-        <em className="font-medium text-gray-700 dark:text-gray-300">tengo el campo La Esperanza en Pergamino</em>
-      </div>
+      <>
+        <TabHeader
+          title="Campos"
+          description="La estructura de tu establecimiento: campos, lotes, hectáreas y qué hay sembrado. Acá podés renombrar y corregir hectáreas."
+          botHint="tengo el campo La Esperanza en Pergamino con los lotes Norte y Sur"
+        />
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+          Todavía no tenés campos. Creálos desde el chat:{' '}
+          <em className="font-medium text-gray-700 dark:text-gray-300">tengo el campo La Esperanza en Pergamino</em>
+        </div>
+      </>
     );
   }
 
   return (
     <div className="space-y-4">
+      <TabHeader
+        title="Campos"
+        description="La estructura de tu establecimiento: campos, lotes, hectáreas y qué hay sembrado. Acá podés renombrar y corregir hectáreas."
+        botHint="tengo el campo La Esperanza en Pergamino con los lotes Norte y Sur"
+      />
       {fields.map(f => {
         const totalHa = f.plots.reduce((s, p) => s + (p.hectares ?? 0), 0);
         return (

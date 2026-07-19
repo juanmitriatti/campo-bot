@@ -3,6 +3,7 @@ import LivestockTable from './LivestockTable';
 import LivestockHistoryPanel from './LivestockHistoryPanel';
 import FeedlotPanel from './FeedlotPanel';
 import LivestockEventsPanel from './LivestockEventsPanel';
+import TabHeader from './TabHeader';
 
 type SubTab = 'groups' | 'history' | 'health' | 'repro' | 'weighing' | 'feedlot';
 
@@ -20,7 +21,14 @@ export default function LivestockTab() {
 
   return (
     <div>
-      <div className="px-6 pt-4 pb-2 flex gap-4 text-sm border-b border-gray-100 dark:border-gray-700 overflow-x-auto">
+      <div className="px-6 pt-4">
+        <TabHeader
+          title="Hacienda"
+          description="Tu rodeo: categorías, movimientos, sanidad, pesadas."
+          botHint="compré 40 terneros a 500 mil por cabeza"
+        />
+      </div>
+      <div className="px-6 pb-2 flex gap-4 text-sm border-b border-gray-100 dark:border-gray-700 overflow-x-auto">
         {TABS.map(t => (
           <button
             key={t.key}

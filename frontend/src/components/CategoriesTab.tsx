@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { useCategories, type CategoryKind } from '../hooks/useCategories';
+import TabHeader from './TabHeader';
 
 const KIND_LABELS: Record<CategoryKind, string> = { expense: 'Gastos', income: 'Ingresos' };
 
@@ -221,6 +222,10 @@ export default function CategoriesTab() {
   const [kind, setKind] = useState<CategoryKind>('expense');
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+      <TabHeader
+        title="Categorías"
+        description="Con esto se clasifican tus gastos e ingresos en los reportes. El bot las crea solo cuando registrás — acá podés renombrar, borrar o unir duplicadas (ej: 'Gasoil' y 'gas oil')."
+      />
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
         {(['expense', 'income'] as const).map(k => (
           <button

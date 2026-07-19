@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../api/client';
+import TabHeader from './TabHeader';
 
 interface Report {
   id: number;
@@ -92,10 +93,11 @@ export default function ReportTable() {
 
   return (
     <div className="p-4 md:p-6">
-      <div className="flex items-baseline justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Reportes agronómicos</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-300">PDFs generados desde el bot (se conservan 30 días)</span>
-      </div>
+      <TabHeader
+        title="Reportes"
+        description="PDFs agronómicos generados por el bot (se guardan 30 días)."
+        botHint="reporte agronómico del lote Norte"
+      />
 
       {loading && <div className="text-sm text-gray-500 dark:text-gray-300">Cargando reportes…</div>}
 

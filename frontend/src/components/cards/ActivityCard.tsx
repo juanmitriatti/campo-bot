@@ -77,8 +77,8 @@ export default function ActivityCard({ activity, onEdit, onDelete }: Props) {
               <span className="text-xs text-gray-500 dark:text-gray-300">{activity.crop}</span>
             )}
           </div>
-          <p className="text-sm text-gray-600 dark:text-gray-300 truncate">{getDetail(activity)}</p>
-          <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400 dark:text-gray-300">
+          <p className="text-base text-gray-600 dark:text-gray-300 truncate">{getDetail(activity)}</p>
+          <div className="flex items-center gap-2 mt-1.5 text-sm text-gray-400 dark:text-gray-300">
             <span>{formatDate(activity.event_date)}</span>
             {location && <><span>·</span><span className="truncate">{location}</span></>}
           </div>

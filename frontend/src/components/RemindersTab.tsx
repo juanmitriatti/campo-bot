@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
+import TabHeader from './TabHeader';
 
 interface Reminder {
   id: number;
@@ -103,12 +104,11 @@ export default function RemindersTab() {
   if (reminders.length === 0 && !loading) {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Recordatorios</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
-            Tus recordatorios de labores y tareas del campo.
-          </p>
-        </div>
+        <TabHeader
+          title="Recordatorios"
+          description="Lo que le pediste al bot que te recuerde. Marcá hecho o cancelá; se crean por chat."
+          botHint="acordame el sábado a las 9 de fumigar el lote 5"
+        />
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 px-6 py-10 text-center">
           <p className="text-gray-500 dark:text-gray-400 text-sm">No tenés recordatorios.</p>
           <p className="text-gray-400 dark:text-gray-500 text-xs mt-2">
@@ -121,12 +121,11 @@ export default function RemindersTab() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Recordatorios</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
-          Tus recordatorios de labores y tareas del campo.
-        </p>
-      </div>
+      <TabHeader
+        title="Recordatorios"
+        description="Lo que le pediste al bot que te recuerde. Marcá hecho o cancelá; se crean por chat."
+        botHint="acordame el sábado a las 9 de fumigar el lote 5"
+      />
 
       {/* Pendientes */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
