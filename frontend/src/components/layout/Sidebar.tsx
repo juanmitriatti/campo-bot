@@ -5,7 +5,7 @@ import FieldSelector from '../overview/FieldSelector';
 import {
   LayoutDashboard, Wallet, DollarSign, Sprout, Eye, Search,
   FileText, Wheat, Package, Beef, Paperclip, User,
-  Bell, BellOff, Tag, Map, Clock,
+  Bell, BellOff, Tag, Map, Clock, BookOpen,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -74,6 +74,16 @@ export default function Sidebar({ active, onChange, features }: SidebarProps) {
         })}
       </nav>
       <div className="mt-auto p-3 border-t border-gray-200 dark:border-gray-700">
+        <a
+          href="/guia"
+          target="_blank"
+          rel="noopener"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 w-full"
+          title="Todo lo que le podés decir al bot"
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>Guía de uso</span>
+        </a>
         <button
           onClick={subscribed ? unsubscribe : subscribe}
           disabled={loading}
