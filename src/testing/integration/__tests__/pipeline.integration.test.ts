@@ -1311,4 +1311,47 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       }
     });
   });
+
+  describe('cola de hectáreas en compound (N× add_plot)', () => {
+    it('pregunta las hectáreas de TODOS los lotes creados, uno por uno', async () => {
+      // Bug de prod (Jul 18): "campo X con lotes Norte y Sur" → el agente emite
+      // 2 add_plot; cada uno seteaba setPendingPlotArea individual y el executor
+      // guardaba solo lastSideEffects → el pending de Norte se pisaba con el de
+      // Sur en silencio. Solo se preguntaba UNA hectárea.
+      const h = await createPipelineHarness('ha-compound');
+      try {
+        const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
+        void f;
+        // Tool calls EXACTOS de prod (el texto declarativo NO es trivial → va
+        // al agente, que emite add_plot sueltos — no add_plots_batch).
+        h.fakeAgent.enqueue([
+          { toolName: 'set_field_city', toolInput: { field: 'La Esperanza', city: 'Pergamino' } },
+          { toolName: 'add_plot', toolInput: { field: 'La Esperanza', plotName: 'Norte' } },
+          { toolName: 'add_plot', toolInput: { field: 'La Esperanza', plotName: 'Sur' } },
+        ]);
+        const items = await h.send('tengo el campo La Esperanza en Pergamino con los lotes Norte y Sur');
+        expect(h.fakeAgent.calls.length).toBe(1); // el agente SÍ se usó (no el bypass regex)
+        const text = h.allText(items);
+        // Pregunta por el PRIMER lote creado (Norte), no por el último
+        expect(text).toContain('¿Cuántas hectáreas tiene *Norte*');
+
+        // Responder Norte → pregunta Sur
+        const r1 = await h.send('30');
+        expect(h.allText(r1)).toContain('¿Cuántas hectáreas tiene *Sur*');
+
+        // Responder Sur → ambos guardados
+        const r2 = await h.send('22');
+        expect(h.allText(r2)).toContain('22');
+        const rows = await h.q(
+          `SELECT p.name, p.area_hectares FROM plots p JOIN fields fi ON fi.id = p.field_id WHERE fi.user_id = $1 ORDER BY p.name`,
+          [h.userId],
+        );
+        expect(rows).toHaveLength(2);
+        expect(Number(rows[0].area_hectares)).toBe(30); // Norte
+        expect(Number(rows[1].area_hectares)).toBe(22); // Sur
+      } finally {
+        await h.cleanup();
+      }
+    });
+  });
 });

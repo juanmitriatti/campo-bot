@@ -196,9 +196,13 @@ describe('CompoundExecutor', () => {
     const result = await executor.execute(results, 1 as UserId, mockUser, mockSettings);
 
     expect(result).not.toBeNull();
-    expect(result!.lastSideEffects?.setPendingPlotArea).toEqual({
-      plotId: 5, plotName: 'A1', fieldName: 'Norte',
-    });
+    // Desde Jul 2026 los setPendingPlotArea de cada paso se ACUMULAN y
+    // promueven como cola (fix del bug "solo pregunta el último lote") —
+    // un single se convierte en cola de 1.
+    expect(result!.lastSideEffects?.setPendingPlotArea).toBeUndefined();
+    expect(result!.lastSideEffects?.setPendingPlotAreaQueue).toEqual([
+      { plotId: 5, plotName: 'A1', fieldName: 'Norte' },
+    ]);
   });
 
   it('preserves last interactive and suggestionKey', async () => {

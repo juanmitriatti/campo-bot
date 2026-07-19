@@ -108,6 +108,14 @@ export class CompoundExecutor {
     // observation, scouting, etc. — with one tap.
     type BulkRec = { kind: 'expense' | 'income' | 'activity' | 'observation' | 'scouting' | 'livestock' | 'rainfall' | 'stock_movement'; id: number; fieldId: number };
     const bulkSaved: BulkRec[] = [];
+    // Cola de hectáreas ACUMULADA entre pasos: cada add_plot suelto emite su
+    // setPendingPlotArea individual, pero el pipeline solo aplica
+    // lastSideEffects — con N add_plot en compound sobrevivía únicamente el
+    // pending del ÚLTIMO lote y los demás se pisaban en silencio (visto en
+    // prod Jul 18: "campo con lotes Norte y Sur" preguntó solo Sur). Se
+    // juntan acá y al final se promueven como setPendingPlotAreaQueue (la
+    // cola serial que add_plots_batch ya usa).
+    const plotAreaQueue: Array<{ plotId: number; plotName: string; fieldName: string }> = [];
     // Serial pending queue: when multiple items in the compound need follow-up
     // (partials with missing price, handlers that returned setPendingActivity
     // before the interceptor stripped it), we collect them all and process
@@ -330,6 +338,10 @@ export class CompoundExecutor {
       if (response.savedFinanceWithoutPlot) bulkSaved.push(response.savedFinanceWithoutPlot);
       // New multi-record shape: any handler can push 0..N records.
       if (response.savedRecordsWithoutPlot) bulkSaved.push(...response.savedRecordsWithoutPlot);
+      // Hectáreas: acumular los pendings de CADA paso (single o queue) — sin
+      // esto, N add_plot en compound solo preguntaba el último lote.
+      if (response.sideEffects?.setPendingPlotArea) plotAreaQueue.push(response.sideEffects.setPendingPlotArea);
+      if (response.sideEffects?.setPendingPlotAreaQueue) plotAreaQueue.push(...response.sideEffects.setPendingPlotAreaQueue);
 
       // If this step triggers a flow, stop here — flow needs user input.
       // (After the bulkMode interceptor above, this branch only fires for
@@ -368,6 +380,18 @@ export class CompoundExecutor {
           askPrompt: `👇 ${isIncome ? 'Venta' : 'Gasto'} de *${cat}*${qtyTag}: ¿cuánto fue el precio?`,
         });
       }
+    }
+
+    // Promote la cola de hectáreas acumulada: pisa cualquier single del último
+    // paso (la cola contiene TODOS los lotes, incluido ese). El pipeline la
+    // aplica via storePlotAreaSideEffects → pregunta lote por lote.
+    if (plotAreaQueue.length > 0 && !stoppedAtFlow) {
+      if (plotAreaQueue.length > 1) {
+        console.log(`[compound] plot-area queue: ${plotAreaQueue.length} lotes acumulados (${plotAreaQueue.map(p => p.plotName).join(', ')})`);
+      }
+      lastSideEffects = { ...(lastSideEffects ?? {}) };
+      delete lastSideEffects.setPendingPlotArea;
+      lastSideEffects.setPendingPlotAreaQueue = plotAreaQueue;
     }
 
     // Promote the queue into setPendingActivity: first item is current pending,
