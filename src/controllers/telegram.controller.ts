@@ -55,6 +55,12 @@ function tgPhone(chatId: string | number): string {
   return `tg_${chatId}`;
 }
 
+// Copy único del onboarding para chats no verificados (texto Y callbacks).
+async function buildUnverifiedOnboardingMessage(): Promise<string> {
+  const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://campo-bot-production.up.railway.app';
+  return `Hola 👋 Bienvenido a Campo Bot.\n\nPara empezar a usarme, seguí estos 2 pasos en orden:\n\n*1.* Creá tu cuenta acá 👉 ${publicUrl}/register\n*2.* Desde la app, andá a *Mi cuenta* → *Vincular Telegram* y vas a recibir un link mágico. Tocalo y este chat queda vinculado.\n\nUna vez vinculado, escribime de nuevo y ya podés cargar gastos, lluvias, hacienda, cosechas y más.`;
+}
+
 // --- Send bot response items via Telegram ---
 
 async function sendBotResponse(chatId: string | number, items: BotResponseItem[]): Promise<void> {
@@ -163,8 +169,20 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
       // Ignore noop (section titles)
       if (callbackId === 'noop') return;
 
+      // --- Channel verification gate (paridad con WhatsApp, Jul 2026) ---
+      // Antes el gate solo cubría los mensajes de texto: un chat NO verificado
+      // que tocaba un botón viejo se procesaba igual e incluso auto-creaba un
+      // usuario anónimo — exactamente lo que REQUIRE_VERIFIED_CHANNEL impide.
+      const verifiedCbUser = await userRepository.findVerifiedByTelegramId(String(chatId));
+      if (!verifiedCbUser && (await userRepository.isVerificationRequired())) {
+        await sendTelegramMessage(chatId, await buildUnverifiedOnboardingMessage());
+        return;
+      }
+
       const phone = tgPhone(chatId);
-      const userRow = await getOrCreateUserByTelegramId(String(chatId), cbQuery.from?.first_name);
+      const userRow = verifiedCbUser
+        ? { id: verifiedCbUser.id, phone_number: verifiedCbUser.phone_number, name: verifiedCbUser.name, city: verifiedCbUser.city }
+        : await getOrCreateUserByTelegramId(String(chatId), cbQuery.from?.first_name);
       const userId = asUserId(userRow.id);
       const user = {
         id: userId,
@@ -250,11 +268,7 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
     // verified web user, refuse to auto-create. Otherwise fall through to legacy.
     const verifiedTgUser = await userRepository.findVerifiedByTelegramId(String(chatId));
     if (!verifiedTgUser && (await userRepository.isVerificationRequired())) {
-      const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://campo-bot-production.up.railway.app';
-      await sendTelegramMessage(
-        chatId,
-        `Hola 👋 Bienvenido a Campo Bot.\n\nPara empezar a usarme, seguí estos 2 pasos en orden:\n\n*1.* Creá tu cuenta acá 👉 ${publicUrl}/register\n*2.* Desde la app, andá a *Mi cuenta* → *Vincular Telegram* y vas a recibir un link mágico. Tocalo y este chat queda vinculado.\n\nUna vez vinculado, escribime de nuevo y ya podés cargar gastos, lluvias, hacienda, cosechas y más.`,
-      );
+      await sendTelegramMessage(chatId, await buildUnverifiedOnboardingMessage());
       return;
     }
 
@@ -287,6 +301,19 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
       const hasAudio = await featureGate.hasFeature(userId, 'audio');
       if (!hasAudio) {
         await sendTelegramMessage(chatId, '🔒 El procesamiento de audios no está disponible en tu plan actual.\n\nEscribí *plan* para ver las opciones.');
+        return;
+      }
+
+      // Rate-limit horario + largo máximo (paridad con WhatsApp, Jul 2026).
+      // Telegram trae la duración exacta en el update — se corta ANTES de
+      // descargar/transcribir (Whisper cuesta por minuto).
+      const { checkAudioGuards } = await import('../services/audio/audio-guards.js');
+      const guard = await checkAudioGuards(
+        Number(userId),
+        message.voice?.duration || message.audio?.duration,
+      );
+      if (!guard.ok) {
+        await sendTelegramMessage(chatId, guard.message);
         return;
       }
 

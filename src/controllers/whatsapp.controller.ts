@@ -17,8 +17,8 @@ import { sendMessage, uploadMedia, sendDocument, sendInteractiveButtons, sendInt
 import { MessageDedup } from '../middleware/dedup.js';
 import { TranscriptionService, AudioTooLongError } from '../services/audio/transcription.service.js';
 import { getAudioConfig } from '../services/audio/audio.types.js';
-import { saveAudioTranscriptionLog, getHourlyAudioCount } from '../services/expenses.js';
-import { getSetting, getSettingNumber } from '../services/settings.service.js';
+import { saveAudioTranscriptionLog } from '../services/expenses.js';
+import { getSetting } from '../services/settings.service.js';
 import { logError } from '../services/error-logger.js';
 import { normalizeTranscript } from '../utils/text-normalizer.js';
 import { DocumentError } from '../domain/documents/document.service.js';
@@ -43,8 +43,6 @@ import {
 const dedup = new MessageDedup();
 const transcriptionService = new TranscriptionService();
 const handleWaDocCallback = makeDocCallbackHandler(downloadMedia);
-
-const DEFAULT_MAX_AUDIO_PER_HOUR = 10;
 
 // --- Send bot response items via WhatsApp Cloud API ---
 
@@ -212,11 +210,13 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
         return;
       }
 
-      // Audio rate limiting
-      const maxAudioPerHour = (await getSettingNumber('MAX_AUDIO_PER_HOUR')) ?? DEFAULT_MAX_AUDIO_PER_HOUR;
-      const hourlyCount = await getHourlyAudioCount(user.id);
-      if (hourlyCount >= maxAudioPerHour) {
-        await sendMessage(phone, `⚠️ Alcanzaste el límite de ${maxAudioPerHour} audios por hora. Podés escribir tu mensaje o intentar más tarde.`);
+      // Rate-limit horario (guard compartido con Telegram). WhatsApp no conoce
+      // la duración antes de descargar — el largo lo corta TranscriptionService
+      // (AudioTooLongError) con la estimación por tamaño.
+      const { checkAudioGuards } = await import('../services/audio/audio-guards.js');
+      const guard = await checkAudioGuards(user.id);
+      if (!guard.ok) {
+        await sendMessage(phone, guard.message);
         res.sendStatus(200);
         return;
       }
