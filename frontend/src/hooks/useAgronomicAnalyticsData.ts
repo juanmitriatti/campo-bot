@@ -36,6 +36,24 @@ export interface YieldByCropRow {
   harvests: number;
 }
 
+export interface FieldPlotCropEntry {
+  crop: string;
+  hectares: number | null; // sowed_hectares (null = todo el lote)
+}
+
+export interface FieldPlotEntry {
+  plotId: number;
+  plotName: string;
+  hectares: number | null;
+  crops: FieldPlotCropEntry[]; // vacio = sin sembrar; soporta N cultivos
+}
+
+export interface FieldPlotCropsField {
+  fieldId: number;
+  fieldName: string;
+  plots: FieldPlotEntry[];
+}
+
 export interface HarvestQualityLoad {
   loadId: number;
   crop: string | null;
@@ -50,6 +68,7 @@ export interface AgronomicAnalyticsData {
   harvestsMonthly: AgronomicHarvestMonth[];
   scoutingByPlot: ScoutingByPlot[];
   yieldByCrop: YieldByCropRow[];
+  fieldPlotCrops: FieldPlotCropsField[];
   harvestQualityLoads: HarvestQualityLoad[];
 }
 

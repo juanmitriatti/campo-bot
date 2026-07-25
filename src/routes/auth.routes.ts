@@ -1926,6 +1926,59 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
       [userId, targetFieldIds]
     );
 
+    // Campos → lotes → cultivos activos (end_date IS NULL). Alimenta el
+    // Treemap de la vista agronómica. El LEFT JOIN devuelve N filas por lote
+    // si algún día hay más de un cultivo activo — el agrupado ya lo soporta.
+    const { rows: fieldPlotCropsRows } = await pool.query(
+      `SELECT
+         f.id AS field_id,
+         f.name AS field_name,
+         p.id AS plot_id,
+         p.name AS plot_name,
+         p.area_hectares,
+         pc.crop,
+         pc.sowed_hectares
+       FROM fields f
+       JOIN plots p ON p.field_id = f.id AND p.deleted_at IS NULL
+       LEFT JOIN plot_crops pc ON pc.plot_id = p.id AND pc.end_date IS NULL
+       WHERE f.user_id = $1
+         AND f.deleted_at IS NULL
+         AND f.id = ANY($2::int[])
+       ORDER BY f.name, p.name, pc.crop`,
+      [userId, targetFieldIds]
+    );
+    const fieldPlotCropsMap = new Map<number, {
+      fieldId: number; fieldName: string;
+      plots: Map<number, { plotId: number; plotName: string; hectares: number | null; crops: Array<{ crop: string; hectares: number | null }> }>;
+    }>();
+    for (const r of fieldPlotCropsRows) {
+      const fid = Number(r.field_id);
+      if (!fieldPlotCropsMap.has(fid)) {
+        fieldPlotCropsMap.set(fid, { fieldId: fid, fieldName: r.field_name, plots: new Map() });
+      }
+      const field = fieldPlotCropsMap.get(fid)!;
+      const pid = Number(r.plot_id);
+      if (!field.plots.has(pid)) {
+        field.plots.set(pid, {
+          plotId: pid,
+          plotName: r.plot_name,
+          hectares: r.area_hectares !== null ? Number(r.area_hectares) : null,
+          crops: [],
+        });
+      }
+      if (r.crop) {
+        field.plots.get(pid)!.crops.push({
+          crop: r.crop,
+          hectares: r.sowed_hectares !== null ? Number(r.sowed_hectares) : null,
+        });
+      }
+    }
+    const fieldPlotCrops = [...fieldPlotCropsMap.values()].map(f => ({
+      fieldId: f.fieldId,
+      fieldName: f.fieldName,
+      plots: [...f.plots.values()],
+    }));
+
     // Harvest loads with humidity AND quality_metrics, last 12 months
     const { rows: harvestQualityLoads } = await pool.query(
       `SELECT
@@ -1981,6 +2034,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
         avgKgPerHa: r.avg_kg_per_ha !== null ? Number(r.avg_kg_per_ha) : null,
         harvests: Number(r.harvests),
       })),
+      fieldPlotCrops,
       harvestQualityLoads: harvestQualityLoads.map(r => ({
         loadId: r.load_id,
         crop: r.crop ?? null,
