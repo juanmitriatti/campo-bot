@@ -208,24 +208,30 @@ export default function FieldsTab() {
                   <div key={p.id} className="pl-2">
                     {editingPlotId === p.id ? (
                       <div className="space-y-1">
-                        <div className="flex gap-2 flex-wrap">
-                          <input
-                            value={plotNameDraft}
-                            onChange={e => setPlotNameDraft(e.target.value)}
-                            placeholder="Nombre del lote"
-                            className="text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2 py-1 flex-1 min-w-[120px] focus:ring-2 focus:ring-campo-500 outline-none"
-                            autoFocus
-                          />
-                          <input
-                            type="number"
-                            value={plotHaDraft}
-                            onChange={e => setPlotHaDraft(e.target.value)}
-                            placeholder="Hectáreas"
-                            min="0.01"
-                            max="100000"
-                            step="0.01"
-                            className="text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2 py-1 w-28 focus:ring-2 focus:ring-campo-500 outline-none"
-                          />
+                        <div className="space-y-2 max-w-xs">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Nombre del lote</label>
+                            <input
+                              value={plotNameDraft}
+                              onChange={e => setPlotNameDraft(e.target.value)}
+                              placeholder="Ej: Lote Norte"
+                              className="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2 py-1.5 placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-campo-500 outline-none"
+                              autoFocus
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Hectáreas</label>
+                            <input
+                              type="number"
+                              value={plotHaDraft}
+                              onChange={e => setPlotHaDraft(e.target.value)}
+                              placeholder="Ej: 50"
+                              min="0.01"
+                              max="100000"
+                              step="0.01"
+                              className="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2 py-1.5 placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-campo-500 outline-none"
+                            />
+                          </div>
                         </div>
                         {plotError && <p className="text-xs text-red-600 dark:text-red-400">{plotError}</p>}
                         <div className="flex gap-2">
