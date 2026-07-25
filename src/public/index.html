@@ -3262,6 +3262,22 @@
           + (plan.priceArs > 0 ? formatMoney(plan.priceArs) + '/mes' : 'Gratis')
           + '</div>';
 
+        // Precios (mensual + anual) — el anual vacío oculta el toggle anual en Mi cuenta
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:8px 0;border-bottom:1px solid var(--border);">'
+          + '  <label style="font-size:13px;font-weight:600;white-space:nowrap;">Precio mensual:</label>'
+          + '  <input type="number" min="0" step="100" value="' + (plan.priceArs || 0) + '"'
+          + '    style="width:100px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;"'
+          + '    data-plan-id="' + plan.id + '" onchange="updatePlanPrice(this, \'monthly\')">'
+          + '  <span style="font-size:12px;color:var(--text-light);">ARS/mes</span>'
+          + '</div>';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 0;border-bottom:1px solid var(--border);">'
+          + '  <label style="font-size:13px;font-weight:600;white-space:nowrap;">Precio anual:</label>'
+          + '  <input type="number" min="0" step="1000" value="' + (plan.priceArsYearly != null ? plan.priceArsYearly : '') + '" placeholder="sin precio"'
+          + '    style="width:100px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;"'
+          + '    data-plan-id="' + plan.id + '" onchange="updatePlanPrice(this, \'yearly\')">'
+          + '  <span style="font-size:12px;color:var(--text-light);">ARS/año (vacío = solo mensual)</span>'
+          + '</div>';
+
         // Daily AI limit
         html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 0;border-bottom:1px solid var(--border);">'
           + '  <label style="font-size:13px;font-weight:600;white-space:nowrap;">Límite IA diario:</label>'
@@ -3288,6 +3304,29 @@
 
       html += '</div>';
       container.innerHTML = html;
+    }
+
+    function updatePlanPrice(input, period) {
+      var planId = input.getAttribute('data-plan-id');
+      var raw = input.value.trim();
+      var body;
+      if (period === 'yearly') {
+        // Vacío = sin precio anual (el toggle anual desaparece en Mi cuenta)
+        body = { priceArsYearly: raw === '' ? null : (parseFloat(raw) || 0) };
+      } else {
+        body = { priceArs: parseFloat(raw) || 0 };
+      }
+      apiFetch('/admin/api/plans/' + planId, {
+        method: 'PUT',
+        body: JSON.stringify(body)
+      }).then(function(result) {
+        if (result) {
+          var label = period === 'yearly'
+            ? (body.priceArsYearly == null ? 'Precio anual desactivado' : 'Precio anual: ' + formatMoney(body.priceArsYearly) + '/año')
+            : 'Precio mensual: ' + formatMoney(body.priceArs) + '/mes';
+          showToast(label);
+        }
+      });
     }
 
     function updatePlanAiLimit(input) {

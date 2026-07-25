@@ -681,6 +681,7 @@ router.get("/api/plans", async (req, res) => {
       name: p.name,
       displayName: p.display_name,
       priceArs: parseFloat(p.price_ars),
+      priceArsYearly: p.price_ars_yearly != null ? parseFloat(p.price_ars_yearly) : null,
       isActive: p.is_active,
       dailyAiLimit: p.daily_ai_limit != null ? parseInt(p.daily_ai_limit) : 20,
       features: p.features || [],
@@ -714,7 +715,7 @@ router.get("/api/features", async (req, res) => {
 
 router.put("/api/plans/:id", async (req, res) => {
   const { id } = req.params;
-  const { displayName, priceArs, isActive, dailyAiLimit } = req.body;
+  const { displayName, priceArs, priceArsYearly, isActive, dailyAiLimit } = req.body;
 
   try {
     const sets = [];
@@ -723,6 +724,7 @@ router.put("/api/plans/:id", async (req, res) => {
 
     if (displayName !== undefined) { sets.push(`display_name = $${idx++}`); values.push(displayName); }
     if (priceArs !== undefined) { sets.push(`price_ars = $${idx++}`); values.push(priceArs); }
+    if (priceArsYearly !== undefined) { sets.push(`price_ars_yearly = $${idx++}`); values.push(priceArsYearly); }
     if (isActive !== undefined) { sets.push(`is_active = $${idx++}`); values.push(isActive); }
     if (dailyAiLimit !== undefined) { sets.push(`daily_ai_limit = $${idx++}`); values.push(dailyAiLimit); }
 
@@ -737,7 +739,7 @@ router.put("/api/plans/:id", async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
 
     const p = result.rows[0];
-    res.json({ id: p.id, name: p.name, displayName: p.display_name, priceArs: parseFloat(p.price_ars), isActive: p.is_active, dailyAiLimit: p.daily_ai_limit != null ? parseInt(p.daily_ai_limit) : 20 });
+    res.json({ id: p.id, name: p.name, displayName: p.display_name, priceArs: parseFloat(p.price_ars), priceArsYearly: p.price_ars_yearly != null ? parseFloat(p.price_ars_yearly) : null, isActive: p.is_active, dailyAiLimit: p.daily_ai_limit != null ? parseInt(p.daily_ai_limit) : 20 });
   } catch (error) {
     console.error("Error updating plan:", error);
     logError('admin-api', 'PLAN_UPDATE', error);
