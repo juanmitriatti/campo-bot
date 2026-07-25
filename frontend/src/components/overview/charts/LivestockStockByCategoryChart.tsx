@@ -33,7 +33,7 @@ export default function LivestockStockByCategoryChart({ data }: Props) {
                 <Pie data={data} cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={2} dataKey="headcount" nameKey="category" stroke="#fff" strokeWidth={2}>
                   {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
-                <Tooltip formatter={(v: number, n: string) => [`${v} cabezas`, labelFor(n)]} contentStyle={{ fontSize: '12px', borderRadius: '8px' }} />
+                <Tooltip formatter={(v, n) => [`${Number(v ?? 0)} cabezas`, labelFor(String(n))]} contentStyle={{ fontSize: '12px', borderRadius: '8px' }} />
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">

@@ -34,7 +34,7 @@ export default function YieldByCropChart({ data }: Props) {
             <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `${Math.round(v)}`} />
             <YAxis type="category" dataKey="crop" tick={{ fontSize: 12 }} width={80} />
             <Tooltip
-              formatter={(v: number, _name: string, p: { payload?: YieldByCropRow }) => [`${Math.round(v)} kg/ha`, p.payload ? `${p.payload.crop} (${p.payload.harvests} cosechas)` : '']}
+              formatter={(v, _name, p) => { const row = p?.payload as YieldByCropRow | undefined; return [`${Math.round(Number(v ?? 0))} kg/ha`, row ? `${row.crop} (${row.harvests} cosechas)` : '']; }}
               contentStyle={{ fontSize: '12px', borderRadius: '8px' }}
             />
             <Bar dataKey="avgKgPerHa" radius={[0, 4, 4, 0]}>

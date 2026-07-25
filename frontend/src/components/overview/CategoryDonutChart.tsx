@@ -132,7 +132,7 @@ export default function CategoryDonutChart({ title, data, emptyText = 'Sin movim
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(v: number, n: string) => [formatMoney(v, currency), n]}
+                  formatter={(v, n) => [formatMoney(Number(v ?? 0), currency), String(n)]}
                   contentStyle={{ fontSize: '12px', borderRadius: '8px' }}
                 />
               </PieChart>

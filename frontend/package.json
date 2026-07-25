@@ -17,7 +17,7 @@
     "react-dom": "^19.0.0",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^6.30.3",
-    "recharts": "^2.15.3"
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

@@ -66,7 +66,7 @@ export default function RentabilidadPorLoteChart({ expenses, incomes }: Props) {
             <Tooltip
               cursor={{ fill: 'rgba(243, 244, 246, 0.6)' }}
               contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}
-              formatter={(value: number, name: string) => [formatCompact(value, currency), name]}
+              formatter={(value, name) => [formatCompact(Number(value ?? 0), currency), String(name)]}
               labelStyle={{ fontWeight: 600, color: '#374151' }}
             />
             <Legend
@@ -77,7 +77,7 @@ export default function RentabilidadPorLoteChart({ expenses, incomes }: Props) {
               <LabelList
                 dataKey="expenses"
                 position="top"
-                formatter={(v: number) => v > 0 ? formatCompact(v, currency) : ''}
+                formatter={(v) => Number(v) > 0 ? formatCompact(Number(v), currency) : ''}
                 style={{ fontSize: 10, fontWeight: 600, fill: GASTOS_COLOR }}
               />
             </Bar>
@@ -85,7 +85,7 @@ export default function RentabilidadPorLoteChart({ expenses, incomes }: Props) {
               <LabelList
                 dataKey="incomes"
                 position="top"
-                formatter={(v: number) => v > 0 ? formatCompact(v, currency) : ''}
+                formatter={(v) => Number(v) > 0 ? formatCompact(Number(v), currency) : ''}
                 style={{ fontSize: 10, fontWeight: 600, fill: INGRESOS_COLOR }}
               />
             </Bar>

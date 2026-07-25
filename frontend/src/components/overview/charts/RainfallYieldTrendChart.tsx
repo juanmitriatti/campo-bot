@@ -67,14 +67,14 @@ export default function RainfallYieldTrendChart({ rainfall, harvests }: Props) {
             <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} width={60} label={{ value: 'kg/ha', angle: 90, position: 'insideRight', fontSize: 11, fill: '#ca8a04' }} />
             <Tooltip
               contentStyle={{ fontSize: '12px', borderRadius: '8px' }}
-              formatter={(v: number, name: string, p: { payload?: { crop?: string | null; plot?: string | null } }) => {
-                if (name === 'mm') return [`${v} mm`, 'Lluvia'];
+              formatter={(v: unknown, name: unknown, p: { payload?: { crop?: string | null; plot?: string | null } }) => {
+                if (name === 'mm') return [`${Number(v ?? 0)} mm`, 'Lluvia'];
                 if (name === 'yield_kg_per_ha') {
                   const crop = p.payload?.crop ?? 'cultivo';
                   const plot = p.payload?.plot ?? '';
-                  return [`${Math.round(v)} kg/ha`, `${plot} — ${crop}`];
+                  return [`${Math.round(Number(v ?? 0))} kg/ha`, `${plot} — ${crop}`];
                 }
-                return [v, name];
+                return [String(v ?? ''), String(name)];
               }}
             />
             <Legend formatter={(value: string) => value === 'mm' ? 'Lluvia mensual' : 'Rinde por cosecha'} />

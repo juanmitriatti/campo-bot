@@ -21,7 +21,7 @@ export default function AvgWeightByCategoryChart({ data }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="category" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} width={45} />
-            <Tooltip formatter={(v: number) => [`${Math.round(v)} kg`, 'Peso promedio']} contentStyle={{ fontSize: '12px', borderRadius: '8px' }} />
+            <Tooltip formatter={(v) => [`${Math.round(Number(v ?? 0))} kg`, 'Peso promedio']} contentStyle={{ fontSize: '12px', borderRadius: '8px' }} />
             <Bar dataKey="avgWeightKg" radius={[4, 4, 0, 0]}>
               {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
             </Bar>

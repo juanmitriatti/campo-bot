@@ -49,7 +49,7 @@ export default function LivestockReproEventsChart({ data }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="label" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} width={35} />
-            <Tooltip contentStyle={{ fontSize: '12px', borderRadius: '8px' }} formatter={(v: number, name: string) => [v, TYPE_LABELS[name] ?? name]} />
+            <Tooltip contentStyle={{ fontSize: '12px', borderRadius: '8px' }} formatter={(v, name) => [Number(v ?? 0), TYPE_LABELS[String(name)] ?? String(name)]} />
             <Legend formatter={(value: string) => TYPE_LABELS[value] ?? value} />
             {types.map(t => (
               <Bar key={t} dataKey={t} stackId="repro" fill={TYPE_COLORS[t] ?? '#6b7280'} />
