@@ -689,6 +689,39 @@ router.patch('/fields/:id', requireAuth, requireFeature('fields'), async (req: R
   } catch (err) { handleError(err, res); }
 });
 
+// Alta de lote desde el tab Campos del dashboard (Jul 2026)
+router.post('/fields/:id/plots', requireAuth, requireFeature('fields'), async (req: Request, res: Response) => {
+  try {
+    const fieldId = parseInt(String(req.params.id), 10);
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    const hectares = req.body?.hectares != null ? Number(req.body.hectares) : null;
+    if (isNaN(fieldId) || !name) { res.status(400).json({ error: 'Nombre inválido' }); return; }
+    if (hectares !== null && (!isFinite(hectares) || hectares <= 0 || hectares > 100000)) {
+      res.status(400).json({ error: 'Hectáreas inválidas (0 a 100.000)' }); return;
+    }
+    const own = await pool.query(
+      `SELECT 1 FROM fields WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+      [fieldId, req.auth!.userId],
+    );
+    if (own.rows.length === 0) { res.status(404).json({ error: 'Campo no encontrado' }); return; }
+    // Unicidad case/acento-insensible dentro del campo (entity-matcher)
+    const dup = await pool.query(
+      `SELECT 1 FROM plots WHERE field_id = $1 AND deleted_at IS NULL
+       AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$2::text')}`,
+      [fieldId, name],
+    );
+    if (dup.rows.length > 0) { res.status(409).json({ error: 'Ya hay un lote con ese nombre en ese campo' }); return; }
+    const r = await pool.query(
+      `INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, $2, $3)
+       RETURNING id, name, area_hectares AS hectares`,
+      [fieldId, name, hectares],
+    );
+    // Invalidar caché de contexto: el validador anti-alucinación trabaja con la lista vieja hasta 60s
+    invalidateUserContext(asUserId(req.auth!.userId));
+    res.status(201).json({ plot: r.rows[0] });
+  } catch (err) { handleError(err, res); }
+});
+
 router.patch('/plots/:id', requireAuth, requireFeature('fields'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);

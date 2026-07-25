@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
-import { Pencil } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import TabHeader from './TabHeader';
 
 interface Plot {
@@ -92,6 +92,49 @@ export default function FieldsTab() {
   const cancelEditPlot = () => {
     setEditingPlotId(null);
     setPlotError(null);
+  };
+
+  // Alta de lote inline por campo
+  const [addingPlotFieldId, setAddingPlotFieldId] = useState<number | null>(null);
+  const [newPlotName, setNewPlotName] = useState('');
+  const [newPlotHa, setNewPlotHa] = useState('');
+  const [newPlotError, setNewPlotError] = useState<string | null>(null);
+
+  const startAddPlot = (fieldId: number) => {
+    setAddingPlotFieldId(fieldId);
+    setNewPlotName('');
+    setNewPlotHa('');
+    setNewPlotError(null);
+    setEditingPlotId(null);
+    setEditingFieldId(null);
+  };
+
+  const cancelAddPlot = () => {
+    setAddingPlotFieldId(null);
+    setNewPlotError(null);
+  };
+
+  const createPlot = async (fieldId: number) => {
+    const name = newPlotName.trim();
+    if (!name) { setNewPlotError('El nombre no puede estar vacío'); return; }
+    const haRaw = newPlotHa.trim();
+    const hectares = haRaw ? Number(haRaw) : undefined;
+    if (hectares !== undefined && (!isFinite(hectares) || hectares <= 0)) {
+      setNewPlotError('Hectáreas inválidas'); return;
+    }
+    setSaving(true);
+    setNewPlotError(null);
+    try {
+      const body: Record<string, unknown> = { name };
+      if (hectares !== undefined) body.hectares = hectares;
+      await apiRequest(`/fields/${fieldId}/plots`, { method: 'POST', body });
+      setAddingPlotFieldId(null);
+      await fetchFields();
+    } catch (err: unknown) {
+      setNewPlotError(err instanceof Error ? err.message : 'Error al crear el lote');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const savePlot = async (id: number) => {
@@ -272,6 +315,57 @@ export default function FieldsTab() {
                 ))}
               </div>
             )}
+
+            {/* Alta de lote */}
+            <div className="mt-3 pl-2">
+              {addingPlotFieldId === f.id ? (
+                <div className="space-y-1 pl-2 border-l-2 border-campo-200 dark:border-campo-800">
+                  <div className="space-y-2 max-w-xs pl-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Nombre del lote</label>
+                      <input
+                        value={newPlotName}
+                        onChange={e => setNewPlotName(e.target.value)}
+                        placeholder="Ej: Lote Norte"
+                        className="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2 py-1.5 placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-campo-500 outline-none"
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Hectáreas (opcional)</label>
+                      <input
+                        type="number"
+                        value={newPlotHa}
+                        onChange={e => setNewPlotHa(e.target.value)}
+                        placeholder="Ej: 50"
+                        min="0.01"
+                        max="100000"
+                        step="0.01"
+                        className="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2 py-1.5 placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-campo-500 outline-none"
+                      />
+                    </div>
+                    {newPlotError && <p className="text-xs text-red-600 dark:text-red-400">{newPlotError}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => void createPlot(f.id)}
+                        disabled={saving}
+                        className="text-xs bg-campo-600 text-white rounded-md px-3 py-1.5 disabled:opacity-50 hover:bg-campo-700"
+                      >
+                        Crear lote
+                      </button>
+                      <button onClick={cancelAddPlot} className="text-xs text-gray-500 dark:text-gray-400">Cancelar</button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => startAddPlot(f.id)}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-campo-700 dark:text-campo-400 hover:text-campo-800 dark:hover:text-campo-300"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Agregar lote
+                </button>
+              )}
+            </div>
           </div>
         );
       })}
