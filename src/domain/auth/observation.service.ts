@@ -1,4 +1,5 @@
 import { pool } from '../../config/db.js';
+import { sqlNormalizedName } from '../../utils/entity-matcher.js';
 import { normalizeObservationText, detectObservationCategory } from '../../services/observations.js';
 
 interface ObservationRow {
@@ -330,7 +331,7 @@ export class ObservationService {
     }
     if (filters.category) {
       paramIdx++;
-      conditions.push(`e.category = $${paramIdx}`);
+      conditions.push(`${sqlNormalizedName('e.category')} = ${sqlNormalizedName(`$${paramIdx}::text`)}`);
       params.push(filters.category);
     }
     if ((filters as Record<string, unknown>).expenseType) {
@@ -405,7 +406,7 @@ export class ObservationService {
     }
     if (filters.category) {
       paramIdx++;
-      conditions.push(`i.category = $${paramIdx}`);
+      conditions.push(`${sqlNormalizedName('i.category')} = ${sqlNormalizedName(`$${paramIdx}::text`)}`);
       params.push(filters.category);
     }
 
