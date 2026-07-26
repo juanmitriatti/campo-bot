@@ -1354,4 +1354,50 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       }
     });
   });
+
+  describe('campaign_stats view yield — respuesta corta de rinde (Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('campaign-yield');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'Estancia Rinde') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      await h.q(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2)`, [fid, h.userId]);
+      const p = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 10) RETURNING id`, [fid]);
+      const pid = (p[0] as { id: number }).id;
+      await h.q(
+        `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, harvested_at, yield_kg)
+         VALUES ($1, 'Trigo', 2025, 'fina', '2025-06-15', '2025-12-20', 25000)`,
+        [pid],
+      );
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('view=yield devuelve SOLO el rinde (kg + tn + kg/ha), sin la ficha completa', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'campaign_stats', toolInput: { plot: 'Norte', view: 'yield' } },
+      ]);
+      const items = await h.send('cuánto rindió el lote norte');
+      const text = h.allText(items);
+
+      expect(text).toContain('25.000 kg');
+      expect(text).toContain('25 tn');
+      expect(text).toContain('2.500 kg/ha');
+      // Nada de la ficha completa
+      expect(text).not.toContain('Rentabilidad');
+      expect(text).not.toContain('Gastos');
+      expect(text).not.toContain('Actividades');
+    });
+
+    it('la ficha completa muestra el rinde también en toneladas', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'campaign_stats', toolInput: { plot: 'Norte' } },
+      ]);
+      const items = await h.send('cómo viene la campaña del lote norte');
+      const text = h.allText(items);
+
+      expect(text).toContain('Rendimiento');
+      expect(text).toMatch(/25.000 kg.*25 tn/);
+    });
+  });
 });

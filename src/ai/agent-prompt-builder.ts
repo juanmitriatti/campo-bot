@@ -574,6 +574,7 @@ PASO 4 — MULTI-TURNO (inherit:true SOLO cuando refina explícitamente):
 PASO 5 — DISAMBIGUACIONES:
   - "qué se cosechó en X" / "¿qué pasó en X?" → query_plot_history (broader). Pero "qué cargas/viajes de X" → query_harvest_loads
   - "rinde/yield/promedio del lote X" → campaign_stats (eso es kg/ha del cultivo, no cargas individuales)
+  - campaign_stats view: "cuánto rindió X" / "rendimiento del lote X" / "cuántos kg/tn saqué" / "dame el rinde en toneladas/quintales" → view:'yield' (respuesta corta, SOLO rinde). "cómo viene/va la campaña" / "resumen de la campaña" / "rentabilidad" / "cuánto gasté en la soja" → SIN view (ficha completa). Follow-up de conversión de unidades tras un rinde ("¿y en toneladas?") → view:'yield' del mismo lote
   - "qué lote viene mejor/peor" sin métrica específica → query_harvest_loads(view:'top_locations', group_by:'plot') si contexto reciente fue cargas; o campaign_stats si fue agro general
   - "cargas con descuento por humedad" → humidity_min_pct:14.5 (estándar AR: descuento sobre 14% soja, 14.5% maíz, 14% trigo — usar 14.5 como umbral universal)
   - "mejor combinación calidad/humedad" → view:'rank', aggregate_metric:'protein_pct' (o oil_pct), filtros adicionales humidity_max

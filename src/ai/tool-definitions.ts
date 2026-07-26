@@ -339,6 +339,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         field: { type: 'string', description: 'Nombre del campo (opcional si tiene 1).' },
         crop: { type: 'string', description: 'Cultivo (soja, maíz, trigo, etc.).' },
         season_year: { type: 'string', description: 'Campaña ej "2025/26". Si no se indica, usa la activa o última.' },
+        view: { type: 'string', enum: ['full', 'yield'], description: "'yield' = respuesta CORTA solo con el rinde (kg, tn, kg/ha). Usar cuando preguntan específicamente cuánto rindió / rendimiento / cuántos kg-tn sacó / conversión de unidades del rinde. 'full' (default) = ficha completa — para 'cómo viene la campaña', 'resumen', 'rentabilidad'." },
       },
       required: [],
     },

@@ -21,7 +21,7 @@ import { logError } from '../../services/error-logger.js';
 import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
 import { formatHistoryResponse } from './plot-query.service.js';
 import { formatDateAR } from '../../utils/date.js';
-import { formatQuantityHuman } from '../../utils/format-quantity.js';
+import { formatQuantityHuman, formatTn } from '../../utils/format-quantity.js';
 import { localidadLookup, type Localidad } from '../../services/localidad-lookup.service.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import { isPlaceholder } from '../../utils/guards.js';
@@ -2787,6 +2787,12 @@ export class AgronomyHandler {
           return { messages: [stats] };
         }
 
+        // view='yield': pregunta puntual de rinde → respuesta puntual (la ficha
+        // completa para "cuánto rindió X" era un camión de datos; visto en prod).
+        if (cmd.view === 'yield') {
+          return { messages: [this.formatCampaignYieldShort(stats)] };
+        }
+
         return { messages: [this.formatCampaignStats(stats)] };
       }
 
@@ -4150,6 +4156,28 @@ export class AgronomyHandler {
     }
   }
 
+  /**
+   * Respuesta corta para "cuánto rindió X" (campaign_stats view='yield'):
+   * solo el rinde en kg, tn y kg/ha — la ficha completa queda para
+   * "cómo viene la campaña".
+   */
+  private formatCampaignYieldShort(s: CampaignStats): string {
+    const header = `🌾 *Rinde ${s.crop} ${s.seasonLabel}* — ${s.plot}${s.field ? ` (${s.field})` : ''}`;
+    if (!s.yield.kg && !s.yield.kgPerHa) {
+      return `${header}\nTodavía no hay rinde registrado.\n_Cargalo con: "rindió X kg/ha en lote ${s.plot}" o "cosechamos X tn en ${s.plot}"._`;
+    }
+    const parts: string[] = [];
+    if (s.yield.kg) parts.push(`${s.yield.kg.toLocaleString('es-AR')} kg (≈ ${formatTn(s.yield.kg)} tn)`);
+    if (s.yield.kgPerHa) parts.push(`${s.yield.kgPerHa.toLocaleString('es-AR')} kg/ha`);
+    let out = `${header}\n📊 ${parts.join(' · ')}`;
+    if (s.yield.loads && s.yield.loads.length > 0) {
+      out += `\n🚛 ${s.yield.loads.length} cargas`;
+      if (s.yield.avgHumidity != null) out += ` · 💧 ${s.yield.avgHumidity}% hum promedio`;
+    }
+    out += `\n\n_Pedime "resumen de la campaña" para ver gastos, rentabilidad y monitoreos._`;
+    return out;
+  }
+
   private formatCampaignStats(s: CampaignStats): string {
     const stateMap = { active: '🌱 Activa', harvested: '🌾 Cosechada (abierta)', closed: '✅ Cerrada' };
     const lines: string[] = [];
@@ -4193,8 +4221,8 @@ export class AgronomyHandler {
     // instead of silently omitting the line (otherwise "promedio?" returns a
     // table that doesn't even mention the rinde).
     if (s.yield.kg) {
-      let yieldLine = `\n*Rendimiento:* ${s.yield.kg.toLocaleString('es-AR')} kg`;
-      if (s.yield.kgPerHa) yieldLine += ` (${s.yield.kgPerHa.toLocaleString('es-AR')} kg/ha)`;
+      let yieldLine = `\n*Rendimiento:* ${s.yield.kg.toLocaleString('es-AR')} kg (≈ ${formatTn(s.yield.kg)} tn)`;
+      if (s.yield.kgPerHa) yieldLine += ` · ${s.yield.kgPerHa.toLocaleString('es-AR')} kg/ha`;
       lines.push(yieldLine);
     } else if (s.state === 'harvested' || s.state === 'closed') {
       lines.push(`\n*Rendimiento:* no registrado\n_Cargalo con: "rindió X kg/ha en lote ${s.plot}" o "cosechamos X tn en ${s.plot}"._`);
