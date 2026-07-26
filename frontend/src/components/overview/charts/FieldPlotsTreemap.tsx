@@ -47,6 +47,14 @@ interface TreeLeaf {
  *   por cultivo (proporcional a sus ha) + el remanente gris si queda área libre.
  */
 function buildTreeData(field: FieldPlotCropsField): TreeLeaf[] {
+  // Piso de tamaño: un lote de 1 ha al lado de uno de 120 quedaba como una
+  // astilla ilegible. Ningún rectángulo ocupa menos del 4% del total del
+  // campo — el área deja de ser estrictamente proporcional en los extremos,
+  // pero el nombre entra y el tooltip conserva las ha reales.
+  const totalHa = field.plots.reduce((a, p) => a + (p.hectares && p.hectares > 0 ? p.hectares : 1), 0);
+  const minSize = totalHa * 0.04;
+  const floored = (ha: number) => Math.max(ha, minSize);
+
   return field.plots.map((plot) => {
     const plotHa = plot.hectares && plot.hectares > 0 ? plot.hectares : null;
     const crops = plot.crops;
@@ -54,7 +62,7 @@ function buildTreeData(field: FieldPlotCropsField): TreeLeaf[] {
     if (crops.length === 0) {
       return {
         name: plot.plotName, plotName: plot.plotName, crop: null,
-        size: plotHa ?? 1, ha: plotHa, fill: EMPTY_COLOR,
+        size: floored(plotHa ?? 1), ha: plotHa, fill: EMPTY_COLOR,
       };
     }
 
@@ -63,7 +71,7 @@ function buildTreeData(field: FieldPlotCropsField): TreeLeaf[] {
     if (singleFullCrop) {
       return {
         name: plot.plotName, plotName: plot.plotName, crop: crops[0].crop,
-        size: plotHa ?? knownCropHa[0] ?? 1, ha: plotHa ?? knownCropHa[0], fill: colorForCrop(crops[0].crop),
+        size: floored(plotHa ?? knownCropHa[0] ?? 1), ha: plotHa ?? knownCropHa[0], fill: colorForCrop(crops[0].crop),
       };
     }
 
@@ -79,14 +87,14 @@ function buildTreeData(field: FieldPlotCropsField): TreeLeaf[] {
       const ha = knownCropHa[i] ?? (perUnknown > 0 ? perUnknown : null);
       return {
         name: `${plot.plotName} · ${c.crop}`, plotName: plot.plotName, crop: c.crop,
-        size: ha ?? 1, ha, fill: colorForCrop(c.crop),
+        size: floored(ha ?? 1), ha, fill: colorForCrop(c.crop),
       };
     });
-    const usedHa = children.reduce((a, c) => a + c.size, 0);
+    const usedHa = children.reduce((a, c) => a + (typeof c.ha === 'number' ? c.ha : c.size), 0);
     if (plotHa != null && plotHa - usedHa > 0.01) {
       children.push({
         name: `${plot.plotName} · sin sembrar`, plotName: plot.plotName, crop: null,
-        size: plotHa - usedHa, ha: plotHa - usedHa, fill: EMPTY_COLOR,
+        size: floored(plotHa - usedHa), ha: plotHa - usedHa, fill: EMPTY_COLOR,
       });
     }
 
@@ -113,20 +121,45 @@ function TreemapCell(props: Record<string, unknown>) {
   // etiqueta "lote · cultivo"); depth 0 es la raíz sintética de recharts.
   if (depth === 0 || props.isPlotFrame) return null;
 
-  const label = width > 55 && height > 30;
+  // Etiqueta adaptativa: fuente normal si hay lugar, chica si la celda es
+  // reducida, y rotada 90 grados en celdas angostas y altas. fitChars estima
+  // cuantos caracteres entran (~0.62 * fontSize por caracter).
   const haLabel = ha != null ? `${Math.round(ha * 10) / 10} ha` : '';
+  const big = width > 55 && height > 30;
+  const fontSize = big ? 11 : 9;
+  const fitChars = (px: number) => Math.max(0, Math.floor((px - 8) / (fontSize * 0.62)));
+  const truncate = (t: string, max: number) => (t.length > max ? `${t.slice(0, Math.max(max - 1, 1))}…` : t);
+
+  const horizChars = fitChars(width);
+  const vertChars = fitChars(height);
+  const canHoriz = horizChars >= 3 && height >= 14;
+  const canVert = !canHoriz && vertChars >= 3 && width >= 12;
+
   return (
     <g>
       <rect x={x} y={y} width={width} height={height} fill={fill} stroke="#fff" strokeWidth={2} rx={3} />
-      {label && (
+      {canHoriz && (
         <>
-          <text x={x + width / 2} y={y + height / 2 - (haLabel ? 4 : -4)} textAnchor="middle" fontSize={11} fontWeight={600} fill="#1f2937">
-            {name.length > 16 ? `${name.slice(0, 15)}…` : name}
+          <text x={x + width / 2} y={y + height / 2 + (big && haLabel && height > 44 ? -4 : 4)} textAnchor="middle" fontSize={fontSize} fontWeight={600} fill="#1f2937">
+            {truncate(name, horizChars)}
           </text>
-          {haLabel && height > 44 && (
+          {big && haLabel && height > 44 && (
             <text x={x + width / 2} y={y + height / 2 + 12} textAnchor="middle" fontSize={10} fill="#374151">{haLabel}</text>
           )}
         </>
+      )}
+      {canVert && (
+        <text
+          x={x + width / 2}
+          y={y + height / 2}
+          textAnchor="middle"
+          fontSize={fontSize}
+          fontWeight={600}
+          fill="#1f2937"
+          transform={`rotate(-90 ${x + width / 2} ${y + height / 2})`}
+        >
+          {truncate(name, vertChars)}
+        </text>
       )}
     </g>
   );
