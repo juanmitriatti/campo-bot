@@ -40,7 +40,7 @@ import { isNewActionInterrupt } from '../middleware/pending-action-processor.js'
 import { PendingTransactionStore, resolveReplacedPending, isCompletePending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
-import { TypedPendingStore } from '../middleware/typed-pending-store.js';
+import { TypedPendingStore, clearAllTypedStores } from '../middleware/typed-pending-store.js';
 import { tipEngine } from './tip-engine.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
@@ -188,6 +188,27 @@ export async function hydratePendingStores(phone: string): Promise<void> {
     deferredFirstActionStore.hydrate(phone),
     conversationLockStore.hydrate(phone),
   ]);
+}
+
+/**
+ * Limpia TODO el estado conversacional volátil de un usuario: los stores
+ * legacy con clase propia, todos los TypedPendingStore (via registro — el
+ * conversation_lock y el deferred quedaron fuera del reset del eval por
+ * mantener una lista manual) y las filas de pending_states como cinturón
+ * final. Lo usa el /reset del test-bot; cualquier flujo futuro de "borrar
+ * estado del usuario" debe pasar por acá, no por una lista propia.
+ */
+export async function clearAllUserPendingState(phone: string): Promise<void> {
+  pendingStore.clear(phone);
+  pendingObsStore.clear(phone);
+  pendingActStore.clear(phone);
+  pendingCityStore.clear(phone);
+  pendingPlotAreaStore.clear(phone);
+  pendingFieldLocationStore.clear(phone);
+  pendingDocumentStore.clear(phone);
+  pendingDocUploadStore.clear(phone);
+  clearAllTypedStores(phone);
+  await pool.query(`DELETE FROM pending_states WHERE key = $1`, [phone]);
 }
 
 // ============================================================

@@ -33,6 +33,7 @@ import {
   pendingStockEntryStore,
   pendingStockDeductionStore,
   pendingCampaignCloseStore,
+  clearAllUserPendingState,
 } from '../services/message-pipeline.js';
 import type { ChannelContext } from '../services/message-pipeline.js';
 
@@ -217,16 +218,11 @@ router.post('/reset', async (req: Request, res: Response) => {
     const numericUserId = asUserId(typeof userId === 'string' ? parseInt(userId, 10) : userId);
     const phone = syntheticPhone(numericUserId);
 
-    // 1. Clear ALL in-memory stores
-    pendingStore.clear(phone);
-    pendingObsStore.clear(phone);
-    pendingActStore.clear(phone);
-    pendingCityStore.clear(phone);
-    pendingStockEntryStore.delete(phone);
-    pendingStockDeductionStore.delete(phone);
-    pendingFieldLocationStore.clear(phone);
-    pendingCampaignCloseStore.delete(phone);
-    pendingPlotAreaStore.clear(phone);
+    // 1. Clear ALL in-memory stores — helper central con registro de stores.
+    // La lista manual anterior se desactualizó cuando nacieron los stores de
+    // julio: el conversation_lock sobrevivía entre escenarios del eval y
+    // contaminaba todo lo posterior (eval degradado a 13/25, Jul 26).
+    await clearAllUserPendingState(phone);
 
     // 2. Hard-delete all DB records in a transaction (FK-safe order)
     await client.query('BEGIN');

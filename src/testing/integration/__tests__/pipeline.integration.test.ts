@@ -1400,4 +1400,33 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(text).toMatch(/25.000 kg.*25 tn/);
     });
   });
+
+  describe('reset central de pendings — el lock y el deferred no sobreviven (Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => { h = await createPipelineHarness('clear-all-stores'); });
+    afterAll(async () => h?.cleanup());
+
+    it('clearAllUserPendingState limpia conversation lock + deferred + filas DB', async () => {
+      const { conversationLockStore } = await import('../../../middleware/conversation-lock-store.js');
+      const { deferredFirstActionStore, clearAllUserPendingState } = await import('../../../services/message-pipeline.js');
+
+      conversationLockStore.set(h.phone, { turns: 2 });
+      deferredFirstActionStore.set(h.phone, { originalText: 'gasté 50 mil en gasoil' });
+
+      // write-through del mirror: esperar a que las filas estén en DB
+      for (let i = 0; i < 50; i++) {
+        const rows = await h.q(`SELECT store FROM pending_states WHERE key = $1`, [h.phone]);
+        if (rows.length >= 2) break;
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      await clearAllUserPendingState(h.phone);
+
+      expect(conversationLockStore.has(h.phone)).toBe(false);
+      expect(deferredFirstActionStore.get(h.phone)).toBeUndefined();
+      const rows = await h.q(`SELECT store FROM pending_states WHERE key = $1`, [h.phone]);
+      expect(rows).toEqual([]);
+    });
+  });
 });

@@ -18,12 +18,25 @@ import { PendingMirror } from './pending-persistence.js';
 
 const DEFAULT_TTL_MS = 30 * 60 * 1000; // 30 min — coherente con pending-activities
 
+/**
+ * Registro de TODAS las instancias construidas. Existe para que un "limpiar
+ * todo lo de este usuario" (reset del test-bot) no dependa de una lista manual
+ * que se desactualiza — el conversation_lock quedó fuera del reset del eval
+ * por exactamente eso (Jul 2026, eval degradado a 13/25).
+ */
+const REGISTRY: TypedPendingStore<object>[] = [];
+
+export function clearAllTypedStores(key: string): void {
+  for (const store of REGISTRY) store.clear(key);
+}
+
 export class TypedPendingStore<T extends object> {
   private store = new Map<string, T & { timestamp: number }>();
   private mirror: PendingMirror<T & { timestamp: number }>;
 
   constructor(kind: string, private ttlMs: number = DEFAULT_TTL_MS) {
     this.mirror = new PendingMirror(kind, ttlMs);
+    REGISTRY.push(this as unknown as TypedPendingStore<object>);
   }
 
   set(key: string, value: T): void {
