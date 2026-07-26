@@ -174,8 +174,12 @@ async function seed(client: PoolClient, userId: number): Promise<void> {
   console.log('\n1. Creating fields, plots, and crops...');
 
   for (const f of FIELDS) {
+    // Idempotente: si el usuario ya tiene un campo con este nombre (dato real
+    // o seed previo), se reusa en vez de chocar con fields_user_id_name_key.
     const { rows: [field] } = await client.query(
-      `INSERT INTO fields (user_id, name, city) VALUES ($1, $2, $3) RETURNING id`,
+      `INSERT INTO fields (user_id, name, city) VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, name) DO UPDATE SET deleted_at = NULL
+       RETURNING id`,
       [userId, f.name, f.city],
     );
     // Production add_field creates a field_members owner row — replicate so
@@ -190,7 +194,9 @@ async function seed(client: PoolClient, userId: number): Promise<void> {
 
     for (const p of f.plots) {
       const { rows: [plot] } = await client.query(
-        `INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, $2, $3) RETURNING id`,
+        `INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, $2, $3)
+         ON CONFLICT (field_id, name) DO UPDATE SET deleted_at = NULL
+         RETURNING id`,
         [field.id, p.name, p.areaHa || null],
       );
       const key = `${f.name}/${p.name}`;
@@ -201,9 +207,13 @@ async function seed(client: PoolClient, userId: number): Promise<void> {
         const startDate = p.seasonType === 'fina'
           ? d(2025, 6, 15) // June for fina
           : d(2025, 11, 1); // November for gruesa
+        // Un solo cultivo activo por lote (idx_plot_crops_unique_active): si el
+        // lote ya tiene uno (dato real o seed previo), se reusa ese.
         const { rows: [pc] } = await client.query(
           `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date)
-           VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (plot_id) WHERE end_date IS NULL DO UPDATE SET plot_id = EXCLUDED.plot_id
+           RETURNING id`,
           [plot.id, p.crop, p.seasonYear, p.seasonType, startDate],
         );
         cropIds[key] = pc.id;
