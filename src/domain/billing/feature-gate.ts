@@ -136,6 +136,7 @@ export class FeatureGate {
       log_irrigation: 'agronomy',
       plot_activities: 'agronomy',
       log_observation: 'agronomy',
+      query_observations: 'agronomy',
       generate_agro_report: 'agronomy',
       log_tacto: 'agronomy',
       tacto_summary: 'agronomy',

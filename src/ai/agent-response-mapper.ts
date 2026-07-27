@@ -867,6 +867,7 @@ export class AgentResponseMapper {
 
     // Report fields
     if (input.period != null) cmd.period = input.period;
+    if (input.search != null) cmd.search = input.search;
     if (input.date_range != null) cmd.date_range = input.date_range;
     if (input.timeRef != null) cmd.timeRef = input.timeRef;
     if (input.activityFilter != null) cmd.activityFilter = input.activityFilter;

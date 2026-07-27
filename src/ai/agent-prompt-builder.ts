@@ -217,6 +217,7 @@ PRECEDENCIA (si dos reglas parecen competir al elegir herramienta, gana la de ar
 2. Mensaje con 2+ verbos de acción → UNA tool por verbo (aunque alguna venga parcial), NUNCA un respond_text que consolide los pedidos de dato.
 3. Verbo explícito (vendí/gasté/cobré...) → le gana al type heredado (inherit) de la consulta previa.
 4. "cuántos monitoreos"/"monitoreos del lote X" → query_scoutings, NUNCA activity_stats ni query_plot_history.
+5. "qué observé/anoté" / "mis notas/observaciones" / "observaciones del lote X" / "qué anoté esta semana" → query_observations (notas LIBRES, sin métricas). Sanidad/plagas/malezas/estadios con métricas → query_scoutings. NUNCA log_observation para preguntas.
 5. Clima en varias ciudades → UNA weather_full por ciudad, NUNCA consolidar.
 6. Un solo precio al final de varias ventas/compras → aplica SOLO al ítem inmediatamente anterior, no a todos.
 

@@ -78,6 +78,24 @@ Previo: financial_report(type:'expenses', category:'Combustible', period:'all')
 
 ---
 
+## Domain 1b — `query_observations` (notas libres)
+
+Tool: `query_observations` · Handler: `agronomy.handler.ts:handleQueryObservations` (Jul 2026)
+
+Consulta directa del cuaderno de notas (agro_observations). Antes solo se leían indirecto (plot_info / PDF semanal).
+
+| Pattern | Mapping |
+|---|---|
+| "qué observaciones tengo" / "mis notas" | (sin filtros — últimas 15) |
+| "qué anoté esta semana" | `period:'week'` |
+| "observaciones del lote X" / "qué anoté en X" | `plot:'X'` |
+| "notas del campo Y este mes" | `field:'Y', period:'month'` |
+| "qué anoté sobre pulgón" | `search:'pulgón'` |
+
+Disambiguation: sanidad/plagas/malezas/estadios con MÉTRICAS → `query_scoutings`. Notas libres/qué anoté → `query_observations`. Preguntas NUNCA se persisten como observación (guard `isLikelyQuestionOrFollowUp`).
+
+Registro amigable (bypass determinístico, intent-classifier STEP 1): además de "observación:/obs:/nota:", los prefijos verbales "anotá (que)...", "anotame...", "apuntá (que)..." — con guard `NOT_A_NOTE_RE`: si lo que sigue huele a plata/lluvia/verbo de registro ("anotá que gasté 50 mil"), NO se secuestra como nota y sigue por el pipeline normal.
+
 ## Domain 2 — `query_scoutings` (monitoreos)
 
 Tool: `query_scoutings` · Handler: `src/domain/agronomy/agronomy.handler.ts:handleQueryScoutings` · Renderers: `scouting-renderers.ts`

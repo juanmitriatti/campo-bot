@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { TOOL_DEFINITIONS, TOOL_NAMES } from '../tool-definitions.js';
 
 describe('TOOL_DEFINITIONS', () => {
-  it('has 102 tools', () => {
+  it('has 103 tools', () => {
     // 85 → 91 on May 28 (morning): added 6 financial edit/delete tools
     //   (delete_last_expense, delete_specific_expense, delete_specific_income,
     //   edit_specific_expense, edit_last_income, edit_specific_income)
@@ -12,7 +12,7 @@ describe('TOOL_DEFINITIONS', () => {
     //   edit_last_rainfall, delete_last_rainfall, delete_last_scouting)
     // 98 → 99 on Jul 5: +grain_prices (pizarra Matba-Rofex)
     // 99 → 102 on Jul 5: +create_reminder/list_reminders/complete_reminder
-    expect(TOOL_DEFINITIONS).toHaveLength(102);
+    expect(TOOL_DEFINITIONS).toHaveLength(103);
   });
 
   it('all tools have unique names', () => {

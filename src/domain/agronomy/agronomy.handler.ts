@@ -3867,6 +3867,10 @@ export class AgronomyHandler {
         return this.handleQueryScoutings(cmd, userId);
       }
 
+      case 'query_observations': {
+        return this.handleQueryObservations(cmd, userId);
+      }
+
       // --- Crop scouting (structured monitoring) ---
 
       case 'log_crop_scouting': {
@@ -4161,6 +4165,66 @@ export class AgronomyHandler {
    * solo el rinde en kg, tn y kg/ha — la ficha completa queda para
    * "cómo viene la campaña".
    */
+  /**
+   * query_observations — consulta directa de las notas libres (Jul 2026).
+   * Antes las observaciones solo se leían indirecto (plot_info, PDF semanal):
+   * el cuaderno de campo no se podía preguntar.
+   */
+  private async handleQueryObservations(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const { pool } = await import('../../config/db.js');
+    const { sqlNormalizedName } = await import('../../utils/entity-matcher.js');
+    const conditions: string[] = ['o.user_id = $1'];
+    const params: unknown[] = [userId];
+    const filterLabels: string[] = [];
+
+    if (cmd.plotName) {
+      params.push(cmd.plotName);
+      conditions.push(`${sqlNormalizedName('p.name')} = ${sqlNormalizedName(`$${params.length}::text`)}`);
+      filterLabels.push(`lote ${cmd.plotName}`);
+    }
+    if (cmd.fieldName) {
+      params.push(cmd.fieldName);
+      conditions.push(`${sqlNormalizedName('f.name')} = ${sqlNormalizedName(`$${params.length}::text`)}`);
+      filterLabels.push(`campo ${cmd.fieldName}`);
+    }
+    const period = String(cmd.period ?? 'all');
+    if (period === 'today') { conditions.push('o.observation_date = CURRENT_DATE'); filterLabels.push('hoy'); }
+    else if (period === 'week') { conditions.push(`o.observation_date >= CURRENT_DATE - 7`); filterLabels.push('últimos 7 días'); }
+    else if (period === 'month') { conditions.push(`o.observation_date >= CURRENT_DATE - 30`); filterLabels.push('últimos 30 días'); }
+    if (cmd.search) {
+      params.push(`%${String(cmd.search)}%`);
+      conditions.push(`o.observation_text ILIKE $${params.length}`);
+      filterLabels.push(`"${cmd.search}"`);
+    }
+
+    const { rows } = await pool.query(
+      `SELECT o.observation_text, o.observation_date, p.name AS plot_name, f.name AS field_name
+       FROM agro_observations o
+       LEFT JOIN plots p ON p.id = o.plot_id
+       LEFT JOIN fields f ON f.id = COALESCE(o.field_id, p.field_id)
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY o.observation_date DESC, o.id DESC
+       LIMIT 15`,
+      params,
+    );
+
+    const suffix = filterLabels.length ? ` (${filterLabels.join(', ')})` : '';
+    if (rows.length === 0) {
+      return {
+        messages: [`📝 No encontré observaciones${suffix}.\n\nPara anotar una, decime por ejemplo: *"anotá que apareció pulgón en la loma"*.`],
+      };
+    }
+
+    const lines = rows.map((r: { observation_text: string; observation_date: Date; plot_name: string | null; field_name: string | null }) => {
+      const d = new Date(r.observation_date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+      const where = r.plot_name ? ` [${r.plot_name}]` : (r.field_name ? ` [${r.field_name}]` : '');
+      const text = r.observation_text.length > 150 ? `${r.observation_text.slice(0, 149)}…` : r.observation_text;
+      return `• ${d}${where} — ${text}`;
+    });
+    const more = rows.length === 15 ? '\n_Mostrando las últimas 15. Filtrá por lote o período para acotar._' : '';
+    return { messages: [`📝 *Observaciones${suffix}:*\n${lines.join('\n')}${more}`] };
+  }
+
   private formatCampaignYieldShort(s: CampaignStats): string {
     const header = `🌾 *Rinde ${s.crop} ${s.seasonLabel}* — ${s.plot}${s.field ? ` (${s.field})` : ''}`;
     if (!s.yield.kg && !s.yield.kgPerHa) {

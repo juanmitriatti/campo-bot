@@ -65,7 +65,7 @@ const AGRONOMY_COMMANDS = new Set([
   'query_plot_history', 'log_observation', 'generate_agro_report',
   'log_tacto', 'tacto_summary', 'edit_last_activity', 'delete_last_activity',
   'share_report',
-  'log_crop_scouting', 'query_scoutings',
+  'log_crop_scouting', 'query_scoutings', 'query_observations',
   'query_harvest_loads', 'delete_harvest_loads',
 ]);
 

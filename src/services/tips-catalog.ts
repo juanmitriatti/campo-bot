@@ -96,6 +96,16 @@ export const TIPS_CATALOG: Tip[] = [
     triggerCommands: ['log_observation'],
     text: '💡 Si me das datos ("soja V3 con 15% rama negra") guardo un *monitoreo estructurado* — después pedí "cómo viene la sanidad".',
   },
+  {
+    key: 'obs_natural',
+    triggerCommands: ['log_observation'],
+    text: '💡 Tus notas se consultan: preguntame *"qué anoté esta semana"* o *"observaciones del lote X"*.',
+  },
+  {
+    key: 'scouting_queries',
+    triggerCommands: ['log_crop_scouting'],
+    text: '💡 Sobre tus monitoreos podés preguntarme: *"presión de plagas"*, *"qué malezas aparecieron"* o *"cuál es el lote más sano"*.',
+  },
 
   // ── Lluvia / clima ──────────────────────────────────────────────────────
   {

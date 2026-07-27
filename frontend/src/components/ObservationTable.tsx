@@ -186,8 +186,8 @@ export default function ObservationTable() {
     <div>
       <TabHeader
         title="Observaciones"
-        description="Notas libres sobre lo que ves en el campo — el bot las guarda con fecha y lote."
-        botHint="observación: apareció pulgón en la loma del 5"
+        description={'Notas libres sobre lo que ves en el campo — el bot las guarda con fecha y lote, y después se las podés preguntar ("qué anoté esta semana").'}
+        botHint="anotá que apareció pulgón en la loma del 5"
       />
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">

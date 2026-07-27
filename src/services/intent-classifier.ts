@@ -108,6 +108,17 @@ const GREETING_LEAD_RE = /^(?:buenas\s+(?:tardes|noches|d[ií]as?)|buen(?:os)?\s
  */
 const OBSERVATION_PREFIX = /^(?:observaci[oó]n|obs|nota)\s*[:\-\u2014]?\s+/i;
 
+/**
+ * Prefijo verbal amigable — "anotá que apareció pulgón", "anotame el alambrado
+ * está caído", "apuntá que hay heladas". Mismo bypass determinístico que
+ * "observación:" pero como habla un productor (feedback Jul 2026: el prefijo
+ * con dos puntos parecía un comando tedioso). Guard: si lo que sigue huele a
+ * registro real (plata, lluvia, verbo de acción), NO se secuestra como nota —
+ * "anotá que gasté 50 mil" es un gasto y sigue por el pipeline normal.
+ */
+const NOTE_VERB_PREFIX = /^(?:anot[áa](?:me)?|apunt[áa](?:me)?)\s+(?:que\s+)?/i;
+const NOT_A_NOTE_RE = /[$]|\bpesos?\b|\bd[oó]lar(?:es)?\b|\busd\b|\bmil\b|\bpalos?\b|\blucas?\b|\bmillon\w*\b|\d+\s*mm\b|\b(?:gast[eé]|compr[eé]|vend[ií]|cobr[eé]|pagu[eé]|sembr[eé]|cosech[eé]|fumigu?[eé]|fertilic[eé]|llovi(?:ó|eron)|recordatorio|record[aá]me)\b/i;
+
 export class IntentClassifier {
   private parser: ParserService;
   private userRepo: UserRepository;
@@ -285,12 +296,16 @@ export class IntentClassifier {
     // =========================================================================
     // STEP 1 — HARD RULE: Observation prefix ALWAYS wins, bypasses everything
     // =========================================================================
-    if (OBSERVATION_PREFIX.test(cleaned)) {
+    const noteVerbMatch = !OBSERVATION_PREFIX.test(cleaned)
+      && NOTE_VERB_PREFIX.test(cleaned)
+      && !NOT_A_NOTE_RE.test(cleaned.replace(NOTE_VERB_PREFIX, ''));
+    if (OBSERVATION_PREFIX.test(cleaned) || noteVerbMatch) {
       // Use parseObservation ONLY to detect the plot/field — its observationText
       // is plot-stripped by a fragile mid-text regex that mangled real notes
       // ("el lote Norte está muy lindo, buena humedad" → "elá muy lindo…").
       // The DISPLAY text is the user's words minus the "observación:" prefix.
-      const strippedText = cleaned.replace(OBSERVATION_PREFIX, '').trim();
+      const activePrefix = noteVerbMatch ? NOTE_VERB_PREFIX : OBSERVATION_PREFIX;
+      const strippedText = cleaned.replace(activePrefix, '').trim();
       const obs = this.parser.parseObservation(cleaned) || this.parser.parseObservation(preprocessed);
       if (obs && strippedText.length >= 3) {
         return {

@@ -174,6 +174,7 @@ export default function ScoutingTable() {
       <TabHeader
         title="Monitoreos"
         description="Monitoreos estructurados del cultivo: estadio, malezas, plagas, humedad."
+        botHint="cómo viene la sanidad del Norte"
       />
 
       {aggregates && aggregates.total > 0 && (

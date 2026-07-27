@@ -640,6 +640,21 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // OBSERVATIONS
   // ========================
   {
+    name: 'query_observations',
+    description: 'Consultar las OBSERVACIONES libres registradas (notas de campo sin métricas). Triggers: "qué observé/anoté", "mis notas/observaciones", "observaciones del lote X", "qué anoté esta semana", "notas de enero". NO usar para sanidad/plagas/malezas/estadios con métricas (eso es query_scoutings).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        plot: { type: 'string', description: 'Filtrar por lote.' },
+        field: { type: 'string', description: 'Filtrar por campo.' },
+        period: { type: 'string', enum: ['today', 'week', 'month', 'all'], description: "Período: today=hoy, week=últimos 7 días, month=últimos 30, all=todas (default)." },
+        search: { type: 'string', description: 'Buscar texto dentro de las notas (ej "pulgón").' },
+      },
+      required: [],
+    },
+  },
+
+  {
     name: 'log_observation',
     description: 'Registrar observación agronómica a campo. Plagas, malezas, estado de cultivo, fenología, clima.',
     input_schema: {

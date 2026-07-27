@@ -1429,4 +1429,78 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(rows).toEqual([]);
     });
   });
+
+  describe('observaciones amigables — prefijo verbal + query_observations (Jul 2026)', () => {
+    let h: PipelineHarness;
+    let plotId = 0;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('obs-friendly');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Refugio') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      await h.q(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2)`, [fid, h.userId]);
+      const pl = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'La Loma') RETURNING id`, [fid]);
+      plotId = (pl[0] as { id: number }).id;
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"anotá que ..." registra la observación SIN pasar por el agente', async () => {
+      const items = await h.send('anotá que apareció pulgón en la loma');
+      const text = h.allText(items);
+      expect(text).toMatch(/observaci[oó]n/i);
+      expect(h.fakeAgent.calls.length).toBe(0);
+      const rows = await h.q(`SELECT observation_text FROM agro_observations WHERE user_id = $1`, [h.userId]);
+      expect(rows.length).toBe(1);
+      expect(String(rows[0].observation_text)).toContain('pulgón');
+    });
+
+    it('"anotame ..." también funciona como prefijo de nota', async () => {
+      const items = await h.send('anotame el alambrado del fondo está caído');
+      expect(h.fakeAgent.calls.length).toBe(0);
+      const rows = await h.q(`SELECT observation_text FROM agro_observations WHERE user_id = $1 ORDER BY id DESC LIMIT 1`, [h.userId]);
+      expect(String(rows[0].observation_text)).toContain('alambrado');
+      void items;
+    });
+
+    it('"anotá que gasté 50 mil" NO se secuestra como observación (va al pipeline normal)', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'log_expense', toolInput: { amount: 50000, category: 'Combustible', description: 'gasoil' } },
+      ]);
+      await h.send('anotá que gasté 50 mil en gasoil');
+      expect(h.fakeAgent.calls.length).toBeGreaterThan(0);
+      const obs = await h.q(`SELECT id FROM agro_observations WHERE user_id = $1 AND observation_text ILIKE '%gast%'`, [h.userId]);
+      expect(obs).toEqual([]);
+    });
+
+    it('query_observations lista las notas del usuario', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'query_observations', toolInput: {} },
+      ]);
+      const items = await h.send('qué observaciones tengo');
+      const text = h.allText(items);
+      expect(text).toContain('pulgón');
+      expect(text).toContain('alambrado');
+    });
+
+    it('query_observations filtra por lote', async () => {
+      // Segundo lote creado por SQL (crearlo antes rompería el auto-resolve
+      // de lote único que usan los tests del prefijo verbal)
+      const p2 = await h.q(
+        `INSERT INTO plots (field_id, name) SELECT field_id, 'El Bajo' FROM plots WHERE id = $1 RETURNING id`,
+        [plotId],
+      );
+      await h.q(
+        `INSERT INTO agro_observations (user_id, field_id, plot_id, observation_text, observation_date)
+         VALUES ($1, (SELECT field_id FROM plots WHERE id = $2), $2, 'heladas leves en el bajo', CURRENT_DATE - 2)`,
+        [h.userId, (p2[0] as { id: number }).id],
+      );
+      h.fakeAgent.enqueue([
+        { toolName: 'query_observations', toolInput: { plot: 'El Bajo' } },
+      ]);
+      const items = await h.send('qué anoté en el bajo');
+      const text = h.allText(items);
+      expect(text).toContain('heladas leves');
+      expect(text).not.toContain('alambrado');
+    });
+  });
 });
