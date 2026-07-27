@@ -288,13 +288,23 @@ export function renderScoutingCompare(rowsA: ScoutingRow[], rowsB: ScoutingRow[]
 
 // --- Empty state: proactive listing of available species/stages ---
 export function renderEmpty(ctx: ScoutingRenderCtx, available?: { weeds?: string[]; pests?: string[]; stages?: string[] }): HandlerResponse {
-  let msg = `No hay monitoreos${ctx.scope} (${ctx.rangeLabel}).`;
+  // "No encontré ... que coincidan": el resultado vacío casi siempre viene de
+  // un FILTRO (lote heredado, has_weeds, especie) — decir "no hay monitoreos"
+  // a secas contradecía la lista de datos de abajo (reporte de prod Jul 2026:
+  // "este mensaje no lo entiendo").
+  let msg = `🔍 No encontré monitoreos que coincidan${ctx.scope} (${ctx.rangeLabel}).`;
+  const hints: string[] = [];
   if (available) {
-    const hints: string[] = [];
     if (available.weeds && available.weeds.length > 0) hints.push(`malezas: ${available.weeds.join(', ')}`);
     if (available.pests && available.pests.length > 0) hints.push(`plagas: ${available.pests.join(', ')}`);
     if (available.stages && available.stages.length > 0) hints.push(`estadios: ${available.stages.join(', ')}`);
-    if (hints.length > 0) msg += `\n\nDatos cargados: ${hints.join(' | ')}.`;
+  }
+  if (hints.length > 0) {
+    // La lista viene de una query SIN filtros — atribuirla, o lee como contradicción
+    msg += `\n\nEn el total de tus monitoreos (todos los lotes, todo el historial) hay:\n${hints.join(' | ')}.`;
+    msg += `\n\n💡 Probá ampliar la búsqueda: agregá *"en todos los lotes"* o pedime *"mostrame todos los monitoreos"*.`;
+  } else {
+    msg += `\n\nTodavía no registraste monitoreos. Mandame por ej: *"soja V3 con 15% rama negra en lote Norte"* y lo guardo estructurado.`;
   }
   return { messages: [msg], suggestionKey: 'report_shown' };
 }
