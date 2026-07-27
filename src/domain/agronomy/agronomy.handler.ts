@@ -674,7 +674,13 @@ export class AgronomyHandler {
     }
 
     // ── 2. Resolve scope (plot/field) ──
-    const resolved = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, cmd.plotName as string | null);
+    // "qué malezas aparecieron" (sin nombrar lote) debe buscar en TODOS los
+    // lotes, no acotarse al lote del context_stack — el filtro fantasma
+    // "— lote Norte" hacía ilegible el empty-state (visto en prod Jul 2026).
+    // Mismo patrón que query_plot_history/harvest/active_crop: el fallback de
+    // contexto solo corre si el usuario referenció un lote (nombre/pronombre).
+    const scAllowCtx = userExplicitlyReferencedPlot(cmd.originalText as string | null);
+    const resolved = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, cmd.plotName as string | null, { allowContextStackFallback: scAllowCtx });
 
     // ── 3. Date range (similar to financial: analytical queries default to all-history) ──
     const todayISO = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });

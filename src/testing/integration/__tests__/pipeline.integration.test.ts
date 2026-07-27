@@ -1503,4 +1503,49 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(text).not.toContain('alambrado');
     });
   });
+
+  describe('query_scoutings sin lote NO hereda el contexto (filtro fantasma, Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('scouting-no-ctx');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'Santa Rosa') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      await h.q(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2)`, [fid, h.userId]);
+      const pn = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte') RETURNING id`, [fid]);
+      const ps = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Sur') RETURNING id`, [fid]);
+      const norteId = (pn[0] as { id: number }).id;
+      const surId = (ps[0] as { id: number }).id;
+      // Norte: monitoreo SIN malezas (solo plaga). Sur: monitoreo CON malezas.
+      await h.q(
+        `INSERT INTO crop_scoutings (user_id, plot_id, scouting_date, pest_species, pest_severity_1_5)
+         VALUES ($1, $2, CURRENT_DATE - 3, 'roya anaranjada', 4)`,
+        [h.userId, norteId],
+      );
+      await h.q(
+        `INSERT INTO crop_scoutings (user_id, plot_id, scouting_date, weed_species)
+         VALUES ($1, $2, CURRENT_DATE - 1, ARRAY['rama negra'])`,
+        [h.userId, surId],
+      );
+      // Contexto conversacional reciente apuntando a Norte (como tras "cuánto rindió el norte")
+      await h.q(
+        `INSERT INTO conversation_state (user_id, last_field_id, last_plot_id, context_stack, updated_at)
+         VALUES ($1, $2, $3, $4::jsonb, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET last_field_id = $2, last_plot_id = $3, context_stack = $4::jsonb, updated_at = NOW()`,
+        [h.userId, fid, norteId, JSON.stringify([{ field_id: fid, plot_id: norteId, ts: Date.now() }])],
+      );
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"qué malezas aparecieron" sin lote busca en TODOS los lotes (encuentra la de Sur)', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'query_scoutings', toolInput: { view: 'detail', has_weeds: true, inherit: false } },
+      ]);
+      const items = await h.send('qué malezas aparecieron');
+      const text = h.allText(items);
+      expect(text).toContain('rama negra');
+      expect(text).not.toContain('No encontré monitoreos');
+      expect(text).not.toMatch(/— lote Norte/);
+    });
+  });
 });
