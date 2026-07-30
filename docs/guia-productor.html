@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<title>campo-bot — Guía para el productor</title>
+<style>
+  @page { size: A4; margin: 22mm 18mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #1e2a1e; font-size: 10.5pt; line-height: 1.55; margin: 0; }
+  .cover { text-align: center; padding-top: 150px; page-break-after: always; }
+  .cover h1 { font-size: 34pt; margin: 0; color: #1d5c2f; }
+  .cover .sub { font-size: 15pt; color: #444; margin-top: 12px; }
+  .cover .meta { margin-top: 60px; color: #777; font-size: 10pt; }
+  h1 { font-size: 17pt; color: #1d5c2f; border-bottom: 2.5px solid #1d5c2f; padding-bottom: 4px; margin-top: 28px; page-break-after: avoid; }
+  h2 { font-size: 12.5pt; color: #2c6e3f; margin-top: 18px; margin-bottom: 6px; page-break-after: avoid; }
+  p { margin: 5px 0; }
+  ul { margin: 4px 0 8px 0; padding-left: 20px; }
+  li { margin: 2.5px 0; }
+  .ej { background: #f2f7f2; border-left: 3px solid #6aa96a; padding: 6px 10px; margin: 6px 0 10px 0; border-radius: 0 4px 4px 0; font-size: 9.8pt; }
+  .ej b { color: #1d5c2f; }
+  .ej em { color: #333; font-style: italic; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px 0; font-size: 9.5pt; }
+  th { background: #1d5c2f; color: #fff; text-align: left; padding: 5px 8px; }
+  td { border: 1px solid #cfdccf; padding: 4px 8px; vertical-align: top; }
+  tr:nth-child(even) td { background: #f6faf6; }
+  code { background: #eef2ee; padding: 1px 4px; border-radius: 3px; font-size: 9pt; font-family: "SF Mono", Menlo, monospace; }
+  .nota { background: #fff8e6; border-left: 3px solid #e0b400; padding: 6px 10px; margin: 8px 0; border-radius: 0 4px 4px 0; font-size: 9.8pt; }
+  .toc { columns: 2; column-gap: 30px; font-size: 10pt; }
+  .toc div { margin: 3px 0; }
+  .pb { page-break-before: always; }
+  .footer-note { color:#888; font-size: 9pt; margin-top: 30px; border-top: 1px solid #ddd; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>🌾 campo-bot</h1>
+  <div class="sub">Guía rápida para el productor<br>Tu campo, por chat</div>
+  <div class="meta">Julio 2026 · Telegram (WhatsApp próximamente)</div>
+</div>
+
+<h1>Índice</h1>
+<div class="toc">
+  <div>0. Tus primeros 5 minutos</div>
+  <div>1. Qué es campo-bot</div>
+  <div>2. Cómo hablarle al asistente</div>
+  <div>3. Campos y lotes</div>
+  <div>4. Gastos e ingresos</div>
+  <div>5. Agricultura: siembra a cosecha</div>
+  <div>6. Campañas y análisis</div>
+  <div>7. Monitoreo de cultivos y observaciones</div>
+  <div>8. Lluvias y clima</div>
+  <div>9. Hacienda (ganadería)</div>
+  <div>10. Sanidad, reproducción y pesaje</div>
+  <div>11. Feedlots y corrales</div>
+  <div>12. Stock de insumos</div>
+  <div>13. Documentos: facturas y remitos</div>
+  <div>14. Recordatorios de labores</div>
+  <div>15. Pizarra de granos</div>
+  <div>16. Reportes</div>
+  <div>17. Trabajo en equipo</div>
+  <div>18. Dashboard web</div>
+  <div>19. Planes, prueba y pagos</div>
+  <div>20. Tu cuenta y tus datos</div>
+</div>
+
+<h1>0. Tus primeros 5 minutos</h1>
+<p>No hay que configurar nada. Abrí el chat y escribí (o mandá un audio con) cualquiera de estas frases, con tus datos:</p>
+<div class="ej">
+<b>1.</b> <em>"Tengo el campo La Esperanza en Pergamino con los lotes Norte de 50 has y Sur de 80"</em><br>
+<b>2.</b> <em>"Gasté 500 mil en gasoil"</em><br>
+<b>3.</b> <em>"Sembré soja en el lote Norte"</em><br>
+<b>4.</b> <em>"Compré 40 vacas a 900 mil cada una"</em><br>
+<b>5.</b> <em>"Llovieron 30mm ayer"</em><br>
+<b>6.</b> <em>"¿Cuánto gasté este mes?"</em>
+</div>
+<p>Con eso ya tenés el campo armado y los primeros registros hechos. Si al bot le falta un dato, te lo pregunta él — no hace falta saber ningún comando. Y si escribís <em>"menú"</em> o <em>"ayuda"</em>, te muestra las opciones.</p>
+
+<h1>1. Qué es campo-bot</h1>
+<p>campo-bot es un asistente de gestión agropecuaria pensado para el productor argentino. Funciona por chat: le escribís (o le mandás un audio) como le escribirías a tu ingeniero o a tu administrativo, y él registra, consulta y reporta por vos. No hay formularios ni menús obligatorios — el asistente entiende lenguaje natural y decide solo qué hacer con cada mensaje.</p>
+<ul>
+  <li><b>Canales</b>: Telegram (activo hoy) y WhatsApp (próximamente). Todo lo que registrás por chat también se ve y edita en el <b>dashboard web</b>.</li>
+  <li><b>Entrada</b>: texto, <b>audios</b> (transcripción automática con vocabulario agro argentino), <b>fotos de facturas y remitos</b>, y ubicación (para geolocalizar campos).</li>
+  <li><b>Dominios que cubre</b>: finanzas (gastos/ingresos/presupuestos), agricultura (siembra, pulverización, fertilización, cosecha con detalle por camión), monitoreo de cultivos, lluvias y clima, hacienda completa (inventario, sanidad, reproducción, pesajes, feedlots), stock de insumos, documentos, recordatorios, precios de granos y reportes.</li>
+</ul>
+
+<h1>2. Cómo hablarle al asistente</h1>
+<p>El asistente está entrenado para el habla del campo argentino. Estas capacidades aplican a todos los dominios:</p>
+<h2>Lenguaje natural y montos criollos</h2>
+<div class="ej"><b>Vos:</b> <em>"gasté 50 lucas en gasoil"</em> · <em>"vendí la soja a medio palo"</em> · <em>"me salió un palo dos"</em><br>Entiende "50mil", "lucas", "palo" (millón), "medio palo", USD y ARS (incluye "verdes", "mangos", "dólares").</div>
+<h2>Varias acciones en un solo mensaje</h2>
+<div class="ej"><b>Vos:</b> <em>"Ayer fumigué el lote Norte con glifosato, gasté 300 mil en el producto y llovieron 20mm a la noche"</em><br><b>Bot:</b> registra la pulverización + el gasto + la lluvia, todo junto y de forma atómica (si algo falla, no queda nada a medias).</div>
+<h2>Fechas relativas</h2>
+<div class="ej"><em>"ayer", "anteayer", "el lunes", "la semana pasada", "el finde", "hace 3 días", "anoche"</em> — se convierten solas a la fecha correcta (huso horario argentino). Y si decís <em>"el sábado tengo que fumigar"</em>, entiende que es un <b>plan futuro</b> y crea un recordatorio, no un registro.</div>
+<h2>Memoria de la conversación</h2>
+<div class="ej"><b>Vos:</b> <em>"sembré maíz en el lote Azul"</em> … <b>Vos:</b> <em>"y ahí mismo apliqué urea"</em><br>Entiende "ahí mismo", "ese lote", "el de antes", "el otro lote" — recuerda los últimos lotes de la charla.</div>
+<h2>Correcciones al vuelo</h2>
+<div class="ej"><b>Vos:</b> <em>"no, eran 80 mil"</em> · <em>"perdón, era en sueldos"</em> · <em>"se llama La Torcaza, no La Toscana"</em><br>Corrige monto, categoría o nombre sin tener que cancelar y empezar de nuevo.</div>
+<h2>Preguntas y datos faltantes</h2>
+<p>Si falta un dato imprescindible (el lote, el cultivo, el precio), el bot pregunta <b>una sola cosa por vez</b> y retoma donde quedó. Nunca inventa: si no dijiste el cultivo, lo pregunta; si no dijiste el precio de la venta de hacienda, lo podés pasar después ("los toros salieron 2 palos por cabeza") y lo vincula al movimiento correcto. Podés responder una consulta en el medio ("¿cuánto gasté este mes?") y después seguir donde estabas.</p>
+<h2>Audios y fotos</h2>
+<p>Mandá un audio caminando el lote y el bot lo transcribe y procesa igual que un texto (te muestra qué entendió). Mandá la <b>foto de una factura</b> y carga el gasto; un <b>remito</b> y carga el stock.</p>
+
+<h1 class="pb">3. Campos y lotes</h1>
+<p>La estructura base: <b>campos</b> (establecimientos) que agrupan <b>lotes</b> (la unidad productiva). Todo registro puede asignarse a un lote o quedar a nivel campo.</p>
+<ul>
+  <li><b>Alta completa en un mensaje</b>: <em>"Tengo el campo La Esperanza en Pergamino con los lotes Norte de 50 has, Sur de 80 y El Bajo de 30"</em> → crea campo + lotes + hectáreas de una sola vez. Ideal para el primer día.</li>
+  <li>Alta individual, renombrar, borrar y <b>restaurar</b> campos y lotes; asignar hectáreas y grupos de lotes.</li>
+  <li><b>Ubicación</b>: por localidad (valida contra el censo de 4.027 localidades argentinas y desambigua nombres repetidos), por ubicación compartida de Telegram, o después.</li>
+  <li>Consultas: <em>"mis campos"</em>, <em>"qué lotes tengo"</em>, <em>"cuántas hectáreas tiene La Esperanza"</em>.</li>
+</ul>
+<div class="nota">Si sos usuario nuevo y arrancás con un gasto antes de tener campos, el bot te guía para crearlos y <b>después registra solo aquel primer gasto</b> — no tenés que repetirlo.</div>
+
+<h1>4. Gastos e ingresos</h1>
+<h2>Registro</h2>
+<div class="ej"><em>"gasté 200 mil en semillas para el lote Norte"</em> · <em>"pagué 1.5 palos de arrendamiento"</em> · <em>"vendí 30 tn de maíz a 180 USD la tonelada"</em> · <em>"compré 100 lt de glifosato a 8 USD el litro"</em></div>
+<ul>
+  <li>Categorización automática (semillas, gasoil, sueldos, fitosanitarios, arrendamiento, etc.), en ARS o USD, con precio unitario ("a X c/u", "a X el kg") y cálculo automático de totales (cantidad × precio).</li>
+  <li>Asignación a lote, a campo, o general. Las categorías de estructura (sueldos, arrendamiento) no se asignan solas a un lote salvo que lo pidas.</li>
+  <li><b>Editar y borrar</b>: <em>"el último gasto eran 90 mil"</em>, <em>"borrá el gasto del gasoil"</em>, lo mismo para ingresos.</li>
+  <li><b>Plantillas de gastos recurrentes</b>: creá una plantilla ("sueldo de Juan, 800 mil, todos los meses") y registrala con un toque.</li>
+  <li><b>Presupuestos</b>: fijá un presupuesto por categoría y seguí el desvío.</li>
+</ul>
+<h2>Consultas financieras</h2>
+<div class="ej"><em>"¿cuánto gasté este mes?"</em> · <em>"gastos del lote Norte en la campaña"</em> · <em>"¿cómo vamos?"</em> · <em>"ingresos por venta de granos este año"</em> → reporte financiero al instante, filtrado por lote, campo, categoría o período.</div>
+
+<h1>5. Agricultura: siembra a cosecha</h1>
+<h2>Actividades</h2>
+<ul>
+  <li><b>Siembra</b>: <em>"sembré soja en el Norte"</em> — con densidad, variedad y siembra parcial ("sembré 30 de las 50 has"). Reconoce cultivos en inglés (soybean→soja, corn→maíz…).</li>
+  <li><b>Pulverización</b>: <em>"fumigué con glifosato 2 lt/ha el lote Sur"</em> — producto, dosis, lote.</li>
+  <li><b>Fertilización</b>: <em>"apliqué 100 kg/ha de urea"</em>.</li>
+  <li><b>Labranza y riego</b>: <em>"pasé el disco en El Bajo"</em>, <em>"regué 25mm el lote 3"</em>.</li>
+  <li>Si una actividad viene <b>con monto</b> (<em>"fumigué, me salió 400 mil"</em>), registra la actividad <b>y</b> el gasto juntos.</li>
+</ul>
+<h2>Cosecha con detalle por camión</h2>
+<div class="ej"><em>"Cosecha del Norte: González 28.500, Pérez 30.200 a Cargill, Ruiz 29.000 al 14% de humedad"</em><br>Cada carga guarda chofer, kilos, destino/acopio, patente, <b>humedad</b> y <b>calidad</b> (proteína/gluten en trigo, aceite en soja/girasol).</div>
+<ul>
+  <li>Rinde por total ("sacamos 200 tn") o por hectárea ("42 qq/ha" — convierte quintales y toneladas solo).</li>
+  <li>Consultá y depurá cargas: <em>"¿cuántos camiones salieron del Norte?"</em>, <em>"borrá las cargas sin destino"</em>.</li>
+  <li><b>Grano en el acopio</b>: <em>"¿cuánta soja tengo en Cargill?"</em>, <em>"¿cuánto entregué a cada acopio?"</em></li>
+</ul>
+<h2>Historial</h2>
+<div class="ej"><em>"¿cuándo se fumigó el Norte por última vez?"</em> · <em>"¿qué se hizo en El Bajo este mes?"</em> · <em>"¿qué cultivo tiene el lote 5?"</em></div>
+
+<h1 class="pb">6. Campañas y análisis</h1>
+<ul>
+  <li>Cada siembra abre una <b>campaña</b> por lote; al cosechar, el bot ofrece cerrarla.</li>
+  <li><b>Estadísticas de campaña</b>: gastos, ingresos, rinde, margen, detalle por camión, humedad promedio y monitoreos, todo por campaña.</li>
+  <li><b>Comparar campañas</b>: <em>"compará la campaña de soja de este año con la anterior"</em>.</li>
+  <li><b>Estadísticas de actividades</b>: cuántas aplicaciones, qué productos, en qué lotes.</li>
+</ul>
+
+<h1>7. Monitoreo de cultivos y observaciones</h1>
+<h2>Monitoreo estructurado (recorridas)</h2>
+<div class="ej"><em>"soja V3 con 15% de rama negra y presencia leve de chinche en el Norte"</em><br>→ guarda estadio fenológico, % de malezas y especies, plaga, severidad (leve/moderada/alta/severa), humedad de suelo, emergencia y densidad de plantas.</div>
+<ul>
+  <li>Valida el estadio contra el cultivo (V/R para soja y maíz, Zadoks para trigo/cebada…) y avisa si no es típico.</li>
+  <li>Consultas: <em>"¿cómo viene la sanidad?"</em>, <em>"presión de plagas del Norte"</em>, <em>"monitoreos de este mes"</em>.</li>
+</ul>
+<h2>Observaciones libres</h2>
+<div class="ej"><em>"observación: el alambrado del fondo está caído"</em> — texto libre por lote o campo, consultable después (<em>"¿qué observaciones hay del Sur?"</em>).</div>
+<h2>Tacto (preñez)</h2>
+<p>Registro de tactos con resultado (<em>"tacto de 200 vacas, 180 preñadas"</em>) y resumen histórico.</p>
+
+<h1>8. Lluvias y clima</h1>
+<ul>
+  <li><b>Lluvias</b>: <em>"llovieron 35mm"</em> — por campo, con fecha. Varios días en un mensaje: <em>"20mm el lunes, 35 el martes y 12 el miércoles"</em> registra los tres.</li>
+  <li><b>Reporte de lluvias</b>: acumulados por campo, mes y campaña.</li>
+  <li><b>Clima y pronóstico</b>: <em>"¿va a llover en Pergamino?"</em>, <em>"pronóstico para el campo"</em> — pronóstico extendido con viento (dato clave para decidir aplicaciones). Desambigua localidades repetidas entre provincias.</li>
+</ul>
+
+<h1>9. Hacienda (ganadería)</h1>
+<p>Inventario ganadero completo, con historial de cada movimiento (event-sourced: nada se pisa, todo queda trazado).</p>
+<h2>Movimientos</h2>
+<div class="ej"><em>"compré 40 vacas a 900 mil c/u"</em> · <em>"vendí 25 novillos"</em> · <em>"pasé 30 terneros a novillos"</em> · <em>"nacieron 15 terneros"</em> · <em>"se me murieron 2 vacas"</em></div>
+<ul>
+  <li><b>Altas y bajas</b> por categoría (vacas, toros, novillos, vaquillonas, terneros/as…) y ubicación (lote o feedlot). Si no aclarás dónde, pregunta con botones.</li>
+  <li><b>Compra/venta con precio</b> → crea solo el gasto o ingreso vinculado. ¿No pasaste el precio? Decilo después (<em>"los toros salieron 2 palos por cabeza"</em>) y lo engancha al movimiento correcto.</li>
+  <li><b>Recategorización</b> (<em>"pasé las terneras a vaquillonas"</em>), traslados entre lotes, ajustes de conteo, nacimientos y muertes.</li>
+  <li>Consultas: <em>"¿cuántas cabezas tengo?"</em>, <em>"¿qué hacienda hay en el Sur?"</em>, <em>"historial de movimientos"</em>.</li>
+</ul>
+
+<h1>10. Sanidad, reproducción y pesaje</h1>
+<h2>Sanidad animal</h2>
+<div class="ej"><em>"vacuné las 200 vacas contra aftosa"</em> · <em>"desparasité los terneros con ivermectina, 5cc por cabeza"</em> · <em>"curé 3 novillos"</em><br>Consultas: <em>"¿cuándo se vacunó por última vez?"</em>, <em>"historial sanitario del rodeo"</em>.</div>
+<h2>Reproducción</h2>
+<div class="ej"><em>"eché los toros al lote de las vacas"</em> (servicio) · <em>"inseminamos con IATF"</em> · <em>"desteté 80 terneros"</em> · <em>"detecté celo en 40 vaquillonas"</em><br>Con datos del toro (raza, caravana) y método. Consultas: <em>"destetes del año"</em>, <em>"historial reproductivo"</em>.</div>
+<h2>Pesaje</h2>
+<div class="ej"><em>"pesé los novillos: 380 kg promedio"</em> → registra peso promedio y cantidad. Consultas: <em>"¿cuánto pesan los novillos?"</em>, <em>"ganancia de peso (GDPV)"</em>, <em>"evolución de peso"</em>.</div>
+
+<h1>11. Feedlots y corrales</h1>
+<ul>
+  <li>Creá feedlots con sus corrales, renombralos, borralos.</li>
+  <li>La hacienda puede vivir en lote o en corral: <em>"metí 50 terneros al feedlot"</em>. Si no existe ninguno, el bot lo crea solo con su primer corral.</li>
+</ul>
+
+<h1 class="pb">12. Stock de insumos</h1>
+<ul>
+  <li><b>Depósitos</b> (galpones) múltiples por campo.</li>
+  <li><b>Entradas</b>: <em>"compré 500 lt de glifosato a 7 USD"</em> → suma stock <b>y</b> crea el gasto vinculado en un paso.</li>
+  <li><b>Salidas y ajustes</b>: <em>"usé 200 lt de glifosato"</em>, <em>"ajustá la urea a 3.000 kg"</em>.</li>
+  <li><b>Consultas</b>: <em>"¿cuánto glifosato me queda?"</em>, <em>"historial de movimientos de urea"</em>.</li>
+  <li><b>Mínimos y alertas</b>: fijá stock mínimo por producto y consultá qué está por agotarse.</li>
+</ul>
+<div class="nota"><b>Stock ≠ grano entregado</b>: el stock son tus insumos en el galpón. El grano que entregaste al acopio se consulta por cargas de cosecha (<em>"¿cuánta soja tengo en Cargill?"</em>).</div>
+
+<h1>13. Documentos: facturas y remitos</h1>
+<ul>
+  <li>Mandá la <b>foto o PDF de una factura</b> → el bot la lee (visión con IA), extrae los ítems y montos, y te propone cargar los gastos con un botón.</li>
+  <li>Mandá un <b>remito</b> → propone cargar la mercadería al stock.</li>
+  <li>Los documentos quedan archivados y consultables, y se pueden vincular a gastos existentes.</li>
+</ul>
+
+<h1>14. Recordatorios de labores</h1>
+<div class="ej"><em>"el sábado tengo que fumigar el Norte"</em> · <em>"acordame mañana de pagar el arrendamiento"</em> · <em>"la semana que viene siembro"</em><br>→ crea un recordatorio (con hora exacta si la das) y te avisa por chat el día indicado (franja 07–21 hs).</div>
+<ul>
+  <li><em>"mis recordatorios"</em> para listarlos; <em>"listo"</em> o <em>"cancelá el recordatorio"</em> para cerrarlos.</li>
+  <li>El bot distingue solo <b>plan vs. hecho</b>: "el sábado fumigo" agenda; "el sábado pasado fumigué" registra.</li>
+</ul>
+
+<h1>15. Pizarra de granos</h1>
+<div class="ej"><em>"pizarra"</em> · <em>"¿a cuánto está la soja?"</em> · <em>"precio del maíz hoy"</em><br>→ precio de mercado Matba-Rofex (Rosario): disponible + los 2 futuros más cercanos, en USD/tn. Soja, maíz y trigo. Disponible incluso con la prueba vencida.</div>
+
+<h1>16. Reportes</h1>
+<ul>
+  <li><b>Reporte financiero</b>: gastos/ingresos/balance por período, lote, campo o categoría — al instante en el chat.</li>
+  <li><b>Reporte agronómico en PDF</b>: documento completo por campo o lote con KPIs, actividades, comparativa, línea de tiempo, lluvias, monitoreos, resumen financiero y gráficos. Se puede <b>compartir</b> con un link.</li>
+  <li><b>Reporte de lluvias</b>: acumulados y detalle.</li>
+  <li><b>Exportación CSV</b>: tus datos en planilla (plan Pro+).</li>
+  <li><em>"reportes"</em> a secas te muestra el menú de opciones.</li>
+</ul>
+
+<h1>17. Trabajo en equipo</h1>
+<ul>
+  <li><b>Compartir campo</b> (plan Enterprise): generá un código de invitación y otro usuario (empleado, socio, ingeniero) accede al campo y registra sobre los mismos datos.</li>
+  <li>Listá y quitá miembros cuando quieras. Aceptar una invitación no requiere plan.</li>
+</ul>
+
+<h1 class="pb">18. Dashboard web</h1>
+<p>Todo lo del chat, en pantalla grande: <b>app.campo-bot</b> con login propio.</p>
+<ul>
+  <li><b>Tabs</b>: Gastos, Ingresos, Actividades, Observaciones, Monitoreos, Stock, Hacienda, Documentos, Campos y Recordatorios — con filtros, edición y borrado de registros.</li>
+  <li><b>Campos</b>: renombrar, ajustar hectáreas.</li>
+  <li><b>Chat integrado</b> en la web.</li>
+  <li><b>Mi cuenta</b>: vinculación de canales (Telegram/WhatsApp), suscripción, cambio de contraseña, exportación y baja.</li>
+</ul>
+
+<h1>19. Planes, prueba y pagos</h1>
+<ul>
+  <li><b>Prueba gratis de 14 días</b> con acceso completo al registrarte.</li>
+  <li>Pago por <b>MercadoPago</b> (suscripción mensual o anual), gestionable desde "Mi cuenta". Cancelás cuando quieras: seguís hasta el fin del período pagado.</li>
+  <li>Consultá tu estado desde el chat: <em>"plan"</em>.</li>
+</ul>
+<table>
+  <tr><th>Funcionalidad</th><th>Todos los planes</th><th>Pro+</th><th>Pro Plus+</th><th>Enterprise</th></tr>
+  <tr><td>Gastos, ingresos, presupuestos, campos/lotes</td><td>✔</td><td>✔</td><td>✔</td><td>✔</td></tr>
+  <tr><td>Agricultura completa, monitoreos, lluvias, clima</td><td>✔</td><td>✔</td><td>✔</td><td>✔</td></tr>
+  <tr><td>Audios y documentos (con límites diarios según plan)</td><td>✔</td><td>✔</td><td>✔</td><td>✔</td></tr>
+  <tr><td>Exportación CSV</td><td></td><td>✔</td><td>✔</td><td>✔</td></tr>
+  <tr><td>Stock de insumos</td><td></td><td></td><td>✔</td><td>✔</td></tr>
+  <tr><td>Hacienda completa (inventario, sanidad, repro, pesaje, feedlots)</td><td></td><td></td><td>✔</td><td>✔</td></tr>
+  <tr><td>Compartir campo (equipo)</td><td></td><td></td><td></td><td>✔</td></tr>
+</table>
+
+<h1>20. Tu cuenta y tus datos</h1>
+<ul>
+  <li><b>Verificación de canales</b>: vinculás Telegram con un link (y WhatsApp con un código cuando esté disponible) desde "Mi cuenta".</li>
+  <li><b>Exportá todo</b>: un ZIP con 23 planillas CSV (gastos, ingresos, actividades, hacienda, stock, lluvias, etc.) — tus datos son tuyos.</li>
+  <li><b>Baja de cuenta</b>: con tu contraseña, borrado con liberación inmediata de tus datos personales.</li>
+  <li><b>Tips de descubrimiento</b>: después de tus primeras acciones el bot te enseña de a una las capacidades relacionadas (máx. 1 por día; "no más tips" los apaga).</li>
+</ul>
+
+<p class="footer-note">campo-bot · Guía para el productor · Julio 2026</p>
+
+</body>
+</html>
