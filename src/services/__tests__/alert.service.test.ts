@@ -36,7 +36,7 @@ describe('sendAlertWithRetryMultiChannel — routing', () => {
   it('uses Telegram when telegramId is set', async () => {
     mockTelegram.mockResolvedValue(undefined);
 
-    const res = await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'weather');
+    const res = await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'budget_80');
 
     expect(res.sent).toBe(true);
     expect(mockTelegram).toHaveBeenCalledWith('123', 'msg');
@@ -46,7 +46,7 @@ describe('sendAlertWithRetryMultiChannel — routing', () => {
   it('falls back to WhatsApp when only phone is set', async () => {
     mockWhatsApp.mockResolvedValue({ success: true, attempts: 1 });
 
-    const res = await sendAlertWithRetryMultiChannel(1, { phone: '5491155550000' }, 'msg', 'weather');
+    const res = await sendAlertWithRetryMultiChannel(1, { phone: '5491155550000' }, 'msg', 'budget_80');
 
     expect(res.sent).toBe(true);
     expect(mockWhatsApp).toHaveBeenCalledWith('5491155550000', 'msg');
@@ -56,7 +56,7 @@ describe('sendAlertWithRetryMultiChannel — routing', () => {
   it('returns sent:false and updates DB to failed when no channel available', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const res = await sendAlertWithRetryMultiChannel(1, {}, 'msg', 'weather');
+    const res = await sendAlertWithRetryMultiChannel(1, {}, 'msg', 'budget_80');
 
     expect(res.sent).toBe(false);
     expect(mockTelegram).not.toHaveBeenCalled();
@@ -75,7 +75,7 @@ describe('sendAlertWithRetryMultiChannel — routing', () => {
       1,
       { phone: 'tg_8629094580' },
       'msg',
-      'weather',
+      'budget_80',
     );
 
     expect(res.sent).toBe(true);
@@ -90,7 +90,7 @@ describe('sendAlertWithRetryMultiChannel — routing', () => {
       1,
       { telegramId: '123', phone: '5491155550000' },
       'msg',
-      'weather',
+      'budget_80',
     );
 
     expect(res.sent).toBe(true);
@@ -105,7 +105,7 @@ describe('sendAlertWithRetryMultiChannel — Telegram retry', () => {
   it('succeeds on first attempt', async () => {
     mockTelegram.mockResolvedValue(undefined);
 
-    const res = await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'weather');
+    const res = await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'budget_80');
 
     expect(res.sent).toBe(true);
     expect(mockTelegram).toHaveBeenCalledTimes(1);
@@ -116,7 +116,7 @@ describe('sendAlertWithRetryMultiChannel — Telegram retry', () => {
       .mockRejectedValueOnce(new Error('timeout'))
       .mockResolvedValueOnce(undefined);
 
-    const res = await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'weather');
+    const res = await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'budget_80');
 
     expect(res.sent).toBe(true);
     expect(mockTelegram).toHaveBeenCalledTimes(2);
@@ -126,7 +126,7 @@ describe('sendAlertWithRetryMultiChannel — Telegram retry', () => {
     const err = new Error('network');
     mockTelegram.mockRejectedValue(err);
 
-    const res = await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'weather');
+    const res = await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'budget_80');
 
     expect(res.sent).toBe(false);
     expect(mockTelegram).toHaveBeenCalledTimes(3);
@@ -134,7 +134,7 @@ describe('sendAlertWithRetryMultiChannel — Telegram retry', () => {
       'alerts',
       'ALERT_SEND_FAILED',
       err,
-      expect.objectContaining({ userId: 1, alertType: 'weather' }),
+      expect.objectContaining({ userId: 1, alertType: 'budget_80' }),
     );
   }, 15000);
 });
@@ -145,7 +145,7 @@ describe('sendAlertWithRetryMultiChannel — WhatsApp path', () => {
   it('returns sent:true when WhatsApp succeeds', async () => {
     mockWhatsApp.mockResolvedValue({ success: true, attempts: 1 });
 
-    const res = await sendAlertWithRetryMultiChannel(1, { phone: '549' }, 'msg', 'weather');
+    const res = await sendAlertWithRetryMultiChannel(1, { phone: '549' }, 'msg', 'budget_80');
 
     expect(res.sent).toBe(true);
   });
@@ -153,7 +153,7 @@ describe('sendAlertWithRetryMultiChannel — WhatsApp path', () => {
   it('returns sent:false and calls logError when WhatsApp fails', async () => {
     mockWhatsApp.mockResolvedValue({ success: false, attempts: 3, error: 'api down' });
 
-    const res = await sendAlertWithRetryMultiChannel(1, { phone: '549' }, 'msg', 'weather');
+    const res = await sendAlertWithRetryMultiChannel(1, { phone: '549' }, 'msg', 'budget_80');
 
     expect(res.sent).toBe(false);
     expect(mockLogError).toHaveBeenCalledWith(
@@ -171,7 +171,7 @@ describe('sendAlertWithRetryMultiChannel — DB persistence', () => {
   it('inserts with status retrying as first query', async () => {
     mockTelegram.mockResolvedValue(undefined);
 
-    await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'weather');
+    await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'budget_80');
 
     const insertSql = mockQuery.mock.calls[0][0] as string;
     expect(insertSql).toContain('INSERT INTO alert_history');
@@ -181,7 +181,7 @@ describe('sendAlertWithRetryMultiChannel — DB persistence', () => {
   it('updates to sent on success', async () => {
     mockTelegram.mockResolvedValue(undefined);
 
-    await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'weather');
+    await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'budget_80');
 
     const updateSql = mockQuery.mock.calls[1][0] as string;
     expect(updateSql).toContain("status = 'sent'");
@@ -194,7 +194,7 @@ describe('sendAlertWithRetry — sanity', () => {
   it('succeeds: inserts + WhatsApp ok + updates sent', async () => {
     mockWhatsApp.mockResolvedValue({ success: true, attempts: 1 });
 
-    const res = await sendAlertWithRetry(1, '549', 'msg', 'weather');
+    const res = await sendAlertWithRetry(1, '549', 'msg', 'budget_80');
 
     expect(res.sent).toBe(true);
     expect(res.alertId).toBe(42);
@@ -206,10 +206,55 @@ describe('sendAlertWithRetry — sanity', () => {
   it('fails: inserts + WhatsApp fails + updates failed + logError', async () => {
     mockWhatsApp.mockResolvedValue({ success: false, attempts: 3, error: 'down' });
 
-    const res = await sendAlertWithRetry(1, '549', 'msg', 'weather');
+    const res = await sendAlertWithRetry(1, '549', 'msg', 'budget_80');
 
     expect(res.sent).toBe(false);
     expect((mockQuery.mock.calls[1][0] as string)).toContain("status = 'failed'");
     expect(mockLogError).toHaveBeenCalled();
+  });
+});
+
+// ─── Gate de opt-out (alertas proactivas, migración 103) ─────────────
+
+describe('gate de opt-out para alertas proactivas', () => {
+  it('saltea el envío (sin INSERT) cuando el usuario optó por no recibir', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({ rows: [{ ok: false }] }); // SELECT alerts_enabled
+
+    const res = await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'weather');
+
+    expect(res).toEqual({ sent: false, skipped: 'opt_out' });
+    expect(mockTelegram).not.toHaveBeenCalled();
+    expect(mockQuery).toHaveBeenCalledTimes(1); // solo el SELECT del gate
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('[INTERCEPT]'));
+    logSpy.mockRestore();
+  });
+
+  it('agrega el footer de baja cuando la alerta proactiva sí se envía', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ ok: true }] }); // SELECT del gate
+    mockTelegram.mockResolvedValue(undefined);
+
+    const res = await sendAlertWithRetryMultiChannel(1, { telegramId: '123' }, 'msg', 'weather');
+
+    expect(res.sent).toBe(true);
+    expect(mockTelegram).toHaveBeenCalledWith('123', expect.stringContaining('no más alertas'));
+  });
+
+  it('usuario sin fila en user_settings recibe la alerta (default true)', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // SELECT del gate: sin fila
+    mockTelegram.mockResolvedValue(undefined);
+
+    const res = await sendAlertWithRetry(1, 'tg_99', 'msg', 'weather');
+
+    expect(res.sent).toBe(true);
+  });
+
+  it('los tipos NO proactivos no consultan opt-out ni llevan footer', async () => {
+    mockWhatsApp.mockResolvedValue({ success: true, attempts: 1 });
+
+    await sendAlertWithRetry(1, '549', 'msg', 'monthly_summary');
+
+    expect(mockWhatsApp).toHaveBeenCalledWith('549', 'msg');
+    expect((mockQuery.mock.calls[0][0] as string)).toContain('INSERT INTO alert_history');
   });
 });
