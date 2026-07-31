@@ -805,6 +805,17 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'agronomy_question',
+    description: 'Pregunta de CONOCIMIENTO GENERAL agronómico/ganadero (educativa, no sobre los datos del usuario): "¿cuándo conviene sembrar trigo?", "¿qué significa V6 en maíz?", "¿qué es barbecho químico?", "¿cómo identificar roya?", "¿qué malezas controla la atrazina?", "¿diferencia entre soja de primera y de segunda?". NUNCA usar para datos del PROPIO campo: "¿qué tengo sembrado?"→active_crop, "¿cuándo se fumigó MI lote?"→query_plot_history, "¿cuánto gasté?"→financial_report, "¿cómo viene la sanidad?"→query_scoutings, "¿a cuánto está la soja?"→grain_prices. El sistema responde con una llamada educativa dedicada (solo informa, no registra nada).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: 'La pregunta del usuario, literal o mínimamente normalizada.' },
+      },
+      required: ['question'],
+    },
+  },
+  {
     name: 'grain_prices',
     description: 'Pizarra de granos / precio de MERCADO (Matba-Rofex Rosario): "a cuánto está la soja", "pizarra", "precio del maíz hoy", "cotización del trigo", "cuánto vale la soja". SOLO precios de mercado — NUNCA usar para "qué tengo sembrado" (eso es active_crop) ni para consultas de gastos/ingresos propios (financial_report). Granos disponibles: soja, maíz, trigo.',
     input_schema: {

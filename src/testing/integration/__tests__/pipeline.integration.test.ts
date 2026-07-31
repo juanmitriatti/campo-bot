@@ -1548,4 +1548,80 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(text).not.toMatch(/— lote Norte/);
     });
   });
+
+  describe('agronomy_question — conocimiento general read-only (Jul 2026)', () => {
+    let h: PipelineHarness;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let knowledgeSvc: any;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('agro-qa');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'Don Julio') RETURNING id`, [h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [(f[0] as { id: number }).id]);
+      const mod = await import('../../../ai/agronomy-knowledge.service.js');
+      knowledgeSvc = mod.agronomyKnowledgeService;
+      // Stub del cliente Anthropic: la respuesta educativa no pega a la API
+      knowledgeSvc.setClientForTests({
+        messages: {
+          create: async () => ({
+            content: [{ type: 'text', text: 'El *V6* es el estadio de 6 hojas en maíz.' }],
+            usage: { input_tokens: 10, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+          }),
+        },
+      });
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('la tool responde educativo y NO escribe nada en la DB', async () => {
+      const before = await h.q(
+        `SELECT (SELECT count(*) FROM agro_observations WHERE user_id=$1) AS obs,
+                (SELECT count(*) FROM domain_events WHERE user_id=$1) AS ev,
+                (SELECT count(*) FROM task_reminders WHERE user_id=$1) AS rem`,
+        [h.userId],
+      );
+      h.fakeAgent.enqueue([
+        { toolName: 'agronomy_question', toolInput: { question: '¿Qué significa V6 en maíz?' } },
+      ]);
+      const items = await h.send('¿qué significa V6 en maíz?');
+      expect(h.allText(items)).toContain('V6');
+
+      const after = await h.q(
+        `SELECT (SELECT count(*) FROM agro_observations WHERE user_id=$1) AS obs,
+                (SELECT count(*) FROM domain_events WHERE user_id=$1) AS ev,
+                (SELECT count(*) FROM task_reminders WHERE user_id=$1) AS rem`,
+        [h.userId],
+      );
+      expect(after).toEqual(before); // read-only estructural
+    });
+
+    it('compound registro + pregunta educativa: el write persiste y la pregunta responde (reads after writes)', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'agronomy_question', toolInput: { question: '¿Qué es barbecho químico?' } },
+        { toolName: 'log_expense', toolInput: { amount: 80000, description: 'gasoil' } },
+      ]);
+      const items = await h.send('¿qué es barbecho químico? y registrá 80 mil de gasoil');
+      const text = h.allText(items);
+      expect(text).toContain('V6'); // respuesta del stub educativo
+      const exp = await h.q(`SELECT amount FROM expenses WHERE user_id=$1 AND deleted_at IS NULL`, [h.userId]);
+      expect(exp.length).toBe(1);
+      expect(Number((exp[0] as { amount: string }).amount)).toBe(80000);
+    });
+
+    it('kill switch apagado → fallback honesto, jamás silencio', async () => {
+      const { clearSettingsCache } = await import('../../../services/settings.service.js');
+      await h.q(`INSERT INTO system_settings (key, value) VALUES ('AGRONOMY_QA_ENABLED','false')
+                 ON CONFLICT (key) DO UPDATE SET value='false'`, []);
+      clearSettingsCache();
+      try {
+        h.fakeAgent.enqueue([
+          { toolName: 'agronomy_question', toolInput: { question: '¿Cómo identificar roya?' } },
+        ]);
+        const items = await h.send('¿cómo identificar roya?');
+        expect(h.allText(items)).toContain('ingeniero agrónomo');
+      } finally {
+        await h.q(`DELETE FROM system_settings WHERE key='AGRONOMY_QA_ENABLED'`, []);
+        clearSettingsCache();
+      }
+    });
+  });
 });

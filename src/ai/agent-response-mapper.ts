@@ -815,6 +815,12 @@ export class AgentResponseMapper {
     if (input.newName != null) cmd.newName = input.newName;
     if (input.entityKeyword != null) cmd.entityKeyword = input.entityKeyword;
 
+    // agronomy_question: `question` no está en el mapeo genérico (mismo caso
+    // que los recordatorios) — sin esto llega vacío al handler.
+    if (toolName === 'agronomy_question' && typeof input.question === 'string') {
+      cmd.question = input.question;
+    }
+
     // Recordatorios (create/list/complete_reminder): description/due_date/cancel
     // no estaban en el mapeo genérico y llegaban vacíos al handler aunque el
     // agente los emitiera perfecto.
