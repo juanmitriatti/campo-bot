@@ -5,6 +5,7 @@ import { getUsersWithRainAlerts, getGlobalSettings } from "./expenses.js";
 import { getForecast, checkDryWindow, checkWindAlert } from "./weather.js";
 import { sendAlertWithRetry, sendAlertWithRetryMultiChannel, isDuplicate, recordDeduped } from "./alert.service.js";
 import { getSettingNumber, getSettingBool } from "./settings.service.js";
+import { computeCategoryMovers, formatMoversLines } from "./monthly-insights.js";
 import { cleanupOldReports } from "./agro-report.js";
 import { logError } from "./error-logger.js";
 import { ConversationStateRepository } from "../middleware/conversation-state.repository.js";
@@ -1031,7 +1032,7 @@ async function flowReminderTick() {
 async function buildMonthlyReport(userId) {
   const prevMonth = getMonthNameByOffset(1);
 
-  const [expense, prevExpense, income, prevIncome, topCats, rainfall, prevRainfall, actCount] = await Promise.all([
+  const [expense, prevExpense, income, prevIncome, topCats, rainfall, prevRainfall, actCount, prevTopCats] = await Promise.all([
     getMonthExpenses(userId, 1),
     getMonthExpenses(userId, 2),
     getMonthIncomes(userId, 1),
@@ -1040,6 +1041,7 @@ async function buildMonthlyReport(userId) {
     getMonthRainfall(userId, 1),
     getMonthRainfall(userId, 2),
     getMonthActivitiesCount(userId, 1),
+    getMonthTopCategories(userId, 2),
   ]);
 
   const result = income - expense;
@@ -1062,6 +1064,13 @@ async function buildMonthlyReport(userId) {
     for (const c of topCats) {
       msg += `\n• ${c.category}: ${formatCurrency(c.total)}`;
     }
+  }
+
+  // Tendencias por categoría vs mes anterior (configurable en admin, grupo bot)
+  if (await getSettingBool('MONTHLY_INSIGHTS_ENABLED') !== false) {
+    const minPct = (await getSettingNumber('MONTHLY_INSIGHTS_MIN_PCT')) ?? 15;
+    const movers = computeCategoryMovers(topCats, prevTopCats, { minPct });
+    msg += formatMoversLines(movers, formatCurrency);
   }
 
   if (rainfall > 0) {
