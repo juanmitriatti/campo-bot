@@ -67,6 +67,7 @@ const AGRONOMY_COMMANDS = new Set([
   'share_report',
   'log_crop_scouting', 'query_scoutings', 'query_observations',
   'query_harvest_loads', 'delete_harvest_loads',
+  'agronomy_question',
 ]);
 
 const SHARING_COMMANDS = new Set([

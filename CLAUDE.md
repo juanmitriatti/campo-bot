@@ -124,6 +124,11 @@ Implemented in `src/ai/agent-prompt-builder.ts`; drive tool selection.
 ### Pizarra de granos
 - "pizarra" / "a cuánto está la soja" → `grain_prices(crop?)` — precio de MERCADO (Matba-Rofex), NUNCA `active_crop` ni `financial_report` ("a cuánto VENDÍ"). `src/services/grain-price.service.ts`, caché 30 min, regex trivial anclado (no roba "vendí soja a 320"). Permitido con trial vencido. Soja/maíz/trigo (el resto → mensaje honesto).
 
+### Conocimiento agronómico general (Jul 2026)
+- Pregunta EDUCATIVA que no depende de datos del usuario ("¿qué significa V6?", "¿cuándo conviene sembrar trigo?", "¿qué es barbecho químico?") → tool `agronomy_question(question)`. La responde `src/ai/agronomy-knowledge.service.ts`: llamada dedicada a Claude SIN tools — **read-only estructural** (no DB de escritura, no pendings, no side-effects; acá se enchufa RAG/INTA a futuro sin cambiar la interfaz). Prompt con regla dura de DOSIS: nunca dosis concretas → marbete + ingeniero matriculado.
+- **La disambiguación es semántica (del agente), NUNCA regex**: "qué/cómo/cuándo/cuánto" también encabezan consultas de datos propios (`active_crop`, `query_plot_history`, `financial_report`, `query_scoutings`, `grain_prices`) — un pre-router por keywords las robaría. Regla CRÍTICO CONOCIMIENTO GENERAL en prompt-builder + contraste en la tool description.
+- Config admin grupo `ai`: `AGRONOMY_QA_ENABLED` (kill switch) + `_MODEL` + `_MAX_TOKENS` + `_TIMEOUT_MS`. Uso → `ai_usage`. Fallo/apagado → fallback honesto del handler (nunca silencio). Test seam: `agronomyKnowledgeService.setClientForTests()`.
+
 ### Onboarding — primera acción diferida
 - Un write que rebota por "no tenés campos/lotes" emite `sideEffects.setDeferredFirstAction={originalText}` → el wrapper de `processTextMessage` re-inyecta el texto cuando el usuario ya tiene campo+lote ("🔁 Retomo lo que me habías pedido"). Consumo antes del replay (no loopea); las recursiones internas usan `processTextMessageInner`.
 
@@ -272,7 +277,7 @@ Gated by admin settings (ship dark, flip when ready):
 
 ### AI Pipeline
 - `src/ai/agent.service.ts` — Claude tool_use agent (primary)
-- `src/ai/tool-definitions.ts` — 98 tool definitions with typed schemas
+- `src/ai/tool-definitions.ts` — 104 tool definitions with typed schemas
 - `src/ai/agent-prompt-builder.ts` — Compact system prompt with disambiguation rules
 - `src/ai/agent-response-mapper.ts` — AgentResult → ParseResult[]; every drop/override logs (invariante 1)
 - `src/ai/agent-output-validator.ts` — anti-hallucination layer (flags ON in prod), 15-test suite

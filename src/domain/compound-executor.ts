@@ -246,6 +246,7 @@ export class CompoundExecutor {
       'list_documents', 'list_field_members',
       'weather_full', 'weather_forecast', 'weather_field', 'weather_all',
       'generate_agro_report', 'show_reports_menu',
+      'agronomy_question',
     ]);
     const isRead = (s: ParseResult) => {
       const data = (s.intent.data || {}) as Record<string, unknown>;

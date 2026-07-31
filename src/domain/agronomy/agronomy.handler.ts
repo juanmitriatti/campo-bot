@@ -1481,6 +1481,18 @@ export class AgronomyHandler {
 
   async handleCommand(cmd: ParsedCommand, userId: UserId, user: User, settings: UserSettings): Promise<HandlerResponse> {
     switch (cmd.command) {
+      // --- Conocimiento agronómico (educativo, read-only estructural) ---
+
+      case 'agronomy_question': {
+        const question = typeof cmd.question === 'string' ? cmd.question : '';
+        const { agronomyKnowledgeService } = await import('../../ai/agronomy-knowledge.service.js');
+        const answer = await agronomyKnowledgeService.answer(Number(userId), question);
+        if (!answer) {
+          return { messages: ['🌱 Esa es una buena pregunta técnica, pero ahora no puedo responderla. Para una recomendación segura, consultá a un ingeniero agrónomo de tu zona.'] };
+        }
+        return { messages: [answer] };
+      }
+
       // --- Weather ---
 
       case 'weather_full': {
