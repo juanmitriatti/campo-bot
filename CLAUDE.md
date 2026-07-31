@@ -245,7 +245,8 @@ Gated by admin settings (ship dark, flip when ready):
 - Lotes (plots) = primary productive unit; Campos (fields) = grouping container
 - AI calls plan-rate-limited (free=20, pro=100, pro_plus=300, enterprise=1000 daily)
 - Observation guard: `isLikelyQuestionOrFollowUp()` prevents non-agro text from being saved as observations
-- Weather alerts + proactive alerts: **DISABLED** (bloques comentados en `startScheduler()`; el resto del scheduler corre)
+- **Alertas proactivas (Jul 2026)**: reactivadas en cron, gateadas por `PROACTIVE_ALERTS_ENABLED` (admin grupo bot, default false — flip al arrancar el piloto) + opt-out por usuario (`user_settings.alerts_enabled`, migración 103, comandos triviales "no más alertas"/"dame alertas"). Gate central en `alert.service.js` (`isProactiveAlertType`): los 6 tipos proactivos (weather, monitoring_reminder, pest_escalation, missing_hectares, low_stock, phenology) chequean opt-out + llevan footer de baja; resúmenes/recordatorios NO se gatean. Skip loguea `[INTERCEPT]`.
+- **Resumen mensual con tendencias (Jul 2026)**: bloque "📈 Tendencias" (movers por categoría vs mes anterior) — `src/services/monthly-insights.js` (puro, testeado) cableado en `buildMonthlyReport`. Config admin: `MONTHLY_INSIGHTS_ENABLED` + `MONTHLY_INSIGHTS_MIN_PCT`.
 
 ## Feature Gates
 
