@@ -110,6 +110,7 @@ const SYSTEM_COMMANDS = new Set([
   'show_plan',
   'create_reminder', 'list_reminders', 'complete_reminder', 'noop_reminder_cancel',
   'disable_tips', 'enable_tips',
+  'disable_alerts', 'enable_alerts',
   'menu', 'show_expense_menu', 'show_income_menu', 'show_agro_menu',
   'show_fields_menu', 'show_rain_menu', 'show_reports_menu', 'show_documents_menu',
   'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',

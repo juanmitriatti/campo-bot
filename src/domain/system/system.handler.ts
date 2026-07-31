@@ -400,6 +400,16 @@ export class SystemHandler {
         return { messages: ['💡 Consejos activados de nuevo — te voy mostrando capacidades a medida que uses el bot.'] };
       }
 
+      case 'disable_alerts': {
+        await pool.query(`UPDATE user_settings SET alerts_enabled = FALSE WHERE user_id = $1`, [userId]);
+        return { messages: ['👍 Listo, no te mando más alertas (clima, monitoreo, stock).\n\n_Los resúmenes y tus recordatorios siguen llegando. Para reactivarlas: "dame alertas de nuevo"._'] };
+      }
+
+      case 'enable_alerts': {
+        await pool.query(`UPDATE user_settings SET alerts_enabled = TRUE WHERE user_id = $1`, [userId]);
+        return { messages: ['🔔 Alertas activadas — te aviso de clima, monitoreos pendientes y stock bajo.'] };
+      }
+
       case 'create_reminder': {
         // Promueve el slot `time` mergeado desde el pending-processor (llega como cmd.time)
         if (!cmd.due_time && typeof cmd.time === 'string') cmd.due_time = cmd.time;
