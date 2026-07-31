@@ -569,6 +569,7 @@ async function sendCityAlertBundle(user, alerts, header, kind) {
 
 async function weatherAlertTick() {
   try {
+    if (await getSettingBool('PROACTIVE_ALERTS_ENABLED') !== true) return;
     const globalSettings = await getGlobalSettings();
     if (!globalSettings.daily_weather_enabled) return;
 
@@ -843,6 +844,7 @@ async function phenologyAlertTick() {
 
 async function proactiveAlertsTick() {
   try {
+    if (await getSettingBool('PROACTIVE_ALERTS_ENABLED') !== true) return;
     const { hour } = getArgentinaTime();
     // Run at 8 AM Argentina time (configurable via global settings in future)
     if (hour !== 8) return;
@@ -1157,21 +1159,17 @@ export function startScheduler() {
     monthlyTick();
   });
 
-  // ── ALERTAS DESACTIVADAS (a pedido del usuario) ──────────────────────────
-  // Weather alerts (lluvia / VIENTO / ventana seca) + proactive alerts
-  // (monitoreo / plagas / hectáreas / stock bajo / fenología) están frenadas.
-  // Para reactivarlas, descomentar los dos bloques de abajo.
-  //
-  // // Daily weather alerts — every minute (checks global_settings.daily_weather_hour HH:MM match)
-  // cron.schedule("* * * * *", () => {
-  //   weatherAlertTick();
-  // });
-  //
-  // // Proactive alerts (monitoring reminders + pest escalation) — every hour at :00 (checks hour internally)
-  // cron.schedule("0 * * * *", () => {
-  //   proactiveAlertsTick();
-  // });
-  // ─────────────────────────────────────────────────────────────────────────
+  // Alertas proactivas — gateadas por PROACTIVE_ALERTS_ENABLED (admin, default false)
+  // + opt-out por usuario (user_settings.alerts_enabled, comando "no más alertas").
+  // Daily weather alerts — every minute (checks global_settings.daily_weather_hour HH:MM match)
+  cron.schedule("* * * * *", () => {
+    weatherAlertTick();
+  });
+
+  // Proactive alerts (monitoreo/plagas/hectáreas/stock/fenología) — every hour at :00 (checks hour === 8 internally)
+  cron.schedule("0 * * * *", () => {
+    proactiveAlertsTick();
+  });
 
   // Daily cleanup (conversation logs TTL + mini-memory expiry) — every hour at :00 (checks hour === 3 internally)
   cron.schedule("0 * * * *", () => {
@@ -1244,7 +1242,7 @@ export function startScheduler() {
       .catch(err => console.error("[scheduler] trial drip tick failed:", err));
   });
 
-  console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily cleanup + flow reminders + expense templates + subscription sweep + task reminders + trial drip. ALERTAS (clima/viento/seca + proactivas) DESACTIVADAS.");
+  console.log("[scheduler] Cron jobs started — weekly summary + monthly summary + daily cleanup + flow reminders + expense templates + subscription sweep + task reminders + trial drip + alertas proactivas (gateadas por PROACTIVE_ALERTS_ENABLED, con opt-out por usuario).");
 }
 
 async function subscriptionSweepTick() {
