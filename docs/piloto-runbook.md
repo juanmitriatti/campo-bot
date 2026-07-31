@@ -33,8 +33,15 @@ qué construir después (recomendaciones agronómicas / inteligencia financiera 
 
 ## Ritual semanal (20-30 min, lunes)
 
-1. **Logs sospechosos**: `/admin → AI Training → Logs → filtro "⚠️ Sospechosas"` →
-   marcar OK/Mal en bulk → "Promover" los casos que merezcan training example.
+1. **Logs sospechosos → regresión (obligatorio)**: `/admin → AI Training → Logs → filtro
+   "⚠️ Sospechosas"` → marcar OK/Mal en bulk. **Toda conversación marcada "Mal" termina en
+   una de dos regresiones antes del lunes siguiente** — así la suite de conversaciones
+   reales crece sola durante el piloto:
+   - Tool equivocada / dato mal extraído → "Promover" a training example (few-shot).
+   - Bug de interacción entre capas del pipeline → regresión en
+     `src/testing/integration/pipeline.integration.test.ts` (harness FakeAgent, gratis y
+     determinístico — invariante 14 del CLAUDE.md).
+   Sin excepciones: un "Mal" sin regresión asociada es un bug que va a volver.
 2. **Actividad** (psql prod):
    ```sql
    SELECT u.id, u.name, count(cl.id) AS msgs_7d, max(cl.created_at)::date AS ultimo
@@ -52,6 +59,20 @@ qué construir después (recomendaciones agronómicas / inteligencia financiera 
    ```
    Si más del 30% de los activos apagó las alertas en la semana 1, revisar frecuencia/tono
    antes de seguir sumando gente.
+6. **Costo IA por productor (Claude + Whisper)**:
+   ```sql
+   SELECT u.id, u.name,
+          round(((coalesce(sum(a.input_tokens),0)*1.00 + coalesce(sum(a.output_tokens),0)*5.00
+                + coalesce(sum(a.cache_read_tokens),0)*0.10 + coalesce(sum(a.cache_write_tokens),0)*1.25) / 1e6)::numeric, 3) AS claude_usd_30d,
+          (SELECT round(coalesce(sum(cost_usd),0)::numeric, 3) FROM audio_transcription_logs t
+            WHERE t.user_id = u.id AND t.created_at > now() - interval '30 days') AS whisper_usd_30d
+     FROM users u LEFT JOIN ai_usage a
+       ON a.user_id = u.id AND a.created_at > now() - interval '30 days'
+    WHERE u.deleted_at IS NULL AND u.phone_number NOT LIKE 'testbot%'
+    GROUP BY u.id, u.name ORDER BY claude_usd_30d DESC LIMIT 25;
+   ```
+   Referencia: histórico ≤ 1 USD/usuario/mes. Un usuario arriba de 5 USD/mes merece mirar
+   qué está haciendo (¿audios larguísimos? ¿loop de re-preguntas?) antes de que escale.
 
 ## Métricas de éxito (evaluar en semana 4)
 

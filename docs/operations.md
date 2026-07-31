@@ -123,6 +123,25 @@ npx tsx src/scripts/delete-telegram-webhook.ts   # Remove webhook
 
 User store key: `tg_${chatId}`. Users provisioned on first contact via `getOrCreateUserByTelegramId()`.
 
+## WhatsApp — checklist de reactivación (pendiente de número definitivo)
+
+Prod corre SOLO Telegram hoy (sin vars `WHATSAPP_*` en Railway). Al reactivar WhatsApp,
+además del setup de Cloud API tener en cuenta:
+
+- **Ventana de 24 hs de Meta (CRÍTICO para alertas)**: los mensajes iniciados por el bot
+  fuera de las 24 hs desde el último mensaje del usuario requieren **plantillas aprobadas**
+  (template messages). Afecta directamente a: alertas proactivas (clima/monitoreo/plagas/
+  stock/fenología), resúmenes semanales/mensuales, recordatorios de labores y el drip del
+  trial. En Telegram nada de esto aplica — por eso los envíos hoy son Telegram-first.
+  Antes de anunciar WhatsApp: crear y aprobar plantillas para cada tipo de envío proactivo,
+  o restringir esos envíos a usuarios con Telegram vinculado.
+- **Pricing por conversación**: Meta cobra por ventana de conversación iniciada por el
+  negocio — cada alerta proactiva fuera de ventana abre una conversación paga. Presupuestar
+  antes de prender `PROACTIVE_ALERTS_ENABLED` para usuarios WhatsApp-only.
+- **Rate limits de Cloud API**: el tier inicial limita conversaciones iniciadas por el
+  negocio por día (arranca en 250/día y escala con la calidad del número). Con el piloto en
+  Telegram esto no aplica; revisar tier antes de campañas por WhatsApp.
+
 ## Useful Scripts
 
 ```bash

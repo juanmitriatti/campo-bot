@@ -237,11 +237,13 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
           if (echo) await sendMessage(phone, echo);
         } catch { /* best-effort: el eco jamás bloquea el procesamiento */ }
 
-        // Log audio transcription cost
+        // Log audio transcription cost (precio configurable en admin, grupo audio)
         try {
           const durationSeconds = result.estimatedDurationSeconds || 0;
           const durationMinutes = durationSeconds / 60;
-          const costUsd = durationMinutes * 0.006;
+          const { getSettingNumber } = await import('../services/settings.service.js');
+          const pricePerMinute = (await getSettingNumber('WHISPER_PRICE_PER_MINUTE')) ?? 0.006;
+          const costUsd = durationMinutes * pricePerMinute;
           const audioConfig = getAudioConfig();
           await saveAudioTranscriptionLog(user.id, {
             durationSeconds,

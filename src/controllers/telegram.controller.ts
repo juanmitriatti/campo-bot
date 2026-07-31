@@ -326,11 +326,13 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
           const transcript = normalizeTranscript(result.text);
           console.log('[telegram] AUDIO TRANSCRIBED:', transcript);
 
-          // Log audio transcription cost
+          // Log audio transcription cost (precio configurable en admin, grupo audio)
           try {
             const durationSeconds = message.voice?.duration || message.audio?.duration || 0;
             const durationMinutes = durationSeconds / 60;
-            const costUsd = durationMinutes * 0.006;
+            const { getSettingNumber } = await import('../services/settings.service.js');
+            const pricePerMinute = (await getSettingNumber('WHISPER_PRICE_PER_MINUTE')) ?? 0.006;
+            const costUsd = durationMinutes * pricePerMinute;
             const audioConfig = getAudioConfig();
             await saveAudioTranscriptionLog(userId, {
               durationSeconds,
