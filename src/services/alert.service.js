@@ -3,6 +3,27 @@ import { sendMessageWithRetry } from "./whatsapp.js";
 import { sendTelegramMessage } from "./telegram.ts";
 import { logError } from "./error-logger.js";
 
+// Tipos de alerta que el usuario puede apagar con "no más alertas".
+// Los resúmenes (weekly/monthly), avisos de flow y recordatorios NO se gatean acá.
+const PROACTIVE_ALERT_TYPES = new Set([
+  'weather', 'monitoring_reminder', 'pest_escalation',
+  'missing_hectares', 'low_stock', 'phenology',
+]);
+
+export const OPT_OUT_FOOTER = '\n\n_Para dejar de recibir estos avisos: «no más alertas»._';
+
+export function isProactiveAlertType(alertType) {
+  return PROACTIVE_ALERT_TYPES.has(alertType);
+}
+
+async function userAllowsProactiveAlerts(userId) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(alerts_enabled, TRUE) AS ok FROM user_settings WHERE user_id = $1`,
+    [userId]
+  );
+  return rows.length === 0 ? true : rows[0].ok !== false;
+}
+
 /**
  * Send an alert with retry and persist to alert_history.
  *
@@ -14,6 +35,14 @@ import { logError } from "./error-logger.js";
  * @returns {Promise<{sent: boolean, alertId: number}>}
  */
 export async function sendAlertWithRetry(userId, phone, message, alertType, metadata = {}) {
+  if (isProactiveAlertType(alertType)) {
+    if (!(await userAllowsProactiveAlerts(userId))) {
+      console.log(`[alert.service] [INTERCEPT] alerta '${alertType}' salteada para user ${userId} (opt-out)`);
+      return { sent: false, skipped: 'opt_out' };
+    }
+    message = message + OPT_OUT_FOOTER;
+  }
+
   const { fieldId = null, plotId = null, dedupKey = null, payload = {} } = metadata;
 
   // Insert initial record
@@ -83,6 +112,14 @@ export async function sendAlertWithRetry(userId, phone, message, alertType, meta
  * @returns {Promise<{sent: boolean, alertId: number}>}
  */
 export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId: rawTelegramId }, message, alertType, metadata = {}) {
+  if (isProactiveAlertType(alertType)) {
+    if (!(await userAllowsProactiveAlerts(userId))) {
+      console.log(`[alert.service] [INTERCEPT] alerta '${alertType}' salteada para user ${userId} (opt-out)`);
+      return { sent: false, skipped: 'opt_out' };
+    }
+    message = message + OPT_OUT_FOOTER;
+  }
+
   // Detect tg_ placeholder phone numbers and extract telegramId
   let telegramId = rawTelegramId;
   if (!telegramId && phone && phone.startsWith('tg_')) {

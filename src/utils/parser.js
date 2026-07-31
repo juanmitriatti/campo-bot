@@ -801,6 +801,22 @@ const COMMAND_PATTERNS = [
     ],
   },
 
+  // --- Alertas proactivas: opt-out / opt-in por usuario ---
+  {
+    command: "disable_alerts",
+    patterns: [
+      /^no\s+(?:me\s+)?(?:des|mandes|quiero)\s+(?:m[aá]s\s+)?(?:alertas?|avisos?)\b/i,
+      /^no\s+m[aá]s\s+(?:alertas?|avisos?)\s*\.?$/i,
+      /^(?:sacame|quitame|apag[aá])\s+(?:las?\s+|los?\s+)?(?:alertas?|avisos?)\b/i,
+    ],
+  },
+  {
+    command: "enable_alerts",
+    patterns: [
+      /^(?:dame|quiero|activ[aá]|prend[eé])\s+(?:las?\s+|los?\s+)?(?:alertas?|avisos?)(?:\s+de\s+nuevo)?\s*\.?$/i,
+    ],
+  },
+
   // --- Recordatorios (listar) ---
   {
     command: "list_reminders",
