@@ -80,6 +80,18 @@ export class AuthService {
       throw err;
     }
 
+    // Best-effort: fila de user_settings — SIN ella el usuario queda excluido
+    // de tips, resúmenes semanales/mensuales y alertas (los JOIN/SELECT sobre
+    // user_settings lo saltean). El bot la creaba solo en el auto-create por
+    // canal; el registro web (único camino con REQUIRE_VERIFIED_CHANNEL) no
+    // la creaba nunca (bug Ago 2026: usuario real sin un solo tip).
+    try {
+      const { pool } = await import('../../config/db.js');
+      await pool.query('INSERT INTO user_settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [user.id]);
+    } catch (err) {
+      logError('auth', 'USER_SETTINGS_BOOTSTRAP_FAILED', err as Error, { userId: user.id });
+    }
+
     // Best-effort: bootstrap a trial subscription if PAYMENTS_ENABLED.
     // Failures here MUST NOT break registration — the user still gets the free
     // plan that was already assigned above.

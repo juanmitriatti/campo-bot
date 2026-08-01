@@ -28,9 +28,30 @@ export interface Tip {
   text: string;
   /** Feature gateada que el tip enseña (se valida el plan antes de mostrar). */
   requiresFeature?: import('../types/index.js').FeatureKey;
+  /** Condición extra sobre el estado del usuario (ej: "tiene un campo sin
+   * ubicación"). false → el tip se saltea SIN marcarse visto (puede aplicar
+   * más adelante). Best-effort: un throw cuenta como false. */
+  condition?: (userId: number) => Promise<boolean>;
 }
 
 export const TIPS_CATALOG: Tip[] = [
+  // ── Setup ──────────────────────────────────────────────────────────────
+  {
+    // El alta en compound crea el campo SIN ciudad a propósito (para no
+    // bloquear las tools siguientes) — este tip es el follow-up que faltaba:
+    // nada volvía a ofrecer cargar la ubicación (test de usuario Ago 2026).
+    key: 'ubicar_campo',
+    triggerCommands: ['add_field', 'add_plots_batch', 'set_plot_area', 'sow_crop'],
+    text: '💡 Un campo tuyo quedó *sin ubicación* — decime "El campo <nombre> está en <localidad>" y te habilito el clima y las alertas de lluvia para esa zona.',
+    condition: async (userId: number) => {
+      const { pool } = await import('../config/db.js');
+      const { rows } = await pool.query(
+        `SELECT 1 FROM fields WHERE user_id = $1 AND deleted_at IS NULL AND (city IS NULL OR city = '') LIMIT 1`,
+        [userId],
+      );
+      return rows.length > 0;
+    },
+  },
   // ── Gastos / ingresos ──────────────────────────────────────────────────
   {
     key: 'audio',
