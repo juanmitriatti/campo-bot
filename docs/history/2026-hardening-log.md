@@ -99,6 +99,17 @@ Test desde cero del usuario real: cargó 30 vacas ("Tengo 30 vacas" → adjust_l
 
 Fix en tres capas: (1) guard determinístico en el handler — corrección de SOLO ubicación sin nombrar actividad + hacienda más reciente que la actividad → redirige a "pasá las vacas al lote X" con log `[INTERCEPT]`, no edita; (2) guard de campaña cerrada — cambio de lote sobre actividad con `plot_crop_id` de campaña cerrada se bloquea con explicación (mover historial archivado = corrupción); (3) regla de prompt (CORRECCIÓN DE UBICACIÓN TRAS HACIENDA → transfer_livestock). El control de regresión verifica que la corrección legítima (usuario nombra "la siembra", campaña activa) sigue moviendo campaña+evento coherentemente. Datos del usuario reparados a mano. Lección: `[acciones ejecutadas]` en el historial no alcanzó para que Haiku eligiera bien — otra confirmación de que las reglas de intención van respaldadas por guard server-side.
 
+## Ronda de agentes QA (Ago 2026) — 2 P0 + 9 P1 en un día
+
+Dos agentes LLM ("Raúl" agricultor / "Marta" ganadera) corrieron primeros días completos contra prod vía el canal test-bot (cuentas reales, rol admin temporal). Hallazgos → fixes → re-verificación por los mismos agentes (10/13 FIXED en la primera pasada; los 3 restantes cerrados con su raíz real en la segunda). Los que dejaron cicatriz:
+
+- **Distributivo "en cada lote" (P0)**: cadena de 3 capas — el agente expandía BIEN a 2 tools, el output-validator stripeaba ambos lotes (no literales en el texto), las tools quedaban idénticas y el dedup del compound las colapsaba a UNA → mitad de las bajas perdidas en silencio. Fix: `hasCollectiveReference` en el validator (referencia colectiva legítima) + expansión determinística en recordDeath para el caso single-tool. Lección: una pérdida silenciosa puede ser la COMPOSICIÓN de tres capas cada una razonable por sí sola.
+- **Filtro fantasma en sanidad (P0)**: query_health/repro/weighings heredaban lote del contexto y NEGABAN registros existentes — port del patrón 11e54b9.
+- **Escape numérico del pending (raíz de 2 "parciales")**: "las 95" contestando "¿A cuántos animales?" escapaba por detectsFinancialIntent al agente, que INVENTÓ el conteo (13, sacado del historial). El guard anti-escape solo cubría slots financieros → generalizado a todo slot numérico.
+- **Escala de montos**: "no, eran 350" tras $200.000 → $350 literal. `inheritAmountScale` (interceptor + edits).
+- **5 copias de fmtDay** con `new Date()` pelado → DATE de medianoche UTC retrocedía un día en ART → centralizadas en `formatDayShortAR`.
+- **Weekday futuro**: el agente aterriza "el sábado" +1 también en recordatorios → la resolución server pisa el due_date del agente (mismo patrón que relative-dates pasado).
+
 ## Eval y QA
 
 ### Eval degradado (Jul 26)
