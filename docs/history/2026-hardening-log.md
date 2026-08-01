@@ -83,7 +83,11 @@ La ronda de live-testing de Jun 2026 encontró **5 bugs de producción cuya raí
 
 ---
 
-## Entity matching (Jul 2026)
+## Flow taps fuera de paso — "Producto: norte" (Ago 2026)
+
+Primer test desde cero del usuario real: tras registrar una siembra, tocó las sugerencias post-acción y arrancó el flow de actividad. El tap [Norte] del paso lote se procesó **dos veces** (los logs de Railway muestran `INTERACTIVE: flow_plot_norte` duplicado; timestamp = minuto exacto de un deploy → overlap de contenedores; el `MessageDedup` y el `user-lock` son in-process y no cubren duplicados con ids distintos — misma limitación single-replica documentada). La primera entrega consumió "norte" como lote y avanzó el flow (estado en DB, compartido); la segunda cayó en el paso *producto*, cuyo `validate` acepta cualquier texto → confirmación "Tipo: Fumigación, Lote: Norte, **Producto: norte**".
+
+Raíz: el callback lleva la intención de slot en el prefijo (`flow_plot_*` = "esto responde LOTE") pero el pipeline lo reducía a texto plano y lo alimentaba al paso activo, cualquiera fuera. Fix: `FLOW_TAP_EXPECTED_FIELDS` (prefijo → fields válidos) + `getCurrentStepField()` en conversation-engine; tap fuera de paso se ignora con log `[INTERCEPT]` (invariante 1). La defensa cubre las 3 fuentes de duplicados de una (doble tap, retry, deploy). Regresión TDD en `pipeline.integration.test.ts` reproduciendo la secuencia exacta. Detalle de diagnóstico: la cascada no estaba en `conversation_logs` (los callbacks no se loguean ahí) — la evidencia salió de los logs de Railway.
 
 Había **8 implementaciones divergentes** de normalización de nombres. Consecuencias reales: pérdida de datos ("El Bajo"→"Bajo") y aliases rotos ("Ñandú" con acento al escribir, sin acento al leer). Fix: `src/utils/entity-matcher.ts` como única fuente (`sqlNormalizedName` + espejo JS con test de paridad JS↔SQL), consumido por getPlotByName/findPlotByNameAcrossFields/getOrCreatePlot/getFieldByName/findPlotByAlias/plot-discovery/agent-output-validator/financial.handler.
 

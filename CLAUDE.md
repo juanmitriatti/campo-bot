@@ -222,6 +222,7 @@ Tres niveles, todos centrales (cubren todos los pendings `missing[]` de todos lo
 - **Per-user serialization** (`user-lock.ts`): mensajes del mismo usuario en orden, usuarios distintos en paralelo. In-process (single-replica).
 - **Message idempotency** (`dedup.ts`): TTL 10 min sobre update_id/callback ids — un webhook retry de un audio lento duplicaba writes.
 - **Button payloads**: Telegram limita `callback_data` a 64 bytes (excederlo = HTTP 400 silencioso, sin botones) → `bap2_*`/`rain_batch_*` usan token de `callbackPayloadStore` con fallback inline-base64. `assign_bulk_plot` reporta taps parcialmente stale ("⚠️ N registros ya no existían").
+- **Flow taps scopeados al paso** (`FLOW_TAP_EXPECTED_FIELDS` en message-pipeline): un tap `flow_plot_*`/`flow_cat_`/`flow_activity_`/`flow_field_` solo alimenta el paso cuyo `field` corresponde al prefijo; fuera de paso se ignora con `[INTERCEPT]`. Un duplicado (doble tap, retry de Telegram, overlap de deploy — el dedup in-process no cubre ids distintos) caía en el paso siguiente y contaminaba el slot ("Producto: norte" en prod).
 - **Pending hint**: mensaje que llega al agente con pending activo → `[Hay una pregunta pendiente...]` en el user prefix (zona no cacheada).
 
 ## AI Cost & Caching
