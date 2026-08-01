@@ -1549,6 +1549,74 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('edit_last_activity guards — corrección de lote no corrompe (Ago 2026, bug prod "las vacas van al norte")', () => {
+    let h: PipelineHarness;
+    let surId: number;
+    let norteId: number;
+    let fieldId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('edit-act-guards');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Loma') RETURNING id`, [h.userId]);
+      fieldId = (f[0] as { id: number }).id;
+      const s = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Sur') RETURNING id`, [fieldId]);
+      surId = (s[0] as { id: number }).id;
+      const n = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte') RETURNING id`, [fieldId]);
+      norteId = (n[0] as { id: number }).id;
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('hacienda recién registrada + "van al norte" → NO mueve la actividad vieja, redirige a hacienda', async () => {
+      // Siembra de AYER en Sur (con campaña activa) + hacienda registrada AHORA
+      const pc = await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date)
+                            VALUES ($1, 'maíz', 2025, 'gruesa', CURRENT_DATE - 1) RETURNING id`, [surId]);
+      await h.q(`INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, crop, event_date, created_at)
+                 VALUES ($1, $2, $3, 'planting', 'maíz', CURRENT_DATE - 1, now() - interval '1 day')`,
+                 [h.userId, surId, (pc[0] as { id: number }).id]);
+      const g = await h.q(`INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count)
+                           VALUES ($1, $2, $3, 'vaca', 30) RETURNING id`, [h.userId, fieldId, surId]);
+      await h.q(`INSERT INTO livestock_movements (user_id, movement_type, dest_group_id, count, movement_date)
+                 VALUES ($1, 'entrada', $2, 30, CURRENT_DATE)`, [h.userId, (g[0] as { id: number }).id]);
+
+      h.fakeAgent.enqueue([{ toolName: 'edit_last_activity', toolInput: { new_plot: 'Norte' } }]);
+      const text = h.allText(await h.send('en realidad deberían ir al lote norte'));
+
+      expect(text.toLowerCase()).toContain('hacienda'); // redirige, no edita
+      const ev = await h.q(`SELECT plot_id FROM domain_events WHERE user_id=$1 AND event_type='planting'`, [h.userId]);
+      expect((ev[0] as { plot_id: number }).plot_id).toBe(surId); // la siembra NO se movió
+    });
+
+    it('campaña CERRADA + corrección de lote → bloquea y explica (no corrompe historial)', async () => {
+      // Limpio la hacienda del test anterior para aislar este guard
+      await h.q(`DELETE FROM livestock_movements WHERE user_id=$1`, [h.userId]);
+      await h.q(`DELETE FROM livestock_groups WHERE user_id=$1`, [h.userId]);
+      await h.q(`UPDATE plot_crops SET end_date = CURRENT_DATE, harvested_at = CURRENT_DATE
+                 WHERE plot_id = $1`, [surId]);
+
+      h.fakeAgent.enqueue([{ toolName: 'edit_last_activity', toolInput: { new_plot: 'Norte' } }]);
+      const text = h.allText(await h.send('la siembra era en el lote norte'));
+
+      expect(text).toMatch(/cerrada/i);
+      const ev = await h.q(`SELECT plot_id FROM domain_events WHERE user_id=$1 AND event_type='planting'`, [h.userId]);
+      expect((ev[0] as { plot_id: number }).plot_id).toBe(surId);
+      const pc = await h.q(`SELECT plot_id FROM plot_crops WHERE plot_id IN ($1,$2)`, [surId, norteId]);
+      expect((pc[0] as { plot_id: number }).plot_id).toBe(surId); // campaña intacta
+    });
+
+    it('control: campaña ACTIVA sin hacienda reciente → la corrección de lote sigue funcionando', async () => {
+      await h.q(`UPDATE plot_crops SET end_date = NULL, harvested_at = NULL WHERE plot_id = $1`, [surId]);
+
+      h.fakeAgent.enqueue([{ toolName: 'edit_last_activity', toolInput: { new_plot: 'Norte' } }]);
+      const text = h.allText(await h.send('la siembra era en el lote norte'));
+
+      expect(text).toContain('corregida');
+      const ev = await h.q(`SELECT plot_id FROM domain_events WHERE user_id=$1 AND event_type='planting'`, [h.userId]);
+      expect((ev[0] as { plot_id: number }).plot_id).toBe(norteId); // se movió con su campaña
+      const pc = await h.q(`SELECT plot_id FROM plot_crops WHERE id = (SELECT plot_crop_id FROM domain_events WHERE user_id=$1 AND event_type='planting')`, [h.userId]);
+      expect((pc[0] as { plot_id: number }).plot_id).toBe(norteId);
+    });
+  });
+
   describe('cierre de campaña sin producción — advertir y confirmar (Ago 2026)', () => {
     let h: PipelineHarness;
     let plotId: number;
