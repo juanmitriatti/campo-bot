@@ -1,4 +1,5 @@
 import { getActivityLabel } from './activity.service.js';
+import { formatDateAR } from '../../utils/date.js';
 import type { PlotHistoryRow } from '../../types/index.js';
 
 export interface QueryContext {
@@ -68,7 +69,7 @@ function formatEventLine(row: PlotHistoryRow, showPlot = false): string {
     : row.source === 'rainfall'
     ? { emoji: '🌧️', label: 'Lluvia' }
     : getActivityLabel(row.type);
-  const dateStr = new Date(row.date).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const dateStr = formatDateAR(row.date as string | Date);
   let line = `${emoji} *${label}* — ${dateStr}`;
   if (showPlot && row.plot_name) line += ` — 📍 ${row.plot_name}`;
   if (row.detail && row.source === 'rainfall') line += ` — ${row.detail}mm`;
@@ -138,7 +139,7 @@ export function formatHistoryResponse(rows: PlotHistoryRow[], ctx: QueryContext)
     case 'binary_yes': {
       const row = rows[0];
       const { emoji, label } = getActivityLabel(row.type);
-      const dateStr = new Date(row.date).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const dateStr = formatDateAR(row.date as string | Date);
       let msg = `✅ Sí`;
       if (row.source === 'rainfall') {
         msg += `\nÚltima lluvia en *${ctx.plotLabel}*: *${dateStr}*`;
@@ -155,7 +156,7 @@ export function formatHistoryResponse(rows: PlotHistoryRow[], ctx: QueryContext)
         const extra = rows.slice(1, 3);
         msg += `\n\nAnteriores:`;
         for (const r of extra) {
-          const d = new Date(r.date).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+          const d = formatDateAR(r.date as string | Date);
           const { emoji: e } = getActivityLabel(r.type);
           msg += `\n${e} ${d}`;
           if (r.detail && r.source === 'rainfall') msg += ` — ${r.detail}mm`;
@@ -168,7 +169,7 @@ export function formatHistoryResponse(rows: PlotHistoryRow[], ctx: QueryContext)
     case 'single': {
       const row = rows[0];
       const { emoji, label } = getActivityLabel(row.type);
-      const dateStr = new Date(row.date).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const dateStr = formatDateAR(row.date as string | Date);
       const locationLabel = ctx.crossPlot && row.plot_name ? row.plot_name : ctx.plotLabel;
       let msg = `${emoji} La última *${label.toLowerCase()}* en *${locationLabel}* fue el *${dateStr}*.`;
       if (row.detail && row.source !== 'rainfall') msg += `\n${row.detail}`;

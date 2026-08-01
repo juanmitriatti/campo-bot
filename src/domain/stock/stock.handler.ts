@@ -1,4 +1,5 @@
 import { StockService } from './stock.service.js';
+import { formatDateAR } from '../../utils/date.js';
 import { saveExpense } from '../../services/expenses.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../../types/index.js';
 
@@ -316,7 +317,7 @@ export class StockHandler {
     const lines = movements.map(m => {
       const emoji = typeEmoji[m.movement_type] || '📋';
       const sign = m.movement_type === 'salida' ? '-' : m.movement_type === 'entrada' ? '+' : '=';
-      const date = new Date(m.movement_date).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+      const date = formatDateAR(m.movement_date as string | Date);
       const reason = m.reason ? ` (${m.reason})` : '';
       const notes = m.notes ? ` | ${m.notes}` : '';
       return `  ${emoji} ${date}: ${sign}${m.quantity} ${item.unit}${reason}${notes}`;

@@ -162,6 +162,11 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
           if (money != null && money > 0) {
             (extracted as Record<string, unknown>)[slot] = money;
             console.log(`[INTERCEPT] single-slot numeric fallback: slot=${slot} "${cleaned.slice(0, 40)}" → ${money}`);
+          } else if (slot === 'count' && /\btod[ao]s?\b/i.test(cleaned) && Number((pending.data as Record<string, unknown>)?.__allCount) > 0) {
+            // "a todas" / "todos" con el total del grupo conocido (lo guarda el
+            // ask de hacienda) — antes re-preguntaba idéntico (barrido Ago 2026).
+            (extracted as Record<string, unknown>)[slot] = Number((pending.data as Record<string, unknown>).__allCount);
+            console.log(`[INTERCEPT] single-slot count "todas" → ${(pending.data as Record<string, unknown>).__allCount}`);
           } else if (slot === 'count') {
             // "a todas, las 120" / "las 40 que compré": el conteo viene envuelto
             // en frase — extraer el número (QA agentes Ago 2026: la respuesta se

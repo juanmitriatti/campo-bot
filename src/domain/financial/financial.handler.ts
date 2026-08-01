@@ -1054,13 +1054,18 @@ export class FinancialHandler {
       }
     }
 
-    // Suggest stock entry for insumo expenses
-    if (data.expenseType === 'insumo' && data.product && data.quantity && data.unit && fieldId) {
+    // Suggest stock entry for insumo expenses. Ampliado (barrido Ago 2026):
+    // "compré 200 lt de ivermectina a 15 mil" llegaba sin expenseType/product
+    // y el usuario con feature stock esperaba el alta — ahora la categoría
+    // insumo-like + cantidad+unidad alcanzan (product cae a description).
+    const stockishCategory = /agroqu|insumo|veterinar|fertiliz|semilla/i.test((data.category || ''));
+    const stockProduct = data.product || (stockishCategory ? data.description : null);
+    if ((data.expenseType === 'insumo' || stockishCategory) && stockProduct && data.quantity && data.unit && fieldId) {
       try {
         const { StockPurchaseService } = await import('../stock/stock-purchase.service.js');
         const purchaseService = new StockPurchaseService();
         const suggestion = await purchaseService.suggestStockEntry(
-          userId, saved.id, data.product, data.quantity, data.unit, fieldId,
+          userId, saved.id, stockProduct, data.quantity, data.unit, fieldId,
         );
         if (suggestion) {
           messages.push(
@@ -1558,7 +1563,7 @@ export class FinancialHandler {
         }
 
         const { inheritAmountScale: inheritScaleExp } = await import('../../middleware/conversation-engine.js');
-        const scaledNewAmount = newAmount != null ? inheritScaleExp(newAmount, Number(last.amount) || null, cmd.originalText as string | null) : newAmount;
+        const scaledNewAmount = newAmount != null ? inheritScaleExp(newAmount, Number(last.amount) || null, cmd.originalText as string | null, (last.currency as string | null) ?? null) : newAmount;
         await this.service.editLastExpenseFull(userId, {
           newAmount: scaledNewAmount,
           newCategory,
@@ -1712,7 +1717,7 @@ export class FinancialHandler {
         if (newAmount != null) {
           try {
             const prevInc = await this.service.findLastIncomeByCategory(userId, incomeCategoryFilter);
-            scaledIncAmount = inheritScaleInc(newAmount, prevInc ? Number(prevInc.amount) || null : null, cmd.originalText as string | null);
+            scaledIncAmount = inheritScaleInc(newAmount, prevInc ? Number(prevInc.amount) || null : null, cmd.originalText as string | null, (prevInc?.currency as string | null) ?? null);
           } catch { /* best-effort */ }
         }
         const edited = await this.service.editLastIncomeFull(userId, { newAmount: scaledIncAmount, newCategory, newDate, newFieldId, newPlotId }, incomeCategoryFilter);

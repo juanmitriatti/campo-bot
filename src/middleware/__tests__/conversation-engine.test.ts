@@ -560,3 +560,24 @@ describe('inheritAmountScale — corrección "no, eran 350" tras monto en miles 
     expect(inheritAmountScale(350, null, 'no, eran 350')).toBe(350);
   });
 });
+
+describe('inheritAmountScale — moneda USD nunca hereda escala (regresión barrido Ago 2026)', () => {
+  it('registro USD: "eran 500 dólares" y hasta "eran 500" pelado NO se multiplican', async () => {
+    const { inheritAmountScale } = await import('../conversation-engine.js');
+    expect(inheritAmountScale(500, 300_000, 'no, eran 500 dólares', 'USD')).toBe(500);
+    expect(inheritAmountScale(500, 300_000, 'no, eran 500', 'USD')).toBe(500);
+    expect(inheritAmountScale(500, 300_000, 'eran 500 usd', null)).toBe(500); // palabra usd en el texto
+  });
+});
+
+describe('correcciones de lote NO se leen como monto (barrido Ago 2026)', () => {
+  it('"el gasto de herbicida era en el lote Dos" no devuelve monto', async () => {
+    const { extractReferencedAmountCorrection, extractAmountCorrection } = await import('../conversation-engine.js');
+    expect(extractReferencedAmountCorrection('el gasto de herbicida era en el lote Dos')).toBeNull();
+    expect(extractAmountCorrection('no, era en el lote Dos')).toBeNull();
+  });
+  it('las correcciones de monto reales siguen andando', async () => {
+    const { extractReferencedAmountCorrection } = await import('../conversation-engine.js');
+    expect(extractReferencedAmountCorrection('el gasto de herbicida eran 500 mil')?.newAmount).toBe(500_000);
+  });
+});
