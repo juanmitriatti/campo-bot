@@ -883,6 +883,17 @@ export class FinancialHandler {
       }
     }
 
+    // Categoría corporativa (arrendamiento/sueldos/…) sin campo nombrado y el
+    // usuario tiene UN solo campo → resolverlo para que el atajo de nivel
+    // campo aplique. Sin esto, "pagué medio palo de arrendamiento" con un solo
+    // campo igual tiraba el picker de lotes (QA agentes Ago 2026).
+    if (isFieldLevelExpense && !fieldId && !plotId) {
+      try {
+        const allFields = await this.service.getUserFields(userId);
+        if (allFields.length === 1) fieldId = allFields[0].id;
+      } catch { /* best-effort */ }
+    }
+
     // No plot resolved → redirect to expense flow so user picks one. EXCEPT
     // when this is a field-level expense (sueldos/arrendamiento/etc.) and
     // we already have a field — then save at field level (plot_id NULL)

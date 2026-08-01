@@ -789,9 +789,16 @@ export class LivestockHandler {
 
     const mvLabel = LIVESTOCK_MOVEMENT_LABEL[movement.movement_type];
     const breed = sourceGroup.breed ? ` ${sourceGroup.breed}` : '';
+    // Recategorización: mostrar la categoría DESTINO — "Ternero ↗️ 20, Loma →
+    // Loma" parecía una transferencia al mismo lote sin decir jamás "Novillo"
+    // (QA agentes Ago 2026).
+    const isRecat = sourceGroup.category !== destGroup.category;
+    const categoryLine = isRecat
+      ? `  ${LIVESTOCK_CATEGORY_LABEL[sourceGroup.category]}${breed} → *${LIVESTOCK_CATEGORY_LABEL[destGroup.category]}*\n`
+      : `  ${LIVESTOCK_CATEGORY_LABEL[sourceGroup.category]}${breed}\n`;
     const body =
       `${mvLabel.emoji} *${mvLabel.label}*\n\n` +
-      `  ${LIVESTOCK_CATEGORY_LABEL[sourceGroup.category]}${breed}\n` +
+      categoryLine +
       `  ↗️ ${count} animales\n` +
       `  Desde: *${fmtLoc(sourceGroup)}* (quedan ${sourceGroup.count})\n` +
       `  Hacia: *${fmtLoc(destGroup)}* (ahora ${destGroup.count})`;
@@ -1071,10 +1078,23 @@ export class LivestockHandler {
     const resolvedPlotId = (cmd as Record<string, unknown>).__resolvedPlotId as number | null | undefined;
     const resolvedCorralId = (cmd as Record<string, unknown>).__resolvedCorralId as number | null | undefined;
     if (resolvedPlotId != null || resolvedCorralId != null) {
+      // Resolver el NOMBRE real: "📍 Ubicación seleccionada" en la card no le
+      // dice nada al usuario (QA agentes Ago 2026).
+      let realLabel = 'Ubicación seleccionada';
+      try {
+        const { pool } = await import('../../config/db.js');
+        if (resolvedCorralId != null) {
+          const r = await pool.query(`SELECT c.name AS corral, f.name AS field FROM corrals c JOIN feedlots ft ON ft.id = c.feedlot_id JOIN fields f ON f.id = ft.field_id WHERE c.id = $1`, [resolvedCorralId]);
+          if (r.rows[0]) realLabel = `Corral ${r.rows[0].corral} (${r.rows[0].field})`;
+        } else if (resolvedPlotId != null) {
+          const r = await pool.query(`SELECT p.name AS plot, f.name AS field FROM plots p JOIN fields f ON f.id = p.field_id WHERE p.id = $1`, [resolvedPlotId]);
+          if (r.rows[0]) realLabel = `${r.rows[0].plot} (${r.rows[0].field})`;
+        }
+      } catch { /* best-effort */ }
       return {
         plotId: resolvedPlotId ?? null,
         corralId: resolvedCorralId ?? null,
-        label: 'Ubicación seleccionada',
+        label: realLabel,
       };
     }
 
@@ -1094,6 +1114,7 @@ export class LivestockHandler {
       const inventory = await this.service.listInventory(userId, {});
       if (inventory.groups.length > 0) {
         const have = inventory.groups
+          .filter(g => Number(g.count) > 0) // sin grupos zombie "0 Terneros"
           .slice(0, 5)
           .map(g => `${g.count} ${LIVESTOCK_CATEGORY_LABEL[g.category] ?? g.category}${g.count === 1 ? '' : 's'} (${fmtLoc(g)})`)
           .join(', ');
@@ -1195,7 +1216,15 @@ export class LivestockHandler {
       sideEffects: {
         setPendingActivity: {
           command: pendingCommand,
-          data: { ...cmd, command: pendingCommand },
+          // La ubicación YA resuelta viaja en el pending — sin esto, contestar
+          // la cantidad por texto re-preguntaba el lote que el usuario acababa
+          // de elegir por botón (loop visto por QA agentes Ago 2026).
+          data: {
+            ...cmd,
+            command: pendingCommand,
+            __resolvedPlotId: resolvedLocation.plotId,
+            __resolvedCorralId: resolvedLocation.corralId,
+          },
           missing: ['count'],
           askPrompt: '¿A cuántos animales?',
         },
@@ -1419,6 +1448,20 @@ export class LivestockHandler {
       }
     }
 
+    // Consistencia suave: "desteté 30 terneros" con 20 en inventario se
+    // registra igual (el evento puede ser correcto y el inventario viejo),
+    // pero SE AVISA — antes pasaba mudo (QA agentes Ago 2026).
+    let overshootNote = '';
+    if (animalsAffected && category) {
+      try {
+        const invGroups = await this.service.findGroupsByCategory(userId, category);
+        const totalCat = invGroups.reduce((a, g) => a + Number(g.count || 0), 0);
+        if (totalCat > 0 && animalsAffected > totalCat) {
+          overshootNote = `\n  ⚠️ _Ojo: registré ${animalsAffected}, pero en tu inventario figuran ${totalCat} ${LIVESTOCK_CATEGORY_LABEL[category as LivestockCategory] || category}s. Si el inventario está viejo, corregilo: "tengo ${animalsAffected} ${category}s"._`;
+        }
+      } catch { /* best-effort */ }
+    }
+
     const event = await saveDomainEvent(userId, {
       plotId: resolvedLoc.plotId,
       corralId: resolvedLoc.corralId,
@@ -1444,6 +1487,7 @@ export class LivestockHandler {
       lines.push(`  🐄 ${animalsAffected} animales`);
     }
     if (sireInfo) lines.push(`  🐂 ${sireInfo}`);
+    if (overshootNote) lines.push(overshootNote);
     if (method) lines.push(`  🔬 Método: ${method}`);
     lines.push(`  📍 ${resolvedLoc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
     if (cmd.notes) lines.push(`  📝 ${cmd.notes}`);

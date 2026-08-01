@@ -479,16 +479,28 @@ export class SystemHandler {
           };
         }
 
-        // Sin hora → pending machine-readable (missing:['time']) — regla dura
+        // Salida "cuando sea"/"sin hora": crear SIN hora exacta — el tick
+        // legacy avisa en la franja 07-21. Un plan de día completo no
+        // necesita hora (QA agentes Ago 2026).
+        const noTimeRaw = `${agentTime ?? ''} | ${(cmd.time as string | null) ?? ''} | ${(cmd.originalText as string | null) ?? ''}`;
+        if (!resolved && /\b(?:cuando\s+sea|sin\s+hora|da\s+igual|cualquier\s+hora|no\s+importa(?:\s+la\s+hora)?)\b/i.test(noTimeRaw)) {
+          const r0 = await createReminder(Number(userId), desc, dueDate, {});
+          const dd0 = `${r0.due_date.slice(8, 10)}/${r0.due_date.slice(5, 7)}`;
+          return { messages: [`⏰ Listo, te lo recuerdo el *${dd0}* a la mañana:\n"${r0.description}"\n\n_"mis recordatorios" para ver todos._`] };
+        }
+
+        // Sin hora → pending machine-readable (missing:['time']) — pero con
+        // salida "cuando sea": un plan de día completo no necesita hora exacta
+        // (QA agentes Ago 2026); el tick legacy avisa en la franja 07-21.
         if (!resolved) {
           return {
-            messages: ['⏰ ¿A qué hora te lo recuerdo? (ej: *"a las 14:30"* o *"a las 8 de la mañana"*)'],
+            messages: ['⏰ ¿A qué hora te lo recuerdo? (ej: *"a las 14:30"*, o decime *"cuando sea"* y te aviso a la mañana)'],
             sideEffects: {
               setPendingActivity: {
                 command: 'create_reminder',
                 data: { description: desc, due_date: dueDate },
                 missing: ['time'],
-                askPrompt: '⏰ ¿A qué hora te lo recuerdo? (ej: "a las 14:30")',
+                askPrompt: '⏰ ¿A qué hora te lo recuerdo? (ej: "a las 14:30", o "cuando sea")',
               },
             },
           };

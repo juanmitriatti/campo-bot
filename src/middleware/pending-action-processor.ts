@@ -162,6 +162,15 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
           if (money != null && money > 0) {
             (extracted as Record<string, unknown>)[slot] = money;
             console.log(`[INTERCEPT] single-slot numeric fallback: slot=${slot} "${cleaned.slice(0, 40)}" → ${money}`);
+          } else if (slot === 'count') {
+            // "a todas, las 120" / "las 40 que compré": el conteo viene envuelto
+            // en frase — extraer el número (QA agentes Ago 2026: la respuesta se
+            // rechazaba con re-ask idéntico).
+            const inPhrase = cleaned.match(/\b(\d{1,5})\b(?!.*\d)/);
+            if (inPhrase) {
+              (extracted as Record<string, unknown>)[slot] = Number(inPhrase[1]);
+              console.log(`[INTERCEPT] single-slot count-in-phrase: "${cleaned.slice(0, 40)}" → ${inPhrase[1]}`);
+            }
           }
           // sigue sin número → leave unfilled, controller will re-ask
         }

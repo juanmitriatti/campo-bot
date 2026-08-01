@@ -143,6 +143,10 @@ export function isDeferralIntent(text: string): boolean {
 export function stripAnswerPrefix(text: string): string {
   return text
     .replace(CORRECTION_PREFIX_RE, '')
+    // Asentimiento/adición: "sí, en Laguna" / "también en Laguna" — sin esto,
+    // "también en Laguna" se tomaba como NOMBRE de lote y el bot ofrecía crear
+    // el lote «también en Laguna» (QA agentes Ago 2026).
+    .replace(/^(?:(?:s[ií]|dale|claro|obvio|ok|bueno)[,\s]+)?(?:tambi[eé]n\s+|y\s+)?/i, '')
     .replace(/^(en\s+(?:el\s+|la\s+|los\s+|las\s+)?|el\s+|la\s+)/i, '')
     .replace(/^lote\s+/i, '')
     .trim();
