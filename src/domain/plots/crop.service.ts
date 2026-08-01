@@ -139,10 +139,16 @@ export class CropService {
 
   /** Find the most recent campaign on a plot that has been harvested but has
    * no yield_kg recorded. Used to support "cosechamos X kg en lote Y" as a
-   * retroactive yield-load even on closed campaigns. */
-  async findRecentHarvestedNoYield(plotId: number, withinDays = 60): Promise<PlotCropRow | null> {
+   * retroactive yield-load even on closed campaigns. Window configurable in
+   * admin (agronomy → RETRO_YIELD_WINDOW_DAYS); explicit `withinDays` wins. */
+  async findRecentHarvestedNoYield(plotId: number, withinDays?: number): Promise<PlotCropRow | null> {
+    let days = withinDays;
+    if (days == null) {
+      const { getSettingNumber } = await import('../../services/settings.service.js');
+      days = (await getSettingNumber('RETRO_YIELD_WINDOW_DAYS')) ?? 60;
+    }
     const history = await getPlotCropHistory(plotId) as PlotCropRow[];
-    const cutoff = Date.now() - withinDays * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     for (const row of history) {
       if (!row.harvested_at) continue;
       if (row.yield_kg != null && Number(row.yield_kg) > 0) continue;
