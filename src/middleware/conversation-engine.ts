@@ -308,6 +308,19 @@ export class ConversationEngine {
     await this.stateRepo.setFlowContext(userId, ctx);
   }
 
+  /**
+   * Nombre del `field` del paso en el que está parado el flow (null en
+   * idle/confirming o fuera de rango). Lo usa el pipeline para scopear los
+   * taps de flow al paso que les corresponde: un `flow_plot_*` duplicado que
+   * llega con el flow ya en el paso `product` NO debe consumirse como
+   * producto (bug de prod Ago 2026: "Producto: norte").
+   */
+  getCurrentStepField(ctx: FlowContext): string | null {
+    if (ctx.state === 'idle' || ctx.state === 'confirming') return null;
+    const flow = this.registry.get(ctx.state);
+    return flow?.steps[ctx.step]?.field ?? null;
+  }
+
   async clearFlow(userId: UserId): Promise<void> {
     await this.stateRepo.clearFlow(userId);
   }
