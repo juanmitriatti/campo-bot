@@ -1942,7 +1942,7 @@ export class AgronomyHandler {
         if (!last) return { messages: ['No hay monitoreos para borrar.'] };
         await this.repo.deleteScouting(last.id);
         const stage = last.stage_code ? ` ${last.stage_code}` : '';
-        return { messages: [`\ud83d\uddd1\ufe0f Monitoreo eliminado${stage} (${last.scouting_date || 'hoy'})`] };
+        return { messages: [`\ud83d\uddd1\ufe0f Monitoreo eliminado${stage} (${last.scouting_date ? formatDateAR(last.scouting_date as string | Date) : 'hoy'})`] };
       }
 
       case 'rainfall_report': {
@@ -4098,6 +4098,28 @@ export class AgronomyHandler {
             }
             console.log(`[HYBRID] Auto-assigned plot_id=${resolved.plotId} (single plot) for user ${userId}`);
           } else {
+            // Antes de preguntar: ¿el TEXTO nombra un lote real del usuario?
+            // "el molino del Bajo pierde agua" no dice "lote", pero "Bajo" es
+            // un lote — preguntar ahí es fricción inútil (barrido Ago 2026).
+            {
+              const { normalizeEntityName } = await import('../../utils/entity-matcher.js');
+              const tokens = obsText.split(/[^\wáéíóúüñÁÉÍÓÚÜÑ]+/).filter(t => t.length >= 3);
+              const hits = userPlots.filter(p =>
+                tokens.some(t => normalizeEntityName(t) === normalizeEntityName(p.name)));
+              if (hits.length === 1) {
+                resolved.plotId = hits[0].id;
+                resolved.fieldName = hits[0].field_name;
+                resolved.plotName = hits[0].name;
+                if (!resolved.fieldId) {
+                  const f = await this.repo.getFieldByName(userId, hits[0].field_name);
+                  if (f) resolved.fieldId = f.id;
+                }
+                console.log(`[HYBRID] observación: lote «${hits[0].name}» detectado en el texto — sin pregunta`);
+              }
+            }
+            if (resolved.plotId) {
+              // cae al save de abajo con el lote detectado
+            } else {
             // Multiple plots → normally ask the user via setPendingObservation.
             // BULK MODE EXCEPTION: in compound, never block — save the
             // observation at field-level (plot_id=null) using the user's
@@ -4127,6 +4149,7 @@ export class AgronomyHandler {
                   setPendingObservation: { text: obsText, category },
                 },
               };
+            }
             }
           }
         }

@@ -84,10 +84,14 @@ export function extractRenameCorrection(text: string): string | null {
  * (< 1000, sin "mil/palo/pesos") sobre un monto previo grande y redondo en
  * miles → heredar la escala. "350 pesos" explícito NO se toca.
  */
-export function inheritAmountScale(corrected: number, previous: number | null | undefined, rawText?: string | null): number {
+export function inheritAmountScale(corrected: number, previous: number | null | undefined, rawText?: string | null, currency?: string | null): number {
   if (!corrected || corrected >= 1000) return corrected;
   if (!previous || previous < 100_000 || previous % 1000 !== 0) return corrected;
-  if (rawText && /\b(?:pesos?|centavos?|ars)\b/i.test(rawText)) return corrected;
+  // La herencia de escala es un modismo de PESOS en miles. Sobre montos USD
+  // multiplica por mil un valor correcto ("eran 500 dólares" → USD 500.000,
+  // regresión detectada por el barrido de agentes Ago 2026).
+  if (currency === 'USD') return corrected;
+  if (rawText && /\b(?:pesos?|centavos?|ars|d[oó]lar(?:es)?|usd|u\$s|verdes?)\b/i.test(rawText)) return corrected;
   console.log(`[INTERCEPT] amount-scale inherit: corrección ${corrected} → ${corrected * 1000} (monto previo ${previous})`);
   return corrected * 1000;
 }
@@ -103,6 +107,7 @@ export function extractAmountCorrection(text: string): number | null {
     new RegExp(`^(?:(?:${CORRECTION_ALT})\\b,?\\s+(?:(?:${COPULA_ALT})\\s+)?|(?:${COPULA_ALT})\\s+)(.+)$`, 'i'),
   );
   if (!m) return null;
+  if (/(?:^|\s)(?:en\s+)?(?:el\s+|la\s+)?(?:lote|potrero|corral|campo)\b/i.test(m[1])) return null;
   let amount = normalizarMonto(m[1]) ?? 0;
   // m[1] may still carry nested cue words ("perdón, en realidad 15000" → m[1] =
   // "en realidad 15000"), which normalizarMonto chokes on. Fall back to pulling
@@ -145,6 +150,10 @@ export function extractReferencedAmountCorrection(
   // otherwise matches the "mil" multiplier → 1000. The main parser pipeline
   // normalizes first; this direct call must too.
   const amountStr = m[3].normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // "era en el lote Dos" es corrección de UBICACIÓN, no de monto —
+  // normalizarMonto leía el numeral del nombre del lote ("dos" → 2) y
+  // corrompía el importe (barrido de agentes Ago 2026).
+  if (/(?:^|\s)(?:en\s+)?(?:el\s+|la\s+)?(?:lote|potrero|corral|campo)\b/i.test(amountStr)) return null;
   const newAmount = normalizarMonto(amountStr);
   if (!newAmount || newAmount <= 0) return null;
 

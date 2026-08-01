@@ -805,8 +805,8 @@ const COMMAND_PATTERNS = [
   {
     command: "disable_alerts",
     patterns: [
-      /^no\s+(?:me\s+)?(?:des|mandes|quiero)\s+(?:m[aá]s\s+)?(?:alertas?|avisos?)\b/i,
-      /^no\s+m[aá]s\s+(?:alertas?|avisos?)\s*\.?$/i,
+      /^no\s+(?:me\s+)?(?:des|mandes|quiero)\s+(?:recibir\s+)?(?:m[aá]s\s+)?(?:alertas?|avisos?|notificaciones)\b/i,
+      /^no\s+m[aá]s\s+(?:alertas?|avisos?|notificaciones)\s*\.?$/i,
       /^(?:sacame|quitame|apag[aá])\s+(?:las?\s+|los?\s+)?(?:alertas?|avisos?)\b/i,
     ],
   },

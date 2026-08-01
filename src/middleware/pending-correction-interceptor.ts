@@ -29,7 +29,7 @@ export function tryApplyPendingCorrection(
   let correctedAmt = extractAmountCorrection(text);
   if (correctedAmt != null) {
     const prevAmt = Number(((pending.data ?? {}) as Record<string, unknown>).amount) || null;
-    correctedAmt = inheritAmountScale(correctedAmt, prevAmt, text);
+    correctedAmt = inheritAmountScale(correctedAmt, prevAmt, text, (((pending.data ?? {}) as Record<string, unknown>).currency as string | null) ?? null);
   }
   // Currency correction ("no, eran en dólares" / "perdón, eran verdes"). Without
   // this, the message fell through to the agent which emitted a NEW income that

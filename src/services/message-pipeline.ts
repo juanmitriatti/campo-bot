@@ -864,15 +864,21 @@ async function processTextMessageInner(
     // detectsFinancialIntent al agente, que inventaba el conteo.
     const expectsFinancialSlot = pendingAct.missing
       && pendingAct.missing.some(s => s === 'amount' || s === 'quantity' || s === 'unit_price' || s === 'unit' || s === 'count' || s === 'hectares');
+    // Respuesta CORTA a cualquier pending con missing[] ("en el Tres" al
+    // "¿en qué lote?"): usar el escape estricto — isReadOnlyQuery/financial
+    // la ruteaba como consulta y el gasto se guardaba sin lote (barrido de
+    // agentes Ago 2026). Un pivot real trae verbo o pregunta y escapa igual.
+    const shortSlotAnswer = (pendingAct.missing?.length ?? 0) > 0 && text.trim().length <= 40;
     // A NEW action with its own verb or a query escapes even a financial-slot
     // pending — only a BARE answer like "800 USD" should fill the slot.
     // When waiting for a financial slot, the answer is EXPECTED to be
     // money-shaped (and may contain unit words like "por cabeza"). Use the
     // stricter escape (real verb/query only) so a bare price answer fills the
     // slot instead of escaping to the agent and corrupting the last income.
-    const escapePending = (expectsFinancialSlot ? hasActionVerbOrQuery(text) : looksLikeNewActionOrQuery(text))
+    const strictEscape = expectsFinancialSlot || shortSlotAnswer;
+    const escapePending = (strictEscape ? hasActionVerbOrQuery(text) : looksLikeNewActionOrQuery(text))
       || isOtherItemCorrectionOrDelete(text)
-      || (!expectsFinancialSlot && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text)));
+      || (!strictEscape && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text)));
     if (escapePending) {
       // Una consulta read-only NO mata un pending recuperable (con missing[]):
       // se responde la consulta y se vuelve a preguntar el slot — paridad con

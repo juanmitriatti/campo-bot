@@ -61,7 +61,7 @@ describe('formatHistoryResponse — decision engine', () => {
     const rows = [makeRow(), makeRow({ id: 2, date: makeDate('2026-03-10') })];
     const msg = formatHistoryResponse(rows, makeCtx({ isBinaryQuestion: true, activityFilter: 'spraying' }));
     expect(msg).toMatch(/^✅/);
-    expect(msg).toContain('15/3/2026');
+    expect(msg).toContain('15/03/2026');
     expect(msg).toContain('Anteriores');
   });
 

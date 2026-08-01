@@ -156,6 +156,7 @@ export class LivestockHandler {
         case 'livestock_create_continue': return await this.createAndContinue(cmd, userId);
         case 'livestock_create_cancel': return await this.createCancel(cmd, userId);
         case 'livestock_place_choice': return await this.placeLocationChoice(cmd, userId);
+        case 'livestock_move_choice': return await this.moveOrNewChoice(cmd, userId);
         case 'livestock_place_corral': return await this.placeCorralChoice(cmd, userId);
         case 'livestock_post_stock': return await this.postActionStock(cmd, userId);
         case 'livestock_post_weigh': return await this.postActionWeigh(cmd, userId);
@@ -466,6 +467,84 @@ export class LivestockHandler {
     return `\n\n⚠️ _Ojo: esto lo registré SOLO en *${appliedLoc}*. Si era en cada lote, decime los demás: ej. "murieron 10 vacas en Norte"._`;
   }
 
+  /**
+   * Bajas/ventas/ajustes SIN ubicación: resolver por los GRUPOS de la
+   * categoría — 1 grupo → directo; 2+ → pending real con las opciones.
+   * NUNCA heredar el lote del contexto conversacional: "se murió 1 vaca"
+   * tras operar en Alto buscaba vacas en Alto (no había) y fallaba sin
+   * listar el inventario (barrido de agentes Ago 2026).
+   */
+  private async presetLocationFromGroups(cmd: ParsedCommand, userId: UserId, category: string): Promise<HandlerResponse | null> {
+    if (cmd.plotName || cmd.corralName || cmd.fieldName || cmd._bulkMode) return null;
+    let groups: Awaited<ReturnType<LivestockService['findGroupsByCategory']>>;
+    try {
+      groups = await this.service.findGroupsByCategory(userId, category);
+    } catch { return null; }
+    const alive = groups.filter(g => Number(g.count) > 0);
+    if (alive.length === 1) {
+      try {
+        const { pool } = await import('../../config/db.js');
+        if (alive[0].corral_id) {
+          const r = await pool.query(`SELECT name FROM corrals WHERE id = $1`, [alive[0].corral_id]);
+          if (r.rows[0]?.name) cmd.corralName = r.rows[0].name;
+        } else if (alive[0].plot_id) {
+          const r = await pool.query(`SELECT name FROM plots WHERE id = $1`, [alive[0].plot_id]);
+          if (r.rows[0]?.name) cmd.plotName = r.rows[0].name;
+        }
+      } catch { /* best-effort */ }
+      return null;
+    }
+    if (alive.length > 1) {
+      const labels = alive.slice(0, 6).map(g => `${g.location_label} (${g.count})`).join(', ');
+      const ask = `🐄 ¿De qué ubicación? Tenés ${LIVESTOCK_CATEGORY_LABEL[category as LivestockCategory] ?? category}s en: ${labels}.`;
+      return {
+        messages: [ask],
+        sideEffects: { setPendingActivity: { command: cmd.command as string, data: { ...cmd }, missing: ['plot'], askPrompt: ask } },
+      };
+    }
+    return null; // 0 grupos → que el service produzca su error con inventario
+  }
+
+  /** Tap de la oferta mover-vs-alta ("metí N al corral"). */
+  private async moveOrNewChoice(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const { callbackPayloadStore } = await import('../../middleware/callback-payload-store.js');
+    const raw = callbackPayloadStore.get((cmd.payload as string) || '');
+    if (!raw) return { messages: ['Ese botón venció. Repetime la operación, ej: *"pasá 10 terneros al corral 2"*.'] };
+    const p = JSON.parse(raw) as {
+      category: string; count: number;
+      srcPlotId: number | null; srcCorralId: number | null; srcLabel: string;
+      destPlot: string | null; destCorral: string | null; fieldName: string | null;
+      original: Record<string, unknown>;
+    };
+    if (cmd.moveChoice === 'new') {
+      return await this.addLivestock({ ...(p.original as ParsedCommand), __skipMoveOffer: true } as ParsedCommand, userId);
+    }
+    // Mover: resolver el nombre de la ubicación origen para el transfer
+    let sourcePlot: string | null = null;
+    let sourceCorral: string | null = null;
+    try {
+      const { pool } = await import('../../config/db.js');
+      if (p.srcCorralId) {
+        const r = await pool.query(`SELECT name FROM corrals WHERE id = $1`, [p.srcCorralId]);
+        sourceCorral = r.rows[0]?.name ?? null;
+      } else if (p.srcPlotId) {
+        const r = await pool.query(`SELECT name FROM plots WHERE id = $1`, [p.srcPlotId]);
+        sourcePlot = r.rows[0]?.name ?? null;
+      }
+    } catch { /* best-effort */ }
+    return await this.transferLivestock({
+      command: 'transfer_livestock',
+      category: p.category,
+      count: p.count,
+      sourcePlot,
+      sourceCorral,
+      destPlot: p.destPlot,
+      destCorral: p.destCorral,
+      fieldName: p.fieldName,
+      originalText: (p.original.originalText as string) || '',
+    } as ParsedCommand, userId);
+  }
+
   private async addLivestock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const category = cmd.category as string;
     const count = cmd.count as number;
@@ -479,6 +558,44 @@ export class LivestockHandler {
         sideEffects: { setPendingActivity: { command: 'add_livestock', data: { ...cmd }, missing: ['count'], askPrompt: askAdd } },
       };
     }
+    // "Metí/encerré/pasé N <categoría> al corral X" con un grupo existente de
+    // la misma categoría en OTRA ubicación: casi seguro es un MOVIMIENTO, no
+    // un alta — el alta duplicaba el inventario en silencio (95→105, barrido
+    // de agentes Ago 2026). Preguntamos con botones (nunca texto suelto).
+    const moveVerb = /\b(?:met[íi]|encerr[ée]|pas[ée]|mand[ée]|llev[ée])\b/i.test((cmd.originalText as string) || '');
+    const hasTarget = !!(cmd.corralName || cmd.plotName);
+    const skipOffer = !!(cmd as Record<string, unknown>).__skipMoveOffer || cmd._bulkMode
+      || (cmd as Record<string, unknown>).__resolvedPlotId != null || (cmd as Record<string, unknown>).__resolvedCorralId != null;
+    if (moveVerb && hasTarget && !skipOffer) {
+      try {
+        const existing = await this.service.findGroupsByCategory(userId, category);
+        const targetName = ((cmd.corralName || cmd.plotName) as string).toLowerCase();
+        const candidates = existing.filter(g => Number(g.count) >= count && !g.location_label.toLowerCase().includes(targetName));
+        if (candidates.length > 0) {
+          const src = candidates[0];
+          const { callbackPayloadStore } = await import('../../middleware/callback-payload-store.js');
+          const token = callbackPayloadStore.set(JSON.stringify({
+            category, count,
+            srcPlotId: src.plot_id, srcCorralId: src.corral_id, srcLabel: src.location_label,
+            destPlot: (cmd.plotName as string) || null, destCorral: (cmd.corralName as string) || null,
+            fieldName: (cmd.fieldName as string) || null,
+            original: { ...cmd },
+          }));
+          return {
+            messages: [],
+            interactive: {
+              type: 'buttons' as const,
+              body: `🐄 Tenés ${src.count} ${LIVESTOCK_CATEGORY_LABEL[src.category as LivestockCategory] ?? src.category}s en *${src.location_label}*. ¿Los ${count} que "metiste" son de ahí (los muevo) o son animales nuevos?`,
+              buttons: [
+                { id: `lv_move_yes_${token}`, title: '🔁 Moverlos' },
+                { id: `lv_move_new_${token}`, title: '➕ Son nuevos' },
+              ],
+            },
+          };
+        }
+      } catch { /* best-effort: ante error seguimos con el alta normal */ }
+    }
+
     // Hardening: reject absurd counts + out-of-range movement dates.
     {
       const { validateLivestockCount, validateDate } = await import('../../utils/value-validator.js');
@@ -636,6 +753,9 @@ export class LivestockHandler {
         sideEffects: { setPendingActivity: { command: 'remove_livestock', data: { ...cmd }, missing: ['count'], askPrompt: askRemove } },
       };
     }
+
+    const removePreset = await this.presetLocationFromGroups(cmd, userId, category);
+    if (removePreset) return removePreset;
 
     let group, financial, movement;
     try {
@@ -867,6 +987,11 @@ export class LivestockHandler {
         return { messages: [lines.join('\n')] };
       }
     }
+
+    // Sin cue distributivo: resolver ubicación por grupos (1 → directo,
+    // 2+ → pending; nunca heredar contexto).
+    const deathPreset = await this.presetLocationFromGroups(cmd, userId, category);
+    if (deathPreset) return deathPreset;
 
     const { group } = await this.service.recordDeath(userId, {
       category,
@@ -1224,6 +1349,7 @@ export class LivestockHandler {
             command: pendingCommand,
             __resolvedPlotId: resolvedLocation.plotId,
             __resolvedCorralId: resolvedLocation.corralId,
+            __allCount: knownGroupCount ?? null,
           },
           missing: ['count'],
           askPrompt: '¿A cuántos animales?',

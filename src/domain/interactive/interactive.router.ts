@@ -358,6 +358,21 @@ export class InteractiveRouter {
       };
     }
 
+    // "Metí 10 terneros al corral" con terneros existentes en otro lote:
+    // ¿mover o alta nueva? (barrido de agentes Ago 2026 — el alta duplicaba
+    // inventario en silencio).
+    const moveMatch = callbackId.match(/^lv_move_(yes|new)_(.+)$/);
+    if (moveMatch) {
+      return {
+        type: 'command',
+        data: {
+          command: 'livestock_move_choice',
+          moveChoice: moveMatch[1],
+          payload: moveMatch[2],
+        },
+      };
+    }
+
     // Deterministic lote-vs-feedlot choice (token from callbackPayloadStore).
     const locTypeMatch = callbackId.match(/^lv_loc_(lote|feedlot)_(.+)$/);
     if (locTypeMatch) {

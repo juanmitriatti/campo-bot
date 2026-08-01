@@ -1832,7 +1832,7 @@ export async function getDailyRainfallTotal(userId, fieldId = null) {
 
 export async function deleteLastRainfall(userId) {
   const last = await pool.query(
-    `SELECT * FROM rainfall WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    `SELECT * FROM rainfall WHERE user_id = $1 ORDER BY rainfall_date DESC, created_at DESC, id DESC LIMIT 1`,
     [userId]
   );
   if (last.rows.length === 0) return null;
@@ -1842,7 +1842,7 @@ export async function deleteLastRainfall(userId) {
 
 export async function getLastRainfall(userId) {
   const result = await pool.query(
-    `SELECT * FROM rainfall WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    `SELECT * FROM rainfall WHERE user_id = $1 ORDER BY rainfall_date DESC, created_at DESC, id DESC LIMIT 1`,
     [userId],
   );
   return result.rows[0] || null;
