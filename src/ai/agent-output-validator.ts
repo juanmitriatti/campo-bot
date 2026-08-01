@@ -199,6 +199,11 @@ function shouldStripPlot(
   const isKnown = options.userPlots.some(n => normalize(n) === normalize(trimmed));
   if (!isKnown) return true; // no es un lote del usuario → invención → dropear
   if (mentionedInText(trimmed, ctx.originalText, options.userPlots)) return false;
+  // Cuantificador COLECTIVO ("en cada lote", "todos los lotes", "ambos"): el
+  // usuario referenció todos sus lotes de una — el agente distribuyó bien y
+  // strippear los nombres colapsaba las N tools en una por el dedup del
+  // compound (QA agentes Ago 2026: "murieron 5 vacas en cada lote" → 1 baja).
+  if (hasCollectiveReference(ctx.originalText)) return false;
   // Lote real pero no literal en el texto: aceptar si hay deíctico (contexto).
   return !hasPronounReference(ctx.originalText);
 }
@@ -223,7 +228,19 @@ function shouldStripField(
   const isKnown = options.userFields.some(n => normalize(n) === normalize(trimmed));
   if (!isKnown) return true;
   if (mentionedInText(trimmed, ctx.originalText, options.userFields)) return false;
+  if (hasCollectiveReference(ctx.originalText)) return false;
   return !hasPronounReference(ctx.originalText);
+}
+
+/**
+ * Cuantificador colectivo de ubicación: "en cada lote", "en todos los lotes",
+ * "en ambos (lotes)", "en los dos potreros". Es una referencia LEGÍTIMA a todos
+ * los lotes/campos del usuario — el agente que distribuye la acción nombrando
+ * cada lote NO está alucinando.
+ */
+export function hasCollectiveReference(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return /\b(?:en\s+)?(?:cada|todos?\s+l[oa]s|ambos|los\s+dos|las\s+dos)\s+(?:lotes?|potreros?|corrales?|campos?)\b/i.test(text);
 }
 
 /**

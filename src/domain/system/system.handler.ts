@@ -431,10 +431,18 @@ export class SystemHandler {
           console.log(`[INTERCEPT] reminder relative-time override: agent=${cmd.due_time} → server=${relative.time} (${relative.dueDate})`);
         }
 
+        // Override server-side de la FECHA cuando el texto trae una frase
+        // resoluble ("el sábado", "mañana", "en 3 días"): el agente aterriza
+        // los weekdays corridos (+1) — mismo vicio que relative-dates en el
+        // path pasado, misma cura (QA agentes Ago 2026: siendo sábado, "el
+        // sábado tengo que fumigar" agendó para el domingo).
+        const serverDate = resolveFutureDate(cmd.originalText as string | null) || resolveFutureDate(desc);
+        if (serverDate && cmd.due_date && cmd.due_date !== serverDate) {
+          console.log(`[INTERCEPT] reminder date override: agent=${cmd.due_date} → server=${serverDate}`);
+        }
         const dueDate = relative?.dueDate
-          || (cmd.due_date as string | null)
-          || resolveFutureDate(cmd.originalText as string | null)
-          || resolveFutureDate(desc);
+          || serverDate
+          || (cmd.due_date as string | null);
         if (!dueDate) {
           return { messages: [`¿Para cuándo te lo recuerdo? Decime la frase completa con la fecha, ej: *"acordame el viernes a las 9 de ${desc}"*.`] };
         }
@@ -471,16 +479,28 @@ export class SystemHandler {
           };
         }
 
-        // Sin hora → pending machine-readable (missing:['time']) — regla dura
+        // Salida "cuando sea"/"sin hora": crear SIN hora exacta — el tick
+        // legacy avisa en la franja 07-21. Un plan de día completo no
+        // necesita hora (QA agentes Ago 2026).
+        const noTimeRaw = `${agentTime ?? ''} | ${(cmd.time as string | null) ?? ''} | ${(cmd.originalText as string | null) ?? ''}`;
+        if (!resolved && /\b(?:cuando\s+sea|sin\s+hora|da\s+igual|cualquier\s+hora|no\s+importa(?:\s+la\s+hora)?)\b/i.test(noTimeRaw)) {
+          const r0 = await createReminder(Number(userId), desc, dueDate, {});
+          const dd0 = `${r0.due_date.slice(8, 10)}/${r0.due_date.slice(5, 7)}`;
+          return { messages: [`⏰ Listo, te lo recuerdo el *${dd0}* a la mañana:\n"${r0.description}"\n\n_"mis recordatorios" para ver todos._`] };
+        }
+
+        // Sin hora → pending machine-readable (missing:['time']) — pero con
+        // salida "cuando sea": un plan de día completo no necesita hora exacta
+        // (QA agentes Ago 2026); el tick legacy avisa en la franja 07-21.
         if (!resolved) {
           return {
-            messages: ['⏰ ¿A qué hora te lo recuerdo? (ej: *"a las 14:30"* o *"a las 8 de la mañana"*)'],
+            messages: ['⏰ ¿A qué hora te lo recuerdo? (ej: *"a las 14:30"*, o decime *"cuando sea"* y te aviso a la mañana)'],
             sideEffects: {
               setPendingActivity: {
                 command: 'create_reminder',
                 data: { description: desc, due_date: dueDate },
                 missing: ['time'],
-                askPrompt: '⏰ ¿A qué hora te lo recuerdo? (ej: "a las 14:30")',
+                askPrompt: '⏰ ¿A qué hora te lo recuerdo? (ej: "a las 14:30", o "cuando sea")',
               },
             },
           };

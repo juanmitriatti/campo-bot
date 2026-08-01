@@ -64,6 +64,7 @@ export interface CampaignStats {
 
   profitability: {
     netARS: number;
+    netUSD: number;
     costPerHaARS: number | null;
     incomePerHaARS: number | null;
     costPerTnARS: number | null;
@@ -305,6 +306,7 @@ export class CampaignStatsService {
 
     // Profitability
     const netARS = incTotalARS - expTotalARS;
+    const netUSD = (incTotalUSD || 0) - (expTotalUSD || 0);
     const costPerHa = areaHa ? Math.round(expTotalARS / areaHa) : null;
     const incomePerHa = areaHa ? Math.round(incTotalARS / areaHa) : null;
     const yieldTn = yieldKg ? yieldKg / 1000 : null;
@@ -372,7 +374,7 @@ export class CampaignStatsService {
       incomes: { totalARS: incTotalARS, totalUSD: incTotalUSD, count: incomes.length - excludedIncCount },
       livestockAside: livestockAside.count > 0 ? livestockAside : null,
       yield: { kg: yieldKg, kgPerHa: yieldKgPerHa, notes: campaign.yield_notes || null, loads: loadsList, avgHumidity },
-      profitability: { netARS, costPerHaARS: costPerHa, incomePerHaARS: incomePerHa, costPerTnARS, costPerTnUSD, incomePerTnARS },
+      profitability: { netARS, netUSD, costPerHaARS: costPerHa, incomePerHaARS: incomePerHa, costPerTnARS, costPerTnUSD, incomePerTnARS },
       observations: { count: obsList.length, list: obsList },
       scouting: scoutingAgg,
       areaHectares: areaHa,

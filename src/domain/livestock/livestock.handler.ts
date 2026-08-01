@@ -11,6 +11,7 @@ import { FeedlotService } from '../feedlot/feedlot.service.js';
 import { saveDomainEvent, queryLivestockEvents, updateLivestockGroupWeight, updateConversationState } from '../../services/expenses.js';
 import { formatDateAR } from '../../utils/date.js';
 import { formatPlotLocation } from '../../utils/format-location.js';
+import { userExplicitlyReferencedPlot } from '../../utils/plot-intent.js';
 import { pool } from '../../config/db.js';
 import { encodeLivestockPayload, decodeLivestockPayload } from './livestock-payload.js';
 import { buildPostActionButtons } from './livestock-post-actions.js';
@@ -788,9 +789,16 @@ export class LivestockHandler {
 
     const mvLabel = LIVESTOCK_MOVEMENT_LABEL[movement.movement_type];
     const breed = sourceGroup.breed ? ` ${sourceGroup.breed}` : '';
+    // Recategorización: mostrar la categoría DESTINO — "Ternero ↗️ 20, Loma →
+    // Loma" parecía una transferencia al mismo lote sin decir jamás "Novillo"
+    // (QA agentes Ago 2026).
+    const isRecat = sourceGroup.category !== destGroup.category;
+    const categoryLine = isRecat
+      ? `  ${LIVESTOCK_CATEGORY_LABEL[sourceGroup.category]}${breed} → *${LIVESTOCK_CATEGORY_LABEL[destGroup.category]}*\n`
+      : `  ${LIVESTOCK_CATEGORY_LABEL[sourceGroup.category]}${breed}\n`;
     const body =
       `${mvLabel.emoji} *${mvLabel.label}*\n\n` +
-      `  ${LIVESTOCK_CATEGORY_LABEL[sourceGroup.category]}${breed}\n` +
+      categoryLine +
       `  ↗️ ${count} animales\n` +
       `  Desde: *${fmtLoc(sourceGroup)}* (quedan ${sourceGroup.count})\n` +
       `  Hacia: *${fmtLoc(destGroup)}* (ahora ${destGroup.count})`;
@@ -821,6 +829,43 @@ export class LivestockHandler {
         messages: [askDeath],
         sideEffects: { setPendingActivity: { command: 'record_livestock_death', data: { ...cmd }, missing: ['count'], askPrompt: askDeath } },
       };
+    }
+
+    // Expansión distributiva: "se murieron N vacas en cada lote" con UNA sola
+    // tool y sin lote nombrado → aplicar la baja a CADA grupo de la categoría
+    // (una muerte no es ambigua; las VENTAS no se expanden — involucran plata
+    // y quedan con el advisory). QA agentes Ago 2026.
+    const distributiveCue = !cmd._bulkMode && !cmd.plotName && !cmd.corralName
+      && /\b(?:en\s+)?(?:cada|todos?\s+l[oa]s|ambos|los\s+dos)\s+(?:lotes?|potreros?|corrales?|campos?)\b/i.test((cmd.originalText as string) || '');
+    if (distributiveCue) {
+      const groups = await this.service.findGroupsByCategory(userId, category);
+      if (groups.length > 1) {
+        console.log(`[INTERCEPT] LIVESTOCK DISTRIBUTIVE-EXPAND: baja de ${count} ${category} aplicada a ${groups.length} grupos (user ${userId})`);
+        const lines: string[] = [`💀 *Bajas registradas* (${category.toLowerCase()}, ${count} en cada ubicación)`, ''];
+        const { pool } = await import('../../config/db.js');
+        for (const g of groups) {
+          try {
+            let plotName: string | null = null;
+            let corralName: string | null = null;
+            if (g.corral_id) {
+              const c = await pool.query(`SELECT name FROM corrals WHERE id = $1`, [g.corral_id]);
+              corralName = c.rows[0]?.name ?? null;
+            } else if (g.plot_id) {
+              const p = await pool.query(`SELECT name FROM plots WHERE id = $1`, [g.plot_id]);
+              plotName = p.rows[0]?.name ?? null;
+            }
+            const { group: gg } = await this.service.recordDeath(userId, {
+              category, count,
+              plotName, corralName,
+              reason: cmd.reason as string, movement_date: cmd.eventDate as string,
+            });
+            lines.push(`  📍 ${g.location_label}: ➖ ${count} → quedan *${gg.count}*`);
+          } catch (e: unknown) {
+            lines.push(`  ⚠️ ${g.location_label}: no pude registrarla (${(e as Error).message})`);
+          }
+        }
+        return { messages: [lines.join('\n')] };
+      }
     }
 
     const { group } = await this.service.recordDeath(userId, {
@@ -993,6 +1038,7 @@ export class LivestockHandler {
   private async resolveEventLocation(
     cmd: ParsedCommand,
     userId: UserId,
+    opts: { allowContextStackFallback?: boolean } = {},
   ): Promise<{ plotId: number | null; corralId: number | null; label: string } | { error: string }> {
     const corralName = cmd.corralName as string | null;
     if (corralName) {
@@ -1009,6 +1055,7 @@ export class LivestockHandler {
       userId,
       cmd.fieldName as string | null,
       cmd.plotName as string | null,
+      opts.allowContextStackFallback === false ? { allowContextStackFallback: false } : undefined,
     );
 
     if (resolved.plotId) {
@@ -1031,10 +1078,23 @@ export class LivestockHandler {
     const resolvedPlotId = (cmd as Record<string, unknown>).__resolvedPlotId as number | null | undefined;
     const resolvedCorralId = (cmd as Record<string, unknown>).__resolvedCorralId as number | null | undefined;
     if (resolvedPlotId != null || resolvedCorralId != null) {
+      // Resolver el NOMBRE real: "📍 Ubicación seleccionada" en la card no le
+      // dice nada al usuario (QA agentes Ago 2026).
+      let realLabel = 'Ubicación seleccionada';
+      try {
+        const { pool } = await import('../../config/db.js');
+        if (resolvedCorralId != null) {
+          const r = await pool.query(`SELECT c.name AS corral, f.name AS field FROM corrals c JOIN feedlots ft ON ft.id = c.feedlot_id JOIN fields f ON f.id = ft.field_id WHERE c.id = $1`, [resolvedCorralId]);
+          if (r.rows[0]) realLabel = `Corral ${r.rows[0].corral} (${r.rows[0].field})`;
+        } else if (resolvedPlotId != null) {
+          const r = await pool.query(`SELECT p.name AS plot, f.name AS field FROM plots p JOIN fields f ON f.id = p.field_id WHERE p.id = $1`, [resolvedPlotId]);
+          if (r.rows[0]) realLabel = `${r.rows[0].plot} (${r.rows[0].field})`;
+        }
+      } catch { /* best-effort */ }
       return {
         plotId: resolvedPlotId ?? null,
         corralId: resolvedCorralId ?? null,
-        label: 'Ubicación seleccionada',
+        label: realLabel,
       };
     }
 
@@ -1054,6 +1114,7 @@ export class LivestockHandler {
       const inventory = await this.service.listInventory(userId, {});
       if (inventory.groups.length > 0) {
         const have = inventory.groups
+          .filter(g => Number(g.count) > 0) // sin grupos zombie "0 Terneros"
           .slice(0, 5)
           .map(g => `${g.count} ${LIVESTOCK_CATEGORY_LABEL[g.category] ?? g.category}${g.count === 1 ? '' : 's'} (${fmtLoc(g)})`)
           .join(', ');
@@ -1155,7 +1216,15 @@ export class LivestockHandler {
       sideEffects: {
         setPendingActivity: {
           command: pendingCommand,
-          data: { ...cmd, command: pendingCommand },
+          // La ubicación YA resuelta viaja en el pending — sin esto, contestar
+          // la cantidad por texto re-preguntaba el lote que el usuario acababa
+          // de elegir por botón (loop visto por QA agentes Ago 2026).
+          data: {
+            ...cmd,
+            command: pendingCommand,
+            __resolvedPlotId: resolvedLocation.plotId,
+            __resolvedCorralId: resolvedLocation.corralId,
+          },
           missing: ['count'],
           askPrompt: '¿A cuántos animales?',
         },
@@ -1288,7 +1357,14 @@ export class LivestockHandler {
   }
 
   private async queryHealthEvents(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
-    const loc = await this.resolveEventLocation(cmd, userId);
+    // Filtro fantasma (mismo patrón que query_scoutings, 11e54b9): "cuándo
+    // vacuné contra aftosa" sin nombrar lote debe buscar en TODOS los lotes —
+    // heredar el lote del context_stack hacía que el bot NEGARA registros
+    // existentes (QA agentes Ago 2026). El fallback de contexto solo corre si
+    // el usuario referenció un lote por nombre o pronombre.
+    const loc = await this.resolveEventLocation(cmd, userId, {
+      allowContextStackFallback: userExplicitlyReferencedPlot(cmd.originalText as string | null),
+    });
     if ('error' in loc) return { messages: [loc.error] };
 
     const rows = await queryLivestockEvents(userId, 'health_event', {
@@ -1372,6 +1448,20 @@ export class LivestockHandler {
       }
     }
 
+    // Consistencia suave: "desteté 30 terneros" con 20 en inventario se
+    // registra igual (el evento puede ser correcto y el inventario viejo),
+    // pero SE AVISA — antes pasaba mudo (QA agentes Ago 2026).
+    let overshootNote = '';
+    if (animalsAffected && category) {
+      try {
+        const invGroups = await this.service.findGroupsByCategory(userId, category);
+        const totalCat = invGroups.reduce((a, g) => a + Number(g.count || 0), 0);
+        if (totalCat > 0 && animalsAffected > totalCat) {
+          overshootNote = `\n  ⚠️ _Ojo: registré ${animalsAffected}, pero en tu inventario figuran ${totalCat} ${LIVESTOCK_CATEGORY_LABEL[category as LivestockCategory] || category}s. Si el inventario está viejo, corregilo: "tengo ${animalsAffected} ${category}s"._`;
+        }
+      } catch { /* best-effort */ }
+    }
+
     const event = await saveDomainEvent(userId, {
       plotId: resolvedLoc.plotId,
       corralId: resolvedLoc.corralId,
@@ -1397,6 +1487,7 @@ export class LivestockHandler {
       lines.push(`  🐄 ${animalsAffected} animales`);
     }
     if (sireInfo) lines.push(`  🐂 ${sireInfo}`);
+    if (overshootNote) lines.push(overshootNote);
     if (method) lines.push(`  🔬 Método: ${method}`);
     lines.push(`  📍 ${resolvedLoc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
     if (cmd.notes) lines.push(`  📝 ${cmd.notes}`);
@@ -1420,7 +1511,14 @@ export class LivestockHandler {
   }
 
   private async queryReproEvents(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
-    const loc = await this.resolveEventLocation(cmd, userId);
+    // Filtro fantasma (mismo patrón que query_scoutings, 11e54b9): "cuándo
+    // vacuné contra aftosa" sin nombrar lote debe buscar en TODOS los lotes —
+    // heredar el lote del context_stack hacía que el bot NEGARA registros
+    // existentes (QA agentes Ago 2026). El fallback de contexto solo corre si
+    // el usuario referenció un lote por nombre o pronombre.
+    const loc = await this.resolveEventLocation(cmd, userId, {
+      allowContextStackFallback: userExplicitlyReferencedPlot(cmd.originalText as string | null),
+    });
     if ('error' in loc) return { messages: [loc.error] };
 
     const rows = await queryLivestockEvents(userId, 'repro_event', {
@@ -1547,7 +1645,14 @@ export class LivestockHandler {
   }
 
   private async queryWeighings(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
-    const loc = await this.resolveEventLocation(cmd, userId);
+    // Filtro fantasma (mismo patrón que query_scoutings, 11e54b9): "cuándo
+    // vacuné contra aftosa" sin nombrar lote debe buscar en TODOS los lotes —
+    // heredar el lote del context_stack hacía que el bot NEGARA registros
+    // existentes (QA agentes Ago 2026). El fallback de contexto solo corre si
+    // el usuario referenció un lote por nombre o pronombre.
+    const loc = await this.resolveEventLocation(cmd, userId, {
+      allowContextStackFallback: userExplicitlyReferencedPlot(cmd.originalText as string | null),
+    });
     if ('error' in loc) return { messages: [loc.error] };
 
     const rows = await queryLivestockEvents(userId, 'weighing', {

@@ -1,3 +1,4 @@
+import { formatDayShortAR } from '../../utils/date.js';
 // --- Activity query renderers (siembras/fumigaciones/fertilizaciones/cosechas/labranza/riego) ---
 // Same shape as financial / scouting / harvest / stock / livestock renderers.
 
@@ -49,8 +50,7 @@ export interface ActivityRenderCtx {
 }
 
 function fmtDay(d: string | Date): string {
-  const dt = new Date(d);
-  return dt.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' });
+  return formatDayShortAR(d);
 }
 
 function num(v: string | number | null | undefined): number | null {

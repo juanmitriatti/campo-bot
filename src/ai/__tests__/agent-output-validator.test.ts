@@ -297,4 +297,24 @@ describe('validateToolCall — plot/field rule (Phase 3)', () => {
     expect(result.input.hectares).toBe(3);
     expect(result.droppedFields).toEqual(expect.arrayContaining(['crop', 'plot']));
   });
+
+  it('cuantificador colectivo ("en cada lote"): lote REAL no literal en el texto se ACEPTA', () => {
+    // "murieron 5 vacas en cada lote" → el agente distribuye nombrando cada
+    // lote; strippearlos colapsaba las N tools en una por el dedup del compound.
+    const result = validateToolCall(
+      { toolName: 'record_livestock_death', input: { plot: '1B', count: 5 }, originalText: 'se murieron 5 vacas en cada lote' },
+      opts,
+    );
+    expect(result.input.plot).toBe('1B');
+    expect(result.droppedFields).toEqual([]);
+  });
+
+  it('cuantificador colectivo NO salva un lote INVENTADO (no está en userPlots)', () => {
+    const result = validateToolCall(
+      { toolName: 'record_livestock_death', input: { plot: 'Fantasma', count: 5 }, originalText: 'se murieron 5 vacas en cada lote' },
+      opts,
+    );
+    expect(result.input.plot).toBeUndefined();
+    expect(result.droppedFields).toContain('plot');
+  });
 });

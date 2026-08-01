@@ -1,3 +1,4 @@
+import { formatDayShortAR } from '../../utils/date.js';
 // --- Rainfall query renderers ---
 import type { HandlerResponse } from '../../types/index.js';
 
@@ -27,7 +28,7 @@ export interface RainfallRenderCtx {
 }
 
 function fmtDay(d: string | Date): string {
-  return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' });
+  return formatDayShortAR(d);
 }
 function fmtMm(n: number): string {
   return `${n.toLocaleString('es-AR', { maximumFractionDigits: 1 })} mm`;

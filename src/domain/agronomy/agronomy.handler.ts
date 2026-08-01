@@ -4394,6 +4394,13 @@ export class AgronomyHandler {
     if (s.expenses.count > 0 || s.incomes.count > 0) {
       const sign = s.profitability.netARS >= 0 ? '+' : '';
       let profLine = `\n*Rentabilidad:*\nResultado neto: ${sign}$${s.profitability.netARS.toLocaleString('es-AR')} ARS`;
+      // Con movimientos en USD, el neto ARS solo NO cuenta la historia: "vendí
+      // 50 tn a 320 USD" mostraba "Resultado: $-2.000.000" (QA agentes Ago 2026).
+      if (s.profitability.netUSD) {
+        const signU = s.profitability.netUSD >= 0 ? '+' : '';
+        profLine += ` ${signU}USD ${s.profitability.netUSD.toLocaleString('es-AR')}`;
+        profLine += `\n_(los movimientos en USD se muestran aparte — no se suman al neto ARS)_`;
+      }
       if (s.profitability.costPerHaARS != null) profLine += `\nCosto/ha: $${s.profitability.costPerHaARS.toLocaleString('es-AR')}`;
       if (s.profitability.incomePerHaARS != null) profLine += ` | Ingreso/ha: $${s.profitability.incomePerHaARS.toLocaleString('es-AR')}`;
       if (s.profitability.costPerTnARS != null) profLine += `\nCosto/tn: $${s.profitability.costPerTnARS.toLocaleString('es-AR')}`;

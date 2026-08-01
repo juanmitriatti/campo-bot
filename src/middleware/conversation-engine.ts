@@ -77,6 +77,21 @@ export function extractRenameCorrection(text: string): string | null {
  * Detect mid-flow amount corrections like "no, eran 20000" / "en realidad 50mil" / "perdón, 30000".
  * Returns the corrected amount or null if not a correction.
  */
+/**
+ * Herencia de escala en correcciones de monto (QA agentes Ago 2026): tras un
+ * gasto de $200.000, "no, eran 350" significa 350 MIL en el habla argentina —
+ * tomarlo literal guardaba un monto 1000× menor. Regla: corrección "pelada"
+ * (< 1000, sin "mil/palo/pesos") sobre un monto previo grande y redondo en
+ * miles → heredar la escala. "350 pesos" explícito NO se toca.
+ */
+export function inheritAmountScale(corrected: number, previous: number | null | undefined, rawText?: string | null): number {
+  if (!corrected || corrected >= 1000) return corrected;
+  if (!previous || previous < 100_000 || previous % 1000 !== 0) return corrected;
+  if (rawText && /\b(?:pesos?|centavos?|ars)\b/i.test(rawText)) return corrected;
+  console.log(`[INTERCEPT] amount-scale inherit: corrección ${corrected} → ${corrected * 1000} (monto previo ${previous})`);
+  return corrected * 1000;
+}
+
 export function extractAmountCorrection(text: string): number | null {
   const t = text.trim();
   if (!t) return null;

@@ -49,6 +49,15 @@ export function formatDateAR(date: Date | string): string {
   });
 }
 
+/** Format dd/mm/yy (Argentina) — para listados compactos. Usa toDateAR: una
+ * columna DATE (medianoche UTC) renderizada a pelo en ART retrocedía un día
+ * (gasto del 01/08 mostrado "31/07" — QA agentes Ago 2026). */
+export function formatDayShortAR(date: Date | string): string {
+  return toDateAR(date).toLocaleDateString('es-AR', {
+    day: '2-digit', month: '2-digit', year: '2-digit', timeZone: TZ,
+  });
+}
+
 /** Format a date as dd/mm (short, Argentina locale) */
 export function formatDateShortAR(date: Date | string): string {
   return toDateAR(date).toLocaleDateString('es-AR', {

@@ -539,3 +539,24 @@ describe('ConversationEngine', () => {
     });
   });
 });
+
+describe('inheritAmountScale — corrección "no, eran 350" tras monto en miles (Ago 2026)', () => {
+  it('hereda la escala: 350 tras $200.000 → $350.000', async () => {
+    const { inheritAmountScale } = await import('../conversation-engine.js');
+    expect(inheritAmountScale(350, 200_000, 'no, eran 350')).toBe(350_000);
+  });
+  it('NO toca correcciones con unidad explícita chica ("350 pesos")', async () => {
+    const { inheritAmountScale } = await import('../conversation-engine.js');
+    expect(inheritAmountScale(350, 200_000, 'no, eran 350 pesos')).toBe(350);
+  });
+  it('NO toca cuando el nuevo monto ya viene en escala ("350 mil" → 350000)', async () => {
+    const { inheritAmountScale } = await import('../conversation-engine.js');
+    expect(inheritAmountScale(350_000, 200_000, 'no, eran 350 mil')).toBe(350_000);
+  });
+  it('NO toca cuando el monto previo es chico o no-redondo', async () => {
+    const { inheritAmountScale } = await import('../conversation-engine.js');
+    expect(inheritAmountScale(350, 800, 'no, eran 350')).toBe(350);
+    expect(inheritAmountScale(350, 200_500, 'no, eran 350')).toBe(350);
+    expect(inheritAmountScale(350, null, 'no, eran 350')).toBe(350);
+  });
+});

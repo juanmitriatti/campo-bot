@@ -75,6 +75,9 @@ export class AgronomyKnowledgeService {
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
         .map((b) => b.text)
         .join('\n')
+        // Markdown **doble** → *simple*: WhatsApp/Telegram renderizan negrita
+        // con un solo asterisco; el doble se veía literal (QA agentes Ago 2026).
+        .replace(/\*\*(.+?)\*\*/g, '*$1*')
         .trim();
 
       try {
