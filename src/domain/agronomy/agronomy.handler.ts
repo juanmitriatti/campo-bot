@@ -3475,6 +3475,45 @@ export class AgronomyHandler {
           return { messages: [`No encontré actividad reciente${filterDesc}${cropDesc} para editar.`] };
         }
 
+        // GUARD 1 — hacienda más reciente: una corrección de SOLO ubicación, sin
+        // nombrar la actividad, cuando lo ÚLTIMO registrado fue hacienda casi
+        // seguro se refiere a la hacienda ("en realidad deberían ir al lote
+        // norte" tras cargar 30 vacas movió una siembra en prod, Ago 2026).
+        const guardLabel = getActivityLabel(lastEvent.event_type).label;
+        const isBarePlotEdit = !!newPlotName && !newCrop && !newDate && !clearLot
+          && !(newQuantity != null && newQuantity > 0) && newHectares == null && !wantsPartialArea
+          && !editFilter && !editCropFilter && !editTargetPlot;
+        if (isBarePlotEdit) {
+          try {
+            const { pool: gpool } = await import('../../config/db.js');
+            const lm = await gpool.query(
+              `SELECT created_at FROM livestock_movements WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+              [userId],
+            );
+            const lastLivestockAt = lm.rows[0]?.created_at ? new Date(lm.rows[0].created_at as string).getTime() : 0;
+            const lastActivityAt = new Date(lastEvent.created_at as unknown as string).getTime();
+            if (lastLivestockAt > lastActivityAt) {
+              console.log(`[INTERCEPT] edit_last_activity vetado (user ${userId}): el último registro es hacienda, más reciente que la actividad — corrección de lote redirigida`);
+              return { messages: [`🐄 Lo último que registraste fue *hacienda* — si querés moverla de lote, decime:\n*"pasá las vacas al lote ${newPlotName}"*\n\nSi querías corregir la actividad «${guardLabel}», decímelo nombrándola: *"la ${guardLabel.toLowerCase()} era en el lote ${newPlotName}"*.`] };
+            }
+          } catch { /* best-effort: ante error de lookup no bloqueamos la edición */ }
+        }
+
+        // GUARD 2 — campaña cerrada: mover de lote una actividad que pertenece a
+        // una campaña CERRADA rompe el historial (la campaña y sus números ya
+        // quedaron archivados en ese lote). Se bloquea con explicación.
+        const guardPlotCropId = (lastEvent as { plot_crop_id?: number | null }).plot_crop_id;
+        if (newPlotName && guardPlotCropId) {
+          try {
+            const { pool: gpool } = await import('../../config/db.js');
+            const pcRow = await gpool.query(`SELECT end_date FROM plot_crops WHERE id = $1`, [guardPlotCropId]);
+            if (pcRow.rows[0]?.end_date) {
+              console.log(`[INTERCEPT] edit_last_activity vetado (user ${userId}): la actividad pertenece a la campaña CERRADA ${guardPlotCropId} — no se mueve de lote`);
+              return { messages: [`🔒 Esa *${guardLabel.toLowerCase()}* pertenece a una campaña ya *cerrada* — moverla de lote rompería el historial (la campaña y sus números quedaron archivados en *${lastEvent.plot_name || 'ese lote'}*). Si el problema es otro, contame qué querés corregir.`] };
+            }
+          } catch { /* best-effort */ }
+        }
+
         // Resolve new plot only when one was provided. Crop-only / date-only
         // edits keep the activity on its current plot. clear_lot wins → plotId=null.
         let newPlotId: number | null = null;
