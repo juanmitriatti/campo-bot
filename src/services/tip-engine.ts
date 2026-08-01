@@ -102,6 +102,11 @@ export class TipEngine {
       for (const tip of candidates) {
         if (shown.has(tip.key)) continue;
         if (tip.requiresFeature && !(await this.featureGate.hasFeature(asUserId(userId), tip.requiresFeature))) continue;
+        if (tip.condition) {
+          try {
+            if (!(await tip.condition(userId))) continue;
+          } catch { continue; /* best-effort: condición rota = tip salteado */ }
+        }
         picked = tip;
         break;
       }
