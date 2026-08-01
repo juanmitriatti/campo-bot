@@ -1549,6 +1549,51 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('cierre de campaña sin producción — advertir y confirmar (Ago 2026)', () => {
+    let h: PipelineHarness;
+    let plotId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('close-yield-guard');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Retiro') RETURNING id`, [h.userId]);
+      const p = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Sur') RETURNING id`, [(f[0] as { id: number }).id]);
+      plotId = (p[0] as { id: number }).id;
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('cosecha sin cantidad → la respuesta enseña cómo cargar el rinde', async () => {
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date)
+                 VALUES ($1, 'maíz', 2025, 'gruesa', CURRENT_DATE - 90)`, [plotId]);
+      h.fakeAgent.enqueue([{ toolName: 'harvest_crop', toolInput: { plot: 'Sur', field: 'El Retiro' } }]);
+      const text = h.allText(await h.send('hoy cosechamos el Sur'));
+      expect(text.toLowerCase()).toContain('rindió');
+    });
+
+    it('cierre explícito SIN rinde ni cargas → advierte y pide confirmación (no cierra directo)', async () => {
+      h.fakeAgent.enqueue([{ toolName: 'close_campaign', toolInput: { plot: 'Sur', field: 'El Retiro' } }]);
+      const text = h.allText(await h.send('cerrá la campaña del Sur'));
+      expect(text).toMatch(/sin rinde|no tiene rinde/i);
+
+      const open = await h.q(`SELECT id FROM plot_crops WHERE plot_id=$1 AND end_date IS NULL`, [plotId]);
+      expect(open.length).toBe(1); // NO cerró todavía
+
+      const done = h.allText(await h.tap('campaign_close_yes_ctx'));
+      expect(done).toMatch(/campaña.*cerrada/i);
+      const openAfter = await h.q(`SELECT id FROM plot_crops WHERE plot_id=$1 AND end_date IS NULL`, [plotId]);
+      expect(openAfter.length).toBe(0);
+    });
+
+    it('cierre explícito CON rinde → cierra directo, sin fricción extra', async () => {
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, yield_kg)
+                 VALUES ($1, 'soja', 2025, 'gruesa', CURRENT_DATE - 60, 180000)`, [plotId]);
+      h.fakeAgent.enqueue([{ toolName: 'close_campaign', toolInput: { plot: 'Sur', field: 'El Retiro' } }]);
+      const text = h.allText(await h.send('cerrá la campaña del Sur'));
+      expect(text).toMatch(/campaña.*cerrada/i);
+      const open = await h.q(`SELECT id FROM plot_crops WHERE plot_id=$1 AND end_date IS NULL`, [plotId]);
+      expect(open.length).toBe(0);
+    });
+  });
+
   describe('flow taps fuera de paso — duplicado no contamina otro slot (Ago 2026, bug prod "Producto: norte")', () => {
     let h: PipelineHarness;
 

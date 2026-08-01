@@ -483,6 +483,7 @@ export class AgronomyHandler {
 
       const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
       let msg = `🌾 *Cosecha registrada*\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
+      msg += `\n\n💡 _¿Ya sabés cuánto rindió? Decime "rindió 8.000 kg/ha" o "sacamos 120 tn" — o pasame las cargas por camión (chofer y kilos)._`;
       msg += `\n\n🏁 _La campaña sigue abierta por si te falta cargar algo (cargas, gastos). Cuando esté todo, decime *"cerrar campaña"*: se archiva el ciclo con sus números (rinde, gastos, margen) y el lote queda listo para la próxima siembra._`;
       return { messages: [msg] };
     }
@@ -2527,6 +2528,9 @@ export class AgronomyHandler {
           // Non-critical: swallow errors so the main harvest message still goes through
         }
 
+        if (!yieldKg && !computedKgPerHa) {
+          harvestMsg += `\n\n💡 _¿Ya sabés cuánto rindió? Decime "rindió 8.000 kg/ha" o "sacamos 120 tn" — o pasame las cargas por camión (chofer y kilos)._`;
+        }
         harvestMsg += `\n\n🏁 _La campaña sigue abierta por si te falta cargar algo (cargas, gastos). Cuando esté todo, decime *"cerrar campaña"*: se archiva el ciclo con sus números (rinde, gastos, margen) y el lote queda listo para la próxima siembra._`;
         const messages = [harvestMsg];
 
@@ -2759,16 +2763,27 @@ export class AgronomyHandler {
           return { messages: [`La campaña activa en *${plotLabel}* es de *${active.crop}*, no de ${cmd.crop}.`] };
         }
 
-        // Lote heredado del CONTEXTO (el usuario no lo nombró) + cierre =
-        // destructivo por adivinanza: "cerrá la campaña" cerraba la del último
-        // lote tocado sin confirmar (auditoría Jul 2026). Confirmación con los
-        // botones de cierre que ya existen (campaign_close_yes_/no_ + store).
-        if (!cmd.plotName && !cmd.fieldName) {
+        // ¿La campaña tiene producción registrada? Cerrarla sin rinde ni cargas
+        // deja las estadísticas vacías — hay que avisarlo ANTES (test de usuario
+        // Ago 2026: cosechó sin cantidad, cerró, y las stats prometidas por el
+        // copy salían sin números).
+        let hasProduction = active.yield_kg != null && Number(active.yield_kg) > 0;
+        if (!hasProduction) {
+          try {
+            hasProduction = (await this.repo.getHarvestLoadsByCampaign(active.id)).length > 0;
+          } catch { /* best-effort: ante error asumimos que hay producción y no fricamos */ hasProduction = true; }
+        }
+        const emptyWarning = hasProduction ? '' : `\n\n⚠️ *Esta campaña no tiene rinde ni cargas registradas* — si la cerrás así, las estadísticas salen sin producción. Antes podés decirme *"rindió 8.000 kg/ha en ${plotLabel}"* o pasarme las cargas por camión.`;
+
+        // Confirmación con botones cuando: (a) el lote vino del CONTEXTO (el
+        // usuario no lo nombró — cierre destructivo por adivinanza, auditoría
+        // Jul 2026), o (b) la campaña no tiene producción (Ago 2026).
+        if ((!cmd.plotName && !cmd.fieldName) || !hasProduction) {
           return {
             messages: [],
             interactive: {
               type: 'buttons' as const,
-              body: `¿Cierro la campaña de *${cap(active.crop)}* en *${plotLabel}*?\n\n_Cerrarla archiva el ciclo con sus números (rinde, gastos, margen — los ves con "estadísticas de campaña") y deja el lote libre para la próxima siembra. Si te falta cargar algo, mantenela abierta._`,
+              body: `¿Cierro la campaña de *${cap(active.crop)}* en *${plotLabel}*?\n\n_Cerrarla archiva el ciclo con sus números (rinde, gastos, margen — los ves con "estadísticas de campaña") y deja el lote libre para la próxima siembra. Si te falta cargar algo, mantenela abierta._${emptyWarning}`,
               buttons: [
                 { id: 'campaign_close_yes_ctx', title: 'Sí, cerrar' },
                 { id: 'campaign_close_no_ctx', title: 'No' },
