@@ -198,9 +198,13 @@ export class CampaignStatsService {
       return `No encontré una campaña${crop ? ` de ${crop}` : ''} en *${resolvedPlotName}*.`;
     }
 
-    // Get plot info for area
+    // Get plot info for area — la superficie SEMBRADA de la campaña manda
+    // (siembra parcial: kg/ha y costo/ha sobre el área del lote inflaban o
+    // diluían los ratios; test fuerte Ago 2026).
     const plotInfo = await getPlotById(resolvedPlotId, userId);
-    const areaHa = plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : null;
+    const sowedHa = (campaign as { sowed_hectares?: number | null }).sowed_hectares
+      ? Number((campaign as { sowed_hectares?: number | null }).sowed_hectares) : null;
+    const areaHa = sowedHa ?? (plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : null);
 
     const state = getCampaignState(campaign);
     const startDate = new Date(campaign.start_date);

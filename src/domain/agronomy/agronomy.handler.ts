@@ -2280,7 +2280,12 @@ export class AgronomyHandler {
         if (yieldKgPerHa != null || yieldKgRaw != null) {
           const { getPlotById: getPlotForYield } = await import('../../services/expenses.js');
           const plotForYield = await getPlotForYield(plotResult.plotId, userId);
-          const areaHa = plotForYield?.area_hectares ? Number(plotForYield.area_hectares) : null;
+          // Superficie SEMBRADA de la campaña activa primero: con siembra
+          // parcial (40 de 60 ha), rate × área del lote inflaba la producción
+          // 50% (test fuerte Ago 2026: 65 qq/ha → 390 tn en vez de 260).
+          const activeForYield = await this.cropService.getActive(plotResult.plotId);
+          const sowedForYield = activeForYield?.sowed_hectares ? Number(activeForYield.sowed_hectares) : null;
+          const areaHa = sowedForYield ?? (plotForYield?.area_hectares ? Number(plotForYield.area_hectares) : null);
 
           if (yieldKgPerHa != null && yieldKgRaw != null && areaHa) {
             const impliedTotal = Math.round(yieldKgPerHa * areaHa);
@@ -2742,11 +2747,21 @@ export class AgronomyHandler {
       }
 
       case 'close_campaign': {
-        const resolved = await this.plotDiscovery.resolveFromNamesWithContext(
+        let resolved = await this.plotDiscovery.resolveFromNamesWithContext(
           userId,
           cmd.fieldName as string | null,
           cmd.plotName as string | null
         );
+        // "cerrar campaña del Uno": el agente a veces manda plot="del Uno"/"el
+        // Uno" — retry con el prefijo/artículo stripeado antes de rendirse
+        // (test fuerte Ago 2026: el bot listaba el lote pero no lo matcheaba).
+        if (!resolved.plotId && cmd.plotName) {
+          const { stripAnswerPrefix } = await import('../../utils/lexicon.js');
+          const strippedName = stripAnswerPrefix(String(cmd.plotName)).replace(/^del?\s+/i, '');
+          if (strippedName && strippedName !== cmd.plotName) {
+            resolved = await this.plotDiscovery.resolveFromNamesWithContext(userId, cmd.fieldName as string | null, strippedName);
+          }
+        }
         if (!resolved.plotId) {
           return { messages: ['No pude identificar el lote. Indicá el lote de la campaña que querés cerrar.'] };
         }
@@ -3546,6 +3561,24 @@ export class AgronomyHandler {
         // Update the event (plotId may be null when the user only fixed crop/date)
         await this.repo.updateDomainEventPlot(lastEvent.id, newPlotId, userId, extraFields);
 
+        // Cantidad editada sobre una COSECHA = corrección de RINDE → sincronizar
+        // plot_crops.yield_kg (campaña activa o cerrada). Sin esto, "fueron 70
+        // toneladas" confirmaba pero las estadísticas seguían con el rinde
+        // viejo (test fuerte Ago 2026).
+        if (lastEvent.event_type === 'harvest' && newQuantity != null && newQuantity > 0) {
+          const harvestPcId = (lastEvent as { plot_crop_id?: number | null }).plot_crop_id;
+          if (harvestPcId) {
+            try {
+              const { normalizeToKg } = await import('../../ai/agent-response-mapper.js');
+              const kg = normalizeToKg(newQuantity, newUnit || (lastEvent as { unit?: string | null }).unit || 'kg');
+              if (kg && kg > 0) {
+                await this.cropService.updateYield(harvestPcId, kg, null);
+                console.log(`[edit_last_activity] rinde sincronizado a plot_crops: ${kg} kg (pc ${harvestPcId})`);
+              }
+            } catch { /* best-effort */ }
+          }
+        }
+
         // Resolve a fraction-of-plot ("la mitad del lote") into hectares now that
         // we know the target planting's plot and can read its area.
         let appliedHectares: number | null = (lastEvent.event_type === 'planting' && newHectares != null && newHectares > 0)
@@ -3588,7 +3621,8 @@ export class AgronomyHandler {
           const oldQ = (lastEvent as { quantity?: number | null }).quantity;
           const oldU = (lastEvent as { unit?: string | null }).unit || '';
           const uLabel = newUnit || oldU;
-          editLines.push(`📏 Dosis: ${oldQ != null ? `${oldQ} ${oldU}` : '?'} → *${newQuantity} ${uLabel}*`);
+          const qtyLabel = lastEvent.event_type === 'harvest' ? '🌾 Rinde' : '📏 Dosis';
+          editLines.push(`${qtyLabel}: ${oldQ != null ? `${oldQ} ${oldU}` : '?'} → *${newQuantity} ${uLabel}*`);
         }
         if (appliedHectares != null) {
           editLines.push(`📐 Superficie sembrada: *${appliedHectares.toLocaleString('es-AR')} ha*`);

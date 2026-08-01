@@ -145,7 +145,7 @@ export class FinancialService {
    */
   async editLastExpenseFull(
     userId: UserId,
-    fields: { newAmount?: number | null; newCategory?: string | null; newDate?: string | null; newFieldId?: number | null; newPlotId?: number | null },
+    fields: { newAmount?: number | null; newCategory?: string | null; newDate?: string | null; newFieldId?: number | null; newPlotId?: number | null; newCurrency?: string | null },
     categoryFilter: string | null = null,
   ): Promise<{ id: number; category: string; oldAmount: number; newAmount: number | null; oldCategory: string; newCategory: string | null; currency: string } | null> {
     const last = categoryFilter
@@ -158,6 +158,7 @@ export class FinancialService {
       expenseDate: fields.newDate ?? null,
       fieldId: fields.newFieldId === undefined ? undefined : fields.newFieldId,
       plotId: fields.newPlotId === undefined ? undefined : fields.newPlotId,
+      currency: fields.newCurrency ?? null,
     });
     return {
       id: last.id,

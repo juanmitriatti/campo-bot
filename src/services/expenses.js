@@ -1418,7 +1418,7 @@ export async function findExpenseByCriteria(userId, { amount = null, category = 
 }
 
 /** Update arbitrary editable fields of an expense. Pass only what changes. */
-export async function updateExpenseFields(expenseId, { amount = null, category = null, expenseDate = null, fieldId = undefined, plotId = undefined } = {}) {
+export async function updateExpenseFields(expenseId, { amount = null, category = null, expenseDate = null, fieldId = undefined, plotId = undefined, currency = null } = {}) {
   const sets = [];
   const params = [];
   let idx = 1;
@@ -1427,6 +1427,7 @@ export async function updateExpenseFields(expenseId, { amount = null, category =
   if (expenseDate) { sets.push(`expense_date = $${idx++}`); params.push(expenseDate); }
   if (fieldId !== undefined) { sets.push(`field_id = $${idx++}`); params.push(fieldId); }
   if (plotId !== undefined) { sets.push(`plot_id = $${idx++}`); params.push(plotId); }
+  if (currency === 'ARS' || currency === 'USD') { sets.push(`currency = $${idx++}`); params.push(currency); }
   if (sets.length === 0) return;
   params.push(expenseId);
   await pool.query(`UPDATE expenses SET ${sets.join(', ')} WHERE id = $${idx}`, params);

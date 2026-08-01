@@ -556,6 +556,27 @@ export class IntentClassifier {
             effectiveLastPlot = last[1];
             console.log(`[intent-classifier] Antecedente intra-mensaje: pronombre → "${last[1]}" (de la misma frase, no contexto previo)`);
           }
+        } else if (this.userContextService) {
+          // "nacieron 12 terneros en Laguna, ... ahí mismo": sin la palabra
+          // "lote", el antecedente intra-mensaje no se detectaba y el pronombre
+          // caía al contexto del turno anterior (test fuerte Ago 2026). Un
+          // "en <Nombre>" pelado solo cuenta si es un LOTE REAL del usuario
+          // (caché 60s — sin falsos positivos tipo "en agosto").
+          try {
+            const bare = [...before.matchAll(/\ben\s+(?:el\s+|la\s+)?([A-Za-zÁÉÍÓÚÑñáéíóú][\wáéíóúñ-]{2,20})/gi)];
+            if (bare.length > 0) {
+              const ctx = await this.userContextService.loadContext(userId);
+              const plotSet = new Set((ctx.plotNames || []).map((n: string) => n.toLowerCase()));
+              for (let bi = bare.length - 1; bi >= 0; bi--) {
+                const cand = bare[bi][1];
+                if (plotSet.has(cand.toLowerCase())) {
+                  effectiveLastPlot = cand;
+                  console.log(`[intent-classifier] Antecedente intra-mensaje (lote real sin keyword): pronombre → "${cand}"`);
+                  break;
+                }
+              }
+            }
+          } catch { /* best-effort */ }
         }
       }
 

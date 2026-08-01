@@ -167,7 +167,7 @@ export class FinancialRepository {
     return row as IncomeRow;
   }
 
-  async updateExpenseFields(expenseId: number, fields: { amount?: number | null; category?: string | null; expenseDate?: string | null; fieldId?: number | null; plotId?: number | null }): Promise<void> {
+  async updateExpenseFields(expenseId: number, fields: { amount?: number | null; category?: string | null; expenseDate?: string | null; fieldId?: number | null; plotId?: number | null; currency?: string | null }): Promise<void> {
     await _updateExpenseFields(expenseId, fields);
   }
 
