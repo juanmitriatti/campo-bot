@@ -1704,9 +1704,28 @@ export async function handleInteractiveReply(
       // valor "field level" no matchea ningún lote y el flow re-pregunta).
     }
     // flow_cat_, flow_field_, flow_activity_ → feed into flow
+    // Cada prefijo lleva intención de slot: solo puede responder el paso que le
+    // corresponde. Un duplicado que llega un paso tarde (doble tap, retry de
+    // Telegram, overlap de contenedores en deploy — el dedup in-process no
+    // cubre ninguno con ids distintos) NO debe caer en otro slot: en prod un
+    // flow_plot_norte duplicado se consumió como Producto="norte" (Ago 2026).
+    const FLOW_TAP_EXPECTED_FIELDS: Record<string, string[]> = {
+      flow_activity_: ['activityType'],
+      flow_cat_: ['category'],
+      flow_field_: ['fieldName', 'plotName'],
+      flow_plot_: ['plotName'],
+    };
     const prefixes = ['flow_cat_', 'flow_field_', 'flow_plot_', 'flow_activity_'] as const;
     for (const prefix of prefixes) {
       if (callbackId.startsWith(prefix)) {
+        if (flowCtx.state !== 'idle') {
+          const curField = conversationEngine.getCurrentStepField(flowCtx);
+          const expected = FLOW_TAP_EXPECTED_FIELDS[prefix];
+          if (curField && expected && !expected.includes(curField)) {
+            console.log(`[INTERCEPT] flow tap '${callbackId}' ignorado: el paso actual es '${curField}' y no acepta ${prefix} (tap duplicado o botón viejo)`);
+            return [];
+          }
+        }
         let value = callbackId.replace(prefix, '');
         if (prefix === 'flow_plot_') {
           // Handle field__plot format for duplicate plot names across fields

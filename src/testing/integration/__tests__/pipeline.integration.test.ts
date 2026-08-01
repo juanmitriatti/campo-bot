@@ -1549,6 +1549,37 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('flow taps fuera de paso — duplicado no contamina otro slot (Ago 2026, bug prod "Producto: norte")', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('flow-dup-tap');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [(f[0] as { id: number }).id]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('un tap flow_plot_* duplicado (retry/doble tap/deploy overlap) se ignora en el paso producto', async () => {
+      await h.tap('flow_new_activity');
+      await h.tap('flow_activity_spraying');
+      const afterPlot = h.allText(await h.tap('flow_plot_norte'));
+      expect(afterPlot.toLowerCase()).toContain('producto'); // avanzó al paso producto
+
+      // Entrega duplicada del MISMO tap — en prod cayó como Producto: "norte"
+      const dupItems = await h.tap('flow_plot_norte');
+      expect(h.allText(dupItems)).not.toContain('Cuánto'); // no avanzó al paso cantidad
+
+      // Seguimos parados en producto: un Saltar nos lleva a cantidad, no a la confirmación
+      const afterSkip = h.allText(await h.tap('flow_skip'));
+      expect(afterSkip).toContain('Cuánto');
+
+      const confirm = h.allText(await h.tap('flow_skip'));
+      expect(confirm).toContain('Confirmar actividad');
+      expect(confirm).not.toMatch(/Producto:.*norte/i); // el slot jamás se contaminó
+      await h.tap('flow_cancel');
+    });
+  });
+
   describe('onboarding — bienvenida con el lote REAL del usuario (Jul 2026)', () => {
     let h: PipelineHarness;
 
