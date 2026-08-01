@@ -858,9 +858,12 @@ async function processTextMessageInner(
     // like a financial intent ("550 USD por tonelada"). Don't escape — let
     // the pending-action processor merge the slots. Without this guard the
     // pending gets silently cleared and the partial saves as $0.
+    // Generalizado (QA agentes Ago 2026): CUALQUIER pending esperando un slot
+    // numérico (count/quantity/hectares/amount/…) — no solo los financieros.
+    // "las 95" contestando "¿A cuántos animales?" escapaba por
+    // detectsFinancialIntent al agente, que inventaba el conteo.
     const expectsFinancialSlot = pendingAct.missing
-      && (pendingAct.command === 'log_income' || pendingAct.command === 'log_expense' || pendingAct.command === 'set_livestock_price')
-      && pendingAct.missing.some(s => s === 'amount' || s === 'quantity' || s === 'unit_price' || s === 'unit');
+      && pendingAct.missing.some(s => s === 'amount' || s === 'quantity' || s === 'unit_price' || s === 'unit' || s === 'count' || s === 'hectares');
     // A NEW action with its own verb or a query escapes even a financial-slot
     // pending — only a BARE answer like "800 USD" should fill the slot.
     // When waiting for a financial slot, the answer is EXPECTED to be

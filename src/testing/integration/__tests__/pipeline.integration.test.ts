@@ -1549,6 +1549,36 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('respuesta numérica a pending de hacienda NO escapa al agente (Ago 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('lv-count-answer');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Molino') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      const pl = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Laguna') RETURNING id`, [fid]);
+      await h.q(`INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count) VALUES ($1, $2, $3, 'vaca', 120)`, [h.userId, fid, (pl[0] as { id: number }).id]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"las 95" contesta el "¿A cuántos animales?" por el pending (jamás por el agente)', async () => {
+      h.fakeAgent.enqueue([{ toolName: 'log_health_event', toolInput: { health_type: 'vacunacion', disease_or_vaccine: 'aftosa', category: 'vaca' } }]);
+      const ask = h.allText(await h.send('vacuné las vacas contra aftosa'));
+      expect(ask).toContain('cuántos animales');
+
+      // Sin nada encolado en el FakeAgent: si esto llega al agente, la
+      // respuesta trae el marcador FAKE_AGENT_SIN_RESPUESTA_PROGRAMADA.
+      const done = h.allText(await h.send('las 95'));
+      expect(done).not.toContain('FAKE_AGENT_SIN_RESPUESTA_PROGRAMADA');
+
+      const ev = await h.q(
+        `SELECT animals_affected FROM domain_events WHERE user_id=$1 AND event_type='health_event' ORDER BY id DESC LIMIT 1`,
+        [h.userId],
+      );
+      expect(Number((ev[0] as { animals_affected: number }).animals_affected)).toBe(95);
+    });
+  });
+
   describe('distributivo de hacienda end-to-end (Ago 2026, "murieron 5 en cada lote" → 1 sola baja)', () => {
     let h: PipelineHarness;
     let dSurId: number;

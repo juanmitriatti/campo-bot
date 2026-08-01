@@ -826,7 +826,13 @@ export class FinancialHandler {
 
     // Hybrid plot assignment: try to auto-assign plot
     if (!plotId) {
-      if (resolution.needPlotSelection && !bulkMode) {
+      // Categoría corporativa (arrendamiento/sueldos/…) sin señal de lote: el
+      // picker de lotes NO aplica — nivel campo directo. Este branch corría
+      // ANTES del atajo y el usuario igual veía la lista (QA agentes Ago 2026).
+      if (isFieldLevelExpense && resolution.needPlotSelection && !fieldId) {
+        fieldId = resolution.needPlotSelection.fieldId;
+      }
+      if (resolution.needPlotSelection && !bulkMode && !(isFieldLevelExpense && fieldId)) {
         // 2+ plots in field → redirect to expense flow at plot step
         const currency = data.currency === 'USD' ? 'USD' : 'ARS';
         // When category was dropped by the crop-name guard (May 28), avoid
