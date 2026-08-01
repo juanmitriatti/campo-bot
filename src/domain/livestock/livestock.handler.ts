@@ -450,11 +450,34 @@ export class LivestockHandler {
   // ADD
   // ========================
 
+  /**
+   * Cuantificador distributivo perdido: "murieron 10 vacas EN CADA LOTE" con
+   * UNA sola tool emitida registra la mitad en silencio (bug prod Ago 2026:
+   * quedaron 40 en vez de 30). No podemos expandir determinísticamente (no
+   * sabemos si el agente ya emitió las otras), pero SÍ avisar (invariante 1).
+   * En compound (_bulkMode) el agente emitió N tools → sin advisory.
+   */
+  private distributiveAdvisory(cmd: ParsedCommand, appliedLoc: string): string {
+    if (cmd._bulkMode) return '';
+    const t = (cmd.originalText as string) || '';
+    if (!/\ben\s+cada\s+(lote|potrero|corral|campo)s?\b/i.test(t)) return '';
+    console.log(`[INTERCEPT] LIVESTOCK DISTRIBUTIVE-SUSPECT: "en cada lote" con UNA sola operación (aplicada en ${appliedLoc}) — advisory al usuario`);
+    return `\n\n⚠️ _Ojo: esto lo registré SOLO en *${appliedLoc}*. Si era en cada lote, decime los demás: ej. "murieron 10 vacas en Norte"._`;
+  }
+
   private async addLivestock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const category = cmd.category as string;
     const count = cmd.count as number;
-    if (!category) return { messages: ['Necesito saber la categoría. Ej: "agregué 20 vacas al lote A1".'] };
-    if (!count || count <= 0) return { messages: ['Necesito la cantidad. Ej: "agregué 20 vacas al lote A1".'] };
+    if (!category) return { messages: ['Necesito saber la categoría. Ej: "agregué 20 vacas".'] };
+    if (!count || count <= 0) {
+      // Pending machine-readable (invariante 5): "compré vacas" → preguntar la
+      // cantidad y consumir la respuesta ("20") sin round-trip al agente.
+      const askAdd = `🐄 ¿Cuántas cabezas${category ? ` de ${category.toLowerCase()}` : ''}?`;
+      return {
+        messages: [askAdd],
+        sideEffects: { setPendingActivity: { command: 'add_livestock', data: { ...cmd }, missing: ['count'], askPrompt: askAdd } },
+      };
+    }
     // Hardening: reject absurd counts + out-of-range movement dates.
     {
       const { validateLivestockCount, validateDate } = await import('../../utils/value-validator.js');
@@ -604,8 +627,14 @@ export class LivestockHandler {
   private async removeLivestock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const category = cmd.category as string;
     const count = cmd.count as number;
-    if (!category) return { messages: ['Necesito la categoría. Ej: "vendí 5 vacas del lote A1".'] };
-    if (!count || count <= 0) return { messages: ['Necesito la cantidad. Ej: "vendí 5 vacas del lote A1".'] };
+    if (!category) return { messages: ['Necesito la categoría. Ej: "vendí 5 vacas".'] };
+    if (!count || count <= 0) {
+      const askRemove = `🐄 ¿Cuántas cabezas${category ? ` de ${category.toLowerCase()}` : ''}?`;
+      return {
+        messages: [askRemove],
+        sideEffects: { setPendingActivity: { command: 'remove_livestock', data: { ...cmd }, missing: ['count'], askPrompt: askRemove } },
+      };
+    }
 
     let group, financial, movement;
     try {
@@ -655,6 +684,7 @@ export class LivestockHandler {
       `  📊 Quedan: *${group.count}*\n` +
       `  📍 ${fmtLoc(group)}` +
       financialLine +
+      this.distributiveAdvisory(cmd, fmtLoc(group)) +
       askPriceLine;
 
     const buttons = buildPostActionButtons('remove', {
@@ -784,8 +814,14 @@ export class LivestockHandler {
   private async recordDeath(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const category = cmd.category as string;
     const count = cmd.count as number;
-    if (!category) return { messages: ['Necesito la categoría. Ej: "se murieron 2 terneros en el lote A1".'] };
-    if (!count || count <= 0) return { messages: ['Necesito la cantidad.'] };
+    if (!category) return { messages: ['Necesito la categoría. Ej: "se murieron 2 terneros".'] };
+    if (!count || count <= 0) {
+      const askDeath = `🐄 ¿Cuántas cabezas${category ? ` de ${category.toLowerCase()}` : ''}?`;
+      return {
+        messages: [askDeath],
+        sideEffects: { setPendingActivity: { command: 'record_livestock_death', data: { ...cmd }, missing: ['count'], askPrompt: askDeath } },
+      };
+    }
 
     const { group } = await this.service.recordDeath(userId, {
       category,
@@ -808,7 +844,8 @@ export class LivestockHandler {
         `  ➖ ${count} animales\n` +
         `  📊 Quedan: *${group.count}*\n` +
         `  📍 ${fmtLoc(group)}` +
-        (cmd.reason ? `\n  📝 ${cmd.reason}` : ''),
+        (cmd.reason ? `\n  📝 ${cmd.reason}` : '') +
+        this.distributiveAdvisory(cmd, fmtLoc(group)),
       ],
     };
   }
