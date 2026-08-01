@@ -58,6 +58,17 @@ export function isNewActionInterrupt(cmd: { command?: string } | null | undefine
   return !!cmd?.command && NEW_ACTION_WRITE_COMMANDS.has(cmd.command);
 }
 
+/**
+ * Un slot con string vacío/whitespace está VACÍO a efectos del merge. El agente
+ * a veces emite `crop: ""` en vez de omitir el param — si ese '' entra al
+ * pending.data, el merge no-overwrite lo trataba como "lleno" y NINGUNA
+ * respuesta del usuario podía llenarlo (pending envenenado de nacimiento —
+ * eval sow-crop-missing-crop, Ago 2026).
+ */
+export function isBlankSlotValue(v: unknown): boolean {
+  return v == null || (typeof v === 'string' && v.trim() === '');
+}
+
 export interface PendingProcessResult {
   /** Updated pending state (merged). null = pending fully satisfied → caller should re-route the command. */
   next: PendingActivity | null;
@@ -117,7 +128,7 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
 
   const stillEmpty = missing.filter((s) => {
     if (extracted[s as SlotName] != null) return false;
-    return slotToCmdKeys(s as SlotName).every((k) => pdata[k] == null);
+    return slotToCmdKeys(s as SlotName).every((k) => isBlankSlotValue(pdata[k]));
   });
   if (stillEmpty.length === 1) {
     const slot = stillEmpty[0] as SlotName;
@@ -180,7 +191,7 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
     // Map slot name → cmd field. Most are 1:1, a few translate.
     const targetKeys = slotToCmdKeys(key);
     for (const target of targetKeys) {
-      if (data[target] == null) data[target] = value;
+      if (isBlankSlotValue(data[target])) data[target] = value;
     }
     filledByThisTurn.push(key);
   }
@@ -206,7 +217,7 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
     if (value == null) continue;
     const targetKeys = slotToCmdKeys(slot);
     for (const target of targetKeys) {
-      if (data[target] == null || OVERWRITABLE.has(slot)) data[target] = value;
+      if (isBlankSlotValue(data[target]) || OVERWRITABLE.has(slot)) data[target] = value;
     }
   }
 

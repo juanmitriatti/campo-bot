@@ -398,6 +398,14 @@ export class AgentResponseMapper {
         console.warn(`[INTERCEPT] AI_MAPPER COERCE: ${k}=${out[k]} (number→string)`);
         out[k] = String(out[k]);
       }
+      // String vacío = "omitido" (Haiku a veces emite crop:"" en vez de omitir
+      // el param). Si ese '' entra al pending.data, el merge no-overwrite lo
+      // trata como lleno y envenena el pending desde el primer ask (eval
+      // sow-crop-missing-crop, Ago 2026).
+      if (typeof out[k] === 'string' && (out[k] as string).trim() === '') {
+        console.warn(`[INTERCEPT] AI_MAPPER COERCE: ${k}="" (vacío → omitido)`);
+        delete out[k];
+      }
     }
     // plotNames: string "A1, A2 y A3" → array; elementos numéricos → strings
     if (out.plotNames != null && !Array.isArray(out.plotNames)) {
