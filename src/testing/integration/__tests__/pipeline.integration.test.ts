@@ -1549,6 +1549,60 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('hacienda UX — pending de cantidad + advisory distributivo (Ago 2026)', () => {
+    let h: PipelineHarness;
+    let lvFieldId: number;
+    let lvSurId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('lv-ux');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Bajo') RETURNING id`, [h.userId]);
+      lvFieldId = (f[0] as { id: number }).id;
+      const s = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Sur') RETURNING id`, [lvFieldId]);
+      lvSurId = (s[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [lvFieldId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"compré vacas" sin cantidad → pending real (sin "¿Y ahora?"), y "20" lo completa', async () => {
+      h.fakeAgent.enqueue([{ toolName: 'add_livestock', toolInput: { category: 'vaca' } }]);
+      const ask = await h.send('compré vacas');
+      const askText = h.allText(ask);
+      expect(askText).toContain('Cuántas');
+      expect(askText).not.toContain('¿Y ahora?'); // el guard de open-question aplica
+      expect(askText).not.toContain('A1'); // no enseñamos lotes fantasma
+
+      // La respuesta "20" la consume el pending SIN volver al agente
+      const done = await h.send('20');
+      const doneText = h.allText(done);
+      expect(doneText).not.toContain('Cuántas'); // progresó (registró o pregunta ubicación)
+      await h.send('cancelar'); // limpiar el pending de ubicación para el próximo test
+    });
+
+    it('"murieron 10 en cada lote" con UNA sola tool → registra + advisory de que fue solo un lote', async () => {
+      await h.q(`INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count)
+                 VALUES ($1, $2, $3, 'vaca', 30)`, [h.userId, lvFieldId, lvSurId]);
+      h.fakeAgent.enqueue([{ toolName: 'record_livestock_death', toolInput: { category: 'vaca', count: 10, plot: 'Sur' } }]);
+      const text = h.allText(await h.send('se me murieron 10 vacas en cada lote (Sur y Norte)'));
+      expect(text).toContain('Baja registrada');
+      expect(text).toContain('⚠️');
+      expect(text.toLowerCase()).toContain('cada lote');
+    });
+
+    it('control: expansión correcta en compound (2 tools) → sin advisory', async () => {
+      const n = await h.q(`SELECT id FROM plots WHERE field_id=$1 AND name='Norte'`, [lvFieldId]);
+      await h.q(`INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count)
+                 VALUES ($1, $2, $3, 'vaca', 30)`, [h.userId, lvFieldId, (n[0] as { id: number }).id]);
+      h.fakeAgent.enqueue([
+        { toolName: 'record_livestock_death', toolInput: { category: 'vaca', count: 5, plot: 'Sur' } },
+        { toolName: 'record_livestock_death', toolInput: { category: 'vaca', count: 5, plot: 'Norte' } },
+      ]);
+      const text = h.allText(await h.send('se murieron 5 vacas en cada lote, Sur y Norte'));
+      expect(text).toContain('Baja registrada');
+      expect(text).not.toContain('⚠️ _Ojo');
+    });
+  });
+
   describe('edit_last_activity guards — corrección de lote no corrompe (Ago 2026, bug prod "las vacas van al norte")', () => {
     let h: PipelineHarness;
     let surId: number;
