@@ -1549,6 +1549,95 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('distributivo de hacienda end-to-end (Ago 2026, "murieron 5 en cada lote" → 1 sola baja)', () => {
+    let h: PipelineHarness;
+    let dSurId: number;
+    let dNorteId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('lv-distributive');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'San José') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      const s = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Sur') RETURNING id`, [fid]);
+      dSurId = (s[0] as { id: number }).id;
+      const n = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte') RETURNING id`, [fid]);
+      dNorteId = (n[0] as { id: number }).id;
+      await h.q(`INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count) VALUES ($1, $2, $3, 'vaca', 100)`, [h.userId, fid, dSurId]);
+      await h.q(`INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count) VALUES ($1, $2, $3, 'vaca', 20)`, [h.userId, fid, dNorteId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('agente expande a 2 tools con lotes NO literales: el validator los acepta y ambas bajas persisten', async () => {
+      // Reproduce el caso de prod: texto sin nombres de lote, agente distribuye.
+      // Antes: validator stripeaba ambos plots → tools idénticas → dedup → 1 baja.
+      h.fakeAgent.enqueue([
+        { toolName: 'record_livestock_death', toolInput: { category: 'vaca', count: 5, plot: 'Sur' } },
+        { toolName: 'record_livestock_death', toolInput: { category: 'vaca', count: 5, plot: 'Norte' } },
+      ]);
+      await h.send('se me murieron 5 vacas en cada lote');
+      const counts = await h.q(
+        `SELECT plot_id, count FROM livestock_groups WHERE user_id=$1 AND deleted_at IS NULL ORDER BY plot_id`,
+        [h.userId],
+      );
+      const byPlot = Object.fromEntries(counts.map((c) => [(c as { plot_id: number }).plot_id, (c as { count: number }).count]));
+      expect(byPlot[dSurId]).toBe(95);
+      expect(byPlot[dNorteId]).toBe(15);
+    });
+
+    it('agente emite UNA sola tool sin lote: el handler expande a todos los grupos', async () => {
+      h.fakeAgent.enqueue([{ toolName: 'record_livestock_death', toolInput: { category: 'vaca', count: 2 } }]);
+      const text = h.allText(await h.send('se murieron 2 vacas en cada lote'));
+      expect(text).toContain('Bajas registradas');
+      const counts = await h.q(
+        `SELECT plot_id, count FROM livestock_groups WHERE user_id=$1 AND deleted_at IS NULL ORDER BY plot_id`,
+        [h.userId],
+      );
+      const byPlot = Object.fromEntries(counts.map((c) => [(c as { plot_id: number }).plot_id, (c as { count: number }).count]));
+      expect(byPlot[dSurId]).toBe(93);
+      expect(byPlot[dNorteId]).toBe(13);
+    });
+  });
+
+  describe('queries de hacienda sin lote NO heredan contexto (filtro fantasma, Ago 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('lv-ghost-filter');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Celina') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      const pl = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Laguna') RETURNING id`, [fid]);
+      const lagunaId = (pl[0] as { id: number }).id;
+      const pm = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Loma') RETURNING id`, [fid]);
+      const lomaId = (pm[0] as { id: number }).id;
+      // Vacunación registrada en Laguna; contexto conversacional apuntando a Loma
+      await h.q(
+        `INSERT INTO domain_events (user_id, plot_id, event_type, event_date, product, product_type, animal_category, animals_affected)
+         VALUES ($1, $2, 'health_event', CURRENT_DATE - 5, 'aftosa', 'vacunacion', 'vaca', 120)`,
+        [h.userId, lagunaId],
+      );
+      await h.q(
+        `INSERT INTO conversation_state (user_id, last_field_id, last_plot_id, context_stack, updated_at)
+         VALUES ($1, $2, $3, $4::jsonb, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET last_field_id = $2, last_plot_id = $3, context_stack = $4::jsonb, updated_at = NOW()`,
+        [h.userId, fid, lomaId, JSON.stringify([{ field_id: fid, plot_id: lomaId, ts: 1 }])],
+      );
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"cuándo vacuné contra aftosa" sin lote encuentra el evento de OTRO lote', async () => {
+      h.fakeAgent.enqueue([{ toolName: 'query_health_events', toolInput: {} }]);
+      const text = h.allText(await h.send('cuándo vacuné contra aftosa'));
+      expect(text).toContain('aftosa');
+      expect(text).not.toContain('No hay eventos sanitarios');
+    });
+
+    it('con lote nombrado, el filtro SÍ aplica', async () => {
+      h.fakeAgent.enqueue([{ toolName: 'query_health_events', toolInput: { plot: 'Loma' } }]);
+      const text = h.allText(await h.send('historial sanitario del lote Loma'));
+      expect(text).toContain('No hay eventos sanitarios'); // Loma no tiene eventos
+    });
+  });
+
   describe('hacienda UX — pending de cantidad + advisory distributivo (Ago 2026)', () => {
     let h: PipelineHarness;
     let lvFieldId: number;
