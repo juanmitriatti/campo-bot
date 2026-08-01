@@ -1156,6 +1156,37 @@ export class AgentResponseMapper {
         return name.length > 1 && !ARTICLES_FILLERS.has(name);
       });
       if (filtered.length > 0) cmd.loads = filtered;
+
+      // Humedad contagiada: el agente copia el "al 13.5" de UN camión a los
+      // hermanos. Determinístico: si el texto menciona MENOS humedades que las
+      // cargas que la traen, conservarla solo en el camión cuyo nombre precede
+      // más cerca a cada mención; el resto se limpia con log (invariante 1).
+      if (Array.isArray(cmd.loads) && (cmd.loads as Array<{ driver_name?: string; humidity_pct?: number | null }>).length > 1 && originalText) {
+        const loadsArr = cmd.loads as Array<{ driver_name?: string; humidity_pct?: number | null }>;
+        const withHum = loadsArr.filter(l => l.humidity_pct != null);
+        const mentions = [...originalText.matchAll(/(?:al?\s+)?(\d{1,2}(?:[.,]\d)?)\s*(?:%|\bde\s+humedad\b|\bhum\b)/gi)];
+        if (withHum.length > mentions.length && mentions.length >= 1) {
+          const lower = originalText.toLowerCase();
+          const keep = new Set<number>();
+          for (const m of mentions) {
+            const pos = m.index ?? 0;
+            let best = -1; let bestIdx = -1;
+            loadsArr.forEach((l, i) => {
+              const dn = (l.driver_name || '').toLowerCase();
+              if (!dn) return;
+              const dp = lower.lastIndexOf(dn, pos);
+              if (dp >= 0 && dp > best) { best = dp; bestIdx = i; }
+            });
+            if (bestIdx >= 0) keep.add(bestIdx);
+          }
+          loadsArr.forEach((l, i) => {
+            if (l.humidity_pct != null && !keep.has(i)) {
+              console.warn(`[INTERCEPT] AI_MAPPER humedad contagiada limpiada: ${l.driver_name} (${l.humidity_pct}%) — el texto solo la menciona para otro camión`);
+              l.humidity_pct = null;
+            }
+          });
+        }
+      }
     }
     if (input.driver_name != null) cmd.driverName = input.driver_name;
     if (input.destinatario != null) cmd.destinatario = input.destinatario;

@@ -1563,9 +1563,17 @@ export class FinancialHandler {
         }
 
         const { inheritAmountScale: inheritScaleExp } = await import('../../middleware/conversation-engine.js');
-        const scaledNewAmount = newAmount != null ? inheritScaleExp(newAmount, Number(last.amount) || null, cmd.originalText as string | null, (last.currency as string | null) ?? null) : newAmount;
+        // Corrección de MONEDA ("en realidad era en dólares" / "son 450 USD"):
+        // antes era un no-op que confirmaba éxito sin tocar nada (test fuerte
+        // Ago 2026). Si el texto trae un término de moneda distinto al del
+        // registro, se corrige la moneda.
+        const { detectCurrencyTerm } = await import('../../utils/lexicon.js');
+        const correctedCurrency = detectCurrencyTerm((cmd.originalText as string) || '');
+        const newCurrency = correctedCurrency && correctedCurrency !== last.currency ? correctedCurrency : null;
+        const scaledNewAmount = newAmount != null ? inheritScaleExp(newAmount, Number(last.amount) || null, cmd.originalText as string | null, newCurrency ?? ((last.currency as string | null) ?? null)) : newAmount;
         await this.service.editLastExpenseFull(userId, {
           newAmount: scaledNewAmount,
+          newCurrency,
           newCategory,
           newDate,
           newFieldId,
@@ -1575,7 +1583,9 @@ export class FinancialHandler {
         // Build a focused message showing what changed
         const { formatMoney } = await import('../../utils/format-money.js');
         const parts: string[] = [];
-        if (scaledNewAmount != null) parts.push(`💵 ${formatMoney(Number(last.amount), last.currency || 'ARS')} → ${formatMoney(scaledNewAmount, last.currency || 'ARS')}`);
+        const finalCurrency = newCurrency || last.currency || 'ARS';
+        if (scaledNewAmount != null) parts.push(`💵 ${formatMoney(Number(last.amount), last.currency || 'ARS')} → ${formatMoney(scaledNewAmount, finalCurrency)}`);
+        else if (newCurrency) parts.push(`💱 Moneda: ${last.currency || 'ARS'} → *${newCurrency}*`);
         if (newCategory) parts.push(`🏷️ *${last.category}* → *${newCategory}*`);
         if (newDate) parts.push(`📅 → ${newDate}`);
         if (newPlotLabel) {
