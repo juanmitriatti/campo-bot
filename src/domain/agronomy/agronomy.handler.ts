@@ -483,7 +483,7 @@ export class AgronomyHandler {
 
       const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
       let msg = `🌾 *Cosecha registrada*\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
-      msg += `\n\n_La campaña sigue abierta — decime "cerrar campaña" cuando quieras cerrarla._`;
+      msg += `\n\n🏁 _La campaña sigue abierta por si te falta cargar algo (cargas, gastos). Cuando esté todo, decime *"cerrar campaña"*: se archiva el ciclo con sus números (rinde, gastos, margen) y el lote queda listo para la próxima siembra._`;
       return { messages: [msg] };
     }
 
@@ -2496,7 +2496,7 @@ export class AgronomyHandler {
             const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
             loadsMsg += `\n📅 Campaña ${label}`;
           }
-          loadsMsg += `\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime "cerrar campaña".`;
+          loadsMsg += `\n\n🏁 _La campaña sigue abierta por si te falta cargar algo (cargas, gastos). Cuando esté todo, decime *"cerrar campaña"*: se archiva el ciclo con sus números (rinde, gastos, margen) y el lote queda listo para la próxima siembra._`;
           return { messages: [loadsMsg] };
         }
 
@@ -2527,7 +2527,7 @@ export class AgronomyHandler {
           // Non-critical: swallow errors so the main harvest message still goes through
         }
 
-        harvestMsg += `\n\nLa campaña sigue abierta. Cuando quieras cerrarla, decime "cerrar campaña".`;
+        harvestMsg += `\n\n🏁 _La campaña sigue abierta por si te falta cargar algo (cargas, gastos). Cuando esté todo, decime *"cerrar campaña"*: se archiva el ciclo con sus números (rinde, gastos, margen) y el lote queda listo para la próxima siembra._`;
         const messages = [harvestMsg];
 
         // If quantity provided, suggest loading grain to stock/silo. Same
@@ -2768,7 +2768,7 @@ export class AgronomyHandler {
             messages: [],
             interactive: {
               type: 'buttons' as const,
-              body: `¿Cierro la campaña de *${cap(active.crop)}* en *${plotLabel}*?`,
+              body: `¿Cierro la campaña de *${cap(active.crop)}* en *${plotLabel}*?\n\n_Cerrarla archiva el ciclo con sus números (rinde, gastos, margen — los ves con "estadísticas de campaña") y deja el lote libre para la próxima siembra. Si te falta cargar algo, mantenela abierta._`,
               buttons: [
                 { id: 'campaign_close_yes_ctx', title: 'Sí, cerrar' },
                 { id: 'campaign_close_no_ctx', title: 'No' },
