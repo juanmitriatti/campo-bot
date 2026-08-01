@@ -1549,6 +1549,29 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('onboarding — bienvenida con el lote REAL del usuario (Jul 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('onboarding-vars');
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('el mensaje de bienvenida interpola {{lote}} con el primer lote recién creado', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'add_field', toolInput: { fieldName: 'La Prueba' } },
+        { toolName: 'add_plots_batch', toolInput: { plotNames: ['El Quemado', 'La Isleta'], hectares: [40, 60], field: 'La Prueba' } },
+      ]);
+      const items = await h.send('tengo el campo La Prueba con los lotes El Quemado de 40 y La Isleta de 60');
+      const text = h.allText(items);
+
+      // El default trae ejemplos con {{lote}} → deben salir con el nombre real,
+      // y no debe quedar ningún placeholder sin interpolar.
+      expect(text).toContain('Sembré soja en El Quemado');
+      expect(text).not.toContain('{{');
+    });
+  });
+
   describe('agronomy_question — conocimiento general read-only (Jul 2026)', () => {
     let h: PipelineHarness;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

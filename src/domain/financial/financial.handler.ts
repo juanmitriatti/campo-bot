@@ -2416,7 +2416,7 @@ export class FinancialHandler {
               }
               if (plotsBefore.length === 0) {
                 const welcomeMsg = await getSetting('ONBOARDING_FIRST_PLOT_MESSAGE');
-                if (welcomeMsg) messages.push(interpolate(welcomeMsg, { nombre: user.name || '' }).replace(/\n{3,}/g, '\n\n').trim());
+                if (welcomeMsg) messages.push(interpolate(welcomeMsg, { nombre: user.name || '', campo: fields[0].name, lote: plot.name }).replace(/\n{3,}/g, '\n\n').trim());
               }
               return { messages, suggestionKey: 'plot_created', sideEffects: loteSideEffects };
             }
@@ -2983,7 +2983,7 @@ export class FinancialHandler {
         const batchMessages = [msg];
         if (created.length > 0 && plotsBeforeBatch.length === 0) {
           const welcomeMsg = await getSetting('ONBOARDING_FIRST_PLOT_MESSAGE');
-          if (welcomeMsg) batchMessages.push(interpolate(welcomeMsg, { nombre: user.name || '' }).replace(/\n{3,}/g, '\n\n').trim());
+          if (welcomeMsg) batchMessages.push(interpolate(welcomeMsg, { nombre: user.name || '', campo: targetField.name, lote: created[0].name }).replace(/\n{3,}/g, '\n\n').trim());
         }
         const batchSideEffects: HandlerResponse['sideEffects'] = {};
         const needArea = created.filter(c => c.area == null);
@@ -3097,7 +3097,7 @@ export class FinancialHandler {
         }
         if (plotsBeforeAdd.length === 0) {
           const welcomeMsg = await getSetting('ONBOARDING_FIRST_PLOT_MESSAGE');
-          if (welcomeMsg) addPlotMessages.push(interpolate(welcomeMsg, { nombre: user.name || '' }).replace(/\n{3,}/g, '\n\n').trim());
+          if (welcomeMsg) addPlotMessages.push(interpolate(welcomeMsg, { nombre: user.name || '', campo: field.name, lote: plot.name }).replace(/\n{3,}/g, '\n\n').trim());
         }
         return { messages: addPlotMessages, suggestionKey: 'plot_created', sideEffects: addPlotSideEffects };
       }
