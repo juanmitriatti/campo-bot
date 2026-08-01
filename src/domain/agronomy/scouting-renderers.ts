@@ -1,3 +1,4 @@
+import { formatDayShortAR } from '../../utils/date.js';
 // --- Scouting query renderers ---
 //
 // Same shape as financial.handler.ts renderers. Receives raw rows + ctx,
@@ -47,8 +48,7 @@ export interface ScoutingRenderCtx {
 }
 
 function fmtDay(d: string | Date): string {
-  const date = new Date(d);
-  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' });
+  return formatDayShortAR(d);
 }
 
 function num(v: string | number | null | undefined): number | null {

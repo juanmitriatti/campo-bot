@@ -1,3 +1,4 @@
+import { formatDayShortAR } from '../../utils/date.js';
 import { FinancialService } from './financial.service.js';
 import { formatPlotLocation } from '../../utils/format-location.js';
 import { CategoryRepository } from './category.repository.js';
@@ -1539,8 +1540,10 @@ export class FinancialHandler {
           newCategory = detectarCategoria(newCategoryRaw) || newCategoryRaw;
         }
 
+        const { inheritAmountScale: inheritScaleExp } = await import('../../middleware/conversation-engine.js');
+        const scaledNewAmount = newAmount != null ? inheritScaleExp(newAmount, Number(last.amount) || null, cmd.originalText as string | null) : newAmount;
         await this.service.editLastExpenseFull(userId, {
-          newAmount,
+          newAmount: scaledNewAmount,
           newCategory,
           newDate,
           newFieldId,
@@ -1550,7 +1553,7 @@ export class FinancialHandler {
         // Build a focused message showing what changed
         const { formatMoney } = await import('../../utils/format-money.js');
         const parts: string[] = [];
-        if (newAmount != null) parts.push(`💵 ${formatMoney(Number(last.amount), last.currency || 'ARS')} → ${formatMoney(newAmount, last.currency || 'ARS')}`);
+        if (scaledNewAmount != null) parts.push(`💵 ${formatMoney(Number(last.amount), last.currency || 'ARS')} → ${formatMoney(scaledNewAmount, last.currency || 'ARS')}`);
         if (newCategory) parts.push(`🏷️ *${last.category}* → *${newCategory}*`);
         if (newDate) parts.push(`📅 → ${newDate}`);
         if (newPlotLabel) {
@@ -1687,11 +1690,19 @@ export class FinancialHandler {
           const { detectarCategoriaIngreso } = await import('../../utils/parser.js');
           newCategory = detectarCategoriaIngreso(newCategoryRaw) || newCategoryRaw;
         }
-        const edited = await this.service.editLastIncomeFull(userId, { newAmount, newCategory, newDate, newFieldId, newPlotId }, incomeCategoryFilter);
+        const { inheritAmountScale: inheritScaleInc } = await import('../../middleware/conversation-engine.js');
+        let scaledIncAmount = newAmount;
+        if (newAmount != null) {
+          try {
+            const prevInc = await this.service.findLastIncomeByCategory(userId, incomeCategoryFilter);
+            scaledIncAmount = inheritScaleInc(newAmount, prevInc ? Number(prevInc.amount) || null : null, cmd.originalText as string | null);
+          } catch { /* best-effort */ }
+        }
+        const edited = await this.service.editLastIncomeFull(userId, { newAmount: scaledIncAmount, newCategory, newDate, newFieldId, newPlotId }, incomeCategoryFilter);
         if (!edited) return { messages: ['No hay ingresos para editar.'] };
         const { formatMoney } = await import('../../utils/format-money.js');
         const parts: string[] = [];
-        if (newAmount != null) parts.push(`💵 ${formatMoney(edited.oldAmount, edited.currency)} → ${formatMoney(newAmount, edited.currency)}`);
+        if (scaledIncAmount != null) parts.push(`💵 ${formatMoney(edited.oldAmount, edited.currency)} → ${formatMoney(scaledIncAmount, edited.currency)}`);
         if (newCategory) parts.push(`🏷️ → *${newCategory}*`);
         if (newDate) parts.push(`📅 → ${newDate}`);
         return { messages: [`✏️ Ingreso corregido (${edited.category}):\n${parts.join('\n')}`] };
@@ -2014,10 +2025,7 @@ export class FinancialHandler {
           ? `USD ${n.toLocaleString('es-AR')}`
           : `$${n.toLocaleString('es-AR')}`;
 
-        const fmtDay = (d: Date | string) => {
-          const date = new Date(d);
-          return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' });
-        };
+        const fmtDay = (d: Date | string) => formatDayShortAR(d);
 
         if (detailMode) {
           // Fetch individual movements
@@ -3678,8 +3686,7 @@ function fmtMoney(n: number, cur: string): string {
 }
 
 function fmtDay(d: string | Date): string {
-  const date = new Date(d);
-  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' });
+  return formatDayShortAR(d);
 }
 
 function renderMovementLine(r: RawRow): string {

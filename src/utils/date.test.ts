@@ -25,3 +25,11 @@ describe('formatDateAR — DATE columns (off-by-one guard)', () => {
     expect(formatDateShortAR(new Date('2026-06-12T00:00:00.000Z'))).toMatch(/^12\/0?6$/);
   });
 });
+
+describe('formatDayShortAR — columna DATE sin corrimiento (Ago 2026)', () => {
+  it('medianoche UTC (shape de node-postgres para DATE) no retrocede un día', async () => {
+    const { formatDayShortAR } = await import('./date.js');
+    expect(formatDayShortAR(new Date('2026-08-01T00:00:00Z'))).toBe('01/08/26');
+    expect(formatDayShortAR('2026-08-01')).toBe('01/08/26');
+  });
+});

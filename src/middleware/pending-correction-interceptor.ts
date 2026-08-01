@@ -1,4 +1,4 @@
-import { extractCategoryCorrection, extractAmountCorrection } from './conversation-engine.js';
+import { extractCategoryCorrection, extractAmountCorrection, inheritAmountScale } from './conversation-engine.js';
 import { detectarCategoria, detectarCategoriaIngreso } from '../utils/parser.js';
 import { formatMoney } from '../utils/format-money.js';
 import { detectCurrencyTerm, COPULA_ALT, CORRECTION_ALT, normLex } from '../utils/lexicon.js';
@@ -26,7 +26,11 @@ export function tryApplyPendingCorrection(
     return { applied: false };
   }
   const correctedCat = extractCategoryCorrection(text);
-  const correctedAmt = extractAmountCorrection(text);
+  let correctedAmt = extractAmountCorrection(text);
+  if (correctedAmt != null) {
+    const prevAmt = Number(((pending.data ?? {}) as Record<string, unknown>).amount) || null;
+    correctedAmt = inheritAmountScale(correctedAmt, prevAmt, text);
+  }
   // Currency correction ("no, eran en dólares" / "perdón, eran verdes"). Without
   // this, the message fell through to the agent which emitted a NEW income that
   // replaced the pending → the old ARS pending got auto-committed as a duplicate

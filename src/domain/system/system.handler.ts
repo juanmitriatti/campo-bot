@@ -431,10 +431,18 @@ export class SystemHandler {
           console.log(`[INTERCEPT] reminder relative-time override: agent=${cmd.due_time} → server=${relative.time} (${relative.dueDate})`);
         }
 
+        // Override server-side de la FECHA cuando el texto trae una frase
+        // resoluble ("el sábado", "mañana", "en 3 días"): el agente aterriza
+        // los weekdays corridos (+1) — mismo vicio que relative-dates en el
+        // path pasado, misma cura (QA agentes Ago 2026: siendo sábado, "el
+        // sábado tengo que fumigar" agendó para el domingo).
+        const serverDate = resolveFutureDate(cmd.originalText as string | null) || resolveFutureDate(desc);
+        if (serverDate && cmd.due_date && cmd.due_date !== serverDate) {
+          console.log(`[INTERCEPT] reminder date override: agent=${cmd.due_date} → server=${serverDate}`);
+        }
         const dueDate = relative?.dueDate
-          || (cmd.due_date as string | null)
-          || resolveFutureDate(cmd.originalText as string | null)
-          || resolveFutureDate(desc);
+          || serverDate
+          || (cmd.due_date as string | null);
         if (!dueDate) {
           return { messages: [`¿Para cuándo te lo recuerdo? Decime la frase completa con la fecha, ej: *"acordame el viernes a las 9 de ${desc}"*.`] };
         }
