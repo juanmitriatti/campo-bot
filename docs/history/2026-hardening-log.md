@@ -93,6 +93,12 @@ Había **8 implementaciones divergentes** de normalización de nombres. Consecue
 
 ---
 
+## Corrección de lote tras hacienda — "deberían ir al norte" movió una siembra (Ago 2026)
+
+Test desde cero del usuario real: cargó 30 vacas ("Tengo 30 vacas" → adjust_livestock, al lote Sur por contexto) y corrigió: "En realidad, deberían ir al lote norte". El agente mapeó la corrección a `edit_last_activity(new_plot)` — la última ACTIVIDAD agrícola era la siembra de maíz de una campaña YA CERRADA en Sur. El handler la movió a Norte y `syncPlotCropFromEdit` arrastró la campaña cerrada entera; la cosecha quedó en Sur. Historial inconsistente en 2 tablas y las vacas nunca se movieron.
+
+Fix en tres capas: (1) guard determinístico en el handler — corrección de SOLO ubicación sin nombrar actividad + hacienda más reciente que la actividad → redirige a "pasá las vacas al lote X" con log `[INTERCEPT]`, no edita; (2) guard de campaña cerrada — cambio de lote sobre actividad con `plot_crop_id` de campaña cerrada se bloquea con explicación (mover historial archivado = corrupción); (3) regla de prompt (CORRECCIÓN DE UBICACIÓN TRAS HACIENDA → transfer_livestock). El control de regresión verifica que la corrección legítima (usuario nombra "la siembra", campaña activa) sigue moviendo campaña+evento coherentemente. Datos del usuario reparados a mano. Lección: `[acciones ejecutadas]` en el historial no alcanzó para que Haiku eligiera bien — otra confirmación de que las reglas de intención van respaldadas por guard server-side.
+
 ## Eval y QA
 
 ### Eval degradado (Jul 26)
