@@ -1,7 +1,7 @@
 import { extractCategoryCorrection, extractAmountCorrection, inheritAmountScale } from './conversation-engine.js';
 import { detectarCategoria, detectarCategoriaIngreso } from '../utils/parser.js';
 import { formatMoney } from '../utils/format-money.js';
-import { detectCurrencyTerm, COPULA_ALT, CORRECTION_ALT, normLex } from '../utils/lexicon.js';
+import { detectCurrencyTerm, COPULA_ALT, CORRECTION_ALT, normLex, stripAnswerPrefix } from '../utils/lexicon.js';
 
 export interface PendingCorrectionResult {
   applied: boolean;
@@ -40,7 +40,21 @@ export function tryApplyPendingCorrection(
   if (new RegExp(`\\b(?:${COPULA_ALT}|${CORRECTION_ALT}|en)\\b`, 'i').test(normLex(text))) {
     correctedCurrency = detectCurrencyTerm(text);
   }
-  if (!correctedCat && !correctedAmt && !correctedCurrency) return { applied: false };
+  // Corrección de LOTE mid-confirmación ("y era en el Oeste"): sin esto caía
+  // al agente como edit_last_* y editaba un registro YA GUARDADO ajeno,
+  // descartando el pendiente en silencio (test de fuego Ago 2026).
+  let correctedPlot: string | null = null;
+  {
+    const pm = text.match(/^(?:y\s+|no,?\s+)?(?:en\s+realidad\s+)?(?:era|es|va|iba)\s+en\s+(?:el\s+|la\s+)?(?:lote\s+)?([A-Za-zÁÉÍÓÚÑñáéíóú][\wÁÉÍÓÚÑñáéíóú\s-]{1,25})\s*$/i);
+    if (pm) {
+      const cand = stripAnswerPrefix(pm[1]).trim();
+      // No confundir con corrección de categoría ("era en sueldos") — esa ya
+      // se capturó arriba; solo tomamos lote si NO matcheó categoría.
+      if (cand && !correctedCat) correctedPlot = cand;
+    }
+  }
+
+  if (!correctedCat && !correctedAmt && !correctedCurrency && !correctedPlot) return { applied: false };
 
   const data = (pending.data ?? {}) as Record<string, unknown>;
   const updated: Record<string, unknown> = { ...pending, data: { ...data, timestamp: Date.now() } };
@@ -55,11 +69,17 @@ export function tryApplyPendingCorrection(
   }
   if (correctedAmt) updatedData.amount = correctedAmt;
   if (correctedCurrency) updatedData.currency = correctedCurrency;
+  if (correctedPlot) {
+    updatedData.plotName = correctedPlot;
+    (updated as Record<string, unknown>).plotName = correctedPlot;
+    console.log(`[INTERCEPT] pending-correction: lote → "${correctedPlot}" (patch in-place, sin tocar registros guardados)`);
+  }
 
   const verb = pending.type === 'expense' ? 'gasto' : 'ingreso';
   const emoji = pending.type === 'expense' ? '💸' : '💰';
-  const loc = pending.plotName
-    ? `Lote ${pending.plotName} (${pending.fieldName})`
+  const effPlot = (correctedPlot || (pending.plotName as string | null));
+  const loc = effPlot
+    ? `Lote ${effPlot}${pending.fieldName ? ` (${pending.fieldName})` : ''}`
     : (pending.fieldName as string) || '—';
   const body = `${emoji} ¿Confirmo ${verb}?\n\nCategoría: *${updatedData.category}*\nMonto: *${formatMoney(updatedData.amount as number, updatedData.currency as string)}*\nUbicación: ${loc}`;
   const buttons = [

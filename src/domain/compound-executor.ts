@@ -688,6 +688,14 @@ function consolidateLivestockMessages(
   );
   if (livestockSteps.length < 2 || livestockSteps.length !== actionable.length) return messages;
   if (messages.length < 2) return messages;
+  // La card consolidada se fabrica desde los INTENTS — si algún paso FALLÓ,
+  // consolidarla inventa un éxito que no ocurrió ("➖ 2 Vaca" sin baja real,
+  // P0 del test de fuego Ago 2026). Con cualquier marca de error, se muestran
+  // los mensajes reales (cards + error) sin maquillar.
+  if (messages.some(m => /❌|no hay |no encontré|no pude/i.test(m))) {
+    console.log('[INTERCEPT] compound: consolidación de hacienda salteada — un paso falló, se muestran los mensajes reales');
+    return messages;
+  }
 
   // Extract per-step info from the ParseResults
   interface StepInfo { category: string; count: number; plotName: string; fieldName: string; command: string }

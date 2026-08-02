@@ -562,7 +562,7 @@ export class LivestockHandler {
     // la misma categoría en OTRA ubicación: casi seguro es un MOVIMIENTO, no
     // un alta — el alta duplicaba el inventario en silencio (95→105, barrido
     // de agentes Ago 2026). Preguntamos con botones (nunca texto suelto).
-    const moveVerb = /\b(?:met[íi]|encerr[ée]|pas[ée]|mand[ée]|llev[ée])\b/i.test((cmd.originalText as string) || '');
+    const moveVerb = /\b(?:met[íi]|encerr[ée]|pas[ée]|mand[ée]|llev[ée])(?=\s|$|[.,;:!?])/i.test((cmd.originalText as string) || '');
     const hasTarget = !!(cmd.corralName || cmd.plotName);
     const skipOffer = !!(cmd as Record<string, unknown>).__skipMoveOffer || cmd._bulkMode
       || (cmd as Record<string, unknown>).__resolvedPlotId != null || (cmd as Record<string, unknown>).__resolvedCorralId != null;

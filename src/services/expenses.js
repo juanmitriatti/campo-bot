@@ -598,7 +598,10 @@ export async function setBudget(userId, category, monthlyLimit) {
 
 export async function getBudget(userId, category) {
   const result = await pool.query(
-    `SELECT * FROM budgets WHERE user_id = $1 AND category = $2`,
+    // Case-insensitive: el presupuesto se tipea ("combustible") y el gasto
+    // llega canónico ("Combustible") — el match exacto nunca alertaba
+    // (test de fuego Ago 2026).
+    `SELECT * FROM budgets WHERE user_id = $1 AND LOWER(category) = LOWER($2)`,
     [userId, category]
   );
   return result.rows[0] || null;
