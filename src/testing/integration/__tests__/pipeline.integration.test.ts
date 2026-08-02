@@ -1549,6 +1549,67 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('"metí N al lote X" con grupo en otro lote → oferta mover-vs-alta (Ago 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('lv-meti-offer');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Cardal') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      const pc = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Chico') RETURNING id`, [fid]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Grande')`, [fid]);
+      await h.q(`INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count) VALUES ($1, $2, $3, 'ternero', 20)`, [h.userId, fid, (pc[0] as { id: number }).id]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('ofrece [Moverlos]/[Son nuevos] en vez de crear un grupo fantasma', async () => {
+      h.fakeAgent.enqueue([{ toolName: 'add_livestock', toolInput: { category: 'ternero', count: 10, plot: 'Grande' } }]);
+      const items = await h.send('metí 10 terneros en el lote Grande');
+      const text = h.allText(items);
+      const total = await h.q(`SELECT coalesce(sum(count),0) AS t FROM livestock_groups WHERE user_id=$1 AND deleted_at IS NULL`, [h.userId]);
+      expect(Number((total[0] as { t: number }).t)).toBe(20); // NO creó nada todavía
+      expect(text.toLowerCase()).toMatch(/mover|nuevos/);
+    });
+  });
+
+  describe('compound nacimiento+muerte — la baja no puede fallar en silencio (Ago 2026)', () => {
+    let h: PipelineHarness;
+    let bdChicoId: number;
+    let bdGrandeId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('lv-birth-death');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Invernada') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      const pc = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Chico') RETURNING id`, [fid]);
+      bdChicoId = (pc[0] as { id: number }).id;
+      const pg = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Grande') RETURNING id`, [fid]);
+      bdGrandeId = (pg[0] as { id: number }).id;
+      // Vacas SOLO en Grande
+      await h.q(`INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count) VALUES ($1, $2, $3, 'vaca', 100)`, [h.userId, fid, bdGrandeId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('la muerte con lote sin vacas se aplica al único grupo existente O avisa — jamás éxito fantasma', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'record_livestock_birth', toolInput: { category: 'ternero', count: 20, plot: 'Chico' } },
+        { toolName: 'record_livestock_death', toolInput: { category: 'vaca', count: 2, plot: 'Chico' } },
+      ]);
+      const text = h.allText(await h.send('nacieron 20 terneros en el Chico y se murieron 2 vacas ahí mismo'));
+      const vacas = await h.q(`SELECT count, plot_id FROM livestock_groups WHERE user_id=$1 AND category::text='vaca' AND deleted_at IS NULL`, [h.userId]);
+      const totalVacas = vacas.reduce((a, r) => a + Number((r as { count: number }).count), 0);
+      // O bajó a 98 (aplicada al único grupo) o sigue en 100 PERO el texto avisa el problema
+      if (totalVacas === 100) {
+        expect(text).toMatch(/no (?:hay|encontré|pude)/i); // aviso explícito, no silencio
+        expect(text).not.toMatch(/➖ 2/); // sin card de éxito fantasma
+      } else {
+        expect(totalVacas).toBe(98);
+      }
+      const terneros = await h.q(`SELECT count FROM livestock_groups WHERE user_id=$1 AND category::text='ternero' AND plot_id=$2`, [h.userId, bdChicoId]);
+      expect(Number((terneros[0] as { count: number }).count)).toBe(20); // el nacimiento siempre persiste
+    });
+  });
+
   describe('respuesta numérica a pending de hacienda NO escapa al agente (Ago 2026)', () => {
     let h: PipelineHarness;
 

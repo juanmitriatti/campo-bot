@@ -2818,8 +2818,8 @@ export class AgronomyHandler {
         const label = formatSeasonLabel(closed.season_year, closed.season_type);
         const startDate = new Date(closed.start_date);
         const endDate = new Date(closed.end_date!);
-        const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        return { messages: [`✅ Campaña de *${closed.crop}* en *${plotLabel}* cerrada.\n📅 Campaña ${label} — ${days} días`] };
+        const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+        return { messages: [`✅ Campaña de *${closed.crop}* en *${plotLabel}* cerrada.\n📅 Campaña ${label} — ${days} ${days === 1 ? 'día' : 'días'}`] };
       }
 
       case 'campaign_stats': {
@@ -3270,7 +3270,7 @@ export class AgronomyHandler {
 
         // Show date if not today
         if (cmd.eventDate) {
-          const dateStr = new Date(cmd.eventDate as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+          const dateStr = formatDateAR(cmd.eventDate as string);
           lines.push(`📅 ${dateStr}`);
         }
 
@@ -3656,7 +3656,7 @@ export class AgronomyHandler {
         let msg = `📋 *Actividades — ${plotLabel}*\n`;
         for (const ev of events) {
           const { emoji, label } = getActivityLabel(ev.event_type);
-          const dateStr = new Date(ev.event_date).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+          const dateStr = formatDateAR(ev.event_date as string | Date);
           let line = `\n${emoji} *${label}* — ${dateStr}`;
           if (ev.product) line += ` — ${ev.product}`;
           if (ev.quantity && ev.unit) line += ` (${ev.quantity} ${ev.unit})`;

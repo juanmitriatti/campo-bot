@@ -147,7 +147,7 @@ export function stripAnswerPrefix(text: string): string {
     // "también en Laguna" se tomaba como NOMBRE de lote y el bot ofrecía crear
     // el lote «también en Laguna» (QA agentes Ago 2026).
     .replace(/^(?:(?:s[ií]|dale|claro|obvio|ok|bueno)[,\s]+)?(?:tambi[eé]n\s+|y\s+)?/i, '')
-    .replace(/^(en\s+(?:el\s+|la\s+|los\s+|las\s+)?|el\s+|la\s+)/i, '')
+    .replace(/^(en\s+(?:el\s+|la\s+|los\s+|las\s+)?|del\s+|de\s+l[ao]s?\s+|el\s+|la\s+)/i, '')
     .replace(/^lote\s+/i, '')
     .trim();
 }

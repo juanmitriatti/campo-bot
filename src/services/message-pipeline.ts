@@ -876,9 +876,15 @@ async function processTextMessageInner(
     // stricter escape (real verb/query only) so a bare price answer fills the
     // slot instead of escaping to the agent and corrupting the last income.
     const strictEscape = expectsFinancialSlot || shortSlotAnswer;
+    // isNewActionInterrupt SIEMPRE escapa (también en modo estricto): un
+    // comando de ESCRITURA parseado por regex ("llovieron 15mm en X") es un
+    // pivot real — el pending de precio se lo comía y la lluvia nunca se
+    // registraba (test de fuego Ago 2026). El flush del pivot preserva o
+    // avisa por el pending actual.
     const escapePending = (strictEscape ? hasActionVerbOrQuery(text) : looksLikeNewActionOrQuery(text))
       || isOtherItemCorrectionOrDelete(text)
-      || (!strictEscape && (isNewActionInterrupt(actInterruptCmd) || intentClassifier.detectsFinancialIntent(text)));
+      || isNewActionInterrupt(actInterruptCmd)
+      || (!strictEscape && intentClassifier.detectsFinancialIntent(text));
     if (escapePending) {
       // Una consulta read-only NO mata un pending recuperable (con missing[]):
       // se responde la consulta y se vuelve a preguntar el slot — paridad con
@@ -1224,6 +1230,20 @@ async function processTextMessageInner(
   if (intent.type === 'command' && intent.data.command === 'confirm') {
     if (!pending) {
       return [{ type: 'text', text: 'No hay nada pendiente para confirmar.' }];
+    }
+    // Confirmación DESTRUCTIVA por texto ("sí, confirmo" tras el "¿Seguro que
+    // querés eliminar...?"): rutear el comando destructivo, igual que el
+    // botón. Antes caía a handleConfirm (que no sabe de borrados) → "👍 Listo"
+    // sin borrar nada — éxito fantasma (test de fuego Ago 2026).
+    const destructive = (pending as unknown as Record<string, unknown>)._destructiveCommand;
+    if (destructive) {
+      pendingStore.clear(phone);
+      const delResponse = await domainRouter.routeCommand(destructive as never, userId, user, settings);
+      if (delResponse) {
+        conversationLogger.log(userId, phone, text, delResponse.messages[0] ?? null, 'command', 'confirm_destructive', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
+        return collectResponse(delResponse);
+      }
+      return [{ type: 'text', text: '⚠️ Esa confirmación ya venció — *no borré nada*. Si querés borrarlo, pedímelo de nuevo.' }];
     }
     pendingStore.clear(phone);
     const response = await financialHandler.handleConfirm(userId, pending, settings, user);
@@ -1637,6 +1657,25 @@ const STALE_BUTTON_ITEM: BotResponseItem = {
   text: '⏰ Ese botón ya venció (era de una conversación anterior). No hice ningún cambio.\nEscribime lo que necesitás y lo resolvemos — o mandá *menú*.',
 };
 
+/**
+ * Red de rescate para taps vencidos: si hay un registro financiero PENDIENTE
+ * vivo, re-ofrecerlo en el mismo mensaje — un botón stale mataba el pending y
+ * el gasto de $3,6M se perdía sin registro (test de fuego Ago 2026).
+ */
+function staleButtonWithRescue(phone: string): BotResponseItem[] {
+  try {
+    const pending = pendingStore.get(phone) as unknown as { data?: { category?: string; amount?: number; currency?: string } } | undefined;
+    const d = pending?.data;
+    if (d && Number(d.amount) > 0) {
+      return [STALE_BUTTON_ITEM, {
+        type: 'text',
+        text: `📌 Ojo: seguís teniendo pendiente *${d.category || 'un registro'}* por *${d.currency === 'USD' ? 'USD ' : '$'}${Number(d.amount).toLocaleString('es-AR')}*. Decime el lote, o *"a nivel campo"*, o *confirmar*.`,
+      }];
+    }
+  } catch { /* best-effort */ }
+  return [STALE_BUTTON_ITEM];
+}
+
 export async function handleInteractiveReply(
   callbackId: string,
   ctx: ChannelContext,
@@ -1770,7 +1809,7 @@ export async function handleInteractiveReply(
     // return [] → SILENCIO total en Telegram (los botones viejos persisten
     // para siempre). NUNCA silencio en un tap.
     console.warn(`[INTERCEPT] tap flow_* sin flow activo: ${callbackId} (phone=${phone})`);
-    return [STALE_BUTTON_ITEM];
+    return staleButtonWithRescue(phone);
   }
 
   // --- Destructive command confirmation ---
@@ -1866,7 +1905,7 @@ export async function handleInteractiveReply(
       return [{ type: 'text', text: `No encontre el campo *${fieldName}*.` }];
     }
     console.warn(`[INTERCEPT] tap con payload no parseable: ${callbackId} (phone=${phone})`);
-    return [STALE_BUTTON_ITEM];
+    return staleButtonWithRescue(phone);
   }
 
   // --- Confirm delete field ---
@@ -1906,7 +1945,7 @@ export async function handleInteractiveReply(
       return [{ type: 'text', text: `No encontre el campo *${fieldName}*.` }];
     }
     console.warn(`[INTERCEPT] tap con payload no parseable: ${callbackId} (phone=${phone})`);
-    return [STALE_BUTTON_ITEM];
+    return staleButtonWithRescue(phone);
   }
 
   // --- Stock entry suggestion (from insumo expense) ---
