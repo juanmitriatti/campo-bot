@@ -132,6 +132,13 @@ export async function downloadMedia(mediaId) {
 export async function sendInteractiveButtons(to, body, buttons) {
   to = formatArgNumber(to);
   try {
+    const renderable = buttons.filter((b) => {
+      if (b.webAppUrl) {
+        console.log('[FORM] skip web_app button (whatsapp v1):', b.title);
+        return false;
+      }
+      return true;
+    });
     await axios.post(
       `${API_BASE}/messages`,
       {
@@ -142,7 +149,7 @@ export async function sendInteractiveButtons(to, body, buttons) {
           type: "button",
           body: { text: body },
           action: {
-            buttons: buttons.map(b => ({
+            buttons: renderable.map(b => ({
               type: "reply",
               reply: { id: b.id, title: b.title }
             }))

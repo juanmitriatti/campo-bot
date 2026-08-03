@@ -56,11 +56,15 @@ export async function sendTelegramMessage(chatId: string | number, text: string)
 export async function sendTelegramButtons(
   chatId: string | number,
   body: string,
-  buttons: Array<{ id: string; title: string }>,
+  buttons: Array<{ id: string; title: string; webAppUrl?: string }>,
 ): Promise<void> {
   try {
     // One button per row
-    const inline_keyboard = buttons.map(b => [{ text: b.title, callback_data: b.id }]);
+    const inline_keyboard = buttons.map(b => [
+      b.webAppUrl
+        ? { text: b.title, web_app: { url: b.webAppUrl } }
+        : { text: b.title, callback_data: b.id },
+    ]);
     const formatted = formatMarkdown(body);
     const response = await fetch(`${API_BASE()}/sendMessage`, {
       method: 'POST',

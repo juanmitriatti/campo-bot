@@ -464,6 +464,7 @@ export interface LearningContext {
 export interface InteractiveButton {
   id: string;       // callback ID, e.g. "menu_gastos"
   title: string;    // display text, max 20 chars
+  webAppUrl?: string; // if set: Telegram renders as Mini App (web_app), not callback
 }
 
 export interface InteractiveListRow {
