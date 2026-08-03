@@ -23,7 +23,12 @@ describe('FormSessionService', () => {
     expect(params[1]).toBe(1);
     expect(params[2]).toBe('sow_crop');
     expect(JSON.parse(params[3])).toEqual({ plotName: 'Norte' });
+    expect(params[4]).toBe('telegram');
+    expect(params[5]).toBe('123');
+    expect(params[6]).toBe('tg_123');
     expect(params[7]).toBe(true); // had_pending
+    expect(params[8]).toBeInstanceOf(Date);
+    expect((params[8] as Date).getTime()).toBeGreaterThan(Date.now() + 29 * 60 * 1000);
   });
 
   it('validate devuelve null si no hay fila viva', async () => {
@@ -40,8 +45,19 @@ describe('FormSessionService', () => {
   });
 
   it('markUsed setea used_at', async () => {
-    queryMock.mockResolvedValue({ rows: [] });
+    queryMock.mockResolvedValue({ rows: [], rowCount: 1 });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await formSessionService.markUsed('t');
     expect(queryMock.mock.calls[0][0]).toContain('SET used_at = NOW()');
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('markUsed logs warning si token no existe o ya fue usado', async () => {
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await formSessionService.markUsed('deadbeef');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[FORM] markUsed: token not found or already used'));
+    warnSpy.mockRestore();
   });
 });

@@ -47,7 +47,10 @@ export class FormSessionService {
   }
 
   async markUsed(token: string): Promise<void> {
-    await pool.query(`UPDATE form_sessions SET used_at = NOW() WHERE token = $1`, [token]);
+    const result = await pool.query(`UPDATE form_sessions SET used_at = NOW() WHERE token = $1`, [token]);
+    if (result.rowCount === 0) {
+      console.warn(`[FORM] markUsed: token not found or already used: ${token}`);
+    }
   }
 }
 
