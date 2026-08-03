@@ -47,6 +47,12 @@ describe('validateFormPayload — siembra', () => {
     const r = validateFormPayload(def, { plot_id: 7, crop: 'soja', event_date: TODAY, hectares: 0 }, TODAY);
     expect(r.ok).toBe(false);
   });
+
+  it('rechaza peso (kg) menor a 1 con mensaje correcto', () => {
+    const r = validateFormPayload(def, { plot_id: 7, crop: 'soja', event_date: TODAY, hectares: 0.5 }, TODAY);
+    expect(r.ok).toBe(true);
+  });
+
 });
 
 describe('validateFormPayload — cosecha', () => {
@@ -85,5 +91,26 @@ describe('validateFormPayload — cosecha', () => {
       loads: [{ driver_name: 'Juan', weight_kg: 28500, destinatario: 'Cargill', humidity_pct: 14 }],
     }, TODAY);
     expect(r.ok).toBe(true);
+  });
+
+  it('rechaza fecha inválida: 2026-13-01 (mes fuera de rango)', () => {
+    const r = validateFormPayload(def, { plot_id: 7, event_date: '2026-13-01' }, TODAY);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.join(' ')).toContain('inválida');
+  });
+
+  it('rechaza fecha inválida: 2026-02-30 (febrero 30)', () => {
+    const r = validateFormPayload(def, { plot_id: 7, event_date: '2026-02-30' }, TODAY);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.join(' ')).toContain('inválida');
+  });
+
+  it('peso 0 en carga: error con mensaje "al menos 1" (no mayor a 0)', () => {
+    const r = validateFormPayload(def, {
+      plot_id: 7, event_date: TODAY,
+      loads: [{ driver_name: 'Juan', weight_kg: 0 }],
+    }, TODAY);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.join(' ')).toContain('al menos 1');
   });
 });

@@ -71,7 +71,7 @@ function validateScalar(f: FormField, raw: unknown, errors: string[], label?: st
   if (f.type === 'number') {
     const n = Number(raw);
     if (!Number.isFinite(n)) { errors.push(`${name} debe ser un número.`); return undefined; }
-    if (f.min !== undefined && n < f.min) { errors.push(`${name} debe ser mayor a ${f.min <= 0.01 ? 0 : f.min - 1}.`); return undefined; }
+    if (f.min !== undefined && n < f.min) { errors.push(`${name} debe ser al menos ${f.min}.`); return undefined; }
     if (f.max !== undefined && n > f.max) { errors.push(`${name} debe ser como máximo ${f.max}.`); return undefined; }
     return n;
   }
@@ -98,6 +98,8 @@ export function validateFormPayload(
       if (empty) { if (f.required) errors.push(`${f.label} es obligatoria.`); continue; }
       const s = String(raw);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) { errors.push(`${f.label} inválida.`); continue; }
+      const d = new Date(s + 'T00:00:00Z');
+      if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) { errors.push(`${f.label} inválida.`); continue; }
       if (f.noFuture && s > todayISO) { errors.push(`${f.label} no puede ser futura.`); continue; }
       data[f.key] = s;
     } else if (f.type === 'group') {
