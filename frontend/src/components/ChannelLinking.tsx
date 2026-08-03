@@ -535,6 +535,8 @@ export default function ChannelLinking() {
         )}
       </div>
 
+      {/* Canales: WhatsApp + Telegram lado a lado en desktop */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
       {/* WhatsApp card */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-start justify-between">
@@ -735,6 +737,7 @@ export default function ChannelLinking() {
             {tgError && <p className="text-xs text-red-600">{tgError}</p>}
           </div>
         )}
+      </div>
       </div>
 
       {/* Subscription card */}
