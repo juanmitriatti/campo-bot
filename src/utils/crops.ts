@@ -8,7 +8,7 @@
  * persist into `plot_crops.crop`.
  */
 
-const KNOWN_CROPS = [
+export const KNOWN_CROPS = [
   'soja',
   'maíz',
   'trigo',
