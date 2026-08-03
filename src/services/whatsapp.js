@@ -139,6 +139,10 @@ export async function sendInteractiveButtons(to, body, buttons) {
       }
       return true;
     });
+    if (renderable.length === 0) {
+      console.log('[FORM] sendInteractiveButtons: 0 botones renderizables, no se envía interactive');
+      return;
+    }
     await axios.post(
       `${API_BASE}/messages`,
       {
