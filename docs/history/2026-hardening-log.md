@@ -110,6 +110,20 @@ Dos agentes LLM ("Raúl" agricultor / "Marta" ganadera) corrieron primeros días
 - **5 copias de fmtDay** con `new Date()` pelado → DATE de medianoche UTC retrocedía un día en ART → centralizadas en `formatDayShortAR`.
 - **Weekday futuro**: el agente aterriza "el sábado" +1 también en recordatorios → la resolución server pisa el due_date del agente (mismo patrón que relative-dates pasado).
 
+## Test de fuego secuencial + batch estado-en-vuelo (Ago 2026)
+
+Tras el batch del barrido, 3 agentes secuenciales (harness endurecido: token inline por request — la ronda paralela anterior colisionó tokens en archivos temporales compartidos e inventó un falso "split-brain") dieron **GO-CON-RESERVAS unánime**: libro mayor de hacienda 118/118, agro 100% consistente, finanzas al centavo. Las reservas eran todas de "estado en vuelo" y se cerraron con raíz real:
+
+- **Card consolidada mentirosa (P0)**: `consolidateLivestockMessages` fabricaba la card desde los INTENTS — un compound nacimiento+muerte con la baja fallida mostraba "➖ 2 Vaca" sin baja real. Ahora ante cualquier marca de error se muestran los mensajes reales.
+- **"y era en el Oeste" mid-confirmación** editaba un registro guardado ajeno → corrección de lote patcheada en el pending.
+- **"sí, confirmo" destructivo por texto** → "Listo" sin borrar → ahora rutea el comando igual que el botón.
+- **Writes parseables escapan SIEMPRE del pending** ("llovieron 15mm" durante el pending de precio se perdía).
+- **Botón vencido con pending vivo** → red de rescate que re-ofrece el registro.
+- **"metí" no disparaba la oferta mover-vs-alta**: `\b` final tras vocal acentuada — SEGUNDA vez que muerde este pitfall (primera: "ahí"). Regla: verbos conjugados con tilde SIEMPRE con lookahead.
+- Extras: getBudget case-insensitive (la alerta de presupuesto nunca disparaba), stripAnswerPrefix pela "del", fechas de confirmación via formatDateAR, duración mínima "1 día".
+
+**Incidente créditos (Ago 2026)**: dos días de QA intensivo agotaron el saldo de Anthropic — y prod comparte la key con local → bot degradado a regex en prod hasta la recarga. El síntoma en eval: fallos masivos con el MENÚ como respuesta (la firma documentada). Pendiente: key separada QA/prod + alerta de saldo. Flaky conocido nuevo: `19-category-ambiguous` oscila con la rotación diaria de few-shots (Haiku a veces asigna "Otros" directo sin picker — sin pérdida de datos).
+
 ## Eval y QA
 
 ### Eval degradado (Jul 26)
