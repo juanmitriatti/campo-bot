@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sun, Moon, Pencil, X, Check } from 'lucide-react';
+import { Sun, Moon, Pencil, X, Check, Lock } from 'lucide-react';
 import { apiRequest, ApiError } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../hooks/useTheme';
@@ -257,6 +257,7 @@ export default function ChannelLinking() {
   const [pwBusy, setPwBusy] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSuccess, setPwSuccess] = useState(false);
+  const [pwModalOpen, setPwModalOpen] = useState(false);
   const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -369,17 +370,28 @@ export default function ChannelLinking() {
               <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">Nombre, ciudad y email de tu cuenta.</p>
             </div>
           </div>
-          {!profileEditing && (
+          <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={startEditProfile}
+              onClick={() => { setPwCurrent(''); setPwNew(''); setPwRepeat(''); setPwError(null); setPwModalOpen(true); }}
               className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors"
-              title="Editar perfil"
+              title="Cambiar contraseña"
             >
-              <Pencil className="w-4 h-4" />
-              <span className="hidden sm:inline">Editar</span>
+              <Lock className="w-4 h-4" />
+              <span className="hidden sm:inline">Contraseña</span>
             </button>
-          )}
+            {!profileEditing && (
+              <button
+                type="button"
+                onClick={startEditProfile}
+                className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors"
+                title="Editar perfil"
+              >
+                <Pencil className="w-4 h-4" />
+                <span className="hidden sm:inline">Editar</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {profileSuccess && (
@@ -475,65 +487,85 @@ export default function ChannelLinking() {
 
       <AppearanceCard />
 
-      {/* Contraseña card */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <div className="flex items-start gap-3 mb-4">
-          <div className="text-3xl">🔒</div>
-          <div>
-            <h3 className="font-semibold text-gray-800 dark:text-gray-100">Contraseña</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">Cambiá tu contraseña de acceso al dashboard.</p>
+      {/* Modal de cambio de contraseña (se abre desde Tu perfil) */}
+      {pwModalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                  <Lock className="w-5 h-5 text-campo-600 dark:text-campo-400" />
+                  Cambiar contraseña
+                </h3>
+                <button
+                  onClick={() => setPwModalOpen(false)}
+                  disabled={pwBusy}
+                  className="text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-gray-100 text-xl leading-none disabled:opacity-50"
+                >&times;</button>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-300 mb-4">Tu contraseña de acceso al dashboard.</p>
+              {pwSuccess ? (
+                <p className="text-green-700 dark:text-green-400 text-sm font-medium">
+                  ✅ Contraseña actualizada. Vas a tener que iniciar sesión de nuevo.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Contraseña actual</label>
+                    <input
+                      type="password"
+                      value={pwCurrent}
+                      onChange={e => setPwCurrent(e.target.value)}
+                      disabled={pwBusy}
+                      placeholder="Tu contraseña actual"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Nueva contraseña</label>
+                    <input
+                      type="password"
+                      value={pwNew}
+                      onChange={e => setPwNew(e.target.value)}
+                      disabled={pwBusy}
+                      placeholder="Mínimo 8 caracteres"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Repetir nueva contraseña</label>
+                    <input
+                      type="password"
+                      value={pwRepeat}
+                      onChange={e => setPwRepeat(e.target.value)}
+                      disabled={pwBusy}
+                      placeholder="Repetí la nueva contraseña"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+                    />
+                  </div>
+                  {pwError && <p className="text-red-600 dark:text-red-400 text-xs">{pwError}</p>}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={changePassword}
+                      disabled={pwBusy || !pwCurrent || !pwNew || !pwRepeat}
+                      className="px-4 py-2 rounded-md bg-campo-600 hover:bg-campo-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                    >
+                      {pwBusy ? 'Cambiando…' : 'Cambiar contraseña'}
+                    </button>
+                    <button
+                      onClick={() => setPwModalOpen(false)}
+                      disabled={pwBusy}
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        {pwSuccess ? (
-          <p className="text-green-700 dark:text-green-400 text-sm font-medium">
-            ✅ Contraseña actualizada. Vas a tener que iniciar sesión de nuevo.
-          </p>
-        ) : (
-          <div className="space-y-3 max-w-sm">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Contraseña actual</label>
-              <input
-                type="password"
-                value={pwCurrent}
-                onChange={e => setPwCurrent(e.target.value)}
-                disabled={pwBusy}
-                placeholder="Tu contraseña actual"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Nueva contraseña</label>
-              <input
-                type="password"
-                value={pwNew}
-                onChange={e => setPwNew(e.target.value)}
-                disabled={pwBusy}
-                placeholder="Mínimo 8 caracteres"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Repetir nueva contraseña</label>
-              <input
-                type="password"
-                value={pwRepeat}
-                onChange={e => setPwRepeat(e.target.value)}
-                disabled={pwBusy}
-                placeholder="Repetí la nueva contraseña"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
-              />
-            </div>
-            {pwError && <p className="text-red-600 dark:text-red-400 text-xs">{pwError}</p>}
-            <button
-              onClick={changePassword}
-              disabled={pwBusy || !pwCurrent || !pwNew || !pwRepeat}
-              className="px-4 py-2 rounded-md bg-campo-600 hover:bg-campo-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
-            >
-              {pwBusy ? 'Cambiando…' : 'Cambiar contraseña'}
-            </button>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Canales: WhatsApp + Telegram lado a lado en desktop */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
