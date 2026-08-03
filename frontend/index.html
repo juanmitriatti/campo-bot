@@ -5,8 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Campo Bot</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌾</text></svg>" />
+    <script>
+      // Aplica el tema guardado ANTES del primer paint (espeja getInitialTheme
+      // de useTheme.ts — mantener en sincronía). Sin esto, el modo oscuro solo
+      // se aplicaba al montar "Mi cuenta", único consumidor del hook.
+      (function () {
+        try {
+          var t = localStorage.getItem('campo-theme');
+          if (t !== 'light' && t !== 'dark') {
+            t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          if (t === 'dark') document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body class="bg-gray-50 min-h-screen">
+  <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
