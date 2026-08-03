@@ -81,10 +81,6 @@ export default function ChannelLinking() {
   const [tgError, setTgError] = useState<string | null>(null);
 
   // Delete state
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Subscription state
   const [sub, setSub] = useState<SubscriptionStatus | null>(null);
@@ -251,29 +247,6 @@ export default function ChannelLinking() {
       setTgError(err instanceof ApiError ? err.message : 'No pude desvincular.');
     } finally {
       setTgBusy(false);
-    }
-  };
-
-  // ---------- Delete account ----------
-  const confirmDelete = async () => {
-    setDeleteError(null);
-    if (!deletePassword) {
-      setDeleteError('Ingresá tu contraseña actual para confirmar.');
-      return;
-    }
-    setDeleteBusy(true);
-    try {
-      await apiRequest('/me', {
-        method: 'DELETE',
-        body: { password: deletePassword },
-      });
-      // Hard logout — token stays valid for the access window but the user is deleted.
-      logout();
-      navigate('/login');
-    } catch (err) {
-      setDeleteError(err instanceof ApiError ? err.message : 'No pude eliminar la cuenta.');
-    } finally {
-      setDeleteBusy(false);
     }
   };
 
@@ -860,58 +833,6 @@ export default function ChannelLinking() {
         </div>
       </div>
 
-      {/* Danger zone */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-red-200 dark:border-red-800 p-6">
-        <div className="flex items-start gap-3">
-          <div className="text-3xl">⚠️</div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-red-700">Eliminar mi cuenta</h3>
-            <p className="text-sm text-gray-600 mt-1">
-              Tu cuenta se marca como eliminada y se desvinculan WhatsApp/Telegram. Tus datos quedan 30 días por si te arrepentís, después se borran definitivamente.
-            </p>
-
-            {!deleteOpen ? (
-              <button
-                onClick={() => setDeleteOpen(true)}
-                className="mt-3 px-4 py-2 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 rounded-md text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/30"
-              >
-                Eliminar mi cuenta
-              </button>
-            ) : (
-              <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md space-y-3">
-                <p className="text-sm text-red-800 dark:text-red-300 font-medium">
-                  Esta acción es definitiva. Confirmá con tu contraseña actual.
-                </p>
-                <input
-                  type="password"
-                  value={deletePassword}
-                  onChange={e => setDeletePassword(e.target.value)}
-                  placeholder="Contraseña actual"
-                  className="w-full max-w-xs border border-red-300 dark:border-red-700 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none"
-                  disabled={deleteBusy}
-                />
-                {deleteError && <p className="text-xs text-red-700">{deleteError}</p>}
-                <div className="flex gap-2">
-                  <button
-                    onClick={confirmDelete}
-                    disabled={deleteBusy}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-                  >
-                    {deleteBusy ? 'Eliminando…' : 'Confirmar eliminación'}
-                  </button>
-                  <button
-                    onClick={() => { setDeleteOpen(false); setDeletePassword(''); setDeleteError(null); }}
-                    disabled={deleteBusy}
-                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
