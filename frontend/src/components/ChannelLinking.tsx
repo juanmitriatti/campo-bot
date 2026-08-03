@@ -94,17 +94,18 @@ export default function ChannelLinking() {
   // Perfil editable
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileName, setProfileName] = useState('');
+  const [profileLastName, setProfileLastName] = useState('');
   const [profileCity, setProfileCity] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSuccess, setProfileSuccess] = useState(false);
   // Local shadow of user profile (refreshed after save)
-  const [localUser, setLocalUser] = useState<{ name: string | null; city: string | null; email: string | null } | null>(null);
+  const [localUser, setLocalUser] = useState<{ name: string | null; last_name: string | null; city: string | null; email: string | null } | null>(null);
 
   useEffect(() => {
     if (user) {
-      setLocalUser({ name: user.name, city: user.city, email: user.email });
+      setLocalUser({ name: user.name, last_name: user.last_name ?? null, city: user.city, email: user.email });
     }
   }, [user]);
 
@@ -300,6 +301,7 @@ export default function ChannelLinking() {
   // ---------- Perfil ----------
   const startEditProfile = () => {
     setProfileName(localUser?.name ?? '');
+    setProfileLastName(localUser?.last_name ?? '');
     setProfileCity(localUser?.city ?? '');
     setProfileEmail(localUser?.email ?? '');
     setProfileError(null);
@@ -318,14 +320,15 @@ export default function ChannelLinking() {
     try {
       const body: Record<string, string> = {};
       if (profileName !== (localUser?.name ?? '')) body.name = profileName;
+      if (profileLastName !== (localUser?.last_name ?? '')) body.last_name = profileLastName;
       if (profileCity !== (localUser?.city ?? '')) body.city = profileCity;
       if (profileEmail !== (localUser?.email ?? '')) body.email = profileEmail;
       if (Object.keys(body).length === 0) { setProfileEditing(false); return; }
-      const result = await apiRequest<{ user: { id: number; name: string | null; city: string | null; email: string | null } }>(
+      const result = await apiRequest<{ user: { id: number; name: string | null; last_name: string | null; city: string | null; email: string | null } }>(
         '/me',
         { method: 'PATCH', body },
       );
-      setLocalUser({ name: result.user.name, city: result.user.city, email: result.user.email });
+      setLocalUser({ name: result.user.name, last_name: result.user.last_name ?? null, city: result.user.city, email: result.user.email });
       setProfileSuccess(true);
       setProfileEditing(false);
       setTimeout(() => setProfileSuccess(false), 3000);
@@ -408,6 +411,10 @@ export default function ChannelLinking() {
               <dd className="text-gray-800 dark:text-gray-100">{localUser?.name || <span className="italic text-gray-400">—</span>}</dd>
             </div>
             <div className="flex gap-2">
+              <dt className="w-20 text-gray-500 dark:text-gray-400 shrink-0">Apellido</dt>
+              <dd className="text-gray-800 dark:text-gray-100">{localUser?.last_name || <span className="italic text-gray-400">—</span>}</dd>
+            </div>
+            <div className="flex gap-2">
               <dt className="w-20 text-gray-500 dark:text-gray-400 shrink-0">Ciudad</dt>
               <dd className="text-gray-800 dark:text-gray-100">{localUser?.city || <span className="italic text-gray-400">—</span>}</dd>
             </div>
@@ -430,6 +437,17 @@ export default function ChannelLinking() {
                 onChange={e => setProfileName(e.target.value)}
                 disabled={profileBusy}
                 placeholder="Tu nombre"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Apellido</label>
+              <input
+                type="text"
+                value={profileLastName}
+                onChange={e => setProfileLastName(e.target.value)}
+                disabled={profileBusy}
+                placeholder="Tu apellido"
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
               />
             </div>

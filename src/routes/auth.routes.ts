@@ -207,11 +207,12 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
     // FIX M1: guardar el email tal como lo tipea el usuario (solo .trim()),
     // NO lowercasearlo — el login es case-sensitive y toLowerCase aquí lockea al usuario.
     const email = typeof req.body?.email === 'string' ? req.body.email.trim() : undefined;
+    const lastName = typeof req.body?.last_name === 'string' ? req.body.last_name.trim() : undefined;
     if (name === '') { res.status(400).json({ error: 'El nombre no puede quedar vacío.' }); return; }
     if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       res.status(400).json({ error: 'Ese email no parece válido.' }); return;
     }
-    if (name === undefined && city === undefined && email === undefined) {
+    if (name === undefined && city === undefined && email === undefined && lastName === undefined) {
       res.status(400).json({ error: 'Nada para actualizar.' }); return;
     }
     let emailChanged = false;
@@ -228,6 +229,7 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
     const sets: string[] = []; const vals: unknown[] = [];
     if (name !== undefined) { vals.push(name); sets.push(`name = $${vals.length}`); }
     if (city !== undefined) { vals.push(city || null); sets.push(`city = $${vals.length}`); }
+    if (lastName !== undefined) { vals.push(lastName || null); sets.push(`last_name = $${vals.length}`); }
     if (email !== undefined && emailChanged) {
       vals.push(email); sets.push(`email = $${vals.length}`);
       sets.push(`email_verified_at = NULL`); // el banner de verificación se re-dispara
@@ -237,7 +239,7 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
     let r;
     try {
       r = await pool.query(
-        `UPDATE users SET ${sets.join(', ')} WHERE id = $${vals.length} AND deleted_at IS NULL RETURNING id, name, city, email`,
+        `UPDATE users SET ${sets.join(', ')} WHERE id = $${vals.length} AND deleted_at IS NULL RETURNING id, name, last_name, city, email`,
         vals,
       );
     } catch (dbErr: unknown) {
