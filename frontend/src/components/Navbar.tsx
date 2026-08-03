@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CircleUser, ChevronDown, UserCog, BookOpen, LogOut } from 'lucide-react';
+import { CircleUser, ChevronDown, UserCog, BookOpen, LogOut, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../hooks/useTheme';
 
 interface NavbarProps {
   onUserClick?: () => void;
@@ -12,6 +13,8 @@ export default function Navbar({ onUserClick }: NavbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [theme, , toggleTheme] = useTheme();
+  const isDark = theme === 'dark';
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   // Cerrar el dropdown al clickear afuera o apretar Escape
@@ -115,6 +118,22 @@ export default function Navbar({ onUserClick }: NavbarProps) {
                 >
                   <BookOpen className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                   Guía de uso
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={toggleTheme}
+                  className="w-full flex items-center justify-between px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <span className="flex items-center gap-2.5">
+                    {isDark ? <Moon className="w-4 h-4 text-gray-400 dark:text-gray-500" /> : <Sun className="w-4 h-4 text-gray-400" />}
+                    Modo oscuro
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${isDark ? 'bg-campo-600' : 'bg-gray-300'}`}
+                  >
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${isDark ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                  </span>
                 </button>
                 <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
                 <button
