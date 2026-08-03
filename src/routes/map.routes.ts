@@ -16,9 +16,29 @@ router.get('/:token', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Token inválido o expirado' });
       return;
     }
+    // Centro inicial del mapa: coords del campo (mapa/GPS previo) o centroide del
+    // censo para su ciudad — el productor arranca viendo SU zona, no Argentina entera.
+    let center: { lat: number; lon: number } | null = null;
+    try {
+      const { pool } = await import('../config/db.js');
+      const fr = await pool.query(
+        `SELECT latitude, longitude, city, province FROM fields WHERE id = $1`,
+        [tokenRow.field_id],
+      );
+      const f = fr.rows[0];
+      if (f) {
+        if (f.latitude != null && f.longitude != null) {
+          center = { lat: Number(f.latitude), lon: Number(f.longitude) };
+        } else if (f.city) {
+          const { localidadLookup } = await import('../services/localidad-lookup.service.js');
+          center = localidadLookup.coordsFor(f.city, f.province);
+        }
+      }
+    } catch { /* sin centro: la página cae al default nacional */ }
     res.json({
       fieldName: tokenRow.field_name,
       expiresAt: tokenRow.expires_at,
+      center,
     });
   } catch (err) {
     console.error('[map] GET token error:', err);

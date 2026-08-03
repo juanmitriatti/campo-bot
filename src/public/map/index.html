@@ -148,19 +148,38 @@
       document.getElementById('field-name').textContent = data.fieldName;
       document.getElementById('overlay').style.display = 'none';
       document.getElementById('actions').style.display = 'flex';
-      initMap();
+      initMap(data.center || null);
     })
     .catch(() => {
       showError('Enlace expirado', 'Este enlace ya fue usado o expiró. Pedí uno nuevo desde el chat.');
     });
 
-  function initMap() {
-    map = L.map('map', { zoomControl: false }).setView([-34, -64], 6);
+  function initMap(center) {
+    // Con centro conocido (coords del campo o centroide de su localidad) arrancamos
+    // cerca — zoom 13 muestra el pueblo y alrededores; sin centro, vista nacional.
+    map = center
+      ? L.map('map', { zoomControl: false }).setView([center.lat, center.lon], 13)
+      : L.map('map', { zoomControl: false }).setView([-34, -64], 6);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap',
+    // Satelital por defecto: el productor reconoce los límites reales de sus lotes
+    // sobre la imagen, no sobre un mapa de calles (zona rural = lienzo vacío en OSM).
+    const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics',
       maxZoom: 19,
     }).addTo(map);
+    const referencias = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Labels &copy; Esri',
+      maxZoom: 19,
+    }).addTo(map);
+    const calles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap',
+      maxZoom: 19,
+    });
+    L.control.layers(
+      { 'Satélite': satelite, 'Mapa': calles },
+      { 'Referencias': referencias },
+      { position: 'topright' }
+    ).addTo(map);
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 

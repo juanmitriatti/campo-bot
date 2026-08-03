@@ -77,3 +77,44 @@ describe('LocalidadLookupService', () => {
     expect(result.matches[0].provincia).toBe('Santa Fe');
   });
 });
+
+describe('coordsFor — coordenadas del centroide para clima/mapas', () => {
+  it('devuelve lat/lon para match único (Pergamino)', () => {
+    const c = localidadLookup.coordsFor('Pergamino');
+    expect(c).not.toBeNull();
+    // Pergamino ≈ (-33.9, -60.6)
+    expect(c!.lat).toBeGreaterThan(-34.2);
+    expect(c!.lat).toBeLessThan(-33.6);
+    expect(c!.lon).toBeGreaterThan(-61);
+    expect(c!.lon).toBeLessThan(-60);
+  });
+
+  it('homónima sin provincia → null (no adivinar la provincia equivocada)', () => {
+    // "Ameghino" existe en Buenos Aires y La Pampa (u otra homónima del censo)
+    const lk = localidadLookup.lookup('San José');
+    if (lk.matches.length > 1) {
+      expect(localidadLookup.coordsFor('San José')).toBeNull();
+    }
+  });
+
+  it('homónima CON provincia → resuelve', () => {
+    const lk = localidadLookup.lookup('San José');
+    if (lk.matches.length > 1) {
+      const prov = lk.matches[0].provincia;
+      const c = localidadLookup.coordsFor('San José', prov);
+      // puede seguir siendo ambigua dentro de la provincia; si no, devuelve coords
+      const inProv = lk.matches.filter(m => m.provincia === prov);
+      if (inProv.length === 1) expect(c).not.toBeNull();
+    }
+  });
+
+  it('ciudad inexistente → null', () => {
+    expect(localidadLookup.coordsFor('Ciudad Inventada XYZ')).toBeNull();
+  });
+
+  it('los matches del lookup exponen lat/lon', () => {
+    const r = localidadLookup.lookup('Pergamino');
+    expect(r.matches[0].lat).toBeTypeOf('number');
+    expect(r.matches[0].lon).toBeTypeOf('number');
+  });
+});

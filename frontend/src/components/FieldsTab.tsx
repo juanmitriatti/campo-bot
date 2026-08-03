@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
-import { Pencil, Plus } from 'lucide-react';
+import { Pencil, Plus, MapPin } from 'lucide-react';
+import LocalidadInput from './LocalidadInput';
 import TabHeader from './TabHeader';
 
 interface Plot {
@@ -14,6 +15,8 @@ interface Field {
   id: number;
   name: string;
   city: string | null;
+  location_method: string | null;
+  has_coords: boolean;
   plots: Plot[];
 }
 
@@ -77,6 +80,36 @@ export default function FieldsTab() {
     }
   };
 
+  // Edición de localidad de un campo existente
+  const [editingCityFieldId, setEditingCityFieldId] = useState<number | null>(null);
+  const [cityDraft, setCityDraft] = useState('');
+  const [cityError, setCityError] = useState<string | null>(null);
+  const [cityWarning, setCityWarning] = useState<string | null>(null);
+
+  const startEditCity = (f: Field) => {
+    setEditingCityFieldId(f.id);
+    setCityDraft(f.city ?? '');
+    setCityError(null);
+    setCityWarning(null);
+  };
+
+  const saveCity = async (id: number) => {
+    setSaving(true);
+    setCityError(null);
+    try {
+      const r = await apiRequest<{ field: unknown; cityWarning: string | null }>(`/fields/${id}`, {
+        method: 'PATCH', body: { city: cityDraft.trim() },
+      });
+      setEditingCityFieldId(null);
+      setCityWarning(r.cityWarning ?? null);
+      await fetchFields();
+    } catch (err: unknown) {
+      setCityError(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const addFieldBlock = addingField ? (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-campo-300 dark:border-campo-700 p-4 space-y-2">
       <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Nuevo campo</p>
@@ -89,13 +122,16 @@ export default function FieldsTab() {
           onKeyDown={e => { if (e.key === 'Enter') void createField(); if (e.key === 'Escape') setAddingField(false); }}
           className="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 outline-none"
         />
-        <input
-          value={newFieldCity}
-          onChange={e => setNewFieldCity(e.target.value)}
-          placeholder="Localidad (opcional, para el clima)"
-          onKeyDown={e => { if (e.key === 'Enter') void createField(); if (e.key === 'Escape') setAddingField(false); }}
-          className="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 outline-none"
-        />
+        <div className="flex-1">
+          <LocalidadInput
+            value={newFieldCity}
+            onChange={setNewFieldCity}
+            placeholder="Localidad (opcional — habilita clima y alertas)"
+            onEnter={() => void createField()}
+            onEscape={() => setAddingField(false)}
+            className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 outline-none"
+          />
+        </div>
       </div>
       {newFieldError && <p className="text-xs text-red-600 dark:text-red-400">{newFieldError}</p>}
       <div className="flex gap-2">
@@ -270,6 +306,11 @@ export default function FieldsTab() {
         description="La estructura de tu establecimiento: campos, lotes, hectáreas y qué hay sembrado. Acá podés renombrar y corregir hectáreas."
         botHint="tengo el campo La Esperanza en Pergamino con los lotes Norte y Sur"
       />
+      {cityWarning && (
+        <div className="rounded-md bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+          ⚠️ {cityWarning}
+        </div>
+      )}
       {fields.map(f => {
         const totalHa = f.plots.reduce((s, p) => s + (p.hectares ?? 0), 0);
         return (
@@ -310,9 +351,46 @@ export default function FieldsTab() {
                     </button>
                   </div>
                 )}
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {f.city ?? 'Sin ubicación'}{totalHa > 0 ? ` · ${totalHa} ha totales` : ''}
-                </p>
+                {editingCityFieldId === f.id ? (
+                  <div className="mt-1.5 max-w-xs space-y-1">
+                    <LocalidadInput
+                      value={cityDraft}
+                      onChange={setCityDraft}
+                      placeholder="Localidad del campo"
+                      autoFocus
+                      onEnter={() => void saveCity(f.id)}
+                      onEscape={() => setEditingCityFieldId(null)}
+                      className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2 py-1.5 text-xs focus:ring-2 focus:ring-campo-500 outline-none"
+                    />
+                    {cityError && <p className="text-xs text-red-600 dark:text-red-400">{cityError}</p>}
+                    <div className="flex gap-2">
+                      <button onClick={() => void saveCity(f.id)} disabled={saving} className="text-xs bg-campo-600 text-white rounded-md px-3 py-1 disabled:opacity-50 hover:bg-campo-700">Guardar</button>
+                      <button onClick={() => setEditingCityFieldId(null)} className="text-xs text-gray-500 dark:text-gray-400">Cancelar</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    {f.city || f.has_coords ? (
+                      <span className="inline-flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                        <MapPin className="w-3 h-3 text-campo-600 dark:text-campo-400" />
+                        {f.city ?? 'Ubicado por mapa/GPS'}
+                        {f.location_method === 'map' && f.city ? ' · dibujado en mapa' : ''}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                        ⚠️ Sin ubicación — sin clima ni alertas para este campo
+                      </span>
+                    )}
+                    <button
+                      onClick={() => startEditCity(f)}
+                      className="text-campo-700 dark:text-campo-400 hover:underline"
+                      title="Editar localidad"
+                    >
+                      {f.city ? 'editar' : 'agregar localidad'}
+                    </button>
+                    {totalHa > 0 && <span className="text-gray-400">· {totalHa} ha totales</span>}
+                  </p>
+                )}
               </div>
             </div>
 

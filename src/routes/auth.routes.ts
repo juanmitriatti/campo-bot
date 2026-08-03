@@ -208,6 +208,21 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
     // NO lowercasearlo — el login es case-sensitive y toLowerCase aquí lockea al usuario.
     const email = typeof req.body?.email === 'string' ? req.body.email.trim() : undefined;
     const lastName = typeof req.body?.last_name === 'string' ? req.body.last_name.trim() : undefined;
+    // Ciudad validada contra el censo (paridad con el bot): exact → nombre oficial + provincia;
+    // sin match → se guarda tal cual y el response lo señala (cityWarning).
+    let cityProvince: string | null = null;
+    let cityWarning: string | null = null;
+    let cityResolved = city;
+    if (city) {
+      const { localidadLookup } = await import('../services/localidad-lookup.service.js');
+      const lk = localidadLookup.lookup(city);
+      if (lk.status === 'exact' || lk.status === 'disambiguate') {
+        cityResolved = lk.matches[0].nombre;
+        cityProvince = lk.matches[0].provincia;
+      } else {
+        cityWarning = 'No encontré esa localidad en el censo — la guardé tal cual, pero el clima puede no encontrarla.';
+      }
+    }
     if (name === '') { res.status(400).json({ error: 'El nombre no puede quedar vacío.' }); return; }
     if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       res.status(400).json({ error: 'Ese email no parece válido.' }); return;
@@ -228,7 +243,10 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
     }
     const sets: string[] = []; const vals: unknown[] = [];
     if (name !== undefined) { vals.push(name); sets.push(`name = $${vals.length}`); }
-    if (city !== undefined) { vals.push(city || null); sets.push(`city = $${vals.length}`); }
+    if (city !== undefined) {
+      vals.push(cityResolved || null); sets.push(`city = $${vals.length}`);
+      if (cityProvince) { vals.push(cityProvince); sets.push(`province = $${vals.length}`); }
+    }
     if (lastName !== undefined) { vals.push(lastName || null); sets.push(`last_name = $${vals.length}`); }
     if (email !== undefined && emailChanged) {
       vals.push(email); sets.push(`email = $${vals.length}`);
@@ -653,7 +671,7 @@ router.get('/activities', requireAuth, requireFeature('agronomy'), async (req: R
 router.get('/fields-tree', requireAuth, requireFeature('fields'), async (req: Request, res: Response) => {
   try {
     const { rows } = await pool.query(
-      `SELECT f.id, f.name, f.city,
+      `SELECT f.id, f.name, f.city, f.location_method, (f.latitude IS NOT NULL) AS has_coords,
               COALESCE(json_agg(json_build_object(
                 'id', p.id, 'name', p.name, 'hectares', p.area_hectares,
                 'activeCrop', (SELECT pc.crop FROM plot_crops pc WHERE pc.plot_id = p.id AND pc.end_date IS NULL ORDER BY pc.id DESC LIMIT 1)
@@ -665,6 +683,22 @@ router.get('/fields-tree', requireAuth, requireFeature('fields'), async (req: Re
       [req.auth!.userId],
     );
     res.json({ fields: rows });
+  } catch (err) { handleError(err, res); }
+});
+
+// GET /localidades?q= — typeahead del censo (4027 localidades) para inputs de ubicación.
+router.get('/localidades', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    if (q.length < 2) { res.json({ status: 'not_found', matches: [] }); return; }
+    const { localidadLookup } = await import('../services/localidad-lookup.service.js');
+    const result = localidadLookup.lookup(q);
+    res.json({
+      status: result.status,
+      matches: result.matches.slice(0, 8).map(m => ({
+        nombre: m.nombre, provincia: m.provincia, departamento: m.departamento,
+      })),
+    });
   } catch (err) { handleError(err, res); }
 });
 
@@ -706,23 +740,56 @@ router.post('/fields', requireAuth, requireFeature('fields'), async (req: Reques
 router.patch('/fields/:id', requireAuth, requireFeature('fields'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
-    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
-    if (isNaN(id) || !name) { res.status(400).json({ error: 'Nombre inválido' }); return; }
-    // Unicidad case/acento-insensible dentro del usuario (entity-matcher)
-    const dup = await pool.query(
-      `SELECT 1 FROM fields WHERE user_id = $1 AND id <> $2 AND deleted_at IS NULL
-       AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$3::text')}`,
-      [req.auth!.userId, id, name],
-    );
-    if (dup.rows.length > 0) { res.status(409).json({ error: 'Ya tenés un campo con ese nombre' }); return; }
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : undefined;
+    const cityIn = typeof req.body?.city === 'string' ? req.body.city.trim() : undefined;
+    if (isNaN(id) || (name === undefined && cityIn === undefined) || name === '') {
+      res.status(400).json({ error: 'Nada para actualizar' }); return;
+    }
+    if (name !== undefined) {
+      // Unicidad case/acento-insensible dentro del usuario (entity-matcher)
+      const dup = await pool.query(
+        `SELECT 1 FROM fields WHERE user_id = $1 AND id <> $2 AND deleted_at IS NULL
+         AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$3::text')}`,
+        [req.auth!.userId, id, name],
+      );
+      if (dup.rows.length > 0) { res.status(409).json({ error: 'Ya tenés un campo con ese nombre' }); return; }
+    }
+
+    // Ciudad validada contra el censo (paridad con el bot). Match → nombre oficial +
+    // provincia + coords (COALESCE: no pisa mapa/GPS). Sin match → texto tal cual + warning.
+    let cityWarning: string | null = null;
+    const sets: string[] = []; const vals: unknown[] = [];
+    if (name !== undefined) { vals.push(name); sets.push(`name = $${vals.length}`); }
+    if (cityIn !== undefined) {
+      if (cityIn === '') {
+        sets.push(`city = NULL`);
+      } else {
+        const { localidadLookup } = await import('../services/localidad-lookup.service.js');
+        const lk = localidadLookup.lookup(cityIn);
+        if (lk.status === 'exact' || lk.status === 'disambiguate') {
+          const loc = lk.matches[0];
+          vals.push(loc.nombre); sets.push(`city = $${vals.length}`);
+          vals.push(loc.provincia); sets.push(`province = $${vals.length}`);
+          const coords = localidadLookup.coordsFor(loc.nombre, loc.provincia);
+          if (coords) {
+            vals.push(coords.lat); sets.push(`latitude = COALESCE(latitude, $${vals.length})`);
+            vals.push(coords.lon); sets.push(`longitude = COALESCE(longitude, $${vals.length})`);
+          }
+        } else {
+          vals.push(cityIn); sets.push(`city = $${vals.length}`);
+          cityWarning = 'No encontré esa localidad en el censo — la guardé tal cual, pero el clima puede no encontrarla.';
+        }
+      }
+    }
+    vals.push(id); vals.push(req.auth!.userId);
     const r = await pool.query(
-      `UPDATE fields SET name = $1 WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL RETURNING id, name`,
-      [name, id, req.auth!.userId],
+      `UPDATE fields SET ${sets.join(', ')} WHERE id = $${vals.length - 1} AND user_id = $${vals.length} AND deleted_at IS NULL RETURNING id, name, city`,
+      vals,
     );
     if (r.rows.length === 0) { res.status(404).json({ error: 'Campo no encontrado' }); return; }
     // Invalidar caché de contexto: el validador anti-alucinación trabaja con la lista vieja hasta 60s
     invalidateUserContext(asUserId(req.auth!.userId));
-    res.json({ field: r.rows[0] });
+    res.json({ field: r.rows[0], cityWarning });
   } catch (err) { handleError(err, res); }
 });
 

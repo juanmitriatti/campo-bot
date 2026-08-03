@@ -64,6 +64,21 @@ function byProvinceProminence(a: Localidad, b: Localidad): number {
 }
 
 /**
+ * Coordenadas para el clima: lat/lon explícitas del campo (mapa/GPS) o centroide
+ * del censo para la ciudad. null → OpenWeather recibe el string (comportamiento previo).
+ */
+function weatherCoords(
+  city: string | null | undefined,
+  field?: { latitude?: number | null; longitude?: number | null; province?: string | null } | null,
+): { lat: number; lon: number } | null {
+  if (field && field.latitude != null && field.longitude != null) {
+    return { lat: Number(field.latitude), lon: Number(field.longitude) };
+  }
+  if (!city) return null;
+  return localidadLookup.coordsFor(city, field?.province ?? null);
+}
+
+/**
  * Resolve a weather query to a concrete city name using localidadLookup.
  * Returns { city } when unambiguous, { options } when the user must pick among
  * several localities (homónimos / sugerencias) — surfaced as tappable buttons,
@@ -1503,19 +1518,21 @@ export class AgronomyHandler {
         const resolved = resolveWeatherCity(cmd, user);
         if (resolved.options) return buildWeatherCityPicker(resolved.rawCity ?? '', resolved.options, resolved.optionsKind ?? 'disambiguate');
         let weatherCity = resolved.city;
+        let weatherFieldRow: { latitude?: number | null; longitude?: number | null; province?: string | null } | null = null;
         // Bug W fix: fall back to user's first field with city when no explicit/profile city.
         if (!weatherCity) {
           const { pool: wpool } = await import('../../config/db.js');
-          const fr = await wpool.query(`SELECT city FROM fields WHERE user_id=$1 AND city IS NOT NULL AND deleted_at IS NULL ORDER BY id LIMIT 1`, [userId]);
-          if (fr.rows[0]?.city) weatherCity = String(fr.rows[0].city);
+          const fr = await wpool.query(`SELECT city, province, latitude, longitude FROM fields WHERE user_id=$1 AND city IS NOT NULL AND deleted_at IS NULL ORDER BY id LIMIT 1`, [userId]);
+          if (fr.rows[0]?.city) { weatherCity = String(fr.rows[0].city); weatherFieldRow = fr.rows[0]; }
         }
         if (!weatherCity && !process.env.WEATHER_CITY) {
           return { messages: ['No tengo tu ubicaci\u00f3n. Escrib\u00ed algo como:\n\ud83d\udccd *estoy en Jun\u00edn*\n\nO ped\u00ed el clima de una ciudad:\n\ud83c\udf24\ufe0f *clima en Pergamino*'] };
         }
         try {
+          const wcoords = weatherCoords(weatherCity, weatherFieldRow);
           const [current, forecastData] = await Promise.all([
-            getCurrentWeather(weatherCity),
-            getForecast(weatherCity, 3),
+            getCurrentWeather(weatherCity, wcoords),
+            getForecast(weatherCity, 3, { coords: wcoords }),
           ]);
           let msg = formatCurrentWeather(current) + '\n\n' + formatForecast(forecastData);
           const rainAlert = checkRainAlert(forecastData, settings.rain_alert_mm);
@@ -1544,7 +1561,7 @@ export class AgronomyHandler {
           return { messages: ['No tengo tu ubicaci\u00f3n. Escrib\u00ed algo como:\n\ud83d\udccd *estoy en Jun\u00edn*\n\nO ped\u00ed el clima de una ciudad:\n\ud83c\udf24\ufe0f *clima en Pergamino*'] };
         }
         try {
-          const forecastData = await getForecast(fcCity, cmd.days as number);
+          const forecastData = await getForecast(fcCity, cmd.days as number, { coords: weatherCoords(fcCity) });
           let msg = formatForecast(forecastData);
           const rainAlert = checkRainAlert(forecastData, settings.rain_alert_mm);
           if (rainAlert) msg += '\n\n' + rainAlert;
@@ -1566,9 +1583,10 @@ export class AgronomyHandler {
           return { messages: [`No tengo la ubicaci\u00f3n del lote ${cmd.fieldName}.\nEscrib\u00ed: *lote ${cmd.fieldName} est\u00e1 en [ciudad]*`] };
         }
         try {
+          const fcoords = weatherCoords(fieldCity, field as { latitude?: number | null; longitude?: number | null; province?: string | null } | null);
           const [current, forecastData] = await Promise.all([
-            getCurrentWeather(fieldCity),
-            getForecast(fieldCity, 3),
+            getCurrentWeather(fieldCity, fcoords),
+            getForecast(fieldCity, 3, { coords: fcoords }),
           ]);
           let msg = `\ud83d\udccd *Lote ${cmd.fieldName}* (${fieldCity})\n\n`;
           msg += formatCurrentWeather(current) + '\n\n' + formatForecast(forecastData);
@@ -1587,16 +1605,16 @@ export class AgronomyHandler {
           return { messages: ['El clima no est\u00e1 configurado todav\u00eda.'] };
         }
         const fieldsWithCity = await this.repo.getUserFieldsWithCity(userId);
-        const locations: { label: string; city: string }[] = [];
+        const locations: { label: string; city: string; coords?: { lat: number; lon: number } | null }[] = [];
         const seenCities = new Set<string>();
 
         if (user.city) {
-          locations.push({ label: '\ud83d\udccd Tu ubicaci\u00f3n', city: user.city });
+          locations.push({ label: '\ud83d\udccd Tu ubicaci\u00f3n', city: user.city, coords: weatherCoords(user.city) });
           seenCities.add(user.city.toLowerCase());
         }
         for (const f of fieldsWithCity) {
           if (!seenCities.has(f.city.toLowerCase())) {
-            locations.push({ label: `\ud83d\udccd Lote ${f.name}`, city: f.city });
+            locations.push({ label: `\ud83d\udccd Lote ${f.name}`, city: f.city, coords: weatherCoords(f.city, f as { latitude?: number | null; longitude?: number | null; province?: string | null }) });
             seenCities.add(f.city.toLowerCase());
           } else {
             const existing = locations.find((l) => l.city.toLowerCase() === f.city.toLowerCase());
@@ -1613,8 +1631,8 @@ export class AgronomyHandler {
           const alerts: string[] = [];
 
           for (const loc of locations) {
-            const current = await getCurrentWeather(loc.city);
-            const forecast = await getForecast(loc.city, 1);
+            const current = await getCurrentWeather(loc.city, loc.coords ?? null);
+            const forecast = await getForecast(loc.city, 1, { coords: loc.coords ?? null });
             msg += `\n${loc.label} \u2014 *${loc.city}*\n`;
             msg += `${current.icon} ${current.temp}\u00b0C | \ud83d\udca7${current.humidity}% | \ud83d\udca8${current.wind}km/h\n`;
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polygon } from 'react-leaflet';
+import { MapContainer, TileLayer, LayersControl, Marker, Popup, Polygon } from 'react-leaflet';
 import type { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useMapData } from '../../hooks/useMapData';
@@ -59,10 +59,28 @@ export default function FieldMap() {
       {!collapsed && (
         <div style={{ height: window.innerWidth < 768 ? 300 : 400 }}>
           <MapContainer center={center} zoom={8} style={{ height: '100%', width: '100%' }}>
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+            <LayersControl position="topright">
+              {/* Satelital por defecto: el productor reconoce SUS lotes por la imagen, no por calles */}
+              <LayersControl.BaseLayer checked name="Satélite">
+                <TileLayer
+                  attribution="Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community"
+                  url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                />
+              </LayersControl.BaseLayer>
+              <LayersControl.BaseLayer name="Mapa">
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+              </LayersControl.BaseLayer>
+              {/* Nombres de localidades y rutas sobre la imagen satelital */}
+              <LayersControl.Overlay checked name="Referencias">
+                <TileLayer
+                  attribution="Labels &copy; Esri"
+                  url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+                />
+              </LayersControl.Overlay>
+            </LayersControl>
             {fieldsWithCoords.map(field => {
               const fieldPlots = plotsByField.get(field.id) || [];
               return (

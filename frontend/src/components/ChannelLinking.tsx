@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Pencil, X, Check, Lock } from 'lucide-react';
+import LocalidadInput from './LocalidadInput';
 import { apiRequest, ApiError } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
@@ -424,14 +425,13 @@ export default function ChannelLinking() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Ciudad</label>
-              <input
-                type="text"
+              <LocalidadInput
                 value={profileCity}
-                onChange={e => setProfileCity(e.target.value)}
+                onChange={setProfileCity}
                 disabled={profileBusy}
-                placeholder="Tu ciudad"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+                placeholder="Tu localidad (para el clima y las alertas)"
               />
+              <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Se usa para darte el clima y las alertas de tu zona.</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Email</label>

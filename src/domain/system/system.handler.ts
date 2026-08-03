@@ -625,7 +625,7 @@ export class SystemHandler {
 
         // not_found — save as-is without province
         await this.userRepo.setCity(userId, cityInput);
-        return { messages: [`\ud83d\udccd Ubicaci\u00f3n guardada: *${cityInput}*\nNo encontr\u00e9 esa localidad en el listado censal, pero la guard\u00e9 igual.\nAhora el clima va a ser de tu zona.`] };
+        return { messages: [`\ud83d\udccd Ubicaci\u00f3n guardada: *${cityInput}*\n\u26a0\ufe0f No encontr\u00e9 esa localidad en el listado censal \u2014 la guard\u00e9 tal cual, pero el clima puede no encontrarla. Si fue un error de tipeo, escribila de nuevo (ej: *estoy en Pergamino*).`] };
       }
 
       case 'request_more_messages': {

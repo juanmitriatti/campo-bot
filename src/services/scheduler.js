@@ -4,6 +4,7 @@ import { sendMessage } from "./whatsapp.js";
 import { getUsersWithRainAlerts, getGlobalSettings } from "./expenses.js";
 import { getForecast, checkDryWindow, checkWindAlert } from "./weather.js";
 import { sendAlertWithRetry, sendAlertWithRetryMultiChannel, isDuplicate, recordDeduped } from "./alert.service.js";
+import { localidadLookup } from "./localidad-lookup.service.js";
 import { getSettingNumber, getSettingBool } from "./settings.service.js";
 import { computeCategoryMovers, formatMoversLines } from "./monthly-insights.js";
 import { cleanupOldReports } from "./agro-report.js";
@@ -423,7 +424,7 @@ async function tick() {
 
 async function getUserFieldCities(userId) {
   const { rows } = await pool.query(
-    `SELECT DISTINCT ON (city) city, name FROM fields
+    `SELECT DISTINCT ON (city) city, name, province, latitude, longitude FROM fields
      WHERE (user_id = $1 OR id IN (SELECT field_id FROM field_members WHERE user_id = $1))
        AND city IS NOT NULL AND deleted_at IS NULL
      ORDER BY city, name`,
@@ -436,16 +437,36 @@ async function checkWeatherForUser(user) {
   // Build city sources: { city -> label }
   const citySources = new Map();
 
-  if (user.city) citySources.set(user.city, 'tu ubicación');
+  if (user.city) citySources.set(user.city, { label: 'tu ubicación', coords: localidadLookup.coordsFor(user.city) });
 
   const fieldRows = await getUserFieldCities(user.id);
   for (const r of fieldRows) {
     if (!citySources.has(r.city)) {
-      citySources.set(r.city, r.name);
+      const coords = (r.latitude != null && r.longitude != null)
+        ? { lat: Number(r.latitude), lon: Number(r.longitude) }
+        : localidadLookup.coordsFor(r.city, r.province);
+      citySources.set(r.city, { label: r.name, coords });
     }
   }
 
-  if (citySources.size === 0) return;
+  if (citySources.size === 0) {
+    // Fase 3: nunca fallar en silencio — un aviso único (30 días de dedup) si el usuario
+    // tiene alertas activas pero ninguna ubicación de la que sacar el pronóstico.
+    console.log(`[INTERCEPT] weather alerts: user ${user.id} sin ubicación (ni perfil ni campos) — skip + nudge`);
+    const dup = await isDuplicate(user.id, 'weather', 'no_location_nudge', 24 * 30);
+    if (!dup) {
+      const nudge = '📍 Tenés las alertas de clima activadas, pero no sé dónde estás.\n\n' +
+        'Para que te avise de lluvias y viento, decime:\n' +
+        '• *estoy en Junín* (tu ubicación)\n' +
+        '• *el campo La Esperanza está en Pergamino*\n\n' +
+        'Si no querés alertas, escribí *no más alertas*.';
+      await sendAlertWithRetryMultiChannel(user.id, { phone: user.phone_number, telegramId: user.telegram_id }, nudge, 'weather', {
+        dedupKey: 'no_location_nudge',
+        payload: {},
+      });
+    }
+    return;
+  }
 
   const defaultRainMm = (await getSettingNumber('DEFAULT_RAIN_ALERT_MM')) ?? 10;
   const rainThreshold = user.rain_alert_mm || defaultRainMm;
@@ -457,9 +478,9 @@ async function checkWeatherForUser(user) {
 
   // Fetch forecast once per city and run all three checks (rain, wind, dry window).
   // includeToday: true — 6am run still has the whole day ahead, so today's rain/wind matters.
-  for (const [city, label] of citySources) {
+  for (const [city, { label, coords }] of citySources) {
     try {
-      const forecastData = await getForecast(city, 3, { includeToday: true });
+      const forecastData = await getForecast(city, 3, { includeToday: true, coords });
       const resolvedCity = forecastData.city || city;
       const isUserCity = label === 'tu ubicación';
 

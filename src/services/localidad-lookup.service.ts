@@ -6,6 +6,9 @@ export interface Localidad {
   nombre: string;
   provincia: string;
   departamento: string | null;
+  /** Centroide de la localidad (censo georef) — para clima por coordenadas y centrado de mapas. */
+  lat: number | null;
+  lon: number | null;
 }
 
 export interface LookupResult {
@@ -53,6 +56,8 @@ class LocalidadLookupService {
         nombre: loc.nombre.replace(/\u00AD/g, ''),
         provincia: loc.provincia.nombre.replace(/\u00AD/g, ''),
         departamento: loc.departamento?.nombre?.replace(/\u00AD/g, '') ?? null,
+        lat: typeof loc.centroide?.lat === 'number' ? loc.centroide.lat : null,
+        lon: typeof loc.centroide?.lon === 'number' ? loc.centroide.lon : null,
       };
 
       const norm = normalize(loc.nombre);
@@ -64,6 +69,26 @@ class LocalidadLookupService {
       }
       this.allNormalized.push({ norm, loc: localidad });
     }
+  }
+
+  /**
+   * Coordenadas del centroide para una ciudad ya guardada (match exacto normalizado).
+   * Con múltiples homónimas: si hay provincia, filtra; sin provincia devuelve null
+   * (mejor string a OpenWeather que coordenadas de la provincia equivocada).
+   */
+  coordsFor(city: string, province?: string | null): { lat: number; lon: number } | null {
+    this.ensureLoaded();
+    const matches = this.index!.get(normalize(city)) ?? [];
+    let pick: Localidad | undefined;
+    if (matches.length === 1) {
+      pick = matches[0];
+    } else if (matches.length > 1 && province) {
+      const provNorm = normalize(province);
+      const filtered = matches.filter(m => normalize(m.provincia) === provNorm);
+      if (filtered.length === 1) pick = filtered[0];
+    }
+    if (pick && pick.lat != null && pick.lon != null) return { lat: pick.lat, lon: pick.lon };
+    return null;
   }
 
   lookup(input: string): LookupResult {

@@ -706,10 +706,18 @@ export async function getOrCreateField(userId, name) {
 }
 
 export async function setFieldCity(userId, fieldName, city, province = null) {
+  // Si la ciudad resuelve en el censo, completamos lat/lon (centroide) sin pisar
+  // coordenadas más precisas ya existentes (mapa/GPS) — el clima las prefiere.
+  let coords = null;
+  try {
+    const { localidadLookup } = await import('./localidad-lookup.service.js');
+    coords = localidadLookup.coordsFor(city, province);
+  } catch { /* lookup no disponible: seguimos sin coords */ }
   await pool.query(
-    `UPDATE fields SET city = $1, province = COALESCE($4, province)
+    `UPDATE fields SET city = $1, province = COALESCE($4, province),
+       latitude = COALESCE(latitude, $5), longitude = COALESCE(longitude, $6)
      WHERE id IN (${accessibleFieldsSql(2)}) AND LOWER(name) = LOWER($3)`,
-    [city, userId, fieldName, province]
+    [city, userId, fieldName, province, coords?.lat ?? null, coords?.lon ?? null]
   );
 }
 
@@ -755,7 +763,7 @@ export async function getFieldByName(userId, fieldName) {
 
 export async function getUserFieldsWithCity(userId) {
   const result = await pool.query(
-    `SELECT name, city, province FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND city IS NOT NULL AND deleted_at IS NULL`,
+    `SELECT name, city, province, latitude, longitude FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND city IS NOT NULL AND deleted_at IS NULL`,
     [userId]
   );
   return result.rows;

@@ -7,10 +7,15 @@ const API_KEY = process.env.OPENWEATHER_API_KEY;
 const DEFAULT_CITY = process.env.WEATHER_CITY || "Buenos Aires";
 const BASE_URL = "https://api.openweathermap.org/data/2.5";
 
-export async function getCurrentWeather(city) {
+export async function getCurrentWeather(city, coords = null) {
   city = city || DEFAULT_CITY;
+  // Coordenadas (campo ubicado por mapa/GPS o centroide del censo) > string de ciudad:
+  // inmune a typos y funciona para campos sin ciudad resuelta.
+  const locParams = coords && typeof coords.lat === 'number' && typeof coords.lon === 'number'
+    ? { lat: coords.lat, lon: coords.lon }
+    : { q: `${city},AR` };
   const { data } = await axios.get(`${BASE_URL}/weather`, {
-    params: { q: `${city},AR`, appid: API_KEY, units: "metric", lang: "es" }
+    params: { ...locParams, appid: API_KEY, units: "metric", lang: "es" }
   });
 
   return {
@@ -25,10 +30,13 @@ export async function getCurrentWeather(city) {
 }
 
 export async function getForecast(city, days = 3, options = {}) {
-  const { includeToday = false } = options;
+  const { includeToday = false, coords = null } = options;
   city = city || DEFAULT_CITY;
+  const locParams = coords && typeof coords.lat === 'number' && typeof coords.lon === 'number'
+    ? { lat: coords.lat, lon: coords.lon }
+    : { q: `${city},AR` };
   const { data } = await axios.get(`${BASE_URL}/forecast`, {
-    params: { q: `${city},AR`, appid: API_KEY, units: "metric", lang: "es" }
+    params: { ...locParams, appid: API_KEY, units: "metric", lang: "es" }
   });
 
   // Group by day
@@ -69,7 +77,7 @@ export async function getForecast(city, days = 3, options = {}) {
     });
   }
 
-  return { city: data.city.name, forecast };
+  return { city: (options.coords && city) ? city : data.city.name, forecast };
 }
 
 function mostFrequent(arr) {
