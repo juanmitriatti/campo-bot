@@ -739,75 +739,131 @@ export default function ChannelLinking() {
 
       {/* Subscription card */}
       {sub?.payments_enabled && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-start gap-3">
-            <div className="text-3xl">💳</div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Suscripción</h3>
-              {sub.subscription ? (
-                <div className="mt-2 space-y-1 text-sm">
-                  <p className="text-gray-700 dark:text-gray-200">
-                    Plan actual: <span className="font-medium">{sub.plan?.display_name ?? '—'}</span>
-                  </p>
-                  <p className="text-gray-500 dark:text-gray-300">
-                    Estado: <span className={`font-medium ${
-                      sub.subscription.status === 'active' ? 'text-green-700' :
-                      sub.subscription.status === 'trial' ? 'text-blue-700' :
-                      sub.subscription.status === 'past_due' ? 'text-amber-700' :
-                      'text-gray-600'
-                    }`}>{statusLabel(sub.subscription.status)}</span>
-                  </p>
-                  {sub.subscription.status === 'trial' && sub.subscription.trial_ends_at && (
-                    <p className="text-blue-700">
-                      Trial vence el {new Date(sub.subscription.trial_ends_at).toLocaleDateString('es-AR')}.
-                    </p>
-                  )}
-                  {sub.subscription.current_period_end && (
-                    <p className="text-gray-500">
-                      Próximo cobro: {new Date(sub.subscription.current_period_end).toLocaleDateString('es-AR')}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500 mt-1">Sin suscripción activa.</p>
-              )}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          {/* Header con gradiente + badge de estado */}
+          <div className="bg-gradient-to-r from-campo-600 to-campo-800 px-6 py-4 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center text-xl">💳</div>
+              <div>
+                <h3 className="font-semibold text-white leading-tight">Suscripción</h3>
+                <p className="text-campo-100 text-sm">
+                  {sub.plan ? `Plan ${sub.plan.display_name}` : 'Sin plan activo'}
+                </p>
+              </div>
+            </div>
+            {sub.subscription && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 text-white text-xs font-medium backdrop-blur-sm">
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  sub.subscription.status === 'active' ? 'bg-green-300' :
+                  sub.subscription.status === 'trial' ? 'bg-sky-300' :
+                  sub.subscription.status === 'past_due' ? 'bg-amber-300' :
+                  'bg-gray-300'
+                }`} />
+                {statusLabel(sub.subscription.status)}
+              </span>
+            )}
+          </div>
 
-              {(!sub.subscription || sub.subscription.status === 'trial' || sub.subscription.status === 'past_due') && sub.plan && sub.plan.price_ars > 0 && (
-                <div className="mt-4 space-y-3">
-                  <div className="flex gap-2 text-xs">
-                    <button
-                      onClick={() => setBillingPeriod('monthly')}
-                      className={`px-3 py-1 rounded-full border ${billingPeriod === 'monthly' ? 'bg-campo-600 text-white border-campo-600' : 'bg-white dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-gray-700 border-gray-300'}`}
-                    >Mensual ${sub.plan.price_ars.toLocaleString('es-AR')}</button>
-                    {sub.plan.price_ars_yearly && (
+          <div className="p-6 space-y-4">
+            {/* Trial / próximo cobro */}
+            {sub.subscription?.status === 'trial' && sub.subscription.trial_ends_at && (() => {
+              const daysLeft = Math.max(0, Math.ceil((new Date(sub.subscription!.trial_ends_at!).getTime() - Date.now()) / 86400000));
+              return (
+                <div className="flex items-center gap-2.5 rounded-lg bg-sky-50 dark:bg-sky-900/30 border border-sky-200 dark:border-sky-800 px-4 py-3 text-sm text-sky-800 dark:text-sky-200">
+                  <span className="text-lg">⏳</span>
+                  <span>
+                    Te quedan <span className="font-semibold">{daysLeft} {daysLeft === 1 ? 'día' : 'días'}</span> de prueba gratis
+                    {' '}(hasta el {new Date(sub.subscription!.trial_ends_at!).toLocaleDateString('es-AR')}).
+                  </span>
+                </div>
+              );
+            })()}
+            {sub.subscription?.status !== 'trial' && sub.subscription?.current_period_end && (
+              <p className="text-sm text-gray-500 dark:text-gray-300">
+                Próximo cobro: {new Date(sub.subscription.current_period_end).toLocaleDateString('es-AR')}
+              </p>
+            )}
+            {!sub.subscription && (
+              <p className="text-sm text-gray-500 dark:text-gray-300">Sin suscripción activa.</p>
+            )}
+
+            {/* Selector de período + CTA */}
+            {(!sub.subscription || sub.subscription.status === 'trial' || sub.subscription.status === 'past_due') && sub.plan && sub.plan.price_ars > 0 && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setBillingPeriod('monthly')}
+                    className={`relative text-left rounded-lg border-2 px-4 py-3 transition-colors ${
+                      billingPeriod === 'monthly'
+                        ? 'border-campo-600 bg-campo-50 dark:bg-campo-900/20'
+                        : 'border-gray-200 dark:border-gray-600 hover:border-campo-400 dark:hover:border-campo-500'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Mensual</span>
+                      {billingPeriod === 'monthly' && <span className="text-campo-600 dark:text-campo-400 text-sm">✓</span>}
+                    </div>
+                    <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">
+                      ${sub.plan.price_ars.toLocaleString('es-AR')}
+                      <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> /mes</span>
+                    </p>
+                  </button>
+
+                  {sub.plan.price_ars_yearly && (() => {
+                    const savingsPct = Math.round((1 - sub.plan!.price_ars_yearly! / (sub.plan!.price_ars * 12)) * 100);
+                    return (
                       <button
                         onClick={() => setBillingPeriod('yearly')}
-                        className={`px-3 py-1 rounded-full border ${billingPeriod === 'yearly' ? 'bg-campo-600 text-white border-campo-600' : 'bg-white text-gray-700 border-gray-300'}`}
-                      >Anual ${sub.plan.price_ars_yearly.toLocaleString('es-AR')}</button>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => upgradeNow(sub.plan!.name)}
-                    disabled={subBusy}
-                    className="px-4 py-2 bg-campo-600 text-white rounded-md text-sm font-medium hover:bg-campo-700 disabled:opacity-50"
-                  >
-                    {subBusy ? 'Redirigiendo…' : 'Pagar con MercadoPago'}
-                  </button>
+                        className={`relative text-left rounded-lg border-2 px-4 py-3 transition-colors ${
+                          billingPeriod === 'yearly'
+                            ? 'border-campo-600 bg-campo-50 dark:bg-campo-900/20'
+                            : 'border-gray-200 dark:border-gray-600 hover:border-campo-400 dark:hover:border-campo-500'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Anual</span>
+                          <span className="flex items-center gap-1.5">
+                            {savingsPct > 0 && (
+                              <span className="px-1.5 py-0.5 rounded-full bg-campo-100 dark:bg-campo-900/50 text-campo-700 dark:text-campo-300 text-[11px] font-semibold">
+                                Ahorrás {savingsPct}%
+                              </span>
+                            )}
+                            {billingPeriod === 'yearly' && <span className="text-campo-600 dark:text-campo-400 text-sm">✓</span>}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">
+                          ${sub.plan.price_ars_yearly.toLocaleString('es-AR')}
+                          <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> /año</span>
+                        </p>
+                      </button>
+                    );
+                  })()}
                 </div>
-              )}
 
-              {sub.subscription && (sub.subscription.status === 'active' || sub.subscription.status === 'trial') && (
+                <button
+                  onClick={() => upgradeNow(sub.plan!.name)}
+                  disabled={subBusy}
+                  className="w-full sm:w-auto px-6 py-3 bg-campo-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-campo-700 active:bg-campo-800 disabled:opacity-50 transition-colors"
+                >
+                  {subBusy ? 'Redirigiendo…' : 'Pagar con MercadoPago →'}
+                </button>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Pago seguro procesado por MercadoPago. Podés cancelar cuando quieras.</p>
+              </div>
+            )}
+
+            {subError && <p className="text-xs text-red-600 mt-2">{subError}</p>}
+
+            {sub.subscription && (sub.subscription.status === 'active' || sub.subscription.status === 'trial') && (
+              <div className="pt-3 border-t border-gray-100 dark:border-gray-700">
                 <button
                   onClick={cancelSub}
                   disabled={subBusy}
-                  className="mt-3 text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                  className="text-xs text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 transition-colors"
                 >
                   Cancelar suscripción
                 </button>
-              )}
-
-              {subError && <p className="text-xs text-red-600 mt-2">{subError}</p>}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}
