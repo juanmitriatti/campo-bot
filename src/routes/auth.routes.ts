@@ -668,6 +668,41 @@ router.get('/fields-tree', requireAuth, requireFeature('fields'), async (req: Re
   } catch (err) { handleError(err, res); }
 });
 
+// POST /fields — alta manual de campo desde el dashboard (espejo del add_field del bot:
+// dup-check case-insensitive, localidadLookup para ciudad/provincia, membership de owner).
+router.post('/fields', requireAuth, requireFeature('fields'), async (req: Request, res: Response) => {
+  try {
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    const cityRaw = typeof req.body?.city === 'string' ? req.body.city.trim() : '';
+    if (!name) { res.status(400).json({ error: 'El nombre del campo es obligatorio.' }); return; }
+    if (name.length > 100) { res.status(400).json({ error: 'El nombre es demasiado largo (máx. 100).' }); return; }
+    const dup = await pool.query(
+      `SELECT 1 FROM fields WHERE user_id = $1 AND LOWER(name) = LOWER($2) AND deleted_at IS NULL`,
+      [req.auth!.userId, name],
+    );
+    if (dup.rows.length > 0) { res.status(409).json({ error: 'Ya tenés un campo con ese nombre.' }); return; }
+
+    const { getOrCreateField, setFieldCity } = await import('../services/expenses.js');
+    const field = await getOrCreateField(req.auth!.userId, name);
+
+    let cityStored: string | null = null;
+    if (cityRaw) {
+      const { localidadLookup } = await import('../services/localidad-lookup.service.js');
+      const lookup = localidadLookup.lookup(cityRaw);
+      if (lookup.status === 'exact' || lookup.status === 'disambiguate') {
+        const loc = lookup.matches[0];
+        await setFieldCity(req.auth!.userId, name, loc.nombre, loc.provincia);
+        cityStored = loc.nombre;
+      } else {
+        // Sin match en el censo: guardamos el texto tal cual (igual que el bot en bulk)
+        await setFieldCity(req.auth!.userId, name, cityRaw, null);
+        cityStored = cityRaw;
+      }
+    }
+    res.status(201).json({ field: { id: field.id, name: field.name, city: cityStored } });
+  } catch (err) { handleError(err, res); }
+});
+
 router.patch('/fields/:id', requireAuth, requireFeature('fields'), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);

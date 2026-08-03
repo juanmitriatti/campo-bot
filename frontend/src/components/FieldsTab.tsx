@@ -53,6 +53,76 @@ export default function FieldsTab() {
 
   useEffect(() => { fetchFields(); }, [fetchFields]);
 
+  // Alta manual de campo
+  const [addingField, setAddingField] = useState(false);
+  const [newFieldName, setNewFieldName] = useState('');
+  const [newFieldCity, setNewFieldCity] = useState('');
+  const [newFieldError, setNewFieldError] = useState<string | null>(null);
+
+  const createField = async () => {
+    const name = newFieldName.trim();
+    if (!name) { setNewFieldError('El nombre no puede estar vacío'); return; }
+    setSaving(true);
+    setNewFieldError(null);
+    try {
+      await apiRequest('/fields', { method: 'POST', body: { name, city: newFieldCity.trim() || undefined } });
+      setAddingField(false);
+      setNewFieldName('');
+      setNewFieldCity('');
+      await fetchFields();
+    } catch (err: unknown) {
+      setNewFieldError(err instanceof Error ? err.message : 'Error al crear el campo');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addFieldBlock = addingField ? (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-campo-300 dark:border-campo-700 p-4 space-y-2">
+      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Nuevo campo</p>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          value={newFieldName}
+          onChange={e => setNewFieldName(e.target.value)}
+          placeholder="Nombre del campo"
+          autoFocus
+          onKeyDown={e => { if (e.key === 'Enter') void createField(); if (e.key === 'Escape') setAddingField(false); }}
+          className="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 outline-none"
+        />
+        <input
+          value={newFieldCity}
+          onChange={e => setNewFieldCity(e.target.value)}
+          placeholder="Localidad (opcional, para el clima)"
+          onKeyDown={e => { if (e.key === 'Enter') void createField(); if (e.key === 'Escape') setAddingField(false); }}
+          className="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 outline-none"
+        />
+      </div>
+      {newFieldError && <p className="text-xs text-red-600 dark:text-red-400">{newFieldError}</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={() => void createField()}
+          disabled={saving}
+          className="text-sm bg-campo-600 text-white rounded-md px-4 py-2 disabled:opacity-50 hover:bg-campo-700 font-medium"
+        >
+          {saving ? 'Creando…' : 'Crear campo'}
+        </button>
+        <button
+          onClick={() => { setAddingField(false); setNewFieldError(null); }}
+          className="text-sm text-gray-500 dark:text-gray-400 px-3 py-2 hover:text-gray-700 dark:hover:text-gray-200"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  ) : (
+    <button
+      onClick={() => setAddingField(true)}
+      className="w-full flex items-center justify-center gap-1.5 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg py-3 text-sm text-gray-500 dark:text-gray-400 hover:border-campo-400 hover:text-campo-700 dark:hover:text-campo-400 transition-colors"
+    >
+      <Plus className="w-4 h-4" /> Agregar campo
+    </button>
+  );
+
   const startEditField = (f: Field) => {
     setEditingFieldId(f.id);
     setFieldNameDraft(f.name);
@@ -183,10 +253,12 @@ export default function FieldsTab() {
           description="La estructura de tu establecimiento: campos, lotes, hectáreas y qué hay sembrado. Acá podés renombrar y corregir hectáreas."
           botHint="tengo el campo La Esperanza en Pergamino con los lotes Norte y Sur"
         />
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-500 dark:text-gray-400 text-sm">
-          Todavía no tenés campos. Creálos desde el chat:{' '}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-500 dark:text-gray-400 text-sm mb-4">
+          Todavía no tenés campos. Decile al bot{' '}
           <em className="font-medium text-gray-700 dark:text-gray-300">tengo el campo La Esperanza en Pergamino</em>
+          {' '}o crealo acá abajo.
         </div>
+        {addFieldBlock}
       </>
     );
   }
@@ -369,6 +441,7 @@ export default function FieldsTab() {
           </div>
         );
       })}
+      {addFieldBlock}
     </div>
   );
 }
