@@ -261,11 +261,13 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
 
   return (
     <div>
-      <TabHeader
-        title="Gastos"
-        description="Todos tus gastos registrados. Podés editar o eliminar cualquiera."
-        botHint="gasté 80 mil en gasoil"
-      />
+      <div className="px-4 pt-4 md:px-6">
+        <TabHeader
+          title="Gastos"
+          description="Todos tus gastos registrados. Podés editar o eliminar cualquiera."
+          botHint="gasté 80 mil en gasoil"
+        />
+      </div>
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">

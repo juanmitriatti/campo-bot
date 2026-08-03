@@ -244,11 +244,13 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
 
   return (
     <div>
-      <TabHeader
-        title="Actividades"
-        description="Siembras, fumigaciones, fertilizaciones, cosechas y demás labores."
-        botHint="fumigué el lote Norte con 2 litros de glifosato"
-      />
+      <div className="px-4 pt-4 md:px-6">
+        <TabHeader
+          title="Actividades"
+          description="Siembras, fumigaciones, fertilizaciones, cosechas y demás labores."
+          botHint="fumigué el lote Norte con 2 litros de glifosato"
+        />
+      </div>
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">

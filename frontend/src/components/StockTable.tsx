@@ -160,11 +160,13 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
 
   return (
     <div>
-      <TabHeader
-        title="Stock"
-        description="Tus insumos en depósito. El bot descuenta solo cuando registrás una aplicación."
-        botHint="compré 200 litros de glifosato a 8 mil el litro"
-      />
+      <div className="px-4 pt-4 md:px-6">
+        <TabHeader
+          title="Stock"
+          description="Tus insumos en depósito. El bot descuenta solo cuando registrás una aplicación."
+          botHint="compré 200 litros de glifosato a 8 mil el litro"
+        />
+      </div>
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
         <div className="flex flex-col">
