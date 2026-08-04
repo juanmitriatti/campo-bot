@@ -95,6 +95,7 @@ import {
   LOCK_RELEASED_SUFFIX,
 } from '../middleware/conversation-lock-store.js';
 import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveButton, InteractiveListSection, UserId, PendingTransaction, ParsedCommand } from '../types/index.js';
+import { appendFormOffer } from '../forms/form-offer.js';
 
 // ============================================================
 // Grafo de servicios — UNA sola instancia compartida por los 3 canales.
@@ -1452,6 +1453,7 @@ async function processTextMessageInner(
       if (leavesOpenQuestion) response.suggestionKey = undefined;
       const items = collectResponse(response);
       if (applied.plotAreaPrompt) items.push({ type: 'text', text: applied.plotAreaPrompt });
+      await appendFormOffer(items, response, ctx);
       return items;
     }
     // routeCommand devolvió null: comando no registrado en ningún *_COMMANDS
@@ -2082,7 +2084,12 @@ export async function handleInteractiveReply(
   const intent = interactiveRouter.route(callbackId);
   if (intent && intent.type === 'command') {
     const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
-    if (response) return collectResponse(response);
+    if (response) {
+      applySideEffects(response.sideEffects, phone);
+      const items = collectResponse(response);
+      await appendFormOffer(items, response, ctx);
+      return items;
+    }
   }
   // Fall-through final: token vencido (bap2_*, rain_batch_*, cat_pick_*...),
   // callback desconocido o router null. Antes: [] → silencio absoluto.

@@ -317,6 +317,7 @@ export class CompoundExecutor {
           // Drop blocking sideEffects AND clear messages/interactive that
           // carried the prompt — otherwise the user sees both the captured
           // ask AND the original handler's blocking question.
+          if (se.offerForm) console.log('[INTERCEPT] offerForm suprimido en bulkMode');
           response = {
             ...response,
             messages: [], // suppress the handler's own prompt
@@ -326,7 +327,16 @@ export class CompoundExecutor {
               startFlow: undefined,
               setPendingActivity: undefined,
               setPendingObservation: undefined,
+              offerForm: undefined,          // invariante 7: en compound nunca se ofrecen formularios
             },
+          };
+        } else if (se.offerForm) {
+          // offerForm-only: not a blocking side-effect, but MUST be stripped in
+          // bulkMode — invariante 7. Log per invariante 1.
+          console.log('[INTERCEPT] offerForm suprimido en bulkMode');
+          response = {
+            ...response,
+            sideEffects: { ...se, offerForm: undefined },
           };
         }
       }

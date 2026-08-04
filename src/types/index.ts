@@ -577,6 +577,9 @@ export interface HandlerResponse {
       crop: string;
       plotName: string;
     };
+    /** Formulario estructurado: si presente, la pipeline agrega un botón Mini App
+     *  al final de la respuesta (Telegram únicamente en v1). Suprimido en bulkMode. */
+    offerForm?: { action: 'sow_crop' | 'harvest_crop'; prefill: Record<string, unknown> };
   };
 }
 
