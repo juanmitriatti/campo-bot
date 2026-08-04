@@ -120,6 +120,7 @@ const SYSTEM_COMMANDS = new Set([
   'enable_budget_alerts', 'disable_budget_alerts',
   'enable_weekly_summary', 'disable_weekly_summary',
   'set_name', 'set_city',
+  'open_form', 'open_form_sow', 'open_form_harvest',
 ]);
 
 // Financial-handler commands dispatched ahead of the *_COMMANDS sets (category

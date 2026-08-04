@@ -49,6 +49,9 @@ const CALLBACK_MAP: Record<string, ParsedCommand> = {
   'help_reportes': { command: 'help_section', helpSection: 'help_reportes' },
   'help_editar': { command: 'help_section', helpSection: 'help_editar' },
   'help_config': { command: 'help_section', helpSection: 'help_config' },
+  // Formulario picker — abre Mini App para siembra / cosecha
+  'form_open_sow': { command: 'open_form_sow' },
+  'form_open_harvest': { command: 'open_form_harvest' },
   // Document upload entry points
   'doc_upload_factura': { command: 'start_document_upload', documentType: 'factura' },
   'doc_upload_remito': { command: 'start_document_upload', documentType: 'remito' },

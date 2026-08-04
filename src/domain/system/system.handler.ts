@@ -154,6 +154,31 @@ export class SystemHandler {
           },
         };
 
+      case 'open_form':
+        return {
+          messages: [],
+          interactive: {
+            type: 'buttons',
+            body: '\ud83d\udcdd \u00bfQu\u00e9 quer\u00e9s cargar con formulario?',
+            buttons: [
+              { id: 'form_open_sow', title: '\ud83c\udf31 Siembra' },
+              { id: 'form_open_harvest', title: '\ud83c\udf3e Cosecha' },
+            ],
+          },
+        };
+
+      case 'open_form_sow':
+        return {
+          messages: ['\ud83d\udcdd Abr\u00ed el formulario con el bot\u00f3n:'],
+          sideEffects: { offerForm: { action: 'sow_crop', prefill: {} } },
+        };
+
+      case 'open_form_harvest':
+        return {
+          messages: ['\ud83d\udcdd Abr\u00ed el formulario con el bot\u00f3n:'],
+          sideEffects: { offerForm: { action: 'harvest_crop', prefill: {} } },
+        };
+
       case 'show_documents_menu':
         return {
           messages: [],

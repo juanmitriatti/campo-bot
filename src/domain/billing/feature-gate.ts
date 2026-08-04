@@ -126,6 +126,9 @@ export class FeatureGate {
       compare_rainfall_months: 'rainfall',
       compare_rainfall_years: 'rainfall',
       // Agronomy
+      open_form: 'agronomy',
+      open_form_sow: 'agronomy',
+      open_form_harvest: 'agronomy',
       sow_crop: 'agronomy',
       harvest_crop: 'agronomy',
       active_crop: 'agronomy',

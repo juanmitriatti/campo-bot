@@ -1345,3 +1345,21 @@ describe("QA BLACK-BOX: dedup normalization cross-variants", () => {
   });
 });
 
+// ============================================================================
+// open_form (comando trivial)
+// ============================================================================
+
+describe("open_form (comando trivial)", () => {
+  it.each(["formulario", "formulario siembra", "formulario de cosecha", "Formulario"])(
+    'parsea "%s" como open_form',
+    (text) => {
+      const cmd = parseCommand(text);
+      expect(cmd?.command).toBe("open_form");
+    }
+  );
+
+  it("NO roba frases con formulario en el medio", () => {
+    expect(parseCommand("me llegó el formulario de AFIP hoy")).toBeNull();
+  });
+});
+

@@ -91,6 +91,7 @@ const TRIVIAL_COMMANDS = new Set([
   'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',
   'query_plot_history',
   'active_crop', 'list_livestock', 'check_stock',
+  'open_form',
 ]);
 
 /**
