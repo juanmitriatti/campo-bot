@@ -2103,6 +2103,15 @@ export class AgronomyHandler {
                 missing: ['crop'],
                 askPrompt: '🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)',
               },
+              offerForm: {
+                action: 'sow_crop',
+                prefill: {
+                  plotName: (cmd.plotName as string) ?? null,
+                  fieldName: (cmd.fieldName as string) ?? null,
+                  eventDate: (cmd.eventDate as string) ?? null,
+                  hectares: (cmd.hectares as number) ?? null,
+                },
+              },
             },
           };
         }
@@ -2152,7 +2161,8 @@ export class AgronomyHandler {
         const replaceGuard = await this.buildSowReplaceGuard(cmd, plotResult.plotId, plotResult.fieldName, plotResult.plotName, crop);
         if (replaceGuard) return replaceGuard;
 
-        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, sowedHa);
+        const variety = (cmd.variety as string | null | undefined) ?? null;
+        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, sowedHa, variety);
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
         const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
 
@@ -2168,6 +2178,7 @@ export class AgronomyHandler {
         // Acción principal PRIMERO; el cierre de campaña previa como nota.
         let sowMsg = `🌱 *Siembra registrada*\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
         if (sowedHa) sowMsg += `\n📐 ${sowedHa.toLocaleString('es-AR')} ha sembradas`;
+        if (variety) sowMsg += `\n🧬 Variedad: ${variety}`;
 
         // Warn if sowed hectares exceed plot area
         if (sowedHa) {
@@ -2280,6 +2291,14 @@ export class AgronomyHandler {
                 data: { ...cmd, _needs: 'crop' },
                 missing: ['crop'],
                 askPrompt: '🌾 ¿Qué cultivo cosechaste? (ej: soja, maíz, trigo, girasol)',
+              },
+              offerForm: {
+                action: 'harvest_crop',
+                prefill: {
+                  plotName: (cmd.plotName as string) ?? null,
+                  fieldName: (cmd.fieldName as string) ?? null,
+                  eventDate: (cmd.eventDate as string) ?? null,
+                },
               },
             },
           };

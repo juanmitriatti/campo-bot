@@ -93,7 +93,8 @@ export class CropService {
     plotId: number,
     crop: string,
     date?: Date,
-    sowedHectares?: number | null
+    sowedHectares?: number | null,
+    variety?: string | null,
   ): Promise<{ cropRow: PlotCropRow; closedPrevious: PlotCropRow | null }> {
     const effectiveDate = date || new Date();
     const seasonType = getSeasonTypeForCrop(crop);
@@ -115,7 +116,7 @@ export class CropService {
     }
 
     const cropRow = await createPlotCrop(
-      plotId, crop, seasonYear, seasonType, effectiveDate, sowedHectares ?? null
+      plotId, crop, seasonYear, seasonType, effectiveDate, sowedHectares ?? null, variety ?? null
     ) as PlotCropRow;
 
     return { cropRow, closedPrevious };

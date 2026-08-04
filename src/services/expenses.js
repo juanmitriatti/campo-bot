@@ -1995,16 +1995,16 @@ export async function getRainfallRange(userId, desde, hasta) {
 
 // --- Plot crops ---
 
-export async function createPlotCrop(plotId, crop, seasonYear, seasonType, startDate = null, sowedHectares = null) {
+export async function createPlotCrop(plotId, crop, seasonYear, seasonType, startDate = null, sowedHectares = null, variety = null) {
   // Fecha ART explícita en vez de CURRENT_DATE de la DB — si la sesión de
   // Postgres está en UTC (la migración 048 de TZ no siempre aplica), de noche
   // CURRENT_DATE daba MAÑANA, dejando plot_crops.start_date desfasado del
   // domain_events.event_date del mismo registro (hallazgo QA Jun 2026).
   const result = await pool.query(
-    `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, sowed_hectares)
-     VALUES ($1, $2, $3, $4, COALESCE($5, $7::date), $6)
+    `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, sowed_hectares, variety)
+     VALUES ($1, $2, $3, $4, COALESCE($5, $8::date), $6, $7)
      RETURNING *`,
-    [plotId, crop, seasonYear, seasonType, startDate, sowedHectares, getTodayISO()]
+    [plotId, crop, seasonYear, seasonType, startDate, sowedHectares, variety, getTodayISO()]
   );
   return result.rows[0];
 }

@@ -124,7 +124,7 @@ describe('CropService', () => {
 
       expect(result.closedPrevious).toBeNull();
       expect(result.cropRow.crop).toBe('Soja');
-      expect(mocks.createPlotCrop).toHaveBeenCalledWith(10, 'Soja', 2025, 'gruesa', expect.any(Date), null);
+      expect(mocks.createPlotCrop).toHaveBeenCalledWith(10, 'Soja', 2025, 'gruesa', expect.any(Date), null, null);
     });
 
     it('same crop active → returns existing', async () => {
