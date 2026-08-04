@@ -234,6 +234,10 @@ describe('sow_crop con variety → createPlotCrop recibe variety + confirmación
 
     // Variety debe aparecer en el mensaje de confirmación
     expect(response.messages[0]).toContain('🧬 Variedad: DM 4612');
+
+    // Verify startCrop was called with variety as the 6th param (index 5)
+    expect(startCropSpy).toHaveBeenCalled();
+    expect(startCropSpy.mock.calls[0]).toContain('DM 4612');
   });
 
   it('sin variety, la línea 🧬 NO aparece', async () => {

@@ -220,8 +220,8 @@ export class AgronomyRepository {
 
   // --- Plot crops ---
 
-  async createPlotCrop(plotId: number, crop: string, seasonYear: number, seasonType: string, startDate?: Date | null): Promise<PlotCropRow> {
-    return _createPlotCrop(plotId, crop, seasonYear, seasonType, startDate) as Promise<PlotCropRow>;
+  async createPlotCrop(plotId: number, crop: string, seasonYear: number, seasonType: string, startDate?: Date | null, sowedHectares?: number | null, variety?: string | null): Promise<PlotCropRow> {
+    return _createPlotCrop(plotId, crop, seasonYear, seasonType, startDate, sowedHectares, variety) as Promise<PlotCropRow>;
   }
 
   async closePlotCrop(plotCropId: number, endDate?: Date | null): Promise<PlotCropRow | null> {
