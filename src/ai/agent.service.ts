@@ -57,6 +57,12 @@ export interface AgentResult {
   usage: AiUsage;
   /** True when Anthropic stopped the response because max_tokens was reached. */
   truncated: boolean;
+  /**
+   * Texto concatenado de los turnos RECIENTES del usuario (historial que ya se
+   * cargó para el prompt). Lo consume el output-validator para no dropear un
+   * crop que el usuario nombró un turno antes ("Quiero sembrar soja" → "Norte").
+   */
+  recentUserText?: string;
 }
 
 export class AgentService {
@@ -130,6 +136,14 @@ export class AgentService {
         results[3].status === 'fulfilled' ? results[3].value : undefined,
         results[4].status === 'fulfilled' ? results[4].value : { finance: null, scouting: null, harvest: null, stock: null, livestock: null, activity: null, rainfall: null },
       ] as const);
+
+      // Texto de los turnos RECIENTES del usuario — solo los 'user' (los del bot
+      // pueden repetir un crop en una confirmación y no son señal del usuario).
+      // Lo usa el output-validator para no dropear un crop dicho un turno antes.
+      const recentUserText = (historyTurns as Array<{ role: string; content: unknown }>)
+        .filter(t => t.role === 'user' && typeof t.content === 'string')
+        .map(t => t.content as string)
+        .join(' ');
 
       // Build system prompt (stable — cacheable across users/calls).
       const botName = (await getSetting('BOT_NAME')) || 'MIA';
@@ -283,7 +297,7 @@ export class AgentService {
         `STOP: ${response.stop_reason}`,
       );
 
-      return { toolCalls, conversationalText, usage, truncated };
+      return { toolCalls, conversationalText, usage, truncated, recentUserText };
     } catch (err) {
       const isTimeout = err instanceof Error && err.name === 'AbortError';
       const apiStatus = err instanceof Anthropic.APIError ? err.status : undefined;

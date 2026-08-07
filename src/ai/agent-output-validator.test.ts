@@ -45,6 +45,29 @@ describe('agent-output-validator — crop', () => {
     );
     expect(r.input.crop).toBe('soja');
   });
+
+  // Bug live (Ago 2026): "Quiero sembrar soja" → "¿En qué lote?" → "Norte".
+  // El agente arma sow_crop(crop=soja, plot=Norte) en el 2º turno, pero el
+  // validador dropeaba "soja" porque no está en "Norte" (no veía el historial)
+  // → re-preguntaba el cultivo y ofrecía el form sin prefill. El crop que el
+  // usuario dijo un turno antes NO es alucinación.
+  it('no dropea el crop que el usuario nombró en un turno reciente (recentText)', () => {
+    const r = validateToolCall(
+      { toolName: 'sow_crop', input: { crop: 'soja', plot: 'Norte' }, originalText: 'Norte' },
+      { ...OPTS, recentText: 'Quiero sembrar soja' },
+    );
+    expect(r.input.crop).toBe('soja');
+    expect(r.droppedFields).not.toContain('crop');
+  });
+
+  it('sí dropea si el crop no está ni en el texto ni en el historial reciente', () => {
+    const r = validateToolCall(
+      { toolName: 'sow_crop', input: { crop: 'trigo', plot: 'Norte' }, originalText: 'Norte' },
+      { ...OPTS, recentText: 'quiero sembrar soja' },
+    );
+    expect(r.input.crop).toBeUndefined();
+    expect(r.droppedFields).toContain('crop');
+  });
 });
 
 describe('agent-output-validator — plot/field', () => {

@@ -650,6 +650,9 @@ export class IntentClassifier {
             validatePlotField,
             userPlots,
             userFields,
+            // Historial reciente del usuario: un crop dicho un turno antes no es
+            // alucinación ("Quiero sembrar soja" → "¿En qué lote?" → "Norte").
+            recentText: agentResult.recentUserText,
           });
           if (parseResults.length > 0) {
             const primary = parseResults[0];

@@ -2082,6 +2082,37 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(webAppUrls(items)).toHaveLength(0);
     });
 
+    it('crop dicho un turno antes NO se dropea → registra directo, sin re-preguntar ni ofrecer form', async () => {
+      // Bug live (Ago 2026): "Quiero sembrar soja" → "¿En qué lote?" → "Norte".
+      // El agente arma sow_crop(crop=soja, plot=Norte) en el 2º turno, pero el
+      // output-validator dropeaba "soja" (no está en "Norte", no veía historial)
+      // → re-preguntaba el cultivo y ofrecía el form. Con recentUserText el crop
+      // sobrevive y la siembra se registra en un solo paso.
+      h.fakeAgent.enqueue(
+        [{ toolName: 'sow_crop', toolInput: { crop: 'soja', plot: 'Norte', field: 'La Esperanza' } }],
+        null,
+        'Quiero sembrar soja', // lo que el usuario dijo el turno anterior
+      );
+      const items = await h.send('Norte');
+      const text = h.allText(items);
+
+      expect(text).not.toContain('¿Qué cultivo'); // NO re-pregunta el cultivo
+      expect(webAppUrls(items)).toHaveLength(0);   // NO ofrece formulario
+      expect(text.toLowerCase()).toContain('soja'); // confirma la siembra
+
+      const pc = await h.q(
+        `SELECT pc.crop, p.name AS plot FROM plot_crops pc
+         JOIN plots p ON p.id = pc.plot_id JOIN fields f ON f.id = p.field_id
+         WHERE f.user_id = $1 AND pc.end_date IS NULL`,
+        [h.userId],
+      );
+      expect(pc).toHaveLength(1);
+      expect((pc[0] as { crop: string }).crop).toMatch(/soja/i);
+      expect((pc[0] as { plot: string }).plot).toBe('Norte');
+      // limpieza: sacar el plot_crop para no ensuciar otros tests del bloque
+      await h.q(`DELETE FROM plot_crops WHERE plot_id = $1`, [plotId]);
+    });
+
     it('submit con pending ya resuelto por chat → 409, sin duplicar, token consumido', async () => {
       const { formSessionService } = await import('../../../services/form-session.service.js');
       const { submitForm } = await import('../../../forms/form-submit.service.js');

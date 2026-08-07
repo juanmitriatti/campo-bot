@@ -33,6 +33,7 @@ export class FakeAgentService {
   enqueue(
     toolCalls: Array<{ toolName: string; toolInput: Record<string, unknown> }>,
     conversationalText: string | null = null,
+    recentUserText?: string,
   ): void {
     const calls: AgentToolCall[] = toolCalls.map(tc => ({
       toolName: tc.toolName,
@@ -44,6 +45,10 @@ export class FakeAgentService {
       conversationalText,
       usage: { input_tokens: 0, output_tokens: 0 },
       truncated: false,
+      // Historial reciente del usuario (turnos previos): simula lo que el agente
+      // real arma para que el output-validator no dropee un crop dicho un turno
+      // antes (bug live "Quiero sembrar soja" → "Norte").
+      recentUserText,
     });
   }
 

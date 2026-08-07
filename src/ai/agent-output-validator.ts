@@ -31,6 +31,13 @@ export interface ValidationOptions {
   userPlots?: string[];
   /** Canonical field names owned/shared with the user (for field validation). */
   userFields?: string[];
+  /**
+   * Texto de los turnos recientes del usuario (historial). Un cultivo que el
+   * usuario nombró un turno antes ("Quiero sembrar soja" → "¿En qué lote?" →
+   * "Norte") NO es alucinación: el agente lo arrastra con razón. Sin esto, el
+   * validador dropeaba ese crop porque no estaba en el mensaje actual ("Norte").
+   */
+  recentText?: string;
 }
 
 export interface ValidationResult {
@@ -124,7 +131,7 @@ export function validateToolCall(
   const droppedFields: string[] = [];
 
   if (options.validateCrop && CROP_AWARE_TOOLS.has(ctx.toolName)) {
-    if (shouldStripCrop(input, ctx.originalText)) {
+    if (shouldStripCrop(input, ctx.originalText, options.recentText)) {
       input = { ...input };
       delete input.crop;
       droppedFields.push('crop');
@@ -147,7 +154,11 @@ export function validateToolCall(
   return { input, droppedFields };
 }
 
-function shouldStripCrop(input: Record<string, unknown>, originalText: string): boolean {
+function shouldStripCrop(
+  input: Record<string, unknown>,
+  originalText: string,
+  recentText?: string,
+): boolean {
   const cropValue = input.crop;
   if (typeof cropValue !== 'string') return false;
   const trimmed = cropValue.trim();
@@ -156,7 +167,13 @@ function shouldStripCrop(input: Record<string, unknown>, originalText: string): 
   // TODOS los cultivos del texto, no solo el primero: en compounds multi-cultivo
   // ("sembré soja en Norte y maíz en Sur") la versión singular validaba el
   // segundo tool contra "soja" y descartaba "maíz" como alucinación.
-  const cropsInText = extractAllCropsFromText(originalText);
+  // Además del mensaje actual, se consideran los cultivos que el usuario nombró
+  // en turnos recientes (recentText): en el flujo "Quiero sembrar soja" →
+  // "¿En qué lote?" → "Norte", el crop viene del turno anterior, no del actual.
+  const cropsInText = [
+    ...extractAllCropsFromText(originalText),
+    ...(recentText ? extractAllCropsFromText(recentText) : []),
+  ];
   if (cropsInText.length === 0) return true;
   const normTrimmed = normalize(trimmed);
   return !cropsInText.some(c => normalize(c) === normTrimmed);
