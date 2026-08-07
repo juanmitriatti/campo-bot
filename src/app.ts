@@ -15,6 +15,7 @@ import authRoutes from './routes/auth.routes.js';
 import webhookRoutes from './routes/webhooks.routes.js';
 import { requireAuth, requireRole } from './middleware/auth.middleware.js';
 import mapRoutes from './routes/map.routes.js';
+import formsRoutes from './routes/forms.routes.js';
 import { startScheduler } from './services/scheduler.js';
 import { runMigrations } from './scripts/run-migrations.js';
 
@@ -72,6 +73,9 @@ app.use('/api/test-bot', requireAuth, testBotRoutes);
 app.use('/api/map', mapRoutes);
 app.use('/map', express.static(path.join(__dirname, 'public/map')));
 
+// Structured forms (public, token-authenticated via form_sessions)
+app.use('/api/forms', formsRoutes);
+
 // Admin dashboard: protect API, then serve legacy dashboard
 app.use('/admin/api', requireAuth, requireRole('admin'));
 app.use('/admin', dashboard);
@@ -81,6 +85,12 @@ const frontendDist = path.resolve(__dirname, '../frontend/dist');
 app.use('/app-assets', express.static(frontendDist));
 const reactAppRoutes = ['/login', '/register', '/dashboard', '/chat', '/forgot-password', '/reset-password', '/verify-email'];
 app.get(reactAppRoutes, (_req: express.Request, res: express.Response, next: express.NextFunction) => {
+  res.sendFile(path.join(frontendDist, 'index.html'), (err) => { if (err) next(); });
+});
+
+// Structured form page (Telegram Mini App / link) — served by the React app.
+// Explicit route BEFORE the landing catch-all so /form/:token no cae en la landing.
+app.get('/form/:token', (_req: express.Request, res: express.Response, next: express.NextFunction) => {
   res.sendFile(path.join(frontendDist, 'index.html'), (err) => { if (err) next(); });
 });
 
