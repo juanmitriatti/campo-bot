@@ -172,6 +172,25 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
         callbackId = interactiveData.button_reply?.id;
       } else if (interactiveData?.type === 'list_reply') {
         callbackId = interactiveData.list_reply?.id;
+      } else if ((interactiveData as { type?: string })?.type === 'nfm_reply') {
+        // WhatsApp Flow response (DARK: aún no se envían Flows; si llega algo, entra
+        // por el MISMO path de submit que la Mini App — invariante 1: se loguea).
+        try {
+          const raw = (interactiveData as { nfm_reply?: { response_json?: string } }).nfm_reply?.response_json;
+          const parsed = raw ? JSON.parse(raw) as Record<string, unknown> : null;
+          const flowToken = parsed?.flow_token as string | undefined;
+          console.log('[FORM] nfm_reply recibido, flow_token presente:', !!flowToken);
+          if (flowToken && parsed) {
+            const { submitForm } = await import('../forms/form-submit.service.js');
+            const result = await submitForm(flowToken, parsed);
+            if (!result.ok) await sendMessage(phone, result.error);
+            // En éxito submitForm ya mandó la confirmación al chat.
+          }
+        } catch (err) {
+          console.error('[FORM] nfm_reply inválido:', err);
+        }
+        res.sendStatus(200);
+        return;
       }
 
       if (callbackId) {
