@@ -2025,4 +2025,80 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       }
     });
   });
+
+  // Formularios estructurados (siembra/cosecha): offerForm acompaña al pending,
+  // se suprime en compound (invariante 7), y el submit con pending ya resuelto
+  // devuelve 409 sin duplicar. Ver docs/features/forms.md.
+  describe('formularios estructurados (offerForm / submit)', () => {
+    let h: PipelineHarness;
+    let plotId: number;
+
+    /** URLs web_app de todos los botones de la respuesta (allButtons pela webAppUrl). */
+    const webAppUrls = (items: BotResponseItem[]): string[] =>
+      items.flatMap(i => (i.interactive?.buttons ?? [])
+        .map(b => (b as { webAppUrl?: string }).webAppUrl)
+        .filter((u): u is string => !!u));
+
+    beforeAll(async () => {
+      const { setSetting } = await import('../../../services/settings.service.js');
+      await setSetting('PUBLIC_URL', 'https://campo.test'); // offerForm lo exige
+      h = await createPipelineHarness('forms');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      const p = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte') RETURNING id`, [fid]);
+      plotId = (p[0] as { id: number }).id;
+    });
+    afterAll(async () => {
+      const { setSetting } = await import('../../../services/settings.service.js');
+      await h?.cleanup();
+      await setSetting('PUBLIC_URL', ''); // no filtrar a otros tests del proceso
+    });
+    beforeEach(async () => {
+      const { pendingActStore } = await import('../../../services/message-pipeline.js');
+      pendingActStore.clear(h.phone);
+    });
+
+    it('offerForm acompaña al pending por cultivo faltante (botón web_app /form/)', async () => {
+      const { pendingActStore } = await import('../../../services/message-pipeline.js');
+      h.fakeAgent.enqueue([
+        { toolName: 'sow_crop', toolInput: { plot: 'Norte', field: 'La Esperanza' } }, // SIN crop
+      ]);
+      const items = await h.send('sembré en el lote norte');
+
+      const urls = webAppUrls(items);
+      expect(urls.length).toBeGreaterThan(0);
+      expect(urls[0]).toContain('/form/');
+
+      const pending = pendingActStore.get(h.phone) as { missing?: string[] } | undefined;
+      expect(pending?.missing).toEqual(['crop']);
+    });
+
+    it('en bulkMode NO se ofrece formulario (invariante 7)', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'sow_crop', toolInput: { plot: 'Norte', field: 'La Esperanza' } }, // SIN crop
+        { toolName: 'log_rainfall', toolInput: { quantity: 20, field: 'La Esperanza' } },
+      ]);
+      const items = await h.send('sembré en el lote norte y llovieron 20mm en La Esperanza');
+      expect(webAppUrls(items)).toHaveLength(0);
+    });
+
+    it('submit con pending ya resuelto por chat → 409, sin duplicar, token consumido', async () => {
+      const { formSessionService } = await import('../../../services/form-session.service.js');
+      const { submitForm } = await import('../../../forms/form-submit.service.js');
+      const { pendingActStore } = await import('../../../services/message-pipeline.js');
+
+      const token = await formSessionService.create({
+        userId: h.userId, action: 'sow_crop', prefill: {},
+        channel: 'testbot', channelId: 'x', phone: h.phone, hadPending: true,
+      });
+      pendingActStore.clear(h.phone); // el pending se resolvió por chat: ya no está
+
+      const result = await submitForm(token, { plot_id: plotId, crop: 'soja', event_date: '2026-08-01' });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.status).toBe(409);
+
+      const row = await h.q(`SELECT used_at FROM form_sessions WHERE token = $1`, [token]);
+      expect((row[0] as { used_at: string | null }).used_at).not.toBeNull();
+    });
+  });
 });
