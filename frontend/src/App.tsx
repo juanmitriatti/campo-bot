@@ -16,6 +16,8 @@ import VerifyEmail from './pages/VerifyEmail';
 // so the login bundle stays slim. Chat is also heavy enough to split.
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Chat = lazy(() => import('./pages/Chat'));
+// Formulario estructurado (Telegram Mini App / link) — público, token-authenticated.
+const FormPage = lazy(() => import('./pages/FormPage'));
 
 function PageFallback() {
   return (
@@ -37,6 +39,7 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/form/:token" element={<FormPage />} />
           <Route
             path="/dashboard"
             element={
