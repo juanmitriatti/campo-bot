@@ -2132,4 +2132,52 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect((row[0] as { used_at: string | null }).used_at).not.toBeNull();
     });
   });
+
+  // Lote ambiguo: mismo nombre en 2 campos. Bug live (Ago 2026): con 2 lotes
+  // "Norte", "sembré maíz en el lote norte" heredaba el campo del contexto
+  // reciente (donde acababa de sembrar soja) y ofrecía PISAR la soja — sin
+  // preguntar cuál Norte. Ahora pregunta siempre (invariante 5).
+  describe('lote ambiguo (mismo nombre en 2 campos)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('ambiguo');
+      for (const fname of ['La barrida', 'La Esperanza']) {
+        const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, $2) RETURNING id`, [h.userId, fname]);
+        await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [(f[0] as { id: number }).id]);
+      }
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('nombre ambiguo sin campo → pregunta cuál, no pisa el cultivo del otro', async () => {
+      // Turno 1: siembro soja en Norte de La Esperanza → setea conversation_state.
+      h.fakeAgent.enqueue([
+        { toolName: 'sow_crop', toolInput: { crop: 'soja', plot: 'Norte', field: 'La Esperanza' } },
+      ]);
+      await h.send('sembré soja en el lote norte de La Esperanza');
+
+      // Turno 2: "el lote norte" (ambiguo, sin campo) → el agente omite el campo.
+      h.fakeAgent.enqueue([
+        { toolName: 'sow_crop', toolInput: { crop: 'maíz', plot: 'Norte' } },
+      ]);
+      const items = await h.send('sembré maíz en el lote norte');
+      const text = h.allText(items);
+
+      // Pregunta por el lote y nombra AMBOS campos (desambiguación real).
+      expect(text).toContain('¿En qué lote?');
+      expect(text).toContain('La barrida');
+      expect(text).toContain('La Esperanza');
+      // NO ofreció reemplazar la soja ni la pisó.
+      expect(text.toLowerCase()).not.toContain('reemplazo');
+
+      const crops = await h.q(
+        `SELECT pc.crop FROM plot_crops pc
+         JOIN plots p ON p.id = pc.plot_id JOIN fields f ON f.id = p.field_id
+         WHERE f.user_id = $1 AND pc.end_date IS NULL ORDER BY pc.crop`,
+        [h.userId],
+      );
+      // Solo la soja del turno 1 — el maíz NO se registró (quedó a la espera).
+      expect(crops.map(c => (c as { crop: string }).crop)).toEqual(['soja']);
+    });
+  });
 });

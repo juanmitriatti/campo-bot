@@ -192,7 +192,11 @@ describe('PlotDiscoveryService', () => {
       });
     });
 
-    it('auto-resolves duplicate plot name via conversation state', async () => {
+    it('nombre ambiguo SIEMPRE pregunta, aunque el contexto matchee un campo', async () => {
+      // Decisión de producto (Ago 2026): cuando el usuario nombra un lote
+      // ambiguo (2 "Norte" en campos distintos) SIN decir el campo, preguntamos
+      // cuál — nunca heredamos el campo del contexto en silencio (agarraba el
+      // que no era y ofrecía pisar el cultivo del otro). Invariante 5.
       mocks.findPlotByNameAcrossFields.mockResolvedValue([
         { id: 20, field_id: 10, name: '2Z', field_name: 'Norte' },
         { id: 30, field_id: 11, name: '2Z', field_name: 'Sur' },
@@ -201,13 +205,15 @@ describe('PlotDiscoveryService', () => {
 
       const result = await service.resolveFromNames(userId, null, '2Z');
 
-      expect(result).toEqual({
-        fieldId: 11, fieldName: 'Sur',
-        plotId: 30, plotName: '2Z',
-        autoCreated: false,
+      expect(result.plotId).toBeNull();
+      expect(result.needPlotSelection).toEqual({
+        fieldId: null, fieldName: null,
+        plots: [
+          { id: 20, name: '2Z (Norte)' },
+          { id: 30, name: '2Z (Sur)' },
+        ],
       });
-      expect(mocks.updateConversationState).toHaveBeenCalledWith(userId, 11, 30);
-      expect(mocks.addPlotAlias).toHaveBeenCalled();
+      expect(mocks.updateConversationState).not.toHaveBeenCalled();
     });
 
     it('returns needPlotSelection when conversation state does not match any campo', async () => {

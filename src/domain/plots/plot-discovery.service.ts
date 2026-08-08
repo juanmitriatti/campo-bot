@@ -251,21 +251,15 @@ export class PlotDiscoveryService {
       };
     }
 
-    // 1b. Multiple matches (same name in different campos) — disambiguate
+    // 1b. Multiple matches (same name in different campos) — SIEMPRE preguntar.
+    // Antes se heredaba el campo del conversation_state ("venías trabajando en
+    // La Esperanza → asumo ese Norte"), pero con un nombre ambiguo explícito eso
+    // agarraba el lote equivocado en silencio y hasta ofrecía pisar el cultivo
+    // del otro (bug live Ago 2026: 2 lotes "Norte"). Decisión de producto:
+    // nombre ambiguo + sin campo = pregunta cuál (invariante 5), aunque haya
+    // contexto reciente. El deíctico exacto ("ahí mismo") sigue resolviendo por
+    // _resolveFromConversationState (path sin nombre de lote), no por acá.
     if (plots.length > 1) {
-      // Try conversation state — if user recently used one of the campos, auto-resolve
-      const state = await getConversationState(userId);
-      if (state?.last_field_id) {
-        const inLastField = plots.find((p: any) => p.field_id === state.last_field_id);
-        if (inLastField) {
-          await this._registerAliases(inLastField.id, plotName);
-          await updateConversationState(userId, inLastField.field_id, inLastField.id);
-          return {
-            fieldId: inLastField.field_id, fieldName: inLastField.field_name,
-            plotId: inLastField.id, plotName: inLastField.name, autoCreated: false,
-          };
-        }
-      }
       // Can't auto-resolve → return needPlotSelection with campo-tagged names
       return {
         fieldId: null, fieldName: null, plotId: null, plotName: null, autoCreated: false,

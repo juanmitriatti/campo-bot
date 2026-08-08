@@ -236,6 +236,17 @@ export class AgronomyHandler {
       return { type: 'resolved', plotId: resolved.plotId, fieldId: resolved.fieldId, plotName: resolved.plotName, fieldName: resolved.fieldName };
     }
 
+    // Nombre ambiguo (mismo nombre en 2+ campos): preguntar SOLO por esos lotes,
+    // no por TODOS los del usuario. needPlotSelection ya trae el subconjunto; le
+    // pegamos el field_name real para que los botones se distingan por campo
+    // ("Norte — La barrida" / "Norte — La Esperanza").
+    if (resolved.needPlotSelection?.plots?.length) {
+      const ids = new Set(resolved.needPlotSelection.plots.map(p => p.id));
+      const all = await this.repo.findAllUserPlots(userId);
+      const subset = all.filter(p => ids.has(p.id));
+      if (subset.length >= 2) return { type: 'ask_user', plots: subset };
+    }
+
     const userPlots = await this.repo.findAllUserPlots(userId);
 
     if (userPlots.length === 0) {
