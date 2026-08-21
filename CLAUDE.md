@@ -253,7 +253,7 @@ Gated by admin settings (ship dark, flip when ready):
 - Observation guard: `isLikelyQuestionOrFollowUp()` prevents non-agro text from being saved as observations
 - **Alertas proactivas (Jul 2026)**: reactivadas en cron, gateadas por `PROACTIVE_ALERTS_ENABLED` (admin grupo bot, default false — flip al arrancar el piloto) + opt-out por usuario (`user_settings.alerts_enabled`, migración 103, comandos triviales "no más alertas"/"dame alertas"). Gate central en `alert.service.js` (`isProactiveAlertType`): los 6 tipos proactivos (weather, monitoring_reminder, pest_escalation, missing_hectares, low_stock, phenology) chequean opt-out + llevan footer de baja; resúmenes/recordatorios NO se gatean. Skip loguea `[INTERCEPT]`.
 - **Resumen mensual con tendencias (Jul 2026)**: bloque "📈 Tendencias" (movers por categoría vs mes anterior) — `src/services/monthly-insights.js` (puro, testeado) cableado en `buildMonthlyReport`. Config admin: `MONTHLY_INSIGHTS_ENABLED` + `MONTHLY_INSIGHTS_MIN_PCT`.
-- **Formularios estructurados (Ago 2026, migración 105)**: siembra/cosecha se pueden cargar por form de pantalla única (Telegram Mini App; WhatsApp Flows dark). `FormDefinition` en `src/forms/form-definitions.ts` es la fuente ÚNICA (render React + validación server + Flow JSON). Sesiones token-based en `form_sessions` (30 min, un uso). El botón se ofrece vía sideEffect `offerForm` (suprimido en bulkMode — invariante 7) y comando trivial `formulario`. El submit entra por `routeCommand` con `withUserLock` — sin IA. Todo path loguea `[FORM]`. Ver docs/features/forms.md.
+- **Formularios estructurados (Ago 2026, migración 105)**: siembra/cosecha se pueden cargar por form de pantalla única (Telegram Mini App; WhatsApp Flows). `FormDefinition` en `src/forms/form-definitions.ts` es la fuente ÚNICA (render React + validación server + Flow JSON). Opciones dinámicas (lotes/cultivos) via `src/forms/form-options.ts` (`computeFormOptions`) — misma fuente para el form web y para hornear el `flow_action_payload.data` del Flow. Sesiones token-based en `form_sessions` (30 min, un uso). El botón se ofrece vía sideEffect `offerForm` (suprimido en bulkMode — invariante 7) y comando trivial `formulario`. El submit entra por `routeCommand` con `withUserLock` — sin IA. **WhatsApp Flows: código completo** (`appendFormOffer` emite `BotResponseItem` tipo `flow` + `sendFlow` en `whatsapp.js`; endpointless, sin RSA; respuesta por `nfm_reply` → mismo `submitForm`), **gateado por settings `WHATSAPP_FLOW_ID_SOW`/`_HARVEST` (grupo bot)** — sin flow_id publicado en Meta sigue dark. Todo path loguea `[FORM]`. Ver docs/features/forms.md + docs/operations.md § "WhatsApp — checklist de activación".
 
 ## Feature Gates
 
@@ -298,7 +298,8 @@ Gated by admin settings (ship dark, flip when ready):
 
 ### Forms (estructurados — Ago 2026)
 - `src/forms/form-definitions.ts` — fuente ÚNICA de siembra/cosecha (render + validación server + Flow JSON)
-- `src/forms/form-offer.ts` — sideEffect `offerForm` → botón web_app (suprimido en bulkMode)
+- `src/forms/form-options.ts` — `computeFormOptions` (lotes+cultivos) compartido por form web y Flow saliente
+- `src/forms/form-offer.ts` — sideEffect `offerForm` → botón web_app (Telegram) / mensaje Flow (WhatsApp, gateado por flow_id); suprimido en bulkMode
 - `src/forms/form-submit.service.ts` — payload → `routeCommand` con `withUserLock` (sin IA); reglas 404/409/422
 - `src/forms/whatsapp-flow-generator.ts` — Flow JSON de WhatsApp (dark)
 - `src/services/form-session.service.ts` — sesiones token-based en `form_sessions` (30 min, un uso)

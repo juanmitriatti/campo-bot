@@ -123,10 +123,57 @@ npx tsx src/scripts/delete-telegram-webhook.ts   # Remove webhook
 
 User store key: `tg_${chatId}`. Users provisioned on first contact via `getOrCreateUserByTelegramId()`.
 
-## WhatsApp — checklist de reactivación (pendiente de número definitivo)
+## WhatsApp — checklist de activación (pendiente de número definitivo)
 
-Prod corre SOLO Telegram hoy (sin vars `WHATSAPP_*` en Railway). Al reactivar WhatsApp,
-además del setup de Cloud API tener en cuenta:
+Prod corre SOLO Telegram hoy (sin vars `WHATSAPP_*` en Railway). La activación tiene
+**dos capas**: (A) el canal WhatsApp base (Cloud API) y (B) los Formularios por WhatsApp
+Flows, que están DARK y con un gap de código todavía abierto.
+
+### A) Canal WhatsApp base (Cloud API) — prerequisito de todo
+
+1. **Número dedicado**: chip prepago dedicado (recomendado); NO puede estar registrado en la
+   app de WhatsApp normal.
+2. **Verificar el negocio** en Business Manager (puede ir en paralelo; sin verificar el límite
+   es 250 conversaciones iniciadas por el negocio/día).
+3. **Alta del número** en developers.facebook.com → app → WhatsApp → API Setup (verificación
+   SMS/llamada) → anotar el **Phone Number ID**.
+4. **Token permanente** vía *Usuario del sistema* (rol Admin) con permisos
+   `whatsapp_business_messaging` + `whatsapp_business_management`, expiración "Nunca".
+5. **Webhook**: `https://campo-bot-production.up.railway.app/webhook` + `VERIFY_TOKEN`
+   (ya está en Railway), suscribir el campo `messages`, app en modo Live.
+6. **Variables** en Railway (y local): `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID`
+   (`VERIFY_TOKEN` ya existe). Redeploy y probar end-to-end un mensaje de texto ida/vuelta.
+
+Con esto anda todo el bot conversacional por WhatsApp. Un `sow_crop`/`harvest_crop` sin
+cultivo cae al flujo de pending/texto ("🌱 ¿Qué cultivo sembraste?"), que funciona en los
+3 canales — **los Formularios (Flows) son un extra, no un bloqueante.**
+
+### B) Formularios por WhatsApp Flows (código COMPLETO, falta solo config de Meta)
+
+Estado del código (todo hecho — activar es puro config):
+- ✅ `src/forms/whatsapp-flow-generator.ts` — genera el Flow JSON desde la misma
+  `FormDefinition` (endpointless: las opciones dinámicas de lote/cultivo se inyectan como
+  `data` del screen al enviar, screen terminal → **no** hace falta endpoint público ni
+  claves RSA de Flow).
+- ✅ Entrada `nfm_reply` en `whatsapp.controller.ts` — parsea la respuesta del Flow y la
+  mete por el mismo `submitForm` que la Mini App (usa `flow_token` = token de sesión del form).
+- ✅ Envío saliente: `appendFormOffer` (`src/forms/form-offer.ts`) hornea las opciones con
+  `computeFormOptions` (`src/forms/form-options.ts`, la MISMA fuente que el form web) en
+  `flow_action_payload.data` y emite un `BotResponseItem` tipo `flow`; `sendFlow` en
+  `src/services/whatsapp.js` lo manda por la Cloud API. **Gateado por el `flow_id`**: sin
+  setting, loguea `[FORM] skip offer (whatsapp): <KEY> vacío` y sigue dark.
+
+Pasos de activación (solo Meta + settings, sin tocar código):
+1. Generar el Flow JSON de siembra y cosecha con `buildWhatsAppFlowJson(def)`.
+2. En WhatsApp Manager → **Flows**: crear un Flow por form, pegar el JSON, **publicarlo**,
+   anotar el `flow_id` de cada uno.
+3. Guardar los `flow_id` en settings grupo `bot`: `WHATSAPP_FLOW_ID_SOW` y
+   `WHATSAPP_FLOW_ID_HARVEST`. Opcional: `WHATSAPP_FLOW_MODE` (`published` por defecto;
+   poner `draft` para probar contra el número de test antes de publicar).
+4. Probar en `draft` contra el número de test → al tocar "Abrir formulario" y completar,
+   el `nfm_reply` entra por el mismo `submitForm` que la Mini App. Pasar a `published`.
+
+### Gotchas transversales (aplican al canal, no solo a Flows)
 
 - **Ventana de 24 hs de Meta (CRÍTICO para alertas)**: los mensajes iniciados por el bot
   fuera de las 24 hs desde el último mensaje del usuario requieren **plantillas aprobadas**

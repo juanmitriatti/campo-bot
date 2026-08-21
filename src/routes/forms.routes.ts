@@ -5,8 +5,7 @@ import { Router, type Request, type Response } from 'express';
 import { formSessionService } from '../services/form-session.service.js';
 import { FORM_DEFINITIONS } from '../forms/form-definitions.js';
 import { submitForm } from '../forms/form-submit.service.js';
-import { KNOWN_CROPS } from '../utils/crops.js';
-import { getUserFields, getPlotsByField, getAllActiveCrops } from '../services/expenses.js';
+import { computeFormOptions } from '../forms/form-options.js';
 
 const router = Router();
 
@@ -17,22 +16,13 @@ export async function formsGetHandler(req: Request, res: Response): Promise<void
     return;
   }
   const def = FORM_DEFINITIONS[session.action];
-  const fields = await getUserFields(session.user_id);
-  const actives = (await getAllActiveCrops(session.user_id)) as Array<{ plot_id: number; crop: string }>;
-  const activeByPlot = new Map(actives.map(a => [a.plot_id, a.crop]));
-  const plots: Array<{ id: number; name: string; fieldName: string; activeCrop: string | null }> = [];
-  for (const f of fields as Array<{ id: number; name: string }>) {
-    for (const p of (await getPlotsByField(f.id)) as Array<{ id: number; name: string }>) {
-      plots.push({ id: p.id, name: p.name, fieldName: f.name, activeCrop: activeByPlot.get(p.id) ?? null });
-    }
-  }
-  const visible = session.action === 'harvest_crop' ? plots.filter(p => p.activeCrop) : plots;
+  const options = await computeFormOptions(session.action, session.user_id);
   res.json({
     action: session.action,
     title: def.title,
     fields: def.fields,
     prefill: session.prefill,
-    options: { plots: visible, crops: KNOWN_CROPS },
+    options,
   });
 }
 

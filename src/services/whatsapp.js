@@ -224,6 +224,46 @@ export async function sendInteractiveList(to, body, buttonText, sections) {
   }
 }
 
+export async function sendFlow(to, body, flow) {
+  to = formatArgNumber(to);
+  // Mensaje interactivo tipo Flow (formularios estructurados). Endpointless:
+  // las opciones dinámicas van horneadas en flow_action_payload.data desde
+  // form-offer. flow_token = token de sesión → vuelve en nfm_reply.
+  try {
+    await axios.post(
+      `${API_BASE}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to,
+        type: "interactive",
+        interactive: {
+          type: "flow",
+          body: { text: body },
+          action: {
+            name: "flow",
+            parameters: {
+              flow_message_version: "3",
+              flow_token: flow.flowToken,
+              flow_id: flow.flowId,
+              flow_cta: flow.cta,
+              flow_action: "navigate",
+              flow_action_payload: { screen: "FORM", data: flow.data },
+              mode: flow.mode,
+            },
+          },
+        },
+      },
+      { headers: authHeaders }
+    );
+  } catch (err) {
+    logError('whatsapp', 'SEND_FLOW_ERROR', err, {
+      phone: to,
+      context: { action: 'sendFlow', flowId: flow?.flowId, status: err.response?.status },
+    });
+    throw err;
+  }
+}
+
 export async function sendMessageWithRetry(to, text, maxRetries = 3) {
   const delays = [1000, 5000, 15000];
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

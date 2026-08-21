@@ -220,11 +220,19 @@ export interface BotResponseItem {
   type: 'text' | 'interactive';
   text?: string;
   interactive?: {
-    type: 'buttons' | 'list';
+    type: 'buttons' | 'list' | 'flow';
     body: string;
     buttons?: InteractiveButton[];
     buttonText?: string;
     sections?: InteractiveListSection[];
+    // Solo WhatsApp Flows (form-offer). Telegram/testbot ignoran este tipo.
+    flow?: {
+      flowId: string;
+      flowToken: string;
+      cta: string;
+      mode: 'draft' | 'published';
+      data: Record<string, unknown>;
+    };
   };
 }
 

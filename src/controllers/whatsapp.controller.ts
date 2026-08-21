@@ -13,7 +13,7 @@
  */
 import express from 'express';
 import type { Request, Response } from 'express';
-import { sendMessage, uploadMedia, sendDocument, sendInteractiveButtons, sendInteractiveList, downloadMedia } from '../services/whatsapp.js';
+import { sendMessage, uploadMedia, sendDocument, sendInteractiveButtons, sendInteractiveList, sendFlow, downloadMedia } from '../services/whatsapp.js';
 import { MessageDedup } from '../middleware/dedup.js';
 import { TranscriptionService, AudioTooLongError } from '../services/audio/transcription.service.js';
 import { getAudioConfig } from '../services/audio/audio.types.js';
@@ -63,6 +63,8 @@ async function sendBotResponse(phone: string, items: BotResponseItem[]): Promise
           await sendInteractiveButtons(phone, item.interactive.body, item.interactive.buttons);
         } else if (item.interactive.type === 'list' && item.interactive.sections) {
           await sendInteractiveList(phone, item.interactive.body, item.interactive.buttonText, item.interactive.sections);
+        } else if (item.interactive.type === 'flow' && item.interactive.flow) {
+          await sendFlow(phone, item.interactive.body, item.interactive.flow);
         }
       }
     } catch (err) {
