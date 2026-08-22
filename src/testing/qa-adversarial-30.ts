@@ -4,7 +4,11 @@
  * Simulates a real Argentine farmer using informal language
  */
 
-// Direct API calls — TestBotClient has wrong auth paths for Docker setup
+// Direct API calls — TestBotClient has wrong auth paths for Docker setup.
+// El parametro 'client' de cada test quedo vestigial: sendAndLog lo ignora
+// (_unused) y todo va por fetch directo. Se tipa asi para no reintroducir
+// la dependencia del cliente que este archivo evita a proposito.
+type TestBotClient = unknown;
 
 const BASE_URL = process.env.TEST_BOT_URL || 'http://localhost:3000';
 const EMAIL = 'qa-adversarial@campo.test';

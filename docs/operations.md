@@ -86,8 +86,8 @@ Configurable via admin dashboard → `ai` group:
 |---------|------|---------|-------------|
 | `AGENT_ENABLED` | bool | `false` | `true` = tool_use agent, `false` = JSON extraction |
 | `AGENT_MODEL` | string | `claude-haiku-4-5-20251001` | Model for agent |
-| `AGENT_MAX_TOKENS` | number | `400` | Max output tokens |
-| `AGENT_TIMEOUT_MS` | number | `8000` | Timeout in ms |
+| `AGENT_MAX_TOKENS` | number | `1500` | Max output tokens |
+| `AGENT_TIMEOUT_MS` | number | `12000` | Presupuesto TOTAL en ms, incluidos los 2 reintentos del SDK |
 | `AGENT_TEMPERATURE` | number | `0` | Temperature (0 = deterministic) |
 
 ## Flow Reminder Settings

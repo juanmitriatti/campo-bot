@@ -712,7 +712,9 @@ export class LivestockHandler {
       && group.plot_id == null
       && group.corral_id == null
       && group.field_id)
-      ? { savedRecordsWithoutPlot: [{ kind: 'livestock' as const, id: group.id as number, fieldId: group.field_id as number }] }
+      // group.id viene como texto (id::text en la query) — `as number` no
+      // convierte, solo miente el tipo; hay que parsearlo.
+      ? { savedRecordsWithoutPlot: [{ kind: 'livestock' as const, id: Number(group.id), fieldId: group.field_id as number }] }
       : {};
 
     // Cuando preguntamos el precio, dejamos un pending REAL apuntando al
@@ -1437,7 +1439,7 @@ export class LivestockHandler {
       plotId: resolvedLoc.plotId,
       corralId: resolvedLoc.corralId,
       eventType: 'health_event',
-      eventDate: cmd.eventDate || null,
+      eventDate: (cmd.eventDate as string | Date | null) || null,
       productType: healthType,
       product: diseaseOrVaccine,
       animalCategory: category,
@@ -1445,7 +1447,7 @@ export class LivestockHandler {
       quantity: doseQuantity,
       unit: doseUnit,
       implement: veterinarian,
-      notes: cmd.notes || null,
+      notes: (cmd.notes as string | null) || null,
     });
 
     await this.bumpConversationContext(userId, resolvedLoc.plotId);
@@ -1592,13 +1594,13 @@ export class LivestockHandler {
       plotId: resolvedLoc.plotId,
       corralId: resolvedLoc.corralId,
       eventType: 'repro_event',
-      eventDate: cmd.eventDate || null,
+      eventDate: (cmd.eventDate as string | Date | null) || null,
       productType: reproType,
       product: sireInfo,
       implement: method,
       animalCategory: category,
       animalsAffected,
-      notes: cmd.notes || null,
+      notes: (cmd.notes as string | null) || null,
     });
 
     await this.bumpConversationContext(userId, resolvedLoc.plotId);
@@ -1723,12 +1725,12 @@ export class LivestockHandler {
       plotId: loc.plotId,
       corralId: loc.corralId,
       eventType: 'weighing',
-      eventDate: cmd.eventDate || null,
+      eventDate: (cmd.eventDate as string | Date | null) || null,
       quantity: avgWeightKg,
       unit: 'kg',
       animalCategory: category,
       animalsAffected: animalsWeighed,
-      notes: cmd.notes || null,
+      notes: (cmd.notes as string | null) || null,
     });
 
     if (category) {

@@ -8,3 +8,10 @@ dist/
 ab-results/
 !ab-results/v2/.gitkeep
 certs/
+
+# PIDs del launcher local (scripts/dev-local.ps1)
+.dev-local.pids
+
+# dumps locales de la DB (nunca commitear ni subir a Railway)
+campo_bot_local_*.sql
+dumps/

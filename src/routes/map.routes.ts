@@ -11,7 +11,7 @@ const mapTokenService = new MapTokenService();
 // GET /api/map/:token — validate token and return field info
 router.get('/:token', async (req: Request, res: Response) => {
   try {
-    const tokenRow = await mapTokenService.validateToken(req.params.token);
+    const tokenRow = await mapTokenService.validateToken(String(req.params.token));
     if (!tokenRow) {
       res.status(404).json({ error: 'Token inválido o expirado' });
       return;
@@ -49,7 +49,7 @@ router.get('/:token', async (req: Request, res: Response) => {
 // POST /api/map/:token — save polygon
 router.post('/:token', async (req: Request, res: Response) => {
   try {
-    const tokenRow = await mapTokenService.validateToken(req.params.token);
+    const tokenRow = await mapTokenService.validateToken(String(req.params.token));
     if (!tokenRow) {
       res.status(404).json({ error: 'Token inválido o expirado' });
       return;
@@ -112,7 +112,7 @@ router.post('/:token', async (req: Request, res: Response) => {
     }
 
     // Mark token as used
-    await mapTokenService.markUsed(req.params.token);
+    await mapTokenService.markUsed(String(req.params.token));
 
     // Send proactive message to user
     const locationStr = city

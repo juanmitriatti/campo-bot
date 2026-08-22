@@ -260,7 +260,7 @@ export class FinancialService {
     return this.repo.getWeeklyReport(userId);
   }
 
-  async getDateRangeReport(userId: UserId, desde: Date, hasta: Date, opts?: { fieldName?: string | null; plotName?: string | null; category?: string | null; type?: string }): Promise<any> {
+  async getDateRangeReport(userId: UserId, desde: Date, hasta: Date, opts?: { fieldName?: string | null; plotName?: string | null; category?: string | null; type?: 'expenses' | 'incomes' | 'both' }) {
     return this.repo.getDateRangeReport(userId, desde, hasta, opts);
   }
 

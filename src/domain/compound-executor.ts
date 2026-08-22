@@ -3,9 +3,19 @@ import { callbackPayloadStore } from '../middleware/callback-payload-store.js';
 import { logError } from '../services/error-logger.js';
 import { withTransaction, pool } from '../config/db.js';
 import type { FinancialHandler } from './financial/financial.handler.js';
-import type { ParseResult, ParsedCommand, ParsedExpense, ParsedIncome, UserId, User, UserSettings, HandlerResponse, InteractiveMessage } from '../types/index.js';
+import type { ParseResult, ParsedCommand, ParsedExpense, ParsedIncome, UserId, User, UserSettings, HandlerResponse, InteractiveMessage, Intent } from '../types/index.js';
 import { LIVESTOCK_CATEGORY_LABEL } from './livestock/livestock.types.js';
 import type { LivestockCategory } from './livestock/livestock.types.js';
+
+/**
+ * Acceso seguro a `intent.data`. Intent es una unión y cuatro de sus variantes
+ * (ambiguous, unknown, fallback_blocked, trial_expired) no tienen `data`, así
+ * que leerla directo no compila. Devuelve {} para esas — mismo comportamiento
+ * que el `|| {}` que había repetido en cada sitio.
+ */
+function intentData(intent: Intent): Record<string, unknown> {
+  return 'data' in intent ? ((intent.data ?? {}) as Record<string, unknown>) : {};
+}
 
 export interface CompoundResult {
   messages: string[];
@@ -171,7 +181,7 @@ export class CompoundExecutor {
     const seen = new Set<string>();
     const deduped: ParseResult[] = [];
     for (const step of actionable) {
-      const data = (step.intent.data || {}) as Record<string, unknown>;
+      const data = intentData(step.intent);
       const stable: Record<string, unknown> = {};
       for (const key of Object.keys(data).sort()) {
         if (key.startsWith('_') || VOLATILE_KEYS.has(key)) continue;
@@ -195,12 +205,12 @@ export class CompoundExecutor {
     // place. Collapse them, preferring the step that carries an explicit plot.
     {
       const addKey = (s: ParseResult): string | null => {
-        const d = (s.intent.data || {}) as Record<string, unknown>;
+        const d = intentData(s.intent);
         if (d.command !== 'add_livestock') return null;
         return [d.category ?? '', d.breed ?? '', d.count ?? '', d.corralName ?? d.corral ?? ''].join('|');
       };
       const explicitPlot = (s: ParseResult): string => {
-        const d = (s.intent.data || {}) as Record<string, unknown>;
+        const d = intentData(s.intent);
         return String(d.plotName ?? d.plot ?? '');
       };
       const byKey = new Map<string, ParseResult[]>();
@@ -249,7 +259,7 @@ export class CompoundExecutor {
       'agronomy_question',
     ]);
     const isRead = (s: ParseResult) => {
-      const data = (s.intent.data || {}) as Record<string, unknown>;
+      const data = intentData(s.intent);
       const cmd = (data.command as string) || '';
       return READ_ONLY_TOOLS.has(cmd);
     };
@@ -710,7 +720,7 @@ function consolidateLivestockMessages(
   // Extract per-step info from the ParseResults
   interface StepInfo { category: string; count: number; plotName: string; fieldName: string; command: string }
   const steps: StepInfo[] = livestockSteps.map(r => {
-    const d = r.intent.data as ParsedCommand;
+    const d = intentData(r.intent) as ParsedCommand;
     const cat = (d.category as string) || '';
     const label = LIVESTOCK_CATEGORY_LABEL[cat as LivestockCategory] || cat;
     return {

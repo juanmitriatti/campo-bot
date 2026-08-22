@@ -1273,7 +1273,10 @@ router.patch('/stock/:id', requireAuth, requireFeature('stock'), async (req: Req
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
 
-    const pool = (await import('../services/db.js')).default;
+    // Antes hacía `(await import('../services/db.js')).default` — ese módulo no
+    // existe (el pool vive en config/db.js y se exporta nombrado, sin default),
+    // así que este PATCH reventaba con ERR_MODULE_NOT_FOUND. `pool` ya está
+    // importado arriba; el const local solo lo tapaba.
     const sets: string[] = ['updated_at = NOW()'];
     const params: (string | number | null)[] = [];
     let idx = 0;
@@ -2529,7 +2532,7 @@ router.post('/push/subscribe', requireAuth, async (req: Request, res: Response) 
   try {
     const { PushNotificationService } = await import('../services/push-notification.service.js');
     const svc = new PushNotificationService();
-    await svc.subscribe(req.auth!.userId, req.body);
+    await svc.subscribe(asUserId(req.auth!.userId), req.body);
     res.json({ ok: true });
   } catch (err) {
     handleError(err, res);
@@ -2540,7 +2543,7 @@ router.delete('/push/unsubscribe', requireAuth, async (req: Request, res: Respon
   try {
     const { PushNotificationService } = await import('../services/push-notification.service.js');
     const svc = new PushNotificationService();
-    await svc.unsubscribe(req.auth!.userId, req.body.endpoint);
+    await svc.unsubscribe(asUserId(req.auth!.userId), req.body.endpoint);
     res.json({ ok: true });
   } catch (err) {
     handleError(err, res);

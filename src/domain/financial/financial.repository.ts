@@ -203,7 +203,7 @@ export class FinancialRepository {
     return rows.map((r: any) => ({ category: r.category, total: Number(r.total), currency: r.currency || 'ARS' }));
   }
 
-  async getDateRangeReport(userId: UserId, desde: Date, hasta: Date, opts?: { fieldName?: string | null; plotName?: string | null; category?: string | null; type?: string }): Promise<any> {
+  async getDateRangeReport(userId: UserId, desde: Date, hasta: Date, opts?: { fieldName?: string | null; plotName?: string | null; category?: string | null; type?: 'expenses' | 'incomes' | 'both' }) {
     return _getDateRangeReport(userId, desde, hasta, opts);
   }
 
@@ -279,7 +279,7 @@ export class FinancialRepository {
     return this.plots.getUserFieldsWithCity(userId);
   }
 
-  async getUserFields(userId: UserId): Promise<{ name: string; city: string | null; province: string | null }[]> {
+  async getUserFields(userId: UserId): Promise<{ id: number; name: string; city: string | null; province: string | null; location_method: string | null; plot_count: number; total_hectares: string | number }[]> {
     return this.plots.getUserFields(userId);
   }
 

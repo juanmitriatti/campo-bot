@@ -5,6 +5,10 @@ import { logWarning } from "../services/error-logger.js";
 /**
  * Auto-detect observation category from text.
  * Returns one of: malezas, sanidad, nutricion, fenologia, clima, general
+ *
+ * @param {string} text
+ * @returns {import('../constants/agro-terms.js').ObservationCategory} Anotado
+ *   para que no se infiera `string` y los consumidores tipados lo acepten.
  */
 export function detectObservationCategory(text) {
   const lower = text.toLowerCase();

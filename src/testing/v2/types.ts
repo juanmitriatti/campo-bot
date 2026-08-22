@@ -1,4 +1,4 @@
-export type Axis = 'comprension' | 'contexto' | 'repreguntas';
+export type Axis = 'comprension' | 'contexto' | 'repreguntas' | 'temporal';
 
 /** One user action in a scenario: send free text, or tap an interactive button by id. */
 export type Turn = { send: string } | { tap: string };

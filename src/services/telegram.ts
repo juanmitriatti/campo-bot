@@ -169,7 +169,8 @@ export async function sendTelegramDocument(
   try {
     const formData = new FormData();
     formData.append('chat_id', String(chatId));
-    formData.append('document', new Blob([buffer]), filename);
+    // Buffer ya no es un BlobPart válido en los tipos de Node; la vista sí.
+    formData.append('document', new Blob([new Uint8Array(buffer)]), filename);
     if (caption) formData.append('caption', formatMarkdown(caption));
     if (caption) formData.append('parse_mode', 'Markdown');
 

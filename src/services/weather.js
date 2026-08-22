@@ -7,6 +7,11 @@ const API_KEY = process.env.OPENWEATHER_API_KEY;
 const DEFAULT_CITY = process.env.WEATHER_CITY || "Buenos Aires";
 const BASE_URL = "https://api.openweathermap.org/data/2.5";
 
+/**
+ * @param {string|null} [city]
+ * @param {{ lat: number, lon: number }|null} [coords] Sin anotar, TS infiere el
+ *   tipo del default (`null`) y rechaza que le pasen coordenadas reales.
+ */
 export async function getCurrentWeather(city, coords = null) {
   city = city || DEFAULT_CITY;
   // Coordenadas (campo ubicado por mapa/GPS o centroide del censo) > string de ciudad:

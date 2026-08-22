@@ -150,7 +150,9 @@ export class AgentService {
       const systemPrompt = this.promptBuilder.build(null, dictionary, botName);
       const reducedContext = await getSettingBool('AGENT_REDUCED_CONTEXT_PROMPT_ENABLED');
       const ls = lastState as { finance: Record<string, unknown> | null; scouting: Record<string, unknown> | null; harvest: Record<string, unknown> | null; stock: Record<string, unknown> | null; livestock: Record<string, unknown> | null; activity: Record<string, unknown> | null; rainfall: Record<string, unknown> | null };
-      const userPrefix = this.promptBuilder.buildUserMessagePrefix(userContext, reducedContext, ls.finance, ls.scouting, ls.harvest, ls.stock, ls.livestock, ls.activity, ls.rainfall);
+      // reducedContext es boolean|null (null = setting sin definir) y el builder
+      // espera boolean|undefined.
+      const userPrefix = this.promptBuilder.buildUserMessagePrefix(userContext, reducedContext ?? undefined, ls.finance, ls.scouting, ls.harvest, ls.stock, ls.livestock, ls.activity, ls.rainfall);
 
       // Load agent-specific settings
       const [model, maxTokens, timeoutMs, temperatureStr, cacheTtlSetting] = await Promise.all([

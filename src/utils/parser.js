@@ -1484,6 +1484,12 @@ export function parseMensaje(texto) {
  * Parse an agronomic observation from text.
  * Supports both plot-level ("lote 1 ...") and field-level ("campo X ...") observations.
  * Returns null if neither lot nor field reference is found.
+ *
+ * @param {string} texto
+ * @returns {{ plotName: string|null, fieldName: string|null, observationText: string,
+ *   category: string, type: 'plot'|'field'|'bare' } | null} `type` se anota como
+ *   unión literal: sin esto TS lo infiere como `string` y el clasificador, que
+ *   calibra la confianza según el valor, no compila.
  */
 export function parsearObservacion(texto) {
   // Strip observation prefix before any processing (with or without colon/dash)

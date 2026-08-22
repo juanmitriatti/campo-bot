@@ -91,16 +91,19 @@ export class StockPurchaseService {
       return { item, movement };
     }
 
-    // Normal insumo entry from expense
+    // Normal insumo entry from expense. El `'type' in x && x.type === 'grain'`
+    // de arriba no alcanza para que TS descarte GrainStockEntry en esta rama,
+    // así que se nombra la variante una sola vez en lugar de castear por campo.
+    const insumo = suggestion as StockEntrySuggestion;
     const { item, movement } = await stockService.addStock(
       userId,
-      suggestion.product,
-      suggestion.quantity,
-      suggestion.unit,
+      insumo.product,
+      insumo.quantity,
+      insumo.unit,
       {
         category: category || 'otros',
         reason: 'Compra',
-        expenseId: (suggestion as StockEntrySuggestion).expenseId,
+        expenseId: insumo.expenseId,
       },
     );
     return { item, movement };

@@ -627,8 +627,10 @@ export class IntentClassifier {
         const agentResult = await this.agentService.extract(agentInputText, preprocessed, userId, settings, opts?.pendingHint ?? opts?.clarificationHint ?? null);
         if (agentResult) {
           const validationEnabled = await getSettingBool('AGENT_OUTPUT_VALIDATION_ENABLED');
-          const validateCrop = validationEnabled && (await getSettingBool('AGENT_VALIDATE_CROP'));
-          const validatePlotField = validationEnabled && (await getSettingBool('AGENT_VALIDATE_PLOT_FIELD'));
+          // getSettingBool devuelve boolean|null (null = setting sin definir);
+          // el mapper espera boolean|undefined, así que se normaliza acá.
+          const validateCrop = (validationEnabled && (await getSettingBool('AGENT_VALIDATE_CROP'))) ?? undefined;
+          const validatePlotField = (validationEnabled && (await getSettingBool('AGENT_VALIDATE_PLOT_FIELD'))) ?? undefined;
           let userPlots: string[] | undefined;
           let userFields: string[] | undefined;
           if (validatePlotField && this.userContextService) {

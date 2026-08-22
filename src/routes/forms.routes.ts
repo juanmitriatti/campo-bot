@@ -10,7 +10,7 @@ import { computeFormOptions } from '../forms/form-options.js';
 const router = Router();
 
 export async function formsGetHandler(req: Request, res: Response): Promise<void> {
-  const session = await formSessionService.validate(req.params.token);
+  const session = await formSessionService.validate(String(req.params.token));
   if (!session) {
     res.status(404).json({ error: 'Este formulario venció. Pedime otro en el chat con «formulario siembra» o «formulario cosecha».' });
     return;
@@ -27,7 +27,7 @@ export async function formsGetHandler(req: Request, res: Response): Promise<void
 }
 
 export async function formsPostHandler(req: Request, res: Response): Promise<void> {
-  const result = await submitForm(req.params.token, req.body ?? {});
+  const result = await submitForm(String(req.params.token), req.body ?? {});
   if (result.ok) {
     res.json({ ok: true, message: result.message });
     return;

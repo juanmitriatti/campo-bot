@@ -403,7 +403,7 @@ const TESTS: TestCase[] = [
       const code = extractCode(txt(codeRes));
       // Try to revoke via DB
       await dbq(a, `UPDATE field_invites SET expires_at = NOW() - INTERVAL '1 day' WHERE field_id IN (SELECT id FROM fields WHERE user_id=$1)`, [a.userId]);
-      const r = await send(_b => _b, `unirme ${code}`);
+      await send(_b, `unirme ${code}`);
       return { pass: true, note: 'manual revoke OK', response: '' };
     },
   },

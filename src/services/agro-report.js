@@ -120,6 +120,12 @@ async function getFinancialSummary({ fieldId, plotId, dateFrom, dateTo }) {
 /**
  * Generate an agronomic PDF report for a field.
  * Supports optional date range (desde/hasta) — defaults to current ISO week.
+ *
+ * @param {number} userId
+ * @param {number} fieldId
+ * @param {number|null} [filterPlotId] Anotado porque si no TS infiere `null`
+ *   desde el default y rechaza que le pasen un id de lote.
+ * @param {{ activities?: any[], desde?: string, hasta?: string }} [opts]
  */
 export async function generateWeeklyReport(userId, fieldId, filterPlotId = null, { activities = [], desde, hasta } = {}) {
   try {

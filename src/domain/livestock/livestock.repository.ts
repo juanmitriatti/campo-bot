@@ -756,7 +756,7 @@ export class LivestockRepository {
   async findGroupsByCategory(
     userId: number,
     category: string | null,
-  ): Promise<Array<{ id: string; plot_id: number | null; corral_id: number | null; count: number; location_label: string }>> {
+  ): Promise<Array<{ id: string; category: string; plot_id: number | null; corral_id: number | null; count: number; location_label: string }>> {
     const params: unknown[] = [userId];
     let categoryFilter = '';
     if (category) {
@@ -776,6 +776,7 @@ export class LivestockRepository {
     const { rows } = await pool.query(
       `SELECT
          g.id::text AS id,
+         g.category::text AS category,
          g.plot_id,
          g.corral_id,
          g.count,

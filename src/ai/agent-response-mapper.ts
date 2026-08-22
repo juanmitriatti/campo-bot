@@ -612,7 +612,7 @@ export class AgentResponseMapper {
         currency,
         expenseType,
       };
-      if (categoryMatch) (data as Record<string, unknown>).category_match = categoryMatch;
+      if (categoryMatch) data.category_match = categoryMatch;
       if (typeof input.product === 'string') data.product = input.product;
       if (typeof input.quantity === 'number') data.quantity = input.quantity;
       if (typeof input.unit === 'string') data.unit = input.unit;
@@ -725,7 +725,7 @@ export class AgentResponseMapper {
         unit: typeof input.unit === 'string' ? input.unit : null,
         unit_price: typeof input.unit_price === 'number' ? input.unit_price : null,
       };
-      if (categoryMatch) (data as Record<string, unknown>).category_match = categoryMatch;
+      if (categoryMatch) data.category_match = categoryMatch;
       if (typeof input.field === 'string') data.field = input.field;
       if (typeof input.plot === 'string') data.plot = input.plot;
       if (typeof input.event_date === 'string') data.incomeDate = input.event_date;
@@ -1094,7 +1094,7 @@ export class AgentResponseMapper {
     if (input.dest_plot != null) cmd.destPlot = input.dest_plot;
     if (input.dest_corral != null) cmd.destCorral = input.dest_corral;
     if (input.dest_category != null) cmd.destCategory = input.dest_category;
-    if (input.corral != null) cmd.corralName = input.corral;
+    if (input.corral != null) cmd.corralName = String(input.corral);
 
     // Grupo (sociedad)
     if (input.grupo != null) cmd.grupo = input.grupo;

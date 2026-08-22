@@ -45,6 +45,15 @@ jobs:
       - name: Install backend deps
         run: npm ci
 
+      # El runtime corre con tsx, que borra los tipos sin chequearlos, así que
+      # `tsc` no se ejecutaba en ningún lado. Sin este gate se habían acumulado
+      # 207 errores de tipos — y entre ellos tres bugs reales que ningún test
+      # cubría (un import a un módulo inexistente que rompía PATCH /api/stock/:id,
+      # columnas leídas con el nombre equivocado, y un método duplicado).
+      # Va ANTES de los tests: es más rápido y no necesita DB.
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Init DB (base schema + migrations)
         run: |
           psql "$DATABASE_URL" -f init.sql

@@ -1,3 +1,5 @@
+import type { ScoutingRow, ScoutingRenderCtx } from './scouting-renderers.js';
+import type { HarvestRow, HarvestRenderCtx } from './harvest-renderers.js';
 import fs from 'fs';
 import { AgronomyRepository, RAINFALL_REJECTED_DUPLICATE } from './agronomy.repository.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
@@ -28,7 +30,7 @@ import { isPlaceholder } from '../../utils/guards.js';
 import { userExplicitlyReferencedPlot } from '../../utils/plot-intent.js';
 import { hasPlotContextSignal } from '../../utils/plot-context-signals.js';
 import { validateStageCode } from './stage-code-validator.js';
-import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult } from '../../types/index.js';
+import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult, DomainEventRow } from '../../types/index.js';
 import type { PendingActivity } from '../../middleware/pending-activities.js';
 import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
 
@@ -826,7 +828,7 @@ export class AgronomyHandler {
     if (cmd.soilMoistureMin != null) scopeBits.push(`hum ≥${cmd.soilMoistureMin}/5`);
     const scope = scopeBits.length > 0 ? ` — ${scopeBits.join(', ')}` : '';
 
-    const ctx: renderers.ScoutingRenderCtx = {
+    const ctx: ScoutingRenderCtx = {
       rangeLabel: isAll ? 'Todo el historial' : rangeLabel,
       scope,
       isAll,
@@ -860,7 +862,7 @@ export class AgronomyHandler {
       const rowsB = await queryScoutings(optsB);
       const labelA = resolved.plotName || resolved.fieldName || 'A';
       const labelB = (cmd.comparePlot as string) || (cmd.compareField as string) || 'B';
-      return renderers.renderScoutingCompare(rows as renderers.ScoutingRow[], rowsB as renderers.ScoutingRow[], labelA, labelB);
+      return renderers.renderScoutingCompare(rows as ScoutingRow[], rowsB as ScoutingRow[], labelA, labelB);
     }
 
     // Empty: fetch available species/stages for a proactive hint
@@ -878,14 +880,14 @@ export class AgronomyHandler {
     }
 
     switch (view) {
-      case 'aggregate': return renderers.renderScoutingAggregate(rows as renderers.ScoutingRow[], ctx);
-      case 'max': return renderers.renderScoutingExtreme(rows as renderers.ScoutingRow[], ctx, 'max');
-      case 'min': return renderers.renderScoutingExtreme(rows as renderers.ScoutingRow[], ctx, 'min');
-      case 'avg': return renderers.renderScoutingAvg(rows as renderers.ScoutingRow[], ctx);
-      case 'rank': return renderers.renderScoutingRank(rows as renderers.ScoutingRow[], ctx, (cmd.top_n as number) || 5);
-      case 'top_locations': return renderers.renderScoutingTopLocations(rows as renderers.ScoutingRow[], ctx, (cmd.group_by as 'plot' | 'field') === 'field' ? 'field' : 'plot');
+      case 'aggregate': return renderers.renderScoutingAggregate(rows as ScoutingRow[], ctx);
+      case 'max': return renderers.renderScoutingExtreme(rows as ScoutingRow[], ctx, 'max');
+      case 'min': return renderers.renderScoutingExtreme(rows as ScoutingRow[], ctx, 'min');
+      case 'avg': return renderers.renderScoutingAvg(rows as ScoutingRow[], ctx);
+      case 'rank': return renderers.renderScoutingRank(rows as ScoutingRow[], ctx, (cmd.top_n as number) || 5);
+      case 'top_locations': return renderers.renderScoutingTopLocations(rows as ScoutingRow[], ctx, (cmd.group_by as 'plot' | 'field') === 'field' ? 'field' : 'plot');
       case 'detail':
-      default: return renderers.renderScoutingDetail(rows as renderers.ScoutingRow[], ctx);
+      default: return renderers.renderScoutingDetail(rows as ScoutingRow[], ctx);
     }
   }
 
@@ -1414,7 +1416,7 @@ export class AgronomyHandler {
     if (cmd.oilMinPct != null) scopeBits.push(`aceite >${cmd.oilMinPct}%`);
     const scope = scopeBits.length > 0 ? ` — ${scopeBits.join(', ')}` : '';
 
-    const ctx: renderers.HarvestRenderCtx = {
+    const ctx: HarvestRenderCtx = {
       rangeLabel: isAll ? 'Todo el historial' : rangeLabel,
       scope, isAll,
       filters: {
@@ -1459,7 +1461,7 @@ export class AgronomyHandler {
       void queryB;
       const labelA = (cmd.crop as string) || (cmd.driverName as string) || (cmd.destinatario as string) || (plotName ?? 'A');
       const labelB = (cmd.compareCrop as string) || (cmd.compareDriver as string) || (cmd.compareDestinatario as string) || (cmd.comparePlot as string) || 'B';
-      return renderers.renderHarvestCompare(rows as renderers.HarvestRow[], rowsB as renderers.HarvestRow[], String(labelA), String(labelB));
+      return renderers.renderHarvestCompare(rows as HarvestRow[], rowsB as HarvestRow[], String(labelA), String(labelB));
     }
 
     // ── 10. Empty: proactive hint with available species ──
@@ -1477,15 +1479,15 @@ export class AgronomyHandler {
 
     // ── 11. Dispatch ──
     switch (view) {
-      case 'aggregate': return renderers.renderHarvestAggregate(rows as renderers.HarvestRow[], ctx);
-      case 'max': return renderers.renderHarvestExtreme(rows as renderers.HarvestRow[], ctx, 'max');
-      case 'min': return renderers.renderHarvestExtreme(rows as renderers.HarvestRow[], ctx, 'min');
-      case 'avg': return renderers.renderHarvestAvg(rows as renderers.HarvestRow[], ctx);
-      case 'rank': return renderers.renderHarvestRank(rows as renderers.HarvestRow[], ctx, (cmd.top_n as number) || 5);
-      case 'top_locations': return renderers.renderHarvestTopLocations(rows as renderers.HarvestRow[], ctx);
-      case 'volume': return renderers.renderHarvestVolume(rows as renderers.HarvestRow[], ctx);
+      case 'aggregate': return renderers.renderHarvestAggregate(rows as HarvestRow[], ctx);
+      case 'max': return renderers.renderHarvestExtreme(rows as HarvestRow[], ctx, 'max');
+      case 'min': return renderers.renderHarvestExtreme(rows as HarvestRow[], ctx, 'min');
+      case 'avg': return renderers.renderHarvestAvg(rows as HarvestRow[], ctx);
+      case 'rank': return renderers.renderHarvestRank(rows as HarvestRow[], ctx, (cmd.top_n as number) || 5);
+      case 'top_locations': return renderers.renderHarvestTopLocations(rows as HarvestRow[], ctx);
+      case 'volume': return renderers.renderHarvestVolume(rows as HarvestRow[], ctx);
       case 'detail':
-      default: return renderers.renderHarvestDetail(rows as renderers.HarvestRow[], ctx);
+      default: return renderers.renderHarvestDetail(rows as HarvestRow[], ctx);
     }
   }
 
@@ -2380,7 +2382,10 @@ export class AgronomyHandler {
         const loads = Array.isArray(cmd.loads) ? cmd.loads as Array<{ driver_name: string; weight_kg: number; destination?: string; destinatario?: string; truck_plate?: string; humidity_pct?: number; quality_metrics?: Record<string, unknown> }> : null;
         const existingEvent = await this.repo.findTodayHarvestEvent(userId, plotResult.plotId);
 
-        let savedEvent: { id: number; plot_crop_id?: number | null; [key: string]: unknown };
+        // Las dos asignaciones (evento existente y saveDomainEvent) devuelven
+        // DomainEventRow. La forma con index signature de antes no lo aceptaba:
+        // una interface no tiene index signature implícita.
+        let savedEvent: DomainEventRow;
         let harvested: { id: number; season_year: number; season_type: string } | null = null;
         let isAppend = false;
 

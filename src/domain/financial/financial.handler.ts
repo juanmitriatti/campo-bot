@@ -617,7 +617,7 @@ export class FinancialHandler {
       amountMin: cmd.amount_min as number | null,
       amountMax: cmd.amount_max as number | null,
       descriptionSearch: cmd.description_search as string | null,
-      type: (reportType === 'expenses' || reportType === 'incomes') ? reportType : 'both' as const,
+      type: reportType === 'expenses' ? ('expenses' as const) : reportType === 'incomes' ? ('incomes' as const) : ('both' as const),
       sortBy: (cmd.sort_by as 'date' | 'amount') || 'date',
       sortDesc: cmd.sort_desc != null ? !!cmd.sort_desc : true,
       groupBy: (cmd.group_by as 'category' | 'plot' | 'field' | 'month') || 'category',
@@ -715,10 +715,13 @@ export class FinancialHandler {
 
       let section = '📋 *Actividades recientes:*\n';
       for (const a of activities) {
-        const date = new Date(a.event_date);
+        // queryPlotHistory aliasa en el SELECT: event_date→date, event_type→type,
+        // product→detail. Leerlas con el nombre de la tabla daba undefined —
+        // la fecha salía "NaN/NaN" y la etiqueta caía siempre al default.
+        const date = new Date(a.date);
         const dateStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
-        const { emoji, label } = getActivityLabel(a.event_type);
-        const detail = a.product || a.crop || label;
+        const { emoji, label } = getActivityLabel(a.type);
+        const detail = a.detail || a.crop || label;
         section += `• ${emoji} ${label} — ${detail} (${dateStr})\n`;
       }
       return section.trimEnd();
@@ -2063,7 +2066,8 @@ export class FinancialHandler {
           // Fetch individual movements
           const { getMovementsInRange } = await import('../../services/expenses.js');
           const movs = await getMovementsInRange(userId, desde, hasta, {
-            fieldName, plotName, category, type: reportType, limit: 200,
+            fieldName, plotName, category, limit: 200,
+            type: reportType === 'expenses' ? ('expenses' as const) : reportType === 'incomes' ? ('incomes' as const) : ('both' as const),
           });
 
           const hasE = movs.expenses.length > 0;
@@ -2130,7 +2134,8 @@ export class FinancialHandler {
 
         // ── Aggregate mode (no category, normal date range) ──
         const results = await this.service.getDateRangeReport(userId, desde, hasta, {
-          fieldName, plotName, category, type: reportType,
+          fieldName, plotName, category,
+          type: reportType === 'expenses' ? ('expenses' as const) : reportType === 'incomes' ? ('incomes' as const) : ('both' as const),
         });
 
         const hasExpenses = results.expenses.length > 0;
@@ -2798,7 +2803,8 @@ export class FinancialHandler {
         if (info.plotCount && info.plotCount > 0) {
           metaParts.push(`${info.plotCount} lote${info.plotCount > 1 ? 's' : ''}`);
         }
-        if (info.totalHectares > 0) metaParts.push(`${info.totalHectares.toLocaleString('es-AR')} ha`);
+        const totalHa = info.totalHectares ?? 0;
+        if (totalHa > 0) metaParts.push(`${totalHa.toLocaleString('es-AR')} ha`);
         let msg = `📍 *Campo ${info.name}*${metaParts.length ? ` · ${metaParts.join(' · ')}` : ''}\n`;
         msg += info.city ? `📌 ${formatLocation(info.city, info.province)}\n` : `📌 Ubicación: sin asignar\n`;
 
@@ -3457,7 +3463,8 @@ export class FinancialHandler {
           perKindUpdates.push({ label: count === 1 ? labels[0] : labels[1], count });
         }
       } catch (err) {
-        logError('assign_bulk_plot', `KIND_${kind.toUpperCase()}`, err as Error, { userId, ids });
+        // `ids` no es un campo de primer nivel del meta de logError; va en context.
+        logError('assign_bulk_plot', `KIND_${kind.toUpperCase()}`, err as Error, { userId, context: { ids } });
       }
     }
 

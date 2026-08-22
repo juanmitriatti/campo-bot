@@ -118,7 +118,8 @@ interface MultiTurnTest {
   description: string;
   category: string;
   turns: Array<string | { tap: string }>;
-  validate?: Array<(text: string) => { pass: boolean; note: string }>;
+  // undefined = ese turno no se valida (solo se envia).
+  validate?: Array<((text: string) => { pass: boolean; note: string }) | undefined>;
 }
 
 const TESTS: MultiTurnTest[] = [

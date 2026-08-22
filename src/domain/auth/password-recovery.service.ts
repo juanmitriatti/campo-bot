@@ -75,7 +75,10 @@ export class PasswordRecoveryService {
 
     try {
       await sendEmail({
-        to: user.email,
+        // El usuario se buscó POR email, así que user.email no puede ser null
+        // acá; el tipo lo permite porque hay usuarios solo-teléfono. Se cae al
+        // email normalizado de la consulta en vez de forzar el tipo.
+        to: user.email ?? email.trim().toLowerCase(),
         subject: 'Recuperá tu contraseña — Campo Bot',
         text: `Hola ${user.name},\n\nPedí restablecer tu contraseña en Campo Bot. Abrí este link (vence en ${ttlMin} minutos):\n\n${link}\n\nSi no fuiste vos, ignorá este email.\n`,
         html: wrapHtml(

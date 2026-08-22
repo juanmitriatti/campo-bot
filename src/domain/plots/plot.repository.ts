@@ -44,7 +44,9 @@ export class PlotRepository {
     return _getUserFieldsWithCity(userId);
   }
 
-  async getUserFields(userId: UserId): Promise<{ name: string; city: string | null; province: string | null }[]> {
+  // El SELECT trae id/location_method/plot_count/total_hectares además de estos;
+  // faltaban en el tipo y los consumidores leían .id "a ciegas".
+  async getUserFields(userId: UserId): Promise<{ id: number; name: string; city: string | null; province: string | null; location_method: string | null; plot_count: number; total_hectares: string | number }[]> {
     return _getUserFields(userId);
   }
 

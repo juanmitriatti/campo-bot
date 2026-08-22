@@ -180,7 +180,17 @@ export class CropService {
     return await getPlotCropHistory(plotId) as PlotCropRow[];
   }
 
-  async listActiveCrops(userId: UserId, cropFilter?: string | null, grupo?: string | null): Promise<(PlotCropRow & { plot_name: string; field_name: string; area_hectares: number | null })[]> {
+  // Las tres columnas de actividad salen del LEFT JOIN agregado de la query
+  // (expenses.js → getAllActiveCrops); faltaban en el tipo aunque siempre
+  // vinieron en la fila, así que los consumidores las leían "a ciegas".
+  async listActiveCrops(userId: UserId, cropFilter?: string | null, grupo?: string | null): Promise<(PlotCropRow & {
+    plot_name: string;
+    field_name: string;
+    area_hectares: number | null;
+    activity_count: number | null;
+    last_activity_date: Date | null;
+    last_activity_type: string | null;
+  })[]> {
     return await getAllActiveCrops(userId, cropFilter ?? null, grupo ?? null) as any[];
   }
 }

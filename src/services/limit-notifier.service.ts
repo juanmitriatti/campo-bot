@@ -96,9 +96,11 @@ async function sendOnPreferredChannel(channels: UserChannels, message: string): 
   }
   if (channels.phone && !channels.phone.startsWith('tg_')) {
     const phone = channels.phone.startsWith('+') ? channels.phone.slice(1) : channels.phone;
+    // sendMessageWithRetry sale por return dentro del loop: si se agotan los
+    // reintentos sin entrar a ninguna rama devuelve undefined.
     const result = await sendMessageWithRetry(phone, message);
-    if (result.success) return { ok: true };
-    return { ok: false, reason: `wa failed: ${result.error}` };
+    if (result?.success) return { ok: true };
+    return { ok: false, reason: `wa failed: ${result?.error ?? 'sin respuesta'}` };
   }
   return { ok: false, reason: 'no_channel' };
 }

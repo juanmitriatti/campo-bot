@@ -78,7 +78,10 @@ export class ParserService {
     return parseSpanishDate(text);
   }
 
-  parseObservation(text: string): { plotName: string | null; fieldName: string | null; category: string; observationText: string } | null {
+  // `type` distingue si la observación vino atada a un lote, a un campo o suelta;
+  // parsearObservacion siempre lo devuelve y el clasificador lo usa para calibrar
+  // la confianza, pero faltaba en el tipo.
+  parseObservation(text: string): { plotName: string | null; fieldName: string | null; category: string; observationText: string; type: 'plot' | 'field' | 'bare' } | null {
     return parsearObservacion(text);
   }
 

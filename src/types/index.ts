@@ -1,3 +1,4 @@
+import type { StockEntrySuggestion, GrainStockEntry } from '../domain/stock/stock-purchase.service.js';
 // ============================================================================
 // Core Domain Types
 // ============================================================================
@@ -88,7 +89,9 @@ export interface AmbiguousCandidate {
 
 // --- Parse Result ---
 
-export type ParseSource = 'command' | 'income_parser' | 'expense_parser' | 'claude' | 'flow' | 'ai';
+// 'regex' es la etapa 4 del pipeline (fallback de parser.js). El clasificador
+// ya la emitía en 5 sitios; faltaba en la unión.
+export type ParseSource = 'command' | 'income_parser' | 'expense_parser' | 'claude' | 'flow' | 'ai' | 'regex';
 
 export interface ParseResult {
   intent: Intent;
@@ -213,6 +216,8 @@ export interface FieldInfoData {
   incomes: { total: number; count: number };
   rainfall: { total: number; count: number };
   plotCount?: number;
+  // getFieldInfo ya lo devuelve (suma de area_hectares de los lotes).
+  totalHectares?: number;
   observations?: Array<{ observation_text: string; category: string; created_at: Date; plot_name: string | null }>;
 }
 
@@ -287,7 +292,8 @@ export interface PlotHistoryRow {
 
 // --- Agro Observations ---
 
-export type { ObservationCategory } from '../constants/agro-terms.js';
+import type { ObservationCategory } from '../constants/agro-terms.js';
+export type { ObservationCategory };
 
 export interface ObservationRow {
   id: number;
@@ -544,22 +550,21 @@ export interface HandlerResponse {
       /** Última respuesta consumida que el handler no pudo resolver. */
       lastRejected?: { slot: string; value: string };
     };
-    setPendingStockEntry?: {
-      expenseId: number;
-      product: string;
-      quantity: number;
-      unit: string;
-      fieldId: number;
-      warehouseId: number;
-      warehouseName: string;
-    };
+    // Era una copia inline de StockEntrySuggestion, y le faltaba la variante de
+    // grano que emite el handler de cosecha. `applyStockEntry` ya acepta las
+    // dos, así que acá se referencian los tipos reales en vez de duplicarlos.
+    setPendingStockEntry?: StockEntrySuggestion | GrainStockEntry;
     setPendingDocumentAction?: {
       documentId: number;
       extraction: DocumentExtraction;
       suggestedExpenses: Array<Partial<ParsedExpense> & { field?: string; plot?: string }>;
     };
     setPendingStockDeduction?: {
-      domainEventId: number;
+      // 'grain_sale' lo emite el handler financiero al vender grano; el de
+      // actividad no manda `type` y trae domainEventId. Son las dos variantes
+      // reales que circulan por el store.
+      type?: 'grain_sale';
+      domainEventId?: number;
       stockItemId: number;
       product: string;
       totalQuantity: number;
@@ -637,6 +642,16 @@ export interface DocumentExtraction {
   date?: string;
   total_amount?: number;
   currency?: 'ARS' | 'USD';
+  // Alias que el modelo devuelve a veces en español o con sinónimos. El handler
+  // de documentos ya los tolera al leer (supplier ?? proveedor ?? vendor ?? …);
+  // se declaran para que esa lectura defensiva compile en vez de mentir el tipo.
+  proveedor?: string;
+  vendor?: string;
+  emisor?: string;
+  monto?: number;
+  amount?: number;
+  total?: number;
+  moneda?: 'ARS' | 'USD';
   tax_amount?: number;
   document_number?: string;
   line_items?: DocumentLineItem[];

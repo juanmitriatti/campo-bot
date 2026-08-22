@@ -14,7 +14,7 @@
  */
 
 import { normalizarMonto, detectarCategoria, detectarCategoriaIngreso } from '../utils/parser.js';
-import { extractCropFromText } from '../utils/crops.ts';
+import { extractCropFromText } from '../utils/crops.js';
 import { stripPlotCorrectionPrefix } from './flows/field-step-helpers.js';
 import { resolveFutureTime } from '../services/reminder.service.js';
 

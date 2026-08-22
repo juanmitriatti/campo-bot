@@ -188,7 +188,7 @@ export class AgronomyRepository {
     return this.plots.getUserFieldsWithCity(userId);
   }
 
-  async getUserFields(userId: UserId): Promise<{ name: string; city: string | null }[]> {
+  async getUserFields(userId: UserId): Promise<{ id: number; name: string; city: string | null; province: string | null; location_method: string | null; plot_count: number; total_hectares: string | number }[]> {
     return this.plots.getUserFields(userId);
   }
 
@@ -424,22 +424,10 @@ export class AgronomyRepository {
     sortBy?: 'date' | 'weight' | 'humidity' | 'protein' | 'oil' | 'gluten';
     sortDesc?: boolean;
     limit?: number;
-  }): Promise<Array<{
-    id: number;
-    driver_name: string;
-    weight_kg: number;
-    destination: string | null;
-    destinatario: string | null;
-    truck_plate: string | null;
-    event_date: Date;
-    crop: string | null;
-    plot_id: number | null;
-    plot_name: string | null;
-    field_name: string | null;
-    humidity_pct: string | number | null;
-    quality_metrics: Record<string, number> | null;
-    notes?: string | null;
-  }>> {
+    // La fila la define HarvestLoadQueryRow en expenses.d.ts; redeclararla acá
+    // creaba una segunda fuente de verdad que ya había divergido (humidity_pct
+    // y quality_metrics con tipos distintos).
+  }) {
     return _queryHarvestLoads(userId, opts);
   }
 

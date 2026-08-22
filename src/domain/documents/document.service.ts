@@ -174,8 +174,13 @@ export class DocumentService {
     mimeType: string,
     contextText?: string,
   ): Promise<DocumentExtraction> {
+    // Reusa AGENT_MODEL a propósito: no hay setting propio de modelo para
+    // documentos. OJO — cambiarlo para mejorar el OCR de facturas también
+    // cambia el agente conversacional. Si hace falta desacoplarlos, agregar
+    // DOCUMENT_MODEL con fallback a AGENT_MODEL.
     const model = (await getSetting('AGENT_MODEL')) || 'claude-haiku-4-5-20251001';
-    // Document extraction needs more tokens than agent tool calls (AGENT_MAX_TOKENS is ~400)
+    // Fijo, no atado a AGENT_MAX_TOKENS: la extracción devuelve un JSON con
+    // todos los campos del comprobante, bastante más largo que una tool call.
     const maxTokens = 1500;
 
     const mediaType = mimeType === 'application/pdf' ? 'application/pdf' as const : mimeType as 'image/jpeg' | 'image/png' | 'image/webp';

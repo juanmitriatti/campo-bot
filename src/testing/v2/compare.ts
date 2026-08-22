@@ -61,7 +61,7 @@ async function main() {
   const rb = JSON.parse(fs.readFileSync(`ab-results/v2/results-${tags[b]}.json`, 'utf8'));
   const pct = (r: { status: string }[]) => Math.round((r.filter((x) => x.status === 'PASS').length / r.length) * 100);
   console.log(`  PASS global:  ${a}=${pct(ra)}%   ${b}=${pct(rb)}%`);
-  for (const axis of ['comprension', 'contexto', 'repreguntas']) {
+  for (const axis of ['comprension', 'contexto', 'repreguntas', 'temporal']) {
     const ra_ = rateByAxis(ra, axis);
     const rb_ = rateByAxis(rb, axis);
     const fmtA = typeof ra_ === 'number' ? `${ra_}%` : ra_;

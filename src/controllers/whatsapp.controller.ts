@@ -254,7 +254,9 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
         // STT y puede corregir — sin esto una transcripción mala era invisible.
         try {
           const { buildTranscriptEcho } = await import('../services/audio/transcript-echo.js');
-          const echo = await buildTranscriptEcho(text);
+          // `text` está declarado como string|undefined arriba; acá ya lo llenó
+          // normalizeTranscript, pero el tipo no lo sabe.
+          const echo = await buildTranscriptEcho(text ?? '');
           if (echo) await sendMessage(phone, echo);
         } catch { /* best-effort: el eco jamás bloquea el procesamiento */ }
 

@@ -1,3 +1,4 @@
+import type { StockRow, StockRenderCtx } from './stock-renderers.js';
 import { StockService } from './stock.service.js';
 import { formatDateAR } from '../../utils/date.js';
 import { saveExpense } from '../../services/expenses.js';
@@ -428,7 +429,7 @@ export class StockHandler {
     if (cmd.quantityMax != null) scopeBits.push(`<${cmd.quantityMax}`);
     const scope = scopeBits.length > 0 ? ` — ${scopeBits.join(', ')}` : '';
 
-    const ctx: renderers.StockRenderCtx = {
+    const ctx: StockRenderCtx = {
       scope,
       filters: {
         fieldName: cmd.fieldName as string | null,
@@ -466,12 +467,12 @@ export class StockHandler {
         const rowsB = await repo.queryStock(optsB);
         const labelA = (cmd.product as string) || 'A';
         const labelB = (cmd.compareProduct as string) || 'B';
-        return renderers.renderStockCompare(rowsAfiltered as renderers.StockRow[], rowsB as renderers.StockRow[], labelA, labelB);
+        return renderers.renderStockCompare(rowsAfiltered as StockRow[], rowsB as StockRow[], labelA, labelB);
       }
       const rowsB = await repo.queryStock(optsB);
       const labelA = (cmd.warehouseName as string) || (cmd.category as string) || (cmd.fieldName as string) || (cmd.product as string) || 'A';
       const labelB = (cmd.compareWarehouse as string) || (cmd.compareCategory as string) || (cmd.compareField as string) || (cmd.compareProduct as string) || 'B';
-      return renderers.renderStockCompare(rows as renderers.StockRow[], rowsB as renderers.StockRow[], labelA, labelB);
+      return renderers.renderStockCompare(rows as StockRow[], rowsB as StockRow[], labelA, labelB);
     }
 
     // ── 7. Empty + proactive hint ──
@@ -484,14 +485,14 @@ export class StockHandler {
 
     // ── 8. Dispatch ──
     switch (view) {
-      case 'aggregate': return renderers.renderStockAggregate(rows as renderers.StockRow[], ctx);
-      case 'max': return renderers.renderStockExtreme(rows as renderers.StockRow[], ctx, 'max');
-      case 'min': return renderers.renderStockExtreme(rows as renderers.StockRow[], ctx, 'min');
-      case 'avg': return renderers.renderStockAvg(rows as renderers.StockRow[], ctx);
-      case 'rank': return renderers.renderStockRank(rows as renderers.StockRow[], ctx, (cmd.top_n as number) || 5);
-      case 'top_locations': return renderers.renderStockTopLocations(rows as renderers.StockRow[], ctx);
+      case 'aggregate': return renderers.renderStockAggregate(rows as StockRow[], ctx);
+      case 'max': return renderers.renderStockExtreme(rows as StockRow[], ctx, 'max');
+      case 'min': return renderers.renderStockExtreme(rows as StockRow[], ctx, 'min');
+      case 'avg': return renderers.renderStockAvg(rows as StockRow[], ctx);
+      case 'rank': return renderers.renderStockRank(rows as StockRow[], ctx, (cmd.top_n as number) || 5);
+      case 'top_locations': return renderers.renderStockTopLocations(rows as StockRow[], ctx);
       case 'detail':
-      default: return renderers.renderStockDetail(rows as renderers.StockRow[], ctx);
+      default: return renderers.renderStockDetail(rows as StockRow[], ctx);
     }
   }
 
