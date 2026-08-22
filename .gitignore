@@ -15,3 +15,6 @@ certs/
 # dumps locales de la DB (nunca commitear ni subir a Railway)
 campo_bot_local_*.sql
 dumps/
+
+# settings personales de Claude Code (permisos de esta maquina)
+.claude/settings.local.json

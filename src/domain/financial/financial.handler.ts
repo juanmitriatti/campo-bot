@@ -1,3 +1,4 @@
+import { resolvePeriodRange, resolveDaysRange } from '../../utils/query-period.js';
 import { formatDayShortAR } from '../../utils/date.js';
 import { FinancialService } from './financial.service.js';
 import { formatPlotLocation } from '../../utils/format-location.js';
@@ -535,47 +536,17 @@ export class FinancialHandler {
     let hasta: string | null = (cmd.hasta as string) || null;
     let rangeLabel = '';
     let isAll = false;
-    if (period === 'all') {
-      desde = '2000-01-01';
-      hasta = todayISO;
-      isAll = true;
-      rangeLabel = 'Todo el historial';
-    } else if (period === 'year') {
-      desde = `${nowAR.getFullYear()}-01-01`;
-      hasta = todayISO;
-      rangeLabel = `Año ${nowAR.getFullYear()}`;
-    } else if (period === 'month') {
-      desde = `${nowAR.getFullYear()}-${String(nowAR.getMonth() + 1).padStart(2, '0')}-01`;
-      hasta = todayISO;
-      rangeLabel = nowAR.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
-    } else if (period === 'last_month') {
-      const lm = new Date(nowAR.getFullYear(), nowAR.getMonth() - 1, 1);
-      const lmEnd = new Date(nowAR.getFullYear(), nowAR.getMonth(), 0);
-      desde = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, '0')}-01`;
-      hasta = `${lmEnd.getFullYear()}-${String(lmEnd.getMonth() + 1).padStart(2, '0')}-${String(lmEnd.getDate()).padStart(2, '0')}`;
-      rangeLabel = lm.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
-    } else if (period === 'week') {
-      const wkStart = new Date(nowAR);
-      const dow = (wkStart.getDay() + 6) % 7;
-      wkStart.setDate(wkStart.getDate() - dow);
-      desde = `${wkStart.getFullYear()}-${String(wkStart.getMonth() + 1).padStart(2, '0')}-${String(wkStart.getDate()).padStart(2, '0')}`;
-      hasta = todayISO;
-      rangeLabel = 'esta semana';
-    } else if (period === 'last_week') {
-      const wkStart = new Date(nowAR);
-      const dow = (wkStart.getDay() + 6) % 7;
-      wkStart.setDate(wkStart.getDate() - dow - 7);
-      const wkEnd = new Date(wkStart);
-      wkEnd.setDate(wkEnd.getDate() + 6);
-      desde = `${wkStart.getFullYear()}-${String(wkStart.getMonth() + 1).padStart(2, '0')}-${String(wkStart.getDate()).padStart(2, '0')}`;
-      hasta = `${wkEnd.getFullYear()}-${String(wkEnd.getMonth() + 1).padStart(2, '0')}-${String(wkEnd.getDate()).padStart(2, '0')}`;
-      rangeLabel = 'semana pasada';
+    // Rango vía query-period.ts (fuente única — ver el módulo por qué existe).
+    // Suma `today` y `last_year`, que el handler no tenía.
+    const pr = resolvePeriodRange(period);
+    if (pr) {
+      desde = pr.desde;
+      hasta = pr.hasta;
+      rangeLabel = pr.label;
+      isAll = pr.isAll;
     } else if (cmd.days) {
-      const d = new Date();
-      d.setDate(d.getDate() - (cmd.days as number));
-      desde = d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
-      hasta = todayISO;
-      rangeLabel = `últimos ${cmd.days} días`;
+      const dr = resolveDaysRange(Number(cmd.days));
+      if (dr) { desde = dr.desde; hasta = dr.hasta; rangeLabel = dr.label; }
     } else if (!desde && !hasta) {
       // Period defaulting policy:
       // - Volume views default to 'all' (no one means "tn este mes" when they just say "total de soja")

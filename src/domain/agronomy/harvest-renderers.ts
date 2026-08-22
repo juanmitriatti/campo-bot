@@ -331,3 +331,31 @@ export function renderEmpty(ctx: HarvestRenderCtx, available?: { crops?: string[
   }
   return { messages: [msg], suggestionKey: 'report_shown' };
 }
+
+/**
+ * view='last' — la(s) carga(s) más reciente(s).
+ *
+ * Faltaba: `last` existía en actividades y lluvias pero no acá, así que "la
+ * última carga" caía en `detail` y listaba todas. Muestra los kg acumulados
+ * cuando se piden varias, que es lo que se quiere saber al preguntar por las
+ * últimas N.
+ */
+export function renderHarvestLast(rows: HarvestRow[], ctx: HarvestRenderCtx, topN: number): HandlerResponse {
+  if (rows.length === 0) return renderEmpty(ctx);
+  const sorted = [...rows]
+    .sort((a, b) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime())
+    .slice(0, topN);
+  const title = topN === 1 ? `🚛 *Última carga${ctx.scope}*` : `🚛 *Últimas ${topN} cargas${ctx.scope}*`;
+  const lines = [title];
+  for (const r of sorted) lines.push(renderRowLine(r));
+  if (topN > 1) {
+    const totalKg = sorted.reduce((s, r) => s + Number(r.weight_kg || 0), 0);
+    lines.push('');
+    lines.push(`⚖️ Total: ${totalKg.toLocaleString('es-AR')} kg (${(totalKg / 1000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} tn)`);
+  } else {
+    const days = Math.floor((Date.now() - new Date(sorted[0].event_date).getTime()) / 86400000);
+    lines.push('');
+    lines.push(days === 0 ? '⏱️ Descargada hoy' : `⏱️ Hace ${days} día${days === 1 ? '' : 's'}`);
+  }
+  return { messages: [lines.join('\n')], suggestionKey: 'report_shown' };
+}

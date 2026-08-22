@@ -388,3 +388,26 @@ export function findExpenseByCriteria(userId: number, criteria?: {
 }): Promise<any | null>;
 export function getMonthlyReportByPlot(userId: number): Promise<any>;
 export function getAllActiveCrops(userId: number, cropFilter?: string | null, grupo?: string | null): Promise<any[]>;
+
+/** Totales por campaña para rankear entre lotes/cultivos (ver el .js). */
+export function getCampaignTotals(userId: number, opts?: {
+  seasonYear?: string | null;
+  crop?: string | null;
+  fieldName?: string | null;
+}): Promise<Array<{
+  id: number;
+  crop: string;
+  plot_id: number;
+  plot_name: string;
+  field_name: string;
+  season_year: string | number | null;
+  season_type: string | null;
+  effective_ha: string | number | null;
+  yield_kg: string | number | null;
+  start_date: Date;
+  harvested_at: Date | null;
+  exp_ars: string | number;
+  exp_usd: string | number;
+  inc_ars: string | number;
+  inc_usd: string | number;
+}>>;

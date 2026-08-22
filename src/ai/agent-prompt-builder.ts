@@ -217,7 +217,12 @@ PRECEDENCIA (si dos reglas parecen competir al elegir herramienta, gana la de ar
 2. Mensaje con 2+ verbos de acción → UNA tool por verbo (aunque alguna venga parcial), NUNCA un respond_text que consolide los pedidos de dato.
 3. Verbo explícito (vendí/gasté/cobré...) → le gana al type heredado (inherit) de la consulta previa.
 4. "cuántos monitoreos"/"monitoreos del lote X" → query_scoutings, NUNCA activity_stats ni query_plot_history.
+   · "el último monitoreo" / "cuándo recorrí por última vez" / "hace cuánto no monitoreo X" → query_scoutings(view:'last'). "los últimos 3" → view:'last', top_n:3.
+   · "la última carga" / "el último camión" / "cuándo fue la última descarga" → query_harvest_loads(view:'last'). Con top_n suma los kg del conjunto.
+   · view:'last' existe en query_plot_history, rainfall_report, financial_report, query_scoutings, query_harvest_loads y query_observations. NO en check_stock ni list_livestock: esos son el estado ACTUAL, no una serie en el tiempo.
 5. "qué observé/anoté" / "mis notas/observaciones" / "observaciones del lote X" / "qué anoté esta semana" → query_observations (notas LIBRES, sin métricas). Sanidad/plagas/malezas/estadios con métricas → query_scoutings. NUNCA log_observation para preguntas.
+   · query_observations views: "cuántas notas tengo" / "de qué anoté más" → view:'aggregate' (group_by:'category' default; 'month' para "cuántas por mes"). "en qué lote anoté más" → view:'top_locations'. "la última que anoté" / "mi última nota" → view:'last'. Listar (default) → sin view.
+   · Refinar la consulta ANTERIOR de notas ("¿y en La Esperanza?", "solo las de sanidad", "¿y del mes pasado?") → inherit:true + SOLO el filtro nuevo. No repitas los filtros previos.
 6. Preguntas GENERALES de monitoreo ("qué malezas aparecieron", "presión de plagas", "cómo viene la sanidad") SIN lote explícito → query_scoutings SIN plot. NO heredar el lote de la conversación anterior — pregunta nueva con sujeto+verbo = filtros desde cero (inherit:false).
 5. Clima en varias ciudades → UNA weather_full por ciudad, NUNCA consolidar.
 6. Un solo precio al final de varias ventas/compras → aplica SOLO al ítem inmediatamente anterior, no a todos.
@@ -582,6 +587,14 @@ PASO 5 — DISAMBIGUACIONES:
   - "rinde/yield/promedio del lote X" → campaign_stats (eso es kg/ha del cultivo, no cargas individuales)
   - campaign_stats view: "cuánto rindió X" / "rendimiento del lote X" / "cuántos kg/tn saqué" / "dame el rinde en toneladas/quintales" → view:'yield' (respuesta corta, SOLO rinde). "cómo viene/va la campaña" / "resumen de la campaña" / "rentabilidad" / "cuánto gasté en la soja" → SIN view (ficha completa). Follow-up de conversión de unidades tras un rinde ("¿y en toneladas?") → view:'yield' del mismo lote
   - "qué lote viene mejor/peor" sin métrica específica → query_harvest_loads(view:'top_locations', group_by:'plot') si contexto reciente fue cargas; o campaign_stats si fue agro general
+- CRÍTICO COMPARAR CAMPAÑAS ENTRE SÍ (campaign_stats view:'rank'): cuando la pregunta compara VARIOS lotes o VARIOS cultivos por un resultado económico-productivo → UNA sola llamada campaign_stats(view:'rank', group_by, metric). NUNCA financial_report: financial_report no conoce rinde ni superficie, así que no puede calcular margen por hectárea, kg/ha ni costo por tonelada.
+  · "qué lote me dejó mejor margen" / "cuál fue más rentable" → campaign_stats(view:'rank', group_by:'plot', metric:'margin')
+  · "qué lote rindió más" → campaign_stats(view:'rank', group_by:'plot', metric:'yield_kg_ha')
+  · "cuánto me costó la tonelada en cada lote" → campaign_stats(view:'rank', group_by:'plot', metric:'cost_per_tn')
+  · "qué lote fue el más caro por hectárea" → campaign_stats(view:'rank', group_by:'plot', metric:'cost_per_ha')
+  · "me fue mejor con soja o con maíz" / "qué cultivo rindió más" → campaign_stats(view:'rank', group_by:'crop', metric:...) — UNA llamada con group_by:'crop', NUNCA una llamada por cultivo. El ranking ya compara todos entre sí.
+  · "los 3 lotes que más dejaron" → agregar top_n:3
+  · Con UN solo lote/cultivo nombrado NO es rank: es la ficha de esa campaña (sin view).
   - "cargas con descuento por humedad" → humidity_min_pct:14.5 (estándar AR: descuento sobre 14% soja, 14.5% maíz, 14% trigo — usar 14.5 como umbral universal)
   - "mejor combinación calidad/humedad" → view:'rank', aggregate_metric:'protein_pct' (o oil_pct), filtros adicionales humidity_max
   - "qué chofer transportó la mejor mercadería" / "qué destino recibió la mejor" / "qué lote tuvo mejor calidad" → view:'top_locations', group_by:'driver|destinatario|plot', aggregate_metric:'protein_pct' (trigo) o 'oil_pct' (soja). El handler hace AVG (no SUM) automáticamente.

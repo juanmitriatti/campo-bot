@@ -164,7 +164,7 @@ const WEEKDAYS: Record<string, number> = {
  */
 const FUTURE_INTENT_RE = /\b(que\s+viene|proxim[oa]s?|man[ãa]na|pasado\s+man[ãa]na|voy\s+a|vamos\s+a|va\s+a\s+(?!llover)|ire|iremos|tengo\s+que|tenemos\s+que|hay\s+que|pienso|planeo|programo|agendar|recordame|cosecho|siembro|fumigo|aplico|pago|vendo|compro|empiezo|arranco)\b/;
 
-function hasFutureIntent(normalizedText: string): boolean {
+export function hasFutureIntent(normalizedText: string): boolean {
   return FUTURE_INTENT_RE.test(normalizedText);
 }
 

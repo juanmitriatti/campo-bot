@@ -6,6 +6,7 @@ import {
   getPlotById,
   getHarvestLoadsByCampaign,
   getScoutingsForPlotCampaign,
+  getCampaignTotals,
 } from '../../services/expenses.js';
 import { CropService, formatSeasonLabel, getCampaignState } from '../plots/crop.service.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
@@ -471,4 +472,202 @@ export class CampaignStatsService {
       deltas,
     };
   }
+
+  /**
+   * Ranking entre campañas: "¿qué lote tuvo mejor margen?", "¿me fue mejor con
+   * soja o con maíz?", "¿cuánto me costó la tonelada en cada lote?".
+   *
+   * Una sola query agregada (getCampaignTotals) en vez de N × getCampaignStats.
+   */
+  async rankCampaigns(
+    userId: UserId,
+    opts: {
+      metric?: RankMetric;
+      groupBy?: RankGroupBy;
+      topN?: number;
+      seasonYear?: string | null;
+      crop?: string | null;
+      fieldName?: string | null;
+    } = {},
+  ): Promise<CampaignRanking> {
+    const raw = await getCampaignTotals(Number(userId), {
+      seasonYear: opts.seasonYear ?? null,
+      crop: opts.crop ?? null,
+      fieldName: opts.fieldName ?? null,
+    });
+
+    const scopeBits: string[] = [];
+    if (opts.crop) scopeBits.push(opts.crop);
+    if (opts.fieldName) scopeBits.push(`campo ${opts.fieldName}`);
+    if (opts.seasonYear) scopeBits.push(opts.seasonYear);
+
+    return buildCampaignRanking(raw as never, {
+      metric: opts.metric,
+      groupBy: opts.groupBy,
+      topN: opts.topN,
+      scopeLabel: scopeBits.join(' · '),
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ranking entre campañas (Ago 2026)
+//
+// getCampaignStats responde UNA campaña. Eso deja afuera justo las preguntas
+// que un productor hace primero: "¿qué lote tuvo mejor margen?", "¿cuánto me
+// costó la tonelada en cada uno?", "¿me fue mejor con soja o con maíz?".
+// Acá se agrega sobre TODAS las campañas del usuario con una sola query.
+// ---------------------------------------------------------------------------
+
+export type RankMetric = 'margin' | 'yield_kg_ha' | 'cost_per_ha' | 'cost_per_tn';
+export type RankGroupBy = 'plot' | 'crop';
+
+export interface CampaignRankRow {
+  label: string;
+  crop: string;
+  plot: string | null;
+  field: string | null;
+  seasonLabel: string | null;
+  areaHa: number | null;
+  yieldKg: number | null;
+  yieldKgPerHa: number | null;
+  expensesARS: number;
+  incomesARS: number;
+  expensesUSD: number;
+  incomesUSD: number;
+  marginARS: number;
+  costPerHaARS: number | null;
+  costPerTnARS: number | null;
+  /** Valor de la métrica elegida; null cuando no hay datos para calcularla. */
+  value: number | null;
+}
+
+export interface CampaignRanking {
+  metric: RankMetric;
+  groupBy: RankGroupBy;
+  rows: CampaignRankRow[];
+  /** Campañas que quedaron fuera del ranking por no tener con qué calcular. */
+  skipped: number;
+  scopeLabel: string;
+}
+
+interface RawTotals {
+  crop: string;
+  plot_name: string;
+  field_name: string;
+  season_year: string | number | null;
+  season_type: string | null;
+  effective_ha: string | number | null;
+  yield_kg: string | number | null;
+  exp_ars: string | number;
+  exp_usd: string | number;
+  inc_ars: string | number;
+  inc_usd: string | number;
+}
+
+const n = (v: unknown): number => {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
+};
+
+/** Deriva las métricas SIEMPRE desde los totales, nunca promediando ratios:
+ *  el promedio de kg/ha de dos lotes de tamaño distinto no es el kg/ha real. */
+function deriveMetrics(
+  areaHa: number | null,
+  yieldKg: number | null,
+  expARS: number,
+  incARS: number,
+): Pick<CampaignRankRow, 'yieldKgPerHa' | 'marginARS' | 'costPerHaARS' | 'costPerTnARS'> {
+  const ha = areaHa && areaHa > 0 ? areaHa : null;
+  const tn = yieldKg && yieldKg > 0 ? yieldKg / 1000 : null;
+  return {
+    yieldKgPerHa: ha && yieldKg && yieldKg > 0 ? Math.round(yieldKg / ha) : null,
+    marginARS: incARS - expARS,
+    costPerHaARS: ha && expARS > 0 ? Math.round(expARS / ha) : null,
+    costPerTnARS: tn && expARS > 0 ? Math.round(expARS / tn) : null,
+  };
+}
+
+function pickValue(row: CampaignRankRow, metric: RankMetric): number | null {
+  switch (metric) {
+    case 'margin': return row.marginARS;
+    case 'yield_kg_ha': return row.yieldKgPerHa;
+    case 'cost_per_ha': return row.costPerHaARS;
+    case 'cost_per_tn': return row.costPerTnARS;
+    default: return null;
+  }
+}
+
+export function buildCampaignRanking(
+  raw: RawTotals[],
+  opts: { metric?: RankMetric; groupBy?: RankGroupBy; topN?: number; scopeLabel?: string } = {},
+): CampaignRanking {
+  const metric: RankMetric = opts.metric ?? 'margin';
+  const groupBy: RankGroupBy = opts.groupBy ?? 'plot';
+
+  let rows: CampaignRankRow[];
+
+  if (groupBy === 'crop') {
+    const acc = new Map<string, { ha: number; yieldKg: number; exp: number; inc: number; expU: number; incU: number; crop: string }>();
+    for (const r of raw) {
+      const key = String(r.crop ?? '—').toLowerCase();
+      const cur = acc.get(key) ?? { ha: 0, yieldKg: 0, exp: 0, inc: 0, expU: 0, incU: 0, crop: String(r.crop ?? '—') };
+      cur.ha += n(r.effective_ha);
+      cur.yieldKg += Math.max(0, n(r.yield_kg));
+      cur.exp += n(r.exp_ars);
+      cur.inc += n(r.inc_ars);
+      cur.expU += n(r.exp_usd);
+      cur.incU += n(r.inc_usd);
+      acc.set(key, cur);
+    }
+    rows = [...acc.values()].map(a => {
+      const base = {
+        label: a.crop, crop: a.crop, plot: null, field: null, seasonLabel: null,
+        areaHa: a.ha || null, yieldKg: a.yieldKg || null,
+        expensesARS: a.exp, incomesARS: a.inc, expensesUSD: a.expU, incomesUSD: a.incU,
+      };
+      const d = deriveMetrics(base.areaHa, base.yieldKg, a.exp, a.inc);
+      const row = { ...base, ...d, value: null } as CampaignRankRow;
+      row.value = pickValue(row, metric);
+      return row;
+    });
+  } else {
+    rows = raw.map(r => {
+      const areaHa = n(r.effective_ha) || null;
+      const yieldKg = Math.max(0, n(r.yield_kg)) || null;
+      const expARS = n(r.exp_ars);
+      const incARS = n(r.inc_ars);
+      const season = r.season_year != null ? String(r.season_year) : null;
+      const base = {
+        label: `${r.plot_name}${r.field_name ? ` (${r.field_name})` : ''} — ${r.crop}`,
+        crop: String(r.crop ?? '—'),
+        plot: r.plot_name ?? null,
+        field: r.field_name ?? null,
+        seasonLabel: season,
+        areaHa, yieldKg,
+        expensesARS: expARS, incomesARS: incARS,
+        expensesUSD: n(r.exp_usd), incomesUSD: n(r.inc_usd),
+      };
+      const d = deriveMetrics(areaHa, yieldKg, expARS, incARS);
+      const row = { ...base, ...d, value: null } as CampaignRankRow;
+      row.value = pickValue(row, metric);
+      return row;
+    });
+  }
+
+  const usable = rows.filter(r => r.value != null);
+  const skipped = rows.length - usable.length;
+
+  // margin y yield: más es mejor. costos: menos es mejor.
+  const asc = metric === 'cost_per_ha' || metric === 'cost_per_tn';
+  usable.sort((a, b) => (asc ? (a.value! - b.value!) : (b.value! - a.value!)));
+
+  const topN = opts.topN && opts.topN > 0 ? opts.topN : usable.length;
+  return {
+    metric,
+    groupBy,
+    rows: usable.slice(0, topN),
+    skipped,
+    scopeLabel: opts.scopeLabel ?? '',
+  };
 }

@@ -308,3 +308,27 @@ export function renderEmpty(ctx: ScoutingRenderCtx, available?: { weeds?: string
   }
   return { messages: [msg], suggestionKey: 'report_shown' };
 }
+
+/**
+ * view='last' — el/los monitoreo(s) más reciente(s).
+ *
+ * Faltaba: `last` existía en actividades y lluvias pero no acá, así que "el
+ * último monitoreo del lote X" caía en `detail` y devolvía la lista entera.
+ * Suma los días transcurridos, que es la mitad de la pregunta cuando alguien
+ * quiere saber hace cuánto no recorre un lote.
+ */
+export function renderScoutingLast(rows: ScoutingRow[], ctx: ScoutingRenderCtx, topN: number): HandlerResponse {
+  if (rows.length === 0) return renderEmpty(ctx);
+  const sorted = [...rows]
+    .sort((a, b) => new Date(b.scouting_date).getTime() - new Date(a.scouting_date).getTime())
+    .slice(0, topN);
+  const title = topN === 1 ? `🔍 *Último monitoreo${ctx.scope}*` : `🔍 *Últimos ${topN} monitoreos${ctx.scope}*`;
+  const lines = [title];
+  for (const r of sorted) lines.push(renderRowLine(r));
+  if (topN === 1) {
+    const days = Math.floor((Date.now() - new Date(sorted[0].scouting_date).getTime()) / 86400000);
+    lines.push('');
+    lines.push(days === 0 ? '⏱️ Monitoreado hoy' : `⏱️ Hace ${days} día${days === 1 ? '' : 's'} sin monitorear`);
+  }
+  return { messages: [lines.join('\n')], suggestionKey: 'report_shown' };
+}

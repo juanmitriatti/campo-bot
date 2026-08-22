@@ -6,6 +6,7 @@ import { normalizarMonto } from '../utils/parser.js';
 import type { AgentResult } from './agent.service.js';
 import { validateToolCall, type ValidationOptions } from './agent-output-validator.js';
 import { buildFallbackMessage } from '../utils/fuzzy-suggest.js';
+import { resolvePeriodFromText, resolvePeriodRange, QUERY_TOOLS_WITH_PERIOD, QUERY_TOOLS_WITH_RANGE } from '../utils/query-period.js';
 
 /**
  * When the user's expense text is just a crop name with no category keyword,
@@ -380,6 +381,8 @@ export class AgentResponseMapper {
         }
       }
     }
+    applyQueryPeriodFromText(filteredCalls, originalText);
+
     return filteredCalls.map(tc => this.mapToolCall(tc, originalText, validationOptions, perEntryDates));
   }
 
@@ -1043,6 +1046,12 @@ export class AgentResponseMapper {
     if (input.season_year != null) cmd.seasonYear = input.season_year;
     if (input.season_year_1 != null) cmd.seasonYear1 = input.season_year_1;
     if (input.season_year_2 != null) cmd.seasonYear2 = input.season_year_2;
+    // Ranking entre campañas (campaign_stats view='rank'). Sin este mapeo
+    // explícito los params llegan en snake_case y el handler los lee undefined
+    // — el genérico no los copia (invariante 2).
+    if (input.group_by != null) cmd.groupBy = input.group_by;
+    if (input.metric != null) cmd.metric = input.metric;
+    if (input.top_n != null) cmd.topN = input.top_n;
 
     // Edit activity / expense / income / observation / rainfall
     if (input.new_plot != null) cmd.newPlotName = input.new_plot;
@@ -1223,5 +1232,64 @@ export class AgentResponseMapper {
       source: 'ai',
       missingFields: [],
     };
+  }
+}
+
+/**
+ * Red de seguridad de fechas para CONSULTAS (Ago 2026).
+ *
+ * El pipeline ya resolvía fechas relativas server-side para las 22 tools de
+ * ESCRITURA (relative-dates.ts + TOOLS_WITH_DATE_PARAM). Para las de consulta
+ * no había nada: "¿qué fumigué la semana pasada?" dejaba el cálculo entero en
+ * el modelo. Es la misma clase de error que en escrituras obligó a que
+ * relative-dates SOBREESCRIBA lo que dice el agente.
+ *
+ * Reglas:
+ *   - Si el agente ya mandó `desde`/`hasta`, no se toca (dio un rango explícito,
+ *     probablemente porque el usuario dio fechas concretas).
+ *   - Si el texto tiene una frase de período inequívoca, gana sobre el `period`
+ *     que haya puesto el agente — determinístico > inferido.
+ *   - Todo cambio se loguea (invariante 1).
+ */
+function applyQueryPeriodFromText(
+  calls: Array<{ toolName: string; toolInput: Record<string, unknown> }>,
+  originalText: string,
+): void {
+  const relevant = calls.filter(
+    tc => QUERY_TOOLS_WITH_PERIOD.has(tc.toolName) || QUERY_TOOLS_WITH_RANGE.has(tc.toolName),
+  );
+  if (relevant.length === 0) return;
+
+  const fromText = resolvePeriodFromText(originalText);
+  if (!fromText) return;
+
+  for (const tc of relevant) {
+    const input = tc.toolInput;
+
+    // Rango explícito del agente → respetarlo.
+    if (input.desde != null || input.hasta != null) {
+      console.log(`[INTERCEPT] QUERY_PERIOD skip: ${tc.toolName} ya trae desde/hasta del agente`);
+      continue;
+    }
+
+    if (fromText.kind === 'period' && QUERY_TOOLS_WITH_PERIOD.has(tc.toolName)) {
+      if (input.period === fromText.period) continue;
+      const before = input.period ?? '(sin period)';
+      input.period = fromText.period;
+      console.log(`[INTERCEPT] QUERY_PERIOD ${tc.toolName}: ${before} → ${fromText.period} (del texto)`);
+      continue;
+    }
+
+    // Rango crudo, o una tool que no tiene `period` y necesita desde/hasta.
+    const range = fromText.kind === 'range'
+      ? { desde: fromText.desde, hasta: fromText.hasta, label: fromText.label }
+      : resolvePeriodRange(fromText.period);
+    if (!range) continue;
+
+    const before = input.period ?? '(sin period)';
+    input.desde = range.desde;
+    input.hasta = range.hasta;
+    if (input.period != null) delete input.period;
+    console.log(`[INTERCEPT] QUERY_PERIOD ${tc.toolName}: ${before} → ${range.desde}..${range.hasta} (${range.label})`);
   }
 }

@@ -1,11 +1,13 @@
 import type { ScoutingRow, ScoutingRenderCtx } from './scouting-renderers.js';
 import type { HarvestRow, HarvestRenderCtx } from './harvest-renderers.js';
+import { resolvePeriodRange, resolveDaysRange } from '../../utils/query-period.js';
 import fs from 'fs';
 import { AgronomyRepository, RAINFALL_REJECTED_DUPLICATE } from './agronomy.repository.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { CropService, detectCropFromText, formatSeasonLabel, getSeasonTypeForCrop, getCampaignStateLabel, getCampaignState } from '../plots/crop.service.js';
 import { formatPlotLocation, cap } from '../../utils/format-location.js';
 import { CampaignStatsService } from './campaign-stats.service.js';
+import type { CampaignRanking, CampaignRankRow, RankMetric, RankGroupBy } from './campaign-stats.service.js';
 import type { CampaignStats, CampaignComparison } from './campaign-stats.service.js';
 import { FeedlotService } from '../feedlot/feedlot.service.js';
 import { inferCrop, getActivityLabel, formatActivityConfirmation } from './activity.service.js';
@@ -880,6 +882,7 @@ export class AgronomyHandler {
     }
 
     switch (view) {
+      case 'last': return renderers.renderScoutingLast(rows as ScoutingRow[], ctx, (cmd.top_n as number) || 1);
       case 'aggregate': return renderers.renderScoutingAggregate(rows as ScoutingRow[], ctx);
       case 'max': return renderers.renderScoutingExtreme(rows as ScoutingRow[], ctx, 'max');
       case 'min': return renderers.renderScoutingExtreme(rows as ScoutingRow[], ctx, 'min');
@@ -1126,31 +1129,16 @@ export class AgronomyHandler {
     let isAll = false;
     const period = cmd.period as string | undefined;
 
-    if (period === 'all') {
-      desde = '2000-01-01'; hasta = todayISO; isAll = true; rangeLabel = 'Todo el historial';
-    } else if (cmd.days != null) {
-      const d = new Date(); d.setDate(d.getDate() - Number(cmd.days));
-      desde = d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
-      hasta = todayISO;
-      rangeLabel = `últimos ${cmd.days} días`;
-    } else if (period === 'week' || period === 'last_week') {
-      const d = new Date(); d.setDate(d.getDate() - (period === 'last_week' ? 14 : 7));
-      desde = d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
-      hasta = todayISO;
-      rangeLabel = period === 'last_week' ? 'semana pasada' : 'esta semana';
-    } else if (period === 'month') {
-      desde = `${nowAR.getFullYear()}-${String(nowAR.getMonth() + 1).padStart(2, '0')}-01`;
-      hasta = todayISO;
-      rangeLabel = nowAR.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
-    } else if (period === 'last_month') {
-      const lastM = new Date(nowAR.getFullYear(), nowAR.getMonth() - 1, 1);
-      desde = lastM.toISOString().slice(0, 10);
-      hasta = new Date(nowAR.getFullYear(), nowAR.getMonth(), 0).toISOString().slice(0, 10);
-      rangeLabel = lastM.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
-    } else if (period === 'year') {
-      desde = `${nowAR.getFullYear()}-01-01`;
-      hasta = todayISO;
-      rangeLabel = `Año ${nowAR.getFullYear()}`;
+    // Rango vía query-period.ts (fuente única). Antes esto era una copia local
+    // que había divergido de la de financial: `week` era una ventana rodante de
+    // 7 días y `last_week` hacía "hoy - 14" — o sea DOS semanas, incluida la
+    // actual. Ahora son semana y mes calendario, igual que en el resto.
+    // Precedencia preservada: all > days > period.
+    const pr = period === 'all'
+      ? resolvePeriodRange('all')
+      : (cmd.days != null ? resolveDaysRange(Number(cmd.days)) : resolvePeriodRange(period));
+    if (pr) {
+      desde = pr.desde; hasta = pr.hasta; rangeLabel = pr.label; isAll = pr.isAll;
     } else if (!desde && !hasta) {
       // Default: all-history for analytical queries (no narrowing → don't default to current month)
       desde = '2000-01-01'; hasta = todayISO; isAll = true; rangeLabel = 'Todo el historial';
@@ -1485,6 +1473,7 @@ export class AgronomyHandler {
       case 'avg': return renderers.renderHarvestAvg(rows as HarvestRow[], ctx);
       case 'rank': return renderers.renderHarvestRank(rows as HarvestRow[], ctx, (cmd.top_n as number) || 5);
       case 'top_locations': return renderers.renderHarvestTopLocations(rows as HarvestRow[], ctx);
+      case 'last': return renderers.renderHarvestLast(rows as HarvestRow[], ctx, (cmd.top_n as number) || 1);
       case 'volume': return renderers.renderHarvestVolume(rows as HarvestRow[], ctx);
       case 'detail':
       default: return renderers.renderHarvestDetail(rows as HarvestRow[], ctx);
@@ -2876,6 +2865,21 @@ export class AgronomyHandler {
       }
 
       case 'campaign_stats': {
+        // view='rank': comparación ENTRE campañas ("qué lote rindió mejor",
+        // "me fue mejor con soja o maíz"). No resuelve un lote puntual — barre
+        // todas las campañas del usuario con una sola query agregada.
+        if (cmd.view === 'rank') {
+          const ranking = await this.campaignStatsService.rankCampaigns(userId, {
+            metric: cmd.metric as RankMetric | undefined,
+            groupBy: cmd.groupBy as RankGroupBy | undefined,
+            topN: cmd.topN != null ? Number(cmd.topN) : undefined,
+            seasonYear: (cmd.seasonYear as string | null) ?? null,
+            crop: (cmd.crop as string | null) ?? null,
+            fieldName: (cmd.fieldName as string | null) ?? null,
+          });
+          return { messages: [this.formatCampaignRanking(ranking)] };
+        }
+
         const stats = await this.campaignStatsService.getCampaignStats(
           userId,
           cmd.plotName as string | null,
@@ -4352,9 +4356,32 @@ export class AgronomyHandler {
    * Antes las observaciones solo se leían indirecto (plot_info, PDF semanal):
    * el cuaderno de campo no se podía preguntar.
    */
+  /**
+   * query_observations unificada (Ago 2026).
+   *
+   * Era el único de los 8 dominios de consulta fuera de la receta: 4 params,
+   * sin view, sin agregados, sin inherit y sin columna de estado multi-turno
+   * (había 7 last_*_query, no 8). Respondía siempre la misma lista de 15.
+   * Ahora sigue los mismos pasos que scouting/harvest/rainfall.
+   */
   private async handleQueryObservations(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const { pool } = await import('../../config/db.js');
     const { sqlNormalizedName } = await import('../../utils/entity-matcher.js');
+    const R = await import('./observation-renderers.js');
+
+    // ── 1. Multi-turno: heredar la consulta previa cuando el agente lo marca ──
+    if (cmd.inherit) {
+      try {
+        const { rows } = await pool.query('SELECT last_observation_query, updated_at FROM conversation_state WHERE user_id = $1', [userId]);
+        const prev = rows[0]?.last_observation_query;
+        const { isFreshMultiTurnEntry } = await import('../../middleware/multi-turn-state.js');
+        if (prev && typeof prev === 'object' && isFreshMultiTurnEntry(rows[0]?.updated_at)) {
+          for (const [k, v] of Object.entries(prev)) if (cmd[k] == null) cmd[k] = v as never;
+        }
+      } catch { /* no fatal */ }
+    }
+
+    // ── 2. Filtros ──
     const conditions: string[] = ['o.user_id = $1'];
     const params: unknown[] = [userId];
     const filterLabels: string[] = [];
@@ -4369,44 +4396,166 @@ export class AgronomyHandler {
       conditions.push(`${sqlNormalizedName('f.name')} = ${sqlNormalizedName(`$${params.length}::text`)}`);
       filterLabels.push(`campo ${cmd.fieldName}`);
     }
-    const period = String(cmd.period ?? 'all');
-    if (period === 'today') { conditions.push('o.observation_date = CURRENT_DATE'); filterLabels.push('hoy'); }
-    else if (period === 'week') { conditions.push(`o.observation_date >= CURRENT_DATE - 7`); filterLabels.push('últimos 7 días'); }
-    else if (period === 'month') { conditions.push(`o.observation_date >= CURRENT_DATE - 30`); filterLabels.push('últimos 30 días'); }
+    if (cmd.category) {
+      params.push(String(cmd.category).toLowerCase());
+      conditions.push(`LOWER(o.category) = $${params.length}`);
+      filterLabels.push(String(cmd.category));
+    }
     if (cmd.search) {
       params.push(`%${String(cmd.search)}%`);
       conditions.push(`o.observation_text ILIKE $${params.length}`);
       filterLabels.push(`"${cmd.search}"`);
     }
 
-    const { rows } = await pool.query(
-      `SELECT o.observation_text, o.observation_date, p.name AS plot_name, f.name AS field_name
-       FROM agro_observations o
-       LEFT JOIN plots p ON p.id = o.plot_id
-       LEFT JOIN fields f ON f.id = COALESCE(o.field_id, p.field_id)
-       WHERE ${conditions.join(' AND ')}
-       ORDER BY o.observation_date DESC, o.id DESC
-       LIMIT 15`,
-      params,
-    );
+    // ── 3. Rango de fechas (query-period.ts, igual que el resto) ──
+    let rangeLabel = 'Todo el historial';
+    const explicitDesde = cmd.desde as string | undefined;
+    const explicitHasta = cmd.hasta as string | undefined;
+    if (explicitDesde || explicitHasta) {
+      if (explicitDesde) {
+        params.push(explicitDesde);
+        conditions.push(`o.observation_date >= $${params.length}::date`);
+      }
+      if (explicitHasta) {
+        params.push(explicitHasta);
+        conditions.push(`o.observation_date <= $${params.length}::date`);
+      }
+      rangeLabel = `${explicitDesde ?? '...'} — ${explicitHasta ?? 'hoy'}`;
+    } else {
+      const period = String(cmd.period ?? 'all');
+      const obsRange = period === 'all' ? null : resolvePeriodRange(period);
+      if (obsRange) {
+        params.push(obsRange.desde);
+        conditions.push(`o.observation_date >= $${params.length}::date`);
+        params.push(obsRange.hasta);
+        conditions.push(`o.observation_date <= $${params.length}::date`);
+        rangeLabel = obsRange.label;
+      }
+    }
 
-    const suffix = filterLabels.length ? ` (${filterLabels.join(', ')})` : '';
-    if (rows.length === 0) {
+    const scope = filterLabels.length ? ` — ${filterLabels.join(', ')}` : '';
+    const ctx: import('./observation-renderers.js').ObservationRenderCtx = { rangeLabel, scope };
+    const where = conditions.join(' AND ');
+    const FROM = `FROM agro_observations o
+       LEFT JOIN plots p ON p.id = o.plot_id
+       LEFT JOIN fields f ON f.id = COALESCE(o.field_id, p.field_id)`;
+
+    const view = String(cmd.view ?? 'detail');
+    const topN = cmd.topN != null ? Math.max(1, Math.min(50, Number(cmd.topN))) : null;
+
+    // ── 4. Vistas agregadas ──
+    if (view === 'aggregate' || view === 'top_locations') {
+      const groupBy = view === 'top_locations'
+        ? (cmd.groupBy === 'field' ? 'field' : 'plot')
+        : String(cmd.groupBy ?? 'category');
+      const BUCKET: Record<string, string> = {
+        category: `COALESCE(NULLIF(o.category, ''), 'general')`,
+        plot: `COALESCE(p.name, '(sin lote)')`,
+        field: `COALESCE(f.name, '(sin campo)')`,
+        month: `to_char(o.observation_date, 'YYYY-MM')`,
+      };
+      const bucket = BUCKET[groupBy] ?? BUCKET.category;
+      const order = cmd.sort_by === 'date' || groupBy === 'month' ? 'bucket DESC' : 'n DESC';
+      const { rows: aggRows } = await pool.query(
+        `SELECT ${bucket} AS bucket, COUNT(*)::int AS n ${FROM}
+         WHERE ${where} GROUP BY 1 ORDER BY ${order} ${topN ? `LIMIT ${topN}` : ''}`,
+        params,
+      );
+      await this.persistObservationQuery(cmd, userId);
+      if (aggRows.length === 0) return { messages: [R.renderObservationsEmpty(ctx)] };
       return {
-        messages: [`📝 No encontré observaciones${suffix}.\n\nPara anotar una, decime por ejemplo: *"anotá que apareció pulgón en la loma"*.`],
+        messages: [view === 'top_locations'
+          ? R.renderObservationsTopLocations(aggRows, ctx)
+          : R.renderObservationsAggregate(aggRows, ctx, groupBy)],
       };
     }
 
-    const lines = rows.map((r: { observation_text: string; observation_date: Date; plot_name: string | null; field_name: string | null }) => {
-      const d = new Date(r.observation_date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
-      const where = r.plot_name ? ` [${r.plot_name}]` : (r.field_name ? ` [${r.field_name}]` : '');
-      const text = r.observation_text.length > 150 ? `${r.observation_text.slice(0, 149)}…` : r.observation_text;
-      return `• ${d}${where} — ${text}`;
-    });
-    const more = rows.length === 15 ? '\n_Mostrando las últimas 15. Filtrá por lote o período para acotar._' : '';
-    return { messages: [`📝 *Observaciones${suffix}:*\n${lines.join('\n')}${more}`] };
+    // ── 5. Vistas de detalle ──
+    const limit = view === 'last' ? 1 : (topN ?? 15);
+    const { rows } = await pool.query(
+      `SELECT o.observation_text, o.observation_date, o.category, p.name AS plot_name, f.name AS field_name
+       ${FROM}
+       WHERE ${where}
+       ORDER BY o.observation_date ${cmd.sort_desc === false ? 'ASC' : 'DESC'}, o.id DESC
+       LIMIT ${limit}`,
+      params,
+    );
+
+    // ── 6. Persistir para el multi-turno ──
+    await this.persistObservationQuery(cmd, userId);
+
+    if (rows.length === 0) return { messages: [R.renderObservationsEmpty(ctx)] };
+    if (view === 'last') return { messages: [R.renderObservationsLast(rows, ctx)] };
+    return { messages: [R.renderObservationsDetail(rows, ctx, limit)] };
   }
 
+  /** Guarda los filtros de la consulta para que el próximo turno pueda heredarlos. */
+  private async persistObservationQuery(cmd: ParsedCommand, userId: UserId): Promise<void> {
+    const { pool } = await import('../../config/db.js');
+    const KEEP = ['fieldName', 'plotName', 'period', 'desde', 'hasta', 'category', 'search',
+      'view', 'groupBy', 'sort_by', 'sort_desc', 'topN'];
+    const persistable: Record<string, unknown> = {};
+    for (const k of KEEP) if (cmd[k] !== undefined && cmd[k] !== null) persistable[k] = cmd[k];
+    try {
+      await pool.query(
+        `INSERT INTO conversation_state (user_id, last_observation_query, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET last_observation_query = $2::jsonb, updated_at = NOW()`,
+        [userId, JSON.stringify(persistable)],
+      );
+    } catch { /* no fatal: la consulta ya se respondió */ }
+  }
+
+
+  /**
+   * Ranking entre campañas (campaign_stats view='rank'). Muestra la métrica
+   * pedida como dato principal y el resto como contexto, para que la respuesta
+   * conteste la pregunta sin ser un camión de datos.
+   */
+  private formatCampaignRanking(r: CampaignRanking): string {
+    const METRIC_LABEL: Record<string, string> = {
+      margin: 'Margen',
+      yield_kg_ha: 'Rinde',
+      cost_per_ha: 'Costo por hectárea',
+      cost_per_tn: 'Costo por tonelada',
+    };
+    const scope = r.scopeLabel ? ` — ${r.scopeLabel}` : '';
+    const unidad = r.groupBy === 'crop' ? 'cultivo' : 'lote';
+
+    if (r.rows.length === 0) {
+      const falta = r.metric === 'margin'
+        ? 'gastos o ingresos cargados'
+        : 'rinde y superficie cargados';
+      return `📊 Todavía no puedo rankear por ${METRIC_LABEL[r.metric].toLowerCase()}${scope}.\n`
+        + `Necesito campañas con ${falta}.`;
+    }
+
+    const fmt = (row: CampaignRankRow): string => {
+      switch (r.metric) {
+        case 'margin': return `$${Math.round(row.marginARS).toLocaleString('es-AR')}`;
+        case 'yield_kg_ha': return `${row.yieldKgPerHa?.toLocaleString('es-AR')} kg/ha`;
+        case 'cost_per_ha': return `$${row.costPerHaARS?.toLocaleString('es-AR')}/ha`;
+        case 'cost_per_tn': return `$${row.costPerTnARS?.toLocaleString('es-AR')}/tn`;
+        default: return '—';
+      }
+    };
+
+    const lines = r.rows.map((row, i) => {
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      const extra: string[] = [];
+      if (r.metric !== 'margin') extra.push(`margen $${Math.round(row.marginARS).toLocaleString('es-AR')}`);
+      if (r.metric !== 'yield_kg_ha' && row.yieldKgPerHa) extra.push(`${row.yieldKgPerHa.toLocaleString('es-AR')} kg/ha`);
+      if (row.areaHa) extra.push(`${row.areaHa.toLocaleString('es-AR')} ha`);
+      const ctx = extra.length ? `\n     _${extra.join(' · ')}_` : '';
+      return `${medal} *${row.label}* — ${fmt(row)}${ctx}`;
+    });
+
+    const omitidas = r.skipped > 0
+      ? `\n\n_${r.skipped} campaña${r.skipped > 1 ? 's' : ''} sin datos suficientes para esta métrica._`
+      : '';
+
+    return `📊 *${METRIC_LABEL[r.metric]} por ${unidad}*${scope}\n${lines.join('\n')}${omitidas}`;
+  }
   private formatCampaignYieldShort(s: CampaignStats): string {
     const header = `🌾 *Rinde ${s.crop} ${s.seasonLabel}* — ${s.plot}${s.field ? ` (${s.field})` : ''}`;
     if (!s.yield.kg && !s.yield.kgPerHa) {

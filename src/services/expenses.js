@@ -3315,3 +3315,64 @@ export async function deleteHarvestLoads(userId, plotId, { eventDate, driverName
 
   return deleteResult.rows;
 }
+
+/**
+ * Totales económico-productivos de TODAS las campañas de un usuario, en UNA
+ * query, para rankear/comparar entre lotes o cultivos.
+ *
+ * getCampaignStats resuelve UNA campaña con ~6 queries; para un ranking sobre
+ * 10 lotes eso serían 60 idas a la DB. Acá se agrega del lado del motor.
+ *
+ * Reglas replicadas de campaign-stats.service (deben seguir coincidiendo):
+ *   - La categoría "Hacienda" se EXCLUYE del margen del cultivo: tiene su
+ *     propia economía y mezclarla distorsionaba el resultado (visto en prod).
+ *   - ARS y USD se suman por separado — no se convierte a una sola moneda.
+ *   - El área efectiva es sowed_hectares (siembra parcial) y recién si falta,
+ *     el área del lote; usar siempre la del lote inflaba los kg/ha.
+ *   - La ventana es [start_date, harvested_at|end_date] y queda abierta
+ *     mientras la campaña siga activa.
+ */
+export async function getCampaignTotals(userId, { seasonYear = null, crop = null, fieldName = null } = {}) {
+  const params = [userId];
+  let filters = '';
+  if (seasonYear) { params.push(seasonYear); filters += ` AND pc.season_year = $${params.length}`; }
+  if (crop) { params.push(crop); filters += ` AND LOWER(pc.crop) = LOWER($${params.length})`; }
+  if (fieldName) { params.push(fieldName); filters += ` AND LOWER(f.name) = LOWER($${params.length})`; }
+
+  const { rows } = await pool.query(
+    `SELECT
+       pc.id, pc.crop, pc.season_year, pc.season_type, pc.yield_kg,
+       pc.start_date, pc.harvested_at,
+       COALESCE(pc.sowed_hectares, p.area_hectares) AS effective_ha,
+       p.id AS plot_id, p.name AS plot_name, f.name AS field_name,
+       COALESCE(e.ars, 0) AS exp_ars, COALESCE(e.usd, 0) AS exp_usd,
+       COALESCE(i.ars, 0) AS inc_ars, COALESCE(i.usd, 0) AS inc_usd
+     FROM plot_crops pc
+     JOIN plots p  ON p.id = pc.plot_id AND p.deleted_at IS NULL
+     JOIN fields f ON f.id = p.field_id AND f.deleted_at IS NULL
+     LEFT JOIN LATERAL (
+       SELECT COALESCE(SUM(x.amount) FILTER (WHERE x.currency IS DISTINCT FROM 'USD'), 0) AS ars,
+              COALESCE(SUM(x.amount) FILTER (WHERE x.currency = 'USD'), 0) AS usd
+       FROM expenses x
+       WHERE x.plot_id = pc.plot_id AND x.deleted_at IS NULL
+         AND LOWER(COALESCE(x.category, '')) <> 'hacienda'
+         AND x.expense_date >= pc.start_date
+         AND (COALESCE(pc.harvested_at::date, pc.end_date) IS NULL
+              OR x.expense_date <= COALESCE(pc.harvested_at::date, pc.end_date))
+     ) e ON TRUE
+     LEFT JOIN LATERAL (
+       SELECT COALESCE(SUM(y.amount) FILTER (WHERE y.currency IS DISTINCT FROM 'USD'), 0) AS ars,
+              COALESCE(SUM(y.amount) FILTER (WHERE y.currency = 'USD'), 0) AS usd
+       FROM incomes y
+       WHERE y.plot_id = pc.plot_id AND y.deleted_at IS NULL
+         AND LOWER(COALESCE(y.category, '')) <> 'hacienda'
+         AND y.income_date >= pc.start_date
+         AND (COALESCE(pc.harvested_at::date, pc.end_date) IS NULL
+              OR y.income_date <= COALESCE(pc.harvested_at::date, pc.end_date))
+     ) i ON TRUE
+     WHERE f.user_id = $1${filters}
+     ORDER BY pc.season_year DESC, f.name, p.name`,
+    params,
+  );
+  return rows;
+}
