@@ -1063,9 +1063,14 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         await pool.query(`DELETE FROM user_settings WHERE user_id = $1`, [eid]);
         await pool.query(`DELETE FROM users WHERE id = $1`, [eid]);
       }
+      // telegram_id es necesario: reminderTick marca 'failed' sin reintentar a
+      // los usuarios SIN canal de contacto (no pueden recibir nada, y era la
+      // causa del loop que generó 29.138 filas en alert_history). Estos tests
+      // ejercitan la lógica de fechas y dedup, así que el usuario tiene que ser
+      // uno que realmente pueda recibir el aviso.
       const r = await pool.query(
-        `INSERT INTO users (name, email, password_hash, plan_id)
-         VALUES ('ReminderTick Test', 'remtick@pipeline-harness.test.local', 'x', 4)
+        `INSERT INTO users (name, email, password_hash, plan_id, telegram_id)
+         VALUES ('ReminderTick Test', 'remtick@pipeline-harness.test.local', 'x', 4, '999000111')
          RETURNING id`,
       );
       testUserId = r.rows[0].id as number;

@@ -303,6 +303,14 @@ export function formatReminderList(reminders: TaskReminder[]): string {
  *    dispara a la mañana del día que vence.
  * Dedup: pending → sent (igual que siempre).
  */
+/**
+ * Tope de reintentos antes de rendirse. Con backoff exponencial de 5 min
+ * duplicando (5, 10, 20, 40, 80 min), 5 intentos cubren ~2,5 horas — de sobra
+ * para un corte transitorio del canal, y acotado para que un canal roto de
+ * verdad no genere ruido indefinido.
+ */
+export const MAX_REMINDER_ATTEMPTS = 5;
+
 export async function reminderTick(
   send: (userId: number, contact: { phone: string | null; telegramId: string | null }, message: string) => Promise<boolean>,
 ): Promise<number> {
@@ -314,7 +322,7 @@ export async function reminderTick(
 
   const { rows } = await pool.query(
     `SELECT r.id, r.description, r.due_date::text, to_char(r.due_time, 'HH24:MI') AS due_time,
-            r.user_id, u.phone_number, u.telegram_id,
+            r.user_id, r.attempts, u.phone_number, u.telegram_id,
             p.name AS plot_name, f.name AS field_name
      FROM task_reminders r
      JOIN users u ON u.id = r.user_id AND u.deleted_at IS NULL
@@ -327,6 +335,13 @@ export async function reminderTick(
          -- Legacy sin hora: igual que siempre, gateado por franja en JS
          OR (r.due_time IS NULL AND r.due_date <= $1 AND $3)
        )
+       -- Backoff exponencial: un reintento que falló no se vuelve a tocar hasta
+       -- que pasó su ventana. Sin esto el cron (cada minuto) reintentaba 1.440
+       -- veces por día indefinidamente.
+       AND (
+         r.last_attempt_at IS NULL
+         OR r.last_attempt_at < NOW() - (INTERVAL '5 minutes' * POWER(2, LEAST(r.attempts, 6)))
+       )
      ORDER BY r.id
      LIMIT 200`,
     [today, nowHM, legacyInWindow],
@@ -334,19 +349,57 @@ export async function reminderTick(
 
   let sent = 0;
   for (const r of rows) {
+    // Sin canal no hay nada que reintentar: fallar acá evita además la fila
+    // en alert_history que escribía sendAlert en cada pasada (29.138 filas en
+    // prod por UN recordatorio de un usuario sin teléfono ni Telegram).
+    if (!r.phone_number && !r.telegram_id) {
+      await pool.query(
+        `UPDATE task_reminders
+            SET status = 'failed', attempts = attempts + 1, last_attempt_at = NOW(),
+                last_error = 'usuario sin canal de contacto'
+          WHERE id = $1`,
+        [r.id],
+      );
+      console.warn(`[INTERCEPT] reminders: #${r.id} (user ${r.user_id}) sin canal — marcado failed, no se reintenta`);
+      continue;
+    }
+
     const loc = r.plot_name ? ` (lote ${r.plot_name})` : r.field_name ? ` (${r.field_name})` : '';
     const hora = r.due_time ? ` a las ${r.due_time}` : '';
     const when = r.due_date === today ? `hoy${hora}` : `desde el ${r.due_date.slice(8, 10)}/${r.due_date.slice(5, 7)}${hora}`;
     const msg = `⏰ *Recordatorio* (${when}):\n${r.description}${loc}\n\n_"listo el recordatorio" cuando lo hagas, o "mis recordatorios" para ver todos._`;
+
+    let ok = false;
+    let errMsg: string | null = null;
     try {
-      const ok = await send(r.user_id, { phone: r.phone_number, telegramId: r.telegram_id }, msg);
-      if (ok) {
-        await pool.query(`UPDATE task_reminders SET status = 'sent', sent_at = NOW() WHERE id = $1`, [r.id]);
-        sent++;
-      }
+      ok = await send(r.user_id, { phone: r.phone_number, telegramId: r.telegram_id }, msg);
     } catch (err) {
-      console.error(`[reminders] send failed for #${r.id}:`, (err as Error).message);
+      errMsg = (err as Error).message;
+      console.error(`[reminders] send failed for #${r.id}:`, errMsg);
     }
+
+    if (ok) {
+      await pool.query(`UPDATE task_reminders SET status = 'sent', sent_at = NOW() WHERE id = $1`, [r.id]);
+      sent++;
+      continue;
+    }
+
+    // Falló el envío: contar el intento y rendirse al llegar al tope, para que
+    // la fila salga de la cola en vez de reintentarse eternamente.
+    const nextAttempts = Number(r.attempts ?? 0) + 1;
+    const giveUp = nextAttempts >= MAX_REMINDER_ATTEMPTS;
+    await pool.query(
+      `UPDATE task_reminders
+          SET attempts = $2, last_attempt_at = NOW(), last_error = $3,
+              status = CASE WHEN $4::boolean THEN 'failed' ELSE status END
+        WHERE id = $1`,
+      [r.id, nextAttempts, errMsg ?? 'envío rechazado por el canal', giveUp],
+    );
+    console.warn(
+      giveUp
+        ? `[INTERCEPT] reminders: #${r.id} agotó ${MAX_REMINDER_ATTEMPTS} intentos — marcado failed`
+        : `[reminders] #${r.id} falló (intento ${nextAttempts}/${MAX_REMINDER_ATTEMPTS}), reintenta en ${5 * Math.pow(2, Math.min(nextAttempts, 6))} min`,
+    );
   }
   return sent;
 }
