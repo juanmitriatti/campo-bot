@@ -354,6 +354,9 @@ ${this.buildActivityLines(dictionary)}
 
 PASO 1 — Elegí el VIEW correcto. ES OBLIGATORIO. Default 'aggregate' es WRONG en estos casos:
   - "más alto/grande/caro/máximo" + (gasto/ingreso/venta/compra) → view:'max' + top_n (default 1)
+  - "más chico/bajo/barato/mínimo/menor" + (gasto/ingreso) → view:'min' + top_n (default 1)
+  - la palabra "promedio"/"en promedio"/"media" → view:'avg' (devuelve promedio por movimiento Y por mes). Si dice "promedio", es 'avg' aunque también diga "por mes"
+  - "mes a mes"/"cada mes"/"mensual"/"evolución"/"cómo vengo mes a mes"/"desglose por mes" SIN la palabra promedio → view:'monthly' (la serie completa, un renglón por mes). NO confundir con period:'month', que es SOLO el mes actual
   - "más reciente"/"última"/"último" venta/ingreso/gasto → view:'last' + top_n:1
   - "últimos N movimientos/gastos/ingresos" → view:'last' + top_n:N
   - "en qué/cuál categoría más" + (gasté/ingresé) | "top categorías" | "ranking" → view:'top_categories'

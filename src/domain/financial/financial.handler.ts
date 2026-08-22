@@ -554,7 +554,7 @@ export class FinancialHandler {
       // - Queries with other narrowing filters (plot/field/category/amount/description) default to 'all' too —
       //   defaulting to mes-actual silently truncates the answer (e.g. "ver gastos del lote A1" should be historical)
       // - Pure "mostrame gastos/ingresos" without filters defaults to mes actual (the common "what's happening this month" case)
-      const analyticalViews = new Set(['max', 'top_categories', 'top_locations', 'balance', 'volume', 'last', 'compare']);
+      const analyticalViews = new Set(['max', 'min', 'avg', 'monthly', 'top_categories', 'top_locations', 'balance', 'volume', 'last', 'compare']);
       const hasNarrowing = !!(fieldName || plotName || cmd.category || (cmd.categories as string[] | undefined)?.length || cmd.amount_min != null || cmd.amount_max != null || cmd.description_search || cmd.currency || (cmd.exclude_categories as string[] | undefined)?.length);
       const shouldDefaultAll = (cmd.view && analyticalViews.has(cmd.view as string)) || hasNarrowing;
       if (shouldDefaultAll) {
@@ -645,6 +645,9 @@ export class FinancialHandler {
       case 'top_categories': return renderTopCategories(rows, ctx);
       case 'top_locations':  return renderTopLocations(rows, ctx);
       case 'max':            return renderMax(rows, ctx, (cmd.top_n as number) || 1);
+      case 'min':            return renderMin(rows, ctx, (cmd.top_n as number) || 1);
+      case 'avg':            return renderAvg(rows, ctx);
+      case 'monthly':        return renderMonthly(rows, ctx);
       case 'balance':        return renderBalance(rows, ctx);
       case 'volume':         return renderVolume(rows, ctx);
       case 'last':           return renderLast(rows, ctx, (cmd.top_n as number) || 5);
@@ -3881,6 +3884,128 @@ function renderMax(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderC
   return { messages: [msg.trim()], suggestionKey: 'report_shown' };
 }
 
+
+/**
+ * view='min' — el movimiento más chico. Espejo de renderMax.
+ *
+ * Faltaba: financial_report era el dominio MÁS consultado y el que menos
+ * vistas tenía (9 contra 10-11 del resto). No había forma de preguntar
+ * "cuál fue el gasto más chico" ni "el ingreso más bajo".
+ */
+/**
+ * Clave YYYY-MM en hora argentina. r.date llega como objeto Date desde pg:
+ * `String(date).slice(0,7)` daba "Mon Feb" y de ahí Invalid Date + buckets
+ * duplicados (un bucket por día de la semana en vez de uno por mes).
+ */
+function monthKeyAR(d: Date | string): string {
+  const dt = d instanceof Date ? d : new Date(String(d));
+  return dt.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).slice(0, 7);
+}
+
+function renderMin(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderCtx, topN: number): HandlerResponse {
+  const isIncome = ctx.filters.type === 'incomes';
+  const xs = isIncome ? rows.incomes : (rows.expenses.length > 0 ? rows.expenses : rows.incomes);
+  if (xs.length === 0) {
+    return { messages: [`No hay registros${ctx.scope} (${ctx.rangeLabel}).`], suggestionKey: 'report_shown' };
+  }
+  const byCurrency = new Map<string, RawRow[]>();
+  for (const r of xs) {
+    const c = r.currency || 'ARS';
+    byCurrency.set(c, [...(byCurrency.get(c) || []), r]);
+  }
+  const kindLabel = isIncome ? 'ingreso' : 'gasto';
+  let msg = topN === 1
+    ? `🔽 *El ${kindLabel} más chico${ctx.scope}* (${ctx.rangeLabel})\n`
+    : `🔽 *Los ${topN} ${kindLabel}s más chicos${ctx.scope}* (${ctx.rangeLabel})\n`;
+  for (const [cur, items] of byCurrency.entries()) {
+    items.sort((a, b) => Number(a.amount) - Number(b.amount));
+    msg += `\n*${cur}:*\n`;
+    for (const r of items.slice(0, topN)) msg += renderMovementLine(r) + '\n';
+  }
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
+
+/**
+ * view='avg' — promedio por movimiento y por mes.
+ *
+ * El promedio POR MES se calcula sobre los meses que realmente tuvieron
+ * movimientos, no sobre el largo del rango: con "todo el historial" dividir
+ * por 300 meses daría un número sin sentido.
+ */
+function renderAvg(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderCtx): HandlerResponse {
+  const isIncome = ctx.filters.type === 'incomes';
+  const xs = isIncome ? rows.incomes : (rows.expenses.length > 0 ? rows.expenses : rows.incomes);
+  if (xs.length === 0) {
+    return { messages: [`No hay registros${ctx.scope} (${ctx.rangeLabel}).`], suggestionKey: 'report_shown' };
+  }
+  const kindLabel = isIncome ? 'ingresos' : 'gastos';
+  const byCurrency = new Map<string, RawRow[]>();
+  for (const r of xs) {
+    const c = r.currency || 'ARS';
+    byCurrency.set(c, [...(byCurrency.get(c) || []), r]);
+  }
+  let msg = `📊 *Promedio de ${kindLabel}${ctx.scope}*\n📅 ${ctx.rangeLabel}\n`;
+  for (const [cur, items] of byCurrency.entries()) {
+    const total = items.reduce((s, r) => s + Number(r.amount), 0);
+    const perMovement = Math.round(total / items.length);
+    const months = new Set(items.map(r => monthKeyAR(r.date)));
+    const perMonth = Math.round(total / months.size);
+    msg += `\n*${cur}:*\n`;
+    msg += `• Por movimiento: ${fmtMoney(perMovement, cur)} _(${items.length} movs)_\n`;
+    msg += `• Por mes: ${fmtMoney(perMonth, cur)} _(${months.size} ${months.size === 1 ? 'mes' : 'meses'} con registros)_\n`;
+  }
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
+
+/**
+ * view='monthly' — serie mes a mes.
+ *
+ * Existía en lluvias pero no en finanzas, que es donde más se pregunta
+ * ("cómo vengo mes a mes", "gastos por mes"). Marca el mes más alto para que
+ * el pico se vea sin leer toda la lista.
+ */
+function renderMonthly(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: RenderCtx): HandlerResponse {
+  const isIncome = ctx.filters.type === 'incomes';
+  const both = ctx.filters.type === 'both';
+  const xs = isIncome ? rows.incomes : (both ? [...rows.expenses, ...rows.incomes] : rows.expenses);
+  if (xs.length === 0) {
+    return { messages: [`No hay registros${ctx.scope} (${ctx.rangeLabel}).`], suggestionKey: 'report_shown' };
+  }
+  // Solo ARS: mezclar monedas en una serie temporal daría una curva falsa.
+  const ars = xs.filter(r => (r.currency || 'ARS') !== 'USD');
+  if (ars.length === 0) {
+    return { messages: [`Solo hay registros en USD${ctx.scope} — la serie mensual se arma en ARS.`], suggestionKey: 'report_shown' };
+  }
+  const byMonth = new Map<string, { exp: number; inc: number }>();
+  const expIds = new Set(rows.expenses.map(r => r.id));
+  for (const r of ars) {
+    const k = monthKeyAR(r.date);
+    const cur = byMonth.get(k) ?? { exp: 0, inc: 0 };
+    if (expIds.has(r.id) && !isIncome) cur.exp += Number(r.amount);
+    else cur.inc += Number(r.amount);
+    byMonth.set(k, cur);
+  }
+  const months = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const peak = Math.max(...months.map(([, v]) => (isIncome ? v.inc : v.exp) || v.inc + v.exp));
+  const kindLabel = isIncome ? 'Ingresos' : (both ? 'Movimientos' : 'Gastos');
+
+  let msg = `📆 *${kindLabel} mes a mes${ctx.scope}*\n📅 ${ctx.rangeLabel}\n`;
+  for (const [k, v] of months) {
+    const [y, m] = k.split('-');
+    const label = new Date(Date.UTC(Number(y), Number(m) - 1, 15))
+      .toLocaleDateString('es-AR', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+    const val = isIncome ? v.inc : (both ? v.inc - v.exp : v.exp);
+    const mark = !both && ((isIncome ? v.inc : v.exp) === peak) ? ' 🔺' : '';
+    if (both) {
+      msg += `• ${label}: ingresos ${fmtMoney(v.inc, 'ARS')} − gastos ${fmtMoney(v.exp, 'ARS')} = *${fmtMoney(val, 'ARS')}*\n`;
+    } else {
+      msg += `• ${label}: *${fmtMoney(val, 'ARS')}*${mark}\n`;
+    }
+  }
+  const totalArs = months.reduce((s, [, v]) => s + (isIncome ? v.inc : (both ? v.inc - v.exp : v.exp)), 0);
+  msg += `━━━━━━━━━━━━━━\n*Total: ${fmtMoney(totalArs, 'ARS')}*`;
+  return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
 function renderCompare(
   a: { expenses: RawRow[]; incomes: RawRow[] },
   b: { expenses: RawRow[]; incomes: RawRow[] },
