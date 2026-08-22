@@ -111,6 +111,36 @@ export async function sendAlertWithRetry(userId, phone, message, alertType, meta
  * @param {object} metadata
  * @returns {Promise<{sent: boolean, alertId: number}>}
  */
+/**
+ * Errores de envío PERMANENTES: reintentarlos es trabajo garantizado a fallar.
+ *
+ * Un 403 de Telegram ("user is deactivated", "bot was blocked", "chat not
+ * found") o un 401 de WhatsApp (token inválido / circuit breaker abierto) no
+ * mejoran con un reintento — la condición es del lado del destinatario o de la
+ * config, no un hipo de red. Un 5xx o un timeout SÍ son transitorios.
+ *
+ * En prod esto se veía claro: el resumen mensual de un usuario con la cuenta de
+ * Telegram desactivada se reintentaba 3 veces todos los días 1, desde junio; y
+ * cada alerta a un usuario con teléfono sintético gastaba 4 reintentos contra
+ * la API de WhatsApp, que en este deploy ni siquiera está configurada.
+ *
+ * @param {unknown} err
+ * @returns {string|null} motivo si es permanente, null si conviene reintentar
+ */
+export function permanentSendFailureReason(err) {
+  const msg = String((err && err.message) || err || '').toLowerCase();
+  if (!msg) return null;
+  if (msg.includes('user is deactivated')) return 'telegram: cuenta desactivada';
+  if (msg.includes('bot was blocked')) return 'telegram: bot bloqueado por el usuario';
+  if (msg.includes('chat not found')) return 'telegram: chat inexistente';
+  if (msg.includes('user not found')) return 'telegram: usuario inexistente';
+  if (msg.includes('invalid oauth') || msg.includes('cannot parse access token')) return 'whatsapp: token inválido';
+  if (msg.includes('circuit breaker')) return 'whatsapp: circuit breaker abierto (token inválido)';
+  // 401/403 genéricos: credenciales o permiso, nunca transitorios.
+  if (/\b(401|403)\b/.test(msg)) return `canal rechazó el envío (${msg.match(/\b(401|403)\b/)[0]})`;
+  return null;
+}
+
 export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId: rawTelegramId }, message, alertType, metadata = {}) {
   if (isProactiveAlertType(alertType)) {
     if (!(await userAllowsProactiveAlerts(userId))) {
@@ -138,6 +168,9 @@ export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId
   let sent = false;
   let channel = '';
 
+  // Motivo permanente detectado — se guarda para el forense en el payload.
+  let permanentReason = null;
+
   if (telegramId) {
     channel = 'telegram';
     const maxAttempts = 3;
@@ -147,6 +180,17 @@ export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId
         sent = true;
         break;
       } catch (err) {
+        // Fallo permanente: cortar acá. Antes se reintentaba 3 veces igual,
+        // aunque el error dijera explícitamente que la cuenta no existe.
+        permanentReason = permanentSendFailureReason(err);
+        if (permanentReason) {
+          console.warn(`[alert.service] [INTERCEPT] ALERT_PERMANENT user ${userId} (${alertType}): ${permanentReason} — no se reintenta`);
+          logError('alerts', 'ALERT_SEND_PERMANENT', err, {
+            userId, alertType, alertId,
+            context: { channel: 'telegram', telegramId, attempts: attempt, permanentReason },
+          });
+          break;
+        }
         if (attempt === maxAttempts) {
           logError('alerts', 'ALERT_SEND_FAILED', err, {
             userId, alertType, alertId,
@@ -163,18 +207,27 @@ export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId
     if (result.success) {
       sent = true;
     } else {
-      logError('alerts', 'ALERT_SEND_FAILED', new Error(result.error), {
+      permanentReason = permanentSendFailureReason(result.error);
+      if (permanentReason) {
+        console.warn(`[alert.service] [INTERCEPT] ALERT_PERMANENT user ${userId} (${alertType}): ${permanentReason} — no se reintenta`);
+      }
+      logError('alerts', permanentReason ? 'ALERT_SEND_PERMANENT' : 'ALERT_SEND_FAILED', new Error(result.error), {
         userId, alertType, alertId,
-        context: { channel: 'whatsapp', phone, attempts: result.attempts },
+        context: { channel: 'whatsapp', phone, attempts: result.attempts, permanentReason },
       });
     }
   } else {
-    console.warn(`[alert] User ${userId} has no phone or telegramId — skipping alert`);
+    // Sin canal: permanente por definición. Se marca como tal para que el
+    // historial distinga "no se pudo esta vez" de "nunca se va a poder".
+    console.warn(`[alert.service] [INTERCEPT] ALERT_PERMANENT user ${userId} (${alertType}): sin canal de contacto — no se reintenta`);
     await pool.query(
-      `UPDATE alert_history SET status = 'failed', retry_count = 0 WHERE id = $1`,
+      `UPDATE alert_history
+          SET status = 'failed', retry_count = 0,
+              payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object('permanent_reason', 'sin canal de contacto')
+        WHERE id = $1`,
       [alertId]
     );
-    return { sent: false, alertId };
+    return { sent: false, alertId, permanent: true };
   }
 
   // Push notification (best effort, no retry needed)
@@ -194,11 +247,17 @@ export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId
     return { sent: true, alertId };
   }
 
+  // El motivo permanente queda en el payload: `status` se mantiene en 'failed'
+  // para no romper a los consumidores que ya filtran por ese valor.
   await pool.query(
-    `UPDATE alert_history SET status = 'failed' WHERE id = $1`,
-    [alertId]
+    `UPDATE alert_history
+        SET status = 'failed',
+            payload = CASE WHEN $2::text IS NULL THEN payload
+                      ELSE COALESCE(payload, '{}'::jsonb) || jsonb_build_object('permanent_reason', $2::text) END
+      WHERE id = $1`,
+    [alertId, permanentReason]
   );
-  return { sent: false, alertId };
+  return { sent: false, alertId, permanent: !!permanentReason };
 }
 
 /**
