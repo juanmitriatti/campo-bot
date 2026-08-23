@@ -4,6 +4,14 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
+      fontFamily: {
+        // IBM Plex: the app had no typographic identity at all (it fell through
+        // to the system stack). Plex Sans reads as an instrument rather than a
+        // consumer app, and Plex Mono's tabular figures matter here — this
+        // dashboard is mostly columns of money and millimetres.
+        sans: ['"IBM Plex Sans"', 'system-ui', '-apple-system', '"Segoe UI"', 'sans-serif'],
+        mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+      },
       colors: {
         campo: {
           50: '#f0fdf4',

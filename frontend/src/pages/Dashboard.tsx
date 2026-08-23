@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/layout/Sidebar';
 import BottomNav from '../components/layout/BottomNav';
+import MoreSheet from '../components/layout/MoreSheet';
 import OverviewPage from '../components/overview/OverviewPage';
 import ObservationTable from '../components/ObservationTable';
 import ScoutingTable from '../components/ScoutingTable';
@@ -20,7 +21,7 @@ import ChannelLinking from '../components/ChannelLinking';
 import CategoriesTab from '../components/CategoriesTab';
 import FieldsTab from '../components/FieldsTab';
 import RemindersTab from '../components/RemindersTab';
-import type { DashboardView } from '../components/layout/Sidebar';
+import type { DashboardView } from '../components/layout/nav-model';
 
 const viewFeatureMap: Record<DashboardView, string | null> = {
   overview: null,
@@ -58,6 +59,11 @@ export default function Dashboard() {
   // cuenta" — el usuario se registraba, caía a un dashboard vacío y nadie le
   // decía el paso siguiente. true = sin ningún canal verificado.
   const [needsChannel, setNeedsChannel] = useState(false);
+  // Mobile "Más" sheet — the other 9 destinations that no longer fit (and never
+  // fitted) in the bottom bar.
+  const [moreOpen, setMoreOpen] = useState(false);
+  // Observaciones is a sub-tab of Actividades now, not its own nav destination.
+  const [activityTab, setActivityTab] = useState<'activities' | 'observations'>('activities');
 
   const refreshChannelStatus = async () => {
     try {
@@ -112,6 +118,26 @@ export default function Dashboard() {
     setView('livestock');
   };
 
+  /**
+   * "Para revisar" → the row that needs fixing. Activities and expenses can be
+   * highlighted in place; a plot or a field just opens the Campos tab, which is
+   * where they are edited.
+   */
+  const handleOpenReviewRef = (ref: { type: 'activity' | 'expense' | 'plot' | 'field'; id: number }) => {
+    if (ref.type === 'activity') {
+      setActivityTab('activities');
+      setHighlight({ view: 'activities', id: ref.id });
+      setView('activities');
+      return;
+    }
+    if (ref.type === 'expense') {
+      setHighlight({ view: 'expenses', id: ref.id });
+      setView('expenses');
+      return;
+    }
+    setView('fields');
+  };
+
   // Once we navigate into the target view, consume the highlight after the
   // child table renders so it doesn't persist on next visit.
   const highlightForView = highlight?.view === view ? highlight.id : undefined;
@@ -128,6 +154,8 @@ export default function Dashboard() {
             onGoToStock={handleGoToStock}
             onGoToLivestock={handleGoToLivestock}
             onGoToActivities={() => setView('activities')}
+            onGoToFields={() => setView('fields')}
+            onOpenReviewRef={handleOpenReviewRef}
           />
         );
       case 'fields':
@@ -144,18 +172,46 @@ export default function Dashboard() {
             <IncomeTable highlightId={highlightForView} />
           </div>
         );
+      // Actividades y Observaciones comparten destino: para quien le dicta al
+      // bot, una observación ES un registro del lote. Eran dos tablas casi
+      // iguales en dos lugares distintos del menú.
       case 'activities':
+      case 'observations': {
+        const tab = view === 'observations' ? 'observations' : activityTab;
+        const tabs: Array<{ key: 'activities' | 'observations'; label: string }> = [
+          { key: 'activities', label: 'Actividades' },
+          { key: 'observations', label: 'Observaciones' },
+        ];
         return (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-            <ActivityTable highlightId={highlightForView} />
+          <div>
+            <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700 mb-4">
+              {tabs.map(t => {
+                const isActive = t.key === tab;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => { setActivityTab(t.key); if (view === 'observations') setView('activities'); }}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`px-3 py-2 text-sm font-medium transition-colors -mb-px border-b-2 ${
+                      isActive
+                        ? 'border-campo-600 text-campo-700 dark:text-campo-400'
+                        : 'border-transparent text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+              {tab === 'activities'
+                ? <ActivityTable highlightId={highlightForView} />
+                : <ObservationTable />}
+            </div>
           </div>
         );
-      case 'observations':
-        return (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-            <ObservationTable />
-          </div>
-        );
+      }
       case 'scoutings':
         return (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
@@ -244,7 +300,21 @@ export default function Dashboard() {
         </main>
       </div>
 
-      <BottomNav active={view} onChange={setView} features={features} />
+      <BottomNav
+        active={view}
+        onChange={v => { setMoreOpen(false); setView(v); }}
+        features={features}
+        moreOpen={moreOpen}
+        onOpenMore={() => setMoreOpen(true)}
+      />
+
+      <MoreSheet
+        open={moreOpen}
+        active={view}
+        features={features}
+        onSelect={setView}
+        onClose={() => setMoreOpen(false)}
+      />
     </div>
   );
 }

@@ -1,0 +1,47 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Diseño" },
+    { "id": "page-2", "name": "Exploración descartada" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Resumen — escritorio", "page": "page-1", "x": 0, "y": 0, "w": 1440, "h": 2100 },
+    { "file": "Mobile.dc.html", "title": "Resumen — teléfono", "page": "page-1", "x": 1520, "y": 0, "w": 390, "h": 844 },
+    { "file": "Navegacion.dc.html", "title": "La navegación — hoy vs. propuesta", "page": "page-1", "x": 0, "y": 2300, "w": 860, "h": 900 },
+    { "file": "OpcionB.dc.html", "title": "Opción B — boceto descartado", "page": "page-2", "x": 0, "y": 0, "w": 900, "h": 1200 }
+  ],
+  "annotations": [
+    {
+      "id": "nota-a",
+      "page": "page-1",
+      "x": 0,
+      "y": -210,
+      "w": 460,
+      "text": "«Campaña» — la dirección elegida.\n\nEl Resumen se ordena por la pregunta que se hace el productor: cómo terminó la campaña, qué hay que revisar, cómo viene cada lote. Datos reales de tu cuenta, campaña nov-25 a jul-26.\n\nProbá los chips de campo, el toggle ARS/USD y los grupos del sidebar: filtran de verdad."
+    },
+    {
+      "id": "nota-b",
+      "page": "page-1",
+      "x": 1520,
+      "y": -210,
+      "w": 390,
+      "text": "La misma vista en 390 px.\n\nEl cambio de fondo: cuatro destinos abajo en vez de trece. Tocá «Más» para ver dónde va el resto."
+    },
+    {
+      "id": "nota-c",
+      "page": "page-1",
+      "x": 0,
+      "y": 2150,
+      "w": 460,
+      "text": "El argumento de la navegación, con el «hoy» a escala real para comparar. El toggle de arriba cambia entre los dos."
+    },
+    {
+      "id": "nota-d",
+      "page": "page-2",
+      "x": 0,
+      "y": -230,
+      "w": 460,
+      "text": "«La bandeja» — descartada.\n\nQueda acá como registro: la idea de tratar el Resumen como una cola de revisión no sobrevivió entera, pero sí su núcleo. La card «Para revisar» del diseño elegido sale de este boceto."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

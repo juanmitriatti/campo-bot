@@ -16,5 +16,10 @@ certs/
 campo_bot_local_*.sql
 dumps/
 
+# canvas sembrado del diseno (~2,3 MB de editor embebido). Se regenera desde
+# los .dc.html + canvas.json con el helper de la skill /design.
+design/*.html
+!design/*.dc.html
+
 # settings personales de Claude Code (permisos de esta maquina)
 .claude/settings.local.json

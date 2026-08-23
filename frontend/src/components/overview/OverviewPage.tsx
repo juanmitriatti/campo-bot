@@ -5,7 +5,8 @@ import { useCurrency } from '../../context/CurrencyContext';
 import { useOverviewTab } from '../../hooks/useOverviewTab';
 import { useUserFields } from '../../hooks/useUserFields';
 import { useSelectedField } from '../../hooks/useSelectedField';
-import { useDashboardData } from '../../hooks/useDashboardData';
+import { useSelectedCampaign } from '../../hooks/useSelectedCampaign';
+import { useOverviewData } from '../../hooks/useOverviewData';
 import OverviewTabs from './OverviewTabs';
 import OverviewSummaryView from './OverviewSummaryView';
 import OverviewAgronomicView from './OverviewAgronomicView';
@@ -13,6 +14,9 @@ import OverviewLivestockView from './OverviewLivestockView';
 import SubscriptionBanner from './SubscriptionBanner';
 import EmailVerifyBanner from './EmailVerifyBanner';
 import AlertsBanner from './AlertsBanner';
+import FieldChips from './FieldChips';
+import CampaignPicker from './CampaignPicker';
+import type { Finding } from '../../hooks/useReviewFindings';
 
 interface OverviewPageProps {
   onGoToAccount?: () => void;
@@ -20,6 +24,8 @@ interface OverviewPageProps {
   onGoToStock?: (opts: { lowStockOnly: boolean }) => void;
   onGoToLivestock?: () => void;
   onGoToActivities?: () => void;
+  onGoToFields?: () => void;
+  onOpenReviewRef?: (ref: NonNullable<Finding['ref']>) => void;
 }
 
 export default function OverviewPage({
@@ -28,6 +34,8 @@ export default function OverviewPage({
   onGoToStock,
   onGoToLivestock,
   onGoToActivities,
+  onGoToFields,
+  onOpenReviewRef,
 }: OverviewPageProps = {}) {
   const { features, user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -35,7 +43,8 @@ export default function OverviewPage({
   const [tab, setTab] = useOverviewTab();
   const { fields, loading: fieldsLoading } = useUserFields();
   const [fieldId, setFieldId] = useSelectedField();
-  const { data: dashData } = useDashboardData(fieldId);
+  const [season, setSeason] = useSelectedCampaign();
+  const { data, loading, refresh } = useOverviewData(fieldId, season);
 
   const showAgronomic = features.includes('agronomy');
   const showLivestock = features.includes('livestock');
@@ -48,25 +57,19 @@ export default function OverviewPage({
 
   // Default selection = "Todos los campos" (`null`). We never auto-pick a
   // specific field on first load — the user sees the aggregated view by
-  // default and can narrow down via the sidebar selector.
-  // Only intervene if the URL points to a field the user lost access to.
+  // default. Only intervene if the URL points to a field they lost access to.
   useEffect(() => {
     if (fieldsLoading || fields.length === 0) return;
-    if (fieldId == null) return; // "Todos los campos" — valid default.
+    if (fieldId == null) return;
     const validIds = new Set(fields.map(f => f.id));
-    if (!validIds.has(fieldId)) {
-      // Stale field_id in URL → fall back to first field.
-      setFieldId(fields[0].id);
-    }
+    if (!validIds.has(fieldId)) setFieldId(fields[0].id);
   }, [fieldsLoading, fields, fieldId, setFieldId]);
 
-  const reload = () => window.location.reload();
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <AlertsBanner
-        stockAlerts={dashData?.stock_alerts_count}
-        livestockTotal={dashData?.livestock_total}
+        stockAlerts={data?.counts.stockAlerts}
+        livestockTotal={data?.counts.livestock}
         onStockClick={onGoToStock ? () => onGoToStock({ lowStockOnly: true }) : undefined}
         onLivestockClick={onGoToLivestock}
       />
@@ -101,16 +104,31 @@ agregar campo La Esperanza en Pergamino con lotes 1A, 1B y 1C
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <OverviewTabs active={tab} onChange={setTab} showAgronomic={showAgronomic} showLivestock={showLivestock} />
-            <div className="flex items-center gap-2">
-              <div className="inline-flex rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 text-xs font-semibold" title="Moneda mostrada en todo el dashboard">
+          <OverviewTabs active={tab} onChange={setTab} showAgronomic={showAgronomic} showLivestock={showLivestock} />
+
+          {/* The field filter lives here, with the content it filters — not in
+              the sidebar, which is hidden on mobile. */}
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <FieldChips fields={fields} value={fieldId} onChange={setFieldId} />
+
+            <div className="flex items-center gap-2 shrink-0">
+              <CampaignPicker
+                campaigns={data?.campaigns ?? []}
+                value={season}
+                currentLabel={data?.campaign.label ?? ''}
+                onChange={setSeason}
+              />
+              <div
+                className="inline-flex rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 text-xs font-semibold"
+                title="Moneda mostrada en el detalle por lote y por categoría"
+              >
                 {(['ARS', 'USD'] as const).map(c => (
                   <button
                     key={c}
                     type="button"
                     onClick={() => setCurrency(c)}
-                    className={`px-2.5 py-1 transition-colors ${
+                    aria-pressed={c === currency}
+                    className={`px-2.5 py-1.5 min-h-[36px] transition-colors ${
                       c === currency
                         ? 'bg-campo-600 text-white'
                         : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
@@ -121,17 +139,27 @@ agregar campo La Esperanza en Pergamino con lotes 1A, 1B y 1C
                 ))}
               </div>
               <button
-                onClick={reload}
-                className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800 border border-gray-200 bg-white rounded-md px-3 py-1.5 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
-                title="Recargar datos"
+                onClick={refresh}
+                disabled={loading}
+                className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800 border border-gray-200 bg-white rounded-md px-3 py-1.5 min-h-[36px] transition-colors hover:bg-gray-50 disabled:opacity-50 dark:text-gray-300 dark:hover:text-white dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+                title="Volver a pedir los datos"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                 Actualizar
               </button>
             </div>
           </div>
 
-          {tab === 'resumen' && <OverviewSummaryView fieldId={fieldId} onRecentItemClick={onRecentItemClick} onSeeAllActivities={onGoToActivities} />}
+          {tab === 'resumen' && (
+            <OverviewSummaryView
+              fieldId={fieldId}
+              season={season}
+              onRecentItemClick={onRecentItemClick}
+              onSeeAllActivities={onGoToActivities}
+              onGoToFields={onGoToFields}
+              onOpenReviewRef={onOpenReviewRef}
+            />
+          )}
           {tab === 'agronomico' && showAgronomic && <OverviewAgronomicView fieldId={fieldId} />}
           {tab === 'ganadero' && showLivestock && <OverviewLivestockView fieldId={fieldId} />}
         </>
