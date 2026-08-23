@@ -36,6 +36,16 @@ function fmtAmount(amount: number, currency: Currency): string {
   const nf = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 });
   return currency === 'USD' ? `USD ${nf.format(amount)}` : `$${nf.format(amount)}`;
 }
+/** Etiqueta legible por tipo de movimiento. Se usa para el filtro y el render. */
+const MOVEMENT_FILTER_LABEL: Record<string, string> = {
+  entrada: 'entradas',
+  salida: 'ventas/salidas',
+  muerte: 'muertes',
+  nacimiento: 'nacimientos',
+  transferencia: 'transferencias',
+  recategorizacion: 'recategorizaciones',
+  ajuste: 'ajustes',
+};
 
 export class LivestockHandler {
   private service: LivestockService;
@@ -1832,13 +1842,43 @@ export class LivestockHandler {
   // LIST / HISTORY (existing)
   // ========================
 
+  /**
+   * livestock_history unificada (Ago 2026).
+   *
+   * Antes exigía categoría Y ubicación juntas: si faltaba una, caía a un volcado
+   * de TODOS los movimientos sin filtrar. Eso hacía imposible responder "cuándo
+   * nacieron terneros en el lote 1C" o "cuándo moví los novillos al Sur" — el
+   * dato estaba en la base, pero la respuesta traía todo mezclado.
+   *
+   * Ahora los filtros (tipo de movimiento, categoría, lote, campo, período) se
+   * aplican siempre, y hay vistas: detail / last / aggregate.
+   */
   private async livestockHistory(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    // Multi-turno: heredar la consulta previa de MOVIMIENTOS (columna propia,
+    // separada de la de inventario — son preguntas distintas).
+    if (cmd.inherit) {
+      try {
+        const { pool } = await import('../../config/db.js');
+        const { rows } = await pool.query(
+          'SELECT last_livestock_history_query, updated_at FROM conversation_state WHERE user_id = $1', [userId]);
+        const prev = rows[0]?.last_livestock_history_query;
+        const { isFreshMultiTurnEntry } = await import('../../middleware/multi-turn-state.js');
+        if (prev && typeof prev === 'object' && isFreshMultiTurnEntry(rows[0]?.updated_at)) {
+          for (const [k, v] of Object.entries(prev)) if (cmd[k] == null) cmd[k] = v as never;
+        }
+      } catch { /* no fatal */ }
+    }
+
     const category = cmd.category as string;
     const plot = cmd.plotName as string;
     const corral = cmd.corralName as string;
-    // FQR-3: when no category+location specified, return aggregate movements across all groups.
-    // Lets "movimientos de hacienda en marzo" / "historial de hacienda" return useful data.
-    if (!category || (!plot && !corral)) {
+
+    // La ficha por grupo (con stock actual) sólo tiene sentido cuando se pide
+    // UN grupo concreto y sin filtro por tipo: en cualquier otro caso manda la
+    // consulta de movimientos, que ahora sí filtra.
+    const wantsGroupCard = !!category && (!!plot || !!corral)
+      && !cmd.movementType && !cmd.view && !cmd.period && !cmd.desde && !cmd.hasta;
+    if (!wantsGroupCard) {
       return this.aggregateLivestockMovements(cmd, userId);
     }
 
@@ -1889,8 +1929,48 @@ export class LivestockHandler {
     const { pool } = await import('../../config/db.js');
     const params: unknown[] = [userId];
     const conds = ['lm.user_id = $1'];
-    if (cmd.desde) { conds.push(`lm.movement_date >= $${params.length + 1}::date`); params.push(cmd.desde); }
-    if (cmd.hasta) { conds.push(`lm.movement_date <= $${params.length + 1}::date`); params.push(cmd.hasta); }
+    const labels: string[] = [];
+
+    // Tipo de movimiento — el filtro que faltaba. Sin esto "cuándo nacieron"
+    // devolvía ventas, muertes y entradas mezcladas.
+    if (cmd.movementType) {
+      conds.push(`lm.movement_type = $${params.length + 1}`);
+      params.push(String(cmd.movementType));
+      labels.push(MOVEMENT_FILTER_LABEL[String(cmd.movementType)] ?? String(cmd.movementType));
+    }
+    // Categoría y ubicación: se miran los DOS grupos (origen y destino) porque
+    // una transferencia sale de uno y entra al otro.
+    if (cmd.category) {
+      conds.push(`COALESCE(sg.category::text, dg.category::text) = $${params.length + 1}`);
+      params.push(String(cmd.category));
+      labels.push(String(cmd.category));
+    }
+    if (cmd.plotName) {
+      conds.push(`LOWER(COALESCE(sp.name, dp.name)) = LOWER($${params.length + 1})`);
+      params.push(String(cmd.plotName));
+      labels.push(`lote ${cmd.plotName}`);
+    }
+    if (cmd.fieldName) {
+      conds.push(`LOWER(COALESCE(sf.name, df.name)) = LOWER($${params.length + 1})`);
+      params.push(String(cmd.fieldName));
+      labels.push(`campo ${cmd.fieldName}`);
+    }
+    // Período calendario (query-period.ts, la misma fuente que el resto).
+    let periodRange: { desde: string; hasta: string; label: string } | null = null;
+    if (!cmd.desde && !cmd.hasta && cmd.period && cmd.period !== 'all') {
+      const { resolvePeriodRange } = await import('../../utils/query-period.js');
+      periodRange = resolvePeriodRange(String(cmd.period));
+    }
+    const desde = (cmd.desde as string) ?? periodRange?.desde;
+    const hasta = (cmd.hasta as string) ?? periodRange?.hasta;
+    if (desde) { conds.push(`lm.movement_date >= $${params.length + 1}::date`); params.push(desde); }
+    if (hasta) { conds.push(`lm.movement_date <= $${params.length + 1}::date`); params.push(hasta); }
+
+    const view = String(cmd.view ?? 'detail');
+    const limit = view === 'last'
+      ? Math.max(1, Math.min(10, Number(cmd.topN ?? 1)))
+      : Math.max(1, Math.min(100, Number(cmd.topN ?? 30)));
+
     const result = await pool.query(
       `SELECT lm.movement_type, lm.count, lm.movement_date,
               COALESCE(sg.category, dg.category) AS category,
@@ -1907,13 +1987,33 @@ export class LivestockHandler {
        LEFT JOIN fields df ON dp.field_id = df.id
        WHERE ${conds.join(' AND ')}
        ORDER BY lm.movement_date DESC, lm.created_at DESC
-       LIMIT 30`,
+       LIMIT ${limit}`,
       params,
     );
     const rows = result.rows;
-    const period = cmd.desde || cmd.hasta ? `${cmd.desde || '...'} — ${cmd.hasta || 'hoy'}` : 'todo el historial';
+    const period = periodRange?.label
+      ?? (cmd.desde || cmd.hasta ? `${cmd.desde || '...'} — ${cmd.hasta || 'hoy'}` : 'todo el historial');
+    const scope = labels.length ? ` — ${labels.join(', ')}` : '';
+
+    await this.persistLivestockHistoryQuery(cmd, userId);
+
     if (rows.length === 0) {
-      return { messages: [`🐄 No hay movimientos de hacienda registrados (${period}).`] };
+      return { messages: [`🐄 No encontré movimientos de hacienda${scope} (${period}).`] };
+    }
+
+    // view='last': la pregunta es CUÁNDO, así que la respuesta es la fecha, no
+    // un listado. Es lo que destraba "cuándo nacieron" / "cuándo los moví".
+    if (view === 'last') {
+      const lines = rows.map(r => {
+        const d = formatDateAR(r.movement_date);
+        const loc = r.plot_name ? ` en ${formatPlotLocation(r.field_name, r.plot_name)}` : '';
+        const mv = MOVEMENT_FILTER_LABEL[String(r.movement_type)] ?? String(r.movement_type);
+        return `  📅 *${d}* — ${mv}: ${r.count} ${r.category || 'hacienda'}${loc}`;
+      });
+      const titulo = rows.length === 1 ? 'Último movimiento' : `Últimos ${rows.length} movimientos`;
+      const dias = Math.floor((Date.now() - new Date(rows[0].movement_date).getTime()) / 86400000);
+      const hace = dias === 0 ? '\n\n⏱️ Fue hoy' : `\n\n⏱️ Hace ${dias} día${dias === 1 ? '' : 's'}`;
+      return { messages: [`🐄 *${titulo}${scope}*\n${lines.join('\n')}${hace}`] };
     }
     // Aggregate counts by type
     const totals: Record<string, number> = {};
@@ -1940,11 +2040,32 @@ export class LivestockHandler {
       return `  ${d}: ${sign}${r.count} ${cat}${loc}${price}${reason}`;
     });
     const more = rows.length > 10 ? `\n_…y ${rows.length - 10} más._` : '';
+    // view='aggregate': sólo los totales, sin el listado.
+    if (view === 'aggregate') {
+      return { messages: [`🐄 *Movimientos de hacienda${scope}* (${period})\n\n*Totales:*\n${summary}`] };
+    }
     return {
       messages: [
-        `🐄 *Movimientos de hacienda* (${period})\n\n*Totales:*\n${summary}\n\n*Últimos:*\n${recent.join('\n')}${more}`,
+        `🐄 *Movimientos de hacienda${scope}* (${period})\n\n*Totales:*\n${summary}\n\n*Últimos:*\n${recent.join('\n')}${more}`,
       ],
     };
+  }
+
+  /** Guarda los filtros para que el próximo turno pueda refinar con inherit. */
+  private async persistLivestockHistoryQuery(cmd: ParsedCommand, userId: UserId): Promise<void> {
+    const KEEP = ['category', 'breed', 'fieldName', 'plotName', 'corralName',
+      'movementType', 'period', 'desde', 'hasta', 'view', 'topN'];
+    const persistable: Record<string, unknown> = {};
+    for (const k of KEEP) if (cmd[k] !== undefined && cmd[k] !== null) persistable[k] = cmd[k];
+    try {
+      const { pool } = await import('../../config/db.js');
+      await pool.query(
+        `INSERT INTO conversation_state (user_id, last_livestock_history_query, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET last_livestock_history_query = $2::jsonb, updated_at = NOW()`,
+        [userId, JSON.stringify(persistable)],
+      );
+    } catch { /* no fatal: la consulta ya se respondió */ }
   }
 
   // --- Unified inventory query (groups + view dispatch) ---

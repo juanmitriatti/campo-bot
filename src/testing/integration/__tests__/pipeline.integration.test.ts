@@ -2185,4 +2185,48 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(crops.map(c => (c as { crop: string }).crop)).toEqual(['soja']);
     });
   });
+
+  describe('lluvia con botón de campo — un tap, un registro (bug 200mm, Ago 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('rain-double');
+      for (const name of ['La Esperanza', 'La barrida', 'El tartal']) {
+        await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, $2)`, [h.userId, name]);
+      }
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('un solo tap guarda 100mm, no 200', async () => {
+      h.fakeAgent.enqueueTool('log_rainfall', { quantity: 100 });
+      const ask = await h.send('Llovio 100mm hoy');
+      const buttons = h.allButtons(ask);
+      const btn = buttons.find(b => b.id.startsWith('rain_field_La barrida_'));
+      expect(btn, `esperaba rain_field_La barrida_*, hay: ${buttons.map(b => b.id).join(',')}`).toBeTruthy();
+
+      await h.tap(btn!.id);
+
+      const rows = await h.q(`SELECT millimeters FROM rainfall WHERE user_id = $1`, [h.userId]);
+      expect(rows.length).toBe(1);
+      expect(Number(rows[0].millimeters)).toBe(100);
+    });
+
+    it('el mismo tap repetido NO acumula — saveRainfall suma por diseño, la guarda va antes', async () => {
+      h.fakeAgent.enqueueTool('log_rainfall', { quantity: 40 });
+      const ask = await h.send('llovieron 40mm');
+      const btn = h.allButtons(ask).find(b => b.id.startsWith('rain_field_El tartal_'));
+      expect(btn).toBeTruthy();
+
+      await h.tap(btn!.id);
+      await h.tap(btn!.id);
+
+      const rows = await h.q(
+        `SELECT r.millimeters FROM rainfall r JOIN fields f ON f.id = r.field_id
+          WHERE r.user_id = $1 AND f.name = 'El tartal'`,
+        [h.userId],
+      );
+      expect(rows.length).toBe(1);
+      expect(Number(rows[0].millimeters)).toBe(40);
+    });
+  });
 });

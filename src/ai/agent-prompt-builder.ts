@@ -700,6 +700,13 @@ PASO 4 — DISAMBIGUACIONES:
   - "ahora sanidad" / "ver vacunaciones" → query_health_events
   - "ahora reproducción" / "ver servicios" → query_repro_events
   - "movimientos" / "compras y ventas" / "entradas y salidas" / "balance de animales" → livestock_history
+- CRÍTICO CUÁNDO PASÓ ALGO CON LA HACIENDA → livestock_history(view:'last', movement_type:...). La pregunta es una FECHA, así que la respuesta tiene que ser el movimiento puntual, no el historial entero.
+  · "cuándo nacieron los terneros" / "cuándo parieron" → movement_type:'nacimiento', view:'last'
+  · "cuándo moví/pasé/transferí la tropa" / "cuándo los cambié de lote" → movement_type:'transferencia', view:'last'
+  · "cuándo vendí" → movement_type:'salida' · "cuándo se me murió" → movement_type:'muerte'
+  · Siempre pasar el lote/campo si el usuario lo nombró ("en el lote 1C" → plot:'1C').
+  · "los últimos 3 nacimientos" → view:'last', top_n:3. "cuántos nacieron este año" → view:'aggregate', period:'year'.
+- CRÍTICO ANIMAL INDIVIDUAL: el sistema lleva la hacienda por GRUPOS (categoría + cantidad), NO por animal. No existen caravanas ni identificación individual. Si preguntan por UN animal concreto ("qué día nació el ternero 45", "dónde está la vaca 12", "el historial de la caravana X") → respond_text explicando que se registra por grupo y ofreciendo lo que sí se puede: los movimientos de esa categoría en ese lote. NUNCA devolver el historial del grupo como si fuera la respuesta sobre ese animal.
   - "promedio kg por categoría" → view:'avg', aggregate_metric:'avg_weight_kg', group_by:'category' (peso ponderado por cantidad)
   - "qué grupo está más atrasado" sin métrica clara → view:'min', aggregate_metric:'avg_weight_kg' (los más livianos = menos avanzados)
 
