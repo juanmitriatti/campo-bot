@@ -6,6 +6,8 @@ import { formSessionService } from '../services/form-session.service.js';
 import { FORM_DEFINITIONS } from '../forms/form-definitions.js';
 import { submitForm } from '../forms/form-submit.service.js';
 import { computeFormOptions } from '../forms/form-options.js';
+import { resolveFormInitialValues } from '../forms/form-prefill.js';
+import { getTodayISO } from '../utils/date.js';
 
 const router = Router();
 
@@ -17,11 +19,21 @@ export async function formsGetHandler(req: Request, res: Response): Promise<void
   }
   const def = FORM_DEFINITIONS[session.action];
   const options = await computeFormOptions(session.action, session.user_id);
+  // `initialValues` viene resuelto del server (form-prefill.ts) — la MISMA
+  // función que hornea el prellenado del Flow de WhatsApp. Antes esta lógica
+  // vivía sólo en FormPage.tsx, así que web y WhatsApp podían divergir.
+  // `prefill` se sigue enviando crudo por compatibilidad.
   res.json({
     action: session.action,
     title: def.title,
     fields: def.fields,
     prefill: session.prefill,
+    initialValues: resolveFormInitialValues({
+      action: session.action,
+      prefill: (session.prefill ?? {}) as Record<string, unknown>,
+      options,
+      todayISO: getTodayISO(),
+    }),
     options,
   });
 }

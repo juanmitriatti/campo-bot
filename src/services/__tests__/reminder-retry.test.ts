@@ -25,9 +25,12 @@ async function mkUser(opts: { phone?: string | null; telegramId?: string | null 
 }
 
 async function mkReminder(uid: number, over: { attempts?: number; lastAttemptAt?: string | null } = {}): Promise<number> {
+  // due_time explícita A PROPÓSITO: sin hora, reminderTick usa la rama legacy,
+  // gateada por la franja 07-21 AR — el test pasaba de día y fallaba de noche.
+  // Con hora, un vencido de ayer se toma siempre y el test no depende del reloj.
   const { rows } = await pool.query(
-    `INSERT INTO task_reminders (user_id, description, due_date, status, attempts, last_attempt_at)
-     VALUES ($1, 'fumigar el lote de prueba', CURRENT_DATE - 1, 'pending', $2, $3)
+    `INSERT INTO task_reminders (user_id, description, due_date, due_time, status, attempts, last_attempt_at)
+     VALUES ($1, 'fumigar el lote de prueba', CURRENT_DATE - 1, '08:00'::time, 'pending', $2, $3)
      RETURNING id`,
     [uid, over.attempts ?? 0, over.lastAttemptAt ?? null],
   );
@@ -108,8 +111,8 @@ describe('reminderTick — usuario sin canal de contacto', () => {
   it('falla al primer intento sin llamar al envío (era la causa de las 29.138 filas)', async () => {
     const noChannel = await mkUser({ phone: null, telegramId: null });
     const { rows } = await pool.query(
-      `INSERT INTO task_reminders (user_id, description, due_date, status)
-       VALUES ($1, 'recordatorio huérfano', CURRENT_DATE - 1, 'pending') RETURNING id`,
+      `INSERT INTO task_reminders (user_id, description, due_date, due_time, status)
+       VALUES ($1, 'recordatorio huérfano', CURRENT_DATE - 1, '08:00'::time, 'pending') RETURNING id`,
       [noChannel],
     );
     const id = rows[0].id as number;
