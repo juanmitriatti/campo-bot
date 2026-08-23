@@ -1,0 +1,158 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: #3f6b4c; text-decoration: none; }
+    a:hover { color: #2c4c36; text-decoration: underline; }
+    .b {
+      --paper: #f7f6f2;
+      --ink: #23261f;
+      --ink-2: #5f645a;
+      --ink-3: #9a9e94;
+      --pencil: #b9bcb2;
+      --pencil-2: #d6d8d0;
+      --accent: #16a34a;
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+    }
+    .hand { font-family: 'Architects Daughter', 'Comic Sans MS', cursive; }
+    .box { border: 1.5px solid var(--pencil); border-radius: 6px; background: #fff; }
+    .ghost { background: var(--pencil-2); border-radius: 3px; }
+    .sub { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; }
+  </style>
+</helmet>
+
+<div class="b" style="width: 900px; min-height: 1200px; padding: 24px 26px 28px; display: flex; flex-direction: column; gap: 16px;">
+
+  <header>
+    <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 5px;">
+      <span class="hand" style="font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent);">Opción B · boceto</span>
+      <span class="sub">no es el entregable — es la alternativa para comparar</span>
+    </div>
+    <h1 class="hand" style="margin: 0 0 6px; font-size: 25px; font-weight: 400;">La bandeja</h1>
+    <p style="margin: 0; max-width: 74ch; font-size: 13px; line-height: 1.6; color: var(--ink-2); text-wrap: pretty;">En vez de una vista de métricas, el Resumen es la cola de todo lo que el bot registró, en orden, con el mensaje original al lado y la corrección a un toque. Los números quedan en una franja fina arriba. Parte de que el trabajo real no es mirar el dashboard sino <em>confiar</em> en lo que quedó cargado.</p>
+  </header>
+
+  <!-- franja de números, chica a propósito -->
+  <div style="display: flex; gap: 10px;">
+    <sc-for list="{{strip}}" as="s" hint-placeholder-count="4">
+      <div class="box" style="flex: 1; padding: 9px 12px;">
+        <div class="sub" style="font-size: 10.5px;">{{s.k}}</div>
+        <div class="hand" style="font-size: 17px; margin-top: 1px; color: {{s.c}};">{{s.v}}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- filtros -->
+  <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap;">
+    <sc-for list="{{filters}}" as="f" hint-placeholder-count="6">
+      <span style="padding: 4px 11px; border-radius: 999px; border: 1.5px solid {{f.line}}; background: {{f.bg}}; color: {{f.fg}}; font-size: 11.5px;">{{f.label}}</span>
+    </sc-for>
+  </div>
+
+  <!-- la cola -->
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <sc-for list="{{days}}" as="d" hint-placeholder-count="3">
+      <div>
+        <div class="hand" style="font-size: 14px; color: var(--ink-2); margin-bottom: 6px;">{{d.label}}</div>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <sc-for list="{{d.rows}}" as="r" hint-placeholder-count="3">
+            <div class="box" style="display: flex; align-items: stretch; gap: 0; border-color: {{r.line}}; overflow: hidden;">
+              <div style="width: 5px; flex: none; background: {{r.bar}};"></div>
+              <div style="flex: 1; min-width: 0; padding: 11px 13px;">
+                <div style="display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;">
+                  <span style="font-size: 13px; font-weight: 600;">{{r.what}}</span>
+                  <span class="sub">{{r.where}}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 7px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.9 9.9 0 0 1-4.2-.9L3 20l1.3-4.3A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"></path></svg>
+                  <span class="sub" style="font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{r.said}}</span>
+                </div>
+                <sc-if value="{{r.warn}}" hint-placeholder-val="{{ false }}">
+                  <div class="hand" style="margin-top: 8px; font-size: 13px; color: #b54708;">{{r.warnText}}</div>
+                </sc-if>
+              </div>
+              <div style="flex: none; display: flex; align-items: center; gap: 7px; padding: 0 13px;">
+                <span class="ghost" style="width: 58px; height: 26px; border-radius: 6px;"></span>
+                <span class="ghost" style="width: 26px; height: 26px; border-radius: 6px;"></span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- balance honesto -->
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 2px;">
+    <div class="box" style="padding: 14px 15px; border-style: dashed;">
+      <div class="hand" style="font-size: 14px; margin-bottom: 6px; color: var(--accent);">A favor</div>
+      <p style="margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--ink-2); text-wrap: pretty;">Ataca el problema que la data de verdad muestra: registros mal entendidos que hoy nadie ve. Corregir es un toque, no una expedición a la tabla de Actividades. Y el mensaje original al lado explica por qué quedó así.</p>
+    </div>
+    <div class="box" style="padding: 14px 15px; border-style: dashed;">
+      <div class="hand" style="font-size: 14px; margin-bottom: 6px; color: #b54708;">En contra</div>
+      <p style="margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--ink-2); text-wrap: pretty;">Es una vista de mantenimiento, no de gestión: no responde «cómo viene la campaña» sin entrar a otra sección. Con 26 gastos funciona; con 2.000 se vuelve una cola infinita. Y castiga al usuario prolijo, que abre el dashboard y ve una lista de tareas.</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":900,"height":1200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      strip: [
+        { k: 'Resultado USD', v: '+ 67.230', c: 'var(--accent)' },
+        { k: 'Resultado ARS', v: '− 23,3 M', c: '#b42318' },
+        { k: 'Lluvia', v: '830 mm', c: 'var(--ink)' },
+        { k: 'Sin revisar', v: '5', c: '#b54708' }
+      ],
+      filters: [
+        { label: 'Todo', on: true }, { label: 'Actividades' }, { label: 'Gastos' },
+        { label: 'Ingresos' }, { label: 'Lluvia' }, { label: 'Dudosos' }
+      ].map((f) => ({
+        label: f.label,
+        bg: f.on ? 'var(--ink)' : 'transparent',
+        fg: f.on ? 'var(--paper)' : 'var(--ink-3)',
+        line: f.on ? 'var(--ink)' : 'var(--pencil)'
+      })),
+      days: [
+        {
+          label: 'viernes 18 de julio',
+          rows: [
+            { what: 'Siembra · soja', where: 'La Esperanza / Suroeste', said: '«sembré soja en el suroeste»', warn: false, bar: 'var(--pencil)', line: 'var(--pencil)' }
+          ]
+        },
+        {
+          label: 'lunes 14 de julio',
+          rows: [
+            { what: 'Fertilización · trigo', where: 'La Esperanza / Suroeste', said: '«fertilicé el lote norte con trigo»', warn: true, warnText: '¿«lote norte» es el producto? Parece el nombre del lote.', bar: '#e9a23b', line: '#e8cfa6' },
+            { what: 'Cosecha · maíz · 100.000 kg', where: 'La Esperanza / Suroeste', said: '«coseché 100 mil kilos de maíz»', warn: true, warnText: 'Sembraste maíz acá hoy mismo. ¿Es el mismo lote?', bar: '#e9a23b', line: '#e8cfa6' },
+            { what: 'Siembra · maíz', where: 'La Esperanza / Suroeste', said: '«sembré maíz»', warn: false, bar: 'var(--pencil)', line: 'var(--pencil)' }
+          ]
+        },
+        {
+          label: 'miércoles 18 de marzo',
+          rows: [
+            { what: 'Pulverización · Clorpirifos 1 lt/ha', where: 'Don Pedro / 1A', said: '«pulvericé el 1A con clorpirifos a 1 litro»', warn: false, bar: 'var(--pencil)', line: 'var(--pencil)' },
+            { what: 'Gasto · Agroquímicos · $217.000', where: 'Don Pedro / 1A', said: '«me salió 217 mil»', warn: false, bar: 'var(--pencil)', line: 'var(--pencil)' }
+          ]
+        }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

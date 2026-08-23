@@ -333,6 +333,16 @@ Gated by admin settings (ship dark, flip when ready):
 - `src/testing/integration/` — FakeAgent harness (invariante 14): full pipeline sin API Anthropic, ~1s, determinístico. Seam: `intentClassifier.setAgentServiceForTests()`.
 - `src/testing/qa-*.ts` — QA suites (see § Tests)
 
+### Dashboard de usuario final — Resumen + navegación (Ago 2026)
+- `src/utils/campaign-range.ts` — **la ventana de campaña para la plata**. Reusa `getSeasonYear(date,'gruesa')` de `domain/plots/crop.service.ts`: campaña Y = **1 sep Y → 31 ago Y+1**. NO inventar una segunda definición: si diverge, el Resumen y `campaign-stats.service.ts` contradicen al mismo usuario.
+- `src/services/overview.service.ts` → `GET /api/auth/overview?field_id=&season=` — payload completo del Resumen (resultado ARS **y** USD en paralelo, ranking de categorías, lluvia por mes de toda la ventana, lotes con gasto/ingreso, feed, `counts` para los badges del nav). Separado de `/dashboard` a propósito: aquel responde "este mes vs el anterior" y sigue vivo para otros consumidores.
+- `src/services/review-findings.service.ts` → `GET /api/auth/review` — "Para revisar": reglas determinísticas sobre lo que el bot guardó (nombre de lote en `product`, siembras solapadas, cosecha anterior a su siembra, superficie outlier, gastos sin lote, campos a medio cargar). **Regla nueva = una entrada en `RULES`**, nunca lógica suelta en el handler. Es advisory: una regla que explota loguea `[REVIEW]` y devuelve `[]`, jamás rompe el Resumen.
+- `src/utils/field-level-categories.ts` — fuente ÚNICA del set de categorías de campo (sueldos, arrendamiento…). La consume `financial.handler.ts` para strippear el lote auto-resuelto **y** `review-findings` para NO reportar ese strip deliberado como error del usuario. Duplicarlo hace que el dashboard delate su propia regla.
+- `frontend/src/components/layout/nav-model.ts` — fuente ÚNICA de la navegación (sidebar + barra inferior + hoja "Más"). Antes eran dos arrays a mano ya divergentes (el sidebar tenía Stock y Hacienda; la barra inferior no). Agrupación por pregunta: Producción / Plata / Recursos, con configuración al pie. Mobile: **4 destinos**, el resto en `MoreSheet` (13 tabs en 390 px daban 30 px por tab, bajo el mínimo táctil de 44).
+- Observaciones dejó de ser destino propio: es sub-tab de Actividades en `Dashboard.tsx`. El view `observations` sigue siendo válido para links viejos.
+- Moneda: el resultado de campaña muestra ARS y USD **siempre juntos**, sin toggle — un campo argentino es negativo en pesos y positivo en dólares en la misma campaña, y elegir uno miente. El toggle ARS/USD solo afecta el detalle por lote y por categoría.
+- Cultivo NO se codifica por color (4 hues categóricos no pasan separación CVD en modo oscuro); la identidad la lleva el nombre.
+
 ### Frontend / Landing
 - `frontend/` — React dashboard (in-repo). `landing/` — git submodule (Lovable — no editar a mano). Landing on `/`, app on `/login|/register|/dashboard|/chat`, assets split `/app-assets/*` vs `/assets/*`.
 - `src/routes/auth.routes.ts` — `/api/auth/*` (verify, export, delete, subscription)

@@ -26,6 +26,9 @@ import { asUserId } from '../types/index.js';
 import type { FeatureKey } from '../types/index.js';
 import { sqlNormalizedName } from '../utils/entity-matcher.js';
 import { invalidateUserContext } from '../ai/user-context.service.js';
+import { resolveCampaign, recentCampaigns } from '../utils/campaign-range.js';
+import { getOverview, resolveFieldIds } from '../services/overview.service.js';
+import { getReviewFindings } from '../services/review-findings.service.js';
 
 const router = Router();
 const authService = new AuthService();
@@ -593,6 +596,53 @@ router.get('/dashboard', requireAuth, async (req: Request, res: Response) => {
     } catch { /* livestock feature not available */ }
 
     res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/**
+ * Campaign-scoped Resumen. `field_id` accepts a numeric id or "all";
+ * `season` accepts a season year ("2025") or a label ("25/26"), defaulting to
+ * the current campaign. See services/overview.service.ts for why this is a
+ * separate endpoint from /dashboard.
+ */
+router.get('/overview', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.auth!.userId;
+    const fieldId = parseFieldIdParam(req.query.field_id);
+    if (fieldId === undefined) {
+      res.status(400).json({ error: 'field_id query parameter is required (or use "all")' });
+      return;
+    }
+    const range = resolveCampaign(req.query.season);
+    const fieldIds = await resolveFieldIds(userId, fieldId);
+    const payload = await getOverview(userId, fieldIds, range);
+    res.json({
+      ...payload,
+      campaigns: recentCampaigns().map(c => ({ seasonYear: c.seasonYear, label: c.label })),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/**
+ * "Para revisar" — deterministic checks over what the bot saved. Advisory only:
+ * a failing rule degrades to fewer findings, never to a broken Resumen.
+ */
+router.get('/review', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.auth!.userId;
+    const fieldId = parseFieldIdParam(req.query.field_id);
+    if (fieldId === undefined) {
+      res.status(400).json({ error: 'field_id query parameter is required (or use "all")' });
+      return;
+    }
+    const range = resolveCampaign(req.query.season);
+    const fieldIds = await resolveFieldIds(userId, fieldId);
+    const findings = await getReviewFindings({ userId, fieldIds, range });
+    res.json({ findings });
   } catch (err) {
     handleError(err, res);
   }
@@ -2599,6 +2649,17 @@ router.patch('/reminders/:id', requireAuth, async (req: Request, res: Response) 
     res.json({ reminder: r });
   } catch (err) { handleError(err, res); }
 });
+
+/**
+ * `field_id` query param → a field id, `null` for "all", or `undefined` when the
+ * caller sent something unusable (which the route turns into a 400).
+ */
+function parseFieldIdParam(raw: unknown): number | null | undefined {
+  if (raw === 'all') return null;
+  if (typeof raw !== 'string') return undefined;
+  const n = parseInt(raw, 10);
+  return isNaN(n) ? undefined : n;
+}
 
 function handleError(err: unknown, res: Response): void {
   if (err instanceof AuthError || err instanceof ObservationError) {

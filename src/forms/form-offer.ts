@@ -2,6 +2,9 @@ import { formSessionService } from '../services/form-session.service.js';
 import { getSetting } from '../services/settings.service.js';
 import { computeFormOptions } from './form-options.js';
 import { FORM_DEFINITIONS } from './form-definitions.js';
+import { resolveFormInitialValues } from './form-prefill.js';
+import { initKey, optionsKey, isoToFlowDate } from './whatsapp-flow-generator.js';
+import { getTodayISO } from '../utils/date.js';
 import type { BotResponseItem, ChannelContext } from '../services/message-pipeline.js';
 import type { HandlerResponse } from '../types/index.js';
 
@@ -53,9 +56,36 @@ export async function appendFormOffer(
     const cropOpts = opts.crops.map(c => ({ id: c, title: c }));
     const data: Record<string, unknown> = {};
     for (const f of FORM_DEFINITIONS[offer.action].fields) {
-      if (f.optionsSource === 'plots') data[`${f.key}_options`] = plotOpts;
-      if (f.optionsSource === 'crops') data[`${f.key}_options`] = cropOpts;
+      if (f.optionsSource === 'plots') data[optionsKey(f.key)] = plotOpts;
+      if (f.optionsSource === 'crops') data[optionsKey(f.key)] = cropOpts;
     }
+
+    // Prellenado: lo que el usuario YA dijo en el chat no se le vuelve a pedir.
+    // Misma resolución que usa el form web (form-prefill.ts, fuente única).
+    // Flows exige que TODA clave declarada en el esquema de data venga en el
+    // payload, así que las que no se resolvieron van como string vacío.
+    const initial = resolveFormInitialValues({
+      action: offer.action,
+      prefill: offer.prefill ?? {},
+      options: opts,
+      todayISO: getTodayISO(),
+    });
+    const prefilled: string[] = [];
+    for (const f of FORM_DEFINITIONS[offer.action].fields) {
+      if (f.type === 'group') {
+        for (let i = 1; i <= 5; i++) {
+          for (const sub of f.fields ?? []) data[initKey(`${f.key}_${i}_${sub.key}`)] = '';
+        }
+        continue;
+      }
+      const v = initial[f.key];
+      if (v === undefined || v === null || v === '') { data[initKey(f.key)] = ''; continue; }
+      // El DatePicker toma epoch en ms, no ISO.
+      const encoded = f.type === 'date' ? (isoToFlowDate(String(v)) ?? '') : String(v);
+      data[initKey(f.key)] = encoded;
+      if (encoded) prefilled.push(f.key);
+    }
+    console.log(`[FORM] prefill (whatsapp) action=${offer.action} campos=[${prefilled.join(', ')}]`);
     const mode = (((await getSetting('WHATSAPP_FLOW_MODE')) as string) || 'published') === 'draft' ? 'draft' : 'published';
     items.push({
       type: 'interactive',

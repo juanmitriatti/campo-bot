@@ -27,6 +27,7 @@ interface FormSpec {
   title: string;
   fields: FormFieldDef[];
   prefill: Record<string, unknown>;
+  initialValues?: Record<string, unknown>;
   options: { plots: PlotOption[]; crops: string[] };
 }
 
@@ -61,16 +62,12 @@ export default function FormPage() {
         const body = await res.json();
         if (!res.ok) { setLoadError(body.error ?? 'No se pudo cargar el formulario.'); return; }
         setSpec(body);
-        const initial: Record<string, unknown> = { event_date: todayISO() };
-        const prefillPlot = (body.prefill?.plotName as string | undefined)?.toLowerCase();
-        if (prefillPlot) {
-          const match = (body.options.plots as PlotOption[]).find(p => p.name.toLowerCase() === prefillPlot);
-          if (match) initial.plot_id = match.id;
-        } else if (body.options.plots.length === 1) {
-          initial.plot_id = body.options.plots[0].id;
-        }
-        if (body.prefill?.eventDate) initial.event_date = body.prefill.eventDate;
-        if (body.prefill?.hectares) initial.hectares = body.prefill.hectares;
+        // El prellenado lo resuelve el SERVER (form-prefill.ts), la misma
+        // función que hornea el Flow de WhatsApp. Antes se calculaba acá, así
+        // que los dos canales podían prellenar distinto.
+        // El fallback cubre un backend viejo que todavía no mande initialValues.
+        const initial: Record<string, unknown> = body.initialValues
+          ?? { event_date: todayISO() };
         setValues(initial);
       } catch {
         setLoadError('No se pudo cargar el formulario. Revisá tu conexión.');

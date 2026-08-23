@@ -1,0 +1,720 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: #15803d; text-decoration: none; }
+    a:hover { color: #166534; text-decoration: underline; }
+    .root {
+      --bg: #f4f3ee;
+      --surface: #ffffff;
+      --surface-2: #faf9f5;
+      --ink: #171c18;
+      --ink-2: #5b6159;
+      --ink-3: #8b918a;
+      --line: #e3e1d9;
+      --line-soft: #eceae3;
+      --brand: #16a34a;
+      --brand-ink: #15803d;
+      --brand-tint: #e9f6ee;
+      --pos: #15803d;
+      --neg: #b42318;
+      --warn-ink: #b54708;
+      --warn-tint: #fdf3e6;
+      --warn-line: #f0dcc0;
+      --rain: #2a78d6;
+      --rain-soft: #cfe0f5;
+      --pad: 22px;
+      --gap: 16px;
+      --row: 11px;
+      font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100%;
+      -webkit-font-smoothing: antialiased;
+    }
+    .root.dark {
+      --bg: #101210;
+      --surface: #1a1d1a;
+      --surface-2: #212520;
+      --ink: #f1f3ef;
+      --ink-2: #b4bab1;
+      --ink-3: #848a81;
+      --line: #2d322c;
+      --line-soft: #262a25;
+      --brand: #4ade80;
+      --brand-ink: #86efac;
+      --brand-tint: #17301f;
+      --pos: #4ade80;
+      --neg: #f97066;
+      --warn-ink: #f5b26b;
+      --warn-tint: #2b2014;
+      --warn-line: #45341e;
+      --rain: #3987e5;
+      --rain-soft: #22344c;
+    }
+    .root.compacta { --pad: 15px; --gap: 11px; --row: 7px; }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace; font-variant-numeric: tabular-nums; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+    .btn { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; color: inherit; text-align: left; }
+    .navitem { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border-radius: 8px; font-size: 13.5px; color: var(--ink-2); }
+    .navitem:hover { background: var(--line-soft); color: var(--ink); }
+    .navitem.on { background: var(--brand-tint); color: var(--brand-ink); font-weight: 600; }
+    .grouphead { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 10px 4px; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+    .grouphead:hover { color: var(--ink-2); }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12.5px; color: var(--ink-2); }
+    .pill.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
+    .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+    .seg > button { padding: 5px 11px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+    .seg > button.on { background: var(--ink); color: var(--bg); }
+    .lote { background: var(--surface-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 13px 14px; }
+    .cardtitle { font-size: 13px; font-weight: 600; letter-spacing: .01em; }
+    .sub { font-size: 11.5px; color: var(--ink-3); }
+  </style>
+</helmet>
+
+<div class="root {{ui.cls}}" style="display: flex; flex-direction: column; min-height: 2100px;">
+
+  <!-- ── barra superior ─────────────────────────────────────────── -->
+  <header style="display: flex; align-items: center; justify-content: space-between; gap: 20px; height: 54px; padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--line); flex: none;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; background: var(--brand);">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V12M12 12c0-3 2-5 4-5 0 3-2 5-4 5zM12 12c0-3-2-5-4-5 0 3 2 5 4 5zM12 7c0-3 2-5 4-5 0 3-2 5-4 5z"></path></svg>
+      </div>
+      <span style="font-size: 15px; font-weight: 600; letter-spacing: -.01em;">Campo Bot</span>
+      <span style="font-size: 11px; font-weight: 600; color: var(--brand-ink); background: var(--brand-tint); padding: 3px 8px; border-radius: 999px;">Pro Plus</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-3);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2"></path></svg>
+        <span>Campaña 25/26</span>
+      </div>
+      <div style="width: 1px; height: 20px; background: var(--line);"></div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="display: flex; align-items: center; justify-content: center; width: 27px; height: 27px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: 11px; font-weight: 600; color: var(--ink-2);">JP</div>
+        <span style="font-size: 13px; color: var(--ink-2);">Juan Pablo Mitriatti</span>
+      </div>
+    </div>
+  </header>
+
+  <div style="display: flex; align-items: stretch; flex: 1;">
+
+    <!-- ── navegación lateral ───────────────────────────────────── -->
+    <aside style="width: 224px; flex: none; background: var(--surface); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 12px 10px;">
+      <nav style="display: flex; flex-direction: column; gap: 1px;">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="14">
+          <sc-if value="{{n.isHead}}" hint-placeholder-val="{{ false }}">
+            <button class="btn grouphead" onClick="{{ n.toggle }}">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="transform: {{n.rot}};"><path d="M9 18l6-6-6-6"></path></svg>
+              <span>{{n.label}}</span>
+            </button>
+          </sc-if>
+          <sc-if value="{{n.isItem}}" hint-placeholder-val="{{ true }}">
+            <button class="btn navitem {{n.on}}" onClick="{{ n.pick }}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><path d="{{n.icon}}"></path></svg>
+              <span style="flex: 1;">{{n.label}}</span>
+              <span class="mono sub">{{n.count}}</span>
+            </button>
+          </sc-if>
+        </sc-for>
+      </nav>
+      <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 1px;">
+        <sc-for list="{{navFoot}}" as="n" hint-placeholder-count="2">
+          <button class="btn navitem {{n.on}}" onClick="{{ n.pick }}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><path d="{{n.icon}}"></path></svg>
+            <span style="flex: 1;">{{n.label}}</span>
+            <span class="mono sub">{{n.count}}</span>
+          </button>
+        </sc-for>
+      </div>
+    </aside>
+
+    <!-- ── contenido ────────────────────────────────────────────── -->
+    <main style="flex: 1; min-width: 0; padding: 18px 20px 26px; display: flex; flex-direction: column; gap: var(--gap);">
+
+      <!-- filtro por campo -->
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap;">
+          <sc-for list="{{chips}}" as="c" hint-placeholder-count="5">
+            <button class="btn pill {{c.on}}" onClick="{{ c.pick }}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><path d="{{c.icon}}"></path></svg>
+              <span>{{c.label}}</span>
+            </button>
+          </sc-for>
+        </div>
+        <div class="seg">
+          <button class="btn {{cur.arsOn}}" onClick="{{ cur.setArs }}">ARS</button>
+          <button class="btn {{cur.usdOn}}" onClick="{{ cur.setUsd }}">USD</button>
+        </div>
+      </div>
+
+      <!-- resultado de campaña -->
+      <section class="card" style="padding: var(--pad);">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
+          <h2 class="cardtitle" style="margin: 0;">Resultado de campaña</h2>
+          <span class="sub">{{sel.periodLabel}} · {{sel.countsLabel}}</span>
+        </div>
+        <sc-if value="{{sel.hasMoney}}" hint-placeholder-val="{{ true }}">
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap);">
+            <sc-for list="{{sel.results}}" as="r" hint-placeholder-count="2">
+              <div style="background: var(--surface-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 16px 17px;">
+                <div class="sub" style="margin-bottom: 6px;">{{r.head}}</div>
+                <div class="mono" style="font-size: 30px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; color: {{r.color}};">{{r.total}}</div>
+                <div style="display: flex; gap: 3px; margin: 13px 0 9px;">
+                  <div style="height: 6px; border-radius: 3px 0 0 3px; background: var(--pos); width: {{r.inW}};"></div>
+                  <div style="height: 6px; border-radius: 0 3px 3px 0; background: var(--neg); width: {{r.outW}};"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 12px;">
+                  <span style="color: var(--ink-2);">Ingresos <span class="mono" style="color: var(--ink); font-weight: 600;">{{r.inV}}</span></span>
+                  <span style="color: var(--ink-2);">Gastos <span class="mono" style="color: var(--ink); font-weight: 600;">{{r.outV}}</span></span>
+                </div>
+                <p style="margin: 11px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-3); text-wrap: pretty;">{{r.note}}</p>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{sel.noMoney}}" hint-placeholder-val="{{ false }}">
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: var(--ink-3); max-width: 60ch;">{{sel.emptyMoney}}</p>
+        </sc-if>
+      </section>
+
+      <!-- revisar + lluvia -->
+      <div style="display: grid; grid-template-columns: {{ui.midCols}}; gap: var(--gap);">
+
+        <sc-if value="{{revisar.show}}" hint-placeholder-val="{{ true }}">
+          <section class="card" style="padding: var(--pad); display: flex; flex-direction: column;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--warn-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3zM12 9v5M12 17h.01"></path></svg>
+              <h2 class="cardtitle" style="margin: 0;">Para revisar</h2>
+              <span class="mono" style="font-size: 11px; font-weight: 600; color: var(--warn-ink); background: var(--warn-tint); border: 1px solid var(--warn-line); padding: 2px 7px; border-radius: 999px;">{{revisar.count}}</span>
+            </div>
+            <p class="sub" style="margin: 0 0 12px; line-height: 1.5;">Cosas que el bot pudo haber entendido mal. Corregirlas acá evita que se arrastren al reporte.</p>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <sc-for list="{{revisar.items}}" as="r" hint-placeholder-count="3">
+                <div style="border: 1px solid {{r.line}}; background: {{r.tint}}; border-radius: 9px; padding: 11px 12px;">
+                  <div style="display: flex; align-items: flex-start; gap: 9px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{r.ink}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px;"><path d="{{r.icon}}"></path></svg>
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="font-size: 12.5px; font-weight: 600; line-height: 1.35;">{{r.title}}</div>
+                      <sc-if value="{{r.open}}" hint-placeholder-val="{{ true }}">
+                        <p style="margin: 6px 0 0; font-size: 12px; line-height: 1.55; color: var(--ink-2); text-wrap: pretty;">{{r.body}}</p>
+                        <div style="display: flex; gap: 14px; margin-top: 9px;">
+                          <button class="btn" style="font-size: 12px; font-weight: 600; color: {{r.ink}};" onClick="{{ r.hide }}">{{r.action}}</button>
+                          <button class="btn sub" style="font-size: 12px;" onClick="{{ r.hide }}">Está bien así</button>
+                        </div>
+                      </sc-if>
+                    </div>
+                    <button class="btn sub" style="flex: none; font-size: 11px;" onClick="{{ r.toggle }}">{{r.chev}}</button>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{revisar.clean}}" hint-placeholder-val="{{ false }}">
+                <p style="margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-3);">Nada pendiente de revisar en esta selección.</p>
+              </sc-if>
+            </div>
+          </section>
+        </sc-if>
+
+        <section class="card" style="padding: var(--pad); display: flex; flex-direction: column;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+            <h2 class="cardtitle" style="margin: 0;">Lluvia acumulada</h2>
+            <span class="sub">{{rain.meta}}</span>
+          </div>
+          <div style="display: flex; align-items: baseline; gap: 8px; margin: 10px 0 16px;">
+            <span class="mono" style="font-size: 27px; font-weight: 600; letter-spacing: -.02em; color: var(--rain);">{{rain.total}}</span>
+            <span class="sub">mm en la campaña</span>
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 6px; height: 92px; padding-bottom: 2px; border-bottom: 1px solid var(--line);">
+            <sc-for list="{{rain.bars}}" as="b" hint-placeholder-count="9">
+              <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0;">
+                <span class="mono" style="font-size: 10px; font-weight: 600; color: {{b.labelColor}};">{{b.label}}</span>
+                <div title="{{b.title}}" style="width: 100%; height: {{b.h}}; min-height: 2px; border-radius: 4px 4px 0 0; background: {{b.fill}};"></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 6px;">
+            <sc-for list="{{rain.bars}}" as="b" hint-placeholder-count="9">
+              <span class="sub" style="flex: 1; text-align: center; font-size: 10.5px; min-width: 0;">{{b.month}}</span>
+            </sc-for>
+          </div>
+          <p class="sub" style="margin: 12px 0 0; line-height: 1.5; text-wrap: pretty;">{{rain.note}}</p>
+        </section>
+      </div>
+
+      <!-- lotes -->
+      <section class="card" style="padding: var(--pad);">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 13px;">
+          <h2 class="cardtitle" style="margin: 0;">Lotes</h2>
+          <span class="sub">{{lotes.meta}}</span>
+        </div>
+        <sc-if value="{{lotes.any}}" hint-placeholder-val="{{ true }}">
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
+            <sc-for list="{{lotes.items}}" as="l" hint-placeholder-count="6">
+              <div class="lote">
+                <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+                  <div style="min-width: 0;">
+                    <div style="font-size: 13.5px; font-weight: 600; line-height: 1.2;">{{l.name}}</div>
+                    <div class="sub" style="margin-top: 2px;">{{l.field}}</div>
+                  </div>
+                  <span class="mono sub" style="flex: none;">{{l.ha}}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 7px; margin: 11px 0 9px;">
+                  <span style="font-size: 12.5px; font-weight: 600; color: {{l.cropColor}};">{{l.crop}}</span>
+                  <span class="sub" style="font-size: 11.5px;">{{l.state}}</span>
+                </div>
+                <div style="height: 1px; background: var(--line); margin-bottom: 9px;"></div>
+                <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 7px;">
+                  <span class="sub">Gastado</span>
+                  <span class="mono" style="font-size: 12.5px; font-weight: 600;">{{l.spend}}</span>
+                </div>
+                <p class="sub" style="margin: 0; line-height: 1.45; font-size: 11.5px; text-wrap: pretty;">{{l.last}}</p>
+                <sc-if value="{{l.flagged}}" hint-placeholder-val="{{ false }}">
+                  <div style="display: flex; align-items: center; gap: 6px; margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--warn-line);">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--warn-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><path d="M12 3 2 20h20L12 3zM12 9v5M12 17h.01"></path></svg>
+                    <span style="font-size: 11px; font-weight: 600; color: var(--warn-ink); line-height: 1.35;">{{l.flag}}</span>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{lotes.none}}" hint-placeholder-val="{{ false }}">
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: var(--ink-3); max-width: 60ch;">{{lotes.empty}}</p>
+        </sc-if>
+      </section>
+
+      <!-- categorías + actividad -->
+      <div style="display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 4fr); gap: var(--gap);">
+        <section class="card" style="padding: var(--pad);">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px;">
+            <h2 class="cardtitle" style="margin: 0;">En qué se fue la plata</h2>
+            <span class="sub">{{cats.meta}}</span>
+          </div>
+          <sc-if value="{{cats.any}}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-direction: column; gap: var(--row);">
+              <sc-for list="{{cats.items}}" as="c" hint-placeholder-count="6">
+                <div style="display: grid; grid-template-columns: 108px minmax(0, 1fr) 96px; align-items: center; gap: 11px;">
+                  <span style="font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{c.label}}</span>
+                  <div style="height: 15px; border-radius: 4px; background: var(--line-soft); overflow: hidden;">
+                    <div style="height: 100%; border-radius: 4px; background: {{c.fill}}; width: {{c.w}};"></div>
+                  </div>
+                  <span class="mono" style="font-size: 12px; font-weight: 600; text-align: right;">{{c.value}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{cats.none}}" hint-placeholder-val="{{ false }}">
+            <p style="margin: 0; font-size: 13px; color: var(--ink-3);">{{cats.empty}}</p>
+          </sc-if>
+        </section>
+
+        <section class="card" style="padding: var(--pad);">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 13px;">
+            <h2 class="cardtitle" style="margin: 0;">Lo último que cargaste</h2>
+            <span class="sub">{{feed.meta}}</span>
+          </div>
+          <sc-if value="{{feed.any}}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-direction: column;">
+              <sc-for list="{{feed.items}}" as="f" hint-placeholder-count="7">
+                <div style="display: flex; gap: 11px; padding: var(--row) 0; border-top: 1px solid var(--line-soft);">
+                  <span class="mono sub" style="flex: none; width: 46px; padding-top: 1px;">{{f.date}}</span>
+                  <div style="flex: 1; min-width: 0;">
+                    <div style="font-size: 12.5px; line-height: 1.4;">
+                      <span style="font-weight: 600;">{{f.kind}}</span>
+                      <span style="color: var(--ink-2);">{{f.detail}}</span>
+                    </div>
+                    <div class="sub" style="margin-top: 2px; font-size: 11.5px;">{{f.where}}</div>
+                  </div>
+                  <sc-if value="{{f.flagged}}" hint-placeholder-val="{{ false }}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--warn-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 2px;"><path d="M12 3 2 20h20L12 3zM12 9v5M12 17h.01"></path></svg>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{feed.none}}" hint-placeholder-val="{{ false }}">
+            <p style="margin: 0; font-size: 13px; color: var(--ink-3);">{{feed.empty}}</p>
+          </sc-if>
+        </section>
+      </div>
+
+    </main>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Vista"},"density":{"editor":"enum","options":["cómoda","compacta"],"default":"cómoda","section":"Vista"},"showRevisar":{"editor":"boolean","default":true,"section":"Vista"},"$preview":{"width":1440,"height":2100}}'>
+const ICON = {
+  dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
+  map: 'M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3zM9 3v15M15 6v15',
+  sprout: 'M7 20h10M10 20c0-6-3-8-6-8 0 5 2 8 6 8zM14 20c0-7 3-9 6-9 0 6-3 9-6 9z',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
+  wheat: 'M12 22V12M12 12c0-3 2-5 4-5 0 3-2 5-4 5zM12 12c0-3-2-5-4-5 0 3 2 5 4 5zM12 7c0-3 2-5 4-5 0 3-2 5-4 5z',
+  file: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4',
+  wallet: 'M19 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-2M21 12h-5a2 2 0 0 0 0 4h5v-4z',
+  dollar: 'M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
+  tag: 'M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.6zM7.5 7.5h.01',
+  box: 'M21 8 12 3 3 8v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8',
+  beef: 'M12 4.5a3.2 3.2 0 1 1-6.4 0 3.2 3.2 0 0 1 6.4 0zM4 9h9l7 3-2 8H6L4 12z',
+  clip: 'M21.4 11.1 12.3 20a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.7 1.7 0 0 1-2.3-2.3l8.3-8.3',
+  clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
+  user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
+  pin: 'M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11zM12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+  layers: 'M12 3 2 8l10 5 10-5-10-5zM2 16l10 5 10-5M2 12l10 5 10-5',
+  alert: 'M12 3 2 20h20L12 3zM12 9v5M12 17h.01',
+  info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01'
+};
+
+// Datos de la cuenta 362 (Juan Pablo Mitriatti), campaña nov-2025 a jul-2026.
+const AGG = {
+  all:       { gARS: 27269000, gUSD: 9070, iARS: 3950000, iUSD: 76300, gN: 26, iN: 9, mm: 830, mmN: 27, ev: 21, lotes: 9, ha: 5962 },
+  esperanza: { gARS: 24157000, gUSD: 8640, iARS:  600000, iUSD: 42400, gN: 14, iN: 4, mm: 390, mmN: 12, ev: 12, lotes: 3, ha: 5600 },
+  donpedro:  { gARS:  3112000, gUSD:  430, iARS: 3350000, iUSD: 33900, gN: 12, iN: 5, mm: 320, mmN: 14, ev:  9, lotes: 3, ha:  295 },
+  arboles:   { gARS: 0, gUSD: 0, iARS: 0, iUSD: 0, gN: 0, iN: 0, mm: 120, mmN: 1, ev: 0, lotes: 0, ha: 0 },
+  prueba:    { gARS: 0, gUSD: 0, iARS: 0, iUSD: 0, gN: 0, iN: 0, mm:   0, mmN: 0, ev: 0, lotes: 3, ha: 67 }
+};
+
+const NOTE_ARS = {
+  all: 'El 73% es una sola compra de hacienda de $20.000.000 en julio.',
+  esperanza: 'El 83% es una sola compra de hacienda de $20.000.000 en julio.',
+  donpedro: 'Sueldos y combustible explican el 70% del gasto en pesos.',
+  arboles: '', prueba: ''
+};
+const NOTE_USD = {
+  all: 'Trigo, soja, girasol y maíz vendidos entre febrero y marzo.',
+  esperanza: 'Trigo (31.900) y girasol (10.500), vendidos entre febrero y marzo.',
+  donpedro: 'Soja (24.300) y maíz (9.600), vendidos en marzo.',
+  arboles: '', prueba: ''
+};
+
+const MONTHS = ['nov', 'dic', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul'];
+const RAIN = {
+  all:       [0, 205, 155, 155, 95, 0, 0, 0, 220],
+  esperanza: [0,  95,  70,  80, 45, 0, 0, 0, 100],
+  donpedro:  [0, 110,  85,  75, 50, 0, 0, 0,   0],
+  arboles:   [0,   0,   0,   0,  0, 0, 0, 0, 120],
+  prueba:    [0,   0,   0,   0,  0, 0, 0, 0,   0]
+};
+const RAIN_NOTE = {
+  all: 'Abril, mayo y junio no tienen ni un registro de lluvia. Si llovió y no se cargó, el balance hídrico de la campaña queda corto.',
+  esperanza: 'Sin registros entre abril y junio.',
+  donpedro: 'El último registro es de marzo: cuatro meses sin cargar lluvia.',
+  arboles: 'Hay 120 mm cargados en un campo que no tiene ningún lote.',
+  prueba: 'Este campo no tiene lluvias registradas.'
+};
+
+const CATS = {
+  all: {
+    ARS: [['Hacienda', 20000000], ['Combustible', 1799000], ['Insumos', 1600000], ['Sueldos', 1460000], ['Fertilizantes', 1200000], ['Maquinaria', 475000], ['Otros', 420000], ['Agroquímicos', 265000], ['Arrendamiento', 50000]],
+    USD: [['Arrendamiento', 8500], ['Semillas', 570]]
+  },
+  esperanza: {
+    ARS: [['Hacienda', 20000000], ['Insumos', 1600000], ['Combustible', 1079000], ['Fertilizantes', 680000], ['Otros', 420000], ['Maquinaria', 280000], ['Arrendamiento', 50000], ['Agroquímicos', 48000]],
+    USD: [['Arrendamiento', 8500], ['Semillas', 140]]
+  },
+  donpedro: {
+    ARS: [['Sueldos', 1460000], ['Combustible', 720000], ['Fertilizantes', 520000], ['Agroquímicos', 217000], ['Maquinaria', 195000]],
+    USD: [['Semillas', 430]]
+  },
+  arboles: { ARS: [], USD: [] },
+  prueba: { ARS: [], USD: [] }
+};
+
+const LOTES = [
+  { f: 'donpedro', field: 'Don Pedro', name: '1A', ha: 120, crop: 'Soja', state: 'sembrada el 15 nov', gARS: 2035000, gUSD: 180, last: 'Pulverización · Clorpirifos 1 lt/ha · 18 mar' },
+  { f: 'donpedro', field: 'Don Pedro', name: '1B', ha: 95, crop: 'Maíz', state: 'sembrado el 1 dic', gARS: 882000, gUSD: 250, last: 'Fertilización · KCl 80 kg/ha · 10 mar' },
+  { f: 'donpedro', field: 'Don Pedro', name: '1C', ha: 80, crop: null, state: 'ningún cultivo registrado', gARS: 195000, gUSD: 0, last: 'Sin actividad cargada' },
+  { f: 'esperanza', field: 'La Esperanza', name: 'Norte', ha: 33, crop: 'Trigo', state: 'cosechado el 10 feb', gARS: 833000, gUSD: 8500, last: 'Cosecha · 120 tn · 3.636 kg/ha · 10 feb' },
+  { f: 'esperanza', field: 'La Esperanza', name: 'Sur', ha: 22, crop: 'Girasol', state: 'sembrado el 10 dic', gARS: 1060000, gUSD: 140, last: 'Siembra · 10 dic' },
+  { f: 'esperanza', field: 'La Esperanza', name: 'Suroeste', ha: 5545, crop: 'Soja', state: 'sembrada el 18 jul', gARS: 20664000, gUSD: 0, last: 'Siembra · soja · 18 jul', flag: 'Trigo, maíz y soja sembrados acá en 5 días' },
+  { f: 'prueba', field: 'Prueba', name: 'A', ha: 22, crop: null, state: 'ningún cultivo registrado', gARS: 0, gUSD: 0, last: 'Sin actividad cargada' },
+  { f: 'prueba', field: 'Prueba', name: 'B', ha: 1, crop: null, state: 'ningún cultivo registrado', gARS: 0, gUSD: 0, last: 'Sin actividad cargada' },
+  { f: 'prueba', field: 'Prueba', name: 'C', ha: 44, crop: null, state: 'ningún cultivo registrado', gARS: 0, gUSD: 0, last: 'Sin actividad cargada' }
+];
+
+const FEED = [
+  { f: 'esperanza', date: '18 jul', kind: 'Siembra', detail: ' · soja', where: 'La Esperanza / Suroeste' },
+  { f: 'esperanza', date: '15 jul', kind: 'Sanidad animal', detail: '', where: 'La Esperanza / Suroeste' },
+  { f: 'esperanza', date: '14 jul', kind: 'Fertilización', detail: ' · trigo · producto «lote norte»', where: 'La Esperanza / Suroeste', flag: true },
+  { f: 'esperanza', date: '14 jul', kind: 'Cosecha', detail: ' · maíz · 100.000 kg', where: 'La Esperanza / Suroeste', flag: true },
+  { f: 'esperanza', date: '13 jul', kind: 'Siembra', detail: ' · trigo', where: 'La Esperanza / Suroeste' },
+  { f: 'esperanza', date: '13 jul', kind: 'Laboreo', detail: '', where: 'La Esperanza / Suroeste' },
+  { f: 'donpedro', date: '18 mar', kind: 'Pulverización', detail: ' · soja · Clorpirifos 1 lt/ha', where: 'Don Pedro / 1A' },
+  { f: 'donpedro', date: '10 mar', kind: 'Fertilización', detail: ' · maíz · KCl 80 kg/ha', where: 'Don Pedro / 1B' },
+  { f: 'donpedro', date: '5 mar', kind: 'Pulverización', detail: ' · soja · Dicamba 0,3 lt/ha', where: 'Don Pedro / 1A' },
+  { f: 'donpedro', date: '20 feb', kind: 'Pulverización', detail: ' · maíz · Opera 0,5 lt/ha', where: 'Don Pedro / 1B' },
+  { f: 'esperanza', date: '10 feb', kind: 'Cosecha', detail: ' · trigo · 120 tn', where: 'La Esperanza / Norte' }
+];
+
+const REVISAR = [
+  { id: 'prod', f: 'esperanza', sev: 'warn', title: 'Un nombre de lote quedó guardado como producto', body: 'La fertilización de trigo del 14 jul tiene «lote norte» en el campo producto. El bot interpretó el nombre del lote como el insumo aplicado.', action: 'Corregir el registro' },
+  { id: 'tres', f: 'esperanza', sev: 'warn', title: 'Tres cultivos sembrados en el mismo lote en 5 días', body: 'Suroeste figura con trigo el 13 jul, maíz el 14 y soja el 18. Además el maíz aparece cosechado el mismo día que se sembró.', action: 'Revisar Suroeste' },
+  { id: 'ha', f: 'esperanza', sev: 'info', title: 'Suroeste declara 5545 ha', body: 'Es 168 veces el promedio de tus otros lotes, que van de 22 a 120 ha. Cualquier número por hectárea sale distorsionado.', action: 'Editar superficie' },
+  { id: 'sinlote', f: 'esperanza', sev: 'info', title: 'Un gasto de $1.600.000 quedó sin lote', body: 'Insumos, cargado a nivel campo en La Esperanza. Queda afuera del gasto por lote.', action: 'Asignar lote' },
+  { id: 'vacios', f: 'all', sev: 'info', title: 'Dos campos sin nada cargado', body: '«los arboles» tiene 120 mm de lluvia pero ningún lote. «Prueba» tiene 3 lotes y ni un registro.', action: 'Ver campos' }
+];
+
+const NAV = [
+  { key: 'resumen', label: 'Resumen', icon: ICON.dash },
+  { g: 'produccion', gl: 'Producción' },
+  { key: 'lotes', label: 'Campos y lotes', icon: ICON.map, g: 'produccion', count: '9' },
+  { key: 'activ', label: 'Actividades', icon: ICON.sprout, g: 'produccion', count: '21' },
+  { key: 'monit', label: 'Monitoreos', icon: ICON.search, g: 'produccion', count: '0' },
+  { key: 'cosechas', label: 'Cosechas', icon: ICON.wheat, g: 'produccion', count: '2' },
+  { key: 'reportes', label: 'Reportes', icon: ICON.file, g: 'produccion' },
+  { g: 'plata', gl: 'Plata' },
+  { key: 'gastos', label: 'Gastos', icon: ICON.wallet, g: 'plata', count: '26' },
+  { key: 'ingresos', label: 'Ingresos', icon: ICON.dollar, g: 'plata', count: '9' },
+  { key: 'categorias', label: 'Categorías', icon: ICON.tag, g: 'plata' },
+  { g: 'recursos', gl: 'Recursos' },
+  { key: 'stock', label: 'Stock', icon: ICON.box, g: 'recursos', count: '0' },
+  { key: 'hacienda', label: 'Hacienda', icon: ICON.beef, g: 'recursos', count: '2' },
+  { key: 'docs', label: 'Documentos', icon: ICON.clip, g: 'recursos', count: '0' }
+];
+
+const CHIPS = [
+  { key: 'all', label: 'Todos los campos', icon: ICON.layers },
+  { key: 'esperanza', label: 'La Esperanza', icon: ICON.pin },
+  { key: 'donpedro', label: 'Don Pedro', icon: ICON.pin },
+  { key: 'arboles', label: 'los arboles', icon: ICON.pin },
+  { key: 'prueba', label: 'Prueba', icon: ICON.pin }
+];
+
+function ars(n) {
+  return '$' + new Intl.NumberFormat('es-AR').format(Math.round(Math.abs(n)));
+}
+function usd(n) {
+  return 'USD ' + new Intl.NumberFormat('es-AR').format(Math.round(Math.abs(n)));
+}
+function signed(n, fmt) {
+  if (n === 0) return fmt(0);
+  return (n > 0 ? '+ ' : '− ') + fmt(n);
+}
+function pct(part, whole) {
+  if (!whole) return '0%';
+  return Math.round((part / whole) * 100) + '%';
+}
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      field: 'all',
+      cur: 'ARS',
+      nav: 'resumen',
+      closed: {},
+      openItem: 'prod',
+      hidden: {}
+    };
+  }
+
+  renderVals() {
+    const st = this.state;
+    const f = st.field;
+    const a = AGG[f];
+    const isARS = st.cur === 'ARS';
+
+    // ── shell ───────────────────────────────────────────────
+    const cls = [this.props.dark ? 'dark' : '', this.props.density === 'compacta' ? 'compacta' : ''].join(' ').trim();
+    const showRev = this.props.showRevisar !== false;
+
+    const nav = [];
+    NAV.forEach((n) => {
+      if (n.g && n.gl) {
+        nav.push({
+          isHead: true, isItem: false, label: n.gl,
+          rot: st.closed[n.g] ? 'rotate(0deg)' : 'rotate(90deg)',
+          toggle: () => {
+            const closed = Object.assign({}, st.closed);
+            closed[n.g] = !closed[n.g];
+            this.setState({ closed: closed });
+          }
+        });
+        return;
+      }
+      if (n.g && st.closed[n.g]) return;
+      nav.push({
+        isHead: false, isItem: true, label: n.label, icon: n.icon,
+        count: n.count || '',
+        on: st.nav === n.key ? 'on' : '',
+        pick: () => this.setState({ nav: n.key })
+      });
+    });
+
+    const navFoot = [
+      { key: 'record', label: 'Recordatorios', icon: ICON.clock, count: '0' },
+      { key: 'cuenta', label: 'Mi cuenta', icon: ICON.user, count: '' }
+    ].map((n) => ({
+      label: n.label, icon: n.icon, count: n.count,
+      on: st.nav === n.key ? 'on' : '',
+      pick: () => this.setState({ nav: n.key })
+    }));
+
+    const chips = CHIPS.map((c) => ({
+      label: c.label, icon: c.icon,
+      on: f === c.key ? 'on' : '',
+      pick: () => this.setState({ field: c.key, openItem: 'prod', hidden: {} })
+    }));
+
+    // ── resultado ───────────────────────────────────────────
+    const resUSD = a.iUSD - a.gUSD;
+    const resARS = a.iARS - a.gARS;
+    const hasMoney = a.gN > 0 || a.iN > 0;
+
+    function block(head, res, inV, outV, fmt, note) {
+      const span = Math.max(inV, outV, 1);
+      return {
+        head: head,
+        total: signed(res, fmt),
+        color: res >= 0 ? 'var(--pos)' : 'var(--neg)',
+        inV: fmt(inV), outV: fmt(outV),
+        inW: Math.round((inV / span) * 100) + '%',
+        outW: Math.round((outV / span) * 100) + '%',
+        note: note
+      };
+    }
+
+    const sel = {
+      periodLabel: 'nov 2025 – jul 2026',
+      countsLabel: a.gN + ' gastos · ' + a.iN + ' ingresos',
+      hasMoney: hasMoney,
+      noMoney: !hasMoney,
+      emptyMoney: f === 'prueba'
+        ? 'El campo Prueba tiene 3 lotes cargados (A, B y C) y ni un gasto, ingreso o actividad. Si es un campo de prueba, conviene borrarlo para que no ensucie los totales.'
+        : 'En «los arboles» sólo hay 120 mm de lluvia cargados. No tiene lotes, ni gastos, ni ingresos, ni actividades.',
+      results: [
+        block('En dólares', resUSD, a.iUSD, a.gUSD, usd, NOTE_USD[f]),
+        block('En pesos', resARS, a.iARS, a.gARS, ars, NOTE_ARS[f])
+      ]
+    };
+
+    // ── revisar ─────────────────────────────────────────────
+    const revItems = REVISAR
+      .filter((r) => (f === 'all' || r.f === f) && !st.hidden[r.id])
+      .map((r) => {
+        const open = st.openItem === r.id;
+        return {
+          title: r.title, body: r.body, action: r.action,
+          open: open,
+          chev: open ? '▲' : '▼',
+          icon: r.sev === 'warn' ? ICON.alert : ICON.info,
+          ink: r.sev === 'warn' ? 'var(--warn-ink)' : 'var(--ink-3)',
+          tint: r.sev === 'warn' ? 'var(--warn-tint)' : 'var(--surface-2)',
+          line: r.sev === 'warn' ? 'var(--warn-line)' : 'var(--line-soft)',
+          toggle: () => this.setState({ openItem: open ? null : r.id }),
+          hide: () => {
+            const hidden = Object.assign({}, st.hidden);
+            hidden[r.id] = true;
+            this.setState({ hidden: hidden });
+          }
+        };
+      });
+
+    const revisar = {
+      show: showRev,
+      items: revItems,
+      count: String(revItems.length),
+      clean: revItems.length === 0
+    };
+
+    // ── lluvia ──────────────────────────────────────────────
+    const series = RAIN[f];
+    const maxMm = Math.max.apply(null, series.concat([1]));
+    const rain = {
+      total: String(a.mm),
+      meta: a.mmN + (a.mmN === 1 ? ' registro' : ' registros'),
+      note: RAIN_NOTE[f],
+      bars: series.map((v, i) => ({
+        month: MONTHS[i],
+        label: v > 0 ? String(v) : '',
+        labelColor: 'var(--ink-3)',
+        h: Math.max(2, Math.round((v / maxMm) * 74)) + 'px',
+        fill: v > 0 ? 'var(--rain)' : 'var(--rain-soft)',
+        title: MONTHS[i] + ': ' + v + ' mm'
+      }))
+    };
+
+    // ── lotes ───────────────────────────────────────────────
+    const lotesRaw = LOTES.filter((l) => f === 'all' || l.f === f);
+    const lotes = {
+      any: lotesRaw.length > 0,
+      none: lotesRaw.length === 0,
+      meta: a.lotes + (a.lotes === 1 ? ' lote' : ' lotes') + (a.ha ? ' · ' + new Intl.NumberFormat('es-AR').format(a.ha) + ' ha declaradas' : ''),
+      empty: 'Este campo no tiene lotes cargados. Decile al bot «agregá el lote 1 a los arboles» y aparece acá.',
+      items: lotesRaw.map((l) => {
+        const spend = isARS ? l.gARS : l.gUSD;
+        return {
+          name: l.name, field: l.field,
+          ha: new Intl.NumberFormat('es-AR').format(l.ha) + ' ha',
+          crop: l.crop || 'Sin cultivo',
+          cropColor: l.crop ? 'var(--ink)' : 'var(--ink-3)',
+          state: l.state,
+          spend: spend > 0 ? (isARS ? ars(spend) : usd(spend)) : '—',
+          last: l.last,
+          flagged: !!l.flag,
+          flag: l.flag || ''
+        };
+      })
+    };
+
+    // ── categorías ──────────────────────────────────────────
+    const rows = CATS[f][st.cur] || [];
+    const topCat = rows.length ? rows[0][1] : 1;
+    const totalCat = rows.reduce((s, r) => s + r[1], 0);
+    const cats = {
+      any: rows.length > 0,
+      none: rows.length === 0,
+      meta: rows.length ? st.cur + ' · ' + pct(topCat, totalCat) + ' en ' + rows[0][0] : st.cur,
+      empty: 'No hay gastos en ' + st.cur + ' para esta selección.',
+      items: rows.map((r, i) => ({
+        label: r[0],
+        value: isARS ? ars(r[1]) : usd(r[1]),
+        w: Math.max(2, Math.round((r[1] / topCat) * 100)) + '%',
+        fill: i === 0 ? 'var(--ink)' : 'var(--ink-3)'
+      }))
+    };
+
+    // ── feed ────────────────────────────────────────────────
+    const feedRaw = FEED.filter((x) => f === 'all' || x.f === f).slice(0, 7);
+    const feed = {
+      any: feedRaw.length > 0,
+      none: feedRaw.length === 0,
+      meta: a.ev + (a.ev === 1 ? ' actividad' : ' actividades'),
+      empty: 'Todavía no hay actividades cargadas en este campo.',
+      items: feedRaw.map((x) => ({
+        date: x.date, kind: x.kind, detail: x.detail, where: x.where,
+        flagged: !!x.flag
+      }))
+    };
+
+    return {
+      ui: { cls: cls, midCols: showRev ? 'minmax(0, 3fr) minmax(0, 2fr)' : 'minmax(0, 1fr)' },
+      nav: nav,
+      navFoot: navFoot,
+      chips: chips,
+      cur: {
+        arsOn: isARS ? 'on' : '',
+        usdOn: isARS ? '' : 'on',
+        setArs: () => this.setState({ cur: 'ARS' }),
+        setUsd: () => this.setState({ cur: 'USD' })
+      },
+      sel: sel,
+      revisar: revisar,
+      rain: rain,
+      lotes: lotes,
+      cats: cats,
+      feed: feed
+    };
+  }
+}
+</script>
+</body>
+</html>

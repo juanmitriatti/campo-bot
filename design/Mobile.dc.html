@@ -1,0 +1,440 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: #15803d; text-decoration: none; }
+    a:hover { color: #166534; text-decoration: underline; }
+    .m {
+      --bg: #f4f3ee;
+      --surface: #ffffff;
+      --surface-2: #faf9f5;
+      --ink: #171c18;
+      --ink-2: #5b6159;
+      --ink-3: #8b918a;
+      --line: #e3e1d9;
+      --line-soft: #eceae3;
+      --brand: #16a34a;
+      --brand-ink: #15803d;
+      --brand-tint: #e9f6ee;
+      --pos: #15803d;
+      --neg: #b42318;
+      --warn-ink: #b54708;
+      --warn-tint: #fdf3e6;
+      --warn-line: #f0dcc0;
+      --rain: #2a78d6;
+      --rain-soft: #cfe0f5;
+      font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+    }
+    .m.dark {
+      --bg: #101210;
+      --surface: #1a1d1a;
+      --surface-2: #212520;
+      --ink: #f1f3ef;
+      --ink-2: #b4bab1;
+      --ink-3: #848a81;
+      --line: #2d322c;
+      --line-soft: #262a25;
+      --brand: #4ade80;
+      --brand-ink: #86efac;
+      --brand-tint: #17301f;
+      --pos: #4ade80;
+      --neg: #f97066;
+      --warn-ink: #f5b26b;
+      --warn-tint: #2b2014;
+      --warn-line: #45341e;
+      --rain: #3987e5;
+      --rain-soft: #22344c;
+    }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .btn { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; color: inherit; text-align: left; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 13px; }
+    .sub { font-size: 11.5px; color: var(--ink-3); }
+    .chip { flex: none; padding: 8px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12.5px; color: var(--ink-2); white-space: nowrap; min-height: 36px; }
+    .chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
+    .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 56px; color: var(--ink-3); }
+    .tab.on { color: var(--brand-ink); }
+    .sheetrow { display: flex; align-items: center; gap: 13px; width: 100%; min-height: 52px; padding: 0 4px; border-bottom: 1px solid var(--line-soft); }
+  </style>
+</helmet>
+
+<div class="m {{ui.cls}}" style="width: 390px; height: 844px; position: relative; overflow: hidden; display: flex; flex-direction: column;">
+
+  <!-- encabezado -->
+  <header style="flex: none; background: var(--surface); border-bottom: 1px solid var(--line); padding: 12px 16px 10px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px;">
+      <div style="display: flex; align-items: center; gap: 9px;">
+        <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 7px; background: var(--brand);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V12M12 12c0-3 2-5 4-5 0 3-2 5-4 5zM12 12c0-3-2-5-4-5 0 3 2 5 4 5zM12 7c0-3 2-5 4-5 0 3-2 5-4 5z"></path></svg>
+        </div>
+        <span style="font-size: 15px; font-weight: 600;">Resumen</span>
+      </div>
+      <span class="sub">Campaña 25/26</span>
+    </div>
+    <div style="display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px;">
+      <sc-for list="{{chips}}" as="c" hint-placeholder-count="4">
+        <button class="btn chip {{c.on}}" onClick="{{ c.pick }}">{{c.label}}</button>
+      </sc-for>
+    </div>
+  </header>
+
+  <!-- contenido -->
+  <div style="flex: 1; overflow-y: auto; padding: 14px 16px 78px; display: flex; flex-direction: column; gap: 12px;">
+
+    <section class="card" style="padding: 16px;">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 13px;">
+        <h2 style="margin: 0; font-size: 13px; font-weight: 600;">Resultado de campaña</h2>
+        <span class="sub">{{sel.counts}}</span>
+      </div>
+      <sc-if value="{{sel.hasMoney}}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; gap: 11px;">
+          <sc-for list="{{sel.results}}" as="r" hint-placeholder-count="2">
+            <div style="background: var(--surface-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 13px 14px;">
+              <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px;">
+                <span class="sub">{{r.head}}</span>
+                <span class="mono" style="font-size: 22px; font-weight: 600; letter-spacing: -.02em; color: {{r.color}};">{{r.total}}</span>
+              </div>
+              <div style="display: flex; gap: 3px; margin: 11px 0 8px;">
+                <div style="height: 6px; border-radius: 3px 0 0 3px; background: var(--pos); width: {{r.inW}};"></div>
+                <div style="height: 6px; border-radius: 0 3px 3px 0; background: var(--neg); width: {{r.outW}};"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; color: var(--ink-2);">
+                <span>Ingresos <span class="mono" style="color: var(--ink); font-weight: 600;">{{r.inV}}</span></span>
+                <span>Gastos <span class="mono" style="color: var(--ink); font-weight: 600;">{{r.outV}}</span></span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{sel.noMoney}}" hint-placeholder-val="{{ false }}">
+        <p style="margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-3);">{{sel.empty}}</p>
+      </sc-if>
+    </section>
+
+    <sc-if value="{{revisar.show}}" hint-placeholder-val="{{ true }}">
+      <section class="card" style="padding: 15px 16px; border-color: var(--warn-line);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--warn-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3zM12 9v5M12 17h.01"></path></svg>
+          <h2 style="margin: 0; font-size: 13px; font-weight: 600;">Para revisar</h2>
+          <span class="mono" style="font-size: 10.5px; font-weight: 600; color: var(--warn-ink); background: var(--warn-tint); border: 1px solid var(--warn-line); padding: 2px 7px; border-radius: 999px;">{{revisar.count}}</span>
+        </div>
+        <div style="display: flex; flex-direction: column;">
+          <sc-for list="{{revisar.items}}" as="r" hint-placeholder-count="2">
+            <button class="btn" style="display: flex; align-items: flex-start; gap: 9px; width: 100%; min-height: 46px; padding: 10px 0; border-top: 1px solid var(--line-soft);" onClick="{{ r.toggle }}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{r.ink}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 2px;"><path d="{{r.icon}}"></path></svg>
+              <span style="flex: 1; min-width: 0;">
+                <span style="display: block; font-size: 12.5px; font-weight: 600; line-height: 1.35;">{{r.title}}</span>
+                <sc-if value="{{r.open}}" hint-placeholder-val="{{ true }}">
+                  <span style="display: block; margin-top: 5px; font-size: 12px; line-height: 1.5; color: var(--ink-2); font-weight: 400; text-wrap: pretty;">{{r.body}}</span>
+                  <span style="display: block; margin-top: 8px; font-size: 12px; font-weight: 600; color: {{r.ink}};">{{r.action}} →</span>
+                </sc-if>
+              </span>
+              <span class="sub" style="flex: none; font-size: 10px; margin-top: 3px;">{{r.chev}}</span>
+            </button>
+          </sc-for>
+          <sc-if value="{{revisar.clean}}" hint-placeholder-val="{{ false }}">
+            <p style="margin: 8px 0 0; font-size: 12.5px; color: var(--ink-3);">Nada pendiente en esta selección.</p>
+          </sc-if>
+        </div>
+      </section>
+    </sc-if>
+
+    <section class="card" style="padding: 15px 16px;">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px;">
+        <h2 style="margin: 0; font-size: 13px; font-weight: 600;">Lluvia acumulada</h2>
+        <span class="sub">{{rain.meta}}</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 7px; margin: 8px 0 13px;">
+        <span class="mono" style="font-size: 23px; font-weight: 600; letter-spacing: -.02em; color: var(--rain);">{{rain.total}}</span>
+        <span class="sub">mm</span>
+      </div>
+      <div style="display: flex; align-items: flex-end; gap: 5px; height: 58px; border-bottom: 1px solid var(--line);">
+        <sc-for list="{{rain.bars}}" as="b" hint-placeholder-count="9">
+          <div style="flex: 1; min-width: 0; height: {{b.h}}; border-radius: 3px 3px 0 0; background: {{b.fill}};"></div>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 5px; margin-top: 5px;">
+        <sc-for list="{{rain.bars}}" as="b" hint-placeholder-count="9">
+          <span class="sub" style="flex: 1; text-align: center; font-size: 9.5px; min-width: 0;">{{b.month}}</span>
+        </sc-for>
+      </div>
+    </section>
+
+    <section class="card" style="padding: 15px 16px;">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px;">
+        <h2 style="margin: 0; font-size: 13px; font-weight: 600;">Lotes</h2>
+        <span class="sub">{{lotes.meta}}</span>
+      </div>
+      <div style="display: flex; flex-direction: column;">
+        <sc-for list="{{lotes.items}}" as="l" hint-placeholder-count="4">
+          <div style="display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 10px 0; border-top: 1px solid var(--line-soft);">
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 13px; font-weight: 600; line-height: 1.25;">{{l.name}} <span style="font-weight: 400; color: var(--ink-3);">{{l.field}}</span></div>
+              <div class="sub" style="margin-top: 2px;">{{l.crop}} · {{l.ha}}</div>
+            </div>
+            <span class="mono" style="flex: none; font-size: 12.5px; font-weight: 600;">{{l.spend}}</span>
+          </div>
+        </sc-for>
+        <sc-if value="{{lotes.none}}" hint-placeholder-val="{{ false }}">
+          <p style="margin: 10px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-3);">{{lotes.empty}}</p>
+        </sc-if>
+      </div>
+    </section>
+  </div>
+
+  <!-- barra inferior: 4 destinos, no 13 -->
+  <nav style="position: absolute; left: 0; right: 0; bottom: 0; display: flex; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: 4px;">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
+      <button class="btn tab {{t.on}}" onClick="{{ t.pick }}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{t.icon}}"></path></svg>
+        <span style="font-size: 10.5px; font-weight: 600;">{{t.label}}</span>
+      </button>
+    </sc-for>
+  </nav>
+
+  <!-- hoja "Más": el resto de las secciones -->
+  <sc-if value="{{sheet.open}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; background: rgba(10, 12, 10, .45); display: flex; align-items: flex-end;">
+      <div style="width: 100%; max-height: 620px; background: var(--surface); border-radius: 18px 18px 0 0; padding: 8px 18px 22px; overflow-y: auto;">
+        <div style="width: 36px; height: 4px; border-radius: 999px; background: var(--line); margin: 0 auto 14px;"></div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px;">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 600;">Todo lo demás</h2>
+          <button class="btn" style="font-size: 13px; font-weight: 600; color: var(--brand-ink); min-height: 44px;" onClick="{{ sheet.close }}">Cerrar</button>
+        </div>
+        <sc-for list="{{sheet.groups}}" as="g" hint-placeholder-count="3">
+          <div style="margin-top: 14px;">
+            <div style="font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 4px;">{{g.label}}</div>
+            <sc-for list="{{g.items}}" as="i" hint-placeholder-count="4">
+              <div class="sheetrow">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><path d="{{i.icon}}"></path></svg>
+                <span style="flex: 1; font-size: 14px;">{{i.label}}</span>
+                <span class="mono sub">{{i.count}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Vista"},"showRevisar":{"editor":"boolean","default":true,"section":"Vista"},"$preview":{"width":390,"height":844}}'>
+const ICON = {
+  dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
+  map: 'M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3zM9 3v15M15 6v15',
+  wallet: 'M19 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-2M21 12h-5a2 2 0 0 0 0 4h5v-4z',
+  dots: 'M5 12h.01M12 12h.01M19 12h.01',
+  sprout: 'M7 20h10M10 20c0-6-3-8-6-8 0 5 2 8 6 8zM14 20c0-7 3-9 6-9 0 6-3 9-6 9z',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
+  wheat: 'M12 22V12M12 12c0-3 2-5 4-5 0 3-2 5-4 5zM12 12c0-3-2-5-4-5 0 3 2 5 4 5z',
+  file: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4',
+  dollar: 'M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
+  tag: 'M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.6zM7.5 7.5h.01',
+  box: 'M21 8 12 3 3 8v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8',
+  beef: 'M12 4.5a3.2 3.2 0 1 1-6.4 0 3.2 3.2 0 0 1 6.4 0zM4 9h9l7 3-2 8H6L4 12z',
+  clip: 'M21.4 11.1 12.3 20a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.7 1.7 0 0 1-2.3-2.3l8.3-8.3',
+  clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
+  user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
+  alert: 'M12 3 2 20h20L12 3zM12 9v5M12 17h.01',
+  info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01'
+};
+
+const AGG = {
+  all:       { gARS: 27269000, gUSD: 9070, iARS: 3950000, iUSD: 76300, gN: 26, iN: 9, mm: 830, mmN: 27, lotes: 9, ha: 5962 },
+  esperanza: { gARS: 24157000, gUSD: 8640, iARS:  600000, iUSD: 42400, gN: 14, iN: 4, mm: 390, mmN: 12, lotes: 3, ha: 5600 },
+  donpedro:  { gARS:  3112000, gUSD:  430, iARS: 3350000, iUSD: 33900, gN: 12, iN: 5, mm: 320, mmN: 14, lotes: 3, ha:  295 },
+  arboles:   { gARS: 0, gUSD: 0, iARS: 0, iUSD: 0, gN: 0, iN: 0, mm: 120, mmN: 1, lotes: 0, ha: 0 },
+  prueba:    { gARS: 0, gUSD: 0, iARS: 0, iUSD: 0, gN: 0, iN: 0, mm: 0, mmN: 0, lotes: 3, ha: 67 }
+};
+
+const MONTHS = ['nov', 'dic', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul'];
+const RAIN = {
+  all:       [0, 205, 155, 155, 95, 0, 0, 0, 220],
+  esperanza: [0,  95,  70,  80, 45, 0, 0, 0, 100],
+  donpedro:  [0, 110,  85,  75, 50, 0, 0, 0,   0],
+  arboles:   [0,   0,   0,   0,  0, 0, 0, 0, 120],
+  prueba:    [0,   0,   0,   0,  0, 0, 0, 0,   0]
+};
+
+const LOTES = [
+  { f: 'donpedro', field: 'Don Pedro', name: '1A', ha: 120, crop: 'Soja', gARS: 2035000 },
+  { f: 'donpedro', field: 'Don Pedro', name: '1B', ha: 95, crop: 'Maíz', gARS: 882000 },
+  { f: 'donpedro', field: 'Don Pedro', name: '1C', ha: 80, crop: 'Sin cultivo', gARS: 195000 },
+  { f: 'esperanza', field: 'La Esperanza', name: 'Norte', ha: 33, crop: 'Trigo', gARS: 833000 },
+  { f: 'esperanza', field: 'La Esperanza', name: 'Sur', ha: 22, crop: 'Girasol', gARS: 1060000 },
+  { f: 'esperanza', field: 'La Esperanza', name: 'Suroeste', ha: 5545, crop: 'Soja', gARS: 20664000 },
+  { f: 'prueba', field: 'Prueba', name: 'A', ha: 22, crop: 'Sin cultivo', gARS: 0 },
+  { f: 'prueba', field: 'Prueba', name: 'B', ha: 1, crop: 'Sin cultivo', gARS: 0 },
+  { f: 'prueba', field: 'Prueba', name: 'C', ha: 44, crop: 'Sin cultivo', gARS: 0 }
+];
+
+const REVISAR = [
+  { id: 'prod', f: 'esperanza', sev: 'warn', title: 'Un nombre de lote quedó guardado como producto', body: 'La fertilización de trigo del 14 jul tiene «lote norte» en el campo producto.', action: 'Corregir' },
+  { id: 'tres', f: 'esperanza', sev: 'warn', title: 'Tres cultivos en el mismo lote en 5 días', body: 'Suroeste figura con trigo, maíz y soja entre el 13 y el 18 de julio.', action: 'Revisar Suroeste' },
+  { id: 'ha', f: 'esperanza', sev: 'info', title: 'Suroeste declara 5545 ha', body: 'Es 168 veces el promedio de tus otros lotes (22 a 120 ha).', action: 'Editar superficie' },
+  { id: 'vacios', f: 'all', sev: 'info', title: 'Dos campos sin nada cargado', body: '«los arboles» tiene lluvia pero ningún lote. «Prueba» tiene 3 lotes y ni un registro.', action: 'Ver campos' }
+];
+
+const CHIPS = [
+  { key: 'all', label: 'Todos' },
+  { key: 'esperanza', label: 'La Esperanza' },
+  { key: 'donpedro', label: 'Don Pedro' },
+  { key: 'arboles', label: 'los arboles' },
+  { key: 'prueba', label: 'Prueba' }
+];
+
+const SHEET = [
+  { label: 'Producción', items: [
+    { label: 'Actividades', icon: ICON.sprout, count: '21' },
+    { label: 'Monitoreos', icon: ICON.search, count: '0' },
+    { label: 'Cosechas', icon: ICON.wheat, count: '2' },
+    { label: 'Reportes', icon: ICON.file, count: '' }
+  ] },
+  { label: 'Plata', items: [
+    { label: 'Ingresos', icon: ICON.dollar, count: '9' },
+    { label: 'Categorías', icon: ICON.tag, count: '' }
+  ] },
+  { label: 'Recursos', items: [
+    { label: 'Stock', icon: ICON.box, count: '0' },
+    { label: 'Hacienda', icon: ICON.beef, count: '2' },
+    { label: 'Documentos', icon: ICON.clip, count: '0' }
+  ] },
+  { label: 'Cuenta', items: [
+    { label: 'Recordatorios', icon: ICON.clock, count: '0' },
+    { label: 'Mi cuenta', icon: ICON.user, count: '' }
+  ] }
+];
+
+function ars(n) { return '$' + new Intl.NumberFormat('es-AR').format(Math.round(Math.abs(n))); }
+function usd(n) { return 'USD ' + new Intl.NumberFormat('es-AR').format(Math.round(Math.abs(n))); }
+function signed(n, fmt) { return n === 0 ? fmt(0) : (n > 0 ? '+ ' : '− ') + fmt(n); }
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { field: 'all', tab: 'resumen', sheet: false, openItem: 'prod' };
+  }
+
+  renderVals() {
+    const st = this.state;
+    const f = st.field;
+    const a = AGG[f];
+    const showRev = this.props.showRevisar !== false;
+
+    const chips = CHIPS.map((c) => ({
+      label: c.label,
+      on: f === c.key ? 'on' : '',
+      pick: () => this.setState({ field: c.key, openItem: 'prod' })
+    }));
+
+    const tabs = [
+      { key: 'resumen', label: 'Resumen', icon: ICON.dash },
+      { key: 'lotes', label: 'Lotes', icon: ICON.map },
+      { key: 'gastos', label: 'Gastos', icon: ICON.wallet },
+      { key: 'mas', label: 'Más', icon: ICON.dots }
+    ].map((t) => ({
+      label: t.label, icon: t.icon,
+      on: (t.key === 'mas' ? st.sheet : (!st.sheet && st.tab === t.key)) ? 'on' : '',
+      pick: t.key === 'mas'
+        ? () => this.setState({ sheet: true })
+        : () => this.setState({ tab: t.key, sheet: false })
+    }));
+
+    const resUSD = a.iUSD - a.gUSD;
+    const resARS = a.iARS - a.gARS;
+    const hasMoney = a.gN > 0 || a.iN > 0;
+
+    function block(head, res, inV, outV, fmt) {
+      const span = Math.max(inV, outV, 1);
+      return {
+        head: head,
+        total: signed(res, fmt),
+        color: res >= 0 ? 'var(--pos)' : 'var(--neg)',
+        inV: fmt(inV), outV: fmt(outV),
+        inW: Math.round((inV / span) * 100) + '%',
+        outW: Math.round((outV / span) * 100) + '%'
+      };
+    }
+
+    const series = RAIN[f];
+    const maxMm = Math.max.apply(null, series.concat([1]));
+
+    const revItems = REVISAR
+      .filter((r) => f === 'all' || r.f === f)
+      .map((r) => {
+        const open = st.openItem === r.id;
+        return {
+          title: r.title, body: r.body, action: r.action,
+          open: open, chev: open ? '▲' : '▼',
+          icon: r.sev === 'warn' ? ICON.alert : ICON.info,
+          ink: r.sev === 'warn' ? 'var(--warn-ink)' : 'var(--ink-3)',
+          toggle: () => this.setState({ openItem: open ? null : r.id })
+        };
+      });
+
+    const lotesRaw = LOTES.filter((l) => f === 'all' || l.f === f);
+
+    return {
+      ui: { cls: this.props.dark ? 'dark' : '' },
+      chips: chips,
+      tabs: tabs,
+      sel: {
+        counts: a.gN + ' gastos · ' + a.iN + ' ingresos',
+        hasMoney: hasMoney,
+        noMoney: !hasMoney,
+        empty: f === 'prueba'
+          ? 'El campo Prueba tiene 3 lotes y ni un registro. Si era de prueba, conviene borrarlo.'
+          : 'En «los arboles» sólo hay 120 mm de lluvia. No tiene lotes ni movimientos.',
+        results: [
+          block('En dólares', resUSD, a.iUSD, a.gUSD, usd),
+          block('En pesos', resARS, a.iARS, a.gARS, ars)
+        ]
+      },
+      revisar: {
+        show: showRev,
+        items: revItems,
+        count: String(revItems.length),
+        clean: revItems.length === 0
+      },
+      rain: {
+        total: String(a.mm),
+        meta: a.mmN + (a.mmN === 1 ? ' registro' : ' registros'),
+        bars: series.map((v, i) => ({
+          month: MONTHS[i],
+          h: Math.max(2, Math.round((v / maxMm) * 50)) + 'px',
+          fill: v > 0 ? 'var(--rain)' : 'var(--rain-soft)'
+        }))
+      },
+      lotes: {
+        meta: a.lotes + (a.lotes === 1 ? ' lote' : ' lotes'),
+        none: lotesRaw.length === 0,
+        empty: 'Este campo no tiene lotes cargados.',
+        items: lotesRaw.map((l) => ({
+          name: l.name, field: l.field, crop: l.crop,
+          ha: new Intl.NumberFormat('es-AR').format(l.ha) + ' ha',
+          spend: l.gARS > 0 ? ars(l.gARS) : '—'
+        }))
+      },
+      sheet: {
+        open: st.sheet,
+        groups: SHEET,
+        close: () => this.setState({ sheet: false })
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

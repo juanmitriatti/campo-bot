@@ -1,0 +1,277 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: #15803d; text-decoration: none; }
+    a:hover { color: #166534; text-decoration: underline; }
+    .n {
+      --bg: #f4f3ee;
+      --surface: #ffffff;
+      --surface-2: #faf9f5;
+      --ink: #171c18;
+      --ink-2: #5b6159;
+      --ink-3: #8b918a;
+      --line: #e3e1d9;
+      --line-soft: #eceae3;
+      --brand: #16a34a;
+      --brand-ink: #15803d;
+      --brand-tint: #e9f6ee;
+      --neg: #b42318;
+      --neg-tint: #fdeceb;
+      --neg-line: #f3cfcc;
+      font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+    }
+    .n.dark {
+      --bg: #101210;
+      --surface: #1a1d1a;
+      --surface-2: #212520;
+      --ink: #f1f3ef;
+      --ink-2: #b4bab1;
+      --ink-3: #848a81;
+      --line: #2d322c;
+      --line-soft: #262a25;
+      --brand: #4ade80;
+      --brand-ink: #86efac;
+      --brand-tint: #17301f;
+      --neg: #f97066;
+      --neg-tint: #2c1614;
+      --neg-line: #4a2622;
+    }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .btn { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; color: inherit; text-align: left; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+    .sub { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; }
+    .flat { display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: 7px; font-size: 12.5px; color: var(--ink-2); }
+    .seg > button { padding: 6px 14px; font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+    .seg > button.on { background: var(--ink); color: var(--bg); }
+  </style>
+</helmet>
+
+<div class="n {{ui.cls}}" style="width: 860px; min-height: 900px; padding: 26px 28px 30px; display: flex; flex-direction: column; gap: 18px;">
+
+  <header>
+    <h1 style="margin: 0 0 6px; font-size: 20px; font-weight: 600; letter-spacing: -.015em;">La navegación</h1>
+    <p style="margin: 0; max-width: 66ch; font-size: 13px; line-height: 1.6; color: var(--ink-2); text-wrap: pretty;">Hoy hay quince destinos en una lista plana, sin jerarquía, y los mismos trece apretados en la barra inferior del teléfono. La propuesta agrupa por la pregunta que se está haciendo el productor, y en mobile deja cuatro destinos con el resto detrás de «Más».</p>
+  </header>
+
+  <div class="seg" style="align-self: flex-start; display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--surface);">
+    <button class="btn {{tabs.aOn}}" onClick="{{ tabs.showA }}">Hoy</button>
+    <button class="btn {{tabs.bOn}}" onClick="{{ tabs.showB }}">Propuesta</button>
+  </div>
+
+  <!-- ── HOY ──────────────────────────────────────────────── -->
+  <sc-if value="{{show.hoy}}" hint-placeholder-val="{{ false }}">
+    <div style="display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 18px; align-items: start;">
+      <section class="card" style="padding: 12px 10px;">
+        <div class="sub" style="padding: 0 8px 8px; font-weight: 600; color: var(--ink-2);">Sidebar · 15 ítems</div>
+        <sc-for list="{{hoy.items}}" as="i" hint-placeholder-count="15">
+          <div class="flat">
+            <span style="width: 15px; height: 15px; border-radius: 4px; background: var(--line); flex: none;"></span>
+            <span>{{i}}</span>
+          </div>
+        </sc-for>
+      </section>
+
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <section class="card" style="padding: 18px;">
+          <h2 style="margin: 0 0 10px; font-size: 13.5px; font-weight: 600;">Qué falla</h2>
+          <div style="display: flex; flex-direction: column; gap: 11px;">
+            <sc-for list="{{hoy.problems}}" as="p" hint-placeholder-count="5">
+              <div style="display: flex; gap: 10px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--neg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 2px;"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM15 9l-6 6M9 9l6 6"></path></svg>
+                <p style="margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); text-wrap: pretty;">{{p}}</p>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <section class="card" style="padding: 18px; border-color: var(--neg-line); background: var(--neg-tint);">
+          <h2 style="margin: 0 0 4px; font-size: 13.5px; font-weight: 600;">La barra inferior, a escala real</h2>
+          <p class="sub" style="margin: 0 0 13px; color: var(--ink-2);">Trece destinos repartidos en 390 px de ancho: 30 px por tab. El mínimo táctil recomendado es 44.</p>
+          <div style="width: 390px; max-width: 100%; display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; overflow: hidden;">
+            <sc-for list="{{hoy.bottom}}" as="b" hint-placeholder-count="13">
+              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 1px; border-right: 1px solid var(--line-soft);">
+                <span style="width: 13px; height: 13px; border-radius: 3px; background: var(--line);"></span>
+                <span style="font-size: 7px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;">{{b}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ── PROPUESTA ────────────────────────────────────────── -->
+  <sc-if value="{{show.prop}}" hint-placeholder-val="{{ true }}">
+    <div style="display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 18px; align-items: start;">
+      <section class="card" style="padding: 12px 10px;">
+        <div class="sub" style="padding: 0 8px 8px; font-weight: 600; color: var(--ink-2);">Sidebar · 1 + 3 grupos</div>
+        <sc-for list="{{prop.nav}}" as="n" hint-placeholder-count="16">
+          <sc-if value="{{n.isHead}}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 11px 9px 3px; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); font-weight: 600;">{{n.label}}</div>
+          </sc-if>
+          <sc-if value="{{n.isItem}}" hint-placeholder-val="{{ true }}">
+            <div class="flat {{n.on}}" style="background: {{n.bg}}; color: {{n.fg}}; font-weight: {{n.fw}};">
+              <span style="width: 15px; height: 15px; border-radius: 4px; background: {{n.dot}}; flex: none;"></span>
+              <span style="flex: 1;">{{n.label}}</span>
+              <span class="mono" style="font-size: 10.5px; color: var(--ink-3);">{{n.count}}</span>
+            </div>
+          </sc-if>
+        </sc-for>
+      </section>
+
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <section class="card" style="padding: 18px;">
+          <h2 style="margin: 0 0 4px; font-size: 13.5px; font-weight: 600;">Por qué se agrupa así</h2>
+          <p class="sub" style="margin: 0 0 14px; color: var(--ink-2);">Cada grupo responde a una pregunta distinta. Un productor entra por una de las tres, nunca por «las quince».</p>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+            <sc-for list="{{prop.groups}}" as="g" hint-placeholder-count="3">
+              <div style="background: var(--surface-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 13px 14px;">
+                <div style="font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--brand-ink); font-weight: 600; margin-bottom: 6px;">{{g.name}}</div>
+                <p style="margin: 0 0 8px; font-size: 13px; font-weight: 600; line-height: 1.35; text-wrap: pretty;">{{g.question}}</p>
+                <p class="sub" style="margin: 0;">{{g.items}}</p>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <section class="card" style="padding: 18px;">
+          <h2 style="margin: 0 0 4px; font-size: 13.5px; font-weight: 600;">La barra inferior, a escala real</h2>
+          <p class="sub" style="margin: 0 0 13px; color: var(--ink-2);">Cuatro destinos en 390 px: 97 px por tab. El resto vive en la hoja «Más», que además agrupa igual que el sidebar.</p>
+          <div style="width: 390px; max-width: 100%; display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; overflow: hidden;">
+            <sc-for list="{{prop.bottom}}" as="b" hint-placeholder-count="4">
+              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 11px 2px; border-right: 1px solid var(--line-soft);">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="{{b.color}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{b.icon}}"></path></svg>
+                <span style="font-size: 10px; font-weight: 600; color: {{b.color}};">{{b.label}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <section class="card" style="padding: 18px;">
+          <h2 style="margin: 0 0 10px; font-size: 13.5px; font-weight: 600;">Lo que cambia además de agrupar</h2>
+          <div style="display: flex; flex-direction: column; gap: 11px;">
+            <sc-for list="{{prop.notes}}" as="p" hint-placeholder-count="4">
+              <div style="display: flex; gap: 10px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 2px;"><path d="M20 6 9 17l-5-5"></path></svg>
+                <p style="margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); text-wrap: pretty;">{{p}}</p>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Vista"},"$preview":{"width":860,"height":900}}'>
+const ICON = {
+  dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
+  map: 'M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3zM9 3v15M15 6v15',
+  wallet: 'M19 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-2M21 12h-5a2 2 0 0 0 0 4h5v-4z',
+  dots: 'M5 12h.01M12 12h.01M19 12h.01'
+};
+
+const HOY_ITEMS = ['Resumen', 'Campos', 'Gastos', 'Ingresos', 'Actividades', 'Observaciones', 'Monitoreos', 'Reportes', 'Cosechas', 'Stock', 'Hacienda', 'Documentos', 'Categorías', 'Recordatorios', 'Mi cuenta'];
+const HOY_BOTTOM = ['Resumen', 'Campos', 'Gastos', 'Ingresos', 'Activ.', 'Obs.', 'Monitor.', 'Reportes', 'Cosechas', 'Docs', 'Categ.', 'Recordat.', 'Cuenta'];
+
+const HOY_PROBLEMS = [
+  'Quince ítems sin agrupar: Gastos e Ingresos, Actividades y Monitoreos, y Stock y Hacienda son tres familias distintas puestas en la misma lista.',
+  'Categorías y Recordatorios son configuración, no datos, pero pesan visualmente igual que Gastos.',
+  'Observaciones y Monitoreos son casi lo mismo para el que carga por WhatsApp — la distinción es del modelo de datos, no del productor.',
+  'El selector de campo vive adentro del sidebar aunque filtra todo el dashboard, y en mobile directamente no aparece.',
+  'Los contadores no existen: nada dice si hay 26 gastos o ninguno antes de entrar.'
+];
+
+const PROP_NAV = [
+  { item: 'Resumen', on: true },
+  { head: 'Producción' },
+  { item: 'Campos y lotes', count: '9' },
+  { item: 'Actividades', count: '21' },
+  { item: 'Monitoreos', count: '0' },
+  { item: 'Cosechas', count: '2' },
+  { item: 'Reportes', count: '' },
+  { head: 'Plata' },
+  { item: 'Gastos', count: '26' },
+  { item: 'Ingresos', count: '9' },
+  { item: 'Categorías', count: '' },
+  { head: 'Recursos' },
+  { item: 'Stock', count: '0' },
+  { item: 'Hacienda', count: '2' },
+  { item: 'Documentos', count: '0' }
+];
+
+const PROP_GROUPS = [
+  { name: 'Producción', question: '¿Qué pasó en el lote?', items: 'Campos y lotes · Actividades · Monitoreos · Cosechas · Reportes' },
+  { name: 'Plata', question: '¿Cómo viene la plata?', items: 'Gastos · Ingresos · Categorías' },
+  { name: 'Recursos', question: '¿Qué tengo?', items: 'Stock · Hacienda · Documentos' }
+];
+
+const PROP_BOTTOM = [
+  { label: 'Resumen', icon: ICON.dash, on: true },
+  { label: 'Lotes', icon: ICON.map },
+  { label: 'Gastos', icon: ICON.wallet },
+  { label: 'Más', icon: ICON.dots }
+];
+
+const PROP_NOTES = [
+  'Observaciones se absorbe dentro de Actividades: para el productor es un registro más del lote, y separar dos listas casi iguales sólo obliga a buscar en dos lugares.',
+  'Recordatorios y Mi cuenta bajan al pie del sidebar, separados por una línea: son configuración, no datos de campaña.',
+  'El selector de campo sube a la zona de contenido como chips, porque filtra todo lo que se ve y en mobile tiene que estar a mano.',
+  'Cada ítem lleva su contador real, así se sabe qué tiene datos antes de entrar — hoy Monitoreos, Stock y Documentos están en cero y ocupan el mismo espacio que Gastos.'
+];
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { view: 'prop' };
+  }
+
+  renderVals() {
+    const v = this.state.view;
+    return {
+      ui: { cls: this.props.dark ? 'dark' : '' },
+      tabs: {
+        aOn: v === 'hoy' ? 'on' : '',
+        bOn: v === 'prop' ? 'on' : '',
+        showA: () => this.setState({ view: 'hoy' }),
+        showB: () => this.setState({ view: 'prop' })
+      },
+      show: { hoy: v === 'hoy', prop: v === 'prop' },
+      hoy: { items: HOY_ITEMS, bottom: HOY_BOTTOM, problems: HOY_PROBLEMS },
+      prop: {
+        nav: PROP_NAV.map((n) => n.head
+          ? { isHead: true, isItem: false, label: n.head }
+          : {
+              isHead: false, isItem: true, label: n.item, count: n.count || '',
+              bg: n.on ? 'var(--brand-tint)' : 'transparent',
+              fg: n.on ? 'var(--brand-ink)' : 'var(--ink-2)',
+              fw: n.on ? '600' : '400',
+              dot: n.on ? 'var(--brand)' : 'var(--line)'
+            }),
+        groups: PROP_GROUPS,
+        bottom: PROP_BOTTOM.map((b) => ({
+          label: b.label, icon: b.icon,
+          color: b.on ? 'var(--brand-ink)' : 'var(--ink-3)'
+        })),
+        notes: PROP_NOTES
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

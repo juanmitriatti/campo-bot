@@ -762,13 +762,13 @@ export class FinancialHandler {
     // (a name like "lote Verde" OR a pronoun like "ahí mismo" / "ese lote"
     // resolved through context_stack), honor the intent — stripping would
     // silently lose data. See utils/plot-intent.ts.
-    const FIELD_LEVEL_CATEGORIES = new Set([
-      'sueldos', 'arrendamiento', 'alquiler', 'servicios', 'impuestos',
-      'contabilidad', 'administración', 'administracion', 'gastos generales',
-    ]);
+    // The category set lives in utils/field-level-categories.ts — the "Para
+    // revisar" rules need the same list to avoid flagging this deliberate strip
+    // as a user mistake (invariante 3).
+    const { isFieldLevelCategory } = await import('../../utils/field-level-categories.js');
     const { userExplicitlyReferencedPlot } = await import('../../utils/plot-intent.js');
     const isFieldLevelExpense = !plotName
-      && FIELD_LEVEL_CATEGORIES.has((data.category || '').toLowerCase())
+      && isFieldLevelCategory(data.category)
       && !userExplicitlyReferencedPlot(text);
     if (isFieldLevelExpense && plotId) {
       plotId = null;
