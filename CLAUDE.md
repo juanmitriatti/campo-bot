@@ -357,6 +357,7 @@ Gated by admin settings (ship dark, flip when ready):
 - **[docs/architecture.md](docs/architecture.md)** — full implementation reference
 - **[docs/operations.md](docs/operations.md)** — deploy, env vars, migrations, settings
 - **[docs/features/stock.md](docs/features/stock.md)** / **[livestock.md](docs/features/livestock.md)** / **[documents.md](docs/features/documents.md)** — feature deep-dives
+- **[docs/features/dashboard.md](docs/features/dashboard.md)** — Resumen + navegación del dashboard: ventana de campaña, `/overview`, reglas de "Para revisar", `nav-model`
 
 ## Tests
 
