@@ -41,6 +41,7 @@ import { PendingTransactionStore, resolveReplacedPending, isCompletePending } fr
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { TypedPendingStore, clearAllTypedStores } from '../middleware/typed-pending-store.js';
+import { isOneShotCallback, consumeOnce } from '../middleware/one-shot-callbacks.js';
 import { tipEngine } from './tip-engine.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
@@ -1694,6 +1695,18 @@ export async function handleInteractiveReply(
   console.log(`[${ctx.channel}] INTERACTIVE:`, callbackId);
 
   conversationObserver.logMessageReceived(userId, { phone, messageType: 'interactive', messageLength: callbackId.length });
+
+  // Taps que ACUMULAN sobre una fila existente son de un solo uso: una segunda
+  // entrega del mismo botón (doble toque, solape de deploy) no deja una fila
+  // duplicada y visible sino un número inflado e indistinguible del real.
+  // Ver middleware/one-shot-callbacks.ts.
+  if (isOneShotCallback(callbackId) && !consumeOnce(userId, callbackId)) {
+    console.log(`[INTERCEPT] tap repetido ignorado user=${userId} cb=${callbackId}`);
+    return [{
+      type: 'text',
+      text: '✅ Esa lluvia ya la registré con ese toque. No la sumé de nuevo.\nSi de verdad llovió otra vez, escribime los milímetros nuevos.',
+    }];
+  }
 
   // Branches específicos del canal (doc_* en tg/wa) — primero, para que el
   // canal pueda interceptar sus propios callbacks.
