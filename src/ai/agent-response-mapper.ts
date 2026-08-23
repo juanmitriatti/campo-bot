@@ -1049,6 +1049,7 @@ export class AgentResponseMapper {
     // Ranking entre campañas (campaign_stats view='rank'). Sin este mapeo
     // explícito los params llegan en snake_case y el handler los lee undefined
     // — el genérico no los copia (invariante 2).
+    if (input.movement_type != null) cmd.movementType = input.movement_type;
     if (input.group_by != null) cmd.groupBy = input.group_by;
     if (input.metric != null) cmd.metric = input.metric;
     if (input.top_n != null) cmd.topN = input.top_n;
