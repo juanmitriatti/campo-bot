@@ -25,6 +25,9 @@ const CASES = [
   'aftosa',
   // Consulta read-only: escapa, pero isReadOnlyQuery la responde y restaura.
   'movimientos de hacienda',
+  'historial sanitario del lote Norte',
+  'historial reproductivo',
+  'evolución de peso de los novillos',
 ];
 
 for (const t of CASES) {

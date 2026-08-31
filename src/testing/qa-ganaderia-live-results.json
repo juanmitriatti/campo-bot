@@ -1,16 +1,16 @@
 {
   "base": "http://localhost:3000",
-  "email": "qa-fix-6629@campo.test",
-  "userId": 11107,
+  "email": "qa-final4-9474@campo.test",
+  "userId": 11196,
   "summary": {
-    "total": 49,
-    "ok": 43,
-    "fail": 6
+    "total": 51,
+    "ok": 51,
+    "fail": 0
   },
   "finalState": {
     "animals": 5,
-    "groups": 4,
-    "cabezas": 173,
+    "groups": 6,
+    "cabezas": 153,
     "issues": []
   },
   "steps": [
@@ -41,7 +41,7 @@
     {
       "group": "setup",
       "sent": "agregar lote Norte al campo La Federala",
-      "reply": "📍 Lote *Norte* creado en campo *La Federala* 🌾 *¡Campo y lotes creados, QA Fix!* Ya podés registrar. Probá con tus propios lotes: 💰 *\"Gasté 50000 en gasoil\"* 🌱 *\"Sembré soja en Norte\"* · *\"Fumigué Norte con glifosato\"* 🐄 *\"Compré 40 vacas a 900 mil c/u\"* 🌧 *\"Llovieron 25 mm\"* · *\"¿Va a llover?\"* 🎙 También podés mandarme un *audio* o la *foto de una factura* — los entiendo igual. 👉 *Empezá ahora: contame el último gasto que hiciste.* _(Escribí *menú* para ver todo lo demás — reportes, stock, recordatorios, pizarra.)_ 📐 ¿Cuántas hectáreas tiene *Norte*? _Escribí *saltar* si querés cargarla después._",
+      "reply": "📍 Lote *Norte* creado en campo *La Federala* 🌾 *¡Campo y lotes creados, QA F4!* Ya podés registrar. Probá con tus propios lotes: 💰 *\"Gasté 50000 en gasoil\"* 🌱 *\"Sembré soja en Norte\"* · *\"Fumigué Norte con glifosato\"* 🐄 *\"Compré 40 vacas a 900 mil c/u\"* 🌧 *\"Llovieron 25 mm\"* · *\"¿Va a llover?\"* 🎙 También podés mandarme un *audio* o la *foto de una factura* — los entiendo igual. 👉 *Empezá ahora: contame el último gasto que hiciste.* _(Escribí *menú* para ver todo lo demás — reportes, stock, recordatorios, pizarra.)_ 📐 ¿Cuántas hectáreas tiene *Norte*? _Escribí *saltar* si querés cargarla después._",
       "ok": true,
       "why": "",
       "isNew": false
@@ -121,9 +121,9 @@
     {
       "group": "grupos",
       "sent": "pasé 10 terneros a novillitos en el lote Sur",
-      "reply": "Necesito el origen (lote o corral). ¿Y ahora?",
-      "ok": false,
-      "why": "falta \"10\"",
+      "reply": "🔁 *Recategorización* Ternero → *Novillito* ↗️ 10 animales Desde: *Sur (La Federala)* (quedan 28) Hacia: *Sur (La Federala)* (ahora 10)",
+      "ok": true,
+      "why": "",
       "isNew": false
     },
     {
@@ -137,15 +137,15 @@
     {
       "group": "grupos",
       "sent": "inventario de hacienda",
-      "reply": "📊 *Resumen hacienda* — total *153 cabezas* 🐮 *Por categoría:* • Vacas: 100 cabezas • Terneros: 53 cabezas 📍 *Por ubicación:* • La Federala / Norte: 105 cabezas • La Federala / Sur: 48 cabezas",
-      "ok": false,
-      "why": "falta \"animales\"",
+      "reply": "🐄 *Hacienda total: 153 animales* 📍 La Federala / Norte • Vaca Angus: *90* • Ternero: *15* 📍 La Federala / Sur • Vaca: *10* • Ternero: *28* • Novillito: *10*",
+      "ok": true,
+      "why": "",
       "isNew": false
     },
     {
       "group": "grupos",
       "sent": "historial de hacienda",
-      "reply": "🐄 *Movimientos de hacienda* (todo el historial) *Totales:* • ➖ Ventas/salidas: *20* • 🐣 Nacimientos: *15* • 💀 Muertes: *2* • ↔️ Transferencias: *30* • ➕ Entradas: *160* *Últimos:* 31/08/2026: -20 vaca (lote Sur (La Federala)) · $1.800/cab · Venta / egreso 31/08/2026: +15 ternero (lote Norte (La Federala)) · Nacimiento 31/08/2026: -2 ternero (lote Sur (La Federala)) 31/08/2026: ↔30 vaca (lote Norte (La Federala)) · Transferencia 31/08/2026: +40 ternero (lote Sur (La Federala)) · Compra / ingreso 31/08/2026: +120 vaca (lote Norte (La Federala)) · $1.500.000/cab · Compra / ingreso",
+      "reply": "🐄 *Movimientos de hacienda* (todo el historial) *Totales:* • ➖ Ventas/salidas: *20* • 🔄 Recategorizaciones: *10* • 🐣 Nacimientos: *15* • 💀 Muertes: *2* • ↔️ Transferencias: *30* • ➕ Entradas: *160* *Últimos:* 31/08/2026: -20 vaca (lote Sur (La Federala)) · $1.800/cab · Venta / egreso 31/08/2026: ↔10 ternero (lote Sur (La Federala)) · Recategorización 31/08/2026: +15 ternero (lote Norte (La Federala)) · Nacimiento 31/08/2026: -2 ternero (lote Sur (La Federala)) 31/08/2026: ↔30 vaca (lote Norte (La Federala)) · Transferencia 31/08/2026: +40 ternero (lote Sur (La Federala)) · Compra / ingreso 31/08/2026: +120 vaca (lote Norte (La Federala)) · $1.500.000/cab · Compra / ingreso",
       "ok": true,
       "why": "",
       "isNew": false
@@ -153,7 +153,7 @@
     {
       "group": "grupos",
       "sent": "cuántos animales tengo en el lote Sur",
-      "reply": "🐄 *48 animales* (filtrado) 📍 La Federala / Sur • Vaca: *10* • Ternero: *38*",
+      "reply": "🐄 *48 animales* (filtrado) 📍 La Federala / Sur • Vaca: *10* • Ternero: *28* • Novillito: *10*",
       "ok": true,
       "why": "",
       "isNew": false
@@ -169,7 +169,15 @@
     {
       "group": "sanidad",
       "sent": "desparasité los terneros del lote Sur con ivermectina",
-      "reply": "💉 *Evento sanitario registrado* Tipo: Desparasitación 🦠 ivermectina 🐄 38 Terneros 📍 lote Sur (La Federala)",
+      "reply": "¿A cuántos animales?",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "sanidad",
+      "sent": "28",
+      "reply": "💉 *Evento sanitario registrado* Tipo: Desparasitación 🦠 ivermectina 🐄 28 Terneros 📍 Sur (La Federala)",
       "ok": true,
       "why": "",
       "isNew": false
@@ -210,22 +218,30 @@
       "group": "pesaje",
       "sent": "pesé los novillitos del lote Sur, 280 kg promedio",
       "reply": "¿A cuántos animales?",
-      "ok": false,
-      "why": "falta \"280\"",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "pesaje",
+      "sent": "10",
+      "reply": "⚖️ *Pesaje registrado* 🐄 10 Novillitos 📊 Peso promedio: *280 kg* 📍 Sur (La Federala)",
+      "ok": true,
+      "why": "",
       "isNew": false
     },
     {
       "group": "pesaje",
       "sent": "cuánto pesan los novillitos",
-      "reply": "⚖️ No hay pesajes registrados con esos filtros. ¿A cuántos animales?",
-      "ok": false,
-      "why": "falta \"280\"",
+      "reply": "⚖️ *Pesajes* 📅 31/08/2026: 280 kg (10 novillito) — 📍 lote Sur (La Federala)",
+      "ok": true,
+      "why": "",
       "isNew": false
     },
     {
       "group": "feedlot",
       "sent": "crear feedlot en el campo La Federala",
-      "reply": "💡 Dejé pendiente *el pesaje*. Me faltaban datos (producto/cantidad) — contámelo completo cuando quieras. 🏗️ *Feedlot creado* 📛 Feedlot La Federala 📍 La Federala Creá corrales con \"crear corral 1\".",
+      "reply": "🏗️ *Feedlot creado* 📛 feedlot 📍 La Federala Creá corrales con \"crear corral 1\".",
       "ok": true,
       "why": "",
       "isNew": false
@@ -233,7 +249,7 @@
     {
       "group": "feedlot",
       "sent": "crear corral 1 con capacidad 5",
-      "reply": "🔲 *Corral creado* 📛 1 🏗️ Feedlot La Federala (La Federala) 📊 Capacidad: 5",
+      "reply": "🔲 *Corral creado* 📛 1 🏗️ feedlot (La Federala) 📊 Capacidad: 5",
       "ok": true,
       "why": "",
       "isNew": false
@@ -241,9 +257,9 @@
     {
       "group": "feedlot",
       "sent": "mové 10 novillitos del lote Sur al corral 1",
-      "reply": "❌ No hay novillito en el lote Sur. ¿Y ahora?",
-      "ok": false,
-      "why": "falta \"capacidad\"",
+      "reply": "🔄 *Transferencia* Novillito ↗️ 10 animales Desde: *Sur (La Federala)* (quedan 0) Hacia: *Corral 1 (feedlot — La Federala)* (ahora 10) ⚠️ El corral 1 queda con 10 animales y tiene capacidad configurada para 5 (5 de más).",
+      "ok": true,
+      "why": "",
       "isNew": true
     },
     {
@@ -337,7 +353,7 @@
     {
       "group": "rfid",
       "sent": "qué pasó con la caravana 0000000103",
-      "reply": "🐄 *Vaca 032 01 0000000103* Estado: Activo Sexo: Hembra 🧬 Angus 📍 Lote Sur 📜 *Historial* 31/08/2026 🔄 Movimiento — Norte → Lote Sur 31/08/2026 📥 Ingreso — alta_manual 31/08/2026 🏷️ Identificación — rfid",
+      "reply": "🐄 *Vaca 032 01 0000000103* Estado: Activo Sexo: Hembra 🧬 Angus 📍 Lote Sur 📜 *Historial* 31/08/2026 🏷️ Identificación — rfid 31/08/2026 📥 Ingreso — alta_manual 31/08/2026 🔄 Movimiento — Norte → Lote Sur",
       "ok": true,
       "why": "",
       "isNew": true
@@ -353,7 +369,7 @@
     {
       "group": "reid",
       "sent": "dónde está la caravana 0000000201",
-      "reply": "🐄 *Vaca 032 01 0000000201* Estado: Activo Sexo: Hembra 🧬 Angus 📍 Lote Sur 📜 *Historial* 31/08/2026 🏷️ Identificación — rfid 31/08/2026 🔄 Movimiento — Norte → Lote Sur 31/08/2026 🔁 Re-identificación — 032 01 0000000101 → 032 01 0000000201 31/08/2026 📥 Ingreso — alta_manual",
+      "reply": "🐄 *Vaca 032 01 0000000201* Estado: Activo Sexo: Hembra 🧬 Angus 📍 Lote Sur 📜 *Historial* 31/08/2026 🏷️ Identificación — rfid 31/08/2026 🔁 Re-identificación — 032 01 0000000101 → 032 01 0000000201 31/08/2026 🔄 Movimiento — Norte → Lote Sur 31/08/2026 📥 Ingreso — alta_manual",
       "ok": true,
       "why": "",
       "isNew": true
@@ -361,7 +377,7 @@
     {
       "group": "reid",
       "sent": "dónde está la caravana 0000000101",
-      "reply": "❌ No tengo ningún animal con la caravana 0000000101. Si lo querés dar de alta: «dar de alta una vaca con caravana 0000000101».",
+      "reply": "❌ No tengo ningún animal con la caravana 032 01 0000000101. Si lo querés dar de alta: «dar de alta una vaca con caravana 032010000000101».",
       "ok": true,
       "why": "",
       "isNew": true
@@ -377,7 +393,7 @@
     {
       "group": "mov",
       "sent": "revertí el último movimiento",
-      "reply": "↩️ *Movimiento revertido* Entrada de 20 animales (reversa de salida) _El movimiento original queda en el historial; la reversión se registró aparte y lo referencia._",
+      "reply": "↩️ *Movimiento revertido* transferencia de 10 animales (reversa) _El movimiento original queda en el historial; la reversión se registró aparte y lo referencia._",
       "ok": true,
       "why": "",
       "isNew": true
@@ -385,7 +401,7 @@
     {
       "group": "regresion",
       "sent": "mové 20 vacas del lote Norte al lote Sur",
-      "reply": "🔄 *Transferencia* Vaca Angus ↗️ 20 animales Desde: *Norte (La Federala)* (quedan 70) Hacia: *Sur (La Federala)* (ahora 50)",
+      "reply": "🔄 *Transferencia* Vaca Angus ↗️ 20 animales Desde: *Norte (La Federala)* (quedan 70) Hacia: *Sur (La Federala)* (ahora 30)",
       "ok": true,
       "why": "",
       "isNew": false
@@ -393,7 +409,7 @@
     {
       "group": "regresion",
       "sent": "cuántas vacas tengo",
-      "reply": "📊 *Resumen hacienda — vaca* — total *120 cabezas* 🐮 *Por categoría:* • Vacas: 120 cabezas 📍 *Por ubicación:* • La Federala / Norte: 70 cabezas • La Federala / Sur: 50 cabezas",
+      "reply": "🐄 *Vaca: 100* 📍 La Federala / Norte • Vaca Angus: *70* 📍 La Federala / Sur • Vaca: *30*",
       "ok": true,
       "why": "",
       "isNew": false
@@ -401,9 +417,9 @@
     {
       "group": "regresion",
       "sent": "inventario de hacienda",
-      "reply": "📊 *Resumen hacienda* — total *173 cabezas* 🐮 *Por categoría:* • Vacas: 120 cabezas • Terneros: 53 cabezas 📍 *Por ubicación:* • La Federala / Sur: 88 cabezas • La Federala / Norte: 85 cabezas",
-      "ok": false,
-      "why": "falta \"animales\"",
+      "reply": "📊 *Resumen hacienda* — total *153 cabezas* · ~2.800 kg 🐮 *Por categoría:* • Vacas: 100 cabezas • Terneros: 43 cabezas • Novillitos: 10 cabezas (~2.800 kg) 📍 *Por ubicación:* • La Federala / Norte: 85 cabezas • La Federala / Sur: 68 cabezas",
+      "ok": true,
+      "why": "",
       "isNew": false
     }
   ]

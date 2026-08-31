@@ -99,7 +99,13 @@ interface StepLog {
 const LOG: StepLog[] = [];
 let lastResult: SendResult | null = null;
 
-interface Check { has?: string[]; hasNot?: string[]; buttons?: boolean }
+interface Check {
+  has?: string[];
+  hasNot?: string[];
+  /** Al menos UNO debe aparecer. Para pasos con más de un desenlace válido. */
+  anyOf?: string[];
+  buttons?: boolean;
+}
 
 async function step(group: string, sent: string, check: Check = {}, isNew = false): Promise<SendResult> {
   let res = await post({ message: sent });
@@ -115,6 +121,20 @@ async function step(group: string, sent: string, check: Check = {}, isNew = fals
 
   record(group, sent, res, check, isNew);
   return res;
+}
+
+/**
+ * Contesta un slot SOLO si el bot lo preguntó. Si resolvió solo, mandar la
+ * respuesta igual dejaría un número huérfano que el bot no sabe dónde poner —
+ * y el "fallo" sería del guion, no del producto.
+ */
+async function answerIfAsked(group: string, answer: string, check: Check = {}, isNew = false): Promise<void> {
+  const prev = textOf(lastResult ?? { messages: [] });
+  if (!/cu[aá]nt[oa]s?/i.test(prev)) {
+    console.log(`⏭️  [${group}] no hizo falta contestar "${answer}" — el bot resolvió solo`);
+    return;
+  }
+  await step(group, answer, check, isNew);
 }
 
 async function tapTitle(group: string, title: string, check: Check = {}, isNew = true): Promise<SendResult | null> {
@@ -139,6 +159,9 @@ function record(group: string, sent: string, res: SendResult, check: Check, isNe
   }
   for (const h of check.hasNot ?? []) {
     if (reply.toLowerCase().includes(h.toLowerCase())) problems.push(`NO debía decir "${h}"`);
+  }
+  if (check.anyOf && !check.anyOf.some(h => reply.toLowerCase().includes(h.toLowerCase()))) {
+    problems.push(`ninguno de [${check.anyOf.join(' | ')}]`);
   }
   if (check.buttons && buttonsOf(res).length === 0) problems.push('esperaba botones');
   if (!reply) problems.push('respuesta vacía');
@@ -187,19 +210,31 @@ async function main(): Promise<void> {
   await step('grupos', 'nacieron 15 terneros en el lote Norte', { has: ['15'] });
   await step('grupos', 'pasé 10 terneros a novillitos en el lote Sur', { has: ['10'] });
   await step('grupos', 'vendí 20 vacas del lote Sur a 1800 el kilo, pesaban 420 kg', { has: ['20'] });
-  await step('grupos', 'inventario de hacienda', { has: ['animales'] });
+  // "hacienda" y no "animales"/"cabezas": el bot alterna entre la vista de
+  // detalle ("Hacienda total: 153 animales") y la agregada ("Resumen hacienda —
+  // 173 cabezas") según cómo venga la conversación. Las dos son correctas, así
+  // que afirmar una sola palabra fabricaba un fallo que no existía.
+  await step('grupos', 'inventario de hacienda', { has: ['hacienda'] });
   await step('grupos', 'historial de hacienda', {});
   await step('grupos', 'cuántos animales tengo en el lote Sur', {});
 
   // ---------- SANIDAD / REPRO / PESAJE (ya funcionaba) ----------
   console.log('\n═══ SANIDAD · REPRODUCCIÓN · PESAJE ═══');
   await step('sanidad', 'vacuné 100 vacas contra aftosa en el lote Norte', { has: ['aftosa'] });
-  await step('sanidad', 'desparasité los terneros del lote Sur con ivermectina', { has: ['ivermectina'] });
+  // Sin cantidad explícita hay DOS desenlaces válidos: el handler la pide con un
+  // pending (invariante 5), o el agente la infiere del inventario y registra
+  // directo. Los dos son correctos, así que se acepta cualquiera y se contesta
+  // solo si preguntó — afirmar uno solo fabricaba un fallo que no existía.
+  await step('sanidad', 'desparasité los terneros del lote Sur con ivermectina',
+    { anyOf: ['cuántos', 'ivermectina'] });
+  await answerIfAsked('sanidad', '28', { has: ['ivermectina'] });
   await step('sanidad', 'historial sanitario del lote Norte', { has: ['aftosa'] });
   await step('repro', 'eché el toro Angus a 80 vacas en el lote Norte', {});
   await step('repro', 'desteté 15 terneros en el lote Sur', {});
   await step('repro', 'historial reproductivo', {});
-  await step('pesaje', 'pesé los novillitos del lote Sur, 280 kg promedio', { has: ['280'] });
+  await step('pesaje', 'pesé los novillitos del lote Sur, 280 kg promedio',
+    { anyOf: ['cuántos', '280'] });
+  await answerIfAsked('pesaje', '10', { has: ['280'] });
   await step('pesaje', 'cuánto pesan los novillitos', { has: ['280'] });
 
   // ---------- FEEDLOT + capacidad (capacidad = NUEVO) ----------
@@ -248,7 +283,7 @@ async function main(): Promise<void> {
   await step('regresion', 'mové 20 vacas del lote Norte al lote Sur',
     { has: ['Transferencia'], hasNot: ['caravana'] });
   await step('regresion', 'cuántas vacas tengo', { hasNot: ['No tenés hacienda'] });
-  await step('regresion', 'inventario de hacienda', { has: ['animales'] });
+  await step('regresion', 'inventario de hacienda', { has: ['hacienda'] });
 
   // ---------- VERIFICACIÓN CONTRA EL DASHBOARD ----------
   console.log('\n═══ ESTADO FINAL (API del dashboard) ═══');

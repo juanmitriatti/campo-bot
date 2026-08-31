@@ -83,7 +83,14 @@ const ACTION_VERB = /\b(gaste|pague|pago|compre|compro|abone|vendi|vendo|cobre|c
 
 // Query / read intents — clima, reportes, listados, "¿cuánto…?". During a flow
 // these mean "stop the registration and answer me", not flow input.
-const QUERY_INTENT = /\b(clima|pronostico|va a llover|lluvia\?|temperatura|reporte|informe|resumen|como vamos|como venimos|cuanto|cuanta|cuantas|cuantos|que cultivo|que sembr|que lotes?|que campos?|lotes tengo|campos tengo|mis lotes|mis campos|mis gastos|mis ingresos|lista\w*|mostr\w*|stock|hacienda|cuanto gaste|cuanto cobre|saldo|balance|rinde|menu|ayuda)\b/;
+//
+// `historial|historico|evolucion` se agregaron tras el mismo bug de prod que los
+// verbos de creación: con "¿A cuántos animales?" abierto, "historial sanitario
+// del lote Norte" no tenía verbo NI palabra de consulta, así que el pending se
+// lo tragaba. Al ser palabras de consulta puras (sin verbo de acción),
+// isReadOnlyQuery las reconoce y el pipeline hace lo correcto: responde la
+// consulta y VUELVE a preguntar el slot, sin descartar el pending.
+const QUERY_INTENT = /\b(clima|pronostico|va a llover|lluvia\?|temperatura|reporte|informe|resumen|historial|historico|evolucion|como vamos|como venimos|cuanto|cuanta|cuantas|cuantos|que cultivo|que sembr|que lotes?|que campos?|lotes tengo|campos tengo|mis lotes|mis campos|mis gastos|mis ingresos|lista\w*|mostr\w*|stock|hacienda|cuanto gaste|cuanto cobre|saldo|balance|rinde|menu|ayuda)\b/;
 
 /**
  * Broad, accent-safe "this message is a NEW action or a query — not an answer
