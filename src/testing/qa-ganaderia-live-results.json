@@ -1,0 +1,410 @@
+{
+  "base": "http://localhost:3000",
+  "email": "qa-gan-final-5309@campo.test",
+  "userId": 10909,
+  "summary": {
+    "total": 49,
+    "ok": 42,
+    "fail": 7
+  },
+  "finalState": {
+    "animals": 5,
+    "groups": 5,
+    "cabezas": 173,
+    "issues": []
+  },
+  "steps": [
+    {
+      "group": "setup",
+      "sent": "agregar campo La Federala",
+      "reply": "¿Cómo querés ubicar el campo?",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "setup",
+      "sent": "[tap \"Escribir localidad\"]",
+      "reply": "¿En qué localidad está el campo?",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "setup",
+      "sent": "Pergamino",
+      "reply": "📍 Campo *La Federala* creado correctamente. Ubicación: Pergamino, Buenos Aires ¿Próximo paso?",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "setup",
+      "sent": "agregar lote Norte al campo La Federala",
+      "reply": "📍 Lote *Norte* creado en campo *La Federala* 🌾 *¡Campo y lotes creados, QA Gan Final!* Ya podés registrar. Probá con tus propios lotes: 💰 *\"Gasté 50000 en gasoil\"* 🌱 *\"Sembré soja en Norte\"* · *\"Fumigué Norte con glifosato\"* 🐄 *\"Compré 40 vacas a 900 mil c/u\"* 🌧 *\"Llovieron 25 mm\"* · *\"¿Va a llover?\"* 🎙 También podés mandarme un *audio* o la *foto de una factura* — los entiendo igual. 👉 *Empezá ahora: contame el último gasto que hiciste.* _(Escribí *menú* para ver todo lo demás — reportes, stock, recordatorios, pizarra.)_ 📐 ¿Cuántas hectáreas tiene *Norte*? _Escribí *saltar* si querés cargarla después._",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "setup",
+      "sent": "150",
+      "reply": "📍 Lote *Norte*: superficie actualizada a *150 ha*",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "setup",
+      "sent": "agregar lote Sur al campo La Federala",
+      "reply": "📍 Lote *Sur* creado en campo *La Federala* 📐 ¿Cuántas hectáreas tiene *Sur*? _Escribí *saltar* si querés cargarla después._",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "setup",
+      "sent": "90",
+      "reply": "📍 Lote *Sur*: superficie actualizada a *90 ha*",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "grupos",
+      "sent": "compré 120 vacas Angus para el lote Norte a 1.500.000 cada una",
+      "reply": "🐄 *Hacienda registrada* Vaca Angus (nuevo grupo) ➕ 120 animales 📊 Total: *120* 📍 Norte (La Federala) 💸 Gasto registrado: $180.000.000 (Hacienda) 💡 Si hacés engorde a corral, podés crear un feedlot con \"nuevo feedlot en La Federala\".",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "grupos",
+      "sent": "agregué 40 terneros al lote Sur",
+      "reply": "🐄 *Hacienda registrada* Ternero (nuevo grupo) ➕ 40 animales 📊 Total: *40* 📍 Sur (La Federala)",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "grupos",
+      "sent": "cuántas vacas tengo",
+      "reply": "🐄 *Vaca: 120* 📍 La Federala / Norte • Vaca Angus: *120*",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "grupos",
+      "sent": "mové 30 vacas del lote Norte al lote Sur",
+      "reply": "🔄 *Transferencia* Vaca Angus ↗️ 30 animales Desde: *Norte (La Federala)* (quedan 90) Hacia: *Sur (La Federala)* (ahora 30)",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "grupos",
+      "sent": "se murieron 2 terneros en el lote Sur",
+      "reply": "💀 *Baja registrada* Ternero ➖ 2 animales 📊 Quedan: *38* 📍 Sur (La Federala) ¿Y ahora?",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "grupos",
+      "sent": "nacieron 15 terneros en el lote Norte",
+      "reply": "🐣 *Nacimiento registrado* Ternero ➕ 15 animales 📊 Total: *15* 📍 Norte (La Federala) ¿Y ahora?",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "grupos",
+      "sent": "pasé 10 terneros a novillitos en el lote Sur",
+      "reply": "🔁 *Recategorización* Ternero → *Novillito* ↗️ 10 animales Desde: *Sur (La Federala)* (quedan 28) Hacia: *Sur (La Federala)* (ahora 10)",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "grupos",
+      "sent": "vendí 20 vacas del lote Sur a 1800 el kilo, pesaban 420 kg",
+      "reply": "🐄 *Hacienda descontada* Vaca ➖ 20 animales 📊 Quedan: *10* 📍 Sur (La Federala) 💰 Ingreso registrado: $15.120.000 (Hacienda)",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "grupos",
+      "sent": "inventario de hacienda",
+      "reply": "📊 *Resumen hacienda* — total *153 cabezas* 🐮 *Por categoría:* • Vacas: 100 cabezas • Terneros: 43 cabezas • Novillitos: 10 cabezas 📍 *Por ubicación:* • La Federala / Norte: 105 cabezas • La Federala / Sur: 48 cabezas",
+      "ok": false,
+      "why": "falta \"animales\"",
+      "isNew": false
+    },
+    {
+      "group": "grupos",
+      "sent": "historial de hacienda",
+      "reply": "🐄 *Movimientos de hacienda* (todo el historial) *Totales:* • ➖ Ventas/salidas: *20* • 🔄 Recategorizaciones: *10* • 🐣 Nacimientos: *15* • 💀 Muertes: *2* • ↔️ Transferencias: *30* • ➕ Entradas: *160* *Últimos:* 31/08/2026: -20 vaca (lote Sur (La Federala)) · $1.800/cab · Venta / egreso 31/08/2026: ↔10 ternero (lote Sur (La Federala)) · Recategorización 31/08/2026: +15 ternero (lote Norte (La Federala)) · Nacimiento 31/08/2026: -2 ternero (lote Sur (La Federala)) 31/08/2026: ↔30 vaca (lote Norte (La Federala)) · Transferencia 31/08/2026: +40 ternero (lote Sur (La Federala)) · Compra / ingreso 31/08/2026: +120 vaca (lote Norte (La Federala)) · $1.500.000/cab · Compra / ingreso",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "grupos",
+      "sent": "cuántos animales tengo en el lote Sur",
+      "reply": "🐄 *48 animales* (filtrado) 📍 La Federala / Sur • Vaca: *10* • Ternero: *28* • Novillito: *10*",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "sanidad",
+      "sent": "vacuné 100 vacas contra aftosa en el lote Norte",
+      "reply": "💉 *Evento sanitario registrado* Tipo: Vacunación 🦠 aftosa 🐄 100 Vacas 📍 lote Norte (La Federala)",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "sanidad",
+      "sent": "desparasité los terneros del lote Sur con ivermectina",
+      "reply": "¿A cuántos animales?",
+      "ok": false,
+      "why": "falta \"ivermectina\"",
+      "isNew": false
+    },
+    {
+      "group": "sanidad",
+      "sent": "historial sanitario del lote Norte",
+      "reply": "¿A cuántos animales?",
+      "ok": false,
+      "why": "falta \"aftosa\"",
+      "isNew": false
+    },
+    {
+      "group": "repro",
+      "sent": "eché el toro Angus a 80 vacas en el lote Norte",
+      "reply": "💡 Dejé pendiente *el evento sanitario*. Me faltaban datos (producto/cantidad) — contámelo completo cuando quieras. 🐂 *Evento reproductivo registrado* Tipo: Servicio (entore) 🐄 80 Vacas 🐂 toro Angus 📍 lote Norte (La Federala)",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "repro",
+      "sent": "desteté 15 terneros en el lote Sur",
+      "reply": "🍼 *Evento reproductivo registrado* Tipo: Destete 🐄 15 Terneros 📍 lote Sur (La Federala)",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "repro",
+      "sent": "historial reproductivo",
+      "reply": "🐂 *Historial reproductivo* 📅 31/08/2026: Destete (15 ternero) — 📍 lote Sur (La Federala) 📅 31/08/2026: Servicio (entore) — toro Angus (80 vaca) — 📍 lote Norte (La Federala)",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "pesaje",
+      "sent": "pesé los novillitos del lote Sur, 280 kg promedio",
+      "reply": "¿A cuántos animales?",
+      "ok": false,
+      "why": "falta \"280\"",
+      "isNew": false
+    },
+    {
+      "group": "pesaje",
+      "sent": "cuánto pesan los novillitos",
+      "reply": "⚖️ No hay pesajes registrados con esos filtros. ¿A cuántos animales?",
+      "ok": false,
+      "why": "falta \"280\"",
+      "isNew": false
+    },
+    {
+      "group": "feedlot",
+      "sent": "crear feedlot en el campo La Federala",
+      "reply": "¿A cuántos animales?",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "feedlot",
+      "sent": "crear corral 1 con capacidad 5",
+      "reply": "⚖️ *Pesaje registrado* 🐄 5 Novillitos 📊 Peso promedio: *280 kg* 📍 Sur (La Federala)",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "feedlot",
+      "sent": "mové 10 novillitos del lote Sur al corral 1",
+      "reply": "🔍 No encontré el corral *1* (no tenés feedlots). ¿Querés que cree el feedlot y el corral, y registre la operación?",
+      "ok": false,
+      "why": "falta \"capacidad\"",
+      "isNew": true
+    },
+    {
+      "group": "individual",
+      "sent": "dar de alta una vaca Angus con caravana 032 01 0000000101 en el lote Norte",
+      "reply": "🏷️ *Animal registrado* Vaca 032 01 0000000101 🧬 Angus 📍 Lote Norte",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "individual",
+      "sent": "dar de alta una vaca Angus con caravana 032 01 0000000102 en el lote Norte",
+      "reply": "🏷️ *Animal registrado* Vaca 032 01 0000000102 🧬 Angus 📍 Lote Norte",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "individual",
+      "sent": "dar de alta una vaca Angus con caravana 032 01 0000000103 en el lote Norte",
+      "reply": "🏷️ *Animal registrado* Vaca 032 01 0000000103 🧬 Angus 📍 Lote Norte",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "individual",
+      "sent": "dar de alta una vaca Angus con caravana 032 01 0000000104 en el lote Norte",
+      "reply": "🏷️ *Animal registrado* Vaca 032 01 0000000104 🧬 Angus 📍 Lote Norte",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "individual",
+      "sent": "dar de alta una vaca Angus con caravana 032 01 0000000105 en el lote Norte",
+      "reply": "🏷️ *Animal registrado* Vaca 032 01 0000000105 🧬 Angus 📍 Lote Norte",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "individual",
+      "sent": "qué pasó con la caravana 0000000101",
+      "reply": "🐄 *Vaca 032 01 0000000101* Estado: Activo Sexo: Hembra 🧬 Angus 📍 Lote Norte 📜 *Historial* 31/08/2026 📥 Ingreso — alta_manual 31/08/2026 🏷️ Identificación — rfid",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "individual",
+      "sent": "qué animales tengo con caravana",
+      "reply": "🐄 *5 animales* • Vaca 032 01 0000000105 — Lote Norte • Vaca 032 01 0000000104 — Lote Norte • Vaca 032 01 0000000103 — Lote Norte • Vaca 032 01 0000000102 — Lote Norte • Vaca 032 01 0000000101 — Lote Norte",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "individual",
+      "sent": "dónde está la caravana 0000000999",
+      "reply": "❌ No tengo ningún animal con la caravana 0000000999. Si lo querés dar de alta: «dar de alta una vaca con caravana 0000000999».",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "rfid",
+      "sent": "032010000000101\n032010000000102\n032010000000103\n032010000000104\n032010000000105\n032010000000901",
+      "reply": "🔎 Leí 6 identificadores y encontré 5 animales. • 5 en Lote Norte • 1 sin registrar en tu rodeo ¿Qué querés hacer con estos 5?",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "rfid",
+      "sent": "[tap \"🔄 Moverlos\"]",
+      "reply": "📍 ¿A qué lote o corral muevo los 5?",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "rfid",
+      "sent": "Sur",
+      "reply": "🔄 *5 animales movidos* 📍 Hacia Lote Sur",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "rfid",
+      "sent": "qué pasó con la caravana 0000000103",
+      "reply": "🐄 *Vaca 032 01 0000000103* Estado: Activo Sexo: Hembra 🧬 Angus 📍 Lote Sur 📜 *Historial* 31/08/2026 🏷️ Identificación — rfid 31/08/2026 📥 Ingreso — alta_manual 31/08/2026 🔄 Movimiento — Norte → Lote Sur",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "reid",
+      "sent": "la 0000000101 perdió la caravana, le puse la 032 01 0000000201",
+      "reply": "🔁 *Caravana reemplazada* Vaca Anterior: 032 01 0000000101 Nueva: *032 01 0000000201* 📍 Lote Sur _La anterior queda en el historial del animal._",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "reid",
+      "sent": "dónde está la caravana 0000000201",
+      "reply": "🐄 *Vaca 032 01 0000000201* Estado: Activo Sexo: Hembra 🧬 Angus 📍 Lote Sur 📜 *Historial* 31/08/2026 📥 Ingreso — alta_manual 31/08/2026 🔄 Movimiento — Norte → Lote Sur 31/08/2026 🔁 Re-identificación — 032 01 0000000101 → 032 01 0000000201 31/08/2026 🏷️ Identificación — rfid",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "reid",
+      "sent": "dónde está la caravana 0000000101",
+      "reply": "❌ No tengo ningún animal con la caravana 0000000101. Si lo querés dar de alta: «dar de alta una vaca con caravana 0000000101».",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "mov",
+      "sent": "mové la caravana 0000000102 y la 0000000104 al lote Norte",
+      "reply": "🔄 *2 animales movidos* 📍 Hacia Lote Norte",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "mov",
+      "sent": "revertí el último movimiento",
+      "reply": "↩️ *Movimiento revertido* Entrada de 20 animales (reversa de salida) _El movimiento original queda en el historial; la reversión se registró aparte y lo referencia._",
+      "ok": true,
+      "why": "",
+      "isNew": true
+    },
+    {
+      "group": "regresion",
+      "sent": "mové 20 vacas del lote Norte al lote Sur",
+      "reply": "🔄 *Transferencia* Vaca Angus ↗️ 20 animales Desde: *Norte (La Federala)* (quedan 70) Hacia: *Sur (La Federala)* (ahora 50)",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "regresion",
+      "sent": "cuántas vacas tengo",
+      "reply": "📊 *Resumen hacienda — vaca* — total *120 cabezas* 🐮 *Por categoría:* • Vacas: 120 cabezas 📍 *Por ubicación:* • La Federala / Norte: 70 cabezas • La Federala / Sur: 50 cabezas",
+      "ok": true,
+      "why": "",
+      "isNew": false
+    },
+    {
+      "group": "regresion",
+      "sent": "inventario de hacienda",
+      "reply": "📊 *Resumen hacienda* — total *173 cabezas* · ~2.800 kg 🐮 *Por categoría:* • Vacas: 120 cabezas • Terneros: 43 cabezas • Novillitos: 10 cabezas (~2.800 kg) 📍 *Por ubicación:* • La Federala / Sur: 88 cabezas • La Federala / Norte: 85 cabezas",
+      "ok": false,
+      "why": "falta \"animales\"",
+      "isNew": false
+    }
+  ]
+}
