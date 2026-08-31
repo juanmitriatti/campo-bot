@@ -328,6 +328,140 @@ const hollowFields: Rule = async ({ userId, fieldIds, range }) => {
   }];
 };
 
+/**
+ * 7. A group declares fewer head than the individual animals attached to it.
+ *
+ * The hybrid model deliberately allows PARTIAL individualization — a group of
+ * 100 with 60 identified animals is normal and must stay quiet. Only the excess
+ * is checkable nonsense: you cannot have 103 animals inside a group that says
+ * it holds 100.
+ */
+const livestockGroupVsIndividuals: Rule = async ({ userId, fieldIds }) => {
+  const { rows } = await pool.query(
+    `SELECT lg.id::text AS group_id, lg.count::int AS declared,
+            COUNT(a.id)::int AS individual, lg.category::text AS category,
+            f.id AS field_id, f.name AS field_name,
+            p.name AS plot_name, c.name AS corral_name
+       FROM livestock_groups lg
+       JOIN fields f ON f.id = lg.field_id
+       LEFT JOIN plots   p ON p.id = lg.plot_id
+       LEFT JOIN corrals c ON c.id = lg.corral_id
+       LEFT JOIN animals a
+              ON a.group_id = lg.id AND a.deleted_at IS NULL AND a.status = 'activo'
+      WHERE lg.user_id = $1 AND f.id = ANY($2::int[])
+        AND lg.deleted_at IS NULL AND f.deleted_at IS NULL
+      GROUP BY lg.id, lg.count, lg.category, f.id, f.name, p.name, c.name
+     HAVING COUNT(a.id) > lg.count`,
+    [userId, fieldIds],
+  );
+
+  return rows.map((r: Record<string, unknown>) => {
+    const loc = r.plot_name ? `lote ${r.plot_name}` : r.corral_name ? `corral ${r.corral_name}` : String(r.field_name);
+    return {
+      key: `livestock-group-excess-${r.group_id}`,
+      rule: 'livestock_group_vs_individuals',
+      severity: 'warn' as Severity,
+      title: `El grupo de ${r.category} en ${loc} no cierra`,
+      body: `Declara ${fmtNum(Number(r.declared))} animales, pero tiene ${fmtNum(Number(r.individual))} identificados individualmente. O falta ajustar la cantidad del grupo, o hay caravanas cargadas de más.`,
+      action: 'Ver hacienda',
+      ref: { type: 'field' as const, id: Number(r.field_id) },
+      fieldId: Number(r.field_id),
+    };
+  });
+};
+
+/**
+ * 8. A corral holding more head than its configured capacity.
+ *
+ * `capacity` is advisory by design (the handler warns and lets the operation
+ * through), so this is where a corral that stayed over capacity surfaces later.
+ * A corral with no capacity set is never reported: NULL means "not configured",
+ * not zero.
+ */
+const corralOvercapacity: Rule = async ({ userId, fieldIds }) => {
+  const { rows } = await pool.query(
+    `SELECT c.id, c.name AS corral_name, c.capacity::int AS capacity,
+            fl.name AS feedlot_name, f.id AS field_id,
+            occ.current
+       FROM corrals c
+       JOIN feedlots fl ON fl.id = c.feedlot_id
+       JOIN fields   f  ON f.id  = fl.field_id
+       JOIN LATERAL (
+         SELECT COALESCE(SUM(lg.count), 0)::int AS current
+           FROM livestock_groups lg
+          WHERE lg.corral_id = c.id AND lg.deleted_at IS NULL
+       ) occ ON TRUE
+      WHERE fl.user_id = $1 AND f.id = ANY($2::int[])
+        AND c.deleted_at IS NULL AND f.deleted_at IS NULL
+        AND c.capacity IS NOT NULL AND c.capacity > 0
+        AND occ.current > c.capacity`,
+    [userId, fieldIds],
+  );
+
+  return rows.map((r: Record<string, unknown>) => ({
+    key: `corral-over-${r.id}`,
+    rule: 'corral_overcapacity',
+    severity: 'info' as Severity,
+    title: `El corral ${r.corral_name} está por encima de su capacidad`,
+    body: `Tiene ${fmtNum(Number(r.current))} animales y está configurado para ${fmtNum(Number(r.capacity))} (${r.feedlot_name}). Si la capacidad quedó vieja, actualizala; si no, conviene repartir la hacienda.`,
+    action: 'Ver feedlot',
+    ref: { type: 'field' as const, id: Number(r.field_id) },
+    fieldId: Number(r.field_id),
+  }));
+};
+
+/**
+ * 9. An animal that left the herd and then registered an event.
+ *
+ * A sold or dead animal that keeps getting weighed or moved is an impossible
+ * fact — either the exit was recorded on the wrong caravana, or the later event
+ * was.
+ *
+ * Only events that mean the animal was actually WORKED ON count. The animal's
+ * own bookkeeping (identificación, ingreso, nacimiento) and the exit events
+ * themselves are excluded on purpose: registering an animal today and
+ * back-dating its sale to May is legitimate catch-up data entry, and flagging
+ * that would fire on ordinary use.
+ */
+const animalEventAfterExit: Rule = async ({ userId, fieldIds }) => {
+  const { rows } = await pool.query(
+    `SELECT a.id::text AS animal_id, a.status::text AS status,
+            a.exit_date::text AS exit_date, a.field_id,
+            COUNT(ae.id)::int AS n,
+            MAX(ae.event_date)::text AS last_event,
+            (SELECT ai.value FROM animal_identifications ai
+              WHERE ai.animal_id = a.id AND ai.is_current
+              ORDER BY ai.assigned_date DESC LIMIT 1) AS tag
+       FROM animals a
+       JOIN animal_events ae ON ae.animal_id = a.id AND ae.deleted_at IS NULL
+      WHERE a.user_id = $1
+        AND (a.field_id IS NULL OR a.field_id = ANY($2::int[]))
+        AND a.deleted_at IS NULL
+        AND a.status IN ('vendido','muerto','transferido')
+        AND a.exit_date IS NOT NULL
+        AND ae.event_date > a.exit_date
+        AND ae.event_type IN (
+          'movimiento','cambio_grupo','cambio_categoria','cambio_establecimiento',
+          'vacunacion','desparasitacion','tratamiento','revision_sanitaria',
+          'pesaje','condicion_corporal',
+          'servicio','inseminacion','diagnostico_prenez','parto','destete'
+        )
+      GROUP BY a.id, a.status, a.exit_date, a.field_id`,
+    [userId, fieldIds],
+  );
+
+  return rows.map((r: Record<string, unknown>) => ({
+    key: `animal-after-exit-${r.animal_id}`,
+    rule: 'animal_event_after_exit',
+    severity: 'warn' as Severity,
+    title: `Un animal ${r.status} sigue registrando movimientos`,
+    body: `La caravana ${r.tag ?? 'sin identificar'} figura como ${r.status} el ${formatDayMonth(String(r.exit_date))}, pero tiene ${fmtNum(Number(r.n))} evento(s) posteriores (el último el ${formatDayMonth(String(r.last_event))}). O la baja se cargó en el animal equivocado, o el evento.`,
+    action: 'Ver animal',
+    ref: r.field_id ? { type: 'field' as const, id: Number(r.field_id) } : null,
+    fieldId: r.field_id ? Number(r.field_id) : null,
+  }));
+};
+
 const RULES: Rule[] = [
   productIsPlotName,
   overlappingPlantings,
@@ -335,6 +469,9 @@ const RULES: Rule[] = [
   outlierPlotArea,
   expensesWithoutPlot,
   hollowFields,
+  livestockGroupVsIndividuals,
+  corralOvercapacity,
+  animalEventAfterExit,
 ];
 
 export async function getReviewFindings(ctx: Ctx): Promise<Finding[]> {

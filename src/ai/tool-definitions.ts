@@ -14,6 +14,8 @@ const CROP_PROP = { type: 'string' as const, description: 'Cultivo, si mencionad
 const QUANTITY_PROP = { type: 'number' as const, description: 'Cantidad.' };
 const UNIT_PROP = { type: 'string' as const, description: 'Unidad (kg, lt, cc, tn, qq, bolsas, kg/ha, lt/ha). qq=quintal=100 kg. tn=tonelada=1000 kg. Mantener la unidad como la dijo el usuario; el sistema convierte a kg cuando hace falta.' };
 const DATE_PROP = { type: 'string' as const, description: 'Fecha YYYY-MM-DD si el usuario menciona una fecha distinta a hoy. Omitir si es hoy.' };
+/** Las 9 categorías del rodeo. Idéntico al ENUM `livestock_category` (migración 053). */
+const LIVESTOCK_CATEGORY_ENUM = ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'];
 
 export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // ========================
@@ -1696,6 +1698,108 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         category: { type: 'string', description: 'Categoría animal (opcional).' },
         desde: { type: 'string', description: 'Fecha inicio YYYY-MM-DD.' },
         hasta: { type: 'string', description: 'Fecha fin YYYY-MM-DD.' },
+      },
+      required: [],
+    },
+  },
+
+  // ========================
+  // LIVESTOCK — ANIMAL INDIVIDUAL (caravana / RFID)
+  //
+  // Capa OPCIONAL sobre el modelo por grupos. Estas tools son SOLO para cuando
+  // el usuario nombró animales concretos (una caravana, una lista de lecturas).
+  // Una operación sobre N animales sin identificar ("mové 50 vacas") sigue
+  // siendo add/remove/transfer_livestock sobre el grupo — ver la regla CRÍTICO
+  // ANIMAL INDIVIDUAL del prompt.
+  // ========================
+  {
+    name: 'register_animal',
+    description: 'Alta de UN animal con caravana. "dar de alta el toro caravana 032 01 0001234567". Por cantidad ("compré 20 vacas") es add_livestock.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: LIVESTOCK_CATEGORY_ENUM, description: 'Categoría.' },
+        rfid: { type: 'string', description: 'Caravana electrónica (15 dígitos, o 10 sueltos). Copiar tal cual.' },
+        visual_tag: { type: 'string', description: 'Caravana visual, si difiere del RFID.' },
+        sex: { type: 'string', enum: ['M', 'H'], description: 'Omitir: se deduce de la categoría.' },
+        breed: { type: 'string', description: 'Raza, si la mencionó.' },
+        birth_date: { type: 'string', description: 'Nacimiento YYYY-MM-DD.' },
+        origin: { type: 'string', enum: ['nacimiento', 'compra', 'importacion', 'alta_manual'], description: 'Cómo entró.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Corral (alternativa a plot).' },
+        event_date: DATE_PROP,
+      },
+      required: ['category'],
+    },
+  },
+  {
+    name: 'identify_animal',
+    description: 'Reemplazar la caravana de un animal existente. "le puse caravana nueva a la 1234", "perdió la caravana y le puse la Z".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        animal_ref: { type: 'string', description: 'Caravana actual del animal.' },
+        new_rfid: { type: 'string', description: 'Caravana electrónica nueva.' },
+        new_visual_tag: { type: 'string', description: 'Caravana visual nueva.' },
+        reason: { type: 'string', enum: ['perdida', 'rotura', 'reemplazo', 'baja', 'error_carga'], description: 'Motivo.' },
+      },
+      required: ['animal_ref'],
+    },
+  },
+  {
+    name: 'query_animal',
+    description: 'UN animal por su caravana: ficha, historial, pesos. "qué pasó con la caravana 123456789", "dónde está la 0001234567". Totales del rodeo son list_livestock.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        animal_ref: { type: 'string', description: 'Caravana. Copiar los dígitos tal cual.' },
+        view: { type: 'string', enum: ['ficha', 'timeline', 'pesos'], description: 'ficha (default) | pesos = serie + ganancia diaria.' },
+      },
+      required: ['animal_ref'],
+    },
+  },
+  {
+    name: 'list_animals',
+    description: 'Animales INDIVIDUALES que cumplen un filtro. "qué animales están en el lote Norte", "cuáles no tienen caravana". "Cuántas vacas tengo" (un TOTAL) es list_livestock.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: LIVESTOCK_CATEGORY_ENUM, description: 'Categoría.' },
+        sex: { type: 'string', enum: ['M', 'H'], description: 'Sexo.' },
+        status: { type: 'string', enum: ['activo', 'vendido', 'muerto', 'extraviado', 'transferido'], description: 'Default activo.' },
+        identified: { type: 'boolean', description: 'true = con caravana vigente; false = sin.' },
+        field: FIELD_PROP,
+        plot: PLOT_PROP,
+        corral: { type: 'string', description: 'Corral.' },
+        top_n: { type: 'integer', description: 'Cuántos (máx 50).' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'move_animals',
+    description: 'Mover animales identificados por CARAVANA. "mové la 1234 y la 5678 al lote Sur". Por cantidad ("mové 50 vacas del Norte al Sur") es transfer_livestock.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        animal_refs: { type: 'array', items: { type: 'string' }, description: 'Caravanas a mover. Copiar tal cual.' },
+        dest_field: { type: 'string', description: 'Campo destino.' },
+        dest_plot: { type: 'string', description: 'Lote destino.' },
+        dest_corral: { type: 'string', description: 'Corral destino.' },
+        event_date: DATE_PROP,
+      },
+      required: ['animal_refs'],
+    },
+  },
+  {
+    name: 'revert_livestock_movement',
+    description: 'Revertir un movimiento de hacienda. "revertí el último movimiento", "eso estuvo mal, volvelo atrás". Sin id revierte el último reversible.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        movement_id: { type: 'string', description: 'Id, si lo dio. Omitir para el último.' },
+        reason: { type: 'string', description: 'Motivo.' },
       },
       required: [],
     },

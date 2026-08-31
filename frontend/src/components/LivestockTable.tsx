@@ -12,6 +12,8 @@ interface LivestockGroup {
   category: string;
   breed: string | null;
   count: number;
+  /** Cuántos animales individuales (con caravana) cuelgan de este grupo. 0 = no individualizado. */
+  individualized_count: number;
   avg_weight_kg: number | null;
   notes: string | null;
   created_at: string;
@@ -255,6 +257,17 @@ export default function LivestockTable() {
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-gray-800 dark:text-gray-100">
                       {group.count}
+                      {/* Solo se muestra si el grupo tiene algo individualizado:
+                          "0 de 50" en cada fila sería ruido para la mayoría, que
+                          trabaja únicamente por grupos. */}
+                      {group.individualized_count > 0 && (
+                        <span
+                          className="block text-xs font-normal text-gray-400 dark:text-gray-400"
+                          title="Animales con caravana asociados a este grupo"
+                        >
+                          🏷️ {group.individualized_count} con caravana
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300 hidden sm:table-cell">
                       {group.corral_name

@@ -2229,4 +2229,205 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(Number(rows[0].millimeters)).toBe(40);
     });
   });
+
+  // ===========================================================================
+  // Capa individual de hacienda (modelo híbrido grupo + animal, Ago 2026)
+  //
+  // Lo que se protege acá es, sobre todo, el camino VIEJO: el productor que no
+  // caravaneó nada tiene que seguir viendo exactamente lo mismo que antes.
+  // ===========================================================================
+  describe('hacienda híbrida — grupo + animal individual', () => {
+    let h: PipelineHarness;
+    let fieldId: number;
+    let norteId: number;
+    let surId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('hibrido-hacienda');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Híbrida') RETURNING id`, [h.userId]);
+      fieldId = f[0].id as number;
+      const p1 = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte') RETURNING id`, [fieldId]);
+      norteId = p1[0].id as number;
+      const p2 = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Sur') RETURNING id`, [fieldId]);
+      surId = p2[0].id as number;
+    });
+    afterAll(async () => h?.cleanup());
+
+    /** Da de alta N animales con caravanas correlativas en un lote. */
+    async function seedAnimals(n: number, plotId: number, start = 1): Promise<string[]> {
+      const tags: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const tag = `03201${String(start + i).padStart(10, '0')}`;
+        await h.q(
+          `INSERT INTO animals (user_id, field_id, plot_id, category, sex, status)
+           VALUES ($1, $2, $3, 'vaca', 'H', 'activo') RETURNING id`,
+          [h.userId, fieldId, plotId],
+        ).then(async (rows) => {
+          await h.q(
+            `INSERT INTO animal_identifications (user_id, animal_id, id_type, value, value_normalized)
+             VALUES ($1, $2, 'rfid', $3, $3)`,
+            [h.userId, rows[0].id, tag],
+          );
+        });
+        tags.push(tag);
+      }
+      return tags;
+    }
+
+    it('COMPATIBILIDAD: "mové 50 vacas del Norte al Sur" sigue siendo un movimiento de GRUPO', async () => {
+      await h.q(
+        `INSERT INTO livestock_groups (user_id, field_id, plot_id, category, breed, count)
+         VALUES ($1, $2, $3, 'vaca', 'Angus', 50)`,
+        [h.userId, fieldId, norteId],
+      );
+
+      h.fakeAgent.enqueueTool('transfer_livestock', {
+        category: 'vaca', count: 50, source_plot: 'Norte', dest_plot: 'Sur', field: 'La Híbrida',
+      });
+      const items = await h.send('mové 50 vacas del Norte al Sur');
+
+      expect(h.allText(items)).toMatch(/Transferencia/i);
+
+      const groups = await h.q(
+        `SELECT p.name, lg.count FROM livestock_groups lg
+           JOIN plots p ON p.id = lg.plot_id
+          WHERE lg.user_id = $1 AND lg.category = 'vaca' AND lg.deleted_at IS NULL
+          ORDER BY p.name`,
+        [h.userId],
+      );
+      const byPlot = Object.fromEntries(groups.map((g) => [g.name, Number(g.count)]));
+      expect(byPlot['Norte']).toBe(0);
+      expect(byPlot['Sur']).toBe(50);
+
+      // Y NO tocó ningún animal individual: el camino agregado es independiente.
+      const moved = await h.q(
+        `SELECT COUNT(*)::int AS n FROM animal_events WHERE user_id = $1 AND event_type = 'movimiento'`,
+        [h.userId],
+      );
+      expect(Number(moved[0].n)).toBe(0);
+    });
+
+    it('una lista pegada de caravanas NO llega al agente y responde con el desglose', async () => {
+      const tags = await seedAnimals(6, norteId, 100);
+      const callsBefore = h.fakeAgent.calls.length;
+
+      const items = await h.send(tags.join('\n'));
+
+      // Lo central: cero llamadas al modelo. 87 números en un prompt queman
+      // tokens y Haiku mangla dígitos largos.
+      expect(h.fakeAgent.calls.length).toBe(callsBefore);
+
+      const text = h.allText(items);
+      expect(text).toMatch(/encontré 6 animales/i);
+      expect(text).toMatch(/Lote Norte/);
+      expect(h.allButtons(items).some((b) => b.id.startsWith('animal_batch_move_'))).toBe(true);
+    });
+
+    it('reporta lo que no cuadra: leídos vs encontrados vs desconocidos', async () => {
+      const tags = await seedAnimals(3, norteId, 200);
+      const items = await h.send([...tags, '032010000999001', '032010000999002'].join('\n'));
+
+      const text = h.allText(items);
+      expect(text).toMatch(/Leí 5 identificadores/i);
+      expect(text).toMatch(/encontré 3 animales/i);
+      expect(text).toMatch(/2 sin registrar/i);
+    });
+
+    it('el tap de mover pregunta el destino y lo aplica; un segundo tap NO vuelve a mover', async () => {
+      // 6 caravanas: `looksLikeIdList` pide al menos 5 líneas para no robarle
+      // mensajes normales al agente.
+      const tags = await seedAnimals(6, norteId, 300);
+      const preview = await h.send(tags.join('\n'));
+      const btn = h.allButtons(preview).find((b) => b.id.startsWith('animal_batch_move_'));
+      expect(btn).toBeTruthy();
+
+      const ask = await h.tap(btn!.id);
+      expect(h.allText(ask)).toMatch(/¿A qué lote o corral/i);
+
+      const done = await h.send('Sur');
+      expect(h.allText(done)).toMatch(/6 animales movidos/i);
+
+      const enSur = await h.q(
+        `SELECT COUNT(*)::int AS n FROM animals WHERE user_id = $1 AND plot_id = $2`,
+        [h.userId, surId],
+      );
+      expect(Number(enSur[0].n)).toBe(6);
+
+      // Segundo tap del MISMO botón: ni mueve de nuevo ni queda en silencio.
+      const again = await h.tap(btn!.id);
+      // El aviso tiene que hablar de caravanas, no de lluvia: el mensaje del
+      // guard estaba hardcodeado al caso de lluvia.
+      expect(h.allText(again)).toMatch(/lectura de caravanas ya la apliqué/i);
+      expect(h.allText(again)).not.toMatch(/lluvia/i);
+
+      const enSurDespues = await h.q(
+        `SELECT COUNT(*)::int AS n FROM animals WHERE user_id = $1 AND plot_id = $2`,
+        [h.userId, surId],
+      );
+      expect(Number(enSurDespues[0].n)).toBe(6);
+    });
+
+    it('un mensaje normal con números NO se confunde con una lista de caravanas', async () => {
+      const callsBefore = h.fakeAgent.calls.length;
+      h.fakeAgent.enqueueTool('list_livestock', {});
+      await h.send('cuántas vacas tengo');
+      // Fue al agente, como corresponde: no lo robó el interceptor.
+      expect(h.fakeAgent.calls.length).toBe(callsBefore + 1);
+    });
+
+    it('consulta por caravana: devuelve la ficha y el historial del ANIMAL, no el del grupo', async () => {
+      const [tag] = await seedAnimals(1, norteId, 400);
+      const animal = await h.q(
+        `SELECT a.id FROM animals a
+           JOIN animal_identifications ai ON ai.animal_id = a.id
+          WHERE ai.value_normalized = $1`,
+        [tag],
+      );
+      await h.q(
+        `INSERT INTO animal_events (user_id, animal_id, event_type, event_date, numeric_value, unit)
+         VALUES ($1, $2, 'pesaje', '2026-08-01', 385, 'kg')`,
+        [h.userId, animal[0].id],
+      );
+
+      h.fakeAgent.enqueueTool('query_animal', { animal_ref: tag });
+      const items = await h.send(`qué pasó con la caravana ${tag}`);
+
+      const text = h.allText(items);
+      expect(text).toMatch(/Vaca/);
+      expect(text).toMatch(/Lote Norte/);
+      expect(text).toMatch(/Historial/i);
+      expect(text).toMatch(/Pesaje/i);
+      expect(text).toMatch(/385 kg/);
+    });
+
+    it('lo cargado por el DASHBOARD es visible para el bot en el mismo turno', async () => {
+      // El puente entre las dos interfaces: el usuario importa caravanas por la
+      // web y pregunta por chat. El contexto del agente cachea 60s, por eso las
+      // rutas del dashboard llaman a invalidateUserContext — acá se simula esa
+      // invalidación y se verifica que el animal ya resuelve.
+      const { UserContextService, invalidateUserContext } = await import('../../../ai/user-context.service.js');
+      const { EntityValidator } = await import('../../../services/entity-validator.js');
+      const ctxService = new UserContextService(new EntityValidator());
+
+      const before = await ctxService.loadContext(h.userId);
+      const [tag] = await seedAnimals(1, norteId, 500);
+      invalidateUserContext(Number(h.userId));
+      const after = await ctxService.loadContext(h.userId);
+
+      expect(after.individualizedAnimals).toBe(before.individualizedAnimals + 1);
+
+      // Y el bot lo encuentra por su caravana.
+      h.fakeAgent.enqueueTool('query_animal', { animal_ref: tag });
+      const items = await h.send(`dónde está la ${tag}`);
+      expect(h.allText(items)).toMatch(/Lote Norte/);
+    });
+
+    it('una caravana que no existe se dice claramente, sin devolver el grupo como si fuera el animal', async () => {
+      h.fakeAgent.enqueueTool('query_animal', { animal_ref: '032010000777777' });
+      const items = await h.send('qué pasó con la caravana 032010000777777');
+      const text = h.allText(items);
+      expect(text).toMatch(/No tengo ningún animal/i);
+      expect(text).not.toMatch(/Historial/i);
+    });
+  });
 });

@@ -5,6 +5,7 @@ import type {
   LivestockGroupRow,
   LivestockMovementRow,
 } from './livestock.types.js';
+import { accessibleFieldsSql } from '../shared/accessible-fields.js';
 
 /** Gemelas de género: "terneros" en el habla del campo abarca también terneras
  *  (masculino genérico). Usado por findGroupsByCategory para no fallar el
@@ -13,14 +14,6 @@ const GENDER_TWIN: Record<string, string> = {
   ternero: 'ternera',
   ternera: 'ternero',
 };
-
-function accessibleFieldsSql(paramIdx: number): string {
-  // Own fields + fields shared via field_members. The previous version only
-  // returned shared fields, so owners saw empty livestock lists.
-  return `SELECT id FROM fields WHERE user_id = $${paramIdx} AND deleted_at IS NULL
-          UNION
-          SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
-}
 
 /**
  * Repository for livestock groups and movements.
@@ -114,9 +107,18 @@ export class LivestockRepository {
     return rows[0] || null;
   }
 
+  /**
+   * Lista grupos accesibles. `limit`/`offset` paginan EN LA BASE — antes la ruta
+   * `/api/auth/livestock` traía todas las filas y hacía `.slice()` en memoria,
+   * lo que no escala. Sin `limit` el comportamiento es el de siempre (traer
+   * todo), que es lo que necesitan los call-sites del servicio.
+   */
   async listGroups(
     userId: number,
-    opts: { fieldId?: number; plotId?: number; corralId?: number; category?: LivestockCategory } = {}
+    opts: {
+      fieldId?: number; plotId?: number; corralId?: number; category?: LivestockCategory;
+      limit?: number; offset?: number;
+    } = {}
   ): Promise<LivestockGroupRow[]> {
     let query = `SELECT lg.*, p.name AS plot_name, f.name AS field_name,
               c.name AS corral_name, fl2.name AS feedlot_name
@@ -146,10 +148,43 @@ export class LivestockRepository {
       params.push(opts.category);
       query += ` AND lg.category = $${params.length}`;
     }
-    query += ' ORDER BY f.name, COALESCE(p.name, c.name), lg.category';
+    // El id desempata: sin él, dos grupos con el mismo campo/ubicación/categoría
+    // pueden salir en distinto orden entre páginas y una fila se repite o se pierde.
+    query += ' ORDER BY f.name, COALESCE(p.name, c.name), lg.category, lg.id';
+
+    if (opts.limit != null) {
+      params.push(opts.limit);
+      query += ` LIMIT $${params.length}`;
+      if (opts.offset) {
+        params.push(opts.offset);
+        query += ` OFFSET $${params.length}`;
+      }
+    }
 
     const { rows } = await pool.query(query, params);
     return rows;
+  }
+
+  /** Cantidad de GRUPOS que matchean el filtro (para totalPages). Distinto de countTotal, que suma CABEZAS. */
+  async countGroups(
+    userId: number,
+    opts: { fieldId?: number; plotId?: number; corralId?: number; category?: LivestockCategory } = {}
+  ): Promise<number> {
+    let query = `SELECT COUNT(*)::int AS n
+       FROM livestock_groups lg
+       JOIN fields f ON lg.field_id = f.id
+       WHERE lg.field_id IN (${accessibleFieldsSql(1)})
+         AND lg.deleted_at IS NULL
+         AND f.deleted_at IS NULL`;
+    const params: (string | number)[] = [userId];
+
+    if (opts.fieldId) { params.push(opts.fieldId); query += ` AND lg.field_id = $${params.length}`; }
+    if (opts.plotId) { params.push(opts.plotId); query += ` AND lg.plot_id = $${params.length}`; }
+    if (opts.corralId) { params.push(opts.corralId); query += ` AND lg.corral_id = $${params.length}`; }
+    if (opts.category) { params.push(opts.category); query += ` AND lg.category = $${params.length}`; }
+
+    const { rows } = await pool.query(query, params);
+    return rows[0].n;
   }
 
   async countTotal(userId: number, opts: { fieldId?: number; plotId?: number; corralId?: number } = {}): Promise<number> {
@@ -405,6 +440,11 @@ export class LivestockRepository {
       reason?: string | null;
       notes?: string | null;
       movement_date?: string | null;
+      /** Movimiento que este contra-asiento revierte. El índice único sobre esta
+       *  columna impide que un mismo movimiento se revierta dos veces. */
+      reverses_movement_id?: string | null;
+      /** Quién lo hizo de verdad. En un campo compartido puede no ser el dueño. */
+      created_by?: number | null;
     } = {}
   ): Promise<{ group: LivestockGroupRow; movement: LivestockMovementRow }> {
     if (!['entrada', 'salida', 'muerte', 'nacimiento', 'ajuste'].includes(movementType)) {
@@ -457,8 +497,9 @@ export class LivestockRepository {
       const { rows: movements } = await client.query(
         `INSERT INTO livestock_movements
            (user_id, movement_type, source_group_id, dest_group_id, count,
-            avg_weight_kg, unit_price_ars, unit_price_usd, reason, notes, movement_date)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11::date, CURRENT_DATE))
+            avg_weight_kg, unit_price_ars, unit_price_usd, reason, notes, movement_date,
+            reverses_movement_id, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11::date, CURRENT_DATE), $12, $13)
          RETURNING *`,
         [
           userId,
@@ -472,6 +513,8 @@ export class LivestockRepository {
           opts.reason ?? null,
           opts.notes ?? null,
           opts.movement_date ?? null,
+          opts.reverses_movement_id ?? null,
+          opts.created_by ?? userId,
         ]
       );
 
@@ -505,6 +548,8 @@ export class LivestockRepository {
       reason?: string | null;
       notes?: string | null;
       movement_date?: string | null;
+      reverses_movement_id?: string | null;
+      created_by?: number | null;
     } = {}
   ): Promise<{
     sourceGroup: LivestockGroupRow;
@@ -560,8 +605,9 @@ export class LivestockRepository {
       const { rows: movements } = await client.query(
         `INSERT INTO livestock_movements
            (user_id, movement_type, source_group_id, dest_group_id, count,
-            avg_weight_kg, reason, notes, movement_date)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::date, CURRENT_DATE))
+            avg_weight_kg, reason, notes, movement_date,
+            reverses_movement_id, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::date, CURRENT_DATE), $10, $11)
          RETURNING *`,
         [
           userId,
@@ -573,6 +619,8 @@ export class LivestockRepository {
           opts.reason ?? null,
           opts.notes ?? null,
           opts.movement_date ?? null,
+          opts.reverses_movement_id ?? null,
+          opts.created_by ?? userId,
         ]
       );
 
@@ -725,21 +773,63 @@ export class LivestockRepository {
     );
   }
 
-  async findMovementById(movementId: string): Promise<{
+  /**
+   * Busca un movimiento. `userId` es OBLIGATORIO y se filtra en el WHERE: el id
+   * llega desde un payload de botón, o sea desde el cliente, y no se puede
+   * confiar en él (§ seguridad). Sin el filtro, un id de otro usuario devolvía
+   * su movimiento.
+   *
+   * `already_reversed` viaja en la misma consulta para que el servicio pueda
+   * rechazar una segunda reversión con un mensaje claro, en vez de chocar contra
+   * el índice único `uq_movement_single_reversal`.
+   */
+  async findMovementById(userId: number, movementId: string): Promise<{
     id: string;
     movement_type: string;
     count: number;
     source_group_id: string | null;
     dest_group_id: string | null;
     avg_weight_kg: number | null;
+    reverses_movement_id: string | null;
+    already_reversed: boolean;
   } | null> {
     const { rows } = await pool.query(
-      `SELECT id::text AS id, movement_type, count,
-              source_group_id::text AS source_group_id,
-              dest_group_id::text AS dest_group_id,
-              avg_weight_kg
-       FROM livestock_movements WHERE id = $1`,
-      [movementId]
+      `SELECT m.id::text AS id, m.movement_type, m.count,
+              m.source_group_id::text AS source_group_id,
+              m.dest_group_id::text AS dest_group_id,
+              m.avg_weight_kg,
+              m.reverses_movement_id::text AS reverses_movement_id,
+              EXISTS (
+                SELECT 1 FROM livestock_movements r WHERE r.reverses_movement_id = m.id
+              ) AS already_reversed
+       FROM livestock_movements m
+       WHERE m.id = $1 AND m.user_id = $2`,
+      [movementId, userId]
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * El movimiento más reciente que TIENE SENTIDO revertir: ni una reversa (eso
+   * solo desharía el arrepentimiento), ni uno ya revertido, ni un `ajuste` (que
+   * no guarda el valor previo, así que no hay a qué volver).
+   *
+   * Existe para que "revertí lo último" haga lo que el usuario quiere sin que
+   * tenga que conocer un UUID.
+   */
+  async findLatestRevertibleMovement(userId: number): Promise<{ id: string; movement_type: string; count: number } | null> {
+    const { rows } = await pool.query(
+      `SELECT m.id::text AS id, m.movement_type, m.count
+         FROM livestock_movements m
+        WHERE m.user_id = $1
+          AND m.movement_type <> 'ajuste'
+          AND m.reverses_movement_id IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM livestock_movements r WHERE r.reverses_movement_id = m.id
+          )
+        ORDER BY m.created_at DESC
+        LIMIT 1`,
+      [userId],
     );
     return rows[0] ?? null;
   }

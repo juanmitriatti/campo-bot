@@ -27,6 +27,7 @@ Cada una de estas reglas existe porque su violación ya causó pérdida o corrup
 13. **Nunca inferir el cultivo** que el usuario no nombró: el agente omite el param (prohibido inferir de active_crop/siembras pasadas) y el handler pregunta con pending.
 14. **Todo bug de interacción entre capas del pipeline deja su regresión en `pipeline.integration.test.ts`** (harness FakeAgent, sin API), no solo en el eval (que cuesta créditos y flakea).
 15. **Todo "borrar estado de usuario" pasa por `clearAllUserPendingState`** (registro central de stores) — una lista manual de stores se desactualiza y deja estado zombie.
+16. **El camino de hacienda por GRUPOS nunca depende del camino INDIVIDUAL.** Un `livestock_group` con 0 animales individualizados se comporta EXACTAMENTE como antes de que existiera la capa de animales: mismas queries, mismas respuestas, mismos side-effects. `AnimalService` jamás toca `livestock_groups.count` (esa columna sigue siendo la proyección del ledger, dueño `LivestockRepository`); solo mantiene `individualized_count`, que es dato nuevo. La individualización PARCIAL es válida, no una inconsistencia. Ver [docs/ganaderia/overview.md](docs/ganaderia/overview.md).
 
 ---
 
@@ -99,6 +100,21 @@ Implemented in `src/ai/agent-prompt-builder.ts`; drive tool selection.
 - **Precio diferido**: "¿a cuánto fue la compra/venta?" deja pending `set_livestock_price` (missing:['unit_price']). También es tool del agente para el precio tardío sin pending ("los toros salieron 2 palos c/u") → `findLatestUnpricedMovement` (7 días).
 - Category lookup matchea gemelas de género (ternero↔ternera); con 0 matches pero hacienda existente, el error lista el inventario real para auto-corrección.
 - Los 9 write paths de hacienda llaman `bumpConversationContext` cuando el lote vino del grupo — si no, "ahí mismo" resuelve al lote equivocado.
+
+### Animal individual + RFID (modelo híbrido, Ago 2026 — migraciones 111-116)
+Ver [docs/ganaderia/](docs/ganaderia/overview.md). Invariante 16 manda: la capa individual es ADITIVA y opcional.
+- **Desambiguación grupo vs individual (regla CRÍTICO del prompt)**: la pregunta es ¿nombró animales CONCRETOS o una CANTIDAD? Cantidad → tools de grupo, como siempre ("mové 50 vacas" = `transfer_livestock`, NUNCA `move_animals`). Caravana concreta → `query_animal` / `move_animals` / `identify_animal`. **Ante la duda, GRUPO.** Un número no es una caravana por ser número: una caravana tiene 10 o 15 dígitos.
+- **6 tools nuevas**: `register_animal`, `identify_animal`, `query_animal`, `list_animals`, `move_animals`, `revert_livestock_movement`. Van en el MISMO `LIVESTOCK_COMMANDS` y el mismo feature `livestock`; las despacha `animal.handler.ts` (archivo aparte solo por tamaño). Regresión de los 3 registros en `src/ai/__tests__/animal-tools-registration.test.ts`.
+- **La identificación es una ENTIDAD-EVENTO, no una columna `rfid`** (Res. SENASA 841/2025 Art. 11(d): la caravana nueva debe referenciar la anterior). Reemplazar retira la vigente y encadena con `replaces_identification_id`; nunca se borra. Unicidad **por usuario**, no global — un animal cambia de dueño legítimamente.
+- **`src/utils/animal-id.ts` es la fuente ÚNICA** de validación/normalización. CII = 15 díg. (`032` + especie + NII de 10, Res. 530/2025 Art. 15); 10 díg. sueltos son un NII legítimo. **Registra, no bloquea**: un formato raro se guarda con warning, nunca aborta el alta.
+- **`animal_events` NO duplica `domain_events`**: un evento grupal sigue siendo UNA fila ahí y los animales que participaron son N filas que la enlazan por `domain_event_id`. Toda query agregada existente sigue intacta.
+- **Lista pegada de caravanas → STEP 1.5 de `intent-classifier.ts`, nunca al agente** (`looksLikeIdList`, ≥5 líneas, ≥80% id-like). 87 números queman tokens y Haiku mangla dígitos largos — un dígito cambiado apunta a otro animal. Loguea `[RFID BATCH]`, responde con preview + botones. `animal_batch_move_` está en `ONE_SHOT_PREFIXES` (aplicar dos veces movería todo dos veces).
+- **`src/utils/livestock-breeds.ts` es la fuente ÚNICA de razas.** `breed` era texto libre Y parte del índice único → "Angus"/"angus" ya eran grupos distintos en prod. La fusión de los duplicados existentes vive en `src/scripts/merge-duplicate-breeds.ts` (dry-run por default), **NO en la migración**: cambia existencias y repunta el ledger, y eso no puede correr solo al arrancar.
+- **Reversión estructurada**: `reverses_movement_id` + índice único parcial (una sola reversión por movimiento) + `created_by`. `findMovementById` exige `user_id` — el id llega de un payload de botón.
+- **Capacidad de corral: se advierte, NUNCA se bloquea** (`corral-capacity.service.ts`). `capacity` NULL = "no me dijiste", no cero.
+- **Inconsistencias del modelo híbrido → `RULES` de `review-findings.service.ts`**, no un panel nuevo: `livestock_group_vs_individuals` (solo el EXCESO), `corral_overcapacity`, `animal_event_after_exit`.
+- **Dashboard + agente ven lo mismo.** Sub-tabs `Animales`/`Importar` en `LivestockTab` (`AnimalsPanel`, `AnimalDetailDrawer`, `AnimalImportPanel`; tipos en `frontend/src/api/animals.ts`). API `/api/auth/animals/*` en `auth.routes.ts`, toda con `requireFeature('livestock')` y scopeada por `user_id` EN LA QUERY. **Las rutas que escriben llaman `invalidateUserContext`** — el contexto del agente cachea 60s y sin eso lo cargado por la web no existe para el bot. `UserContext.individualizedAnimals` viaja al prompt como `animales con caravana:N` **solo si > 0**: sin esa señal el agente no distingue "no encuentro la caravana" de "este usuario no usa caravanas". Import: preview → confirmar → aplicar, con 409 si el batch ya se aplicó.
+- **`splitIdLines` (no `extractIdList`) es lo que consume un lote de lectura**: `extractIdList` deduplica y descarta lo corto, y el resumen reportaba "leí 2" sobre 4 líneas pegadas. La clasificación en encontrados/desconocidos/repetidos/ilegibles la hace `resolveBatch`, único lugar donde las 4 categorías cierran contra el total.
 
 ### Sanidad Animal
 - vacuné/desparasité/curé/traté → `log_health_event` (vacunacion/desparasitacion/tratamiento; revisé=revision_sanitaria). `disease_or_vaccine` + `dose_quantity`/`dose_unit`.
@@ -226,6 +242,16 @@ Tres niveles, todos centrales (cubren todos los pendings `missing[]` de todos lo
 - **Flow taps scopeados al paso** (`FLOW_TAP_EXPECTED_FIELDS` en message-pipeline): un tap `flow_plot_*`/`flow_cat_`/`flow_activity_`/`flow_field_` solo alimenta el paso cuyo `field` corresponde al prefijo; fuera de paso se ignora con `[INTERCEPT]`. Un duplicado (doble tap, retry de Telegram, overlap de deploy — el dedup in-process no cubre ids distintos) caía en el paso siguiente y contaminaba el slot ("Producto: norte" en prod).
 - **Pending hint**: mensaje que llega al agente con pending activo → `[Hay una pregunta pendiente...]` en el user prefix (zona no cacheada).
 
+## Presupuesto del bloque de tools (medido, Ago 2026)
+
+**Agregar tools cambia decisiones en dominios NO relacionados.** No es teoría: al sumar las 6 tools de animal individual con descripciones verbosas (~6 KB serializados, 5% del payload), el escenario `19-category-ambiguous` —que no tiene nada que ver con hacienda— pasó a fallar **2/2**: el agente dejaba de dudar sobre la categoría de "análisis de suelo" y la asignaba sola, salteando el picker. A/B con `git stash` sobre `tool-definitions.ts`: sin las tools pasaba 2/2, con ellas fallaba 2/2, y con el prompt viejo + tools nuevas seguía fallando → **eran las tools, no el prompt**. Recortadas a 4.4 KB (3.9%) volvió a pasar 3/3.
+
+Reglas que salen de eso:
+- Descripción de tool nueva: **una línea de trigger + el contraste contra la tool con la que se confunde**. Nada más. Los ejemplos largos van al prompt-builder, no al schema.
+- Descripciones de params: telegráficas. `'Corral destino.'`, no `'Corral de destino del feedlot, si el usuario lo mencionó.'`
+- Extraer un enum a una constante NO ahorra tokens (el payload se serializa igual) — solo ahorra líneas de fuente.
+- Después de agregar tools, correr `npm run eval` COMPLETO, no solo los escenarios del dominio nuevo. La regresión aparece lejos.
+
 ## AI Cost & Caching
 
 - Settings grupo `ai` en admin: `AGENT_ENABLED`, `AGENT_MODEL`, `AGENT_MAX_TOKENS` (1500), `AGENT_TIMEOUT_MS` (12000, presupuesto TOTAL incl. retries), `AGENT_TEMPERATURE`, `AGENT_CACHE_TTL`, `AGENT_FEW_SHOT_LIMIT`.
@@ -241,6 +267,11 @@ Gated by admin settings (ship dark, flip when ready):
 - **Channel verification (`REQUIRE_VERIFIED_CHANNEL`, migración 076)**: WA OTP + TG deep-link `t.me/<bot>?start=verify_<token>`. `ChannelVerificationService`; endpoints `/api/auth/verify/*`; controllers gate BEFORE user auto-create; Telegram intercepts `/start verify_*` before lookup. Grandfathers existing users.
 - **GDPR (always on, migración 077)**: `DataExportService.streamUserExport` (ZIP, 23 CSVs, per-table failures isolated) + `AccountDeletionService.deleteAccount` (password gate, soft-delete + PII nulled in `withTransaction`; same email re-registrable). `GET /me/export`, `DELETE /me`.
 - **MercadoPago (`PAYMENTS_ENABLED`, migración 078)**: `subscriptions` state machine (trial→active→past_due→cancelled/expired, partial unique = ONE non-terminal sub per user) + `payment_events` (idempotent via unique `(provider, provider_event_id)`). `SubscriptionService`: trial 14d on register, checkout, idempotent webhook, cancel (immediate trial / deferred paid), `sweepExpired` daily 03:15 AR. Webhook `/webhooks/mercadopago` mounted with `express.raw` BEFORE the JSON parser (HMAC needs original bytes). Settings grupo `payments`.
+- **Escalera comercial (Ago 2026, migraciones 108-109)** — ver [docs/features/billing.md](docs/features/billing.md):
+  - **Prueba 14 días con TODO** (`TRIAL_PLAN_NAME`=pro_plus) → después **Pro** ($5.000, todo menos `sharing`) o **Pro+** ($12.000 / $100.000 anual, con `sharing`) o **Dedicado** (`enterprise`, a medida). `free` dejó de venderse: es el destino del downgrade (`is_public=false`), NO un producto — no anunciarlo.
+  - **`plan-catalog.service.ts` es la fuente ÚNICA de "qué se vende y a cuánto"**: la sirve `GET /api/plans/public` (landing) y la embute `/subscription` (paywall + Mi cuenta). Nunca una segunda lista de planes/precios en el front — la landing prometería un número y el checkout cobraría otro. Flags por plan editables en /admin: `is_public`, `is_featured` (único parcial: uno solo), `custom_pricing`. Caché 60s invalidado por el PUT del admin.
+  - **Paywall de prueba vencida**: `access_mode` (el MISMO `getUserAccessMode` que corta el bot) viaja en `/subscription`; `PaywallModal` sobre el board borroso, **salvo en Mi cuenta** (ahí están pagar, exportar y borrar: bloquearla encierra al usuario). Sin `payments_enabled` no hay paywall.
+  - **`getStatus` cae a `getLatestForUser`** para devolver la fila terminal: con el filtro de estados vivos, un vencido llegaba con `subscription:null`+`plan:null` y el front le escondía el botón de pago justo cuando entraba a pagar. El CTA se condiciona **por exclusión** (`status !== 'active'`), nunca enumerando estados.
 
 ## Key Conventions
 
@@ -260,27 +291,29 @@ Gated by admin settings (ship dark, flip when ready):
 
 13 features toggleable per plan via admin UI. Bot commands, dashboard API (`requireFeature()`) and frontend all enforce gating.
 
-| Feature Key | Required Plan | Scope |
-|-------------|---------------|-------|
-| `expenses` | all | log_expense, financial_report, templates, dashboard Gastos |
-| `incomes` | all | log_income, income edits, dashboard Ingresos |
-| `fields` | all | add_field, add_plot, add_plots_batch, etc. |
-| `budgets` | all | set_budget |
-| `rainfall` | all | log_rainfall(+batch), rainfall reports |
-| `agronomy` | all | sow/harvest/spray/fertilize, observations, agro reports, campaign_stats |
-| `csv_export` | pro+ | export_csv |
-| `weather` | all | weather_full/forecast/field |
-| `audio` | all | voice transcription |
-| `sharing` | enterprise | share_field (accept_invite ungated) |
-| `stock` | pro_plus+ | warehouses, add/check_stock, dashboard Stock |
-| `documents` | all (daily limits vary) | upload/list_documents |
-| `livestock` | pro_plus+ | inventory + health/repro/weighing, feedlots, dashboard Hacienda |
+El plan mínimo de cada feature es DATO (`plan_features`), editable en /admin → Planes; la columna de abajo es el estado sembrado tras la migración 109, no una constante del código. `free` no se vende: es donde cae el que no paga.
+
+| Feature Key | Plan mínimo | Scope |
+|-------------|-------------|-------|
+| `expenses` | free | log_expense, financial_report, templates, dashboard Gastos |
+| `incomes` | free | log_income, income edits, dashboard Ingresos |
+| `fields` | free | add_field, add_plot, add_plots_batch, etc. |
+| `documents` | free (daily limits vary) | upload/list_documents |
+| `budgets` | pro | set_budget |
+| `rainfall` | pro | log_rainfall(+batch), rainfall reports |
+| `weather` | pro | weather_full/forecast/field |
+| `csv_export` | pro | export_csv |
+| `agronomy` | pro | sow/harvest/spray/fertilize, observations, agro reports, campaign_stats |
+| `audio` | pro | voice transcription |
+| `stock` | pro | warehouses, add/check_stock, dashboard Stock |
+| `livestock` | pro | inventory + health/repro/weighing, feedlots, dashboard Hacienda |
+| `sharing` | **pro_plus** | share_field (accept_invite ungated) — **el único escalón entre Pro y Pro+** |
 
 ## Key File Map
 
 ### AI Pipeline
 - `src/ai/agent.service.ts` — Claude tool_use agent (primary)
-- `src/ai/tool-definitions.ts` — 104 tool definitions with typed schemas
+- `src/ai/tool-definitions.ts` — 110 tool definitions with typed schemas
 - `src/ai/agent-prompt-builder.ts` — Compact system prompt with disambiguation rules
 - `src/ai/agent-response-mapper.ts` — AgentResult → ParseResult[]; every drop/override logs (invariante 1)
 - `src/ai/agent-output-validator.ts` — anti-hallucination layer (flags ON in prod), 15-test suite
@@ -294,8 +327,10 @@ Gated by admin settings (ship dark, flip when ready):
 - `src/domain/compound-executor.ts` — compound contract (see § Compound)
 - `src/domain/interactive/interactive.router.ts` — button callbacks → commands
 - `src/domain/agronomy/` | `financial/` | `livestock/` | `stock/` | `documents/` | `sharing/` | `feedlot/` — domain handlers
+- `src/domain/livestock/animal.{types,repository,service,handler}.ts` + `animal-batch.service.ts` + `corral-capacity.service.ts` — capa individual (invariante 16)
+- `src/domain/shared/accessible-fields.ts` — fuente ÚNICA del subquery "campos que este usuario puede ver" (estaba copiado en livestock/feedlot/stock, y el mismo bug —el dueño no veía sus propios datos— hubo que arreglarlo 3 veces)
 - `src/domain/auth/` — Auth + ChannelVerificationService + AccountDeletionService
-- `src/domain/billing/` — Plans + FeatureGate + PaymentProvider/MercadoPago + SubscriptionService
+- `src/domain/billing/` — Plans + FeatureGate + PaymentProvider/MercadoPago + SubscriptionService + `plan-catalog.service.ts` (fuente ÚNICA de precios: landing + paywall)
 
 ### Forms (estructurados — Ago 2026)
 - `src/forms/form-definitions.ts` — fuente ÚNICA de siembra/cosecha (render + validación server + Flow JSON)
@@ -325,7 +360,7 @@ Gated by admin settings (ship dark, flip when ready):
 
 ### Utils
 - `src/utils/parser.js` — Spanish normalization, number expansion, regex fallback
-- `src/utils/entity-matcher.ts` (invariante 3) | `lexicon.ts` (invariante 4) | `pronoun-expander.ts` | `plot-intent.ts` | `relative-dates.ts` | `date.ts` | `guards.ts` | `format-quantity.ts` | `synonyms.js` | `crops.ts` | `livestock-location-intent.ts`
+- `src/utils/entity-matcher.ts` (invariante 3) | `lexicon.ts` (invariante 4) | `pronoun-expander.ts` | `plot-intent.ts` | `relative-dates.ts` | `date.ts` | `guards.ts` | `format-quantity.ts` | `synonyms.js` | `crops.ts` | `livestock-location-intent.ts` | `animal-id.ts` (CII/RFID, fuente única) | `livestock-breeds.ts` (razas, fuente única)
 - `src/config/db.js` — pool + `withTransaction(fn)`
 - `src/types/index.ts` — ParseResult, PlanRow, ParseSource
 
@@ -348,6 +383,8 @@ Gated by admin settings (ship dark, flip when ready):
 - `frontend/` — React dashboard (in-repo). `landing/` — git submodule (Lovable — no editar a mano). Landing on `/`, app on `/login|/register|/dashboard|/chat`, assets split `/app-assets/*` vs `/assets/*`.
 - `src/routes/auth.routes.ts` — `/api/auth/*` (verify, export, delete, subscription)
 - `src/routes/webhooks.routes.ts` — `/webhooks/mercadopago`
+- `src/routes/plans.routes.ts` — `GET /api/plans/public` (catálogo comercial que lee la landing, sin auth)
+- `frontend/src/components/billing/` — `PaywallModal` (prueba vencida) + `PlanChooser` (grilla compartida con Mi cuenta); tipos en `frontend/src/api/subscription.ts`
 
 ## Extended Documentation
 
@@ -358,11 +395,13 @@ Gated by admin settings (ship dark, flip when ready):
 - **[docs/architecture.md](docs/architecture.md)** — full implementation reference
 - **[docs/operations.md](docs/operations.md)** — deploy, env vars, migrations, settings
 - **[docs/features/stock.md](docs/features/stock.md)** / **[livestock.md](docs/features/livestock.md)** / **[documents.md](docs/features/documents.md)** — feature deep-dives
+- **[docs/ganaderia/](docs/ganaderia/overview.md)** — modelo híbrido grupo + animal individual: `overview.md`, `animal-model.md`, `rfid.md`, `senasa.md` (fuentes normativas con URL y fecha), `whatsapp.md`
+- **[docs/features/billing.md](docs/features/billing.md)** — planes, prueba, paywall y catálogo comercial: qué tocar para cambiar un precio
 - **[docs/features/dashboard.md](docs/features/dashboard.md)** — Resumen + navegación del dashboard: ventana de campaña, `/overview`, reglas de "Para revisar", `nav-model`
 
 ## Tests
 
-- **Unit (vitest)**: 1769 total. Local baseline: **1753 pass + 16 env-dependent fails** (need seeded DB; PASS in CI, which is the deploy gate). Compare against this baseline, don't chase the 16. `npm test`.
+- **Unit (vitest)**: **2440 total, todos verdes** con la DB local levantada (Ago 2026). Los tests DB-dependientes se auto-saltean (`describe.skipIf(!dbAvailable)`) si no hay Postgres. Ocasionalmente 1 test de auth/password timeoutea a 5s bajo carga de la suite completa (bcrypt compitiendo por CPU) y pasa en aislamiento — no es una regresión. `npm test`.
 - **Conversational eval**: 25 end-to-end scenarios vs local Docker (real pipeline + DB). Baseline **25/25** (occasional 1 fail = LLM non-determinism on price proximity). `npm run eval` (requires `docker compose up -d`; consume créditos API — masivo fail con menú/regex → chequear "credit balance is too low" antes de debuggear). **Run after any change to AI pipeline, agent prompt, tool definitions, handlers, or flows.**
 - **Integration harness**: `npx vitest run src/testing/integration/pipeline.integration.test.ts` — full pipeline, no API, requires DB. Regressions for cross-layer bugs go HERE (invariante 14).
 - **QA suites** (`npx tsx src/testing/<file>`; requieren Docker + plan enterprise en el test user, salvo las `-prod-`):
@@ -376,6 +415,17 @@ Gated by admin settings (ship dark, flip when ready):
   | qa-serial-conversations-20 | serial queue, no data conflation | green post-58ae007 |
   | qa-repeated-combos-20 | N verbs → N tools, DB deltas | — |
   | qa-prod-senior / qa-prod-regression-v2 | PROD: memoria/contexto/consistencia | 96% stable |
+
+### Hacienda — dónde vive cada regresión
+| Archivo | Cubre |
+|---|---|
+| `src/domain/livestock/__tests__/animal.service.integration.test.ts` | Integridad de datos: RFID duplicado, re-identificación con historial, animal muerto/vendido que no se mueve, consistencia grupo↔individuales, aislamiento entre usuarios, GDP con intervalos desparejos, y **el grupo sin individualizar intacto** |
+| `src/domain/livestock/__tests__/corral-capacity.integration.test.ts` | Capacidad: advierte y no bloquea; `NULL` nunca advierte |
+| `src/services/__tests__/review-findings-livestock.integration.test.ts` | Las 3 reglas de "Para revisar" + que la individualización parcial NO se reporte |
+| `src/ai/__tests__/animal-tools-registration.test.ts` | Invariante 2 para las 6 tools nuevas + las de grupo intactas |
+| `pipeline.integration.test.ts` § "hacienda híbrida" | "mové 50 vacas" sigue siendo grupo; lista pegada sin llamar al agente; doble tap del batch; consulta por caravana |
+| `src/scripts/__tests__/merge-duplicate-breeds.test.ts` | Planificador de fusión de razas (sin DB) |
+| `src/routes/__tests__/animals.routes.test.ts` | API HTTP: gate de plan, scoping entre usuarios, preview que no mueve, apply idempotente (409) |
 
 ## Checklist antes de commitear
 

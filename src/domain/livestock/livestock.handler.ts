@@ -8,6 +8,8 @@ import {
 import type { LivestockCategory, LivestockGroupRow } from './livestock.types.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FeedlotService } from '../feedlot/feedlot.service.js';
+import { CorralCapacityService } from './corral-capacity.service.js';
+import { AnimalService } from './animal.service.js';
 import { saveDomainEvent, queryLivestockEvents, updateLivestockGroupWeight, updateConversationState } from '../../services/expenses.js';
 import { formatDateAR } from '../../utils/date.js';
 import { formatPlotLocation } from '../../utils/format-location.js';
@@ -51,6 +53,8 @@ export class LivestockHandler {
   private service: LivestockService;
   private plotDiscovery = new PlotDiscoveryService();
   private feedlotService = new FeedlotService();
+  private capacityService = new CorralCapacityService();
+  private animals = new AnimalService();
 
   constructor(service?: LivestockService) {
     this.service = service ?? new LivestockService();
@@ -696,6 +700,15 @@ export class LivestockHandler {
       ? `\n\n💡 Si hacés engorde a corral, podés crear un feedlot con "nuevo feedlot en ${group.field_name || '<campo>'}".`
       : '';
 
+    // Sobrecapacidad: se advierte DESPUÉS de registrar, nunca antes. El alta ya
+    // está hecha — el productor sabe cosas que el sistema no (encierre temporal,
+    // corral ampliado, animales que salen mañana) y bloquear una operación real
+    // por un número de configuración viejo lo enseña a pelearse con la app.
+    // Como la escritura ya ocurrió, el delta es 0: `current` ya los incluye.
+    const capacityLine = group.corral_id
+      ? (await this.capacityService.warningFor(Number(userId), group.corral_id, 0).catch(() => null))
+      : null;
+
     const body =
       `🐄 *Hacienda registrada*\n\n` +
       `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}${newLabel}\n` +
@@ -704,6 +717,7 @@ export class LivestockHandler {
       `  📍 ${fmtLoc(group)}` +
       financialLine +
       askPriceLine +
+      (capacityLine ? `\n\n${capacityLine}` : '') +
       nudgeLine;
 
     const buttons = buildPostActionButtons('add', {
@@ -928,12 +942,19 @@ export class LivestockHandler {
     const categoryLine = isRecat
       ? `  ${LIVESTOCK_CATEGORY_LABEL[sourceGroup.category]}${breed} → *${LIVESTOCK_CATEGORY_LABEL[destGroup.category]}*\n`
       : `  ${LIVESTOCK_CATEGORY_LABEL[sourceGroup.category]}${breed}\n`;
+    // Advertencia de sobrecapacidad del corral DESTINO. Post-escritura y no
+    // bloqueante: el movimiento ya se registró (ver addLivestock).
+    const capacityLine = destGroup.corral_id
+      ? (await this.capacityService.warningFor(Number(userId), destGroup.corral_id, 0).catch(() => null))
+      : null;
+
     const body =
       `${mvLabel.emoji} *${mvLabel.label}*\n\n` +
       categoryLine +
       `  ↗️ ${count} animales\n` +
       `  Desde: *${fmtLoc(sourceGroup)}* (quedan ${sourceGroup.count})\n` +
-      `  Hacia: *${fmtLoc(destGroup)}* (ahora ${destGroup.count})`;
+      `  Hacia: *${fmtLoc(destGroup)}* (ahora ${destGroup.count})` +
+      (capacityLine ? `\n\n${capacityLine}` : '');
 
     const buttons = buildPostActionButtons('transfer', {
       groupId: String(destGroup.id),
@@ -1121,6 +1142,21 @@ export class LivestockHandler {
     });
 
     if (groups.length === 0) {
+      // El vacío del modelo por GRUPOS no puede afirmar que no hay hacienda: el
+      // usuario puede tener animales individualizados (cargados por caravana o
+      // importados por el dashboard) y ningún grupo. Decirle "no tenés hacienda
+      // registrada" con 40 caravanas cargadas es mentirle sobre sus propios datos.
+      const individuals = await this.animals.count(Number(userId), { status: 'activo' })
+        .catch(() => 0);
+      if (individuals > 0) {
+        return {
+          messages: [
+            `🐄 No tenés grupos de hacienda cargados, pero sí *${individuals} animal${individuals === 1 ? '' : 'es'} con caravana*.\n\n` +
+            'Preguntame "qué animales tengo" para verlos, o cargá un grupo con "agregué 20 vacas al lote A1".',
+          ],
+          suggestionKey: 'livestock_empty',
+        };
+      }
       return {
         messages: ['🐄 No tenés hacienda registrada. Cargá animales con "agregué 20 vacas al lote A1".'],
         suggestionKey: 'livestock_empty',

@@ -1,0 +1,32 @@
+{
+  "name": "rfid-lista-pegada",
+  "description": "El caso 'escaneé estos animales': una lista pegada se intercepta ANTES del agente, se resuelve contra el padrón y responde con el desglose + botones. Nada se mueve hasta el tap.",
+  "setup": ["add-field-esperanza", "add-plot-norte", "add-plot-sur", "seed-dos-animales-caravana"],
+  "steps": [
+    {
+      "send": "032010000000077\n032010000000088\n032010000000901\n032010000000902\n032010000000903",
+      "expect": {
+        "responseContains": ["5", "2", "Norte", "sin registrar"],
+        "hasButtons": true
+      }
+    },
+    {
+      "tapTitle": "🔄 Moverlos",
+      "expect": {
+        "responseContains": ["lote o corral"]
+      }
+    },
+    {
+      "send": "Sur",
+      "expect": {
+        "responseContains": ["2", "Sur"]
+      }
+    },
+    {
+      "send": "qué pasó con la caravana 0000000088",
+      "expect": {
+        "responseContains": ["Sur"]
+      }
+    }
+  ]
+}

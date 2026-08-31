@@ -183,6 +183,18 @@ export class FeatureGate {
       adjust_livestock: 'livestock',
       list_livestock: 'livestock',
       livestock_history: 'livestock',
+      // Escribe precio y crea el gasto/ingreso vinculado: es una escritura real,
+      // no un botón de seguimiento. Faltaba en este mapa y pasaba sin gate.
+      set_livestock_price: 'livestock',
+
+      // Capa individual (animal + caravana/RFID). Mismo feature que el resto de
+      // hacienda: es la misma función del producto, no un plan aparte.
+      register_animal: 'livestock',
+      identify_animal: 'livestock',
+      query_animal: 'livestock',
+      list_animals: 'livestock',
+      move_animals: 'livestock',
+      revert_livestock_movement: 'livestock',
       // Livestock — Health / Repro / Weighing
       log_health_event: 'livestock',
       query_health_events: 'livestock',

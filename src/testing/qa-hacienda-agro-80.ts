@@ -336,9 +336,14 @@ async function main(): Promise<void> {
     }
   }
 
+  // Ruta relativa a ESTE archivo. Antes era una absoluta de macOS
+  // (/Users/…/campo-bot/…), así que en Windows la suite corría entera y recién
+  // al final explotaba con ENOENT, perdiendo el reporte.
   const fs = await import('fs');
+  const { fileURLToPath } = await import('node:url');
+  const { dirname, join } = await import('node:path');
   fs.writeFileSync(
-    '/Users/juanpablomitriatti/Desktop/campo-bot/src/testing/qa-hacienda-agro-80-results.json',
+    join(dirname(fileURLToPath(import.meta.url)), 'qa-hacienda-agro-80-results.json'),
     JSON.stringify({ summary: { pass, fail, total: ALL_TESTS.length }, tests: allResults }, null, 2),
   );
   console.log(`\n📄 Full report: src/testing/qa-hacienda-agro-80-results.json`);

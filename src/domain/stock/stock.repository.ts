@@ -1,4 +1,5 @@
 import { pool } from '../../config/db.js';
+import { accessibleFieldsSql } from '../shared/accessible-fields.js';
 
 // --- Types ---
 
@@ -42,16 +43,6 @@ export interface StockMovementRow {
   domain_event_id: number | null;
   movement_date: Date;
   created_at: Date;
-}
-
-// --- Helpers ---
-
-function accessibleFieldsSql(paramIdx: number): string {
-  // Own fields + shared via field_members. Previous version only returned
-  // shared fields, so owners saw empty stock lists.
-  return `SELECT id FROM fields WHERE user_id = $${paramIdx} AND deleted_at IS NULL
-          UNION
-          SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
 }
 
 // --- Repository ---

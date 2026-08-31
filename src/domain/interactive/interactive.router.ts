@@ -101,6 +101,24 @@ export class InteractiveRouter {
       return { type: 'command', data: { command: 'log_rainfall', fieldName: rainMatch[1], mm: parseFloat(rainMatch[2]) } };
     }
 
+    // Lote de caravanas: animal_batch_move_<token> / animal_batch_cancel_<token>.
+    // El token resuelve a {batchId} en callbackPayloadStore — un UUID no entra
+    // cómodo en los 64 bytes de callback_data de Telegram.
+    const animalBatchMatch = callbackId.match(/^animal_batch_(move|cancel)_([A-Za-z0-9_-]+)$/);
+    if (animalBatchMatch) {
+      // El token resuelve al UUID del batch. Si expiró, `batchId` queda null y
+      // el handler contesta que la lectura ya no está disponible — nunca aplica
+      // sobre un batch adivinado.
+      const batchId = callbackPayloadStore.get(animalBatchMatch[2]);
+      return {
+        type: 'command',
+        data: {
+          command: animalBatchMatch[1] === 'move' ? 'animal_batch_move' : 'animal_batch_cancel',
+          batchId,
+        },
+      };
+    }
+
     // Batched callbacks: rain_batch_<fieldName>_<tokenOrBase64> → log_rainfall_batch.
     // El builder ahora registra el payload en callbackPayloadStore (límite de 64
     // bytes de Telegram); el fallback inline-base64 cubre botones en vuelo.

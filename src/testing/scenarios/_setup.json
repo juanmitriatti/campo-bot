@@ -20,6 +20,21 @@
     { "send": "agregué 50 vacas Angus al lote Norte" },
     { "wait": 500 }
   ],
+  "add-plot-sur": [
+    { "send": "agregar lote Sur al campo La Esperanza" },
+    { "wait": 300 },
+    { "send": "80" }
+  ],
+  "seed-animal-caravana": [
+    { "send": "dar de alta una vaca Angus con caravana 032 01 0000000077 en el lote Norte" },
+    { "wait": 500 }
+  ],
+  "seed-dos-animales-caravana": [
+    { "send": "dar de alta una vaca Angus con caravana 032 01 0000000077 en el lote Norte" },
+    { "wait": 500 },
+    { "send": "dar de alta un novillo con caravana 032 01 0000000088 en el lote Norte" },
+    { "wait": 500 }
+  ],
   "add-plots-multi": [
     { "send": "agregar lotes A1, A2 y A3 al campo La Esperanza" },
     { "wait": 500 },

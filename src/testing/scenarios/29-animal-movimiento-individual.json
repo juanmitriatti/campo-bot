@@ -1,0 +1,34 @@
+{
+  "name": "animal-movimiento-individual",
+  "description": "Movimiento por caravanas concretas (move_animals) contrastado con el movimiento por cantidad (transfer_livestock) en la MISMA conversación. Es la desambiguación que más riesgo tiene de romperse.",
+  "setup": ["add-field-esperanza", "add-plot-norte", "add-plot-sur", "seed-dos-animales-caravana"],
+  "steps": [
+    {
+      "send": "mové la caravana 0000000077 y la 0000000088 al lote Sur",
+      "expect": {
+        "responseContains": ["2"],
+        "responseNotContains": ["Transferencia"]
+      }
+    },
+    {
+      "send": "qué pasó con la caravana 0000000077",
+      "expect": {
+        "responseContains": ["Sur"]
+      }
+    },
+    {
+      "send": "agregué 40 novillos Angus al lote Norte",
+      "expect": {
+        "responseContains": ["registrada"],
+        "dbRowCount": { "table": "animals", "count": 2 }
+      }
+    },
+    {
+      "send": "ahora mové 20 novillos del lote Norte al lote Sur",
+      "expect": {
+        "responseContains": ["Transferencia"],
+        "dbRowCount": { "table": "animals", "count": 2 }
+      }
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import { detectCorrection } from '../ai/correction-classifier.js';
 import { extractReferencedAmountCorrection, extractLastRecordDateCorrection, extractActivityQuantityCorrection } from '../middleware/conversation-engine.js';
 import { expandPronouns } from '../utils/pronoun-expander.js';
 import { resolveSelfCorrection } from '../utils/self-correction.js';
+import { looksLikeIdList, extractIdList } from '../utils/animal-id.js';
 import { getConversationState } from './expenses.js';
 import type { UserId, UserSettings, ParseResult } from '../types/index.js';
 
@@ -346,6 +347,32 @@ export class IntentClassifier {
           missingFields: [],
         };
       }
+    }
+
+    // =========================================================================
+    // STEP 1.5 — HARD RULE: una LISTA PEGADA de caravanas nunca llega al agente.
+    //
+    // El productor baja el lector y pega 87 números. Eso no puede ir al modelo:
+    // quema tokens, y Haiku mangla dígitos largos (transpone, trunca, "resume"
+    // la lista) — con identificadores individuales, un dígito cambiado apunta a
+    // otro animal. La detección es determinística (`looksLikeIdList`) y la
+    // resolución contra el padrón es SQL puro.
+    //
+    // No mueve nada: deja el batch en preview con botones (invariante 5).
+    // =========================================================================
+    if (looksLikeIdList(cleaned)) {
+      const { values } = extractIdList(cleaned);
+      console.log(`[RFID BATCH] lista detectada (${values.length} identificadores) — bypass del agente`);
+      return {
+        intent: {
+          type: 'command',
+          data: { command: 'animal_batch_preview', rawText: cleaned },
+        },
+        confidence: 0.95,
+        aiUsed: false,
+        source: 'command',
+        missingFields: [],
+      };
     }
 
     // =========================================================================

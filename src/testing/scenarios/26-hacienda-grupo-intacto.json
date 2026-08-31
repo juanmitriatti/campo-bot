@@ -1,0 +1,22 @@
+{
+  "name": "hacienda-grupo-intacto",
+  "description": "EL escenario crítico del modelo híbrido: una operación por CANTIDAD sigue siendo de grupo con el agente real. Si el agente empieza a rutear esto por move_animals, se pierde la simplicidad que es la ventaja del producto.",
+  "setup": ["add-field-esperanza", "add-plot-norte", "add-plot-sur", "seed-livestock-single"],
+  "steps": [
+    {
+      "send": "mové 30 vacas del lote Norte al lote Sur",
+      "expect": {
+        "responseContains": ["Transferencia", "30"],
+        "responseNotContains": ["caravana"],
+        "dbRowCount": { "table": "animals", "count": 0 }
+      }
+    },
+    {
+      "send": "cuántas vacas tengo",
+      "expect": {
+        "responseContains": ["50"],
+        "responseNotContains": ["caravana"]
+      }
+    }
+  ]
+}

@@ -2,6 +2,13 @@
 
 Event-sourced cattle inventory tracking with health, reproduction, and weighing event logging. Feature-gated to `pro_plus` and `enterprise` plans. Migrations: `053_livestock.sql` (base), `074_domain_events_livestock_columns.sql` (health/repro/weighing).
 
+> **Desde Ago 2026 el modelo es HÍBRIDO: grupo + animal individual con caravana/RFID.**
+> Este documento describe la capa por GRUPOS, que sigue siendo la principal y no
+> cambió. La capa individual — opcional y aditiva — está en
+> **[docs/ganaderia/](../ganaderia/overview.md)** (migraciones 111-116).
+> Invariante 16: un grupo con 0 animales individualizados se comporta exactamente
+> como antes de que esa capa existiera.
+
 ## Data Model
 
 - **`livestock_groups`** — Per-location state projection. Keyed by `(plot_id, category, breed)` with unique constraint. `plot_id` OR `corral_id` (CHECK constraint `chk_location_exclusive`).

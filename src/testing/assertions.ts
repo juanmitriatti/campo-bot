@@ -243,6 +243,7 @@ export async function dbRowCount(client: TestBotClient, table: string, expectedC
     'agro_observations', 'crop_scoutings', 'harvest_loads', 'rainfall',
     'budgets', 'livestock_groups', 'livestock_movements',
     'stock_items', 'stock_movements', 'warehouses', 'documents',
+    'animals', 'animal_identifications', 'animal_events',
   ];
   if (!safeTables.includes(table)) {
     return { pass: false, name: 'dbRowCount', message: `Table "${table}" not in safe list` };
@@ -254,11 +255,14 @@ export async function dbRowCount(client: TestBotClient, table: string, expectedC
     'agro_observations', 'crop_scoutings', 'rainfall', 'budgets',
     'livestock_groups', 'livestock_movements',
     'stock_items', 'stock_movements', 'warehouses', 'documents',
+    'animals', 'animal_identifications', 'animal_events',
   ];
   // Tables with user_id via fields join
   const needsFieldJoin = ['plots', 'harvest_loads'];
 
-  const hasDeletedAt = ['expenses', 'incomes', 'fields'].includes(table);
+  // `animals` y `animal_events` tienen deleted_at; `animal_identifications` no
+  // (una caravana retirada se marca con is_current=false, nunca se borra).
+  const hasDeletedAt = ['expenses', 'incomes', 'fields', 'animals', 'animal_events'].includes(table);
   const deletedFilter = hasDeletedAt ? ' AND deleted_at IS NULL' : '';
 
   let sql: string;

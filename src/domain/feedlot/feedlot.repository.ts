@@ -1,13 +1,6 @@
 import { pool } from '../../config/db.js';
 import type { FeedlotRow, CorralRow } from './feedlot.types.js';
-
-function accessibleFieldsSql(paramIdx: number): string {
-  // OWN fields UNION shared (via field_members). The previous version only checked field_members,
-  // making users blind to corrals/feedlots in their OWN fields.
-  return `SELECT id FROM fields WHERE user_id = $${paramIdx} AND deleted_at IS NULL
-          UNION
-          SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
-}
+import { accessibleFieldsSql } from '../shared/accessible-fields.js';
 
 export class FeedlotRepository {
   // ========================

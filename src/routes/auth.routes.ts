@@ -1367,21 +1367,26 @@ router.get('/livestock', requireAuth, requireFeature('livestock'), async (req: R
 
     const { LivestockRepository } = await import('../domain/livestock/livestock.repository.js');
     const repo = new LivestockRepository();
-    const groups = await repo.listGroups(req.auth!.userId, filters as {
+    const typedFilters = filters as {
       fieldId?: number; plotId?: number; corralId?: number; category?: import('../domain/livestock/livestock.types.js').LivestockCategory;
-    });
-    const total = await repo.countTotal(req.auth!.userId, { fieldId: filters.fieldId, plotId: filters.plotId, corralId: filters.corralId });
-
+    };
     const offset = (page - 1) * limit;
-    const pageItems = groups.slice(offset, offset + limit);
+
+    // Paginación EN LA BASE: traer todos los grupos para cortarlos en memoria no
+    // escala una vez que un usuario tiene miles de grupos.
+    const [pageItems, totalGroups, total] = await Promise.all([
+      repo.listGroups(req.auth!.userId, { ...typedFilters, limit, offset }),
+      repo.countGroups(req.auth!.userId, typedFilters),
+      repo.countTotal(req.auth!.userId, { fieldId: filters.fieldId, plotId: filters.plotId, corralId: filters.corralId }),
+    ]);
 
     res.json({
       items: pageItems,
       totalAnimals: total,
-      totalGroups: groups.length,
+      totalGroups,
       page,
       limit,
-      totalPages: Math.ceil(groups.length / limit),
+      totalPages: Math.ceil(totalGroups / limit),
     });
   } catch (err) {
     handleError(err, res);
@@ -1564,6 +1569,271 @@ router.patch('/livestock/:id', requireAuth, requireFeature('livestock'), async (
     await repo.updateGroupMetadata(id, { breed, avg_weight_kg, notes });
     const updated = await repo.getGroupById(id);
     res.json(updated);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+// --- Animales individuales (capa híbrida, invariante 16) ---
+//
+// Mismo feature gate que el resto de hacienda: es la misma función del producto.
+// Todo scopeado por user_id EN LA QUERY — los ids llegan del cliente y no se
+// confía en ellos.
+
+/** GET /animals — listado paginado con filtros. */
+router.get('/animals', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 25));
+
+    const filters: Record<string, unknown> = {};
+    const num = (v: unknown) => { const n = parseInt(String(v), 10); return isNaN(n) ? undefined : n; };
+    if (req.query.status) filters.status = String(req.query.status);
+    else filters.status = 'activo';
+    if (req.query.category) filters.category = String(req.query.category);
+    if (req.query.sex) filters.sex = String(req.query.sex);
+    if (num(req.query.breed_id) !== undefined) filters.breedId = num(req.query.breed_id);
+    if (num(req.query.field_id) !== undefined) filters.fieldId = num(req.query.field_id);
+    if (num(req.query.plot_id) !== undefined) filters.plotId = num(req.query.plot_id);
+    if (num(req.query.corral_id) !== undefined) filters.corralId = num(req.query.corral_id);
+    if (req.query.group_id) filters.groupId = String(req.query.group_id);
+    if (req.query.identified === 'true') filters.identified = true;
+    if (req.query.identified === 'false') filters.identified = false;
+
+    const { AnimalService } = await import('../domain/livestock/animal.service.js');
+    const service = new AnimalService();
+    const userId = req.auth!.userId;
+
+    const [items, total] = await Promise.all([
+      service.list(userId, { ...filters, limit, offset: (page - 1) * limit } as never),
+      service.count(userId, filters as never),
+    ]);
+
+    res.json({ items, total, page, limit, totalPages: Math.ceil(total / limit) });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/** GET /animals/lookup?ref=... — resolver una caravana a su animal. */
+router.get('/animals/lookup', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const ref = String(req.query.ref ?? '').trim();
+    if (!ref) { res.status(400).json({ error: 'Falta el parámetro ref' }); return; }
+
+    const { AnimalService } = await import('../domain/livestock/animal.service.js');
+    const animal = await new AnimalService().findByIdentifier(req.auth!.userId, ref);
+    if (!animal) { res.status(404).json({ error: 'No encontré ningún animal con esa caravana' }); return; }
+    res.json(animal);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/** GET /animals/consistency — discrepancias del modelo híbrido (advisory). */
+router.get('/animals/consistency', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const { AnimalService } = await import('../domain/livestock/animal.service.js');
+    res.json({ issues: await new AnimalService().findInconsistencies(req.auth!.userId) });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/** GET /animals/breeds — catálogo canónico para los selects del front. */
+router.get('/animals/breeds', requireAuth, requireFeature('livestock'), async (_req: Request, res: Response) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, code, name, kind FROM livestock_breeds WHERE is_active ORDER BY sort_order, name`,
+    );
+    res.json({ breeds: rows });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/** GET /animals/:id — ficha completa + identificaciones. */
+router.get('/animals/:id', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const { AnimalService } = await import('../domain/livestock/animal.service.js');
+    const service = new AnimalService();
+    const userId = req.auth!.userId;
+
+    const animal = await service.getById(userId, String(req.params.id));
+    if (!animal) { res.status(404).json({ error: 'Animal no encontrado' }); return; }
+
+    const [identifications, weights] = await Promise.all([
+      service.getIdentificationHistory(userId, animal.id),
+      service.getWeightGain(userId, animal.id),
+    ]);
+    res.json({ animal, identifications, weights });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/** GET /animals/:id/timeline — línea de tiempo, keyset. */
+router.get('/animals/:id/timeline', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const { AnimalService } = await import('../domain/livestock/animal.service.js');
+    const service = new AnimalService();
+    const userId = req.auth!.userId;
+
+    const animal = await service.getById(userId, String(req.params.id));
+    if (!animal) { res.status(404).json({ error: 'Animal no encontrado' }); return; }
+
+    const events = await service.getTimeline(userId, animal.id, {
+      limit: Math.min(200, Math.max(1, parseInt(String(req.query.limit), 10) || 50)),
+      beforeDate: req.query.before_date ? String(req.query.before_date) : undefined,
+      beforeId: req.query.before_id ? String(req.query.before_id) : undefined,
+    });
+    res.json({ events });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/** POST /animals — alta individual. */
+router.post('/animals', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const { category, rfid, visual_tag, sex, breed, birth_date, field_id, plot_id, corral_id, group_id, origin, notes } = req.body ?? {};
+    if (!category) { res.status(400).json({ error: 'Falta la categoría' }); return; }
+
+    const { AnimalService, DuplicateIdentifierError } = await import('../domain/livestock/animal.service.js');
+    try {
+      const result = await new AnimalService().registerAnimal({
+        userId: req.auth!.userId,
+        category, sex: sex ?? null, rfid: rfid ?? null, visualTag: visual_tag ?? null,
+        breed: breed ?? null, birthDate: birth_date ?? null,
+        fieldId: field_id ?? null, plotId: plot_id ?? null, corralId: corral_id ?? null,
+        groupId: group_id ?? null, origin: origin ?? 'alta_manual', notes: notes ?? null,
+        source: 'manual', createdBy: req.auth!.userId,
+      });
+      // El agente cachea el contexto del usuario 60s; sin esto, un animal dado
+      // de alta por el dashboard no existe para el bot hasta que expire.
+      invalidateUserContext(asUserId(req.auth!.userId));
+      res.status(201).json(result);
+    } catch (e) {
+      if (e instanceof DuplicateIdentifierError) {
+        res.status(409).json({ error: e.message, existingAnimalId: e.existingAnimalId });
+        return;
+      }
+      throw e;
+    }
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/** POST /animals/:id/identifications — asignar o reemplazar caravana. */
+router.post('/animals/:id/identifications', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const { value, id_type, reason, device_type } = req.body ?? {};
+    if (!value) { res.status(400).json({ error: 'Falta el valor de la caravana' }); return; }
+
+    const { AnimalService, DuplicateIdentifierError } = await import('../domain/livestock/animal.service.js');
+    const service = new AnimalService();
+    const userId = req.auth!.userId;
+
+    const animal = await service.getById(userId, String(req.params.id));
+    if (!animal) { res.status(404).json({ error: 'Animal no encontrado' }); return; }
+
+    try {
+      const result = await service.replaceIdentification({
+        userId, animalId: animal.id, newValue: String(value),
+        idType: id_type, reason, deviceType: device_type,
+        source: 'manual', createdBy: userId,
+      });
+      invalidateUserContext(asUserId(userId));
+      res.status(201).json(result);
+    } catch (e) {
+      if (e instanceof DuplicateIdentifierError) {
+        res.status(409).json({ error: e.message, existingAnimalId: e.existingAnimalId });
+        return;
+      }
+      throw e;
+    }
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/**
+ * POST /animals/import — preview de un CSV/lista. NO aplica nada.
+ *
+ * Acepta `{ values: string[] }` o `{ text: "..." }`. El parseo de columnas
+ * completo (raza, sexo, fecha de nacimiento) es P1; hoy importa las caravanas y
+ * las resuelve contra el padrón, que es lo que habilita el movimiento masivo.
+ */
+router.post('/animals/import', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const { values, text, intended_action } = req.body ?? {};
+    const { AnimalBatchService } = await import('../domain/livestock/animal-batch.service.js');
+    const batches = new AnimalBatchService();
+    const userId = req.auth!.userId;
+
+    const MAX_ROWS = 5000;
+    let result;
+    if (Array.isArray(values)) {
+      if (values.length > MAX_ROWS) { res.status(413).json({ error: `Máximo ${MAX_ROWS} filas por importación` }); return; }
+      result = await batches.createFromValues(userId, values.map(String), {
+        source: 'csv_import', intendedAction: intended_action ?? 'movimiento', createdBy: userId,
+      });
+    } else if (typeof text === 'string') {
+      if (text.length > 500_000) { res.status(413).json({ error: 'Archivo demasiado grande' }); return; }
+      result = await batches.createFromText(userId, text, {
+        source: 'csv_import', intendedAction: intended_action ?? 'movimiento', createdBy: userId,
+      });
+    } else {
+      res.status(400).json({ error: 'Mandá `values` (array) o `text` (string)' });
+      return;
+    }
+
+    const { batch, resolution } = result;
+    res.json({
+      batchId: batch.id,
+      summary: {
+        raw: resolution.rawCount,
+        matched: resolution.matched.length,
+        unknown: resolution.unknown.length,
+        duplicates: resolution.duplicates.length,
+        invalid: resolution.invalid.length,
+      },
+      matched: resolution.matched.map((m) => ({
+        value: m.value,
+        animalId: m.animal.id,
+        category: m.animal.category,
+        location: m.animal.plot_name ?? m.animal.corral_name ?? m.animal.field_name ?? null,
+      })),
+      unknown: resolution.unknown,
+      invalid: resolution.invalid,
+      duplicates: resolution.duplicates,
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/** POST /animals/batches/:id/apply — aplica el lote como movimiento. Idempotente. */
+router.post('/animals/batches/:id/apply', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const { plot_id, corral_id, field_id, label } = req.body ?? {};
+    if (!plot_id && !corral_id) { res.status(400).json({ error: 'Indicá un lote o un corral de destino' }); return; }
+
+    const { AnimalBatchService } = await import('../domain/livestock/animal-batch.service.js');
+    const result = await new AnimalBatchService().applyAsMove(req.auth!.userId, String(req.params.id), {
+      fieldId: field_id ?? null, plotId: plot_id ?? null, corralId: corral_id ?? null, label,
+    });
+
+    if (!result.applied) {
+      res.status(result.alreadyApplied ? 409 : 404).json({
+        error: result.alreadyApplied ? 'Ese lote ya fue aplicado' : 'Lote no encontrado o vencido',
+        alreadyApplied: result.alreadyApplied,
+      });
+      return;
+    }
+    invalidateUserContext(asUserId(req.auth!.userId));
+    res.json(result);
   } catch (err) {
     handleError(err, res);
   }

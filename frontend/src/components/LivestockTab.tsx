@@ -3,12 +3,18 @@ import LivestockTable from './LivestockTable';
 import LivestockHistoryPanel from './LivestockHistoryPanel';
 import FeedlotPanel from './FeedlotPanel';
 import LivestockEventsPanel from './LivestockEventsPanel';
+import AnimalsPanel from './AnimalsPanel';
+import AnimalImportPanel from './AnimalImportPanel';
 import TabHeader from './TabHeader';
 
-type SubTab = 'groups' | 'history' | 'health' | 'repro' | 'weighing' | 'feedlot';
+type SubTab = 'groups' | 'animals' | 'import' | 'history' | 'health' | 'repro' | 'weighing' | 'feedlot';
 
+// "Grupos" va primero a propósito: es el modelo principal y el que usa la
+// mayoría. "Animales" es la capa individual, opcional (invariante 16).
 const TABS: { key: SubTab; label: string }[] = [
   { key: 'groups', label: 'Grupos' },
+  { key: 'animals', label: 'Animales' },
+  { key: 'import', label: 'Importar' },
   { key: 'history', label: 'Historial' },
   { key: 'health', label: 'Sanidad' },
   { key: 'repro', label: 'Reproducción' },
@@ -44,6 +50,8 @@ export default function LivestockTab() {
         ))}
       </div>
       {subTab === 'groups' && <LivestockTable />}
+      {subTab === 'animals' && <AnimalsPanel />}
+      {subTab === 'import' && <AnimalImportPanel />}
       {subTab === 'history' && <LivestockHistoryPanel />}
       {subTab === 'health' && (
         <LivestockEventsPanel

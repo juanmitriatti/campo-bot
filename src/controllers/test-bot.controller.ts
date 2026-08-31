@@ -247,6 +247,17 @@ router.post('/reset', async (req: Request, res: Response) => {
       `DELETE FROM stock_movements WHERE user_id = $1`,
       [numericUserId],
     );
+    // Capa individual de hacienda ANTES que livestock_movements, domain_events,
+    // livestock_groups y plots: animal_events referencia a los dos primeros y
+    // `animals` a los dos últimos. Sin esto el reset explota por FK apenas el
+    // usuario tiene un animal individualizado.
+    await client.query(`DELETE FROM animal_events WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM animal_identifications WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM animal_id_batches WHERE user_id = $1`, [numericUserId]);
+    // mother_animal_id / related_animal_id son auto-referencias: se limpian
+    // primero para que el DELETE masivo no dependa del orden de las filas.
+    await client.query(`UPDATE animals SET mother_animal_id = NULL WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM animals WHERE user_id = $1`, [numericUserId]);
     await client.query(
       `DELETE FROM livestock_movements WHERE user_id = $1`,
       [numericUserId],
@@ -320,11 +331,13 @@ router.post('/reset', async (req: Request, res: Response) => {
         (SELECT COUNT(*) FROM expenses WHERE user_id = $1)::int AS expenses,
         (SELECT COUNT(*) FROM incomes WHERE user_id = $1)::int AS incomes,
         (SELECT COUNT(*) FROM agro_observations WHERE user_id = $1)::int AS observations,
+        (SELECT COUNT(*) FROM animals WHERE user_id = $1)::int AS animals,
         (SELECT COUNT(*) FROM conversation_state WHERE user_id = $1)::int AS conv_state`,
       [numericUserId],
     );
     const counts = verify.rows[0];
-    const total = counts.fields + counts.expenses + counts.incomes + counts.observations + counts.conv_state;
+    const total = counts.fields + counts.expenses + counts.incomes + counts.observations
+      + counts.animals + counts.conv_state;
     if (total > 0) {
       await client.query('ROLLBACK');
       console.error(`[test-bot/reset] Verification failed: ${JSON.stringify(counts)}`);

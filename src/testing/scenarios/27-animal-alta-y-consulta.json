@@ -1,0 +1,34 @@
+{
+  "name": "animal-alta-y-consulta",
+  "description": "Alta individual por chat y consulta por caravana. Verifica que el agente elige register_animal (no add_livestock) cuando el usuario da UNA caravana concreta, y query_animal (no list_livestock) al preguntar por ella.",
+  "setup": ["add-field-esperanza", "add-plot-norte"],
+  "steps": [
+    {
+      "send": "dar de alta una vaca Angus con caravana 032 01 0000000077 en el lote Norte",
+      "expect": {
+        "responseContains": ["registrado"],
+        "dbRowCount": { "table": "animals", "count": 1 }
+      }
+    },
+    {
+      "send": "qué pasó con la caravana 0000000077",
+      "expect": {
+        "responseContains": ["Vaca", "Norte"]
+      }
+    },
+    {
+      "send": "qué animales tengo en el lote Norte",
+      "expect": {
+        "responseContains": ["caravana"],
+        "responseNotContains": ["No tenés hacienda registrada"]
+      }
+    },
+    {
+      "send": "dónde está la caravana 032 01 0000000999",
+      "expect": {
+        "responseContains": ["No tengo"],
+        "responseNotContains": ["Historial"]
+      }
+    }
+  ]
+}

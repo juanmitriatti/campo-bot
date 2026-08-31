@@ -5,6 +5,7 @@ import { SharingHandler } from './sharing/sharing.handler.js';
 import { StockHandler } from './stock/stock.handler.js';
 import { DocumentHandler } from './documents/document.handler.js';
 import { LivestockHandler } from './livestock/livestock.handler.js';
+import { AnimalHandler } from './livestock/animal.handler.js';
 import { FeedlotHandler } from './feedlot/feedlot.handler.js';
 import { FeatureGate } from './billing/feature-gate.js';
 import { TOOL_NAMES } from '../ai/tool-definitions.js';
@@ -99,6 +100,22 @@ const LIVESTOCK_COMMANDS = new Set([
   'livestock_post_health_hist', 'livestock_post_repro_hist',
   'livestock_post_resumen_mes', 'livestock_post_new_event',
   'livestock_post_undo_movement', 'livestock_post_undo_event',
+  // Capa individual (animal + caravana). Van en el MISMO set a propósito: para
+  // el router y el gate de plan esto es hacienda, no un dominio nuevo. El
+  // despacho al AnimalHandler ocurre dentro del branch de livestock.
+  'register_animal', 'identify_animal', 'query_animal',
+  'list_animals', 'move_animals', 'revert_livestock_movement',
+  // Lote de lecturas: `preview` lo emite el interceptor determinístico del
+  // pipeline (no el agente); `move`/`cancel` son taps de botón. Ninguno tiene
+  // schema de tool a propósito.
+  'animal_batch_preview', 'animal_batch_move', 'animal_batch_cancel',
+]);
+
+/** Subconjunto de LIVESTOCK_COMMANDS que atiende el AnimalHandler. */
+const ANIMAL_COMMANDS = new Set([
+  'register_animal', 'identify_animal', 'query_animal',
+  'list_animals', 'move_animals', 'revert_livestock_movement',
+  'animal_batch_preview', 'animal_batch_move', 'animal_batch_cancel',
 ]);
 
 const FEEDLOT_COMMANDS = new Set([
@@ -137,7 +154,7 @@ const FINANCIAL_SPECIAL_COMMANDS = new Set([
  * order in routeCommand(); a divergence only mislabels a log line, it never
  * changes routing behavior.
  */
-function classifyDomain(command: string): string | null {
+export function classifyDomain(command: string): string | null {
   if (SYSTEM_COMMANDS.has(command)) return 'system';
   if (FINANCIAL_SPECIAL_COMMANDS.has(command) || FINANCIAL_COMMANDS.has(command)) return 'financial';
   if (AGRONOMY_COMMANDS.has(command)) return 'agronomy';
@@ -176,6 +193,7 @@ export class DomainRouter {
   private documentHandler: DocumentHandler;
   private livestockHandler: LivestockHandler;
   private feedlotHandler: FeedlotHandler;
+  private animalHandler: AnimalHandler;
 
   constructor(
     private financialHandler: FinancialHandler,
@@ -187,6 +205,7 @@ export class DomainRouter {
     documentHandler?: DocumentHandler,
     livestockHandler?: LivestockHandler,
     feedlotHandler?: FeedlotHandler,
+    animalHandler?: AnimalHandler,
   ) {
     this.featureGate = featureGate ?? new FeatureGate();
     this.sharingHandler = sharingHandler ?? new SharingHandler();
@@ -194,6 +213,7 @@ export class DomainRouter {
     this.documentHandler = documentHandler ?? new DocumentHandler();
     this.livestockHandler = livestockHandler ?? new LivestockHandler();
     this.feedlotHandler = feedlotHandler ?? new FeedlotHandler();
+    this.animalHandler = animalHandler ?? new AnimalHandler();
   }
 
   async routeCommand(
@@ -297,7 +317,9 @@ export class DomainRouter {
     }
 
     if (LIVESTOCK_COMMANDS.has(command)) {
-      const res = await this.livestockHandler.handleCommand(cmd, userId, user, settings);
+      const res = ANIMAL_COMMANDS.has(command)
+        ? await this.animalHandler.handleCommand(cmd, userId)
+        : await this.livestockHandler.handleCommand(cmd, userId, user, settings);
       if (ENTITY_LIST_MUTATING_COMMANDS.has(command)) invalidateUserContext(userId);
       return res;
     }

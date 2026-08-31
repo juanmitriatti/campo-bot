@@ -984,11 +984,22 @@ export class LivestockService {
    * Ajuste is not undoable (would need previous-count history).
    */
   async undoMovement(userId: UserId, movementId: string): Promise<{ reversed: boolean; label: string }> {
-    const m = await this.repo.findMovementById(movementId);
+    const m = await this.repo.findMovementById(Number(userId), movementId);
     if (!m) throw new Error('No encontré el movimiento.');
 
     if (m.movement_type === 'ajuste') {
       throw new Error('Los ajustes manuales no se pueden deshacer automáticamente.');
+    }
+
+    // Dos taps del botón de deshacer (doble toque, retry de Telegram, solape de
+    // deploy) aplicaban dos contra-asientos y descuadraban el inventario en
+    // silencio. El chequeo acá da el mensaje; el índice único
+    // `uq_movement_single_reversal` es la red si dos taps entran a la vez.
+    if (m.already_reversed) {
+      throw new Error('Ese movimiento ya fue revertido.');
+    }
+    if (m.reverses_movement_id) {
+      throw new Error('Ese movimiento ES una reversa — revertirlo volvería al estado anterior. Registrá el movimiento que corresponda.');
     }
 
     if (m.movement_type === 'entrada' || m.movement_type === 'nacimiento') {
@@ -998,7 +1009,7 @@ export class LivestockService {
         throw new Error(`No se puede deshacer: actualmente hay ${g?.count ?? 0} animales, restaría a un negativo.`);
       }
       await this.repo.applySingleMovement(Number(userId), 'salida', m.dest_group_id, m.count, {
-        reason: `Reversa del movimiento ${m.id}`,
+        reason: `Reversa del movimiento ${m.id}`, reverses_movement_id: m.id, created_by: Number(userId),
       });
       return { reversed: true, label: `Salida de ${m.count} animales (reversa de ${m.movement_type})` };
     }
@@ -1006,7 +1017,7 @@ export class LivestockService {
     if (m.movement_type === 'salida' || m.movement_type === 'muerte') {
       if (!m.source_group_id) throw new Error('Movimiento sin grupo origen — no se puede deshacer.');
       await this.repo.applySingleMovement(Number(userId), 'entrada', m.source_group_id, m.count, {
-        reason: `Reversa del movimiento ${m.id}`,
+        reason: `Reversa del movimiento ${m.id}`, reverses_movement_id: m.id, created_by: Number(userId),
       });
       return { reversed: true, label: `Entrada de ${m.count} animales (reversa de ${m.movement_type})` };
     }
@@ -1025,7 +1036,7 @@ export class LivestockService {
         m.dest_group_id,
         m.source_group_id,
         m.count,
-        { reason: `Reversa del movimiento ${m.id}` },
+        { reason: `Reversa del movimiento ${m.id}`, reverses_movement_id: m.id, created_by: Number(userId) },
       );
       return { reversed: true, label: `${m.movement_type} de ${m.count} animales (reversa)` };
     }

@@ -1,0 +1,26 @@
+{
+  "name": "animal-reemplazo-caravana",
+  "description": "Reemplazo de caravana perdida (Res. SENASA 841/2025 Art. 11). La vieja queda en el historial y deja de resolver; la nueva la referencia. Verifica que el agente elige identify_animal y no un alta nueva.",
+  "setup": ["add-field-esperanza", "add-plot-norte", "seed-animal-caravana"],
+  "steps": [
+    {
+      "send": "la vaca 0000000077 perdió la caravana, le puse la 032 01 0000000078",
+      "expect": {
+        "responseContains": ["reemplazada"],
+        "dbRowCount": { "table": "animal_identifications", "count": 2 }
+      }
+    },
+    {
+      "send": "qué pasó con la caravana 0000000078",
+      "expect": {
+        "responseContains": ["Vaca", "Norte"]
+      }
+    },
+    {
+      "send": "dónde está la caravana 0000000077",
+      "expect": {
+        "responseContains": ["No tengo"]
+      }
+    }
+  ]
+}

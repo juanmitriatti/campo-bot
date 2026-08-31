@@ -1,0 +1,33 @@
+{
+  "name": "animal-desambiguacion",
+  "description": "Contrastes finos entre grupo e individual sobre el MISMO rodeo: totales vs identidad, sanidad grupal, y un número que es cantidad y no caravana. El usuario tiene animales individualizados, así que el agente ve 'animales con caravana:N' y podría sobre-usar las tools individuales.",
+  "setup": ["add-field-esperanza", "add-plot-norte", "seed-livestock-single", "seed-animal-caravana"],
+  "steps": [
+    {
+      "send": "cuántos animales tengo en total",
+      "expect": {
+        "responseContains": ["50"],
+        "responseNotContains": ["caravana 032"]
+      }
+    },
+    {
+      "send": "vacuné 50 vacas contra aftosa en el lote Norte",
+      "expect": {
+        "responseContains": ["aftosa"],
+        "dbActivity": { "eventType": "health_event" }
+      }
+    },
+    {
+      "send": "los 45 terneros del lote Norte",
+      "expect": {
+        "responseNotContains": ["No tengo ningún animal"]
+      }
+    },
+    {
+      "send": "qué animales tienen caravana",
+      "expect": {
+        "responseContains": ["Vaca"]
+      }
+    }
+  ]
+}

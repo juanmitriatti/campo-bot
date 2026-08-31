@@ -41,7 +41,7 @@ import { PendingTransactionStore, resolveReplacedPending, isCompletePending } fr
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { TypedPendingStore, clearAllTypedStores } from '../middleware/typed-pending-store.js';
-import { isOneShotCallback, consumeOnce } from '../middleware/one-shot-callbacks.js';
+import { isOneShotCallback, consumeOnce, repeatedTapMessage } from '../middleware/one-shot-callbacks.js';
 import { tipEngine } from './tip-engine.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
@@ -1702,10 +1702,7 @@ export async function handleInteractiveReply(
   // Ver middleware/one-shot-callbacks.ts.
   if (isOneShotCallback(callbackId) && !consumeOnce(userId, callbackId)) {
     console.log(`[INTERCEPT] tap repetido ignorado user=${userId} cb=${callbackId}`);
-    return [{
-      type: 'text',
-      text: '✅ Esa lluvia ya la registré con ese toque. No la sumé de nuevo.\nSi de verdad llovió otra vez, escribime los milímetros nuevos.',
-    }];
+    return [{ type: 'text', text: repeatedTapMessage(callbackId) }];
   }
 
   // Branches específicos del canal (doc_* en tg/wa) — primero, para que el

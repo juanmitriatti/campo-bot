@@ -706,7 +706,15 @@ PASO 4 — DISAMBIGUACIONES:
   · "cuándo vendí" → movement_type:'salida' · "cuándo se me murió" → movement_type:'muerte'
   · Siempre pasar el lote/campo si el usuario lo nombró ("en el lote 1C" → plot:'1C').
   · "los últimos 3 nacimientos" → view:'last', top_n:3. "cuántos nacieron este año" → view:'aggregate', period:'year'.
-- CRÍTICO ANIMAL INDIVIDUAL: el sistema lleva la hacienda por GRUPOS (categoría + cantidad), NO por animal. No existen caravanas ni identificación individual. Si preguntan por UN animal concreto ("qué día nació el ternero 45", "dónde está la vaca 12", "el historial de la caravana X") → respond_text explicando que se registra por grupo y ofreciendo lo que sí se puede: los movimientos de esa categoría en ese lote. NUNCA devolver el historial del grupo como si fuera la respuesta sobre ese animal.
+- CRÍTICO GRUPO vs ANIMAL INDIVIDUAL: el sistema lleva la hacienda por GRUPOS (categoría + cantidad) Y, opcionalmente, por ANIMAL con caravana/RFID. Los dos conviven. La pregunta que decide es: ¿el usuario nombró animales CONCRETOS, o habló de una cantidad?
+  · CANTIDAD, sin identidad → tools de GRUPO, como siempre. "mové 50 vacas del Norte al Sur" → transfer_livestock. "cuántas vacas tengo" → list_livestock. "compré 20 novillos" → add_livestock. "vacuné 200 vacas" → log_health_event. NUNCA move_animals ni list_animals para esto.
+  · UNA CARAVANA concreta → query_animal. "qué pasó con la caravana 123456789", "dónde está la vaca 0001234567", "cuánto pesa la 4567", "historial del animal X".
+  · UN CONJUNTO FILTRADO de animales identificados → list_animals. "qué animales están en el lote Norte", "cuáles no tienen caravana", "mostrame los novillos individualizados".
+  · CARAVANAS CONCRETAS a mover → move_animals. "mové la 1234 y la 5678 al lote Sur".
+  · ALTA de un animal con caravana → register_animal. REEMPLAZO de caravana → identify_animal.
+  · Si el usuario da un número que NO es una caravana sino una cantidad ("los 45 terneros"), es GRUPO. Una caravana es un identificador largo (10 o 15 dígitos), no una cantidad de hacienda.
+  · Ante la duda entre grupo e individual, elegí GRUPO: es lo que el productor usa todos los días y no exige que haya caravaneado nada.
+  · El contexto del usuario dice «animales con caravana:N» SOLO si tiene animales individualizados (los cargó por chat o por el dashboard). Si ese dato NO aparece, este productor trabaja únicamente por grupos: NO uses query_animal/list_animals/move_animals ni le ofrezcas caravanas — contestá con las tools de grupo.
   - "promedio kg por categoría" → view:'avg', aggregate_metric:'avg_weight_kg', group_by:'category' (peso ponderado por cantidad)
   - "qué grupo está más atrasado" sin métrica clara → view:'min', aggregate_metric:'avg_weight_kg' (los más livianos = menos avanzados)
 
@@ -949,6 +957,11 @@ PASO 4 — DISAMBIGUACIONES:
     if (ctx.plotNames.length > 0) parts.push(`lotes:[${ctx.plotNames.join(',')}]`);
     if (ctx.corralNames && ctx.corralNames.length > 0) parts.push(`corrales:[${ctx.corralNames.join(',')}]`);
     if (ctx.feedlotNames && ctx.feedlotNames.length > 0) parts.push(`feedlots:[${ctx.feedlotNames.join(',')}]`);
+    // Señal de que este productor caravaneó: sin esto el agente no distingue
+    // "no encuentro esa caravana" de "este usuario no usa caravanas", y no sabe
+    // que puede consultar lo que el usuario cargó por el dashboard. Se omite
+    // cuando es 0 para no gastar tokens en el caso mayoritario (solo grupos).
+    if (ctx.individualizedAnimals > 0) parts.push(`animales con caravana:${ctx.individualizedAnimals}`);
     if (ctx.expenseCategories?.length) parts.push(`categorías gastos:[${ctx.expenseCategories.join(',')}]`);
     if (ctx.incomeCategories?.length) parts.push(`categorías ingresos:[${ctx.incomeCategories.join(',')}]`);
     if (!reduced) {

@@ -1106,6 +1106,26 @@ export class AgentResponseMapper {
     if (input.dest_category != null) cmd.destCategory = input.dest_category;
     if (input.corral != null) cmd.corralName = String(input.corral);
 
+    // Animal individual (caravana / RFID). El copiador genérico no cubre
+    // ninguno de estos: sin este bloque las tools nuevas llegan al handler sin
+    // la caravana y preguntan por algo que el usuario ya dijo.
+    if (input.rfid != null) cmd.rfid = String(input.rfid);
+    if (input.visual_tag != null) cmd.visualTag = String(input.visual_tag);
+    if (input.animal_ref != null) cmd.animalRef = String(input.animal_ref);
+    if (input.new_rfid != null) cmd.newRfid = String(input.new_rfid);
+    if (input.new_visual_tag != null) cmd.newVisualTag = String(input.new_visual_tag);
+    if (input.birth_date != null) cmd.birthDate = String(input.birth_date);
+    if (input.sex != null) cmd.sex = String(input.sex);
+    if (input.origin != null) cmd.origin = String(input.origin);
+    if (input.status != null) cmd.status = String(input.status);
+    if (input.identified != null) cmd.identified = input.identified;
+    if (input.movement_id != null) cmd.movementId = String(input.movement_id);
+    // Las caravanas llegan como array; se normalizan a string[] para que el
+    // handler no tenga que adivinar la forma.
+    if (Array.isArray(input.animal_refs)) {
+      cmd.animalRefs = (input.animal_refs as unknown[]).map((v) => String(v));
+    }
+
     // Grupo (sociedad)
     if (input.grupo != null) cmd.grupo = input.grupo;
 

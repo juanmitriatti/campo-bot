@@ -34,6 +34,34 @@ describe('AgentPromptBuilder', () => {
     expect(prefix).toMatch(/^Hoy: \d{4}-\d{2}-\d{2}/);
   });
 
+  describe('señal de animales individualizados', () => {
+    // Sin esta señal el agente no distingue "no encuentro esa caravana" de
+    // "este usuario no usa caravanas", y no sabe que puede consultar lo que el
+    // productor cargó por el dashboard.
+    const base = { fieldNames: ['Norte'], plotNames: ['A1'] } as unknown as UserContext;
+
+    it('anuncia el conteo cuando el usuario tiene animales con caravana', () => {
+      const prefix = builder.buildUserMessagePrefix({ ...base, individualizedAnimals: 87 });
+      expect(prefix).toContain('animales con caravana:87');
+    });
+
+    it('lo OMITE cuando el usuario trabaja solo por grupos (no gastar tokens en el caso mayoritario)', () => {
+      expect(builder.buildUserMessagePrefix({ ...base, individualizedAnimals: 0 }))
+        .not.toContain('animales con caravana');
+    });
+
+    it('no rompe si el contexto viene sin el campo (entorno sin las migraciones)', () => {
+      expect(() => builder.buildUserMessagePrefix(base)).not.toThrow();
+      expect(builder.buildUserMessagePrefix(base)).not.toContain('animales con caravana');
+    });
+
+    it('el system prompt explica qué hacer cuando la señal NO está', () => {
+      const prompt = builder.build(null);
+      expect(prompt).toContain('animales con caravana:N');
+      expect(prompt).toMatch(/trabaja únicamente por grupos/i);
+    });
+  });
+
   it('omits empty context sections', () => {
     const ctx: UserContext = {
       fieldNames: [],

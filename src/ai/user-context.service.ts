@@ -19,6 +19,18 @@ export interface UserContext {
   recentContexts: ContextStackEntry[];
   expenseCategories: string[];
   incomeCategories: string[];
+  /**
+   * Cuántos animales INDIVIDUALIZADOS (con caravana vigente) tiene el usuario.
+   *
+   * Sin esta señal, el agente tiene las tools de animal individual pero no sabe
+   * si este productor caravaneó algo: ante "¿dónde está la 1234?" no distingue
+   * entre "no la encuentro" y "este usuario no usa caravanas". Y al revés, un
+   * usuario que cargó 800 animales por el dashboard necesita que el bot los
+   * reconozca en el chat — que es el punto del modelo híbrido.
+   *
+   * 0 = el usuario trabaja solo por grupos (el caso mayoritario).
+   */
+  individualizedAnimals: number;
 }
 
 interface CacheEntry {
@@ -84,12 +96,13 @@ export class UserContextService {
     }
 
     // Cold load — fetch everything in parallel.
-    const [fieldsResult, plotsResult, lastContextResult, corralsResult, feedlotsResult] = await Promise.allSettled([
+    const [fieldsResult, plotsResult, lastContextResult, corralsResult, feedlotsResult, animalsResult] = await Promise.allSettled([
       this.entityValidator.getUserFieldNames(userId),
       this.entityValidator.getUserPlotNames(userId),
       this.loadLastContext(userId),
       this.loadCorralNames(userId),
       this.loadFeedlotNames(userId),
+      this.loadIndividualizedCount(userId),
     ]);
 
     const lastCtx = lastContextResult.status === 'fulfilled' ? lastContextResult.value : null;
@@ -103,6 +116,7 @@ export class UserContextService {
       recentContexts: lastCtx?.recentContexts ?? [],
       expenseCategories: _expenseCategories.map(c => c.name),
       incomeCategories: _incomeCategories.map(c => c.name),
+      individualizedAnimals: animalsResult.status === 'fulfilled' ? animalsResult.value : 0,
     };
 
     // Cache only the stable bits (fieldNames/plotNames/etc. are folded into
@@ -111,6 +125,33 @@ export class UserContextService {
     this.cache.set(userId, { context, expiresAt: Date.now() + CACHE_TTL_MS });
 
     return context;
+  }
+
+  /**
+   * Animales con identificación vigente. Va con el resto de las listas
+   * "estables" al caché de 60s — y por eso el dashboard llama a
+   * `invalidateUserContext` después de un alta o de aplicar un import: si no, el
+   * bot no reconoce por hasta un minuto lo que el usuario acaba de cargar.
+   *
+   * Si la tabla todavía no existe (entorno sin las migraciones 112-113), devuelve
+   * 0 en vez de romper la carga de contexto entera.
+   */
+  private async loadIndividualizedCount(userId: UserId): Promise<number> {
+    try {
+      const { rows } = await pool.query(
+        `SELECT COUNT(*)::int AS n
+           FROM animals a
+          WHERE a.user_id = $1 AND a.deleted_at IS NULL AND a.status = 'activo'
+            AND EXISTS (
+              SELECT 1 FROM animal_identifications ai
+               WHERE ai.animal_id = a.id AND ai.is_current
+            )`,
+        [userId],
+      );
+      return rows[0]?.n ?? 0;
+    } catch {
+      return 0;
+    }
   }
 
   private async loadLastContext(userId: UserId): Promise<{
