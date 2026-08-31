@@ -4,6 +4,8 @@ import { FeatureGate } from './feature-gate.js';
 import { MercadoPagoProvider } from './mercadopago.provider.js';
 import { SubscriptionRepository } from './subscription.repository.js';
 import { getSetting, getSettingNumber, getSettingBool } from '../../services/settings.service.js';
+import { getUserAccessMode, type AccessMode } from '../../services/access-gate.service.js';
+import { getPlanCatalog, type PublicPlan } from './plan-catalog.service.js';
 import { logError } from '../../services/error-logger.js';
 import type { PaymentProvider } from './payment-provider.js';
 import type { UserId } from '../../types/index.js';
@@ -77,8 +79,16 @@ export class SubscriptionService {
     subscription: SubscriptionRow | null;
     plan: { id: number; name: string; display_name: string; price_ars: number; price_ars_yearly: number | null } | null;
     payments_enabled: boolean;
+    access_mode: AccessMode;
+    plans: PublicPlan[];
+    support_contact: string;
   }> {
-    const sub = await this.repo.getActiveForUser(userId);
+    // Si no hay suscripción viva, cae a la última fila aunque esté vencida o
+    // cancelada: el frontend necesita SABER que venció para levantar el
+    // paywall. Con el filtro de estados vivos a secas, un vencido llegaba como
+    // "usuario sin suscripción" y la tarjeta de Mi cuenta le escondía el botón
+    // de pago — el único momento en que de verdad lo necesita.
+    const sub = (await this.repo.getActiveForUser(userId)) ?? (await this.repo.getLatestForUser(userId));
     let plan = null;
     if (sub) {
       const planRow = await this.plans.getPlanById(sub.plan_id);
@@ -94,7 +104,13 @@ export class SubscriptionService {
       }
     }
     const payments_enabled = (await getSettingBool('PAYMENTS_ENABLED')) === true;
-    return { subscription: sub, plan, payments_enabled };
+    // El mismo gate que corta el bot decide el paywall del dashboard: dos
+    // lecturas distintas de "está vencido" terminarían contradiciéndose.
+    const access_mode = await getUserAccessMode(Number(userId));
+    // El catálogo sale de la misma fuente que la landing — el modal no puede
+    // ofrecer un precio distinto del que el usuario acaba de ver publicado.
+    const { plans, support_contact } = await getPlanCatalog();
+    return { subscription: sub, plan, payments_enabled, access_mode, plans, support_contact };
   }
 
   // ----- Checkout flow -----

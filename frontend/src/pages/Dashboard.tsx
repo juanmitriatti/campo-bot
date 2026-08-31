@@ -21,6 +21,8 @@ import ChannelLinking from '../components/ChannelLinking';
 import CategoriesTab from '../components/CategoriesTab';
 import FieldsTab from '../components/FieldsTab';
 import RemindersTab from '../components/RemindersTab';
+import PaywallModal from '../components/billing/PaywallModal';
+import { fetchSubscription, type SubscriptionStatus } from '../api/subscription';
 import type { DashboardView } from '../components/layout/nav-model';
 
 const viewFeatureMap: Record<DashboardView, string | null> = {
@@ -64,6 +66,9 @@ export default function Dashboard() {
   const [moreOpen, setMoreOpen] = useState(false);
   // Observaciones is a sub-tab of Actividades now, not its own nav destination.
   const [activityTab, setActivityTab] = useState<'activities' | 'observations'>('activities');
+  // Estado de suscripción: decide el paywall de prueba vencida. null = todavía
+  // no sabemos → NO bloqueamos (un fetch lento no puede parecer un vencimiento).
+  const [sub, setSub] = useState<SubscriptionStatus | null>(null);
 
   const refreshChannelStatus = async () => {
     try {
@@ -87,6 +92,7 @@ export default function Dashboard() {
     // FIX M2: navegar desde /chat con { state: { view: 'account' } } abre la vista correcta.
     else if ((location.state as { view?: string } | null)?.view === 'account') setView('account');
     void refreshChannelStatus();
+    fetchSubscription().then(setSub).catch(() => setSub(null));
   }, []);
 
   // Al salir de "Mi cuenta" re-chequeamos: si acaba de vincular, el banner
@@ -141,6 +147,18 @@ export default function Dashboard() {
   // Once we navigate into the target view, consume the highlight after the
   // child table renders so it doesn't persist on next visit.
   const highlightForView = highlight?.view === view ? highlight.id : undefined;
+
+  /**
+   * Prueba vencida → el board queda borroso detrás de un modal de pago.
+   *
+   * "Mi cuenta" se exceptúa: ahí viven el checkout, exportar datos y eliminar
+   * la cuenta. Bloquear eso también dejaría al usuario encerrado sin forma de
+   * pagar ni de llevarse lo suyo. Y si los pagos están apagados
+   * (`payments_enabled=false`) no hay nada que ofrecer: no lo encerramos.
+   */
+  const paywalled = Boolean(
+    sub && sub.access_mode === 'trial_expired_readonly' && sub.payments_enabled && view !== 'account',
+  );
 
   if (!user) return null;
 
@@ -292,7 +310,10 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="flex">
+      <div
+        className={`flex ${paywalled ? 'blur-sm pointer-events-none select-none' : ''}`}
+        aria-hidden={paywalled}
+      >
         <Sidebar active={view} onChange={setView} features={features} />
 
         <main className="flex-1 min-w-0 px-4 md:px-8 py-6 pb-20 md:pb-6">
@@ -300,21 +321,31 @@ export default function Dashboard() {
         </main>
       </div>
 
-      <BottomNav
-        active={view}
-        onChange={v => { setMoreOpen(false); setView(v); }}
-        features={features}
-        moreOpen={moreOpen}
-        onOpenMore={() => setMoreOpen(true)}
-      />
+      {paywalled && sub && (
+        <PaywallModal status={sub} onGoToAccount={() => { setMoreOpen(false); setView('account'); }} />
+      )}
 
-      <MoreSheet
-        open={moreOpen}
-        active={view}
-        features={features}
-        onSelect={setView}
-        onClose={() => setMoreOpen(false)}
-      />
+      {/* Con el paywall arriba, la barra inferior no se renderiza: navega a
+          vistas bloqueadas y en mobile compite por el z-index con el modal. */}
+      {!paywalled && (
+        <>
+          <BottomNav
+            active={view}
+            onChange={v => { setMoreOpen(false); setView(v); }}
+            features={features}
+            moreOpen={moreOpen}
+            onOpenMore={() => setMoreOpen(true)}
+          />
+
+          <MoreSheet
+            open={moreOpen}
+            active={view}
+            features={features}
+            onSelect={setView}
+            onClose={() => setMoreOpen(false)}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -31,6 +31,24 @@ export class SubscriptionRepository {
     return rows[0] ?? null;
   }
 
+  /**
+   * La última fila del usuario, INCLUIDAS las terminales (expired/cancelled).
+   *
+   * `getActiveForUser` filtra por estados vivos, y eso dejaba a un vencido con
+   * `subscription: null` en `/subscription` — o sea sin plan, sin banner y sin
+   * botón de pago, justo en el único momento en que tiene que poder pagar.
+   * Para decidir acceso se sigue usando el access-gate, no esta fila.
+   */
+  async getLatestForUser(userId: UserId): Promise<SubscriptionRow | null> {
+    const { rows } = await pool.query(
+      `SELECT * FROM subscriptions
+       WHERE user_id = $1
+       ORDER BY created_at DESC, id DESC LIMIT 1`,
+      [userId],
+    );
+    return rows[0] ?? null;
+  }
+
   async getById(id: number): Promise<SubscriptionRow | null> {
     const { rows } = await pool.query(`SELECT * FROM subscriptions WHERE id = $1`, [id]);
     return rows[0] ?? null;

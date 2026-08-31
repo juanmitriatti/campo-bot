@@ -385,11 +385,17 @@ export class SystemHandler {
           const aiLimit = plan?.daily_ai_limit != null ? Number(plan.daily_ai_limit) : null;
           const limitLine = aiLimit ? `\n🤖 Consultas con IA por día: ${aiLimit}` : '';
 
-          // Enterprise se asigna a mano (precio 0 en la tabla) — no se lista.
-          const all = (await this.planRepo.getAllPlans()).filter(p => p.name !== 'enterprise');
-          const planLines = all.map(p => {
-            const price = Number(p.price_ars) > 0 ? `$${Number(p.price_ars).toLocaleString('es-AR')}/mes` : 'sin costo';
-            const current = plan?.id === p.id ? ' ← tu plan' : '';
+          // Los planes salen del catálogo comercial — el MISMO que ve la
+          // landing. Antes listaba `getAllPlans()`, así que el bot ofrecía
+          // "Gratis — sin costo": un plan que dejó de venderse y al que solo
+          // se cae por no pagar.
+          const { getPlanCatalog } = await import('../billing/plan-catalog.service.js');
+          const { plans: catalog } = await getPlanCatalog();
+          const planLines = catalog.map(p => {
+            const price = p.custom_pricing
+              ? 'a medida'
+              : `$${Number(p.price_ars ?? 0).toLocaleString('es-AR')}/mes`;
+            const current = plan?.name === p.name ? ' ← tu plan' : '';
             return `• *${p.display_name}* — ${price}${current}`;
           }).join('\n');
 
