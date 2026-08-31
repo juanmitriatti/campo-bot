@@ -54,7 +54,7 @@ export default function AnimalDetailDrawer({
     try {
       await apiRequest(`/animals/${animalId}/identifications`, {
         method: 'POST',
-        body: JSON.stringify({ value, reason: 'reemplazo' }),
+        body: { value, reason: 'reemplazo' },
       });
       setNewTag('');
       setReplacing(false);

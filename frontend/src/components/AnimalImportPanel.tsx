@@ -43,7 +43,7 @@ export default function AnimalImportPanel() {
     try {
       setPreview(await apiRequest<ImportPreview>('/animals/import', {
         method: 'POST',
-        body: JSON.stringify({ text, intended_action: 'movimiento' }),
+        body: { text, intended_action: 'movimiento' },
       }));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'No pude procesar la lista');
@@ -62,7 +62,7 @@ export default function AnimalImportPanel() {
         `/animals/batches/${preview.batchId}/apply`,
         {
           method: 'POST',
-          body: JSON.stringify(kind === 'plot' ? { plot_id: Number(id) } : { corral_id: Number(id) }),
+          body: kind === 'plot' ? { plot_id: Number(id) } : { corral_id: Number(id) },
         },
       );
       const skipped = r.skipped.length > 0

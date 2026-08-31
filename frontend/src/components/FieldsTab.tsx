@@ -3,6 +3,7 @@ import { apiRequest } from '../api/client';
 import { Pencil, Plus, MapPin } from 'lucide-react';
 import LocalidadInput from './LocalidadInput';
 import TabHeader from './TabHeader';
+import SenasaFields from './SenasaFields';
 
 interface Plot {
   id: number;
@@ -17,6 +18,9 @@ interface Field {
   city: string | null;
   location_method: string | null;
   has_coords: boolean;
+  renspa: string | null;
+  cuig: string | null;
+  senasa_titular: string | null;
   plots: Plot[];
 }
 
@@ -391,6 +395,8 @@ export default function FieldsTab() {
                     {totalHa > 0 && <span className="text-gray-400">· {totalHa} ha totales</span>}
                   </p>
                 )}
+
+                <SenasaFields field={f} onSaved={fetchFields} />
               </div>
             </div>
 

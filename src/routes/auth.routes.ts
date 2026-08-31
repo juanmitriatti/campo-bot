@@ -722,6 +722,7 @@ router.get('/fields-tree', requireAuth, requireFeature('fields'), async (req: Re
   try {
     const { rows } = await pool.query(
       `SELECT f.id, f.name, f.city, f.location_method, (f.latitude IS NOT NULL) AS has_coords,
+              f.renspa, f.cuig, f.senasa_titular,
               COALESCE(json_agg(json_build_object(
                 'id', p.id, 'name', p.name, 'hectares', p.area_hectares,
                 'activeCrop', (SELECT pc.crop FROM plot_crops pc WHERE pc.plot_id = p.id AND pc.end_date IS NULL ORDER BY pc.id DESC LIMIT 1)
@@ -792,7 +793,18 @@ router.patch('/fields/:id', requireAuth, requireFeature('fields'), async (req: R
     const id = parseInt(String(req.params.id), 10);
     const name = typeof req.body?.name === 'string' ? req.body.name.trim() : undefined;
     const cityIn = typeof req.body?.city === 'string' ? req.body.city.trim() : undefined;
-    if (isNaN(id) || (name === undefined && cityIn === undefined) || name === '') {
+    // Datos sanitarios del establecimiento. Se guardan como texto SIN validar el
+    // formato: la máscara exacta de RENSPA y CUIG no está publicada en fuente
+    // oficial primaria, y rechazar el número real de un productor por una
+    // máscara inventada es peor que no validar (ver docs/ganaderia/senasa.md).
+    const senasaKeys = ['renspa', 'cuig', 'senasa_titular'] as const;
+    const senasaIn: Partial<Record<typeof senasaKeys[number], string>> = {};
+    for (const k of senasaKeys) {
+      if (typeof req.body?.[k] === 'string') senasaIn[k] = String(req.body[k]).trim().slice(0, 120);
+    }
+    const hasSenasa = Object.keys(senasaIn).length > 0;
+
+    if (isNaN(id) || (name === undefined && cityIn === undefined && !hasSenasa) || name === '') {
       res.status(400).json({ error: 'Nada para actualizar' }); return;
     }
     if (name !== undefined) {
@@ -831,9 +843,15 @@ router.patch('/fields/:id', requireAuth, requireFeature('fields'), async (req: R
         }
       }
     }
+    for (const k of senasaKeys) {
+      if (senasaIn[k] === undefined) continue;
+      if (senasaIn[k] === '') { sets.push(`${k} = NULL`); continue; }
+      vals.push(senasaIn[k]); sets.push(`${k} = $${vals.length}`);
+    }
     vals.push(id); vals.push(req.auth!.userId);
     const r = await pool.query(
-      `UPDATE fields SET ${sets.join(', ')} WHERE id = $${vals.length - 1} AND user_id = $${vals.length} AND deleted_at IS NULL RETURNING id, name, city`,
+      `UPDATE fields SET ${sets.join(', ')} WHERE id = $${vals.length - 1} AND user_id = $${vals.length} AND deleted_at IS NULL
+       RETURNING id, name, city, renspa, cuig, senasa_titular`,
       vals,
     );
     if (r.rows.length === 0) { res.status(404).json({ error: 'Campo no encontrado' }); return; }
@@ -2750,7 +2768,39 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
       groupMap.set(id, ex);
     }
 
+    // Individualización: cuántas de esas cabezas tienen caravana vigente.
+    // Va en esta vista porque es donde el productor mira el rodeo — tener las
+    // pantallas de Animales en otra sección dejaba la capa individual invisible
+    // justo en el lugar donde se la busca.
+    let individualization = { total: 0, identified: 0, byCategory: [] as Array<{ category: string; identified: number }> };
+    try {
+      const { rows: ind } = await pool.query(
+        `SELECT a.category::text AS category, COUNT(*)::int AS n
+           FROM animals a
+          WHERE a.user_id = $1
+            AND a.deleted_at IS NULL
+            AND a.status = 'activo'
+            AND (a.field_id IS NULL OR a.field_id = ANY($2::int[]))
+            AND EXISTS (
+              SELECT 1 FROM animal_identifications ai
+               WHERE ai.animal_id = a.id AND ai.is_current
+            )
+          GROUP BY a.category`,
+        [userId, targetFieldIds],
+      );
+      const identified = ind.reduce((s: number, r: { n: number }) => s + Number(r.n), 0);
+      individualization = {
+        total: stockByCategory.reduce((s: number, r: { headcount: number }) => s + Number(r.headcount), 0),
+        identified,
+        byCategory: ind.map((r: { category: string; n: number }) => ({ category: r.category, identified: Number(r.n) })),
+      };
+    } catch {
+      // Entorno sin las migraciones de la capa individual: la vista agregada
+      // no puede depender de ella (invariante 16).
+    }
+
     res.json({
+      individualization,
       stockByCategory: stockByCategory.map(r => ({ category: r.category, headcount: Number(r.headcount) })),
       headcountTrendMonthly: [...trendMap.values()].sort((a, b) => a.month.localeCompare(b.month)),
       feedlotWeightCurve: [...groupMap.values()],

@@ -9,6 +9,7 @@ import LivestockHeadcountTrendChart from './charts/LivestockHeadcountTrendChart'
 import FeedlotWeightCurveChart from './charts/FeedlotWeightCurveChart';
 import LivestockHealthEventsChart from './charts/LivestockHealthEventsChart';
 import LivestockReproEventsChart from './charts/LivestockReproEventsChart';
+import IndividualizationCard from './IndividualizationCard';
 
 interface Props {
   fieldId: number | null;
@@ -77,6 +78,14 @@ export default function OverviewLivestockView({ fieldId }: Props) {
         <KpiCard label="Sanidad mes" value={String(last30HealthEvents)} tint="bg-purple-50" Icon={Syringe} iconColor="text-purple-600" />
         <KpiCard label="Repro mes" value={String(last30ReproEvents)} tint="bg-pink-50" Icon={Activity} iconColor="text-pink-600" />
       </div>
+
+      {/* Trazabilidad individual. Esta vista es donde el productor mira el
+          rodeo: sin esta tira, la capa de caravanas quedaba invisible salvo que
+          supiera entrar a Recursos → Hacienda → Animales. */}
+      <IndividualizationCard
+        total={data.individualization?.total ?? totalHeadcount}
+        identified={data.individualization?.identified ?? 0}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         <div className="lg:col-span-4">

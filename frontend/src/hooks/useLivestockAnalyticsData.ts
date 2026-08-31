@@ -42,6 +42,9 @@ export interface FeedlotOccupancyRow {
 }
 
 export interface LivestockAnalyticsData {
+  /** Trazabilidad individual: cuántas cabezas tienen caravana vigente. Puede
+   *  faltar en entornos sin las migraciones de la capa individual. */
+  individualization?: { total: number; identified: number; byCategory: Array<{ category: string; identified: number }> };
   stockByCategory: LivestockStockCategoryRow[];
   headcountTrendMonthly: LivestockHeadcountMonth[];
   feedlotWeightCurve: FeedlotWeightCurveGroup[];
