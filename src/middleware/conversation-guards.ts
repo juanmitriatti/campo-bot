@@ -62,7 +62,24 @@ export function isNegationOrCancel(text: string): boolean {
 // Action verbs across ALL domains (financial, agro, livestock, stock, admin) —
 // accent-STRIPPED forms, so no trailing-\b breakage. A message starting with /
 // containing one of these is a NEW write, not an answer to the current prompt.
-const ACTION_VERB = /\b(gaste|pague|pago|compre|compro|abone|vendi|vendo|cobre|cobro|ingrese|ingreso|facture|sembre|siembro|fumig\w*|fertilic\w*|cosech\w*|pulveric\w*|are|rastre|plante|plant\w*|regue|riegue|aplique|aplico|llovio|cayo(?:\s+\d|\s+agua|\s+lluvia)|nacio|nacieron|parieron|vacune|desparasite|cure|trate|insemine|destete|eche|pese|pesaron|pesamos|transferi|transfer\w*|pase|agrega|agregue|suma|sume|cargue|registre|registra|anote|anota|renombr\w*)\b/;
+// Verbos de ACCIÓN. Un mensaje con uno de estos es un pivot real: nunca es la
+// respuesta a "¿en qué lote?" ni a "¿a cuántos animales?".
+//
+// El bloque de creación/borrado/movimiento se agregó tras un bug de prod (Ago
+// 2026): con un pending de sanidad abierto ("¿a cuántos animales?"), mensajes
+// como "crear feedlot en el campo X" NO tenían verbo reconocido, no escapaban,
+// y el pending se los comía uno tras otro — hasta que encontró el "5" de
+// "crear corral 1 con capacidad 5" y registró una desparasitación de 5 terneros
+// que nadie pidió. El parser regex devuelve null para estas frases, así que la
+// lista de comandos (isNewActionInterrupt) tampoco las cubría: el único guarda
+// que puede verlas es este.
+//
+// Cuidado al extender: estos alternantes NO deben matchear una respuesta
+// legítima a un slot ("50", "las 95", "ivermectina", "lote Norte", "Angus").
+// En particular `movi(?!miento)` existe para no capturar "movimientos de
+// hacienda", que es una CONSULTA — si la capturara, isReadOnlyQuery devolvería
+// false y el pending se descartaría en vez de responder y re-preguntar.
+const ACTION_VERB = /\b(gaste|pague|pago|compre|compro|abone|vendi|vendo|cobre|cobro|ingrese|ingreso|facture|sembre|siembro|fumig\w*|fertilic\w*|cosech\w*|pulveric\w*|are|rastre|plante|plant\w*|regue|riegue|aplique|aplico|llovio|cayo(?:\s+\d|\s+agua|\s+lluvia)|nacio|nacieron|parieron|vacune|desparasite|cure|trate|insemine|destete|eche|pese|pesaron|pesamos|transferi|transfer\w*|pase|agrega|agregue|suma|sume|cargue|registre|registra|anote|anota|renombr\w*|cre[ae]\w*|arma\w*|borr[ae]\w*|elimin[ae]\w*|dar de alta|move\w*|mueve\w*|muevo|movi(?!miento)\w*|revert\w*|deshac\w*|reemplaz\w*)\b/;
 
 // Query / read intents — clima, reportes, listados, "¿cuánto…?". During a flow
 // these mean "stop the registration and answer me", not flow input.

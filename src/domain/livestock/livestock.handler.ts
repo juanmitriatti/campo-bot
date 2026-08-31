@@ -868,13 +868,45 @@ export class LivestockHandler {
   private async transferLivestock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const category = cmd.category as string;
     const count = cmd.count as number;
-    const sourcePlot = cmd.sourcePlot as string;
+    // El origen llega por dos caminos: `source_plot` desde el agente, o la clave
+    // genérica `plot`/`plotName` cuando la respuesta viene de un pending (el
+    // slot-extractor llena esas). Leer solo `sourcePlot` hacía que contestar
+    // "Sur" al «¿de qué lote los saco?» se ignorara y se re-preguntara en loop.
+    const sourcePlot = (cmd.sourcePlot ?? cmd.plotName ?? cmd.plot) as string;
     const destPlot = cmd.destPlot as string;
-    const sourceCorral = cmd.sourceCorral as string;
+    const sourceCorral = (cmd.sourceCorral ?? cmd.corralName ?? cmd.corral) as string;
     const destCorral = cmd.destCorral as string;
     const destCategory = cmd.destCategory as string;
     if (!category) return { messages: ['Necesito la categoría. Ej: "mové 10 vacas del lote A1 al lote B2".'] };
     if (!count || count <= 0) return { messages: ['Necesito la cantidad.'] };
+
+    /**
+     * Pregunta por el origen con un pending machine-readable (invariante 5).
+     *
+     * Eran tres `return` de texto suelto. Una pregunta huérfana pierde la
+     * respuesta: si el agente omite `source_plot` —cosa que pasa en
+     * conversaciones largas aunque el usuario haya dicho "en el lote Sur"— el
+     * usuario contestaba "Sur" y ese mensaje se iba al agente sin contexto, en
+     * vez de completar la transferencia. Con el pending lo consume el
+     * slot-extractor y la operación se retoma sola.
+     */
+    const askSource = (opciones?: string[]): HandlerResponse => {
+      const lista = opciones && opciones.length > 0
+        ? `\n\nTenés ${category} en: ${opciones.join(', ')}.`
+        : '';
+      const ask = `📍 ¿De qué lote o corral los saco?${lista}`;
+      return {
+        messages: [ask],
+        sideEffects: {
+          setPendingActivity: {
+            command: 'transfer_livestock',
+            data: { ...cmd },
+            missing: ['plot'],
+            askPrompt: ask,
+          },
+        },
+      };
+    };
 
     // Auto-resolve source: if not specified, look for a unique group of this category
     let effectiveSourcePlot = sourcePlot;
@@ -891,13 +923,17 @@ export class LivestockHandler {
         } else if (nonEmpty.length === 0) {
           return { messages: [`❌ No hay ${category} registrados.`] };
         } else {
-          return { messages: ['Necesito el origen (lote o corral).'] };
+          // Ambiguo: se nombran las ubicaciones reales para que la respuesta
+          // sea un dato y no una adivinanza.
+          return askSource(
+            nonEmpty.map((g) => g.plot_name ?? g.corral_name).filter((n): n is string => !!n),
+          );
         }
       } catch {
-        return { messages: ['Necesito el origen (lote o corral).'] };
+        return askSource();
       }
     }
-    if (!effectiveSourcePlot && !effectiveSourceCorral) return { messages: ['Necesito el origen (lote o corral).'] };
+    if (!effectiveSourcePlot && !effectiveSourceCorral) return askSource();
     // Recategorización in-situ: si hay destCategory pero no destino explícito, usar el mismo origen
     let effectiveDestPlot = destPlot;
     let effectiveDestCorral = destCorral;

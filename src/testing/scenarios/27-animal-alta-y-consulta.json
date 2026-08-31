@@ -18,8 +18,9 @@
     },
     {
       "send": "qué animales tengo en el lote Norte",
+      "comentario": "Frase genuinamente ambigua: puede resolverse por list_animals (la ficha individual) o por list_livestock (el total del grupo). Las dos son correctas, así que se afirma lo único que debe valer en ambos casos: que NO diga que no hay hacienda cuando hay un animal con caravana cargado.",
       "expect": {
-        "responseContains": ["caravana"],
+        "responseContains": ["animal"],
         "responseNotContains": ["No tenés hacienda registrada"]
       }
     },

@@ -2430,4 +2430,144 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(text).not.toMatch(/Historial/i);
     });
   });
+
+  // ===========================================================================
+  // Regresión: un pending que pide una CANTIDAD no puede comerse mensajes de
+  // otra intención (bug de prod, Ago 2026).
+  //
+  // Con "¿A cuántos animales?" abierto, "crear feedlot en el campo X" no tenía
+  // verbo reconocido por ACTION_VERB y el parser regex devolvía null, así que
+  // ningún guarda lo veía como pivot: el pending se lo tragaba. Tres mensajes
+  // después encontró el "5" de "crear corral 1 con capacidad 5" y registró una
+  // desparasitación de 5 terneros que el usuario nunca pidió — corrupción
+  // silenciosa, el peor modo de falla.
+  // ===========================================================================
+  describe('pending de cantidad vs mensaje de otra intención', () => {
+    let h: PipelineHarness;
+    let fieldId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('pending-pivot');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Pivote') RETURNING id`, [h.userId]);
+      fieldId = f[0].id as number;
+      const p = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Sur') RETURNING id`, [fieldId]);
+      await h.q(
+        `INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count)
+         VALUES ($1, $2, $3, 'ternero', 40)`,
+        [h.userId, fieldId, p[0].id],
+      );
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"crear feedlot" NO se lo come el pending, y el pendiente queda avisado', async () => {
+      h.fakeAgent.enqueueTool('log_health_event', {
+        health_type: 'desparasitacion', disease_or_vaccine: 'ivermectina',
+        category: 'ternero', plot: 'Sur', field: 'El Pivote',
+      });
+      const ask = await h.send('desparasité los terneros del lote Sur con ivermectina');
+      expect(h.allText(ask)).toMatch(/cuántos animales/i);
+
+      h.fakeAgent.enqueueTool('create_feedlot', { name: 'FL Pivote', field: 'El Pivote' });
+      const items = await h.send('crear feedlot en el campo El Pivote');
+      const text = h.allText(items);
+
+      // El feedlot se creó…
+      expect(text).toMatch(/feedlot/i);
+      const feedlots = await h.q(`SELECT id FROM feedlots WHERE user_id = $1`, [h.userId]);
+      expect(feedlots).toHaveLength(1);
+      // …y el pending no se perdió en silencio: se avisa que quedó diferido.
+      expect(text).toMatch(/pendiente/i);
+    });
+
+    it('un número en un mensaje de otra intención NO registra el evento fantasma', async () => {
+      h.fakeAgent.enqueueTool('log_health_event', {
+        health_type: 'vacunacion', disease_or_vaccine: 'aftosa',
+        category: 'ternero', plot: 'Sur', field: 'El Pivote',
+      });
+      await h.send('vacuné los terneros del lote Sur contra aftosa');
+
+      const before = await h.q(
+        `SELECT COUNT(*)::int AS n FROM domain_events
+          WHERE user_id = $1 AND event_type = 'health_event' AND deleted_at IS NULL`,
+        [h.userId],
+      );
+
+      h.fakeAgent.enqueueTool('create_corral', { name: '1', capacity: 5, field: 'El Pivote' });
+      const items = await h.send('crear corral 1 con capacidad 5');
+
+      // Lo que se registró es el CORRAL, no una vacunación de 5 terneros.
+      expect(h.allText(items)).toMatch(/corral/i);
+      expect(h.allText(items)).not.toMatch(/Evento sanitario registrado/i);
+      const after = await h.q(
+        `SELECT COUNT(*)::int AS n FROM domain_events
+          WHERE user_id = $1 AND event_type = 'health_event' AND deleted_at IS NULL`,
+        [h.userId],
+      );
+      expect(Number(after[0].n)).toBe(Number(before[0].n));
+    });
+
+    // Regresión: el origen de una transferencia se preguntaba con TEXTO SUELTO
+    // (invariante 5). Si el agente omite `source_plot` —pasa en conversaciones
+    // largas aunque el usuario haya nombrado el lote— el usuario contestaba
+    // "Sur" y ese mensaje se iba al agente sin contexto: la transferencia se
+    // perdía y la respuesta podía terminar en cualquier lado.
+    it('el origen ambiguo se pregunta con pending, y la respuesta completa la operación', async () => {
+      const p2 = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte') RETURNING id`, [fieldId]);
+      await h.q(
+        `INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count)
+         VALUES ($1, $2, $3, 'vaquillona', 12)`,
+        [h.userId, fieldId, p2[0].id],
+      );
+      const sur = await h.q(`SELECT id FROM plots WHERE field_id = $1 AND name = 'Sur'`, [fieldId]);
+      await h.q(
+        `INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count)
+         VALUES ($1, $2, $3, 'vaquillona', 20)`,
+        [h.userId, fieldId, sur[0].id],
+      );
+
+      // El agente NO manda el origen y hay vaquillonas en dos lotes.
+      h.fakeAgent.enqueueTool('transfer_livestock', {
+        category: 'vaquillona', count: 5, dest_category: 'vaca',
+      });
+      const ask = await h.send('pasé 5 vaquillonas a vacas');
+      const askText = h.allText(ask);
+
+      expect(askText).toMatch(/lote o corral/i);
+      // Nombra las ubicaciones reales: la respuesta es un dato, no una adivinanza.
+      expect(askText).toMatch(/Norte/);
+      expect(askText).toMatch(/Sur/);
+
+      // "Sur" lo consume el slot-extractor y completa la recategorización,
+      // sin volver al agente.
+      const callsBefore = h.fakeAgent.calls.length;
+      const done = await h.send('Sur');
+      expect(h.fakeAgent.calls.length).toBe(callsBefore);
+      expect(h.allText(done)).toMatch(/Recategorizaci/i);
+
+      const rows = await h.q(
+        `SELECT lg.category::text AS category, lg.count FROM livestock_groups lg
+          WHERE lg.plot_id = $1 AND lg.deleted_at IS NULL ORDER BY lg.category`,
+        [sur[0].id],
+      );
+      const byCat = Object.fromEntries(rows.map(r => [r.category, Number(r.count)]));
+      expect(byCat['vaquillona']).toBe(15);   // 20 − 5
+      expect(byCat['vaca']).toBe(5);
+    });
+
+    it('una respuesta legítima SÍ llena el slot — el escape no se volvió demasiado ancho', async () => {
+      h.fakeAgent.enqueueTool('log_health_event', {
+        health_type: 'desparasitacion', disease_or_vaccine: 'ivermectina',
+        category: 'ternero', plot: 'Sur', field: 'El Pivote',
+      });
+      const ask = await h.send('desparasité los terneros del lote Sur con ivermectina');
+      expect(h.allText(ask)).toMatch(/cuántos animales/i);
+
+      const callsBefore = h.fakeAgent.calls.length;
+      const done = await h.send('30');
+
+      // El "30" lo consume el slot-extractor, sin volver al agente.
+      expect(h.fakeAgent.calls.length).toBe(callsBefore);
+      expect(h.allText(done)).toMatch(/ivermectina/i);
+    });
+  });
 });

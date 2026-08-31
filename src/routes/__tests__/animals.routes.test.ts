@@ -10,16 +10,14 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { pool } from '../../config/db.js';
-import { registerTestUser, api } from './dashboard-prelaunch.routes.test.js';
+// Los helpers viven en un módulo aparte, NO en otro `*.test.ts`: importarlos
+// desde un archivo de test hacía que Vitest re-ejecutara SUS describe, corriendo
+// esa suite dos veces y chocando en el segundo registro (409).
+import { appReachable, registerTestUser, api } from './routes-helpers.js';
 
-const BASE = 'http://localhost:3000';
 let appUp = false;
 
-beforeAll(async () => {
-  try {
-    appUp = (await fetch(`${BASE}/api/health`, { signal: AbortSignal.timeout(3000) })).ok;
-  } catch { appUp = false; }
-});
+beforeAll(async () => { appUp = await appReachable(); });
 
 /** Sube al usuario a un plan con `livestock` y le crea campo + lotes. */
 async function setupLivestockUser(slug: string) {

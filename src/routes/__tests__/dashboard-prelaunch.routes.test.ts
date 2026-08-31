@@ -7,38 +7,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { pool } from '../../config/db.js';
 
-const BASE = 'http://localhost:3000';
+import { BASE, appReachable, registerTestUser, api } from './routes-helpers.js';
+
 let appUp = false;
-
-async function appReachable(): Promise<boolean> {
-  try {
-    const r = await fetch(`${BASE}/api/health`, { signal: AbortSignal.timeout(3000) });
-    return r.ok;
-  } catch { return false; }
-}
-
-export async function registerTestUser(slug: string): Promise<{ token: string; userId: number; email: string }> {
-  const email = `rt-${slug}-${Date.now()}@routes-test.local`;
-  const r = await fetch(`${BASE}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: `RT ${slug}`, email, password: 'testpass123' }),
-  });
-  if (!r.ok) throw new Error(`register failed: ${r.status} ${await r.text()}`);
-  const body = await r.json();
-  // register returns { user, tokens: { accessToken, refreshToken } }
-  const token = body.tokens?.accessToken ?? body.token ?? body.accessToken;
-  const u = await pool.query(`SELECT id FROM users WHERE email = $1`, [email]);
-  return { token, userId: u.rows[0].id as number, email };
-}
-
-export function api(token: string) {
-  return (path: string, opts: RequestInit = {}) =>
-    fetch(`${BASE}/api/auth${path}`, {
-      ...opts,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts.headers ?? {}) },
-    });
-}
 
 async function cleanupUser(email: string): Promise<void> {
   const u = await pool.query(`SELECT id FROM users WHERE email = $1`, [email]);

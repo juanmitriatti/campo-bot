@@ -11,7 +11,7 @@
       "turns": [
         {
           "message": "cuántas Angus tengo",
-          "response": "🐄 *Hacienda — Angus* — total *126 cabezas*\n• Vacas Angus: *71* — Don V2 / N1\n• Terneros Angus: *28* — Don V2 / N1\n• Novillos Angus: *27* — Don V2 / N2",
+          "response": "📊 *Resumen hacienda — Angus* — total *126 cabezas*\n\n🐮 *Por categoría:*\n  • Vacas: 71 cabezas\n  • Terneros: 28 cabezas\n  • Novillos: 27 cabezas\n\n📍 *Por ubicación:*\n  • Don V2 / N1: 99 cabezas\n  • Don V2 / N2: 27 cabezas",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -50,7 +50,7 @@
       "turns": [
         {
           "message": "distribución por raza",
-          "response": "🏆 *Top razas por cabezas*\n• Angus: 126 cabezas (3 grupos)\n• Hereford: 30 cabezas (1 grupo)",
+          "response": "📊 *Resumen hacienda* — total *156 cabezas* · ~12.300 kg\n\n🐮 *Por categoría:*\n  • Vacas: 101 cabezas (~12.300 kg)\n  • Terneros: 28 cabezas\n  • Novillos: 27 cabezas\n\n📍 *Por ubicación:*\n  • Don V2 / N1: 99 cabezas\n  • Don V2 / N3: 30 cabezas\n  • Don V2 / N2: 27 cabezas",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -102,7 +102,7 @@
       "turns": [
         {
           "message": "cuántos machos y cuántas hembras tengo",
-          "response": "🐄 *Hacienda total: 156 animales*\n\n  📍 Don V2 / N1\n    • Vaca Angus: *71*\n    • Ternero Angus: *28*\n\n  📍 Don V2 / N2\n    • Novillo Angus: *27*\n\n  📍 Don V2 / N3\n    • Vaca Hereford: *30* (410.00 kg prom.)\n    ⚖️ Peso estimado: 12.300 kg\n🐄 *Hacienda total: 156 animales*\n\n  📍 Don V2 / N1\n    • Vaca Angus: *71*\n    • Ternero Angus: *28*\n\n  📍 Don V2 / N2\n    • Novillo Angus: *27*\n\n  📍 Don V2 / N3\n    • Vaca Hereford: *30* (410.00 kg prom.)\n    ⚖️ Peso estimado: 12.300 kg",
+          "response": "📊 *Resumen hacienda* — total *156 cabezas* · ~12.300 kg\n\n🐮 *Por categoría:*\n  • Vacas: 101 cabezas (~12.300 kg)\n  • Terneros: 28 cabezas\n  • Novillos: 27 cabezas\n\n📍 *Por ubicación:*\n  • Don V2 / N1: 99 cabezas\n  • Don V2 / N3: 30 cabezas\n  • Don V2 / N2: 27 cabezas\n📊 *Resumen hacienda* — total *156 cabezas* · ~12.300 kg\n\n🐮 *Por categoría:*\n  • Vacas: 101 cabezas (~12.300 kg)\n  • Terneros: 28 cabezas\n  • Novillos: 27 cabezas\n\n📍 *Por ubicación:*\n  • Don V2 / N1: 99 cabezas\n  • Don V2 / N3: 30 cabezas\n  • Don V2 / N2: 27 cabezas",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -115,7 +115,7 @@
       "turns": [
         {
           "message": "en qué campo tengo más hacienda",
-          "response": "📍 *Tus campos (1):*\n\n• *Don V2* — Pergamino, Buenos Aires (3 lotes, 490 ha)\n\n📐 *Total: 490 ha*\n\n_Comandos: agregar campo X, lotes del campo X, info campo X_\n¿Y ahora?",
+          "response": "🏆 *Top campos por cabezas*\n• Don V2: 156 cabezas (4 grupos)",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -128,7 +128,7 @@
       "turns": [
         {
           "message": "cuál es el ratio de terneros sobre vacas",
-          "response": "📊 *Resumen hacienda* — total *156 cabezas* · ~12.300 kg\n\n🐮 *Por categoría:*\n  • Vacas: 101 cabezas (~12.300 kg)\n  • Terneros: 28 cabezas\n  • Novillos: 27 cabezas\n\n📍 *Por ubicación:*\n  • Don V2 / N1: 99 cabezas\n  • Don V2 / N3: 30 cabezas\n  • Don V2 / N2: 27 cabezas",
+          "response": "📊 *Resumen hacienda — vaca* — total *101 cabezas* · ~12.300 kg\n\n🐮 *Por categoría:*\n  • Vacas: 101 cabezas (~12.300 kg)\n\n📍 *Por ubicación:*\n  • Don V2 / N1: 71 cabezas\n  • Don V2 / N3: 30 cabezas\n📊 *Resumen hacienda — ternero* — total *28 cabezas*\n\n🐮 *Por categoría:*\n  • Terneros: 28 cabezas",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -141,7 +141,7 @@
       "turns": [
         {
           "message": "cuánto facturé en hacienda en marzo",
-          "response": "📊 *Movimientos — hacienda*\n📅 2026-03-01 — 2026-03-31\n\n*Ingresos* (1)\n• 22/03/26 — venta 8 novillos — USD 13.600 · Don V2\n*Total: USD 13.600*\n¿Más?",
+          "response": "📊 *Resumen financiero — hacienda*\n📅 2026-03-01 — 2026-03-31\n\n*Ingresos por categoría:*\nHacienda: USD 13.600\n*Total ingresos: USD 13.600*\n¿Más?",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -154,7 +154,7 @@
       "turns": [
         {
           "message": "cuántas ventas de hacienda hice este año",
-          "response": "🐄 *Movimientos de hacienda — ventas/salidas* (Año 2026)\n\n*Totales:*\n  • ➖ Ventas/salidas: *16*\n\n*Últimos:*\n  18/04/2026: -5 vaca (lote N1 (Don V2)) · US$1.500/cab\n  22/03/2026: -8 novillo (lote N2 (Don V2)) · US$1.700/cab\n  10/02/2026: -3 vaca (lote N1 (Don V2)) · US$1.400/cab",
+          "response": "📊 *Resumen financiero — hacienda*\n📅 Año 2026\n\n*Ingresos por categoría:*\nHacienda: USD 25.300\n*Total ingresos: USD 25.300*\n¿Más?",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -167,7 +167,7 @@
       "turns": [
         {
           "message": "precio promedio de venta por novillo",
-          "response": "🐄 *Movimientos de hacienda — ventas/salidas, novillo* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *13*",
+          "response": "📊 *Resumen financiero — hacienda, \"novillo\"*\n📅 Todo el historial\n\n*Ingresos por categoría:*\nHacienda: USD 21.600\n*Total ingresos: USD 21.600*\n¿Más?",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -180,7 +180,7 @@
       "turns": [
         {
           "message": "precio promedio por vaca vendida",
-          "response": "🐄 *Movimientos de hacienda — ventas/salidas, vaca* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *8*",
+          "response": "📊 *Resumen financiero — hacienda, \"vaca\"*\n📅 Todo el historial\n\n*Ingresos por categoría:*\nHacienda: USD 11.700\n*Total ingresos: USD 11.700*\n¿Más?",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -193,7 +193,7 @@
       "turns": [
         {
           "message": "cuántas vacas y cuántos novillos vendí",
-          "response": "🐄 *Movimientos de hacienda — ventas/salidas, vaca* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *8*\n\n*Últimos:*\n  18/04/2026: -5 vaca (lote N1 (Don V2)) · US$1.500/cab\n  10/02/2026: -3 vaca (lote N1 (Don V2)) · US$1.400/cab\n🐄 *Movimientos de hacienda — ventas/salidas, novillo* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *13*\n\n*Últimos:*\n  22/03/2026: -8 novillo (lote N2 (Don V2)) · US$1.700/cab\n  15/12/2025: -5 novillo (lote N2 (Don V2)) · US$1.600/cab",
+          "response": "🐄 *Movimientos de hacienda — ventas/salidas, vaca* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *8*\n🐄 *Movimientos de hacienda — ventas/salidas, novillo* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *13*",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -206,7 +206,7 @@
       "turns": [
         {
           "message": "mes con más ventas de hacienda",
-          "response": "🐄 *Movimientos de hacienda — ventas/salidas* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *21*",
+          "response": "Solo hay registros en USD — hacienda — la serie mensual se arma en ARS.\n¿Más?",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -245,7 +245,7 @@
       "turns": [
         {
           "message": "estoy comprando o vendiendo más hacienda?",
-          "response": "🐄 *Movimientos de hacienda* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *21*\n  • 🐣 Nacimientos: *10*\n  • 💀 Muertes: *3*",
+          "response": "🐄 *Movimientos de hacienda* (Año 2026)\n\n*Totales:*\n  • ➖ Ventas/salidas: *16*\n  • 🐣 Nacimientos: *10*\n  • 💀 Muertes: *3*\n\n*Últimos:*\n  18/04/2026: -5 vaca (lote N1 (Don V2)) · US$1.500/cab\n  05/04/2026: +4 ternero (lote N1 (Don V2))\n  22/03/2026: -8 novillo (lote N2 (Don V2)) · US$1.700/cab\n  15/03/2026: -1 vaca (lote N1 (Don V2)) · rayo\n  25/02/2026: +6 ternero (lote N1 (Don V2))\n  10/02/2026: -3 vaca (lote N1 (Don V2)) · US$1.400/cab\n  08/01/2026: -2 ternero (lote N1 (Don V2)) · fiebre",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -258,7 +258,7 @@
       "turns": [
         {
           "message": "cuándo fue la última venta de hacienda",
-          "response": "🐄 *Último movimiento — ventas/salidas*\n  📅 *18/04/2026* — ventas/salidas: 5 vaca en lote N1 (Don V2)\n\n⏱️ Hace 134 días",
+          "response": "🐄 *Último movimiento — ventas/salidas*\n  📅 *18/04/2026* — ventas/salidas: 5 vaca en lote N1 (Don V2)\n\n⏱️ Hace 135 días",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -284,7 +284,7 @@
       "turns": [
         {
           "message": "porcentaje de mortalidad",
-          "response": "📊 *Resumen hacienda* — total *156 cabezas* · ~12.300 kg\n\n🐮 *Por categoría:*\n  • Vacas: 101 cabezas (~12.300 kg)\n  • Terneros: 28 cabezas\n  • Novillos: 27 cabezas\n\n📍 *Por ubicación:*\n  • Don V2 / N1: 99 cabezas\n  • Don V2 / N3: 30 cabezas\n  • Don V2 / N2: 27 cabezas\n🐄 *Movimientos de hacienda — muertes* (Año 2026)\n\n*Totales:*\n  • 💀 Muertes: *3*\n\n*Últimos:*\n  15/03/2026: -1 vaca (lote N1 (Don V2)) · rayo\n  08/01/2026: -2 ternero (lote N1 (Don V2)) · fiebre",
+          "response": "🐄 *Movimientos de hacienda* (Año 2026)\n\n*Totales:*\n  • ➖ Ventas/salidas: *16*\n  • 🐣 Nacimientos: *10*\n  • 💀 Muertes: *3*\n\n*Últimos:*\n  18/04/2026: -5 vaca (lote N1 (Don V2)) · US$1.500/cab\n  05/04/2026: +4 ternero (lote N1 (Don V2))\n  22/03/2026: -8 novillo (lote N2 (Don V2)) · US$1.700/cab\n  15/03/2026: -1 vaca (lote N1 (Don V2)) · rayo\n  25/02/2026: +6 ternero (lote N1 (Don V2))\n  10/02/2026: -3 vaca (lote N1 (Don V2)) · US$1.400/cab\n  08/01/2026: -2 ternero (lote N1 (Don V2)) · fiebre",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -297,7 +297,7 @@
       "turns": [
         {
           "message": "cuántas pariciones tuvimos",
-          "response": "🐄 *Movimientos de hacienda — nacimientos* (todo el historial)\n\n*Totales:*\n  • 🐣 Nacimientos: *10*",
+          "response": "🐄 *Movimientos de hacienda — nacimientos* (Año 2026)\n\n*Totales:*\n  • 🐣 Nacimientos: *10*\n\n*Últimos:*\n  05/04/2026: +4 ternero (lote N1 (Don V2))\n  25/02/2026: +6 ternero (lote N1 (Don V2))",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -310,7 +310,7 @@
       "turns": [
         {
           "message": "porcentaje de parición sobre vacas",
-          "response": "🐄 *Vaca: 101*\n\n  📍 Don V2 / N1\n    • Vaca Angus: *71*\n\n  📍 Don V2 / N3\n    • Vaca Hereford: *30* (410.00 kg prom.)\n    ⚖️ Peso estimado: 12.300 kg\n🐄 *Movimientos de hacienda — nacimientos* (todo el historial)\n\n*Totales:*\n  • 🐣 Nacimientos: *10*\n\n*Últimos:*\n  05/04/2026: +4 ternero (lote N1 (Don V2))\n  25/02/2026: +6 ternero (lote N1 (Don V2))",
+          "response": "🐄 *Vaca: 101*\n\n  📍 Don V2 / N1\n    • Vaca Angus: *71*\n\n  📍 Don V2 / N3\n    • Vaca Hereford: *30* (410.00 kg prom.)\n    ⚖️ Peso estimado: 12.300 kg",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -323,7 +323,7 @@
       "turns": [
         {
           "message": "cuándo murió la última vaca",
-          "response": "🐄 *Último movimiento — muertes, vaca*\n  📅 *15/03/2026* — muertes: 1 vaca en lote N1 (Don V2)\n\n⏱️ Hace 168 días",
+          "response": "🐄 *Último movimiento — muertes, vaca*\n  📅 *15/03/2026* — muertes: 1 vaca en lote N1 (Don V2)\n\n⏱️ Hace 169 días",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -336,7 +336,7 @@
       "turns": [
         {
           "message": "qué causó las muertes",
-          "response": "🐄 *Movimientos de hacienda — muertes* (todo el historial)\n\n*Totales:*\n  • 💀 Muertes: *3*\n\n*Últimos:*\n  15/03/2026: -1 vaca (lote N1 (Don V2)) · rayo\n  08/01/2026: -2 ternero (lote N1 (Don V2)) · fiebre",
+          "response": "🐄 *Movimientos de hacienda — muertes* (Año 2026)\n\n*Totales:*\n  • 💀 Muertes: *3*\n\n*Últimos:*\n  15/03/2026: -1 vaca (lote N1 (Don V2)) · rayo\n  08/01/2026: -2 ternero (lote N1 (Don V2)) · fiebre",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -362,7 +362,7 @@
       "turns": [
         {
           "message": "cuándo fue la última vacunación",
-          "response": "💉 *Historial sanitario*\n\n  📅 12/05/2026: Revisión sanitaria — control sanitario (30 vaca) — 📍 lote N3 (Don V2)\n  📅 25/04/2026: Desparasitación — ivermectina (20 ternero) — 📍 lote N1 (Don V2)\n  📅 10/03/2026: Vacunación — brucelosis (80 vaca) — 📍 lote N1 (Don V2)\n  📅 15/01/2026: Desparasitación — ivermectina (40 novillo) — 📍 lote N2 (Don V2)\n  📅 20/12/2025: Vacunación — aftosa (80 vaca) — 📍 lote N1 (Don V2)",
+          "response": "💉 *Historial sanitario*\n\n  📅 10/03/2026: Vacunación — brucelosis (80 vaca) — 📍 lote N1 (Don V2)\n  📅 20/12/2025: Vacunación — aftosa (80 vaca) — 📍 lote N1 (Don V2)",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -414,7 +414,7 @@
       "turns": [
         {
           "message": "cuándo me toca la próxima vacunación",
-          "response": "Para saber cuándo te toca la próxima vacunación, necesito saber: ¿qué vacuna? (aftosa, brucelosis, etc.) ¿y en qué categoría de animales? (vacas, terneros, novillos)",
+          "response": "💉 *Historial sanitario*\n\n  📅 12/05/2026: Revisión sanitaria — control sanitario (30 vaca) — 📍 lote N3 (Don V2)\n  📅 10/03/2026: Vacunación — brucelosis (80 vaca) — 📍 lote N1 (Don V2)\n  📅 20/12/2025: Vacunación — aftosa (80 vaca) — 📍 lote N1 (Don V2)",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -440,7 +440,7 @@
       "turns": [
         {
           "message": "qué productos sanitarios usé este año",
-          "response": "💉 *Historial sanitario*\n\n  📅 12/05/2026: Revisión sanitaria — control sanitario (30 vaca) — 📍 lote N3 (Don V2)\n  📅 25/04/2026: Desparasitación — ivermectina (20 ternero) — 📍 lote N1 (Don V2)\n  📅 10/03/2026: Vacunación — brucelosis (80 vaca) — 📍 lote N1 (Don V2)\n  📅 15/01/2026: Desparasitación — ivermectina (40 novillo) — 📍 lote N2 (Don V2)",
+          "response": "💉 *Historial sanitario*\n\n  📅 12/05/2026: Revisión sanitaria — control sanitario (30 vaca) — 📍 lote N3 (Don V2)\n  📅 25/04/2026: Desparasitación — ivermectina (20 ternero) — 📍 lote N1 (Don V2)\n  📅 10/03/2026: Vacunación — brucelosis (80 vaca) — 📍 lote N1 (Don V2)\n  📅 15/01/2026: Desparasitación — ivermectina (40 novillo) — 📍 lote N2 (Don V2)\n  📅 20/12/2025: Vacunación — aftosa (80 vaca) — 📍 lote N1 (Don V2)",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -466,7 +466,7 @@
       "turns": [
         {
           "message": "cuántos terneros desteté",
-          "response": "❌ invalid input value for enum livestock_movement_type: \"destete\"",
+          "response": "🐂 *Historial reproductivo*\n\n  📅 15/04/2026: Destete (18 animales) — 📍 lote N1 (Don V2)",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -479,7 +479,7 @@
       "turns": [
         {
           "message": "cuánto tiempo entre el servicio y el destete",
-          "response": "Entre el servicio (01/12/2025) y el destete (15/04/2026) pasaron aproximadamente 4 meses y medio. Es un intervalo normal para un ciclo de cría: el servicio en diciembre, gestación de ~9 meses, nacimiento en septiembre, y destete en abril del año siguiente.",
+          "response": "Entre el servicio (01/12/2025) y el destete (15/04/2026) pasaron aproximadamente 4 meses y medio. Es el tiempo típico de gestación (9 meses) menos los meses de lactancia antes del destete.",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -557,7 +557,7 @@
       "turns": [
         {
           "message": "dame un resumen completo del rodeo: cabezas, ventas, sanidad y peso",
-          "response": "📊 *Resumen hacienda* — total *156 cabezas* · ~12.300 kg\n\n🐮 *Por categoría:*\n  • Vacas: 101 cabezas (~12.300 kg)\n  • Terneros: 28 cabezas\n  • Novillos: 27 cabezas\n\n📍 *Por ubicación:*\n  • Don V2 / N1: 99 cabezas\n  • Don V2 / N3: 30 cabezas\n  • Don V2 / N2: 27 cabezas\n🐄 *Movimientos de hacienda — ventas/salidas* (Año 2026)\n\n*Totales:*\n  • ➖ Ventas/salidas: *16*\n\n*Últimos:*\n  18/04/2026: -5 vaca (lote N1 (Don V2)) · US$1.500/cab\n  22/03/2026: -8 novillo (lote N2 (Don V2)) · US$1.700/cab\n  10/02/2026: -3 vaca (lote N1 (Don V2)) · US$1.400/cab\n💉 *Historial sanitario*\n\n  📅 12/05/2026: Revisión sanitaria — control sanitario (30 vaca) — 📍 lote N3 (Don V2)\n  📅 25/04/2026: Desparasitación — ivermectina (20 ternero) — 📍 lote N1 (Don V2)\n  📅 10/03/2026: Vacunación — brucelosis (80 vaca) — 📍 lote N1 (Don V2)\n  📅 15/01/2026: Desparasitación — ivermectina (40 novillo) — 📍 lote N2 (Don V2)\n  📅 20/12/2025: Vacunación — aftosa (80 vaca) — 📍 lote N1 (Don V2)\n⚖️ *Pesajes*\n\n  📅 10/05/2026: 460 kg (80 vaca) — 📍 lote N1 (Don V2)\n  📅 15/03/2026: 445 kg (80 vaca) — 📍 lote N1 (Don V2)\n  📅 10/01/2026: 420 kg (80 vaca) — 📍 lote N1 (Don V2)\n\n  📈 GDPV (últimos 2 pesajes): *0.27 kg/día* (56 días)",
+          "response": "📊 *Resumen hacienda* — total *156 cabezas* · ~12.300 kg\n\n🐮 *Por categoría:*\n  • Vacas: 101 cabezas (~12.300 kg)\n  • Terneros: 28 cabezas\n  • Novillos: 27 cabezas\n\n📍 *Por ubicación:*\n  • Don V2 / N1: 99 cabezas\n  • Don V2 / N3: 30 cabezas\n  • Don V2 / N2: 27 cabezas\n🐄 *Movimientos de hacienda — ventas/salidas* (todo el historial)\n\n*Totales:*\n  • ➖ Ventas/salidas: *21*\n💉 *Historial sanitario*\n\n  📅 12/05/2026: Revisión sanitaria — control sanitario (30 vaca) — 📍 lote N3 (Don V2)\n  📅 25/04/2026: Desparasitación — ivermectina (20 ternero) — 📍 lote N1 (Don V2)\n  📅 10/03/2026: Vacunación — brucelosis (80 vaca) — 📍 lote N1 (Don V2)\n  📅 15/01/2026: Desparasitación — ivermectina (40 novillo) — 📍 lote N2 (Don V2)\n  📅 20/12/2025: Vacunación — aftosa (80 vaca) — 📍 lote N1 (Don V2)\n⚖️ *Pesajes*\n\n  📅 10/05/2026: 460 kg (80 vaca) — 📍 lote N1 (Don V2)\n  📅 15/03/2026: 445 kg (80 vaca) — 📍 lote N1 (Don V2)\n  📅 10/01/2026: 420 kg (80 vaca) — 📍 lote N1 (Don V2)\n\n  📈 GDPV (últimos 2 pesajes): *0.27 kg/día* (56 días)",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -615,7 +615,7 @@
         },
         {
           "message": "y de qué razas?",
-          "response": "📊 *Resumen hacienda — vaca* — total *101 cabezas* · ~12.300 kg\n\n🐮 *Por categoría:*\n  • Vacas: 101 cabezas (~12.300 kg)\n\n📍 *Por ubicación:*\n  • Don V2 / N1: 71 cabezas\n  • Don V2 / N3: 30 cabezas",
+          "response": "🏆 *Top razas por cabezas — vaca*\n• Angus: 71 cabezas (1 grupo)\n• Hereford: 30 cabezas (1 grupo)",
           "pass": true,
           "note": "non-empty informative"
         },
@@ -724,7 +724,7 @@
       "turns": [
         {
           "message": "lotes ordenados por superficie sembrada",
-          "response": "📍 *Tus lotes (3) en 1 campo:*\n\n• *Don V2* (490 ha)\n  └ N1 — 180 ha\n  └ N2 — 220 ha\n  └ N3 — 90 ha\n\n📐 *Total: 490 ha*\n¿Y ahora?",
+          "response": "🌱 *Cultivos activos*\n_3 lotes · 490 ha_\n\n🌱 *Soja* — lote N1 (Don V2)\n   180 ha · campaña 2025/26 · últ. Siembra 30/08/2026\n🌱 *Maíz* — lote N2 (Don V2)\n   220 ha · campaña 2025/26 · últ. Siembra 30/08/2026\n🌱 *Trigo* — lote N3 (Don V2)\n   90 ha · campaña 2025/26 · últ. Siembra 30/08/2026",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -828,7 +828,7 @@
       "turns": [
         {
           "message": "cosechas con humedad arriba de 14%",
-          "response": "🚛 *2 cargas — hum >14%*\n📅 Todo el historial\n• 15/05/26 — Juan Pérez · 22 tn · trigo · → ACA · [N3] · 14.2% hum\n• 10/04/26 — Luis Mora · 28,5 tn · soja · → Cargill · [N1] · 14% hum\n\n📊 *Total: 50,5 tn*\n¿Más?",
+          "response": "🏆 *Top chóferes por viajes — hum >14%*\n• Juan Pérez: 1 viajes\n• Luis Mora: 1 viajes\n¿Más?",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -841,7 +841,7 @@
       "turns": [
         {
           "message": "cuándo fue la última cosecha",
-          "response": "🚛 *Última carga*\n• 15/05/26 — Luis Mora · 18,5 tn · trigo · → ACA · [N3] · 13.9% hum\n\n⏱️ Hace 107 días\n¿Más?",
+          "response": "🚛 *Última carga*\n• 15/05/26 — Luis Mora · 18,5 tn · trigo · → ACA · [N3] · 13.9% hum\n\n⏱️ Hace 108 días\n¿Más?",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -919,7 +919,7 @@
       "turns": [
         {
           "message": "promedio de % maleza por cultivo",
-          "response": "📊 *Resumen monitoreos — campo Don V2* (9)\n📅 Todo el historial\nLotes monitoreados: 3 (N3, N1, N2)\n🌿 Malezas: rama negra (2), avena negra (1), yuyo colorado (1), quinoa (1)\n🐛 Plagas: oruga cogollera severa, chinche alta\n📐 Estadios: Z39 (1), Z25 (1), R5 (1), R2 (1), R1 (1), V8 (1), V3 (1), V4 (1), VE (1)\n¿Más?",
+          "response": "📈 *Promedio cobertura de malezas (%) — campo Don V2*: 11.6% (5 monitoreos)\n¿Más?",
           "pass": true,
           "note": "non-empty informative"
         }
@@ -984,7 +984,7 @@
       "turns": [
         {
           "message": "cuántos días pasaron desde el último monitoreo",
-          "response": "🔍 *Último monitoreo — campo Don V2*\n• 08/05/26 *N3* — Z39 · 18% maleza avena negra\n\n⏱️ Hace 114 días sin monitorear\n¿Más?",
+          "response": "🔍 *Último monitoreo — campo Don V2*\n• 08/05/26 *N3* — Z39 · 18% maleza avena negra\n\n⏱️ Hace 115 días sin monitorear\n¿Más?",
           "pass": true,
           "note": "non-empty informative"
         }
