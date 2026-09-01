@@ -684,6 +684,11 @@ router.get("/api/plans", async (req, res) => {
       priceArsYearly: p.price_ars_yearly != null ? parseFloat(p.price_ars_yearly) : null,
       isActive: p.is_active,
       dailyAiLimit: p.daily_ai_limit != null ? parseInt(p.daily_ai_limit) : 20,
+      dailyDocumentLimit: p.daily_document_limit != null ? parseInt(p.daily_document_limit) : 1,
+      // Catálogo público (migración 108): qué ve la landing, sin deploy.
+      isPublic: p.is_public,
+      isFeatured: p.is_featured,
+      customPricing: p.custom_pricing,
       features: p.features || [],
       userCount: parseInt(p.user_count),
     })));
@@ -715,7 +720,7 @@ router.get("/api/features", async (req, res) => {
 
 router.put("/api/plans/:id", async (req, res) => {
   const { id } = req.params;
-  const { displayName, priceArs, priceArsYearly, isActive, dailyAiLimit } = req.body;
+  const { displayName, priceArs, priceArsYearly, isActive, dailyAiLimit, dailyDocumentLimit, isPublic, isFeatured, customPricing } = req.body;
 
   try {
     const sets = [];
@@ -727,8 +732,18 @@ router.put("/api/plans/:id", async (req, res) => {
     if (priceArsYearly !== undefined) { sets.push(`price_ars_yearly = $${idx++}`); values.push(priceArsYearly); }
     if (isActive !== undefined) { sets.push(`is_active = $${idx++}`); values.push(isActive); }
     if (dailyAiLimit !== undefined) { sets.push(`daily_ai_limit = $${idx++}`); values.push(dailyAiLimit); }
+    if (dailyDocumentLimit !== undefined) { sets.push(`daily_document_limit = $${idx++}`); values.push(dailyDocumentLimit); }
+    if (isPublic !== undefined) { sets.push(`is_public = $${idx++}`); values.push(isPublic); }
+    if (customPricing !== undefined) { sets.push(`custom_pricing = $${idx++}`); values.push(customPricing); }
 
-    if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });
+    if (sets.length === 0 && isFeatured === undefined) return res.status(400).json({ error: "No fields to update" });
+
+    // Destacado: hay un índice único parcial (un solo plan con badge). Apagar
+    // los otros ANTES del update, o el UPDATE choca contra el índice.
+    if (isFeatured !== undefined) {
+      if (isFeatured) await pool.query("UPDATE plans SET is_featured = FALSE WHERE id <> $1 AND is_featured", [id]);
+      sets.push(`is_featured = $${idx++}`); values.push(isFeatured);
+    }
 
     values.push(id);
     const result = await pool.query(
@@ -738,8 +753,17 @@ router.put("/api/plans/:id", async (req, res) => {
 
     if (result.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
 
+    // La landing cachea 60s del lado del server: sin esto, un precio nuevo
+    // tarda hasta un minuto en verse y el admin cree que no guardó.
+    try {
+      const { invalidatePlanCatalogCache } = await import("../domain/billing/plan-catalog.service.js");
+      invalidatePlanCatalogCache();
+    } catch (e) {
+      console.error("[admin] no pude invalidar el catálogo público:", e.message);
+    }
+
     const p = result.rows[0];
-    res.json({ id: p.id, name: p.name, displayName: p.display_name, priceArs: parseFloat(p.price_ars), priceArsYearly: p.price_ars_yearly != null ? parseFloat(p.price_ars_yearly) : null, isActive: p.is_active, dailyAiLimit: p.daily_ai_limit != null ? parseInt(p.daily_ai_limit) : 20 });
+    res.json({ id: p.id, name: p.name, displayName: p.display_name, priceArs: parseFloat(p.price_ars), priceArsYearly: p.price_ars_yearly != null ? parseFloat(p.price_ars_yearly) : null, isActive: p.is_active, dailyAiLimit: p.daily_ai_limit != null ? parseInt(p.daily_ai_limit) : 20, dailyDocumentLimit: p.daily_document_limit != null ? parseInt(p.daily_document_limit) : 1, isPublic: p.is_public, isFeatured: p.is_featured, customPricing: p.custom_pricing });
   } catch (error) {
     console.error("Error updating plan:", error);
     logError('admin-api', 'PLAN_UPDATE', error);

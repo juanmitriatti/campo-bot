@@ -1,30 +1,19 @@
 import { useEffect, useState } from 'react';
-import { apiRequest } from '../../api/client';
+import { fetchSubscription, daysUntil, type SubscriptionStatus } from '../../api/subscription';
 
-interface SubscriptionRow {
-  status: 'trial' | 'active' | 'past_due' | 'cancelled' | 'expired';
-  trial_ends_at: string | null;
-  current_period_end: string | null;
-}
-
-interface SubscriptionStatus {
-  subscription: SubscriptionRow | null;
-  plan: { display_name: string } | null;
-  payments_enabled: boolean;
-}
-
-function daysUntil(iso: string): number {
-  const ms = new Date(iso).getTime() - Date.now();
-  return Math.ceil(ms / (1000 * 60 * 60 * 24));
-}
-
+/**
+ * Aviso de estado de la suscripción arriba del Resumen.
+ *
+ * Los estados vencido/cancelado eran código muerto: `/subscription` solo
+ * devolvía suscripciones vivas, así que a un vencido le llegaba `subscription:
+ * null` y el banner se apagaba justo cuando había algo que avisar. Ahora el
+ * backend manda también la fila terminal (y el paywall se ocupa del bloqueo).
+ */
 export default function SubscriptionBanner({ onGoToAccount }: { onGoToAccount: () => void }) {
   const [sub, setSub] = useState<SubscriptionStatus | null>(null);
 
   useEffect(() => {
-    apiRequest<SubscriptionStatus>('/subscription')
-      .then(setSub)
-      .catch(() => setSub(null));
+    fetchSubscription().then(setSub).catch(() => setSub(null));
   }, []);
 
   if (!sub?.payments_enabled || !sub.subscription) return null;

@@ -3287,6 +3287,37 @@
           + '  <span style="font-size:12px;color:var(--text-light);">msgs/día</span>'
           + '</div>';
 
+        // Daily document limit
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 0;border-bottom:1px solid var(--border);">'
+          + '  <label style="font-size:13px;font-weight:600;white-space:nowrap;">Límite docs diario:</label>'
+          + '  <input type="number" min="0" max="1000" value="' + (plan.dailyDocumentLimit != null ? plan.dailyDocumentLimit : 1) + '"'
+          + '    style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;"'
+          + '    data-plan-id="' + plan.id + '" onchange="updatePlanDocLimit(this)">'
+          + '  <span style="font-size:12px;color:var(--text-light);">docs/día</span>'
+          + '</div>';
+
+        // Catálogo público (migración 108) — qué muestra la landing. Estos
+        // checkboxes NO llevan data-plan-id a propósito: togglePlanFeature
+        // barre por ese atributo y se los llevaría puestos como features.
+        html += '<div style="margin-bottom:12px;padding:8px 0;border-bottom:1px solid var(--border);">'
+          + '  <div style="font-size:12px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Landing</div>'
+          + '  <div class="toggle-row" style="padding:6px 0;">'
+          + '    <div class="toggle-label" style="font-size:13px;">Visible en la landing<small>aparece como card en la sección Planes</small></div>'
+          + '    <label class="toggle"><input type="checkbox" data-catalog-plan="' + plan.id + '" data-catalog-flag="isPublic"'
+          + (plan.isPublic ? ' checked' : '') + ' onchange="updatePlanCatalogFlag(this)"><span class="slider"></span></label>'
+          + '  </div>'
+          + '  <div class="toggle-row" style="padding:6px 0;">'
+          + '    <div class="toggle-label" style="font-size:13px;">Destacado<small>badge MÁS ELEGIDO — solo un plan a la vez</small></div>'
+          + '    <label class="toggle"><input type="checkbox" data-catalog-plan="' + plan.id + '" data-catalog-flag="isFeatured"'
+          + (plan.isFeatured ? ' checked' : '') + ' onchange="updatePlanCatalogFlag(this)"><span class="slider"></span></label>'
+          + '  </div>'
+          + '  <div class="toggle-row" style="padding:6px 0;">'
+          + '    <div class="toggle-label" style="font-size:13px;">Precio a medida<small>muestra "A medida" y CTA de contacto en vez de checkout</small></div>'
+          + '    <label class="toggle"><input type="checkbox" data-catalog-plan="' + plan.id + '" data-catalog-flag="customPricing"'
+          + (plan.customPricing ? ' checked' : '') + ' onchange="updatePlanCatalogFlag(this)"><span class="slider"></span></label>'
+          + '  </div>'
+          + '</div>';
+
         // Feature toggles
         for (var f = 0; f < features.length; f++) {
           var feat = features[f];
@@ -3342,11 +3373,47 @@
       });
     }
 
+    function updatePlanDocLimit(input) {
+      var planId = input.getAttribute('data-plan-id');
+      var value = parseInt(input.value);
+      if (isNaN(value) || value < 0) value = 1;
+      apiFetch('/admin/api/plans/' + planId, {
+        method: 'PUT',
+        body: JSON.stringify({ dailyDocumentLimit: value })
+      }).then(function(result) {
+        if (result) {
+          showToast('Límite de documentos actualizado a ' + value + ' docs/día');
+        }
+      });
+    }
+
+    // Flags del catálogo público (visible / destacado / a medida). "Destacado"
+    // es excluyente: el backend apaga los otros, así que recargamos la vista
+    // para no dejar dos badges prendidos en pantalla.
+    function updatePlanCatalogFlag(checkbox) {
+      var planId = checkbox.getAttribute('data-catalog-plan');
+      var flag = checkbox.getAttribute('data-catalog-flag');
+      var body = {};
+      body[flag] = checkbox.checked;
+      var labels = { isPublic: 'Visibilidad en la landing', isFeatured: 'Plan destacado', customPricing: 'Precio a medida' };
+      apiFetch('/admin/api/plans/' + planId, {
+        method: 'PUT',
+        body: JSON.stringify(body)
+      }).then(function(result) {
+        if (!result) return;
+        showToast(labels[flag] + ': ' + (checkbox.checked ? 'sí' : 'no'));
+        if (flag === 'isFeatured' && checkbox.checked) loadPlans();
+      });
+    }
+
     function togglePlanFeature(checkbox) {
       var planId = checkbox.getAttribute('data-plan-id');
 
-      // Collect all checked features for this plan
-      var checkboxes = document.querySelectorAll('input[data-plan-id="' + planId + '"]');
+      // Collect all checked features for this plan. El filtro por data-feature
+      // NO es decorativo: cualquier checkbox futuro con data-plan-id (los
+      // flags del catálogo lo tuvieron un rato) entraría acá como feature
+      // null y el INSERT explota con feature_id NOT NULL.
+      var checkboxes = document.querySelectorAll('input[data-plan-id="' + planId + '"][data-feature]');
       var features = [];
       for (var i = 0; i < checkboxes.length; i++) {
         if (checkboxes[i].checked) {

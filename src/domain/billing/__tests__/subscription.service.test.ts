@@ -320,3 +320,72 @@ describe('SubscriptionService.sweepExpired', () => {
     expect(plans.setUserPlan).toHaveBeenCalled();
   });
 });
+
+/**
+ * Regresión (Ago 2026): `/subscription` filtraba por estados VIVOS, así que a
+ * un usuario con la prueba vencida le llegaba `subscription: null` y
+ * `plan: null`. Con eso, la tarjeta de Mi cuenta escondía el botón de pago y el
+ * banner del Resumen no mostraba nada — el único momento en que el usuario
+ * necesita pagar era justo el momento en que no podía. En prod había 9
+ * suscripciones `expired` y 2 payment_events.
+ */
+describe('SubscriptionService.getStatus', () => {
+  const EXPIRED_SUB = {
+    id: 9, user_id: 1, plan_id: 2, status: 'expired',
+    provider: 'trial', provider_subscription_id: null,
+    billing_period: 'monthly', trial_ends_at: new Date('2026-08-01'),
+    current_period_end: null, cancelled_at: null, metadata: null,
+    created_at: new Date('2026-07-18'), updated_at: new Date('2026-08-01'),
+  };
+
+  const CATALOG_ROWS = [
+    { name: 'pro', display_name: 'Pro', price_ars: 5000, price_ars_yearly: null, daily_ai_limit: 100, daily_document_limit: 10, is_featured: false, custom_pricing: false },
+    { name: 'pro_plus', display_name: 'Pro+', price_ars: 12000, price_ars_yearly: 100000, daily_ai_limit: 300, daily_document_limit: 25, is_featured: true, custom_pricing: false },
+  ];
+
+  beforeEach(async () => {
+    mockQuery.mockReset();
+    // El catálogo cachea 60s a nivel módulo: sin esto, un test se lleva puesto
+    // el payload del anterior.
+    const { invalidatePlanCatalogCache } = await import('../plan-catalog.service.js');
+    invalidatePlanCatalogCache();
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (/FROM subscriptions/i.test(sql)) return { rows: [EXPIRED_SUB] };
+      if (/is_active AND is_public/i.test(sql)) return { rows: CATALOG_ROWS };
+      if (/price_ars_yearly FROM plans/i.test(sql)) return { rows: [{ price_ars_yearly: null }] };
+      return { rows: [] };
+    });
+  });
+
+  it('devuelve la suscripción vencida y su plan (sin esto no hay dónde pagar)', async () => {
+    const repo = makeRepo();
+    repo.getActiveForUser.mockResolvedValue(null);
+    (repo as any).getLatestForUser = vi.fn().mockResolvedValue(EXPIRED_SUB);
+    const svc = new SubscriptionService({ plans: makePlanRepo() as any, repo: repo as any, featureGate: makeFeatureGate() as any, provider: makeProvider() as any });
+
+    const status = await svc.getStatus(userId);
+
+    expect(status.subscription?.status).toBe('expired');
+    expect(status.plan?.name).toBe('pro');
+    expect(status.access_mode).toBe('trial_expired_readonly');
+    expect(status.plans.map(p => p.name)).toEqual(['pro', 'pro_plus']);
+  });
+
+  it('no consulta la fila terminal cuando hay una suscripción viva', async () => {
+    const live = { ...EXPIRED_SUB, status: 'trial', trial_ends_at: new Date(Date.now() + 5 * 86400000) };
+    const repo = makeRepo();
+    repo.getActiveForUser.mockResolvedValue(live);
+    (repo as any).getLatestForUser = vi.fn();
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (/FROM subscriptions/i.test(sql)) return { rows: [live] };
+      if (/is_active AND is_public/i.test(sql)) return { rows: CATALOG_ROWS };
+      return { rows: [{ price_ars_yearly: null }] };
+    });
+    const svc = new SubscriptionService({ plans: makePlanRepo() as any, repo: repo as any, featureGate: makeFeatureGate() as any, provider: makeProvider() as any });
+
+    const status = await svc.getStatus(userId);
+
+    expect((repo as any).getLatestForUser).not.toHaveBeenCalled();
+    expect(status.access_mode).toBe('full');
+  });
+});
