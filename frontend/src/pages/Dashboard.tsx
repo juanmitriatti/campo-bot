@@ -173,6 +173,8 @@ export default function Dashboard() {
             onGoToLivestock={handleGoToLivestock}
             onGoToActivities={() => setView('activities')}
             onGoToFields={() => setView('fields')}
+            onGoToIncomes={() => setView('incomes')}
+            onGoToReminders={() => setView('reminders')}
             onOpenReviewRef={handleOpenReviewRef}
           />
         );

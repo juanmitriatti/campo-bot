@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiRequest } from '../api/client';
+import { onMutation } from '../api/mutations';
 
 export interface MoneySide {
   income: number;
@@ -14,6 +15,14 @@ export interface CategoryRow {
   total: number;
 }
 
+export interface IncomeProductRow {
+  name: string;
+  total: number;
+  count: number;
+  kg: number | null;
+  pricePerTn: number | null;
+}
+
 export interface OverviewPlot {
   id: number;
   name: string;
@@ -26,7 +35,38 @@ export interface OverviewPlot {
   spendUSD: number;
   incomeARS: number;
   incomeUSD: number;
+  harvestKg: number | null;
+  yieldKgPerHa: number | null;
   lastActivity: string | null;
+}
+
+export interface CropMarginRow {
+  crop: string | null;
+  hectares: number;
+  plots: number;
+  income: number;
+  expense: number;
+  result: number;
+}
+
+export interface BudgetRow {
+  category: string;
+  limit: number;
+  spent: number;
+}
+
+export interface ReminderRow {
+  id: number;
+  description: string;
+  dueDate: string;
+  where: string | null;
+  overdue: boolean;
+}
+
+export interface LivestockSummary {
+  total: number;
+  byCategory: Array<{ category: string; count: number }>;
+  lastWeighing: { date: string; category: string | null; kg: number } | null;
 }
 
 export interface OverviewFeedItem {
@@ -59,6 +99,12 @@ export interface OverviewCounts {
   reminders: number;
 }
 
+export interface RainfallMonth {
+  month: string;
+  label: string;
+  mm: number;
+}
+
 export interface OverviewData {
   campaign: CampaignRef & { from: string; to: string };
   counts: OverviewCounts;
@@ -66,7 +112,19 @@ export interface OverviewData {
   observed: { from: string | null; to: string | null };
   money: { ARS: MoneySide; USD: MoneySide };
   categories: { ARS: CategoryRow[]; USD: CategoryRow[] };
-  rainfall: { total: number; count: number; months: Array<{ month: string; label: string; mm: number }> };
+  incomeProducts: { ARS: IncomeProductRow[]; USD: IncomeProductRow[] };
+  cropMargins: { ARS: CropMarginRow[]; USD: CropMarginRow[] };
+  budgets: { month: string; rows: BudgetRow[] };
+  reminders: { overdue: number; upcoming: number; rows: ReminderRow[] };
+  livestock: LivestockSummary;
+  rainfall: {
+    total: number;
+    count: number;
+    months: RainfallMonth[];
+    prevTotal: number;
+    prevMonths: RainfallMonth[];
+    prevLabel: string;
+  };
   activities: { count: number };
   plots: OverviewPlot[];
   feed: OverviewFeedItem[];
@@ -124,15 +182,30 @@ async function load(key: string, fieldId: number | null, season: number | null, 
   }
 }
 
-/** Drop every cached page — call after a mutation that changes the numbers. */
+/**
+ * Drop every cached page. Pages that are on screen keep showing their last
+ * data (no flash to a spinner) and re-request on their next render.
+ */
 export function invalidateOverview() {
   const keys = Array.from(cache.keys());
+  const stale = new Map(keys.map(k => [k, cache.get(k)!]));
   cache.clear();
   for (const key of keys) {
     const subs = subscribers.get(key);
-    if (subs) for (const fn of subs) fn(EMPTY);
+    if (!subs || subs.size === 0) continue;
+    // Keep the old payload visible while the fresh one loads.
+    const prev = stale.get(key);
+    const [fieldPart, seasonPart] = key.split('|');
+    const fieldId = fieldPart === 'all' ? null : Number(fieldPart);
+    const season = seasonPart === 'current' ? null : Number(seasonPart);
+    cache.set(key, { data: prev?.data ?? null, loading: true, error: null });
+    void load(key, fieldId, season, true);
   }
 }
+
+// Any successful write through the API client changes what the Resumen
+// says: refetch instead of showing yesterday's numbers.
+onMutation(() => invalidateOverview());
 
 export function useOverviewData(fieldId: number | null, season: number | null) {
   const key = keyFor(fieldId, season);
@@ -156,4 +229,15 @@ export function useOverviewData(fieldId: number | null, season: number | null) {
   const refresh = useCallback(() => load(key, fieldId, season, true), [key, fieldId, season]);
 
   return { data: entry.data, loading: entry.loading, error: entry.error, refresh };
+}
+
+/**
+ * The selected campaign's date window, for tables that want to open on the
+ * same slice the nav badge counted. `null` until the overview has loaded —
+ * the frontend never computes the campaign itself (utils/campaign-range.ts
+ * on the server owns that definition).
+ */
+export function useCampaignWindow(fieldId: number | null, season: number | null): { from: string; to: string } | null {
+  const { data } = useOverviewData(fieldId, season);
+  return data ? { from: data.campaign.from, to: data.campaign.to } : null;
 }

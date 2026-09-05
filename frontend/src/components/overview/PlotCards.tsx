@@ -19,17 +19,28 @@ interface Props {
  * is carried by its NAME, not a colour: four crops cannot be given four hues
  * that stay distinguishable for colour-blind readers in both themes, and the
  * word is right there anyway.
+ *
+ * Every card carries the two numbers a producer compares lotes by — cost per
+ * hectare and yield — because "gastado $4.000.000" says nothing until you know
+ * whether the lote is 20 ha or 200.
  */
 export default function PlotCards({ plots, currency, flagged, onOpenPlot }: Props) {
   const totalHa = plots.reduce((s, p) => s + (p.areaHectares ?? 0), 0);
+  const spendOf = (p: OverviewPlot) => (currency === 'ARS' ? p.spendARS : p.spendUSD);
+  // $/ha over the lotes that have BOTH an area and spend, so a lote without
+  // area does not drag the average toward zero.
+  const withArea = plots.filter(p => (p.areaHectares ?? 0) > 0 && spendOf(p) > 0);
+  const haWithSpend = withArea.reduce((s, p) => s + (p.areaHectares ?? 0), 0);
+  const avgPerHa = haWithSpend > 0 ? withArea.reduce((s, p) => s + spendOf(p), 0) / haWithSpend : null;
 
   return (
     <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
-      <div className="flex items-baseline justify-between gap-3 mb-3">
+      <div className="flex items-baseline justify-between gap-3 mb-3 flex-wrap">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Lotes</h2>
         <span className="text-xs text-gray-400 dark:text-gray-500">
           {plots.length} {plots.length === 1 ? 'lote' : 'lotes'}
           {totalHa > 0 && ` · ${number(totalHa)} ha declaradas`}
+          {avgPerHa != null && ` · ${money(avgPerHa, currency)}/ha promedio`}
         </span>
       </div>
 
@@ -41,8 +52,9 @@ export default function PlotCards({ plots, currency, flagged, onOpenPlot }: Prop
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
           {plots.map(p => {
-            const spend = currency === 'ARS' ? p.spendARS : p.spendUSD;
+            const spend = spendOf(p);
             const income = currency === 'ARS' ? p.incomeARS : p.incomeUSD;
+            const perHa = spend > 0 && (p.areaHectares ?? 0) > 0 ? spend / (p.areaHectares as number) : null;
             const isFlagged = flagged?.has(p.id) ?? false;
             const Wrapper = onOpenPlot ? 'button' : 'div';
             return (
@@ -78,8 +90,23 @@ export default function PlotCards({ plots, currency, flagged, onOpenPlot }: Prop
                   <span className="text-[11.5px] text-gray-400 dark:text-gray-500">Gastado</span>
                   <span className="font-mono text-xs font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
                     {spend > 0 ? money(spend, currency) : '—'}
+                    {perHa != null && (
+                      <span className="font-normal text-gray-400 dark:text-gray-500"> · {money(perHa, currency)}/ha</span>
+                    )}
                   </span>
                 </div>
+
+                {p.harvestKg != null && p.harvestKg > 0 && (
+                  <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                    <span className="text-[11.5px] text-gray-400 dark:text-gray-500">Cosechado</span>
+                    <span className="font-mono text-xs font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
+                      {number(p.harvestKg / 1000)} tn
+                      {p.yieldKgPerHa != null && (
+                        <span className="font-normal text-gray-400 dark:text-gray-500"> · {number(p.yieldKgPerHa)} kg/ha</span>
+                      )}
+                    </span>
+                  </div>
+                )}
 
                 {/* Only when this lote actually sold something: a "result" that
                     is just the cost negated would be noise on every card. */}

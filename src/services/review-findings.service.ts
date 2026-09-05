@@ -138,26 +138,43 @@ const overlappingPlantings: Rule = async ({ userId, fieldIds, range }) => {
 
 /**
  * 3. A harvest dated on or before its own sowing, on the same plot and crop.
+ *
+ * "Its own sowing" is the nearest planting of that crop on that plot. The rule
+ * fires only when NO planting of the crop precedes the harvest and one follows
+ * it: that is the only shape that is actually impossible. The earlier version
+ * matched ANY later planting, so soja harvested in April and soja re-sown in
+ * November on the same lote — an ordinary rotation — was reported as an error.
  */
 const harvestBeforePlanting: Rule = async ({ userId, fieldIds, range }) => {
   const { rows } = await pool.query(
     `SELECT h.id, h.event_date::text AS harvest_date, h.crop,
             pl.id AS plot_id, pl.name AS plot_name, f.id AS field_id,
-            s.event_date::text AS sow_date
+            (SELECT MIN(s.event_date)::text FROM domain_events s
+              WHERE s.plot_id = h.plot_id AND s.user_id = h.user_id
+                AND s.event_type = 'planting' AND s.deleted_at IS NULL
+                AND LOWER(COALESCE(s.crop, '')) = LOWER(COALESCE(h.crop, ''))
+                AND s.event_date >= h.event_date) AS sow_date
        FROM domain_events h
        JOIN plots pl ON pl.id = h.plot_id
        JOIN fields f ON f.id = pl.field_id
-       JOIN domain_events s
-         ON s.plot_id = h.plot_id
-        AND s.user_id = h.user_id
-        AND s.event_type = 'planting'
-        AND s.deleted_at IS NULL
-        AND LOWER(COALESCE(s.crop, '')) = LOWER(COALESCE(h.crop, ''))
-        AND s.event_date >= h.event_date
       WHERE h.user_id = $1 AND h.deleted_at IS NULL
         AND h.event_type = 'harvest'
         AND h.event_date BETWEEN $2::date AND $3::date
-        AND pl.field_id = ANY($4::int[])`,
+        AND pl.field_id = ANY($4::int[])
+        AND NOT EXISTS (
+          SELECT 1 FROM domain_events b
+           WHERE b.plot_id = h.plot_id AND b.user_id = h.user_id
+             AND b.event_type = 'planting' AND b.deleted_at IS NULL
+             AND LOWER(COALESCE(b.crop, '')) = LOWER(COALESCE(h.crop, ''))
+             AND b.event_date < h.event_date
+        )
+        AND EXISTS (
+          SELECT 1 FROM domain_events s
+           WHERE s.plot_id = h.plot_id AND s.user_id = h.user_id
+             AND s.event_type = 'planting' AND s.deleted_at IS NULL
+             AND LOWER(COALESCE(s.crop, '')) = LOWER(COALESCE(h.crop, ''))
+             AND s.event_date >= h.event_date
+        )`,
     [userId, range.from, range.to, fieldIds],
   );
 
@@ -276,6 +293,9 @@ const expensesWithoutPlot: Rule = async ({ userId, fieldIds, range }) => {
  * records at all — the two shapes of "esto quedó a medio cargar".
  */
 const hollowFields: Rule = async ({ userId, fieldIds, range }) => {
+  // "Has records" is all-time (a field with old data and no lotes is still
+  // half-loaded); "no activity" is campaign-scoped, which is what the message
+  // says — the all-time count let a field idle for two campaigns stay quiet.
   const { rows } = await pool.query(
     `SELECT f.id, f.name,
             (SELECT COUNT(*) FROM plots p WHERE p.field_id = f.id AND p.deleted_at IS NULL)::int AS plots,
@@ -284,10 +304,26 @@ const hollowFields: Rule = async ({ userId, fieldIds, range }) => {
             (SELECT COUNT(*) FROM incomes i WHERE i.field_id = f.id AND i.deleted_at IS NULL)::int AS incomes,
             (SELECT COUNT(*) FROM domain_events d
                JOIN plots p2 ON p2.id = d.plot_id
-              WHERE p2.field_id = f.id AND d.user_id = $1 AND d.deleted_at IS NULL)::int AS events
+              WHERE p2.field_id = f.id AND d.user_id = $1 AND d.deleted_at IS NULL)::int AS events,
+            (
+              (SELECT COUNT(*) FROM rainfall r WHERE r.field_id = f.id AND r.user_id = $1
+                 AND r.rainfall_date BETWEEN $3::date AND $4::date)
+            + (SELECT COUNT(*) FROM expenses e
+                 LEFT JOIN plots ep ON ep.id = e.plot_id
+                WHERE COALESCE(e.field_id, ep.field_id) = f.id AND e.deleted_at IS NULL
+                  AND e.expense_date BETWEEN $3::date AND $4::date)
+            + (SELECT COUNT(*) FROM incomes i
+                 LEFT JOIN plots ip ON ip.id = i.plot_id
+                WHERE COALESCE(i.field_id, ip.field_id) = f.id AND i.deleted_at IS NULL
+                  AND i.income_date BETWEEN $3::date AND $4::date)
+            + (SELECT COUNT(*) FROM domain_events d
+                 JOIN plots p2 ON p2.id = d.plot_id
+                WHERE p2.field_id = f.id AND d.user_id = $1 AND d.deleted_at IS NULL
+                  AND d.event_date BETWEEN $3::date AND $4::date)
+            )::int AS campaign_records
        FROM fields f
       WHERE f.id = ANY($2::int[]) AND f.deleted_at IS NULL AND f.user_id = $1`,
-    [userId, fieldIds],
+    [userId, fieldIds, range.from, range.to],
   );
 
   const noPlots: string[] = [];
@@ -299,7 +335,7 @@ const hollowFields: Rule = async ({ userId, fieldIds, range }) => {
     if (Number(r.plots) === 0 && records > 0) {
       noPlots.push(String(r.name));
       refField = refField ?? Number(r.id);
-    } else if (Number(r.plots) > 0 && records === 0) {
+    } else if (Number(r.plots) > 0 && Number(r.campaign_records) === 0) {
       noRecords.push(String(r.name));
       refField = refField ?? Number(r.id);
     }

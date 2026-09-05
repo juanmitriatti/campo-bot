@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api/client';
+import { onMutation } from '../api/mutations';
 
 export interface AgronomicRainfallMonth {
   month: string;
@@ -64,6 +65,7 @@ export interface HarvestQualityLoad {
 }
 
 export interface AgronomicAnalyticsData {
+  campaign?: { seasonYear: number; label: string; from: string; to: string };
   rainfallMonthly: AgronomicRainfallMonth[];
   harvestsMonthly: AgronomicHarvestMonth[];
   scoutingByPlot: ScoutingByPlot[];
@@ -72,7 +74,11 @@ export interface AgronomicAnalyticsData {
   harvestQualityLoads: HarvestQualityLoad[];
 }
 
-export function useAgronomicAnalyticsData(fieldId: number | null) {
+/**
+ * Agronomic datasets for the selected field AND campaign. The campaign picker
+ * sits above every tab, so this view has to honour it like the Resumen does.
+ */
+export function useAgronomicAnalyticsData(fieldId: number | null, season: number | null = null) {
   const [data, setData] = useState<AgronomicAnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,20 +87,20 @@ export function useAgronomicAnalyticsData(fieldId: number | null) {
     setLoading(true);
     setError(null);
     try {
-      // fieldId === null → "Todos los campos" view: aggregate across all user fields.
-      const url = fieldId == null
-        ? '/analytics/agronomic?field_id=all'
-        : `/analytics/agronomic?field_id=${fieldId}`;
-      const json = await apiRequest<AgronomicAnalyticsData>(url);
+      const qs = new URLSearchParams();
+      qs.set('field_id', fieldId == null ? 'all' : String(fieldId));
+      if (season != null) qs.set('season', String(season));
+      const json = await apiRequest<AgronomicAnalyticsData>(`/analytics/agronomic?${qs.toString()}`);
       setData(json);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar dashboard agronómico');
     } finally {
       setLoading(false);
     }
-  }, [fieldId]);
+  }, [fieldId, season]);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => onMutation(() => { void refresh(); }), [refresh]);
 
   return { data, loading, error, refresh };
 }

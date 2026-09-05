@@ -5,6 +5,7 @@ import type { AgronomicRainfallMonth, AgronomicHarvestMonth } from '../../../hoo
 interface Props {
   rainfall: AgronomicRainfallMonth[];
   harvests: AgronomicHarvestMonth[];
+  campaignLabel?: string;
 }
 
 const CROP_COLORS: Record<string, string> = {
@@ -22,7 +23,7 @@ function colorForCrop(crop: string | null): string {
   return CROP_COLORS[crop.toLowerCase()] ?? '#6b7280';
 }
 
-export default function RainfallYieldTrendChart({ rainfall, harvests }: Props) {
+export default function RainfallYieldTrendChart({ rainfall, harvests, campaignLabel }: Props) {
   // Merge by month: each row has mm + per-month scatter points (yield).
   const data = useMemo(() => {
     const map = new Map<string, { month: string; label: string; mm: number; yield_kg_per_ha?: number; crop?: string | null; plot?: string | null }>();
@@ -55,9 +56,11 @@ export default function RainfallYieldTrendChart({ rainfall, harvests }: Props) {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Lluvias y rendimiento (12 meses)</h3>
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
+        Lluvias y rendimiento{campaignLabel ? ` · campaña ${campaignLabel}` : ''}
+      </h3>
       {!hasAnything ? (
-        <p className="text-sm text-gray-400 dark:text-gray-300 text-center py-12">Aún no hay lluvias ni cosechas en los últimos 12 meses.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-300 text-center py-12">Aún no hay lluvias ni cosechas en esta campaña.</p>
       ) : (
         <ResponsiveContainer width="100%" height={280}>
           <ComposedChart data={data} margin={{ top: 5, right: 30, left: 0, bottom: 0 }}>

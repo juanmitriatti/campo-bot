@@ -11,6 +11,7 @@
  * make the Resumen disagree with `campaign-stats.service.ts` for the same user.
  */
 import { getSeasonYear, formatSeasonLabel } from '../domain/plots/crop.service.js';
+import { getNowArgentina } from './date.js';
 
 export interface CampaignRange {
   /** Season year — the year of the campaign's September. */
@@ -23,8 +24,13 @@ export interface CampaignRange {
   to: string;
 }
 
-/** The season year the given date falls into (gruesa window). */
-export function currentSeasonYear(date: Date = new Date()): number {
+/**
+ * The season year the given date falls into (gruesa window).
+ *
+ * Defaults to Argentina's wall clock, not the server's: on a UTC host the
+ * campaign flipped at 21:00 of 31 Aug in Buenos Aires, three hours early.
+ */
+export function currentSeasonYear(date: Date = getNowArgentina()): number {
   return getSeasonYear(date, 'gruesa');
 }
 
@@ -42,7 +48,7 @@ export function campaignRange(seasonYear: number): CampaignRange {
  * label ("25/26", "2025/26"). Falls back to the current campaign when absent
  * or unparseable — a bad param must never 400 the whole Resumen.
  */
-export function resolveCampaign(raw: unknown, now: Date = new Date()): CampaignRange {
+export function resolveCampaign(raw: unknown, now: Date = getNowArgentina()): CampaignRange {
   if (typeof raw === 'string' && raw.trim()) {
     const head = raw.trim().split('/')[0];
     const n = parseInt(head, 10);
@@ -58,7 +64,7 @@ export function resolveCampaign(raw: unknown, now: Date = new Date()): CampaignR
 /**
  * The last N campaigns, newest first — for the campaign picker.
  */
-export function recentCampaigns(count = 4, now: Date = new Date()): CampaignRange[] {
+export function recentCampaigns(count = 4, now: Date = getNowArgentina()): CampaignRange[] {
   const current = currentSeasonYear(now);
   const out: CampaignRange[] = [];
   for (let i = 0; i < count; i++) out.push(campaignRange(current - i));

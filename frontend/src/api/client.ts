@@ -1,3 +1,5 @@
+import { notifyMutation } from './mutations';
+
 const API_BASE = '/api/auth';
 
 interface RequestOptions {
@@ -48,6 +50,7 @@ export async function apiRequest<T = unknown>(endpoint: string, options: Request
     throw new ApiError(res.status, data.error || 'Error del servidor');
   }
 
+  notifyMutation(method, endpoint);
   return data as T;
 }
 
@@ -123,6 +126,7 @@ export async function fetchApi<T = unknown>(path: string, options: RequestOption
   if (!res.ok) {
     throw new ApiError(res.status, data.error || 'Error del servidor');
   }
+  notifyMutation(method, path);
   return data as T;
 }
 
@@ -163,5 +167,6 @@ export async function apiUpload<T = unknown>(path: string, formData: FormData): 
   if (!res.ok) {
     throw new ApiError(res.status, data.error || 'Error del servidor');
   }
+  notifyMutation('POST', path);
   return data as T;
 }

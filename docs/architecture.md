@@ -145,8 +145,8 @@ Git submodule (`campo-chat-bot`). React + Vite + shadcn/ui + Framer Motion marke
 React 19 + Vite 6 + Tailwind v3 + React Router v6 SPA. Served on explicit routes (`/login`, `/register`, `/dashboard`, `/chat`) only. Assets served from `/app-assets/*` (Vite `base: '/app-assets/'`).
 
 - Auth: JWT in localStorage, auto-refresh on 401, role-based route guards
-- Dashboard: Sidebar (desktop) + BottomNav (mobile), `view` state. Default: Overview (KPIs, charts, map, quick actions, feed, alerts)
-- Overview charts: `MonthlyTrendChart` (recharts AreaChart, 6-month expense/income trend), `ExpensePieChart` (recharts PieChart, category breakdown)
+- Dashboard: Sidebar (desktop) + BottomNav (mobile), `view` state. Default: Overview — campaign-scoped Resumen (`/api/auth/overview`), see docs/features/dashboard.md
+- Overview cards: `CampaignResult`, `ReviewPanel`, `RemindersCard`, `PlotCards`, `CropMargins`, `RainfallMonths`, `CategoryRanking`, `IncomeProducts`, `BudgetCard`, `LivestockCard`, `CampaignFeed`
 - Overview map: `FieldMap` (react-leaflet, collapsible, field markers + polygons colored by crop status)
 - Detail views: Gastos (feature-gated: expenses), Ingresos (incomes), Actividades (agronomy), Observaciones (agronomy), Stock (stock), Hacienda (livestock) — all feature-gated in Sidebar, BottomNav, and view guard
 - Paginated tables with filters + inline edit buttons + edit modals. Mobile: card components instead of tables

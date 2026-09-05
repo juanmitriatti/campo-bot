@@ -1,15 +1,24 @@
 import { useAgronomicAnalyticsData } from '../../hooks/useAgronomicAnalyticsData';
 import RainfallYieldTrendChart from './charts/RainfallYieldTrendChart';
 import FieldPlotsTreemap from './charts/FieldPlotsTreemap';
+import YieldByCropCard from './YieldByCropCard';
+import ScoutingByPlotCard from './ScoutingByPlotCard';
+import HarvestQualityCard from './HarvestQualityCard';
 
 interface Props {
   fieldId: number | null;
+  season: number | null;
 }
 
-export default function OverviewAgronomicView({ fieldId }: Props) {
-  const { data, loading, error, refresh } = useAgronomicAnalyticsData(fieldId);
+/**
+ * The agronomic tab: rain and yield, then everything the endpoint computes and
+ * this view used to throw away — yield per crop, the latest scouting on each
+ * lote, and the quality of what was delivered.
+ */
+export default function OverviewAgronomicView({ fieldId, season }: Props) {
+  const { data, loading, error, refresh } = useAgronomicAnalyticsData(fieldId, season);
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="flex justify-center py-16">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-campo-600" />
@@ -29,8 +38,17 @@ export default function OverviewAgronomicView({ fieldId }: Props) {
   if (!data) return null;
 
   return (
-    <div className="space-y-6">
-      <RainfallYieldTrendChart rainfall={data.rainfallMonthly} harvests={data.harvestsMonthly} />
+    <div className="space-y-4">
+      <RainfallYieldTrendChart
+        rainfall={data.rainfallMonthly}
+        harvests={data.harvestsMonthly}
+        campaignLabel={data.campaign?.label}
+      />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <YieldByCropCard rows={data.yieldByCrop} campaignLabel={data.campaign?.label} />
+        <HarvestQualityCard loads={data.harvestQualityLoads} />
+      </div>
+      <ScoutingByPlotCard rows={data.scoutingByPlot} />
       <FieldPlotsTreemap fields={data.fieldPlotCrops} />
     </div>
   );

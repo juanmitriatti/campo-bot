@@ -29,26 +29,33 @@ export default function OverviewLivestockView({ fieldId }: Props) {
     [data?.feedlotOccupancy],
   );
 
+  // Weighted by head, not a mean of per-category means: with 300 terneros at
+  // 180 kg and 20 toros at 700 kg, the plain average said 440 and the rodeo
+  // weighs 212. Categories without a headcount fall back to weight 1.
   const avgWeight = useMemo(() => {
     const list = data?.avgWeightByCategory ?? [];
     if (list.length === 0) return null;
-    const sum = list.reduce((s, r) => s + r.avgWeightKg, 0);
-    return Math.round(sum / list.length);
-  }, [data?.avgWeightByCategory]);
+    const head = new Map((data?.stockByCategory ?? []).map(r => [r.category, r.headcount]));
+    let kg = 0;
+    let n = 0;
+    for (const r of list) {
+      const w = head.get(r.category) ?? 1;
+      kg += r.avgWeightKg * w;
+      n += w;
+    }
+    return n > 0 ? Math.round(kg / n) : null;
+  }, [data?.avgWeightByCategory, data?.stockByCategory]);
 
-  const last30HealthEvents = useMemo(() => {
-    const list = data?.healthEventsMonthly ?? [];
-    if (list.length === 0) return 0;
-    const latest = list[list.length - 1];
-    return Object.values(latest.byType).reduce((s, v) => s + v, 0);
-  }, [data?.healthEventsMonthly]);
-
-  const last30ReproEvents = useMemo(() => {
-    const list = data?.reproEventsMonthly ?? [];
-    if (list.length === 0) return 0;
-    const latest = list[list.length - 1];
-    return Object.values(latest.byType).reduce((s, v) => s + v, 0);
-  }, [data?.reproEventsMonthly]);
+  // "This month" is the calendar month we are in, not the last month that had
+  // an event: with the old lookup a March vaccination was still "Sanidad mes"
+  // in September.
+  const thisMonth = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).slice(0, 7);
+  const countThisMonth = (list: Array<{ month: string; byType: Record<string, number> }> | undefined) => {
+    const row = (list ?? []).find(m => m.month === thisMonth);
+    return row ? Object.values(row.byType).reduce((s, v) => s + v, 0) : 0;
+  };
+  const healthThisMonth = useMemo(() => countThisMonth(data?.healthEventsMonthly), [data?.healthEventsMonthly, thisMonth]);
+  const reproThisMonth = useMemo(() => countThisMonth(data?.reproEventsMonthly), [data?.reproEventsMonthly, thisMonth]);
 
   if (loading) {
     return (
@@ -74,9 +81,9 @@ export default function OverviewLivestockView({ fieldId }: Props) {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard label="Total cabezas" value={String(totalHeadcount)} tint="bg-amber-50" Icon={Beef} iconColor="text-amber-600" />
         <KpiCard label="En corral" value={`${feedlotAnimals}`} tint="bg-blue-50" Icon={Home} iconColor="text-blue-600" />
-        <KpiCard label="Peso promedio" value={avgWeight != null ? `${avgWeight} kg` : '—'} tint="bg-green-50" Icon={Scale} iconColor="text-green-600" />
-        <KpiCard label="Sanidad mes" value={String(last30HealthEvents)} tint="bg-purple-50" Icon={Syringe} iconColor="text-purple-600" />
-        <KpiCard label="Repro mes" value={String(last30ReproEvents)} tint="bg-pink-50" Icon={Activity} iconColor="text-pink-600" />
+        <KpiCard label="Peso promedio (ponderado)" value={avgWeight != null ? `${avgWeight} kg` : '—'} tint="bg-green-50" Icon={Scale} iconColor="text-green-600" />
+        <KpiCard label="Sanidad este mes" value={String(healthThisMonth)} tint="bg-purple-50" Icon={Syringe} iconColor="text-purple-600" />
+        <KpiCard label="Repro este mes" value={String(reproThisMonth)} tint="bg-pink-50" Icon={Activity} iconColor="text-pink-600" />
       </div>
 
       {/* Trazabilidad individual. Esta vista es donde el productor mira el

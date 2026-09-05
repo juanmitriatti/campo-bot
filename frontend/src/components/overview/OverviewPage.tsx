@@ -25,6 +25,8 @@ interface OverviewPageProps {
   onGoToLivestock?: () => void;
   onGoToActivities?: () => void;
   onGoToFields?: () => void;
+  onGoToIncomes?: () => void;
+  onGoToReminders?: () => void;
   onOpenReviewRef?: (ref: NonNullable<Finding['ref']>) => void;
 }
 
@@ -35,6 +37,8 @@ export default function OverviewPage({
   onGoToLivestock,
   onGoToActivities,
   onGoToFields,
+  onGoToIncomes,
+  onGoToReminders,
   onOpenReviewRef,
 }: OverviewPageProps = {}) {
   const { features, user } = useAuth();
@@ -112,12 +116,17 @@ agregar campo La Esperanza en Pergamino con lotes 1A, 1B y 1C
             <FieldChips fields={fields} value={fieldId} onChange={setFieldId} />
 
             <div className="flex items-center gap-2 shrink-0">
-              <CampaignPicker
-                campaigns={data?.campaigns ?? []}
-                value={season}
-                currentLabel={data?.campaign.label ?? ''}
-                onChange={setSeason}
-              />
+              {/* Hacienda is stock on hand plus the last 12 months of
+                  movements; it has no campaign. Showing the picker there made
+                  it look like it did — and it did nothing. */}
+              {tab !== 'ganadero' && (
+                <CampaignPicker
+                  campaigns={data?.campaigns ?? []}
+                  value={season}
+                  currentLabel={data?.campaign.label ?? ''}
+                  onChange={setSeason}
+                />
+              )}
               <div
                 className="inline-flex rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 text-xs font-semibold"
                 title="Moneda mostrada en el detalle por lote y por categoría"
@@ -157,10 +166,13 @@ agregar campo La Esperanza en Pergamino con lotes 1A, 1B y 1C
               onRecentItemClick={onRecentItemClick}
               onSeeAllActivities={onGoToActivities}
               onGoToFields={onGoToFields}
+              onGoToIncomes={onGoToIncomes}
+              onGoToReminders={onGoToReminders}
+              onGoToLivestock={onGoToLivestock}
               onOpenReviewRef={onOpenReviewRef}
             />
           )}
-          {tab === 'agronomico' && showAgronomic && <OverviewAgronomicView fieldId={fieldId} />}
+          {tab === 'agronomico' && showAgronomic && <OverviewAgronomicView fieldId={fieldId} season={season} />}
           {tab === 'ganadero' && showLivestock && <OverviewLivestockView fieldId={fieldId} />}
         </>
       )}

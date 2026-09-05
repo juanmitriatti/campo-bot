@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiRequest } from '../api/client';
+import { useSelectedField } from '../hooks/useSelectedField';
+import { useSelectedCampaign } from '../hooks/useSelectedCampaign';
+import { useCampaignWindow } from '../hooks/useOverviewData';
 import { useRowHighlight } from '../hooks/useRowHighlight';
 import { useSortableTable } from '../hooks/useSortableTable';
 import ExpenseEditModal from './ExpenseEditModal';
@@ -104,10 +107,23 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [fields, setFields] = useState<FieldOption[]>([]);
-  const [fieldId, setFieldId] = useState('');
+  // Open on the same slice the nav badge counted — the selected field and the
+  // campaign window — so "26 gastos" in the sidebar lists 26 rows here. Both
+  // are initial values only; every filter below stays editable.
+  const [selectedField] = useSelectedField();
+  const [selectedSeason] = useSelectedCampaign();
+  const campaignWindow = useCampaignWindow(selectedField, selectedSeason);
+  const [fieldId, setFieldId] = useState(selectedField != null ? String(selectedField) : '');
   const [plotId, setPlotId] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(campaignWindow?.from ?? '');
+  const [dateTo, setDateTo] = useState(campaignWindow?.to ?? '');
+  const datesSeeded = useRef(campaignWindow != null);
+  useEffect(() => {
+    if (datesSeeded.current || !campaignWindow) return;
+    datesSeeded.current = true;
+    setDateFrom(campaignWindow.from);
+    setDateTo(campaignWindow.to);
+  }, [campaignWindow]);
   const [category, setCategory] = useState('');
   const [expenseType, setExpenseType] = useState('');
   const [descSearch, setDescSearch] = useState('');

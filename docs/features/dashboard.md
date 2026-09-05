@@ -23,7 +23,38 @@ No definir una segunda ventana. El riesgo no es teórico: `campaign-stats.servic
 
 `src/services/overview.service.ts`. `field_id` acepta un id o `all`; `season` acepta año o etiqueta y por defecto es la campaña actual.
 
-**Por qué no se extendió `/dashboard`**: aquel responde "cómo viene ESTE MES" (actual vs anterior) y sigue vivo para otros consumidores. Este responde "cómo cerró LA CAMPAÑA" — otra ventana, otro grano (por lote, ranking por categoría) y otra historia de moneda.
+**Por qué no se extendió `/dashboard`**: aquel respondía "cómo viene ESTE MES" (actual vs anterior). Este responde "cómo cerró LA CAMPAÑA" — otra ventana, otro grano (por lote, ranking por categoría) y otra historia de moneda. En Sep 2026 `/dashboard` y `/analytics` se borraron junto con sus hooks y gráficos: no les quedaba ningún consumidor.
+
+### Reglas de scoping (Sep 2026)
+
+Cada una salió de un número mal mostrado en la copia de prod:
+
+- **Plata sin campo ni lote** (una venta de soja "a Cargill", un gasto dictado antes de tener lotes) entra solo con "Todos los campos" (`includeUnassigned`). El filtro anterior `COALESCE(field, plot.field) = ANY(...)` la descartaba en silencio: un usuario con 10 ventas de grano sin lote veía su resultado en USD sin esos ingresos.
+- **Eventos sin lote** siguen la misma regla; los que están en un corral resuelven al campo del feedlot, así la sanidad de un feedlot no se cuenta en todos los campos.
+- **El cultivo de la tarjeta del lote es el que solapa la campaña elegida**, no el activo hoy: mirando 24/25 no puede decir "sembrado el 18 jul 2026".
+- **`counts.livestock` son cabezas** (`SUM(count)`), acotadas al campo elegido. El banner las rotula como animales; con `COUNT(*)` de grupos decía "12 animales" para 960 cabezas.
+- **Etiquetas de mes en JS** (`monthLabel()`), nunca `to_char(..., 'Mon')`: ese formato es inglés siempre (solo `TMMon` localiza, y `lc_time` es C en el deploy).
+- **La campaña actual se resuelve con hora argentina** (`getNowArgentina()`), no con la del servidor UTC: cambiaba tres horas antes del 1 de septiembre.
+
+### Datasets nuevos del payload
+
+- `incomeProducts` — qué vendiste, por producto (o categoría) con kg y $/tn; el kg solo suma filas con unidad de peso (`kg`/`tn`/`qq`), para que "100 toneladas" sin unidad no sea 100 kg.
+- `cropMargins` — las tarjetas de lote reagrupadas por cultivo: ha, ingresos, gastos, $/ha, resultado. Sale de las mismas filas que las tarjetas para que nunca se contradigan.
+- `plots[].harvestKg` / `yieldKgPerHa` — cosechado en la campaña (cantidad del evento → suma de camiones → `plot_crops.yield_kg`) sobre `sowed_hectares` o la superficie del lote.
+- `budgets` — `set_budget` existía en el bot hace mucho y nunca se mostró: presupuesto vs. gastado del mes, en ARS.
+- `reminders` — vencidos + próximos 7 días (`pending` y `sent`: avisado no es hecho).
+- `livestock` — cabezas por categoría y último pesaje, para el usuario ganadero que en el Resumen solo veía plata en cero.
+- `rainfall.prevMonths` / `prevTotal` — la campaña anterior, para que 400 mm signifiquen algo.
+
+### Vista agronómica y ganadera
+
+`/analytics/agronomic` acepta `season` y usa la **misma ventana de campaña** que el Resumen (el picker está arriba de las tres pestañas y tenía que significar lo mismo en todas). Además la vista ahora dibuja los tres datasets que el endpoint calculaba y tiraba: rinde por cultivo, último monitoreo por lote y calidad de lo entregado. `/analytics/livestock` sigue en "últimos 12 meses" — la hacienda no tiene campaña — y por eso el picker se oculta en esa pestaña. Su trend de cabezas emite una fila por **extremo** del movimiento (destino +, origen −), así una transferencia entre corrales suma cero; `ajuste` queda afuera porque guarda un absoluto, no un delta. Los KPI "Sanidad/Repro este mes" miran el mes calendario actual (antes tomaban el último mes con datos) y el peso promedio se pondera por cabezas.
+
+### Frescura y coherencia badge ↔ tabla
+
+- `frontend/src/api/mutations.ts` es el bus "algo se escribió": todo non-GET exitoso del cliente lo emite y `useOverviewData` refetchea las páginas suscriptas. `invalidateOverview()` existía sin ningún llamador y el Resumen quedaba viejo después de editar un gasto.
+- Las tablas de Gastos, Ingresos y Actividades abren con el campo seleccionado y la ventana de campaña (`useCampaignWindow`), así "26 gastos" en el badge lista 26 filas. Los filtros siguen siendo editables.
+- El badge de Cosechas cuenta camiones, que es lo que lista la pestaña.
 
 Payload:
 
@@ -137,6 +168,6 @@ IBM Plex Sans + IBM Plex Mono, vía Google Fonts en `frontend/index.html` (`disp
 
 ## Pendientes conocidos
 
-- Quedaron sin uso `CategoryDonutChart`, `RecentFeed`, `FieldSelector` y `RentabilidadPorLoteChart`. No se borraron porque `computeRentabilidadPorLote` tiene tests propios; es una limpieza aparte.
-- `/review` corre 6 queries por carga del Resumen. Irrelevante a la escala actual; es el primer lugar donde mirar si crece el uso.
-- Las reglas de revisión no tienen tests de integración (necesitan DB seedeada). El único test nuevo cubre `campaign-range`.
+- `/review` corre 9 queries y `/overview` 18 por carga del Resumen. Irrelevante a la escala actual; es el primer lugar donde mirar si crece el uso.
+- `cropMargins` atribuye un lote entero al cultivo que muestra su tarjeta: un lote con trigo → soja de segunda en la misma campaña carga todo a uno solo.
+- `harvest_before_planting` dispara solo cuando NO hay siembra anterior del cultivo en el lote y sí una posterior. Antes disparaba con CUALQUIER siembra posterior, o sea en toda rotación soja→soja. Regresión en `src/services/__tests__/overview.integration.test.ts`.
