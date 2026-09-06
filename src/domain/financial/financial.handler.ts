@@ -784,6 +784,7 @@ export class FinancialHandler {
       return {
         messages: [`\u26a0\ufe0f No encontré el ${label} *${name}*.\n\n\ud83d\udcb8 *${data.category}* \u2014 ${formatMoney(data.amount, data.currency)}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
         sideEffects: {
+          offerForm: this.moneyFormOffer('log_expense', data, fieldName, plotName),
           startFlow: {
             state: 'expense_flow' as FlowState,
             data: {
@@ -820,6 +821,7 @@ export class FinancialHandler {
         return {
           messages: [`${expHeader}\u00bfEn qu\u00e9 lote lo registramos?`],
           sideEffects: {
+            offerForm: this.moneyFormOffer('log_expense', data, fieldName, plotName),
             startFlow: {
               state: 'expense_flow' as FlowState,
               data: {
@@ -886,6 +888,7 @@ export class FinancialHandler {
       return {
         messages: [],
         sideEffects: {
+          offerForm: this.moneyFormOffer('log_expense', data, fieldName, plotName),
           startFlow: {
             state: 'expense_flow' as FlowState,
             data: {
@@ -1125,6 +1128,7 @@ export class FinancialHandler {
       return {
         messages: [`\u26a0\ufe0f No encontré el ${label} *${name}*.\n\n\ud83d\udcb0 *${data.category}* \u2014 ${formatMoney(data.amount, data.currency)}\n\n\u00bfEn qu\u00e9 lote lo registramos?`],
         sideEffects: {
+          offerForm: this.moneyFormOffer('log_income', data, fieldName, plotName),
           startFlow: {
             state: 'income_flow' as FlowState,
             data: {
@@ -1149,6 +1153,7 @@ export class FinancialHandler {
         return {
           messages: [`${data.category ? `\ud83d\udcb0 *${data.category}* \u2014 ${formatMoney(data.amount, data.currency)}\n\n` : `\ud83d\udcb0 ${formatMoney(data.amount, data.currency)} (sin categor\u00eda a\u00fan)\n\n`}\u00bfEn qu\u00e9 lote lo registramos?`],
           sideEffects: {
+            offerForm: this.moneyFormOffer('log_income', data, fieldName, plotName),
             startFlow: {
               state: 'income_flow' as FlowState,
               data: {
@@ -1200,6 +1205,7 @@ export class FinancialHandler {
       return {
         messages: [],
         sideEffects: {
+          offerForm: this.moneyFormOffer('log_income', data, fieldName, plotName),
           startFlow: {
             state: 'income_flow' as FlowState,
             data: {
@@ -3329,6 +3335,34 @@ export class FinancialHandler {
   }
 
   /** Coerce a re-routed ParsedCommand back into the ParsedExpense shape that handleExpense expects. */
+  /**
+   * Oferta del formulario de gasto/ingreso junto al flujo guiado: lo que el
+   * usuario ya dijo viaja como prefill (nombres del dominio; form-prefill los
+   * traduce). Se suprime solo en bulkMode (invariante 7) — lo hace el executor.
+   */
+  private moneyFormOffer(
+    action: 'log_expense' | 'log_income',
+    data: ParsedExpense | ParsedIncome,
+    fieldName?: string | null,
+    plotName?: string | null,
+  ): { action: 'log_expense' | 'log_income'; prefill: Record<string, unknown> } {
+    const date = action === 'log_expense'
+      ? (data as ParsedExpense).expenseDate
+      : (data as ParsedIncome).incomeDate;
+    return {
+      action,
+      prefill: {
+        amount: data.amount > 0 ? data.amount : null,
+        currency: data.currency === 'USD' ? 'USD' : 'ARS',
+        category: data.category || null,
+        description: data.description || null,
+        eventDate: date ?? null,
+        plotName: plotName ?? null,
+        fieldName: fieldName ?? null,
+      },
+    };
+  }
+
   private cmdToParsedExpense(cmd: ParsedCommand): ParsedExpense {
     const c = cmd as unknown as Record<string, unknown>;
     const amount = typeof c.amount === 'number' ? c.amount

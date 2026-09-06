@@ -3125,6 +3125,20 @@ export class AgronomyHandler {
                   missing,
                   askPrompt,
                 },
+                // Formulario de labor con lo que ya dijo (prefill en nombres del dominio).
+                offerForm: {
+                  action: 'log_activity',
+                  prefill: {
+                    activityType: eventType,
+                    product: (cmd.product as string) ?? (cmd.implement as string) ?? null,
+                    quantity: (cmd.quantity as number) ?? null,
+                    unit: (cmd.unit as string) ?? null,
+                    plotName: (cmd.plotName as string) ?? null,
+                    fieldName: (cmd.fieldName as string) ?? null,
+                    eventDate: (cmd.eventDate as string) ?? null,
+                    notes: (cmd.notes as string) ?? null,
+                  },
+                },
               },
             };
           }

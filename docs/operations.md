@@ -123,11 +123,17 @@ npx tsx src/scripts/delete-telegram-webhook.ts   # Remove webhook
 
 User store key: `tg_${chatId}`. Users provisioned on first contact via `getOrCreateUserByTelegramId()`.
 
-## WhatsApp — checklist de activación (pendiente de número definitivo)
+## WhatsApp — checklist de activación
 
-Prod corre SOLO Telegram hoy (sin vars `WHATSAPP_*` en Railway). La activación tiene
-**dos capas**: (A) el canal WhatsApp base (Cloud API) y (B) los Formularios por WhatsApp
-Flows, que están DARK y con un gap de código todavía abierto.
+**Estado (5 sep 2026):** el número real **+54 9 11 7819-9790** está registrado en Cloud API
+(`phone_number_id` 1374438695743094, WABA "Agro bot" 1889814245322180, app `campo-bot`
+1623899791990036 **publicada**, webhook `messages` suscripto). Se migró desde la app
+WhatsApp Business del teléfono borrando la cuenta: **Coexistence no está disponible sin un
+Solution Partner/Tech Provider con Embedded Signup**, así que el número es solo del bot. El
+token es permanente (Usuario del sistema, sin vencimiento). Flows de siembra/cosecha
+publicados el mismo día (ids en settings grupo `bot`). Lo que sigue son los pasos por si
+hay que rehacerlo. La activación tiene **dos capas**: (A) el canal WhatsApp base (Cloud
+API) y (B) los Formularios por WhatsApp Flows.
 
 ### A) Canal WhatsApp base (Cloud API) — prerequisito de todo
 
@@ -163,15 +169,43 @@ Estado del código (todo hecho — activar es puro config):
   `src/services/whatsapp.js` lo manda por la Cloud API. **Gateado por el `flow_id`**: sin
   setting, loguea `[FORM] skip offer (whatsapp): <KEY> vacío` y sigue dark.
 
-Pasos de activación (solo Meta + settings, sin tocar código):
-1. Generar el Flow JSON de siembra y cosecha con `buildWhatsAppFlowJson(def)`.
-2. En WhatsApp Manager → **Flows**: crear un Flow por form, pegar el JSON, **publicarlo**,
-   anotar el `flow_id` de cada uno.
-3. Guardar los `flow_id` en settings grupo `bot`: `WHATSAPP_FLOW_ID_SOW` y
-   `WHATSAPP_FLOW_ID_HARVEST`. Opcional: `WHATSAPP_FLOW_MODE` (`published` por defecto;
-   poner `draft` para probar contra el número de test antes de publicar).
-4. Probar en `draft` contra el número de test → al tocar "Abrir formulario" y completar,
-   el `nfm_reply` entra por el mismo `submitForm` que la Mini App. Pasar a `published`.
+Pasos de activación (Sep 2026 — un script, sin pegar JSON a mano):
+1. **Token con `whatsapp_business_management`** (además de `_messaging`). El token temporal
+   de "API Setup" vence a las 24 hs — el `.env` local tenía uno vencido desde el 22/08/2026.
+   Usar el token permanente del *Usuario del sistema* (paso A.4). `WHATSAPP_WABA_ID` en env
+   es opcional: el script lo detecta por el token y elige el WABA que contiene
+   `WHATSAPP_PHONE_NUMBER_ID`.
+2. `npx tsx src/scripts/publish-whatsapp-flows.ts` — crea (o actualiza el draft de) un Flow
+   por cada `FormDefinition` en el WABA, sube el Flow JSON de `buildWhatsAppFlowJson(def)`
+   y **imprime los `validation_errors` de Meta** (con path). Con `--dump <dir>` solo escribe
+   los JSON (sin token), para pegarlos en WhatsApp Manager → Flows si se prefiere la UI.
+3. Probar el draft: `WHATSAPP_FLOW_MODE=draft` en settings (grupo `bot`) + pegar el `flow_id`
+   del draft en `WHATSAPP_FLOW_ID_SOW`/`_HARVEST`. En modo `draft` el Flow **solo llega a
+   los números de prueba de la app** — con un usuario real el envío falla. Tocar "Abrir
+   formulario", completar: el `nfm_reply` entra por el mismo `submitForm` que la Mini App
+   (log `[FORM] flow payload re-armado`).
+4. `... --publish --save-settings` — publica los que validan y guarda los `flow_id` en
+   settings (`WHATSAPP_FLOW_ID_SOW`, `WHATSAPP_FLOW_ID_HARVEST`; el bot los toma en ≤5 min).
+   Volver `WHATSAPP_FLOW_MODE` a `published`.
+   **Gate de Meta (5 sep 2026):** publicar un Flow devuelve `Blocked by Integrity`
+   (code 139000/4233020) hasta que la empresa esté **verificada** (Business Manager →
+   Autorizaciones y verificaciones) **o** el número acumule "mensajes de alta calidad"
+   (barra de conversaciones iniciadas / 30 días en WhatsApp Manager → Flows → Publicar).
+   Los 6 drafts ya están creados y validan sin errores (6 sep 2026): siembra
+   1340112071244360, cosecha 1368168561671652, gasto 1378034054484390, ingreso
+   879160111794551, labor 1330233078973920, hacienda 944223028085227. Con la
+   verificación aprobada, correr el paso 4 y listo.
+   Mientras tanto el bot funciona por chat sin formularios (el gate por `flow_id` vacío
+   loguea `[FORM] skip offer (whatsapp)`).
+5. **Un Flow publicado es inmutable**: al cambiar una `FormDefinition` correr con
+   `--recreate` (crea un Flow nuevo con el mismo nombre → nuevo `flow_id` → `--save-settings`).
+
+Lo que se arregló al activar (la v1 "dark" nunca se había probado contra Meta): el
+`complete` del Footer iba con payload vacío (el `nfm_reply` traía solo el `flow_token`),
+la fecha se mandaba como epoch ms (Flow JSON ≥5.0 usa `YYYY-MM-DD`) y los 5 slots de
+cargas nunca se re-armaban en `loads[]` (`unflattenFlowPayload`, mismo archivo que los
+aplana). Limitaciones que quedan: el Dropdown de cultivo no admite "otro" (el form web sí)
+y las cargas son 5 como máximo por formulario (el chat no tiene tope).
 
 ### Gotchas transversales (aplican al canal, no solo a Flows)
 

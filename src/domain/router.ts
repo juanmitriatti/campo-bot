@@ -123,7 +123,7 @@ const FEEDLOT_COMMANDS = new Set([
   'create_corral', 'list_corrals', 'delete_corral', 'rename_corral',
 ]);
 
-const SYSTEM_COMMANDS = new Set([
+export const SYSTEM_COMMANDS = new Set([
   'greeting', 'help', 'help_section', 'thanks', 'ack', 'dollar', 'grain_prices',
   'show_plan',
   'create_reminder', 'list_reminders', 'complete_reminder', 'noop_reminder_cancel',
@@ -137,7 +137,8 @@ const SYSTEM_COMMANDS = new Set([
   'enable_budget_alerts', 'disable_budget_alerts',
   'enable_weekly_summary', 'disable_weekly_summary',
   'set_name', 'set_city',
-  'open_form', 'open_form_sow', 'open_form_harvest',
+  'open_form', 'open_form_sow', 'open_form_harvest', 'open_form_expense', 'open_form_income',
+  'open_form_activity', 'open_form_livestock',
 ]);
 
 // Financial-handler commands dispatched ahead of the *_COMMANDS sets (category

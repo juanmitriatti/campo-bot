@@ -1,10 +1,14 @@
 // src/forms/form-submit.service.ts
 // Submit de un formulario estructurado: valida contra la FormDefinition,
+// resuelve las referencias (lote / campo / corral) con scoping por usuario,
 // serializa con el lock del usuario y entra por DomainRouter.routeCommand
 // (mismo handler que el chat — cero IA). Token de un solo uso = idempotencia.
 import { pool } from '../config/db.js';
 import { formSessionService, type FormSessionRow } from '../services/form-session.service.js';
-import { FORM_DEFINITIONS, validateFormPayload } from './form-definitions.js';
+import { FORM_DEFINITIONS, validateFormPayload, type FormAction } from './form-definitions.js';
+import { buildFormCommand, type ResolvedRefs } from './form-commands.js';
+import { parseLocationId } from './form-options.js';
+import { unflattenFlowPayload } from './whatsapp-flow-generator.js';
 import {
   domainRouter, userRepository, pendingActStore,
   hydratePendingStores, applySideEffects,
@@ -19,6 +23,14 @@ type SubmitResult =
   | { ok: true; message: string }
   | { ok: false; status: number; error: string };
 
+export interface SubmitFormOptions {
+  /**
+   * El payload viene de un WhatsApp Flow (nfm_reply): los grupos llegan
+   * aplanados (`loads_1_driver_name`…) y hay que re-armarlos antes de validar.
+   */
+  flowResponse?: boolean;
+}
+
 async function loadUserPlot(
   userId: number,
   plotId: number,
@@ -28,6 +40,27 @@ async function loadUserPlot(
        FROM plots p JOIN fields f ON f.id = p.field_id
       WHERE p.id = $1 AND f.user_id = $2 AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
     [plotId, userId],
+  );
+  return rows[0] ?? null;
+}
+
+async function loadUserField(userId: number, fieldId: number): Promise<{ id: number; name: string } | null> {
+  const { rows } = await pool.query(
+    `SELECT id, name FROM fields WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+    [fieldId, userId],
+  );
+  return rows[0] ?? null;
+}
+
+async function loadUserCorral(
+  userId: number,
+  corralId: number,
+): Promise<{ id: number; name: string; feedlot_name: string | null } | null> {
+  const { rows } = await pool.query(
+    `SELECT c.id, c.name, fl.name AS feedlot_name
+       FROM corrals c JOIN feedlots fl ON fl.id = c.feedlot_id JOIN fields f ON f.id = fl.field_id
+      WHERE c.id = $1 AND f.user_id = $2 AND c.deleted_at IS NULL AND fl.deleted_at IS NULL AND f.deleted_at IS NULL`,
+    [corralId, userId],
   );
   return rows[0] ?? null;
 }
@@ -42,9 +75,12 @@ async function sendToChat(session: FormSessionRow, text: string): Promise<void> 
   }
 }
 
+const STALE_REF = 'Ese lote o ubicación ya no existe. Cerrá y pedí el formulario de nuevo.';
+
 export async function submitForm(
   token: string,
-  payload: Record<string, unknown>,
+  rawPayload: Record<string, unknown>,
+  opts: SubmitFormOptions = {},
 ): Promise<SubmitResult> {
   const session = await formSessionService.validate(token);
   if (!session) {
@@ -52,11 +88,23 @@ export async function submitForm(
     return {
       ok: false,
       status: 404,
-      error: 'Este formulario venció. Pedime otro en el chat con «formulario siembra» o «formulario cosecha».',
+      error: 'Este formulario venció. Pedime otro en el chat con «formulario» y elegí cuál.',
     };
   }
 
-  const def = FORM_DEFINITIONS[session.action as 'sow_crop' | 'harvest_crop'];
+  const action = session.action as FormAction;
+  const def = FORM_DEFINITIONS[action];
+  if (!def) {
+    console.log(`[FORM] rejected: action desconocida ${String(session.action)}`);
+    return { ok: false, status: 404, error: 'Este formulario ya no existe. Pedime otro en el chat.' };
+  }
+
+  let payload = rawPayload;
+  if (opts.flowResponse) {
+    payload = unflattenFlowPayload(def, rawPayload);
+    const groups = def.fields.filter(f => f.type === 'group').map(f => `${f.key}=${(payload[f.key] as unknown[] | undefined)?.length ?? 0}`);
+    console.log(`[FORM] flow payload re-armado action=${action} campos=[${Object.keys(payload).join(', ')}]${groups.length ? ` grupos=[${groups.join(', ')}]` : ''}`);
+  }
 
   const { rows: userRows } = await pool.query(
     'SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL',
@@ -65,25 +113,43 @@ export async function submitForm(
   const user = userRows[0];
   if (!user) return { ok: false, status: 404, error: 'Usuario no encontrado.' };
 
-  const plotId = Number(payload.plot_id);
-  const plot = await loadUserPlot(session.user_id, plotId);
-  if (!plot) {
-    console.log('[FORM] rejected: lote ajeno o inexistente');
-    return {
-      ok: false,
-      status: 422,
-      error: 'El lote elegido ya no existe. Cerrá y pedí el formulario de nuevo.',
-    };
+  const refs: ResolvedRefs = {};
+
+  // Lote directo (siembra, cosecha, labores): obligatorio y del usuario.
+  if (def.fields.some(f => f.key === 'plot_id')) {
+    const plot = await loadUserPlot(session.user_id, Number(payload.plot_id));
+    if (!plot) {
+      console.log('[FORM] rejected: lote ajeno o inexistente');
+      return { ok: false, status: 422, error: 'El lote elegido ya no existe. Cerrá y pedí el formulario de nuevo.' };
+    }
+    refs.plot = { id: plot.id, name: plot.name, fieldName: plot.field_name };
   }
 
-  // Validate payload AFTER we have the plot (needed for cross-field rules
-  // but validation itself only needs def + payload + today).
   const validated = validateFormPayload(def, payload, getTodayISO());
   if (!validated.ok) {
     console.log(`[FORM] rejected: validación (${validated.errors.length} errores)`);
     return { ok: false, status: 422, error: validated.errors.join('\n') };
   }
   const data = validated.data;
+
+  // Ubicación mixta (gasto, ingreso, hacienda): p:/f:/c: con scoping por usuario.
+  if (def.fields.some(f => f.key === 'location') && data.location !== undefined) {
+    const ref = parseLocationId(data.location);
+    if (!ref) { console.log('[FORM] rejected: location inválida'); return { ok: false, status: 422, error: STALE_REF }; }
+    if (ref.kind === 'plot') {
+      const plot = await loadUserPlot(session.user_id, ref.id);
+      if (!plot) { console.log('[FORM] rejected: lote ajeno o inexistente'); return { ok: false, status: 422, error: STALE_REF }; }
+      refs.plot = { id: plot.id, name: plot.name, fieldName: plot.field_name };
+    } else if (ref.kind === 'field') {
+      const field = await loadUserField(session.user_id, ref.id);
+      if (!field) { console.log('[FORM] rejected: campo ajeno o inexistente'); return { ok: false, status: 422, error: STALE_REF }; }
+      refs.field = field;
+    } else {
+      const corral = await loadUserCorral(session.user_id, ref.id);
+      if (!corral) { console.log('[FORM] rejected: corral ajeno o inexistente'); return { ok: false, status: 422, error: STALE_REF }; }
+      refs.corral = { id: corral.id, name: corral.name, feedlotName: corral.feedlot_name };
+    }
+  }
 
   return withUserLock(session.phone, async (): Promise<SubmitResult> => {
     await hydratePendingStores(session.phone);
@@ -97,50 +163,25 @@ export async function submitForm(
       return { ok: false, status: 409, error: '⚠️ Esto ya se registró por el chat. No lo dupliqué.' };
     }
 
-    let crop: string | null = (data.crop as string) ?? null;
-    if (session.action === 'harvest_crop') {
-      const active = await getActiveCrop(plot.id);
+    if (action === 'harvest_crop' && refs.plot) {
+      const active = await getActiveCrop(refs.plot.id);
       if (!active) {
         console.log('[FORM] rejected: lote sin cultivo activo');
         return { ok: false, status: 422, error: 'Ese lote no tiene cultivo activo para cosechar.' };
       }
-      crop = (active as { crop: string }).crop;
+      refs.activeCrop = (active as { crop: string }).crop;
     }
 
-    const originalText =
-      `[formulario] ${session.action === 'sow_crop' ? 'siembra' : 'cosecha'} ${crop ?? ''} en ${plot.name}`.trim();
+    const cmd = buildFormCommand(action, data, refs);
 
-    const base = {
-      crop,
-      plotName: plot.name,
-      fieldName: plot.field_name,
-      eventDate: data.event_date as string,
-      originalText,
-    };
-
-    const cmd =
-      session.action === 'sow_crop'
-        ? {
-            command: 'sow_crop',
-            ...base,
-            hectares: (data.hectares as number) ?? null,
-            variety: (data.variety as string) ?? null,
-          }
-        : {
-            command: 'harvest_crop',
-            ...base,
-            yieldKg: (data.yield_kg as number) ?? null,
-            yieldKgPerHa: (data.yield_kg_per_ha as number) ?? null,
-            humidity_pct: (data.humidity_pct as number) ?? null,
-            loads: (data.loads as Array<Record<string, unknown>>) ?? null,
-          };
-
+    // El formulario YA es la confirmación: no volver a preguntar "¿confirmás?"
+    // (el submit trataría los botones como éxito y quemaría el token sin guardar).
     const settings = await userRepository.getSettings(session.user_id as never);
     const response = await domainRouter.routeCommand(
       cmd as never,
       session.user_id as never,
       user,
-      settings,
+      { ...settings, confirm_before_save: false } as typeof settings,
     );
 
     const blocking = !!(response?.sideEffects?.setPendingActivity || response?.sideEffects?.startFlow);
@@ -174,13 +215,14 @@ export async function submitForm(
     await formSessionService.markUsed(token);
 
     // Si había un pending del mismo action y ya no tiene cola, limpiarlo
-    if (pending && (pending as { command?: string }).command === session.action &&
-        !(pending as { nextInQueue?: unknown[] }).nextInQueue?.length) {
+    const pendingCmd = (pending as { command?: string } | undefined)?.command;
+    const sameAction = pendingCmd === action || pendingCmd === (cmd.command as string);
+    if (pending && sameAction && !(pending as { nextInQueue?: unknown[] }).nextInQueue?.length) {
       pendingActStore.clear(session.phone);
       console.log('[FORM] pending consumido por submit');
     }
 
-    console.log(`[FORM] submitted action=${session.action} user=${session.user_id}`);
+    console.log(`[FORM] submitted action=${action} cmd=${String(cmd.command)} user=${session.user_id}`);
     return { ok: true, message: fullText };
   });
 }

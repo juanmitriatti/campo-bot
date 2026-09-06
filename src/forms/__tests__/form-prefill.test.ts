@@ -179,10 +179,10 @@ describe('Flow JSON — prellenado y esquema de data', () => {
   });
 });
 
-describe('isoToFlowDate — el DatePicker de Flows toma epoch en ms', () => {
+describe('isoToFlowDate — el DatePicker de Flows (≥5.0) toma YYYY-MM-DD', () => {
   it('convierte ISO a milisegundos como string', () => {
     // Mandar "2026-08-22" directo deja el campo vacío sin dar error.
-    expect(isoToFlowDate('2026-08-22')).toBe(String(Date.parse('2026-08-22T00:00:00Z')));
+    expect(isoToFlowDate('2026-08-22')).toBe('2026-08-22');
   });
 
   it('rechaza lo que no sea ISO', () => {

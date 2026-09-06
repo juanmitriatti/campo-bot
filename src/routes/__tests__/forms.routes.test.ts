@@ -53,9 +53,11 @@ describe('GET /api/forms/:token', () => {
     const body = res.json.mock.calls[0][0];
     expect(body.action).toBe('harvest_crop');
     expect(body.options.plots).toEqual([
-      { id: 7, name: 'Norte', fieldName: 'La Esperanza', activeCrop: 'maíz' },
+      { id: 7, name: 'Norte', fieldId: 1, fieldName: 'La Esperanza', activeCrop: 'maíz' },
     ]); // Sur (sin cultivo) filtrado
     expect(body.options.crops).toContain('soja');
+    // La lista lista-para-select también filtra (es lo que rinde el form y el Flow).
+    expect(body.options.lists.plots).toEqual([{ id: '7', title: 'Norte (La Esperanza) · maíz' }]);
   });
 });
 

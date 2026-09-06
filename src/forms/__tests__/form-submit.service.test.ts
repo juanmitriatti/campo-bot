@@ -133,6 +133,31 @@ describe('submitForm', () => {
     expect(cmd.loads).toEqual([{ driver_name: 'Juan', weight_kg: 28500, destinatario: 'Cargill' }]);
   });
 
+  it('nfm_reply de WhatsApp (flowResponse): re-arma loads desde los slots y mapea strings a números', async () => {
+    sessionValidate.mockResolvedValue({ ...SESSION, action: 'harvest_crop', channel: 'whatsapp' });
+    mockUserRow();
+    getActiveCropMock.mockResolvedValue({ crop: 'maíz' });
+    pendingGet.mockReturnValue(undefined);
+    routeCommand.mockResolvedValue({ messages: ['🌾 Cosecha registrada'] });
+    // Exactamente lo que llega en response_json: todo string, slots vacíos incluidos, flow_token adentro.
+    const r = await submitForm('tok', {
+      flow_token: 'tok',
+      plot_id: '7', event_date: '2026-08-01', yield_kg_per_ha: '', yield_kg: '', humidity_pct: '14',
+      loads_1_driver_name: 'Juan', loads_1_weight_kg: '28500', loads_1_destinatario: 'Cargill', loads_1_humidity_pct: '',
+      loads_2_driver_name: '', loads_2_weight_kg: '', loads_2_destinatario: '', loads_2_humidity_pct: '',
+      loads_3_driver_name: 'Pedro', loads_3_weight_kg: '30000', loads_3_destinatario: '', loads_3_humidity_pct: '',
+      loads_4_driver_name: '', loads_4_weight_kg: '', loads_5_driver_name: '', loads_5_weight_kg: '',
+    }, { flowResponse: true });
+    expect(r.ok).toBe(true);
+    const cmd = routeCommand.mock.calls[0][0] as Record<string, unknown>;
+    expect(cmd.command).toBe('harvest_crop');
+    expect(cmd.humidity_pct).toBe(14);
+    expect(cmd.loads).toEqual([
+      { driver_name: 'Juan', weight_kg: 28500, destinatario: 'Cargill' },
+      { driver_name: 'Pedro', weight_kg: 30000 },
+    ]);
+  });
+
   it('cosecha sin cultivo activo → 422', async () => {
     sessionValidate.mockResolvedValue({ ...SESSION, action: 'harvest_crop' });
     mockUserRow();

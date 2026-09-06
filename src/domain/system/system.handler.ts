@@ -155,29 +155,48 @@ export class SystemHandler {
         };
 
       case 'open_form':
+        // Lista (no botones): WhatsApp admite 3 botones y son 6 formularios.
         return {
           messages: [],
           interactive: {
-            type: 'buttons',
+            type: 'list',
             body: '\ud83d\udcdd \u00bfQu\u00e9 quer\u00e9s cargar con formulario?',
-            buttons: [
-              { id: 'form_open_sow', title: '\ud83c\udf31 Siembra' },
-              { id: 'form_open_harvest', title: '\ud83c\udf3e Cosecha' },
+            buttonText: 'Elegir',
+            sections: [
+              {
+                title: 'Formularios',
+                rows: [
+                  { id: 'form_open_sow', title: '\ud83c\udf31 Siembra', description: 'Lote, cultivo, fecha, variedad' },
+                  { id: 'form_open_harvest', title: '\ud83c\udf3e Cosecha', description: 'Rinde, humedad, cargas por cami\u00f3n' },
+                  { id: 'form_open_expense', title: '\ud83d\udcb8 Gasto', description: 'Monto, categor\u00eda, lote o campo' },
+                  { id: 'form_open_income', title: '\ud83d\udcb0 Ingreso', description: 'Monto, categor\u00eda, lote o campo' },
+                  { id: 'form_open_activity', title: '\ud83e\uddea Labor', description: 'Fumigaci\u00f3n, fertilizaci\u00f3n, labranza, riego' },
+                  { id: 'form_open_livestock', title: '\ud83d\udc04 Hacienda', description: 'Alta o compra de animales' },
+                ],
+              },
             ],
           },
         };
 
       case 'open_form_sow':
-        return {
-          messages: ['\ud83d\udcdd Abr\u00ed el formulario con el bot\u00f3n:'],
-          sideEffects: { offerForm: { action: 'sow_crop', prefill: {} } },
-        };
-
       case 'open_form_harvest':
+      case 'open_form_expense':
+      case 'open_form_income':
+      case 'open_form_activity':
+      case 'open_form_livestock': {
+        const action = ({
+          open_form_sow: 'sow_crop',
+          open_form_harvest: 'harvest_crop',
+          open_form_expense: 'log_expense',
+          open_form_income: 'log_income',
+          open_form_activity: 'log_activity',
+          open_form_livestock: 'add_livestock',
+        } as const)[cmd.command];
         return {
           messages: ['\ud83d\udcdd Abr\u00ed el formulario con el bot\u00f3n:'],
-          sideEffects: { offerForm: { action: 'harvest_crop', prefill: {} } },
+          sideEffects: { offerForm: { action, prefill: {} } },
         };
+      }
 
       case 'show_documents_menu':
         return {

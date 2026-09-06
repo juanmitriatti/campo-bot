@@ -2,30 +2,27 @@
 //
 // Fuente ÚNICA. Esta lógica vivía sólo dentro de FormPage.tsx (React), así que
 // el formulario web prellenaba lo que el usuario ya había dicho pero el Flow de
-// WhatsApp salía en blanco: el `prefill` se guardaba en form_sessions y nunca
-// llegaba al mensaje. Duplicarla del lado del server habría creado la segunda
-// fuente de verdad que el proyecto prohíbe (invariante 3), así que se extrae acá
-// y la usan los dos canales.
+// WhatsApp salía en blanco. Duplicarla del lado del server habría creado la
+// segunda fuente de verdad que el proyecto prohíbe (invariante 3), así que se
+// extrae acá y la usan los dos canales.
 //
-// El prefill viene con nombres del DOMINIO (plotName, eventDate, hectares) y los
-// campos del form tienen otras claves (plot_id, event_date, hectares): traducir
-// es justamente el trabajo de este módulo.
+// El prefill viene con nombres del DOMINIO (plotName, eventDate, amount…) y los
+// campos del form tienen otras claves (plot_id, event_date, location…):
+// traducir es justamente el trabajo de este módulo. Sólo incluye las claves
+// que se pudieron resolver — un campo ausente acá se le pide al usuario.
 
-import { FORM_DEFINITIONS } from './form-definitions.js';
-import type { FormOptions } from './form-options.js';
+import { FORM_DEFINITIONS, type FormAction } from './form-definitions.js';
+import { corralOptionId, fieldOptionId, plotOptionId, type FormOptions } from './form-options.js';
 
 export interface PrefillInput {
-  action: 'sow_crop' | 'harvest_crop';
+  action: FormAction;
   prefill: Record<string, unknown>;
   options: FormOptions;
   todayISO: string;
 }
 
-/**
- * Devuelve los valores iniciales por CLAVE DE CAMPO del formulario.
- * Sólo incluye las claves que se pudieron resolver — un campo ausente acá
- * simplemente se le pide al usuario.
- */
+const norm = (s: unknown): string => (typeof s === 'string' ? s.trim().toLowerCase() : '');
+
 export function resolveFormInitialValues(input: PrefillInput): Record<string, unknown> {
   const { action, prefill, options, todayISO } = input;
   const out: Record<string, unknown> = {};
@@ -42,40 +39,84 @@ export function resolveFormInitialValues(input: PrefillInput): Record<string, un
   }
 
   // Lote: el usuario lo nombra por NOMBRE ("el lote Norte") y el form necesita
-  // el id. Se matchea contra las opciones reales del usuario.
+  // el id. Se matchea contra las opciones reales del usuario; con campo dicho,
+  // desempata entre lotes homónimos de campos distintos.
+  const namedPlot = norm(prefill.plotName);
+  const namedField = norm(prefill.fieldName);
+  const matchPlot = () => {
+    if (!namedPlot) return null;
+    const candidates = options.plots.filter(p => norm(p.name) === namedPlot);
+    return (namedField && candidates.find(p => norm(p.fieldName) === namedField)) || candidates[0] || null;
+  };
   if (keys.has('plot_id')) {
-    const named = typeof prefill.plotName === 'string' ? prefill.plotName.trim().toLowerCase() : '';
-    if (named) {
-      const field = typeof prefill.fieldName === 'string' ? prefill.fieldName.trim().toLowerCase() : '';
-      // Con campo dicho, desempata entre lotes homónimos de campos distintos.
-      const candidates = options.plots.filter(p => p.name.trim().toLowerCase() === named);
-      const match = (field && candidates.find(p => p.fieldName.trim().toLowerCase() === field)) || candidates[0];
-      if (match) out.plot_id = String(match.id);
-    } else if (options.plots.length === 1) {
-      // Un solo lote: no tiene sentido preguntarlo.
-      out.plot_id = String(options.plots[0].id);
+    const match = matchPlot();
+    if (match) out.plot_id = String(match.id);
+    else if (!namedPlot && options.plots.length === 1) out.plot_id = String(options.plots[0].id);
+  }
+
+  // Ubicación mixta (lote / campo entero / corral).
+  if (keys.has('location')) {
+    const plot = matchPlot();
+    const corralName = norm(prefill.corralName);
+    if (plot) out.location = plotOptionId(plot.id);
+    else if (corralName) {
+      const c = options.corrals.find(x => norm(x.name) === corralName);
+      if (c) out.location = corralOptionId(c.id);
+    } else if (namedField) {
+      const f = options.fields.find(x => norm(x.name) === namedField);
+      if (f) out.location = fieldOptionId(f.id);
     }
   }
 
   // Cultivo: sólo si el usuario lo nombró Y existe entre sus opciones. Nunca
   // inferirlo (invariante 13: no adivinar el cultivo que el usuario no dijo).
   if (keys.has('crop')) {
-    const named = typeof prefill.crop === 'string' ? prefill.crop.trim().toLowerCase() : '';
+    const named = norm(prefill.crop);
     if (named) {
-      const match = options.crops.find(c => c.trim().toLowerCase() === named);
+      const match = options.crops.find(c => norm(c) === named);
       if (match) out.crop = match;
     }
   }
 
+  // Categoría (gasto/ingreso): match contra la lista del usuario; si dijo una
+  // que no está, va como "otro" para que la vea escrita y no la pierda.
+  if (keys.has('category')) {
+    const named = norm(prefill.category);
+    const list = options.lists.expense_categories ?? options.lists.income_categories ?? options.lists.livestock_categories ?? [];
+    if (named) {
+      const match = list.find(o => norm(o.id) === named || norm(o.title) === named);
+      if (match) out.category = match.id;
+      else if (typeof prefill.category === 'string' && def.fields.find(f => f.key === 'category')?.allowOther) {
+        out.category_other = prefill.category.trim();
+      }
+    }
+  }
+
+  if (keys.has('breed') && typeof prefill.breed === 'string') {
+    const match = (options.lists.breeds ?? []).find(o => norm(o.id) === norm(prefill.breed));
+    if (match) out.breed = match.id;
+  }
+
+  // Selects fijos: pasan si el valor es una opción válida.
+  for (const f of def.fields) {
+    if (f.type !== 'select' || !f.options) continue;
+    const domainKey = f.key === 'activity_type' ? 'activityType' : f.key;
+    const v = prefill[domainKey];
+    if (typeof v === 'string' && f.options.some(o => o.id === v)) out[f.key] = v;
+  }
+
   // Numéricos que el usuario ya dijo.
-  for (const k of ['hectares', 'yield_kg_per_ha', 'yield_kg', 'humidity_pct'] as const) {
+  for (const k of ['hectares', 'yield_kg_per_ha', 'yield_kg', 'humidity_pct', 'amount', 'quantity', 'count', 'unit_price'] as const) {
     if (!keys.has(k)) continue;
     const v = prefill[k];
     if (typeof v === 'number' && Number.isFinite(v) && v > 0) out[k] = v;
   }
 
-  if (keys.has('variety') && typeof prefill.variety === 'string' && prefill.variety.trim()) {
-    out.variety = prefill.variety.trim();
+  // Textos que el usuario ya dijo.
+  for (const k of ['variety', 'product', 'description', 'notes'] as const) {
+    if (!keys.has(k)) continue;
+    const v = prefill[k];
+    if (typeof v === 'string' && v.trim()) out[k] = v.trim();
   }
 
   return out;

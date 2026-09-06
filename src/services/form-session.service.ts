@@ -1,12 +1,13 @@
 import crypto from 'crypto';
 import { pool } from '../config/db.js';
+import type { FormAction } from '../types/index.js';
 
 const TOKEN_EXPIRY_MS = 30 * 60 * 1000; // 30 min, igual que map_tokens
 
 export interface FormSessionRow {
   token: string;
   user_id: number;
-  action: 'sow_crop' | 'harvest_crop';
+  action: FormAction;
   prefill: Record<string, unknown>;
   channel: string;
   channel_id: string;
@@ -19,7 +20,7 @@ export interface FormSessionRow {
 export class FormSessionService {
   async create(opts: {
     userId: number;
-    action: 'sow_crop' | 'harvest_crop';
+    action: FormAction;
     prefill: Record<string, unknown>;
     channel: string;
     channelId: string;

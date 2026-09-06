@@ -65,8 +65,14 @@ describe('appendFormOffer', () => {
     getSettingMock.mockImplementation(async (k: string) =>
       k === 'WHATSAPP_FLOW_ID_SOW' ? 'flow_sow_123' : null);
     computeOptsMock.mockResolvedValue({
-      plots: [{ id: 7, name: 'Norte', fieldName: 'La Barrida', activeCrop: null }],
+      plots: [{ id: 7, name: 'Norte', fieldId: 1, fieldName: 'La Barrida', activeCrop: null }],
+      fields: [{ id: 1, name: 'La Barrida' }],
+      corrals: [],
       crops: ['soja', 'maíz'],
+      lists: {
+        plots: [{ id: '7', title: 'Norte (La Barrida)' }],
+        crops: [{ id: 'soja', title: 'soja' }, { id: 'maíz', title: 'maíz' }],
+      },
     });
     const items: unknown[] = [];
     await appendFormOffer(items as never, {
@@ -83,6 +89,9 @@ describe('appendFormOffer', () => {
     expect(item.interactive.flow.mode).toBe('published');
     expect(item.interactive.flow.data.plot_id_options).toEqual([{ id: '7', title: 'Norte (La Barrida)' }]);
     expect(item.interactive.flow.data.crop_options).toEqual([{ id: 'soja', title: 'soja' }, { id: 'maíz', title: 'maíz' }]);
+    // Todo lo declarado en el esquema del screen viaja, incluso vacío (Flows lo exige).
+    expect(item.interactive.flow.data.crop_other_init).toBe('');
+    expect(item.interactive.flow.data.plot_id_init).toBe('7'); // único lote → prellenado
   });
 
   it('en whatsapp sin flow_id configurado no ofrece', async () => {

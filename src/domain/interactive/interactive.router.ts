@@ -1,7 +1,7 @@
 import type { Intent, ParsedCommand } from '../../types/index.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 
-const CALLBACK_MAP: Record<string, ParsedCommand> = {
+export const CALLBACK_MAP: Record<string, ParsedCommand> = {
   // Main menu options
   'menu_gastos': { command: 'show_expense_menu' },
   'menu_ingresos': { command: 'show_income_menu' },
@@ -52,6 +52,10 @@ const CALLBACK_MAP: Record<string, ParsedCommand> = {
   // Formulario picker — abre Mini App para siembra / cosecha
   'form_open_sow': { command: 'open_form_sow' },
   'form_open_harvest': { command: 'open_form_harvest' },
+  'form_open_expense': { command: 'open_form_expense' },
+  'form_open_income': { command: 'open_form_income' },
+  'form_open_activity': { command: 'open_form_activity' },
+  'form_open_livestock': { command: 'open_form_livestock' },
   // Document upload entry points
   'doc_upload_factura': { command: 'start_document_upload', documentType: 'factura' },
   'doc_upload_remito': { command: 'start_document_upload', documentType: 'remito' },

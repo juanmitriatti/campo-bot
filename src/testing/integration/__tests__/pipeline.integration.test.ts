@@ -2078,6 +2078,87 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(pending?.missing).toEqual(['crop']);
     });
 
+    // Sep 2026 — formularios de gasto / labor / hacienda. Cross-layer: handler →
+    // offerForm (prefill en nombres del dominio) → form-prefill → sesión; y el
+    // camino de vuelta submit → form-commands → MISMO handler que el chat.
+    it('gasto sin lote con 2 lotes → flujo guiado (¿en qué lote?) + formulario de gasto con lo ya dicho como prefill', async () => {
+      const { clearAllUserPendingState } = await import('../../../services/message-pipeline.js');
+      // Segundo lote: con uno solo el gasto se auto-resuelve y no hay flujo.
+      const fields = await h.q(`SELECT id FROM fields WHERE user_id = $1 AND name = 'La Esperanza'`, [h.userId]);
+      const fieldId = (fields[0] as { id: number }).id;
+      const sur = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Sur') RETURNING id`, [fieldId]);
+      const surId = (sur[0] as { id: number }).id;
+      h.fakeAgent.enqueue([
+        { toolName: 'log_expense', toolInput: { amount: 50000, category: 'Combustible', description: 'gasoil' } },
+      ]);
+      try {
+        const items = await h.send('gasté 50 mil en gasoil');
+        expect(h.allText(items)).toContain('¿En qué lote'); // el flujo guiado sigue ahí
+        const urls = webAppUrls(items);
+        expect(urls.length).toBeGreaterThan(0);        // …y el formulario se ofrece junto a él
+        expect(urls[0]).toContain('/form/');
+
+        const token = urls[0].split('/form/')[1];
+        const rows = await h.q(`SELECT action, prefill FROM form_sessions WHERE token = $1`, [token]);
+        expect(rows).toHaveLength(1);
+        expect((rows[0] as { action: string }).action).toBe('log_expense');
+        const prefill = (rows[0] as { prefill: Record<string, unknown> }).prefill;
+        expect(prefill.amount).toBe(50000);
+        expect(prefill.category).toBe('Combustible');
+      } finally {
+        await h.send('cancelar');                 // cierra el flujo guiado de gasto (vive en flow_context)
+        await clearAllUserPendingState(h.phone);  // y cualquier pending suelto
+        await h.q(`DELETE FROM plots WHERE id = $1`, [surId]);
+      }
+    });
+
+    it('submit del formulario de labor entra por el handler de fumigación y guarda el domain_event', async () => {
+      const { formSessionService } = await import('../../../services/form-session.service.js');
+      const { submitForm } = await import('../../../forms/form-submit.service.js');
+      const { getTodayISO } = await import('../../../utils/date.js');
+      const token = await formSessionService.create({
+        userId: h.userId, action: 'log_activity', prefill: {},
+        channel: 'testbot', channelId: 'x', phone: h.phone, hadPending: false,
+      });
+      const r = await submitForm(token, {
+        activity_type: 'spraying', plot_id: String(plotId), product: 'glifosato',
+        quantity: '2', unit: 'lt/ha', event_date: getTodayISO(),
+      });
+      expect(r.ok, JSON.stringify(r)).toBe(true);
+      const ev = await h.q(
+        `SELECT event_type, product, quantity::float AS quantity, unit FROM domain_events WHERE user_id = $1 AND plot_id = $2 ORDER BY id DESC LIMIT 1`,
+        [h.userId, plotId],
+      );
+      expect(ev[0]).toMatchObject({ event_type: 'spraying', product: 'glifosato', quantity: 2, unit: 'lt/ha' });
+      await h.q(`DELETE FROM domain_events WHERE user_id = $1 AND event_type = 'spraying'`, [h.userId]);
+    });
+
+    it('submit del formulario de gasto "a nivel campo" (f:<id>) guarda el gasto sin lote y el token queda usado', async () => {
+      const { formSessionService } = await import('../../../services/form-session.service.js');
+      const { submitForm } = await import('../../../forms/form-submit.service.js');
+      const { getTodayISO } = await import('../../../utils/date.js');
+      const fields = await h.q(`SELECT id FROM fields WHERE user_id = $1 AND name = 'La Esperanza'`, [h.userId]);
+      const fieldId = (fields[0] as { id: number }).id;
+      const token = await formSessionService.create({
+        userId: h.userId, action: 'log_expense', prefill: {},
+        channel: 'testbot', channelId: 'x', phone: h.phone, hadPending: false,
+      });
+      const r = await submitForm(token, {
+        amount: '150000', currency: 'ARS', category: 'Sueldos', location: `f:${fieldId}`, event_date: getTodayISO(),
+      });
+      expect(r.ok, JSON.stringify(r)).toBe(true);
+      const exp = await h.q(
+        `SELECT amount::float AS amount, category, plot_id, field_id FROM expenses WHERE user_id = $1 ORDER BY id DESC LIMIT 1`,
+        [h.userId],
+      );
+      expect(exp[0]).toMatchObject({ amount: 150000, plot_id: null, field_id: fieldId });
+      expect(String((exp[0] as { category: string }).category).toLowerCase()).toContain('sueldo');
+      // Un solo uso: el mismo token no vuelve a registrar.
+      const again = await submitForm(token, { amount: '1', currency: 'ARS', category: 'Sueldos', event_date: getTodayISO() });
+      expect(again.ok).toBe(false);
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+    });
+
     it('en bulkMode NO se ofrece formulario (invariante 7)', async () => {
       h.fakeAgent.enqueue([
         { toolName: 'sow_crop', toolInput: { plot: 'Norte', field: 'La Esperanza' } }, // SIN crop
@@ -2552,6 +2633,30 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const byCat = Object.fromEntries(rows.map(r => [r.category, Number(r.count)]));
       expect(byCat['vaquillona']).toBe(15);   // 20 − 5
       expect(byCat['vaca']).toBe(5);
+    });
+
+    // `breed` forma parte del índice único del grupo, así que sin canonizar en
+    // el alta "Angus", "angus" y "Aberdeen Angus" arman TRES grupos en el mismo
+    // lote: el usuario carga 20 y después 10 y ve dos filas en vez de una de 30.
+    it('las grafías de una raza caen en el MISMO grupo', async () => {
+      const p = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Raza') RETURNING id`, [fieldId]);
+      const plotId = p[0].id as number;
+
+      for (const [breed, count] of [['Angus', 20], ['angus', 10], ['aberdeen angus', 5]] as const) {
+        h.fakeAgent.enqueueTool('add_livestock', {
+          category: 'vaquillona', count, breed, plot: 'Raza', field: 'El Pivote',
+        });
+        await h.send(`agregué ${count} vaquillonas ${breed} al lote Raza`);
+      }
+
+      const rows = await h.q(
+        `SELECT breed, count FROM livestock_groups
+          WHERE plot_id = $1 AND category = 'vaquillona' AND deleted_at IS NULL`,
+        [plotId],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].breed).toBe('Angus');          // grafía canónica
+      expect(Number(rows[0].count)).toBe(35);       // 20 + 10 + 5, sin perder cabezas
     });
 
     it('una respuesta legítima SÍ llena el slot — el escape no se volvió demasiado ancho', async () => {

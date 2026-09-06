@@ -34,6 +34,25 @@ function fmtLoc(group: LivestockGroupRow): string {
 }
 
 /** Format a monetary amount for WhatsApp/Telegram messages */
+/** Prefill (nombres del dominio) del formulario de alta de hacienda con lo que ya se dijo. */
+function livestockFormPrefill(cmd: ParsedCommand): Record<string, unknown> {
+  const c = cmd as Record<string, unknown>;
+  const usd = typeof c.unit_price_usd === 'number' ? c.unit_price_usd : null;
+  const ars = typeof c.unit_price_ars === 'number' ? c.unit_price_ars : null;
+  return {
+    category: (c.category as string) ?? null,
+    count: typeof c.count === 'number' && c.count > 0 ? c.count : null,
+    breed: (c.breed as string) ?? null,
+    plotName: (c.plotName as string) ?? null,
+    fieldName: (c.fieldName as string) ?? null,
+    corralName: (c.corralName as string) ?? null,
+    unit_price: usd ?? ars,
+    currency: usd != null ? 'USD' : 'ARS',
+    eventDate: (c.eventDate as string) ?? null,
+    notes: (c.notes as string) ?? null,
+  };
+}
+
 function fmtAmount(amount: number, currency: Currency): string {
   const nf = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 });
   return currency === 'USD' ? `USD ${nf.format(amount)}` : `$${nf.format(amount)}`;
@@ -569,7 +588,10 @@ export class LivestockHandler {
       const askAdd = `🐄 ¿Cuántas cabezas${category ? ` de ${category.toLowerCase()}` : ''}?`;
       return {
         messages: [askAdd],
-        sideEffects: { setPendingActivity: { command: 'add_livestock', data: { ...cmd }, missing: ['count'], askPrompt: askAdd } },
+        sideEffects: {
+          setPendingActivity: { command: 'add_livestock', data: { ...cmd }, missing: ['count'], askPrompt: askAdd },
+          offerForm: { action: 'add_livestock', prefill: livestockFormPrefill(cmd) },
+        },
       };
     }
     // "Metí/encerré/pasé N <categoría> al corral X" con un grupo existente de
@@ -674,6 +696,7 @@ export class LivestockHandler {
               missing: ['plot'],
               askPrompt: msg,
             },
+            offerForm: { action: 'add_livestock', prefill: livestockFormPrefill(cmd) },
           },
         };
       }

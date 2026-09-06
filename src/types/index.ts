@@ -15,6 +15,9 @@ export function asUserId(id: number): UserId {
 
 export type Currency = 'ARS' | 'USD';
 
+/** Formularios estructurados (Mini App / WhatsApp Flow). Registro en src/forms/form-definitions.ts. */
+export type FormAction = 'sow_crop' | 'harvest_crop' | 'log_expense' | 'log_income' | 'log_activity' | 'add_livestock';
+
 // --- Categories (canonical definitions in constants/agro-terms.ts) ---
 
 export type { ExpenseCategory, IncomeCategory } from '../constants/agro-terms.js';
@@ -583,8 +586,10 @@ export interface HandlerResponse {
       plotName: string;
     };
     /** Formulario estructurado: si presente, la pipeline agrega un botón Mini App
-     *  al final de la respuesta (Telegram únicamente en v1). Suprimido en bulkMode. */
-    offerForm?: { action: 'sow_crop' | 'harvest_crop'; prefill: Record<string, unknown> };
+     *  (Telegram) o un Flow (WhatsApp) al final de la respuesta. Suprimido en bulkMode.
+     *  El prefill usa nombres del DOMINIO (plotName, eventDate, amount…); form-prefill
+     *  los traduce a los campos del formulario. */
+    offerForm?: { action: FormAction; prefill: Record<string, unknown> };
   };
 }
 

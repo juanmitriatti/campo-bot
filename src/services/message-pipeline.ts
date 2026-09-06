@@ -1440,7 +1440,11 @@ async function processTextMessageInner(
         if (flowResult.nextContext) {
           await conversationEngine.setFlowContext(userId, flowResult.nextContext);
         }
-        return collectResponse(flowResult.response);
+        // El flujo guiado y el formulario conviven: la pregunta del flujo va
+        // primero y el botón del form al final (gasto/ingreso, Sep 2026).
+        const flowItems = collectResponse(flowResult.response);
+        await appendFormOffer(flowItems, response, ctx);
+        return flowItems;
       }
       const applied = applySideEffects(response.sideEffects, phone);
       learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
@@ -1492,6 +1496,7 @@ async function processTextMessageInner(
       }
       const items = collectResponse(response);
       items.push(...collectResponse(flowResult.response));
+      await appendFormOffer(items, response, ctx); // path regex: mismo botón que el path agente
       return items;
     }
     const appliedExp = applySideEffects(response.sideEffects, phone);
@@ -1524,6 +1529,7 @@ async function processTextMessageInner(
       }
       const items = collectResponse(response);
       items.push(...collectResponse(flowResult.response));
+      await appendFormOffer(items, response, ctx); // path regex: mismo botón que el path agente
       return items;
     }
     const appliedInc = applySideEffects(response.sideEffects, phone);

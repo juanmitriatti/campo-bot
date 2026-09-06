@@ -735,7 +735,7 @@ const COMMAND_PATTERNS = [
     command: "check_stock",
     patterns: [/^(stock|insumos)$/i],
   },
-  { command: "open_form", patterns: [/^formulario(\s+(de\s+)?(la\s+)?(siembra|cosecha))?$/] },
+  { command: "open_form", patterns: [/^formularios?(\s+(de\s+)?(la\s+|el\s+)?(siembra|cosecha|gastos?|ingresos?|labor(es)?|hacienda))?$/] },
   { command: "menu", patterns: [/^(menu|menú|opciones)$/] },
   // El CTA de los feature-gates dice "Escribí *plan*" — este comando tiene que
   // existir y ser trivial (costo cero, disponible con trial vencido).

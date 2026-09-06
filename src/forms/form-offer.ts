@@ -3,20 +3,10 @@ import { getSetting } from '../services/settings.service.js';
 import { computeFormOptions } from './form-options.js';
 import { FORM_DEFINITIONS } from './form-definitions.js';
 import { resolveFormInitialValues } from './form-prefill.js';
-import { initKey, optionsKey, isoToFlowDate } from './whatsapp-flow-generator.js';
+import { initKey, optionsKey, isoToFlowDate, FIXED_GROUP_SLOTS } from './whatsapp-flow-generator.js';
 import { getTodayISO } from '../utils/date.js';
 import type { BotResponseItem, ChannelContext } from '../services/message-pipeline.js';
 import type { HandlerResponse } from '../types/index.js';
-
-const ACTION_LABEL: Record<string, string> = {
-  sow_crop: 'la siembra',
-  harvest_crop: 'la cosecha',
-};
-
-const FLOW_ID_SETTING: Record<string, string> = {
-  sow_crop: 'WHATSAPP_FLOW_ID_SOW',
-  harvest_crop: 'WHATSAPP_FLOW_ID_HARVEST',
-};
 
 /** channel_id "crudo" por canal: telegram guarda tg_<chatId> en phone. */
 function rawChannelId(ctx: ChannelContext): string {
@@ -31,15 +21,20 @@ export async function appendFormOffer(
 ): Promise<void> {
   const offer = response.sideEffects?.offerForm;
   if (!offer) return;
-  const body = `📝 Si preferís, cargá ${ACTION_LABEL[offer.action] ?? 'los datos'} con un formulario:`;
+  const def = FORM_DEFINITIONS[offer.action];
+  if (!def) {
+    console.log(`[FORM] skip offer: action desconocida ${String(offer.action)}`);
+    return;
+  }
+  const body = `📝 Si preferís, cargá ${def.label} con un formulario:`;
 
   if (ctx.channel === 'whatsapp') {
-    // Formularios por WhatsApp Flows (endpointless): se hornean las opciones de
-    // lote/cultivo en flow_action_payload.data. Gateado por el flow_id publicado
+    // Formularios por WhatsApp Flows (endpointless): se hornean las opciones
+    // dinámicas en flow_action_payload.data. Gateado por el flow_id publicado
     // en Meta (settings grupo bot). Sin flow_id → sigue dark, no se ofrece.
-    const flowId = ((await getSetting(FLOW_ID_SETTING[offer.action])) as string) || '';
+    const flowId = ((await getSetting(def.settingKey)) as string) || '';
     if (!flowId) {
-      console.log(`[FORM] skip offer (whatsapp): ${FLOW_ID_SETTING[offer.action]} vacío`);
+      console.log(`[FORM] skip offer (whatsapp): ${def.settingKey} vacío`);
       return;
     }
     const token = await formSessionService.create({
@@ -52,12 +47,9 @@ export async function appendFormOffer(
       hadPending: !!response.sideEffects?.setPendingActivity,
     });
     const opts = await computeFormOptions(offer.action, Number(ctx.userId));
-    const plotOpts = opts.plots.map(p => ({ id: String(p.id), title: `${p.name} (${p.fieldName})` }));
-    const cropOpts = opts.crops.map(c => ({ id: c, title: c }));
     const data: Record<string, unknown> = {};
-    for (const f of FORM_DEFINITIONS[offer.action].fields) {
-      if (f.optionsSource === 'plots') data[optionsKey(f.key)] = plotOpts;
-      if (f.optionsSource === 'crops') data[optionsKey(f.key)] = cropOpts;
+    for (const f of def.fields) {
+      if (f.optionsSource) data[optionsKey(f.key)] = opts.lists[f.optionsSource] ?? [];
     }
 
     // Prellenado: lo que el usuario YA dijo en el chat no se le vuelve a pedir.
@@ -71,16 +63,21 @@ export async function appendFormOffer(
       todayISO: getTodayISO(),
     });
     const prefilled: string[] = [];
-    for (const f of FORM_DEFINITIONS[offer.action].fields) {
+    for (const f of def.fields) {
       if (f.type === 'group') {
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= FIXED_GROUP_SLOTS; i++) {
           for (const sub of f.fields ?? []) data[initKey(`${f.key}_${i}_${sub.key}`)] = '';
         }
         continue;
       }
+      if (f.allowOther) {
+        const other = initial[`${f.key}_other`];
+        data[initKey(`${f.key}_other`)] = typeof other === 'string' ? other : '';
+        if (typeof other === 'string' && other) prefilled.push(`${f.key}_other`);
+      }
       const v = initial[f.key];
       if (v === undefined || v === null || v === '') { data[initKey(f.key)] = ''; continue; }
-      // El DatePicker toma epoch en ms, no ISO.
+      // El DatePicker (Flow JSON ≥5.0) toma 'YYYY-MM-DD'; isoToFlowDate solo valida.
       const encoded = f.type === 'date' ? (isoToFlowDate(String(v)) ?? '') : String(v);
       data[initKey(f.key)] = encoded;
       if (encoded) prefilled.push(f.key);

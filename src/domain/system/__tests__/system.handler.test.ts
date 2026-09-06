@@ -62,17 +62,19 @@ const fakeSettings = {} as never;
 // ============================================================================
 
 describe('SystemHandler — open_form picker', () => {
-  it('open_form devuelve messages:[] + 2 botones (form_open_sow / form_open_harvest)', async () => {
+  it('open_form devuelve messages:[] + lista con los 6 formularios (WhatsApp admite 3 botones)', async () => {
     const result = await handler.handleCommand({ command: 'open_form' }, 1, fakeUser, fakeSettings);
     expect(result.messages).toEqual([]);
     const interactive = result.interactive as {
       type: string;
-      buttons: Array<{ id: string; title: string }>;
+      sections: Array<{ rows: Array<{ id: string; title: string }> }>;
     };
-    expect(interactive.type).toBe('buttons');
-    const ids = interactive.buttons.map((b) => b.id);
-    expect(ids).toContain('form_open_sow');
-    expect(ids).toContain('form_open_harvest');
+    expect(interactive.type).toBe('list');
+    const ids = interactive.sections.flatMap(s => s.rows.map(r => r.id));
+    expect(ids).toEqual([
+      'form_open_sow', 'form_open_harvest', 'form_open_expense',
+      'form_open_income', 'form_open_activity', 'form_open_livestock',
+    ]);
   });
 
   it('open_form_sow devuelve sideEffects.offerForm con action sow_crop', async () => {

@@ -175,16 +175,17 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
       } else if (interactiveData?.type === 'list_reply') {
         callbackId = interactiveData.list_reply?.id;
       } else if ((interactiveData as { type?: string })?.type === 'nfm_reply') {
-        // WhatsApp Flow response (DARK: aún no se envían Flows; si llega algo, entra
-        // por el MISMO path de submit que la Mini App — invariante 1: se loguea).
+        // Respuesta de un WhatsApp Flow (formulario siembra/cosecha). Entra por el
+        // MISMO path de submit que la Mini App; los grupos vienen aplanados
+        // (loads_1_*) y submitForm los re-arma (flowResponse). Invariante 1: se loguea.
         try {
           const raw = (interactiveData as { nfm_reply?: { response_json?: string } }).nfm_reply?.response_json;
           const parsed = raw ? JSON.parse(raw) as Record<string, unknown> : null;
           const flowToken = parsed?.flow_token as string | undefined;
-          console.log('[FORM] nfm_reply recibido, flow_token presente:', !!flowToken);
+          console.log('[FORM] nfm_reply recibido, flow_token presente:', !!flowToken, 'claves:', parsed ? Object.keys(parsed).length : 0);
           if (flowToken && parsed) {
             const { submitForm } = await import('../forms/form-submit.service.js');
-            const result = await submitForm(flowToken, parsed);
+            const result = await submitForm(flowToken, parsed, { flowResponse: true });
             if (!result.ok) await sendMessage(phone, result.error);
             // En éxito submitForm ya mandó la confirmación al chat.
           }
