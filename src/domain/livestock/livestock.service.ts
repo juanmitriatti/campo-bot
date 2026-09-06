@@ -1,4 +1,5 @@
 import { LivestockRepository } from './livestock.repository.js';
+import { canonicalBreedName } from '../../utils/livestock-breeds.js';
 import type {
   LivestockCategory,
   LivestockGroupRow,
@@ -518,6 +519,14 @@ export class LivestockService {
     if (!category) throw new Error(`Categoría no reconocida: "${opts.category}". Usá vaca, vaquillona, ternero, novillo, toro, etc.`);
     if (!opts.count || opts.count <= 0) throw new Error('La cantidad debe ser mayor a 0.');
 
+    // La raza se canoniza ANTES de buscar o crear el grupo. `breed` forma parte
+    // del índice único (ubicación × categoría × raza), así que sin esto "Angus",
+    // "angus" y "Aberdeen Angus" arman TRES grupos en el mismo lote: el usuario
+    // carga 20 y después 10, y ve dos filas en vez de una de 30.
+    // Solo en el alta: remove/transfer usan el lookup indulgente ("cualquier
+    // vaca en A1"), donde canonizar no cambiaría a qué grupo llegan.
+    const breed = canonicalBreedName(opts.breed);
+
     // askWhenAmbiguous: en alta de hacienda, si no hay lote/corral explícito y
     // el usuario tiene 2+ lotes, preguntar en vez de auto-asignar al último.
     const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName, { askWhenAmbiguous: true });
@@ -527,11 +536,11 @@ export class LivestockService {
     // a same-category Angus group also exists. The lenient lookup is reserved for
     // remove/transfer/death/etc., where the user expects "any vaca at A1" semantics.
     const existing = loc.type === 'corral'
-      ? await this.repo.findGroupInCorral(loc.corralId, category, opts.breed ?? null)
-      : await this.repo.findGroup(loc.plotId, category, opts.breed ?? null);
+      ? await this.repo.findGroupInCorral(loc.corralId, category, breed)
+      : await this.repo.findGroup(loc.plotId, category, breed);
     const created = !existing;
 
-    const group = await this.ensureGroupAtLocation(userId, loc, category, opts.breed ?? null, {
+    const group = await this.ensureGroupAtLocation(userId, loc, category, breed, {
       avg_weight_kg: opts.avg_weight_kg,
       notes: opts.notes,
     });
