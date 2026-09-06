@@ -99,6 +99,8 @@ Tres cosas que el Flow JSON tiene que cumplir y que la v1 dark no cumplía (nunc
 
 Ida y vuelta: `appendFormOffer` (gateado por `WHATSAPP_FLOW_ID_*`) hornea opciones + prellenado en `flow_action_payload.data` → `sendFlow` → el usuario completa → `nfm_reply` en `whatsapp.controller.ts` → `submitForm(flow_token, payload, { flowResponse: true })` (re-arma grupos, log `[FORM] flow payload re-armado`) → mismo path que la Mini App.
 
+**Si Meta rechaza el envío del Flow** (ej. `139000 Blocked by Integrity` hasta verificar la empresa — también en modo `draft`, probado el 6 sep 2026), `sendBotResponse` NO cae al texto plano como con los demás interactivos: "cargá el gasto con un formulario" sin botón es una promesa vacía. Loguea `[FORM] flow no enviado (whatsapp)` con el detalle de Meta y sigue con los demás ítems (la pregunta del chat ya salió). Regresión: `src/controllers/__tests__/whatsapp-send-flow.test.ts`.
+
 **Activación y publicación**: `src/scripts/publish-whatsapp-flows.ts` (crea/actualiza/valida/publica contra la Graph API y guarda los `flow_id` en settings). Checklist completo en [docs/operations.md](../operations.md) § "WhatsApp — checklist de activación". Un Flow publicado es inmutable: cambiar la `FormDefinition` implica `--recreate`.
 
 Limitaciones respecto del form web: el Dropdown de cultivo no admite "otro" (`allowOther` no tiene equivalente en Flows) y las cargas son 5 por formulario.

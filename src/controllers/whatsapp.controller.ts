@@ -46,7 +46,7 @@ const handleWaDocCallback = makeDocCallbackHandler(downloadMedia);
 
 // --- Send bot response items via WhatsApp Cloud API ---
 
-async function sendBotResponse(phone: string, items: BotResponseItem[]): Promise<void> {
+export async function sendBotResponse(phone: string, items: BotResponseItem[]): Promise<void> {
   for (const item of items) {
     try {
       if (item.type === 'text' && item.text) {
@@ -68,9 +68,21 @@ async function sendBotResponse(phone: string, items: BotResponseItem[]): Promise
         }
       }
     } catch (err) {
+      const errMsg = String((err as any)?.message || err || 'unknown');
+      // Un Flow que Meta rechaza (ej. 139000 "Blocked by Integrity" hasta verificar
+      // la empresa) NO cae al texto: "cargá el gasto con un formulario" sin botón
+      // es una promesa vacía (visto en prod, 6 sep 2026). La oferta es un extra
+      // sobre la pregunta del chat, que ya salió como ítem propio. Se loguea
+      // (invariante 1) y se sigue con el resto.
+      if (item.type === 'interactive' && item.interactive?.type === 'flow') {
+        const meta = (err as any)?.response?.data?.error;
+        const detail = meta ? `${meta.code} ${meta.message}${meta.error_data?.details ? ` — ${meta.error_data.details}` : ''}` : errMsg;
+        // sendFlow ya registró SEND_FLOW_ERROR en error_logger; acá solo el detalle legible.
+        console.error(`[FORM] flow no enviado (whatsapp) flowId=${item.interactive.flow?.flowId}: ${detail} — sin fallback en texto`);
+        continue;
+      }
       // Mismo contrato que telegram: un fallo de envío NUNCA es silencioso —
       // intentamos un fallback en texto plano para que el usuario vea algo.
-      const errMsg = String((err as any)?.message || err || 'unknown');
       console.error('[whatsapp] Error sending response item:', err, '— attempting fallback');
       logError('whatsapp', 'SEND_RESPONSE', err as Error, {
         context: { phone, itemType: item.type, errMsg },
