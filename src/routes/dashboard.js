@@ -352,18 +352,24 @@ router.put("/api/users/:id/settings", async (req, res) => {
 
 router.put("/api/users/:id", async (req, res) => {
   const { id } = req.params;
-  const { name, last_name, city, email, province } = req.body;
+  const { name, last_name, city, email, province, whatsapp_verified } = req.body;
 
   try {
+    // whatsapp_verified: true marca el número como vinculado (sin OTP), false lo
+    // desmarca, ausente no toca. Mismo criterio que el alta manual.
     const result = await pool.query(
       `UPDATE users SET
          name = COALESCE($1, name),
          last_name = COALESCE($2, last_name),
          city = COALESCE($3, city),
          email = COALESCE($4, email),
-         province = COALESCE($6, province)
+         province = COALESCE($6, province),
+         whatsapp_verified_at = CASE
+           WHEN $7::text = 'true' THEN COALESCE(whatsapp_verified_at, NOW())
+           WHEN $7::text = 'false' THEN NULL
+           ELSE whatsapp_verified_at END
        WHERE id = $5 RETURNING *`,
-      [name, last_name, city, email, id, province]
+      [name, last_name, city, email, id, province, typeof whatsapp_verified === 'boolean' ? String(whatsapp_verified) : null]
     );
 
     if (result.rows.length === 0) {
@@ -2075,7 +2081,7 @@ router.put("/api/users/:id/status", async (req, res) => {
 
 router.post("/api/users", async (req, res) => {
   try {
-    const { name, last_name, phone, city, email, province } = req.body;
+    const { name, last_name, phone, city, email, province, whatsapp_verified, plan } = req.body;
     if (!phone || !phone.trim()) {
       return res.status(400).json({ error: "El teléfono es obligatorio" });
     }
@@ -2086,11 +2092,23 @@ router.post("/api/users", async (req, res) => {
       return res.status(409).json({ error: "Ya existe un usuario con ese teléfono" });
     }
 
+    // Alta manual "lista para usar" (Sep 2026): con REQUIRE_VERIFIED_CHANNEL
+    // activo, un número desconocido recibe "creá tu cuenta y vinculá WhatsApp";
+    // el admin puede marcarlo verificado y darle plan en el mismo alta, así la
+    // persona escribe al bot y arranca. El número va como lo manda WhatsApp
+    // (549..., sin +).
+    let planId = null;
+    if (plan) {
+      const planR = await pool.query("SELECT id FROM plans WHERE name = $1", [String(plan)]);
+      if (planR.rows.length === 0) return res.status(400).json({ error: `Plan desconocido: ${plan}` });
+      planId = planR.rows[0].id;
+    }
+
     const result = await pool.query(
-      `INSERT INTO users (phone_number, name, last_name, city, email, province, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'active')
+      `INSERT INTO users (phone_number, name, last_name, city, email, province, status, whatsapp_verified_at, plan_id)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active', CASE WHEN $7::boolean THEN NOW() ELSE NULL END, $8)
        RETURNING *`,
-      [phone.trim(), name || null, last_name || null, city || null, email || null, province || null]
+      [phone.trim(), name || null, last_name || null, city || null, email || null, province || null, whatsapp_verified === true, planId]
     );
 
     const u = result.rows[0];
@@ -2111,6 +2129,8 @@ router.post("/api/users", async (req, res) => {
       province: u.province || null,
       email: u.email || null,
       status: u.status || 'active',
+      whatsappVerified: !!u.whatsapp_verified_at,
+      planId: u.plan_id || null,
     });
   } catch (error) {
     console.error("Error creating user:", error);

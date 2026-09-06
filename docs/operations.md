@@ -207,6 +207,25 @@ cargas nunca se re-armaban en `loads[]` (`unflattenFlowPayload`, mismo archivo q
 aplana). Limitaciones que quedan: el Dropdown de cultivo no admite "otro" (el form web sí)
 y las cargas son 5 como máximo por formulario (el chat no tiene tope).
 
+### Alta manual de un usuario de WhatsApp "listo para usar"
+
+Con `REQUIRE_VERIFIED_CHANNEL=true` (así está prod) un número desconocido recibe
+"creá tu cuenta y vinculá WhatsApp". Para que alguien escriba al bot y arranque sin
+registro, desde el admin (sesión iniciada, consola del navegador o `curl` con el JWT):
+
+```js
+apiFetch('/admin/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ phone: '5492355470287', name: 'Tomás', last_name: 'González',
+                         whatsapp_verified: true, plan: 'pro_plus' }) })
+```
+
+El número va como lo manda WhatsApp (`549…`, sin `+`). `whatsapp_verified: true`
+salta el OTP; `plan` evita que arranque en `free` (sin hacienda, labores, lluvia ni
+clima). Sin fila en `subscriptions` el acceso es completo y sin vencimiento
+(grandfather de `getUserAccessMode`); si se quiere un trial con fecha, usar
+`src/scripts/renew-subscription.ts`. `PUT /admin/api/users/:id` acepta el mismo
+`whatsapp_verified` para marcar o desmarcar un número existente.
+
 ### Gotchas transversales (aplican al canal, no solo a Flows)
 
 - **Ventana de 24 hs de Meta (CRÍTICO para alertas)**: los mensajes iniciados por el bot
