@@ -192,9 +192,11 @@ export class SystemHandler {
           open_form_activity: 'log_activity',
           open_form_livestock: 'add_livestock',
         } as const)[cmd.command];
+        // Sin mensaje propio: el \u00edtem de la oferta trae su texto y su bot\u00f3n. Si el
+        // canal no puede ofrecerlo (WhatsApp sin flow_id), form-offer avisa.
         return {
-          messages: ['\ud83d\udcdd Abr\u00ed el formulario con el bot\u00f3n:'],
-          sideEffects: { offerForm: { action, prefill: {} } },
+          messages: [],
+          sideEffects: { offerForm: { action, prefill: {}, explicit: true } },
         };
       }
 

@@ -2675,4 +2675,79 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(h.allText(done)).toMatch(/ivermectina/i);
     });
   });
+
+  // Sugerencias post-acción ("¿Y ahora?"), Sep 2026: medibles, gateadas por
+  // plan, gobernadas desde settings, y un botón destructivo pide confirmación.
+  describe('sugerencias "¿Y ahora?" (contextual-suggestions)', () => {
+    let h: PipelineHarness;
+    const suggestionItems = (items: BotResponseItem[]) =>
+      items.filter(i => i.interactive?.type === 'buttons' && /¿Y ahora\?|¿Más\?|¿Próximo paso\?/.test(i.interactive.body ?? ''));
+
+    beforeAll(async () => {
+      const { setSetting } = await import('../../../services/settings.service.js');
+      await setSetting('SUGGESTIONS_ENABLED', 'true');
+      await setSetting('SUGGESTIONS_MAX_PER_DAY', '0');
+      await setSetting('SUGGESTIONS_DISABLED_KEYS', '');
+      await setSetting('SUGGESTIONS_OVERRIDES', '');
+      await setSetting('PUBLIC_URL', '');
+      h = await createPipelineHarness('suggest');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [(f[0] as { id: number }).id]);
+    });
+    afterAll(async () => {
+      const { setSetting } = await import('../../../services/settings.service.js');
+      await setSetting('SUGGESTIONS_ENABLED', 'true');
+      await h?.cleanup();
+    });
+
+    // El usuario del harness confirma antes de guardar: la sugerencia sale con la
+    // confirmación (camino confirm_pending), igual que en prod.
+    const sendAndConfirm = async (text: string): Promise<BotResponseItem[]> => {
+      const first = await h.send(text);
+      return h.allButtons(first).some(b => b.id === 'confirm_pending') ? h.tap('confirm_pending') : first;
+    };
+
+    it('gasto guardado → «¿Y ahora?» con la terna del catálogo, y el envío queda en suggestion_events', async () => {
+      h.fakeAgent.enqueueTool('log_expense', { amount: 5000, category: 'Combustible', description: 'gasoil' });
+      const items = await sendAndConfirm('gasté 5000 en gasoil');
+      expect(h.allText(items)).toMatch(/registrado/i);
+      const sugg = suggestionItems(items);
+      expect(sugg).toHaveLength(1);
+      expect(sugg[0].interactive!.buttons!.map(b => b.id)).toEqual(['cmd_resumen_mensual', 'doc_upload_factura', 'cmd_borrar_ultimo_gasto']);
+      // Antes: 0 filas en 3 meses de prod — no se podía saber si alguien las tocaba.
+      await new Promise(r => setTimeout(r, 50)); // el registro es fire-and-forget
+      const shown = await h.q(`SELECT suggestion_key FROM suggestion_events WHERE user_id = $1 AND event = 'shown'`, [h.userId]);
+      expect(shown.map(r => (r as { suggestion_key: string }).suggestion_key)).toContain('expense_saved');
+    });
+
+    it('tap en «Borrar último» pide confirmación con preview y NO borra; el tap queda registrado', async () => {
+      const before = await h.q(`SELECT COUNT(*)::int AS n FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+      const items = await h.tap('cmd_borrar_ultimo_gasto');
+      expect(h.allText(items)).toMatch(/Seguro que queres eliminar el ultimo gasto/i);
+      expect(h.allButtons(items).map(b => b.id)).toContain('confirm_destructive_delete_last');
+      const after = await h.q(`SELECT COUNT(*)::int AS n FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+      expect((after[0] as { n: number }).n).toBe((before[0] as { n: number }).n);
+      await new Promise(r => setTimeout(r, 50));
+      const taps = await h.q(`SELECT button_id FROM suggestion_events WHERE user_id = $1 AND event = 'tap'`, [h.userId]);
+      expect(taps.map(r => (r as { button_id: string }).button_id)).toContain('cmd_borrar_ultimo_gasto');
+      await h.tap('cancel_destructive'); // dejar limpio el pending
+    });
+
+    it('SUGGESTIONS_ENABLED=false apaga las sugerencias sin deploy (la confirmación del gasto sigue igual)', async () => {
+      const { setSetting } = await import('../../../services/settings.service.js');
+      await setSetting('SUGGESTIONS_ENABLED', 'false');
+      h.fakeAgent.enqueueTool('log_expense', { amount: 7000, category: 'Combustible', description: 'gasoil' });
+      const items = await sendAndConfirm('gasté 7000 en gasoil');
+      expect(h.allText(items)).toMatch(/registrado/i);
+      expect(suggestionItems(items)).toHaveLength(0);
+      await setSetting('SUGGESTIONS_ENABLED', 'true');
+    });
+
+    it('el picker de formulario en un canal que no puede ofrecerlo avisa, en vez de "abrí el formulario" sin botón', async () => {
+      const items = await h.tap('form_open_expense'); // PUBLIC_URL vacío → no hay Mini App
+      const text = h.allText(items);
+      expect(text).toMatch(/todavía no está disponible/i);
+      expect(text).not.toMatch(/Abrí el formulario con el botón/);
+    });
+  });
 });

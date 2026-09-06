@@ -496,6 +496,10 @@ export interface HandlerResponse {
   attachment?: AttachmentPayload;
   interactive?: InteractiveMessage;
   suggestionKey?: string;
+  /** Sugerencia post-acción YA resuelta (política del admin + gate de plan
+   *  aplicados). La setea el pipeline (attachSuggestion); collectResponse la
+   *  rinde. Si está presente, suggestionKey se ignora. */
+  suggestion?: InteractiveMessage;
   /**
    * Set by any handler that saved a record in BULK mode (compound action)
    * WITHOUT a plot — either because the user didn't specify, or because the
@@ -589,7 +593,13 @@ export interface HandlerResponse {
      *  (Telegram) o un Flow (WhatsApp) al final de la respuesta. Suprimido en bulkMode.
      *  El prefill usa nombres del DOMINIO (plotName, eventDate, amount…); form-prefill
      *  los traduce a los campos del formulario. */
-    offerForm?: { action: FormAction; prefill: Record<string, unknown> };
+    offerForm?: {
+      action: FormAction;
+      prefill: Record<string, unknown>;
+      /** El usuario PIDIÓ el formulario (picker/comando): si el canal no puede
+       *  ofrecerlo, se le dice en vez de dejar un "abrí el formulario" sin botón. */
+      explicit?: boolean;
+    };
   };
 }
 

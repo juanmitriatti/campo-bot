@@ -26,7 +26,18 @@ export async function appendFormOffer(
     console.log(`[FORM] skip offer: action desconocida ${String(offer.action)}`);
     return;
   }
-  const body = `📝 Si preferís, cargá ${def.label} con un formulario:`;
+  const body = offer.explicit
+    ? `📝 Tocá para abrir el formulario de ${def.label.replace(/^(la|el) /, '')}:`
+    : `📝 Si preferís, cargá ${def.label} con un formulario:`;
+  // El usuario lo pidió y el canal no puede: se le dice, nunca un "abrí el
+  // formulario" sin botón (visto en WhatsApp sin flow_id, 6 sep 2026).
+  const unavailable = (): void => {
+    if (!offer.explicit) return;
+    items.push({
+      type: 'text',
+      text: `📝 Por acá el formulario de ${def.label.replace(/^(la|el) /, '')} todavía no está disponible. Contámelo por texto y lo registro igual.`,
+    });
+  };
 
   if (ctx.channel === 'whatsapp') {
     // Formularios por WhatsApp Flows (endpointless): se hornean las opciones
@@ -35,6 +46,7 @@ export async function appendFormOffer(
     const flowId = ((await getSetting(def.settingKey)) as string) || '';
     if (!flowId) {
       console.log(`[FORM] skip offer (whatsapp): ${def.settingKey} vacío`);
+      unavailable();
       return;
     }
     const token = await formSessionService.create({
@@ -99,6 +111,7 @@ export async function appendFormOffer(
   const publicUrl = ((await getSetting('PUBLIC_URL')) as string) || '';
   if (!publicUrl) {
     console.log('[FORM] skip offer: PUBLIC_URL vacío');
+    unavailable();
     return;
   }
   const token = await formSessionService.create({

@@ -77,17 +77,17 @@ describe('SystemHandler — open_form picker', () => {
     ]);
   });
 
-  it('open_form_sow devuelve sideEffects.offerForm con action sow_crop', async () => {
+  // Sin mensaje propio: el ítem de la oferta trae texto y botón, y si el canal no
+  // puede ofrecerlo form-offer avisa (antes quedaba "abrí el formulario" sin botón).
+  it('open_form_sow devuelve sideEffects.offerForm explícito con action sow_crop y sin mensaje suelto', async () => {
     const result = await handler.handleCommand({ command: 'open_form_sow' }, 1, fakeUser, fakeSettings);
-    expect(result.messages).toHaveLength(1);
-    expect(result.sideEffects?.offerForm?.action).toBe('sow_crop');
-    expect(result.sideEffects?.offerForm?.prefill).toEqual({});
+    expect(result.messages).toEqual([]);
+    expect(result.sideEffects?.offerForm).toEqual({ action: 'sow_crop', prefill: {}, explicit: true });
   });
 
-  it('open_form_harvest devuelve sideEffects.offerForm con action harvest_crop', async () => {
+  it('open_form_harvest devuelve sideEffects.offerForm explícito con action harvest_crop', async () => {
     const result = await handler.handleCommand({ command: 'open_form_harvest' }, 1, fakeUser, fakeSettings);
-    expect(result.messages).toHaveLength(1);
-    expect(result.sideEffects?.offerForm?.action).toBe('harvest_crop');
-    expect(result.sideEffects?.offerForm?.prefill).toEqual({});
+    expect(result.messages).toEqual([]);
+    expect(result.sideEffects?.offerForm).toEqual({ action: 'harvest_crop', prefill: {}, explicit: true });
   });
 });

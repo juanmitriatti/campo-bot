@@ -110,13 +110,18 @@ Only show lines with available data.
 [description]
 ```
 
-## Interactive Buttons
+## Interactive Buttons ("¿Y ahora?")
 
-After saving data, send follow-up buttons via `suggestionKey`:
-- `observation_logged` -> Registrar Actividad, Reporte Agro, Menu
-- `activity_logged` -> Otra Actividad, Reporte Agro, Menu
-- `expense_saved` -> Otro Gasto, Resumen Mes, Menu
-- `income_saved` -> Otro Ingreso, Resultado Mes, Menu
+After a completed action the handler sets `suggestionKey` (or the pipeline maps it from the command). The catalog lives in `src/middleware/contextual-suggestions.ts` — **it is the only source**; this doc does not list the ternas because they drifted before.
+
+Rules (Sep 2026, see `docs/history`):
+- Every button id has a route in `CALLBACK_MAP`; titles are ≤ 20 UTF-16 units (WhatsApp rejects the whole message otherwise); a `help_*` button says "Ejemplos". `validateCatalog()` + `contextual-suggestions.test.ts` enforce this.
+- Buttons are filtered by plan (`BUTTON_FEATURE` → `FeatureGate`) before sending; nothing is sent if none survive.
+- One appendix per response: an open question suppresses the suggestion; a form offer wins over it.
+- A destructive button (`↩️ Borrar último`) asks the same confirmation as the text path — old keyboards stay tappable forever.
+- No fallback menu: an unmapped command shows nothing.
+- Admin settings (grupo bot, no deploy): `SUGGESTIONS_ENABLED`, `SUGGESTIONS_MAX_PER_DAY`, `SUGGESTIONS_DISABLED_KEYS`, `SUGGESTIONS_OVERRIDES` (JSON, validated).
+- Every send and every tap is a row in `suggestion_events` (migration 117). Measure before redesigning.
 
 ## Tone
 

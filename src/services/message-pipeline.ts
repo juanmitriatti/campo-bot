@@ -54,7 +54,7 @@ import { handlePendingPlotArea, storePlotAreaSideEffects } from '../middleware/p
 import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
-import { getSettingNumber, getSettingBool } from './settings.service.js';
+import { getSetting, getSettingNumber, getSettingBool } from './settings.service.js';
 import { pool } from '../config/db.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
 import { ConversationEngine, buildTimeoutMessage, isOtherItemCorrectionOrDelete } from '../middleware/conversation-engine.js';
@@ -66,7 +66,10 @@ import { fieldFlow } from '../middleware/flows/field.flow.js';
 import { rainfallFlow } from '../middleware/flows/rainfall.flow.js';
 import { activityFlow } from '../middleware/flows/activity.flow.js';
 import { EntityValidator } from './entity-validator.js';
-import { getSuggestions, resolveSuggestionKey } from '../middleware/contextual-suggestions.js';
+import {
+  getSuggestions, resolveSuggestionKey, buildSuggestion, parseSuggestionPolicy, CATALOG_BUTTON_IDS,
+} from '../middleware/contextual-suggestions.js';
+import { recordSuggestionEvent, countShownToday } from '../middleware/suggestion-metrics.js';
 import { enrichWithContext } from '../middleware/context-reuse.js';
 import { updateConversationMiniMemory } from './expenses.js';
 import { ConversationObserver } from '../middleware/conversation-observer.js';
@@ -296,9 +299,12 @@ export function collectResponse(response: HandlerResponse): BotResponseItem[] {
     }
   }
 
-  // Contextual suggestions (only if no interactive already)
-  if (!response.interactive && response.suggestionKey) {
-    const suggestion = getSuggestions(response.suggestionKey);
+  // Contextual suggestions (only if no interactive already). `suggestion` viene
+  // ya resuelta por attachSuggestion (política del admin + gate de plan); el
+  // camino por `suggestionKey` queda para call-sites que no pasan por ahí.
+  if (!response.interactive) {
+    const suggestion = response.suggestion
+      ?? (response.suggestionKey ? getSuggestions(response.suggestionKey) : null);
     if (suggestion && suggestion.type === 'buttons') {
       items.push({
         type: 'interactive',
@@ -312,6 +318,94 @@ export function collectResponse(response: HandlerResponse): BotResponseItem[] {
 
 export function interactiveButtons(body: string, buttons: InteractiveButton[]): BotResponseItem {
   return { type: 'interactive', interactive: { type: 'buttons', body, buttons } };
+}
+
+// ─── Sugerencias post-acción ("¿Y ahora?") ────────────────────────────
+// Política editable desde /admin (grupo bot) sin deploy: kill switch, tope
+// diario, claves apagadas y overrides de ternas. Se lee con el cache de
+// settings (5 min).
+async function loadSuggestionPolicy() {
+  return parseSuggestionPolicy({
+    enabled: await getSettingBool('SUGGESTIONS_ENABLED'),
+    maxPerDay: await getSettingNumber('SUGGESTIONS_MAX_PER_DAY'),
+    disabledKeys: (await getSetting('SUGGESTIONS_DISABLED_KEYS')) as string | null,
+    overridesJson: (await getSetting('SUGGESTIONS_OVERRIDES')) as string | null,
+  });
+}
+
+/**
+ * Resuelve la sugerencia de una respuesta y la deja en `response.suggestion`
+ * (o en nada). Un solo apéndice por respuesta: si hay oferta de formulario,
+ * el formulario gana. Registra el envío en suggestion_events (antes no había
+ * forma de saber si alguien las tocaba).
+ */
+async function attachSuggestion(
+  response: HandlerResponse,
+  userId: UserId,
+  channel: string | null | undefined,
+  command?: string | null,
+): Promise<void> {
+  const key = resolveSuggestionKey(command ?? '', response.suggestionKey);
+  response.suggestionKey = undefined; // el render sale de response.suggestion
+  response.suggestion = undefined;
+  if (!key || response.interactive) return;
+  if (response.sideEffects?.offerForm) {
+    console.log(`[SUGGEST] ${key} omitida: la oferta de formulario gana`);
+    return;
+  }
+  try {
+    const policy = await loadSuggestionPolicy();
+    const message = await buildSuggestion({
+      key,
+      policy,
+      hasFeature: f => featureGate.hasFeature(userId, f as never),
+      shownToday: () => countShownToday(userId),
+    });
+    if (!message) return;
+    response.suggestion = message;
+    recordSuggestionEvent({ userId, channel, event: 'shown', suggestionKey: key });
+  } catch (err) {
+    console.warn('[SUGGEST] fallo resolviendo la sugerencia (sigo sin ella):', (err as Error).message);
+  }
+}
+
+/**
+ * Confirmación de un comando destructivo, con preview de lo que se va a
+ * borrar. La usan el camino de texto Y el de botones: "↩️ Borrar último" en
+ * una sugerencia de ayer borraba el gasto de hoy sin preguntar (6 sep 2026).
+ */
+async function askDestructiveConfirmation(cmd: ParsedCommand, userId: UserId, phone: string): Promise<BotResponseItem[]> {
+  const actionLabels: Record<string, string> = {
+    delete_last: 'eliminar el ultimo gasto',
+    delete_last_expense: 'eliminar el ultimo gasto',
+    delete_last_income: 'eliminar el ultimo ingreso',
+    delete_specific: 'eliminar un registro',
+    delete_specific_expense: 'eliminar ese gasto',
+    delete_specific_income: 'eliminar ese ingreso',
+    delete_last_activity: 'eliminar la ultima actividad',
+    delete_last_observation: 'eliminar la ultima observacion',
+    delete_last_rainfall: 'eliminar la ultima lluvia',
+    delete_last_scouting: 'eliminar el ultimo monitoreo',
+  };
+  const label = actionLabels[cmd.command] || 'realizar esta accion';
+  // Preview del objetivo: mostrar QUÉ se va a borrar (con fecha) — el
+  // registro "de recién" puede haber fallado en silencio y el último real
+  // ser uno de hace días.
+  const preview = await buildDeletePreview(cmd.command, userId);
+  pendingStore.set(phone, {
+    type: 'expense',
+    data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
+    fieldId: null, fieldName: null, plotId: null, plotName: null,
+    timestamp: Date.now(),
+    _destructiveCommand: cmd,
+  } as any);
+  return [interactiveButtons(
+    `¿Seguro que queres ${label}?${preview ? `\n\n${preview}` : ''}\nEsto no se puede deshacer.`,
+    [
+      { id: `confirm_destructive_${cmd.command}`, title: 'Confirmar' },
+      { id: 'cancel_destructive', title: 'Cancelar' },
+    ],
+  )];
 }
 
 export function isCancelIntent(text: string): boolean {
@@ -1385,37 +1479,7 @@ async function processTextMessageInner(
     }
 
     if (DESTRUCTIVE_COMMANDS.has(intent.data.command)) {
-      const actionLabels: Record<string, string> = {
-        delete_last: 'eliminar el ultimo gasto',
-        delete_last_expense: 'eliminar el ultimo gasto',
-        delete_last_income: 'eliminar el ultimo ingreso',
-        delete_specific: 'eliminar un registro',
-        delete_specific_expense: 'eliminar ese gasto',
-        delete_specific_income: 'eliminar ese ingreso',
-        delete_last_activity: 'eliminar la ultima actividad',
-        delete_last_observation: 'eliminar la ultima observacion',
-        delete_last_rainfall: 'eliminar la ultima lluvia',
-        delete_last_scouting: 'eliminar el ultimo monitoreo',
-      };
-      const label = actionLabels[intent.data.command] || 'realizar esta accion';
-      // Preview del objetivo: mostrar QUÉ se va a borrar (con fecha) — el
-      // registro "de recién" puede haber fallado en silencio y el último real
-      // ser uno de hace días.
-      const preview = await buildDeletePreview(intent.data.command, userId);
-      pendingStore.set(phone, {
-        type: 'expense',
-        data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
-        fieldId: null, fieldName: null, plotId: null, plotName: null,
-        timestamp: Date.now(),
-        _destructiveCommand: intent.data,
-      } as any);
-      return [interactiveButtons(
-        `¿Seguro que queres ${label}?${preview ? `\n\n${preview}` : ''}\nEsto no se puede deshacer.`,
-        [
-          { id: `confirm_destructive_${intent.data.command}`, title: 'Confirmar' },
-          { id: 'cancel_destructive', title: 'Cancelar' },
-        ],
-      )];
+      return askDestructiveConfirmation(intent.data, userId, phone);
     }
 
     // Attach original text so handlers can check if fields were explicitly mentioned
@@ -1464,6 +1528,7 @@ async function processTextMessageInner(
         || (response.sideEffects as Record<string, unknown> | undefined)?.setPendingActivity,
       );
       if (leavesOpenQuestion) response.suggestionKey = undefined;
+      else await attachSuggestion(response, userId, ctx.channel, intent.data.command);
       const items = collectResponse(response);
       if (applied.plotAreaPrompt) items.push({ type: 'text', text: applied.plotAreaPrompt });
       await appendFormOffer(items, response, ctx);
@@ -1503,6 +1568,7 @@ async function processTextMessageInner(
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
     updateConversationMiniMemory(userId, { lastIntent: 'expense' }).catch(() => {});
     conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'expense', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
+    await attachSuggestion(response, userId, ctx.channel, 'log_expense');
     const itemsExp = collectResponse(response);
     if (appliedExp.replacedPending) {
       itemsExp.unshift({ type: 'text', text: await resolveReplacedPending(appliedExp.replacedPending, p => financialHandler.handleConfirm(userId, p, settings, user).then(() => {})) });
@@ -1536,6 +1602,7 @@ async function processTextMessageInner(
     learningService.learnFromMessage(userId, text, intent, aiUsed).catch(() => {});
     updateConversationMiniMemory(userId, { lastIntent: 'income' }).catch(() => {});
     conversationLogger.log(userId, phone, text, response.messages[0] ?? response.interactive?.body ?? null, 'income', null, null, null, aiUsed, Date.now() - startTime, !!response.interactive, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
+    await attachSuggestion(response, userId, ctx.channel, 'log_income');
     const itemsInc = collectResponse(response);
     if (appliedInc.replacedPending) {
       itemsInc.unshift({ type: 'text', text: await resolveReplacedPending(appliedInc.replacedPending, p => financialHandler.handleConfirm(userId, p, settings, user).then(() => {})) });
@@ -1868,6 +1935,7 @@ export async function handleInteractiveReply(
     applySideEffects(response.sideEffects, phone);
     await appendTipAfterConfirm(pendingTx, response, userId, user);
     conversationLogger.log(userId, phone, '[confirm_pending]', response.messages[0] ?? response.interactive?.body ?? null, 'command', 'confirm', null, null, false, null, false, null, null, null, ctx.channel).catch(() => {});
+    await attachSuggestion(response, userId, ctx.channel, pendingTx.type === 'income' ? 'log_income' : 'log_expense');
     return collectResponse(response);
   }
 
@@ -2107,9 +2175,22 @@ export async function handleInteractiveReply(
   // --- Generic interactive routing ---
   const intent = interactiveRouter.route(callbackId);
   if (intent && intent.type === 'command') {
+    // Tap medible: antes solo confirmar/cancelar dejaban fila; el resto entraba
+    // al router sin rastro y "¿Y ahora?" no se podía evaluar.
+    if (CATALOG_BUTTON_IDS.has(callbackId)) {
+      recordSuggestionEvent({ userId, channel: ctx.channel, event: 'tap', buttonId: callbackId });
+    }
+    // Un botón destructivo pide la misma confirmación que el texto: un teclado
+    // viejo con "Borrar último" seguía vivo y borraba el gasto de hoy.
+    if (DESTRUCTIVE_COMMANDS.has(intent.data.command)) {
+      conversationLogger.log(userId, phone, `[${callbackId}]`, 'confirmación destructiva', 'tap', intent.data.command, null, null, false, null, true, null, null, null, ctx.channel).catch(() => {});
+      return askDestructiveConfirmation(intent.data, userId, phone);
+    }
     const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
     if (response) {
       applySideEffects(response.sideEffects, phone);
+      conversationLogger.log(userId, phone, `[${callbackId}]`, response.messages[0] ?? response.interactive?.body ?? null, 'tap', intent.data.command, null, null, false, null, !!response.interactive, null, null, null, ctx.channel).catch(() => {});
+      await attachSuggestion(response, userId, ctx.channel, intent.data.command);
       const items = collectResponse(response);
       await appendFormOffer(items, response, ctx);
       return items;

@@ -151,6 +151,13 @@ Ver [docs/ganaderia/](docs/ganaderia/overview.md). Invariante 16 manda: la capa 
 ### Tips contextuales (migración 099)
 - Tras la primera acción exitosa de cada tipo, UN tip enseña una capacidad relacionada. Catálogo en `src/services/tips-catalog.ts` (agregar tips AHÍ), motor `tip-engine.ts`. Solo acciones exitosas, tope `TIPS_MAX_PER_DAY`, una vez por usuario, features gateadas vía FeatureGate, usuarios `testbot_*` EXCLUIDOS. Kill switch `TIPS_ENABLED`; opt-out "no más tips" → `disable_tips`.
 
+### Sugerencias post-acción ("¿Y ahora?", Sep 2026)
+- Catálogo ÚNICO en `src/middleware/contextual-suggestions.ts`; el pipeline las resuelve con `attachSuggestion` (política del admin + gate de plan) y las rinde `collectResponse`. Un solo apéndice por respuesta: pregunta abierta > oferta de formulario > sugerencia. Sin fallback al menú.
+- **Todo id con ruta en `CALLBACK_MAP` y título ≤20 unidades UTF-16** (un título de 21 tiraba el mensaje entero en WhatsApp con 400). `help_*` se etiqueta "Ejemplos". `validateCatalog()` lo garantiza; un `suggestionKey` emitido sin entrada en el catálogo también falla el test.
+- Un botón destructivo del catálogo pasa por `askDestructiveConfirmation` (los teclados viejos quedan vivos para siempre: "Borrar último" de ayer borraba el gasto de hoy).
+- Settings grupo `bot` (sin deploy): `SUGGESTIONS_ENABLED`, `SUGGESTIONS_MAX_PER_DAY`, `SUGGESTIONS_DISABLED_KEYS`, `SUGGESTIONS_OVERRIDES` (JSON validado: ids con ruta, ≤20 chars, 1-3 botones; lo inválido se ignora con log `[SUGGEST]`).
+- Cada envío y cada tap es una fila en `suggestion_events` (migración 117). Antes era invisible: 0 filas en 3 meses de prod.
+
 ### Pending field-city escape hatch
 - `looksLikeNonCity()` aborta el loop de "¿En qué localidad?" cuando el usuario tipea algo que no es localidad (verbos agro, listas con `:`, queries con `?`, >60 chars, SQL keywords, comas múltiples CON dígitos — "Pergamino, Buenos Aires, Argentina" sí resuelve). Add new escape patterns HERE, not in the agent prompt.
 

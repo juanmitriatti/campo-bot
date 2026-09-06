@@ -1,6 +1,23 @@
-import type { InteractiveMessage } from '../types/index.js';
+// Sugerencias post-acción ("¿Y ahora?"): después de cada acción, hasta 3
+// botones con los próximos pasos más probables. Enseñan capacidades sin tirar
+// el menú entero.
+//
+// Reglas (Sep 2026, tras el análisis con datos de prod):
+// - Cada id de botón tiene ruta en CALLBACK_MAP y título de ≤20 caracteres
+//   (límite de WhatsApp: un título más largo tira el mensaje ENTERO con 400).
+//   `validateCatalog()` lo verifica y el test falla si se rompe.
+// - Un botón que abre ayuda dice "Ejemplos", nunca finge ser una acción.
+// - Los botones se filtran por plan (BUTTON_FEATURE) antes de enviarse.
+// - Kill switch, tope diario, claves apagadas y overrides viven en settings
+//   (grupo bot): se arreglan sin deploy. Ver buildSuggestion().
+// - Sin fallback al menú: un comando sin clave mapeada no muestra nada.
+import type { InteractiveMessage, InteractiveButton } from '../types/index.js';
+import { CALLBACK_MAP } from '../domain/interactive/interactive.router.js';
 
-// ─── Generic fallback menu ─────────────────────────────────────────────
+export const WHATSAPP_BUTTON_TITLE_MAX = 20;
+
+// ─── Generic menu (solo para claves que lo piden explícitamente; el render
+// de sugerencias dibuja botones, no listas) ─────────────────────────────
 const MENU_LIST: InteractiveMessage = {
   type: 'list',
   body: '¿Seguimos?',
@@ -40,194 +57,132 @@ const MENU_LIST: InteractiveMessage = {
   ],
 };
 
+const b = (id: string, title: string): InteractiveButton => ({ id, title });
+const buttons = (body: string, ...items: InteractiveButton[]): InteractiveMessage => ({ type: 'buttons', body, buttons: items });
+
 // ─── Per-action suggestions ────────────────────────────────────────────
-// After each completed action, surface the 2–3 most likely NEXT moves.
-// Goal: teach the bot's capabilities by showing useful follow-ups
-// instead of dumping the full menu every turn.
+const POST_EXPENSE = buttons('¿Y ahora?',
+  b('cmd_resumen_mensual', '📈 Resultado mes'),
+  b('doc_upload_factura', '🧾 Cargar factura'),
+  b('cmd_borrar_ultimo_gasto', '↩️ Borrar último'), // pide confirmación (destructivo)
+);
+const POST_INCOME = buttons('¿Y ahora?',
+  b('cmd_resumen_mensual', '📈 Resultado mes'),
+  b('flow_new_income', '💸 Otro ingreso'),
+  b('cmd_borrar_ultimo_ingreso', '↩️ Borrar último'),
+);
+const POST_FIELD = buttons('¿Próximo paso?',
+  b('cmd_agregar_lote', '🌾 Crear lote'),
+  b('cmd_listar_campos', '🏡 Mis campos'),
+  b('menu_ayuda', '❓ Ayuda'),
+);
+const POST_PLOT = buttons('¿Próximo paso?',
+  b('form_open_sow', '🌱 Sembrar'),          // formulario de siembra, no el picker de 7 tipos
+  b('flow_new_expense', '💰 Cargar gasto'),
+  b('cmd_listar_campos', '🏡 Mis campos'),
+);
+const POST_ACTIVITY = buttons('¿Y ahora?',
+  b('cmd_reporte_agro', '📊 Reporte agro PDF'),
+  b('flow_new_activity', '🌾 Otra actividad'),
+  b('menu_lluvia', '🌧️ Registrar lluvia'),
+);
+const POST_ACTIVITIES_SHOWN = buttons('¿Y ahora?',
+  b('flow_new_activity', '🌾 Nueva actividad'),
+  b('cmd_reporte_agro', '📊 Reporte agro PDF'),
+  b('back_menu', '📋 Menú'),
+);
+const POST_RAINFALL = buttons('¿Y ahora?',
+  b('cmd_reporte_lluvia', '📊 Lluvia este mes'),
+  b('menu_clima', '☀️ Clima 7 días'),
+  b('flow_new_rainfall', '🌧️ Otra lluvia'),
+);
+const POST_RAINFALL_SHOWN = buttons('¿Y ahora?',
+  b('menu_lluvia', '🌧️ Registrar lluvia'),
+  b('menu_clima', '☀️ Clima 7 días'),
+  b('back_menu', '📋 Menú'),
+);
+const POST_OBSERVATION = buttons('¿Y ahora?',
+  b('cmd_reporte_agro', '📊 Reporte agro PDF'),
+  b('flow_new_activity', '🌾 Nueva actividad'), // era "Registrar actividad": 21 chars, WhatsApp lo rechazaba
+  b('menu_lluvia', '🌧️ Registrar lluvia'),
+);
+const POST_REPORT = buttons('¿Más?',
+  b('cmd_exportar_csv', '📥 Exportar CSV'),
+  b('cmd_reporte_agro', '📊 Reporte agro PDF'),
+  b('back_menu', '📋 Menú'),
+);
+const POST_WEATHER = buttons('¿Más?',
+  b('menu_lluvia', '🌧️ Registrar lluvia'),
+  b('cmd_reporte_lluvia', '📊 Lluvia este mes'),
+  b('back_menu', '📋 Menú'),
+);
+const POST_FIELD_INFO = buttons('¿Y ahora?',
+  b('cmd_reporte_agro', '📊 Reporte agro PDF'),
+  b('flow_new_activity', '🌾 Nueva actividad'),
+  b('flow_new_expense', '💰 Cargar gasto'),
+);
+// Consulta con resultados (historial de lote): próximos pasos, no "¿qué querés hacer?".
+const POST_QUERY_RESULT = buttons('¿Y ahora?',
+  b('cmd_reporte_agro', '📊 Reporte agro PDF'),
+  b('flow_new_activity', '🌾 Nueva actividad'),
+  b('back_menu', '📋 Menú'),
+);
+const POST_QUERY_EMPTY = buttons('¿Qué querés hacer?',
+  b('back_menu', '📋 Ver menú'),
+  b('menu_ayuda', '❓ Ayuda'),
+);
+// Estados vacíos: la mejor parte del sistema — un camino en vez de un callejón.
+const POST_CROP_EMPTY = buttons('¿Querés empezar?',
+  b('form_open_sow', '🌱 Sembrar'),
+  b('cmd_listar_campos', '🏡 Mis campos'),
+  b('help_actividades', '❓ Ver ejemplos'),
+);
+const POST_LIVESTOCK_EMPTY = buttons('¿Querés empezar?',
+  b('form_open_livestock', '🐄 Cargar hacienda'),
+  b('help_hacienda', '❓ Ver ejemplos'),
+  b('back_menu', '📋 Menú'),
+);
+const POST_STOCK_EMPTY = buttons('¿Querés empezar?',
+  b('help_cosecha', '📦 Ver ejemplos'),
+  b('back_menu', '📋 Menú'),
+);
+const POST_LIVESTOCK = buttons('¿Y ahora?',
+  b('cmd_listar_hacienda', '🐄 Ver hacienda'),
+  b('help_hacienda', '❓ Ejemplos hacienda'), // era "💉 Sanidad / pesaje" y abría la ayuda
+  b('back_menu', '📋 Menú'),
+);
+const POST_LIVESTOCK_SHOWN = buttons('¿Y ahora?',
+  b('form_open_livestock', '➕ Cargar hacienda'),
+  b('help_hacienda', '❓ Ejemplos hacienda'),
+  b('back_menu', '📋 Menú'),
+);
+const POST_STOCK = buttons('¿Y ahora?',
+  b('cmd_ver_stock', '📦 Ver stock'),
+  b('help_cosecha', '❓ Ejemplos stock'),     // era "➕ Cargar / usar más" y abría la ayuda de cosecha
+  b('back_menu', '📋 Menú'),
+);
+const POST_STOCK_SHOWN = buttons('¿Y ahora?',
+  b('help_cosecha', '❓ Ejemplos stock'),
+  b('back_menu', '📋 Menú'),
+);
+const POST_HARVEST = buttons('¿Y ahora?',
+  b('cmd_reporte_agro', '📊 Reporte agro PDF'),
+  b('flow_new_activity', '🌾 Otra actividad'),
+  b('back_menu', '📋 Menú'),
+);
 
-const POST_EXPENSE: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Y ahora?',
-  buttons: [
-    { id: 'cmd_resumen_mensual', title: '📈 Resultado mes' },
-    { id: 'doc_upload_factura', title: '🧾 Cargar factura' },
-    { id: 'cmd_borrar_ultimo_gasto', title: '↩️ Borrar último' },
-  ],
-};
-
-const POST_INCOME: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Y ahora?',
-  buttons: [
-    { id: 'cmd_resumen_mensual', title: '📈 Resultado mes' },
-    { id: 'flow_new_income', title: '💸 Otro ingreso' },
-    { id: 'cmd_borrar_ultimo_ingreso', title: '↩️ Borrar último' },
-  ],
-};
-
-const POST_FIELD: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Próximo paso?',
-  buttons: [
-    { id: 'cmd_agregar_lote', title: '🌾 Crear lote' },
-    { id: 'cmd_listar_campos', title: '🏡 Mis campos' },
-    { id: 'menu_ayuda', title: '❓ Ayuda' },
-  ],
-};
-
-const POST_PLOT: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Próximo paso?',
-  buttons: [
-    { id: 'flow_new_activity', title: '🌱 Sembrar/fumigar' },
-    { id: 'flow_new_expense', title: '💰 Cargar gasto' },
-    { id: 'cmd_listar_campos', title: '🏡 Mis campos' },
-  ],
-};
-
-const POST_ACTIVITY: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Y ahora?',
-  buttons: [
-    { id: 'cmd_reporte_agro', title: '📊 Reporte agro PDF' },
-    { id: 'flow_new_activity', title: '🌾 Otra actividad' },
-    { id: 'menu_lluvia', title: '🌧️ Registrar lluvia' },
-  ],
-};
-
-const POST_RAINFALL: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Y ahora?',
-  buttons: [
-    { id: 'cmd_reporte_lluvia', title: '📊 Lluvia este mes' },
-    { id: 'menu_clima', title: '☀️ Clima 7 días' },
-    { id: 'flow_new_rainfall', title: '🌧️ Otra lluvia' },
-  ],
-};
-
-const POST_OBSERVATION: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Y ahora?',
-  buttons: [
-    { id: 'cmd_reporte_agro', title: '📊 Reporte agro PDF' },
-    { id: 'flow_new_activity', title: '🌾 Registrar actividad' },
-    { id: 'menu_lluvia', title: '🌧️ Registrar lluvia' },
-  ],
-};
-
-const POST_REPORT: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Más?',
-  buttons: [
-    { id: 'cmd_exportar_csv', title: '📥 Exportar CSV' },
-    { id: 'cmd_reporte_agro', title: '📊 Reporte agro PDF' },
-    { id: 'back_menu', title: '📋 Menú' },
-  ],
-};
-
-const POST_WEATHER: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Más?',
-  buttons: [
-    { id: 'menu_lluvia', title: '🌧️ Registrar lluvia' },
-    { id: 'cmd_reporte_lluvia', title: '📊 Lluvia este mes' },
-    { id: 'back_menu', title: '📋 Menú' },
-  ],
-};
-
-const POST_FIELD_INFO: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Y ahora?',
-  buttons: [
-    { id: 'cmd_reporte_agro', title: '📊 Reporte agro PDF' },
-    { id: 'flow_new_activity', title: '🌾 Nueva actividad' },
-    { id: 'flow_new_expense', title: '💰 Cargar gasto' },
-  ],
-};
-
-const POST_QUERY_EMPTY: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Qué querés hacer?',
-  buttons: [
-    { id: 'back_menu', title: '📋 Ver menú' },
-    { id: 'menu_ayuda', title: '❓ Ayuda' },
-  ],
-};
-
-// Empty states — when a query lands on "no hay X". Offer the most common
-// next steps so the user has a clear path instead of a dead-end message.
-const POST_CROP_EMPTY: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Querés empezar?',
-  buttons: [
-    { id: 'flow_new_activity', title: '🌱 Sembrar' },
-    { id: 'cmd_listar_campos', title: '🏡 Mis campos' },
-    { id: 'help_actividades', title: '❓ Ver ejemplos' },
-  ],
-};
-
-const POST_LIVESTOCK_EMPTY: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Querés empezar?',
-  buttons: [
-    { id: 'help_hacienda', title: '🐄 Ver ejemplos' },
-    { id: 'cmd_listar_campos', title: '🏡 Mis campos' },
-    { id: 'back_menu', title: '📋 Menú' },
-  ],
-};
-
-const POST_STOCK_EMPTY: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Querés empezar?',
-  buttons: [
-    { id: 'help_cosecha', title: '📦 Ver ejemplos' },
-    { id: 'back_menu', title: '📋 Menú' },
-  ],
-};
-
-// Post-acción para registros de hacienda (alta/baja/transfer/sanidad/repro/peso).
-const POST_LIVESTOCK: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Y ahora?',
-  buttons: [
-    { id: 'cmd_listar_hacienda', title: '🐄 Ver hacienda' },
-    { id: 'help_hacienda', title: '💉 Sanidad / pesaje' },
-    { id: 'back_menu', title: '📋 Menú' },
-  ],
-};
-
-// Post-acción para movimientos de stock (carga/uso).
-const POST_STOCK: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Y ahora?',
-  buttons: [
-    { id: 'cmd_ver_stock', title: '📦 Ver stock' },
-    { id: 'help_cosecha', title: '➕ Cargar / usar más' },
-    { id: 'back_menu', title: '📋 Menú' },
-  ],
-};
-
-// Post-cosecha: lo más útil es ver la campaña y su rinde.
-const POST_HARVEST: InteractiveMessage = {
-  type: 'buttons',
-  body: '¿Y ahora?',
-  buttons: [
-    { id: 'cmd_reporte_agro', title: '📊 Reporte agro PDF' },
-    { id: 'flow_new_activity', title: '🌾 Otra actividad' },
-    { id: 'back_menu', title: '📋 Menú' },
-  ],
-};
-
-const SUGGESTIONS: Record<string, InteractiveMessage> = {
+export const SUGGESTIONS: Record<string, InteractiveMessage> = {
   default_menu: MENU_LIST,
   expense_saved: POST_EXPENSE,
   income_saved: POST_INCOME,
   field_created: POST_FIELD,
   plot_created: POST_PLOT,
   activity_logged: POST_ACTIVITY,
+  activities_shown: POST_ACTIVITIES_SHOWN,
   rainfall_logged: POST_RAINFALL,
+  rainfall_shown: POST_RAINFALL_SHOWN,
   observation_logged: POST_OBSERVATION,
-  query_result: POST_QUERY_EMPTY,
+  query_result: POST_QUERY_RESULT,
   query_empty: POST_QUERY_EMPTY,
   field_info_shown: POST_FIELD_INFO,
   report_shown: POST_REPORT,
@@ -238,11 +193,37 @@ const SUGGESTIONS: Record<string, InteractiveMessage> = {
   livestock_empty: POST_LIVESTOCK_EMPTY,
   stock_empty: POST_STOCK_EMPTY,
   livestock_logged: POST_LIVESTOCK,
+  livestock_shown: POST_LIVESTOCK_SHOWN,
   stock_logged: POST_STOCK,
+  stock_shown: POST_STOCK_SHOWN,
   harvest_logged: POST_HARVEST,
 };
 
-// Command → suggestion key mapping for commands that don't set their own suggestionKey
+/** Feature (plan) que necesita cada botón. Sin entrada = libre. */
+export const BUTTON_FEATURE: Record<string, string> = {
+  cmd_resumen_mensual: 'expenses',
+  cmd_borrar_ultimo_gasto: 'expenses',
+  flow_new_expense: 'expenses',
+  flow_new_income: 'incomes',
+  cmd_borrar_ultimo_ingreso: 'incomes',
+  doc_upload_factura: 'documents',
+  cmd_agregar_lote: 'fields',
+  cmd_listar_campos: 'fields',
+  flow_new_activity: 'agronomy',
+  cmd_reporte_agro: 'agronomy',
+  form_open_sow: 'agronomy',
+  menu_lluvia: 'rainfall',
+  cmd_reporte_lluvia: 'rainfall',
+  flow_new_rainfall: 'rainfall',
+  menu_clima: 'weather',
+  cmd_exportar_csv: 'csv_export',
+  cmd_listar_hacienda: 'livestock',
+  form_open_livestock: 'livestock',
+  help_hacienda: 'livestock',
+  cmd_ver_stock: 'stock',
+};
+
+// Command → suggestion key para comandos que no setean la suya.
 const COMMAND_SUGGESTION_MAP: Record<string, string> = {
   help: 'default_menu',
   list_fields: 'field_info_shown',
@@ -263,13 +244,10 @@ const COMMAND_SUGGESTION_MAP: Record<string, string> = {
   field_result: 'report_shown',
   compare_months: 'report_shown',
   generate_agro_report: 'report_shown',
-  rainfall_report: 'rainfall_logged',
-  rainfall_range: 'rainfall_logged',
-  plot_activities: 'activity_logged',
+  rainfall_report: 'rainfall_shown',
+  rainfall_range: 'rainfall_shown',
+  plot_activities: 'activities_shown',
   query_plot_history: 'query_result',
-  // Actividades agro que antes terminaban "secas" (sin próximos pasos) — Jun 2026.
-  // El handler no setea suggestionKey y caían a default_menu (tipo 'list', que el
-  // render de sugerencias ignora porque solo muestra 'buttons').
   sow_crop: 'activity_logged',
   harvest_crop: 'harvest_logged',
   log_spraying: 'activity_logged',
@@ -280,8 +258,6 @@ const COMMAND_SUGGESTION_MAP: Record<string, string> = {
   log_rainfall: 'rainfall_logged',
   log_crop_scouting: 'observation_logged',
   log_observation: 'observation_logged',
-  // Hacienda — los handlers que ya devuelven botones propios (buildPostActionButtons)
-  // ganan; estos cubren los casos que terminaban secos.
   add_livestock: 'livestock_logged',
   remove_livestock: 'livestock_logged',
   transfer_livestock: 'livestock_logged',
@@ -292,7 +268,6 @@ const COMMAND_SUGGESTION_MAP: Record<string, string> = {
   log_repro_event: 'livestock_logged',
   log_weighing: 'livestock_logged',
   set_livestock_price: 'livestock_logged',
-  // Stock
   add_stock: 'stock_logged',
   remove_stock: 'stock_logged',
 };
@@ -301,11 +276,132 @@ export function getSuggestions(completedAction: string): InteractiveMessage | nu
   return SUGGESTIONS[completedAction] ?? null;
 }
 
-export function resolveSuggestionKey(command: string, existingKey?: string | null): string {
+/** Clave de sugerencia para un comando. Sin fallback: comando no mapeado → nada. */
+export function resolveSuggestionKey(command: string, existingKey?: string | null): string | undefined {
   if (existingKey) return existingKey;
-  return COMMAND_SUGGESTION_MAP[command] ?? 'default_menu';
+  return COMMAND_SUGGESTION_MAP[command];
 }
 
 export function getDefaultSuggestion(): InteractiveMessage {
   return MENU_LIST;
+}
+
+/** Ids de botón que pertenecen al catálogo (para reconocer taps de sugerencia). */
+export const CATALOG_BUTTON_IDS: ReadonlySet<string> = new Set(
+  Object.values(SUGGESTIONS).flatMap(m => (m.type === 'buttons' ? m.buttons.map(x => x.id) : [])),
+);
+
+// ─── Política (settings del admin) ─────────────────────────────────────
+export interface SuggestionPolicy {
+  enabled: boolean;
+  maxPerDay: number;                 // 0 = sin tope
+  disabledKeys: Set<string>;
+  overrides: Record<string, InteractiveMessage>;
+}
+
+function validateButtonsMessage(m: unknown, where: string): string[] {
+  const errs: string[] = [];
+  const msg = m as { body?: unknown; buttons?: unknown } | null;
+  if (!msg || typeof msg !== 'object') return [`${where}: no es un objeto`];
+  if (typeof msg.body !== 'string' || !msg.body.trim()) errs.push(`${where}: body vacío`);
+  const btns = Array.isArray(msg.buttons) ? (msg.buttons as Array<Partial<InteractiveButton> | null>) : null;
+  if (!btns || btns.length < 1 || btns.length > 3) errs.push(`${where}: entre 1 y 3 botones`);
+  for (const btn of btns ?? []) {
+    if (!btn || typeof btn.id !== 'string' || typeof btn.title !== 'string') { errs.push(`${where}: botón inválido`); continue; }
+    if (!(btn.id in CALLBACK_MAP)) errs.push(`${where}: el id "${btn.id}" no tiene ruta en CALLBACK_MAP`);
+    if (!btn.title.trim()) errs.push(`${where}: título vacío`);
+    if (btn.title.length > WHATSAPP_BUTTON_TITLE_MAX) errs.push(`${where}: "${btn.title}" supera ${WHATSAPP_BUTTON_TITLE_MAX} caracteres (WhatsApp lo rechaza)`);
+  }
+  return errs;
+}
+
+/** Overrides JSON de settings → mensajes válidos. Lo inválido se ignora y se loguea. */
+export function parseSuggestionOverrides(raw: string | null | undefined): Record<string, InteractiveMessage> {
+  const out: Record<string, InteractiveMessage> = {};
+  const text = (raw ?? '').trim();
+  if (!text) return out;
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); } catch (err) {
+    console.warn(`[SUGGEST] SUGGESTIONS_OVERRIDES no es JSON válido, se ignora: ${(err as Error).message}`);
+    return out;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    console.warn('[SUGGEST] SUGGESTIONS_OVERRIDES debe ser un objeto {clave: {body, buttons}}, se ignora');
+    return out;
+  }
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!(key in SUGGESTIONS)) { console.warn(`[SUGGEST] override para clave desconocida "${key}", se ignora`); continue; }
+    const errs = validateButtonsMessage(value, `override ${key}`);
+    if (errs.length) { console.warn(`[SUGGEST] ${errs.join('; ')} — se ignora`); continue; }
+    const v = value as { body: string; buttons: InteractiveButton[] };
+    out[key] = { type: 'buttons', body: v.body, buttons: v.buttons.map(x => ({ id: x.id, title: x.title })) };
+  }
+  return out;
+}
+
+export function parseSuggestionPolicy(raw: {
+  enabled: boolean | null | undefined;
+  maxPerDay: number | null | undefined;
+  disabledKeys: string | null | undefined;
+  overridesJson: string | null | undefined;
+}): SuggestionPolicy {
+  const disabled = new Set((raw.disabledKeys ?? '').split(',').map(s => s.trim()).filter(Boolean));
+  return {
+    enabled: raw.enabled !== false,
+    maxPerDay: Math.max(0, Math.floor(Number(raw.maxPerDay) || 0)),
+    disabledKeys: disabled,
+    overrides: parseSuggestionOverrides(raw.overridesJson),
+  };
+}
+
+export interface BuildSuggestionInput {
+  key: string;
+  policy: SuggestionPolicy;
+  hasFeature: (feature: string) => Promise<boolean>;
+  shownToday: () => Promise<number>;
+}
+
+/**
+ * La sugerencia que efectivamente se manda para una clave, o null. Aplica
+ * kill switch, claves apagadas, override, tope diario y gate por plan.
+ * Solo devuelve mensajes de botones (las listas no se rinden como sugerencia).
+ */
+export async function buildSuggestion(input: BuildSuggestionInput): Promise<InteractiveMessage | null> {
+  const { key, policy } = input;
+  if (!policy.enabled) return null;
+  if (policy.disabledKeys.has(key)) { console.log(`[SUGGEST] clave apagada por settings: ${key}`); return null; }
+  const base = policy.overrides[key] ?? SUGGESTIONS[key];
+  if (!base || base.type !== 'buttons' || !base.buttons?.length) return null;
+  if (policy.maxPerDay > 0) {
+    const n = await input.shownToday();
+    if (n >= policy.maxPerDay) { console.log(`[SUGGEST] tope diario alcanzado (${n}/${policy.maxPerDay}), sin sugerencia`); return null; }
+  }
+  const kept: InteractiveButton[] = [];
+  for (const btn of base.buttons) {
+    const feature = BUTTON_FEATURE[btn.id];
+    if (feature && !(await input.hasFeature(feature))) {
+      console.log(`[SUGGEST] botón ${btn.id} omitido: el plan no incluye ${feature}`);
+      continue;
+    }
+    kept.push(btn);
+  }
+  if (kept.length === 0) return null;
+  return { type: 'buttons', body: base.body, buttons: kept };
+}
+
+/** Integridad del catálogo (lo corre el test). Vacío = todo bien. */
+export function validateCatalog(): string[] {
+  const errs: string[] = [];
+  for (const [key, msg] of Object.entries(SUGGESTIONS)) {
+    if (msg.type === 'buttons') errs.push(...validateButtonsMessage(msg, key));
+    else if (msg.type === 'list') {
+      for (const s of msg.sections ?? []) for (const r of s.rows) {
+        if (!(r.id in CALLBACK_MAP)) errs.push(`${key}: fila "${r.id}" sin ruta en CALLBACK_MAP`);
+      }
+    }
+  }
+  for (const [cmd, key] of Object.entries(COMMAND_SUGGESTION_MAP)) {
+    if (!(key in SUGGESTIONS)) errs.push(`COMMAND_SUGGESTION_MAP: ${cmd} → "${key}" no existe en el catálogo`);
+  }
+  return errs;
 }
