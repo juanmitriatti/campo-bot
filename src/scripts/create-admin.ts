@@ -17,7 +17,7 @@ dotenv.config();
 
 const BCRYPT_ROUNDS = 12;
 
-function parseArgs(): { email: string; name: string; password: string } {
+function parseArgs(): { email: string; name: string; password: string; plan: string } {
   const args = process.argv.slice(2);
   const map = new Map<string, string>();
 
@@ -30,17 +30,20 @@ function parseArgs(): { email: string; name: string; password: string } {
   const email = map.get('email');
   const name = map.get('name');
   const password = map.get('password');
+  // --plan: un admin de QA que va a usar el test-bot en prod necesita las
+  // features (agronomy/livestock son pro+) — con 'free' el FeatureGate corta.
+  const plan = map.get('plan') ?? 'free';
 
   if (!email || !name || !password) {
-    console.error('Usage: npx tsx src/scripts/create-admin.ts --email <email> --name <name> --password <password>');
+    console.error('Usage: npx tsx src/scripts/create-admin.ts --email <email> --name <name> --password <password> [--plan enterprise]');
     process.exit(1);
   }
 
-  return { email, name, password };
+  return { email, name, password, plan };
 }
 
 async function main() {
-  const { email, name, password } = parseArgs();
+  const { email, name, password, plan } = parseArgs();
 
   if (password.length < 8) {
     console.error('Error: La contraseña debe tener al menos 8 caracteres');
@@ -61,11 +64,17 @@ async function main() {
       `UPDATE users SET role = 'admin', password_hash = $1, name = $2 WHERE email = $3`,
       [passwordHash, name, email]
     );
-    console.log(`Usuario existente (id=${existing[0].id}) actualizado a admin: ${email}`);
+    if (plan !== 'free') {
+      const planR = await pool.query(`SELECT id FROM plans WHERE name = $1 LIMIT 1`, [plan]);
+      if (planR.rows.length === 0) { console.error(`Error: plan desconocido "${plan}"`); process.exit(1); }
+      await pool.query(`UPDATE users SET plan_id = $1 WHERE email = $2`, [planR.rows[0].id, email]);
+    }
+    console.log(`Usuario existente (id=${existing[0].id}) actualizado a admin: ${email} (plan ${plan})`);
   } else {
     // Create new admin user
-    const freePlan = await pool.query(`SELECT id FROM plans WHERE name = 'free' LIMIT 1`);
-    const planId = freePlan.rows[0]?.id ?? null;
+    const planRow = await pool.query(`SELECT id FROM plans WHERE name = $1 LIMIT 1`, [plan]);
+    if (planRow.rows.length === 0) { console.error(`Error: plan desconocido "${plan}"`); process.exit(1); }
+    const planId = planRow.rows[0].id;
 
     const { rows } = await pool.query(
       `INSERT INTO users (name, email, password_hash, role, plan_id)

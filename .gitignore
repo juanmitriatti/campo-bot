@@ -23,3 +23,6 @@ design/*.html
 
 # settings personales de Claude Code (permisos de esta maquina)
 .claude/settings.local.json
+
+# reportes de QA contra prod (transcripciones, no commitear)
+qa-reports/
