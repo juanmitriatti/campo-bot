@@ -54,7 +54,7 @@
         },
         {
           "send": "en Establecimiento Roma tengo dos lotes, Norte de 120 has y Sur de 80 has",
-          "expect": "Norte[sS]*Sur|Sur[sS]*Norte",
+          "expect": "Norte[\\s\\S]*Sur|Sur[\\s\\S]*Norte",
           "avoid": "no entend",
           "checks": "add_plots_batch con hectáreas por lote, en un solo mensaje."
         },
@@ -224,13 +224,13 @@
       "steps": [
         {
           "send": "compré 40 vacas Angus preñadas a 900 mil cada una, van al lote Sur",
-          "expect": "Vaca[sS]*40|40[sS]*[Vv]aca",
+          "expect": "Vaca[\\s\\S]*40|40[\\s\\S]*[Vv]aca",
           "avoid": "En un lote|En un feedlot",
           "checks": "Ubicación explícita → sin botones; precio c/u → gasto vinculado categoría Hacienda."
         },
         {
           "send": "agregué 2 toros Angus al lote Sur",
-          "expect": "Toro[sS]*2 animales|2[sS]*[Tt]oro",
+          "expect": "Toro[\\s\\S]*2 animales|2[\\s\\S]*[Tt]oro",
           "checks": "Segunda categoría en el mismo lote."
         },
         {
