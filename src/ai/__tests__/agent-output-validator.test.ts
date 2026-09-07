@@ -318,3 +318,44 @@ describe('validateToolCall — plot/field rule (Phase 3)', () => {
     expect(result.droppedFields).toContain('plot');
   });
 });
+
+// Prod (Tomás, 6 sep 2026): "fumigué el lote del campo El Rehue" por audio →
+// Whisper: "el regue". El agente resolvió el campo real; el validador lo vetó.
+describe('validateToolCall — tolerancia fonética para nombres dictados', () => {
+  const userFields = ['el rehue', 'La bendición'];
+  const userPlots = ['Lote 1', 'Lote 2'];
+  const opts = { validatePlotField: true, userPlots, userFields };
+
+  it('mantiene field="el rehue" cuando el texto dice "el regue" (h muda ≈ g)', () => {
+    const r = validateToolCall(
+      { toolName: 'log_spraying', input: { field: 'el rehue' }, originalText: 'fumigue el lote del campo el regue' },
+      opts,
+    );
+    expect(r.input.field).toBe('el rehue');
+    expect(r.droppedFields).toEqual([]);
+  });
+
+  it('b/v y s/z también cuentan como la misma palabra', () => {
+    const r = validateToolCall(
+      { toolName: 'log_spraying', input: { field: 'La bendición' }, originalText: 'fumigue en la vendision' },
+      opts,
+    );
+    expect(r.droppedFields).toEqual([]);
+  });
+
+  it('sigue dropeando un campo real que NO suena en el texto', () => {
+    const r = validateToolCall(
+      { toolName: 'log_spraying', input: { field: 'el rehue' }, originalText: 'fumigue con glifosato' },
+      opts,
+    );
+    expect(r.droppedFields).toContain('field');
+  });
+
+  it('no aplica a tokens cortos (Sur vs sud no se acepta por fonética)', () => {
+    const r = validateToolCall(
+      { toolName: 'log_spraying', input: { plot: 'Sur' }, originalText: 'fumigue el sud' },
+      { validatePlotField: true, userPlots: ['Sur', 'Norte'], userFields },
+    );
+    expect(r.droppedFields).toContain('plot');
+  });
+});

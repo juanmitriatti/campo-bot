@@ -71,3 +71,56 @@ export function entityNameCandidates(s: string): string[] {
   const stripped = stripLeadingArticle(literal);
   return stripped !== literal ? [literal, stripped] : [literal];
 }
+
+// ---------------------------------------------------------------------------
+// Tolerancia fonética para nombres dictados por AUDIO.
+//
+// Prod (Tomás, 6 sep 2026): dictó "fumigué el lote del campo El Rehue" y
+// Whisper transcribió "El Regué". El agente resolvió bien el campo real
+// («el rehue») pero el output-validator lo vetó porque "rehue" no aparece
+// literal en el texto → dos re-preguntas por el lote. La regla: un nombre
+// REAL del usuario cuenta como mencionado si alguna palabra del texto suena
+// igual (h muda, b/v, s/z/c, ll/y, g/j, qu/k) o queda a 1 edición.
+// ---------------------------------------------------------------------------
+
+/** Pliegue fonético del español rioplatense (sobre texto ya normalizado sin acentos). */
+export function phoneticFoldEs(s: string): string {
+  return normalizeEntityName(s)
+    .replace(/h/g, '')
+    .replace(/qu(?=[ei])/g, 'k')
+    .replace(/c(?=[ei])/g, 's')
+    .replace(/c/g, 'k')
+    .replace(/z/g, 's')
+    .replace(/v/g, 'b')
+    .replace(/ll/g, 'y')
+    .replace(/g(?=[ei])/g, 'j')
+    .replace(/gu(?=[ei])/g, 'g')
+    .replace(/x/g, 'ks')
+    .replace(/(.)\1+/g, '$1');
+}
+
+function editDistance1(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++;
+    else if (a.length < b.length) j++;
+    else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+
+/**
+ * ¿`word` (palabra del texto del usuario) suena como `token` (parte de un
+ * nombre real)? Solo para palabras de 4+ letras: con menos, una edición cambia
+ * la palabra entera ("sur"/"sud").
+ */
+export function soundsLikeToken(word: string, token: string): boolean {
+  const w = phoneticFoldEs(word);
+  const t = phoneticFoldEs(token);
+  if (w.length < 4 || t.length < 4) return false;
+  return editDistance1(w, t);
+}

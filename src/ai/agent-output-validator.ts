@@ -22,6 +22,8 @@ export interface ValidationContext {
   originalText: string;
 }
 
+import { soundsLikeToken } from '../utils/entity-matcher.js';
+
 export interface ValidationOptions {
   /** Strip `crop` when the user's text doesn't mention any known crop. */
   validateCrop?: boolean;
@@ -293,5 +295,18 @@ function mentionedInText(value: string, originalText: string, knownNames: string
   const tokens = normValue.split(/\s+/).filter(t =>
     !GENERIC_NAME_TOKENS.has(t) && (/\d/.test(t) || t.length >= 3),
   );
-  return tokens.some(t => wholeWordInText(t, normText));
+  if (tokens.some(t => wholeWordInText(t, normText))) return true;
+
+  // Audio: "El Rehue" dictado llega como "El Regué". El nombre es REAL del
+  // usuario (ya validado arriba) y una palabra del texto suena igual → es una
+  // mención, no una invención. Solo tokens de 4+ letras (ver soundsLikeToken).
+  const words = normText.split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 4);
+  for (const t of tokens) {
+    const hit = words.find(w => soundsLikeToken(w, t));
+    if (hit) {
+      console.log(`AI_VALIDATOR KEEP (fonético): "${hit}" ≈ "${t}" de «${known}»`);
+      return true;
+    }
+  }
+  return false;
 }

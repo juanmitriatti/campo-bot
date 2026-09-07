@@ -5,6 +5,7 @@ import {
   stripLeadingArticle,
   entityNameCandidates,
   sqlNormalizedName,
+  soundsLikeToken,
 } from '../entity-matcher.js';
 
 describe('entity-matcher — normalización canónica', () => {
@@ -68,5 +69,21 @@ describe('entity-matcher — paridad JS/SQL', () => {
       const { rows } = await pool.query(`SELECT ${sqlNormalizedName('$1::text')} AS n`, [s]);
       expect(rows[0].n, `SQL vs JS para "${s}"`).toBe(compactEntityName(s));
     }
+  });
+});
+
+describe('soundsLikeToken — tolerancia fonética para audio', () => {
+  it('rehue ≈ regue (h muda vs g), bendicion ≈ vendision, esperanza ≈ esperansa', () => {
+    expect(soundsLikeToken('regue', 'rehue')).toBe(true);
+    expect(soundsLikeToken('vendision', 'bendicion')).toBe(true);
+    expect(soundsLikeToken('esperansa', 'esperanza')).toBe(true);
+    expect(soundsLikeToken('Esperanza', 'esperanza')).toBe(true);
+  });
+  it('no confunde nombres distintos ni palabras cortas', () => {
+    expect(soundsLikeToken('norte', 'rehue')).toBe(false);
+    expect(soundsLikeToken('bendicion', 'rehue')).toBe(false);
+    expect(soundsLikeToken('sud', 'sur')).toBe(false);
+    expect(soundsLikeToken('loma', 'lomas')).toBe(true); // plural: una edición
+    expect(soundsLikeToken('junin', 'lincoln')).toBe(false);
   });
 });
