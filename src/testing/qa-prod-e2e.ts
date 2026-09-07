@@ -75,7 +75,23 @@ function judge(step: Step, reply: string, buttons: string[]): string[] {
   return reasons;
 }
 
+/**
+ * `.qa-env` en la raíz del repo (gitignoreado): KEY=VALUE por línea. Existe
+ * para que la contraseña de la cuenta de QA la escriba el operador una vez y
+ * no viaje por la línea de comandos ni por el chat del agente que lanza el QA.
+ */
+function loadQaEnv(): void {
+  const p = join(__dirname, '..', '..', '.qa-env');
+  let raw = '';
+  try { raw = readFileSync(p, 'utf-8'); } catch { return; }
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+}
+
 async function run(): Promise<void> {
+  loadQaEnv();
   const baseUrl = process.env.TEST_BOT_URL || 'http://localhost:3000';
   const email = process.env.QA_EMAIL;
   const password = process.env.QA_PASSWORD;

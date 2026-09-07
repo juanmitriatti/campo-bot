@@ -26,3 +26,4 @@ design/*.html
 
 # reportes de QA contra prod (transcripciones, no commitear)
 qa-reports/
+.qa-env
