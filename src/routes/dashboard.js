@@ -1,4 +1,5 @@
 import { Router } from "express";
+import bcrypt from "bcrypt";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -352,9 +353,27 @@ router.put("/api/users/:id/settings", async (req, res) => {
 
 router.put("/api/users/:id", async (req, res) => {
   const { id } = req.params;
-  const { name, last_name, city, email, province, whatsapp_verified } = req.body;
+  const { name, last_name, city, email, province, whatsapp_verified, web_password } = req.body;
 
   try {
+    // web_password: le da login en /login a un usuario que llegó por WhatsApp y
+    // nunca se registró en la web (necesita email). Sin esto la única forma era
+    // un UPDATE a mano en la base de prod.
+    if (web_password !== undefined) {
+      if (typeof web_password !== 'string' || web_password.length < 6) {
+        return res.status(400).json({ error: 'La contraseña web necesita al menos 6 caracteres' });
+      }
+      const cur = await pool.query(`SELECT email FROM users WHERE id = $1`, [id]);
+      if (cur.rows.length === 0) return res.status(404).json({ error: "User not found" });
+      const finalEmail = email || cur.rows[0].email;
+      if (!finalEmail) return res.status(400).json({ error: 'Para la contraseña web hace falta un email' });
+      const clash = await pool.query(`SELECT id FROM users WHERE email = $1 AND id <> $2`, [finalEmail, id]);
+      if (clash.rows.length > 0) return res.status(409).json({ error: `El email ${finalEmail} ya lo usa el usuario ${clash.rows[0].id}` });
+      const passwordHash = await bcrypt.hash(web_password, 12);
+      await pool.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [passwordHash, id]);
+      console.log(`[admin] web password set for user ${id} (${finalEmail})`);
+    }
+
     // whatsapp_verified: true marca el número como vinculado (sin OTP), false lo
     // desmarca, ausente no toca. Mismo criterio que el alta manual.
     const result = await pool.query(

@@ -1920,6 +1920,10 @@
             <input type="text" id="detail-email">
           </div>
           <div class="form-group">
+            <label for="detail-web-password">Contrase&ntilde;a web (dejar vac&iacute;o para no cambiar)</label>
+            <input type="text" id="detail-web-password" placeholder="M&iacute;n. 6 caracteres — habilita el login en /login con el email de arriba" autocomplete="off">
+          </div>
+          <div class="form-group">
             <label for="detail-address">Direcci&oacute;n</label>
             <input type="text" id="detail-address">
           </div>
@@ -3184,13 +3188,20 @@
         postalCode: document.getElementById('detail-postal-code').value.trim() || null,
         province: document.getElementById('detail-province').value.trim() || null
       };
+      var webPassword = document.getElementById('detail-web-password').value.trim();
+      if (webPassword) {
+        if (webPassword.length < 6) { showToast('La contrase\u00f1a web necesita al menos 6 caracteres', 'error'); return; }
+        if (!body.email) { showToast('Para la contrase\u00f1a web hace falta un email', 'error'); return; }
+        body.web_password = webPassword;
+      }
 
       apiFetch('/admin/api/users/' + currentUserId, {
         method: 'PUT',
         body: JSON.stringify(body)
       }).then(function(result) {
         if (result) {
-          showToast('Informaci\u00f3n del usuario guardada');
+          showToast(webPassword ? 'Informaci\u00f3n guardada \u2014 login web habilitado con ' + body.email : 'Informaci\u00f3n del usuario guardada');
+          document.getElementById('detail-web-password').value = '';
           document.getElementById('detail-user-title').textContent = body.name || 'Usuario';
         }
       });
