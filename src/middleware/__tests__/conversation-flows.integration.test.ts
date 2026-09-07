@@ -354,4 +354,17 @@ describe('field_flow real — localidad dictada como frase', () => {
     expect(fresh.currentContext.data.name).toBe('Establecimiento Roma');
     expect(fresh.currentContext.step).toBe(1);
   });
+
+  it('"se llama El Rehue" / "agregar campo se llama El Rehue" como nombre → "El Rehue" (prod: quedó «se llama el rehue»)', async () => {
+    for (const answer of ['se llama El Rehue', 'agregar campo se llama El Rehue', 'el campo se llama El Rehue']) {
+      const stateRepo = createMockStateRepo();
+      const registry = new FlowRegistry();
+      registry.register(fieldFlow);
+      const engine = new ConversationEngine(stateRepo as any, registry);
+      const fresh = new ConversationSimulator(engine, userId);
+      await fresh.startFlow('field_flow', {});
+      await fresh.send(answer);
+      expect(fresh.currentContext.data.name, answer).toBe('El Rehue');
+    }
+  });
 });

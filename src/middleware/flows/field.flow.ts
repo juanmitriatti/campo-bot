@@ -5,6 +5,7 @@ import { formatLocation } from '../pending-field-city-handler.js';
 import { getSuggestions } from '../contextual-suggestions.js';
 import { MapTokenService } from '../../services/map-token.service.js';
 import { extractFieldRestatement } from './field-step-helpers.js';
+import { stripNameLeadIn } from '../../utils/lexicon.js';
 import type { FlowDefinition, FlowStep } from './flow.interface.js';
 import type { UserId } from '../../types/index.js';
 
@@ -43,7 +44,8 @@ const steps: FlowStep[] = [
           }
         }
       }
-      name = name.replace(/^["'«“”]+|["'»“”]+$/g, '').trim();
+      // "se llama El Rehue" como respuesta a "¿cómo se llama?" → "El Rehue"
+      name = stripNameLeadIn(name);
       if (name.length < 2) return { error: 'El nombre tiene que tener al menos 2 caracteres.' };
       if (name.length > 100) return { error: 'El nombre es demasiado largo (máx 100 caracteres).' };
       // Reject command-like input that was likely meant as a different intent

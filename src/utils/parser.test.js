@@ -228,6 +228,20 @@ describe("parseCommand", () => {
   });
 
   describe("add_field", () => {
+    // Prod (6 sep 2026): quedó un campo llamado «se llama el rehue».
+    it("agregar campo se llama el rehue → fieldName 'el rehue' (sin la muletilla)", () => {
+      expect(parseCommand("agregar campo se llama el rehue")).toMatchObject({ command: "add_field", fieldName: "el rehue" });
+      expect(parseCommand("agregar campo que se llama El Rehue en Lincoln")).toMatchObject({ command: "add_field", fieldName: "El Rehue", city: "Lincoln" });
+      expect(parseCommand("agregar campo llamado La Loma")).toMatchObject({ command: "add_field", fieldName: "La Loma" });
+    });
+    it("agregar campo Establecimiento Roma en Junin, Buenos Aires → city con provincia", () => {
+      expect(parseCommand("agregar campo Establecimiento Roma en Junin, Buenos Aires")).toMatchObject({ command: "add_field", fieldName: "Establecimiento Roma", city: "Junin, Buenos Aires" });
+    });
+    it("agregar campo X\\n\\nEsta en la localidad de Y → nombre y localidad partidos", () => {
+      const r = parseCommand("Agregar campo establecimiento Roma\n\nEsta en la localidad de junin, buenos aires");
+      expect(r.fieldName).toBe("establecimiento Roma");
+      expect(r.city).toMatch(/junin, buenos aires$/i);
+    });
     it("agregar campo norte en junin → add_field", () => {
       const r = parseCommand("agregar campo norte en junin");
       expect(r).not.toBeNull();

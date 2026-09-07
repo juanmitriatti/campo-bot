@@ -1,6 +1,7 @@
 import { EntityValidator } from '../../services/entity-validator.js';
 import type { UserId, InteractiveMessage } from '../../types/index.js';
 import type { FlowStepValidationResult } from './flow.interface.js';
+import { stripNameLeadIn } from '../../utils/lexicon.js';
 
 const entityValidator = new EntityValidator();
 
@@ -313,7 +314,7 @@ export function extractFieldRestatement(text: string): { name: string; cityText:
   if (!m) m = t.match(/^(?:el\s+|mi\s+)?(?:campo|establecimiento)\s+(?:que\s+)?se\s+llama\s+(.+)$/i);
   if (!m) return null;
 
-  let name = m[1].trim().replace(/^["'«“”]+|["'»“”]+$/g, '').replace(/[.!?]+$/, '').trim();
+  let name = stripNameLeadIn(m[1].replace(/[.!?]+$/, ''));
   let cityText: string | null = null;
   // "X en Pergamino" / "X, en Pergamino" / "X ubicado en Pergamino"
   const split = name.match(/^(.+?)(?:\s*,)?\s+(?:que\s+)?(?:est[aá]\s+|queda\s+|ubicad[oa]\s+)?en\s+(?:la\s+localidad\s+de\s+)?(.+)$/i);

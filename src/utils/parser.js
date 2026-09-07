@@ -13,6 +13,7 @@ import {
   ACTIVITY_FILTER_PATTERNS,
 } from '../constants/agro-terms.js';
 import { canonicalProvince } from '../services/localidad-lookup.service.js';
+import { stripNameLeadIn } from './lexicon.js';
 
 // --- Normalización central ---
 function normalizeText(text) {
@@ -1152,7 +1153,7 @@ const COMMAND_PATTERNS = [
     command: "add_field",
     // Stop city extraction at the first comma so compound messages like
     // "agregar campo X en Y, lotes A,B" don't smuggle the rest into city.
-    patterns: [/(?:agregar|agrega|nuevo|crear)\s+(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!(?:en|esta|queda|ubicado)\s)\w+){0,3})(?:\s+en\s+([^,]+))?/],
+    patterns: [/(?:agregar|agrega|nuevo|crear)\s+(lote|campo|parcela)\s+(?:(?:que\s+)?se\s+llama\s+|llamad[oa]\s+)?((?:\w+)(?:\s+(?!(?:en|esta|queda|ubicado)\s)\w+){0,3})(?:\s+en\s+([^,]+))?/],
     extract: (m, _norm, original) => {
       // If the original message contains additional clauses (lotes/sembré/etc.),
       // defer to the agent — trivial parsing would smuggle "Junín con lotes A"
@@ -1175,7 +1176,7 @@ const COMMAND_PATTERNS = [
       // ("Junín, Buenos Aires" sí; "Pergamino, 100 has" no). Prod (6 sep 2026):
       // "Agregar campo establecimiento Roma\n\nEsta en la localidad de junin,
       // buenos aires" daba nombre "establecimiento Roma Esta".
-      const reOrig = /(?:agregar|agrega|nuevo|crear)\s+(?:lote|campo|parcela)\s+((?:[\wáéíóúüñ]+)(?:[ \t]+(?!(?:en|est[aá]|queda|ubicad[oa])\s)[\wáéíóúüñ]+){0,3})(?:[ \t]+en[ \t]+([^,\n]+)(?:,[ \t]*([^,\n]+))?)?/i;
+      const reOrig = /(?:agregar|agrega|nuevo|crear)\s+(?:lote|campo|parcela)\s+(?:(?:que\s+)?se\s+llama\s+|llamad[oa]\s+)?((?:[\wáéíóúüñ]+)(?:[ \t]+(?!(?:en|est[aá]|queda|ubicad[oa])\s)[\wáéíóúüñ]+){0,3})(?:[ \t]+en[ \t]+([^,\n]+)(?:,[ \t]*([^,\n]+))?)?/i;
       const om = original ? original.match(reOrig) : null;
       const nameSrc = (om && om[1]) ? om[1] : m[2];
       let citySrc = (om && om[2] != null) ? om[2] : m[3];
@@ -1191,9 +1192,13 @@ const COMMAND_PATTERNS = [
         const tail = original.match(/\b(?:est[aá]|queda|ubicad[oa])\s+en\s+([^,\n]+(?:,\s*[^,\n]+)?)\s*$/i);
         if (tail) citySrc = tail[1];
       }
+      // "agregar campo se llama el rehue" → «se llama el rehue» quedó como
+      // nombre en prod (6 sep 2026). Si al sacar la muletilla el nombre queda
+      // vacío ("agregar campo se llama"), que lo pregunte el flow.
+      const cleanName = stripNameLeadIn(nameSrc);
       return {
         entityKeyword: m[1],
-        fieldName: nameSrc.trim(),
+        fieldName: cleanName || null,
         city: citySrc ? citySrc.trim().charAt(0).toUpperCase() + citySrc.trim().slice(1) : null,
       };
     },

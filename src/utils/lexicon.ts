@@ -151,3 +151,20 @@ export function stripAnswerPrefix(text: string): string {
     .replace(/^lote\s+/i, '')
     .trim();
 }
+
+/**
+ * Muletillas con las que la gente antepone el nombre de una entidad al
+ * crearla: "agregar campo se llama El Rehue" / "campo que se llama X" /
+ * "llamado X" / "de nombre X" / "con el nombre X". Devuelve solo el nombre.
+ * Prod (Tomás, 6 sep 2026): quedó un campo llamado «se llama el rehue».
+ * Fuente única — la usan el regex de add_field, el paso "nombre" del
+ * field_flow y el re-enunciado dentro del flow.
+ */
+export function stripNameLeadIn(name: string): string {
+  return name
+    .trim()
+    .replace(/^(?:que\s+)?se\s+llama\s+/i, '')
+    .replace(/^(?:llamad[oa]|de\s+nombre|con\s+(?:el\s+)?nombre(?:\s+de)?|nombre)\s*:?\s+/i, '')
+    .replace(/^["'«“”]+|["'»“”]+$/g, '')
+    .trim();
+}
