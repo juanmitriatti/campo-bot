@@ -92,11 +92,13 @@ export class TestBotClient {
     return this.postTestBot({ interactiveReplyId: buttonId });
   }
 
-  /** Reset all user data (hard-delete). */
-  async reset(): Promise<void> {
+  /** Reset all user data (hard-delete). En prod el endpoint exige `x-test-secret` (TEST_BOT_SECRET). */
+  async reset(testSecret?: string): Promise<void> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (testSecret) headers['x-test-secret'] = testSecret;
     const res = await this.fetchAuth(`${this.baseUrl}/api/test-bot/reset`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: '{}',
     });
     if (!res.ok) {

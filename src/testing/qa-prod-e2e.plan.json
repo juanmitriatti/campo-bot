@@ -13,16 +13,66 @@
       "domain": "sistema",
       "why": "Es exactamente el camino donde Tomás se trabó el 6/9: botón Crear Campo, nombre sin artículo, localidad dictada, muletilla «se llama».",
       "steps": [
-        { "send": "hola", "expect": "crear tu primer campo", "buttons": ["cmd_agregar_campo"], "checks": "Bienvenida para usuario sin campos + botón Crear Campo." },
-        { "tap": "cmd_agregar_campo", "expect": "Cómo se llama el campo", "checks": "El botón arranca el flow (antes: texto suelto sin pending)." },
-        { "send": "Establecimiento Roma", "buttons": ["flow_field_loc_city"], "checks": "Nombre sin artículo aceptado tal cual." },
-        { "send": "esta en la localidad de junin buenos aires", "expect": "Junín, Buenos Aires", "buttons": ["flow_confirm"], "checks": "Frase dictada + provincia sin coma → localidad resuelta, sin re-preguntar." },
-        { "tap": "flow_confirm", "expect": "Establecimiento Roma.*creado", "checks": "Campo 1 creado en Junín." },
-        { "send": "agregar campo se llama El Rehue en Lincoln", "expect": "El Rehue.*creado.*Lincoln", "avoid": "se llama", "checks": "La muletilla «se llama» no entra al nombre (regresión prod)." },
-        { "send": "en Establecimiento Roma tengo dos lotes, Norte de 120 has y Sur de 80 has", "expect": "Norte.*Sur|Sur.*Norte", "avoid": "no entend", "checks": "add_plots_batch con hectáreas por lote, en un solo mensaje." },
-        { "send": "agregar lote Bajo en El Rehue", "expect": "Bajo.*creado|hect[aá]reas", "checks": "Lote en el segundo campo; puede pedir hectáreas (pending)." },
-        { "send": "45", "expect": "45|Bajo", "checks": "La respuesta corta completa el pending de superficie." },
-        { "send": "mis campos", "expect": "Establecimiento Roma[\\s\\S]*El Rehue|El Rehue[\\s\\S]*Establecimiento Roma", "checks": "VERIFICACIÓN: 2 campos con su localidad y 3 lotes en total." }
+        {
+          "send": "hola",
+          "expect": "crear tu primer campo",
+          "buttons": [
+            "cmd_agregar_campo"
+          ],
+          "checks": "Bienvenida para usuario sin campos + botón Crear Campo."
+        },
+        {
+          "tap": "cmd_agregar_campo",
+          "expect": "Cómo se llama el campo",
+          "checks": "El botón arranca el flow (antes: texto suelto sin pending)."
+        },
+        {
+          "send": "Establecimiento Roma",
+          "buttons": [
+            "flow_field_loc_city"
+          ],
+          "checks": "Nombre sin artículo aceptado tal cual."
+        },
+        {
+          "send": "esta en la localidad de junin buenos aires",
+          "expect": "Junín, Buenos Aires",
+          "buttons": [
+            "flow_confirm"
+          ],
+          "checks": "Frase dictada + provincia sin coma → localidad resuelta, sin re-preguntar."
+        },
+        {
+          "tap": "flow_confirm",
+          "expect": "Establecimiento Roma.*creado",
+          "checks": "Campo 1 creado en Junín."
+        },
+        {
+          "send": "agregar campo se llama El Rehue en Lincoln",
+          "expect": "El Rehue.*creado.*Lincoln",
+          "avoid": "se llama",
+          "checks": "La muletilla «se llama» no entra al nombre (regresión prod)."
+        },
+        {
+          "send": "en Establecimiento Roma tengo dos lotes, Norte de 120 has y Sur de 80 has",
+          "expect": "Norte[sS]*Sur|Sur[sS]*Norte",
+          "avoid": "no entend",
+          "checks": "add_plots_batch con hectáreas por lote, en un solo mensaje."
+        },
+        {
+          "send": "agregar lote Bajo en El Rehue",
+          "expect": "Bajo.*creado|hect[aá]reas",
+          "checks": "Lote en el segundo campo; puede pedir hectáreas (pending)."
+        },
+        {
+          "send": "45",
+          "expect": "45|Bajo",
+          "checks": "La respuesta corta completa el pending de superficie."
+        },
+        {
+          "send": "mis campos",
+          "expect": "Establecimiento Roma[\\s\\S]*El Rehue|El Rehue[\\s\\S]*Establecimiento Roma",
+          "checks": "VERIFICACIÓN: 2 campos con su localidad y 3 lotes en total."
+        }
       ]
     },
     {
@@ -31,23 +81,100 @@
       "domain": "agro",
       "why": "Cubre los 6 tipos de actividad, el cultivo faltante (invariante 13), plan futuro ≠ registro (invariante 12), lluvia relativa y consultas de historial.",
       "steps": [
-        { "send": "sembré soja en el Norte", "expect": "soja.*Norte|Norte.*soja", "avoid": "gasto", "checks": "Siembra sin monto → actividad, nunca log_expense. Nombre parcial «el Norte» resuelve el lote." },
-        { "send": "sembré en el Sur", "expect": "Qué cultivo", "checks": "Cultivo no nombrado → pregunta con pending (jamás inferir)." },
-        { "send": "maíz", "expect": "maíz.*Sur|Sur.*maíz", "checks": "La respuesta de una palabra completa la siembra." },
-        { "send": "fumigué el Norte con 2 litros de glifosato por hectárea", "expect": "glifosato", "avoid": "no entend|Qué cultivo", "checks": "Pulverización con producto y dosis lt/ha." },
-        { "send": "fertilicé el Sur con 100 kg de urea", "expect": "urea", "checks": "Fertilización con producto y cantidad." },
-        { "send": "ayer llovieron 25 mm en Establecimiento Roma", "expect": "25 ?mm", "checks": "Lluvia con fecha relativa (ayer) resuelta por relative-dates." },
-        { "send": "observación: el Norte viene parejo, sin malezas", "expect": "bservaci[oó]n", "checks": "Prefijo «observación:» bypass total de la IA." },
-        { "send": "el Norte está en V4 con 10% de daño de oruga, severidad leve", "expect": "V4|monitoreo|Monitoreo", "checks": "Hay métricas (estadio + %) → log_crop_scouting, no observación." },
-        { "send": "qué cultivo tiene el Norte?", "expect": "soja", "checks": "active_crop, no list_plots." },
-        { "send": "cuándo se fumigó el Norte?", "expect": "glifosato|fumig", "checks": "query_plot_history, no registra nada nuevo." },
-        { "send": "el sábado tengo que fumigar el Sur", "expect": "ecordatorio", "avoid": "fumigaci[oó]n registrada|Pulverizaci[oó]n registrada", "checks": "Plan futuro → create_reminder, JAMÁS log_spraying (invariante 12)." },
-        { "send": "mis recordatorios", "expect": "fumigar", "checks": "El recordatorio quedó guardado con su fecha." },
-        { "send": "fumigué el lote del campo el regue", "avoid": "no encontr[eé] el campo|no ten[eé]s un campo", "checks": "REGRESIÓN AUDIO: «regue» suena como «Rehue» → el validador conserva el campo y pregunta lote o registra en Bajo." },
-        { "send": "cosechamos el Norte, rinde 3200 kg por hectárea", "expect": "3\\.?200|384", "checks": "Cosecha con rinde por ha → total = 120 ha × 3.200 = 384 tn. Botones de cierre de campaña solo acá." },
-        { "send": "cosecha del Norte: Britos 30 tn, Pérez 28,5 tn a Cargill", "expect": "Britos|2 (camiones|cargas)", "checks": "Lista chofer + peso = loads; mismo día + mismo lote → se agregan a la cosecha." },
-        { "send": "cuánta soja tengo en Cargill?", "expect": "Cargill", "avoid": "stock|dep[oó]sito", "checks": "Grano ENTREGADO por acopiador (query_harvest_loads), nunca check_stock." },
-        { "send": "resumen de la campaña del Norte", "expect": "soja|rinde|Rinde", "checks": "campaign_stats con siembra, labores, lluvia y cosecha del lote." }
+        {
+          "send": "sembré soja en el Norte",
+          "expect": "soja.*Norte|Norte.*soja",
+          "avoid": "gasto",
+          "checks": "Siembra sin monto → actividad, nunca log_expense. Nombre parcial «el Norte» resuelve el lote."
+        },
+        {
+          "send": "sembré en el Sur",
+          "expect": "Qué cultivo",
+          "checks": "Cultivo no nombrado → pregunta con pending (jamás inferir)."
+        },
+        {
+          "send": "maíz",
+          "expect": "maíz.*Sur|Sur.*maíz",
+          "checks": "La respuesta de una palabra completa la siembra."
+        },
+        {
+          "send": "fumigué el Norte con 2 litros de glifosato por hectárea",
+          "expect": "glifosato",
+          "avoid": "no entend|Qué cultivo",
+          "checks": "Pulverización con producto y dosis lt/ha."
+        },
+        {
+          "send": "fertilicé el Sur con 100 kg de urea",
+          "expect": "urea",
+          "checks": "Fertilización con producto y cantidad."
+        },
+        {
+          "send": "ayer llovieron 25 mm en Establecimiento Roma",
+          "expect": "25 ?mm",
+          "checks": "Lluvia con fecha relativa (ayer) resuelta por relative-dates."
+        },
+        {
+          "send": "observación: el Norte viene parejo, sin malezas",
+          "expect": "bservaci[oó]n",
+          "checks": "Prefijo «observación:» bypass total de la IA."
+        },
+        {
+          "send": "el Norte está en V4 con 10% de daño de oruga, severidad leve",
+          "expect": "V4|monitoreo|Monitoreo",
+          "checks": "Hay métricas (estadio + %) → log_crop_scouting, no observación."
+        },
+        {
+          "send": "qué cultivo tiene el Norte?",
+          "expect": "soja",
+          "checks": "active_crop, no list_plots."
+        },
+        {
+          "send": "cuándo se fumigó el Norte?",
+          "expect": "glifosato|fumig",
+          "checks": "query_plot_history, no registra nada nuevo."
+        },
+        {
+          "send": "el sábado tengo que fumigar el Sur",
+          "expect": "ecordatorio|A qué hora",
+          "avoid": "fumigaci[oó]n registrada|Pulverizaci[oó]n registrada",
+          "checks": "Plan futuro → create_reminder, JAMÁS log_spraying (invariante 12). Puede pedir la hora (pending)."
+        },
+        {
+          "send": "mis recordatorios",
+          "expect": "fumigar",
+          "checks": "Consulta read-only EN MEDIO del pending de hora: debe responderse (y re-preguntar la hora), no ser tragada como hora."
+        },
+        {
+          "send": "cuando sea",
+          "expect": "ecordatorio|sábado|s[aá]bado",
+          "checks": "Completa el pending de hora → el recordatorio queda creado para el sábado."
+        },
+        {
+          "send": "fumigué el lote del campo el regue",
+          "avoid": "no encontr[eé] el campo|no ten[eé]s un campo",
+          "checks": "REGRESIÓN AUDIO: «regue» suena como «Rehue» → el validador conserva el campo y pregunta lote o registra en Bajo."
+        },
+        {
+          "send": "cosechamos el Norte, rinde 3200 kg por hectárea",
+          "expect": "3\\.?200|384",
+          "checks": "Cosecha con rinde por ha → total = 120 ha × 3.200 = 384 tn. Botones de cierre de campaña solo acá."
+        },
+        {
+          "send": "cosecha del Norte: Britos 30 tn, Pérez 28,5 tn a Cargill",
+          "expect": "Britos|2 (camiones|cargas)",
+          "checks": "Lista chofer + peso = loads; mismo día + mismo lote → se agregan a la cosecha."
+        },
+        {
+          "send": "cuánta soja tengo en Cargill?",
+          "expect": "Cargill",
+          "avoid": "stock|dep[oó]sito",
+          "checks": "Grano ENTREGADO por acopiador (query_harvest_loads), nunca check_stock."
+        },
+        {
+          "send": "resumen de la campaña del Norte",
+          "expect": "soja|rinde|Rinde",
+          "checks": "campaign_stats con siembra, labores, lluvia y cosecha del lote."
+        }
       ]
     },
     {
@@ -56,12 +183,37 @@
       "domain": "plata",
       "why": "Montos en jerga (850 mil), corrección a mitad de confirmación, ingreso en USD con precio unitario, categoría de campo (arrendamiento) y consultas financieras.",
       "steps": [
-        { "send": "gasté 850 mil en gasoil", "expect": "850\\.000|850 mil|gasoil", "checks": "Gasto ARS; según setting puede pedir confirmación." },
-        { "send": "no, eran 950 mil", "expect": "950\\.000|950", "checks": "Corrección de monto sobre el último gasto / la confirmación abierta." },
-        { "send": "vendí 100 toneladas de soja a 290 dólares la tonelada", "expect": "29\\.000|USD|U\\$S|d[oó]lares", "checks": "Ingreso USD: cantidad × precio unitario = 29.000." },
-        { "send": "pagué 120 mil de arrendamiento", "expect": "120\\.000|arrendamiento", "checks": "Categoría de campo: se guarda a nivel campo, sin lote auto-resuelto." },
-        { "send": "cómo vamos?", "expect": "[Gg]astos|[Ii]ngresos|[Rr]esultado", "checks": "financial_report general." },
-        { "send": "gastos del lote Norte", "expect": "Norte", "avoid": "bservaci[oó]n", "checks": "financial_report(plot=Norte), nunca log_observation." }
+        {
+          "send": "gasté 850 mil en gasoil",
+          "expect": "850\\.000|850 mil|gasoil",
+          "checks": "Gasto ARS; según setting puede pedir confirmación."
+        },
+        {
+          "send": "no, eran 950 mil",
+          "expect": "950\\.000|950",
+          "checks": "Corrección de monto sobre el último gasto / la confirmación abierta."
+        },
+        {
+          "send": "vendí 100 toneladas de soja a 290 dólares la tonelada",
+          "expect": "29\\.000|USD|U\\$S|d[oó]lares",
+          "checks": "Ingreso USD: cantidad × precio unitario = 29.000."
+        },
+        {
+          "send": "pagué 120 mil de arrendamiento",
+          "expect": "120\\.000|arrendamiento",
+          "checks": "Categoría de campo: se guarda a nivel campo, sin lote auto-resuelto."
+        },
+        {
+          "send": "cómo vamos?",
+          "expect": "[Gg]astos|[Ii]ngresos|[Rr]esultado",
+          "checks": "financial_report general."
+        },
+        {
+          "send": "gastos del lote Norte",
+          "expect": "Norte",
+          "avoid": "bservaci[oó]n",
+          "checks": "financial_report(plot=Norte), nunca log_observation."
+        }
       ]
     },
     {
@@ -70,20 +222,78 @@
       "domain": "hacienda",
       "why": "Alta con precio (gasto vinculado), servicio, pariciones, mortandad, transferencia, sanidad, pesaje, consultas, y la capa individual con caravana sin romper el grupo (invariante 16).",
       "steps": [
-        { "send": "compré 40 vacas Angus preñadas a 900 mil cada una, van al lote Sur", "expect": "40.*vaca|vaca.*40", "avoid": "En un lote|En un feedlot", "checks": "Ubicación explícita → sin botones; precio c/u → gasto vinculado categoría Hacienda." },
-        { "send": "agregué 2 toros Angus al lote Sur", "expect": "2.*toro|toro.*2", "checks": "Segunda categoría en el mismo lote." },
-        { "send": "eché los toros con las vacas", "expect": "ervicio", "checks": "log_repro_event(servicio), no transfer." },
-        { "send": "parieron 12 vacas", "expect": "12.*ternero|nacimiento|Nacimiento", "checks": "Verbo de parto → record_livestock_birth; un solo grupo de vacas → auto-resuelve." },
-        { "send": "se murieron 2 terneros", "expect": "2.*ternero|baja|Baja", "checks": "record_livestock_death." },
-        { "send": "pasé 20 vacas del Sur al Norte", "expect": "20.*vaca|Norte", "checks": "transfer_livestock de GRUPO (cantidad, no caravana)." },
-        { "send": "vacuné las vacas del Sur contra aftosa", "expect": "aftosa", "checks": "log_health_event(vacunacion)." },
-        { "send": "pesé 10 terneros, promedio 180 kg", "expect": "180", "checks": "log_weighing: peso promedio por animal, no total." },
-        { "send": "cuántas vacas tengo?", "expect": "40|20", "checks": "VERIFICACIÓN: 40 vacas (20 Sur + 20 Norte), 2 toros, 10 terneros." },
-        { "send": "cuándo se vacunó?", "expect": "aftosa", "avoid": "bservaci[oó]n", "checks": "query_health_events, nunca log_observation." },
-        { "send": "dar de alta una vaca Angus con caravana 032010000000077 en el lote Sur", "expect": "032010000000077|caravana", "checks": "register_animal: CII de 15 dígitos válido; el grupo sigue intacto." },
-        { "send": "dónde está la 032010000000077?", "expect": "Sur", "checks": "query_animal por caravana → ficha del ANIMAL, no del grupo." },
-        { "send": "mové 20 vacas del Norte al Sur", "expect": "20.*vaca|Sur", "checks": "Cantidad → transfer_livestock (grupo), NUNCA move_animals aunque haya caravanas." },
-        { "send": "listado de hacienda", "expect": "vaca|toro|ternero", "checks": "VERIFICACIÓN: inventario por lote y categoría coherente con todos los movimientos." }
+        {
+          "send": "compré 40 vacas Angus preñadas a 900 mil cada una, van al lote Sur",
+          "expect": "Vaca[sS]*40|40[sS]*[Vv]aca",
+          "avoid": "En un lote|En un feedlot",
+          "checks": "Ubicación explícita → sin botones; precio c/u → gasto vinculado categoría Hacienda."
+        },
+        {
+          "send": "agregué 2 toros Angus al lote Sur",
+          "expect": "Toro[sS]*2 animales|2[sS]*[Tt]oro",
+          "checks": "Segunda categoría en el mismo lote."
+        },
+        {
+          "send": "eché los toros con las vacas",
+          "expect": "ervicio",
+          "checks": "log_repro_event(servicio), no transfer."
+        },
+        {
+          "send": "parieron 12 vacas",
+          "expect": "12.*ternero|nacimiento|Nacimiento",
+          "checks": "Verbo de parto → record_livestock_birth; un solo grupo de vacas → auto-resuelve."
+        },
+        {
+          "send": "se murieron 2 terneros",
+          "expect": "2.*ternero|baja|Baja",
+          "checks": "record_livestock_death."
+        },
+        {
+          "send": "pasé 20 vacas del Sur al Norte",
+          "expect": "20.*vaca|Norte",
+          "checks": "transfer_livestock de GRUPO (cantidad, no caravana)."
+        },
+        {
+          "send": "vacuné las vacas del Sur contra aftosa",
+          "expect": "aftosa",
+          "checks": "log_health_event(vacunacion)."
+        },
+        {
+          "send": "pesé 10 terneros, promedio 180 kg",
+          "expect": "180",
+          "checks": "log_weighing: peso promedio por animal, no total."
+        },
+        {
+          "send": "cuántas vacas tengo?",
+          "expect": "40|20",
+          "checks": "VERIFICACIÓN: 40 vacas (20 Sur + 20 Norte), 2 toros, 10 terneros."
+        },
+        {
+          "send": "cuándo se vacunó?",
+          "expect": "aftosa",
+          "avoid": "bservaci[oó]n",
+          "checks": "query_health_events, nunca log_observation."
+        },
+        {
+          "send": "dar de alta una vaca Angus con caravana 032010000000077 en el lote Sur",
+          "expect": "032 ?01 ?0000000077|caravana",
+          "checks": "register_animal: CII de 15 dígitos válido; el grupo sigue intacto."
+        },
+        {
+          "send": "dónde está la 032010000000077?",
+          "expect": "Sur",
+          "checks": "query_animal por caravana → ficha del ANIMAL, no del grupo."
+        },
+        {
+          "send": "mové 20 vacas del Norte al Sur",
+          "expect": "20.*vaca|Sur",
+          "checks": "Cantidad → transfer_livestock (grupo), NUNCA move_animals aunque haya caravanas."
+        },
+        {
+          "send": "listado de hacienda",
+          "expect": "vaca|toro|ternero",
+          "checks": "VERIFICACIÓN: inventario por lote y categoría coherente con todos los movimientos."
+        }
       ]
     },
     {
@@ -92,11 +302,35 @@
       "domain": "sistema",
       "why": "Lo que un productor hace entre registro y registro: preguntar el clima, mirar la pizarra, borrar por error (nunca sin confirmación).",
       "steps": [
-        { "send": "va a llover en Junín?", "expect": "Jun[ií]n", "avoid": "no entend", "checks": "weather_full(city=Junín), no la ciudad del usuario." },
-        { "send": "a cuánto está la soja?", "expect": "soja", "checks": "grain_prices (pizarra), no active_crop ni ingresos." },
-        { "send": "borrá el último gasto", "expect": "[Cc]onfirm|¿", "buttons": ["cancel_destructive"], "checks": "Destructivo → preview + confirmación, nunca borra directo." },
-        { "tap": "cancel_destructive", "expect": "cancelad", "checks": "Cancelar no borra nada." },
-        { "send": "gracias", "expect": "De nada|👍", "checks": "Cierre trivial sin IA." }
+        {
+          "send": "va a llover en Junín?",
+          "expect": "Jun[ií]n",
+          "avoid": "no entend",
+          "checks": "weather_full(city=Junín), no la ciudad del usuario."
+        },
+        {
+          "send": "a cuánto está la soja?",
+          "expect": "soja",
+          "checks": "grain_prices (pizarra), no active_crop ni ingresos."
+        },
+        {
+          "send": "borrá el último gasto",
+          "expect": "[Cc]onfirm|¿",
+          "buttons": [
+            "cancel_destructive"
+          ],
+          "checks": "Destructivo → preview + confirmación, nunca borra directo."
+        },
+        {
+          "tap": "cancel_destructive",
+          "expect": "cancelad",
+          "checks": "Cancelar no borra nada."
+        },
+        {
+          "send": "gracias",
+          "expect": "De nada|👍",
+          "checks": "Cierre trivial sin IA."
+        }
       ]
     }
   ]

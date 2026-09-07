@@ -105,8 +105,16 @@ async function run(): Promise<void> {
   await client.login(email, password);
   console.log(`QA E2E → ${baseUrl} como ${email} (user ${client.userId})`);
 
+  // --probe: solo mira en qué estado está la cuenta (¿vacía?) y sale.
+  if (args.includes('--probe')) {
+    const r = await client.send('mis campos');
+    console.log(allText(r.messages));
+    return;
+  }
+
   if (!noReset && !from) {
-    await client.reset();
+    // En prod el reset exige TEST_BOT_SECRET (variable del servicio en Railway).
+    await client.reset(process.env.TEST_BOT_SECRET);
     console.log('Cuenta de QA vaciada (reset).');
   }
 
