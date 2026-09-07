@@ -2750,4 +2750,92 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(text).not.toMatch(/Abrí el formulario con el botón/);
     });
   });
+
+  // Prod, 6 sep 2026 (Tomás, recién registrado): tocó "Crear Campo", el bot
+  // contestó con texto suelto ("escribí: Agregar campo [nombre]") y el nombre
+  // pelado que mandó después ("Establecimiento Roma") fue al agente, que a
+  // veces creaba el campo y a veces charlaba. Cinco intentos ("roma", "el
+  // olivo", "la flor"…) hasta concluir que "solo toma nombres con LA o EL".
+  // Después, por audio: "Está en la localidad de Junín, Buenos Aires" →
+  // "¿En qué localidad?" otra vez. Nada de esto debe tocar al agente.
+  describe('alta de campo por botón + frase de localidad, sin agente (invariante 5)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('field-name-flow');
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"Crear Campo" → pregunta el nombre con flow; nombre sin artículo + localidad dictada → campo creado, 0 llamadas al agente', async () => {
+      const calls = h.fakeAgent.calls.length;
+
+      const ask = await h.tap('cmd_agregar_campo');
+      expect(h.allText(ask)).toMatch(/Cómo se llama el campo/i);
+
+      const method = await h.send('Establecimiento Roma');
+      expect(h.allButtons(method).map(b => b.id)).toContain('flow_field_loc_city');
+
+      const confirm = await h.send('esta en la localidad de junin buenos aires');
+      expect(h.allText(confirm)).toContain('Junín, Buenos Aires');
+      expect(h.allButtons(confirm).map(b => b.id)).toContain('flow_confirm');
+
+      const done = await h.tap('flow_confirm');
+      expect(h.allText(done)).toMatch(/Establecimiento Roma.*creado/i);
+
+      const rows = await h.q(
+        `SELECT name, city, province FROM fields WHERE user_id = $1 AND deleted_at IS NULL ORDER BY id`,
+        [h.userId],
+      );
+      expect(rows).toEqual([{ name: 'Establecimiento Roma', city: 'Junín', province: 'Buenos Aires' }]);
+      expect(h.fakeAgent.calls.length).toBe(calls);
+    });
+
+    it('"crear otro campo" es trivial: arranca el flow por el nombre, no va al agente', async () => {
+      const calls = h.fakeAgent.calls.length;
+      const ask = await h.send('Crear otro campo');
+      expect(h.allText(ask)).toMatch(/Cómo se llama el campo/i);
+      expect(h.fakeAgent.calls.length).toBe(calls);
+      const cancel = await h.send('cancelar');
+      expect(h.allText(cancel)).toMatch(/cancelad/i);
+    });
+
+    it('re-enunciado a mitad del flow: "hola quiero agregar otro campo que se llama X" renombra en vez de re-preguntar la ubicación', async () => {
+      const calls = h.fakeAgent.calls.length;
+      await h.send('Crear otro campo');
+      const method = await h.send('La Flor');
+      expect(h.allButtons(method).map(b => b.id)).toContain('flow_field_loc_city');
+      // El usuario cambia de idea con la frase completa (y saludo adelante).
+      const renamed = await h.send('hola quiero agregar otro campo que se llama Los Alamos');
+      expect(h.allText(renamed)).toMatch(/Los Alamos/);
+      // Un tap del teclado viejo en el paso equivocado no contamina el nombre.
+      const confirm = await h.send('Está en la localidad de Junín, Buenos Aires.');
+      expect(h.allText(confirm)).toMatch(/Nombre: \*Los Alamos\*/);
+      expect(h.allText(confirm)).toContain('Junín, Buenos Aires');
+      await h.tap('flow_confirm');
+      const rows = await h.q(
+        `SELECT name FROM fields WHERE user_id = $1 AND deleted_at IS NULL ORDER BY id`,
+        [h.userId],
+      );
+      expect(rows.map(r => r.name)).toEqual(['Establecimiento Roma', 'Los Alamos']);
+      expect(h.fakeAgent.calls.length).toBe(calls);
+    });
+
+    it('"Agregar campo X\\n\\nEsta en la localidad de Y" en UN mensaje crea directo (nombre y localidad bien partidos)', async () => {
+      const calls = h.fakeAgent.calls.length;
+      const done = await h.send('Agregar campo Don Pedro\n\nEsta en la localidad de lincoln, buenos aires');
+      expect(h.allText(done)).toMatch(/Don Pedro.*creado en \*Lincoln, Buenos Aires\*/);
+      expect(h.fakeAgent.calls.length).toBe(calls);
+    });
+
+    it('un tap viejo "flow_field_loc_city" en el paso del nombre NO se guarda como nombre', async () => {
+      await h.send('Crear otro campo');
+      const stale = await h.tap('flow_field_loc_city');
+      expect(h.allText(stale)).not.toMatch(/Cómo querés ubicar/);
+      const method = await h.send('El Ombú');
+      expect(h.allButtons(method).map(b => b.id)).toContain('flow_field_loc_city');
+      await h.send('cancelar');
+      const rows = await h.q(`SELECT name FROM fields WHERE user_id = $1 AND name LIKE 'flow_%'`, [h.userId]);
+      expect(rows).toEqual([]);
+    });
+  });
 });

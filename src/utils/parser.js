@@ -12,6 +12,7 @@ import {
   UNIT_ALIASES,
   ACTIVITY_FILTER_PATTERNS,
 } from '../constants/agro-terms.js';
+import { canonicalProvince } from '../services/localidad-lookup.service.js';
 
 // --- Normalización central ---
 function normalizeText(text) {
@@ -1151,7 +1152,7 @@ const COMMAND_PATTERNS = [
     command: "add_field",
     // Stop city extraction at the first comma so compound messages like
     // "agregar campo X en Y, lotes A,B" don't smuggle the rest into city.
-    patterns: [/(?:agregar|agrega|nuevo|crear)\s+(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!en\s)\w+){0,3})(?:\s+en\s+([^,]+))?/],
+    patterns: [/(?:agregar|agrega|nuevo|crear)\s+(lote|campo|parcela)\s+((?:\w+)(?:\s+(?!(?:en|esta|queda|ubicado)\s)\w+){0,3})(?:\s+en\s+([^,]+))?/],
     extract: (m, _norm, original) => {
       // If the original message contains additional clauses (lotes/sembré/etc.),
       // defer to the agent — trivial parsing would smuggle "Junín con lotes A"
@@ -1169,10 +1170,27 @@ const COMMAND_PATTERNS = [
       // del texto normalizado (minúsculas, sin acentos) — solo sirve para
       // detectar el comando. Bug visto live (Jun 2026): el campo se guardaba en
       // minúscula. Char-class incluye acentos para nombres como "La Peña".
-      const reOrig = /(?:agregar|agrega|nuevo|crear)\s+(?:lote|campo|parcela)\s+((?:[\wáéíóúüñ]+)(?:\s+(?!en\s)[\wáéíóúüñ]+){0,3})(?:\s+en\s+([^,]+))?/i;
+      // El nombre corta antes de "en / está / queda / ubicado" y de un salto de
+      // línea; la ciudad admite ", <provincia>" solo si la cola ES una provincia
+      // ("Junín, Buenos Aires" sí; "Pergamino, 100 has" no). Prod (6 sep 2026):
+      // "Agregar campo establecimiento Roma\n\nEsta en la localidad de junin,
+      // buenos aires" daba nombre "establecimiento Roma Esta".
+      const reOrig = /(?:agregar|agrega|nuevo|crear)\s+(?:lote|campo|parcela)\s+((?:[\wáéíóúüñ]+)(?:[ \t]+(?!(?:en|est[aá]|queda|ubicad[oa])\s)[\wáéíóúüñ]+){0,3})(?:[ \t]+en[ \t]+([^,\n]+)(?:,[ \t]*([^,\n]+))?)?/i;
       const om = original ? original.match(reOrig) : null;
       const nameSrc = (om && om[1]) ? om[1] : m[2];
-      const citySrc = (om && om[2] != null) ? om[2] : m[3];
+      let citySrc = (om && om[2] != null) ? om[2] : m[3];
+      if (om && om[2] != null && om[3] && canonicalProvince(om[3])) citySrc = `${om[2].trim()}, ${om[3].trim()}`;
+      // Localidad en la línea siguiente ("...\nEsta en la localidad de Junín"):
+      // el lookup del handler sabe limpiar la frase.
+      if (!citySrc && original && /\n/.test(original)) {
+        const secondLine = original.split('\n').map(l => l.trim()).filter(Boolean)[1];
+        if (secondLine && /^(?:est[aá]|queda|en|localidad|ubicad)/i.test(secondLine)) citySrc = secondLine;
+      }
+      // "agregar campo Don Pedro está en Lincoln" (misma línea)
+      if (!citySrc && original) {
+        const tail = original.match(/\b(?:est[aá]|queda|ubicad[oa])\s+en\s+([^,\n]+(?:,\s*[^,\n]+)?)\s*$/i);
+        if (tail) citySrc = tail[1];
+      }
       return {
         entityKeyword: m[1],
         fieldName: nameSrc.trim(),
@@ -1184,8 +1202,11 @@ const COMMAND_PATTERNS = [
   {
     // "quiero agregar un campo" / "crear un campo" — generic, no name given
     command: "prompt_add_field",
+    // "crear otro campo" (prod, 6 sep 2026) iba al agente, que respondía con
+    // una pregunta suelta ("¿Cómo se llama el nuevo campo?") sin pending.
     patterns: [
-      /^(?:quiero\s+)?(?:agregar|agrega|crear|añadir|nuevo)\s+(?:(?:un|el|mi)\s+)?campo\s*$/,
+      /^(?:hola[,!\s]*)?(?:quiero|necesito|quisiera|me\s+gustaria|dame\s+de\s+alta|dar\s+de\s+alta)?\s*(?:agregar|agrega|crear|crea|añadir|anadir|nuevo|cargar|carga|sumar|registrar|dar\s+de\s+alta)\s+(?:(?:un|el|mi|otro|un\s+nuevo|nuevo|un\s+otro)\s+)?campo(?:\s+nuevo)?\s*$/,
+      /^(?:quiero|necesito|quisiera)\s+(?:crear|agregar|cargar|sumar)\s+(?:un\s+|otro\s+)?campo(?:\s+nuevo)?\s*$/,
     ],
     extract: () => ({}),
   },

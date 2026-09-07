@@ -36,6 +36,7 @@ import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
 import { isAffirmation, looksLikeNewActionOrQuery, hasActionVerbOrQuery, isReadOnlyQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
+import { extractFieldRestatement } from '../middleware/flows/field-step-helpers.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { PendingTransactionStore, resolveReplacedPending, isCompletePending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
@@ -750,6 +751,23 @@ async function processTextMessageInner(
         }
         // fall through to normal processing below
       } else {
+
+      // Re-enunciado del alta dentro del field_flow ("hola quiero agregar otro
+      // campo que se llama X" / "Agregar campo X en Y"): es la respuesta a la
+      // pregunta abierta, no una interrupción. El saludo inicial hacía que se
+      // tratara como greeting → re-prompt, y el nombre nuevo se perdía (prod,
+      // 6 sep 2026). El engine sabe tomar nombre + localidad en cualquier paso.
+      if (flowCtx.state === 'field_flow' && extractFieldRestatement(text)) {
+        console.log(`[FLOW] field_flow re-enunciado desde el pipeline: "${text.slice(0, 60)}"`);
+        const result = await conversationEngine.processFlowMessage(userId, text, flowCtx);
+        if (result.nextContext) {
+          await conversationEngine.setFlowContext(userId, result.nextContext);
+        } else {
+          await conversationEngine.clearFlow(userId);
+        }
+        applySideEffects(result.response.sideEffects, phone);
+        return collectResponse(result.response);
+      }
 
       // Smart interruption: check if the user typed a known command mid-flow
       const interruptCmd = intentClassifier.parseCommandOnly(text);
@@ -1825,8 +1843,15 @@ export async function handleInteractiveReply(
       conversationObserver.logFlowStarted(userId, flowName, { trigger: 'interactive_button' });
       return collectResponse(result.response);
     }
-    // flow_field_loc_ → location method buttons, pass full ID to flow engine
+    // flow_field_loc_ → location method buttons, pass full ID to flow engine.
+    // Solo al paso que los muestra: un teclado viejo tocado en el paso "nombre"
+    // creó en prod un campo llamado "flow_field_loc_city" (6 sep 2026).
     if (callbackId.startsWith('flow_field_loc_') && flowCtx.state !== 'idle') {
+      const curField = conversationEngine.getCurrentStepField(flowCtx);
+      if (curField !== 'locationMethod') {
+        console.log(`[INTERCEPT] flow tap '${callbackId}' ignorado: el paso actual es '${curField ?? flowCtx.state}' (botón viejo o duplicado)`);
+        return [STALE_BUTTON_ITEM];
+      }
       const result = await conversationEngine.processFlowMessage(userId, callbackId, flowCtx);
       if (result.nextContext) {
         await conversationEngine.setFlowContext(userId, result.nextContext);
@@ -2188,6 +2213,23 @@ export async function handleInteractiveReply(
     }
     const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
     if (response) {
+      // Un handler que pide arrancar un flow desde un TAP (cmd_agregar_campo →
+      // prompt_add_field → field_flow) — mismo tratamiento que el path de
+      // texto. Antes el sideEffect se ignoraba y el tap devolvía [] (silencio).
+      if (response.sideEffects?.startFlow) {
+        const { state, data } = response.sideEffects.startFlow;
+        const flowData: Record<string, unknown> = { ...(data ?? {}) };
+        if (state === 'field_flow') {
+          flowData._channel = ctx.channel;
+          flowData._channelId = phone;
+        }
+        const flowResult = await conversationEngine.startFlow(userId, state, flowData);
+        if (flowResult.nextContext) {
+          await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+        }
+        conversationLogger.log(userId, phone, `[${callbackId}]`, flowResult.response.messages[0] ?? flowResult.response.interactive?.body ?? null, 'tap', intent.data.command, null, null, false, null, !!flowResult.response.interactive, null, null, null, ctx.channel).catch(() => {});
+        return [...collectResponse(response), ...collectResponse(flowResult.response)];
+      }
       applySideEffects(response.sideEffects, phone);
       conversationLogger.log(userId, phone, `[${callbackId}]`, response.messages[0] ?? response.interactive?.body ?? null, 'tap', intent.data.command, null, null, false, null, !!response.interactive, null, null, null, ctx.channel).catch(() => {});
       await attachSuggestion(response, userId, ctx.channel, intent.data.command);

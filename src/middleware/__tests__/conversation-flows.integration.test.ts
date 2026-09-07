@@ -3,6 +3,7 @@ import { ConversationEngine } from '../conversation-engine.js';
 import { FlowRegistry } from '../flows/flow-registry.js';
 import type { FlowContext, FlowState, UserId, HandlerResponse } from '../../types/index.js';
 import type { FlowDefinition } from '../flows/flow.interface.js';
+import { fieldFlow } from '../flows/field.flow.js';
 
 // --- ConversationSimulator: wraps engine with sequential message sending ---
 
@@ -292,5 +293,65 @@ describe('Conversation Flow Integration', () => {
     await sim.send('bad');
     const r3 = await sim.send('bad');
     expect(r3.messages[0]).toContain('cancelar');
+  });
+});
+
+// Prod (Tomás, 6 sep 2026): alta de campo por AUDIO. En el paso "¿cómo querés
+// ubicar el campo?" dictó "Está en la localidad de Junín, Buenos Aires." — la
+// palabra "localidad" se tomó como el botón "Escribir localidad" y el bot
+// repreguntó "¿En qué localidad?" a la que acababa de decir. Después dictó
+// "Junín, Buenos Aires" (Whisper lo baja a "junin buenos aires") y tampoco.
+describe('field_flow real — localidad dictada como frase', () => {
+  let sim: ConversationSimulator;
+
+  beforeEach(async () => {
+    const stateRepo = createMockStateRepo();
+    const registry = new FlowRegistry();
+    registry.register(fieldFlow);
+    const engine = new ConversationEngine(stateRepo as any, registry);
+    sim = new ConversationSimulator(engine, userId);
+    await sim.startFlow('field_flow', { name: 'Establecimiento Roma' });
+  });
+
+  it('"Está en la localidad de Junín, Buenos Aires." en el paso de método → directo a confirmar', async () => {
+    const r = await sim.send('Está en la localidad de Junín, Buenos Aires.');
+    expect(sim.currentContext.state).toBe('confirming');
+    expect(sim.currentContext.data.city).toBe('Junín');
+    expect(sim.currentContext.data._province).toBe('Buenos Aires');
+    expect(r.messages.join('\n')).toContain('Junín, Buenos Aires');
+  });
+
+  it('"junin buenos aires" (audio, sin coma) en el paso city → confirmar', async () => {
+    await sim.send('flow_field_loc_city');
+    expect(sim.currentContext.step).toBe(2);
+    const r = await sim.send('junin buenos aires');
+    expect(sim.currentContext.state).toBe('confirming');
+    expect(r.messages.join('\n')).toContain('Junín, Buenos Aires');
+  });
+
+  it('"Localidad de Lincoln" y "Lincoln Bs as" también resuelven', async () => {
+    await sim.send('flow_field_loc_city');
+    await sim.send('Localidad de Lincoln');
+    expect(sim.currentContext.state).toBe('confirming');
+    expect(sim.currentContext.data.city).toBe('Lincoln');
+  });
+
+  it('el botón/palabra de control sigue siendo control ("Escribir localidad" no se busca como ciudad)', async () => {
+    const r = await sim.send('Escribir localidad');
+    expect(sim.currentContext.step).toBe(2);
+    expect(r.messages.join('\n')).toMatch(/En qué localidad/);
+  });
+
+  it('sin nombre prefilled, el flow arranca preguntando el nombre (invariante 5 para "Crear Campo")', async () => {
+    const stateRepo = createMockStateRepo();
+    const registry = new FlowRegistry();
+    registry.register(fieldFlow);
+    const engine = new ConversationEngine(stateRepo as any, registry);
+    const fresh = new ConversationSimulator(engine, userId);
+    const r0 = await fresh.startFlow('field_flow', {});
+    expect(r0.messages.join('\n')).toMatch(/Cómo se llama el campo/);
+    await fresh.send('Establecimiento Roma');
+    expect(fresh.currentContext.data.name).toBe('Establecimiento Roma');
+    expect(fresh.currentContext.step).toBe(1);
   });
 });

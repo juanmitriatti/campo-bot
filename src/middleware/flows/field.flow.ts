@@ -1,9 +1,10 @@
 import { FinancialService } from '../../domain/financial/financial.service.js';
 import { FinancialRepository } from '../../domain/financial/financial.repository.js';
-import { localidadLookup } from '../../services/localidad-lookup.service.js';
+import { localidadLookup, normalizeLocalityInput } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../pending-field-city-handler.js';
 import { getSuggestions } from '../contextual-suggestions.js';
 import { MapTokenService } from '../../services/map-token.service.js';
+import { extractFieldRestatement } from './field-step-helpers.js';
 import type { FlowDefinition, FlowStep } from './flow.interface.js';
 import type { UserId } from '../../types/index.js';
 
@@ -20,8 +21,29 @@ const steps: FlowStep[] = [
   {
     field: 'name',
     prompt: '¿Cómo se llama el campo?',
-    validate: (input) => {
-      const name = input.trim();
+    validate: (input, data) => {
+      let name = input.trim();
+      // Un callback id de un teclado viejo ("flow_field_loc_city") no es un
+      // nombre: en prod se creó un campo llamado así.
+      if (/^(?:flow|cmd|menu|confirm|cancel|form)_[a-z0-9_]+$/i.test(name)) {
+        return { error: 'Ese botón es de otra pregunta. Escribí el *nombre* del campo (ej: *Establecimiento Roma*).' };
+      }
+      // "Agregar campo Establecimiento Roma" / "el campo se llama X (en Y)" como
+      // respuesta a "¿cómo se llama?": tomar el nombre (y la localidad si vino)
+      // en vez de contestar "eso parece un comando, escribí cancelar".
+      const restated = extractFieldRestatement(name);
+      if (restated) {
+        name = restated.name;
+        if (restated.cityText) {
+          const lookup = localidadLookup.lookup(restated.cityText);
+          if (lookup.status === 'exact') {
+            data.city = lookup.matches[0].nombre;
+            data._province = lookup.matches[0].provincia;
+            data.locationMethod = 'city';
+          }
+        }
+      }
+      name = name.replace(/^["'«“”]+|["'»“”]+$/g, '').trim();
       if (name.length < 2) return { error: 'El nombre tiene que tener al menos 2 caracteres.' };
       if (name.length > 100) return { error: 'El nombre es demasiado largo (máx 100 caracteres).' };
       // Reject command-like input that was likely meant as a different intent
@@ -83,7 +105,10 @@ const steps: FlowStep[] = [
       return { value: city };
     },
     validateAsync: async (input, data) => {
-      const city = input.trim();
+      // "Está en la localidad de Junín, Buenos Aires." → "Junín, Buenos Aires"
+      // (fuente única en localidad-lookup; acá solo para que el mensaje de
+      // error muestre lo que realmente buscamos).
+      const city = normalizeLocalityInput(input) || input.trim();
       if (city.length < 2) return { error: 'La localidad tiene que tener al menos 2 caracteres.' };
 
       // Guard anti-trampa: si el usuario tipea un comando/consulta en vez de la

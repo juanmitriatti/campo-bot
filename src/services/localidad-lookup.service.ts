@@ -20,6 +20,126 @@ function normalize(s: string): string {
   return s.normalize('NFD').replace(/[\u0300-\u036f\u00AD]/g, '').toLowerCase().trim();
 }
 
+// ---------------------------------------------------------------------------
+// Normalizaci\u00F3n de la ENTRADA del usuario (fuente \u00FAnica \u2014 la usan el flow de
+// campo, el pending de ciudad y el handler de add_field v\u00EDa `lookup()`).
+//
+// Visto en prod (Tom\u00E1s, 6 sep 2026, usuario reci\u00E9n registrado): en un mismo
+// alta de campo tipe\u00F3/dict\u00F3 "Lincoln Bs as", "Localidad de Lincoln", "Junin bs
+// as", "Est\u00E1 en la localidad de Jun\u00EDn, Buenos Aires." y "junin buenos aires"
+// (Whisper le saca la coma). Las cinco fallaban con "No encontr\u00E9 la localidad"
+// y el bot repet\u00EDa "\u00BFEn qu\u00E9 localidad?" \u2014 cada una es una respuesta
+// perfectamente razonable a esa pregunta.
+// ---------------------------------------------------------------------------
+
+/** Alias coloquiales/abreviados \u2192 nombre de provincia tal como est\u00E1 en el censo. */
+const PROVINCE_ALIASES: Array<[RegExp, string]> = [
+  [/^(?:bs\.?\s*as\.?|bsas|bs\.?\s*aires|b\.?\s*aires|pba|buenos\s+aires|pcia\.?\s+bs\.?\s*as\.?)$/, 'Buenos Aires'],
+  [/^(?:caba|capital\s+federal|capital|ciudad\s+(?:autonoma\s+)?de\s+buenos\s+aires|c\.?a\.?b\.?a\.?)$/, 'Ciudad Aut\u00F3noma de Buenos Aires'],
+  [/^(?:sta\.?\s*fe|santa\s+fe|sfe)$/, 'Santa Fe'],
+  [/^(?:cba|cordoba)$/, 'C\u00F3rdoba'],
+  [/^(?:e\.?\s*rios|entre\s+rios|entrerrios)$/, 'Entre R\u00EDos'],
+  [/^(?:sgo\.?\s+del\s+estero|santiago\s+del\s+estero|santiago)$/, 'Santiago del Estero'],
+  [/^(?:mza|mendoza)$/, 'Mendoza'],
+  [/^(?:tuc|tucuman)$/, 'Tucum\u00E1n'],
+  [/^(?:la\s+pampa)$/, 'La Pampa'],
+  [/^(?:rio\s+negro)$/, 'R\u00EDo Negro'],
+  [/^(?:san\s+luis)$/, 'San Luis'],
+  [/^(?:san\s+juan)$/, 'San Juan'],
+  [/^(?:ctes|corrientes)$/, 'Corrientes'],
+  [/^(?:chaco)$/, 'Chaco'],
+  [/^(?:misiones)$/, 'Misiones'],
+  [/^(?:nqn|neuquen)$/, 'Neuqu\u00E9n'],
+  [/^(?:salta)$/, 'Salta'],
+  [/^(?:jujuy)$/, 'Jujuy'],
+  [/^(?:catamarca)$/, 'Catamarca'],
+  [/^(?:la\s+rioja)$/, 'La Rioja'],
+  [/^(?:formosa)$/, 'Formosa'],
+  [/^(?:chubut)$/, 'Chubut'],
+  [/^(?:santa\s+cruz)$/, 'Santa Cruz'],
+  [/^(?:tierra\s+del\s+fuego|tdf)$/, 'Tierra del Fuego, Ant\u00E1rtida e Islas del Atl\u00E1ntico Sur'],
+];
+
+/** "pcia. de buenos aires" / "provincia de bs as" / "prov. cba" \u2192 provincia can\u00F3nica, o null. */
+export function canonicalProvince(raw: string): string | null {
+  const s = normalize(raw)
+    .replace(/[.]+$/, '')
+    .replace(/^(?:provincia|pcia|prov)\.?\s*(?:de\s+)?/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!s) return null;
+  for (const [re, name] of PROVINCE_ALIASES) {
+    if (re.test(s)) return name;
+  }
+  return null;
+}
+
+/** Frases con las que la gente contesta "\u00BFen qu\u00E9 localidad?" adem\u00E1s del nombre. */
+const LEAD_IN_PATTERNS: RegExp[] = [
+  /^(?:hola|buenas|buen\s+d[i\u00ED]a)[,!.\s]+/i,
+  /^(?:(?:el|mi|nuestro)\s+campo\s+)?(?:est[a\u00E1]|queda|es|se\s+encuentra|se\s+ubica|ubicad[oa])\s+(?:en\s+)?/i,
+  /^(?:en\s+)?(?:la\s+)?(?:localidad|ciudad|pueblo|zona|partido|paraje)\s+de\s+/i,
+  /^(?:cerca|al\s+lado)\s+de\s+/i,
+  /^en\s+/i,
+];
+
+/**
+ * Deja solo el nombre de la localidad (con provincia si vino) a partir de lo
+ * que escribi\u00F3 o dict\u00F3 el usuario. No consulta el censo: es puro texto.
+ *
+ *   "Est\u00E1 en la localidad de Jun\u00EDn, Buenos Aires." \u2192 "Jun\u00EDn, Buenos Aires"
+ *   "Localidad de Lincoln"                          \u2192 "Lincoln"
+ *   "junin buenos aires"                            \u2192 "junin, Buenos Aires"
+ *   "Lincoln Bs as"                                 \u2192 "Lincoln, Buenos Aires"
+ *   "Jun\u00EDn (Buenos Aires)"                          \u2192 "Jun\u00EDn, Buenos Aires"
+ */
+export function normalizeLocalityInput(raw: string): string {
+  let s = raw.replace(/\s+/g, ' ').trim();
+  // Comillas y puntuaci\u00F3n final (Whisper cierra con punto).
+  s = s.replace(/^["'\u00AB\u201C\u201D]+|["'\u00BB\u201C\u201D]+$/g, '').replace(/[.!?\u2026]+$/g, '').trim();
+  // "(Buenos Aires)" / " - Buenos Aires" / " / Buenos Aires" \u2192 coma
+  s = s.replace(/\s*\(([^)]+)\)\s*$/, ', $1').replace(/\s+[-\u2013/]\s+/, ', ');
+  // ", Argentina" al final no aporta nada.
+  s = s.replace(/\s*,?\s*argentina$/i, '').trim();
+
+  for (let i = 0; i < 3; i++) {
+    let changed = false;
+    for (const re of LEAD_IN_PATTERNS) {
+      const next = s.replace(re, '').trim();
+      if (next && next !== s) { s = next; changed = true; }
+    }
+    if (!changed) break;
+  }
+
+  if (s.includes(',')) {
+    const commaIdx = s.indexOf(',');
+    const head = s.slice(0, commaIdx).trim();
+    const tail = s.slice(commaIdx + 1).trim();
+    const prov = canonicalProvince(tail);
+    if (prov) s = `${head}, ${prov}`;
+  }
+  return s;
+}
+
+/**
+ * Provincia pegada sin coma al final: "junin buenos aires" / "lincoln bs as"
+ * \u2192 "junin, Buenos Aires". Devuelve null si no hay sufijo de provincia o si la
+ * ciudad quedar\u00EDa vac\u00EDa ("Mendoza" solo es una ciudad). `lookup()` lo aplica
+ * SOLO cuando el texto entero no es una localidad exacta, para no partir un
+ * nombre real que termine como una provincia.
+ */
+export function splitProvinceSuffix(s: string): string | null {
+  if (s.includes(',')) return null;
+  const words = s.trim().split(/\s+/);
+  for (let n = Math.min(4, words.length - 1); n >= 1; n--) {
+    const tail = words.slice(words.length - n).join(' ');
+    const head = words.slice(0, words.length - n).join(' ').trim();
+    const prov = canonicalProvince(tail);
+    if (prov && head) return `${head}, ${prov}`;
+  }
+  return null;
+}
+
 function levenshtein(a: string, b: string): number {
   const m = a.length;
   const n = b.length;
@@ -94,7 +214,9 @@ class LocalidadLookupService {
   lookup(input: string): LookupResult {
     this.ensureLoaded();
 
-    const trimmed = input.trim();
+    // Frases ("está en la localidad de X"), abreviaturas de provincia ("bs as")
+    // y puntuación de Whisper se limpian ACÁ, para todos los callers.
+    const trimmed = normalizeLocalityInput(input);
     if (!trimmed) return { status: 'not_found', matches: [] };
 
     // Parse "City, Province" format
@@ -107,10 +229,18 @@ class LocalidadLookupService {
     }
 
     const normCity = normalize(cityPart);
-    const normProvince = provincePart ? normalize(provincePart) : null;
+    const normProvince = provincePart ? normalize(canonicalProvince(provincePart) ?? provincePart) : null;
 
     // 1. Exact normalized match
     const exactMatches = this.index!.get(normCity);
+
+    // 1.5 "junin buenos aires" (sin coma — típico de audio): el texto entero no
+    // es una localidad, pero termina en provincia → reintentar partido.
+    if (!exactMatches) {
+      const split = splitProvinceSuffix(trimmed);
+      if (split) return this.lookup(split);
+    }
+
     if (exactMatches) {
       // If province specified, filter
       if (normProvince) {

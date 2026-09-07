@@ -161,6 +161,13 @@ Ver [docs/ganaderia/](docs/ganaderia/overview.md). Invariante 16 manda: la capa 
 ### Pending field-city escape hatch
 - `looksLikeNonCity()` aborta el loop de "¿En qué localidad?" cuando el usuario tipea algo que no es localidad (verbos agro, listas con `:`, queries con `?`, >60 chars, SQL keywords, comas múltiples CON dígitos — "Pergamino, Buenos Aires, Argentina" sí resuelve). Add new escape patterns HERE, not in the agent prompt.
 
+### Alta de campo — nombre y localidad (Sep 2026, feedback de usuario nuevo por WhatsApp/audio)
+- **`normalizeLocalityInput()` en `localidad-lookup.service.ts` es la fuente ÚNICA** de limpieza de lo que el usuario contesta a "¿en qué localidad?": frases ("está en la localidad de X", "localidad de X"), abreviaturas de provincia ("bs as", "pcia. de", "cba"), paréntesis, ", Argentina", y provincia pegada sin coma ("junin buenos aires" — Whisper le saca la coma). La aplica `lookup()`, así que flow, pending y `add_field` la reciben gratis. Alias nuevos van a `PROVINCE_ALIASES`, frases a `LEAD_IN_PATTERNS`. En prod 5 respuestas razonables seguidas fallaban con "No encontré la localidad".
+- **Pedir el nombre del campo es un flow, nunca texto suelto** (invariante 5): `prompt_add_field` (botón "Crear Campo", "crear otro campo") y `add_field` sin nombre arrancan `field_flow` en el paso `name`. Antes contestaban "escribí: Agregar campo [nombre]" y el nombre pelado siguiente caía en el agente, que a veces charlaba — el usuario concluyó que "solo toma nombres con LA o EL".
+- **Re-enunciado dentro del flow**: `extractFieldRestatement()` (`flows/field-step-helpers.ts`) entiende "Agregar campo X", "quiero agregar otro campo que se llama X", "X en Y" y el salto de línea "X\n\nEstá en la localidad de Y" en CUALQUIER paso del `field_flow` (el pipeline lo prioriza sobre la interrupción por saludo; el engine renombra y, si trae localidad, salta al paso city). En el paso `locationMethod`, control = SOLO la palabra del botón; una frase con "localidad" adentro se prueba como localidad.
+- **Taps `flow_field_loc_*` solo alimentan el paso `locationMethod`** (un teclado viejo creó en prod un campo llamado `flow_field_loc_city`); el paso `name` además rechaza cualquier callback id.
+- **Logs**: `[FLOW]` por cada mensaje que un flow consume (paso + ok/rechazo) y `[whatsapp] OUT` por cada ítem enviado — sin eso, en prod se veían los TEXT entrantes y ninguna respuesta del bot. El 400 de Meta ahora loguea `code message (details)`.
+
 ### Crop synonyms (anglicismos)
 - `src/utils/synonyms.js` + `normalizeCropName()`: soybean→soja, corn/maize→maíz, wheat→trigo, sunflower→girasol, sorghum→sorgo, barley→cebada, oat→avena, cotton→algodón, rye→centeno. Applied in BOTH regex parser and agent input normalization.
 

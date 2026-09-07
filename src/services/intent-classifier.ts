@@ -779,6 +779,20 @@ export class IntentClassifier {
             console.log(`[intent-classifier] greeting+action detected — "${cleaned.slice(0, 50)}" → al agente (no greeting)`);
             return null;
           }
+          // "hola quiero crear un campo nuevo": lo que sigue al saludo es un
+          // comando trivial en sí mismo (prompt_add_field) → ese comando, no
+          // el saludo. Antes el saludo se lo comía porque el sub-comando también
+          // era trivial.
+          if (sub && sub.command !== 'greeting' && sub.command !== 'thanks' && TRIVIAL_COMMANDS.has(sub.command as string)) {
+            console.log(`[intent-classifier] greeting+trivial — "${cleaned.slice(0, 50)}" → ${sub.command}`);
+            return {
+              intent: { type: 'command', data: sub },
+              confidence: 0.95,
+              aiUsed: false,
+              source: 'command',
+              missingFields: [],
+            };
+          }
         }
       }
       return {

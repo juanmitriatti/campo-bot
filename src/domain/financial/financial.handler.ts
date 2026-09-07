@@ -2410,7 +2410,13 @@ export class FinancialHandler {
         // Guard: never crash on a missing name (e.g. the field name got dropped
         // upstream as a "filler" token like "X"). Ask for it instead of throwing.
         if (!cmd.fieldName || (typeof cmd.fieldName === 'string' && cmd.fieldName.trim() === '')) {
-          return { messages: [`¿Cómo se llama el ${kwAdd === 'lote' ? 'lote' : 'campo'}?\nEj: *agregar ${kwAdd === 'lote' ? 'lote Norte' : 'campo La Esperanza'}*`] };
+          if (kwAdd !== 'lote') {
+            // Invariante 5: la pregunta por el nombre va con el flow (pending
+            // machine-readable), no como texto suelto — la respuesta pelada
+            // ("Establecimiento Roma") terminaba en el agente.
+            return { messages: [], sideEffects: { startFlow: { state: 'field_flow' as const, data: {} } } };
+          }
+          return { messages: [`¿Cómo se llama el lote?\nEj: *agregar lote Norte*`] };
         }
 
         // Smart lote flow: when user says "agregar lote X" without specifying field
@@ -2563,12 +2569,26 @@ export class FinancialHandler {
         // No city or non-exact match: start field_flow with name pre-filled
         // so the user sees the 3 location method buttons
         const prefillData: Record<string, unknown> = { name: fieldName };
+        const introMessages = [`📍 Vamos a crear el campo *${fieldName}*.`];
         if (cmd.city) {
           // User already typed a city but it didn't match exactly — skip to city step
           prefillData.locationMethod = 'city';
+          // Decirle POR QUÉ le volvemos a preguntar la localidad que acaba de
+          // escribir: "campo X en Junín" saltaba al paso city con un
+          // "¿En qué localidad?" pelado, sin mencionar que Junín es ambiguo.
+          const lookup = localidadLookup.lookup(cmd.city as string);
+          if (lookup.status === 'disambiguate') {
+            const options = lookup.matches.map(m => `• ${m.nombre}, ${m.provincia}`).join('\n');
+            introMessages.push(`Hay varias localidades llamadas *${cmd.city}*:\n\n${options}\n\nEscribí el nombre con la provincia, ej: *${lookup.matches[0].nombre}, ${lookup.matches[0].provincia}*`);
+          } else if (lookup.status === 'suggestions') {
+            const options = lookup.matches.map(m => `• ${m.nombre}, ${m.provincia}`).join('\n');
+            introMessages.push(`No encontré "${cmd.city}". ¿Quisiste decir?\n\n${options}`);
+          } else {
+            introMessages.push(`No encontré la localidad "${cmd.city}". Revisá el nombre.`);
+          }
         }
         return {
-          messages: [`📍 Vamos a crear el campo *${fieldName}*.`],
+          messages: introMessages,
           sideEffects: { startFlow: { state: 'field_flow' as const, data: prefillData } },
         };
       }

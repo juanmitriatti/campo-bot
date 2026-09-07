@@ -292,6 +292,41 @@ function escapeRegex(str: string): string {
  * "en realidad X" so the plot resolver sees just the plot name (or
  * "plot field" hint). Returns null if no known correction prefix matches.
  */
+/**
+ * El usuario re-enuncia el alta del campo en medio del field_flow (o contesta
+ * "¿cómo se llama?" con la frase completa):
+ *   "Agregar campo Establecimiento Roma"                 → { name }
+ *   "hola quiero agregar otro campo que se llama X"      → { name }
+ *   "Agregar campo X\n\nEsta en la localidad de Junín"   → { name, cityText }
+ *   "agregar campo X en Pergamino"                       → { name, cityText }
+ * Prod (Tomás, 6 sep 2026): el paso "nombre" contestaba "Eso parece un
+ * comando, escribí cancelar" y el paso "ubicación" se comía la frase entera
+ * como si fuera el botón de localidad. Devuelve null si no es un re-enunciado.
+ */
+export function extractFieldRestatement(text: string): { name: string; cityText: string | null } | null {
+  const raw = text.replace(/\r/g, '').trim();
+  if (!raw) return null;
+  const [firstLine, ...restLines] = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  let t = firstLine.replace(/^(?:hola|buenas|buen\s+d[ií]a)[,!.\s]+/i, '').trim();
+
+  let m = t.match(/^(?:(?:quiero|necesito|quisiera|me\s+gustar[ií]a)\s+)?(?:agregar|agrega|agregá|crear|creá|crea|cargar|cargá|carga|sumar|sumá|dar\s+de\s+alta|nuevo)\s+(?:(?:un|el|mi|otro|un\s+nuevo|nuevo)\s+)?(?:campo|establecimiento|estancia|chacra)\s+(?:que\s+se\s+llama\s+|llamad[oa]\s+)?(.+)$/i);
+  if (!m) m = t.match(/^(?:el\s+|mi\s+)?(?:campo|establecimiento)\s+(?:que\s+)?se\s+llama\s+(.+)$/i);
+  if (!m) return null;
+
+  let name = m[1].trim().replace(/^["'«“”]+|["'»“”]+$/g, '').replace(/[.!?]+$/, '').trim();
+  let cityText: string | null = null;
+  // "X en Pergamino" / "X, en Pergamino" / "X ubicado en Pergamino"
+  const split = name.match(/^(.+?)(?:\s*,)?\s+(?:que\s+)?(?:est[aá]\s+|queda\s+|ubicad[oa]\s+)?en\s+(?:la\s+localidad\s+de\s+)?(.+)$/i);
+  if (split && split[1].trim()) {
+    name = split[1].trim();
+    cityText = split[2].trim();
+  }
+  // Segunda línea: "Esta en la localidad de junin, buenos aires"
+  if (!cityText && restLines.length > 0) cityText = restLines.join(' ').trim();
+  if (!name || name.length < 2) return null;
+  return { name, cityText: cityText && cityText.length >= 2 ? cityText : null };
+}
+
 export function stripPlotCorrectionPrefix(input: string): string | null {
   const m = input
     .trim()

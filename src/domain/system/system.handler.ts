@@ -324,8 +324,16 @@ export class SystemHandler {
         };
 
       case 'prompt_add_field':
+        // Invariante 5: el bot\u00f3n "Crear Campo" y "crear otro campo" contestaban
+        // con texto suelto ("escrib\u00ed: Agregar campo [nombre]") sin pending. El
+        // nombre pelado que el usuario mandaba despu\u00e9s ("Establecimiento Roma")
+        // ca\u00eda en el agente, que a veces lo tomaba como add_field y a veces
+        // charlaba ("Veo que ten\u00e9s el establecimiento Roma. \u00bfQu\u00e9 necesit\u00e1s?").
+        // Prod, 6 sep 2026: 5 intentos hasta dar con la forma que funcionaba.
+        // El field_flow ya tiene el paso "\u00bfC\u00f3mo se llama el campo?" con validaci\u00f3n.
         return {
-          messages: ['Para agregar un campo, escrib\u00ed:\n\n_\"Agregar campo [nombre]\"_\n\nEj: _\"Agregar campo La Esperanza\"_'],
+          messages: [],
+          sideEffects: { startFlow: { state: 'field_flow', data: {} } },
         };
 
       case 'prompt_add_plot':

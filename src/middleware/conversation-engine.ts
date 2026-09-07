@@ -8,6 +8,8 @@ import { getSettingNumber } from '../services/settings.service.js';
 import { logError } from '../services/error-logger.js';
 import { normalizarMonto, detectarCategoria, detectarCategoriaIngreso } from '../utils/parser.js';
 import { resolveRelativeDate } from '../utils/relative-dates.js';
+import { normalizeLocalityInput } from '../services/localidad-lookup.service.js';
+import { extractFieldRestatement } from './flows/field-step-helpers.js';
 import {
   CORRECTION_PREFIX_RE, CORRECTION_ALT, COPULA_ALT, detectCurrencyTerm, QUANTITY_UNIT_RE,
   MONEY_HINT_RE, hasDeleteVerb, startsWithCorrectionCue, normLex,
@@ -583,17 +585,59 @@ export class ConversationEngine {
     // Field-location shortcut: at the "¿cómo querés ubicar el campo?" step, a user
     // who TYPES a locality (instead of tapping "Escribir localidad") should go
     // straight to city validation — not get bounced with "elegí una opción".
+    //
+    // Prod (Tomás, 6 sep 2026): dictó "Está en la localidad de Junín, Buenos
+    // Aires" en este paso. Contenía "localidad" → se tomó como el BOTÓN
+    // "Escribir localidad" y el bot volvió a preguntar "¿En qué localidad?"
+    // aunque la acababa de decir. Un control es SOLO la palabra del botón
+    // pelada; cualquier frase con contenido se prueba como localidad (el
+    // lookup ya sabe sacar "está en la localidad de").
     if (stepDef.field === 'locationMethod') {
-      const t = text.trim().toLowerCase();
-      const isMethodOrControl = /^flow_field_loc_|^(localidad|ciudad|escribir|mapa|dibujar|compartir|gps|cancelar|volver|atr[aá]s|no)\b|ubicaci[oó]n/i.test(t);
-      const looksLikeLocality = !isMethodOrControl && /[a-záéíóúñ]/i.test(t) && t.length >= 2 && t.length <= 40;
-      if (looksLikeLocality) {
+      const t = text.trim();
+      const tl = t.toLowerCase();
+      const isControl = /^flow_field_loc_/.test(tl)
+        || /^(?:(?:escribir|poner|tipear|te\s+digo)\s+(?:la\s+)?)?(?:localidad|ciudad)$/.test(tl)
+        || /\b(?:mapa|dibujar|compartir|gps|ubicaci[oó]n)\b/.test(tl)
+        || /^(?:cancelar|volver|atr[aá]s|no|s[ií]|ok|dale)$/.test(tl);
+      if (!isControl) {
+        const candidate = normalizeLocalityInput(t);
+        const looksLikeLocality = /[a-záéíóúñ]/i.test(candidate) && candidate.length >= 2 && candidate.length <= 60;
         const cityIdx = flow.steps.findIndex(s => s.field === 'city');
-        if (cityIdx >= 0) {
+        if (looksLikeLocality && cityIdx >= 0) {
+          console.log(`[FLOW] ${ctx.state} locationMethod ← localidad tipeada "${t.slice(0, 60)}" → paso city`);
           ctx.data.locationMethod = 'city';
           ctx.step = cityIdx;
           return this.processFlowMessage(userId, text, ctx);
         }
+      }
+    }
+
+    // Re-enunciado del alta a mitad del field_flow: "Agregar campo X en Y" /
+    // "quiero agregar otro campo que se llama X" mientras el bot preguntaba la
+    // ubicación. Prod (6 sep 2026): el paso locationMethod se lo comía (la
+    // palabra "localidad" del texto parecía el botón) y el nombre nuevo se
+    // perdía. Se toma el nombre; si trae localidad, se procesa como respuesta
+    // del paso city.
+    if (ctx.state === 'field_flow' && stepDef.field !== 'name') {
+      const restated = extractFieldRestatement(text);
+      if (restated) {
+        const renamedTo = restated.name;
+        const changed = typeof ctx.data.name !== 'string' || renamedTo.toLowerCase() !== (ctx.data.name as string).toLowerCase();
+        ctx.data.name = renamedTo;
+        console.log(`[FLOW] field_flow re-enunciado: nombre="${renamedTo}"${changed ? '' : ' (igual)'} city="${restated.cityText ?? ''}"`);
+        const cityIdx = flow.steps.findIndex(s => s.field === 'city');
+        if (restated.cityText && cityIdx >= 0) {
+          ctx.data.locationMethod = 'city';
+          ctx.step = cityIdx;
+          return this.processFlowMessage(userId, restated.cityText, ctx);
+        }
+        const prompt = await this.resolvePrompt(stepDef, ctx.data, userId);
+        const interactive = await this.resolveInteractive(stepDef, ctx.data, userId);
+        const ack = changed ? `✏️ Campo *${renamedTo}*. Seguimos.` : `Dale, seguimos con *${renamedTo}*.`;
+        return {
+          response: { messages: interactive ? [ack] : [`${ack}\n\n${prompt}`], interactive },
+          nextContext: ctx,
+        };
       }
     }
 
@@ -692,6 +736,11 @@ export class ConversationEngine {
     const result = stepDef.validateAsync
       ? await stepDef.validateAsync(text, ctx.data, userId)
       : stepDef.validate(text, ctx.data);
+
+    // Invariante 1: un flow que se come el mensaje no puede ser invisible en
+    // los logs — en prod solo se veía el TEXT entrante y ninguna traza de qué
+    // paso lo consumió ni por qué lo rechazó.
+    console.log(`[FLOW] ${ctx.state} step=${ctx.step}/${stepDef.field} input="${text.slice(0, 60)}" → ${'error' in result ? `rechazado: ${result.error.split('\n')[0].slice(0, 80)}` : 'ok'}`);
 
     if ('error' in result) {
       // Increment step failure count

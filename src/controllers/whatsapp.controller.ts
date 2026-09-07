@@ -48,6 +48,12 @@ const handleWaDocCallback = makeDocCallbackHandler(downloadMedia);
 
 export async function sendBotResponse(phone: string, items: BotResponseItem[]): Promise<void> {
   for (const item of items) {
+    // Lo que el bot CONTESTÓ. Sin esto, reconstruir una conversación de prod
+    // desde los logs era adivinar: se veía cada TEXT entrante y ninguna salida.
+    const outPreview = item.type === 'interactive'
+      ? `${item.interactive?.type} "${(item.interactive?.body ?? '').replace(/\s+/g, ' ').slice(0, 100)}" [${(item.interactive?.buttons ?? []).map(b => b.id).join(',')}]`
+      : `"${(item.text ?? '').replace(/\s+/g, ' ').slice(0, 100)}"`;
+    console.log(`[whatsapp] OUT ${item.type}: ${outPreview}`);
     try {
       if (item.type === 'text' && item.text) {
         // Check for attachment marker (PDF/imagen del pipeline)
@@ -83,7 +89,13 @@ export async function sendBotResponse(phone: string, items: BotResponseItem[]): 
       }
       // Mismo contrato que telegram: un fallo de envío NUNCA es silencioso —
       // intentamos un fallback en texto plano para que el usuario vea algo.
-      console.error('[whatsapp] Error sending response item:', err, '— attempting fallback');
+      // El detalle de Meta (code + message + details) va en la primera línea:
+      // "Request failed with status code 400" + 4 líneas de stack de axios no
+      // decían QUÉ rechazó (prod, 6 sep 2026).
+      const metaErr = (err as any)?.response?.data?.error;
+      const metaDetail = metaErr ? ` — meta ${metaErr.code} ${metaErr.message}${metaErr.error_data?.details ? ` (${metaErr.error_data.details})` : ''}` : '';
+      const preview = item.type === 'interactive' ? `${item.interactive?.type} "${(item.interactive?.body ?? '').slice(0, 80)}"` : `text "${(item.text ?? '').slice(0, 80)}"`;
+      console.error(`[whatsapp] Error sending response item (${preview}): ${errMsg}${metaDetail} — attempting fallback`);
       logError('whatsapp', 'SEND_RESPONSE', err as Error, {
         context: { phone, itemType: item.type, errMsg },
       });
