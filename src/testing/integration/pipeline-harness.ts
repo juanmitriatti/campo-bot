@@ -170,7 +170,24 @@ async function deleteUserByEmail(email: string): Promise<void> {
     for (const t of tables) await run(`DELETE FROM "${t}" WHERE user_id = $1`);
   }
 
-  await pool.query(`DELETE FROM users WHERE id = $1`, [uid]); // sin catch: si falla, que se vea
+  // El borrado final reintenta ante FK: hay escrituras fire-and-forget
+  // (limitNotifier.maybeNotifyHit → alert_history, learning, etc.) que pueden
+  // aterrizar DESPUÉS de la pasada de limpieza y antes del DELETE de users.
+  // En CI (DB fresca, ids bajos, workers en paralelo) pasó con
+  // alert_history_user_id_fkey (8 sep 2026). Sin catch en el último intento:
+  // si sigue fallando, que se vea.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await pool.query(`DELETE FROM users WHERE id = $1`, [uid]);
+      break;
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code !== '23503' || attempt === 4) throw err;
+      await new Promise(res => setTimeout(res, 250));
+      for (const sql of childDeletes) await run(sql);
+      for (const t of tables) await run(`DELETE FROM "${t}" WHERE user_id = $1`);
+    }
+  }
   const left = await pool.query(`SELECT 1 FROM users WHERE id = $1`, [uid]);
   if (left.rows.length > 0) throw new Error(`pipeline-harness: no pude borrar el usuario de prueba ${email} (#${uid})`);
 }
