@@ -91,8 +91,8 @@ export function getFieldInfo(userId: number, fieldName: string): Promise<{ name:
 export function saveUnparsedMessage(userId: number, message: string): Promise<void>;
 export function getDailyClaudeCount(userId: number): Promise<number>;
 // El INSERT guarda los 4 tipos de token; la declaración cubría 2.
-export function saveAiUsage(userId: number, usage: { input_tokens: number; output_tokens: number; cache_read_tokens?: number; cache_write_tokens?: number }): Promise<void>;
-export function saveAiFallbackLog(userId: number, inputText: string, claudeResponse: unknown, usage: unknown): Promise<void>;
+export function saveAiUsage(userId: number, usage: { input_tokens: number; output_tokens: number; cache_read_tokens?: number; cache_write_tokens?: number }, costUsd?: number | null): Promise<void>;
+export function saveAiFallbackLog(userId: number, inputText: string, claudeResponse: unknown, usage: unknown, costUsd?: number | null): Promise<void>;
 export function saveAudioTranscriptionLog(userId: number, data: { durationSeconds: number; provider: string; model: string; costUsd: number }): Promise<void>;
 export function getHourlyAudioCount(userId: number): Promise<number>;
 export function getDailyRainfallTotal(userId: number, fieldId?: number | null): Promise<number>;

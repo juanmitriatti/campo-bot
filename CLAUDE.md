@@ -318,7 +318,7 @@ Gated by admin settings (ship dark, flip when ready):
 
 ## Feature Gates
 
-13 features toggleable per plan via admin UI. Bot commands, dashboard API (`requireFeature()`) and frontend all enforce gating.
+14 features toggleable per plan via admin UI. Bot commands, dashboard API (`requireFeature()`) and frontend all enforce gating.
 
 El plan mínimo de cada feature es DATO (`plan_features`), editable en /admin → Planes; la columna de abajo es el estado sembrado tras la migración 109, no una constante del código. `free` no se vende: es donde cae el que no paga.
 
@@ -336,6 +336,7 @@ El plan mínimo de cada feature es DATO (`plan_features`), editable en /admin �
 | `audio` | pro | voice transcription |
 | `stock` | pro | warehouses, add/check_stock, dashboard Stock |
 | `livestock` | pro | inventory + health/repro/weighing, feedlots, dashboard Hacienda |
+| `data_analysis` | pro | tab "Análisis de datos" del dashboard (`POST /api/auth/data-analysis`); no tiene comando de bot |
 | `sharing` | **pro_plus** | share_field (accept_invite ungated) — **el único escalón entre Pro y Pro+** |
 
 ## Key File Map
@@ -412,6 +413,16 @@ El plan mínimo de cada feature es DATO (`plan_features`), editable en /admin �
 - Observaciones dejó de ser destino propio: es sub-tab de Actividades en `Dashboard.tsx`. El view `observations` sigue siendo válido para links viejos.
 - Moneda: el resultado de campaña muestra ARS y USD **siempre juntos**, sin toggle — un campo argentino es negativo en pesos y positivo en dólares en la misma campaña, y elegir uno miente. El toggle ARS/USD solo afecta el detalle por lote y por categoría.
 - Cultivo NO se codifica por color (4 hues categóricos no pasan separación CVD en modo oscuro); la identidad la lleva el nombre.
+
+### Análisis de datos con IA (dashboard, Sep 2026)
+Tab **Análisis de datos** justo debajo de Resumen: el usuario elige campo, lote(s) y campaña, escribe una pregunta y Claude responde en markdown sobre SUS datos. Feature `data_analysis` (migración 118: pro, pro_plus, enterprise). Conversación corta en la pantalla, **no se persiste**.
+- **Ruta** `POST /api/auth/data-analysis` (`src/routes/data-analysis.routes.ts`, montada en `app.ts` bajo el mismo prefijo que auth). Body `{field_id|'all', plot_ids?, season?, question, history?}` → `{answer, model, scope, truncated[], quota, usage}`. Códigos: 400 con `code` (validación, `PLOT_NOT_IN_SCOPE`), 404 campo ajeno, 429 `AI_QUOTA_EXCEEDED`, 503 `AI_UNAVAILABLE` (apagado o fallo, nunca un 500 mudo). `GET .../quota` para el pie de la pantalla. `createDataAnalysisRouter(deps)` permite testear el contrato HTTP in-process con fakes.
+- **Assembler determinístico** (`src/services/data-analysis-context.service.ts`): `getOverview` + listas crudas acotadas por lote (`COUNT(*) OVER()` para el total real) + `campaignStats` compactados. Claves en orden fijo, números redondeados, `ORDER BY fecha DESC, id DESC`, sin `new Date()` → mismo alcance = mismos bytes = el bloque DATOS cachea en la repregunta. Todo recorte (tope de filas o presupuesto de chars, orden fijo `SACRIFICE_ORDER`, mínimo 20 filas) queda en `truncation[]`, en el mensaje al modelo y en el log `[data-analysis] TRUNCATE` (invariante 1). Un lote ajeno es `ScopeError` 400, nunca se ignora.
+- **Servicio Claude** (`src/ai/data-analysis.service.ts`, molde `agronomy-knowledge.service.ts`): sin tools, `system=[reglas, DATOS con cache_control]`; la fecha y la pregunta van en `messages` (en system invalidarían el cache). Reglas duras: solo el bloque DATOS, nunca inventar cifras, nunca dosis, nunca "registré". `refusal` → null (503); `max_tokens` → nota al pie. Settings grupo `ai`: `DATA_ANALYSIS_ENABLED` (kill switch), `_MODEL` (default `claude-sonnet-5`), `_EFFORT`, `_MAX_TOKENS`, `_TIMEOUT_MS`, `_MAX_DATA_CHARS`, `_MAX_ROWS_PER_LIST`, `_MAX_HISTORY_TURNS`, `_MAX_QUESTION_CHARS`.
+- **Cuota compartida con el bot**: `src/services/ai-quota.service.ts` es la fuente ÚNICA de "cuántas llamadas de IA por día" (`plans.daily_ai_limit` → `user_settings.claude_daily_limit` → 50). Antes vivía copiada en agent.service, intent-extractor y conversational-fallback; los tres delegan ahí. Cada análisis escribe `ai_usage` (cuenta para el tope) y `ai_fallback_logs` con `cost_usd` real.
+- **Precio por modelo** (`src/ai/model-pricing.ts`): `saveAiUsage`/`saveAiFallbackLog` aceptan `costUsd`; sin él asumen Haiku. Sin esto el admin veía costo de Haiku para llamadas Sonnet/Opus.
+- **Frontend**: `components/analysis/DataAnalysisPage.tsx` (+ `PlotChips`, `AnalysisThread`, `Markdown` con `react-markdown`+`remark-gfm`), `hooks/useFieldsTree.ts` (`/fields-tree`, gate `fields`; NO `/observations/filters`, gateado por `agronomy`), `api/dataAnalysis.ts`. Nav: `SECONDARY` en `nav-model.ts` (Sidebar bajo Resumen; en mobile, primer grupo de "Más"). **`NO_MUTATION_ENDPOINTS` en `api/client.ts`**: un POST de consulta no invalida el Resumen (antes cualquier POST OK refetcheaba `/overview` y analytics). `requireFeature` vive en `src/middleware/feature.middleware.ts` (lo comparten auth.routes y este router).
+- Regresiones: `src/ai/__tests__/data-analysis.test.ts`, `src/services/__tests__/ai-quota.test.ts`, `src/services/__tests__/data-analysis-context.integration.test.ts`, `src/routes/__tests__/data-analysis.routes.test.ts` (in-process + server real).
 
 ### Frontend / Landing
 - `frontend/` — React dashboard (in-repo). `landing/` — git submodule (Lovable — no editar a mano). Landing on `/`, app on `/login|/register|/dashboard|/chat`, assets split `/app-assets/*` vs `/assets/*`.

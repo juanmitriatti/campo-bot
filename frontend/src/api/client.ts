@@ -2,6 +2,9 @@ import { notifyMutation } from './mutations';
 
 const API_BASE = '/api/auth';
 
+/** Rutas no-GET que NO mutan estado del servidor (no invalidan caches). */
+const NO_MUTATION_ENDPOINTS = ['/data-analysis'];
+
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -50,7 +53,9 @@ export async function apiRequest<T = unknown>(endpoint: string, options: Request
     throw new ApiError(res.status, data.error || 'Error del servidor');
   }
 
-  notifyMutation(method, endpoint);
+  // Un POST de consulta (análisis con IA) no escribe nada: sin esta exclusión
+  // cada pregunta refetcheaba el Resumen y las analíticas agronómicas.
+  if (!NO_MUTATION_ENDPOINTS.some(p => endpoint.startsWith(p))) notifyMutation(method, endpoint);
   return data as T;
 }
 

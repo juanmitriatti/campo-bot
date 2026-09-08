@@ -245,11 +245,17 @@ export async function getMonthlyReportForMonth(userId, month, year) {
 
 // --- AI usage ---
 
-export async function saveAiUsage(userId, usage) {
+/**
+ * `costUsd` opcional: el caller que sabe qué modelo usó lo calcula con
+ * `src/ai/model-pricing.ts` (Sonnet/Opus del análisis de datos). Sin él se
+ * asume Haiku 4.5, que es lo que corre el bot.
+ */
+export async function saveAiUsage(userId, usage, costUsd = null) {
   const cacheRead = usage.cache_read_tokens || 0;
   const cacheWrite = usage.cache_write_tokens || 0;
   // Haiku 4.5 pricing — input 1x, cache read 0.1x, cache write 1.25x (5min TTL)
-  const cost = (usage.input_tokens / 1_000_000 * 0.80) +
+  const cost = costUsd != null ? costUsd :
+               (usage.input_tokens / 1_000_000 * 0.80) +
                (cacheRead / 1_000_000 * 0.08) +
                (cacheWrite / 1_000_000 * 1.00) +
                (usage.output_tokens / 1_000_000 * 4);
@@ -321,10 +327,12 @@ export async function getUserFinancialSummary(userId) {
 
 // --- AI Fallback Logs ---
 
-export async function saveAiFallbackLog(userId, inputText, claudeResponse, usage) {
+export async function saveAiFallbackLog(userId, inputText, claudeResponse, usage, knownCostUsd = null) {
   const tokensUsed = (usage.input_tokens || 0) + (usage.output_tokens || 0);
   // Haiku 4.5: input 0.80/M, cache read 0.08/M, cache write 1.00/M, output 4.00/M
-  const costUsd = ((usage.input_tokens || 0) / 1_000_000 * 0.80) +
+  // (o el costo que trae el caller cuando usó otro modelo — ver model-pricing.ts)
+  const costUsd = knownCostUsd != null ? knownCostUsd :
+                  ((usage.input_tokens || 0) / 1_000_000 * 0.80) +
                   ((usage.cache_read_tokens || 0) / 1_000_000 * 0.08) +
                   ((usage.cache_write_tokens || 0) / 1_000_000 * 1.00) +
                   ((usage.output_tokens || 0) / 1_000_000 * 4);

@@ -17,6 +17,7 @@ import { SubscriptionService, SubscriptionError } from '../domain/billing/subscr
 import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
+import { requireFeature } from '../middleware/feature.middleware.js';
 import type { Request, Response, NextFunction } from 'express';
 import { logError } from '../services/error-logger.js';
 import { pool } from '../config/db.js';
@@ -44,16 +45,8 @@ const categoryRepo = new CategoryRepository();
 const categoryService = new CategoryService(categoryRepo);
 const tokenRepository = new TokenRepository();
 
-function requireFeature(feature: FeatureKey) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const hasAccess = await featureGate.hasFeature(asUserId(req.auth!.userId), feature);
-    if (!hasAccess) {
-      res.status(403).json({ error: 'Feature not available in your plan' });
-      return;
-    }
-    next();
-  };
-}
+// requireFeature vive en middleware/feature.middleware.ts (lo comparte el
+// router de análisis de datos); acá queda solo el import.
 
 // --- Public routes ---
 

@@ -5,6 +5,7 @@ import { UserContextService } from './user-context.service.js';
 import { ConversationHistoryService } from './conversation-history.service.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { PlanRepository } from '../domain/billing/plan.repository.js';
+import { getAiDailyLimit } from '../services/ai-quota.service.js';
 import { getSetting, getSettingNumber, getSettingBool } from '../services/settings.service.js';
 import { saveAiFallbackLog } from '../services/expenses.js';
 import { logError } from '../services/error-logger.js';
@@ -175,15 +176,8 @@ export class IntentExtractor {
    * Get AI daily limit: plan-based first, fallback to user setting.
    */
   private async getAiDailyLimit(userId: UserId, settings: UserSettings): Promise<number> {
-    try {
-      const plan = await this.planRepo.getUserPlan(userId);
-      if (plan?.daily_ai_limit != null) {
-        return plan.daily_ai_limit;
-      }
-    } catch {
-      // Plan lookup failed — use fallback
-    }
-    return settings.claude_daily_limit || 50;
+    // Fuente única de la regla: ai-quota.service.ts (bot + dashboard).
+    return getAiDailyLimit(userId, settings);
   }
 
   /**

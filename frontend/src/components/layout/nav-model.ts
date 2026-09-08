@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Wallet, DollarSign, Sprout, Search,
   FileText, Wheat, Package, Beef, Paperclip, User,
-  Tag, Map, Clock, MoreHorizontal,
+  Tag, Map, Clock, MoreHorizontal, Sparkles,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { OverviewCounts } from '../../hooks/useOverviewData';
@@ -9,7 +9,7 @@ import type { OverviewCounts } from '../../hooks/useOverviewData';
 export type DashboardView =
   | 'overview' | 'fields' | 'expenses' | 'incomes' | 'activities' | 'observations'
   | 'scoutings' | 'reports' | 'harvests' | 'stock' | 'livestock' | 'documents'
-  | 'categories' | 'reminders' | 'account';
+  | 'categories' | 'reminders' | 'account' | 'analysis';
 
 export interface NavItem {
   key: DashboardView;
@@ -43,6 +43,12 @@ export interface NavGroup {
  * and two near-identical tables meant looking in two places.
  */
 export const PRIMARY: NavItem = { key: 'overview', label: 'Resumen', Icon: LayoutDashboard };
+
+/**
+ * Justo debajo de Resumen y fuera de los grupos: no es la tabla de un
+ * dominio, es una pregunta libre sobre TODOS los datos de la campaña.
+ */
+export const SECONDARY: NavItem = { key: 'analysis', label: 'Análisis de datos', Icon: Sparkles, feature: 'data_analysis' };
 
 export const GROUPS: NavGroup[] = [
   {
@@ -102,7 +108,9 @@ export function sheetGroups(features: string[]): NavGroup[] {
     ...g,
     items: g.items.filter(i => !inBar.has(i.key) && visible(i, features)),
   })).filter(g => g.items.length > 0);
-  return [...groups, { id: 'cuenta', label: 'Cuenta', items: FOOTER.filter(i => visible(i, features)) }];
+  // El ítem bajo Resumen no está en la barra inferior: en mobile vive acá.
+  const analysis = visible(SECONDARY, features) ? [{ id: 'analisis', label: 'Análisis', items: [SECONDARY] }] : [];
+  return [...analysis, ...groups, { id: 'cuenta', label: 'Cuenta', items: FOOTER.filter(i => visible(i, features)) }];
 }
 
 export function visible(item: NavItem, features: string[]): boolean {

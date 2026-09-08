@@ -3,6 +3,7 @@ import { getSetting, getSettingNumber, getSettingBool } from '../services/settin
 import { saveAiFallbackLog } from '../services/expenses.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { PlanRepository } from '../domain/billing/plan.repository.js';
+import { getAiDailyLimit } from '../services/ai-quota.service.js';
 import { ConversationHistoryService } from './conversation-history.service.js';
 import { logError } from '../services/error-logger.js';
 import type { UserId, UserSettings, AiUsage } from '../types/index.js';
@@ -188,13 +189,8 @@ export class ConversationalFallbackService {
   }
 
   private async getAiDailyLimit(userId: UserId, settings: UserSettings): Promise<number> {
-    try {
-      const limit = await this.planRepo.getUserPlanAiLimit(userId);
-      if (limit != null) return limit;
-    } catch {
-      // Plan lookup failed — use fallback
-    }
-    return settings.claude_daily_limit || 50;
+    // Fuente única de la regla: ai-quota.service.ts (bot + dashboard).
+    return getAiDailyLimit(userId, settings);
   }
 
   /** Exported for testing */

@@ -7,6 +7,7 @@ import Sidebar from '../components/layout/Sidebar';
 import BottomNav from '../components/layout/BottomNav';
 import MoreSheet from '../components/layout/MoreSheet';
 import OverviewPage from '../components/overview/OverviewPage';
+import DataAnalysisPage from '../components/analysis/DataAnalysisPage';
 import ObservationTable from '../components/ObservationTable';
 import ScoutingTable from '../components/ScoutingTable';
 import ActivityTable from '../components/ActivityTable';
@@ -41,6 +42,7 @@ const viewFeatureMap: Record<DashboardView, string | null> = {
   categories: null,
   reminders: null,
   account: null,
+  analysis: 'data_analysis',
 };
 
 export default function Dashboard() {
@@ -178,6 +180,8 @@ export default function Dashboard() {
             onOpenReviewRef={handleOpenReviewRef}
           />
         );
+      case 'analysis':
+        return <DataAnalysisPage />;
       case 'fields':
         return <FieldsTab />;
       case 'expenses':

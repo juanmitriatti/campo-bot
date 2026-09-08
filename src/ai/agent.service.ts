@@ -11,6 +11,7 @@ import { saveAiFallbackLog } from '../services/expenses.js';
 import { logError } from '../services/error-logger.js';
 import { getActivityDictionary } from '../services/activity-dictionary.service.js';
 import { limitNotifier } from '../services/limit-notifier.service.js';
+import { getAiDailyLimit } from '../services/ai-quota.service.js';
 import type { UserId, UserSettings, AiUsage } from '../types/index.js';
 
 const anthropic = new Anthropic({
@@ -317,16 +318,9 @@ export class AgentService {
     }
   }
 
+  /** La regla vive en ai-quota.service.ts (fuente única: bot + dashboard). */
   private async getAiDailyLimit(userId: UserId, settings: UserSettings): Promise<number> {
-    try {
-      const plan = await this.planRepo.getUserPlan(userId);
-      if (plan?.daily_ai_limit != null) {
-        return plan.daily_ai_limit;
-      }
-    } catch {
-      // Plan lookup failed — use fallback
-    }
-    return settings.claude_daily_limit || 50;
+    return getAiDailyLimit(userId, settings);
   }
 
   /**

@@ -17,6 +17,7 @@ import { requireAuth, requireRole } from './middleware/auth.middleware.js';
 import mapRoutes from './routes/map.routes.js';
 import formsRoutes from './routes/forms.routes.js';
 import plansRoutes from './routes/plans.routes.js';
+import dataAnalysisRoutes from './routes/data-analysis.routes.js';
 import { startScheduler } from './services/scheduler.js';
 import { runMigrations } from './scripts/run-migrations.js';
 
@@ -66,6 +67,8 @@ app.get('/api/health', (_req: express.Request, res: express.Response) => {
 
 // Public + protected end-user auth routes
 app.use('/api/auth', authRoutes);
+// Análisis de datos con IA (tab del dashboard). Mismo prefijo: el front usa apiRequest('/data-analysis').
+app.use('/api/auth', dataAnalysisRoutes);
 
 // Test bot chat — requires JWT auth
 app.use('/api/test-bot', requireAuth, testBotRoutes);

@@ -4,7 +4,7 @@ import { useSelectedField } from '../../hooks/useSelectedField';
 import { useSelectedCampaign } from '../../hooks/useSelectedCampaign';
 import { useOverviewData } from '../../hooks/useOverviewData';
 import { Bell, BellOff, BookOpen, ChevronRight } from 'lucide-react';
-import { PRIMARY, GROUPS, FOOTER, visible, type DashboardView, type NavItem } from './nav-model';
+import { PRIMARY, SECONDARY, GROUPS, FOOTER, visible, type DashboardView, type NavItem } from './nav-model';
 
 export type { DashboardView } from './nav-model';
 
@@ -60,6 +60,7 @@ export default function Sidebar({ active, onChange, features }: SidebarProps) {
     <aside className="hidden md:flex flex-col w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 min-h-[calc(100vh-3.5rem)]">
       <nav className="flex flex-col gap-0.5 p-3">
         {renderItem(PRIMARY)}
+        {visible(SECONDARY, features) && renderItem(SECONDARY)}
 
         {GROUPS.map(group => {
           const items = group.items.filter(i => visible(i, features));

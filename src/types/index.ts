@@ -622,7 +622,8 @@ export type FeatureKey =
   | 'sharing'
   | 'stock'
   | 'documents'
-  | 'livestock';
+  | 'livestock'
+  | 'data_analysis';
 
 export interface PlanRow {
   id: number;
