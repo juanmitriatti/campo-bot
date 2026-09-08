@@ -775,6 +775,38 @@ export class FinancialHandler {
       resPlotName = null;
     }
 
+    // Gasto de campo (arrendamiento/sueldos/…) sin campo nombrado: con UN campo
+    // se resuelve solo; con VARIOS la pregunta correcta es "¿de qué campo?" —
+    // no el picker de LOTES de todos los campos que sigue más abajo (QA prod,
+    // 7 sep 2026: arrendamiento ofrecía Bajo/Norte/Sur). Pending
+    // machine-readable (invariante 5): la respuesta (texto o tap flow_field_*)
+    // llena el slot `field` y el re-ruteo cae en el atajo de nivel campo.
+    if (isFieldLevelExpense && !fieldId && !plotId && !bulkMode) {
+      try {
+        const allFields = await this.service.getUserFields(userId);
+        if (allFields.length === 1) {
+          fieldId = allFields[0].id;
+          resFieldName = allFields[0].name;
+        } else if (allFields.length > 1) {
+          const names = allFields.map(f => f.name);
+          const buttons = allFields.slice(0, 3).map(f => ({ id: `flow_field_${f.name.replace(/\s+/g, '_')}`, title: f.name.slice(0, 20) }));
+          const ask = `🏢 *${data.category}* es un gasto de campo. ¿De qué campo? (${names.join(' / ')})`;
+          return {
+            messages: [],
+            interactive: { type: 'buttons' as const, body: ask, buttons },
+            sideEffects: {
+              setPendingActivity: {
+                command: 'log_expense',
+                data: { ...(data as unknown as Record<string, unknown>), command: 'log_expense', originalText: text },
+                missing: ['field'],
+                askPrompt: ask,
+              },
+            },
+          };
+        }
+      } catch { /* best-effort */ }
+    }
+
     // If the referenced field/plot doesn't exist, redirect to flow for plot selection.
     // EXCEPT bulk mode (compound with 2+ writes): save without flow.
     if (resolution.notFound && !bulkMode) {
@@ -876,6 +908,7 @@ export class FinancialHandler {
       try {
         const allFields = await this.service.getUserFields(userId);
         if (allFields.length === 1) fieldId = allFields[0].id;
+        // Con varios campos, la pregunta "¿de qué campo?" ya se hizo más arriba.
       } catch { /* best-effort */ }
     }
 

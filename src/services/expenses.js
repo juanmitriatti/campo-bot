@@ -3142,11 +3142,21 @@ export async function findHarvestsToday(userId) {
   return result.rows;
 }
 
+/**
+ * Recalcula el rinde a partir de las cargas, SIN achicar un rinde declarado.
+ *
+ * QA prod (7 sep 2026): "cosechamos el Norte, rinde 3200 kg/ha" guardó
+ * 384.000 kg; el mensaje siguiente con DOS camiones (58.500 kg) lo pisó y la
+ * campaña pasó a decir 488 kg/ha. Dos camiones son una foto parcial de la
+ * cosecha; el total declarado solo se reemplaza cuando las cargas lo superan
+ * (ahí los camiones son la verdad) o cuando no había rinde.
+ */
 export async function updateYieldFromLoads(plotCropId) {
   if (!plotCropId) return;
   await pool.query(
-    `UPDATE plot_crops SET yield_kg = (
-       SELECT COALESCE(SUM(weight_kg), 0) FROM harvest_loads WHERE plot_crop_id = $1
+    `UPDATE plot_crops SET yield_kg = GREATEST(
+       COALESCE(yield_kg, 0),
+       (SELECT COALESCE(SUM(weight_kg), 0) FROM harvest_loads WHERE plot_crop_id = $1)
      ) WHERE id = $1`,
     [plotCropId]
   );

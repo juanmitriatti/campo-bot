@@ -59,6 +59,16 @@ const EXPIRED_ALLOWED_COMMANDS = new Set([
   'show_plan',
 ]);
 
+// Comandos triviales de SOLO LECTURA: en medio de un pending con missing[]
+// se responden y el pending se re-pregunta, nunca se consumen como respuesta
+// al slot. QA prod (7 sep 2026): "mis recordatorios" durante "¿A qué hora te
+// lo recuerdo?" → "No pude usar «mis recordatorios» como la hora".
+export const READ_ONLY_TRIVIAL_COMMANDS = new Set([
+  'menu', 'help', 'dollar', 'grain_prices', 'show_plan',
+  'list_fields', 'list_plots', 'field_info', 'list_reminders', 'list_livestock',
+  'show_reports_menu', 'financial_report',
+]);
+
 const TRIVIAL_COMMANDS = new Set([
   'confirm', 'cancel',
   'greeting', 'thanks', 'ack',
@@ -76,6 +86,9 @@ const TRIVIAL_COMMANDS = new Set([
   'add_field', 'add_plot', 'add_plots_batch', 'delete_field', 'delete_plot',
   'rename_field', 'field_info', 'plot_info',
   'set_field_city', 'add_field_city',
+  // "cómo vamos?" pelado: reporte financiero sin IA. Con el contexto de una
+  // cosecha reciente el agente lo mandaba a campaign_stats (QA prod, 7 sep 2026).
+  'financial_report',
   'set_plot_area', 'set_plot_grupo', 'restore_field',
   'set_city', 'set_name', 'set_budget',
   'show_alerts', 'set_rain_threshold',
@@ -378,10 +391,16 @@ export class IntentClassifier {
     // =========================================================================
     // STEP 2 — Trivial command bypass (cheap regex, no API call needed)
     // =========================================================================
-    const forceAgentByLock = !!opts?.clarificationHint;
     const trivialCmd = this.classifyTrivial(cleaned, preprocessed);
+    // El lock conversacional manda los triviales al agente para que siga el
+    // hilo — pero una consulta de SOLO LECTURA ("mis recordatorios", "cómo
+    // vamos?", "mis campos") es inequívoca y determinística: mandarla al agente
+    // cuesta una llamada y la desvía (QA prod, 7 sep 2026: "cómo vamos?" bajo
+    // lock terminó en campaign_stats). Esas pasan por el bypass igual.
+    const trivialName = (trivialCmd?.intent as { data?: { command?: string } } | undefined)?.data?.command;
+    const forceAgentByLock = !!opts?.clarificationHint && !(trivialName && READ_ONLY_TRIVIAL_COMMANDS.has(trivialName));
     if (trivialCmd && forceAgentByLock) {
-      console.log(`[CONV-LOCK] skip trivial bypass (lock) cmd=${(trivialCmd.intent as { data?: { command?: string } }).data?.command ?? '?'} text="${text.slice(0, 60)}"`);
+      console.log(`[CONV-LOCK] skip trivial bypass (lock) cmd=${trivialName ?? '?'} text="${text.slice(0, 60)}"`);
     }
     if (trivialCmd && !forceAgentByLock) {
       // Rejoin de pregunta-de-lote huérfana: cuando el agente preguntó

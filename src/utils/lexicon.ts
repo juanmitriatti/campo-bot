@@ -168,3 +168,18 @@ export function stripNameLeadIn(name: string): string {
     .replace(/^["'«“”]+|["'»“”]+$/g, '')
     .trim();
 }
+
+/**
+ * ¿La frase se refiere a TODO el grupo, sin número? "vacuné las vacas del Sur",
+ * "desparasité todos los terneros", "eché los toros con el rodeo". Con artículo
+ * definido plural y sin dígitos, el productor habla del grupo entero: preguntar
+ * "¿A cuántos animales?" y perder el evento en el pivot siguiente fue lo que
+ * pasó en el QA de prod (7 sep 2026). Con un número explícito NO aplica.
+ */
+export function impliesWholeGroup(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const t = normLex(text);
+  if (/\d/.test(t)) return false;
+  if (/\b(?:tod[ao]s?|el\s+rodeo|la\s+tropa|todo\s+el\s+lote|el\s+lote\s+entero|la\s+majada)\b/.test(t)) return true;
+  return /\b(?:l[ao]s)\s+(?:vacas?|novill[oa]s?|novillit[oa]s?|terner[oa]s?|tor[oa]s?|torit[oa]s?|vaquillonas?|vaquillas?|animales|cabezas|ovejas?|corderos?|carneros?|chanchos?|cerd[oa]s?|yeguas?|caballos?|cabras?)\b/.test(t);
+}

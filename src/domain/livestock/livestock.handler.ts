@@ -18,6 +18,7 @@ import { pool } from '../../config/db.js';
 import { encodeLivestockPayload, decodeLivestockPayload } from './livestock-payload.js';
 import { buildPostActionButtons } from './livestock-post-actions.js';
 import { livestockLocationIntent } from '../../utils/livestock-location-intent.js';
+import { impliesWholeGroup } from '../../utils/lexicon.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import type {
   UserId,
@@ -1222,9 +1223,11 @@ export class LivestockHandler {
       };
     }
 
-    // Group by location for readability
+    // Group by location for readability. Un grupo en 0 (quedó vacío tras una
+    // transferencia) no es información para el productor: "Norte / Vaca: 0"
+    // solo confunde (QA prod, 7 sep 2026). El ledger lo conserva igual.
     const byLocation = new Map<string, LivestockGroupRow[]>();
-    for (const g of groups) {
+    for (const g of groups.filter(x => Number(x.count) > 0)) {
       const key = g.corral_name
         ? `🔲 Corral ${g.corral_name} (${g.feedlot_name || 'Feedlot'} — ${g.field_name || ''})`
         : `📍 ${g.field_name || '—'} / ${g.plot_name || '—'}`;
@@ -1417,6 +1420,28 @@ export class LivestockHandler {
     }
   }
 
+  /**
+   * Cantidad del grupo de `category` en la ubicación ya resuelta (lote o corral)
+   * cuando la frase implica el grupo entero ("las vacas del Sur") y el resolver
+   * no trajo knownGroupCount (solo lo trae al auto-resolver un grupo único).
+   */
+  private async wholeGroupCount(
+    userId: UserId,
+    category: string | null,
+    plotId: number | null,
+    corralId: number | null,
+  ): Promise<number | undefined> {
+    if (!category || (plotId == null && corralId == null)) return undefined;
+    try {
+      const groups = await this.service.findGroupsByCategory(userId, category);
+      const at = groups.filter(g => (plotId != null ? g.plot_id === plotId : g.corral_id === corralId) && Number(g.count) > 0);
+      const total = at.reduce((s, g) => s + Number(g.count), 0);
+      return total > 0 ? total : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   private buildAnimalsAffectedAskResponse(
     cmd: ParsedCommand,
     resolvedLocation: { plotId: number | null; corralId: number | null; label: string },
@@ -1522,7 +1547,17 @@ export class LivestockHandler {
     }
 
     const category = cmd.category as string | null;
-    const animalsAffected = typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected : (typeof cmd.count === 'number' ? cmd.count : null);
+    let animalsAffected = typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected : (typeof cmd.count === 'number' ? cmd.count : null);
+    // "vacuné las vacas del Sur contra aftosa": artículo definido plural y sin
+    // número = todo el grupo. Preguntar "¿A cuántos?" perdía el evento cuando
+    // el productor seguía con otra cosa (QA prod, 7 sep 2026).
+    if (animalsAffected == null && impliesWholeGroup(cmd.originalText as string | null)) {
+      const whole = resolvedLoc.knownGroupCount ?? await this.wholeGroupCount(userId, category, resolvedLoc.plotId, resolvedLoc.corralId);
+      if (whole) {
+        console.log(`[LIVESTOCK] sanidad: "${String(cmd.originalText).slice(0, 60)}" → todo el grupo (${whole})`);
+        animalsAffected = whole;
+      }
+    }
     const diseaseOrVaccine = cmd.diseaseOrVaccine as string | null;
     const doseQuantity = typeof cmd.doseQuantity === 'number' ? cmd.doseQuantity : null;
     const doseUnit = cmd.doseUnit as string | null;
@@ -1666,7 +1701,15 @@ export class LivestockHandler {
     }
 
     const category = cmd.category as string | null;
-    const animalsAffected = typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected : (typeof cmd.count === 'number' ? cmd.count : null);
+    let animalsAffected = typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected : (typeof cmd.count === 'number' ? cmd.count : null);
+    // "eché los toros con las vacas" / "desteté todos los terneros" → grupo entero.
+    if (animalsAffected == null && impliesWholeGroup(cmd.originalText as string | null)) {
+      const whole = resolvedLoc.knownGroupCount ?? await this.wholeGroupCount(userId, category, resolvedLoc.plotId, resolvedLoc.corralId);
+      if (whole) {
+        console.log(`[LIVESTOCK] repro: "${String(cmd.originalText).slice(0, 60)}" → todo el grupo (${whole})`);
+        animalsAffected = whole;
+      }
+    }
     const sireInfo = cmd.sireInfo as string | null;
     const method = cmd.method as string | null;
 

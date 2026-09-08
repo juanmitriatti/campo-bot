@@ -742,7 +742,13 @@ export class LivestockService {
       );
     }
 
-    const destGroup = await this.ensureGroupAtLocation(userId, dest, destCategory, opts.breed ?? null);
+    // La raza viaja con los animales: "pasé 20 vacas del Sur al Norte" sin
+    // nombrar la raza creaba en destino un grupo "Vaca" sin raza al lado del
+    // "Vaca Angus" de origen, y al volverlas quedaban dos grupos en el mismo
+    // lote (QA prod, 7 sep 2026). Si el usuario no dijo raza, hereda la del
+    // grupo origen; en una recategorización (ternero → novillo) también.
+    const destBreed = opts.breed ?? sourceGroup.breed ?? null;
+    const destGroup = await this.ensureGroupAtLocation(userId, dest, destCategory, destBreed);
 
     const result = await this.repo.applyTransferMovement(
       Number(userId),

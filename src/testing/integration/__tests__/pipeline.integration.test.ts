@@ -1629,7 +1629,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
 
     it('"las 95" contesta el "¿A cuántos animales?" por el pending (jamás por el agente)', async () => {
       h.fakeAgent.enqueue([{ toolName: 'log_health_event', toolInput: { health_type: 'vacunacion', disease_or_vaccine: 'aftosa', category: 'vaca' } }]);
-      const ask = h.allText(await h.send('vacuné las vacas contra aftosa'));
+      const ask = h.allText(await h.send('vacuné vacas contra aftosa'));
       expect(ask).toContain('cuántos animales');
 
       // Sin nada encolado en el FakeAgent: si esto llega al agente, la
@@ -2545,7 +2545,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         health_type: 'desparasitacion', disease_or_vaccine: 'ivermectina',
         category: 'ternero', plot: 'Sur', field: 'El Pivote',
       });
-      const ask = await h.send('desparasité los terneros del lote Sur con ivermectina');
+      const ask = await h.send('desparasité terneros del lote Sur con ivermectina');
       expect(h.allText(ask)).toMatch(/cuántos animales/i);
 
       h.fakeAgent.enqueueTool('create_feedlot', { name: 'FL Pivote', field: 'El Pivote' });
@@ -2565,7 +2565,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         health_type: 'vacunacion', disease_or_vaccine: 'aftosa',
         category: 'ternero', plot: 'Sur', field: 'El Pivote',
       });
-      await h.send('vacuné los terneros del lote Sur contra aftosa');
+      await h.send('vacuné terneros del lote Sur contra aftosa');
 
       const before = await h.q(
         `SELECT COUNT(*)::int AS n FROM domain_events
@@ -2664,7 +2664,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         health_type: 'desparasitacion', disease_or_vaccine: 'ivermectina',
         category: 'ternero', plot: 'Sur', field: 'El Pivote',
       });
-      const ask = await h.send('desparasité los terneros del lote Sur con ivermectina');
+      const ask = await h.send('desparasité terneros del lote Sur con ivermectina');
       expect(h.allText(ask)).toMatch(/cuántos animales/i);
 
       const callsBefore = h.fakeAgent.calls.length;
@@ -2836,6 +2836,138 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       await h.send('cancelar');
       const rows = await h.q(`SELECT name FROM fields WHERE user_id = $1 AND name LIKE 'flow_%'`, [h.userId]);
       expect(rows).toEqual([]);
+    });
+  });
+
+  // QA E2E contra prod (7 sep 2026, cuenta admin desde cero): los 6 hallazgos
+  // reales del recorrido, cada uno con su regresión determinística.
+  describe('hallazgos del QA E2E de prod (Sep 2026)', () => {
+    let h: PipelineHarness;
+    let romaId: number;
+    let norteId: number;
+    let surId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('qa-prod-findings');
+      const f1 = await h.q(
+        `INSERT INTO fields (user_id, name, city, province) VALUES ($1, 'Establecimiento Roma', 'Junín', 'Buenos Aires') RETURNING id`,
+        [h.userId],
+      );
+      romaId = (f1[0] as { id: number }).id;
+      const f2 = await h.q(
+        `INSERT INTO fields (user_id, name, city, province) VALUES ($1, 'El Rehue', 'Lincoln', 'Buenos Aires') RETURNING id`,
+        [h.userId],
+      );
+      const rehueId = (f2[0] as { id: number }).id;
+      // getPlotById valida acceso por field_members (como los campos creados por el bot).
+      await h.q(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2), ($3, $2, 'owner', $2)`, [romaId, h.userId, rehueId]);
+      const p1 = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 120) RETURNING id`, [romaId]);
+      norteId = (p1[0] as { id: number }).id;
+      const p2 = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Sur', 80) RETURNING id`, [romaId]);
+      surId = (p2[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Bajo', 45)`, [rehueId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('1. dos camiones parciales NO pisan el rinde declarado (384 tn se queda en 384 tn)', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: 'Norte', field: 'Establecimiento Roma' });
+      await h.send('sembré soja en el Norte');
+      h.fakeAgent.enqueueTool('harvest_crop', { plot: 'Norte', field: 'Establecimiento Roma', yield_kg_per_ha: 3200 });
+      const harvest = await h.send('cosechamos el Norte, rinde 3200 kg por hectárea');
+      expect(h.allText(harvest)).toMatch(/[Cc]osecha/);
+      const declared = await h.q(`SELECT yield_kg FROM plot_crops WHERE plot_id = $1 ORDER BY id DESC LIMIT 1`, [norteId]);
+      expect({ yield: Number((declared[0] as { yield_kg: string } | undefined)?.yield_kg), text: h.allText(harvest) })
+        .toEqual({ yield: 384000, text: expect.any(String) });
+      h.fakeAgent.enqueueTool('harvest_crop', {
+        plot: 'Norte', field: 'Establecimiento Roma',
+        loads: [{ driver_name: 'Britos', weight_kg: 30000 }, { driver_name: 'Pérez', weight_kg: 28500, destinatario: 'Cargill' }],
+      });
+      const loads = await h.send('cosecha del Norte: Britos 30 tn, Pérez 28,5 tn a Cargill');
+      expect(h.allText(loads)).toMatch(/Britos/);
+      const rows = await h.q(`SELECT yield_kg FROM plot_crops WHERE plot_id = $1 ORDER BY id DESC LIMIT 1`, [norteId]);
+      expect(Number((rows[0] as { yield_kg: string }).yield_kg)).toBe(384000);
+    });
+
+    it('2. transferir sin nombrar la raza hereda la del grupo origen (un solo grupo Angus en destino)', async () => {
+      h.fakeAgent.enqueueTool('add_livestock', { category: 'vaca', count: 40, breed: 'Angus', plot: 'Sur', field: 'Establecimiento Roma' });
+      const added = await h.send('compré 40 vacas Angus, van al lote Sur');
+      expect(h.allText(added)).toMatch(/40/);
+      h.fakeAgent.enqueueTool('transfer_livestock', { category: 'vaca', count: 20, source_plot: 'Sur', dest_plot: 'Norte', field: 'Establecimiento Roma' });
+      const moved = await h.send('pasé 20 vacas del Sur al Norte');
+      expect(h.allText(moved)).toMatch(/20/);
+      const norte = await h.q(`SELECT breed, count FROM livestock_groups WHERE plot_id = $1 AND category = 'vaca'`, [norteId]);
+      expect(norte).toHaveLength(1);
+      expect((norte[0] as { breed: string; count: number }).breed).toBe('Angus');
+      expect(Number((norte[0] as { count: number }).count)).toBe(20);
+      // El listado no muestra grupos en 0 al volverlas.
+      h.fakeAgent.enqueueTool('transfer_livestock', { category: 'vaca', count: 20, source_plot: 'Norte', dest_plot: 'Sur', field: 'Establecimiento Roma' });
+      await h.send('mové 20 vacas del Norte al Sur');
+      const list = await h.send('listado de hacienda');
+      expect(h.allText(list)).not.toMatch(/: \*0\*/);
+      const sur = await h.q(`SELECT breed, count FROM livestock_groups WHERE plot_id = $1 AND category = 'vaca' AND count > 0`, [surId]);
+      expect(sur).toHaveLength(1);
+      expect(Number((sur[0] as { count: number }).count)).toBe(40);
+    });
+
+    it('3. "mis recordatorios" en medio de "¿A qué hora?" se responde y la hora se vuelve a pedir', async () => {
+      h.fakeAgent.enqueueTool('create_reminder', { description: 'fumigar el Sur', due_date: '2027-01-09' });
+      const ask = await h.send('el sábado tengo que fumigar el Sur');
+      expect(h.allText(ask)).toMatch(/A qué hora/);
+      const calls = h.fakeAgent.calls.length;
+      const list = await h.send('mis recordatorios');
+      const text = h.allText(list);
+      expect(text).not.toMatch(/No pude usar/);
+      expect(text).toMatch(/A qué hora/); // el pending sigue vivo
+      expect(h.fakeAgent.calls.length, `respuesta: ${text.slice(0, 200)}`).toBe(calls);
+      const done = await h.send('cuando sea');
+      expect(h.allText(done)).toMatch(/te lo recuerdo/);
+    });
+
+    it('4. "vacuné las vacas del Sur contra aftosa" = todo el grupo, sin preguntar cuántas', async () => {
+      h.fakeAgent.enqueueTool('log_health_event', { health_type: 'vacunacion', disease_or_vaccine: 'aftosa', category: 'vaca', plot: 'Sur', field: 'Establecimiento Roma' });
+      const r = await h.send('vacuné las vacas del Sur contra aftosa');
+      const text = h.allText(r);
+      expect(text).not.toMatch(/A cuántos animales/);
+      expect(text).toMatch(/aftosa/);
+      const ev = await h.q(
+        `SELECT animals_affected FROM domain_events WHERE user_id = $1 AND event_type = 'health_event' ORDER BY id DESC LIMIT 1`,
+        [h.userId],
+      );
+      expect(Number((ev[0] as { animals_affected: number }).animals_affected)).toBe(40);
+    });
+
+    it('5. arrendamiento con 2 campos pregunta el CAMPO (no el picker de lotes) y el tap lo guarda a nivel campo', async () => {
+      h.fakeAgent.enqueueTool('log_expense', { amount: 120000, category: 'Arrendamiento', description: 'arrendamiento' });
+      const ask = await h.send('pagué 120 mil de arrendamiento');
+      expect(h.allText(ask)).toMatch(/De qué campo/);
+      expect(h.allButtons(ask).map(b => b.id)).toContain('flow_field_Establecimiento_Roma');
+      let saved = await h.tap('flow_field_Establecimiento_Roma');
+      let savedText = h.allText(saved);
+      expect(savedText).toMatch(/120\.000/);
+      expect(savedText).toMatch(/Establecimiento Roma/);
+      // Con confirm_before_save activo el re-ruteo pide confirmar: confirmamos.
+      if (h.allButtons(saved).some(b => b.id === 'confirm_pending')) {
+        saved = await h.tap('confirm_pending');
+        savedText = h.allText(saved);
+      }
+      const rows = await h.q(
+        `SELECT field_id, plot_id FROM expenses WHERE user_id = $1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`,
+        [h.userId],
+      );
+      expect({ row: rows[0], savedText }).toEqual({ row: { field_id: romaId, plot_id: null }, savedText: expect.any(String) });
+    });
+
+    it('6. "cómo vamos?" es reporte financiero sin agente', async () => {
+      const calls = h.fakeAgent.calls.length;
+      const r = await h.send('cómo vamos?');
+      expect(h.allText(r)).toMatch(/Resumen financiero|[Gg]astos|[Ii]ngresos/);
+      expect(h.fakeAgent.calls.length).toBe(calls);
+    });
+
+    it('7. "va a llover en Junín?" con un campo en Junín, Buenos Aires no desambigua contra Mendoza', async () => {
+      h.fakeAgent.enqueueTool('weather_full', { city: 'Junín' });
+      const r = await h.send('va a llover en Junín?');
+      expect(h.allText(r)).not.toMatch(/varias localidades/);
     });
   });
 });

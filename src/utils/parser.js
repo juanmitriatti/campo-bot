@@ -742,6 +742,16 @@ const COMMAND_PATTERNS = [
   // El CTA de los feature-gates dice "Escribí *plan*" — este comando tiene que
   // existir y ser trivial (costo cero, disponible con trial vencido).
   { command: "show_plan", patterns: [/^(?:mi\s+)?plan(?:es)?$/, /^ver\s+plan(?:es)?$/] },
+  {
+    // "cómo vamos?" pelado = reporte financiero. Anclado y sin complementos
+    // ("cómo vamos con la soja" sigue yendo al agente). QA prod (7 sep 2026):
+    // con una cosecha reciente el agente lo mandaba a campaign_stats.
+    command: "financial_report",
+    patterns: [
+      /^(?:che\s+|hola\s+)?(?:como|cómo)\s+(?:vamos|venimos|estamos|andamos)(?:\s+(?:de|con)\s+(?:la\s+)?(?:plata|guita|n[uú]meros|cuentas))?\s*\?*$/,
+    ],
+    extract: () => ({}),
+  },
   { command: "show_reports_menu", patterns: [
     /^(?:reportes?|informes?|ver\s+reportes?|ver\s+informes?|mis\s+reportes?)$/,
     /^(?:quiero|necesito|dame|mostrar?|mostra)\s+(?:un\s+)?(?:reportes?|informes?)$/,

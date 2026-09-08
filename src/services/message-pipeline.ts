@@ -20,7 +20,7 @@
  *    los suyos.
  */
 
-import { IntentClassifier } from './intent-classifier.js';
+import { IntentClassifier, READ_ONLY_TRIVIAL_COMMANDS } from './intent-classifier.js';
 import { DomainRouter } from '../domain/router.js';
 import { CompoundExecutor } from '../domain/compound-executor.js';
 import { InteractiveRouter } from '../domain/interactive/interactive.router.js';
@@ -1003,9 +1003,14 @@ async function processTextMessageInner(
     // pivot real — el pending de precio se lo comía y la lluvia nunca se
     // registraba (test de fuego Ago 2026). El flush del pivot preserva o
     // avisa por el pending actual.
+    // Un comando trivial de solo lectura ("mis recordatorios", "mis campos",
+    // "menú") nunca es la respuesta a un slot, por corto que sea: el modo
+    // estricto (respuesta ≤40 chars) se lo comía como hora/lote/cantidad.
+    const isReadOnlyTrivial = !!actInterruptCmd && READ_ONLY_TRIVIAL_COMMANDS.has(actInterruptCmd.command as string);
     const escapePending = (strictEscape ? hasActionVerbOrQuery(text) : looksLikeNewActionOrQuery(text))
       || isOtherItemCorrectionOrDelete(text)
       || isNewActionInterrupt(actInterruptCmd)
+      || isReadOnlyTrivial
       || (!strictEscape && intentClassifier.detectsFinancialIntent(text));
     if (escapePending) {
       // Una consulta read-only NO mata un pending recuperable (con missing[]):
@@ -1013,7 +1018,7 @@ async function processTextMessageInner(
       // los taps de botones, que nunca tocaban el pending. Sin esto, "cuánta
       // hacienda tengo" en medio del "¿a cuánto fue la compra?" borraba el
       // pending de precio y la respuesta posterior iba al agente a ciegas.
-      if (isReadOnlyQuery(text) && pendingAct.missing && pendingAct.missing.length > 0) {
+      if ((isReadOnlyQuery(text) || isReadOnlyTrivial) && pendingAct.missing && pendingAct.missing.length > 0) {
         console.log(`[INTERCEPT] read-only query during pending(${pendingAct.command}) — answering + keeping pending`);
         pendingActStore.clear(phone);
         const rest = await processTextMessageInner(text, ctx);
@@ -1920,6 +1925,15 @@ export async function handleInteractiveReply(
           }
           applySideEffects(result.response.sideEffects, phone);
           return collectResponse(result.response);
+        }
+        // Sin flow pero con un PENDING que espera justamente ese slot (el
+        // "¿de qué campo?" del gasto de nivel campo ofrece botones
+        // flow_field_*): el tap es la respuesta al slot, no un botón viejo.
+        const pendingForTap = pendingActStore.get(phone);
+        const slotForPrefix = prefix === 'flow_field_' ? 'field' : prefix === 'flow_plot_' ? 'plot' : null;
+        if (slotForPrefix && pendingForTap?.missing?.includes(slotForPrefix)) {
+          console.log(`[INTERCEPT] tap ${callbackId} responde el slot '${slotForPrefix}' del pending ${pendingForTap.command}`);
+          return processTextMessage(value, ctx);
         }
       }
     }

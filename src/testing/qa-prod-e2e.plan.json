@@ -205,7 +205,7 @@
         },
         {
           "send": "cómo vamos?",
-          "expect": "[Gg]astos|[Ii]ngresos|[Rr]esultado",
+          "expect": "Resumen financiero|[Gg]astos|[Ii]ngresos",
           "checks": "financial_report general."
         },
         {

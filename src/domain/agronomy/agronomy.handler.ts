@@ -89,10 +89,29 @@ function weatherCoords(
  * ordered by province prominence so the most likely shows first.
  * Falls back to user.city when no explicit city was provided.
  */
+function normalizeProvince(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+/** Provincias (normalizadas) de los campos del usuario — para preferir su Junín. */
+async function preferredProvincesFor(userId: UserId): Promise<string[]> {
+  try {
+    const { pool } = await import('../../config/db.js');
+    const r = await pool.query(
+      `SELECT DISTINCT province FROM fields WHERE user_id = $1 AND province IS NOT NULL AND deleted_at IS NULL`,
+      [userId],
+    );
+    return r.rows.map((x: { province: string }) => normalizeProvince(x.province));
+  } catch {
+    return [];
+  }
+}
+
 function resolveWeatherCity(
   cmd: ParsedCommand,
   user: User,
-): { city: string | null; options?: Localidad[]; rawCity?: string; optionsKind?: 'disambiguate' | 'suggestions' } {
+  preferredProvinces: string[] = [],
+): { city: string | null; province?: string; options?: Localidad[]; rawCity?: string; optionsKind?: 'disambiguate' | 'suggestions' } {
   const rawCity = typeof cmd.city === 'string' ? cmd.city.trim() : '';
   if (!rawCity) return { city: user.city ?? null };
 
@@ -104,6 +123,16 @@ function resolveWeatherCity(
     return { city: result.matches[0].nombre };
   }
   if (result.status === 'disambiguate') {
+    // Homónimos: si UNA sola opción está en la provincia de algún campo del
+    // usuario, es esa. "va a llover en Junín?" con un campo en Junín, Buenos
+    // Aires no tiene por qué preguntar Mendoza (QA prod, 7 sep 2026).
+    if (preferredProvinces.length > 0) {
+      const own = result.matches.filter(m => preferredProvinces.includes(normalizeProvince(m.provincia)));
+      if (own.length === 1) {
+        console.log(`[WEATHER] "${rawCity}" ambigua → ${own[0].nombre}, ${own[0].provincia} (provincia de un campo del usuario)`);
+        return { city: own[0].nombre, province: own[0].provincia };
+      }
+    }
     const ordered = [...result.matches].sort(byProvinceProminence).slice(0, 6);
     return { city: null, rawCity, options: ordered, optionsKind: 'disambiguate' };
   }
@@ -1517,10 +1546,11 @@ export class AgronomyHandler {
         if (!process.env.OPENWEATHER_API_KEY) {
           return { messages: ['El clima no est\u00e1 configurado todav\u00eda.'] };
         }
-        const resolved = resolveWeatherCity(cmd, user);
+        const resolved = resolveWeatherCity(cmd, user, await preferredProvincesFor(userId));
         if (resolved.options) return buildWeatherCityPicker(resolved.rawCity ?? '', resolved.options, resolved.optionsKind ?? 'disambiguate');
         let weatherCity = resolved.city;
-        let weatherFieldRow: { latitude?: number | null; longitude?: number | null; province?: string | null } | null = null;
+        let weatherFieldRow: { latitude?: number | null; longitude?: number | null; province?: string | null } | null =
+          resolved.province ? { province: resolved.province } : null;
         // Bug W fix: fall back to user's first field with city when no explicit/profile city.
         if (!weatherCity) {
           const { pool: wpool } = await import('../../config/db.js');
@@ -1551,7 +1581,7 @@ export class AgronomyHandler {
         if (!process.env.OPENWEATHER_API_KEY) {
           return { messages: ['El clima no est\u00e1 configurado todav\u00eda.'] };
         }
-        const resolved = resolveWeatherCity(cmd, user);
+        const resolved = resolveWeatherCity(cmd, user, await preferredProvincesFor(userId));
         if (resolved.options) return buildWeatherCityPicker(resolved.rawCity ?? '', resolved.options, resolved.optionsKind ?? 'disambiguate');
         let fcCity = resolved.city;
         if (!fcCity) {
