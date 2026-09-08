@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { pool } from '../../config/db.js';
 import { createPipelineHarness, type PipelineHarness } from '../../testing/integration/pipeline-harness.js';
-import { getOverview } from '../overview.service.js';
+import { getOverview, earliestDataDate } from '../overview.service.js';
 import { getReviewFindings } from '../review-findings.service.js';
-import { campaignRange } from '../../utils/campaign-range.js';
+import { campaignRange, campaignsSince } from '../../utils/campaign-range.js';
 
 /**
  * Regresiones del Resumen (Sep 2026). Cada test acá es un número que el
@@ -158,5 +158,34 @@ describe.skipIf(!dbAvailable)('review-findings — cosecha antes que su siembra'
     const found = await rule();
     expect(found).toHaveLength(1);
     expect(found[0].body).toContain('maíz');
+  });
+});
+
+describe.skipIf(!dbAvailable)('earliestDataDate — el picker de campañas', () => {
+  let h: PipelineHarness;
+  beforeAll(async () => { h = await createPipelineHarness('overview-campanias'); });
+  afterAll(async () => h?.cleanup());
+
+  it('usuario nuevo sin registros → null → una sola campaña', async () => {
+    expect(await earliestDataDate(Number(h.userId))).toBeNull();
+    expect(campaignsSince(null)).toHaveLength(1);
+  });
+
+  it('el registro más viejo manda, sin importar la tabla; lo borrado no cuenta', async () => {
+    await h.q(
+      `INSERT INTO expenses (user_id, category, description, amount, currency, expense_date) VALUES ($1, 'Otros', 'x', 1, 'ARS', '2025-10-01')`,
+      [h.userId],
+    );
+    expect(await earliestDataDate(Number(h.userId))).toBe('2025-10-01');
+
+    const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'Lluvias') RETURNING id`, [h.userId]);
+    await h.q(`INSERT INTO rainfall (user_id, field_id, millimeters, rainfall_date) VALUES ($1, $2, 10, '2024-02-15')`, [h.userId, f[0].id]);
+    expect(await earliestDataDate(Number(h.userId))).toBe('2024-02-15');
+
+    await h.q(
+      `INSERT INTO expenses (user_id, category, description, amount, currency, expense_date, deleted_at) VALUES ($1, 'Otros', 'borrado', 1, 'ARS', '2019-01-01', NOW())`,
+      [h.userId],
+    );
+    expect(await earliestDataDate(Number(h.userId))).toBe('2024-02-15');
   });
 });

@@ -209,6 +209,24 @@ function emptySide(): MoneySide {
  * Resolve which field ids the request covers. `null` fieldId means "all of the
  * user's own fields".
  */
+/**
+ * Oldest dated record the user has (expense, income, event, rain), or null.
+ * Feeds the campaign picker: it lists from the current campaign back to this
+ * date, so a new user sees one campaign and a 2023 user sees four.
+ */
+export async function earliestDataDate(userId: number): Promise<string | null> {
+  const { rows } = await pool.query(
+    `SELECT LEAST(
+       (SELECT MIN(expense_date) FROM expenses WHERE user_id = $1 AND deleted_at IS NULL),
+       (SELECT MIN(income_date) FROM incomes WHERE user_id = $1 AND deleted_at IS NULL),
+       (SELECT MIN(event_date) FROM domain_events WHERE user_id = $1 AND deleted_at IS NULL),
+       (SELECT MIN(rainfall_date) FROM rainfall WHERE user_id = $1)
+     )::text AS earliest`,
+    [userId],
+  );
+  return rows[0]?.earliest ?? null;
+}
+
 export async function resolveFieldIds(userId: number, fieldId: number | null): Promise<number[]> {
   if (fieldId != null) return [fieldId];
   const { rows } = await pool.query(

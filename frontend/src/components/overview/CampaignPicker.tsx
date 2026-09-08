@@ -15,11 +15,13 @@ interface Props {
  * utils/campaign-range.ts and is shared with the agronomic reports.
  */
 export default function CampaignPicker({ campaigns, value, currentLabel, onChange }: Props) {
-  if (campaigns.length === 0) {
+  // The server lists only campaigns that can hold data (current + back to the
+  // oldest record). With a single one there is nothing to choose: plain label.
+  if (campaigns.length <= 1) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
         <Calendar className="w-3.5 h-3.5" />
-        Campaña {currentLabel}
+        Campaña {campaigns[0]?.label ?? currentLabel}
       </span>
     );
   }

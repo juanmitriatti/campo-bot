@@ -26,8 +26,8 @@ import { asUserId } from '../types/index.js';
 import type { FeatureKey } from '../types/index.js';
 import { sqlNormalizedName } from '../utils/entity-matcher.js';
 import { invalidateUserContext } from '../ai/user-context.service.js';
-import { resolveCampaign, recentCampaigns } from '../utils/campaign-range.js';
-import { getOverview, resolveFieldIds, monthLabel } from '../services/overview.service.js';
+import { resolveCampaign, campaignsSince } from '../utils/campaign-range.js';
+import { getOverview, resolveFieldIds, monthLabel, earliestDataDate } from '../services/overview.service.js';
 import { getReviewFindings } from '../services/review-findings.service.js';
 
 const router = Router();
@@ -445,10 +445,16 @@ router.get('/overview', requireAuth, async (req: Request, res: Response) => {
     const range = resolveCampaign(req.query.season);
     const fieldIds = await resolveFieldIds(userId, fieldId);
     // Rows with no field and no plot count only under "Todos los campos".
-    const payload = await getOverview(userId, fieldIds, range, { includeUnassigned: fieldId == null });
+    const [payload, earliest] = await Promise.all([
+      getOverview(userId, fieldIds, range, { includeUnassigned: fieldId == null }),
+      earliestDataDate(userId),
+    ]);
+    // Only campaigns that can have something to show: from the current one
+    // back to the user's oldest record (and the one selected, if older).
     res.json({
       ...payload,
-      campaigns: recentCampaigns().map(c => ({ seasonYear: c.seasonYear, label: c.label })),
+      campaigns: campaignsSince(earliest, { pinned: range.seasonYear })
+        .map(c => ({ seasonYear: c.seasonYear, label: c.label })),
     });
   } catch (err) {
     handleError(err, res);

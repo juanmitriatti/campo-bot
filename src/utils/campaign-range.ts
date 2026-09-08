@@ -62,11 +62,43 @@ export function resolveCampaign(raw: unknown, now: Date = getNowArgentina()): Ca
 }
 
 /**
- * The last N campaigns, newest first — for the campaign picker.
+ * The last N campaigns, newest first — regardless of data. Kept for callers
+ * that need a fixed window; the picker uses `campaignsSince` instead.
  */
 export function recentCampaigns(count = 4, now: Date = getNowArgentina()): CampaignRange[] {
   const current = currentSeasonYear(now);
   const out: CampaignRange[] = [];
   for (let i = 0; i < count; i++) out.push(campaignRange(current - i));
+  return out;
+}
+
+/** Hard cap on how far back the picker lists, even with ancient data. */
+export const MAX_PICKER_CAMPAIGNS = 10;
+
+/**
+ * Campaigns for the picker: the current one, plus every earlier campaign back
+ * to the one holding the user's OLDEST record. With no data at all, only the
+ * current campaign — a picker with "22/23, 23/24, 24/25" for a user who
+ * signed up last week is three empty views (prod feedback, Sep 2026).
+ *
+ * `earliest` is an ISO date (or Date) of the oldest expense/income/event/rain;
+ * `pinned` is a season the caller must keep in the list (the one selected in
+ * the URL, even if it is older than any data). Newest first.
+ */
+export function campaignsSince(
+  earliest: string | Date | null | undefined,
+  opts: { pinned?: number | null; now?: Date } = {},
+): CampaignRange[] {
+  const now = opts.now ?? getNowArgentina();
+  const current = currentSeasonYear(now);
+  let oldest = current;
+  if (earliest) {
+    const d = typeof earliest === 'string' ? new Date(`${earliest.slice(0, 10)}T12:00:00Z`) : earliest;
+    if (!Number.isNaN(d.getTime())) oldest = Math.min(oldest, getSeasonYear(d, 'gruesa'));
+  }
+  if (opts.pinned != null && Number.isFinite(opts.pinned)) oldest = Math.min(oldest, opts.pinned);
+  oldest = Math.max(oldest, current - (MAX_PICKER_CAMPAIGNS - 1));
+  const out: CampaignRange[] = [];
+  for (let y = current; y >= oldest; y--) out.push(campaignRange(y));
   return out;
 }
