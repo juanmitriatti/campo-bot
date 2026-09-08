@@ -37,14 +37,18 @@ describe.skipIf(!dbAvailable)('TypedPendingStore — sobrevive un restart (espej
     const key = `testbot_restart_${process.pid}`;
     const s1 = new TypedPendingStore<{ product: string; qty: number }>('it_restart_test');
     s1.set(key, { product: 'glifosato', qty: 100 });
-    // el persist es fire-and-forget — darle un tick
-    await new Promise(r => setTimeout(r, 150));
 
     // "Restart": instancia nueva, Map vacío
     const s2 = new TypedPendingStore<{ product: string; qty: number }>('it_restart_test');
     expect(s2.get(key)).toBeUndefined();
-    await s2.hydrate(key);
-    const rec = s2.get(key);
+    // El persist es fire-and-forget: esperar a que aterrice en DB (con la
+    // suite en paralelo y en CI, 150 ms fijos no alcanzaban — flake 8 sep 2026).
+    let rec: { product: string; qty: number } | undefined;
+    for (let i = 0; i < 40 && !rec; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      await s2.hydrate(key);
+      rec = s2.get(key);
+    }
     expect(rec?.product).toBe('glifosato');
     expect(rec?.qty).toBe(100);
 
