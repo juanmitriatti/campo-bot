@@ -218,6 +218,15 @@ function shouldStripPlot(
   const isKnown = options.userPlots.some(n => normalize(n) === normalize(trimmed));
   if (!isKnown) return true; // no es un lote del usuario → invención → dropear
   if (mentionedInText(trimmed, ctx.originalText, options.userPlots)) return false;
+  // Respuesta corta a una pregunta del bot ("maíz" tras "¿qué cultivo sembraste
+  // en el Sur?"): el lote lo dijo el usuario UN turno antes ("sembré en el
+  // Sur"). Dropearlo mandaba la siembra al lote del contexto (Norte) y el
+  // handler ofrecía reemplazar la soja (QA prod, 8 sep 2026). Solo turnos del
+  // USUARIO (recentText) y solo si el mensaje actual es una respuesta pelada.
+  if (isShortAnswer(ctx.originalText) && options.recentText && mentionedInText(trimmed, options.recentText, options.userPlots)) {
+    console.log(`AI_VALIDATOR KEEP (turno anterior): plot="${trimmed}" respuesta="${ctx.originalText.slice(0, 40)}"`);
+    return false;
+  }
   // Cuantificador COLECTIVO ("en cada lote", "todos los lotes", "ambos"): el
   // usuario referenció todos sus lotes de una — el agente distribuyó bien y
   // strippear los nombres colapsaba las N tools en una por el dedup del
@@ -247,8 +256,18 @@ function shouldStripField(
   const isKnown = options.userFields.some(n => normalize(n) === normalize(trimmed));
   if (!isKnown) return true;
   if (mentionedInText(trimmed, ctx.originalText, options.userFields)) return false;
+  if (isShortAnswer(ctx.originalText) && options.recentText && mentionedInText(trimmed, options.recentText, options.userFields)) {
+    console.log(`AI_VALIDATOR KEEP (turno anterior): field="${trimmed}" respuesta="${ctx.originalText.slice(0, 40)}"`);
+    return false;
+  }
   if (hasCollectiveReference(ctx.originalText)) return false;
   return !hasPronounReference(ctx.originalText);
+}
+
+/** Respuesta pelada a una pregunta del bot: corta y sin verbo de acción propio. */
+function isShortAnswer(text: string): boolean {
+  const t = text.trim();
+  return t.length > 0 && t.length <= 40 && t.split(/\s+/).length <= 5;
 }
 
 /**

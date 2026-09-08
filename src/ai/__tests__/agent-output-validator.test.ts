@@ -359,3 +359,31 @@ describe('validateToolCall — tolerancia fonética para nombres dictados', () =
     expect(r.droppedFields).toContain('plot');
   });
 });
+
+// QA prod (8 sep 2026): "sembré en el Sur" → el agente preguntó el cultivo por
+// respond_text → "maíz" → sow_crop(plot=Sur) → el validador dropeaba Sur porque
+// no estaba en "maíz" y la siembra caía en el lote del contexto (Norte).
+describe('validateToolCall — respuesta corta conserva el lote dicho el turno anterior', () => {
+  const userPlots = ['Norte', 'Sur'];
+  const userFields = ['Establecimiento Roma'];
+  const opts = { validatePlotField: true, userPlots, userFields, recentText: 'sembré soja en el Norte\nsembré en el Sur' };
+
+  it('"maíz" + recentText con "el Sur" → plot=Sur se queda', () => {
+    const r = validateToolCall({ toolName: 'sow_crop', input: { crop: 'maíz', plot: 'Sur' }, originalText: 'maíz' }, opts);
+    expect(r.droppedFields).toEqual([]);
+    expect(r.input.plot).toBe('Sur');
+  });
+
+  it('un mensaje largo con acción propia NO hereda el lote del turno anterior', () => {
+    const r = validateToolCall(
+      { toolName: 'log_spraying', input: { product: 'glifosato', plot: 'Sur' }, originalText: 'fumigué con 2 litros de glifosato por hectárea hoy a la mañana' },
+      opts,
+    );
+    expect(r.droppedFields).toContain('plot');
+  });
+
+  it('sin recentText la respuesta corta sigue dropeando el lote no mencionado', () => {
+    const r = validateToolCall({ toolName: 'sow_crop', input: { crop: 'maíz', plot: 'Sur' }, originalText: 'maíz' }, { validatePlotField: true, userPlots, userFields });
+    expect(r.droppedFields).toContain('plot');
+  });
+});
