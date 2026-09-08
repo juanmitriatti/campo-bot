@@ -135,6 +135,34 @@ export function isValidCii(raw: string | null | undefined): boolean {
   return p.isFullCii && p.warning === null;
 }
 
+/**
+ * ¿Un texto suelto PARECE un identificador de animal (y no una frase)?
+ *
+ * Es la guarda de los slots que esperan una caravana. En prod (8 sep 2026) el
+ * pending de identify_animal pidió "¿Cuál es la caravana nueva?", el usuario
+ * contestó "la 10 es macho, cambialo" y el single-slot fallback tomó la oración
+ * entera: la caravana 0000010 quedó reemplazada por LA10ESMACHOCAMBIALO.
+ *
+ * Criterio deliberadamente laxo en formato (el sistema registra, no bloquea:
+ * un visual "AZ-45" o un NII de 10 son válidos) pero estricto en FORMA de
+ * frase: a lo sumo 3 tokens (un CII se dicta "032 01 0001234567"), al menos un
+ * dígito, y nada que parezca una palabra larga en castellano.
+ */
+export function looksLikeAnimalId(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const text = String(raw).trim();
+  if (!text || text.length > 40) return false;
+  const tokens = text.split(/\s+/);
+  if (tokens.length > 3) return false;
+  const normalized = normalizeAnimalId(text);
+  if (normalized.length < 1 || normalized.length > 24) return false;
+  if (!/[0-9]/.test(normalized)) return false;
+  // Una palabra alfabética de 4+ letras en el medio ("macho", "cambialo") es
+  // vocabulario, no una caravana. Los prefijos cortos ("AZ", "RP") pasan.
+  if (tokens.some((t) => /^[A-Za-zÁÉÍÓÚÑáéíóúñ]{4,}$/.test(t))) return false;
+  return true;
+}
+
 /** Formato legible "032 01 0001234567" para mostrarle al usuario. */
 export function formatCii(raw: string | null | undefined): string {
   const p = parseAnimalId(raw);

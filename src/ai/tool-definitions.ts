@@ -1428,6 +1428,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       properties: {
         category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría del animal.' },
         count: { type: 'number', description: 'Cantidad de animales.' },
+        animal_ref: { type: 'string', description: 'Caravana si nombró UN animal concreto ("vendí la 0000009"). count=1.' },
         breed: { type: 'string', description: 'Raza, si mencionado.' },
         avg_weight_kg: { type: 'number', description: 'Peso PROMEDIO por animal en kg, si mencionado ("de 400 kg promedio").' },
         total_weight_kg: { type: 'number', description: 'Peso TOTAL en kg de los animales vendidos, si el usuario lo dio en total ("4500 kilos en total", "pesaron 9000 kg").' },
@@ -1475,6 +1476,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       properties: {
         category: { type: 'string', enum: ['vaca', 'vaquillona', 'ternero', 'ternera', 'novillo', 'novillito', 'toro', 'torito', 'buey'], description: 'Categoría del animal.' },
         count: { type: 'number', description: 'Cantidad muerta.' },
+        animal_ref: { type: 'string', description: 'Caravana si nombró UN animal concreto ("se murió la vaca 0000010", "la 10"). count=1. El sistema descuenta el grupo Y marca el animal.' },
         breed: { type: 'string', description: 'Raza, si mencionado.' },
         reason: { type: 'string', description: 'Causa (enfermedad, accidente, etc.), si mencionado.' },
         field: FIELD_PROP,
@@ -1602,6 +1604,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         disease_or_vaccine: { type: 'string', description: 'Nombre de la vacuna, enfermedad o tratamiento (ej: "aftosa", "brucelosis", "ivermectina", "queratoconjuntivitis").' },
         category: { type: 'string', enum: ['vaca','vaquillona','ternero','ternera','novillo','novillito','toro','torito','buey'], description: 'Categoría animal.' },
         animals_affected: { type: 'number', description: 'Cantidad de animales tratados/vacunados.' },
+        animal_refs: { type: 'array', items: { type: 'string' }, description: 'Caravanas si nombró animales concretos ("vacuné la 0000009", "la 1, la 2 y la 3 son las vacunadas"). El evento queda en la ficha de cada uno.' },
         dose_quantity: { type: 'number', description: 'Cantidad de dosis/producto aplicado (opcional).' },
         dose_unit: { type: 'string', description: 'Unidad de dosis (cc, ml, lt). Opcional.' },
         veterinarian: { type: 'string', description: 'Nombre del veterinario.' },
@@ -1739,10 +1742,25 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        animal_ref: { type: 'string', description: 'Caravana actual del animal.' },
+        animal_ref: { type: 'string', description: 'Caravana actual del animal. También referencia corta ("la 10").' },
         new_rfid: { type: 'string', description: 'Caravana electrónica nueva.' },
         new_visual_tag: { type: 'string', description: 'Caravana visual nueva.' },
         reason: { type: 'string', enum: ['perdida', 'rotura', 'reemplazo', 'baja', 'error_carga'], description: 'Motivo.' },
+      },
+      required: ['animal_ref'],
+    },
+  },
+  {
+    name: 'update_animal',
+    description: 'Corregir datos de UN animal cargado: sexo, categoría, raza, nacimiento. "la 10 es macho", "la 0000004 es ternera, no ternero". Caravana nueva → identify_animal. Cantidad de animales → transfer_livestock.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        animal_ref: { type: 'string', description: 'Caravana del animal (o referencia corta "la 10").' },
+        sex: { type: 'string', enum: ['M', 'H'], description: 'Sexo corregido.' },
+        category: { type: 'string', enum: LIVESTOCK_CATEGORY_ENUM, description: 'Categoría corregida.' },
+        breed: { type: 'string', description: 'Raza corregida.' },
+        birth_date: { type: 'string', description: 'Nacimiento YYYY-MM-DD.' },
       },
       required: ['animal_ref'],
     },

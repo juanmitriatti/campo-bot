@@ -103,7 +103,7 @@ const LIVESTOCK_COMMANDS = new Set([
   // Capa individual (animal + caravana). Van en el MISMO set a propósito: para
   // el router y el gate de plan esto es hacienda, no un dominio nuevo. El
   // despacho al AnimalHandler ocurre dentro del branch de livestock.
-  'register_animal', 'identify_animal', 'query_animal',
+  'register_animal', 'identify_animal', 'query_animal', 'update_animal',
   'list_animals', 'move_animals', 'revert_livestock_movement',
   // Lote de lecturas: `preview` lo emite el interceptor determinístico del
   // pipeline (no el agente); `move`/`cancel` son taps de botón. Ninguno tiene
@@ -113,7 +113,7 @@ const LIVESTOCK_COMMANDS = new Set([
 
 /** Subconjunto de LIVESTOCK_COMMANDS que atiende el AnimalHandler. */
 const ANIMAL_COMMANDS = new Set([
-  'register_animal', 'identify_animal', 'query_animal',
+  'register_animal', 'identify_animal', 'query_animal', 'update_animal',
   'list_animals', 'move_animals', 'revert_livestock_movement',
   'animal_batch_preview', 'animal_batch_move', 'animal_batch_cancel',
 ]);

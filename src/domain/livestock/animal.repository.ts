@@ -113,6 +113,35 @@ export class AnimalRepository {
   }
 
   /**
+   * Referencia CORTA por número: "la vaca 10" cuando la caravana es 0000010.
+   *
+   * Compara ignorando ceros a la izquierda y devuelve el animal SOLO si la
+   * coincidencia es única entre las identificaciones vigentes del usuario. Con
+   * 2+ candidatos (0000010 y 0000000010) no adivina: null. Un dígito cambiado
+   * apunta a otro animal, así que acá vale más no encontrar que encontrar mal.
+   */
+  async findUniqueByNumericRef(userId: number, ref: string): Promise<AnimalRow | null> {
+    const digits = normalizeAnimalId(ref);
+    if (!/^[0-9]+$/.test(digits)) return null;
+    const bare = digits.replace(/^0+/, '');
+    if (!bare) return null;
+    const { rows } = await pool.query(
+      `${ANIMAL_SELECT}
+         WHERE a.user_id = $1
+           AND a.deleted_at IS NULL
+           AND EXISTS (
+             SELECT 1 FROM animal_identifications ai
+              WHERE ai.animal_id = a.id
+                AND ai.is_current
+                AND ltrim(ai.value_normalized, '0') = $2
+           )
+         LIMIT 2`,
+      [userId, bare],
+    );
+    return rows.length === 1 ? rows[0] : null;
+  }
+
+  /**
    * EL camino caliente: N identificadores → N animales en UNA query.
    *
    * Devuelve un Map indexado por el valor normalizado. El NII de 10 dígitos se
@@ -472,6 +501,46 @@ export class AnimalRepository {
    * agregado (una vacunación de 50 vacas) a los animales que participaron: 1
    * INSERT, no 50.
    */
+  /**
+   * Corrige datos propios del animal (sexo, raza, nacimiento, notas). NO toca
+   * ubicación, grupo ni categoría: eso va por `relocateAnimals`, que además
+   * recuenta los grupos.
+   */
+  async updateAnimalFields(
+    userId: number,
+    animalId: string,
+    patch: { sex?: AnimalSex; breedId?: number | null; breedText?: string | null; birthDate?: string | null; notes?: string | null },
+  ): Promise<AnimalRow | null> {
+    const sets: string[] = [];
+    const params: unknown[] = [animalId, userId];
+    const add = (col: string, v: unknown, cast = '') => { params.push(v); sets.push(`${col} = $${params.length}${cast}`); };
+    if (patch.sex !== undefined) add('sex', patch.sex, '::animal_sex');
+    if (patch.breedId !== undefined) add('breed_id', patch.breedId);
+    if (patch.breedText !== undefined) add('breed_text', patch.breedText);
+    if (patch.birthDate !== undefined) add('birth_date', patch.birthDate, '::date');
+    if (patch.notes !== undefined) add('notes', patch.notes);
+    if (sets.length === 0) return this.findById(userId, animalId);
+    await pool.query(
+      `UPDATE animals SET ${sets.join(', ')}, updated_at = NOW()
+        WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+      params,
+    );
+    return this.findById(userId, animalId);
+  }
+
+  /**
+   * Quita las filas de animal_events que apuntan a un evento de dominio dado de
+   * baja ("borrá eso del ribortril"). Sin esto la ficha del animal seguiría
+   * mostrando una vacunación que el usuario ya borró.
+   */
+  async deleteEventsByDomainEvent(userId: number, domainEventId: number): Promise<number> {
+    const { rowCount } = await pool.query(
+      `DELETE FROM animal_events WHERE user_id = $1 AND domain_event_id = $2`,
+      [userId, domainEventId],
+    );
+    return rowCount ?? 0;
+  }
+
   async insertEvents(events: Array<{
     userId: number;
     animalId: string;

@@ -24,6 +24,7 @@ import {
   type AnimalRow,
   type AnimalIdentificationRow,
   type AnimalEventRow,
+  type AnimalEventType,
   type AnimalSex,
   type AnimalSource,
   type AnimalStatus,
@@ -242,6 +243,201 @@ export class AnimalService {
 
   async findByIdentifier(userId: number, rawValue: string): Promise<AnimalRow | null> {
     return this.repo.findByIdentifier(userId, rawValue);
+  }
+
+  /**
+   * Resuelve las caravanas que el usuario NOMBRÓ en una operación de grupo
+   * ("se murió la vaca 0000010", "vacuné la 9 y la 10").
+   *
+   * Primero el match exacto (CII / NII / visual); si no hay, la referencia
+   * corta por número ("la 10" → 0000010) SOLO si es única. Devuelve aparte lo
+   * que no encontró para que el handler lo diga — nunca se cae en silencio a
+   * "otro animal parecido".
+   */
+  async resolveRefs(userId: number, refs: string[]): Promise<{ found: AnimalRow[]; missing: string[] }> {
+    const found: AnimalRow[] = [];
+    const missing: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of refs) {
+      const ref = String(raw ?? '').trim();
+      if (!ref) continue;
+      let animal = await this.repo.findByIdentifier(userId, ref);
+      if (!animal) {
+        animal = await this.repo.findUniqueByNumericRef(userId, ref);
+        if (animal) console.log(`[ANIMAL] ref corta «${ref}» → ${animal.current_rfid ?? animal.current_visual_tag ?? animal.id}`);
+      }
+      if (!animal) { missing.push(ref); continue; }
+      if (seen.has(animal.id)) continue;
+      seen.add(animal.id);
+      found.push(animal);
+    }
+    return { found, missing };
+  }
+
+  /**
+   * Enlaza un evento de dominio YA guardado (sanidad, pesaje…) a los animales
+   * que participaron. El evento grupal sigue siendo UNA fila en domain_events;
+   * acá van N filas en animal_events que apuntan a ella por domain_event_id.
+   */
+  async linkDomainEvent(input: {
+    userId: number;
+    animalIds: string[];
+    eventType: AnimalEventType;
+    domainEventId: number;
+    eventDate?: string | null;
+    textValue?: string | null;
+    numericValue?: number | null;
+    unit?: string | null;
+    source?: AnimalSource;
+    createdBy?: number | null;
+  }): Promise<number> {
+    if (input.animalIds.length === 0) return 0;
+    return this.repo.insertEvents(input.animalIds.map((animalId) => ({
+      userId: input.userId,
+      animalId,
+      eventType: input.eventType,
+      eventDate: input.eventDate ?? null,
+      domainEventId: input.domainEventId,
+      textValue: input.textValue ?? null,
+      numericValue: input.numericValue ?? null,
+      unit: input.unit ?? null,
+      source: input.source ?? 'manual',
+      createdBy: input.createdBy ?? input.userId,
+    })));
+  }
+
+  // ========================
+  // CORRECCIÓN DE DATOS
+  // ========================
+
+  /**
+   * Corrige sexo, raza o nacimiento de un animal cargado. Cada cambio deja su
+   * evento en la ficha (from → to): una corrección silenciosa es indistinguible
+   * de un dato que siempre estuvo así.
+   *
+   * `CATEGORY_SEX` es un DEFAULT, no una verdad: "la 10 es macho" sobre una
+   * vaca se acepta y se avisa — la categoría la corrige `recategorize`.
+   */
+  async updateAnimal(input: {
+    userId: number;
+    animalId: string;
+    sex?: AnimalSex | null;
+    breed?: string | null;
+    birthDate?: string | null;
+    notes?: string | null;
+    eventDate?: string | null;
+    source?: AnimalSource;
+    createdBy?: number | null;
+  }): Promise<{ animal: AnimalRow; changes: Array<{ field: string; from: string | null; to: string | null }>; warnings: string[] }> {
+    const warnings: string[] = [];
+    return withTransaction(async () => {
+      const before = await this.repo.findById(input.userId, input.animalId);
+      if (!before) throw new Error('No encontré ese animal.');
+
+      const patch: Parameters<AnimalRepository['updateAnimalFields']>[2] = {};
+      const changes: Array<{ field: string; from: string | null; to: string | null }> = [];
+
+      if (input.sex && input.sex !== before.sex) {
+        patch.sex = input.sex;
+        changes.push({ field: 'sexo', from: before.sex, to: input.sex });
+        if (CATEGORY_SEX[before.category] !== input.sex) {
+          warnings.push(`«${LIVESTOCK_CATEGORY_LABEL[before.category]}» es una categoría ${CATEGORY_SEX[before.category] === 'H' ? 'hembra' : 'macho'}. Si corresponde, decime también la categoría (ej: «es un toro»).`);
+        }
+      }
+      if (input.breed) {
+        const def = normalizeBreed(input.breed);
+        if (!def) warnings.push(`No reconocí la raza «${input.breed}» — la guardé tal cual.`);
+        const to = def?.name ?? input.breed;
+        const from = before.breed_name ?? before.breed_text ?? null;
+        if (to !== from) {
+          patch.breedId = def ? await this.breedIdFor(def.code) : null;
+          patch.breedText = input.breed;
+          changes.push({ field: 'raza', from, to });
+        }
+      }
+      if (input.birthDate) {
+        const from = before.birth_date ? String(before.birth_date).slice(0, 10) : null;
+        if (from !== input.birthDate) {
+          patch.birthDate = input.birthDate;
+          changes.push({ field: 'nacimiento', from, to: input.birthDate });
+        }
+      }
+      if (input.notes != null) patch.notes = input.notes;
+
+      const animal = (await this.repo.updateAnimalFields(input.userId, input.animalId, patch)) ?? before;
+      if (changes.length > 0) {
+        await this.repo.insertEvents(changes.map((c) => ({
+          userId: input.userId,
+          animalId: input.animalId,
+          eventType: 'otro' as const,
+          eventDate: input.eventDate ?? null,
+          fromRef: c.from,
+          toRef: c.to,
+          textValue: `corrección de ${c.field}`,
+          source: input.source ?? 'manual',
+          createdBy: input.createdBy ?? input.userId,
+        })));
+      }
+      return { animal, changes, warnings };
+    });
+  }
+
+  /**
+   * Cambia la categoría de UN animal (error de carga o recategorización real).
+   *
+   * Solo la parte INDIVIDUAL: `group_id`, `category`, el sexo implícito y el
+   * evento `cambio_categoria`. El movimiento del grupo (1 cabeza de Vaca a
+   * Toro) lo hace el handler por el camino de grupo de siempre y le pasa el
+   * grupo destino + el id del movimiento — invariante 16: este servicio no
+   * toca `livestock_groups.count`.
+   */
+  async recategorize(input: {
+    userId: number;
+    animalId: string;
+    newCategory: LivestockCategory;
+    destGroupId?: string | null;
+    livestockMovementId?: string | null;
+    eventDate?: string | null;
+    source?: AnimalSource;
+    createdBy?: number | null;
+  }): Promise<{ animal: AnimalRow; from: LivestockCategory }> {
+    return withTransaction(async () => {
+      const before = await this.repo.findById(input.userId, input.animalId);
+      if (!before) throw new Error('No encontré ese animal.');
+      if (TERMINAL_STATUSES.includes(before.status)) throw new Error(`Ese animal ya está ${before.status}; no le cambio la categoría.`);
+      if (before.category === input.newCategory) return { animal: before, from: before.category };
+
+      await this.repo.relocateAnimals(input.userId, [before.id], {
+        fieldId: before.field_id,
+        plotId: before.plot_id,
+        corralId: before.corral_id,
+        groupId: input.destGroupId ?? null,
+        category: input.newCategory,
+      });
+      // El sexo sigue a la categoría nueva (vaca→toro implica macho).
+      await this.repo.updateAnimalFields(input.userId, before.id, { sex: CATEGORY_SEX[input.newCategory] });
+
+      await this.repo.insertEvents([{
+        userId: input.userId,
+        animalId: before.id,
+        eventType: 'cambio_categoria',
+        eventDate: input.eventDate ?? null,
+        livestockMovementId: input.livestockMovementId ?? null,
+        fromRef: LIVESTOCK_CATEGORY_LABEL[before.category] ?? before.category,
+        toRef: LIVESTOCK_CATEGORY_LABEL[input.newCategory] ?? input.newCategory,
+        textValue: 'corrección de categoría',
+        source: input.source ?? 'manual',
+        createdBy: input.createdBy ?? input.userId,
+      }]);
+
+      const animal = (await this.repo.findById(input.userId, before.id)) ?? before;
+      return { animal, from: before.category };
+    });
+  }
+
+  /** Borra los enlaces animal↔evento cuando el evento de dominio se da de baja. */
+  async unlinkDomainEvent(userId: number, domainEventId: number): Promise<number> {
+    return this.repo.deleteEventsByDomainEvent(userId, domainEventId);
   }
 
   async getById(userId: number, animalId: string): Promise<AnimalRow | null> {

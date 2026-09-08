@@ -17,6 +17,7 @@ import { AgentResponseMapper } from '../agent-response-mapper.js';
 const ANIMAL_TOOLS = [
   'register_animal',
   'identify_animal',
+  'update_animal',
   'query_animal',
   'list_animals',
   'move_animals',

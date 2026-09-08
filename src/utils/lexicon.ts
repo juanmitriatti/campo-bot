@@ -183,3 +183,29 @@ export function impliesWholeGroup(text: string | null | undefined): boolean {
   if (/\b(?:tod[ao]s?|el\s+rodeo|la\s+tropa|todo\s+el\s+lote|el\s+lote\s+entero|la\s+majada)\b/.test(t)) return true;
   return /\b(?:l[ao]s)\s+(?:vacas?|novill[oa]s?|novillit[oa]s?|terner[oa]s?|tor[oa]s?|torit[oa]s?|vaquillonas?|vaquillas?|animales|cabezas|ovejas?|corderos?|carneros?|chanchos?|cerd[oa]s?|yeguas?|caballos?|cabras?)\b/.test(t);
 }
+
+/**
+ * ¿El número N aparece en el texto SOLO como superficie ("5 hectáreas", "5 ha",
+ * "5has")? Entonces no puede ser una cantidad de animales/insumos.
+ *
+ * "En 5 hectáreas de ese lote tengo vacas" → el agente registró 5 vacas (prod,
+ * 8 sep 2026). El 5 es superficie; la cantidad de vacas no se dijo y el
+ * handler tiene que preguntarla. Con "5 vacas en 5 hectáreas" NO aplica: el 5
+ * también aparece como cantidad.
+ */
+export const AREA_UNIT_RE = /\s*(?:ha|has|hect[aá]reas?|hect\.?)\b/i;
+
+export function numberOnlyAppearsAsArea(text: string | null | undefined, n: number): boolean {
+  if (!text || !Number.isFinite(n)) return false;
+  const re = /(\d+(?:[.,]\d+)?)/g;
+  let m: RegExpExecArray | null;
+  let seen = 0;
+  while ((m = re.exec(text)) !== null) {
+    const v = parseFloat(m[1].replace(',', '.'));
+    if (v !== n) continue;
+    seen++;
+    const after = text.slice(m.index + m[1].length);
+    if (!AREA_UNIT_RE.test(after.slice(0, 12)) || !/^\s*(?:ha|has|hect)/i.test(after)) return false;
+  }
+  return seen > 0;
+}

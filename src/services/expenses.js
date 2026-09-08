@@ -2590,6 +2590,10 @@ export async function deleteDomainEvent(eventId) {
       );
     }
 
+    // Los animales enlazados a este evento (sanidad por caravana) dejan de
+    // mostrarlo en su ficha: el enlace vive en animal_events.domain_event_id.
+    await pool.query(`DELETE FROM animal_events WHERE domain_event_id = $1`, [eventId]);
+
     const result = await pool.query(
       `UPDATE domain_events SET deleted_at = NOW() WHERE id = $1 RETURNING *`,
       [eventId]

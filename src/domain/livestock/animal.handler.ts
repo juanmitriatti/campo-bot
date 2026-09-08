@@ -20,8 +20,9 @@ import { LivestockRepository } from './livestock.repository.js';
 import { AnimalBatchService } from './animal-batch.service.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import { LIVESTOCK_CATEGORY_LABEL, type LivestockCategory } from './livestock.types.js';
-import { ANIMAL_EVENT_LABEL, ANIMAL_STATUS_LABEL, type AnimalRow, type AnimalStatus } from './animal.types.js';
-import { parseAnimalId, extractIdList, formatCii } from '../../utils/animal-id.js';
+import { ANIMAL_EVENT_LABEL, ANIMAL_STATUS_LABEL, CATEGORY_SEX, type AnimalRow, type AnimalStatus } from './animal.types.js';
+import { withTransaction } from '../../config/db.js';
+import { parseAnimalId, extractIdList, formatCii, looksLikeAnimalId } from '../../utils/animal-id.js';
 import { formatDateAR } from '../../utils/date.js';
 import type { ParsedCommand, HandlerResponse, UserId } from '../../types/index.js';
 
@@ -65,6 +66,7 @@ export class AnimalHandler {
       switch (cmd.command) {
         case 'register_animal': return await this.registerAnimal(cmd, userId);
         case 'identify_animal': return await this.identifyAnimal(cmd, userId);
+        case 'update_animal': return await this.updateAnimal(cmd, userId);
         case 'query_animal': return await this.queryAnimal(cmd, userId);
         case 'list_animals': return await this.listAnimals(cmd, userId);
         case 'move_animals': return await this.moveAnimals(cmd, userId);
@@ -117,7 +119,22 @@ export class AnimalHandler {
       };
     }
 
-    const loc = await this.resolveLocation(cmd, userId);
+    let loc = await this.resolveLocation(cmd, userId);
+    let inherited = false;
+    if (!loc.plotId && !loc.corralId) {
+      // Sin ubicación: si el usuario tiene UN solo grupo de esta categoría, el
+      // animal va ahí. En prod (8 sep 2026) "registrá las 10 vacas de la 1 a
+      // la 10" dejó 10 animales "sin ubicación" al lado de un grupo de 10
+      // vacas en La tapera — en el dashboard flotaban fuera del lote y el
+      // grupo no sabía que estaba individualizado.
+      const fromGroup = await this.locationFromSoleGroup(userId, category);
+      if (fromGroup) { loc = fromGroup; inherited = true; }
+    }
+    // Con ubicación (dicha o heredada) el animal se cuelga del grupo de su
+    // categoría en ese lote/corral, así `individualized_count` lo cuenta.
+    if (!loc.groupId && (loc.plotId || loc.corralId)) {
+      loc = { ...loc, groupId: await this.groupIdAt(userId, category, loc.plotId, loc.corralId) };
+    }
 
     const { animal, warnings } = await this.service.registerAnimal({
       userId: Number(userId),
@@ -141,10 +158,45 @@ export class AnimalHandler {
       `  ${animalLabel(animal)}\n` +
       (animal.breed_name ? `  🧬 ${animal.breed_name}\n` : '') +
       (animal.birth_date ? `  🎂 ${formatDateAR(animal.birth_date)}\n` : '') +
-      `  📍 ${locationLabel(animal)}` +
+      `  📍 ${locationLabel(animal)}${inherited ? ' _(donde están tus ' + LIVESTOCK_CATEGORY_LABEL[category].toLowerCase() + 's)_' : ''}` +
       (warnings.length > 0 ? `\n\n⚠️ ${warnings.join(' ')}` : '');
 
     return { messages: [body] };
+  }
+
+  /** Ubicación del ÚNICO grupo vivo de la categoría, o null si hay 0 o 2+. */
+  private async locationFromSoleGroup(
+    userId: UserId, category: LivestockCategory,
+  ): Promise<{ fieldId: number | null; plotId: number | null; corralId: number | null; groupId: string | null; label: string | null } | null> {
+    let groups: Awaited<ReturnType<LivestockService['findGroupsByCategory']>>;
+    try { groups = await this.livestock.findGroupsByCategory(userId, category); } catch { return null; }
+    const alive = groups.filter((g) => Number(g.count) > 0 && (g.plot_id || g.corral_id));
+    if (alive.length !== 1) return null;
+    const g = alive[0];
+    const { pool } = await import('../../config/db.js');
+    let fieldId: number | null = null;
+    if (g.corral_id) {
+      const r = await pool.query(
+        `SELECT ft.field_id FROM corrals c JOIN feedlots ft ON ft.id = c.feedlot_id WHERE c.id = $1`, [g.corral_id],
+      );
+      fieldId = r.rows[0]?.field_id ?? null;
+    } else if (g.plot_id) {
+      const r = await pool.query(`SELECT field_id FROM plots WHERE id = $1`, [g.plot_id]);
+      fieldId = r.rows[0]?.field_id ?? null;
+    }
+    console.log(`[ANIMAL] alta sin ubicación → heredó ${g.location_label} del único grupo de ${category} (user ${userId})`);
+    return { fieldId, plotId: g.plot_id ?? null, corralId: g.corral_id ?? null, groupId: g.id, label: g.location_label };
+  }
+
+  /** Grupo de la categoría en ese lote/corral (el más numeroso si hay razas distintas), o null. */
+  private async groupIdAt(
+    userId: UserId, category: LivestockCategory, plotId: number | null, corralId: number | null,
+  ): Promise<string | null> {
+    try {
+      const groups = await this.livestock.findGroupsByCategory(userId, category);
+      const here = groups.filter((g) => corralId ? g.corral_id === corralId : g.plot_id === plotId);
+      return here[0]?.id ?? null; // findGroupsByCategory viene ORDER BY count DESC
+    } catch { return null; }
   }
 
   // ========================
@@ -156,13 +208,20 @@ export class AnimalHandler {
     const newValue = (cmd.newRfid as string) ?? (cmd.newVisualTag as string) ?? null;
 
     if (!ref) return { messages: ['Decime de qué animal. Ej: «reemplazá la caravana 0001234567 por la 0007654321».'] };
-    if (!newValue) {
-      const ask = '🏷️ ¿Cuál es la caravana nueva?';
+    if (!newValue || !looksLikeAnimalId(newValue)) {
+      // Una frase NO es una caravana. En prod "la 10 es macho, cambialo" llegó
+      // como newRfid y reemplazó 0000010 por LA10ESMACHOCAMBIALO. El
+      // slot-extractor tiene la misma guarda; esta es la red del handler.
+      if (newValue) console.log(`[INTERCEPT] identify_animal: «${String(newValue).slice(0, 40)}» no parece una caravana — re-pregunto`);
+      const ask = newValue
+        ? `🏷️ «${String(newValue).slice(0, 40)}» no parece una caravana. ¿Cuál es la caravana nueva? (número electrónico o visual)`
+        : '🏷️ ¿Cuál es la caravana nueva?';
+      const { newRfid: _drop, newVisualTag: _drop2, ...rest } = cmd as Record<string, unknown>;
       return {
         messages: [ask],
         sideEffects: {
           setPendingActivity: {
-            command: 'identify_animal', data: { ...cmd }, missing: ['newRfid'], askPrompt: ask,
+            command: 'identify_animal', data: { ...rest }, missing: ['newRfid'], askPrompt: ask,
           },
         },
       };
@@ -189,6 +248,111 @@ export class AnimalHandler {
       (warnings.length > 0 ? `\n\n⚠️ ${warnings.join(' ')}` : '');
 
     return { messages: [body] };
+  }
+
+  // ========================
+  // CORRECCIÓN DE DATOS DE UN ANIMAL
+  // ========================
+
+  /**
+   * "la 10 es macho", "la 0000004 es ternera, no ternero", "la 7 es Angus".
+   *
+   * Sexo, raza y nacimiento son datos del animal y no tocan grupos. La
+   * CATEGORÍA sí: el animal pasa del grupo Vaca al grupo Toro del mismo lote,
+   * y eso se hace con el camino de grupo de siempre (transferAnimals de 1
+   * cabeza con recategorización, que ajusta `count` y deja el movimiento) más
+   * la parte individual (`recategorize`). Todo en una transacción.
+   */
+  private async updateAnimal(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const ref = (cmd.animalRef as string) ?? null;
+    if (!ref) return { messages: ['Decime qué animal corregir. Ej: «la 0000010 es macho».'] };
+
+    const { found, missing } = await this.service.resolveRefs(Number(userId), [ref]);
+    if (missing.length > 0 || found.length === 0) {
+      return { messages: [`❌ No tengo ningún animal con la caravana ${formatCii(ref)}.`] };
+    }
+    const animal = found[0];
+    if (animal.status !== 'activo') {
+      return { messages: [`⚠️ ${animalLabel(animal)} ya no está en el rodeo (${ANIMAL_STATUS_LABEL[animal.status].label.toLowerCase()}). No le corrijo nada.`] };
+    }
+
+    const sex = (cmd.sex as 'M' | 'H') ?? null;
+    const breed = (cmd.breed as string) ?? null;
+    const birthDate = (cmd.birthDate as string) ?? null;
+    const rawCategory = (cmd.category as string) ?? null;
+    const newCategory = rawCategory ? LivestockService.normalizeCategory(rawCategory) : null;
+    if (rawCategory && !newCategory) return { messages: [`❌ No reconozco la categoría «${rawCategory}». Uso: vaca, vaquillona, ternero, ternera, novillo, novillito, toro, torito, buey.`] };
+    if (!sex && !breed && !birthDate && !newCategory) {
+      return { messages: ['Decime qué corregir de ' + animalLabel(animal) + ': sexo, categoría, raza o nacimiento. Ej: «la 10 es macho», «la 10 es un toro».'] };
+    }
+    if (sex && newCategory && CATEGORY_SEX[newCategory] !== sex) {
+      return { messages: [`❌ «${LIVESTOCK_CATEGORY_LABEL[newCategory]}» es una categoría ${CATEGORY_SEX[newCategory] === 'H' ? 'hembra' : 'macho'}; no puede ser ${sex === 'H' ? 'hembra' : 'macho'}. ¿Cuál de las dos corrijo?`] };
+    }
+
+    const lines: string[] = [];
+    const warnings: string[] = [];
+    const eventDate = (cmd.eventDate as string) ?? null;
+
+    await withTransaction(async () => {
+      if (newCategory && newCategory !== animal.category) {
+        let destGroupId: string | null = null;
+        let movementId: string | null = null;
+        if (animal.group_id && (animal.plot_name || animal.corral_name)) {
+          // Camino de grupo: 1 cabeza de la categoría vieja a la nueva, mismo lugar.
+          const { pool } = await import('../../config/db.js');
+          const g = await pool.query(`SELECT breed FROM livestock_groups WHERE id = $1`, [animal.group_id]);
+          const { destGroup, movement } = await this.livestock.transferAnimals(userId, {
+            category: animal.category,
+            count: 1,
+            sourcePlot: animal.plot_name ?? null,
+            sourceCorral: animal.corral_name ?? null,
+            destPlot: animal.plot_name ?? null,
+            destCorral: animal.corral_name ?? null,
+            breed: g.rows[0]?.breed ?? null,
+            destCategory: newCategory,
+            reason: `corrección de categoría (${animalLabel(animal)})`,
+            movement_date: eventDate,
+          });
+          destGroupId = destGroup.id;
+          movementId = movement?.id ? String(movement.id) : null;
+        } else {
+          warnings.push('El animal no estaba asociado a un grupo, así que solo cambié su ficha.');
+        }
+        const { from } = await this.service.recategorize({
+          userId: Number(userId), animalId: animal.id, newCategory, destGroupId,
+          livestockMovementId: movementId, eventDate, source: 'whatsapp',
+        });
+        lines.push(`  Categoría: ${LIVESTOCK_CATEGORY_LABEL[from]} → *${LIVESTOCK_CATEGORY_LABEL[newCategory]}*`);
+        console.log(`[ANIMAL] recategorización ${animalLabel(animal)}: ${from} → ${newCategory} (grupo ${destGroupId ?? 'ninguno'})`);
+      }
+
+      const fieldPatch: { sex: 'M' | 'H' | undefined; breed: string | null; birthDate: string | null } = { sex: sex ?? undefined, breed, birthDate };
+      // Si la categoría cambió, el sexo ya lo fijó recategorize; un sexo
+      // explícito coincidente no es un cambio y no se reporta dos veces.
+      if (newCategory && sex === CATEGORY_SEX[newCategory]) fieldPatch.sex = undefined;
+      if (fieldPatch.sex || breed || birthDate) {
+        const r = await this.service.updateAnimal({
+          userId: Number(userId), animalId: animal.id,
+          sex: fieldPatch.sex ?? null, breed, birthDate, eventDate, source: 'whatsapp',
+        });
+        for (const c of r.changes) {
+          const fmt = (v: string | null) => v == null ? '—' : c.field === 'sexo' ? (v === 'H' ? 'Hembra' : 'Macho') : v;
+          lines.push(`  ${c.field[0].toUpperCase()}${c.field.slice(1)}: ${fmt(c.from)} → *${fmt(c.to)}*`);
+        }
+        // Si además cambió la categoría, el aviso "es categoría hembra" ya no aplica.
+        warnings.push(...r.warnings.filter((w) => !(newCategory && w.includes('es una categoría'))));
+      }
+    });
+
+    if (lines.length === 0) {
+      return { messages: [`✅ ${animalLabel(animal)} ya estaba así. No cambié nada.`] };
+    }
+    return {
+      messages: [
+        `✏️ *Animal corregido*\n\n  ${animalLabel(animal)}\n` + lines.join('\n') +
+        (warnings.length > 0 ? `\n\n⚠️ ${warnings.join(' ')}` : ''),
+      ],
+    };
   }
 
   // ========================

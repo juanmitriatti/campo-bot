@@ -1571,6 +1571,72 @@ router.post('/animals', requireAuth, requireFeature('livestock'), async (req: Re
   }
 });
 
+/**
+ * PATCH /animals/:id — corregir sexo, raza, nacimiento o categoría.
+ *
+ * Misma lógica que la tool `update_animal` del bot: sexo/raza/nacimiento son
+ * datos del animal; la CATEGORÍA mueve 1 cabeza entre grupos por el camino de
+ * grupo de siempre (transferAnimals) y luego la ficha (recategorize).
+ */
+router.patch('/animals/:id', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
+  try {
+    const { sex, breed, birth_date, category, notes } = (req.body ?? {}) as Record<string, unknown>;
+    if (sex != null && sex !== 'M' && sex !== 'H') { res.status(400).json({ error: 'sex debe ser M o H' }); return; }
+    const userId = req.auth!.userId;
+
+    const [{ AnimalService }, { LivestockService }, { CATEGORY_SEX, TERMINAL_STATUSES }, { withTransaction }] = await Promise.all([
+      import('../domain/livestock/animal.service.js'),
+      import('../domain/livestock/livestock.service.js'),
+      import('../domain/livestock/animal.types.js'),
+      import('../config/db.js'),
+    ]);
+    const service = new AnimalService();
+    const animal = await service.getById(userId, String(req.params.id));
+    if (!animal) { res.status(404).json({ error: 'Animal no encontrado' }); return; }
+    if (TERMINAL_STATUSES.includes(animal.status)) { res.status(409).json({ error: `El animal ya está ${animal.status}` }); return; }
+
+    const newCategory = category != null ? LivestockService.normalizeCategory(String(category)) : null;
+    if (category != null && !newCategory) { res.status(400).json({ error: `Categoría no reconocida: ${String(category)}` }); return; }
+    if (newCategory && sex && CATEGORY_SEX[newCategory] !== sex) {
+      res.status(400).json({ error: `La categoría ${newCategory} implica sexo ${CATEGORY_SEX[newCategory]}` }); return;
+    }
+
+    const result = await withTransaction(async () => {
+      let recategorized: { from: string; to: string; groupMoved: boolean } | null = null;
+      if (newCategory && newCategory !== animal.category) {
+        let destGroupId: string | null = null;
+        let movementId: string | null = null;
+        if (animal.group_id && (animal.plot_name || animal.corral_name)) {
+          const g = await pool.query(`SELECT breed FROM livestock_groups WHERE id = $1`, [animal.group_id]);
+          const { destGroup, movement } = await new LivestockService().transferAnimals(asUserId(userId), {
+            category: animal.category, count: 1,
+            sourcePlot: animal.plot_name ?? null, sourceCorral: animal.corral_name ?? null,
+            destPlot: animal.plot_name ?? null, destCorral: animal.corral_name ?? null,
+            breed: g.rows[0]?.breed ?? null, destCategory: newCategory,
+            reason: 'corrección de categoría (dashboard)',
+          });
+          destGroupId = destGroup.id;
+          movementId = movement?.id ? String(movement.id) : null;
+        }
+        await service.recategorize({ userId, animalId: animal.id, newCategory, destGroupId, livestockMovementId: movementId, source: 'manual', createdBy: userId });
+        recategorized = { from: animal.category, to: newCategory, groupMoved: !!destGroupId };
+      }
+      const effectiveSex = newCategory && sex === CATEGORY_SEX[newCategory] ? null : (sex as 'M' | 'H' | null | undefined) ?? null;
+      const upd = await service.updateAnimal({
+        userId, animalId: animal.id,
+        sex: effectiveSex, breed: (breed as string | null) ?? null, birthDate: (birth_date as string | null) ?? null,
+        notes: (notes as string | null | undefined) ?? null, source: 'manual', createdBy: userId,
+      });
+      return { animal: upd.animal, changes: upd.changes, warnings: upd.warnings, recategorized };
+    });
+
+    invalidateUserContext(asUserId(userId));
+    res.json(result);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
 /** POST /animals/:id/identifications — asignar o reemplazar caravana. */
 router.post('/animals/:id/identifications', requireAuth, requireFeature('livestock'), async (req: Request, res: Response) => {
   try {

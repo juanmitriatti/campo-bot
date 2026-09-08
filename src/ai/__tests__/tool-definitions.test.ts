@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { TOOL_DEFINITIONS, TOOL_NAMES } from '../tool-definitions.js';
 
 describe('TOOL_DEFINITIONS', () => {
-  it('has 110 tools', () => {
+  it('has 111 tools', () => {
     // 85 → 91 on May 28 (morning): added 6 financial edit/delete tools
     //   (delete_last_expense, delete_specific_expense, delete_specific_income,
     //   edit_specific_expense, edit_last_income, edit_specific_income)
@@ -16,7 +16,9 @@ describe('TOOL_DEFINITIONS', () => {
     // 104 → 110 on Ago 30: capa individual de hacienda (register_animal,
     //   identify_animal, query_animal, list_animals, move_animals,
     //   revert_livestock_movement) — modelo híbrido grupo + animal con RFID.
-    expect(TOOL_DEFINITIONS).toHaveLength(110);
+    // 110 → 111 on Sep 8: +update_animal (corregir sexo/categoría/raza/nacimiento
+    //   de un animal cargado; la categoría mueve 1 cabeza entre grupos).
+    expect(TOOL_DEFINITIONS).toHaveLength(111);
   });
 
   it('all tools have unique names', () => {

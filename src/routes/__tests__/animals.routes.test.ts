@@ -103,6 +103,37 @@ describe('API de animales individuales', () => {
     expect((await ctx.call('/animals/lookup?ref=032010000999999')).status).toBe(404);
   });
 
+  it('PATCH corrige sexo (evento en la ficha) y rechaza una categoría cuyo sexo no coincide', async () => {
+    if (!appUp) return;
+    const created = await ctx.call('/animals', {
+      method: 'POST',
+      body: JSON.stringify({ category: 'vaca', rfid: '032010000700077', field_id: ctx.fieldId, plot_id: ctx.norteId }),
+    });
+    const { animal } = await created.json();
+
+    const bad = await ctx.call(`/animals/${animal.id}`, { method: 'PATCH', body: JSON.stringify({ category: 'toro', sex: 'H' }) });
+    expect(bad.status).toBe(400);
+
+    const ok = await ctx.call(`/animals/${animal.id}`, { method: 'PATCH', body: JSON.stringify({ sex: 'M', breed: 'hereford' }) });
+    expect(ok.status).toBe(200);
+    const body = await ok.json();
+    expect(body.animal.sex).toBe('M');
+    expect(body.animal.breed_name).toBe('Hereford');
+    expect(body.changes.map((c: { field: string }) => c.field).sort()).toEqual(['raza', 'sexo']);
+
+    const timeline = await (await ctx.call(`/animals/${animal.id}/timeline`)).json();
+    expect(timeline.events.filter((e: { text_value: string | null }) => e.text_value === 'corrección de sexo')).toHaveLength(1);
+
+    const missing = await ctx.call(`/animals/00000000-0000-0000-0000-000000000000`, { method: 'PATCH', body: JSON.stringify({ sex: 'M' }) });
+    expect(missing.status).toBe(404);
+
+    // El test siguiente toma "el primer animal del listado" (ORDER BY created_at
+    // DESC): este no puede quedar vivo o le roba el reemplazo de caravana.
+    await pool.query(`DELETE FROM animal_events WHERE animal_id = $1`, [animal.id]);
+    await pool.query(`DELETE FROM animal_identifications WHERE animal_id = $1`, [animal.id]);
+    await pool.query(`DELETE FROM animals WHERE id = $1`, [animal.id]);
+  });
+
   it('reemplazo de caravana conserva el historial', async () => {
     if (!appUp) return;
     const { items } = await (await ctx.call('/animals')).json();

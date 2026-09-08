@@ -191,6 +191,7 @@ export class FeatureGate {
       // hacienda: es la misma función del producto, no un plan aparte.
       register_animal: 'livestock',
       identify_animal: 'livestock',
+      update_animal: 'livestock',
       query_animal: 'livestock',
       list_animals: 'livestock',
       move_animals: 'livestock',

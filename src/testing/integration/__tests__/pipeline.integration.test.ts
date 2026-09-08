@@ -2970,4 +2970,248 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(h.allText(r)).not.toMatch(/varias localidades/);
     });
   });
+  /**
+   * QA prod 8 sep 2026 (usuario real por WhatsApp): cargó 10 vacas con
+   * caravanas 0000001..0000010 y después habló de animales CONCRETOS con
+   * tools de GRUPO. "se murió la vaca 10" descontó el grupo (10→9) y el
+   * animal 0000010 siguió "Activo"; "vacuné la 0000009" quedó a nivel grupo y
+   * la ficha vacía; "la 10 es macho, cambialo" reemplazó la caravana por
+   * LA10ESMACHOCAMBIALO; y las 10 altas quedaron "sin ubicación" al lado del
+   * grupo en La tapera.
+   */
+  describe('hacienda híbrida — caravanas nombradas en operaciones de grupo (QA prod 8 sep 2026)', () => {
+    let h: PipelineHarness;
+    let fieldId: number;
+    let taperaId: number;
+    let groupId: string;
+    const animalIds: Record<string, string> = {};
+
+    async function groupCount(): Promise<{ count: number; individualized: number }> {
+      const r = await h.q(`SELECT count, individualized_count FROM livestock_groups WHERE id = $1`, [groupId]);
+      return { count: Number(r[0].count), individualized: Number(r[0].individualized_count) };
+    }
+    async function animalByTag(tag: string): Promise<Record<string, unknown>> {
+      const r = await h.q(
+        `SELECT a.* FROM animals a JOIN animal_identifications ai ON ai.animal_id = a.id AND ai.is_current
+          WHERE a.user_id = $1 AND ai.value_normalized = $2`,
+        [h.userId, tag],
+      );
+      return r[0];
+    }
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('hibrido-caravanas');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Remanso') RETURNING id`, [h.userId]);
+      fieldId = f[0].id as number;
+      const p = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'La tapera') RETURNING id`, [fieldId]);
+      taperaId = p[0].id as number;
+      const g = await h.q(
+        `INSERT INTO livestock_groups (user_id, field_id, plot_id, category, count) VALUES ($1, $2, $3, 'vaca', 10) RETURNING id`,
+        [h.userId, fieldId, taperaId],
+      );
+      groupId = String(g[0].id);
+      // Caravanas de 7 dígitos, tal cual las cargó el usuario (el sistema registra, no bloquea).
+      for (let i = 1; i <= 10; i++) {
+        const tag = String(i).padStart(7, '0');
+        const a = await h.q(
+          `INSERT INTO animals (user_id, field_id, plot_id, group_id, category, sex, status)
+           VALUES ($1, $2, $3, $4, 'vaca', 'H', 'activo') RETURNING id`,
+          [h.userId, fieldId, taperaId, groupId],
+        );
+        animalIds[tag] = String(a[0].id);
+        await h.q(
+          `INSERT INTO animal_identifications (user_id, animal_id, id_type, value, value_normalized)
+           VALUES ($1, $2, 'rfid', $3, $3)`,
+          [h.userId, a[0].id, tag],
+        );
+      }
+      await h.q(`UPDATE livestock_groups SET individualized_count = 10 WHERE id = $1`, [groupId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('1. "se murió la vaca 10" descuenta el grupo Y marca muerto al animal 0000010 (ref corta única)', async () => {
+      h.fakeAgent.enqueueTool('record_livestock_death', { category: 'vaca', count: 1, animal_ref: '10', reason: 'sobredosis' });
+      const r = await h.send('se murió de sobredosis la vaca 10');
+      const text = h.allText(r);
+      expect(text).toMatch(/Baja registrada/);
+      expect(text).toMatch(/0000010/);
+      expect(text).toMatch(/Quedan: \*9\*/);
+
+      const a = await animalByTag('0000010');
+      expect(a.status).toBe('muerto');
+      const ev = await h.q(
+        `SELECT event_type, livestock_movement_id FROM animal_events WHERE animal_id = $1 AND event_type = 'egreso_muerte'`,
+        [a.id],
+      );
+      expect(ev).toHaveLength(1);
+      expect(ev[0].livestock_movement_id).not.toBeNull();
+      expect(await groupCount()).toEqual({ count: 9, individualized: 9 });
+    });
+
+    it('2. una caravana que NO existe es un error visible, nunca una baja "de una vaca cualquiera"', async () => {
+      const before = await groupCount();
+      h.fakeAgent.enqueueTool('record_livestock_death', { category: 'vaca', count: 1, animal_ref: '999' });
+      const r = await h.send('se murió la vaca 999');
+      expect(h.allText(r)).toMatch(/No tengo ningún animal con la caravana/);
+      expect(await groupCount()).toEqual(before);
+    });
+
+    it('3. "vacuné la 0000009 con ivermectina" queda en la ficha del animal, y deshacer el evento la limpia', async () => {
+      h.fakeAgent.enqueueTool('log_health_event', {
+        health_type: 'vacunacion', disease_or_vaccine: 'ivermectina', category: 'vaca', animal_refs: ['0000009'],
+      });
+      const r = await h.send('vacuné la 0000009 con ivermectina');
+      const text = h.allText(r);
+      expect(text).toMatch(/Evento sanitario registrado/);
+      expect(text).toMatch(/0000009/);
+      // No preguntó "¿A cuántos?": la caravana ya dice cuántos.
+      expect(text).not.toMatch(/cuántos/i);
+
+      const a = await animalByTag('0000009');
+      const linked = await h.q(
+        `SELECT ae.event_type, ae.text_value, ae.domain_event_id, de.animals_affected
+           FROM animal_events ae JOIN domain_events de ON de.id = ae.domain_event_id
+          WHERE ae.animal_id = $1 AND ae.event_type = 'vacunacion'`,
+        [a.id],
+      );
+      expect(linked).toHaveLength(1);
+      expect(linked[0].text_value).toBe('ivermectina');
+      expect(Number(linked[0].animals_affected)).toBe(1);
+
+      const undo = h.allButtons(r).find((b) => b.id.startsWith('lv_post_undo_event_'));
+      expect(undo).toBeTruthy();
+      await h.tap(undo!.id);
+      const after = await h.q(`SELECT 1 FROM animal_events WHERE animal_id = $1 AND event_type = 'vacunacion'`, [a.id]);
+      expect(after).toHaveLength(0);
+    });
+
+    it('4. "la 1, la 2 y la 3 son las que vacuné" completa el evento de grupo en vez de duplicarlo', async () => {
+      h.fakeAgent.enqueueTool('log_health_event', {
+        health_type: 'vacunacion', disease_or_vaccine: 'x29', category: 'vaca', animals_affected: 3,
+      });
+      await h.send('vacuné 3 vacas de la tapera con x29');
+
+      h.fakeAgent.enqueueTool('log_health_event', {
+        health_type: 'vacunacion', disease_or_vaccine: 'x29', category: 'vaca', animal_refs: ['1', '2', '3'],
+      });
+      const r = await h.send('bueno la 1 la 2 y la 3, son las que había vacunado');
+      expect(h.allText(r)).toMatch(/enlazadas al evento ya registrado/);
+
+      const events = await h.q(
+        `SELECT id FROM domain_events WHERE user_id = $1 AND event_type = 'health_event' AND product = 'x29' AND deleted_at IS NULL`,
+        [h.userId],
+      );
+      expect(events).toHaveLength(1);
+      const linked = await h.q(
+        `SELECT animal_id FROM animal_events WHERE domain_event_id = $1 AND event_type = 'vacunacion'`,
+        [events[0].id],
+      );
+      expect(linked.map((l) => String(l.animal_id)).sort()).toEqual(
+        [animalIds['0000001'], animalIds['0000002'], animalIds['0000003']].sort(),
+      );
+    });
+
+    it('5. "la 4 es macho, cambialo" NO se convierte en caravana: el slot de identificación rechaza frases', async () => {
+      h.fakeAgent.enqueueTool('identify_animal', { animal_ref: '0000004', reason: 'error_carga' });
+      const ask = await h.send('la 4 es macho');
+      expect(h.allText(ask)).toMatch(/caravana nueva/i);
+
+      const r = await h.send('la 4 es macho, cambialo');
+      expect(h.allText(r)).not.toMatch(/Caravana reemplazada/);
+
+      const idents = await h.q(
+        `SELECT value, is_current FROM animal_identifications WHERE animal_id = $1 ORDER BY assigned_date`,
+        [animalIds['0000004']],
+      );
+      expect(idents).toHaveLength(1);
+      expect(idents[0]).toMatchObject({ value: '0000004', is_current: true });
+    });
+
+    it('6. un alta sin ubicación hereda el lote del único grupo de la categoría y se cuelga de él', async () => {
+      const before = await groupCount();
+      h.fakeAgent.enqueueTool('register_animal', { category: 'vaca', rfid: '0000011' });
+      const r = await h.send('registrá la vaca 0000011');
+      const text = h.allText(r);
+      expect(text).toMatch(/Animal registrado/);
+      expect(text).toMatch(/La tapera/);
+      expect(text).not.toMatch(/sin ubicación/);
+
+      const a = await animalByTag('0000011');
+      expect(a.plot_id).toBe(taperaId);
+      expect(String(a.group_id)).toBe(groupId);
+      expect((await groupCount()).individualized).toBe(before.individualized + 1);
+    });
+
+    it('7. "la 4 es macho" corrige el sexo con update_animal: caravana y grupos intactos, evento en la ficha', async () => {
+      const before = await groupCount();
+      h.fakeAgent.enqueueTool('update_animal', { animal_ref: '4', sex: 'M' });
+      const r = await h.send('la 4 es macho');
+      const text = h.allText(r);
+      expect(text).toMatch(/Animal corregido/);
+      expect(text).toMatch(/Hembra → \*Macho\*/);
+      // Aviso: "vaca" es hembra — sugiere corregir la categoría.
+      expect(text).toMatch(/categoría hembra/i);
+
+      const a = await animalByTag('0000004');
+      expect(a.sex).toBe('M');
+      expect(a.category).toBe('vaca');
+      expect(String(a.group_id)).toBe(groupId);
+      expect(await groupCount()).toEqual(before);
+      const ev = await h.q(
+        `SELECT from_ref, to_ref FROM animal_events WHERE animal_id = $1 AND event_type = 'otro' AND text_value = 'corrección de sexo'`,
+        [a.id],
+      );
+      expect(ev).toHaveLength(1);
+      expect(ev[0]).toMatchObject({ from_ref: 'H', to_ref: 'M' });
+    });
+
+    it('8. "la 4 es un toro" mueve 1 cabeza de Vaca a Toro en el mismo lote y cambia el grupo del animal', async () => {
+      const before = await groupCount();
+      h.fakeAgent.enqueueTool('update_animal', { animal_ref: '0000004', category: 'toro' });
+      const r = await h.send('la 4 es un toro');
+      const text = h.allText(r);
+      expect(text).toMatch(/Categoría: Vaca → \*Toro\*/);
+
+      const a = await animalByTag('0000004');
+      expect(a.category).toBe('toro');
+      expect(a.sex).toBe('M');
+      expect(String(a.group_id)).not.toBe(groupId);
+
+      const after = await groupCount();
+      expect(after.count).toBe(before.count - 1);
+      expect(after.individualized).toBe(before.individualized - 1);
+      const toros = await h.q(
+        `SELECT id, count, individualized_count FROM livestock_groups WHERE user_id = $1 AND category = 'toro' AND plot_id = $2 AND deleted_at IS NULL`,
+        [h.userId, taperaId],
+      );
+      expect(toros).toHaveLength(1);
+      expect(Number(toros[0].count)).toBe(1);
+      expect(Number(toros[0].individualized_count)).toBe(1);
+      expect(String(a.group_id)).toBe(String(toros[0].id));
+
+      const ev = await h.q(
+        `SELECT livestock_movement_id FROM animal_events WHERE animal_id = $1 AND event_type = 'cambio_categoria'`,
+        [a.id],
+      );
+      expect(ev).toHaveLength(1);
+      expect(ev[0].livestock_movement_id).not.toBeNull();
+    });
+
+    it('9. "En 5 hectáreas de ese lote tengo vacas": el 5 es superficie, NO se registran 5 vacas', async () => {
+      // Prod 8 sep 2026: el agente mandó count=5 y se creó un grupo de 5 vacas.
+      const groupsBefore = await h.q(`SELECT COUNT(*)::int AS n FROM livestock_groups WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+      h.fakeAgent.enqueueTool('add_livestock', { plot: 'La tapera', category: 'vaquillona', count: 5 });
+      const r = await h.send('En 5 hectareas de ese lote tengo vaquillonas');
+      const text = h.allText(r);
+      expect(text).toMatch(/¿Cuántas cabezas/);
+      expect(text).not.toMatch(/Hacienda registrada/);
+      const groupsAfter = await h.q(`SELECT COUNT(*)::int AS n FROM livestock_groups WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+      expect(Number(groupsAfter[0].n)).toBe(Number(groupsBefore[0].n));
+
+      // Y la respuesta a la pregunta sí registra la cantidad real.
+      const done = await h.send('12');
+      expect(h.allText(done)).toMatch(/12 animales/);
+    });
+  });
+
 });

@@ -840,6 +840,14 @@ export class LivestockRepository {
        WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
       [eventId, userId]
     );
+    if ((rowCount ?? 0) > 0) {
+      // Enlaces por caravana (animal_events.domain_event_id): la ficha del
+      // animal no puede seguir mostrando un evento que el usuario deshizo.
+      await pool.query(
+        `DELETE FROM animal_events WHERE user_id = $1 AND domain_event_id = $2`,
+        [userId, eventId],
+      );
+    }
     return (rowCount ?? 0) > 0;
   }
 

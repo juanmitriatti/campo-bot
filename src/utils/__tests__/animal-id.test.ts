@@ -8,6 +8,7 @@ import {
   looksLikeIdList,
   extractIdList,
   splitIdLines,
+  looksLikeAnimalId,
   AR_COUNTRY_CODE,
   SPECIES_BOVINE,
 } from '../animal-id.js';
@@ -191,5 +192,19 @@ describe('extractIdList', () => {
 
   it('devuelve listas vacías para entrada nula', () => {
     expect(extractIdList(null)).toEqual({ values: [], duplicates: [] });
+  });
+});
+
+describe('looksLikeAnimalId — guarda de los slots que esperan una caravana', () => {
+  it('acepta CII, NII, números cortos con ceros y visuales con prefijo', () => {
+    for (const ok of ['032010001234567', '032 01 0001234567', '0001234567', '0000010', '10', 'AZ-45', 'RP 128']) {
+      expect(looksLikeAnimalId(ok), ok).toBe(true);
+    }
+  });
+
+  it('rechaza una frase (prod 8 sep 2026: "la 10 es macho, cambialo" quedó como caravana)', () => {
+    for (const bad of ['la 10 es macho, cambialo', 'la 10 es macho', 'no sé', 'después te digo', 'macho', '', '   ', 'la vaca del fondo 3']) {
+      expect(looksLikeAnimalId(bad), bad).toBe(false);
+    }
   });
 });

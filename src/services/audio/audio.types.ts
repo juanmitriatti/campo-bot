@@ -54,16 +54,23 @@ export interface AudioConfig {
 // contexto natural. "vaquillonas" suelto igual salió "vacuiciones" en vivo
 // (Jun 2026) — por eso además hay un mapa determinístico de manglings conocidos
 // en text-normalizer.js (STT_DOMAIN_CORRECTIONS). Capa 1: este prompt. Capa 2: el mapa.
+//
+// SIN CANTIDADES NI PRECIOS (Sep 2026). Whisper trata el prompt como "lo que se
+// dijo antes" y con un audio corto lo COPIA: el prompt decía "compré diez
+// vaquillonas... 500 mil por cabeza" y un audio de 5 s que decía "compré yerba"
+// salió "Compré 10 novillas por 500" → grupo de 10 vaquillonas + gasto de
+// $5.000.000 inventados en prod. Un prompt sin números no puede inventar una
+// compra. Regresión: __tests__/whisper-prompt.test.ts.
 export const DEFAULT_WHISPER_PROMPT =
   'Mensaje de un productor agropecuario argentino sobre su campo. Ejemplos: ' +
-  'compré diez vaquillonas para el lote sur; las vaquillonas me salieron 500 mil por cabeza; ' +
-  'vendí novillos y novillitos; desteté los terneros y las terneras; parieron las vacas; ' +
+  'compré vaquillonas para el lote sur; vendí novillos y novillitos; ' +
+  'desteté los terneros y las terneras; parieron las vacas; ' +
   'eché el toro, entoré, servicio, inseminé con IATF; vacuné contra aftosa y brucelosis; ' +
   'desparasité con ivermectina; pesaje, kilos promedio, cabezas, madres, hacienda, feedlot, corral; ' +
-  'sembré soja, maíz, trigo, girasol, sorgo, cebada en el potrero de cien hectáreas; ' +
+  'sembré soja, maíz, trigo, girasol, sorgo, cebada en el potrero; ' +
   'fumigué con glifosato, fertilicé con urea y fosfato, coseché y el rinde fue en quintales; ' +
-  'aré, rastré, regué; cayeron veinte milímetros de lluvia; ' +
-  'gasté en gasoil, nafta, agroquímicos, semillas; pesos, dólares, palos, lucas, mil.';
+  'aré, rastré, regué; cayeron milímetros de lluvia; ' +
+  'gasté en gasoil, nafta, agroquímicos, semillas, yerba, alambre; pesos, dólares, palos, lucas.';
 
 export function getAudioConfig(): AudioConfig {
   return {

@@ -14,7 +14,9 @@ import { saveDomainEvent, queryLivestockEvents, updateLivestockGroupWeight, upda
 import { formatDateAR } from '../../utils/date.js';
 import { formatPlotLocation } from '../../utils/format-location.js';
 import { userExplicitlyReferencedPlot } from '../../utils/plot-intent.js';
-import { pool } from '../../config/db.js';
+import { pool, withTransaction } from '../../config/db.js';
+import { TERMINAL_STATUSES, ANIMAL_STATUS_LABEL, type AnimalRow, type AnimalEventType } from './animal.types.js';
+import { formatCii } from '../../utils/animal-id.js';
 import { encodeLivestockPayload, decodeLivestockPayload } from './livestock-payload.js';
 import { buildPostActionButtons } from './livestock-post-actions.js';
 import { livestockLocationIntent } from '../../utils/livestock-location-intent.js';
@@ -28,6 +30,11 @@ import type {
   HandlerResponse,
   Currency,
 } from '../../types/index.js';
+
+/** Caravana legible de un animal individual (RFID > visual > id corto). */
+function tagOf(a: AnimalRow): string {
+  return formatCii(a.current_rfid ?? a.current_visual_tag ?? a.id.slice(0, 8));
+}
 
 /** Format a group's location for display */
 function fmtLoc(group: LivestockGroupRow): string {
@@ -793,6 +800,10 @@ export class LivestockHandler {
   // ========================
 
   private async removeLivestock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const named = await this.resolveNamedAnimals(cmd, userId);
+    if (named && 'error' in named) return { messages: [named.error] };
+    if (named) cmd.count = named.animals.length;
+
     const category = cmd.category as string;
     const count = cmd.count as number;
     if (!category) return { messages: ['Necesito la categoría. Ej: "vendí 5 vacas".'] };
@@ -807,27 +818,44 @@ export class LivestockHandler {
     const removePreset = await this.presetLocationFromGroups(cmd, userId, category);
     if (removePreset) return removePreset;
 
-    let group, financial, movement;
+    type RemoveResult = Awaited<ReturnType<LivestockService['removeAnimals']>>;
+    let group: RemoveResult['group'], financial: RemoveResult['financial'], movement: RemoveResult['movement'];
     try {
-      ({ group, financial, movement } = await this.service.removeAnimals(userId, {
-        category,
-        count,
-        fieldName: cmd.fieldName as string,
-        plotName: cmd.plotName as string,
-        corralName: cmd.corralName as string,
-        breed: cmd.breed as string,
-        avg_weight_kg: cmd.avg_weight_kg as number,
-        total_weight_kg: cmd.total_weight_kg as number,
-        unit_price_ars: cmd.unit_price_ars as number,
-        unit_price_usd: cmd.unit_price_usd as number,
-        price_per_kg_ars: cmd.price_per_kg_ars as number,
-        price_per_kg_usd: cmd.price_per_kg_usd as number,
-        reason: cmd.reason as string,
-        movement_date: cmd.eventDate as string,
-        // In compound (bulkMode), if multiple breeds coexist, auto-pick the
-        // largest group instead of throwing. Without this the compound stops
-        // mid-stream and subsequent steps are lost.
-        bulkMode: (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true,
+      // Grupo + animal en UNA transacción (ver recordDeath).
+      ({ group, financial, movement } = await withTransaction(async (): Promise<RemoveResult> => {
+        const res = await this.service.removeAnimals(userId, {
+          category,
+          count,
+          fieldName: cmd.fieldName as string,
+          plotName: cmd.plotName as string,
+          corralName: cmd.corralName as string,
+          breed: cmd.breed as string,
+          avg_weight_kg: cmd.avg_weight_kg as number,
+          total_weight_kg: cmd.total_weight_kg as number,
+          unit_price_ars: cmd.unit_price_ars as number,
+          unit_price_usd: cmd.unit_price_usd as number,
+          price_per_kg_ars: cmd.price_per_kg_ars as number,
+          price_per_kg_usd: cmd.price_per_kg_usd as number,
+          reason: cmd.reason as string,
+          movement_date: cmd.eventDate as string,
+          // In compound (bulkMode), if multiple breeds coexist, auto-pick the
+          // largest group instead of throwing. Without this the compound stops
+          // mid-stream and subsequent steps are lost.
+          bulkMode: (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true,
+        });
+        if (named) {
+          await this.animals.setStatus({
+            userId: Number(userId),
+            animalIds: named.animals.map((a) => a.id),
+            status: 'vendido',
+            exitDate: (cmd.eventDate as string) ?? null,
+            reason: (cmd.reason as string) ?? null,
+            livestockMovementId: res.movement?.id ? String(res.movement.id) : null,
+            source: 'whatsapp',
+          });
+          console.log(`[LIVESTOCK] egreso por caravana: ${named.tags.join(', ')} → vendido (grupo ${res.group.id})`);
+        }
+        return res;
       }));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -852,6 +880,7 @@ export class LivestockHandler {
       `🐄 *Hacienda descontada*\n\n` +
       `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}\n` +
       `  ➖ ${count} animales\n` +
+      (named ? `  🏷️ ${named.tags.join(', ')} → ${named.tags.length > 1 ? 'dados' : 'dado'} de baja\n` : '') +
       `  📊 Quedan: *${group.count}*\n` +
       `  📍 ${fmtLoc(group)}` +
       financialLine +
@@ -1032,7 +1061,64 @@ export class LivestockHandler {
   // DEATH / BIRTH
   // ========================
 
+  /**
+   * Caravanas NOMBRADAS en una operación de grupo ("se murió la vaca 0000010",
+   * "vacuné la 9 y la 10 con ivermectina").
+   *
+   * Sin caravana devuelve null y el camino de grupo sigue intacto (invariante
+   * 16). Con caravana resuelve los animales y, si el usuario no dio ubicación
+   * ni categoría, las hereda del animal: el grupo a descontar es el del lote
+   * donde ese animal está. Una caravana que NO existe es un error visible,
+   * nunca un fallback al grupo: descontaría "una vaca cualquiera" y el animal
+   * nombrado seguiría activo — exactamente lo que pasó en prod el 8 sep 2026
+   * ("se murió la vaca 10" → grupo 10→9, animal 0000010 "Activo").
+   */
+  private async resolveNamedAnimals(
+    cmd: ParsedCommand, userId: UserId, opts: { allowExited?: boolean } = {},
+  ): Promise<null | { error: string } | { animals: AnimalRow[]; tags: string[] }> {
+    const raw = Array.isArray(cmd.animalRefs)
+      ? (cmd.animalRefs as unknown[])
+      : (cmd.animalRef != null ? [cmd.animalRef] : []);
+    const refs = raw.map((r) => String(r ?? '').trim()).filter(Boolean);
+    if (refs.length === 0) return null;
+
+    const { found, missing } = await this.animals.resolveRefs(Number(userId), refs);
+    if (missing.length > 0) {
+      console.log(`[LIVESTOCK] caravana sin resolver: ${missing.join(', ')} (user ${userId}, cmd=${cmd.command})`);
+      return {
+        error:
+          `❌ No tengo ningún animal con la caravana ${missing.map((m) => formatCii(m)).join(', ')}.` +
+          `\n\nSi fue por cantidad y no por caravana, decímelo así: "${cmd.command === 'log_health_event' ? 'vacuné 1 vaca' : 'se murió 1 vaca'}".`,
+      };
+    }
+    if (!opts.allowExited) {
+      const out = found.filter((a) => TERMINAL_STATUSES.includes(a.status));
+      if (out.length > 0) {
+        const desc = out.map((a) => `${tagOf(a)} (${ANIMAL_STATUS_LABEL[a.status].label.toLowerCase()})`).join(', ');
+        return { error: `⚠️ ${desc} ya no está en el rodeo. No registré nada.` };
+      }
+    }
+
+    const first = found[0];
+    if (!cmd.plotName && !cmd.corralName && !cmd.fieldName) {
+      if (first.corral_name) cmd.corralName = first.corral_name;
+      else if (first.plot_name) cmd.plotName = first.plot_name;
+      if (cmd.plotName || cmd.corralName) {
+        console.log(`[LIVESTOCK] ubicación heredada del animal ${tagOf(first)}: ${cmd.corralName ?? cmd.plotName}`);
+      }
+    }
+    if (cmd.category !== first.category) {
+      if (cmd.category) console.log(`[LIVESTOCK] categoría «${String(cmd.category)}» → «${first.category}» (la del animal ${tagOf(first)})`);
+      cmd.category = first.category;
+    }
+    return { animals: found, tags: found.map(tagOf) };
+  }
+
   private async recordDeath(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
+    const named = await this.resolveNamedAnimals(cmd, userId);
+    if (named && 'error' in named) return { messages: [named.error] };
+    if (named) cmd.count = named.animals.length;
+
     const category = cmd.category as string;
     const count = cmd.count as number;
     if (!category) return { messages: ['Necesito la categoría. Ej: "se murieron 2 terneros".'] };
@@ -1086,15 +1172,33 @@ export class LivestockHandler {
     const deathPreset = await this.presetLocationFromGroups(cmd, userId, category);
     if (deathPreset) return deathPreset;
 
-    const { group } = await this.service.recordDeath(userId, {
-      category,
-      count,
-      fieldName: cmd.fieldName as string,
-      plotName: cmd.plotName as string,
-      corralName: cmd.corralName as string,
-      breed: cmd.breed as string,
-      reason: cmd.reason as string,
-      movement_date: cmd.eventDate as string,
+    // Grupo + animal en UNA transacción: si el descuento del grupo falla, el
+    // animal no queda muerto "en el aire", y viceversa.
+    type DeathResult = Awaited<ReturnType<LivestockService['recordDeath']>>;
+    const { group }: DeathResult = await withTransaction(async (): Promise<DeathResult> => {
+      const res = await this.service.recordDeath(userId, {
+        category,
+        count,
+        fieldName: cmd.fieldName as string,
+        plotName: cmd.plotName as string,
+        corralName: cmd.corralName as string,
+        breed: cmd.breed as string,
+        reason: cmd.reason as string,
+        movement_date: cmd.eventDate as string,
+      });
+      if (named) {
+        await this.animals.setStatus({
+          userId: Number(userId),
+          animalIds: named.animals.map((a) => a.id),
+          status: 'muerto',
+          exitDate: (cmd.eventDate as string) ?? null,
+          reason: (cmd.reason as string) ?? null,
+          livestockMovementId: res.movement?.id ? String(res.movement.id) : null,
+          source: 'whatsapp',
+        });
+        console.log(`[LIVESTOCK] muerte por caravana: ${named.tags.join(', ')} → muerto (grupo ${res.group.id})`);
+      }
+      return res;
     });
 
     await this.bumpConversationContext(userId, group.plot_id, group.field_id);
@@ -1105,6 +1209,7 @@ export class LivestockHandler {
         `💀 *Baja registrada*\n\n` +
         `  ${LIVESTOCK_CATEGORY_LABEL[group.category]}${breed}\n` +
         `  ➖ ${count} animales\n` +
+        (named ? `  🏷️ ${named.tags.join(', ')} → ${named.tags.length > 1 ? 'marcados' : 'marcado'} como muerto\n` : '') +
         `  📊 Quedan: *${group.count}*\n` +
         `  📍 ${fmtLoc(group)}` +
         (cmd.reason ? `\n  📝 ${cmd.reason}` : '') +
@@ -1494,6 +1599,13 @@ export class LivestockHandler {
     const healthType = cmd.healthType as string;
     if (!healthType) return { messages: ['Necesito el tipo de evento sanitario (vacunación, desparasitación, tratamiento).'] };
 
+    // "vacuné la 0000009 con ivermectina": el evento sigue siendo UNA fila de
+    // grupo en domain_events, y además queda enlazado en la ficha de cada
+    // animal nombrado. Sin caravanas, nada de esto corre.
+    const named = await this.resolveNamedAnimals(cmd, userId);
+    if (named && 'error' in named) return { messages: [named.error] };
+    if (named && cmd.animalsAffected == null && cmd.count == null) cmd.animalsAffected = named.animals.length;
+
     // Required-slot guard (unified pending-action pattern). vacunación and
     // desparasitación need the disease/vaccine name to be meaningful — without
     // it we'd save a hollow "Vacunación: ???" row.
@@ -1575,20 +1687,66 @@ export class LivestockHandler {
       }
     }
 
-    const event = await saveDomainEvent(userId, {
-      plotId: resolvedLoc.plotId,
-      corralId: resolvedLoc.corralId,
-      eventType: 'health_event',
-      eventDate: (cmd.eventDate as string | Date | null) || null,
-      productType: healthType,
-      product: diseaseOrVaccine,
-      animalCategory: category,
-      animalsAffected,
-      quantity: doseQuantity,
-      unit: doseUnit,
-      implement: veterinarian,
-      notes: (cmd.notes as string | null) || null,
-    });
+    // Con caravanas: si HOY ya quedó un evento igual (mismo tipo, mismo
+    // producto, misma ubicación) con lugar para estos animales, se enlazan a
+    // ese en vez de duplicarlo. Es el caso "vacuné 3 vacas con x29" → "la 1,
+    // la 2 y la 3 son las que vacuné": el segundo mensaje completa al primero.
+    let reusedEventId: number | null = null;
+    if (named) {
+      reusedEventId = await this.findLinkableHealthEvent(userId, {
+        healthType, product: diseaseOrVaccine, plotId: resolvedLoc.plotId, corralId: resolvedLoc.corralId,
+        eventDate: (cmd.eventDate as string | null) || null, animalIds: named.animals.map((a) => a.id),
+      });
+    }
+
+    const event = reusedEventId != null
+      ? { id: reusedEventId }
+      : await withTransaction(async () => {
+          const saved = await saveDomainEvent(userId, {
+            plotId: resolvedLoc.plotId,
+            corralId: resolvedLoc.corralId,
+            eventType: 'health_event',
+            eventDate: (cmd.eventDate as string | Date | null) || null,
+            productType: healthType,
+            product: diseaseOrVaccine,
+            animalCategory: category,
+            animalsAffected,
+            quantity: doseQuantity,
+            unit: doseUnit,
+            implement: veterinarian,
+            notes: (cmd.notes as string | null) || null,
+          });
+          if (named && saved?.id) {
+            await this.animals.linkDomainEvent({
+              userId: Number(userId),
+              animalIds: named.animals.map((a) => a.id),
+              eventType: healthType as AnimalEventType,
+              domainEventId: Number(saved.id),
+              eventDate: (cmd.eventDate as string | null) || null,
+              textValue: diseaseOrVaccine,
+              numericValue: doseQuantity,
+              unit: doseUnit,
+              source: 'whatsapp',
+            });
+          }
+          return saved;
+        });
+    if (named && reusedEventId != null) {
+      await this.animals.linkDomainEvent({
+        userId: Number(userId),
+        animalIds: named.animals.map((a) => a.id),
+        eventType: healthType as AnimalEventType,
+        domainEventId: reusedEventId,
+        eventDate: (cmd.eventDate as string | null) || null,
+        textValue: diseaseOrVaccine,
+        numericValue: doseQuantity,
+        unit: doseUnit,
+        source: 'whatsapp',
+      });
+      console.log(`[LIVESTOCK] sanidad: caravanas ${named.tags.join(', ')} enlazadas al evento ${reusedEventId} existente (sin duplicar)`);
+    } else if (named) {
+      console.log(`[LIVESTOCK] sanidad por caravana: ${named.tags.join(', ')} → evento ${event?.id}`);
+    }
 
     await this.bumpConversationContext(userId, resolvedLoc.plotId);
 
@@ -1603,6 +1761,9 @@ export class LivestockHandler {
     }
     if (doseQuantity) lines.push(`  💊 ${doseQuantity} ${doseUnit || ''}/animal`);
     if (veterinarian) lines.push(`  👨‍⚕️ ${veterinarian}`);
+    if (named) {
+      lines.push(`  🏷️ ${named.tags.join(', ')}${reusedEventId != null ? ' (enlazadas al evento ya registrado)' : ''}`);
+    }
     lines.push(`  📍 ${resolvedLoc.label}${('autoResolved' in loc && loc.autoResolved) ? ' (auto)' : ''}`);
     if (cmd.notes) lines.push(`  📝 ${cmd.notes}`);
     if (cmd.eventDate) {
@@ -1622,6 +1783,43 @@ export class LivestockHandler {
     return buttons.length > 0
       ? { messages: [], interactive: { type: 'buttons' as const, body, buttons } }
       : { messages: [body] };
+  }
+
+  /**
+   * ¿Hay un evento sanitario del MISMO día, tipo, producto y ubicación al que
+   * estas caravanas puedan enlazarse sin exceder su `animals_affected`? Devuelve
+   * su id o null. Solo mira eventos que todavía tengan lugar: "vacuné 3 vacas"
+   * admite 3 caravanas; una cuarta abre un evento nuevo.
+   */
+  private async findLinkableHealthEvent(userId: UserId, q: {
+    healthType: string; product: string | null; plotId: number | null; corralId: number | null;
+    eventDate: string | null; animalIds: string[];
+  }): Promise<number | null> {
+    try {
+      const { rows } = await pool.query(
+        `SELECT de.id, de.animals_affected,
+                (SELECT COUNT(DISTINCT ae.animal_id) FROM animal_events ae WHERE ae.domain_event_id = de.id) AS linked,
+                (SELECT COUNT(*) FROM animal_events ae WHERE ae.domain_event_id = de.id AND ae.animal_id = ANY($7::uuid[])) AS already
+           FROM domain_events de
+          WHERE de.user_id = $1 AND de.event_type = 'health_event' AND de.deleted_at IS NULL
+            AND de.product_type = $2
+            AND lower(COALESCE(de.product, '')) = lower(COALESCE($3, ''))
+            AND de.event_date = COALESCE($4::date, CURRENT_DATE)
+            AND de.plot_id IS NOT DISTINCT FROM $5
+            AND de.corral_id IS NOT DISTINCT FROM $6
+          ORDER BY de.created_at DESC
+          LIMIT 5`,
+        [Number(userId), q.healthType, q.product, q.eventDate, q.plotId, q.corralId, q.animalIds],
+      );
+      for (const r of rows) {
+        if (Number(r.already) > 0) continue; // ya enlazado a alguno de estos animales → sería duplicado
+        const cap = r.animals_affected == null ? null : Number(r.animals_affected);
+        if (cap == null || Number(r.linked) + q.animalIds.length <= cap) return Number(r.id);
+      }
+    } catch (e) {
+      console.log(`[LIVESTOCK] findLinkableHealthEvent falló (sigo creando evento nuevo): ${(e as Error).message}`);
+    }
+    return null;
   }
 
   private async queryHealthEvents(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {

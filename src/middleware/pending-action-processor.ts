@@ -28,6 +28,10 @@ import type { PendingActivity } from './pending-activities.js';
 import { extractSlots, type ExtractedSlots, type SlotName } from './slot-extractor.js';
 import { stripAnswerPrefix } from '../utils/lexicon.js';
 import { normalizarMonto } from '../utils/parser.js';
+import { looksLikeAnimalId } from '../utils/animal-id.js';
+
+/** Slots que esperan una caravana/RFID: aceptan solo texto con forma de identificador. */
+const ID_SLOTS = new Set<string>(['newRfid', 'rfid', 'animalRef']);
 
 /**
  * Commands that START a brand-new write and therefore legitimately interrupt a
@@ -179,6 +183,12 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
           }
           // sigue sin número → leave unfilled, controller will re-ask
         }
+      } else if (ID_SLOTS.has(slot as string) && !looksLikeAnimalId(cleaned)) {
+        // Un slot de caravana solo acepta algo con forma de identificador. En
+        // prod (8 sep 2026) "la 10 es macho, cambialo" entró como newRfid y
+        // reemplazó la caravana 0000010 por LA10ESMACHOCAMBIALO. Se deja vacío
+        // → el handler re-pregunta y la escalera de escalamiento sigue.
+        console.log(`[INTERCEPT] single-slot id-slot rejected: slot=${slot} "${cleaned.slice(0, 60)}" no parece una caravana (command=${pending.command})`);
       } else {
         (extracted as Record<string, unknown>)[slot] = cleaned;
         console.log(`[INTERCEPT] single-slot fallback: slot=${slot} consumed="${cleaned.slice(0, 60)}" (command=${pending.command})`);

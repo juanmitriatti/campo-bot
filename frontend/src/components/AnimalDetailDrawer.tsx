@@ -28,6 +28,49 @@ export default function AnimalDetailDrawer({
   const [newTag, setNewTag] = useState('');
   const [replaceError, setReplaceError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Corrección de datos (sexo / categoría / raza / nacimiento). Misma regla que
+  // la tool `update_animal` del bot: la categoría mueve 1 cabeza entre grupos.
+  const [editing, setEditing] = useState(false);
+  const [edit, setEdit] = useState<{ sex: 'M' | 'H'; category: string; breed: string; birth_date: string }>({ sex: 'H', category: 'vaca', breed: '', birth_date: '' });
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const startEdit = () => {
+    const cur = detail?.animal;
+    if (!cur) return;
+    setEdit({
+      sex: cur.sex, category: cur.category,
+      breed: cur.breed_name ?? cur.breed_text ?? '',
+      birth_date: cur.birth_date ? cur.birth_date.slice(0, 10) : '',
+    });
+    setEditError(null);
+    setEditing(true);
+  };
+
+  const submitEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cur = detail?.animal;
+    if (!cur) return;
+    const body: Record<string, string> = {};
+    if (edit.sex !== cur.sex) body.sex = edit.sex;
+    if (edit.category !== cur.category) body.category = edit.category;
+    const curBreed = cur.breed_name ?? cur.breed_text ?? '';
+    if (edit.breed.trim() && edit.breed.trim() !== curBreed) body.breed = edit.breed.trim();
+    const curBirth = cur.birth_date ? cur.birth_date.slice(0, 10) : '';
+    if (edit.birth_date && edit.birth_date !== curBirth) body.birth_date = edit.birth_date;
+    if (Object.keys(body).length === 0) { setEditing(false); return; }
+    setSaving(true);
+    setEditError(null);
+    try {
+      await apiRequest(`/animals/${animalId}`, { method: 'PATCH', body });
+      setEditing(false);
+      await load();
+      onChanged?.();
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'No pude corregir el animal');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const load = async () => {
     setError(null);
@@ -98,7 +141,82 @@ export default function AnimalDetailDrawer({
           <div className="px-5 py-4 space-y-6">
             {/* Datos */}
             <section>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Datos</h3>
+                {!editing && a.status === 'activo' && (
+                  <button onClick={startEdit} className="text-sm text-campo-700 dark:text-campo-400 hover:underline">
+                    Corregir
+                  </button>
+                )}
+              </div>
+
+              {editing && (
+                <form onSubmit={submitEdit} className="mb-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-xs text-gray-500 dark:text-gray-400">
+                      Sexo
+                      <select
+                        value={edit.sex}
+                        onChange={e => setEdit({ ...edit, sex: e.target.value as 'M' | 'H' })}
+                        className="mt-1 w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
+                      >
+                        <option value="H">Hembra</option>
+                        <option value="M">Macho</option>
+                      </select>
+                    </label>
+                    <label className="text-xs text-gray-500 dark:text-gray-400">
+                      Categoría
+                      <select
+                        value={edit.category}
+                        onChange={e => setEdit({ ...edit, category: e.target.value })}
+                        className="mt-1 w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
+                      >
+                        {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs text-gray-500 dark:text-gray-400">
+                      Raza
+                      <input
+                        value={edit.breed}
+                        onChange={e => setEdit({ ...edit, breed: e.target.value })}
+                        placeholder="Angus, Hereford…"
+                        className="mt-1 w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
+                      />
+                    </label>
+                    <label className="text-xs text-gray-500 dark:text-gray-400">
+                      Nacimiento
+                      <input
+                        type="date"
+                        value={edit.birth_date}
+                        onChange={e => setEdit({ ...edit, birth_date: e.target.value })}
+                        className="mt-1 w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm"
+                      />
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Cambiar la categoría mueve 1 cabeza entre los grupos del mismo lote. Cada corrección queda en el historial.
+                  </p>
+                  {editError && <p className="text-xs text-red-600 dark:text-red-400">{editError}</p>}
+                  <div className="flex gap-2">
+                    <button type="submit" disabled={saving} className="px-3 py-1.5 rounded-md bg-campo-600 text-white text-sm disabled:opacity-50">
+                      {saving ? 'Guardando…' : 'Guardar'}
+                    </button>
+                    <button type="button" onClick={() => { setEditing(false); setEditError(null); }} className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm">
+                      Cancelar
+                    </button>
+                  </div>
+                </form>
+              )}
+
               <dl className="grid grid-cols-2 gap-y-2 text-sm">
+                <dt className="text-gray-500 dark:text-gray-400">Categoría</dt>
+                <dd className="text-gray-900 dark:text-gray-100">{CATEGORY_LABELS[a.category] ?? a.category} · {a.sex === 'H' ? 'Hembra' : 'Macho'}</dd>
+                {(a.breed_name || a.breed_text) && (
+                  <>
+                    <dt className="text-gray-500 dark:text-gray-400">Raza</dt>
+                    <dd className="text-gray-900 dark:text-gray-100">{a.breed_name ?? a.breed_text}</dd>
+                  </>
+                )}
                 <dt className="text-gray-500 dark:text-gray-400">Estado</dt>
                 <dd className="text-gray-900 dark:text-gray-100">
                   {STATUS_LABELS[a.status]?.emoji} {STATUS_LABELS[a.status]?.label ?? a.status}

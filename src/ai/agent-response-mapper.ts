@@ -3,6 +3,10 @@ import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_C
 import { resolveRelativeDate, resolveAllRelativeDates, TOOLS_WITH_DATE_PARAM, dateKeyForTool } from '../utils/relative-dates.js';
 import { extractCropFromText } from '../utils/crops.js';
 import { normalizarMonto } from '../utils/parser.js';
+import { numberOnlyAppearsAsArea } from '../utils/lexicon.js';
+
+/** Tools cuyo `count` es una cantidad de ANIMALES y puede confundirse con hectáreas. */
+const COUNT_TOOLS: ReadonlySet<string> = new Set(['add_livestock', 'adjust_livestock', 'record_livestock_birth', 'record_livestock_death', 'remove_livestock', 'transfer_livestock']);
 import type { AgentResult } from './agent.service.js';
 import { validateToolCall, type ValidationOptions } from './agent-output-validator.js';
 import { buildFallbackMessage } from '../utils/fuzzy-suggest.js';
@@ -1075,7 +1079,16 @@ export class AgentResponseMapper {
     if (input.filter_date != null) cmd.filterDate = input.filter_date;
 
     // Livestock
-    if (input.count != null) cmd.count = input.count;
+    if (input.count != null) {
+      // "En 5 hectáreas de ese lote tengo vacas" → count=5 (prod, 8 sep 2026).
+      // Si el número aparece en el texto SOLO como superficie, no es una
+      // cantidad de animales: se dropea y el handler pregunta cuántas.
+      if (COUNT_TOOLS.has(toolName) && numberOnlyAppearsAsArea(originalText, Number(input.count))) {
+        console.warn(`AI_MAPPER DROP: ${toolName} count=${String(input.count)} es una SUPERFICIE en el texto, no una cantidad — text="${originalText.slice(0, 100)}"`);
+      } else {
+        cmd.count = input.count;
+      }
+    }
     if (input.breed != null) cmd.breed = input.breed;
     if (input.avg_weight_kg != null) cmd.avg_weight_kg = input.avg_weight_kg;
     if (input.total_weight_kg != null) cmd.total_weight_kg = input.total_weight_kg;
