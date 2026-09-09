@@ -363,7 +363,27 @@ export class AnimalHandler {
     const ref = (cmd.animalRef as string) ?? null;
     if (!ref) return { messages: ['Decime qué caravana querés consultar. Ej: «qué pasó con la 0001234567».'] };
 
-    const animal = await this.service.findByIdentifier(Number(userId), ref);
+    // Exacto o referencia corta única ("la 12" → 0000000012), igual que en el
+    // resto de los comandos. Antes solo exacto: la ref corta la expandía el
+    // AGENTE, y el validador ahora le prohíbe reescribir identificadores.
+    let { found: [animal] } = await this.service.resolveRefs(Number(userId), [ref]);
+    let retiredNote = '';
+    if (!animal) {
+      // Caravana retirada: decir por cuál se reemplazó y mostrar la ficha
+      // actual, en vez de "no tengo ningún animal" (QA ganadería 9 sep 2026).
+      const retired = await this.service.findRetiredIdentification(Number(userId), ref);
+      if (retired) {
+        const current = await this.service.getById(Number(userId), retired.animal_id);
+        if (current) {
+          animal = current;
+          const when = retired.removed_date ? ` el ${formatDateAR(retired.removed_date)}` : '';
+          retiredNote = retired.replaced_by
+            ? `🔁 La caravana ${formatCii(retired.value)} ya no está vigente: fue reemplazada por *${formatCii(retired.replaced_by)}*${when}.\n\n`
+            : `🔁 La caravana ${formatCii(retired.value)} ya no está vigente (${retired.removal_reason ?? 'retirada'}${when}).\n\n`;
+          console.log(`[ANIMAL] caravana retirada «${ref}» → ${animalLabel(animal)}`);
+        }
+      }
+    }
     if (!animal) {
       const parsed = parseAnimalId(ref);
       return {
@@ -382,6 +402,7 @@ export class AnimalHandler {
     const status = ANIMAL_STATUS_LABEL[animal.status];
 
     const header =
+      retiredNote +
       `${status.emoji} *${animalLabel(animal)}*\n\n` +
       `  Estado: ${status.label}\n` +
       (animal.sex ? `  Sexo: ${animal.sex === 'H' ? 'Hembra' : 'Macho'}\n` : '') +

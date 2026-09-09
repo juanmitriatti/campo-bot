@@ -1,0 +1,401 @@
+{
+  "name": "QA E2E prod — ganadería: grupos, feedlot, caravanas y lote de lectura",
+  "title": "QA Ganadería Campo Bot",
+  "persona": "Productor ganadero de Lincoln (Bs. As.) que arranca la cuenta en cero: un campo con dos lotes, rodeo de cría Angus, engorde a corral, y desde este año caravanea parte del rodeo por la Res. SENASA 530/2025. Habla corto, sin comas, a veces pega la lectura del bastón tal cual.",
+  "notes": [
+    "Es UNA conversación continua: cada paso asume el estado que dejaron los anteriores (contexto, pendings, grupos, caravanas).",
+    "El eje es el invariante 16: todo lo individual es aditivo y el camino por grupos nunca cambia. Cada fase individual termina con una operación de GRUPO que tiene que seguir siendo grupo.",
+    "expect = regex que DEBE aparecer; avoid = regex que NO debe aparecer; buttons = ids esperados. Un id terminado en * se resuelve por prefijo contra el último botón que mostró el bot (tokens dinámicos).",
+    "Los checks llevan las existencias esperadas después de cada paso: si un número no cierra, es un bug de ledger aunque el paso pase.",
+    "Primera corrida (9 sep 2026): 42/60. Hallazgos reales y sus regresiones en CLAUDE.md § QA E2E; el resto eran supuestos equivocados del plan, ya corregidos acá.",
+    "Correr con: npx tsx src/testing/qa-prod-e2e.ts --run --plan src/testing/qa-prod-ganaderia.plan.json"
+  ],
+  "phases": [
+    {
+      "id": "arranque",
+      "title": "Arranque: un campo y dos lotes",
+      "domain": "sistema",
+      "why": "Lo mínimo para que exista una ubicación donde poner hacienda. La muletilla «se llama» y los lotes con hectáreas en un solo mensaje ya son regresiones conocidas.",
+      "steps": [
+        {
+          "send": "hola",
+          "expect": "crear tu primer campo",
+          "buttons": ["cmd_agregar_campo"],
+          "checks": "Bienvenida para usuario sin campos + botón Crear Campo."
+        },
+        {
+          "send": "agregar campo se llama La Tapera en Lincoln",
+          "expect": "La Tapera.*creado.*Lincoln",
+          "avoid": "se llama",
+          "checks": "Campo creado con localidad resuelta; la muletilla no entra al nombre."
+        },
+        {
+          "send": "en La Tapera tengo dos lotes, Norte de 100 has y Sur de 60 has",
+          "expect": "Norte[\\s\\S]*100 ha[\\s\\S]*Sur[\\s\\S]*60 ha",
+          "avoid": "no entend",
+          "checks": "«has» + campo → lotes (add_plots_batch), nunca hacienda. (La bienvenida post-alta menciona vacas en sus ejemplos; no es un error.)"
+        },
+        {
+          "send": "mis campos",
+          "expect": "La Tapera[\\s\\S]*2 lotes[\\s\\S]*160 ha",
+          "checks": "VERIFICACIÓN: 1 campo, 2 lotes, 160 ha. El listado de campos no nombra los lotes, solo los cuenta."
+        }
+      ]
+    },
+    {
+      "id": "grupos",
+      "title": "Rodeo por grupos: el camino que no puede cambiar",
+      "domain": "hacienda",
+      "why": "Es lo que el productor usa todos los días. Cubre alta con y sin precio, alta sin ubicación (pending de lote), count que solo aparece como superficie, servicio, parición, mortandad, transferencia, recategorización, venta con precio diferido, precio tardío, sanidad, pesaje y las consultas.",
+      "steps": [
+        {
+          "send": "compré 50 vacas Angus a 800 mil cada una, van al lote Norte",
+          "expect": "Hacienda registrada[\\s\\S]*50 animales",
+          "avoid": "En un lote|En un feedlot|A cuánto",
+          "checks": "Ubicación explícita → sin botones; precio c/u → gasto vinculado (Hacienda, $40.000.000) sin preguntar. Norte: 50 vacas."
+        },
+        {
+          "send": "agregué 3 toros Angus",
+          "expect": "en qué lote[\\s\\S]*Norte, Sur",
+          "checks": "Sin ubicación y sin mencionar lote ni feedlot → livestockLocationIntent='none' → pending add_livestock missing:['plot'] con las opciones. Los botones [En un lote]/[En un feedlot] solo aparecen cuando el TEXTO es ambiguo."
+        },
+        {
+          "send": "Norte",
+          "expect": "Hacienda registrada[\\s\\S]*Toro[\\s\\S]*3 animales[\\s\\S]*Norte",
+          "checks": "La respuesta de una palabra completa el pending. Norte: 50 vacas + 3 toros."
+        },
+        {
+          "send": "en 5 hectáreas del Sur tengo vaquillonas",
+          "expect": "Cuántas cabezas",
+          "avoid": "5 animales|No encontré el lote",
+          "checks": "El 5 es superficie, no cabezas: el mapper lo dropea (AI_MAPPER DROP) y el handler pregunta con pending. Regresión prod: registró 5 vacas. Corrida 1: con el pending de lote del paso anterior abierto, este mensaje fue tragado como lote «5»."
+        },
+        {
+          "send": "20",
+          "expect": "Hacienda registrada[\\s\\S]*Vaquillona[\\s\\S]*20 animales",
+          "checks": "La respuesta corta completa el pending. Sur: 20 vaquillonas."
+        },
+        {
+          "send": "eché los toros con las vacas del Norte",
+          "expect": "reproductivo",
+          "avoid": "Transferencia|Hacienda registrada",
+          "checks": "Entore → log_repro_event(servicio), nunca transfer ni alta."
+        },
+        {
+          "send": "parieron 15 vacas",
+          "expect": "Nacimiento registrado[\\s\\S]*15 animales",
+          "checks": "Verbo de parto → record_livestock_birth; un solo grupo de vacas → auto-resuelve. Norte: 15 terneros."
+        },
+        {
+          "send": "se murieron 2 terneros",
+          "expect": "Baja registrada[\\s\\S]*2 animales",
+          "checks": "record_livestock_death por cantidad. Norte: 13 terneros."
+        },
+        {
+          "send": "pasé 10 vacas del Norte al Sur",
+          "expect": "10 animales[\\s\\S]*Sur",
+          "avoid": "movidos",
+          "checks": "transfer_livestock de GRUPO. Norte: 40 vacas. Sur: 10 vacas + 20 vaquillonas."
+        },
+        {
+          "send": "pasé 5 terneros a novillitos",
+          "expect": "Novillito",
+          "checks": "Recategorización en el mismo lote (hereda la raza del grupo origen; no crea «Ternero» sin raza). Norte: 8 terneros + 5 novillitos."
+        },
+        {
+          "send": "vendí 5 vacas del Sur",
+          "expect": "Hacienda descontada[\\s\\S]*Quedan: \\*5\\*[\\s\\S]*A cuánto fue la venta",
+          "checks": "Venta sin precio → descuenta y deja pending set_livestock_price (missing unit_price). Sur: 5 vacas."
+        },
+        {
+          "send": "700 mil",
+          "expect": "Ingreso registrado[\\s\\S]*3\\.500\\.000",
+          "checks": "La respuesta al pending crea el ingreso vinculado: 5 × 700.000."
+        },
+        {
+          "send": "los toros me salieron 2 millones por cabeza",
+          "expect": "Gasto registrado|6\\.000\\.000|2\\.000\\.000",
+          "avoid": "Hacienda registrada|No encontré una compra",
+          "checks": "Precio tardío sin pending → set_livestock_price sobre el último movimiento sin precio (7 días): la entrada de 3 toros. Corrida 1 con «salieron 2 palos c/u»: el agente mandó kind=income, el handler buscó una VENTA de toros y no encontró nada."
+        },
+        {
+          "send": "vacuné las vacas del Norte contra aftosa",
+          "expect": "Evento sanitario[\\s\\S]*aftosa",
+          "avoid": "A cuántos",
+          "checks": "«las vacas del Norte» = grupo entero (impliesWholeGroup); no pregunta cantidad."
+        },
+        {
+          "send": "desparasité los terneros con ivermectina",
+          "expect": "Evento sanitario[\\s\\S]*ivermectina",
+          "avoid": "A cuántos",
+          "checks": "Desparasitación del grupo entero de terneros (8)."
+        },
+        {
+          "send": "pesé los terneros, promedio 160 kg",
+          "expect": "Pesaje registrado[\\s\\S]*160",
+          "checks": "log_weighing: peso promedio por animal."
+        },
+        {
+          "send": "cuántas vacas tengo?",
+          "expect": "40[\\s\\S]*5|45",
+          "checks": "VERIFICACIÓN: 40 en Norte + 5 en Sur = 45 vacas."
+        },
+        {
+          "send": "cuándo se vacunó?",
+          "expect": "aftosa",
+          "avoid": "bservaci[oó]n",
+          "checks": "query_health_events, nunca log_observation."
+        },
+        {
+          "send": "historial de hacienda del Norte",
+          "expect": "Historial|Entradas|Nacimientos|Transferencias",
+          "checks": "livestock_history del lote: entrada 50, entrada 3, nacimiento 15, muerte 2, transferencias."
+        }
+      ]
+    },
+    {
+      "id": "feedlot",
+      "title": "Engorde a corral: la capacidad avisa y no bloquea",
+      "domain": "hacienda",
+      "why": "Un corral con capacidad configurada que se supera tiene que advertir DESPUÉS de registrar, nunca rechazar el movimiento. Un corral sin capacidad nunca advierte. El feedlot se crea explícito: create_corral no lo autocrea.",
+      "steps": [
+        {
+          "send": "crear feedlot en La Tapera",
+          "expect": "Feedlot creado",
+          "checks": "create_feedlot en el único campo."
+        },
+        {
+          "send": "crear corral 2 en La Tapera con capacidad 30",
+          "expect": "Corral creado[\\s\\S]*2",
+          "checks": "create_corral con capacity=30."
+        },
+        {
+          "send": "mové los 8 terneros del Norte al corral 2",
+          "expect": "8 animales[\\s\\S]*[Cc]orral 2",
+          "avoid": "capacidad|movidos",
+          "checks": "8 de 30: sin advertencia. Corral 2: 8 terneros. Norte: 0 terneros."
+        },
+        {
+          "send": "pasá los 5 novillitos al corral 2",
+          "expect": "5 animales[\\s\\S]*[Cc]orral 2",
+          "avoid": "capacidad",
+          "checks": "13 de 30: sin advertencia. Corral 2: 8 terneros + 5 novillitos."
+        },
+        {
+          "send": "mové 30 vacas del Norte al corral 2",
+          "expect": "30 animales[\\s\\S]*capacidad configurada para 30[\\s\\S]*13 de más",
+          "checks": "43 proyectados sobre 30: SE REGISTRA y advierte «queda con 43 … (13 de más)». Norte: 10 vacas. Corral 2: 43."
+        },
+        {
+          "send": "listado de hacienda",
+          "expect": "[Cc]orral 2[\\s\\S]*Vaca[\\s\\S]*30|Vaca[\\s\\S]*30[\\s\\S]*[Cc]orral 2",
+          "checks": "VERIFICACIÓN: Norte 10 vacas + 3 toros; Sur 5 vacas + 20 vaquillonas; Corral 2: 30 vacas + 8 terneros + 5 novillitos."
+        }
+      ]
+    },
+    {
+      "id": "individual",
+      "title": "Animal individual: caravanas sin romper el grupo",
+      "domain": "hacienda",
+      "why": "La capa individual (migraciones 112-115): CII de 15, NII de 10, origen extranjero, herencia de ubicación, corrección con update_animal (nunca identify_animal), reemplazo encadenado, referencia corta única, muerte por caravana que descuenta el grupo, terminal que no se mueve, y al final una operación de GRUPO que tiene que seguir siendo grupo.",
+      "steps": [
+        {
+          "send": "dar de alta una vaca Angus con caravana 032010000000010 en el lote Norte",
+          "expect": "Animal registrado[\\s\\S]*Vaca 032 01 0000000010[\\s\\S]*Lote Norte",
+          "avoid": "Hacienda registrada",
+          "checks": "register_animal con CII completo (032 + 01 + NII). El grupo de vacas del Norte sigue en 10: la ficha se cuelga del grupo, no lo infla."
+        },
+        {
+          "send": "dar de alta la vaca 0000000011 en el Sur",
+          "expect": "Animal registrado[\\s\\S]*0000000011[\\s\\S]*Lote Sur",
+          "checks": "NII de 10 dígitos suelto = lectura legítima (cinta), sin advertencia."
+        },
+        {
+          "send": "dar de alta el toro caravana 0000000012",
+          "expect": "Animal registrado[\\s\\S]*Toro[\\s\\S]*Lote Norte",
+          "avoid": "sin ubicación",
+          "checks": "Sin ubicación y con UN solo grupo vivo de toros → hereda Lote Norte («donde están tus toros»)."
+        },
+        {
+          "send": "dar de alta una vaquillona con caravana 826010000000099 en el Sur",
+          "expect": "Animal registrado[\\s\\S]*extranjero",
+          "checks": "País 826 ≠ 032: se registra igual con advertencia «origen extranjero». Registra, no bloquea."
+        },
+        {
+          "send": "qué pasó con la 032010000000010?",
+          "expect": "Vaca 032 01 0000000010[\\s\\S]*Estado: Activo[\\s\\S]*Lote Norte",
+          "avoid": "por grupos",
+          "checks": "query_animal → ficha del ANIMAL. La regla vieja («el sistema lleva la hacienda por grupos») ya no existe."
+        },
+        {
+          "send": "la 12 es Hereford",
+          "expect": "Animal corregido[\\s\\S]*Hereford",
+          "avoid": "Caravana reemplazada",
+          "checks": "Referencia corta «la 12» → 0000000012 (única). Raza → update_animal, nunca identify_animal."
+        },
+        {
+          "send": "la 032010000000010 es una vaquillona",
+          "expect": "Animal corregido[\\s\\S]*Vaca → \\*Vaquillona\\*",
+          "checks": "Cambio de categoría: mueve 1 cabeza vaca→vaquillona en Norte por el camino de grupo (recategorización) y actualiza la ficha. Norte: 9 vacas + 1 vaquillona."
+        },
+        {
+          "send": "reemplazá la caravana 0000000012 por la 0000000013",
+          "expect": "Caravana reemplazada[\\s\\S]*Anterior: 0000000012[\\s\\S]*Nueva: \\*0000000013\\*",
+          "checks": "identify_animal: retira la vigente y encadena (replaces_identification_id). Nunca borra."
+        },
+        {
+          "send": "dónde está la 12?",
+          "expect": "No tengo ningún animal con la caravana",
+          "checks": "La caravana retirada ya no resuelve en el lookup (queda solo en el historial). Corrida 1: el AGENTE sustituyó «la 12» por 0000000013 leyendo el historial de la conversación; la respuesta fue correcta de casualidad, pero el mecanismo (reescribir un identificador) es el que la regla «copiar los dígitos tal cual» prohíbe."
+        },
+        {
+          "send": "dónde está la 13?",
+          "expect": "Toro 0000000013[\\s\\S]*Lote Norte",
+          "checks": "La nueva resuelve por referencia corta."
+        },
+        {
+          "send": "la 13 es macho, cambialo",
+          "expect": "ya estaba así|Animal corregido",
+          "avoid": "Caravana reemplazada|LA13",
+          "checks": "Regresión prod: esta frase entró como caravana nueva «LA10ESMACHOCAMBIALO». Los slots de caravana solo aceptan texto con forma de identificador."
+        },
+        {
+          "send": "se murió la 11",
+          "expect": "Baja registrada[\\s\\S]*0000000011 → marcado como muerto[\\s\\S]*Quedan: \\*4\\*",
+          "checks": "Caravana en operación de grupo: hereda lote y categoría del animal, descuenta el grupo (Sur 5→4) y marca el animal en la MISMA transacción. Regresión prod 8/9: el grupo bajaba y el animal seguía Activo."
+        },
+        {
+          "send": "qué pasó con la 11?",
+          "expect": "Muerto",
+          "checks": "La ficha refleja el estado terminal."
+        },
+        {
+          "send": "mové la 11 al Norte",
+          "expect": "no se movieron|muert",
+          "avoid": "1 animal movido",
+          "checks": "Un animal muerto no se mueve: se devuelve como saltado, no como fallo ni como éxito."
+        },
+        {
+          "send": "vacuné la 13 contra carbunclo",
+          "expect": "Evento sanitario[\\s\\S]*carbunclo[\\s\\S]*0000000013",
+          "avoid": "A cuántos",
+          "checks": "Sanidad con caravana: un domain_event de grupo (1 toro) + enlace a la ficha del animal."
+        },
+        {
+          "send": "qué pasó con la 13?",
+          "expect": "Historial[\\s\\S]*(carbunclo|acunaci)",
+          "checks": "La línea de tiempo del animal muestra la vacunación enlazada."
+        },
+        {
+          "send": "qué animales con caravana tengo en el Norte?",
+          "expect": "0000000013[\\s\\S]*032 01 0000000010|032 01 0000000010[\\s\\S]*0000000013",
+          "checks": "list_animals filtrado por lote: la vaquillona 10 y el toro 13."
+        },
+        {
+          "send": "se murió la vaca 0000000777",
+          "expect": "No tengo ningún animal con la caravana",
+          "avoid": "Baja registrada",
+          "checks": "Caravana inexistente = error visible; NUNCA cae en silencio al grupo (no descuenta ninguna vaca)."
+        },
+        {
+          "send": "mové 5 vacas del Norte al Sur",
+          "expect": "5 animales[\\s\\S]*Sur",
+          "avoid": "movidos|caravana",
+          "checks": "INVARIANTE 16: cantidad → transfer_livestock (grupo) aunque el usuario ya use caravanas. Norte: 4 vacas. Sur: 9 vacas."
+        },
+        {
+          "send": "listado de hacienda",
+          "expect": "Norte[\\s\\S]*Sur|Sur[\\s\\S]*Norte",
+          "checks": "VERIFICACIÓN: Norte 4 vacas + 1 vaquillona + 3 toros; Sur 9 vacas + 20 vaquillonas; Corral 2: 30 vacas + 8 terneros + 5 novillitos."
+        }
+      ]
+    },
+    {
+      "id": "lectura",
+      "title": "Lote de lectura: la lista pegada nunca llega al agente",
+      "domain": "hacienda",
+      "why": "87 números en un prompt queman tokens y Haiku mangla dígitos; un dígito cambiado es otro animal. El interceptor determinístico (STEP 1.5) resuelve contra el padrón en SQL, cierra los números y pide confirmación con botones. El doble tap no puede mover dos veces.",
+      "steps": [
+        {
+          "send": "032010000000010\n0000000013\n826010000000099\n0000000013\n032010000000555\n0000000011",
+          "expect": "Leí 6 identificadores y encontré 4 animales[\\s\\S]*2 en Lote Norte[\\s\\S]*2 en Lote Sur[\\s\\S]*1 sin registrar[\\s\\S]*1 repetido",
+          "buttons": ["animal_batch_move_*", "animal_batch_cancel_*"],
+          "checks": "6 líneas, ≥80% id-like → [RFID BATCH] sin IA. 10 y 13 en Norte, 99 y 11 (muerta) en Sur, 555 sin registrar, 13 repetida. La muerta cuenta como encontrada (está en el padrón) y se saltea recién al mover."
+        },
+        {
+          "tap": "animal_batch_move_*",
+          "expect": "A qué lote o corral",
+          "checks": "El tap deja un pending machine-readable para el destino."
+        },
+        {
+          "send": "corral 2",
+          "expect": "3 animales movidos[\\s\\S]*[Cc]orral 2[\\s\\S]*1 no se movieron",
+          "avoid": "No encontré el lote",
+          "checks": "El destino llega por el slot genérico del pending y el handler tiene que resolver un CORRAL, no solo un lote. La 11 (muerta) queda saltada: «1 no se movieron (está muerto)»."
+        },
+        {
+          "tap": "animal_batch_move_*",
+          "expect": "ya la apliqué|ya se aplicó",
+          "avoid": "animales movidos",
+          "checks": "Segundo toque del mismo botón: ONE_SHOT_PREFIXES lo corta. Aplicar dos veces movería todo dos veces."
+        },
+        {
+          "send": "dónde está la 13?",
+          "expect": "Toro 0000000013[\\s\\S]*Corral 2",
+          "checks": "El movimiento individual se ve en la ficha."
+        },
+        {
+          "send": "20\n15\n30\n45\n12\n8",
+          "avoid": "Leí \\d+ identificadores|\\[ERROR\\]",
+          "checks": "Seis cantidades cortas NO son una lista de caravanas (umbral ≥8 caracteres): no dispara el batch. Lo que responda el agente es secundario; lo prohibido es el interceptor."
+        }
+      ]
+    },
+    {
+      "id": "cierre",
+      "title": "Cierre: reversión, plan futuro y plata",
+      "domain": "hacienda",
+      "why": "La reversión estructurada, el invariante 12 en contexto ganadero (un plan de vacunar no es una vacunación), y el gasto de Hacienda que se creó solo con las compras.",
+      "steps": [
+        {
+          "send": "revertí el último movimiento",
+          "expect": "Movimiento revertido",
+          "checks": "revert_livestock_movement sin id: toma el último revertible (ni reversa, ni ya revertido, ni ajuste). Deja contra-asiento con reverses_movement_id."
+        },
+        {
+          "send": "el sábado vacuno los terneros del corral 2",
+          "expect": "A qué hora",
+          "avoid": "Evento sanitario",
+          "checks": "Plan futuro ≠ registro (invariante 12): create_reminder, jamás log_health_event. El servidor corrige la fecha del agente al sábado real y pide la hora con pending."
+        },
+        {
+          "send": "cuando sea",
+          "expect": "ecordatorio",
+          "checks": "La hora abierta completa el recordatorio."
+        },
+        {
+          "send": "acordame de pesar las vacas el 20",
+          "expect": "A qué hora",
+          "avoid": "Pesaje registrado|No pude usar",
+          "checks": "Segundo recordatorio, nuevo pending de hora. Corrida 1: llegó con el pending de hora del anterior todavía abierto y fue tragado como «la hora»."
+        },
+        {
+          "send": "a las 8",
+          "expect": "ecordatorio",
+          "checks": "Completa el segundo recordatorio."
+        },
+        {
+          "send": "cuánto gasté en hacienda?",
+          "expect": "46\\.000\\.000|40\\.000\\.000|Hacienda",
+          "avoid": "bservaci[oó]n",
+          "checks": "financial_report por categoría: 40.000.000 (vacas) + 6.000.000 (toros) = 46.000.000; ingreso 3.500.000."
+        },
+        {
+          "send": "listado de hacienda",
+          "expect": "Norte[\\s\\S]*Sur|Sur[\\s\\S]*Norte",
+          "checks": "VERIFICACIÓN FINAL: inventario coherente con todos los movimientos, incluida la reversión del paso 1 de esta fase."
+        }
+      ]
+    }
+  ]
+}

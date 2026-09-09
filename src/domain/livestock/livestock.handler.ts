@@ -116,7 +116,19 @@ export class LivestockHandler {
     if (!movementId) {
       const category = LivestockService.normalizeCategory(c.category as string | undefined);
       const movementType = kind === 'income' ? 'salida' : (kind === 'expense' ? 'entrada' : null);
-      const found = await this.service.findLatestUnpricedMovement(Number(userId), category, movementType);
+      let found = await this.service.findLatestUnpricedMovement(Number(userId), category, movementType);
+      // El agente puede leer mal el sentido: "los toros salieron 2 palos c/u"
+      // (= costaron) llegó como kind=income, el filtro pedía una VENTA de toros
+      // y la ENTRADA sin precio quedó sin tocar (QA ganadería 9 sep 2026). Si
+      // con el sentido pedido no hay nada, el movimiento sin precio que SÍ
+      // existe manda: el tipo del movimiento decide gasto/ingreso, no el agente.
+      if (!found && movementType) {
+        found = await this.service.findLatestUnpricedMovement(Number(userId), category, null);
+        if (found) {
+          console.log(`[INTERCEPT] set_livestock_price kind override: agent=${kind} → ${found.movement_type} (${found.category} x${found.count})`);
+          kind = null;
+        }
+      }
       if (!found) {
         return { messages: ['No encontré una compra o venta de hacienda reciente sin precio. Si es una operación nueva, decime por ej: "compré 5 toros a 2 millones por cabeza".'] };
       }

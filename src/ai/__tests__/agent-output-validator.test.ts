@@ -387,3 +387,44 @@ describe('validateToolCall — respuesta corta conserva el lote dicho el turno a
     expect(r.droppedFields).toContain('plot');
   });
 });
+
+describe('animal_ref — el agente nunca reescribe una caravana (QA ganadería 9 sep 2026)', () => {
+  it('"dónde está la 12?" con animal_ref=0000000013 → se reemplaza por lo que dijo el usuario', () => {
+    const r = validateToolCall({ toolName: 'query_animal', input: { animal_ref: '0000000013', view: 'ficha' }, originalText: 'dónde está la 12?' });
+    expect(r.input.animal_ref).toBe('12');
+    expect(r.input.view).toBe('ficha');
+    expect(r.droppedFields).toEqual([]);
+  });
+
+  it('ref corta que SÍ está en el texto se conserva tal cual ("la 10" → 0000010)', () => {
+    const r = validateToolCall({ toolName: 'record_livestock_death', input: { category: 'vaca', count: 1, animal_ref: '0000010' }, originalText: 'se murió la vaca 10' });
+    expect(r.input.animal_ref).toBe('0000010');
+  });
+
+  it('CII escrito con espacios respalda la forma compacta', () => {
+    const r = validateToolCall({ toolName: 'query_animal', input: { animal_ref: '032010000000010' }, originalText: 'qué pasó con la 032 01 0000000010?' });
+    expect(r.input.animal_ref).toBe('032010000000010');
+  });
+
+  it('sin ningún número en el texto y ref inventada → se dropea (el handler pregunta)', () => {
+    const r = validateToolCall({ toolName: 'query_animal', input: { animal_ref: '0000000013' }, originalText: 'dónde está el toro nuevo?' });
+    expect(r.input.animal_ref).toBeUndefined();
+    expect(r.droppedFields).toContain('animal_ref');
+  });
+
+  it('animal_refs: se filtran las que no están en el texto y se conservan las nombradas', () => {
+    const r = validateToolCall({ toolName: 'log_health_event', input: { health_type: 'vacunacion', animal_refs: ['0000001', '0000002', '0000009'] }, originalText: 'vacuné la 1 y la 2 contra aftosa' });
+    expect(r.input.animal_refs).toEqual(['0000001', '0000002']);
+  });
+
+  it('animal_refs: ninguna respaldada y un solo número en el texto → ese número', () => {
+    const r = validateToolCall({ toolName: 'log_health_event', input: { health_type: 'vacunacion', animal_refs: ['0000000013'] }, originalText: 'vacuné la 12 contra carbunclo' });
+    expect(r.input.animal_refs).toEqual(['12']);
+  });
+
+  it('sin animal_ref es passthrough (las tools de grupo no cambian)', () => {
+    const input = { category: 'vaca', count: 50, plot: 'Norte' };
+    const r = validateToolCall({ toolName: 'transfer_livestock', input, originalText: 'mové 50 vacas al Norte' });
+    expect(r.input).toEqual(input);
+  });
+});

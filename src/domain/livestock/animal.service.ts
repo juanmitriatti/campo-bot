@@ -245,6 +245,11 @@ export class AnimalService {
     return this.repo.findByIdentifier(userId, rawValue);
   }
 
+  /** Caravana ya retirada (reemplazo/pérdida/baja) → a qué animal perteneció y por cuál se reemplazó. */
+  async findRetiredIdentification(userId: number, ref: string) {
+    return this.repo.findRetiredIdentification(userId, ref);
+  }
+
   /**
    * Resuelve las caravanas que el usuario NOMBRÓ en una operación de grupo
    * ("se murió la vaca 0000010", "vacuné la 9 y la 10").

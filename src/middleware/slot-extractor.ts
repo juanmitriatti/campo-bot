@@ -141,6 +141,10 @@ function extractPlotToken(text: string): string | null {
   if (m) return m[1];
   // Bare "en X" where X is a plot-id-shaped token (letter+number or pure number).
   // Stop short to avoid catching "en La Esperanza" (field name).
+  // Un número seguido de una UNIDAD no es un lote: "en 5 hectáreas del Sur
+  // tengo vaquillonas" con un "¿en qué lote?" abierto se consumía como lote
+  // «5» (QA ganadería 9 sep 2026) y la carga real se perdía.
+  if (/\ben\s+\d{1,3}\s*(?:ha|has|hect[aá]reas?|kg|kilos?|mm|lt|l|litros?|tn|toneladas?|bolsas?|d[ií]as?|semanas?|meses|a[ñn]os?|%)(?![a-záéíóúüñ])/i.test(text)) return null;
   m = text.match(/\ben\s+([A-Z]\d{1,3}|\d{1,3})\b/);
   if (m) return m[1];
   return null;

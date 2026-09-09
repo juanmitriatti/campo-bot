@@ -1,5 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { isAffirmation, isNegationOrCancel, looksLikeNewActionOrQuery, isContentlessMessage, wantsFieldLevelSave } from '../conversation-guards.js';
+import { isAffirmation, isNegationOrCancel, looksLikeNewActionOrQuery, looksLikeLivestockCount, hasActionVerbOrQuery, isContentlessMessage, wantsFieldLevelSave } from '../conversation-guards.js';
+
+describe('looksLikeLivestockCount (QA ganadería 9 sep 2026)', () => {
+  it.each([
+    'en 5 hectáreas del Sur tengo vaquillonas',
+    'tengo 100 vacas',
+    '30 terneros',
+    '120 cabezas en el norte',
+  ])('"%s" → true (alta de hacienda, pivotea un pending de ubicación)', (t) => {
+    expect(looksLikeLivestockCount(t)).toBe(true);
+  });
+  it.each([
+    '500000 pesos por cabeza',
+    '800 mil la vaca',
+    'Norte',
+    'en el 5',
+    'aftosa',
+  ])('"%s" → false (precio por cabeza o respuesta pelada)', (t) => {
+    expect(looksLikeLivestockCount(t)).toBe(false);
+  });
+});
+
+describe('hasActionVerbOrQuery — un recordatorio nuevo escapa el pending de hora', () => {
+  it.each(['acordame de pesar las vacas el 20', 'recordame regar el sábado'])('"%s" → true', (t) => {
+    expect(hasActionVerbOrQuery(t)).toBe(true);
+  });
+  it.each(['a las 8', 'cuando sea', '14:30'])('"%s" → false (respuesta a la hora)', (t) => {
+    expect(hasActionVerbOrQuery(t)).toBe(false);
+  });
+});
 
 describe('wantsFieldLevelSave', () => {
   it.each([

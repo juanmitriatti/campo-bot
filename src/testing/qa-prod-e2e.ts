@@ -15,12 +15,18 @@
  *   TEST_BOT_URL=https://... QA_EMAIL=... QA_PASSWORD=... npx tsx src/testing/qa-prod-e2e.ts --run
  *   ... --run --from hacienda     # arranca en una fase (la cuenta ya tiene lo anterior)
  *   ... --run --no-reset          # no borra los datos de la cuenta de QA antes de arrancar
+ *   ... --plan src/testing/qa-prod-ganaderia.plan.json   # otro plan con el MISMO runner
  *
- * Deja `qa-reports/qa-prod-e2e-<timestamp>.md` + `.json` con cada mensaje,
+ * Deja `qa-reports/<plan>-<timestamp>.md` + `.json` con cada mensaje,
  * cada respuesta del bot, los botones y el veredicto por paso.
+ *
+ * Botones con token dinámico (`animal_batch_move_<token>`, `lv_loc_lote_<token>`):
+ * en `tap` y `buttons` un id terminado en `*` se resuelve por prefijo contra el
+ * último botón que el bot mostró con ese prefijo. Sin eso, ningún paso que
+ * dependa de un tap con payload podría escribirse en el plan.
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TestBotClient, type BotResponseItem } from './test-bot-client.js';
 
@@ -33,7 +39,7 @@ interface Step {
   checks?: string;
 }
 interface Phase { id: string; title: string; domain: string; why: string; steps: Step[] }
-interface Plan { name: string; persona: string; notes: string[]; phases: Phase[] }
+interface Plan { name: string; title?: string; persona: string; notes: string[]; phases: Phase[] }
 
 interface StepResult {
   phase: string;
@@ -49,9 +55,29 @@ interface StepResult {
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const plan: Plan = JSON.parse(readFileSync(join(__dirname, 'qa-prod-e2e.plan.json'), 'utf-8'));
 const args = process.argv.slice(2);
 const arg = (k: string): string | undefined => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
+const planPath = arg('--plan') ?? join(__dirname, 'qa-prod-e2e.plan.json');
+const planSlug = basename(planPath).replace(/\.plan\.json$/, '').replace(/\.json$/, '');
+const plan: Plan = JSON.parse(readFileSync(planPath, 'utf-8'));
+
+/**
+ * Ids con `*` final se resuelven por prefijo contra los botones que el bot
+ * mostró más recientemente con ese prefijo (un tap con token no es escribible
+ * de antemano). `seen` recuerda el último id por prefijo durante toda la
+ * corrida, así un segundo tap sobre el mismo botón (doble toque) también se
+ * puede expresar en el plan.
+ */
+const seenButtons: string[] = [];
+function rememberButtons(ids: string[]): void {
+  seenButtons.push(...ids);
+}
+function resolveButtonId(pattern: string): string | null {
+  if (!pattern.endsWith('*')) return pattern;
+  const prefix = pattern.slice(0, -1);
+  for (let i = seenButtons.length - 1; i >= 0; i--) if (seenButtons[i].startsWith(prefix)) return seenButtons[i];
+  return null;
+}
 
 function allText(items: BotResponseItem[]): string {
   return items.map(i => i.type === 'text' ? (i.text ?? '') : (i.interactive?.body ?? '')).join('\n');
@@ -71,7 +97,10 @@ function judge(step: Step, reply: string, buttons: string[]): string[] {
   if (step.expect && !new RegExp(step.expect, 'i').test(reply)) reasons.push(`no apareció /${step.expect}/`);
   if (step.avoid && new RegExp(step.avoid, 'i').test(reply)) reasons.push(`apareció /${step.avoid}/ (prohibido)`);
   if (/^\s*$/.test(reply) && buttons.length === 0) reasons.push('respuesta vacía (silencio)');
-  for (const b of step.buttons ?? []) if (!buttons.includes(b)) reasons.push(`falta el botón ${b}`);
+  for (const b of step.buttons ?? []) {
+    const hit = b.endsWith('*') ? buttons.some(id => id.startsWith(b.slice(0, -1))) : buttons.includes(b);
+    if (!hit) reasons.push(`falta el botón ${b}`);
+  }
   return reasons;
 }
 
@@ -128,17 +157,24 @@ async function run(): Promise<void> {
     for (const step of phase.steps) {
       n++;
       const kind: 'send' | 'tap' = step.tap ? 'tap' : 'send';
-      const input = (step.tap ?? step.send)!;
+      const pattern = (step.tap ?? step.send)!;
+      const resolved = kind === 'tap' ? resolveButtonId(pattern) : pattern;
+      const input = resolved ?? pattern;
       const t0 = Date.now();
       let items: BotResponseItem[] = [];
       let err: string | null = null;
-      try {
-        items = kind === 'tap' ? (await client.tap(input)).messages : (await client.send(input)).messages;
-      } catch (e) {
-        err = (e as Error).message;
+      if (kind === 'tap' && resolved === null) {
+        err = `ningún botón previo coincide con ${pattern}`;
+      } else {
+        try {
+          items = kind === 'tap' ? (await client.tap(input)).messages : (await client.send(input)).messages;
+        } catch (e) {
+          err = (e as Error).message;
+        }
       }
       const reply = err ? `[ERROR] ${err}` : allText(items);
       const buttons = allButtons(items);
+      rememberButtons(buttons);
       const reasons = err ? [`error HTTP: ${err}`] : judge(step, reply, buttons);
       const r: StepResult = { phase: phase.id, n, input, kind, reply, buttons, pass: reasons.length === 0, reasons, ms: Date.now() - t0, checks: step.checks };
       results.push(r);
@@ -174,9 +210,9 @@ async function run(): Promise<void> {
       md.push(`_${r.ms} ms_`, ``);
     }
   }
-  writeFileSync(join(dir, `qa-prod-e2e-${stamp}.md`), md.join('\n'), 'utf-8');
-  writeFileSync(join(dir, `qa-prod-e2e-${stamp}.json`), JSON.stringify({ baseUrl, email, results }, null, 2), 'utf-8');
-  console.log(`\n${passed}/${results.length} OK — reporte en qa-reports/qa-prod-e2e-${stamp}.md`);
+  writeFileSync(join(dir, `${planSlug}-${stamp}.md`), md.join('\n'), 'utf-8');
+  writeFileSync(join(dir, `${planSlug}-${stamp}.json`), JSON.stringify({ baseUrl, email, results }, null, 2), 'utf-8');
+  console.log(`\n${passed}/${results.length} OK — reporte en qa-reports/${planSlug}-${stamp}.md`);
   process.exit(passed === results.length ? 0 : 1);
 }
 
@@ -221,7 +257,7 @@ function renderHtml(): string {
   const nav = plan.phases.map(p => `<li><a href="#${p.id}"><span class="dot" data-domain="${p.domain}"></span>${esc(p.title)}<span class="cnt">${p.steps.length}</span></a></li>`).join('');
   const notes = plan.notes.map(t => `<li>${esc(t)}</li>`).join('');
 
-  return `<title>QA E2E Campo Bot</title>
+  return `<title>${esc(plan.title ?? 'QA E2E Campo Bot')}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
@@ -312,7 +348,7 @@ main{display:flex;flex-direction:column;gap:44px;min-width:0}
       </ol>
       <code class="cmd">TEST_BOT_URL=https://campo-bot-production.up.railway.app
 QA_EMAIL=qa-e2e@campobot.ar  QA_PASSWORD=…
-npx tsx src/testing/qa-prod-e2e.ts --run</code>
+npx tsx src/testing/qa-prod-e2e.ts --run${planSlug === 'qa-prod-e2e' ? '' : ` --plan src/testing/${esc(basename(planPath))}`}</code>
     </div>
   </aside>
   <main>${phases}</main>

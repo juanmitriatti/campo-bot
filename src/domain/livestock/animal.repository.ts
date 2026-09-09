@@ -113,6 +113,42 @@ export class AnimalRepository {
   }
 
   /**
+   * Caravana RETIRADA (reemplazada, perdida, baja): "dónde está la 12?" cuando
+   * la 12 ya fue reemplazada por la 13. No resuelve en el lookup vigente — a
+   * propósito — pero el productor merece saber que existió y en qué animal
+   * está hoy, en vez de un "no tengo ningún animal" seco. Match por valor
+   * normalizado o por referencia corta (ceros a la izquierda), y SOLO si la
+   * coincidencia es única entre las retiradas: con dos candidatos no adivina.
+   */
+  async findRetiredIdentification(userId: number, ref: string): Promise<{
+    animal_id: string;
+    value: string;
+    removed_date: string | null;
+    removal_reason: string | null;
+    replaced_by: string | null;
+  } | null> {
+    const normalized = normalizeAnimalId(ref);
+    if (!normalized) return null;
+    const bare = /^\d+$/.test(normalized) ? normalized.replace(/^0+/, '') : null;
+    const { rows } = await pool.query(
+      `SELECT ai.animal_id::text AS animal_id, ai.value,
+              ai.removed_date::text AS removed_date, ai.removal_reason,
+              (SELECT n.value FROM animal_identifications n
+                WHERE n.replaces_identification_id = ai.id
+                ORDER BY n.assigned_date DESC, n.created_at DESC LIMIT 1) AS replaced_by
+         FROM animal_identifications ai
+         JOIN animals a ON a.id = ai.animal_id AND a.deleted_at IS NULL
+        WHERE ai.user_id = $1
+          AND NOT ai.is_current
+          AND (ai.value_normalized = $2 OR ($3::text IS NOT NULL AND ltrim(ai.value_normalized, '0') = $3))
+        ORDER BY ai.removed_date DESC NULLS LAST, ai.created_at DESC
+        LIMIT 2`,
+      [userId, normalized, bare || null],
+    );
+    return rows.length === 1 ? rows[0] : null;
+  }
+
+  /**
    * Referencia CORTA por número: "la vaca 10" cuando la caravana es 0000010.
    *
    * Compara ignorando ceros a la izquierda y devuelve el animal SOLO si la

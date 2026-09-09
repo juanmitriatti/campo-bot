@@ -35,7 +35,7 @@ import { SystemHandler } from '../domain/system/system.handler.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { formatQuantityHuman } from '../utils/format-quantity.js';
 import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
-import { isAffirmation, looksLikeNewActionOrQuery, hasActionVerbOrQuery, isReadOnlyQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
+import { isAffirmation, looksLikeNewActionOrQuery, hasActionVerbOrQuery, looksLikeLivestockCount, isReadOnlyQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
 import { extractFieldRestatement } from '../middleware/flows/field-step-helpers.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { PendingTransactionStore, resolveReplacedPending, isCompletePending } from '../middleware/pending-transactions.js';
@@ -1007,7 +1007,14 @@ async function processTextMessageInner(
     // "menú") nunca es la respuesta a un slot, por corto que sea: el modo
     // estricto (respuesta ≤40 chars) se lo comía como hora/lote/cantidad.
     const isReadOnlyTrivial = !!actInterruptCmd && READ_ONLY_TRIVIAL_COMMANDS.has(actInterruptCmd.command as string);
-    const escapePending = (strictEscape ? hasActionVerbOrQuery(text) : looksLikeNewActionOrQuery(text))
+    // Cantidad + animal ("en 5 hectáreas del Sur tengo vaquillonas") es un alta
+    // de hacienda, no la respuesta a un slot de UBICACIÓN: con el "¿en qué
+    // lote?" de otra alta abierto se consumía como lote «5» y las 20
+    // vaquillonas se perdían (QA ganadería 9 sep 2026). En un slot financiero
+    // NO aplica: "500000 por cabeza" es un precio, y la heurística lo excluye
+    // igual — ver looksLikeLivestockCount.
+    const livestockPivot = !expectsFinancialSlot && looksLikeLivestockCount(text);
+    const escapePending = (strictEscape ? (hasActionVerbOrQuery(text) || livestockPivot) : looksLikeNewActionOrQuery(text))
       || isOtherItemCorrectionOrDelete(text)
       || isNewActionInterrupt(actInterruptCmd)
       || isReadOnlyTrivial

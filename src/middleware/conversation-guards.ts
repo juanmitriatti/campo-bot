@@ -79,7 +79,7 @@ export function isNegationOrCancel(text: string): boolean {
 // En particular `movi(?!miento)` existe para no capturar "movimientos de
 // hacienda", que es una CONSULTA — si la capturara, isReadOnlyQuery devolvería
 // false y el pending se descartaría en vez de responder y re-preguntar.
-const ACTION_VERB = /\b(gaste|pague|pago|compre|compro|abone|vendi|vendo|cobre|cobro|ingrese|ingreso|facture|sembre|siembro|fumig\w*|fertilic\w*|cosech\w*|pulveric\w*|are|rastre|plante|plant\w*|regue|riegue|aplique|aplico|llovio|cayo(?:\s+\d|\s+agua|\s+lluvia)|nacio|nacieron|parieron|vacune|desparasite|cure|trate|insemine|destete|eche|pese|pesaron|pesamos|transferi|transfer\w*|pase|agrega|agregue|suma|sume|cargue|registre|registra|anote|anota|renombr\w*|cre[ae]\w*|arma\w*|borr[ae]\w*|elimin[ae]\w*|dar de alta|move\w*|mueve\w*|muevo|movi(?!miento)\w*|revert\w*|deshac\w*|reemplaz\w*)\b/;
+const ACTION_VERB = /\b(gaste|pague|pago|compre|compro|abone|vendi|vendo|cobre|cobro|ingrese|ingreso|facture|sembre|siembro|fumig\w*|fertilic\w*|cosech\w*|pulveric\w*|are|rastre|plante|plant\w*|regue|riegue|aplique|aplico|llovio|cayo(?:\s+\d|\s+agua|\s+lluvia)|nacio|nacieron|parieron|vacune|desparasite|cure|trate|insemine|destete|eche|pese|pesaron|pesamos|transferi|transfer\w*|pase|agrega|agregue|suma|sume|cargue|registre|registra|anote|anota|renombr\w*|cre[ae]\w*|arma\w*|borr[ae]\w*|elimin[ae]\w*|dar de alta|move\w*|mueve\w*|muevo|movi(?!miento)\w*|revert\w*|deshac\w*|reemplaz\w*|acordame|acordarme|recordame|recordarme)\b/;
 
 // Query / read intents — clima, reportes, listados, "¿cuánto…?". During a flow
 // these mean "stop the registration and answer me", not flow input.
@@ -119,19 +119,34 @@ export function looksLikeNewActionOrQuery(text: string): boolean {
   if (!t) return false;
   if (ACTION_VERB.test(t)) return true;
   if (QUERY_INTENT.test(t)) return true;
-  // Livestock registration ("tengo 100 vacas", "30 terneros", "120 cabezas") —
-  // a number + an animal noun. Lets it abandon a stuck flow/pending (e.g. the
-  // field-city step) instead of being swallowed as a bad locality.
-  // EXCLUDE price-unit phrases: "X por cabeza / por animal / por vaca" is a
-  // UNIT PRICE ("per head"), NOT a count — otherwise "500000 pesos por cabeza"
-  // (a price answer to a livestock-purchase pending) escaped and corrupted the
-  // last income via edit_last_income (seen live, Jun 2026).
-  if (/\d/.test(t)
-      && /\b(vacas?|novillos?|novillitos?|terneros?|terneras?|toros?|toritos?|vaquillonas?|bueyes?|animales?|cabezas?)\b/.test(t)
-      && !/\b(por|la|el|cada)\s+(vaca|novillo\w*|ternero?\w*|toro|vaquillona|cabeza|animal)\b/.test(t)) return true;
+  if (looksLikeLivestockCount(text)) return true;
   // A genuine multi-word question ("va a llover el finde?", "cuánto tengo?").
   if (/\?\s*$/.test(text.trim()) && t.split(/\s+/).length >= 3) return true;
   return false;
+}
+
+/**
+ * Livestock registration ("tengo 100 vacas", "30 terneros", "120 cabezas",
+ * "en 5 hectáreas del Sur tengo vaquillonas") — a number + an animal noun.
+ * Lets it abandon a stuck flow/pending (e.g. the field-city step, or a
+ * "¿en qué lote?" of ANOTHER alta) instead of being swallowed as a bad
+ * locality or as a plot name.
+ *
+ * EXCLUDE price-unit phrases: "X por cabeza / por animal / por vaca" is a
+ * UNIT PRICE ("per head"), NOT a count — otherwise "500000 pesos por cabeza"
+ * (a price answer to a livestock-purchase pending) escaped and corrupted the
+ * last income via edit_last_income (seen live, Jun 2026). Por eso el escape
+ * estricto de los slots FINANCIEROS no la usa; el de los slots de ubicación sí
+ * (QA ganadería 9 sep 2026: con "¿en qué lote?" abierto, "en 5 hectáreas del
+ * Sur tengo vaquillonas" se consumió como lote «5» y las 20 vaquillonas se
+ * perdieron).
+ */
+export function looksLikeLivestockCount(text: string): boolean {
+  const t = norm(text);
+  if (!t) return false;
+  return /\d/.test(t)
+    && /\b(vacas?|novillos?|novillitos?|terneros?|terneras?|toros?|toritos?|vaquillonas?|bueyes?|animales?|cabezas?)\b/.test(t)
+    && !/\b(por|la|el|cada)\s+(vaca|novillo\w*|ternero?\w*|toro|vaquillona|cabeza|animal)\b/.test(t);
 }
 
 /**

@@ -3214,4 +3214,125 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('hallazgos del QA E2E de ganadería (prod, 9 sep 2026)', () => {
+    let h: PipelineHarness;
+    let fieldId: number;
+    let norteId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('qa-ganaderia');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'Los Álamos') RETURNING id`, [h.userId]);
+      fieldId = f[0].id as number;
+      const n = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte') RETURNING id`, [fieldId]);
+      norteId = n[0].id as number;
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Sur')`, [fieldId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('1. un alta de hacienda con su propia cantidad NO es la respuesta al "¿en qué lote?" de otra alta', async () => {
+      h.fakeAgent.enqueueTool('add_livestock', { category: 'vaca', count: 3, breed: 'Angus' });
+      const ask = await h.send('agregué 3 vacas Angus');
+      expect(h.allText(ask)).toMatch(/en qué lote/i);
+
+      // Prod: este mensaje se consumió como lote «5» ("No encontré el lote *5*")
+      // y las vaquillonas nunca se registraron.
+      h.fakeAgent.enqueueTool('add_livestock', { category: 'vaquillona', plot: 'Sur' });
+      const r = await h.send('en 5 hectáreas del Sur tengo vaquillonas');
+      const text = h.allText(r);
+      expect(text).not.toMatch(/No encontré el lote/);
+      expect(text).toMatch(/Cuántas cabezas/);
+
+      const done = await h.send('20');
+      expect(h.allText(done)).toMatch(/Vaquillona[\s\S]*20 animales/);
+      const g = await h.q(
+        `SELECT g.count FROM livestock_groups g JOIN plots p ON p.id = g.plot_id
+          WHERE g.user_id = $1 AND g.category = 'vaquillona' AND p.name = 'Sur'`,
+        [h.userId],
+      );
+      expect(g).toHaveLength(1);
+      expect(Number(g[0].count)).toBe(20);
+      const bogus = await h.q(`SELECT id FROM plots WHERE field_id = $1 AND name = '5'`, [fieldId]);
+      expect(bogus).toHaveLength(0);
+    });
+
+    it('2. precio tardío con el sentido equivocado del agente (kind=income sobre una COMPRA) igual se registra', async () => {
+      h.fakeAgent.enqueueTool('add_livestock', { category: 'toro', count: 3, breed: 'Angus', plot: 'Norte' });
+      expect(h.allText(await h.send('agregué 3 toros Angus al Norte'))).toMatch(/Hacienda registrada/);
+
+      // "salieron" = costaron; el agente lo leyó como venta.
+      h.fakeAgent.enqueueTool('set_livestock_price', { category: 'toro', unit_price: 2000000, currency: 'ARS', kind: 'income' });
+      const r = await h.send('los toros salieron 2 palos c/u');
+      const text = h.allText(r);
+      expect(text).not.toMatch(/No encontré una compra/);
+      expect(text).toMatch(/Gasto registrado/);
+      expect(text).toMatch(/6\.000\.000/);
+      const e = await h.q(
+        `SELECT amount FROM expenses WHERE user_id = $1 AND deleted_at IS NULL AND category = 'Hacienda' ORDER BY id DESC LIMIT 1`,
+        [h.userId],
+      );
+      expect(Number(e[0]?.amount)).toBe(6000000);
+    });
+
+    describe('3. caravana retirada: el agente no la reescribe y el sistema la explica', () => {
+      let toroId: string;
+      beforeAll(async () => {
+        const g = await h.q(
+          `SELECT id FROM livestock_groups WHERE user_id = $1 AND category = 'toro' AND plot_id = $2`,
+          [h.userId, norteId],
+        );
+        const a = await h.q(
+          `INSERT INTO animals (user_id, field_id, plot_id, group_id, category, sex, status)
+           VALUES ($1, $2, $3, $4, 'toro', 'M', 'activo') RETURNING id`,
+          [h.userId, fieldId, norteId, g[0]?.id ?? null],
+        );
+        toroId = String(a[0].id);
+        const old = await h.q(
+          `INSERT INTO animal_identifications (user_id, animal_id, id_type, value, value_normalized, is_current, assigned_date, removed_date, removal_reason)
+           VALUES ($1, $2, 'rfid', '0000000012', '0000000012', false, '2026-09-01', '2026-09-09', 'reemplazo') RETURNING id`,
+          [h.userId, toroId],
+        );
+        await h.q(
+          `INSERT INTO animal_identifications (user_id, animal_id, id_type, value, value_normalized, is_current, assigned_date, replaces_identification_id)
+           VALUES ($1, $2, 'rfid', '0000000013', '0000000013', true, '2026-09-09', $3)`,
+          [h.userId, toroId, old[0].id],
+        );
+      });
+
+      it('"dónde está la 12?" con animal_ref=0000000013 del agente → ficha de la 13 con la nota del reemplazo', async () => {
+        h.fakeAgent.enqueueTool('query_animal', { animal_ref: '0000000013', view: 'ficha' });
+        const text = h.allText(await h.send('dónde está la 12?'));
+        expect(text).toMatch(/0000000012 ya no está vigente/);
+        expect(text).toMatch(/reemplazada por \*0000000013\*/);
+        expect(text).toMatch(/Toro 0000000013/);
+        expect(text).toMatch(/Lote Norte/);
+      });
+
+      it('"dónde está la 13?" sigue resolviendo directo, sin nota', async () => {
+        h.fakeAgent.enqueueTool('query_animal', { animal_ref: '0000000013' });
+        const text = h.allText(await h.send('dónde está la 13?'));
+        expect(text).toMatch(/Toro 0000000013/);
+        expect(text).not.toMatch(/ya no está vigente/);
+      });
+
+      it('una baja por caravana reescrita por el agente NO mata a otro animal', async () => {
+        h.fakeAgent.enqueueTool('record_livestock_death', { category: 'toro', count: 1, animal_ref: '0000000013' });
+        const text = h.allText(await h.send('se murió la 12'));
+        expect(text).toMatch(/No tengo ningún animal con la caravana/);
+        expect(text).not.toMatch(/Baja registrada/);
+        const a = await h.q(`SELECT status FROM animals WHERE id = $1`, [toroId]);
+        expect(a[0].status).toBe('activo');
+      });
+    });
+
+    it('4. un recordatorio nuevo con el "¿a qué hora?" del anterior abierto no se traga como la hora', async () => {
+      h.fakeAgent.enqueueTool('create_reminder', { description: 'vacunar los terneros', due_date: '2026-09-12' });
+      expect(h.allText(await h.send('el sábado vacuno los terneros'))).toMatch(/A qué hora/);
+
+      h.fakeAgent.enqueueTool('create_reminder', { description: 'pesar las vacas', due_date: '2026-09-20' });
+      const text = h.allText(await h.send('acordame de pesar las vacas el 20'));
+      expect(text).not.toMatch(/No pude usar/);
+      expect(text).toMatch(/A qué hora/);
+    });
+  });
+
 });

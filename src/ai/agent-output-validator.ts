@@ -47,6 +47,8 @@ export interface ValidationResult {
   droppedFields: string[];
 }
 
+import { normalizeAnimalId } from '../utils/animal-id.js';
+
 /** Tools where `crop` should reflect a real cultivo named by the user. */
 const CROP_AWARE_TOOLS = new Set([
   'sow_crop',
@@ -153,7 +155,103 @@ export function validateToolCall(
     }
   }
 
+  // Caravanas: el agente NUNCA reescribe un identificador. "dónde está la 12?"
+  // llegó como animal_ref=0000000013 porque el modelo leyó en el historial que
+  // la 12 se reemplazó por la 13 (QA ganadería 9 sep 2026): acertó de casualidad,
+  // pero el mecanismo es el que la regla «copiar los dígitos tal cual» prohíbe —
+  // un dígito cambiado apunta a OTRO animal. Sin flag: es regla dura.
+  {
+    const fixed = enforceAnimalRefsFromText(input, ctx.originalText, ctx.toolName);
+    if (fixed.changed) {
+      input = fixed.input;
+      droppedFields.push(...fixed.dropped);
+    }
+  }
+
   return { input, droppedFields };
+}
+
+/**
+ * Tokens numéricos del texto: cada corrida de dígitos por separado ("la 1 y
+ * la 12" → 1, 12) Y la forma con separadores internos colapsados ("032 01
+ * 0001234567" → 032010001234567), porque un CII se dicta con espacios.
+ */
+function numericTokensOf(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/\d+/g)) out.add(m[0]);
+  for (const m of text.matchAll(/\d[\d\s\-.]*\d/g)) {
+    const compact = m[0].replace(/[\s\-.]/g, '');
+    if (compact) out.add(compact);
+  }
+  return [...out];
+}
+
+/**
+ * Una caravana está respaldada por el texto si (a) su forma normalizada (≥8
+ * caracteres) aparece en el texto normalizado, o (b) su valor numérico sin
+ * ceros a la izquierda coincide con algún token numérico del texto ("la 12"
+ * respalda 0000000012, no 0000000013).
+ */
+function animalRefBackedByText(ref: string, text: string): boolean {
+  const normRef = normalizeAnimalId(ref);
+  if (!normRef) return true; // vacío: no hay nada que validar, que lo diga el handler
+  const normText = normalizeAnimalId(text);
+  if (normRef.length >= 8 && normText.includes(normRef)) return true;
+  if (!/^\d+$/.test(normRef)) return normText.includes(normRef);
+  const bare = normRef.replace(/^0+/, '');
+  if (!bare) return normText.includes(normRef);
+  return numericTokensOf(text).some(t => t.replace(/^0+/, '') === bare);
+}
+
+function enforceAnimalRefsFromText(
+  input: Record<string, unknown>,
+  text: string,
+  toolName: string,
+): { input: Record<string, unknown>; changed: boolean; dropped: string[] } {
+  const hasSingle = typeof input.animal_ref === 'string' && input.animal_ref.trim() !== '';
+  const hasMany = Array.isArray(input.animal_refs) && input.animal_refs.length > 0;
+  if (!hasSingle && !hasMany) return { input, changed: false, dropped: [] };
+
+  const tokens = numericTokensOf(text);
+  const soleToken = tokens.length === 1 ? tokens[0] : null;
+  let out = input;
+  const dropped: string[] = [];
+  let changed = false;
+
+  if (hasSingle) {
+    const ref = String(input.animal_ref);
+    if (!animalRefBackedByText(ref, text)) {
+      out = { ...out };
+      changed = true;
+      if (soleToken) {
+        console.warn(`AI_VALIDATOR OVERRIDE animal_ref: tool=${toolName} agent="${ref}" → texto="${soleToken}" text="${text.slice(0, 120)}"`);
+        out.animal_ref = soleToken;
+      } else {
+        delete out.animal_ref;
+        dropped.push('animal_ref');
+      }
+    }
+  }
+
+  if (hasMany) {
+    const refs = (input.animal_refs as unknown[]).map(v => String(v));
+    const kept = refs.filter(r => animalRefBackedByText(r, text));
+    if (kept.length !== refs.length) {
+      out = { ...out };
+      changed = true;
+      if (kept.length === 0 && soleToken) {
+        console.warn(`AI_VALIDATOR OVERRIDE animal_refs: tool=${toolName} agent=[${refs.join(', ')}] → texto=["${soleToken}"] text="${text.slice(0, 120)}"`);
+        out.animal_refs = [soleToken];
+      } else {
+        const removed = refs.filter(r => !kept.includes(r));
+        console.warn(`AI_VALIDATOR DROP animal_refs: tool=${toolName} sin respaldo=[${removed.join(', ')}] text="${text.slice(0, 120)}"`);
+        if (kept.length === 0) { delete out.animal_refs; dropped.push('animal_refs'); }
+        else out.animal_refs = kept;
+      }
+    }
+  }
+
+  return { input: out, changed, dropped };
 }
 
 function shouldStripCrop(

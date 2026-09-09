@@ -49,11 +49,14 @@ describe('capa individual de hacienda — registros (invariante 2)', () => {
     const mapper = new AgentResponseMapper();
     // El output-validator se apaga acá a propósito: lo que se prueba es el
     // MAPEO de campos, no la capa anti-alucinación (que tiene su propia suite y
-    // vetaría valores que este test inyecta sin texto de respaldo).
+    // vetaría valores que este test inyecta sin texto de respaldo). La regla de
+    // caravanas no tiene flag (el agente nunca reescribe un identificador), así
+    // que el texto "del usuario" lleva los valores inyectados, como pasaría en
+    // una conversación real.
     const mapOne = (toolName: string, toolInput: Record<string, unknown>) => {
       const [result] = mapper.mapToParseResults(
         { toolCalls: [{ toolName, toolInput }], text: null, truncated: false } as never,
-        'texto original',
+        `texto original ${Object.values(toolInput).flat().join(' ')}`,
         {},
       );
       const intent = result?.intent as { type: string; data: Record<string, unknown> };
