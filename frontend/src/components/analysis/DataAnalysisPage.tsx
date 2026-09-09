@@ -185,14 +185,14 @@ export default function DataAnalysisPage() {
             className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-campo-500 focus:ring-1 focus:ring-campo-500 disabled:opacity-60"
           />
           {turns.length === 0 && (
-            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" aria-label="Sugerencias">
+            <div className="flex flex-wrap gap-2 pb-1" aria-label="Sugerencias">
               {SUGGESTIONS.map(s => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => void send(s)}
                   disabled={status === 'loading' || fields.length === 0}
-                  className="min-h-[44px] px-3 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-xs text-gray-700 dark:text-gray-200 whitespace-nowrap hover:border-campo-500 disabled:opacity-50"
+                  className="min-h-[44px] px-3 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-xs text-gray-700 dark:text-gray-200 text-left hover:border-campo-500 disabled:opacity-50"
                 >
                   {s}
                 </button>
