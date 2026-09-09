@@ -245,8 +245,8 @@
         },
         {
           "send": "dónde está la 12?",
-          "expect": "No tengo ningún animal con la caravana",
-          "checks": "La caravana retirada ya no resuelve en el lookup (queda solo en el historial). Corrida 1: el AGENTE sustituyó «la 12» por 0000000013 leyendo el historial de la conversación; la respuesta fue correcta de casualidad, pero el mecanismo (reescribir un identificador) es el que la regla «copiar los dígitos tal cual» prohíbe."
+          "expect": "0000000012 ya no está vigente[\\s\\S]*reemplazada por \\*0000000013\\*[\\s\\S]*Toro 0000000013",
+          "checks": "La caravana retirada no resuelve como vigente: el sistema dice por cuál se reemplazó y muestra la ficha actual. Corrida 1: el AGENTE sustituyó «la 12» por 0000000013 leyendo el historial; ahora el validador lo impide (AI_VALIDATOR OVERRIDE) y la explicación es determinística."
         },
         {
           "send": "dónde está la 13?",
@@ -380,9 +380,9 @@
           "checks": "Segundo recordatorio, nuevo pending de hora. Corrida 1: llegó con el pending de hora del anterior todavía abierto y fue tragado como «la hora»."
         },
         {
-          "send": "a las 8",
+          "send": "a las 8 de la mañana",
           "expect": "ecordatorio",
-          "checks": "Completa el segundo recordatorio."
+          "checks": "Completa el segundo recordatorio. «a las 8» pelado es ambiguo y el bot pregunta mañana/noche; eso es correcto."
         },
         {
           "send": "cuánto gasté en hacienda?",

@@ -112,6 +112,18 @@ export class LivestockService {
     opts: { askWhenAmbiguous?: boolean } = {},
   ): Promise<ResolvedLocation> {
     const { askWhenAmbiguous } = opts;
+    // Una respuesta a "¿a qué lote o corral?" llega por el slot genérico de
+    // LOTE ("corral 2" → plotName) y se buscaba un lote llamado «corral 2»
+    // (QA ganadería 9 sep 2026: "No encontré el lote corral 2"). El prefijo
+    // decide el tipo, acá y no en cada handler (invariante 3).
+    if (!corralName && plotName) {
+      const m = plotName.match(/^(?:al?\s+|en\s+(?:el\s+)?)?corral\s+(\S.*)$/i);
+      if (m) {
+        console.log(`[LIVESTOCK] ubicación «${plotName}» es un corral → corral «${m[1]}»`);
+        corralName = m[1].trim();
+        plotName = null;
+      }
+    }
     if (corralName) {
       const ref = await this.feedlotService.resolveCorral(userId, corralName, fieldName);
       return {

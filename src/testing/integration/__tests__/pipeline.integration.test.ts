@@ -3333,6 +3333,33 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(text).not.toMatch(/No pude usar/);
       expect(text).toMatch(/A qué hora/);
     });
+
+    it('5. "corral 2" como respuesta al destino del lote de lectura resuelve un CORRAL, no un lote llamado «corral 2»', async () => {
+      // Corrida 2 del QA: "❌ No encontré el lote "corral 2"" — el destino
+      // llega por el slot genérico de lote y nadie miraba el prefijo.
+      h.fakeAgent.enqueueTool('create_feedlot', { field: 'Los Álamos' });
+      expect(h.allText(await h.send('crear feedlot en Los Álamos'))).toMatch(/Feedlot creado/);
+      h.fakeAgent.enqueueTool('create_corral', { name: '2', field: 'Los Álamos' });
+      expect(h.allText(await h.send('crear corral 2 en Los Álamos'))).toMatch(/Corral creado/);
+
+      // 5 líneas, 1 conocida (la 13 del bloque anterior), 1 repetida, 3 ajenas → sin agente.
+      const preview = await h.send('0000000013\n0000000013\n0000000777\n0000000778\n0000000779');
+      expect(h.allText(preview)).toMatch(/encontré 1 animal/);
+      const move = h.allButtons(preview).find(b => b.id.startsWith('animal_batch_move_'));
+      expect(move).toBeDefined();
+      expect(h.allText(await h.tap(move!.id))).toMatch(/A qué lote o corral/);
+
+      const text = h.allText(await h.send('corral 2'));
+      expect(text).not.toMatch(/No encontré el lote/);
+      expect(text).toMatch(/1 animal movido[\s\S]*Corral 2/);
+      const a = await h.q(
+        `SELECT c.name AS corral FROM animals a JOIN corrals c ON c.id = a.corral_id
+          JOIN animal_identifications ai ON ai.animal_id = a.id AND ai.is_current
+         WHERE a.user_id = $1 AND ai.value_normalized = '0000000013'`,
+        [h.userId],
+      );
+      expect(a[0]?.corral).toBe('2');
+    });
   });
 
 });
