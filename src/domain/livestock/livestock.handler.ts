@@ -20,7 +20,7 @@ import { formatCii } from '../../utils/animal-id.js';
 import { encodeLivestockPayload, decodeLivestockPayload } from './livestock-payload.js';
 import { buildPostActionButtons } from './livestock-post-actions.js';
 import { livestockLocationIntent } from '../../utils/livestock-location-intent.js';
-import { impliesWholeGroup } from '../../utils/lexicon.js';
+import { impliesWholeGroup, impliesWholeGroupIgnoringWeight } from '../../utils/lexicon.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import type {
   UserId,
@@ -2065,10 +2065,22 @@ export class LivestockHandler {
     const category = cmd.category as string | null;
     // Accept the count filled via the unified pending ('¿a cuántos?' → text
     // reply "los 30") through animalsAffected/count, not only animalsWeighed.
-    const animalsWeighed = typeof cmd.animalsWeighed === 'number' ? cmd.animalsWeighed
+    let animalsWeighed = typeof cmd.animalsWeighed === 'number' ? cmd.animalsWeighed
       : typeof cmd.animalsAffected === 'number' ? cmd.animalsAffected
       : typeof cmd.count === 'number' ? cmd.count
       : null;
+    // "pesé los terneros, promedio 160 kg": artículo definido plural y sin
+    // número = todo el grupo, igual que sanidad y reproducción. Sin esto el
+    // "¿A cuántos animales?" dependía de que el agente adivinara
+    // animals_weighed (QA ganadería 9 sep 2026: pasó 2 veces, falló la 3ª).
+    if (animalsWeighed == null && impliesWholeGroupIgnoringWeight(cmd.originalText as string | null)) {
+      const whole = ('knownGroupCount' in loc ? loc.knownGroupCount : null)
+        ?? await this.wholeGroupCount(userId, category, loc.plotId, loc.corralId);
+      if (whole) {
+        console.log(`[LIVESTOCK] pesaje: "${String(cmd.originalText).slice(0, 60)}" → todo el grupo (${whole})`);
+        animalsWeighed = whole;
+      }
+    }
 
     if (animalsWeighed == null && !(cmd as Record<string, unknown>).__animalsAffectedSkipped) {
       return this.buildAnimalsAffectedAskResponse(

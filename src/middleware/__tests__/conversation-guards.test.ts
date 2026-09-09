@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isAffirmation, isNegationOrCancel, looksLikeNewActionOrQuery, looksLikeLivestockCount, hasActionVerbOrQuery, isContentlessMessage, wantsFieldLevelSave } from '../conversation-guards.js';
+import { isAffirmation, isNegationOrCancel, looksLikeNewActionOrQuery, looksLikeLivestockCount, hasActionVerbOrQuery, isReadOnlyQuery, isContentlessMessage, wantsFieldLevelSave } from '../conversation-guards.js';
 
 describe('looksLikeLivestockCount (QA ganadería 9 sep 2026)', () => {
   it.each([
@@ -27,6 +27,15 @@ describe('hasActionVerbOrQuery — un recordatorio nuevo escapa el pending de ho
   });
   it.each(['a las 8', 'cuando sea', '14:30'])('"%s" → false (respuesta a la hora)', (t) => {
     expect(hasActionVerbOrQuery(t)).toBe(false);
+  });
+});
+
+describe('isReadOnlyQuery — "cuándo se vacunó?" con "¿A cuántos animales?" abierto es consulta, no cantidad', () => {
+  it.each(['cuándo se vacunó?', 'cuando se sembró el norte', 'cuándo fumigué?', 'dónde está la 13?', 'dónde están los toros'])('"%s" → true', (t) => {
+    expect(isReadOnlyQuery(t)).toBe(true);
+  });
+  it.each(['cuando sea', 'cuando puedas', '8', 'los 30', 'todos'])('"%s" → false (respuesta a un slot)', (t) => {
+    expect(isReadOnlyQuery(t)).toBe(false);
   });
 });
 

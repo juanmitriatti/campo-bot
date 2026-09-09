@@ -3360,6 +3360,33 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       );
       expect(a[0]?.corral).toBe('2');
     });
+
+    it('6. "pesé los toros, promedio 500 kg" = todo el grupo, sin "¿A cuántos animales?" (paridad con sanidad)', async () => {
+      // Corrida 3: pasó 2 veces porque el agente adivinó animals_weighed y
+      // falló la 3ª cuando lo omitió. El artículo definido decide, no el agente.
+      h.fakeAgent.enqueueTool('log_weighing', { category: 'toro', avg_weight_kg: 500, plot: 'Norte' });
+      const text = h.allText(await h.send('pesé los toros del Norte, promedio 500 kg'));
+      expect(text).not.toMatch(/A cuántos animales/);
+      expect(text).toMatch(/Pesaje registrado[\s\S]*500/);
+    });
+
+    it('7. "cuándo se vacunó?" con "¿A cuántos animales?" abierto se responde y el pending se re-pregunta', async () => {
+      h.fakeAgent.enqueueTool('log_health_event', { health_type: 'vacunacion', disease_or_vaccine: 'aftosa', category: 'toro', plot: 'Norte' });
+      expect(h.allText(await h.send('vacuné los toros del Norte contra aftosa'))).toMatch(/aftosa/);
+
+      // Sin artículo definido ni número: pending de cantidad.
+      h.fakeAgent.enqueueTool('log_weighing', { category: 'toro', avg_weight_kg: 510, plot: 'Norte' });
+      expect(h.allText(await h.send('pesé toros en el Norte, 510 kg promedio'))).toMatch(/A cuántos animales/);
+
+      // Corrida 3: esto se consumía como la cantidad y el bot solo re-preguntaba.
+      h.fakeAgent.enqueueTool('query_health_events', { category: 'toro' });
+      const text = h.allText(await h.send('cuándo se vacunó?'));
+      expect(text).toMatch(/aftosa/);
+      expect(text).toMatch(/A cuántos animales/);
+
+      const done = h.allText(await h.send('3'));
+      expect(done).toMatch(/Pesaje registrado[\s\S]*510/);
+    });
   });
 
 });

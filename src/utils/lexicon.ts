@@ -176,6 +176,19 @@ export function stripNameLeadIn(name: string): string {
  * "¿A cuántos animales?" y perder el evento en el pivot siguiente fue lo que
  * pasó en el QA de prod (7 sep 2026). Con un número explícito NO aplica.
  */
+/**
+ * Igual que impliesWholeGroup pero ignorando el PESO: "pesé los terneros,
+ * promedio 160 kg" es el grupo entero aunque tenga dígitos. Cualquier otro
+ * número ("pesé 10 terneros, 160 kg") sigue siendo una cantidad explícita.
+ */
+export function impliesWholeGroupIgnoringWeight(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const stripped = String(text)
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|kgs|kilos?|kilogramos?)\b/gi, ' ')
+    .replace(/\bpromedio\s+(?:de\s+)?\d+(?:[.,]\d+)?\b/gi, ' promedio ');
+  return impliesWholeGroup(stripped);
+}
+
 export function impliesWholeGroup(text: string | null | undefined): boolean {
   if (!text) return false;
   const t = normLex(text);

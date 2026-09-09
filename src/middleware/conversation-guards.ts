@@ -90,7 +90,11 @@ const ACTION_VERB = /\b(gaste|pague|pago|compre|compro|abone|vendi|vendo|cobre|c
 // lo tragaba. Al ser palabras de consulta puras (sin verbo de acción),
 // isReadOnlyQuery las reconoce y el pipeline hace lo correcto: responde la
 // consulta y VUELVE a preguntar el slot, sin descartar el pending.
-const QUERY_INTENT = /\b(clima|pronostico|va a llover|lluvia\?|temperatura|reporte|informe|resumen|historial|historico|evolucion|como vamos|como venimos|cuanto|cuanta|cuantas|cuantos|que cultivo|que sembr|que lotes?|que campos?|lotes tengo|campos tengo|mis lotes|mis campos|mis gastos|mis ingresos|lista\w*|mostr\w*|stock|hacienda|cuanto gaste|cuanto cobre|saldo|balance|rinde|menu|ayuda)\b/;
+// `cuando se \w+` / `cuando (fue|vacun…)` / `donde esta`: "cuándo se vacunó?"
+// con un "¿A cuántos animales?" abierto se consumía como la cantidad y el
+// pending re-preguntaba (QA ganadería 9 sep 2026). Un "cuando" pelado NO entra:
+// "cuando sea" es la respuesta legítima a "¿a qué hora?".
+const QUERY_INTENT = /\b(clima|pronostico|va a llover|lluvia\?|temperatura|reporte|informe|resumen|historial|historico|evolucion|como vamos|como venimos|cuanto|cuanta|cuantas|cuantos|cuando se \w+|cuando (?:fue|vacun\w*|sembr\w*|fumig\w*|cosech\w*|fertiliz\w*|pes\w*|llovi\w*|desparasit\w*)|donde (?:esta|estan|queda)|que cultivo|que sembr|que lotes?|que campos?|lotes tengo|campos tengo|mis lotes|mis campos|mis gastos|mis ingresos|lista\w*|mostr\w*|stock|hacienda|cuanto gaste|cuanto cobre|saldo|balance|rinde|menu|ayuda)\b/;
 
 /**
  * Broad, accent-safe "this message is a NEW action or a query — not an answer
