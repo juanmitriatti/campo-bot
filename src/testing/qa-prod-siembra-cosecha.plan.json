@@ -116,7 +116,7 @@
         },
         {
           "tap": "confirm_pending",
-          "expect": "(Anotado|registrado)[\\s\\S]*3\\.000\\.000[\\s\\S]*La Esperanza",
+          "expect": "(Anotado|[Rr]egistrado|[Gg]uardado)[\\s\\S]*3\\.000\\.000[\\s\\S]*La Esperanza",
           "checks": "Confirmación del gasto de arrendamiento a nivel campo (responde «✅ Anotado»)."
         },
         {
@@ -201,7 +201,7 @@
         },
         {
           "send": "estadísticas de campaña del Norte",
-          "expect": "Norte[\\s\\S]*Gastos[\\s\\S]*Flete[\\s\\S]*Cosecha[\\s\\S]*Rendimiento[\\s\\S]*Esperado: 4\\.000 kg/ha[\\s\\S]*Cargas \\(3\\)[\\s\\S]*CTG 10012345[\\s\\S]*Costo/tn",
+          "expect": "Norte[\\s\\S]*Gastos[\\s\\S]*Cosecha[\\s\\S]*Flete[\\s\\S]*Rendimiento:\\* 168\\.000 kg[\\s\\S]*4\\.200 kg/ha[\\s\\S]*Esperado: 4\\.000 kg/ha → \\+5%[\\s\\S]*Cargas \\(3\\)[\\s\\S]*CTG 10012345[\\s\\S]*Costo/tn",
           "avoid": "no entend|no registrado",
           "checks": "VERIFICACIÓN: rinde con bruto → neto, esperado vs real, gastos Cosecha/Flete + glifosato, costo/tn, cargas con CTG, avance 40/100."
         }
@@ -222,7 +222,7 @@
         },
         {
           "tap": "confirm_pending",
-          "expect": "Registrado[\\s\\S]*15\\.000[\\s\\S]*Cargill[\\s\\S]*Saldo en \\*?Cargill\\*?: 10,7 tn",
+          "expect": "(Anotado|[Rr]egistrado|[Gg]uardado)[\\s\\S]*15\\.000[\\s\\S]*Cargill[\\s\\S]*Saldo en \\*?Cargill\\*?: 10,7 tn",
           "avoid": "descontar del stock",
           "checks": "Confirmación de la venta: ingreso USD 15.000 a Cargill, 50 tn, en el Norte. Muestra el saldo en Cargill = 60,7 − 50 = 10,7 tn. NO ofrece descontar del stock propio."
         },
@@ -241,13 +241,20 @@
         {
           "send": "vendí 5 tn de soja del Norte a Cargill con precio a fijar",
           "expect": "a fijar",
-          "avoid": "no entend|Cuánto|monto",
-          "checks": "Venta con precio a fijar (price_status=a_fijar): debe registrar el ingreso marcado «precio a fijar» sin trabar con un pending de monto. Corrida 1 («a fijar» a secas): «¿Cuánto fue?»."
+          "avoid": "no entend|Cuánto fue|Cuánto cobraste",
+          "buttons": ["confirm_pending"],
+          "checks": "Venta con precio a fijar (price_status=a_fijar): ingreso completo con monto 0 marcado «precio a fijar», nunca un pending de monto. Corrida 1 («a fijar» a secas): «¿Cuánto fue?». Corrida 4: pide confirmación con «Monto: ⏳ precio a fijar» (correcto; el avoid viejo matcheaba la palabra Monto)."
+        },
+        {
+          "tap": "confirm_pending",
+          "expect": "(Anotado|[Rr]egistrado|[Gg]uardado)[\\s\\S]*[Pp]recio a fijar[\\s\\S]*Cargill[\\s\\S]*Saldo en \\*?Cargill\\*?: 0,7 tn",
+          "avoid": "Cuánto fue|descontar del stock",
+          "checks": "La venta a fijar se guarda (amount=0, price_status=a_fijar, migración 121) y descuenta las 5 tn del saldo: 5,7 − 5 = 0,7 tn."
         },
         {
           "send": "cuánta soja tengo en Cargill",
-          "expect": "Saldo: (0,7|5,7) tn",
-          "checks": "VERIFICACIÓN: si la venta a fijar descuenta del saldo → 0,7 tn; si no → 5,7 tn. Documentar cuál."
+          "expect": "Saldo: 0,7 tn",
+          "checks": "VERIFICACIÓN: la venta a fijar descuenta del saldo (la cantidad ya se entregó aunque el precio no esté cerrado) → 0,7 tn."
         }
       ]
     },
