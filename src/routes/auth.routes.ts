@@ -32,6 +32,7 @@ import { invalidateUserContext } from '../ai/user-context.service.js';
 import { resolveCampaign, campaignsSince } from '../utils/campaign-range.js';
 import { getOverview, resolveFieldIds, monthLabel, earliestDataDate } from '../services/overview.service.js';
 import { getReviewFindings } from '../services/review-findings.service.js';
+import { harvestCampaignsCte } from '../utils/harvest-campaign-kg.js';
 
 const router = Router();
 const authService = new AuthService();
@@ -2166,46 +2167,21 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
     // Last 12 months of harvest events — yield computed from quantity / area.
     // Quantity falls back to SUM(harvest_loads.weight_kg) when the event itself
     // has no aggregate quantity (users often record per-truck loads only).
+    // Una fila por CAMPAÑA cosechada (no por evento): la cosecha de dos días
+    // daba dos filas para el mismo lote y un kg/ha fantasma (P0-2, QA sep 2026).
+    // Fuente única: harvestCampaignsCte.
     const { rows: harvestsMonthly } = await pool.query(
-      `WITH harvests AS (
-         SELECT
-           e.event_date,
-           e.crop,
-           p.name AS plot_name,
-           p.area_hectares,
-           COALESCE(
-             e.quantity * CASE LOWER(COALESCE(e.unit, 'kg'))
-                            WHEN 'tn' THEN 1000
-                            WHEN 'tonelada' THEN 1000
-                            WHEN 'toneladas' THEN 1000
-                            WHEN 't' THEN 1000
-                            WHEN 'qq' THEN 100
-                            WHEN 'quintal' THEN 100
-                            WHEN 'quintales' THEN 100
-                            ELSE 1
-                          END,
-             (SELECT SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)) FROM harvest_loads hl WHERE hl.domain_event_id = e.id),
-             pc.yield_kg
-           )::numeric AS quantity_kg
-         FROM domain_events e
-         JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
-         LEFT JOIN plot_crops pc ON pc.id = e.plot_crop_id
-         WHERE e.user_id = $1
-           AND e.event_type = 'harvest'
-           AND e.deleted_at IS NULL
-           AND e.event_date BETWEEN $3::date AND $4::date
-           AND (e.quantity IS NOT NULL OR pc.yield_kg IS NOT NULL OR EXISTS (SELECT 1 FROM harvest_loads hl WHERE hl.domain_event_id = e.id))
-           AND p.field_id = ANY($2::int[])
-       )
+      `WITH ${harvestCampaignsCte({ user: '$1', from: '$3', to: '$4', fieldIds: '$2' })}
        SELECT
-         to_char(date_trunc('month', event_date), 'YYYY-MM') AS month,
-         to_char(date_trunc('month', event_date), 'Mon')    AS label,
-         crop,
-         plot_name,
-         quantity_kg AS total_kg,
-         CASE WHEN area_hectares > 0 THEN (quantity_kg / area_hectares)::numeric ELSE NULL END AS yield_kg_per_ha
-       FROM harvests
-       ORDER BY event_date`,
+         to_char(date_trunc('month', hc.event_date), 'YYYY-MM') AS month,
+         to_char(date_trunc('month', hc.event_date), 'Mon')    AS label,
+         hc.crop,
+         p.name AS plot_name,
+         hc.kg AS total_kg,
+         CASE WHEN hc.ha > 0 THEN (hc.kg / hc.ha)::numeric ELSE NULL END AS yield_kg_per_ha
+       FROM harvest_campaigns hc
+       JOIN plots p ON p.id = hc.plot_id
+       ORDER BY hc.event_date`,
       win
     );
 
@@ -2234,54 +2210,26 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
       [userId, targetFieldIds]
     );
 
-    // Average kg/ha by crop, last 12 months. Same quantity fallback as
-    // harvestsMonthly: when the event has no aggregate quantity, fall back
-    // to SUM(harvest_loads.weight_kg) for that event.
+    // kg/ha por cultivo en la ventana, derivado de TOTALES (Σ kg / Σ ha de las
+    // campañas), nunca promediando ratios de lotes de distinto tamaño.
     const { rows: yieldByCrop } = await pool.query(
-      `WITH events_kg AS (
-         SELECT
-           e.crop,
-           p.area_hectares,
-           COALESCE(
-             e.quantity * CASE LOWER(COALESCE(e.unit, 'kg'))
-                            WHEN 'tn' THEN 1000
-                            WHEN 'tonelada' THEN 1000
-                            WHEN 'toneladas' THEN 1000
-                            WHEN 't' THEN 1000
-                            WHEN 'qq' THEN 100
-                            WHEN 'quintal' THEN 100
-                            WHEN 'quintales' THEN 100
-                            ELSE 1
-                          END,
-             (SELECT SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)) FROM harvest_loads hl WHERE hl.domain_event_id = e.id),
-             pc.yield_kg
-           )::numeric AS quantity_kg
-         FROM domain_events e
-         JOIN plots p ON p.id = e.plot_id AND p.deleted_at IS NULL
-         LEFT JOIN plot_crops pc ON pc.id = e.plot_crop_id
-         WHERE e.user_id = $1
-           AND e.event_type = 'harvest'
-           AND e.deleted_at IS NULL
-           AND e.event_date BETWEEN $3::date AND $4::date
-           AND (e.quantity IS NOT NULL OR pc.yield_kg IS NOT NULL OR EXISTS (SELECT 1 FROM harvest_loads hl WHERE hl.domain_event_id = e.id))
-           AND p.area_hectares > 0
-           AND e.crop IS NOT NULL
-           AND p.field_id = ANY($2::int[])
-       )
+      `WITH ${harvestCampaignsCte({ user: '$1', from: '$3', to: '$4', fieldIds: '$2' })}
        SELECT
          crop,
-         AVG(quantity_kg / NULLIF(area_hectares, 0))::numeric AS avg_kg_per_ha,
+         (SUM(kg) / NULLIF(SUM(ha), 0))::numeric AS avg_kg_per_ha,
          COUNT(*)::int AS harvests
-       FROM events_kg
-       WHERE quantity_kg IS NOT NULL
+       FROM harvest_campaigns
+       WHERE crop IS NOT NULL AND ha > 0
        GROUP BY crop
        ORDER BY avg_kg_per_ha DESC NULLS LAST`,
       win
     );
 
-    // Campos → lotes → cultivos activos (end_date IS NULL). Alimenta el
-    // Treemap de la vista agronómica. El LEFT JOIN devuelve N filas por lote
-    // si algún día hay más de un cultivo activo — el agrupado ya lo soporta.
+    // Campos → lotes → cultivos de la CAMPAÑA elegida (los que solapan la
+    // ventana, abiertos o cerrados). Alimenta el Treemap de la vista agronómica.
+    // Antes filtraba `end_date IS NULL`: apenas el usuario cerraba la campaña,
+    // la superficie por cultivo quedaba vacía (P2-18, QA sep 2026). N filas por
+    // lote si hubo más de un cultivo — el agrupado ya lo soporta.
     const { rows: fieldPlotCropsRows } = await pool.query(
       `SELECT
          f.id AS field_id,
@@ -2293,12 +2241,14 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
          pc.sowed_hectares
        FROM fields f
        JOIN plots p ON p.field_id = f.id AND p.deleted_at IS NULL
-       LEFT JOIN plot_crops pc ON pc.plot_id = p.id AND pc.end_date IS NULL
+       LEFT JOIN plot_crops pc ON pc.plot_id = p.id
+                              AND pc.start_date <= $4::date
+                              AND COALESCE(pc.end_date, $4::date) >= $3::date
        WHERE f.user_id = $1
          AND f.deleted_at IS NULL
          AND f.id = ANY($2::int[])
-       ORDER BY f.name, p.name, pc.crop`,
-      [userId, targetFieldIds]
+       ORDER BY f.name, p.name, pc.start_date DESC, pc.crop`,
+      win
     );
     const fieldPlotCropsMap = new Map<number, {
       fieldId: number; fieldName: string;

@@ -210,6 +210,8 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       properties: {
         crop: { type: 'string', description: 'Cultivo sembrado, EXACTAMENTE como lo nombró el usuario. Omitir si no lo nombró.' },
         hectares: { type: 'number', description: 'Hectáreas sembradas (si es menos que la superficie total del lote). Omitir si se sembró todo el lote.' },
+        variety: { type: 'string', description: 'Variedad/híbrido ("DM 4612", "DK 7210"), si lo dijo.' },
+        seed_density: { type: 'string', description: 'Densidad tal cual ("350 mil semillas/ha", "80 kg/ha"), si la dijo.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
         event_date: DATE_PROP,
@@ -1283,6 +1285,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         quantity: QUANTITY_PROP,
         unit: UNIT_PROP,
         field: FIELD_PROP,
+        plot: { type: 'string', description: 'Lote al que va el insumo ("para el Norte"): el gasto queda en ese lote.' },
         warehouse: { type: 'string', description: 'Nombre del depósito, si mencionado.' },
         category: { type: 'string', description: 'Categoría: agroquimicos, fertilizantes, semillas, combustible, otros.' },
         reason: { type: 'string', description: 'Motivo de la carga.' },

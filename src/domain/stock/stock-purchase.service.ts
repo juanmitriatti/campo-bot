@@ -25,6 +25,9 @@ export interface GrainStockEntry {
   unit: string;
   fieldId: number;
   warehouseName?: string;
+  /** Campaña y lote de la cosecha: tras el tap se ofrece el costo de cosechar (P2-12). */
+  plotCropId?: number;
+  plotLabel?: string;
 }
 
 export class StockPurchaseService {

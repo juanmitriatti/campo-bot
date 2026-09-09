@@ -166,6 +166,12 @@ export class CropService {
     return await updatePlotCropYield(cropId, yieldKg, yieldNotes ?? null) as PlotCropRow | null;
   }
 
+  /** Rinde PARCIAL de un día de cosecha: se suma al acumulado (P0-1, sep 2026). */
+  async addYield(cropId: number, yieldKg: number, yieldNotes?: string | null): Promise<PlotCropRow | null> {
+    const { addPlotCropYield } = await import('../../services/expenses.js');
+    return await addPlotCropYield(cropId, yieldKg, yieldNotes ?? null) as PlotCropRow | null;
+  }
+
   async closeCampaign(
     plotCropId: number,
   ): Promise<PlotCropRow | null> {

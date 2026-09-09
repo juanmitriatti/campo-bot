@@ -306,7 +306,13 @@ export class CampaignStatsService {
 
     // Yield
     const yieldKg = campaign.yield_kg ? Number(campaign.yield_kg) : null;
-    const yieldKgPerHa = yieldKg && areaHa ? Math.round(yieldKg / areaHa) : null;
+    // Con avance parcial el kg/ha es sobre lo COSECHADO (misma fórmula que la
+    // confirmación de cosecha; QA sep 2026 P2-9: el chat decía +163 % y las
+    // estadísticas +5 % para el mismo lote).
+    const harvestedHaForYield = (campaign as { harvested_hectares?: number | null }).harvested_hectares
+      ? Number((campaign as { harvested_hectares?: number | null }).harvested_hectares) : null;
+    const yieldBaseHa = harvestedHaForYield && areaHa && harvestedHaForYield < areaHa ? harvestedHaForYield : areaHa;
+    const yieldKgPerHa = yieldKg && yieldBaseHa ? Math.round(yieldKg / yieldBaseHa) : null;
 
     // Harvest loads
     const loadsList = (harvestLoads || []).map((hl: any) => ({
@@ -590,6 +596,8 @@ export interface CampaignRanking {
   rows: CampaignRankRow[];
   /** Campañas que quedaron fuera del ranking por no tener con qué calcular. */
   skipped: number;
+  /** Cuáles (P2-14, QA sep 2026: "1 campaña sin datos suficientes" sin decir cuál). */
+  skippedLabels: string[];
   scopeLabel: string;
 }
 
@@ -699,6 +707,7 @@ export function buildCampaignRanking(
 
   const usable = rows.filter(r => r.value != null);
   const skipped = rows.length - usable.length;
+  const skippedLabels = rows.filter(r => r.value == null).map(r => r.label);
 
   // margin y yield: más es mejor. costos: menos es mejor.
   const asc = metric === 'cost_per_ha' || metric === 'cost_per_tn';
@@ -710,6 +719,7 @@ export function buildCampaignRanking(
     groupBy,
     rows: usable.slice(0, topN),
     skipped,
+    skippedLabels,
     scopeLabel: opts.scopeLabel ?? '',
   };
 }

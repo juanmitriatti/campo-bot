@@ -1476,6 +1476,18 @@ export class AgronomyHandler {
         : cmd.group_by ? 'top_locations'
         : 'detail');
 
+    // "cuánta soja coseché en total" es una pregunta de PRODUCCIÓN: además de
+    // los camiones, las campañas con rinde declarado y sin cargas (P2-13, QA
+    // sep 2026: 130 tn de la Loma no aparecían). Solo en el agregado sin
+    // filtros de logística (chofer/acopio/patente), donde la pregunta es de cargas.
+    if (view === 'aggregate' && !cmd.driverName && !cmd.destinatario && !cmd.truckPlate && !cmd.withoutCtg) {
+      try {
+        ctx.declaredKg = await this.repo.getCampaignProductionKg(userId, {
+          plotId, fieldId, crop: (cmd.crop as string) ?? null, desde, hasta,
+        });
+      } catch (err) { logError('agronomy', 'HARVEST_DECLARED_KG', err as Error, { userId }); }
+    }
+
     // ── 9. Compare view ──
     if (view === 'compare') {
       const queryB = { ...arguments[0] };
@@ -1864,13 +1876,17 @@ export class AgronomyHandler {
         // Check cumulative daily rain threshold alert
         if (settings.rain_alerts !== false) {
           const threshold = settings.rain_alert_mm ?? 10;
-          const dailyTotal = await this.repo.getDailyRainfallTotal(userId, fieldId);
+          const dailyTotal = await this.repo.getDailyRainfallTotal(userId, fieldId, rainfallDate);
           if (dailyTotal >= threshold) {
             const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
-            const dedupKey = `field_${fieldId ?? 0}_${today}`;
+            const dedupKey = `field_${fieldId ?? 0}_${rainfallDate ?? today}`;
             const dup = await isDuplicate(userId, 'rain_observed', dedupKey, 24);
             if (!dup) {
-              msg += `\n\n\u26a0\ufe0f *Alerta:* Acumulado hoy *${dailyTotal}mm* \u2265 umbral configurado (${threshold}mm)`;
+              // "ayer llovieron 30 mm" decía "Acumulado hoy" (P2-16, QA sep 2026).
+              const dayLabel = rainfallDate && rainfallDate !== today
+                ? `el ${new Date(rainfallDate + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long', timeZone: 'America/Argentina/Buenos_Aires' })}`
+                : 'hoy';
+              msg += `\n\n\u26a0\ufe0f *Alerta:* Acumulado ${dayLabel} *${dailyTotal}mm* \u2265 umbral configurado (${threshold}mm)`;
               recordAlert(userId, 'rain_observed', msg, {
                 fieldId,
                 dedupKey,
@@ -2216,23 +2232,29 @@ export class AgronomyHandler {
         if (replaceGuard) return replaceGuard;
 
         const variety = (cmd.variety as string | null | undefined) ?? null;
+        // Densidad ("350 mil semillas/ha"): no se modela, pero va a las notas del
+        // evento para no descartarla en silencio (P2-15, QA sep 2026).
+        const seedDensity = (cmd.seedDensity as string | null | undefined) ?? null;
         const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, sowedHa, variety);
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
         const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
 
-        // Save domain event for planting
+        // Save domain event for planting (variedad como producto, densidad en notas)
         await this.repo.saveDomainEvent(userId, {
           plotId: plotResult.plotId,
           plotCropId: cropRow.id,
           eventType: 'planting',
           eventDate: cmd.eventDate as Date | null,
           crop,
+          product: variety,
+          notes: seedDensity ? `densidad: ${seedDensity}` : null,
         });
 
         // Acción principal PRIMERO; el cierre de campaña previa como nota.
         let sowMsg = `🌱 *Siembra registrada*\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
         if (sowedHa) sowMsg += `\n📐 ${sowedHa.toLocaleString('es-AR')} ha sembradas`;
         if (variety) sowMsg += `\n🧬 Variedad: ${variety}`;
+        if (seedDensity) sowMsg += `\n🌱 Densidad: ${seedDensity}`;
 
         // Warn if sowed hectares exceed plot area
         if (sowedHa) {
@@ -2376,7 +2398,13 @@ export class AgronomyHandler {
           // 50% (test fuerte Ago 2026: 65 qq/ha → 390 tn en vez de 260).
           const activeForYield = await this.cropService.getActive(plotResult.plotId);
           const sowedForYield = activeForYield?.sowed_hectares ? Number(activeForYield.sowed_hectares) : null;
-          const areaHa = sowedForYield ?? (plotForYield?.area_hectares ? Number(plotForYield.area_hectares) : null);
+          // Avance parcial ("cosechamos 40 ha del Norte, rindió 42 qq/ha"): el
+          // total de ESTE mensaje es rate × ha COSECHADAS, no × sembradas.
+          // QA siembra/cosecha 9 sep 2026 (P0-1): 42 qq/ha × 100 ha sembradas
+          // dio 420 tn en vez de 168, y de ahí salían el flete, el costo/tn y
+          // el rinde por cultivo.
+          const harvestedNowHa = cmd.hectares != null && Number(cmd.hectares) > 0 ? Number(cmd.hectares) : null;
+          const areaHa = harvestedNowHa ?? sowedForYield ?? (plotForYield?.area_hectares ? Number(plotForYield.area_hectares) : null);
 
           if (yieldKgPerHa != null && yieldKgRaw != null && areaHa) {
             const impliedTotal = Math.round(yieldKgPerHa * areaHa);
@@ -2404,6 +2432,11 @@ export class AgronomyHandler {
             computedKgPerHa = Math.round(yieldKgRaw / areaHa);
           }
         }
+        // Con hectáreas parciales, el rinde de ESTE mensaje se SUMA al de los
+        // días anteriores (día 1: 40 ha → 168 tn; día 2: otras 60 ha → +252 tn)
+        // en vez de pisarlo. Sin hectáreas ("rindió 42 qq/ha", "sacamos 130 tn")
+        // sigue siendo el total de la campaña.
+        const accumulateYield = cmd.hectares != null && Number(cmd.hectares) > 0 && yieldKg != null && yieldKg > 0;
 
         // Retroactive yield-load on a recently-harvested-but-no-yield campaign
         // (active or closed). The user said "cosechamos X kg en lote Y" without
@@ -2456,7 +2489,7 @@ export class AgronomyHandler {
             await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, null);
             await this.repo.saveDomainEvent(userId, { plotId: plotResult.plotId, eventType: 'planting', eventDate: null, crop });
           }
-          const harvestedResult = await this.cropService.harvestCrop(plotResult.plotId, crop, cmd.eventDate as Date | undefined, yieldKg, yieldNotes);
+          const harvestedResult = await this.cropService.harvestCrop(plotResult.plotId, crop, cmd.eventDate as Date | undefined, accumulateYield ? null : yieldKg, yieldNotes);
 
           if (!harvestedResult) {
             const active = await this.cropService.getActive(plotResult.plotId);
@@ -2505,6 +2538,10 @@ export class AgronomyHandler {
           }
 
           harvested = harvestedResult;
+          if (accumulateYield) {
+            await this.cropService.addYield(harvestedResult.id, yieldKg!);
+            console.log(`[HARVEST] rinde parcial acumulado: +${yieldKg} kg (${cmd.hectares} ha) pc=${harvestedResult.id} user=${userId}`);
+          }
 
           // Save domain event for harvest. The agent may pass the kg total via
           // either `quantity` (older path) or `yieldKg` (the typical harvest schema);
@@ -2530,7 +2567,8 @@ export class AgronomyHandler {
         if (isAppend && yieldKg != null && yieldKg > 0) {
           const appendPcId = (savedEvent.plot_crop_id as number | null) ?? harvested?.id ?? null;
           if (appendPcId) {
-            await this.cropService.updateYield(appendPcId, yieldKg, yieldNotes);
+            if (accumulateYield) await this.cropService.addYield(appendPcId, yieldKg, yieldNotes);
+            else await this.cropService.updateYield(appendPcId, yieldKg, yieldNotes);
           }
           // También el EVENTO (solo si estaba NULL): los gráficos del dashboard
           // leen domain_events.quantity/harvest_loads — con el rinde solo en
@@ -2710,6 +2748,9 @@ export class AgronomyHandler {
                     unit: harvestUnit,
                     fieldId: plotResult.fieldId || 0,
                     warehouseName: warehouseName || undefined,
+                    // El costo de cosechar se ofrece después del tap (P2-12).
+                    plotCropId: harvestPcId ?? undefined,
+                    plotLabel,
                   },
                 },
               };
@@ -2933,15 +2974,29 @@ export class AgronomyHandler {
         }
         const emptyWarning = hasProduction ? '' : `\n\n⚠️ *Esta campaña no tiene rinde ni cargas registradas* — si la cerrás así, las estadísticas salen sin producción. Antes podés decirme *"rindió 8.000 kg/ha en ${plotLabel}"* o pasarme las cargas por camión.`;
 
+        // Avance parcial: si el propio bot dijo "faltan 60 ha" dos mensajes
+        // antes, cerrar sin avisar es incoherente (P2-10, QA sep 2026).
+        let partialWarning = '';
+        try {
+          const doneHa = active.harvested_hectares ? Number(active.harvested_hectares) : null;
+          const { getPlotById: getPlotForClose } = await import('../../services/expenses.js');
+          const plotForClose = await getPlotForClose(resolved.plotId, userId);
+          const totalHa = (active.sowed_hectares ? Number(active.sowed_hectares) : null) ?? (plotForClose?.area_hectares ? Number(plotForClose.area_hectares) : null);
+          if (doneHa && totalHa && doneHa < totalHa) {
+            partialWarning = `\n\n⚠️ *Cosechaste ${doneHa.toLocaleString('es-AR')} de ${totalHa.toLocaleString('es-AR')} ha* — faltan ${(totalHa - doneHa).toLocaleString('es-AR')} ha. Si cerrás ahora, la campaña queda con avance parcial.`;
+          }
+        } catch { /* best-effort */ }
+
         // Confirmación con botones cuando: (a) el lote vino del CONTEXTO (el
         // usuario no lo nombró — cierre destructivo por adivinanza, auditoría
-        // Jul 2026), o (b) la campaña no tiene producción (Ago 2026).
-        if ((!cmd.plotName && !cmd.fieldName) || !hasProduction) {
+        // Jul 2026), (b) la campaña no tiene producción (Ago 2026), o (c) la
+        // cosecha está a medias (Sep 2026).
+        if ((!cmd.plotName && !cmd.fieldName) || !hasProduction || partialWarning) {
           return {
             messages: [],
             interactive: {
               type: 'buttons' as const,
-              body: `¿Cierro la campaña de *${cap(active.crop)}* en *${plotLabel}*?\n\n_Cerrarla archiva el ciclo con sus números (rinde, gastos, margen — los ves con "estadísticas de campaña") y deja el lote libre para la próxima siembra. Si te falta cargar algo, mantenela abierta._${emptyWarning}`,
+              body: `¿Cierro la campaña de *${cap(active.crop)}* en *${plotLabel}*?\n\n_Cerrarla archiva el ciclo con sus números (rinde, gastos, margen — los ves con "estadísticas de campaña") y deja el lote libre para la próxima siembra. Si te falta cargar algo, mantenela abierta._${emptyWarning}${partialWarning}`,
               buttons: [
                 { id: 'campaign_close_yes_ctx', title: 'Sí, cerrar' },
                 { id: 'campaign_close_no_ctx', title: 'No' },
@@ -3188,6 +3243,18 @@ export class AgronomyHandler {
 
         const yieldKg = pc.yield_kg ? Number(pc.yield_kg) : 0;
         const tn = yieldKg / 1000;
+        // Flete: lo que viajó en camión (neto, sin lo que fue al silo propio),
+        // no el rinde declarado. Con 80,7 tn en camiones el flete salía × 420 tn
+        // del rinde inflado (P2-8, QA sep 2026). Sin camiones, el rinde.
+        let freightTn = tn;
+        let freightBasis = '';
+        try {
+          const loadsForFreight = await this.repo.getHarvestLoadsByCampaign(pc.id);
+          const SILO_RE = /\b(silo|bolsa|propio|galp[oó]n|casa|campo|planta propia)\b/i;
+          const shipped = loadsForFreight.filter(l => !(l.destination === 'silo' || (l.destinatario && SILO_RE.test(String(l.destinatario)))));
+          const shippedKg = sumNetKg(shipped as Array<{ weight_kg: number; net_weight_kg?: number | null }>);
+          if (shippedKg > 0) { freightTn = shippedKg / 1000; freightBasis = ' en camión'; }
+        } catch { /* best-effort: cae al rinde */ }
         const { getPlotById, saveExpense } = await import('../../services/expenses.js');
         const plot = plotId ? await getPlotById(plotId, userId) : null;
         const ha = (pc.harvested_hectares ? Number(pc.harvested_hectares) : null)
@@ -3241,8 +3308,8 @@ export class AgronomyHandler {
         if (freightTotal != null && freightTotal > 0) {
           await save('Flete', freightTotal, currency, `Flete de cosecha ${pc.crop} — ${plotLabel}`);
         } else if (freightPerTn != null && freightPerTn > 0) {
-          if (!(tn > 0)) problems.push('el flete por tonelada necesita el rinde de la campaña');
-          else await save('Flete', freightPerTn * tn, currency, `Flete ${currency === 'USD' ? 'USD' : '$'}${freightPerTn.toLocaleString('es-AR')}/tn × ${tn.toLocaleString('es-AR', { maximumFractionDigits: 1 })} tn — ${plotLabel}`);
+          if (!(freightTn > 0)) problems.push('el flete por tonelada necesita el rinde de la campaña o las cargas por camión');
+          else await save('Flete', freightPerTn * freightTn, currency, `Flete ${currency === 'USD' ? 'USD' : '$'}${freightPerTn.toLocaleString('es-AR')}/tn × ${freightTn.toLocaleString('es-AR', { maximumFractionDigits: 1 })} tn${freightBasis} — ${plotLabel}`);
         }
 
         if (created.length === 0) {
@@ -4909,7 +4976,7 @@ export class AgronomyHandler {
     });
 
     const omitidas = r.skipped > 0
-      ? `\n\n_${r.skipped} campaña${r.skipped > 1 ? 's' : ''} sin datos suficientes para esta métrica._`
+      ? `\n\n_${r.skipped > 1 ? 'Campañas' : 'Campaña'} sin datos suficientes para esta métrica: ${(r.skippedLabels ?? []).join(', ') || r.skipped}._`
       : '';
 
     return `📊 *${METRIC_LABEL[r.metric]} por ${unidad}*${scope}\n${lines.join('\n')}${omitidas}`;
@@ -5002,37 +5069,9 @@ export class AgronomyHandler {
     plotLabel: string,
     cmd: ParsedCommand,
   ): Promise<Pick<HandlerResponse, 'interactive'> | null> {
-    if (!plotCropId || cmd._bulkMode) return null;
-    try {
-      const { getSettingBool } = await import('../../services/settings.service.js');
-      if ((await getSettingBool('HARVEST_COST_OFFER_ENABLED')) === false) return null;
-      const { pool } = await import('../../config/db.js');
-      const { rows } = await pool.query(
-        `SELECT yield_kg,
-                (SELECT COUNT(*) FROM expenses e WHERE e.plot_id = pc.plot_id AND e.deleted_at IS NULL
-                    AND LOWER(e.category) IN ('cosecha', 'flete')
-                    AND e.expense_date >= pc.start_date) AS cost_rows
-           FROM plot_crops pc WHERE id = $1`,
-        [plotCropId],
-      );
-      const pc = rows[0];
-      if (!pc || !(Number(pc.yield_kg) > 0) || Number(pc.cost_rows) > 0) return null;
-      const body = `💵 ¿Cargo el costo de cosechar *${plotLabel}*? Contratista (% del rinde o $/ha) y flete ($/tn) quedan como gastos de la campaña.`;
-      return {
-        interactive: {
-          type: 'buttons',
-          body,
-          buttons: [
-            { id: `harvest_cost_yes_${plotCropId}`, title: '💵 Cargar costo' },
-            // cancel_action lo atiende el pipeline directamente (no pasa por el router)
-            { id: 'cancel_action', title: 'Ahora no' },
-          ],
-        },
-      };
-    } catch (err) {
-      logError('agronomy', 'HARVEST_COST_OFFER', err as Error, { userId, context: { plotCropId } });
-      return null;
-    }
+    // Compartido con el pipeline (se ofrece también tras el tap de stock — P2-12).
+    const { buildHarvestCostOffer } = await import('./harvest-cost-offer.js');
+    return buildHarvestCostOffer(userId, plotCropId, plotLabel, { bulkMode: !!cmd._bulkMode });
   }
 
   private formatGrainBalance(rows: GrainBalanceRow[], filterLabel: string): string {
@@ -5041,7 +5080,7 @@ export class AgronomyHandler {
     const lines = [`📦 *Saldo de grano${filterLabel}*`];
     for (const r of rows) {
       lines.push(`\n*${r.destinatario}* — ${r.crop ?? 'grano'}`);
-      lines.push(`  Entregado: ${fmtT(r.deliveredKg)} netos (${r.loads} camión${r.loads === 1 ? '' : 'es'}${r.deliveredGrossKg !== r.deliveredKg ? `, ${fmtT(r.deliveredGrossKg)} brutos` : ''})`);
+      lines.push(`  Entregado: ${fmtT(r.deliveredKg)} netos (${r.loads} ${r.loads === 1 ? 'camión' : 'camiones'}${r.deliveredGrossKg !== r.deliveredKg ? `, ${fmtT(r.deliveredGrossKg)} brutos` : ''})`);
       if (r.soldKg > 0) lines.push(`  Vendido: −${fmtT(r.soldKg)}`);
       if (r.withdrawnKg > 0) lines.push(`  Retirado: −${fmtT(r.withdrawnKg)}`);
       lines.push(`  *Saldo: ${fmtT(r.balanceKg)}*${r.balanceKg < 0 ? ' ⚠️ vendiste más de lo entregado' : ''}`);
@@ -5073,10 +5112,10 @@ export class AgronomyHandler {
 
     const header = `📊 *Campaña ${s.crop} ${s.seasonLabel}* — ${s.plot}${s.field ? ` (${s.field})` : ''}`;
     lines.push(header);
-    lines.push(`Estado: ${stateMap[s.state]} | ${s.durationDays} días`);
+    lines.push(`Estado: ${stateMap[s.state]} | ${s.durationDays} ${s.durationDays === 1 ? 'día' : 'días'}`);
     if (s.harvest.startedAt) {
       let hLine = `🌾 Cosecha: ${s.harvest.startedAt}`;
-      if (s.harvest.endedAt && s.harvest.endedAt !== s.harvest.startedAt) hLine += ` → ${s.harvest.endedAt} (${s.harvest.days} días)`;
+      if (s.harvest.endedAt && s.harvest.endedAt !== s.harvest.startedAt) hLine += ` → ${s.harvest.endedAt} (${s.harvest.days} ${s.harvest.days === 1 ? 'día' : 'días'})`;
       if (s.harvest.harvestedHectares && s.areaHectares) {
         hLine += ` · ${s.harvest.harvestedHectares.toLocaleString('es-AR')} de ${s.areaHectares.toLocaleString('es-AR')} ha (${s.harvest.progressPct}%)`;
       }

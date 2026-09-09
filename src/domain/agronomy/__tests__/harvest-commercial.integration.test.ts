@@ -158,8 +158,11 @@ describe.skipIf(!dbAvailable)('cosecha comercial — neto, avance, saldo, costos
     const byCat = Object.fromEntries(exp.map(e => [String(e.category), Number(e.amount)]));
     // 45.000 × 100 ha cosechadas = 4.500.000
     expect(byCat.Cosecha).toBe(4_500_000);
-    // 18.000 × 104,414 tn (neto) = 1.879.452
-    expect(byCat.Flete).toBe(Math.round(18000 * (29043 + 30371 + 20000 + 25000) / 1000));
+    // Flete sobre lo que viajó en camión a acopio (neto): 29.043 + 30.371 +
+    // 25.000 = 84,414 tn → 18.000 × 84,414 = 1.519.452. Los 20.000 de López
+    // fueron al silo propio y no pagan flete (P2-8, QA sep 2026: antes se
+    // multiplicaba por el rinde declarado de la campaña).
+    expect(byCat.Flete).toBe(Math.round(18000 * (29043 + 30371 + 25000) / 1000));
     expect(exp.every(e => Number(e.plot_id) === norteId)).toBe(true);
 
     // La oferta no se repite si ya hay costo cargado.

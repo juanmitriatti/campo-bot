@@ -107,7 +107,8 @@ async function buildExpenseConfirmation(data: ParsedExpense, fieldName: string |
 
 async function buildIncomeConfirmation(data: ParsedIncome | Record<string, unknown>, fieldName: string | null, plotName: string | null = null): Promise<string> {
   const pool = await getConfirmationPool('income');
-  let msg = `${pickRandom(pool)}\n${data.category}\n${formatMoney(Number(data.amount), data.currency as string)}`;
+  const isAFijarSinMonto = (data as { price_status?: string | null }).price_status === 'a_fijar' && !(Number(data.amount) > 0);
+  let msg = `${pickRandom(pool)}\n${data.category}\n${isAFijarSinMonto ? '⏳ Precio a fijar' : formatMoney(Number(data.amount), data.currency as string)}`;
   if (data.quantity && data.unit) {
     msg += `\n${data.quantity} ${data.unit}`;
     if (data.unit_price) msg += ` a ${formatMoney(Number(data.unit_price), data.currency as string)}`;
@@ -128,6 +129,10 @@ async function buildIncomeConfirmation(data: ParsedIncome | Record<string, unkno
  * Tras una venta de grano con comprador: saldo que queda en ese acopio
  * (entregado neto \u2212 vendido \u2212 retirado). Best-effort, una l\u00ednea.
  */
+// Venta de grano (soja/maíz/…) con comprador: el lote es opcional y se deduce
+// de la campaña; nunca se pregunta con flow (P1-7, QA sep 2026).
+const GRAIN_SALE_CATEGORIES = new Set(['soja', 'maíz', 'maiz', 'trigo', 'girasol', 'sorgo', 'cebada']);
+
 async function grainBalanceLine(userId: number, data: { category?: string; buyer?: string | null }): Promise<string | null> {
   if (!data.buyer || !data.category) return null;
   try {
@@ -148,12 +153,14 @@ function buildPendingMessage(type: 'expense' | 'income', data: ParsedExpense | P
   const label = type === 'income' ? 'ingreso' : 'gasto';
   let msg = `${emoji} \u00bfConfirmo ${label}?\n\n`;
   msg += `Categor\u00eda: *${data.category}*\n`;
-  msg += `Monto: *${formatMoney(Number(data.amount), data.currency)}*\n`;
+  const pendingAFijar = type === 'income' && (data as ParsedIncome).price_status === 'a_fijar' && !(Number(data.amount) > 0);
+  msg += `Monto: *${pendingAFijar ? '\u23f3 precio a fijar' : formatMoney(Number(data.amount), data.currency)}*\n`;
   if ('quantity' in data && data.quantity && data.unit) {
     msg += `Detalle: ${data.quantity} ${data.unit}`;
     if (data.unit_price) msg += ` a ${formatMoney(Number(data.unit_price), data.currency)}`;
     msg += '\n';
   }
+  if (type === 'income' && (data as ParsedIncome).buyer) msg += `Comprador: *${(data as ParsedIncome).buyer}*\n`;
   const loc = buildLocationLabel(fieldName, plotName);
   if (loc) msg += `Ubicación: ${loc}\n`;
   return msg;
@@ -1176,6 +1183,37 @@ export class FinancialHandler {
     const resolution = await this.service.resolveField(userId, fieldName, plotName, { allowContextStackFallback: incomeAllowContextStackFallback });
     let { fieldId, fieldName: resFieldName, plotId, plotName: resPlotName } = resolution;
 
+    // Venta de grano con comprador y sin lote ("vendí 50 tn de soja a Cargill"):
+    // el lote es dato OPCIONAL, y el income_flow que preguntaba "¿en qué lote?"
+    // se tragaba el mensaje siguiente ("retiré 5 tn…" → lote «retiré…») y
+    // perdía el comprador (P1-7, QA sep 2026). Se deduce del único lote con
+    // campaña reciente de ese cultivo; si no es único, queda a nivel campo.
+    let grainSaleNoPlot = false;
+    if (!plotId && !resolution.notFound && data.buyer && GRAIN_SALE_CATEGORIES.has((data.category || '').toLowerCase())) {
+      try {
+        const { findPlotsWithCrop } = await import('../../services/expenses.js');
+        const candidates = await findPlotsWithCrop(Number(userId), data.category, fieldId ?? null);
+        if (candidates.length === 1) {
+          plotId = candidates[0].id;
+          resPlotName = candidates[0].name;
+          fieldId = candidates[0].field_id;
+          resFieldName = candidates[0].field_name;
+          console.log(`[INTERCEPT] log_income venta de grano: lote deducido de la campaña de ${data.category} → ${resPlotName}`);
+        } else {
+          grainSaleNoPlot = true;
+          const fieldIds = new Set(candidates.map(c => c.field_id));
+          if (!fieldId && fieldIds.size === 1) {
+            fieldId = candidates[0].field_id;
+            resFieldName = candidates[0].field_name;
+          }
+          console.log(`[INTERCEPT] log_income venta de grano sin lote: ${candidates.length} campañas de ${data.category} → nivel campo`);
+        }
+      } catch (err) {
+        console.warn('[INTERCEPT] log_income venta de grano: no pude deducir el lote:', (err as Error).message);
+        grainSaleNoPlot = true;
+      }
+    }
+
     // If the referenced field/plot doesn't exist, redirect to flow for plot selection.
     // EXCEPT bulk mode (compound with 2+ writes): save without flow.
     if (resolution.notFound && !bulkMode) {
@@ -1196,6 +1234,8 @@ export class FinancialHandler {
               unit: data.unit ?? null,
               unit_price: data.unit_price ?? null,
               ...(data.incomeDate ? { incomeDate: data.incomeDate } : {}),
+              ...(data.buyer ? { buyer: data.buyer } : {}),
+              ...(data.price_status ? { price_status: data.price_status } : {}),
             },
           },
         },
@@ -1204,7 +1244,7 @@ export class FinancialHandler {
 
     // Hybrid plot assignment: try to auto-assign plot
     if (!plotId) {
-      if (resolution.needPlotSelection && !bulkMode) {
+      if (resolution.needPlotSelection && !bulkMode && !grainSaleNoPlot) {
         // 2+ plots in field → redirect to income flow at plot step
         const currency = data.currency === 'USD' ? 'USD' : 'ARS';
         return {
@@ -1257,7 +1297,8 @@ export class FinancialHandler {
 
     // No plot resolved → redirect to income flow so user picks one.
     // Bulk mode (compound with 2+ writes): save at user level without flow.
-    if (!plotId && !bulkMode) {
+    // Venta de grano con comprador: nivel campo, sin flow (ver arriba).
+    if (!plotId && !bulkMode && !grainSaleNoPlot) {
       const currency = data.currency === 'USD' ? 'USD' : 'ARS';
       return {
         messages: [],
@@ -1273,6 +1314,8 @@ export class FinancialHandler {
               unit: data.unit ?? null,
               unit_price: data.unit_price ?? null,
               ...(data.incomeDate ? { incomeDate: data.incomeDate } : {}),
+              ...(data.buyer ? { buyer: data.buyer } : {}),
+              ...(data.price_status ? { price_status: data.price_status } : {}),
             },
           },
         },
@@ -1374,6 +1417,7 @@ export class FinancialHandler {
     const savedIncome = await this.service.saveIncome(userId, data, fieldId, plotId);
     this.categoryService.bump(matchedIncomeCategoryId).catch(() => {});
     const messages = [await buildIncomeConfirmation(data, resFieldName, resPlotName)];
+    if (grainSaleNoPlot) messages.push('💡 Sin lote asignado (hay más de una campaña de ese cultivo). Si es de un lote, nombralo: _"vendí … del Norte"_.');
     const byCur = await this.service.getMonthlyResultByCurrency(userId);
     if (Object.values(byCur).some(v => v.gastos > 0)) {
       messages.push(formatResultByCurrency(byCur, 'Resultado del mes hasta ahora'));

@@ -159,6 +159,63 @@ describe.skipIf(!dbAvailable)('review-findings — cosecha antes que su siembra'
     expect(found).toHaveLength(1);
     expect(found[0].body).toContain('maíz');
   });
+
+  it('siembra y cosecha el MISMO día no es "cosecha antes que su siembra" (P2-11, QA sep 2026)', async () => {
+    await h.q(
+      `INSERT INTO domain_events (user_id, plot_id, event_type, event_date, crop) VALUES
+         ($1, $2, 'planting', '2026-06-09', 'trigo'),
+         ($1, $2, 'harvest',  '2026-06-09', 'trigo')`,
+      [h.userId, plotId],
+    );
+    expect((await rule()).filter(f => f.body.includes('trigo'))).toEqual([]);
+  });
+});
+
+describe.skipIf(!dbAvailable)('overview.service — cosecha por CAMPAÑA, no por evento (P0-2, QA sep 2026)', () => {
+  let h: PipelineHarness;
+  let fieldId: number;
+  let plotId: number;
+
+  beforeAll(async () => {
+    h = await createPipelineHarness('overview-harvest-campaign');
+    const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'Dos días') RETURNING id`, [h.userId]);
+    fieldId = f[0].id as number;
+    const p = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 100) RETURNING id`, [fieldId]);
+    plotId = p[0].id as number;
+    // Campaña con rinde declarado el día 1 (168 tn sobre 40 ha) y tres camiones el día 2.
+    const pc = await h.q(
+      `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, harvested_at, harvest_ended_at, yield_kg, harvested_hectares)
+       VALUES ($1, 'soja', 2025, 'gruesa', '2025-11-10', '2026-04-08', '2026-04-09', 168000, 40) RETURNING id`,
+      [plotId],
+    );
+    const pcId = pc[0].id as number;
+    await h.q(
+      `INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop, quantity, unit)
+       VALUES ($1, $2, $3, 'harvest', '2026-04-08', 'soja', 168000, 'kg')`,
+      [h.userId, plotId, pcId],
+    );
+    const ev2 = await h.q(
+      `INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop)
+       VALUES ($1, $2, $3, 'harvest', '2026-04-09', 'soja') RETURNING id`,
+      [h.userId, plotId, pcId],
+    );
+    for (const [driver, kg] of [['Pérez', 31320], ['Gómez', 30000], ['López', 20000]] as Array<[string, number]>) {
+      await h.q(
+        `INSERT INTO harvest_loads (domain_event_id, plot_crop_id, driver_name, weight_kg, net_weight_kg)
+         VALUES ($1, $2, $3, $4, $4)`,
+        [ev2[0].id, pcId, driver, kg],
+      );
+    }
+  });
+
+  afterAll(async () => { await h?.cleanup(); });
+
+  it('el lote muestra el rinde de la campaña UNA vez (168 tn), no declarado + camiones (249 tn)', async () => {
+    const ov = await getOverview(Number(h.userId), [fieldId], RANGE, { includeUnassigned: false });
+    const norte = ov.plots.find(p => p.id === plotId);
+    expect(norte?.harvestKg).toBe(168000);
+    expect(norte?.yieldKgPerHa).toBe(1680);
+  });
 });
 
 describe.skipIf(!dbAvailable)('earliestDataDate — el picker de campañas', () => {

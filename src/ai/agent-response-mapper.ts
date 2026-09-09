@@ -1,3 +1,4 @@
+import { normalizeToKg } from '../utils/mass-units.js';
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
 import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES, EXPENSE_KEYWORD_MAP, type IncomeCategory } from '../constants/agro-terms.js';
 import { resolveRelativeDate, resolveAllRelativeDates, TOOLS_WITH_DATE_PARAM, dateKeyForTool } from '../utils/relative-dates.js';
@@ -184,21 +185,9 @@ export function extractHarvestLoadsFromText(text: string): Array<{ driver_name: 
  * Convert (quantity, unit) to kg for grain/seed/fertilizer flow.
  * Argentine commercial: tn=1000, qq=100, kg=1. Returns null if can't normalize.
  */
-export function normalizeToKg(quantity: number | null | undefined, unit: string | null | undefined): number | null {
-  if (quantity == null || !Number.isFinite(Number(quantity))) return null;
-  const q = Number(quantity);
-  const u = (unit || '').toLowerCase().trim();
-  // "t" / "ton" son abreviaturas comunes de tonelada — sin esto caían al
-  // default kg y el rinde quedaba ÷1000 silenciosamente.
-  if (u === 'tn' || u === 't' || u === 'ton' || u === 'tons' || u.startsWith('tonel')) return q * 1000;
-  if (u === 'qq' || u.startsWith('quint')) return q * 100;
-  if (u !== '' && u !== 'kg' && u !== 'kgs' && u !== 'kilo' && u !== 'kilos' && u !== 'k') {
-    // Unidad no reconocida asumida como kg — visible en logs para detectar
-    // nuevas abreviaturas antes de que corrompan rindes.
-    console.warn(`[INTERCEPT] normalizeToKg: unidad desconocida "${unit}" asumida como kg (q=${q})`);
-  }
-  return q;
-}
+// normalizeToKg vive en utils/mass-units.ts (fuente única: también la usa el
+// stock de granos); se re-exporta acá para los importadores existentes.
+export { normalizeToKg };
 
 /** Strip accents for comparison */
 function stripAccents(s: string): string {
@@ -682,8 +671,18 @@ export class AgentResponseMapper {
     ) {
       amount = Math.round(input.quantity * input.unit_price * 100) / 100;
     }
+    // Venta "a fijar" (P1-4, QA sep 2026): la cantidad se entregó y el precio
+    // se cierra después. Es un ingreso COMPLETO con monto 0, no un parcial —
+    // antes pedía "¿Cuánto fue?" en loop y la venta nunca se guardaba.
+    const aFijarSinMonto = amount <= 0
+      && input.price_status === 'a_fijar'
+      && typeof input.quantity === 'number' && input.quantity > 0;
+    if (aFijarSinMonto) {
+      console.log('[INTERCEPT] AI_MAPPER log_income a_fijar sin monto → ingreso con amount=0');
+      amount = 0;
+    }
 
-    if (amount > 0) {
+    if (amount > 0 || aFijarSinMonto) {
       let rawCategory = typeof input.category === 'string' ? input.category.trim() : '';
       let categoryMatch = typeof input.category_match === 'string' ? input.category_match : undefined;
       // Reject agent-emitted placeholder strings ("NEWCATEGORY", "new", etc.).
@@ -770,6 +769,10 @@ export class AgentResponseMapper {
           ...(typeof input.field === 'string' ? { field: input.field } : {}),
           ...(typeof input.plot === 'string' ? { plot: input.plot } : {}),
           ...(typeof input.description === 'string' ? { description: input.description } : {}),
+          // Comprador y estado del precio viajan en el parcial: sin esto la
+          // venta que esperaba el monto perdía el acopio (P1-7, QA sep 2026).
+          ...(typeof input.buyer === 'string' && input.buyer.trim() ? { buyer: input.buyer.trim() } : {}),
+          ...(input.price_status === 'fijado' || input.price_status === 'a_fijar' ? { price_status: input.price_status } : {}),
         },
       },
       confidence: 0.60,
@@ -829,6 +832,9 @@ export class AgentResponseMapper {
     if (input.city != null) cmd.city = input.city;
     if (input.province != null) cmd.province = input.province;
     if (input.hectares != null) cmd.hectares = input.hectares;
+    // Siembra: variedad y densidad no se guardaban en ningún lado (P2-15, QA sep 2026).
+    if (typeof input.variety === 'string' && input.variety.trim()) cmd.variety = input.variety.trim();
+    if (typeof input.seed_density === 'string' && input.seed_density.trim()) cmd.seedDensity = input.seed_density.trim();
     if (input.oldName != null) cmd.oldName = input.oldName;
     if (input.newName != null) cmd.newName = input.newName;
     if (input.entityKeyword != null) cmd.entityKeyword = input.entityKeyword;

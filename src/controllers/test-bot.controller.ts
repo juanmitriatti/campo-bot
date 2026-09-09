@@ -306,6 +306,12 @@ router.post('/reset', async (req: Request, res: Response) => {
 
     // Layer 3: conversation state (FK to fields/plots as SET NULL)
     await client.query(`DELETE FROM conversation_state WHERE user_id = $1`, [numericUserId]);
+    // Recordatorios, sugerencias y sesiones de formulario: no se borraban y la
+    // cuenta de QA arrancaba con 7 recordatorios de corridas anteriores (P2-17,
+    // QA sep 2026).
+    await client.query(`DELETE FROM task_reminders WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM suggestion_events WHERE user_id = $1`, [numericUserId]);
+    await client.query(`DELETE FROM form_sessions WHERE user_id = $1`, [numericUserId]);
 
     // Layer 4: fields — CASCADE deletes plots → plot_aliases, plot_crops
     await client.query(`DELETE FROM fields WHERE user_id = $1`, [numericUserId]);

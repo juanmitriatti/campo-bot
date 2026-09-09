@@ -153,7 +153,7 @@ const harvestBeforePlanting: Rule = async ({ userId, fieldIds, range }) => {
               WHERE s.plot_id = h.plot_id AND s.user_id = h.user_id
                 AND s.event_type = 'planting' AND s.deleted_at IS NULL
                 AND LOWER(COALESCE(s.crop, '')) = LOWER(COALESCE(h.crop, ''))
-                AND s.event_date >= h.event_date) AS sow_date
+                AND s.event_date > h.event_date) AS sow_date
        FROM domain_events h
        JOIN plots pl ON pl.id = h.plot_id
        JOIN fields f ON f.id = pl.field_id
@@ -166,14 +166,14 @@ const harvestBeforePlanting: Rule = async ({ userId, fieldIds, range }) => {
            WHERE b.plot_id = h.plot_id AND b.user_id = h.user_id
              AND b.event_type = 'planting' AND b.deleted_at IS NULL
              AND LOWER(COALESCE(b.crop, '')) = LOWER(COALESCE(h.crop, ''))
-             AND b.event_date < h.event_date
+             AND b.event_date <= h.event_date
         )
         AND EXISTS (
           SELECT 1 FROM domain_events s
            WHERE s.plot_id = h.plot_id AND s.user_id = h.user_id
              AND s.event_type = 'planting' AND s.deleted_at IS NULL
              AND LOWER(COALESCE(s.crop, '')) = LOWER(COALESCE(h.crop, ''))
-             AND s.event_date >= h.event_date
+             AND s.event_date > h.event_date
         )`,
     [userId, range.from, range.to, fieldIds],
   );

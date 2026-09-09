@@ -3,6 +3,7 @@
 // Receives raw rows + ctx, returns a HandlerResponse.
 
 import type { HandlerResponse } from '../../types/index.js';
+import { formatDateAR } from '../../utils/date.js';
 
 export interface HarvestRow {
   id: number;
@@ -42,11 +43,15 @@ export interface HarvestRenderCtx {
     groupBy?: string | null;
     sortDesc?: boolean;
   };
+  /** Producción de las campañas del alcance (rinde declarado ∨ cargas), para el agregado. */
+  declaredKg?: number | null;
 }
 
+// Una fecha DATE de Postgres llega como medianoche UTC; formatearla en zona AR
+// la corría un día ("08/09" para camiones del 09/09 — P1-6, QA sep 2026).
+// formatDateAR (utils/date.ts) ya la ancla al mediodía; acá solo se acorta el año.
 function fmtDay(d: string | Date): string {
-  const date = new Date(d);
-  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' });
+  return formatDateAR(d).replace(/\/(\d{2})(\d{2})$/, '/$2');
 }
 
 function num(v: string | number | null | undefined): number | null {
@@ -132,6 +137,11 @@ export function renderHarvestDetail(rows: HarvestRow[], ctx: HarvestRenderCtx): 
   }
   if (ctx.filters.destinatario) {
     lines.push(`_Para el saldo que te queda ahí (entregado − vendido − retirado) pedime "cuánto tengo en ${ctx.filters.destinatario}"._`);
+  }
+  // Campañas con rinde declarado y sin camiones ("sacamos 130 tn") no están en
+  // las cargas; la pregunta "cuánto coseché" es de producción (P2-13).
+  if (ctx.declaredKg != null && ctx.declaredKg > totalNetKg) {
+    lines.push(`🌾 *Producción de la campaña: ${fmtKg(ctx.declaredKg)}* (rinde declarado + cargas; en camiones ${fmtKg(totalNetKg)})`);
   }
   return { messages: [lines.join('\n')], suggestionKey: 'report_shown' };
 }

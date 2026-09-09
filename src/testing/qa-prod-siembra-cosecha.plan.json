@@ -1,0 +1,360 @@
+{
+  "name": "QA E2E prod — siembra → labores → cosecha → comercialización",
+  "title": "QA E2E prod · Siembra y cosecha",
+  "persona": "Productor de Pergamino (Bs. As.) que arranca la cuenta en cero con un campo de 3 lotes (Norte 100 ha, Sur 60 ha, Loma 40 ha), siembra soja y maíz, hace las labores, cosecha el Norte en dos días con camiones a Cargill y al silo, corrige un camión, carga el costo de cosecha, vende y retira grano del acopio, cosecha y cierra los otros lotes, y mira los números. Habla como por WhatsApp: corto, con puntos de miles y sin tildes a veces.",
+  "notes": [
+    "Es UNA conversación continua: cada paso asume el estado que dejaron los anteriores (contexto, pendings, campaña).",
+    "Merma (grain-merma.ts, soja base 13,5 % + 0,3 manipuleo): Pérez 31.320 al 16 % → 30.321 netos; Gómez 30.000 sin humedad → 30.000 (corregido a 31.000 al 15 % → 30.371); López 20.000 al silo → 20.000 y entra al stock.",
+    "Saldo en Cargill esperado tras vender 50 tn y retirar 5 tn: 30.321 + 30.371 − 50.000 − 5.000 = 5.692 kg (5,7 tn).",
+    "expect = regex que DEBE aparecer en la respuesta; avoid = regex que NO debe aparecer; buttons = ids de botones esperados (un id terminado en * se resuelve por prefijo contra el último botón que mostró el bot)."
+  ],
+  "phases": [
+    {
+      "id": "arranque",
+      "title": "Alta del campo y los 3 lotes",
+      "domain": "sistema",
+      "why": "Onboarding en UNA línea: campo + localidad + 3 lotes con hectáreas. Es lo primero que escribe un productor que viene de la landing.",
+      "steps": [
+        {
+          "send": "hola",
+          "expect": "crear tu primer campo",
+          "buttons": [
+            "cmd_agregar_campo"
+          ],
+          "checks": "Bienvenida para usuario sin campos + botón Crear Campo."
+        },
+        {
+          "send": "agregar campo La Esperanza en Pergamino con los lotes Norte de 100 ha, Sur de 60 ha y Loma de 40 ha",
+          "expect": "La Esperanza[\\s\\S]*Pergamino",
+          "avoid": "no entend|Qué cultivo",
+          "checks": "Campo con localidad y 3 lotes en un solo mensaje (compound add_field + add_plots_batch, bulkMode)."
+        },
+        {
+          "send": "mis campos",
+          "expect": "La Esperanza[\\s\\S]*Norte[\\s\\S]*100 ha[\\s\\S]*Sur[\\s\\S]*60 ha[\\s\\S]*Loma[\\s\\S]*40 ha|3 lotes[\\s\\S]*200 ha",
+          "checks": "VERIFICACIÓN: 1 campo en Pergamino, 3 lotes, 200 ha en total."
+        }
+      ]
+    },
+    {
+      "id": "siembra",
+      "title": "Siembra: soja en Norte y Loma, maíz parcial en el Sur",
+      "domain": "agro",
+      "why": "Siembra total, siembra parcial (40 de 60 ha), variedad y densidad en el texto, rinde esperado precosecha y la consulta de qué hay sembrado.",
+      "steps": [
+        {
+          "send": "sembré soja en el Norte, variedad DM 4612 a 350 mil semillas por ha",
+          "expect": "Siembra registrada[\\s\\S]*Soja[\\s\\S]*Norte",
+          "avoid": "gasto|Qué cultivo",
+          "checks": "Siembra completa del Norte (100 ha). Variedad y densidad: ver si las guarda en notas o las ignora en silencio."
+        },
+        {
+          "send": "espero 40 qq/ha en el Norte",
+          "expect": "Rinde esperado[\\s\\S]*Soja[\\s\\S]*Norte[\\s\\S]*4\\.000 kg/ha[\\s\\S]*40 qq/ha",
+          "checks": "set_expected_yield guarda expected_yield_kg_per_ha = 4.000."
+        },
+        {
+          "send": "en el Sur sembré 40 de las 60 ha con maíz DK 7210",
+          "expect": "Siembra registrada[\\s\\S]*Ma[ií]z[\\s\\S]*Sur",
+          "avoid": "Qué cultivo",
+          "checks": "Siembra PARCIAL: sowed_hectares = 40 (no 60). El rinde después se calcula sobre 40 ha."
+        },
+        {
+          "send": "sembré soja en la Loma a 280 mil plantas por hectárea",
+          "expect": "Siembra registrada[\\s\\S]*Soja[\\s\\S]*Loma",
+          "avoid": "Qué cultivo|gasto",
+          "checks": "Tercer lote: soja en Loma (40 ha)."
+        },
+        {
+          "send": "qué tengo sembrado",
+          "expect": "Norte[\\s\\S]*Sur[\\s\\S]*Loma|Loma[\\s\\S]*Norte|Norte[\\s\\S]*Loma",
+          "avoid": "no entend",
+          "checks": "VERIFICACIÓN: active_crop lista soja en Norte, maíz en Sur (40 ha), soja en Loma."
+        }
+      ]
+    },
+    {
+      "id": "labores",
+      "title": "Labores, monitoreo, lluvia y gastos",
+      "domain": "agro",
+      "why": "Pulverización con producto y dosis, fertilización, monitoreo con estadio, lluvia relativa, gasto de insumo con lote y gasto de categoría de campo (arrendamiento) para ver a qué lo asigna.",
+      "steps": [
+        {
+          "send": "fumigué el Norte con 2 lt/ha de glifosato",
+          "expect": "glifosato",
+          "avoid": "no entend|Qué cultivo|Gasto registrado",
+          "checks": "Pulverización con dosis lt/ha. Sin monto → actividad, nunca gasto."
+        },
+        {
+          "send": "fertilicé el Sur con 100 kg/ha de urea",
+          "expect": "urea",
+          "avoid": "no entend|Gasto registrado",
+          "checks": "Fertilización con dosis kg/ha."
+        },
+        {
+          "send": "monitoreo del Norte: soja en V6, roya leve con 5% de incidencia",
+          "expect": "V6",
+          "avoid": "no entend",
+          "checks": "Estadio + severidad + % → log_crop_scouting (no observación libre)."
+        },
+        {
+          "send": "ayer llovieron 30 mm en La Esperanza",
+          "expect": "30 ?mm",
+          "checks": "Lluvia con fecha relativa (ayer) sobre el único campo."
+        },
+        {
+          "send": "compré 200 litros de glifosato a 5.000 el litro para el Norte",
+          "expect": "1\\.000\\.000|glifosato",
+          "avoid": "no entend",
+          "checks": "Gasto de insumo con lote explícito: 200 × 5.000 = $1.000.000 (puede además cargar stock)."
+        },
+        {
+          "send": "pagué 3 millones de arrendamiento",
+          "expect": "3\\.000\\.000",
+          "avoid": "no entend|En qué lote",
+          "checks": "Categoría de campo con un solo campo: debe quedar a nivel campo (La Esperanza) sin preguntar lote."
+        },
+        {
+          "tap": "confirm_pending",
+          "expect": "(Anotado|registrado)[\\s\\S]*3\\.000\\.000[\\s\\S]*La Esperanza",
+          "checks": "Confirmación del gasto de arrendamiento a nivel campo (responde «✅ Anotado»)."
+        },
+        {
+          "send": "gastos del Norte",
+          "expect": "Norte[\\s\\S]*(1\\.000\\.000|glifosato|Insumos)",
+          "avoid": "rrendamiento|No hay registros",
+          "checks": "VERIFICACIÓN: financial_report(plot=Norte) muestra el glifosato de $1.000.000 (se compró «para el Norte») y NO el arrendamiento (que es del campo). Corrida 1: «No hay registros» → el lote explícito se perdió en el camino add_stock+gasto."
+        }
+      ]
+    },
+    {
+      "id": "cosecha-norte",
+      "title": "Cosecha del Norte en dos días con camiones",
+      "domain": "agro",
+      "why": "Día 1 con avance en ha y rinde declarado; día 2 con tres camiones (humedad, CTG, Cargill y silo). Hay que ver bruto → neto con merma, el avance, que el rinde del día 1 no se pierda, el CTG y que el grano al silo entre al stock.",
+      "steps": [
+        {
+          "send": "ayer cosechamos 40 ha del Norte, rindió 42 qq/ha",
+          "expect": "Cosecha registrada[\\s\\S]*Soja[\\s\\S]*Norte[\\s\\S]*Avance:\\*? 40 de 100 ha \\(40 ?%\\)",
+          "avoid": "10\\.500|no entend",
+          "checks": "harvest_crop(hectares=40, yield_kg_per_ha=4.200). Avance 40/100. Rinde: 4.200 kg/ha sobre 40 ha = 168.000 kg (si aplica el rate a las 100 ha sembradas da 420.000 kg y «Rinde parcial: 10.500 kg/ha», que es un bug). Debería mostrar Esperabas 4.000: vas 4.200 (+5 %)."
+        },
+        {
+          "send": "seguimos en el Norte: Pérez 31.320 al 16% a Cargill CTG 10012345, Gómez 30.000 a Cargill, López 20.000 al silo",
+          "expect": "Pérez[\\s\\S]*30\\.321[\\s\\S]*CTG 10012345[\\s\\S]*Gómez[\\s\\S]*30\\.000[\\s\\S]*López[\\s\\S]*20\\.000[\\s\\S]*81\\.320 kg[\\s\\S]*80\\.321 kg netos",
+          "avoid": "no entend",
+          "buttons": [
+            "harvest_cost_yes_*"
+          ],
+          "checks": "3 cargas: Pérez 31.320 → 30.321 neto (merma 3,19 %), Gómez y López sin descuento; total 81.320 brutos → 80.321 netos (merma 999 kg); 20.000 kg de soja al stock (silo); avance sigue 40/100 y el rinde del día 1 no se pierde. Botón de costo de cosecha."
+        }
+      ]
+    },
+    {
+      "id": "correcciones",
+      "title": "Corregir un camión y consultar cargas",
+      "domain": "agro",
+      "why": "El chofer avisa después el peso real; hay que poder corregir sin borrar, y las consultas de cargas / CTG / entregas por acopio tienen que leer el neto.",
+      "steps": [
+        {
+          "send": "el camión de Gómez eran 31.000 al 15%",
+          "expect": "Camión de Gómez[\\s\\S]*corregido[\\s\\S]*31\\.000[\\s\\S]*15[\\s\\S]*Neto comercial: 30\\.371 kg",
+          "avoid": "no entend|carga registrada",
+          "checks": "edit_harvest_load: recalcula neto 31.000 al 15 % → 30.371 (merma 2,03 %). No debe crear un camión nuevo."
+        },
+        {
+          "send": "cargas del Norte",
+          "expect": "09/09/26[\\s\\S]*(Pérez[\\s\\S]*Gómez[\\s\\S]*López|López[\\s\\S]*Gómez[\\s\\S]*Pérez)",
+          "avoid": "no entend|No hay cargas|08/09/26",
+          "checks": "VERIFICACIÓN: 3 cargas con neto y CTG, fechadas HOY (09/09/26: los camiones se cargaron hoy, el día 1 no tuvo camiones). Total 82.320 brutos → 80.692 netos. Corrida 1 y 2: el listado mostraba 08/09/26 aunque la DB guarda 2026-09-09 (formateo UTC → AR corre un día)."
+        },
+        {
+          "send": "qué camiones no tienen CTG",
+          "expect": "Gómez[\\s\\S]*López|López[\\s\\S]*Gómez",
+          "avoid": "Pérez",
+          "checks": "query_harvest_loads(without_ctg): lista Gómez y López, no Pérez (que sí tiene CTG)."
+        },
+        {
+          "send": "cuánto entregué a Cargill",
+          "expect": "Cargill[\\s\\S]*(60\\.692|60,7|62\\.320|62,3|2 cargas|2 camiones)",
+          "avoid": "no entend|López",
+          "checks": "Entregado a Cargill: 2 camiones, 62.320 brutos / 60.692 netos. López (silo) no cuenta."
+        }
+      ]
+    },
+    {
+      "id": "costo",
+      "title": "Costo de cosecha y estadísticas de campaña",
+      "domain": "plata",
+      "why": "El botón de costo deja un pending; la respuesta libre mezcla contratista por ha y flete por tn. Las estadísticas tienen que mostrar costo/tn, bruto → neto, esperado vs real y avance.",
+      "steps": [
+        {
+          "tap": "harvest_cost_yes_*",
+          "expect": "Cuánto costó cosechar[\\s\\S]*Norte",
+          "checks": "El tap abre el pending log_harvest_costs (missing: cost)."
+        },
+        {
+          "send": "45.000 por ha y flete 18.000 por tn",
+          "expect": "Costo de cosecha cargado[\\s\\S]*Cosecha[\\s\\S]*1\\.800\\.000[\\s\\S]*Flete",
+          "avoid": "No pude cargar|no entend",
+          "checks": "Contratista 45.000 × 40 ha cosechadas = $1.800.000; flete 18.000 × 80,7 tn netas ≈ $1.452.000. Dos gastos (Cosecha, Flete) en el Norte."
+        },
+        {
+          "send": "estadísticas de campaña del Norte",
+          "expect": "Norte[\\s\\S]*Gastos[\\s\\S]*Flete[\\s\\S]*Cosecha[\\s\\S]*Rendimiento[\\s\\S]*Esperado: 4\\.000 kg/ha[\\s\\S]*Cargas \\(3\\)[\\s\\S]*CTG 10012345[\\s\\S]*Costo/tn",
+          "avoid": "no entend|no registrado",
+          "checks": "VERIFICACIÓN: rinde con bruto → neto, esperado vs real, gastos Cosecha/Flete + glifosato, costo/tn, cargas con CTG, avance 40/100."
+        }
+      ]
+    },
+    {
+      "id": "comercializacion",
+      "title": "Venta, retiro y saldo en el acopio",
+      "domain": "plata",
+      "why": "El saldo por acopio es entregado neto − vendido − retirado. Una venta con comprador no debe ofrecer descontar del stock propio. Una venta a fijar tiene que quedar marcada.",
+      "steps": [
+        {
+          "send": "vendí 50 tn de soja del Norte a Cargill a 300 USD la tonelada",
+          "expect": "Confirmo ingreso[\\s\\S]*15\\.000[\\s\\S]*50 tn a USD 300[\\s\\S]*Norte|Ingreso registrado[\\s\\S]*15\\.000[\\s\\S]*Cargill",
+          "avoid": "no entend|descontar del stock|En qué lote",
+          "buttons": ["confirm_pending"],
+          "checks": "log_income(buyer=Cargill, plot=Norte, 50 tn × USD 300 = USD 15.000). Saldo en Cargill = 60,7 − 50 = 10,7 tn. NO ofrece descontar del stock propio. Corrida 1 (sin «del Norte»): preguntó «¿En qué lote?» con botones, el retiro siguiente se tragó como lote y el comprador se perdió al guardar (saldo quedó en 60,7)."
+        },
+        {
+          "tap": "confirm_pending",
+          "expect": "Registrado[\\s\\S]*15\\.000[\\s\\S]*Cargill[\\s\\S]*Saldo en \\*?Cargill\\*?: 10,7 tn",
+          "avoid": "descontar del stock",
+          "checks": "Confirmación de la venta: ingreso USD 15.000 a Cargill, 50 tn, en el Norte. Muestra el saldo en Cargill = 60,7 − 50 = 10,7 tn. NO ofrece descontar del stock propio."
+        },
+        {
+          "send": "retiré 5 tn de soja de Cargill para semilla",
+          "expect": "Retiro registrado[\\s\\S]*soja[\\s\\S]*Cargill[\\s\\S]*Saldo en Cargill: \\*?5,7 tn",
+          "avoid": "no entend",
+          "checks": "log_grain_withdrawal: 5.000 kg. Saldo 10,7 − 5 = 5,7 tn."
+        },
+        {
+          "send": "cuánta soja tengo en Cargill",
+          "expect": "Saldo de grano[\\s\\S]*Cargill[\\s\\S]*Entregado: 60,7 tn netos[\\s\\S]*Vendido: −50 tn[\\s\\S]*Retirado: −5 tn[\\s\\S]*Saldo: 5,7 tn",
+          "avoid": "no entend|No tengo entregas",
+          "checks": "VERIFICACIÓN: view balance = entregado neto − vendido − retirado = 5,7 tn."
+        },
+        {
+          "send": "vendí 5 tn de soja del Norte a Cargill con precio a fijar",
+          "expect": "a fijar",
+          "avoid": "no entend|Cuánto|monto",
+          "checks": "Venta con precio a fijar (price_status=a_fijar): debe registrar el ingreso marcado «precio a fijar» sin trabar con un pending de monto. Corrida 1 («a fijar» a secas): «¿Cuánto fue?»."
+        },
+        {
+          "send": "cuánta soja tengo en Cargill",
+          "expect": "Saldo: (0,7|5,7) tn",
+          "checks": "VERIFICACIÓN: si la venta a fijar descuenta del saldo → 0,7 tn; si no → 5,7 tn. Documentar cuál."
+        }
+      ]
+    },
+    {
+      "id": "cierre-lotes",
+      "title": "Cosechar Sur y Loma, cerrar campañas",
+      "domain": "agro",
+      "why": "Cosecha sin cantidad (debe pedir el rinde), cosecha con total en tn (rinde/ha calculado sobre las ha sembradas), cierre con producción y cierre sin producción (advertencia + confirmación).",
+      "steps": [
+        {
+          "send": "cosechamos el Sur",
+          "expect": "Cosecha registrada[\\s\\S]*Ma[ií]z[\\s\\S]*Sur[\\s\\S]*Ya sabés cuánto rindió",
+          "avoid": "no entend|Qué cultivo",
+          "checks": "Sin cantidad → mensaje «cargá el rinde». Sin botón de costo (no hay producción)."
+        },
+        {
+          "send": "cosechamos la Loma, sacamos 130 tn",
+          "expect": "Cosecha registrada[\\s\\S]*Soja[\\s\\S]*Loma[\\s\\S]*130\\.000 kg \\(3\\.250 kg/ha\\)",
+          "avoid": "no entend",
+          "buttons": [
+            "stock_grain_yes_*"
+          ],
+          "checks": "Total 130 tn sobre 40 ha = 3.250 kg/ha. Ofrece cargar al stock. Corrida 1: el botón de costo de cosecha NO aparece cuando hay oferta de stock (la respuesta lleva un solo interactive)."
+        },
+        {
+          "tap": "stock_grain_yes_*",
+          "expect": "130",
+          "avoid": "no entend",
+          "checks": "El tap carga las 130 tn de soja al stock."
+        },
+        {
+          "send": "cuánto stock de soja tengo",
+          "expect": "150",
+          "avoid": "no entend",
+          "checks": "VERIFICACIÓN: 20.000 kg (López al silo) + 130.000 kg (Loma) = 150 tn de soja en stock."
+        },
+        {
+          "send": "cerrar campaña de la Loma",
+          "expect": "cerrada|Cierro la campaña",
+          "avoid": "no entend|No pude identificar",
+          "checks": "Cierre con producción y lote nombrado: directo, sin confirmación."
+        },
+        {
+          "send": "cerrar campaña del Sur",
+          "expect": "no tiene rinde ni cargas",
+          "buttons": [
+            "campaign_close_yes_ctx",
+            "campaign_close_no_ctx"
+          ],
+          "checks": "Sin producción → advierte y pide confirmación con botones."
+        },
+        {
+          "tap": "campaign_close_yes_ctx",
+          "expect": "cerrada",
+          "checks": "El tap cierra la campaña del Sur."
+        },
+        {
+          "send": "cerrar campaña del Norte",
+          "expect": "cerrada|Cierro la campaña",
+          "avoid": "no entend",
+          "checks": "Norte tiene 40 de 100 ha cosechadas: ¿avisa que el lote no está terminado? (documentar)."
+        }
+      ]
+    },
+    {
+      "id": "consultas",
+      "title": "Consultas de cierre",
+      "domain": "plata",
+      "why": "Lo que el productor pregunta al final de la campaña: ranking de lotes, resultado financiero, rinde por cultivo, historial de un lote y total cosechado.",
+      "steps": [
+        {
+          "send": "qué lote rindió más",
+          "expect": "Loma|Norte",
+          "avoid": "no entend",
+          "checks": "campaign_stats(view=rank): Norte 4.200 kg/ha (o 10.500 si el bug) vs Loma 3.250; Sur sin rinde."
+        },
+        {
+          "send": "cómo vamos",
+          "expect": "Gastos|Ingresos|Resultado",
+          "avoid": "no entend",
+          "checks": "financial_report: gastos (glifosato 1 M, arrendamiento 3 M, cosecha 1,8 M, flete ≈1,45 M) e ingresos (USD 15.000 + venta a fijar)."
+        },
+        {
+          "send": "rinde por cultivo",
+          "expect": "[Ss]oja",
+          "avoid": "no entend",
+          "checks": "Rinde promedio por cultivo: soja (Norte + Loma), maíz sin rinde."
+        },
+        {
+          "send": "historial del Sur",
+          "expect": "urea|[Mm]a[ií]z|[Ss]iembra",
+          "avoid": "no entend",
+          "checks": "query_plot_history: siembra de maíz (40 ha), fertilización con urea, cosecha, campaña cerrada."
+        },
+        {
+          "send": "cuánta soja coseché en total",
+          "expect": "[Ss]oja[\\s\\S]*(tn|kg)",
+          "avoid": "no entend",
+          "checks": "Total de soja: Norte (80.692 netos o el rinde declarado) + Loma 130.000."
+        },
+        {
+          "send": "historial del Norte",
+          "expect": "Cosecha[\\s\\S]*Cosecha|Cosecha",
+          "avoid": "no entend",
+          "checks": "query_plot_history: siembra, fumigación, monitoreo y las DOS cosechas (08/09 y 09/09) con sus fechas."
+        }
+      ]
+    }
+  ]
+}

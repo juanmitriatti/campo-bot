@@ -249,6 +249,10 @@ export const incomeFlow: FlowDefinition = {
       unit: quantity ? 'tn' : null,
       unit_price: quantity ? Math.round(amountInfo.amount / quantity) : null,
       ...(data.incomeDate ? { incomeDate: data.incomeDate as string } : {}),
+      // Comprador y estado del precio de una venta de grano (P1-7, QA sep 2026):
+      // antes se perdían al pasar por el flow y el saldo por acopio no descontaba.
+      ...(data.buyer ? { buyer: data.buyer as string } : {}),
+      ...(data.price_status ? { price_status: data.price_status as 'fijado' | 'a_fijar' } : {}),
     };
 
     await financialService.saveIncome(userId, incomeData, fieldId, plotId);

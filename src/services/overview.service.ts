@@ -24,6 +24,7 @@
 import { pool } from '../config/db.js';
 import { campaignRange, type CampaignRange } from '../utils/campaign-range.js';
 import { getTodayISO } from '../utils/date.js';
+import { harvestCampaignsCte } from '../utils/harvest-campaign-kg.js';
 
 export interface MoneySide {
   income: number;
@@ -426,25 +427,15 @@ export async function getOverview(
     p,
   );
 
-  // Harvested kg per lote in the campaign. The event's own quantity wins; a
-  // harvest dictated truck by truck has none, so fall back to the sum of its
-  // loads, then to the campaign's recorded yield.
+  // Harvested kg per lote in the campaign, aggregated PER CAMPAIGN (plot_crops)
+  // and never per event: a two-day harvest (declared yield on day 1 + trucks on
+  // day 2) used to be summed twice (P0-2, QA sep 2026). Single source:
+  // harvestCampaignsCte.
   const plotHarvestQ = pool.query(
-    `SELECT d.plot_id,
-            SUM(COALESCE(
-              d.quantity * COALESCE(${kgFactor('d.unit')}, 1),
-              (SELECT SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)) FROM harvest_loads hl WHERE hl.domain_event_id = d.id),
-              pc.yield_kg
-            ))::numeric AS kg
-       FROM domain_events d
-       JOIN plots pl ON pl.id = d.plot_id
-       LEFT JOIN plot_crops pc ON pc.id = d.plot_crop_id
-      WHERE d.user_id = $1
-        AND d.deleted_at IS NULL
-        AND d.event_type = 'harvest'
-        AND d.event_date BETWEEN $2::date AND $3::date
-        AND pl.field_id = ANY($4::int[])
-      GROUP BY d.plot_id`,
+    `WITH ${harvestCampaignsCte({ user: '$1', from: '$2', to: '$3', fieldIds: '$4' })}
+     SELECT plot_id, SUM(kg)::numeric AS kg
+       FROM harvest_campaigns
+      GROUP BY plot_id`,
     [userId, range.from, range.to, fieldIds],
   );
 

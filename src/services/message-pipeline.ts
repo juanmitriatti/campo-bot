@@ -2159,23 +2159,34 @@ export async function handleInteractiveReply(
   // --- Grain stock entry suggestion (from harvest) ---
   if (callbackId.startsWith('stock_grain_yes_') || callbackId.startsWith('stock_grain_no_')) {
     const accepted = callbackId.startsWith('stock_grain_yes_');
+    const pendingGrain = pendingStockEntryStore.get(phone) as (Record<string, unknown> & { plotCropId?: number; plotLabel?: string }) | undefined;
+    const items: BotResponseItem[] = [];
     if (accepted) {
       try {
-        const pendingGrain = pendingStockEntryStore.get(phone);
-        if (pendingGrain && (pendingGrain as any).type === 'grain') {
+        if (pendingGrain && pendingGrain.type === 'grain') {
           const { StockPurchaseService } = await import('../domain/stock/stock-purchase.service.js');
           const svc = new StockPurchaseService();
           const { item, movement } = await svc.applyStockEntry(userId, pendingGrain as any);
-          pendingStockEntryStore.delete(phone);
-          return [{ type: 'text', text: `📦 Stock actualizado: +${formatQuantityHuman(movement.quantity, item.unit)} de ${item.name} (${formatQuantityHuman(item.current_quantity, item.unit)} total)` }];
+          items.push({ type: 'text', text: `📦 Stock actualizado: +${formatQuantityHuman(movement.quantity, item.unit)} de ${item.name} (${formatQuantityHuman(item.current_quantity, item.unit)} total)` });
+        } else {
+          items.push({ type: 'text', text: '📦 Grano cargado al silo.' });
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Error al cargar al silo';
         return [{ type: 'text', text: `❌ ${msg}` }];
       }
+    } else {
+      items.push({ type: 'text', text: '👍 OK, no se cargó al stock.' });
     }
     pendingStockEntryStore.delete(phone);
-    return [{ type: 'text', text: accepted ? '📦 Grano cargado al silo.' : '👍 OK, no se cargó al stock.' }];
+    // El costo de cosechar se ofrece DESPUÉS del stock: una sola botonera por
+    // respuesta, y antes la de stock se comía la de costo (P2-12, QA sep 2026).
+    if (pendingGrain?.plotCropId) {
+      const { buildHarvestCostOffer } = await import('../domain/agronomy/harvest-cost-offer.js');
+      const offer = await buildHarvestCostOffer(userId, pendingGrain.plotCropId, pendingGrain.plotLabel ?? 'ese lote');
+      if (offer) items.push(...collectResponse({ messages: [], ...offer }));
+    }
+    return items;
   }
 
   // --- Grain sale stock deduction (income → stock) ---

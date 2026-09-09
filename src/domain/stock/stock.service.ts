@@ -1,6 +1,7 @@
 import { StockRepository } from './stock.repository.js';
 import type { WarehouseRow, StockItemRow, StockMovementRow } from './stock.repository.js';
 import { getFieldByName } from '../../services/expenses.js';
+import { convertMass } from '../../utils/mass-units.js';
 import type { UserId } from '../../types/index.js';
 
 export class StockService {
@@ -261,7 +262,16 @@ export class StockService {
 
     if (item) {
       if (item.unit.toLowerCase() !== unit.toLowerCase()) {
-        throw new Error(`"${item.name}" está en ${item.unit}, no se puede cargar en ${unit}`);
+        // Grano: tn/qq/kg se convierten a la unidad del ítem (P1-5, QA sep
+        // 2026: "cargar 130 tn de soja" sobre el ítem en kg fallaba y el silo
+        // quedaba en dos verdades). Otra unidad sigue siendo error visible.
+        const converted = convertMass(quantity, unit, item.unit);
+        if (converted == null) {
+          throw new Error(`"${item.name}" está en ${item.unit}, no se puede cargar en ${unit}`);
+        }
+        console.log(`[STOCK] grano: ${quantity} ${unit} → ${converted} ${item.unit} (${item.name})`);
+        quantity = converted;
+        unit = item.unit;
       }
       // Update grain attrs if provided
       if (opts.humidity !== undefined || opts.grade) {

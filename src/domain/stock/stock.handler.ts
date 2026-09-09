@@ -2,11 +2,14 @@ import type { StockRow, StockRenderCtx } from './stock-renderers.js';
 import { StockService } from './stock.service.js';
 import { formatDateAR } from '../../utils/date.js';
 import { saveExpense } from '../../services/expenses.js';
+import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../../types/index.js';
 
 const stockService = new StockService();
 
 export class StockHandler {
+  private plotDiscovery = new PlotDiscoveryService();
+
   async handleCommand(
     cmd: ParsedCommand,
     userId: UserId,
@@ -92,8 +95,27 @@ export class StockHandler {
       };
     }
 
+    // "compré 200 lt de glifosato para el Norte": el insumo entra al depósito
+    // del campo, pero el GASTO es del lote que nombró el usuario. Antes la
+    // tool no tenía lote y el gasto nacía a nivel campo: "gastos del Norte"
+    // no lo veía y "Para revisar" lo marcaba como gasto sin lote (P1-3, QA
+    // sep 2026). Un lote que no resuelve no frena la carga: queda en el log.
+    let plotId: number | null = null;
+    let plotLabel = '';
+    let fieldNameForStock = cmd.fieldName as string | undefined;
+    if (cmd.plotName) {
+      const resolved = await this.plotDiscovery.resolveFromNames(userId, (cmd.fieldName as string) ?? null, cmd.plotName as string);
+      if (resolved.plotId) {
+        plotId = resolved.plotId;
+        plotLabel = resolved.plotName ?? String(cmd.plotName);
+        if (!fieldNameForStock && resolved.fieldName) fieldNameForStock = resolved.fieldName;
+      } else {
+        console.warn(`[INTERCEPT] add_stock: lote "${cmd.plotName}" no resuelto — gasto a nivel campo`);
+      }
+    }
+
     const { item, movement, created } = await stockService.addStock(userId, product, quantity, unit, {
-      fieldName: cmd.fieldName as string,
+      fieldName: fieldNameForStock as string,
       warehouseName: cmd.warehouseName as string,
       category: cmd.category as string,
       reason: cmd.reason as string,
@@ -122,7 +144,7 @@ export class StockHandler {
             unit_price: price,
           },
           item.field_id ?? null,
-          null,
+          plotId,
         );
         if (expense?.id) {
           await stockService.linkMovementToExpense(movement.id, expense.id);
@@ -130,7 +152,7 @@ export class StockHandler {
         const moneyLabel = currency === 'USD'
           ? `USD ${totalAmount.toLocaleString('es-AR')}`
           : `$${totalAmount.toLocaleString('es-AR')}`;
-        expenseLine = `\n  💰 Gasto registrado: ${moneyLabel}`;
+        expenseLine = `\n  💰 Gasto registrado: ${moneyLabel}${plotLabel ? ` · 📍 Lote ${plotLabel}` : ''}`;
       } catch (err) {
         console.error('[STOCK_HANDLER] Failed to create linked expense:', (err as Error).message);
         // Best-effort: stock insert succeeded, expense failed — don't fail the whole operation

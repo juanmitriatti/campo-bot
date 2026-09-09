@@ -3432,4 +3432,141 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  // ==========================================================================
+  // QA E2E de prod, plan siembra → cosecha → comercialización (9 sep 2026).
+  // Informe: qa-reports/qa-siembra-cosecha-informe.md. Cada test es un bug
+  // reproducido 3/3 contra prod; el número está en el informe.
+  // ==========================================================================
+  describe('hallazgos del QA E2E de siembra/cosecha (Sep 2026)', () => {
+    let h: PipelineHarness;
+    let fieldId: number;
+    let norteId: number;
+    let surId: number;
+    let lomaId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('qa-siembra-cosecha');
+      // Sin confirmación previa: acá se prueba el guardado, no el botón "Confirmo".
+      await h.q(`UPDATE user_settings SET confirm_before_save = false WHERE user_id = $1`, [h.userId]);
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
+      fieldId = (f[0] as { id: number }).id;
+      await h.q(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2)`, [fieldId, h.userId]);
+      const mk = async (name: string, ha: number) => {
+        const p = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, $2, $3) RETURNING id`, [fieldId, name, ha]);
+        return (p[0] as { id: number }).id;
+      };
+      norteId = await mk('Norte', 100);
+      surId = await mk('Sur', 60);
+      lomaId = await mk('Loma', 40);
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date) VALUES ($1, 'soja', 2026, 'gruesa', CURRENT_DATE - 10)`, [norteId]);
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, sowed_hectares) VALUES ($1, 'maíz', 2026, 'gruesa', CURRENT_DATE - 10, 40)`, [surId]);
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date) VALUES ($1, 'soja', 2026, 'gruesa', CURRENT_DATE - 10)`, [lomaId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('P0-1: "cosechamos 40 ha, rindió 42 qq/ha" = rate × ha COSECHADAS, y el segundo día se acumula', async () => {
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Norte', hectares: 40, yield_kg_per_ha: 4200 });
+      const day1 = h.allText(await h.send('ayer cosechamos 40 ha del Norte, rindió 42 qq/ha'));
+      expect(day1).toMatch(/168\.000 kg/);
+      expect(day1).not.toMatch(/420\.000/);
+      expect(day1).toMatch(/Avance:\* 40 de 100 ha/);
+      expect(day1).toMatch(/Rinde parcial: 4\.200 kg\/ha/);
+
+      const after1 = await h.q(`SELECT yield_kg, harvested_hectares FROM plot_crops WHERE plot_id = $1`, [norteId]);
+      expect(Number(after1[0].yield_kg)).toBe(168000);
+      expect(Number(after1[0].harvested_hectares)).toBe(40);
+
+      // Día 2: las otras 60 ha a 40 qq/ha → +240.000, no pisa los 168.000.
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Norte', hectares: 60, yield_kg_per_ha: 4000 });
+      const day2 = h.allText(await h.send('hoy terminamos las otras 60 ha del Norte, rindió 40 qq/ha'));
+      expect(day2).toMatch(/lote terminado/);
+
+      const after2 = await h.q(`SELECT yield_kg, harvested_hectares FROM plot_crops WHERE plot_id = $1`, [norteId]);
+      expect(Number(after2[0].yield_kg)).toBe(408000);
+      expect(Number(after2[0].harvested_hectares)).toBe(100);
+    });
+
+    it('P1-3: "compré 200 lt de glifosato a 5.000 para el Norte" deja el gasto EN EL LOTE', async () => {
+      h.fakeAgent.enqueueTool('add_stock', { product: 'glifosato', quantity: 200, unit: 'lt', plot: 'Norte', unit_price_ars: 5000 });
+      const out = h.allText(await h.send('compré 200 litros de glifosato a 5.000 el litro para el Norte'));
+      expect(out).toMatch(/Stock registrado/);
+      expect(out).toMatch(/Lote Norte/);
+      const rows = await h.q(`SELECT amount, plot_id FROM expenses WHERE user_id = $1 AND deleted_at IS NULL AND description ILIKE '%glifosato%'`, [h.userId]);
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0].amount)).toBe(1000000);
+      expect(Number(rows[0].plot_id)).toBe(norteId);
+    });
+
+    it('P1-4: la venta "a fijar" se guarda con monto 0, comprador y estado del precio (no pide "¿Cuánto fue?")', async () => {
+      h.fakeAgent.enqueueTool('log_income', { category: 'Soja', quantity: 5, unit: 'tn', buyer: 'Cargill', plot: 'Norte', price_status: 'a_fijar' });
+      const out = h.allText(await h.send('vendí 5 tn de soja del Norte a Cargill con precio a fijar'));
+      expect(out).not.toMatch(/Cuánto fue/);
+      expect(out).toMatch(/[Pp]recio a fijar/);
+      const rows = await h.q(`SELECT amount, buyer, price_status, quantity FROM incomes WHERE user_id = $1 AND deleted_at IS NULL AND price_status = 'a_fijar'`, [h.userId]);
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0].amount)).toBe(0);
+      expect(rows[0].buyer).toBe('Cargill');
+      expect(Number(rows[0].quantity)).toBe(5);
+    });
+
+    it('P1-7: venta de grano con comprador y sin lote deduce el lote de la ÚNICA campaña del cultivo (sin flow)', async () => {
+      // maíz solo en Sur → lote deducido.
+      h.fakeAgent.enqueueTool('log_income', { category: 'Maíz', quantity: 20, unit: 'tn', unit_price: 180, currency: 'USD', buyer: 'ACA' });
+      const out = h.allText(await h.send('vendí 20 tn de maíz a ACA a 180 USD la tonelada'));
+      expect(out).not.toMatch(/En qué lote/);
+      expect(out).toMatch(/ACA/);
+      const rows = await h.q(`SELECT plot_id, buyer, amount FROM incomes WHERE user_id = $1 AND deleted_at IS NULL AND buyer = 'ACA'`, [h.userId]);
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0].plot_id)).toBe(surId);
+      expect(Number(rows[0].amount)).toBe(3600);
+
+      // El mensaje siguiente con verbo propio NO se traga como lote.
+      h.fakeAgent.enqueueTool('log_grain_withdrawal', { crop: 'maíz', quantity: 5, unit: 'tn', destinatario: 'ACA', reason: 'semilla' });
+      const w = await h.send('retiré 5 tn de maíz de ACA para semilla');
+      expect(h.allText(w)).not.toMatch(/No encontré ese lote/);
+      const wd = await h.q(`SELECT id FROM domain_events WHERE user_id = $1 AND event_type = 'grain_withdrawal' AND deleted_at IS NULL`, [h.userId]);
+      expect(wd.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('P1-7b: con DOS campañas del cultivo la venta queda a nivel campo, con el comprador, y sin preguntar', async () => {
+      // soja en Norte y Loma → no se adivina; nivel campo.
+      h.fakeAgent.enqueueTool('log_income', { category: 'Soja', quantity: 50, unit: 'tn', unit_price: 300, currency: 'USD', buyer: 'Cargill' });
+      const out = h.allText(await h.send('vendí 50 tn de soja a Cargill a 300 USD la tonelada'));
+      expect(out).not.toMatch(/En qué lote/);
+      expect(out).toMatch(/Sin lote asignado/);
+      const rows = await h.q(`SELECT plot_id, buyer FROM incomes WHERE user_id = $1 AND deleted_at IS NULL AND buyer = 'Cargill' AND amount > 0`, [h.userId]);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].plot_id).toBeNull();
+    });
+
+    it('P1-5 + P2-12: "sacamos 130 tn" → el botón de stock convierte tn→kg sobre el ítem en kg y DESPUÉS ofrece el costo de cosechar', async () => {
+      const { StockService } = await import('../../../domain/stock/stock.service.js');
+      await new StockService().addGrainStock(h.userId, 'soja', 20000, 'kg', { fieldName: 'La Esperanza' });
+
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Loma', quantity: 130, unit: 'tn', yield_kg: 130000 });
+      const harvest = await h.send('cosechamos la Loma, sacamos 130 tn');
+      const yes = h.allButtons(harvest).find(b => b.id.startsWith('stock_grain_yes_'));
+      expect(yes).toBeTruthy();
+
+      const tapped = await h.tap(yes!.id);
+      const text = h.allText(tapped);
+      expect(text).not.toMatch(/no se puede cargar/);
+      expect(text).toMatch(/Stock actualizado/);
+      const stock = await h.q(`SELECT current_quantity, unit FROM stock_items WHERE user_id = $1 AND LOWER(name) = 'soja' AND deleted_at IS NULL`, [h.userId]);
+      expect(stock).toHaveLength(1);
+      expect(stock[0].unit).toBe('kg');
+      expect(Number(stock[0].current_quantity)).toBe(150000);
+      // …y recién ahora el botón de costo, que antes se perdía detrás del de stock.
+      expect(h.allButtons(tapped).some(b => b.id.startsWith('harvest_cost_yes_'))).toBe(true);
+    });
+
+    it('P2-16: una lluvia de AYER alerta con la fecha, no "Acumulado hoy"', async () => {
+      h.fakeAgent.enqueueTool('log_rainfall', { quantity: 30, field: 'La Esperanza' });
+      const out = h.allText(await h.send('ayer llovieron 30 mm en La Esperanza'));
+      expect(out).toMatch(/Alerta/);
+      expect(out).not.toMatch(/Acumulado hoy/);
+      expect(out).toMatch(/Acumulado el \d{1,2} de/);
+    });
+  });
+
 });

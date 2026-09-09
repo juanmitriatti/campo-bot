@@ -1855,14 +1855,16 @@ export async function saveRainfall(userId, mm, fieldId = null, rainfallDate = nu
   return result.rows[0];
 }
 
-export async function getDailyRainfallTotal(userId, fieldId = null) {
+/** Acumulado del DÍA DE LA LLUVIA (rainfall_date), no del día en que se cargó:
+ * "ayer llovieron 30 mm" alertaba "Acumulado hoy 30 mm" (P2-16, QA sep 2026). */
+export async function getDailyRainfallTotal(userId, fieldId = null, rainfallDate = null) {
   const { rows } = await pool.query(
     `SELECT COALESCE(SUM(millimeters), 0) AS total
      FROM rainfall
      WHERE user_id = $1
        AND COALESCE(field_id, 0) = COALESCE($2, 0)
-       AND created_at::date = CURRENT_DATE`,
-    [userId, fieldId]
+       AND rainfall_date = COALESCE($3::date, CURRENT_DATE)`,
+    [userId, fieldId, rainfallDate]
   );
   return parseFloat(rows[0].total);
 }
@@ -2154,6 +2156,19 @@ export async function updatePlotCropYield(cropId, yieldKg, yieldNotes = null) {
   const result = await pool.query(
     `UPDATE plot_crops
        SET yield_kg = $2,
+           yield_notes = COALESCE($3, yield_notes)
+     WHERE id = $1 RETURNING *`,
+    [cropId, yieldKg, yieldNotes]
+  );
+  return result.rows[0] || null;
+}
+
+/** Rinde PARCIAL de un día de cosecha ("cosechamos 40 ha, rindió 42 qq/ha"):
+ * se SUMA al acumulado de la campaña en vez de pisarlo (P0-1, sep 2026). */
+export async function addPlotCropYield(cropId, yieldKg, yieldNotes = null) {
+  const result = await pool.query(
+    `UPDATE plot_crops
+       SET yield_kg = COALESCE(yield_kg, 0) + $2,
            yield_notes = COALESCE($3, yield_notes)
      WHERE id = $1 RETURNING *`,
     [cropId, yieldKg, yieldNotes]
@@ -3242,6 +3257,56 @@ export async function updateYieldFromLoads(plotCropId) {
   );
 }
 
+/**
+ * Producción total (kg) de las campañas cosechadas del alcance: por campaña,
+ * GREATEST(rinde declarado, Σ cargas netas). Alimenta "cuánta soja coseché en
+ * total" (P2-13): las campañas sin camiones no existen en harvest_loads.
+ */
+export async function getCampaignProductionKg(userId, { plotId = null, fieldId = null, crop = null, desde = null, hasta = null } = {}) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(GREATEST(
+              COALESCE(pc.yield_kg, 0),
+              COALESCE((SELECT SUM(COALESCE(hl.net_weight_kg, hl.weight_kg))
+                          FROM harvest_loads hl
+                          JOIN domain_events de ON de.id = hl.domain_event_id AND de.deleted_at IS NULL
+                         WHERE hl.plot_crop_id = pc.id), 0)
+            )), 0)::numeric AS kg
+       FROM plot_crops pc
+       JOIN plots p ON p.id = pc.plot_id AND p.deleted_at IS NULL
+       JOIN fields f ON f.id = p.field_id AND f.deleted_at IS NULL
+      WHERE f.user_id = $1
+        AND pc.harvested_at IS NOT NULL
+        AND ($2::int IS NULL OR p.id = $2)
+        AND ($3::int IS NULL OR f.id = $3)
+        AND ($4::text IS NULL OR LOWER(pc.crop) = LOWER($4))
+        AND ($5::date IS NULL OR COALESCE(pc.harvest_ended_at, pc.harvested_at)::date >= $5)
+        AND ($6::date IS NULL OR pc.harvested_at::date <= $6)`,
+    [userId, plotId, fieldId, crop, desde, hasta]
+  );
+  return Number(rows[0]?.kg ?? 0);
+}
+
+/**
+ * Lotes del usuario con una campaña RECIENTE (18 meses) del cultivo dado —
+ * para deducir el lote de una venta de grano con comprador sin preguntar
+ * (P1-7, QA sep 2026). Opcionalmente acotado a un campo.
+ */
+export async function findPlotsWithCrop(userId, crop, fieldId = null) {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT ON (p.id) p.id, p.name, p.field_id, f.name AS field_name, pc.start_date
+       FROM plot_crops pc
+       JOIN plots p ON p.id = pc.plot_id AND p.deleted_at IS NULL
+       JOIN fields f ON f.id = p.field_id AND f.deleted_at IS NULL
+      WHERE f.user_id = $1
+        AND LOWER(pc.crop) = LOWER($2)
+        AND ($3::int IS NULL OR f.id = $3)
+        AND pc.start_date >= CURRENT_DATE - INTERVAL '18 months'
+      ORDER BY p.id, pc.start_date DESC`,
+    [userId, crop, fieldId]
+  );
+  return rows;
+}
+
 /** Una carga puntual del usuario (scoping por el evento, que lleva user_id). */
 export async function getHarvestLoadById(userId, loadId) {
   const result = await pool.query(
@@ -3594,8 +3659,7 @@ export async function getCampaignTotals(userId, { seasonYear = null, crop = null
        WHERE x.plot_id = pc.plot_id AND x.deleted_at IS NULL
          AND LOWER(COALESCE(x.category, '')) <> 'hacienda'
          AND x.expense_date >= pc.start_date
-         AND (COALESCE(pc.harvested_at::date, pc.end_date) IS NULL
-              OR x.expense_date <= COALESCE(pc.harvested_at::date, pc.end_date))
+         AND (pc.end_date IS NULL OR x.expense_date <= pc.end_date)
      ) e ON TRUE
      LEFT JOIN LATERAL (
        SELECT COALESCE(SUM(y.amount) FILTER (WHERE y.currency IS DISTINCT FROM 'USD'), 0) AS ars,
@@ -3604,8 +3668,7 @@ export async function getCampaignTotals(userId, { seasonYear = null, crop = null
        WHERE y.plot_id = pc.plot_id AND y.deleted_at IS NULL
          AND LOWER(COALESCE(y.category, '')) <> 'hacienda'
          AND y.income_date >= pc.start_date
-         AND (COALESCE(pc.harvested_at::date, pc.end_date) IS NULL
-              OR y.income_date <= COALESCE(pc.harvested_at::date, pc.end_date))
+         AND (pc.end_date IS NULL OR y.income_date <= pc.end_date)
      ) i ON TRUE
      WHERE f.user_id = $1${filters}
      ORDER BY pc.season_year DESC, f.name, p.name`,

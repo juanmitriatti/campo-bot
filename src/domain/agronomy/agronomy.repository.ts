@@ -146,8 +146,8 @@ export class AgronomyRepository {
     return _getConversationState(userId) as Promise<{ last_field_id: number | null; field_name: string | null } | null>;
   }
 
-  async getDailyRainfallTotal(userId: UserId, fieldId: number | null): Promise<number> {
-    return _getDailyRainfallTotal(userId, fieldId);
+  async getDailyRainfallTotal(userId: UserId, fieldId: number | null, rainfallDate: string | null = null): Promise<number> {
+    return _getDailyRainfallTotal(userId, fieldId, rainfallDate);
   }
 
   async deleteLastRainfall(userId: UserId): Promise<{ millimeters: number } | null> {
@@ -460,6 +460,12 @@ export class AgronomyRepository {
 
   async addHarvestedHectares(plotCropId: number, hectares: number): Promise<PlotCropRow | null> {
     return _addHarvestedHectares(plotCropId, hectares) as Promise<PlotCropRow | null>;
+  }
+
+  /** Σ producción de las campañas cosechadas del alcance (rinde ∨ cargas netas). */
+  async getCampaignProductionKg(userId: UserId, opts: { plotId?: number | null; fieldId?: number | null; crop?: string | null; desde?: string | null; hasta?: string | null }): Promise<number> {
+    const { getCampaignProductionKg } = await import('../../services/expenses.js');
+    return getCampaignProductionKg(Number(userId), opts);
   }
 
   async setExpectedYield(plotCropId: number, kgPerHa: number): Promise<PlotCropRow | null> {

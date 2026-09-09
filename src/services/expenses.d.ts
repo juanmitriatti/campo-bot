@@ -95,7 +95,7 @@ export function saveAiUsage(userId: number, usage: { input_tokens: number; outpu
 export function saveAiFallbackLog(userId: number, inputText: string, claudeResponse: unknown, usage: unknown, costUsd?: number | null): Promise<void>;
 export function saveAudioTranscriptionLog(userId: number, data: { durationSeconds: number; provider: string; model: string; costUsd: number }): Promise<void>;
 export function getHourlyAudioCount(userId: number): Promise<number>;
-export function getDailyRainfallTotal(userId: number, fieldId?: number | null): Promise<number>;
+export function getDailyRainfallTotal(userId: number, fieldId?: number | null, rainfallDate?: string | null): Promise<number>;
 export function deleteLastRainfall(userId: number): Promise<{ millimeters: string | number } | null>;
 export function getRainfallAllLocations(userId: number, period: string): Promise<Array<{ field_name: string | null; total: string | number; registros: string | number }>>;
 export function getRainfallForMonth(userId: number, month: number, year: number): Promise<{ total: string | number; registros: string | number }>;
@@ -407,6 +407,9 @@ export function syncPlotCropFromEdit(plotCropId: number, fields?: {
   sowedHectares?: number | null;
 }): Promise<any>;
 export function updatePlotCropYield(cropId: number, yieldKg: number, yieldNotes?: string | null): Promise<any>;
+export function addPlotCropYield(cropId: number, yieldKg: number, yieldNotes?: string | null): Promise<any>;
+export function getCampaignProductionKg(userId: number, opts?: { plotId?: number | null; fieldId?: number | null; crop?: string | null; desde?: string | null; hasta?: string | null }): Promise<number>;
+export function findPlotsWithCrop(userId: number, crop: string, fieldId?: number | null): Promise<Array<{ id: number; name: string; field_id: number; field_name: string; start_date: string }>>;
 
 // Existían en el .js pero no acá, así que TS las reportaba como inexistentes
 // (con un "did you mean" que apuntaba a la función equivocada).
