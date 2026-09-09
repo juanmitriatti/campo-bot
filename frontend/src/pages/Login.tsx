@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -7,8 +7,15 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login, error, clearError } = useAuth();
+  const { user, loading: authLoading, login, error, clearError } = useAuth();
   const navigate = useNavigate();
+
+  // Sesión viva → no tiene sentido mostrar el formulario.
+  useEffect(() => {
+    if (authLoading || !user) return;
+    if (user.role === 'admin') window.location.href = '/admin';
+    else navigate('/dashboard', { replace: true });
+  }, [authLoading, user, navigate]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

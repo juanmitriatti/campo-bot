@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 type Status = 'pending' | 'success' | 'error' | 'no-token';
@@ -7,6 +7,14 @@ export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<Status>('pending');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // El token es de un solo uso: el doble-effect de StrictMode (dev) mandaba
+  // dos POST y el segundo pisaba el "✅ verificado" con un error.
+  const fired = useRef<string | null>(null);
+  // Si el usuario sigue logueado (se registró y abrió el mail en la misma
+  // compu), mandarlo al login es un paso de más.
+  const loggedIn = typeof window !== 'undefined' && !!localStorage.getItem('accessToken');
+  const nextHref = loggedIn ? '/dashboard' : '/login';
+  const nextLabel = loggedIn ? 'Ir al panel' : 'Ir al login';
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -14,6 +22,8 @@ export default function VerifyEmail() {
       setStatus('no-token');
       return;
     }
+    if (fired.current === token) return;
+    fired.current = token;
     (async () => {
       try {
         const res = await fetch('/api/auth/verify-email', {
@@ -44,9 +54,9 @@ export default function VerifyEmail() {
           {status === 'success' && (
             <>
               <p className="text-green-700 text-lg">✅ Email verificado</p>
-              <p>Tu cuenta queda activa. Ya podés ingresar.</p>
-              <Link to="/login" className="block text-campo-600 hover:text-campo-700 font-medium">
-                Ir al login
+              <p>Tu cuenta queda activa.</p>
+              <Link to={nextHref} className="block text-campo-600 hover:text-campo-700 font-medium">
+                {nextLabel}
               </Link>
             </>
           )}
@@ -54,9 +64,9 @@ export default function VerifyEmail() {
             <>
               <p className="text-red-700">No pude verificar tu email.</p>
               {errorMsg && <p className="text-xs text-gray-500">{errorMsg}</p>}
-              <p className="text-gray-500">Volvé a entrar a la app y pedí un link nuevo desde Mi cuenta.</p>
-              <Link to="/login" className="block text-campo-600 hover:text-campo-700 font-medium">
-                Volver al login
+              <p className="text-gray-500">Entrá a la app y pedí un link nuevo desde el aviso «Verificá tu email».</p>
+              <Link to={nextHref} className="block text-campo-600 hover:text-campo-700 font-medium">
+                {nextLabel}
               </Link>
             </>
           )}

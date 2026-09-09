@@ -8,7 +8,11 @@ import { SubscriptionService } from '../billing/subscription.service.js';
 import { logError } from '../../services/error-logger.js';
 import { getSetting } from '../../services/settings.service.js';
 import { asUserId } from '../../types/index.js';
+import { normalizeEmail, isValidEmail } from './email-normalizer.js';
+import { isAccountBlocked } from './auth.types.js';
 import type { JwtPayload, TokenPair, RegisterBody, LoginBody, ProfileUpdateBody, AuthUser } from './auth.types.js';
+
+const BLOCKED_ACCOUNT_MSG = 'Tu cuenta está suspendida. Escribinos a soporte para reactivarla.';
 
 const BCRYPT_ROUNDS = 12;
 const ACCESS_TOKEN_EXPIRY = '15m';
@@ -44,10 +48,16 @@ export class AuthService {
   }
 
   async register(body: RegisterBody): Promise<{ user: AuthUser; tokens: TokenPair }> {
-    const { name, last_name, email, password } = body;
+    const { name, last_name, password } = body;
+    // Se guarda normalizado (trim + minúsculas): con el email verbatim, el
+    // login y el reset dependían de repetir la misma capitalización.
+    const email = normalizeEmail(body.email);
 
     if (!name || !email || !password) {
       throw new AuthError(400, 'El email, nombre y contraseña son obligatorios');
+    }
+    if (!isValidEmail(email)) {
+      throw new AuthError(400, 'Ese email no parece válido.');
     }
     if (password.length < 8) {
       throw new AuthError(400, 'La contraseña debe tener al menos 8 caracteres');
@@ -124,9 +134,10 @@ export class AuthService {
   }
 
   async login(body: LoginBody): Promise<{ user: AuthUser; tokens: TokenPair }> {
-    const { email, password } = body;
+    const { password } = body;
+    const email = normalizeEmail(body.email);
 
-    if (!email || !password) {
+    if (!email || !password || typeof password !== 'string') {
       throw new AuthError(400, 'El email y contraseña son obligatorios');
     }
 
@@ -136,12 +147,21 @@ export class AuthService {
     }
 
     if (!userWithPw.password_hash) {
-      throw new AuthError(401, 'Esta cuenta no tiene contraseña. Registrate primero.');
+      // Usuario creado por WhatsApp/Telegram que nunca puso contraseña: el
+      // registro web con ese email da 409, así que el camino es el reset.
+      throw new AuthError(401, 'Esta cuenta no tiene contraseña. Usá «Olvidé mi contraseña» para crear una.');
     }
 
     const valid = await bcrypt.compare(password, userWithPw.password_hash);
     if (!valid) {
       throw new AuthError(401, 'Credenciales inválidas');
+    }
+
+    // Después de validar la contraseña, no antes: una cuenta suspendida no
+    // tiene que servir de oráculo para adivinar contraseñas.
+    if (isAccountBlocked(userWithPw.status)) {
+      console.log(`[AUTH] login rechazado: cuenta ${userWithPw.status} user=${userWithPw.id}`);
+      throw new AuthError(403, BLOCKED_ACCOUNT_MSG);
     }
 
     const { password_hash: _, ...user } = userWithPw;
@@ -176,6 +196,13 @@ export class AuthService {
     const user = await this.auth.getUserById(payload.userId);
     if (!user) {
       throw new AuthError(401, 'Token expirado o inválido');
+    }
+    if (isAccountBlocked(user.status)) {
+      // El admin suspendió la cuenta con una sesión abierta: el refresh es
+      // el único punto donde podemos cortarla (el access dura 15 min).
+      console.log(`[AUTH] refresh rechazado: cuenta ${user.status} user=${user.id}`);
+      await this.tokens.revokeAllUserTokens(user.id);
+      throw new AuthError(403, BLOCKED_ACCOUNT_MSG);
     }
 
     return this.generateTokenPair(user.id, user.role);
@@ -214,6 +241,10 @@ export class AuthService {
 
     // Check email uniqueness if updating email
     if (fields.email) {
+      fields.email = normalizeEmail(fields.email);
+      if (!isValidEmail(fields.email as string)) {
+        throw new AuthError(400, 'Ese email no parece válido.');
+      }
       const existing = await this.auth.findByEmail(fields.email as string);
       if (existing && existing.id !== userId) {
         throw new AuthError(409, 'Ya existe una cuenta con este email');

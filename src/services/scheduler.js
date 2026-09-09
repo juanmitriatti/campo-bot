@@ -958,9 +958,27 @@ async function dailyCleanupTick() {
     if (deletedReports > 0) {
       console.log(`[cleanup] Deleted ${deletedReports} old PDF report(s) (>30 days)`);
     }
+    await authTokensCleanupTick();
   } catch (err) {
     console.error('[cleanup] Unexpected error:', err);
     logError('scheduler', 'DAILY_CLEANUP_ERROR', err);
+  }
+}
+
+// Tokens de sesión y de email (refresh rotado cada 15 min por usuario activo,
+// reset/verify de un solo uso): ninguna tabla tenía purga, crecían para siempre.
+async function authTokensCleanupTick() {
+  try {
+    const { TokenRepository } = await import('../domain/auth/token.repository.js');
+    const { purgeStaleOneTimeTokens } = await import('../domain/auth/one-time-token.js');
+    const refresh = await new TokenRepository().cleanExpiredTokens();
+    const { reset, verify } = await purgeStaleOneTimeTokens(7);
+    if (refresh + reset + verify > 0) {
+      console.log(`[cleanup] auth tokens: ${refresh} refresh vencidos, ${reset} reset, ${verify} verify`);
+    }
+  } catch (err) {
+    console.error('[cleanup] auth tokens cleanup failed:', err);
+    logError('scheduler', 'AUTH_TOKENS_CLEANUP_ERROR', err);
   }
 }
 

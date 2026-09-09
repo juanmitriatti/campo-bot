@@ -18,6 +18,8 @@ import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { requireFeature } from '../middleware/feature.middleware.js';
+import { loginLimiter, forgotPasswordLimiter, tokenEndpointLimiter, emailKey, ipKey } from '../middleware/auth-rate-limit.js';
+import { normalizeEmail, isValidEmail } from '../domain/auth/email-normalizer.js';
 import type { Request, Response, NextFunction } from 'express';
 import { logError } from '../services/error-logger.js';
 import { pool } from '../config/db.js';
@@ -91,10 +93,15 @@ router.post('/register', async (req: Request, res: Response) => {
 });
 
 router.post('/login', async (req: Request, res: Response) => {
+  const key = emailKey(req);
+  if (loginLimiter.reject(key, res)) return;
   try {
     const result = await authService.login(req.body);
+    loginLimiter.reset(key);
     res.json(result);
   } catch (err) {
+    // Solo los fallos de credenciales cuentan para el bloqueo.
+    if (err instanceof AuthError && err.status === 401) loginLimiter.record(key);
     handleError(err, res);
   }
 });
@@ -115,7 +122,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
 
 // --- Forgot password / email verification (public) ---
 
-router.post('/forgot-password', async (req: Request, res: Response) => {
+router.post('/forgot-password', forgotPasswordLimiter.middleware(emailKey), async (req: Request, res: Response) => {
   try {
     const { email } = req.body || {};
     await passwordRecoveryService.requestReset(email);
@@ -130,21 +137,24 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/reset-password', async (req: Request, res: Response) => {
+router.post('/reset-password', tokenEndpointLimiter.middleware(ipKey), async (req: Request, res: Response) => {
   try {
     const { token, password } = req.body || {};
-    await passwordRecoveryService.resetPassword(token, password);
+    const result = await passwordRecoveryService.resetPassword(token, password);
+    // Probó ser dueño del email: el bloqueo por intentos fallidos no tiene
+    // sentido (el mensaje del 429 lo manda justamente a este camino).
+    if (result.email) loginLimiter.reset(result.email);
     res.json({ ok: true });
   } catch (err) {
     handleError(err, res);
   }
 });
 
-router.post('/verify-email', async (req: Request, res: Response) => {
+router.post('/verify-email', tokenEndpointLimiter.middleware(ipKey), async (req: Request, res: Response) => {
   try {
     const { token } = req.body || {};
     const result = await confirmVerificationToken(token);
-    res.json({ ok: true, userId: result.userId });
+    res.json({ ok: true, userId: result.userId, alreadyVerified: !!result.alreadyVerified });
   } catch (err) {
     handleError(err, res);
   }
@@ -200,9 +210,9 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
   try {
     const name = typeof req.body?.name === 'string' ? req.body.name.trim() : undefined;
     const city = typeof req.body?.city === 'string' ? req.body.city.trim() : undefined;
-    // FIX M1: guardar el email tal como lo tipea el usuario (solo .trim()),
-    // NO lowercasearlo — el login es case-sensitive y toLowerCase aquí lockea al usuario.
-    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : undefined;
+    // Normalizado (trim + minúsculas) como en el registro: desde la migración
+    // 119 el login y el reset buscan con LOWER(email), así que ya no lockea.
+    const email = typeof req.body?.email === 'string' ? normalizeEmail(req.body.email) : undefined;
     const lastName = typeof req.body?.last_name === 'string' ? req.body.last_name.trim() : undefined;
     // Ciudad validada contra el censo (paridad con el bot): exact → nombre oficial + provincia;
     // sin match → se guarda tal cual y el response lo señala (cityWarning).
@@ -220,7 +230,7 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
       }
     }
     if (name === '') { res.status(400).json({ error: 'El nombre no puede quedar vacío.' }); return; }
-    if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (email !== undefined && !isValidEmail(email)) {
       res.status(400).json({ error: 'Ese email no parece válido.' }); return;
     }
     if (name === undefined && city === undefined && email === undefined && lastName === undefined) {

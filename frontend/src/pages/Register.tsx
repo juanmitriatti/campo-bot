@@ -35,7 +35,9 @@ export default function Register() {
       // (el backend ignora plan_id — elegir Enterprise gratis era un agujero).
       await register(name, email, password, undefined, lastName || undefined);
       // Drop a one-shot flag so the dashboard can show the welcome toast.
-      try { sessionStorage.setItem(POST_REGISTER_FLAG, email); } catch { /* SSR */ }
+      // El backend guarda el email normalizado (trim + minúsculas) y manda el
+      // mail ahí: el toast tiene que mostrar esa dirección, no la tipeada.
+      try { sessionStorage.setItem(POST_REGISTER_FLAG, email.trim().toLowerCase()); } catch { /* SSR */ }
       navigate('/dashboard');
     } catch {
       // Error already set in context

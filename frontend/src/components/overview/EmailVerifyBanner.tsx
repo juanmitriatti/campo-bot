@@ -20,6 +20,7 @@ export default function EmailVerifyBanner() {
   const [status, setStatus] = useState<VerifyStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [sentAt, setSentAt] = useState<number | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<boolean>(isDismissed);
 
   useEffect(() => {
@@ -32,11 +33,20 @@ export default function EmailVerifyBanner() {
 
   const resend = async () => {
     setBusy(true);
+    setSendError(null);
     try {
-      await apiRequest('/resend-verification', { method: 'POST' });
-      setSentAt(Date.now());
+      // El endpoint responde 200 con ok:false cuando el envío falló (sin API
+      // key, error del proveedor): antes se mostraba "reenviamos" igual.
+      const r = await apiRequest<{ ok: boolean; reason?: string }>('/resend-verification', { method: 'POST' });
+      if (r.ok) {
+        setSentAt(Date.now());
+      } else if (r.reason === 'already_verified') {
+        setStatus(s => (s ? { ...s, emailVerified: true } : s));
+      } else {
+        setSendError('No pudimos enviar el email ahora. Probá de nuevo en unos minutos.');
+      }
     } catch {
-      // no-op; user can retry
+      setSendError('No pudimos enviar el email ahora. Probá de nuevo en unos minutos.');
     } finally {
       setBusy(false);
     }
@@ -54,7 +64,7 @@ export default function EmailVerifyBanner() {
         <span>📧</span>
         <span className="truncate">
           <strong>Verificá tu email</strong> — te mandamos un link a <span className="font-mono">{status.email}</span>.
-          {sentAt ? ' Reenviamos un email nuevo, revisá tu bandeja.' : ' Si no llegó, podemos reenviarlo.'}
+          {sendError ? ` ${sendError}` : sentAt ? ' Reenviamos un email nuevo, revisá tu bandeja.' : ' Si no llegó, podemos reenviarlo.'}
         </span>
       </div>
       <div className="flex items-center gap-3 shrink-0">

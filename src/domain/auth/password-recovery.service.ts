@@ -1,8 +1,15 @@
 import bcrypt from 'bcrypt';
-import crypto from 'crypto';
 import { pool } from '../../config/db.js';
 import { AuthRepository } from './auth.repository.js';
 import { TokenRepository } from './token.repository.js';
+import { normalizeEmail } from './email-normalizer.js';
+import {
+  generateOneTimeToken,
+  findOneTimeToken,
+  isTokenUsable,
+  invalidatePendingTokens,
+  markTokenUsed,
+} from './one-time-token.js';
 import { getSetting, getSettingNumber } from '../../services/settings.service.js';
 import { sendEmail, wrapHtml } from '../../services/mailer.service.js';
 import { logError } from '../../services/error-logger.js';
@@ -15,6 +22,9 @@ export interface RequestResetResult {
 
 export interface ResetResult {
   ok: true;
+  userId: number;
+  /** Email de la cuenta (normalizado): la ruta libera el bloqueo de login. */
+  email: string | null;
 }
 
 export class PasswordRecoveryError extends Error {
@@ -47,23 +57,28 @@ export class PasswordRecoveryService {
       throw new PasswordRecoveryError(400, 'Email requerido');
     }
 
-    const user = await this.auth.findByEmail(email.trim().toLowerCase());
+    // El lookup es case-insensitive (auth.repository): antes se lowercaseaba
+    // acá pero el registro guardaba el email tal cual, así que un usuario
+    // registrado como "Juan@Gmail.com" nunca recibía el link (200 mudo).
+    const user = await this.auth.findByEmail(normalizeEmail(email));
     if (!user) {
       // Don't leak: always 200.
+      console.log('[AUTH] forgot-password para email desconocido (200 igual, sin envío)');
+      return { ok: true };
+    }
+    if (user.status === 'disabled' || user.status === 'suspended') {
+      // Cuenta bloqueada por admin: no se manda link (no podría loguearse
+      // igual) pero tampoco se revela. Log para que no sea un silencio.
+      console.log(`[AUTH] forgot-password sobre cuenta ${user.status} user=${user.id}: sin envío`);
       return { ok: true };
     }
 
     const ttlMin = (await getSettingNumber('PASSWORD_RESET_TTL_MINUTES')) || 60;
-    const rawToken = crypto.randomBytes(32).toString('base64url');
-    const tokenHash = await bcrypt.hash(rawToken, BCRYPT_ROUNDS);
+    const { raw: rawToken, hash: tokenHash } = generateOneTimeToken();
     const expiresAt = new Date(Date.now() + ttlMin * 60_000);
 
     // Invalidate any pending tokens for this user, then insert the fresh one.
-    await pool.query(
-      `UPDATE password_reset_tokens SET used_at = NOW()
-       WHERE user_id = $1 AND used_at IS NULL`,
-      [user.id],
-    );
+    await invalidatePendingTokens('password_reset_tokens', user.id);
     await pool.query(
       `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
        VALUES ($1, $2, $3)`,
@@ -74,11 +89,10 @@ export class PasswordRecoveryService {
     const link = `${publicUrl.replace(/\/$/, '')}/reset-password?token=${rawToken}`;
 
     try {
-      await sendEmail({
+      const sent = await sendEmail({
         // El usuario se buscó POR email, así que user.email no puede ser null
-        // acá; el tipo lo permite porque hay usuarios solo-teléfono. Se cae al
-        // email normalizado de la consulta en vez de forzar el tipo.
-        to: user.email ?? email.trim().toLowerCase(),
+        // acá; el tipo lo permite porque hay usuarios solo-teléfono.
+        to: user.email ?? normalizeEmail(email),
         subject: 'Recuperá tu contraseña — Campo Bot',
         text: `Hola ${user.name},\n\nPedí restablecer tu contraseña en Campo Bot. Abrí este link (vence en ${ttlMin} minutos):\n\n${link}\n\nSi no fuiste vos, ignorá este email.\n`,
         html: wrapHtml(
@@ -89,6 +103,9 @@ export class PasswordRecoveryService {
           'Restablecer contraseña',
         ),
       });
+      if (!sent.ok) {
+        logError('auth', 'PASSWORD_RESET_EMAIL_FAILED', new Error(sent.reason ?? 'unknown'), { userId: user.id });
+      }
     } catch (err) {
       logError('auth', 'PASSWORD_RESET_EMAIL_FAILED', err as Error, { userId: user.id });
     }
@@ -110,39 +127,25 @@ export class PasswordRecoveryService {
       throw new PasswordRecoveryError(400, 'La contraseña debe tener al menos 8 caracteres');
     }
 
-    // Pull all pending (unused, not expired) tokens — bcrypt comparison can't
-    // be done in SQL so we have to candidate-match in JS. There's at most
-    // one pending row per user thanks to the invalidation step above.
-    const { rows } = await pool.query(
-      `SELECT id, user_id, token_hash
-         FROM password_reset_tokens
-        WHERE used_at IS NULL AND expires_at > NOW()
-        ORDER BY created_at DESC
-        LIMIT 50`,
-    );
-
-    let matched: { id: number; user_id: number } | null = null;
-    for (const row of rows) {
-      const ok = await bcrypt.compare(rawToken, row.token_hash);
-      if (ok) {
-        matched = { id: row.id, user_id: row.user_id };
-        break;
-      }
-    }
-
-    if (!matched) {
+    const row = await findOneTimeToken('password_reset_tokens', rawToken);
+    if (!row) {
       throw new PasswordRecoveryError(400, 'Token inválido o vencido');
+    }
+    if (row.used_at) {
+      throw new PasswordRecoveryError(400, 'Ese link ya se usó. Si necesitás cambiar la contraseña de nuevo, pedí uno nuevo.');
+    }
+    if (!isTokenUsable(row)) {
+      throw new PasswordRecoveryError(400, 'El link venció. Pedí uno nuevo desde «Olvidé mi contraseña».');
     }
 
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await this.auth.setPasswordHash(matched.user_id, passwordHash);
-    await pool.query(
-      `UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`,
-      [matched.id],
-    );
+    await this.auth.setPasswordHash(row.user_id, passwordHash);
+    await markTokenUsed('password_reset_tokens', row.id);
     // Force re-login on every device.
-    await this.tokens.revokeAllUserTokens(matched.user_id);
+    await this.tokens.revokeAllUserTokens(row.user_id);
+    console.log(`[AUTH] contraseña restablecida user=${row.user_id} (sesiones revocadas)`);
 
-    return { ok: true };
+    const user = await this.auth.getUserById(row.user_id);
+    return { ok: true, userId: row.user_id, email: user?.email ? normalizeEmail(user.email) : null };
   }
 }

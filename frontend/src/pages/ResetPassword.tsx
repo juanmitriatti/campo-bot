@@ -38,6 +38,10 @@ export default function ResetPassword() {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error || 'No pude actualizar la contraseña.');
       }
+      // El backend revocó todas las sesiones: limpiar la de este navegador
+      // para que /login no arranque con tokens muertos.
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
       setDone(true);
       setTimeout(() => navigate('/login'), 2500);
     } catch (err) {

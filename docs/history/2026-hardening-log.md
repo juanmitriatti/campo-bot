@@ -153,3 +153,17 @@ Tanto el eval como qa-prod-regression-v2 quedan en 24-25/25 con 1 outlier de no-
 ## Scheduler
 
 - Weather alerts + proactive alerts **deshabilitados Jun 2026 a pedido del usuario** (bloques comentados en `startScheduler()`). Summaries, flow reminders, cleanup, expense templates y subscription sweep siguen corriendo.
+
+## Cuenta web: login, verificación de email y reset (Sep 9, 2026)
+
+Revisión desde cero del flujo de cuenta (registro → verificación → login → olvidé mi contraseña → reset), con un test de integración que lo recorre entero con el mailer mockeado (`auth-lifecycle.integration.test.ts`) y un E2E HTTP contra el backend local. Lo que apareció:
+
+- **Tres criterios de email en tres lugares.** Registro guardaba verbatim, login buscaba con igualdad exacta, forgot-password lowercaseaba antes de buscar. Consecuencia: un usuario registrado como "Juan@Gmail.com" podía loguearse solo con esa capitalización y su "olvidé mi contraseña" respondía 200 sin mandar nada (por diseño, para no revelar cuentas). En la copia de prod había 2 cuentas así. Fix: `email-normalizer.ts` única, `findByEmail` con `LOWER()`, migración 119 (índice funcional + normalización de las cuentas viejas sin colisión).
+- **Tokens bcrypt sin selector.** Reset y verificación guardaban bcrypt del token y, como no se puede comparar en SQL, traían los 50 tokens pendientes más recientes de TODO el sistema y los comparaban uno a uno (~250 ms cada uno). Con verificación a 24 h de TTL, 50 registros en un día bastaban para que un link válido quedara fuera de la ventana ("Token inválido o vencido") y cada click tardaba varios segundos. Fix: sha256 con lookup exacto (`one-time-token.ts`), fallback bcrypt solo para los tokens emitidos antes del deploy.
+- **Link de verificación no idempotente.** El comentario decía "si ya está verificado devolvemos ok", el código tiraba "Token inválido". Con StrictMode en dev el `useEffect` mandaba dos POST y el segundo pisaba el ✅ con un error. Fix en el servicio (`alreadyVerified`) y guard en la página.
+- **Refresh en paralelo cerraba la sesión.** Al volver a la pestaña con el access vencido, el dashboard lanza N requests → N 401 → N `/refresh` con el MISMO refresh token; el primero rotaba (revoca el viejo) y los demás fallaban → `window.location = /login`. Fix: single-flight en `api/client.ts`.
+- **"Sesión expirada" por contraseña equivocada.** Un 401 de `/login` con un access token viejo en localStorage disparaba el refresh; si fallaba, borraba tokens y recargaba /login con "Sesión expirada". Fix: los endpoints públicos de auth nunca refrescan ni redirigen.
+- **Cuentas deshabilitadas por admin entraban al dashboard.** El bot filtraba `status <> 'disabled'`, el login web no. Fix: 403 en login y refresh (después de validar la contraseña), sin link de reset.
+- **Sin límite de intentos.** Login y forgot-password no tenían ningún throttling. Fix: `auth-rate-limit.ts` por email (la IP detrás de Railway es la misma para todos). Un reset exitoso libera el bloqueo de login: el propio 429 manda a ese camino.
+- **Reenviar verificación decía "reenviado" aunque el envío hubiera fallado** (`sendEmail` devuelve `ok:false`, no tira). Fix: se propaga `ok:false` y el banner lo muestra.
+- **Ninguna tabla de tokens tenía purga**: 486 refresh tokens (rotación cada 15 min por usuario activo) y 227 tokens de verificación en la copia local. Fix: `authTokensCleanupTick` en el cleanup diario.

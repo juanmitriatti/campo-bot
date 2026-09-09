@@ -40,4 +40,13 @@ export interface AuthUser {
   city: string | null;
   province: string | null;
   plan_id: number | null;
+  /** 'active' | 'suspended' | 'disabled' (admin) — el login rechaza las dos últimas. */
+  status?: AccountStatus | null;
+}
+
+export type AccountStatus = 'active' | 'suspended' | 'disabled' | 'deleted';
+
+/** Cuentas que no pueden iniciar ni mantener sesión. */
+export function isAccountBlocked(status: string | null | undefined): boolean {
+  return status === 'suspended' || status === 'disabled' || status === 'deleted';
 }

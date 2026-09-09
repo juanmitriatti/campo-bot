@@ -5,13 +5,24 @@ interface UserWithPassword extends AuthUser {
   password_hash: string | null;
 }
 
+// Cuentas soft-deleted quedan fuera de TODO lookup: el borrado nulea email y
+// password, pero un token viejo (reset/refresh) todavía traía el user_id.
+const NOT_DELETED = 'deleted_at IS NULL';
+
 const PROFILE_FIELDS_WHITELIST = ['name', 'last_name', 'email', 'city'] as const;
 
 export class AuthRepository {
+  /**
+   * Case-insensitive: las cuentas viejas quedaron con el email tal cual lo
+   * tipearon ("Juan@Gmail.com") y el login/reset con minúsculas no las
+   * encontraba. Índice funcional en migración 119.
+   */
   async findByEmail(email: string): Promise<UserWithPassword | null> {
     const { rows } = await pool.query(
-      `SELECT id, name, last_name, email, role, city, province, plan_id, password_hash
-       FROM users WHERE email = $1`,
+      `SELECT id, name, last_name, email, role, city, province, plan_id, status, password_hash
+       FROM users WHERE LOWER(email) = LOWER($1) AND ${NOT_DELETED}
+       ORDER BY (email = $1) DESC, id ASC
+       LIMIT 1`,
       [email]
     );
     return rows.length > 0 ? rows[0] : null;
@@ -19,8 +30,8 @@ export class AuthRepository {
 
   async getUserById(userId: number): Promise<AuthUser | null> {
     const { rows } = await pool.query(
-      `SELECT id, name, last_name, email, role, city, province, plan_id
-       FROM users WHERE id = $1`,
+      `SELECT id, name, last_name, email, role, city, province, plan_id, status
+       FROM users WHERE id = $1 AND ${NOT_DELETED}`,
       [userId]
     );
     return rows.length > 0 ? rows[0] : null;
@@ -36,7 +47,7 @@ export class AuthRepository {
     const { rows } = await pool.query(
       `INSERT INTO users (name, last_name, email, password_hash, role, plan_id)
        VALUES ($1, $2, $3, $4, 'end_user', $5)
-       RETURNING id, name, last_name, email, role, city, province, plan_id`,
+       RETURNING id, name, last_name, email, role, city, province, plan_id, status`,
       [name, lastName || null, email, passwordHash, planId]
     );
     return rows[0];
@@ -58,8 +69,8 @@ export class AuthRepository {
 
     values.push(userId);
     const { rows } = await pool.query(
-      `UPDATE users SET ${sets.join(', ')} WHERE id = $${idx}
-       RETURNING id, name, last_name, email, role, city, province, plan_id`,
+      `UPDATE users SET ${sets.join(', ')} WHERE id = $${idx} AND ${NOT_DELETED}
+       RETURNING id, name, last_name, email, role, city, province, plan_id, status`,
       values
     );
     return rows.length > 0 ? rows[0] : null;
@@ -67,8 +78,8 @@ export class AuthRepository {
 
   async findByPhone(phone: string): Promise<AuthUser | null> {
     const { rows } = await pool.query(
-      `SELECT id, name, last_name, email, role, city, province, plan_id
-       FROM users WHERE phone_number = $1`,
+      `SELECT id, name, last_name, email, role, city, province, plan_id, status
+       FROM users WHERE phone_number = $1 AND ${NOT_DELETED}`,
       [phone]
     );
     return rows.length > 0 ? rows[0] : null;

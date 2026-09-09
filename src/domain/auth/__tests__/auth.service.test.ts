@@ -91,6 +91,24 @@ describe('AuthService', () => {
         .rejects.toThrow('La contraseña debe tener al menos 8 caracteres');
     });
 
+    it('guarda el email normalizado (trim + minúsculas) y busca duplicados con el normalizado', async () => {
+      const service = new AuthService(mockAuthRepo, mockTokenRepo, mockPlanRepo);
+      mockAuthRepo.findByEmail.mockResolvedValue(null);
+      mockAuthRepo.createUser.mockResolvedValue({
+        id: 1, name: 'Test', email: 'juan@gmail.com', role: 'end_user', city: null, province: null, plan_id: 1,
+      });
+      await service.register({ name: 'Test', email: '  Juan@Gmail.COM ', password: 'password123' });
+      expect(mockAuthRepo.findByEmail).toHaveBeenCalledWith('juan@gmail.com');
+      expect(mockAuthRepo.createUser).toHaveBeenCalledWith(expect.objectContaining({ email: 'juan@gmail.com' }));
+    });
+
+    it('rechaza un email con formato inválido', async () => {
+      const service = new AuthService(mockAuthRepo, mockTokenRepo, mockPlanRepo);
+      await expect(service.register({ name: 'Test', email: 'no-es-un-email', password: 'password123' }))
+        .rejects.toMatchObject({ status: 400 });
+      expect(mockAuthRepo.createUser).not.toHaveBeenCalled();
+    });
+
     it('rejects duplicate email', async () => {
       const service = new AuthService(mockAuthRepo, mockTokenRepo, mockPlanRepo);
       mockAuthRepo.findByEmail.mockResolvedValue({ id: 1 });
@@ -141,8 +159,41 @@ describe('AuthService', () => {
         expect.unreachable('Should have thrown');
       } catch (err: any) {
         expect(err.status).toBe(401);
-        expect(err.message).toBe('Esta cuenta no tiene contraseña. Registrate primero.');
+        expect(err.message).toBe('Esta cuenta no tiene contraseña. Usá «Olvidé mi contraseña» para crear una.');
       }
+    });
+
+    it('normaliza el email (trim + minúsculas) antes de buscar', async () => {
+      const service = new AuthService(mockAuthRepo, mockTokenRepo, mockPlanRepo);
+      mockAuthRepo.findByEmail.mockResolvedValue({
+        id: 1, email: 'test@test.com', password_hash: '$2b$12$hash', role: 'end_user',
+      });
+      await service.login({ email: '  Test@TEST.com ', password: 'password123' });
+      expect(mockAuthRepo.findByEmail).toHaveBeenCalledWith('test@test.com');
+    });
+
+    it('rechaza con 403 una cuenta suspendida/deshabilitada por admin (después de validar la contraseña)', async () => {
+      const service = new AuthService(mockAuthRepo, mockTokenRepo, mockPlanRepo);
+      for (const status of ['disabled', 'suspended']) {
+        mockAuthRepo.findByEmail.mockResolvedValue({
+          id: 1, email: 'test@test.com', password_hash: '$2b$12$hash', role: 'end_user', status,
+        });
+        await expect(service.login({ email: 'test@test.com', password: 'password123' }))
+          .rejects.toMatchObject({ status: 403 });
+      }
+      // Sin sesión emitida
+      expect(mockTokenRepo.saveRefreshToken).not.toHaveBeenCalled();
+    });
+
+    it('con contraseña incorrecta sobre cuenta suspendida responde 401, no 403 (no revela el estado)', async () => {
+      const bcryptMod = await import('bcrypt');
+      (bcryptMod.default.compare as any).mockResolvedValueOnce(false);
+      const service = new AuthService(mockAuthRepo, mockTokenRepo, mockPlanRepo);
+      mockAuthRepo.findByEmail.mockResolvedValue({
+        id: 1, email: 'test@test.com', password_hash: '$2b$12$hash', role: 'end_user', status: 'disabled',
+      });
+      await expect(service.login({ email: 'test@test.com', password: 'wrong' }))
+        .rejects.toMatchObject({ status: 401 });
     });
 
     it('rejects wrong password', async () => {

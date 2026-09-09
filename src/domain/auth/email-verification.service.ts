@@ -1,11 +1,14 @@
-import bcrypt from 'bcrypt';
-import crypto from 'crypto';
 import { pool } from '../../config/db.js';
 import { getSetting, getSettingNumber } from '../../services/settings.service.js';
 import { sendEmail, wrapHtml } from '../../services/mailer.service.js';
 import { logError } from '../../services/error-logger.js';
-
-const BCRYPT_ROUNDS = 12;
+import {
+  generateOneTimeToken,
+  findOneTimeToken,
+  isTokenUsable,
+  invalidatePendingTokens,
+  markTokenUsed,
+} from './one-time-token.js';
 
 export class EmailVerificationError extends Error {
   status: number;
@@ -20,7 +23,7 @@ interface UserRow { id: number; email: string | null; name: string | null; email
 
 async function getUser(userId: number): Promise<UserRow | null> {
   const { rows } = await pool.query(
-    `SELECT id, email, name, email_verified_at FROM users WHERE id = $1`,
+    `SELECT id, email, name, email_verified_at FROM users WHERE id = $1 AND deleted_at IS NULL`,
     [userId],
   );
   return rows[0] ?? null;
@@ -37,15 +40,10 @@ export async function sendVerificationEmail(userId: number): Promise<{ ok: boole
   if (user.email_verified_at) return { ok: false, reason: 'already_verified' };
 
   const ttlH = (await getSettingNumber('EMAIL_VERIFY_TTL_HOURS')) || 24;
-  const rawToken = crypto.randomBytes(32).toString('base64url');
-  const tokenHash = await bcrypt.hash(rawToken, BCRYPT_ROUNDS);
+  const { raw: rawToken, hash: tokenHash } = generateOneTimeToken();
   const expiresAt = new Date(Date.now() + ttlH * 3_600_000);
 
-  await pool.query(
-    `UPDATE email_verification_tokens SET used_at = NOW()
-       WHERE user_id = $1 AND used_at IS NULL`,
-    [user.id],
-  );
+  await invalidatePendingTokens('email_verification_tokens', user.id);
   await pool.query(
     `INSERT INTO email_verification_tokens (user_id, token_hash, email, expires_at)
      VALUES ($1, $2, $3, $4)`,
@@ -56,7 +54,7 @@ export async function sendVerificationEmail(userId: number): Promise<{ ok: boole
   const link = `${publicUrl.replace(/\/$/, '')}/verify-email?token=${rawToken}`;
 
   try {
-    await sendEmail({
+    const sent = await sendEmail({
       to: user.email,
       subject: 'Verificá tu email — Campo Bot',
       text: `Hola ${user.name ?? ''},\n\nGracias por registrarte en Campo Bot. Para activar tu cuenta abrí este link (vence en ${ttlH} horas):\n\n${link}\n\nSi no fuiste vos, ignorá este email.\n`,
@@ -68,6 +66,12 @@ export async function sendVerificationEmail(userId: number): Promise<{ ok: boole
         'Verificar email',
       ),
     });
+    // sendEmail no tira: devuelve ok:false (sin API key, error de Resend).
+    // Antes eso se reportaba como {ok:true} y el banner decía "reenviado".
+    if (!sent.ok) {
+      logError('auth', 'EMAIL_VERIFY_SEND_FAILED', new Error(sent.reason ?? 'unknown'), { userId: user.id });
+      return { ok: false, reason: sent.reason ?? 'send_failed' };
+    }
     return { ok: true };
   } catch (err) {
     logError('auth', 'EMAIL_VERIFY_SEND_FAILED', err as Error, { userId: user.id });
@@ -77,53 +81,47 @@ export async function sendVerificationEmail(userId: number): Promise<{ ok: boole
 
 /**
  * Confirm a verification token: marks users.email_verified_at and the
- * token as used. Idempotent: a second call with the same token errors out
- * (single-use), but if the email is already verified we return ok anyway.
+ * token as used.
+ *
+ * Idempotente: el mismo link tocado dos veces (doble click, StrictMode del
+ * dev, cliente de email que pre-abre el link) devuelve ok mientras el email
+ * del token siga siendo el email verificado del usuario. Antes la segunda
+ * pasada decía "Token inválido o vencido" sobre una cuenta ya verificada.
  */
-export async function confirmVerificationToken(rawToken: string): Promise<{ userId: number }> {
+export async function confirmVerificationToken(rawToken: string): Promise<{ userId: number; alreadyVerified?: boolean }> {
   if (!rawToken || typeof rawToken !== 'string') {
     throw new EmailVerificationError(400, 'Token requerido');
   }
 
-  const { rows } = await pool.query(
-    `SELECT id, user_id, token_hash, email
-       FROM email_verification_tokens
-      WHERE used_at IS NULL AND expires_at > NOW()
-      ORDER BY created_at DESC
-      LIMIT 50`,
-  );
-
-  let matched: { id: number; user_id: number; email: string } | null = null;
-  for (const row of rows) {
-    const ok = await bcrypt.compare(rawToken, row.token_hash);
-    if (ok) {
-      matched = row;
-      break;
-    }
-  }
-
-  if (!matched) {
+  const row = await findOneTimeToken('email_verification_tokens', rawToken);
+  if (!row) {
     throw new EmailVerificationError(400, 'Token inválido o vencido');
   }
 
   // Reject if the user's current email differs from the token's bound email
   // (user changed email after issuing this token).
-  const user = await getUser(matched.user_id);
-  if (!user || user.email !== matched.email) {
+  const user = await getUser(row.user_id);
+  if (!user || (user.email ?? '').toLowerCase() !== (row.email ?? '').toLowerCase()) {
     throw new EmailVerificationError(400, 'Token inválido (el email cambió)');
+  }
+
+  if (row.used_at) {
+    if (user.email_verified_at) return { userId: user.id, alreadyVerified: true };
+    throw new EmailVerificationError(400, 'Ese link ya se usó. Pedí uno nuevo desde Mi cuenta.');
+  }
+  if (!isTokenUsable(row)) {
+    throw new EmailVerificationError(400, 'El link venció. Pedí uno nuevo desde Mi cuenta.');
   }
 
   await pool.query(
     `UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW())
      WHERE id = $1`,
-    [matched.user_id],
+    [row.user_id],
   );
-  await pool.query(
-    `UPDATE email_verification_tokens SET used_at = NOW() WHERE id = $1`,
-    [matched.id],
-  );
+  await markTokenUsed('email_verification_tokens', row.id);
+  console.log(`[AUTH] email verificado user=${row.user_id}`);
 
-  return { userId: matched.user_id };
+  return { userId: row.user_id };
 }
 
 export async function getVerificationStatus(userId: number): Promise<{ email: string | null; emailVerified: boolean }> {
