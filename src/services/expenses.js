@@ -404,10 +404,14 @@ export async function saveExpense(userId, data, fieldId = null, plotId = null) {
 // --- Incomes ---
 
 export async function saveIncome(userId, data, fieldId = null, plotId = null) {
+  // Venta de grano vinculada (migración 120): comprador/acopio, si el precio
+  // quedó fijado o "a fijar", y la cantidad normalizada a kg para el saldo
+  // por acopio (getGrainBalance). quantity_kg solo cuando la unidad es de peso.
+  const quantityKg = data.quantity_kg ?? toKgOrNull(data.quantity, data.unit);
   const result = await pool.query(
     `INSERT INTO incomes
-    (user_id, category, description, amount, currency, quantity, unit, unit_price, field_id, plot_id, income_date)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, CURRENT_DATE))
+    (user_id, category, description, amount, currency, quantity, unit, unit_price, field_id, plot_id, income_date, buyer, price_status, quantity_kg)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, CURRENT_DATE), $12, $13, $14)
     RETURNING id`,
     [
       userId,
@@ -420,10 +424,23 @@ export async function saveIncome(userId, data, fieldId = null, plotId = null) {
       data.unit_price || null,
       fieldId,
       plotId,
-      data.incomeDate || null
+      data.incomeDate || null,
+      data.buyer || null,
+      data.price_status || null,
+      quantityKg,
     ]
   );
   return result.rows[0];
+}
+
+/** kg a partir de cantidad+unidad de peso; null si la unidad no es de peso. */
+export function toKgOrNull(quantity, unit) {
+  if (quantity == null || !Number.isFinite(Number(quantity))) return null;
+  const u = String(unit || '').toLowerCase().trim();
+  if (u === 'tn' || u === 't' || u === 'ton' || u === 'tons' || u.startsWith('tonel')) return Number(quantity) * 1000;
+  if (u === 'qq' || u.startsWith('quint')) return Number(quantity) * 100;
+  if (u === 'kg' || u === 'kgs' || u === 'kilo' || u === 'kilos') return Number(quantity);
+  return null;
 }
 
 export async function getMonthlyIncomeReport(userId) {
@@ -2089,11 +2106,44 @@ export async function getPlotCropBySeason(plotId, seasonYear, crop) {
   return result.rows[0] || null;
 }
 
+/**
+ * Marca la campaña como cosechada. Una cosecha dura varios días y el handler
+ * llama esto una vez por día: harvested_at es el PRIMER día (se conserva),
+ * harvest_ended_at el ÚLTIMO, y el rinde/notas declarados solo se pisan si
+ * llega un valor nuevo. Antes `yield_kg = $3` sin condición: el segundo día
+ * sin rinde borraba el "rindió 42 qq/ha" del primero (bug P0, sep 2026).
+ */
 export async function setPlotCropHarvested(cropId, harvestedAt, yieldKg = null, yieldNotes = null) {
   const result = await pool.query(
-    `UPDATE plot_crops SET harvested_at = COALESCE($2, CURRENT_DATE), yield_kg = $3, yield_notes = $4
-     WHERE id = $1 RETURNING *`,
+    `UPDATE plot_crops
+        SET harvested_at = LEAST(COALESCE(harvested_at, COALESCE($2::date, CURRENT_DATE)), COALESCE($2::date, CURRENT_DATE)),
+            harvest_ended_at = GREATEST(COALESCE(harvest_ended_at, COALESCE($2::date, CURRENT_DATE)), COALESCE($2::date, CURRENT_DATE)),
+            yield_kg = COALESCE($3, yield_kg),
+            yield_notes = COALESCE($4, yield_notes)
+      WHERE id = $1 RETURNING *`,
     [cropId, harvestedAt, yieldKg, yieldNotes]
+  );
+  return result.rows[0] || null;
+}
+
+/** Avance de cosecha: suma hectáreas cosechadas (tope: superficie sembrada o del lote). */
+export async function addHarvestedHectares(cropId, hectares) {
+  const result = await pool.query(
+    `UPDATE plot_crops pc
+        SET harvested_hectares = LEAST(
+              COALESCE(pc.harvested_hectares, 0) + $2,
+              COALESCE(pc.sowed_hectares, (SELECT area_hectares FROM plots WHERE id = pc.plot_id), COALESCE(pc.harvested_hectares, 0) + $2)
+            )
+      WHERE id = $1 RETURNING *`,
+    [cropId, hectares]
+  );
+  return result.rows[0] || null;
+}
+
+export async function setExpectedYield(cropId, kgPerHa) {
+  const result = await pool.query(
+    `UPDATE plot_crops SET expected_yield_kg_per_ha = $2 WHERE id = $1 RETURNING *`,
+    [cropId, kgPerHa]
   );
   return result.rows[0] || null;
 }
@@ -3089,7 +3139,7 @@ export async function saveHarvestLoads(domainEventId, plotCropId, loads) {
   const params = [];
   let idx = 1;
   for (const load of loads) {
-    values.push(`($${idx}, $${idx+1}, $${idx+2}, $${idx+3}, $${idx+4}, $${idx+5}, $${idx+6}, $${idx+7}, $${idx+8})`);
+    values.push(`($${idx}, $${idx+1}, $${idx+2}, $${idx+3}, $${idx+4}, $${idx+5}, $${idx+6}, $${idx+7}, $${idx+8}, $${idx+9}, $${idx+10}, $${idx+11}, $${idx+12}, $${idx+13}, $${idx+14}, $${idx+15})`);
     params.push(
       domainEventId,
       plotCropId || null,
@@ -3100,10 +3150,21 @@ export async function saveHarvestLoads(domainEventId, plotCropId, loads) {
       load.truck_plate || null,
       load.humidity_pct ?? null,
       load.quality_metrics ? JSON.stringify(load.quality_metrics) : null,
+      // Comercial (migración 120): neto tras merma, bruto/tara de balanza,
+      // peso en destino y documentación. El neto lo calcula el handler con
+      // grain-merma.ts (fuente única); acá solo se persiste.
+      load.net_weight_kg ?? null,
+      load.merma_pct ?? null,
+      load.gross_weight_kg ?? null,
+      load.tare_kg ?? null,
+      load.acopio_weight_kg ?? null,
+      load.carta_porte || null,
+      load.ctg || null,
     );
-    idx += 9;
+    idx += 16;
   }
-  const sql = `INSERT INTO harvest_loads (domain_event_id, plot_crop_id, driver_name, weight_kg, destination, destinatario, truck_plate, humidity_pct, quality_metrics)
+  const sql = `INSERT INTO harvest_loads (domain_event_id, plot_crop_id, driver_name, weight_kg, destination, destinatario, truck_plate, humidity_pct, quality_metrics,
+      net_weight_kg, merma_pct, gross_weight_kg, tare_kg, acopio_weight_kg, carta_porte, ctg)
     VALUES ${values.join(', ')} RETURNING *`;
   const result = await pool.query(sql, params);
   return result.rows;
@@ -3163,15 +3224,165 @@ export async function findHarvestsToday(userId) {
  * cosecha; el total declarado solo se reemplaza cuando las cargas lo superan
  * (ahí los camiones son la verdad) o cuando no había rinde.
  */
+/**
+ * Rinde de la campaña a partir de los camiones. Usa el NETO comercial (tras
+ * merma) cuando está: los kilos brutos del camión no son los que se cobran.
+ */
 export async function updateYieldFromLoads(plotCropId) {
   if (!plotCropId) return;
   await pool.query(
     `UPDATE plot_crops SET yield_kg = GREATEST(
        COALESCE(yield_kg, 0),
-       (SELECT COALESCE(SUM(weight_kg), 0) FROM harvest_loads WHERE plot_crop_id = $1)
+       (SELECT COALESCE(SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)), 0)
+          FROM harvest_loads hl
+          JOIN domain_events de ON de.id = hl.domain_event_id AND de.deleted_at IS NULL
+         WHERE hl.plot_crop_id = $1)
      ) WHERE id = $1`,
     [plotCropId]
   );
+}
+
+/** Una carga puntual del usuario (scoping por el evento, que lleva user_id). */
+export async function getHarvestLoadById(userId, loadId) {
+  const result = await pool.query(
+    `SELECT hl.*, de.event_date, de.crop, de.plot_id, de.user_id, p.name AS plot_name, f.name AS field_name
+       FROM harvest_loads hl
+       JOIN domain_events de ON de.id = hl.domain_event_id
+       LEFT JOIN plots p ON p.id = de.plot_id
+       LEFT JOIN fields f ON f.id = p.field_id
+      WHERE hl.id = $1 AND de.user_id = $2 AND de.deleted_at IS NULL`,
+    [loadId, userId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Edita una carga (chat: "el camión de Pérez eran 30.320"; dashboard: fila de
+ * la tabla). `patch` trae solo las columnas a cambiar; el neto lo recalcula el
+ * llamador con grain-merma y lo manda en el patch. Recalcula el rinde.
+ */
+export async function updateHarvestLoad(userId, loadId, patch) {
+  const allowed = ['driver_name', 'weight_kg', 'destination', 'destinatario', 'truck_plate', 'humidity_pct',
+    'quality_metrics', 'net_weight_kg', 'merma_pct', 'gross_weight_kg', 'tare_kg', 'acopio_weight_kg', 'carta_porte', 'ctg', 'notes'];
+  const sets = [];
+  const params = [loadId, userId];
+  for (const key of allowed) {
+    if (!(key in patch)) continue;
+    params.push(key === 'quality_metrics' && patch[key] != null ? JSON.stringify(patch[key]) : patch[key]);
+    sets.push(`${key} = $${params.length}`);
+  }
+  if (sets.length === 0) return await getHarvestLoadById(userId, loadId);
+  sets.push('updated_at = NOW()');
+  const result = await pool.query(
+    `UPDATE harvest_loads hl SET ${sets.join(', ')}
+       FROM domain_events de
+      WHERE hl.id = $1 AND de.id = hl.domain_event_id AND de.user_id = $2 AND de.deleted_at IS NULL
+      RETURNING hl.*`,
+    params
+  );
+  const row = result.rows[0] || null;
+  if (row?.plot_crop_id) await updateYieldFromLoads(row.plot_crop_id);
+  return row;
+}
+
+export async function deleteHarvestLoadById(userId, loadId) {
+  const result = await pool.query(
+    `DELETE FROM harvest_loads hl
+      USING domain_events de
+      WHERE hl.id = $1 AND de.id = hl.domain_event_id AND de.user_id = $2
+      RETURNING hl.*`,
+    [loadId, userId]
+  );
+  const row = result.rows[0] || null;
+  if (row?.plot_crop_id) await updateYieldFromLoads(row.plot_crop_id);
+  return row;
+}
+
+/** Última carga de un chofer (substring, sin acentos) en los últimos `days` días. */
+export async function findRecentLoadByDriver(userId, driverName, { plotId = null, days = 30 } = {}) {
+  const unaccent = (col) => `TRANSLATE(LOWER(${col}), 'áéíóúñ', 'aeioun')`;
+  const params = [userId, driverName, days];
+  let plotCond = '';
+  if (plotId) { params.push(plotId); plotCond = `AND de.plot_id = $${params.length}`; }
+  const result = await pool.query(
+    `SELECT hl.*, de.event_date, de.crop, de.plot_id, p.name AS plot_name, f.name AS field_name
+       FROM harvest_loads hl
+       JOIN domain_events de ON de.id = hl.domain_event_id
+       LEFT JOIN plots p ON p.id = de.plot_id
+       LEFT JOIN fields f ON f.id = p.field_id
+      WHERE de.user_id = $1 AND de.event_type = 'harvest' AND de.deleted_at IS NULL
+        AND ${unaccent('hl.driver_name')} LIKE '%' || ${unaccent('$2')} || '%'
+        AND de.event_date >= CURRENT_DATE - ($3 || ' days')::interval
+        ${plotCond}
+      ORDER BY de.event_date DESC, hl.id DESC
+      LIMIT 2`,
+    params
+  );
+  return result.rows;
+}
+
+/**
+ * Saldo de grano por destinatario: entregado (neto) − vendido (incomes.buyer)
+ * − retirado (domain_events grain_withdrawal). Nombres comparados sin acentos
+ * ni mayúsculas. Sin filtro devuelve una fila por destinatario+cultivo.
+ */
+export async function getGrainBalance(userId, { crop = null, destinatario = null } = {}) {
+  const un = (expr) => `TRANSLATE(LOWER(TRIM(${expr})), 'áéíóúñ', 'aeioun')`;
+  const params = [userId];
+  let cropCond = '';
+  let destCond = '';
+  if (crop) { params.push(crop); cropCond = `AND ${un('x.crop')} = ${un(`$${params.length}`)}`; }
+  if (destinatario) { params.push(destinatario); destCond = `AND ${un('x.dest')} LIKE '%' || ${un(`$${params.length}`)} || '%'`; }
+  const result = await pool.query(
+    `WITH delivered AS (
+        SELECT hl.destinatario AS dest, de.crop,
+               SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)) AS kg, SUM(hl.weight_kg) AS gross_kg, COUNT(*)::int AS loads,
+               MAX(de.event_date) AS last_date
+          FROM harvest_loads hl
+          JOIN domain_events de ON de.id = hl.domain_event_id
+         WHERE de.user_id = $1 AND de.event_type = 'harvest' AND de.deleted_at IS NULL
+           AND hl.destinatario IS NOT NULL
+         GROUP BY hl.destinatario, de.crop
+      ), sold AS (
+        SELECT i.buyer AS dest, i.category AS crop, SUM(i.quantity_kg) AS kg, COUNT(*)::int AS sales
+          FROM incomes i
+         WHERE i.user_id = $1 AND i.deleted_at IS NULL AND i.buyer IS NOT NULL AND i.quantity_kg IS NOT NULL
+         GROUP BY i.buyer, i.category
+      ), withdrawn AS (
+        SELECT de.product AS dest, de.crop, SUM(de.quantity) AS kg, COUNT(*)::int AS withdrawals
+          FROM domain_events de
+         WHERE de.user_id = $1 AND de.event_type = 'grain_withdrawal' AND de.deleted_at IS NULL AND de.product IS NOT NULL
+         GROUP BY de.product, de.crop
+      ), keys AS (
+        SELECT ${un('dest')} AS k_dest, ${un('crop')} AS k_crop, MIN(dest) AS dest, MIN(crop) AS crop FROM (
+          SELECT dest, crop FROM delivered
+          UNION ALL SELECT dest, crop FROM sold
+          UNION ALL SELECT dest, crop FROM withdrawn
+        ) u GROUP BY 1, 2
+      )
+      SELECT x.dest, x.crop,
+             COALESCE((SELECT SUM(d.kg) FROM delivered d WHERE ${un('d.dest')} = x.k_dest AND ${un('d.crop')} = x.k_crop), 0) AS delivered_kg,
+             COALESCE((SELECT SUM(d.gross_kg) FROM delivered d WHERE ${un('d.dest')} = x.k_dest AND ${un('d.crop')} = x.k_crop), 0) AS delivered_gross_kg,
+             COALESCE((SELECT SUM(d.loads) FROM delivered d WHERE ${un('d.dest')} = x.k_dest AND ${un('d.crop')} = x.k_crop), 0)::int AS loads,
+             COALESCE((SELECT SUM(s.kg) FROM sold s WHERE ${un('s.dest')} = x.k_dest AND ${un('s.crop')} = x.k_crop), 0) AS sold_kg,
+             COALESCE((SELECT SUM(w.kg) FROM withdrawn w WHERE ${un('w.dest')} = x.k_dest AND ${un('w.crop')} = x.k_crop), 0) AS withdrawn_kg,
+             (SELECT MAX(d.last_date) FROM delivered d WHERE ${un('d.dest')} = x.k_dest AND ${un('d.crop')} = x.k_crop) AS last_delivery
+        FROM keys x
+       WHERE 1 = 1 ${cropCond} ${destCond}
+       ORDER BY delivered_kg DESC`,
+    params
+  );
+  return result.rows.map(r => ({
+    destinatario: r.dest,
+    crop: r.crop,
+    deliveredKg: Number(r.delivered_kg),
+    deliveredGrossKg: Number(r.delivered_gross_kg),
+    loads: Number(r.loads),
+    soldKg: Number(r.sold_kg),
+    withdrawnKg: Number(r.withdrawn_kg),
+    balanceKg: Number(r.delivered_kg) - Number(r.sold_kg) - Number(r.withdrawn_kg),
+    lastDelivery: r.last_delivery,
+  }));
 }
 
 /**
@@ -3192,6 +3403,7 @@ export async function queryHarvestLoads(userId, opts = {}) {
     proteinMinPct = null, proteinMaxPct = null,
     oilMinPct = null, oilMaxPct = null,
     glutenMinPct = null, glutenMaxPct = null,
+    withoutCtg = false, withoutCartaPorte = false,
     sortBy = 'date', sortDesc = true, limit = 200,
   } = opts;
   const params = [userId];
@@ -3237,8 +3449,11 @@ export async function queryHarvestLoads(userId, opts = {}) {
   if (oilMaxPct != null) { conditions.push(`(hl.quality_metrics->>'oil_pct')::numeric <= $${idx}`); params.push(oilMaxPct); idx++; }
   if (glutenMinPct != null) { conditions.push(`(hl.quality_metrics->>'gluten_pct')::numeric >= $${idx}`); params.push(glutenMinPct); idx++; }
   if (glutenMaxPct != null) { conditions.push(`(hl.quality_metrics->>'gluten_pct')::numeric <= $${idx}`); params.push(glutenMaxPct); idx++; }
+  if (withoutCtg) conditions.push(`(hl.ctg IS NULL OR hl.ctg = '')`);
+  if (withoutCartaPorte) conditions.push(`(hl.carta_porte IS NULL OR hl.carta_porte = '')`);
 
   const sortCol = sortBy === 'weight' ? 'hl.weight_kg'
+    : sortBy === 'net' ? 'COALESCE(hl.net_weight_kg, hl.weight_kg)'
     : sortBy === 'humidity' ? 'hl.humidity_pct'
     : sortBy === 'protein' ? `(hl.quality_metrics->>'protein_pct')::numeric`
     : sortBy === 'oil' ? `(hl.quality_metrics->>'oil_pct')::numeric`

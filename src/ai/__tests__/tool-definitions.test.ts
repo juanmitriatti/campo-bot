@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { TOOL_DEFINITIONS, TOOL_NAMES } from '../tool-definitions.js';
 
 describe('TOOL_DEFINITIONS', () => {
-  it('has 111 tools', () => {
+  it('has 115 tools', () => {
     // 85 → 91 on May 28 (morning): added 6 financial edit/delete tools
     //   (delete_last_expense, delete_specific_expense, delete_specific_income,
     //   edit_specific_expense, edit_last_income, edit_specific_income)
@@ -18,7 +18,9 @@ describe('TOOL_DEFINITIONS', () => {
     //   revert_livestock_movement) — modelo híbrido grupo + animal con RFID.
     // 110 → 111 on Sep 8: +update_animal (corregir sexo/categoría/raza/nacimiento
     //   de un animal cargado; la categoría mueve 1 cabeza entre grupos).
-    expect(TOOL_DEFINITIONS).toHaveLength(111);
+    // 111 → 115 on Sep 9 (migración 120): +log_harvest_costs, edit_harvest_load,
+    // set_expected_yield, log_grain_withdrawal (cosecha comercial).
+    expect(TOOL_DEFINITIONS).toHaveLength(115);
   });
 
   it('all tools have unique names', () => {

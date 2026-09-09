@@ -19,6 +19,12 @@ export interface HarvestRow {
   humidity_pct: string | number | null;
   quality_metrics: Record<string, number> | null;
   notes: string | null;
+  // Comercial (migración 120)
+  net_weight_kg?: string | number | null;
+  merma_pct?: string | number | null;
+  acopio_weight_kg?: string | number | null;
+  carta_porte?: string | null;
+  ctg?: string | null;
 }
 
 export interface HarvestRenderCtx {
@@ -88,7 +94,11 @@ function renderRowLine(r: HarvestRow, opts: { hidePlot?: boolean; hideCrop?: boo
   const parts: string[] = [];
   if (!opts.hideDriver) parts.push(r.driver_name);
   parts.push(fmtKg(Number(r.weight_kg)));
+  // Neto comercial (migración 120) solo cuando hubo merma.
+  const netKg = r.net_weight_kg != null ? Number(r.net_weight_kg) : null;
+  if (netKg != null && netKg !== Number(r.weight_kg)) parts.push(`→ ${fmtKg(netKg)} neto`);
   if (!opts.hideCrop && r.crop) parts.push(r.crop);
+  if (r.ctg) parts.push(`CTG ${r.ctg}`);
   const dest = r.destinatario || r.destination;
   if (dest) parts.push(`→ ${dest}`);
   if (r.truck_plate) parts.push(`(${r.truck_plate})`);
@@ -113,7 +123,16 @@ export function renderHarvestDetail(rows: HarvestRow[], ctx: HarvestRenderCtx): 
   for (const r of rows.slice(0, 20)) lines.push(renderRowLine(r));
   if (rows.length > 20) lines.push(`… (${rows.length - 20} más)`);
   lines.push('');
-  lines.push(`📊 *Total: ${fmtKg(totalKg)}*`);
+  // Neto comercial (migración 120): lo que se cobra, no lo que pesó el camión.
+  const totalNetKg = rows.reduce((s, r) => s + Number(r.net_weight_kg ?? r.weight_kg), 0);
+  if (totalNetKg !== totalKg) {
+    lines.push(`📊 *Total: ${fmtKg(totalKg)} brutos → ${fmtKg(totalNetKg)} netos* (merma ${fmtKg(totalKg - totalNetKg)})`);
+  } else {
+    lines.push(`📊 *Total: ${fmtKg(totalKg)}*`);
+  }
+  if (ctx.filters.destinatario) {
+    lines.push(`_Para el saldo que te queda ahí (entregado − vendido − retirado) pedime "cuánto tengo en ${ctx.filters.destinatario}"._`);
+  }
   return { messages: [lines.join('\n')], suggestionKey: 'report_shown' };
 }
 
@@ -166,7 +185,16 @@ export function renderHarvestAggregate(rows: HarvestRow[], ctx: HarvestRenderCtx
   }
 
   lines.push('');
-  lines.push(`📊 *Total: ${fmtKg(totalKg)}*`);
+  // Neto comercial (migración 120): lo que se cobra, no lo que pesó el camión.
+  const totalNetKg = rows.reduce((s, r) => s + Number(r.net_weight_kg ?? r.weight_kg), 0);
+  if (totalNetKg !== totalKg) {
+    lines.push(`📊 *Total: ${fmtKg(totalKg)} brutos → ${fmtKg(totalNetKg)} netos* (merma ${fmtKg(totalKg - totalNetKg)})`);
+  } else {
+    lines.push(`📊 *Total: ${fmtKg(totalKg)}*`);
+  }
+  if (ctx.filters.destinatario) {
+    lines.push(`_Para el saldo que te queda ahí (entregado − vendido − retirado) pedime "cuánto tengo en ${ctx.filters.destinatario}"._`);
+  }
   return { messages: [lines.join('\n')], suggestionKey: 'report_shown' };
 }
 

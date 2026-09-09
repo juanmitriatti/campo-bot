@@ -936,6 +936,16 @@ PASO 4 — DISAMBIGUACIONES:
 - COMPARAR CAMPAÑAS: "comparar soja 25/26 vs 24/25"/"comparar campañas"/"cómo salió vs la anterior"/"comparar con la campaña pasada"→compare_campaigns. Si solo dice "comparar" sin cultivo, compara las 2 últimas del mismo lote
 - harvest_crop YA NO cierra la campaña. Para cerrar: close_campaign
 - RENDIMIENTO: "X kg/ha" o "X por hectárea" o "rindió X qq/ha" → yield_kg_per_ha (tasa). "sacamos X tn/kg" (sin "por hectárea") → yield_kg (total). NUNCA poner tasa en yield_kg
+- COSECHA COMERCIAL (Sep 2026):
+  · "cosechamos 40 ha del Norte" → harvest_crop(hectares:40) — avance parcial, NO es siembra ni superficie del lote.
+  · Por camión, si lo dicen: "bruto 45.200 tara 14.000" → gross_weight_kg/tare_kg; "en Cargill pesó 30.900" → acopio_weight_kg; "CTG 123…"/"carta de porte 456" → ctg/carta_porte. La MERMA por humedad la calcula el sistema: NUNCA descontar kilos vos.
+  · "la cosecha del Norte salió 8%" / "el contratista cobró 45 mil por ha" / "flete 18.000 la tonelada" → log_harvest_costs (NO log_expense).
+  · "el camión de Pérez eran 30.320" / "la carga de Gómez fue a ACA" / "el CTG de Pérez es 123" → edit_harvest_load(driver_name) (NO harvest_crop: eso agrega camiones).
+  · "espero/estimo 40 qq/ha en el Norte" (ANTES de cosechar) → set_expected_yield(kg_per_ha:4000).
+  · "retiré 30 tn de soja de Cargill" / "saqué 10 tn del silo" → log_grain_withdrawal (NO log_income: no se vendió).
+  · "cuánta soja TENGO/me QUEDA en Cargill" / "saldo en el acopio" → query_harvest_loads(view:'balance', destinatario, crop). "cuánto ENTREGUÉ a Cargill" → view:'aggregate'.
+  · "qué camiones no tienen CTG" → query_harvest_loads(without_ctg:true).
+  · Venta de grano: "vendí 50 tn de soja a Cargill a 300 USD" → log_income(buyer:'Cargill'). "a fijar"/"sin fijar precio" → price_status:'a_fijar'. Gastos de comercialización (flete a puerto, paritaria, secada, zarandeo, comisión) → log_expense con la categoría del usuario que corresponda ("Comercialización"/"Flete"), NUNCA log_harvest_costs (eso es contratista+flete de cosecha).
 - CARGAS COSECHA: REGLA FUERTE. En contexto de cosecha, TODA lista de "nombre número" (uno por línea o separados por coma) es loads[]. NO importa si falta "kg" o destinatario — driver_name y weight_kg son los únicos requeridos.
   Ejemplos válidos → harvest_crop con loads[]:
   • "Cosecha del lote X\nBritos 31.320\nContreras 31.487" → 2 loads sin destinatario

@@ -205,6 +205,15 @@ export interface HarvestLoadRow {
   humidity_pct: number | null;
   quality_metrics: Record<string, unknown> | null;
   created_at: Date;
+  // Comercial (migración 120)
+  net_weight_kg?: number | string | null;
+  merma_pct?: number | string | null;
+  gross_weight_kg?: number | string | null;
+  tare_kg?: number | string | null;
+  acopio_weight_kg?: number | string | null;
+  carta_porte?: string | null;
+  ctg?: string | null;
+  updated_at?: Date | null;
 }
 export interface HarvestLoadInput {
   driver_name: string;
@@ -212,7 +221,28 @@ export interface HarvestLoadInput {
   destination?: string | null;
   destinatario?: string | null;
   truck_plate?: string | null;
+  humidity_pct?: number | null;
+  quality_metrics?: Record<string, unknown> | null;
+  // Comercial (migración 120)
+  net_weight_kg?: number | null;
+  merma_pct?: number | null;
+  gross_weight_kg?: number | null;
+  tare_kg?: number | null;
+  acopio_weight_kg?: number | null;
+  carta_porte?: string | null;
+  ctg?: string | null;
 }
+export function getHarvestLoadById(userId: number, loadId: number): Promise<any>;
+export function updateHarvestLoad(userId: number, loadId: number, patch: Record<string, unknown>): Promise<any>;
+export function deleteHarvestLoadById(userId: number, loadId: number): Promise<any>;
+export function findRecentLoadByDriver(userId: number, driverName: string, opts?: { plotId?: number | null; days?: number }): Promise<any[]>;
+export function getGrainBalance(userId: number, opts?: { crop?: string | null; destinatario?: string | null }): Promise<Array<{
+  destinatario: string; crop: string | null; deliveredKg: number; deliveredGrossKg: number; loads: number;
+  soldKg: number; withdrawnKg: number; balanceKg: number; lastDelivery: Date | string | null;
+}>>;
+export function addHarvestedHectares(cropId: number, hectares: number): Promise<any>;
+export function setExpectedYield(cropId: number, kgPerHa: number): Promise<any>;
+export function toKgOrNull(quantity: unknown, unit: unknown): number | null;
 export function saveHarvestLoads(domainEventId: number, plotCropId: number | null, loads: HarvestLoadInput[]): Promise<HarvestLoadRow[]>;
 export function getHarvestLoads(domainEventId: number): Promise<HarvestLoadRow[]>;
 export function findTodayHarvestEvent(userId: number, plotId: number): Promise<{ id: number; user_id: number; plot_id: number; plot_crop_id: number | null; event_type: string; event_date: Date; crop: string | null; created_at: Date } | null>;
@@ -243,7 +273,8 @@ export function queryHarvestLoads(userId: number, opts?: {
   proteinMinPct?: number | null; proteinMaxPct?: number | null;
   oilMinPct?: number | null; oilMaxPct?: number | null;
   glutenMinPct?: number | null; glutenMaxPct?: number | null;
-  sortBy?: 'date' | 'weight' | 'humidity' | 'protein' | 'oil' | 'gluten';
+  withoutCtg?: boolean; withoutCartaPorte?: boolean;
+  sortBy?: 'date' | 'weight' | 'net' | 'humidity' | 'protein' | 'oil' | 'gluten';
   sortDesc?: boolean;
   limit?: number;
 }): Promise<HarvestLoadQueryRow[]>;

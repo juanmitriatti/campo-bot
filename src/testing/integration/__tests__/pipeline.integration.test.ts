@@ -3389,4 +3389,47 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('cosecha de varios días (P0, sep 2026)', () => {
+    let h: PipelineHarness;
+    let plotId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('harvest-multiday');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Loma') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      // getPlotById exige membresía: sin esta fila el área del lote es null y el rinde por ha no se convierte.
+      await h.q(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2)`, [fid, h.userId]);
+      const p = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 100) RETURNING id`, [fid]);
+      plotId = (p[0] as { id: number }).id;
+      await h.q(
+        `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date) VALUES ($1, 'soja', 2025, 'gruesa', '2025-11-10')`,
+        [plotId],
+      );
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('el segundo día de cosecha NO pisa el rinde declarado el primero ni la fecha de inicio', async () => {
+      // Día 1 (ayer): rinde declarado por hectárea.
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Norte', yield_kg_per_ha: 4200 });
+      const day1 = h.allText(await h.send('ayer cosechamos soja en el Norte, rindió 42 qq/ha'));
+      expect(day1).toMatch(/Cosecha registrada/);
+
+      const after1 = await h.q(`SELECT yield_kg, harvested_at::text AS h, harvest_ended_at::text AS e FROM plot_crops WHERE plot_id = $1`, [plotId]);
+      expect(Number(after1[0].yield_kg)).toBe(420000);
+      const firstDay = String(after1[0].h);
+
+      // Día 2 (hoy): siguen cosechando, un camión, sin rinde. Antes esto dejaba
+      // yield_kg en NULL y el recálculo por cargas lo bajaba a 30.000.
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Norte', loads: [{ driver_name: 'Pérez', weight_kg: 30000 }] });
+      const day2 = h.allText(await h.send('seguimos cosechando soja en el Norte: Pérez 30.000'));
+      expect(day2).toMatch(/Pérez/);
+
+      const after2 = await h.q(`SELECT yield_kg, harvested_at::text AS h, harvest_ended_at::text AS e FROM plot_crops WHERE plot_id = $1`, [plotId]);
+      expect(Number(after2[0].yield_kg)).toBe(420000);
+      expect(String(after2[0].h)).toBe(firstDay);
+      expect(String(after2[0].e) >= firstDay).toBe(true);
+      expect(String(after2[0].e)).not.toBe(firstDay);
+    });
+  });
+
 });

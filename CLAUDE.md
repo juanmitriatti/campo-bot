@@ -216,6 +216,16 @@ Ver [docs/ganaderia/](docs/ganaderia/overview.md). Invariante 16 manda: la capa 
 - `humidity_pct` (0-50%) from "al 14%"; `quality_metrics` JSONB crop-specific (soja oil_pct, trigo protein/gluten/test_weight, girasol oil_pct) — SOLO si el usuario las mencionó, never invent.
 - `query_harvest_loads` / `delete_harvest_loads` for stored loads; `campaign_stats` includes per-truck detail + `avgHumidity`.
 
+### Cosecha comercial (Sep 2026, migración 120) — ver docs/history § "Cosecha como proceso comercial"
+- **Cosecha de varios días (P0)**: `setPlotCropHarvested` conserva `harvested_at` (primer día), lleva `harvest_ended_at` (último) y solo pisa `yield_kg`/`yield_notes` con `COALESCE`. Antes el segundo día sin rinde borraba el "rindió 42 qq/ha" del primero. Regresión en `pipeline.integration.test.ts` § "cosecha de varios días".
+- **`src/utils/grain-merma.ts` es la fuente ÚNICA del peso neto comercial**: base de humedad por cultivo (settings `HARVEST_HUMIDITY_BASES` JSON + `HARVEST_MERMA_MANIPULEO_PCT`) → `harvest_loads.net_weight_kg`/`merma_pct` al guardar y al editar. Rinde (`updateYieldFromLoads`), costo/tn, dashboard, Resumen y saldo por acopio leen `COALESCE(net_weight_kg, weight_kg)`; `weight_kg` sigue siendo lo que dijo el usuario. Bruto/tara de balanza (`gross_weight_kg`/`tare_kg` → peso = diferencia), peso en destino (`acopio_weight_kg`), `carta_porte` y `ctg` viajan en cada `loads[]`. **El agente nunca descuenta kilos** (regla en prompt).
+- **Avance de cosecha**: `harvest_crop(hectares)` acumula `plot_crops.harvested_hectares` (tope: sembradas o lote); la confirmación muestra "Avance: 120 de 200 ha (60 %) — faltan 80" y el rinde parcial. `set_expected_yield(kg_per_ha)` guarda `expected_yield_kg_per_ha`; cosecha y `campaign_stats` muestran el desvío. Regla "Para revisar" `yield_below_expected` (< 85 % del esperado, lote terminado).
+- **Saldo por acopio** (`getGrainBalance`): entregado neto − vendido (`incomes.buyer` + `quantity_kg`, normalizado por `toKgOrNull`) − retirado (`domain_events` tipo `grain_withdrawal`, `product` = origen). Nombres sin acento ni mayúsculas. `query_harvest_loads(view:'balance')` = "cuánta soja TENGO/me QUEDA en Cargill"; `aggregate` sigue siendo lo ENTREGADO. `log_income(buyer, price_status:'fijado'|'a_fijar')` muestra el saldo y con comprador NO ofrece descontar del stock propio. `log_grain_withdrawal(crop, quantity, destinatario)`.
+- **Costo de cosechar** (`log_harvest_costs`): contratista (`%` del rinde valuado a pizarra USD, `$/ha` × ha cosechadas/sembradas/lote, o total) y flete (`$/tn` × tn netas, o total) → gastos `Cosecha`/`Flete` en el lote con fecha de fin de cosecha. Tras una cosecha con producción y sin costo cargado, botón `harvest_cost_yes_<plotCropId>` (setting `HARVEST_COST_OFFER_ENABLED`) → el handler sin montos deja `setPendingActivity(missing:['cost'])` y la respuesta libre la parsea `parseHarvestCostText` (slot-extractor). Sin pizarra para el %, pide el monto (pending, nunca texto suelto).
+- **Silo propio → stock**: cargas con `destination:'silo'` o destinatario que suene a silo/bolsa/propio entran al stock de granos en neto (`addGrainStock`), si el plan tiene `stock`. Log `[HARVEST] silo propio → stock`.
+- **Editar un camión**: `edit_harvest_load(driver_name, …)` (chat, última carga del chofer en 30 días; recalcula neto y rinde) y `PATCH/DELETE /api/auth/harvest-loads/:id` (dashboard, scoping por `user_id` en la query). `POST /harvest-loads/reconcile` (`harvest-reconcile.service.ts`): romaneo pegado → coincide / difiere / falta de cada lado, guarda `acopio_weight_kg`; regla "Para revisar" `harvest_scale_difference` (> 1,5 %). `query_harvest_loads(without_ctg:true)` lista camiones sin CTG.
+- **Comando nuevo de cosecha = 4 registros** (`harvest-tools-registration.test.ts`). Regresiones DB en `src/domain/agronomy/__tests__/harvest-commercial.integration.test.ts`; merma en `src/utils/grain-merma.test.ts`; parser de costo en `harvest-cost-parser.test.ts`.
+
 ### Reports
 - "reporte agronómico" → `generate_agro_report` (needs agent for date range) | "reporte financiero"/"cómo vamos" → `financial_report` | "reportes"/"informes" genérico → `show_reports_menu`
 
@@ -359,7 +369,7 @@ El plan mínimo de cada feature es DATO (`plan_features`), editable en /admin �
 
 ### AI Pipeline
 - `src/ai/agent.service.ts` — Claude tool_use agent (primary)
-- `src/ai/tool-definitions.ts` — 110 tool definitions with typed schemas
+- `src/ai/tool-definitions.ts` — 115 tool definitions with typed schemas
 - `src/ai/agent-prompt-builder.ts` — Compact system prompt with disambiguation rules
 - `src/ai/agent-response-mapper.ts` — AgentResult → ParseResult[]; every drop/override logs (invariante 1)
 - `src/ai/agent-output-validator.ts` — anti-hallucination layer (flags ON in prod), 15-test suite

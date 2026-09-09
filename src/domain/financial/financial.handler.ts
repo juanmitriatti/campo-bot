@@ -112,11 +112,35 @@ async function buildIncomeConfirmation(data: ParsedIncome | Record<string, unkno
     msg += `\n${data.quantity} ${data.unit}`;
     if (data.unit_price) msg += ` a ${formatMoney(Number(data.unit_price), data.currency as string)}`;
   }
+  // Venta de grano vinculada (migraci\u00f3n 120): comprador y estado del precio.
+  const buyer = (data as { buyer?: string | null }).buyer;
+  const priceStatus = (data as { price_status?: string | null }).price_status;
+  if (buyer) msg += `\n\ud83c\udfe2 ${buyer}${priceStatus === 'a_fijar' ? ' \u00b7 precio a fijar' : ''}`;
+  else if (priceStatus === 'a_fijar') msg += `\n\u23f3 Precio a fijar`;
   const loc = buildLocationLabel(fieldName, plotName);
   if (loc) msg += `\n\ud83d\udccd ${loc}`;
   const dateLabel = formatEventDate((data as any).incomeDate);
   if (dateLabel) msg += `\n\ud83d\udcc5 ${dateLabel}`;
   return msg;
+}
+
+/**
+ * Tras una venta de grano con comprador: saldo que queda en ese acopio
+ * (entregado neto \u2212 vendido \u2212 retirado). Best-effort, una l\u00ednea.
+ */
+async function grainBalanceLine(userId: number, data: { category?: string; buyer?: string | null }): Promise<string | null> {
+  if (!data.buyer || !data.category) return null;
+  try {
+    const { getGrainBalance } = await import('../../services/expenses.js');
+    const rows = await getGrainBalance(userId, { crop: data.category, destinatario: data.buyer });
+    const r = rows[0];
+    if (!r) return null;
+    const tn = (kg: number) => `${(kg / 1000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} tn`;
+    if (r.balanceKg < 0) return `\u26a0\ufe0f En *${r.destinatario}* vendiste ${tn(-r.balanceKg)} m\u00e1s de lo que entregaste (${tn(r.deliveredKg)} netos). Revis\u00e1 las cargas o la venta.`;
+    return `\ud83d\udce6 Saldo en *${r.destinatario}*: ${tn(r.balanceKg)} de ${r.crop ?? data.category} (entregado ${tn(r.deliveredKg)} netos, vendido ${tn(r.soldKg)}${r.withdrawnKg > 0 ? `, retirado ${tn(r.withdrawnKg)}` : ''}).`;
+  } catch {
+    return null;
+  }
 }
 
 function buildPendingMessage(type: 'expense' | 'income', data: ParsedExpense | ParsedIncome, fieldName: string | null, plotName: string | null = null): string {
@@ -1358,6 +1382,14 @@ export class FinancialHandler {
     // Grain sale → suggest stock deduction
     const GRAIN_CATEGORIES = new Set(['soja', 'maíz', 'trigo', 'girasol', 'sorgo', 'cebada']);
     const category = (data.category || '').toLowerCase();
+    // Venta con comprador → la venta descuenta del saldo entregado a ese acopio
+    // (migración 120). Con comprador NO se ofrece descontar del stock propio:
+    // el grano ya estaba en el acopio, no en el silo.
+    if (GRAIN_CATEGORIES.has(category) && data.buyer) {
+      const line = await grainBalanceLine(userId, data);
+      if (line) messages.push(line);
+      return { messages, suggestionKey: 'income_saved' };
+    }
     if (GRAIN_CATEGORIES.has(category) && data.quantity && data.unit && fieldId) {
       try {
         const { FeatureGate } = await import('../billing/feature-gate.js');
@@ -1427,6 +1459,12 @@ export class FinancialHandler {
       // prompt also surfaces when the income goes through pending→confirm).
       const GRAIN_CATEGORIES = new Set(['soja', 'maíz', 'trigo', 'girasol', 'sorgo', 'cebada']);
       const category = (incomeData.category || '').toLowerCase();
+      // Con comprador, la venta descuenta del saldo del acopio (migración 120).
+      if (GRAIN_CATEGORIES.has(category) && incomeData.buyer) {
+        const line = await grainBalanceLine(userId, incomeData);
+        if (line) messages.push(line);
+        return { messages, suggestionKey: 'income_saved' };
+      }
       if (GRAIN_CATEGORIES.has(category) && incomeData.quantity && incomeData.unit && pending.fieldId) {
         try {
           const { FeatureGate } = await import('../billing/feature-gate.js');

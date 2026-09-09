@@ -433,7 +433,7 @@ export async function getOverview(
     `SELECT d.plot_id,
             SUM(COALESCE(
               d.quantity * COALESCE(${kgFactor('d.unit')}, 1),
-              (SELECT SUM(hl.weight_kg) FROM harvest_loads hl WHERE hl.domain_event_id = d.id),
+              (SELECT SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)) FROM harvest_loads hl WHERE hl.domain_event_id = d.id),
               pc.yield_kg
             ))::numeric AS kg
        FROM domain_events d

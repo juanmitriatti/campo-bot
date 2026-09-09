@@ -36,7 +36,8 @@ const EXPORT_TABLES: ExportTable[] = [
     filename: 'plot_crops.csv',
     description: 'Campañas de cultivo (siembra → cosecha → cierre).',
     query: `SELECT pc.id, pc.plot_id, p.name AS plot_name, pc.crop, pc.season_year, pc.season_type,
-                   pc.start_date, pc.harvested_at, pc.end_date, pc.sowed_hectares,
+                   pc.start_date, pc.harvested_at, pc.harvest_ended_at, pc.end_date, pc.sowed_hectares,
+                   pc.harvested_hectares, pc.expected_yield_kg_per_ha,
                    pc.yield_kg, pc.yield_notes, pc.created_at
             FROM plot_crops pc
             JOIN plots p ON p.id = pc.plot_id
@@ -137,9 +138,11 @@ const EXPORT_TABLES: ExportTable[] = [
   },
   {
     filename: 'harvest_loads.csv',
-    description: 'Cargas de cosecha por camión (chofer, kg, humedad, calidad).',
+    description: 'Cargas de cosecha por camión (chofer, kg bruto y neto, humedad, calidad, carta de porte, CTG).',
     query: `SELECT hl.id, hl.domain_event_id, hl.plot_crop_id,
-                   hl.driver_name, hl.weight_kg, hl.destination, hl.destinatario,
+                   hl.driver_name, hl.weight_kg, hl.net_weight_kg, hl.merma_pct,
+                   hl.gross_weight_kg, hl.tare_kg, hl.acopio_weight_kg, hl.carta_porte, hl.ctg,
+                   hl.destination, hl.destinatario,
                    hl.truck_plate, hl.humidity_pct, hl.quality_metrics, hl.notes,
                    de.event_date, de.plot_id, p.name AS plot_name,
                    p.field_id, f.name AS field_name, hl.created_at

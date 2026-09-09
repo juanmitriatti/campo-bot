@@ -68,6 +68,7 @@ const AGRONOMY_COMMANDS = new Set([
   'share_report',
   'log_crop_scouting', 'query_scoutings', 'query_observations',
   'query_harvest_loads', 'delete_harvest_loads',
+  'log_harvest_costs', 'edit_harvest_load', 'set_expected_yield', 'log_grain_withdrawal',
   'agronomy_question',
 ]);
 

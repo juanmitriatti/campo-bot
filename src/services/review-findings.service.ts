@@ -498,10 +498,86 @@ const animalEventAfterExit: Rule = async ({ userId, fieldIds }) => {
   }));
 };
 
+/**
+ * 10. Un camión pesó distinto en destino que en la balanza propia.
+ * Más de 1,5 % de diferencia entre weight_kg y acopio_weight_kg es señal de
+ * romaneo mal cargado o de balanza descalibrada — o de que faltó un camión.
+ */
+const harvestScaleDifference: Rule = async ({ userId, fieldIds, range }) => {
+  const { rows } = await pool.query(
+    `SELECT hl.id, hl.driver_name, hl.weight_kg::numeric AS kg, hl.acopio_weight_kg::numeric AS acopio_kg,
+            hl.destinatario, de.id AS event_id, de.event_date::text AS event_date,
+            pl.name AS plot_name, f.id AS field_id
+       FROM harvest_loads hl
+       JOIN domain_events de ON de.id = hl.domain_event_id
+       JOIN plots pl ON pl.id = de.plot_id
+       JOIN fields f ON f.id = pl.field_id
+      WHERE de.user_id = $1 AND de.deleted_at IS NULL AND de.event_type = 'harvest'
+        AND de.event_date BETWEEN $2::date AND $3::date
+        AND pl.field_id = ANY($4::int[])
+        AND hl.acopio_weight_kg IS NOT NULL AND hl.weight_kg > 0
+        AND ABS(hl.acopio_weight_kg - hl.weight_kg) / hl.weight_kg > 0.015`,
+    [userId, range.from, range.to, fieldIds],
+  );
+  return rows.map((r: Record<string, unknown>) => {
+    const diff = Number(r.acopio_kg) - Number(r.kg);
+    const pct = Math.round((diff / Number(r.kg)) * 1000) / 10;
+    return {
+      key: `harvest-scale-${r.id}`,
+      rule: 'harvest_scale_difference',
+      severity: 'warn' as Severity,
+      title: 'Un camión pesó distinto en el acopio',
+      body: `El camión de ${r.driver_name} (${formatDayMonth(String(r.event_date))}, «${r.plot_name}») salió con ${fmtNum(Number(r.kg))} kg y ${r.destinatario ? `en ${r.destinatario}` : 'en destino'} pesó ${fmtNum(Number(r.acopio_kg))} kg (${diff > 0 ? '+' : ''}${fmtNum(diff)} kg, ${pct > 0 ? '+' : ''}${pct} %). Revisá el romaneo o la balanza.`,
+      action: 'Ver la carga',
+      ref: { type: 'activity' as const, id: Number(r.event_id) },
+      fieldId: Number(r.field_id),
+    };
+  });
+};
+
+/**
+ * 11. Una campaña rindió bastante menos de lo que se esperaba.
+ * Solo campañas cosechadas (no en curso) con rinde esperado cargado y más de
+ * 15 % por debajo. No mira las que rindieron de más: eso no es un error.
+ */
+const yieldBelowExpected: Rule = async ({ fieldIds, range }) => {
+  const { rows } = await pool.query(
+    `SELECT pc.id, pc.crop, pc.yield_kg::numeric AS yield_kg, pc.expected_yield_kg_per_ha::numeric AS expected,
+            COALESCE(pc.sowed_hectares, pl.area_hectares)::numeric AS ha,
+            pl.id AS plot_id, pl.name AS plot_name, f.id AS field_id
+       FROM plot_crops pc
+       JOIN plots pl ON pl.id = pc.plot_id
+       JOIN fields f ON f.id = pl.field_id
+      WHERE pl.field_id = ANY($1::int[]) AND pl.deleted_at IS NULL
+        AND pc.harvested_at IS NOT NULL AND pc.harvested_at BETWEEN $2::date AND $3::date
+        AND pc.expected_yield_kg_per_ha > 0 AND pc.yield_kg > 0
+        AND COALESCE(pc.sowed_hectares, pl.area_hectares) > 0
+        AND (pc.harvested_hectares IS NULL OR pc.harvested_hectares >= COALESCE(pc.sowed_hectares, pl.area_hectares) * 0.95)
+        AND pc.yield_kg / COALESCE(pc.sowed_hectares, pl.area_hectares) < pc.expected_yield_kg_per_ha * 0.85`,
+    [fieldIds, range.from, range.to],
+  );
+  return rows.map((r: Record<string, unknown>) => {
+    const actual = Math.round(Number(r.yield_kg) / Number(r.ha));
+    const pct = Math.round(((actual - Number(r.expected)) / Number(r.expected)) * 100);
+    return {
+      key: `yield-below-${r.id}`,
+      rule: 'yield_below_expected',
+      severity: 'info' as Severity,
+      title: 'Un lote rindió menos de lo esperado',
+      body: `El ${r.crop} de «${r.plot_name}» rindió ${fmtNum(actual)} kg/ha contra ${fmtNum(Number(r.expected))} esperados (${pct} %). Si faltan camiones por cargar, el número sube solo; si no, vale la pena mirar qué pasó.`,
+      action: 'Ver el lote',
+      ref: { type: 'plot' as const, id: Number(r.plot_id) },
+      fieldId: Number(r.field_id),
+    };
+  });
+};
+
 const RULES: Rule[] = [
   productIsPlotName,
   overlappingPlantings,
   harvestBeforePlanting,
+  harvestScaleDifference,
+  yieldBelowExpected,
   outlierPlotArea,
   expensesWithoutPlot,
   hollowFields,

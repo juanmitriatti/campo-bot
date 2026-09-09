@@ -172,6 +172,25 @@ export class CropService {
     return await closePlotCrop(plotCropId) as PlotCropRow | null;
   }
 
+  /** Avance de cosecha: acumula hectáreas cosechadas (tope: sembradas o lote). */
+  async addHarvestedHectares(plotCropId: number, hectares: number): Promise<PlotCropRow | null> {
+    const { addHarvestedHectares } = await import('../../services/expenses.js');
+    return await addHarvestedHectares(plotCropId, hectares) as PlotCropRow | null;
+  }
+
+  async setExpectedYield(plotCropId: number, kgPerHa: number): Promise<PlotCropRow | null> {
+    const { setExpectedYield } = await import('../../services/expenses.js');
+    return await setExpectedYield(plotCropId, kgPerHa) as PlotCropRow | null;
+  }
+
+  /** Campaña activa o, si no hay, la última cosechada del lote (para rinde tardío, costos, esperado). */
+  async getActiveOrLastHarvested(plotId: number): Promise<PlotCropRow | null> {
+    const active = await getActiveCrop(plotId) as PlotCropRow | null;
+    if (active) return active;
+    const history = await getPlotCropHistory(plotId) as PlotCropRow[];
+    return history.find(r => r.harvested_at) ?? history[0] ?? null;
+  }
+
   async getActive(plotId: number): Promise<PlotCropRow | null> {
     return await getActiveCrop(plotId) as PlotCropRow | null;
   }

@@ -736,6 +736,9 @@ export class AgentResponseMapper {
       if (typeof input.field === 'string') data.field = input.field;
       if (typeof input.plot === 'string') data.plot = input.plot;
       if (typeof input.event_date === 'string') data.incomeDate = input.event_date;
+      // Venta de grano vinculada (migración 120): comprador y estado del precio.
+      if (typeof input.buyer === 'string' && input.buyer.trim()) data.buyer = input.buyer.trim();
+      if (input.price_status === 'fijado' || input.price_status === 'a_fijar') data.price_status = input.price_status;
 
       return {
         intent: { type: 'income', data },
@@ -1235,6 +1238,22 @@ export class AgentResponseMapper {
     if (input.destinatario != null) cmd.destinatario = input.destinatario;
     if (input.driver_names != null) cmd.driverNames = input.driver_names;
     if (input.only_without_destination != null) cmd.onlyWithoutDestination = input.only_without_destination;
+    // Cosecha comercial (migración 120). Mapeo explícito: el genérico no copia
+    // snake_case y el handler los leería undefined (invariante 2).
+    if (input.without_ctg != null) cmd.withoutCtg = !!input.without_ctg;
+    if (input.contractor_pct != null) cmd.contractorPct = input.contractor_pct;
+    if (input.contractor_per_ha != null) cmd.contractorPerHa = input.contractor_per_ha;
+    if (input.contractor_total != null) cmd.contractorTotal = input.contractor_total;
+    if (input.freight_per_tn != null) cmd.freightPerTn = input.freight_per_tn;
+    if (input.freight_total != null) cmd.freightTotal = input.freight_total;
+    if (input.kg_per_ha != null) cmd.kgPerHa = input.kg_per_ha;
+    if (toolName === 'edit_harvest_load') {
+      if (input.weight_kg != null) cmd.weightKg = input.weight_kg;
+      if (input.humidity_pct != null) cmd.humidityPct = input.humidity_pct;
+    }
+    if (input.acopio_weight_kg != null) cmd.acopioWeightKg = input.acopio_weight_kg;
+    if (input.carta_porte != null) cmd.cartaPorte = input.carta_porte;
+    if (input.ctg != null) cmd.ctg = input.ctg;
 
     // Safety net for harvest_crop: if AI missed loads[] but the raw text has a
     // `Nombre Número` list (common when user sends a single-line message), parse

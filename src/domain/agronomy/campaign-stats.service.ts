@@ -59,8 +59,24 @@ export interface CampaignStats {
     kg: number | null;
     kgPerHa: number | null;
     notes: string | null;
-    loads: { driver_name: string; weight_kg: number; destination: string | null; destinatario: string | null; event_date: string; humidity_pct: number | null; quality_metrics: Record<string, unknown> | null }[];
+    loads: { driver_name: string; weight_kg: number; net_weight_kg: number | null; destination: string | null; destinatario: string | null; event_date: string; humidity_pct: number | null; quality_metrics: Record<string, unknown> | null; ctg: string | null }[];
     avgHumidity: number | null;
+    /** Kg brutos de los camiones (antes de merma); null sin camiones. */
+    grossKg: number | null;
+    /** Kg netos comerciales de los camiones; null sin camiones. */
+    netKg: number | null;
+    /** Rinde esperado precosecha (kg/ha) y desvío del real contra él. */
+    expectedKgPerHa: number | null;
+    deviationPct: number | null;
+  };
+
+  /** Cosecha como proceso: primer y último día, avance en hectáreas. */
+  harvest: {
+    startedAt: string | null;
+    endedAt: string | null;
+    days: number | null;
+    harvestedHectares: number | null;
+    progressPct: number | null;
   };
 
   profitability: {
@@ -301,7 +317,22 @@ export class CampaignStatsService {
       event_date: formatDateAR(hl.event_date),
       humidity_pct: hl.humidity_pct != null ? Number(hl.humidity_pct) : null,
       quality_metrics: hl.quality_metrics || null,
+      net_weight_kg: hl.net_weight_kg != null ? Number(hl.net_weight_kg) : null,
+      ctg: hl.ctg || null,
     }));
+    // Bruto vs neto comercial (migración 120). yield_kg ya es neto cuando
+    // viene de camiones (updateYieldFromLoads); acá se expone la diferencia.
+    const grossKg = harvestLoads.length ? harvestLoads.reduce((a: number, hl: any) => a + Number(hl.weight_kg), 0) : null;
+    const netKg = harvestLoads.length ? harvestLoads.reduce((a: number, hl: any) => a + Number(hl.net_weight_kg ?? hl.weight_kg), 0) : null;
+    const expectedKgPerHa = (campaign as { expected_yield_kg_per_ha?: number | null }).expected_yield_kg_per_ha
+      ? Number((campaign as { expected_yield_kg_per_ha?: number | null }).expected_yield_kg_per_ha) : null;
+    const harvestedHa = (campaign as { harvested_hectares?: number | null }).harvested_hectares
+      ? Number((campaign as { harvested_hectares?: number | null }).harvested_hectares) : null;
+    const harvestEnded = (campaign as { harvest_ended_at?: Date | null }).harvest_ended_at ?? null;
+    const harvestDays = campaign.harvested_at
+      ? Math.max(1, Math.round((new Date(harvestEnded ?? campaign.harvested_at).getTime() - new Date(campaign.harvested_at).getTime()) / 86_400_000) + 1)
+      : null;
+    const progressPct = harvestedHa && areaHa ? Math.min(100, Math.round((harvestedHa / areaHa) * 100)) : null;
 
     // Average humidity (only loads that reported it)
     const humLoads = (harvestLoads || []).filter((hl: any) => hl.humidity_pct != null);
@@ -378,7 +409,18 @@ export class CampaignStatsService {
       expenses: { totalARS: expTotalARS, totalUSD: expTotalUSD, byCategory: expByCategory, count: expenses.length - excludedExpCount },
       incomes: { totalARS: incTotalARS, totalUSD: incTotalUSD, count: incomes.length - excludedIncCount },
       livestockAside: livestockAside.count > 0 ? livestockAside : null,
-      yield: { kg: yieldKg, kgPerHa: yieldKgPerHa, notes: campaign.yield_notes || null, loads: loadsList, avgHumidity },
+      yield: {
+        kg: yieldKg, kgPerHa: yieldKgPerHa, notes: campaign.yield_notes || null, loads: loadsList, avgHumidity,
+        grossKg, netKg, expectedKgPerHa,
+        deviationPct: expectedKgPerHa && yieldKgPerHa ? Math.round(((yieldKgPerHa - expectedKgPerHa) / expectedKgPerHa) * 100) : null,
+      },
+      harvest: {
+        startedAt: campaign.harvested_at ? formatDateAR(campaign.harvested_at) : null,
+        endedAt: harvestEnded ? formatDateAR(harvestEnded) : null,
+        days: harvestDays,
+        harvestedHectares: harvestedHa,
+        progressPct,
+      },
       profitability: { netARS, netUSD, costPerHaARS: costPerHa, incomePerHaARS: incomePerHa, costPerTnARS, costPerTnUSD, incomePerTnARS },
       observations: { count: obsList.length, list: obsList },
       scouting: scoutingAgg,

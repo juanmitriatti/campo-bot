@@ -272,3 +272,65 @@ function extractTime(text: string): string | null {
   const r = resolveFutureTime(text);
   return r && 'time' in r ? r.time : null;
 }
+
+// ---------------------------------------------------------------------------
+// Costo de cosecha (migración 120): respuesta libre al pending de
+// log_harvest_costs. Un solo mensaje puede traer contratista Y flete:
+//   "8%"  ·  "45.000 por ha"  ·  "3.200.000 total"  ·  "USD 9.000"
+//   "flete 18.000 por tn"  ·  "8% y flete 18 mil la tonelada"
+// ---------------------------------------------------------------------------
+
+export interface HarvestCostParse {
+  contractorPct: number | null;
+  contractorPerHa: number | null;
+  contractorTotal: number | null;
+  freightPerTn: number | null;
+  freightTotal: number | null;
+  currency: 'ARS' | 'USD' | null;
+}
+
+export function parseHarvestCostText(text: string): HarvestCostParse {
+  const out: HarvestCostParse = { contractorPct: null, contractorPerHa: null, contractorTotal: null, freightPerTn: null, freightTotal: null, currency: null };
+  if (!text || !text.trim()) return out;
+  const t = text.trim();
+  out.currency = extractCurrency(t);
+
+  // Separar la parte de flete del resto ("... y flete 18.000 por tn").
+  const freightIdx = t.search(/\bflete\b/i);
+  const contractorPart = freightIdx >= 0 ? t.slice(0, freightIdx) : t;
+  const freightPart = freightIdx >= 0 ? t.slice(freightIdx) : '';
+
+  const money = (s: string): number | null => {
+    const m = s.match(/(?:\$|usd|u\$s)?\s*([\d][\d.,]*\s*(?:millones?|mill[oó]n|palos?|mil|lucas?|k)?)/i);
+    if (!m) return null;
+    const n = normalizarMonto(m[1]);
+    return n && n > 0 ? n : null;
+  };
+  const PER_HA = /\b(?:por|x|\/|la|cada)\s*(?:ha|has|hect[aá]reas?)\b/i;
+  const PER_TN = /\b(?:por|x|\/|la|cada)\s*(?:tn|t|ton|toneladas?)\b/i;
+
+  // Contratista
+  const pct = contractorPart.match(/(\d{1,2}(?:[.,]\d)?)\s*%/);
+  if (pct) {
+    out.contractorPct = parseFloat(pct[1].replace(',', '.'));
+  } else if (/\d/.test(contractorPart)) {
+    const amount = money(contractorPart);
+    if (amount != null) {
+      if (PER_HA.test(contractorPart)) out.contractorPerHa = amount;
+      else if (PER_TN.test(contractorPart) && !/contratista/i.test(contractorPart)) {
+        // "18.000 por tn" sin la palabra flete → es flete igual
+        out.freightPerTn = amount;
+      } else out.contractorTotal = amount;
+    }
+  }
+
+  // Flete
+  if (freightPart) {
+    const amount = money(freightPart);
+    if (amount != null) {
+      if (PER_TN.test(freightPart)) out.freightPerTn = amount;
+      else out.freightTotal = amount;
+    }
+  }
+  return out;
+}

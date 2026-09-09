@@ -48,6 +48,10 @@ export interface ParsedIncome {
   unit?: string | null;
   unit_price?: number | null;
   incomeDate?: string | null;
+  /** Comprador / acopio de una venta de grano (saldo por acopio). */
+  buyer?: string | null;
+  /** 'fijado' | 'a_fijar' — si el precio de la venta ya está cerrado. */
+  price_status?: 'fijado' | 'a_fijar' | null;
 }
 
 export interface ParsedCommand {
@@ -246,10 +250,17 @@ export interface PlotCropRow {
   season_type: string;
   start_date: Date;
   end_date: Date | null;
+  /** Primer día de cosecha (una cosecha dura varios días). */
   harvested_at: Date | null;
+  /** Último día de cosecha (migración 120). */
+  harvest_ended_at?: Date | null;
   yield_kg: number | null;
   yield_notes: string | null;
   sowed_hectares: number | null;
+  /** Avance de cosecha en hectáreas, acumulable (migración 120). */
+  harvested_hectares?: number | null;
+  /** Rinde esperado precosecha, para medir el desvío (migración 120). */
+  expected_yield_kg_per_ha?: number | null;
   created_at: Date;
 }
 

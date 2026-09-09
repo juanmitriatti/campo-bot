@@ -1083,8 +1083,17 @@ router.get('/harvest-loads', requireAuth, requireFeature('agronomy'), async (req
         notes: r.notes,
         humidityPct: r.humidity_pct != null ? Number(r.humidity_pct) : null,
         qualityMetrics: r.quality_metrics,
+        // Comercial (migración 120)
+        netWeightKg: r.net_weight_kg != null ? Number(r.net_weight_kg) : null,
+        mermaPct: r.merma_pct != null ? Number(r.merma_pct) : null,
+        grossWeightKg: r.gross_weight_kg != null ? Number(r.gross_weight_kg) : null,
+        tareKg: r.tare_kg != null ? Number(r.tare_kg) : null,
+        acopioWeightKg: r.acopio_weight_kg != null ? Number(r.acopio_weight_kg) : null,
+        cartaPorte: r.carta_porte ?? null,
+        ctg: r.ctg ?? null,
         eventDate: r.event_date,
         crop: r.crop,
+        plotId: r.plot_id ?? null,
         plotName: r.plot_name,
         fieldName: r.field_name,
         createdAt: r.created_at,
@@ -1094,6 +1103,111 @@ router.get('/harvest-loads', requireAuth, requireFeature('agronomy'), async (req
       limit,
       totalPages: Math.ceil(total / limit),
     });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/**
+ * Editar una carga desde el dashboard (migración 120). Scoping por user_id EN
+ * la query (updateHarvestLoad hace el JOIN con domain_events). El neto se
+ * recalcula con grain-merma.ts si cambian kilos o humedad.
+ */
+router.patch('/harvest-loads/:id', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const { getHarvestLoadById, updateHarvestLoad } = await import('../services/expenses.js');
+    const current = await getHarvestLoadById(req.auth!.userId, id);
+    if (!current) { res.status(404).json({ error: 'Carga no encontrada' }); return; }
+
+    const b = req.body ?? {};
+    const patch: Record<string, unknown> = {};
+    const numOrNull = (v: unknown): number | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || v === '') return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    const strOrNull = (v: unknown): string | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null) return null;
+      const s = String(v).trim();
+      return s === '' ? null : s.slice(0, 100);
+    };
+    const driver = strOrNull(b.driverName);
+    if (driver !== undefined) {
+      if (!driver) { res.status(400).json({ error: 'El chofer no puede quedar vacío.' }); return; }
+      patch.driver_name = driver;
+    }
+    const weight = numOrNull(b.weightKg);
+    if (weight !== undefined) {
+      if (weight == null || weight <= 0) { res.status(400).json({ error: 'Los kilos tienen que ser mayores a 0.' }); return; }
+      patch.weight_kg = weight;
+    }
+    const hum = numOrNull(b.humidityPct);
+    if (hum !== undefined) {
+      if (hum != null && (hum < 0 || hum > 50)) { res.status(400).json({ error: 'La humedad va de 0 a 50 %.' }); return; }
+      patch.humidity_pct = hum;
+    }
+    for (const [k, col] of [['destinatario', 'destinatario'], ['truckPlate', 'truck_plate'], ['cartaPorte', 'carta_porte'], ['ctg', 'ctg'], ['notes', 'notes']] as const) {
+      const v = strOrNull(b[k]);
+      if (v !== undefined) patch[col] = v;
+    }
+    for (const [k, col] of [['acopioWeightKg', 'acopio_weight_kg'], ['grossWeightKg', 'gross_weight_kg'], ['tareKg', 'tare_kg']] as const) {
+      const v = numOrNull(b[k]);
+      if (v !== undefined) patch[col] = v;
+    }
+    if (Object.keys(patch).length === 0) { res.status(400).json({ error: 'Nada para actualizar.' }); return; }
+
+    if (patch.weight_kg != null || 'humidity_pct' in patch) {
+      const { computeNetWeight, loadMermaConfig } = await import('../utils/grain-merma.js');
+      const net = computeNetWeight(
+        Number(patch.weight_kg ?? current.weight_kg),
+        ('humidity_pct' in patch ? patch.humidity_pct : current.humidity_pct) as number | null,
+        current.crop ?? null,
+        await loadMermaConfig(),
+      );
+      patch.net_weight_kg = net.netKg;
+      patch.merma_pct = net.mermaPct;
+    }
+    const updated = await updateHarvestLoad(req.auth!.userId, id, patch);
+    if (!updated) { res.status(404).json({ error: 'Carga no encontrada' }); return; }
+    console.log(`[HARVEST] carga ${id} editada desde el dashboard user=${req.auth!.userId}: ${Object.keys(patch).join(',')}`);
+    invalidateUserContext(req.auth!.userId);
+    res.json({ ok: true, load: updated });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+router.delete('/harvest-loads/:id', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const { deleteHarvestLoadById } = await import('../services/expenses.js');
+    const deleted = await deleteHarvestLoadById(req.auth!.userId, id);
+    if (!deleted) { res.status(404).json({ error: 'Carga no encontrada' }); return; }
+    console.log(`[HARVEST] carga ${id} borrada desde el dashboard user=${req.auth!.userId}`);
+    invalidateUserContext(req.auth!.userId);
+    res.json({ ok: true, id });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/**
+ * Conciliación contra el romaneo del acopio (migración 120). El usuario pega
+ * las filas del romaneo (fecha, patente o chofer, kg); se cruzan contra las
+ * cargas registradas por fecha ± 1 día y patente o chofer, y se devuelven las
+ * que coinciden, las que difieren en kilos y las que faltan de cada lado.
+ */
+router.post('/harvest-loads/reconcile', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
+  try {
+    const { reconcileHarvestLoads } = await import('../services/harvest-reconcile.service.js');
+    const result = await reconcileHarvestLoads(req.auth!.userId, req.body ?? {});
+    if ('error' in result) { res.status(400).json({ error: result.error }); return; }
+    res.json(result);
   } catch (err) {
     handleError(err, res);
   }
@@ -2070,7 +2184,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
                             WHEN 'quintales' THEN 100
                             ELSE 1
                           END,
-             (SELECT SUM(hl.weight_kg) FROM harvest_loads hl WHERE hl.domain_event_id = e.id),
+             (SELECT SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)) FROM harvest_loads hl WHERE hl.domain_event_id = e.id),
              pc.yield_kg
            )::numeric AS quantity_kg
          FROM domain_events e
@@ -2139,7 +2253,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
                             WHEN 'quintales' THEN 100
                             ELSE 1
                           END,
-             (SELECT SUM(hl.weight_kg) FROM harvest_loads hl WHERE hl.domain_event_id = e.id),
+             (SELECT SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)) FROM harvest_loads hl WHERE hl.domain_event_id = e.id),
              pc.yield_kg
            )::numeric AS quantity_kg
          FROM domain_events e

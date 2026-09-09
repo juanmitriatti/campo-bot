@@ -143,6 +143,13 @@ export class InteractiveRouter {
       }
     }
 
+    // Costo de cosecha (migración 120): harvest_cost_yes_<plotCropId> → el
+    // handler sin montos deja el pending machine-readable y pregunta.
+    const costMatch = callbackId.match(/^harvest_cost_yes_(\d+)$/);
+    if (costMatch) {
+      return { type: 'command', data: { command: 'log_harvest_costs', plotCropId: Number(costMatch[1]) } };
+    }
+
     // Sow+harvest offer: sowharv_<base64url> → harvest_crop with _autoSow so the
     // handler registers the missing siembra first (P1-3: harvest with no prior sow).
     const sowHarvMatch = callbackId.match(/^sowharv_([A-Za-z0-9_-]+)$/);

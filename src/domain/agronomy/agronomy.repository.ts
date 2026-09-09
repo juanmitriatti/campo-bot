@@ -42,12 +42,58 @@ import {
   queryHarvestLoads as _queryHarvestLoads,
   getHarvestLoadsByCampaign as _getHarvestLoadsByCampaign,
   deleteHarvestLoads as _deleteHarvestLoads,
+  getHarvestLoadById as _getHarvestLoadById,
+  updateHarvestLoad as _updateHarvestLoad,
+  deleteHarvestLoadById as _deleteHarvestLoadById,
+  findRecentLoadByDriver as _findRecentLoadByDriver,
+  getGrainBalance as _getGrainBalance,
+  addHarvestedHectares as _addHarvestedHectares,
+  setExpectedYield as _setExpectedYield,
 } from '../../services/expenses.js';
 import { PlotRepository } from '../plots/plot.repository.js';
 import { pool } from '../../config/db.js';
 import type { UserId, FieldRow, PlotRow, PlotCropRow, DomainEventRow, PlotHistoryRow } from '../../types/index.js';
 
 export const RAINFALL_REJECTED_DUPLICATE = _RAINFALL_REJECTED_DUPLICATE;
+
+/** Fila completa de harvest_loads con el contexto del evento (migración 120). */
+export interface HarvestLoadFull {
+  id: number;
+  domain_event_id: number;
+  plot_crop_id: number | null;
+  driver_name: string;
+  weight_kg: number | string;
+  net_weight_kg: number | string | null;
+  merma_pct: number | string | null;
+  gross_weight_kg: number | string | null;
+  tare_kg: number | string | null;
+  acopio_weight_kg: number | string | null;
+  carta_porte: string | null;
+  ctg: string | null;
+  destination: string | null;
+  destinatario: string | null;
+  truck_plate: string | null;
+  humidity_pct: number | string | null;
+  quality_metrics: Record<string, unknown> | null;
+  notes: string | null;
+  event_date?: Date | string;
+  crop?: string | null;
+  plot_id?: number | null;
+  plot_name?: string | null;
+  field_name?: string | null;
+}
+
+export interface GrainBalanceRow {
+  destinatario: string;
+  crop: string | null;
+  deliveredKg: number;
+  deliveredGrossKg: number;
+  loads: number;
+  soldKg: number;
+  withdrawnKg: number;
+  balanceKg: number;
+  lastDelivery: Date | string | null;
+}
 
 export interface RainfallSummary {
   total: number;
@@ -388,6 +434,36 @@ export class AgronomyRepository {
 
   async updateYieldFromLoads(plotCropId: number): Promise<void> {
     return _updateYieldFromLoads(plotCropId);
+  }
+
+  // --- Cosecha comercial (migración 120) ---
+
+  async getHarvestLoadById(userId: UserId, loadId: number): Promise<HarvestLoadFull | null> {
+    return _getHarvestLoadById(userId, loadId) as Promise<HarvestLoadFull | null>;
+  }
+
+  async updateHarvestLoad(userId: UserId, loadId: number, patch: Partial<HarvestLoadFull>): Promise<HarvestLoadFull | null> {
+    return _updateHarvestLoad(userId, loadId, patch) as Promise<HarvestLoadFull | null>;
+  }
+
+  async deleteHarvestLoadById(userId: UserId, loadId: number): Promise<HarvestLoadFull | null> {
+    return _deleteHarvestLoadById(userId, loadId) as Promise<HarvestLoadFull | null>;
+  }
+
+  async findRecentLoadByDriver(userId: UserId, driverName: string, opts: { plotId?: number | null; days?: number } = {}): Promise<HarvestLoadFull[]> {
+    return _findRecentLoadByDriver(userId, driverName, opts) as Promise<HarvestLoadFull[]>;
+  }
+
+  async getGrainBalance(userId: UserId, opts: { crop?: string | null; destinatario?: string | null } = {}): Promise<GrainBalanceRow[]> {
+    return _getGrainBalance(userId, opts) as Promise<GrainBalanceRow[]>;
+  }
+
+  async addHarvestedHectares(plotCropId: number, hectares: number): Promise<PlotCropRow | null> {
+    return _addHarvestedHectares(plotCropId, hectares) as Promise<PlotCropRow | null>;
+  }
+
+  async setExpectedYield(plotCropId: number, kgPerHa: number): Promise<PlotCropRow | null> {
+    return _setExpectedYield(plotCropId, kgPerHa) as Promise<PlotCropRow | null>;
   }
 
   /** Completa la cantidad de un evento de cosecha que quedó sin ella (path de
