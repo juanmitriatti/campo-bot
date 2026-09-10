@@ -738,6 +738,23 @@ async function processTextMessageInner(
       // normally — instead of the "estás en medio de un registro" nudge that
       // bricked clima/reportes/queries until the user typed "cancelar". A plot
       // answer ("lote A") is exempt — that's the flow's expected input.
+      // Consulta read-only con el gasto/ingreso esperando confirmación (o el
+      // lote opcional): se responde y el flow vuelve a preguntar. Antes se
+      // guardaba solo y "¿Confirmás?" no confirmaba nada (QA sep 2026).
+      {
+        const origin = (flowCtx as { originFlow?: string }).originFlow ?? flowCtx.state;
+        const awaitsConfirm = ['expense_flow', 'income_flow'].includes(origin)
+          && (flowCtx.state === 'confirming' || conversationEngine.getCurrentStepField(flowCtx) === 'plotName');
+        if (awaitsConfirm && !isPlotAnswerToFlow(flowCtx.state, text) && isReadOnlyQuery(text) && !intentClassifier.detectsFinancialIntent(text)) {
+          console.log(`[INTERCEPT] consulta read-only con flow ${origin} esperando confirmación: respondo y re-pregunto`);
+          await conversationEngine.clearFlow(userId);
+          const rest = await processTextMessageInner(text, ctx);
+          await conversationEngine.setFlowContext(userId, flowCtx);
+          const reprompt = await conversationEngine.getCurrentStepPrompt(flowCtx, userId);
+          return reprompt ? [...rest, ...collectResponse(reprompt)] : rest;
+        }
+      }
+
       if (!isPlotAnswerToFlow(flowCtx.state, text) && (looksLikeNewActionOrQuery(text) || isOtherItemCorrectionOrDelete(text))) {
         // P0-2: a complete expense/income parked at the plot step must NOT be lost
         // just because the user pivoted to another action/query. Commit it at
@@ -1231,10 +1248,29 @@ async function processTextMessageInner(
     }
   }
 
+  // Una CONSULTA read-only con la tarjeta "¿Confirmo?" abierta se responde y
+  // la tarjeta se vuelve a mostrar: el registro sigue esperando su
+  // confirmación. Antes se auto-guardaba ("Guardé el gasto antes de seguir") y
+  // la pregunta no confirmaba nada (QA siembra/cosecha 9 sep 2026). Un WRITE
+  // nuevo sigue guardando el anterior con aviso — perderlo sería peor.
+  if (pending && isCompletePending(pending as any) && !intentClassifier.detectsFinancialIntent(text)) {
+    const trivialCmd = intentClassifier.parseCommandOnly(text);
+    const readOnlyTrivial = !!trivialCmd && READ_ONLY_TRIVIAL_COMMANDS.has(trivialCmd.command as string);
+    if (isReadOnlyQuery(text) || readOnlyTrivial) {
+      console.log(`[INTERCEPT] consulta read-only con confirmación pendiente (${(pending as any).type}): respondo y re-muestro la tarjeta`);
+      pendingStore.clear(phone);
+      const rest = await processTextMessageInner(text, ctx);
+      // Restaurar solo si la consulta no dejó otra tarjeta.
+      if (!pendingStore.get(phone)) pendingStore.set(phone, pending);
+      const { renderPendingCard } = await import('../domain/financial/financial.handler.js');
+      return [...rest, ...collectResponse(renderPendingCard(pending))];
+    }
+  }
+
   // P0: a COMPLETE pending gasto/ingreso (auto-resolved plot → awaiting confirm)
-  // must not be lost when the user pivots to a query or a different-domain action
-  // without confirming. Auto-commit it first, then process the pivot. (A pivot to
-  // a NEW financial action is left to the replaced-pending path, which keeps the
+  // must not be lost when the user pivots to a different-domain ACTION without
+  // confirming. Auto-commit it first, then process the pivot. (A pivot to a NEW
+  // financial action is left to the replaced-pending path, which keeps the
   // "guardé el anterior y registro el nuevo" UX.)
   if (pending && isCompletePending(pending as any)
       && ((looksLikeNewActionOrQuery(text) && !intentClassifier.detectsFinancialIntent(text))

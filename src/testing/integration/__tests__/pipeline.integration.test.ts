@@ -3569,4 +3569,99 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  // ==========================================================================
+  // "Cosas a mejorar" del QA de siembra/cosecha (9 sep 2026): la tarjeta de
+  // confirmación que no confirmaba, y "cuánto entregué a Cargill" scopeado a
+  // un lote por el contexto de la conversación.
+  // ==========================================================================
+  describe('confirmación que se respeta y consultas por acopio sin lote del contexto (Sep 2026)', () => {
+    let h: PipelineHarness;
+    let fieldId: number;
+    let norteId: number;
+    let surId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('qa-confirm-acopio');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Rincón') RETURNING id`, [h.userId]);
+      fieldId = (f[0] as { id: number }).id;
+      await h.q(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2)`, [fieldId, h.userId]);
+      const mk = async (name: string, ha: number) => {
+        const p = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, $2, $3) RETURNING id`, [fieldId, name, ha]);
+        return (p[0] as { id: number }).id;
+      };
+      norteId = await mk('Norte', 100);
+      surId = await mk('Sur', 60);
+      // Dos lotes con camiones a Cargill: la pregunta por acopio debe sumar los dos.
+      for (const [plotId, driver, kg] of [[norteId, 'Pérez', 30000], [surId, 'Ruiz', 25000]] as Array<[number, string, number]>) {
+        const pc = await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, harvested_at) VALUES ($1, 'soja', 2026, 'gruesa', CURRENT_DATE - 30, CURRENT_DATE) RETURNING id`, [plotId]);
+        const ev = await h.q(`INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop) VALUES ($1, $2, $3, 'harvest', CURRENT_DATE, 'soja') RETURNING id`, [h.userId, plotId, (pc[0] as { id: number }).id]);
+        await h.q(`INSERT INTO harvest_loads (domain_event_id, plot_crop_id, driver_name, weight_kg, net_weight_kg, destinatario) VALUES ($1, $2, $3, $4, $4, 'Cargill')`, [(ev[0] as { id: number }).id, (pc[0] as { id: number }).id, driver, kg]);
+      }
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"cuánto entregué a Cargill" con un lote heredado del contexto suma TODOS los lotes', async () => {
+      // El agente hereda plot=Norte de la conversación (el validador lo conserva en mensajes cortos).
+      h.fakeAgent.enqueueTool('query_harvest_loads', { destinatario: 'Cargill', view: 'aggregate', plot: 'Norte' });
+      const out = h.allText(await h.send('cuánto entregué a Cargill'));
+      expect(out).toMatch(/Resumen cosechas/);
+      expect(out).not.toMatch(/lote Norte/);
+      expect(out).toMatch(/55 tn/);
+    });
+
+    it('…pero si el usuario NOMBRA el lote, se respeta', async () => {
+      h.fakeAgent.enqueueTool('query_harvest_loads', { destinatario: 'Cargill', view: 'aggregate', plot: 'Norte' });
+      const out = h.allText(await h.send('cuánto entregué a Cargill del Norte'));
+      expect(out).toMatch(/lote Norte/);
+      expect(out).toMatch(/30 tn/);
+      expect(out).not.toMatch(/55 tn/);
+    });
+
+    it('una consulta read-only con "¿Confirmo gasto?" abierto se responde y la tarjeta vuelve: el gasto NO se guarda solo', async () => {
+      // confirm_before_save es true por default en el harness.
+      h.fakeAgent.enqueueTool('log_expense', { amount: 50000, category: 'Combustible', description: 'gasoil', plot: 'Norte' });
+      const ask = await h.send('gasté 50 mil en gasoil en el Norte');
+      expect(h.allText(ask)).toMatch(/Confirmo gasto/);
+      expect(h.allButtons(ask).some(b => b.id === 'confirm_pending')).toBe(true);
+
+      // Consulta trivial (sin agente): "mis campos".
+      const q1 = await h.send('mis campos');
+      const t1 = h.allText(q1);
+      expect(t1).toMatch(/El Rincón/);
+      expect(t1).not.toMatch(/Guardé el gasto/);
+      expect(t1).toMatch(/Sigue pendiente/);
+      expect(h.allButtons(q1).some(b => b.id === 'confirm_pending')).toBe(true);
+      const none = await h.q(`SELECT COUNT(*)::int AS n FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+      expect(Number(none[0].n)).toBe(0);
+
+      // Consulta por el agente: "cuánto gasté este mes".
+      h.fakeAgent.enqueueTool('financial_report', { period: 'month' });
+      const q2 = await h.send('cuánto gasté este mes');
+      const t2 = h.allText(q2);
+      expect(t2).not.toMatch(/Guardé el gasto/);
+      expect(t2).toMatch(/Sigue pendiente/);
+      const still = await h.q(`SELECT COUNT(*)::int AS n FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+      expect(Number(still[0].n)).toBe(0);
+
+      // Recién el tap guarda.
+      const done = await h.tap('confirm_pending');
+      expect(h.allText(done)).toMatch(/50\.000/);
+      const saved = await h.q(`SELECT amount, plot_id FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+      expect(saved).toHaveLength(1);
+      expect(Number(saved[0].plot_id)).toBe(norteId);
+    });
+
+    it('un WRITE nuevo con la tarjeta abierta sigue guardando el anterior, con aviso (nada se pierde)', async () => {
+      h.fakeAgent.enqueueTool('log_expense', { amount: 20000, category: 'Combustible', description: 'aceite', plot: 'Sur' });
+      const ask = await h.send('gasté 20 mil en aceite en el Sur');
+      expect(h.allText(ask)).toMatch(/Confirmo gasto/);
+      h.fakeAgent.enqueueTool('log_rainfall', { quantity: 10, field: 'El Rincón' });
+      const out = h.allText(await h.send('llovieron 10 mm en El Rincón'));
+      expect(out).toMatch(/Guardé el gasto antes de seguir/);
+      expect(out).toMatch(/10 ?mm/);
+      const rows = await h.q(`SELECT amount FROM expenses WHERE user_id = $1 AND deleted_at IS NULL ORDER BY id`, [h.userId]);
+      expect(rows.map(r => Number(r.amount))).toEqual([50000, 20000]);
+    });
+  });
+
 });

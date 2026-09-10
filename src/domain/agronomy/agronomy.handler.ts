@@ -1348,6 +1348,23 @@ export class AgronomyHandler {
     let fieldId: number | null = null;
     let plotName: string | null = null;
     let fieldName: string | null = null;
+    // "cuánto entregué a Cargill" es una pregunta por ACOPIO (o chofer/patente),
+    // no por lote: si el lote no está en el texto vino del contexto de la
+    // conversación (el agente lo hereda y el validador lo conserva en mensajes
+    // cortos) y acotaría la respuesta a un solo lote sin que el usuario lo
+    // note (QA siembra/cosecha 9 sep 2026, "cosas a mejorar" #3).
+    if ((cmd.plotName || cmd.fieldName) && (cmd.destinatario || cmd.driverName || cmd.truckPlate)) {
+      const { normalizeEntityName } = await import('../../utils/entity-matcher.js');
+      const normText = normalizeEntityName(String(cmd.originalText ?? ''));
+      const named = [cmd.plotName, cmd.fieldName]
+        .filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
+        .some(n => normText.includes(normalizeEntityName(n)));
+      if (!named && !userExplicitlyReferencedPlot(cmd.originalText as string | null)) {
+        console.log(`[INTERCEPT] query_harvest_loads: lote/campo del contexto descartado (pregunta por acopio/chofer): plot=${cmd.plotName ?? ''} field=${cmd.fieldName ?? ''}`);
+        cmd.plotName = null;
+        cmd.fieldName = null;
+      }
+    }
     if (cmd.plotName || cmd.fieldName) {
       const resolved = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, cmd.plotName as string | null);
       plotId = resolved.plotId ?? null;

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, type FormEvent } from 'react';
 import { useSortableTable } from '../hooks/useSortableTable';
 import { apiRequest, ApiError } from '../api/client';
 import TabHeader from './TabHeader';
+import HarvestCampaignsSummary from './HarvestCampaignsSummary';
 
 interface QualityMetrics {
   oil_pct?: number;
@@ -378,6 +379,8 @@ export default function HarvestLoadsTable() {
         description="Cada camión que salió: chofer, kilos brutos y netos, humedad, destino, CTG."
         botHint="cosechamos el lote 3: Ramírez 28.500 kg a Cargill al 15%"
       />
+
+      <HarvestCampaignsSummary fieldId={fieldId} plotId={plotId} />
 
       <div className="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded mb-4 text-sm">
         <div className="flex flex-col">

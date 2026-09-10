@@ -141,9 +141,15 @@ router.post('/', (req: Request, res: Response) => {
     void handleWhatsAppWebhook(req, res);
     return;
   }
+  // dedupKey: mismo TEXTO en vuelo = entrega duplicada (los reintentos de Meta
+  // traen el mismo id y los cubre `dedup`; esto cubre ids distintos).
+  const lockText: string | undefined = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body;
   void withUserLock(`wa:${lockPhone}`, async () => {
     await hydratePendingStores(lockPhone);
     await handleWhatsAppWebhook(req, res);
+  }, {
+    dedupKey: typeof lockText === 'string' ? lockText : null,
+    onDuplicate: () => { if (!res.headersSent) res.sendStatus(200); },
   }).catch((err) => {
     console.error('WA LOCK ERROR:', (err as Error).message);
     if (!res.headersSent) res.sendStatus(500);

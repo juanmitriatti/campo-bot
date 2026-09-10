@@ -138,10 +138,13 @@ router.post('/', (req: Request, res: Response) => {
     void handleTelegramUpdate(req);
     return;
   }
+  // dedupKey: mismo TEXTO en vuelo = entrega duplicada (ids distintos, que el
+  // dedup por update_id no ve). Solo mensajes de texto, nunca callbacks.
+  const lockText: unknown = req.body?.message?.text;
   void withUserLock(`tg:${lockChatId}`, async () => {
     await hydratePendingStores(tgPhone(lockChatId));
     await handleTelegramUpdate(req);
-  }).catch((err) => console.error('TG LOCK ERROR:', (err as Error).message));
+  }, { dedupKey: typeof lockText === 'string' ? lockText : null }).catch((err) => console.error('TG LOCK ERROR:', (err as Error).message));
 });
 
 async function handleTelegramUpdate(req: Request): Promise<void> {

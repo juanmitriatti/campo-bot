@@ -89,9 +89,16 @@ router.post('/', async (req: Request, res: Response) => {
   const lockUserId = req.auth!.userId;
   const lockNumericId = asUserId(typeof lockUserId === 'string' ? parseInt(lockUserId, 10) : lockUserId);
   const lockPhone = syntheticPhone(lockNumericId);
+  // dedupKey: el mismo TEXTO mientras el original está en vuelo es una entrega
+  // duplicada (QA siembra/cosecha 9 sep 2026: un POST llegó dos veces con 0,5 s
+  // de diferencia y la cosecha parcial se aplicó dos veces).
+  const dedupText = typeof (req.body as { message?: unknown })?.message === 'string' ? String((req.body as { message: string }).message) : null;
   await withUserLock(`tb:${lockPhone}`, async () => {
     await hydratePendingStores(lockPhone);
     await handleTestBotMessage(req, res);
+  }, {
+    dedupKey: dedupText,
+    onDuplicate: () => { res.json({ messages: [], deduped: true }); },
   });
 });
 

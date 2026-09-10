@@ -148,6 +148,26 @@ async function grainBalanceLine(userId: number, data: { category?: string; buyer
   }
 }
 
+/**
+ * Vuelve a mostrar la tarjeta "¿Confirmo gasto/ingreso?" de un pending que
+ * sigue esperando. La usa el pipeline cuando el usuario hace una consulta
+ * read-only en el medio: se responde la consulta y la tarjeta reaparece, en
+ * vez de guardar sin confirmar (QA siembra/cosecha 9 sep 2026).
+ */
+export function renderPendingCard(pending: PendingTransaction): HandlerResponse {
+  return {
+    messages: [],
+    interactive: {
+      type: 'buttons' as const,
+      body: `⏳ Sigue pendiente:\n\n${buildPendingMessage(pending.type, pending.data, pending.fieldName, pending.plotName)}`,
+      buttons: [
+        { id: 'confirm_pending', title: 'Confirmar' },
+        { id: 'cancel_pending', title: 'Cancelar' },
+      ],
+    },
+  };
+}
+
 function buildPendingMessage(type: 'expense' | 'income', data: ParsedExpense | ParsedIncome, fieldName: string | null, plotName: string | null = null): string {
   const emoji = type === 'income' ? '\ud83d\udcb0' : '\ud83d\udcb8';
   const label = type === 'income' ? 'ingreso' : 'gasto';

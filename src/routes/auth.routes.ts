@@ -33,6 +33,7 @@ import { resolveCampaign, campaignsSince } from '../utils/campaign-range.js';
 import { getOverview, resolveFieldIds, monthLabel, earliestDataDate } from '../services/overview.service.js';
 import { getReviewFindings } from '../services/review-findings.service.js';
 import { harvestCampaignsCte } from '../utils/harvest-campaign-kg.js';
+import { formatSeasonLabel, getCampaignState } from '../domain/plots/crop.service.js';
 
 const router = Router();
 const authService = new AuthService();
@@ -1039,6 +1040,134 @@ router.get('/scoutings', requireAuth, requireFeature('agronomy'), async (req: Re
 });
 
 // --- Harvest loads (per truck, with humidity + quality) ---
+
+/**
+ * Resumen de cosecha para el dashboard (paridad chat ↔ web, Sep 2026): lo que
+ * el bot guarda con la migración 120 y la web no mostraba — rinde esperado,
+ * avance en hectáreas, fechas de inicio/fin, saldo por acopio y retiros.
+ * `season` usa la MISMA ventana de campaña que el Resumen (campaign-range.ts).
+ */
+router.get('/harvest-summary', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
+  try {
+    const userId = req.auth!.userId;
+    const fieldIdRaw = req.query.fieldId ? parseInt(String(req.query.fieldId), 10) : null;
+    const fieldId = fieldIdRaw != null && !isNaN(fieldIdRaw) ? fieldIdRaw : null;
+    const plotIdRaw = req.query.plotId ? parseInt(String(req.query.plotId), 10) : null;
+    const plotId = plotIdRaw != null && !isNaN(plotIdRaw) ? plotIdRaw : null;
+    const range = resolveCampaign(req.query.season);
+    const fieldIds = await resolveFieldIds(userId, fieldId);
+
+    const { rows } = await pool.query(
+      `SELECT pc.id, pc.crop, pc.season_year, pc.season_type, pc.start_date, pc.end_date,
+              pc.harvested_at, pc.harvest_ended_at, pc.yield_kg, pc.yield_notes,
+              pc.sowed_hectares, pc.harvested_hectares, pc.expected_yield_kg_per_ha,
+              p.id AS plot_id, p.name AS plot_name, p.area_hectares,
+              f.id AS field_id, f.name AS field_name,
+              (SELECT COUNT(*)::int FROM harvest_loads hl
+                 JOIN domain_events de ON de.id = hl.domain_event_id AND de.deleted_at IS NULL
+                WHERE hl.plot_crop_id = pc.id) AS loads,
+              (SELECT SUM(hl.weight_kg) FROM harvest_loads hl
+                 JOIN domain_events de ON de.id = hl.domain_event_id AND de.deleted_at IS NULL
+                WHERE hl.plot_crop_id = pc.id) AS gross_kg,
+              (SELECT SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)) FROM harvest_loads hl
+                 JOIN domain_events de ON de.id = hl.domain_event_id AND de.deleted_at IS NULL
+                WHERE hl.plot_crop_id = pc.id) AS net_kg
+         FROM plot_crops pc
+         JOIN plots p ON p.id = pc.plot_id AND p.deleted_at IS NULL
+         JOIN fields f ON f.id = p.field_id AND f.deleted_at IS NULL
+        WHERE f.user_id = $5
+          AND f.id = ANY($1::int[])
+          AND ($2::int IS NULL OR p.id = $2)
+          AND pc.start_date <= $4::date
+          AND COALESCE(pc.end_date, $4::date) >= $3::date
+        ORDER BY f.name, p.name, pc.start_date DESC`,
+      [fieldIds, plotId, range.from, range.to, userId],
+    );
+
+    const num = (v: unknown): number | null => (v == null ? null : Number(v));
+    const day = (v: unknown): string | null => (v == null ? null : new Date(v as string).toISOString().slice(0, 10));
+    const campaigns = rows.map((r) => {
+      const area = num(r.area_hectares);
+      const sowed = num(r.sowed_hectares);
+      const totalHa = sowed && sowed > 0 ? sowed : area;
+      const harvestedHa = num(r.harvested_hectares);
+      const yieldKg = num(r.yield_kg);
+      const expected = num(r.expected_yield_kg_per_ha);
+      // Misma fórmula que la confirmación de cosecha y campaign_stats: con
+      // avance parcial el kg/ha es sobre lo cosechado.
+      const yieldBase = harvestedHa && totalHa && harvestedHa < totalHa ? harvestedHa : totalHa;
+      const yieldKgPerHa = yieldKg && yieldBase ? Math.round(yieldKg / yieldBase) : null;
+      const startedAt = day(r.harvested_at);
+      const endedAt = day(r.harvest_ended_at) ?? startedAt;
+      const harvestDays = startedAt && endedAt
+        ? Math.max(1, Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 86_400_000) + 1)
+        : null;
+      return {
+        plotCropId: Number(r.id),
+        crop: r.crop as string,
+        seasonLabel: formatSeasonLabel(Number(r.season_year), String(r.season_type ?? 'gruesa')),
+        state: getCampaignState(r as never),
+        fieldId: Number(r.field_id),
+        fieldName: r.field_name as string,
+        plotId: Number(r.plot_id),
+        plotName: r.plot_name as string,
+        areaHectares: area,
+        sowedHectares: sowed,
+        harvestedHectares: harvestedHa,
+        progressPct: harvestedHa && totalHa ? Math.min(100, Math.round((harvestedHa / totalHa) * 100)) : null,
+        expectedYieldKgPerHa: expected,
+        yieldKg,
+        yieldKgPerHa,
+        deviationPct: expected && yieldKgPerHa ? Math.round(((yieldKgPerHa - expected) / expected) * 100) : null,
+        harvestStartedAt: startedAt,
+        harvestEndedAt: endedAt,
+        harvestDays,
+        loads: Number(r.loads ?? 0),
+        grossKg: num(r.gross_kg),
+        netKg: num(r.net_kg),
+        yieldNotes: (r.yield_notes as string | null) ?? null,
+      };
+    });
+
+    const { getGrainBalance } = await import('../services/expenses.js');
+    const balance = await getGrainBalance(userId);
+
+    const { rows: withdrawalRows } = await pool.query(
+      `SELECT d.id, d.event_date::text AS event_date, d.crop, d.product AS destinatario, d.quantity, d.unit, d.notes
+         FROM domain_events d
+        WHERE d.user_id = $1 AND d.event_type = 'grain_withdrawal' AND d.deleted_at IS NULL
+        ORDER BY d.event_date DESC, d.id DESC
+        LIMIT 100`,
+      [userId],
+    );
+
+    res.json({
+      campaign: { seasonYear: range.seasonYear, label: range.label, from: range.from, to: range.to },
+      campaigns,
+      grainBalance: balance.map((b) => ({
+        destinatario: b.destinatario,
+        crop: b.crop,
+        deliveredKg: b.deliveredKg,
+        deliveredGrossKg: b.deliveredGrossKg,
+        loads: b.loads,
+        soldKg: b.soldKg,
+        withdrawnKg: b.withdrawnKg,
+        balanceKg: b.balanceKg,
+        lastDelivery: b.lastDelivery ? day(b.lastDelivery) : null,
+      })),
+      withdrawals: withdrawalRows.map((w) => ({
+        id: Number(w.id),
+        date: w.event_date as string,
+        crop: (w.crop as string | null) ?? null,
+        destinatario: (w.destinatario as string | null) ?? null,
+        quantityKg: num(w.quantity),
+        notes: (w.notes as string | null) ?? null,
+      })),
+    });
+  } catch (err) {
+    handleError(err, res);
+  }
+});
 
 router.get('/harvest-loads', requireAuth, requireFeature('agronomy'), async (req: Request, res: Response) => {
   try {
