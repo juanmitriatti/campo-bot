@@ -82,16 +82,73 @@ describe('appendFormOffer', () => {
       channel: 'whatsapp', action: 'sow_crop',
     }));
     expect(items).toHaveLength(1);
-    const item = items[0] as { interactive: { type: string; flow: { flowId: string; flowToken: string; mode: string; data: Record<string, unknown> } } };
+    const item = items[0] as { interactive: { type: string; flow: { flowId: string; flowToken: string; mode?: string; data: Record<string, unknown> } } };
     expect(item.interactive.type).toBe('flow');
     expect(item.interactive.flow.flowId).toBe('flow_sow_123');
     expect(item.interactive.flow.flowToken).toBe('tok123');
-    expect(item.interactive.flow.mode).toBe('published');
+    // WHATSAPP_FLOW_MODE no seteado → default draft → la clave `mode` viaja.
+    expect(item.interactive.flow.mode).toBe('draft');
     expect(item.interactive.flow.data.plot_id_options).toEqual([{ id: '7', title: 'Norte (La Barrida)' }]);
     expect(item.interactive.flow.data.crop_options).toEqual([{ id: 'soja', title: 'soja' }, { id: 'maíz', title: 'maíz' }]);
     // Todo lo declarado en el esquema del screen viaja, incluso vacío (Flows lo exige).
     expect(item.interactive.flow.data.crop_other_init).toBe('');
     expect(item.interactive.flow.data.plot_id_init).toBe('7'); // único lote → prellenado
+  });
+
+  // --- Alta de hacienda: mode draft/published + las 11 claves + gap B ---
+
+  const livestockOffer = {
+    messages: [], sideEffects: { offerForm: { action: 'add_livestock', prefill: {} } },
+  };
+  const livestockOpts = (locations: Array<{ id: string; title: string }>) => ({
+    plots: [], fields: [], corrals: [], crops: [],
+    lists: {
+      livestock_categories: [{ id: 'novillo', title: 'Novillo' }, { id: 'vaca', title: 'Vaca' }],
+      breeds: [{ id: 'angus', title: 'Angus' }],
+      livestock_locations: locations,
+    },
+  });
+
+  it('hacienda: mode=published omite la clave `mode` (Meta rechaza "published") y hornea las 11 claves', async () => {
+    getSettingMock.mockImplementation(async (k: string) =>
+      k === 'WHATSAPP_FLOW_ID_LIVESTOCK' ? 'flow_liv_1' : k === 'WHATSAPP_FLOW_MODE' ? 'published' : null);
+    computeOptsMock.mockResolvedValue(livestockOpts([{ id: 'p:1', title: 'Lote 1' }]));
+    const items: unknown[] = [];
+    await appendFormOffer(items as never, livestockOffer as never, waCtx);
+    expect(items).toHaveLength(1);
+    const flow = (items[0] as { interactive: { flow: { mode?: string; data: Record<string, unknown> } } }).interactive.flow;
+    expect('mode' in flow).toBe(false); // clave AUSENTE, no vacía
+    expect(Object.keys(flow.data).sort()).toEqual([
+      'breed_init', 'breed_options', 'category_init', 'category_options',
+      'count_init', 'currency_init', 'event_date_init', 'location_init',
+      'location_options', 'notes_init', 'unit_price_init',
+    ]);
+    // currency_init viaja vacío (Dropdown sin preseleccionar); el default ARS lo
+    // pone el casteo al enviar, no el prellenado. event_date sí se prellena hoy.
+    expect(flow.data.currency_init).toBe('');
+    expect(String(flow.data.event_date_init)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('hacienda: mode=draft incluye "mode":"draft"', async () => {
+    getSettingMock.mockImplementation(async (k: string) =>
+      k === 'WHATSAPP_FLOW_ID_LIVESTOCK' ? 'flow_liv_1' : k === 'WHATSAPP_FLOW_MODE' ? 'draft' : null);
+    computeOptsMock.mockResolvedValue(livestockOpts([{ id: 'p:1', title: 'Lote 1' }]));
+    const items: unknown[] = [];
+    await appendFormOffer(items as never, livestockOffer as never, waCtx);
+    const flow = (items[0] as { interactive: { flow: { mode?: string } } }).interactive.flow;
+    expect(flow.mode).toBe('draft');
+  });
+
+  it('gap B: un select REQUERIDO sin opciones (location vacío) no manda el Flow', async () => {
+    getSettingMock.mockImplementation(async (k: string) =>
+      k === 'WHATSAPP_FLOW_ID_LIVESTOCK' ? 'flow_liv_1' : k === 'WHATSAPP_FLOW_MODE' ? 'draft' : null);
+    computeOptsMock.mockResolvedValue(livestockOpts([])); // sin lotes ni corrales
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const items: unknown[] = [];
+    await appendFormOffer(items as never, livestockOffer as never, waCtx);
+    expect(items).toHaveLength(0);
+    expect(errSpy.mock.calls.some(c => String(c[0]).includes('opciones vacías') && String(c[0]).includes('location'))).toBe(true);
+    errSpy.mockRestore();
   });
 
   it('en whatsapp sin flow_id configurado no ofrece', async () => {

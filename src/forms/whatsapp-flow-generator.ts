@@ -156,6 +156,50 @@ export function buildWhatsAppFlowJson(def: FormDefinition): Record<string, unkno
 }
 
 /**
+ * Claves que el esquema de `data` del Flow declara para esta definición — las
+ * MISMAS que form-offer tiene que hornear en `flow_action_payload.data`. Se
+ * derivan de `dataSchemaFor`, así el generador y el envío nunca divergen.
+ */
+export function expectedFlowDataKeys(def: FormDefinition): string[] {
+  return Object.keys(dataSchemaFor(def));
+}
+
+function isOptionArray(v: unknown): boolean {
+  return Array.isArray(v) && v.every(
+    o => o !== null && typeof o === 'object'
+      && typeof (o as { id?: unknown }).id === 'string'
+      && typeof (o as { title?: unknown }).title === 'string',
+  );
+}
+
+export interface FlowDataValidation { ok: boolean; errors: string[] }
+
+/**
+ * Red de seguridad antes de enviar el Flow (Fase 2 del alta de hacienda): la
+ * pantalla FORM declara N claves de data y si falta UNA SOLA el Flow no abre en
+ * el celular; un valor numérico o null también lo rompe. Todo valor debe ser
+ * string, salvo los `*_options`, que son arrays de {id,title} string. NO valida
+ * que los options requeridos estén no-vacíos (eso lo chequea form-offer antes,
+ * porque necesita la definición del campo para saber si es requerido).
+ */
+export function validateFlowData(
+  def: FormDefinition,
+  data: Record<string, unknown>,
+): FlowDataValidation {
+  const errors: string[] = [];
+  for (const k of expectedFlowDataKeys(def)) {
+    if (!(k in data)) { errors.push(`falta la clave "${k}"`); continue; }
+    const v = data[k];
+    if (k.endsWith('_options')) {
+      if (!isOptionArray(v)) errors.push(`"${k}" debe ser array de {id,title} string`);
+    } else if (typeof v !== 'string') {
+      errors.push(`"${k}" debe ser string (llegó ${v === null ? 'null' : typeof v})`);
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+/**
  * Inversa de la expansión de grupos: re-arma `loads[]` desde los slots
  * `loads_<n>_<campo>` que devuelve el Flow, descartando los slots vacíos.
  * Solo deja pasar claves declaradas en la FormDefinition (el flow_token y

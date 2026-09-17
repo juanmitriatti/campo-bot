@@ -1,7 +1,7 @@
 // src/forms/__tests__/whatsapp-flow-generator.test.ts
 import { describe, it, expect } from 'vitest';
 import { FORM_DEFINITIONS } from '../form-definitions.js';
-import { buildWhatsAppFlowJson, unflattenFlowPayload, isoToFlowDate } from '../whatsapp-flow-generator.js';
+import { buildWhatsAppFlowJson, unflattenFlowPayload, isoToFlowDate, expectedFlowDataKeys, validateFlowData } from '../whatsapp-flow-generator.js';
 
 describe('buildWhatsAppFlowJson', () => {
   it('siembra: un screen con los 5 campos mapeados a componentes de Flow', () => {
@@ -79,5 +79,60 @@ describe('unflattenFlowPayload — inversa de los 5 slots', () => {
   it('siembra: pasa los escalares tal cual', () => {
     const out = unflattenFlowPayload(FORM_DEFINITIONS.sow_crop, { plot_id: '1', crop: 'soja', event_date: '2026-11-02', hectares: '', variety: 'DM 4670', flow_token: 'x' });
     expect(out).toEqual({ plot_id: '1', crop: 'soja', event_date: '2026-11-02', hectares: '', variety: 'DM 4670' });
+  });
+});
+
+describe('validateFlowData — red de seguridad de las claves del data (Fase 2)', () => {
+  // El data completo que hornea form-offer para el alta de hacienda: las 11
+  // claves, todas string salvo los *_options (arrays de {id,title}).
+  const validLivestockData = (): Record<string, unknown> => ({
+    category_options: [{ id: 'novillo', title: 'Novillo' }],
+    category_init: '',
+    count_init: '',
+    breed_options: [{ id: 'angus', title: 'Angus' }],
+    breed_init: '',
+    location_options: [{ id: 'p:1', title: 'Lote 1' }],
+    location_init: '',
+    unit_price_init: '',
+    currency_init: 'ARS',
+    event_date_init: '2026-09-17',
+    notes_init: '',
+  });
+
+  it('la definición de hacienda declara exactamente las 11 claves esperadas', () => {
+    expect(expectedFlowDataKeys(FORM_DEFINITIONS.add_livestock).sort()).toEqual([
+      'breed_init', 'breed_options', 'category_init', 'category_options',
+      'count_init', 'currency_init', 'event_date_init', 'location_init',
+      'location_options', 'notes_init', 'unit_price_init',
+    ]);
+  });
+
+  it('un data completo y bien tipado pasa', () => {
+    expect(validateFlowData(FORM_DEFINITIONS.add_livestock, validLivestockData()).ok).toBe(true);
+  });
+
+  it('si falta UNA sola clave, falla (el Flow no abriría en el celular)', () => {
+    const data = validLivestockData();
+    delete data.location_init;
+    const res = validateFlowData(FORM_DEFINITIONS.add_livestock, data);
+    expect(res.ok).toBe(false);
+    expect(res.errors.some(e => e.includes('location_init'))).toBe(true);
+  });
+
+  it('un valor numérico o null rompe el Flow y se detecta', () => {
+    const numData = { ...validLivestockData(), count_init: 0 };
+    expect(validateFlowData(FORM_DEFINITIONS.add_livestock, numData).ok).toBe(false);
+    const nullData = { ...validLivestockData(), notes_init: null };
+    expect(validateFlowData(FORM_DEFINITIONS.add_livestock, nullData).ok).toBe(false);
+  });
+
+  it('un *_options que no es array de {id,title} falla', () => {
+    const bad = { ...validLivestockData(), category_options: 'novillo' };
+    expect(validateFlowData(FORM_DEFINITIONS.add_livestock, bad).ok).toBe(false);
+  });
+
+  it('un *_options VACÍO pasa el tipado (el guard de requerido-vacío es de form-offer)', () => {
+    const empty = { ...validLivestockData(), location_options: [] };
+    expect(validateFlowData(FORM_DEFINITIONS.add_livestock, empty).ok).toBe(true);
   });
 });

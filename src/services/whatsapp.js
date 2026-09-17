@@ -248,7 +248,9 @@ export async function sendFlow(to, body, flow) {
               flow_cta: flow.cta,
               flow_action: "navigate",
               flow_action_payload: { screen: "FORM", data: flow.data },
-              mode: flow.mode,
+              // `mode` solo cuando es draft: un Flow publicado va SIN la clave
+              // (Meta rechaza `mode: "published"`). form-offer manda draft|undefined.
+              ...(flow.mode ? { mode: flow.mode } : {}),
             },
           },
         },

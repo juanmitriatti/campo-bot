@@ -3,7 +3,7 @@ import { getSetting } from '../services/settings.service.js';
 import { computeFormOptions } from './form-options.js';
 import { FORM_DEFINITIONS } from './form-definitions.js';
 import { resolveFormInitialValues } from './form-prefill.js';
-import { initKey, optionsKey, isoToFlowDate, FIXED_GROUP_SLOTS } from './whatsapp-flow-generator.js';
+import { initKey, optionsKey, isoToFlowDate, FIXED_GROUP_SLOTS, validateFlowData } from './whatsapp-flow-generator.js';
 import { getTodayISO } from '../utils/date.js';
 import type { BotResponseItem, ChannelContext } from '../services/message-pipeline.js';
 import type { HandlerResponse } from '../types/index.js';
@@ -59,6 +59,19 @@ export async function appendFormOffer(
       hadPending: !!response.sideEffects?.setPendingActivity,
     });
     const opts = await computeFormOptions(offer.action, Number(ctx.userId));
+
+    // Gap B — un select REQUERIDO sin opciones deja al usuario trabado: abre el
+    // Flow pero no puede enviar (ej. alta de hacienda sin lotes ni corrales →
+    // location_options vacío). No se manda el Flow: se loguea y, si lo pidió
+    // explícito, se avisa por texto (nunca un formulario que no se puede cerrar).
+    for (const f of def.fields) {
+      if (f.required && f.optionsSource && (opts.lists[f.optionsSource] ?? []).length === 0) {
+        console.error(`[FORM] skip offer (whatsapp): opciones vacías para el campo requerido "${f.key}" (${f.optionsSource}) action=${offer.action}`);
+        unavailable();
+        return;
+      }
+    }
+
     const data: Record<string, unknown> = {};
     for (const f of def.fields) {
       if (f.optionsSource) data[optionsKey(f.key)] = opts.lists[f.optionsSource] ?? [];
@@ -95,16 +108,34 @@ export async function appendFormOffer(
       if (encoded) prefilled.push(f.key);
     }
     console.log(`[FORM] prefill (whatsapp) action=${offer.action} campos=[${prefilled.join(', ')}]`);
-    const mode = (((await getSetting('WHATSAPP_FLOW_MODE')) as string) || 'published') === 'draft' ? 'draft' : 'published';
+
+    // Gap C — antes de enviar, verificar que estén TODAS las claves de data y que
+    // ningún valor sea null/numérico (un solo faltante y el Flow no abre en el
+    // celular). Falla ruidoso fuera de prod; en prod se loguea y no se manda un
+    // Flow roto (invariante 1: nunca en silencio).
+    const check = validateFlowData(def, data);
+    if (!check.ok) {
+      const msg = `[FORM] flow data inválida (whatsapp) action=${offer.action}: ${check.errors.join('; ')}`;
+      console.error(msg);
+      if (process.env.NODE_ENV !== 'production') throw new Error(msg);
+      unavailable();
+      return;
+    }
+
+    // Gap A — `mode: draft` solo llega a los números de prueba de la app de Meta;
+    // un Flow ya publicado va SIN la clave `mode` (Meta rechaza `mode: published`).
+    // Default draft: mientras el Flow no esté publicado, la clave viaja.
+    const modeSetting = String((await getSetting('WHATSAPP_FLOW_MODE')) || 'draft').toLowerCase();
+    const mode = modeSetting === 'draft' ? 'draft' : undefined;
     items.push({
       type: 'interactive',
       interactive: {
         type: 'flow',
         body,
-        flow: { flowId, flowToken: token, cta: 'Abrir formulario', mode, data },
+        flow: { flowId, flowToken: token, cta: 'Abrir formulario', ...(mode ? { mode } : {}), data },
       },
     });
-    console.log(`[FORM] offer flow (whatsapp) action=${offer.action} mode=${mode}`);
+    console.log(`[FORM] offer flow (whatsapp) action=${offer.action} mode=${mode ?? 'published (clave omitida)'}`);
     return;
   }
 

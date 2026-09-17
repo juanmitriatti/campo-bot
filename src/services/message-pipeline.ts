@@ -235,7 +235,9 @@ export interface BotResponseItem {
       flowId: string;
       flowToken: string;
       cta: string;
-      mode: 'draft' | 'published';
+      // Solo 'draft' o ausente: un Flow publicado va SIN la clave `mode`
+      // (Meta rechaza `mode: "published"`). Ver form-offer.ts + sendFlow.
+      mode?: 'draft';
       data: Record<string, unknown>;
     };
   };
