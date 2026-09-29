@@ -2845,11 +2845,18 @@ export class AgronomyHandler {
         const rawCrop = cmd.crop as string | null;
         const cropFilter = rawCrop ? (detectCropFromText(rawCrop) || rawCrop) : null;
         const grupoFilter = cmd.grupo as string | null;
-        const allActive = await this.cropService.listActiveCrops(userId, cropFilter, grupoFilter);
+        if (cmd.fieldName && resolved.notFound?.type === 'field') {
+          return { messages: [`No encontré el campo *${cmd.fieldName}*. Escribí *mis campos* para ver tus campos.`] };
+        }
+        // "qué hay sembrado en el campo X": sin este filtro listaba los cultivos
+        // de TODOS los campos (el campo solo se usaba para auto-resolver un lote).
+        const fieldFilter = cmd.fieldName && resolved.fieldName ? resolved.fieldName : null;
+        const allActive = (await this.cropService.listActiveCrops(userId, cropFilter, grupoFilter))
+          .filter((row) => !fieldFilter || row.field_name === fieldFilter);
 
         if (allActive.length === 0) {
           const filterMsg = cropFilter ? ` de *${cropFilter}*` : '';
-          const grupoMsg = grupoFilter ? ` en grupo *${grupoFilter}*` : '';
+          const grupoMsg = grupoFilter ? ` en grupo *${grupoFilter}*` : fieldFilter ? ` en *${fieldFilter}*` : '';
           return {
             messages: [`No hay campañas activas${filterMsg}${grupoMsg}.\n\n_Para sembrar: "sembré ${cropFilter || 'soja'} en lote X". Para ver historial: "historial del lote X"._`],
             suggestionKey: 'crop_empty',

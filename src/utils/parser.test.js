@@ -320,6 +320,51 @@ describe("parseCommand", () => {
     });
     it("q lotes tengo → list_plots (abbreviation)", () => {
       expect(parseCommand("q lotes tengo")).toMatchObject({ command: "list_plots" });
+      expect(parseCommand("q lotes tengo").unsown).toBeUndefined();
+    });
+  });
+
+  // Prod 29 sep 2026: "Que lotes tengo sin sembrar" caía en "q(ue)? lotes? tengo"
+  // y listaba TODOS los lotes.
+  describe("lotes por estado de siembra", () => {
+    it.each([
+      "Que lotes tengo sin sembrar",
+      "Esos estan sin sembrar?",
+      "qué me falta sembrar?",
+      "cuántas hectáreas me quedan por sembrar",
+      "lotes libres",
+      "qué lotes están libres?",
+      "qué lotes no sembré",
+      "que lotes no estan sembrados",
+    ])("'%s' → list_plots unsown", (t) => {
+      expect(parseCommand(t)).toMatchObject({ command: "list_plots", unsown: true });
+    });
+
+    it("toma el campo y corta la frase de estado", () => {
+      expect(parseCommand("lotes sin sembrar del campo La Barrida"))
+        .toMatchObject({ command: "list_plots", unsown: true, fieldName: "la barrida" });
+      expect(parseCommand("que lotes del campo norte estan libres?"))
+        .toMatchObject({ command: "list_plots", unsown: true, fieldName: "norte" });
+    });
+
+    it.each([
+      ["que lotes tengo sembrados", {}],
+      ["lotes sembrados", {}],
+      ["qué tengo sembrado", {}],
+      ["qué lotes tengo con soja", { crop: "soja" }],
+      ["que hay sembrado en el campo la barrida", { fieldName: "la barrida" }],
+    ])("'%s' → active_crop", (t, extra) => {
+      expect(parseCommand(t)).toMatchObject({ command: "active_crop", ...extra });
+    });
+
+    it.each([
+      "gasté 50 mil en semilla para sembrar el lote norte",
+      "tengo la tarde libre",
+      "sembré soja en el lote norte",
+    ])("'%s' NO es consulta de siembra", (t) => {
+      const r = parseCommand(t);
+      expect(r?.unsown).toBeUndefined();
+      expect(r?.command).not.toBe("active_crop");
     });
   });
 

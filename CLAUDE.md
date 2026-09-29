@@ -88,6 +88,7 @@ Implemented in `src/ai/agent-prompt-builder.ts`; drive tool selection.
 ### Crop / History Queries
 - "soja?" / "qué cultivo tiene el lote" / "has sembradas" → `active_crop` (NOT `list_plots`)
 - "cuándo se fumigó/sembró" → `query_plot_history` (NOT activity registration)
+- **"qué lotes tengo sin sembrar" / "lotes libres" / "qué me falta sembrar" → `list_plots(unsown:true)`**; "lotes sembrados" / "lotes con soja" → `active_crop` (con filtro de campo). Frases en `UNSOWN_PLOTS_QUERY_RES`/`SOWN_PLOTS_QUERY_RES` (lexicon), entradas del parser ANTES del `list_plots` genérico (cuyo `q(ue)? lotes? tengo` sin anclar listaba todo, prod 29 sep 2026). Libre = sin campaña abierta sin cosechar. Siembra parcial se rotula "sembrado parcialmente" con las ha que quedan; cosechado con campaña abierta se aclara; siembra SIN ha = lote entero (así la guarda sow_crop), nunca libre; lote SIN superficie y sin cultivo = libre + pedido de cargar la superficie (`computeUnsownPlots`, `domain/plots/sowing-status.ts`).
 
 ### Financial Queries
 - "gastos/ingresos en/del lote X" (no amount) → `financial_report(plot=X)` — NEVER `log_observation`. "gastos campo X" → `financial_report(field=X)`.

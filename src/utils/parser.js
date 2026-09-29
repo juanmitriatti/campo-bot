@@ -13,7 +13,10 @@ import {
   ACTIVITY_FILTER_PATTERNS,
 } from '../constants/agro-terms.js';
 import { canonicalProvince } from '../services/localidad-lookup.service.js';
-import { stripNameLeadIn, RESUME_FORM_RE, formActionFromWord, INVITE_ACCEPT_RE } from './lexicon.js';
+import {
+  stripNameLeadIn, RESUME_FORM_RE, formActionFromWord, INVITE_ACCEPT_RE,
+  UNSOWN_PLOTS_QUERY_RES, SOWN_PLOTS_QUERY_RES,
+} from './lexicon.js';
 
 // --- Normalización central ---
 function normalizeText(text) {
@@ -664,6 +667,22 @@ export function parseSpanishDate(str) {
   return null;
 }
 
+// --- Consultas de lotes por estado de siembra ---
+// Forma de pregunta: arranca con interrogativo/listado o termina en "?".
+const PLOT_QUERY_SHAPE = /^(?:y\s+)?(?:que|cuales|cuantos?|cuantas?|donde|en\s+que|tengo|hay|tenemos|mis|los|lotes?|dame|decime|mostrame|listame|ver|esos|estos)\b|\?\s*$/;
+// Verbo de registro (no precedido por "no"): "gasté…para sembrar el lote" no es consulta.
+const REGISTRATION_VERB = /(?<!no\s)\b(?:gaste|compre|pague|vendi|cobre|sembre|sembramos|coseche|cosechamos|fumigue|fertilice|anota|anotame|registra|carga|cargame)\b/;
+
+/** "…del campo La Barrida" → { fieldName }. Corta en la frase de estado de siembra. */
+function fieldNameFromPlotQuery(normalized) {
+  const m = normalized.match(/\bcampo\s+(.+?)\s*\??$/);
+  if (!m) return {};
+  const name = m[1]
+    .split(/\s+(?:sin|que|no|libres?|vacios?|desocupad[oa]s?|disponibles?|para|sembrad[oa]s?|tengo|hay|esta|estan|tiene|tienen|me|quedan?|faltan?)\b/)[0]
+    .trim();
+  return name ? { fieldName: name } : {};
+}
+
 // ============================================================================
 // COMMAND_PATTERNS — Reemplaza el if/else chain
 // ============================================================================
@@ -922,6 +941,23 @@ const COMMAND_PATTERNS = [
       if (/resumen/.test(type)) return { command: enable ? "enable_weekly_summary" : "disable_weekly_summary" };
       return null;
     },
+  },
+
+  // --- Lotes por estado de siembra (ANTES del list_plots genérico) ---
+  // "que lotes tengo sin sembrar" matcheaba "q(ue)? lotes? tengo" y listaba
+  // todo (prod, 29 sep 2026). Solo con forma de PREGUNTA y sin verbo de registro:
+  // "gasté 50 mil en semilla para sembrar el lote" no es una consulta.
+  {
+    command: "list_plots",
+    condition: (n) => PLOT_QUERY_SHAPE.test(n) && !REGISTRATION_VERB.test(n),
+    patterns: UNSOWN_PLOTS_QUERY_RES,
+    extract: (_m, normalized) => ({ unsown: true, ...fieldNameFromPlotQuery(normalized) }),
+  },
+  {
+    command: "active_crop",
+    condition: (n) => PLOT_QUERY_SHAPE.test(n) && !REGISTRATION_VERB.test(n),
+    patterns: SOWN_PLOTS_QUERY_RES,
+    extract: (m, normalized) => ({ ...(m[1] ? { crop: m[1] } : {}), ...fieldNameFromPlotQuery(normalized) }),
   },
 
   // --- Lotes (plots) de un campo ---

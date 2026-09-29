@@ -1079,12 +1079,13 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'list_plots',
-    description: 'Listar lotes con superficie en hectáreas. "mis lotes", "qué lotes tiene el campo", "lotes del campo X", "cuántos lotes tengo", "hectáreas del campo X", "has campo X", "superficie total". Soporta filtro por grupo/sociedad: "lotes del grupo X", "cuántas has del grupo/sociedad X", "hectáreas de la titularidad Y" → usar parámetro grupo. NO usar para "has sembradas" ni cuando mencionan un cultivo (→ active_crop).',
+    description: 'Listar lotes con superficie en hectáreas. "mis lotes", "qué lotes tiene el campo", "lotes del campo X", "cuántos lotes tengo", "hectáreas del campo X", "has campo X", "superficie total". Soporta filtro por grupo/sociedad: "lotes del grupo X", "cuántas has del grupo/sociedad X", "hectáreas de la titularidad Y" → usar parámetro grupo. "sin sembrar"/"libres"/"qué me falta sembrar" → unsown:true. NO usar para "has sembradas" ni cuando mencionan un cultivo (→ active_crop).',
     input_schema: {
       type: 'object',
       properties: {
         field: { type: 'string', description: 'Nombre del campo para filtrar lotes. Omitir para ver todos.' },
         grupo: { type: 'string', description: 'Filtrar por grupo/sociedad/titularidad de los lotes.' },
+        unsown: { type: 'boolean', description: 'Solo lotes/ha sin cultivo activo.' },
       },
     },
   },

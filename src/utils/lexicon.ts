@@ -244,6 +244,34 @@ export function isFormCancel(text: string): boolean {
 }
 
 /**
+ * Consultas por estado de siembra de los lotes (texto ya normalizado: minúsculas
+ * sin acentos). "que lotes tengo sin sembrar" caía en el regex genérico de
+ * list_plots ("q(ue)? lotes? tengo", sin anclar) y devolvía TODOS los lotes.
+ *
+ * - Fuerte: la frase sola ya es la pregunta ("sin sembrar", "me falta sembrar").
+ * - Débil ("libres", "vacíos", "para sembrar"): solo con contexto de lote/ha,
+ *   para no robar "días libres" o "tengo la tarde libre".
+ */
+const UNSOWN_STRONG = String.raw`sin\s+(?:sembrar|siembra|cultivos?|cultivar)|no\s+(?:est[aá]n?\s+|tienen?\s+|fueron\s+)?sembrad[oa]s?|(?:me\s+)?(?:falta|queda)n?\s+(?:por\s+)?sembrar|no\s+sembr[eé]|no\s+sembramos`;
+const UNSOWN_WEAK = String.raw`libres?|vac[ií]os?|desocupad[oa]s?|disponibles?|para\s+sembrar`;
+const PLOT_CONTEXT = String.raw`lotes?|has|hect[aá]reas?|superficie|campos?`;
+
+export const UNSOWN_PLOTS_QUERY_RES: RegExp[] = [
+  new RegExp(String.raw`\b(?:${UNSOWN_STRONG})\b`),
+  new RegExp(String.raw`\b(?:${PLOT_CONTEXT})\b.*\b(?:${UNSOWN_WEAK})\b`),
+];
+
+/**
+ * "qué lotes tengo sembrados" / "lotes con soja" → cultivos activos. El grupo 1,
+ * si existe, es el cultivo nombrado.
+ */
+export const SOWN_PLOTS_QUERY_RES: RegExp[] = [
+  /\blotes?\b(?:\s+\w+){0,3}\s+con\s+(soja|maiz|trigo|girasol|sorgo|cebada|avena|centeno|algodon|mani)\b/,
+  /\blotes?\b(?:\s+\w+){0,3}\s+sembrad[oa]s\b/,
+  /^(?:y\s+)?(?:que|cuanto|cuantas?|cuales)\s+(?:lotes\s+)?(?:tengo|hay|tenemos)\s+sembrad[oa]s?\b/,
+];
+
+/**
  * "unirme ABC123" / "acepto ABC123": canjear una invitación a un campo. El
  * grupo 1 es el código (6 caracteres, ver generateCode()). Lo usan el parser
  * (comando accept_invite) y el gate de canal no verificado del webhook.

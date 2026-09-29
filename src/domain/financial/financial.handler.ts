@@ -10,7 +10,8 @@ import { getActivityLabel } from '../agronomy/activity.service.js';
 import { getSetting } from '../../services/settings.service.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../../middleware/pending-field-city-handler.js';
-import { queryPlotHistory, updateConversationState } from '../../services/expenses.js';
+import { queryPlotHistory, updateConversationState, getAllActiveCrops } from '../../services/expenses.js';
+import { computeUnsownPlots } from '../plots/sowing-status.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FieldSharingService } from '../sharing/field-sharing.service.js';
 import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
@@ -2967,6 +2968,10 @@ export class FinancialHandler {
 
       // --- Plots ---
       case 'list_plots': {
+        // "qué lotes tengo sin sembrar" / "cuánto me falta sembrar": solo lo libre.
+        if (cmd.unsown) {
+          return this.renderUnsownPlots(userId, (cmd.fieldName as string | undefined) ?? null);
+        }
         // Grupo filter takes priority over field filter
         if (cmd.grupo) {
           const grupoName = (cmd.grupo as string).trim();
@@ -3813,6 +3818,80 @@ export class FinancialHandler {
 
   async categorySimilarCancel(_cmd: ParsedCommand, _userId: UserId): Promise<HandlerResponse> {
     return { messages: ['Cancelado. Si querés volver a intentarlo, registrá el gasto/ingreso de nuevo.'] };
+  }
+
+  /** "¿Qué lotes tengo sin sembrar?" — lotes libres y la parte libre de los sembrados a medias. */
+  private async renderUnsownPlots(userId: UserId, fieldName: string | null): Promise<HandlerResponse> {
+    const allPlots = await this.service.findAllUserPlots(userId);
+    if (allPlots.length === 0) {
+      return {
+        messages: ['Todavía no tenés lotes cargados.\n\nPara agregar uno escribí:\n📍 *agregar lote 1 en campo <nombre>*'],
+        suggestionKey: 'field_info_shown',
+      };
+    }
+    let plots = allPlots;
+    let scopeLabel = '';
+    if (fieldName) {
+      const field = await this.service.getFieldByName(userId, fieldName);
+      if (!field) {
+        return { messages: [`No encontré el campo *${fieldName}*. Escribí *mis campos* para ver tus campos.`] };
+      }
+      plots = allPlots.filter((p) => p.field_id === field.id);
+      scopeLabel = ` en ${field.name}`;
+    }
+
+    const activeCrops = await getAllActiveCrops(userId);
+    const unsown = computeUnsownPlots(plots, activeCrops);
+    const fmt = (n: number) => n.toLocaleString('es-AR');
+
+    if (unsown.length === 0) {
+      return {
+        messages: [`🌱 No te quedan lotes sin sembrar${scopeLabel}: todo tiene un cultivo activo.\n\n_Para ver qué hay en cada lote: *qué tengo sembrado*._`],
+        suggestionKey: 'field_info_shown',
+      };
+    }
+
+    const grouped = new Map<string, typeof unsown>();
+    for (const u of unsown) {
+      const list = grouped.get(u.fieldName) ?? [];
+      list.push(u);
+      grouped.set(u.fieldName, list);
+    }
+    const lines: string[] = [`📍 *Lotes sin sembrar${scopeLabel} (${unsown.length}):*`];
+    let totalFree = 0;
+    for (const [fName, list] of grouped) {
+      lines.push(`\n• *${fName}*`);
+      for (const u of list) {
+        if (u.freeHa != null) totalFree += u.freeHa;
+        let line = `  └ ${u.plotName} — `;
+        if (u.sownCrops.length > 0) {
+          const sown = u.sownCrops.map((c) => `${fmt(c.ha)} ha de ${c.crop}`).join(', ');
+          line += `sembrado parcialmente (${sown}); `;
+          line += u.freeHa != null && u.areaHa != null
+            ? `quedan ${fmt(u.freeHa)} de ${fmt(u.areaHa)} ha libres`
+            : 'sin la superficie del lote no sé cuánto queda libre';
+        } else {
+          line += u.freeHa != null ? `${fmt(u.freeHa)} ha libres` : 'libre, sin superficie cargada';
+        }
+        if (u.harvestedCrops.length > 0) {
+          line += ` · cosechado (${u.harvestedCrops.join(', ')}), campaña abierta`;
+        }
+        lines.push(line);
+      }
+    }
+    const totalArea = plots.reduce((s, p) => s + (Number(p.area_hectares) || 0), 0);
+    if (totalFree > 0) {
+      lines.push(`\n📐 *Libres: ${fmt(Math.round(totalFree * 100) / 100)} ha*${totalArea > 0 ? ` de ${fmt(totalArea)} ha` : ''}`);
+    }
+    const withoutArea = unsown.filter((u) => u.needsArea).map((u) => u.plotName);
+    if (withoutArea.length > 0) {
+      const names = withoutArea.map((n) => `*${n}*`).join(', ');
+      lines.push(
+        `\n💡 ${withoutArea.length === 1 ? 'Al lote' : 'A los lotes'} ${names} le${withoutArea.length === 1 ? '' : 's'} falta la superficie. ` +
+        `Cargala así sé cuánto tenés libre: _lote ${withoutArea[0]} tiene 50 ha_.`,
+      );
+    }
+    return { messages: [lines.join('\n')], suggestionKey: 'field_info_shown' };
   }
 
   private async lookupFieldName(userId: UserId, fieldId: number): Promise<string | null> {

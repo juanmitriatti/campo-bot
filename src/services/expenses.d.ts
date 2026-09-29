@@ -161,7 +161,7 @@ export function getOrCreatePlot(fieldId: number, name: string): Promise<{ id: nu
 export function getPlotByName(fieldId: number, plotName: string): Promise<{ id: number; field_id: number; name: string; area_hectares: number | null; soil_type: string | null; created_at: Date } | null>;
 export function getPlotsByField(fieldId: number): Promise<Array<{ id: number; field_id: number; name: string; area_hectares: number | null; soil_type: string | null; created_at: Date }>>;
 export function findPlotByNameAcrossFields(userId: number, plotName: string): Promise<Array<{ id: number; field_id: number; name: string; field_name: string; area_hectares: number | null; soil_type: string | null; created_at: Date }>>;
-export function findAllUserPlots(userId: number): Promise<Array<{ id: number; name: string; field_name: string; area_hectares: number | null }>>;
+export function findAllUserPlots(userId: number): Promise<Array<{ id: number; name: string; field_id: number; field_name: string; area_hectares: number | null }>>;
 export function deletePlot(plotId: number, userId?: number | null): Promise<boolean>;
 export function restorePlot(userId: number, plotName: string, fieldName: string): Promise<{ id: number; field_id: number; name: string } | null>;
 export function setPlotArea(plotId: number, hectares: number): Promise<void>;

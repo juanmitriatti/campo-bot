@@ -4005,4 +4005,53 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  // Prod 29 sep 2026: "Que lotes tengo sin sembrar" lo agarraba el regex genérico
+  // de list_plots ("q(ue)? lotes? tengo") y listaba TODOS los lotes.
+  describe('lotes sin sembrar / sembrados (prod, 29 sep 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('unsown-plots');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La barrida') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      await h.q(
+        `INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'navial', 88), ($1, 'Norte', 33), ($1, 'Sur', 44), ($1, 'Chico', 10), ($1, 'Bajo', NULL)`,
+        [fid],
+      );
+      const plot = async (name: string) =>
+        ((await h.q(`SELECT id FROM plots WHERE field_id = $1 AND name = $2`, [fid, name]))[0] as { id: number }).id;
+      // navial: 40 de 88 ha con soja · Norte: maíz entero · Chico: trigo ya cosechado · Sur: nada
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, sowed_hectares) VALUES ($1, 'soja', 2026, 40)`, [await plot('navial')]);
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year) VALUES ($1, 'maíz', 2026)`, [await plot('Norte')]);
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, harvested_at) VALUES ($1, 'trigo', 2026, NOW())`, [await plot('Chico')]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"Que lotes tengo sin sembrar" lista solo lo libre, sin llamar al agente', async () => {
+      const before = h.fakeAgent.calls.length;
+      const text = h.allText(await h.send('Que lotes tengo sin sembrar'));
+      expect(h.fakeAgent.calls.length).toBe(before);
+      expect(text).toMatch(/Sur — 44 ha libres/);
+      expect(text).toMatch(/navial — sembrado parcialmente \(40 ha de soja\); quedan 48 de 88 ha libres/);
+      expect(text).toMatch(/Chico — 10 ha libres · cosechado \(trigo\), campaña abierta/);
+      expect(text).toMatch(/Bajo — libre, sin superficie cargada/);
+      expect(text).toMatch(/lote Bajo tiene 50 ha/);
+      expect(text).not.toMatch(/Norte/);
+      expect(text).toMatch(/Libres: 102 ha/);
+    });
+
+    it('"qué lotes tengo sembrados" va a cultivos activos, no a la lista de lotes', async () => {
+      const text = h.allText(await h.send('qué lotes tengo sembrados'));
+      expect(text).toMatch(/Cultivos activos/i);
+      expect(text).not.toMatch(/Tus lotes/);
+    });
+
+    it('el agente también puede pedir la vista (list_plots unsown:true)', async () => {
+      h.fakeAgent.enqueueTool('list_plots', { unsown: true });
+      const text = h.allText(await h.send('y cuáles me quedan para meter trigo'));
+      expect(text).toMatch(/Lotes sin sembrar/);
+      expect(text).not.toMatch(/Norte/);
+    });
+  });
+
 });
