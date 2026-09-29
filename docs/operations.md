@@ -156,6 +156,13 @@ cultivo cae al flujo de pending/texto ("🌱 ¿Qué cultivo sembraste?"), que fu
 
 ### B) Formularios por WhatsApp Flows (código COMPLETO, falta solo config de Meta)
 
+> **Sep 2026 (28): hoy WhatsApp NO usa Flows.** Meta todavía no aprueba los Flows de la
+> cuenta, así que los formularios de WhatsApp van por el **colector conversacional**
+> (`WHATSAPP_FORM_PROVIDER=conversation`, default; ver [features/forms.md](features/forms.md)).
+> Todo lo de abajo sigue vigente para reactivarlos: después del paso 4, poner
+> `WHATSAPP_FORM_PROVIDER=meta_flow` en /admin (grupo `bot`). Un formulario sin `flow_id`
+> cae a `conversation` solo (log `[FORM] provider fallback`).
+
 Estado del código (todo hecho — activar es puro config):
 - ✅ `src/forms/whatsapp-flow-generator.ts` — genera el Flow JSON desde la misma
   `FormDefinition` (endpointless: las opciones dinámicas de lote/cultivo se inyectan como
@@ -163,11 +170,12 @@ Estado del código (todo hecho — activar es puro config):
   claves RSA de Flow).
 - ✅ Entrada `nfm_reply` en `whatsapp.controller.ts` — parsea la respuesta del Flow y la
   mete por el mismo `submitForm` que la Mini App (usa `flow_token` = token de sesión del form).
-- ✅ Envío saliente: `appendFormOffer` (`src/forms/form-offer.ts`) hornea las opciones con
-  `computeFormOptions` (`src/forms/form-options.ts`, la MISMA fuente que el form web) en
+- ✅ Envío saliente: `appendMetaFlowOffer` (`src/forms/form-offer-meta-flow.ts`, antes la
+  rama WhatsApp de `form-offer.ts`) hornea las opciones con `computeFormOptions`
+  (`src/forms/form-options.ts`, la MISMA fuente que el form web) en
   `flow_action_payload.data` y emite un `BotResponseItem` tipo `flow`; `sendFlow` en
-  `src/services/whatsapp.js` lo manda por la Cloud API. **Gateado por el `flow_id`**: sin
-  setting, loguea `[FORM] skip offer (whatsapp): <KEY> vacío` y sigue dark.
+  `src/services/whatsapp.js` lo manda por la Cloud API. **Gateado por
+  `WHATSAPP_FORM_PROVIDER=meta_flow` + el `flow_id`** (`src/forms/form-provider.ts`).
 
 Pasos de activación (Sep 2026 — un script, sin pegar JSON a mano):
 1. **Token con `whatsapp_business_management`** (además de `_messaging`). El token temporal
@@ -195,8 +203,7 @@ Pasos de activación (Sep 2026 — un script, sin pegar JSON a mano):
    1340112071244360, cosecha 1368168561671652, gasto 1378034054484390, ingreso
    879160111794551, labor 1330233078973920, hacienda 944223028085227. Con la
    verificación aprobada, correr el paso 4 y listo.
-   Mientras tanto el bot funciona por chat sin formularios (el gate por `flow_id` vacío
-   loguea `[FORM] skip offer (whatsapp)`).
+   Mientras tanto WhatsApp usa el formulario conversacional (provider `conversation`).
 5. **Un Flow publicado es inmutable**: al cambiar una `FormDefinition` correr con
    `--recreate` (crea un Flow nuevo con el mismo nombre → nuevo `flow_id` → `--save-settings`).
 

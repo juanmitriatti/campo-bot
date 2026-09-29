@@ -163,6 +163,12 @@ export function looksLikeLivestockCount(text: string): boolean {
  * animal/unit words ("500000 pesos por cabeza" = price per head). Only a real
  * new verb ("vendí 10 novillos a 800") or a query should abandon such a pending.
  */
+/** Solo el verbo de acción (sin palabras de consulta). */
+export function hasActionVerb(text: string): boolean {
+  const t = norm(text);
+  return !!t && ACTION_VERB.test(t);
+}
+
 export function hasActionVerbOrQuery(text: string): boolean {
   const t = norm(text);
   if (!t) return false;

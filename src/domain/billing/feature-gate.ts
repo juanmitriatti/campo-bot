@@ -129,6 +129,12 @@ export class FeatureGate {
       open_form: 'agronomy',
       open_form_sow: 'agronomy',
       open_form_harvest: 'agronomy',
+      // Antes solo siembra/cosecha estaban gateados: el formulario de gasto,
+      // ingreso, labor y hacienda se abría aunque el plan no tuviera la feature.
+      open_form_expense: 'expenses',
+      open_form_income: 'incomes',
+      open_form_activity: 'agronomy',
+      open_form_livestock: 'livestock',
       sow_crop: 'agronomy',
       harvest_crop: 'agronomy',
       active_crop: 'agronomy',

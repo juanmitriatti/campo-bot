@@ -1,4 +1,5 @@
 import { Trash2 } from 'lucide-react';
+import RegisteredBy from '../RegisteredBy';
 
 interface Income {
   id: number;
@@ -13,6 +14,7 @@ interface Income {
   created_at: string;
   plot_name: string | null;
   field_name: string | null;
+  user_id?: number | null;
   user_name: string | null;
   edited_by_name: string | null;
 }
@@ -68,6 +70,7 @@ export default function IncomeCard({ income, onEdit, onDelete }: Props) {
           <div className="flex items-center gap-2 mt-1.5 text-sm text-gray-400 dark:text-gray-300">
             <span>{formatDate(income.income_date)}</span>
             {location && <><span>·</span><span className="truncate">{location}</span></>}
+            <RegisteredBy userId={income.user_id} userName={income.user_name} editedByName={income.edited_by_name} className="before:content-['·'] before:mr-2" />
           </div>
         </div>
         <div className="flex items-center gap-2 ml-2 shrink-0">

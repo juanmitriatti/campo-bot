@@ -12,7 +12,25 @@ export interface ResolvedRefs {
   corral?: { id: number; name: string; feedlotName: string | null } | null;
   /** Cosecha: cultivo activo del lote (el form no lo pide). */
   activeCrop?: string | null;
+  /** Gasto/ingreso: la categoría la ESCRIBIÓ el usuario ("Otro…"), no la eligió de su lista. */
+  newCategory?: boolean;
 }
+
+/**
+ * Tablas que prueban que el registro SE GUARDÓ (submit). Un handler puede
+ * contestar con una pregunta en vez de guardar (categoría ambigua, lote a
+ * elegir…) y eso NO es éxito: antes el submit lo contaba como tal por tener un
+ * mensaje, quemaba el token y el registro no existía. Formulario nuevo = entrada
+ * acá (form-registry.test lo exige).
+ */
+export const FORM_PERSISTS_TO: Record<FormAction, readonly string[]> = {
+  sow_crop: ['plot_crops'],
+  harvest_crop: ['domain_events', 'plot_crops', 'harvest_loads'],
+  log_expense: ['expenses'],
+  log_income: ['incomes'],
+  log_activity: ['domain_events'],
+  add_livestock: ['livestock_groups', 'livestock_movements'],
+};
 
 const ACTIVITY_COMMAND: Record<string, string> = {
   spraying: 'log_spraying',
@@ -86,6 +104,9 @@ export function buildFormCommand(
         amount: data.amount as number,
         currency: (data.currency as string) === 'USD' ? 'USD' : 'ARS',
         category: data.category as string,
+        // Escrita a mano en el form: crear si no existe (el handler igual
+        // ofrece la parecida si hay una). Elegida de la lista: match exacto.
+        category_match: refs.newCategory ? 'new' : 'exact',
         description,
         plotName: loc.plotName,
         fieldName: loc.fieldName,

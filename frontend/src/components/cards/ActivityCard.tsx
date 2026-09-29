@@ -16,11 +16,13 @@ interface Activity {
   plot_id: number | null;
   plot_name: string | null;
   field_name: string | null;
+  user_id?: number | null;
   user_name: string | null;
   edited_by_name: string | null;
 }
 
 import { Wind, FlaskConical, Sprout, Tractor, Wheat, Droplet, Stethoscope, Trash2 } from 'lucide-react';
+import RegisteredBy from '../RegisteredBy';
 import type { LucideIcon } from 'lucide-react';
 
 const ACTIVITY_TYPE_LABELS: Record<string, { label: string; Icon: LucideIcon }> = {
@@ -81,6 +83,7 @@ export default function ActivityCard({ activity, onEdit, onDelete }: Props) {
           <div className="flex items-center gap-2 mt-1.5 text-sm text-gray-400 dark:text-gray-300">
             <span>{formatDate(activity.event_date)}</span>
             {location && <><span>·</span><span className="truncate">{location}</span></>}
+            <RegisteredBy userId={activity.user_id} userName={activity.user_name} editedByName={activity.edited_by_name} className="before:content-['·'] before:mr-2" />
           </div>
         </div>
         <div className="flex items-center gap-2 ml-2 shrink-0">

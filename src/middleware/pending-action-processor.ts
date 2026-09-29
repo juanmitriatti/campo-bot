@@ -52,6 +52,16 @@ const NEW_ACTION_WRITE_COMMANDS: ReadonlySet<string> = new Set([
   'record_livestock_birth', 'record_livestock_death',
   'log_health_event', 'log_repro_event', 'log_weighing', 'log_tacto',
   'add_stock', 'create_warehouse',
+  // Compartir otro campo mientras está abierto "¿a qué número?" es un pedido
+  // NUEVO, no la respuesta: sin esto, "compartir campo Sur" se consumía como
+  // si fuera el teléfono del pending anterior.
+  'share_field',
+  // Pedir un formulario (o retomar uno) con un pending abierto es un pedido
+  // NUEVO: el pending se resuelve con la política de pivot (se guarda si
+  // estaba completo o se avisa) y nunca se come "formulario de gasto" como
+  // respuesta del slot. Un solo colector activo por usuario.
+  'open_form', 'open_form_sow', 'open_form_harvest', 'open_form_expense', 'open_form_income',
+  'open_form_activity', 'open_form_livestock', 'resume_form',
 ]);
 
 /**
@@ -354,6 +364,7 @@ export const SLOT_LABEL: Record<SlotName, string> = {
   count: 'la cantidad de animales',
   hectares: 'las hectáreas',
   time: 'la hora',
+  phone: 'el número de teléfono',
 };
 
 function buildAskPromptForMissing(missing: SlotName[], fallback?: string): string {

@@ -9,7 +9,7 @@ import { interpolate } from '../../utils/template.js';
 import type { FinancialService } from '../financial/financial.service.js';
 import { logError } from '../../services/error-logger.js';
 import { GrainPriceService, formatGrainBoard, normalizeGrainCrop } from '../../services/grain-price.service.js';
-import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse, InteractiveMessage } from '../../types/index.js';
+import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse, InteractiveMessage, FormAction } from '../../types/index.js';
 
 // Singleton a nivel módulo: el caché de 30 min de la pizarra vive acá.
 const grainPriceService = new GrainPriceService();
@@ -199,6 +199,15 @@ export class SystemHandler {
           sideEffects: { offerForm: { action, prefill: {}, explicit: true } },
         };
       }
+
+      case 'resume_form':
+        // Retomar un formulario conversacional a medio cargar. Lo resuelve
+        // form-offer → colector conversacional (necesita el canal, que el
+        // handler no tiene). Sin argumento = el último.
+        return {
+          messages: [],
+          sideEffects: { resumeForm: { action: (cmd.formAction as FormAction | null | undefined) ?? null } },
+        };
 
       case 'show_documents_menu':
         return {

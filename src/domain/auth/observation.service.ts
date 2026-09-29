@@ -1,4 +1,5 @@
 import { pool } from '../../config/db.js';
+import { accessibleRowSql } from '../shared/accessible-fields.js';
 import { sqlNormalizedName } from '../../utils/entity-matcher.js';
 import { normalizeObservationText, detectObservationCategory } from '../../services/observations.js';
 
@@ -145,7 +146,7 @@ export class ObservationService {
   async getUserObservations(userId: number, page: number = 1, limit: number = 20, filters: ObservationFilters = {}): Promise<PaginatedResult> {
     const offset = (page - 1) * limit;
 
-    const conditions = ['(o.user_id = $1 OR o.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1))'];
+    const conditions = [accessibleRowSql('o', 1)];
     const params: (number | string)[] = [userId];
     let paramIdx = 1;
 
@@ -230,7 +231,7 @@ export class ObservationService {
     const offset = (page - 1) * limit;
 
     // Show activities from own data + activities on plots in accessible fields
-    const conditions = ['(de.user_id = $1 OR de.plot_id IN (SELECT p.id FROM plots p WHERE p.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1)))', 'de.deleted_at IS NULL'];
+    const conditions = [accessibleRowSql('de', 1), 'de.deleted_at IS NULL'];
     const params: (number | string)[] = [userId];
     let paramIdx = 1;
 
@@ -301,7 +302,7 @@ export class ObservationService {
   async getUserExpenses(userId: number, page: number = 1, limit: number = 20, filters: FinancialFilters = {}): Promise<PaginatedExpenses> {
     const offset = (page - 1) * limit;
 
-    const conditions = ['(e.user_id = $1 OR e.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1))', 'e.deleted_at IS NULL'];
+    const conditions = [accessibleRowSql('e', 1), 'e.deleted_at IS NULL'];
     const params: (number | string)[] = [userId];
     let paramIdx = 1;
 
@@ -379,7 +380,7 @@ export class ObservationService {
   async getUserIncomes(userId: number, page: number = 1, limit: number = 20, filters: FinancialFilters = {}): Promise<PaginatedIncomes> {
     const offset = (page - 1) * limit;
 
-    const conditions = ['(i.user_id = $1 OR i.field_id IN (SELECT field_id FROM field_members WHERE user_id = $1))', 'i.deleted_at IS NULL'];
+    const conditions = [accessibleRowSql('i', 1), 'i.deleted_at IS NULL'];
     const params: (number | string)[] = [userId];
     let paramIdx = 1;
 

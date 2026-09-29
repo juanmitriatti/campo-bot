@@ -45,6 +45,63 @@ async function findActiveOrTerminalSubscription(userId: number): Promise<Subscri
  * Resolves the access mode for a user. Failures default to `full` so a
  * transient DB hiccup never silently locks a paying user out.
  */
+/**
+ * ¿Es miembro de un campo cuyo DUEÑO tiene acceso pleno?
+ *
+ * Por qué existe: el colaborador invitado tiene su propia cuenta, con su propia
+ * prueba de 14 días. Al vencer quedaba en solo-lectura y no podía cargar nada
+ * en el campo del dueño —aunque el dueño pague Pro+, que es justamente el plan
+ * que incluye compartir—. El empleado se volvía inútil a las dos semanas y el
+ * feature que se está pagando dejaba de funcionar.
+ *
+ * La regla: el dueño paga para que su equipo cargue. Se chequea acá, en el
+ * STEP 0, porque el gate corre antes de saber a qué campo apunta el mensaje.
+ * Alcanza con UN campo con dueño al día.
+ */
+async function inheritsAccessFromOwner(userId: number): Promise<number | null> {
+  const { rows } = await pool.query(
+    `SELECT f.user_id AS owner_id
+       FROM field_members fm
+       JOIN fields f ON f.id = fm.field_id
+      WHERE fm.user_id = $1
+        AND f.user_id <> $1
+        AND f.deleted_at IS NULL
+      ORDER BY f.id`,
+    [userId],
+  );
+  for (const r of rows) {
+    const ownerId = Number(r.owner_id);
+    // Sin recursión a propósito: se mira el modo propio del dueño. Una cadena
+    // de herencias (A hereda de B que hereda de C) no es un caso real y sería
+    // una forma de saltarse el pago encadenando cuentas vencidas.
+    const ownerSub = await findActiveOrTerminalSubscription(ownerId);
+    if (!ownerSub) return ownerId; // grandfathered = pleno
+    if (ownerModeIsFull(ownerSub)) return ownerId;
+  }
+  return null;
+}
+
+/** El mismo criterio que `getUserAccessMode`, sin la parte de herencia. */
+function ownerModeIsFull(sub: SubscriptionRow): boolean {
+  const now = Date.now();
+  switch (sub.status) {
+    case 'active':
+    case 'past_due':
+      return true;
+    case 'trial':
+      return !!sub.trial_ends_at && sub.trial_ends_at.getTime() > now;
+    case 'cancelled':
+      return (
+        (!!sub.current_period_end && sub.current_period_end.getTime() > now) ||
+        (!!sub.trial_ends_at && sub.trial_ends_at.getTime() > now)
+      );
+    case 'expired':
+      return false;
+    default:
+      return true;
+  }
+}
+
 export async function getUserAccessMode(userId: number): Promise<AccessMode> {
   try {
     const sub = await findActiveOrTerminalSubscription(userId);
@@ -53,6 +110,16 @@ export async function getUserAccessMode(userId: number): Promise<AccessMode> {
     if (!sub) return 'full';
 
     const now = Date.now();
+
+    if (ownerModeIsFull(sub)) return 'full';
+
+    // Propio vencido: antes de bloquear, se mira si es COLABORADOR de alguien
+    // que sí está al día. El dueño paga Pro+ para que su equipo cargue.
+    const inheritedFrom = await inheritsAccessFromOwner(userId);
+    if (inheritedFrom != null) {
+      console.log(`[ACCESS] user=${userId} heredado de owner=${inheritedFrom}`);
+      return 'full';
+    }
 
     switch (sub.status) {
       case 'active':

@@ -1,3 +1,4 @@
+import RegisteredBy from '../RegisteredBy';
 interface Observation {
   id: number;
   observation_text: string;
@@ -7,6 +8,7 @@ interface Observation {
   updated_at: string | null;
   plot_name: string | null;
   field_name: string | null;
+  user_id?: number | null;
   user_name: string | null;
 }
 
@@ -41,6 +43,9 @@ export default function ObservationCard({ observation, onEdit }: Props) {
           {location && (
             <p className="text-sm text-gray-400 dark:text-gray-300 mt-1.5 truncate">{location}</p>
           )}
+          <p className="text-sm text-gray-400 dark:text-gray-300 mt-1 truncate">
+            <RegisteredBy userId={observation.user_id} userName={observation.user_name} />
+          </p>
         </div>
         <button
           onClick={() => onEdit(observation)}

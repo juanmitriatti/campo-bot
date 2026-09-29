@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import multer from "multer";
 import { pool } from "../config/db.js";
+import { normalizePhone } from "../utils/phone.js";
 import { getObservationsByField, getWeekObservationCount } from "../services/observations.js";
 import { generateWeeklyReport, getReportsByField, getAllReports, getReportById } from "../services/agro-report.js";
 import { getAllSettings, setSetting, SECRET_KEYS, SETTING_DEFINITIONS } from "../services/settings.service.js";
@@ -2105,8 +2106,19 @@ router.post("/api/users", async (req, res) => {
       return res.status(400).json({ error: "El teléfono es obligatorio" });
     }
 
-    // Check duplicate phone
-    const existing = await pool.query("SELECT id FROM users WHERE phone_number = $1", [phone.trim()]);
+    // El teléfono se guarda en la forma CANÓNICA (utils/phone.ts), no como lo
+    // tipeó el admin: si no, un alta con "+54 9 2364 46-9135" crea una cuenta
+    // que el webhook nunca encuentra.
+    const canonicalPhone = normalizePhone(phone);
+    if (!canonicalPhone) {
+      return res.status(400).json({ error: "Teléfono inválido. Usá el formato +54 9 11 1234 5678." });
+    }
+
+    // Check duplicate phone (comparando canónico de ambos lados)
+    const existing = await pool.query(
+      "SELECT id FROM users WHERE phone_number = $1 OR canonical_phone_ar(phone_number) = $1",
+      [canonicalPhone]
+    );
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: "Ya existe un usuario con ese teléfono" });
     }
@@ -2127,7 +2139,7 @@ router.post("/api/users", async (req, res) => {
       `INSERT INTO users (phone_number, name, last_name, city, email, province, status, whatsapp_verified_at, plan_id)
        VALUES ($1, $2, $3, $4, $5, $6, 'active', CASE WHEN $7::boolean THEN NOW() ELSE NULL END, $8)
        RETURNING *`,
-      [phone.trim(), name || null, last_name || null, city || null, email || null, province || null, whatsapp_verified === true, planId]
+      [canonicalPhone, name || null, last_name || null, city || null, email || null, province || null, whatsapp_verified === true, planId]
     );
 
     const u = result.rows[0];

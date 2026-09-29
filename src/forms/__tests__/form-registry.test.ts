@@ -4,11 +4,12 @@
 // Invariante 2 aplicada a formularios.
 import { describe, it, expect } from 'vitest';
 import { FORM_DEFINITIONS, FORM_ACTIONS, validateFormPayload } from '../form-definitions.js';
-import { buildFormCommand } from '../form-commands.js';
+import { buildFormCommand, FORM_PERSISTS_TO } from '../form-commands.js';
 import { buildWhatsAppFlowJson, unflattenFlowPayload } from '../whatsapp-flow-generator.js';
 import { SETTING_DEFINITIONS } from '../../services/settings.service.js';
 import { CALLBACK_MAP } from '../../domain/interactive/interactive.router.js';
 import { SYSTEM_COMMANDS } from '../../domain/router.js';
+import { FeatureGate } from '../../domain/billing/feature-gate.js';
 
 const HOY = '2026-09-06';
 
@@ -32,6 +33,33 @@ describe('registro de formularios — los 3 lugares', () => {
       const route = (CALLBACK_MAP as Record<string, { command: string }>)[button];
       expect(route, `${button} (${action})`).toBeDefined();
       expect(SYSTEM_COMMANDS.has(route.command), `${route.command} en SYSTEM_COMMANDS`).toBe(true);
+    }
+  });
+
+  it('proveedor de formularios de WhatsApp: default conversation, meta_flow disponible para reactivar', () => {
+    const defs = SETTING_DEFINITIONS as Record<string, { group: string; default: string; options?: string[] }>;
+    expect(defs.WHATSAPP_FORM_PROVIDER.default).toBe('conversation');
+    expect(defs.WHATSAPP_FORM_PROVIDER.options).toEqual(['conversation', 'meta_flow']);
+    expect(defs.WHATSAPP_FORM_PROVIDER.group).toBe('bot');
+    expect(defs.FORM_CONVERSATION_DRAFT_TTL_HOURS.default).toBe('24');
+    // Los settings de Flows siguen existiendo (reactivación sin deploy).
+    expect(defs.WHATSAPP_FLOW_MODE).toBeDefined();
+  });
+
+  it('cada formulario está gateado por la feature de su dominio, y resume_form ruteado', () => {
+    const expected: Record<string, string> = {
+      open_form_sow: 'agronomy', open_form_harvest: 'agronomy', open_form_expense: 'expenses',
+      open_form_income: 'incomes', open_form_activity: 'agronomy', open_form_livestock: 'livestock',
+    };
+    for (const [cmd, feature] of Object.entries(expected)) {
+      expect(FeatureGate.commandToFeature(cmd), cmd).toBe(feature);
+    }
+    expect(SYSTEM_COMMANDS.has('resume_form')).toBe(true);
+  });
+
+  it('cada formulario declara qué tablas prueban que se guardó (el submit no confía en el texto)', () => {
+    for (const action of FORM_ACTIONS) {
+      expect(FORM_PERSISTS_TO[action]?.length, action).toBeGreaterThan(0);
     }
   });
 

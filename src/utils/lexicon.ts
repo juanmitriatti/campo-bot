@@ -222,3 +222,67 @@ export function numberOnlyAppearsAsArea(text: string | null | undefined, n: numb
   }
   return seen > 0;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Formularios conversacionales (WhatsApp sin Flows, Sep 2026).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * "Omitir" un campo OPCIONAL del formulario conversacional. Nunca aplica a un
+ * obligatorio (el colector lo re-pregunta). Incluye el "no" pelado: ante
+ * "¿Es de algún lote? (opcional)", "no" significa "no, seguí".
+ */
+const SKIP_RE = /^(?:omit\w*|salt\w*|skip|pasa|paso|siguiente|no|nop|no se|ni idea|nada|ninguno|ninguna|sin\s+\w+|no\s+(?:importa|tengo|aplica|hace\s+falta|corresponde)|dejalo|deja|vacio|despues|luego)\.?$/;
+export function isSkipAnswer(text: string): boolean {
+  return SKIP_RE.test(normLex(text).trim().replace(/[!.,]+$/, ''));
+}
+
+/** Cancelar el formulario entero (NO incluye "no": eso omite o abre "Editar"). */
+const FORM_CANCEL_RE = /^(?:cancel\w*|cancela(?:lo|r)?|sali(?:r)?|parar?|basta|terminar|descart\w*|olvidalo|olvidate|chau|no\s+quiero|dejalo\s+asi\s+no|no\s+lo\s+cargues)\.?$/;
+export function isFormCancel(text: string): boolean {
+  return FORM_CANCEL_RE.test(normLex(text).trim().replace(/[!.,]+$/, ''));
+}
+
+/** "Retomar"/"volvamos al gasto": retomar un formulario a medio cargar. */
+export const RESUME_FORM_RE = /^(?:(?:dale\s+)?(?:retom\w*|segui\w*|sigamos|continu\w*|volv\w*)(?:\s+(?:con|a|al|a\s+la))?\s*(?:el|la|lo)?\s*(?:formulario|form|carga|registro)?\s*(?:de(?:l)?\s+(?:la\s+|el\s+)?)?(siembra|cosecha|gastos?|ingresos?|labor(?:es)?|hacienda)?)$/;
+
+/** Palabra del formulario → acción (para "formulario de gasto" / "volvamos al gasto"). */
+export function formActionFromWord(word: string | null | undefined): 'sow_crop' | 'harvest_crop' | 'log_expense' | 'log_income' | 'log_activity' | 'add_livestock' | null {
+  const w = normLex(word ?? '').trim();
+  if (!w) return null;
+  if (w.startsWith('siembr')) return 'sow_crop';
+  if (w.startsWith('cosech')) return 'harvest_crop';
+  if (w.startsWith('gast')) return 'log_expense';
+  if (w.startsWith('ingres')) return 'log_income';
+  if (w.startsWith('labor')) return 'log_activity';
+  if (w.startsWith('hacienda')) return 'add_livestock';
+  return null;
+}
+
+/**
+ * Verbos del MISMO dominio que un formulario abierto: "gasté 200 lucas de
+ * gasoil" dentro del formulario de gasto es una RESPUESTA (se mergea), no un
+ * pivot. Un verbo de OTRO dominio ("llovió 20 mm") parquea el formulario.
+ */
+export const FORM_DOMAIN_VERBS: Record<string, RegExp> = {
+  log_expense: /\b(gast\w*|pagu\w*|pago|compr\w*|abon\w*|carg\w*|anot\w*|registr\w*)\b/,
+  log_income: /\b(vend\w*|cobr\w*|ingres\w*|factur\w*|carg\w*|anot\w*|registr\w*)\b/,
+  sow_crop: /\b(sembr\w*|siembr\w*|plant\w*|carg\w*|anot\w*|registr\w*)\b/,
+  harvest_crop: /\b(cosech\w*|trill\w*|rindi\w*|carg\w*|anot\w*|registr\w*)\b/,
+  log_activity: /\b(fumig\w*|pulveri\w*|aplic\w*|fertili\w*|labr\w*|rastr\w*|are|regu\w*|rieg\w*|carg\w*|anot\w*|registr\w*)\b/,
+  add_livestock: /\b(compr\w*|entr\w*|ingres\w*|carg\w*|agreg\w*|anot\w*|registr\w*)\b/,
+};
+export function matchesFormDomainVerb(action: string, text: string): boolean {
+  const re = FORM_DOMAIN_VERBS[action];
+  return !!re && re.test(normLex(text));
+}
+
+/** Tipo de labor por verbo/sustantivo (form de labores). */
+export function detectActivityTypeTerm(text: string): 'spraying' | 'fertilization' | 'tillage' | 'irrigation' | null {
+  const t = normLex(text);
+  if (/\b(fumig\w*|pulveri\w*|aplicacion|herbicid\w*|curasemill\w*)\b/.test(t)) return 'spraying';
+  if (/\b(fertili\w*|abon\w*)\b/.test(t)) return 'fertilization';
+  if (/\b(labr\w*|rastr\w*|disc\w*|cincel\w*|are|arada|arado|escarific\w*)\b/.test(t)) return 'tillage';
+  if (/\b(rieg\w*|regu\w*|regamos|regar)\b/.test(t)) return 'irrigation';
+  return null;
+}

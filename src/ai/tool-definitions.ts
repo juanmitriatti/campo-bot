@@ -1401,11 +1401,12 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // ========================
   {
     name: 'share_field',
-    description: 'Generar código de invitación para compartir campo. "compartir campo X".',
+    description: 'Dar acceso a otra persona a un campo. "compartir campo X", "compartir campo X con 11 2345 6789".',
     input_schema: {
       type: 'object',
       properties: {
         field: { type: 'string', description: 'Nombre del campo a compartir.' },
+        phone: { type: 'string', description: 'Teléfono del invitado, si lo dijo.' },
       },
       required: ['field'],
     },

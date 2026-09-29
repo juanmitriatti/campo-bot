@@ -139,7 +139,7 @@ export const SYSTEM_COMMANDS = new Set([
   'enable_weekly_summary', 'disable_weekly_summary',
   'set_name', 'set_city',
   'open_form', 'open_form_sow', 'open_form_harvest', 'open_form_expense', 'open_form_income',
-  'open_form_activity', 'open_form_livestock',
+  'open_form_activity', 'open_form_livestock', 'resume_form',
 ]);
 
 // Financial-handler commands dispatched ahead of the *_COMMANDS sets (category

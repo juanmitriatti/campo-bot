@@ -22,6 +22,7 @@
  * - `counts.livestock` is HEAD, not groups. The banner reads it as animals.
  */
 import { pool } from '../config/db.js';
+import { accessibleFieldsSql } from '../domain/shared/accessible-fields.js';
 import { campaignRange, type CampaignRange } from '../utils/campaign-range.js';
 import { getTodayISO } from '../utils/date.js';
 import { harvestCampaignsCte } from '../utils/harvest-campaign-kg.js';
@@ -229,9 +230,21 @@ export async function earliestDataDate(userId: number): Promise<string | null> {
 }
 
 export async function resolveFieldIds(userId: number, fieldId: number | null): Promise<number[]> {
-  if (fieldId != null) return [fieldId];
+  if (fieldId != null) {
+    // Se VALIDA el acceso en vez de confiar en el id que mandó el cliente.
+    // Antes se devolvía `[fieldId]` a ciegas: con el scoping por campo del
+    // resto de la query, pedir `?field_id=` de un campo ajeno mostraba sus
+    // números. Sin acceso, se responde como si el campo no existiera.
+    const { rows } = await pool.query(
+      `SELECT 1 FROM (${accessibleFieldsSql(1)}) AS acc(id) WHERE acc.id = $2 LIMIT 1`,
+      [userId, fieldId],
+    );
+    return rows.length > 0 ? [fieldId] : [-1];
+  }
+  // "Todos los campos" incluye los COMPARTIDOS. Miraba solo `user_id`, así que
+  // un campo que te compartieron quedaba fuera del Resumen entero.
   const { rows } = await pool.query(
-    `SELECT id FROM fields WHERE user_id = $1 AND deleted_at IS NULL`,
+    `SELECT id FROM (${accessibleFieldsSql(1)}) AS acc(id)`,
     [userId],
   );
   const ids = rows.map((r: { id: number }) => Number(r.id));
@@ -268,7 +281,11 @@ export async function getOverview(
   range: CampaignRange,
   opts: OverviewOptions = { includeUnassigned: false },
 ): Promise<OverviewPayload> {
-  const accessible = `SELECT field_id FROM field_members WHERE user_id = $1`;
+  // Fuente ÚNICA (invariante 3). Antes era `SELECT field_id FROM field_members`
+  // a secas: sin la pata del dueño, un campo propio SIN fila en `field_members`
+  // no entraba. Esa fila la crea `getOrCreateField` como efecto colateral, así
+  // que el Resumen dependía de que ese insert hubiera corrido alguna vez.
+  const accessible = accessibleFieldsSql(1);
   const includeUnassigned = opts.includeUnassigned;
   const p = [userId, range.from, range.to, fieldIds, includeUnassigned];
 
@@ -287,7 +304,15 @@ export async function getOverview(
   const eventJoins = `LEFT JOIN plots pl ON pl.id = d.plot_id
        LEFT JOIN corrals cr ON cr.id = d.corral_id
        LEFT JOIN feedlots fl ON fl.id = cr.feedlot_id`;
-  const eventScope = `d.user_id = $1
+  // La pata de acceso era `d.user_id = $1` a secas: en un campo COMPARTIDO cada
+  // socio veía únicamente los eventos que había cargado él, y toda la actividad
+  // agronómica del otro (siembras, cosechas, labores) era invisible en el
+  // Resumen. Ahora entra lo que está en un campo accesible; el `user_id` queda
+  // solo para las filas SIN ubicación, que no cuelgan de ningún campo.
+  const eventScope = `(
+          COALESCE(pl.field_id, fl.field_id) IN (${accessible})
+          OR d.user_id = $1
+        )
         AND d.deleted_at IS NULL
         AND d.event_date BETWEEN $2::date AND $3::date
         AND (

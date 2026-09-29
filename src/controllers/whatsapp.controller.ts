@@ -215,7 +215,8 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
           console.log('[FORM] nfm_reply recibido, flow_token presente:', !!flowToken, 'claves:', parsed ? Object.keys(parsed).length : 0);
           if (flowToken && parsed) {
             const { submitForm } = await import('../forms/form-submit.service.js');
-            const result = await submitForm(flowToken, parsed, { flowResponse: true });
+            // alreadyLocked: este webhook ya corre dentro de withUserLock(`wa:…`).
+            const result = await submitForm(flowToken, parsed, { flowResponse: true, alreadyLocked: true });
             if (!result.ok) await sendMessage(phone, result.error);
             // En éxito submitForm ya mandó la confirmación al chat.
           }

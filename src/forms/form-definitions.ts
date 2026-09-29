@@ -54,9 +54,16 @@ export interface FormDefinition {
   /** Lotes visibles en los selects de lote. */
   plotFilter?: 'withActiveCrop';
   fields: FormField[];
-  /** Reglas entre campos que la validación por campo no puede expresar. */
-  crossCheck?: (data: Record<string, unknown>) => string[];
+  /**
+   * Reglas entre campos que la validación por campo no puede expresar.
+   * Un issue con `field` es un requerido CONDICIONAL de ese campo: el form web
+   * y el Flow lo muestran como texto, el colector conversacional lo pregunta.
+   */
+  crossCheck?: (data: Record<string, unknown>) => Array<string | FormIssue>;
 }
+
+/** Problema de validación atribuible (o no) a un campo. */
+export interface FormIssue { field?: string; message: string }
 
 export const CURRENCY_OPTIONS: FormOption[] = [
   { id: 'ARS', title: 'Pesos (ARS)' },
@@ -112,7 +119,7 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
       },
     ],
     crossCheck: d => (d.yield_kg !== undefined && d.yield_kg_per_ha !== undefined)
-      ? ['Cargá el rinde por hectárea O el total, no los dos.'] : [],
+      ? [{ field: 'yield_kg', message: 'Cargá el rinde por hectárea O el total, no los dos.' }] : [],
   },
   log_expense: {
     action: 'log_expense',
@@ -157,13 +164,13 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
       { key: 'notes', label: 'Observaciones', type: 'text', required: false },
     ],
     crossCheck: d => {
-      const errs: string[] = [];
+      const errs: FormIssue[] = [];
       const t = d.activity_type;
       if ((t === 'spraying' || t === 'fertilization' || t === 'tillage') && !d.product) {
-        errs.push(t === 'tillage' ? 'Indicá el implemento o producto de la labranza.' : 'Indicá el producto aplicado.');
+        errs.push({ field: 'product', message: t === 'tillage' ? 'Indicá el implemento o producto de la labranza.' : 'Indicá el producto aplicado.' });
       }
-      if (t === 'irrigation' && d.quantity === undefined) errs.push('Indicá los mm de riego en Dosis o cantidad.');
-      if (d.quantity !== undefined && !d.unit) errs.push('Indicá la unidad de la dosis.');
+      if (t === 'irrigation' && d.quantity === undefined) errs.push({ field: 'quantity', message: 'Indicá los mm de riego en Dosis o cantidad.' });
+      if (d.quantity !== undefined && !d.unit) errs.push({ field: 'unit', message: 'Indicá la unidad de la dosis.' });
       return errs;
     },
   },
@@ -194,6 +201,39 @@ export function isFormAction(x: unknown): x is FormAction {
 type ValidationResult =
   | { ok: true; data: Record<string, unknown> }
   | { ok: false; errors: string[] };
+
+/**
+ * Validación de UN campo escalar o fecha, la misma para los tres renderers
+ * (form web, WhatsApp Flow, colector conversacional). Devuelve el valor
+ * normalizado, `undefined` si viene vacío (y es opcional) o el error en
+ * lenguaje de usuario. Nunca duplicar estas reglas en un renderer.
+ */
+export function validateFieldValue(
+  f: FormField,
+  raw: unknown,
+  todayISO: string,
+  label?: string,
+): { value?: unknown; error?: string } {
+  const errors: string[] = [];
+  if (f.type === 'date') {
+    const empty = raw === undefined || raw === null || raw === '';
+    if (empty) return f.required ? { error: `${label ?? f.label} es obligatoria.` } : {};
+    const s = String(raw);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return { error: `${label ?? f.label} inválida.` };
+    const d = new Date(s + 'T00:00:00Z');
+    if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) return { error: `${label ?? f.label} inválida.` };
+    if (f.noFuture && s > todayISO) return { error: `${label ?? f.label} no puede ser futura.` };
+    return { value: s };
+  }
+  const value = validateScalar(f, raw, errors, label);
+  return errors.length > 0 ? { error: errors[0] } : { value };
+}
+
+/** Issues del crossCheck normalizados (los strings sueltos quedan sin campo). */
+export function crossCheckIssues(def: FormDefinition, data: Record<string, unknown>): FormIssue[] {
+  if (!def.crossCheck) return [];
+  return def.crossCheck(data).map(i => (typeof i === 'string' ? { message: i } : i));
+}
 
 function validateScalar(f: FormField, raw: unknown, errors: string[], label?: string): unknown {
   const name = label ?? f.label;
@@ -246,14 +286,9 @@ export function validateFormPayload(
   for (const f of def.fields) {
     const raw = f.type === 'select' ? selectRaw(f, payload) : payload[f.key];
     if (f.type === 'date') {
-      const empty = raw === undefined || raw === null || raw === '';
-      if (empty) { if (f.required) errors.push(`${f.label} es obligatoria.`); continue; }
-      const s = String(raw);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) { errors.push(`${f.label} inválida.`); continue; }
-      const d = new Date(s + 'T00:00:00Z');
-      if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) { errors.push(`${f.label} inválida.`); continue; }
-      if (f.noFuture && s > todayISO) { errors.push(`${f.label} no puede ser futura.`); continue; }
-      data[f.key] = s;
+      const r = validateFieldValue(f, raw, todayISO);
+      if (r.error) { errors.push(r.error); continue; }
+      if (r.value !== undefined) data[f.key] = r.value;
     } else if (f.type === 'group') {
       if (raw === undefined || raw === null) continue;
       if (!Array.isArray(raw)) { errors.push(`${f.label} inválidas.`); continue; }
@@ -274,7 +309,7 @@ export function validateFormPayload(
     }
   }
 
-  if (errors.length === 0 && def.crossCheck) errors.push(...def.crossCheck(data));
+  if (errors.length === 0) errors.push(...crossCheckIssues(def, data).map(i => i.message));
 
   return errors.length > 0 ? { ok: false, errors } : { ok: true, data };
 }

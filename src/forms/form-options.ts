@@ -9,6 +9,7 @@
 import { KNOWN_CROPS } from '../utils/crops.js';
 import { getUserFields, getPlotsByField, getAllActiveCrops } from '../services/expenses.js';
 import { CategoryRepository } from '../domain/financial/category.repository.js';
+import { CategoryService } from '../domain/financial/category.service.js';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants/agro-terms.js';
 import { FeedlotRepository } from '../domain/feedlot/feedlot.repository.js';
 import { LIVESTOCK_CATEGORIES, LIVESTOCK_CATEGORY_LABEL } from '../domain/livestock/livestock.types.js';
@@ -95,7 +96,15 @@ export async function computeFormOptions(
   if (sources.has('expense_categories') || sources.has('income_categories')) {
     const kind = sources.has('expense_categories') ? 'expense' : 'income';
     const repo = new CategoryRepository();
-    const own = await repo.listActive(userId, kind);
+    let own = await repo.listActive(userId, kind);
+    if (own.length === 0) {
+      // Mismo catálogo que va a matchear el handler: sin esto el form ofrecía
+      // las categorías por defecto de la constante, el usuario elegía una y el
+      // handler (que busca en user_categories, vacía) contestaba con un picker
+      // en vez de guardar.
+      await new CategoryService(repo).bootstrapDefaults(userId, kind);
+      own = await repo.listActive(userId, kind);
+    }
     const names = own.length > 0 ? own.map(c => c.name) : [...(kind === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES)];
     lists[kind === 'expense' ? 'expense_categories' : 'income_categories'] = names.map(n => ({ id: n, title: n }));
   }

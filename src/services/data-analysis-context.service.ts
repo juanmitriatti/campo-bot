@@ -17,6 +17,7 @@
  */
 
 import { pool } from '../config/db.js';
+import { accessibleFieldsSql } from '../domain/shared/accessible-fields.js';
 import { getOverview, type OverviewPayload, type PlotRow } from './overview.service.js';
 import { CampaignStatsService, type CampaignStats } from '../domain/agronomy/campaign-stats.service.js';
 import type { CampaignRange } from '../utils/campaign-range.js';
@@ -153,7 +154,10 @@ async function rawList(sql: string, params: unknown[], map: (r: Record<string, u
 
 async function loadRawLists(scope: AnalysisScope, limit: number): Promise<Record<ListKey, RawList>> {
   const { userId, fieldIds, plotIds, includeUnassigned, range } = scope;
-  const accessible = `SELECT field_id FROM field_members WHERE user_id = $1`;
+  // Fuente ÚNICA (invariante 3). Era `SELECT field_id FROM field_members` a
+  // secas: sin la pata del dueño, un campo propio sin fila de membresía no
+  // entraba y el análisis se hacía sobre datos incompletos sin avisar.
+  const accessible = accessibleFieldsSql(1);
   // $1 user, $2 from, $3 to, $4 fieldIds, $5 includeUnassigned, $6 plotIds (o NULL), $7 limit
   const p = [userId, range.from, range.to, fieldIds, includeUnassigned, plotIds, limit];
 

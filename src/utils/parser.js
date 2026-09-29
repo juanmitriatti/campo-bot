@@ -13,7 +13,7 @@ import {
   ACTIVITY_FILTER_PATTERNS,
 } from '../constants/agro-terms.js';
 import { canonicalProvince } from '../services/localidad-lookup.service.js';
-import { stripNameLeadIn } from './lexicon.js';
+import { stripNameLeadIn, RESUME_FORM_RE, formActionFromWord } from './lexicon.js';
 
 // --- Normalización central ---
 function normalizeText(text) {
@@ -737,7 +737,32 @@ const COMMAND_PATTERNS = [
     command: "check_stock",
     patterns: [/^(stock|insumos)$/i],
   },
-  { command: "open_form", patterns: [/^formularios?(\s+(de\s+)?(la\s+|el\s+)?(siembra|cosecha|gastos?|ingresos?|labor(es)?|hacienda))?$/] },
+  {
+    // "formulario" pelado → picker; "formulario de gasto" → directo a ese
+    // formulario (un mensaje menos: antes el argumento se ignoraba).
+    command: "open_form",
+    patterns: [/^formularios?(?:\s+(?:de\s+)?(?:la\s+|el\s+|un\s+|una\s+)?(siembra|cosecha|gastos?|ingresos?|labor(?:es)?|hacienda))?$/],
+    extract: (m) => {
+      const action = formActionFromWord(m[1]);
+      if (!action) return {};
+      const cmd = { sow_crop: "open_form_sow", harvest_crop: "open_form_harvest", log_expense: "open_form_expense",
+        log_income: "open_form_income", log_activity: "open_form_activity", add_livestock: "open_form_livestock" }[action];
+      return { command: cmd };
+    },
+  },
+  {
+    // "retomar" / "volvamos al gasto" / "seguir con el formulario": retoma un
+    // formulario conversacional a medio cargar (WhatsApp). Sin argumento = el
+    // último. Patrón en lexicon.ts (RESUME_FORM_RE, fuente única).
+    command: "resume_form",
+    patterns: [RESUME_FORM_RE],
+    extract: (m, normalized) => {
+      // "seguí" / "volvé" solos son demasiado genéricos: exigir "retom-" o
+      // una mención del formulario/registro.
+      if (!/^(?:dale\s+)?retom/.test(normalized) && !m[1] && !/\b(formulario|form|carga|registro)\b/.test(normalized)) return null;
+      return { formAction: formActionFromWord(m[1]) };
+    },
+  },
   { command: "menu", patterns: [/^(menu|menú|opciones)$/] },
   // El CTA de los feature-gates dice "Escribí *plan*" — este comando tiene que
   // existir y ser trivial (costo cero, disponible con trial vencido).
@@ -838,6 +863,21 @@ const COMMAND_PATTERNS = [
       /^(?:mi\s+)?agenda\s*\??$/i,
       /^(?:que|qué)\s+ten(?:go|ia|ía)\s+(?:pendiente|que\s+hacer)\s*\??$/i,
     ],
+  },
+
+  // --- Aceptar una invitación a un campo compartido ---
+  // Es un comando REGEX y no solo del agente por tres motivos, todos del mismo
+  // momento: es el primer mensaje que manda un invitado que recién llega, no
+  // tiene por qué haber IA disponible (cuota, caída, kill switch), y con la
+  // prueba vencida el gate del STEP 0 bloquea todo lo que no sea trivial — así
+  // que el invitado no podía ni entrar al campo que le compartieron.
+  // El código son 6 caracteres del alfabeto sin ambiguos (ver generateCode()).
+  {
+    command: "accept_invite",
+    patterns: [
+      /^(?:unirme|unirme\s+al?\s+campo|aceptar(?:\s+invitaci[oó]n)?|acepto)\s+([A-Za-z0-9]{6})\s*\.?$/i,
+    ],
+    extract: (m) => ({ code: m[1].toUpperCase() }),
   },
 
   // --- Pizarra de granos (precio de mercado) ---

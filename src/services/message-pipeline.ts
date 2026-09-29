@@ -101,6 +101,10 @@ import {
 } from '../middleware/conversation-lock-store.js';
 import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveButton, InteractiveListSection, UserId, PendingTransaction, ParsedCommand } from '../types/index.js';
 import { appendFormOffer } from '../forms/form-offer.js';
+import { formSessionService } from './form-session.service.js';
+import {
+  formConversationStore, handleFormText, handleFormTap, type FormConversationDeps,
+} from '../forms/conversation/form-conversation.service.js';
 
 // ============================================================
 // Grafo de servicios — UNA sola instancia compartida por los 3 canales.
@@ -193,6 +197,7 @@ export async function hydratePendingStores(phone: string): Promise<void> {
     pendingCampaignCloseStore.hydrate(phone),
     deferredFirstActionStore.hydrate(phone),
     conversationLockStore.hydrate(phone),
+    formConversationStore.hydrate(phone),
   ]);
 }
 
@@ -352,7 +357,7 @@ async function attachSuggestion(
   response.suggestionKey = undefined; // el render sale de response.suggestion
   response.suggestion = undefined;
   if (!key || response.interactive) return;
-  if (response.sideEffects?.offerForm) {
+  if (response.sideEffects?.offerForm || response.sideEffects?.resumeForm) {
     console.log(`[SUGGEST] ${key} omitida: la oferta de formulario gana`);
     return;
   }
@@ -581,6 +586,56 @@ export async function commitFinancialFlowFieldLevel(
 }
 
 // ============================================================
+// Formulario conversacional (WhatsApp sin Flows) — dependencias del pipeline
+// ============================================================
+
+/** ¿Hay otro colector abierto (flow / pending / tarjeta / ciudad / hectáreas)? */
+async function hasOpenCollector(ctx: ChannelContext): Promise<boolean> {
+  return Boolean(
+    pendingActStore.get(ctx.phone)
+    || pendingStore.get(ctx.phone)
+    || pendingCityStore.get(ctx.phone)
+    || pendingPlotAreaStore.get(ctx.phone)
+    || (await conversationEngine.getFlowContext(ctx.userId)).state !== 'idle',
+  );
+}
+
+/**
+ * Un TAP que abre un formulario conversacional (picker `form_open_*`) con otro
+ * colector abierto: misma política de pivot que el texto (el texto la aplica
+ * en las ramas de flow y de pending). Se guarda lo completo o se avisa, y se
+ * cierra — nunca dos preguntas abiertas.
+ */
+async function resolveCollectorsBeforeForm(ctx: ChannelContext): Promise<BotResponseItem[]> {
+  const notes: BotResponseItem[] = [];
+  const flowCtx = await conversationEngine.getFlowContext(ctx.userId);
+  if (flowCtx.state !== 'idle') {
+    notes.push(...(await commitFinancialFlowFieldLevel(ctx.userId, flowCtx, ctx.phone)));
+    await conversationEngine.clearFlow(ctx.userId);
+    console.log(`[INTERCEPT] flow ${flowCtx.state} cerrado: el usuario abrió un formulario`);
+  }
+  const pendingAct = pendingActStore.get(ctx.phone);
+  if (pendingAct) {
+    const { flushPendingActivityOnPivot } = await import('../middleware/pending-activity-pivot.js');
+    const pivotNotes = await flushPendingActivityOnPivot(ctx.userId, pendingAct, agronomyHandler);
+    pendingActStore.clear(ctx.phone);
+    notes.push(...pivotNotes.map(t => ({ type: 'text' as const, text: t })));
+    console.log(`[INTERCEPT] pending ${pendingAct.command} resuelto: el usuario abrió un formulario`);
+  }
+  return notes;
+}
+
+function formConversationDeps(ctx: ChannelContext): FormConversationDeps {
+  return {
+    collectResponse,
+    processRest: (text: string) => processTextMessageInner(text, ctx),
+    parseCommandOnly: (text: string) => intentClassifier.parseCommandOnly(text) as { command: string } | null,
+    readOnlyCommands: new Set([...READ_ONLY_TRIVIAL_COMMANDS, ...SAFE_INTERRUPTION_COMMANDS]),
+    hasOtherCollector: () => hasOpenCollector(ctx),
+  };
+}
+
+// ============================================================
 // processTextMessage — EL pipeline de texto canónico
 // ============================================================
 
@@ -679,6 +734,33 @@ async function processTextMessageInner(
       await conversationEngine.clearFlow(userId);
       const response = await financialHandler.resumeCreateCategory(userId, text, flowData);
       return collectResponse(response);
+    }
+  }
+
+  // --- Formulario conversacional abierto (WhatsApp sin Flows) ---
+  // Prioridad: formulario > flow > pending > tarjeta > agente. Un solo colector
+  // activo por usuario: si DESPUÉS de abrir el formulario arrancó otro colector
+  // (un tap viejo que abrió un flow, por ejemplo), gana el más nuevo y el
+  // formulario queda estacionado con aviso (nunca dos preguntas abiertas).
+  {
+    const formPtr = formConversationStore.get(phone);
+    if (formPtr) {
+      const flowNow = await conversationEngine.getFlowContext(userId);
+      const flowStarted = flowNow.state !== 'idle' && flowNow.startedAt ? new Date(flowNow.startedAt).getTime() : 0;
+      const actNow = pendingActStore.get(phone);
+      const newerCollector = flowStarted > formPtr.timestamp || (actNow && actNow.timestamp > formPtr.timestamp);
+      if (newerCollector) {
+        formConversationStore.clear(phone);
+        await formSessionService.setConversationStatus(formPtr.token, Number(userId), 'parked');
+        console.log(`[INTERCEPT] formulario ${formPtr.action} estacionado: hay un colector más nuevo abierto`);
+        const rest = await processTextMessageInner(text, ctx);
+        return [{ type: 'text', text: '💡 Dejé el formulario a medio cargar. Escribí *retomar* cuando quieras seguir.' }, ...rest];
+      }
+      const formItems = await handleFormText(text, ctx, formConversationDeps(ctx));
+      if (formItems) {
+        conversationLogger.log(userId, phone, text, formItems[0]?.text ?? formItems[0]?.interactive?.body ?? null, 'command', `form_conversation:${formPtr.action}`, null, null, false, Date.now() - startTime, formItems.some(i => i.type === 'interactive'), null, null, null, ctx.channel).catch(() => {});
+        return formItems;
+      }
     }
   }
 
@@ -1555,7 +1637,10 @@ async function processTextMessageInner(
 
     const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
     if (response) {
-      if (response.messages.length === 0 && !response.attachment && !response.interactive) {
+      // Una oferta/retoma de formulario viene sin mensaje propio: el ítem lo
+      // arma appendFormOffer ("formulario de gasto", "retomar").
+      const formOnly = !!(response.sideEffects?.offerForm || response.sideEffects?.resumeForm);
+      if (response.messages.length === 0 && !response.attachment && !response.interactive && !formOnly) {
         response.messages = ['No pude procesar ese comando. Escribi *ayuda* para ver las opciones.'];
       }
       response.suggestionKey = resolveSuggestionKey(intent.data.command, response.suggestionKey);
@@ -1851,6 +1936,16 @@ export async function handleInteractiveReply(
   if (ctx.handleDocCallback) {
     const channelItems = await ctx.handleDocCallback(callbackId, ctx);
     if (channelItems !== null) return channelItems;
+  }
+
+  // Taps del formulario conversacional (cform_*): la sesión se resuelve solo
+  // entre las del usuario que tapeó; un tap viejo o duplicado se explica.
+  if (callbackId.startsWith('cform_')) {
+    const formItems = await handleFormTap(callbackId, ctx, formConversationDeps(ctx));
+    if (formItems) {
+      conversationLogger.log(userId, phone, `[${callbackId}]`, formItems[0]?.text ?? formItems[0]?.interactive?.body ?? null, 'tap', 'form_conversation', null, null, false, null, formItems.some(i => i.type === 'interactive'), null, null, null, ctx.channel).catch(() => {});
+      return formItems;
+    }
   }
 
   // --- Flow callbacks ---
@@ -2281,6 +2376,10 @@ export async function handleInteractiveReply(
       conversationLogger.log(userId, phone, `[${callbackId}]`, 'confirmación destructiva', 'tap', intent.data.command, null, null, false, null, true, null, null, null, ctx.channel).catch(() => {});
       return askDestructiveConfirmation(intent.data, userId, phone);
     }
+    // Abrir un formulario por chat (WhatsApp) cierra lo que estuviera abierto.
+    const preFormNotes = ctx.channel === 'whatsapp' && /^open_form_/.test(intent.data.command)
+      ? await resolveCollectorsBeforeForm(ctx)
+      : [];
     const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
     if (response) {
       // Un handler que pide arrancar un flow desde un TAP (cmd_agregar_campo →
@@ -2303,7 +2402,7 @@ export async function handleInteractiveReply(
       applySideEffects(response.sideEffects, phone);
       conversationLogger.log(userId, phone, `[${callbackId}]`, response.messages[0] ?? response.interactive?.body ?? null, 'tap', intent.data.command, null, null, false, null, !!response.interactive, null, null, null, ctx.channel).catch(() => {});
       await attachSuggestion(response, userId, ctx.channel, intent.data.command);
-      const items = collectResponse(response);
+      const items = [...preFormNotes, ...collectResponse(response)];
       await appendFormOffer(items, response, ctx);
       return items;
     }

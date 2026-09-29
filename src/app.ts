@@ -18,6 +18,7 @@ import mapRoutes from './routes/map.routes.js';
 import formsRoutes from './routes/forms.routes.js';
 import plansRoutes from './routes/plans.routes.js';
 import dataAnalysisRoutes from './routes/data-analysis.routes.js';
+import sharingRoutes from './routes/sharing.routes.js';
 import { startScheduler } from './services/scheduler.js';
 import { runMigrations } from './scripts/run-migrations.js';
 
@@ -69,6 +70,7 @@ app.get('/api/health', (_req: express.Request, res: express.Response) => {
 app.use('/api/auth', authRoutes);
 // Análisis de datos con IA (tab del dashboard). Mismo prefijo: el front usa apiRequest('/data-analysis').
 app.use('/api/auth', dataAnalysisRoutes);
+app.use('/api/auth', sharingRoutes);
 
 // Test bot chat — requires JWT auth
 app.use('/api/test-bot', requireAuth, testBotRoutes);

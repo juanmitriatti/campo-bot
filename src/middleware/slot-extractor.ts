@@ -17,6 +17,7 @@ import { normalizarMonto, detectarCategoria, detectarCategoriaIngreso } from '..
 import { extractCropFromText } from '../utils/crops.js';
 import { stripPlotCorrectionPrefix } from './flows/field-step-helpers.js';
 import { resolveFutureTime } from '../services/reminder.service.js';
+import { normalizePhone, looksLikePhone } from '../utils/phone.js';
 
 /** Canonical slot names. Add here when a new shared slot type is introduced. */
 export type SlotName =
@@ -32,7 +33,8 @@ export type SlotName =
   | 'currency'
   | 'count'
   | 'hectares'
-  | 'time';
+  | 'time'
+  | 'phone';
 
 export type ExtractedSlots = Partial<Record<SlotName, unknown>>;
 
@@ -94,6 +96,11 @@ export function extractSlots(
 
   const time = extractTime(stripped);
   if (time) out.time = time;
+
+  // Teléfono: para "compartir campo X con <número>" y para la respuesta al
+  // pending "¿a qué número?". Vive ACÁ y no en el handler (invariante 4).
+  const phone = extractPhone(stripped);
+  if (phone) out.phone = phone;
 
   return out;
 }
@@ -333,4 +340,28 @@ export function parseHarvestCostText(text: string): HarvestCostParse {
     }
   }
   return out;
+}
+
+/**
+ * Teléfono argentino dentro de un texto, devuelto YA canónico
+ * (`utils/phone.ts` es la fuente única de la normalización).
+ *
+ * Deliberadamente conservador: solo lee un número si el mensaje ES el número
+ * (la respuesta típica al pending "¿a qué número?") o si viene precedido por
+ * una señal de destinatario. Sin ese recaudo, "el lote 15" o "gasté 20 mil"
+ * empezarían a ofrecer teléfonos a cualquier pending con este slot.
+ */
+export function extractPhone(text: string): string | null {
+  if (!text) return null;
+  const t = text.trim();
+
+  if (looksLikePhone(t)) return normalizePhone(t);
+
+  // "... con 11 2345 6789" / "al +54 9 236 446-9135"
+  const m = t.match(/\b(?:con|a|al|para)\s+(\+?\d[\d\s().-]{7,24})/i);
+  if (m) {
+    const candidate = m[1].trim().replace(/[.,;]+$/, '');
+    if (looksLikePhone(candidate)) return normalizePhone(candidate);
+  }
+  return null;
 }

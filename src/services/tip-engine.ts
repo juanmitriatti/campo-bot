@@ -49,6 +49,9 @@ function looksSuccessful(response: HandlerResponse): boolean {
   if (fx?.setPending || fx?.setPendingActivity || fx?.startFlow || fx?.setPendingObservation) return false;
   const first = response.messages?.[0];
   if (!first && !response.interactive) return false;
+  // Sin mensaje y con una pregunta interactiva ("¿En qué categoría va este
+  // gasto?") la acción NO terminó: antes el tip se colgaba de la pregunta.
+  if (!first && response.interactive?.body?.includes('¿')) return false;
   if (first) {
     const head = first.slice(0, 60);
     if (/^[❌⚠️🔍]/u.test(head)) return false;

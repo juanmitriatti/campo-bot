@@ -2620,7 +2620,10 @@ export class AgronomyHandler {
               _net: net,
             };
           });
-          await this.repo.saveHarvestLoads(savedEvent.id, plotCropId, loadsToSave);
+          // `userId` y no el dueño del evento: el dedup anexa camiones al evento del
+          // mismo día y lote, así que en un campo compartido los del socio se le
+          // atribuirían al dueño (migración 124).
+          await this.repo.saveHarvestLoads(savedEvent.id, plotCropId, loadsToSave, Number(userId));
           if (plotCropId) {
             await this.repo.updateYieldFromLoads(plotCropId);
           }

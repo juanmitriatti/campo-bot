@@ -44,13 +44,31 @@ describe('Sharing tool definitions', () => {
     expect(TOOL_NAMES.has('remove_field_member')).toBe(true);
   });
 
-  it('share_field requires only field (no phone)', () => {
+  it('share_field acepta un teléfono OPCIONAL', () => {
+    // Este test exigía que `phone` NO existiera: el flujo viejo solo devolvía
+    // un código para pasar por afuera. Ahora la invitación se puede atar a un
+    // número, pero `phone` sigue siendo opcional — sin él el handler pregunta
+    // con un pending, nunca falla.
     const tool = TOOL_DEFINITIONS.find(t => t.name === 'share_field');
     expect(tool).toBeDefined();
     const schema = tool!.input_schema as any;
-    expect(schema.required).toContain('field');
-    expect(schema.required).not.toContain('phone');
-    expect(schema.properties).not.toHaveProperty('phone');
+    expect(schema.required).toEqual(['field']);
+    expect(schema.properties).toHaveProperty('phone');
+  });
+
+  it('el mapper copia el teléfono a cmd.phone', () => {
+    const mapper = new AgentResponseMapper();
+    const parsed = mapper.mapToParseResults(
+      {
+        toolCalls: [{ toolName: 'share_field', toolInput: { field: 'Norte', phone: '11 2345 6789' }, toolUseId: 't' }],
+        conversationalText: null,
+      },
+      'compartir campo Norte con 11 2345 6789',
+    );
+    const cmd = (parsed[0].intent as any).data;
+    expect(cmd.command).toBe('share_field');
+    expect(cmd.fieldName).toBe('Norte');
+    expect(cmd.phone).toBe('11 2345 6789');
   });
 
   it('accept_invite requires code', () => {

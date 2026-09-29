@@ -611,6 +611,12 @@ export interface HandlerResponse {
        *  ofrecerlo, se le dice en vez de dejar un "abrí el formulario" sin botón. */
       explicit?: boolean;
     };
+    /** "Retomar" / "volvamos al gasto": retomar un formulario conversacional a
+     *  medio cargar (action null = el último, sea cual sea). Lo resuelve
+     *  form-offer → colector conversacional (necesita el canal). */
+    resumeForm?: {
+      action: FormAction | null;
+    };
   };
 }
 

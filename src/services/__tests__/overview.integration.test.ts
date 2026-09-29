@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { pool } from '../../config/db.js';
 import { createPipelineHarness, type PipelineHarness } from '../../testing/integration/pipeline-harness.js';
-import { getOverview, earliestDataDate } from '../overview.service.js';
+import { getOverview, earliestDataDate, resolveFieldIds } from '../overview.service.js';
 import { getReviewFindings } from '../review-findings.service.js';
 import { campaignRange, campaignsSince } from '../../utils/campaign-range.js';
 
@@ -244,5 +244,133 @@ describe.skipIf(!dbAvailable)('earliestDataDate — el picker de campañas', () 
       [h.userId],
     );
     expect(await earliestDataDate(Number(h.userId))).toBe('2024-02-15');
+  });
+});
+
+/**
+ * Campos COMPARTIDOS en el Resumen (Sep 2026).
+ *
+ * Compartir un campo funcionaba en el bot desde la migración 037, pero el
+ * dashboard era owner-only en casi todas sus queries: el socio no veía el campo
+ * en el picker, "Todos los campos" lo dejaba afuera, y los eventos agronómicos
+ * se filtraban por `d.user_id` a secas, así que cada uno veía solo lo que había
+ * cargado él. Compartir no se notaba en NINGUNA pantalla.
+ */
+describe.skipIf(!dbAvailable)('overview.service — campos compartidos', () => {
+  let owner: PipelineHarness;
+  let member: PipelineHarness;
+  let fieldId: number;
+  let plotId: number;
+
+  beforeAll(async () => {
+    owner = await createPipelineHarness('overview-share-owner');
+    member = await createPipelineHarness('overview-share-member');
+
+    const f = await owner.q(
+      `INSERT INTO fields (user_id, name) VALUES ($1, 'Campo Compartido') RETURNING id`,
+      [owner.userId],
+    );
+    fieldId = f[0].id as number;
+    await owner.q(
+      `INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2)`,
+      [fieldId, owner.userId],
+    );
+    const p = await owner.q(
+      `INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Lote Compartido', 100) RETURNING id`,
+      [fieldId],
+    );
+    plotId = p[0].id as number;
+
+    // El DUEÑO carga un gasto y una siembra.
+    await owner.q(
+      `INSERT INTO expenses (user_id, category, description, amount, currency, field_id, plot_id, expense_date)
+       VALUES ($1, 'Semillas', 'semilla', 200000, 'ARS', $2, $3, '2026-01-15')`,
+      [owner.userId, fieldId, plotId],
+    );
+    await owner.q(
+      `INSERT INTO domain_events (user_id, event_type, plot_id, event_date, crop)
+       VALUES ($1, 'planting', $2, '2026-01-15', 'Soja')`,
+      [owner.userId, plotId],
+    );
+
+    // El MIEMBRO carga lo suyo en el MISMO lote del dueño.
+    await member.q(
+      `INSERT INTO expenses (user_id, category, description, amount, currency, field_id, plot_id, expense_date)
+       VALUES ($1, 'Combustible', 'gasoil del socio', 75000, 'ARS', $2, $3, '2026-02-20')`,
+      [member.userId, fieldId, plotId],
+    );
+    await member.q(
+      `INSERT INTO domain_events (user_id, event_type, plot_id, event_date, crop)
+       VALUES ($1, 'spraying', $2, '2026-02-20', 'Soja')`,
+      [member.userId, plotId],
+    );
+
+    // Y recién ACÁ se comparte.
+    await owner.q(
+      `INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'member', $3)`,
+      [fieldId, member.userId, owner.userId],
+    );
+  });
+
+  afterAll(async () => {
+    // El campo y el lote se crearon a mano, así que hay que sacarlos ANTES de
+    // borrar los usuarios: si no, la FK `fields_user_id_fkey` frena el cleanup
+    // del harness. Se borra de adentro hacia afuera.
+    await owner.q(`DELETE FROM expenses WHERE field_id = $1`, [fieldId]).catch(() => {});
+    await owner.q(`DELETE FROM domain_events WHERE plot_id = $1`, [plotId]).catch(() => {});
+    await owner.q(`DELETE FROM field_members WHERE field_id = $1`, [fieldId]).catch(() => {});
+    await owner.q(`DELETE FROM plots WHERE field_id = $1`, [fieldId]).catch(() => {});
+    await owner.q(`DELETE FROM fields WHERE id = $1`, [fieldId]).catch(() => {});
+    await owner?.cleanup();
+    await member?.cleanup();
+  });
+
+  it('"Todos los campos" del miembro INCLUYE el campo compartido', async () => {
+    const ids = await resolveFieldIds(Number(member.userId), null);
+    expect(ids).toContain(fieldId);
+  });
+
+  it('un campo AJENO (sin compartir) no entra al alcance ni pidiéndolo explícito', async () => {
+    const otra = await owner.q(
+      `INSERT INTO fields (user_id, name) VALUES ($1, 'Solo Del Dueño') RETURNING id`,
+      [owner.userId],
+    );
+    const ajeno = otra[0].id as number;
+    const ids = await resolveFieldIds(Number(member.userId), ajeno);
+    // -1 = "ningún campo": se responde como si no existiera, sin filtrar datos.
+    expect(ids).toEqual([-1]);
+    await owner.q(`DELETE FROM fields WHERE id = $1`, [ajeno]);
+  });
+
+  it('el miembro ve el GASTO del dueño en el campo compartido', async () => {
+    const ov = await getOverview(Number(member.userId), [fieldId], RANGE, { includeUnassigned: false });
+    // 200.000 del dueño + 75.000 del miembro.
+    expect(ov.money.ARS.expense).toBe(275000);
+    expect(ov.money.ARS.expenseCount).toBe(2);
+  });
+
+  it('el miembro ve la ACTIVIDAD agronómica del dueño (el bug de eventScope)', async () => {
+    const ov = await getOverview(Number(member.userId), [fieldId], RANGE, { includeUnassigned: false });
+    // Antes contaba 1: solo la pulverización que había cargado él.
+    expect(ov.activities.count).toBe(2);
+  });
+
+  it('el DUEÑO ve lo que cargó el miembro', async () => {
+    const ov = await getOverview(Number(owner.userId), [fieldId], RANGE, { includeUnassigned: false });
+    expect(ov.money.ARS.expense).toBe(275000);
+    expect(ov.activities.count).toBe(2);
+  });
+
+  it('un campo propio SIN fila en field_members sigue siendo del dueño', async () => {
+    // La fila `owner` la crea `getOrCreateField` como efecto colateral. El
+    // Resumen no puede depender de que ese insert haya corrido alguna vez.
+    const solo = await owner.q(
+      `INSERT INTO fields (user_id, name) VALUES ($1, 'Sin Membresia') RETURNING id`,
+      [owner.userId],
+    );
+    const soloId = solo[0].id as number;
+    const ids = await resolveFieldIds(Number(owner.userId), soloId);
+    expect(ids).toEqual([soloId]);
+    await owner.q(`DELETE FROM fields WHERE id = $1`, [soloId]);
   });
 });

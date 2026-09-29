@@ -1,6 +1,8 @@
 import { pool, withTransaction } from "../config/db.js";
 import { getTodayISO } from "../utils/date.js";
 import { sqlNormalizedName, normalizeEntityName, stripLeadingArticle } from "../utils/entity-matcher.js";
+import { normalizePhone } from "../utils/phone.js";
+import { ensureOwnerMembership } from "../domain/shared/field-access.js";
 
 /**
  * Helper: returns a SQL subquery fragment for accessible field IDs
@@ -18,16 +20,28 @@ function accessibleFieldsSql(paramIdx) {
 }
 
 export async function getOrCreateUser(phone) {
+  // Canónico SIEMPRE (utils/phone.ts, fuente única): la misma persona llegaba
+  // como `+549...` desde el OTP web y como `549...` desde el webhook, y la
+  // comparación exacta creaba una SEGUNDA cuenta muda. Si no se puede
+  // canonizar (formato raro), se busca por el valor crudo antes que inventar.
+  const canonical = normalizePhone(phone) ?? phone;
+
+  // Se compara la canónica de AMBOS lados: la columna todavía puede tener
+  // formato legacy en las filas que la migración 122 no pudo tocar por
+  // colisión. Comparar solo la entrada crearía una segunda cuenta muda.
   const existing = await pool.query(
-    "SELECT * FROM users WHERE phone_number=$1",
-    [phone]
+    `SELECT * FROM users
+      WHERE phone_number = $1 OR canonical_phone_ar(phone_number) = $1
+      ORDER BY (phone_number = $1) DESC, id
+      LIMIT 1`,
+    [canonical]
   );
 
   if (existing.rows.length > 0) return existing.rows[0];
 
   const newUser = await pool.query(
     "INSERT INTO users (phone_number) VALUES ($1) RETURNING *",
-    [phone]
+    [canonical]
   );
 
   return newUser.rows[0];
@@ -721,11 +735,9 @@ export async function getOrCreateField(userId, name) {
     [userId, name]
   );
 
-  // Auto-insert owner membership
-  await pool.query(
-    `INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2) ON CONFLICT (field_id, user_id) DO NOTHING`,
-    [result.rows[0].id, userId]
-  );
+  // Fila `owner` de la membresía. El INSERT vivía copiado acá; ahora es la
+  // fuente única de `domain/shared/field-access.ts`.
+  await ensureOwnerMembership(userId, result.rows[0].id);
 
   return result.rows[0];
 }
@@ -3148,13 +3160,19 @@ export async function getActivityStats(userId, { fieldId = null, plotId = null, 
 
 // --- Harvest loads ---
 
-export async function saveHarvestLoads(domainEventId, plotCropId, loads) {
+/**
+ * @param createdBy Quién carga ESTOS camiones. En un campo compartido puede no
+ *   ser el dueño del evento: el dedup de cosecha anexa camiones al evento del
+ *   mismo día y lote, así que sin esto los camiones del socio se le atribuyen
+ *   al dueño (migración 124).
+ */
+export async function saveHarvestLoads(domainEventId, plotCropId, loads, createdBy = null) {
   if (!loads || loads.length === 0) return [];
   const values = [];
   const params = [];
   let idx = 1;
   for (const load of loads) {
-    values.push(`($${idx}, $${idx+1}, $${idx+2}, $${idx+3}, $${idx+4}, $${idx+5}, $${idx+6}, $${idx+7}, $${idx+8}, $${idx+9}, $${idx+10}, $${idx+11}, $${idx+12}, $${idx+13}, $${idx+14}, $${idx+15})`);
+    values.push(`($${idx}, $${idx+1}, $${idx+2}, $${idx+3}, $${idx+4}, $${idx+5}, $${idx+6}, $${idx+7}, $${idx+8}, $${idx+9}, $${idx+10}, $${idx+11}, $${idx+12}, $${idx+13}, $${idx+14}, $${idx+15}, $${idx+16})`);
     params.push(
       domainEventId,
       plotCropId || null,
@@ -3175,11 +3193,12 @@ export async function saveHarvestLoads(domainEventId, plotCropId, loads) {
       load.acopio_weight_kg ?? null,
       load.carta_porte || null,
       load.ctg || null,
+      createdBy,
     );
-    idx += 16;
+    idx += 17;
   }
   const sql = `INSERT INTO harvest_loads (domain_event_id, plot_crop_id, driver_name, weight_kg, destination, destinatario, truck_plate, humidity_pct, quality_metrics,
-      net_weight_kg, merma_pct, gross_weight_kg, tare_kg, acopio_weight_kg, carta_porte, ctg)
+      net_weight_kg, merma_pct, gross_weight_kg, tare_kg, acopio_weight_kg, carta_porte, ctg, created_by)
     VALUES ${values.join(', ')} RETURNING *`;
   const result = await pool.query(sql, params);
   return result.rows;

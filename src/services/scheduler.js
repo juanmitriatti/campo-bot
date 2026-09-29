@@ -959,6 +959,7 @@ async function dailyCleanupTick() {
       console.log(`[cleanup] Deleted ${deletedReports} old PDF report(s) (>30 days)`);
     }
     await authTokensCleanupTick();
+    await formSessionsCleanupTick();
   } catch (err) {
     console.error('[cleanup] Unexpected error:', err);
     logError('scheduler', 'DAILY_CLEANUP_ERROR', err);
@@ -979,6 +980,19 @@ async function authTokensCleanupTick() {
   } catch (err) {
     console.error('[cleanup] auth tokens cleanup failed:', err);
     logError('scheduler', 'AUTH_TOKENS_CLEANUP_ERROR', err);
+  }
+}
+
+// Sesiones de formulario (web, Flow, conversacional): la tabla no tenía purga.
+// Se conservan 7 días después de vencer para poder avisar "ese formulario venció".
+async function formSessionsCleanupTick() {
+  try {
+    const { formSessionService } = await import('./form-session.service.js');
+    const purged = await formSessionService.purgeExpired(7);
+    if (purged > 0) console.log(`[cleanup] form_sessions: ${purged} vencidas purgadas`);
+  } catch (err) {
+    console.error('[cleanup] form_sessions cleanup failed:', err);
+    logError('scheduler', 'FORM_SESSIONS_CLEANUP_ERROR', err);
   }
 }
 

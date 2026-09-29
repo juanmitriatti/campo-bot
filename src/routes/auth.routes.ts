@@ -32,6 +32,7 @@ import { invalidateUserContext } from '../ai/user-context.service.js';
 import { resolveCampaign, campaignsSince } from '../utils/campaign-range.js';
 import { getOverview, resolveFieldIds, monthLabel, earliestDataDate } from '../services/overview.service.js';
 import { getReviewFindings } from '../services/review-findings.service.js';
+import { accessibleFieldsSql } from '../domain/shared/accessible-fields.js';
 import { harvestCampaignsCte } from '../utils/harvest-campaign-kg.js';
 import { formatSeasonLabel, getCampaignState } from '../domain/plots/crop.service.js';
 
@@ -560,16 +561,26 @@ router.get('/activities', requireAuth, requireFeature('agronomy'), async (req: R
 router.get('/fields-tree', requireAuth, requireFeature('fields'), async (req: Request, res: Response) => {
   try {
     const { rows } = await pool.query(
+      // Campos propios Y compartidos. Filtraba `f.user_id = $1`, así que un
+      // campo que te compartieron no aparecía en el picker — y de este endpoint
+      // cuelga la selección de campo de casi todas las pantallas, con lo cual
+      // compartir un campo no se veía en NINGÚN lado del dashboard.
+      // `shared`/`owner_name` los usa la UI para decir de quién es.
       `SELECT f.id, f.name, f.city, f.location_method, (f.latitude IS NOT NULL) AS has_coords,
               f.renspa, f.cuig, f.senasa_titular,
+              (f.user_id <> $1) AS shared,
+              CASE WHEN f.user_id <> $1
+                   THEN COALESCE(NULLIF(owner.name, ''), owner.phone_number)
+              END AS owner_name,
               COALESCE(json_agg(json_build_object(
                 'id', p.id, 'name', p.name, 'hectares', p.area_hectares,
                 'activeCrop', (SELECT pc.crop FROM plot_crops pc WHERE pc.plot_id = p.id AND pc.end_date IS NULL ORDER BY pc.id DESC LIMIT 1)
               ) ORDER BY p.name) FILTER (WHERE p.id IS NOT NULL), '[]') AS plots
        FROM fields f
        LEFT JOIN plots p ON p.field_id = f.id AND p.deleted_at IS NULL
-       WHERE f.user_id = $1 AND f.deleted_at IS NULL
-       GROUP BY f.id ORDER BY f.name`,
+       LEFT JOIN users owner ON owner.id = f.user_id
+       WHERE f.id IN (${accessibleFieldsSql(1)}) AND f.deleted_at IS NULL
+       GROUP BY f.id, owner.name, owner.phone_number ORDER BY f.name`,
       [req.auth!.userId],
     );
     res.json({ fields: rows });

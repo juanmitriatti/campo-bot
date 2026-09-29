@@ -1364,16 +1364,47 @@ describe("QA BLACK-BOX: dedup normalization cross-variants", () => {
 // ============================================================================
 
 describe("open_form (comando trivial)", () => {
-  it.each(["formulario", "formulario siembra", "formulario de cosecha", "Formulario"])(
-    'parsea "%s" como open_form',
+  it.each(["formulario", "Formulario", "formularios"])(
+    'parsea "%s" como open_form (picker)',
     (text) => {
       const cmd = parseCommand(text);
       expect(cmd?.command).toBe("open_form");
     }
   );
 
+  // Con argumento va directo a ESE formulario (antes se ignoraba y mostraba el picker).
+  it.each([
+    ["formulario siembra", "open_form_sow"],
+    ["formulario de cosecha", "open_form_harvest"],
+    ["formulario de gasto", "open_form_expense"],
+    ["formulario de un ingreso", "open_form_income"],
+    ["formulario de labores", "open_form_activity"],
+    ["formulario hacienda", "open_form_livestock"],
+  ])('"%s" → %s', (text, command) => {
+    expect(parseCommand(text)?.command).toBe(command);
+  });
+
   it("NO roba frases con formulario en el medio", () => {
     expect(parseCommand("me llegó el formulario de AFIP hoy")).toBeNull();
+  });
+});
+
+describe("resume_form (retomar formulario conversacional)", () => {
+  it.each([
+    ["retomar", null],
+    ["Retomá", null],
+    ["volvamos al gasto", "log_expense"],
+    ["sigamos con la siembra", "sow_crop"],
+    ["seguir con el formulario", null],
+    ["retomar el formulario de hacienda", "add_livestock"],
+  ])('"%s" → resume_form (%s)', (text, formAction) => {
+    const cmd = parseCommand(text);
+    expect(cmd?.command).toBe("resume_form");
+    expect(cmd?.formAction ?? null).toBe(formAction);
+  });
+
+  it.each(["seguí", "volver", "sigamos", "continuar"])('"%s" pelado NO es resume_form (demasiado genérico)', (text) => {
+    expect(parseCommand(text)?.command).not.toBe("resume_form");
   });
 });
 

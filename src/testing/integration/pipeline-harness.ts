@@ -57,7 +57,15 @@ const HARNESS_SETTINGS: Record<string, string> = {
   SUPPORT_CONTACT: 'soporte@test.local',
 };
 
-export async function createPipelineHarness(slug: string): Promise<PipelineHarness> {
+export interface PipelineHarnessOptions {
+  /**
+   * Canal simulado. Default `testbot`. `whatsapp` ejercita lo que cambia por
+   * canal (formularios: colector conversacional en vez del botón web_app).
+   */
+  channel?: ChannelContext['channel'];
+}
+
+export async function createPipelineHarness(slug: string, opts: PipelineHarnessOptions = {}): Promise<PipelineHarness> {
   const email = `it-${slug}@pipeline-harness.test.local`;
   for (const [key, value] of Object.entries(HARNESS_SETTINGS)) {
     await pool.query(
@@ -83,7 +91,7 @@ export async function createPipelineHarness(slug: string): Promise<PipelineHarne
   const buildCtx = async (): Promise<ChannelContext> => {
     const settings = await userRepository.getSettings(userId);
     return {
-      channel: 'testbot',
+      channel: opts.channel ?? 'testbot',
       phone,
       userId,
       user: { id: userId, phone_number: phone, name: `IT ${slug}`, city: null },
@@ -157,7 +165,8 @@ async function deleteUserByEmail(email: string): Promise<void> {
     `DELETE FROM crop_stages WHERE plot_id IN (SELECT p.id FROM plots p JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1)`,
     `DELETE FROM plots WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`,
     `DELETE FROM payment_events WHERE subscription_id IN (SELECT id FROM subscriptions WHERE user_id = $1)`,
-    `DELETE FROM pending_states WHERE phone = 'testbot_' || $1::text`,
+    `DELETE FROM pending_states WHERE key = 'testbot_' || $1::text`,
+    `DELETE FROM form_sessions WHERE user_id = $1`,
   ];
 
   const tablesR = await pool.query(

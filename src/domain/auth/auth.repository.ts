@@ -1,4 +1,5 @@
 import { pool } from '../../config/db.js';
+import { normalizePhone } from '../../utils/phone.js';
 import type { AuthUser, UserRole } from './auth.types.js';
 
 interface UserWithPassword extends AuthUser {
@@ -77,10 +78,14 @@ export class AuthRepository {
   }
 
   async findByPhone(phone: string): Promise<AuthUser | null> {
+    // Por forma CANÓNICA: la columna todavía puede tener formato legacy en las
+    // filas que la migración 122 no pudo tocar por colisión.
     const { rows } = await pool.query(
       `SELECT id, name, last_name, email, role, city, province, plan_id, status
-       FROM users WHERE phone_number = $1 AND ${NOT_DELETED}`,
-      [phone]
+       FROM users
+        WHERE (phone_number = $1 OR canonical_phone_ar(phone_number) = $1)
+          AND ${NOT_DELETED}`,
+      [normalizePhone(phone) ?? phone]
     );
     return rows.length > 0 ? rows[0] : null;
   }

@@ -21,6 +21,7 @@ import HarvestLoadsTable from '../components/HarvestLoadsTable';
 import ChannelLinking from '../components/ChannelLinking';
 import CategoriesTab from '../components/CategoriesTab';
 import FieldsTab from '../components/FieldsTab';
+import SharingTab from '../components/sharing/SharingTab';
 import RemindersTab from '../components/RemindersTab';
 import PaywallModal from '../components/billing/PaywallModal';
 import { fetchSubscription, type SubscriptionStatus } from '../api/subscription';
@@ -43,6 +44,7 @@ const viewFeatureMap: Record<DashboardView, string | null> = {
   reminders: null,
   account: null,
   analysis: 'data_analysis',
+  sharing: 'sharing',
 };
 
 export default function Dashboard() {
@@ -184,6 +186,8 @@ export default function Dashboard() {
         return <DataAnalysisPage />;
       case 'fields':
         return <FieldsTab />;
+      case 'sharing':
+        return <SharingTab />;
       case 'expenses':
         return (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">

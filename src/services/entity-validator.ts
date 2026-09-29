@@ -1,4 +1,5 @@
 import { pool } from '../config/db.js';
+import { accessibleFieldsSql } from '../domain/shared/accessible-fields.js';
 import type { UserId } from '../types/index.js';
 
 interface ValidationResult {
@@ -105,7 +106,7 @@ export class EntityValidator {
     const result = await pool.query(
       `SELECT p.name FROM plots p
        JOIN fields f ON p.field_id = f.id
-       WHERE f.id IN (SELECT field_id FROM field_members WHERE user_id = $1) AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
+       WHERE f.id IN (${accessibleFieldsSql(1)}) AND p.deleted_at IS NULL AND f.deleted_at IS NULL`,
       [userId]
     );
     const plots: string[] = result.rows.map((r: { name: string }) => r.name);

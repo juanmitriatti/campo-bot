@@ -57,6 +57,11 @@ const EXPIRED_ALLOWED_COMMANDS = new Set([
   'list_fields', 'list_plots',
   // El CTA del gate de trial vencido manda a "plan" — tiene que funcionar ahí.
   'show_plan',
+  // Aceptar una invitación es el PRIMER mensaje de un invitado que recién
+  // llega. Bloquearlo por su propia prueba vencida lo dejaba sin poder entrar
+  // al campo que le compartieron — y el que paga la función es el dueño, no él.
+  // Una vez adentro, `getUserAccessMode` le hereda el acceso del dueño.
+  'accept_invite',
 ]);
 
 // Comandos triviales de SOLO LECTURA: en medio de un pending con missing[]
@@ -105,7 +110,8 @@ const TRIVIAL_COMMANDS = new Set([
   'prompt_rainfall', 'prompt_add_field', 'prompt_add_plot',
   'query_plot_history',
   'active_crop', 'list_livestock', 'check_stock',
-  'open_form',
+  'open_form', 'open_form_sow', 'open_form_harvest', 'open_form_expense', 'open_form_income',
+  'open_form_activity', 'open_form_livestock', 'resume_form',
 ]);
 
 /**

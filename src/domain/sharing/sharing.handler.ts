@@ -1,5 +1,6 @@
 import { FieldSharingService } from './field-sharing.service.js';
 import { getFieldByName } from '../../services/expenses.js';
+import { buildInviteDelivery, renderInviteMessage } from './invite-link.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../../types/index.js';
 
 export class SharingHandler {
@@ -45,18 +46,42 @@ export class SharingHandler {
       return { messages: [`No encontré el campo *${fieldName}*.\nEscribí *mis campos* para ver los que tenés.`] };
     }
 
-    const result = await this.sharingService.createInvite(userId, field.id);
+    const phone = (cmd.phone as string | undefined) ?? null;
+
+    // Sin teléfono, la pregunta es un pending machine-readable, nunca texto
+    // suelto (invariante 5): una pregunta huérfana pierde la respuesta, y acá
+    // la respuesta es un número que el turno siguiente hay que poder leer.
+    // En bulkMode NO se bloquea: lo captura el interceptor del executor
+    // (invariante 7).
+    if (!phone && !cmd._bulkMode) {
+      return {
+        messages: [`📱 ¿A qué número le comparto *${field.name}*?`],
+        sideEffects: {
+          setPendingActivity: {
+            command: 'share_field',
+            data: { command: 'share_field', fieldName: field.name },
+            missing: ['phone'],
+            askPrompt: `📱 ¿A qué número le comparto *${field.name}*?`,
+          },
+        },
+      };
+    }
+
+    const result = await this.sharingService.createInvite(userId, field.id, { phone });
     if (!result.success) {
       return { messages: [result.message] };
     }
 
+    // El texto lo arma `invite-link.ts`, compartido con el dashboard: dos
+    // renderizados distintos serían dos códigos distintos.
+    const delivery = await buildInviteDelivery({ code: result.code!, expiresAt: result.expiresAt });
     return {
       messages: [
-        `🔗 *Código de invitación para ${field.name}:*\n\n` +
-        `\`${result.code}\`\n\n` +
-        `Compartí este código con quien quieras darle acceso. ` +
-        `La otra persona debe escribir:\n*unirme ${result.code}*\n\n` +
-        `⏳ El código vence en 7 días.`
+        renderInviteMessage({
+          fieldName: field.name,
+          delivery,
+          invitedPhone: result.invitedPhone ?? null,
+        }),
       ],
     };
   }

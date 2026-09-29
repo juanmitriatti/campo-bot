@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { pool } from '../../config/db.js';
+import { normalizePhone } from '../../utils/phone.js';
 import { sendMessage as sendWhatsAppMessage } from '../../services/whatsapp.js';
 import { getSetting, getSettingNumber } from '../../services/settings.service.js';
 import type { UserId } from '../../types/index.js';
@@ -37,18 +38,10 @@ export class VerificationError extends Error {
   }
 }
 
-function normalizeArPhone(input: string): string {
-  // Strip spaces, dashes, dots, parens
-  let p = input.replace(/[^\d+]/g, '');
-  // If it starts with 0, strip it (AR domestic prefix)
-  if (p.startsWith('0')) p = p.slice(1);
-  // Add +54 if missing
-  if (!p.startsWith('+')) {
-    if (p.startsWith('54')) p = '+' + p;
-    else p = '+54' + p;
-  }
-  return p;
-}
+// La normalización vive en `src/utils/phone.ts` (fuente única). La copia local
+// que había acá guardaba `+54...` y encima NO insertaba el 9 de celular, así
+// que el número que quedaba en `users.phone_number` no era el que manda Meta y
+// el webhook no volvía a encontrar a la persona nunca más.
 
 function generateOtp(): string {
   // 6-digit numeric, zero-padded. Crypto-secure.
@@ -68,15 +61,16 @@ export class ChannelVerificationService {
     if (!rawPhone || rawPhone.trim().length < 6) {
       throw new VerificationError(400, 'INVALID_PHONE', 'El número de teléfono es obligatorio.');
     }
-    const phone = normalizeArPhone(rawPhone.trim());
-    if (!/^\+\d{10,15}$/.test(phone)) {
+    const phone = normalizePhone(rawPhone);
+    if (!phone) {
       throw new VerificationError(400, 'INVALID_PHONE', 'Número inválido. Usá el formato +54 9 11 1234 5678.');
     }
 
     // Reject if another VERIFIED user already owns this phone
     const conflict = await pool.query(
       `SELECT id FROM users
-       WHERE phone_number = $1 AND id <> $2 AND whatsapp_verified_at IS NOT NULL`,
+       WHERE (phone_number = $1 OR canonical_phone_ar(phone_number) = $1)
+         AND id <> $2 AND whatsapp_verified_at IS NOT NULL`,
       [phone, userId]
     );
     if (conflict.rows.length > 0) {
@@ -105,8 +99,9 @@ export class ChannelVerificationService {
       [userId, code, phone, expiresAt]
     );
 
-    // Send OTP via WhatsApp. Strip leading + because the Cloud API accepts e164 without +.
-    const waNumber = phone.startsWith('+') ? phone.slice(1) : phone;
+    // `phone` ya viene canónico (`549...`, sin `+`), que es justo lo que
+    // espera la Cloud API.
+    const waNumber = phone;
     const message =
       `🔐 *Tu código de Campo Bot*\n\n` +
       `\`${code}\`\n\n` +
@@ -172,7 +167,8 @@ export class ChannelVerificationService {
     // Race-safe: re-check phone is not taken by another verified user
     const conflict = await pool.query(
       `SELECT id FROM users
-       WHERE phone_number = $1 AND id <> $2 AND whatsapp_verified_at IS NOT NULL`,
+       WHERE (phone_number = $1 OR canonical_phone_ar(phone_number) = $1)
+         AND id <> $2 AND whatsapp_verified_at IS NOT NULL`,
       [row.target, userId]
     );
     if (conflict.rows.length > 0) {

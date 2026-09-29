@@ -9,6 +9,7 @@ import {
 } from '../../services/expenses.js';
 import { pool } from '../../config/db.js';
 import { getSettingBool } from '../../services/settings.service.js';
+import { normalizePhone } from '../../utils/phone.js';
 import type { User, UserId, UserSettings, AiUsage } from '../../types/index.js';
 import { asUserId } from '../../types/index.js';
 
@@ -28,14 +29,22 @@ export class UserRepository {
    * Returns null if no verified user owns this phone.
    */
   async findVerifiedByPhone(phone: string): Promise<User | null> {
+    // Se compara por la forma CANÓNICA, no exacto. El OTP web guardaba
+    // `+549...` (y a veces sin el 9) mientras el webhook manda `549...`: el
+    // `=` de antes no encontraba a la persona y el bot le contestaba "creá tu
+    // cuenta" para siempre. `canonical_phone_ar()` es el espejo SQL de
+    // `normalizePhone()` — cubre las filas que la migración 122 no pudo tocar
+    // por colisión, todavía guardadas en formato viejo.
+    const canonical = normalizePhone(phone) ?? phone;
     const { rows } = await pool.query(
       `SELECT id, phone_number, name, city
        FROM users
-       WHERE phone_number = $1
+       WHERE (phone_number = $1 OR canonical_phone_ar(phone_number) = $1)
          AND whatsapp_verified_at IS NOT NULL
          AND status <> 'disabled'
+       ORDER BY (phone_number = $1) DESC, id
        LIMIT 1`,
-      [phone]
+      [canonical]
     );
     if (rows.length === 0) return null;
     const row = rows[0];

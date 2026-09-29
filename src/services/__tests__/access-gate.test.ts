@@ -41,6 +41,8 @@ describe('getUserAccessMode', () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ status: 'trial', trial_ends_at: new Date(Date.now() - 60_000), current_period_end: null }],
     });
+    // Segunda query: membresías. Sin campos compartidos no hay herencia.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     expect(await getUserAccessMode(1)).toBe('trial_expired_readonly');
   });
 
@@ -55,6 +57,8 @@ describe('getUserAccessMode', () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ status: 'cancelled', trial_ends_at: null, current_period_end: new Date(Date.now() - 86_400_000) }],
     });
+    // Segunda query: membresías. Sin campos compartidos no hay herencia.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     expect(await getUserAccessMode(1)).toBe('trial_expired_readonly');
   });
 
@@ -69,6 +73,8 @@ describe('getUserAccessMode', () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ status: 'expired', trial_ends_at: new Date(Date.now() - 86_400_000), current_period_end: null }],
     });
+    // Segunda query: membresías. Sin campos compartidos no hay herencia.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     expect(await getUserAccessMode(1)).toBe('trial_expired_readonly');
   });
 
@@ -88,10 +94,62 @@ describe('getUserAccessMode', () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ status: 'expired', trial_ends_at: new Date(Date.now() - 86_400_000), current_period_end: null }],
     });
+    // Segunda query: membresías. Sin campos compartidos no hay herencia.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     expect(await isTrialExpired(1)).toBe(true);
   });
 });
 
+/**
+ * Acceso heredado del dueño del campo (Sep 2026).
+ *
+ * El colaborador invitado tiene su propia cuenta y su propia prueba de 14
+ * días. Al vencer quedaba en solo-lectura y no podía cargar nada en el campo
+ * del dueño — aunque el dueño pague Pro+, que es el plan que incluye compartir.
+ * El empleado se volvía inútil a las dos semanas.
+ */
+describe('getUserAccessMode — herencia del dueño', () => {
+  const EXPIRED = { status: 'expired', trial_ends_at: new Date(Date.now() - 86_400_000), current_period_end: null };
+
+  it('miembro VENCIDO de un campo cuyo dueño está al día → full', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [EXPIRED] });          // su suscripción
+    mockQuery.mockResolvedValueOnce({ rows: [{ owner_id: 42 }] }); // es miembro de un campo de 42
+    mockQuery.mockResolvedValueOnce({                               // 42 paga
+      rows: [{ status: 'active', trial_ends_at: null, current_period_end: new Date(Date.now() + 86_400_000) }],
+    });
+    expect(await getUserAccessMode(1)).toBe('full');
+  });
+
+  it('si el DUEÑO también está vencido, no hay nada que heredar', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [EXPIRED] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ owner_id: 42 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [EXPIRED] });
+    expect(await getUserAccessMode(1)).toBe('trial_expired_readonly');
+  });
+
+  it('un dueño grandfathered (sin suscripción) alcanza', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [EXPIRED] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ owner_id: 42 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    expect(await getUserAccessMode(1)).toBe('full');
+  });
+
+  it('con VARIOS campos, alcanza que UNO tenga el dueño al día', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [EXPIRED] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ owner_id: 42 }, { owner_id: 43 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [EXPIRED] });          // 42 vencido
+    mockQuery.mockResolvedValueOnce({                               // 43 al día
+      rows: [{ status: 'active', trial_ends_at: null, current_period_end: new Date(Date.now() + 86_400_000) }],
+    });
+    expect(await getUserAccessMode(1)).toBe('full');
+  });
+
+  it('un usuario vencido SIN campos compartidos sigue bloqueado', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [EXPIRED] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    expect(await getUserAccessMode(1)).toBe('trial_expired_readonly');
+  });
+});
 describe('trialExpiredCopy', () => {
   it('mentions data preservation and dashboard link', async () => {
     const copy = await trialExpiredCopy();

@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Wallet, DollarSign, Sprout, Search,
   FileText, Wheat, Package, Beef, Paperclip, User,
-  Tag, Map, Clock, MoreHorizontal, Sparkles,
+  Tag, Map, Clock, MoreHorizontal, Sparkles, Users2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { OverviewCounts } from '../../hooks/useOverviewData';
@@ -9,7 +9,7 @@ import type { OverviewCounts } from '../../hooks/useOverviewData';
 export type DashboardView =
   | 'overview' | 'fields' | 'expenses' | 'incomes' | 'activities' | 'observations'
   | 'scoutings' | 'reports' | 'harvests' | 'stock' | 'livestock' | 'documents'
-  | 'categories' | 'reminders' | 'account' | 'analysis';
+  | 'categories' | 'reminders' | 'account' | 'analysis' | 'sharing';
 
 export interface NavItem {
   key: DashboardView;
@@ -84,6 +84,10 @@ export const GROUPS: NavGroup[] = [
 
 export const FOOTER: NavItem[] = [
   { key: 'reminders', label: 'Recordatorios', Icon: Clock, count: 'reminders' },
+  // Compartir va al PIE y no a un grupo de dominio: no es dato de campaña, es
+  // configuración de quién puede entrar. `feature` lo esconde solo para los
+  // planes que no lo incluyen — `sharing` es el escalón Pro → Pro+.
+  { key: 'sharing', label: 'Compartir', Icon: Users2, feature: 'sharing' },
   { key: 'account', label: 'Mi cuenta', Icon: User },
 ];
 

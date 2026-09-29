@@ -412,8 +412,8 @@ export class AgronomyRepository {
     destination?: string | null;
     destinatario?: string | null;
     truck_plate?: string | null;
-  }>): Promise<unknown[]> {
-    return _saveHarvestLoads(domainEventId, plotCropId, loads);
+  }>, createdBy?: number | null): Promise<unknown[]> {
+    return _saveHarvestLoads(domainEventId, plotCropId, loads, createdBy ?? null);
   }
 
   async getHarvestLoads(domainEventId: number): Promise<Array<{

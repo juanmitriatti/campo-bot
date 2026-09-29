@@ -12,6 +12,12 @@ const computeOptsMock = vi.fn();
 vi.mock('../form-options.js', () => ({
   computeFormOptions: (...a: unknown[]) => computeOptsMock(...a),
 }));
+const startConvMock = vi.fn().mockResolvedValue([{ type: 'text', text: '💰 ¿Cuánto gastaste?' }]);
+const resumeConvMock = vi.fn().mockResolvedValue([{ type: 'text', text: '↩️ Sigamos' }]);
+vi.mock('../conversation/form-conversation.service.js', () => ({
+  startConversationForm: (...a: unknown[]) => startConvMock(...a),
+  resumeConversationForm: (...a: unknown[]) => resumeConvMock(...a),
+}));
 
 const { appendFormOffer } = await import('../form-offer.js');
 
@@ -21,7 +27,10 @@ const ctx = {
 } as never;
 
 describe('appendFormOffer', () => {
-  beforeEach(() => { createMock.mockClear(); getSettingMock.mockReset(); computeOptsMock.mockReset(); });
+  beforeEach(() => {
+    createMock.mockClear(); getSettingMock.mockReset(); computeOptsMock.mockReset();
+    startConvMock.mockClear(); resumeConvMock.mockClear();
+  });
 
   it('sin offerForm no hace nada', async () => {
     const items: unknown[] = [];
@@ -61,9 +70,9 @@ describe('appendFormOffer', () => {
 
   const waCtx = { ...(ctx as object), channel: 'whatsapp', phone: '549341...' } as never;
 
-  it('en whatsapp con flow_id configurado envía un Flow con opciones horneadas', async () => {
+  it('en whatsapp con provider meta_flow + flow_id envía un Flow con opciones horneadas (preservado)', async () => {
     getSettingMock.mockImplementation(async (k: string) =>
-      k === 'WHATSAPP_FLOW_ID_SOW' ? 'flow_sow_123' : null);
+      k === 'WHATSAPP_FLOW_ID_SOW' ? 'flow_sow_123' : k === 'WHATSAPP_FORM_PROVIDER' ? 'meta_flow' : null);
     computeOptsMock.mockResolvedValue({
       plots: [{ id: 7, name: 'Norte', fieldId: 1, fieldName: 'La Barrida', activeCrop: null }],
       fields: [{ id: 1, name: 'La Barrida' }],
@@ -111,7 +120,7 @@ describe('appendFormOffer', () => {
 
   it('hacienda: mode=published omite la clave `mode` (Meta rechaza "published") y hornea las 11 claves', async () => {
     getSettingMock.mockImplementation(async (k: string) =>
-      k === 'WHATSAPP_FLOW_ID_LIVESTOCK' ? 'flow_liv_1' : k === 'WHATSAPP_FLOW_MODE' ? 'published' : null);
+      k === 'WHATSAPP_FORM_PROVIDER' ? 'meta_flow' : k === 'WHATSAPP_FLOW_ID_LIVESTOCK' ? 'flow_liv_1' : k === 'WHATSAPP_FLOW_MODE' ? 'published' : null);
     computeOptsMock.mockResolvedValue(livestockOpts([{ id: 'p:1', title: 'Lote 1' }]));
     const items: unknown[] = [];
     await appendFormOffer(items as never, livestockOffer as never, waCtx);
@@ -131,7 +140,7 @@ describe('appendFormOffer', () => {
 
   it('hacienda: mode=draft incluye "mode":"draft"', async () => {
     getSettingMock.mockImplementation(async (k: string) =>
-      k === 'WHATSAPP_FLOW_ID_LIVESTOCK' ? 'flow_liv_1' : k === 'WHATSAPP_FLOW_MODE' ? 'draft' : null);
+      k === 'WHATSAPP_FORM_PROVIDER' ? 'meta_flow' : k === 'WHATSAPP_FLOW_ID_LIVESTOCK' ? 'flow_liv_1' : k === 'WHATSAPP_FLOW_MODE' ? 'draft' : null);
     computeOptsMock.mockResolvedValue(livestockOpts([{ id: 'p:1', title: 'Lote 1' }]));
     const items: unknown[] = [];
     await appendFormOffer(items as never, livestockOffer as never, waCtx);
@@ -141,7 +150,7 @@ describe('appendFormOffer', () => {
 
   it('gap B: un select REQUERIDO sin opciones (location vacío) no manda el Flow', async () => {
     getSettingMock.mockImplementation(async (k: string) =>
-      k === 'WHATSAPP_FLOW_ID_LIVESTOCK' ? 'flow_liv_1' : k === 'WHATSAPP_FLOW_MODE' ? 'draft' : null);
+      k === 'WHATSAPP_FORM_PROVIDER' ? 'meta_flow' : k === 'WHATSAPP_FLOW_ID_LIVESTOCK' ? 'flow_liv_1' : k === 'WHATSAPP_FLOW_MODE' ? 'draft' : null);
     computeOptsMock.mockResolvedValue(livestockOpts([])); // sin lotes ni corrales
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const items: unknown[] = [];
@@ -151,7 +160,7 @@ describe('appendFormOffer', () => {
     errSpy.mockRestore();
   });
 
-  it('en whatsapp sin flow_id configurado no ofrece', async () => {
+  it('en whatsapp una oferta IMPLÍCITA no abre un segundo colector (el handler ya pregunta)', async () => {
     getSettingMock.mockResolvedValue(null);
     const items: unknown[] = [];
     await appendFormOffer(items as never, {
@@ -159,5 +168,36 @@ describe('appendFormOffer', () => {
     } as never, waCtx);
     expect(items).toHaveLength(0);
     expect(createMock).not.toHaveBeenCalled();
+    expect(startConvMock).not.toHaveBeenCalled();
+  });
+
+  it('whatsapp + provider conversation (default) + pedido explícito → formulario por chat, sin Flow', async () => {
+    getSettingMock.mockImplementation(async (k: string) => (k === 'WHATSAPP_FLOW_ID_EXPENSE' ? 'flow_x' : null));
+    const items: unknown[] = [];
+    await appendFormOffer(items as never, {
+      messages: [], sideEffects: { offerForm: { action: 'log_expense', prefill: { amount: 250000 }, explicit: true } },
+    } as never, waCtx);
+    expect(startConvMock).toHaveBeenCalledWith(waCtx, { action: 'log_expense', prefill: { amount: 250000 } });
+    expect(createMock).not.toHaveBeenCalled(); // ninguna sesión de Flow
+    expect(items).toEqual([{ type: 'text', text: '💰 ¿Cuánto gastaste?' }]);
+  });
+
+  it('provider meta_flow SIN flow_id → cae a conversation (nunca un formulario que no abre)', async () => {
+    getSettingMock.mockImplementation(async (k: string) => (k === 'WHATSAPP_FORM_PROVIDER' ? 'meta_flow' : ''));
+    const items: unknown[] = [];
+    await appendFormOffer(items as never, {
+      messages: [], sideEffects: { offerForm: { action: 'sow_crop', prefill: {}, explicit: true } },
+    } as never, waCtx);
+    expect(startConvMock).toHaveBeenCalledTimes(1);
+    expect(items.some(i => (i as { interactive?: { type?: string } }).interactive?.type === 'flow')).toBe(false);
+  });
+
+  it('resumeForm → retoma el formulario conversacional', async () => {
+    const items: unknown[] = [];
+    await appendFormOffer(items as never, {
+      messages: [], sideEffects: { resumeForm: { action: 'log_expense' } },
+    } as never, waCtx);
+    expect(resumeConvMock).toHaveBeenCalledWith(waCtx, 'log_expense');
+    expect(items).toEqual([{ type: 'text', text: '↩️ Sigamos' }]);
   });
 });

@@ -72,6 +72,54 @@ export function entityNameCandidates(s: string): string[] {
   return stripped !== literal ? [literal, stripped] : [literal];
 }
 
+/** Texto → palabras normalizadas separadas por un espacio, con bordes. */
+function wordPadded(s: string): string {
+  return ` ${normalizeEntityName(s).replace(/[^a-z0-9ñ]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
+}
+
+/**
+ * ¿El texto libre del usuario NOMBRA esta entidad (lote/campo/corral)?
+ * Match por palabras completas con la normalización canónica (sin acentos,
+ * sin mayúsculas), probando literal primero y sin artículo después, más la
+ * convención "Lote X" ↔ "X". Un nombre corto o puramente numérico ("3", "A")
+ * exige la palabra "lote"/"campo"/"corral" adelante o que el texto sea SOLO
+ * el nombre — "compré 3 bolsas" no nombra al lote «3».
+ *
+ * La usa el colector conversacional de formularios; nunca escribir otra
+ * normalización inline para esto.
+ */
+export function mentionsEntityName(text: string, name: string, kindWord: 'lote' | 'campo' | 'corral' = 'lote'): boolean {
+  const t = wordPadded(text);
+  if (!t.trim()) return false;
+  const names = new Set<string>();
+  for (const cand of entityNameCandidates(name)) names.add(cand);
+  const withoutKind = String(name).replace(new RegExp(`^${kindWord}\\s+`, 'i'), '').trim();
+  if (withoutKind && withoutKind !== name) for (const cand of entityNameCandidates(withoutKind)) names.add(cand);
+  for (const cand of names) {
+    const n = wordPadded(cand).trim();
+    if (!n) continue;
+    const weak = n.length <= 1 || /^\d+$/.test(n);
+    if (t.trim() === n) return true;
+    if (weak) {
+      if (t.includes(` ${kindWord} ${n} `)) return true;
+      continue;
+    }
+    if (t.includes(` ${n} `)) return true;
+    // "11D" escrito "11 d" (o "La Loma" escrito "laloma"): comparar compacto
+    // contra 1-3 palabras consecutivas del texto.
+    const compact = n.replace(/ /g, '');
+    const words = t.trim().split(' ');
+    for (let i = 0; i < words.length; i++) {
+      let joined = '';
+      for (let j = i; j < Math.min(words.length, i + 3); j++) {
+        joined += words[j];
+        if (joined === compact) return true;
+      }
+    }
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Tolerancia fonética para nombres dictados por AUDIO.
 //

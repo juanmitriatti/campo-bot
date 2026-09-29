@@ -61,10 +61,14 @@ describe('ChannelVerificationService — startWhatsApp', () => {
     expect(r.ttl_minutes).toBe(10); // default
     expect(new Date(r.expires_at).getTime()).toBeGreaterThan(Date.now());
 
-    // Verify WhatsApp send was called with normalized phone (no leading +)
+    // El número sale en la forma CANÓNICA de `utils/phone.ts`: `549` + 10
+    // dígitos nacionales. Este assert esperaba `541155123456` — es decir, el
+    // bug: la copia local de normalización NO insertaba el 9 de celular, así
+    // que lo que se guardaba en `users.phone_number` no era lo que manda Meta
+    // y el webhook no volvía a encontrar al usuario nunca más.
     expect(mockSendWhatsApp).toHaveBeenCalledTimes(1);
     const [phoneArg, msgArg] = mockSendWhatsApp.mock.calls[0];
-    expect(phoneArg).toBe('541155123456'); // +54 prepended, leading 0 stripped, + dropped for Cloud API
+    expect(phoneArg).toBe('5491155123456');
     expect(msgArg).toContain('código');
     // The message must contain a 6-digit code formatted as `XXXXXX`
     expect(msgArg).toMatch(/`\d{6}`/);

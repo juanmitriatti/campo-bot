@@ -396,12 +396,16 @@ export class StockService {
       const field = await getFieldByName(Number(userId), fieldName);
       return field || null;
     }
-    // Try to get first accessible field
+    // Primer campo accesible. El JOIN contra `field_members` que había acá
+    // dejaba afuera al DUEÑO de un campo sin fila de membresía (esa fila la
+    // crea `getOrCreateField` como efecto colateral): el stock quedaba sin
+    // campo donde ubicarse. Es la misma cicatriz que documenta
+    // `accessible-fields.ts`.
     const pool = (await import('../../config/db.js')).pool;
+    const { accessibleFieldsSql } = await import('../shared/accessible-fields.js');
     const { rows } = await pool.query(
       `SELECT f.id, f.name FROM fields f
-       JOIN field_members fm ON f.id = fm.field_id
-       WHERE fm.user_id = $1 AND f.deleted_at IS NULL
+       WHERE f.id IN (${accessibleFieldsSql(1)}) AND f.deleted_at IS NULL
        ORDER BY f.id ASC LIMIT 1`,
       [Number(userId)]
     );

@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createPipelineHarness, type PipelineHarness } from '../pipeline-harness.js';
 import { conversationLockStore } from '../../../middleware/conversation-lock-store.js';
+import { formConversationStore } from '../../../forms/conversation/form-conversation.service.js';
 
 let dbAvailable = true;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3661,6 +3662,346 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(out).toMatch(/10 ?mm/);
       const rows = await h.q(`SELECT amount FROM expenses WHERE user_id = $1 AND deleted_at IS NULL ORDER BY id`, [h.userId]);
       expect(rows.map(r => Number(r.amount))).toEqual([50000, 20000]);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Campos compartidos (Sep 2026)
+  //
+  // Compartir existía solo por chat y devolvía un código de 6 caracteres que el
+  // dueño tenía que pasar por afuera: una LLAVE AL PORTADOR, sin entrega, sin
+  // revocación y sin nada en el dashboard.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('campos compartidos', () => {
+    let h: PipelineHarness;
+    let fieldId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('share-pipeline');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Compartida') RETURNING id`, [h.userId]);
+      fieldId = (f[0] as { id: number }).id;
+      await h.q(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2)`, [fieldId, h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 50)`, [fieldId]);
+    });
+
+    afterAll(async () => {
+      await h.q(`DELETE FROM field_invites WHERE field_id = $1`, [fieldId]).catch(() => {});
+      await h.q(`DELETE FROM field_members WHERE field_id = $1`, [fieldId]).catch(() => {});
+      await h.q(`DELETE FROM plots WHERE field_id = $1`, [fieldId]).catch(() => {});
+      await h.q(`DELETE FROM fields WHERE id = $1`, [fieldId]).catch(() => {});
+      await h?.cleanup();
+    });
+
+    it('"compartir campo X con <número>" deja la invitación ATADA a ese teléfono', async () => {
+      h.fakeAgent.enqueueTool('share_field', { field: 'La Compartida', phone: '11 2345 6789' });
+      const text = h.allText(await h.send('compartir campo La Compartida con 11 2345 6789'));
+
+      expect(text).toMatch(/La Compartida/);
+      expect(text).toMatch(/Solo ese número/i);
+
+      const rows = await h.q(
+        `SELECT invited_phone, revoked_at, used_by FROM field_invites WHERE field_id = $1 ORDER BY id DESC LIMIT 1`,
+        [fieldId],
+      );
+      expect(rows).toHaveLength(1);
+      // Guardado CANÓNICO, no como lo tipeó el usuario: si no, la validación al
+      // redimir no matchearía nunca.
+      expect(rows[0].invited_phone).toBe('5491123456789');
+    });
+
+    it('sin número deja pending machine-readable, y el número del turno siguiente lo completa', async () => {
+      h.fakeAgent.enqueueTool('share_field', { field: 'La Compartida' });
+      const ask = h.allText(await h.send('compartir campo La Compartida'));
+      expect(ask).toMatch(/a qué número/i);
+
+      // El número pelado lo consume el slot-extractor: sin volver al agente.
+      const before = h.fakeAgent.callCount;
+      const done = h.allText(await h.send('11 2345 6780'));
+      expect(h.fakeAgent.callCount).toBe(before);
+      expect(done).toMatch(/La Compartida/);
+
+      const rows = await h.q(
+        `SELECT invited_phone FROM field_invites WHERE field_id = $1 ORDER BY id DESC LIMIT 1`,
+        [fieldId],
+      );
+      expect(rows[0].invited_phone).toBe('5491123456780');
+    });
+
+    it('"después te digo" NO se toma como teléfono', async () => {
+      h.fakeAgent.enqueueTool('share_field', { field: 'La Compartida' });
+      await h.send('compartir campo La Compartida');
+      const antes = await h.q(`SELECT count(*)::int AS n FROM field_invites WHERE field_id = $1`, [fieldId]);
+      const out = h.allText(await h.send('después te digo'));
+      const despues = await h.q(`SELECT count(*)::int AS n FROM field_invites WHERE field_id = $1`, [fieldId]);
+      expect(Number(despues[0].n)).toBe(Number(antes[0].n));
+      expect(out).not.toMatch(/wa.me/);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Formulario conversacional por WhatsApp (Sep 2026): Meta no aprueba los
+  // Flows todavía; el formulario se completa por chat con la MISMA
+  // FormDefinition y el MISMO submit. Cero llamadas al agente.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('formulario conversacional por WhatsApp (sin Meta Flows)', () => {
+    let h: PipelineHarness;
+    let a1: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('form-conv', { channel: 'whatsapp' });
+      const f1 = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
+      const f2 = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'San Martín') RETURNING id`, [h.userId]);
+      const p = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'A1') RETURNING id`, [(f1[0] as { id: number }).id]);
+      a1 = (p[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'A2')`, [(f1[0] as { id: number }).id]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [(f2[0] as { id: number }).id]);
+    });
+    afterAll(async () => h?.cleanup());
+    beforeEach(async () => {
+      formConversationStore.clear(h.phone);
+      await h.q(`UPDATE form_sessions SET status = 'cancelled' WHERE user_id = $1 AND used_at IS NULL`, [h.userId]);
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      h.fakeAgent.reset();
+    });
+
+    const expenses = () => h.q(
+      `SELECT amount::float AS amount, currency, category, plot_id, field_id, expense_date::text AS expense_date
+         FROM expenses WHERE user_id = $1 AND deleted_at IS NULL ORDER BY id`, [h.userId]);
+    const tapId = (items: Awaited<ReturnType<PipelineHarness['send']>>, re: RegExp) => {
+      const b = h.allButtons(items).find(x => re.test(x.title));
+      expect(b, `botón ${re} en: ${h.allButtons(items).map(x => x.title).join(' | ')}`).toBeTruthy();
+      return b!.id;
+    };
+    const liveSession = async () => (await h.q(
+      `SELECT token, status, draft FROM form_sessions WHERE user_id = $1 AND mode = 'conversation' ORDER BY created_at DESC LIMIT 1`,
+      [h.userId]))[0] as { token: string; status: string; draft: { values: Record<string, unknown> } } | undefined;
+
+    it('«formulario de gasto» → preguntas de a una → resumen → Confirmar → UN gasto, sin agente', async () => {
+      const start = await h.send('formulario de gasto');
+      expect(h.allText(start)).toMatch(/¿Cuánto gastaste\?/);
+      expect(h.allText(start)).not.toMatch(/todavía no está disponible/);
+
+      expect(h.allText(await h.send('250 mil'))).toMatch(/tipo de gasto/i);
+      const loc = await h.send('combustible');
+      expect(h.allText(loc)).toMatch(/lote o campo/i);
+      expect(h.allButtons(loc).some(b => /Omitir/.test(b.title))).toBe(true); // opcional → se puede saltear
+
+      const summary = await h.send('A1');
+      const body = h.allText(summary);
+      expect(body).toMatch(/Revisemos el gasto/);
+      expect(body).toMatch(/\$250\.000/);
+      expect(body).toMatch(/A1 \(La Esperanza\)/);
+      expect(body).toMatch(/\(hoy\)/);
+
+      const done = await h.tap(tapId(summary, /Confirmar/));
+      expect(h.allText(done)).not.toMatch(/❌/);
+      const rows = await expenses();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ amount: 250000, currency: 'ARS', plot_id: a1 });
+      expect(String(rows[0].category)).toMatch(/combustible/i);
+      expect(h.fakeAgent.calls).toHaveLength(0);
+      expect((await liveSession())?.status).toBe('submitted');
+    });
+
+    it('varios datos en UN mensaje: no re-pregunta lo que ya se dijo', async () => {
+      await h.send('formulario de gasto');
+      const r = await h.send('Cargá $250.000 de combustible en el lote A1 de La Esperanza de hoy');
+      const text = h.allText(r);
+      expect(text).toMatch(/Revisemos el gasto/);
+      expect(text).not.toMatch(/¿Cuánto gastaste/);
+      await h.send('sí');
+      expect(await expenses()).toHaveLength(1);
+    });
+
+    it('Confirmar dos veces (doble tap / webhook repetido) → un solo gasto y aviso', async () => {
+      await h.send('formulario de gasto');
+      const summary = await h.send('$180.000 de combustible en el A1 de La Esperanza, ayer');
+      const ok = tapId(summary, /Confirmar/);
+      await h.tap(ok);
+      const again = await h.tap(ok);
+      expect(h.allText(again)).toMatch(/ya quedó registrado/i);
+      const rows = await expenses();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].amount).toBe(180000);
+    });
+
+    it('obligatorio: "omitir" no lo saltea; inválido se explica y se re-pregunta', async () => {
+      await h.send('formulario de gasto');
+      const skip = await h.send('omitir');
+      expect(h.allText(skip)).toMatch(/obligatorio/i);
+      expect(h.allText(skip)).toMatch(/¿Cuánto gastaste/);
+      const bad = await h.send('-50');
+      expect(h.allText(bad)).toMatch(/¿Cuánto gastaste/);
+      expect(await expenses()).toHaveLength(0);
+    });
+
+    it('opcional: "Omitir" el lote sigue sin bloquear; el resumen lo ofrece desde Editar', async () => {
+      await h.send('formulario de gasto');
+      await h.send('50 mil');
+      const loc = await h.send('combustible');
+      const summaryOrNext = await h.tap(tapId(loc, /Omitir/));
+      expect(h.allText(summaryOrNext)).toMatch(/Revisemos el gasto/);
+      expect(h.allText(summaryOrNext)).not.toMatch(/Lote o campo:/);
+    });
+
+    it('consulta en el medio: se responde, el formulario sigue y re-pregunta lo mismo', async () => {
+      await h.send('formulario de gasto');
+      await h.send('250 mil');
+      const q = await h.send('mis campos');
+      const text = h.allText(q);
+      expect(text).toMatch(/La Esperanza/);
+      expect(text).toMatch(/tipo de gasto/i);
+      expect(h.allText(await h.send('combustible'))).toMatch(/lote o campo/i);
+    });
+
+    it('cambio de tema: estaciona con aviso; «volvamos al gasto» retoma con lo cargado', async () => {
+      await h.send('formulario de gasto');
+      await h.send('250 mil');
+      h.fakeAgent.enqueueTool('log_rainfall', { quantity: 20, field: 'La Esperanza' });
+      const pivot = await h.send('llovieron 20 mm en La Esperanza');
+      expect(h.allText(pivot)).toMatch(/Dejé el gasto a medio cargar/);
+      expect((await liveSession())?.status).toBe('parked');
+
+      const back = await h.send('volvamos al gasto');
+      const text = h.allText(back);
+      expect(text).toMatch(/Sigamos con el gasto/);
+      expect(text).toMatch(/\$250\.000/);
+      expect(text).toMatch(/tipo de gasto/i);
+    });
+
+    it('draft durable: sin puntero en memoria (restart), «retomar» sigue desde la DB', async () => {
+      await h.send('formulario de gasto');
+      await h.send('250 mil');
+      formConversationStore.clear(h.phone); // se pierde todo lo volátil
+      const back = await h.send('retomar');
+      expect(h.allText(back)).toMatch(/\$250\.000/);
+      expect(h.allText(back)).toMatch(/tipo de gasto/i);
+    });
+
+    it('lote de OTRO campo: se explica y se re-pregunta (nunca se guarda inconsistente)', async () => {
+      await h.send('formulario de gasto');
+      await h.send('250 mil');
+      await h.send('combustible');
+      const r = await h.send('Norte de La Esperanza');
+      expect(h.allText(r)).toMatch(/No encontré el lote «Norte» en La Esperanza.*San Martín/s);
+      const s = await liveSession();
+      expect(s?.draft.values.location).toBeUndefined();
+    });
+
+    it('Editar el importe desde el resumen → re-valida → se guarda el nuevo', async () => {
+      await h.send('formulario de gasto');
+      const summary = await h.send('$250.000 de combustible en el A1 de La Esperanza');
+      const menu = await h.tap(tapId(summary, /Editar/));
+      const editAmount = await h.tap(tapId(menu, /Monto/));
+      expect(h.allText(editAmount)).toMatch(/¿Cuánto gastaste/);
+      const again = await h.send('300 mil');
+      expect(h.allText(again)).toMatch(/\$300\.000/);
+      await h.tap(tapId(again, /Confirmar/));
+      const rows = await expenses();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].amount).toBe(300000);
+    });
+
+    it('corrección en texto libre en el resumen: "el monto era 300 mil"', async () => {
+      await h.send('formulario de gasto');
+      await h.send('$250.000 de combustible en el A1 de La Esperanza');
+      const fixed = await h.send('no, el monto era 300 mil');
+      expect(h.allText(fixed)).toMatch(/Actualicé: Monto/);
+      expect(h.allText(fixed)).toMatch(/\$300\.000/);
+    });
+
+    it('Cancelar no guarda nada', async () => {
+      await h.send('formulario de gasto');
+      const summary = await h.send('$250.000 de combustible en el A1 de La Esperanza');
+      const r = await h.tap(tapId(summary, /Cancelar/));
+      expect(h.allText(r)).toMatch(/No guardé nada/);
+      expect(await expenses()).toHaveLength(0);
+      expect((await liveSession())?.status).toBe('cancelled');
+    });
+
+    it('draft VENCIDO: no se retoma ni se confirma; aviso claro y nada reutilizado', async () => {
+      await h.send('formulario de gasto');
+      const summary = await h.send('$250.000 de combustible en el A1 de La Esperanza');
+      await h.q(`UPDATE form_sessions SET expires_at = NOW() - INTERVAL '1 minute' WHERE user_id = $1 AND used_at IS NULL`, [h.userId]);
+      const tap = await h.tap(tapId(summary, /Confirmar/));
+      expect(h.allText(tap)).toMatch(/venció y no guardé nada/);
+      expect(await expenses()).toHaveLength(0);
+      const resume = await h.send('retomar');
+      expect(h.allText(resume)).toMatch(/venció/);
+      expect(h.allText(resume)).not.toMatch(/250\.000/);
+      // Un formulario nuevo arranca vacío.
+      expect(h.allText(await h.send('formulario de gasto'))).toMatch(/¿Cuánto gastaste/);
+    });
+
+    it('fecha auto-completada de ayer se recalcula a hoy al retomar', async () => {
+      await h.send('formulario de gasto');
+      await h.send('250 mil');
+      const s = await liveSession();
+      await h.q(
+        `UPDATE form_sessions SET draft = jsonb_set(draft, '{values,event_date}', to_jsonb((CURRENT_DATE - 1)::text))
+          WHERE token = $1`, [s!.token]);
+      formConversationStore.clear(h.phone);
+      await h.send('retomar');
+      const after = await liveSession();
+      const today = (await h.q(`SELECT (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date::text AS d`))[0].d;
+      expect(after?.draft.values.event_date).toBe(today);
+    });
+
+    it('tap con token de otro usuario / manipulado → ignorado, sin escribir', async () => {
+      const r = await h.tap('cform_deadbeef_ok');
+      expect(h.allText(r)).toMatch(/ya no está vigente/);
+      expect(await expenses()).toHaveLength(0);
+    });
+
+    it('siembra por formulario: lote + cultivo en un mensaje → resumen → guarda la campaña', async () => {
+      await h.send('formulario de siembra');
+      const r = await h.send('soja en el A2 de La Esperanza, ayer');
+      expect(h.allText(r)).toMatch(/Revisemos la siembra/);
+      await h.send('confirmo');
+      const crops = await h.q(
+        `SELECT pc.crop, p.name FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id JOIN fields f ON f.id = p.field_id
+          WHERE f.user_id = $1`, [h.userId]);
+      expect(crops).toEqual([{ crop: expect.stringMatching(/soja/i), name: 'A2' }]);
+    });
+
+    it('iniciar un formulario con otro a medio cargar: ofrece retomar o empezar de cero', async () => {
+      await h.send('formulario de gasto');
+      await h.send('250 mil');
+      formConversationStore.clear(h.phone);
+      const r = await h.send('formulario de gasto');
+      expect(h.allText(r)).toMatch(/a medio cargar/);
+      const fresh = await h.tap(tapId(r, /Empezar de nuevo/));
+      expect(h.allText(fresh)).toMatch(/¿Cuánto gastaste/);
+    });
+
+    it('tap del picker con un pending del chat abierto: se resuelve el pending y el formulario queda solo', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { plot: 'A1', field: 'La Esperanza' }); // sin cultivo → pending
+      const ask = await h.send('sembré en el A1');
+      expect(h.allText(ask)).toMatch(/qué cultivo/i);
+      const r = await h.tap('form_open_expense');
+      expect(h.allText(r)).toMatch(/¿Cuánto gastaste/);
+      // La respuesta siguiente es del formulario, no del pending de siembra.
+      expect(h.allText(await h.send('250 mil'))).toMatch(/tipo de gasto/i);
+      const crops = await h.q(
+        `SELECT 1 FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1 AND pc.crop ILIKE '%250%'`,
+        [h.userId]);
+      expect(crops).toHaveLength(0);
+    });
+
+    it('paridad con el chat: el mismo gasto por formulario y por el agente deja la misma fila', async () => {
+      await h.send('formulario de gasto');
+      await h.send('$250.000 de combustible en el A1 de La Esperanza, ayer');
+      await h.send('sí');
+      h.fakeAgent.enqueueTool('log_expense', {
+        amount: 250000, category: 'Combustible', plot: 'A1', field: 'La Esperanza', expense_date: 'ayer',
+      });
+      const chat = await h.send('gasté 250 mil de combustible en el A1 de La Esperanza ayer');
+      const confirmBtn = h.allButtons(chat).find(b => b.id === 'confirm_pending');
+      if (confirmBtn) await h.tap(confirmBtn.id);
+      const rows = await expenses();
+      expect(rows).toHaveLength(2);
+      const pick = (r: Record<string, unknown>) => ({ amount: r.amount, currency: r.currency, category: String(r.category).toLowerCase(), plot_id: r.plot_id, field_id: r.field_id, expense_date: r.expense_date });
+      expect(pick(rows[0])).toEqual(pick(rows[1]));
     });
   });
 
