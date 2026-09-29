@@ -13,7 +13,7 @@ import {
   ACTIVITY_FILTER_PATTERNS,
 } from '../constants/agro-terms.js';
 import { canonicalProvince } from '../services/localidad-lookup.service.js';
-import { stripNameLeadIn, RESUME_FORM_RE, formActionFromWord } from './lexicon.js';
+import { stripNameLeadIn, RESUME_FORM_RE, formActionFromWord, INVITE_ACCEPT_RE } from './lexicon.js';
 
 // --- Normalización central ---
 function normalizeText(text) {
@@ -874,9 +874,7 @@ const COMMAND_PATTERNS = [
   // El código son 6 caracteres del alfabeto sin ambiguos (ver generateCode()).
   {
     command: "accept_invite",
-    patterns: [
-      /^(?:unirme|unirme\s+al?\s+campo|aceptar(?:\s+invitaci[oó]n)?|acepto)\s+([A-Za-z0-9]{6})\s*\.?$/i,
-    ],
+    patterns: [INVITE_ACCEPT_RE],
     extract: (m) => ({ code: m[1].toUpperCase() }),
   },
 

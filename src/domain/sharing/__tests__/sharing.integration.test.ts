@@ -247,5 +247,46 @@ describe.skipIf(!dbAvailable)('FieldSharingService — invitación atada a un te
       expect((await svc.removeMemberById(ownerId, fieldId, guestId)).success).toBe(true);
       expect(await svc.listSharedWithMe(guestId)).toHaveLength(0);
     });
+
+    it('el dueño quita a un miembro por número escrito de cualquier forma', async () => {
+      const inv = await svc.createInvite(ownerId, fieldId, { phone: GUEST_PHONE });
+      await svc.acceptInvite(guestId, inv.code);
+
+      // Un número que no es miembro no encuentra a nadie (aunque el usuario exista).
+      expect((await svc.removeMemberByIdentifier(ownerId, fieldId, '0236 15 4470003')).success).toBe(false);
+      // Antes comparaba el texto tal cual contra 549…: nunca encontraba al miembro.
+      const res = await svc.removeMemberByIdentifier(ownerId, fieldId, '0236 15 4470002');
+      expect(res.success).toBe(true);
+      expect(await svc.listSharedWithMe(guestId)).toHaveLength(0);
+    });
+  });
+
+  describe('cuenta sin WhatsApp (registrada por la web)', () => {
+    let webUserId: number;
+
+    // Número sin usuario previo: la invitación queda solo atada al teléfono.
+    // Matchea PHONE_RE, así que wipe() limpia al usuario web una vez vinculado.
+    const NEW_PHONE = '5492364470009';
+
+    beforeEach(async () => {
+      await pool.query(`DELETE FROM users WHERE email = 'invite-web-test@example.com'`).catch(() => {});
+      const { rows } = await pool.query(
+        `INSERT INTO users (name, email) VALUES ('Web', 'invite-web-test@example.com') RETURNING id`,
+      );
+      webUserId = rows[0].id;
+    });
+
+    it('no la trata como "otro número": pide vincular WhatsApp y no quema el código', async () => {
+      const inv = await svc.createInvite(ownerId, fieldId, { phone: NEW_PHONE });
+
+      const res = await svc.acceptInvite(webUserId, inv.code);
+      expect(res.success).toBe(false);
+      expect(res.reason).toBe('needs_phone');
+      expect(res.message).toMatch(/vincul/i);
+
+      // Vincula ese WhatsApp (lo que hace el OTP) → el mismo código entra.
+      await pool.query(`UPDATE users SET phone_number = $1 WHERE id = $2`, [NEW_PHONE, webUserId]);
+      expect((await svc.acceptInvite(webUserId, inv.code)).success).toBe(true);
+    });
   });
 });

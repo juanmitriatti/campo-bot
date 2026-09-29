@@ -165,7 +165,16 @@ export function createSharingRouter(deps: SharingDeps = defaultDeps): Router {
       const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
       if (!code) { res.status(400).json({ error: 'Hace falta el código de la invitación.' }); return; }
       const result = await service.acceptInvite(userId, code);
-      if (!result.success) { res.status(400).json({ error: result.message }); return; }
+      if (!result.success) {
+        // NEEDS_PHONE: la cuenta todavía no tiene WhatsApp. El front guarda el
+        // código y reintenta cuando se vincula (hooks/usePendingInvite).
+        if (result.reason === 'needs_phone') {
+          res.status(409).json({ error: result.message, code: 'NEEDS_PHONE' });
+          return;
+        }
+        res.status(400).json({ error: result.message });
+        return;
+      }
       res.json({ joined: true, fieldName: result.fieldName, message: result.message });
     } catch (err) { handleError(err, res); }
   });

@@ -1,8 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { savePendingInviteFromUrl } from '../hooks/usePendingInvite';
 
 export default function Login() {
+  // /login?invite=CODIGO: mismo canje diferido que /register (usePendingInvite).
+  useState(() => savePendingInviteFromUrl(window.location.search));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);

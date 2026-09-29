@@ -243,6 +243,13 @@ export function isFormCancel(text: string): boolean {
   return FORM_CANCEL_RE.test(normLex(text).trim().replace(/[!.,]+$/, ''));
 }
 
+/**
+ * "unirme ABC123" / "acepto ABC123": canjear una invitación a un campo. El
+ * grupo 1 es el código (6 caracteres, ver generateCode()). Lo usan el parser
+ * (comando accept_invite) y el gate de canal no verificado del webhook.
+ */
+export const INVITE_ACCEPT_RE = /^(?:unirme|unirme\s+al?\s+campo|aceptar(?:\s+invitaci[oó]n)?|acepto)\s+([A-Za-z0-9]{6})\s*\.?$/i;
+
 /** "Retomar"/"volvamos al gasto": retomar un formulario a medio cargar. */
 export const RESUME_FORM_RE = /^(?:(?:dale\s+)?(?:retom\w*|segui\w*|sigamos|continu\w*|volv\w*)(?:\s+(?:con|a|al|a\s+la))?\s*(?:el|la|lo)?\s*(?:formulario|form|carga|registro)?\s*(?:de(?:l)?\s+(?:la\s+|el\s+)?)?(siembra|cosecha|gastos?|ingresos?|labor(?:es)?|hacienda)?)$/;
 

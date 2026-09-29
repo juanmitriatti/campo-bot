@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { savePendingInviteFromUrl } from '../hooks/usePendingInvite';
 
 // Storage key used by Dashboard to show a one-shot welcome toast on first
 // arrival after registering.
@@ -19,6 +20,9 @@ export default function Register() {
   const [showPasswordError, setShowPasswordError] = useState(false);
   const { register, error, clearError } = useAuth();
   const navigate = useNavigate();
+  // Link de invitación a un campo (/register?invite=CODIGO): el código queda
+  // guardado y el dashboard lo canjea cuando la cuenta vincule WhatsApp.
+  const [inviteCode] = useState(() => savePendingInviteFromUrl(window.location.search));
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -61,6 +65,12 @@ export default function Register() {
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 space-y-4">
+          {inviteCode && (
+            <div className="bg-campo-50 border border-campo-200 text-campo-800 text-sm rounded-md px-3 py-2">
+              🤝 Te invitaron a un campo. Creá tu cuenta y vinculá tu WhatsApp: entrás al campo automáticamente.
+              {' '}¿Ya tenés cuenta? <Link to="/login" className="font-medium underline hover:no-underline">Iniciá sesión</Link>.
+            </div>
+          )}
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-3 py-2">
               <p>{error}</p>

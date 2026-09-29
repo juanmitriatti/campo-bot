@@ -25,6 +25,7 @@ import SharingTab from '../components/sharing/SharingTab';
 import RemindersTab from '../components/RemindersTab';
 import PaywallModal from '../components/billing/PaywallModal';
 import { fetchSubscription, type SubscriptionStatus } from '../api/subscription';
+import { usePendingInvite } from '../hooks/usePendingInvite';
 import type { DashboardView } from '../components/layout/nav-model';
 
 const viewFeatureMap: Record<DashboardView, string | null> = {
@@ -65,6 +66,9 @@ export default function Dashboard() {
   // cuenta" — el usuario se registraba, caía a un dashboard vacío y nadie le
   // decía el paso siguiente. true = sin ningún canal verificado.
   const [needsChannel, setNeedsChannel] = useState(false);
+  // null = todavía no sabemos. Lo usa la invitación pendiente del link de registro.
+  const [whatsappVerified, setWhatsappVerified] = useState<boolean | null>(null);
+  const pendingInvite = usePendingInvite(whatsappVerified);
   // Mobile "Más" sheet — the other 9 destinations that no longer fit (and never
   // fitted) in the bottom bar.
   const [moreOpen, setMoreOpen] = useState(false);
@@ -78,6 +82,7 @@ export default function Dashboard() {
     try {
       const s = await apiRequest<{ whatsapp_verified: boolean; telegram_verified: boolean }>('/verify/status');
       setNeedsChannel(!s.whatsapp_verified && !s.telegram_verified);
+      setWhatsappVerified(s.whatsapp_verified);
     } catch { /* sin señal: no mostramos el banner */ }
   };
 
@@ -295,6 +300,24 @@ export default function Dashboard() {
               type="button"
               onClick={() => setWelcomeEmail(null)}
               className="text-campo-700 dark:text-campo-300 hover:text-campo-900 dark:hover:text-campo-100 transition-colors"
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pendingInvite.notice && (
+        <div className={`border-b text-sm ${pendingInvite.notice.kind === 'error'
+          ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
+          : 'bg-campo-50 dark:bg-campo-900/30 border-campo-200 dark:border-campo-800 text-campo-800 dark:text-campo-200'}`}>
+          <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+            <span>{pendingInvite.notice.kind === 'joined' ? '🤝 ' : ''}{pendingInvite.notice.text}</span>
+            <button
+              type="button"
+              onClick={pendingInvite.dismiss}
+              className="opacity-70 hover:opacity-100 transition-opacity"
               aria-label="Cerrar"
             >
               ✕

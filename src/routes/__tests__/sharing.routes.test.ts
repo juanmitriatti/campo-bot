@@ -175,4 +175,15 @@ describe('API de campos compartidos', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/es para el número/);
   });
+
+  it('una cuenta sin WhatsApp recibe 409 NEEDS_PHONE: el front guarda el código y reintenta', async () => {
+    const { call, service } = await start();
+    service.acceptInvite.mockResolvedValueOnce({
+      success: false, reason: 'needs_phone', message: 'Para entrar al campo primero vinculá tu WhatsApp.',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    const res = await call('POST', '/api/auth/sharing/join', { code: 'A3F7K2' });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('NEEDS_PHONE');
+  });
 });

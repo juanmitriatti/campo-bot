@@ -3,7 +3,7 @@ import { pool, withTransaction } from '../../config/db.js';
 import { PlanRepository } from '../billing/plan.repository.js';
 import { ensureOwnerMembership, canAccessField } from '../shared/field-access.js';
 import { accessibleFieldsSql } from '../shared/accessible-fields.js';
-import { normalizePhone, formatPhoneAR } from '../../utils/phone.js';
+import { normalizePhone, formatPhoneAR, isTelegramPlaceholder } from '../../utils/phone.js';
 import { invalidateUserContext } from '../../ai/user-context.service.js';
 import type { UserId } from '../../types/index.js';
 
@@ -270,7 +270,7 @@ export class FieldSharingService {
   async acceptInvite(
     userId: UserId,
     code: string
-  ): Promise<{ success: boolean; message: string; fieldName?: string }> {
+  ): Promise<{ success: boolean; message: string; fieldName?: string; reason?: 'needs_phone' }> {
     const upperCode = code.toUpperCase().trim();
 
     const { rows } = await pool.query(
@@ -312,9 +312,21 @@ export class FieldSharingService {
         `SELECT phone_number FROM users WHERE id = $1`,
         [userId]
       );
-      const myPhone = normalizePhone(me[0]?.phone_number);
+      const rawPhone: string | null = me[0]?.phone_number ?? null;
+      const myPhone = rawPhone && !isTelegramPlaceholder(rawPhone) ? normalizePhone(rawPhone) : null;
       const matchesPhone = myPhone != null && myPhone === invite.invited_phone;
       const matchesUser = invite.invited_user_id != null && Number(invite.invited_user_id) === Number(userId);
+      // Cuenta sin WhatsApp (creada por la web, o solo Telegram): no es "otro
+      // número", todavía no hay número con qué comparar. Decirle "esta invitación
+      // es para +54 9 …" a la persona correcta la mandaba a pedir otra.
+      if (myPhone == null && !matchesUser) {
+        console.log(`[SHARING] invite ${invite.code} en espera: user=${userId} sin WhatsApp vinculado`);
+        return {
+          success: false,
+          reason: 'needs_phone',
+          message: 'Para entrar al campo primero vinculá tu WhatsApp (Mi cuenta → Vincular WhatsApp). Apenas lo vincules, la invitación se acepta sola.',
+        };
+      }
       if (!matchesPhone && !matchesUser) {
         console.log(
           `[SHARING] invite ${invite.code} rechazada: destinada a ${invite.invited_phone}, la usó user=${userId} (${myPhone ?? 'sin teléfono'})`,
@@ -392,10 +404,17 @@ export class FieldSharingService {
       );
       if (emailRows.length > 0) target = emailRows[0];
     }
-    if (!target) {
+    // Teléfono en forma canónica (utils/phone.ts ↔ canonical_phone_ar) y solo
+    // entre los miembros de ESTE campo. Comparar el texto tal cual hacía que
+    // "quitar a 11 2345 6789" no encontrara nunca a nadie (en la DB es 549…).
+    const canonicalPhone = looksLikeEmail ? null : normalizePhone(trimmed);
+    if (!target && canonicalPhone) {
       const { rows: phoneRows } = await pool.query(
-        `SELECT id, name, phone_number FROM users WHERE phone_number = $1`,
-        [trimmed]
+        `SELECT u.id, u.name, u.phone_number
+         FROM field_members fm
+         JOIN users u ON fm.user_id = u.id
+         WHERE fm.field_id = $1 AND canonical_phone_ar(u.phone_number) = $2`,
+        [fieldId, canonicalPhone]
       );
       if (phoneRows.length > 0) target = phoneRows[0];
     }
