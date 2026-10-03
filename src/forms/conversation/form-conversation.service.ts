@@ -27,10 +27,12 @@ import {
   FORM_DEFINITIONS, crossCheckIssues, validateFieldValue,
   type FormAction, type FormDefinition, type FormField, type FormOption,
 } from '../form-definitions.js';
-import { computeFormOptions, type FormOptions } from '../form-options.js';
+import { computeFormOptions, fieldOptionId, NO_LOCATION_ID, type FormOptions } from '../form-options.js';
 import { resolveFormInitialValues } from '../form-prefill.js';
 import { FORM_PRESENTATION, type FormPresentation } from './presentation.js';
-import { extractFieldValues, isFieldEmpty } from './field-extractor.js';
+import { CategoryRepository } from '../../domain/financial/category.repository.js';
+import { CategoryService } from '../../domain/financial/category.service.js';
+import { extractFieldValues, isFieldEmpty, optionsFor, type ExtractContext, type ExtractResult } from './field-extractor.js';
 import {
   cbId, parseCbId, renderEditMenu, renderQuestion, renderRecap, renderSummary,
 } from './renderer.js';
@@ -38,8 +40,11 @@ import {
   hasActionVerb, isAffirmation, isReadOnlyQuery, looksLikeNewActionOrQuery,
 } from '../../middleware/conversation-guards.js';
 import {
-  RESUME_FORM_RE, isFormCancel, isSkipAnswer, matchesFormDomainVerb, normLex,
+  CORRECTION_PREFIX_RE, FORM_EDIT_RE, RESUME_FORM_RE, isFormCancel, isSkipAnswer, matchesFormDomainVerb, namesFormField,
+  normLex, stripAnswerPrefix, stripFieldCue,
 } from '../../utils/lexicon.js';
+import { compactEntityName } from '../../utils/entity-matcher.js';
+import { parseLocationId } from '../form-options.js';
 import { getTodayISO } from '../../utils/date.js';
 import type { BotResponseItem, ChannelContext } from '../../services/message-pipeline.js';
 import type { HandlerResponse } from '../../types/index.js';
@@ -64,6 +69,8 @@ export interface FormConversationDeps {
 
 const AWAIT_CONFIRM = '__confirm';
 const AWAIT_EDIT = '__edit';
+/** Esperando decidir qué hacer con una categoría escrita que no existe. */
+const AWAIT_NEWCAT = '__newcat';
 
 interface Draft {
   values: Record<string, unknown>;
@@ -77,6 +84,16 @@ interface Draft {
   choices: { field: string; ids: string[] } | null;
   /** Campo que se está corrigiendo desde el resumen. */
   editing: string | null;
+  /** "Otro" ya confirmado como categoría NUEVA: campo → texto confirmado. */
+  confirmedOther: Record<string, string>;
+  /** Pregunta abierta "crear / usar existente / elegir otra". */
+  newCat: { field: string; text: string; target: string | null } | null;
+  /** Ya se preguntó "¿de qué campo?" tras omitir el lote (un segundo omitir = general). */
+  locFieldAsked: boolean;
+  /** Siembra: cultivo distinto activo en el lote, avisado en el resumen (se cierra al confirmar). */
+  replaceWarned: string | null;
+  /** Siembra: lote cuyo cultivo activo ya se mencionó al elegirlo. */
+  activeNoticedPlot: string | null;
 }
 
 interface Session {
@@ -98,7 +115,9 @@ async function ttlHours(): Promise<number> {
 }
 
 function emptyDraft(): Draft {
-  return { values: {}, autoFilled: [], asked: [], attempts: {}, choices: null, editing: null };
+  return { values: {}, autoFilled: [], asked: [], attempts: {}, choices: null, editing: null, confirmedOther: {}, newCat: null,
+    locFieldAsked: false, replaceWarned: null, activeNoticedPlot: null,
+  };
 }
 
 function parseDraft(raw: unknown): Draft {
@@ -110,6 +129,11 @@ function parseDraft(raw: unknown): Draft {
     attempts: (d.attempts && typeof d.attempts === 'object') ? { ...d.attempts } : {},
     choices: d.choices ?? null,
     editing: d.editing ?? null,
+    confirmedOther: (d.confirmedOther && typeof d.confirmedOther === 'object') ? { ...d.confirmedOther } : {},
+    newCat: d.newCat ?? null,
+    locFieldAsked: d.locFieldAsked === true,
+    replaceWarned: typeof d.replaceWarned === 'string' ? d.replaceWarned : null,
+    activeNoticedPlot: typeof d.activeNoticedPlot === 'string' ? d.activeNoticedPlot : null,
   };
 }
 
@@ -153,6 +177,18 @@ function cleanValues(values: Record<string, unknown>): Record<string, unknown> {
 
 function requiredMissing(s: Session): FormField[] {
   return s.def.fields.filter(f => f.required && isFieldEmpty(s.draft.values, f));
+}
+
+/**
+ * Motivo por el que un campo no se puede omitir AHORA: obligatorio de la
+ * definición, o requerido condicional del crossCheck (los mm de un riego, el
+ * producto de una fumigación). null = se puede omitir.
+ */
+function requiredNow(s: Session, f: FormField): string | null {
+  if (f.required) return `${f.label} es obligatorio para registrar ${s.pres.noun}.`;
+  const issue = crossCheckIssues(s.def, cleanValues({ ...s.draft.values, [f.key]: undefined, [`${f.key}_other`]: undefined }))
+    .find(i => i.field === f.key);
+  return issue ? issue.message : null;
 }
 
 function nounLabel(s: Session): string {
@@ -259,7 +295,7 @@ async function ask(
     candidates: opts.candidates,
     onlyMissing: field.required && missing.length === 1 && missing[0].key === field.key && hasData && !opts.reason,
     escalate: (s.draft.attempts[field.key] ?? 0) >= 2,
-    skippable: !field.required,
+    skippable: requiredNow(s, field) == null,
   });
   s.status = 'collecting';
   s.awaiting = field.key;
@@ -275,8 +311,13 @@ async function showSummary(s: Session, notes: string[] = []): Promise<BotRespons
   s.draft.editing = null;
   if (!(await persist(s))) return expiredItems(s.action);
   console.log(`[FORM] conversation summary action=${s.action} token=${s.token.slice(0, 8)}`);
+  // Siembra sobre un lote con OTRO cultivo activo: el resumen lo dice y
+  // Confirmar es la confirmación del reemplazo (una sola, explícita).
+  const allNotes = s.draft.replaceWarned
+    ? [...notes, `⚠️ Ese lote ya tiene *${capFirst(s.draft.replaceWarned)}* activo. Si confirmás, *se cierra esa campaña* y arranca la nueva.`]
+    : notes;
   return renderSummary({
-    def: s.def, pres: s.pres, values: s.draft.values, options: s.options, token: s.token, todayISO: s.todayISO, notes,
+    def: s.def, pres: s.pres, values: s.draft.values, options: s.options, token: s.token, todayISO: s.todayISO, notes: allNotes,
   });
 }
 
@@ -286,10 +327,40 @@ async function showSummary(s: Session, notes: string[] = []): Promise<BotRespons
  * (ownership, allow-list, cultivo activo) → resumen. Un resumen nunca promete
  * algo que el submit después rechaza.
  */
-async function advance(s: Session, notes: string[] = []): Promise<BotResponseItem[]> {
+async function advance(s: Session, notesIn: string[] = []): Promise<BotResponseItem[]> {
   s.draft.editing = null;
+  const notes = [...notesIn];
+  // Siembra: al elegir un lote que ya tiene cultivo se avisa en el momento
+  // (si el cultivo nuevo ya está, lo dice el resumen).
+  if (s.action === 'sow_crop' && s.draft.values.plot_id != null) {
+    const pid = String(s.draft.values.plot_id);
+    const plot = s.options.plots.find(p => String(p.id) === pid);
+    const cropField = fieldByKey(s.def, 'crop');
+    if (plot?.activeCrop && s.draft.activeNoticedPlot !== pid && cropField && isFieldEmpty(s.draft.values, cropField)) {
+      notes.push(`ℹ️ *${plot.name}* ya tiene *${capFirst(plot.activeCrop)}* activo.`);
+    }
+    if (plot?.activeCrop) s.draft.activeNoticedPlot = pid;
+  }
   const missing = requiredMissing(s);
   if (missing.length > 0) return ask(s, missing[0], { notes });
+
+  // Precio sin moneda dicha: se asume pesos, pero se MUESTRA en el resumen
+  // (antes quedaba implícito y un precio en dólares se guardaba en pesos sin
+  // que se viera). Lo que diga el usuario lo pisa ("500 dólares").
+  const priceF = fieldByKey(s.def, 'unit_price');
+  const curF = fieldByKey(s.def, 'currency');
+  if (priceF && curF && !curF.required) {
+    if (!isFieldEmpty(s.draft.values, priceF) && isFieldEmpty(s.draft.values, curF)) {
+      s.draft.values.currency = 'ARS';
+      if (!s.draft.autoFilled.includes('currency')) s.draft.autoFilled.push('currency');
+    } else if (isFieldEmpty(s.draft.values, priceF) && s.draft.autoFilled.includes('currency')) {
+      delete s.draft.values.currency;
+      s.draft.autoFilled = s.draft.autoFilled.filter(k => k !== 'currency');
+    }
+  }
+
+  const pendingNewCat = unconfirmedNewCategory(s);
+  if (pendingNewCat) return askNewCategory(s, pendingNewCat.field, pendingNewCat.text, notes);
 
   const issue = crossCheckIssues(s.def, cleanValues(s.draft.values)).find(i => i.field);
   if (issue?.field) {
@@ -299,6 +370,7 @@ async function advance(s: Session, notes: string[] = []): Promise<BotResponseIte
 
   const offer = s.def.fields.find(f =>
     !f.required && s.pres.fields[f.key]?.optional === 'offer'
+    && (s.pres.fields[f.key]?.offerIf?.(s.draft.values) ?? true)
     && isFieldEmpty(s.draft.values, f) && !s.draft.asked.includes(f.key));
   if (offer) {
     s.draft.asked.push(offer.key);
@@ -317,7 +389,85 @@ async function advance(s: Session, notes: string[] = []): Promise<BotResponseIte
     }
     return showSummary(s, [...notes, `⚠️ ${prep.error}`]);
   }
+  s.draft.replaceWarned = prep.refs.activeOther ?? null;
   return showSummary(s, notes);
+}
+
+// ─── Categoría escrita que no existe ─────────────────────────────────────
+
+const cutTitle = (s: string, n = 20) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`);
+const capFirst = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+function categoryKind(f: FormField): 'expense' | 'income' | null {
+  return f.optionsSource === 'expense_categories' ? 'expense' : f.optionsSource === 'income_categories' ? 'income' : null;
+}
+
+/** Categoría de gasto/ingreso escrita a mano y todavía sin confirmar como nueva. */
+function unconfirmedNewCategory(s: Session): { field: FormField; text: string } | null {
+  for (const f of s.def.fields) {
+    if (!f.allowOther || !categoryKind(f)) continue;
+    const text = s.draft.values[`${f.key}_other`];
+    if (typeof text !== 'string' || !text.trim()) continue;
+    if (s.draft.confirmedOther[f.key] === text) continue;
+    return { field: f, text: text.trim() };
+  }
+  return null;
+}
+
+/**
+ * «Veterinaria» no está en tus categorías → [Usar la parecida | Usar «Otros»]
+ * [Crear nueva] [Elegir otra]. Antes una categoría desconocida caía en «Otros»
+ * sin dejar rastro, o llegaba al handler y rebotaba con un picker que el
+ * formulario no puede mostrar.
+ */
+async function askNewCategory(s: Session, f: FormField, text: string, notes: string[] = []): Promise<BotResponseItem[]> {
+  const kind = categoryKind(f)!;
+  const similar = await new CategoryService(new CategoryRepository()).findSimilar(s.userId, kind, text).catch(() => null);
+  const otros = optionsFor(f, s.options).find(o => compactEntityName(o.id) === 'otros');
+  const target = similar?.name ?? otros?.id ?? null;
+  const buttons = [
+    ...(target ? [{ id: cbId(s.token, 'ncuse'), title: cutTitle(`Usar «${target}»`) }] : []),
+    { id: cbId(s.token, 'ncnew'), title: '➕ Crear nueva' },
+    { id: cbId(s.token, 'ncpick'), title: '📋 Elegir otra' },
+  ];
+  s.status = 'collecting';
+  s.awaiting = AWAIT_NEWCAT;
+  s.draft.choices = null;
+  s.draft.newCat = { field: f.key, text, target };
+  if (!(await persist(s))) return expiredItems(s.action);
+  console.log(`[FORM] categoría nueva en consulta field=${f.key} texto="${text.slice(0, 40)}" parecida=${similar?.name ?? '-'}`);
+  const body = `🏷️ «${capFirst(text)}» no está en tus categorías${similar ? `, pero se parece a *${similar.name}*` : ''}. ¿Qué hago?`;
+  return [
+    ...notes.map(t => ({ type: 'text' as const, text: t })),
+    { type: 'interactive', interactive: { type: 'buttons', body, buttons } },
+  ];
+}
+
+async function resolveNewCategory(s: Session, choice: 'new' | 'use' | 'pick'): Promise<BotResponseItem[]> {
+  const nc = s.draft.newCat;
+  const f = nc ? fieldByKey(s.def, nc.field) : undefined;
+  if (!nc || !f) return advance(s);
+  s.draft.newCat = null;
+  if (choice === 'new') {
+    const name = capFirst(nc.text);
+    s.draft.values[`${f.key}_other`] = name;
+    delete s.draft.values[f.key];
+    s.draft.confirmedOther[f.key] = name;
+    console.log(`[FORM] categoría nueva confirmada field=${f.key} nombre="${name}"`);
+    return advance(s);
+  }
+  if (choice === 'use' && nc.target) {
+    applyCandidates(s, { [f.key]: nc.target });
+    // A «Otros» va con la palabra en el detalle: no se pierde lo que escribió.
+    const desc = fieldByKey(s.def, 'description');
+    if (desc && compactEntityName(nc.target) === 'otros' && isFieldEmpty(s.draft.values, desc)) {
+      s.draft.values.description = capFirst(nc.text);
+    }
+    return advance(s);
+  }
+  delete s.draft.values[`${f.key}_other`];
+  delete s.draft.values[f.key];
+  return ask(s, f);
 }
 
 /** Vuelve a mostrar exactamente lo que está abierto (sin avanzar). */
@@ -391,8 +541,13 @@ export async function startConversationForm(
     }
   }
 
-  const parked = await parkActive(ctx);
   const options = await computeFormOptions(offer.action, userId);
+  // Un obligatorio sin NINGUNA opción (cosecha sin cultivos activos, hacienda
+  // sin lotes ni corrales): antes se preguntaba igual, con la lista vacía, y a
+  // cualquier respuesta se contestaba "No encontré «Norte» entre tus lotes".
+  const blocked = await explainMissingOptions(offer.action, def, options, userId);
+  if (blocked) return blocked;
+  const parked = await parkActive(ctx);
   const todayISO = getTodayISO();
   const prefill = offer.prefill ?? {};
   const initial = resolveFormInitialValues({ action: offer.action, prefill, options, todayISO });
@@ -429,6 +584,37 @@ export async function startConversationForm(
   const intro = `📝 Vamos con ${pres.noun}. Si querés, mandame todo junto (ej: ${exampleFor(offer.action)}).`;
   const next = await advance(s);
   return [...parked, { type: 'text', text: intro }, ...next];
+}
+
+/** Si el formulario no se puede completar por falta de opciones, el mensaje que lo explica. */
+async function explainMissingOptions(
+  action: FormAction, def: FormDefinition, options: FormOptions, userId: number,
+): Promise<BotResponseItem[] | null> {
+  const empty = def.fields.find(f =>
+    f.required && f.type === 'select' && !!f.optionsSource && (options.lists[f.optionsSource] ?? []).length === 0);
+  if (!empty) return null;
+  console.log(`[FORM] no abierto action=${action}: sin opciones para ${empty.key}`);
+  const noun = FORM_PRESENTATION[action].noun;
+  if (action === 'harvest_crop') {
+    const anyPlot = (await computeFormOptions('sow_crop', userId)).plots.length > 0;
+    if (anyPlot) {
+      return [{
+        type: 'interactive',
+        interactive: {
+          type: 'buttons',
+          body: '🌾 No tenés ningún lote con cultivo activo para cosechar. Primero cargá la siembra y después volvé a la cosecha.',
+          buttons: [{ id: formOpenId('sow_crop'), title: '🌱 Cargar siembra' }],
+        },
+      }];
+    }
+  }
+  const example = options.fields.length > 0
+    ? `*agregar lote Norte en campo ${options.fields[0].name}*`
+    : '*agregar campo La Esperanza*';
+  return [{
+    type: 'text',
+    text: `📍 Para cargar ${noun} primero necesito un lote, y todavía no tenés ninguno. Creá uno así: ${example}`,
+  }];
 }
 
 function exampleFor(action: FormAction): string {
@@ -494,7 +680,14 @@ async function confirm(ctx: ChannelContext, s: Session, deps: FormConversationDe
   const { submitForm } = await import('../form-submit.service.js');
   // Ya estamos dentro del lock del usuario (el controller lo tomó): el submit
   // no lo vuelve a pedir (el lock no es reentrante).
-  const result = await submitForm(s.token, cleanValues(s.draft.values), {
+  const payload = cleanValues(s.draft.values);
+  // El resumen avisó que se cierra la campaña activa: Confirmar la reemplaza.
+  if (s.draft.replaceWarned) payload.replace_active_crop = s.draft.replaceWarned;
+  // La categoría escrita a mano ya pasó por "crear nueva / usar la parecida".
+  if (typeof payload.category_other === 'string' && s.draft.confirmedOther.category === payload.category_other) {
+    payload.category_other_confirmed = true;
+  }
+  const result = await submitForm(s.token, payload, {
     deliver: 'return', userId: s.userId, alreadyLocked: true,
   });
   if (result.ok) {
@@ -518,6 +711,98 @@ async function confirm(ctx: ChannelContext, s: Session, deps: FormConversationDe
     return ask(s, f, { reason: `🤔 ${result.error}` });
   }
   return showSummary(s, [`⚠️ No lo pude guardar: ${result.error}`, 'Corregí lo que haga falta con ✏️ Editar, o escribí *cancelar*.']);
+}
+
+// ─── Correcciones acotadas (resumen / edición de un campo) ───────────────
+
+/** Claves que viajan juntas con un campo (el "otro" del select, la unidad de la dosis…). */
+function companionKeys(key: string): string[] {
+  const keys = [key, `${key}_other`];
+  if (key === 'quantity') keys.push('unit');
+  if (key === 'yield_kg' || key === 'yield_kg_per_ha') keys.push('yield_kg', 'yield_kg_per_ha');
+  if (key === 'amount' || key === 'unit_price') keys.push('currency');
+  return keys;
+}
+
+function pickKeys(values: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of keys) if (k in values) out[k] = values[k];
+  return out;
+}
+
+/** Selects cuyo valor se reconoce por el NOMBRE de algo (lote, categoría, cultivo, raza, labor). */
+function isNameSelect(f: FormField): boolean {
+  return f.type === 'select' && f.key !== 'currency' && f.key !== 'unit';
+}
+
+/** Nombres "pelados" de la opción elegida, para comparar contra una respuesta corta. */
+function bareOptionNames(f: FormField, value: string, options: FormOptions): string[] {
+  const plotName = (id: number) => options.plots.find(p => p.id === id)?.name;
+  if (f.optionsSource === 'plots') return [plotName(Number(value))].filter(Boolean) as string[];
+  const loc = parseLocationId(value);
+  if (loc) {
+    if (loc.kind === 'plot') return [plotName(loc.id)].filter(Boolean) as string[];
+    if (loc.kind === 'field') return [options.fields.find(x => x.id === loc.id)?.name].filter(Boolean) as string[];
+    return [options.corrals.find(x => x.id === loc.id)?.name].filter(Boolean) as string[];
+  }
+  const opt = optionsFor(f, options).find(o => o.id === value);
+  return opt ? [opt.id, opt.title] : [];
+}
+
+/**
+ * Qué corrige un texto libre escrito en el RESUMEN. Antes se re-extraía TODO
+ * con overwrite: «viento del norte, 15 km/h» cambiaba el lote a Norte sin que
+ * el usuario lo pidiera (QA formularios, oct 2026). Ahora corrige solo:
+ *   1. el dato que la frase NOMBRA ("el monto era 300 mil", "el lote es el Sur");
+ *   2. datos de tipo inequívoco (fecha, importe con pista de dinero, moneda,
+ *      "N ha", dosis con unidad, rinde, %);
+ *   3. una respuesta corta que ES una opción ("no, en el Sur", "maíz").
+ * Si no hay nada de eso no cambia nada y el resumen ofrece Editar.
+ */
+function extractSummaryCorrection(text: string, s: Session, base: ExtractContext): ExtractResult {
+  const out: ExtractResult = { values: {} };
+  const take = (vals: Record<string, unknown>) => {
+    for (const [k, v] of Object.entries(vals)) if (!(k in out.values)) out.values[k] = v;
+  };
+  const filled = { ...s.draft.values };
+
+  for (const f of s.def.fields) {
+    if (!namesFormField(text, f.key)) continue;
+    const stripped = stripFieldCue(text, f.key);
+    // Texto libre y cargas: sin "<campo> era …" al arranque no se sabe dónde empieza el valor.
+    if ((f.type === 'text' || f.type === 'group') && stripped == null) continue;
+    const r = extractFieldValues(stripped ?? text, { ...base, values: filled, awaiting: f.key, overwrite: false, summary: false });
+    take(pickKeys(r.values, companionKeys(f.key)));
+    if (r.ambiguous?.field === f.key && !out.ambiguous) out.ambiguous = r.ambiguous;
+    if (r.warnings?.length) out.warnings = [...(out.warnings ?? []), ...r.warnings];
+  }
+
+  take(extractFieldValues(text, { ...base, values: {}, awaiting: null, overwrite: true, summary: true }).values);
+
+  if (Object.keys(out.values).length === 0 && !out.ambiguous) {
+    const norm = normLex(text.trimStart());
+    const prefix = CORRECTION_PREFIX_RE.exec(norm);
+    const answer = stripAnswerPrefix(text.trimStart().slice(prefix ? prefix[0].length : 0))
+      .replace(/^(?:todo\s+el\s+)?(?:campo|corral|lote)\s+/i, '')
+      .replace(/^(?:era|es|fue|eran|son)\s+/i, '')
+      .replace(/[.!]+$/, '')
+      .trim();
+    const words = answer ? answer.split(/\s+/).length : 0;
+    if (words >= 1 && words <= 4) {
+      for (const f of s.def.fields.filter(isNameSelect)) {
+        const r = extractFieldValues(text, { ...base, values: filled, awaiting: f.key, overwrite: false, summary: false });
+        const v = r.values[f.key];
+        if (typeof v !== 'string') continue;
+        const entity = f.optionsSource === 'plots' || f.optionsSource === 'locations' || f.optionsSource === 'livestock_locations';
+        const exact = bareOptionNames(f, v, s.options).some(n => compactEntityName(n) === compactEntityName(answer));
+        if (entity ? exact : (exact || words <= 2)) {
+          take(pickKeys(r.values, companionKeys(f.key)));
+          break;
+        }
+      }
+    }
+  }
+  return out;
 }
 
 // ─── Mensajes de texto con un formulario abierto ─────────────────────────
@@ -557,11 +842,22 @@ export async function handleFormText(
 
   refreshAutoDate(s);
   const t = normLex(text).trim();
-  const awaitedField = fieldByKey(s.def, s.awaiting);
+  // Con "crear / usar / elegir otra" abierto, lo que no sea una de esas tres
+  // respuestas se lee como una nueva respuesta a la pregunta de categoría.
+  const awaitedField = fieldByKey(s.def, s.awaiting === AWAIT_NEWCAT ? (s.draft.newCat?.field ?? null) : s.awaiting);
 
   if (isFormCancel(text)) return cancel(ctx, s);
 
   if (RESUME_FORM_RE.test(t)) return reprompt(s);
+
+  if (s.awaiting === AWAIT_NEWCAT && s.draft.newCat) {
+    const nc = s.draft.newCat;
+    if (isAffirmation(text) || /^(?:crea\w*|nuev[ao])\b/.test(t)) return resolveNewCategory(s, 'new');
+    if (nc.target && compactEntityName(stripAnswerPrefix(text).replace(/^usar\s+/i, '')) === compactEntityName(nc.target)) {
+      return resolveNewCategory(s, 'use');
+    }
+    if (/^(?:no|otra|elegir|eleg[ií]\w*|lista)\b/.test(t) && t.split(/\s+/).length <= 3) return resolveNewCategory(s, 'pick');
+  }
 
   if (s.awaiting === AWAIT_CONFIRM) {
     if (isAffirmation(text)) return confirm(ctx, s, deps);
@@ -569,6 +865,21 @@ export async function handleFormText(
       s.awaiting = AWAIT_EDIT;
       await persist(s);
       return reprompt(s);
+    }
+    // "editar" escrito (antes solo andaba el botón) y "editar el monto".
+    // Con un valor en la frase ("cambiar el monto a 300 mil") sigue de largo:
+    // es una corrección directa.
+    if (FORM_EDIT_RE.test(t) && !/\d/.test(t)) {
+      const words = t.split(/\s+/).length;
+      const named = words <= 5
+        ? s.def.fields.find(f => namesFormField(text, f.key) || t.includes(normLex(f.label)))
+        : undefined;
+      if (named) return startEditing(s, named);
+      if (words <= 2) {
+        s.awaiting = AWAIT_EDIT;
+        await persist(s);
+        return reprompt(s);
+      }
     }
   }
 
@@ -579,16 +890,19 @@ export async function handleFormText(
   }
 
   if (awaitedField && isSkipAnswer(text)) {
-    if (!awaitedField.required) return skipField(s, awaitedField);
-    s.draft.attempts[awaitedField.key] = (s.draft.attempts[awaitedField.key] ?? 0) + 1;
-    return ask(s, awaitedField, { reason: `🙏 ${awaitedField.label} es obligatorio para registrar ${s.pres.noun}.` });
+    const why = requiredNow(s, awaitedField);
+    if (why == null) return skipField(s, awaitedField);
+    return refuseSkip(s, awaitedField, why);
   }
 
   // ¿Es respuesta, consulta o cambio de tema?
   const readOnlyCmd = deps.parseCommandOnly(text);
   const readOnlyCmdHit = !!readOnlyCmd && deps.readOnlyCommands.has(readOnlyCmd.command);
-  const readOnly = isReadOnlyQuery(text) || readOnlyCmdHit;
-  const otherDomainAction = hasActionVerb(text) && !matchesFormDomainVerb(s.action, text) && !isReadOnlyQuery(text);
+  // Un mensaje que termina en "?" es una consulta aunque isReadOnlyQuery no la
+  // reconozca ("qué tengo sembrado?" tiene un participio que parece verbo de
+  // acción): se responde y se re-pregunta, nunca se guarda como dato.
+  const readOnly = isReadOnlyQuery(text) || readOnlyCmdHit || text.trim().endsWith('?');
+  const otherDomainAction = hasActionVerb(text) && !matchesFormDomainVerb(s.action, text) && !readOnly;
   if (otherDomainAction) return pivot(ctx, s, text, deps);
 
   const overwrite = s.awaiting === AWAIT_CONFIRM || s.awaiting === AWAIT_EDIT || !!s.draft.editing;
@@ -597,7 +911,7 @@ export async function handleFormText(
   const userValues = Object.fromEntries(
     Object.entries(s.draft.values).filter(([k]) => !s.draft.autoFilled.includes(k)),
   );
-  const ex = extractFieldValues(text, {
+  const baseCtx: ExtractContext = {
     def: s.def,
     options: s.options,
     values: userValues,
@@ -605,8 +919,23 @@ export async function handleFormText(
     overwrite,
     todayISO: s.todayISO,
     choices: s.draft.choices,
-    strict: readOnlyCmdHit,
-  });
+    // Una CONSULTA nunca es un valor de texto libre: con "¿qué producto
+    // usaste?" abierto, «qué tengo sembrado?» se guardaba como producto. Solo
+    // valen matches exactos contra opciones; el resto se responde y se
+    // re-pregunta (más abajo).
+    strict: readOnly,
+  };
+  let ex: ExtractResult;
+  if (s.awaiting === AWAIT_CONFIRM || s.awaiting === AWAIT_EDIT) {
+    ex = extractSummaryCorrection(text, s, baseCtx);
+  } else if (s.draft.editing && awaitedField) {
+    // Editando UN campo desde el resumen: la respuesta cambia ese campo y nada
+    // más (una observación que menciona un lote no cambia el lote).
+    const r = extractFieldValues(text, { ...baseCtx, values: { ...s.draft.values }, overwrite: false });
+    ex = { ...r, values: pickKeys(r.values, companionKeys(awaitedField.key)) };
+  } else {
+    ex = extractFieldValues(text, baseCtx);
+  }
   const hasValues = Object.keys(ex.values).length > 0;
 
   if (hasValues || ex.ambiguous) {
@@ -652,7 +981,63 @@ export async function handleFormText(
   return reprompt(s);
 }
 
+/**
+ * "Omitir" sobre un dato que esta labor SÍ necesita. Antes se borraba, el
+ * crossCheck lo volvía a pedir y la misma pregunta se repetía sin límite
+ * (invariante 6). Ahora: una vez con el motivo; a la segunda, salida explícita.
+ */
+async function refuseSkip(s: Session, f: FormField, why: string): Promise<BotResponseItem[]> {
+  const n = (s.draft.attempts[f.key] = (s.draft.attempts[f.key] ?? 0) + 1);
+  console.log(`[INTERCEPT] form omitir rechazado field=${f.key} intento=${n} motivo="${why}"`);
+  if (f.required || n < 2) return ask(s, f, { reason: `🙏 ${why}` });
+  s.status = 'collecting';
+  s.awaiting = f.key;
+  s.draft.choices = null;
+  if (!(await persist(s))) return expiredItems(s.action);
+  const hint = s.action === 'log_activity' ? ' (por ejemplo, el tipo de labor)' : '';
+  return [{
+    type: 'interactive',
+    interactive: {
+      type: 'buttons',
+      body: `🙏 ${why}\nSin ese dato no puedo registrar ${s.pres.noun}. Si no lo tenés ahora, podés cambiar otro dato${hint} o dejarlo para después.`,
+      buttons: [
+        { id: cbId(s.token, 'edit'), title: '✏️ Editar otro dato' },
+        { id: cbId(s.token, 'cancel'), title: '❌ Cancelar' },
+      ],
+    },
+  }];
+}
+
 async function skipField(s: Session, f: FormField): Promise<BotResponseItem[]> {
+  // Gasto / ingreso sin lote: es una elección, y hay que saber de QUÉ campo.
+  // Antes "Omitir" dejaba la ubicación vacía y el guardado contestaba "¿En qué
+  // lote lo registramos?" (QA formularios, oct 2026). Con un solo lote el
+  // handler lo asigna solo, como siempre.
+  if (f.key === 'location' && f.optionsSource === 'locations' && s.options.plots.length > 1) {
+    if (!s.draft.asked.includes(f.key)) s.draft.asked.push(f.key);
+    if (s.draft.locFieldAsked) {
+      s.draft.locFieldAsked = false;
+      applyCandidates(s, { [f.key]: NO_LOCATION_ID });
+      console.log('[FORM] ubicación: general (sin campo ni lote)');
+      return advance(s);
+    }
+    if (s.options.fields.length === 1) {
+      const only = s.options.fields[0];
+      applyCandidates(s, { [f.key]: fieldOptionId(only.id) });
+      console.log(`[FORM] ubicación omitida → nivel campo (${only.name})`);
+      return advance(s, [`📍 Sin lote: lo dejo a nivel campo (*${only.name}*).`]);
+    }
+    s.draft.locFieldAsked = true;
+    delete s.draft.values[f.key];
+    return ask(s, f, {
+      reason: '📍 Sin lote. ¿De qué campo es? Si no es de ninguno, elegí *Ninguno (general)*.',
+      candidates: [
+        // Solo el nombre: la pregunta ya dice "¿de qué campo?" y una fila de lista corta a 24.
+        ...s.options.fields.map(x => ({ id: fieldOptionId(x.id), title: x.name })),
+        { id: NO_LOCATION_ID, title: 'Ninguno (general)' },
+      ],
+    });
+  }
   delete s.draft.values[f.key];
   delete s.draft.values[`${f.key}_other`];
   if (!s.draft.asked.includes(f.key)) s.draft.asked.push(f.key);
@@ -751,6 +1136,13 @@ export async function handleFormTap(
     await persist(s);
     return reprompt(s);
   }
+  if (parsed.verb === 'ncnew' || parsed.verb === 'ncuse' || parsed.verb === 'ncpick') {
+    if (s.awaiting !== AWAIT_NEWCAT || !s.draft.newCat) {
+      console.log(`[INTERCEPT] tap ${callbackId} ignorado: no hay categoría nueva en consulta`);
+      return reprompt(s);
+    }
+    return resolveNewCategory(s, parsed.verb === 'ncnew' ? 'new' : parsed.verb === 'ncuse' ? 'use' : 'pick');
+  }
   const edit = /^e(\d{1,2})$/.exec(parsed.verb);
   if (edit) {
     const f = s.def.fields[Number(edit[1])];
@@ -758,8 +1150,9 @@ export async function handleFormTap(
   }
   const awaitedField = fieldByKey(s.def, s.awaiting);
   if (parsed.verb === 'skip') {
-    if (awaitedField && !awaitedField.required) return skipField(s, awaitedField);
-    return reprompt(s);
+    if (!awaitedField) return reprompt(s);
+    const why = requiredNow(s, awaitedField);
+    return why == null ? skipField(s, awaitedField) : refuseSkip(s, awaitedField, why);
   }
   if (parsed.verb === 'other') {
     return [{ type: 'text', text: `✍️ Escribí ${awaitedField ? awaitedField.label.toLowerCase() : 'el dato'} tal como lo llamás.` }];

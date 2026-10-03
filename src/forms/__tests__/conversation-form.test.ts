@@ -7,7 +7,7 @@ import { FORM_PRESENTATION } from '../conversation/presentation.js';
 import { extractFieldValues, isFieldEmpty, type ExtractContext } from '../conversation/field-extractor.js';
 import { renderQuestion, renderSummary, renderEditMenu, cbId, parseCbId } from '../conversation/renderer.js';
 import type { FormOptions } from '../form-options.js';
-import { isSkipAnswer, isFormCancel, matchesFormDomainVerb } from '../../utils/lexicon.js';
+import { isSkipAnswer, isFormCancel, matchesFormDomainVerb, namesFormField, stripFieldCue } from '../../utils/lexicon.js';
 import { mentionsEntityName } from '../../utils/entity-matcher.js';
 import { getTodayISO } from '../../utils/date.js';
 
@@ -104,6 +104,16 @@ describe('extractor: varios datos en un mensaje', () => {
     expect(r.values.amount).toBe(200000);
   });
 
+  it('"u$s 300" es dólares y "1.5 palos" es un millón y medio', () => {
+    const usd = extractFieldValues('u$s 300', ctx('log_expense', { awaiting: 'amount' }));
+    expect(usd.values.amount).toBe(300);
+    expect(usd.values.currency).toBe('USD');
+    expect(extractFieldValues('us$ 300', ctx('log_expense', { awaiting: 'amount' })).values.currency).toBe('USD');
+    expect(extractFieldValues('1.5 palos', ctx('log_expense', { awaiting: 'amount' })).values.amount).toBe(1500000);
+    // Una palabra que CONTIENE un término de moneda no es moneda.
+    expect(extractFieldValues('compré verdeo', ctx('log_expense', { awaiting: 'description' })).values.currency).toBeUndefined();
+  });
+
   it('un número pelado solo responde la pregunta abierta', () => {
     const r = extractFieldValues('40', ctx('add_livestock', { awaiting: 'location' }));
     expect(r.values.count).toBeUndefined();
@@ -124,6 +134,91 @@ describe('extractor: varios datos en un mensaje', () => {
     expect(extractFieldValues('el 25/09', ctx('log_expense')).values.event_date).toBe('2026-09-25');
     // Sin año y futura → el año anterior (noFuture).
     expect(extractFieldValues('el 30/12', ctx('log_expense')).values.event_date).toBe('2025-12-30');
+  });
+
+  // QA formularios (oct 2026): el producto «2-4-D» mandaba la labor al 2 de
+  // abril y un lote «3-4» al 3 de abril — la fecha autocompletada se re-busca en
+  // cada mensaje y cualquier "n-n" contaba.
+  it('una fecha con números necesita señal de fecha; los guiones no cuentan', () => {
+    expect(extractFieldValues('2-4-D', ctx('log_activity', { awaiting: 'product' })).values.event_date).toBeUndefined();
+    expect(extractFieldValues('2-4-D 1 lt/ha', ctx('log_activity', { awaiting: 'product' })).values.event_date).toBeUndefined();
+    expect(extractFieldValues('3-4', ctx('sow_crop', { awaiting: 'plot_id' })).values.event_date).toBeUndefined();
+    // Con barra pero como respuesta a OTRA pregunta: tampoco.
+    expect(extractFieldValues('3/4', ctx('sow_crop', { awaiting: 'plot_id' })).values.event_date).toBeUndefined();
+    // Con barra en medio de una frase sin pista: tampoco.
+    expect(extractFieldValues('250 mil de gasoil 25/09', ctx('log_expense', { awaiting: 'amount' })).values.event_date).toBeUndefined();
+    // Sí: pista, mensaje que es solo la fecha, o respuesta a "¿qué día fue?".
+    expect(extractFieldValues('250 mil de gasoil el 25/09', ctx('log_expense', { awaiting: 'amount' })).values.event_date).toBe('2026-09-25');
+    expect(extractFieldValues('25/09', ctx('log_expense')).values.event_date).toBe('2026-09-25');
+    expect(extractFieldValues('creo que 25/09', ctx('log_expense', { awaiting: 'event_date' })).values.event_date).toBe('2026-09-25');
+    expect(extractFieldValues('25-09', ctx('log_expense', { awaiting: 'event_date' })).values.event_date).toBe('2026-09-25');
+  });
+
+  it('modo resumen: solo datos de tipo inequívoco; nada que se reconozca por nombre', () => {
+    const r = extractFieldValues('viento del Norte de San Martín', ctx('log_activity', { overwrite: true, summary: true }));
+    expect(r.values).toEqual({});
+    const typed = extractFieldValues('no, eran 300 mil y fue ayer', ctx('log_expense', { overwrite: true, summary: true }));
+    expect(typed.values.amount).toBe(300000);
+    expect(typed.values.event_date).toBeDefined();
+    expect(typed.values.category).toBeUndefined();
+  });
+
+  it('etiquetas de campo: "el detalle era X" nombra el campo y deja el valor', () => {
+    expect(namesFormField('no, el monto era 300 mil', 'amount')).toBe(true);
+    expect(namesFormField('viento del norte', 'plot_id')).toBe(false);
+    expect(stripFieldCue('no, el detalle era Compra en YPF', 'description')).toBe('Compra en YPF');
+    expect(stripFieldCue('La categoría es Veterinaria', 'category')).toBe('Veterinaria');
+    expect(stripFieldCue('cambiá el producto', 'product')).toBeNull();
+  });
+
+  it('rinde: en quintales sin "/ha" es por hectárea; kg y tn sin "/ha" son el total', () => {
+    const y = (t: string) => extractFieldValues(t, ctx('harvest_crop', { awaiting: 'yield_kg_per_ha' })).values;
+    expect(y('42 qq')).toMatchObject({ yield_kg_per_ha: 4200, yield_kg: null });
+    expect(y('rindió 35 quintales')).toMatchObject({ yield_kg_per_ha: 3500 });
+    expect(y('130 tn')).toMatchObject({ yield_kg: 130000, yield_kg_per_ha: null });
+    expect(y('4200 kg')).toMatchObject({ yield_kg: 4200 });
+    // Más de 200 qq ya no es un rinde por hectárea.
+    expect(y('1500 qq')).toMatchObject({ yield_kg: 150000 });
+  });
+
+  it('cargas: humedad solo con %, y un número chico es parte del nombre', () => {
+    const l = (t: string) => extractFieldValues(t, ctx('harvest_crop', { awaiting: 'loads' }));
+    expect(l('Juan 28500 Silo 2').values.loads).toEqual([{ driver_name: 'Juan', weight_kg: 28500, destinatario: 'Silo 2' }]);
+    expect(l('Camión 2 Juan 28500').values.loads).toEqual([{ driver_name: 'Camión 2 Juan', weight_kg: 28500 }]);
+    const two = l('Juan 28,5 tn Cargill 14%\nPedro 30000');
+    expect(two.values.loads).toEqual([
+      { driver_name: 'Juan', weight_kg: 28500, destinatario: 'Cargill', humidity_pct: 14 },
+      { driver_name: 'Pedro', weight_kg: 30000 },
+    ]);
+    // El 14% es de Juan: no sube a la humedad general (Pedro la heredaría).
+    expect(two.values.humidity_pct).toBeUndefined();
+  });
+
+  it('cargas: más de 20 camiones se recortan CON aviso', () => {
+    const lines = Array.from({ length: 23 }, (_, i) => `Chofer${String.fromCharCode(65 + i)} 28000`).join('\n');
+    const r = extractFieldValues(lines, ctx('harvest_crop', { awaiting: 'loads' }));
+    expect((r.values.loads as unknown[]).length).toBe(20);
+    expect(r.warnings?.join(' ')).toMatch(/primeros 20 camiones de 23/);
+  });
+
+  it('producto esperado: sin la dosis pegada', () => {
+    const r = extractFieldValues('glifosato 2 lt/ha', ctx('log_activity', { awaiting: 'product' }));
+    expect(r.values).toMatchObject({ product: 'glifosato', quantity: 2, unit: 'lt/ha' });
+    expect(extractFieldValues('con 2,4-D', ctx('log_activity', { awaiting: 'product' })).values.product).toBe('2,4-D');
+  });
+
+  it('ingreso: comprador y toneladas de una venta de grano', () => {
+    const o = { ...OPTIONS, lists: { ...OPTIONS.lists, income_categories: [{ id: 'Soja', title: 'Soja' }, { id: 'Otros', title: 'Otros' }] } };
+    const r = extractFieldValues('vendí 30 tn de soja a Cargill 9 palos', { ...ctx('log_income'), options: o });
+    expect(r.values).toMatchObject({ amount: 9000000, category: 'Soja', buyer: 'Cargill', quantity_tn: 30 });
+    const kg = extractFieldValues('vendí 28500 kg de soja a AGD por 8 palos', { ...ctx('log_income'), options: o });
+    expect(kg.values).toMatchObject({ buyer: 'AGD', quantity_tn: 28.5 });
+    // "a fijar" / "a 320 dólares" no son un comprador.
+    expect(extractFieldValues('vendí la soja a fijar', { ...ctx('log_income'), options: o }).values.buyer).toBeUndefined();
+    expect(extractFieldValues('vendí soja a 320 dólares', { ...ctx('log_income'), options: o }).values.buyer).toBeUndefined();
+    // Respuesta a "¿A quién se lo vendiste?"
+    expect(extractFieldValues('a Cargill', { ...ctx('log_income', { awaiting: 'buyer' }), options: o }).values.buyer).toBe('Cargill');
+    expect(extractFieldValues('30', { ...ctx('log_income', { awaiting: 'quantity_tn' }), options: o }).values.quantity_tn).toBe(30);
   });
 
   it('hacienda: "40 terneros en el corral 1"', () => {
@@ -152,7 +247,7 @@ describe('extractor: varios datos en un mensaje', () => {
   });
 
   it('cargas por camión: un renglón inválido se informa, no se descarta en silencio', () => {
-    const r = extractFieldValues('Juan 28500 Cargill 14\nPedro 30 tn\nsin peso', ctx('harvest_crop', { awaiting: 'loads' }));
+    const r = extractFieldValues('Juan 28500 Cargill 14%\nPedro 30 tn\nsin peso', ctx('harvest_crop', { awaiting: 'loads' }));
     expect(r.values.loads).toEqual([
       { driver_name: 'Juan', weight_kg: 28500, destinatario: 'Cargill', humidity_pct: 14 },
       { driver_name: 'Pedro', weight_kg: 30000 },

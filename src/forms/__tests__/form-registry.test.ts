@@ -161,6 +161,28 @@ describe('form-commands — del payload validado al comando del handler', () => 
     expect(cmd).not.toHaveProperty('unit_price_ars');
     expect(cmd.__skipMoveOffer).toBe(true);
   });
+
+  // Dos corrales "1" en feedlots de campos distintos: sin el campo, el alta
+  // explotaba con "Hay varios corrales…" aunque el formulario ya sabía cuál era.
+  it('hacienda en corral: el comando lleva el CAMPO del corral para resolverlo sin ambigüedad', () => {
+    const cmd = buildFormCommand('add_livestock',
+      { category: 'ternero', count: 40, event_date: HOY },
+      { corral: { id: 3, name: '1', feedlotName: 'Feedlot Norte', fieldName: 'La Esperanza' } });
+    expect(cmd).toMatchObject({ corralName: '1', fieldName: 'La Esperanza', plotName: null });
+  });
+
+  it('ingreso: comprador y toneladas viajan al comando; gasto/ingreso sin lote llevan su marca', () => {
+    const sale = buildFormCommand('log_income',
+      { amount: 9000000, currency: 'ARS', category: 'Soja', buyer: 'Cargill', quantity_tn: 30, event_date: HOY }, {});
+    expect(sale).toMatchObject({ buyer: 'Cargill', quantity: 30, unit: 'tn' });
+    const fieldLevel = buildFormCommand('log_expense',
+      { amount: 1000, currency: 'ARS', category: 'Combustible', event_date: HOY },
+      { field: { id: 3, name: 'La Esperanza' }, fieldLevel: true });
+    expect(fieldLevel).toMatchObject({ fieldName: 'La Esperanza', plotName: null, fieldLevel: true });
+    const general = buildFormCommand('log_expense',
+      { amount: 1000, currency: 'ARS', category: 'Combustible', event_date: HOY }, { noLocation: true });
+    expect(general).toMatchObject({ fieldName: null, plotName: null, noLocation: true });
+  });
 });
 
 describe('Flow JSON — opciones fijas y "otro"', () => {

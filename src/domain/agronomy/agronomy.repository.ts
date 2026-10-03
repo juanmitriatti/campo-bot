@@ -308,6 +308,22 @@ export class AgronomyRepository {
     return _saveDomainEvent(userId, data) as Promise<DomainEventRow>;
   }
 
+  /** Completa datos de una siembra YA registrada (formulario repetido). Solo lo que llega. */
+  async updateCampaignSowing(plotCropId: number, patch: { sowedHectares?: number | null; variety?: string | null }): Promise<void> {
+    await pool.query(
+      `UPDATE plot_crops
+          SET sowed_hectares = COALESCE($2, sowed_hectares),
+              variety = COALESCE($3, variety)
+        WHERE id = $1`,
+      [plotCropId, patch.sowedHectares ?? null, patch.variety ?? null],
+    );
+  }
+
+  /** Notas de un evento propio ya guardado (ej. humedad de una cosecha repetida). */
+  async setDomainEventNotes(userId: UserId, eventId: number, notes: string): Promise<void> {
+    await pool.query(`UPDATE domain_events SET notes = $3 WHERE id = $1 AND user_id = $2`, [eventId, userId, notes]);
+  }
+
   async getDomainEventsByPlot(plotId: number, limit = 20): Promise<Array<DomainEventRow & { plot_name: string | null; field_name: string | null }>> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return _getDomainEventsByPlot(plotId, limit) as Promise<any>;

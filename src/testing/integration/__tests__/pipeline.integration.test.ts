@@ -3835,13 +3835,24 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await expenses()).toHaveLength(0);
     });
 
-    it('opcional: "Omitir" el lote sigue sin bloquear; el resumen lo ofrece desde Editar', async () => {
+    // Oct 2026: sin lote es una ELECCIÓN. Con varios campos se pregunta de cuál
+    // (antes el resumen salía sin ubicación y el guardado rebotaba con
+    // "¿En qué lote lo registramos?").
+    it('opcional: "Omitir" el lote no bloquea; con varios campos pregunta de cuál y «Ninguno» lo deja general', async () => {
       await h.send('formulario de gasto');
       await h.send('50 mil');
       const loc = await h.send('combustible');
-      const summaryOrNext = await h.tap(tapId(loc, /Omitir/));
-      expect(h.allText(summaryOrNext)).toMatch(/Revisemos el gasto/);
-      expect(h.allText(summaryOrNext)).not.toMatch(/Lote o campo:/);
+      const which = await h.tap(tapId(loc, /Omitir/));
+      expect(h.allText(which)).toMatch(/¿De qué campo es\?/);
+      expect(h.allButtons(which).map(b => b.title)).toEqual(
+        expect.arrayContaining(['La Esperanza', 'San Martín', 'Ninguno (general)']));
+      const summary = await h.tap(tapId(which, /Ninguno/));
+      expect(h.allText(summary)).toMatch(/Revisemos el gasto/);
+      expect(h.allText(summary)).toMatch(/Ninguno \(general\)/);
+      await h.tap(tapId(summary, /Confirmar/));
+      const rows = await expenses();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ amount: 50000, plot_id: null, field_id: null });
     });
 
     it('consulta en el medio: se responde, el formulario sigue y re-pregunta lo mismo', async () => {
@@ -4002,6 +4013,410 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(rows).toHaveLength(2);
       const pick = (r: Record<string, unknown>) => ({ amount: r.amount, currency: r.currency, category: String(r.category).toLowerCase(), plot_id: r.plot_id, field_id: r.field_id, expense_date: r.expense_date });
       expect(pick(rows[0])).toEqual(pick(rows[1]));
+    });
+  });
+
+  // Análisis de los 6 formularios (2 oct 2026). Cada `it` es un hallazgo que
+  // se vio fallar contra la base antes del arreglo.
+  describe('hallazgos del análisis de formularios (oct 2026)', () => {
+    let h: PipelineHarness;
+    let fieldId: number;
+    let norte: number;
+    let sur: number;
+    let bajo: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('form-audit', { channel: 'whatsapp' });
+      // Campo SIN fila `owner` en field_members (como los creados antes de que
+      // existiera): es justo el caso del punto 4.
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La barrida') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      fieldId = fid;
+      norte = ((await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 33) RETURNING id`, [fid]))[0] as { id: number }).id;
+      sur = ((await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Sur', 44) RETURNING id`, [fid]))[0] as { id: number }).id;
+      bajo = ((await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Bajo', 50) RETURNING id`, [fid]))[0] as { id: number }).id;
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, start_date) VALUES ($1, 'soja', 2025, '2025-11-10')`, [bajo]);
+    });
+    afterAll(async () => h?.cleanup());
+    beforeEach(async () => {
+      formConversationStore.clear(h.phone);
+      await h.q(`UPDATE form_sessions SET status = 'cancelled' WHERE user_id = $1 AND used_at IS NULL`, [h.userId]);
+      h.fakeAgent.reset();
+    });
+
+    type Items = Awaited<ReturnType<PipelineHarness['send']>>;
+    const tapBtn = async (items: Items, re: RegExp) => {
+      const b = h.allButtons(items).find(x => re.test(x.title));
+      expect(b, `botón ${re} en: ${h.allButtons(items).map(x => x.title).join(' | ')}`).toBeTruthy();
+      return h.tap(b!.id);
+    };
+    const isoDaysAgo = async (n: number) =>
+      String((await h.q(`SELECT ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date - $1::int)::text AS d`, [n]))[0].d);
+
+    it('1. siembra con «ayer»: la campaña arranca en la fecha elegida, no hoy', async () => {
+      const yesterday = await isoDaysAgo(1);
+      await h.send('formulario de siembra');
+      const summary = await h.send('trigo en el Sur, ayer');
+      expect(h.allText(summary)).toMatch(/\(ayer\)/);
+      await tapBtn(summary, /Confirmar/);
+      const pc = await h.q(`SELECT start_date::text AS start_date FROM plot_crops WHERE plot_id = $1`, [sur]);
+      expect(pc).toHaveLength(1);
+      expect(pc[0].start_date).toBe(yesterday);
+      const ev = await h.q(`SELECT event_date::text AS event_date FROM domain_events WHERE user_id = $1 AND event_type = 'planting'`, [h.userId]);
+      expect(ev[0].event_date).toBe(yesterday);
+    });
+
+    it('2. el producto «2-4-D» no cambia la fecha de la labor', async () => {
+      await h.send('formulario de labor');
+      await h.send('fumigué el Norte');
+      await h.send('2-4-D');
+      const summary = h.allText(await h.send('omitir'));
+      expect(summary).toMatch(/2-4-D/);
+      expect(summary).toMatch(/\(hoy\)/);
+      expect(summary).not.toMatch(/02\/04/);
+    });
+
+    it('3. resumen: un texto que no nombra un dato no cambia nada; el que lo nombra, sí', async () => {
+      await h.send('formulario de gasto');
+      const summary = await h.send('$250.000 de combustible en el Sur');
+      expect(h.allText(summary)).toMatch(/Sur \(La barrida\)/);
+
+      const noise = h.allText(await h.send('viento del norte'));
+      expect(noise).not.toMatch(/Actualicé/);
+      expect(noise).toMatch(/Sur \(La barrida\)/);
+      expect(noise).toMatch(/Editar/);
+
+      const named = h.allText(await h.send('el lote era el Norte'));
+      expect(named).toMatch(/Actualicé: Lote o campo/);
+      expect(named).toMatch(/Norte \(La barrida\)/);
+
+      const short = h.allText(await h.send('no, en el Sur'));
+      expect(short).toMatch(/Actualicé: Lote o campo/);
+      expect(short).toMatch(/Sur \(La barrida\)/);
+
+      const typed = h.allText(await h.send('no, eran 300 mil'));
+      expect(typed).toMatch(/Actualicé: Monto/);
+      expect(typed).toMatch(/\$300\.000/);
+      expect(typed).toMatch(/Sur \(La barrida\)/);
+    });
+
+    it('3b. editando UN campo, la respuesta no toca los demás', async () => {
+      await h.send('formulario de labor');
+      const summary = await h.send('fumigué el Sur con glifosato 2 lt/ha');
+      await tapBtn(summary, /Editar/);
+      const ask = h.allText(await h.send('observaciones'));
+      expect(ask).toMatch(/observaci/i);
+      const after = h.allText(await h.send('viento del norte, 15 km/h'));
+      expect(after).toMatch(/Sur \(La barrida\)/);
+      expect(after).not.toMatch(/Norte \(La barrida\)/);
+      expect(after).toMatch(/viento del norte, 15 km\/h/);
+      expect(after).toMatch(/2 lt\/ha/);
+    });
+
+    it('5. «1.5 palos» es un millón y medio y «u$s» es dólares', async () => {
+      await h.send('formulario de gasto');
+      const summary = h.allText(await h.send('1.5 palos de combustible en el Sur'));
+      expect(summary).toMatch(/\$1\.500\.000/);
+      await h.send('cancelar');
+      await h.send('formulario de gasto');
+      await h.send('u$s 300');
+      const usd = h.allText(await h.send('combustible en el Sur'));
+      expect(usd).toMatch(/Dólares \(USD\)/);
+    });
+
+    it('6. categoría que no existe: pregunta y, si se crea, se guarda con ese nombre', async () => {
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      await h.send('formulario de gasto');
+      await h.send('80 mil');
+      const ask = await h.send('veterinaria');
+      expect(h.allText(ask)).toMatch(/«Veterinaria» no está en tus categorías/);
+      expect(h.allButtons(ask).map(b => b.title)).toEqual(['Usar «Otros»', '➕ Crear nueva', '📋 Elegir otra']);
+      await tapBtn(ask, /Crear nueva/);
+      const summary = await h.send('Norte');
+      expect(h.allText(summary)).toMatch(/Categoría:\* Veterinaria/);
+      const done = h.allText(await tapBtn(summary, /Confirmar/));
+      expect(done).toMatch(/Gasto registrado/);
+      const rows = await h.q(`SELECT category, amount::float AS amount FROM expenses WHERE user_id = $1`, [h.userId]);
+      expect(rows).toEqual([{ category: 'Veterinaria', amount: 80000 }]);
+      const cats = await h.q(`SELECT 1 FROM user_categories WHERE user_id = $1 AND name = 'Veterinaria'`, [h.userId]);
+      expect(cats).toHaveLength(1);
+    });
+
+    it('6b. «Usar Otros» guarda en Otros y deja la palabra en el detalle', async () => {
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      await h.send('formulario de gasto');
+      await h.send('50 mil');
+      const ask = await h.send('flete');
+      const afterUse = await tapBtn(ask, /Usar «Otros»/);
+      expect(h.allText(afterUse)).toMatch(/lote o campo/i);
+      const summary = await h.send('Sur');
+      expect(h.allText(summary)).toMatch(/Categoría:\* Otros/);
+      expect(h.allText(summary)).toMatch(/Detalle:\* Flete/);
+      await tapBtn(summary, /Confirmar/);
+      const rows = await h.q(`SELECT category, description FROM expenses WHERE user_id = $1`, [h.userId]);
+      expect(rows).toEqual([{ category: 'Otros', description: 'Flete' }]);
+    });
+
+    it('7. las observaciones de una labor y de un alta de hacienda llegan a la base', async () => {
+      await h.send('formulario de labor');
+      const s1 = await h.send('fumigué el Sur con glifosato 2 lt/ha');
+      const menu = await tapBtn(s1, /Editar/);
+      await tapBtn(menu, /Observaciones/);
+      const s2 = await h.send('viento del norte, 15 km/h');
+      const done = h.allText(await tapBtn(s2, /Confirmar/));
+      expect(done).toMatch(/viento del norte, 15 km\/h/);
+      const ev = await h.q(
+        `SELECT notes, plot_id FROM domain_events WHERE user_id = $1 AND event_type = 'spraying' ORDER BY id DESC LIMIT 1`, [h.userId]);
+      expect(ev[0]).toEqual({ notes: 'viento del norte, 15 km/h', plot_id: sur });
+
+      await h.send('formulario de hacienda');
+      const price = await h.send('40 terneros en el Sur');
+      const s3 = await tapBtn(price, /Omitir/);
+      const menu2 = await tapBtn(s3, /Editar/);
+      await tapBtn(menu2, /Observaciones/);
+      const s4 = await h.send('vienen del remate de Bolívar');
+      await tapBtn(s4, /Confirmar/);
+      const mv = await h.q(`SELECT notes FROM livestock_movements WHERE user_id = $1 ORDER BY id DESC LIMIT 1`, [h.userId]);
+      expect(mv[0].notes).toBe('vienen del remate de Bolívar');
+    });
+
+    it('7b/8. cosecha parcial: rinde × ha cosechadas, y la humedad general va a los camiones', async () => {
+      // Sur tiene el trigo sembrado en el test 1 (44 ha de lote).
+      await h.send('formulario de cosecha');
+      const askHa = await h.send('Sur, 30 qq/ha');
+      expect(h.allText(askHa)).toMatch(/¿Cosechaste todo el lote\?/);
+      const s1 = await h.send('20 ha');
+      expect(h.allText(s1)).toMatch(/Hectáreas cosechadas:\* 20/);
+      const m1 = await tapBtn(s1, /Editar/);
+      await tapBtn(m1, /Humedad/);
+      const s2 = await h.send('14');
+      const m2 = await tapBtn(s2, /Editar/);
+      await tapBtn(m2, /Cargas/);
+      const s3 = await h.send('Juan 28500 Cargill');
+      await tapBtn(s3, /Confirmar/);
+
+      const pc = await h.q(
+        `SELECT yield_kg::float AS yield_kg, harvested_hectares::float AS ha FROM plot_crops WHERE plot_id = $1 AND crop ILIKE 'trigo'`, [sur]);
+      expect(pc[0]).toEqual({ yield_kg: 3000 * 20, ha: 20 });
+      const loads = await h.q(
+        `SELECT hl.humidity_pct::float AS humidity, hl.weight_kg::float AS weight, hl.net_weight_kg::float AS net
+           FROM harvest_loads hl JOIN domain_events de ON de.id = hl.domain_event_id WHERE de.user_id = $1`, [h.userId]);
+      expect(loads).toHaveLength(1);
+      expect(loads[0].humidity).toBe(14);
+      expect(loads[0].weight).toBe(28500);
+      const ev = await h.q(
+        `SELECT notes FROM domain_events WHERE user_id = $1 AND event_type = 'harvest' AND plot_id = $2`, [h.userId, sur]);
+      expect(ev[0].notes).toBe('humedad: 14%');
+    });
+
+    it('9. riego: los mm no se pueden omitir; a la segunda ofrece salida, nunca un bucle', async () => {
+      await h.send('formulario de labor');
+      const ask = await h.send('riego en el Sur');
+      expect(h.allText(ask)).toMatch(/mm de riego/);
+      expect(h.allButtons(ask).some(b => /Omitir/.test(b.title))).toBe(false);
+
+      const first = await h.send('omitir');
+      expect(h.allText(first)).toMatch(/🙏/);
+      expect(h.allText(first)).toMatch(/¿Qué dosis o cantidad\?/);
+
+      const second = await h.send('omitir');
+      expect(h.allText(second)).not.toMatch(/¿Qué dosis o cantidad\?/);
+      expect(h.allButtons(second).map(b => b.title)).toEqual(['✏️ Editar otro dato', '❌ Cancelar']);
+
+      // La salida funciona: cambia la labor y el formulario sigue.
+      const menu = await tapBtn(second, /Editar otro dato/);
+      await tapBtn(menu, /Labor/);
+      const next = h.allText(await h.send('fumigación'));
+      expect(next).toMatch(/producto/i);
+    });
+
+    it('10. gasto sin lote: «Omitir» lo deja a nivel campo y «Ninguno» lo deja general', async () => {
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      await h.send('formulario de gasto');
+      await h.send('100 mil');
+      const ask = await h.send('combustible');
+      const summary = await tapBtn(ask, /Omitir/);
+      expect(h.allText(summary)).toMatch(/lo dejo a nivel campo/);
+      expect(h.allText(summary)).toMatch(/Todo el campo La barrida/);
+      expect(h.allText(await tapBtn(summary, /Confirmar/))).toMatch(/Gasto registrado/);
+
+      await h.send('formulario de gasto');
+      await h.send('120 mil');
+      const ask2 = await h.send('combustible');
+      const summary2 = await tapBtn(ask2, /Ninguno/);
+      expect(h.allText(summary2)).toMatch(/Ninguno \(general\)/);
+      expect(h.allText(await tapBtn(summary2, /Confirmar/))).toMatch(/Gasto registrado/);
+
+      const rows = await h.q(
+        `SELECT amount::float AS amount, field_id, plot_id FROM expenses WHERE user_id = $1 ORDER BY id`, [h.userId]);
+      expect(rows).toEqual([
+        { amount: 100000, field_id: fieldId, plot_id: null },
+        { amount: 120000, field_id: null, plot_id: null },
+      ]);
+    });
+
+    it('10b. ingreso «Todo el campo» con 2 lotes: se guarda en el campo', async () => {
+      await h.send('formulario de ingreso');
+      const askBuyer = await h.send('9 palos de soja');
+      // Venta de grano: primero comprador y toneladas (los dos se pueden omitir).
+      expect(h.allText(askBuyer)).toMatch(/¿A quién se lo vendiste\?/);
+      const askTn = await tapBtn(askBuyer, /Omitir/);
+      expect(h.allText(askTn)).toMatch(/¿Cuántas toneladas vendiste\?/);
+      const ask = await tapBtn(askTn, /Omitir/);
+      const summary = await tapBtn(ask, /Todo el campo/);
+      expect(h.allText(await tapBtn(summary, /Confirmar/))).toMatch(/Ingreso registrado/i);
+      const rows = await h.q(`SELECT amount::float AS amount, field_id, plot_id FROM incomes WHERE user_id = $1`, [h.userId]);
+      expect(rows).toEqual([{ amount: 9000000, field_id: fieldId, plot_id: null }]);
+    });
+
+    it('12. repetir lo que ya está: se actualiza si trae algo nuevo, y si no se avisa (nunca «no lo pude guardar»)', async () => {
+      // Sur: trigo sembrado en el test 1 y cosechado hoy en el 7b/8.
+      await h.send('formulario de siembra');
+      const s1 = await h.send('trigo en el Sur');
+      const same = h.allText(await tapBtn(s1, /Confirmar/));
+      expect(same).toMatch(/ya estaba registrada/);
+      expect(same).not.toMatch(/No lo pude guardar/);
+      const sess = await h.q(`SELECT status FROM form_sessions WHERE user_id = $1 AND mode = 'conversation' ORDER BY created_at DESC LIMIT 1`, [h.userId]);
+      expect(sess[0].status).toBe('submitted');
+
+      await h.send('formulario de siembra');
+      const s2 = await h.send('trigo en el Sur, 25 ha');
+      const upd = h.allText(await tapBtn(s2, /Confirmar/));
+      expect(upd).toMatch(/Siembra actualizada/);
+      const pc = await h.q(`SELECT sowed_hectares::float AS ha FROM plot_crops WHERE plot_id = $1 AND crop ILIKE 'trigo'`, [sur]);
+      expect(pc).toEqual([{ ha: 25 }]);
+      const plantings = await h.q(`SELECT 1 FROM domain_events WHERE user_id = $1 AND event_type = 'planting' AND plot_id = $2`, [h.userId, sur]);
+      expect(plantings).toHaveLength(1); // no se duplicó el evento de siembra
+
+      await h.send('formulario de cosecha');
+      const y = await h.send('Sur');
+      const ha = await tapBtn(y, /Omitir/);
+      const s3 = await tapBtn(ha, /Omitir/);
+      const rep2 = h.allText(await tapBtn(s3, /Confirmar/));
+      expect(rep2).toMatch(/ya estaba registrada hoy/);
+      expect(rep2).not.toMatch(/No lo pude guardar/);
+    });
+
+    it('17. venta de grano: comprador y toneladas llegan al ingreso, y con comprador no se pregunta el lote', async () => {
+      await h.q(`DELETE FROM incomes WHERE user_id = $1`, [h.userId]);
+      await h.send('formulario de ingreso');
+      const summary = await h.send('vendí 30 tn de soja a Cargill 9 palos');
+      const text = h.allText(summary);
+      expect(text).toMatch(/Revisemos el ingreso/);
+      expect(text).toMatch(/Comprador:\* Cargill/);
+      expect(text).toMatch(/Toneladas vendidas:\* 30/);
+      expect(h.allText(await tapBtn(summary, /Confirmar/))).toMatch(/Ingreso registrado/i);
+      const rows = await h.q(
+        `SELECT amount::float AS amount, category, buyer, quantity_kg::float AS kg FROM incomes WHERE user_id = $1`, [h.userId]);
+      expect(rows).toEqual([{ amount: 9000000, category: 'Soja', buyer: 'Cargill', kg: 30000 }]);
+
+      // Un ingreso que no es grano no pregunta comprador.
+      await h.send('formulario de ingreso');
+      const next = h.allText(await h.send('500 mil de arrendamiento'));
+      expect(next).not.toMatch(/¿A quién se lo vendiste\?/);
+      expect(next).toMatch(/lote o campo/i);
+      await h.send('cancelar');
+    });
+
+    it('18/19. la confirmación de la labor muestra la fecha real, y «editar» escrito abre la edición', async () => {
+      const today = String((await h.q(
+        `SELECT to_char((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'DD/MM/YYYY') AS d`))[0].d);
+      await h.send('formulario de labor');
+      const summary = await h.send('fertilicé el Sur con urea 100 kg/ha');
+      expect(h.allText(summary)).toMatch(/Revisemos la labor/);
+
+      const menu = h.allText(await h.send('editar'));
+      expect(menu).toMatch(/¿Qué querés cambiar\?/);
+      await h.send('fecha');
+      const back = await h.send('hoy');
+
+      const direct = h.allText(await h.send('editar el producto'));
+      expect(direct).toMatch(/¿Qué producto o implemento usaste\?/);
+      const s2 = await h.send('urea granulada');
+      expect(h.allText(s2)).toMatch(/urea granulada/);
+      expect(h.allText(back)).toMatch(/Revisemos la labor/);
+
+      const done = h.allText(await tapBtn(s2, /Confirmar/));
+      expect(done).toContain(`📅 ${today}`);
+    });
+
+    it('22. hacienda: un precio sin moneda queda en pesos y el resumen lo muestra', async () => {
+      await h.send('formulario de hacienda');
+      await h.send('10 novillos en el Sur');
+      const summary = h.allText(await h.send('500 mil'));
+      expect(summary).toMatch(/Precio por cabeza:\* \$500\.000/);
+      expect(summary).toMatch(/Moneda del precio:\* Pesos \(ARS\)/);
+      await h.send('cancelar');
+
+      await h.send('formulario de hacienda');
+      await h.send('10 novillos en el Sur');
+      const usd = h.allText(await h.send('500 dólares'));
+      expect(usd).toMatch(/Moneda del precio:\* Dólares \(USD\)/);
+      await h.send('cancelar');
+    });
+
+    it('14. con «¿qué producto usaste?» abierto, una consulta se responde y el producto no trae la dosis', async () => {
+      await h.send('formulario de labor');
+      const ask = h.allText(await h.send('fumigué el Norte'));
+      expect(ask).toMatch(/¿Qué producto o implemento usaste\?/);
+      const q = h.allText(await h.send('qué tengo sembrado?'));
+      expect(q).toMatch(/Cultivos activos|campañas activas/i);
+      expect(q).toMatch(/¿Qué producto o implemento usaste\?/);
+      const summary = h.allText(await h.send('glifosato 2 lt/ha'));
+      expect(summary).toMatch(/Producto o implemento:\* glifosato\n/);
+      expect(summary).toMatch(/Dosis o cantidad:\* 2 lt\/ha/);
+    });
+
+    it('11. siembra sobre un lote con otro cultivo: avisa, y Confirmar reemplaza la campaña', async () => {
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, start_date) VALUES ($1, 'soja', 2025, '2025-11-10')`, [norte]);
+      await h.send('formulario de siembra');
+      const picked = h.allText(await h.send('Norte'));
+      expect(picked).toMatch(/Norte\* ya tiene \*Soja\* activo/);
+      const summary = await h.send('maíz');
+      expect(h.allText(summary)).toMatch(/se cierra esa campaña/);
+      const done = h.allText(await tapBtn(summary, /Confirmar/));
+      expect(done).toMatch(/Siembra registrada/);
+      const pcs = await h.q(`SELECT crop, end_date IS NOT NULL AS closed FROM plot_crops WHERE plot_id = $1 ORDER BY id`, [norte]);
+      expect(pcs).toEqual([{ crop: 'soja', closed: true }, { crop: 'maíz', closed: false }]);
+    });
+
+    it('4. cosecha por hectárea en un campo sin fila de dueño: el total se calcula', async () => {
+      await h.send('formulario de cosecha');
+      const askHa = await h.send('Bajo, 40 qq/ha');
+      const summary = await tapBtn(askHa, /Omitir/); // lote entero
+      const done = h.allText(await tapBtn(summary, /Confirmar/));
+      expect(done).toMatch(/Cosecha registrada/);
+      const pc = await h.q(`SELECT yield_kg::float AS yield_kg FROM plot_crops WHERE plot_id = $1 AND crop = 'soja'`, [bajo]);
+      expect(pc[0].yield_kg).toBe(4000 * 50);
+    });
+  });
+
+  describe('formulario que no se puede completar: no se abre y dice qué falta (oct 2026)', () => {
+    let h: PipelineHarness;
+    beforeAll(async () => {
+      h = await createPipelineHarness('form-empty', { channel: 'whatsapp' });
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Rehue') RETURNING id`, [h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Bajo', 50)`, [(f[0] as { id: number }).id]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('13. cosecha sin cultivos activos: avisa y ofrece cargar la siembra', async () => {
+      const r = await h.send('formulario de cosecha');
+      expect(h.allText(r)).toMatch(/No tenés ningún lote con cultivo activo/);
+      expect(h.allText(r)).not.toMatch(/¿Qué lote cosechaste\?/);
+      expect(h.allButtons(r).map(b => b.id)).toEqual(['form_open_sow']);
+      const sessions = await h.q(`SELECT 1 FROM form_sessions WHERE user_id = $1`, [h.userId]);
+      expect(sessions).toHaveLength(0);
+      // El botón abre el formulario de siembra.
+      expect(h.allText(await h.tap('form_open_sow'))).toMatch(/Vamos con la siembra/);
+      await h.send('cancelar');
+    });
+
+    it('13b. hacienda sin lotes ni corrales: explica que falta un lote', async () => {
+      await h.q(`DELETE FROM plots WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)`, [h.userId]);
+      const r = h.allText(await h.send('formulario de hacienda'));
+      expect(r).toMatch(/primero necesito un lote/);
+      expect(r).toMatch(/agregar lote Norte en campo El Rehue/);
     });
   });
 

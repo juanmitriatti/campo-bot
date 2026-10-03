@@ -75,11 +75,10 @@ describe("normalizarMonto", () => {
   });
 
   describe("dot stripped as thousand separator (not decimal)", () => {
-    // The parser strips ALL dots before processing, so "1.5 millones"
-    // becomes "15 millones" = 15,000,000 (not 1,500,000).
-    // Use comma for decimals: "1,5 millones"
-    it("1.5 millones → 15000000 (dot stripped)", () => {
-      expect(normalizarMonto("1.5 millones")).toBe(15000000);
+    // Un punto seguido de 1-2 dígitos y un multiplicador es decimal (oct 2026):
+    // "1.5 millones" = 1.500.000. Los puntos de miles ("1.500.000") se descartan.
+    it("1.5 millones → 1500000 (punto decimal con multiplicador)", () => {
+      expect(normalizarMonto("1.5 millones")).toBe(1500000);
     });
   });
 

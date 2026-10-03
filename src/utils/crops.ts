@@ -8,6 +8,17 @@
  * persist into `plot_crops.crop`.
  */
 
+/**
+ * Categorías de INGRESO que son una venta de grano. Con comprador, el lote es
+ * opcional y se deduce de la campaña (financial.handler) y el formulario de
+ * ingreso pregunta comprador y toneladas (presentation). Una sola lista: el
+ * handler y el formulario no pueden discrepar sobre qué es una venta de grano.
+ */
+export const GRAIN_SALE_CATEGORIES = new Set(['soja', 'maíz', 'maiz', 'trigo', 'girasol', 'sorgo', 'cebada']);
+export function isGrainSaleCategory(category: unknown): boolean {
+  return typeof category === 'string' && GRAIN_SALE_CATEGORIES.has(category.trim().toLowerCase());
+}
+
 export const KNOWN_CROPS = [
   'soja',
   'maíz',

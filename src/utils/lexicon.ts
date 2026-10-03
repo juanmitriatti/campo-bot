@@ -53,13 +53,19 @@ export const COPULA_ALT = COPULA_CUES.map(c => c.replace(/ /g, '\\s+')).join('|'
 // Currency lexicon (incl. Argentine slang).
 // ─────────────────────────────────────────────────────────────────────────────
 export const CURRENCY_USD_TERMS: readonly string[] = [
-  'dolar', 'dolares', 'usd', 'u$d', 'u$s', 'u\\$d', 'verde', 'verdes', 'dolca', 'dolquis', 'green',
+  'dolar', 'dolares', 'usd', 'u$d', 'u$s', 'us$', 'verde', 'verdes', 'dolca', 'dolquis', 'green',
 ];
 export const CURRENCY_ARS_TERMS: readonly string[] = [
   'peso', 'pesos', 'mango', 'mangos', 'moneda nacional', 'nacionales', 'ars', 'guita',
 ];
-const USD_RE = new RegExp(`\\b(?:${CURRENCY_USD_TERMS.map(t => t.replace(/ /g, '\\s+')).join('|')})\\b`, 'i');
-const ARS_RE = new RegExp(`\\b(?:${CURRENCY_ARS_TERMS.map(t => t.replace(/ /g, '\\s+')).join('|')})\\b`, 'i');
+// Los términos se ESCAPAN ("u$s" sin escapar es "u" + fin de línea + "s" y no
+// matchea nunca: «u$s 300» quedaba en pesos) y el borde es por lookaround, no
+// \b: "us$" termina en un símbolo y \b no ve borde entre "$" y un espacio.
+const termAlt = (terms: readonly string[]) => terms
+  .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+'))
+  .join('|');
+const USD_RE = new RegExp(`(?<![a-z0-9])(?:${termAlt(CURRENCY_USD_TERMS)})(?![a-z0-9])`, 'i');
+const ARS_RE = new RegExp(`(?<![a-z0-9])(?:${termAlt(CURRENCY_ARS_TERMS)})(?![a-z0-9])`, 'i');
 
 /** Detect a currency mention. Returns 'USD' | 'ARS' | null (accent-insensitive). */
 export function detectCurrencyTerm(text: string): 'USD' | 'ARS' | null {
@@ -278,6 +284,9 @@ export const SOWN_PLOTS_QUERY_RES: RegExp[] = [
  */
 export const INVITE_ACCEPT_RE = /^(?:unirme|unirme\s+al?\s+campo|aceptar(?:\s+invitaci[oó]n)?|acepto)\s+([A-Za-z0-9]{6})\s*\.?$/i;
 
+/** "editar" / "corregir el monto" escrito en el resumen de un formulario (texto normalizado). */
+export const FORM_EDIT_RE = /^(?:editar?|edita|corregir?|corregi|cambiar?|cambia|modificar?|modifica)\b/;
+
 /** "Retomar"/"volvamos al gasto": retomar un formulario a medio cargar. */
 export const RESUME_FORM_RE = /^(?:(?:dale\s+)?(?:retom\w*|segui\w*|sigamos|continu\w*|volv\w*)(?:\s+(?:con|a|al|a\s+la))?\s*(?:el|la|lo)?\s*(?:formulario|form|carga|registro)?\s*(?:de(?:l)?\s+(?:la\s+|el\s+)?)?(siembra|cosecha|gastos?|ingresos?|labor(?:es)?|hacienda)?)$/;
 
@@ -292,6 +301,68 @@ export function formActionFromWord(word: string | null | undefined): 'sow_crop' 
   if (w.startsWith('labor')) return 'log_activity';
   if (w.startsWith('hacienda')) return 'add_livestock';
   return null;
+}
+
+/**
+ * Palabras con las que el usuario NOMBRA un dato de un formulario al corregirlo
+ * en el resumen ("el monto era 300 mil", "el lote es el Sur"). Clave = key del
+ * campo en la FormDefinition; texto normalizado (normLex). En el resumen, un
+ * dato que se reconoce por NOMBRE de entidad (lote, categoría, cultivo…) o que
+ * es texto libre solo se corrige si la frase lo nombra: «viento del norte»
+ * cambiaba el lote a Norte (QA formularios, oct 2026).
+ */
+export const FORM_FIELD_CUES: Record<string, RegExp> = {
+  plot_id: /\b(lote|campo|corral|potrero|ubicacion)\b/,
+  location: /\b(lote|campo|corral|potrero|ubicacion)\b/,
+  crop: /\bcultivo\b/,
+  event_date: /\b(fecha|dia)\b/,
+  hectares: /\b(hectareas?|has?|superficie)\b/,
+  variety: /\bvariedad\b/,
+  yield_kg_per_ha: /\b(rinde|rindio|rendimiento)\b/,
+  yield_kg: /\b(rinde|rindio|rendimiento|total|kilos)\b/,
+  humidity_pct: /\bhumedad\b/,
+  loads: /\b(cargas?|camion(?:es)?)\b/,
+  amount: /\b(monto|importe|valor|plata)\b/,
+  currency: /\bmoneda\b/,
+  category: /\b(categoria|rubro|tipo)\b/,
+  description: /\b(detalle|descripcion)\b/,
+  activity_type: /\b(labor|actividad|tipo)\b/,
+  product: /\b(producto|implemento)\b/,
+  quantity: /\b(dosis|cantidad)\b/,
+  unit: /\bunidad\b/,
+  notes: /\b(observacion(?:es)?|notas?)\b/,
+  count: /\b(cabezas|cantidad|animales)\b/,
+  breed: /\braza\b/,
+  unit_price: /\bprecio\b/,
+  buyer: /\b(comprador|acopio|cliente)\b/,
+  quantity_tn: /\b(toneladas?|tn|cantidad)\b/,
+};
+
+export function namesFormField(text: string, fieldKey: string): boolean {
+  const re = FORM_FIELD_CUES[fieldKey];
+  return !!re && re.test(normLex(text));
+}
+
+/**
+ * Saca la etiqueta y la cópula del arranque de una corrección:
+ * "no, el detalle era compra en YPF" → "compra en YPF". null si la frase no
+ * ARRANCA nombrando el campo (para texto libre no hay otra forma segura de
+ * saber dónde empieza el valor).
+ */
+export function stripFieldCue(text: string, fieldKey: string): string | null {
+  const cue = FORM_FIELD_CUES[fieldKey];
+  if (!cue) return null;
+  const original = text.trimStart();
+  const norm = normLex(original);
+  const re = new RegExp(
+    String.raw`^(?:(?:${CORRECTION_ALT}),?\s+)?(?:(?:el|la|los|las|en|de)\s+)?(?:${cue.source})\s*(?:(?:es|era|eran|fue|fueron|son|va|van|iba)\b|:)?\s*`,
+  );
+  const m = re.exec(norm);
+  if (!m) return null;
+  // normLex conserva el largo (minúsculas + sin tildes), así que el corte vale
+  // sobre el texto original y el valor no pierde mayúsculas ni acentos.
+  const rest = original.slice(m[0].length).trim();
+  return rest || null;
 }
 
 /**

@@ -123,12 +123,14 @@ describe('resolveFormInitialValues — sólo claves del form pedido', () => {
   it('cosecha no recibe claves de siembra', () => {
     const v = resolveFormInitialValues({
       action: 'harvest_crop',
-      prefill: { plotName: 'Sur', hectares: 20, crop: 'Soja' },
+      prefill: { plotName: 'Sur', hectares: 20, crop: 'Soja', variety: 'DM 4670' },
       options: OPTS, todayISO: HOY,
     });
     expect(v.plot_id).toBe('9');
-    expect(v.hectares).toBeUndefined(); // cosecha no tiene ese campo
+    // Oct 2026: cosecha SÍ tiene hectáreas (las cosechadas, avance parcial).
+    expect(v.hectares).toBe(20);
     expect(v.crop).toBeUndefined();
+    expect(v.variety).toBeUndefined();
   });
 });
 

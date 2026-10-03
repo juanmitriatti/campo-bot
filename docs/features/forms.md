@@ -224,6 +224,26 @@ Si Meta rechaza el envío (`139000 Blocked by Integrity`), no se cae a texto pla
 
 Limitaciones respecto del form web: hasta 5 cargas por formulario.
 
+## Reglas del colector y del guardado (auditoría oct 2026)
+
+Salieron de revisar los seis formularios campo por campo (lectura del código + 60 frases límite contra el extractor + escenarios completos contra la base). Cada una tiene su regresión en `pipeline.integration.test.ts` § "hallazgos del análisis de formularios (oct 2026)".
+
+| Tema | Regla |
+|---|---|
+| Fecha | `event_date` es la fecha del hecho: en siembra define `plot_crops.start_date` y la campaña. Una fecha con números se lee solo con barra y con señal de fecha (se pregunta la fecha, "el 25/09", o el mensaje es solo la fecha) |
+| Resumen | El texto libre corrige únicamente el dato que nombra, un valor de tipo inequívoco, o una respuesta corta que es una opción. Editando un campo no se tocan los demás. "editar" y "editar el monto" funcionan escritos |
+| Plata | "1.5 palos" = 1.500.000 (punto + 1-2 dígitos + multiplicador = decimal). `u$s` / `us$` = dólares |
+| Categoría | Una que no existe se consulta: usar la parecida / «Otros», crear nueva, elegir otra. En el form web, "Otro…" crea (o usa la casi igual) |
+| Condicionales | Un opcional que el `crossCheck` exige (mm en riego, producto en fumigación) no se puede omitir: explica y, a la segunda, ofrece editar otro dato o cancelar |
+| Ubicación en gasto / ingreso | Sin lote es una elección: "Todo el campo X" guarda a nivel campo, "Ninguno (general)" sin campo ni lote. Omitir con un campo → ese campo; con varios → pregunta cuál |
+| Siembra | Lote con OTRO cultivo activo: el resumen avisa y Confirmar reemplaza la campaña (el form web lo rechaza). Mismo cultivo ya activo: actualiza ha / variedad o avisa que ya estaba |
+| Cosecha | Hectáreas cosechadas (avance parcial: rinde × ha cosechadas, y acumula). Humedad general → camiones sin humedad propia. Rinde en qq sin "/ha" = por hectárea. Cargas: humedad solo con %; más de 20 camiones se recortan con aviso. Sin cultivos activos el formulario no se abre |
+| Ingreso | Comprador y toneladas en ventas de grano (solo se preguntan si la categoría es un grano). Con comprador, el lote lo deduce el handler |
+| Hacienda | Observaciones al movimiento; precio sin moneda = pesos, a la vista; el corral se resuelve con su campo |
+| Form web | Tras guardar, los botones del paso siguiente (stock, costo de cosecha) se mandan al chat; un handler que confirma solo con botones igual muestra confirmación |
+
+Inventario por campo (qué acepta cada uno y dónde termina): ver las tablas del análisis en la sección de cada formulario; la fuente de verdad sigue siendo `form-definitions.ts` + `presentation.ts` + `form-commands.ts`.
+
 ## Tests
 
 - `form-definitions.test.ts`: validación (siembra/cosecha, fechas futuras, rinde excluyente, cargas).

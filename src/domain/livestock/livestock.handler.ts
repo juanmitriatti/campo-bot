@@ -695,6 +695,8 @@ export class LivestockHandler {
         price_per_kg_ars: cmd.price_per_kg_ars as number,
         price_per_kg_usd: cmd.price_per_kg_usd as number,
         reason: cmd.reason as string,
+        // Observaciones: addAnimals ya las aceptaba pero el handler no las pasaba.
+        notes: (cmd.notes as string | null | undefined) ?? null,
         movement_date: cmd.eventDate as string,
       }));
     } catch (err: unknown) {
@@ -1023,6 +1025,8 @@ export class LivestockHandler {
         breed: cmd.breed as string,
         destCategory: destCategory || undefined,
         reason: cmd.reason as string,
+        // Observaciones: addAnimals ya las aceptaba pero el handler no las pasaba.
+        notes: (cmd.notes as string | null | undefined) ?? null,
         movement_date: cmd.eventDate as string,
       }));
     } catch (err: unknown) {
@@ -1196,6 +1200,8 @@ export class LivestockHandler {
         corralName: cmd.corralName as string,
         breed: cmd.breed as string,
         reason: cmd.reason as string,
+        // Observaciones: addAnimals ya las aceptaba pero el handler no las pasaba.
+        notes: (cmd.notes as string | null | undefined) ?? null,
         movement_date: cmd.eventDate as string,
       });
       if (named) {

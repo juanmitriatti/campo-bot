@@ -504,6 +504,12 @@ export type InteractiveMessage =
 
 export interface HandlerResponse {
   messages: string[];
+  /**
+   * El pedido repite algo que ya estaba guardado y no trae nada nuevo: el
+   * handler no escribió nada A PROPÓSITO. Un formulario lo trata como éxito
+   * (cierra con el mensaje) en vez de "no lo pude guardar".
+   */
+  alreadyRecorded?: boolean;
   attachment?: AttachmentPayload;
   interactive?: InteractiveMessage;
   suggestionKey?: string;

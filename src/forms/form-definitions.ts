@@ -107,6 +107,10 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
       DATE_FIELD,
       { key: 'yield_kg_per_ha', label: 'Rinde (kg/ha)', type: 'number', required: false, min: 1 },
       { key: 'yield_kg', label: 'Rinde total (kg)', type: 'number', required: false, min: 1 },
+      // Avance parcial: sin esto "42 qq/ha" se multiplicaba por TODO el lote
+      // aunque se hubieran cosechado 40 de 100 ha, y una segunda cosecha pisaba
+      // el rinde en vez de sumar (el handler acumula solo si llegan las ha).
+      { key: 'hectares', label: 'Hectáreas cosechadas', type: 'number', required: false, min: 0.01, help: 'Solo si cosechaste una parte del lote' },
       { key: 'humidity_pct', label: 'Humedad (%)', type: 'number', required: false, min: 0, max: 50 },
       {
         key: 'loads', label: 'Cargas por camión', type: 'group', required: false, maxItems: 20,
@@ -144,6 +148,11 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
       { key: 'amount', label: 'Monto', type: 'number', required: true, min: 0.01 },
       { key: 'currency', label: 'Moneda', type: 'select', required: true, options: CURRENCY_OPTIONS },
       { key: 'category', label: 'Categoría', type: 'select', required: true, optionsSource: 'income_categories', allowOther: true },
+      // Venta de grano: sin comprador ni cantidad la venta no entra al saldo por
+      // acopio ("cuánta soja me queda en Cargill"). Van ANTES de la ubicación:
+      // con comprador el lote se deduce de la campaña y ni se pregunta.
+      { key: 'buyer', label: 'Comprador', type: 'text', required: false, help: 'Solo en ventas de grano. Ej: Cargill' },
+      { key: 'quantity_tn', label: 'Toneladas vendidas', type: 'number', required: false, min: 0.001, help: 'Solo en ventas de grano' },
       { key: 'location', label: 'Lote o campo', type: 'select', required: false, optionsSource: 'locations', help: 'Dejalo vacío si no corresponde a un lote' },
       DATE_FIELD,
       { key: 'description', label: 'Detalle', type: 'text', required: false, help: 'Ej: 30 tn de soja a Cargill' },

@@ -16,7 +16,7 @@ import { resolveRelativeDate } from '../../utils/relative-dates.js';
 import { mentionsEntityName, normalizeEntityName } from '../../utils/entity-matcher.js';
 import { MONEY_HINT_RE, detectCurrencyTerm, detectActivityTypeTerm, stripAnswerPrefix } from '../../utils/lexicon.js';
 import { extractSlots } from '../../middleware/slot-extractor.js';
-import { corralOptionId, fieldOptionId, plotOptionId, type FormOptions } from '../form-options.js';
+import { corralOptionId, fieldOptionId, plotOptionId, NO_LOCATION_ID, type FormOptions } from '../form-options.js';
 import { DOSE_UNIT_OPTIONS, type FormDefinition, type FormField, type FormOption } from '../form-definitions.js';
 
 export interface ExtractContext {
@@ -38,6 +38,14 @@ export interface ExtractContext {
    * contestando "¿qué categoría?" porque matchea la opción Vaca.
    */
   strict?: boolean;
+  /**
+   * Corrección en el RESUMEN: solo valen los datos de tipo inequívoco (fecha,
+   * importe con pista de dinero, moneda, "N ha", dosis con unidad, rinde, %).
+   * Lo que se reconoce por nombre de entidad (lote, categoría, cultivo, raza,
+   * labor) o es texto libre NO se toca acá — el colector lo corrige solo si la
+   * frase nombra el campo (form-conversation.service → extractSummaryCorrection).
+   */
+  summary?: boolean;
 }
 
 export interface ExtractResult {
@@ -69,9 +77,29 @@ function containsPhrase(text: string, phrase: string): boolean {
   return !!p && padded(text).includes(` ${p} `);
 }
 
+// Una fecha escrita con números se lee SOLO con barra y con señal de que es
+// una fecha: se está preguntando la fecha, la frase trae una pista ("el
+// 25/09", "fecha 25/09") o el mensaje es únicamente la fecha. Antes valía
+// cualquier "n-n" o "n/n" en cualquier respuesta: el producto «2-4-D» mandaba
+// la labor al 2 de abril y un lote llamado «3-4» al 3 de abril (QA
+// formularios, oct 2026). Con guiones solo vale como respuesta única a "¿qué
+// día fue?" («25-09»), donde no puede ser otra cosa.
+const SLASH_DATE_RE = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/;
+const DASH_DATE_ONLY_RE = /^\s*(\d{1,2})-(\d{1,2})(?:-(\d{2,4}))?\s*$/;
+const DATE_ONLY_RE = /^\s*\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s*$/;
+const DATE_CUE_RE = /\b(?:el|del|fecha|d[ií]a|desde)\s+(?:d[ií]a\s+)?\d{1,2}\/\d{1,2}/i;
+
 /** "25/09" o "25/09/2026" → ISO; sin año = año de hoy (o el anterior si quedaría futura). */
-function parseExplicitDate(text: string, todayISO: string, noFuture: boolean): string | null {
-  const m = text.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/);
+function parseExplicitDate(
+  text: string,
+  todayISO: string,
+  noFuture: boolean,
+  where: { dateAwaited: boolean; otherAwaited: boolean },
+): string | null {
+  let m: RegExpMatchArray | null = null;
+  if (where.dateAwaited) m = text.match(SLASH_DATE_RE) ?? text.match(DASH_DATE_ONLY_RE);
+  else if (DATE_CUE_RE.test(text)) m = text.match(SLASH_DATE_RE);
+  else if (!where.otherAwaited && DATE_ONLY_RE.test(text)) m = text.match(SLASH_DATE_RE);
   if (!m) return null;
   const day = Number(m[1]);
   const month = Number(m[2]);
@@ -82,9 +110,14 @@ function parseExplicitDate(text: string, todayISO: string, noFuture: boolean): s
   return iso(year);
 }
 
-function extractDate(text: string, f: FormField, todayISO: string): string | null {
+function extractDate(
+  text: string,
+  f: FormField,
+  todayISO: string,
+  where: { dateAwaited: boolean; otherAwaited: boolean },
+): string | null {
   if (/\bhoy\b/i.test(text)) return todayISO;
-  return resolveRelativeDate(text) ?? parseExplicitDate(text, todayISO, !!f.noFuture);
+  return resolveRelativeDate(text) ?? parseExplicitDate(text, todayISO, !!f.noFuture, where);
 }
 
 const BARE_NUMBER_RE = /^\s*(\d+(?:[.,]\d+)*)\s*$/;
@@ -97,7 +130,7 @@ function parseLooseNumber(s: string): number | null {
 }
 
 const BARE_MONEY_RE = /^\s*(?:u\$s|us\$|u\$d|\$)?\s*\d[\d.,]*\s*(?:mil|k|lucas?|palos?|millon(?:es)?|m)?\s*(?:de\s+)?(?:pesos?|d[oó]lares?|usd|ars)?\s*$/i;
-const DATE_TOKEN_RE = /\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/g;
+const DATE_TOKEN_RE = /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g;
 
 /** Importe: pelado si es la pregunta abierta; con pista de dinero si no. */
 function extractMoney(text: string, awaited: boolean): number | null {
@@ -123,6 +156,7 @@ function massFactor(unit: string): number | null {
   return MASS_TO_KG[normalizeEntityName(unit)] ?? null;
 }
 
+const MAX_QQ_PER_HA = 200;
 function extractYield(text: string): { perHa?: number; total?: number } | null {
   const perHa = text.match(/(\d+(?:[.,]\d+)?)\s*(kg|kilos?|qq|quintales?|tn|t|toneladas?)\s*(?:\/|por|x)\s*(?:ha|has|hect\w*)\b/i);
   if (perHa) {
@@ -134,11 +168,20 @@ function extractYield(text: string): { perHa?: number; total?: number } | null {
   if (total) {
     const f = massFactor(total[2]);
     const n = parseLooseNumber(total[1]);
-    if (f && n) return { total: Math.round(n * f) };
+    if (f && n) {
+      // El rinde se HABLA en quintales por hectárea: "rindió 42 qq" es 42 qq/ha,
+      // no 4.200 kg en todo el lote. Con más de 200 qq ya es una cantidad total.
+      if (f === 100 && n <= MAX_QQ_PER_HA) return { perHa: Math.round(n * f) };
+      return { total: Math.round(n * f) };
+    }
   }
   return null;
 }
 
+// Comprador tras el verbo de venta: "vendí … a Cargill". Corta en números,
+// plata y conectores; "a fijar" / "a 320 dólares" no son un comprador.
+const BUYER_RE = /\bvend\w*\b[^\n]*?\s+a\s+(?!(?:fijar|pagar|cobrar|precio|raz[oó]n|medias|cuenta|d[oó]lar\w*|pesos?|usd)\b|\d|u\$s|us\$|\$)(\p{L}[\p{L}.&-]*(?:\s+(?!(?:de|del|en|el|la|los|las|por|a|al|y|con|que|ayer|hoy|anteayer)\b)\p{L}[\p{L}.&-]*){0,2})/iu;
+const RATE_PER_HA_RE = /\d+(?:[.,]\d+)*\s*(?:kg|kilos?|qq|quintales?|tn|t|toneladas?|lts?|l|litros?|cc)\s*(?:\/|por|x)\s*(?:ha|has|hect\w*)/gi;
 const DOSE_UNIT_RE = /(\d+(?:[.,]\d+)?)\s*(lts?\s*\/\s*ha|l\s*\/\s*ha|litros?\s+por\s+(?:ha|hect\w*)|kg\s*\/\s*ha|kilos?\s+por\s+(?:ha|hect\w*)|cc\s*\/\s*ha|cc|lts?|litros?|kg|kilos?|mm)\b/i;
 function extractDose(text: string): { quantity: number; unit: string } | null {
   const m = text.match(DOSE_UNIT_RE);
@@ -201,6 +244,10 @@ function resolveLocation(text: string, f: FormField, options: FormOptions, await
     if (awaited) return { notFound: `🤔 El campo ${fieldsNamed[0].name} no tiene lotes disponibles para esto.` };
   }
 
+  if (awaited && source === 'locations' && /^(?:es\s+)?(?:general|de\s+ninguno|ningun[oa]?(?:\s+campo)?)$/.test(normalizeEntityName(answer))) {
+    return { value: NO_LOCATION_ID };
+  }
+
   if (awaited && answer) {
     const what = source === 'livestock_locations' ? 'tus lotes ni corrales' : source === 'locations' ? 'tus lotes ni campos' : 'tus lotes';
     return { notFound: `🤔 No encontré «${answer.slice(0, 40)}» entre ${what}.` };
@@ -219,18 +266,26 @@ function matchWordOption(text: string, opts: FormOption[]): FormOption[] {
 
 /** Un renglón "Juan 28500 Cargill 14" → carga. */
 function parseLoadLine(line: string): { driver_name?: string; weight_kg?: number; destinatario?: string; humidity_pct?: number } | null {
-  const m = line.trim().match(/^(.*?)(\d[\d.,]*)\s*(kg|kilos?|tn|t|toneladas?)?\b(.*)$/i);
-  if (!m) return null;
-  const driver = m[1].replace(/[-:,;]+$/, '').trim();
-  const n = parseLooseNumber(m[2]);
-  if (!driver || !n) return null;
-  const factor = m[3] ? (massFactor(m[3]) ?? 1) : 1;
+  const t = line.trim();
+  // El PESO es el primer número con unidad (kg/tn) o de 100 kg para arriba: un
+  // número chico suelto es parte del nombre ("Camión 2 Juan 28500").
+  let pick: { index: number; length: number; kg: number } | null = null;
+  for (const m of t.matchAll(/(\d[\d.,]*)\s*(kg|kilos?|tn|t|toneladas?)?(?![\w%])/gi)) {
+    const n = parseLooseNumber(m[1].replace(/[.,]+$/, ''));
+    if (!n) continue;
+    const kg = Math.round(n * (m[2] ? (massFactor(m[2]) ?? 1) : 1));
+    if (m[2] || kg >= 100) { pick = { index: m.index ?? 0, length: m[0].length, kg }; break; }
+  }
+  if (!pick) return null;
+  const driver = t.slice(0, pick.index).replace(/[-:,;]+$/, '').trim();
+  if (!driver) return null;
   const out: { driver_name?: string; weight_kg?: number; destinatario?: string; humidity_pct?: number } = {
     driver_name: driver,
-    weight_kg: Math.round(n * factor),
+    weight_kg: pick.kg,
   };
-  const rest = m[4].trim();
-  const hum = rest.match(/(\d+(?:[.,]\d+)?)\s*%?\s*$/);
+  const rest = t.slice(pick.index + pick.length).trim();
+  // Humedad SOLO con %: «Silo 2» es un destino, no humedad 2.
+  const hum = rest.match(/(\d+(?:[.,]\d+)?)\s*%\s*$/);
   const dest = (hum ? rest.slice(0, hum.index) : rest).replace(/^[-:,;]+|[-:,;]+$/g, '').trim();
   if (dest) out.destinatario = dest;
   if (hum) out.humidity_pct = parseLooseNumber(hum[1]) ?? undefined;
@@ -238,7 +293,7 @@ function parseLoadLine(line: string): { driver_name?: string; weight_kg?: number
 }
 
 export function extractFieldValues(text: string, ctx: ExtractContext): ExtractResult {
-  const { def, options, values, awaiting, overwrite, todayISO, choices, strict } = ctx;
+  const { def, options, values, awaiting, overwrite, todayISO, choices, strict, summary } = ctx;
   const out: ExtractResult = { values: {} };
   const raw = text.trim();
   if (!raw) return out;
@@ -250,6 +305,8 @@ export function extractFieldValues(text: string, ctx: ExtractContext): ExtractRe
   for (const f of def.fields) {
     const awaited = f.key === awaiting;
     if (!awaited && !overwrite && !isFieldEmpty(values, f)) continue;
+    if (summary && !awaited
+      && (f.type === 'text' || f.type === 'group' || (f.type === 'select' && f.key !== 'currency'))) continue;
 
     // Respuesta por número a una lista mostrada ("2" = segunda opción).
     if (awaited && choices?.field === f.key && /^\d{1,2}$/.test(raw)) {
@@ -265,7 +322,7 @@ export function extractFieldValues(text: string, ctx: ExtractContext): ExtractRe
 
     switch (f.type) {
       case 'date': {
-        const d = extractDate(raw, f, todayISO);
+        const d = extractDate(raw, f, todayISO, { dateAwaited: awaited, otherAwaited: !!awaiting && !awaited });
         if (d) out.values[f.key] = d;
         break;
       }
@@ -280,7 +337,11 @@ export function extractFieldValues(text: string, ctx: ExtractContext): ExtractRe
         } else if (f.key === 'count') {
           n = typeof slots.count === 'number' ? slots.count : null;
         } else if (f.key === 'hectares') {
-          n = typeof slots.hectares === 'number' ? slots.hectares : null;
+          // Sin las TASAS ("3500 kg/ha", "2 lt por hectárea"): ese "ha" es el
+          // denominador de un rinde o una dosis, no una superficie.
+          const noRates = raw.replace(RATE_PER_HA_RE, ' ');
+          const haSlot = noRates === raw ? slots.hectares : extractSlots(noRates).hectares;
+          n = typeof haSlot === 'number' ? haSlot : null;
           if (n == null && awaited && BARE_NUMBER_RE.test(raw)) n = parseLooseNumber(raw);
         } else if (f.key === 'quantity') {
           const dose = extractDose(raw);
@@ -298,6 +359,17 @@ export function extractFieldValues(text: string, ctx: ExtractContext): ExtractRe
           } else if (awaited && BARE_NUMBER_RE.test(raw)) {
             n = parseLooseNumber(raw);
           }
+        } else if (f.key === 'quantity_tn') {
+          // "30 tn" / "30000 kg" / "300 qq" → toneladas. Sin unidad solo vale
+          // como respuesta a la pregunta. Las tasas ("42 qq/ha") no son cantidad.
+          const m = raw.replace(RATE_PER_HA_RE, ' ').match(/(\d+(?:[.,]\d+)*)\s*(kg|kilos?|qq|quintales?|tn|t|toneladas?)\b/i);
+          const factor = m ? massFactor(m[2]) : null;
+          const qty = m ? parseLooseNumber(m[1]) : null;
+          if (factor && qty) n = Math.round((qty * factor) / 1000 * 1000) / 1000;
+          else if (awaited && BARE_NUMBER_RE.test(raw)) n = parseLooseNumber(raw);
+        } else if (f.key === 'humidity_pct' && def.fields.find(x => x.key === awaiting)?.type === 'group') {
+          // Se están cargando camiones: un "14%" es de ESE camión. Si subiera a
+          // la humedad general, los camiones sin % la heredarían.
         } else if (f.key === 'humidity_pct') {
           const m = raw.match(/(\d+(?:[.,]\d+)?)\s*%/) ?? (/\bhumedad\b/i.test(raw) ? raw.match(/humedad\D{0,10}(\d+(?:[.,]\d+)?)/i) : null);
           if (m) n = parseLooseNumber(m[1]);
@@ -351,7 +423,12 @@ export function extractFieldValues(text: string, ctx: ExtractContext): ExtractRe
           if (hits.length >= 1) matched = hits.sort((a, b) => b.title.length - a.title.length)[0];
           if (!matched && !strict && (f.optionsSource === 'expense_categories' || f.optionsSource === 'income_categories')) {
             const detected = (f.optionsSource === 'income_categories' ? detectarCategoriaIngreso(raw) : detectarCategoria(raw)) as string | null;
-            if (detected) {
+            // El mapa de palabras manda "veterinario", "flete", "seguro"… al cajón
+            // «Otros». Tomarlo como respuesta perdía la palabra del usuario
+            // (QA formularios, oct 2026): se trata como categoría no reconocida
+            // y el colector pregunta si la crea o usa una existente.
+            const catchAll = !!detected && normalizeEntityName(detected) === 'otros';
+            if (detected && !catchAll) {
               matched = opts.find(o => normalizeEntityName(o.id) === normalizeEntityName(detected)) ?? null;
               // Fuera de la lista: si contestaba ESTA pregunta vale lo que
               // escribió (abajo); si no, la categoría detectada.
@@ -372,8 +449,20 @@ export function extractFieldValues(text: string, ctx: ExtractContext): ExtractRe
         break;
       }
       case 'text': {
-        if (awaited && !strict) {
+        if (awaited && !strict && f.key === 'product') {
+          // "glifosato 2 lt/ha" → producto «glifosato»; la dosis la toma su
+          // campo. Antes el producto quedaba con la dosis pegada.
+          const clean = raw.replace(DOSE_UNIT_RE, ' ').replace(/^\s*con\s+/i, '').replace(/\s+/g, ' ').replace(/[\s,;-]+$/, '').trim();
+          if (clean) out.values[f.key] = clean.slice(0, 200);
+        } else if (awaited && !strict && f.key === 'buyer') {
+          const clean = stripAnswerPrefix(raw).replace(/^\s*(?:a|al|a\s+la)\s+/i, '').replace(/[\s.,;]+$/, '').trim();
+          if (clean) out.values[f.key] = clean.slice(0, 80);
+        } else if (awaited && !strict) {
           out.values[f.key] = raw.slice(0, 200);
+        } else if (f.key === 'buyer') {
+          // "vendí 30 tn de soja a Cargill 9 palos" → comprador «Cargill».
+          const m = raw.match(BUYER_RE);
+          if (m) out.values[f.key] = m[1].trim();
         } else if (f.key === 'product') {
           // Sin la dosis: "con glifosato 2 lt/ha" → "glifosato".
           const product = extractSlots(raw.replace(DOSE_UNIT_RE, ' ').replace(/\s+/g, ' ').trim()).product;
@@ -393,6 +482,12 @@ export function extractFieldValues(text: string, ctx: ExtractContext): ExtractRe
           if (load) items.push(load);
           else warnings.push(`Renglón ${i + 1} («${line.slice(0, 30)}»): no lo entendí — necesito *chofer peso*.`);
         });
+        const max = f.maxItems ?? 50;
+        if (items.length > max) {
+          // Nada se descarta en silencio (invariante 1).
+          warnings.push(`Tomé los primeros ${max} camiones de ${items.length}. Cargá el resto en otro formulario de cosecha del mismo lote: se suman.`);
+          items.length = max;
+        }
         if (items.length > 0) out.values[f.key] = items;
         if (warnings.length > 0) out.warnings = warnings;
         break;

@@ -16,19 +16,22 @@ import { pool, withTransaction } from '../config/db.js';
 import { formSessionService, type FormSessionRow } from '../services/form-session.service.js';
 import { FORM_DEFINITIONS, validateFormPayload, type FormAction, type FormDefinition } from './form-definitions.js';
 import { buildFormCommand, FORM_PERSISTS_TO, type ResolvedRefs } from './form-commands.js';
-import { parseLocationId, computeFormOptions } from './form-options.js';
+import { parseLocationId, computeFormOptions, NO_LOCATION_ID } from './form-options.js';
 import { unflattenFlowPayload } from './whatsapp-flow-generator.js';
 import {
   domainRouter, userRepository, pendingActStore,
   hydratePendingStores, applySideEffects,
 } from '../services/message-pipeline.js';
 import { withUserLock } from '../middleware/user-lock.js';
-import { sendTelegramMessage } from '../services/telegram.js';
-import { sendMessage as sendWhatsAppText } from '../services/whatsapp.js';
+import { sendTelegramMessage, sendTelegramButtons, sendTelegramList } from '../services/telegram.js';
+import { sendMessage as sendWhatsAppText, sendInteractiveButtons, sendInteractiveList } from '../services/whatsapp.js';
+import { CategoryRepository } from '../domain/financial/category.repository.js';
+import { CategoryService } from '../domain/financial/category.service.js';
 import { getActiveCrop } from '../services/expenses.js';
 import { accessibleFieldsSql } from '../domain/shared/accessible-fields.js';
 import { getTodayISO } from '../utils/date.js';
-import type { HandlerResponse } from '../types/index.js';
+import { isGrainSaleCategory } from '../utils/crops.js';
+import type { HandlerResponse, InteractiveMessage } from '../types/index.js';
 
 type SubmitResult =
   | { ok: true; message: string; response?: HandlerResponse }
@@ -102,10 +105,10 @@ async function loadUserField(userId: number, fieldId: number): Promise<{ id: num
 async function loadUserCorral(
   userId: number,
   corralId: number,
-): Promise<{ id: number; name: string; feedlot_name: string | null } | null> {
+): Promise<{ id: number; name: string; feedlot_name: string | null; field_name: string } | null> {
   if (!Number.isInteger(corralId) || corralId <= 0) return null;
   const { rows } = await pool.query(
-    `SELECT c.id, c.name, fl.name AS feedlot_name
+    `SELECT c.id, c.name, fl.name AS feedlot_name, f.name AS field_name
        FROM corrals c JOIN feedlots fl ON fl.id = c.feedlot_id JOIN fields f ON f.id = fl.field_id
       WHERE c.id = $1 AND c.deleted_at IS NULL AND fl.deleted_at IS NULL AND f.deleted_at IS NULL
         AND f.id IN (${accessibleFieldsSql(2)})`,
@@ -114,11 +117,26 @@ async function loadUserCorral(
   return rows[0] ?? null;
 }
 
-async function sendToChat(session: FormSessionRow, text: string): Promise<void> {
+/**
+ * Confirmación al chat tras un submit del form web / Flow, CON los botones del
+ * paso siguiente si el handler los ofreció (cargar el grano al stock, descontar
+ * el producto del depósito, costo de cosecha). Antes solo iba el texto: el
+ * pending de esos botones se aplicaba igual y quedaba una pregunta colgada que
+ * el usuario nunca vio.
+ */
+async function sendToChat(session: FormSessionRow, text: string, interactive?: InteractiveMessage): Promise<void> {
   try {
-    if (session.channel === 'telegram') await sendTelegramMessage(session.channel_id, text);
-    else if (session.channel === 'whatsapp') await sendWhatsAppText(session.channel_id, text);
+    if (session.channel === 'telegram') {
+      if (text) await sendTelegramMessage(session.channel_id, text);
+      if (interactive?.type === 'buttons') await sendTelegramButtons(session.channel_id, interactive.body, interactive.buttons);
+      else if (interactive?.type === 'list') await sendTelegramList(session.channel_id, interactive.body, interactive.sections);
+    } else if (session.channel === 'whatsapp') {
+      if (text) await sendWhatsAppText(session.channel_id, text);
+      if (interactive?.type === 'buttons') await sendInteractiveButtons(session.channel_id, interactive.body, interactive.buttons);
+      else if (interactive?.type === 'list') await sendInteractiveList(session.channel_id, interactive.body, interactive.buttonText, interactive.sections);
+    }
     // testbot: sin push — el resultado viaja en la respuesta HTTP del form
+    if (interactive) console.log(`[FORM] interactive de éxito reenviado al chat (${session.channel})`);
   } catch (err) {
     console.error('[FORM] fallo el envío de confirmación al chat:', err);
   }
@@ -173,10 +191,55 @@ export async function prepareSubmission(
     return { ok: false, status: 422, error: validated.errors.join('\n') };
   }
   const data = validated.data;
-  if (typeof payload.category_other === 'string' && payload.category_other.trim()) refs.newCategory = true;
+  if (typeof payload.category_other === 'string' && payload.category_other.trim()) {
+    const catField = def.fields.find(f => f.key === 'category');
+    const kind = catField?.optionsSource === 'expense_categories' ? 'expense'
+      : catField?.optionsSource === 'income_categories' ? 'income' : null;
+    // El colector ya preguntó "crear nueva / usar la parecida". El form web y
+    // el Flow no pueden preguntar: elegir "Otro…" y escribir ES la decisión de
+    // crearla — salvo que exista una casi igual (plural, error de tipeo), que
+    // se usa en vez de duplicar.
+    const similar = kind && payload.category_other_confirmed !== true
+      ? await new CategoryService(new CategoryRepository()).findSimilar(userId, kind, payload.category_other.trim()).catch(() => null)
+      : null;
+    if (similar) {
+      console.log(`[FORM] categoría "${payload.category_other.trim()}" → se usa la parecida "${similar.name}"`);
+      data.category = similar.name;
+    } else {
+      refs.newCategory = true;
+    }
+  }
+
+  // Gasto / ingreso SIN lote es una elección, no un dato faltante. Antes el
+  // formulario ofrecía "Omitir" y "Todo el campo" y el handler igual contestaba
+  // "¿En qué lote lo registramos?" (QA formularios, oct 2026).
+  const locField = def.fields.find(f => f.key === 'location');
+  if (locField?.optionsSource === 'locations') {
+    if (data.location === NO_LOCATION_ID) {
+      refs.noLocation = true;
+      delete data.location;
+    } else if (data.location === undefined && action === 'log_income'
+        && typeof data.buyer === 'string' && data.buyer
+        && isGrainSaleCategory(data.category)) {
+      // Venta de grano con comprador: el handler deduce el lote de la campaña
+      // del cultivo (o la deja a nivel campo). No es una ubicación faltante.
+    } else if (data.location === undefined) {
+      const o = await computeFormOptions(action, userId);
+      if (o.plots.length > 1) {
+        // Con un solo lote el handler lo asigna solo (como siempre).
+        if (o.fields.length === 1) {
+          refs.field = o.fields[0];
+          refs.fieldLevel = true;
+        } else {
+          console.log('[FORM] rejected: sin ubicación con varios campos');
+          return { ok: false, status: 422, field: 'location', error: 'Elegí un lote, un campo o «Ninguno (general)».' };
+        }
+      }
+    }
+  }
 
   // Ubicación mixta (gasto, ingreso, hacienda): p:/f:/c: con scoping por usuario.
-  if (def.fields.some(f => f.key === 'location') && data.location !== undefined) {
+  if (locField && data.location !== undefined) {
     const ref = parseLocationId(data.location);
     if (!ref) { console.log('[FORM] rejected: location inválida'); return { ok: false, status: 422, field: 'location', error: STALE_REF }; }
     if (ref.kind === 'plot') {
@@ -187,10 +250,11 @@ export async function prepareSubmission(
       const field = await loadUserField(userId, ref.id);
       if (!field) { console.log('[FORM] rejected: campo ajeno o inexistente'); return { ok: false, status: 422, field: 'location', error: STALE_REF }; }
       refs.field = field;
+      refs.fieldLevel = true;
     } else {
       const corral = await loadUserCorral(userId, ref.id);
       if (!corral) { console.log('[FORM] rejected: corral ajeno o inexistente'); return { ok: false, status: 422, field: 'location', error: STALE_REF }; }
-      refs.corral = { id: corral.id, name: corral.name, feedlotName: corral.feedlot_name };
+      refs.corral = { id: corral.id, name: corral.name, feedlotName: corral.feedlot_name, fieldName: corral.field_name };
     }
   }
 
@@ -204,6 +268,16 @@ export async function prepareSubmission(
         return { ok: false, status: 422, field: f.key, error: `${f.label}: opción inválida.` };
       }
     }
+  }
+
+  // Siembra sobre un lote con OTRO cultivo activo: no se rechaza acá (el
+  // colector lo avisa en el resumen); el commit exige la confirmación.
+  if (action === 'sow_crop' && refs.plot) {
+    const active = await getActiveCrop(refs.plot.id) as { crop: string } | null;
+    const crop = typeof data.crop === 'string' ? data.crop : '';
+    refs.activeOther = active && crop && active.crop.toLowerCase() !== crop.toLowerCase() ? active.crop : null;
+    const confirmed = typeof payload.replace_active_crop === 'string' ? payload.replace_active_crop : '';
+    refs.replaceConfirmed = !!refs.activeOther && confirmed.toLowerCase() === refs.activeOther.toLowerCase();
   }
 
   if (action === 'harvest_crop' && refs.plot) {
@@ -324,6 +398,14 @@ export async function submitForm(
     // no cambia entre validar y escribir.
     const prepared = await prepareSubmission(session.user_id, action, payload);
     if (!prepared.ok) return prepared;
+    if (prepared.refs.activeOther && !prepared.refs.replaceConfirmed) {
+      // Form web / Flow no tienen cómo confirmar un reemplazo de campaña.
+      console.log('[FORM] rejected: siembra sobre lote con otro cultivo activo sin confirmar');
+      return {
+        ok: false, status: 422, field: 'plot_id',
+        error: `El lote ${prepared.refs.plot?.name ?? ''} ya tiene ${prepared.refs.activeOther} activo. Elegí otro lote, o cargá la siembra por el chat para reemplazar esa campaña.`,
+      };
+    }
     const cmd = buildFormCommand(action, prepared.data, prepared.refs);
 
     // El formulario YA es la confirmación: no volver a preguntar "¿confirmás?"
@@ -349,8 +431,12 @@ export async function submitForm(
         const blocking = !!(fx?.setPendingActivity || fx?.startFlow || fx?.setPending || fx?.setFieldDuplicate);
         const firstMsg = r?.messages?.[0] ?? '';
         const written = r ? await recordWasWritten(action) : false;
+        // El handler dice "eso ya estaba registrado, nada nuevo que sumar"
+        // (siembra / cosecha repetida): no escribe y NO es un error — el
+        // formulario se cierra con ese mensaje.
+        const alreadyRecorded = r?.alreadyRecorded === true;
         const failed = !r || blocking || firstMsg.startsWith('❌')
-          || (written === false)
+          || (written === false && !alreadyRecorded)
           || (written === null && !firstMsg);
         if (failed) {
           const question = r?.interactive?.body ?? '';
@@ -376,11 +462,12 @@ export async function submitForm(
 
     const fullText = (response.messages ?? []).join('\n\n');
     if ((opts.deliver ?? 'chat') === 'chat') {
-      // interactive de éxito (ej. botones de cierre de campaña) no se reenvía
-      // por el form web ni el Flow (v1); el colector conversacional sí lo rinde.
-      if (response.interactive) console.log('[FORM] interactive de éxito no reenviado (v1)');
-      await sendToChat(session, fullText);
+      await sendToChat(session, fullText, response.interactive);
     }
+    // Un handler puede confirmar SOLO con botones (alta de hacienda: mensaje
+    // vacío + interactive). La pantalla web recibía message:'' y se quedaba sin
+    // mostrar nada aunque el registro estaba guardado.
+    const resultText = fullText || response.interactive?.body || '✅ Registrado.';
 
     // Si había un pending del mismo action y ya no tiene cola, limpiarlo
     const pendingCmd = (pending as { command?: string } | undefined)?.command;
@@ -391,7 +478,7 @@ export async function submitForm(
     }
 
     console.log(`[FORM] submitted action=${action} cmd=${String(cmd.command)} user=${session.user_id} msg="${fullText.slice(0, 80).replace(/\n/g, ' ')}"`);
-    return { ok: true, message: fullText, response };
+    return { ok: true, message: resultText, response };
   };
 
   return opts.alreadyLocked ? commit() : withUserLock(lockKeyForSession(session), commit);

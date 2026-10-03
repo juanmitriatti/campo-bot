@@ -49,7 +49,14 @@ describe("normalizarMonto", () => {
   describe("millones / palos", () => {
     // NOTE: dots are stripped for thousand separators, so "1.5" becomes "15"
     it("1,5 millones → 1500000", () => expect(normalizarMonto("1,5 millones")).toBe(1500000));
-    it("1.5 millones → 15000000 (dot stripped as thousand sep)", () => expect(normalizarMonto("1.5 millones")).toBe(15000000));
+    // Oct 2026: punto + 1-2 dígitos + multiplicador es DECIMAL ("1.5 palos" se
+    // guardaba como $15.000.000). "1.500" y "1.500.000" siguen siendo miles.
+    it("1.5 millones → 1500000 (punto decimal con multiplicador)", () => expect(normalizarMonto("1.5 millones")).toBe(1500000));
+    it.each([
+      ["1.5 palos", 1500000], ["$1.5 palos", 1500000], ["2.5 lucas", 2500], ["1.5k", 1500], ["2,5 mil", 2500],
+      ["1.500.000", 1500000], ["1.500 mil", 1500000], ["$250.000", 250000],
+      ["$250 mil", 250000], ["u$s 300", 300], ["un palo y medio", 1500000], ["2 palos y medio", 2500000],
+    ])("%s → %d", (t, n) => expect(normalizarMonto(t)).toBe(n));
     it("2 palos → 2000000", () => expect(normalizarMonto("2 palos")).toBe(2000000));
     it("1 millon → 1000000", () => expect(normalizarMonto("1 millon")).toBe(1000000));
   });
@@ -67,7 +74,7 @@ describe("normalizarMonto", () => {
     it("5M → 5000000", () => expect(normalizarMonto("5M")).toBe(5000000));
     it("5m → 5000000", () => expect(normalizarMonto("5m")).toBe(5000000));
     it("1,5M → 1500000", () => expect(normalizarMonto("1,5M")).toBe(1500000));
-    it("2.5M → 25000000 (dot stripped as thousand sep)", () => expect(normalizarMonto("2.5M")).toBe(25000000));
+    it("2.5M → 2500000 (punto decimal con multiplicador)", () => expect(normalizarMonto("2.5M")).toBe(2500000));
   });
 
   describe("standalone numbers", () => {

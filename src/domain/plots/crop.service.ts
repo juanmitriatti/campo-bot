@@ -8,6 +8,7 @@ import {
 } from '../../services/expenses.js';
 import type { UserId, PlotCropRow } from '../../types/index.js';
 import { CROPS, CROP_SEASON } from '../../constants/agro-terms.js';
+import { getTodayISO, toISODateAR } from '../../utils/date.js';
 
 const GRUESA = CROP_SEASON.GRUESA;
 const FINA = CROP_SEASON.FINA;
@@ -92,11 +93,17 @@ export class CropService {
     userId: UserId,
     plotId: number,
     crop: string,
-    date?: Date,
+    date?: Date | string | null,
     sowedHectares?: number | null,
     variety?: string | null,
   ): Promise<{ cropRow: PlotCropRow; closedPrevious: PlotCropRow | null }> {
-    const effectiveDate = date || new Date();
+    // La fecha de SIEMBRA manda: start_date y la campaña (año/tipo) salen de
+    // ella, no de hoy. Antes el handler pasaba `undefined` y una siembra
+    // cargada con "ayer" o "25/09" quedaba con start_date = hoy mientras su
+    // domain_event decía otra fecha (QA formularios, oct 2026).
+    const startISO = toISODateAR(date) ?? getTodayISO();
+    const [y, m, d] = startISO.split('-').map(Number);
+    const effectiveDate = new Date(y, m - 1, d, 12);
     const seasonType = getSeasonTypeForCrop(crop);
     const seasonYear = getSeasonYear(effectiveDate, seasonType);
 
@@ -112,11 +119,11 @@ export class CropService {
         return { cropRow: active, closedPrevious: null };
       }
       // Different crop → close the previous one
-      closedPrevious = await closePlotCrop(active.id, effectiveDate) as PlotCropRow | null;
+      closedPrevious = await closePlotCrop(active.id, startISO) as PlotCropRow | null;
     }
 
     const cropRow = await createPlotCrop(
-      plotId, crop, seasonYear, seasonType, effectiveDate, sowedHectares ?? null, variety ?? null
+      plotId, crop, seasonYear, seasonType, startISO, sowedHectares ?? null, variety ?? null
     ) as PlotCropRow;
 
     return { cropRow, closedPrevious };

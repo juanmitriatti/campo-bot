@@ -38,6 +38,8 @@ export interface FormOptions {
 export const plotOptionId = (plotId: number): string => `p:${plotId}`;
 export const fieldOptionId = (fieldId: number): string => `f:${fieldId}`;
 export const corralOptionId = (corralId: number): string => `c:${corralId}`;
+/** Ubicación "ninguna": el registro es general, sin campo ni lote. */
+export const NO_LOCATION_ID = 'none';
 
 /** Desarma un id de ubicación (`p:12` → {kind:'plot', id:12}). null si no es válido. */
 export function parseLocationId(raw: unknown): { kind: 'plot' | 'field' | 'corral'; id: number } | null {
@@ -85,6 +87,9 @@ export async function computeFormOptions(
     lists.locations = [
       ...plots.map(p => ({ id: plotOptionId(p.id), title: plotTitle(p) })),
       ...fields.map(f => ({ id: fieldOptionId(f.id), title: `Todo el campo ${f.name}` })),
+      // Gasto/ingreso general de la empresa: sin campo ni lote, ELEGIDO (no es
+      // lo mismo que dejar la ubicación vacía).
+      { id: NO_LOCATION_ID, title: 'Ninguno (general)' },
     ];
   }
   if (sources.has('livestock_locations')) {

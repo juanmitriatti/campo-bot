@@ -505,7 +505,7 @@ export class AgronomyHandler {
       const sowedHa = cmd.hectares != null ? Number(cmd.hectares) : null;
       const pendingGuard = await this.buildSowReplaceGuard(cmd as ParsedCommand, plotId, fieldName, plotName, crop);
       if (pendingGuard) return pendingGuard;
-      const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotId, crop, undefined, sowedHa);
+      const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotId, crop, cmd.eventDate as Date | string | null, sowedHa);
       const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
 
       await this.repo.saveDomainEvent(userId, {
@@ -665,6 +665,7 @@ export class AgronomyHandler {
       quantity: cmd.quantity as number | null,
       unit: cmd.unit as string | null,
       implement: cmd.implement as string | null,
+      notes: (cmd.notes as string | null | undefined) ?? null,
     });
 
     const confirmation = formatActivityConfirmation(eventType, plotLabel, {
@@ -675,6 +676,7 @@ export class AgronomyHandler {
       crop,
       implement: cmd.implement as string | null,
       eventDate: cmd.eventDate as Date | null,
+      notes: (cmd.notes as string | null | undefined) ?? null,
     });
 
     return { messages: [confirmation] };
@@ -712,6 +714,7 @@ export class AgronomyHandler {
       quantity: cmd.quantity as number | null,
       unit: cmd.unit as string | null,
       implement: cmd.implement as string | null,
+      notes: (cmd.notes as string | null | undefined) ?? null,
     });
     const confirmation = formatActivityConfirmation(eventType, 'sin lote', {
       product: cmd.product as string | null,
@@ -721,6 +724,7 @@ export class AgronomyHandler {
       crop: (cmd.crop as string) ?? null,
       implement: cmd.implement as string | null,
       eventDate: cmd.eventDate as Date | null,
+      notes: (cmd.notes as string | null | undefined) ?? null,
     });
     return { messages: [confirmation] };
   }
@@ -2249,10 +2253,44 @@ export class AgronomyHandler {
         if (replaceGuard) return replaceGuard;
 
         const variety = (cmd.variety as string | null | undefined) ?? null;
+
+        // FORMULARIO que repite una siembra que ya está (mismo cultivo activo en
+        // el lote): startCrop devuelve la campaña existente sin escribir y el
+        // formulario contestaba "No lo pude guardar: 🌱 Siembra registrada"
+        // (QA formularios, oct 2026). Si trae datos nuevos se completan; si no,
+        // se dice que ya estaba. Solo formularios: en el chat una segunda
+        // "sembré soja en el Norte" sigue como siempre.
+        if (cmd.__fromForm === true) {
+          const sameActive = await this.cropService.getActive(plotResult.plotId);
+          if (sameActive && sameActive.crop.toLowerCase() === crop.toLowerCase()) {
+            const sameLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
+            const season = formatSeasonLabel(sameActive.season_year, sameActive.season_type);
+            const changes: string[] = [];
+            const currentHa = sameActive.sowed_hectares != null ? Number(sameActive.sowed_hectares) : null;
+            const newHa = sowedHa != null && sowedHa !== currentHa ? sowedHa : null;
+            const currentVariety = (sameActive as { variety?: string | null }).variety ?? null;
+            const newVariety = variety && variety !== currentVariety ? variety : null;
+            if (newHa != null) changes.push(`📐 ${newHa.toLocaleString('es-AR')} ha sembradas`);
+            if (newVariety) changes.push(`🧬 Variedad: ${newVariety}`);
+            if (changes.length === 0) {
+              console.log(`[INTERCEPT] sow_crop (form) repetido sin datos nuevos: lote ${plotResult.plotId} ya tiene ${crop}`);
+              return {
+                messages: [`🌱 Esa siembra ya estaba registrada: *${cap(crop)}* en ${sameLabel} (campaña ${season}). No había nada nuevo para sumar.`],
+                alreadyRecorded: true,
+              };
+            }
+            await this.repo.updateCampaignSowing(sameActive.id, { sowedHectares: newHa, variety: newVariety });
+            console.log(`[INTERCEPT] sow_crop (form) repetido: campaña ${sameActive.id} actualizada (${changes.length} datos)`);
+            return {
+              messages: [`🌱 *Siembra actualizada*\n*${cap(crop)}* en ${sameLabel}\n📅 Campaña ${season}\n${changes.join('\n')}`],
+            };
+          }
+        }
+
         // Densidad ("350 mil semillas/ha"): no se modela, pero va a las notas del
         // evento para no descartarla en silencio (P2-15, QA sep 2026).
         const seedDensity = (cmd.seedDensity as string | null | undefined) ?? null;
-        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, sowedHa, variety);
+        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, cmd.eventDate as Date | string | null, sowedHa, variety);
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
         const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
 
@@ -2471,6 +2509,17 @@ export class AgronomyHandler {
 
         // Dedup: check if there's already a harvest event for this plot today
         const loads = Array.isArray(cmd.loads) ? cmd.loads as Array<{ driver_name: string; weight_kg: number; destination?: string; destinatario?: string; truck_plate?: string; humidity_pct?: number; quality_metrics?: Record<string, unknown>; gross_weight_kg?: number | null; tare_kg?: number | null; acopio_weight_kg?: number | null; carta_porte?: string | null; ctg?: string | null }> : null;
+        // Humedad GENERAL de la cosecha (formulario, o "cosechamos al 14%" sin
+        // camión): vale para los camiones que no traen la suya — entra en la
+        // merma — y queda en el evento. Antes el handler no la leía y el dato se
+        // pedía para descartarlo (QA formularios, oct 2026).
+        const rawGeneralHumidity = (cmd.humidity_pct ?? cmd.humidityPct) as number | string | null | undefined;
+        const generalHumidity = rawGeneralHumidity != null && rawGeneralHumidity !== ''
+          && Number(rawGeneralHumidity) >= 0 && Number(rawGeneralHumidity) <= 50
+          ? Number(rawGeneralHumidity) : null;
+        if (generalHumidity != null && loads) {
+          for (const l of loads) if (l.humidity_pct == null) l.humidity_pct = generalHumidity;
+        }
         const existingEvent = await this.repo.findTodayHarvestEvent(userId, plotResult.plotId);
 
         // Las dos asignaciones (evento existente y saveDomainEvent) devuelven
@@ -2503,8 +2552,9 @@ export class AgronomyHandler {
           // create the sow first so a named-crop harvest with no prior sow isn't
           // a dead-end.
           if ((cmd as ParsedCommand & { _autoSow?: boolean })._autoSow && crop && !(await this.cropService.getActive(plotResult.plotId))) {
-            await this.cropService.startCrop(userId, plotResult.plotId, crop, undefined, null);
-            await this.repo.saveDomainEvent(userId, { plotId: plotResult.plotId, eventType: 'planting', eventDate: null, crop });
+            // Siembra implícita: con la fecha de la cosecha, nunca posterior a ella.
+            await this.cropService.startCrop(userId, plotResult.plotId, crop, cmd.eventDate as Date | string | null, null);
+            await this.repo.saveDomainEvent(userId, { plotId: plotResult.plotId, eventType: 'planting', eventDate: (cmd.eventDate as Date | null) ?? null, crop });
           }
           const harvestedResult = await this.cropService.harvestCrop(plotResult.plotId, crop, cmd.eventDate as Date | undefined, accumulateYield ? null : yieldKg, yieldNotes);
 
@@ -2573,7 +2623,24 @@ export class AgronomyHandler {
             crop,
             quantity: harvestQuantity,
             unit: harvestQuantity ? harvestUnit : null,
+            notes: generalHumidity != null ? `humedad: ${generalHumidity.toLocaleString('es-AR')}%` : null,
           });
+        }
+
+        // FORMULARIO que repite la cosecha de hoy sin rinde, cargas ni hectáreas:
+        // no hay nada que anexar. Antes no se escribía nada y el formulario
+        // contestaba "No lo pude guardar: 🌾 Cosecha registrada".
+        if (cmd.__fromForm === true && isAppend && (!loads || loads.length === 0)
+            && yieldKg == null && yieldKgPerHa == null && cmd.hectares == null) {
+          if (generalHumidity != null) {
+            await this.repo.setDomainEventNotes(userId, savedEvent.id, `humedad: ${generalHumidity.toLocaleString('es-AR')}%`);
+            return { messages: [`🌾 *Cosecha actualizada*\n*${cap(crop)}* en ${plotLabel}\n💧 Humedad: ${generalHumidity.toLocaleString('es-AR')}%`] };
+          }
+          console.log(`[INTERCEPT] harvest_crop (form) repetido sin datos nuevos: lote ${plotResult.plotId}`);
+          return {
+            messages: [`🌾 La cosecha de *${cap(crop)}* en ${plotLabel} ya estaba registrada hoy. No había nada nuevo para sumar.\n\n_Para agregar el rinde o los camiones, cargalos en el formulario o decime "rindió 8.000 kg/ha"._`],
+            alreadyRecorded: true,
+          };
         }
 
         // Rinde en el path de dedup/append: la cosecha de hoy YA existía y el
@@ -2710,6 +2777,7 @@ export class AgronomyHandler {
           if (yieldKg) harvestMsg += `\n📊 Rendimiento: ${yieldKg.toLocaleString('es-AR')} kg`;
           if (computedKgPerHa) harvestMsg += yieldKg ? ` (${computedKgPerHa.toLocaleString('es-AR')} kg/ha)` : `\n📊 Rendimiento: ${computedKgPerHa.toLocaleString('es-AR')} kg/ha`;
         }
+        if (generalHumidity != null) harvestMsg += `\n💧 Humedad: ${generalHumidity.toLocaleString('es-AR')}%`;
 
         // If plot_crop has existing loads (from prior messages), surface them so the user
         // knows the info is stored and doesn't think it got lost.
@@ -3615,6 +3683,9 @@ export class AgronomyHandler {
           quantity: cmd.quantity as number | null,
           unit: cmd.unit as string | null,
           implement: cmd.implement as string | null,
+          // Observaciones del formulario / del chat: antes se pedían y no se
+          // guardaban (QA formularios, oct 2026).
+          notes: (cmd.notes as string | null | undefined) ?? null,
         });
 
         const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
@@ -3627,6 +3698,7 @@ export class AgronomyHandler {
           crop,
           implement: cmd.implement as string | null,
           eventDate: cmd.eventDate as Date | null,
+          notes: (cmd.notes as string | null | undefined) ?? null,
         });
 
         // Suggest stock deduction for spraying/fertilization with product

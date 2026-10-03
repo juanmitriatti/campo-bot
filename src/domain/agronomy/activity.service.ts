@@ -1,5 +1,6 @@
 import type { ActivityType, PlotCropRow } from '../../types/index.js';
 import { PRODUCT_CROP_MAP, ACTIVITY_LABEL_MAP } from '../../constants/agro-terms.js';
+import { formatDateAR } from '../../utils/date.js';
 
 export function inferCrop(
   explicitCrop: string | null,
@@ -37,6 +38,7 @@ export function formatActivityConfirmation(
     crop?: string | null;
     implement?: string | null;
     eventDate?: Date | null;
+    notes?: string | null;
   },
 ): string {
   const { emoji, label } = getActivityLabel(type);
@@ -66,9 +68,14 @@ export function formatActivityConfirmation(
   }
 
   if (details.eventDate) {
-    const d = details.eventDate instanceof Date ? details.eventDate : new Date(details.eventDate);
-    const dateStr = d.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+    // formatDateAR: una fecha-calendario ("2026-10-02" o DATE a medianoche
+    // UTC) pasada por new Date() + zona AR se corría al día anterior.
+    const dateStr = formatDateAR(details.eventDate);
     lines.push(`\ud83d\udcc5 ${dateStr}`);
+  }
+
+  if (details.notes) {
+    lines.push(`\ud83d\udcdd ${details.notes}`);
   }
 
   return lines.join('\n');

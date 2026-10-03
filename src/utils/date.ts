@@ -39,6 +39,19 @@ function toDateAR(date: Date | string): Date {
   return date;
 }
 
+/**
+ * Fecha-calendario YYYY-MM-DD (zona AR) de un string o Date. Para pasar una
+ * fecha de evento a una columna DATE sin que un `new Date(iso)` (medianoche
+ * UTC) la corra un día. null si no hay fecha o no se puede leer.
+ */
+export function toISODateAR(date: Date | string | null | undefined): string | null {
+  if (date == null || date === '') return null;
+  if (typeof date === 'string' && /^d{4}-d{2}-d{2}/.test(date)) return date.slice(0, 10);
+  const d = toDateAR(date);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-CA', { timeZone: TZ });
+}
+
 /** Format a date as dd/mm/yyyy (Argentina locale) */
 export function formatDateAR(date: Date | string): string {
   return toDateAR(date).toLocaleDateString('es-AR', {

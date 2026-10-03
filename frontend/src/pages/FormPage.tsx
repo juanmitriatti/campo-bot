@@ -111,7 +111,10 @@ export default function FormPage() {
     const payload: Record<string, unknown> = { ...values };
     for (const f of spec.fields) {
       if (f.type === 'select' && f.allowOther && payload[f.key] === OTHER) {
-        payload[f.key] = (others[f.key] ?? '').trim();
+        // Misma clave acompañante que el Flow y el colector (<key>_other): el
+        // server sabe así que el valor fue ESCRITO y no elegido de la lista.
+        payload[`${f.key}_other`] = (others[f.key] ?? '').trim();
+        delete payload[f.key];
       }
       if (f.type === 'number' && typeof payload[f.key] === 'string') {
         payload[f.key] = payload[f.key] === '' ? undefined : Number(payload[f.key]);
@@ -134,7 +137,8 @@ export default function FormPage() {
       });
       const body = await res.json();
       if (!res.ok) { setSubmitError(body.error ?? 'No se pudo registrar.'); return; }
-      setSuccessMsg(body.message ?? '✅ Registrado.');
+      // || y no ??: un handler que confirma solo con botones manda message:''.
+      setSuccessMsg(body.message || '✅ Registrado.');
       if (tg) setTimeout(() => tg.close(), 1800);
     } catch {
       setSubmitError('Falló el envío. Probá de nuevo.');

@@ -6,6 +6,10 @@
 // FormDefinition (form-definitions.ts) — nunca se repite acá. Un test exige
 // que cada campo de cada definición tenga su presentación.
 import type { FormAction } from '../form-definitions.js';
+import { isGrainSaleCategory } from '../../utils/crops.js';
+
+const isGrainSale = (v: Record<string, unknown>) => isGrainSaleCategory(v.category) || isGrainSaleCategory(v.category_other);
+const hasBuyer = (v: Record<string, unknown>) => typeof v.buyer === 'string' && v.buyer.trim() !== '';
 
 export interface FieldPresentation {
   /** Pregunta natural ("¿Cuánto gastaste?"). */
@@ -20,6 +24,11 @@ export interface FieldPresentation {
   optional?: 'offer' | 'never';
   /** Formato esperado, para la escalera (2º rechazo del mismo campo). */
   hint?: string;
+  /**
+   * Con `optional: 'offer'`: solo se ofrece si esto da true con lo ya cargado
+   * (comprador y toneladas solo en una venta de grano). Sin esto, siempre.
+   */
+  offerIf?: (values: Record<string, unknown>) => boolean;
 }
 
 export interface FormPresentation {
@@ -57,9 +66,15 @@ export const FORM_PRESENTATION: Record<FormAction, FormPresentation> = {
         hint: 'Ej: *3500 kg/ha*, *42 qq/ha* o *130 tn* en total.',
       },
       yield_kg: { ask: '⚖️ ¿Cuántos kilos cosechaste en total? (ej: *130 tn*)', emoji: '⚖️', hint: 'Ej: *130 tn* o *130000 kg*.' },
+      hectares: {
+        ask: '📐 ¿Cosechaste todo el lote? Si fue una parte, decime cuántas hectáreas (ej: *40 ha*). Si fue todo, tocá *Omitir*.',
+        emoji: '📐',
+        optional: 'offer',
+        hint: 'Las hectáreas cosechadas (ej: *40*), o *Omitir* si fue el lote entero.',
+      },
       humidity_pct: { ask: '💧 ¿Con qué humedad? (ej: *14%*)', emoji: '💧', hint: 'Un porcentaje entre 0 y 50 (ej: *14%*).' },
       loads: {
-        ask: '🚛 Mandame los camiones, uno por renglón: *chofer peso* y, si querés, destino y humedad.\nEj:\nJuan 28500 Cargill 14\nPedro 30000',
+        ask: '🚛 Mandame los camiones, uno por renglón: *chofer peso* y, si querés, destino y humedad (con %).\nEj:\nJuan 28500 Cargill 14%\nPedro 30000',
         emoji: '🚛',
         hint: 'Un camión por renglón: *nombre del chofer* y *peso en kg* (ej: *Juan 28500*).',
       },
@@ -87,10 +102,26 @@ export const FORM_PRESENTATION: Record<FormAction, FormPresentation> = {
       amount: { ask: '💰 ¿Cuánto cobraste?', emoji: '💰', hint: 'Escribí el importe (ej: *1500000*, *1,5 palos* o *$1.500.000*).' },
       currency: { ask: '💱 ¿En pesos o en dólares?', emoji: '💱' },
       category: { ask: '🏷️ ¿De qué fue el ingreso?', emoji: '🏷️', hint: 'Elegí una categoría de la lista o escribila.' },
+      buyer: {
+        ask: '🏢 ¿A quién se lo vendiste? (ej: *Cargill*)',
+        emoji: '🏢',
+        optional: 'offer',
+        offerIf: isGrainSale,
+        hint: 'El nombre del comprador o acopio, o *Omitir*.',
+      },
+      quantity_tn: {
+        ask: '⚖️ ¿Cuántas toneladas vendiste? (ej: *30 tn*)',
+        emoji: '⚖️',
+        optional: 'offer',
+        offerIf: isGrainSale,
+        hint: 'La cantidad vendida (ej: *30 tn* o *30000 kg*), o *Omitir*.',
+      },
       location: {
         ask: '📍 ¿Es de algún lote o campo en particular?',
         emoji: '📍',
         optional: 'offer',
+        // Venta de grano con comprador: el lote se deduce de la campaña (igual que el chat).
+        offerIf: v => !(isGrainSale(v) && hasBuyer(v)),
         hint: 'Elegí de la lista o escribí el nombre del lote. Si no corresponde a ninguno, tocá *Omitir*.',
       },
       event_date: DATE,

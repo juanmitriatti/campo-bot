@@ -18,6 +18,7 @@ import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers
 import { logError } from '../../services/error-logger.js';
 import { pool } from '../../config/db.js';
 import { formatMoney } from '../../utils/format-money.js';
+import { GRAIN_SALE_CATEGORIES } from '../../utils/crops.js';
 import type {
   UserId,
   User,
@@ -132,7 +133,7 @@ async function buildIncomeConfirmation(data: ParsedIncome | Record<string, unkno
  */
 // Venta de grano (soja/maíz/…) con comprador: el lote es opcional y se deduce
 // de la campaña; nunca se pregunta con flow (P1-7, QA sep 2026).
-const GRAIN_SALE_CATEGORIES = new Set(['soja', 'maíz', 'maiz', 'trigo', 'girasol', 'sorgo', 'cebada']);
+// La lista vive en utils/crops.ts (la comparte el formulario de ingreso).
 
 async function grainBalanceLine(userId: number, data: { category?: string; buyer?: string | null }): Promise<string | null> {
   if (!data.buyer || !data.category) return null;
@@ -819,10 +820,19 @@ export class FinancialHandler {
     // as a user mistake (invariante 3).
     const { isFieldLevelCategory } = await import('../../utils/field-level-categories.js');
     const { userExplicitlyReferencedPlot } = await import('../../utils/plot-intent.js');
+    const locChoice = data as ParsedExpense & { fieldLevel?: boolean; noLocation?: boolean };
+    const explicitFieldLevel = locChoice.fieldLevel === true && !plotName;
+    const explicitGeneral = locChoice.noLocation === true && !plotName && !fieldName;
     const isFieldLevelExpense = !plotName
-      && isFieldLevelCategory(data.category)
-      && !userExplicitlyReferencedPlot(text);
+      && (explicitFieldLevel || (isFieldLevelCategory(data.category) && !userExplicitlyReferencedPlot(text)));
     if (isFieldLevelExpense && plotId) {
+      plotId = null;
+      resPlotName = null;
+    }
+    if (explicitGeneral) {
+      // Gasto general de la empresa: sin campo ni lote, y nada de heredar uno.
+      fieldId = null;
+      resFieldName = null;
       plotId = null;
       resPlotName = null;
     }
@@ -833,7 +843,7 @@ export class FinancialHandler {
     // 7 sep 2026: arrendamiento ofrecía Bajo/Norte/Sur). Pending
     // machine-readable (invariante 5): la respuesta (texto o tap flow_field_*)
     // llena el slot `field` y el re-ruteo cae en el atajo de nivel campo.
-    if (isFieldLevelExpense && !fieldId && !plotId && !bulkMode) {
+    if (isFieldLevelExpense && !fieldId && !plotId && !bulkMode && !explicitGeneral) {
       try {
         const allFields = await this.service.getUserFields(userId);
         if (allFields.length === 1) {
@@ -887,7 +897,7 @@ export class FinancialHandler {
     }
 
     // Hybrid plot assignment: try to auto-assign plot
-    if (!plotId) {
+    if (!plotId && !explicitGeneral) {
       // Categoría corporativa (arrendamiento/sueldos/…) sin señal de lote: el
       // picker de lotes NO aplica — nivel campo directo. Este branch corría
       // ANTES del atajo y el usuario igual veía la lista (QA agentes Ago 2026).
@@ -922,7 +932,7 @@ export class FinancialHandler {
           },
         };
       }
-      if (resolution.needPlotCreation) {
+      if (resolution.needPlotCreation && !explicitFieldLevel) {
         // Field exists but 0 plots → block, tell user to create a plot
         return buildNoPlotsBlockResponse('un gasto', resFieldName ?? undefined);
       }
@@ -942,7 +952,7 @@ export class FinancialHandler {
     }
 
     // Conversational memory: inherit field/plot from recent financial message
-    if (!fieldId && !plotId) {
+    if (!fieldId && !plotId && !explicitGeneral) {
       const recentCtx = await this.service.getRecentFinancialContext(userId);
       if (recentCtx && recentCtx.plotId) {
         fieldId = recentCtx.fieldId;
@@ -956,7 +966,7 @@ export class FinancialHandler {
     // usuario tiene UN solo campo → resolverlo para que el atajo de nivel
     // campo aplique. Sin esto, "pagué medio palo de arrendamiento" con un solo
     // campo igual tiraba el picker de lotes (QA agentes Ago 2026).
-    if (isFieldLevelExpense && !fieldId && !plotId) {
+    if (isFieldLevelExpense && !fieldId && !plotId && !explicitGeneral) {
       try {
         const allFields = await this.service.getUserFields(userId);
         if (allFields.length === 1) fieldId = allFields[0].id;
@@ -968,7 +978,7 @@ export class FinancialHandler {
     // when this is a field-level expense (sueldos/arrendamiento/etc.) and
     // we already have a field — then save at field level (plot_id NULL)
     // without forcing the user through plot selection.
-    if (!plotId && !(isFieldLevelExpense && fieldId) && !bulkMode) {
+    if (!plotId && !(isFieldLevelExpense && fieldId) && !bulkMode && !explicitGeneral) {
       const currency = data.currency === 'USD' ? 'USD' : 'ARS';
       return {
         messages: [],
@@ -1014,7 +1024,10 @@ export class FinancialHandler {
     }
 
     // When the agent claims it's a new category, first check for a similar existing one
-    if (expenseCategoryIntent === 'new' && rawExpenseCategory && rawExpenseCategory.trim()) {
+    // categoryConfirmedNew: el usuario YA eligió "crear nueva" (formulario) viendo
+    // la parecida — no se le vuelve a preguntar.
+    if (expenseCategoryIntent === 'new' && rawExpenseCategory && rawExpenseCategory.trim()
+        && !(data as ParsedExpense & { categoryConfirmedNew?: boolean }).categoryConfirmedNew) {
       const similar = await this.categoryService.findSimilar(userId as number, 'expense', rawExpenseCategory);
       if (similar) {
         const payload = encodePendingExpensePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
@@ -1204,13 +1217,28 @@ export class FinancialHandler {
     const resolution = await this.service.resolveField(userId, fieldName, plotName, { allowContextStackFallback: incomeAllowContextStackFallback });
     let { fieldId, fieldName: resFieldName, plotId, plotName: resPlotName } = resolution;
 
+    // Ubicación ELEGIDA en un formulario (ver cmdToParsedIncome): "todo el
+    // campo" guarda a nivel campo; "ninguno, es general" sin campo ni lote.
+    const incomeLoc = data as ParsedIncome & { fieldLevel?: boolean; noLocation?: boolean };
+    const explicitFieldLevel = incomeLoc.fieldLevel === true && !plotName;
+    const explicitGeneral = incomeLoc.noLocation === true && !plotName && !fieldName;
+    const explicitNoPlot = explicitFieldLevel || explicitGeneral;
+    if (explicitNoPlot) {
+      plotId = null;
+      resPlotName = null;
+      if (explicitGeneral) {
+        fieldId = null;
+        resFieldName = null;
+      }
+    }
+
     // Venta de grano con comprador y sin lote ("vendí 50 tn de soja a Cargill"):
     // el lote es dato OPCIONAL, y el income_flow que preguntaba "¿en qué lote?"
     // se tragaba el mensaje siguiente ("retiré 5 tn…" → lote «retiré…») y
     // perdía el comprador (P1-7, QA sep 2026). Se deduce del único lote con
     // campaña reciente de ese cultivo; si no es único, queda a nivel campo.
     let grainSaleNoPlot = false;
-    if (!plotId && !resolution.notFound && data.buyer && GRAIN_SALE_CATEGORIES.has((data.category || '').toLowerCase())) {
+    if (!plotId && !explicitNoPlot && !resolution.notFound && data.buyer && GRAIN_SALE_CATEGORIES.has((data.category || '').toLowerCase())) {
       try {
         const { findPlotsWithCrop } = await import('../../services/expenses.js');
         const candidates = await findPlotsWithCrop(Number(userId), data.category, fieldId ?? null);
@@ -1264,7 +1292,7 @@ export class FinancialHandler {
     }
 
     // Hybrid plot assignment: try to auto-assign plot
-    if (!plotId) {
+    if (!plotId && !explicitNoPlot) {
       if (resolution.needPlotSelection && !bulkMode && !grainSaleNoPlot) {
         // 2+ plots in field → redirect to income flow at plot step
         const currency = data.currency === 'USD' ? 'USD' : 'ARS';
@@ -1306,7 +1334,7 @@ export class FinancialHandler {
     }
 
     // Conversational memory: inherit field/plot from recent financial message
-    if (!fieldId && !plotId) {
+    if (!fieldId && !plotId && !explicitNoPlot) {
       const recentCtx = await this.service.getRecentFinancialContext(userId);
       if (recentCtx && recentCtx.plotId) {
         fieldId = recentCtx.fieldId;
@@ -1319,7 +1347,7 @@ export class FinancialHandler {
     // No plot resolved → redirect to income flow so user picks one.
     // Bulk mode (compound with 2+ writes): save at user level without flow.
     // Venta de grano con comprador: nivel campo, sin flow (ver arriba).
-    if (!plotId && !bulkMode && !grainSaleNoPlot) {
+    if (!plotId && !bulkMode && !grainSaleNoPlot && !explicitNoPlot) {
       const currency = data.currency === 'USD' ? 'USD' : 'ARS';
       return {
         messages: [],
@@ -1354,7 +1382,8 @@ export class FinancialHandler {
         : 'unknown' as const;
 
     // When the agent claims it's a new category, first check for a similar existing one
-    if (incomeCategoryIntent === 'new' && rawIncomeCategory && rawIncomeCategory.trim()) {
+    if (incomeCategoryIntent === 'new' && rawIncomeCategory && rawIncomeCategory.trim()
+        && !(data as ParsedIncome & { categoryConfirmedNew?: boolean }).categoryConfirmedNew) {
       const similar = await this.categoryService.findSimilar(userId as number, 'income', rawIncomeCategory);
       if (similar) {
         const payload = encodePendingIncomePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
@@ -3491,6 +3520,18 @@ export class FinancialHandler {
       unit: typeof c.unit === 'string' ? c.unit : null,
       unit_price: typeof c.unit_price === 'number' ? c.unit_price : null,
       ...(typeof c.incomeDate === 'string' ? { incomeDate: c.incomeDate } : {}),
+      // Comprador (formulario de ingreso): sin esto la venta no entraba al saldo por acopio.
+      ...(typeof c.buyer === 'string' && c.buyer.trim() ? { buyer: c.buyer.trim() } : {}),
+      // routeCommand (formularios, re-ruteo de pendings): la intención de
+      // categoría viajaba en el comando y acá se perdía — una categoría escrita
+      // a mano caía siempre en el picker.
+      ...(c.category_match === 'new' || c.category_match === 'exact' ? { category_match: c.category_match } : {}),
+      ...(c.categoryConfirmedNew === true ? { categoryConfirmedNew: true } : {}),
+      // Ubicación ELEGIDA en un formulario: "todo el campo X" (fieldLevel) o
+      // "ninguno, es general" (noLocation). No es un lote sin resolver: no se
+      // pregunta "¿en qué lote?" ni se hereda uno del contexto.
+      ...(c.fieldLevel === true ? { fieldLevel: true } : {}),
+      ...(c.noLocation === true ? { noLocation: true } : {}),
     } as ParsedIncome;
   }
 
@@ -3539,6 +3580,16 @@ export class FinancialHandler {
       unit: typeof c.unit === 'string' ? c.unit : null,
       unit_price: typeof c.unit_price === 'number' ? c.unit_price : null,
       ...(typeof c.expenseDate === 'string' ? { expenseDate: c.expenseDate } : {}),
+      // routeCommand (formularios, re-ruteo de pendings): la intención de
+      // categoría viajaba en el comando y acá se perdía — una categoría escrita
+      // a mano caía siempre en el picker.
+      ...(c.category_match === 'new' || c.category_match === 'exact' ? { category_match: c.category_match } : {}),
+      ...(c.categoryConfirmedNew === true ? { categoryConfirmedNew: true } : {}),
+      // Ubicación ELEGIDA en un formulario: "todo el campo X" (fieldLevel) o
+      // "ninguno, es general" (noLocation). No es un lote sin resolver: no se
+      // pregunta "¿en qué lote?" ni se hereda uno del contexto.
+      ...(c.fieldLevel === true ? { fieldLevel: true } : {}),
+      ...(c.noLocation === true ? { noLocation: true } : {}),
     } as ParsedExpense;
   }
 

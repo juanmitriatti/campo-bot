@@ -1380,9 +1380,12 @@ export async function getPlotById(plotId, userId = null) {
   );
   const row = result.rows[0] || null;
   if (row && userId !== null) {
-    // Check access via field_members instead of direct user_id
+    // Regla ÚNICA de acceso: dueño (fields.user_id) O miembro. Mirar solo
+    // field_members dejaba afuera al dueño de un campo sin su fila `owner`:
+    // la cosecha "rindió 40 qq/ha" no encontraba la superficie del lote y
+    // quedaba sin total (QA formularios, oct 2026).
     const { rows: access } = await pool.query(
-      `SELECT 1 FROM field_members WHERE user_id = $1 AND field_id = $2 LIMIT 1`,
+      `SELECT 1 FROM (${accessibleFieldsSql(1)}) AS acc(id) WHERE acc.id = $2 LIMIT 1`,
       [userId, row.field_id]
     );
     if (access.length === 0) return null;

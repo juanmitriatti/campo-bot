@@ -115,9 +115,16 @@ function parseWrittenNumber(text) {
   let total = 0;
   let current = 0;
   let found = false;
+  let lastUnit = 0;
+  let prev = '';
 
   for (const word of words) {
-    if (WRITTEN_NUMBERS[word] !== undefined) {
+    if ((word === 'medio' || word === 'media') && prev === 'y' && lastUnit) {
+      // "un palo y medio" = 1,5 millones: la mitad de la ÚLTIMA unidad, no 0,5
+      // suelto (daba 1.000.000,5).
+      total += lastUnit / 2;
+      found = true;
+    } else if (WRITTEN_NUMBERS[word] !== undefined) {
       current += WRITTEN_NUMBERS[word];
       found = true;
     } else if (MULTIPLIERS[word]) {
@@ -125,8 +132,10 @@ function parseWrittenNumber(text) {
       current *= MULTIPLIERS[word];
       total += current;
       current = 0;
+      lastUnit = MULTIPLIERS[word];
       found = true;
     }
+    prev = word;
   }
 
   total += current;
@@ -134,38 +143,64 @@ function parseWrittenNumber(text) {
 }
 
 // --- Monto ---
+const MONEY_UNITS = [
+  [/^(?:millones|millon|palos|palo|m)$/, 1_000_000],
+  [/^(?:mil|lucas|luca|k)$/, 1_000],
+];
+const MONEY_UNIT_SRC = '(?:millones|millon|palos|palo|mil|lucas|luca|k\\b|m\\b)';
+
 export function normalizarMonto(texto) {
-  const lower = texto.toLowerCase().replace(/\./g, "");
+  // PUNTO DECIMAL con multiplicador: "1.5 palos" = 1,5 millones, no 15. Solo
+  // punto + 1 o 2 dígitos + palabra-multiplicador; "1.500" y "1.500.000" siguen
+  // siendo miles (el punto se descarta). Antes se borraban TODOS los puntos y
+  // "1.5 palos" se guardaba como $15.000.000 (QA formularios, oct 2026).
+  const lower = texto.toLowerCase()
+    .replace(/(\d+)\.(\d{1,2})(?=\s?(?:millones|millon|palos?|mil|lucas?|k|m)\b)/g, '$1,$2')
+    .replace(/\./g, "");
 
   // Si hay un monto con dígitos (50mil, $100, 200k, 1.5 millones), priorizar esos regex
-  const hasDigitAmount = /\$\s?\d|\d+\s?(?:mil|k|lucas|millon|palos)|\d{4,}/.test(lower);
+  const hasDigitAmount = /\$\s?\d|\d+(?:,\d+)?\s?(?:mil|k|lucas?|millon|palo)|\d{4,}/.test(lower);
 
   if (!hasDigitAmount) {
     const written = parseWrittenNumber(texto);
     if (written !== null) return written;
   }
 
-  const matchPesos = lower.match(/\$\s?(\d+)/);
-  if (matchPesos) return parseInt(matchPesos[1]);
+  const num = (s) => parseFloat(s.replace(",", "."));
+  // "2 palos y medio" → + media unidad.
+  const andHalf = /(?:millones|millon|palos?|mil|lucas?)\s+y\s+medi[oa]\b/.test(lower) ? 0.5 : 0;
+  const scaled = (value, unit) => {
+    const hit = MONEY_UNITS.find(([re]) => re.test(unit));
+    return hit ? Math.round((num(value) + andHalf) * hit[1]) : null;
+  };
+
+  // "$" manda (es el importe aunque el texto tenga otro número), y arrastra su
+  // multiplicador: "$250 mil" eran $250.
+  const matchPesos = lower.match(new RegExp(String.raw`\$\s?(\d+(?:,\d+)?)(?:\s?(${MONEY_UNIT_SRC}))?`));
+  if (matchPesos) {
+    if (matchPesos[2]) return scaled(matchPesos[1], matchPesos[2]);
+    return parseInt(matchPesos[1]);
+  }
 
   // "millones" / "palos" ANTES de "mil"
-  const matchMillones = lower.match(/(\d+(?:[.,]\d+)?)\s?(?:millones|millon|palos)/);
-  if (matchMillones) return Math.round(parseFloat(matchMillones[1].replace(",", ".")) * 1_000_000);
+  const matchMillones = lower.match(/(\d+(?:,\d+)?)\s?(millones|millon|palos|palo)/);
+  if (matchMillones) return scaled(matchMillones[1], matchMillones[2]);
 
-  const matchMil = lower.match(/(\d+)\s?mil/);
-  if (matchMil) return parseInt(matchMil[1]) * 1000;
+  const matchMil = lower.match(/(\d+(?:,\d+)?)\s?(mil)/);
+  if (matchMil) return scaled(matchMil[1], matchMil[2]);
 
-  const matchK = lower.match(/(\d+)k/);
-  if (matchK) return parseInt(matchK[1]) * 1000;
+  // \b: "50kg" no es plata.
+  const matchK = lower.match(/(\d+(?:,\d+)?)(k)\b/);
+  if (matchK) return scaled(matchK[1], matchK[2]);
 
-  const matchM = lower.match(/(\d+(?:[.,]\d+)?)m\b/);
-  if (matchM) return Math.round(parseFloat(matchM[1].replace(",", ".")) * 1_000_000);
+  const matchM = lower.match(/(\d+(?:,\d+)?)(m)\b/);
+  if (matchM) return scaled(matchM[1], matchM[2]);
 
-  const matchLucas = lower.match(/(\d+)\s?lucas/);
-  if (matchLucas) return parseInt(matchLucas[1]) * 1000;
+  const matchLucas = lower.match(/(\d+(?:,\d+)?)\s?(lucas|luca)\b/);
+  if (matchLucas) return scaled(matchLucas[1], matchLucas[2]);
 
   // Standalone number (for flows and direct amount input like "500" or "200 dolares")
-  const stripped = lower.replace(/\s*(?:d[oó]lares?|pesos?|usd|ars)\s*/g, '').trim();
+  const stripped = lower.replace(/\s*(?:d[oó]lares?|pesos?|usd|ars|u\$s|us\$|u\$d)\s*/g, '').trim();
   if (/^\d+$/.test(stripped)) return parseInt(stripped);
 
   return null;

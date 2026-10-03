@@ -35,10 +35,17 @@ vi.mock('../../middleware/user-lock.js', () => ({
   withUserLock: (k: string, fn: () => Promise<unknown>) => { lockKeys.push(k); return fn(); },
 }));
 const sendTg = vi.fn().mockResolvedValue(undefined);
+const sendTgButtons = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../services/telegram.js', () => ({
   sendTelegramMessage: (...a: unknown[]) => sendTg(...a),
-  sendTelegramButtons: vi.fn().mockResolvedValue(undefined),
+  sendTelegramButtons: (...a: unknown[]) => sendTgButtons(...a),
+  sendTelegramList: vi.fn().mockResolvedValue(undefined),
 }));
+const findSimilarMock = vi.fn();
+vi.mock('../../domain/financial/category.service.js', () => ({
+  CategoryService: class { findSimilar(...a: unknown[]) { return findSimilarMock(...a); } },
+}));
+vi.mock('../../domain/financial/category.repository.js', () => ({ CategoryRepository: class {} }));
 vi.mock('../../services/whatsapp.js', () => ({
   sendMessage: vi.fn().mockResolvedValue(undefined),
 }));
@@ -74,6 +81,72 @@ describe('submitForm', () => {
     sessionValidate.mockResolvedValue({ ...SESSION });
     sessionClaim.mockResolvedValue({ ...SESSION });
     sessionFind.mockResolvedValue(null);
+    // clearAllMocks no borra implementaciones: sin esto el "maíz activo" de un
+    // test de cosecha se colaba en los de siembra (que ahora miran el lote).
+    getActiveCropMock.mockReset();
+    getActiveCropMock.mockResolvedValue(null);
+    findSimilarMock.mockReset();
+    findSimilarMock.mockResolvedValue(null);
+  });
+
+  // Alta de hacienda: el handler confirma SOLO con botones (messages: []). La
+  // pantalla web recibía message:'' y no mostraba nada, y los botones no
+  // llegaban al chat.
+  it('handler que confirma solo con botones: el mensaje es el cuerpo y los botones van al chat', async () => {
+    mockUserRow();
+    const interactive = { type: 'buttons' as const, body: '🐄 Hacienda registrada', buttons: [{ id: 'lv_stock', title: 'Ver stock' }] };
+    routeCommand.mockResolvedValue({ messages: [], interactive });
+    queryMock.mockImplementation(async (sql: string) => (
+      String(sql).includes('pg_stat_xact_user_tables') ? { rows: [{ relname: 'plot_crops' }] } : { rows: [{ id: 9, name: 'Norte', field_name: 'La Esperanza' }] }
+    ));
+    const r = await submitForm('tok', { plot_id: 7, crop: 'soja', event_date: '2026-08-01' });
+    expect(r).toMatchObject({ ok: true, message: '🐄 Hacienda registrada' });
+    expect(sendTgButtons).toHaveBeenCalledWith('555', '🐄 Hacienda registrada', interactive.buttons);
+    expect(sendTg).not.toHaveBeenCalled(); // sin texto vacío al chat
+  });
+
+  it('form web: categoría "Otro…" parecida a una existente → usa la existente; si no hay, la crea sin re-preguntar', async () => {
+    sessionValidate.mockResolvedValue({ ...SESSION, action: 'log_expense' });
+    computeOptsMock.mockResolvedValue({ plots: [{ id: 7 }], fields: [{ id: 3, name: 'La Esperanza' }], corrals: [], crops: [], lists: {} });
+    queryMock.mockImplementation(async (sql: string) => (
+      String(sql).includes('pg_stat_xact_user_tables') ? { rows: [{ relname: 'expenses' }] } : { rows: [{ id: 9 }] }
+    ));
+    routeCommand.mockResolvedValue({ messages: ['✅ Gasto registrado'] });
+
+    findSimilarMock.mockResolvedValueOnce({ id: 4, name: 'Sueldos' });
+    await submitForm('tok', { amount: 1000, currency: 'ARS', category_other: 'Sueldo', event_date: '2026-08-01' });
+    expect(routeCommand.mock.calls[0][0]).toMatchObject({ category: 'Sueldos', category_match: 'exact' });
+
+    await submitForm('tok', { amount: 1000, currency: 'ARS', category_other: 'Veterinaria', event_date: '2026-08-01' });
+    expect(routeCommand.mock.calls[1][0]).toMatchObject({ category: 'Veterinaria', category_match: 'new', categoryConfirmedNew: true });
+
+    // El colector ya preguntó: no se vuelve a buscar una parecida.
+    findSimilarMock.mockClear();
+    await submitForm('tok', { amount: 1000, currency: 'ARS', category_other: 'Sueldo', category_other_confirmed: true, event_date: '2026-08-01' });
+    expect(findSimilarMock).not.toHaveBeenCalled();
+    expect(routeCommand.mock.calls[2][0]).toMatchObject({ category: 'Sueldo', category_match: 'new' });
+  });
+
+  it('siembra sobre un lote con OTRO cultivo activo, sin confirmación (form web / Flow) → 422 claro y no escribe', async () => {
+    mockUserRow();
+    getActiveCropMock.mockResolvedValue({ crop: 'maíz' });
+    const r = await submitForm('tok', { plot_id: 7, crop: 'soja', event_date: '2026-08-01' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.status).toBe(422);
+      expect(r.field).toBe('plot_id');
+      expect(r.error).toMatch(/ya tiene maíz activo/);
+    }
+    expect(routeCommand).not.toHaveBeenCalled();
+  });
+
+  it('con la confirmación del reemplazo (colector) el comando lleva __forceReplaceCampaign', async () => {
+    mockUserRow();
+    getActiveCropMock.mockResolvedValue({ crop: 'maíz' });
+    routeCommand.mockResolvedValue({ messages: ['🌱 Siembra registrada'] });
+    const r = await submitForm('tok', { plot_id: 7, crop: 'soja', event_date: '2026-08-01', replace_active_crop: 'maíz' });
+    expect(r.ok).toBe(true);
+    expect(routeCommand.mock.calls[0][0]).toMatchObject({ command: 'sow_crop', __forceReplaceCampaign: true });
   });
 
   it('404 con token muerto', async () => {

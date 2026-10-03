@@ -9,11 +9,19 @@ import type { FormAction } from './form-definitions.js';
 export interface ResolvedRefs {
   plot?: { id: number; name: string; fieldName: string } | null;
   field?: { id: number; name: string } | null;
-  corral?: { id: number; name: string; feedlotName: string | null } | null;
+  corral?: { id: number; name: string; feedlotName: string | null; fieldName?: string | null } | null;
   /** Cosecha: cultivo activo del lote (el form no lo pide). */
   activeCrop?: string | null;
   /** Gasto/ingreso: la categoría la ESCRIBIÓ el usuario ("Otro…"), no la eligió de su lista. */
   newCategory?: boolean;
+  /** Gasto/ingreso: eligió "Ninguno (general)" — sin campo ni lote. */
+  noLocation?: boolean;
+  /** Gasto/ingreso: el registro va al CAMPO entero, sin lote (elegido o deducido). */
+  fieldLevel?: boolean;
+  /** Siembra: cultivo DISTINTO activo en el lote (se cierra al confirmar). */
+  activeOther?: string | null;
+  /** Siembra: el usuario confirmó el reemplazo de esa campaña viendo el aviso. */
+  replaceConfirmed?: boolean;
 }
 
 /**
@@ -48,7 +56,10 @@ const ACTIVITY_LABEL: Record<string, string> = {
 
 function locationNames(refs: ResolvedRefs): { plotName: string | null; fieldName: string | null; corralName: string | null } {
   if (refs.plot) return { plotName: refs.plot.name, fieldName: refs.plot.fieldName, corralName: null };
-  if (refs.corral) return { plotName: null, fieldName: null, corralName: refs.corral.name };
+  // Con el CAMPO del corral: dos corrales "1" en feedlots de campos distintos
+  // hacían explotar el alta ("Hay varios corrales…") aunque el formulario ya
+  // sabía cuál era.
+  if (refs.corral) return { plotName: null, fieldName: refs.corral.fieldName ?? null, corralName: refs.corral.name };
   if (refs.field) return { plotName: null, fieldName: refs.field.name, corralName: null };
   return { plotName: null, fieldName: null, corralName: null };
 }
@@ -78,6 +89,9 @@ export function buildFormCommand(
         eventDate,
         hectares: (data.hectares as number) ?? null,
         variety: (data.variety as string) ?? null,
+        // El resumen avisó "se cierra la campaña de X" y el usuario confirmó.
+        ...(refs.replaceConfirmed ? { __forceReplaceCampaign: true } : {}),
+        __fromForm: true,
         originalText: `[formulario] siembra ${(data.crop as string) ?? ''}${where(refs)}`.trim(),
       };
 
@@ -90,8 +104,11 @@ export function buildFormCommand(
         eventDate,
         yieldKg: (data.yield_kg as number) ?? null,
         yieldKgPerHa: (data.yield_kg_per_ha as number) ?? null,
+        // Avance parcial: rinde × ha COSECHADAS, y el handler acumula.
+        hectares: (data.hectares as number) ?? null,
         humidity_pct: (data.humidity_pct as number) ?? null,
         loads: (data.loads as Array<Record<string, unknown>>) ?? null,
+        __fromForm: true,
         originalText: `[formulario] cosecha ${refs.activeCrop ?? ''}${where(refs)}`.trim(),
       };
 
@@ -107,9 +124,17 @@ export function buildFormCommand(
         // Escrita a mano en el form: crear si no existe (el handler igual
         // ofrece la parecida si hay una). Elegida de la lista: match exacto.
         category_match: refs.newCategory ? 'new' : 'exact',
+        // El "otro" del formulario ya pasó por «crear nueva / usar la parecida».
+        ...(refs.newCategory ? { categoryConfirmedNew: true } : {}),
         description,
         plotName: loc.plotName,
         fieldName: loc.fieldName,
+        // Ubicación ELEGIDA: el handler no pregunta "¿en qué lote?" ni hereda uno.
+        ...(refs.fieldLevel && !refs.plot ? { fieldLevel: true } : {}),
+        ...(refs.noLocation ? { noLocation: true } : {}),
+        // Venta de grano: comprador y cantidad, para el saldo por acopio.
+        ...(!isExpense && typeof data.buyer === 'string' && data.buyer ? { buyer: data.buyer } : {}),
+        ...(!isExpense && typeof data.quantity_tn === 'number' ? { quantity: data.quantity_tn, unit: 'tn' } : {}),
         ...(isExpense ? { expenseDate: eventDate } : { incomeDate: eventDate }),
         originalText: `[formulario] ${isExpense ? 'gasto' : 'ingreso'} ${data.category as string}${where(refs)}`,
       };
