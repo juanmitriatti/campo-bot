@@ -397,6 +397,15 @@ const IS_PROD_RUNTIME: boolean = (() => {
 function testEndpointGate(req: Request, res: Response): boolean {
   const secret = process.env.TEST_BOT_SECRET;
   const isProd = IS_PROD_RUNTIME;
+  // Prod: además del secreto, rol ADMIN. Antes alcanzaba el secreto fijo +
+  // cualquier JWT de usuario final para correr SQL libre sobre la base de prod
+  // (auditoría de aislamiento, oct 2026, AIS-19). Las suites de QA contra prod
+  // usan la cuenta admin de QA, así que siguen funcionando.
+  if (isProd && req.auth?.role !== 'admin') {
+    console.warn(`[test-bot] endpoint de QA bloqueado para no-admin en prod: user=${req.auth?.userId} path=${req.path}`);
+    res.status(404).json({ error: 'Not found' });
+    return false;
+  }
   if (secret) {
     if (req.headers['x-test-secret'] !== secret) {
       res.status(403).json({ error: 'Forbidden: invalid test secret' });

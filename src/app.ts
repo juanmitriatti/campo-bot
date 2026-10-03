@@ -10,6 +10,7 @@ import webhook from './controllers/whatsapp.controller.js';
 import testBotRoutes from './controllers/test-bot.controller.js';
 import telegramWebhook from './controllers/telegram.controller.js';
 import { verifyTelegramWebhook } from './middleware/telegram-auth.js';
+import { verifyWhatsAppSignature } from './middleware/whatsapp-signature.js';
 import dashboard from './routes/dashboard.js';
 import authRoutes from './routes/auth.routes.js';
 import webhookRoutes from './routes/webhooks.routes.js';
@@ -43,7 +44,11 @@ console.log(`[boot] DEPLOY_SHA=${DEPLOY_SHA ?? '<null>'} cwd=${process.cwd()}`);
 // BEFORE express.json() so the JSON parser doesn't consume the stream.
 app.use('/webhooks', webhookRoutes);
 
-app.use(express.json());
+// `verify` guarda el body CRUDO: la firma de Meta del webhook de WhatsApp es un
+// HMAC de los bytes tal cual llegaron (middleware/whatsapp-signature.ts).
+app.use(express.json({
+  verify: (req, _res, buf) => { (req as express.Request & { rawBody?: Buffer }).rawBody = buf; },
+}));
 
 // Request logger
 app.use((req: express.Request, _res: express.Response, next: express.NextFunction) => {
@@ -52,7 +57,7 @@ app.use((req: express.Request, _res: express.Response, next: express.NextFunctio
 });
 
 // WhatsApp webhook
-app.use('/webhook', webhook);
+app.use('/webhook', verifyWhatsAppSignature, webhook);
 
 // Telegram webhook
 app.use('/telegram', verifyTelegramWebhook, telegramWebhook);

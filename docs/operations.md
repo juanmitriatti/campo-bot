@@ -68,6 +68,7 @@ Required in `.env`:
 - `ANTHROPIC_API_KEY` — Claude API key
 - `OPENAI_API_KEY` — Whisper audio transcription
 - `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `VERIFY_TOKEN` — WhatsApp Cloud API
+- `WHATSAPP_APP_SECRET` — App Secret de la app de Meta (developers.facebook.com → la app → Configuración → Básica → Clave secreta de la app). Con ella el webhook rechaza (403) todo POST sin firma `X-Hub-Signature-256` válida. Sin ella el webhook acepta POSTs sin verificar y lo avisa en el log.
 - `TELEGRAM_BOT_TOKEN` — Telegram Bot API
 - `OPENWEATHER_API_KEY` — Weather forecasts
 - `JWT_SECRET` — Auth token signing

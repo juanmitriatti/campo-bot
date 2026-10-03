@@ -124,7 +124,10 @@ const router = express.Router();
 
 // GET /webhook — WhatsApp verification
 router.get('/', (req: Request, res: Response) => {
-  if (req.query['hub.verify_token'] === process.env.VERIFY_TOKEN) {
+  // Sin VERIFY_TOKEN configurado, undefined === undefined aceptaba cualquier
+  // pedido y reflejaba hub.challenge.
+  const expected = process.env.VERIFY_TOKEN;
+  if (expected && req.query['hub.verify_token'] === expected) {
     res.send(req.query['hub.challenge']);
     return;
   }
