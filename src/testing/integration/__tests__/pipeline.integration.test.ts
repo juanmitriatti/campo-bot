@@ -537,6 +537,44 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('trial vencido — el gate cubre pendings y botones (auditoría oct 2026, AIS-6)', () => {
+    // El gate del STEP 0 vivía dentro de classify: una respuesta a un pending,
+    // un paso de flow o un tap llegaban al handler antes y seguían escribiendo
+    // con la prueba vencida. Ahora corta en el borde de processTextMessage y de
+    // handleInteractiveReply.
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('trial-gate-edge');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Vencida') RETURNING id`, [h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [(f[0] as { id: number }).id]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('un pending abierto antes de vencer NO se completa después: no se guarda nada', async () => {
+      h.fakeAgent.enqueueTool('log_spraying', { plot: 'Norte' });
+      const ask = await h.send('fumigué el Norte');
+      expect(h.allText(ask)).toMatch(/producto|qué aplicaste|con qué/i);
+
+      await h.q(
+        `INSERT INTO subscriptions (user_id, plan_id, status, billing_period, provider, trial_ends_at)
+         VALUES ($1, 2, 'trial', 'monthly', 'trial', NOW() - INTERVAL '1 day')`,
+        [h.userId],
+      );
+      const answer = await h.send('glifosato');
+      expect(h.allText(answer)).toMatch(/prueba terminó/i);
+      const rows = await h.q(`SELECT 1 FROM domain_events WHERE user_id = $1`, [h.userId]);
+      expect(rows).toHaveLength(0);
+    });
+
+    it('un tap que arranca una carga se bloquea; "menú" (permitido) sigue andando', async () => {
+      const tap = await h.tap('flow_new_activity');
+      expect(h.allText(tap)).toMatch(/prueba terminó/i);
+      const menu = await h.send('menú');
+      expect(h.allText(menu)).not.toMatch(/prueba terminó/i);
+    });
+  });
+
   describe('activity_flow — consistencia de TODOS los tipos del picker (Jul 2026)', () => {
     let h: PipelineHarness;
 

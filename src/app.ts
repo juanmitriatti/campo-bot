@@ -11,6 +11,7 @@ import testBotRoutes from './controllers/test-bot.controller.js';
 import telegramWebhook from './controllers/telegram.controller.js';
 import { verifyTelegramWebhook } from './middleware/telegram-auth.js';
 import { verifyWhatsAppSignature } from './middleware/whatsapp-signature.js';
+import { requireWriteAccess } from './middleware/write-access.middleware.js';
 import dashboard from './routes/dashboard.js';
 import authRoutes from './routes/auth.routes.js';
 import webhookRoutes from './routes/webhooks.routes.js';
@@ -71,6 +72,9 @@ app.get('/api/health', (_req: express.Request, res: express.Response) => {
   });
 });
 
+// Prueba vencida = solo lectura también en el dashboard (antes el paywall era
+// solo visual). Corre antes de los tres routers montados bajo /api/auth.
+app.use('/api/auth', requireWriteAccess);
 // Public + protected end-user auth routes
 app.use('/api/auth', authRoutes);
 // Análisis de datos con IA (tab del dashboard). Mismo prefijo: el front usa apiRequest('/data-analysis').

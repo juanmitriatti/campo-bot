@@ -45,8 +45,9 @@ export function accessibleFieldsSql(paramIdx: number): string {
 
 /**
  * Predicado de FILA para una tabla que ubica sus registros por `field_id` y/o
- * `plot_id` (expenses, incomes, domain_events, agro_observations,
- * crop_scoutings, rainfall…).
+ * `plot_id` (expenses, incomes, agro_observations, crop_scoutings, rainfall…).
+ * NO sirve para `domain_events`, que no tiene `field_id`: para esa tabla va
+ * `accessibleEventSql`.
  *
  * Dos patas, y las dos hacen falta:
  *
@@ -64,6 +65,24 @@ export function accessibleFieldsSql(paramIdx: number): string {
  *
  * `alias` es el alias de la tabla en la query (`e`, `i`, `d`…).
  */
+/**
+ * Predicado de FILA para `domain_events`, que se ubica por `plot_id` o
+ * `corral_id` y NO tiene `field_id`. Usar `accessibleRowSql` acá rompía la
+ * query ("column de.field_id does not exist"): la pestaña Actividades del
+ * dashboard devolvía 500 para todos (auditoría oct 2026). Mismas dos patas
+ * que `accessibleRowSql` y que el `eventScope` del Resumen.
+ */
+export function accessibleEventSql(alias: string, paramIdx: number): string {
+  return `(
+    COALESCE(
+      (SELECT p_acc.field_id FROM plots p_acc WHERE p_acc.id = ${alias}.plot_id),
+      (SELECT fl_acc.field_id FROM corrals c_acc JOIN feedlots fl_acc ON fl_acc.id = c_acc.feedlot_id
+        WHERE c_acc.id = ${alias}.corral_id)
+    ) IN (${accessibleFieldsSql(paramIdx)})
+    OR ${alias}.user_id = $${paramIdx}
+  )`;
+}
+
 export function accessibleRowSql(alias: string, paramIdx: number): string {
   return `(
     COALESCE(${alias}.field_id, (SELECT p_acc.field_id FROM plots p_acc WHERE p_acc.id = ${alias}.plot_id))

@@ -51,7 +51,7 @@ const COMPOUND_ACTION_PATTERN = /(?:\by\b|\be\b|,|;)\s*(?:(?:tambi[e√©]n|adem[a√
  */
 // Comandos que un usuario con trial VENCIDO puede seguir usando: costo cero
 // (sin IA) y read-only o inocuos. Subset estricto de TRIVIAL_COMMANDS.
-const EXPIRED_ALLOWED_COMMANDS = new Set([
+export const EXPIRED_ALLOWED_COMMANDS = new Set([
   'greeting', 'thanks', 'ack', 'menu', 'help', 'dollar', 'grain_prices',
   'cancel', 'confirm',
   'list_fields', 'list_plots',

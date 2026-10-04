@@ -368,14 +368,21 @@ export class StockRepository {
     return rows;
   }
 
-  async getStockItemById(itemId: number): Promise<StockItemRow | null> {
+  /**
+   * Ítem por id SOLO si está en un campo accesible para el usuario (dueño o
+   * miembro). Antes no filtraba: GET /stock/:id/movements devolvía el ítem y
+   * los movimientos de cualquier usuario cambiando el id (auditoría oct 2026,
+   * AIS-11).
+   */
+  async getStockItemById(itemId: number, userId: number): Promise<StockItemRow | null> {
     const { rows } = await pool.query(
       `SELECT si.*, w.name AS warehouse_name, f.name AS field_name, f.id AS field_id
        FROM stock_items si
        JOIN warehouses w ON si.warehouse_id = w.id
        JOIN fields f ON w.field_id = f.id
-       WHERE si.id = $1 AND si.deleted_at IS NULL`,
-      [itemId]
+       WHERE si.id = $1 AND si.deleted_at IS NULL
+         AND f.id IN (${accessibleFieldsSql(2)})`,
+      [itemId, userId]
     );
     return rows[0] || null;
   }

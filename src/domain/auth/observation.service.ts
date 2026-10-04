@@ -1,5 +1,5 @@
 import { pool } from '../../config/db.js';
-import { accessibleRowSql } from '../shared/accessible-fields.js';
+import { accessibleRowSql, accessibleEventSql } from '../shared/accessible-fields.js';
 import { sqlNormalizedName } from '../../utils/entity-matcher.js';
 import { normalizeObservationText, detectObservationCategory } from '../../services/observations.js';
 
@@ -231,7 +231,7 @@ export class ObservationService {
     const offset = (page - 1) * limit;
 
     // Show activities from own data + activities on plots in accessible fields
-    const conditions = [accessibleRowSql('de', 1), 'de.deleted_at IS NULL'];
+    const conditions = [accessibleEventSql('de', 1), 'de.deleted_at IS NULL'];
     const params: (number | string)[] = [userId];
     let paramIdx = 1;
 

@@ -30,6 +30,11 @@ vi.mock('../../services/message-pipeline.js', () => ({
   hydratePendingStores: vi.fn().mockResolvedValue(undefined),
   applySideEffects: vi.fn().mockReturnValue({}),
 }));
+const accessMode = vi.fn();
+vi.mock('../../services/access-gate.service.js', () => ({
+  getUserAccessMode: (...a: unknown[]) => accessMode(...a),
+  trialExpiredCopy: vi.fn().mockResolvedValue('⏳ Tu prueba gratis terminó.'),
+}));
 const lockKeys: string[] = [];
 vi.mock('../../middleware/user-lock.js', () => ({
   withUserLock: (k: string, fn: () => Promise<unknown>) => { lockKeys.push(k); return fn(); },
@@ -87,6 +92,7 @@ describe('submitForm', () => {
     getActiveCropMock.mockResolvedValue(null);
     findSimilarMock.mockReset();
     findSimilarMock.mockResolvedValue(null);
+    accessMode.mockResolvedValue('full');
   });
 
   // Alta de hacienda: el handler confirma SOLO con botones (messages: []). La
@@ -236,6 +242,24 @@ describe('submitForm', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) { expect(r.status).toBe(422); expect(r.field).toBe('category'); }
     expect(routeCommand).not.toHaveBeenCalled();
+  });
+
+  // Auditoría oct 2026 (AIS-20): el submit entraba por routeCommand sin pasar
+  // por el gate del bot, y con la prueba vencida el formulario seguía guardando.
+  it('prueba vencida → 403 con el mensaje de plan, sin rutear ni quemar el token', async () => {
+    mockUserRow();
+    pendingGet.mockReturnValue({ command: 'sow_crop', data: {} });
+    accessMode.mockResolvedValue('trial_expired_readonly');
+    const r = await submitForm('tok', { plot_id: 7, crop: 'soja', event_date: '2026-08-01' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.status).toBe(403);
+      expect(r.error).toMatch(/prueba gratis terminó/);
+    }
+    expect(routeCommand).not.toHaveBeenCalled();
+    expect(sessionClaim).not.toHaveBeenCalled();
+    // Cortó antes de las consultas: que sus respuestas encoladas no se cuelen en el test siguiente.
+    queryMock.mockReset();
   });
 
   it('happy path siembra: rutea, confirma al chat, reclama el token y limpia pending', async () => {

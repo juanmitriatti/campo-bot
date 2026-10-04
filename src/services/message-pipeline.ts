@@ -20,7 +20,7 @@
  *    los suyos.
  */
 
-import { IntentClassifier, READ_ONLY_TRIVIAL_COMMANDS } from './intent-classifier.js';
+import { IntentClassifier, READ_ONLY_TRIVIAL_COMMANDS, EXPIRED_ALLOWED_COMMANDS } from './intent-classifier.js';
 import { DomainRouter } from '../domain/router.js';
 import { CompoundExecutor } from '../domain/compound-executor.js';
 import { InteractiveRouter } from '../domain/interactive/interactive.router.js';
@@ -699,6 +699,22 @@ _"${stash.originalText}"_` });
   return items;
 }
 
+/**
+ * Si el usuario tiene la prueba vencida y lo que mandó no está permitido,
+ * devuelve la respuesta de "tu prueba terminó"; si no, null.
+ */
+async function trialExpiredReply(
+  userId: ChannelContext['userId'],
+  isAllowed: () => boolean,
+  logDetail: string,
+): Promise<BotResponseItem[] | null> {
+  const { getUserAccessMode, trialExpiredCopy } = await import('./access-gate.service.js');
+  if (await getUserAccessMode(Number(userId)) !== 'trial_expired_readonly') return null;
+  if (isAllowed()) return null;
+  console.log(`[TRIAL_EXPIRED] user=${userId} bloqueado en el borde del pipeline ${logDetail}`);
+  return [{ type: 'text', text: await trialExpiredCopy() }];
+}
+
 async function processTextMessageInner(
   text: string,
   ctx: ChannelContext,
@@ -714,6 +730,22 @@ async function processTextMessageInner(
 
   // Track last activity
   pool.query('UPDATE users SET last_message_at = NOW() WHERE id = $1', [userId]).catch(() => {});
+
+  // Prueba vencida: el corte vivía solo en el STEP 0 del clasificador, y las
+  // preguntas abiertas, los flujos y el formulario se procesan ANTES de
+  // clasificar — contestar una pregunta abierta antes del vencimiento seguía
+  // guardando (auditoría oct 2026, AIS-6). Mismo criterio que el clasificador:
+  // solo pasan los comandos triviales permitidos con la prueba vencida.
+  {
+    const expired = await trialExpiredReply(userId, () => {
+      const cmd = intentClassifier.parseCommandOnly(text) as { command?: string } | null;
+      return !!cmd?.command && EXPIRED_ALLOWED_COMMANDS.has(cmd.command);
+    }, `text="${text.slice(0, 80)}"`);
+    if (expired) {
+      conversationLogger.log(userId, phone, text, expired[0].text ?? null, 'trial_expired', null, null, null, false, Date.now() - startTime, false, 0, null, null, ctx.channel).catch(() => {});
+      return expired;
+    }
+  }
 
   // Log message received for analytics
   const sessionId = `${ctx.channel}_${userId}_${new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })}`;
@@ -1929,6 +1961,18 @@ export async function handleInteractiveReply(
   if (isOneShotCallback(callbackId) && !consumeOnce(userId, callbackId)) {
     console.log(`[INTERCEPT] tap repetido ignorado user=${userId} cb=${callbackId}`);
     return [{ type: 'text', text: repeatedTapMessage(callbackId) }];
+  }
+
+  // Prueba vencida: los botones no pasaban por ningún control de acceso (un
+  // `cat_pick_` guardaba el gasto igual). Solo pasan los que llevan a un
+  // comando permitido con la prueba vencida (menú, plan, invitación…).
+  {
+    const expired = await trialExpiredReply(userId, () => {
+      const intent = interactiveRouter.route(callbackId) as { type?: string; data?: { command?: string } } | null;
+      const cmd = intent?.type === 'command' ? intent.data?.command : undefined;
+      return !!cmd && EXPIRED_ALLOWED_COMMANDS.has(cmd);
+    }, `tap=${callbackId}`);
+    if (expired) return expired;
   }
 
   // Branches específicos del canal (doc_* en tg/wa) — primero, para que el

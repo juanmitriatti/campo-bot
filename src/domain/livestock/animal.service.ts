@@ -13,7 +13,8 @@
  * decisión vieja.
  */
 
-import { withTransaction } from '../../config/db.js';
+import { pool, withTransaction } from '../../config/db.js';
+import { accessibleFieldsSql } from '../shared/accessible-fields.js';
 import { AnimalRepository, type CreateAnimalInput, type AnimalFilters } from './animal.repository.js';
 import { normalizeAnimalId, parseAnimalId } from '../../utils/animal-id.js';
 import { normalizeBreed } from '../../utils/livestock-breeds.js';
@@ -59,6 +60,18 @@ export interface RegisterAnimalResult {
   warnings: string[];
 }
 
+/**
+ * Un campo, lote, corral o grupo que el usuario no puede ver (ajeno o borrado).
+ * Se responde como "no encontrado": nunca confirmar que existe.
+ */
+export class LocationAccessError extends Error {
+  readonly status = 404;
+  constructor(what: string) {
+    super(`No encontré ese ${what}.`);
+    this.name = 'LocationAccessError';
+  }
+}
+
 export class DuplicateIdentifierError extends Error {
   constructor(public readonly value: string, public readonly existingAnimalId: string) {
     super(`El identificador ${value} ya está asignado a otro animal.`);
@@ -68,6 +81,41 @@ export class DuplicateIdentifierError extends Error {
 
 export class AnimalService {
   constructor(private readonly repo: AnimalRepository = new AnimalRepository()) {}
+
+  /**
+   * Cada id de ubicación que llega de afuera (dashboard, importación, payload
+   * de botón) tiene que pertenecer a un campo accesible para el usuario. Antes
+   * se insertaba tal cual: el alta devolvía el nombre del lote ajeno y
+   * `recountGroup` tocaba el contador de un grupo de otro usuario (auditoría
+   * oct 2026, AIS-12).
+   */
+  private async assertLocationAccess(userId: number, loc: {
+    fieldId?: number | null; plotId?: number | null; corralId?: number | null; groupId?: string | null;
+  }): Promise<void> {
+    const acc = accessibleFieldsSql(2);
+    const check = async (sql: string, id: unknown, what: string) => {
+      if (id == null || id === '') return;
+      const { rows } = await pool.query(sql, [id, userId]);
+      if (rows.length === 0) {
+        console.log(`[INTERCEPT] animal: ${what} id=${String(id)} fuera de los campos accesibles de user=${userId}`);
+        throw new LocationAccessError(what);
+      }
+    };
+    await check(`SELECT 1 FROM fields f WHERE f.id = $1 AND f.deleted_at IS NULL AND f.id IN (${acc})`, loc.fieldId, 'campo');
+    await check(`SELECT 1 FROM plots p WHERE p.id = $1 AND p.deleted_at IS NULL AND p.field_id IN (${acc})`, loc.plotId, 'lote');
+    await check(
+      `SELECT 1 FROM corrals c JOIN feedlots fl ON fl.id = c.feedlot_id
+        WHERE c.id = $1 AND c.deleted_at IS NULL AND fl.deleted_at IS NULL AND fl.field_id IN (${acc})`,
+      loc.corralId, 'corral');
+    await check(
+      `SELECT 1 FROM livestock_groups lg
+         LEFT JOIN plots p ON p.id = lg.plot_id
+         LEFT JOIN corrals c ON c.id = lg.corral_id
+         LEFT JOIN feedlots fl ON fl.id = c.feedlot_id
+        WHERE lg.id = $1 AND lg.deleted_at IS NULL
+          AND (lg.user_id = $2 OR COALESCE(lg.field_id, p.field_id, fl.field_id) IN (${acc}))`,
+      loc.groupId, 'grupo');
+  }
 
   // ========================
   // ALTA E IDENTIFICACIÓN
@@ -81,6 +129,9 @@ export class AnimalService {
    */
   async registerAnimal(input: RegisterAnimalInput): Promise<RegisterAnimalResult> {
     const warnings: string[] = [];
+    await this.assertLocationAccess(input.userId, {
+      fieldId: input.fieldId, plotId: input.plotId, corralId: input.corralId, groupId: input.groupId,
+    });
 
     // El sexo se deriva de la categoría (vaca→H, novillo→M). Pedírselo al
     // usuario sería redundante: la categoría del rodeo argentino ya lo codifica.
@@ -536,6 +587,9 @@ export class AnimalService {
     livestockMovementId?: string | null;
   }): Promise<{ moved: number; skipped: Array<{ animalId: string; reason: string }> }> {
     if (input.animalIds.length === 0) return { moved: 0, skipped: [] };
+    await this.assertLocationAccess(input.userId, {
+      fieldId: input.destFieldId, plotId: input.destPlotId, corralId: input.destCorralId, groupId: input.destGroupId,
+    });
 
     return withTransaction(async () => {
       const skipped: Array<{ animalId: string; reason: string }> = [];

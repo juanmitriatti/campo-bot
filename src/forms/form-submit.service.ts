@@ -383,6 +383,14 @@ export async function submitForm(
   if (!user) return { ok: false, status: 404, error: 'Usuario no encontrado.' };
 
   const commit = async (): Promise<SubmitResult> => {
+    // Prueba vencida: un token emitido antes del vencimiento (el conversacional
+    // vive hasta 24 h) seguía guardando (auditoría oct 2026, AIS-20). El token
+    // no se consume: si paga, puede confirmar el mismo formulario.
+    const { getUserAccessMode, trialExpiredCopy } = await import('../services/access-gate.service.js');
+    if (await getUserAccessMode(Number(session.user_id)) === 'trial_expired_readonly') {
+      console.log(`[TRIAL_EXPIRED] user=${session.user_id} submit de formulario bloqueado action=${action}`);
+      return { ok: false, status: 403, error: await trialExpiredCopy() };
+    }
     await hydratePendingStores(session.phone);
 
     // Caso borde del spec: había un pending al ofrecer el form y ya no está →

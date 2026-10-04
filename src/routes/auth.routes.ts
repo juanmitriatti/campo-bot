@@ -1418,7 +1418,8 @@ router.get('/stock/:id/movements', requireAuth, requireFeature('stock'), async (
     const { StockRepository } = await import('../domain/stock/stock.repository.js');
     const repo = new StockRepository();
 
-    const item = await repo.getStockItemById(id);
+    // 404 también para un ítem ajeno: nunca confirmar que existe.
+    const item = await repo.getStockItemById(id, req.auth!.userId);
     if (!item) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
     const movements = await repo.getMovements(id, 50);
@@ -1447,10 +1448,20 @@ router.patch('/stock/:id', requireAuth, requireFeature('stock'), async (req: Req
     if (unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(unit); }
     if (min_stock !== undefined) { idx++; sets.push(`min_stock = $${idx}`); params.push(min_stock); }
 
+    // Solo ítems de galpones en campos accesibles: antes el UPDATE iba por id a
+    // secas y un usuario renombraba ítems ajenos cambiando el número de la URL
+    // (auditoría oct 2026, AIS-10).
+    idx++;
+    const idParam = idx;
     idx++;
     const result = await pool.query(
-      `UPDATE stock_items SET ${sets.join(', ')} WHERE id = $${idx} AND deleted_at IS NULL RETURNING *`,
-      [...params, id]
+      `UPDATE stock_items SET ${sets.join(', ')}
+        WHERE id = $${idParam} AND deleted_at IS NULL
+          AND warehouse_id IN (
+            SELECT w.id FROM warehouses w WHERE w.field_id IN (${accessibleFieldsSql(idx)})
+          )
+        RETURNING *`,
+      [...params, id, req.auth!.userId]
     );
     if (result.rows.length === 0) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
     res.json(result.rows[0]);
@@ -2955,6 +2966,11 @@ function parseFieldIdParam(raw: unknown): number | null | undefined {
 }
 
 function handleError(err: unknown, res: Response): void {
+  // Ubicación ajena o borrada (AnimalService): 404, nunca confirmar que existe.
+  if (err instanceof Error && err.name === 'LocationAccessError') {
+    res.status(404).json({ error: err.message });
+    return;
+  }
   if (err instanceof AuthError || err instanceof ObservationError) {
     res.status(err.status).json({ error: err.message });
     return;
