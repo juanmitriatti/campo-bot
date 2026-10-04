@@ -38,10 +38,36 @@ const ONE_SHOT_PREFIXES = [
   'animal_batch_move_',
 ];
 
+/**
+ * Teclados de un solo uso POR TOKEN: todas las opciones de un mismo teclado
+ * llevan el mismo token (8 chars, callback-payload-store) y se consume el
+ * token, no el botón. Así un doble toque NI elegir otra opción del mismo
+ * teclado repiten la operación: [En un lote]/[En un feedlot] ×2 sumaba 100
+ * cabezas en vez de 50 y [Moverlos] ×2 hacía dos traslados (auditoría oct
+ * 2026, HAC-9 / CONV-3). El grupo captura el token.
+ */
+const ONE_SHOT_TOKEN_GROUPS: RegExp[] = [
+  /^lv_loc_(?:lote|feedlot)_([A-Za-z0-9_-]{8})$/,
+  /^lv_loc_corralpick_([A-Za-z0-9_-]{8})$/,
+  /^lv_move_(?:yes|new)_([A-Za-z0-9_-]{8})$/,
+  /^lv_create_(?:corral|plot|feedlot|field)_continue_([A-Za-z0-9_-]{8})$/,
+  /^lv_pick_loc_(?:health|repro|weigh)_([A-Za-z0-9_-]{8})_/,
+  /^lv_animals_(?:all|skip)_(?:health|repro|weigh)_([A-Za-z0-9_-]{8})$/,
+];
+
 const used = new Map<string, number>();
 
+/** Clave de consumo del tap: el token de su teclado, o el id entero. null = tap reutilizable. */
+function oneShotKey(callbackId: string): string | null {
+  for (const re of ONE_SHOT_TOKEN_GROUPS) {
+    const m = callbackId.match(re);
+    if (m) return `tok:${m[1]}`;
+  }
+  return ONE_SHOT_PREFIXES.some(p => callbackId.startsWith(p)) ? callbackId : null;
+}
+
 export function isOneShotCallback(callbackId: string): boolean {
-  return ONE_SHOT_PREFIXES.some(p => callbackId.startsWith(p));
+  return oneShotKey(callbackId) !== null;
 }
 
 /**
@@ -52,6 +78,10 @@ export function isOneShotCallback(callbackId: string): boolean {
  * lote de caravanas. Al agregar un prefijo nuevo, agregá también su mensaje.
  */
 export function repeatedTapMessage(callbackId: string): string {
+  if (ONE_SHOT_TOKEN_GROUPS.some(re => re.test(callbackId))) {
+    return '✅ Esa opción ya la tomé con el primer toque. No repetí la operación.\n' +
+           'Si querés hacer otra, escribime qué necesitás.';
+  }
   if (callbackId.startsWith('animal_batch_move_')) {
     return '✅ Esa lectura de caravanas ya la apliqué con ese toque. No volví a mover los animales.';
   }
@@ -71,7 +101,7 @@ function cleanup(now: number): void {
  */
 export function consumeOnce(userId: number | string, callbackId: string): boolean {
   const now = Date.now();
-  const key = `${userId}:${callbackId}`;
+  const key = `${userId}:${oneShotKey(callbackId) ?? callbackId}`;
   const seen = used.get(key);
   if (seen !== undefined && now - seen <= TTL_MS) return false;
   used.set(key, now);

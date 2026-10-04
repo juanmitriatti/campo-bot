@@ -23,19 +23,35 @@
  *
  * Not used by `confirm_pending` etc. — those don't carry payload (read
  * from pendingStore).
+ *
+ * Dueño del token (auditoría oct 2026, AIS-1): cada token queda atado al
+ * usuario al que se le mandó el botón. El pipeline corre cada mensaje y cada
+ * tap dentro de `runWithCallbackOwner(userId, …)`; `set` anota ese usuario y
+ * `get` devuelve null (con log) si quien tapea es otro. Antes el router
+ * también aceptaba el payload INLINE cuando el token no existía: un botón
+ * armado a mano con un field_id/plot_id ajeno guardaba datos en el campo de
+ * otro usuario. Sin token válido = botón vencido.
  */
 
 import { randomBytes } from 'crypto';
+import { AsyncLocalStorage } from 'async_hooks';
+
+const ownerContext = new AsyncLocalStorage<string>();
+
+/** Corre `fn` con `owner` como dueño de los tokens que se creen o consulten adentro. */
+export function runWithCallbackOwner<T>(owner: number | string, fn: () => T): T {
+  return ownerContext.run(String(owner), fn);
+}
 
 const TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 class CallbackPayloadStore {
-  private map = new Map<string, { payload: string; timestamp: number }>();
+  private map = new Map<string, { payload: string; timestamp: number; owner?: string }>();
 
   /** Register a payload, return a short token to embed in callback_data. */
   set(payload: string): string {
     const token = randomBytes(6).toString('base64url'); // 8 chars
-    this.map.set(token, { payload, timestamp: Date.now() });
+    this.map.set(token, { payload, timestamp: Date.now(), owner: ownerContext.getStore() });
     if (this.map.size > 500) this.cleanup();
     return token;
   }
@@ -46,6 +62,11 @@ class CallbackPayloadStore {
     if (!entry) return null;
     if (Date.now() - entry.timestamp > TTL_MS) {
       this.map.delete(token);
+      return null;
+    }
+    const caller = ownerContext.getStore();
+    if (entry.owner && caller && entry.owner !== caller) {
+      console.log(`[INTERCEPT] callback token de otro usuario: token=${token} dueño=${entry.owner} tap de=${caller}`);
       return null;
     }
     return entry.payload;

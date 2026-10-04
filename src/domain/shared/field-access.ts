@@ -101,3 +101,55 @@ export async function assertFieldOwner(userId: number, fieldId: number): Promise
     throw new FieldAccessError(403, 'NOT_FIELD_OWNER', 'Solo el dueño del campo puede hacer esto.');
   }
 }
+
+/** Ids de ubicación que llegan de afuera: un botón, un payload, un body REST. */
+export interface LocationIds {
+  fieldId?: number | string | null;
+  plotId?: number | string | null;
+  corralId?: number | string | null;
+  groupId?: string | null;
+  warehouseId?: number | string | null;
+}
+
+const LOCATION_CHECKS: Array<{ key: keyof LocationIds; what: string; sql: (acc: string) => string }> = [
+  { key: 'fieldId', what: 'campo', sql: (acc) => `SELECT 1 FROM fields f WHERE f.id = $1 AND f.deleted_at IS NULL AND f.id IN (${acc})` },
+  { key: 'plotId', what: 'lote', sql: (acc) => `SELECT 1 FROM plots p WHERE p.id = $1 AND p.deleted_at IS NULL AND p.field_id IN (${acc})` },
+  {
+    key: 'corralId', what: 'corral', sql: (acc) =>
+      `SELECT 1 FROM corrals c JOIN feedlots fl ON fl.id = c.feedlot_id
+        WHERE c.id = $1 AND c.deleted_at IS NULL AND fl.deleted_at IS NULL AND fl.field_id IN (${acc})`,
+  },
+  {
+    key: 'groupId', what: 'grupo', sql: (acc) =>
+      `SELECT 1 FROM livestock_groups lg
+         LEFT JOIN plots p ON p.id = lg.plot_id
+         LEFT JOIN corrals c ON c.id = lg.corral_id
+         LEFT JOIN feedlots fl ON fl.id = c.feedlot_id
+        WHERE lg.id = $1 AND lg.deleted_at IS NULL
+          AND (lg.user_id = $2 OR COALESCE(lg.field_id, p.field_id, fl.field_id) IN (${acc}))`,
+  },
+  { key: 'warehouseId', what: 'galpón', sql: (acc) => `SELECT 1 FROM warehouses w WHERE w.id = $1 AND w.deleted_at IS NULL AND w.field_id IN (${acc})` },
+];
+
+/**
+ * Devuelve qué id NO es accesible para el usuario ('campo', 'lote', 'corral',
+ * 'grupo', 'galpón') o `null` si todos lo son. Los ids ausentes no se chequean.
+ *
+ * Todo id que llega de afuera (un botón, un payload de botón, un body del
+ * dashboard) pasa por acá ANTES de escribir: un botón armado a mano guardaba un
+ * gasto, un evento de hacienda o stock en el campo de otro usuario
+ * (auditoría oct 2026, AIS-1..4 y AIS-12). Un id que no es número válido cuenta
+ * como inaccesible, nunca llega a la query. El llamador loguea y decide qué
+ * contestar — para el usuario ese lugar no existe.
+ */
+export async function findInaccessibleLocation(userId: number, loc: LocationIds): Promise<string | null> {
+  const acc = accessibleFieldsSql(2);
+  for (const c of LOCATION_CHECKS) {
+    const id = loc[c.key];
+    if (id == null || id === '') continue;
+    if (c.key !== 'groupId' && !/^\d+$/.test(String(id))) return c.what;
+    const { rows } = await pool.query(c.sql(acc), [id, userId]);
+    if (rows.length === 0) return c.what;
+  }
+  return null;
+}

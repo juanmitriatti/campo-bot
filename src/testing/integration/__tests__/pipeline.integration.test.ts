@@ -575,6 +575,153 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('botones: tokens atados al usuario, ids validados, un solo uso (auditoría oct 2026, tanda 2)', () => {
+    // Un botón lleva adentro lo que va a hacer y el servidor confiaba en él:
+    // armado a mano escribía en datos de otro usuario, tocado dos veces
+    // duplicaba, y uno viejo seguía ejecutando.
+    let a: PipelineHarness; // víctima
+    let b: PipelineHarness; // quien arma el botón
+    let fieldA: number; let plotA: number; let catB: number;
+    let fieldB: number; let plotB: number;
+
+    beforeAll(async () => {
+      a = await createPipelineHarness('btn-victima');
+      b = await createPipelineHarness('btn-atacante');
+      fieldA = (await a.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'Campo Ajeno') RETURNING id`, [a.userId]))[0].id as number;
+      plotA = (await a.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Lote Ajeno') RETURNING id`, [fieldA]))[0].id as number;
+      fieldB = (await b.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'Campo Propio') RETURNING id`, [b.userId]))[0].id as number;
+      plotB = (await b.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Lote Propio') RETURNING id`, [fieldB]))[0].id as number;
+      catB = (await b.q(`INSERT INTO user_categories (user_id, kind, name) VALUES ($1, 'expense', 'Combustible') RETURNING id`, [b.userId]))[0].id as number;
+      await b.q(`INSERT INTO user_categories (user_id, kind, name) VALUES ($1, 'expense', 'Varios')`, [b.userId]);
+    });
+    // B primero: si un arreglo se rompe y B llega a escribir en el campo de A, A no se podría borrar.
+    afterAll(async () => { await b?.cleanup(); await a?.cleanup(); });
+
+    const expenseToken = async (owner: PipelineHarness, fieldId: number, plotId: number, amount: number) => {
+      const { callbackPayloadStore, runWithCallbackOwner } = await import('../../../middleware/callback-payload-store.js');
+      const { encodePendingExpensePayload } = await import('../../../domain/financial/financial.handler.js');
+      return runWithCallbackOwner(owner.userId, () => callbackPayloadStore.set(encodePendingExpensePayload({
+        data: { type: 'expense', amount, currency: 'ARS', description: 'gasoil', category: '' } as never,
+        fieldId, plotId,
+      })));
+    };
+    const expensesOf = async (h: PipelineHarness) => (await h.q(`SELECT id FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId])).length;
+
+    it('AIS-1: el payload INLINE (sin token) con el campo de otro ya no guarda nada', async () => {
+      const { encodePendingExpensePayload } = await import('../../../domain/financial/financial.handler.js');
+      const inline = encodePendingExpensePayload({
+        data: { type: 'expense', amount: 987654, currency: 'ARS', description: 'x', category: '' } as never,
+        fieldId: fieldA, plotId: plotA,
+      });
+      const items = await b.tap(`cat_pick_exp_${inline}_${catB}`);
+      expect(b.allText(items)).toMatch(/no se guardó nada/i);
+      const leaked = await a.q(`SELECT 1 FROM expenses WHERE (field_id = $1 OR plot_id = $2)`, [fieldA, plotA]);
+      expect(leaked).toHaveLength(0);
+    });
+
+    it('AIS-1: un token emitido para otro usuario no se resuelve', async () => {
+      const token = await expenseToken(a, fieldA, plotA, 5000);
+      const items = await b.tap(`cat_pick_exp_${token}_${catB}`);
+      expect(b.allText(items)).toMatch(/no se guardó nada/i);
+      expect(await expensesOf(a) + await expensesOf(b)).toBe(0);
+    });
+
+    it('AIS-1: un token propio con un lote ajeno adentro tampoco guarda', async () => {
+      const token = await expenseToken(b, fieldA, plotA, 5000);
+      const items = await b.tap(`cat_pick_exp_${token}_${catB}`);
+      expect(b.allText(items)).toMatch(/no se guardó nada/i);
+      expect(await expensesOf(b)).toBe(0);
+    });
+
+    it('FIN-9: doble toque (o otra categoría del mismo teclado) guarda UN solo gasto', async () => {
+      const token = await expenseToken(b, fieldB, plotB, 7000);
+      const first = await b.tap(`cat_pick_exp_${token}_${catB}`);
+      expect(b.allText(first)).not.toMatch(/venció/i);
+      const again = await b.tap(`cat_pick_exp_${token}_${catB}`);
+      expect(b.allText(again)).toMatch(/ya lo guardé/i);
+      const other = (await b.q(`SELECT id FROM user_categories WHERE user_id = $1 AND name = 'Varios'`, [b.userId]))[0].id;
+      await b.tap(`cat_pick_exp_${token}_${other}`);
+      expect(await expensesOf(b)).toBe(1);
+      // Dos gastos idénticos de verdad son dos botones distintos (nonce).
+      const token2 = await expenseToken(b, fieldB, plotB, 7000);
+      await b.tap(`cat_pick_exp_${token2}_${catB}`);
+      expect(await expensesOf(b)).toBe(2);
+      await b.q(`DELETE FROM expenses WHERE user_id = $1`, [b.userId]);
+    });
+
+    it('AIS-2: el botón de ubicación de hacienda no escribe en el lote de otro ni muestra su nombre', async () => {
+      const { runWithCallbackOwner } = await import('../../../middleware/callback-payload-store.js');
+      const { storeLivestockPayload } = await import('../../../domain/livestock/livestock-payload.js');
+      const token = runWithCallbackOwner(b.userId, () => storeLivestockPayload({
+        cmd: { command: 'log_health_event', eventType: 'vacunacion', diseaseOrVaccine: 'aftosa', category: 'vaca' } as never,
+        step: 'pick_loc',
+      }));
+      const items = await b.tap(`lv_pick_loc_health_${token}_${plotA}_null`);
+      expect(b.allText(items)).not.toMatch(/Lote Ajeno|Campo Ajeno/);
+      const events = await a.q(`SELECT 1 FROM domain_events WHERE plot_id = $1`, [plotA]);
+      expect(events).toHaveLength(0);
+    });
+
+    it('AIS-4: el botón de lote de un documento con un lote ajeno no guarda el gasto', async () => {
+      const { makeDocCallbackHandler } = await import('../../../services/document-pipeline.js');
+      const { pendingDocumentStore } = await import('../../../services/message-pipeline.js');
+      pendingDocumentStore.set(b.phone, {
+        documentId: 1, deferredAction: 'expense',
+        extraction: { line_items: [{ description: 'Glifosato', quantity: 10, unit: 'lt', total: 100000 }], total: 100000 },
+      } as never);
+      const handler = makeDocCallbackHandler(async () => Buffer.alloc(0));
+      const items = await handler(`doc_plot_${plotA}`, { channel: 'testbot', phone: b.phone, userId: b.userId } as never);
+      expect(JSON.stringify(items)).toMatch(/No encontré ese lote/);
+      expect(await a.q(`SELECT 1 FROM expenses WHERE plot_id = $1`, [plotA])).toHaveLength(0);
+      pendingDocumentStore.clear(b.phone);
+    });
+
+    it('CONV-4: "Sí, cargar" de una compra vieja no carga la compra pendiente; sin pendiente no dice "cargado"', async () => {
+      const { pendingStockEntryStore } = await import('../../../services/message-pipeline.js');
+      pendingStockEntryStore.set(b.phone, { expenseId: 222, product: 'Glifosato', quantity: 10, unit: 'lt', fieldId: fieldB });
+      const old = await b.tap('stock_entry_yes_111');
+      expect(b.allText(old)).toMatch(/operación anterior/i);
+      expect(pendingStockEntryStore.get(b.phone)).toBeTruthy(); // la pendiente sigue viva
+      pendingStockEntryStore.delete(b.phone);
+      const none = await b.tap('stock_entry_yes_222');
+      expect(b.allText(none)).not.toMatch(/Stock cargado/);
+      expect(b.allText(none)).toMatch(/no cargué nada/i);
+      const grain = await b.tap('stock_grain_yes_333');
+      expect(b.allText(grain)).not.toMatch(/Grano cargado/);
+    });
+
+    it('CAM-6: un "Confirmar" de borrado viejo no vuelve a borrar el campo', async () => {
+      const items = await b.tap('confirm_delete_field_Campo_Propio');
+      expect(b.allText(items)).toMatch(/no borré nada/i);
+      const alive = await b.q(`SELECT 1 FROM fields WHERE id = $1 AND deleted_at IS NULL`, [fieldB]);
+      expect(alive).toHaveLength(1);
+    });
+
+    it('FIN-18: un confirm_pending viejo con un borrado pendiente re-muestra el borrado, sin excepción', async () => {
+      const { pendingStore } = await import('../../../services/message-pipeline.js');
+      pendingStore.set(b.phone, {
+        type: 'expense',
+        data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
+        fieldId: null, fieldName: null, plotId: null, plotName: null, timestamp: Date.now(),
+        _destructiveCommand: { command: 'delete_last_expense' },
+      } as never);
+      const items = await b.tap('confirm_pending');
+      expect(b.allText(items)).toMatch(/Seguro que queres eliminar/i);
+      expect(b.allButtons(items).map(x => x.id)).toContain('confirm_destructive_delete_last_expense');
+      pendingStore.clear(b.phone);
+    });
+
+    it('CONV-26: un [Confirmar] viejo a mitad de un flujo no lo mata: re-pregunta el paso', async () => {
+      const ask = await b.tap('cmd_agregar_campo');
+      expect(b.allText(ask)).toMatch(/Cómo se llama el campo/i);
+      const stale = await b.tap('flow_confirm');
+      expect(b.allText(stale)).toMatch(/Cómo se llama el campo/i);
+      const next = await b.send('Establecimiento Nuevo');
+      expect(b.allButtons(next).map(x => x.id)).toContain('flow_field_loc_city');
+      await b.tap('flow_cancel');
+    });
+  });
+
   describe('activity_flow — consistencia de TODOS los tipos del picker (Jul 2026)', () => {
     let h: PipelineHarness;
 

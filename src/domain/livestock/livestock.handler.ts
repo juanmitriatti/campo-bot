@@ -17,7 +17,8 @@ import { userExplicitlyReferencedPlot } from '../../utils/plot-intent.js';
 import { pool, withTransaction } from '../../config/db.js';
 import { TERMINAL_STATUSES, ANIMAL_STATUS_LABEL, type AnimalRow, type AnimalEventType } from './animal.types.js';
 import { formatCii } from '../../utils/animal-id.js';
-import { encodeLivestockPayload, decodeLivestockPayload } from './livestock-payload.js';
+import { encodeLivestockPayload, decodeLivestockPayload, storeLivestockPayload, readLivestockPayload } from './livestock-payload.js';
+import { findInaccessibleLocation } from '../shared/field-access.js';
 import { buildPostActionButtons } from './livestock-post-actions.js';
 import { livestockLocationIntent } from '../../utils/livestock-location-intent.js';
 import { impliesWholeGroup, impliesWholeGroupIgnoringWeight } from '../../utils/lexicon.js';
@@ -231,7 +232,8 @@ export class LivestockHandler {
 
   async createAndContinue(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const subType = cmd.subType as 'corral' | 'plot' | 'feedlot' | 'field';
-    const payload = decodeLivestockPayload(cmd.payload as string);
+    const payload = readLivestockPayload(cmd.payload);
+    if (!payload) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Registrá la operación de nuevo — *no se guardó nada*.'] };
     const { missingName } = payload;
     if (!missingName) return { messages: ['No tengo info para crear. Probá registrar la operación de nuevo.'] };
 
@@ -269,6 +271,10 @@ export class LivestockHandler {
   async postActionStock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const plotId = cmd.plotIdStr === 'null' ? null : Number(cmd.plotIdStr);
     const corralId = cmd.corralIdStr === 'null' ? null : Number(cmd.corralIdStr);
+    if (await findInaccessibleLocation(userId as number, { plotId, corralId })) {
+      console.log(`[INTERCEPT] post-action stock con ubicación ajena: user=${userId} plot=${plotId} corral=${corralId}`);
+      return { messages: ['No encontré esa ubicación. Mandá *mi hacienda* para ver el listado.'] };
+    }
     const rebuilt = { command: 'list_livestock' } as ParsedCommand & Record<string, unknown>;
     if (plotId != null) rebuilt.__resolvedPlotId = plotId;
     if (corralId != null) rebuilt.__resolvedCorralId = corralId;
@@ -349,7 +355,7 @@ export class LivestockHandler {
     if (!missingType) return null;
 
     const feedlotCount = await this.feedlotService.countUserFeedlots(userId);
-    const payload = encodeLivestockPayload({
+    const payload = storeLivestockPayload({
       cmd, step: 'create_loc', missingType, missingName,
       fieldName: cmd.fieldName as string | undefined,
     });
@@ -1436,6 +1442,11 @@ export class LivestockHandler {
     const resolvedPlotId = (cmd as Record<string, unknown>).__resolvedPlotId as number | null | undefined;
     const resolvedCorralId = (cmd as Record<string, unknown>).__resolvedCorralId as number | null | undefined;
     if (resolvedPlotId != null || resolvedCorralId != null) {
+      const foreign = await findInaccessibleLocation(userId as number, { plotId: resolvedPlotId, corralId: resolvedCorralId });
+      if (foreign) {
+        console.log(`[INTERCEPT] evento de hacienda con ${foreign} ajeno: user=${userId} plot=${resolvedPlotId} corral=${resolvedCorralId}`);
+        return { error: `No encontré ese ${foreign}.` };
+      }
       // Resolver el NOMBRE real: "📍 Ubicación seleccionada" en la card no le
       // dice nada al usuario (QA agentes Ago 2026).
       let realLabel = 'Ubicación seleccionada';
@@ -1507,7 +1518,14 @@ export class LivestockHandler {
     const kind = cmd.kind as 'health' | 'repro' | 'weigh';
     const plotId = cmd.plotIdStr === 'null' ? null : Number(cmd.plotIdStr);
     const corralId = cmd.corralIdStr === 'null' ? null : Number(cmd.corralIdStr);
-    const payload = decodeLivestockPayload(cmd.payload as string);
+    const payload = readLivestockPayload(cmd.payload);
+    if (!payload) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Registrá la operación de nuevo — *no se guardó nada*.'] };
+    // El lote/corral viaja en el id del botón, fuera del token: se valida acá
+    // (AIS-2: un botón armado a mano escribía en el lote de otro usuario).
+    if (await findInaccessibleLocation(userId as number, { plotId, corralId })) {
+      console.log(`[INTERCEPT] lv_pick_loc con ubicación ajena: user=${userId} plot=${plotId} corral=${corralId}`);
+      return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Registrá la operación de nuevo — *no se guardó nada*.'] };
+    }
     const rebuilt = { ...payload.cmd } as ParsedCommand & Record<string, unknown>;
     rebuilt.__resolvedPlotId = plotId;
     rebuilt.__resolvedCorralId = corralId;
@@ -1523,7 +1541,8 @@ export class LivestockHandler {
   async applyAnimalsAffected(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const kind = cmd.kind as 'health' | 'repro' | 'weigh';
     const mode = cmd.mode as 'all' | 'skip';
-    const payload = decodeLivestockPayload(cmd.payload as string);
+    const payload = readLivestockPayload(cmd.payload);
+    if (!payload) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Registrá la operación de nuevo — *no se guardó nada*.'] };
     const rebuilt = { ...payload.cmd } as ParsedCommand & Record<string, unknown>;
     if (payload.resolvedLocation) {
       if (payload.resolvedLocation.plotId != null) rebuilt.__resolvedPlotId = payload.resolvedLocation.plotId;
@@ -1571,7 +1590,7 @@ export class LivestockHandler {
     knownGroupCount: number | undefined,
     kind: 'health' | 'repro' | 'weigh',
   ): HandlerResponse {
-    const payload = encodeLivestockPayload({
+    const payload = storeLivestockPayload({
       cmd, step: 'animals', resolvedLocation, knownGroupCount,
     });
     const buttons: Array<{ id: string; title: string }> = [];
@@ -1659,7 +1678,7 @@ export class LivestockHandler {
         const first = loc.options[0];
         resolvedLoc = { plotId: first.plotId, corralId: first.corralId, label: first.label, knownGroupCount: first.groupCount };
       } else {
-        const payload = encodeLivestockPayload({ cmd, step: 'pick_loc' });
+        const payload = storeLivestockPayload({ cmd, step: 'pick_loc' });
         return {
           messages: [],
           interactive: {
@@ -1667,7 +1686,7 @@ export class LivestockHandler {
             body: '¿En qué ubicación lo registramos?',
             buttons: loc.options.map(o => ({
               id: `lv_pick_loc_health_${payload}_${o.plotId ?? 'null'}_${o.corralId ?? 'null'}`,
-              title: `${o.label} (${o.groupCount})`.slice(0, 24),
+              title: `${o.label} (${o.groupCount})`.slice(0, 20),
             })),
           },
         };
@@ -1899,7 +1918,7 @@ export class LivestockHandler {
         const first = loc.options[0];
         resolvedLoc = { plotId: first.plotId, corralId: first.corralId, label: first.label, knownGroupCount: first.groupCount };
       } else {
-        const payload = encodeLivestockPayload({ cmd, step: 'pick_loc' });
+        const payload = storeLivestockPayload({ cmd, step: 'pick_loc' });
         return {
           messages: [],
           interactive: {
@@ -1907,7 +1926,7 @@ export class LivestockHandler {
             body: '¿En qué ubicación lo registramos?',
             buttons: loc.options.map(o => ({
               id: `lv_pick_loc_repro_${payload}_${o.plotId ?? 'null'}_${o.corralId ?? 'null'}`,
-              title: `${o.label} (${o.groupCount})`.slice(0, 24),
+              title: `${o.label} (${o.groupCount})`.slice(0, 20),
             })),
           },
         };
@@ -2054,7 +2073,7 @@ export class LivestockHandler {
     if ('error' in loc) return { messages: [loc.error] };
 
     if ('needsLocationPick' in loc) {
-      const payload = encodeLivestockPayload({ cmd, step: 'pick_loc' });
+      const payload = storeLivestockPayload({ cmd, step: 'pick_loc' });
       return {
         messages: [],
         interactive: {
@@ -2062,7 +2081,7 @@ export class LivestockHandler {
           body: '¿En qué ubicación lo registramos?',
           buttons: loc.options.map(o => ({
             id: `lv_pick_loc_weigh_${payload}_${o.plotId ?? 'null'}_${o.corralId ?? 'null'}`,
-            title: `${o.label} (${o.groupCount})`.slice(0, 24),
+            title: `${o.label} (${o.groupCount})`.slice(0, 20),
           })),
         },
       };

@@ -125,11 +125,12 @@ export class InteractiveRouter {
 
     // Batched callbacks: rain_batch_<fieldName>_<tokenOrBase64> → log_rainfall_batch.
     // El builder ahora registra el payload en callbackPayloadStore (límite de 64
-    // bytes de Telegram); el fallback inline-base64 cubre botones en vuelo.
-    const rainBatchMatch = callbackId.match(/^rain_batch_(.+)_([A-Za-z0-9_-]+)$/);
+    // bytes de Telegram). Sin token vigente (o de otro usuario) el botón está vencido.
+    const rainBatchMatch = callbackId.match(/^rain_batch_(.+)_([A-Za-z0-9_-]{8})$/);
     if (rainBatchMatch) {
       try {
-        const resolved = callbackPayloadStore.get(rainBatchMatch[2]) ?? rainBatchMatch[2];
+        const resolved = callbackPayloadStore.get(rainBatchMatch[2]);
+        if (resolved === null) throw new Error('token vencido o ajeno');
         const json = Buffer.from(resolved, 'base64url').toString('utf-8');
         const items = JSON.parse(json) as Array<{ mm: number; date: string | null }>;
         if (Array.isArray(items) && items.length > 0) {
@@ -174,103 +175,37 @@ export class InteractiveRouter {
       }
     }
 
-    // Category pick: cat_pick_exp_<token-or-payload>_<categoryId> → pick_category (expense)
-    // Since May 28: the first part is normally a short token (~8 chars) that
-    // resolves to a payload via callbackPayloadStore. We fall back to treating
-    // it as the inline payload itself for backward-compat with in-flight
-    // buttons issued before the fix.
-    if (callbackId.startsWith('cat_pick_exp_')) {
-      const rest = callbackId.slice('cat_pick_exp_'.length);
-      const lastUnderscore = rest.lastIndexOf('_');
-      if (lastUnderscore > 0) {
-        const tokenOrPayload = rest.slice(0, lastUnderscore);
-        const payload = callbackPayloadStore.get(tokenOrPayload) ?? tokenOrPayload;
-        return {
-          type: 'command',
-          data: { command: 'pick_category', kind: 'expense', payload, categoryId: rest.slice(lastUnderscore + 1) },
-        };
+    // Botones de categoría: cat_pick_<exp|inc>_<token>_<categoryId>,
+    // cat_new_<exp|inc>_<token>, cat_sim_use_<exp|inc>_<token>_<categoryId> y
+    // cat_sim_new_<exp|inc>_<token>_<nombre>. El token (8 chars, ver
+    // callback-payload-store) resuelve al gasto/ingreso pendiente y solo lo
+    // resuelve el usuario al que se le mandó el botón. Hasta oct 2026 el router
+    // aceptaba el payload INLINE si el token no existía: un botón armado a mano
+    // con el campo/lote de otro usuario guardaba el gasto ahí (AIS-1). Token
+    // vencido o ajeno → payload null → el handler contesta "botón vencido".
+    // pick/sim_use terminan en el id numérico de la categoría; new no tiene
+    // cola; sim_new termina en un nombre (que puede tener "_"), así que ahí el
+    // token se toma de 8 chars exactos.
+    const catMatch =
+      callbackId.match(/^cat_(pick|sim_use)_(exp|inc)_([A-Za-z0-9_-]+)_(\d+)$/)
+      ?? callbackId.match(/^cat_(new)_(exp|inc)_([A-Za-z0-9_-]+)()$/)
+      ?? callbackId.match(/^cat_(sim_new)_(exp|inc)_([A-Za-z0-9_-]{8})_(.+)$/);
+    if (catMatch) {
+      const [, action, k, token, tail] = catMatch;
+      const kind = k === 'exp' ? 'expense' : 'income';
+      const payload = callbackPayloadStore.get(token);
+      if (payload === null) console.log(`[INTERCEPT] botón de categoría sin token vigente: ${callbackId.slice(0, 40)}`);
+      if (action === 'pick' && tail) {
+        return { type: 'command', data: { command: 'pick_category', kind, payload, categoryId: tail } };
       }
-    }
-
-    // Category pick: cat_pick_inc_<token-or-payload>_<categoryId> → pick_category (income)
-    if (callbackId.startsWith('cat_pick_inc_')) {
-      const rest = callbackId.slice('cat_pick_inc_'.length);
-      const lastUnderscore = rest.lastIndexOf('_');
-      if (lastUnderscore > 0) {
-        const tokenOrPayload = rest.slice(0, lastUnderscore);
-        const payload = callbackPayloadStore.get(tokenOrPayload) ?? tokenOrPayload;
-        return {
-          type: 'command',
-          data: { command: 'pick_category', kind: 'income', payload, categoryId: rest.slice(lastUnderscore + 1) },
-        };
+      if (action === 'new' && !tail) {
+        return { type: 'command', data: { command: 'create_category', kind, payload } };
       }
-    }
-
-    // Category create inline: cat_new_exp_<token-or-payload> → create_category (expense)
-    if (callbackId.startsWith('cat_new_exp_')) {
-      const tokenOrPayload = callbackId.slice('cat_new_exp_'.length);
-      const payload = callbackPayloadStore.get(tokenOrPayload) ?? tokenOrPayload;
-      return {
-        type: 'command',
-        data: { command: 'create_category', kind: 'expense', payload },
-      };
-    }
-
-    // Category create inline: cat_new_inc_<token-or-payload> → create_category (income)
-    if (callbackId.startsWith('cat_new_inc_')) {
-      const tokenOrPayload = callbackId.slice('cat_new_inc_'.length);
-      const payload = callbackPayloadStore.get(tokenOrPayload) ?? tokenOrPayload;
-      return {
-        type: 'command',
-        data: { command: 'create_category', kind: 'income', payload },
-      };
-    }
-
-    // Category similarity: use existing (expense)
-    if (callbackId.startsWith('cat_sim_use_exp_')) {
-      const rest = callbackId.slice('cat_sim_use_exp_'.length);
-      const lastUnderscore = rest.lastIndexOf('_');
-      if (lastUnderscore > 0) {
-        return {
-          type: 'command',
-          data: { command: 'category_similar_use', kind: 'expense', payload: rest.slice(0, lastUnderscore), categoryId: rest.slice(lastUnderscore + 1) },
-        };
+      if (action === 'sim_use' && tail) {
+        return { type: 'command', data: { command: 'category_similar_use', kind, payload, categoryId: tail } };
       }
-    }
-
-    // Category similarity: use existing (income)
-    if (callbackId.startsWith('cat_sim_use_inc_')) {
-      const rest = callbackId.slice('cat_sim_use_inc_'.length);
-      const lastUnderscore = rest.lastIndexOf('_');
-      if (lastUnderscore > 0) {
-        return {
-          type: 'command',
-          data: { command: 'category_similar_use', kind: 'income', payload: rest.slice(0, lastUnderscore), categoryId: rest.slice(lastUnderscore + 1) },
-        };
-      }
-    }
-
-    // Category similarity: create new anyway (expense)
-    if (callbackId.startsWith('cat_sim_new_exp_')) {
-      const rest = callbackId.slice('cat_sim_new_exp_'.length);
-      const lastUnderscore = rest.lastIndexOf('_');
-      if (lastUnderscore > 0) {
-        return {
-          type: 'command',
-          data: { command: 'category_similar_new', kind: 'expense', payload: rest.slice(0, lastUnderscore), newName: rest.slice(lastUnderscore + 1) },
-        };
-      }
-    }
-
-    // Category similarity: create new anyway (income)
-    if (callbackId.startsWith('cat_sim_new_inc_')) {
-      const rest = callbackId.slice('cat_sim_new_inc_'.length);
-      const lastUnderscore = rest.lastIndexOf('_');
-      if (lastUnderscore > 0) {
-        return {
-          type: 'command',
-          data: { command: 'category_similar_new', kind: 'income', payload: rest.slice(0, lastUnderscore), newName: rest.slice(lastUnderscore + 1) },
-        };
+      if (action === 'sim_new' && tail) {
+        return { type: 'command', data: { command: 'category_similar_new', kind, payload, newName: tail } };
       }
     }
 
@@ -287,11 +222,12 @@ export class InteractiveRouter {
     //   plotId="0" → leave at field-level
     //   byKindMap = { expense?: number[], income?: number[], activity?: number[], ... }
     // El builder registra el payload en callbackPayloadStore y embebe solo el
-    // token (límite Telegram 64 bytes); fallback inline-base64 para botones viejos.
+    // token (límite Telegram 64 bytes). Sin token vigente el botón está vencido.
     const bap2Match = callbackId.match(/^bap2_([A-Za-z0-9_-]+)_(\d+)$/);
     if (bap2Match) {
       try {
-        const resolvedBap2 = callbackPayloadStore.get(bap2Match[1]) ?? bap2Match[1];
+        const resolvedBap2 = callbackPayloadStore.get(bap2Match[1]);
+        if (resolvedBap2 === null) throw new Error('token vencido o ajeno');
         const byKind = JSON.parse(Buffer.from(resolvedBap2, 'base64url').toString('utf-8')) as Record<string, number[]>;
         const plotId = parseInt(bap2Match[2], 10);
         return {

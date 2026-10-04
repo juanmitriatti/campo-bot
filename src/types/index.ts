@@ -548,6 +548,9 @@ export interface HandlerResponse {
     setPendingPlotArea?: { plotId: number; plotName: string; fieldName: string };
     setPendingPlotAreaQueue?: Array<{ plotId: number; plotName: string; fieldName: string }>;
     setFieldDuplicate?: { name: string; city: string | null };
+    /** Confirmación de borrado de campo/lote pendiente: solo con esto vale el
+     *  botón "Confirmar" (un botón viejo volvía a borrar un campo restaurado). */
+    setPendingDeleteConfirm?: { kind: 'field' | 'plot'; fieldName: string | null; plotName?: string | null };
     /** Primera acción diferida del onboarding: el write que rebotó por "no
      *  tenés campos/lotes" se re-inyecta solo cuando existan campo+lote. */
     setDeferredFirstAction?: { originalText: string };
@@ -588,6 +591,8 @@ export interface HandlerResponse {
       // actividad no manda `type` y trae domainEventId. Son las dos variantes
       // reales que circulan por el store.
       type?: 'grain_sale';
+      /** Ingreso que originó el botón: un 'Sí, descontar' viejo no descuenta la venta pendiente. */
+      incomeId?: number | null;
       domainEventId?: number;
       stockItemId: number;
       product: string;

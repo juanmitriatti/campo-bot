@@ -42,7 +42,9 @@ import { PendingTransactionStore, resolveReplacedPending, isCompletePending } fr
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { TypedPendingStore, clearAllTypedStores } from '../middleware/typed-pending-store.js';
+import { compactEntityName } from '../utils/entity-matcher.js';
 import { isOneShotCallback, consumeOnce, repeatedTapMessage } from '../middleware/one-shot-callbacks.js';
+import { runWithCallbackOwner } from '../middleware/callback-payload-store.js';
 import { tipEngine } from './tip-engine.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
@@ -177,6 +179,11 @@ export { pendingCampaignCloseStore };
 // rebotó por no tener campos/lotes se guarda acá y se re-inyecta solo cuando
 // el usuario termina de crear campo+lote (ver wrapper de processTextMessage).
 export const deferredFirstActionStore = new TypedPendingStore<{ originalText: string }>('deferred_first_action');
+// Confirmación de borrado de campo/lote: el botón "Confirmar" lleva el NOMBRE
+// adentro y quedaba vivo para siempre — un botón de ayer volvía a borrar el
+// campo que el usuario había restaurado (auditoría oct 2026, CAM-6). Ahora el
+// tap solo vale si coincide con la confirmación pendiente, y la consume.
+export const pendingDeleteConfirmStore = new TypedPendingStore<{ kind: 'field' | 'plot'; fieldName: string | null; plotName?: string | null }>('delete_confirm');
 
 export async function hydratePendingStores(phone: string): Promise<void> {
   // TODOS los stores se hidratan — antes solo 4 de 11 persistían y un restart
@@ -196,6 +203,7 @@ export async function hydratePendingStores(phone: string): Promise<void> {
     pendingDocUploadStore.hydrate(phone),
     pendingCampaignCloseStore.hydrate(phone),
     deferredFirstActionStore.hydrate(phone),
+    pendingDeleteConfirmStore.hydrate(phone),
     conversationLockStore.hydrate(phone),
     formConversationStore.hydrate(phone),
   ]);
@@ -540,6 +548,9 @@ export function applySideEffects(
     deferredFirstActionStore.set(phone, { originalText: fx.setDeferredFirstAction.originalText });
     console.log(`[deferred-first-action] stashed for ${phone}: "${fx.setDeferredFirstAction.originalText.slice(0, 80)}"`);
   }
+  if (fx.setPendingDeleteConfirm) {
+    pendingDeleteConfirmStore.set(phone, fx.setPendingDeleteConfirm);
+  }
   if (fx.setFieldDuplicate) {
     const dup = fx.setFieldDuplicate;
     pendingStore.set(phone, {
@@ -647,6 +658,15 @@ function formConversationDeps(ctx: ChannelContext): FormConversationDeps {
  * crear campo y lote (fricción de primer uso detectada en la auditoría Jul 2026).
  */
 export async function processTextMessage(
+  text: string,
+  ctx: ChannelContext,
+): Promise<BotResponseItem[]> {
+  // Los tokens de botón que se creen en este turno quedan atados a este
+  // usuario (ver middleware/callback-payload-store.ts).
+  return runWithCallbackOwner(ctx.userId, () => processTextMessageWithReplay(text, ctx));
+}
+
+async function processTextMessageWithReplay(
   text: string,
   ctx: ChannelContext,
 ): Promise<BotResponseItem[]> {
@@ -1531,6 +1551,8 @@ async function processTextMessageInner(
       }
       return [{ type: 'text', text: '⚠️ Esa confirmación ya venció — *no borré nada*. Si querés borrarlo, pedímelo de nuevo.' }];
     }
+    const dupReply = nonFinancialPendingReply(pending);
+    if (dupReply) return dupReply;
     pendingStore.clear(phone);
     const response = await financialHandler.handleConfirm(userId, pending, settings, user);
     applySideEffects(response.sideEffects, phone);
@@ -1945,7 +1967,85 @@ function staleButtonWithRescue(phone: string): BotResponseItem[] {
   return [STALE_BUTTON_ITEM];
 }
 
+/**
+ * Botones "Sí, cargar / Sí, descontar" de stock: el id del botón es el del
+ * registro que lo originó (gasto, cosecha, actividad, venta) y el pendiente
+ * guarda ese mismo id. Si no coinciden, el botón es de una operación anterior:
+ * antes cargaba el producto de OTRA compra (la pendiente). Y sin pendiente,
+ * tres de estos botones contestaban "cargado" sin escribir nada (auditoría oct
+ * 2026, CONV-4). Devuelve la respuesta honesta, o null si el tap corresponde.
+ */
+function staleStockTap(
+  callbackId: string,
+  pending: Record<string, unknown> | undefined,
+  sourceKey: string,
+  what: string,
+): BotResponseItem[] | null {
+  const buttonId = callbackId.match(/_(\d+)$/)?.[1] ?? null;
+  if (!pending) {
+    console.log(`[INTERCEPT] ${callbackId}: sin pendiente — NO se toca el stock`);
+    return [{ type: 'text', text: `⚠️ Esa operación ya no está disponible (pasó mucho tiempo o se reinició el sistema). *No ${what}.*\nSi querés hacerlo, decímelo con el producto y la cantidad.` }];
+  }
+  const pendingId = pending[sourceKey];
+  if (buttonId && buttonId !== '0' && pendingId != null && String(pendingId) !== buttonId) {
+    console.log(`[INTERCEPT] ${callbackId}: botón de otra operación (pendiente ${sourceKey}=${String(pendingId)}) — NO se toca el stock`);
+    return [{ type: 'text', text: `⏰ Ese botón era de una operación anterior. *No ${what}.*\nSi querés hacerlo, decímelo con el producto y la cantidad.` }];
+  }
+  return null;
+}
+
+/**
+ * ¿El tap "Confirmar" de borrado coincide con la confirmación pendiente? Si
+ * coincide la consume (un solo uso). Con fieldName null en el pendiente (lotes
+ * homónimos: el usuario elige el campo en el botón) vale cualquier campo.
+ */
+function takeDeleteConfirm(phone: string, kind: 'field' | 'plot', fieldName: string, plotName: string | null): boolean {
+  const pend = pendingDeleteConfirmStore.get(phone);
+  const same = (x: string | null | undefined, y: string | null) => compactEntityName(x ?? '') === compactEntityName(y ?? '');
+  const ok = !!pend && pend.kind === kind
+    && (pend.fieldName == null || same(pend.fieldName, fieldName))
+    && (kind === 'field' || same(pend.plotName, plotName));
+  if (!ok) {
+    console.log(`[INTERCEPT] confirm_delete_${kind} sin confirmación pendiente que coincida (phone=${phone}, campo=${fieldName}, lote=${plotName ?? '-'}) — no se borra`);
+    return false;
+  }
+  pendingDeleteConfirmStore.clear(phone);
+  return true;
+}
+
+/**
+ * El pendingStore también guarda dos cosas que NO son un gasto: la
+ * confirmación de un borrado (`_destructiveCommand`) y el aviso de campo
+ * duplicado (`_fieldDuplicate`), ambas con un "gasto" de monto 0 de relleno.
+ * Un "Confirmar" financiero viejo (botón confirm_pending) o un "sí" suelto
+ * frente al aviso de duplicado las mandaba a handleConfirm, que intentaba
+ * guardar ese gasto de $0: excepción chk_expenses_amount_positive y el borrado
+ * pendiente se perdía (auditoría oct 2026, FIN-18 / CONV-23). Acá se vuelve a
+ * mostrar la pregunta real, sin tocar el pendiente.
+ */
+function nonFinancialPendingReply(pending: unknown): BotResponseItem[] | null {
+  const p = pending as Record<string, unknown> | undefined;
+  if (!p) return null;
+  if (p._fieldDuplicate) {
+    const dup = p._fieldDuplicate as { name: string; city: string | null };
+    console.log(`[INTERCEPT] confirmación financiera sobre aviso de campo duplicado (${dup.name}) — se re-pregunta`);
+    const buttons: InteractiveButton[] = [];
+    if (dup.city) buttons.push({ id: 'field_dup_update', title: 'Actualizar ubic.' });
+    buttons.push({ id: 'field_dup_rename', title: 'Otro nombre' }, { id: 'field_dup_cancel', title: 'Cancelar' });
+    return [interactiveButtons(`Ya existe un campo llamado *${dup.name}*. ¿Qué querés hacer?`, buttons)];
+  }
+  return null;
+}
+
 export async function handleInteractiveReply(
+  callbackId: string,
+  ctx: ChannelContext,
+): Promise<BotResponseItem[]> {
+  // Un token de botón solo lo puede usar el usuario al que se le mandó.
+  return runWithCallbackOwner(ctx.userId, () => handleInteractiveReplyInner(callbackId, ctx));
+}
+
+async function handleInteractiveReplyInner(
   callbackId: string,
   ctx: ChannelContext,
 ): Promise<BotResponseItem[]> {
@@ -1953,15 +2053,6 @@ export async function handleInteractiveReply(
   console.log(`[${ctx.channel}] INTERACTIVE:`, callbackId);
 
   conversationObserver.logMessageReceived(userId, { phone, messageType: 'interactive', messageLength: callbackId.length });
-
-  // Taps que ACUMULAN sobre una fila existente son de un solo uso: una segunda
-  // entrega del mismo botón (doble toque, solape de deploy) no deja una fila
-  // duplicada y visible sino un número inflado e indistinguible del real.
-  // Ver middleware/one-shot-callbacks.ts.
-  if (isOneShotCallback(callbackId) && !consumeOnce(userId, callbackId)) {
-    console.log(`[INTERCEPT] tap repetido ignorado user=${userId} cb=${callbackId}`);
-    return [{ type: 'text', text: repeatedTapMessage(callbackId) }];
-  }
 
   // Prueba vencida: los botones no pasaban por ningún control de acceso (un
   // `cat_pick_` guardaba el gasto igual). Solo pasan los que llevan a un
@@ -1973,6 +2064,15 @@ export async function handleInteractiveReply(
       return !!cmd && EXPIRED_ALLOWED_COMMANDS.has(cmd);
     }, `tap=${callbackId}`);
     if (expired) return expired;
+  }
+
+  // Taps que ACUMULAN sobre una fila existente son de un solo uso: una segunda
+  // entrega del mismo botón (doble toque, solape de deploy) no deja una fila
+  // duplicada y visible sino un número inflado e indistinguible del real.
+  // Ver middleware/one-shot-callbacks.ts.
+  if (isOneShotCallback(callbackId) && !consumeOnce(userId, callbackId)) {
+    console.log(`[INTERCEPT] tap repetido ignorado user=${userId} cb=${callbackId}`);
+    return [{ type: 'text', text: repeatedTapMessage(callbackId) }];
   }
 
   // Branches específicos del canal (doc_* en tg/wa) — primero, para que el
@@ -2142,6 +2242,7 @@ export async function handleInteractiveReply(
 
   if (callbackId === 'cancel_destructive' || callbackId === 'cancel_action' || callbackId === 'cancel_pending') {
     pendingStore.clear(phone);
+    pendingDeleteConfirmStore.clear(phone);
     conversationLogger.log(userId, phone, `[${callbackId}]`, 'Operacion cancelada.', 'command', 'cancel', null, null, false, null, false, null, null, null, ctx.channel).catch(() => {});
     return [{ type: 'text', text: '❌ Operacion cancelada.' }];
   }
@@ -2153,6 +2254,15 @@ export async function handleInteractiveReply(
       conversationLogger.log(userId, phone, '[confirm_pending]', 'No hay nada pendiente para confirmar.', 'command', 'confirm', null, null, false, null, false, null, null, null, ctx.channel).catch(() => {});
       return [{ type: 'text', text: 'No hay nada pendiente para confirmar.' }];
     }
+    const destructivePending = (pendingTx as unknown as Record<string, unknown>)._destructiveCommand as ParsedCommand | undefined;
+    if (destructivePending) {
+      // Lo pendiente es un BORRADO: este botón es de una tarjeta de gasto
+      // vieja. Se vuelve a mostrar la confirmación del borrado, sin borrar.
+      console.log(`[INTERCEPT] confirm_pending viejo con un borrado pendiente (${destructivePending.command}) — se re-muestra la tarjeta del borrado`);
+      return askDestructiveConfirmation(destructivePending, userId, phone);
+    }
+    const dupReply = nonFinancialPendingReply(pendingTx);
+    if (dupReply) return dupReply;
     pendingStore.clear(phone);
     const response = await financialHandler.handleConfirm(userId, pendingTx, settings, user);
     applySideEffects(response.sideEffects, phone);
@@ -2228,6 +2338,9 @@ export async function handleInteractiveReply(
   // --- Confirm delete field ---
   if (callbackId.startsWith('confirm_delete_field_')) {
     const fieldName = callbackId.replace('confirm_delete_field_', '').replace(/_/g, ' ');
+    if (!takeDeleteConfirm(phone, 'field', fieldName, null)) {
+      return [{ type: 'text', text: `⏰ Esa confirmación ya venció — *no borré nada*. Si querés eliminar el campo *${fieldName}*, pedímelo de nuevo.` }];
+    }
     const deleted = await financialService.deleteField(userId, fieldName);
     if (deleted) {
       const response: HandlerResponse = {
@@ -2245,6 +2358,9 @@ export async function handleInteractiveReply(
     if (match) {
       const plotName = match[1].replace(/_/g, ' ');
       const fieldName = match[2].replace(/_/g, ' ');
+      if (!takeDeleteConfirm(phone, 'plot', fieldName, plotName)) {
+        return [{ type: 'text', text: `⏰ Esa confirmación ya venció — *no borré nada*. Si querés eliminar el lote *${plotName}*, pedímelo de nuevo.` }];
+      }
       const field = await financialService.getFieldByName(userId, fieldName);
       if (field) {
         const plots = await financialService.findPlotByNameAcrossFields(userId, plotName);
@@ -2269,6 +2385,8 @@ export async function handleInteractiveReply(
   if (callbackId.startsWith('stock_entry_yes_') || callbackId.startsWith('stock_entry_no_')) {
     const accepted = callbackId.startsWith('stock_entry_yes_');
     if (accepted) {
+      const stale = staleStockTap(callbackId, pendingStockEntryStore.get(phone) as Record<string, unknown> | undefined, 'expenseId', 'cargué nada al stock');
+      if (stale) return stale;
       try {
         const pendingEntry = pendingStockEntryStore.get(phone);
         if (pendingEntry) {
@@ -2283,8 +2401,10 @@ export async function handleInteractiveReply(
         return [{ type: 'text', text: `❌ ${msg}` }];
       }
     }
-    pendingStockEntryStore.delete(phone);
-    return [{ type: 'text', text: accepted ? '📦 Stock cargado.' : '👍 OK, no se cargó al stock.' }];
+    if (!staleStockTap(callbackId, pendingStockEntryStore.get(phone) as Record<string, unknown> | undefined, 'expenseId', 'cambié nada')) {
+      pendingStockEntryStore.delete(phone);
+    }
+    return [{ type: 'text', text: '👍 OK, no se cargó al stock.' }];
   }
 
   // --- Stock deduction suggestion (from activity) ---
@@ -2294,6 +2414,8 @@ export async function handleInteractiveReply(
       try {
         const pendingDeduct = pendingStockDeductionStore.get(phone) as Record<string, unknown> | undefined;
         if (pendingDeduct) {
+          const stale = staleStockTap(callbackId, pendingDeduct, 'domainEventId', 'descontó nada del stock');
+          if (stale) return stale;
           if (!pendingDeduct.totalQuantity || (pendingDeduct.totalQuantity as number) <= 0) {
             (pendingDeduct as any).awaitingQuantity = true;
             pendingStockDeductionStore.set(phone, pendingDeduct);
@@ -2339,14 +2461,14 @@ export async function handleInteractiveReply(
     const pendingGrain = pendingStockEntryStore.get(phone) as (Record<string, unknown> & { plotCropId?: number; plotLabel?: string }) | undefined;
     const items: BotResponseItem[] = [];
     if (accepted) {
+      const stale = staleStockTap(callbackId, pendingGrain?.type === 'grain' ? pendingGrain : undefined, 'domainEventId', 'cargué el grano al stock');
+      if (stale) return stale;
       try {
         if (pendingGrain && pendingGrain.type === 'grain') {
           const { StockPurchaseService } = await import('../domain/stock/stock-purchase.service.js');
           const svc = new StockPurchaseService();
           const { item, movement } = await svc.applyStockEntry(userId, pendingGrain as any);
           items.push({ type: 'text', text: `📦 Stock actualizado: +${formatQuantityHuman(movement.quantity, item.unit)} de ${item.name} (${formatQuantityHuman(item.current_quantity, item.unit)} total)` });
-        } else {
-          items.push({ type: 'text', text: '📦 Grano cargado al silo.' });
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Error al cargar al silo';
@@ -2370,6 +2492,9 @@ export async function handleInteractiveReply(
   if (callbackId.startsWith('stock_grain_sale_yes_') || callbackId.startsWith('stock_grain_sale_no_')) {
     const accepted = callbackId.startsWith('stock_grain_sale_yes_');
     if (accepted) {
+      const pendingSaleRaw = pendingStockDeductionStore.get(phone) as Record<string, unknown> | undefined;
+      const stale = staleStockTap(callbackId, pendingSaleRaw?.type === 'grain_sale' ? pendingSaleRaw : undefined, 'incomeId', 'descontó nada del stock');
+      if (stale) return stale;
       try {
         const pendingSale = pendingStockDeductionStore.get(phone);
         if (pendingSale) {
@@ -2387,7 +2512,7 @@ export async function handleInteractiveReply(
       }
     }
     pendingStockDeductionStore.delete(phone);
-    return [{ type: 'text', text: accepted ? '📦 Stock descontado.' : '👍 OK, no se descontó del stock.' }];
+    return [{ type: 'text', text: '👍 OK, no se descontó del stock.' }];
   }
 
   // --- Campaign close suggestion (after activity on harvested campaign) ---

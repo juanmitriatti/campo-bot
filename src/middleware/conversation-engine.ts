@@ -862,6 +862,17 @@ export class ConversationEngine {
     for (const step of flow.steps) {
       if (step.skipIf && step.skipIf(ctx.data)) continue;
       if (!step.optional && ctx.data[step.field] === undefined) {
+        // Un [Confirmar] VIEJO tocado a mitad del flujo (el flujo está en un
+        // paso, no en la confirmación): antes se borraba el flujo y el monto
+        // ya cargado se perdía (auditoría oct 2026, CONV-26). Se ignora el tap
+        // y se vuelve a preguntar el paso actual.
+        const current = ctx.state !== 'confirming' ? flow.steps[ctx.step] : undefined;
+        if (current) {
+          console.log(`[INTERCEPT] confirmación de flujo a mitad de camino (${flowState}, paso ${current.field}) — se re-pregunta el paso`);
+          const prompt = await this.resolvePrompt(current, ctx.data, userId);
+          const interactive = await this.resolveInteractive(current, ctx.data, userId);
+          return { response: { messages: interactive ? [] : [prompt], interactive }, nextContext: ctx };
+        }
         await this.stateRepo.clearFlow(userId);
         console.error(`[FLOW_CONFIRM] Missing required field "${step.field}" in ${flowState} for user ${userId}`);
         logError('flow-engine', 'MISSING_FIELD', `Missing required field "${step.field}" in ${flowState}`, { userId, context: { flowState, field: step.field } });

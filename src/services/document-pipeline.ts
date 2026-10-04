@@ -276,6 +276,18 @@ export function makeDocCallbackHandler(downloadFile: DownloadFileFn) {
         try {
           const pending = pendingDocumentStore.get(phone);
           if (!pending) return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
+          // El galpón y el documento vienen en el id del botón: un botón de otro
+          // documento, o armado a mano con el galpón de otro usuario, sumaba
+          // stock ahí (auditoría oct 2026, AIS-3).
+          if (String(pending.documentId) !== match[2]) {
+            console.log(`[INTERCEPT] doc_warehouse de otro documento: user=${userId} botón=${match[2]} pendiente=${pending.documentId}`);
+            return [{ type: 'text', text: '⏰ Ese botón era de otro documento. No cargué nada.' }];
+          }
+          const { findInaccessibleLocation } = await import('../domain/shared/field-access.js');
+          if (await findInaccessibleLocation(Number(userId), { warehouseId })) {
+            console.log(`[INTERCEPT] doc_warehouse con galpón ajeno: user=${userId} warehouse=${warehouseId}`);
+            return [{ type: 'text', text: '⚠️ No encontré ese galpón. No cargué nada.' }];
+          }
           const { StockService } = await import('../domain/stock/stock.service.js');
           const stockService = new StockService();
           return await loadRemitoStock(ctx, pending, stockService, warehouseId);
@@ -356,8 +368,14 @@ export function makeDocCallbackHandler(downloadFile: DownloadFileFn) {
           const pending = pendingDocumentStore.get(phone);
           if (!pending) return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
           const allPlots = await financialService.findAllUserPlots(userId);
-          const plot = allPlots.find((p: { id: number }) => p.id === plotId) as { field_id?: number } | undefined;
-          const fieldId = plot?.field_id ?? null;
+          const plot = allPlots.find((p: { id: number }) => Number(p.id) === plotId) as { field_id?: number } | undefined;
+          // Un lote que no está entre los del usuario no se usa: antes se
+          // guardaba el gasto con el plot_id crudo del botón (AIS-4).
+          if (!plot) {
+            console.log(`[INTERCEPT] doc_plot con lote ajeno o inexistente: user=${userId} plot=${plotId}`);
+            return [{ type: 'text', text: '⚠️ No encontré ese lote. No registré el gasto; elegí uno de los botones de nuevo.' }];
+          }
+          const fieldId = plot.field_id ?? null;
           return await saveDocExpenses(ctx, pending, fieldId, plotId);
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : 'Error al registrar';

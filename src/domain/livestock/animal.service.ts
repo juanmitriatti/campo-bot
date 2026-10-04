@@ -14,7 +14,7 @@
  */
 
 import { pool, withTransaction } from '../../config/db.js';
-import { accessibleFieldsSql } from '../shared/accessible-fields.js';
+import { findInaccessibleLocation } from '../shared/field-access.js';
 import { AnimalRepository, type CreateAnimalInput, type AnimalFilters } from './animal.repository.js';
 import { normalizeAnimalId, parseAnimalId } from '../../utils/animal-id.js';
 import { normalizeBreed } from '../../utils/livestock-breeds.js';
@@ -92,29 +92,11 @@ export class AnimalService {
   private async assertLocationAccess(userId: number, loc: {
     fieldId?: number | null; plotId?: number | null; corralId?: number | null; groupId?: string | null;
   }): Promise<void> {
-    const acc = accessibleFieldsSql(2);
-    const check = async (sql: string, id: unknown, what: string) => {
-      if (id == null || id === '') return;
-      const { rows } = await pool.query(sql, [id, userId]);
-      if (rows.length === 0) {
-        console.log(`[INTERCEPT] animal: ${what} id=${String(id)} fuera de los campos accesibles de user=${userId}`);
-        throw new LocationAccessError(what);
-      }
-    };
-    await check(`SELECT 1 FROM fields f WHERE f.id = $1 AND f.deleted_at IS NULL AND f.id IN (${acc})`, loc.fieldId, 'campo');
-    await check(`SELECT 1 FROM plots p WHERE p.id = $1 AND p.deleted_at IS NULL AND p.field_id IN (${acc})`, loc.plotId, 'lote');
-    await check(
-      `SELECT 1 FROM corrals c JOIN feedlots fl ON fl.id = c.feedlot_id
-        WHERE c.id = $1 AND c.deleted_at IS NULL AND fl.deleted_at IS NULL AND fl.field_id IN (${acc})`,
-      loc.corralId, 'corral');
-    await check(
-      `SELECT 1 FROM livestock_groups lg
-         LEFT JOIN plots p ON p.id = lg.plot_id
-         LEFT JOIN corrals c ON c.id = lg.corral_id
-         LEFT JOIN feedlots fl ON fl.id = c.feedlot_id
-        WHERE lg.id = $1 AND lg.deleted_at IS NULL
-          AND (lg.user_id = $2 OR COALESCE(lg.field_id, p.field_id, fl.field_id) IN (${acc}))`,
-      loc.groupId, 'grupo');
+    const what = await findInaccessibleLocation(userId, loc);
+    if (what) {
+      console.log(`[INTERCEPT] animal: ${what} fuera de los campos accesibles de user=${userId} (${JSON.stringify(loc)})`);
+      throw new LocationAccessError(what);
+    }
   }
 
   // ========================

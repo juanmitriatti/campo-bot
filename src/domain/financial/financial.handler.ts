@@ -1,4 +1,8 @@
 import { resolvePeriodRange, resolveDaysRange } from '../../utils/query-period.js';
+import { randomBytes, createHash } from 'crypto';
+import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
+import { consumeOnce } from '../../middleware/one-shot-callbacks.js';
+import { findInaccessibleLocation } from '../shared/field-access.js';
 import { formatDayShortAR } from '../../utils/date.js';
 import { FinancialService } from './financial.service.js';
 import { formatPlotLocation } from '../../utils/format-location.js';
@@ -322,6 +326,9 @@ export function encodePendingExpensePayload(p: { data: ParsedExpense; fieldId: n
     pr: p.data.product ?? null,
     q: p.data.quantity ?? null,
     u: p.data.unit ?? null,
+    // Nonce: dos gastos idénticos son dos botones distintos (el payload se
+    // consume una sola vez — ver saveFromCategoryButton).
+    n: randomBytes(4).toString('base64url'),
   });
   return Buffer.from(json, 'utf8').toString('base64url');
 }
@@ -369,6 +376,7 @@ export function encodePendingIncomePayload(p: { data: ParsedIncome; fieldId: num
     q: p.data.quantity ?? null,
     u: p.data.unit ?? null,
     up: p.data.unit_price ?? null,
+    n: randomBytes(4).toString('base64url'),
   });
   return Buffer.from(json, 'utf8').toString('base64url');
 }
@@ -1030,7 +1038,9 @@ export class FinancialHandler {
         && !(data as ParsedExpense & { categoryConfirmedNew?: boolean }).categoryConfirmedNew) {
       const similar = await this.categoryService.findSimilar(userId as number, 'expense', rawExpenseCategory);
       if (similar) {
-        const payload = encodePendingExpensePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
+        // Token, nunca el payload inline (64 bytes de Telegram, y el token queda
+        // atado a este usuario — AIS-1).
+        const payload = callbackPayloadStore.set(encodePendingExpensePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null }));
         return {
           messages: [],
           interactive: {
@@ -1386,7 +1396,9 @@ export class FinancialHandler {
         && !(data as ParsedIncome & { categoryConfirmedNew?: boolean }).categoryConfirmedNew) {
       const similar = await this.categoryService.findSimilar(userId as number, 'income', rawIncomeCategory);
       if (similar) {
-        const payload = encodePendingIncomePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
+        // Token, nunca el payload inline (64 bytes de Telegram, y el token queda
+        // atado a este usuario — AIS-1).
+        const payload = callbackPayloadStore.set(encodePendingIncomePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null }));
         return {
           messages: [],
           interactive: {
@@ -1510,6 +1522,7 @@ export class FinancialHandler {
               sideEffects: {
                 setPendingStockDeduction: {
                   type: 'grain_sale',
+                  incomeId: savedIncome?.id ?? null,
                   stockItemId: stockItem.id,
                   product: stockItem.name,
                   totalQuantity: qty,
@@ -1584,6 +1597,7 @@ export class FinancialHandler {
                 sideEffects: {
                   setPendingStockDeduction: {
                     type: 'grain_sale',
+                    incomeId: savedIncome?.id ?? null,
                     stockItemId: stockItem.id,
                     product: stockItem.name,
                     totalQuantity: qty,
@@ -2812,6 +2826,7 @@ export class FinancialHandler {
                   title: (p.field_name as string).substring(0, 20),
                 })),
               },
+              sideEffects: { setPendingDeleteConfirm: { kind: 'plot', plotName: targetName, fieldName: null } },
             };
           }
           const onlyPlot = matches[0];
@@ -2830,6 +2845,7 @@ export class FinancialHandler {
                 { id: 'cancel_action', title: 'Cancelar' },
               ],
             },
+            sideEffects: { setPendingDeleteConfirm: { kind: 'plot', plotName: onlyPlot.name as string, fieldName: onlyPlot.field_name as string } },
           };
         }
 
@@ -2875,6 +2891,7 @@ export class FinancialHandler {
               { id: 'cancel_action', title: 'Cancelar' },
             ],
           },
+          sideEffects: { setPendingDeleteConfirm: { kind: 'field', fieldName: cmd.fieldName as string } },
         };
       }
 
@@ -3346,6 +3363,7 @@ export class FinancialHandler {
               { id: 'cancel_action', title: 'Cancelar' },
             ],
           },
+          sideEffects: { setPendingDeleteConfirm: { kind: 'plot', plotName: cmd.plotName as string, fieldName: cmd.fieldName as string } },
         };
       }
 
@@ -3705,38 +3723,67 @@ export class FinancialHandler {
 
   // --- Category pick/create (interactive button callbacks) ---
 
+  /**
+   * Guarda el gasto/ingreso que quedó esperando categoría, desde cualquiera de
+   * los botones de categoría (elegir, crear, usar la parecida, crear igual).
+   *
+   * Tres guardas antes de escribir (auditoría oct 2026):
+   * - payload null o ilegible = botón vencido (o token de otro usuario, que el
+   *   store ya no resuelve) → no se guarda nada;
+   * - el campo/lote del payload tiene que ser accesible para quien tapea
+   *   (AIS-1: un botón armado a mano guardaba en el campo de otro);
+   * - el payload se consume UNA vez: un doble toque, o elegir otra categoría
+   *   del mismo teclado, ya no guarda un segundo gasto (FIN-9 / CONV-2).
+   */
+  private async saveFromCategoryButton(
+    userId: UserId,
+    kind: 'expense' | 'income',
+    payload: unknown,
+    category: { id: number; name: string },
+    prefix = '',
+  ): Promise<HandlerResponse> {
+    const stale = { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
+    if (typeof payload !== 'string' || !payload) return stale;
+    const decoded = kind === 'expense' ? decodePendingExpensePayload(payload) : decodePendingIncomePayload(payload);
+    if (!decoded) return stale;
+    const { data, fieldId, plotId } = decoded;
+    const foreign = await findInaccessibleLocation(userId as number, { fieldId, plotId });
+    if (foreign) {
+      console.log(`[INTERCEPT] botón de categoría con ${foreign} ajeno: user=${userId} field=${fieldId} plot=${plotId} — no se guarda`);
+      return stale;
+    }
+    const hash = createHash('sha256').update(payload).digest('base64url').slice(0, 16);
+    if (!consumeOnce(userId as number, `catpayload:${hash}`)) {
+      const what = kind === 'expense' ? 'gasto' : 'ingreso';
+      console.log(`[INTERCEPT] botón de categoría repetido: user=${userId} — el ${what} ya se guardó`);
+      return { messages: [`✅ Ese ${what} ya lo guardé con el primer toque. No lo cargué de nuevo.`] };
+    }
+    data.category = category.name;
+    if (kind === 'expense') await this.service.saveExpense(userId, data as ParsedExpense, fieldId, plotId);
+    else await this.service.saveIncome(userId, data as ParsedIncome, fieldId, plotId);
+    this.categoryService.bump(category.id).catch(() => {});
+    const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
+    const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
+    const confirmation = kind === 'expense'
+      ? await buildExpenseConfirmation(data as ParsedExpense, resFieldName, resPlotName)
+      : await buildIncomeConfirmation(data as ParsedIncome, resFieldName, resPlotName);
+    return { messages: [prefix + confirmation] };
+  }
+
   async pickCategory(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const kind = (cmd.kind as string) as 'expense' | 'income';
-    const categoryId = Number(cmd.categoryId);
-    const category = await this.categoryService.findById(userId as number, categoryId);
+    const category = await this.categoryService.findById(userId as number, Number(cmd.categoryId));
     if (!category || category.kind !== kind) {
       return { messages: ['No encontré esa categoría. Probá registrar el gasto/ingreso de nuevo.'] };
     }
-    if (kind === 'expense') {
-      const decoded = decodePendingExpensePayload(cmd.payload as string);
-      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
-      const { data, fieldId, plotId } = decoded;
-      data.category = category.name;
-      await this.service.saveExpense(userId, data, fieldId, plotId);
-      this.categoryService.bump(category.id).catch(() => {});
-      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
-      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
-      return { messages: [await buildExpenseConfirmation(data, resFieldName, resPlotName)] };
-    } else {
-      const decoded = decodePendingIncomePayload(cmd.payload as string);
-      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
-      const { data, fieldId, plotId } = decoded;
-      data.category = category.name;
-      await this.service.saveIncome(userId, data, fieldId, plotId);
-      this.categoryService.bump(category.id).catch(() => {});
-      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
-      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
-      return { messages: [await buildIncomeConfirmation(data, resFieldName, resPlotName)] };
-    }
+    return this.saveFromCategoryButton(userId, kind, cmd.payload, category);
   }
 
   async createCategoryInline(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const kind = (cmd.kind as string) as 'expense' | 'income';
+    if (typeof cmd.payload !== 'string' || !cmd.payload) {
+      return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
+    }
     const { pool: dbPool } = await import('../../config/db.js');
     await dbPool.query(
       `INSERT INTO conversation_state (user_id, flow_state, flow_step, flow_data, updated_at)
@@ -3762,7 +3809,7 @@ export class FinancialHandler {
     // Similarity check before creating
     const similar = await this.categoryService.findSimilar(userId as number, flowData.kind, trimmed);
     if (similar) {
-      const payload = flowData.payload;
+      const token = callbackPayloadStore.set(flowData.payload);
       const kindPrefix = flowData.kind === 'expense' ? 'exp' : 'inc';
       return {
         messages: [],
@@ -3770,8 +3817,8 @@ export class FinancialHandler {
           type: 'buttons' as const,
           body: `Ya tenés una categoría parecida: *${similar.name}*.\n¿Usás esa o creás *${trimmed}* como nueva?`,
           buttons: [
-            { id: `cat_sim_use_${kindPrefix}_${payload}_${similar.id}`, title: `Usar ${similar.name}` },
-            { id: `cat_sim_new_${kindPrefix}_${payload}_${encodeURIComponent(trimmed)}`, title: `Crear ${trimmed}` },
+            { id: `cat_sim_use_${kindPrefix}_${token}_${similar.id}`, title: `Usar ${similar.name}` },
+            { id: `cat_sim_new_${kindPrefix}_${token}_${encodeURIComponent(trimmed)}`, title: `Crear ${trimmed}` },
             { id: 'cat_sim_cancel', title: 'Cancelar' },
           ],
         },
@@ -3782,89 +3829,29 @@ export class FinancialHandler {
     if (cat.kind !== 'matched') {
       return { messages: ['No pude crear la categoría. Probá de nuevo o cancelá.'] };
     }
-    if (flowData.kind === 'expense') {
-      const decoded = decodePendingExpensePayload(flowData.payload);
-      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
-      const { data, fieldId, plotId } = decoded;
-      data.category = cat.category.name;
-      await this.service.saveExpense(userId, data, fieldId, plotId);
-      this.categoryService.bump(cat.category.id).catch(() => {});
-      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
-      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
-      return { messages: [`✅ Categoría '${cat.category.name}' creada.\n${await buildExpenseConfirmation(data, resFieldName, resPlotName)}`] };
-    } else {
-      const decoded = decodePendingIncomePayload(flowData.payload);
-      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
-      const { data, fieldId, plotId } = decoded;
-      data.category = cat.category.name;
-      await this.service.saveIncome(userId, data, fieldId, plotId);
-      this.categoryService.bump(cat.category.id).catch(() => {});
-      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
-      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
-      return { messages: [`✅ Categoría '${cat.category.name}' creada.\n${await buildIncomeConfirmation(data, resFieldName, resPlotName)}`] };
-    }
+    return this.saveFromCategoryButton(userId, flowData.kind, flowData.payload, cat.category, `✅ Categoría '${cat.category.name}' creada.\n`);
   }
 
   async categorySimilarUse(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const kind = cmd.kind as 'expense' | 'income';
-    const categoryId = Number(cmd.categoryId);
-    const category = await this.categoryService.findById(userId as number, categoryId);
+    const category = await this.categoryService.findById(userId as number, Number(cmd.categoryId));
     if (!category || category.kind !== kind) {
       return { messages: ['No encontré esa categoría. Probá registrar el gasto/ingreso de nuevo.'] };
     }
-
-    if (kind === 'expense') {
-      const decoded = decodePendingExpensePayload(cmd.payload as string);
-      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
-      const { data, fieldId, plotId } = decoded;
-      data.category = category.name;
-      await this.service.saveExpense(userId, data, fieldId, plotId);
-      this.categoryService.bump(category.id).catch(() => {});
-      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
-      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
-      return { messages: [await buildExpenseConfirmation(data, resFieldName, resPlotName)] };
-    } else {
-      const decoded = decodePendingIncomePayload(cmd.payload as string);
-      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
-      const { data, fieldId, plotId } = decoded;
-      data.category = category.name;
-      await this.service.saveIncome(userId, data, fieldId, plotId);
-      this.categoryService.bump(category.id).catch(() => {});
-      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
-      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
-      return { messages: [await buildIncomeConfirmation(data, resFieldName, resPlotName)] };
-    }
+    return this.saveFromCategoryButton(userId, kind, cmd.payload, category);
   }
 
   async categorySimilarNew(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const kind = cmd.kind as 'expense' | 'income';
+    if (typeof cmd.payload !== 'string' || !cmd.payload) {
+      return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
+    }
     const newName = decodeURIComponent(cmd.newName as string);
     const cat = await this.categoryService.match(userId as number, kind, newName, 'new');
     if (cat.kind !== 'matched') {
       return { messages: ['No pude crear la categoría. Probá de nuevo.'] };
     }
-
-    if (kind === 'expense') {
-      const decoded = decodePendingExpensePayload(cmd.payload as string);
-      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
-      const { data, fieldId, plotId } = decoded;
-      data.category = cat.category.name;
-      await this.service.saveExpense(userId, data, fieldId, plotId);
-      this.categoryService.bump(cat.category.id).catch(() => {});
-      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
-      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
-      return { messages: [`✅ Categoría '${cat.category.name}' creada.\n${await buildExpenseConfirmation(data, resFieldName, resPlotName)}`] };
-    } else {
-      const decoded = decodePendingIncomePayload(cmd.payload as string);
-      if (!decoded) return { messages: ['⏰ Ese botón venció (pasaron unos minutos o hubo una actualización). Volvé a registrar el gasto/ingreso y elegí la categoría ahí — *no se guardó nada*.'] };
-      const { data, fieldId, plotId } = decoded;
-      data.category = cat.category.name;
-      await this.service.saveIncome(userId, data, fieldId, plotId);
-      this.categoryService.bump(cat.category.id).catch(() => {});
-      const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
-      const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
-      return { messages: [`✅ Categoría '${cat.category.name}' creada.\n${await buildIncomeConfirmation(data, resFieldName, resPlotName)}`] };
-    }
+    return this.saveFromCategoryButton(userId, kind, cmd.payload, cat.category, `✅ Categoría '${cat.category.name}' creada.\n`);
   }
 
   async categorySimilarCancel(_cmd: ParsedCommand, _userId: UserId): Promise<HandlerResponse> {
