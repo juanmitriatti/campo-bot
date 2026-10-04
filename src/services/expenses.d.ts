@@ -338,6 +338,8 @@ export function updateExpenseFields(expenseId: number, fields?: {
   currency?: string | null;
 }): Promise<any>;
 export function updateIncomeFields(incomeId: number, fields?: {
+  unitPrice?: number | null;
+  priceStatus?: string | null;
   amount?: number | null;
   category?: string | null;
   incomeDate?: string | null;

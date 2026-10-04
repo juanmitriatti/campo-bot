@@ -225,6 +225,9 @@ export class LivestockService {
     breed: string | null,
     opts: { avg_weight_kg?: number | null; notes?: string | null } = {}
   ): Promise<LivestockGroupRow> {
+    // Raza canónica en TODA operación, no solo en el alta: "angus" en una muerte
+    // o un ajuste no encontraba "Angus" y duplicaba grupos (HAC-6).
+    breed = canonicalBreedName(breed);
     if (loc.type === 'corral') {
       const existing = await this.repo.findGroupInCorral(loc.corralId, category, breed);
       if (existing) {
@@ -270,6 +273,7 @@ export class LivestockService {
     breed: string | null,
     bulkMode = false,
   ): Promise<LivestockGroupRow | null> {
+    breed = canonicalBreedName(breed);
     if (breed) {
       if (loc.type === 'corral') {
         return this.repo.findGroupInCorral(loc.corralId, category, breed);
@@ -460,6 +464,11 @@ export class LivestockService {
     return this.repo.findLatestUnpricedMovement(userId, category, movementType);
   }
 
+  /** Movimiento por id, scopeado al usuario EN la query (el id puede venir de un pending/botón). */
+  async findMovementById(userId: number, movementId: string) {
+    return this.repo.findMovementById(userId, movementId);
+  }
+
   async attachPriceToMovement(
     userId: UserId,
     movementId: string,
@@ -629,6 +638,18 @@ export class LivestockService {
     const locLabel = loc.type === 'corral' ? `corral ${loc.corralName}` : `lote ${loc.plotName}`;
 
     let group = await this.findGroupAtLocation(loc, category, opts.breed ?? null, opts.bulkMode === true);
+    // Lote NOMBRADO sin esa hacienda: no se descuenta de otro lugar en silencio
+    // ("vendí 10 vacas del lote Norte" con vacas solo en Sur — HAC-31). Se dice
+    // dónde están; el usuario confirma nombrándolo.
+    if (!group && (opts.plotName || opts.corralName)) {
+      const elsewhere = ((await this.repo.listGroups(Number(userId), { category: category as LivestockCategory })) ?? [])
+        .filter(g => g.count > 0);
+      if (elsewhere.length > 0) {
+        const where = elsewhere.slice(0, 4).map(g => `${g.plot_name ?? g.corral_name ?? '—'} (${g.count})`).join(', ');
+        console.log(`[INTERCEPT] remove_livestock: no hay ${category} en ${locLabel}; están en ${where} — no se descuenta de otro lugar`);
+        throw new Error(`No hay ${LIVESTOCK_CATEGORY_LABEL[category] ?? category}s en el ${locLabel}. Tenés en: ${where}. Si salieron de ahí, decímelo nombrando ese lote.`);
+      }
+    }
     if (!group) {
       // Fallback: the resolved location is often an INHERITED context plot (the
       // last lote the user mentioned) which may not hold this category. If exactly
@@ -821,7 +842,9 @@ export class LivestockService {
     const loc = await this.resolveLocation(userId, opts.fieldName, opts.plotName, opts.corralName);
     const existing = await this.findGroupAtLocation(loc, category, opts.breed ?? null);
     const created = !existing;
-    const group = await this.ensureGroupAtLocation(userId, loc, category, opts.breed ?? null);
+    // Sin raza nombrada, el grupo que YA está ahí (HAC-5): antes se creaba uno
+    // "sin raza" al lado de "Vaca Angus" y el total se duplicaba.
+    const group = existing ?? await this.ensureGroupAtLocation(userId, loc, category, opts.breed ?? null);
 
     const { group: updated, movement } = await this.repo.applySingleMovement(
       Number(userId),
@@ -913,7 +936,9 @@ export class LivestockService {
     const created = !existing;
     const previousCount = existing ? Number(existing.count) : 0;
 
-    const group = await this.ensureGroupAtLocation(userId, loc, category, opts.breed ?? null, {
+    // Sin raza nombrada, el grupo que YA está ahí (HAC-5): "hay 45 vacas" con 50
+    // Angus creaba un grupo sin raza y el total daba 95.
+    const group = existing ?? await this.ensureGroupAtLocation(userId, loc, category, opts.breed ?? null, {
       notes: opts.notes,
     });
 

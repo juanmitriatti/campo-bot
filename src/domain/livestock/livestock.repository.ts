@@ -702,7 +702,7 @@ export class LivestockRepository {
     userId: number,
     movementId: string,
     newCount: number,
-  ): Promise<{ oldCount: number; newCount: number; category: LivestockCategory; movementType: string } | 'not_found' | 'already_priced'> {
+  ): Promise<{ oldCount: number; newCount: number; category: LivestockCategory; movementType: string } | 'not_found' | 'already_priced' | { insufficient: number }> {
     const m = await this.findMovementForPricing(userId, movementId);
     if (!m) return 'not_found';
     if (m.linked_expense_id || m.linked_income_id) return 'already_priced';
@@ -711,6 +711,16 @@ export class LivestockRepository {
     }
     const delta = newCount - m.count;
     const sign = m.movement_type === 'entrada' ? 1 : -1;
+    // Una venta corregida HACIA ARRIBA no puede sacar más de lo que queda: "eran
+    // 80" con 50 en el grupo dejaba el grupo en 0 (GREATEST) y vendía 80 (HAC-8).
+    if (sign < 0 && delta > 0) {
+      const { rows } = await pool.query(
+        `SELECT count FROM livestock_groups WHERE id = (SELECT COALESCE(dest_group_id, source_group_id) FROM livestock_movements WHERE id = $1)`,
+        [movementId],
+      );
+      const left = Number(rows[0]?.count ?? 0);
+      if (left < delta) return { insufficient: left + m.count };
+    }
     await withTransaction(async () => {
       await pool.query(
         `UPDATE livestock_movements SET count = $1 WHERE id = $2 AND user_id = $3`,

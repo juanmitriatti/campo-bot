@@ -521,11 +521,13 @@ export async function findIncomeByCriteria(userId, { amount = null, category = n
 }
 
 /** Update arbitrary editable fields of an income. Pass only what changes. */
-export async function updateIncomeFields(incomeId, { amount = null, category = null, incomeDate = null, fieldId = undefined, plotId = undefined } = {}) {
+export async function updateIncomeFields(incomeId, { amount = null, category = null, incomeDate = null, fieldId = undefined, plotId = undefined, unitPrice = null, priceStatus = null } = {}) {
   const sets = [];
   const params = [];
   let idx = 1;
   if (amount != null) { sets.push(`amount = $${idx++}`); params.push(amount); }
+  if (unitPrice != null) { sets.push(`unit_price = $${idx++}`); params.push(unitPrice); }
+  if (priceStatus) { sets.push(`price_status = $${idx++}`); params.push(priceStatus); }
   if (category) { sets.push(`category = $${idx++}`); params.push(category); }
   if (incomeDate) { sets.push(`income_date = $${idx++}`); params.push(incomeDate); }
   if (fieldId !== undefined) { sets.push(`field_id = $${idx++}`); params.push(fieldId); }
@@ -1755,6 +1757,11 @@ export async function queryMovements(userId, opts = {}) {
     `;
     const res = await pool.query(sql, params);
     out.incomes = res.rows;
+  }
+
+  // Un reporte que llega al tope tendría totales parciales: que quede en el log (FIN-12).
+  if (out.expenses.length >= limit || out.incomes.length >= limit) {
+    console.warn(`[INTERCEPT] queryMovements llegó al tope de ${limit} filas (user ${userId}) — totales parciales`);
   }
 
   return out;

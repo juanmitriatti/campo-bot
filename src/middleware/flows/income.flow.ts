@@ -1,3 +1,4 @@
+import { detectCurrencyTerm } from '../../utils/lexicon.js';
 import { normalizarMonto } from '../../utils/parser.js';
 import { formatMoney } from '../../utils/format-money.js';
 import { FinancialService } from '../../domain/financial/financial.service.js';
@@ -28,7 +29,8 @@ const steps: FlowStep[] = [
     validate: (input) => {
       const amount = normalizarMonto(input);
       if (!amount || amount <= 0) return { error: 'No entendí el monto. Probá con un número, ej: 500000 o 1.5 palos' };
-      const isUsd = /d[oó]lar|usd/i.test(input);
+      // Fuente única de monedas (u$s, US$, verdes…): FIN-14.
+      const isUsd = detectCurrencyTerm(input) === 'USD';
       return { value: { amount, currency: isUsd ? 'USD' : 'ARS' } };
     },
   },
@@ -140,7 +142,7 @@ export const incomeFlow: FlowDefinition = {
     let msg = '\ud83d\udcb0 *Confirmar ingreso:*\n\n';
     msg += `Monto: *${formatMoney(Number(amountInfo.amount), amountInfo.currency)}*\n`;
     msg += `Categoría: *${finalCategory}*\n`;
-    if (data.quantity) msg += `Cantidad: *${data.quantity} tn*\n`;
+    if (data.quantity) msg += `Cantidad: *${data.quantity} ${(data.unit as string | null) || 'tn'}*\n`;
     if (data.plotName) msg += `Lote: *${data.plotName}*\n`;
     if (data.description) msg += `Detalle: ${data.description}\n`;
     msg += '\n¿Confirmamos?';
@@ -163,6 +165,11 @@ export const incomeFlow: FlowDefinition = {
     const amountInfo = data.amount as { amount: number; currency: string };
     const plotName = data.plotName as string | null;
     const quantity = data.quantity as number | null;
+    // La unidad y el precio unitario que traía el mensaje: antes TODA cantidad
+    // se guardaba en tn (5.000 kg → 5.000 tn; 20 cabezas → 20 tn) — FIN-3. Solo
+    // la cantidad tipeada en el paso del flow es en tn.
+    const qtyUnit = (data.unit as string | null) || 'tn';
+    const unitPrice = (data.unit_price as number | null) ?? (quantity ? Math.round(amountInfo.amount / quantity) : null);
 
     let fieldId: number | null = null;
     let plotId: number | null = null;
@@ -201,7 +208,10 @@ export const incomeFlow: FlowDefinition = {
       const similar = await categoryService.findSimilar(userId, 'income', finalCategory);
       if (similar) {
         const { encodePendingIncomePayload } = await import('../../domain/financial/financial.handler.js');
-        const payload = encodePendingIncomePayload({
+        // Por token (callback-payload-store): el router ya no acepta el payload
+        // inline, y en base64 pasaba los 64 bytes de Telegram (auditoría oct 2026).
+        const { callbackPayloadStore } = await import('../callback-payload-store.js');
+        const payload = callbackPayloadStore.set(encodePendingIncomePayload({
           data: {
             type: 'income',
             amount: amountInfo.amount,
@@ -210,12 +220,15 @@ export const incomeFlow: FlowDefinition = {
             category: finalCategory,
             incomeDate: (data.incomeDate as string) ?? null,
             quantity: quantity,
-            unit: quantity ? 'tn' : null,
-            unit_price: quantity ? Math.round(amountInfo.amount / quantity) : null,
+            unit: quantity ? qtyUnit : null,
+            unit_price: quantity ? unitPrice : null,
+            // Comprador y estado del precio sobreviven al botón de categoría (FIN-11).
+            ...(data.buyer ? { buyer: data.buyer as string } : {}),
+            ...(data.price_status ? { price_status: data.price_status as 'fijado' | 'a_fijar' } : {}),
           },
           fieldId,
           plotId,
-        });
+        }));
         return {
           messages: [],
           interactive: {
@@ -246,8 +259,8 @@ export const incomeFlow: FlowDefinition = {
       description: (data.description as string) || '',
       currency: amountInfo.currency as 'ARS' | 'USD',
       quantity: quantity,
-      unit: quantity ? 'tn' : null,
-      unit_price: quantity ? Math.round(amountInfo.amount / quantity) : null,
+      unit: quantity ? qtyUnit : null,
+      unit_price: quantity ? unitPrice : null,
       ...(data.incomeDate ? { incomeDate: data.incomeDate as string } : {}),
       // Comprador y estado del precio de una venta de grano (P1-7, QA sep 2026):
       // antes se perdían al pasar por el flow y el saldo por acopio no descontaba.
@@ -260,7 +273,7 @@ export const incomeFlow: FlowDefinition = {
     let msg = '\ud83d\udcb0 Ingreso registrado\n';
     msg += `${data.category}\n`;
     msg += `${formatMoney(Number(amountInfo.amount), amountInfo.currency)}`;
-    if (quantity) msg += `\n${quantity} tn`;
+    if (quantity) msg += `\n${quantity} ${qtyUnit}`;
     if (resolvedPlotName && resolvedFieldName) {
       msg += `\n\ud83d\udccd Lote ${resolvedPlotName} (${resolvedFieldName})`;
     } else if (resolvedPlotName) {

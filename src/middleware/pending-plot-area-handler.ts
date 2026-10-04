@@ -11,11 +11,19 @@ export function parseHectares(text: string): number | null {
   // Decimal comma → dot, then pull every number out. A bare parseFloat takes the
   // FIRST token, which breaks mid-message corrections like "40, ah no eran 60"
   // (the user means 60). When a correction cue is present, prefer the LAST number.
-  const cleaned = text.replace(/,/g, '.');
+  //
+  // CAM-10 (auditoría oct 2026): "1.500" es mil quinientas (punto de miles, no
+  // 1,5); un número con signo menos no es superficie; y con una unidad ("el
+  // lote 7 tiene 50 ha") manda el número de la unidad, no el del nombre.
+  if (/(^|[^\d])-\s*\d/.test(text)) return null;
+  const cleaned = text
+    .replace(/(\d)\.(\d{3})(?!\d)/g, '$1$2')
+    .replace(/,/g, '.');
+  const withUnit = cleaned.match(/(\d+(?:\.\d+)?)\s*(?:has?\b|hect[aá]reas?)/i);
   const nums = cleaned.match(/\d+(?:\.\d+)?/g);
   if (!nums || nums.length === 0) return null;
   const hasCorrection = /\b(no|perd[oó]n|en\s+realidad|eran?|mejor\s+dicho|quise\s+decir|digo)\b/i.test(text);
-  const pick = hasCorrection ? nums[nums.length - 1] : nums[0];
+  const pick = hasCorrection ? nums[nums.length - 1] : (withUnit ? withUnit[1] : nums[0]);
   const val = parseFloat(pick);
   if (isNaN(val) || val <= 0 || val >= 100000) return null;
   return val;
@@ -89,14 +97,19 @@ function buildPrompt(item: PendingPlotArea): string {
 function parseNamedAreas(text: string): Array<{ name: string; ha: number }> {
   const out: Array<{ name: string; ha: number }> = [];
   // Split on commas / " y " then look for "<name> <number>" or "<number> <name>".
-  for (const chunk of text.split(/\s*,\s*|\s+y\s+/i)) {
+  // La coma decimal ("60,5") no separa: solo una coma que no tenga dígitos a ambos lados.
+  for (const chunk of text.split(/\s*(?:(?<!\d),|,(?!\d))\s*|\s+y\s+/i)) {
     const c = chunk.trim();
     if (!c) continue;
     let m = c.match(/^(.+?)[\s:]+(\d+(?:[.,]\d+)?)\s*(?:has?\.?|hect[aá]reas?)?$/i);
     if (!m) m = c.match(/^(\d+(?:[.,]\d+)?)\s*(?:has?\.?|hect[aá]reas?)?\s+(.+)$/i);
     if (!m) continue;
-    const nameRaw = isNaN(Number(m[1].replace(',', '.'))) ? m[1] : m[2];
-    const numRaw = isNaN(Number(m[1].replace(',', '.'))) ? m[2] : m[1];
+    // "1 40": los dos son números → el PRIMERO es el nombre del lote (lote 1,
+    // 40 ha). Antes daba lote "40" con 1 ha (CAM-10).
+    const firstIsNum = !isNaN(Number(m[1].replace(',', '.')));
+    const secondIsNum = !isNaN(Number(m[2].replace(',', '.')));
+    const nameRaw = firstIsNum && !secondIsNum ? m[2] : m[1];
+    const numRaw = firstIsNum && !secondIsNum ? m[1] : m[2];
     const ha = parseFloat(numRaw.replace(',', '.'));
     const name = nameRaw.replace(/\b(lote|el|la)\b/gi, '').trim();
     if (name && ha > 0 && ha < 100000) out.push({ name, ha });

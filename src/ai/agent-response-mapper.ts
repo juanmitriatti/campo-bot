@@ -245,6 +245,9 @@ function inferFromProduct(product: string): { category: string; expenseType: 'in
  * with the existing DomainRouter / handlers pipeline.
  */
 export class AgentResponseMapper {
+  /** Compras/ventas de hacienda en la respuesta actual (rescate de precio solo con UNA — HAC-4). */
+  private livestockPriceCallsInTurn = 0;
+
   /**
    * Map agent result to ParseResult array.
    * - Each tool call becomes one ParseResult.
@@ -412,6 +415,7 @@ export class AgentResponseMapper {
     }
     applyQueryPeriodFromText(filteredCalls, originalText);
 
+    this.livestockPriceCallsInTurn = filteredCalls.filter(tc => tc.toolName === 'add_livestock' || tc.toolName === 'remove_livestock').length;
     return filteredCalls.map(tc => this.mapToolCall(tc, originalText, validationOptions, perEntryDates));
   }
 
@@ -591,7 +595,12 @@ export class AgentResponseMapper {
           for (const [kw, cat] of Object.entries(EXPENSE_KEYWORD_MAP)) {
             if (normRaw.includes(kw)) { derived = cat; break; }
           }
-          if (derived) {
+          // category_match='exact': el agente la vio en el catálogo del usuario
+          // ("Fletes", "Seguros" propias). El mapa de palabras no la pisa (FIN-8).
+          if (derived && categoryMatch === 'exact') {
+            console.log(`[INTERCEPT] mapper: categoría propia "${rawCategory}" (exact) — no se pisa por "${derived}"`);
+            category = rawCategory;
+          } else if (derived) {
             console.log(`[INTERCEPT] mapper: categoría "${rawCategory}" del agente → "${derived}" (keyword map)`);
             category = derived;
           } else {
@@ -684,6 +693,8 @@ export class AgentResponseMapper {
           ...(typeof input.field === 'string' ? { field: input.field } : {}),
           ...(typeof input.plot === 'string' ? { plot: input.plot } : {}),
           ...(typeof input.description === 'string' ? { description: input.description } : {}),
+          // La fecha viaja en el parcial: "ayer cargué gasoil" + "50 mil" quedaba de hoy (FIN-6).
+          ...(typeof input.event_date === 'string' ? { expenseDate: input.event_date } : {}),
         },
       },
       confidence: 0.60,
@@ -746,7 +757,9 @@ export class AgentResponseMapper {
         sorgo: 'Sorgo',
         cebada: 'Cebada',
       };
-      if (!INCOME_CATEGORIES.includes(category as IncomeCategory)) {
+      // Con category_match='exact' es una categoría propia del usuario: "Servicios"
+      // con "soja" en el texto quedaba como Soja (FIN-8).
+      if (!INCOME_CATEGORIES.includes(category as IncomeCategory) && categoryMatch !== 'exact') {
         const description = typeof input.description === 'string' ? input.description : '';
         const haystack = `${rawCategory} ${description} ${originalText}`.toLowerCase();
         for (const [kw, cropCat] of Object.entries(cropKeywords)) {
@@ -809,6 +822,7 @@ export class AgentResponseMapper {
           // venta que esperaba el monto perdía el acopio (P1-7, QA sep 2026).
           ...(typeof input.buyer === 'string' && input.buyer.trim() ? { buyer: input.buyer.trim() } : {}),
           ...(input.price_status === 'fijado' || input.price_status === 'a_fijar' ? { price_status: input.price_status } : {}),
+          ...(typeof input.event_date === 'string' ? { incomeDate: input.event_date } : {}),
         },
       },
       confidence: 0.60,
@@ -1056,10 +1070,16 @@ export class AgentResponseMapper {
     // 1.2 palos" — Haiku only sets unit_price_* when "cada uno/una" is explicit,
     // so the natural "a $X" silently dropped the linked income/expense. Recover
     // it as the per-head price (matches the explicit "cada una" behaviour).
+    //
+    // HAC-4 (auditoría oct 2026): solo con forma de PLATA. "a 30 días", "a 180
+    // kilos promedio" o "a 2800 el kilo" (precio por kg, otro campo) se tomaban
+    // como precio por cabeza; y en un compuesto compra + venta, las dos llamadas
+    // se llevaban el mismo "a N" (la venta heredaba el precio de la compra).
     if ((toolName === 'add_livestock' || toolName === 'remove_livestock')
-        && cmd.unit_price_ars == null && cmd.unit_price_usd == null && originalText) {
-      const m = originalText.match(/\ba\s+(?:\$|us\$)?\s*([\d][\d.,]*\s*(?:millones?|millon|palos?|palo|mil|lucas|luca)?)\s*(usd|u\$s|d[oó]lares?|d[oó]lar)?/i);
-      if (m) {
+        && cmd.unit_price_ars == null && cmd.unit_price_usd == null && originalText
+        && this.livestockPriceCallsInTurn <= 1) {
+      const m = originalText.match(/\ba\s+(?:\$|us\$)?\s*([\d][\d.,]*\s*(?:millones?|millon|palos?|palo|mil|lucas|luca)?)\s*(usd|u\$s|d[oó]lares?|d[oó]lar)?(?!\s*(?:d[ií]as?|semanas?|meses?|a[ñn]os?|kg|kilos?|el\s+(?:kg|kilo)|por\s+(?:kg|kilo)|x\s*kg|ha\b|has\b|hect|tn|toneladas?|cabezas?\b|%|lt|litros?|qq))/i);
+      if (m && /\$|usd|u\$s|d[oó]lar|mill|palo|mil|luca|\d{4,}/i.test(m[0])) {
         const amt = normalizarMonto(m[1]);
         if (amt && amt > 0) {
           if (m[2]) cmd.unit_price_usd = amt; else cmd.unit_price_ars = amt;
@@ -1110,6 +1130,9 @@ export class AgentResponseMapper {
     if (input.new_date != null) cmd.newDate = input.new_date;
     if (input.new_hectares != null) cmd.newHectares = input.new_hectares; // edit_last_activity: corregir superficie sembrada
     if (input.new_amount != null) cmd.newAmount = input.new_amount;
+    // Fijar el precio de una venta "a fijar" (FIN-16).
+    if (typeof input.new_unit_price === 'number' && input.new_unit_price > 0) cmd.newUnitPrice = input.new_unit_price;
+    if (input.price_status === 'fijado' || input.price_status === 'a_fijar') cmd.priceStatus = input.price_status;
     if (input.new_category != null) cmd.newCategory = input.new_category;
     if (input.new_text != null) cmd.newText = input.new_text;       // edit_last_observation
     if (input.new_mm != null) cmd.newMm = input.new_mm;             // edit_last_rainfall

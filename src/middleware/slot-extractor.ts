@@ -13,6 +13,7 @@
  * income, sow_crop, etc.).
  */
 
+import { detectCurrencyTerm } from '../utils/lexicon.js';
 import { normalizarMonto, detectarCategoria, detectarCategoriaIngreso } from '../utils/parser.js';
 import { extractCropFromText } from '../utils/crops.js';
 import { stripPlotCorrectionPrefix } from './flows/field-step-helpers.js';
@@ -83,7 +84,13 @@ export function extractSlots(
   }
 
   const unitPrice = extractUnitPrice(stripped);
-  if (unitPrice != null) out.unit_price = unitPrice;
+  if (unitPrice != null) {
+    out.unit_price = unitPrice;
+    // El mismo número es el precio POR UNIDAD, no el total: "a 400 mil la
+    // tonelada" sobre 30 tn guardaba $400.000 en vez de $12.000.000 (FIN-5).
+    // Con amount vacío, el cross-fill del pending calcula cantidad × precio.
+    if (out.amount === unitPrice) delete out.amount;
+  }
 
   const product = extractProductName(stripped);
   if (product) out.product = product;
@@ -119,11 +126,9 @@ function extractAmount(text: string): number | null {
   return n && n > 0 ? n : null;
 }
 
+/** Fuente única de monedas y su slang (lexicon, invariante 4): "u$s 500" quedaba en pesos (FIN-14). */
 function extractCurrency(text: string): 'ARS' | 'USD' | null {
-  const lower = text.toLowerCase();
-  if (/\b(d[oó]lares?|usd|u\$s|u\$)\b/i.test(lower)) return 'USD';
-  if (/\b(pesos?|ars)\b/i.test(lower)) return 'ARS';
-  return null;
+  return detectCurrencyTerm(text);
 }
 
 /**
@@ -248,7 +253,8 @@ function extractUnitPrice(text: string): number | null {
   // visto live: 2 audios con el precio re-preguntados hasta que el usuario
   // mandó el número pelado (Jun 2026).
   const formAnywhere = text.match(
-    /([\d.,]+(?:\s*(?:mil|lucas?|palos?|millones|millon))?)\s*(?:d[oó]lares?|usd|pesos?)?\s*(?:c\/u|cada\s+un[oa]|por\s+cabeza|por\s+animal|por\s+unidad|la\s+unidad|por\s+(?:tonelada|tn|kg|kilo|bolsa))/i,
+    // "300 dólares la tonelada" / "2800 el kilo" también son por unidad (CONV-16).
+    /([\d.,]+(?:\s*(?:mil|lucas?|palos?|millones|millon))?)\s*(?:d[oó]lares?|usd|pesos?)?\s*(?:c\/u|cada\s+un[oa]|por\s+cabeza|por\s+animal|por\s+unidad|la\s+unidad|por\s+(?:tonelada|tn|kg|kilo|bolsa)|(?:la|cada)\s+(?:tonelada|tn|bolsa)|el\s+(?:kg|kilo|litro|lt|quintal|qq))\b/i,
   );
   if (formAnywhere) {
     const n = normalizarMonto(formAnywhere[1]);

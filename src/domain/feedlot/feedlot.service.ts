@@ -185,8 +185,11 @@ export class FeedlotService {
       matches = allCorrals.filter(c => norm(c.name) === needle);
     }
     if (matches.length === 0) {
-      // Last fallback: substring match
-      matches = allCorrals.filter(c => c.name.toLowerCase().includes(corralName.toLowerCase()));
+      // Last fallback: substring match — pero un número no se extiende: "corral 1"
+      // caía en el corral "12" (HAC-22). El texto buscado no puede seguir con otro dígito.
+      const esc = corralName.toLowerCase().trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`${esc}(?!\\d)`, 'i');
+      matches = allCorrals.filter(c => re.test(c.name.toLowerCase()));
     }
 
     if (matches.length === 0) throw new Error(`No encontré el corral "${corralName}".`);

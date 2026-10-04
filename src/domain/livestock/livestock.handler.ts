@@ -100,7 +100,7 @@ export class LivestockHandler {
       const n = typeof v === 'string' ? parseFloat(v) : (typeof v === 'number' ? v : NaN);
       return Number.isFinite(n) && n > 0 ? n : null;
     };
-    const unitPrice = rawNum(c.unit_price) ?? rawNum(c.unit_price_ars) ?? rawNum(c.unit_price_usd) ?? rawNum(c.amount);
+    const unitPrice = rawNum(c.unit_price) ?? rawNum(c.unit_price_ars) ?? rawNum(c.unit_price_usd) ?? rawNum(c.price_per_kg) ?? rawNum(c.amount);
     const currency: Currency = (c.currency === 'USD' || rawNum(c.unit_price_usd)) ? 'USD' : 'ARS';
     let kind: 'expense' | 'income' | null =
       c.kind === 'income' ? 'income' : (c.kind === 'expense' ? 'expense' : null);
@@ -139,8 +139,40 @@ export class LivestockHandler {
     }
     if (!kind) kind = 'expense';
 
+    // Precio POR KILO ("a 2800 el kilo"): necesita el peso total. Antes se tomaba
+    // como precio por cabeza y 30 vacas daban $84.000 (HAC-2). Sin peso se
+    // pregunta con pending; con peso, el total se reparte por cabeza.
+    const answer = String(c._answerText ?? c.originalText ?? '');
+    const perKg = rawNum(c.price_per_kg)
+      ?? (/\b(?:el|por|x|cada)\s*(?:kg|kilo)\b|\/\s*kg\b|\bkg\s+vivo\b/i.test(answer) ? unitPrice : null);
+    let pricePerHead = unitPrice;
+    if (perKg) {
+      const kgFromUnit = c.unit && /^(?:kg|kilos?)$/i.test(String(c.unit)) && rawNum(c.quantity) !== perKg ? rawNum(c.quantity) : null;
+      const totalKg = rawNum(c.total_weight_kg) ?? kgFromUnit;
+      if (!totalKg) {
+        const ask = '⚖️ ¿Cuántos kilos pesaron en total? (el precio fue por kilo)';
+        console.log(`[INTERCEPT] set_livestock_price por kilo sin peso: movimiento ${movementId} — pregunto el peso`);
+        return {
+          messages: [ask],
+          sideEffects: {
+            setPendingActivity: {
+              command: 'set_livestock_price',
+              data: { movementId, kind, currency, price_per_kg: perKg },
+              missing: ['quantity'],
+              askPrompt: ask,
+            },
+          },
+        };
+      }
+      const mv = await this.service.findMovementById(Number(userId), movementId);
+      const heads = mv?.count ? Number(mv.count) : 0;
+      if (!heads) return { messages: ['No encontré ese movimiento de hacienda para ponerle precio.'] };
+      pricePerHead = Math.round((perKg * totalKg / heads) * 100) / 100;
+      console.log(`[INTERCEPT] set_livestock_price por kilo: ${perKg}/kg × ${totalKg} kg ÷ ${heads} cab = ${pricePerHead} c/u`);
+    }
+
     try {
-      const r = await this.service.attachPriceToMovement(userId, movementId, unitPrice, currency, kind);
+      const r = await this.service.attachPriceToMovement(userId, movementId, pricePerHead, currency, kind);
       if (!r.financial) {
         return { messages: ['No pude registrar el precio — probá de nuevo con "350 mil por cabeza".'] };
       }
@@ -149,7 +181,7 @@ export class LivestockHandler {
       return {
         messages: [
           `${label}: ${fmtAmount(r.financial.amount, r.financial.currency)} (Hacienda)\n` +
-          `  ${r.count} ${catLabel}${r.count > 1 ? 's' : ''} a ${fmtAmount(unitPrice, currency)} c/u`,
+          `  ${r.count} ${catLabel}${r.count > 1 ? 's' : ''} a ${fmtAmount(pricePerHead, currency)} c/u${perKg ? ` (${fmtAmount(perKg, currency)}/kg)` : ''}`,
         ],
       };
     } catch (err) {
@@ -740,9 +772,13 @@ export class LivestockHandler {
       : '';
     const isPurchase = cmd.isPurchase === true;
     const hasPrice = !!(cmd.unit_price_ars || cmd.unit_price_usd || cmd.price_per_kg_ars || cmd.price_per_kg_usd);
-    const askPriceLine = (isPurchase && !hasPrice && !financial)
-      ? '\n\n¿A cuánto fue la compra? Así registro el gasto.'
-      : '';
+    // Precio por kilo sin peso: se pregunta el peso (HAC-3, mismo caso que la venta).
+    const perKgNoWeight = isPurchase && !financial && !!(cmd.price_per_kg_ars || cmd.price_per_kg_usd);
+    const askPriceLine = perKgNoWeight
+      ? '\n\n⚖️ ¿Cuántos kilos pesaron en total? Así calculo el gasto (el precio fue por kilo).'
+      : (isPurchase && !hasPrice && !financial)
+        ? '\n\n¿A cuánto fue la compra? Así registro el gasto.'
+        : '';
 
     const movementsCount = await this.service.countUserMovements(userId);
     const isFirstRecord = movementsCount === 1;
@@ -802,9 +838,13 @@ export class LivestockHandler {
           sideEffects: {
             setPendingActivity: {
               command: 'set_livestock_price',
-              data: { movementId: String(movement.id), kind: 'expense' },
-              missing: ['unit_price'],
-              askPrompt: '💰 ¿A cuánto fue la compra? (precio por cabeza, ej: "350 mil" o "1500 USD")',
+              data: perKgNoWeight
+                ? { movementId: String(movement.id), kind: 'expense', currency: cmd.price_per_kg_usd ? 'USD' : 'ARS', price_per_kg: Number(cmd.price_per_kg_usd ?? cmd.price_per_kg_ars) }
+                : { movementId: String(movement.id), kind: 'expense' },
+              missing: perKgNoWeight ? ['quantity'] : ['unit_price'],
+              askPrompt: perKgNoWeight
+                ? '⚖️ ¿Cuántos kilos pesaron en total? (el precio fue por kilo)'
+                : '💰 ¿A cuánto fue la compra? (precio por cabeza, ej: "350 mil" o "1500 USD")',
             },
           },
         }
@@ -827,6 +867,7 @@ export class LivestockHandler {
     const category = cmd.category as string;
     const count = cmd.count as number;
     if (!category) return { messages: ['Necesito la categoría. Ej: "vendí 5 vacas".'] };
+    { const bad = await validateMovementInput(count, cmd.eventDate); if (bad) return bad; }
     if (!count || count <= 0) {
       const askRemove = `🐄 ¿Cuántas cabezas${category ? ` de ${category.toLowerCase()}` : ''}?`;
       return {
@@ -892,9 +933,14 @@ export class LivestockHandler {
       : '';
     const isSale = cmd.isSale === true;
     const hasPrice = !!(cmd.unit_price_ars || cmd.unit_price_usd || cmd.price_per_kg_ars || cmd.price_per_kg_usd);
-    const askPriceLine = (isSale && !hasPrice && !financial)
-      ? '\n\n¿A cuánto fue la venta? Así registro el ingreso.'
-      : '';
+    // Precio por KILO sin peso: no hay total que registrar. Antes se descontaba
+    // la hacienda sin ingreso y sin avisar (HAC-3): se pregunta el peso.
+    const perKgNoWeight = isSale && !financial && !!(cmd.price_per_kg_ars || cmd.price_per_kg_usd);
+    const askPriceLine = perKgNoWeight
+      ? '\n\n⚖️ ¿Cuántos kilos pesaron en total? Así calculo el ingreso (el precio fue por kilo).'
+      : (isSale && !hasPrice && !financial)
+        ? '\n\n¿A cuánto fue la venta? Así registro el ingreso.'
+        : '';
 
     const body =
       `🐄 *Hacienda descontada*\n\n` +
@@ -921,9 +967,13 @@ export class LivestockHandler {
           sideEffects: {
             setPendingActivity: {
               command: 'set_livestock_price',
-              data: { movementId: String(movement.id), kind: 'income' },
-              missing: ['unit_price'],
-              askPrompt: '💰 ¿A cuánto fue la venta? (precio por cabeza, ej: "400 mil" o "1500 USD")',
+              data: perKgNoWeight
+                ? { movementId: String(movement.id), kind: 'income', currency: cmd.price_per_kg_usd ? 'USD' : 'ARS', price_per_kg: Number(cmd.price_per_kg_usd ?? cmd.price_per_kg_ars) }
+                : { movementId: String(movement.id), kind: 'income' },
+              missing: perKgNoWeight ? ['quantity'] : ['unit_price'],
+              askPrompt: perKgNoWeight
+                ? '⚖️ ¿Cuántos kilos pesaron en total? (el precio fue por kilo)'
+                : '💰 ¿A cuánto fue la venta? (precio por cabeza, ej: "400 mil" o "1500 USD")',
             },
           },
         }
@@ -941,6 +991,7 @@ export class LivestockHandler {
   private async transferLivestock(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const category = cmd.category as string;
     const count = cmd.count as number;
+    { const bad = await validateMovementInput(count, cmd.eventDate); if (bad) return bad; }
     // El origen llega por dos caminos: `source_plot` desde el agente, o la clave
     // genérica `plot`/`plotName` cuando la respuesta viene de un pending (el
     // slot-extractor llena esas). Leer solo `sourcePlot` hacía que contestar
@@ -1123,8 +1174,38 @@ export class LivestockHandler {
 
     const first = found[0];
     if (!cmd.plotName && !cmd.corralName && !cmd.fieldName) {
-      if (first.corral_name) cmd.corralName = first.corral_name;
-      else if (first.plot_name) cmd.plotName = first.plot_name;
+      // La baja descuenta del GRUPO donde el animal está contado. Si se movió
+      // solo el animal (move_animals), su lote ya no coincide con el del grupo y
+      // la baja por caravana fallaba con "No hay vacas en el lote" (HAC-15).
+      const groupLoc = first.group_id
+        ? (await (await import('../../config/db.js')).pool.query(
+            `SELECT p.name AS plot_name, c.name AS corral_name FROM livestock_groups g
+               LEFT JOIN plots p ON p.id = g.plot_id LEFT JOIN corrals c ON c.id = g.corral_id
+              WHERE g.id = $1 AND g.user_id = $2 AND g.deleted_at IS NULL AND g.count > 0`,
+            [first.group_id, Number(userId)])).rows[0] as { plot_name: string | null; corral_name: string | null } | undefined
+        : undefined;
+      if (groupLoc && (groupLoc.corral_name ?? groupLoc.plot_name) !== (first.corral_name ?? first.plot_name)) {
+        console.log(`[LIVESTOCK] animal ${tagOf(first)} está en ${first.corral_name ?? first.plot_name}, su grupo en ${groupLoc.corral_name ?? groupLoc.plot_name} — la baja va al grupo`);
+      }
+      let corralName = groupLoc ? groupLoc.corral_name : first.corral_name;
+      let plotName = groupLoc ? groupLoc.plot_name : first.plot_name;
+      if (!groupLoc && (corralName || plotName)) {
+        // Sin grupo con existencias en el lote del animal: no se fija ese lote;
+        // lo resuelve presetLocationFromGroups (el único grupo con stock, o pregunta).
+        const { pool: lvPool } = await import('../../config/db.js');
+        const stocked = await lvPool.query(
+          `SELECT 1 FROM livestock_groups g LEFT JOIN plots p ON p.id = g.plot_id LEFT JOIN corrals c ON c.id = g.corral_id
+            WHERE g.user_id = $1 AND g.category = $2 AND g.deleted_at IS NULL AND g.count > 0
+              AND (p.name = $3 OR c.name = $4) LIMIT 1`,
+          [Number(userId), first.category, plotName, corralName]);
+        if (stocked.rows.length === 0) {
+          console.log(`[LIVESTOCK] animal ${tagOf(first)} en ${corralName ?? plotName} sin grupo con existencias ahí — la ubicación sale de los grupos`);
+          corralName = null;
+          plotName = null;
+        }
+      }
+      if (corralName) cmd.corralName = corralName;
+      else if (plotName) cmd.plotName = plotName;
       if (cmd.plotName || cmd.corralName) {
         console.log(`[LIVESTOCK] ubicación heredada del animal ${tagOf(first)}: ${cmd.corralName ?? cmd.plotName}`);
       }
@@ -1144,6 +1225,7 @@ export class LivestockHandler {
     const category = cmd.category as string;
     const count = cmd.count as number;
     if (!category) return { messages: ['Necesito la categoría. Ej: "se murieron 2 terneros".'] };
+    { const bad = await validateMovementInput(count, cmd.eventDate); if (bad) return bad; }
     if (!count || count <= 0) {
       const askDeath = `🐄 ¿Cuántas cabezas${category ? ` de ${category.toLowerCase()}` : ''}?`;
       return {
@@ -1247,6 +1329,11 @@ export class LivestockHandler {
     const count = cmd.count as number;
     if (!category) return { messages: ['Necesito la categoría. Ej: "nacieron 5 terneros en el lote A1".'] };
     if (!count || count <= 0) return { messages: ['Necesito la cantidad.'] };
+    { const bad = await validateMovementInput(count, cmd.eventDate); if (bad) return bad; }
+    // Sin lote: la ubicación del ÚNICO grupo de esa categoría, no el lote del
+    // último mensaje (HAC-7). Con varios, pregunta con pending.
+    const birthPreset = await this.presetLocationFromGroups(cmd, userId, category);
+    if (birthPreset) return birthPreset;
 
     const { group } = await this.service.recordBirth(userId, {
       category,
@@ -1281,6 +1368,11 @@ export class LivestockHandler {
     const count = cmd.count as number;
     if (!category) return { messages: ['Necesito la categoría. Ej: "en el lote A1 hay 50 vacas".'] };
     if (count == null || count < 0) return { messages: ['Necesito la cantidad (0 o más). Ej: "en el lote A1 hay 50 vacas".'] };
+    { const bad = await validateMovementInput(count, cmd.eventDate, { allowZero: true }); if (bad) return bad; }
+    // "hay 45 vacas" sin lote: la ubicación del único grupo (HAC-7), no el
+    // lote del contexto — antes metía 45 nuevas en el Norte con 50 en el Sur.
+    const adjustPreset = await this.presetLocationFromGroups(cmd, userId, category);
+    if (adjustPreset) return adjustPreset;
 
     const { group, previousCount } = await this.service.adjustAnimals(userId, {
       category,
@@ -2068,6 +2160,12 @@ export class LivestockHandler {
   private async logWeighing(cmd: ParsedCommand, userId: UserId): Promise<HandlerResponse> {
     const avgWeightKg = typeof cmd.avg_weight_kg === 'number' ? cmd.avg_weight_kg : null;
     if (!avgWeightKg) return { messages: ['Necesito el peso promedio en kg. Ej: "pesé los novillos, 380 kg promedio".'] };
+    // Peso PROMEDIO por animal: 19.000 kg es un total, no un promedio (HAC-23).
+    if (avgWeightKg < 1 || avgWeightKg > 1500) {
+      console.log(`[INTERCEPT] log_weighing peso fuera de rango: ${avgWeightKg} kg`);
+      return { messages: [`⚖️ *${avgWeightKg.toLocaleString('es-AR')} kg* no puede ser el peso promedio por animal. Si es el total, decime cuántos animales pesaste y lo divido; si no, el promedio (ej: "380 kg promedio").`] };
+    }
+    { const bad = await validateMovementInput(cmd.animalsWeighed ?? null, cmd.eventDate); if (bad) return bad; }
 
     const loc = await this.resolveEventLocationOrAsk(cmd, userId);
     if ('error' in loc) return { messages: [loc.error] };
@@ -2615,4 +2713,30 @@ export class LivestockHandler {
 export function coerceCategory(raw: unknown): LivestockCategory | null {
   if (typeof raw !== 'string') return null;
   return LivestockService.normalizeCategory(raw);
+}
+
+/**
+ * Validación común de un movimiento de hacienda (HAC-25): cantidad ENTERA y
+ * razonable, y fecha que no sea futura (una baja, muerte o nacimiento ya
+ * ocurrió). Antes solo el alta validaba: 2,5 cabezas daba un error de tipo,
+ * 999.999.999 se aceptaba y una muerte podía quedar en 2031.
+ */
+async function validateMovementInput(
+  count: unknown, eventDate: unknown, opts: { allowZero?: boolean } = {},
+): Promise<HandlerResponse | null> {
+  const { validateLivestockCount, validateDate } = await import('../../utils/value-validator.js');
+  if (count != null && !(opts.allowZero && Number(count) === 0)) {
+    const c = validateLivestockCount(Number(count));
+    if (!c.ok) return { messages: [c.reason] };
+  }
+  const d = validateDate((eventDate as string) ?? null, 'fecha del movimiento');
+  if (!d.ok) return { messages: [d.reason] };
+  if (typeof eventDate === 'string' && eventDate) {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+    if (eventDate.slice(0, 10) > today) {
+      console.log(`[INTERCEPT] movimiento de hacienda con fecha futura rechazado: ${eventDate}`);
+      return { messages: [`📅 La fecha ${eventDate.slice(8, 10)}/${eventDate.slice(5, 7)}/${eventDate.slice(0, 4)} todavía no llegó. Si es algo que vas a hacer, pedime un recordatorio; si ya pasó, decime la fecha correcta.`] };
+    }
+  }
+  return null;
 }

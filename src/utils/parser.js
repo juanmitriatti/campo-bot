@@ -92,7 +92,13 @@ const WRITTEN_NUMBERS = {
   "cero": 0, "un": 1, "uno": 1, "una": 1, "dos": 2, "tres": 3, "cuatro": 4,
   "cinco": 5, "seis": 6, "siete": 7, "ocho": 8, "nueve": 9, "diez": 10,
   "once": 11, "doce": 12, "trece": 13, "catorce": 14, "quince": 15,
-  "veinte": 20, "treinta": 30, "cuarenta": 40, "cincuenta": 50,
+  // 16-19 y 21-29 se escriben en una palabra: sin ellas "veinticinco mil" era
+  // $1.000 y "dieciocho mil quinientos" $1.500 (FIN-4, auditoría oct 2026).
+  "dieciseis": 16, "diecisiete": 17, "dieciocho": 18, "diecinueve": 19,
+  "veinte": 20, "veintiun": 21, "veintiuno": 21, "veintiuna": 21, "veintidos": 22,
+  "veintitres": 23, "veinticuatro": 24, "veinticinco": 25, "veintiseis": 26,
+  "veintisiete": 27, "veintiocho": 28, "veintinueve": 29,
+  "treinta": 30, "cuarenta": 40, "cincuenta": 50,
   "sesenta": 60, "setenta": 70, "ochenta": 80, "noventa": 90,
   "cien": 100, "ciento": 100, "doscientos": 200, "trescientos": 300,
   "cuatrocientos": 400, "quinientos": 500, "seiscientos": 600,
@@ -182,6 +188,14 @@ export function normalizarMonto(texto) {
     return parseInt(matchPesos[1]);
   }
 
+  // Compuesto: "2 millones 300 mil", "3 palos 200", "1 palo y 500 lucas". Antes
+  // se tomaba solo el primer término: $2.000.000 y $3.000.000 (FIN-4). El resto
+  // son miles; un número seguido de una unidad física (kg, ha, tn…) no se suma.
+  const matchCompound = lower.match(/(\d+(?:,\d+)?)\s?(?:millones|millon|palos|palo)\s+(?:y\s+)?(\d{1,3})(?:\s?(?:mil|lucas?))?(?!\s?(?:[\d,]|kg|kilos?|tn|t\b|ha|has|hect|lt|litros?|qq|cabezas?|%|dolares|usd))/);
+  if (matchCompound) {
+    return Math.round(num(matchCompound[1]) * 1_000_000 + Number(matchCompound[2]) * 1_000);
+  }
+
   // "millones" / "palos" ANTES de "mil"
   const matchMillones = lower.match(/(\d+(?:,\d+)?)\s?(millones|millon|palos|palo)/);
   if (matchMillones) return scaled(matchMillones[1], matchMillones[2]);
@@ -202,6 +216,8 @@ export function normalizarMonto(texto) {
   // Standalone number (for flows and direct amount input like "500" or "200 dolares")
   const stripped = lower.replace(/\s*(?:d[oó]lares?|pesos?|usd|ars|u\$s|us\$|u\$d)\s*/g, '').trim();
   if (/^\d+$/.test(stripped)) return parseInt(stripped);
+  // Formato contable "1.250.000,50" (los puntos ya se sacaron): coma + centavos.
+  if (/^\d+,\d{1,2}$/.test(stripped)) return num(stripped);
 
   return null;
 }
@@ -1048,8 +1064,10 @@ const COMMAND_PATTERNS = [
           raw = beforeField.trim();
         }
       }
+      // La coma DECIMAL (dígito a ambos lados) no separa lotes: "Fondo 60,5 ha"
+      // creaba el lote "Fondo 60" sin superficie (CAM-13, auditoría oct 2026).
       const names = raw
-        .split(/\s*[,]\s*|\s+y\s+/)
+        .split(/\s*(?:(?<!\d),|,(?!\d))\s*|\s+y\s+/)
         .map(n => n.trim())
         .filter(n => n.length > 0 && !/^\d+\s*ha$/i.test(n));
       const result = { plotNames: names };
@@ -1450,7 +1468,11 @@ const COMMAND_PATTERNS = [
   // "tope Y X" all resolve the category via detectarCategoria (not the raw "de").
   {
     command: "set_budget",
-    patterns: [/\b(?:presupuesto|presup|limite|tope|techo)\b/],
+    // "techo", "límite" y "tope" solos son palabras comunes ("arreglé el techo del
+    // galpón, 300 mil", "alambrado en el límite con el vecino"): se los comía como
+    // presupuesto y el gasto se perdía (FIN-13). Solo "presupuesto" o "límite/tope/
+    // techo DE GASTO(S)".
+    patterns: [/\b(?:presupuesto|presup)\b|\b(?:limite|tope|techo)\s+(?:de\s+|para\s+)?(?:gastos?|plata)\b/],
     extract: (_m, _normalized, original) => {
       const parsed = parseBudget(original);
       if (!parsed) return null;
@@ -1469,6 +1491,13 @@ const COMMAND_PATTERNS = [
   },
 
   // --- Borrar último gasto/ingreso/actividad ---
+  // "borrá el último gasto DE gasoil": el referente es un filtro. Antes caía en
+  // delete_last a secas y borraba el último gasto, fuera cual fuera (FIN-20).
+  {
+    command: "delete_last_expense",
+    patterns: [/(?:borr(?:ar|a)|elimin(?:ar|a))\s+(?:el\s+|la\s+)?(?:ultim[oa]|ultima)\s+gasto\s+(?:de(?:l)?|en)\s+(?:la\s+|el\s+)?([a-z0-9][a-z0-9\s-]{1,40}?)\s*$/],
+    extract: (m) => ({ categoryFilter: m[1].trim() }),
+  },
   { command: "delete_last", patterns: [/(?:borr(?:ar|a)|elimin(?:ar|a))\s+(?:el\s+|la\s+)?(?:ultim[oa]|ultima)\s+gasto/] },
   { command: "delete_last_income", patterns: [/(?:borr(?:ar|a)|elimin(?:ar|a))\s+(?:el\s+|la\s+)?(?:ultim[oa]|ultima)\s+ingreso/] },
   { command: "delete_last_activity", patterns: [/(?:borr(?:ar|a)|elimin(?:ar|a))\s+(?:el\s+|la\s+)?(?:ultim[oa]|ultima)\s+(?:actividad|siembra|fumigaci[oó]n|fertilizaci[oó]n|cosecha|labranza|riego)/] },

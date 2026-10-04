@@ -1,3 +1,4 @@
+import { detectCurrencyTerm } from '../../utils/lexicon.js';
 import { normalizarMonto } from '../../utils/parser.js';
 import { formatMoney } from '../../utils/format-money.js';
 import { FinancialService } from '../../domain/financial/financial.service.js';
@@ -28,7 +29,8 @@ const steps: FlowStep[] = [
     validate: (input) => {
       const amount = normalizarMonto(input);
       if (!amount || amount <= 0) return { error: 'No entendí el monto. Probá con un número, ej: 50000 o 50mil' };
-      const isUsd = /d[oó]lar|usd/i.test(input);
+      // Fuente única de monedas (u$s, US$, verdes…): FIN-14.
+      const isUsd = detectCurrencyTerm(input) === 'USD';
       return { value: { amount, currency: isUsd ? 'USD' : 'ARS' } };
     },
   },
@@ -185,7 +187,10 @@ export const expenseFlow: FlowDefinition = {
       const similar = await categoryService.findSimilar(userId, 'expense', finalCategory);
       if (similar) {
         const { encodePendingExpensePayload } = await import('../../domain/financial/financial.handler.js');
-        const payload = encodePendingExpensePayload({
+        // Por token (callback-payload-store): el router ya no acepta el payload
+        // inline, y en base64 pasaba los 64 bytes de Telegram (auditoría oct 2026).
+        const { callbackPayloadStore } = await import('../callback-payload-store.js');
+        const payload = callbackPayloadStore.set(encodePendingExpensePayload({
           data: {
             type: 'expense',
             amount: amountInfo.amount,
@@ -200,7 +205,7 @@ export const expenseFlow: FlowDefinition = {
           },
           fieldId,
           plotId,
-        });
+        }));
         return {
           messages: [],
           interactive: {

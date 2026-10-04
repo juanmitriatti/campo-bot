@@ -564,7 +564,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
   {
     name: 'edit_last_income',
-    description: 'Corregir/editar el ÚLTIMO ingreso registrado: cambiar monto, categoría, fecha, lote o campo. Triggers: "perdón el ingreso era 100 mil", "no eran 50 mil eran 60 mil", "el último ingreso era de febrero", "el cobro de soja sacale el lote".',
+    description: 'Corregir/editar el ÚLTIMO ingreso registrado: cambiar monto, categoría, fecha, lote o campo, o FIJAR el precio de una venta a fijar ("fijé la soja a 300 USD la tn" → new_unit_price). Triggers: "perdón el ingreso era 100 mil", "el último ingreso era de febrero".',
     input_schema: {
       type: 'object',
       properties: {
@@ -575,6 +575,8 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         new_plot: { type: 'string', description: 'Nuevo lote correcto.' },
         new_field: FIELD_PROP,
         clear_lot: { type: 'boolean', description: 'Quitar el lote.' },
+        new_unit_price: { type: 'number', description: 'Precio por unidad al fijar.' },
+        price_status: { type: 'string', enum: ['fijado', 'a_fijar'] },
       },
       required: [],
     },

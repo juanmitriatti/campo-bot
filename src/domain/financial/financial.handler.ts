@@ -108,7 +108,19 @@ async function buildExpenseConfirmation(data: ParsedExpense, fieldName: string |
   if (loc) msg += `\n\ud83d\udccd ${loc}`;
   const dateLabel = formatEventDate(data.expenseDate);
   if (dateLabel) msg += `\n\ud83d\udcc5 ${dateLabel}`;
-  return msg;
+  return msg + futureDateNote(data.expenseDate);
+}
+
+/**
+ * Un registro con fecha FUTURA casi siempre es un error de fecha (un plan va a
+ * recordatorio, invariante 12): se guarda igual pero se avisa (FIN-40).
+ */
+function futureDateNote(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+  if (String(dateStr).slice(0, 10) <= todayStr) return '';
+  console.log(`[INTERCEPT] registro con fecha futura: ${dateStr}`);
+  return '\n\n\u26a0\ufe0f Qued\u00f3 con una fecha futura. Si fue otro d\u00eda, decime "era de ayer" o la fecha; si es algo que ten\u00e9s que hacer, pedime un recordatorio.';
 }
 
 async function buildIncomeConfirmation(data: ParsedIncome | Record<string, unknown>, fieldName: string | null, plotName: string | null = null): Promise<string> {
@@ -128,7 +140,7 @@ async function buildIncomeConfirmation(data: ParsedIncome | Record<string, unkno
   if (loc) msg += `\n\ud83d\udccd ${loc}`;
   const dateLabel = formatEventDate((data as any).incomeDate);
   if (dateLabel) msg += `\n\ud83d\udcc5 ${dateLabel}`;
-  return msg;
+  return msg + futureDateNote((data as any).incomeDate);
 }
 
 /**
@@ -376,6 +388,10 @@ export function encodePendingIncomePayload(p: { data: ParsedIncome; fieldId: num
     q: p.data.quantity ?? null,
     u: p.data.unit ?? null,
     up: p.data.unit_price ?? null,
+    // Venta de grano: comprador y estado del precio (FIN-11). Sin esto una venta
+    // que pasaba por el picker de categoría perdía el acopio.
+    b: p.data.buyer ?? null,
+    ps: p.data.price_status ?? null,
     n: randomBytes(4).toString('base64url'),
   });
   return Buffer.from(json, 'utf8').toString('base64url');
@@ -404,6 +420,8 @@ export function decodePendingIncomePayload(b64: string): { data: ParsedIncome; f
       quantity: o.q ?? null,
       unit: o.u ?? null,
       unit_price: o.up ?? null,
+      ...(o.b ? { buyer: o.b } : {}),
+      ...(o.ps === 'fijado' || o.ps === 'a_fijar' ? { price_status: o.ps } : {}),
     },
   };
 }
@@ -653,7 +671,7 @@ export class FinancialHandler {
       sortBy: (cmd.sort_by as 'date' | 'amount') || 'date',
       sortDesc: cmd.sort_desc != null ? !!cmd.sort_desc : true,
       groupBy: (cmd.group_by as 'category' | 'plot' | 'field' | 'month') || 'category',
-      limit: 200,
+      limit: REPORT_ROW_CAP,
     };
 
     // ── 5. Determine view ──
@@ -782,7 +800,9 @@ export class FinancialHandler {
     {
       const { validateAmount, validateDate } = await import('../../utils/value-validator.js');
       // Defensive: agent strips '-' sign before sending. Detect minus prefix in original text.
-      if (/(?:^|\s)-\s*\d/.test(text)) {
+      // Solo un menos PEGADO al número: "gasoil - 50 mil" o "del 1 - 15" son
+      // separadores, no un monto negativo (FIN-26).
+      if (/(?:^|[\s$])-\d/.test(text)) {
         return { messages: ['El monto del gasto no puede ser negativo. Si querés deshacer un gasto, decime "borrar último gasto".'] };
       }
       const amtCheck = validateAmount(data.amount, 'monto del gasto');
@@ -1201,7 +1221,7 @@ export class FinancialHandler {
     // Hardening: reject negative/absurd amounts + out-of-range dates first.
     {
       const { validateAmount, validateDate } = await import('../../utils/value-validator.js');
-      if (/(?:^|\s)-\s*\d/.test(text)) {
+      if (/(?:^|[\s$])-\d/.test(text)) {
         return { messages: ['El monto del ingreso no puede ser negativo.'] };
       }
       const amtCheck = validateAmount(data.amount, 'monto del ingreso');
@@ -1821,8 +1841,14 @@ export class FinancialHandler {
       // --- Delete last expense (with optional category filter) ---
       case 'delete_last_expense': {
         const categoryFilter = cmd.categoryFilter as string | null;
+        // El id que se mostró en la confirmación (FIN-10): se borra ESE, con el
+        // usuario en la query, aunque entre medio haya entrado otro gasto.
+        const targetId = Number((cmd as Record<string, unknown>)._targetExpenseId) || null;
+        const targeted = targetId
+          ? (await pool.query(`SELECT * FROM expenses WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, [targetId, userId])).rows[0] ?? null
+          : null;
         const last = categoryFilter
-          ? await this.service.findLastExpenseByCategory(userId, categoryFilter)
+          ? (targeted ?? await this.service.findLastExpenseByCategory(userId, categoryFilter))
           : await (async () => {
               const deleted = await this.service.deleteLastExpense(userId);
               return deleted ? { deleted: true, category: deleted.category, amount: deleted.amount } : null;
@@ -1868,7 +1894,9 @@ export class FinancialHandler {
         const newPlotName = cmd.newPlotName as string | null;
         const newFieldName = cmd.newFieldName as string | null;
         const clearLot = !!cmd.clearLot;
-        if (newAmount == null && !newCategoryRaw && !newDate && !newPlotName && !clearLot && !newFieldName) {
+        const newUnitPrice = (cmd.newUnitPrice as number | null) ?? null;
+        const priceStatus = (cmd.priceStatus as string | null) ?? null;
+        if (newAmount == null && !newCategoryRaw && !newDate && !newPlotName && !clearLot && !newFieldName && newUnitPrice == null && !priceStatus) {
           return { messages: ['¿Qué corregimos del ingreso? Decime el nuevo monto, categoría, lote o fecha.'] };
         }
         // Referent given ("el de soja") but no matching income → say so instead of
@@ -1901,11 +1929,13 @@ export class FinancialHandler {
             scaledIncAmount = inheritScaleInc(newAmount, prevInc ? Number(prevInc.amount) || null : null, cmd.originalText as string | null, (prevInc?.currency as string | null) ?? null);
           } catch { /* best-effort */ }
         }
-        const edited = await this.service.editLastIncomeFull(userId, { newAmount: scaledIncAmount, newCategory, newDate, newFieldId, newPlotId }, incomeCategoryFilter);
+        const edited = await this.service.editLastIncomeFull(userId, { newAmount: scaledIncAmount, newCategory, newDate, newFieldId, newPlotId, newUnitPrice, priceStatus }, incomeCategoryFilter);
         if (!edited) return { messages: ['No hay ingresos para editar.'] };
         const { formatMoney } = await import('../../utils/format-money.js');
         const parts: string[] = [];
-        if (scaledIncAmount != null) parts.push(`💵 ${formatMoney(edited.oldAmount, edited.currency)} → ${formatMoney(scaledIncAmount, edited.currency)}`);
+        if (newUnitPrice != null) parts.push(`🏷️ Precio fijado: ${formatMoney(newUnitPrice, edited.currency)} por unidad`);
+        const shownAmount = scaledIncAmount ?? edited.newAmount;
+        if (shownAmount != null) parts.push(`💵 ${formatMoney(edited.oldAmount, edited.currency)} → ${formatMoney(shownAmount, edited.currency)}`);
         if (newCategory) parts.push(`🏷️ → *${newCategory}*`);
         if (newDate) parts.push(`📅 → ${newDate}`);
         return { messages: [`✏️ Ingreso corregido (${edited.category}):\n${parts.join('\n')}`] };
@@ -2234,7 +2264,7 @@ export class FinancialHandler {
           // Fetch individual movements
           const { getMovementsInRange } = await import('../../services/expenses.js');
           const movs = await getMovementsInRange(userId, desde, hasta, {
-            fieldName, plotName, category, limit: 200,
+            fieldName, plotName, category, limit: REPORT_ROW_CAP,
             type: reportType === 'expenses' ? ('expenses' as const) : reportType === 'incomes' ? ('incomes' as const) : ('both' as const),
           });
 
@@ -3397,7 +3427,14 @@ export class FinancialHandler {
         if (plots.length === 0) {
           return { messages: [`No encontr\u00e9 el lote *${cmd.plotName}*.`] };
         }
-        const areaOk = await this.service.setPlotArea(plots[0].id, cmd.hectares as number, userId);
+        // Misma regla que el pending de superficie: > 0 y < 100.000 ha. Antes
+        // aceptaba 0, negativos y 99.999.999.999 ha (CAM-11).
+        const ha = Number(cmd.hectares);
+        if (!Number.isFinite(ha) || ha <= 0 || ha >= 100000) {
+          console.log(`[INTERCEPT] set_plot_area rechazado: ${String(cmd.hectares)} ha (user ${userId})`);
+          return { messages: [`🤔 *${cmd.hectares ?? '?'} ha* no es una superficie válida para el lote *${plots[0].name}*. Decime las hectáreas (ej: "el lote ${plots[0].name} tiene 50 ha").`] };
+        }
+        const areaOk = await this.service.setPlotArea(plots[0].id, ha, userId);
         if (!areaOk) {
           return { messages: [`Solo el dueño del campo *${plots[0].field_name}* puede cambiar la superficie de sus lotes. No cambié nada.`] };
         }
@@ -3998,6 +4035,12 @@ interface RenderCtx {
 }
 
 const LIST_CAP = 20;
+/**
+ * Los totales de un reporte se calculan sobre las filas traídas: con el tope de
+ * 200 de antes, un usuario con más movimientos veía totales falsos sin aviso
+ * (FIN-12). El listado igual se recorta a LIST_CAP al mostrarse.
+ */
+const REPORT_ROW_CAP = 50_000;
 
 function buildScopeLabel(f: { fieldName?: string | null; plotName?: string | null; category?: string | null; categories?: string[]; descriptionSearch?: string | null; currency?: string | null; excludeCategories?: string[]; amountMin?: number | null; amountMax?: number | null }): string {
   const parts: string[] = [];

@@ -171,7 +171,7 @@ export class FinancialRepository {
     await _updateExpenseFields(expenseId, fields);
   }
 
-  async updateIncomeFields(incomeId: number, fields: { amount?: number | null; category?: string | null; incomeDate?: string | null; fieldId?: number | null; plotId?: number | null }): Promise<void> {
+  async updateIncomeFields(incomeId: number, fields: { amount?: number | null; category?: string | null; incomeDate?: string | null; fieldId?: number | null; plotId?: number | null; unitPrice?: number | null; priceStatus?: string | null }): Promise<void> {
     await _updateIncomeFields(incomeId, fields);
   }
 

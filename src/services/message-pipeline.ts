@@ -1211,6 +1211,13 @@ async function processTextMessageInner(
         const newCount = extractCountCorrection(text);
         if (newCount != null) {
           const corr = await new LivestockRepository().correctUnpricedMovementCount(userId, String(lvMovementId), newCount);
+          if (corr && typeof corr === 'object' && 'insufficient' in corr) {
+            console.log(`[INTERCEPT] livestock count correction rechazada: ${newCount} > ${corr.insufficient} disponibles (movement=${lvMovementId})`);
+            const ask = pendingAct.askPrompt || '💰 ¿A cuánto fue? (precio por cabeza)';
+            return [{ type: 'text', text: `⚠️ No puedo dejar la venta en ${newCount}: el grupo tenía ${corr.insufficient}. No cambié nada.
+
+${ask}` }];
+          }
           if (corr && corr !== 'not_found' && corr !== 'already_priced') {
             console.log(`[INTERCEPT] livestock count correction during price-pending: movement=${lvMovementId} ${corr.oldCount}→${corr.newCount} (${corr.category})`);
             const verb = corr.movementType === 'entrada' ? 'compra' : 'venta';
@@ -1252,6 +1259,9 @@ async function processTextMessageInner(
         if (!(merged as Record<string, unknown>).command) {
           (merged as Record<string, unknown>).command = pendingAct.command;
         }
+        // El texto de ESTA respuesta, para handlers que interpretan su forma
+        // ("a 2800 el kilo" es precio por kg, no por cabeza — HAC-2).
+        (merged as Record<string, unknown>)._answerText = text;
         // P0: a financial pending with queued siblings re-routes in bulkMode so
         // income/expense SAVE at field-level instead of asking "¿en qué lote?".
         // That plot-ask spawned a parallel pending that desynced the serial queue
@@ -1376,6 +1386,10 @@ async function processTextMessageInner(
     const { tryApplyPendingCorrection } = await import('../middleware/pending-correction-interceptor.js');
     const corr = tryApplyPendingCorrection(text, pending as any);
     if (corr.applied) {
+      const resolved = await resolvePendingCorrection(corr, pending as unknown as Record<string, unknown>, userId);
+      if (resolved.reject) {
+        return [{ type: 'text', text: resolved.reject }, ...collectResponse((await import('../domain/financial/financial.handler.js')).renderPendingCard(pending as any))];
+      }
       pendingStore.set(phone, corr.updatedPending as any);
       conversationLogger.log(userId, phone, text, corr.body!, 'command', 'correction_applied', null, null, false, Date.now() - startTime, true, 1.0, null, null, ctx.channel).catch(() => {});
       return [
@@ -1889,6 +1903,52 @@ async function escalatePendingToAgent(
 }
 
 /**
+ * Completa una corrección de la tarjeta contra la base (muta `corr`):
+ *  - lote → plotId/fieldId reales. Antes cambiaba solo el NOMBRE y se guardaba
+ *    en el lote viejo (FIN-1). Sin match: no se toca nada y se explica.
+ *  - categoría → la del catálogo del usuario (o la parecida); una que no existe
+ *    queda avisada en la tarjeta en vez de crearse callada (FIN-2).
+ */
+async function resolvePendingCorrection(
+  corr: import('../middleware/pending-correction-interceptor.js').PendingCorrectionResult,
+  pending: Record<string, unknown>,
+  userId: UserId,
+): Promise<{ reject?: string }> {
+  const updated = corr.updatedPending as Record<string, unknown>;
+  const data = updated.data as Record<string, unknown>;
+  let note: string | undefined;
+  if (corr.correctedPlot) {
+    const { PlotDiscoveryService } = await import('../domain/plots/plot-discovery.service.js');
+    const r = await new PlotDiscoveryService().resolveFromNames(userId, (pending.fieldName as string | null) ?? null, corr.correctedPlot);
+    if (!r.plotId) {
+      console.log(`[INTERCEPT] pending-correction: lote «${corr.correctedPlot}» no encontrado — la tarjeta queda igual`);
+      return { reject: `🤔 No encontré el lote *${corr.correctedPlot}*. No cambié nada; decime el nombre como figura en *mis lotes*.` };
+    }
+    Object.assign(updated, { plotId: r.plotId, plotName: r.plotName, fieldId: r.fieldId, fieldName: r.fieldName });
+    data.plotName = r.plotName;
+    console.log(`[INTERCEPT] pending-correction: lote → ${r.plotName} (${r.plotId})`);
+  }
+  if (corr.correctedCategory) {
+    const kind = pending.type === 'income' ? 'income' : 'expense';
+    const { CategoryService } = await import('../domain/financial/category.service.js');
+    const { CategoryRepository } = await import('../domain/financial/category.repository.js');
+    const cs = new CategoryService(new CategoryRepository());
+    const m = await cs.match(Number(userId), kind, corr.correctedCategory, 'exact');
+    const similar = m.kind === 'matched' ? null : await cs.findSimilar(Number(userId), kind, corr.correctedCategory);
+    if (m.kind === 'matched') data.category = m.category.name;
+    else if (similar) data.category = similar.name;
+    else note = `⚠️ *${corr.correctedCategory}* no es una de tus categorías: si confirmás, la creo.`;
+  }
+  if (corr.correctedPlot || corr.correctedCategory) {
+    const { renderCorrectionCard } = await import('../middleware/pending-correction-interceptor.js');
+    const card = renderCorrectionCard(updated, note);
+    corr.body = card.body;
+    corr.buttons = card.buttons;
+  }
+  return {};
+}
+
+/**
  * Preview del registro que un delete_last_* va a borrar: "🗑️ Gasto: Combustible
  * $80.000 — 05/07". Devuelve '' si no se puede determinar (el confirm sale
  * igual, solo sin detalle). Best-effort: jamás rompe el flujo.
@@ -1899,6 +1959,16 @@ async function buildDeletePreview(command: string, userId: UserId, cmd?: ParsedC
       const dt = d instanceof Date ? d : new Date(String(d));
       return isNaN(dt.getTime()) ? '' : ` — ${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}`;
     };
+    // Con filtro ("borrá el último gasto de gasoil"): el MISMO registro que va a
+    // borrar el handler, y su id viaja en el comando para borrar justo ese.
+    // Antes la vista previa mostraba el último gasto a secas y se borraba otro (FIN-10).
+    if (command === 'delete_last_expense' && cmd?.categoryFilter) {
+      const row = await financialService.findLastExpenseByCategory(userId, cmd.categoryFilter as string) as
+        { id: number; category: string; amount: number; currency: string; expense_date?: unknown; created_at: unknown } | null;
+      if (!row) return '';
+      (cmd as Record<string, unknown>)._targetExpenseId = row.id;
+      return `🗑️ Gasto: ${row.category || 's/cat'} ${row.currency === 'USD' ? `${Number(row.amount).toLocaleString('es-AR')} USD` : `$${Number(row.amount).toLocaleString('es-AR')}`}${fmt(row.expense_date ?? row.created_at)}`;
+    }
     if (command === 'delete_last' || command === 'delete_last_expense') {
       const { rows } = await pool.query(
         `SELECT category, amount, currency, created_at FROM expenses WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`, [userId]);
@@ -2271,6 +2341,24 @@ async function handleInteractiveReplyInner(
     pendingDeleteConfirmStore.clear(phone);
     conversationLogger.log(userId, phone, `[${callbackId}]`, 'Operacion cancelada.', 'command', 'cancel', null, null, false, null, false, null, null, null, ctx.channel).catch(() => {});
     return [{ type: 'text', text: '❌ Operacion cancelada.' }];
+  }
+
+  // --- "¿$80 o $80.000?" de una corrección de monto en la tarjeta (FIN-17) ---
+  const amtPick = callbackId.match(/^pcorr_amt_(\d+(?:\.\d+)?)$/);
+  if (amtPick) {
+    const pendingTx = pendingStore.get(phone) as unknown as Record<string, unknown> | undefined;
+    if (!pendingTx || (pendingTx.type !== 'expense' && pendingTx.type !== 'income') || pendingTx._destructiveCommand) {
+      return [{ type: 'text', text: '⏰ Ese botón ya no tiene una tarjeta pendiente. No cambié nada.' }];
+    }
+    const amount = Number(amtPick[1]);
+    const updated = { ...pendingTx, data: { ...(pendingTx.data as Record<string, unknown>), amount } };
+    pendingStore.set(phone, updated as any);
+    const { renderCorrectionCard } = await import('../middleware/pending-correction-interceptor.js');
+    const card = renderCorrectionCard(updated);
+    return [
+      { type: 'text', text: card.body },
+      { type: 'interactive', interactive: { type: 'buttons', body: '¿Confirmás?', buttons: card.buttons } } as BotResponseItem,
+    ];
   }
 
   // --- Confirm pending financial transaction (buttons) ---

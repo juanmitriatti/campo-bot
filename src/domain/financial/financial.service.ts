@@ -194,21 +194,30 @@ export class FinancialService {
 
   async editLastIncomeFull(
     userId: UserId,
-    fields: { newAmount?: number | null; newCategory?: string | null; newDate?: string | null; newFieldId?: number | null; newPlotId?: number | null },
+    fields: { newAmount?: number | null; newCategory?: string | null; newDate?: string | null; newFieldId?: number | null; newPlotId?: number | null; newUnitPrice?: number | null; priceStatus?: string | null },
     categoryFilter: string | null = null,
-  ): Promise<{ id: number; category: string; oldAmount: number; currency: string } | null> {
+  ): Promise<{ id: number; category: string; oldAmount: number; currency: string; newAmount: number | null } | null> {
     const last = categoryFilter
       ? await this.repo.findLastIncomeByCategory(userId, categoryFilter)
       : await this.repo.getLastIncome(userId);
     if (!last) return null;
+    // Fijar el precio de una venta "a fijar": monto = cantidad × precio y queda
+    // 'fijado' (FIN-16). Antes no había forma: quedaba a_fijar con precio NULL.
+    let amount = fields.newAmount ?? null;
+    if (fields.newUnitPrice != null && amount == null && Number(last.quantity) > 0) {
+      amount = Math.round(Number(last.quantity) * fields.newUnitPrice * 100) / 100;
+    }
+    const priceStatus = fields.priceStatus ?? (fields.newUnitPrice != null ? 'fijado' : null);
     await this.repo.updateIncomeFields(last.id, {
-      amount: fields.newAmount ?? null,
+      unitPrice: fields.newUnitPrice ?? null,
+      priceStatus,
+      amount,
       category: fields.newCategory ?? null,
       incomeDate: fields.newDate ?? null,
       fieldId: fields.newFieldId === undefined ? undefined : fields.newFieldId,
       plotId: fields.newPlotId === undefined ? undefined : fields.newPlotId,
     });
-    return { id: last.id, category: last.category, oldAmount: Number(last.amount), currency: last.currency };
+    return { id: last.id, category: last.category, oldAmount: Number(last.amount), currency: last.currency, newAmount: amount };
   }
 
   async editSpecificIncomeFull(

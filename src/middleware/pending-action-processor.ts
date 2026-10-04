@@ -142,6 +142,10 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
 
   const stillEmpty = missing.filter((s) => {
     if (extracted[s as SlotName] != null) return false;
+    // Un precio POR UNIDAD con la cantidad ya conocida completa el monto por
+    // cross-fill: el fallback numérico no debe tomar ese número como total
+    // ("a 400 mil la tonelada" sobre 30 tn — FIN-5).
+    if (s === 'amount' && extracted.unit_price != null && Number(pdata.quantity) > 0) return false;
     return slotToCmdKeys(s as SlotName).every((k) => isBlankSlotValue(pdata[k]));
   });
   if (stillEmpty.length === 1) {

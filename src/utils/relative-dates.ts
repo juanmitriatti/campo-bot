@@ -134,13 +134,16 @@ export function resolveRelativeDate(text: string | null | undefined): string | n
   // most-recent PAST occurrence relative to AR-local today (the agent computed
   // these against UTC and landed them +1 day — silent corruption). "pasado" on
   // the same weekday → the previous week's.
-  const mWd = t.match(/\b(?:el\s+|este\s+|del\s+)?(domingo|lunes|martes|miercoles|jueves|viernes|sabado)(\s+pasado)?\b/);
+  // Con ARTÍCULO ("el lunes", "este martes"), al principio del mensaje o con
+  // "pasado". Sin eso es parte de un nombre: "en Santo Domingo", "le pagué a
+  // Domingo" corrían el gasto al domingo pasado (FIN-7, auditoría oct 2026).
+  const mWd = t.match(WEEKDAY_DATE_RE);
   if (mWd) {
     // "el sábado cosecho" / "el lunes voy a pagar" = plan futuro — NO retroceder
     // al sábado/lunes pasado. "pasado" explícito gana sobre el marcador futuro.
-    const pasado = !!mWd[2];
+    const pasado = !!(mWd[2] || mWd[4]);
     if (!pasado && hasFutureIntent(t)) return null;
-    const target = WEEKDAYS[mWd[1]];
+    const target = WEEKDAYS[mWd[1] || mWd[3]];
     const today = getNowArgentina().getDay();
     let diff = (today - target + 7) % 7; // 0 = today
     if (diff === 0 && pasado) diff = 7;
@@ -149,6 +152,8 @@ export function resolveRelativeDate(text: string | null | undefined): string | n
 
   return null;
 }
+
+const WEEKDAY_DATE_RE = /(?:\b(?:el|este|del|ese)\s+|^)(domingo|lunes|martes|miercoles|jueves|viernes|sabado)(\s+pasado)?\b|\b(domingo|lunes|martes|miercoles|jueves|viernes|sabado)(\s+pasado)\b/;
 
 const WEEKDAYS: Record<string, number> = {
   domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6,
@@ -162,7 +167,9 @@ const WEEKDAYS: Record<string, number> = {
  * en hoy, que es el default seguro). "ayer/anteayer/hace N" siguen resolviendo
  * porque son inequívocamente pasado.
  */
-const FUTURE_INTENT_RE = /\b(que\s+viene|proxim[oa]s?|man[ãa]na|pasado\s+man[ãa]na|voy\s+a|vamos\s+a|va\s+a\s+(?!llover)|ire|iremos|tengo\s+que|tenemos\s+que|hay\s+que|pienso|planeo|programo|agendar|recordame|cosecho|siembro|fumigo|aplico|pago|vendo|compro|empiezo|arranco)\b/;
+// "a la mañana" es un momento del día y "el pago" un sustantivo: "el lunes a la
+// mañana sembré" y "el martes hice el pago" quedaban con fecha de hoy (CONV-9).
+const FUTURE_INTENT_RE = /\b(que\s+viene|proxim[oa]s?|(?<!\bla\s)man[ãa]na|pasado\s+man[ãa]na|voy\s+a|vamos\s+a|va\s+a\s+(?!llover)|ire|iremos|tengo\s+que|tenemos\s+que|hay\s+que|pienso|planeo|programo|agendar|recordame|cosecho|siembro|fumigo|aplico|(?<!\b(?:el|un|del|al)\s)pago|vendo|compro|empiezo|arranco)\b/;
 
 export function hasFutureIntent(normalizedText: string): boolean {
   return FUTURE_INTENT_RE.test(normalizedText);
@@ -192,11 +199,12 @@ export function resolveAllRelativeDates(text: string | null | undefined): string
     /\besta\s+(?:manana|madrugada|tarde|noche)\b/,
     /\bhoy\s+(?:temprano|a\s+la\s+manana)\b/,
     /\bayer\b/,
+    /\bhoy\b/,
     // Días de semana: con intención futura ("el sábado cosecho" = plan) solo
     // resuelve la variante con "pasado" explícito.
     ...(hasFutureIntent(t)
       ? [/\b(?:domingo|lunes|martes|miercoles|jueves|viernes|sabado)\s+pasado\b/]
-      : [/\b(?:domingo|lunes|martes|miercoles|jueves|viernes|sabado)(?:\s+pasado)?\b/]),
+      : [/(?:\b(?:el|este|del|ese)\s+|^)(?:domingo|lunes|martes|miercoles|jueves|viernes|sabado)(?:\s+pasado)?\b|\b(?:domingo|lunes|martes|miercoles|jueves|viernes|sabado)\s+pasado\b/]),
   ];
   const hits: Array<{ pos: number; iso: string }> = [];
   let guard = 0;
@@ -207,7 +215,9 @@ export function resolveAllRelativeDates(text: string | null | undefined): string
       if (m && (best === null || m.index < best.index)) best = { index: m.index, str: m[0] };
     }
     if (!best) break;
-    const iso = resolveRelativeDate(best.str);
+    // "hoy" suelto cuenta como fecha SOLO en el reparto por entrada: "ayer fumigué
+    // … y hoy sembré …" dejaba la siembra de ayer (CONV-10).
+    const iso = /^hoy$/.test(best.str.trim()) ? daysAgo(0) : resolveRelativeDate(best.str);
     if (iso) hits.push({ pos: best.index, iso });
     // Mask the consumed region so it isn't re-matched (and a longer phrase doesn't
     // leave a shorter one behind).
