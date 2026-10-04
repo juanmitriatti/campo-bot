@@ -98,6 +98,8 @@ describe.skipIf(!dbAvailable)('acceso entre usuarios y prueba vencida en el dash
       await pool.query(`DELETE FROM stock_items WHERE user_id = ANY($1)`, [ids]).catch(() => {});
       await pool.query(`DELETE FROM warehouses WHERE field_id IN (SELECT id FROM fields WHERE user_id = ANY($1))`, [ids]).catch(() => {});
       await pool.query(`DELETE FROM livestock_groups WHERE user_id = ANY($1)`, [ids]).catch(() => {});
+      await pool.query(`DELETE FROM feedlots WHERE user_id = ANY($1)`, [ids]).catch(() => {});
+      await pool.query(`DELETE FROM expenses WHERE user_id = ANY($1)`, [ids]).catch(() => {});
       await pool.query(`DELETE FROM plots WHERE field_id IN (SELECT id FROM fields WHERE user_id = ANY($1))`, [ids]).catch(() => {});
       await pool.query(`DELETE FROM field_members WHERE user_id = ANY($1)`, [ids]).catch(() => {});
       await pool.query(`DELETE FROM fields WHERE user_id = ANY($1)`, [ids]).catch(() => {});
@@ -163,5 +165,36 @@ describe.skipIf(!dbAvailable)('acceso entre usuarios y prueba vencida en el dash
     expect(checkout.status === 403 ? (await checkout.json()).code : null).not.toBe('TRIAL_EXPIRED');
     // Un usuario al día escribe normal.
     expect((await call('B', '/fields', { method: 'POST', body: JSON.stringify({ name: 'Campo de B' }) })).status).not.toBe(403);
+  });
+  // Tanda 3 (permisos de miembro): un ex miembro no toca lo que cargó en el
+  // campo del dueño, y un miembro no renombra ni borra feedlots del dueño.
+  it('AIS-16: lo que B cargó en el campo de A, sin ser (ya) miembro, B no lo puede borrar ni editar', async () => {
+    const exp = (await pool.query(
+      `INSERT INTO expenses (user_id, category, description, amount, currency, field_id, plot_id)
+       VALUES ($1, 'Combustible', 'gasoil', 1000, 'ARS', $2, $3) RETURNING id`,
+      [users.B.id, fieldA, plotA],
+    )).rows[0].id;
+    expect((await call('B', `/expenses/${exp}`, { method: 'PATCH', body: JSON.stringify({ amount: 1 }) })).status).toBe(403);
+    expect((await call('B', `/expenses/${exp}`, { method: 'DELETE' })).status).toBe(404);
+    const row = (await pool.query(`SELECT amount, deleted_at FROM expenses WHERE id = $1`, [exp])).rows[0];
+    expect(Number(row.amount)).toBe(1000);
+    expect(row.deleted_at).toBeNull();
+    // A (dueño del campo) sí puede editarlo.
+    expect((await call('A', `/expenses/${exp}`, { method: 'PATCH', body: JSON.stringify({ amount: 1200 }) })).status).toBe(200);
+  });
+
+  it('AIS-15 + decisión: un miembro crea lotes en el campo del dueño, pero no renombra ni borra su feedlot', async () => {
+    await pool.query(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'member', $3)`, [fieldA, users.B.id, users.A.id]);
+    try {
+      const fl = (await pool.query(`INSERT INTO feedlots (field_id, user_id, name) VALUES ($1, $2, 'Feedlot de A') RETURNING id`, [fieldA, users.A.id])).rows[0].id;
+      expect((await call('B', `/feedlots/${fl}`, { method: 'PATCH', body: JSON.stringify({ name: 'ZZHACK' }) })).status).toBe(403);
+      expect((await call('B', `/feedlots/${fl}`, { method: 'DELETE' })).status).toBe(403);
+      const flRow = (await pool.query(`SELECT name, deleted_at FROM feedlots WHERE id = $1`, [fl])).rows[0];
+      expect(flRow.name).toBe('Feedlot de A');
+      expect(flRow.deleted_at).toBeNull();
+      expect((await call('B', `/fields/${fieldA}/plots`, { method: 'POST', body: JSON.stringify({ name: 'Lote de B', hectares: 12 }) })).status).toBe(201);
+    } finally {
+      await pool.query(`DELETE FROM field_members WHERE field_id = $1 AND user_id = $2`, [fieldA, users.B.id]);
+    }
   });
 });

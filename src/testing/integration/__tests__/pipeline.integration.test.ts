@@ -722,6 +722,108 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('permisos de miembro en un campo compartido (auditoría oct 2026, tanda 3)', () => {
+    // Decisión de producto: un miembro crea lotes y carga datos; borrar,
+    // restaurar y cambiar superficie, ubicación o grupo es del dueño. Un ex
+    // miembro pierde todo lo que tenía abierto. Los chequeos estaban donde se
+    // ARMABA la pregunta y no donde se escribía.
+    let o: PipelineHarness; // dueño
+    let m: PipelineHarness; // miembro
+    let field: number; let norte: number;
+
+    beforeAll(async () => {
+      o = await createPipelineHarness('perm-duenio');
+      m = await createPipelineHarness('perm-miembro');
+      field = (await o.q(`INSERT INTO fields (user_id, name, city) VALUES ($1, 'La Compartida', 'Junín') RETURNING id`, [o.userId]))[0].id as number;
+      await o.q(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2)`, [field, o.userId]);
+      await o.q(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'member', $3)`, [field, m.userId, o.userId]);
+      norte = (await o.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 100) RETURNING id`, [field]))[0].id as number;
+    });
+    // El miembro primero (sus filas apuntan al campo del dueño).
+    afterAll(async () => { await m?.cleanup(); await o?.cleanup(); });
+
+    const area = async () => Number((await o.q(`SELECT area_hectares FROM plots WHERE id = $1`, [norte]))[0].area_hectares);
+
+    it('AIS-5 / CAM-1: el miembro no borra el campo ni el lote del dueño ni con el botón de confirmar', async () => {
+      const { pendingDeleteConfirmStore } = await import('../../../services/message-pipeline.js');
+      pendingDeleteConfirmStore.set(m.phone, { kind: 'field', fieldName: 'La Compartida' });
+      const f1 = await m.tap('confirm_delete_field_La_Compartida');
+      expect(m.allText(f1)).toMatch(/Solo el dueño/i);
+      pendingDeleteConfirmStore.set(m.phone, { kind: 'plot', fieldName: null, plotName: 'Norte' });
+      const p1 = await m.tap('confirm_delete_plot_Norte_in_La_Compartida');
+      expect(m.allText(p1)).toMatch(/Solo el dueño/i);
+      expect(await o.q(`SELECT 1 FROM fields WHERE id = $1 AND deleted_at IS NULL`, [field])).toHaveLength(1);
+      expect(await o.q(`SELECT 1 FROM plots WHERE id = $1 AND deleted_at IS NULL`, [norte])).toHaveLength(1);
+    });
+
+    it('CAM-2: el miembro no cambia superficie ni ubicación del dueño; sí crea un lote con su superficie inicial', async () => {
+      m.fakeAgent.enqueueTool('set_plot_area', { plot: 'Norte', hectares: 5 });
+      const a1 = await m.send('el norte tiene 5 hectáreas');
+      expect(m.allText(a1)).toMatch(/Solo el dueño/i);
+      expect(await area()).toBe(100);
+
+      m.fakeAgent.enqueueTool('set_field_city', { field: 'La Compartida', city: 'Pergamino' });
+      const c1 = await m.send('la compartida está en pergamino');
+      expect(m.allText(c1)).toMatch(/Solo el dueño/i);
+      expect((await o.q(`SELECT city FROM fields WHERE id = $1`, [field]))[0].city).toBe('Junín');
+
+      m.fakeAgent.enqueueTool('add_plot', { plotName: 'Bajo', field: 'La Compartida', hectares: 30 });
+      const p1 = await m.send('sumale a la compartida uno nuevo que le decimos bajo');
+      expect(m.allText(p1)).toMatch(/Bajo/);
+      const bajo = await o.q(`SELECT area_hectares FROM plots WHERE field_id = $1 AND name = 'Bajo'`, [field]);
+      expect(Number(bajo[0]?.area_hectares)).toBe(30);
+    });
+
+    it('CAM-2: el miembro no restaura un lote que el dueño borró', async () => {
+      await o.q(`INSERT INTO plots (field_id, name, deleted_at, deleted_by) VALUES ($1, 'Viejo', NOW(), 'user')`, [field]);
+      m.fakeAgent.enqueueTool('restore_plot', { plot: 'Viejo', field: 'La Compartida' });
+      const r1 = await m.send('restaurá el lote viejo de la compartida');
+      expect(m.allText(r1)).toMatch(/Solo el dueño/i);
+      expect(await o.q(`SELECT 1 FROM plots WHERE field_id = $1 AND name = 'Viejo' AND deleted_at IS NULL`, [field])).toHaveLength(0);
+    });
+
+    it('CAM-3 / AIS-7: al quitarlo se borra lo que tenía abierto, y una tarjeta vieja no guarda en el campo del dueño', async () => {
+      const { pendingStore, pendingPlotAreaStore } = await import('../../../services/message-pipeline.js');
+      const card = {
+        type: 'expense',
+        data: { type: 'expense', amount: 80000, category: 'Combustible', description: 'gasoil', currency: 'ARS' },
+        fieldId: field, fieldName: 'La Compartida', plotId: norte, plotName: 'Norte', timestamp: Date.now(),
+      };
+      pendingStore.set(m.phone, card as never);
+      pendingPlotAreaStore.set(m.phone, { plotId: norte, plotName: 'Norte', fieldName: 'La Compartida' } as never);
+
+      const { FieldSharingService } = await import('../../../domain/sharing/field-sharing.service.js');
+      const res = await new FieldSharingService().removeMemberById(o.userId, field, m.userId);
+      expect(res.success).toBe(true);
+      expect(pendingStore.get(m.phone)).toBeFalsy();
+      expect(pendingPlotAreaStore.get(m.phone)).toBeFalsy();
+
+      // Aunque la tarjeta sobreviviera (otra réplica, restart), confirmar no escribe.
+      pendingStore.set(m.phone, card as never);
+      const done = await m.send('confirmar');
+      expect(m.allText(done)).toMatch(/Ya no tenés acceso/i);
+      expect(await o.q(`SELECT 1 FROM expenses WHERE field_id = $1 OR plot_id = $2`, [field, norte])).toHaveLength(0);
+
+      // Y la superficie de un lote del dueño tampoco.
+      pendingPlotAreaStore.set(m.phone, { plotId: norte, plotName: 'Norte', fieldName: 'La Compartida' } as never);
+      await m.send('50');
+      expect(await area()).toBe(100);
+      pendingStore.clear(m.phone);
+      pendingPlotAreaStore.clear(m.phone);
+    });
+
+    it('CAM-24: una invitación a un campo borrado no se acepta', async () => {
+      const gone = (await o.q(`INSERT INTO fields (user_id, name, deleted_at) VALUES ($1, 'Borrado', NOW()) RETURNING id`, [o.userId]))[0].id;
+      await o.q(`INSERT INTO field_invites (field_id, code, created_by, expires_at) VALUES ($1, 'ZZBORR', $2, NOW() + INTERVAL '1 day')`, [gone, o.userId]);
+      const { FieldSharingService } = await import('../../../domain/sharing/field-sharing.service.js');
+      const r = await new FieldSharingService().acceptInvite(m.userId, 'ZZBORR');
+      expect(r.success).toBe(false);
+      expect(r.message).toMatch(/ya no existe/i);
+      expect(await o.q(`SELECT 1 FROM field_members WHERE field_id = $1 AND user_id = $2`, [gone, m.userId])).toHaveLength(0);
+      await o.q(`DELETE FROM field_invites WHERE code = 'ZZBORR'`);
+    });
+  });
+
   describe('activity_flow — consistencia de TODOS los tipos del picker (Jul 2026)', () => {
     let h: PipelineHarness;
 

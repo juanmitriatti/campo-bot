@@ -2,22 +2,10 @@ import { pool, withTransaction } from "../config/db.js";
 import { getTodayISO } from "../utils/date.js";
 import { sqlNormalizedName, normalizeEntityName, stripLeadingArticle } from "../utils/entity-matcher.js";
 import { normalizePhone } from "../utils/phone.js";
-import { ensureOwnerMembership } from "../domain/shared/field-access.js";
-
-/**
- * Helper: returns a SQL subquery fragment for accessible field IDs
- * (own fields + fields shared via field_members).
- * Usage: `WHERE f.id IN (${accessibleFieldsSql(paramIdx)})` with userId as param.
- *
- * Used to live as "only field_members" which silently blocked owners from
- * seeing their own data — many callers had to add `(user_id = $X OR ...)`
- * to compensate. Now the helper covers both cases consistently.
- */
-function accessibleFieldsSql(paramIdx) {
-  return `SELECT id FROM fields WHERE user_id = $${paramIdx} AND deleted_at IS NULL
-          UNION
-          SELECT field_id FROM field_members WHERE user_id = $${paramIdx}`;
-}
+import { ensureOwnerMembership, isFieldOwner } from "../domain/shared/field-access.js";
+// Fuente única de acceso (había una copia local cuya pata de miembro no
+// filtraba campos borrados).
+import { accessibleFieldsSql, ownedFieldsSql } from "../domain/shared/accessible-fields.js";
 
 export async function getOrCreateUser(phone) {
   // Canónico SIEMPRE (utils/phone.ts, fuente única): la misma persona llegaba
@@ -750,12 +738,18 @@ export async function setFieldCity(userId, fieldName, city, province = null) {
     const { localidadLookup } = await import('./localidad-lookup.service.js');
     coords = localidadLookup.coordsFor(city, province);
   } catch { /* lookup no disponible: seguimos sin coords */ }
-  await pool.query(
+  // Solo campos PROPIOS (la ubicación del campo la cambia el dueño). Antes
+  // era un UPDATE masivo por nombre sobre todos los campos accesibles: un
+  // miembro con un campo homónimo propio le cambiaba la ubicación al del dueño
+  // (auditoría oct 2026, CAM-25). Devuelve cuántos campos actualizó.
+  const r = await pool.query(
     `UPDATE fields SET city = $1, province = COALESCE($4, province),
        latitude = COALESCE(latitude, $5), longitude = COALESCE(longitude, $6)
-     WHERE id IN (${accessibleFieldsSql(2)}) AND LOWER(name) = LOWER($3)`,
+     WHERE id IN (${ownedFieldsSql(2)}) AND deleted_at IS NULL AND LOWER(name) = LOWER($3)`,
     [city, userId, fieldName, province, coords?.lat ?? null, coords?.lon ?? null]
   );
+  if (r.rowCount === 0) console.log(`[INTERCEPT] setFieldCity: user=${userId} no es dueño de un campo "${fieldName}" — no se cambia la ubicación`);
+  return r.rowCount;
 }
 
 export async function setFieldCoordinates(fieldId, lat, lng) {
@@ -832,6 +826,12 @@ export async function getUserFieldCount(userId) {
 export async function deleteField(userId, fieldName) {
   const field = await getFieldByName(userId, fieldName);
   if (!field) return false;
+  // Chequeo de dueño DONDE se borra: antes vivía solo donde se armaba el botón
+  // de confirmar, y un miembro borraba el campo del dueño tocándolo (AIS-5).
+  if (!(await isFieldOwner(userId, field.id))) {
+    console.log(`[INTERCEPT] deleteField: user=${userId} no es dueño del campo ${field.id} — no se borra`);
+    return false;
+  }
 
   // Soft delete field
   await pool.query(
@@ -869,7 +869,7 @@ export async function restoreField(userId, fieldName) {
   // Only owner can restore — check field_members for owner role on deleted fields
   const result = await pool.query(
     `UPDATE fields SET deleted_at = NULL, deleted_by = NULL
-     WHERE id IN (SELECT fm.field_id FROM field_members fm WHERE fm.user_id = $1 AND fm.role = 'owner')
+     WHERE id IN (${ownedFieldsSql(1)})
      AND LOWER(name) = LOWER($2) AND deleted_at IS NOT NULL
      RETURNING *`,
     [userId, fieldName]
@@ -1148,12 +1148,18 @@ export async function findAllUserPlots(userId) {
   return result.rows;
 }
 
-export async function deletePlot(plotId, userId = null) {
-  // Soft delete plot
-  await pool.query(
-    `UPDATE plots SET deleted_at = NOW(), deleted_by = 'user' WHERE id = $1`,
-    [plotId]
+export async function deletePlot(plotId, userId) {
+  // Solo el dueño del campo borra sus lotes, y se chequea ACÁ (AIS-5).
+  if (userId == null) throw new Error('deletePlot requiere userId');
+  const del = await pool.query(
+    `UPDATE plots SET deleted_at = NOW(), deleted_by = 'user'
+      WHERE id = $1 AND deleted_at IS NULL AND field_id IN (${ownedFieldsSql(2)})`,
+    [plotId, userId]
   );
+  if (del.rowCount === 0) {
+    console.log(`[INTERCEPT] deletePlot: user=${userId} no es dueño del lote ${plotId} (o ya estaba borrado) — no se borra`);
+    return false;
+  }
 
   // Unlink expenses/incomes
   await pool.query(`UPDATE expenses SET plot_id = NULL WHERE plot_id = $1`, [plotId]);
@@ -1180,7 +1186,7 @@ export async function restorePlot(userId, plotName, fieldName) {
      WHERE id IN (
        SELECT p.id FROM plots p
        JOIN fields f ON p.field_id = f.id
-       WHERE f.id IN (${accessibleFieldsSql(1)}) AND LOWER(p.name) = LOWER($2)
+       WHERE f.id IN (${ownedFieldsSql(1)}) AND f.deleted_at IS NULL AND LOWER(p.name) = LOWER($2)
          AND LOWER(f.name) = LOWER($3) AND p.deleted_at IS NOT NULL
      )
      RETURNING *`,
@@ -1198,18 +1204,36 @@ export async function restorePlot(userId, plotName, fieldName) {
   return result.rows[0];
 }
 
-export async function setPlotArea(plotId, hectares) {
-  await pool.query(
-    `UPDATE plots SET area_hectares = $1 WHERE id = $2`,
-    [hectares, plotId]
+/**
+ * Superficie de un lote. La CAMBIA solo el dueño del campo; la superficie
+ * INICIAL de un lote sin superficie la puede cargar cualquiera con acceso (un
+ * miembro puede crear lotes, y crear uno sigue con "¿cuántas hectáreas?").
+ * Antes era un UPDATE por id sin usuario: un ex miembro con la pregunta
+ * abierta cambiaba la superficie de un lote del dueño (auditoría oct 2026,
+ * AIS-7 / CAM-2). Devuelve false si no tiene permiso.
+ */
+export async function setPlotArea(plotId, hectares, userId) {
+  if (userId == null) throw new Error('setPlotArea requiere userId');
+  const r = await pool.query(
+    `UPDATE plots SET area_hectares = $1
+      WHERE id = $2 AND deleted_at IS NULL
+        AND (field_id IN (${ownedFieldsSql(3)})
+             OR (area_hectares IS NULL AND field_id IN (${accessibleFieldsSql(3)})))`,
+    [hectares, plotId, userId]
   );
+  if (r.rowCount === 0) console.log(`[INTERCEPT] setPlotArea: user=${userId} sin permiso sobre el lote ${plotId} — no se cambia la superficie`);
+  return r.rowCount > 0;
 }
 
-export async function setPlotGrupo(plotId, grupo) {
-  await pool.query(
-    `UPDATE plots SET grupo = $1 WHERE id = $2`,
-    [grupo, plotId]
+/** Grupo/sociedad de un lote: solo el dueño del campo. Devuelve false si no tiene permiso. */
+export async function setPlotGrupo(plotId, grupo, userId) {
+  if (userId == null) throw new Error('setPlotGrupo requiere userId');
+  const r = await pool.query(
+    `UPDATE plots SET grupo = $1 WHERE id = $2 AND deleted_at IS NULL AND field_id IN (${ownedFieldsSql(3)})`,
+    [grupo, plotId, userId]
   );
+  if (r.rowCount === 0) console.log(`[INTERCEPT] setPlotGrupo: user=${userId} no es dueño del lote ${plotId} — no se cambia el grupo`);
+  return r.rowCount > 0;
 }
 
 export async function findPlotsByGrupo(userId, grupo) {

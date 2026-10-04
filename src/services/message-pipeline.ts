@@ -45,6 +45,7 @@ import { TypedPendingStore, clearAllTypedStores } from '../middleware/typed-pend
 import { compactEntityName } from '../utils/entity-matcher.js';
 import { isOneShotCallback, consumeOnce, repeatedTapMessage } from '../middleware/one-shot-callbacks.js';
 import { runWithCallbackOwner } from '../middleware/callback-payload-store.js';
+import { isFieldOwner } from '../domain/shared/field-access.js';
 import { tipEngine } from './tip-engine.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
 import { PendingPlotAreaStore } from '../middleware/pending-plot-area.js';
@@ -1005,7 +1006,7 @@ async function processTextMessageInner(
   }
 
   // --- Check pending plot area assignment ---
-  const plotAreaResult = await handlePendingPlotArea(text, phone, pendingPlotAreaStore, financialService);
+  const plotAreaResult = await handlePendingPlotArea(text, phone, pendingPlotAreaStore, financialService, Number(userId));
   if (plotAreaResult.handled) {
     return plotAreaResult.messages.map(msg => ({ type: 'text' as const, text: msg }));
   }
@@ -2285,7 +2286,9 @@ async function handleInteractiveReplyInner(
 
     if (callbackId === 'field_dup_update') {
       if (dupData.city) {
-        await financialService.setFieldCity(userId, dupData.name, dupData.city);
+        if (!(await financialService.setFieldCity(userId, dupData.name, dupData.city))) {
+          return [{ type: 'text', text: `Solo el dueño del campo *${dupData.name}* puede cambiar su ubicación. No cambié nada.` }];
+        }
         return [{ type: 'text', text: `📍 Campo *${dupData.name}* actualizado. Nueva ubicacion: *${dupData.city}*` }];
       }
       return [{ type: 'text', text: `El campo *${dupData.name}* ya existe y no hay cambios que aplicar.` }];
@@ -2341,6 +2344,11 @@ async function handleInteractiveReplyInner(
     if (!takeDeleteConfirm(phone, 'field', fieldName, null)) {
       return [{ type: 'text', text: `⏰ Esa confirmación ya venció — *no borré nada*. Si querés eliminar el campo *${fieldName}*, pedímelo de nuevo.` }];
     }
+    const fieldToDelete = await financialService.getFieldByName(userId, fieldName);
+    if (fieldToDelete && !(await isFieldOwner(Number(userId), fieldToDelete.id))) {
+      console.log(`[INTERCEPT] confirm_delete_field de un no-dueño: user=${userId} campo=${fieldToDelete.id}`);
+      return [{ type: 'text', text: `Solo el dueño del campo *${fieldToDelete.name}* puede eliminarlo. No borré nada.` }];
+    }
     const deleted = await financialService.deleteField(userId, fieldName);
     if (deleted) {
       const response: HandlerResponse = {
@@ -2366,6 +2374,10 @@ async function handleInteractiveReplyInner(
         const plots = await financialService.findPlotByNameAcrossFields(userId, plotName);
         const plot = plots.find((p: any) => p.field_id === field.id);
         if (plot) {
+          if (!(await isFieldOwner(Number(userId), field.id))) {
+            console.log(`[INTERCEPT] confirm_delete_plot de un no-dueño: user=${userId} lote=${plot.id}`);
+            return [{ type: 'text', text: `Solo el dueño del campo *${field.name}* puede eliminar sus lotes. No borré nada.` }];
+          }
           await financialService.deletePlot(plot.id, userId);
           const response: HandlerResponse = {
             messages: [`🗑️ Lote *${plotName}* eliminado del campo *${fieldName}*.\nLos registros asociados quedan sin lote.\n\n_Para restaurarlo: "restaurar lote ${plotName}"_`],

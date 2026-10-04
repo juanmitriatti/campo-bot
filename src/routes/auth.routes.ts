@@ -32,7 +32,8 @@ import { invalidateUserContext } from '../ai/user-context.service.js';
 import { resolveCampaign, campaignsSince } from '../utils/campaign-range.js';
 import { getOverview, resolveFieldIds, monthLabel, earliestDataDate } from '../services/overview.service.js';
 import { getReviewFindings } from '../services/review-findings.service.js';
-import { accessibleFieldsSql } from '../domain/shared/accessible-fields.js';
+import { accessibleFieldsSql, deletableRowSql, deletableEventSql } from '../domain/shared/accessible-fields.js';
+import { assertFieldOwner } from '../domain/shared/field-access.js';
 import { harvestCampaignsCte } from '../utils/harvest-campaign-kg.js';
 import { formatSeasonLabel, getCampaignState } from '../domain/plots/crop.service.js';
 
@@ -721,8 +722,10 @@ router.post('/fields/:id/plots', requireAuth, requireFeature('fields'), async (r
     if (hectares !== null && (!isFinite(hectares) || hectares <= 0 || hectares > 100000)) {
       res.status(400).json({ error: 'Hectáreas inválidas (0 a 100.000)' }); return;
     }
+    // Un miembro también puede crear lotes (decisión de producto, oct 2026);
+    // cambiar superficie, renombrar o borrar sigue siendo del dueño.
     const own = await pool.query(
-      `SELECT 1 FROM fields WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+      `SELECT 1 FROM fields WHERE id = $1 AND deleted_at IS NULL AND id IN (${accessibleFieldsSql(2)})`,
       [fieldId, req.auth!.userId],
     );
     if (own.rows.length === 0) { res.status(404).json({ error: 'Campo no encontrado' }); return; }
@@ -792,7 +795,7 @@ router.delete('/expenses/:id', requireAuth, requireFeature('expenses'), async (r
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
     const r = await pool.query(
-      `UPDATE expenses SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING id`,
+      `UPDATE expenses e SET deleted_at = NOW() WHERE e.id = $1 AND ${deletableRowSql('e', 2)} AND e.deleted_at IS NULL RETURNING e.id`,
       [id, req.auth!.userId],
     );
     if (r.rows.length === 0) { res.status(404).json({ error: 'Gasto no encontrado' }); return; }
@@ -807,7 +810,7 @@ router.delete('/incomes/:id', requireAuth, requireFeature('incomes'), async (req
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
     const r = await pool.query(
-      `UPDATE incomes SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING id`,
+      `UPDATE incomes i SET deleted_at = NOW() WHERE i.id = $1 AND ${deletableRowSql('i', 2)} AND i.deleted_at IS NULL RETURNING i.id`,
       [id, req.auth!.userId],
     );
     if (r.rows.length === 0) { res.status(404).json({ error: 'Ingreso no encontrado' }); return; }
@@ -822,7 +825,7 @@ router.delete('/activities/:id', requireAuth, requireFeature('agronomy'), async 
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
     const r = await pool.query(
-      `UPDATE domain_events SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING id`,
+      `UPDATE domain_events d SET deleted_at = NOW() WHERE d.id = $1 AND ${deletableEventSql('d', 2)} AND d.deleted_at IS NULL RETURNING d.id`,
       [id, req.auth!.userId],
     );
     if (r.rows.length === 0) { res.status(404).json({ error: 'Actividad no encontrada' }); return; }
@@ -2075,6 +2078,9 @@ router.patch('/feedlots/:id', requireAuth, requireFeature('livestock'), async (r
     const feedlots = await repo.listFeedlots(asUserId(req.auth!.userId));
     const feedlot = feedlots.find(f => f.id === id);
     if (!feedlot) { res.status(404).json({ error: 'Feedlot no encontrado' }); return; }
+    // Renombrar o borrar un feedlot es del dueño del campo; un miembro puede
+    // cargar hacienda y crear corrales (auditoría oct 2026, AIS-15).
+    await assertFieldOwner(req.auth!.userId, Number((await pool.query(`SELECT field_id FROM feedlots WHERE id = $1`, [id])).rows[0]?.field_id));
 
     const { name, capacity, notes } = req.body;
     await pool.query(
@@ -2098,6 +2104,9 @@ router.delete('/feedlots/:id', requireAuth, requireFeature('livestock'), async (
     const feedlots = await repo.listFeedlots(asUserId(req.auth!.userId));
     const feedlot = feedlots.find(f => f.id === id);
     if (!feedlot) { res.status(404).json({ error: 'Feedlot no encontrado' }); return; }
+    // Renombrar o borrar un feedlot es del dueño del campo; un miembro puede
+    // cargar hacienda y crear corrales (auditoría oct 2026, AIS-15).
+    await assertFieldOwner(req.auth!.userId, Number((await pool.query(`SELECT field_id FROM feedlots WHERE id = $1`, [id])).rows[0]?.field_id));
 
     await repo.deleteFeedlot(id);
     res.json({ success: true });
@@ -2162,6 +2171,9 @@ router.patch('/corrals/:id', requireAuth, requireFeature('livestock'), async (re
     const corrals = await repo.listCorralsByUser(asUserId(req.auth!.userId));
     const corral = corrals.find(c => c.id === id);
     if (!corral) { res.status(404).json({ error: 'Corral no encontrado' }); return; }
+    // Renombrar o borrar un corral es del dueño del campo (AIS-15).
+    await assertFieldOwner(req.auth!.userId, Number((await pool.query(
+      `SELECT fl.field_id FROM corrals c JOIN feedlots fl ON fl.id = c.feedlot_id WHERE c.id = $1`, [id])).rows[0]?.field_id));
 
     const { name, capacity, notes } = req.body;
     await pool.query(
@@ -2185,6 +2197,9 @@ router.delete('/corrals/:id', requireAuth, requireFeature('livestock'), async (r
     const corrals = await repo.listCorralsByUser(asUserId(req.auth!.userId));
     const corral = corrals.find(c => c.id === id);
     if (!corral) { res.status(404).json({ error: 'Corral no encontrado' }); return; }
+    // Renombrar o borrar un corral es del dueño del campo (AIS-15).
+    await assertFieldOwner(req.auth!.userId, Number((await pool.query(
+      `SELECT fl.field_id FROM corrals c JOIN feedlots fl ON fl.id = c.feedlot_id WHERE c.id = $1`, [id])).rows[0]?.field_id));
 
     await repo.deleteCorral(id);
     res.json({ success: true });
@@ -2966,6 +2981,12 @@ function parseFieldIdParam(raw: unknown): number | null | undefined {
 }
 
 function handleError(err: unknown, res: Response): void {
+  // Guards de campo (field-access.ts): 404 si no lo ve, 403 si lo ve pero no es el dueño.
+  if (err instanceof Error && err.name === 'FieldAccessError') {
+    const fe = err as Error & { status: number; code: string };
+    res.status(fe.status).json({ error: fe.message, code: fe.code });
+    return;
+  }
   // Ubicación ajena o borrada (AnimalService): 404, nunca confirmar que existe.
   if (err instanceof Error && err.name === 'LocationAccessError') {
     res.status(404).json({ error: err.message });

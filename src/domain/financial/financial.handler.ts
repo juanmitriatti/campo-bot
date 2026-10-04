@@ -1553,6 +1553,14 @@ export class FinancialHandler {
     settings: UserSettings,
     user: User
   ): Promise<HandlerResponse> {
+    // La tarjeta "¿Confirmo?" pudo quedar abierta desde antes de que el dueño
+    // quitara a este usuario del campo: se revalida el acceso AL CONFIRMAR, no
+    // solo al armar la tarjeta (auditoría oct 2026, CAM-3 / AIS-7).
+    const foreign = await findInaccessibleLocation(userId as number, { fieldId: pending.fieldId, plotId: pending.plotId });
+    if (foreign) {
+      console.log(`[INTERCEPT] handleConfirm: user=${userId} ya no tiene acceso al ${foreign} (field=${pending.fieldId} plot=${pending.plotId}) — no se guarda`);
+      return { messages: [`⚠️ Ya no tenés acceso a ese ${foreign}, así que no guardé el ${pending.type === 'income' ? 'ingreso' : 'gasto'}.`] };
+    }
     if (pending.type === 'income') {
       const incomeData = pending.data as ParsedIncome;
       const savedIncome = await this.service.saveIncome(userId, incomeData, pending.fieldId, pending.plotId);
@@ -2526,7 +2534,9 @@ export class FinancialHandler {
               const lookup = localidadLookup.lookup(cityValue);
               if (lookup.status === 'exact') {
                 const loc = lookup.matches[0];
-                await this.service.setFieldCity(userId, singleField.name, loc.nombre, loc.provincia);
+                if (!(await this.service.setFieldCity(userId, singleField.name, loc.nombre, loc.provincia))) {
+                  return { messages: [`Solo el dueño del campo *${singleField.name}* puede cambiar su ubicación. No cambié nada.`] };
+                }
                 return { messages: [`\ud83d\udccd Campo *${singleField.name}* ubicado en *${formatLocation(loc.nombre, loc.provincia)}*`] };
               }
               // Non-exact: mostrar QU\u00c9 pas\u00f3 con la ciudad dada + pending para la respuesta
@@ -2563,7 +2573,9 @@ export class FinancialHandler {
         const lookupResult = localidadLookup.lookup(cityValue);
         if (lookupResult.status === 'exact') {
           const loc = lookupResult.matches[0];
-          await this.service.setFieldCity(userId, cityFieldName, loc.nombre, loc.provincia);
+          if (!(await this.service.setFieldCity(userId, cityFieldName, loc.nombre, loc.provincia))) {
+            return { messages: [`Solo el dueño del campo *${cityFieldName}* puede cambiar su ubicación. No cambié nada.`] };
+          }
           return { messages: [`\ud83d\udccd ${labelCity} *${cityFieldName}* ubicado en *${formatLocation(loc.nombre, loc.provincia)}*`] };
         }
         // Non-exact: mostrar QU\u00c9 pas\u00f3 con la ciudad dada + pending para la respuesta
@@ -2618,7 +2630,7 @@ export class FinancialHandler {
               const messages: string[] = [];
               const loteSideEffects: HandlerResponse['sideEffects'] = {};
               if (cmd.hectares) {
-                await this.service.setPlotArea(plot.id, cmd.hectares as number);
+                await this.service.setPlotArea(plot.id, cmd.hectares as number, userId);
                 messages.push(`📍 Lote *${plot.name}* (${cmd.hectares} ha) creado en campo *${fields[0].name}*`);
               } else {
                 messages.push(`📍 Lote *${plot.name}* creado en campo *${fields[0].name}*`);
@@ -3199,7 +3211,7 @@ export class FinancialHandler {
           } else {
             const plot = await this.service.getOrCreatePlot(targetField.id, tidyPlotName(name));
             const area = areaFor(i);
-            if (area != null) await this.service.setPlotArea(plot.id, area);
+            if (area != null) await this.service.setPlotArea(plot.id, area, userId);
             created.push({ name: plot.name, id: plot.id, area });
           }
         }
@@ -3321,7 +3333,7 @@ export class FinancialHandler {
         const addPlotSideEffects: HandlerResponse['sideEffects'] = {};
         // If hectares provided inline, set area immediately
         if (cmd.hectares) {
-          await this.service.setPlotArea(plot.id, cmd.hectares as number);
+          await this.service.setPlotArea(plot.id, cmd.hectares as number, userId);
           addPlotMessages.push(`📍 Lote *${plot.name}* (${cmd.hectares} ha) creado en campo *${field.name}*`);
         } else {
           addPlotMessages.push(`📍 Lote *${plot.name}* creado en campo *${field.name}*`);
@@ -3384,7 +3396,10 @@ export class FinancialHandler {
         if (plots.length === 0) {
           return { messages: [`No encontr\u00e9 el lote *${cmd.plotName}*.`] };
         }
-        await this.service.setPlotArea(plots[0].id, cmd.hectares as number);
+        const areaOk = await this.service.setPlotArea(plots[0].id, cmd.hectares as number, userId);
+        if (!areaOk) {
+          return { messages: [`Solo el dueño del campo *${plots[0].field_name}* puede cambiar la superficie de sus lotes. No cambié nada.`] };
+        }
         return { messages: [`\ud83d\udccd Lote *${plots[0].name}*: superficie actualizada a *${cmd.hectares} ha*`] };
       }
 
@@ -3404,6 +3419,7 @@ export class FinancialHandler {
         }
         const updated: string[] = [];
         const notFound: string[] = [];
+        const notOwner: string[] = [];
         for (const rawName of targetNames) {
           const name = rawName.trim();
           if (!name) continue;
@@ -3412,11 +3428,15 @@ export class FinancialHandler {
             notFound.push(name);
             continue;
           }
-          await this.service.setPlotGrupo(plots[0].id, grupo);
+          if (!(await this.service.setPlotGrupo(plots[0].id, grupo, userId))) {
+            notOwner.push(`${plots[0].name} (campo ${plots[0].field_name})`);
+            continue;
+          }
           updated.push(plots[0].name);
         }
+        const notOwnerNote = notOwner.length > 0 ? `Solo el dueño del campo puede cambiar el grupo de: ${notOwner.join(', ')}.` : '';
         if (updated.length === 0) {
-          return { messages: [`No encontré los lotes: ${notFound.join(', ')}.`] };
+          return { messages: [[notFound.length > 0 ? `No encontré los lotes: ${notFound.join(', ')}.` : '', notOwnerNote].filter(Boolean).join('\n')] };
         }
         const lines: string[] = [];
         if (updated.length === 1) {
@@ -3428,6 +3448,7 @@ export class FinancialHandler {
         if (notFound.length > 0) {
           lines.push(`\n⚠️ No encontré: ${notFound.join(', ')}`);
         }
+        if (notOwnerNote) lines.push(`\n⚠️ ${notOwnerNote}`);
         return { messages: [lines.join('\n')] };
       }
 
@@ -3465,6 +3486,10 @@ export class FinancialHandler {
         const fieldForRestore = cmd.fieldName as string;
         const restoredPlot = await this.service.restorePlot(userId, plotToRestore, fieldForRestore);
         if (!restoredPlot) {
+          const fieldR = await this.service.getFieldByName(userId, fieldForRestore);
+          if (fieldR && !(await this.sharingService.isOwner(userId, fieldR.id))) {
+            return { messages: [`Solo el dueño del campo *${fieldR.name}* puede restaurar sus lotes.`] };
+          }
           return { messages: [`No encontré lote eliminado *${plotToRestore}* en campo *${fieldForRestore}*.`] };
         }
         return {

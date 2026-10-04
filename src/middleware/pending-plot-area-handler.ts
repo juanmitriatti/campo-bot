@@ -1,5 +1,6 @@
 import type { PendingPlotAreaStore, PendingPlotArea } from './pending-plot-area.js';
 import type { FinancialService } from '../domain/financial/financial.service.js';
+import type { UserId } from '../types/index.js';
 
 export interface PendingPlotAreaResult {
   messages: string[];
@@ -116,6 +117,7 @@ export async function handlePendingPlotArea(
   phone: string,
   store: PendingPlotAreaStore,
   financialService: FinancialService,
+  userId?: number,
 ): Promise<PendingPlotAreaResult> {
   const pending = store.get(phone);
   if (!pending) {
@@ -153,9 +155,13 @@ export async function handlePendingPlotArea(
     const ha = parseFloat(bulkAll[1].replace(',', '.'));
     if (ha > 0 && ha < 100000) {
       const all = store.items(phone);
-      for (const it of all) await financialService.setPlotArea(it.plotId, ha);
+      // setPlotArea devuelve false si el usuario ya no tiene permiso (ex miembro,
+      // o un lote ajeno que ya tenía superficie): ese lote no se toca.
+      const okAll: typeof all = [];
+      for (const it of all) if ((await financialService.setPlotArea(it.plotId, ha, userId as unknown as UserId)) !== false) okAll.push(it);
       store.clear(phone);
-      return { messages: [`📍 Asigné *${ha} ha* a ${all.length} lote${all.length > 1 ? 's' : ''}: ${all.map(a => `*${a.plotName}*`).join(', ')}`], handled: true };
+      if (okAll.length === 0) return { messages: ['No pude cargar la superficie: solo el dueño del campo puede cambiarla.'], handled: true };
+      return { messages: [`📍 Asigné *${ha} ha* a ${okAll.length} lote${okAll.length > 1 ? 's' : ''}: ${okAll.map(a => `*${a.plotName}*`).join(', ')}`], handled: true };
     }
   }
 
@@ -168,9 +174,9 @@ export async function handlePendingPlotArea(
     for (const pair of named) {
       const match = all.find(it => norm(it.plotName) === norm(pair.name));
       if (match) {
-        await financialService.setPlotArea(match.plotId, pair.ha);
+        const ok = (await financialService.setPlotArea(match.plotId, pair.ha, userId as unknown as UserId)) !== false;
         store.removeByPlotId(phone, match.plotId);
-        done.push(`*${match.plotName}* (${pair.ha} ha)`);
+        if (ok) done.push(`*${match.plotName}* (${pair.ha} ha)`);
       }
     }
     if (done.length > 0) {
@@ -195,8 +201,10 @@ export async function handlePendingPlotArea(
   // ── Bare-number answer for the current lote ──
   const hectares = parseHectares(text);
   if (hectares !== null) {
-    await financialService.setPlotArea(pending.plotId, hectares);
-    const confirmMsg = `📍 Lote *${pending.plotName}*: superficie actualizada a *${hectares} ha*`;
+    const ok = (await financialService.setPlotArea(pending.plotId, hectares, userId as unknown as UserId)) !== false;
+    const confirmMsg = ok
+      ? `📍 Lote *${pending.plotName}*: superficie actualizada a *${hectares} ha*`
+      : `No cambié la superficie de *${pending.plotName}*: solo el dueño del campo puede cambiarla.`;
     const next = store.dequeueFirst(phone);
     if (next) return { messages: [confirmMsg, buildPrompt(next)], handled: true };
     return { messages: [confirmMsg], handled: true };

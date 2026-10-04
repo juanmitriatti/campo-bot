@@ -303,7 +303,7 @@ export class FinancialService {
   }
 
   async setFieldCity(userId: UserId, fieldName: string, city: string, province?: string | null) {
-    await this.repo.setFieldCity(userId, fieldName, city, province);
+    return this.repo.setFieldCity(userId, fieldName, city, province);
   }
 
   async getFieldByName(userId: UserId, fieldName: string) {
@@ -360,7 +360,7 @@ export class FinancialService {
     return this.repo.findAllUserPlots(userId);
   }
 
-  async deletePlot(plotId: number, userId?: UserId | null) {
+  async deletePlot(plotId: number, userId: UserId) {
     return this.repo.deletePlot(plotId, userId);
   }
 
@@ -368,12 +368,12 @@ export class FinancialService {
     return this.repo.restorePlot(userId, plotName, fieldName);
   }
 
-  async setPlotArea(plotId: number, hectares: number) {
-    return this.repo.setPlotArea(plotId, hectares);
+  async setPlotArea(plotId: number, hectares: number, userId: UserId) {
+    return this.repo.setPlotArea(plotId, hectares, userId as number);
   }
 
-  async setPlotGrupo(plotId: number, grupo: string) {
-    return this.repo.setPlotGrupo(plotId, grupo);
+  async setPlotGrupo(plotId: number, grupo: string, userId: UserId) {
+    return this.repo.setPlotGrupo(plotId, grupo, userId as number);
   }
 
   async findPlotsByGrupo(userId: UserId, grupo: string) {

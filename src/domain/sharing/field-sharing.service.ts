@@ -274,7 +274,7 @@ export class FieldSharingService {
     const upperCode = code.toUpperCase().trim();
 
     const { rows } = await pool.query(
-      `SELECT fi.*, f.name as field_name
+      `SELECT fi.*, f.name as field_name, f.deleted_at AS field_deleted_at
        FROM field_invites fi
        JOIN fields f ON fi.field_id = f.id
        WHERE fi.code = $1`,
@@ -293,6 +293,14 @@ export class FieldSharingService {
 
     if (invite.revoked_at != null) {
       return { success: false, message: 'Esta invitación fue cancelada. Pedile al dueño que te mande una nueva.' };
+    }
+
+    // Un campo borrado no se puede compartir: antes la invitación se aceptaba
+    // y el invitado quedaba "miembro" de un campo que nadie veía (auditoría oct
+    // 2026, CAM-24). Si el dueño lo restaura, puede volver a invitar.
+    if (invite.field_deleted_at != null) {
+      console.log(`[INTERCEPT] invitación ${upperCode} a un campo borrado (${invite.field_id}) — no se acepta`);
+      return { success: false, message: 'Ese campo ya no existe (el dueño lo eliminó), así que la invitación no vale. Pedile al dueño que te invite de nuevo si lo restaura.' };
     }
 
     if (new Date(invite.expires_at) < new Date()) {
@@ -445,6 +453,7 @@ export class FieldSharingService {
     if (rowCount === 0) {
       return { success: false, message: `${target.name || identifier} no es miembro de este campo.` };
     }
+    await this.clearRemovedMemberState(Number(target.id), fieldId);
 
     return { success: true, message: `${target.name || identifier} ya no tiene acceso al campo.` };
   }
@@ -571,7 +580,7 @@ export class FieldSharingService {
       [fieldId, userId]
     );
     if (rowCount === 0) return { success: false, message: 'No sos miembro de ese campo.' };
-    invalidateUserContext(Number(userId));
+    await this.clearRemovedMemberState(Number(userId), fieldId);
     return { success: true, message: 'Saliste del campo.' };
   }
 
@@ -592,8 +601,34 @@ export class FieldSharingService {
       [fieldId, memberUserId]
     );
     if (rowCount === 0) return { success: false, message: 'Esa persona no es miembro del campo.' };
-    // El que pierde el acceso también tiene el contexto cacheado 60 s.
-    invalidateUserContext(Number(memberUserId));
+    await this.clearRemovedMemberState(Number(memberUserId), fieldId);
     return { success: true, message: 'Listo, ya no tiene acceso al campo.' };
+  }
+
+  /**
+   * Quien pierde el acceso a un campo pierde también lo que tenía abierto: la
+   * tarjeta "¿Confirmo gasto?", la pregunta de hectáreas, la cola de pendientes.
+   * Antes quedaban vivas y al contestarlas escribía en el campo del dueño
+   * (auditoría oct 2026, CAM-3 / AIS-7). Se borra TODO su estado conversacional
+   * (invariante 15: por clearAllUserPendingState, en cada canal) — es más
+   * simple y seguro que separar qué pendiente era de qué campo. Además el
+   * acceso se revalida al confirmar (handleConfirm, setPlotArea).
+   */
+  private async clearRemovedMemberState(memberUserId: number, fieldId: number): Promise<void> {
+    // El que pierde el acceso también tiene el contexto cacheado 60 s.
+    invalidateUserContext(memberUserId);
+    try {
+      const { rows } = await pool.query(`SELECT phone_number, telegram_id FROM users WHERE id = $1`, [memberUserId]);
+      const keys = new Set<string>([`testbot_${memberUserId}`]);
+      const phone = rows[0]?.phone_number as string | null | undefined;
+      if (phone && !isTelegramPlaceholder(phone)) keys.add(phone);
+      if (rows[0]?.telegram_id) keys.add(`tg_${rows[0].telegram_id}`);
+      const { clearAllUserPendingState } = await import('../../services/message-pipeline.js');
+      for (const key of keys) await clearAllUserPendingState(key);
+      console.log(`[INTERCEPT] user=${memberUserId} perdió el acceso al campo ${fieldId}: estado conversacional limpiado (${keys.size} canales)`);
+    } catch (err) {
+      // Best-effort: la revalidación al confirmar sigue siendo la red de seguridad.
+      console.warn(`[sharing] no pude limpiar el estado de user=${memberUserId}:`, (err as Error).message);
+    }
   }
 }

@@ -1,5 +1,6 @@
 import { pool } from '../../config/db.js';
 import { accessibleRowSql, accessibleEventSql } from '../shared/accessible-fields.js';
+import { canAccessField } from '../shared/field-access.js';
 import { sqlNormalizedName } from '../../utils/entity-matcher.js';
 import { normalizeObservationText, detectObservationCategory } from '../../services/observations.js';
 
@@ -460,8 +461,7 @@ export class ObservationService {
     }
 
     const obs = rows[0];
-    // Allow edit if user owns the observation OR has access to its field
-    const canEdit = obs.user_id === userId || (obs.field_id && await this._hasFieldAccess(userId, obs.field_id));
+    const canEdit = await this._canWriteRow(userId, obs);
     if (!canEdit) {
       throw new ObservationError(403, 'No tenés permisos para editar esta observación');
     }
@@ -518,9 +518,8 @@ export class ObservationService {
     if (rows.length === 0) {
       throw new ObservationError(404, 'Gasto no encontrado');
     }
-    // Allow edit if user owns the expense OR has access to its field
     const exp = rows[0];
-    const canEdit = exp.user_id === userId || (exp.field_id && await this._hasFieldAccess(userId, exp.field_id));
+    const canEdit = await this._canWriteRow(userId, exp);
     if (!canEdit) {
       throw new ObservationError(403, 'No tenés permisos para editar este gasto');
     }
@@ -561,9 +560,8 @@ export class ObservationService {
     if (rows.length === 0) {
       throw new ObservationError(404, 'Ingreso no encontrado');
     }
-    // Allow edit if user owns the income OR has access to its field
     const inc = rows[0];
-    const canEdit = inc.user_id === userId || (inc.field_id && await this._hasFieldAccess(userId, inc.field_id));
+    const canEdit = await this._canWriteRow(userId, inc);
     if (!canEdit) {
       throw new ObservationError(403, 'No tenés permisos para editar este ingreso');
     }
@@ -602,18 +600,8 @@ export class ObservationService {
     if (rows.length === 0) {
       throw new ObservationError(404, 'Actividad no encontrada');
     }
-    // Allow edit if user owns the activity OR has access to the plot's field
     const act = rows[0];
-    let canEditActivity = act.user_id === userId;
-    if (!canEditActivity && act.plot_id) {
-      const { rows: plotRows } = await pool.query(
-        `SELECT p.field_id FROM plots p WHERE p.id = $1`,
-        [act.plot_id]
-      );
-      if (plotRows.length > 0) {
-        canEditActivity = await this._hasFieldAccess(userId, plotRows[0].field_id);
-      }
-    }
+    const canEditActivity = await this._canWriteRow(userId, act);
     if (!canEditActivity) {
       throw new ObservationError(403, 'No tenés permisos para editar esta actividad');
     }
@@ -681,13 +669,38 @@ export class ObservationService {
     return rows;
   }
 
-  /** Check if user has access to a field via field_members */
+  /** Dueño o miembro del campo (fuente única de acceso). */
   private async _hasFieldAccess(userId: number, fieldId: number): Promise<boolean> {
-    const { rows } = await pool.query(
-      `SELECT 1 FROM field_members WHERE user_id = $1 AND field_id = $2 LIMIT 1`,
-      [userId, fieldId]
-    );
-    return rows.length > 0;
+    return canAccessField(userId, fieldId);
+  }
+
+  /**
+   * ¿Puede editar esta fila desde el dashboard? Si la fila está en un campo
+   * (directo, por su lote o por su corral), hace falta acceso ACTUAL a ese
+   * campo — sea quien la cargó o no. Si no está en ningún campo, solo quien la
+   * cargó. Antes alcanzaba con ser el autor: un ex miembro seguía editando lo
+   * que cargó en el campo del dueño (auditoría oct 2026, AIS-16).
+   */
+  private async _canWriteRow(
+    userId: number,
+    row: { user_id: number; field_id?: number | null; plot_id?: number | null; corral_id?: number | null },
+  ): Promise<boolean> {
+    let fieldId: number | null = row.field_id ?? null;
+    if (fieldId == null && row.plot_id) {
+      const r = await pool.query(`SELECT field_id FROM plots WHERE id = $1`, [row.plot_id]);
+      fieldId = r.rows[0]?.field_id ?? null;
+    }
+    if (fieldId == null && row.corral_id) {
+      const r = await pool.query(
+        `SELECT fl.field_id FROM corrals c JOIN feedlots fl ON fl.id = c.feedlot_id WHERE c.id = $1`, [row.corral_id]);
+      fieldId = r.rows[0]?.field_id ?? null;
+    }
+    if (fieldId != null) {
+      const ok = await this._hasFieldAccess(userId, Number(fieldId));
+      if (!ok) console.log(`[INTERCEPT] edición desde el dashboard sin acceso al campo ${fieldId}: user=${userId}`);
+      return ok;
+    }
+    return Number(row.user_id) === Number(userId);
   }
 }
 

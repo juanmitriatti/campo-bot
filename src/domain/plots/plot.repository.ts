@@ -50,8 +50,8 @@ export class PlotRepository {
     return _getUserFields(userId);
   }
 
-  async setFieldCity(userId: UserId, fieldName: string, city: string, province?: string | null): Promise<void> {
-    await _setFieldCity(userId, fieldName, city, province);
+  async setFieldCity(userId: UserId, fieldName: string, city: string, province?: string | null): Promise<number> {
+    return _setFieldCity(userId, fieldName, city, province);
   }
 
   async getUserFieldCount(userId: UserId): Promise<number> {
@@ -97,20 +97,20 @@ export class PlotRepository {
     return _findAllUserPlots(userId);
   }
 
-  async deletePlot(plotId: number, userId?: UserId | null): Promise<boolean> {
-    return _deletePlot(plotId, userId);
+  async deletePlot(plotId: number, userId: UserId): Promise<boolean> {
+    return _deletePlot(plotId, userId as number);
   }
 
   async restorePlot(userId: UserId, plotName: string, fieldName: string): Promise<PlotRow | null> {
     return _restorePlot(userId, plotName, fieldName) as Promise<PlotRow | null>;
   }
 
-  async setPlotArea(plotId: number, hectares: number): Promise<void> {
-    await _setPlotArea(plotId, hectares);
+  async setPlotArea(plotId: number, hectares: number, userId: number): Promise<boolean> {
+    return _setPlotArea(plotId, hectares, userId);
   }
 
-  async setPlotGrupo(plotId: number, grupo: string): Promise<void> {
-    await _setPlotGrupo(plotId, grupo);
+  async setPlotGrupo(plotId: number, grupo: string, userId: number): Promise<boolean> {
+    return _setPlotGrupo(plotId, grupo, userId);
   }
 
   async findPlotsByGrupo(userId: UserId, grupo: string): Promise<Array<PlotRow & { field_name: string }>> {

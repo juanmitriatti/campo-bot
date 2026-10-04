@@ -267,8 +267,8 @@ export class FinancialRepository {
     return this.plots.getOrCreateField(userId, name);
   }
 
-  async setFieldCity(userId: UserId, fieldName: string, city: string, province?: string | null): Promise<void> {
-    await this.plots.setFieldCity(userId, fieldName, city, province);
+  async setFieldCity(userId: UserId, fieldName: string, city: string, province?: string | null): Promise<number> {
+    return this.plots.setFieldCity(userId, fieldName, city, province);
   }
 
   async getFieldByName(userId: UserId, fieldName: string): Promise<FieldRow | null> {
@@ -325,7 +325,7 @@ export class FinancialRepository {
     return this.plots.findAllUserPlots(userId);
   }
 
-  async deletePlot(plotId: number, userId?: UserId | null): Promise<boolean> {
+  async deletePlot(plotId: number, userId: UserId): Promise<boolean> {
     return this.plots.deletePlot(plotId, userId);
   }
 
@@ -333,12 +333,12 @@ export class FinancialRepository {
     return this.plots.restorePlot(userId, plotName, fieldName);
   }
 
-  async setPlotArea(plotId: number, hectares: number): Promise<void> {
-    return this.plots.setPlotArea(plotId, hectares);
+  async setPlotArea(plotId: number, hectares: number, userId: number): Promise<boolean> {
+    return this.plots.setPlotArea(plotId, hectares, userId);
   }
 
-  async setPlotGrupo(plotId: number, grupo: string): Promise<void> {
-    return this.plots.setPlotGrupo(plotId, grupo);
+  async setPlotGrupo(plotId: number, grupo: string, userId: number): Promise<boolean> {
+    return this.plots.setPlotGrupo(plotId, grupo, userId);
   }
 
   async findPlotsByGrupo(userId: UserId, grupo: string): Promise<Array<PlotRow & { field_name: string }>> {
