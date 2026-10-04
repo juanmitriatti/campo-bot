@@ -1,7 +1,7 @@
 import { StockRepository } from './stock.repository.js';
 import type { WarehouseRow, StockItemRow, StockMovementRow } from './stock.repository.js';
 import { getFieldByName } from '../../services/expenses.js';
-import { convertMass } from '../../utils/mass-units.js';
+import { convertStockQuantity, storageUnit, isPerAreaUnit } from '../../utils/stock-units.js';
 import type { UserId } from '../../types/index.js';
 
 export class StockService {
@@ -58,22 +58,18 @@ export class StockService {
       movementDate?: string;
     } = {},
   ): Promise<{ item: StockItemRow; movement: StockMovementRow; created: boolean }> {
-    const warehouse = await this.resolveWarehouse(userId, opts.warehouseName, opts.fieldName);
+    const warehouse = await this.warehouseForProduct(userId, product, opts.warehouseName, opts.fieldName);
 
     // Find existing item or create new one
     let item = await this.repo.findStockItem(warehouse.id, product);
     let created = false;
 
-    if (item) {
-      // Validate unit compatibility
-      if (item.unit.toLowerCase() !== unit.toLowerCase()) {
-        throw new Error(`El producto "${item.name}" está en ${item.unit}, no se puede cargar en ${unit}`);
-      }
-    }
+    assertStockUnit(unit);
+    if (item) quantity = toItemUnit(item, quantity, unit, 'cargar');
 
     if (!item) {
       const category = opts.category || 'otros';
-      item = await this.repo.createStockItem(Number(userId), warehouse.id, product, category, 0, unit);
+      item = await this.repo.createStockItem(Number(userId), warehouse.id, product, category, 0, storageUnit(unit));
       created = true;
     }
 
@@ -105,17 +101,36 @@ export class StockService {
       reason?: string;
       domainEventId?: number;
       movementDate?: string;
+      /** Ítem exacto (de una sugerencia ya mostrada): sin búsqueda por nombre (STK-11). */
+      stockItemId?: number;
+      /** Campo donde ocurrió (el de la actividad / venta). */
+      fieldId?: number;
+      /** Acota por categoría: una venta de grano busca 'granos' (STK-8). */
+      category?: string;
     } = {},
   ): Promise<{ item: StockItemRow; movement: StockMovementRow }> {
+    if (opts.stockItemId) {
+      const exact = await this.repo.getStockItemById(opts.stockItemId, Number(userId));
+      if (!exact) throw new Error(`No se encontró "${product}" en el stock`);
+      const qty = toItemUnit(exact, quantity, unit, 'descontar');
+      const { item: updatedItem, movement } = await this.repo.applyMovement(
+        exact.id, Number(userId), 'salida', qty,
+        opts.reason || 'Descarga manual',
+        undefined, undefined, opts.domainEventId, opts.movementDate,
+      );
+      updatedItem.warehouse_name = exact.warehouse_name;
+      updatedItem.field_name = exact.field_name;
+      return { item: updatedItem, movement };
+    }
     // Disambiguation: when no warehouse is specified and the product exists in
     // more than one warehouse, refuse to silently pick. Ask the user.
     if (!opts.warehouseName) {
-      let fieldId: number | undefined;
-      if (opts.fieldName) {
+      let fieldId: number | undefined = opts.fieldId;
+      if (opts.fieldName && !fieldId) {
         const field = await this.resolveField(userId, opts.fieldName);
         if (field) fieldId = field.id;
       }
-      const allMatches = await this.repo.findAllStockItemsFuzzy(Number(userId), product, fieldId);
+      const allMatches = await this.repo.findAllStockItemsFuzzy(Number(userId), product, fieldId, opts.category);
       const distinctWarehouses = new Set(allMatches.map(m => m.warehouse_id));
       if (distinctWarehouses.size > 1) {
         const labels = allMatches.map(m => `${m.warehouse_name} (${m.current_quantity} ${m.unit})`).join(', ');
@@ -123,12 +138,10 @@ export class StockService {
       }
     }
 
-    const item = await this.findProduct(userId, product, opts.fieldName);
+    const item = await this.findProduct(userId, product, opts.fieldName, { fieldId: opts.fieldId, category: opts.category });
     if (!item) throw new Error(`No se encontró "${product}" en el stock`);
 
-    if (item.unit.toLowerCase() !== unit.toLowerCase()) {
-      throw new Error(`"${item.name}" está en ${item.unit}, no se puede descontar en ${unit}`);
-    }
+    quantity = toItemUnit(item, quantity, unit, 'descontar');
 
     const { item: updatedItem, movement } = await this.repo.applyMovement(
       item.id, Number(userId), 'salida', quantity,
@@ -149,12 +162,13 @@ export class StockService {
     unit: string,
     opts: { fieldName?: string; warehouseName?: string; reason?: string } = {},
   ): Promise<{ item: StockItemRow; movement: StockMovementRow }> {
-    const warehouse = await this.resolveWarehouse(userId, opts.warehouseName, opts.fieldName);
+    const warehouse = await this.warehouseForProduct(userId, product, opts.warehouseName, opts.fieldName);
 
     let item = await this.repo.findStockItem(warehouse.id, product);
     if (!item) {
       // Create with adjusted quantity
-      item = await this.repo.createStockItem(Number(userId), warehouse.id, product, 'otros', quantity, unit);
+      assertStockUnit(unit);
+      item = await this.repo.createStockItem(Number(userId), warehouse.id, product, 'otros', quantity, storageUnit(unit));
       const movement = await this.repo.createMovement(
         item.id, Number(userId), 'ajuste', quantity,
         opts.reason || 'Ajuste de inventario',
@@ -164,9 +178,7 @@ export class StockService {
       return { item, movement };
     }
 
-    if (item.unit.toLowerCase() !== unit.toLowerCase()) {
-      throw new Error(`"${item.name}" está en ${item.unit}, no se puede ajustar en ${unit}`);
-    }
+    quantity = toItemUnit(item, quantity, unit, 'ajustar');
 
     const { item: updatedItem, movement } = await this.repo.applyMovement(
       item.id, Number(userId), 'ajuste', quantity,
@@ -253,26 +265,23 @@ export class StockService {
       humidity?: number;
       grade?: string;
       domainEventId?: number;
+      /** Campo de la cosecha: su galpón, no el del primer campo (STK-2). */
+      fieldId?: number;
     } = {},
   ): Promise<{ item: StockItemRow; movement: StockMovementRow; created: boolean }> {
-    const warehouse = await this.resolveWarehouse(userId, opts.warehouseName, opts.fieldName);
+    const warehouse = opts.fieldId && !opts.warehouseName
+      ? await this.warehouseOfField(opts.fieldId)
+      : await this.warehouseForProduct(userId, crop, opts.warehouseName, opts.fieldName);
 
     let item = await this.repo.findStockItem(warehouse.id, crop);
     let created = false;
 
+    // "rindió 42 qq/ha" es un rinde, no 42 unidades "qq/ha" de soja (STK-3).
+    assertStockUnit(unit);
     if (item) {
-      if (item.unit.toLowerCase() !== unit.toLowerCase()) {
-        // Grano: tn/qq/kg se convierten a la unidad del ítem (P1-5, QA sep
-        // 2026: "cargar 130 tn de soja" sobre el ítem en kg fallaba y el silo
-        // quedaba en dos verdades). Otra unidad sigue siendo error visible.
-        const converted = convertMass(quantity, unit, item.unit);
-        if (converted == null) {
-          throw new Error(`"${item.name}" está en ${item.unit}, no se puede cargar en ${unit}`);
-        }
-        console.log(`[STOCK] grano: ${quantity} ${unit} → ${converted} ${item.unit} (${item.name})`);
-        quantity = converted;
-        unit = item.unit;
-      }
+      // Grano: tn/qq/kg se convierten a la unidad del ítem (P1-5, QA sep 2026).
+      quantity = toItemUnit(item, quantity, unit, 'cargar');
+      unit = item.unit;
       // Update grain attrs if provided
       if (opts.humidity !== undefined || opts.grade) {
         const pool = (await import('../../config/db.js')).pool;
@@ -296,7 +305,7 @@ export class StockService {
 
     if (!item) {
       item = await this.repo.createStockItem(
-        Number(userId), warehouse.id, crop, 'granos', 0, unit,
+        Number(userId), warehouse.id, crop, 'granos', 0, storageUnit(unit),
         opts.grade, opts.humidity,
       );
       created = true;
@@ -350,7 +359,7 @@ export class StockService {
     // Check if already exists in this warehouse
     const existing = await this.repo.findStockItem(warehouseId, product);
     if (existing) return existing;
-    return this.repo.createStockItem(Number(userId), warehouseId, product, category, 0, unit);
+    return this.repo.createStockItem(Number(userId), warehouseId, product, category, 0, storageUnit(unit));
   }
 
   /**
@@ -364,24 +373,23 @@ export class StockService {
     quantity: number,
     unit: string,
     reason?: string,
+    expenseId?: number,
   ): Promise<{ item: StockItemRow; movement: StockMovementRow; created: boolean }> {
     let item = await this.repo.findStockItem(warehouseId, product);
     let created = false;
 
-    if (item) {
-      if (item.unit.toLowerCase() !== unit.toLowerCase()) {
-        throw new Error(`El producto "${item.name}" está en ${item.unit}, no se puede cargar en ${unit}`);
-      }
-    }
+    assertStockUnit(unit);
+    if (item) quantity = toItemUnit(item, quantity, unit, 'cargar');
 
     if (!item) {
-      item = await this.repo.createStockItem(Number(userId), warehouseId, product, category || 'otros', 0, unit);
+      item = await this.repo.createStockItem(Number(userId), warehouseId, product, category || 'otros', 0, storageUnit(unit));
       created = true;
     }
 
     const { item: updatedItem, movement } = await this.repo.applyMovement(
       item.id, Number(userId), 'entrada', quantity,
       reason || 'Carga desde remito',
+      undefined, expenseId,
     );
 
     return { item: updatedItem, movement, created };
@@ -410,6 +418,37 @@ export class StockService {
       [Number(userId)]
     );
     return rows[0] || null;
+  }
+
+  /** El galpón de un campo (el más viejo); si no tiene, se crea "Principal". */
+  async warehouseOfField(fieldId: number): Promise<WarehouseRow & { field_name?: string }> {
+    const whs = await this.repo.getWarehousesByField(fieldId);
+    if (whs.length > 0) return whs[0];
+    return this.repo.createWarehouse(fieldId, 'Principal');
+  }
+
+  /**
+   * Galpón para cargar/ajustar un producto cuando el usuario NO dijo dónde: el
+   * galpón donde ese producto YA está. Antes iba siempre al galpón por defecto
+   * del primer campo y, si el producto vivía en otro, se creaba un ítem
+   * duplicado — "check_stock" sumaba los dos (STK-1). En dos o más galpones no
+   * se adivina: error visible con los depósitos.
+   */
+  private async warehouseForProduct(
+    userId: UserId, product: string, warehouseName?: string, fieldName?: string,
+  ): Promise<WarehouseRow & { field_name?: string }> {
+    if (warehouseName || fieldName) return this.resolveWarehouse(userId, warehouseName, fieldName);
+    const existing = await this.repo.findStockItemsByExactName(Number(userId), product);
+    const byWarehouse = new Map(existing.map(i => [i.warehouse_id, i]));
+    if (byWarehouse.size === 1) {
+      const only = existing[0];
+      return { id: only.warehouse_id, name: only.warehouse_name ?? 'Principal', field_id: only.field_id, field_name: only.field_name } as WarehouseRow & { field_name?: string };
+    }
+    if (byWarehouse.size > 1) {
+      const labels = [...byWarehouse.values()].map(i => `${i.warehouse_name} (${i.field_name})`).join(', ');
+      throw new Error(`"${product}" está en más de un depósito: ${labels}. Decime en cuál (ej: "cargué 100 lt de ${product} en el ${existing[0].warehouse_name}").`);
+    }
+    return this.resolveWarehouse(userId);
   }
 
   async resolveWarehouse(
@@ -443,16 +482,40 @@ export class StockService {
     return wh as WarehouseRow & { field_name?: string };
   }
 
-  async findProduct(userId: UserId, product: string, fieldName?: string): Promise<StockItemRow | null> {
-    let fieldId: number | undefined;
-    if (fieldName) {
+  async findProduct(
+    userId: UserId, product: string, fieldName?: string,
+    opts: { fieldId?: number; category?: string } = {},
+  ): Promise<StockItemRow | null> {
+    let fieldId: number | undefined = opts.fieldId;
+    if (fieldName && !fieldId) {
       const field = await this.resolveField(userId, fieldName);
       if (field) fieldId = field.id;
     }
-    return this.repo.findStockItemFuzzy(Number(userId), product, fieldId);
+    return this.repo.findStockItemFuzzy(Number(userId), product, fieldId, opts.category);
   }
 
   async linkMovementToExpense(movementId: number, expenseId: number): Promise<void> {
     return this.repo.linkMovementToExpense(movementId, expenseId);
   }
+}
+
+/** Una dosis o un rinde por hectárea nunca es una cantidad en stock (STK-3). */
+function assertStockUnit(unit: string): void {
+  if (isPerAreaUnit(unit)) {
+    console.log(`[INTERCEPT] stock: unidad por hectárea rechazada "${unit}"`);
+    throw new Error(`"${unit}" es una cantidad por hectárea, no un total: decime cuánto entra en total (ej: "4.200 kg").`);
+  }
+}
+
+/**
+ * Cantidad en la unidad del ítem (stock-units.ts, fuente única): "litros" sobre
+ * un ítem en lt, tn sobre kg, cc sobre lt. Otra dimensión = error visible.
+ */
+function toItemUnit(item: StockItemRow, quantity: number, unit: string, verb: string): number {
+  const converted = convertStockQuantity(quantity, unit, item.unit);
+  if (converted == null) {
+    throw new Error(`"${item.name}" está en ${item.unit}, no se puede ${verb} en ${unit}`);
+  }
+  if (converted !== quantity) console.log(`[STOCK] ${quantity} ${unit} → ${converted} ${item.unit} (${item.name})`);
+  return converted;
 }

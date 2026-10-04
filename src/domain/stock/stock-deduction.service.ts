@@ -3,6 +3,7 @@ import type { StockItemRow, StockMovementRow } from './stock.repository.js';
 import type { UserId } from '../../types/index.js';
 import { pool } from '../../config/db.js';
 import { logError } from '../../services/error-logger.js';
+import { convertStockQuantity } from '../../utils/stock-units.js';
 
 const stockService = new StockService();
 
@@ -39,9 +40,13 @@ export class StockDeductionService {
     if (!product) return null;
 
     try {
-      // Find product in stock
-      const fieldName = fieldId ? undefined : undefined;
-      const item = await stockService.findProduct(userId, product, fieldName);
+      const { FeatureGate } = await import('../billing/feature-gate.js');
+      if (!(await new FeatureGate().hasFeature(userId, 'stock'))) return null;
+      // El producto del CAMPO de la actividad: antes el fieldId se ignoraba
+      // y con el producto en dos galpones el descuento fallaba o tomaba el de
+      // otro campo (STK-11). Sin match en ese campo, cualquiera accesible.
+      const item = (fieldId ? await stockService.findProduct(userId, product, undefined, { fieldId }) : null)
+        ?? await stockService.findProduct(userId, product);
       if (!item) return null;
 
       // Calculate total quantity
@@ -73,14 +78,14 @@ export class StockDeductionService {
         };
       }
 
-      // Check unit compatibility
-      const itemUnit = item.unit.toLowerCase();
-      const reqUnit = (unit || item.unit).toLowerCase();
-      if (itemUnit !== reqUnit) {
-        // Try common conversions: lt/ha → lt, kg/ha → kg
-        const baseUnit = reqUnit.replace('/ha', '');
-        if (itemUnit !== baseUnit) return null;
+      // A la unidad del ítem (stock-units.ts): "litros" sobre lt, cc sobre lt,
+      // tn sobre kg. Sin conversión posible no se ofrece (STK-13).
+      const converted = convertStockQuantity(totalQuantity, (unit || item.unit).replace('/ha', ''), item.unit);
+      if (converted == null) {
+        console.log(`[INTERCEPT] stock-deduction: ${totalQuantity} ${unit} no se convierte a ${item.unit} (${item.name}) — no se ofrece descuento`);
+        return null;
       }
+      totalQuantity = converted;
 
       // Check if there's enough stock
       if (item.current_quantity <= 0) return null;
@@ -139,6 +144,7 @@ export class StockDeductionService {
       return { item: item!, movement: fakeMovement, alreadyApplied: true };
     }
 
+    // El ítem que se le MOSTRÓ al usuario, no una búsqueda por nombre (STK-11).
     const { item, movement } = await stockService.removeStock(
       userId,
       suggestion.product,
@@ -147,6 +153,7 @@ export class StockDeductionService {
       {
         reason: 'Uso en actividad',
         domainEventId: suggestion.domainEventId,
+        stockItemId: suggestion.stockItemId,
       },
     );
 

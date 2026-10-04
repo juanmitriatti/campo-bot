@@ -13,6 +13,8 @@ export interface PendingDocumentAction {
   deferredAction?: 'expense';
   /** Products from line items not found in user's stock (for product discovery) */
   missingProducts?: Array<{ name: string; unit?: string; category?: string }>;
+  /** Los gastos ya se guardaron: un segundo tap no los vuelve a guardar (STK-6). */
+  expensesSaved?: boolean;
 }
 
 /**

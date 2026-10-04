@@ -1446,10 +1446,37 @@ router.patch('/stock/:id', requireAuth, requireFeature('stock'), async (req: Req
     let idx = 0;
 
     const { name, category, unit, min_stock } = req.body;
-    if (name !== undefined) { idx++; sets.push(`name = $${idx}`); params.push(name); }
+    if (name !== undefined && !String(name ?? '').trim()) { res.status(400).json({ error: 'El nombre no puede quedar vacío' }); return; }
+    if (min_stock !== undefined && min_stock !== null && !(Number(min_stock) >= 0)) {
+      res.status(400).json({ error: 'El mínimo tiene que ser un número' }); return;
+    }
+    if (name !== undefined) { idx++; sets.push(`name = $${idx}`); params.push(String(name).trim()); }
     if (category !== undefined) { idx++; sets.push(`category = $${idx}`); params.push(category); }
-    if (unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(unit); }
-    if (min_stock !== undefined) { idx++; sets.push(`min_stock = $${idx}`); params.push(min_stock); }
+    if (unit !== undefined) {
+      // Cambiar la unidad CONVIERTE lo que hay: antes 1.000 kg pasaban a ser
+      // 1.000 tn (DSH-10). Entre medidas distintas (kg → lt) solo con el ítem en 0.
+      const { convertStockQuantity, storageUnit } = await import('../utils/stock-units.js');
+      const cur = await pool.query(
+        `SELECT si.unit, si.current_quantity, si.min_stock FROM stock_items si
+          WHERE si.id = $1 AND si.deleted_at IS NULL
+            AND si.warehouse_id IN (SELECT w.id FROM warehouses w WHERE w.field_id IN (${accessibleFieldsSql(2)}))`,
+        [id, req.auth!.userId],
+      );
+      if (cur.rows.length === 0) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
+      const row = cur.rows[0] as { unit: string; current_quantity: string; min_stock: string | null };
+      const newUnit = storageUnit(String(unit));
+      const factor = convertStockQuantity(1, row.unit, newUnit);
+      if (factor == null && Number(row.current_quantity) !== 0) {
+        res.status(400).json({ error: `No puedo pasar de ${row.unit} a ${newUnit}: son medidas distintas. Poné la cantidad en 0 primero o cargá un producto nuevo.` });
+        return;
+      }
+      idx++; sets.push(`unit = $${idx}`); params.push(newUnit);
+      if (factor != null && factor !== 1) {
+        idx++; sets.push(`current_quantity = current_quantity * $${idx}`); params.push(factor);
+        if (min_stock === undefined && row.min_stock != null) { idx++; sets.push(`min_stock = min_stock * $${idx}`); params.push(factor); }
+      }
+    }
+    if (min_stock !== undefined) { idx++; sets.push(`min_stock = $${idx}`); params.push(min_stock === null ? null : Number(min_stock)); }
 
     // Solo ítems de galpones en campos accesibles: antes el UPDATE iba por id a
     // secas y un usuario renombraba ítems ajenos cambiando el número de la URL

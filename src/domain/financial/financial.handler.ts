@@ -1157,7 +1157,7 @@ export class FinancialHandler {
         );
         if (suggestion) {
           messages.push(
-            `\n📦 ¿Querés cargar *${data.quantity} ${data.unit} de ${data.product}* al stock del Depósito ${suggestion.warehouseName}?`
+            `\n📦 ¿Querés cargar *${data.quantity} ${data.unit} de ${suggestion.product}* al stock del Depósito ${suggestion.warehouseName}?`
           );
           return {
             messages,
@@ -1504,7 +1504,8 @@ export class FinancialHandler {
         if (hasStock) {
           const { StockService } = await import('../stock/stock.service.js');
           const stockService = new StockService();
-          const stockItem = await stockService.findProduct(userId, data.category);
+          // El GRANO del campo, no "Semilla soja" (STK-8).
+          const stockItem = await findGrainStockItem(stockService, userId, data.category, fieldId);
           if (stockItem && stockItem.current_quantity > 0) {
             const qty = data.quantity;
             const unit = data.unit;
@@ -1587,7 +1588,7 @@ export class FinancialHandler {
           if (await fg.hasFeature(userId, 'stock')) {
             const { StockService } = await import('../stock/stock.service.js');
             const stockService = new StockService();
-            const stockItem = await stockService.findProduct(userId, incomeData.category);
+            const stockItem = await findGrainStockItem(stockService, userId, incomeData.category, pending.fieldId);
             if (stockItem && stockItem.current_quantity > 0) {
               const qty = incomeData.quantity;
               const unit = incomeData.unit;
@@ -1650,7 +1651,7 @@ export class FinancialHandler {
           );
           if (suggestion) {
             messages.push(
-              `\n📦 ¿Querés cargar *${expenseData.quantity} ${expenseData.unit} de ${expenseData.product}* al stock del Depósito ${suggestion.warehouseName}?`
+              `\n📦 ¿Querés cargar *${expenseData.quantity} ${expenseData.unit} de ${suggestion.product}* al stock del Depósito ${suggestion.warehouseName}?`
             );
             return {
               messages,
@@ -4610,4 +4611,17 @@ function renderLast(rows: { expenses: RawRow[]; incomes: RawRow[] }, ctx: Render
   let msg = title + '\n';
   for (const r of sorted) msg += renderMovementLine(r) + '\n';
   return { messages: [msg.trim()], suggestionKey: 'report_shown' };
+}
+
+/**
+ * Ítem de GRANO a descontar por una venta: categoría 'granos', del campo de la
+ * venta si lo hay ahí. Antes buscaba "soja" por substring en todo el stock y
+ * proponía descontar "Semilla soja" (STK-8, auditoría oct 2026).
+ */
+async function findGrainStockItem(
+  stockService: import('../stock/stock.service.js').StockService,
+  userId: UserId, crop: string, fieldId: number | null | undefined,
+) {
+  return (fieldId ? await stockService.findProduct(userId, crop, undefined, { fieldId, category: 'granos' }) : null)
+    ?? await stockService.findProduct(userId, crop, undefined, { category: 'granos' });
 }

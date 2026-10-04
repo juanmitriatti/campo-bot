@@ -2829,6 +2829,22 @@ export async function deleteDomainEvent(eventId) {
     if (event.event_type === 'harvest') {
       // Cargas son datos hoja de la cosecha → se borran con ella.
       await pool.query(`DELETE FROM harvest_loads WHERE domain_event_id = $1`, [eventId]);
+      // El grano que esa cosecha metió al silo propio sale del stock con ella
+      // (STK-20 / AGR-14): antes quedaba en el stock un grano que ya no existía.
+      const { rows: grainIn } = await pool.query(
+        `SELECT stock_item_id, SUM(quantity) AS qty FROM stock_movements
+          WHERE domain_event_id = $1 AND movement_type = 'entrada' GROUP BY stock_item_id`,
+        [eventId]
+      );
+      for (const g of grainIn) {
+        await pool.query(`UPDATE stock_items SET current_quantity = current_quantity - $2, updated_at = NOW() WHERE id = $1`, [g.stock_item_id, g.qty]);
+        await pool.query(
+          `INSERT INTO stock_movements (stock_item_id, user_id, movement_type, quantity, reason, domain_event_id)
+           VALUES ($1, $2, 'salida', $3, 'Cosecha borrada', $4)`,
+          [g.stock_item_id, event.user_id, g.qty, eventId]
+        );
+        console.log(`[HARVEST] cosecha ${eventId} borrada: -${g.qty} del ítem de stock ${g.stock_item_id}`);
+      }
       if (event.plot_crop_id) {
         await reopenOrRecomputeHarvest(event);
       }
@@ -3509,7 +3525,44 @@ export async function getHarvestLoadById(userId, loadId) {
  * la tabla). `patch` trae solo las columnas a cambiar; el neto lo recalcula el
  * llamador con grain-merma y lo manda en el patch. Recalcula el rinde.
  */
+/**
+ * Un camión al silo PROPIO entró al stock de granos vinculado a su cosecha. Si
+ * se corrige su peso o su destino, o se borra, el stock acompaña con la
+ * diferencia neta (STK-20 / AGR-14). Sin un ingreso previo de esa cosecha (plan
+ * sin stock, o anterior al vínculo) no se toca nada y queda en el log.
+ */
+async function adjustSiloStockForLoad(before, after, userId) {
+  const { isOwnStorageDestination } = await import('../utils/lexicon.js');
+  const ownKg = (l) => (l && (l.destination === 'silo' || isOwnStorageDestination(l.destinatario)))
+    ? Number(l.net_weight_kg ?? l.weight_kg) || 0 : 0;
+  const deltaKg = ownKg(after) - ownKg(before);
+  const eventId = (after ?? before)?.domain_event_id;
+  if (!deltaKg || !eventId) return;
+  const { rows } = await pool.query(
+    `SELECT sm.stock_item_id, si.unit FROM stock_movements sm JOIN stock_items si ON si.id = sm.stock_item_id
+      WHERE sm.domain_event_id = $1 AND sm.movement_type = 'entrada' ORDER BY sm.id LIMIT 1`,
+    [eventId]
+  );
+  if (!rows[0]) {
+    console.log(`[HARVEST] camión al silo cambió ${deltaKg} kg sin ingreso de stock vinculado (evento ${eventId})`);
+    return;
+  }
+  const { convertMass } = await import('../utils/mass-units.js');
+  const qty = convertMass(Math.abs(deltaKg), 'kg', rows[0].unit) ?? Math.abs(deltaKg);
+  await pool.query(
+    `UPDATE stock_items SET current_quantity = current_quantity + $2, updated_at = NOW() WHERE id = $1`,
+    [rows[0].stock_item_id, deltaKg > 0 ? qty : -qty]
+  );
+  await pool.query(
+    `INSERT INTO stock_movements (stock_item_id, user_id, movement_type, quantity, reason, domain_event_id)
+     VALUES ($1, $2, $3, $4, 'Camión corregido', $5)`,
+    [rows[0].stock_item_id, userId, deltaKg > 0 ? 'entrada' : 'salida', qty, eventId]
+  );
+  console.log(`[HARVEST] camión al silo corregido: ${deltaKg > 0 ? '+' : '-'}${qty} en el ítem ${rows[0].stock_item_id}`);
+}
+
 export async function updateHarvestLoad(userId, loadId, patch) {
+  const before = await getHarvestLoadById(userId, loadId);
   const allowed = ['driver_name', 'weight_kg', 'destination', 'destinatario', 'truck_plate', 'humidity_pct',
     'quality_metrics', 'net_weight_kg', 'merma_pct', 'gross_weight_kg', 'tare_kg', 'acopio_weight_kg', 'carta_porte', 'ctg', 'notes'];
   const sets = [];
@@ -3530,6 +3583,7 @@ export async function updateHarvestLoad(userId, loadId, patch) {
   );
   const row = result.rows[0] || null;
   if (row?.plot_crop_id) await updateYieldFromLoads(row.plot_crop_id);
+  if (row) await adjustSiloStockForLoad(before, row, userId);
   return row;
 }
 
@@ -3543,6 +3597,7 @@ export async function deleteHarvestLoadById(userId, loadId) {
   );
   const row = result.rows[0] || null;
   if (row?.plot_crop_id) await updateYieldFromLoads(row.plot_crop_id);
+  if (row) await adjustSiloStockForLoad(row, null, userId);
   return row;
 }
 

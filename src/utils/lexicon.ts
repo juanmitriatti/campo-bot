@@ -428,3 +428,14 @@ export function isFuturePlanOnly(text: string): boolean {
   if (FUTURE_PLAN_MARKER_RE.test(t)) return true;
   return WEEKDAY_RE.test(t) && PRESENT_AGRO_VERB_RE.test(t);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Destino de un camión que es ALMACENAJE PROPIO (silo, silo bolsa, galpón,
+// "al campo"), no un acopiador. Anclado a todo el destinatario: «Agro Campo SA»
+// o «Acopio La Casa» son acopiadores y antes contaban como silo propio (AGR-14).
+// ─────────────────────────────────────────────────────────────────────────────
+export function isOwnStorageDestination(destinatario: string | null | undefined): boolean {
+  const t = normLex(destinatario ?? '').trim();
+  if (!t) return false;
+  return /^(al\s+|el\s+|en\s+(el\s+)?|a\s+la\s+)?(silo(\s*bolsa)?s?|silobolsas?|bolsas?|silo\s+propio|propio|galpon(\s+propio)?|planta\s+propia|campo|casa)(\s+propi[oa])?$/.test(t);
+}

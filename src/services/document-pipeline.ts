@@ -43,11 +43,12 @@ export async function resolveDocPlot(userId: UserId): Promise<
     const p = allPlots[0] as unknown as { id: number; field_id: number };
     return { resolved: true, fieldId: p.field_id, plotId: p.id };
   }
-  // Check recent financial context
+  // Varios lotes: se PREGUNTA. Antes la factura iba sola al lote del último
+  // registro, sin mostrarlo (STK-17). El lote reciente va primero en los botones.
   const recent = await financialService.getRecentFinancialContext(userId);
-  if (recent?.plotId) return { resolved: true, fieldId: recent.fieldId, plotId: recent.plotId };
-  // Multiple plots, no recent context → user must pick
-  return { resolved: false, plots: allPlots };
+  const plots = [...allPlots].sort((a, b) =>
+    Number((b as { id: number }).id === recent?.plotId) - Number((a as { id: number }).id === recent?.plotId));
+  return { resolved: false, plots };
 }
 
 /** OCR + extracción + botones post-extracción. */
@@ -78,6 +79,13 @@ export async function processDocumentWithIntent(
 
   if (buttonConfig) {
     const suggestedExpenses = buildSuggestedExpenses(extraction);
+    // Un solo documento pendiente por usuario: si llegan dos fotos juntas, el
+    // anterior se reemplaza — avisarlo en vez de perderlo en silencio (STK-19).
+    const previous = pendingDocumentStore.get(phone);
+    if (previous && previous.documentId !== doc.id && !previous.expensesSaved) {
+      console.log(`[INTERCEPT] documento ${previous.documentId} reemplazado por ${doc.id} sin confirmar: user=${userId}`);
+      items.unshift({ type: 'text', text: `ℹ️ El documento #${previous.documentId} quedó guardado sin registrar el gasto: llegó este otro. Mandalos de a uno para registrar cada uno.` });
+    }
     pendingDocumentStore.set(phone, {
       documentId: doc.id,
       extraction,
@@ -99,6 +107,15 @@ export async function saveDocExpenses(
   const { userId, phone } = ctx;
   const { saveExpense } = await import('./expenses.js');
   const { formatMoney } = await import('../utils/format-money.js');
+  if (pending.expensesSaved) {
+    console.log(`[INTERCEPT] doc expense ya guardado (doble tap): user=${userId} doc=${pending.documentId}`);
+    return [{ type: 'text', text: '✅ Los gastos de este documento ya estaban registrados.' }];
+  }
+  if (pending.suggestedExpenses.length === 0) {
+    // Nunca una respuesta vacía (STK-7).
+    pendingDocumentStore.clear(phone);
+    return [{ type: 'text', text: '⚠️ No encontré montos en el documento para registrar como gasto. Quedó guardado; cargá el gasto escribiéndolo (ej: "gasté 150 mil en semillas").' }];
+  }
   const messages: string[] = [];
   let firstExpenseId: number | null = null;
   for (const exp of pending.suggestedExpenses) {
@@ -116,6 +133,8 @@ export async function saveDocExpenses(
     if (!firstExpenseId && saved?.id) firstExpenseId = saved.id;
     messages.push(`✅ Gasto registrado: ${formatMoney(Number(exp.amount), exp.currency || 'ARS')} - ${exp.description}`);
   }
+  pending.expensesSaved = true;
+  pendingDocumentStore.set(phone, pending);
   if (firstExpenseId) {
     await documentService.linkToExpense(pending.documentId, firstExpenseId, userId).catch(() => {});
   }
@@ -163,6 +182,11 @@ export async function loadRemitoStock(
   const { userId, phone } = ctx;
   const messages: string[] = [];
   for (const item of pending.extraction.line_items!) {
+    // Sin cantidad no se inventa "1 u" (STK-16): se informa y se sigue.
+    if (!item.quantity || !(Number(item.quantity) > 0)) {
+      messages.push(`⚠️ ${item.product}: sin cantidad en el remito, no lo cargué`);
+      continue;
+    }
     try {
       if (warehouseId) {
         const { item: stockItem } = await stockService.addStockToWarehouse(
@@ -178,8 +202,10 @@ export async function loadRemitoStock(
         });
         messages.push(`📦 +${item.quantity || 1}${item.unit || 'u'} de ${stockItem.name} (${stockItem.current_quantity}${stockItem.unit} total)`);
       }
-    } catch {
-      messages.push(`⚠️ No pude cargar ${item.product} al stock`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'error';
+      console.warn(`[INTERCEPT] remito → stock falló: ${item.product}: ${reason}`);
+      messages.push(`⚠️ No pude cargar ${item.product} al stock: ${reason}`);
     }
   }
   pendingDocumentStore.clear(phone);
@@ -246,6 +272,7 @@ export function makeDocCallbackHandler(downloadFile: DownloadFileFn) {
     if (callbackId.startsWith('doc_stock_yes_')) {
       try {
         const pending = pendingDocumentStore.get(phone);
+        if (pending && !sameDocument(callbackId, pending.documentId, userId)) return [otherDocReply];
         if (!pending || !pending.extraction.line_items || pending.extraction.line_items.length === 0) {
           return [{ type: 'text', text: '⚠️ No hay items para cargar al stock.' }];
         }
@@ -304,6 +331,7 @@ export function makeDocCallbackHandler(downloadFile: DownloadFileFn) {
       if (accepted) {
         try {
           const pending = pendingDocumentStore.get(phone);
+          if (pending && !sameDocument(callbackId, pending.documentId, userId)) return [otherDocReply];
           if (!pending?.missingProducts || pending.missingProducts.length === 0) {
             pendingDocumentStore.clear(phone);
             return [{ type: 'text', text: '⚠️ No hay productos pendientes.' }];
@@ -339,13 +367,14 @@ export function makeDocCallbackHandler(downloadFile: DownloadFileFn) {
         try {
           const pending = pendingDocumentStore.get(phone);
           if (!pending) return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
+          if (!sameDocument(callbackId, pending.documentId, userId)) return [otherDocReply];
           // Resolve plot before saving
           const plotRes = await resolveDocPlot(userId);
           if (!plotRes.resolved) {
             pending.deferredAction = 'expense';
             pendingDocumentStore.set(phone, pending);
             const buttons = plotRes.plots.slice(0, 3).map(p => ({
-              id: `doc_plot_${p.id}`,
+              id: `doc_plot_${p.id}_${pending.documentId}`,
               title: `${p.name} (${p.field_name})`.slice(0, 20),
             }));
             return [interactiveButtons('¿En qué lote registramos los gastos?', buttons)];
@@ -356,17 +385,24 @@ export function makeDocCallbackHandler(downloadFile: DownloadFileFn) {
           return [{ type: 'text', text: `❌ ${msg}` }];
         }
       }
+      const pendingNo = pendingDocumentStore.get(phone);
+      if (pendingNo && !sameDocument(callbackId, pendingNo.documentId, userId)) return [otherDocReply];
       pendingDocumentStore.clear(phone);
       return [{ type: 'text', text: '👌 Documento guardado sin registrar gasto.' }];
     }
 
     // --- Document plot selection callback (deferred expense saving) ---
     if (callbackId.startsWith('doc_plot_')) {
-      const plotId = parseInt(callbackId.replace('doc_plot_', ''), 10);
+      const plotMatch = callbackId.match(/^doc_plot_(\d+)(?:_(\d+))?$/);
+      const plotId = plotMatch ? parseInt(plotMatch[1], 10) : NaN;
       if (!isNaN(plotId)) {
         try {
           const pending = pendingDocumentStore.get(phone);
           if (!pending) return [{ type: 'text', text: '⚠️ No hay documento pendiente.' }];
+          if (plotMatch?.[2] && plotMatch[2] !== String(pending.documentId)) {
+            console.log(`[INTERCEPT] doc_plot de otro documento: user=${userId} botón=${plotMatch[2]} pendiente=${pending.documentId}`);
+            return [otherDocReply];
+          }
           const allPlots = await financialService.findAllUserPlots(userId);
           const plot = allPlots.find((p: { id: number }) => Number(p.id) === plotId) as { field_id?: number } | undefined;
           // Un lote que no está entre los del usuario no se usa: antes se
@@ -387,3 +423,17 @@ export function makeDocCallbackHandler(downloadFile: DownloadFileFn) {
     return null; // no es un callback de documentos → pipeline común
   };
 }
+
+/**
+ * ¿El botón es del documento pendiente? Los ids doc_* terminan en el id del
+ * documento. Con un solo pendiente por usuario, el tap del documento A guardaba
+ * el B cuando llegaban dos seguidos (STK-5, auditoría oct 2026).
+ */
+function sameDocument(callbackId: string, pendingDocId: number, userId: UserId): boolean {
+  const m = callbackId.match(/_(\d+)$/);
+  if (!m || m[1] === String(pendingDocId)) return true;
+  console.log(`[INTERCEPT] botón de otro documento: user=${userId} botón=${m[1]} pendiente=${pendingDocId} (${callbackId.slice(0, 30)})`);
+  return false;
+}
+
+const otherDocReply: BotResponseItem = { type: 'text', text: '⏰ Ese botón era de otro documento. No registré nada: usá los botones del último que mandaste.' };

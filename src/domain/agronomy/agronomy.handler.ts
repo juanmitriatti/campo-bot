@@ -2563,7 +2563,22 @@ export class AgronomyHandler {
         }
 
         // Dedup: check if there's already a harvest event for this plot today
-        const loads = Array.isArray(cmd.loads) ? cmd.loads as Array<{ driver_name: string; weight_kg: number; destination?: string; destinatario?: string; truck_plate?: string; humidity_pct?: number; quality_metrics?: Record<string, unknown>; gross_weight_kg?: number | null; tare_kg?: number | null; acopio_weight_kg?: number | null; carta_porte?: string | null; ctg?: string | null }> : null;
+        const rawLoads = Array.isArray(cmd.loads) ? cmd.loads as Array<{ driver_name: string; weight_kg: number; destination?: string; destinatario?: string; truck_plate?: string; humidity_pct?: number; quality_metrics?: Record<string, unknown>; gross_weight_kg?: number | null; tare_kg?: number | null; acopio_weight_kg?: number | null; carta_porte?: string | null; ctg?: string | null }> : null;
+        // Un camión sin peso legible no se guarda con NaN (STK-20): se descarta y se avisa.
+        const weightless = (rawLoads ?? []).filter(l => {
+          const w = resolveDeclaredWeight(l) ?? Number(l.weight_kg);
+          return !Number.isFinite(w) || w <= 0;
+        });
+        if (weightless.length > 0) {
+          console.warn(`[INTERCEPT] harvest_crop: ${weightless.length} camión(es) sin peso descartado(s): ${weightless.map(l => l.driver_name).join(", ")}`);
+        }
+        const keptLoads = (rawLoads ?? []).filter(l => !weightless.includes(l));
+        const loads = keptLoads.length > 0 ? keptLoads : null;
+        const weightlessNote = weightless.length > 0
+          ? `
+
+⚠️ No guardé ${weightless.length === 1 ? "el camión" : "los camiones"} de *${weightless.map(l => l.driver_name || "sin chofer").join(", ")}*: falta el peso. Mandámelo con los kilos.`
+          : "";
         // Humedad GENERAL de la cosecha (formulario, o "cosechamos al 14%" sin
         // camión): vale para los camiones que no traen la suya — entra en la
         // merma — y queda en el evento. Antes el handler no la leía y el dato se
@@ -2821,8 +2836,9 @@ export class AgronomyHandler {
           }
 
           // Extras comerciales: avance en ha, rinde vs esperado, silo propio → stock.
-          const extras = await this.buildHarvestExtras(userId, harvestPcId, plotResult, crop, loadsToSave);
+          const extras = await this.buildHarvestExtras(userId, harvestPcId, plotResult, crop, loadsToSave, savedEvent.id);
           if (extras.lines.length > 0) loadsMsg += `\n\n${extras.lines.join('\n')}`;
+          loadsMsg += weightlessNote;
 
           loadsMsg += `\n\n🏁 _La campaña sigue abierta por si te falta cargar algo (cargas, gastos). Cuando esté todo, decime *"cerrar campaña"*: se archiva el ciclo con sus números (rinde, gastos, margen) y el lote queda listo para la próxima siembra._`;
 
@@ -2843,6 +2859,7 @@ export class AgronomyHandler {
           if (yieldKg) harvestMsg += `\n📊 Rendimiento: ${yieldKg.toLocaleString('es-AR')} kg`;
           if (computedKgPerHa) harvestMsg += yieldKg ? ` (${computedKgPerHa.toLocaleString('es-AR')} kg/ha)` : `\n📊 Rendimiento: ${computedKgPerHa.toLocaleString('es-AR')} kg/ha`;
         }
+        harvestMsg += weightlessNote;
         if (generalHumidity != null) harvestMsg += `\n💧 Humedad: ${generalHumidity.toLocaleString('es-AR')}%`;
 
         // If plot_crop has existing loads (from prior messages), surface them so the user
@@ -3773,22 +3790,25 @@ export class AgronomyHandler {
             const { StockDeductionService } = await import('../stock/stock-deduction.service.js');
             const deductionService = new StockDeductionService();
 
-            // Get plot hectares for dose calculation
-            let plotHectares: number | undefined;
-            if (plotResult.plotId) {
+            // Hectáreas para la dosis: las que dijo el usuario ("fumigué 50 ha"),
+            // si no las del lote.
+            let plotHectares: number | undefined = cmd.hectares != null && Number(cmd.hectares) > 0 ? Number(cmd.hectares) : undefined;
+            if (!plotHectares && plotResult.plotId) {
               const { getPlotById } = await import('../../services/expenses.js');
-              const plotInfo = await getPlotById(plotResult.plotId);
-              plotHectares = plotInfo?.area_hectares || undefined;
+              const plotInfo = await getPlotById(plotResult.plotId, userId);
+              plotHectares = plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : undefined;
             }
 
             const dosePerHa = cmd.unit && typeof cmd.unit === 'string' && (cmd.unit as string).includes('/ha')
               ? (cmd.quantity as number) : undefined;
 
+            // Dosis por ha SIN superficie: no se sabe el total → se pregunta
+            // (cantidad 0). Antes "2 lt/ha" descontaba 2 lt en total (STK-9).
             const suggestion = await deductionService.suggestDeduction(
               userId,
               savedEvent.id,
               cmd.product as string,
-              dosePerHa && plotHectares ? dosePerHa * plotHectares : cmd.quantity as number | undefined,
+              dosePerHa ? (plotHectares ? dosePerHa * plotHectares : undefined) : cmd.quantity as number | undefined,
               (cmd.unit as string || '').replace('/ha', '') || undefined,
               plotResult.fieldId || undefined,
               plotHectares,
@@ -5154,6 +5174,8 @@ export class AgronomyHandler {
     plotResult: { plotId: number; plotName: string | null; fieldId: number | null; fieldName: string | null },
     crop: string,
     savedLoads: Array<{ driver_name: string; destination?: string; destinatario?: string; humidity_pct?: number | null; net_weight_kg?: number | null; weight_kg: number }> | null,
+    /** Cosecha del día: el grano al silo se vincula a ella y se revierte si se borra. */
+    domainEventId?: number,
   ): Promise<{ lines: string[] }> {
     const lines: string[] = [];
     if (!plotCropId) return { lines };
@@ -5192,22 +5214,29 @@ export class AgronomyHandler {
       // Silo propio → stock de granos (neto). Antes una carga "al silo" no
       // tocaba el stock y el silo bolsa quedaba en dos verdades.
       if (savedLoads && savedLoads.length > 0) {
-        const SILO_RE = /\b(silo|bolsa|propio|galp[oó]n|casa|campo|planta propia)\b/i;
-        const toSilo = savedLoads.filter(l => l.destination === 'silo' || (l.destinatario && SILO_RE.test(l.destinatario)));
+        const { isOwnStorageDestination } = await import('../../utils/lexicon.js');
+        const toSilo = savedLoads.filter(l => l.destination === 'silo' || isOwnStorageDestination(l.destinatario));
         if (toSilo.length > 0) {
           const { FeatureGate } = await import('../billing/feature-gate.js');
           if (await new FeatureGate().hasFeature(userId, 'stock')) {
             const kg = sumNetKg(toSilo as Array<{ weight_kg: number; net_weight_kg?: number | null }>);
             const { StockService } = await import('../stock/stock.service.js');
-            const warehouseName = toSilo.find(l => l.destinatario && !/^silo$/i.test(l.destinatario))?.destinatario ?? undefined;
             const hums = toSilo.map(l => l.humidity_pct).filter((h): h is number => h != null);
-            const { item } = await new StockService().addGrainStock(userId, crop, kg, 'kg', {
-              fieldName: plotResult.fieldName ?? undefined,
-              warehouseName,
-              humidity: hums.length ? Math.round((hums.reduce((a, b) => a + Number(b), 0) / hums.length) * 10) / 10 : undefined,
-            });
-            lines.push(`📦 ${kg.toLocaleString('es-AR')} kg de ${crop} al stock (${item.name} en ${warehouseName ?? 'silo'}: ${Number(item.current_quantity).toLocaleString('es-AR')} ${item.unit})`);
-            console.log(`[HARVEST] silo propio → stock: ${kg} kg de ${crop} user=${userId}`);
+            // Al galpón del campo de la cosecha. "silo bolsa" es un destino, no
+            // el nombre de un galpón: antes se buscaba un depósito llamado así,
+            // no existía, y el error se tragaba — el grano no entraba (STK-4).
+            try {
+              const { item } = await new StockService().addGrainStock(userId, crop, kg, 'kg', {
+                fieldName: plotResult.fieldName ?? undefined,
+                domainEventId,
+                humidity: hums.length ? Math.round((hums.reduce((a, b) => a + Number(b), 0) / hums.length) * 10) / 10 : undefined,
+              });
+              lines.push(`📦 ${kg.toLocaleString('es-AR')} kg de ${crop} al stock (${item.name} en ${item.warehouse_name ?? 'el galpón'}: ${Number(item.current_quantity).toLocaleString('es-AR')} ${item.unit})`);
+              console.log(`[HARVEST] silo propio → stock: ${kg} kg de ${crop} user=${userId}`);
+            } catch (siloErr) {
+              console.warn(`[INTERCEPT] silo propio → stock FALLÓ: ${(siloErr as Error).message} user=${userId}`);
+              lines.push(`⚠️ No pude cargar los ${kg.toLocaleString('es-AR')} kg al stock: ${(siloErr as Error).message}`);
+            }
           }
         }
       }

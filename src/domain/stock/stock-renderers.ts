@@ -43,7 +43,8 @@ function fmtQty(q: number, unit: string): string {
   return `${q.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unit}`;
 }
 
-function isLow(r: StockRow): boolean {
+/** Numérico: Postgres devuelve NUMERIC como texto y "50" <= "100" es false (STK-12). */
+export function isLow(r: Pick<StockRow, 'current_quantity' | 'min_stock'>): boolean {
   if (r.min_stock == null) return false;
   return Number(r.current_quantity) <= Number(r.min_stock);
 }

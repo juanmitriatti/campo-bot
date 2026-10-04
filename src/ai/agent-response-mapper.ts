@@ -352,6 +352,26 @@ export class AgentResponseMapper {
       if (filteredCalls.length === 0) filteredCalls = result.toolCalls; // safety: don't drop everything
     }
 
+    // add_stock con precio YA crea su gasto vinculado: un log_expense del mismo
+    // producto en la misma respuesta lo duplicaba (STK-14, auditoría oct 2026;
+    // la regla del prompt sola no alcanzaba).
+    const pricedStock = filteredCalls.filter(tc => {
+      const i = tc.toolInput as Record<string, unknown>;
+      return tc.toolName === 'add_stock' && (Number(i.unit_price_ars) > 0 || Number(i.unit_price_usd) > 0 || Number(i.unit_price) > 0);
+    });
+    if (pricedStock.length > 0) {
+      const stockProducts = pricedStock.map(tc => String((tc.toolInput as Record<string, unknown>).product ?? '').toLowerCase()).filter(Boolean);
+      filteredCalls = filteredCalls.filter(tc => {
+        if (tc.toolName !== 'log_expense') return true;
+        const i = tc.toolInput as Record<string, unknown>;
+        const desc = `${String(i.description ?? '')} ${String(i.product ?? '')} ${String(i.category ?? '')}`.toLowerCase();
+        // Solo el MISMO producto: "y pagué el flete" sigue siendo otro gasto.
+        const dup = stockProducts.some(p => desc.includes(p));
+        if (dup) console.warn(`AI_MAPPER DROP: log_expense duplicado de un add_stock con precio — input=${JSON.stringify(i).slice(0, 150)} text="${originalText.slice(0, 100)}"`);
+        return !dup;
+      });
+    }
+
     // Plan futuro ≠ registro (invariante 12), red del servidor: si el mensaje es
     // SOLO un plan ("el sábado fumigo el Norte", "mañana tengo que pagar el
     // flete") y el agente igual llamó tools que registran como hecho, se

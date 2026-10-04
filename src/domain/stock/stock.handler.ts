@@ -1,5 +1,6 @@
 import type { StockRow, StockRenderCtx } from './stock-renderers.js';
 import { StockService } from './stock.service.js';
+import { isLow as isLowStock } from './stock-renderers.js';
 import { formatDateAR } from '../../utils/date.js';
 import { saveExpense } from '../../services/expenses.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
@@ -253,7 +254,7 @@ export class StockHandler {
     if (items.length === 1) {
       const it = items[0];
       const minLabel = it.min_stock != null ? `  ⚠️ Mínimo: ${it.min_stock} ${it.unit}\n` : '';
-      const lowWarning = it.min_stock != null && it.current_quantity <= it.min_stock ? '  🔴 *STOCK BAJO*\n' : '';
+      const lowWarning = isLowStock(it) ? '  🔴 *STOCK BAJO*\n' : '';
       const grainInfo = (it.grade || it.humidity_pct != null)
         ? `  🌾 ${it.grade ? `Grado: ${it.grade}` : ''}${it.grade && it.humidity_pct != null ? ' | ' : ''}${it.humidity_pct != null ? `Humedad: ${it.humidity_pct}%` : ''}\n`
         : '';
@@ -297,7 +298,7 @@ export class StockHandler {
     if (items.length <= 15) {
       const lines = items.map(it => {
         const minLabel = it.min_stock != null ? `  ⚠️ Mínimo: ${it.min_stock} ${it.unit}\n` : '';
-        const lowWarning = it.min_stock != null && it.current_quantity <= it.min_stock ? '  🔴 *STOCK BAJO*\n' : '';
+        const lowWarning = isLowStock(it) ? '  🔴 *STOCK BAJO*\n' : '';
         const grainInfo = (it.grade || it.humidity_pct != null)
           ? `  🌾 ${it.grade ? `Grado: ${it.grade}` : ''}${it.grade && it.humidity_pct != null ? ' | ' : ''}${it.humidity_pct != null ? `Humedad: ${it.humidity_pct}%` : ''}\n`
           : '';
@@ -314,7 +315,7 @@ export class StockHandler {
     }
 
     const lines = items.map(it => {
-      const low = it.min_stock != null && it.current_quantity <= it.min_stock ? ' 🔴' : '';
+      const low = isLowStock(it) ? ' 🔴' : '';
       const grain = it.grade ? ` [G${it.grade}${it.humidity_pct != null ? ` H${it.humidity_pct}%` : ''}]` : '';
       return `  • *${it.name}*: ${it.current_quantity} ${it.unit}${grain}${low} — ${it.warehouse_name} (${it.field_name})`;
     });

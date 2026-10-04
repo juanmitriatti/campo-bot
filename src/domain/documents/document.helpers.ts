@@ -55,10 +55,12 @@ export function formatExtractionSummary(extraction: DocumentExtraction, docId: n
 export function buildSuggestedExpenses(extraction: DocumentExtraction): Array<Partial<ParsedExpense> & { field?: string; plot?: string }> {
   const currency: Currency = extraction.currency || 'ARS';
 
-  // If line items exist, create one expense per item
-  if (extraction.line_items && extraction.line_items.length > 0) {
-    return extraction.line_items
-      .filter(item => item.total && item.total > 0)
+  // If line items WITH a total exist, create one expense per item. Renglones
+  // sin total (solo cantidad) no alcanzan: antes la lista quedaba vacía y el
+  // tap "Registrar gasto" no guardaba nada (STK-7) → se cae al total.
+  const pricedLines = (extraction.line_items ?? []).filter(item => item.total && item.total > 0);
+  if (pricedLines.length > 0) {
+    const lines: Array<Partial<ParsedExpense> & { field?: string; plot?: string }> = pricedLines
       .map(item => ({
         type: 'expense' as const,
         amount: item.total!,
@@ -71,6 +73,22 @@ export function buildSuggestedExpenses(extraction: DocumentExtraction): Array<Pa
         unit: item.unit || undefined,
         expenseType: isInsumoCategory(item.category) ? 'insumo' as const : 'varios' as const,
       }));
+    // IVA, percepciones y otros cargos: la diferencia contra el total de la
+    // factura se perdía (STK-18). Va como un gasto aparte, visible.
+    const linesSum = pricedLines.reduce((a, it) => a + Number(it.total), 0);
+    const diff = extraction.total_amount ? Number(extraction.total_amount) - linesSum : 0;
+    if (diff > Math.max(1, linesSum * 0.005)) {
+      lines.push({
+        type: 'expense' as const,
+        amount: Math.round(diff * 100) / 100,
+        category: lines[0].category,
+        description: `IVA y otros cargos${extraction.supplier ? ' - ' + extraction.supplier : ''}`,
+        currency,
+        expenseDate: extraction.date || undefined,
+        expenseType: 'varios' as const,
+      });
+    }
+    return lines;
   }
 
   // Fallback: single expense from total

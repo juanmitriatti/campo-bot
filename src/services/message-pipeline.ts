@@ -2537,8 +2537,10 @@ async function handleInteractiveReplyInner(
         if (pendingSale) {
           const { StockService } = await import('../domain/stock/stock.service.js');
           const svc = new StockService();
+          // El ítem de grano que se mostró (STK-8/11); tn sobre kg se convierte (STK-10).
           const { item } = await svc.removeStock(userId, pendingSale.product as string, pendingSale.totalQuantity as number, pendingSale.unit as string, {
             reason: 'Venta de grano',
+            stockItemId: (pendingSale.stockItemId as number | undefined) || undefined,
           });
           pendingStockDeductionStore.delete(phone);
           return [{ type: 'text', text: `📦 Stock descontado: *${item.name}* → ${item.current_quantity}${item.unit} restante` }];

@@ -175,6 +175,22 @@ export class StockRepository {
     return rows[0] || null;
   }
 
+  /** Todos los ítems con ese nombre exacto (sin importar la cantidad) en los galpones accesibles. */
+  async findStockItemsByExactName(userId: number, productName: string): Promise<StockItemRow[]> {
+    const { rows } = await pool.query(
+      `SELECT si.*, w.name AS warehouse_name, f.name AS field_name, f.id AS field_id
+       FROM stock_items si
+       JOIN warehouses w ON si.warehouse_id = w.id
+       JOIN fields f ON w.field_id = f.id
+       WHERE w.field_id IN (${accessibleFieldsSql(1)})
+         AND si.deleted_at IS NULL AND w.deleted_at IS NULL
+         AND LOWER(si.name) = LOWER($2)
+       ORDER BY si.id`,
+      [userId, productName]
+    );
+    return rows;
+  }
+
   async findStockItemByUser(userId: number, productName: string): Promise<StockItemRow | null> {
     const { rows } = await pool.query(
       `SELECT si.*, w.name AS warehouse_name, f.name AS field_name, f.id AS field_id
@@ -190,7 +206,8 @@ export class StockRepository {
     return rows[0] || null;
   }
 
-  async findStockItemFuzzy(userId: number, productName: string, fieldId?: number): Promise<StockItemRow | null> {
+  /** `category`: acota la búsqueda (una venta de soja busca el GRANO, no "Semilla soja" — STK-8). */
+  async findStockItemFuzzy(userId: number, productName: string, fieldId?: number, category?: string): Promise<StockItemRow | null> {
     const normalizedName = productName.toLowerCase();
     let query = `SELECT si.*, w.name AS warehouse_name, f.name AS field_name, f.id AS field_id
        FROM stock_items si
@@ -205,6 +222,10 @@ export class StockRepository {
       params.push(fieldId);
       query += ` AND f.id = $${params.length}`;
     }
+    if (category) {
+      params.push(category);
+      query += ` AND si.category = $${params.length}`;
+    }
     query += ' ORDER BY CASE WHEN LOWER(si.name) = $2 THEN 0 ELSE 1 END, si.current_quantity DESC LIMIT 1';
 
     const { rows } = await pool.query(query, params);
@@ -212,7 +233,7 @@ export class StockRepository {
   }
 
   /** Like findStockItemFuzzy but returns ALL matches (used to detect ambiguity). */
-  async findAllStockItemsFuzzy(userId: number, productName: string, fieldId?: number): Promise<StockItemRow[]> {
+  async findAllStockItemsFuzzy(userId: number, productName: string, fieldId?: number, category?: string): Promise<StockItemRow[]> {
     const normalizedName = productName.toLowerCase();
     let query = `SELECT si.*, w.name AS warehouse_name, f.name AS field_name, f.id AS field_id
        FROM stock_items si
@@ -227,6 +248,10 @@ export class StockRepository {
     if (fieldId) {
       params.push(fieldId);
       query += ` AND f.id = $${params.length}`;
+    }
+    if (category) {
+      params.push(category);
+      query += ` AND si.category = $${params.length}`;
     }
     query += ' ORDER BY CASE WHEN LOWER(si.name) = $2 THEN 0 ELSE 1 END, si.current_quantity DESC';
 
