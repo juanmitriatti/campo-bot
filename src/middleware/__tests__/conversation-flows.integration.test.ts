@@ -286,13 +286,14 @@ describe('Conversation Flow Integration', () => {
 
   // --- Multiple validation failures show hint ---
 
-  it('shows hint after 3 consecutive failures', async () => {
+  it('shows the exit hint on the 2nd failure and ends the flow on the 3rd (CONV-17)', async () => {
     await sim.startFlow('expense_flow');
 
     await sim.send('bad');
-    await sim.send('bad');
+    const r2 = await sim.send('bad');
+    expect(r2.messages[0]).toContain('cancelar');
     const r3 = await sim.send('bad');
-    expect(r3.messages[0]).toContain('cancelar');
+    expect(r3.messages[0]).toMatch(/no se guardó nada/);
   });
 });
 

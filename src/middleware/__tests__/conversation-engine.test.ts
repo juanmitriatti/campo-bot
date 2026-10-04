@@ -264,15 +264,18 @@ describe('ConversationEngine', () => {
       expect(r2.nextContext?.stepFailCount).toBe(0);
     });
 
-    it('adds hint after 3 failures', async () => {
+    // Escalera (invariante 6, CONV-17): 2.º rechazo = salida explícita; 3.º = se
+    // corta el flujo diciendo que no se guardó (antes repetía la pregunta).
+    it('2nd failure adds the exit hint, 3rd ends the flow without saving', async () => {
       const startResult = await engine.startFlow(userId, 'expense_flow');
-      let ctx = startResult.nextContext!;
+      const ctx = startResult.nextContext!;
 
       let result = await engine.processFlowMessage(userId, 'bad', ctx);
       result = await engine.processFlowMessage(userId, 'bad', result.nextContext!);
-      result = await engine.processFlowMessage(userId, 'bad', result.nextContext!);
-
       expect(result.response.messages[0]).toContain('cancelar');
+      result = await engine.processFlowMessage(userId, 'bad', result.nextContext!);
+      expect(result.nextContext).toBeNull();
+      expect(result.response.messages[0]).toMatch(/no se guardó nada/);
     });
   });
 

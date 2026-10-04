@@ -59,6 +59,11 @@ export class PendingTransactionStore {
  * confirmation buttons.
  */
 export function describeReplacedPending(prev: PendingTransaction): string {
+  // Un borrado pendiente (o un aviso de campo duplicado) viaja en este store con
+  // un "gasto" de $0 de relleno: no es un gasto que se canceló (CONV-28).
+  const raw = prev as unknown as Record<string, unknown>;
+  if (raw._destructiveCommand) return '🔁 Dejé sin hacer el borrado que estaba esperando tu confirmación.';
+  if (raw.fieldDuplicate || raw._fieldDuplicate) return '🔁 Dejé de lado la pregunta sobre el campo duplicado.';
   const kind = prev.type === 'income' ? 'ingreso' : prev.type === 'expense' ? 'gasto' : 'registro';
   const data = (prev as unknown as { data?: { amount?: number; category?: string; currency?: string } }).data ?? {};
   const hasMoney = typeof data.amount === 'number';

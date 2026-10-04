@@ -2421,21 +2421,37 @@ export class AgronomyHandler {
             const h = harvestsToday[0];
             const cropLabel = h.crop ? ` (${h.crop})` : '';
             const loadsCount = (cmd.loads as unknown[]).length;
+            // Botón que REPITE el comando con el lote, más pending para la
+            // respuesta escrita. Antes era texto suelto: "sí" contestaba "no hay
+            // nada pendiente" y las cargas se perdían (AGR-11, invariante 5).
+            const ask = `🚛 Hoy cosechaste en *${h.plot_name}*${cropLabel} (en ${h.field_name}).\n\n¿Sumo estas ${loadsCount} carga${loadsCount > 1 ? 's' : ''} a esa cosecha?`;
             return {
-              messages: [
-                `🚛 Hoy cosechaste en *${h.plot_name}*${cropLabel} (en ${h.field_name}).\n\n¿Sumo estas ${loadsCount} carga${loadsCount > 1 ? 's' : ''} a esa cosecha?\n\n_Si sí, reenviá el mensaje aclarando el lote: "Pedro 30 tn en lote ${h.plot_name}". Si era otra cosa (otra venta, otro lote), avisame._`,
-              ],
+              messages: [],
+              interactive: {
+                type: 'buttons' as const,
+                body: ask,
+                buttons: [
+                  { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, plotName: h.plot_name, fieldName: h.field_name }))}`, title: 'Sí, sumarlas' },
+                  { id: 'cancel_action', title: 'No' },
+                ],
+              },
+              sideEffects: { setPendingActivity: { command: 'harvest_crop', data: { ...cmd }, missing: ['plot'], askPrompt: `📍 ¿A qué lote van estas cargas? (ej: ${h.plot_name})` } },
             };
           } else if (harvestsToday.length >= 2) {
-            // Multiple cosechas hoy — ask which one with crop hint
-            const lines = harvestsToday.map(h => {
-              const cropLabel = h.crop ? ` (${h.crop})` : '';
-              return `  • *${h.plot_name}*${cropLabel} en ${h.field_name}`;
-            }).join('\n');
+            // Varias cosechas hoy: un botón por lote (repite el comando con ese
+            // lote) + pending para la respuesta escrita (AGR-11).
+            const ask = `🚛 Hoy cosechaste en *${harvestsToday.length} lotes*. ¿A cuál asigno estas cargas?`;
             return {
-              messages: [
-                `🚛 Hoy cosechaste en *${harvestsToday.length} lotes*. ¿A cuál asigno estas cargas?\n\n${lines}\n\n_Repetí el mensaje aclarando el lote, ej: "Pedro 30 tn al silo en lote ${harvestsToday[0].plot_name}"._`,
-              ],
+              messages: [],
+              interactive: {
+                type: 'buttons' as const,
+                body: ask,
+                buttons: harvestsToday.slice(0, 3).map(h => ({
+                  id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, plotName: h.plot_name, fieldName: h.field_name }))}`,
+                  title: String(h.plot_name).slice(0, 20),
+                })),
+              },
+              sideEffects: { setPendingActivity: { command: 'harvest_crop', data: { ...cmd }, missing: ['plot'], askPrompt: '📍 ¿A qué lote van estas cargas?' } },
             };
           }
           // 0 harvests today → fall through to ask_user (existing behavior)

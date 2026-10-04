@@ -655,7 +655,10 @@ export class ConversationEngine {
     // "no se llama Y, es X") and we already have a `name` in flow data, update
     // it and re-prompt the current step so the user doesn't have to cancel +
     // restart the flow.
-    if (stepDef.field !== 'name' && typeof ctx.data?.name === 'string') {
+    // En el paso de LOCALIDAD solo con una señal de nombre ("se llama", "nombre"):
+    // "no figura, es un paraje" renombraba el campo a «un paraje» (CAM-9).
+    const renameAllowed = stepDef.field !== 'city' || /\b(llam\w*|nombre)\b/i.test(text);
+    if (stepDef.field !== 'name' && typeof ctx.data?.name === 'string' && renameAllowed) {
       const renamed = extractRenameCorrection(text);
       if (renamed && renamed.toLowerCase() !== (ctx.data.name as string).toLowerCase()) {
         ctx.data.name = renamed;
@@ -723,8 +726,11 @@ export class ConversationEngine {
       }
     }
 
-    // Mid-flow category correction: "no, es gasoil" updates category without restarting
-    if (stepDef.field !== 'category' && typeof ctx.data.category === 'string') {
+    // Mid-flow category correction: "no, es gasoil" updates category without restarting.
+    // En el paso del LOTE la respuesta habla del lote: solo con la palabra
+    // "categoría" es una corrección de categoría ("suelos" pasaba a Sueldos — CONV-29).
+    if (stepDef.field !== 'category' && typeof ctx.data.category === 'string'
+        && (stepDef.field !== 'plotName' || /categor/i.test(text))) {
       const correctedCat = extractCategoryCorrection(text);
       if (correctedCat) {
         ctx.data.category = correctedCat;
@@ -757,12 +763,31 @@ export class ConversationEngine {
       ctx.stepFailCount = (ctx.stepFailCount ?? 0) + 1;
       this.observer?.logFlowStep(userId, ctx.state, ctx.step, { field: stepDef.field, validationFailed: true });
 
+      // Escalera (invariante 6, CONV-17): la misma pregunta no se repite más de
+      // dos veces. Al tercer rechazo, un paso OPCIONAL se saltea; uno obligatorio
+      // termina el flujo diciendo qué NO se guardó. Antes repetía 4+ veces.
+      if (ctx.stepFailCount >= MAX_STEP_FAILURES) {
+        if (stepDef.optional) {
+          console.log(`[FLOW] ${ctx.state} step=${stepDef.field}: ${ctx.stepFailCount} rechazos en un paso opcional — se saltea`);
+          ctx.stepFailCount = 0;
+          const skipped = await this.advanceToNextStep(userId, flow.id, ctx, flow);
+          skipped.response.messages = ['Lo dejo vacío y seguimos.', ...(skipped.response.messages ?? [])];
+          return skipped;
+        }
+        console.log(`[FLOW] ${ctx.state} step=${stepDef.field}: ${ctx.stepFailCount} rechazos — se corta el flujo sin guardar`);
+        await this.stateRepo.clearFlow(userId);
+        return {
+          response: { messages: [`No pude entender ${stepDef.field === 'plotName' ? 'el lote' : stepDef.field === 'category' ? 'la categoría' : 'ese dato'} y corté el registro: *no se guardó nada*. Mandámelo de nuevo todo en un mensaje (ej: "gasté 50 mil en gasoil en el lote Norte").`] },
+          nextContext: null,
+        };
+      }
+
       const prompt = await this.resolvePrompt(stepDef, ctx.data, userId);
       const interactive = await this.resolveInteractive(stepDef, ctx.data, userId);
 
-      // After MAX_STEP_FAILURES, add hint
+      // Segundo rechazo: la pregunta cambia (salida explícita).
       let errorMsg = result.error;
-      if (ctx.stepFailCount >= MAX_STEP_FAILURES) {
+      if (ctx.stepFailCount >= MAX_STEP_FAILURES - 1) {
         errorMsg += '\n\n_Escribí *cancelar* para salir o elegí de la lista._';
       }
 
@@ -789,6 +814,16 @@ export class ConversationEngine {
     ctx: FlowContext,
   ): Promise<FlowMessageResult> {
     const flowState = ctx.state as FlowState;
+    // "Saltar" de un teclado viejo: sin flujo abierto, o ya en la confirmación.
+    // Antes contestaba "Hubo un problema con el flujo" (FIN-38).
+    if (ctx.state === 'idle') {
+      console.log(`[FLOW] flow_skip sin flujo abierto — botón viejo`);
+      return { response: { messages: ['⏰ Ese botón era de un registro que ya terminó. No cambié nada.'] }, nextContext: null };
+    }
+    if (ctx.state === 'confirming') {
+      console.log(`[FLOW] flow_skip en la confirmación — no hay paso que saltar`);
+      return { response: { messages: ['Ya está todo cargado: confirmá o cancelá con los botones de abajo.'] }, nextContext: ctx };
+    }
     const flow = this.registry.get(flowState);
     if (!flow) {
       return { response: { messages: ['Hubo un problema con el flujo. ¿Qué querés hacer?'] }, nextContext: null };

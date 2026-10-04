@@ -153,8 +153,11 @@ export function stripAnswerPrefix(text: string): string {
     // "también en Laguna" se tomaba como NOMBRE de lote y el bot ofrecía crear
     // el lote «también en Laguna» (QA agentes Ago 2026).
     .replace(/^(?:(?:s[ií]|dale|claro|obvio|ok|bueno)[,\s]+)?(?:tambi[eé]n\s+|y\s+)?/i, '')
-    .replace(/^(en\s+(?:el\s+|la\s+|los\s+|las\s+)?|del\s+|de\s+l[ao]s?\s+|el\s+|la\s+)/i, '')
-    .replace(/^lote\s+/i, '')
+    // "al Sur", "a la Loma", "para el Norte", "las del Sur" (HAC-14): el destino
+    // o la ubicación también se contesta así y mataba la pregunta.
+    .replace(/^(?:(?:el|l[ao]s?)\s+(?:del?|de\s+l[ao]s?)\s+)/i, '')
+    .replace(/^(en\s+(?:el\s+|la\s+|los\s+|las\s+)?|al\s+|a\s+l[ao]s?\s+|a\s+|para\s+(?:el\s+|la\s+)?|hacia\s+(?:el\s+|la\s+)?|del\s+|de\s+l[ao]s?\s+|el\s+|la\s+)/i, '')
+    .replace(/^(?:lote|corral|potrero)\s+(?=\S)/i, (m) => /^corral/i.test(m) ? m : '')
     .trim();
 }
 

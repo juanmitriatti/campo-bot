@@ -175,6 +175,17 @@ export const expenseFlow: FlowDefinition = {
       }
     }
 
+    // "Dejar a nivel campo" (o sin lote): el gasto/ingreso igual va a un CAMPO —
+    // el que traía el mensaje o, con uno solo, ese. Antes quedaba con field_id
+    // NULL y no aparecía en ningún resumen por campo (FIN-15).
+    if (!fieldId) {
+      const hint = (data.fieldName ?? data._resolvedFieldHint) as string | undefined;
+      const fields = await financialService.getUserFields(userId) as Array<{ id: number; name: string }>;
+      const byHint = hint ? fields.find(f => f.name.toLowerCase() === String(hint).toLowerCase()) : undefined;
+      const chosen = byHint ?? (fields.length === 1 ? fields[0] : undefined);
+      if (chosen) { fieldId = chosen.id; resolvedFieldName = chosen.name; }
+    }
+
     const finalCategory = data.category === NEW_CATEGORY_SENTINEL
       ? (data.categoryNewName as string)
       : (data.category as string);
@@ -241,6 +252,9 @@ export const expenseFlow: FlowDefinition = {
       ...(data.product ? { product: data.product as string } : {}),
       ...(data.quantity ? { quantity: data.quantity as number } : {}),
       ...(data.unit ? { unit: data.unit as string } : {}),
+      // El precio unitario que traía el mensaje (FIN-33): sin esto, "20 bolsas a
+      // 15 mil c/u" que pasaba por el flujo quedaba sin precio por unidad.
+      ...(data.unit_price ? { unit_price: data.unit_price as number } : {}),
     };
 
     const saved = await financialService.saveExpense(userId, expenseData, fieldId, plotId);

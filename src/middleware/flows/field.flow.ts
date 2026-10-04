@@ -99,7 +99,7 @@ const steps: FlowStep[] = [
   },
   {
     field: 'city',
-    prompt: '¿En qué localidad está el campo?',
+    prompt: '¿En qué localidad está el campo? (o escribí *sin localidad*)',
     skipIf: (data) => data.locationMethod !== 'city',
     validate: (input) => {
       const city = input.trim();
@@ -107,6 +107,16 @@ const steps: FlowStep[] = [
       return { value: city };
     },
     validateAsync: async (input, data) => {
+      // Salida explícita: "sin localidad", "saltar", "después te digo", "no
+      // figura, es un paraje". Antes el paso no tenía escape y repetía la misma
+      // pregunta 5+ veces (CAM-17, invariante 6). El campo se crea sin localidad
+      // (el clima y las alertas la piden después).
+      const { normLex } = await import('../../utils/lexicon.js');
+      const t = normLex(input).trim();
+      if (/^(?:sin\s+(?:localidad|ubicacion|ciudad)|saltar|saltea\w*|omitir|despues(?:\s+te\s+digo)?|mas\s+tarde|no\s+se|ni\s+idea|ninguna|no\s+tiene|no\s+figura\b.*|.*\bparaje\b.*)$/.test(t)) {
+        console.log(`[FLOW] field_flow city omitida: "${input.slice(0, 40)}"`);
+        return { value: null };
+      }
       // "Está en la localidad de Junín, Buenos Aires." → "Junín, Buenos Aires"
       // (fuente única en localidad-lookup; acá solo para que el mensaje de
       // error muestre lo que realmente buscamos).

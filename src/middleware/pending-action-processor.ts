@@ -132,7 +132,9 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
   // producto/categoría — dato basura silencioso. Las consultas/acciones nuevas
   // ya escapan ANTES en el controller (looksLikeNewActionOrQuery); esto cubre
   // el residuo conversacional corto que no escapa.
-  const NON_ANSWER_RE = /^(?:hola|buenas|buen\s+d[ií]a|gracias|despu[eé]s\s+te\s+digo|despu[eé]s\s+veo|ahora\s+no|m[aá]s\s+tarde|luego\s+te|esper[aá]|dejame\s+pensar|no\s+s[eé]\b|ni\s+idea|qu[eé]\s|c[oó]mo\s|por\s+qu[eé])/i;
+  // Acuses ("dale", "ok", "listo") tampoco son un valor: "dale" quedaba como
+  // producto de la fumigación (CONV-11).
+  const NON_ANSWER_RE = /^(?:hola|buenas|buen\s+d[ií]a|gracias|despu[eé]s\s+te\s+digo|despu[eé]s\s+veo|ahora\s+no|m[aá]s\s+tarde|luego\s+te|esper[aá]|dejame\s+pensar|no\s+s[eé]\b|ni\s+idea|qu[eé]\s|c[oó]mo\s|por\s+qu[eé]|(?:dale|ok|okey|listo|bueno|joya|perfecto|s[ií]|ya)\s*[.!]*$)/i;
   // Compute the slots that are STILL empty — a pending may list several required
   // slots ('product','plot','quantity') while data already holds most of them, so
   // effectively only ONE is missing. Using this (not raw missing.length) lets the
@@ -153,7 +155,7 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
     const cleaned = text.trim();
     const shapeOk = cleaned.length > 0 && cleaned.length <= 60
       && /^[A-Za-záéíóúñ0-9][\wáéíóúñ\s.,-]*$/i.test(cleaned);
-    if (shapeOk && (slot === 'plot' || slot === 'field')) {
+    if (shapeOk && (slot === 'plot' || slot === 'field' || (slot as string) === 'destPlot')) {
       // Plot/field answers commonly carry a correction prefix and/or "en":
       // "no, en Sur", "en el Norte", "mejor el lote A". Strip them and use the
       // remainder as the name — otherwise the CORRECTION_PREFIX bail drops the
@@ -167,7 +169,16 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
         if (slot === 'plot') delete (extracted as Record<string, unknown>).field;
       }
     } else if (shapeOk && !CORRECTION_PREFIX.test(cleaned) && !NON_ANSWER_RE.test(cleaned) && !/\?/.test(cleaned)) {
-      if (NUMERIC_SLOTS.has(slot)) {
+      if (slot === 'count' && !/^[0-9]+$/.test(cleaned) && !/\btod[ao]s?\b/i.test(cleaned)) {
+        // Cantidad de animales: el PRIMER número que no lleva unidad. "20 de 380
+        // kilos" daba 380 y "20 a 500 mil cada una" daba 500.000 (HAC-12): el
+        // camino de plata y "el último número de la frase" no sirven para contar.
+        const m = cleaned.match(/(?:^|\s)(\d{1,6})(?!\s*(?:[.,]\d|kg\b|kilos?|tn\b|ton|ha\b|has\b|hect|lt\b|litros?|qq\b|mil\b|lucas?|palos?|millon|d[oó]lar|usd|pesos?|%|\$))/i);
+        if (m) {
+          (extracted as Record<string, unknown>)[slot] = Number(m[1]);
+          console.log(`[INTERCEPT] single-slot count: "${cleaned.slice(0, 40)}" → ${m[1]}`);
+        }
+      } else if (NUMERIC_SLOTS.has(slot)) {
         const numMatch = cleaned.match(/^[0-9]+(?:[.,][0-9]+)?$/);
         if (numMatch) {
           (extracted as Record<string, unknown>)[slot] = parseFloat(cleaned.replace(',', '.'));
@@ -203,6 +214,10 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
         // reemplazó la caravana 0000010 por LA10ESMACHOCAMBIALO. Se deja vacío
         // → el handler re-pregunta y la escalera de escalamiento sigue.
         console.log(`[INTERCEPT] single-slot id-slot rejected: slot=${slot} "${cleaned.slice(0, 60)}" no parece una caravana (command=${pending.command})`);
+      } else if (/^[\d\s.,-]+$/.test(cleaned)) {
+        // Un slot de TEXTO (cultivo, producto, categoría…) no es un número suelto:
+        // "12345" quedaba como cultivo (CONV-11). Se deja vacío → re-pregunta.
+        console.log(`[INTERCEPT] single-slot text-slot rechazado: slot=${slot} "${cleaned.slice(0, 40)}" es solo un número (command=${pending.command})`);
       } else {
         (extracted as Record<string, unknown>)[slot] = cleaned;
         console.log(`[INTERCEPT] single-slot fallback: slot=${slot} consumed="${cleaned.slice(0, 60)}" (command=${pending.command})`);
@@ -354,7 +369,9 @@ export function slotToCmdKeys(slot: SlotName): string[] {
   }
 }
 
-export const SLOT_LABEL: Record<SlotName, string> = {
+// Record<string>: los handlers también piden slots que no extrae el
+// slot-extractor (cost, due_date, description…) y se mostraban crudos (CONV-22).
+export const SLOT_LABEL: Record<string, string> = {
   amount: 'el monto',
   category: 'la categoría',
   plot: 'el lote',
@@ -369,6 +386,13 @@ export const SLOT_LABEL: Record<SlotName, string> = {
   hectares: 'las hectáreas',
   time: 'la hora',
   phone: 'el número de teléfono',
+  cost: 'el costo',
+  due_date: 'la fecha',
+  description: 'qué te recuerdo',
+  weight: 'el peso',
+  rfid: 'la caravana',
+  newRfid: 'la caravana nueva',
+  animalRef: 'la caravana',
 };
 
 function buildAskPromptForMissing(missing: SlotName[], fallback?: string): string {

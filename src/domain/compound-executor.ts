@@ -69,6 +69,12 @@ export class CompoundExecutor {
     // Split into executable steps vs partials (missing amount/price).
     const actionable = results.filter(r => COMPOUND_TYPES.has(r.intent.type));
     const partials = results.filter(r => PARTIAL_TYPES.has(r.intent.type));
+    // Lo que no es ejecutable ni parcial (una respuesta de texto del agente, un
+    // 'unknown') queda afuera del compuesto: que se vea en el log (CONV-13, inv 1).
+    const dropped = results.filter(r => !COMPOUND_TYPES.has(r.intent.type) && !PARTIAL_TYPES.has(r.intent.type));
+    if (dropped.length > 0 && actionable.length + partials.length > 1) {
+      console.log(`[INTERCEPT] compound: ${dropped.length} resultado(s) no ejecutable(s) descartado(s): ${dropped.map(r => r.intent.type).join(', ')}`);
+    }
     // Activate compound flow if there are 2+ actionables, OR a mix of actionable + partial.
     // (One actionable alone is the single-action path; one partial alone is handled by the
     //  controller's standard intent path. Mixed = the user's "vendí X y vendí Y [no price]" case.)

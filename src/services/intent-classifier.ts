@@ -77,6 +77,9 @@ export const READ_ONLY_TRIVIAL_COMMANDS = new Set([
 const TRIVIAL_COMMANDS = new Set([
   'confirm', 'cancel',
   'greeting', 'thanks', 'ack',
+  // "unirme X" por regex, sin IA: con el agente caído o sin cuota el invitado
+  // no entraba al campo (CAM-15). El regex es estricto (INVITE_ACCEPT_RE).
+  'accept_invite',
   'menu', 'help', 'dollar', 'grain_prices', 'list_reminders', 'show_plan',
   'disable_tips', 'enable_tips',
   'list_fields', 'list_plots',

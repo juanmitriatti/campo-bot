@@ -518,13 +518,19 @@ export function applySideEffects(
   }
   if (fx.setPendingActivity) {
     const act = fx.setPendingActivity;
+    // Un handler que RE-pregunta el mismo comando no conoce la cola serial: si
+    // no la trae, se conserva la del pending que reemplaza. Antes una respuesta
+    // inválida al primer ítem borraba la cola entera (CONV-8).
+    const prev = pendingActStore.get(phone);
+    const keepQueue = !act.nextInQueue && prev?.command === act.command && Array.isArray(prev?.nextInQueue) && prev.nextInQueue.length > 0;
+    if (keepQueue) console.log(`[INTERCEPT] setPendingActivity sin cola sobre ${act.command}: conservo ${prev!.nextInQueue!.length} en cola`);
     pendingActStore.set(phone, {
       command: act.command,
       data: act.data,
       timestamp: Date.now(),
       missing: act.missing,
       askPrompt: act.askPrompt,
-      nextInQueue: act.nextInQueue,
+      nextInQueue: keepQueue ? prev!.nextInQueue : act.nextInQueue,
       attempts: act.attempts,
       lastRejected: act.lastRejected,
     });
@@ -585,9 +591,16 @@ export async function commitFinancialFlowFieldLevel(
   if (!['expense_flow', 'income_flow'].includes(origin)) return [];
   // Commit when the record is already complete: either waiting on the OPTIONAL
   // plot, or sitting at the confirmation step. Both lose the record on pivot.
-  const atPlot = conversationEngine.getCurrentStepField(flowCtx) === 'plotName';
+  const step = conversationEngine.getCurrentStepField(flowCtx);
+  const atPlot = step === 'plotName';
   const atConfirm = flowCtx.state === 'confirming';
-  if (!atPlot && !atConfirm) return [];
+  // También en los pasos OPCIONALES posteriores ("¿Algún detalle?", cantidad):
+  // monto y categoría ya están, y una consulta o acción nueva descartaba el
+  // gasto completo sin avisar (CONV-6, auditoría oct 2026).
+  const d = (flowCtx.data ?? {}) as Record<string, unknown>;
+  const hasCore = d.amount != null && !!d.category && (d.category !== '__NEW_CATEGORY__' || !!d.categoryNewName);
+  const atOptionalTail = hasCore && (step === 'description' || step === 'quantity');
+  if (!atPlot && !atConfirm && !atOptionalTail) return [];
   const result = await conversationEngine.executeConfirm(userId, flowCtx);
   applySideEffects(result.response.sideEffects, phone);
   const kind = origin === 'income_flow' ? 'ingreso' : 'gasto';
@@ -671,6 +684,12 @@ async function processTextMessageWithReplay(
   text: string,
   ctx: ChannelContext,
 ): Promise<BotResponseItem[]> {
+  // "cancelar" también descarta la primera acción diferida: antes quedaba
+  // guardada y se re-inyectaba sola al crear el campo (CONV-19).
+  if (isCancelIntent(text) && deferredFirstActionStore.get(ctx.phone)) {
+    console.log(`[INTERCEPT] cancelar descarta la acción diferida: "${deferredFirstActionStore.get(ctx.phone)!.originalText.slice(0, 60)}"`);
+    deferredFirstActionStore.clear(ctx.phone);
+  }
   const items = await processTextMessageInner(text, ctx);
 
   try {
@@ -775,18 +794,37 @@ async function processTextMessageInner(
   // --- Check awaiting_new_category_name (inline category creation) ---
   {
     const rawState = await pool.query(
-      `SELECT flow_state, flow_data FROM conversation_state WHERE user_id = $1`,
+      `SELECT flow_state, flow_data, updated_at FROM conversation_state WHERE user_id = $1`,
       [userId],
     );
     if (rawState.rows[0]?.flow_state === 'awaiting_new_category_name') {
       const flowData = rawState.rows[0].flow_data as { kind: 'expense' | 'income'; payload: string };
+      const label = flowData.kind === 'income' ? 'ingreso' : 'gasto';
       if (isCancelIntent(text)) {
         await conversationEngine.clearFlow(userId);
         return [{ type: 'text', text: '❌ Operación cancelada.' }];
       }
-      await conversationEngine.clearFlow(userId);
-      const response = await financialHandler.resumeCreateCategory(userId, text, flowData);
-      return collectResponse(response);
+      // Sin vencimiento, cualquier mensaje días después se tomaba como nombre (CONV-1).
+      const ageMs = Date.now() - new Date(rawState.rows[0].updated_at).getTime();
+      if (ageMs > 30 * 60_000) {
+        console.log(`[INTERCEPT] awaiting_new_category_name vencido (${Math.round(ageMs / 60_000)} min) — no se usa como nombre`);
+        await conversationEngine.clearFlow(userId);
+      } else if (looksLikeNewActionOrQuery(text) || isSmallTalk(text)) {
+        // Una acción o consulta NO es el nombre: se procesa normal y se avisa
+        // que el registro quedó sin guardar. Antes "sembré soja en el Sur" se
+        // creaba como categoría y la siembra se perdía (CONV-1).
+        console.log(`[INTERCEPT] awaiting_new_category_name: "${text.slice(0, 50)}" es otra cosa, no el nombre — se procesa aparte`);
+        await conversationEngine.clearFlow(userId);
+        const rest = await processTextMessageInner(text, ctx);
+        return [...rest, { type: 'text', text: `ℹ️ El ${label} que esperaba el nombre de la categoría quedó *sin guardar*. Mandámelo de nuevo cuando quieras.` }];
+      } else if (text.trim().length > 60) {
+        // Nombre largo: se re-pregunta SIN perder el registro (CONV-14).
+        return [{ type: 'text', text: `El nombre tiene que tener hasta 60 caracteres. ¿Cómo se llama la categoría? (o *cancelar*)` }];
+      } else {
+        await conversationEngine.clearFlow(userId);
+        const response = await financialHandler.resumeCreateCategory(userId, text, flowData);
+        return collectResponse(response);
+      }
     }
   }
 
@@ -824,7 +862,18 @@ async function processTextMessageInner(
     if (conversationEngine.isExpired(flowCtx)) {
       const notifyEnabled = (await getSettingBool('FLOW_TIMEOUT_NOTIFICATION_ENABLED')) ?? true;
       const expiredFlowState = flowCtx.originFlow ?? flowCtx.state;
+      // Flujo vencido + mensaje nuevo: el registro completo (monto y categoría)
+      // se guarda a nivel campo y el mensaje se PROCESA. Antes se descartaban
+      // los dos y solo se avisaba el vencimiento (CONV-20).
+      const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
       await conversationEngine.clearFlow(userId);
+      if (committed.length > 0 || !isCancelIntent(text)) {
+        console.log(`[INTERCEPT] flujo ${expiredFlowState} vencido: ${committed.length > 0 ? 'guardado a nivel campo y ' : ''}proceso el mensaje nuevo`);
+        const rest = await processTextMessageInner(text, ctx);
+        const note: BotResponseItem[] = committed.length > 0 ? committed
+          : notifyEnabled ? [{ type: 'text', text: buildTimeoutMessage(expiredFlowState) }] : [];
+        return [...note, ...rest];
+      }
       if (notifyEnabled) {
         return [{ type: 'text', text: buildTimeoutMessage(expiredFlowState) }];
       }
@@ -928,7 +977,11 @@ async function processTextMessageInner(
       // During field_flow name step, suppress ONLY field_info
       // (prevents "Campo Norte" from matching field_info, but allows "mis campos" → list_fields)
       const isFlowNameStep = flowCtx.state === 'field_flow' && flowCtx.step === 0;
-      const effectiveCmd = (isFlowNameStep && interruptCmd?.command === 'field_info') ? null : interruptCmd;
+      // "sí / dale / confirmar" con el flow esperando la confirmación ES la
+      // respuesta al flow: como comando trivial cerraba el flow y contestaba
+      // "No hay nada pendiente" (CAM-16, alta de campo que nunca se creaba).
+      const confirmsFlow = flowCtx.state === 'confirming' && interruptCmd?.command === 'confirm';
+      const effectiveCmd = ((isFlowNameStep && interruptCmd?.command === 'field_info') || confirmsFlow) ? null : interruptCmd;
       if (effectiveCmd && SAFE_INTERRUPTION_COMMANDS.has(effectiveCmd.command)) {
         // Greetings/thanks mid-flow → just re-prompt (avoid confusing mixed response)
         if (effectiveCmd.command === 'greeting' || effectiveCmd.command === 'thanks') {
@@ -1070,6 +1123,16 @@ async function processTextMessageInner(
       pendingObsStore.clear(phone);
       // Fall through to normal processing below
     } else {
+      if (/^\s*(?:general|ninguno|sin\s+lote|todo\s+el\s+campo)\s*$/i.test(text)) {
+        pendingObsStore.clear(phone);
+        const savedGeneral = await saveObservation(userId, {
+          fieldId: null, plotId: null, text: pendingObs.text, category: pendingObs.category, source: 'text',
+        });
+        if (savedGeneral && savedGeneral !== SAVE_REJECTED_DUPLICATE && !(savedGeneral as any)._rejected) {
+          return [{ type: 'text', text: '📝 Observación guardada como *general* (sin lote).' }];
+        }
+        return [{ type: 'text', text: 'No se pudo guardar la observación. Intentá de nuevo.' }];
+      }
       const obsResolved = await plotDiscovery.resolveExisting(userId, text);
       if (obsResolved.plotId) {
         pendingObsStore.clear(phone);
@@ -1102,8 +1165,24 @@ async function processTextMessageInner(
         return [{ type: 'text', text: 'No se pudo guardar la observacion. Intenta de nuevo.' }];
       }
 
+      // Escalera (invariante 6): a la tercera respuesta que no es un lote, la
+      // observación se guarda como general en vez de repetir la pregunta para
+      // siempre (CONV-17).
+      const obsAttempts = ((pendingObs as { attempts?: number }).attempts ?? 0) + 1;
+      if (obsAttempts >= 3) {
+        pendingObsStore.clear(phone);
+        console.log(`[INTERCEPT] observación sin lote tras ${obsAttempts} intentos — se guarda como general`);
+        const savedGeneral = await saveObservation(userId, {
+          fieldId: null, plotId: null, text: pendingObs.text, category: pendingObs.category, source: 'text',
+        });
+        if (savedGeneral && savedGeneral !== SAVE_REJECTED_DUPLICATE && !(savedGeneral as any)._rejected) {
+          return [{ type: 'text', text: '📝 La guardé como observación *general* (sin lote). Si era de un lote, decime "la observación era del lote X".' }];
+        }
+        return [{ type: 'text', text: 'No se pudo guardar la observación. Intentá de nuevo.' }];
+      }
+      pendingObsStore.set(phone, { ...pendingObs, attempts: obsAttempts } as typeof pendingObs);
       const userPlots = await agronomyRepository.findAllUserPlots(userId);
-      return [{ type: 'text', text: `No encontré ese lote. ¿En qué lote?\n\n${formatPlotListGrouped(userPlots)}` }];
+      return [{ type: 'text', text: `No encontré ese lote. ¿En qué lote? (o *general*)\n\n${formatPlotListGrouped(userPlots)}` }];
     }
   }
 
@@ -1112,7 +1191,21 @@ async function processTextMessageInner(
   if (pendingAct) {
     if (isCancelIntent(text)) {
       pendingActStore.clear(phone);
-      return [{ type: 'text', text: '❌ Actividad cancelada.' }];
+      // El mensaje dice QUÉ se canceló: con un gasto o ingreso parcial decía
+      // "Actividad cancelada" (FIN-35). Y si había más en cola, cuántas (CONV-15).
+      const what = pendingAct.command === 'log_expense' ? 'Gasto cancelado'
+        : pendingAct.command === 'log_income' ? 'Ingreso cancelado'
+        : 'Cancelado';
+      const queued = Array.isArray(pendingAct.nextInQueue) ? pendingAct.nextInQueue.length : 0;
+      if (queued > 0) console.log(`[INTERCEPT] cancelar con ${queued} en cola: se cancela todo`);
+      return [{ type: 'text', text: `❌ ${what}.${queued > 0 ? ` También cancelé ${queued === 1 ? 'la otra pregunta que estaba en cola' : `las ${queued} preguntas que estaban en cola`}.` : ''}` }];
+    }
+    // Saludo o "gracias" con una pregunta abierta: se contesta y se re-pregunta,
+    // sin gastar la escalera. Antes cada "hola" contaba como intento fallido y
+    // terminaba escalando (y borrando) la pregunta (CONV-18).
+    if (isSmallTalk(text)) {
+      console.log(`[INTERCEPT] small talk con pending abierto (${pendingAct.command}) — re-pregunto sin contar intento`);
+      return [{ type: 'text', text: `👋 ${pendingAct.askPrompt || '¿Me contestás lo que te pregunté?'}` }];
     }
     // Salida diferida (ronda 3, Jul 2026): "después te digo" NO es cancelar ni
     // una respuesta al slot. Antes el NON_ANSWER_RE del processor correctamente
@@ -1330,6 +1423,14 @@ ${ask}` }];
         // here and test-bot didn't; unified now).
         applySideEffects(cmdResult.sideEffects, phone);
         const items = collectResponse(cmdResult);
+        // El re-ruteo puede abrir un flow ("¿En qué lote lo registramos?"): sin
+        // arrancarlo acá la pregunta quedaba huérfana y la venta se perdía (CONV-7).
+        if (cmdResult.sideEffects?.startFlow) {
+          const { state, data } = cmdResult.sideEffects.startFlow;
+          const flowResult = await conversationEngine.startFlow(userId, state, data);
+          if (flowResult.nextContext) await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+          items.push(...collectResponse(flowResult.response));
+        }
         if (rejectionNote) items.unshift({ type: 'text', text: rejectionNote });
         if (advanced.askPrompt) items.push({ type: 'text', text: advanced.askPrompt });
         return items;
@@ -1406,6 +1507,29 @@ ${ask}` }];
   // nuevo sigue guardando el anterior con aviso — perderlo sería peor.
   if (pending && isCompletePending(pending as any) && !intentClassifier.detectsFinancialIntent(text)) {
     const trivialCmd = intentClassifier.parseCommandOnly(text);
+    // "ok" / "listo" con la tarjeta abierta: se vuelve a mostrar para que la
+    // confirme con el botón. Antes contestaba "👍" sin guardar nada y el usuario
+    // creía que había quedado registrado (FIN-32).
+    if (trivialCmd?.command === 'ack') {
+      console.log(`[INTERCEPT] acuse "${text.slice(0, 20)}" con tarjeta ${(pending as any).type} abierta — re-muestro la tarjeta`);
+      const { renderPendingCard } = await import('../domain/financial/financial.handler.js');
+      return collectResponse(renderPendingCard(pending as any));
+    }
+    // Un comentario libre ("era para la sembradora") es el DETALLE de lo que se
+    // está confirmando: se agrega y la tarjeta se re-muestra. Antes el gasto se
+    // guardaba solo y el comentario se perdía (FIN-36).
+    // Borde por lookahead: \b no ve borde después de "é"/"á" ("qué observaciones").
+    const looksLikeAsk = /\?|^\s*¿|^\s*(?:qu[eé]|cu[aá]nt\w*|c[oó]mo|d[oó]nde|cu[aá]ndo|cu[aá]l\w*|qui[eé]n|mostr\w*|ver|list\w*|dame|pasame|decime|va\s+a|hay|anot\w*|registr\w*|cargu?\w*)(?=\s|$)/i.test(text);
+    if (!trivialCmd && !looksLikeAsk && !looksLikeNewActionOrQuery(text) && !isReadOnlyQuery(text) && !isSmallTalk(text)
+        && text.trim().split(/\s+/).length >= 2 && text.trim().length <= 120 && !/\d/.test(text)) {
+      const d = ((pending as any).data ?? {}) as Record<string, unknown>;
+      const prevDesc = String(d.description ?? '').trim();
+      const updated = { ...(pending as any), data: { ...d, description: prevDesc ? `${prevDesc} — ${text.trim()}` : text.trim() } };
+      pendingStore.set(phone, updated);
+      console.log(`[INTERCEPT] comentario con tarjeta ${(pending as any).type} abierta → detalle: "${text.slice(0, 40)}"`);
+      const { renderPendingCard } = await import('../domain/financial/financial.handler.js');
+      return [{ type: 'text', text: '📝 Lo agregué como detalle.' }, ...collectResponse(renderPendingCard(updated))];
+    }
     const readOnlyTrivial = !!trivialCmd && READ_ONLY_TRIVIAL_COMMANDS.has(trivialCmd.command as string);
     if (isReadOnlyQuery(text) || readOnlyTrivial) {
       console.log(`[INTERCEPT] consulta read-only con confirmación pendiente (${(pending as any).type}): respondo y re-muestro la tarjeta`);
@@ -2224,9 +2348,19 @@ async function handleInteractiveReplyInner(
       }
       // field_flow necesita saber el canal para el paso de ubicación (mapa/share).
       const prefillData = flowName === 'field_flow' ? { _channel: ctx.channel, _channelId: phone } : undefined;
+      // Un solo colector: la pregunta pendiente que había queda descartada CON
+      // aviso. Antes quedaban dos abiertas y la respuesta caía en cualquiera (CONV-21).
+      const parked = pendingActStore.get(phone);
+      if (parked) {
+        console.log(`[INTERCEPT] flow_new_ con pending abierto (${parked.command}) — se descarta con aviso`);
+        pendingActStore.clear(phone);
+      }
       const result = await conversationEngine.startFlow(userId, flowName as FlowState, prefillData);
       conversationObserver.logFlowStarted(userId, flowName, { trigger: 'interactive_button' });
-      return collectResponse(result.response);
+      const flowItems = collectResponse(result.response);
+      return parked
+        ? [{ type: 'text', text: 'ℹ️ Dejé de lado la pregunta que tenía abierta para arrancar esto.' }, ...flowItems]
+        : flowItems;
     }
     // flow_field_loc_ → location method buttons, pass full ID to flow engine.
     // Solo al paso que los muestra: un teclado viejo tocado en el paso "nombre"
@@ -2695,10 +2829,18 @@ async function handleInteractiveReplyInner(
         conversationLogger.log(userId, phone, `[${callbackId}]`, flowResult.response.messages[0] ?? flowResult.response.interactive?.body ?? null, 'tap', intent.data.command, null, null, false, null, !!flowResult.response.interactive, null, null, null, ctx.channel).catch(() => {});
         return [...collectResponse(response), ...collectResponse(flowResult.response)];
       }
+      // Un tap que abre OTRA pregunta reemplaza la pendiente: se avisa en vez de
+      // pisarla en silencio (CONV-22: "¿cuánto costó la cosecha?" sobre otra).
+      const prevAct = pendingActStore.get(phone);
+      const newAct = (response.sideEffects as Record<string, any> | undefined)?.setPendingActivity;
+      const replacedNote: BotResponseItem[] = (prevAct && newAct && newAct.command !== prevAct.command)
+        ? [{ type: 'text', text: `ℹ️ Dejé de lado la pregunta que tenía abierta (${prevAct.askPrompt ? prevAct.askPrompt.replace(/\s+/g, ' ').slice(0, 60) : prevAct.command}).` }]
+        : [];
+      if (replacedNote.length > 0) console.log(`[INTERCEPT] tap ${callbackId.slice(0, 30)} reemplaza el pending ${prevAct!.command} por ${newAct.command}`);
       applySideEffects(response.sideEffects, phone);
       conversationLogger.log(userId, phone, `[${callbackId}]`, response.messages[0] ?? response.interactive?.body ?? null, 'tap', intent.data.command, null, null, false, null, !!response.interactive, null, null, null, ctx.channel).catch(() => {});
       await attachSuggestion(response, userId, ctx.channel, intent.data.command);
-      const items = [...preFormNotes, ...collectResponse(response)];
+      const items = [...replacedNote, ...preFormNotes, ...collectResponse(response)];
       await appendFormOffer(items, response, ctx);
       return items;
     }
@@ -2707,4 +2849,13 @@ async function handleInteractiveReplyInner(
   // callback desconocido o router null. Antes: [] → silencio absoluto.
   console.warn(`[INTERCEPT] tap sin ruta: ${callbackId} (phone=${phone})`);
   return [STALE_BUTTON_ITEM];
+}
+
+/**
+ * Saludo, agradecimiento o acuse ("hola", "gracias", "ok") — nunca es la
+ * respuesta a una pregunta abierta ni gasta su escalera (CONV-18).
+ */
+function isSmallTalk(text: string): boolean {
+  const cmd = intentClassifier.parseCommandOnly(text);
+  return !!cmd && ['greeting', 'thanks', 'ack'].includes(cmd.command as string);
 }

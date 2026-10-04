@@ -657,7 +657,10 @@ async function monitoringReminderTick() {
       const dup = await isDuplicate(row.user_id, 'monitoring_reminder', dedupKey, 168); // 7 days
       if (dup) continue;
 
-      const msg = `📋 *Recordatorio de monitoreo*\nHace ${row.days_ago} día${row.days_ago !== 1 ? 's' : ''} registraste ${row.category} en lote *${row.plot_name}* (campo ${row.field_name}). ¿Cómo está la situación?`;
+      const msg = `📋 *Recordatorio de monitoreo*\nHace ${row.days_ago} día${row.days_ago !== 1 ? 's' : ''} registraste ${row.category} en lote *${row.plot_name}* (campo ${row.field_name}).
+Cuando lo revises, contame cómo sigue: _"el ${row.plot_name} sigue con ${row.category}, nivel leve"_.`;
+      // Invitación, no pregunta abierta: sin pending la respuesta caía al agente sin
+      // contexto (CRN-10, invariante 5).
 
       const result = await sendAlertWithRetry(row.user_id, row.phone_number, msg, 'monitoring_reminder', {
         plotId: row.plot_id,

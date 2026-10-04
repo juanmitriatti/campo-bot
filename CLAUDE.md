@@ -236,6 +236,17 @@ Ver [docs/features/sharing.md](docs/features/sharing.md). Compartir existía sol
 - Regresiones: `silent-data.integration.test.ts`, `silent-data-livestock.integration.test.ts`, `src/utils/__tests__/silent-data.test.ts`.
 - **Ojo al parchear con scripts**: `String.replace(a, b)` interpreta `$$` en `b` como un `$` y rompe placeholders SQL (`$${idx}`); usar `slice`/`indexOf` o la herramienta de edición.
 
+### Respuestas y preguntas — reglas de la auditoría oct 2026 (tanda 4)
+- **Una acción o consulta nueva NUNCA es la respuesta** a lo que el bot espera. `ACTION_VERB` incluye verbos de hacienda (murió, perdí, llegaron, encerré, metí, faené, parió). Aplicado a: nombre de categoría nueva tras "+ Otra" (además vence a los 30 min; un nombre >60 re-pregunta sin perder el registro), paso lote de un flow (`isPlotAnswerToFlow` descarta textos con verbo), fallback de slot único (acuses "dale/ok" no son valor; un slot de texto no acepta solo dígitos; `count` toma el primer número sin unidad).
+- **Saludo/gracias con pending** (`isSmallTalk`): se re-pregunta sin gastar la escalera. "cancelar" dice qué canceló y cuántas en cola, y descarta la acción diferida.
+- **Flows**: escalera propia — 2.º rechazo agrega la salida, 3.º saltea un paso opcional o corta diciendo "no se guardó nada". "sí/dale" con el flow en `confirming` lo confirma (no es el comando trivial `confirm`). Flujo vencido + mensaje nuevo: guarda a nivel campo lo completo y procesa el mensaje. Gasto/ingreso completo en un paso opcional + acción nueva → se guarda a nivel campo. "Dejar a nivel campo" resuelve el campo (el del mensaje o el único). "campo/general/no sé" en el paso lote = nivel campo. "Saltar" viejo no rompe. Un tap `flow_new_*` descarta el pending abierto con aviso.
+- **Toda pregunta con pending o botones** (invariante 5): recordatorio sin fecha/sin texto, cantidad/destino de hacienda (`askSlot` en livestock.handler), campo del feedlot, cargas sin lote con cosecha hoy (botones `cmdtok_<token>` = comando completo guardado, de un solo uso). El monitoreo programado invita en vez de preguntar.
+- **Re-ruteo de un pending** arranca el `startFlow` que devuelva el handler (antes quedaba huérfano) y conserva la cola serial si el handler re-pregunta el mismo comando.
+- **Tarjeta "¿Confirmo?"**: "ok/listo" la re-muestra; un comentario libre de 2+ palabras (sin verbo, consulta ni número) se suma como detalle.
+- **Compuesto**: un gasto sin lote del agente no hereda contexto (va a nivel campo + botón); lo no ejecutable descartado queda en el log.
+- `stripAnswerPrefix` (lexicon) también limpia "al", "a la", "para el", "las del", "el de". `accept_invite` es trivial (sin IA). Alta de campo: "sin localidad / paraje / después" en el paso localidad la omite; el renombre en ese paso exige "se llama/nombre".
+- Regresiones en `answers-and-questions.integration.test.ts`.
+
 ### Corrections (mid-flow / mid-confirmation)
 - Amount: "no, eran X" / "en realidad X" / "quise decir X". Category: "no, es X" / "no, era en X" (restringido a palabras-categoría vía `looksLikeCategoryWord` para no chocar con correcciones de lote, que `correction-classifier` intercepta antes). Name: "se llama X, no Y". Extractors en `conversation-engine.ts`.
 - **Pending-correction interceptor**: con pending expense/income activo, el pipeline intercepta estos patrones ANTES de clasificar — patch in-place + re-render de la confirmación, sin round-trip al agente.

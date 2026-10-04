@@ -470,8 +470,22 @@ export class LivestockHandler {
       if (fields.length === 0) return { messages: ['Primero creá un campo: *nuevo campo La Esperanza*.'] };
       if (fields.length === 1) fieldName = fields[0].name;
       else {
-        const names = fields.map((f: { name: string }) => f.name).join(', ');
-        return { messages: [`¿En qué campo está el feedlot? Tenés: ${names}.\nDecime, ej: "...en el campo ${fields[0].name}".`] };
+        // Botones por campo + pending para la respuesta escrita (invariante 5).
+        // Antes era texto suelto y la respuesta se perdía (CONV-24).
+        const { callbackPayloadStore } = await import('../../middleware/callback-payload-store.js');
+        const ask = '🏗️ ¿En qué campo está el feedlot?';
+        return {
+          messages: [],
+          interactive: {
+            type: 'buttons' as const,
+            body: ask,
+            buttons: fields.slice(0, 3).map((f: { name: string }) => ({
+              id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, fieldName: f.name }))}`,
+              title: f.name.slice(0, 20),
+            })),
+          },
+          sideEffects: { setPendingActivity: { command: cmd.command as string, data: { ...cmd }, missing: ['field'], askPrompt: ask } },
+        };
       }
     }
 
@@ -1002,7 +1016,7 @@ export class LivestockHandler {
     const destCorral = cmd.destCorral as string;
     const destCategory = cmd.destCategory as string;
     if (!category) return { messages: ['Necesito la categoría. Ej: "mové 10 vacas del lote A1 al lote B2".'] };
-    if (!count || count <= 0) return { messages: ['Necesito la cantidad.'] };
+    if (!count || count <= 0) return askSlot(cmd, 'count', `🐄 ¿Cuántas ${category}s movés?`);
 
     /**
      * Pregunta por el origen con un pending machine-readable (invariante 5).
@@ -1065,7 +1079,7 @@ export class LivestockHandler {
       effectiveDestPlot = effectiveSourcePlot;
       effectiveDestCorral = effectiveSourceCorral;
     } else if (!destPlot && !destCorral) {
-      return { messages: ['Necesito el destino (lote o corral).'] };
+      return askSlot(cmd, 'destPlot', '📍 ¿A qué lote o corral los pasás?');
     }
 
     let sourceGroup, destGroup, movement;
@@ -1328,7 +1342,7 @@ export class LivestockHandler {
     const category = cmd.category as string;
     const count = cmd.count as number;
     if (!category) return { messages: ['Necesito la categoría. Ej: "nacieron 5 terneros en el lote A1".'] };
-    if (!count || count <= 0) return { messages: ['Necesito la cantidad.'] };
+    if (!count || count <= 0) return askSlot(cmd, 'count', `🐄 ¿Cuántos ${category}s nacieron?`);
     { const bad = await validateMovementInput(count, cmd.eventDate); if (bad) return bad; }
     // Sin lote: la ubicación del ÚNICO grupo de esa categoría, no el lote del
     // último mensaje (HAC-7). Con varios, pregunta con pending.
@@ -1367,7 +1381,7 @@ export class LivestockHandler {
     const category = cmd.category as string;
     const count = cmd.count as number;
     if (!category) return { messages: ['Necesito la categoría. Ej: "en el lote A1 hay 50 vacas".'] };
-    if (count == null || count < 0) return { messages: ['Necesito la cantidad (0 o más). Ej: "en el lote A1 hay 50 vacas".'] };
+    if (count == null || count < 0) return askSlot(cmd, 'count', `🐄 ¿Cuántas ${category}s hay en total?`);
     { const bad = await validateMovementInput(count, cmd.eventDate, { allowZero: true }); if (bad) return bad; }
     // "hay 45 vacas" sin lote: la ubicación del único grupo (HAC-7), no el
     // lote del contexto — antes metía 45 nuevas en el Norte con 50 en el Sur.
@@ -2739,4 +2753,18 @@ async function validateMovementInput(
     }
   }
   return null;
+}
+
+/**
+ * Pregunta por un dato que falta con pending machine-readable (invariante 5).
+ * Antes "Necesito la cantidad" / "Necesito el destino" eran texto suelto y la
+ * respuesta caía al agente sin contexto (HAC-13, auditoría oct 2026).
+ */
+function askSlot(cmd: ParsedCommand, slot: string, prompt: string): HandlerResponse {
+  return {
+    messages: [prompt],
+    sideEffects: {
+      setPendingActivity: { command: cmd.command as string, data: { ...cmd }, missing: [slot], askPrompt: prompt },
+    },
+  };
 }

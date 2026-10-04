@@ -720,7 +720,13 @@ export class AnimalHandler {
     //    `plot`/`plotName` (ver slotToCmdKeys en pending-action-processor).
     // Leer solo las `dest*` hacía que la respuesta "Sur" al «¿a qué lote?» se
     // ignorara y el handler re-preguntara el mismo slot en loop.
-    const pick = (...vals: unknown[]) => vals.find((v) => typeof v === 'string' && v.trim()) as string | undefined;
+    // Limpieza única de respuestas ("al Sur", "las del Sur", "en el lote 3"):
+    // sin ella la respuesta no resolvía y la pregunta moría (HAC-14).
+    const { stripAnswerPrefix } = await import('../../utils/lexicon.js');
+    const pick = (...vals: unknown[]) => {
+      const v = vals.find((x) => typeof x === 'string' && x.trim()) as string | undefined;
+      return v ? (stripAnswerPrefix(v) || v) : undefined;
+    };
 
     const fieldName = opts.dest
       ? pick(cmd.destField, cmd.fieldName, cmd.field)

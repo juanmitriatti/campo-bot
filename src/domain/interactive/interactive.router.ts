@@ -151,6 +151,21 @@ export class InteractiveRouter {
       return { type: 'command', data: { command: 'log_harvest_costs', plotCropId: Number(costMatch[1]) } };
     }
 
+    // Comando completo guardado por token (cmdtok_<token>): un botón que repite
+    // la operación del usuario con el dato que faltaba ya puesto (p. ej. el lote
+    // de unas cargas — AGR-11). Sin token vigente el botón está vencido.
+    const cmdTokMatch = callbackId.match(/^cmdtok_([A-Za-z0-9_-]{8})$/);
+    if (cmdTokMatch) {
+      try {
+        const resolved = callbackPayloadStore.get(cmdTokMatch[1]);
+        if (resolved === null) throw new Error('token vencido o ajeno');
+        const cmd = JSON.parse(resolved) as Record<string, unknown>;
+        if (typeof cmd.command === 'string') return { type: 'command', data: cmd as never };
+      } catch {
+        console.log(`[INTERCEPT] cmdtok sin token vigente: ${callbackId.slice(0, 40)}`);
+      }
+    }
+
     // Sow+harvest offer: sowharv_<token> → el harvest_crop ENTERO (camiones,
     // fecha, ha, rinde por ha) con _autoSow, para que el handler registre la
     // siembra que falta primero (P1-3). Antes el botón llevaba en base64 solo

@@ -485,7 +485,12 @@ export class SystemHandler {
 
         const desc = (cmd.description as string | null)?.trim();
         if (!desc) {
-          return { messages: ['¿Qué te recuerdo y cuándo? Ej: *"acordame el sábado a las 14:30 de fumigar el lote 5"*.'] };
+          // Pregunta con pending, nunca texto suelto (invariante 5 — AGR-12).
+          const askWhat = '¿Qué te recuerdo y cuándo? Ej: *"el sábado a las 14:30 fumigar el lote 5"*.';
+          return {
+            messages: [askWhat],
+            sideEffects: { setPendingActivity: { command: 'create_reminder', data: { command: 'create_reminder' }, missing: ['description'], askPrompt: askWhat } },
+          };
         }
         const { createReminder, resolveFutureDate, resolveFutureTime, resolveRelativeFutureTime } = await import('../../services/reminder.service.js');
         const { getTodayISO, getNowArgentina } = await import('../../utils/date.js');
@@ -509,11 +514,30 @@ export class SystemHandler {
         if (serverDate && cmd.due_date && cmd.due_date !== serverDate) {
           console.log(`[INTERCEPT] reminder date override: agent=${cmd.due_date} → server=${serverDate}`);
         }
+        // La respuesta a "¿Para cuándo?" llega como texto en due_date o como el
+        // texto de la respuesta (_answerText): se resuelve con la misma regla.
+        const answerText = (cmd._answerText as string | null) ?? null;
+        const dueRaw = (cmd.due_date as string | null) ?? null;
         const dueDate = relative?.dueDate
           || serverDate
-          || (cmd.due_date as string | null);
+          || (dueRaw && /^\d{4}-\d{2}-\d{2}$/.test(dueRaw) ? dueRaw : null)
+          || resolveFutureDate(dueRaw)
+          || resolveFutureDate(answerText);
         if (!dueDate) {
-          return { messages: [`¿Para cuándo te lo recuerdo? Decime la frase completa con la fecha, ej: *"acordame el viernes a las 9 de ${desc}"*.`] };
+          // Pending machine-readable con la escalera; antes era texto suelto y la
+          // respuesta ("el viernes a las 10") se perdía (AGR-12).
+          const askWhen = `📅 ¿Para cuándo te recuerdo "${desc}"? (ej: *el viernes a las 9*, *mañana*, *el 15/10*)`;
+          return {
+            messages: [askWhen],
+            sideEffects: {
+              setPendingActivity: {
+                command: 'create_reminder',
+                data: { command: 'create_reminder', description: desc, ...(cmd.due_time ? { due_time: cmd.due_time } : {}) },
+                missing: ['due_date'],
+                askPrompt: askWhen,
+              },
+            },
+          };
         }
 
         // Hora: relativo (server) → agente (due_time) → red de seguridad
@@ -526,6 +550,8 @@ export class SystemHandler {
             ? { time: agentTime as string }
             : resolveFutureTime(agentTime)
               ?? resolveFutureTime(cmd.originalText as string | null)
+              ?? resolveFutureTime(dueRaw)
+              ?? resolveFutureTime(answerText)
               ?? resolveFutureTime(desc);
 
         // 1-11 sin AM/PM → botones (NUNCA adivinar, NUNCA pregunta de texto suelto)

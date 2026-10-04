@@ -196,6 +196,17 @@ export const incomeFlow: FlowDefinition = {
       }
     }
 
+    // "Dejar a nivel campo" (o sin lote): el gasto/ingreso igual va a un CAMPO —
+    // el que traía el mensaje o, con uno solo, ese. Antes quedaba con field_id
+    // NULL y no aparecía en ningún resumen por campo (FIN-15).
+    if (!fieldId) {
+      const hint = (data.fieldName ?? data._resolvedFieldHint) as string | undefined;
+      const fields = await financialService.getUserFields(userId) as Array<{ id: number; name: string }>;
+      const byHint = hint ? fields.find(f => f.name.toLowerCase() === String(hint).toLowerCase()) : undefined;
+      const chosen = byHint ?? (fields.length === 1 ? fields[0] : undefined);
+      if (chosen) { fieldId = chosen.id; resolvedFieldName = chosen.name; }
+    }
+
     const finalCategory = data.category === NEW_CATEGORY_SENTINEL
       ? (data.categoryNewName as string)
       : (data.category as string);

@@ -828,7 +828,10 @@ export class FinancialHandler {
     // we'd silently save against whatever plot the user last interacted with —
     // see user 30 hitting this on 2026-05-28 with "Gaste 1 peso en girasoles".
     const { hasPlotContextSignal } = await import('../../utils/plot-context-signals.js');
-    const allowContextStackFallback = !plotName && !fieldName ? hasPlotContextSignal(text) : true;
+    // En un COMPUESTO el texto es de todas las acciones: "lote" se refiere al que
+    // se está creando, no es una señal para este gasto. Sin lote del agente, va a
+    // nivel campo + botón de asignación (CONV-12, auditoría oct 2026).
+    const allowContextStackFallback = !plotName && !fieldName ? (!bulkMode && hasPlotContextSignal(text)) : true;
     const resolution = await this.service.resolveField(userId, fieldName, plotName, { allowContextStackFallback });
     let { fieldId, fieldName: resFieldName, plotId, plotName: resPlotName } = resolution;
 
@@ -918,6 +921,7 @@ export class FinancialHandler {
               ...(data.product ? { product: data.product } : {}),
               ...(data.quantity ? { quantity: data.quantity } : {}),
               ...(data.unit ? { unit: data.unit } : {}),
+              ...(data.unit_price ? { unit_price: data.unit_price } : {}),
             },
           },
         },
@@ -955,6 +959,7 @@ export class FinancialHandler {
                 ...(data.product ? { product: data.product } : {}),
                 ...(data.quantity ? { quantity: data.quantity } : {}),
                 ...(data.unit ? { unit: data.unit } : {}),
+                ...(data.unit_price ? { unit_price: data.unit_price } : {}),
               },
             },
           },
@@ -980,7 +985,8 @@ export class FinancialHandler {
     }
 
     // Conversational memory: inherit field/plot from recent financial message
-    if (!fieldId && !plotId && !explicitGeneral) {
+    // (nunca dentro de un compuesto — CONV-12).
+    if (!fieldId && !plotId && !explicitGeneral && !bulkMode) {
       const recentCtx = await this.service.getRecentFinancialContext(userId);
       if (recentCtx && recentCtx.plotId) {
         fieldId = recentCtx.fieldId;
@@ -1023,6 +1029,7 @@ export class FinancialHandler {
               ...(data.product ? { product: data.product } : {}),
               ...(data.quantity ? { quantity: data.quantity } : {}),
               ...(data.unit ? { unit: data.unit } : {}),
+              ...(data.unit_price ? { unit_price: data.unit_price } : {}),
             },
           },
         },

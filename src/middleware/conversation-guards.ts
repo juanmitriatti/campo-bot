@@ -47,6 +47,10 @@ export function wantsFieldLevelSave(text: string): boolean {
     'no importa', 'no importa el lote', 'no interesa', 'no aplica', 'cualquiera',
     'cualquier lote', 'como sea', 'dejalo asi', 'asi nomas', 'sin asignar',
     'no se el lote', 'ningun lote', 'sin lugar', 'no se cual', 'da igual',
+    // "campo" pelado y "general" también (FIN-15).
+    'campo', 'general', 'ninguno',
+    // "no sé" ante "¿En qué lote?" mostraba el menú de ayuda (FIN-39).
+    'no se', 'nose', 'ni idea',
   ]);
   if (EXACT.has(t)) return true;
   return /\b(sin\s+lote|a\s+nivel\s+(?:de\s+)?campo|sin\s+asignar(?:lo)?|ning[uú]n\s+lote|no\s+importa\s+el\s+lote|dejalo\s+(?:asi|sin\s+lote)|da\s+igual\s+el\s+lote|cualquier\s+lote)\b/.test(t);
@@ -79,7 +83,10 @@ export function isNegationOrCancel(text: string): boolean {
 // En particular `movi(?!miento)` existe para no capturar "movimientos de
 // hacienda", que es una CONSULTA — si la capturara, isReadOnlyQuery devolvería
 // false y el pending se descartaría en vez de responder y re-preguntar.
-const ACTION_VERB = /\b(gaste|pague|pago|compre|compro|abone|vendi|vendo|cobre|cobro|ingrese|ingreso|facture|sembre|siembro|fumig\w*|fertilic\w*|cosech\w*|pulveric\w*|are|rastre|plante|plant\w*|regue|riegue|aplique|aplico|llovio|llovieron|llovian|cayo(?:\s+\d|\s+agua|\s+lluvia)|nacio|nacieron|parieron|vacune|desparasite|cure|trate|insemine|destete|eche|pese|pesaron|pesamos|transferi|transfer\w*|pase|agrega|agregue|suma|sume|cargue|registre|registra|anote|anota|renombr\w*|cre[ae]\w*|arma\w*|borr[ae]\w*|elimin[ae]\w*|dar de alta|move\w*|mueve\w*|muevo|movi(?!miento)\w*|revert\w*|deshac\w*|reemplaz\w*|acordame|acordarme|recordame|recordarme|retire|retiramos|retiro|saque|sacamos|entregue|entregamos)\b/;
+// Verbos de hacienda (murió, perdí, llegaron, encerré, metí, faené, parió): con
+// el precio de una compra abierto, "se me murió una vaca" se tomaba como precio
+// $1 y la muerte se perdía (HAC-1, auditoría oct 2026).
+const ACTION_VERB = /\b(gaste|pague|pago|compre|compro|abone|vendi|vendo|cobre|cobro|ingrese|ingreso|facture|sembre|siembro|fumig\w*|fertilic\w*|cosech\w*|pulveric\w*|are|rastre|plante|plant\w*|regue|riegue|aplique|aplico|llovio|llovieron|llovian|cayo(?:\s+\d|\s+agua|\s+lluvia)|nacio|nacieron|parieron|vacune|desparasite|cure|trate|insemine|destete|eche|pese|pesaron|pesamos|transferi|transfer\w*|pase|agrega|agregue|suma|sume|cargue|registre|registra|anote|anota|renombr\w*|cre[ae]\w*|arma\w*|borr[ae]\w*|elimin[ae]\w*|dar de alta|move\w*|mueve\w*|muevo|movi(?!miento)\w*|revert\w*|deshac\w*|reemplaz\w*|acordame|acordarme|recordame|recordarme|retire|retiramos|retiro|saque|sacamos|entregue|entregamos|murio|murieron|perdi|perdimos|llegaron|llego|encerre|encerramos|meti|metimos|faene|faenamos|pario)\b/;
 
 // Query / read intents — clima, reportes, listados, "¿cuánto…?". During a flow
 // these mean "stop the registration and answer me", not flow input.

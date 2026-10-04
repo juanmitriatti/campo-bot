@@ -39,6 +39,8 @@ const ONE_SHOT_PREFIXES = [
   // "Sí, registrar" siembra + cosecha: un segundo tap anexaría los mismos
   // camiones a la cosecha del día (AGR-7).
   'sowharv_',
+  // Repetir un comando guardado (cargas al lote, AGR-11): un doble tap las sumaría dos veces.
+  'cmdtok_',
 ];
 
 /**

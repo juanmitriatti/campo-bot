@@ -1,3 +1,4 @@
+import { hasActionVerb } from '../middleware/conversation-guards.js';
 /**
  * Detect whether the user's message explicitly references a plot — either by
  * naming one or by using a pronoun that points to a recent one ("ahí mismo",
@@ -72,5 +73,9 @@ const PLOT_COLLECTING_FLOWS: ReadonlySet<string> = new Set([
  */
 export function isPlotAnswerToFlow(flowState: string | null | undefined, text: string): boolean {
   if (!flowState || !PLOT_COLLECTING_FLOWS.has(flowState)) return false;
+  // Con un verbo de acción es OTRA acción que nombra un lote, no la respuesta:
+  // "sembré soja en el lote Sur" se consumía como el lote del gasto y la siembra
+  // se perdía (CONV-5, auditoría oct 2026).
+  if (hasActionVerb(text)) return false;
   return userExplicitlyReferencedPlot(text);
 }
