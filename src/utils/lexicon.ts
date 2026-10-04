@@ -392,3 +392,39 @@ export function detectActivityTypeTerm(text: string): 'spraying' | 'fertilizatio
   if (/\b(rieg\w*|regu\w*|regamos|regar)\b/.test(t)) return 'irrigation';
   return null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Superficie ADICIONAL: "sembré otras 60 ha", "60 ha más", "el resto del lote".
+// Distingue una segunda tanda de siembra (se suma) de un re-envío del mismo
+// mensaje (no se suma). AGR-8, auditoría oct 2026.
+// ─────────────────────────────────────────────────────────────────────────────
+export function mentionsAdditionalArea(text: string): boolean {
+  const t = normLex(text);
+  return /\b(otras?|otros|el\s+resto|lo\s+que\s+falta(ba)?|restantes?)\b/.test(t)
+    || /\b\d+(?:[.,]\d+)?\s*(ha|has|hectareas?)\s+mas\b/.test(t);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plan futuro SIN nada hecho (invariante 12): "el sábado fumigo el Norte",
+// "mañana tengo que pagar el flete", "hay que vacunar la semana que viene".
+// Es la red del servidor cuando el agente igual llama una tool que REGISTRA
+// (AGR-16). Conservador: cualquier verbo en pasado o marca de pasado ("ayer",
+// "fumigué", "cosecharon") lo descarta — perder un registro real es peor que
+// dejar pasar un plan.
+// ─────────────────────────────────────────────────────────────────────────────
+const FUTURE_PLAN_MARKER_RE = /\b(voy\s+a|vamos\s+a|van\s+a|tengo\s+que|tenemos\s+que|hay\s+que|manana|pasado\s+manana|que\s+viene|proxim[oa]s?|tengo\s+pensado|planeo|pienso|acordame|recordame)\b/;
+const WEEKDAY_RE = /\b(el|este|el\s+proximo)\s+(lunes|martes|miercoles|jueves|viernes|sabado|domingo|finde|fin\s+de\s+semana)\b/;
+// Solo primera singular: "sembramos", "pagamos" también son pretérito.
+const PRESENT_AGRO_VERB_RE = /\b(fumigo|siembro|cosecho|aplico|fertilizo|vacuno|pago|vendo|compro|cargo)\b/;
+const PAST_MARKER_RE = /\b(ayer|anteayer|anoche|hace\s+\d+|la\s+semana\s+pasada|el\s+mes\s+pasado|pasado\s+(lunes|martes|miercoles|jueves|viernes|sabado|domingo)|(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s+pasado)\b/;
+
+export function isFuturePlanOnly(text: string): boolean {
+  const raw = text.toLowerCase();
+  // Pretérito con tilde ("fumigué", "sembró", "pagué") o plural ("cosecharon", "vinieron").
+  if (/[a-zñ]{2,}(é|ó)(?![a-zñáéíóú])/.test(raw)) return false;
+  const t = normLex(text);
+  if (/\b[a-zñ]{3,}(aron|ieron)\b/.test(t)) return false;
+  if (PAST_MARKER_RE.test(t)) return false;
+  if (FUTURE_PLAN_MARKER_RE.test(t)) return true;
+  return WEEKDAY_RE.test(t) && PRESENT_AGRO_VERB_RE.test(t);
+}

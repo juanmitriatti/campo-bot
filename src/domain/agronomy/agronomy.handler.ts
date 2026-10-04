@@ -24,7 +24,7 @@ import { formatObservationResponse, formatAgroReportResponse } from '../../middl
 import { logError } from '../../services/error-logger.js';
 import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
 import { formatHistoryResponse } from './plot-query.service.js';
-import { formatDateAR } from '../../utils/date.js';
+import { formatDateAR, toISODateAR } from '../../utils/date.js';
 import { formatQuantityHuman, formatTn } from '../../utils/format-quantity.js';
 import { localidadLookup, type Localidad } from '../../services/localidad-lookup.service.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
@@ -56,6 +56,25 @@ function normalizeActivityFilter(raw: string | null): string | null {
   if (!raw) return null;
   const stripped = raw.replace(/^log_/, '');
   return ACTIVITY_FILTER_MAP[stripped] ?? ACTIVITY_FILTER_MAP[raw] ?? stripped;
+}
+
+/**
+ * La actividad que borraría un delete_last_activity: la última, acotada por el
+ * tipo, el cultivo y el lote que nombró el usuario ("borrá la siembra de
+ * girasol del lote 3"). Fuente ÚNICA para el borrado Y para la vista previa de
+ * la confirmación: antes la vista previa miraba la última actividad a secas
+ * (incluso borradas) y podía mostrar un registro y borrar otro (AGR-16).
+ */
+export async function findActivityDeleteTarget(userId: UserId, cmd: ParsedCommand) {
+  const eventType = normalizeActivityFilter(cmd.activityFilter as string | null) || undefined;
+  const crop = (cmd.crop as string | null) || undefined;
+  let plotId: number | undefined;
+  const targetPlot = (cmd.targetPlotName as string | null) || null;
+  if (targetPlot) {
+    const r = await new PlotDiscoveryService().resolveFromNames(userId, cmd.fieldName as string | null, targetPlot);
+    if (r.plotId) plotId = r.plotId;
+  }
+  return new AgronomyRepository().findLastDomainEventFiltered(userId, { eventType, crop, plotId });
 }
 
 // Static province prominence (≈ 2022 census population, descending). Used ONLY
@@ -2290,6 +2309,42 @@ export class AgronomyHandler {
         // Densidad ("350 mil semillas/ha"): no se modela, pero va a las notas del
         // evento para no descartarla en silencio (P2-15, QA sep 2026).
         const seedDensity = (cmd.seedDensity as string | null | undefined) ?? null;
+
+        // Siembra PARCIAL en tandas: "sembré 40 ha de soja" un día y "sembré otras
+        // 60 ha" otro. startCrop devuelve la campaña existente sin tocarla, así que
+        // la segunda tanda se perdía (AGR-8). Se suma si es otro día o el mensaje
+        // dice que es superficie adicional; si no, puede ser el mismo mensaje
+        // reenviado y no se suma. Tope: la superficie del lote.
+        if (sowedHa && sowedHa > 0 && cmd.__fromForm !== true) {
+          const sameActive = await this.cropService.getActive(plotResult.plotId);
+          if (sameActive && sameActive.crop.toLowerCase() === crop.toLowerCase() && sameActive.sowed_hectares != null) {
+            const { mentionsAdditionalArea } = await import('../../utils/lexicon.js');
+            const eventISO = toISODateAR(cmd.eventDate as Date | string | null) ?? toISODateAR(new Date());
+            const startISO = toISODateAR(sameActive.start_date as Date | string | null);
+            if ((startISO && eventISO !== startISO) || mentionsAdditionalArea((cmd.originalText as string | null) || '')) {
+              const { getPlotById } = await import('../../services/expenses.js');
+              const plotInfo = await getPlotById(plotResult.plotId, userId);
+              const areaHa = plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : null;
+              const prevHa = Number(sameActive.sowed_hectares);
+              const total = areaHa ? Math.min(prevHa + sowedHa, areaHa) : prevHa + sowedHa;
+              await this.repo.updateCampaignSowing(sameActive.id, { sowedHectares: total, variety });
+              await this.repo.saveDomainEvent(userId, {
+                plotId: plotResult.plotId, plotCropId: sameActive.id, eventType: 'planting',
+                eventDate: cmd.eventDate as Date | null, crop, product: variety,
+                quantity: sowedHa, unit: 'ha',
+                notes: seedDensity ? `densidad: ${seedDensity}` : null,
+              });
+              console.log(`[INTERCEPT] sow_crop tanda adicional: campaña ${sameActive.id} ${prevHa} + ${sowedHa} → ${total} ha`);
+              const plotLabelAdd = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
+              let addMsg = `🌱 *Siembra registrada*\n*${cap(crop)}* en ${plotLabelAdd}\n📐 +${sowedHa.toLocaleString('es-AR')} ha — ya van *${total.toLocaleString('es-AR')}*${areaHa ? ` de ${areaHa.toLocaleString('es-AR')} ha` : ' ha'}`;
+              if (areaHa && prevHa + sowedHa > areaHa) {
+                addMsg += `\n\n⚠️ Con esta tanda se pasaba de las *${areaHa.toLocaleString('es-AR')} ha* del lote: lo dejé en el total del lote. Revisá la superficie.`;
+              }
+              return { messages: [addMsg] };
+            }
+          }
+        }
+
         const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, cmd.eventDate as Date | string | null, sowedHa, variety);
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
         const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
@@ -2520,7 +2575,8 @@ export class AgronomyHandler {
         if (generalHumidity != null && loads) {
           for (const l of loads) if (l.humidity_pct == null) l.humidity_pct = generalHumidity;
         }
-        const existingEvent = await this.repo.findTodayHarvestEvent(userId, plotResult.plotId);
+        // El día de la cosecha es el del MENSAJE: camiones de "ayer" no se anexan a la de hoy (AGR-13).
+        const existingEvent = await this.repo.findTodayHarvestEvent(userId, plotResult.plotId, toISODateAR(cmd.eventDate as Date | string | null));
 
         // Las dos asignaciones (evento existente y saveDomainEvent) devuelven
         // DomainEventRow. La forma con index signature de antes no lo aceptaba:
@@ -2584,10 +2640,12 @@ export class AgronomyHandler {
             // in one tap (only when a crop was named and we haven't already
             // auto-sowed this turn). Naive users just want to log "coseché maíz".
             if (crop && !(cmd as ParsedCommand & { _autoSow?: boolean })._autoSow) {
-              const payload = Buffer.from(JSON.stringify({
-                plot: plotResult.plotName, field: plotResult.fieldName,
-                crop, yieldKg: yieldKg ?? null, yieldNotes: yieldNotes ?? null,
-              })).toString('base64url');
+              // El comando ENTERO viaja por token (camiones, fecha, ha): el botón
+              // repite exactamente esta cosecha, con la siembra adelante (AGR-7).
+              const payload = callbackPayloadStore.set(JSON.stringify({
+                ...cmd, command: 'harvest_crop',
+                plotName: plotResult.plotName, fieldName: plotResult.fieldName, crop,
+              }));
               const body = `🌾 No tengo una siembra de *${crop}* registrada en *${plotLabel}*. ¿La registro y cargo la cosecha?`;
               return {
                 messages: [body],
@@ -2625,6 +2683,11 @@ export class AgronomyHandler {
             unit: harvestQuantity ? harvestUnit : null,
             notes: generalHumidity != null ? `humedad: ${generalHumidity.toLocaleString('es-AR')}%` : null,
           });
+          // Lo que aportó ESTE día queda en su evento (migración 127): borrar o
+          // corregir un día después recalcula la campaña sin perder los demás.
+          if (yieldKg != null && yieldKg > 0) {
+            await this.repo.recordHarvestYield(savedEvent.id, yieldKg, accumulateYield ? 'partial' : 'total');
+          }
         }
 
         // FORMULARIO que repite la cosecha de hoy sin rinde, cargas ni hectáreas:
@@ -2651,8 +2714,9 @@ export class AgronomyHandler {
         if (isAppend && yieldKg != null && yieldKg > 0) {
           const appendPcId = (savedEvent.plot_crop_id as number | null) ?? harvested?.id ?? null;
           if (appendPcId) {
-            if (accumulateYield) await this.cropService.addYield(appendPcId, yieldKg, yieldNotes);
-            else await this.cropService.updateYield(appendPcId, yieldKg, yieldNotes);
+            // Solo para guardar las notas del rinde: el kilaje lo recalcula recordHarvestYield.
+            if (yieldNotes) await this.cropService.addYield(appendPcId, 0, yieldNotes);
+            await this.repo.recordHarvestYield(savedEvent.id, yieldKg, accumulateYield ? 'partial' : 'total');
           }
           // También el EVENTO (solo si estaba NULL): los gráficos del dashboard
           // leen domain_events.quantity/harvest_loads — con el rinde solo en
@@ -2668,6 +2732,8 @@ export class AgronomyHandler {
         const hectaresHarvested = cmd.hectares != null && Number(cmd.hectares) > 0 ? Number(cmd.hectares) : null;
         if (harvestPcId && hectaresHarvested) {
           await this.cropService.addHarvestedHectares(harvestPcId, hectaresHarvested);
+          // Y en el día, para descontarlas si después se borra esa cosecha (AGR-3).
+          await this.repo.addHarvestEventHectares(savedEvent.id, hectaresHarvested);
         }
 
         // Save loads if provided
@@ -3986,21 +4052,7 @@ export class AgronomyHandler {
         // AND livestock events (health/repro/weighing/tacto) which share the
         // domain_events table.
         const delFilter = normalizeActivityFilter(cmd.activityFilter as string | null);
-        // Disambiguate the target by the crop + plot the user named, so
-        // "borrá la siembra de girasol del lote 3" hits THAT record instead of
-        // blindly the most recent activity.
-        const delCropFilter = (cmd.crop as string | null) || undefined;
-        let delPlotId: number | undefined;
-        const delTargetPlot = (cmd.targetPlotName as string | null) || null;
-        if (delTargetPlot) {
-          const r = await this.plotDiscovery.resolveFromNames(userId, cmd.fieldName as string | null, delTargetPlot);
-          if (r.plotId) delPlotId = r.plotId;
-        }
-        const lastActivity = await this.repo.findLastDomainEventFiltered(userId, {
-          eventType: delFilter || undefined,
-          crop: delCropFilter,
-          plotId: delPlotId,
-        });
+        const lastActivity = await findActivityDeleteTarget(userId, cmd);
         if (!lastActivity) {
           const filterDesc = delFilter ? ` de tipo ${delFilter}` : '';
           return { messages: [`No hay actividades${filterDesc} para borrar.`] };
@@ -4153,8 +4205,11 @@ export class AgronomyHandler {
               const { normalizeToKg } = await import('../../ai/agent-response-mapper.js');
               const kg = normalizeToKg(newQuantity, newUnit || (lastEvent as { unit?: string | null }).unit || 'kg');
               if (kg && kg > 0) {
-                await this.cropService.updateYield(harvestPcId, kg, null);
-                console.log(`[edit_last_activity] rinde sincronizado a plot_crops: ${kg} kg (pc ${harvestPcId})`);
+                // Corrige lo que aportó ESE día, no el rinde de toda la campaña:
+                // "no, fueron 260 tn" sobre el segundo día de una cosecha de
+                // varios días pisaba el total de la campaña (AGR-9).
+                await this.repo.recordHarvestYield(lastEvent.id, kg, 'total', { replace: true });
+                console.log(`[edit_last_activity] rinde del día corregido: ${kg} kg (evento ${lastEvent.id}, pc ${harvestPcId})`);
               }
             } catch { /* best-effort */ }
           }
@@ -4184,6 +4239,12 @@ export class AgronomyHandler {
             const { syncPlotCropFromEdit } = await import('../../services/expenses.js');
             await syncPlotCropFromEdit(editedPlotCropId, { crop: newCrop || null, plotId: newPlotId, sowedHectares: appliedHectares });
           } catch { /* non-blocking */ }
+        }
+        // Fecha corregida de una siembra o una cosecha → la campaña también
+        // (start_date, año de campaña, harvested_at). AGR-15.
+        if (newDate && editedPlotCropId && (lastEvent.event_type === 'planting' || lastEvent.event_type === 'harvest')) {
+          const { syncCampaignDatesFromEvents } = await import('../plots/campaign-sync.js');
+          await syncCampaignDatesFromEvents(editedPlotCropId);
         }
 
         const { label: editActLabel } = getActivityLabel(lastEvent.event_type);

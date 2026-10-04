@@ -1,4 +1,4 @@
-import { pool } from '../../config/db.js';
+import { pool, withTransaction } from '../../config/db.js';
 import { accessibleRowSql, accessibleEventSql } from '../shared/accessible-fields.js';
 import { canAccessField } from '../shared/field-access.js';
 import { sqlNormalizedName } from '../../utils/entity-matcher.js';
@@ -588,7 +588,16 @@ export class ObservationService {
     return result.rows[0];
   }
 
+  /** Todo-o-nada: el evento y su campaña se escriben juntos. */
   async editActivity(
+    activityId: number,
+    userId: number,
+    data: { event_type?: string; event_date?: string; crop?: string | null; product?: string | null; quantity?: number | null; unit?: string | null; implement?: string | null; notes?: string | null; pregnant_count?: number | null; open_count?: number | null; uncertain_count?: number | null; plot_id?: number | null }
+  ): Promise<ActivityRow> {
+    return withTransaction(() => this._editActivity(activityId, userId, data));
+  }
+
+  private async _editActivity(
     activityId: number,
     userId: number,
     data: { event_type?: string; event_date?: string; crop?: string | null; product?: string | null; quantity?: number | null; unit?: string | null; implement?: string | null; notes?: string | null; pregnant_count?: number | null; open_count?: number | null; uncertain_count?: number | null; plot_id?: number | null }
@@ -622,16 +631,34 @@ export class ObservationService {
     if (data.pregnant_count !== undefined) { idx++; sets.push(`pregnant_count = $${idx}`); params.push(data.pregnant_count); }
     if (data.open_count !== undefined) { idx++; sets.push(`open_count = $${idx}`); params.push(data.open_count); }
     if (data.uncertain_count !== undefined) { idx++; sets.push(`uncertain_count = $${idx}`); params.push(data.uncertain_count); }
+    const plotChanged = data.plot_id !== undefined && data.plot_id !== act.plot_id;
     if (data.plot_id !== undefined) {
       // When plot changes, also derive field_id from the plot's parent field
       if (data.plot_id !== null) {
         const { rows: plotRows } = await pool.query(`SELECT field_id FROM plots WHERE id = $1 AND deleted_at IS NULL`, [data.plot_id]);
-        if (plotRows.length > 0) {
-          // Verify user has access to this field
-          const hasAccess = await this._hasFieldAccess(userId, plotRows[0].field_id);
-          if (!hasAccess) {
-            throw new ObservationError(403, 'No tenés acceso al lote seleccionado');
-          }
+        // Un lote inexistente o borrado era un 500 por la FK (DSH-6).
+        if (plotRows.length === 0) {
+          throw new ObservationError(400, 'No encontré ese lote');
+        }
+        // Verify user has access to this field
+        const hasAccess = await this._hasFieldAccess(userId, plotRows[0].field_id);
+        if (!hasAccess) {
+          throw new ObservationError(403, 'No tenés acceso al lote seleccionado');
+        }
+      }
+      // Una siembra o cosecha es parte de una campaña del lote: moverla sola
+      // dejaba la campaña en el lote viejo (DSH-6). La siembra mueve la campaña
+      // entera, si el lote destino está libre; la cosecha no se mueve sola.
+      if (plotChanged && act.plot_crop_id && (act.event_type === 'planting' || act.event_type === 'harvest')) {
+        if (act.event_type === 'harvest' || data.plot_id === null) {
+          throw new ObservationError(400, 'Una cosecha pertenece a la campaña de su lote: para pasarla a otro lote, borrala y cargala en el lote correcto.');
+        }
+        const busy = await pool.query(
+          `SELECT crop FROM plot_crops WHERE plot_id = $1 AND end_date IS NULL AND id <> $2`,
+          [data.plot_id, act.plot_crop_id],
+        );
+        if (busy.rows.length > 0) {
+          throw new ObservationError(409, `Ese lote ya tiene ${busy.rows[0].crop} activo: no puedo pasarle esta siembra.`);
         }
       }
       idx++; sets.push(`plot_id = $${idx}`); params.push(data.plot_id);
@@ -642,7 +669,29 @@ export class ObservationService {
       `UPDATE domain_events SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
       [...params, activityId]
     );
-    return result.rows[0];
+    const updated = result.rows[0];
+
+    // La campaña acompaña a su siembra/cosecha: lote, cultivo y fechas (DSH-6, AGR-15).
+    if (act.plot_crop_id && (act.event_type === 'planting' || act.event_type === 'harvest')) {
+      const { syncPlotCropFromEdit } = await import('../../services/expenses.js');
+      if (act.event_type === 'planting' && (plotChanged || (data.crop && data.crop !== act.crop))) {
+        await syncPlotCropFromEdit(act.plot_crop_id, {
+          crop: data.crop && data.crop !== act.crop ? data.crop : null,
+          plotId: plotChanged ? data.plot_id ?? null : null,
+        });
+        if (plotChanged) {
+          await pool.query(
+            `UPDATE domain_events SET plot_id = $2 WHERE plot_crop_id = $1 AND deleted_at IS NULL`,
+            [act.plot_crop_id, data.plot_id],
+          );
+        }
+      }
+      if (data.event_date !== undefined) {
+        const { syncCampaignDatesFromEvents } = await import('../plots/campaign-sync.js');
+        await syncCampaignDatesFromEvents(act.plot_crop_id);
+      }
+    }
+    return updated;
   }
 
   async getObservationHistory(observationId: number, userId: number): Promise<HistoryRow[]> {

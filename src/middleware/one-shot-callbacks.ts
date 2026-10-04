@@ -36,6 +36,9 @@ const ONE_SHOT_PREFIXES = [
   // (`previewed → applied`) es la guarda real en la base; esto corta antes,
   // para poder contestar "ya se aplicó" en vez de procesar y descartar.
   'animal_batch_move_',
+  // "Sí, registrar" siembra + cosecha: un segundo tap anexaría los mismos
+  // camiones a la cosecha del día (AGR-7).
+  'sowharv_',
 ];
 
 /**

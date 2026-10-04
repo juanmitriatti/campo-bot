@@ -1,0 +1,21 @@
+# Ronda 2 — Dashboard (3 oct 2026). 6 graves, 9 medios, 5 menores; 14 reproducidos (in-process).
+- DSH-1 G rep: PATCH /observations guarda el texto normalizado en observation_text (minúsculas, sin tildes, cortado). observation.service.ts:489-492.
+- DSH-2 G rep (= AGR-2): corregir/borrar camión no baja el rinde. expenses.js:3292-3304.
+- DSH-3 G código: campo con 1 lote fuerza filtro plotId y esconde registros a nivel campo en Gastos/Ingresos/Obs/Hacienda/Monitoreos (no hay "Todos"). ExpenseTable.tsx:146-156,326; IncomeTable, ObservationTable, LivestockTable, ScoutingTable.
+- DSH-4 G rep: campo compartido: Resumen, Cosecha, harvest-summary, harvest-loads y Análisis filtran user_id → cada socio ve solo lo suyo. overview.service.ts:294 (moneyScope sin lote), 473,552,564,579,585,588; harvest-campaign-kg.ts:49,62; auth.routes /harvest-summary f.user_id; expenses.js queryHarvestLoads/getHarvestLoadById; data-analysis-context.service.ts:194,231,260.
+- DSH-5 G rep: Resumen kg/ha divide por sembradas, harvest-summary/chat por cosechadas (1.680 vs 4.200). overview.service.ts:689; harvest-campaign-kg.ts:43.
+- DSH-6 G rep: editar lote/fecha de siembra o cosecha en Actividades no toca plot_crops; plot_id inexistente → 500. observation.service.ts editActivity.
+- DSH-7 M rep: Para revisar "campo sin registros" ignora lo del socio (user_id). review-findings.service.ts:302-322.
+- DSH-8 M rep: editar gasto acepta cualquier moneda; EUR se suma como ARS.
+- DSH-9 M rep: ediciones inválidas → 500 (monto -5/'abc', fecha 31/02, plot_id inexistente, min_stock 'abc') o basura 200 (nombre '', peso -300).
+- DSH-10 M rep: cambiar unidad de insumo no convierte (1000 kg → 1000 tn). auth.routes.ts:1451.
+- DSH-11 M rep: editar raza de grupo a una existente → 500; no normaliza; breed_id viejo. livestock.repository.ts:258-282.
+- DSH-12 M código: Mi cuenta sin exportar ni borrar cuenta (endpoints sin uso; el paywall linkea ahí).
+- DSH-13 M código: renombrar categoría no renombra gastos/ingresos. category.repository.ts:68-76.
+- DSH-14 M código: Para revisar → Asignar lote abre modal sin selector; editExpense no acepta plot_id.
+- DSH-15 M código: tabla Cosechas tope 200 camiones, total miente, sin ventana de campaña.
+- DSH-16 m rep: Para revisar suma $ y USD.
+- DSH-17 m rep: historial de observación 403 a quien puede editarla. observation.service.ts:651.
+- DSH-18 m rep: superficie de lote bajo lo sembrado sin aviso.
+- DSH-19 m código: gasto auto-creado por hacienda editable sin propagar al movimiento.
+- DSH-20 m código: miembro sin feature sharing no tiene pantalla para salir de un campo.

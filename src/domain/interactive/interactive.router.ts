@@ -151,27 +151,22 @@ export class InteractiveRouter {
       return { type: 'command', data: { command: 'log_harvest_costs', plotCropId: Number(costMatch[1]) } };
     }
 
-    // Sow+harvest offer: sowharv_<base64url> → harvest_crop with _autoSow so the
-    // handler registers the missing siembra first (P1-3: harvest with no prior sow).
-    const sowHarvMatch = callbackId.match(/^sowharv_([A-Za-z0-9_-]+)$/);
+    // Sow+harvest offer: sowharv_<token> → el harvest_crop ENTERO (camiones,
+    // fecha, ha, rinde por ha) con _autoSow, para que el handler registre la
+    // siembra que falta primero (P1-3). Antes el botón llevaba en base64 solo
+    // lote/cultivo/rinde total y "Sí, registrar" perdía camiones y fecha y
+    // decía "registrada" igual (AGR-7). Sin token vigente el botón está vencido.
+    const sowHarvMatch = callbackId.match(/^sowharv_([A-Za-z0-9_-]{8})$/);
     if (sowHarvMatch) {
       try {
-        const p = JSON.parse(Buffer.from(sowHarvMatch[1], 'base64url').toString('utf-8')) as { plot?: string; field?: string; crop?: string; yieldKg?: number | null; yieldNotes?: string | null };
-        if (p.crop) {
-          return {
-            type: 'command',
-            data: {
-              command: 'harvest_crop',
-              plotName: p.plot ?? null, fieldName: p.field ?? null,
-              crop: p.crop,
-              ...(p.yieldKg != null ? { yieldKg: p.yieldKg } : {}),
-              ...(p.yieldNotes ? { yieldNotes: p.yieldNotes } : {}),
-              _autoSow: true,
-            },
-          };
+        const resolved = callbackPayloadStore.get(sowHarvMatch[1]);
+        if (resolved === null) throw new Error('token vencido o ajeno');
+        const cmd = JSON.parse(resolved) as Record<string, unknown>;
+        if (cmd.crop) {
+          return { type: 'command', data: { ...cmd, command: 'harvest_crop', _autoSow: true } as never };
         }
       } catch {
-        // fall through
+        console.log(`[INTERCEPT] sowharv sin token vigente: ${callbackId.slice(0, 40)}`);
       }
     }
 

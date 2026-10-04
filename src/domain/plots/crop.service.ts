@@ -169,8 +169,13 @@ export class CropService {
   /** Update only yield_kg + yield_notes on an existing campaign (active or
    * closed). Does NOT change dates or campaign state. */
   async updateYield(cropId: number, yieldKg: number, yieldNotes?: string | null): Promise<PlotCropRow | null> {
-    const { updatePlotCropYield } = await import('../../services/expenses.js');
-    return await updatePlotCropYield(cropId, yieldKg, yieldNotes ?? null) as PlotCropRow | null;
+    const { updatePlotCropYield, findLatestHarvestEventForCrop, recordHarvestYield } = await import('../../services/expenses.js');
+    const row = await updatePlotCropYield(cropId, yieldKg, yieldNotes ?? null) as PlotCropRow | null;
+    // Con un día de cosecha, el total queda también en su evento: si no, el
+    // próximo recálculo desde los días (migración 127) lo perdería.
+    const lastHarvest = await findLatestHarvestEventForCrop(cropId);
+    if (lastHarvest) return await recordHarvestYield(lastHarvest.id, yieldKg, 'total') as PlotCropRow | null;
+    return row;
   }
 
   /** Rinde PARCIAL de un día de cosecha: se suma al acumulado (P0-1, sep 2026). */

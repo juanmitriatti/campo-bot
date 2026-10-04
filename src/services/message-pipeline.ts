@@ -408,7 +408,7 @@ async function askDestructiveConfirmation(cmd: ParsedCommand, userId: UserId, ph
   // Preview del objetivo: mostrar QUÉ se va a borrar (con fecha) — el
   // registro "de recién" puede haber fallado en silencio y el último real
   // ser uno de hace días.
-  const preview = await buildDeletePreview(cmd.command, userId);
+  const preview = await buildDeletePreview(cmd.command, userId, cmd);
   pendingStore.set(phone, {
     type: 'expense',
     data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
@@ -1893,7 +1893,7 @@ async function escalatePendingToAgent(
  * $80.000 — 05/07". Devuelve '' si no se puede determinar (el confirm sale
  * igual, solo sin detalle). Best-effort: jamás rompe el flujo.
  */
-async function buildDeletePreview(command: string, userId: UserId): Promise<string> {
+async function buildDeletePreview(command: string, userId: UserId, cmd?: ParsedCommand): Promise<string> {
   try {
     const fmt = (d: unknown) => {
       const dt = d instanceof Date ? d : new Date(String(d));
@@ -1908,9 +1908,34 @@ async function buildDeletePreview(command: string, userId: UserId): Promise<stri
         `SELECT category, amount, currency, created_at FROM incomes WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`, [userId]);
       if (rows[0]) return `🗑️ Ingreso: ${rows[0].category || 's/cat'} ${rows[0].currency === 'USD' ? `${Number(rows[0].amount).toLocaleString('es-AR')} USD` : `$${Number(rows[0].amount).toLocaleString('es-AR')}`}${fmt(rows[0].created_at)}`;
     } else if (command === 'delete_last_activity') {
-      const { rows } = await pool.query(
-        `SELECT event_type, crop, event_date, created_at FROM domain_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, [userId]);
-      if (rows[0]) return `🗑️ Actividad: ${rows[0].event_type}${rows[0].crop ? ` (${rows[0].crop})` : ''}${fmt(rows[0].event_date ?? rows[0].created_at)}`;
+      // El MISMO objetivo que borra el handler (tipo/cultivo/lote nombrados).
+      const { findActivityDeleteTarget } = await import('../domain/agronomy/agronomy.handler.js');
+      const ev = cmd ? await findActivityDeleteTarget(userId, cmd) : null;
+      if (ev) {
+        const labels: Record<string, string> = {
+          planting: 'Siembra', spraying: 'Fumigación', fertilization: 'Fertilización', harvest: 'Cosecha',
+          tillage: 'Labranza', irrigation: 'Riego', health_event: 'Evento sanitario',
+          repro_event: 'Evento reproductivo', weighing: 'Pesaje', tacto: 'Tacto',
+        };
+        let line = `🗑️ ${labels[ev.event_type] ?? ev.event_type}${ev.crop ? ` de ${ev.crop}` : ''}${ev.plot_name ? ` en ${ev.plot_name}` : ''}${fmt(ev.event_date ?? ev.created_at)}`;
+        // Una cosecha arrastra sus camiones y su parte del rinde: decirlo antes de borrar.
+        if (ev.event_type === 'harvest') {
+          const { rows } = await pool.query(
+            `SELECT (SELECT COUNT(*)::int FROM harvest_loads WHERE domain_event_id = $1) AS loads,
+                    (SELECT COALESCE(SUM(COALESCE(net_weight_kg, weight_kg)), 0) FROM harvest_loads WHERE domain_event_id = $1) AS kg,
+                    (SELECT COUNT(*)::int FROM domain_events WHERE plot_crop_id = $2 AND event_type = 'harvest'
+                        AND deleted_at IS NULL AND id <> $1) AS other_days`,
+            [ev.id, ev.plot_crop_id ?? null]);
+          const r = rows[0];
+          if (r?.loads > 0) line += `\n🚛 Borra también ${r.loads} camión${r.loads > 1 ? 'es' : ''} (${(Number(r.kg) / 1000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} tn)`;
+          const dayYield = (ev as { harvest_yield_kg?: number | null }).harvest_yield_kg;
+          if (dayYield) line += `\n🌾 Rinde cargado ese día: ${(Number(dayYield) / 1000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} tn`;
+          line += r?.other_days > 0
+            ? `\n_La campaña sigue cosechada con los otros ${r.other_days} día(s)._`
+            : `\n_Era el único día de cosecha: la campaña vuelve a "sin cosechar"._`;
+        }
+        return line;
+      }
     } else if (command === 'delete_last_rainfall') {
       const { rows } = await pool.query(
         `SELECT millimeters AS mm, rainfall_date AS rain_date, created_at FROM rainfall WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, [userId]);

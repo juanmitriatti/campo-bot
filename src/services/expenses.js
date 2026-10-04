@@ -2155,16 +2155,114 @@ export async function getPlotCropBySeason(plotId, seasonYear, crop) {
  * sin rinde borraba el "rindió 42 qq/ha" del primero (bug P0, sep 2026).
  */
 export async function setPlotCropHarvested(cropId, harvestedAt, yieldKg = null, yieldNotes = null) {
-  const result = await pool.query(
+  await pool.query(
     `UPDATE plot_crops
         SET harvested_at = LEAST(COALESCE(harvested_at, COALESCE($2::date, CURRENT_DATE)), COALESCE($2::date, CURRENT_DATE)),
             harvest_ended_at = GREATEST(COALESCE(harvest_ended_at, COALESCE($2::date, CURRENT_DATE)), COALESCE($2::date, CURRENT_DATE)),
-            yield_kg = COALESCE($3, yield_kg),
+            declared_yield_kg = COALESCE($3, declared_yield_kg),
             yield_notes = COALESCE($4, yield_notes)
-      WHERE id = $1 RETURNING *`,
+      WHERE id = $1`,
     [cropId, harvestedAt, yieldKg, yieldNotes]
   );
+  return await refreshCampaignYield(cropId);
+}
+
+/**
+ * yield_kg de la campaña = GREATEST(declarado, Σ camiones netos). ÚNICO lugar que
+ * escribe plot_crops.yield_kg (migración 127). Antes el piso era el yield_kg
+ * VIEJO, y corregir o borrar un camión nunca bajaba el rinde (AGR-2 / DSH-2).
+ */
+export async function refreshCampaignYield(plotCropId) {
+  if (!plotCropId) return null;
+  const result = await pool.query(
+    `UPDATE plot_crops SET yield_kg = NULLIF(GREATEST(
+       COALESCE(declared_yield_kg, 0),
+       (SELECT COALESCE(SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)), 0)
+          FROM harvest_loads hl
+          JOIN domain_events de ON de.id = hl.domain_event_id AND de.deleted_at IS NULL
+         WHERE hl.plot_crop_id = $1)
+     ), 0) WHERE id = $1 RETURNING *`,
+    [plotCropId]
+  );
   return result.rows[0] || null;
+}
+
+/**
+ * Declarado de la campaña a partir de lo que aportó cada día de cosecha
+ * (domain_events.harvest_yield_*): recorre los días en el orden en que se
+ * cargaron, un 'total' fija y un 'partial' suma — lo mismo que hacía el handler
+ * en el momento. Así borrar o corregir UN día recalcula sin tocar los demás
+ * (AGR-3, AGR-9). Sin ningún día con rinde: con `force` el declarado queda NULL
+ * (se borró el único día que lo tenía); sin `force` no se toca (campañas con un
+ * rinde cargado sin día de cosecha, p. ej. el rinde retroactivo).
+ */
+export async function recomputeDeclaredYield(plotCropId, { force = false } = {}) {
+  if (!plotCropId) return null;
+  const { rows } = await pool.query(
+    `SELECT harvest_yield_kg, harvest_yield_mode
+       FROM domain_events
+      WHERE plot_crop_id = $1 AND event_type = 'harvest' AND deleted_at IS NULL
+        AND harvest_yield_mode IS NOT NULL
+      ORDER BY created_at, id`,
+    [plotCropId]
+  );
+  if (rows.length === 0 && !force) return await refreshCampaignYield(plotCropId);
+  let declared = null;
+  for (const r of rows) {
+    const kg = Number(r.harvest_yield_kg) || 0;
+    declared = r.harvest_yield_mode === 'partial' ? (declared ?? 0) + kg : kg;
+  }
+  await pool.query(`UPDATE plot_crops SET declared_yield_kg = $2 WHERE id = $1`, [plotCropId, declared]);
+  return await refreshCampaignYield(plotCropId);
+}
+
+/**
+ * Registra el rinde que trajo un día de cosecha en SU evento y recalcula la
+ * campaña. `mode`: 'total' (el total de la campaña) | 'partial' (se suma).
+ * `replace`: corrección de ese día ("no, fueron 260 tn") → pisa lo que había
+ * aportado el día, conservando si era total o parcial. Sin `replace`, un segundo
+ * mensaje del mismo día suma un parcial o fija un total.
+ */
+export async function recordHarvestYield(eventId, kg, mode = 'total', { replace = false } = {}) {
+  const { rows } = await pool.query(
+    `SELECT id, plot_crop_id, harvest_yield_kg, harvest_yield_mode
+       FROM domain_events WHERE id = $1 AND event_type = 'harvest' AND deleted_at IS NULL`,
+    [eventId]
+  );
+  const ev = rows[0];
+  if (!ev) return null;
+  let nextKg = Number(kg);
+  let nextMode = mode;
+  if (replace) {
+    nextMode = ev.harvest_yield_mode ?? 'total';
+  } else if (mode === 'partial' && ev.harvest_yield_mode) {
+    nextKg = (Number(ev.harvest_yield_kg) || 0) + nextKg;
+    nextMode = ev.harvest_yield_mode;
+  }
+  await pool.query(
+    `UPDATE domain_events SET harvest_yield_kg = $2, harvest_yield_mode = $3 WHERE id = $1`,
+    [eventId, nextKg, nextMode]
+  );
+  return ev.plot_crop_id ? await recomputeDeclaredYield(ev.plot_crop_id) : null;
+}
+
+/** Último día de cosecha vivo de una campaña (para atribuirle un rinde que llega sin evento propio). */
+export async function findLatestHarvestEventForCrop(plotCropId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM domain_events
+      WHERE plot_crop_id = $1 AND event_type = 'harvest' AND deleted_at IS NULL
+      ORDER BY event_date DESC, id DESC LIMIT 1`,
+    [plotCropId]
+  );
+  return rows[0] || null;
+}
+
+/** Ha cosechadas en un día: se anotan en su evento para poder descontarlas si se borra el día. */
+export async function addHarvestEventHectares(eventId, hectares) {
+  await pool.query(
+    `UPDATE domain_events SET harvest_hectares = COALESCE(harvest_hectares, 0) + $2 WHERE id = $1`,
+    [eventId, hectares]
+  );
 }
 
 /** Avance de cosecha: suma hectáreas cosechadas (tope: superficie sembrada o del lote). */
@@ -2192,27 +2290,27 @@ export async function setExpectedYield(cropId, kgPerHa) {
 /** Update yield_kg + yield_notes only — used for retroactive yield-load on a
  * harvested campaign (active or closed). Does NOT touch dates. */
 export async function updatePlotCropYield(cropId, yieldKg, yieldNotes = null) {
-  const result = await pool.query(
+  await pool.query(
     `UPDATE plot_crops
-       SET yield_kg = $2,
+       SET declared_yield_kg = $2,
            yield_notes = COALESCE($3, yield_notes)
-     WHERE id = $1 RETURNING *`,
+     WHERE id = $1`,
     [cropId, yieldKg, yieldNotes]
   );
-  return result.rows[0] || null;
+  return await refreshCampaignYield(cropId);
 }
 
 /** Rinde PARCIAL de un día de cosecha ("cosechamos 40 ha, rindió 42 qq/ha"):
  * se SUMA al acumulado de la campaña en vez de pisarlo (P0-1, sep 2026). */
 export async function addPlotCropYield(cropId, yieldKg, yieldNotes = null) {
-  const result = await pool.query(
+  await pool.query(
     `UPDATE plot_crops
-       SET yield_kg = COALESCE(yield_kg, 0) + $2,
+       SET declared_yield_kg = COALESCE(declared_yield_kg, 0) + $2,
            yield_notes = COALESCE($3, yield_notes)
-     WHERE id = $1 RETURNING *`,
+     WHERE id = $1`,
     [cropId, yieldKg, yieldNotes]
   );
-  return result.rows[0] || null;
+  return await refreshCampaignYield(cropId);
 }
 
 export async function getCampaignExpenses(plotId, startDate, endDate = null) {
@@ -2663,15 +2761,62 @@ export async function syncPlotCropFromEdit(plotCropId, { crop = null, plotId = n
  * for cosechas with cargas → 500, and (b) left plot_crops out of sync (a deleted
  * siembra still showed as "cultivo activo", a deleted cosecha left the campaign
  * marked harvested). Now we run a single transaction that:
- *   - harvest  → removes its harvest_loads and re-opens the plot_crop
- *                (harvested_at / yield_kg / yield_notes / end_date cleared) so
- *                the campaign returns to "activa".
+ *   - harvest  → removes its harvest_loads; if other harvest days remain the
+ *                campaign is recomputed without this one, otherwise it returns
+ *                to "activa" (see reopenOrRecomputeHarvest).
  *   - planting → deletes the plot_crop it created (only if not yet harvested),
  *                freeing the unique-active slot so the lote can be re-sown.
  *   - any type → sets deleted_at so it disappears from every query.
  * The cleanup is keyed off the event itself, so it generalises to any future
  * event type that links to dependent rows.
  */
+/**
+ * Borrar UN día de cosecha (el evento todavía no tiene deleted_at; se excluye por id).
+ * Si quedan otros días, la campaña sigue cosechada: fechas desde los días que
+ * quedan, avance menos las ha de ese día y rinde recalculado sin él. Antes ponía
+ * en NULL el rinde, las fechas y el cierre de TODA la campaña (AGR-3).
+ * Si era el único día, la campaña vuelve a "activa" — pero el cierre (end_date)
+ * solo se reabre si el lote no tiene ya otra campaña activa: reabrir chocaba con
+ * el índice de una sola campaña activa por lote cuando ya se había resembrado.
+ */
+async function reopenOrRecomputeHarvest(event) {
+  const pcId = event.plot_crop_id;
+  const { rows: rest } = await pool.query(
+    `SELECT MIN(event_date) AS first_day, MAX(event_date) AS last_day, COUNT(*)::int AS n
+       FROM domain_events
+      WHERE plot_crop_id = $1 AND event_type = 'harvest' AND deleted_at IS NULL AND id <> $2`,
+    [pcId, event.id]
+  );
+  if (rest[0]?.n > 0) {
+    await pool.query(
+      `UPDATE plot_crops
+          SET harvested_at = $2, harvest_ended_at = $3,
+              harvested_hectares = CASE WHEN $4::numeric IS NULL THEN harvested_hectares
+                                        ELSE NULLIF(GREATEST(COALESCE(harvested_hectares, 0) - $4::numeric, 0), 0) END
+        WHERE id = $1`,
+      [pcId, rest[0].first_day, rest[0].last_day, event.harvest_hectares ?? null]
+    );
+    // El evento sigue vivo hasta el UPDATE final: se le saca el rinde antes de recalcular.
+    await pool.query(
+      `UPDATE domain_events SET harvest_yield_mode = NULL, harvest_yield_kg = NULL WHERE id = $1`,
+      [event.id]
+    );
+    await recomputeDeclaredYield(pcId, { force: event.harvest_yield_mode != null });
+    console.log(`[HARVEST] borrado un día de cosecha (evento ${event.id}); la campaña ${pcId} sigue con ${rest[0].n} día(s)`);
+    return;
+  }
+  await pool.query(
+    `UPDATE plot_crops pc
+        SET harvested_at = NULL, harvest_ended_at = NULL, harvested_hectares = NULL,
+            yield_kg = NULL, declared_yield_kg = NULL, yield_notes = NULL,
+            end_date = CASE WHEN EXISTS (SELECT 1 FROM plot_crops o
+                                          WHERE o.plot_id = pc.plot_id AND o.id <> pc.id AND o.end_date IS NULL)
+                            THEN pc.end_date ELSE NULL END
+      WHERE pc.id = $1`,
+    [pcId]
+  );
+}
+
 export async function deleteDomainEvent(eventId) {
   return withTransaction(async () => {
     const { rows } = await pool.query(
@@ -2685,13 +2830,7 @@ export async function deleteDomainEvent(eventId) {
       // Cargas son datos hoja de la cosecha → se borran con ella.
       await pool.query(`DELETE FROM harvest_loads WHERE domain_event_id = $1`, [eventId]);
       if (event.plot_crop_id) {
-        await pool.query(
-          `UPDATE plot_crops
-              SET harvested_at = NULL, yield_kg = NULL, yield_notes = NULL,
-                  end_date = NULL
-            WHERE id = $1`,
-          [event.plot_crop_id]
-        );
+        await reopenOrRecomputeHarvest(event);
       }
     } else if (event.event_type === 'planting' && event.plot_crop_id) {
       // Una siembra borrada libera el lote SOLO si todavía no se cosechó; si ya
@@ -3239,14 +3378,19 @@ export async function getHarvestLoads(domainEventId) {
   return result.rows;
 }
 
-export async function findTodayHarvestEvent(userId, plotId) {
+/**
+ * Cosecha del MISMO día (la fecha del mensaje, hoy si no trae) en el lote, para
+ * anexarle camiones. Antes miraba siempre CURRENT_DATE y los camiones de "ayer"
+ * se pegaban al evento de hoy (AGR-13).
+ */
+export async function findTodayHarvestEvent(userId, plotId, eventDate = null) {
   const result = await pool.query(
     `SELECT * FROM domain_events
      WHERE user_id = $1 AND plot_id = $2 AND event_type = 'harvest'
-       AND event_date = CURRENT_DATE
+       AND event_date = COALESCE($3::date, CURRENT_DATE)
        AND deleted_at IS NULL
      ORDER BY created_at DESC LIMIT 1`,
-    [userId, plotId]
+    [userId, plotId, eventDate]
   );
   return result.rows[0] || null;
 }
@@ -3291,16 +3435,9 @@ export async function findHarvestsToday(userId) {
  */
 export async function updateYieldFromLoads(plotCropId) {
   if (!plotCropId) return;
-  await pool.query(
-    `UPDATE plot_crops SET yield_kg = GREATEST(
-       COALESCE(yield_kg, 0),
-       (SELECT COALESCE(SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)), 0)
-          FROM harvest_loads hl
-          JOIN domain_events de ON de.id = hl.domain_event_id AND de.deleted_at IS NULL
-         WHERE hl.plot_crop_id = $1)
-     ) WHERE id = $1`,
-    [plotCropId]
-  );
+  // El piso es el DECLARADO, no el yield_kg viejo (migración 127): si no, un
+  // camión corregido o borrado nunca bajaba el rinde (AGR-2 / DSH-2).
+  await refreshCampaignYield(plotCropId);
 }
 
 /**

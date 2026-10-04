@@ -1,0 +1,21 @@
+# Ronda 2 — Stock y documentos (3 oct 2026). 9 graves, 8 medios, 3 menores; 16 reproducidos.
+- STK-1 G rep: add_stock/adjust_stock sin campo usa el galpón por defecto (primer campo) y crea un ítem duplicado en vez de sumar al existente en otro galpón → check_stock suma 220. stock.service.ts:59-75,144-158,425-452.
+- STK-2 G rep: "Sí, cargar" de gasto de insumo en campo Beta carga en galpón de Alfa (ignora suggestion.warehouseId). stock-purchase.service.ts:101-111.
+- STK-3 G rep: cosecha "42 qq/ha" + Sí cargar → ítem soja 42 unidad qq/ha. agronomy.handler.ts:2809-2810; addGrainStock sin canonicalMassUnit.
+- STK-4 G rep: carga con destinatario 'silo bolsa'/propio no entra al stock (galpón inexistente, catch traga; inv 1). agronomy.handler.ts:5140,5155.
+- STK-5 G rep: dos facturas seguidas: tap de A guarda B (store único, doc_expense/doc_stock/doc_create_products no comparan documentId). document-pipeline.ts:246,302,336-361.
+- STK-6 G rep: doble tap en Registrar gasto (con producto faltante) guarda el gasto dos veces. document-pipeline.ts:134-136.
+- STK-7 G rep: factura con renglones sin total: tap no guarda nada, responde texto vacío. document.helpers.ts:59-74.
+- STK-8 G rep: venta de soja descuenta "Semilla soja" (findProduct LIKE sin categoría granos). financial.handler.ts:1504,1590; stock.repository.ts:203-219.
+- STK-9 G rep: fumigación 2 lt/ha en lote sin superficie descuenta 2 lt totales. agronomy.handler.ts:3717-3726.
+- STK-10 M rep: venta en tn sobre stock en kg → error, removeStock no convierte. stock.service.ts:118-120.
+- STK-11 M rep: descuento con producto en dos galpones → error, ignora fieldId y stockItemId sugerido. stock-deduction.service.ts:43-44,142.
+- STK-12 M rep: STOCK BAJO al revés (NUMERIC como string). stock.handler.ts:256,300,317.
+- STK-13 M rep: "litros" vs "lt", kilos/kg, bolsa/bolsas no normalizados → error o descuento no ofrecido.
+- STK-14 M rep: add_stock con precio + log_expense del agente = 2 gastos (mapper no filtra).
+- STK-15 M rep: plan free recibe "¿cargar al stock?" y el tap crea ítem (sin hasFeature stock).
+- STK-16 M rep: remito con renglón sin cantidad carga +1u; errores por renglón tragados.
+- STK-17 M rep: factura asigna lote del último registro sin preguntar ni mostrar.
+- STK-18 m rep: IVA/diferencia contra total se pierde.
+- STK-19 m código: varias fotos juntas por WA → solo la última.
+- STK-20 m código: grano a silo desde cargas sin domainEventId; PATCH /stock unit sin convertir (= DSH-10); botón "undefined"; carga sin weight_kg guarda NaN.

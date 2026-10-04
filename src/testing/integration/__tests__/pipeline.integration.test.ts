@@ -337,7 +337,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const ask = await h.send('borrá la última actividad');
       const text = h.allText(ask);
       expect(text).toMatch(/Seguro que queres eliminar la ultima actividad/i);
-      expect(text).toMatch(/Actividad: spraying/i); // preview del objetivo
+      expect(text).toMatch(/🗑️ Fumigación/i); // preview del objetivo, con la etiqueta en castellano
       // NO borró todavía
       let acts = await h.q(`SELECT COUNT(*)::int AS n FROM domain_events WHERE user_id = $1`, [h.userId]);
       expect((acts[0] as { n: number }).n).toBe(1);
@@ -4753,6 +4753,116 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const text = h.allText(await h.send('y cuáles me quedan para meter trigo'));
       expect(text).toMatch(/Lotes sin sembrar/);
       expect(text).not.toMatch(/Norte/);
+    });
+  });
+
+  describe('plan futuro ≠ registro: red del servidor (AGR-16)', () => {
+    let h: PipelineHarness;
+    beforeAll(async () => {
+      h = await createPipelineHarness('plan-futuro');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'San José') RETURNING id`, [h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [(f[0] as { id: number }).id]);
+      await h.q(`UPDATE user_settings SET confirm_before_save = false WHERE user_id = $1`, [h.userId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('"el sábado fumigo el Norte" con log_spraying del agente → recordatorio, ninguna fumigación', async () => {
+      h.fakeAgent.enqueueTool('log_spraying', { plot: 'Norte', product: 'glifosato' });
+      const reply = h.allText(await h.send('el sábado fumigo el Norte con glifosato'));
+      expect(reply).toMatch(/qué hora/i);
+      await h.send('cuando sea');
+      const sprays = await h.q(`SELECT COUNT(*)::int AS n FROM domain_events WHERE user_id = $1 AND event_type = 'spraying'`, [h.userId]);
+      expect((sprays[0] as { n: number }).n).toBe(0);
+      const rem = await h.q(`SELECT description FROM task_reminders WHERE user_id = $1`, [h.userId]);
+      expect(rem).toHaveLength(1);
+    });
+
+    it('la confirmación de borrar una cosecha dice qué arrastra, y apunta a la cosecha aunque haya algo más nuevo', async () => {
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date)
+                 SELECT id, 'soja', 2025, 'gruesa', '2025-11-10' FROM plots WHERE name = 'Norte' AND field_id IN (SELECT id FROM fields WHERE user_id = $1)`, [h.userId]);
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Norte', loads: [{ driver_name: 'Pérez', weight_kg: 30000 }] });
+      await h.send('cosechamos soja en el Norte: Pérez 30000');
+      h.fakeAgent.enqueueTool('log_tillage', { plot: 'Norte', implement: 'rastra' });
+      await h.send('pasé la rastra en el Norte');
+
+      h.fakeAgent.enqueueTool('delete_last_activity', { activity_filter: 'harvest' });
+      const text = h.allText(await h.send('borrá la última cosecha'));
+      expect(text).toMatch(/Cosecha de soja en Norte/);
+      expect(text).toMatch(/1 camión \(30 tn\)/);
+      expect(text).toMatch(/único día de cosecha/);
+    });
+  });
+
+  // Auditoría oct 2026, segunda ronda — tanda "rinde y correcciones". Las de rinde
+  // de varios días viven en harvest-yield-days.integration.test.ts.
+  describe('rinde y correcciones (AGR-1, AGR-7, AGR-8)', () => {
+    let h: PipelineHarness;
+    let fid: number;
+    const plotId = async (name: string) =>
+      ((await h.q(`SELECT id FROM plots WHERE field_id = $1 AND name = $2`, [fid, name]))[0] as { id: number }).id;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('rinde-correcciones');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Media Luna') RETURNING id`, [h.userId]);
+      fid = (f[0] as { id: number }).id;
+      await h.q(`INSERT INTO field_members (field_id, user_id, role, invited_by) VALUES ($1, $2, 'owner', $2)`, [fid, h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 100), ($1, 'Sur', 100), ($1, 'Oeste', 100)`, [fid]);
+      await h.q(`UPDATE user_settings SET confirm_before_save = false WHERE user_id = $1`, [h.userId]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('AGR-1: "fumigué … fueron 2 lt/ha" registra una fumigación NUEVA y no pisa la anterior', async () => {
+      h.fakeAgent.enqueueTool('log_spraying', { plot: 'Norte', product: 'glifosato', quantity: 3, unit: 'lt' });
+      await h.send('fumigué el Norte con glifosato, 3 litros');
+      h.fakeAgent.enqueueTool('log_spraying', { plot: 'Norte', product: 'atrazina', quantity: 2, unit: 'lt/ha' });
+      await h.send('fumigué el Norte con atrazina, fueron 2 lt/ha');
+
+      const rows = await h.q(
+        `SELECT product, quantity FROM domain_events WHERE user_id = $1 AND event_type = 'spraying' AND deleted_at IS NULL ORDER BY id`,
+        [h.userId],
+      ) as Array<{ product: string; quantity: string }>;
+      expect(rows).toHaveLength(2);
+      expect(rows[0].product).toMatch(/glifosato/i);
+      expect(Number(rows[0].quantity)).toBe(3);
+    });
+
+    it('AGR-8: siembra parcial en dos días suma las hectáreas de la campaña', async () => {
+      const ayer = new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: 'Sur', hectares: 40, event_date: ayer });
+      await h.send('ayer sembré 40 ha de soja en el Sur');
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: 'Sur', hectares: 60 });
+      const text = h.allText(await h.send('hoy sembré 60 ha de soja en el Sur'));
+      expect(text).toMatch(/ya van \*100\* de 100 ha/);
+      const pc = await h.q(`SELECT sowed_hectares FROM plot_crops WHERE plot_id = $1 AND end_date IS NULL`, [await plotId('Sur')]);
+      expect(Number((pc[0] as { sowed_hectares: string }).sowed_hectares)).toBe(100);
+    });
+
+    it('AGR-7: "Sí, registrar" (cosecha sin siembra) guarda siembra + cosecha CON sus camiones', async () => {
+      h.fakeAgent.enqueueTool('harvest_crop', {
+        crop: 'maíz', plot: 'Oeste',
+        loads: [{ driver_name: 'Pérez', weight_kg: 30000 }, { driver_name: 'Gómez', weight_kg: 28000 }],
+      });
+      const offer = await h.send('cosechamos maíz en el Oeste: Pérez 30000, Gómez 28000');
+      const btn = h.allButtons(offer).find(b => b.id.startsWith('sowharv_'));
+      expect(btn, 'esperaba el botón sowharv_*').toBeTruthy();
+      expect(btn!.id.length).toBeLessThanOrEqual(64);
+
+      await h.tap(btn!.id);
+      const loads = await h.q(
+        `SELECT hl.driver_name FROM harvest_loads hl JOIN domain_events de ON de.id = hl.domain_event_id
+          WHERE de.user_id = $1 AND de.plot_id = $2 ORDER BY hl.id`,
+        [h.userId, await plotId('Oeste')],
+      ) as Array<{ driver_name: string }>;
+      expect(loads.map(l => l.driver_name)).toEqual(['Pérez', 'Gómez']);
+
+      // Doble tap: no vuelve a anexar los camiones.
+      await h.tap(btn!.id);
+      const again = await h.q(
+        `SELECT COUNT(*)::int AS n FROM harvest_loads hl JOIN domain_events de ON de.id = hl.domain_event_id
+          WHERE de.user_id = $1 AND de.plot_id = $2`,
+        [h.userId, await plotId('Oeste')],
+      );
+      expect((again[0] as { n: number }).n).toBe(2);
     });
   });
 

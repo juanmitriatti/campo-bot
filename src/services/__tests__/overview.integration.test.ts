@@ -214,7 +214,9 @@ describe.skipIf(!dbAvailable)('overview.service — cosecha por CAMPAÑA, no por
     const ov = await getOverview(Number(h.userId), [fieldId], RANGE, { includeUnassigned: false });
     const norte = ov.plots.find(p => p.id === plotId);
     expect(norte?.harvestKg).toBe(168000);
-    expect(norte?.yieldKgPerHa).toBe(1680);
+    // Con avance parcial (40 de 100 ha) el kg/ha es sobre lo cosechado, igual que
+    // el chat: 168 tn / 40 ha. Antes daba 1.680 (sobre las 100 ha) — DSH-5.
+    expect(norte?.yieldKgPerHa).toBe(4200);
   });
 });
 

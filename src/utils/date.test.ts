@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDateAR, formatDateShortAR } from './date.js';
+import { formatDateAR, formatDateShortAR, toISODateAR } from './date.js';
 
 describe('formatDateAR — DATE columns (off-by-one guard)', () => {
   // node-postgres devuelve las columnas DATE como Date a medianoche UTC.

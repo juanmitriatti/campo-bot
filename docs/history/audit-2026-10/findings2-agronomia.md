@@ -1,0 +1,17 @@
+# Ronda 2 — Agronomía (3 oct 2026). 8 graves, 5 medios, 3 menores; 13 reproducidos (harness).
+- AGR-1 G rep: "fue/eran/son + número + unidad" en cualquier parte edita la última actividad sin agente (STEP 2.55c). "fumigué el Norte con atrazina, fueron 2 lt/ha" pisa la fumigación anterior; "sembré maíz, fueron 50 has" edita la cosecha; "el rinde fue 42 qq/ha" lleva yield 400.000→4.200. intent-classifier.ts:539-556, conversation-engine.ts:222-223, lexicon.ts:81-86 (has en UNIT_TERMS). Arreglo: corrección al inicio + sin ACTION_VERB, sacar has, rinde nunca por acá.
+- AGR-2 G rep: corregir/borrar un camión nunca baja el rinde (updateYieldFromLoads GREATEST con el valor viejo como piso). expenses.js:3292, 3395, 3408, 3661. Arreglo: rinde declarado aparte.
+- AGR-3 G rep: borrar la cosecha de un día pone yield/harvested_at NULL de toda la campaña, reabre campaña cerrada (end_date NULL; choque de índice si resembrado). expenses.js deleteDomainEvent ~2685.
+- AGR-4 G rep: dashboard suma rindes totales declarados en días distintos (42 y 45 qq/ha → 870 t vs 450 t chat). harvest-campaign-kg.ts:41 SUM(d.quantity); cada evento guarda el total.
+- AGR-5 G rep: rain_field_<campo>_<mm> sin fecha → "ayer" queda hoy; segunda lluvia con mismos mm cae en one-shot y se pierde. agronomy.handler.ts:1850,1867; interactive.router.ts:103-105.
+- AGR-6 G rep: "corregí la última lluvia" ordena por rainfall_date (no por carga) y reemplaza el total acumulado del día. expenses.js:1911-1926; agronomy.handler.ts:1969-2003.
+- AGR-7 G rep: sowharv_ (cosecha sin siembra) pierde camiones, fecha y rinde; dice "registrada". agronomy.handler.ts ~2589; router 156-170.
+- AGR-8 G rep: siembra parcial en dos días no suma ha (startCrop devuelve la campaña sin tocar sowed_hectares). crop.service.ts ~120.
+- AGR-9 M rep: "no, fueron 260 tn" sobre cosecha multi-día pisa el rinde de toda la campaña. agronomy.handler.ts ~4128.
+- AGR-10 M rep: corregir lluvia "era en el campo X" dice corregida sin cambiar; mover a día con fila choca índice único. agronomy.handler.ts:1982-1997.
+- AGR-11 M rep: camiones sin lote con cosecha hoy → "¿Sumo estas cargas?" texto suelto, "sí" → nada pendiente, se pierden (inv 5). agronomy.handler.ts ~2364-2387.
+- AGR-12 M rep: recordatorio sin fecha pregunta texto suelto, respuesta se pierde (inv 5). system.handler.ts ~487, 518.
+- AGR-13 M rep: camiones de "ayer" se pegan al evento de hoy (findTodayHarvestEvent ignora eventDate). agronomy.handler.ts ~2525.
+- AGR-14 m código: cargas a silo propio no revierten stock al editar/borrar; SILO_RE matchea "campo"/"casa" ("Agro Campo SA").
+- AGR-15 m código: corregir fecha de siembra/cosecha no actualiza plot_crops start_date/season/harvested_at. expenses.js syncPlotCropFromEdit ~2642.
+- AGR-16 m código: plan futuro ≠ registro sin red en el server (hasFutureIntent no veta writes); confirmación de borrar cosecha no dice qué borra.

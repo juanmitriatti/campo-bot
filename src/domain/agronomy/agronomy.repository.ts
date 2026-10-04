@@ -39,6 +39,8 @@ import {
   findTodayHarvestEvent as _findTodayHarvestEvent,
   findHarvestsToday as _findHarvestsToday,
   updateYieldFromLoads as _updateYieldFromLoads,
+  recordHarvestYield as _recordHarvestYield,
+  addHarvestEventHectares as _addHarvestEventHectares,
   queryHarvestLoads as _queryHarvestLoads,
   getHarvestLoadsByCampaign as _getHarvestLoadsByCampaign,
   deleteHarvestLoads as _deleteHarvestLoads,
@@ -444,8 +446,17 @@ export class AgronomyRepository {
     return _getHarvestLoads(domainEventId);
   }
 
-  async findTodayHarvestEvent(userId: UserId, plotId: number): Promise<DomainEventRow | null> {
-    return _findTodayHarvestEvent(userId, plotId) as Promise<DomainEventRow | null>;
+  async findTodayHarvestEvent(userId: UserId, plotId: number, eventDate: string | null = null): Promise<DomainEventRow | null> {
+    return _findTodayHarvestEvent(userId, plotId, eventDate) as Promise<DomainEventRow | null>;
+  }
+
+  /** Rinde que aportó un día de cosecha → su evento + recálculo de la campaña (migración 127). */
+  async recordHarvestYield(eventId: number, kg: number, mode: 'total' | 'partial', opts: { replace?: boolean } = {}): Promise<void> {
+    await _recordHarvestYield(eventId, kg, mode, opts);
+  }
+
+  async addHarvestEventHectares(eventId: number, hectares: number): Promise<void> {
+    return _addHarvestEventHectares(eventId, hectares);
   }
 
   async updateYieldFromLoads(plotCropId: number): Promise<void> {

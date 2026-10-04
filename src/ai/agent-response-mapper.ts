@@ -4,7 +4,7 @@ import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_C
 import { resolveRelativeDate, resolveAllRelativeDates, TOOLS_WITH_DATE_PARAM, dateKeyForTool } from '../utils/relative-dates.js';
 import { extractCropFromText } from '../utils/crops.js';
 import { normalizarMonto } from '../utils/parser.js';
-import { numberOnlyAppearsAsArea } from '../utils/lexicon.js';
+import { numberOnlyAppearsAsArea, isFuturePlanOnly } from '../utils/lexicon.js';
 
 /** Tools cuyo `count` es una cantidad de ANIMALES y puede confundirse con hectáreas. */
 const COUNT_TOOLS: ReadonlySet<string> = new Set(['add_livestock', 'adjust_livestock', 'record_livestock_birth', 'record_livestock_death', 'remove_livestock', 'transfer_livestock']);
@@ -350,6 +350,22 @@ export class AgentResponseMapper {
         return keep;
       });
       if (filteredCalls.length === 0) filteredCalls = result.toolCalls; // safety: don't drop everything
+    }
+
+    // Plan futuro ≠ registro (invariante 12), red del servidor: si el mensaje es
+    // SOLO un plan ("el sábado fumigo el Norte", "mañana tengo que pagar el
+    // flete") y el agente igual llamó tools que registran como hecho, se
+    // reemplazan por un recordatorio. Registrar un plan como hecho corrompe
+    // datos; el prompt solo no alcanzaba (AGR-16, auditoría oct 2026).
+    const PLAN_WRITE_TOOLS = new Set([
+      ...AGRO_ACTIVITY_TOOLS, 'log_expense', 'log_income', 'log_health_event',
+      'log_repro_event', 'log_weighing', 'add_livestock', 'remove_livestock',
+    ]);
+    if (filteredCalls.length > 0
+        && filteredCalls.every(tc => PLAN_WRITE_TOOLS.has(tc.toolName))
+        && isFuturePlanOnly(originalText)) {
+      console.warn(`AI_MAPPER OVERRIDE: plan futuro registrado como hecho (${filteredCalls.map(tc => tc.toolName).join(', ')}) → create_reminder — text="${originalText.slice(0, 100)}"`);
+      filteredCalls = [{ ...filteredCalls[0], toolName: 'create_reminder', toolInput: { description: originalText } }];
     }
 
     // Texto conversacional + tools: hoy el texto se descarta (la confirmación

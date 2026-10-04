@@ -458,7 +458,7 @@ export async function getOverview(
   // harvestCampaignsCte.
   const plotHarvestQ = pool.query(
     `WITH ${harvestCampaignsCte({ user: '$1', from: '$2', to: '$3', fieldIds: '$4' })}
-     SELECT plot_id, SUM(kg)::numeric AS kg
+     SELECT plot_id, SUM(kg)::numeric AS kg, SUM(ha)::numeric AS ha
        FROM harvest_campaigns
       GROUP BY plot_id`,
     [userId, range.from, range.to, fieldIds],
@@ -666,8 +666,10 @@ export async function getOverview(
   }
 
   const harvestByPlot = new Map<number, number>();
+  const harvestHaByPlot = new Map<number, number>();
   for (const r of plotHarvest.rows) {
     if (r.kg != null) harvestByPlot.set(Number(r.plot_id), Number(r.kg));
+    if (r.ha != null) harvestHaByPlot.set(Number(r.plot_id), Number(r.ha));
   }
 
   const lastByPlot = new Map<number, string>();
@@ -685,8 +687,11 @@ export async function getOverview(
     const area = r.area_hectares == null ? null : Number(r.area_hectares);
     const harvestKg = harvestByPlot.get(id) ?? null;
     // Yield over the sown area when the campaign recorded a partial sowing.
+    // La base del kg/ha sale de harvestCampaignsCte (la misma que el chat): con
+    // avance parcial divide por lo cosechado. Antes el Resumen dividía por lo
+    // sembrado y daba 1.680 kg/ha donde el chat decía 4.200 (DSH-5).
     const sown = r.sowed_hectares == null ? null : Number(r.sowed_hectares);
-    const yieldBase = sown && sown > 0 ? sown : area;
+    const yieldBase = harvestHaByPlot.get(id) ?? (sown && sown > 0 ? sown : area);
     return {
       id,
       name: String(r.name),

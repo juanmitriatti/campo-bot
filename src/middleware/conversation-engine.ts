@@ -15,6 +15,7 @@ import {
   MONEY_HINT_RE, hasDeleteVerb, startsWithCorrectionCue, normLex,
 } from '../utils/lexicon.js';
 import { looksLikeCategoryWord } from '../ai/correction-classifier.js';
+import { hasActionVerb } from './conversation-guards.js';
 
 // Defaults — overridden by system_settings at runtime
 const DEFAULT_FLOW_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -217,14 +218,23 @@ export function extractActivityQuantityCorrection(
   text: string,
 ): { quantity: number; unit: string } | null {
   const t = normLex(text);
-  // Correction phrasing: a leading correction cue / "la fumigación …" + a copula,
-  // or a bare copula before a number. Cue + copula + unit lists come from lexicon.
-  const isCorrection = new RegExp(`^(?:(?:${CORRECTION_ALT}),?\\s*|la\\s+[a-zñ]+\\s+)?(?:${COPULA_ALT})\\s+`, 'i').test(t)
-    || new RegExp(`\\b(?:${COPULA_ALT})\\s+\\d`, 'i').test(t);
+  // Correction phrasing ONLY at the start: a correction cue / "la fumigación …"
+  // + a copula. Antes también valía "fueron N" en cualquier parte del mensaje,
+  // y "fumigué el Norte con atrazina, fueron 2 lt/ha" pisaba la fumigación
+  // ANTERIOR en vez de registrar la nueva (AGR-1, auditoría oct 2026).
+  const isCorrection = new RegExp(`^(?:(?:${CORRECTION_ALT}),?\\s*|la\\s+[a-zñ]+\\s+)?(?:${COPULA_ALT})\\s+`, 'i').test(t);
   if (!isCorrection) return null;
   if (MONEY_HINT_RE.test(t)) return null;       // it's an AMOUNT correction, not a dose
+  // Un verbo de acción = registro nuevo ("sembré maíz, fueron 50 has"), nunca
+  // una corrección de la actividad anterior. El "la fumigación" inicial nombra la
+  // actividad corregida, no es un verbo.
+  if (hasActionVerb(t.replace(/^la\s+[a-zñ]+\s+/, ''))) return null;
+  // El rinde no es una dosis: "el rinde fue 42 qq/ha" llevaba yield 400.000 → 4.200.
+  if (/\b(rinde|rindio|rendimiento)\b/i.test(t)) return null;
   const m = t.match(QUANTITY_UNIT_RE);
   if (!m) return null;
+  // Superficie no es dosis: "fueron 50 has" editaba la cantidad de la última actividad.
+  if (/^(has|hectareas)$/i.test(m[2])) return null;
   const quantity = parseFloat(m[1].replace(',', '.'));
   if (!(quantity > 0)) return null;
   return { quantity, unit: m[2].toLowerCase() };

@@ -16,7 +16,8 @@
  *
  * Devuelve el texto de una CTE `harvest_campaigns` con columnas:
  *   plot_id, plot_crop_id (NULL en legacy), crop, event_date (primer día de
- *   cosecha en la ventana), kg, ha (sembradas o del lote).
+ *   cosecha en la ventana), kg, ha (las cosechadas con avance parcial; si no,
+ *   sembradas o del lote — la misma base que usa el chat).
  * Los placeholders se pasan por nombre porque cada query ordena sus params
  * distinto.
  */
@@ -38,9 +39,18 @@ export function harvestCampaignsCte(p: { user: string; from: string; to: string;
                              FROM harvest_loads hl
                              JOIN domain_events de ON de.id = hl.domain_event_id AND de.deleted_at IS NULL
                             WHERE hl.plot_crop_id = pc.id), 0),
-                 COALESCE(SUM(d.quantity * ${kgFactor('d.unit')}), 0)
+                 -- La suma de eventos solo para campañas SIN rinde: el evento de un
+                 -- rinde total guarda el total de la campaña, y "42 qq/ha" el día 1
+                 -- + "45 qq/ha" el día 2 daba 870 tn donde el chat decía 450 (AGR-4).
+                 CASE WHEN pc.yield_kg IS NULL
+                      THEN COALESCE(SUM(d.quantity * ${kgFactor('d.unit')}), 0) ELSE 0 END
                )::numeric AS kg,
-               COALESCE(pc.sowed_hectares, pl.area_hectares) AS ha
+               -- Misma base que el chat (campaign_stats / confirmación de cosecha):
+               -- con avance parcial el kg/ha es sobre lo COSECHADO (DSH-5).
+               CASE WHEN pc.harvested_hectares > 0
+                         AND pc.harvested_hectares < COALESCE(pc.sowed_hectares, pl.area_hectares)
+                    THEN pc.harvested_hectares
+                    ELSE COALESCE(pc.sowed_hectares, pl.area_hectares) END AS ha
           FROM plot_crops pc
           JOIN plots pl ON pl.id = pc.plot_id AND pl.deleted_at IS NULL
           JOIN domain_events d ON d.plot_crop_id = pc.id
@@ -49,7 +59,7 @@ export function harvestCampaignsCte(p: { user: string; from: string; to: string;
          WHERE d.user_id = ${p.user}
            AND d.event_date BETWEEN ${p.from}::date AND ${p.to}::date
            AND pl.field_id = ANY(${p.fieldIds}::int[])
-         GROUP BY pc.id, pc.plot_id, pc.crop, pc.yield_kg, pc.sowed_hectares, pl.area_hectares
+         GROUP BY pc.id, pc.plot_id, pc.crop, pc.yield_kg, pc.sowed_hectares, pc.harvested_hectares, pl.area_hectares
         UNION ALL
         SELECT d.plot_id,
                NULL::int AS plot_crop_id,

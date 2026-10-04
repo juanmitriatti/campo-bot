@@ -46,7 +46,7 @@ function toDateAR(date: Date | string): Date {
  */
 export function toISODateAR(date: Date | string | null | undefined): string | null {
   if (date == null || date === '') return null;
-  if (typeof date === 'string' && /^d{4}-d{2}-d{2}/.test(date)) return date.slice(0, 10);
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date)) return date.slice(0, 10);
   const d = toDateAR(date);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString('en-CA', { timeZone: TZ });

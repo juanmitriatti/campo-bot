@@ -64,6 +64,14 @@ describe('extractActivityQuantityCorrection', () => {
   it('rejects money: "no, eran 5 mil"', () => expect(extractActivityQuantityCorrection('no, eran 5 mil')).toBeNull());
   it('rejects money with currency: "no, eran 5000 dólares"', () => expect(extractActivityQuantityCorrection('no, eran 5000 dólares')).toBeNull());
   it('null on a new activity "fumigué 3 litros"', () => expect(extractActivityQuantityCorrection('fumigué 3 litros')).toBeNull());
+  // AGR-1 (auditoría oct 2026): estas frases editaban la ÚLTIMA actividad sin pasar por el agente.
+  it.each([
+    'fumigué el Norte con atrazina, fueron 2 lt/ha',
+    'sembré maíz, fueron 50 has',
+    'el rinde fue 42 qq/ha',
+    'no, fueron 50 has',
+    'ayer aplicamos glifosato y fueron 3 litros',
+  ])('null (no es corrección de dosis): "%s"', (t) => expect(extractActivityQuantityCorrection(t)).toBeNull());
 });
 
 import { extractCurrencyCorrection } from '../conversation-engine.js';
