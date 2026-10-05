@@ -2998,6 +2998,11 @@ function handleError(err: unknown, res: Response): void {
     res.status(fe.status).json({ error: fe.message, code: fe.code });
     return;
   }
+  // Feedlot/corral con hacienda (HAC-18): 409 con la explicación.
+  if (err instanceof Error && err.name === 'LocationHasLivestockError') {
+    res.status(409).json({ error: err.message, code: 'HAS_LIVESTOCK' });
+    return;
+  }
   // Ubicación ajena o borrada (AnimalService): 404, nunca confirmar que existe.
   if (err instanceof Error && err.name === 'LocationAccessError') {
     res.status(404).json({ error: err.message });

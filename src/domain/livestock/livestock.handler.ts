@@ -337,7 +337,7 @@ export class LivestockHandler {
     const movementId = cmd.movementId as string;
     try {
       const r = await this.service.undoMovement(userId, movementId);
-      return { messages: [`↩️ ${r.label} aplicado.`] };
+      return { messages: [`↩️ ${r.label} aplicado.${r.notes ? `\n${r.notes}` : ''}`] };
     } catch (err: unknown) {
       return { messages: [err instanceof Error ? err.message : String(err)] };
     }

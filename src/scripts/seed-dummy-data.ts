@@ -175,10 +175,10 @@ async function seed(client: PoolClient, userId: number): Promise<void> {
 
   for (const f of FIELDS) {
     // Idempotente: si el usuario ya tiene un campo con este nombre (dato real
-    // o seed previo), se reusa en vez de chocar con fields_user_id_name_key.
+    // o seed previo), se reusa en vez de chocar con el índice único de vivos (131).
     const { rows: [field] } = await client.query(
       `INSERT INTO fields (user_id, name, city) VALUES ($1, $2, $3)
-       ON CONFLICT (user_id, name) DO UPDATE SET deleted_at = NULL
+       ON CONFLICT (user_id, name) WHERE deleted_at IS NULL DO UPDATE SET city = fields.city
        RETURNING id`,
       [userId, f.name, f.city],
     );
@@ -195,7 +195,7 @@ async function seed(client: PoolClient, userId: number): Promise<void> {
     for (const p of f.plots) {
       const { rows: [plot] } = await client.query(
         `INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, $2, $3)
-         ON CONFLICT (field_id, name) DO UPDATE SET deleted_at = NULL
+         ON CONFLICT (field_id, name) WHERE deleted_at IS NULL DO UPDATE SET name = plots.name
          RETURNING id`,
         [field.id, p.name, p.areaHa || null],
       );

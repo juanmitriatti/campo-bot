@@ -10,6 +10,7 @@ import { LIVESTOCK_CATEGORIES, LIVESTOCK_CATEGORY_LABEL } from './livestock.type
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FeedlotService, type ResolvedCorralRef } from '../feedlot/feedlot.service.js';
 import { saveExpense, saveIncome } from '../../services/expenses.js';
+import { withTransaction } from '../../config/db.js';
 import type { UserId, Currency } from '../../types/index.js';
 
 export interface ResolvedPlotRef {
@@ -1035,7 +1036,29 @@ export class LivestockService {
    * Refuses when the reversal would leave a group with negative count.
    * Ajuste is not undoable (would need previous-count history).
    */
-  async undoMovement(userId: UserId, movementId: string): Promise<{ reversed: boolean; label: string }> {
+  async undoMovement(userId: UserId, movementId: string): Promise<{ reversed: boolean; label: string; notes?: string }> {
+    // Todo junto: la reversa, la plata vinculada y los animales (HAC-11/17).
+    return withTransaction(() => this.undoMovementInner(userId, movementId));
+  }
+
+  /** Lo que acompaña a una reversa: borra el gasto/ingreso vinculado y revive los animales. */
+  private async undoSideEffects(
+    userId: UserId,
+    m: { id: string; linked_expense_id: number | null; linked_income_id: number | null },
+  ): Promise<string> {
+    const notes: string[] = [];
+    const money = await this.repo.softDeleteLinkedMoney(Number(userId), m);
+    const fmt = (x: { amount: number; currency: string }) =>
+      `${x.currency === 'USD' ? 'US$' : '$'}${x.amount.toLocaleString('es-AR')}`;
+    if (money.expense) notes.push(`También borré el gasto vinculado (${fmt(money.expense)}).`);
+    if (money.income) notes.push(`También borré el ingreso vinculado (${fmt(money.income)}).`);
+    const revived = await this.repo.reviveAnimalsOfMovement(Number(userId), m.id);
+    if (revived > 0) notes.push(`${revived} animal${revived === 1 ? '' : 'es'} con caravana volvió a estar activo.`);
+    if (notes.length) console.log(`[LIVESTOCK] reversa ${m.id}: ${notes.join(' ')}`);
+    return notes.join('\n');
+  }
+
+  private async undoMovementInner(userId: UserId, movementId: string): Promise<{ reversed: boolean; label: string; notes?: string }> {
     const m = await this.repo.findMovementById(Number(userId), movementId);
     if (!m) throw new Error('No encontré el movimiento.');
 
@@ -1063,7 +1086,8 @@ export class LivestockService {
       await this.repo.applySingleMovement(Number(userId), 'salida', m.dest_group_id, m.count, {
         reason: `Reversa del movimiento ${m.id}`, reverses_movement_id: m.id, created_by: Number(userId),
       });
-      return { reversed: true, label: `Salida de ${m.count} animales (reversa de ${m.movement_type})` };
+      const extra = await this.undoSideEffects(userId, m);
+      return { reversed: true, label: `Salida de ${m.count} animales (reversa de ${m.movement_type})`, notes: extra };
     }
 
     if (m.movement_type === 'salida' || m.movement_type === 'muerte') {
@@ -1071,7 +1095,8 @@ export class LivestockService {
       await this.repo.applySingleMovement(Number(userId), 'entrada', m.source_group_id, m.count, {
         reason: `Reversa del movimiento ${m.id}`, reverses_movement_id: m.id, created_by: Number(userId),
       });
-      return { reversed: true, label: `Entrada de ${m.count} animales (reversa de ${m.movement_type})` };
+      const extra = await this.undoSideEffects(userId, m);
+      return { reversed: true, label: `Entrada de ${m.count} animales (reversa de ${m.movement_type})`, notes: extra };
     }
 
     if (m.movement_type === 'transferencia' || m.movement_type === 'recategorizacion') {

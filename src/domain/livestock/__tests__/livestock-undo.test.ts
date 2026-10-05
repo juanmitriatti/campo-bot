@@ -11,6 +11,9 @@ function buildService(repoOverrides: Partial<LivestockRepository>): LivestockSer
     applySingleMovement: vi.fn(),
     applyTransferMovement: vi.fn(),
     softDeleteDomainEvent: vi.fn(),
+    // HAC-11/17: la reversa también borra la plata vinculada y revive animales.
+    softDeleteLinkedMoney: vi.fn().mockResolvedValue({ expense: null, income: null }),
+    reviveAnimalsOfMovement: vi.fn().mockResolvedValue(0),
     ...repoOverrides,
   } as unknown as LivestockRepository;
   return new LivestockService(

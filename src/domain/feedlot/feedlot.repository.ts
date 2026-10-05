@@ -2,6 +2,15 @@ import { pool } from '../../config/db.js';
 import type { FeedlotRow, CorralRow } from './feedlot.types.js';
 import { accessibleFieldsSql } from '../shared/accessible-fields.js';
 
+/** Borrar un feedlot/corral con hacienda (HAC-18): 409 en el dashboard, mensaje en el bot. */
+export class LocationHasLivestockError extends Error {
+  status = 409;
+  constructor(message: string) {
+    super(message);
+    this.name = 'LocationHasLivestockError';
+  }
+}
+
 export class FeedlotRepository {
   // ========================
   // FEEDLOTS
@@ -76,7 +85,28 @@ export class FeedlotRepository {
     );
   }
 
+  /**
+   * Cabezas en un feedlot o corral. Borrar uno con hacienda la dejaba
+   * "atrapada": no se listaba, vender fallaba y recrear el corral chocaba
+   * (HAC-18). Un feedlot o corral borrado no se restaura, así que se bloquea.
+   */
+  private async assertNoLivestock(where: { feedlotId?: number; corralId?: number }, label: string): Promise<void> {
+    const { rows } = await pool.query(
+      `SELECT COALESCE(SUM(lg.count), 0)::int AS n
+         FROM livestock_groups lg JOIN corrals c ON c.id = lg.corral_id
+        WHERE lg.deleted_at IS NULL AND lg.count > 0
+          AND (c.id = $1 OR c.feedlot_id = $2)`,
+      [where.corralId ?? null, where.feedlotId ?? null],
+    );
+    const n = Number(rows[0].n);
+    if (n > 0) {
+      console.log(`[INTERCEPT] borrar ${label} bloqueado: tiene ${n} cabezas`);
+      throw new LocationHasLivestockError(`${label} tiene ${n} cabeza${n === 1 ? '' : 's'} de hacienda. Movelas o dalas de baja antes de borrarlo.`);
+    }
+  }
+
   async deleteFeedlot(id: number): Promise<void> {
+    await this.assertNoLivestock({ feedlotId: id }, 'El feedlot');
     await pool.query(
       `UPDATE feedlots SET deleted_at = NOW() WHERE id = $1`,
       [id]
@@ -174,6 +204,7 @@ export class FeedlotRepository {
   }
 
   async deleteCorral(id: number): Promise<void> {
+    await this.assertNoLivestock({ corralId: id }, 'El corral');
     await pool.query(
       `UPDATE corrals SET deleted_at = NOW() WHERE id = $1`,
       [id]

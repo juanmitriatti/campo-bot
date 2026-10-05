@@ -14,7 +14,7 @@ import { getActivityLabel } from '../agronomy/activity.service.js';
 import { getSetting } from '../../services/settings.service.js';
 import { localidadLookup } from '../../services/localidad-lookup.service.js';
 import { formatLocation } from '../../middleware/pending-field-city-handler.js';
-import { queryPlotHistory, updateConversationState, getAllActiveCrops } from '../../services/expenses.js';
+import { queryPlotHistory, updateConversationState, getAllActiveCrops, describeDeletionCargo } from '../../services/expenses.js';
 import { computeUnsownPlots } from '../plots/sowing-status.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
 import { FieldSharingService } from '../sharing/field-sharing.service.js';
@@ -427,6 +427,33 @@ export function decodePendingIncomePayload(b64: string): { data: ParsedIncome; f
 }
 
 // --- Handler ---
+
+/** CAM-18/19: un nombre ya usado se explica, nunca es un error interno. */
+function nameTakenReply(err: unknown): { messages: string[] } | null {
+  const name = (err as Error)?.name;
+  return name === 'NameTakenError' || name === 'RestoreNameTakenError' ? { messages: [(err as Error).message] } : null;
+}
+
+/**
+ * Lo que se va con un borrado (CAM-7, decisión de producto: se permite borrar,
+ * avisando). Antes la confirmación solo contaba gastos/ingresos/lluvias y la
+ * hacienda, el cultivo en curso y el stock quedaban "atrapados" sin aviso.
+ */
+async function deletionCargoNote(where: { fieldId?: number | null; plotId?: number | null }): Promise<string> {
+  try {
+    const c = await describeDeletionCargo({ fieldId: where.fieldId ?? null, plotId: where.plotId ?? null });
+    const parts: string[] = [];
+    if (c.livestockHeads > 0) parts.push(`🐄 ${c.livestockHeads} cabeza${c.livestockHeads === 1 ? '' : 's'} de hacienda`);
+    if (c.activeCrops.length > 0) parts.push(`🌱 ${c.activeCrops.join(', ')} en curso`);
+    if (c.stockItems > 0) parts.push(`📦 ${c.stockItems} insumo${c.stockItems === 1 ? '' : 's'} en depósito`);
+    if (c.records > 0) parts.push(`🧾 ${c.records} registro${c.records === 1 ? '' : 's'} (gastos, ingresos, lluvias)`);
+    if (parts.length === 0) return '';
+    return `\n\nSe va con esto (y vuelve si lo restaurás):\n${parts.map((p) => `• ${p}`).join('\n')}`;
+  } catch (err) {
+    console.error('[DELETE] no pude armar el detalle de lo que se borra:', (err as Error).message);
+    return '';
+  }
+}
 
 export class FinancialHandler {
   private sharingService: FieldSharingService;
@@ -2884,7 +2911,8 @@ export class FinancialHandler {
           if (!isOwnerPlot) {
             return { messages: [`Solo el due\u00f1o del campo *${onlyPlot.field_name}* puede eliminar sus lotes.`] };
           }
-          const confirmMsg = `\u00bfSeguro que quer\u00e9s eliminar el lote *${onlyPlot.name}* del campo *${onlyPlot.field_name}*?\nLos registros asociados quedar\u00e1n sin lote.\n\n_Pod\u00e9s restaurarlo despu\u00e9s con "restaurar lote ${onlyPlot.name} del campo ${onlyPlot.field_name}"_`;
+          const cargoPlot = await deletionCargoNote({ plotId: onlyPlot.id as number });
+          const confirmMsg = `\u00bfSeguro que quer\u00e9s eliminar el lote *${onlyPlot.name}* del campo *${onlyPlot.field_name}*?${cargoPlot}\n\n_Pod\u00e9s restaurarlo despu\u00e9s con "restaurar lote ${onlyPlot.name} del campo ${onlyPlot.field_name}"_`;
           return {
             messages: [confirmMsg],
             interactive: {
@@ -2914,11 +2942,10 @@ export class FinancialHandler {
         // Get associated data counts for confirmation message
         const info = await this.service.getFieldInfo(userId, cmd.fieldName as string);
         const plotCount = info ? info.plotCount : 0;
-        const dataCount = info ? (info.expenses.count + info.incomes.count + info.rainfall.count) : 0;
 
         let confirmMsg = `\u00bfSeguro que quer\u00e9s eliminar ${labelDel.toLowerCase()} *${cmd.fieldName}*?`;
         if (plotCount && plotCount > 0) confirmMsg += `\nTiene ${plotCount} lote${plotCount > 1 ? 's' : ''} que tambi\u00e9n se eliminar\u00e1${plotCount > 1 ? 'n' : ''}.`;
-        if (dataCount > 0) confirmMsg += `\nTiene ${dataCount} registro${dataCount > 1 ? 's' : ''} asociado${dataCount > 1 ? 's' : ''} que quedar\u00e1${dataCount > 1 ? 'n' : ''} sin asignar.`;
+        confirmMsg += await deletionCargoNote({ fieldId: exists.id });
 
         // Warn about shared members
         try {
@@ -2959,7 +2986,14 @@ export class FinancialHandler {
         if (!isOwnerRen) {
           return { messages: [`Solo el dueño del campo *${cmd.oldName}* puede renombrarlo.`] };
         }
-        const renamed = await this.service.renameField(userId, cmd.oldName as string, cmd.newName as string);
+        let renamed: boolean;
+        try {
+          renamed = await this.service.renameField(userId, cmd.oldName as string, cmd.newName as string);
+        } catch (err) {
+          const taken = nameTakenReply(err);
+          if (taken) return taken;
+          throw err;
+        }
         if (!renamed) {
           return { messages: [`No encontré ${labelRen.toLowerCase()} *${cmd.oldName}*.`] };
         }
@@ -2997,7 +3031,14 @@ export class FinancialHandler {
           }
         }
 
-        const renamedPlot = await this.service.renamePlot(userId, oldPlotName, newPlotName, renPlotFieldName);
+        let renamedPlot: Awaited<ReturnType<typeof this.service.renamePlot>>;
+        try {
+          renamedPlot = await this.service.renamePlot(userId, oldPlotName, newPlotName, renPlotFieldName);
+        } catch (err) {
+          const taken = nameTakenReply(err);
+          if (taken) return taken;
+          throw err;
+        }
         if (!renamedPlot) {
           return { messages: [`No encontré el lote *${oldPlotName}*${renPlotFieldName ? ` en campo *${renPlotFieldName}*` : ''}.`] };
         }
@@ -3402,7 +3443,8 @@ export class FinancialHandler {
           return { messages: [`No encontr\u00e9 el lote *${cmd.plotName}* en campo *${cmd.fieldName}*.`] };
         }
 
-        const confirmPlotMsg = `\u00bfSeguro que quer\u00e9s eliminar el lote *${cmd.plotName}* del campo *${cmd.fieldName}*?\nLos registros asociados quedar\u00e1n sin lote.\n\n_Pod\u00e9s restaurarlo despu\u00e9s con "restaurar lote ${cmd.plotName} del campo ${cmd.fieldName}"_`;
+        const cargoPlot2 = await deletionCargoNote({ plotId: plotForDel.id as number });
+        const confirmPlotMsg = `\u00bfSeguro que quer\u00e9s eliminar el lote *${cmd.plotName}* del campo *${cmd.fieldName}*?${cargoPlot2}\n\n_Pod\u00e9s restaurarlo despu\u00e9s con "restaurar lote ${cmd.plotName} del campo ${cmd.fieldName}"_`;
         return {
           messages: [confirmPlotMsg],
           interactive: {
@@ -3505,7 +3547,14 @@ export class FinancialHandler {
           // Try to find which field the deleted plot belongs to
           const allFields = await this.service.getUserFields(userId);
           for (const f of allFields) {
-            const restoredPlot = await this.service.restorePlot(userId, cmd.fieldName as string, f.name);
+            let restoredPlot;
+            try {
+              restoredPlot = await this.service.restorePlot(userId, cmd.fieldName as string, f.name);
+            } catch (err) {
+              const taken = nameTakenReply(err);
+              if (taken) return taken;
+              throw err;
+            }
             if (restoredPlot) {
               return {
                 messages: [`✅ Lote *${restoredPlot.name}* restaurado correctamente en campo *${f.name}*.`],
@@ -3516,12 +3565,19 @@ export class FinancialHandler {
           return { messages: [`No encontré lote eliminado con nombre *${cmd.fieldName}*.`] };
         }
 
-        const restored = await this.service.restoreField(userId, cmd.fieldName as string);
+        let restored;
+        try {
+          restored = await this.service.restoreField(userId, cmd.fieldName as string);
+        } catch (err) {
+          const taken = nameTakenReply(err);
+          if (taken) return taken;
+          throw err;
+        }
         if (!restored) {
           return { messages: [`No encontr\u00e9 campo eliminado con nombre *${cmd.fieldName}*.`] };
         }
         return {
-          messages: [`\u2705 Campo *${restored.name}* restaurado correctamente.\nSus lotes asociados tambi\u00e9n fueron restaurados.`],
+          messages: [`\u2705 Campo *${restored.name}* restaurado correctamente.\nVolvieron sus lotes, su hacienda y los registros que tenía asignados.`],
           suggestionKey: 'field_created',
         };
       }
@@ -3529,7 +3585,14 @@ export class FinancialHandler {
       case 'restore_plot': {
         const plotToRestore = cmd.plotName as string;
         const fieldForRestore = cmd.fieldName as string;
-        const restoredPlot = await this.service.restorePlot(userId, plotToRestore, fieldForRestore);
+        let restoredPlot;
+        try {
+          restoredPlot = await this.service.restorePlot(userId, plotToRestore, fieldForRestore);
+        } catch (err) {
+          const taken = nameTakenReply(err);
+          if (taken) return taken;
+          throw err;
+        }
         if (!restoredPlot) {
           const fieldR = await this.service.getFieldByName(userId, fieldForRestore);
           if (fieldR && !(await this.sharingService.isOwner(userId, fieldR.id))) {

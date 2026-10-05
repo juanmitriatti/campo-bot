@@ -453,3 +453,6 @@ export function getCampaignTotals(userId: number, opts?: {
   inc_ars: string | number;
   inc_usd: string | number;
 }>>;
+export function describeDeletionCargo(where: { fieldId?: number | null; plotId?: number | null }): Promise<{ livestockHeads: number; activeCrops: string[]; stockItems: number; records: number }>;
+export class NameTakenError extends Error { constructor(kind: 'field' | 'plot', name: string); }
+export class RestoreNameTakenError extends Error { constructor(kind: 'field' | 'plot', name: string); }

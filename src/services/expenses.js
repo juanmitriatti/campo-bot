@@ -733,7 +733,7 @@ export async function getWeeklyReport(userId) {
 export async function getOrCreateField(userId, name) {
   // Check accessible fields (owned + shared)
   const existing = await pool.query(
-    `SELECT * FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND LOWER(name) = LOWER($2) AND deleted_at IS NULL`,
+    `SELECT * FROM fields WHERE id IN (${accessibleFieldsSql(1)}) AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$2::text')} AND deleted_at IS NULL`,
     [userId, name]
   );
   if (existing.rows.length > 0) return existing.rows[0];
@@ -843,6 +843,123 @@ export async function getUserFieldCount(userId) {
   return parseInt(result.rows[0].count);
 }
 
+/**
+ * Lo que un borrado DESVINCULA, para que restaurar lo vuelva a vincular (CAM-4).
+ * Gastos, ingresos y lluvias quedaban con field_id/plot_id NULL y restaurar no
+ * los traía de vuelta: el campo volvía vacío y el reporte del dueño perdía los
+ * gastos de los miembros. Se guarda [id, field_id, plot_id] de cada fila en
+ * deletion_log.metadata.unlinked.
+ *
+ * La hacienda de la ubicación borrada se da de baja en cascada (sus grupos
+ * quedan con deleted_at) y se guarda en metadata.livestockGroups: así no queda
+ * "atrapada" en un lote que no existe (HAC-18/CAM-7) y vuelve al restaurar.
+ * Cultivos, eventos y stock no se tocan: cuelgan del lote/campo borrado, no se
+ * ven mientras está borrado y vuelven solos.
+ */
+async function unlinkForDeletion({ fieldId = null, plotIds = [] }) {
+  const unlinked = { expenses: [], incomes: [], rainfall: [] };
+  for (const table of ['expenses', 'incomes']) {
+    const { rows } = await pool.query(
+      `UPDATE ${table} t
+          SET field_id = CASE WHEN t.field_id = $1 THEN NULL ELSE t.field_id END,
+              plot_id = CASE WHEN t.plot_id = ANY($2::int[]) THEN NULL ELSE t.plot_id END
+         FROM ${table} old
+        WHERE old.id = t.id AND (t.field_id = $1 OR t.plot_id = ANY($2::int[]))
+        RETURNING t.id, old.field_id, old.plot_id`,
+      [fieldId, plotIds],
+    );
+    unlinked[table] = rows.map((r) => [r.id, r.field_id, r.plot_id]);
+  }
+  if (fieldId != null) {
+    const { rows } = await pool.query(
+      `UPDATE rainfall SET field_id = NULL WHERE field_id = $1 RETURNING id`,
+      [fieldId],
+    );
+    unlinked.rainfall = rows.map((r) => [r.id, fieldId, null]);
+  }
+
+  const groups = await pool.query(
+    `UPDATE livestock_groups SET deleted_at = NOW(), updated_at = NOW()
+      WHERE deleted_at IS NULL AND count > 0
+        AND (plot_id = ANY($2::int[]) OR ($1::int IS NOT NULL AND field_id = $1))
+      RETURNING id, count`,
+    [fieldId, plotIds],
+  );
+  const livestockGroups = groups.rows.map((r) => r.id);
+  if (livestockGroups.length) {
+    const heads = groups.rows.reduce((n, r) => n + Number(r.count), 0);
+    console.log(`[DELETE] hacienda dada de baja con la ubicación: ${heads} cabezas en ${livestockGroups.length} grupo(s)`);
+  }
+  return { unlinked, livestockGroups };
+}
+
+/** Deshace unlinkForDeletion: re-vincula solo lo que sigue sin asignar (si el usuario lo reasignó, se respeta). */
+async function relinkAfterRestore(metadata) {
+  const u = metadata?.unlinked;
+  let relinked = 0;
+  if (u) {
+    for (const table of ['expenses', 'incomes']) {
+      for (const [id, fieldId, plotId] of u[table] ?? []) {
+        const r = await pool.query(
+          `UPDATE ${table}
+              SET field_id = CASE WHEN field_id IS NULL THEN $2 ELSE field_id END,
+                  plot_id = CASE WHEN plot_id IS NULL THEN $3 ELSE plot_id END
+            WHERE id = $1 AND deleted_at IS NULL
+              AND ((field_id IS NULL AND $2::int IS NOT NULL) OR (plot_id IS NULL AND $3::int IS NOT NULL))`,
+          [id, fieldId, plotId],
+        );
+        relinked += r.rowCount ?? 0;
+      }
+    }
+    for (const [id, fieldId] of u.rainfall ?? []) {
+      const r = await pool.query(`UPDATE rainfall SET field_id = $2 WHERE id = $1 AND field_id IS NULL`, [id, fieldId]);
+      relinked += r.rowCount ?? 0;
+    }
+  }
+  const groups = metadata?.livestockGroups ?? [];
+  if (groups.length) {
+    await pool.query(`UPDATE livestock_groups SET deleted_at = NULL, updated_at = NOW() WHERE id = ANY($1::uuid[])`, [groups]);
+  }
+  return { relinked, livestockGroups: groups.length };
+}
+
+/** Hacienda, cultivos en curso, stock y registros que se van con un borrado (CAM-7): la confirmación lo dice. */
+export async function describeDeletionCargo({ fieldId = null, plotId = null }) {
+  const params = [fieldId, plotId];
+  const [heads, crops, stock, records] = await Promise.all([
+    pool.query(
+      `SELECT COALESCE(SUM(lg.count), 0)::int AS n FROM livestock_groups lg
+         LEFT JOIN corrals c ON c.id = lg.corral_id LEFT JOIN feedlots fl ON fl.id = c.feedlot_id
+        WHERE lg.deleted_at IS NULL AND lg.count > 0
+          AND (lg.plot_id = $2 OR ($1::int IS NOT NULL AND (lg.field_id = $1 OR fl.field_id = $1)))`,
+      params,
+    ),
+    pool.query(
+      `SELECT DISTINCT pc.crop FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id
+        WHERE pc.end_date IS NULL AND p.deleted_at IS NULL
+          AND (p.id = $2 OR ($1::int IS NOT NULL AND p.field_id = $1))`,
+      params,
+    ),
+    fieldId == null ? Promise.resolve({ rows: [{ n: 0 }] }) : pool.query(
+      `SELECT COUNT(*)::int AS n FROM stock_items si JOIN warehouses w ON w.id = si.warehouse_id
+        WHERE w.field_id = $1 AND si.deleted_at IS NULL AND si.current_quantity > 0`,
+      [fieldId],
+    ),
+    pool.query(
+      `SELECT (SELECT COUNT(*) FROM expenses WHERE deleted_at IS NULL AND (plot_id = $2 OR ($1::int IS NOT NULL AND field_id = $1)))
+            + (SELECT COUNT(*) FROM incomes WHERE deleted_at IS NULL AND (plot_id = $2 OR ($1::int IS NOT NULL AND field_id = $1)))
+            + (SELECT COUNT(*) FROM rainfall WHERE $1::int IS NOT NULL AND field_id = $1) AS n`,
+      params,
+    ),
+  ]);
+  return {
+    livestockHeads: Number(heads.rows[0].n),
+    activeCrops: crops.rows.map((r) => r.crop).filter(Boolean),
+    stockItems: Number(stock.rows[0].n),
+    records: Number(records.rows[0].n),
+  };
+}
+
 export async function deleteField(userId, fieldName) {
   const field = await getFieldByName(userId, fieldName);
   if (!field) return false;
@@ -853,74 +970,100 @@ export async function deleteField(userId, fieldName) {
     return false;
   }
 
-  // Soft delete field
-  await pool.query(
-    `UPDATE fields SET deleted_at = NOW(), deleted_by = 'user' WHERE id = $1`,
-    [field.id]
-  );
+  return withTransaction(async () => {
+    await pool.query(`UPDATE fields SET deleted_at = NOW(), deleted_by = 'user' WHERE id = $1`, [field.id]);
+    const cascaded = await pool.query(
+      `UPDATE plots SET deleted_at = NOW(), deleted_by = 'cascade' WHERE field_id = $1 AND deleted_at IS NULL RETURNING id`,
+      [field.id]
+    );
+    const { unlinked, livestockGroups } = await unlinkForDeletion({
+      fieldId: field.id,
+      plotIds: cascaded.rows.map((r) => r.id),
+    });
+    await pool.query(
+      `INSERT INTO deletion_log (user_id, entity_type, entity_id, entity_name, metadata)
+       VALUES ($1, 'field', $2, $3, $4)`,
+      [userId, field.id, field.name, JSON.stringify({ city: field.city, unlinked, livestockGroups })]
+    );
+    return true;
+  });
+}
 
-  // Soft delete associated plots
-  await pool.query(
-    `UPDATE plots SET deleted_at = NOW(), deleted_by = 'cascade' WHERE field_id = $1 AND deleted_at IS NULL`,
-    [field.id]
-  );
-
-  // Unlink expenses/incomes/rainfall (keep data, just remove field/plot assignment)
-  const plots = await pool.query(`SELECT id FROM plots WHERE field_id = $1`, [field.id]);
-  for (const plot of plots.rows) {
-    await pool.query(`UPDATE expenses SET plot_id = NULL WHERE plot_id = $1`, [plot.id]);
-    await pool.query(`UPDATE incomes SET plot_id = NULL WHERE plot_id = $1`, [plot.id]);
+/** Error visible: restaurar algo cuyo nombre ya usa una fila viva (CAM-18). */
+export class RestoreNameTakenError extends Error {
+  constructor(kind, name) {
+    super(`Ya tenés ${kind === 'field' ? 'un campo' : 'un lote'} *${name}* activo. Renombralo antes de restaurar el borrado.`);
+    this.name = 'RestoreNameTakenError';
   }
-  await pool.query(`UPDATE expenses SET field_id = NULL WHERE field_id = $1`, [field.id]);
-  await pool.query(`UPDATE incomes SET field_id = NULL WHERE field_id = $1`, [field.id]);
-  await pool.query(`UPDATE rainfall SET field_id = NULL WHERE field_id = $1`, [field.id]);
-
-  // Log deletion
-  await pool.query(
-    `INSERT INTO deletion_log (user_id, entity_type, entity_id, entity_name, metadata)
-     VALUES ($1, 'field', $2, $3, $4)`,
-    [userId, field.id, field.name, JSON.stringify({ city: field.city })]
-  );
-
-  return true;
 }
 
 export async function restoreField(userId, fieldName) {
-  // Only owner can restore — check field_members for owner role on deleted fields
-  const result = await pool.query(
-    `UPDATE fields SET deleted_at = NULL, deleted_by = NULL
-     WHERE id IN (${ownedFieldsSql(1)})
-     AND LOWER(name) = LOWER($2) AND deleted_at IS NOT NULL
-     RETURNING *`,
+  // Mismo match canónico que el resto (invariante 3): con LOWER plano "La Peña"
+  // borrado no se restauraba nunca (CAM-5). Si hay varios borrados con ese
+  // nombre, el más reciente.
+  const { rows: candidates } = await pool.query(
+    `SELECT * FROM fields
+      WHERE id IN (${ownedFieldsSql(1)})
+        AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$2::text')} AND deleted_at IS NOT NULL
+      ORDER BY deleted_at DESC LIMIT 1`,
     [userId, fieldName]
   );
-  if (result.rows.length === 0) return null;
-
-  // Restore cascade-deleted plots
-  await pool.query(
-    `UPDATE plots SET deleted_at = NULL, deleted_by = NULL
-     WHERE field_id = $1 AND deleted_by = 'cascade'`,
-    [result.rows[0].id]
+  const target = candidates[0];
+  if (!target) return null;
+  const live = await pool.query(
+    `SELECT 1 FROM fields WHERE user_id = $1 AND deleted_at IS NULL
+       AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$2::text')}`,
+    [target.user_id, target.name]
   );
+  if (live.rows.length > 0) throw new RestoreNameTakenError('field', target.name);
 
-  // Log restoration
-  await pool.query(
-    `UPDATE deletion_log SET restored_at = NOW()
-     WHERE entity_type = 'field' AND entity_id = $1 AND restored_at IS NULL`,
-    [result.rows[0].id]
-  );
+  return withTransaction(async () => {
+    const result = await pool.query(`UPDATE fields SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 RETURNING *`, [target.id]);
+    await pool.query(
+      `UPDATE plots SET deleted_at = NULL, deleted_by = NULL WHERE field_id = $1 AND deleted_by = 'cascade'`,
+      [target.id]
+    );
+    const log = await pool.query(
+      `UPDATE deletion_log SET restored_at = NOW()
+        WHERE entity_type = 'field' AND entity_id = $1 AND restored_at IS NULL
+        RETURNING metadata`,
+      [target.id]
+    );
+    let relinked = 0;
+    for (const row of log.rows) relinked += (await relinkAfterRestore(row.metadata)).relinked;
+    if (relinked) console.log(`[RESTORE] campo ${target.id}: ${relinked} registro(s) re-vinculados`);
+    return result.rows[0];
+  });
+}
 
-  return result.rows[0];
+/** Error visible: renombrar a un nombre que ya usa otro campo/lote (CAM-19). */
+export class NameTakenError extends Error {
+  constructor(kind, name) {
+    super(`Ya hay ${kind === 'field' ? 'un campo' : 'un lote'} llamado *${name}*. Elegí otro nombre.`);
+    this.name = 'NameTakenError';
+  }
 }
 
 export async function renameField(userId, oldName, newName) {
   const field = await getFieldByName(userId, oldName);
   if (!field) return false;
-  await pool.query(
-    `UPDATE fields SET name = $1 WHERE id = $2`,
-    [newName, field.id]
+  const dup = await pool.query(
+    `SELECT 1 FROM fields WHERE user_id = $1 AND id <> $2 AND deleted_at IS NULL
+       AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$3::text')}`,
+    [field.user_id, field.id, newName]
   );
+  if (dup.rows.length > 0) throw new NameTakenError('field', newName);
+  await pool.query(`UPDATE fields SET name = $1 WHERE id = $2`, [newName, field.id]);
   return true;
+}
+
+async function assertPlotNameFree(fieldId, plotId, newName) {
+  const dup = await pool.query(
+    `SELECT 1 FROM plots WHERE field_id = $1 AND id <> $2 AND deleted_at IS NULL
+       AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$3::text')}`,
+    [fieldId, plotId, newName]
+  );
+  if (dup.rows.length > 0) throw new NameTakenError('plot', newName);
 }
 
 export async function renamePlot(userId, oldName, newName, fieldName) {
@@ -929,6 +1072,7 @@ export async function renamePlot(userId, oldName, newName, fieldName) {
     if (plots.length === 0) return null;
     // Auto-resolve if only one match
     const plot = plots[0];
+    await assertPlotNameFree(plot.field_id, plot.id, newName);
     await pool.query(`UPDATE plots SET name = $1 WHERE id = $2`, [newName, plot.id]);
     return { id: plot.id, oldName: plot.name, newName, fieldName: plot.field_name };
   }
@@ -936,6 +1080,7 @@ export async function renamePlot(userId, oldName, newName, fieldName) {
   if (!field) return null;
   const plot = plots.find(p => p.field_id === field.id);
   if (!plot) return null;
+  await assertPlotNameFree(field.id, plot.id, newName);
   await pool.query(`UPDATE plots SET name = $1 WHERE id = $2`, [newName, plot.id]);
   return { id: plot.id, oldName: plot.name, newName, fieldName: field.name };
 }
@@ -1171,57 +1316,63 @@ export async function findAllUserPlots(userId) {
 export async function deletePlot(plotId, userId) {
   // Solo el dueño del campo borra sus lotes, y se chequea ACÁ (AIS-5).
   if (userId == null) throw new Error('deletePlot requiere userId');
-  const del = await pool.query(
-    `UPDATE plots SET deleted_at = NOW(), deleted_by = 'user'
-      WHERE id = $1 AND deleted_at IS NULL AND field_id IN (${ownedFieldsSql(2)})`,
-    [plotId, userId]
-  );
-  if (del.rowCount === 0) {
-    console.log(`[INTERCEPT] deletePlot: user=${userId} no es dueño del lote ${plotId} (o ya estaba borrado) — no se borra`);
-    return false;
-  }
-
-  // Unlink expenses/incomes
-  await pool.query(`UPDATE expenses SET plot_id = NULL WHERE plot_id = $1`, [plotId]);
-  await pool.query(`UPDATE incomes SET plot_id = NULL WHERE plot_id = $1`, [plotId]);
-
-  // Log deletion if userId provided
-  if (userId) {
+  return withTransaction(async () => {
+    const del = await pool.query(
+      `UPDATE plots SET deleted_at = NOW(), deleted_by = 'user'
+        WHERE id = $1 AND deleted_at IS NULL AND field_id IN (${ownedFieldsSql(2)})
+        RETURNING id`,
+      [plotId, userId]
+    );
+    if (del.rowCount === 0) {
+      console.log(`[INTERCEPT] deletePlot: user=${userId} no es dueño del lote ${plotId} (o ya estaba borrado) — no se borra`);
+      return false;
+    }
+    // Solo se suelta el plot_id: el gasto sigue en su campo.
+    const { unlinked, livestockGroups } = await unlinkForDeletion({ fieldId: null, plotIds: [plotId] });
     const plotResult = await pool.query(`SELECT p.name, f.name as field_name FROM plots p JOIN fields f ON p.field_id = f.id WHERE p.id = $1`, [plotId]);
     if (plotResult.rows[0]) {
       await pool.query(
-        `INSERT INTO deletion_log (user_id, entity_type, entity_id, entity_name, parent_name)
-         VALUES ($1, 'plot', $2, $3, $4)`,
-        [userId, plotId, plotResult.rows[0].name, plotResult.rows[0].field_name]
+        `INSERT INTO deletion_log (user_id, entity_type, entity_id, entity_name, parent_name, metadata)
+         VALUES ($1, 'plot', $2, $3, $4, $5)`,
+        [userId, plotId, plotResult.rows[0].name, plotResult.rows[0].field_name, JSON.stringify({ unlinked, livestockGroups })]
       );
     }
-  }
-
-  return true;
+    return true;
+  });
 }
 
 export async function restorePlot(userId, plotName, fieldName) {
-  const result = await pool.query(
-    `UPDATE plots SET deleted_at = NULL, deleted_by = NULL
-     WHERE id IN (
-       SELECT p.id FROM plots p
+  // Match canónico (invariante 3): con LOWER plano un nombre con acento no se restauraba (CAM-5).
+  const { rows: candidates } = await pool.query(
+    `SELECT p.* FROM plots p
        JOIN fields f ON p.field_id = f.id
-       WHERE f.id IN (${ownedFieldsSql(1)}) AND f.deleted_at IS NULL AND LOWER(p.name) = LOWER($2)
-         AND LOWER(f.name) = LOWER($3) AND p.deleted_at IS NOT NULL
-     )
-     RETURNING *`,
+      WHERE f.id IN (${ownedFieldsSql(1)}) AND f.deleted_at IS NULL
+        AND ${sqlNormalizedName('p.name')} = ${sqlNormalizedName('$2::text')}
+        AND ${sqlNormalizedName('f.name')} = ${sqlNormalizedName('$3::text')}
+        AND p.deleted_at IS NOT NULL
+      ORDER BY p.deleted_at DESC LIMIT 1`,
     [userId, plotName, fieldName]
   );
-  if (result.rows.length === 0) return null;
-
-  // Log restoration
-  await pool.query(
-    `UPDATE deletion_log SET restored_at = NOW()
-     WHERE entity_type = 'plot' AND entity_id = $1 AND restored_at IS NULL`,
-    [result.rows[0].id]
+  const target = candidates[0];
+  if (!target) return null;
+  const live = await pool.query(
+    `SELECT 1 FROM plots WHERE field_id = $1 AND deleted_at IS NULL
+       AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$2::text')}`,
+    [target.field_id, target.name]
   );
+  if (live.rows.length > 0) throw new RestoreNameTakenError('plot', target.name);
 
-  return result.rows[0];
+  return withTransaction(async () => {
+    const result = await pool.query(`UPDATE plots SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 RETURNING *`, [target.id]);
+    const log = await pool.query(
+      `UPDATE deletion_log SET restored_at = NOW()
+        WHERE entity_type = 'plot' AND entity_id = $1 AND restored_at IS NULL
+        RETURNING metadata`,
+      [target.id]
+    );
+    for (const row of log.rows) await relinkAfterRestore(row.metadata);
+    return result.rows[0];
+  });
 }
 
 /**

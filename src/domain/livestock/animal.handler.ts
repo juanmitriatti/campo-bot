@@ -690,10 +690,10 @@ export class AnimalHandler {
     }
     if (!movementId) return { messages: ['No encontré ningún movimiento reciente para revertir.'] };
 
-    const { label } = await this.livestock.undoMovement(userId, movementId);
+    const { label, notes } = await this.livestock.undoMovement(userId, movementId);
     return {
       messages: [
-        `↩️ *Movimiento revertido*\n\n  ${label}\n\n` +
+        `↩️ *Movimiento revertido*\n\n  ${label}${notes ? `\n  ${notes.replace(/\n/g, '\n  ')}` : ''}\n\n` +
         `_El movimiento original queda en el historial; la reversión se registró aparte y lo referencia._`,
       ],
     };

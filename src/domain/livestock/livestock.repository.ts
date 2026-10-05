@@ -680,11 +680,20 @@ export class LivestockRepository {
     const { rows } = await pool.query(
       `SELECT m.id::text AS id, m.count, m.movement_type,
               m.movement_date::text AS movement_date,
-              m.linked_expense_id, m.linked_income_id,
+              -- FIN-24: un gasto/ingreso vinculado que se BORRÓ no cuenta como
+              -- precio: el movimiento se puede volver a preciar.
+              CASE WHEN EXISTS (SELECT 1 FROM expenses e WHERE e.id = m.linked_expense_id AND e.deleted_at IS NULL)
+                   THEN m.linked_expense_id END AS linked_expense_id,
+              CASE WHEN EXISTS (SELECT 1 FROM incomes i WHERE i.id = m.linked_income_id AND i.deleted_at IS NULL)
+                   THEN m.linked_income_id END AS linked_income_id,
               g.category, g.breed, g.field_id, g.plot_id
        FROM livestock_movements m
        JOIN livestock_groups g ON g.id = COALESCE(m.dest_group_id, m.source_group_id)
-       WHERE m.id = $2 AND m.user_id = $1`,
+       WHERE m.id = $2 AND m.user_id = $1
+         -- HAC-10: ni una reversa ni un movimiento ya revertido se precian (un
+         -- precio tardío sobre una compra deshecha daba un gasto de $10M por 0 toros).
+         AND m.reverses_movement_id IS NULL
+         AND NOT EXISTS (SELECT 1 FROM livestock_movements r WHERE r.reverses_movement_id = m.id)`,
       [userId, movementId],
     );
     return rows[0] ?? null;
@@ -764,8 +773,13 @@ export class LivestockRepository {
        FROM livestock_movements m
        JOIN livestock_groups g ON g.id = COALESCE(m.dest_group_id, m.source_group_id)
        WHERE m.user_id = $1
-         AND m.linked_expense_id IS NULL AND m.linked_income_id IS NULL
+         AND NOT EXISTS (SELECT 1 FROM expenses e WHERE e.id = m.linked_expense_id AND e.deleted_at IS NULL)
+         AND NOT EXISTS (SELECT 1 FROM incomes i WHERE i.id = m.linked_income_id AND i.deleted_at IS NULL)
          AND m.movement_type IN ('entrada', 'salida')
+         -- HAC-10: una reversa es una 'salida'/'entrada' más; preciarla daba un
+         -- INGRESO por deshacer una compra.
+         AND m.reverses_movement_id IS NULL
+         AND NOT EXISTS (SELECT 1 FROM livestock_movements r WHERE r.reverses_movement_id = m.id)
          AND m.created_at > NOW() - INTERVAL '7 days'
          AND ($2::text IS NULL OR g.category::text = $2)
          AND ($3::text IS NULL OR m.movement_type::text = $3)
@@ -801,6 +815,8 @@ export class LivestockRepository {
     dest_group_id: string | null;
     avg_weight_kg: number | null;
     reverses_movement_id: string | null;
+    linked_expense_id: number | null;
+    linked_income_id: number | null;
     already_reversed: boolean;
   } | null> {
     const { rows } = await pool.query(
@@ -809,6 +825,7 @@ export class LivestockRepository {
               m.dest_group_id::text AS dest_group_id,
               m.avg_weight_kg,
               m.reverses_movement_id::text AS reverses_movement_id,
+              m.linked_expense_id, m.linked_income_id,
               EXISTS (
                 SELECT 1 FROM livestock_movements r WHERE r.reverses_movement_id = m.id
               ) AS already_reversed
@@ -817,6 +834,63 @@ export class LivestockRepository {
       [movementId, userId]
     );
     return rows[0] ?? null;
+  }
+
+  /**
+   * Al deshacer una compra/venta con precio, el gasto o ingreso que se creó con
+   * ella se borra también (HAC-11): antes la hacienda volvía y la plata quedaba
+   * contada. Devuelve qué borró para avisarlo.
+   */
+  async softDeleteLinkedMoney(
+    userId: number,
+    m: { linked_expense_id: number | null; linked_income_id: number | null },
+  ): Promise<{ expense: { amount: number; currency: string } | null; income: { amount: number; currency: string } | null }> {
+    const pick = async (table: 'expenses' | 'incomes', id: number | null) => {
+      if (id == null) return null;
+      const { rows } = await pool.query(
+        `UPDATE ${table} SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+         RETURNING amount, COALESCE(currency, 'ARS') AS currency`,
+        [id, userId],
+      );
+      return rows[0] ? { amount: Number(rows[0].amount), currency: String(rows[0].currency) } : null;
+    };
+    return { expense: await pick('expenses', m.linked_expense_id), income: await pick('incomes', m.linked_income_id) };
+  }
+
+  /**
+   * Revertir una muerte o venta por caravana devuelve los animales a 'activo'
+   * (HAC-17): el grupo recuperaba las cabezas pero la ficha seguía "Muerto".
+   * Los animales salen de los eventos de egreso enlazados a ese movimiento.
+   */
+  async reviveAnimalsOfMovement(userId: number, movementId: string): Promise<number> {
+    const { rows } = await pool.query(
+      `UPDATE animals a SET status = 'activo', exit_date = NULL, updated_at = NOW()
+        WHERE a.user_id = $1 AND a.deleted_at IS NULL AND a.status IN ('vendido', 'muerto')
+          AND a.id IN (SELECT ae.animal_id FROM animal_events ae
+                        WHERE ae.livestock_movement_id = $2::uuid AND ae.deleted_at IS NULL
+                          AND ae.event_type IN ('egreso_venta', 'egreso_muerte'))
+        RETURNING a.id, a.group_id`,
+      [userId, movementId],
+    );
+    if (rows.length === 0) return 0;
+    await pool.query(
+      `INSERT INTO animal_events (user_id, animal_id, event_type, event_date, livestock_movement_id, to_ref, text_value, source, created_by)
+       SELECT $1, x.id, 'otro', CURRENT_DATE, $2::uuid, 'activo', 'Reversa del egreso', 'manual', $1
+         FROM unnest($3::uuid[]) AS x(id)`,
+      [userId, movementId, rows.map((r: { id: string }) => r.id)],
+    );
+    const groups = [...new Set(rows.map((r: { group_id: string | null }) => r.group_id).filter(Boolean))];
+    if (groups.length) {
+      await pool.query(
+        `UPDATE livestock_groups lg
+            SET individualized_count = (SELECT COUNT(*) FROM animals a
+                                         WHERE a.group_id = lg.id AND a.deleted_at IS NULL AND a.status = 'activo'),
+                updated_at = NOW()
+          WHERE lg.id = ANY($1::uuid[])`,
+        [groups],
+      );
+    }
+    return rows.length;
   }
 
   /**
