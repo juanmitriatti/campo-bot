@@ -33,8 +33,11 @@ async function findActiveOrTerminalSubscription(userId: number): Promise<Subscri
   const { rows } = await pool.query(
     `SELECT status, trial_ends_at, current_period_end
        FROM subscriptions
-      WHERE user_id = $1
-      ORDER BY created_at DESC
+      WHERE user_id = $1 AND status <> 'pending'
+      -- Una fila viva manda sobre una terminal más nueva: pagar un link viejo
+      -- activa una fila anterior al checkout abandonado (CTA-4). Un checkout
+      -- abierto (pending) nunca decide el acceso (CTA-2).
+      ORDER BY (status IN ('trial', 'active', 'past_due')) DESC, created_at DESC, id DESC
       LIMIT 1`,
     [userId],
   );

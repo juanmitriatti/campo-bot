@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import { pool, withTransaction } from '../../config/db.js';
+import { logError } from '../../services/error-logger.js';
 import type { UserId } from '../../types/index.js';
 
 export class AccountDeletionError extends Error {
@@ -81,5 +82,14 @@ export class AccountDeletionService {
         [userId],
       );
     });
+
+    // CTA-6: la cuenta borrada seguía con la suscripción viva y MercadoPago
+    // seguía cobrando. Después del commit (el borrado no depende del proveedor).
+    try {
+      const { SubscriptionService } = await import('../billing/subscription.service.js');
+      await new SubscriptionService().closeForDeletedAccount(userId);
+    } catch (err) {
+      logError('account', 'DELETE_SUBSCRIPTION_CLOSE_FAILED', err as Error, { userId: Number(userId) });
+    }
   }
 }

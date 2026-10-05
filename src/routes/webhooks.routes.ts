@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
-import { SubscriptionService } from '../domain/billing/subscription.service.js';
+import { SubscriptionService, SubscriptionError } from '../domain/billing/subscription.service.js';
 import { logError } from '../services/error-logger.js';
 
 const router = Router();
@@ -19,7 +19,6 @@ router.post(
     const headers = req.headers as Record<string, string | undefined>;
     try {
       await subscriptions.handleWebhook(rawBody, headers);
-      // MP retries on non-2xx — always ack quickly.
       res.sendStatus(200);
     } catch (err) {
       console.error('[webhook/mercadopago] error:', err);
@@ -28,9 +27,12 @@ router.post(
           headers: Object.keys(headers).filter(k => k.toLowerCase().startsWith('x-')),
         },
       });
-      // Return 200 anyway — we logged it; MP would otherwise hammer us with retries
-      // for events we'll never be able to parse (test pings, deprecated formats).
-      res.sendStatus(200);
+      // Firma inválida → 401 (no es nuestro). Un fallo AL APLICAR el evento →
+      // 500 para que MP reintente: el evento quedó con error y el reintento lo
+      // reprocesa. Antes era 200 siempre y un pago que fallaba al aplicarse
+      // quedaba cobrado sin plan (CTA-4). Lo que no se puede parsear ya
+      // devuelve 200 desde el servicio sin tirar.
+      res.sendStatus(err instanceof SubscriptionError ? err.status : 500);
     }
   },
 );

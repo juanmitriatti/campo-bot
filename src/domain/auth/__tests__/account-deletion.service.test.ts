@@ -60,12 +60,15 @@ describe('AccountDeletionService', () => {
     mockBcryptCompare.mockResolvedValueOnce(true);
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE users
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE refresh_tokens
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE subscriptions (CTA-6)
 
     const svc = new AccountDeletionService();
     await expect(svc.deleteAccount(userId, 'correct')).resolves.toBeUndefined();
 
-    // verify queries: lookup, UPDATE users (with deleted_at), UPDATE refresh_tokens
-    expect(mockQuery).toHaveBeenCalledTimes(3);
+    // verify queries: lookup, UPDATE users (with deleted_at), UPDATE refresh_tokens,
+    // y se cierran las suscripciones (CTA-6: MP seguía cobrando una cuenta borrada).
+    expect(mockQuery).toHaveBeenCalledTimes(4);
+    expect(mockQuery.mock.calls[3][0]).toMatch(/UPDATE subscriptions/);
     expect(mockQuery.mock.calls[1][0]).toMatch(/UPDATE users/);
     expect(mockQuery.mock.calls[1][0]).toMatch(/deleted_at = NOW\(\)/);
     expect(mockQuery.mock.calls[1][0]).toMatch(/email = NULL/);

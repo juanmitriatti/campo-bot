@@ -32,7 +32,22 @@ export async function getOrCreateUser(phone) {
     [canonical]
   );
 
+  await startTrialForChatUser(newUser.rows[0].id);
   return newUser.rows[0];
+}
+
+/**
+ * Prueba para un usuario creado por su primer mensaje (CTA-15): sin fila de
+ * suscripción el access-gate lo trataba como usuario previo al cobro, con
+ * acceso pleno para siempre. Best-effort: nunca rompe el alta.
+ */
+async function startTrialForChatUser(userId) {
+  try {
+    const { SubscriptionService } = await import("../domain/billing/subscription.service.js");
+    await new SubscriptionService().startTrialForNewUser(userId);
+  } catch (err) {
+    console.error("[BILLING] no pude iniciar la prueba del usuario nuevo", userId, err?.message);
+  }
 }
 
 export async function getOrCreateUserByTelegramId(telegramId, name = null) {
@@ -49,6 +64,7 @@ export async function getOrCreateUserByTelegramId(telegramId, name = null) {
     "INSERT INTO users (phone_number, telegram_id, name) VALUES ($1, $2, $3) RETURNING *",
     [phonePlaceholder, telegramId, name]
   );
+  await startTrialForChatUser(newUser.rows[0].id);
 
   // Ensure user_settings row
   await pool.query(

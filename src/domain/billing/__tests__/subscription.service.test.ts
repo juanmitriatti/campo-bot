@@ -67,6 +67,10 @@ function makeRepo() {
     listPastDueGrace: vi.fn().mockResolvedValue([]),
     insertPaymentEvent: vi.fn(),
     markEventProcessed: vi.fn(),
+    activateReplacing: vi.fn().mockResolvedValue([]),
+    hasLiveSubscription: vi.fn().mockResolvedValue(false),
+    closeAllForUser: vi.fn().mockResolvedValue([]),
+    createManualActive: vi.fn(),
   };
 }
 
@@ -252,9 +256,8 @@ describe('SubscriptionService.handleWebhook', () => {
     const body = JSON.stringify({ id: 'evt_1', type: 'preapproval.updated', data: { id: 'mp_sub_X' } });
     await svc.handleWebhook(body, {});
 
-    expect(repo.updateStatus).toHaveBeenCalledWith({
-      id: 9, status: 'active', currentPeriodEnd: new Date('2026-06-01'),
-    });
+    // CTA-3/4: activar reemplaza lo vigente en un solo paso.
+    expect(repo.activateReplacing).toHaveBeenCalledWith(9, new Date('2026-06-01'));
     expect(plans.setUserPlan).toHaveBeenCalledWith(1, 2);
     expect(fg.invalidateCache).toHaveBeenCalled();
     expect(repo.markEventProcessed).toHaveBeenCalledWith(100);

@@ -197,57 +197,79 @@ export class SubscriptionService {
   // ----- Webhook handling -----
 
   async handleWebhook(rawBody: Buffer | string, headers: Record<string, string | undefined>): Promise<void> {
-    await this.provider.verifyWebhookSignature(rawBody, headers);
+    try {
+      await this.provider.verifyWebhookSignature(rawBody, headers);
+    } catch (err) {
+      // 401: la ruta no confunde una firma inválida con un fallo nuestro (500 = reintento).
+      throw new SubscriptionError(401, 'INVALID_SIGNATURE', (err as Error).message);
+    }
     let payload: unknown;
     try {
       const bodyStr = typeof rawBody === 'string' ? rawBody : rawBody.toString('utf8');
       payload = JSON.parse(bodyStr);
     } catch {
-      return; // not JSON — ignore
+      console.log('[BILLING] webhook ignorado: el cuerpo no es JSON');
+      return;
     }
     const outcome = await this.provider.parseWebhook(payload);
-    if (!outcome) return;
+    if (!outcome) {
+      console.log('[BILLING] webhook ignorado: evento sin suscripción que aplicar');
+      return;
+    }
 
     const sub = await this.repo.findByProviderId(outcome.provider_subscription_id);
 
-    const eventId = (payload as { id?: string | number; data?: { id?: string | number } })?.data?.id
-      ?? (payload as { id?: string | number })?.id
-      ?? `${outcome.provider_subscription_id}_${Date.now()}`;
+    // La clave de idempotencia es el ESTADO al que lleva el evento, no `data.id`
+    // (CTA-1): MP manda 'created' y después 'authorized' con el MISMO data.id
+    // (el de la preapproval), y el segundo se descartaba como duplicado — el
+    // usuario pagaba y quedaba en prueba. El estado se lee de la API de MP (no
+    // del payload), así que repetir la misma transición es inocuo; una
+    // renovación cambia `current_period_end` y es otra clave.
+    const periodKey = outcome.current_period_end ? outcome.current_period_end.toISOString().slice(0, 10) : '-';
+    const eventId = `${outcome.provider_subscription_id}:${outcome.status ?? 'none'}:${periodKey}`;
     const eventType = (payload as { type?: string; action?: string })?.type
       ?? (payload as { action?: string })?.action
       ?? 'unknown';
 
     const ev = await this.repo.insertPaymentEvent({
       provider: this.provider.name,
-      providerEventId: String(eventId),
+      providerEventId: eventId,
       eventType,
       subscriptionId: sub?.id ?? null,
       userId: sub?.user_id ?? null,
       payload,
     });
-    if (!ev.isNew) return; // idempotent — already processed
+    if (!ev.isNew && !ev.retry) {
+      console.log(`[BILLING] webhook repetido ignorado: ${eventId}`);
+      return;
+    }
+    if (ev.retry) console.log(`[BILLING] reintento de un evento que había fallado: ${eventId}`);
 
     if (!sub) {
       await this.repo.markEventProcessed(ev.id, 'subscription not found');
+      console.log(`[BILLING] webhook sin suscripción local: ${outcome.provider_subscription_id}`);
       return;
     }
 
+    let replaced: SubscriptionRow[] = [];
     try {
       await withTransaction(async () => {
-        if (outcome.status) {
+        if (outcome.status === 'active') {
+          // El pago autorizado REEMPLAZA lo vigente (CTA-3/4, decisión de
+          // producto: sin prorrateo, el plan nuevo arranca cuando MP aprueba).
+          replaced = await this.repo.activateReplacing(sub.id, outcome.current_period_end);
+          await this.plans.setUserPlan(sub.user_id as UserId, sub.plan_id);
+          this.featureGate.invalidateCache();
+        } else if (outcome.status && sub.status === 'pending') {
+          // Checkout abandonado o rechazado: nunca dio acceso, queda vencido.
+          await this.repo.updateStatus({ id: sub.id, status: 'expired' });
+        } else if (outcome.status) {
+          // cancelled/expired esperan a current_period_end (sweepExpired baja el plan).
           await this.repo.updateStatus({
             id: sub.id,
             status: outcome.status,
             currentPeriodEnd: outcome.current_period_end,
           });
-        }
-        if (outcome.status === 'active') {
-          await this.plans.setUserPlan(sub.user_id as UserId, sub.plan_id);
-          this.featureGate.invalidateCache();
-        }
-        if (outcome.status === 'cancelled' || outcome.status === 'expired') {
-          // Wait for current_period_end before actually downgrading. The cron
-          // job (sweepExpired) handles that.
         }
       });
       await this.repo.markEventProcessed(ev.id);
@@ -255,6 +277,70 @@ export class SubscriptionService {
       await this.repo.markEventProcessed(ev.id, (err as Error).message);
       throw err;
     }
+
+    if (replaced.length > 0) {
+      console.log(`[BILLING] user=${sub.user_id} sub=${sub.id} activa; reemplazó ${replaced.map((r) => `${r.id}(${r.status})`).join(', ')}`);
+      await this.cancelAtProvider(replaced, sub.user_id);
+    }
+  }
+
+  /**
+   * Cancela en el proveedor los cobros recurrentes de filas retiradas. Sin
+   * esto, pasar de mensual a anual o de Pro a Pro+ seguía cobrando el plan
+   * viejo (CTA-3). Best-effort: un fallo queda en el log de errores.
+   */
+  private async cancelAtProvider(rows: SubscriptionRow[], userId: number): Promise<void> {
+    for (const r of rows) {
+      if (r.provider !== this.provider.name || !r.provider_subscription_id) continue;
+      try {
+        await this.provider.cancelSubscription(r.provider_subscription_id);
+        console.log(`[BILLING] cancelado en ${r.provider}: ${r.provider_subscription_id} (sub ${r.id})`);
+      } catch (err) {
+        logError('subscriptions', 'PROVIDER_CANCEL_REPLACED', err as Error, { userId, context: { subId: r.id } });
+      }
+    }
+  }
+
+  /**
+   * Plan asignado por el admin (CTA-9). Un plan pago sin cobro por MP queda
+   * como suscripción 'manual' activa, que destraba una prueba vencida (antes
+   * solo cambiaba `users.plan_id` y el access-gate seguía en solo-lectura). Si
+   * el usuario ya paga por MP no se toca su suscripción (cancelarla cortaría un
+   * cobro real): solo cambia el plan.
+   */
+  async assignPlanByAdmin(userId: UserId, planId: number): Promise<void> {
+    const plan = await this.plans.getPlanById(planId);
+    if (!plan) throw new SubscriptionError(404, 'PLAN_NOT_FOUND', 'Plan no encontrado.');
+    await this.plans.setUserPlan(userId, planId);
+    this.featureGate.invalidateCache();
+    if (Number(plan.price_ars ?? 0) <= 0 && plan.name === 'free') return;
+    const live = await this.repo.getActiveForUser(userId);
+    if (live && live.provider === this.provider.name && (live.status === 'active' || live.status === 'past_due')) {
+      console.log(`[BILLING] admin: user=${userId} ya paga por ${live.provider}; solo cambia el plan a ${plan.name}`);
+      return;
+    }
+    await withTransaction(async () => {
+      await this.repo.createManualActive(userId, planId);
+    });
+    console.log(`[BILLING] admin: user=${userId} plan ${plan.name} manual activo`);
+  }
+
+  /**
+   * Prueba para un usuario nuevo creado por cualquier camino que no sea el
+   * registro web (alta del admin, primer mensaje por chat). Sin fila de
+   * suscripción el access-gate lo trata como pre-billing: acceso pleno para
+   * siempre (CTA-15).
+   */
+  async startTrialForNewUser(userId: UserId): Promise<void> {
+    const trialPlanName = (await getSetting('TRIAL_PLAN_NAME')) || 'pro';
+    await this.createTrialIfMissing(userId, trialPlanName);
+  }
+
+  /** Cuenta borrada (CTA-6): se retira todo y se corta el cobro en MP. */
+  async closeForDeletedAccount(userId: UserId): Promise<void> {
+    const closed = await this.repo.closeAllForUser(userId);
+    if (closed.length > 0) console.log(`[BILLING] cuenta borrada user=${userId}: cerradas ${closed.map((r) => r.id).join(', ')}`);
+    await this.cancelAtProvider(closed, Number(userId));
   }
 
   // ----- Daily cron sweep -----
@@ -270,33 +356,58 @@ export class SubscriptionService {
     let pastDueCancelled = 0;
     let cancelledDowngraded = 0;
 
+    // Cada fila en su propio try (CRN-17): una que falla no corta el resto ni
+    // queda muda.
+    const each = async (label: string, sub: SubscriptionRow, fn: () => Promise<void>) => {
+      try {
+        await fn();
+      } catch (err) {
+        console.error(`[BILLING] sweep ${label} sub=${sub.id} falló:`, (err as Error).message);
+        logError('subscriptions', 'SWEEP_ROW_FAILED', err as Error, { userId: sub.user_id, context: { subId: sub.id, label } });
+      }
+    };
+
     const expiringTrials = await this.repo.listExpiringTrials(now);
     for (const sub of expiringTrials) {
-      await this.repo.updateStatus({ id: sub.id, status: 'expired' });
-      await this.downgradeToFree(sub.user_id as UserId);
-      console.log(`[TRIAL_EXPIRED] user=${sub.user_id} sub_id=${sub.id} via=cron_sweep`);
-      trialExpired++;
+      await each('trial', sub, async () => {
+        await this.repo.updateStatus({ id: sub.id, status: 'expired' });
+        await this.downgradeToFree(sub.user_id as UserId);
+        console.log(`[TRIAL_EXPIRED] user=${sub.user_id} sub_id=${sub.id} via=cron_sweep`);
+        trialExpired++;
+      });
     }
 
     const graceDays = (await getSettingNumber('PAST_DUE_GRACE_DAYS')) ?? DEFAULT_PAST_DUE_GRACE_DAYS;
     const stale = await this.repo.listPastDueGrace(graceDays, now);
     for (const sub of stale) {
-      await this.repo.updateStatus({ id: sub.id, status: 'cancelled' });
-      await this.downgradeToFree(sub.user_id as UserId);
-      pastDueCancelled++;
+      await each('past_due', sub, async () => {
+        await this.repo.updateStatus({ id: sub.id, status: 'cancelled' });
+        await this.downgradeToFree(sub.user_id as UserId);
+        pastDueCancelled++;
+      });
     }
 
-    // Active rows whose current_period_end already passed (paid sub but renewal failed silently).
+    // Canceladas cuyo período pago ya terminó. Antes se recorrían TODAS las
+    // canceladas viejas cada noche y se bajaba a free a quien tenía además una
+    // suscripción nueva activa (CTA-5/CRN-1). Ahora: se cierran (expired, así
+    // no se vuelven a procesar) y solo se baja el plan si no hay otra viva.
     const { rows: passed } = await pool.query(
       `SELECT * FROM subscriptions
-       WHERE status IN ('cancelled')
+       WHERE status = 'cancelled'
          AND current_period_end IS NOT NULL
          AND current_period_end < $1`,
       [now],
     );
-    for (const sub of passed) {
-      await this.downgradeToFree(sub.user_id as UserId);
-      cancelledDowngraded++;
+    for (const sub of passed as SubscriptionRow[]) {
+      await each('cancelled', sub, async () => {
+        await this.repo.updateStatus({ id: sub.id, status: 'expired' });
+        if (await this.repo.hasLiveSubscription(sub.user_id as UserId)) {
+          console.log(`[BILLING] sweep: sub=${sub.id} cerrada sin bajar el plan (user=${sub.user_id} tiene otra vigente)`);
+          return;
+        }
+        await this.downgradeToFree(sub.user_id as UserId);
+        cancelledDowngraded++;
+      });
     }
 
     return { trialExpired, pastDueCancelled, cancelledDowngraded };

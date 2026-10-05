@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { getSetting } from '../../services/settings.service.js';
+import { getSetting, getSettingBool } from '../../services/settings.service.js';
 import type {
   CheckoutInput,
   CheckoutResult,
@@ -119,7 +119,20 @@ export class MercadoPagoProvider implements PaymentProvider {
     headers: Record<string, string | undefined>,
   ): Promise<void> {
     const secret = (await getSetting('MP_WEBHOOK_SECRET'))?.trim();
-    if (!secret) return; // open mode — leave a warning in admin
+    if (!secret) {
+      // Con pagos habilitados y sin secreto cualquiera podía postear eventos
+      // (CTA-14). Igual se re-lee el estado desde la API de MP (nunca se confía
+      // en el payload), pero sin firma no se procesa nada. Pagos apagados
+      // (sandbox): modo abierto con aviso.
+      if (await getSettingBool('PAYMENTS_ENABLED')) {
+        throw new Error('MP_WEBHOOK_SECRET no configurado: webhook rechazado');
+      }
+      console.warn('[BILLING] MP_WEBHOOK_SECRET vacío: webhook sin verificar (pagos deshabilitados)');
+      return;
+    }
+    // Sin chequeo de frescura del `ts` a propósito: no se sabe si MP re-firma
+    // sus reintentos, y un replay es inocuo — el estado se lee de la API de MP
+    // y la idempotencia es por transición (subscription.service).
 
     const sigHeader = headers['x-signature'] || headers['X-Signature'];
     const requestId = headers['x-request-id'] || headers['X-Request-Id'];

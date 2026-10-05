@@ -1351,5 +1351,6 @@ async function subscriptionSweepTick() {
     }
   } catch (err) {
     console.error("[scheduler] subscriptionSweepTick error:", err);
+    logError("scheduler", "SUBSCRIPTION_SWEEP_FAILED", err); // CRN-17: antes el fallo quedaba solo en consola
   }
 }

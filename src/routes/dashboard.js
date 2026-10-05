@@ -836,12 +836,12 @@ router.put("/api/users/:id/plan", async (req, res) => {
   const { planId } = req.body;
 
   try {
-    const result = await pool.query(
-      `UPDATE users SET plan_id = $1 WHERE id = $2 RETURNING id, plan_id`,
-      [planId, id]
-    );
-
-    if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
+    const exists = await pool.query(`SELECT id FROM users WHERE id = $1`, [id]);
+    if (exists.rows.length === 0) return res.status(404).json({ error: "User not found" });
+    // CTA-9: cambiar solo users.plan_id no destrababa una prueba vencida (el
+    // acceso lo decide la suscripción). El servicio deja una suscripción manual.
+    const { SubscriptionService } = await import("../domain/billing/subscription.service.js");
+    await new SubscriptionService().assignPlanByAdmin(Number(id), Number(planId));
 
     const planR = await pool.query("SELECT name, display_name FROM plans WHERE id = $1", [planId]);
     res.json({
@@ -2143,6 +2143,17 @@ router.post("/api/users", async (req, res) => {
     );
 
     const u = result.rows[0];
+
+    // CTA-15: un alta sin fila de suscripción quedaba con acceso pleno para
+    // siempre. Con plan pago → suscripción manual; sin plan → la prueba normal.
+    try {
+      const { SubscriptionService } = await import("../domain/billing/subscription.service.js");
+      const subs = new SubscriptionService();
+      if (planId) await subs.assignPlanByAdmin(u.id, planId);
+      else await subs.startTrialForNewUser(u.id);
+    } catch (err) {
+      logError('admin-api', 'USER_CREATE_SUBSCRIPTION', err);
+    }
 
     // Audit log
     await pool.query(
