@@ -164,9 +164,9 @@
         },
         {
           "send": "cargas del Norte",
-          "expect": "09/09/26[\\s\\S]*(Pérez[\\s\\S]*Gómez[\\s\\S]*López|López[\\s\\S]*Gómez[\\s\\S]*Pérez)",
+          "expect": "{{hoy}}[\\s\\S]*(Pérez[\\s\\S]*Gómez[\\s\\S]*López|López[\\s\\S]*Gómez[\\s\\S]*Pérez)",
           "avoid": "no entend|No hay cargas|08/09/26",
-          "checks": "VERIFICACIÓN: 3 cargas con neto y CTG, fechadas HOY (09/09/26: los camiones se cargaron hoy, el día 1 no tuvo camiones). Total 82.320 brutos → 80.692 netos. Corrida 1 y 2: el listado mostraba 08/09/26 aunque la DB guarda 2026-09-09 (formateo UTC → AR corre un día)."
+          "checks": "VERIFICACIÓN: 3 cargas con neto y CTG, fechadas HOY ({{hoy}} = la fecha del día de la corrida; los camiones se cargaron hoy, el día 1 no tuvo camiones). Total 82.320 brutos → 80.692 netos. Corrida 1 y 2: el listado mostraba 08/09/26 aunque la DB guarda 2026-09-09 (formateo UTC → AR corre un día)."
         },
         {
           "send": "qué camiones no tienen CTG",

@@ -92,10 +92,20 @@ function allButtons(items: BotResponseItem[]): string[] {
   return out;
 }
 
+/**
+ * `{{hoy}}` en un expect/avoid = la fecha de HOY en Argentina como la muestra el
+ * bot (dd/mm/aa). Un plan con la fecha escrita a mano fallaba cualquier otro día
+ * (QA 5 oct 2026: "09/09/26" contra camiones cargados el 05/10/26).
+ */
+function withToday(pattern: string): string {
+  const [y, m, d] = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).split('-');
+  return pattern.split('{{hoy}}').join(`${d}/${m}/${y.slice(2)}`);
+}
+
 function judge(step: Step, reply: string, buttons: string[]): string[] {
   const reasons: string[] = [];
-  if (step.expect && !new RegExp(step.expect, 'i').test(reply)) reasons.push(`no apareció /${step.expect}/`);
-  if (step.avoid && new RegExp(step.avoid, 'i').test(reply)) reasons.push(`apareció /${step.avoid}/ (prohibido)`);
+  if (step.expect && !new RegExp(withToday(step.expect), 'i').test(reply)) reasons.push(`no apareció /${withToday(step.expect)}/`);
+  if (step.avoid && new RegExp(withToday(step.avoid), 'i').test(reply)) reasons.push(`apareció /${withToday(step.avoid)}/ (prohibido)`);
   if (/^\s*$/.test(reply) && buttons.length === 0) reasons.push('respuesta vacía (silencio)');
   for (const b of step.buttons ?? []) {
     const hit = b.endsWith('*') ? buttons.some(id => id.startsWith(b.slice(0, -1))) : buttons.includes(b);
