@@ -200,7 +200,17 @@ function animalRefBackedByText(ref: string, text: string): boolean {
   if (!/^\d+$/.test(normRef)) return normText.includes(normRef);
   const bare = normRef.replace(/^0+/, '');
   if (!bare) return normText.includes(normRef);
-  return numericTokensOf(text).some(t => t.replace(/^0+/, '') === bare);
+  const tokens = numericTokensOf(text);
+  if (tokens.some(t => t.replace(/^0+/, '') === bare)) return true;
+  // CII de 15 dígitos (032 + especie + NII de 10) cuando el usuario dijo solo el
+  // NII: "la vaca 0000000077" y el modelo completó "032 01 0000000077". El
+  // número que identifica al animal ESTÁ en el texto; el prefijo es país y
+  // especie. Se vetaba y el bot contestaba "decime de qué animal" (eval oct 2026).
+  if (normRef.length === 15) {
+    const nii = normRef.slice(5).replace(/^0+/, '');
+    return !!nii && tokens.some(t => t.replace(/^0+/, '') === nii);
+  }
+  return false;
 }
 
 function enforceAnimalRefsFromText(
@@ -227,6 +237,7 @@ function enforceAnimalRefsFromText(
         console.warn(`AI_VALIDATOR OVERRIDE animal_ref: tool=${toolName} agent="${ref}" → texto="${soleToken}" text="${text.slice(0, 120)}"`);
         out.animal_ref = soleToken;
       } else {
+        console.warn(`AI_VALIDATOR DROP animal_ref: tool=${toolName} sin respaldo="${ref}" text="${text.slice(0, 120)}"`);
         delete out.animal_ref;
         dropped.push('animal_ref');
       }

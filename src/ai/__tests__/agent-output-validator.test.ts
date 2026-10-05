@@ -422,6 +422,32 @@ describe('animal_ref — el agente nunca reescribe una caravana (QA ganadería 9
     expect(r.input.animal_refs).toEqual(['12']);
   });
 
+  // Eval oct 2026: el usuario dice el NII de 10 dígitos y el modelo completa el
+  // CII de 15 (032 + especie). El número del animal está en el texto: se conserva.
+  it('CII completado por el modelo sobre un NII que el usuario dijo → se conserva', () => {
+    const r = validateToolCall({
+      toolName: 'identify_animal',
+      input: { animal_ref: '032 01 0000000077', new_rfid: '032 01 0000000078' },
+      originalText: 'la vaca 0000000077 perdió la caravana, le puse la 032 01 0000000078',
+    });
+    expect(r.input.animal_ref).toBe('032 01 0000000077');
+    const m = validateToolCall({
+      toolName: 'move_animals',
+      input: { animal_refs: ['032 01 0000000077', '032 01 0000000088'] },
+      originalText: 'mové la caravana 0000000077 y la 0000000088 al lote Sur',
+    });
+    expect(m.input.animal_refs).toEqual(['032 01 0000000077', '032 01 0000000088']);
+  });
+
+  it('CII cuyo NII NO está en el texto → se sigue vetando', () => {
+    const r = validateToolCall({
+      toolName: 'query_animal',
+      input: { animal_ref: '032 01 0000000013' },
+      originalText: 'qué pasó con la 0000000012 y la 0000000099',
+    });
+    expect(r.input.animal_ref).toBeUndefined();
+  });
+
   it('sin animal_ref es passthrough (las tools de grupo no cambian)', () => {
     const input = { category: 'vaca', count: 50, plot: 'Norte' };
     const r = validateToolCall({ toolName: 'transfer_livestock', input, originalText: 'mové 50 vacas al Norte' });
