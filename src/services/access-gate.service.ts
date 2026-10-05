@@ -59,6 +59,18 @@ async function findActiveOrTerminalSubscription(userId: number): Promise<Subscri
  * Alcanza con UN campo con dueño al día.
  */
 async function inheritsAccessFromOwner(userId: number): Promise<number | null> {
+  const owners = await fullAccessOwnersOf(userId);
+  return owners[0] ?? null;
+}
+
+/**
+ * Dueños de campos donde el usuario es MIEMBRO y que tienen acceso pleno. Lo
+ * usa el gate de acceso (arriba) y el de FUNCIONES (`FeatureGate`, CTA-8): el
+ * acceso se heredaba pero las funciones salían del plan propio del miembro, y
+ * un empleado en `free` quedaba bloqueado en siembra/hacienda en el campo de
+ * un dueño Pro+.
+ */
+export async function fullAccessOwnersOf(userId: number): Promise<number[]> {
   const { rows } = await pool.query(
     `SELECT f.user_id AS owner_id
        FROM field_members fm
@@ -69,16 +81,17 @@ async function inheritsAccessFromOwner(userId: number): Promise<number | null> {
       ORDER BY f.id`,
     [userId],
   );
+  const owners: number[] = [];
   for (const r of rows) {
     const ownerId = Number(r.owner_id);
+    if (owners.includes(ownerId)) continue;
     // Sin recursión a propósito: se mira el modo propio del dueño. Una cadena
     // de herencias (A hereda de B que hereda de C) no es un caso real y sería
     // una forma de saltarse el pago encadenando cuentas vencidas.
     const ownerSub = await findActiveOrTerminalSubscription(ownerId);
-    if (!ownerSub) return ownerId; // grandfathered = pleno
-    if (ownerModeIsFull(ownerSub)) return ownerId;
+    if (!ownerSub || ownerModeIsFull(ownerSub)) owners.push(ownerId); // sin sub = grandfathered = pleno
   }
-  return null;
+  return owners;
 }
 
 /** El mismo criterio que `getUserAccessMode`, sin la parte de herencia. */

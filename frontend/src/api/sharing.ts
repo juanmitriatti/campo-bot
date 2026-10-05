@@ -39,6 +39,8 @@ export interface SharedWithMeField {
 }
 
 export interface SharingOverview {
+  /** El plan incluye compartir: si no, solo se ven (y se pueden dejar) los campos ajenos. */
+  canShare: boolean;
   sharedByMe: SharedByMeField[];
   sharedWithMe: SharedWithMeField[];
 }

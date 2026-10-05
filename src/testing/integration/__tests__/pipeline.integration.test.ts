@@ -2570,8 +2570,9 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       h.fakeAgent.enqueueTool('log_rainfall', { quantity: 100 });
       const ask = await h.send('Llovio 100mm hoy');
       const buttons = h.allButtons(ask);
-      const btn = buttons.find(b => b.id.startsWith('rain_field_La barrida_'));
-      expect(btn, `esperaba rain_field_La barrida_*, hay: ${buttons.map(b => b.id).join(',')}`).toBeTruthy();
+      // AGR-5: el id es rainfld_<token>_<i> (lleva la fecha); se busca por título.
+      const btn = buttons.find(b => b.title === 'La barrida' && b.id.startsWith('rainfld_'));
+      expect(btn, `esperaba rainfld_* de La barrida, hay: ${buttons.map(b => b.id).join(',')}`).toBeTruthy();
 
       await h.tap(btn!.id);
 
@@ -2583,7 +2584,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     it('el mismo tap repetido NO acumula — saveRainfall suma por diseño, la guarda va antes', async () => {
       h.fakeAgent.enqueueTool('log_rainfall', { quantity: 40 });
       const ask = await h.send('llovieron 40mm');
-      const btn = h.allButtons(ask).find(b => b.id.startsWith('rain_field_El tartal_'));
+      const btn = h.allButtons(ask).find(b => b.title === 'El tartal' && b.id.startsWith('rainfld_'));
       expect(btn).toBeTruthy();
 
       await h.tap(btn!.id);

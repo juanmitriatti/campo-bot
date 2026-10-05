@@ -470,7 +470,7 @@ export async function getOverview(
             d.crop, d.product, d.quantity, d.unit
        FROM domain_events d
        JOIN plots pl ON pl.id = d.plot_id
-      WHERE d.user_id = $1
+      WHERE pl.field_id IN (${accessible})
         AND d.deleted_at IS NULL
         AND pl.field_id = ANY($4::int[])
         AND d.event_date BETWEEN $2::date AND $3::date
@@ -549,7 +549,7 @@ export async function getOverview(
   const livestockQ = pool.query(
     `SELECT lg.category::text AS category, SUM(lg.count)::int AS n
        FROM livestock_groups lg
-      WHERE lg.user_id = $1 AND lg.deleted_at IS NULL
+      WHERE lg.field_id IN (${accessible}) AND lg.deleted_at IS NULL
         AND lg.field_id = ANY($2::int[])
         AND lg.count > 0
       GROUP BY 1
@@ -561,7 +561,8 @@ export async function getOverview(
     `SELECT d.event_date::text AS event_date, d.animal_category, d.quantity::numeric AS kg
        FROM domain_events d
        ${eventJoins}
-      WHERE d.user_id = $1 AND d.deleted_at IS NULL
+      WHERE (COALESCE(pl.field_id, fl.field_id) IN (${accessible}) OR d.user_id = $1)
+        AND d.deleted_at IS NULL
         AND d.event_type = 'weighing' AND d.quantity IS NOT NULL
         AND (COALESCE(pl.field_id, fl.field_id) = ANY($2::int[])
              OR ($3::boolean AND d.plot_id IS NULL AND d.corral_id IS NULL))
@@ -576,13 +577,13 @@ export async function getOverview(
     `SELECT
        (SELECT COUNT(*) FROM crop_scoutings s
           LEFT JOIN plots sp ON sp.id = s.plot_id
-         WHERE s.user_id = $1 AND s.deleted_at IS NULL
+         WHERE COALESCE(s.field_id, sp.field_id) IN (${accessible}) AND s.deleted_at IS NULL
            AND s.scouting_date BETWEEN $2::date AND $3::date
            AND COALESCE(s.field_id, sp.field_id) = ANY($4::int[]))::int AS scoutings,
        (SELECT COUNT(*) FROM harvest_loads hl
           JOIN domain_events d ON d.id = hl.domain_event_id
           JOIN plots dp ON dp.id = d.plot_id
-         WHERE d.user_id = $1 AND d.deleted_at IS NULL AND d.event_type = 'harvest'
+         WHERE dp.field_id IN (${accessible}) AND d.deleted_at IS NULL AND d.event_type = 'harvest'
            AND d.event_date BETWEEN $2::date AND $3::date
            AND dp.field_id = ANY($4::int[]))::int AS harvests,
        (SELECT COUNT(*) FROM stock_items WHERE user_id = $1 AND deleted_at IS NULL)::int AS stock,

@@ -52,6 +52,7 @@ async function start(opts: { featureOk?: boolean } = {}) {
       if (opts.featureOk === false) { res.status(403).json({ error: 'Feature not available in your plan' }); return; }
       next();
     },
+    canShare: async () => opts.featureOk !== false,
   };
 
   const app = express();
@@ -87,10 +88,16 @@ afterEach(async () => {
 describe('API de campos compartidos', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('sin el feature `sharing` en el plan → 403', async () => {
-    const { call } = await start({ featureOk: false });
+  // DSH-20: sin el plan, la pantalla igual abre para ver y SALIR de los campos
+  // que le compartieron; sus propios campos (para invitar) no vienen.
+  it('sin el feature `sharing` en el plan → ve lo que le compartieron, no sus campos para invitar', async () => {
+    const { call, service } = await start({ featureOk: false });
     const res = await call('GET', '/api/auth/sharing/overview');
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.canShare).toBe(false);
+    expect(res.body.sharedByMe).toEqual([]);
+    expect(service.listSharedWithMe).toHaveBeenCalled();
+    expect(service.listSharedByMe).not.toHaveBeenCalled();
   });
 
   it('invitar por teléfono devuelve el link wa.me que reenvía el dueño', async () => {

@@ -1,3 +1,5 @@
+import { accessibleFieldsSql } from '../domain/shared/accessible-fields.js';
+
 /**
  * Kilos cosechados POR CAMPAÑA — fuente ÚNICA para el dashboard (Resumen y
  * analytics agronómico).
@@ -26,6 +28,9 @@ export function harvestCampaignsCte(p: { user: string; from: string; to: string;
       WHEN 'tn' THEN 1000 WHEN 'tonelada' THEN 1000 WHEN 'toneladas' THEN 1000 WHEN 't' THEN 1000
       WHEN 'qq' THEN 100 WHEN 'quintal' THEN 100 WHEN 'quintales' THEN 100
       ELSE 1 END`;
+  // Acceso por CAMPO, no por autor: en un campo compartido la cosecha que cargó
+  // el socio cuenta igual (DSH-4). Antes `d.user_id = $1` la dejaba afuera.
+  const accessible = accessibleFieldsSql(Number(p.user.replace('$', '')));
   return `harvest_campaigns AS (
     SELECT x.plot_id, x.plot_crop_id, x.crop, x.event_date, x.kg, x.ha
       FROM (
@@ -56,7 +61,7 @@ export function harvestCampaignsCte(p: { user: string; from: string; to: string;
           JOIN domain_events d ON d.plot_crop_id = pc.id
                               AND d.event_type = 'harvest'
                               AND d.deleted_at IS NULL
-         WHERE d.user_id = ${p.user}
+         WHERE pl.field_id IN (${accessible})
            AND d.event_date BETWEEN ${p.from}::date AND ${p.to}::date
            AND pl.field_id = ANY(${p.fieldIds}::int[])
          GROUP BY pc.id, pc.plot_id, pc.crop, pc.yield_kg, pc.sowed_hectares, pc.harvested_hectares, pl.area_hectares
@@ -69,7 +74,7 @@ export function harvestCampaignsCte(p: { user: string; from: string; to: string;
                pl.area_hectares AS ha
           FROM domain_events d
           JOIN plots pl ON pl.id = d.plot_id AND pl.deleted_at IS NULL
-         WHERE d.user_id = ${p.user}
+         WHERE pl.field_id IN (${accessible})
            AND d.plot_crop_id IS NULL
            AND d.event_type = 'harvest'
            AND d.deleted_at IS NULL

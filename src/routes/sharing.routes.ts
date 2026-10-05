@@ -17,7 +17,7 @@
 import { Router } from 'express';
 import type { Request, Response, RequestHandler } from 'express';
 import { requireAuth } from '../middleware/auth.middleware.js';
-import { requireFeature } from '../middleware/feature.middleware.js';
+import { requireFeature, featureGate } from '../middleware/feature.middleware.js';
 import { FieldSharingService } from '../domain/sharing/field-sharing.service.js';
 import { buildInviteDelivery } from '../domain/sharing/invite-link.js';
 import { inviteNotifier } from '../domain/sharing/invite-notifier.js';
@@ -28,12 +28,15 @@ export interface SharingDeps {
   service: FieldSharingService;
   auth: RequestHandler;
   feature: RequestHandler;
+  /** ¿Su plan incluye compartir? Decide si `/sharing/overview` muestra sus campos para invitar. */
+  canShare?: (userId: number) => Promise<boolean>;
 }
 
 export const defaultDeps: SharingDeps = {
   service: new FieldSharingService(),
   auth: requireAuth,
   feature: requireFeature('sharing'),
+  canShare: (userId) => featureGate.hasFeature(asUserId(userId), 'sharing'),
 };
 
 function handleError(err: unknown, res: Response): void {
@@ -45,16 +48,27 @@ function handleError(err: unknown, res: Response): void {
 export function createSharingRouter(deps: SharingDeps = defaultDeps): Router {
   const router = Router();
   const { service, auth, feature } = deps;
+  const canShare = deps.canShare ?? (async () => true);
 
-  /** Todo lo que necesita la pantalla, en un solo fetch. */
-  router.get('/sharing/overview', auth, feature, async (req: Request, res: Response) => {
+  /**
+   * Todo lo que necesita la pantalla, en un solo fetch.
+   *
+   * Sin `feature`: un miembro cuyo plan no incluye compartir tiene que poder
+   * ver los campos que le compartieron y SALIR de ellos (DSH-20) — antes la
+   * pestaña entera estaba cerrada y no había otra pantalla para irse. Sin el
+   * plan, `sharedByMe` viene vacío y `canShare` en false (invitar sigue
+   * gateado en su propia ruta).
+   */
+  router.get('/sharing/overview', auth, async (req: Request, res: Response) => {
     try {
       const userId = asUserId(req.auth!.userId);
+      const allowed = await canShare(Number(userId));
       const [sharedByMe, sharedWithMe] = await Promise.all([
-        service.listSharedByMe(userId),
+        allowed ? service.listSharedByMe(userId) : Promise.resolve([]),
         service.listSharedWithMe(userId),
       ]);
       res.json({
+        canShare: allowed,
         sharedByMe: sharedByMe.map((f) => ({
           ...f,
           members: f.members.map((m) => ({ ...m, phoneLabel: formatPhoneAR(m.phone) })),

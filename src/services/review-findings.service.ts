@@ -296,17 +296,19 @@ const hollowFields: Rule = async ({ userId, fieldIds, range }) => {
   // "Has records" is all-time (a field with old data and no lotes is still
   // half-loaded); "no activity" is campaign-scoped, which is what the message
   // says — the all-time count let a field idle for two campaigns stay quiet.
+  // Records count by FIELD, not by author: in a shared field the partner's
+  // rain and events used to be ignored and the field showed as empty (DSH-7).
   const { rows } = await pool.query(
     `SELECT f.id, f.name,
             (SELECT COUNT(*) FROM plots p WHERE p.field_id = f.id AND p.deleted_at IS NULL)::int AS plots,
-            (SELECT COUNT(*) FROM rainfall r WHERE r.field_id = f.id AND r.user_id = $1)::int AS rain,
+            (SELECT COUNT(*) FROM rainfall r WHERE r.field_id = f.id)::int AS rain,
             (SELECT COUNT(*) FROM expenses e WHERE e.field_id = f.id AND e.deleted_at IS NULL)::int AS expenses,
             (SELECT COUNT(*) FROM incomes i WHERE i.field_id = f.id AND i.deleted_at IS NULL)::int AS incomes,
             (SELECT COUNT(*) FROM domain_events d
                JOIN plots p2 ON p2.id = d.plot_id
-              WHERE p2.field_id = f.id AND d.user_id = $1 AND d.deleted_at IS NULL)::int AS events,
+              WHERE p2.field_id = f.id AND d.deleted_at IS NULL)::int AS events,
             (
-              (SELECT COUNT(*) FROM rainfall r WHERE r.field_id = f.id AND r.user_id = $1
+              (SELECT COUNT(*) FROM rainfall r WHERE r.field_id = f.id
                  AND r.rainfall_date BETWEEN $3::date AND $4::date)
             + (SELECT COUNT(*) FROM expenses e
                  LEFT JOIN plots ep ON ep.id = e.plot_id
@@ -318,7 +320,7 @@ const hollowFields: Rule = async ({ userId, fieldIds, range }) => {
                   AND i.income_date BETWEEN $3::date AND $4::date)
             + (SELECT COUNT(*) FROM domain_events d
                  JOIN plots p2 ON p2.id = d.plot_id
-                WHERE p2.field_id = f.id AND d.user_id = $1 AND d.deleted_at IS NULL
+                WHERE p2.field_id = f.id AND d.deleted_at IS NULL
                   AND d.event_date BETWEEN $3::date AND $4::date)
             )::int AS campaign_records
        FROM fields f

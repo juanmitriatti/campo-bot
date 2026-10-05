@@ -1879,24 +1879,24 @@ export async function saveRainfall(userId, mm, fieldId = null, rainfallDate = nu
     const prev = Number(existing.rows[0].millimeters);
     const updated = prev + Number(mm);
     const upd = await pool.query(
-      `UPDATE rainfall SET millimeters = $1 WHERE id = $2 RETURNING *`,
-      [updated, existing.rows[0].id]
+      `UPDATE rainfall SET millimeters = $1, updated_at = NOW(), last_added_mm = $3 WHERE id = $2 RETURNING *`,
+      [updated, existing.rows[0].id, mm]
     );
     return { ...upd.rows[0], _accumulated: true, _previous_mm: prev };
   }
 
   if (effectiveDate) {
     const result = await pool.query(
-      `INSERT INTO rainfall (user_id, field_id, millimeters, rainfall_date)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO rainfall (user_id, field_id, millimeters, rainfall_date, updated_at, last_added_mm)
+       VALUES ($1, $2, $3, $4, NOW(), $3)
        RETURNING *`,
       [userId, fieldId, mm, effectiveDate]
     );
     return result.rows[0];
   }
   const result = await pool.query(
-    `INSERT INTO rainfall (user_id, field_id, millimeters)
-     VALUES ($1, $2, $3)
+    `INSERT INTO rainfall (user_id, field_id, millimeters, updated_at, last_added_mm)
+     VALUES ($1, $2, $3, NOW(), $3)
      RETURNING *`,
     [userId, fieldId, mm]
   );
@@ -1917,22 +1917,97 @@ export async function getDailyRainfallTotal(userId, fieldId = null, rainfallDate
   return parseFloat(rows[0].total);
 }
 
+/**
+ * La "última lluvia" es la última CARGADA (AGR-6), no la de fecha más nueva:
+ * cargar "ayer 20 mm" después de "hoy 10 mm" corregía o borraba la de hoy.
+ * La fila acumula el día, así que ordena por `updated_at` (migración 129).
+ */
+const LAST_RAINFALL_ORDER = `ORDER BY COALESCE(updated_at, created_at) DESC, id DESC`;
+
+/** mm de la última carga dentro de la fila (que acumula el día); el total si no se sabe. */
+function lastRainfallPortion(row) {
+  const total = Number(row.millimeters);
+  const added = row.last_added_mm == null ? null : Number(row.last_added_mm);
+  return added != null && added > 0 && added < total ? added : total;
+}
+
+/**
+ * Borra la última lluvia cargada. Si la fila acumulaba varias del día, resta
+ * solo la última (antes se borraba el día entero). Devuelve la fila con
+ * `millimeters` = lo borrado y `_remaining_mm` = lo que quedó del día.
+ */
 export async function deleteLastRainfall(userId) {
   const last = await pool.query(
-    `SELECT * FROM rainfall WHERE user_id = $1 ORDER BY rainfall_date DESC, created_at DESC, id DESC LIMIT 1`,
+    `SELECT * FROM rainfall WHERE user_id = $1 ${LAST_RAINFALL_ORDER} LIMIT 1`,
     [userId]
   );
   if (last.rows.length === 0) return null;
-  await pool.query(`DELETE FROM rainfall WHERE id = $1`, [last.rows[0].id]);
-  return last.rows[0];
+  const row = last.rows[0];
+  const portion = lastRainfallPortion(row);
+  const remaining = Number(row.millimeters) - portion;
+  if (remaining > 0) {
+    await pool.query(`UPDATE rainfall SET millimeters = $1, last_added_mm = NULL WHERE id = $2`, [remaining, row.id]);
+    return { ...row, millimeters: portion, _remaining_mm: remaining };
+  }
+  await pool.query(`DELETE FROM rainfall WHERE id = $1`, [row.id]);
+  return row;
 }
 
 export async function getLastRainfall(userId) {
   const result = await pool.query(
-    `SELECT * FROM rainfall WHERE user_id = $1 ORDER BY rainfall_date DESC, created_at DESC, id DESC LIMIT 1`,
+    `SELECT * FROM rainfall WHERE user_id = $1 ${LAST_RAINFALL_ORDER} LIMIT 1`,
     [userId],
   );
   return result.rows[0] || null;
+}
+
+/**
+ * Corrige la última lluvia cargada: mm, fecha y/o campo (AGR-6 / AGR-10).
+ *
+ * - Los mm corrigen SOLO la última carga: 10 + 20 en el día y "eran 25" deja
+ *   35, no 25 (antes pisaba el total acumulado).
+ * - Mover a otra fecha o campo saca esa carga de su fila y la suma donde va
+ *   (con `saveRainfall`, que acumula si ya hay lluvia ese día en ese campo).
+ *   Antes el UPDATE chocaba con el índice único (usuario, campo, día) y un
+ *   cambio de campo sin lote no se aplicaba pero decía "corregida".
+ *
+ * Devuelve null si no hay lluvias; si no, lo que quedó:
+ * { beforeMm, mm, total, fieldId, date, moved }.
+ */
+export async function correctLastRainfall(userId, { newMm = null, newDate = null, newFieldId = undefined } = {}) {
+  return withTransaction(async () => {
+    const { rows } = await pool.query(
+      `SELECT *, rainfall_date::text AS date_text FROM rainfall WHERE user_id = $1 ${LAST_RAINFALL_ORDER} LIMIT 1 FOR UPDATE`,
+      [userId],
+    );
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    const total = Number(row.millimeters);
+    const portion = lastRainfallPortion(row);
+    const newPortion = newMm != null ? Number(newMm) : portion;
+    const targetField = newFieldId !== undefined ? newFieldId : row.field_id;
+    const targetDate = newDate || row.date_text;
+    const moved = (targetField ?? null) !== (row.field_id ?? null) || targetDate !== row.date_text;
+
+    if (!moved) {
+      const newTotal = total - portion + newPortion;
+      await pool.query(
+        `UPDATE rainfall SET millimeters = $1, last_added_mm = $2, updated_at = NOW() WHERE id = $3`,
+        [newTotal, newPortion, row.id],
+      );
+      return { beforeMm: portion, mm: newPortion, total: newTotal, fieldId: row.field_id, date: row.date_text, moved: false };
+    }
+
+    const remaining = total - portion;
+    if (remaining > 0) {
+      await pool.query(`UPDATE rainfall SET millimeters = $1, last_added_mm = NULL WHERE id = $2`, [remaining, row.id]);
+    } else {
+      await pool.query(`DELETE FROM rainfall WHERE id = $1`, [row.id]);
+    }
+    const saved = await saveRainfall(userId, newPortion, targetField ?? null, targetDate);
+    console.log(`[RAIN] corrección movió ${newPortion} mm de field=${row.field_id} ${row.date_text} a field=${targetField} ${targetDate}`);
+    return { beforeMm: portion, mm: newPortion, total: Number(saved.millimeters), fieldId: targetField ?? null, date: targetDate, moved: true };
+  });
 }
 
 export async function updateRainfallFields(rainfallId, { millimeters = null, rainfallDate = null, fieldId = undefined, plotId = undefined } = {}) {
@@ -3523,7 +3598,10 @@ export async function getHarvestLoadById(userId, loadId) {
        JOIN domain_events de ON de.id = hl.domain_event_id
        LEFT JOIN plots p ON p.id = de.plot_id
        LEFT JOIN fields f ON f.id = p.field_id
-      WHERE hl.id = $1 AND de.user_id = $2 AND de.deleted_at IS NULL`,
+      WHERE hl.id = $1 AND de.deleted_at IS NULL
+        -- Por campo, no por autor (DSH-4): el camión que cargó el socio se ve y
+        -- se corrige igual. Borrarlo sigue siendo del autor.
+        AND (p.field_id IN (${accessibleFieldsSql(2)}) OR de.user_id = $2)`,
     [loadId, userId]
   );
   return result.rows[0] || null;
@@ -3586,7 +3664,9 @@ export async function updateHarvestLoad(userId, loadId, patch) {
   const result = await pool.query(
     `UPDATE harvest_loads hl SET ${sets.join(', ')}
        FROM domain_events de
-      WHERE hl.id = $1 AND de.id = hl.domain_event_id AND de.user_id = $2 AND de.deleted_at IS NULL
+      WHERE hl.id = $1 AND de.id = hl.domain_event_id AND de.deleted_at IS NULL
+        AND ((SELECT p_acc.field_id FROM plots p_acc WHERE p_acc.id = de.plot_id) IN (${accessibleFieldsSql(2)})
+             OR de.user_id = $2)
       RETURNING hl.*`,
     params
   );
@@ -3720,7 +3800,9 @@ export async function queryHarvestLoads(userId, opts = {}) {
   } = opts;
   const params = [userId];
   let idx = 2;
-  const conditions = [`de.user_id = $1`, `de.event_type = 'harvest'`, `de.deleted_at IS NULL`];
+  // Acceso por campo (cláusula de abajo), no por autor: el filtro `de.user_id`
+  // dejaba afuera los camiones del socio en un campo compartido (DSH-4).
+  const conditions = [`de.event_type = 'harvest'`, `de.deleted_at IS NULL`];
 
   if (plotId) { conditions.push(`de.plot_id = $${idx}`); params.push(plotId); idx++; }
   else if (fieldId) { conditions.push(`p.field_id = $${idx}`); params.push(fieldId); idx++; }
@@ -3785,7 +3867,7 @@ export async function queryHarvestLoads(userId, opts = {}) {
     LEFT JOIN plots p ON de.plot_id = p.id
     LEFT JOIN fields f ON p.field_id = f.id
     WHERE ${conditions.join(' AND ')}
-      AND (f.user_id = $1 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $1))
+      AND f.id IN (${accessibleFieldsSql(1)})
     ORDER BY ${sortCol} ${direction} NULLS LAST, hl.id DESC
     LIMIT ${limitParam}
   `;

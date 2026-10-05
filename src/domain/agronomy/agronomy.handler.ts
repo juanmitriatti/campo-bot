@@ -1864,9 +1864,17 @@ export class AgronomyHandler {
           // Buttons cap at 3 on WhatsApp; switch to a list (max 10 rows) so
           // users with many campos see all options.
           const askMsg = `Llovieron *${mm}mm* 🌧️ ¿En qué campo?`;
+          // Un token por teclado con mm + FECHA + campos (AGR-5). El botón
+          // `rain_field_<campo>_<mm>` no llevaba la fecha ("ayer" quedaba hoy) y,
+          // al ser de un solo uso por id, una segunda lluvia con los mismos mm en
+          // el mismo campo se descartaba como doble tap. El one-shot es por token.
+          const rainTok = callbackPayloadStore.set(JSON.stringify({
+            mm, eventDate: cmd.eventDate ? String(cmd.eventDate) : null,
+            fields: rainfallUserFields.slice(0, 10).map(f => f.name),
+          }));
           if (rainfallUserFields.length <= 3) {
-            const buttons = rainfallUserFields.map(f => ({
-              id: `rain_field_${f.name}_${mm}`,
+            const buttons = rainfallUserFields.map((f, i) => ({
+              id: `rainfld_${rainTok}_${i}`,
               title: f.name.slice(0, 20),
             }));
             return {
@@ -1882,8 +1890,8 @@ export class AgronomyHandler {
               buttonText: 'Elegir campo',
               sections: [{
                 title: 'Tus campos',
-                rows: rainfallUserFields.slice(0, 10).map(f => ({
-                  id: `rain_field_${f.name}_${mm}`,
+                rows: rainfallUserFields.slice(0, 10).map((f, i) => ({
+                  id: `rainfld_${rainTok}_${i}`,
                   title: f.name.substring(0, 24),
                 })),
               }],
@@ -1981,7 +1989,9 @@ export class AgronomyHandler {
         if (!deleted) {
           return { messages: ['No hay registros de lluvia para borrar.'] };
         }
-        return { messages: [`\ud83d\uddd1\ufe0f Registro de lluvia eliminado: ${deleted.millimeters}mm`] };
+        const remaining = (deleted as { _remaining_mm?: number })._remaining_mm;
+        return { messages: [`\ud83d\uddd1\ufe0f Registro de lluvia eliminado: ${deleted.millimeters}mm`
+          + (remaining ? `\nEse d\u00eda en ese campo quedan *${remaining}mm* de las otras cargas.` : '')] };
       }
 
       // --- Edit last rainfall (May 28) ---
@@ -1996,27 +2006,36 @@ export class AgronomyHandler {
         }
         const last = await this.repo.getLastRainfall(userId);
         if (!last) return { messages: ['No hay lluvias registradas para editar.'] };
-        let newPlotId: number | undefined = undefined;
+        // La lluvia se guarda por CAMPO (migraci\u00f3n 030): un lote solo sirve para
+        // saber a qu\u00e9 campo va, y "sin lote" no cambia nada en una fila de campo.
         let newFieldId: number | undefined = undefined;
-        let newPlotLabel: string | null = null;
-        if (clearLot) { newPlotLabel = '(sin lote)'; }
-        else if (newPlotName) {
+        let placeLabel: string | null = null;
+        if (newPlotName) {
           const resolved = await this.plotDiscovery.resolveFromNames(userId, newFieldName, newPlotName);
-          if (!resolved.plotId) return { messages: [`No encontre el lote *${newPlotName}*.`] };
-          newPlotId = resolved.plotId;
+          if (!resolved.plotId) return { messages: [`No encontr\u00e9 el lote *${newPlotName}*.`] };
           newFieldId = resolved.fieldId ?? undefined;
-          newPlotLabel = formatPlotLocation(resolved.fieldName, resolved.plotName);
+          placeLabel = formatPlotLocation(resolved.fieldName, resolved.plotName);
+        } else if (newFieldName) {
+          // AGR-10: "era en el campo X" sin lote no se aplicaba y dec\u00eda "corregida".
+          const field = await this.repo.getFieldByName(userId, newFieldName);
+          if (!field) return { messages: [`No encontr\u00e9 el campo *${newFieldName}*.`] };
+          newFieldId = field.id;
+          placeLabel = field.name;
         }
-        await this.repo.updateRainfallFields(last.id, {
-          millimeters: newMm,
-          rainfallDate: newDate,
-          fieldId: newFieldId,
-          plotId: clearLot ? null : newPlotId,
-        });
+        if (newMm == null && !newDate && newFieldId === undefined) {
+          return { messages: [clearLot
+            ? 'La lluvia se guarda por campo, as\u00ed que no tiene lote que sacar. \u00bfQuer\u00e9s cambiar los mm, la fecha o el campo?'
+            : 'Que corregimos de la lluvia? Decime los nuevos mm, fecha o campo.'] };
+        }
+        // AGR-6: corrige la \u00faltima CARGA (no el total acumulado del d\u00eda) y mover
+        // de d\u00eda/campo suma donde ya hab\u00eda lluvia en vez de chocar el \u00edndice \u00fanico.
+        const fixed = await this.repo.correctLastRainfall(userId, { newMm, newDate, newFieldId });
+        if (!fixed) return { messages: ['No hay lluvias registradas para editar.'] };
         const parts: string[] = [];
-        if (newMm != null) parts.push(`\ud83d\udca7 ${last.millimeters}mm -> *${newMm}mm*`);
-        if (newDate) parts.push(`\ud83d\udcc5 -> ${newDate}`);
-        if (newPlotLabel) parts.push(`\ud83d\udccd -> *${newPlotLabel}*`);
+        if (newMm != null) parts.push(`\ud83d\udca7 ${fixed.beforeMm}mm -> *${fixed.mm}mm*`);
+        if (newDate) parts.push(`\ud83d\udcc5 -> ${formatDateAR(fixed.date)}`);
+        if (placeLabel) parts.push(`\ud83d\udccd -> *${placeLabel}*`);
+        if (fixed.total !== fixed.mm) parts.push(`Total de ese d\u00eda en el campo: *${fixed.total}mm*`);
         return { messages: [`\u270f\ufe0f Lluvia corregida:\n${parts.join('\n')}`] };
       }
 

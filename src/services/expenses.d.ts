@@ -96,7 +96,8 @@ export function saveAiFallbackLog(userId: number, inputText: string, claudeRespo
 export function saveAudioTranscriptionLog(userId: number, data: { durationSeconds: number; provider: string; model: string; costUsd: number }): Promise<void>;
 export function getHourlyAudioCount(userId: number): Promise<number>;
 export function getDailyRainfallTotal(userId: number, fieldId?: number | null, rainfallDate?: string | null): Promise<number>;
-export function deleteLastRainfall(userId: number): Promise<{ millimeters: string | number } | null>;
+export function deleteLastRainfall(userId: number): Promise<{ millimeters: string | number; _remaining_mm?: number } | null>;
+export function correctLastRainfall(userId: number, opts: { newMm?: number | null; newDate?: string | null; newFieldId?: number | null }): Promise<{ beforeMm: number; mm: number; total: number; fieldId: number | null; date: string; moved: boolean } | null>;
 export function getRainfallAllLocations(userId: number, period: string): Promise<Array<{ field_name: string | null; total: string | number; registros: string | number }>>;
 export function getRainfallForMonth(userId: number, month: number, year: number): Promise<{ total: string | number; registros: string | number }>;
 export function getRainfallForYear(userId: number, year: number): Promise<{ total: string | number; registros: string | number }>;

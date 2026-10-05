@@ -5,6 +5,7 @@ import {
   deleteLastRainfall as _deleteLastRainfall,
   getLastRainfall as _getLastRainfall,
   updateRainfallFields as _updateRainfallFields,
+  correctLastRainfall as _correctLastRainfall,
   getLastObservation as _getLastObservation,
   deleteObservation as _deleteObservation,
   updateObservationFields as _updateObservationFields,
@@ -152,10 +153,10 @@ export class AgronomyRepository {
     return _getDailyRainfallTotal(userId, fieldId, rainfallDate);
   }
 
-  async deleteLastRainfall(userId: UserId): Promise<{ millimeters: number } | null> {
+  async deleteLastRainfall(userId: UserId): Promise<{ millimeters: number; _remaining_mm?: number } | null> {
     const result = await _deleteLastRainfall(userId);
     if (!result) return null;
-    return { millimeters: Number(result.millimeters) };
+    return { millimeters: Number(result.millimeters), _remaining_mm: result._remaining_mm };
   }
 
   // ─── Last/edit/delete primitives for observation, rainfall, scouting (May 28) ───
@@ -164,6 +165,10 @@ export class AgronomyRepository {
     const row = await _getLastRainfall(userId);
     if (!row) return null;
     return { ...row, millimeters: Number(row.millimeters) };
+  }
+
+  async correctLastRainfall(userId: UserId, opts: { newMm?: number | null; newDate?: string | null; newFieldId?: number | null }) {
+    return _correctLastRainfall(userId, opts);
   }
 
   async updateRainfallFields(rainfallId: number, fields: { millimeters?: number | null; rainfallDate?: string | null; fieldId?: number | null; plotId?: number | null }): Promise<void> {

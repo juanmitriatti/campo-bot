@@ -132,7 +132,7 @@ export async function resolvePlotIds(userId: number, fieldIds: number[], plotIds
        JOIN fields f ON f.id = p.field_id
       WHERE p.id = ANY($1::int[]) AND p.deleted_at IS NULL AND f.deleted_at IS NULL
         AND p.field_id = ANY($2::int[])
-        AND (f.user_id = $3 OR f.id IN (SELECT field_id FROM field_members WHERE user_id = $3))`,
+        AND f.id IN (${accessibleFieldsSql(3)})`,
     [wanted, fieldIds, userId],
   );
   const ok = new Set(rows.map((r: { id: number }) => Number(r.id)));
@@ -191,7 +191,10 @@ async function loadRawLists(scope: AnalysisScope, limit: number): Promise<Record
     (r) => [s(r.fecha), r2(r.amount), s(r.currency) ?? 'ARS', s(r.category), s(r.description), s(r.plot), s(r.product), r2(r.quantity), s(r.unit), r2(r.unit_price)],
   );
 
-  const eventScope = `d.user_id = $1
+  // Por campo, no por autor: en un campo compartido el análisis veía solo lo
+  // que había cargado quien preguntaba (DSH-4). `user_id` queda para las filas
+  // sin ubicación.
+  const eventScope = `(COALESCE(pl.field_id, fl.field_id) IN (${accessible}) OR d.user_id = $1)
         AND d.deleted_at IS NULL
         AND d.event_date BETWEEN $2::date AND $3::date
         AND (
@@ -228,7 +231,7 @@ async function loadRawLists(scope: AnalysisScope, limit: number): Promise<Record
   const rainfall = rawList(
     `SELECT r.rainfall_date::text AS fecha, f.name AS field, p.name AS plot, r.millimeters, COUNT(*) OVER() AS _total
        FROM rainfall r LEFT JOIN fields f ON f.id = r.field_id LEFT JOIN plots p ON p.id = r.plot_id
-      WHERE r.user_id = $1
+      WHERE (r.field_id IN (${accessible}) OR r.user_id = $1)
         AND r.rainfall_date BETWEEN $2::date AND $3::date
         AND (r.field_id = ANY($4::int[]) OR ($5::boolean AND r.field_id IS NULL))
         AND ($6::int[] IS NULL OR r.plot_id IS NULL OR r.plot_id = ANY($6::int[]))
@@ -242,8 +245,9 @@ async function loadRawLists(scope: AnalysisScope, limit: number): Promise<Record
   const stock = rawList(
     `SELECT si.name, si.category, si.current_quantity, si.unit, si.min_stock, w.name AS warehouse, COUNT(*) OVER() AS _total
        FROM stock_items si LEFT JOIN warehouses w ON w.id = si.warehouse_id
-      WHERE si.user_id = $1 AND si.deleted_at IS NULL
-        AND (w.field_id = ANY($2::int[]) OR w.field_id IS NULL OR w.id IS NULL)
+      WHERE si.deleted_at IS NULL
+        AND ((w.field_id = ANY($2::int[]) AND w.field_id IN (${accessibleFieldsSql(1)}))
+             OR (si.user_id = $1 AND (w.field_id IS NULL OR w.id IS NULL)))
       ORDER BY si.name ASC, si.id ASC LIMIT $3`,
     [userId, fieldIds, limit],
     (r) => [s(r.name), s(r.category), r2(r.current_quantity), s(r.unit), r2(r.min_stock), s(r.warehouse)],
@@ -257,7 +261,8 @@ async function loadRawLists(scope: AnalysisScope, limit: number): Promise<Record
        LEFT JOIN corrals c ON c.id = lg.corral_id
        LEFT JOIN feedlots fl ON fl.id = c.feedlot_id
        LEFT JOIN fields f ON f.id = COALESCE(lg.field_id, p.field_id, fl.field_id)
-      WHERE lg.user_id = $1 AND lg.deleted_at IS NULL AND lg.count > 0
+      WHERE COALESCE(lg.field_id, p.field_id, fl.field_id) IN (${accessibleFieldsSql(1)})
+        AND lg.deleted_at IS NULL AND lg.count > 0
         AND COALESCE(lg.field_id, p.field_id, fl.field_id) = ANY($2::int[])
         AND ($3::int[] IS NULL OR lg.plot_id = ANY($3::int[]))
       ORDER BY lg.count DESC, lg.id ASC LIMIT $4`,

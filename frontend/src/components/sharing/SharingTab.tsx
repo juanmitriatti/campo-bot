@@ -184,7 +184,11 @@ export default function SharingTab() {
           <section>
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Mis campos</h3>
 
-            {data.sharedByMe.length === 0 ? (
+            {!data.canShare ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Compartir tus campos está en el plan Pro+. Lo podés activar desde Mi cuenta.
+              </p>
+            ) : data.sharedByMe.length === 0 ? (
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Todavía no tenés campos. Creá uno desde Campos y lotes para poder compartirlo.
               </p>

@@ -6,8 +6,18 @@ import type { UserId, FeatureKey, PlanRow } from '../../types/index.js';
  * includes a given feature. Uses in-memory caching to avoid
  * hitting the database on every message.
  */
+/** Dueños de campos compartidos de los que el usuario hereda funciones. */
+export type InheritedOwnersResolver = (userId: UserId) => Promise<number[]>;
+
+/**
+ * Funciones que NO se heredan del dueño: compartir es de quien paga Pro+, y
+ * heredarlo dejaría al miembro compartir SUS campos a cuenta del dueño.
+ */
+const NON_INHERITABLE: ReadonlySet<FeatureKey> = new Set<FeatureKey>(['sharing' as FeatureKey]);
+
 export class FeatureGate {
   private repo: PlanRepository;
+  private inheritedOwners: InheritedOwnersResolver;
 
   /** planId → Set<FeatureKey> */
   private cache = new Map<number, Set<FeatureKey>>();
@@ -19,33 +29,67 @@ export class FeatureGate {
   /** Default plan name when user has no plan assigned */
   private static readonly DEFAULT_PLAN = 'free';
 
-  constructor(repo?: PlanRepository) {
+  constructor(repo?: PlanRepository, inheritedOwners?: InheritedOwnersResolver) {
     this.repo = repo ?? new PlanRepository();
+    this.inheritedOwners = inheritedOwners ?? (async (userId) => {
+      const { fullAccessOwnersOf } = await import('../../services/access-gate.service.js');
+      return fullAccessOwnersOf(Number(userId));
+    });
   }
 
   /**
-   * Check if a user has access to a feature.
-   * Returns true if the feature is included in their plan.
+   * Check if a user has access to a feature: their own plan, or — for a member
+   * of a shared field — the plan of an owner who is up to date (CTA-8). The
+   * access mode was already inherited, the features were not: a `free`
+   * employee of a Pro+ owner could not log a sowing in the owner's field.
    */
   async hasFeature(userId: UserId, feature: FeatureKey): Promise<boolean> {
-    const plan = await this.repo.getUserPlan(userId);
-    const planId = plan?.id ?? await this._getDefaultPlanId();
-    if (planId === null) return false;
-
-    const features = await this._getFeatures(planId);
-    return features.has(feature);
+    const own = await this._ownFeatures(userId);
+    if (own.has(feature)) return true;
+    if (NON_INHERITABLE.has(feature)) return false;
+    for (const set of await this._inheritedFeatureSets(userId)) {
+      if (set.has(feature)) {
+        console.log(`[FEATURE] user=${userId} ${feature} heredado del dueño`);
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
-   * Get all features available to a user.
+   * Get all features available to a user (own plan + inherited, see hasFeature).
    */
   async getUserFeatures(userId: UserId): Promise<FeatureKey[]> {
+    const all = new Set(await this._ownFeatures(userId));
+    for (const set of await this._inheritedFeatureSets(userId)) {
+      for (const f of set) if (!NON_INHERITABLE.has(f)) all.add(f);
+    }
+    return [...all];
+  }
+
+  private async _ownFeatures(userId: UserId): Promise<Set<FeatureKey>> {
     const plan = await this.repo.getUserPlan(userId);
     const planId = plan?.id ?? await this._getDefaultPlanId();
-    if (planId === null) return [];
+    if (planId === null) return new Set();
+    return this._getFeatures(planId);
+  }
 
-    const features = await this._getFeatures(planId);
-    return [...features];
+  /** Feature sets of the plans of up-to-date owners of the user's shared fields. */
+  private async _inheritedFeatureSets(userId: UserId): Promise<Set<FeatureKey>[]> {
+    let owners: number[];
+    try {
+      owners = await this.inheritedOwners(userId);
+    } catch (err) {
+      console.error('[FEATURE] no pude resolver dueños heredados:', (err as Error).message);
+      return [];
+    }
+    const sets: Set<FeatureKey>[] = [];
+    for (const ownerId of owners) {
+      const plan = await this.repo.getUserPlan(ownerId as UserId);
+      const planId = plan?.id ?? await this._getDefaultPlanId();
+      if (planId !== null) sets.push(await this._getFeatures(planId));
+    }
+    return sets;
   }
 
   /**

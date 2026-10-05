@@ -85,9 +85,10 @@ export const GROUPS: NavGroup[] = [
 export const FOOTER: NavItem[] = [
   { key: 'reminders', label: 'Recordatorios', Icon: Clock, count: 'reminders' },
   // Compartir va al PIE y no a un grupo de dominio: no es dato de campaña, es
-  // configuración de quién puede entrar. `feature` lo esconde solo para los
-  // planes que no lo incluyen — `sharing` es el escalón Pro → Pro+.
-  { key: 'sharing', label: 'Compartir', Icon: Users2, feature: 'sharing' },
+  // configuración de quién puede entrar. Sin `feature` a propósito: un miembro
+  // cuyo plan no incluye compartir necesita esta pantalla para SALIR de un campo
+  // ajeno (DSH-20). Lo que se gatea es invitar: la pantalla muestra el upgrade.
+  { key: 'sharing', label: 'Compartir', Icon: Users2 },
   { key: 'account', label: 'Mi cuenta', Icon: User },
 ];
 

@@ -99,7 +99,23 @@ export class InteractiveRouter {
       }
     }
 
-    // Dynamic callbacks: rain_field_<fieldName>_<mm> → log_rainfall with field + mm
+    // Campo de una lluvia: rainfld_<token>_<i> → {mm, eventDate, fields[i]} (AGR-5).
+    const rainTokMatch = callbackId.match(/^rainfld_([A-Za-z0-9_-]{8})_(\d+)$/);
+    if (rainTokMatch) {
+      try {
+        const resolved = callbackPayloadStore.get(rainTokMatch[1]);
+        if (resolved === null) throw new Error('token vencido o ajeno');
+        const p = JSON.parse(resolved) as { mm: number; eventDate: string | null; fields: string[] };
+        const fieldName = p.fields?.[Number(rainTokMatch[2])];
+        if (fieldName && Number(p.mm) > 0) {
+          return { type: 'command', data: { command: 'log_rainfall', fieldName, mm: Number(p.mm), eventDate: p.eventDate ?? undefined } as never };
+        }
+      } catch {
+        console.log(`[INTERCEPT] rainfld sin token vigente: ${callbackId.slice(0, 40)}`);
+      }
+    }
+
+    // Legacy (teclados viejos): rain_field_<fieldName>_<mm> → log_rainfall with field + mm
     const rainMatch = callbackId.match(/^rain_field_(.+)_(\d+(?:\.\d+)?)$/);
     if (rainMatch) {
       return { type: 'command', data: { command: 'log_rainfall', fieldName: rainMatch[1], mm: parseFloat(rainMatch[2]) } };

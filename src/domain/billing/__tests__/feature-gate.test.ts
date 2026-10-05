@@ -23,7 +23,7 @@ describe('FeatureGate', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    gate = new FeatureGate(mockRepo);
+    gate = new FeatureGate(mockRepo, async () => []);
   });
 
   describe('hasFeature', () => {
@@ -161,6 +161,35 @@ describe('FeatureGate', () => {
 
     it('returns null for unknown commands', () => {
       expect(FeatureGate.commandToFeature('nonexistent')).toBeNull();
+    });
+  });
+
+  // CTA-8: el miembro hereda las funciones del plan de un dueño al día.
+  describe('herencia del dueño (campo compartido)', () => {
+    const OWNER = 99;
+    beforeEach(() => {
+      mockRepo.getUserPlan.mockImplementation(async (id: number) =>
+        id === OWNER ? { id: 3, name: 'pro_plus' as PlanName } : { id: 1, name: 'free' as PlanName });
+      mockRepo.getPlanFeatures.mockImplementation(async (planId: number) =>
+        planId === 3 ? ['expenses', 'agronomy', 'livestock', 'sharing'] as FeatureKey[] : ['expenses'] as FeatureKey[]);
+    });
+
+    it('un miembro free de un dueño Pro+ puede usar agronomía y hacienda', async () => {
+      const g = new FeatureGate(mockRepo, async () => [OWNER]);
+      expect(await g.hasFeature(userId, 'agronomy')).toBe(true);
+      expect(await g.hasFeature(userId, 'livestock')).toBe(true);
+      expect(await g.getUserFeatures(userId)).toEqual(expect.arrayContaining(['agronomy', 'livestock']));
+    });
+
+    it('compartir NO se hereda', async () => {
+      const g = new FeatureGate(mockRepo, async () => [OWNER]);
+      expect(await g.hasFeature(userId, 'sharing')).toBe(false);
+      expect(await g.getUserFeatures(userId)).not.toContain('sharing');
+    });
+
+    it('sin dueño al día, solo el plan propio', async () => {
+      const g = new FeatureGate(mockRepo, async () => []);
+      expect(await g.hasFeature(userId, 'agronomy')).toBe(false);
     });
   });
 });

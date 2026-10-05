@@ -1089,7 +1089,7 @@ router.get('/harvest-summary', requireAuth, requireFeature('agronomy'), async (r
          FROM plot_crops pc
          JOIN plots p ON p.id = pc.plot_id AND p.deleted_at IS NULL
          JOIN fields f ON f.id = p.field_id AND f.deleted_at IS NULL
-        WHERE f.user_id = $5
+        WHERE f.id IN (${accessibleFieldsSql(5)})
           AND f.id = ANY($1::int[])
           AND ($2::int IS NULL OR p.id = $2)
           AND pc.start_date <= $4::date
@@ -2316,18 +2316,10 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
       res.status(400).json({ error: 'field_id query parameter is required (or use "all")' });
       return;
     }
-    // Resolve target field IDs: single, or all user's fields when field_id=all.
-    let targetFieldIds: number[];
-    if (allFields) {
-      const { rows: ownFields } = await pool.query(
-        `SELECT id FROM fields WHERE user_id = $1 AND deleted_at IS NULL`,
-        [userId],
-      );
-      targetFieldIds = ownFields.map(r => Number(r.id));
-      if (targetFieldIds.length === 0) targetFieldIds = [-1]; // no match, harmless
-    } else {
-      targetFieldIds = [singleFieldId as number];
-    }
+    // Campos accesibles (propios + compartidos), con el acceso VALIDADO. Antes
+    // "todos" eran solo los propios y cada query filtraba `f.user_id = $1`: en
+    // un campo compartido el miembro veía los gráficos vacíos (DSH-4).
+    const targetFieldIds = await resolveFieldIds(userId, allFields ? null : (singleFieldId as number));
 
     // Same campaign window as the Resumen: the picker above the tabs has to
     // mean the same thing on every tab, and a "last 12 months" chart next to a
@@ -2346,7 +2338,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
            SELECT SUM(r.millimeters)::numeric
            FROM rainfall r
            JOIN fields f ON f.id = r.field_id
-           WHERE f.user_id = $1
+           WHERE f.id IN (${accessibleFieldsSql(1)})
              AND f.deleted_at IS NULL
              AND r.rainfall_date >= m.month_start
              AND r.rainfall_date < m.month_start + interval '1 month'
@@ -2395,7 +2387,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
        FROM crop_scoutings s
        JOIN plots p ON p.id = s.plot_id AND p.deleted_at IS NULL
        JOIN fields f ON f.id = p.field_id
-       WHERE s.user_id = $1
+       WHERE f.id IN (${accessibleFieldsSql(1)})
          AND s.deleted_at IS NULL
          AND f.deleted_at IS NULL
          AND p.field_id = ANY($2::int[])
@@ -2437,7 +2429,7 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
        LEFT JOIN plot_crops pc ON pc.plot_id = p.id
                               AND pc.start_date <= $4::date
                               AND COALESCE(pc.end_date, $4::date) >= $3::date
-       WHERE f.user_id = $1
+       WHERE f.id IN (${accessibleFieldsSql(1)})
          AND f.deleted_at IS NULL
          AND f.id = ANY($2::int[])
        ORDER BY f.name, p.name, pc.start_date DESC, pc.crop`,
@@ -2556,18 +2548,10 @@ router.get('/analytics/livestock', requireAuth, requireFeature('livestock'), asy
       res.status(400).json({ error: 'field_id query parameter is required (or use "all")' });
       return;
     }
-    // Resolve target field IDs: single, or all user's fields when field_id=all.
-    let targetFieldIds: number[];
-    if (allFields) {
-      const { rows: ownFields } = await pool.query(
-        `SELECT id FROM fields WHERE user_id = $1 AND deleted_at IS NULL`,
-        [userId],
-      );
-      targetFieldIds = ownFields.map(r => Number(r.id));
-      if (targetFieldIds.length === 0) targetFieldIds = [-1]; // no match, harmless
-    } else {
-      targetFieldIds = [singleFieldId as number];
-    }
+    // Campos accesibles (propios + compartidos), con el acceso VALIDADO. Antes
+    // "todos" eran solo los propios y cada query filtraba `f.user_id = $1`: en
+    // un campo compartido el miembro veía los gráficos vacíos (DSH-4).
+    const targetFieldIds = await resolveFieldIds(userId, allFields ? null : (singleFieldId as number));
 
     // Current stock summed by category
     const { rows: stockByCategory } = await pool.query(

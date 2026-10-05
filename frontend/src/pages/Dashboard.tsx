@@ -45,7 +45,7 @@ const viewFeatureMap: Record<DashboardView, string | null> = {
   reminders: null,
   account: null,
   analysis: 'data_analysis',
-  sharing: 'sharing',
+  sharing: null, // DSH-20: salir de un campo compartido no depende del plan
 };
 
 export default function Dashboard() {
