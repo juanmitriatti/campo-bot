@@ -84,6 +84,8 @@ export interface BudgetRow {
   category: string;
   limit: number;
   spent: number;
+  /** FIN-22: el gastado se suma solo en esta moneda. */
+  currency: 'ARS' | 'USD';
 }
 
 export interface ReminderRow {
@@ -516,11 +518,11 @@ export async function getOverview(
   const today = getTodayISO();
   const monthStart = today.slice(0, 7) + '-01';
   const budgetsQ = pool.query(
-    `SELECT b.category, b.monthly_limit::numeric AS monthly_limit,
+    `SELECT b.category, b.monthly_limit::numeric AS monthly_limit, b.currency,
             COALESCE((
               SELECT SUM(e.amount) FROM expenses e
                WHERE e.user_id = $1 AND e.deleted_at IS NULL
-                 AND COALESCE(e.currency, 'ARS') = 'ARS'
+                 AND COALESCE(e.currency, 'ARS') = b.currency
                  AND e.expense_date >= $2::date
                  AND LOWER(TRIM(e.category)) = LOWER(TRIM(b.category))
             ), 0)::numeric AS spent
@@ -746,6 +748,7 @@ export async function getOverview(
   const budgetRows: BudgetRow[] = budgets.rows.map((r: Record<string, unknown>) => ({
     category: String(r.category),
     limit: Number(r.monthly_limit),
+    currency: r.currency === 'USD' ? 'USD' : 'ARS',
     spent: Number(r.spent),
   }));
 

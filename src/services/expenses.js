@@ -1,6 +1,6 @@
 import { pool, withTransaction } from "../config/db.js";
 import { getTodayISO } from "../utils/date.js";
-import { sqlNormalizedName, normalizeEntityName, stripLeadingArticle } from "../utils/entity-matcher.js";
+import { sqlNormalizedName, normalizeEntityName, stripLeadingArticle, companyNameKey } from "../utils/entity-matcher.js";
 import { normalizePhone } from "../utils/phone.js";
 import { ensureOwnerMembership, isFieldOwner } from "../domain/shared/field-access.js";
 // Fuente única de acceso (había una copia local cuya pata de miembro no
@@ -539,17 +539,27 @@ export async function findIncomeByCriteria(userId, { amount = null, category = n
 }
 
 /** Update arbitrary editable fields of an income. Pass only what changes. */
-export async function updateIncomeFields(incomeId, { amount = null, category = null, incomeDate = null, fieldId = undefined, plotId = undefined, unitPrice = null, priceStatus = null } = {}) {
+export async function updateIncomeFields(incomeId, { amount = null, category = null, incomeDate = null, fieldId = undefined, plotId = undefined, unitPrice = null, priceStatus = null, currency = null } = {}) {
   const sets = [];
   const params = [];
   let idx = 1;
-  if (amount != null) { sets.push(`amount = $${idx++}`); params.push(amount); }
+  if (amount != null) {
+    sets.push(`amount = $${idx}`);
+    // FIN-30: el precio por unidad sigue al monto corregido, salvo que venga uno explícito.
+    if (unitPrice == null) {
+      sets.push(`unit_price = CASE WHEN quantity > 0 AND unit_price IS NOT NULL THEN ROUND(($${idx})::numeric / quantity, 2) ELSE unit_price END`);
+    }
+    idx++;
+    params.push(amount);
+  }
   if (unitPrice != null) { sets.push(`unit_price = $${idx++}`); params.push(unitPrice); }
   if (priceStatus) { sets.push(`price_status = $${idx++}`); params.push(priceStatus); }
   if (category) { sets.push(`category = $${idx++}`); params.push(category); }
   if (incomeDate) { sets.push(`income_date = $${idx++}`); params.push(incomeDate); }
   if (fieldId !== undefined) { sets.push(`field_id = $${idx++}`); params.push(fieldId); }
   if (plotId !== undefined) { sets.push(`plot_id = $${idx++}`); params.push(plotId); }
+  // FIN-19: la moneda de un ingreso guardado no se podía corregir nunca.
+  if (currency === 'ARS' || currency === 'USD') { sets.push(`currency = $${idx++}`); params.push(currency); }
   if (sets.length === 0) return;
   params.push(incomeId);
   await pool.query(`UPDATE incomes SET ${sets.join(', ')} WHERE id = $${idx}`, params);
@@ -609,7 +619,7 @@ export async function getFieldResult(userId, fieldName) {
      FROM incomes i
      JOIN fields f ON i.field_id = f.id
      WHERE f.id IN (${accessibleFieldsSql(1)}) AND i.deleted_at IS NULL
-     AND LOWER(f.name) = LOWER($2)
+     AND ${sqlNormalizedName('f.name')} = ${sqlNormalizedName('$2::text')}
      AND date_trunc('month', i.income_date) = date_trunc('month', NOW())
      GROUP BY COALESCE(i.currency, 'ARS')`,
     [userId, fieldName]
@@ -619,7 +629,7 @@ export async function getFieldResult(userId, fieldName) {
      FROM expenses e
      JOIN fields f ON e.field_id = f.id
      WHERE f.id IN (${accessibleFieldsSql(1)}) AND e.deleted_at IS NULL
-     AND LOWER(f.name) = LOWER($2)
+     AND ${sqlNormalizedName('f.name')} = ${sqlNormalizedName('$2::text')}
      AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())
      GROUP BY COALESCE(e.currency, 'ARS')`,
     [userId, fieldName]
@@ -633,13 +643,14 @@ export async function getFieldResult(userId, fieldName) {
 
 // --- Budgets ---
 
-export async function setBudget(userId, category, monthlyLimit) {
+/** Un presupuesto por categoría, en SU moneda (FIN-23): volver a fijarlo cambia monto y moneda. */
+export async function setBudget(userId, category, monthlyLimit, currency = 'ARS') {
   await pool.query(
-    `INSERT INTO budgets (user_id, category, monthly_limit)
-     VALUES ($1, $2, $3)
+    `INSERT INTO budgets (user_id, category, monthly_limit, currency)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (user_id, category)
-     DO UPDATE SET monthly_limit = $3`,
-    [userId, category, monthlyLimit]
+     DO UPDATE SET monthly_limit = $3, currency = $4`,
+    [userId, category, monthlyLimit, currency === 'USD' ? 'USD' : 'ARS']
   );
 }
 
@@ -654,39 +665,43 @@ export async function getBudget(userId, category) {
   return result.rows[0] || null;
 }
 
-export async function getCategoryMonthlyTotal(userId, category) {
+/** Solo los gastos en la moneda del presupuesto (FIN-22): sumar dólares como pesos daba $90.030. */
+export async function getCategoryMonthlyTotal(userId, category, currency = 'ARS') {
   const result = await pool.query(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM expenses
      WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND LOWER(category) = LOWER($2)
+     AND COALESCE(currency, 'ARS') = $3
      AND date_trunc('month', expense_date) = date_trunc('month', NOW())`,
-    [userId, category]
+    [userId, category, currency]
   );
   return Number(result.rows[0].total);
 }
 
-export async function getPreviousMonthCategoryTotal(userId, category) {
+export async function getPreviousMonthCategoryTotal(userId, category, currency = 'ARS') {
   const result = await pool.query(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM expenses
      WHERE (user_id = $1 OR field_id IN (${accessibleFieldsSql(1)}))
      AND deleted_at IS NULL
      AND LOWER(category) = LOWER($2)
+     AND COALESCE(currency, 'ARS') = $3
      AND date_trunc('month', expense_date) = date_trunc('month', NOW() - interval '1 month')`,
-    [userId, category]
+    [userId, category, currency]
   );
   return Number(result.rows[0].total);
 }
 
-export async function checkBudgetAlert(total, limit, category, userName, userId, globalSettings = null) {
+export async function checkBudgetAlert(total, limit, category, userName, userId, globalSettings = null, currency = 'ARS') {
   const pct = total / limit;
   const nombre = userName ? ` ${userName}` : "";
+  const sym = currency === 'USD' ? 'US$' : '$';
 
   let prevInsight = "";
   if (userId) {
-    const prevTotal = await getPreviousMonthCategoryTotal(userId, category);
+    const prevTotal = await getPreviousMonthCategoryTotal(userId, category, currency);
     if (prevTotal > 0) {
       const diff = Math.round(((total - prevTotal) / prevTotal) * 100);
       if (diff > 0) {
@@ -701,13 +716,13 @@ export async function checkBudgetAlert(total, limit, category, userName, userId,
     // Check global toggle for 100% alerts
     if (globalSettings && globalSettings.budget_alert_100 === false) return null;
     const exceso = total - limit;
-    return `🔴 Atención${nombre}:\nSuperaste el presupuesto mensual de *${category}*.\n\nPresupuesto: $${limit.toLocaleString("es-AR")}\nActual: $${total.toLocaleString("es-AR")}\nExceso: $${exceso.toLocaleString("es-AR")}${prevInsight}`;
+    return `🔴 Atención${nombre}:\nSuperaste el presupuesto mensual de *${category}*.\n\nPresupuesto: ${sym}${limit.toLocaleString("es-AR")}\nActual: ${sym}${total.toLocaleString("es-AR")}\nExceso: ${sym}${exceso.toLocaleString("es-AR")}${prevInsight}`;
   }
   if (pct > 0.8) {
     // Check global toggle for 80% alerts
     if (globalSettings && globalSettings.budget_alert_80 === false) return null;
     const restante = limit - total;
-    return `⚠️ Atención${nombre}:\nVas al ${Math.round(pct * 100)}% del presupuesto de *${category}*.\n\nPresupuesto: $${limit.toLocaleString("es-AR")}\nActual: $${total.toLocaleString("es-AR")}\nRestante: $${restante.toLocaleString("es-AR")}${prevInsight}`;
+    return `⚠️ Atención${nombre}:\nVas al ${Math.round(pct * 100)}% del presupuesto de *${category}*.\n\nPresupuesto: ${sym}${limit.toLocaleString("es-AR")}\nActual: ${sym}${total.toLocaleString("es-AR")}\nRestante: ${sym}${restante.toLocaleString("es-AR")}${prevInsight}`;
   }
   return null;
 }
@@ -762,10 +777,25 @@ export async function setFieldCity(userId, fieldName, city, province = null) {
   // era un UPDATE masivo por nombre sobre todos los campos accesibles: un
   // miembro con un campo homónimo propio le cambiaba la ubicación al del dueño
   // (auditoría oct 2026, CAM-25). Devuelve cuántos campos actualizó.
+  // CAM-14: si la localidad CAMBIA, provincia y coordenadas son las de la
+  // nueva (o vacías): antes quedaban las viejas ("Rafaela" con la lat/lon de
+  // Pergamino). Si es la misma localidad, se conservan las coordenadas más
+  // precisas que ya hubiera (mapa/GPS). El nombre se matchea canónico
+  // (invariante 3): con LOWER plano un campo con acento decía "actualizado" y
+  // no cambiaba nada.
   const r = await pool.query(
-    `UPDATE fields SET city = $1, province = COALESCE($4, province),
-       latitude = COALESCE(latitude, $5), longitude = COALESCE(longitude, $6)
-     WHERE id IN (${ownedFieldsSql(2)}) AND deleted_at IS NULL AND LOWER(name) = LOWER($3)`,
+    `UPDATE fields f SET
+       province = CASE WHEN ${sqlNormalizedName('COALESCE(f.city, \'\')')} = ${sqlNormalizedName('$1::text')}
+                       THEN COALESCE($4, f.province) ELSE $4 END,
+       latitude = CASE WHEN ${sqlNormalizedName('COALESCE(f.city, \'\')')} = ${sqlNormalizedName('$1::text')}
+                       THEN COALESCE(f.latitude, $5) ELSE $5 END,
+       longitude = CASE WHEN ${sqlNormalizedName('COALESCE(f.city, \'\')')} = ${sqlNormalizedName('$1::text')}
+                        THEN COALESCE(f.longitude, $6) ELSE $6 END,
+       polygon = CASE WHEN ${sqlNormalizedName('COALESCE(f.city, \'\')')} = ${sqlNormalizedName('$1::text')}
+                      THEN f.polygon ELSE NULL END,
+       city = $1
+     WHERE f.id IN (${ownedFieldsSql(2)}) AND f.deleted_at IS NULL
+       AND ${sqlNormalizedName('f.name')} = ${sqlNormalizedName('$3::text')}`,
     [city, userId, fieldName, province, coords?.lat ?? null, coords?.lon ?? null]
   );
   if (r.rowCount === 0) console.log(`[INTERCEPT] setFieldCity: user=${userId} no es dueño de un campo "${fieldName}" — no se cambia la ubicación`);
@@ -1143,7 +1173,7 @@ export async function getFieldReport(userId, fieldName) {
      WHERE f.id IN (${accessibleFieldsSql(1)})
      AND e.deleted_at IS NULL
      AND f.deleted_at IS NULL
-     AND LOWER(f.name) = LOWER($2)
+     AND ${sqlNormalizedName('f.name')} = ${sqlNormalizedName('$2::text')}
      AND date_trunc('month', e.expense_date) = date_trunc('month', NOW())
      GROUP BY e.category, COALESCE(e.currency, 'ARS')
      ORDER BY total DESC`,
@@ -1647,9 +1677,14 @@ export async function findExpenseByCriteria(userId, { amount = null, category = 
     idx += 2;
   }
   if (category) {
-    conditions.push(`LOWER(category) = LOWER($${idx})`);
-    params.push(category);
-    idx++;
+    // FIN-20: "gasoil" es Combustible; y el referente puede estar en la
+    // descripción o el producto. Antes era un match exacto con la categoría.
+    const { detectarCategoria } = await import('../utils/parser.js');
+    const canonical = detectarCategoria(category);
+    conditions.push(`(LOWER(category) = LOWER($${idx}) OR LOWER(category) = LOWER($${idx + 1}::text)
+                      OR description ILIKE '%' || $${idx} || '%' OR product ILIKE '%' || $${idx} || '%')`);
+    params.push(category, canonical && canonical !== 'Otros' ? canonical : null);
+    idx += 2;
   }
   if (date) {
     conditions.push(`expense_date::text = $${idx}`);
@@ -1668,7 +1703,15 @@ export async function updateExpenseFields(expenseId, { amount = null, category =
   const sets = [];
   const params = [];
   let idx = 1;
-  if (amount != null) { sets.push(`amount = $${idx++}`); params.push(amount); }
+  if (amount != null) {
+    sets.push(`amount = $${idx}`);
+    // FIN-30: con cantidad × precio, cambiar el monto dejaba el precio viejo
+    // (50 bolsas a $8.000 = $500.000 tras corregir a $500.000 seguía "a $8.000").
+    // El precio se recalcula de la cantidad guardada.
+    sets.push(`unit_price = CASE WHEN quantity > 0 AND unit_price IS NOT NULL THEN ROUND(($${idx})::numeric / quantity, 2) ELSE unit_price END`);
+    idx++;
+    params.push(amount);
+  }
   if (category) { sets.push(`category = $${idx++}`); params.push(category); }
   if (expenseDate) { sets.push(`expense_date = $${idx++}`); params.push(expenseDate); }
   if (fieldId !== undefined) { sets.push(`field_id = $${idx++}`); params.push(fieldId); }
@@ -1690,7 +1733,7 @@ export async function getDateRangeReport(userId, desde, hasta, { fieldName = nul
   let fieldFilter = '';
   if (fieldName) {
     fieldJoin = 'LEFT JOIN fields f ON e.field_id = f.id';
-    fieldFilter = `AND LOWER(f.name) = LOWER($${idx}) AND f.deleted_at IS NULL`;
+    fieldFilter = `AND ${sqlNormalizedName('f.name')} = ${sqlNormalizedName(`$${idx}::text`)} AND f.deleted_at IS NULL`;
     params.push(fieldName);
     idx++;
   }
@@ -1699,7 +1742,7 @@ export async function getDateRangeReport(userId, desde, hasta, { fieldName = nul
   let plotFilter = '';
   if (plotName) {
     plotJoin = 'LEFT JOIN plots p ON e.plot_id = p.id';
-    plotFilter = `AND LOWER(p.name) = LOWER($${idx}) AND p.deleted_at IS NULL`;
+    plotFilter = `AND ${sqlNormalizedName('p.name')} = ${sqlNormalizedName(`$${idx}::text`)} AND p.deleted_at IS NULL`;
     params.push(plotName);
     idx++;
   }
@@ -1741,7 +1784,7 @@ export async function getDateRangeReport(userId, desde, hasta, { fieldName = nul
     let incFieldFilter = '';
     if (fieldName) {
       incFieldJoin = 'LEFT JOIN fields f ON i.field_id = f.id';
-      incFieldFilter = `AND LOWER(f.name) = LOWER($${incIdx}) AND f.deleted_at IS NULL`;
+      incFieldFilter = `AND ${sqlNormalizedName('f.name')} = ${sqlNormalizedName(`$${incIdx}::text`)} AND f.deleted_at IS NULL`;
       incParams.push(fieldName);
       incIdx++;
     }
@@ -1749,7 +1792,7 @@ export async function getDateRangeReport(userId, desde, hasta, { fieldName = nul
     let incPlotFilter = '';
     if (plotName) {
       incPlotJoin = 'LEFT JOIN plots p ON i.plot_id = p.id';
-      incPlotFilter = `AND LOWER(p.name) = LOWER($${incIdx}) AND p.deleted_at IS NULL`;
+      incPlotFilter = `AND ${sqlNormalizedName('p.name')} = ${sqlNormalizedName(`$${incIdx}::text`)} AND p.deleted_at IS NULL`;
       incParams.push(plotName);
       incIdx++;
     }
@@ -1807,12 +1850,12 @@ function buildMovementFilters(prefix, params, opts) {
     idx++;
   }
   if (opts.fieldName) {
-    fragments.push(`LOWER(f.name) = LOWER($${idx})`);
+    fragments.push(`${sqlNormalizedName('f.name')} = ${sqlNormalizedName(`$${idx}::text`)}`);
     params.push(opts.fieldName);
     idx++;
   }
   if (opts.plotName) {
-    fragments.push(`LOWER(p.name) = LOWER($${idx})`);
+    fragments.push(`${sqlNormalizedName('p.name')} = ${sqlNormalizedName(`$${idx}::text`)}`);
     params.push(opts.plotName);
     idx++;
   }
@@ -1947,7 +1990,7 @@ export async function getMovementsInRange(userId, desde, hasta, { fieldName = nu
     const filters = [];
     let join = '';
     if (fieldName) {
-      filters.push(`LOWER(f.name) = LOWER($${idx})`);
+      filters.push(`${sqlNormalizedName('f.name')} = ${sqlNormalizedName(`$${idx}::text`)}`);
       expParams.push(fieldName);
       idx++;
       join += ' LEFT JOIN fields f ON e.field_id = f.id';
@@ -1955,7 +1998,7 @@ export async function getMovementsInRange(userId, desde, hasta, { fieldName = nu
       join += ' LEFT JOIN fields f ON e.field_id = f.id';
     }
     if (plotName) {
-      filters.push(`LOWER(p.name) = LOWER($${idx})`);
+      filters.push(`${sqlNormalizedName('p.name')} = ${sqlNormalizedName(`$${idx}::text`)}`);
       expParams.push(plotName);
       idx++;
       join += ' LEFT JOIN plots p ON e.plot_id = p.id';
@@ -1988,8 +2031,8 @@ export async function getMovementsInRange(userId, desde, hasta, { fieldName = nu
     let idx = 4;
     const filters = [];
     let join = ' LEFT JOIN fields f ON i.field_id = f.id LEFT JOIN plots p ON i.plot_id = p.id';
-    if (fieldName) { filters.push(`LOWER(f.name) = LOWER($${idx})`); incParams.push(fieldName); idx++; }
-    if (plotName) { filters.push(`LOWER(p.name) = LOWER($${idx})`); incParams.push(plotName); idx++; }
+    if (fieldName) { filters.push(`${sqlNormalizedName('f.name')} = ${sqlNormalizedName(`$${idx}::text`)}`); incParams.push(fieldName); idx++; }
+    if (plotName) { filters.push(`${sqlNormalizedName('p.name')} = ${sqlNormalizedName(`$${idx}::text`)}`); incParams.push(plotName); idx++; }
     if (category) { filters.push(`LOWER(i.category) = LOWER($${idx})`); incParams.push(category); idx++; }
     const where = filters.length ? ' AND ' + filters.join(' AND ') : '';
     incParams.push(limit);
@@ -3886,62 +3929,80 @@ export async function findRecentLoadByDriver(userId, driverName, { plotId = null
  * ni mayúsculas. Sin filtro devuelve una fila por destinatario+cultivo.
  */
 export async function getGrainBalance(userId, { crop = null, destinatario = null } = {}) {
-  const un = (expr) => `TRANSLATE(LOWER(TRIM(${expr})), 'áéíóúñ', 'aeioun')`;
-  const params = [userId];
-  let cropCond = '';
-  let destCond = '';
-  if (crop) { params.push(crop); cropCond = `AND ${un('x.crop')} = ${un(`$${params.length}`)}`; }
-  if (destinatario) { params.push(destinatario); destCond = `AND ${un('x.dest')} LIKE '%' || ${un(`$${params.length}`)} || '%'`; }
-  const result = await pool.query(
-    `WITH delivered AS (
-        SELECT hl.destinatario AS dest, de.crop,
-               SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)) AS kg, SUM(hl.weight_kg) AS gross_kg, COUNT(*)::int AS loads,
-               MAX(de.event_date) AS last_date
-          FROM harvest_loads hl
-          JOIN domain_events de ON de.id = hl.domain_event_id
-         WHERE de.user_id = $1 AND de.event_type = 'harvest' AND de.deleted_at IS NULL
-           AND hl.destinatario IS NOT NULL
-         GROUP BY hl.destinatario, de.crop
-      ), sold AS (
-        SELECT i.buyer AS dest, i.category AS crop, SUM(i.quantity_kg) AS kg, COUNT(*)::int AS sales
-          FROM incomes i
-         WHERE i.user_id = $1 AND i.deleted_at IS NULL AND i.buyer IS NOT NULL AND i.quantity_kg IS NOT NULL
-         GROUP BY i.buyer, i.category
-      ), withdrawn AS (
-        SELECT de.product AS dest, de.crop, SUM(de.quantity) AS kg, COUNT(*)::int AS withdrawals
-          FROM domain_events de
-         WHERE de.user_id = $1 AND de.event_type = 'grain_withdrawal' AND de.deleted_at IS NULL AND de.product IS NOT NULL
-         GROUP BY de.product, de.crop
-      ), keys AS (
-        SELECT ${un('dest')} AS k_dest, ${un('crop')} AS k_crop, MIN(dest) AS dest, MIN(crop) AS crop FROM (
-          SELECT dest, crop FROM delivered
-          UNION ALL SELECT dest, crop FROM sold
-          UNION ALL SELECT dest, crop FROM withdrawn
-        ) u GROUP BY 1, 2
-      )
-      SELECT x.dest, x.crop,
-             COALESCE((SELECT SUM(d.kg) FROM delivered d WHERE ${un('d.dest')} = x.k_dest AND ${un('d.crop')} = x.k_crop), 0) AS delivered_kg,
-             COALESCE((SELECT SUM(d.gross_kg) FROM delivered d WHERE ${un('d.dest')} = x.k_dest AND ${un('d.crop')} = x.k_crop), 0) AS delivered_gross_kg,
-             COALESCE((SELECT SUM(d.loads) FROM delivered d WHERE ${un('d.dest')} = x.k_dest AND ${un('d.crop')} = x.k_crop), 0)::int AS loads,
-             COALESCE((SELECT SUM(s.kg) FROM sold s WHERE ${un('s.dest')} = x.k_dest AND ${un('s.crop')} = x.k_crop), 0) AS sold_kg,
-             COALESCE((SELECT SUM(w.kg) FROM withdrawn w WHERE ${un('w.dest')} = x.k_dest AND ${un('w.crop')} = x.k_crop), 0) AS withdrawn_kg,
-             (SELECT MAX(d.last_date) FROM delivered d WHERE ${un('d.dest')} = x.k_dest AND ${un('d.crop')} = x.k_crop) AS last_delivery
-        FROM keys x
-       WHERE 1 = 1 ${cropCond} ${destCond}
-       ORDER BY delivered_kg DESC`,
-    params
-  );
-  return result.rows.map(r => ({
-    destinatario: r.dest,
-    crop: r.crop,
-    deliveredKg: Number(r.delivered_kg),
-    deliveredGrossKg: Number(r.delivered_gross_kg),
-    loads: Number(r.loads),
-    soldKg: Number(r.sold_kg),
-    withdrawnKg: Number(r.withdrawn_kg),
-    balanceKg: Number(r.delivered_kg) - Number(r.sold_kg) - Number(r.withdrawn_kg),
-    lastDelivery: r.last_delivery,
-  }));
+  // Las tres patas vienen por nombre tal cual se cargó; se agrupan acá con
+  // companyNameKey (entity-matcher): "Cargil" y "Cargill SA" partían el saldo
+  // en dos filas (FIN-25). El nombre que se muestra es el más usado.
+  const [delivered, sold, withdrawn] = await Promise.all([
+    pool.query(
+      `SELECT hl.destinatario AS dest, de.crop,
+              SUM(COALESCE(hl.net_weight_kg, hl.weight_kg)) AS kg, SUM(hl.weight_kg) AS gross_kg, COUNT(*)::int AS n,
+              MAX(de.event_date) AS last_date
+         FROM harvest_loads hl
+         JOIN domain_events de ON de.id = hl.domain_event_id
+        WHERE de.user_id = $1 AND de.event_type = 'harvest' AND de.deleted_at IS NULL
+          AND hl.destinatario IS NOT NULL
+        GROUP BY hl.destinatario, de.crop`,
+      [userId]
+    ),
+    pool.query(
+      `SELECT i.buyer AS dest, i.category AS crop, SUM(i.quantity_kg) AS kg, COUNT(*)::int AS n
+         FROM incomes i
+        WHERE i.user_id = $1 AND i.deleted_at IS NULL AND i.buyer IS NOT NULL AND i.quantity_kg IS NOT NULL
+        GROUP BY i.buyer, i.category`,
+      [userId]
+    ),
+    pool.query(
+      `SELECT de.product AS dest, de.crop, SUM(de.quantity) AS kg, COUNT(*)::int AS n
+         FROM domain_events de
+        WHERE de.user_id = $1 AND de.event_type = 'grain_withdrawal' AND de.deleted_at IS NULL AND de.product IS NOT NULL
+        GROUP BY de.product, de.crop`,
+      [userId]
+    ),
+  ]);
+
+  const cropKey = (c) => normalizeEntityName(c ?? '');
+  const groups = new Map();
+  const bucket = (row) => {
+    const key = `${companyNameKey(row.dest)}|${cropKey(row.crop)}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { names: new Map(), crop: row.crop, deliveredKg: 0, deliveredGrossKg: 0, loads: 0, soldKg: 0, withdrawnKg: 0, lastDelivery: null };
+      groups.set(key, g);
+    }
+    g.names.set(row.dest, (g.names.get(row.dest) ?? 0) + Number(row.n));
+    return g;
+  };
+  for (const r of delivered.rows) {
+    const g = bucket(r);
+    g.deliveredKg += Number(r.kg);
+    g.deliveredGrossKg += Number(r.gross_kg);
+    g.loads += Number(r.n);
+    if (!g.lastDelivery || (r.last_date && new Date(r.last_date) > new Date(g.lastDelivery))) g.lastDelivery = r.last_date;
+  }
+  for (const r of sold.rows) bucket(r).soldKg += Number(r.kg);
+  for (const r of withdrawn.rows) bucket(r).withdrawnKg += Number(r.kg);
+
+  const wantCrop = crop ? cropKey(crop) : null;
+  const wantDest = destinatario ? companyNameKey(destinatario) : null;
+  const out = [];
+  for (const [key, g] of groups) {
+    const [destKey, ck] = key.split('|');
+    if (wantCrop && ck !== wantCrop) continue;
+    if (wantDest && !destKey.includes(wantDest)) continue;
+    const display = [...g.names.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    out.push({
+      destinatario: display,
+      crop: g.crop,
+      deliveredKg: g.deliveredKg,
+      deliveredGrossKg: g.deliveredGrossKg,
+      loads: g.loads,
+      soldKg: g.soldKg,
+      withdrawnKg: g.withdrawnKg,
+      balanceKg: g.deliveredKg - g.soldKg - g.withdrawnKg,
+      lastDelivery: g.lastDelivery,
+    });
+  }
+  return out.sort((a, b) => b.deliveredKg - a.deliveredKg);
 }
 
 /**
@@ -4135,7 +4196,7 @@ export async function getCampaignTotals(userId, { seasonYear = null, crop = null
   let filters = '';
   if (seasonYear) { params.push(seasonYear); filters += ` AND pc.season_year = $${params.length}`; }
   if (crop) { params.push(crop); filters += ` AND LOWER(pc.crop) = LOWER($${params.length})`; }
-  if (fieldName) { params.push(fieldName); filters += ` AND LOWER(f.name) = LOWER($${params.length})`; }
+  if (fieldName) { params.push(fieldName); filters += ` AND ${sqlNormalizedName('f.name')} = ${sqlNormalizedName(`$${params.length}::text`)}`; }
 
   const { rows } = await pool.query(
     `SELECT

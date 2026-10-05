@@ -456,6 +456,18 @@ async function deletionCargoNote(where: { fieldId?: number | null; plotId?: numb
 }
 
 export class FinancialHandler {
+  /**
+   * Lotes con ese nombre, acotados al campo si el usuario lo nombró (match
+   * canónico, invariante 3). Varios resultados = homónimos en distintos campos.
+   */
+  private async plotsNamedIn(userId: UserId, plotName: string, fieldName?: string | null) {
+    const plots = await this.service.findPlotByNameAcrossFields(userId, plotName);
+    if (!fieldName) return plots;
+    const { normalizeEntityName } = await import('../../utils/entity-matcher.js');
+    const want = normalizeEntityName(fieldName);
+    return plots.filter((p) => normalizeEntityName(String(p.field_name)) === want);
+  }
+
   private sharingService: FieldSharingService;
   private plotDiscovery = new PlotDiscoveryService();
   private readonly categoryService = new CategoryService(new CategoryRepository());
@@ -1751,8 +1763,19 @@ export class FinancialHandler {
         const newFieldName = cmd.newFieldName as string | null;
         const clearLot = !!cmd.clearLot;
 
+        // FIN-19: "el ingreso eran 3000 dólares" llegaba como gasto con filtro
+        // "ingreso" y respondía "no encontré un gasto de tipo ingreso".
+        if (categoryFilter && /^ingresos?$/i.test(categoryFilter.trim())) {
+          console.log('[INTERCEPT] edit_last_expense con filtro "ingreso" → edit_last_income');
+          return this.handleCommand({ ...cmd, command: 'edit_last_income', categoryFilter: null } as ParsedCommand, userId, user, settings);
+        }
+        // FIN-19: "era en dólares" solo es una corrección válida (la moneda se
+        // detectaba DESPUÉS de este chequeo y se preguntaba "¿qué corregimos?").
+        const { detectCurrencyTerm: detectCurExp } = await import('../../utils/lexicon.js');
+        const earlyCurrency = detectCurExp((cmd.originalText as string) || '');
+
         // At least one editable field required
-        if (newAmount == null && !newCategoryRaw && !newDate && !newPlotName && !clearLot && !newFieldName) {
+        if (newAmount == null && !newCategoryRaw && !newDate && !newPlotName && !clearLot && !newFieldName && !earlyCurrency) {
           return { messages: ['¿Qué corregimos del gasto? Decime el nuevo monto, categoría, lote o fecha. Ej:\n✏️ *no eran 30 mil eran 50 mil*\n✏️ *el último era de febrero*\n✏️ *el gasoil al lote norte*'] };
         }
 
@@ -1930,7 +1953,10 @@ export class FinancialHandler {
         const clearLot = !!cmd.clearLot;
         const newUnitPrice = (cmd.newUnitPrice as number | null) ?? null;
         const priceStatus = (cmd.priceStatus as string | null) ?? null;
-        if (newAmount == null && !newCategoryRaw && !newDate && !newPlotName && !clearLot && !newFieldName && newUnitPrice == null && !priceStatus) {
+        // FIN-19: la moneda de un ingreso también se corrige ("era en dólares").
+        const { detectCurrencyTerm: detectCurInc } = await import('../../utils/lexicon.js');
+        const incCurrencyTerm = detectCurInc((cmd.originalText as string) || '');
+        if (newAmount == null && !newCategoryRaw && !newDate && !newPlotName && !clearLot && !newFieldName && newUnitPrice == null && !priceStatus && !incCurrencyTerm) {
           return { messages: ['¿Qué corregimos del ingreso? Decime el nuevo monto, categoría, lote o fecha.'] };
         }
         // Referent given ("el de soja") but no matching income → say so instead of
@@ -1963,13 +1989,16 @@ export class FinancialHandler {
             scaledIncAmount = inheritScaleInc(newAmount, prevInc ? Number(prevInc.amount) || null : null, cmd.originalText as string | null, (prevInc?.currency as string | null) ?? null);
           } catch { /* best-effort */ }
         }
-        const edited = await this.service.editLastIncomeFull(userId, { newAmount: scaledIncAmount, newCategory, newDate, newFieldId, newPlotId, newUnitPrice, priceStatus }, incomeCategoryFilter);
+        const prevForCurrency = await this.service.findLastIncomeByCategory(userId, incomeCategoryFilter);
+        const newIncCurrency = incCurrencyTerm && incCurrencyTerm !== (prevForCurrency?.currency || 'ARS') ? incCurrencyTerm : null;
+        const edited = await this.service.editLastIncomeFull(userId, { newAmount: scaledIncAmount, newCategory, newDate, newFieldId, newPlotId, newUnitPrice, priceStatus, newCurrency: newIncCurrency }, incomeCategoryFilter);
         if (!edited) return { messages: ['No hay ingresos para editar.'] };
         const { formatMoney } = await import('../../utils/format-money.js');
         const parts: string[] = [];
         if (newUnitPrice != null) parts.push(`🏷️ Precio fijado: ${formatMoney(newUnitPrice, edited.currency)} por unidad`);
         const shownAmount = scaledIncAmount ?? edited.newAmount;
-        if (shownAmount != null) parts.push(`💵 ${formatMoney(edited.oldAmount, edited.currency)} → ${formatMoney(shownAmount, edited.currency)}`);
+        if (shownAmount != null) parts.push(`💵 ${formatMoney(edited.oldAmount, edited.oldCurrency)} → ${formatMoney(shownAmount, edited.currency)}`);
+        else if (newIncCurrency) parts.push(`💱 Moneda: ${edited.oldCurrency} → *${newIncCurrency}*`);
         if (newCategory) parts.push(`🏷️ → *${newCategory}*`);
         if (newDate) parts.push(`📅 → ${newDate}`);
         return { messages: [`✏️ Ingreso corregido (${edited.category}):\n${parts.join('\n')}`] };
@@ -2407,8 +2436,10 @@ export class FinancialHandler {
 
       // --- Budget ---
       case 'set_budget': {
-        await this.service.setBudget(userId, cmd.category as string, cmd.amount as number);
-        return { messages: [`\ud83d\udccb Presupuesto configurado: ${cmd.category}: $${(cmd.amount as number).toLocaleString('es-AR')}/mes`] };
+        const budgetCurrency = cmd.currency === 'USD' ? 'USD' : 'ARS';
+        await this.service.setBudget(userId, cmd.category as string, cmd.amount as number, budgetCurrency);
+        return { messages: [`\ud83d\udccb Presupuesto configurado: ${cmd.category}: ${formatMoney(cmd.amount as number, budgetCurrency)}/mes` +
+          (budgetCurrency === 'USD' ? '\n_Cuenta solo los gastos cargados en dólares._' : '')] };
       }
 
       // --- Delete / Edit ---
@@ -2473,10 +2504,27 @@ export class FinancialHandler {
         let plotId: number | null = null;
         const fieldName = cmd.fieldName as string | undefined;
         const plotName = cmd.plotName as string | undefined;
+        // FIN-27: si el usuario nombró un lote y no llegó (el validador lo
+        // descarta cuando no es un lote suyo), no se crea un gasto fijo sin
+        // ubicación como si nada.
+        if (!plotName && !fieldName) {
+          const { userExplicitlyReferencedPlot } = await import('../../utils/plot-intent.js');
+          if (userExplicitlyReferencedPlot(cmd.originalText as string)) {
+            console.log(`[INTERCEPT] create_expense_template: el texto nombra un lote que no se resolvió (user ${userId}) — no se crea`);
+            return { messages: ['No encontré el lote que nombraste, así que no creé el gasto fijo. Revisá el nombre (escribí *mis lotes*) y volvé a pedirlo.'] };
+          }
+        }
         if (fieldName || plotName) {
           const resolution = await this.service.resolveField(userId, fieldName, plotName);
           fieldId = resolution.fieldId ?? null;
           plotId = resolution.plotId ?? null;
+          // FIN-27: un lote o campo que no existe se ignoraba en silencio y el
+          // gasto fijo quedaba sin ubicación todos los meses.
+          if ((plotName && !plotId) || (fieldName && !fieldId)) {
+            const missing = plotName && !plotId ? `el lote *${plotName}*` : `el campo *${fieldName}*`;
+            console.log(`[INTERCEPT] create_expense_template: no existe ${missing} (user ${userId}) — no se crea`);
+            return { messages: [`No encontré ${missing}, así que no creé el gasto fijo. Revisá el nombre (escribí *mis lotes*) y volvé a pedirlo.`] };
+          }
         }
 
         const { ExpenseTemplateService } = await import('./expense-template.service.js');
@@ -3472,9 +3520,25 @@ export class FinancialHandler {
       }
 
       case 'set_plot_area': {
-        const plots = await this.service.findPlotByNameAcrossFields(userId, cmd.plotName as string);
+        const plots = await this.plotsNamedIn(userId, cmd.plotName as string, cmd.fieldName as string | undefined);
         if (plots.length === 0) {
-          return { messages: [`No encontr\u00e9 el lote *${cmd.plotName}*.`] };
+          return { messages: [`No encontr\u00e9 el lote *${cmd.plotName}*${cmd.fieldName ? ` en el campo *${cmd.fieldName}*` : ''}.`] };
+        }
+        // CAM-12: con dos lotes del mismo nombre la superficie iba al primero sin
+        // preguntar. Se pregunta de qué campo (botón = el comando completo).
+        if (plots.length > 1) {
+          const body = `Tenés ${plots.length} lotes llamados *${plots[0].name}*. ¿De qué campo?`;
+          return {
+            messages: [body],
+            interactive: {
+              type: 'buttons',
+              body,
+              buttons: plots.slice(0, 3).map((p) => ({
+                id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, fieldName: p.field_name }))}`,
+                title: String(p.field_name).slice(0, 20),
+              })),
+            },
+          };
         }
         // Misma regla que el pending de superficie: > 0 y < 100.000 ha. Antes
         // aceptaba 0, negativos y 99.999.999.999 ha (CAM-11).
@@ -3507,12 +3571,18 @@ export class FinancialHandler {
         const updated: string[] = [];
         const notFound: string[] = [];
         const notOwner: string[] = [];
+        const ambiguous: string[] = [];
         for (const rawName of targetNames) {
           const name = rawName.trim();
           if (!name) continue;
-          const plots = await this.service.findPlotByNameAcrossFields(userId, name);
+          const plots = await this.plotsNamedIn(userId, name, cmd.fieldName as string | undefined);
           if (plots.length === 0) {
             notFound.push(name);
+            continue;
+          }
+          // CAM-12: un nombre que está en varios campos no se asigna a ciegas.
+          if (plots.length > 1) {
+            ambiguous.push(`${plots[0].name} (${plots.map((p) => p.field_name).join(' / ')})`);
             continue;
           }
           if (!(await this.service.setPlotGrupo(plots[0].id, grupo, userId))) {
@@ -3522,8 +3592,11 @@ export class FinancialHandler {
           updated.push(plots[0].name);
         }
         const notOwnerNote = notOwner.length > 0 ? `Solo el dueño del campo puede cambiar el grupo de: ${notOwner.join(', ')}.` : '';
+        const ambiguousNote = ambiguous.length > 0
+          ? `Hay más de un lote con ese nombre: ${ambiguous.join(', ')}. Decime de qué campo (ej: "el lote X del campo Y es del grupo ${grupo}").`
+          : '';
         if (updated.length === 0) {
-          return { messages: [[notFound.length > 0 ? `No encontré los lotes: ${notFound.join(', ')}.` : '', notOwnerNote].filter(Boolean).join('\n')] };
+          return { messages: [[notFound.length > 0 ? `No encontré los lotes: ${notFound.join(', ')}.` : '', ambiguousNote, notOwnerNote].filter(Boolean).join('\n')] };
         }
         const lines: string[] = [];
         if (updated.length === 1) {
@@ -3535,6 +3608,7 @@ export class FinancialHandler {
         if (notFound.length > 0) {
           lines.push(`\n⚠️ No encontré: ${notFound.join(', ')}`);
         }
+        if (ambiguousNote) lines.push(`\n⚠️ ${ambiguousNote}`);
         if (notOwnerNote) lines.push(`\n⚠️ ${notOwnerNote}`);
         return { messages: [lines.join('\n')] };
       }

@@ -194,9 +194,9 @@ export class FinancialService {
 
   async editLastIncomeFull(
     userId: UserId,
-    fields: { newAmount?: number | null; newCategory?: string | null; newDate?: string | null; newFieldId?: number | null; newPlotId?: number | null; newUnitPrice?: number | null; priceStatus?: string | null },
+    fields: { newAmount?: number | null; newCategory?: string | null; newDate?: string | null; newFieldId?: number | null; newPlotId?: number | null; newUnitPrice?: number | null; priceStatus?: string | null; newCurrency?: string | null },
     categoryFilter: string | null = null,
-  ): Promise<{ id: number; category: string; oldAmount: number; currency: string; newAmount: number | null } | null> {
+  ): Promise<{ id: number; category: string; oldAmount: number; currency: string; oldCurrency: string; newAmount: number | null } | null> {
     const last = categoryFilter
       ? await this.repo.findLastIncomeByCategory(userId, categoryFilter)
       : await this.repo.getLastIncome(userId);
@@ -216,8 +216,12 @@ export class FinancialService {
       incomeDate: fields.newDate ?? null,
       fieldId: fields.newFieldId === undefined ? undefined : fields.newFieldId,
       plotId: fields.newPlotId === undefined ? undefined : fields.newPlotId,
+      currency: fields.newCurrency ?? null,
     });
-    return { id: last.id, category: last.category, oldAmount: Number(last.amount), currency: last.currency, newAmount: amount };
+    return {
+      id: last.id, category: last.category, oldAmount: Number(last.amount),
+      oldCurrency: last.currency || 'ARS', currency: fields.newCurrency || last.currency || 'ARS', newAmount: amount,
+    };
   }
 
   async editSpecificIncomeFull(
@@ -239,16 +243,17 @@ export class FinancialService {
 
   // --- Budget operations ---
 
-  async setBudget(userId: UserId, category: string, amount: number): Promise<void> {
-    await this.repo.setBudget(userId, category, amount);
+  async setBudget(userId: UserId, category: string, amount: number, currency: string = 'ARS'): Promise<void> {
+    await this.repo.setBudget(userId, category, amount, currency);
   }
 
   async checkBudgetAlert(userId: UserId, category: string, userName: string | null): Promise<string | null> {
     const budget = await this.repo.getBudget(userId, category);
     if (!budget) return null;
-    const total = await this.repo.getCategoryMonthlyTotal(userId, category);
+    const currency = budget.currency === 'USD' ? 'USD' : 'ARS';
+    const total = await this.repo.getCategoryMonthlyTotal(userId, category, currency);
     const globalSettings = await getGlobalSettings();
-    return this.repo.checkBudgetAlert(total, Number(budget.monthly_limit), category, userName, userId, globalSettings);
+    return this.repo.checkBudgetAlert(total, Number(budget.monthly_limit), category, userName, userId, globalSettings, currency);
   }
 
   // --- Reports (delegating to repository) ---

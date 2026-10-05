@@ -2547,7 +2547,12 @@ async function handleInteractiveReplyInner(
 
     if (callbackId === 'field_dup_update') {
       if (dupData.city) {
-        if (!(await financialService.setFieldCity(userId, dupData.name, dupData.city))) {
+        // Con la provincia del censo si la localidad resuelve sin ambigüedad:
+        // sin ella quedaba la provincia de la ubicación anterior (CAM-14).
+        const { localidadLookup } = await import('./localidad-lookup.service.js');
+        const lk = localidadLookup.lookup(dupData.city);
+        const loc = lk.status === 'exact' ? lk.matches[0] : null;
+        if (!(await financialService.setFieldCity(userId, dupData.name, loc?.nombre ?? dupData.city, loc?.provincia ?? null))) {
           return [{ type: 'text', text: `Solo el dueño del campo *${dupData.name}* puede cambiar su ubicación. No cambié nada.` }];
         }
         return [{ type: 'text', text: `📍 Campo *${dupData.name}* actualizado. Nueva ubicacion: *${dupData.city}*` }];

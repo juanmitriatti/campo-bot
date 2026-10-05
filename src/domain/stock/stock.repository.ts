@@ -1,5 +1,6 @@
 import { pool } from '../../config/db.js';
 import { accessibleFieldsSql } from '../shared/accessible-fields.js';
+import { sqlNormalizedName } from '../../utils/entity-matcher.js';
 
 // --- Types ---
 
@@ -109,7 +110,7 @@ export class StockRepository {
     }
     if (fieldName) {
       params.push(fieldName);
-      query += ` AND LOWER(f.name) = LOWER($${params.length})`;
+      query += ` AND ${sqlNormalizedName('f.name')} = ${sqlNormalizedName(`$${params.length}::text`)}`;
     }
     query += ' LIMIT 1';
 
@@ -169,7 +170,7 @@ export class StockRepository {
        FROM stock_items si
        JOIN warehouses w ON si.warehouse_id = w.id
        JOIN fields f ON w.field_id = f.id
-       WHERE si.warehouse_id = $1 AND LOWER(si.name) = LOWER($2) AND si.deleted_at IS NULL`,
+       WHERE si.warehouse_id = $1 AND ${sqlNormalizedName('si.name')} = ${sqlNormalizedName('$2::text')} AND si.deleted_at IS NULL`,
       [warehouseId, productName]
     );
     return rows[0] || null;
@@ -184,7 +185,7 @@ export class StockRepository {
        JOIN fields f ON w.field_id = f.id
        WHERE w.field_id IN (${accessibleFieldsSql(1)})
          AND si.deleted_at IS NULL AND w.deleted_at IS NULL
-         AND LOWER(si.name) = LOWER($2)
+         AND ${sqlNormalizedName('si.name')} = ${sqlNormalizedName('$2::text')}
        ORDER BY si.id`,
       [userId, productName]
     );
@@ -199,7 +200,7 @@ export class StockRepository {
        JOIN fields f ON w.field_id = f.id
        WHERE w.field_id IN (${accessibleFieldsSql(1)})
          AND si.deleted_at IS NULL AND w.deleted_at IS NULL
-         AND LOWER(si.name) = LOWER($2)
+         AND ${sqlNormalizedName('si.name')} = ${sqlNormalizedName('$2::text')}
        LIMIT 1`,
       [userId, productName]
     );

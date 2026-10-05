@@ -172,3 +172,18 @@ export function soundsLikeToken(word: string, token: string): boolean {
   if (w.length < 4 || t.length < 4) return false;
   return editDistance1(w, t);
 }
+
+/**
+ * Clave de una EMPRESA (acopiador, comprador): "Cargill", "Cargil" y "Cargill
+ * S.A." son la misma (FIN-25: partían el saldo por acopio en dos). Sin acentos
+ * ni puntuación, sin la forma societaria (SA, SRL, SACIF, SAIC, SCA, "y Cía")
+ * y con las letras dobles colapsadas (el error de tipeo más común en un nombre
+ * propio). Solo para AGRUPAR: el nombre que se muestra es el que cargó el usuario.
+ */
+export function companyNameKey(s: string): string {
+  return normalizeEntityName(s ?? '')
+    .replace(/[.,'’&-]/g, ' ')
+    .replace(/\b(?:s\s*a\s*c\s*i\s*f|s\s*a\s*i\s*c|s\s*r\s*l|s\s*c\s*a|s\s*a|y\s+cia|cia)\b/g, ' ')
+    .replace(/\s+/g, '')
+    .replace(/(.)\1+/g, '$1');
+}

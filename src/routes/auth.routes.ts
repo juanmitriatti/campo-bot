@@ -613,7 +613,7 @@ router.post('/fields', requireAuth, requireFeature('fields'), async (req: Reques
     if (!name) { res.status(400).json({ error: 'El nombre del campo es obligatorio.' }); return; }
     if (name.length > 100) { res.status(400).json({ error: 'El nombre es demasiado largo (máx. 100).' }); return; }
     const dup = await pool.query(
-      `SELECT 1 FROM fields WHERE user_id = $1 AND LOWER(name) = LOWER($2) AND deleted_at IS NULL`,
+      `SELECT 1 FROM fields WHERE user_id = $1 AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$2::text')} AND deleted_at IS NULL`,
       [req.auth!.userId, name],
     );
     if (dup.rows.length > 0) { res.status(409).json({ error: 'Ya tenés un campo con ese nombre.' }); return; }

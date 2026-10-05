@@ -89,7 +89,13 @@ export class FinancialRepository {
       // expenses in the same category (e.g. "grasa" vs "repuestos", both
       // Maquinaria) are still distinguishable by what the user actually named.
       params.push(`%${categoryFilter}%`);
-      where += ` AND (e.category ILIKE $${params.length} OR e.description ILIKE $${params.length} OR e.product ILIKE $${params.length})`;
+      // FIN-20: el referente también vale por su categoría canónica ("gasoil"
+      // → Combustible); antes "el último gasto de gasoil" no lo encontraba.
+      const { detectarCategoria } = await import('../../utils/parser.js');
+      const canonical = detectarCategoria(categoryFilter);
+      params.push(canonical && canonical !== 'Otros' ? canonical : null);
+      where += ` AND (e.category ILIKE $${params.length - 1} OR e.description ILIKE $${params.length - 1} OR e.product ILIKE $${params.length - 1}
+                      OR LOWER(e.category) = LOWER($${params.length}::text))`;
     }
     const result = await pool.query(
       `SELECT e.*, f.name AS field_name, p.name AS plot_name
@@ -171,7 +177,7 @@ export class FinancialRepository {
     await _updateExpenseFields(expenseId, fields);
   }
 
-  async updateIncomeFields(incomeId: number, fields: { amount?: number | null; category?: string | null; incomeDate?: string | null; fieldId?: number | null; plotId?: number | null; unitPrice?: number | null; priceStatus?: string | null }): Promise<void> {
+  async updateIncomeFields(incomeId: number, fields: { amount?: number | null; category?: string | null; incomeDate?: string | null; fieldId?: number | null; plotId?: number | null; unitPrice?: number | null; priceStatus?: string | null; currency?: string | null }): Promise<void> {
     await _updateIncomeFields(incomeId, fields);
   }
 
@@ -245,20 +251,20 @@ export class FinancialRepository {
 
   // --- Budgets ---
 
-  async setBudget(userId: UserId, category: string, amount: number): Promise<void> {
-    await _setBudget(userId, category, amount);
+  async setBudget(userId: UserId, category: string, amount: number, currency: string = 'ARS'): Promise<void> {
+    await _setBudget(userId, category, amount, currency);
   }
 
-  async getBudget(userId: UserId, category: string): Promise<{ monthly_limit: string } | null> {
+  async getBudget(userId: UserId, category: string): Promise<{ monthly_limit: string; currency?: string } | null> {
     return _getBudget(userId, category);
   }
 
-  async getCategoryMonthlyTotal(userId: UserId, category: string): Promise<number> {
-    return _getCategoryMonthlyTotal(userId, category);
+  async getCategoryMonthlyTotal(userId: UserId, category: string, currency: string = 'ARS'): Promise<number> {
+    return _getCategoryMonthlyTotal(userId, category, currency);
   }
 
-  async checkBudgetAlert(total: number, limit: number, category: string, userName: string | null, userId: UserId, globalSettings?: { budget_alert_80?: boolean; budget_alert_100?: boolean } | null): Promise<string | null> {
-    return _checkBudgetAlert(total, limit, category, userName, userId, globalSettings);
+  async checkBudgetAlert(total: number, limit: number, category: string, userName: string | null, userId: UserId, globalSettings?: { budget_alert_80?: boolean; budget_alert_100?: boolean } | null, currency: string = 'ARS'): Promise<string | null> {
+    return _checkBudgetAlert(total, limit, category, userName, userId, globalSettings, currency);
   }
 
   // --- Fields (delegated to PlotRepository) ---

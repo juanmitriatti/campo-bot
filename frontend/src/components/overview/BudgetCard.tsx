@@ -45,8 +45,8 @@ export default function BudgetCard({ month, rows }: Props) {
               <div className="flex items-baseline justify-between gap-3 mb-1">
                 <span className="text-xs text-gray-600 dark:text-gray-300 truncate">{r.category}</span>
                 <span className="font-mono text-xs tabular-nums text-gray-900 dark:text-gray-100">
-                  <span className={`font-semibold ${exceeded ? 'text-red-700 dark:text-red-400' : ''}`}>{money(r.spent, 'ARS')}</span>
-                  <span className="text-gray-400 dark:text-gray-500"> / {money(r.limit, 'ARS')}</span>
+                  <span className={`font-semibold ${exceeded ? 'text-red-700 dark:text-red-400' : ''}`}>{money(r.spent, r.currency ?? 'ARS')}</span>
+                  <span className="text-gray-400 dark:text-gray-500"> / {money(r.limit, r.currency ?? 'ARS')}</span>
                 </span>
               </div>
               <div className="h-2 rounded bg-gray-100 dark:bg-gray-700 overflow-hidden">

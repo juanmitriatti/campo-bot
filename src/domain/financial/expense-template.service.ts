@@ -1,5 +1,6 @@
 import { pool } from '../../config/db.js';
 import type { UserId } from '../../types/index.js';
+import { sqlNormalizedName } from '../../utils/entity-matcher.js';
 
 export interface ExpenseTemplate {
   id: number;
@@ -75,10 +76,24 @@ export class ExpenseTemplateService {
   async deleteByName(userId: UserId, name: string): Promise<boolean> {
     const { rowCount } = await pool.query(
       `UPDATE expense_templates SET active = false
-       WHERE user_id = $1 AND LOWER(name) = LOWER($2) AND active = true`,
+       WHERE user_id = $1 AND ${sqlNormalizedName('name')} = ${sqlNormalizedName('$2::text')} AND active = true`,
       [userId, name]
     );
-    return (rowCount ?? 0) > 0;
+    if ((rowCount ?? 0) > 0) return true;
+    // FIN-41: "borrá el gasto fijo de internet" con el gasto llamado "Internet
+    // fibra" no encontraba nada. Por nombre parcial, solo si es UNO (con dos no
+    // se adivina).
+    const { rows } = await pool.query(
+      `SELECT id FROM expense_templates
+        WHERE user_id = $1 AND active = true
+          AND ${sqlNormalizedName('name')} LIKE '%' || ${sqlNormalizedName('$2::text')} || '%'`,
+      [userId, name]
+    );
+    if (rows.length !== 1) {
+      if (rows.length > 1) console.log(`[INTERCEPT] deleteByName "${name}": ${rows.length} gastos fijos parecidos — no se borra ninguno`);
+      return false;
+    }
+    return this.delete(userId, rows[0].id);
   }
 
   async processTemplates(): Promise<number> {
@@ -99,7 +114,8 @@ export class ExpenseTemplateService {
           // Con la fecha que TOCABA (next_run_date), no la de hoy: si el cron se
           // atrasó, el gasto igual cae en su día (CRN-12).
           [template.user_id, template.description || template.name, template.amount, template.currency,
-           template.category, template.field_id, template.plot_id, template.expense_type,
+           // FIN-41: sin categoría generaba gastos con category NULL, invisibles en los reportes por categoría.
+           template.category || 'Otros', template.field_id, template.plot_id, template.expense_type,
            template.product, template.quantity, template.unit, isoDate(template.next_run_date)]
         );
 

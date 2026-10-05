@@ -53,6 +53,7 @@ export interface BudgetRow {
   category: string;
   limit: number;
   spent: number;
+  currency?: 'ARS' | 'USD';
 }
 
 export interface ReminderRow {

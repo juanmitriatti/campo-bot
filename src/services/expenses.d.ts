@@ -71,10 +71,10 @@ export function getFieldResult(userId: number, fieldName: string): Promise<{ ing
 export function getFieldReport(userId: number, fieldName: string): Promise<Array<{ category: string; total: string | number }>>;
 export function getPlotReport(userId: number, plotName: string): Promise<{ rows: Array<{ category: string; total: string | number }>; plotName: string; fieldName: string; incomeTotal: number } | null>;
 export function getPlotResult(userId: number, plotName: string): Promise<{ ingresos: number; gastos: number; plotName: string; fieldName: string } | null>;
-export function setBudget(userId: number, category: string, amount: number): Promise<void>;
-export function getBudget(userId: number, category: string): Promise<{ monthly_limit: string } | null>;
-export function getCategoryMonthlyTotal(userId: number, category: string): Promise<number>;
-export function checkBudgetAlert(total: number, limit: number, category: string, userName: string | null, userId: number, globalSettings?: { budget_alert_80?: boolean; budget_alert_100?: boolean } | null): Promise<string | null>;
+export function setBudget(userId: number, category: string, amount: number, currency?: string): Promise<void>;
+export function getBudget(userId: number, category: string): Promise<{ monthly_limit: string; currency?: string } | null>;
+export function getCategoryMonthlyTotal(userId: number, category: string, currency?: string): Promise<number>;
+export function checkBudgetAlert(total: number, limit: number, category: string, userName: string | null, userId: number, globalSettings?: { budget_alert_80?: boolean; budget_alert_100?: boolean } | null, currency?: string): Promise<string | null>;
 export function getOrCreateField(userId: number, name: string): Promise<{ id: number; user_id: number; name: string; city: string | null; province: string | null }>;
 export function setFieldCity(userId: number, fieldName: string, city: string, province?: string | null): Promise<number>;
 export function getFieldByName(userId: number, fieldName: string): Promise<{ id: number; user_id: number; name: string; city: string | null; province: string | null } | null>;
@@ -346,6 +346,7 @@ export function updateIncomeFields(incomeId: number, fields?: {
   incomeDate?: string | null;
   fieldId?: number | null;
   plotId?: number | null;
+  currency?: string | null;
 }): Promise<any>;
 export function findIncomeByCriteria(userId: number, criteria?: {
   amount?: number | null;

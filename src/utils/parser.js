@@ -15,7 +15,7 @@ import {
 import { canonicalProvince } from '../services/localidad-lookup.service.js';
 import {
   stripNameLeadIn, RESUME_FORM_RE, formActionFromWord, INVITE_ACCEPT_RE,
-  UNSOWN_PLOTS_QUERY_RES, SOWN_PLOTS_QUERY_RES,
+  UNSOWN_PLOTS_QUERY_RES, SOWN_PLOTS_QUERY_RES, detectCurrencyTerm,
 } from './lexicon.js';
 
 // --- Normalización central ---
@@ -479,6 +479,8 @@ export function parseBudget(texto) {
     if (v && v > amount) amount = v;
   }
   if (!amount || amount <= 0) return null;
+  // FIN-23: "presupuesto de 2000 dólares" se guardaba como $2.000 pesos.
+  const currency = detectCurrencyTerm(texto) === 'USD' ? 'USD' : 'ARS';
 
   // Category candidates, most specific first.
   const candidates = [];
@@ -487,7 +489,7 @@ export function parseBudget(texto) {
   const deM = norm.match(/\bde\s+(?:el\s+|la\s+)?([a-zñ][a-zñ ]*?)(?=\s+(?:de|por|al|mensual|cada|para)\b|\s*$)/);
   if (deM) candidates.push(deM[1].trim());
   const leftover = norm
-    .replace(/\b(presupuesto|presup|limite|tope|techo|mensual|por mes|de gasto|gasto|el|la|los|las|un|una|de|del|para|en|por|al|cada|poner|pone|quiero|configurar|fijar|establecer|me|mi|monto)\b/g, ' ')
+    .replace(/\b(presupuesto|presup|limite|tope|techo|mensual|por mes|de gasto|gasto|el|la|los|las|un|una|de|del|para|en|por|al|cada|poner|pone|quiero|configurar|fijar|establecer|me|mi|monto|dolares|dolar|usd|verdes|pesos)\b/g, ' ')
     .replace(/\d+(?:[.,]\d+)?/g, ' ')
     .replace(/[^a-zñ ]/g, ' ').replace(/\s+/g, ' ').trim();
   if (leftover) candidates.push(leftover);
@@ -495,13 +497,13 @@ export function parseBudget(texto) {
   for (const c of candidates) {
     if (!c) continue;
     const cat = detectarCategoria(c);
-    if (cat) return { command: 'set_budget', category: cat, amount };
+    if (cat) return { command: 'set_budget', category: cat, amount, currency };
   }
   // No fuzzy hit — keep the budget anyway with the first candidate title-cased
   // (better than dropping it; the user can rename the category later).
   const raw = candidates.find(Boolean);
   if (raw && raw.length >= 3) {
-    return { command: 'set_budget', category: raw.charAt(0).toUpperCase() + raw.slice(1), amount };
+    return { command: 'set_budget', category: raw.charAt(0).toUpperCase() + raw.slice(1), amount, currency };
   }
   return null;
 }
@@ -1292,7 +1294,7 @@ const COMMAND_PATTERNS = [
     command: "add_field",
     // Stop city extraction at the first comma so compound messages like
     // "agregar campo X en Y, lotes A,B" don't smuggle the rest into city.
-    patterns: [/(?:agregar|agrega|nuevo|crear)\s+(lote|campo|parcela)\s+(?:(?:que\s+)?se\s+llama\s+|llamad[oa]\s+)?((?:\w+)(?:\s+(?!(?:en|esta|queda|ubicado)\s)\w+){0,3})(?:\s+en\s+([^,]+))?/],
+    patterns: [/(?:agregar|agrega|nuevo|crear)\s+(lote|campo|parcela)\s+(?:(?:que\s+)?se\s+llama\s+|llamad[oa]\s+)?((?:[\w'’-]+)(?:\s+(?!(?:en|esta|queda|ubicado)\s)[\w'’-]+){0,6})(?:\s+en\s+([^,]+))?/],
     extract: (m, _norm, original) => {
       // If the original message contains additional clauses (lotes/sembré/etc.),
       // defer to the agent — trivial parsing would smuggle "Junín con lotes A"
@@ -1315,7 +1317,10 @@ const COMMAND_PATTERNS = [
       // ("Junín, Buenos Aires" sí; "Pergamino, 100 has" no). Prod (6 sep 2026):
       // "Agregar campo establecimiento Roma\n\nEsta en la localidad de junin,
       // buenos aires" daba nombre "establecimiento Roma Esta".
-      const reOrig = /(?:agregar|agrega|nuevo|crear)\s+(?:lote|campo|parcela)\s+(?:(?:que\s+)?se\s+llama\s+|llamad[oa]\s+)?((?:[\wáéíóúüñ]+)(?:[ \t]+(?!(?:en|est[aá]|queda|ubicad[oa])\s)[\wáéíóúüñ]+){0,3})(?:[ \t]+en[ \t]+([^,\n]+)(?:,[ \t]*([^,\n]+))?)?/i;
+      // CAM-8: la palabra admite punto, apóstrofe y guion por dentro ("Sta. Rosa",
+      // "O'Higgins", "3-4") y el nombre hasta 7 palabras: antes quedaban "Sta",
+      // "O" y "3", y con 5 palabras se perdía la localidad.
+      const reOrig = /(?:agregar|agrega|nuevo|crear)\s+(?:lote|campo|parcela)\s+(?:(?:que\s+)?se\s+llama\s+|llamad[oa]\s+)?((?:[\wáéíóúüñÁÉÍÓÚÜÑ][\wáéíóúüñÁÉÍÓÚÜÑ.'’-]*)(?:[ \t]+(?!(?:en|est[aá]|queda|ubicad[oa])\s)[\wáéíóúüñÁÉÍÓÚÜÑ][\wáéíóúüñÁÉÍÓÚÜÑ.'’-]*){0,6})(?:[ \t]+en[ \t]+([^,\n]+)(?:,[ \t]*([^,\n]+))?)?/i;
       const om = original ? original.match(reOrig) : null;
       const nameSrc = (om && om[1]) ? om[1] : m[2];
       let citySrc = (om && om[2] != null) ? om[2] : m[3];
@@ -1334,7 +1339,8 @@ const COMMAND_PATTERNS = [
       // "agregar campo se llama el rehue" → «se llama el rehue» quedó como
       // nombre en prod (6 sep 2026). Si al sacar la muletilla el nombre queda
       // vacío ("agregar campo se llama"), que lo pregunte el flow.
-      const cleanName = stripNameLeadIn(nameSrc);
+      // Un punto final no es parte del nombre ("agregar campo La Loma.").
+      const cleanName = stripNameLeadIn(nameSrc)?.replace(/[.'’-]+$/, '');
       return {
         entityKeyword: m[1],
         fieldName: cleanName || null,
@@ -1478,8 +1484,17 @@ const COMMAND_PATTERNS = [
     extract: (_m, _normalized, original) => {
       const parsed = parseBudget(original);
       if (!parsed) return null;
-      return { category: parsed.category, amount: parsed.amount };
+      return { category: parsed.category, amount: parsed.amount, currency: parsed.currency };
     },
+  },
+
+  // --- Borrar gasto FIJO (recurrente) ---
+  // FIN-28: "borrar gasto fijo de internet" caía en delete_specific y buscaba un
+  // gasto común llamado "fijo de internet".
+  {
+    command: "delete_expense_template",
+    patterns: [/(?:borr(?:ar|a)|elimin(?:ar|a)|cancel(?:ar|a)|sac(?:ar|a))\s+(?:el\s+)?gasto\s+(?:fijo|recurrente|automatico|mensual)\s+(?:de(?:l)?\s+)?(?:la\s+|el\s+)?(.+)/],
+    extract: (m) => ({ name: m[1].trim() }),
   },
 
   // --- Borrar gasto específico ---
@@ -1488,6 +1503,7 @@ const COMMAND_PATTERNS = [
     patterns: [/borr(?:ar|a)\s+gasto\s+(?:de\s+)?(.+)/],
     extract: (m, normalized) => {
       if (normalized.includes("ultimo")) return null;
+      if (/^(?:fijo|recurrente|automatico|mensual)\b/.test(m[1].trim())) return null;
       return { filter: m[1].trim() };
     },
   },
