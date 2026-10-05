@@ -2,6 +2,36 @@ import { pool } from "../config/db.js";
 import { sendMessageWithRetry } from "./whatsapp.js";
 import { sendTelegramMessage } from "./telegram.ts";
 import { logError } from "./error-logger.js";
+import { getProactiveBlockReason, isOutsideWhatsAppWindow, deferMessage } from "./proactive-delivery.js";
+
+/**
+ * Filtro común de TODO envío proactivo (proactive-delivery.js): cuenta borrada
+ * o suspendida, usuario de prueba, plan, prueba vencida. Devuelve el motivo o null.
+ */
+async function blockedProactive(userId, alertType) {
+  const reason = await getProactiveBlockReason(userId, alertType).catch(() => null);
+  if (reason) console.log(`[alert.service] [INTERCEPT] '${alertType}' no se manda a user ${userId}: ${reason}`);
+  return reason;
+}
+
+/**
+ * Ventana de 24 h de WhatsApp: fuera de ella el mensaje se GUARDA y se entrega
+ * cuando el usuario escribe (decisión de producto, 4 oct 2026 — CRN-2). Antes
+ * Meta lo rechazaba (#131009/#131047) y quedaba como enviado o se perdía.
+ * @returns {Promise<null|{sent:false, deferred:boolean, alertId:number}>}
+ */
+async function deferIfOutsideWindow(userId, alertType, message, alertId) {
+  if (!(await isOutsideWhatsAppWindow(userId).catch(() => false))) return null;
+  const deferred = await deferMessage(userId, alertType, message, alertId);
+  await pool.query(
+    `UPDATE alert_history SET status = $2,
+        payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object('window', 'fuera de 24 h')
+      WHERE id = $1`,
+    [alertId, deferred ? 'deferred' : 'skipped']
+  );
+  console.log(`[alert.service] [INTERCEPT] '${alertType}' fuera de la ventana de 24 h para user ${userId}: ${deferred ? 'diferido hasta que escriba' : 'descartado (no se difiere)'}`);
+  return { sent: false, deferred, alertId };
+}
 
 // Tipos de alerta que el usuario puede apagar con "no más alertas".
 // Los resúmenes (weekly/monthly), avisos de flow y recordatorios NO se gatean acá.
@@ -35,6 +65,8 @@ async function userAllowsProactiveAlerts(userId) {
  * @returns {Promise<{sent: boolean, alertId: number}>}
  */
 export async function sendAlertWithRetry(userId, phone, message, alertType, metadata = {}) {
+  const blockReason = await blockedProactive(userId, alertType);
+  if (blockReason) return { sent: false, skipped: blockReason };
   if (isProactiveAlertType(alertType)) {
     if (!(await userAllowsProactiveAlerts(userId))) {
       console.log(`[alert.service] [INTERCEPT] alerta '${alertType}' salteada para user ${userId} (opt-out)`);
@@ -76,6 +108,8 @@ export async function sendAlertWithRetry(userId, phone, message, alertType, meta
       result = { success: false, attempts: 1, error: err.message };
     }
   } else if (phone) {
+    const deferredRes = await deferIfOutsideWindow(userId, alertType, message, alertId);
+    if (deferredRes) return deferredRes;
     result = await sendMessageWithRetry(phone, message);
   } else {
     result = { success: false, attempts: 0, error: 'No phone or Telegram ID available' };
@@ -142,6 +176,8 @@ export function permanentSendFailureReason(err) {
 }
 
 export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId: rawTelegramId }, message, alertType, metadata = {}) {
+  const blockReason = await blockedProactive(userId, alertType);
+  if (blockReason) return { sent: false, skipped: blockReason };
   if (isProactiveAlertType(alertType)) {
     if (!(await userAllowsProactiveAlerts(userId))) {
       console.log(`[alert.service] [INTERCEPT] alerta '${alertType}' salteada para user ${userId} (opt-out)`);
@@ -201,9 +237,17 @@ export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId
         }
       }
     }
-  } else if (phone) {
+  }
+  // Telegram falló y hay un WhatsApp real: se intenta por ahí (CRN-7).
+  const realPhone = phone && !String(phone).startsWith('tg_') ? phone : null;
+  if (!sent && telegramId && realPhone) {
+    console.log(`[alert.service] [INTERCEPT] '${alertType}' Telegram falló para user ${userId} — pruebo por WhatsApp`);
+  }
+  if (!sent && realPhone) {
     channel = 'whatsapp';
-    const result = await sendMessageWithRetry(phone, message);
+    const deferredRes = await deferIfOutsideWindow(userId, alertType, message, alertId);
+    if (deferredRes) return deferredRes;
+    const result = await sendMessageWithRetry(realPhone, message);
     if (result.success) {
       sent = true;
     } else {
@@ -216,7 +260,7 @@ export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId
         context: { channel: 'whatsapp', phone, attempts: result.attempts, permanentReason },
       });
     }
-  } else {
+  } else if (!sent && !telegramId) {
     // Sin canal: permanente por definición. Se marca como tal para que el
     // historial distinga "no se pudo esta vez" de "nunca se va a poder".
     console.warn(`[alert.service] [INTERCEPT] ALERT_PERMANENT user ${userId} (${alertType}): sin canal de contacto — no se reintenta`);

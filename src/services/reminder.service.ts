@@ -364,6 +364,20 @@ export async function reminderTick(
       continue;
     }
 
+    // Toma ATÓMICA: dos ticks (o dos réplicas) en el mismo minuto mandaban el
+    // mismo recordatorio dos veces (CRN-4). Solo quien actualiza la fila lo manda.
+    const claim = await pool.query(
+      `UPDATE task_reminders SET last_attempt_at = NOW()
+        WHERE id = $1 AND status = 'pending'
+          AND (last_attempt_at IS NULL OR last_attempt_at < NOW() - INTERVAL '1 minute')
+        RETURNING id`,
+      [r.id],
+    );
+    if (claim.rows.length === 0) {
+      console.log(`[INTERCEPT] reminders: #${r.id} ya lo tomó otro tick — salteo`);
+      continue;
+    }
+
     const loc = r.plot_name ? ` (lote ${r.plot_name})` : r.field_name ? ` (${r.field_name})` : '';
     const hora = r.due_time ? ` a las ${r.due_time}` : '';
     const when = r.due_date === today ? `hoy${hora}` : `desde el ${r.due_date.slice(8, 10)}/${r.due_date.slice(5, 7)}${hora}`;

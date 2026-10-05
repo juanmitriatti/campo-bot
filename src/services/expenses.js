@@ -106,7 +106,7 @@ export async function getUserSettings(userId) {
 export async function updateUserSetting(userId, field, value) {
   // Whitelist allowed fields
   const allowed = [
-    "weekly_summary", "weekly_summary_day", "weekly_summary_hour",
+    "weekly_summary", "weekly_summary_day", "weekly_summary_hour", "monthly_summary",
     "budget_alerts", "rain_alerts", "confirm_before_save",
     "claude_daily_limit", "rain_alert_mm", "max_fields"
   ];
@@ -161,6 +161,7 @@ export async function updateGlobalSettings(settings) {
 export async function getUsersWithRainAlerts() {
   const { rows } = await pool.query(
     `SELECT u.id, u.phone_number, u.telegram_id, u.city,
+            COALESCE(s.rain_alerts, true) AS rain_alerts,
             COALESCE(s.rain_alert_mm, (SELECT default_rain_alert_mm FROM global_settings WHERE id = 1), 10) AS rain_alert_mm,
             COALESCE(s.wind_alerts, true) AS wind_alerts,
             COALESCE(s.wind_alert_kmh, (SELECT default_wind_alert_kmh FROM global_settings WHERE id = 1), 20) AS wind_alert_kmh,
@@ -168,7 +169,8 @@ export async function getUsersWithRainAlerts() {
             COALESCE(s.dry_window_days, (SELECT default_dry_window_days FROM global_settings WHERE id = 1), 3) AS dry_window_days
      FROM users u
      JOIN user_settings s ON s.user_id = u.id
-     WHERE s.rain_alerts = true OR s.wind_alerts = true OR s.dry_window_alerts = true`
+     WHERE u.deleted_at IS NULL
+       AND (s.rain_alerts = true OR s.wind_alerts = true OR s.dry_window_alerts = true)`
   );
   return rows;
 }

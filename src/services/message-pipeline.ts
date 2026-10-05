@@ -692,6 +692,20 @@ async function processTextMessageWithReplay(
   }
   const items = await processTextMessageInner(text, ctx);
 
+  // Mensajes proactivos que quedaron guardados por la ventana de 24 h de
+  // WhatsApp (resúmenes, recordatorios, alertas): el usuario acaba de escribir,
+  // la ventana está abierta — se entregan después de su respuesta (CRN-2).
+  try {
+    const { takeDeferredMessages } = await import('./proactive-delivery.js');
+    const pendingMsgs = await takeDeferredMessages(Number(ctx.userId));
+    if (pendingMsgs.length > 0) {
+      items.push({ type: 'text', text: `📬 Mientras no estabas te quedó ${pendingMsgs.length === 1 ? 'este aviso' : `${pendingMsgs.length} avisos`}:` });
+      for (const m of pendingMsgs) items.push({ type: 'text', text: m.message });
+    }
+  } catch (err) {
+    console.warn(`[proactive] entrega de diferidos falló para user ${ctx.userId}: ${(err as Error).message}`);
+  }
+
   try {
     const stash = deferredFirstActionStore.get(ctx.phone);
     if (stash?.originalText && stash.originalText !== text) {

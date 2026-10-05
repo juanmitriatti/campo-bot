@@ -169,6 +169,16 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
     const message = entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
     if (!message) {
+      // Estados de entrega: un mensaje que Meta NO entregó (fuera de la ventana
+      // de 24 h, número inalcanzable…) llega acá como status 'failed'. Antes se
+      // ignoraba y el envío figuraba como hecho (CRN-2). Que quede en el log.
+      const statuses = entry?.[0]?.changes?.[0]?.value?.statuses as Array<{ status?: string; recipient_id?: string; errors?: Array<{ code?: number; title?: string }> }> | undefined;
+      for (const st of statuses ?? []) {
+        if (st.status === 'failed') {
+          const e = st.errors?.[0];
+          console.warn(`[whatsapp] [INTERCEPT] entrega FALLIDA a ${st.recipient_id ?? '?'}: ${e?.code ?? '?'} ${e?.title ?? ''}`);
+        }
+      }
       res.sendStatus(200);
       return;
     }

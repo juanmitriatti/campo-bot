@@ -693,6 +693,14 @@ export class SystemHandler {
         await this.userRepo.updateSetting(userId, 'weekly_summary', false);
         return { messages: ['\ud83d\udcca Resumen semanal *desactivado*.'] };
 
+      case 'enable_monthly_summary':
+        await this.userRepo.updateSetting(userId, 'monthly_summary', true);
+        return { messages: ['📅 Resumen mensual *activado*.'] };
+
+      case 'disable_monthly_summary':
+        await this.userRepo.updateSetting(userId, 'monthly_summary', false);
+        return { messages: ['📅 Resumen mensual *desactivado*. Para volver a recibirlo: «activar resumen mensual».'] };
+
       case 'set_name':
         await this.userRepo.updateSetting(userId, 'confirm_before_save', settings.confirm_before_save);
         await this.userRepo.setName(userId, cmd.name as string);

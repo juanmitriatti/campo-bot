@@ -981,14 +981,16 @@ const COMMAND_PATTERNS = [
     patterns: [
       // Support both "activar" and "activá/desactivá/activa" (vos + tú forms) +
       // optional articles "el/la/los/las" and "alertas? de"
-      /^(activar|activ[aá]|desactivar|desactiv[aá]|habilitar|habilit[aá]|deshabilitar|deshabilit[aá])\s+(?:el\s+|la\s+|los\s+|las\s+)?(?:alertas?\s+(?:de\s+)?)?(?:el\s+|la\s+)?(lluvia|presupuesto|resumen\s+semanal|resumen)/,
-      /^(activar|activ[aá]|desactivar|desactiv[aá]|habilitar|habilit[aá]|deshabilitar|deshabilit[aá])\s+(?:el\s+|la\s+)?(lluvia|presupuesto|resumen\s+semanal|resumen)$/,
+      /^(activar|activ[aá]|desactivar|desactiv[aá]|habilitar|habilit[aá]|deshabilitar|deshabilit[aá])\s+(?:el\s+|la\s+|los\s+|las\s+)?(?:alertas?\s+(?:de\s+)?)?(?:el\s+|la\s+)?(lluvia|presupuesto|resumen\s+mensual|resumen\s+semanal|resumen)/,
+      /^(activar|activ[aá]|desactivar|desactiv[aá]|habilitar|habilit[aá]|deshabilitar|deshabilit[aá])\s+(?:el\s+|la\s+)?(lluvia|presupuesto|resumen\s+mensual|resumen\s+semanal|resumen)$/,
     ],
     extract: (m) => {
       const enable = /^(activar|activ[aá]|habilitar|habilit[aá])/.test(m[1]);
       const type = m[2].trim();
       if (/lluvia/.test(type)) return { command: enable ? "enable_rain_alerts" : "disable_rain_alerts" };
       if (/presupuesto/.test(type)) return { command: enable ? "enable_budget_alerts" : "disable_budget_alerts" };
+      // El mensual no tenía forma de apagarse por chat (CRN-11).
+      if (/mensual/.test(type)) return { command: enable ? "enable_monthly_summary" : "disable_monthly_summary" };
       if (/resumen/.test(type)) return { command: enable ? "enable_weekly_summary" : "disable_weekly_summary" };
       return null;
     },

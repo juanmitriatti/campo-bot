@@ -72,7 +72,7 @@ async function getWeeklyIncome(userId) {
        FROM incomes
       WHERE user_id = $1
         AND deleted_at IS NULL
-        AND income_date >= date_trunc('week', NOW())`,
+        AND income_date >= date_trunc('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')`,
     [userId]
   );
   return Number(rows[0].total);
@@ -84,7 +84,7 @@ async function getWeeklyExpense(userId) {
        FROM expenses
       WHERE user_id = $1
         AND deleted_at IS NULL
-        AND expense_date >= date_trunc('week', NOW())`,
+        AND expense_date >= date_trunc('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')`,
     [userId]
   );
   return Number(rows[0].total);
@@ -96,7 +96,7 @@ async function getTopExpenseCategory(userId) {
        FROM expenses
       WHERE user_id = $1
         AND deleted_at IS NULL
-        AND expense_date >= date_trunc('week', NOW())
+        AND expense_date >= date_trunc('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
       GROUP BY category
       ORDER BY total DESC
       LIMIT 1`,
@@ -114,7 +114,7 @@ async function getTopExpenseField(userId) {
        JOIN fields f ON e.field_id = f.id
       WHERE e.user_id = $1
         AND e.deleted_at IS NULL
-        AND e.expense_date >= date_trunc('week', NOW())
+        AND e.expense_date >= date_trunc('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
       GROUP BY f.name
       ORDER BY total DESC
       LIMIT 1`,
@@ -131,7 +131,7 @@ async function getRainfallByField(userId) {
        FROM rainfall r
        LEFT JOIN fields f ON r.field_id = f.id AND f.deleted_at IS NULL
       WHERE r.user_id = $1
-        AND r.rainfall_date >= date_trunc('week', NOW())
+        AND r.rainfall_date >= date_trunc('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
       GROUP BY f.name
       ORDER BY total DESC`,
     [userId]
@@ -149,8 +149,8 @@ async function getPreviousWeekCategoryTotal(userId, category) {
       WHERE user_id = $1
         AND deleted_at IS NULL
         AND category = $2
-        AND expense_date >= date_trunc('week', NOW()) - interval '7 days'
-        AND expense_date <  date_trunc('week', NOW())`,
+        AND expense_date >= date_trunc('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires') - interval '7 days'
+        AND expense_date <  date_trunc('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')`,
     [userId, category]
   );
   return Number(rows[0].total);
@@ -162,8 +162,8 @@ async function getPreviousWeekExpense(userId) {
        FROM expenses
       WHERE user_id = $1
         AND deleted_at IS NULL
-        AND expense_date >= date_trunc('week', NOW()) - interval '7 days'
-        AND expense_date <  date_trunc('week', NOW())`,
+        AND expense_date >= date_trunc('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires') - interval '7 days'
+        AND expense_date <  date_trunc('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')`,
     [userId]
   );
   return Number(rows[0].total);
@@ -175,8 +175,8 @@ async function getPreviousWeekIncome(userId) {
        FROM incomes
       WHERE user_id = $1
         AND deleted_at IS NULL
-        AND income_date >= date_trunc('week', NOW()) - interval '7 days'
-        AND income_date <  date_trunc('week', NOW())`,
+        AND income_date >= date_trunc('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires') - interval '7 days'
+        AND income_date <  date_trunc('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')`,
     [userId]
   );
   return Number(rows[0].total);
@@ -288,6 +288,8 @@ function getMonthNameByOffset(offset) {
 // Report builder
 // ---------------------------------------------------------------------------
 
+// Semana en hora ARGENTINA: con date_trunc sobre NOW() en UTC (Railway) el
+// domingo a la noche ya era lunes y el resumen mostraba la semana siguiente (CRN-14).
 async function buildWeeklyReport(userId) {
   const argNow = getArgentinaTime().date;
   const weekNum = getWeekNumber(argNow);
@@ -378,12 +380,13 @@ async function buildWeeklyReport(userId) {
 
 async function getMatchingUsers(day, hour) {
   const { rows } = await pool.query(
-    `SELECT u.id, u.phone_number
+    `SELECT u.id, u.phone_number, u.telegram_id
        FROM users u
        JOIN user_settings s ON s.user_id = u.id
       WHERE s.weekly_summary = true
         AND s.weekly_summary_day  = $1
-        AND s.weekly_summary_hour = $2`,
+        AND s.weekly_summary_hour = $2
+        AND u.deleted_at IS NULL`,
     [day, hour]
   );
   return rows;
@@ -391,9 +394,15 @@ async function getMatchingUsers(day, hour) {
 
 async function processUser(user) {
   try {
+    // Por el camino común de proactivos (alert.service): canal real del usuario
+    // (Telegram o WhatsApp — antes iba siempre por WhatsApp, incluso a tg_<id>),
+    // filtros de cuenta/prueba, ventana de 24 h (fuera de ella se difiere) y
+    // dedup semanal. El 4 oct 2026 este envío directo dio 224 errores 400 (CRN-2, CRN-6).
+    const weekKey = `weekly_${new Date().toISOString().slice(0, 10)}`;
+    if (await isDuplicate(user.id, 'weekly_summary', weekKey, 24 * 6)) return;
     const report = await buildWeeklyReport(user.id);
-    await sendMessage(user.phone_number, report);
-    console.log(`[scheduler] Weekly summary sent to user ${user.id} (${user.phone_number})`);
+    const res = await sendAlertWithRetryMultiChannel(user.id, { phone: user.phone_number, telegramId: user.telegram_id }, report, 'weekly_summary', { dedupKey: weekKey });
+    console.log(`[scheduler] Weekly summary user ${user.id}: ${res.sent ? 'enviado' : res.deferred ? 'diferido (fuera de 24 h)' : `no enviado${res.skipped ? ` (${res.skipped})` : ''}`}`);
   } catch (err) {
     console.error(`[scheduler] Error sending weekly summary to user ${user.id}: ${err?.message ?? err}`);
     logError('scheduler', 'WEEKLY_SUMMARY_SEND', err, { userId: user.id });
@@ -486,7 +495,9 @@ async function checkWeatherForUser(user) {
 
       // --- Rain per-day ---
       for (const day of forecastData.forecast) {
-        if (day.rain >= rainThreshold) {
+        // Con la lluvia apagada (y viento/ventana seca prendidos) igual llegaba la
+        // alerta de lluvia (CRN-5).
+        if (user.rain_alerts !== false && day.rain >= rainThreshold) {
           const dedupKey = `rain_${resolvedCity}_${day.dayName}`;
           const dup = await isDuplicate(user.id, 'weather', dedupKey, 24);
           if (dup) {
@@ -1014,6 +1025,9 @@ const conversationStateRepoForReminder = new ConversationStateRepository();
 // dejaba que un segundo tick seleccionara las mismas filas 'pending' antes
 // del UPDATE a 'sent' → mensaje duplicado. Single-replica: boolean alcanza.
 let reminderTickRunning = false;
+// El tick de flujos también se pisaba consigo mismo si una pasada tardaba más
+// de un minuto (avisos duplicados — CRN-4).
+let flowReminderTickRunning = false;
 
 async function flowReminderTick() {
   try {
@@ -1058,7 +1072,10 @@ async function flowReminderTick() {
       // 2. Half-life reached → send "still there?" warning (once per flow)
       if (!halflifeEnabled) continue;
       if (flow.halflifeNotifiedAt) continue; // Already notified
-      const halflifeAtMs = startedAtMs + halflifeMs;
+      // Desde la ÚLTIMA actividad (el vencimiento se renueva con cada paso), no
+      // desde el arranque: "¿Seguís ahí?" les llegaba a quienes estaban usando el
+      // formulario (CRN-3).
+      const halflifeAtMs = expiresAtMs ? expiresAtMs - halflifeMs : startedAtMs + halflifeMs;
       if (now < halflifeAtMs) continue; // Too early
 
       try {
@@ -1148,7 +1165,8 @@ async function getMatchingMonthlyUsers() {
     `SELECT u.id, u.phone_number, u.telegram_id
        FROM users u
        JOIN user_settings s ON s.user_id = u.id
-      WHERE s.monthly_summary = true`
+      WHERE s.monthly_summary = true
+        AND u.deleted_at IS NULL`
   );
   return rows;
 }
@@ -1168,6 +1186,10 @@ async function monthlyTick() {
     console.log(`[scheduler] ${users.length} user(s) matched for monthly summary`);
     for (const user of users) {
       try {
+        // El dedup se calculaba pero no se chequeaba: dos ticks o un reinicio a
+        // las 8 mandaban el resumen dos veces (CRN-4).
+        const monthKey = `monthly_${user.id}_${date.getFullYear()}_${date.getMonth()}`;
+        if (await isDuplicate(user.id, 'monthly_summary', monthKey, 24 * 20)) continue;
         const report = await buildMonthlyReport(user.id);
         await sendAlertWithRetryMultiChannel(
           user.id,
@@ -1243,7 +1265,9 @@ export function startScheduler() {
 
   // Flow reminder tick — every minute, checks active flows for halflife warning + timeout notification
   cron.schedule("* * * * *", () => {
-    flowReminderTick();
+    if (flowReminderTickRunning) return;
+    flowReminderTickRunning = true;
+    Promise.resolve(flowReminderTick()).finally(() => { flowReminderTickRunning = false; });
   });
 
   // Expense templates — every hour at :00 (checks hour === 7 internally)
@@ -1281,7 +1305,8 @@ export function startScheduler() {
           "reminder",
           {},
         );
-        return !!result.sent;
+        // Diferido por la ventana de 24 h = ya está en la cola de entrega: no se reintenta.
+        return !!(result.sent || result.deferred);
       }))
       .then(n => { if (n > 0) console.log(`[scheduler] recordatorios enviados: ${n}`); })
       .catch(err => console.error("[scheduler] reminder tick failed:", err))
@@ -1301,7 +1326,8 @@ export function startScheduler() {
           "trial_drip",
           {},
         );
-        return !!result.sent;
+        // Diferido por la ventana de 24 h = ya está en la cola de entrega: no se reintenta.
+        return !!(result.sent || result.deferred);
       }))
       .then(n => { if (n > 0) console.log(`[scheduler] trial drip enviados: ${n}`); })
       .catch(err => console.error("[scheduler] trial drip tick failed:", err));

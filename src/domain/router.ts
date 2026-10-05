@@ -137,6 +137,7 @@ export const SYSTEM_COMMANDS = new Set([
   'enable_rain_alerts', 'disable_rain_alerts',
   'enable_budget_alerts', 'disable_budget_alerts',
   'enable_weekly_summary', 'disable_weekly_summary',
+  'enable_monthly_summary', 'disable_monthly_summary',
   'set_name', 'set_city',
   'open_form', 'open_form_sow', 'open_form_harvest', 'open_form_expense', 'open_form_income',
   'open_form_activity', 'open_form_livestock', 'resume_form',

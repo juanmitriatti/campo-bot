@@ -266,6 +266,18 @@ export async function sendFlow(to, body, flow) {
   }
 }
 
+/**
+ * Errores de WhatsApp que NO mejoran reintentando: fuera de la ventana de 24 h
+ * (131047, 131009 con texto libre), destinatario no alcanzable (131026),
+ * parámetro/teléfono inválido (100, 131008), 4xx de permiso. Reintentarlos
+ * 1+5+15 s frenaba cada tick serial (CRN-8, auditoría oct 2026).
+ */
+function isPermanentWhatsAppError(err) {
+  const msg = String((err && err.message) || err || '');
+  if (/\((?:#)?(?:131047|131009|131026|131008|131051|470|100)\)|\b(?:131047|131009|131026|131051)\b/.test(msg)) return true;
+  return /\b(400|401|403)\b/.test(msg) && !/\b(429|5\d\d)\b/.test(msg);
+}
+
 export async function sendMessageWithRetry(to, text, maxRetries = 3) {
   const delays = [1000, 5000, 15000];
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -273,6 +285,10 @@ export async function sendMessageWithRetry(to, text, maxRetries = 3) {
       await sendMessage(to, text);
       return { success: true, attempts: attempt + 1 };
     } catch (err) {
+      if (isPermanentWhatsAppError(err)) {
+        console.warn(`[whatsapp] [INTERCEPT] error permanente, no se reintenta: ${String(err?.message ?? err).slice(0, 120)}`);
+        return { success: false, attempts: attempt + 1, error: err.message, permanent: true };
+      }
       if (attempt < maxRetries) {
         await new Promise(r => setTimeout(r, delays[attempt]));
       } else {

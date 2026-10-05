@@ -341,6 +341,9 @@ export class ConversationEngine {
   }
 
   async setFlowContext(userId: UserId, ctx: FlowContext): Promise<void> {
+    // Cada interacción RENUEVA el vencimiento: antes se fijaba al arrancar y un
+    // flujo en uso se cerraba "por inactividad" a los 10 min (CRN-3).
+    if (ctx.state !== 'idle') ctx.expiresAt = new Date(Date.now() + FLOW_TIMEOUT_MS);
     await this.stateRepo.setFlowContext(userId, ctx);
   }
 

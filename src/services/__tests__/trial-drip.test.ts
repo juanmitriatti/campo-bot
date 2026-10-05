@@ -43,4 +43,11 @@ describe('trial drip — computeTrialDay', () => {
     expect(computeTrialDay(start, new Date('2026-07-03T12:00:01Z'))).toBe(2);
     expect(computeTrialDay(start, new Date('2026-07-12T12:00:01Z'))).toBe(11);
   });
+
+  // CRN-15: registro a las 15 h (AR) → al día siguiente a las 10 h (AR) ya es el día 1.
+  it('cuenta días calendario de Argentina, no bloques de 24 h', () => {
+    const start = new Date('2026-07-01T18:00:00Z'); // 15:00 AR
+    expect(computeTrialDay(start, new Date('2026-07-02T13:00:00Z'))).toBe(1); // 10:00 AR del día siguiente
+    expect(computeTrialDay(start, new Date('2026-07-02T02:30:00Z'))).toBe(0); // 23:30 AR del mismo día
+  });
 });

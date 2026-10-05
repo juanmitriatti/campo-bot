@@ -67,6 +67,8 @@ export class ConversationStateRepository {
          flow_data = $4,
          flow_started_at = $5,
          flow_expires_at = $6,
+         -- Actividad nueva: el "¿Seguís ahí?" vuelve a valer para este tramo (CRN-3).
+         flow_halflife_notified_at = NULL,
          updated_at = NOW()`,
       [userId, ctx.state, ctx.step, JSON.stringify(dataToStore), ctx.startedAt, ctx.expiresAt],
     );

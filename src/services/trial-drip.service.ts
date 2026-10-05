@@ -44,9 +44,16 @@ export function parseDripSchedule(daysStr: string, messagesStr: string): DripSte
   return steps;
 }
 
-/** Día del trial (0 = día del registro), en días calendario enteros. */
+/**
+ * Día del trial (0 = día del registro), en días CALENDARIO de Argentina. Antes
+ * eran bloques de 24 h: quien se registró a las 15 h recién "cumplía" el día 1
+ * a las 15 h del día siguiente, y el aviso de las 10 h llegaba un día tarde (CRN-15).
+ */
 export function computeTrialDay(trialStartedAt: Date, now: Date): number {
-  return Math.floor((now.getTime() - trialStartedAt.getTime()) / 86_400_000);
+  const ar = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const [y1, m1, d1] = ar(trialStartedAt).split('-').map(Number);
+  const [y2, m2, d2] = ar(now).split('-').map(Number);
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000);
 }
 
 type SendFn = (
@@ -86,7 +93,9 @@ export async function trialDripTick(send: SendFn): Promise<number> {
   let sent = 0;
   for (const row of rows) {
     if (row.tips_enabled === false) continue;
-    const trialDay = computeTrialDay(new Date(row.trial_started), now);
+    // El instante REAL (getNowArgentina devuelve un Date corrido; convertirlo de
+    // nuevo a hora argentina lo correría dos veces).
+    const trialDay = computeTrialDay(new Date(row.trial_started), new Date());
     const stepIdx = steps.findIndex((st) => st.day === trialDay);
     if (stepIdx === -1) continue;
     const already: number[] = Array.isArray(row.drips_sent) ? row.drips_sent : [];

@@ -12,6 +12,13 @@ vi.mock('../telegram.ts', () => ({
 vi.mock('../error-logger.js', () => ({
   logError: vi.fn(),
 }));
+// Filtros de cuenta y ventana de 24 h: tienen sus propias pruebas contra la DB
+// (proactive-delivery.integration.test.ts). Acá se prueba el ruteo.
+vi.mock('../proactive-delivery.js', () => ({
+  getProactiveBlockReason: vi.fn(async () => null),
+  isOutsideWhatsAppWindow: vi.fn(async () => false),
+  deferMessage: vi.fn(async () => true),
+}));
 
 import { sendAlertWithRetry, sendAlertWithRetryMultiChannel } from '../alert.service.js';
 import { pool } from '../../config/db.js';

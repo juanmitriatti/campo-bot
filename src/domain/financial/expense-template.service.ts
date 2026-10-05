@@ -86,7 +86,8 @@ export class ExpenseTemplateService {
       `SELECT et.*, u.id AS user_id
          FROM expense_templates et
          JOIN users u ON et.user_id = u.id
-        WHERE et.active = true AND et.next_run_date <= CURRENT_DATE`
+        WHERE et.active = true AND et.next_run_date <= CURRENT_DATE
+          AND u.deleted_at IS NULL`
     );
 
     let processed = 0;
@@ -94,13 +95,15 @@ export class ExpenseTemplateService {
       try {
         await pool.query(
           `INSERT INTO expenses (user_id, description, amount, currency, category, field_id, plot_id, expense_type, product, quantity, unit, expense_date)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_DATE)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          // Con la fecha que TOCABA (next_run_date), no la de hoy: si el cron se
+          // atrasó, el gasto igual cae en su día (CRN-12).
           [template.user_id, template.description || template.name, template.amount, template.currency,
            template.category, template.field_id, template.plot_id, template.expense_type,
-           template.product, template.quantity, template.unit]
+           template.product, template.quantity, template.unit, isoDate(template.next_run_date)]
         );
 
-        const nextRun = this.advanceDate(template.recurrence_type, template.next_run_date);
+        const nextRun = this.advanceDate(template.recurrence_type, template.next_run_date, template.recurrence_day);
         await pool.query(
           `UPDATE expense_templates SET next_run_date = $1, last_run_date = CURRENT_DATE WHERE id = $2`,
           [nextRun, template.id]
@@ -142,16 +145,24 @@ export class ExpenseTemplateService {
     return today.toISOString().slice(0, 10);
   }
 
-  private advanceDate(recurrenceType: string, currentDate: string | Date): string {
-    const d = new Date(currentDate);
+  /**
+   * Próxima corrida. Mensual: el MISMO día del mes (recurrence_day), recortado
+   * al último día si el mes es más corto — antes setMonth desbordaba y el 31
+   * de enero pasaba al 2 de marzo, y de ahí en más quedaba corrido (CRN-12).
+   */
+  private advanceDate(recurrenceType: string, currentDate: string | Date, recurrenceDay?: number | null): string {
+    const [y, m, d] = isoDate(currentDate).split('-').map(Number);
     if (recurrenceType === 'monthly') {
-      d.setMonth(d.getMonth() + 1);
-    } else if (recurrenceType === 'biweekly') {
-      d.setDate(d.getDate() + 14);
-    } else {
-      d.setDate(d.getDate() + 7);
+      const wanted = recurrenceDay && recurrenceDay > 0 ? recurrenceDay : d;
+      const nextY = m === 12 ? y + 1 : y;
+      const nextM = m === 12 ? 1 : m + 1;
+      const lastDay = new Date(Date.UTC(nextY, nextM, 0)).getUTCDate();
+      const day = Math.min(wanted, lastDay);
+      return `${nextY}-${String(nextM).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
-    return d.toISOString().slice(0, 10);
+    const base = new Date(Date.UTC(y, m - 1, d));
+    base.setUTCDate(base.getUTCDate() + (recurrenceType === 'biweekly' ? 14 : 7));
+    return base.toISOString().slice(0, 10);
   }
 
   private mapRow(row: any): ExpenseTemplate {
@@ -170,4 +181,10 @@ export class ExpenseTemplateService {
       plot_name: row.plot_name || undefined,
     };
   }
+}
+
+/** Fecha-calendario YYYY-MM-DD de una columna DATE (llega como medianoche UTC) o de un string. */
+function isoDate(v: string | Date): string {
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return String(v).slice(0, 10);
 }

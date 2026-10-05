@@ -103,6 +103,7 @@ const TRIVIAL_COMMANDS = new Set([
   'enable_rain_alerts', 'disable_rain_alerts',
   'enable_budget_alerts', 'disable_budget_alerts',
   'enable_weekly_summary', 'disable_weekly_summary',
+  'enable_monthly_summary', 'disable_monthly_summary',
   '_toggle_alert',
   'export_csv',
   // Edit/delete — canonical "borrar ultimo gasto" / "editar gasto X a Y" go
