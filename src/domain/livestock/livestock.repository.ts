@@ -262,8 +262,13 @@ export class LivestockRepository {
     const sets: string[] = [];
     const params: unknown[] = [];
     if (patch.breed !== undefined) {
-      params.push(patch.breed);
-      sets.push(`breed = $${params.length}`);
+      // DSH-11: la raza se guarda canónica (fuente única: livestock-breeds) y
+      // con su breed_id; antes quedaba el texto crudo y el breed_id viejo.
+      const { canonicalBreedName } = await import('../../utils/livestock-breeds.js');
+      const breed = canonicalBreedName(patch.breed);
+      params.push(breed);
+      sets.push(`breed = $${params.length}::text`);
+      sets.push(`breed_id = (SELECT b.id FROM livestock_breeds b WHERE LOWER(b.name) = LOWER($${params.length}::text) LIMIT 1)`);
     }
     if (patch.avg_weight_kg !== undefined) {
       params.push(patch.avg_weight_kg);

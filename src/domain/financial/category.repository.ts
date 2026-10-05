@@ -1,4 +1,4 @@
-import { pool } from '../../config/db.js';
+import { pool, withTransaction } from '../../config/db.js';
 
 export type CategoryKind = 'expense' | 'income';
 
@@ -65,14 +65,39 @@ export class CategoryRepository {
     return mapRow(rows[0]);
   }
 
+  /**
+   * Renombra la categoría Y los gastos/ingresos del usuario que la usaban
+   * (DSH-13): antes la categoría cambiaba de nombre y sus registros quedaban
+   * con el viejo, partidos en dos filas en reportes y presupuestos.
+   */
   async rename(userId: number, id: number, name: string): Promise<UserCategory | null> {
-    const { rows } = await pool.query(
-      `UPDATE user_categories SET name = $3
-       WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-       RETURNING id, user_id, kind, name, usage_count, last_used_at`,
-      [id, userId, name.trim()]
-    );
-    return rows[0] ? mapRow(rows[0]) : null;
+    return withTransaction(async () => {
+      const { rows: prev } = await pool.query(
+        `SELECT name, kind FROM user_categories WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+        [id, userId]
+      );
+      if (prev.length === 0) return null;
+      const { rows } = await pool.query(
+        `UPDATE user_categories SET name = $3
+         WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+         RETURNING id, user_id, kind, name, usage_count, last_used_at`,
+        [id, userId, name.trim()]
+      );
+      const table = prev[0].kind === 'income' ? 'incomes' : 'expenses';
+      const moved = await pool.query(
+        `UPDATE ${table} SET category = $3
+          WHERE user_id = $1 AND deleted_at IS NULL AND LOWER(TRIM(category)) = LOWER(TRIM($2))`,
+        [userId, prev[0].name, name.trim()]
+      );
+      if (table === 'expenses') {
+        await pool.query(
+          `UPDATE budgets SET category = $3 WHERE user_id = $1 AND LOWER(TRIM(category)) = LOWER(TRIM($2))`,
+          [userId, prev[0].name, name.trim()]
+        );
+      }
+      console.log(`[CATEGORY] user=${userId} renombró «${prev[0].name}» → «${name.trim()}»: ${moved.rowCount ?? 0} ${table}`);
+      return rows[0] ? mapRow(rows[0]) : null;
+    });
   }
 
   async softDelete(userId: number, id: number): Promise<boolean> {

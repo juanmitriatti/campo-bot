@@ -1,8 +1,11 @@
-import { useEffect, useState, useCallback, type FormEvent } from 'react';
+import { useEffect, useState, useCallback, useRef, type FormEvent } from 'react';
 import { useSortableTable } from '../hooks/useSortableTable';
 import { apiRequest, ApiError } from '../api/client';
 import TabHeader from './TabHeader';
 import HarvestCampaignsSummary from './HarvestCampaignsSummary';
+import { useCampaignWindow } from '../hooks/useOverviewData';
+import { useSelectedField } from '../hooks/useSelectedField';
+import { useSelectedCampaign } from '../hooks/useSelectedCampaign';
 
 interface QualityMetrics {
   oil_pct?: number;
@@ -261,10 +264,22 @@ export default function HarvestLoadsTable() {
   const [confirmDelete, setConfirmDelete] = useState<HarvestLoad | null>(null);
 
   const [fields, setFields] = useState<FieldOption[]>([]);
-  const [fieldId, setFieldId] = useState('');
+  // DSH-15: abre con el campo y la campaña elegidos, igual que Gastos e
+  // Ingresos (antes mostraba todos los camiones de todas las campañas).
+  const [selectedField] = useSelectedField();
+  const [selectedSeason] = useSelectedCampaign();
+  const campaignWindow = useCampaignWindow(selectedField, selectedSeason);
+  const [fieldId, setFieldId] = useState(selectedField != null ? String(selectedField) : '');
   const [plotId, setPlotId] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(campaignWindow?.from ?? '');
+  const [dateTo, setDateTo] = useState(campaignWindow?.to ?? '');
+  const datesSeeded = useRef(campaignWindow != null);
+  useEffect(() => {
+    if (datesSeeded.current || !campaignWindow) return;
+    datesSeeded.current = true;
+    setDateFrom(campaignWindow.from);
+    setDateTo(campaignWindow.to);
+  }, [campaignWindow]);
   const [driver, setDriver] = useState('');
   const [destinatario, setDestinatario] = useState('');
   const [cropFilter, setCropFilter] = useState('');

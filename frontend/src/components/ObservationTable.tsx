@@ -78,16 +78,8 @@ export default function ObservationTable() {
       .catch(() => {});
   }, []);
 
-  // Auto-pick the only plot when there's just one
-  useEffect(() => {
-    const allPlots = fields.flatMap(f => f.plots);
-    const candidatePlots = fieldId
-      ? fields.find(f => f.id === Number(fieldId))?.plots ?? []
-      : allPlots;
-    if (candidatePlots.length === 1 && !plotId) {
-      setPlotId(String(candidatePlots[0].id));
-    }
-  }, [fields, fieldId, plotId]);
+  // DSH-3: no se autoselecciona el lote único. Con un campo de un solo lote,
+  // el filtro forzado escondía los registros a nivel campo y no había "Todos".
 
   const fetchObservations = useCallback(async () => {
     setLoading(true);
@@ -230,7 +222,7 @@ export default function ObservationTable() {
             disabled={!fieldId}
             className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-md px-2 py-1.5 text-sm disabled:opacity-40"
           >
-            {availablePlots.length !== 1 && <option value="">Todos</option>}
+            <option value="">Todos</option>
             {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>

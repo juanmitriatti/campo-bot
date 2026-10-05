@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import jwt from 'jsonwebtoken';
-import { requireAuth, requireRole } from '../../../middleware/auth.middleware.js';
+import { requireAuth, requireRole, setAccountLookupForTests } from '../../../middleware/auth.middleware.js';
 
 const JWT_SECRET = 'test-middleware-secret';
 
@@ -17,13 +17,14 @@ function mockReqRes(authHeader?: string) {
 describe('requireAuth', () => {
   beforeEach(() => {
     process.env.JWT_SECRET = JWT_SECRET;
+    setAccountLookupForTests(async () => ({ exists: true, status: 'active', role: 'end_user' }));
   });
 
-  it('passes with valid access token', () => {
+  it('passes with valid access token', async () => {
     const token = jwt.sign({ userId: 1, role: 'end_user', type: 'access' }, JWT_SECRET, { expiresIn: '15m' });
     const { req, res, next } = mockReqRes(`Bearer ${token}`);
 
-    requireAuth(req, res, next);
+    await requireAuth(req, res, next);
 
     expect(next).toHaveBeenCalled();
     expect(req.auth).toBeDefined();
@@ -31,34 +32,61 @@ describe('requireAuth', () => {
     expect(req.auth.role).toBe('end_user');
   });
 
-  it('rejects missing header', () => {
+  it('rejects missing header', async () => {
     const { req, res, next } = mockReqRes();
-    requireAuth(req, res, next);
+    await requireAuth(req, res, next);
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('rejects invalid token', () => {
+  it('rejects invalid token', async () => {
     const { req, res, next } = mockReqRes('Bearer invalid-token');
-    requireAuth(req, res, next);
+    await requireAuth(req, res, next);
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('rejects refresh token (wrong type)', () => {
+  it('rejects refresh token (wrong type)', async () => {
     const token = jwt.sign({ userId: 1, role: 'end_user', type: 'refresh' }, JWT_SECRET, { expiresIn: '7d' });
     const { req, res, next } = mockReqRes(`Bearer ${token}`);
-    requireAuth(req, res, next);
+    await requireAuth(req, res, next);
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('rejects expired token', () => {
+  it('rejects expired token', async () => {
     const token = jwt.sign({ userId: 1, role: 'end_user', type: 'access' }, JWT_SECRET, { expiresIn: '0s' });
     const { req, res, next } = mockReqRes(`Bearer ${token}`);
     // Token expires immediately
-    requireAuth(req, res, next);
+    await requireAuth(req, res, next);
     expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  // CTA-16: el token de una cuenta suspendida, borrada o degradada deja de servir ya.
+  it('rechaza el token de una cuenta suspendida', async () => {
+    setAccountLookupForTests(async () => ({ exists: true, status: 'suspended', role: 'end_user' }));
+    const token = jwt.sign({ userId: 7, role: 'end_user', type: 'access' }, JWT_SECRET, { expiresIn: '15m' });
+    const { req, res, next } = mockReqRes(`Bearer ${token}`);
+    await requireAuth(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('rechaza el token de una cuenta borrada', async () => {
+    setAccountLookupForTests(async () => ({ exists: false, status: null, role: null }));
+    const token = jwt.sign({ userId: 8, role: 'end_user', type: 'access' }, JWT_SECRET, { expiresIn: '15m' });
+    const { req, res, next } = mockReqRes(`Bearer ${token}`);
+    await requireAuth(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('un admin degradado pierde el rol aunque el token diga admin', async () => {
+    setAccountLookupForTests(async () => ({ exists: true, status: 'active', role: 'end_user' }));
+    const token = jwt.sign({ userId: 9, role: 'admin', type: 'access' }, JWT_SECRET, { expiresIn: '15m' });
+    const { req, res, next } = mockReqRes(`Bearer ${token}`);
+    await requireAuth(req, res, next);
+    expect(next).toHaveBeenCalled();
+    expect(req.auth.role).toBe('end_user');
   });
 });
 

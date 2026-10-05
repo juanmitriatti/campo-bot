@@ -4085,7 +4085,8 @@ export async function queryHarvestLoads(userId, opts = {}) {
 
   // limitParam = next slot (idx already points to next available)
   const limitParam = `$${idx}`;
-  params.push(Math.min(Math.max(limit, 1), 500));
+  // 500 para el chat; la tabla del dashboard pagina sobre todas (DSH-15).
+  params.push(Math.min(Math.max(limit, 1), limit > 500 ? 100000 : 500));
 
   // Access: own field OR shared via field_members.
   const sql = `

@@ -27,6 +27,13 @@ import { runMigrations } from './scripts/run-migrations.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// CTA-10: detrás del proxy de Railway req.ip era la IP del proxy para todos,
+// y el rate limit por IP de reset/verificación bloqueaba a todos los usuarios
+// juntos. Se confía en UN salto (el proxy de Railway); TRUST_PROXY lo ajusta.
+if (process.env.RAILWAY_ENVIRONMENT_NAME || process.env.TRUST_PROXY) {
+  app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
+}
+
 // Resolved once at boot. Set by Railway when integrated via GitHub, or written
 // to .deploy-sha at CI build time when deploying via `railway up`.
 const DEPLOY_SHA: string | null = (() => {

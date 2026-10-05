@@ -258,10 +258,16 @@ const expensesWithoutPlot: Rule = async ({ userId, fieldIds, range }) => {
   );
   if (!candidates.length) return [];
 
-  const total = candidates.reduce((s: number, r: Record<string, unknown>) => s + Number(r.amount), 0);
+  // DSH-16: un total por moneda; antes sumaba dólares y pesos en un solo número.
+  const totals = new Map<string, number>();
+  for (const r of candidates) {
+    const cur = String(r.currency) === 'USD' ? 'USD' : 'ARS';
+    totals.set(cur, (totals.get(cur) ?? 0) + Number(r.amount));
+  }
   const first = candidates[0];
   const money = (n: number, cur: string) =>
     (cur === 'USD' ? 'USD ' : '$') + fmtNum(n);
+  const totalLabel = [...totals.entries()].map(([cur, n]) => money(n, cur)).join(' + ');
 
   if (candidates.length === 1) {
     return [{
@@ -281,7 +287,7 @@ const expensesWithoutPlot: Rule = async ({ userId, fieldIds, range }) => {
     rule: 'expense_without_plot',
     severity: 'info',
     title: `${candidates.length} gastos quedaron sin lote`,
-    body: `Suman ${money(total, String(first.currency))} a nivel campo, en categorías que sí van a un lote. El mayor es ${first.category} del ${formatDayMonth(String(first.expense_date))} en «${first.field_name}».`,
+    body: `Suman ${totalLabel} a nivel campo, en categorías que sí van a un lote. El mayor es ${first.category} del ${formatDayMonth(String(first.expense_date))} en «${first.field_name}».`,
     action: 'Asignar lotes',
     ref: { type: 'expense', id: Number(first.id) },
     fieldId: Number(first.field_id),

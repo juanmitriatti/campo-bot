@@ -2081,6 +2081,9 @@ router.put("/api/users/:id/status", async (req, res) => {
       [status, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
+    // CTA-16: suspender corta la sesión ya, no cuando vence el token.
+    const { invalidateAccountState } = await import("../middleware/auth.middleware.js");
+    invalidateAccountState(Number(id));
 
     // Audit log
     await pool.query(

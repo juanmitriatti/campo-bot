@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { apiRequest } from '../api/client';
+import { useFieldsTree } from '../hooks/useFieldsTree';
 
 interface Expense {
   id: number;
@@ -8,6 +9,8 @@ interface Expense {
   amount: number;
   currency: string;
   expense_date: string;
+  field_id?: number | null;
+  plot_id?: number | null;
   field_name: string | null;
   plot_name: string | null;
   expense_type: string | null;
@@ -54,6 +57,12 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
   const [unitPrice, setUnitPrice] = useState(expense.unit_price != null ? String(expense.unit_price) : '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // DSH-14: "Asignar lote" (Para revisar) abría este modal sin forma de elegir el lote.
+  const { fields } = useFieldsTree();
+  const expenseField = fields.find(fl => (expense.field_id != null ? fl.id === expense.field_id : fl.name === expense.field_name));
+  const fieldPlots = expenseField?.plots ?? [];
+  const initialPlotId = expense.plot_id != null ? String(expense.plot_id) : '';
+  const [plotId, setPlotId] = useState(initialPlotId);
 
   const isInsumo = expenseTypeVal === 'insumo';
 
@@ -80,6 +89,7 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
           quantity: isInsumo && quantity ? parseFloat(quantity) : null,
           unit: isInsumo ? (unit.trim() || null) : null,
           unit_price: isInsumo && unitPrice ? parseFloat(unitPrice) : null,
+          ...(plotId !== initialPlotId ? { plot_id: plotId ? Number(plotId) : null } : {}),
         },
       });
       onSaved();
@@ -100,9 +110,21 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
           </div>
 
           {expense.field_name && <p className="text-sm text-gray-500 dark:text-gray-300 mb-1">Campo: <span className="font-medium text-gray-700 dark:text-gray-200">{expense.field_name}</span></p>}
-          {expense.plot_name && <p className="text-sm text-gray-500 dark:text-gray-300 mb-3">Lote: <span className="font-medium text-gray-700 dark:text-gray-200">{expense.plot_name}</span></p>}
 
           <div className="space-y-3">
+            {fieldPlots.length > 0 && (
+              <div>
+                <label htmlFor="expense-edit-plot" className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Lote</label>
+                <select id="expense-edit-plot" value={plotId} onChange={e => setPlotId(e.target.value)}
+                  className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none">
+                  <option value="">Sin lote (todo el campo)</option>
+                  {fieldPlots.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                </select>
+              </div>
+            )}
+            {fieldPlots.length === 0 && expense.plot_name && (
+              <p className="text-sm text-gray-500 dark:text-gray-300">Lote: <span className="font-medium text-gray-700 dark:text-gray-200">{expense.plot_name}</span></p>
+            )}
             <div>
               <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Descripcion</label>
               <input type="text" value={description} onChange={e => setDescription(e.target.value)}

@@ -141,7 +141,8 @@ export const forgotPasswordLimiter = new AuthRateLimiter({
 /**
  * Reset / verify: los tokens son de 256 bits, adivinarlos es imposible; el
  * límite es solo para que nadie nos haga barrer la tabla a lo loco. Por IP
- * (global detrás del proxy), así que generoso.
+ * del cliente (app.ts confía en el proxy de Railway desde CTA-10; antes era la
+ * misma IP para todos).
  */
 export const tokenEndpointLimiter = new AuthRateLimiter({
   name: 'token-endpoint',

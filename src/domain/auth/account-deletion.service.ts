@@ -67,6 +67,11 @@ export class AccountDeletionService {
         `UPDATE users
          SET deleted_at = NOW(),
              status = 'deleted',
+             -- CTA-12: nombre, apellido y localidad también son datos personales.
+             name = NULL,
+             last_name = NULL,
+             city = NULL,
+             province = NULL,
              email = NULL,
              phone_number = NULL,
              telegram_id = NULL,
@@ -82,6 +87,10 @@ export class AccountDeletionService {
         [userId],
       );
     });
+
+    // CTA-16: la sesión de la cuenta borrada se corta ya.
+    const { invalidateAccountState } = await import('../../middleware/auth.middleware.js');
+    invalidateAccountState(Number(userId));
 
     // CTA-6: la cuenta borrada seguía con la suscripción viva y MercadoPago
     // seguía cobrando. Después del commit (el borrado no depende del proveedor).

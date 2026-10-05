@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import AccountDataSection from './AccountDataSection';
 import { Pencil, X, Check, Lock } from 'lucide-react';
 import LocalidadInput from './LocalidadInput';
 import { apiRequest, ApiError } from '../api/client';
@@ -58,6 +59,7 @@ export default function ChannelLinking() {
   const [profileLastName, setProfileLastName] = useState('');
   const [profileCity, setProfileCity] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
+  const [profileEmailPassword, setProfileEmailPassword] = useState('');
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSuccess, setProfileSuccess] = useState(false);
@@ -278,7 +280,10 @@ export default function ChannelLinking() {
       if (profileName !== (localUser?.name ?? '')) body.name = profileName;
       if (profileLastName !== (localUser?.last_name ?? '')) body.last_name = profileLastName;
       if (profileCity !== (localUser?.city ?? '')) body.city = profileCity;
-      if (profileEmail !== (localUser?.email ?? '')) body.email = profileEmail;
+      if (profileEmail !== (localUser?.email ?? '')) {
+        body.email = profileEmail;
+        body.current_password = profileEmailPassword;
+      }
       if (Object.keys(body).length === 0) { setProfileEditing(false); return; }
       const result = await apiRequest<{ user: { id: number; name: string | null; last_name: string | null; city: string | null; email: string | null } }>(
         '/me',
@@ -286,6 +291,7 @@ export default function ChannelLinking() {
       );
       setLocalUser({ name: result.user.name, last_name: result.user.last_name ?? null, city: result.user.city, email: result.user.email });
       setProfileSuccess(true);
+      setProfileEmailPassword('');
       setProfileEditing(false);
       setTimeout(() => setProfileSuccess(false), 3000);
     } catch (err) {
@@ -428,9 +434,21 @@ export default function ChannelLinking() {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
               />
               {profileEmail !== (localUser?.email ?? '') && (
-                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                  ⚠️ Si cambiás el email, vas a tener que verificarlo de nuevo.
-                </p>
+                <>
+                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    ⚠️ Si cambiás el email, vas a tener que verificarlo de nuevo.
+                  </p>
+                  <label htmlFor="profile-email-password" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mt-2 mb-1">Contraseña actual</label>
+                  <input
+                    id="profile-email-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={profileEmailPassword}
+                    onChange={e => setProfileEmailPassword(e.target.value)}
+                    disabled={profileBusy}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+                  />
+                </>
               )}
             </div>
             {profileError && <p className="text-red-600 dark:text-red-400 text-xs">{profileError}</p>}
@@ -866,6 +884,7 @@ export default function ChannelLinking() {
         </div>
       </div>
 
+      <AccountDataSection />
     </div>
   );
 }

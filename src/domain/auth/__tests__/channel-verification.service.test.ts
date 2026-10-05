@@ -5,6 +5,8 @@ import type { UserId } from '../../../types/index.js';
 const mockQuery = vi.fn();
 vi.mock('../../../config/db.js', () => ({
   pool: { query: (...args: any[]) => mockQuery(...args) },
+  // CTA-7: vincular corre en una transacción (si falla, el código no se consume).
+  withTransaction: async (fn: () => Promise<unknown>) => fn(),
 }));
 
 // Mock WhatsApp send (so we don't hit Cloud API)
@@ -138,9 +140,11 @@ describe('ChannelVerificationService — confirmWhatsApp', () => {
     const future = new Date(Date.now() + 60 * 1000);
     setRowsForCall(0, [{ id: 7, code: '123456', target: '+541155123456', attempts: 0, expires_at: future }]);
     setRowsForCall(1, []); // race-check: no conflict
-    setRowsForCall(2, []); // mark verified_at
-    setRowsForCall(3, []); // UPDATE users phone + whatsapp_verified_at
-    setRowsForCall(4, [{
+    setRowsForCall(2, []); // CTA-7: ninguna cuenta de chat tiene el número
+    setRowsForCall(3, []); // mark verified_at
+    setRowsForCall(4, []); // UPDATE users phone + whatsapp_verified_at
+    setRowsForCall(5, []); // CTA-11: el número no usó una prueba en otra cuenta
+    setRowsForCall(6, [{
       phone_number: '+541155123456',
       telegram_id: null,
       whatsapp_verified_at: new Date(),

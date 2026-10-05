@@ -85,16 +85,8 @@ export default function ScoutingTable() {
       .catch(() => {});
   }, []);
 
-  // Auto-pick the only plot when there's just one
-  useEffect(() => {
-    const allPlots = fields.flatMap(f => f.plots);
-    const candidatePlots = filterFieldId
-      ? fields.find(f => String(f.id) === filterFieldId)?.plots ?? []
-      : allPlots;
-    if (candidatePlots.length === 1 && !filterPlotId) {
-      setFilterPlotId(String(candidatePlots[0].id));
-    }
-  }, [fields, filterFieldId, filterPlotId]);
+  // DSH-3: no se autoselecciona el lote único. Con un campo de un solo lote,
+  // el filtro forzado escondía los registros a nivel campo y no había "Todos".
 
   const availablePlots = filterFieldId
     ? fields.find(f => String(f.id) === filterFieldId)?.plots ?? []
@@ -209,7 +201,7 @@ export default function ScoutingTable() {
         <select value={filterPlotId} onChange={e => setFilterPlotId(e.target.value)}
           disabled={!filterFieldId && fields.length > 1}
           className="px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded text-sm min-w-[120px] disabled:bg-gray-100 dark:disabled:bg-gray-700">
-          {availablePlots.length !== 1 && <option value="">Todos los lotes</option>}
+          <option value="">Todos los lotes</option>
           {availablePlots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}

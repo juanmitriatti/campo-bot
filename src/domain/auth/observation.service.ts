@@ -3,6 +3,7 @@ import { accessibleRowSql, accessibleEventSql } from '../shared/accessible-field
 import { canAccessField } from '../shared/field-access.js';
 import { sqlNormalizedName } from '../../utils/entity-matcher.js';
 import { normalizeObservationText, detectObservationCategory } from '../../services/observations.js';
+import { validMoney, validCurrency, validDate, validQuantityOrNull, validName, validIdOrNull } from './edit-validation.js';
 
 interface ObservationRow {
   id: number;
@@ -466,8 +467,12 @@ export class ObservationService {
       throw new ObservationError(403, 'No tenés permisos para editar esta observación');
     }
 
-    // Normalize and re-categorize
-    const normalizedText = normalizeObservationText(newText);
+    // DSH-1: el texto se guarda TAL CUAL lo escribió el usuario; la forma
+    // normalizada (minúsculas, sin tildes, recortada) es solo para buscar.
+    // Antes la edición pisaba observation_text con la normalizada.
+    const cleanText = String(newText ?? '').trim();
+    if (!cleanText) throw new ObservationError(400, 'La observación no puede quedar vacía');
+    const normalizedText = normalizeObservationText(cleanText);
     const newCategory = detectObservationCategory(newText);
 
     const client = await pool.connect();
@@ -480,7 +485,7 @@ export class ObservationService {
          (observation_id, previous_text, new_text, previous_category, new_category, edited_by)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
-        [observationId, obs.observation_text, normalizedText, obs.category, newCategory, userId]
+        [observationId, obs.observation_text, cleanText, obs.category, newCategory, userId]
       );
 
       // Update observation
@@ -489,7 +494,7 @@ export class ObservationService {
          SET observation_text = $1, normalized_text = $2, category = $3, updated_at = NOW()
          WHERE id = $4
          RETURNING *`,
-        [normalizedText, normalizedText, newCategory, observationId]
+        [cleanText, normalizedText, newCategory, observationId]
       );
 
       await client.query('COMMIT');
@@ -509,7 +514,7 @@ export class ObservationService {
   async editExpense(
     expenseId: number,
     userId: number,
-    data: { description?: string; amount?: number; currency?: string; category?: string; expense_date?: string; expense_type?: string; product?: string | null; quantity?: number | null; unit?: string | null; unit_price?: number | null }
+    data: { description?: string; amount?: number; currency?: string; category?: string; expense_date?: string; expense_type?: string; product?: string | null; quantity?: number | null; unit?: string | null; unit_price?: number | null; plot_id?: number | null }
   ): Promise<ExpenseRow> {
     const { rows } = await pool.query(
       `SELECT * FROM expenses WHERE id = $1 AND deleted_at IS NULL`,
@@ -529,29 +534,72 @@ export class ObservationService {
     let idx = 0;
 
     idx++; sets.push(`edited_by = $${idx}`); params.push(userId);
-    if (data.description !== undefined) { idx++; sets.push(`description = $${idx}`); params.push(data.description); }
-    if (data.amount !== undefined) { idx++; sets.push(`amount = $${idx}`); params.push(data.amount); }
-    if (data.currency !== undefined) { idx++; sets.push(`currency = $${idx}`); params.push(data.currency); }
-    if (data.category !== undefined) { idx++; sets.push(`category = $${idx}`); params.push(data.category); }
-    if (data.expense_date !== undefined) { idx++; sets.push(`expense_date = $${idx}`); params.push(data.expense_date); }
+    // DSH-8/9: cada dato se valida antes del UPDATE (antes: 500 o basura guardada).
+    if (data.description !== undefined) { idx++; sets.push(`description = $${idx}`); params.push(String(data.description ?? '').trim()); }
+    if (data.amount !== undefined) { idx++; sets.push(`amount = $${idx}`); params.push(validMoney(data.amount)); }
+    if (data.currency !== undefined) { idx++; sets.push(`currency = $${idx}`); params.push(validCurrency(data.currency)); }
+    if (data.category !== undefined) { idx++; sets.push(`category = $${idx}`); params.push(validName(data.category, 'La categoría', 60)); }
+    if (data.expense_date !== undefined) { idx++; sets.push(`expense_date = $${idx}`); params.push(validDate(data.expense_date)); }
     if (data.expense_type !== undefined) { idx++; sets.push(`expense_type = $${idx}`); params.push(data.expense_type); }
     if (data.product !== undefined) { idx++; sets.push(`product = $${idx}`); params.push(data.product as string); }
-    if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(data.quantity as number); }
+    if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(validQuantityOrNull(data.quantity) as number); }
     if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit as string); }
-    if (data.unit_price !== undefined) { idx++; sets.push(`unit_price = $${idx}`); params.push(data.unit_price as number); }
+    if (data.unit_price !== undefined) { idx++; sets.push(`unit_price = $${idx}`); params.push(validQuantityOrNull(data.unit_price, 'El precio por unidad') as number); }
+    if (data.plot_id !== undefined) {
+      const loc = await this._moneyLocation(userId, data.plot_id);
+      idx++; sets.push(`plot_id = $${idx}`); params.push(loc.plotId as number);
+      if (loc.fieldId != null) { idx++; sets.push(`field_id = $${idx}`); params.push(loc.fieldId); }
+    }
 
     idx++;
     const result = await pool.query(
       `UPDATE expenses SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
       [...params, expenseId]
     );
+    await this._syncLivestockPrice('linked_expense_id', result.rows[0], data.amount !== undefined || data.currency !== undefined);
     return result.rows[0];
+  }
+
+  /**
+   * DSH-19: el gasto/ingreso que creó una compra/venta de hacienda se puede
+   * corregir en el dashboard; el precio por cabeza del movimiento acompaña
+   * (antes la ficha de hacienda seguía mostrando el precio viejo).
+   */
+  private async _syncLivestockPrice(
+    column: 'linked_expense_id' | 'linked_income_id',
+    row: { id: number; amount: string | number; currency: string | null } | undefined,
+    moneyChanged: boolean,
+  ): Promise<void> {
+    if (!row || !moneyChanged) return;
+    const { rows } = await pool.query(`SELECT id, count FROM livestock_movements WHERE ${column} = $1`, [row.id]);
+    if (rows.length === 0 || !(Number(rows[0].count) > 0)) return;
+    const perHead = Math.round((Number(row.amount) / Number(rows[0].count)) * 100) / 100;
+    const usd = row.currency === 'USD';
+    await pool.query(
+      `UPDATE livestock_movements SET unit_price_ars = $2, unit_price_usd = $3 WHERE id = $1`,
+      [rows[0].id, usd ? null : perHead, usd ? perHead : null],
+    );
+    console.log(`[LIVESTOCK] precio del movimiento ${rows[0].id} sigue al ${column === 'linked_expense_id' ? 'gasto' : 'ingreso'} ${row.id}: ${perHead} ${usd ? 'USD' : 'ARS'}/cabeza`);
+  }
+
+  /**
+   * Lote nuevo de un gasto/ingreso editado en el dashboard (DSH-14: "Asignar
+   * lote" de Para revisar no tenía cómo guardarlo). Valida que exista y que el
+   * usuario tenga acceso; el campo sale del lote. null = sin lote.
+   */
+  private async _moneyLocation(userId: number, rawPlotId: unknown): Promise<{ plotId: number | null; fieldId: number | null }> {
+    const plotId = validIdOrNull(rawPlotId, 'El lote');
+    if (plotId == null) return { plotId: null, fieldId: null };
+    const { rows } = await pool.query(`SELECT field_id FROM plots WHERE id = $1 AND deleted_at IS NULL`, [plotId]);
+    if (rows.length === 0) throw new ObservationError(400, 'No encontré ese lote');
+    if (!(await this._hasFieldAccess(userId, rows[0].field_id))) throw new ObservationError(403, 'No tenés acceso al lote seleccionado');
+    return { plotId, fieldId: rows[0].field_id };
   }
 
   async editIncome(
     incomeId: number,
     userId: number,
-    data: { description?: string; amount?: number; currency?: string; category?: string; income_date?: string; quantity?: number | null; unit?: string | null; unit_price?: number | null }
+    data: { description?: string; amount?: number; currency?: string; category?: string; income_date?: string; quantity?: number | null; unit?: string | null; unit_price?: number | null; plot_id?: number | null }
   ): Promise<IncomeRow> {
     const { rows } = await pool.query(
       `SELECT * FROM incomes WHERE id = $1 AND deleted_at IS NULL`,
@@ -571,20 +619,27 @@ export class ObservationService {
     let idx = 0;
 
     idx++; sets.push(`edited_by = $${idx}`); params.push(userId);
-    if (data.description !== undefined) { idx++; sets.push(`description = $${idx}`); params.push(data.description); }
-    if (data.amount !== undefined) { idx++; sets.push(`amount = $${idx}`); params.push(data.amount); }
-    if (data.currency !== undefined) { idx++; sets.push(`currency = $${idx}`); params.push(data.currency); }
-    if (data.category !== undefined) { idx++; sets.push(`category = $${idx}`); params.push(data.category); }
-    if (data.income_date !== undefined) { idx++; sets.push(`income_date = $${idx}`); params.push(data.income_date); }
-    if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(data.quantity); }
+    if (data.description !== undefined) { idx++; sets.push(`description = $${idx}`); params.push(String(data.description ?? '').trim()); }
+    // Monto 0 vale: una venta "a fijar" (DSH-9 valida el resto).
+    if (data.amount !== undefined) { idx++; sets.push(`amount = $${idx}`); params.push(validMoney(data.amount, 'El monto', { allowZero: true })); }
+    if (data.currency !== undefined) { idx++; sets.push(`currency = $${idx}`); params.push(validCurrency(data.currency)); }
+    if (data.category !== undefined) { idx++; sets.push(`category = $${idx}`); params.push(validName(data.category, 'La categoría', 60)); }
+    if (data.income_date !== undefined) { idx++; sets.push(`income_date = $${idx}`); params.push(validDate(data.income_date)); }
+    if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(validQuantityOrNull(data.quantity)); }
     if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit); }
-    if (data.unit_price !== undefined) { idx++; sets.push(`unit_price = $${idx}`); params.push(data.unit_price); }
+    if (data.unit_price !== undefined) { idx++; sets.push(`unit_price = $${idx}`); params.push(validQuantityOrNull(data.unit_price, 'El precio por unidad')); }
+    if (data.plot_id !== undefined) {
+      const loc = await this._moneyLocation(userId, data.plot_id);
+      idx++; sets.push(`plot_id = $${idx}`); params.push(loc.plotId);
+      if (loc.fieldId != null) { idx++; sets.push(`field_id = $${idx}`); params.push(loc.fieldId); }
+    }
 
     idx++;
     const result = await pool.query(
       `UPDATE incomes SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
       [...params, incomeId]
     );
+    await this._syncLivestockPrice('linked_income_id', result.rows[0], data.amount !== undefined || data.currency !== undefined);
     return result.rows[0];
   }
 
@@ -621,20 +676,21 @@ export class ObservationService {
 
     idx++; sets.push(`edited_by = $${idx}`); params.push(userId);
     if (data.event_type !== undefined) { idx++; sets.push(`event_type = $${idx}`); params.push(data.event_type); }
-    if (data.event_date !== undefined) { idx++; sets.push(`event_date = $${idx}`); params.push(data.event_date); }
+    if (data.event_date !== undefined) { idx++; sets.push(`event_date = $${idx}`); params.push(validDate(data.event_date)); }
     if (data.crop !== undefined) { idx++; sets.push(`crop = $${idx}`); params.push(data.crop); }
     if (data.product !== undefined) { idx++; sets.push(`product = $${idx}`); params.push(data.product); }
-    if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(data.quantity); }
+    if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(validQuantityOrNull(data.quantity)); }
     if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit); }
     if (data.implement !== undefined) { idx++; sets.push(`implement = $${idx}`); params.push(data.implement); }
     if (data.notes !== undefined) { idx++; sets.push(`notes = $${idx}`); params.push(data.notes); }
-    if (data.pregnant_count !== undefined) { idx++; sets.push(`pregnant_count = $${idx}`); params.push(data.pregnant_count); }
-    if (data.open_count !== undefined) { idx++; sets.push(`open_count = $${idx}`); params.push(data.open_count); }
-    if (data.uncertain_count !== undefined) { idx++; sets.push(`uncertain_count = $${idx}`); params.push(data.uncertain_count); }
+    if (data.pregnant_count !== undefined) { idx++; sets.push(`pregnant_count = $${idx}`); params.push(validQuantityOrNull(data.pregnant_count, 'Las preñadas')); }
+    if (data.open_count !== undefined) { idx++; sets.push(`open_count = $${idx}`); params.push(validQuantityOrNull(data.open_count, 'Las vacías')); }
+    if (data.uncertain_count !== undefined) { idx++; sets.push(`uncertain_count = $${idx}`); params.push(validQuantityOrNull(data.uncertain_count, 'Las dudosas')); }
     const plotChanged = data.plot_id !== undefined && data.plot_id !== act.plot_id;
     if (data.plot_id !== undefined) {
       // When plot changes, also derive field_id from the plot's parent field
       if (data.plot_id !== null) {
+        data.plot_id = validIdOrNull(data.plot_id, 'El lote');
         const { rows: plotRows } = await pool.query(`SELECT field_id FROM plots WHERE id = $1 AND deleted_at IS NULL`, [data.plot_id]);
         // Un lote inexistente o borrado era un 500 por la FK (DSH-6).
         if (plotRows.length === 0) {
@@ -695,16 +751,16 @@ export class ObservationService {
   }
 
   async getObservationHistory(observationId: number, userId: number): Promise<HistoryRow[]> {
-    // Verify ownership
+    // DSH-17: la misma regla que editar. Antes se traía solo user_id (field_id
+    // llegaba undefined) y el historial daba 403 a un socio que sí podía editarla.
     const { rows: obsRows } = await pool.query(
-      `SELECT user_id FROM agro_observations WHERE id = $1`,
+      `SELECT * FROM agro_observations WHERE id = $1`,
       [observationId]
     );
     if (obsRows.length === 0) {
       throw new ObservationError(404, 'Observación no encontrada');
     }
-    const obsRow = obsRows[0];
-    const canView = obsRow.user_id === userId || (obsRow.field_id && await this._hasFieldAccess(userId, obsRow.field_id));
+    const canView = await this._canWriteRow(userId, obsRows[0]);
     if (!canView) {
       throw new ObservationError(403, 'No tenés permisos para ver esta observación');
     }

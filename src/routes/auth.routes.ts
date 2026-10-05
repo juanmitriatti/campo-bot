@@ -249,6 +249,19 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
         // Dup-check case-insensitive: LOWER ambos lados, NO pasamos email lowercased
         const dup = await pool.query(`SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) AND id <> $2`, [email, req.auth!.userId]);
         if (dup.rows.length > 0) { res.status(409).json({ error: 'Ese email ya está en uso.' }); return; }
+        // CTA-13: cambiar el email (que es con lo que se recupera la cuenta)
+        // pide la contraseña actual. Con una sesión robada se cambiaba el email
+        // y después "olvidé mi contraseña" entregaba la cuenta.
+        const pw = await pool.query(`SELECT password_hash FROM users WHERE id = $1`, [req.auth!.userId]);
+        const hash = pw.rows[0]?.password_hash as string | null | undefined;
+        if (hash) {
+          const current = typeof req.body?.current_password === 'string' ? req.body.current_password : '';
+          const bcrypt = (await import('bcrypt')).default;
+          if (!current || !(await bcrypt.compare(current, hash))) {
+            res.status(401).json({ error: 'Para cambiar el email, poné tu contraseña actual.', code: 'PASSWORD_REQUIRED' });
+            return;
+          }
+        }
       }
     }
     const sets: string[] = []; const vals: unknown[] = [];
@@ -279,7 +292,13 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
       throw dbErr;
     }
     if (r.rows.length === 0) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
-    console.log(`[account] perfil actualizado user=${req.auth!.userId}${emailChanged ? ' (email cambiado, verificación reseteada)' : ''}`);
+    if (emailChanged) {
+      // CTA-13: un link de reset o de verificación pedido para el email viejo deja de valer.
+      const { invalidatePendingTokens } = await import('../domain/auth/one-time-token.js');
+      await invalidatePendingTokens('password_reset_tokens', req.auth!.userId);
+      await invalidatePendingTokens('email_verification_tokens', req.auth!.userId);
+    }
+    console.log(`[account] perfil actualizado user=${req.auth!.userId}${emailChanged ? ' (email cambiado, verificación y resets pendientes invalidados)' : ''}`);
     res.json({ user: r.rows[0] });
   } catch (err) { handleError(err, res); }
 });
@@ -784,7 +803,20 @@ router.patch('/plots/:id', requireAuth, requireFeature('fields'), async (req: Re
     );
     // Invalidar caché de contexto: el validador anti-alucinación trabaja con la lista vieja hasta 60s
     invalidateUserContext(asUserId(req.auth!.userId));
-    res.json({ plot: r.rows[0] });
+    // DSH-18: bajar la superficie por debajo de lo sembrado en la campaña en
+    // curso se permite (la corrección puede ser de la siembra), pero se avisa.
+    let warning: string | null = null;
+    if (hectares !== undefined) {
+      const sown = await pool.query(
+        `SELECT MAX(sowed_hectares)::float AS ha FROM plot_crops WHERE plot_id = $1 AND end_date IS NULL`,
+        [id],
+      );
+      const ha = Number(sown.rows[0]?.ha ?? 0);
+      if (ha > hectares) {
+        warning = `El lote tiene ${ha.toLocaleString('es-AR')} ha sembradas en la campaña en curso, más que las ${hectares.toLocaleString('es-AR')} ha que cargaste. Revisá cuál de los dos números está mal.`;
+      }
+    }
+    res.json({ plot: r.rows[0], warning });
   } catch (err) { handleError(err, res); }
 });
 
@@ -1210,6 +1242,9 @@ router.get('/harvest-loads', requireAuth, requireFeature('agronomy'), async (req
       crop,
       humidityMinPct: humidityMinPct != null && !isNaN(humidityMinPct) ? humidityMinPct : null,
       humidityMaxPct: humidityMaxPct != null && !isNaN(humidityMaxPct) ? humidityMaxPct : null,
+      // DSH-15: el default de queryHarvestLoads es 200 (para el chat) y el total
+      // de la tabla decía 200 con una campaña de 350 camiones.
+      limit: 100000,
     });
 
     const total = allRows.length;
@@ -1717,6 +1752,27 @@ router.patch('/livestock/:id', requireAuth, requireFeature('livestock'), async (
     if (!canAccess) { res.status(403).json({ error: 'Sin acceso a este grupo' }); return; }
 
     const { breed, avg_weight_kg, notes } = req.body;
+    // DSH-9/11: peso promedio razonable, y una raza que ya tiene OTRO grupo de la
+    // misma categoría en el mismo lugar se explica (antes: 500 por el índice único).
+    if (avg_weight_kg !== undefined && avg_weight_kg !== null) {
+      const w = Number(avg_weight_kg);
+      if (!Number.isFinite(w) || w <= 0 || w > 1500) { res.status(400).json({ error: 'El peso promedio tiene que estar entre 1 y 1.500 kg.' }); return; }
+    }
+    if (breed !== undefined) {
+      const { canonicalBreedName } = await import('../utils/livestock-breeds.js');
+      const canon = canonicalBreedName(breed);
+      const clash = await pool.query(
+        `SELECT 1 FROM livestock_groups
+          WHERE id <> $1 AND deleted_at IS NULL AND category = $2
+            AND breed IS NOT DISTINCT FROM $3
+            AND plot_id IS NOT DISTINCT FROM $4 AND corral_id IS NOT DISTINCT FROM $5`,
+        [id, group.category, canon, group.plot_id ?? null, group.corral_id ?? null],
+      );
+      if (clash.rows.length > 0) {
+        res.status(409).json({ error: `Ya hay un grupo de ${group.category} ${canon ?? 'sin raza'} en ese lugar. Para juntarlos, mové los animales de un grupo al otro.` });
+        return;
+      }
+    }
     await repo.updateGroupMetadata(id, { breed, avg_weight_kg, notes });
     const updated = await repo.getGroupById(id);
     res.json(updated);
@@ -2996,6 +3052,11 @@ function handleError(err: unknown, res: Response): void {
   if (err instanceof Error && err.name === 'FieldAccessError') {
     const fe = err as Error & { status: number; code: string };
     res.status(fe.status).json({ error: fe.message, code: fe.code });
+    return;
+  }
+  // Dato inválido en una edición del dashboard (DSH-9): 400 con qué corregir.
+  if (err instanceof Error && err.name === 'EditValidationError') {
+    res.status(400).json({ error: err.message, code: 'INVALID_INPUT' });
     return;
   }
   // Feedlot/corral con hacienda (HAC-18): 409 con la explicación.

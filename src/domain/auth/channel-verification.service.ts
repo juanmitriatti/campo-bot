@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { pool } from '../../config/db.js';
+import { pool, withTransaction } from '../../config/db.js';
 import { normalizePhone } from '../../utils/phone.js';
 import { sendMessage as sendWhatsAppMessage } from '../../services/whatsapp.js';
 import { getSetting, getSettingNumber } from '../../services/settings.service.js';
@@ -51,6 +51,79 @@ function generateOtp(): string {
 
 function generateLinkToken(): string {
   return crypto.randomBytes(24).toString('base64url');
+}
+
+/**
+ * CTA-11: la prueba gratis es una por NÚMERO, no por cuenta. Desvincular el
+ * WhatsApp y abrir otra cuenta daba 14 días más, sin fin. Si este número ya
+ * se verificó en otra cuenta que tuvo suscripción (prueba o pago) y esta
+ * cuenta está en su prueba, la prueba se da por terminada. Una suscripción
+ * paga no se toca.
+ */
+async function endRecycledTrial(userId: number, phone: string): Promise<void> {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM channel_verifications cv
+      WHERE cv.channel = 'whatsapp' AND cv.target = $1 AND cv.user_id <> $2 AND cv.verified_at IS NOT NULL
+        AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id = cv.user_id)
+      LIMIT 1`,
+    [phone, userId],
+  );
+  if (rows.length === 0) return;
+  const ended = await pool.query(
+    `UPDATE subscriptions SET status = 'expired', trial_ends_at = LEAST(trial_ends_at, NOW()), updated_at = NOW()
+      WHERE user_id = $1 AND status = 'trial' AND provider = 'trial'
+      RETURNING id`,
+    [userId],
+  );
+  if (ended.rows.length > 0) {
+    // Mismo destino que una prueba vencida por el barrido nocturno: plan free.
+    await pool.query(`UPDATE users SET plan_id = (SELECT id FROM plans WHERE name = 'free') WHERE id = $1`, [userId]);
+    console.log(`[TRIAL] user=${userId}: el número ya usó una prueba en otra cuenta — prueba terminada`);
+  }
+}
+
+/**
+ * CTA-7: el número (o el Telegram) que se quiere vincular puede estar ya en
+ * una cuenta que el bot creó sola cuando esa persona escribió por el chat, sin
+ * verificar. El UPDATE chocaba con la UNIQUE, daba 500 y el código quedaba
+ * consumido. Si esa cuenta está VACÍA se le saca el canal (era solo el rastro
+ * del primer mensaje); si tiene datos, no se mezclan cuentas a ciegas: 409 con
+ * explicación y el código sigue sirviendo. Llamar dentro de la transacción.
+ */
+async function releaseChannelFromChatAccount(
+  column: 'phone_number' | 'telegram_id',
+  value: string,
+  targetUserId: number,
+): Promise<void> {
+  const match = column === 'phone_number'
+    ? `(phone_number = $1 OR canonical_phone_ar(phone_number) = $1)`
+    : `telegram_id::text = $1::text`;
+  const { rows } = await pool.query(
+    `SELECT u.id,
+            (EXISTS (SELECT 1 FROM fields f WHERE f.user_id = u.id)
+             OR EXISTS (SELECT 1 FROM field_members fm WHERE fm.user_id = u.id)
+             OR EXISTS (SELECT 1 FROM expenses e WHERE e.user_id = u.id)
+             OR EXISTS (SELECT 1 FROM incomes i WHERE i.user_id = u.id)
+             OR EXISTS (SELECT 1 FROM domain_events d WHERE d.user_id = u.id)
+             OR EXISTS (SELECT 1 FROM rainfall r WHERE r.user_id = u.id)) AS has_data
+       FROM users u
+      WHERE ${match} AND u.id <> $2`,
+    [value, targetUserId],
+  );
+  for (const r of rows) {
+    if (r.has_data) {
+      console.log(`[VERIFY] ${column} de user=${targetUserId} lo usa la cuenta de chat ${r.id} con datos — no se vincula`);
+      throw new VerificationError(
+        409,
+        'CHANNEL_HAS_CHAT_DATA',
+        column === 'phone_number'
+          ? 'Ese número ya tiene datos cargados desde el chat en otra cuenta. Escribinos para unir las dos cuentas; no perdés nada.'
+          : 'Ese Telegram ya tiene datos cargados desde el chat en otra cuenta. Escribinos para unir las dos cuentas; no perdés nada.',
+      );
+    }
+    await pool.query(`UPDATE users SET ${column} = NULL WHERE id = $1`, [r.id]);
+    console.log(`[VERIFY] ${column} liberado de la cuenta de chat vacía ${r.id} para user=${targetUserId}`);
+  }
 }
 
 export class ChannelVerificationService {
@@ -179,14 +252,19 @@ export class ChannelVerificationService {
       );
     }
 
-    await pool.query(
-      `UPDATE channel_verifications SET verified_at = NOW() WHERE id = $1`,
-      [row.id]
-    );
-    await pool.query(
-      `UPDATE users SET phone_number = $1, whatsapp_verified_at = NOW() WHERE id = $2`,
-      [row.target, userId]
-    );
+    // Todo junto (CTA-7): si algo falla, el código NO queda consumido.
+    await withTransaction(async () => {
+      await releaseChannelFromChatAccount('phone_number', row.target, Number(userId));
+      await pool.query(
+        `UPDATE channel_verifications SET verified_at = NOW() WHERE id = $1`,
+        [row.id]
+      );
+      await pool.query(
+        `UPDATE users SET phone_number = $1, whatsapp_verified_at = NOW() WHERE id = $2`,
+        [row.target, userId]
+      );
+      await endRecycledTrial(Number(userId), row.target);
+    });
 
     return this.getStatus(userId);
   }
@@ -279,18 +357,21 @@ export class ChannelVerificationService {
     );
     const alreadyLinked = same.rows[0]?.telegram_verified_at != null;
 
-    await pool.query(
-      `UPDATE channel_verifications SET verified_at = NOW() WHERE id = $1`,
-      [row.id]
-    );
-    await pool.query(
-      `UPDATE users
-       SET telegram_id = $1,
-           telegram_verified_at = NOW(),
-           name = COALESCE(name, $2)
-       WHERE id = $3`,
-      [telegramChatId, telegramFirstName ?? null, row.user_id]
-    );
+    await withTransaction(async () => {
+      await releaseChannelFromChatAccount('telegram_id', String(telegramChatId), Number(row.user_id));
+      await pool.query(
+        `UPDATE channel_verifications SET verified_at = NOW() WHERE id = $1`,
+        [row.id]
+      );
+      await pool.query(
+        `UPDATE users
+         SET telegram_id = $1,
+             telegram_verified_at = NOW(),
+             name = COALESCE(name, $2)
+         WHERE id = $3`,
+        [telegramChatId, telegramFirstName ?? null, row.user_id]
+      );
+    });
 
     return { user_id: row.user_id, already_linked: alreadyLinked };
   }

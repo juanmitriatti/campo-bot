@@ -258,7 +258,9 @@ export default function FieldsTab() {
       const body: Record<string, unknown> = {};
       if (name !== undefined) body.name = name;
       if (hectares !== undefined) body.hectares = hectares;
-      await apiRequest(`/plots/${id}`, { method: 'PATCH', body });
+      const r = await apiRequest<{ plot: unknown; warning?: string | null }>(`/plots/${id}`, { method: 'PATCH', body });
+      // DSH-18: la superficie se guarda igual, pero si queda por debajo de lo sembrado se avisa.
+      setCityWarning(r.warning ?? null);
       setEditingPlotId(null);
       await fetchFields();
     } catch (err: unknown) {
