@@ -57,7 +57,11 @@ export default function Sidebar({ active, onChange, features }: SidebarProps) {
   };
 
   return (
-    <aside className="hidden md:flex flex-col w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 min-h-[calc(100vh-3.5rem)]">
+    // Fijo debajo de la barra (h-14) y del alto de la ventana: la página scrollea
+    // el contenido y el menú no se mueve. Antes se estiraba al alto del
+    // contenido y el bloque de abajo (`mt-auto`) quedaba a kilómetros del resto
+    // en un Resumen largo. Si el menú no entra en la ventana, scrollea él solo.
+    <aside className="hidden md:flex flex-col w-56 shrink-0 sticky top-14 self-start h-[calc(100vh-3.5rem)] overflow-y-auto bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
       <nav className="flex flex-col gap-0.5 p-3">
         {renderItem(PRIMARY)}
         {visible(SECONDARY, features) && renderItem(SECONDARY)}
@@ -85,7 +89,7 @@ export default function Sidebar({ active, onChange, features }: SidebarProps) {
         })}
       </nav>
 
-      <div className="mt-auto p-3 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-0.5">
+      <div className="mx-3 pt-3 pb-3 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-0.5">
         {FOOTER.filter(i => visible(i, features)).map(renderItem)}
         <a
           href="/guia"

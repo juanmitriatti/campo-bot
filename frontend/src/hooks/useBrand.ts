@@ -12,6 +12,8 @@ export interface Brand {
   support_contact: string;
   /** Número visible del bot (solo dígitos), '' si no está configurado. */
   whatsapp_bot_number?: string;
+  /** Usuario del bot de Telegram sin @, '' si no está configurado. */
+  telegram_bot_username?: string;
 }
 
 export const DEFAULT_BRAND: Brand = { app_name: 'MiAgro', bot_name: 'MIA', support_contact: '' };

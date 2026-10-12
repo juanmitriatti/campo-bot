@@ -14,6 +14,8 @@ import {
   type SubscriptionStatus,
 } from '../api/subscription';
 import { PATHS } from '../paths';
+import { useBrand } from '../hooks/useBrand';
+import BotContactLink from './BotContactLink';
 
 interface VerificationStatus {
   whatsapp_verified: boolean;
@@ -67,6 +69,9 @@ export default function ChannelLinking() {
   const [subError, setSubError] = useState<string | null>(null);
 
   const { user, logout } = useAuth();
+  const brand = useBrand();
+  const waBotNumber = brand.whatsapp_bot_number ?? '';
+  const tgBotUser = brand.telegram_bot_username ?? '';
   const navigate = useNavigate();
 
   // Perfil editable
@@ -764,6 +769,15 @@ export default function ChannelLinking() {
           </div>
         )}
 
+        {status?.whatsapp_verified && waBotNumber && waStep === 'idle' && (
+          <BotContactLink
+            href={`https://wa.me/${waBotNumber}?text=${encodeURIComponent('Hola')}`}
+            label="Escribirle al bot por WhatsApp"
+            handle={`+${waBotNumber}`}
+            className="bg-green-600 hover:bg-green-700"
+          />
+        )}
+
         {waStep === 'success' && (
           <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-md">
             <p className="text-sm text-green-800 dark:text-green-300">✅ ¡Listo! Ya podés escribirle al bot por WhatsApp.</p>
@@ -845,6 +859,15 @@ export default function ChannelLinking() {
             )}
             {tgError && <p className="text-xs text-red-600">{tgError}</p>}
           </div>
+        )}
+
+        {status?.telegram_verified && tgBotUser && (
+          <BotContactLink
+            href={`https://t.me/${tgBotUser}`}
+            label="Escribirle al bot por Telegram"
+            handle={`@${tgBotUser}`}
+            className="bg-blue-500 hover:bg-blue-600"
+          />
         )}
       </div>
       </div>

@@ -58,7 +58,8 @@ export default function Navbar({ onUserClick }: NavbarProps) {
 
   return (
     <nav className="bg-campo-700 text-white shadow-md sticky top-0 z-40">
-      <div className="px-4 md:px-8 py-3 flex items-center justify-between">
+      {/* Alto fijo (h-14): el Sidebar se pega justo debajo con `top-14`. */}
+      <div className="px-4 md:px-8 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span
             className="text-xl font-bold tracking-tight cursor-pointer"
