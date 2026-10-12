@@ -23,7 +23,8 @@ import { logError } from '../services/error-logger.js';
 import { normalizeTranscript } from '../utils/text-normalizer.js';
 import { DocumentError } from '../domain/documents/document.service.js';
 import { withUserLock } from '../middleware/user-lock.js';
-import { INVITE_ACCEPT_RE } from '../utils/lexicon.js';
+import { INVITE_ACCEPT_RE, WHATSAPP_VERIFY_RE } from '../utils/lexicon.js';
+import { ChannelVerificationService, VerificationError } from '../domain/auth/channel-verification.service.js';
 import {
   processTextMessage,
   handleInteractiveReply,
@@ -161,6 +162,34 @@ router.post('/', (req: Request, res: Response) => {
   });
 });
 
+/** Canjea "verificar 123456" y devuelve la respuesta para el chat. */
+async function redeemInboundVerification(phone: string, code: string): Promise<string> {
+  try {
+    const r = await new ChannelVerificationService().redeemWhatsAppInbound(phone, code);
+    if (r.already_linked) return '✅ Este WhatsApp ya quedó vinculado a tu cuenta. ¡Ya podés escribirme!';
+    let hasFields = true;
+    try {
+      const { pool } = await import('../config/db.js');
+      const { rows } = await pool.query('SELECT 1 FROM fields WHERE user_id = $1 AND deleted_at IS NULL LIMIT 1', [r.user_id]);
+      hasFields = rows.length > 0;
+    } catch { /* ante la duda, el copy genérico */ }
+    // Sin campos, el primer paso es contar el campo (igual que la bienvenida de
+    // Telegram): sugerir un gasto rebotaría con "primero creá un campo".
+    if (!hasFields) {
+      const { interpolate } = await import('../utils/template.js');
+      const botName = (await getSetting('BOT_NAME')) || 'MIA';
+      const template = await getSetting('TG_LINKED_WELCOME_NO_FIELDS_MESSAGE');
+      if (template) return interpolate(template, { botName });
+    }
+    return '✅ *WhatsApp vinculado*\n\nYa podés usarme por acá. Probá con *menu* o escribí algo como "gasté 50 mil en gasoil".';
+  } catch (err) {
+    if (err instanceof VerificationError) return `❌ ${err.message}`;
+    console.error('[whatsapp] redeemWhatsAppInbound failed:', err);
+    logError('whatsapp', 'VERIFY_INBOUND', err as Error);
+    return '❌ No pude vincular este WhatsApp. Pedí un código nuevo desde la web y probá de nuevo.';
+  }
+}
+
 async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void> {
   const startTime = Date.now();
   // Para el catch final: si ya sabemos a quién responder, avisamos del fallo.
@@ -194,6 +223,18 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
     notifyPhone = phone;
     let text: string | undefined = message.text?.body;
 
+    // --- Vinculación por mensaje entrante ("verificar 123456") ---
+    // Llega por el link wa.me de Mi cuenta. Va ANTES del gate: quien se vincula
+    // todavía no tiene el número verificado. El bot no le puede mandar el código
+    // a quien nunca le escribió (ventana de 24 h de Meta), así que el código
+    // viaja al revés y el número que se vincula es el que lo manda.
+    const verifyCode = text ? WHATSAPP_VERIFY_RE.exec(text.trim())?.[1] : undefined;
+    if (verifyCode) {
+      await sendMessage(phone, await redeemInboundVerification(phone, verifyCode));
+      res.sendStatus(200);
+      return;
+    }
+
     // --- Channel verification gate ---
     // If REQUIRE_VERIFIED_CHANNEL is on AND no verified user owns this phone,
     // refuse to auto-create an anonymous user. Send an onboarding hint and stop.
@@ -217,7 +258,7 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
         : 'Una vez vinculado, escribime de nuevo y ya podés cargar gastos, lluvias, hacienda, cosechas y más.';
       await sendMessage(
         phone,
-        `Hola 👋 Bienvenido a ${appName}.\n\nPara empezar a usarme, seguí estos 2 pasos en orden:\n\n*1.* Creá tu cuenta acá 👉 ${registerUrl}\n*2.* Desde la app, andá a *Mi cuenta* → *Vincular WhatsApp* y te mando un código a este número.\n\n${closing}`,
+        `Hola 👋 Bienvenido a ${appName}.\n\nPara empezar a usarme, seguí estos 2 pasos en orden:\n\n*1.* Creá tu cuenta acá 👉 ${registerUrl}\n*2.* Desde la app, andá a *Mi cuenta* → *Vincular WhatsApp* y mandame por acá el código que te muestra.\n\n${closing}`,
       );
       res.sendStatus(200);
       return;

@@ -10,6 +10,8 @@ export interface Brand {
   app_name: string;
   bot_name: string;
   support_contact: string;
+  /** Número visible del bot (solo dígitos), '' si no está configurado. */
+  whatsapp_bot_number?: string;
 }
 
 export const DEFAULT_BRAND: Brand = { app_name: 'MiAgro', bot_name: 'MIA', support_contact: '' };

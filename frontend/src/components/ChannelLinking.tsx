@@ -25,7 +25,21 @@ interface VerificationStatus {
 // Los tipos de suscripción viven en api/subscription.ts — los tenía duplicados
 // este componente y el banner del Resumen, y ya diferían entre sí.
 
-type WaStep = 'idle' | 'enter-phone' | 'enter-code' | 'success';
+type WaStep = 'idle' | 'enter-phone' | 'enter-code' | 'send-to-bot' | 'success';
+
+/** Respuesta de POST /verify/whatsapp/start (ver StartWhatsAppResult en el backend). */
+interface StartWhatsAppResponse {
+  expires_at: string;
+  ttl_minutes: number;
+  /** inbound: el usuario le manda el código AL bot (el bot no puede escribirle
+   *  a quien nunca le habló — ventana de 24 h de Meta). outbound: lo recibe. */
+  mode: 'inbound' | 'outbound';
+  wa_link?: string;
+  wa_text?: string;
+  code?: string;
+}
+
+const WA_POLL_MS = 3000;
 
 export default function ChannelLinking() {
   const [status, setStatus] = useState<VerificationStatus | null>(null);
@@ -36,6 +50,7 @@ export default function ChannelLinking() {
   const [waPhone, setWaPhone] = useState('');
   const [waCode, setWaCode] = useState('');
   const [waExpiresAt, setWaExpiresAt] = useState<string | null>(null);
+  const [waInbound, setWaInbound] = useState<{ link: string; text: string; code: string } | null>(null);
   const [waBusy, setWaBusy] = useState(false);
   const [waError, setWaError] = useState<string | null>(null);
 
@@ -94,6 +109,24 @@ export default function ChannelLinking() {
     Promise.all([refreshStatus(), refreshSub()]).finally(() => setLoading(false));
   }, []);
 
+  // Esperando que el usuario le mande el código al bot: el webhook vincula el
+  // número y acá solo nos enteramos consultando el estado.
+  useEffect(() => {
+    if (waStep !== 'send-to-bot') return;
+    let alive = true;
+    const id = setInterval(async () => {
+      try {
+        const s = await apiRequest<VerificationStatus>('/verify/status');
+        if (!alive || !s.whatsapp_verified) return;
+        setStatus(s);
+        setWaInbound(null);
+        setWaStep('success');
+        setTimeout(() => setWaStep('idle'), 4000);
+      } catch { /* reintenta en el próximo tick */ }
+    }, WA_POLL_MS);
+    return () => { alive = false; clearInterval(id); };
+  }, [waStep]);
+
   // ---------- Subscription ----------
   const upgradeNow = async (planName: string, period: BillingPeriod) => {
     setSubError(null);
@@ -128,12 +161,18 @@ export default function ChannelLinking() {
     }
     setWaBusy(true);
     try {
-      const r = await apiRequest<{ expires_at: string; ttl_minutes: number }>(
+      const r = await apiRequest<StartWhatsAppResponse>(
         '/verify/whatsapp/start',
         { method: 'POST', body: { phone: waPhone.trim() } },
       );
       setWaExpiresAt(r.expires_at);
-      setWaStep('enter-code');
+      if (r.mode === 'inbound' && r.wa_link && r.wa_text && r.code) {
+        setWaInbound({ link: r.wa_link, text: r.wa_text, code: r.code });
+        setWaStep('send-to-bot');
+      } else {
+        setWaInbound(null);
+        setWaStep('enter-code');
+      }
     } catch (err) {
       setWaError(err instanceof ApiError ? err.message : 'No pude iniciar la verificación.');
     } finally {
@@ -624,7 +663,7 @@ export default function ChannelLinking() {
               disabled={waBusy}
             />
             <p className="text-xs text-gray-500 dark:text-gray-300">
-              Te vamos a mandar un código de 6 dígitos a este número.
+              Te vamos a dar un código para que le mandes al bot desde este número.
             </p>
             {waError && <p className="text-xs text-red-600">{waError}</p>}
             <div className="flex gap-2">
@@ -633,7 +672,7 @@ export default function ChannelLinking() {
                 disabled={waBusy}
                 className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50"
               >
-                {waBusy ? 'Enviando…' : 'Enviar código'}
+                {waBusy ? 'Generando…' : 'Continuar'}
               </button>
               <button
                 onClick={() => { setWaStep('idle'); setWaError(null); }}
@@ -683,6 +722,45 @@ export default function ChannelLinking() {
                 Cambiar número
               </button>
             </div>
+          </div>
+        )}
+
+        {waStep === 'send-to-bot' && waInbound && (
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-gray-700 dark:text-gray-200">
+              Mandale este mensaje al bot <span className="font-semibold">desde el WhatsApp {waPhone.trim()}</span>:
+            </p>
+            <p className="inline-block px-3 py-2 rounded-md bg-gray-100 dark:bg-gray-700 font-mono text-lg tracking-wide text-gray-900 dark:text-gray-100">
+              {waInbound.text}
+            </p>
+            <div>
+              <a
+                href={waInbound.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700"
+              >
+                Abrir WhatsApp y enviar
+              </a>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-300">
+              Se abre el chat con el bot con el mensaje ya escrito: solo tocá enviar. Si estás en la compu,
+              escribile <span className="font-mono">{waInbound.text}</span> desde el celular al
+              {' '}<span className="font-mono">+{new URL(waInbound.link).pathname.replace(/\D/g, '')}</span>.
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              Esperando tu mensaje… esta pantalla se actualiza sola.
+              {waExpiresAt && (
+                <> El código vence a las {new Date(waExpiresAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}.</>
+              )}
+            </p>
+            <button
+              onClick={() => { setWaStep('enter-phone'); setWaInbound(null); setWaError(null); }}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              Cambiar número
+            </button>
           </div>
         )}
 

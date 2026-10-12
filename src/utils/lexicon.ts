@@ -344,6 +344,19 @@ export const SOWN_PLOTS_QUERY_RES: RegExp[] = [
  */
 export const INVITE_ACCEPT_RE = /^(?:unirme|unirme\s+al?\s+campo|aceptar(?:\s+invitaci[oó]n)?|acepto)\s+([A-Za-z0-9]{6})\s*\.?$/i;
 
+/**
+ * "verificar 123456": vincular este WhatsApp a una cuenta web. El texto lo
+ * arma `whatsappVerifyText()` y llega por el link wa.me de Mi cuenta — el bot
+ * no le puede mandar el código a un número que nunca le escribió (ventana de
+ * 24 h de Meta). Grupo 1 = el código de 6 dígitos. Lo usa el webhook ANTES del
+ * gate de canal no verificado, que es justo el estado de quien se vincula.
+ */
+export const WHATSAPP_VERIFY_RE = /^(?:verificar|vincular|c[oó]digo)\s*:?\s*(\d{6})\s*\.?$/i;
+
+export function whatsappVerifyText(code: string): string {
+  return `verificar ${code}`;
+}
+
 /** "editar" / "corregir el monto" escrito en el resumen de un formulario (texto normalizado). */
 export const FORM_EDIT_RE = /^(?:editar?|edita|corregir?|corregi|cambiar?|cambia|modificar?|modifica)\b/;
 

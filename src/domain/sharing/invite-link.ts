@@ -19,6 +19,7 @@
  */
 
 import { getSetting } from '../../services/settings.service.js';
+import { buildBotWaLink } from '../../utils/whatsapp-link.js';
 
 export interface InviteDelivery {
   code: string;
@@ -50,19 +51,9 @@ export async function buildInviteDelivery(opts: {
   const code = opts.code;
   const waText = inviteText(code);
 
-  let waLink: string | null = null;
+  // Sin número de bot configurado: se entrega el código pelado.
+  const waLink = await buildBotWaLink(waText);
   let registerLink: string | null = null;
-
-  try {
-    const raw = (await getSetting('WHATSAPP_BOT_NUMBER'))?.trim();
-    if (raw) {
-      // El número del bot va como lo espera wa.me: solo dígitos, sin `+`.
-      const digits = raw.replace(/\D/g, '');
-      if (digits) waLink = `https://wa.me/${digits}?text=${encodeURIComponent(waText)}`;
-    }
-  } catch {
-    /* sin settings disponibles: se entrega el código pelado */
-  }
 
   try {
     const publicUrl = (await getSetting('PUBLIC_URL'))?.trim();

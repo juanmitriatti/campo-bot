@@ -5,10 +5,15 @@ import { sendMessage as sendWhatsAppMessage } from '../../services/whatsapp.js';
 import { getSetting, getSettingNumber } from '../../services/settings.service.js';
 import type { UserId } from '../../types/index.js';
 import { getAppName } from '../../utils/brand.js';
+import { buildBotWaLink } from '../../utils/whatsapp-link.js';
+import { whatsappVerifyText } from '../../utils/lexicon.js';
 
 const DEFAULT_OTP_TTL_MIN = 10;
 const DEFAULT_OTP_MAX_ATTEMPTS = 5;
 const DEFAULT_TELEGRAM_TTL_MIN = 60 * 24; // 24h for deep-link tokens
+// El código que se le manda AL bot vive más: el usuario tiene que cambiar de
+// app (o de teléfono, si abrió la web en la compu) y mandarlo.
+const MIN_INBOUND_TTL_MIN = 30;
 
 export interface VerificationStatus {
   whatsapp_verified: boolean;
@@ -20,6 +25,16 @@ export interface VerificationStatus {
 export interface StartWhatsAppResult {
   expires_at: string;
   ttl_minutes: number;
+  /**
+   * inbound = el usuario le manda el código al bot (`wa_link`/`wa_text`);
+   * outbound = el bot le mandó el código y el usuario lo escribe en la web.
+   * Inbound siempre que haya WHATSAPP_BOT_NUMBER: el envío del bot no le llega
+   * a quien nunca le escribió (ventana de 24 h de Meta, error 131047).
+   */
+  mode: 'inbound' | 'outbound';
+  wa_link?: string;
+  wa_text?: string;
+  code?: string;
 }
 
 export interface StartTelegramResult {
@@ -155,8 +170,12 @@ export class ChannelVerificationService {
       );
     }
 
-    const ttlMin = (await getSettingNumber('OTP_TTL_MINUTES')) ?? DEFAULT_OTP_TTL_MIN;
+    const otpTtl = (await getSettingNumber('OTP_TTL_MINUTES')) ?? DEFAULT_OTP_TTL_MIN;
     const code = generateOtp();
+    const waText = whatsappVerifyText(code);
+    const waLink = await buildBotWaLink(waText);
+    const direction: 'inbound' | 'outbound' = waLink ? 'inbound' : 'outbound';
+    const ttlMin = direction === 'inbound' ? Math.max(otpTtl, MIN_INBOUND_TTL_MIN) : otpTtl;
     const expiresAt = new Date(Date.now() + ttlMin * 60 * 1000);
 
     // Invalidate previous pending OTPs for this user+channel
@@ -168,10 +187,20 @@ export class ChannelVerificationService {
     );
 
     await pool.query(
-      `INSERT INTO channel_verifications (user_id, channel, code, target, expires_at)
-       VALUES ($1, 'whatsapp', $2, $3, $4)`,
-      [userId, code, phone, expiresAt]
+      `INSERT INTO channel_verifications (user_id, channel, code, target, expires_at, direction)
+       VALUES ($1, 'whatsapp', $2, $3, $4, $5)`,
+      [userId, code, phone, expiresAt, direction]
     );
+
+    if (direction === 'inbound') {
+      console.log(`[VERIFY] whatsapp inbound user=${userId}: código para mandar al bot desde ${phone}`);
+      return { expires_at: expiresAt.toISOString(), ttl_minutes: ttlMin, mode: 'inbound', wa_link: waLink!, wa_text: waText, code };
+    }
+
+    // Sin número de bot configurado: el camino viejo. Solo le llega a quien le
+    // escribió al bot en las últimas 24 h; el rechazo de Meta llega después por
+    // el webhook de estados (`[INTERCEPT] entrega FALLIDA`), no acá.
+    console.warn(`[VERIFY] [INTERCEPT] WHATSAPP_BOT_NUMBER vacío: el código va saliente a ${phone} y solo llega si escribió en las últimas 24 h`);
 
     // `phone` ya viene canónico (`549...`, sin `+`), que es justo lo que
     // espera la Cloud API.
@@ -196,6 +225,7 @@ export class ChannelVerificationService {
     return {
       expires_at: expiresAt.toISOString(),
       ttl_minutes: ttlMin,
+      mode: 'outbound',
     };
   }
 
@@ -211,7 +241,7 @@ export class ChannelVerificationService {
     const maxAttempts = (await getSettingNumber('OTP_MAX_ATTEMPTS')) ?? DEFAULT_OTP_MAX_ATTEMPTS;
 
     const { rows } = await pool.query(
-      `SELECT id, code, target, attempts, expires_at
+      `SELECT id, code, target, attempts, expires_at, direction
        FROM channel_verifications
        WHERE user_id = $1 AND channel = 'whatsapp' AND verified_at IS NULL
        ORDER BY id DESC LIMIT 1`,
@@ -221,6 +251,12 @@ export class ChannelVerificationService {
       throw new VerificationError(404, 'NO_PENDING', 'No hay un código pendiente. Pediste uno?');
     }
     const row = rows[0];
+
+    // Un código inbound está a la vista en la pantalla: escribirlo acá no prueba
+    // que el número sea tuyo. Solo vale mandándoselo al bot desde ese WhatsApp.
+    if (row.direction === 'inbound') {
+      throw new VerificationError(409, 'SEND_TO_BOT', 'Este código no se escribe acá: mandáselo al bot por WhatsApp desde tu número.');
+    }
 
     if (new Date(row.expires_at).getTime() < Date.now()) {
       throw new VerificationError(410, 'EXPIRED', 'El código expiró. Pedí uno nuevo.');
@@ -238,12 +274,74 @@ export class ChannelVerificationService {
       throw new VerificationError(401, 'WRONG_CODE', 'Código incorrecto. Volvé a intentar.');
     }
 
+    await this.linkPhone(row.id, Number(userId), row.target);
+    return this.getStatus(userId);
+  }
+
+  /**
+   * Canjea "verificar 123456" que llegó AL bot (link wa.me de Mi cuenta). El
+   * número que se vincula es el que MANDÓ el mensaje — Meta firma el webhook
+   * (`WHATSAPP_APP_SECRET`) — y tiene que ser el que el usuario puso en la web:
+   * el código está a la vista en esa pantalla, así que sin ese cruce cualquiera
+   * con un código ajeno colgaría su número de otra cuenta.
+   */
+  async redeemWhatsAppInbound(
+    rawFromPhone: string,
+    rawCode: string,
+  ): Promise<{ user_id: number; already_linked: boolean }> {
+    const code = (rawCode || '').trim();
+    const phone = normalizePhone(rawFromPhone);
+    if (!/^\d{6}$/.test(code) || !phone) {
+      throw new VerificationError(400, 'INVALID_CODE', 'El código tiene que ser de 6 dígitos.');
+    }
+
+    const { rows } = await pool.query(
+      `SELECT id, user_id, target, expires_at
+         FROM channel_verifications
+        WHERE channel = 'whatsapp' AND direction = 'inbound' AND code = $1 AND verified_at IS NULL
+        ORDER BY id DESC`,
+      [code],
+    );
+    const row = rows.find((r) => r.target === phone);
+    if (!row) {
+      // El mismo mensaje mandado dos veces: el primero ya vinculó. Éxito idempotente.
+      const done = await pool.query(
+        `SELECT cv.user_id FROM channel_verifications cv JOIN users u ON u.id = cv.user_id
+          WHERE cv.channel = 'whatsapp' AND cv.direction = 'inbound' AND cv.code = $1 AND cv.target = $2
+            AND cv.verified_at IS NOT NULL AND cv.attempts < 100
+            AND u.phone_number = $2 AND u.whatsapp_verified_at IS NOT NULL
+          ORDER BY cv.id DESC LIMIT 1`,
+        [code, phone],
+      );
+      if (done.rows.length > 0) return { user_id: Number(done.rows[0].user_id), already_linked: true };
+      if (rows.length > 0) {
+        console.log(`[VERIFY] [INTERCEPT] código inbound mandado desde ${phone}, pedido para otro número — no se vincula`);
+        throw new VerificationError(
+          409,
+          'OTHER_PHONE',
+          'Ese código se pidió para otro número. Mandalo desde el WhatsApp que pusiste en la web, o cambiá el número ahí y pedí un código nuevo.',
+        );
+      }
+      console.log(`[VERIFY] [INTERCEPT] código inbound desde ${phone} sin verificación pendiente`);
+      throw new VerificationError(404, 'NO_PENDING', 'Ese código no es válido o ya se usó. Pedí uno nuevo desde la web, en Mi cuenta → Vincular WhatsApp.');
+    }
+    if (new Date(row.expires_at).getTime() < Date.now()) {
+      throw new VerificationError(410, 'EXPIRED', 'Ese código venció. Pedí uno nuevo desde la web, en Mi cuenta → Vincular WhatsApp.');
+    }
+
+    await this.linkPhone(row.id, Number(row.user_id), phone);
+    console.log(`[VERIFY] whatsapp vinculado por mensaje entrante: user=${row.user_id} phone=${phone}`);
+    return { user_id: Number(row.user_id), already_linked: false };
+  }
+
+  /** Vincula el número a la cuenta y consume la verificación, todo junto. */
+  private async linkPhone(verificationId: number, userId: number, phone: string): Promise<void> {
     // Race-safe: re-check phone is not taken by another verified user
     const conflict = await pool.query(
       `SELECT id FROM users
        WHERE (phone_number = $1 OR canonical_phone_ar(phone_number) = $1)
          AND id <> $2 AND whatsapp_verified_at IS NOT NULL`,
-      [row.target, userId]
+      [phone, userId]
     );
     if (conflict.rows.length > 0) {
       throw new VerificationError(
@@ -255,19 +353,17 @@ export class ChannelVerificationService {
 
     // Todo junto (CTA-7): si algo falla, el código NO queda consumido.
     await withTransaction(async () => {
-      await releaseChannelFromChatAccount('phone_number', row.target, Number(userId));
+      await releaseChannelFromChatAccount('phone_number', phone, userId);
       await pool.query(
         `UPDATE channel_verifications SET verified_at = NOW() WHERE id = $1`,
-        [row.id]
+        [verificationId]
       );
       await pool.query(
         `UPDATE users SET phone_number = $1, whatsapp_verified_at = NOW() WHERE id = $2`,
-        [row.target, userId]
+        [phone, userId]
       );
-      await endRecycledTrial(Number(userId), row.target);
+      await endRecycledTrial(userId, phone);
     });
-
-    return this.getStatus(userId);
   }
 
   /**
