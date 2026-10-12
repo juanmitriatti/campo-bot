@@ -7,6 +7,7 @@ import type {
   PaymentProvider,
   RefundResult,
 } from './payment-provider.js';
+import { getAppName } from '../../utils/brand.js';
 
 // Override via env for tests. Production stays on api.mercadopago.com.
 const MP_API_BASE = process.env.MP_API_BASE_URL || 'https://api.mercadopago.com';
@@ -42,7 +43,7 @@ export class MercadoPagoProvider implements PaymentProvider {
     if (!token) {
       throw new Error('MP_ACCESS_TOKEN no configurado');
     }
-    const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://campo-bot-production.up.railway.app';
+    const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://miagro.app';
     const webhookUrl = `${publicUrl.replace(/\/$/, '')}/webhooks/mercadopago`;
 
     const frequency = input.billingPeriod === 'yearly' ? 12 : 1;
@@ -53,7 +54,7 @@ export class MercadoPagoProvider implements PaymentProvider {
       : Number(input.priceArs.toFixed(2));
 
     const body = {
-      reason: `Campo Bot — Plan ${input.planDisplayName}`,
+      reason: `${await getAppName()} — Plan ${input.planDisplayName}`,
       external_reference: `user_${input.userId}_${input.planName}_${Date.now()}`,
       payer_email: input.payerEmail,
       back_url: input.successUrl,

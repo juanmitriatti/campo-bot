@@ -67,7 +67,7 @@ export async function buildInviteDelivery(opts: {
   try {
     const publicUrl = (await getSetting('PUBLIC_URL'))?.trim();
     if (publicUrl && /^https?:\/\//.test(publicUrl)) {
-      registerLink = `${publicUrl.replace(/\/$/, '')}/register?invite=${encodeURIComponent(code)}`;
+      registerLink = `${publicUrl.replace(/\/$/, '')}/crear-cuenta?invite=${encodeURIComponent(code)}`;
     }
   } catch {
     /* idem */

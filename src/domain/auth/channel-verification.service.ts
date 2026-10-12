@@ -4,6 +4,7 @@ import { normalizePhone } from '../../utils/phone.js';
 import { sendMessage as sendWhatsAppMessage } from '../../services/whatsapp.js';
 import { getSetting, getSettingNumber } from '../../services/settings.service.js';
 import type { UserId } from '../../types/index.js';
+import { getAppName } from '../../utils/brand.js';
 
 const DEFAULT_OTP_TTL_MIN = 10;
 const DEFAULT_OTP_MAX_ATTEMPTS = 5;
@@ -176,7 +177,7 @@ export class ChannelVerificationService {
     // espera la Cloud API.
     const waNumber = phone;
     const message =
-      `🔐 *Tu código de Campo Bot*\n\n` +
+      `🔐 *Tu código de ${await getAppName()}*\n\n` +
       `\`${code}\`\n\n` +
       `Pegalo en la app para vincular este WhatsApp a tu cuenta. ` +
       `Vence en ${ttlMin} minutos.`;

@@ -265,6 +265,33 @@ describe('AgentResponseMapper', () => {
       }
     });
 
+    it('"el lote X se llama Y" con add_plot se reescribe a rename_plot', () => {
+      const result = makeResult([{
+        toolName: 'add_plot',
+        toolInput: { plot: 'Y' },
+        toolUseId: 'test_rename_override',
+      }]);
+      const parsed = mapper.mapToParseResults(result, 'el lote 5g ahora se llama Fondo');
+      expect(parsed[0].intent.type === 'command' && parsed[0].intent.data.command).toBe('rename_plot');
+      if (parsed[0].intent.type === 'command') {
+        expect(parsed[0].intent.data.oldName).toBe('5g');
+        expect(parsed[0].intent.data.newName).toBe('Fondo');
+      }
+    });
+
+    it('lotes nuevos con "se llama" adentro NO son un renombre (prod 11 oct 2026)', () => {
+      const result = makeResult([{
+        toolName: 'add_plots_batch',
+        toolInput: { field: 'La Tapera', plotNames: ['Monte', 'Loma'], hectares: [100, 60] },
+        toolUseId: 'test_batch_not_rename',
+      }]);
+      const parsed = mapper.mapToParseResults(
+        result,
+        'en lote 5g tiene 2 lotes, el 1ero se llama Monte y tiene 100has y el otro 60has se llama Loma',
+      );
+      expect(parsed[0].intent.type === 'command' && parsed[0].intent.data.command).toBe('add_plots_batch');
+    });
+
     it('maps restore_plot with plot and field', () => {
       const result = makeResult([{
         toolName: 'restore_plot',

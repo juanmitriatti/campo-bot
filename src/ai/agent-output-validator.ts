@@ -48,6 +48,7 @@ export interface ValidationResult {
 }
 
 import { normalizeAnimalId } from '../utils/animal-id.js';
+import { stripLocationNumbers } from '../utils/lexicon.js';
 
 /** Tools where `crop` should reflect a real cultivo named by the user. */
 const CROP_AWARE_TOOLS = new Set([
@@ -135,6 +136,16 @@ export function validateToolCall(
   const droppedFields: string[] = [];
 
   if (options.validateCrop && CROP_AWARE_TOOLS.has(ctx.toolName)) {
+    // "soja de segunda" no es un cultivo: es soja, y el orden lo lee el handler
+    // del texto (extractCropOrderCue). Sin esto se vetaba el cultivo entero y
+    // el bot preguntaba "¿Qué cultivo sembraste?".
+    if (typeof input.crop === 'string') {
+      const base = input.crop.replace(/\s+(?:de\s+)?(?:segunda|2da|2a|2\s*[°º]|primera|1ra|1a|1\s*[°º])\s*$/i, '').trim();
+      if (base && base !== input.crop.trim()) {
+        console.warn(`AI_VALIDATOR OVERRIDE crop: tool=${ctx.toolName} "${input.crop}" → "${base}"`);
+        input = { ...input, crop: base };
+      }
+    }
     if (shouldStripCrop(input, ctx.originalText, options.recentText)) {
       input = { ...input };
       delete input.crop;
@@ -222,7 +233,10 @@ function enforceAnimalRefsFromText(
   const hasMany = Array.isArray(input.animal_refs) && input.animal_refs.length > 0;
   if (!hasSingle && !hasMany) return { input, changed: false, dropped: [] };
 
-  const tokens = numericTokensOf(text);
+  // El reemplazo solo puede tomar un número que NO nombre una ubicación: en
+  // "movelos al corral 2" el «2» es el corral, y las 4 caravanas del agente
+  // (de la lectura anterior) se cambiaban por «2» (prod 12 oct 2026).
+  const tokens = numericTokensOf(stripLocationNumbers(text));
   const soleToken = tokens.length === 1 ? tokens[0] : null;
   let out = input;
   const dropped: string[] = [];

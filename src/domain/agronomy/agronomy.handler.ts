@@ -4,7 +4,7 @@ import { resolvePeriodRange, resolveDaysRange } from '../../utils/query-period.j
 import fs from 'fs';
 import { AgronomyRepository, RAINFALL_REJECTED_DUPLICATE } from './agronomy.repository.js';
 import { PlotDiscoveryService } from '../plots/plot-discovery.service.js';
-import { CropService, detectCropFromText, formatSeasonLabel, getSeasonTypeForCrop, getCampaignStateLabel, getCampaignState } from '../plots/crop.service.js';
+import { CropService, detectCropFromText, formatSeasonLabel, getSeasonTypeForCrop, getCampaignStateLabel, getCampaignState, startsNewCampaign } from '../plots/crop.service.js';
 import { formatPlotLocation, cap } from '../../utils/format-location.js';
 import { CampaignStatsService } from './campaign-stats.service.js';
 import type { CampaignRanking, CampaignRankRow, RankMetric, RankGroupBy } from './campaign-stats.service.js';
@@ -348,6 +348,10 @@ export class AgronomyHandler {
     if (cmd.__forceReplaceCampaign === true) return null;
     const active = await this.cropService.getActive(plotId);
     if (!active || active.crop.toLowerCase() === newCrop.toLowerCase()) return null;
+    // Ya COSECHADA: sembrar otra cosa es la campaña siguiente (trigo → soja de
+    // 2da), no un reemplazo. Antes preguntaba "¿Reemplazo esa campaña?" en el
+    // caso más común del calendario. startCrop la cierra y anota el orden.
+    if (active.harvested_at) return null;
 
     // bulkMode: no se puede bloquear a mitad de un compound, pero ANTES el
     // bypass dejaba el auto-close silencioso — "sembré 10 ha de soja en 3b y
@@ -364,6 +368,24 @@ export class AgronomyHandler {
     }
 
     const plotLabel = formatPlotLocation(fieldName, plotName);
+    // Fina sin cosecha registrada + gruesa nueva: casi siempre es la soja de
+    // 2da y el usuario no cargó la cosecha del trigo. Se ofrece eso primero.
+    if (active.season_type === 'fina' && getSeasonTypeForCrop(newCrop) === 'gruesa') {
+      const token2 = callbackPayloadStore.set(JSON.stringify({ ...cmd, command: 'sow_crop' }));
+      console.log(`[INTERCEPT] sow-replace guard: lote ${plotId} tiene ${active.crop} sin cosechar, siembra ${newCrop} — ¿de 2da?`);
+      return {
+        messages: [],
+        interactive: {
+          type: 'buttons' as const,
+          body: `🌾 El ${plotLabel} tiene *${cap(active.crop)}* sin cosecha registrada.\n\n¿Ya lo cosecharon? Si es así, cierro esa campaña y registro la *${cap(newCrop)}* como *de segunda*.\n\n_El rinde del ${active.crop.toLowerCase()} lo podés cargar después: "el ${active.crop.toLowerCase()} del ${plotName ?? 'lote'} rindió X qq/ha"._`,
+          buttons: [
+            { id: `sow_after_harvest_${token2}`, title: 'Sí, ya se cosechó' },
+            { id: `sow_replace_${token2}`, title: 'No, se perdió' },
+            { id: 'sow_replace_cancel', title: 'Cancelar' },
+          ],
+        },
+      };
+    }
     const haNote = active.sowed_hectares ? ` (${Number(active.sowed_hectares).toLocaleString('es-AR')} ha` : ' (';
     const dateNote = active.start_date ? `${active.sowed_hectares ? ', ' : ''}sembrad${cap(active.crop).endsWith('a') ? 'a' : 'o'} ${formatDateAR(active.start_date)})` : ')';
     const token = callbackPayloadStore.set(JSON.stringify({ ...cmd, command: 'sow_crop' }));
@@ -372,7 +394,7 @@ export class AgronomyHandler {
       messages: [],
       interactive: {
         type: 'buttons' as const,
-        body: `⚠️ El ${plotLabel} ya tiene *${cap(active.crop)}* activa${haNote}${dateNote}.\n\n¿Reemplazo esa campaña por *${cap(newCrop)}*?\n\n_Si va en otro lote, decime: "sembré ${cmd.hectares ?? 'X'} ha de ${newCrop} en lote <nombre>". Convivencia de 2 cultivos en el mismo lote: todavía no lo soporto._`,
+        body: `⚠️ El ${plotLabel} ya tiene *${cap(active.crop)}* activa${haNote}${dateNote}.\n\n¿Reemplazo esa campaña por *${cap(newCrop)}*?\n\n_Si va en otro lote, decime: "sembré ${cmd.hectares ?? 'X'} ha de ${newCrop} en lote <nombre>". Si el ${active.crop.toLowerCase()} ya se cosechó, contame la cosecha primero y la ${newCrop.toLowerCase()} queda como la campaña siguiente._`,
         buttons: [
           { id: `sow_replace_${token}`, title: 'Sí, reemplazar' },
           { id: 'sow_replace_cancel', title: 'No, cancelar' },
@@ -2211,6 +2233,28 @@ export class AgronomyHandler {
         return this.handleCommand({ ...savedCmd, __forceReplaceCampaign: true } as ParsedCommand, userId, user, settings);
       }
 
+      case 'sow_after_harvest_confirm': {
+        // Tap "Sí, ya se cosechó": la fina se marca cosechada (sin rinde, el
+        // día de la siembra nueva) y la gruesa entra de 2da.
+        const stored = callbackPayloadStore.get(cmd.payload as string);
+        if (!stored) {
+          return { messages: ['⏰ Esa confirmación venció. Volvé a mandarme la siembra (ej: "sembré soja de segunda en el lote 3").'] };
+        }
+        const savedCmd = JSON.parse(stored) as ParsedCommand;
+        const res = await this.plotDiscovery.resolveFromNames(userId, savedCmd.fieldName as string | null, savedCmd.plotName as string | null);
+        const pr = await this.resolveActivityPlot(userId, res);
+        if (pr.type === 'resolved') {
+          const active = await this.cropService.getActive(pr.plotId);
+          if (active && !active.harvested_at) {
+            const { setPlotCropHarvested } = await import('../../services/expenses.js');
+            const when = toISODateAR(savedCmd.eventDate as Date | string | null) ?? toISODateAR(new Date());
+            await setPlotCropHarvested(active.id, when!, null, null);
+            console.log(`[INTERCEPT] sow_after_harvest: ${active.crop} (campaña ${active.id}) marcada cosechada el ${when} para sembrar de 2da`);
+          }
+        }
+        return this.handleCommand({ ...savedCmd, __cropOrder: 2 } as ParsedCommand, userId, user, settings);
+      }
+
       case 'sow_replace_cancel': {
         return { messages: ['👍 No toqué nada — la campaña activa sigue como estaba.\nSi la siembra va en otro lote, decime: *"sembré X ha de <cultivo> en lote <nombre>"*.'] };
       }
@@ -2259,7 +2303,11 @@ export class AgronomyHandler {
           return this.buildAskPlotResponse('siembra', plotResult.plots, cmd);
         }
 
-        const crop = cmd.crop as string;
+        // "soja de segunda" puede llegar dentro del nombre del cultivo: el orden
+        // va a la campaña (crop_order), el cultivo queda limpio.
+        const { extractCropOrderCue } = await import('../../utils/lexicon.js');
+        const cropOrderCue = extractCropOrderCue(`${cmd.crop ?? ''} ${(cmd.originalText as string | null) ?? ''}`);
+        const crop = String(cmd.crop).replace(/\s+(?:de\s+)?(?:segunda|2da|2a|primera|1ra|1a)\s*$/i, '').trim();
         let sowedHa = cmd.hectares != null ? Number(cmd.hectares) : null;
         if (sowedHa != null && sowedHa <= 0) {
           return { messages: ['⚠️ La superficie sembrada debe ser mayor a 0 ha.'] };
@@ -2300,7 +2348,7 @@ export class AgronomyHandler {
         // "sembré soja en el Norte" sigue como siempre.
         if (cmd.__fromForm === true) {
           const sameActive = await this.cropService.getActive(plotResult.plotId);
-          if (sameActive && sameActive.crop.toLowerCase() === crop.toLowerCase()) {
+          if (sameActive && !startsNewCampaign(sameActive, toISODateAR(cmd.eventDate as Date | string | null)) && sameActive.crop.toLowerCase() === crop.toLowerCase()) {
             const sameLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
             const season = formatSeasonLabel(sameActive.season_year, sameActive.season_type);
             const changes: string[] = [];
@@ -2336,7 +2384,7 @@ export class AgronomyHandler {
         // reenviado y no se suma. Tope: la superficie del lote.
         if (sowedHa && sowedHa > 0 && cmd.__fromForm !== true) {
           const sameActive = await this.cropService.getActive(plotResult.plotId);
-          if (sameActive && sameActive.crop.toLowerCase() === crop.toLowerCase() && sameActive.sowed_hectares != null) {
+          if (sameActive && !startsNewCampaign(sameActive, toISODateAR(cmd.eventDate as Date | string | null)) && sameActive.crop.toLowerCase() === crop.toLowerCase() && sameActive.sowed_hectares != null) {
             const { mentionsAdditionalArea } = await import('../../utils/lexicon.js');
             const eventISO = toISODateAR(cmd.eventDate as Date | string | null) ?? toISODateAR(new Date());
             const startISO = toISODateAR(sameActive.start_date as Date | string | null);
@@ -2364,7 +2412,8 @@ export class AgronomyHandler {
           }
         }
 
-        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, cmd.eventDate as Date | string | null, sowedHa, variety);
+        const forcedOrder = (cmd.__cropOrder as 1 | 2 | undefined) ?? cropOrderCue;
+        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, cmd.eventDate as Date | string | null, sowedHa, variety, { cropOrder: forcedOrder });
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
         const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
 
@@ -2380,7 +2429,8 @@ export class AgronomyHandler {
         });
 
         // Acción principal PRIMERO; el cierre de campaña previa como nota.
-        let sowMsg = `🌱 *Siembra registrada*\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
+        const order = (cropRow as { crop_order?: number | null }).crop_order;
+        let sowMsg = `🌱 *Siembra registrada*\n*${cap(crop)}${order === 2 ? ' de 2da' : ''}* en ${plotLabel}\n📅 Campaña ${label}`;
         if (sowedHa) sowMsg += `\n📐 ${sowedHa.toLocaleString('es-AR')} ha sembradas`;
         if (variety) sowMsg += `\n🧬 Variedad: ${variety}`;
         if (seedDensity) sowMsg += `\n🌱 Densidad: ${seedDensity}`;
@@ -2397,7 +2447,11 @@ export class AgronomyHandler {
           } catch { /* non-critical */ }
         }
 
-        if (closedPrevious) sowMsg += `\n📋 _Cerré la campaña anterior de ${closedPrevious.crop}._`;
+        if (closedPrevious) {
+          sowMsg += closedPrevious.harvested_at
+            ? `\n📋 _Cerré la campaña de ${closedPrevious.crop} (ya cosechada)${order === 2 ? ': esta va de segunda' : ''}._`
+            : `\n📋 _Cerré la campaña anterior de ${closedPrevious.crop}._`;
+        }
         return { messages: [sowMsg] };
       }
 
@@ -5334,7 +5388,8 @@ export class AgronomyHandler {
     const stateMap = { active: '🌱 Activa', harvested: '🌾 Cosechada (abierta)', closed: '✅ Cerrada' };
     const lines: string[] = [];
 
-    const header = `📊 *Campaña ${s.crop} ${s.seasonLabel}* — ${s.plot}${s.field ? ` (${s.field})` : ''}`;
+    const orderTag = s.cropOrder === 2 ? " de 2da" : "";
+    const header = `📊 *Campaña ${s.crop}${orderTag} ${s.seasonLabel}* — ${s.plot}${s.field ? ` (${s.field})` : ''}`;
     lines.push(header);
     lines.push(`Estado: ${stateMap[s.state]} | ${s.durationDays} ${s.durationDays === 1 ? 'día' : 'días'}`);
     if (s.harvest.startedAt) {
@@ -5438,8 +5493,33 @@ export class AgronomyHandler {
       if (s.profitability.incomePerHaARS != null) profLine += ` | Ingreso/ha: $${s.profitability.incomePerHaARS.toLocaleString('es-AR')}`;
       if (s.profitability.costPerTnARS != null) profLine += `\nCosto/tn: $${s.profitability.costPerTnARS.toLocaleString('es-AR')}`;
       if (s.profitability.costPerTnUSD != null) profLine += ` (USD ${s.profitability.costPerTnUSD.toLocaleString('es-AR')}/tn)`;
-      if (s.profitability.incomePerTnARS != null) profLine += ` | Ingreso/tn: $${s.profitability.incomePerTnARS.toLocaleString('es-AR')}`;
+      if (s.profitability.incomePerTnARS != null) profLine += ` | Ingreso/tn: ${s.profitability.incomePerTnARS.toLocaleString('es-AR')}`;
+      // Todo en dólares al dólar de CADA fecha: la única forma de sumar un
+      // gasto en pesos de marzo con una venta en dólares de julio.
+      const p = s.profitability;
+      const signEq = p.netUSDEq >= 0 ? '+' : '';
+      profLine += `
+💵 *Todo en dólares:* ${signEq}USD ${p.netUSDEq.toLocaleString('es-AR')}`;
+      if (p.netPerHaUSDEq != null) profLine += ` (${p.netPerHaUSDEq >= 0 ? '+' : ''}USD ${p.netPerHaUSDEq.toLocaleString('es-AR')}/ha)`;
+      profLine += `
+_Gastos USD ${p.expensesUSDEq.toLocaleString('es-AR')} · ingresos USD ${p.incomesUSDEq.toLocaleString('es-AR')}, cada peso al ${p.fxSourceLabel} de su fecha._`;
+      if (p.fxMissing > 0) profLine += `
+⚠️ ${p.fxMissing} movimiento${p.fxMissing === 1 ? '' : 's'} en pesos sin cotización para su fecha: no entra${p.fxMissing === 1 ? '' : 'n'} en dólares.`;
       lines.push(profLine);
+      const a = s.attribution;
+      const notes: string[] = [];
+      if (a.preSowingCount > 0) notes.push(`${a.preSowingCount} gasto${a.preSowingCount === 1 ? '' : 's'} previo${a.preSowingCount === 1 ? '' : 's'} a la siembra (barbecho, insumos)`);
+      if (a.sharedCount > 0) notes.push(`${a.sharedCount} movimiento${a.sharedCount === 1 ? '' : 's'} del campo o ventas sin lote, repartido${a.sharedCount === 1 ? '' : 's'} por ha/kg`);
+      if (a.afterCloseCount > 0) notes.push(`${a.afterCloseCount} venta${a.afterCloseCount === 1 ? '' : 's'} posterior${a.afterCloseCount === 1 ? '' : 'es'} al cierre`);
+      if (notes.length > 0) lines.push(`_Incluye ${notes.join('; ')}._`);
+    }
+
+    if (s.doubleCrop) {
+      const d = s.doubleCrop;
+      const other = `${d.otherCrop}${d.otherOrder === 2 ? ' de 2da' : ''}`;
+      const sg = (n: number) => `${n >= 0 ? '+' : ''}USD ${n.toLocaleString('es-AR')}`;
+      lines.push(`
+🔁 *Doble cultivo:* ${other} ${sg(d.otherNetUSDEq)} + este ${sg(d.combinedNetUSDEq - d.otherNetUSDEq)} = *${sg(d.combinedNetUSDEq)}* en el lote`);
     }
 
     // Hacienda aparte: excluida del margen del cultivo, visible igual.

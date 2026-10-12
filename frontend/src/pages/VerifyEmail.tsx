@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useBrand } from '../hooks/useBrand';
+import { PATHS } from '../paths';
 
 type Status = 'pending' | 'success' | 'error' | 'no-token';
 
 export default function VerifyEmail() {
+  const brand = useBrand();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<Status>('pending');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -13,7 +16,7 @@ export default function VerifyEmail() {
   // Si el usuario sigue logueado (se registró y abrió el mail en la misma
   // compu), mandarlo al login es un paso de más.
   const loggedIn = typeof window !== 'undefined' && !!localStorage.getItem('accessToken');
-  const nextHref = loggedIn ? '/dashboard' : '/login';
+  const nextHref = loggedIn ? '/dashboard' : PATHS.login;
   const nextLabel = loggedIn ? 'Ir al panel' : 'Ir al login';
 
   useEffect(() => {
@@ -47,7 +50,7 @@ export default function VerifyEmail() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-campo-700">Campo Bot</h1>
+          <h1 className="text-3xl font-bold text-campo-700">{brand.app_name}</h1>
         </div>
         <div className="bg-white rounded-lg shadow-md p-6 text-sm text-gray-700 space-y-3 text-center">
           {status === 'pending' && <p>Verificando tu email…</p>}
@@ -73,7 +76,7 @@ export default function VerifyEmail() {
           {status === 'no-token' && (
             <>
               <p className="text-red-700">El link no es válido.</p>
-              <Link to="/login" className="block text-campo-600 hover:text-campo-700 font-medium">
+              <Link to={PATHS.login} className="block text-campo-600 hover:text-campo-700 font-medium">
                 Ir al login
               </Link>
             </>

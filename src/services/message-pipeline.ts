@@ -62,7 +62,7 @@ import { getSetting, getSettingNumber, getSettingBool } from './settings.service
 import { pool } from '../config/db.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
 import { ConversationEngine, buildTimeoutMessage, isOtherItemCorrectionOrDelete } from '../middleware/conversation-engine.js';
-import { ConversationLogger } from '../middleware/conversation-logger.js';
+import { ConversationLogger, runConversationTurn, currentTurn } from '../middleware/conversation-logger.js';
 import { FlowRegistry } from '../middleware/flows/flow-registry.js';
 import { expenseFlow } from '../middleware/flows/expense.flow.js';
 import { incomeFlow } from '../middleware/flows/income.flow.js';
@@ -680,6 +680,42 @@ export async function processTextMessage(
   return runWithCallbackOwner(ctx.userId, () => processTextMessageWithReplay(text, ctx));
 }
 
+/**
+ * Procesa el mensaje y garantiza que el turno quede en el historial que lee el
+ * agente. Los caminos que ya loguean (agente, comando, compound…) no cambian;
+ * los que no (respuesta a un pending, flows, ofertas de crear) se loguean acá
+ * con lo que respondió el bot y los comandos que ejecutó el router. Sin esto el
+ * agente veía la pregunta sin contestar y repetía la operación (prod 12 oct
+ * 2026: 50 vacas y $40M registrados dos veces).
+ */
+async function processTextMessageLogged(text: string, ctx: ChannelContext): Promise<BotResponseItem[]> {
+  const startTime = Date.now();
+  let commands: string[] = [];
+  let logged = true;
+  const items = await runConversationTurn(async () => {
+    const out = await processTextMessageInner(text, ctx);
+    const turn = currentTurn();
+    logged = turn?.logged ?? true;
+    commands = turn ? [...turn.commands] : [];
+    return out;
+  });
+  if (!logged) {
+    const response = items
+      .map((i) => i.text ?? i.interactive?.body ?? null)
+      .filter((t): t is string => typeof t === 'string' && t.length > 0)
+      .join('\n\n');
+    if (response) {
+      const toolCalls = commands.length ? commands.map((toolName) => ({ toolName })) : null;
+      conversationLogger.log(
+        ctx.userId, ctx.phone, text, response, 'deterministic', commands[commands.length - 1] ?? null,
+        null, null, false, Date.now() - startTime, items.some((i) => i.type === 'interactive'), null,
+        toolCalls, null, ctx.channel,
+      ).catch(() => {});
+    }
+  }
+  return items;
+}
+
 async function processTextMessageWithReplay(
   text: string,
   ctx: ChannelContext,
@@ -690,7 +726,7 @@ async function processTextMessageWithReplay(
     console.log(`[INTERCEPT] cancelar descarta la acción diferida: "${deferredFirstActionStore.get(ctx.phone)!.originalText.slice(0, 60)}"`);
     deferredFirstActionStore.clear(ctx.phone);
   }
-  const items = await processTextMessageInner(text, ctx);
+  const items = await processTextMessageLogged(text, ctx);
 
   // Mensajes proactivos que quedaron guardados por la ventana de 24 h de
   // WhatsApp (resúmenes, recordatorios, alertas): el usuario acaba de escribir,
@@ -741,7 +777,7 @@ async function processTextMessageWithReplay(
         console.log(`[deferred-first-action] replaying for ${ctx.phone}: "${stash.originalText.slice(0, 80)}"`);
         items.push({ type: 'text', text: `🔁 *Retomo lo que me habías pedido:*
 _"${stash.originalText}"_` });
-        const replayed = await processTextMessageInner(stash.originalText, ctx);
+        const replayed = await processTextMessageLogged(stash.originalText, ctx);
         items.push(...replayed);
       }
     }
@@ -1233,6 +1269,18 @@ async function processTextMessageInner(
         console.log(`[INTERCEPT] deferral during pending(${pendingAct.command}): "${text.slice(0, 60)}" — pending se mantiene`);
         pendingActStore.set(phone, { ...pendingAct, timestamp: Date.now() });
         return [{ type: 'text', text: '👍 Dale, queda pendiente. Cuando lo tengas mandámelo y lo completo — o escribí *cancelar* si preferís dejarlo.' }];
+      }
+    }
+    // "movelos al corral 2" contestando "¿A qué lote o corral muevo los N?" de
+    // una lectura de caravanas: el verbo repite la pregunta. Sin esto escapaba
+    // como acción nueva, el agente rearmaba las caravanas desde el historial y
+    // el pending se perdía (prod 12 oct 2026). Se contesta con el destino solo.
+    if (pendingAct.command === 'animal_batch_move') {
+      const { extractMoveDestinationAnswer } = await import('../utils/lexicon.js');
+      const dest = extractMoveDestinationAnswer(text);
+      if (dest) {
+        console.log(`[INTERCEPT] "${text.slice(0, 60)}" contesta pending(animal_batch_move) → destino «${dest}»`);
+        return processTextMessageInner(dest, ctx);
       }
     }
     const actInterruptCmd = intentClassifier.parseCommandOnly(text);

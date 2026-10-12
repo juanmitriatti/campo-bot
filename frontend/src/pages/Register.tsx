@@ -2,25 +2,39 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { savePendingInviteFromUrl } from '../hooks/usePendingInvite';
+import { useBrand } from '../hooks/useBrand';
+import { PATHS } from '../paths';
+import { suggestEmailFix } from '../utils/email-suggest';
 
 // Storage key used by Dashboard to show a one-shot welcome toast on first
 // arrival after registering.
 const POST_REGISTER_FLAG = 'campo:postRegisterToast';
 
 export default function Register() {
+  const brand = useBrand();
   const [name, setName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  // "¿Quisiste decir …@gmail.com?" — se calcula al salir del campo (no mientras
+  // tipea) y se borra apenas vuelve a escribir. No bloquea el registro.
+  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   // Toggle that flips after the first failed submit. While `false`, we don't
   // show an inline error for short passwords (user is still typing). After a
   // failed submit, we show the hint live until the input is valid.
   const [showPasswordError, setShowPasswordError] = useState(false);
+  // La diferencia entre las dos contraseñas se marca recién cuando la segunda
+  // ya es tan larga como la primera (o tras un submit fallido): avisar mientras
+  // tipea la segunda es ruido.
+  const [showConfirmError, setShowConfirmError] = useState(false);
+  const confirmMismatch = confirmPassword !== password &&
+    (showConfirmError || confirmPassword.length >= password.length) && confirmPassword.length > 0;
   const { register, error, clearError } = useAuth();
   const navigate = useNavigate();
-  // Link de invitación a un campo (/register?invite=CODIGO): el código queda
+  // Link de invitación a un campo (/crear-cuenta?invite=CODIGO): el código queda
   // guardado y el dashboard lo canjea cuando la cuenta vincule WhatsApp.
   const [inviteCode] = useState(() => savePendingInviteFromUrl(window.location.search));
 
@@ -30,6 +44,10 @@ export default function Register() {
 
     if (password.length < 8) {
       setShowPasswordError(true);
+      return;
+    }
+    if (password !== confirmPassword) {
+      setShowConfirmError(true);
       return;
     }
 
@@ -59,7 +77,7 @@ export default function Register() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <a href="/" className="inline-block">
-            <h1 className="text-3xl font-bold text-campo-700">Campo Bot</h1>
+            <h1 className="text-3xl font-bold text-campo-700">{brand.app_name}</h1>
           </a>
           <p className="text-gray-500 mt-1">Creá tu cuenta</p>
         </div>
@@ -68,7 +86,7 @@ export default function Register() {
           {inviteCode && (
             <div className="bg-campo-50 border border-campo-200 text-campo-800 text-sm rounded-md px-3 py-2">
               🤝 Te invitaron a un campo. Creá tu cuenta y vinculá tu WhatsApp: entrás al campo automáticamente.
-              {' '}¿Ya tenés cuenta? <Link to="/login" className="font-medium underline hover:no-underline">Iniciá sesión</Link>.
+              {' '}¿Ya tenés cuenta? <Link to={PATHS.login} className="font-medium underline hover:no-underline">Iniciá sesión</Link>.
             </div>
           )}
           {error && (
@@ -76,9 +94,9 @@ export default function Register() {
               <p>{error}</p>
               {isDuplicateEmailError && (
                 <p className="mt-1.5 text-xs">
-                  <Link to="/login" className="font-medium underline hover:no-underline">Iniciá sesión</Link>
+                  <Link to={PATHS.login} className="font-medium underline hover:no-underline">Iniciá sesión</Link>
                   {' o '}
-                  <Link to="/forgot-password" className="font-medium underline hover:no-underline">recuperá tu contraseña</Link>.
+                  <Link to={PATHS.forgotPassword} className="font-medium underline hover:no-underline">recuperá tu contraseña</Link>.
                 </p>
               )}
             </div>
@@ -92,6 +110,7 @@ export default function Register() {
               <input
                 id="name"
                 type="text"
+                autoComplete="given-name"
                 required
                 value={name}
                 onChange={e => setName(e.target.value)}
@@ -106,6 +125,7 @@ export default function Register() {
               <input
                 id="lastName"
                 type="text"
+                autoComplete="family-name"
                 value={lastName}
                 onChange={e => setLastName(e.target.value)}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
@@ -121,12 +141,27 @@ export default function Register() {
             <input
               id="email"
               type="email"
+              autoComplete="email"
               required
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={e => { setEmail(e.target.value); setEmailSuggestion(null); }}
+              onBlur={() => setEmailSuggestion(suggestEmailFix(email))}
               className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
               placeholder="tu@email.com"
+              aria-describedby={emailSuggestion ? 'email-suggestion' : undefined}
             />
+            {emailSuggestion && (
+              <p id="email-suggestion" className="mt-1 text-xs text-amber-700" aria-live="polite">
+                ¿Quisiste decir <span className="font-medium">{emailSuggestion}</span>?{' '}
+                <button
+                  type="button"
+                  onClick={() => { setEmail(emailSuggestion); setEmailSuggestion(null); }}
+                  className="font-medium underline hover:no-underline"
+                >
+                  Corregir
+                </button>
+              </p>
+            )}
           </div>
 
           <div>
@@ -137,6 +172,7 @@ export default function Register() {
               <input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
                 required
                 minLength={8}
                 value={password}
@@ -165,6 +201,28 @@ export default function Register() {
             )}
           </div>
 
+          <div>
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+              Repetí la contraseña
+            </label>
+            <input
+              id="confirmPassword"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              required
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              className={`w-full border rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none ${
+                confirmMismatch ? 'border-red-400' : 'border-gray-300'
+              }`}
+              aria-invalid={confirmMismatch}
+              aria-describedby={confirmMismatch ? 'confirm-error' : undefined}
+            />
+            {confirmMismatch && (
+              <p id="confirm-error" className="mt-1 text-xs text-red-600">Las contraseñas no coinciden.</p>
+            )}
+          </div>
+
           <div className="bg-campo-50 border border-campo-200 rounded-md px-3 py-2.5 text-sm text-campo-800">
             🎁 <span className="font-semibold">14 días gratis con todas las funciones</span> — agronomía, hacienda, stock, audios e IA. Sin tarjeta. Después elegís el plan que te quede cómodo.
           </div>
@@ -177,9 +235,16 @@ export default function Register() {
             {loading ? 'Creando cuenta...' : 'Crear cuenta'}
           </button>
 
+          <p className="text-center text-xs text-gray-500">
+            Al crear tu cuenta aceptás los{' '}
+            <a href="/terminos" target="_blank" rel="noopener" className="underline hover:text-gray-700">Términos</a>
+            {' y la '}
+            <a href="/privacidad" target="_blank" rel="noopener" className="underline hover:text-gray-700">Política de privacidad</a>.
+          </p>
+
           <p className="text-center text-sm text-gray-500">
             ¿Ya tenés cuenta?{' '}
-            <Link to="/login" className="text-campo-600 hover:text-campo-700 font-medium">
+            <Link to={PATHS.login} className="text-campo-600 hover:text-campo-700 font-medium">
               Iniciá sesión
             </Link>
           </p>

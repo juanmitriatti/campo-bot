@@ -2,8 +2,11 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { savePendingInviteFromUrl } from '../hooks/usePendingInvite';
+import { useBrand } from '../hooks/useBrand';
+import { PATHS } from '../paths';
 
 export default function Login() {
+  const brand = useBrand();
   // /login?invite=CODIGO: mismo canje diferido que /register (usePendingInvite).
   useState(() => savePendingInviteFromUrl(window.location.search));
   const [email, setEmail] = useState('');
@@ -44,7 +47,7 @@ export default function Login() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <a href="/" className="inline-block">
-            <h1 className="text-3xl font-bold text-campo-700">Campo Bot</h1>
+            <h1 className="text-3xl font-bold text-campo-700">{brand.app_name}</h1>
           </a>
           <p className="text-gray-500 mt-1">Iniciá sesión en tu cuenta</p>
         </div>
@@ -106,12 +109,12 @@ export default function Login() {
 
           <p className="text-center text-sm text-gray-500">
             ¿No tenés cuenta?{' '}
-            <Link to="/register" className="text-campo-600 hover:text-campo-700 font-medium">
+            <Link to={PATHS.register} className="text-campo-600 hover:text-campo-700 font-medium">
               Registrate
             </Link>
           </p>
           <p className="text-center text-xs text-gray-500">
-            <Link to="/forgot-password" className="text-campo-600 hover:text-campo-700">
+            <Link to={PATHS.forgotPassword} className="text-campo-600 hover:text-campo-700">
               Olvidé mi contraseña
             </Link>
           </p>

@@ -2,6 +2,7 @@ import archiver from 'archiver';
 import { pool } from '../config/db.js';
 import type { Response } from 'express';
 import type { UserId } from '../types/index.js';
+import { getAppName } from '../utils/brand.js';
 
 interface ExportTable {
   filename: string;
@@ -323,7 +324,7 @@ export class DataExportService {
 
     // README
     const readme =
-      'Campo Bot — Exportación de datos\n' +
+      `${await getAppName()} — Exportación de datos\n` +
       '================================\n\n' +
       'Este archivo contiene una copia de todos tus datos en formato CSV.\n' +
       'Cada archivo corresponde a una sección del bot:\n\n' +

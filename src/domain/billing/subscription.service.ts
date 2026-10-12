@@ -147,7 +147,7 @@ export class SubscriptionService {
     const yearly = await this.getPlanYearlyPrice(plan.id);
     const priceArs = input.billingPeriod === 'yearly' && yearly ? yearly / 12 : monthly;
 
-    const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://campo-bot-production.up.railway.app';
+    const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://miagro.app';
     const result = await this.provider.createCheckout({
       userId: Number(input.userId),
       planName: plan.name,

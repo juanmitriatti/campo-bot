@@ -341,6 +341,11 @@ export class InteractiveRouter {
       return { type: 'command', data: { command: 'livestock_create_cancel' } };
     }
 
+    // Trigo sin cosecha registrada + soja nueva: "Sí, ya se cosechó" → soja de 2da.
+    if (callbackId.startsWith('sow_after_harvest_')) {
+      return { type: 'command', data: { command: 'sow_after_harvest_confirm', payload: callbackId.slice('sow_after_harvest_'.length) } };
+    }
+
     // Guard anti-pisada de campaña (sembrar cultivo distinto en lote con activa)
     if (callbackId.startsWith('sow_replace_')) {
       if (callbackId === 'sow_replace_cancel') {

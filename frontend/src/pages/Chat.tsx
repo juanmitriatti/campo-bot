@@ -7,6 +7,7 @@ import TypingIndicator from '../components/chat/TypingIndicator';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { fetchApi, apiUpload } from '../api/client';
 import type { ChatMessage, BotResponseItem } from '../types/chat';
+import { useBrand } from '../hooks/useBrand';
 
 let msgIdCounter = 0;
 function nextId(): string {
@@ -14,6 +15,7 @@ function nextId(): string {
 }
 
 export default function Chat() {
+  const brand = useBrand();
   const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -140,7 +142,7 @@ export default function Chat() {
             CB
           </div>
           <div>
-            <p className="text-sm font-semibold">Campo Bot</p>
+            <p className="text-sm font-semibold">{brand.app_name}</p>
             <p className="text-xs text-campo-200">Chat de prueba</p>
           </div>
         </div>

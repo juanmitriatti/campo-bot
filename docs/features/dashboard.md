@@ -39,7 +39,7 @@ Cada una salió de un número mal mostrado en la copia de prod:
 ### Datasets nuevos del payload
 
 - `incomeProducts` — qué vendiste, por producto (o categoría) con kg y $/tn; el kg solo suma filas con unidad de peso (`kg`/`tn`/`qq`), para que "100 toneladas" sin unidad no sea 100 kg.
-- `cropMargins` — las tarjetas de lote reagrupadas por cultivo: ha, ingresos, gastos, $/ha, resultado. Sale de las mismas filas que las tarjetas para que nunca se contradigan.
+- `cropMargins` — la plata de cada campaña del año agrícola agrupada por cultivo ("Trigo", "Soja 2da", "Soja"): ha, ingresos, gastos, $/ha, resultado. Sale de la misma query que las tarjetas (`campaignMoneyRowsQ`, atribución de `campaign-money.ts`) para que nunca se contradigan. `cropMarginsUSDEq` y `moneyUSDEq`: lo mismo con cada peso al dólar de su fecha.
 - `plots[].harvestKg` / `yieldKgPerHa` — cosechado en la campaña (cantidad del evento → suma de camiones → `plot_crops.yield_kg`) sobre `sowed_hectares` o la superficie del lote.
 - `budgets` — `set_budget` existía en el bot hace mucho y nunca se mostró: presupuesto vs. gastado del mes, en ARS.
 - `reminders` — vencidos + próximos 7 días (`pending` y `sent`: avisado no es hecho).
@@ -169,5 +169,5 @@ IBM Plex Sans + IBM Plex Mono, vía Google Fonts en `frontend/index.html` (`disp
 ## Pendientes conocidos
 
 - `/review` corre 9 queries y `/overview` 18 por carga del Resumen. Irrelevante a la escala actual; es el primer lugar donde mirar si crece el uso.
-- `cropMargins` atribuye un lote entero al cultivo que muestra su tarjeta: un lote con trigo → soja de segunda en la misma campaña carga todo a uno solo.
+- ~~`cropMargins` atribuye un lote entero al cultivo que muestra su tarjeta~~ — resuelto el 12 oct 2026: cada campaña aporta lo suyo (trigo y soja 2da por separado).
 - `harvest_before_planting` dispara solo cuando NO hay siembra anterior del cultivo en el lote y sí una posterior. Antes disparaba con CUALQUIER siembra posterior, o sea en toda rotación soja→soja. Regresión en `src/services/__tests__/overview.integration.test.ts`.

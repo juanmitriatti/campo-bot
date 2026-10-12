@@ -11,6 +11,7 @@ import { FeatureGate } from './billing/feature-gate.js';
 import { TOOL_NAMES } from '../ai/tool-definitions.js';
 import { invalidateUserContext } from '../ai/user-context.service.js';
 import { tipEngine } from '../services/tip-engine.js';
+import { recordTurnCommand } from '../middleware/conversation-logger.js';
 import type { UserId, User, UserSettings, ParsedCommand, HandlerResponse } from '../types/index.js';
 
 // --- Command routing sets ---
@@ -61,7 +62,7 @@ const AGRONOMY_COMMANDS = new Set([
   'delete_last_scouting',
   'rainfall_report', 'rainfall_range',
   'compare_rainfall_months', 'compare_rainfall_years',
-  'sow_crop', 'sow_replace_confirm', 'sow_replace_cancel', 'harvest_crop', 'active_crop', 'crop_history', 'close_campaign', 'campaign_stats', 'compare_campaigns', 'activity_stats',
+  'sow_crop', 'sow_replace_confirm', 'sow_replace_cancel', 'sow_after_harvest_confirm', 'harvest_crop', 'active_crop', 'crop_history', 'close_campaign', 'campaign_stats', 'compare_campaigns', 'activity_stats',
   'log_spraying', 'log_fertilization', 'log_tillage', 'log_irrigation', 'plot_activities',
   'query_plot_history', 'log_observation', 'generate_agro_report',
   'log_tacto', 'tacto_summary', 'edit_last_activity', 'delete_last_activity',
@@ -239,6 +240,7 @@ export class DomainRouter {
     if (routedDomain) {
       routerStats.selected[command] = (routerStats.selected[command] ?? 0) + 1;
       console.log(`ROUTER_SELECT command=${command} domain=${routedDomain} bulk=${bulkMode ? 1 : 0}`);
+      recordTurnCommand(command);
     }
 
     const response = await this.dispatchCommand(cmd, userId, user, settings, bulkMode);

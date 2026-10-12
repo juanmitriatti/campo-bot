@@ -19,6 +19,7 @@ import { requireAuth, requireRole } from './middleware/auth.middleware.js';
 import mapRoutes from './routes/map.routes.js';
 import formsRoutes from './routes/forms.routes.js';
 import plansRoutes from './routes/plans.routes.js';
+import brandRoutes from './routes/brand.routes.js';
 import dataAnalysisRoutes from './routes/data-analysis.routes.js';
 import sharingRoutes from './routes/sharing.routes.js';
 import { startScheduler } from './services/scheduler.js';
@@ -101,6 +102,9 @@ app.use('/api/forms', formsRoutes);
 // Catálogo público de planes — lo lee la sección de precios de la landing
 app.use('/api/plans', plansRoutes);
 
+// Marca pública (nombre de la app) — la leen los títulos del dashboard
+app.use('/api/brand', brandRoutes);
+
 // Admin dashboard: protect API, then serve legacy dashboard
 app.use('/admin/api', requireAuth, requireRole('admin'));
 app.use('/admin', dashboard);
@@ -108,7 +112,21 @@ app.use('/admin', dashboard);
 // React frontend app (dashboard) — served on explicit routes only
 const frontendDist = path.resolve(__dirname, '../frontend/dist');
 app.use('/app-assets', express.static(frontendDist));
-const reactAppRoutes = ['/login', '/register', '/dashboard', '/chat', '/forgot-password', '/reset-password', '/verify-email'];
+// Páginas de cuenta en español (espejo de frontend/src/paths.ts). Los paths
+// viejos en inglés siguen vivos en mails ya enviados, invitaciones por WhatsApp
+// y la landing (submódulo de Lovable): 301 conservando el query (?token=, ?invite=).
+const LEGACY_AUTH_REDIRECTS: Record<string, string> = {
+  '/login': '/ingresar',
+  '/register': '/crear-cuenta',
+  '/forgot-password': '/recuperar-contrasena',
+  '/reset-password': '/nueva-contrasena',
+  '/verify-email': '/verificar-email',
+};
+app.get(Object.keys(LEGACY_AUTH_REDIRECTS), (req: express.Request, res: express.Response) => {
+  const qs = req.originalUrl.indexOf('?');
+  res.redirect(301, LEGACY_AUTH_REDIRECTS[req.path] + (qs >= 0 ? req.originalUrl.slice(qs) : ''));
+});
+const reactAppRoutes = [...Object.values(LEGACY_AUTH_REDIRECTS), '/dashboard', '/chat'];
 app.get(reactAppRoutes, (_req: express.Request, res: express.Response, next: express.NextFunction) => {
   res.sendFile(path.join(frontendDist, 'index.html'), (err) => { if (err) next(); });
 });

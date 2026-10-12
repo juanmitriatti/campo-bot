@@ -35,9 +35,14 @@ export function detectCropFromText(text: string): string | null {
 }
 
 export function getSeasonTypeForCrop(crop: string): 'gruesa' | 'fina' | 'perenne' {
-  if (GRUESA.has(crop)) return 'gruesa';
-  if (FINA.has(crop)) return 'fina';
-  if (PERENNE.has(crop)) return 'perenne';
+  // Sin mayúsculas ni acentos: el agente manda "trigo" y el set dice "Trigo";
+  // comparado tal cual, un trigo quedaba como campaña gruesa.
+  const fold = (c: string) => c.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  const key = fold(crop ?? '');
+  const has = (set: ReadonlySet<string>) => [...set].some(c => fold(c) === key);
+  if (has(GRUESA)) return 'gruesa';
+  if (has(FINA)) return 'fina';
+  if (has(PERENNE)) return 'perenne';
   return 'gruesa'; // default
 }
 
@@ -64,11 +69,55 @@ export function getSeasonYear(date: Date, seasonType: string): number {
 }
 
 export function formatSeasonLabel(seasonYear: number, seasonType: string): string {
-  if (seasonType === 'gruesa') {
+  // La fina integra la campaña agrícola que empieza con su siembra: trigo 2025
+  // (siembra jun 2025, cosecha dic 2025) es la campaña 2025/26, la misma que la
+  // soja de 2da que va detrás. Rotularla "2025" la mostraba como de otro año.
+  if (seasonType === 'gruesa' || seasonType === 'fina') {
     const nextYear = (seasonYear + 1) % 100;
     return `${seasonYear}/${String(nextYear).padStart(2, '0')}`;
   }
   return `${seasonYear}`;
+}
+
+/**
+ * ¿Una siembra con esta fecha abre la campaña SIGUIENTE del lote? Solo si la
+ * activa ya se cosechó y la siembra es POSTERIOR al fin de esa cosecha: el
+ * mismo cultivo reenviado el día de la cosecha es la misma siembra repetida.
+ */
+export function startsNewCampaign(
+  active: Pick<PlotCropRow, 'harvested_at'> & { harvest_ended_at?: Date | string | null },
+  sowISO: string | null,
+): boolean {
+  if (!active.harvested_at) return false;
+  const endISO = toISODateAR((active.harvest_ended_at ?? active.harvested_at) as Date | string);
+  const sow = sowISO ?? getTodayISO();
+  return !!endISO && sow > endISO;
+}
+
+/** Días entre la cosecha de la fina y la siembra de la gruesa para ser "de 2da". */
+export const SECOND_CROP_MAX_GAP_DAYS = 60;
+
+/**
+ * 1 = de primera, 2 = de segunda (gruesa sembrada detrás de una fina COSECHADA
+ * hace menos de `SECOND_CROP_MAX_GAP_DAYS`); null sin antecesor conocido. Una
+ * fina reemplazada sin cosecha no hace "de 2da" a la que sigue (el usuario
+ * puede decirlo: "soja de segunda").
+ */
+export function inferCropOrder(
+  previous: Pick<PlotCropRow, 'season_type' | 'harvested_at' | 'end_date'> & { harvest_ended_at?: Date | string | null } | null,
+  seasonType: string,
+  startISO: string,
+): 1 | 2 | null {
+  if (!previous) return null;
+  const prevEnd = previous.harvest_ended_at ?? previous.harvested_at;
+  if (seasonType === 'gruesa' && previous.season_type === 'fina' && prevEnd) {
+    const endISO = toISODateAR(prevEnd as Date | string);
+    if (endISO) {
+      const gap = (Date.parse(startISO) - Date.parse(endISO)) / 86_400_000;
+      if (gap >= 0 && gap <= SECOND_CROP_MAX_GAP_DAYS) return 2;
+    }
+  }
+  return 1;
 }
 
 export type CampaignState = 'active' | 'harvested' | 'closed';
@@ -96,6 +145,7 @@ export class CropService {
     date?: Date | string | null,
     sowedHectares?: number | null,
     variety?: string | null,
+    opts: { cropOrder?: 1 | 2 | null } = {},
   ): Promise<{ cropRow: PlotCropRow; closedPrevious: PlotCropRow | null }> {
     // La fecha de SIEMBRA manda: start_date y la campaña (año/tipo) salen de
     // ella, no de hoy. Antes el handler pasaba `undefined` y una siembra
@@ -115,16 +165,22 @@ export class CropService {
       // Same crop already active → return existing. Use case-insensitive
       // match so "Soja" / "soja" / "SOJA" don't create duplicate campaigns
       // when the agent re-fires sow_crop with different casing.
-      if (active.crop.toLowerCase() === crop.toLowerCase()) {
+      // Salvo que ya esté COSECHADO: soja sobre una soja cosechada es la
+      // campaña siguiente, no la misma (antes la siembra nueva se colgaba de la
+      // campaña vieja y mezclaba dos años).
+      if (active.crop.toLowerCase() === crop.toLowerCase() && !startsNewCampaign(active, startISO)) {
         return { cropRow: active, closedPrevious: null };
       }
       // Different crop → close the previous one
       closedPrevious = await closePlotCrop(active.id, startISO) as PlotCropRow | null;
     }
 
+    const previous = closedPrevious ?? (((await getPlotCropHistory(plotId)) ?? []) as PlotCropRow[])[0] ?? null;
+    const cropOrder = opts.cropOrder ?? inferCropOrder(previous, seasonType, startISO);
     const cropRow = await createPlotCrop(
-      plotId, crop, seasonYear, seasonType, startISO, sowedHectares ?? null, variety ?? null
+      plotId, crop, seasonYear, seasonType, startISO, sowedHectares ?? null, variety ?? null, cropOrder
     ) as PlotCropRow;
+    if (cropOrder === 2) console.log(`[CAMPAIGN] ${crop} de 2da en lote ${plotId} (antecesor ${previous?.crop ?? "?"})`);
 
     return { cropRow, closedPrevious };
   }

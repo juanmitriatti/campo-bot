@@ -3,6 +3,7 @@ import { sendMessageWithRetry } from "./whatsapp.js";
 import { sendTelegramMessage } from "./telegram.ts";
 import { logError } from "./error-logger.js";
 import { getProactiveBlockReason, isOutsideWhatsAppWindow, deferMessage } from "./proactive-delivery.js";
+import { getAppName } from '../utils/brand.js';
 
 /**
  * Filtro común de TODO envío proactivo (proactive-delivery.js): cuenta borrada
@@ -278,7 +279,7 @@ export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId
   try {
     const { PushNotificationService } = await import('./push-notification.service.js');
     const pushSvc = new PushNotificationService();
-    await pushSvc.sendToUser(userId, 'Campo Bot', message.replace(/\*/g, '').replace(/_/g, '').slice(0, 200));
+    await pushSvc.sendToUser(userId, await getAppName(), message.replace(/\*/g, '').replace(/_/g, '').slice(0, 200));
   } catch (pushErr) {
     // Silently fail — push is supplementary
   }

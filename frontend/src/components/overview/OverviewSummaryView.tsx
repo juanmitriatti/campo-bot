@@ -84,6 +84,7 @@ export default function OverviewSummaryView({
     <div className="space-y-4">
       <CampaignResult
         money={data.money}
+        usdEq={data.moneyUSDEq}
         topCategory={topCategory}
         observed={data.observed}
         campaignLabel={data.campaign.label}
@@ -131,7 +132,12 @@ export default function OverviewSummaryView({
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <CropMargins rows={data.cropMargins[currency]} currency={currency} />
+        <CropMargins
+          rows={data.cropMargins[currency]}
+          currency={currency}
+          usdEqRows={data.cropMarginsUSDEq}
+          fxSource={data.moneyUSDEq?.source}
+        />
         <RainfallMonths
           total={data.rainfall.total}
           count={data.rainfall.count}

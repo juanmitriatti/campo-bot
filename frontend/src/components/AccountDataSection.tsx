@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { apiRequest, ApiError } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useBrand } from '../hooks/useBrand';
 
 /**
  * Exportar y borrar la cuenta desde "Mi cuenta" (DSH-12). Los endpoints
@@ -9,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
  */
 export default function AccountDataSection() {
   const { logout } = useAuth();
+  const { app_name } = useBrand();
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -28,7 +30,7 @@ export default function AccountDataSection() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `campo-bot-mis-datos-${new Date().toISOString().slice(0, 10)}.zip`;
+      a.download = `${app_name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-mis-datos-${new Date().toISOString().slice(0, 10)}.zip`;
       document.body.appendChild(a);
       a.click();
       a.remove();

@@ -1,6 +1,6 @@
 self.addEventListener('push', function(event) {
   const data = event.data ? event.data.json() : {};
-  const title = data.title || 'Campo Bot';
+  const title = data.title || 'MiAgro';
   const options = {
     body: data.body || '',
     icon: '/icon-192.png',

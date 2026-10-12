@@ -88,10 +88,16 @@ describe.skipIf(!dbAvailable)('overview.service — scoping del Resumen', () => 
     expect(soja?.pricePerTn).toBe(300);
   });
 
-  it('con un campo puntual NO entra lo que no tiene ubicación', async () => {
+  // Desde el 12 oct 2026 (campaign-money.ts, regla 5) una venta de grano sin
+  // ubicación entra por la campaña de ese cultivo: la única soja es la del
+  // campo A, así que la venta es de A. Antes ningún campo puntual la veía.
+  it('con un campo puntual, la venta de soja sin ubicación entra por su campaña de soja', async () => {
     const one = await getOverview(Number(h.userId), [fieldA], RANGE, { includeUnassigned: false });
-    expect(one.money.USD.income).toBe(0);
+    expect(one.money.USD.income).toBe(30000);
     expect(one.money.ARS.expense).toBe(100000);
+    const b = await getOverview(Number(h.userId), [fieldB], RANGE, { includeUnassigned: false });
+    expect(b.money.USD.income).toBe(0); // el campo B no tiene soja
+    expect(b.money.ARS.expense).toBe(50000);
   });
 
   it('counts.livestock son cabezas, no grupos', async () => {

@@ -45,6 +45,7 @@ import {
   processDocumentWithIntent,
   makeDocCallbackHandler,
 } from '../services/document-pipeline.js';
+import { getAppName } from '../utils/brand.js';
 
 const dedup = new MessageDedup();
 const handleTgDocCallback = makeDocCallbackHandler(downloadTelegramFile);
@@ -57,8 +58,9 @@ function tgPhone(chatId: string | number): string {
 
 // Copy único del onboarding para chats no verificados (texto Y callbacks).
 async function buildUnverifiedOnboardingMessage(): Promise<string> {
-  const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://campo-bot-production.up.railway.app';
-  return `Hola 👋 Bienvenido a Campo Bot.\n\nPara empezar a usarme, seguí estos 2 pasos en orden:\n\n*1.* Creá tu cuenta acá 👉 ${publicUrl}/register\n*2.* Desde la app, andá a *Mi cuenta* → *Vincular Telegram* y vas a recibir un link mágico. Tocalo y este chat queda vinculado.\n\nUna vez vinculado, escribime de nuevo y ya podés cargar gastos, lluvias, hacienda, cosechas y más.`;
+  const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://miagro.app';
+  const appName = await getAppName();
+  return `Hola 👋 Bienvenido a ${appName}.\n\nPara empezar a usarme, seguí estos 2 pasos en orden:\n\n*1.* Creá tu cuenta acá 👉 ${publicUrl}/crear-cuenta\n*2.* Desde la app, andá a *Mi cuenta* → *Vincular Telegram* y vas a recibir un link mágico. Tocalo y este chat queda vinculado.\n\nUna vez vinculado, escribime de nuevo y ya podés cargar gastos, lluvias, hacienda, cosechas y más.`;
 }
 
 // --- Send bot response items via Telegram ---

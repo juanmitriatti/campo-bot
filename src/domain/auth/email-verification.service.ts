@@ -9,6 +9,7 @@ import {
   invalidatePendingTokens,
   markTokenUsed,
 } from './one-time-token.js';
+import { getAppName } from '../../utils/brand.js';
 
 export class EmailVerificationError extends Error {
   status: number;
@@ -51,19 +52,21 @@ export async function sendVerificationEmail(userId: number): Promise<{ ok: boole
   );
 
   const publicUrl = ((await getSetting('PUBLIC_URL')) as string) || '';
-  const link = `${publicUrl.replace(/\/$/, '')}/verify-email?token=${rawToken}`;
+  const link = `${publicUrl.replace(/\/$/, '')}/verificar-email?token=${rawToken}`;
 
+  const appName = await getAppName();
   try {
     const sent = await sendEmail({
       to: user.email,
-      subject: 'Verificá tu email — Campo Bot',
-      text: `Hola ${user.name ?? ''},\n\nGracias por registrarte en Campo Bot. Para activar tu cuenta abrí este link (vence en ${ttlH} horas):\n\n${link}\n\nSi no fuiste vos, ignorá este email.\n`,
+      subject: `Verificá tu email — ${appName}`,
+      text: `Hola ${user.name ?? ''},\n\nGracias por registrarte en ${appName}. Para activar tu cuenta abrí este link (vence en ${ttlH} horas):\n\n${link}\n\nSi no fuiste vos, ignorá este email.\n`,
       html: wrapHtml(
         'Verificá tu email',
         `<p>Hola <strong>${user.name ?? ''}</strong>,</p>
-         <p>Gracias por registrarte en Campo Bot. Para activar tu cuenta tocá el botón. El link vence en <strong>${ttlH} horas</strong>.</p>`,
+         <p>Gracias por registrarte en ${appName}. Para activar tu cuenta tocá el botón. El link vence en <strong>${ttlH} horas</strong>.</p>`,
         link,
         'Verificar email',
+        appName,
       ),
     });
     // sendEmail no tira: devuelve ok:false (sin API key, error de Resend).

@@ -1,9 +1,11 @@
-import type { MoneySide } from '../../hooks/useOverviewData';
+import type { MoneySide, MoneyUSDEq } from '../../hooks/useOverviewData';
 import { money, signedMoney, dateRange, percent } from '../../utils/format';
 import type { Currency } from '../../utils/format';
 
 interface Props {
   money: { ARS: MoneySide; USD: MoneySide };
+  /** Todo en dólares (cada peso al dólar de su fecha); ausente en backends viejos. */
+  usdEq?: MoneyUSDEq;
   topCategory: { ARS: { category: string; total: number } | null; USD: { category: string; total: number } | null };
   observed: { from: string | null; to: string | null };
   campaignLabel: string;
@@ -17,7 +19,7 @@ interface Props {
  * USD). Showing one at a time and calling it "el resultado" is simply wrong, so
  * both sit side by side and neither is the headline.
  */
-export default function CampaignResult({ money: m, topCategory, observed, campaignLabel }: Props) {
+export default function CampaignResult({ money: m, usdEq, topCategory, observed, campaignLabel }: Props) {
   const sides: Array<{ key: Currency; head: string; side: MoneySide }> = [
     { key: 'USD', head: 'En dólares', side: m.USD },
     { key: 'ARS', head: 'En pesos', side: m.ARS },
@@ -47,6 +49,24 @@ export default function CampaignResult({ money: m, topCategory, observed, campai
           No hay gastos ni ingresos cargados en esta campaña para la selección actual.
         </p>
       ) : (
+        <>
+        {usdEq && (
+          // The one number that adds both currencies: every peso converted at
+          // the dollar of ITS date. Converting at today's rate would be another
+          // wrong number, so the source and the gaps are spelled out.
+          <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Todo en dólares</span>
+            <span className={`font-mono text-2xl md:text-3xl font-semibold tracking-tight ${
+              usdEq.result >= 0 ? 'text-campo-700 dark:text-campo-400' : 'text-red-700 dark:text-red-400'
+            }`}>
+              {signedMoney(usdEq.result, 'USD')}
+            </span>
+            <span className="text-xs text-gray-400 dark:text-gray-500 text-pretty">
+              ingresos {money(usdEq.income, 'USD')} · gastos {money(usdEq.expense, 'USD')} · cada peso al {usdEq.source} de su fecha
+              {usdEq.missing > 0 && ` · ${usdEq.missing} sin cotización (no entran)`}
+            </span>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {sides.map(({ key, head, side }) => {
             const span = Math.max(side.income, side.expense, 1);
@@ -88,6 +108,7 @@ export default function CampaignResult({ money: m, topCategory, observed, campai
             );
           })}
         </div>
+        </>
       )}
     </section>
   );

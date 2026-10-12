@@ -37,13 +37,16 @@ const PRONOUN_PATTERNS: ReadonlyArray<RegExp> = [
   // apliqué, coseché...) — "ahí sembré soja". El \s+ va DENTRO del lookahead
   // para no comerse el espacio antes del verbo (el match es solo "ahí").
   new RegExp(String.raw`\b(?:ah[ií]|all[íi]|all[áa])(?=\s+(?:sembr|fumig|aplic|cosech|fertiliz|pulveric|ar[eé]|rastr|disqu|reg[uoó]|pas[eé]|met[íi]|agregu|cargu|gast[eé]|pagu[eé]|vend[íi]|compr[eé]))`, 'gi'),
-  // "(el/ese/este) mismo lote / campo / potrero" — consume the article/demonstrative
+  // "(el/ese/este) mismo lote / potrero" — consume the article/demonstrative
   // if present so "en el mismo lote" → "en en lote X" → collapsed to "en lote X" below.
-  new RegExp(String.raw`\b(?:el\s+|ese\s+|este\s+)?mismo\s+(?:lote|campo|potrero)\b`, 'gi'),
+  // "campo" NO: un campo no es un lote. "ese campo tiene 2 lotes" se expandía a
+  // "en lote 5g tiene 2 lotes" y los lotes nuevos terminaron en otro campo
+  // (prod 11 oct 2026). El campo lo resuelve el agente con el contexto.
+  new RegExp(String.raw`\b(?:el\s+|ese\s+|este\s+)?mismo\s+(?:lote|potrero)\b`, 'gi'),
   // "el mismo" without noun — keeps natural flow ("y el mismo" → "y en lote X")
-  new RegExp(String.raw`\bel\s+mismo\b`, 'gi'),
-  // "ese / este / aquel + lote/campo" — explicit pronoun + noun
-  new RegExp(String.raw`\b(?:ese|este|aquel|aquella?|esa)\s+(?:lote|campo|potrero|parcela)\b`, 'gi'),
+  new RegExp(String.raw`\bel\s+mismo\b(?!\s+campo)`, 'gi'),
+  // "ese / este / aquel + lote" — explicit pronoun + noun (nunca "campo", ver arriba)
+  new RegExp(String.raw`\b(?:ese|este|aquel|aquella?|esa)\s+(?:lote|potrero|parcela)\b`, 'gi'),
   // "el de antes" / "el de recién" / "el anterior" — backref to prev plot
   new RegExp(String.raw`\bel\s+(?:de\s+(?:antes|reci[eé]n|hoy)|anterior)\b`, 'gi'),
   // "ahí" / "allí" after a clear plot-context preposition — lookahead for end
@@ -56,11 +59,11 @@ const PRONOUN_PATTERNS: ReadonlyArray<RegExp> = [
  *  Only expand when the caller can provide a distinct previous plot from
  *  the context_stack — otherwise these pass through untouched. */
 const OTHER_PLOT_PATTERNS: ReadonlyArray<RegExp> = [
-  // "el otro lote / campo / potrero / parcela"
-  new RegExp(String.raw`\bel\s+otro\s+(?:lote|campo|potrero|parcela)\b`, 'gi'),
+  // "el otro lote / potrero / parcela" (un campo no es un lote)
+  new RegExp(String.raw`\bel\s+otro\s+(?:lote|potrero|parcela)\b`, 'gi'),
   // "en el otro" / "al otro" / "del otro" sin sustantivo — solo tras preposición
   // clara de lugar para no comerse "el otro día" (que es temporal).
-  new RegExp(String.raw`\b(?:en|a|del?)\s+el\s+otro${TOKEN_END}`, 'gi'),
+  new RegExp(String.raw`\b(?:en|a|del?)\s+el\s+otro${TOKEN_END}(?!\s+campo)`, 'gi'),
 ];
 
 /**

@@ -1236,6 +1236,17 @@ async function expenseTemplateTick() {
 // ---------------------------------------------------------------------------
 
 export function startScheduler() {
+  // Dólar histórico (fx_rates): al arrancar si falta lo reciente, y todos los
+  // días a las 20:10 (después del cierre del mayorista).
+  import("./fx-rate.service.js")
+    .then(m => m.ensureFxRatesFresh())
+    .catch(err => console.error("[scheduler] fx boot sync failed:", err));
+  cron.schedule("10 20 * * *", () => {
+    import("./fx-rate.service.js")
+      .then(m => m.syncFxRates())
+      .catch(err => console.error("[scheduler] fx sync failed:", err));
+  }, { timezone: "America/Argentina/Buenos_Aires" });
+
   // Weekly summary — every hour at :00
   cron.schedule("0 * * * *", () => {
     tick();

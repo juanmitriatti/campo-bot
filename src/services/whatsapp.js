@@ -129,6 +129,20 @@ export async function downloadMedia(mediaId) {
   }
 }
 
+/**
+ * Recorta un título al límite de Meta (botón 20, fila/sección de lista 24).
+ * Un título de más hace que Meta rechace el mensaje ENTERO con 400 (131009) y
+ * el usuario no ve la pregunta: en prod (12 oct 2026) "Sí, crear y continuar"
+ * (21) perdió la oferta de crear el lote. Se recorta y se loguea.
+ */
+function fitTitle(title, max) {
+  const t = String(title ?? '');
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 1).trimEnd() + '…';
+  console.warn(`[INTERCEPT] WA título recortado (${t.length} > ${max}): "${t}" → "${cut}"`);
+  return cut;
+}
+
 export async function sendInteractiveButtons(to, body, buttons) {
   to = formatArgNumber(to);
   try {
@@ -155,7 +169,7 @@ export async function sendInteractiveButtons(to, body, buttons) {
           action: {
             buttons: renderable.map(b => ({
               type: "reply",
-              reply: { id: b.id, title: b.title }
+              reply: { id: b.id, title: fitTitle(b.title, 20) }
             }))
           }
         }
@@ -201,12 +215,12 @@ export async function sendInteractiveList(to, body, buttonText, sections) {
           type: "list",
           body: { text: body },
           action: {
-            button: buttonText,
+            button: fitTitle(buttonText, 20),
             sections: sections.map(s => ({
-              title: s.title,
+              title: fitTitle(s.title, 24),
               rows: s.rows.map(r => ({
                 id: r.id,
-                title: r.title,
+                title: fitTitle(r.title, 24),
                 ...(r.description ? { description: r.description } : {})
               }))
             }))

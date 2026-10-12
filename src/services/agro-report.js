@@ -7,6 +7,7 @@ import { getPlotsByField, getActiveCrop } from "./expenses.js";
 import { getWeekObservations, getWeekObservationsByPlot, getObservationsByDateRange, getObservationsByDateRangeAndPlot, getWeekNumber, deduplicateObservations, getNowArgentina } from "./observations.js";
 import { getSetting, getSettingBool } from "./settings.service.js";
 import { logError } from "./error-logger.js";
+import { brandSettingOrAppName, DEFAULT_APP_NAME } from "../utils/brand.js";
 
 async function getReportsDir() {
   const storagePath = await getSetting('REPORTS_STORAGE_PATH');
@@ -380,7 +381,7 @@ async function loadReportToggles() {
   keys.forEach((k, i) => { t[k.replace('AGRO_REPORT_SHOW_', '').toLowerCase()] = bools[i] !== false; });
   t.logo = bools[keys.indexOf('AGRO_REPORT_SHOW_LOGO')] === true;
   t.logoPath = (await getSetting('AGRO_REPORT_LOGO_PATH')) || '';
-  t.brandName = (await getSetting('AGRO_REPORT_BRAND_NAME')) || 'Agrobot';
+  t.brandName = await brandSettingOrAppName('AGRO_REPORT_BRAND_NAME');
   return t;
 }
 
@@ -546,7 +547,7 @@ function renderHeader({ doc, field, filterPlotName, agronomist, periodLabel, tog
     } catch { /* ignore bad logos */ }
   }
 
-  const brand = toggles.brandName || 'Agrobot';
+  const brand = toggles.brandName || DEFAULT_APP_NAME;
   doc.fontSize(9).font('Helvetica').fillColor(COLORS.gray).text(brand, 50, startY, { align: 'right', width: 495 });
   doc.fillColor('#000');
 

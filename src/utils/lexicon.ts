@@ -39,6 +39,63 @@ export function startsWithCorrectionCue(text: string): boolean {
   return CORRECTION_PREFIX_RE.test(normLex(text));
 }
 
+/**
+ * "perdón, quise decir 20" / "no, eran 20" / "me equivoqué, 20 vaquillonas":
+ * el mensaje ENTERO es una corrección de cantidad. Devuelve el número, o null
+ * si hay algo más (otro número, un verbo, un lote). Exige la marca de
+ * corrección: "20" pelado es una respuesta, no una corrección.
+ */
+export function extractHeadCountCorrection(text: string): number | null {
+  let t = normLex(text).trim().replace(/[.!¡]+$/g, '').trim();
+  if (!t || t.length > 60 || !CORRECTION_PREFIX_RE.test(t + ' ')) return null;
+  for (let i = 0; i < 3 && CORRECTION_PREFIX_RE.test(t + ' '); i++) {
+    t = (t + ' ').replace(CORRECTION_PREFIX_RE, '').trim();
+  }
+  const m = t.match(/^(?:(?:eran|son|fueron|era|es)\s+)?(\d{1,5})(?:\s+(?:cabezas?|animales?|[a-zñ]+))?$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return n > 0 ? n : null;
+}
+
+/**
+ * "movelos al corral 2" / "llevalos a la Loma" contestando "¿A qué lote o
+ * corral muevo los N?": el verbo de mover repite la pregunta, lo que importa es
+ * el destino. Devuelve el resto ("al corral 2"), o null si el mensaje no
+ * arranca con un verbo de mover sobre "los/las" o si trae animales propios
+ * (una cantidad o una caravana — eso es otro movimiento, no la respuesta).
+ */
+export function extractMoveDestinationAnswer(text: string): string | null {
+  const t = normLex(text).trim().replace(/[.!¡]+$/g, '').trim();
+  if (!t || t.length > 60) return null;
+  const m = t.match(/^(?:move\w*|muev\w*|lleva\w*|pasa\w*|manda\w*|mete\w*)(?:\s+(?:los|las|a\s+(?:los|las)))?\s+((?:a|al|a\s+la|para|hacia|en)\b.+)$/);
+  if (!m) return null;
+  const rest = m[1].trim();
+  if (/\d{5,}/.test(rest) || /\b\d+\s+(?:vacas?|novill\w*|terner\w*|toros?|vaquillonas?|animales?|cabezas?)\b/.test(rest)) return null;
+  return rest;
+}
+
+/**
+ * "soja de segunda" / "maíz de 2da" / "soja 1ra": el usuario dice si la gruesa
+ * va detrás de una fina. 2 = de segunda, 1 = de primera, null = no lo dijo
+ * (y la campaña lo infiere del antecesor, `inferCropOrder`). Exige el cultivo
+ * pegado: "la segunda tanda" no es una soja de 2da.
+ */
+export function extractCropOrderCue(text: string | null | undefined): 1 | 2 | null {
+  const t = normLex(text ?? '');
+  const m = t.match(/\b(?:soja|soya|maiz|girasol|sorgo)\s+(?:de\s+)?(segunda|2da|2a|2\s*[°º]|primera|1ra|1a|1\s*[°º])(?=$|[\s,.;!?])/);
+  if (!m) return null;
+  return /^(segunda|2)/.test(m[1]) ? 2 : 1;
+}
+
+/**
+ * Saca del texto los números que nombran una UBICACIÓN ("corral 2", "lote 5",
+ * "potrero nº 3"): un número así nunca es una caravana. Sin esto "movelos al
+ * corral 2" hizo que el validador reemplazara las 4 caravanas por «2».
+ */
+export function stripLocationNumbers(text: string): string {
+  return text.replace(/\b(?:corral|lote|potrero|cuadro|parcela|manga)\s+(?:n(?:[°º.]|ro\.?)?\s*)?\d+\b/gi, ' ');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Copula / "was/were" cues — "eran 5000", "fue ayer", "salió 200".
 // ─────────────────────────────────────────────────────────────────────────────

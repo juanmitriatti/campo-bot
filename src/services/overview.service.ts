@@ -26,6 +26,8 @@ import { accessibleFieldsSql } from '../domain/shared/accessible-fields.js';
 import { campaignRange, type CampaignRange } from '../utils/campaign-range.js';
 import { getTodayISO } from '../utils/date.js';
 import { harvestCampaignsCte } from '../utils/harvest-campaign-kg.js';
+import { campaignMoneyCtes } from '../domain/plots/campaign-money.js';
+import { getFxSource, usdEquivalentSql, FX_SOURCE_LABEL } from './fx-rate.service.js';
 
 export interface MoneySide {
   income: number;
@@ -72,6 +74,7 @@ export interface PlotRow {
 
 /** Money grouped by the crop the lote carries in the campaign. */
 export interface CropMarginRow {
+  /** "Soja", "Soja 2da", "Trigo"; null = plata del lote sin campaña. */
   crop: string | null;
   hectares: number;
   plots: number;
@@ -143,8 +146,21 @@ export interface RainfallMonth {
   mm: number;
 }
 
+/** Todo pasado a dólares al dólar de la fecha de cada movimiento. */
+export interface MoneyUSDEq {
+  income: number;
+  expense: number;
+  result: number;
+  /** Movimientos en pesos sin cotización para su fecha (no entran). */
+  missing: number;
+  /** "dólar mayorista (A3500)" — cuál se usó. */
+  source: string;
+}
+
 export interface OverviewPayload {
   campaign: CampaignRange;
+  moneyUSDEq: MoneyUSDEq;
+  cropMarginsUSDEq: CropMarginRow[];
   counts: OverviewCounts;
   observed: { from: string | null; to: string | null };
   money: { ARS: MoneySide; USD: MoneySide };
@@ -289,7 +305,11 @@ export async function getOverview(
   // que el Resumen dependía de que ese insert hubiera corrido alguna vez.
   const accessible = accessibleFieldsSql(1);
   const includeUnassigned = opts.includeUnassigned;
-  const p = [userId, range.from, range.to, fieldIds, includeUnassigned];
+  const fxSource = await getFxSource();
+  const p = [userId, range.from, range.to, fieldIds, includeUnassigned, range.seasonYear, fxSource];
+  // Postgres rechaza un parámetro que la query no usa: cada una recibe los suyos.
+  const p5 = p.slice(0, 5);
+  const p6 = p.slice(0, 6);
 
   // Location predicate for money rows: the row's field (direct or via lote) is
   // in scope, or it has no location at all and we are looking at everything.
@@ -322,58 +342,95 @@ export async function getOverview(
           OR ($5::boolean AND d.plot_id IS NULL AND d.corral_id IS NULL)
         )`;
 
-  const expensesQ = pool.query(
-    `SELECT COALESCE(currency, 'ARS') AS currency,
-            SUM(amount)::numeric AS total,
-            COUNT(*)::int AS n,
-            MIN(expense_date)::text AS first_date,
-            MAX(expense_date)::text AS last_date
-       FROM expenses e
-      WHERE ${moneyScope('e', 'expense_date')}
-      GROUP BY 1`,
-    p,
-  );
+  // LA PLATA DE LA CAMPAÑA (análisis de cosecha, 12 oct 2026). Antes era "lo
+  // fechado entre el 1 sep y el 31 ago". Ahora: lo que campaign-money.ts
+  // atribuye a una campaña de ESTE año agrícola (season_year) en los campos
+  // elegidos —barbecho previo, venta del grano guardado aunque sea de otro
+  // ejercicio, la parte de lo cargado a nivel campo, y el trigo sembrado en
+  // junio, que ya no cae en la campaña anterior— más lo que no pertenece a
+  // ninguna campaña y está fechado en la ventana (estructura, hacienda).
+  // Una fila repartida entra con su peso (`w`).
+  const seasonMoneyCtes = `${campaignMoneyCtes('$1')},
+    attr AS (
+      SELECT m.kind, m.row_id,
+             SUM(m.share) FILTER (WHERE c.season_year = $6 AND c.field_id = ANY($4::int[])) AS w
+        FROM campaign_money m
+        JOIN campaigns c ON c.id = m.plot_crop_id
+       WHERE ${foldCategory('m.category')} <> 'hacienda'
+       GROUP BY m.kind, m.row_id
+    ),
+    season_money AS (
+      SELECT 'expense'::text AS kind, e.id AS row_id, e.plot_id, COALESCE(a.w, 1)::numeric AS w,
+             (e.amount * COALESCE(a.w, 1))::numeric AS amount, COALESCE(e.currency, 'ARS') AS currency,
+             e.expense_date AS money_date, e.category, e.product, e.quantity, e.unit,
+             (a.row_id IS NOT NULL) AS attributed
+        FROM expenses e
+        LEFT JOIN attr a ON a.kind = 'expense' AND a.row_id = e.id
+       WHERE (e.user_id = $1 OR COALESCE(e.field_id, (SELECT field_id FROM plots WHERE id = e.plot_id)) IN (${accessible}))
+         AND e.deleted_at IS NULL
+         AND ((a.row_id IS NOT NULL AND a.w > 0)
+              OR (a.row_id IS NULL AND ${moneyScope('e', 'expense_date')}))
+      UNION ALL
+      SELECT 'income'::text, i.id, i.plot_id, COALESCE(a.w, 1)::numeric,
+             (i.amount * COALESCE(a.w, 1))::numeric, COALESCE(i.currency, 'ARS'),
+             i.income_date, i.category, i.product, i.quantity, i.unit,
+             (a.row_id IS NOT NULL)
+        FROM incomes i
+        LEFT JOIN attr a ON a.kind = 'income' AND a.row_id = i.id
+       WHERE (i.user_id = $1 OR COALESCE(i.field_id, (SELECT field_id FROM plots WHERE id = i.plot_id)) IN (${accessible}))
+         AND i.deleted_at IS NULL
+         AND ((a.row_id IS NOT NULL AND a.w > 0)
+              OR (a.row_id IS NULL AND ${moneyScope('i', 'income_date')}))
+    )`;
 
-  const incomesQ = pool.query(
-    `SELECT COALESCE(currency, 'ARS') AS currency,
+  // Totales por moneda + el equivalente en dólares (cada peso al dólar de su
+  // fecha) en la misma pasada.
+  const usdEq = usdEquivalentSql('amount', 'currency', 'money_date', '$7');
+  const moneyQ = pool.query(
+    `WITH ${seasonMoneyCtes}
+     SELECT kind, currency,
             SUM(amount)::numeric AS total,
             COUNT(*)::int AS n,
-            MIN(income_date)::text AS first_date,
-            MAX(income_date)::text AS last_date
-       FROM incomes i
-      WHERE ${moneyScope('i', 'income_date')}
-      GROUP BY 1`,
+            MIN(money_date)::text AS first_date,
+            MAX(money_date)::text AS last_date,
+            COALESCE(SUM(${usdEq}), 0)::numeric AS usd_eq,
+            COUNT(*) FILTER (WHERE currency <> 'USD' AND ${usdEq} IS NULL)::int AS fx_missing
+       FROM season_money
+      GROUP BY 1, 2`,
     p,
   );
 
   const categoriesQ = pool.query(
-    `SELECT COALESCE(NULLIF(TRIM(e.category), ''), 'Sin categoría') AS category,
-            COALESCE(e.currency, 'ARS') AS currency,
-            SUM(e.amount)::numeric AS total
-       FROM expenses e
-      WHERE ${moneyScope('e', 'expense_date')}
+    `WITH ${seasonMoneyCtes}
+     SELECT COALESCE(NULLIF(TRIM(category), ''), 'Sin categoría') AS category,
+            currency,
+            SUM(amount)::numeric AS total
+       FROM season_money
+      WHERE kind = 'expense'
       GROUP BY 1, 2
       ORDER BY 3 DESC`,
-    p,
+    p6,
   );
 
   // What was sold: by product (grain) when the row has one, else by category.
   // kg and price only over rows that carried a real weight unit.
   const incomeProductsQ = pool.query(
-    `SELECT COALESCE(NULLIF(TRIM(i.product), ''), NULLIF(TRIM(i.category), ''), 'Sin detalle') AS name,
-            COALESCE(i.currency, 'ARS') AS currency,
-            SUM(i.amount)::numeric AS total,
+    `WITH ${seasonMoneyCtes}
+     SELECT COALESCE(NULLIF(TRIM(product), ''), NULLIF(TRIM(category), ''), 'Sin detalle') AS name,
+            currency,
+            SUM(amount)::numeric AS total,
             COUNT(*)::int AS n,
-            SUM(CASE WHEN i.quantity > 0 AND ${kgFactor('i.unit')} IS NOT NULL
-                     THEN i.quantity * ${kgFactor('i.unit')} END)::numeric AS kg,
-            SUM(CASE WHEN i.quantity > 0 AND ${kgFactor('i.unit')} IS NOT NULL
-                     THEN i.amount END)::numeric AS amount_with_kg
-       FROM incomes i
-      WHERE ${moneyScope('i', 'income_date')}
+            SUM(CASE WHEN quantity > 0 AND ${kgFactor('unit')} IS NOT NULL
+                     THEN quantity * w * ${kgFactor('unit')} END)::numeric AS kg,
+            SUM(CASE WHEN quantity > 0 AND ${kgFactor('unit')} IS NOT NULL
+                     THEN amount END)::numeric AS amount_with_kg
+       FROM season_money
+      WHERE kind = 'income'
       GROUP BY 1, 2
       ORDER BY 3 DESC`,
-    p,
+    p6,
   );
+
 
   // Every month of a campaign window, so a month with no rain reads as a
   // visible gap instead of vanishing from the axis. Shared-field members see
@@ -407,50 +464,67 @@ export async function getOverview(
        FROM domain_events d
        ${eventJoins}
       WHERE ${eventScope}`,
-    p,
+    p5,
   );
 
-  // The crop shown on a lote card is the one that OVERLAPS the campaign window
-  // (active first, then the latest started), not the one on the lote today.
+  // The crop shown on a lote card is the one of THIS campaign (season_year),
+  // the latest sown first; with trigo + soja de 2da both are named. Without a
+  // campaign of the season, the one overlapping the window, as before.
   const plotsQ = pool.query(
     `SELECT pl.id, pl.name, pl.area_hectares, f.id AS field_id, f.name AS field_name,
             pc.crop, pc.start_date::text AS crop_start, pc.harvested_at::text AS harvested_at,
-            pc.end_date::text AS crop_end, pc.sowed_hectares
+            pc.end_date::text AS crop_end, pc.sowed_hectares, seq.label AS crop_sequence
        FROM plots pl
        JOIN fields f ON f.id = pl.field_id
        LEFT JOIN LATERAL (
          SELECT c.crop, c.start_date, c.harvested_at, c.end_date, c.sowed_hectares
            FROM plot_crops c
           WHERE c.plot_id = pl.id
-            AND c.start_date <= $2::date
-            AND (c.end_date IS NULL OR c.end_date >= $1::date)
-          ORDER BY (c.end_date IS NULL) DESC, c.start_date DESC NULLS LAST
+            AND (c.season_year = $4
+                 OR (c.start_date <= $2::date AND (c.end_date IS NULL OR c.end_date >= $1::date)))
+          ORDER BY (c.season_year = $4) DESC, c.start_date DESC NULLS LAST, c.id DESC
           LIMIT 1
        ) pc ON true
+       LEFT JOIN LATERAL (
+         SELECT string_agg(c.crop || CASE WHEN c.crop_order = 2 THEN ' 2da' ELSE '' END, ' → '
+                           ORDER BY c.start_date, c.id) AS label,
+                COUNT(*) AS n
+           FROM plot_crops c
+          WHERE c.plot_id = pl.id AND c.season_year = $4
+       ) seq ON seq.n > 1
       WHERE f.id = ANY($3::int[])
         AND pl.deleted_at IS NULL
         AND f.deleted_at IS NULL
       ORDER BY f.name, pl.name`,
-    [range.from, range.to, fieldIds],
+    [range.from, range.to, fieldIds, range.seasonYear],
   );
 
-  const plotSpendQ = pool.query(
-    `SELECT e.plot_id, COALESCE(e.currency, 'ARS') AS currency, SUM(e.amount)::numeric AS total
-       FROM expenses e
-      WHERE ${moneyScope('e', 'expense_date')}
-        AND e.plot_id IS NOT NULL
-      GROUP BY 1, 2`,
-    p,
-  );
-
-  // Income per plot, so a lote card can show a RESULT and not just a cost.
-  // Same window as everything else on the screen.
-  const plotIncomeQ = pool.query(
-    `SELECT i.plot_id, COALESCE(i.currency, 'ARS') AS currency, SUM(i.amount)::numeric AS total
-       FROM incomes i
-      WHERE ${moneyScope('i', 'income_date')}
-        AND i.plot_id IS NOT NULL
-      GROUP BY 1, 2`,
+  // Plata por lote y por cultivo: lo atribuido a cada campaña de la temporada
+  // (en el lote de esa campaña, aunque la fila fuera de nivel campo o una venta
+  // sin lote) más lo del lote que no es de ninguna campaña. Una sola query
+  // para las tarjetas y el margen por cultivo: no pueden contradecirse.
+  const campaignMoneyRowsQ = pool.query(
+    `WITH ${seasonMoneyCtes},
+     attributed AS (
+       SELECT m.kind, c.plot_id, c.id AS plot_crop_id,
+              c.crop || CASE WHEN c.crop_order = 2 THEN ' 2da' ELSE '' END AS crop_label,
+              c.ha, m.currency, m.amount, m.money_date
+         FROM campaign_money m
+         JOIN campaigns c ON c.id = m.plot_crop_id
+        WHERE c.season_year = $6 AND c.field_id = ANY($4::int[])
+          AND ${foldCategory('m.category')} <> 'hacienda'
+     ),
+     loose AS (
+       SELECT sm.kind, sm.plot_id, NULL::int AS plot_crop_id, NULL::text AS crop_label,
+              NULL::numeric AS ha, sm.currency, sm.amount, sm.money_date
+         FROM season_money sm
+        WHERE NOT sm.attributed AND sm.plot_id IS NOT NULL
+     )
+     SELECT kind, plot_id, plot_crop_id, crop_label, ha, currency,
+            SUM(amount)::numeric AS total,
+            SUM(${usdEquivalentSql('amount', 'currency', 'money_date', '$7')})::numeric AS usd_eq
+       FROM (SELECT * FROM attributed UNION ALL SELECT * FROM loose) x
+      GROUP BY 1, 2, 3, 4, 5, 6`,
     p,
   );
 
@@ -510,7 +584,7 @@ export async function getOverview(
        WHERE ${moneyScope('i', 'income_date')})
      ORDER BY date DESC, created_at DESC
      LIMIT 10`,
-    p,
+    p5,
   );
 
   // Budgets are per user and per calendar month (that is what `set_budget`
@@ -594,19 +668,24 @@ export async function getOverview(
            AND min_stock IS NOT NULL AND current_quantity <= min_stock)::int AS stock_alerts,
        (SELECT COUNT(*) FROM documents WHERE user_id = $1 AND deleted_at IS NULL)::int AS documents,
        (SELECT COUNT(*) FROM task_reminders
-         WHERE user_id = $1 AND status IN ('pending', 'sent'))::int AS reminders`,
-    [userId, range.from, range.to, fieldIds],
+         WHERE user_id = $1 AND status IN ('pending', 'sent'))::int AS reminders,
+       -- Gastos/Ingresos: filas fechadas en la ventana, porque las tablas
+       -- filtran así (badge = tabla), aunque la plata del Resumen sea por campaña.
+       (SELECT COUNT(*) FROM expenses e WHERE ${moneyScope('e', 'expense_date')})::int AS expenses,
+       (SELECT COUNT(*) FROM incomes i WHERE ${moneyScope('i', 'income_date')})::int AS incomes`,
+    p5,
   );
 
   const [
-    expenses, incomes, categories, incomeProducts, rain, prevRain, activities,
-    plots, plotSpend, plotIncome, plotHarvest, plotLast, feed, budgets,
+    moneyRows, categories, incomeProducts, rain, prevRain, activities,
+    plots, campaignMoneyRows, plotHarvest, plotLast, feed, budgets,
     reminders, livestock, lastWeighing, counts,
   ] = await Promise.all([
-    expensesQ, incomesQ, categoriesQ, incomeProductsQ, rainQ, prevRainQ, activitiesQ,
-    plotsQ, plotSpendQ, plotIncomeQ, plotHarvestQ, plotLastQ, feedQ, budgetsQ,
+    moneyQ, categoriesQ, incomeProductsQ, rainQ, prevRainQ, activitiesQ,
+    plotsQ, campaignMoneyRowsQ, plotHarvestQ, plotLastQ, feedQ, budgetsQ,
     remindersQ, livestockQ, lastWeighingQ, countsQ,
   ]);
+
 
   const money: { ARS: MoneySide; USD: MoneySide } = { ARS: emptySide(), USD: emptySide() };
   let obsFrom: string | null = null;
@@ -619,18 +698,23 @@ export async function getOverview(
   const sideOf = (currency: unknown) => money[String(currency).toUpperCase() === 'USD' ? 'USD' : 'ARS'];
   const curKey = (currency: unknown): 'ARS' | 'USD' => (String(currency).toUpperCase() === 'USD' ? 'USD' : 'ARS');
 
-  for (const r of expenses.rows) {
+  for (const r of moneyRows.rows) {
     const side = sideOf(r.currency);
-    side.expense += Number(r.total);
-    side.expenseCount += Number(r.n);
+    if (r.kind === 'expense') {
+      side.expense += Number(r.total);
+      side.expenseCount += Number(r.n);
+    } else {
+      side.income += Number(r.total);
+      side.incomeCount += Number(r.n);
+    }
     stretch(r.first_date, r.last_date);
   }
-  for (const r of incomes.rows) {
-    const side = sideOf(r.currency);
-    side.income += Number(r.total);
-    side.incomeCount += Number(r.n);
-    stretch(r.first_date, r.last_date);
+  const moneyUSDEq: MoneyUSDEq = { income: 0, expense: 0, result: 0, missing: 0, source: FX_SOURCE_LABEL[fxSource] };
+  for (const r of moneyRows.rows) {
+    if (r.kind === 'expense') moneyUSDEq.expense += Number(r.usd_eq); else moneyUSDEq.income += Number(r.usd_eq);
+    moneyUSDEq.missing += Number(r.fx_missing);
   }
+  moneyUSDEq.result = moneyUSDEq.income - moneyUSDEq.expense;
   money.ARS.result = money.ARS.income - money.ARS.expense;
   money.USD.result = money.USD.income - money.USD.expense;
 
@@ -653,19 +737,13 @@ export async function getOverview(
   }
 
   const spendByPlot = new Map<number, { ARS: number; USD: number }>();
-  for (const r of plotSpend.rows) {
-    const id = Number(r.plot_id);
-    const cur = spendByPlot.get(id) ?? { ARS: 0, USD: 0 };
-    cur[curKey(r.currency)] += Number(r.total);
-    spendByPlot.set(id, cur);
-  }
-
   const incomeByPlot = new Map<number, { ARS: number; USD: number }>();
-  for (const r of plotIncome.rows) {
+  for (const r of campaignMoneyRows.rows) {
     const id = Number(r.plot_id);
-    const cur = incomeByPlot.get(id) ?? { ARS: 0, USD: 0 };
+    const map = r.kind === 'expense' ? spendByPlot : incomeByPlot;
+    const cur = map.get(id) ?? { ARS: 0, USD: 0 };
     cur[curKey(r.currency)] += Number(r.total);
-    incomeByPlot.set(id, cur);
+    map.set(id, cur);
   }
 
   const harvestByPlot = new Map<number, number>();
@@ -701,7 +779,7 @@ export async function getOverview(
       fieldId: Number(r.field_id),
       fieldName: String(r.field_name),
       areaHectares: area,
-      crop: displayCrop(r.crop as string | null),
+      crop: (r.crop_sequence as string | null) ? displaySequence(String(r.crop_sequence)) : displayCrop(r.crop as string | null),
       cropState: cropState(r),
       spendARS: spend.ARS,
       spendUSD: spend.USD,
@@ -713,11 +791,15 @@ export async function getOverview(
     };
   });
 
-  // Margin per crop = the lote cards regrouped by the crop they carry in the
-  // campaign. A lote that ran two crops in the window (trigo → soja de 2da) is
-  // attributed whole to the one shown on its card; the cards and this table
-  // therefore always agree with each other.
-  const cropMargins = { ARS: buildCropMargins(plotRows, 'ARS'), USD: buildCropMargins(plotRows, 'USD') };
+  // Margin per crop = la plata de cada CAMPAÑA agrupada por su cultivo ("Soja",
+  // "Soja 2da", "Trigo"): un lote con trigo + soja de 2da aporta a las dos
+  // filas con lo de cada una. Lo del lote sin campaña va a "Sin campaña".
+  // Misma query que las tarjetas: suman lo mismo.
+  const cropMargins = {
+    ARS: buildCropMargins(campaignMoneyRows.rows, 'ARS'),
+    USD: buildCropMargins(campaignMoneyRows.rows, 'USD'),
+  };
+  const cropMarginsUSDEq = buildCropMargins(campaignMoneyRows.rows, 'USD_EQ');
 
   const feedRows: FeedRow[] = feed.rows.map((r: Record<string, unknown>) => {
     const type = r.type as FeedRow['type'];
@@ -770,13 +852,15 @@ export async function getOverview(
   const c = counts.rows[0] ?? {};
   return {
     campaign: range,
+    moneyUSDEq,
+    cropMarginsUSDEq,
     counts: {
       plots: plotRows.length,
       activities: Number(activities.rows[0]?.n ?? 0),
       scoutings: Number(c.scoutings ?? 0),
       harvests: Number(c.harvests ?? 0),
-      expenses: money.ARS.expenseCount + money.USD.expenseCount,
-      incomes: money.ARS.incomeCount + money.USD.incomeCount,
+      expenses: Number(c.expenses ?? 0),
+      incomes: Number(c.incomes ?? 0),
       stock: Number(c.stock ?? 0),
       stockAlerts: Number(c.stock_alerts ?? 0),
       livestock: head,
@@ -815,19 +899,31 @@ export async function getOverview(
   };
 }
 
-function buildCropMargins(plots: PlotRow[], currency: 'ARS' | 'USD'): CropMarginRow[] {
-  const byCrop = new Map<string | null, CropMarginRow>();
-  for (const p of plots) {
-    const key = p.crop;
-    const row = byCrop.get(key) ?? { crop: key, hectares: 0, plots: 0, income: 0, expense: 0, result: 0 };
-    row.plots += 1;
-    row.hectares += p.areaHectares ?? 0;
-    row.income += currency === 'ARS' ? p.incomeARS : p.incomeUSD;
-    row.expense += currency === 'ARS' ? p.spendARS : p.spendUSD;
+/**
+ * Filas de `campaignMoneyRowsQ` → margen por cultivo. `USD_EQ` suma todo
+ * (pesos al dólar de su fecha); ARS/USD solo lo de esa moneda. Hectáreas y
+ * lotes cuentan cada campaña una vez.
+ */
+function buildCropMargins(rows: Array<Record<string, unknown>>, currency: 'ARS' | 'USD' | 'USD_EQ'): CropMarginRow[] {
+  const byCrop = new Map<string | null, CropMarginRow & { _campaigns: Set<string> }>();
+  for (const r of rows) {
+    const cur = String(r.currency).toUpperCase() === 'USD' ? 'USD' : 'ARS';
+    if (currency !== 'USD_EQ' && cur !== currency) continue;
+    const amount = currency === 'USD_EQ' ? (r.usd_eq == null ? 0 : Number(r.usd_eq)) : Number(r.total);
+    const key = r.crop_label ? displaySequence(String(r.crop_label)) : null;
+    const row = byCrop.get(key) ?? { crop: key, hectares: 0, plots: 0, income: 0, expense: 0, result: 0, _campaigns: new Set<string>() };
+    const campaignKey = r.plot_crop_id != null ? `c${r.plot_crop_id}` : `p${r.plot_id}`;
+    if (!row._campaigns.has(campaignKey)) {
+      row._campaigns.add(campaignKey);
+      row.plots += 1;
+      row.hectares += r.ha == null ? 0 : Number(r.ha);
+    }
+    if (r.kind === 'expense') row.expense += amount; else row.income += amount;
     row.result = row.income - row.expense;
     byCrop.set(key, row);
   }
   return Array.from(byCrop.values())
+    .map(({ _campaigns, ...r }) => r)
     .filter(r => r.income > 0 || r.expense > 0)
     .sort((a, b) => (b.income + b.expense) - (a.income + a.expense));
 }
@@ -849,6 +945,16 @@ function cropState(r: Record<string, unknown>): string | null {
  * holds both "Maíz" and "maíz". Normalising for DISPLAY only (the stored value
  * is left alone) keeps a plot list from looking like two different crops.
  */
+/** "trigo → soja 2da" → "Trigo → Soja 2da". */
+function displaySequence(seq: string): string {
+  return seq.split(' → ').map(c => displayCrop(c) ?? c).join(' → ');
+}
+
+/** Categoría sin acentos ni mayúsculas (SQL), para excluir "Hacienda". */
+function foldCategory(col: string): string {
+  return `translate(lower(trim(COALESCE(${col}, ''))), 'áéíóú', 'aeiou')`;
+}
+
 export function displayCrop(crop: string | null): string | null {
   if (!crop) return null;
   const t = crop.trim();

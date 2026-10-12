@@ -42,7 +42,7 @@ export function buildPostActionButtons(op: LvOpKind, ctx: PostActionContext): In
       ];
     case 'health':
       return [
-        ...(ctx.groupId ? [{ id: `lv_post_health_hist_${ctx.groupId}`, title: '💉 Historial sanitario' }] : []),
+        ...(ctx.groupId ? [{ id: `lv_post_health_hist_${ctx.groupId}`, title: '💉 Historial' }] : []),
         ...(ctx.groupId ? [{ id: `lv_post_new_event_${ctx.groupId}_health`, title: '➕ Otro evento' }] : []),
         ...(ctx.eventId ? [{ id: `lv_post_undo_event_${ctx.eventId}`, title: '↩️ Borrar' }] : []),
       ];

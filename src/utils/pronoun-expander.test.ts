@@ -118,4 +118,16 @@ describe('expandPronouns', () => {
       expect(expanded).toBe('20mm en lote Norte y 35mm en lote Sur');
     });
   });
+
+  describe('un campo no es un lote (prod 11 oct 2026)', () => {
+    it.each([
+      'ese campo tiene 2 lotes, el 1ero se llama Monte',
+      'en el mismo campo agregá un lote',
+      'y en el otro campo tengo 30 vacas',
+    ])('"%s" no se expande a un lote', (text) => {
+      const { expanded, replaced } = expandPronouns(text, '5g', 'Norte');
+      expect(replaced).toBe(0);
+      expect(expanded).toBe(text);
+    });
+  });
 });

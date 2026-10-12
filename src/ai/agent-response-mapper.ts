@@ -836,12 +836,19 @@ export class AgentResponseMapper {
     // Rename override: "el lote X se llama Y" / "...pasa a llamarse Y" is a
     // RENAME, but Haiku maps it to add_plot (creating a duplicate lote). Catch
     // the phrasing server-side and rewrite to rename_plot before mapping.
-    if ((toolName === 'add_plot' || toolName === 'add_field' || toolName === 'add_plots_batch') && originalText) {
-      const rn = originalText.match(/(?:^|\b)(?:el\s+)?lote\s+(.+?)\s+(?:ahora\s+)?(?:se\s+llama|pasa\s+a\s+llamarse)\s+(.+?)\s*$/i);
+    // Solo cuando el mensaje ENTERO es "el lote X se llama Y": sin ancla, "en
+    // lote 5g tiene 2 lotes, el 1ero se llama Monte…" se convirtió en renombrar
+    // «5g tiene 2 lotes, el 1ero» (prod 11 oct 2026). Varios lotes nuevos en
+    // un batch nunca son un renombre.
+    const batchOfMany = toolName === 'add_plots_batch'
+      && Array.isArray(input.plotNames) && (input.plotNames as unknown[]).length > 1;
+    if ((toolName === 'add_plot' || toolName === 'add_field' || toolName === 'add_plots_batch') && originalText && !batchOfMany) {
+      const rn = originalText.match(/^\s*(?:el\s+)?lote\s+([^,.;]+?)\s+(?:ahora\s+)?(?:se\s+llama|pasa\s+a\s+llamarse)\s+([^,.;]+?)\s*[.!]?\s*$/i);
       if (rn) {
         const oldName = rn[1].trim();
         const newName = rn[2].trim().replace(/^lote\s+/i, '');
         if (oldName && newName && oldName.toLowerCase() !== newName.toLowerCase()) {
+          console.log(`AI_MAPPER OVERRIDE ${toolName} → rename_plot: "${oldName}" → "${newName}"`);
           return {
             intent: { type: 'command', data: { command: 'rename_plot', oldName, newName, fieldName: null } },
             confidence: 0.95, aiUsed: true, source: 'ai', missingFields: [],

@@ -505,6 +505,14 @@ export class AnimalHandler {
         : [];
 
     if (refs.length === 0) {
+      // "movelos al corral 2" justo después de pegar una lectura: los animales
+      // son los de esa lectura, que sigue abierta. Sin esto la pregunta del
+      // destino se perdía y el bot pedía de nuevo las caravanas.
+      const openBatch = await this.batches.findLatestOpen(Number(userId));
+      if (openBatch) {
+        console.log(`[INTERCEPT] move_animals sin caravanas → lectura abierta ${openBatch.id}`);
+        return this.batchMove({ ...cmd, batchId: openBatch.id }, userId);
+      }
       return { messages: ['Decime qué animales mover. Pasame las caravanas o pegá la lista del lector.'] };
     }
 

@@ -1,4 +1,4 @@
-import { LivestockService } from './livestock.service.js';
+import { LivestockService, PLOT_CHOICE_RE } from './livestock.service.js';
 import {
   LIVESTOCK_CATEGORY_LABEL,
   LIVESTOCK_MOVEMENT_LABEL,
@@ -21,7 +21,7 @@ import { encodeLivestockPayload, decodeLivestockPayload, storeLivestockPayload, 
 import { findInaccessibleLocation } from '../shared/field-access.js';
 import { buildPostActionButtons } from './livestock-post-actions.js';
 import { livestockLocationIntent } from '../../utils/livestock-location-intent.js';
-import { impliesWholeGroup, impliesWholeGroupIgnoringWeight } from '../../utils/lexicon.js';
+import { impliesWholeGroup, impliesWholeGroupIgnoringWeight, extractHeadCountCorrection } from '../../utils/lexicon.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import type {
   UserId,
@@ -416,7 +416,7 @@ export class LivestockHandler {
         type: 'buttons' as const,
         body,
         buttons: [
-          { id: yesId, title: 'Sí, crear y continuar' },
+          { id: yesId, title: 'Sí, crear' },
           { id: 'lv_create_cancel', title: 'No, cancelar' },
         ],
       },
@@ -666,6 +666,23 @@ export class LivestockHandler {
         },
       };
     }
+    // "perdón, quise decir 20" justo después de un alta: es una CORRECCIÓN de
+    // esa alta, no otra. El agente lo manda como add_livestock y sumaba (prod
+    // 12 oct 2026: 9 + 20 = 29 vaquillonas). Determinístico, sin preguntar.
+    const correctedCount = extractHeadCountCorrection(String(cmd.originalText ?? ''));
+    if (correctedCount != null) {
+      const fix = await this.service.correctLatestEntryCount(userId, correctedCount, category);
+      if (fix) {
+        console.log(`[INTERCEPT] add_livestock → corrección de la última alta (${fix.oldCount} → ${fix.newCount})`);
+        const money = fix.expense
+          ? `\n  💸 Gasto corregido: ${fmtAmount(fix.expense.amount, fix.expense.currency as Currency)} (Hacienda)`
+          : '';
+        const head = fix.oldCount === fix.newCount
+          ? `🐄 Ya estaba en *${fix.newCount}*, no cambié nada.`
+          : `✏️ *Corregido*: ${fix.category}, *${fix.oldCount} → ${fix.newCount}* animales`;
+        return { messages: [`${head}\n  📊 Total: *${fix.total}*\n  📍 ${fix.location}${money}`] };
+      }
+    }
     // "Metí/encerré/pasé N <categoría> al corral X" con un grupo existente de
     // la misma categoría en OTRA ubicación: casi seguro es un MOVIMIENTO, no
     // un alta — el alta duplicaba el inventario en silencio (95→105, barrido
@@ -759,7 +776,7 @@ export class LivestockHandler {
       // of a dead error that saves nothing AND keeps no state (so a pivot loses
       // the whole alta), set a pending so the next "Norte" completes it — and a
       // pivot triggers the pivot-flush deferred notice (no silent data loss).
-      if (/Decime en qu[eé] lote/i.test(msg)) {
+      if (PLOT_CHOICE_RE.test(msg)) {
         return {
           messages: [msg],
           suggestionKey: 'default_menu',

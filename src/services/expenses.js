@@ -762,6 +762,12 @@ export async function getOrCreateField(userId, name) {
   // fuente única de `domain/shared/field-access.ts`.
   await ensureOwnerMembership(userId, result.rows[0].id);
 
+  // Un campo recién creado es el contexto de la charla: "ese campo tiene 2
+  // lotes" justo después tiene que apuntar a él. Sin esto el contexto seguía
+  // en un lote de otro campo de una conversación vieja y los lotes nuevos se
+  // pidieron en ese campo (prod 11 oct 2026, QA de ganado).
+  await updateConversationState(userId, result.rows[0].id, null);
+
   return result.rows[0];
 }
 
@@ -2355,16 +2361,16 @@ export async function getRainfallRange(userId, desde, hasta) {
 
 // --- Plot crops ---
 
-export async function createPlotCrop(plotId, crop, seasonYear, seasonType, startDate = null, sowedHectares = null, variety = null) {
+export async function createPlotCrop(plotId, crop, seasonYear, seasonType, startDate = null, sowedHectares = null, variety = null, cropOrder = null) {
   // Fecha ART explícita en vez de CURRENT_DATE de la DB — si la sesión de
   // Postgres está en UTC (la migración 048 de TZ no siempre aplica), de noche
   // CURRENT_DATE daba MAÑANA, dejando plot_crops.start_date desfasado del
   // domain_events.event_date del mismo registro (hallazgo QA Jun 2026).
   const result = await pool.query(
-    `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, sowed_hectares, variety)
-     VALUES ($1, $2, $3, $4, COALESCE($5, $8::date), $6, $7)
+    `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, sowed_hectares, variety, crop_order)
+     VALUES ($1, $2, $3, $4, COALESCE($5, $8::date), $6, $7, $9)
      RETURNING *`,
-    [plotId, crop, seasonYear, seasonType, startDate, sowedHectares, variety, getTodayISO()]
+    [plotId, crop, seasonYear, seasonType, startDate, sowedHectares, variety, getTodayISO(), cropOrder]
   );
   return result.rows[0];
 }
@@ -2607,24 +2613,30 @@ export async function addPlotCropYield(cropId, yieldKg, yieldNotes = null) {
   return await refreshCampaignYield(cropId);
 }
 
-export async function getCampaignExpenses(plotId, startDate, endDate = null) {
-  const result = await pool.query(
-    `SELECT * FROM expenses WHERE plot_id = $1 AND deleted_at IS NULL
-     AND expense_date >= $2 AND ($3::date IS NULL OR expense_date <= $3)
-     ORDER BY expense_date`,
-    [plotId, startDate, endDate]
+/**
+ * Plata de UNA campaña (gastos e ingresos) según `campaignMoneyCtes`
+ * (campaign-money.ts, fuente única): incluye el barbecho previo, la venta de
+ * grano posterior al cierre y la parte prorrateada de lo cargado a nivel campo.
+ * `amount` ya viene multiplicado por `share`; `usd_eq` es el monto al dólar de
+ * su fecha (null si no hay cotización).
+ */
+export async function getCampaignMoney(userId, plotCropId) {
+  const { getFxSource, usdEquivalentSql } = await import('./fx-rate.service.js');
+  const { campaignMoneyCtes } = await import('../domain/plots/campaign-money.js');
+  const { rows } = await pool.query(
+    `WITH ${campaignMoneyCtes('$1')}
+     SELECT m.kind, m.row_id AS id, m.amount, m.share, m.currency, m.money_date,
+            m.category, m.product, m.rule,
+            ${usdEquivalentSql('m.amount', 'm.currency', 'm.money_date', '$3')} AS usd_eq
+       FROM campaign_money m
+      WHERE m.plot_crop_id = $2
+      ORDER BY m.money_date, m.row_id`,
+    [userId, plotCropId, await getFxSource()]
   );
-  return result.rows;
-}
-
-export async function getCampaignIncomes(plotId, startDate, endDate = null) {
-  const result = await pool.query(
-    `SELECT * FROM incomes WHERE plot_id = $1 AND deleted_at IS NULL
-     AND income_date >= $2 AND ($3::date IS NULL OR income_date <= $3)
-     ORDER BY income_date`,
-    [plotId, startDate, endDate]
-  );
-  return result.rows;
+  return {
+    expenses: rows.filter(r => r.kind === 'expense').map(r => ({ ...r, expense_date: r.money_date })),
+    incomes: rows.filter(r => r.kind === 'income').map(r => ({ ...r, income_date: r.money_date })),
+  };
 }
 
 export async function getCampaignActivities(plotCropId) {
@@ -4183,51 +4195,53 @@ export async function deleteHarvestLoads(userId, plotId, { eventDate, driverName
  * getCampaignStats resuelve UNA campaña con ~6 queries; para un ranking sobre
  * 10 lotes eso serían 60 idas a la DB. Acá se agrega del lado del motor.
  *
- * Reglas replicadas de campaign-stats.service (deben seguir coincidiendo):
- *   - La categoría "Hacienda" se EXCLUYE del margen del cultivo: tiene su
- *     propia economía y mezclarla distorsionaba el resultado (visto en prod).
- *   - ARS y USD se suman por separado — no se convierte a una sola moneda.
- *   - El área efectiva es sowed_hectares (siembra parcial) y recién si falta,
- *     el área del lote; usar siempre la del lote inflaba los kg/ha.
- *   - La ventana es [start_date, harvested_at|end_date] y queda abierta
- *     mientras la campaña siga activa.
+ * La plata de cada campaña sale de `campaignMoneyCtes` (campaign-money.ts),
+ * la MISMA fuente que usa getCampaignStats y el Resumen: barbecho previo,
+ * venta posterior al cierre y lo de nivel campo prorrateado.
+ *   - "Hacienda" se EXCLUYE del margen del cultivo.
+ *   - ARS y USD por separado, y además todo en dólares (`*_usd_eq`) al dólar
+ *     de la fecha de cada movimiento (fx-rate.service). `fx_missing` cuenta
+ *     las filas en pesos sin cotización.
+ *   - El área efectiva es sowed_hectares y recién si falta, la del lote.
  */
 export async function getCampaignTotals(userId, { seasonYear = null, crop = null, fieldName = null } = {}) {
-  const params = [userId];
+  const { getFxSource, usdEquivalentSql } = await import('./fx-rate.service.js');
+  const { campaignMoneyCtes } = await import('../domain/plots/campaign-money.js');
+  const params = [userId, await getFxSource()];
   let filters = '';
   if (seasonYear) { params.push(seasonYear); filters += ` AND pc.season_year = $${params.length}`; }
   if (crop) { params.push(crop); filters += ` AND LOWER(pc.crop) = LOWER($${params.length})`; }
   if (fieldName) { params.push(fieldName); filters += ` AND ${sqlNormalizedName('f.name')} = ${sqlNormalizedName(`$${params.length}::text`)}`; }
+  const usdEq = usdEquivalentSql('m.amount', 'm.currency', 'm.money_date', '$2');
 
   const { rows } = await pool.query(
-    `SELECT
-       pc.id, pc.crop, pc.season_year, pc.season_type, pc.yield_kg,
+    `WITH ${campaignMoneyCtes('$1')},
+     money AS (
+       SELECT m.plot_crop_id,
+              SUM(m.amount) FILTER (WHERE m.kind = 'expense' AND m.currency <> 'USD') AS exp_ars,
+              SUM(m.amount) FILTER (WHERE m.kind = 'expense' AND m.currency = 'USD')  AS exp_usd,
+              SUM(m.amount) FILTER (WHERE m.kind = 'income'  AND m.currency <> 'USD') AS inc_ars,
+              SUM(m.amount) FILTER (WHERE m.kind = 'income'  AND m.currency = 'USD')  AS inc_usd,
+              SUM(${usdEq}) FILTER (WHERE m.kind = 'expense') AS exp_usd_eq,
+              SUM(${usdEq}) FILTER (WHERE m.kind = 'income')  AS inc_usd_eq,
+              COUNT(*) FILTER (WHERE m.currency <> 'USD' AND ${usdEq} IS NULL)::int AS fx_missing
+         FROM campaign_money m
+        WHERE LOWER(COALESCE(m.category, '')) <> 'hacienda'
+        GROUP BY m.plot_crop_id
+     )
+     SELECT
+       pc.id, pc.crop, pc.season_year, pc.season_type, pc.crop_order, pc.yield_kg,
        pc.start_date, pc.harvested_at,
        COALESCE(pc.sowed_hectares, p.area_hectares) AS effective_ha,
        p.id AS plot_id, p.name AS plot_name, f.name AS field_name,
-       COALESCE(e.ars, 0) AS exp_ars, COALESCE(e.usd, 0) AS exp_usd,
-       COALESCE(i.ars, 0) AS inc_ars, COALESCE(i.usd, 0) AS inc_usd
+       COALESCE(mo.exp_ars, 0) AS exp_ars, COALESCE(mo.exp_usd, 0) AS exp_usd,
+       COALESCE(mo.inc_ars, 0) AS inc_ars, COALESCE(mo.inc_usd, 0) AS inc_usd,
+       COALESCE(mo.exp_usd_eq, 0) AS exp_usd_eq, COALESCE(mo.inc_usd_eq, 0) AS inc_usd_eq,
+       COALESCE(mo.fx_missing, 0) AS fx_missing
      FROM plot_crops pc
      JOIN plots p  ON p.id = pc.plot_id AND p.deleted_at IS NULL
      JOIN fields f ON f.id = p.field_id AND f.deleted_at IS NULL
-     LEFT JOIN LATERAL (
-       SELECT COALESCE(SUM(x.amount) FILTER (WHERE x.currency IS DISTINCT FROM 'USD'), 0) AS ars,
-              COALESCE(SUM(x.amount) FILTER (WHERE x.currency = 'USD'), 0) AS usd
-       FROM expenses x
-       WHERE x.plot_id = pc.plot_id AND x.deleted_at IS NULL
-         AND LOWER(COALESCE(x.category, '')) <> 'hacienda'
-         AND x.expense_date >= pc.start_date
-         AND (pc.end_date IS NULL OR x.expense_date <= pc.end_date)
-     ) e ON TRUE
-     LEFT JOIN LATERAL (
-       SELECT COALESCE(SUM(y.amount) FILTER (WHERE y.currency IS DISTINCT FROM 'USD'), 0) AS ars,
-              COALESCE(SUM(y.amount) FILTER (WHERE y.currency = 'USD'), 0) AS usd
-       FROM incomes y
-       WHERE y.plot_id = pc.plot_id AND y.deleted_at IS NULL
-         AND LOWER(COALESCE(y.category, '')) <> 'hacienda'
-         AND y.income_date >= pc.start_date
-         AND (pc.end_date IS NULL OR y.income_date <= pc.end_date)
-     ) i ON TRUE
+     LEFT JOIN money mo ON mo.plot_crop_id = pc.id
      WHERE f.user_id = $1${filters}
      ORDER BY pc.season_year DESC, f.name, p.name`,
     params,

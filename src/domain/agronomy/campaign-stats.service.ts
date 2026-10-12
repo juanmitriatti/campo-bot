@@ -1,6 +1,5 @@
 import {
-  getCampaignExpenses,
-  getCampaignIncomes,
+  getCampaignMoney,
   getCampaignActivities,
   getCampaignObservations,
   getPlotById,
@@ -87,7 +86,35 @@ export interface CampaignStats {
     costPerTnARS: number | null;
     costPerTnUSD: number | null;
     incomePerTnARS: number | null;
+    /** Todo pasado a dólares al dólar de la fecha de cada movimiento. */
+    expensesUSDEq: number;
+    incomesUSDEq: number;
+    netUSDEq: number;
+    netPerHaUSDEq: number | null;
+    /** Filas en pesos sin cotización para su fecha (no entran al equivalente). */
+    fxMissing: number;
+    fxSourceLabel: string;
   };
+
+  /** Qué plata entró a la campaña por fuera de "lote entre siembra y cierre". */
+  attribution: {
+    /** Gastos del lote anteriores a la siembra (barbecho, insumos). */
+    preSowingCount: number;
+    /** Gastos/ingresos de nivel campo o ventas sin lote, prorrateados. */
+    sharedCount: number;
+    /** Ingresos posteriores al cierre (grano guardado y vendido después). */
+    afterCloseCount: number;
+  };
+
+  /** 1 = de primera, 2 = de segunda; null = sin antecesor conocido. */
+  cropOrder: number | null;
+  /** Trigo + soja 2da: el resultado del lote en la campaña es la suma. */
+  doubleCrop: {
+    otherCrop: string;
+    otherOrder: number | null;
+    otherNetUSDEq: number;
+    combinedNetUSDEq: number;
+  } | null;
 
   observations: {
     count: number;
@@ -229,14 +256,19 @@ export class CampaignStatsService {
     const durationDays = Math.ceil((endRef.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
     // Fetch data in parallel
-    const [activities, expenses, incomes, observations, harvestLoads, scoutings] = await Promise.all([
+    // La plata sale de campaign-money.ts (fuente única con el Resumen y el
+    // ranking): barbecho previo a la siembra, venta de grano posterior al
+    // cierre y la parte de lo cargado a nivel campo. Antes era "lo del lote
+    // entre siembra y cierre" y el margen salía inflado o a pérdida.
+    const [activities, money, observations, harvestLoads, scoutings, history] = await Promise.all([
       getCampaignActivities(campaign.id),
-      getCampaignExpenses(resolvedPlotId, campaign.start_date, campaign.end_date),
-      getCampaignIncomes(resolvedPlotId, campaign.start_date, campaign.end_date),
+      getCampaignMoney(Number(userId), campaign.id),
       getCampaignObservations(resolvedPlotId, campaign.start_date, campaign.end_date),
       getHarvestLoadsByCampaign(campaign.id),
       getScoutingsForPlotCampaign(campaign.id),
+      this.cropService.getHistory(resolvedPlotId),
     ]);
+    const { expenses, incomes } = money;
 
     // Aggregate activities
     const actByType: Record<string, number> = {};
@@ -304,6 +336,52 @@ export class CampaignStatsService {
       }
     }
 
+    // Todo en dólares, al dólar de la fecha de cada movimiento (fx-rate.service).
+    let expUSDEq = 0;
+    let incUSDEq = 0;
+    let fxMissing = 0;
+    for (const r of [...expenses, ...incomes] as Array<{ kind: string; category: unknown; usd_eq: unknown }>) {
+      if (isLivestockCat(r.category)) continue;
+      if (r.usd_eq == null) { fxMissing++; continue; }
+      if (r.kind === "expense") expUSDEq += Number(r.usd_eq); else incUSDEq += Number(r.usd_eq);
+    }
+    const startMs = new Date(campaign.start_date).getTime();
+    const endMs = campaign.end_date ? new Date(campaign.end_date).getTime() : null;
+    const attribution = {
+      preSowingCount: expenses.filter((e: any) => !isLivestockCat(e.category) && new Date(e.expense_date).getTime() < startMs).length,
+      sharedCount: [...expenses, ...incomes].filter((r: any) => r.rule === "field_prorate" || r.rule === "grain_prorate").length,
+      afterCloseCount: endMs == null ? 0 : incomes.filter((i: any) => new Date(i.income_date).getTime() > endMs).length,
+    };
+    const { getFxSource, FX_SOURCE_LABEL } = await import("../../services/fx-rate.service.js");
+    const fxSourceLabel = FX_SOURCE_LABEL[await getFxSource()];
+
+    // Doble cultivo: la campaña con la que comparte el lote en el año (trigo →
+    // soja 2da). Ordenadas por siembra; la pareja es la anterior si esta es
+    // de segunda, o la siguiente si ESA es de segunda.
+    const cropOrder = (campaign as { crop_order?: number | null }).crop_order ?? null;
+    const byStart = [...(history as PlotCropRow[])].sort((a, b) =>
+      new Date(a.start_date).getTime() - new Date(b.start_date).getTime() || a.id - b.id);
+    const idx = byStart.findIndex(h => h.id === campaign!.id);
+    const prevC = idx > 0 ? byStart[idx - 1] : null;
+    const nextC = idx >= 0 && idx < byStart.length - 1 ? byStart[idx + 1] : null;
+    const partner = cropOrder === 2 ? prevC
+      : (nextC && (nextC as { crop_order?: number | null }).crop_order === 2 ? nextC : null);
+    let doubleCrop: CampaignStats["doubleCrop"] = null;
+    if (partner) {
+      const pm = await getCampaignMoney(Number(userId), partner.id);
+      let pNet = 0;
+      for (const r of [...pm.expenses, ...pm.incomes] as Array<{ kind: string; category: unknown; usd_eq: unknown }>) {
+        if (isLivestockCat(r.category) || r.usd_eq == null) continue;
+        pNet += r.kind === "expense" ? -Number(r.usd_eq) : Number(r.usd_eq);
+      }
+      doubleCrop = {
+        otherCrop: partner.crop,
+        otherOrder: (partner as { crop_order?: number | null }).crop_order ?? null,
+        otherNetUSDEq: Math.round(pNet),
+        combinedNetUSDEq: Math.round(pNet + incUSDEq - expUSDEq),
+      };
+    }
+
     // Yield
     const yieldKg = campaign.yield_kg ? Number(campaign.yield_kg) : null;
     // Con avance parcial el kg/ha es sobre lo COSECHADO (misma fórmula que la
@@ -347,8 +425,8 @@ export class CampaignStatsService {
       : null;
 
     // Profitability
-    const netARS = incTotalARS - expTotalARS;
-    const netUSD = (incTotalUSD || 0) - (expTotalUSD || 0);
+    const netARS = Math.round(incTotalARS - expTotalARS);
+    const netUSD = Math.round((incTotalUSD || 0) - (expTotalUSD || 0));
     const costPerHa = areaHa ? Math.round(expTotalARS / areaHa) : null;
     const incomePerHa = areaHa ? Math.round(incTotalARS / areaHa) : null;
     const yieldTn = yieldKg ? yieldKg / 1000 : null;
@@ -412,8 +490,8 @@ export class CampaignStatsService {
       state,
       durationDays,
       activities: { total: actList.length, byType: actByType, list: actList },
-      expenses: { totalARS: expTotalARS, totalUSD: expTotalUSD, byCategory: expByCategory, count: expenses.length - excludedExpCount },
-      incomes: { totalARS: incTotalARS, totalUSD: incTotalUSD, count: incomes.length - excludedIncCount },
+      expenses: { totalARS: Math.round(expTotalARS), totalUSD: Math.round(expTotalUSD), byCategory: Object.fromEntries(Object.entries(expByCategory).map(([k, v]) => [k, Math.round(v)])), count: expenses.length - excludedExpCount },
+      incomes: { totalARS: Math.round(incTotalARS), totalUSD: Math.round(incTotalUSD), count: incomes.length - excludedIncCount },
       livestockAside: livestockAside.count > 0 ? livestockAside : null,
       yield: {
         kg: yieldKg, kgPerHa: yieldKgPerHa, notes: campaign.yield_notes || null, loads: loadsList, avgHumidity,
@@ -427,7 +505,18 @@ export class CampaignStatsService {
         harvestedHectares: harvestedHa,
         progressPct,
       },
-      profitability: { netARS, netUSD, costPerHaARS: costPerHa, incomePerHaARS: incomePerHa, costPerTnARS, costPerTnUSD, incomePerTnARS },
+      profitability: {
+        netARS, netUSD, costPerHaARS: costPerHa, incomePerHaARS: incomePerHa, costPerTnARS, costPerTnUSD, incomePerTnARS,
+        expensesUSDEq: Math.round(expUSDEq),
+        incomesUSDEq: Math.round(incUSDEq),
+        netUSDEq: Math.round(incUSDEq - expUSDEq),
+        netPerHaUSDEq: areaHa ? Math.round((incUSDEq - expUSDEq) / areaHa) : null,
+        fxMissing,
+        fxSourceLabel,
+      },
+      attribution,
+      cropOrder,
+      doubleCrop,
       observations: { count: obsList.length, list: obsList },
       scouting: scoutingAgg,
       areaHectares: areaHa,

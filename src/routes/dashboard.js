@@ -32,12 +32,12 @@ const ADMIN_LOADER = `<!DOCTYPE html>
 (async () => {
   try {
     const t = localStorage.getItem('accessToken');
-    if (!t) { location.replace('/login'); return; }
+    if (!t) { location.replace('/ingresar'); return; }
     const r = await fetch('/admin/api/shell', { headers: { Authorization: 'Bearer ' + t } });
-    if (!r.ok) { location.replace('/login'); return; }
+    if (!r.ok) { location.replace('/ingresar'); return; }
     const html = await r.text();
     document.open(); document.write(html); document.close();
-  } catch { location.replace('/login'); }
+  } catch { location.replace('/ingresar'); }
 })();
 </script></body></html>`;
 

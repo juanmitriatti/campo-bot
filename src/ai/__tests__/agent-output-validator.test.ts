@@ -422,6 +422,16 @@ describe('animal_ref — el agente nunca reescribe una caravana (QA ganadería 9
     expect(r.input.animal_refs).toEqual(['12']);
   });
 
+  // Prod 12 oct 2026: "movelos al corral 2" tras una lectura → las 4 caravanas
+  // del agente se reemplazaban por «2», que es el corral.
+  it.each(['movelos al corral 2', 'pasalos al lote 5', 'llevalos al potrero nº 3'])(
+    'animal_refs: el número de una ubicación ("%s") nunca reemplaza las caravanas',
+    (text) => {
+      const r = validateToolCall({ toolName: 'move_animals', input: { animal_refs: ['032010000000010', '0000000013'] }, originalText: text });
+      expect(r.input.animal_refs).toBeUndefined();
+    },
+  );
+
   // Eval oct 2026: el usuario dice el NII de 10 dígitos y el modelo completa el
   // CII de 15 (032 + especie). El número del animal está en el texto: se conserva.
   it('CII completado por el modelo sobre un NII que el usuario dijo → se conserva', () => {

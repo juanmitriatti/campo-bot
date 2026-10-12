@@ -437,7 +437,7 @@ export class SystemHandler {
             return `• *${p.display_name}* — ${price}${current}`;
           }).join('\n');
 
-          let base = 'https://campo-bot-production.up.railway.app';
+          let base = 'https://miagro.app';
           const publicUrl = await getSetting('PUBLIC_URL');
           if (publicUrl && /^https?:\/\//.test(publicUrl)) base = publicUrl.replace(/\/$/, '');
 

@@ -40,7 +40,19 @@ export interface OverviewPlot {
   lastActivity: string | null;
 }
 
+/** Todo pasado a dólares, cada peso al dólar de SU fecha. */
+export interface MoneyUSDEq {
+  income: number;
+  expense: number;
+  result: number;
+  /** Movimientos en pesos sin cotización para su fecha (no entran). */
+  missing: number;
+  /** Qué dólar se usó: "dólar mayorista (A3500)". */
+  source: string;
+}
+
 export interface CropMarginRow {
+  /** "Soja", "Soja 2da", "Trigo"; null = plata del lote sin campaña. */
   crop: string | null;
   hectares: number;
   plots: number;
@@ -115,6 +127,9 @@ export interface OverviewData {
   categories: { ARS: CategoryRow[]; USD: CategoryRow[] };
   incomeProducts: { ARS: IncomeProductRow[]; USD: IncomeProductRow[] };
   cropMargins: { ARS: CropMarginRow[]; USD: CropMarginRow[] };
+  /** Opcional: un backend viejo no lo manda. */
+  moneyUSDEq?: MoneyUSDEq;
+  cropMarginsUSDEq?: CropMarginRow[];
   budgets: { month: string; rows: BudgetRow[] };
   reminders: { overdue: number; upcoming: number; rows: ReminderRow[] };
   livestock: LivestockSummary;

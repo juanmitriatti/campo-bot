@@ -3,6 +3,7 @@ import { CampaignStatsService } from '../domain/agronomy/campaign-stats.service.
 import { pool } from '../config/db.js';
 import { formatMoney } from '../utils/format-money.js';
 import type { UserId } from '../types/index.js';
+import { getAppName } from '../utils/brand.js';
 
 export class ReportShareService {
   private campaignStatsService = new CampaignStatsService();
@@ -82,7 +83,7 @@ export class ReportShareService {
 
     // Footer
     doc.fontSize(8).text(
-      `Generado el ${new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })} — Campo Bot`,
+      `Generado el ${new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })} — ${await getAppName()}`,
       { align: 'center' },
     );
 
@@ -212,7 +213,7 @@ export class ReportShareService {
     }
 
     doc.fontSize(8).text(
-      `Generado el ${new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })} — Campo Bot`,
+      `Generado el ${new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })} — ${await getAppName()}`,
       { align: 'center' },
     );
     doc.end();

@@ -4,7 +4,7 @@ import { joinField } from '../api/sharing';
 
 /**
  * Invitación a un campo que llegó por el link de registro
- * (`/register?invite=CODIGO`, armado en src/domain/sharing/invite-link.ts).
+ * (`/crear-cuenta?invite=CODIGO`, armado en src/domain/sharing/invite-link.ts).
  *
  * La invitación está atada a un teléfono y una cuenta creada por la web no
  * tiene ninguno hasta que vincula WhatsApp. Por eso el código se guarda al

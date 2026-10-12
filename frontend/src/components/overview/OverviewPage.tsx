@@ -17,6 +17,7 @@ import AlertsBanner from './AlertsBanner';
 import FieldChips from './FieldChips';
 import CampaignPicker from './CampaignPicker';
 import type { Finding } from '../../hooks/useReviewFindings';
+import { useBrand } from '../../hooks/useBrand';
 
 interface OverviewPageProps {
   onGoToAccount?: () => void;
@@ -41,6 +42,7 @@ export default function OverviewPage({
   onGoToReminders,
   onOpenReviewRef,
 }: OverviewPageProps = {}) {
+  const brand = useBrand();
   const { features, user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const { currency, setCurrency } = useCurrency();
@@ -83,7 +85,7 @@ export default function OverviewPage({
 
       {!fieldsLoading && fields.length === 0 ? (
         <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-6 text-amber-800 dark:text-amber-300">
-          <h2 className="text-lg font-semibold mb-1">Bienvenido a Campo Bot 👋</h2>
+          <h2 className="text-lg font-semibold mb-1">Bienvenido a {brand.app_name} 👋</h2>
           <p className="text-sm mb-3">
             Para empezar a ver tu dashboard, creá tu primer campo. Probá escribirle al bot algo como:
           </p>

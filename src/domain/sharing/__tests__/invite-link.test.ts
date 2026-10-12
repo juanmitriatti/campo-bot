@@ -35,7 +35,7 @@ describe('buildInviteDelivery', () => {
   it('el link de alta guiada lleva el código, para el invitado sin cuenta', async () => {
     settings.PUBLIC_URL = 'https://campo.example.com/';
     const d = await buildInviteDelivery({ code: 'A3F7K2' });
-    expect(d.registerLink).toBe('https://campo.example.com/register?invite=A3F7K2');
+    expect(d.registerLink).toBe('https://campo.example.com/crear-cuenta?invite=A3F7K2');
   });
 
   it('sin PUBLIC_URL válida no inventa un link', async () => {

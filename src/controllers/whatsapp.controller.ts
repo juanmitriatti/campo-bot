@@ -40,6 +40,7 @@ import {
   processDocumentWithIntent,
   makeDocCallbackHandler,
 } from '../services/document-pipeline.js';
+import { getAppName } from '../utils/brand.js';
 
 const dedup = new MessageDedup();
 const transcriptionService = new TranscriptionService();
@@ -201,21 +202,22 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
     // path for backwards compatibility.)
     const verifiedWaUser = await userRepository.findVerifiedByPhone(phone);
     if (!verifiedWaUser && (await userRepository.isVerificationRequired())) {
-      const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://campo-bot-production.up.railway.app';
+      const publicUrl = (await getSetting('PUBLIC_URL')) || 'https://miagro.app';
+      const appName = await getAppName();
       // Un invitado que llega con "unirme ABC123" no tiene cuenta todavía: el
       // link de registro lleva el código, y el dashboard lo canjea solo cuando
       // vincula este WhatsApp (usePendingInvite). Sin esto el código se perdía.
       const inviteCode = text ? INVITE_ACCEPT_RE.exec(text.trim())?.[1]?.toUpperCase() : undefined;
       const registerUrl = inviteCode
-        ? `${publicUrl.replace(/\/$/, '')}/register?invite=${encodeURIComponent(inviteCode)}`
-        : `${publicUrl}/register`;
+        ? `${publicUrl.replace(/\/$/, '')}/crear-cuenta?invite=${encodeURIComponent(inviteCode)}`
+        : `${publicUrl}/crear-cuenta`;
       if (inviteCode) console.log(`[SHARING] invite ${inviteCode} de un número sin cuenta: se manda link de registro con el código`);
       const closing = inviteCode
         ? 'Apenas vincules tu WhatsApp, entrás solo al campo que te compartieron.'
         : 'Una vez vinculado, escribime de nuevo y ya podés cargar gastos, lluvias, hacienda, cosechas y más.';
       await sendMessage(
         phone,
-        `Hola 👋 Bienvenido a Campo Bot.\n\nPara empezar a usarme, seguí estos 2 pasos en orden:\n\n*1.* Creá tu cuenta acá 👉 ${registerUrl}\n*2.* Desde la app, andá a *Mi cuenta* → *Vincular WhatsApp* y te mando un código a este número.\n\n${closing}`,
+        `Hola 👋 Bienvenido a ${appName}.\n\nPara empezar a usarme, seguí estos 2 pasos en orden:\n\n*1.* Creá tu cuenta acá 👉 ${registerUrl}\n*2.* Desde la app, andá a *Mi cuenta* → *Vincular WhatsApp* y te mando un código a este número.\n\n${closing}`,
       );
       res.sendStatus(200);
       return;

@@ -13,6 +13,7 @@ import {
 import { getSetting, getSettingNumber } from '../../services/settings.service.js';
 import { sendEmail, wrapHtml } from '../../services/mailer.service.js';
 import { logError } from '../../services/error-logger.js';
+import { getAppName } from '../../utils/brand.js';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -86,21 +87,23 @@ export class PasswordRecoveryService {
     );
 
     const publicUrl = ((await getSetting('PUBLIC_URL')) as string) || '';
-    const link = `${publicUrl.replace(/\/$/, '')}/reset-password?token=${rawToken}`;
+    const link = `${publicUrl.replace(/\/$/, '')}/nueva-contrasena?token=${rawToken}`;
 
+    const appName = await getAppName();
     try {
       const sent = await sendEmail({
         // El usuario se buscó POR email, así que user.email no puede ser null
         // acá; el tipo lo permite porque hay usuarios solo-teléfono.
         to: user.email ?? normalizeEmail(email),
-        subject: 'Recuperá tu contraseña — Campo Bot',
-        text: `Hola ${user.name},\n\nPedí restablecer tu contraseña en Campo Bot. Abrí este link (vence en ${ttlMin} minutos):\n\n${link}\n\nSi no fuiste vos, ignorá este email.\n`,
+        subject: `Recuperá tu contraseña — ${appName}`,
+        text: `Hola ${user.name},\n\nPedí restablecer tu contraseña en ${appName}. Abrí este link (vence en ${ttlMin} minutos):\n\n${link}\n\nSi no fuiste vos, ignorá este email.\n`,
         html: wrapHtml(
           'Recuperá tu contraseña',
           `<p>Hola <strong>${user.name}</strong>,</p>
-           <p>Pediste restablecer tu contraseña en Campo Bot. El link de abajo vence en <strong>${ttlMin} minutos</strong>.</p>`,
+           <p>Pediste restablecer tu contraseña en ${appName}. El link de abajo vence en <strong>${ttlMin} minutos</strong>.</p>`,
           link,
           'Restablecer contraseña',
+          appName,
         ),
       });
       if (!sent.ok) {

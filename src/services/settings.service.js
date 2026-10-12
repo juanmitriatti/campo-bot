@@ -140,6 +140,7 @@ REGLAS:
   HARVEST_HUMIDITY_BASES: { default: '', type: 'string', group: 'agronomy', label: 'Humedad base por cultivo (JSON)', description: 'Humedad de recibo por cultivo para calcular la merma de cada camión. JSON como {"soja":13.5,"trigo":14,"maiz":14.5}. Vacío = defaults de la Cámara Arbitral (grain-merma.ts). Un acopio que liquida distinto se ajusta acá sin redeploy.' },
   HARVEST_MERMA_MANIPULEO_PCT: { default: '0.3', type: 'number', group: 'agronomy', label: 'Merma por manipuleo (%)', description: 'Puntos que suma el secado a la merma física por humedad. Default 0,3 (aproxima las tablas oficiales). 0 = solo pérdida de agua.' },
   HARVEST_COST_OFFER_ENABLED: { default: 'true', type: 'boolean', group: 'agronomy', label: 'Ofrecer cargar costo de cosecha', description: 'Tras registrar una cosecha con producción, el bot ofrece con un botón cargar el costo del contratista y el flete como gastos del lote. Apagar si molesta.' },
+  FX_RATE_SOURCE: { default: 'mayorista', type: 'string', group: 'agronomy', label: 'Dólar para pasar pesos a USD', description: 'Cotización histórica con la que se pasa cada gasto/ingreso en pesos a dólares (al dólar DE SU FECHA) en el resultado de campaña, margen por cultivo y rinde de indiferencia. Valores: mayorista (Com. A3500, con la que se liquida el grano), oficial (BNA), bolsa (MEP), blue. Fuente: argentinadatos.com, se sincroniza todos los días.' },
   RETRO_YIELD_WINDOW_DAYS: { default: '60', type: 'number', group: 'agronomy', label: 'Ventana de rinde retroactivo (días)', description: 'Cuántos días hacia atrás se busca una campaña cosechada SIN rinde (incluso ya cerrada) cuando el usuario carga el dato tarde: "cosechamos 110 tn de maíz en el Sur" sin campaña activa en ese lote aplica el rinde a esa campaña vieja en vez de rechazar el mensaje. Existe porque la liquidación del acopio suele llegar días o semanas después del cierre. Pasada la ventana, el dato ya no se puede cargar por chat. Subirla mucho aumenta el riesgo de matchear una campaña equivocada en lotes que rotan rápido; 60 (default) cubre la liquidación típica. Solo COMPLETA campañas sin rinde — nunca pisa un rinde ya cargado.' },
 
   // Cleanup
@@ -160,7 +161,7 @@ REGLAS:
   AGRO_REPORT_SHOW_CHARTS_CROPS: { default: 'true', type: 'boolean', group: 'agro_report', label: 'Gráfico de distribución de cultivos', description: 'Gráfico de torta con la distribución de superficie por cultivo activo en el período.' },
   AGRO_REPORT_SHOW_LOGO: { default: 'false', type: 'boolean', group: 'agro_report', label: 'Mostrar logo en el encabezado', description: 'Requiere haber subido un logo desde "Logo del reporte". Si está activado sin logo cargado, se ignora.' },
   AGRO_REPORT_LOGO_PATH: { default: '', type: 'string', group: 'agro_report', label: 'Logo del reporte (ruta)', description: 'Ruta al archivo de logo (PNG/JPG). Se completa automáticamente cuando subís un logo desde el botón. No editar a mano salvo que tengas un archivo servido por el contenedor.' },
-  AGRO_REPORT_BRAND_NAME: { default: 'Agrobot', type: 'string', group: 'agro_report', label: 'Nombre de marca', description: 'Texto que aparece arriba del título cuando no hay logo cargado. Default "Agrobot".' },
+  AGRO_REPORT_BRAND_NAME: { default: '', type: 'string', group: 'agro_report', label: 'Nombre de marca', description: 'Texto que aparece arriba del título cuando no hay logo cargado. Vacío = el nombre de la app (APP_NAME).' },
 
   // Mensajes del bot (customizable)
   BOT_NAME: { default: 'MIA', type: 'string', group: 'mensajes', label: 'Nombre del bot', description: 'Nombre que usa el bot para presentarse. Aparece en saludos, ayuda y prompt del agente IA. Si cambiás esto, actualizá también el "System prompt del fallback conversacional" (sección IA) donde dice "Sos MIA".' },
@@ -178,9 +179,13 @@ REGLAS:
   // Onboarding
   ONBOARDING_FIRST_PLOT_MESSAGE: { default: '🌾 *¡Campo y lotes creados, {{nombre}}!*\n\nYa podés registrar. Probá con tus propios lotes:\n\n💰 *"Gasté 50000 en gasoil"*\n🌱 *"Sembré soja en {{lote}}"* · *"Fumigué {{lote}} con glifosato"*\n🐄 *"Compré 40 vacas a 900 mil c/u"*\n🌧 *"Llovieron 25 mm"* · *"¿Va a llover?"*\n\n🎙 También podés mandarme un *audio* o la *foto de una factura* — los entiendo igual.\n\n👉 *Empezá ahora: contame el último gasto que hiciste.*\n\n_(Escribí *menú* para ver todo lo demás — reportes, stock, recordatorios, pizarra.)_', type: 'string', group: 'onboarding', label: 'Mensaje de bienvenida tras primer lote', description: 'Mensaje que se envía una sola vez cuando el usuario crea su primer lote. Variables: {{nombre}} (usuario), {{campo}} y {{lote}} (el campo y el primer lote recién creados — los ejemplos quedan copy-pasteables con los nombres reales).' },
 
+  // Marca: fuente ÚNICA del nombre del producto (src/utils/brand.ts). El nombre
+  // del asistente con el que se habla es BOT_NAME (MIA), no éste.
+  APP_NAME: { default: 'MiAgro', type: 'string', group: 'system', label: 'Nombre de la app', description: 'Nombre del producto: aparece en la bienvenida del bot, los asuntos de los emails, el código de verificación, el cobro de MercadoPago, las exportaciones y los títulos del dashboard. Es PÚBLICO (lo sirve GET /api/brand). El asistente con el que se habla es "Nombre del bot" (BOT_NAME).' },
+
   // Channel verification (WhatsApp OTP + Telegram deep-link)
-  PUBLIC_URL: { default: 'https://campo-bot-production.up.railway.app', type: 'string', group: 'system', label: 'URL pública del frontend', description: 'URL base del frontend (ej: https://campo.bot). Se usa para construir links que el bot envía al usuario (registro, recuperación, etc.). Cambiá esto cuando muevas el dominio sin necesidad de redeploy.' },
-  SUPPORT_CONTACT: { default: '', type: 'string', group: 'system', label: 'Contacto de soporte', description: 'Canal de soporte que el bot muestra al usuario (ej: "soporte@campo.bot" o "+54 9 11 xxxx-xxxx (WhatsApp)"). Aparece en el comando *plan*, en el mensaje de trial vencido y en ayuda. Vacío = no se muestra ninguna línea de soporte. BLOQUEANTE para cobrar: un usuario pago necesita dónde quejarse.' },
+  PUBLIC_URL: { default: 'https://miagro.app', type: 'string', group: 'system', label: 'URL pública del frontend', description: 'URL base del frontend (ej: https://miagro.app). Se usa para construir links que el bot envía al usuario (registro, recuperación, etc.). Cambiá esto cuando muevas el dominio sin necesidad de redeploy.' },
+  SUPPORT_CONTACT: { default: '', type: 'string', group: 'system', label: 'Contacto de soporte', description: 'Canal de soporte que el bot muestra al usuario (ej: "soporte@miagro.app" o "+54 9 11 xxxx-xxxx (WhatsApp)"). Aparece en el comando *plan*, en el mensaje de trial vencido y en ayuda. Vacío = no se muestra ninguna línea de soporte. BLOQUEANTE para cobrar: un usuario pago necesita dónde quejarse.' },
   TELEGRAM_BOT_USERNAME: { default: '', type: 'string', group: 'system', label: 'Username del bot de Telegram', description: 'Username del bot SIN @ (ej: "CampoBot"). Necesario para generar deep-links de vinculación de cuenta (https://t.me/<usuario>?start=verify_<token>). Si está vacío, la vinculación de Telegram queda deshabilitada.' },
   WHATSAPP_BOT_NUMBER: { default: '', type: 'string', group: 'system', label: 'Número visible del bot de WhatsApp', description: 'El número del bot tal como lo ve un usuario, con país y sin espacios (ej: "5492364469135"). Es PÚBLICO — no es el WHATSAPP_PHONE_NUMBER_ID de Meta. Se usa para armar el link de invitación a un campo compartido (https://wa.me/<numero>?text=unirme%20CODIGO), que el dueño reenvía por su propio WhatsApp: el bot NO puede escribirle a un número que nunca le habló (ventana de 24 hs de Meta, y no hay plantillas aprobadas). Si está vacío, la invitación se entrega como código pelado.' },
   OTP_TTL_MINUTES: { default: '10', type: 'number', group: 'system', label: 'Validez del código OTP (min)', description: 'Cuánto dura un código de verificación de WhatsApp (en minutos). Default 10. Subir a 15 si los usuarios reportan que el código vence antes de que lleguen a copiarlo.' },
@@ -198,8 +203,8 @@ REGLAS:
 
   // Email (Resend)
   RESEND_API_KEY: { default: '', type: 'string', group: 'email', label: 'Resend — API key', description: 'API key de Resend (https://resend.com) para enviar emails transaccionales: recuperación de contraseña, verificación de email. Si está vacío, los emails se loguean a consola (modo dev). Generalo en https://resend.com/api-keys.' },
-  MAIL_FROM_EMAIL: { default: 'noreply@campo-bot.com', type: 'string', group: 'email', label: 'Email remitente', description: 'Dirección "from" para todos los emails transaccionales. Tiene que ser un dominio verificado en Resend.' },
-  MAIL_FROM_NAME: { default: 'Campo Bot', type: 'string', group: 'email', label: 'Nombre remitente', description: 'Nombre que aparece como remitente en los emails. Ej: "Campo Bot".' },
+  MAIL_FROM_EMAIL: { default: 'noreply@miagro.app', type: 'string', group: 'email', label: 'Email remitente', description: 'Dirección "from" para todos los emails transaccionales. Tiene que ser un dominio verificado en Resend.' },
+  MAIL_FROM_NAME: { default: '', type: 'string', group: 'email', label: 'Nombre remitente', description: 'Nombre que aparece como remitente en los emails. Vacío = el nombre de la app (APP_NAME).' },
   PASSWORD_RESET_TTL_MINUTES: { default: '60', type: 'number', group: 'email', label: 'Validez del link de reset (min)', description: 'Cuánto vive el link para resetear contraseña. Default 60 minutos.' },
   EMAIL_VERIFY_TTL_HOURS: { default: '24', type: 'number', group: 'email', label: 'Validez del link de verificación (horas)', description: 'Cuánto vive el link de verificación de email post-registro. Default 24 horas.' },
   EMAIL_VERIFY_REQUIRED: { default: 'false', type: 'boolean', group: 'email', label: 'Requerir email verificado', description: 'Si está activo, el usuario no puede iniciar checkout de pago hasta verificar su email. Default false durante MVP; activar antes del launch público.' },
@@ -305,6 +310,10 @@ export async function getAllSettings() {
   // Build response from definitions
   const settings = {};
   for (const [key, def] of Object.entries(SETTING_DEFINITIONS)) {
+    // Un secreto (RESEND_API_KEY…) se carga solo en las variables de Railway:
+    // el POST lo rechaza, así que mostrarlo acá era un campo que "se guardaba"
+    // y desaparecía al recargar — y además exponía el valor del env al admin.
+    if (SECRET_KEYS.has(key)) continue;
     const dbEntry = dbSettings[key];
     const envValue = process.env[key];
     settings[key] = {

@@ -151,7 +151,7 @@ export function getLastDomainEvent(userId: number): Promise<{ id: number; user_i
 export function deleteDomainEvent(eventId: number): Promise<{ id: number; user_id: number; plot_id: number | null; plot_crop_id: number | null; event_type: string; event_date: Date; crop: string | null; product: string | null; product_type: string | null; quantity: number | null; unit: string | null; implement: string | null; notes: string | null; created_at: Date } | null>;
 
 // --- Plot crops ---
-export function createPlotCrop(plotId: number, crop: string, seasonYear: number, seasonType: string, startDate?: Date | string | null, sowedHectares?: number | null, variety?: string | null): Promise<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date }>;
+export function createPlotCrop(plotId: number, crop: string, seasonYear: number, seasonType: string, startDate?: Date | string | null, sowedHectares?: number | null, variety?: string | null, cropOrder?: 1 | 2 | null): Promise<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date }>;
 export function closePlotCrop(plotCropId: number, endDate?: Date | string | null): Promise<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date } | null>;
 export function getActiveCrop(plotId: number): Promise<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date } | null>;
 export function getPlotCropHistory(plotId: number): Promise<Array<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date }>>;
@@ -361,8 +361,7 @@ export function updateDomainEventPlot(eventId: number, plotId: number | null, ed
 
 // Campañas
 export function getCampaignActivities(plotCropId: number): Promise<any[]>;
-export function getCampaignExpenses(plotId: number, startDate: Date | string, endDate?: Date | string | null): Promise<any[]>;
-export function getCampaignIncomes(plotId: number, startDate: Date | string, endDate?: Date | string | null): Promise<any[]>;
+export function getCampaignMoney(userId: number, plotCropId: number): Promise<{ expenses: any[]; incomes: any[] }>;
 export function getCampaignObservations(plotId: number, startDate: Date | string, endDate?: Date | string | null): Promise<any[]>;
 export function setPlotCropHarvested(cropId: number, harvestedAt: Date | string, yieldKg?: number | null, yieldNotes?: string | null): Promise<any>;
 
@@ -453,6 +452,10 @@ export function getCampaignTotals(userId: number, opts?: {
   exp_usd: string | number;
   inc_ars: string | number;
   inc_usd: string | number;
+  exp_usd_eq: string | number;
+  inc_usd_eq: string | number;
+  fx_missing: number;
+  crop_order: number | null;
 }>>;
 export function describeDeletionCargo(where: { fieldId?: number | null; plotId?: number | null }): Promise<{ livestockHeads: number; activeCrops: string[]; stockItems: number; records: number }>;
 export class NameTakenError extends Error { constructor(kind: 'field' | 'plot', name: string); }

@@ -180,6 +180,7 @@ export class FeatureGate {
       open_form_activity: 'agronomy',
       open_form_livestock: 'livestock',
       sow_crop: 'agronomy',
+      sow_after_harvest_confirm: 'agronomy',
       harvest_crop: 'agronomy',
       active_crop: 'agronomy',
       crop_history: 'agronomy',

@@ -1,4 +1,5 @@
 import { notifyMutation } from './mutations';
+import { PATHS } from '../paths';
 
 const API_BASE = '/api/auth';
 
@@ -90,7 +91,7 @@ async function send<T>(
     const refreshed = await tryRefreshToken();
     if (!refreshed) {
       clearSession();
-      window.location.href = '/login';
+      window.location.href = PATHS.login;
       throw new ApiError(401, 'Sesión expirada');
     }
     res = await fetch(url, { ...init, headers: { ...init.headers, ...authHeader() } });

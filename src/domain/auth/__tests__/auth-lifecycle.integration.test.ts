@@ -19,7 +19,7 @@ const sentLinks: { to: string; subject: string; link: string }[] = [];
 
 vi.mock('../../../services/mailer.service.js', () => ({
   sendEmail: vi.fn(async ({ to, subject, text }: { to: string; subject: string; text: string }) => {
-    const m = text.match(/https?:\/\/\S+|\/(?:reset-password|verify-email)\?token=\S+/);
+    const m = text.match(/https?:\/\/\S+|\/(?:nueva-contrasena|verificar-email)\?token=\S+/);
     sentLinks.push({ to, subject, link: m ? m[0] : '' });
     return { ok: true, id: 'fake' };
   }),
@@ -86,7 +86,7 @@ describe.skipIf(!dbAvailable)('Auth — ciclo de vida de la cuenta (registro, ve
     expect(row.rows[0].email_verified_at).toBeNull();
 
     const verify = sentLinks.find(l => l.to === email && /verif/i.test(l.subject));
-    expect(verify?.link).toMatch(/\/verify-email\?token=/);
+    expect(verify?.link).toMatch(/\/verificar-email\?token=/);
   });
 
   it('registro duplicado con otra capitalización → 409', async () => {
@@ -127,7 +127,7 @@ describe.skipIf(!dbAvailable)('Auth — ciclo de vida de la cuenta (registro, ve
     await recovery.requestReset(`AUTH.LIFECYCLE+${stamp}@EXAMPLE.COM`);
     const reset = sentLinks.slice(before).find(l => /contraseña/i.test(l.subject));
     expect(reset?.to).toBe(email);
-    expect(reset?.link).toMatch(/\/reset-password\?token=/);
+    expect(reset?.link).toMatch(/\/nueva-contrasena\?token=/);
   });
 
   it('olvidé mi contraseña: email desconocido → ok sin enviar nada', async () => {

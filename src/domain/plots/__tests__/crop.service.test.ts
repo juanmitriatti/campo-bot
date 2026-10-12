@@ -21,6 +21,7 @@ const {
   getSeasonTypeForCrop,
   getSeasonYear,
   formatSeasonLabel,
+  inferCropOrder,
 } = await import('../crop.service.js');
 
 const userId = 1 as UserId;
@@ -91,12 +92,37 @@ describe('formatSeasonLabel', () => {
     expect(formatSeasonLabel(2099, 'gruesa')).toBe('2099/00');
   });
 
-  it('fina 2025 → 2025', () => {
-    expect(formatSeasonLabel(2025, 'fina')).toBe('2025');
+  // La fina integra la campaña agrícola de su siembra (trigo 2025 = 2025/26).
+  it('fina 2025 → 2025/26', () => {
+    expect(formatSeasonLabel(2025, 'fina')).toBe('2025/26');
   });
 
   it('perenne 2025 → 2025', () => {
     expect(formatSeasonLabel(2025, 'perenne')).toBe('2025');
+  });
+});
+
+// Análisis de cosecha (12 oct 2026): el agente manda "trigo" en minúscula y
+// quedaba como campaña gruesa.
+describe('getSeasonTypeForCrop sin mayúsculas ni acentos', () => {
+  it.each([['trigo', 'fina'], ['CEBADA', 'fina'], ['maiz', 'gruesa'], ['alfalfa', 'perenne']])('%s → %s', (c, t) => {
+    expect(getSeasonTypeForCrop(c)).toBe(t);
+  });
+});
+
+describe('inferCropOrder (soja de 2da)', () => {
+  const trigo = (harvested: string | null) => ({ season_type: 'fina', harvested_at: harvested ? new Date(`${harvested}T12:00:00`) : null, end_date: null });
+  it('gruesa sembrada a los 10 días de cosechar una fina → 2', () => {
+    expect(inferCropOrder(trigo('2025-12-05') as never, 'gruesa', '2025-12-15')).toBe(2);
+  });
+  it('gruesa sembrada meses después → 1', () => {
+    expect(inferCropOrder(trigo('2025-12-05') as never, 'gruesa', '2026-10-20')).toBe(1);
+  });
+  it('sin antecesor → null', () => {
+    expect(inferCropOrder(null, 'gruesa', '2025-12-15')).toBeNull();
+  });
+  it('soja después de maíz → 1', () => {
+    expect(inferCropOrder({ season_type: 'gruesa', harvested_at: new Date('2025-05-01T12:00:00'), end_date: null } as never, 'gruesa', '2025-05-20')).toBe(1);
   });
 });
 
@@ -124,7 +150,7 @@ describe('CropService', () => {
 
       expect(result.closedPrevious).toBeNull();
       expect(result.cropRow.crop).toBe('Soja');
-      expect(mocks.createPlotCrop).toHaveBeenCalledWith(10, 'Soja', 2025, 'gruesa', '2025-10-15', null, null);
+      expect(mocks.createPlotCrop).toHaveBeenCalledWith(10, 'Soja', 2025, 'gruesa', '2025-10-15', null, null, null);
     });
 
     it('same crop active → returns existing', async () => {

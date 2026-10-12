@@ -1,7 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useBrand } from '../hooks/useBrand';
+import { PATHS } from '../paths';
 
 export default function ResetPassword() {
+  const brand = useBrand();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [token, setToken] = useState('');
@@ -43,7 +46,7 @@ export default function ResetPassword() {
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       setDone(true);
-      setTimeout(() => navigate('/login'), 2500);
+      setTimeout(() => navigate(PATHS.login), 2500);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -55,7 +58,7 @@ export default function ResetPassword() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-campo-700">Campo Bot</h1>
+          <h1 className="text-3xl font-bold text-campo-700">{brand.app_name}</h1>
           <p className="text-gray-500 mt-1">Elegí una nueva contraseña</p>
         </div>
 
@@ -66,7 +69,7 @@ export default function ResetPassword() {
           </div>
         ) : !token ? (
           <div className="bg-white rounded-lg shadow-md p-6 text-sm text-red-700">
-            El link no es válido. Pedí uno nuevo desde <Link to="/forgot-password" className="underline">Olvidé mi contraseña</Link>.
+            El link no es válido. Pedí uno nuevo desde <Link to={PATHS.forgotPassword} className="underline">Olvidé mi contraseña</Link>.
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 space-y-4">

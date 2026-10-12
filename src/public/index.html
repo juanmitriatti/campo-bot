@@ -4178,6 +4178,12 @@
         btn.disabled = false;
         btn.textContent = 'Guardar Cambios';
         if (data) {
+          // El servidor responde 200 con un error por clave: sin mostrarlo, un
+          // valor rechazado parecía guardado y desaparecía al recargar.
+          var rejected = Object.keys(data).filter(function(k) { return data[k] && data[k].error; });
+          if (rejected.length) {
+            alert('No se guardaron: ' + rejected.map(function(k) { return k + ' (' + data[k].error + ')'; }).join(', '));
+          }
           reloadFn();
         }
       }).catch(function() {

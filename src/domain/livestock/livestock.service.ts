@@ -42,6 +42,36 @@ export interface LinkedFinancialRecord {
  * All mutations are delegated to the repository's atomic methods
  * so that group counts and the movement ledger stay in sync.
  */
+/** Marca de la pregunta "¿en qué lote?" (el handler la convierte en pending). */
+export const PLOT_CHOICE_RE = /¿En qué lote/;
+
+/**
+ * Pregunta del lote agrupada por campo. Antes era "Decime en qué lote.
+ * Opciones: navial, Norte, Sur, Norte, Sur, Testing…": seca, y con lotes
+ * homónimos de distintos campos repetidos sin decir de cuál (feedback prod
+ * 12 oct 2026).
+ */
+export function plotChoicePrompt(plots: ReadonlyArray<{ name: string; field_name: string }>): string {
+  const byField = new Map<string, string[]>();
+  for (const p of plots) {
+    const list = byField.get(p.field_name) ?? [];
+    list.push(p.name);
+    byField.set(p.field_name, list);
+  }
+  const lines = [...byField].map(([field, names]) => `• *${field}*: ${names.join(', ')}`);
+  const names = plots.map((p) => p.name.toLowerCase());
+  const hasHomonyms = new Set(names).size < names.length;
+  return [
+    '📍 ¿En qué lote los pongo? Estos son tus lotes:',
+    '',
+    ...lines,
+    '',
+    hasHomonyms
+      ? 'Respondeme con el nombre del lote. Si se repite en dos campos, sumá el campo (ej: «Norte de La Esperanza»).'
+      : 'Respondeme con el nombre del lote.',
+  ].join('\n');
+}
+
 export class LivestockService {
   private repo: LivestockRepository;
   private plotDiscovery: PlotDiscoveryService;
@@ -162,8 +192,7 @@ export class LivestockService {
         throw new Error('No tenés lotes todavía. Creá uno con "agregar lote Norte en campo X".');
       }
       if (plots.length > 1) {
-        const names = plots.slice(0, 8).map((p: { name: string }) => p.name).join(', ');
-        throw new Error(`Decime en qué lote. Opciones: ${names}.`);
+        throw new Error(plotChoicePrompt(plots as Array<{ name: string; field_name: string }>));
       }
       // exactamente 1 lote → resolver ese
     }
@@ -188,7 +217,27 @@ export class LivestockService {
     fieldName: string | null | undefined,
     plotName: string | null | undefined,
   ): Promise<ResolvedPlotRef> {
-    const result = await this.plotDiscovery.resolve(userId, fieldName, plotName);
+    let result = await this.plotDiscovery.resolve(userId, fieldName, plotName);
+
+    // "Mont" contestando "¿en qué lote?" es Monte: con un único lote a un error
+    // de tipeo se usa ese (la confirmación muestra el lote real). Antes se
+    // ofrecía crear «Mont» y, con ese botón rechazado por Meta, la pregunta se
+    // perdía (prod 12 oct 2026).
+    if (result.notFound?.type === 'plot' && plotName) {
+      const { findAllUserPlots } = await import('../../services/expenses.js');
+      const { uniqueNearName, compactEntityName } = await import('../../utils/entity-matcher.js');
+      const all = (await findAllUserPlots(userId)) as Array<{ name: string; field_name: string }>;
+      const scoped = fieldName
+        ? all.filter((p) => compactEntityName(p.field_name) === compactEntityName(fieldName))
+        : all;
+      const near = uniqueNearName(plotName, scoped.map((p) => p.name));
+      if (near) {
+        const owners = scoped.filter((p) => compactEntityName(p.name) === compactEntityName(near));
+        const nearField = owners.length === 1 ? owners[0].field_name : fieldName;
+        console.log(`[INTERCEPT] lote «${plotName}» no existe → «${near}»${nearField ? ` (${nearField})` : ''}, único parecido`);
+        result = await this.plotDiscovery.resolve(userId, nearField, near);
+      }
+    }
 
     if (result.notFound) {
       throw new Error(
@@ -203,8 +252,8 @@ export class LivestockService {
       );
     }
     if (result.needPlotSelection) {
-      const names = result.needPlotSelection.plots.map(p => p.name).join(', ');
-      throw new Error(`Decime en qué lote. Opciones: ${names}.`);
+      const sel = result.needPlotSelection;
+      throw new Error(plotChoicePrompt(sel.plots.map((p) => ({ name: p.name, field_name: sel.fieldName }))));
     }
     if (!result.plotId || !result.fieldId) {
       throw new Error('Necesito que me digas en qué lote o corral. Ej: "agregá 20 vacas al lote A1" o "al corral 1".');
@@ -1036,6 +1085,35 @@ export class LivestockService {
    * Refuses when the reversal would leave a group with negative count.
    * Ajuste is not undoable (would need previous-count history).
    */
+  /**
+   * "perdón, quise decir 20" justo después de un alta o nacimiento: corrige la
+   * cantidad de ESE movimiento en vez de registrar otro (prod 12 oct 2026: 9
+   * vaquillonas + "quise decir 20" quedaron en 29). Devuelve null si el último
+   * movimiento no es corregible (viejo, de otro tipo, revertido, otra categoría)
+   * y el caller sigue por el camino normal.
+   */
+  async correctLatestEntryCount(
+    userId: UserId,
+    newCount: number,
+    category?: string | null,
+  ): Promise<{ category: string; location: string; oldCount: number; newCount: number; total: number; expense: { amount: number; currency: string } | null } | null> {
+    const m = await this.repo.findLatestMovementWithin(Number(userId), 30);
+    if (!m || !m.dest_group_id || m.reverses_movement_id || m.already_reversed) return null;
+    if (m.movement_type !== 'entrada' && m.movement_type !== 'nacimiento') return null;
+    const group = await this.repo.getGroupById(m.dest_group_id);
+    if (!group) return null;
+    if (category && String(category).toLowerCase() !== String(group.category).toLowerCase()) return null;
+    const location = group.corral_name ? `Corral ${group.corral_name}` : `${group.plot_name ?? ''} (${group.field_name})`;
+    const label = LIVESTOCK_CATEGORY_LABEL[group.category as keyof typeof LIVESTOCK_CATEGORY_LABEL] ?? group.category;
+    if (newCount === m.count) {
+      return { category: label, location, oldCount: m.count, newCount, total: Number(group.count), expense: null };
+    }
+    const r = await withTransaction(() =>
+      this.repo.correctEntryMovementCount(Number(userId), m.id, m.count, newCount));
+    console.log(`[LIVESTOCK] corrección de cantidad: movimiento ${m.id} ${m.count} → ${newCount} (grupo ${group.id})`);
+    return { category: label, location, oldCount: m.count, newCount, total: r.groupCount, expense: r.expense };
+  }
+
   async undoMovement(userId: UserId, movementId: string): Promise<{ reversed: boolean; label: string; notes?: string }> {
     // Todo junto: la reversa, la plata vinculada y los animales (HAC-11/17).
     return withTransaction(() => this.undoMovementInner(userId, movementId));

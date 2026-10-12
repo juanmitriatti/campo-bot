@@ -13,6 +13,7 @@ import {
   type BillingPeriod,
   type SubscriptionStatus,
 } from '../api/subscription';
+import { PATHS } from '../paths';
 
 interface VerificationStatus {
   whatsapp_verified: boolean;
@@ -247,7 +248,7 @@ export default function ChannelLinking() {
       setPwRepeat('');
       logoutTimerRef.current = setTimeout(() => {
         logout();
-        navigate('/login');
+        navigate(PATHS.login);
       }, 2000);
     } catch (err) {
       setPwError(err instanceof ApiError ? err.message : 'No pude cambiar la contraseña.');

@@ -92,6 +92,76 @@ export class LivestockRepository {
     return rows;
   }
 
+  /**
+   * Último movimiento del usuario, si es reciente (corregible). Solo para
+   * "perdón, quise decir 20" justo después de registrar.
+   */
+  async findLatestMovementWithin(userId: number, minutes: number): Promise<{
+    id: string; movement_type: string; count: number; dest_group_id: string | null;
+    linked_expense_id: number | null; linked_income_id: number | null;
+    reverses_movement_id: string | null; already_reversed: boolean;
+  } | null> {
+    const { rows } = await pool.query(
+      `SELECT m.id::text AS id, m.movement_type, m.count, m.dest_group_id::text AS dest_group_id,
+              m.linked_expense_id, m.linked_income_id, m.reverses_movement_id::text AS reverses_movement_id,
+              EXISTS (SELECT 1 FROM livestock_movements r WHERE r.reverses_movement_id = m.id) AS already_reversed
+       FROM livestock_movements m
+       WHERE m.user_id = $1
+       ORDER BY m.created_at DESC
+       LIMIT 1`,
+      [userId],
+    );
+    const m = rows[0];
+    if (!m) return null;
+    const { rows: age } = await pool.query(
+      `SELECT created_at > NOW() - ($2 || ' minutes')::interval AS recent FROM livestock_movements WHERE id = $1`,
+      [m.id, String(minutes)],
+    );
+    return age[0]?.recent ? m : null;
+  }
+
+  /**
+   * Corrige la cantidad de un alta/nacimiento EN EL LUGAR: el movimiento, el
+   * grupo (proyección del ledger, mismo delta) y el gasto vinculado
+   * (proporcional). Llamar dentro de withTransaction.
+   */
+  async correctEntryMovementCount(
+    userId: number,
+    movementId: string,
+    oldCount: number,
+    newCount: number,
+  ): Promise<{ groupCount: number; expense: { amount: number; currency: string } | null }> {
+    const delta = newCount - oldCount;
+    const { rows: g } = await pool.query(
+      `SELECT lg.id, lg.count, COALESCE(lg.individualized_count, 0) AS individualized_count
+       FROM livestock_groups lg JOIN livestock_movements m ON m.dest_group_id = lg.id
+       WHERE m.id = $1 AND m.user_id = $2 AND lg.deleted_at IS NULL FOR UPDATE OF lg`,
+      [movementId, userId],
+    );
+    if (!g[0]) throw new Error('No encontré el grupo de ese movimiento.');
+    const after = Number(g[0].count) + delta;
+    if (after < Number(g[0].individualized_count) || after < 0) {
+      throw new Error(`No puedo dejar el grupo en ${after}: tiene ${g[0].individualized_count} animales con caravana.`);
+    }
+    await pool.query(`UPDATE livestock_movements SET count = $1 WHERE id = $2 AND user_id = $3`, [newCount, movementId, userId]);
+    await pool.query(`UPDATE livestock_groups SET count = $1, updated_at = NOW() WHERE id = $2`, [after, g[0].id]);
+
+    let expense: { amount: number; currency: string } | null = null;
+    const { rows: e } = await pool.query(
+      `SELECT e.id, e.amount, e.currency, e.description FROM expenses e
+       JOIN livestock_movements m ON m.linked_expense_id = e.id
+       WHERE m.id = $1 AND e.user_id = $2 AND e.deleted_at IS NULL`,
+      [movementId, userId],
+    );
+    if (e[0] && oldCount > 0) {
+      const amount = Math.round((Number(e[0].amount) / oldCount) * newCount * 100) / 100;
+      const description = String(e[0].description ?? '').replace(new RegExp(`\\b${oldCount}\\b`), String(newCount));
+      await pool.query(`UPDATE expenses SET amount = $1, description = $2 WHERE id = $3`, [amount, description, e[0].id]);
+      expense = { amount, currency: e[0].currency };
+    }
+    return { groupCount: after, expense };
+  }
+
   async getGroupById(id: string): Promise<LivestockGroupRow | null> {
     const { rows } = await pool.query(
       `SELECT lg.*, p.name AS plot_name, f.name AS field_name,

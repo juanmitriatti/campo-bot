@@ -261,6 +261,8 @@ export interface PlotCropRow {
   harvested_hectares?: number | null;
   /** Rinde esperado precosecha, para medir el desvío (migración 120). */
   expected_yield_kg_per_ha?: number | null;
+  /** 1 = de primera, 2 = de segunda (migración 133). */
+  crop_order?: number | null;
   created_at: Date;
 }
 

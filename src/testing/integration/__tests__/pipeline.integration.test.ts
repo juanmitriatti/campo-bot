@@ -422,6 +422,92 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  // Análisis de cosecha (12 oct 2026): sembrar soja detrás de un trigo
+  // preguntaba "¿Reemplazo esa campaña?" y nada marcaba la soja como 2da.
+  describe('trigo → soja de 2da (doble cultivo)', () => {
+    let h: PipelineHarness;
+    let plotId: number;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('soja-2da');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'la rotación') RETURNING id`, [h.userId]);
+      const p = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Bajo', 80) RETURNING id`, [(f[0] as { id: number }).id]);
+      plotId = (p[0] as { id: number }).id;
+    });
+    afterAll(async () => h?.cleanup());
+
+    const campaigns = () => h.q(
+      `SELECT crop, season_type, season_year, crop_order, harvested_at, end_date FROM plot_crops WHERE plot_id = $1 ORDER BY start_date, id`,
+      [plotId],
+    );
+
+    it('"trigo" en minúscula es campaña fina y se rotula 2025/26', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'trigo', plot: 'Bajo', event_date: '2025-06-10' });
+      const text = h.allText(await h.send('sembré trigo en el Bajo el 10 de junio'));
+      expect(text).toMatch(/Campaña 2025\/26/);
+      const [c] = await campaigns();
+      expect(c.season_type).toBe('fina');
+      expect(Number(c.season_year)).toBe(2025);
+    });
+
+    it('soja sobre el trigo SIN cosecha registrada ofrece "ya se cosechó" y la registra de 2da', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: 'Bajo', event_date: '2025-12-15' });
+      const ask = await h.send('sembré soja en el Bajo el 15 de diciembre');
+      expect(h.allText(ask)).toMatch(/sin cosecha registrada/);
+      const yes = h.allButtons(ask).find(b => b.id.startsWith('sow_after_harvest_'));
+      expect(yes).toBeTruthy();
+      const done = h.allText(await h.tap(yes!.id));
+      expect(done).toMatch(/Soja de 2da/);
+      const rows = await campaigns();
+      expect(rows).toHaveLength(2);
+      expect(rows[0].harvested_at).not.toBeNull();
+      expect(rows[0].end_date).not.toBeNull();
+      expect(rows[1].crop_order).toBe(2);
+      // Doble tap: no vuelve a registrar la siembra.
+      await h.tap(yes!.id);
+      expect(await campaigns()).toHaveLength(2);
+    });
+
+    it('soja sobre un trigo YA cosechado no pregunta: cierra y la marca de 2da', async () => {
+      await h.q(`DELETE FROM plot_crops WHERE plot_id = $1`, [plotId]);
+      await h.q(
+        `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, harvested_at)
+         VALUES ($1, 'Trigo', 2026, 'fina', '2026-06-05', '2026-11-28')`, [plotId]);
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: 'Bajo', event_date: '2026-12-10' });
+      const items = await h.send('sembré soja en el Bajo el 10 de diciembre');
+      expect(h.allButtons(items).filter(btn => btn.id.startsWith('sow_'))).toHaveLength(0);
+      const text = h.allText(items);
+      expect(text).toMatch(/Soja de 2da/);
+      expect(text).toMatch(/Cerré la campaña de Trigo \(ya cosechada\)/i);
+      const rows = await campaigns();
+      expect(rows[1].crop_order).toBe(2);
+    });
+
+    it('soja sobre una soja cosechada abre la campaña SIGUIENTE (no se cuelga de la vieja)', async () => {
+      await h.q(`DELETE FROM plot_crops WHERE plot_id = $1`, [plotId]);
+      await h.q(
+        `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, harvested_at, sowed_hectares)
+         VALUES ($1, 'Soja', 2024, 'gruesa', '2024-11-05', '2025-04-15', 80)`, [plotId]);
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: 'Bajo', hectares: 80, event_date: '2025-11-08' });
+      const text = h.allText(await h.send('sembré 80 ha de soja en el Bajo el 8 de noviembre'));
+      expect(text).toMatch(/Campaña 2025\/26/);
+      const rows = await campaigns();
+      expect(rows).toHaveLength(2);
+      expect(Number(rows[1].season_year)).toBe(2025);
+      expect(rows[1].crop_order).toBe(1);
+    });
+
+    it('"soja de segunda" explícita marca la 2da aunque no haya antecesor', async () => {
+      await h.q(`DELETE FROM plot_crops WHERE plot_id = $1`, [plotId]);
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja de segunda', plot: 'Bajo', event_date: '2025-12-20' });
+      const text = h.allText(await h.send('sembré soja de segunda en el Bajo el 20 de diciembre'));
+      expect(text).toMatch(/Soja de 2da/);
+      const rows = await campaigns();
+      expect(rows[0].crop).toMatch(/^soja$/i);
+      expect(rows[0].crop_order).toBe(2);
+    });
+  });
+
   describe('set_field_city con ciudad ambigua muestra opciones (regresión "Junin", Jul 2026)', () => {
     let h: PipelineHarness;
 
@@ -1164,6 +1250,141 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       if (exp.length > 0) {
         expect(exp[0].plot).toBe('Amarillo');
       }
+    });
+  });
+
+  describe('"ese campo" tras crear un campo NO es un lote (prod 11 oct 2026, QA de ganado)', () => {
+    // Prod: con el contexto en el lote 5g de otro campo, "ese campo tiene 2
+    // lotes, el 1ero se llama Monte…" se expandió a "en lote 5g tiene 2 lotes…",
+    // el agente pidió los lotes en el campo viejo y el override de renombre del
+    // mapper lo convirtió en rename_plot("5g tiene 2 lotes, el 1ero" → …).
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('ese-campo');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'Tres Bonetes') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      const p = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, '5g', 5) RETURNING id`, [fid]);
+      await h.q(
+        `INSERT INTO conversation_state (user_id, last_field_id, last_plot_id, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET last_field_id = $2, last_plot_id = $3, updated_at = NOW()`,
+        [h.userId, fid, (p[0] as { id: number }).id],
+      );
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('crear el campo lo deja en contexto y "ese campo" no se expande al lote viejo', async () => {
+      h.fakeAgent.enqueueTool('add_field', { field: 'La Tapera', city: 'Lincoln' });
+      await h.send('tengo un campo q se llama La Tapera en Lincoln');
+
+      const st = await h.q(
+        `SELECT f.name FROM conversation_state cs JOIN fields f ON f.id = cs.last_field_id WHERE cs.user_id = $1`,
+        [h.userId],
+      );
+      expect(st[0]?.name).toBe('La Tapera');
+
+      h.fakeAgent.enqueueTool('add_plots_batch', { field: 'La Tapera', plotNames: ['Monte', 'Loma'], hectares: [100, 60] });
+      const items = await h.send('ese campo tiene 2 lotes, el 1ero se llama Monte y tiene 100has y el otro 60has se llama Loma');
+
+      const agentText = h.fakeAgent.calls[h.fakeAgent.calls.length - 1].text;
+      expect(agentText).not.toMatch(/lote 5g/i);
+      expect(h.allText(items)).not.toMatch(/No encontré el lote/i);
+
+      const plots = await h.q(
+        `SELECT p.name, f.name AS field FROM plots p JOIN fields f ON f.id = p.field_id
+         WHERE f.user_id = $1 AND p.deleted_at IS NULL ORDER BY p.name`,
+        [h.userId],
+      );
+      expect(plots.filter((r) => r.field === 'La Tapera').map((r) => r.name)).toEqual(['Loma', 'Monte']);
+      expect(plots.find((r) => r.name === '5g')?.field).toBe('Tres Bonetes');
+    });
+  });
+
+  describe('QA de ganado por WhatsApp (prod 12 oct 2026)', () => {
+    // Prod: "compramos 50 vacas" → "¿en qué lote?" → "Monte" se registró por
+    // el pending pero el turno no quedó en el historial; "Mont" ofreció crear
+    // un lote con un botón de 21 caracteres que Meta rechazó; el "Monte"
+    // siguiente fue al agente, que volvió a comprar las 50 vacas ($40M dos
+    // veces, en silencio). Y "perdón, quise decir 20" sumó 20 a 9.
+    let h: PipelineHarness;
+    const waitForLog = async (text: string) => {
+      for (let i = 0; i < 20; i++) {
+        const r = await h.q(`SELECT tool_calls FROM conversation_logs WHERE user_id = $1 AND message_text = $2`, [h.userId, text]);
+        if (r.length) return r;
+        await new Promise((res) => setTimeout(res, 50));
+      }
+      return [];
+    };
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('qa-ganado');
+      for (const [field, plots] of [['La Esperanza', ['Norte', 'Sur']], ['La Tapera', ['Monte', 'Loma']]] as const) {
+        const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, $2) RETURNING id`, [h.userId, field]);
+        const fid = (f[0] as { id: number }).id;
+        await h.q(`INSERT INTO field_members (field_id, user_id, role) VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING`, [fid, h.userId]);
+        for (const p of plots) await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, $2, 50)`, [fid, p]);
+      }
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('la pregunta del lote agrupa por campo y la respuesta queda en el historial', async () => {
+      h.fakeAgent.enqueueTool('add_livestock', { category: 'vaca', count: 50, breed: 'Angus', unit_price_ars: 800000, is_purchase: true });
+      const ask = h.allText(await h.send('compramos 50 vacas angus a 800mil por cabeza'));
+      expect(ask).toMatch(/¿En qué lote/);
+      expect(ask).toMatch(/La Tapera\*?: Monte, Loma|La Tapera\*?: Loma, Monte/);
+
+      const done = h.allText(await h.send('Monte'));
+      expect(done).toMatch(/Hacienda registrada/);
+      const log = await waitForLog('Monte');
+      expect(JSON.stringify(log[0]?.tool_calls ?? null)).toContain('add_livestock');
+    });
+
+    it('"Mont" resuelve a Monte y no se duplica nada', async () => {
+      h.fakeAgent.enqueueTool('add_livestock', { category: 'toro', count: 3, breed: 'Angus' });
+      await h.send('agregué 3 toros Angus');
+      const r = h.allText(await h.send('Mont'));
+      expect(r).toMatch(/Hacienda registrada/);
+      expect(r).not.toMatch(/No encontré el lote/);
+
+      const groups = await h.q(
+        `SELECT g.category, g.count, p.name FROM livestock_groups g JOIN plots p ON p.id = g.plot_id
+         WHERE g.user_id = $1 AND g.deleted_at IS NULL ORDER BY g.category::text`,
+        [h.userId],
+      );
+      expect(groups).toEqual([
+        { category: 'toro', count: 3, name: 'Monte' },
+        { category: 'vaca', count: 50, name: 'Monte' },
+      ]);
+      const exp = await h.q(`SELECT COUNT(*)::int AS n FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+      expect(exp[0].n).toBe(1);
+    });
+
+    it('"perdón, quise decir 20" corrige la última alta en vez de sumar', async () => {
+      h.fakeAgent.enqueueTool('add_livestock', { plot: 'Loma', category: 'vaquillona' });
+      await h.send('en 5 hectáreas de la Loma tengo vaquillonas');
+      await h.send('9');
+      h.fakeAgent.enqueueTool('add_livestock', { plot: 'Loma', category: 'vaquillona', count: 20 });
+      const r = h.allText(await h.send('perdon, quise decir 20'));
+      expect(r).toMatch(/Corregido/);
+
+      const g = await h.q(
+        `SELECT count FROM livestock_groups WHERE user_id = $1 AND category = 'vaquillona' AND deleted_at IS NULL`,
+        [h.userId],
+      );
+      expect(g[0].count).toBe(20);
+    });
+
+    it('corregir la compra ajusta el gasto vinculado', async () => {
+      h.fakeAgent.enqueueTool('add_livestock', { plot: 'Loma', category: 'novillo', count: 10, unit_price_ars: 1000000, is_purchase: true });
+      await h.send('compré 10 novillos a un palo cada uno en la Loma');
+      h.fakeAgent.enqueueTool('add_livestock', { plot: 'Loma', category: 'novillo', count: 12 });
+      await h.send('no, eran 12');
+      const e = await h.q(
+        `SELECT amount FROM expenses WHERE user_id = $1 AND deleted_at IS NULL AND description ILIKE '%novillo%'`,
+        [h.userId],
+      );
+      expect(Number(e[0].amount)).toBe(12000000);
     });
   });
 
@@ -2735,6 +2956,39 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         [h.userId, surId],
       );
       expect(Number(enSurDespues[0].n)).toBe(6);
+    });
+
+    // Prod 12 oct 2026: tap de Moverlos → "que lotes los puedo mover" mató la
+    // pregunta (escapó como acción por "mover") y "movelos al corral 2" fue al
+    // agente, que rearmó las caravanas del historial y el validador las cambió
+    // por «2»: "Leí 1 identificadores… no moví nada".
+    it('"qué lotes los puedo mover" mantiene la pregunta y "movelos al Sur" la contesta, sin agente', async () => {
+      const tags = await seedAnimals(6, norteId, 600);
+      const preview = await h.send(tags.join('\n'));
+      const btn = h.allButtons(preview).find((b) => b.id.startsWith('animal_batch_move_'));
+      expect(h.allText(await h.tap(btn!.id))).toMatch(/¿A qué lote o corral/i);
+
+      h.fakeAgent.enqueueTool('list_plots', {});
+      const q = h.allText(await h.send('que lotes los puedo mover'));
+      expect(q).toMatch(/¿A qué lote o corral muevo los 6/i);
+
+      const callsBefore = h.fakeAgent.calls.length;
+      const done = h.allText(await h.send('movelos al Sur'));
+      expect(h.fakeAgent.calls.length).toBe(callsBefore);
+      expect(done).toMatch(/6 animales movidos[\s\S]*Lote Sur/i);
+    });
+
+    it('sin la pregunta abierta, "pasalos todos al Sur" mueve la lectura abierta aunque el agente invente caravanas', async () => {
+      const tags = await seedAnimals(6, norteId, 700);
+      const preview = await h.send(tags.join('\n'));
+      const btn = h.allButtons(preview).find((b) => b.id.startsWith('animal_batch_move_'));
+      await h.tap(btn!.id);
+      await h.send('cancelar'); // la pregunta se va; la lectura sigue abierta
+
+      h.fakeAgent.enqueueTool('move_animals', { animal_refs: ['0000000013', '0000000011'], dest_plot: 'Sur' });
+      const text = h.allText(await h.send('pasalos todos al Sur'));
+      expect(text).toMatch(/6 animales movidos/i);
+      expect(text).not.toMatch(/ilegible/i);
     });
 
     it('un mensaje normal con números NO se confunde con una lista de caravanas', async () => {

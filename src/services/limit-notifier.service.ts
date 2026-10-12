@@ -113,7 +113,7 @@ interface NotifyArgs {
 }
 
 const PRIMARY_CTA = 'Para tener acceso completo escribinos desde tu cuenta:';
-const ACCOUNT_URL_HINT = 'https://campo-bot-production.up.railway.app/dashboard';
+const ACCOUNT_URL_HINT = 'https://miagro.app/dashboard';
 
 function warningCopy({ used, limit }: NotifyArgs): string {
   const remaining = Math.max(0, limit - used);

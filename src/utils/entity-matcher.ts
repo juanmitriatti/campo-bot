@@ -174,6 +174,24 @@ export function soundsLikeToken(word: string, token: string): boolean {
 }
 
 /**
+ * El ÚNICO nombre de `names` que está a un error de tipeo de `input` ("Mont" →
+ * "Monte"), o null si no hay ninguno o hay más de uno. Nombres de 4+ letras
+ * (mismo criterio que soundsLikeToken). Para resolver una respuesta a "¿en qué
+ * lote?" sin ofrecer crear un lote con el nombre mal escrito (prod 12 oct 2026).
+ */
+export function uniqueNearName(input: string, names: readonly string[]): string | null {
+  const target = compactEntityName(stripLeadingArticle(input));
+  const hits = new Set<string>();
+  for (const name of names) {
+    const c = compactEntityName(name);
+    if (c === target || soundsLikeToken(target, c)) hits.add(c);
+  }
+  if (hits.size !== 1) return null;
+  const [only] = hits;
+  return names.find((n) => compactEntityName(n) === only) ?? null;
+}
+
+/**
  * Clave de una EMPRESA (acopiador, comprador): "Cargill", "Cargil" y "Cargill
  * S.A." son la misma (FIN-25: partían el saldo por acopio en dos). Sin acentos
  * ni puntuación, sin la forma societaria (SA, SRL, SACIF, SAIC, SCA, "y Cía")

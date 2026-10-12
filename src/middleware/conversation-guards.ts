@@ -199,10 +199,16 @@ export function hasActionVerbOrQuery(text: string): boolean {
 // no una acción nueva.
 const INTERROGATIVE_VERB_RE = /(^|\s)(cuanto|cuanta|cuantos|cuantas|que|cual|cuales|cuando|donde|como)\s+(\w+\s+){0,2}(gaste|pague|pago|compre|compro|vendi|vendo|cobre|cobro|ingrese|facture|sembre|plante|fumigue|fertilice|coseche|aplique|regue|pese|vacune|desparasite)\b/;
 
+const CAN_I_QUESTION_RE = /(^|\s)(que|cual|cuales|donde|adonde)\s+(\w+\s+){0,3}(puedo|podemos|podria|podriamos|se\s+pueden?)\b/;
+
 export function isReadOnlyQuery(text: string): boolean {
   const t = norm(text);
   if (!t) return false;
   if (!QUERY_INTENT.test(t)) return false;
   if (!ACTION_VERB.test(t)) return true;
+  // "¿qué lotes los puedo mover?" / "¿a dónde los puedo llevar?": preguntar
+  // POR las opciones no es hacerlo. Con "¿A qué lote o corral muevo los 4?"
+  // abierto escapaba como acción y la pregunta se perdía (prod 12 oct 2026).
+  if (CAN_I_QUESTION_RE.test(t)) return true;
   return INTERROGATIVE_VERB_RE.test(t);
 }

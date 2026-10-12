@@ -11,6 +11,7 @@ import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
+import { PATHS } from './paths';
 
 // Dashboard pulls in recharts + leaflet + all dashboard tabs — keep it lazy
 // so the login bundle stays slim. Chat is also heavy enough to split.
@@ -34,11 +35,11 @@ export default function App() {
         <CurrencyProvider>
         <Suspense fallback={<PageFallback />}>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path={PATHS.login} element={<Login />} />
+          <Route path={PATHS.register} element={<Register />} />
+          <Route path={PATHS.forgotPassword} element={<ForgotPassword />} />
+          <Route path={PATHS.resetPassword} element={<ResetPassword />} />
+          <Route path={PATHS.verifyEmail} element={<VerifyEmail />} />
           <Route path="/form/:token" element={<FormPage />} />
           <Route
             path="/dashboard"

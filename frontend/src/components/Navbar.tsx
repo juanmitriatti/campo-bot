@@ -3,12 +3,15 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { CircleUser, ChevronDown, UserCog, BookOpen, LogOut, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../hooks/useTheme';
+import { useBrand } from '../hooks/useBrand';
+import { PATHS } from '../paths';
 
 interface NavbarProps {
   onUserClick?: () => void;
 }
 
 export default function Navbar({ onUserClick }: NavbarProps) {
+  const brand = useBrand();
   const { user, plan, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -35,7 +38,7 @@ export default function Navbar({ onUserClick }: NavbarProps) {
   const handleLogout = () => {
     setMenuOpen(false);
     logout();
-    navigate('/login');
+    navigate(PATHS.login);
   };
 
   const goToAccount = () => {
@@ -61,7 +64,7 @@ export default function Navbar({ onUserClick }: NavbarProps) {
             className="text-xl font-bold tracking-tight cursor-pointer"
             onClick={() => navigate('/dashboard')}
           >
-            Campo Bot
+            {brand.app_name}
           </span>
           {plan && (
             <span className="text-xs bg-campo-500 px-2 py-0.5 rounded-full font-medium hidden sm:inline-block">

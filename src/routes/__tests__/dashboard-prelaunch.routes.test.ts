@@ -173,7 +173,7 @@ describe('dashboard ux-polish — perfil (PATCH /me)', () => {
       // marcar verificado, cambiar email → vuelve a NULL
       await pool.query(`UPDATE users SET email_verified_at = NOW() WHERE id = $1`, [a.userId]);
       const nuevo = `nuevo-${Date.now()}@routes-test.local`;
-      const ok = await api(a.token)('/me', { method: 'PATCH', body: JSON.stringify({ email: nuevo }) });
+      const ok = await api(a.token)('/me', { method: 'PATCH', body: JSON.stringify({ email: nuevo, current_password: 'testpass123' }) });
       expect(ok.status).toBe(200);
       const row = await pool.query(`SELECT email, email_verified_at FROM users WHERE id = $1`, [a.userId]);
       expect(row.rows[0].email).toBe(nuevo);

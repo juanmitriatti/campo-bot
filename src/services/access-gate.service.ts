@@ -188,7 +188,7 @@ export async function isTrialExpired(userId: number): Promise<boolean> {
  * Railway estaba hardcodeada y un cambio de dominio dejaba el link muerto.
  */
 export async function trialExpiredCopy(): Promise<string> {
-  let base = 'https://campo-bot-production.up.railway.app';
+  let base = 'https://miagro.app';
   try {
     const { getSetting } = await import('./settings.service.js');
     const publicUrl = await getSetting('PUBLIC_URL');

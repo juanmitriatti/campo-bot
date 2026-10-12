@@ -1,5 +1,31 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { query } from '../config/database.js';
 import type { UserId } from '../types/index.js';
+
+/**
+ * Turno de conversación en curso: si quedó en el historial y qué comandos
+ * ejecutó el router. Los caminos determinísticos (respuesta a un pending,
+ * flows, "¿lo creo?") no llamaban a `log()`, así que esos turnos no existían
+ * para el agente: en prod (12 oct 2026) "compramos 50 vacas" → "¿en qué lote?"
+ * → "Monte" registró las vacas por el pending, pero el agente solo veía la
+ * pregunta sin contestar y al siguiente "Monte" volvió a comprarlas.
+ */
+interface TurnState { logged: boolean; commands: string[] }
+const turnStore = new AsyncLocalStorage<TurnState>();
+
+export function runConversationTurn<T>(fn: () => Promise<T>): Promise<T> {
+  return turnStore.run({ logged: false, commands: [] }, fn);
+}
+
+/** El router anota cada comando que ejecuta en el turno en curso. */
+export function recordTurnCommand(command: string): void {
+  turnStore.getStore()?.commands.push(command);
+}
+
+/** Estado del turno en curso (null fuera de `runConversationTurn`). */
+export function currentTurn(): Readonly<TurnState> | null {
+  return turnStore.getStore() ?? null;
+}
 
 export class ConversationLogger {
   async log(
@@ -20,6 +46,8 @@ export class ConversationLogger {
     channel?: string | null,
   ): Promise<void> {
     const truncatedResponse = responseText ? responseText.slice(0, 500) : null;
+    const turn = turnStore.getStore();
+    if (turn) turn.logged = true;
     await query(
       `INSERT INTO conversation_logs
        (user_id, phone, direction, message_text, intent_type, intent_command,

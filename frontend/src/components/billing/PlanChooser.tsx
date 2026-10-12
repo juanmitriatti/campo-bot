@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { BillingPeriod, PublicPlan } from '../../api/subscription';
 import { formatArs, supportMailto, yearlySavings } from '../../api/subscription';
+import { useBrand } from '../../hooks/useBrand';
 
 /**
  * Grilla de planes con toggle mensual/anual. La usan el paywall de prueba
@@ -33,6 +34,7 @@ const BLURB: Record<string, string> = {
 };
 
 export default function PlanChooser({ plans, currentPlanName, supportContact, busy, onCheckout }: Props) {
+  const brand = useBrand();
   const [period, setPeriod] = useState<BillingPeriod>('monthly');
   const anyYearly = plans.some(p => p.price_ars_yearly != null);
 
@@ -79,7 +81,7 @@ export default function PlanChooser({ plans, currentPlanName, supportContact, bu
               : plan.price_ars ?? 0;
           const isCurrent = currentPlanName === plan.name;
           const mailto = plan.custom_pricing && supportContact
-            ? supportMailto(supportContact, `Consulta plan ${plan.display_name} — Campo Bot`)
+            ? supportMailto(supportContact, `Consulta plan ${plan.display_name} — ${brand.app_name}`)
             : null;
 
           return (

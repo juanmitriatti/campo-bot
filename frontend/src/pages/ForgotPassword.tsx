@@ -1,7 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { useBrand } from '../hooks/useBrand';
+import { PATHS } from '../paths';
 
 export default function ForgotPassword() {
+  const brand = useBrand();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -33,7 +36,7 @@ export default function ForgotPassword() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <a href="/" className="inline-block"><h1 className="text-3xl font-bold text-campo-700">Campo Bot</h1></a>
+          <a href="/" className="inline-block"><h1 className="text-3xl font-bold text-campo-700">{brand.app_name}</h1></a>
           <p className="text-gray-500 mt-1">Recuperá tu contraseña</p>
         </div>
 
@@ -43,7 +46,7 @@ export default function ForgotPassword() {
               Si <span className="font-medium">{email}</span> está registrado, te mandamos un email con un link para resetear tu contraseña.
             </p>
             <p className="text-gray-500">Revisá también la carpeta de spam.</p>
-            <Link to="/login" className="block text-center text-campo-600 hover:text-campo-700 font-medium">
+            <Link to={PATHS.login} className="block text-center text-campo-600 hover:text-campo-700 font-medium">
               Volver al login
             </Link>
           </div>
@@ -74,7 +77,7 @@ export default function ForgotPassword() {
               {loading ? 'Enviando…' : 'Enviarme el link'}
             </button>
             <p className="text-center text-xs text-gray-500">
-              <Link to="/login" className="text-campo-600 hover:text-campo-700">
+              <Link to={PATHS.login} className="text-campo-600 hover:text-campo-700">
                 Volver al login
               </Link>
             </p>
