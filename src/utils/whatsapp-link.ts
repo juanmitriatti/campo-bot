@@ -17,7 +17,10 @@ import { getSetting } from '../services/settings.service.js';
 export async function getBotWhatsAppNumber(): Promise<string | null> {
   try {
     const raw = ((await getSetting('WHATSAPP_BOT_NUMBER')) as string | null)?.trim();
-    const digits = raw ? raw.replace(/\D/g, '') : '';
+    // Un valor vacío guardado desde /admin le gana a la variable de Railway en
+    // getSetting; para el número del bot, vacío = "no configurado" y vale el env.
+    const value = raw || process.env.WHATSAPP_BOT_NUMBER?.trim() || '';
+    const digits = value.replace(/\D/g, '');
     return digits || null;
   } catch {
     return null;
