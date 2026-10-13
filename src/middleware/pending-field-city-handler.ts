@@ -25,9 +25,13 @@ export function formatLocation(city: string, province: string | null): string {
  * "Siembra...", we should abort the pending flow instead of prompting "¿En qué
  * ciudad...?" over and over.
  */
-function looksLikeNonCity(text: string): boolean {
+export function looksLikeNonCity(text: string): boolean {
   const t = text.trim().toLowerCase();
   if (!t) return true;
+  // Una descripción del campo ("el primero tengo dos lotes la esperanza…") no
+  // es una localidad: la recuperación de ciudad del mapper la tomaba entera
+  // (prod 12 oct 2026).
+  if (/\b(tengo|tenemos|tiene|tienen|hay)\b/.test(t) || /\blotes\b/.test(t)) return true;
   if (/^(cancelar|cancel|salir|nada|ninguna|ninguno|olvidalo|dejalo|olvidá|olvidate)\b/.test(t)) return true;
   // Agro / registration verbs. \b before the verb is enough; trailing boundary doesn't
   // play well with accented endings (é, í, ó) under ASCII \b semantics.

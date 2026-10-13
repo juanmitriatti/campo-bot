@@ -12,7 +12,7 @@ import {
   findAllUserPlots,
 } from '../../services/expenses.js';
 import { detectarLote, normalizeText } from '../../utils/parser.js';
-import { stripLeadingArticle, normalizeEntityName } from '../../utils/entity-matcher.js';
+import { stripLeadingArticle, normalizeEntityName, findEquivalentName } from '../../utils/entity-matcher.js';
 import type { UserId, PlotDiscoveryResult } from '../../types/index.js';
 
 export class PlotDiscoveryService {
@@ -202,7 +202,15 @@ export class PlotDiscoveryService {
     if (direct) return direct;
     const stripped = stripLeadingArticle(plotName);
     if (stripped !== plotName) {
-      return getPlotByName(fieldId, stripped);
+      const byStripped = await getPlotByName(fieldId, stripped);
+      if (byStripped) return byStripped;
+    }
+    // Equivalencia «El Tres» = «lote 3» = «tres» (entity-matcher, fuente única).
+    const fieldPlots = await getPlotsByField(fieldId);
+    const equivalent = findEquivalentName(plotName, fieldPlots.map((p) => p.name));
+    if (equivalent) {
+      console.log(`[INTERCEPT] lote «${plotName}» ≡ «${equivalent}» (nombre equivalente)`);
+      return getPlotByName(fieldId, equivalent);
     }
     return null;
   }
@@ -237,6 +245,18 @@ export class PlotDiscoveryService {
       const stripped = stripLeadingArticle(plotName);
       if (stripped !== plotName) {
         plots = await findPlotByNameAcrossFields(userId, stripped);
+      }
+    }
+    if (plots.length === 0) {
+      // Equivalencia «El Tres» = «lote 3» entre TODOS los lotes del usuario:
+      // solo si hay uno solo (con dos «El Tres» en campos distintos, el
+      // findPlotByNameAcrossFields con el nombre real devuelve los dos y se
+      // pregunta cuál, como siempre).
+      const all = await findAllUserPlots(userId);
+      const equivalent = findEquivalentName(plotName, all.map((p: { name: string }) => p.name));
+      if (equivalent) {
+        console.log(`[INTERCEPT] lote «${plotName}» ≡ «${equivalent}» (nombre equivalente)`);
+        plots = await findPlotByNameAcrossFields(userId, equivalent);
       }
     }
     if (plots.length === 1) {

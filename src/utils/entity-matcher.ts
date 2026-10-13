@@ -72,6 +72,82 @@ export function entityNameCandidates(s: string): string[] {
   return stripped !== literal ? [literal, stripped] : [literal];
 }
 
+// ---------------------------------------------------------------------------
+// Equivalencia de nombres: número escrito ↔ dígito, artículo y prefijo de tipo.
+//
+// Prod (12 oct 2026): un productor tenía los lotes «El Uno», «El Dos», «El
+// Tres» y decía "lote 3" (Whisper y normalizePlotNumbers escriben el dígito).
+// Nada lo resolvía: el validador vetó la fumigación del «El Tres» y "lote uno"
+// contestando "¿en qué lote?" se buscó como «Uno». La clave canónica junta las
+// formas en que se nombra el mismo lote: «El Tres» = «lote 3» = «3» = «tres».
+// ---------------------------------------------------------------------------
+
+const NUMBER_WORD_DIGITS: Record<string, string> = {
+  uno: '1', una: '1', dos: '2', tres: '3', cuatro: '4', cinco: '5', seis: '6',
+  siete: '7', ocho: '8', nueve: '9', diez: '10', once: '11', doce: '12',
+  trece: '13', catorce: '14', quince: '15', dieciseis: '16', diecisiete: '17',
+  dieciocho: '18', diecinueve: '19', veinte: '20',
+};
+
+/** "tres" → "3"; cualquier otra palabra queda igual (ya normalizada). */
+export function numeralFold(word: string): string {
+  const w = normalizeEntityName(word);
+  return NUMBER_WORD_DIGITS[w] ?? w;
+}
+
+// Solo los prefijos que significan "lote": «campo 2» o «corral 2» NUNCA son
+// equivalentes al lote «El Dos» (conservan el prefijo en la clave).
+const KIND_PREFIX_RE = /^(?:lote|potrero|parcela|cuadro)\s+/;
+
+/**
+ * Clave canónica de un nombre de entidad: sin acentos ni mayúsculas, sin el
+ * prefijo "lote/potrero/parcela/cuadro", sin artículo de apertura, con los números escritos
+ * pasados a dígitos y sin espacios. Solo para COMPARAR nombres que el SQL
+ * (`sqlNormalizedName`) no juntó; nunca para guardar.
+ */
+export function entityNameKey(s: string): string {
+  let n = normalizeEntityName(s).replace(/[^a-z0-9ñ ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  n = n.replace(KIND_PREFIX_RE, '');
+  const stripped = n.replace(/^(?:el|la|los|las)\s+/, '');
+  if (stripped) n = stripped;
+  return n.split(' ').map(numeralFold).join('');
+}
+
+/**
+ * El ÚNICO nombre de `names` equivalente a `input` por `entityNameKey`, o null
+ * si no hay ninguno o hay más de uno (dos lotes «1» y «El Uno» en la misma
+ * lista no se adivinan).
+ */
+export function findEquivalentName(input: string, names: readonly string[]): string | null {
+  const key = entityNameKey(input);
+  if (!key) return null;
+  const hits = names.filter((n) => entityNameKey(n) === key);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * Una respuesta que nombra VARIOS lotes ("Lote Uno, lote dos y lote tres", "el
+ * 1, el 2 y el 3", "Norte y Sur") → los nombres reales de `names`, en el orden
+ * en que los dijo. null si hay menos de 2 partes o si alguna no resuelve a un
+ * único lote: una lista a medio entender no se aplica a medias.
+ */
+export function resolvePlotList(text: string, names: readonly string[]): string[] | null {
+  const norm = normalizeEntityName(text).replace(/[.;:!¡¿?]+/g, ' ').trim()
+    .replace(/^(?:(?:en|a|para)\s+)?(?:(?:los|las)\s+)?(?:lotes?|potreros?)\s+(?=\S+\s*(?:,|\by\b|\be\b))/, '');
+  const parts = norm
+    .split(/\s*,\s*|\s+y\s+|\s+e\s+|\s+(?=(?:lote|potrero|parcela|cuadro)\s)/)
+    .map((p) => p.replace(/^(?:(?:en|a|para)\s+)?/, '').trim())
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+  const out: string[] = [];
+  for (const part of parts) {
+    const hit = findEquivalentName(part, names);
+    if (!hit) return null;
+    if (!out.includes(hit)) out.push(hit);
+  }
+  return out.length >= 2 ? out : null;
+}
+
 /** Texto → palabras normalizadas separadas por un espacio, con bordes. */
 function wordPadded(s: string): string {
   return ` ${normalizeEntityName(s).replace(/[^a-z0-9ñ]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
@@ -89,6 +165,14 @@ function wordPadded(s: string): string {
  * normalización inline para esto.
  */
 export function mentionsEntityName(text: string, name: string, kindWord: 'lote' | 'campo' | 'corral' = 'lote'): boolean {
+  if (mentionsEntityNameRaw(text, name, kindWord)) return true;
+  // «El Tres» nombrado "lote 3" (o «Lote 3» nombrado "lote tres").
+  const fold = (s: string) => wordPadded(s).trim().split(' ').map(numeralFold).join(' ');
+  const ft = fold(text), fn = fold(name);
+  return (ft !== wordPadded(text).trim() || fn !== wordPadded(name).trim()) && mentionsEntityNameRaw(ft, fn, kindWord);
+}
+
+function mentionsEntityNameRaw(text: string, name: string, kindWord: 'lote' | 'campo' | 'corral'): boolean {
   const t = wordPadded(text);
   if (!t.trim()) return false;
   const names = new Set<string>();

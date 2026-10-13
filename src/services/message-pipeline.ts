@@ -1347,11 +1347,27 @@ async function processTextMessageInner(
       }
       // P0: don't silently drop the pending activity on pivot — save field-level
       // where possible, else tell the user it's deferred. Then process the pivot.
-      const { flushPendingActivityOnPivot } = await import('../middleware/pending-activity-pivot.js');
-      const pivotNotes = await flushPendingActivityOnPivot(userId, pendingAct, agronomyHandler);
+      // Si el mensaje nuevo RE-ENUNCIA la misma actividad ("Sembré soja en el
+      // campo 2" con la siembra de soja sin lote), la reemplaza: avisar "dejé
+      // pendiente la siembra" y volver a preguntar el lote en la misma
+      // respuesta confundía (prod 12 oct 2026).
+      const { mentionsRegistrationOf } = await import('../utils/lexicon.js');
+      const pendingCrop = (pendingAct.data as Record<string, unknown> | undefined)?.crop;
+      const textCrop = extractCropFromText(text);
+      const restated = mentionsRegistrationOf(pendingAct.command, text)
+        && !(typeof pendingCrop === 'string' && textCrop && extractCropFromText(pendingCrop) !== textCrop);
+      let pivotNotes: string[] = [];
+      if (restated) {
+        console.log(`[INTERCEPT] pivot re-enuncia ${pendingAct.command}: el mensaje nuevo reemplaza el pending (sin aviso)`);
+      } else {
+        const { flushPendingActivityOnPivot } = await import('../middleware/pending-activity-pivot.js');
+        pivotNotes = await flushPendingActivityOnPivot(userId, pendingAct, agronomyHandler);
+      }
       pendingActStore.clear(phone);
-      if (pivotNotes.length > 0) {
+      const queued = pendingAct.nextInQueue ?? [];
+      if (pivotNotes.length > 0 || queued.length > 0) {
         const rest = await processTextMessageInner(text, ctx);
+        await carryQueueForward(ctx, queued, rest, `pivot desde ${pendingAct.command}`);
         return [...pivotNotes.map(t => ({ type: 'text' as const, text: t })), ...rest];
       }
       // Fall through to normal processing
@@ -1390,6 +1406,8 @@ ${ask}` }];
       // required slots are filled → re-execute. Otherwise → ask for what's
       // still missing. Works for log_fertilization, log_spraying, log_income,
       // log_expense, sow_crop, etc. — wherever the handler set `missing`.
+      const severalPlots = await answerPendingWithSeveralPlots(text, ctx, pendingAct);
+      if (severalPlots) return severalPlots;
       const { processPendingAction } = await import('../middleware/pending-action-processor.js');
       let result;
       try {
@@ -1679,31 +1697,7 @@ ${ask}` }];
       if (truncatedFlag) {
         result.messages.push('⚠️ El mensaje era largo y se cortó. Si te quedaron acciones sin registrar, repetilas en un mensaje aparte.');
       }
-      const items: BotResponseItem[] = result.messages.map(m => ({ type: 'text' as const, text: m }));
-      let compoundPlotAreaPrompt: string | null = null;
-      if (result.stoppedAtFlow && result.lastSideEffects?.startFlow) {
-        const { state, data } = result.lastSideEffects.startFlow;
-        const flowResult = await conversationEngine.startFlow(userId, state, data);
-        if (flowResult.nextContext) await conversationEngine.setFlowContext(userId, flowResult.nextContext);
-        items.push(...collectResponse(flowResult.response));
-      } else if (result.lastSideEffects) {
-        const applied = applySideEffects(result.lastSideEffects, phone);
-        compoundPlotAreaPrompt = applied.plotAreaPrompt;
-      }
-      if (result.lastInteractive) {
-        items.push({ type: 'interactive', interactive: result.lastInteractive } as BotResponseItem);
-      } else if (result.lastSuggestionKey && !compoundPlotAreaPrompt) {
-        // Sin sugerencias cuando hay una pregunta abierta: los botones de
-        // "¿Próximo paso?" DESPUÉS de "¿Cuántas ha tiene Norte?" competían con
-        // la pregunta y el usuario tocaba un botón dejándola huérfana (QA Jul 2026).
-        const suggestion = getSuggestions(result.lastSuggestionKey);
-        if (suggestion && suggestion.type === 'buttons') {
-          items.push({ type: 'interactive', interactive: { type: 'buttons', body: suggestion.body, buttons: suggestion.buttons } } as BotResponseItem);
-        }
-      }
-      // La pregunta de hectáreas SIEMPRE es lo último del burst — lo último
-      // que ve el usuario es lo que le estamos preguntando.
-      if (compoundPlotAreaPrompt) items.push({ type: 'text', text: compoundPlotAreaPrompt });
+      const items = await compoundResultItems(result, userId, phone);
       // Observability: when a compound ends with ONLY an interactive (buttons/list)
       // and no text messages, fall back to the interactive body so the row isn't
       // logged with an empty response_text — otherwise it's indistinguishable from
@@ -2050,6 +2044,143 @@ ${ask}` }];
  */
 const pendingEscalationHints = new Map<string, string>();
 
+/** Respuesta de un compuesto → items (texto, flow, side-effects, botones, pregunta de hectáreas al final). */
+async function compoundResultItems(
+  result: NonNullable<Awaited<ReturnType<CompoundExecutor['execute']>>>,
+  userId: UserId,
+  phone: string,
+): Promise<BotResponseItem[]> {
+  const items: BotResponseItem[] = result.messages.map(m => ({ type: 'text' as const, text: m }));
+  let compoundPlotAreaPrompt: string | null = null;
+  if (result.stoppedAtFlow && result.lastSideEffects?.startFlow) {
+    const { state, data } = result.lastSideEffects.startFlow;
+    const flowResult = await conversationEngine.startFlow(userId, state, data);
+    if (flowResult.nextContext) await conversationEngine.setFlowContext(userId, flowResult.nextContext);
+    items.push(...collectResponse(flowResult.response));
+  } else if (result.lastSideEffects) {
+    const applied = applySideEffects(result.lastSideEffects, phone);
+    compoundPlotAreaPrompt = applied.plotAreaPrompt;
+  }
+  if (result.lastInteractive) {
+    items.push({ type: 'interactive', interactive: result.lastInteractive } as BotResponseItem);
+  } else if (result.lastSuggestionKey && !compoundPlotAreaPrompt) {
+    // Sin sugerencias cuando hay una pregunta abierta: los botones de
+    // "¿Próximo paso?" DESPUÉS de "¿Cuántas ha tiene Norte?" competían con
+    // la pregunta y el usuario tocaba un botón dejándola huérfana (QA Jul 2026).
+    const suggestion = getSuggestions(result.lastSuggestionKey);
+    if (suggestion && suggestion.type === 'buttons') {
+      items.push({ type: 'interactive', interactive: { type: 'buttons', body: suggestion.body, buttons: suggestion.buttons } } as BotResponseItem);
+    }
+  }
+  // La pregunta de hectáreas SIEMPRE es lo último del burst — lo último
+  // que ve el usuario es lo que le estamos preguntando.
+  if (compoundPlotAreaPrompt) items.push({ type: 'text', text: compoundPlotAreaPrompt });
+  return items;
+}
+
+type QueuedPending = NonNullable<import('../middleware/pending-activities.js').PendingActivity['nextInQueue']>;
+
+/**
+ * La cola serial de un pending que se resolvió por OTRO camino (pivot, rescate
+ * por agente, respuesta con varios lotes) no se pierde: se cuelga detrás del
+ * pending que haya quedado abierto, o su primer ítem pasa a ser la pregunta
+ * actual. Si hay otro colector abierto (tarjeta de confirmación o flow), cada
+ * ítem se guarda a nivel campo o se avisa (política de pivot), nunca en silencio.
+ * Prod 12 oct 2026: la fumigación encolada detrás de una siembra desapareció
+ * cuando el usuario re-enunció la siembra.
+ */
+async function carryQueueForward(
+  ctx: ChannelContext,
+  queue: QueuedPending | undefined,
+  items: BotResponseItem[],
+  reason: string,
+): Promise<void> {
+  if (!queue || queue.length === 0) return;
+  const { phone, userId } = ctx;
+  const current = pendingActStore.get(phone);
+  if (current) {
+    pendingActStore.set(phone, { ...current, nextInQueue: [...(current.nextInQueue ?? []), ...queue] });
+    console.log(`[INTERCEPT] cola de ${queue.length} conservada tras ${reason} (detrás de ${current.command})`);
+    return;
+  }
+  const otherCollector = !!pendingStore.get(phone) || (await conversationEngine.getFlowContext(userId)).state !== 'idle';
+  if (otherCollector) {
+    const { flushPendingActivityOnPivot } = await import('../middleware/pending-activity-pivot.js');
+    for (const q of queue) {
+      const notes = await flushPendingActivityOnPivot(userId, { ...q, timestamp: Date.now() }, agronomyHandler);
+      items.push(...notes.map(t => ({ type: 'text' as const, text: t })));
+    }
+    console.log(`[INTERCEPT] cola de ${queue.length} resuelta por pivot tras ${reason} (hay otra pregunta abierta)`);
+    return;
+  }
+  const [head, ...tail] = queue;
+  pendingActStore.set(phone, {
+    command: head.command,
+    data: { ...head.data, _fromQueue: true },
+    timestamp: Date.now(),
+    missing: head.missing,
+    askPrompt: head.askPrompt,
+    ...(tail.length > 0 ? { nextInQueue: tail } : {}),
+  });
+  console.log(`[INTERCEPT] cola: ${head.command} pasa a ser la pregunta actual tras ${reason} (${tail.length} más)`);
+  items.push({ type: 'text', text: head.askPrompt ?? 'Me falta algún dato para lo que quedó pendiente. ¿Me lo pasás?' });
+}
+
+/** Actividades que se aplican lote por lote: "en todos" = una por lote. */
+const MULTI_PLOT_COMMANDS = new Set(['sow_crop', 'log_spraying', 'log_fertilization', 'log_tillage', 'log_irrigation']);
+
+/**
+ * "¿En qué lote?" contestado con VARIOS lotes — "todos", "los tres", "todo el
+ * campo", "Lote Uno, lote dos y lote tres" — en una actividad agro: una acción
+ * por lote por el camino del compuesto (todo-o-nada, invariante 7). Devuelve
+ * null si la respuesta no es eso o es ambigua (sin campo y con varios campos,
+ * "los tres" en un campo de cuatro lotes): sigue el camino normal.
+ * Prod 12 oct 2026: "En todos" y "En los tres lotes" se buscaron como lotes.
+ */
+async function answerPendingWithSeveralPlots(
+  text: string,
+  ctx: ChannelContext,
+  pendingAct: import('../middleware/pending-activities.js').PendingActivity,
+): Promise<BotResponseItem[] | null> {
+  if (!MULTI_PLOT_COMMANDS.has(pendingAct.command)) return null;
+  const missing = pendingAct.missing ?? [];
+  if (!missing.includes('plot') || missing.some((s) => s !== 'plot' && s !== 'field')) return null;
+  const { collectivePlotAnswer } = await import('../utils/lexicon.js');
+  const { resolvePlotList, compactEntityName } = await import('../utils/entity-matcher.js');
+  const collective = collectivePlotAnswer(text);
+  const data = (pendingAct.data ?? {}) as Record<string, unknown>;
+  const fieldName = (typeof data.fieldName === 'string' && data.fieldName) || (typeof data.field === 'string' && data.field) || null;
+  const all = (await agronomyRepository.findAllUserPlots(ctx.userId)) as Array<{ name: string; field_name: string }>;
+  const inField = fieldName ? all.filter((p) => compactEntityName(p.field_name) === compactEntityName(fieldName)) : [];
+  let chosen: Array<{ name: string; field_name: string }> | null = null;
+  if (collective != null) {
+    const scope = fieldName ? inField : (new Set(all.map((p) => p.field_name)).size === 1 ? all : []);
+    if (scope.length < 2) return null;
+    if (collective !== 'all' && collective !== scope.length) {
+      console.log(`[INTERCEPT] pending ${pendingAct.command}: "${text.slice(0, 40)}" nombra ${collective} lotes y ${fieldName ?? 'el campo'} tiene ${scope.length} — no adivino`);
+      return null;
+    }
+    chosen = scope;
+  } else {
+    const pool = inField.length > 0 ? inField : all;
+    const names = resolvePlotList(text, pool.map((p) => p.name));
+    if (!names) return null;
+    chosen = names.map((n) => pool.find((p) => p.name === n)!);
+  }
+  console.log(`[INTERCEPT] pending ${pendingAct.command}: "${text.slice(0, 60)}" = ${chosen.length} lotes (${chosen.map((p) => p.name).join(', ')}) → una acción por lote`);
+  pendingActStore.clear(ctx.phone);
+  const base = Object.fromEntries(Object.entries(data).filter(([k]) => !k.startsWith('_')));
+  const results: ParseResult[] = chosen.map((p) => ({
+    intent: { type: 'command', data: { ...base, command: pendingAct.command, plot: p.name, plotName: p.name, field: p.field_name, fieldName: p.field_name } as ParsedCommand },
+    confidence: 1, aiUsed: false, source: 'regex', missingFields: [],
+  } as ParseResult));
+  const executor = new CompoundExecutor(domainRouter, financialHandler);
+  const result = await executor.execute(results, ctx.userId, ctx.user, ctx.settings, text);
+  const items = result ? await compoundResultItems(result, ctx.userId, ctx.phone) : [{ type: 'text' as const, text: 'No pude registrarlo en esos lotes. Probá de nuevo.' }];
+  await carryQueueForward(ctx, pendingAct.nextInQueue, items, 'respuesta con varios lotes');
+  return items;
+}
+
 async function escalatePendingToAgent(
   text: string,
   ctx: ChannelContext,
@@ -2085,7 +2216,9 @@ async function escalatePendingToAgent(
 
   pendingEscalationHints.set(phone, hint);
   console.log(`[INTERCEPT] pending escalation → agent: ${pendingAct.command} missing=[${missing}] text="${text.slice(0, 60)}"`);
-  return processTextMessageInner(`${text} ${contextTag}`, ctx);
+  const items = await processTextMessageInner(`${text} ${contextTag}`, ctx);
+  await carryQueueForward(ctx, pendingAct.nextInQueue, items, 'rescate por agente');
+  return items;
 }
 
 /**

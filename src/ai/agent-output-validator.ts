@@ -22,7 +22,7 @@ export interface ValidationContext {
   originalText: string;
 }
 
-import { soundsLikeToken } from '../utils/entity-matcher.js';
+import { soundsLikeToken, entityNameKey, numeralFold } from '../utils/entity-matcher.js';
 
 export interface ValidationOptions {
   /** Strip `crop` when the user's text doesn't mention any known crop. */
@@ -438,6 +438,16 @@ function mentionedInText(value: string, originalText: string, knownNames: string
     !GENERIC_NAME_TOKENS.has(t) && (/\d/.test(t) || t.length >= 3),
   );
   if (tokens.some(t => wholeWordInText(t, normText))) return true;
+
+  // Número escrito ↔ dígito: «El Tres» se nombra "lote 3" (y «Lote 3», "el
+  // tres"). Un número suelto no alcanza ("compré 3 bolsas"): tiene que venir
+  // después de lote/potrero/el/la. Prod 12 oct 2026: "en el lote 3 apliqué
+  // glifosato" → el agente eligió «El Tres» y se dropeaba la fumigación.
+  const key = entityNameKey(known);
+  if (/^\d+$/.test(key)) {
+    const folded = normText.split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(numeralFold).join(' ');
+    if (new RegExp(`(?:^|\\s)(?:lote|potrero|parcela|cuadro|el|la)\\s+${key}(?:\\s|$)`).test(folded)) return true;
+  }
 
   // Audio: "El Rehue" dictado llega como "El Regué". El nombre es REAL del
   // usuario (ya validado arriba) y una palabra del texto suena igual → es una

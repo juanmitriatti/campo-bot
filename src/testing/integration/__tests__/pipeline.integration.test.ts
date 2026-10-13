@@ -6,7 +6,7 @@
  *
  * Requiere DB (Docker local :5433 o CI). Si no hay DB, se saltea entera.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { createPipelineHarness, type PipelineHarness } from '../pipeline-harness.js';
 import { conversationLockStore } from '../../../middleware/conversation-lock-store.js';
 import { formConversationStore } from '../../../forms/conversation/form-conversation.service.js';
@@ -1385,6 +1385,113 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         [h.userId],
       );
       expect(Number(e[0].amount)).toBe(12000000);
+    });
+  });
+
+  describe('usuario nuevo por WhatsApp: varios lotes, números y cola (prod 13 oct 2026)', () => {
+    // Prod: lotes «El Uno/El Dos/El Tres». "en el lote 3 apliqué glifosato" se
+    // vetó en el validador y la fumigación quedó en una cola que se perdió al
+    // re-enunciar la siembra; "En todos" / "En los tres lotes" se buscaron como
+    // lotes; "se sembró soja en todos los lotes del campo 2…" cayó en
+    // list_plots; el pending de siembra guardó amount/category inventados.
+    let h: PipelineHarness;
+    const sowings = async () => (await h.q(
+      `SELECT p.name FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id JOIN fields f ON f.id = p.field_id
+       WHERE f.user_id = $1 AND pc.crop ILIKE 'soja%' ORDER BY p.name`, [h.userId])).map((r) => r.name);
+    const sprayings = async () => (await h.q(
+      `SELECT p.name FROM domain_events d JOIN plots p ON p.id = d.plot_id
+       WHERE d.user_id = $1 AND d.event_type = 'spraying' AND d.deleted_at IS NULL ORDER BY p.name`, [h.userId])).map((r) => r.name);
+
+    beforeEach(async () => {
+      h = await createPipelineHarness('wa-varios-lotes');
+      for (const [field, plots] of [['campo 1', ['La Esperanza', 'Los Teros']], ['campo 2', ['El Uno', 'El Dos', 'El Tres']]] as const) {
+        const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, $2) RETURNING id`, [h.userId, field]);
+        const fid = (f[0] as { id: number }).id;
+        await h.q(`INSERT INTO field_members (field_id, user_id, role) VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING`, [fid, h.userId]);
+        for (const p of plots) await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, $2, 10)`, [fid, p]);
+      }
+    });
+    afterEach(async () => h?.cleanup());
+
+    it('"en el lote 3" valida «El Tres" y "En todos" siembra los 3 lotes del campo', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'sow_crop', toolInput: { crop: 'soja', field: 'campo 2' } },
+        { toolName: 'log_spraying', toolInput: { plot: 'El Tres', product: 'glifosato', product_type: 'herbicida' } },
+      ]);
+      const first = h.allText(await h.send('sembre soja en todo el campo 2 y en el lote 3 aplique glifosato'));
+      expect(first).toMatch(/¿En qué lote/);
+      expect(await sprayings()).toEqual(['El Tres']);
+
+      const calls = h.fakeAgent.calls.length;
+      const done = h.allText(await h.send('En todos'));
+      expect(h.fakeAgent.calls.length).toBe(calls);
+      expect(done).not.toMatch(/No encontré el lote/);
+      expect(await sowings()).toEqual(['El Dos', 'El Tres', 'El Uno']);
+    });
+
+    it('"En los tres lotes" y una lista "Lote Uno lote dos y lote tres" también', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', field: 'campo 2' });
+      await h.send('Sembré soja en el campo 2');
+      await h.send('En los tres lotes');
+      expect(await sowings()).toEqual(['El Dos', 'El Tres', 'El Uno']);
+
+      await h.q(`DELETE FROM plot_crops WHERE plot_id IN (SELECT p.id FROM plots p JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1)`, [h.userId]);
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'maíz', field: 'campo 2' });
+      await h.send('Sembré maíz en el campo 2');
+      const r = h.allText(await h.send('Lote Uno lote dos y lote tres'));
+      expect(r).not.toMatch(/No encontré el lote/);
+      const maiz = await h.q(`SELECT COUNT(*)::int AS n FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1 AND pc.crop ILIKE 'ma%'`, [h.userId]);
+      expect(maiz[0].n).toBe(3);
+    });
+
+    it('"los tres" en un campo de dos lotes no adivina', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', field: 'campo 1' });
+      await h.send('Sembré soja en el campo 1');
+      h.fakeAgent.enqueue([]);
+      await h.send('en los tres lotes');
+      expect(await sowings()).toEqual([]);
+    });
+
+    it('re-enunciar la siembra no avisa "dejé pendiente" y la fumigación encolada sobrevive', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'sow_crop', toolInput: { crop: 'soja', field: 'campo 2' } },
+        { toolName: 'log_spraying', toolInput: { product: 'glifosato', product_type: 'herbicida', field: 'campo 2' } },
+      ]);
+      await h.send('sembré soja y fumigué con glifosato en el campo 2');
+
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', field: 'campo 2' });
+      const again = h.allText(await h.send('Sembré soja en el campo 2'));
+      expect(again).not.toMatch(/Dejé pendiente/);
+      expect(again).toMatch(/¿En qué lote/);
+
+      const sown = h.allText(await h.send('el 1, el 2 y el 3'));
+      expect(await sowings()).toEqual(['El Dos', 'El Tres', 'El Uno']);
+      expect(sown).toMatch(/fumigaci[oó]n|glifosato|¿En qué lote/i);
+
+      await h.send('lote 3');
+      expect(await sprayings()).toEqual(['El Tres']);
+    });
+
+    it('"se sembró soja en todos los lotes del campo 2" con un pending abierto no es una consulta de lotes', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', field: 'campo 2' });
+      await h.send('Sembré soja en el campo 2');
+      h.fakeAgent.enqueue([
+        { toolName: 'sow_crop', toolInput: { crop: 'soja', plot: 'El Uno', field: 'campo 2' } },
+        { toolName: 'sow_crop', toolInput: { crop: 'soja', plot: 'El Dos', field: 'campo 2' } },
+        { toolName: 'sow_crop', toolInput: { crop: 'soja', plot: 'El Tres', field: 'campo 2' } },
+      ]);
+      const r = h.allText(await h.send('se sembro soja en todos los lotes del campo 2 el 2 el 3 y el 1'));
+      expect(r).not.toMatch(/No encontré el campo/);
+      expect(await sowings()).toEqual(['El Dos', 'El Tres', 'El Uno']);
+    });
+
+    it('add_field no toma como localidad el resto de una descripción larga', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'add_field', toolInput: { field: 'campo 9' } },
+        { toolName: 'add_field', toolInput: { field: 'campo 8' } },
+      ]);
+      const r = h.allText(await h.send('tengo dos campos en el primero tengo dos lotes la esperanza y los teros en el segundo tengo tres lotes el uno el dos y el tres'));
+      expect(r).not.toMatch(/el primero tengo/);
     });
   });
 

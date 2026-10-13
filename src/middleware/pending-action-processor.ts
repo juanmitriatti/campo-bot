@@ -72,6 +72,13 @@ export function isNewActionInterrupt(cmd: { command?: string } | null | undefine
   return !!cmd?.command && NEW_ACTION_WRITE_COMMANDS.has(cmd.command);
 }
 
+/** Slots de plata: solo se mergean "de yapa" en registros que manejan plata. */
+const MONEY_SLOTS: ReadonlySet<SlotName> = new Set(['amount', 'unit_price', 'currency', 'category'] as SlotName[]);
+const MONEY_COMMANDS: ReadonlySet<string> = new Set([
+  'log_expense', 'log_income', 'set_livestock_price', 'add_livestock', 'remove_livestock',
+  'add_stock', 'log_harvest_costs', 'set_budget', 'edit_last_expense', 'edit_last_income',
+]);
+
 /**
  * Un slot con string vacío/whitespace está VACÍO a efectos del merge. El agente
  * a veces emite `crop: ""` en vez de omitir el param — si ese '' entra al
@@ -264,10 +271,21 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
   // intent ("10tn de soja"), and the user clarifies later ("100 mil dolares").
   // Without an overwrite the saved record has the wrong currency.
   const OVERWRITABLE: ReadonlySet<SlotName> = new Set(['currency' as SlotName]);
+  // Plata y categoría solo se pegan a un registro que maneja plata: en una
+  // siembra, "en los tres lotes" dejaba `amount: 3, category: "Fertilizantes"`
+  // en el pending (prod 12 oct 2026) — basura que viajaba al rescate del agente
+  // y podía terminar guardada.
+  const handlesMoney = MONEY_COMMANDS.has(pending.command)
+    || missing.some((s) => MONEY_SLOTS.has(s as SlotName))
+    || Object.keys(pdata).some((k) => k === 'amount' || k === 'unit_price' || k === 'unitPrice');
   for (const slot of ADJACENT_SLOTS) {
     if (missing.includes(slot)) continue; // already handled above
     const value = (extracted as Record<string, unknown>)[slot];
     if (value == null) continue;
+    if (!handlesMoney && MONEY_SLOTS.has(slot)) {
+      console.log(`[INTERCEPT] pending ${pending.command}: ignoro ${slot}=${JSON.stringify(value)} (no es un registro de plata)`);
+      continue;
+    }
     const targetKeys = slotToCmdKeys(slot);
     for (const target of targetKeys) {
       if (isBlankSlotValue(data[target]) || OVERWRITABLE.has(slot)) data[target] = value;

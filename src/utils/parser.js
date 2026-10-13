@@ -724,7 +724,10 @@ export function parseSpanishDate(str) {
 // Forma de pregunta: arranca con interrogativo/listado o termina en "?".
 const PLOT_QUERY_SHAPE = /^(?:y\s+)?(?:que|cuales|cuantos?|cuantas?|donde|en\s+que|tengo|hay|tenemos|mis|los|lotes?|dame|decime|mostrame|listame|ver|esos|estos)\b|\?\s*$/;
 // Verbo de registro (no precedido por "no"): "gasté…para sembrar el lote" no es consulta.
-const REGISTRATION_VERB = /(?<!no\s)\b(?:gaste|compre|pague|vendi|cobre|sembre|sembramos|coseche|cosechamos|fumigue|fertilice|anota|anotame|registra|carga|cargame)\b/;
+// Incluye la forma impersonal/de tercera ("se sembró", "fumigaron") y aplicar:
+// "se sembró soja en todos los lotes del campo 2" caía en el list_plots
+// genérico y contestaba "No encontré el campo «2 el 2 el»" (prod 12 oct 2026).
+const REGISTRATION_VERB = /(?<!no\s)\b(?:gaste|gastamos|compre|compramos|pague|pagamos|vendi|vendimos|cobre|cobramos|sembr(?:e|o|amos|aron)|siembro|plante|plantamos|coseche|cosecho|cosechamos|cosecharon|fumig(?:ue|o|amos|aron)|pulveric(?:e|o|amos|aron)|aplic(?:o|amos|aron)|aplique|fertilic(?:e|o|amos|aron)|anota|anotame|registra|carga|cargame)\b/;
 
 /** "…del campo La Barrida" → { fieldName }. Corta en la frase de estado de siembra. */
 function fieldNameFromPlotQuery(normalized) {
@@ -1016,8 +1019,12 @@ const COMMAND_PATTERNS = [
   },
 
   // --- Lotes (plots) de un campo ---
+  // Sin ancla, "lotes del campo X" aparece también DENTRO de un registro
+  // ("sembré soja en todos los lotes del campo 2"): un verbo de registro nunca
+  // es esta consulta.
   {
     command: "list_plots",
+    condition: (n) => !REGISTRATION_VERB.test(n),
     patterns: [
       /^(?:mis\s+lotes|ver\s+lotes|listar\s+lotes)$/,
       // "mostrame lotes" / "mostrame mis lotes" but NOT "mostrame lotes con/que/donde/de + <agronomic stuff>"

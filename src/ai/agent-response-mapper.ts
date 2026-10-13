@@ -5,6 +5,7 @@ import { resolveRelativeDate, resolveAllRelativeDates, TOOLS_WITH_DATE_PARAM, da
 import { extractCropFromText } from '../utils/crops.js';
 import { normalizarMonto } from '../utils/parser.js';
 import { numberOnlyAppearsAsArea, isFuturePlanOnly } from '../utils/lexicon.js';
+import { looksLikeNonCity } from '../middleware/pending-field-city-handler.js';
 
 /** Tools cuyo `count` es una cantidad de ANIMALES y puede confundirse con hectáreas. */
 const COUNT_TOOLS: ReadonlySet<string> = new Set(['add_livestock', 'adjust_livestock', 'record_livestock_birth', 'record_livestock_death', 'remove_livestock', 'transfer_livestock']);
@@ -935,8 +936,15 @@ export class AgentResponseMapper {
       const m = originalText.match(/\ben\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ.'\s-]*?)\s*[?.!¡¿]*$/);
       if (m) {
         const cand = m[1].trim();
+        // Una localidad es una frase corta: el resto de un mensaje largo ("…en el
+        // primero tengo dos lotes La Esperanza y Los Teros…") no lo es, y se
+        // mostraba como ubicación pendiente del campo (prod 12 oct 2026).
         if (cand.length >= 3 && cand.toLowerCase() !== String(cmd.fieldName).toLowerCase()) {
-          cmd.city = cand;
+          if (cand.split(/\s+/).length <= 5 && !looksLikeNonCity(cand)) {
+            cmd.city = cand;
+          } else {
+            console.log(`AI_MAPPER DROP add_field city recovery: «${cand.slice(0, 60)}» no tiene forma de localidad`);
+          }
         }
       }
     }

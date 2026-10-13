@@ -86,7 +86,10 @@ export function isNegationOrCancel(text: string): boolean {
 // Verbos de hacienda (murió, perdí, llegaron, encerré, metí, faené, parió): con
 // el precio de una compra abierto, "se me murió una vaca" se tomaba como precio
 // $1 y la muerte se perdía (HAC-1, auditoría oct 2026).
-const ACTION_VERB = /\b(gaste|pague|pago|compre|compro|abone|vendi|vendo|cobre|cobro|ingrese|ingreso|facture|sembre|siembro|fumig\w*|fertilic\w*|cosech\w*|pulveric\w*|are|rastre|plante|plant\w*|regue|riegue|aplique|aplico|llovio|llovieron|llovian|cayo(?:\s+\d|\s+agua|\s+lluvia)|nacio|nacieron|parieron|vacune|desparasite|cure|trate|insemine|destete|eche|pese|pesaron|pesamos|transferi|transfer\w*|pase|agrega|agregue|suma|sume|cargue|registre|registra|anote|anota|renombr\w*|cre[ae]\w*|arma\w*|borr[ae]\w*|elimin[ae]\w*|dar de alta|move\w*|mueve\w*|muevo|movi(?!miento)\w*|revert\w*|deshac\w*|reemplaz\w*|acordame|acordarme|recordame|recordarme|retire|retiramos|retiro|saque|sacamos|entregue|entregamos|murio|murieron|perdi|perdimos|llegaron|llego|encerre|encerramos|meti|metimos|faene|faenamos|pario)\b/;
+// Formas impersonales y de tercera ("se sembró", "sembraron", "aplicaron"): por
+// audio el productor cuenta lo que se hizo, no solo lo que hizo él (prod 12 oct
+// 2026: "se sembró soja en todos los lotes del campo 2" no era una acción).
+const ACTION_VERB = /\b(gaste|pague|pago|compre|compro|abone|vendi|vendo|cobre|cobro|ingrese|ingreso|facture|sembre|sembro|sembramos|sembraron|siembro|aplicamos|aplicaron|fumig\w*|fertilic\w*|cosech\w*|pulveric\w*|are|rastre|plante|plant\w*|regue|riegue|aplique|aplico|llovio|llovieron|llovian|cayo(?:\s+\d|\s+agua|\s+lluvia)|nacio|nacieron|parieron|vacune|desparasite|cure|trate|insemine|destete|eche|pese|pesaron|pesamos|transferi|transfer\w*|pase|agrega|agregue|suma|sume|cargue|registre|registra|anote|anota|renombr\w*|cre[ae]\w*|arma\w*|borr[ae]\w*|elimin[ae]\w*|dar de alta|move\w*|mueve\w*|muevo|movi(?!miento)\w*|revert\w*|deshac\w*|reemplaz\w*|acordame|acordarme|recordame|recordarme|retire|retiramos|retiro|saque|sacamos|entregue|entregamos|murio|murieron|perdi|perdimos|llegaron|llego|encerre|encerramos|meti|metimos|faene|faenamos|pario)\b/;
 
 // Query / read intents — clima, reportes, listados, "¿cuánto…?". During a flow
 // these mean "stop the registration and answer me", not flow input.
@@ -101,7 +104,7 @@ const ACTION_VERB = /\b(gaste|pague|pago|compre|compro|abone|vendi|vendo|cobre|c
 // con un "¿A cuántos animales?" abierto se consumía como la cantidad y el
 // pending re-preguntaba (QA ganadería 9 sep 2026). Un "cuando" pelado NO entra:
 // "cuando sea" es la respuesta legítima a "¿a qué hora?".
-const QUERY_INTENT = /\b(clima|pronostico|va a llover|lluvia\?|temperatura|reporte|informe|resumen|historial|historico|evolucion|como vamos|como venimos|cuanto|cuanta|cuantas|cuantos|cuando se \w+|cuando (?:fue|vacun\w*|sembr\w*|fumig\w*|cosech\w*|fertiliz\w*|pes\w*|llovi\w*|desparasit\w*)|donde (?:esta|estan|queda)|que cultivo|que sembr|que lotes?|que campos?|lotes tengo|campos tengo|mis lotes|mis campos|mis gastos|mis ingresos|lista\w*|mostr\w*|stock|hacienda|cuanto gaste|cuanto cobre|saldo|balance|rinde|menu|ayuda)\b/;
+const QUERY_INTENT = /\b(clima|pronostico|va a llover|lluvia\?|temperatura|reporte|informe|resumen|historial|historico|evolucion|como vamos|como venimos|cuanto|cuanta|cuantas|cuantos|cuando se \w+|cuando (?:fue|vacun\w*|sembr\w*|fumig\w*|cosech\w*|fertiliz\w*|pes\w*|llovi\w*|desparasit\w*)|donde (?:esta|estan|queda)|que cultivo|que sembr|que se (?:sembr|fumig|cosech|aplic|hizo|hicieron|planto)\w*|que lotes?|que campos?|lotes tengo|campos tengo|mis lotes|mis campos|mis gastos|mis ingresos|lista\w*|mostr\w*|stock|hacienda|cuanto gaste|cuanto cobre|saldo|balance|rinde|menu|ayuda)\b/;
 
 /**
  * Broad, accent-safe "this message is a NEW action or a query — not an answer
@@ -197,7 +200,7 @@ export function hasActionVerbOrQuery(text: string): boolean {
 // Interrogativo inmediatamente antes (≤2 palabras) de un verbo de acción =
 // pregunta sobre el PASADO ("cuánto gasté este mes", "qué sembré en el norte"),
 // no una acción nueva.
-const INTERROGATIVE_VERB_RE = /(^|\s)(cuanto|cuanta|cuantos|cuantas|que|cual|cuales|cuando|donde|como)\s+(\w+\s+){0,2}(gaste|pague|pago|compre|compro|vendi|vendo|cobre|cobro|ingrese|facture|sembre|plante|fumigue|fertilice|coseche|aplique|regue|pese|vacune|desparasite)\b/;
+const INTERROGATIVE_VERB_RE = /(^|\s)(cuanto|cuanta|cuantos|cuantas|que|cual|cuales|cuando|donde|como)\s+(\w+\s+){0,2}(gaste|pague|pago|compre|compro|vendi|vendo|cobre|cobro|ingrese|facture|sembre|sembro|sembramos|sembraron|plante|fumigue|fumigo|fumigaron|fertilice|fertilizo|coseche|cosecho|cosecharon|aplique|aplico|aplicaron|regue|pese|vacune|vacuno|desparasite)\b/;
 
 const CAN_I_QUESTION_RE = /(^|\s)(que|cual|cuales|donde|adonde)\s+(\w+\s+){0,3}(puedo|podemos|podria|podriamos|se\s+pueden?)\b/;
 

@@ -456,6 +456,55 @@ export function matchesFormDomainVerb(action: string, text: string): boolean {
   return !!re && re.test(normLex(text));
 }
 
+/**
+ * Verbo con el que el usuario REGISTRA cada tipo de actividad pendiente. Sirve
+ * para saber si un mensaje nuevo re-enuncia la misma actividad que quedó a
+ * medio preguntar ("Sembré soja en el campo 2" con la siembra de soja sin lote):
+ * en ese caso no corresponde avisar "dejé pendiente la siembra", porque el
+ * mensaje nuevo LA reemplaza (prod 12 oct 2026).
+ */
+const REGISTRATION_VERB_BY_COMMAND: Record<string, RegExp> = {
+  sow_crop: /\b(?:sembr\w*|siembr\w*)\b/,
+  harvest_crop: /\b(?:cosech\w*|trill\w*)\b/,
+  log_spraying: /\b(?:fumig\w*|pulveri\w*|aplic\w*)\b/,
+  log_fertilization: /\b(?:fertili\w*)\b/,
+  log_tillage: /\b(?:labr\w*|rastr\w*|are|aramos|disque\w*|cincel\w*)\b/,
+  log_irrigation: /\b(?:rieg\w*|regu\w*|regamos)\b/,
+  log_health_event: /\b(?:vacun\w*|desparasit\w*)\b/,
+  log_rainfall: /\b(?:llov\w*|lluvia\w*)\b/,
+};
+export function mentionsRegistrationOf(command: string, text: string): boolean {
+  const re = REGISTRATION_VERB_BY_COMMAND[command];
+  return !!re && re.test(normLex(text));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Respuesta COLECTIVA a "¿En qué lote?": "todos", "en todos los lotes", "los
+// tres", "ambos", "todo el campo". La resuelve resolvePlotListAnswer
+// (entity-matcher) contra los lotes del campo de la pregunta. Prod 12 oct 2026:
+// "En todos" y "En los tres lotes" se buscaron como lotes llamados «todos» y
+// «tres lotes».
+// ─────────────────────────────────────────────────────────────────────────────
+const COLLECTIVE_PLOT_ANSWER_RE = /^(?:(?:en|a|para)\s+)?(?:(?:todos|todas)(?:\s+(?:los|las))?|ambos|ambas|los\s+(\w+)|las\s+(\w+)|todo\s+el\s+campo|el\s+campo\s+entero|el\s+campo\s+completo)(?:\s+(?:lotes?|potreros?|cuadros?))?(?:\s+(?:del?\s+)?(?:este\s+)?campo(?:\s+\S+)?)?\s*[.!]*$/;
+
+/**
+ * ¿La respuesta nombra TODOS los lotes en vez de uno? Devuelve la cantidad que
+ * dijo ("los tres" → 3), `'all'` sin cantidad ("todos", "todo el campo") o null
+ * si no es una respuesta colectiva. "los del norte" no es colectiva.
+ */
+export function collectivePlotAnswer(text: string): number | 'all' | null {
+  const t = normLex(text.trim());
+  const m = COLLECTIVE_PLOT_ANSWER_RE.exec(t);
+  if (!m) return null;
+  const word = m[1] ?? m[2];
+  if (word == null) return /\b(?:ambos|ambas)\b/.test(t) ? 2 : 'all';
+  const n = /^\d+$/.test(word) ? Number(word) : COLLECTIVE_COUNT_WORDS[word];
+  return n != null && n >= 2 ? n : null;
+}
+const COLLECTIVE_COUNT_WORDS: Record<string, number> = {
+  dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
+};
+
 /** Tipo de labor por verbo/sustantivo (form de labores). */
 export function detectActivityTypeTerm(text: string): 'spraying' | 'fertilization' | 'tillage' | 'irrigation' | null {
   const t = normLex(text);
