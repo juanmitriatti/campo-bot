@@ -33,6 +33,7 @@ import { userExplicitlyReferencedPlot } from '../../utils/plot-intent.js';
 import { hasPlotContextSignal } from '../../utils/plot-context-signals.js';
 import { computeNetWeight, resolveDeclaredWeight, loadMermaConfig, describeLoadWeight, sumNetKg, sumGrossKg } from '../../utils/grain-merma.js';
 import { parseHarvestCostText } from '../../middleware/slot-extractor.js';
+import { compactEntityName } from '../../utils/entity-matcher.js';
 import type { GrainBalanceRow, HarvestLoadFull } from './agronomy.repository.js';
 
 /** Número finito o null (los params del agente llegan como number | string | undefined). */
@@ -313,6 +314,17 @@ export class AgronomyHandler {
 
     if (userPlots.length === 0) {
       return { type: 'no_plots' };
+    }
+
+    // Campo conocido y lote no encontrado ("Todos" contra campo 2): se vuelve a
+    // preguntar por los lotes de ESE campo. Antes la re-pregunta listaba los de
+    // todos los campos y la respuesta siguiente terminó en lotes de otros
+    // campos (prod 13 oct 2026).
+    // Solo con el campo NOMBRADO (notFound de lote): un campo heredado del
+    // contexto no achica la lista.
+    if (resolved.fieldName && resolved.notFound?.type === 'plot') {
+      const inField = userPlots.filter(p => compactEntityName(p.field_name) === compactEntityName(resolved.fieldName!));
+      if (inField.length >= 2) return { type: 'ask_user', plots: inField };
     }
 
     if (userPlots.length === 1) {

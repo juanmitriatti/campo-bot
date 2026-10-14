@@ -505,6 +505,37 @@ const COLLECTIVE_COUNT_WORDS: Record<string, number> = {
   dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
 };
 
+// "todos los lotes", "los tres lotes", "todo el campo 2", "todo de campo 2",
+// "en todos" DENTRO de una frase con verbo ("Coseché todo de campo 2", "Todos
+// los lotes coseché"). Exige la palabra lote/potrero o "todo … campo" para no
+// leer "todos los terneros" como lotes. Prod 13 oct 2026: el agente pedía
+// "¿En qué lote?" y, re-enunciado, cosechaba los lotes de TODOS los campos.
+const COLLECTIVE_PLOT_MENTION_RE = /\b(?:(?:todos|todas)\s+(?:los|las)\s+(?:lotes|potreros|cuadros|parcelas)|ambos\s+lotes|los\s+(\w+)\s+(?:lotes|potreros|cuadros|parcelas)|todo\s+(?:el|del?|lo\s+del?)\s+campo|el\s+campo\s+(?:entero|completo)|\ben\s+(?:todos|todas)\s*[.!]*$)/;
+
+/**
+ * ¿El mensaje (con verbo, fecha, cultivo…) se refiere a TODOS los lotes de un
+ * campo? Misma devolución que `collectivePlotAnswer`. Para respuestas peladas
+ * usar `collectivePlotAnswer`, que es más permisiva ("todos", "los tres").
+ */
+export function collectivePlotMention(text: string): number | 'all' | null {
+  const t = normLex(text);
+  const whole = collectivePlotAnswer(text);
+  if (whole != null) return whole;
+  const m = COLLECTIVE_PLOT_MENTION_RE.exec(t);
+  if (!m) return null;
+  if (m[1] == null) return /\bambos\b/.test(m[0]) ? 2 : 'all';
+  const n = /^\d+$/.test(m[1]) ? Number(m[1]) : COLLECTIVE_COUNT_WORDS[m[1]];
+  return n != null && n >= 2 ? n : null;
+}
+
+// Respuesta que REMITE a algo en vez de nombrarlo ("lo que había", "lo mismo",
+// "eso", "lo de esos lotes"): no es un valor para un slot de texto. Prod 13 oct
+// 2026: "Y lo que había en esos lotes" quedó como cultivo de una cosecha.
+const REFERENTIAL_ANSWER_RE = /\b(?:lo\s+(?:que|mismo|de)|eso|esos|esas|esto|estos|aquello|habia|hubo|lo\s+sembrado)\b/;
+export function isReferentialAnswer(text: string): boolean {
+  return REFERENTIAL_ANSWER_RE.test(normLex(text));
+}
+
 /** Tipo de labor por verbo/sustantivo (form de labores). */
 export function detectActivityTypeTerm(text: string): 'spraying' | 'fertilization' | 'tillage' | 'irrigation' | null {
   const t = normLex(text);

@@ -1493,6 +1493,68 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const r = h.allText(await h.send('tengo dos campos en el primero tengo dos lotes la esperanza y los teros en el segundo tengo tres lotes el uno el dos y el tres'));
       expect(r).not.toMatch(/el primero tengo/);
     });
+
+    // Prod 13 oct 2026 (después del deploy de lo de arriba): "Coseche todo de
+    // campo 2" preguntó el lote, "Todos" se buscó como lote, la re-pregunta
+    // listó los lotes de TODOS los campos, "Todos los lotes coseche" fue al
+    // agente sin el campo y cosechó 9 lotes de 3 campos, y "Y lo que había en
+    // esos lotes" quedó como cultivo.
+    const harvested = async () => (await h.q(
+      `SELECT p.name FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id JOIN fields f ON f.id = p.field_id
+       WHERE f.user_id = $1 AND pc.harvested_at IS NOT NULL ORDER BY p.name`, [h.userId])).map((r) => r.name);
+    const sowCampo2 = async () => {
+      for (const p of ['El Uno', 'El Dos', 'El Tres']) {
+        h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: p, field: 'campo 2' });
+        await h.send(`sembré soja en ${p}`);
+      }
+      expect(await sowings()).toEqual(['El Dos', 'El Tres', 'El Uno']);
+    };
+
+    it('"Coseché todo de campo 2" cosecha los lotes de ese campo sin preguntar', async () => {
+      await sowCampo2();
+      h.fakeAgent.enqueueTool('harvest_crop', { field: 'campo 2' });
+      const r = h.allText(await h.send('Coseche todo de campo 2'));
+      expect(r).not.toMatch(/¿En qué lote/);
+      expect(await harvested()).toEqual(['El Dos', 'El Tres', 'El Uno']);
+    });
+
+    it('"Todos" contesta el "¿En qué lote?" de una cosecha', async () => {
+      await sowCampo2();
+      h.fakeAgent.enqueueTool('harvest_crop', { field: 'campo 2' });
+      expect(h.allText(await h.send('Coseché en el campo 2'))).toMatch(/¿En qué lote/);
+      const calls = h.fakeAgent.calls.length;
+      const r = h.allText(await h.send('Todos'));
+      expect(h.fakeAgent.calls.length).toBe(calls);
+      expect(r).not.toMatch(/No encontré el lote/);
+      expect(await harvested()).toEqual(['El Dos', 'El Tres', 'El Uno']);
+    });
+
+    it('"Todos los lotes coseché" re-enunciado usa el campo de la pregunta, no todos los campos', async () => {
+      await sowCampo2();
+      h.fakeAgent.enqueueTool('harvest_crop', { field: 'campo 2' });
+      await h.send('Coseché en el campo 2');
+      const calls = h.fakeAgent.calls.length;
+      await h.send('Todos los lotes coseche');
+      expect(h.fakeAgent.calls.length).toBe(calls);
+      expect(await harvested()).toEqual(['El Dos', 'El Tres', 'El Uno']);
+    });
+
+    it('un lote que no existe en el campo nombrado re-pregunta solo con los lotes de ese campo', async () => {
+      h.fakeAgent.enqueueTool('log_spraying', { product: 'glifosato', field: 'campo 2' });
+      await h.send('fumigué con glifosato en el campo 2');
+      const r = h.allText(await h.send('Pepito'));
+      expect(r).toMatch(/El Uno/);
+      expect(r).not.toMatch(/La Esperanza|Los Teros/);
+    });
+
+    it('"lo que había en esos lotes" no es un cultivo', async () => {
+      h.fakeAgent.enqueueTool('harvest_crop', { plot: 'Los Teros', field: 'campo 1' });
+      expect(h.allText(await h.send('coseché Los Teros'))).toMatch(/¿Qué cultivo/);
+      h.fakeAgent.enqueue([]);
+      const r = h.allText(await h.send('Y lo que había en esos lotes'));
+      expect(r).not.toMatch(/siembra de \*Y lo que/);
+      expect(r).toMatch(/cultivo/);
+    });
   });
 
   describe('conversation lock (modo pegajoso)', () => {
