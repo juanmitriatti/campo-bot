@@ -48,7 +48,7 @@ export interface ValidationResult {
 }
 
 import { normalizeAnimalId } from '../utils/animal-id.js';
-import { stripLocationNumbers } from '../utils/lexicon.js';
+import { stripLocationNumbers, hasWholeQuantifier } from '../utils/lexicon.js';
 
 /** Tools where `crop` should reflect a real cultivo named by the user. */
 const CROP_AWARE_TOOLS = new Set([
@@ -179,6 +179,18 @@ export function validateToolCall(
     }
   }
 
+
+  // "Todos los lotes del campo" (sow_crop/harvest_crop): la frase la interpreta
+  // el agente, pero sin NINGUNA palabra de totalidad en el texto el flag no se
+  // sostiene y repartiría la actividad en lotes que el usuario no nombró. Sin
+  // flag: es regla dura (prueba local 14 oct 2026: "Coseché en el campo 1"
+  // llegó con all_plots y cosechó los dos lotes).
+  if ((input.all_plots === true || input.all_plots === 'true') && !hasWholeQuantifier(ctx.originalText)) {
+    console.warn(`AI_VALIDATOR DROP: tool=${ctx.toolName} all_plots sin cuantificador en el texto text="${ctx.originalText.slice(0, 120)}"`);
+    input = { ...input };
+    delete input.all_plots;
+    droppedFields.push('all_plots');
+  }
   return { input, droppedFields };
 }
 

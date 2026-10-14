@@ -42,7 +42,7 @@ import { PendingTransactionStore, resolveReplacedPending, isCompletePending } fr
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore } from '../middleware/pending-activities.js';
 import { TypedPendingStore, clearAllTypedStores } from '../middleware/typed-pending-store.js';
-import { compactEntityName } from '../utils/entity-matcher.js';
+import { compactEntityName, findEquivalentName } from '../utils/entity-matcher.js';
 import { isOneShotCallback, consumeOnce, repeatedTapMessage } from '../middleware/one-shot-callbacks.js';
 import { runWithCallbackOwner } from '../middleware/callback-payload-store.js';
 import { isFieldOwner } from '../domain/shared/field-access.js';
@@ -693,8 +693,7 @@ async function processTextMessageLogged(text: string, ctx: ChannelContext): Prom
   let commands: string[] = [];
   let logged = true;
   const items = await runConversationTurn(async () => {
-    const before = pendingActStore.get(ctx.phone);
-    const out = await answerOwnPlotQuestion(text, ctx, before, await processTextMessageInner(text, ctx));
+    const out = await processTextMessageInner(text, ctx);
     const turn = currentTurn();
     logged = turn?.logged ?? true;
     commands = turn ? [...turn.commands] : [];
@@ -715,31 +714,6 @@ async function processTextMessageLogged(text: string, ctx: ChannelContext): Prom
     }
   }
   return items;
-}
-
-/**
- * El turno terminó preguntando "¿En qué lote?" de una actividad, pero el MISMO
- * mensaje ya lo contestaba de forma colectiva ("Coseché todo de campo 2",
- * "fumigué todos los lotes del Sur"): se contesta solo, una acción por lote.
- * El agente llama la tool con el campo y sin lote; el handler no sabe de
- * "todos". Prod 13 oct 2026.
- */
-async function answerOwnPlotQuestion(
-  text: string,
-  ctx: ChannelContext,
-  before: import('../middleware/pending-activities.js').PendingActivity | null | undefined,
-  items: BotResponseItem[],
-): Promise<BotResponseItem[]> {
-  const after = pendingActStore.get(ctx.phone);
-  if (!after || (before && after.timestamp === before.timestamp)) return items;
-  if (!MULTI_PLOT_COMMANDS.has(after.command) || !after.askPrompt) return items;
-  const idx = items.findIndex((i) => i.type === 'text' && i.text === after.askPrompt);
-  if (idx < 0) return items;
-  const answered = await answerPendingWithSeveralPlots(text, ctx, after, { inSentence: true });
-  if (!answered) return items;
-  console.log(`[INTERCEPT] ${after.command}: "${text.slice(0, 60)}" ya nombraba todos los lotes — contesto el "¿En qué lote?" en el mismo turno`);
-  // Lo de antes de la pregunta se conserva; la pregunta y sus botones, no.
-  return [...items.slice(0, idx), ...answered];
 }
 
 async function processTextMessageWithReplay(
@@ -1382,14 +1356,6 @@ async function processTextMessageInner(
       const textCrop = extractCropFromText(text);
       const restated = mentionsRegistrationOf(pendingAct.command, text)
         && !(typeof pendingCrop === 'string' && textCrop && extractCropFromText(pendingCrop) !== textCrop);
-      // Re-enunciado que contesta el lote de forma colectiva ("Todos los lotes
-      // coseché" con "¿En qué lote?" de campo 2 abierto): es la respuesta, con
-      // el campo del pending. Al agente se le perdía el campo y cosechaba los
-      // lotes de todos los campos (prod 13 oct 2026).
-      if (restated) {
-        const answered = await answerPendingWithSeveralPlots(text, ctx, pendingAct, { inSentence: true });
-        if (answered) return answered;
-      }
       let pivotNotes: string[] = [];
       if (restated) {
         console.log(`[INTERCEPT] pivot re-enuncia ${pendingAct.command}: el mensaje nuevo reemplaza el pending (sin aviso)`);
@@ -1399,6 +1365,25 @@ async function processTextMessageInner(
       }
       pendingActStore.clear(phone);
       const queued = pendingAct.nextInQueue ?? [];
+      if (restated) {
+        // El agente recibe lo que ya se sabía de la actividad (campo, cultivo…):
+        // borrado el pending, "Todos los lotes coseché" le llegaba sin el campo
+        // 2 y cosechó los lotes de los 3 campos (prod 13 oct 2026). Mismo
+        // mecanismo que el rescate: tag inline (el validador acepta lo que
+        // aportamos) + hint.
+        const known = Object.fromEntries(
+          Object.entries(pendingAct.data ?? {}).filter(([k, v]) => v != null && v !== '' && !k.startsWith('_') && !['command', 'originalText', 'allPlots'].includes(k)),
+        );
+        const contextTag = `[contexto: venía registrando ${pendingAct.command} con ${JSON.stringify(known)}; faltaba ${(pendingAct.missing ?? []).join(', ')}]`;
+        pendingEscalationHints.set(phone,
+          `CONTEXTO DE LA ACTIVIDAD EN CURSO: el usuario estaba registrando ${pendingAct.command} y el bot le preguntó ${(pendingAct.missing ?? []).join(', ')}. ` +
+          `Este mensaje la re-enuncia: usá los datos del tag [contexto] que el mensaje no contradiga (si nombra otro campo/lote/cultivo, gana el mensaje).`);
+        console.log(`[INTERCEPT] pivot re-enuncia ${pendingAct.command}: va al agente con el contexto ${JSON.stringify(known).slice(0, 120)}`);
+        const rest = await processTextMessageInner(`${text} ${contextTag}`, ctx);
+        pendingEscalationHints.delete(phone); // si el turno no llegó al agente, que no quede para el próximo
+        await carryQueueForward(ctx, queued, rest, `pivot desde ${pendingAct.command}`);
+        return rest;
+      }
       if (pivotNotes.length > 0 || queued.length > 0) {
         const rest = await processTextMessageInner(text, ctx);
         await carryQueueForward(ctx, queued, rest, `pivot desde ${pendingAct.command}`);
@@ -1715,7 +1700,9 @@ ${ask}` }];
   resetConversationLock(phone);
 
   // --- Handle compound actions from Agent (multiple tool calls) ---
-  const compoundResults = (parseResult as any)._compoundResults as ParseResult[] | undefined;
+  let compoundResults = (parseResult as any)._compoundResults as ParseResult[] | undefined;
+  const expandedAll = await expandAllPlots(compoundResults && compoundResults.length > 1 ? compoundResults : [parseResult], userId);
+  if (expandedAll) compoundResults = expandedAll;
   const truncatedFlag = (parseResult as any)._truncated === true;
   if (compoundResults && compoundResults.length > 1) {
     const executor = new CompoundExecutor(domainRouter, financialHandler);
@@ -2162,6 +2149,8 @@ async function carryQueueForward(
 
 /** Actividades que se aplican lote por lote: "en todos" = una por lote. */
 const MULTI_PLOT_COMMANDS = new Set(['sow_crop', 'harvest_crop', 'log_spraying', 'log_fertilization', 'log_tillage', 'log_irrigation']);
+/** Tools con `all_plots` ("todo el campo 2"): las reparte expandAllPlots. */
+const ALL_PLOTS_COMMANDS = new Set(['sow_crop', 'harvest_crop']);
 /**
  * Datos que son un TOTAL del registro, no de cada lote: repartir "sacamos 300 tn"
  * o "sembré 100 ha" en cada lote los multiplicaría. Con alguno de estos, una
@@ -2177,25 +2166,76 @@ const WHOLE_RECORD_KEYS = ['loads', 'yield_kg', 'yieldKg', 'hectares', 'quantity
  * "los tres" en un campo de cuatro lotes): sigue el camino normal.
  * Prod 12 oct 2026: "En todos" y "En los tres lotes" se buscaron como lotes.
  */
+/**
+ * sow_crop / harvest_crop con `all_plots` (el agente entendió "todo el campo 2",
+ * "todos los lotes", "en los tres"): una acción por lote del campo, por el
+ * camino del compuesto. La decisión es del agente (semántica, cualquier forma
+ * de decirlo); acá solo se reparte. No se reparte —y el handler pregunta el
+ * lote como siempre— sin campo claro, con un lote ya nombrado o con un total
+ * del registro (WHOLE_RECORD_KEYS). Devuelve null si no hubo nada que repartir.
+ * Prod 13 oct 2026: "Coseché todo de campo 2" llegaba como harvest_crop(field)
+ * sin lote y el bot preguntaba "¿En qué lote?".
+ */
+async function expandAllPlots(results: ParseResult[], userId: ChannelContext['userId']): Promise<ParseResult[] | null> {
+  const isAll = (r: ParseResult) => r.intent.type === 'command'
+    && ALL_PLOTS_COMMANDS.has(String(r.intent.data.command)) && (r.intent.data as Record<string, unknown>).allPlots === true;
+  if (!results.some(isAll)) return null;
+  const all = (await agronomyRepository.findAllUserPlots(userId)) as Array<{ name: string; field_name: string }>;
+  const fields = [...new Set(all.map((p) => p.field_name))];
+  let changed = false;
+  const out: ParseResult[] = [];
+  for (const r of results) {
+    if (!isAll(r)) { out.push(r); continue; }
+    const data = { ...(r.intent as { data: Record<string, unknown> }).data };
+    delete data.allPlots;
+    const named = (typeof data.fieldName === 'string' && data.fieldName) || (typeof data.field === 'string' && data.field) || null;
+    const field = named
+      ? (fields.find((f) => compactEntityName(f) === compactEntityName(named)) ?? findEquivalentName(named, fields) ?? undefined)
+      : (fields.length === 1 ? fields[0] : undefined);
+    const plots = field ? all.filter((p) => p.field_name === field) : [];
+    const wholeKey = WHOLE_RECORD_KEYS.find((k) => {
+      const v = data[k];
+      return Array.isArray(v) ? v.length > 0 : v != null && v !== '' && Number(v) !== 0;
+    });
+    const why = data.plotName ? `ya nombra el lote ${data.plotName}`
+      : !field ? `sin campo claro (${named ?? 'no lo nombró'})`
+      : plots.length < 2 ? `${field} tiene ${plots.length} lote(s)`
+      : wholeKey ? `${wholeKey} es un total del registro` : null;
+    if (why) {
+      console.log(`[INTERCEPT] ${data.command} all_plots: no reparto — ${why}`);
+      out.push({ ...r, intent: { ...r.intent, data } as ParseResult['intent'] });
+      continue;
+    }
+    console.log(`[INTERCEPT] ${data.command} all_plots: ${plots.length} lotes de ${field} (${plots.map((p) => p.name).join(', ')}) → una acción por lote`);
+    changed = true;
+    for (const p of plots) {
+      out.push({ ...r, intent: { type: 'command', data: { ...data, plot: p.name, plotName: p.name, field, fieldName: field } as unknown as ParsedCommand } });
+    }
+  }
+  if (!changed) {
+    // Sin reparto: el flag se saca igual para que el handler no lo vea.
+    for (let i = 0; i < results.length; i++) if (isAll(results[i])) results[i].intent = out[i].intent;
+    return null;
+  }
+  return out;
+}
+
 async function answerPendingWithSeveralPlots(
   text: string,
   ctx: ChannelContext,
   pendingAct: import('../middleware/pending-activities.js').PendingActivity,
-  opts: { inSentence?: boolean } = {},
 ): Promise<BotResponseItem[] | null> {
   if (!MULTI_PLOT_COMMANDS.has(pendingAct.command)) return null;
   const missing = pendingAct.missing ?? [];
   if (!missing.includes('plot') || missing.some((s) => s !== 'plot' && s !== 'field')) return null;
   const data = (pendingAct.data ?? {}) as Record<string, unknown>;
-  const { collectivePlotAnswer, collectivePlotMention } = await import('../utils/lexicon.js');
+  const { collectivePlotAnswer } = await import('../utils/lexicon.js');
   const { resolvePlotList, compactEntityName, mentionsEntityName } = await import('../utils/entity-matcher.js');
-  // Respuesta pelada ("todos", "los tres") o, dentro de una frase con verbo
-  // ("Coseché todo de campo 2", "Todos los lotes coseché"), la mención explícita.
-  const collective = opts.inSentence ? collectivePlotMention(text) : collectivePlotAnswer(text);
-  if (opts.inSentence && collective == null) return null;
+  // Solo respuestas peladas ("todos", "los tres", una lista de lotes). Una
+  // frase con verbo ("Todos los lotes coseché") la interpreta el agente.
+  const collective = collectivePlotAnswer(text);
   const all = (await agronomyRepository.findAllUserPlots(ctx.userId)) as Array<{ name: string; field_name: string }>;
-  if (opts.inSentence && all.some((p) => mentionsEntityName(text, p.name))) return null; // nombra un lote concreto
-  // El campo que nombra el mensaje manda sobre el del pending.
+  // El campo que nombra la respuesta ("todos los del campo 2") manda sobre el del pending.
   const fieldNames = [...new Set(all.map((p) => p.field_name))];
   const textFields = fieldNames.filter((f) => mentionsEntityName(text, f, 'campo'));
   const fieldName = (textFields.length === 1 ? textFields[0] : null)
@@ -2226,15 +2266,7 @@ async function answerPendingWithSeveralPlots(
   }
   console.log(`[INTERCEPT] pending ${pendingAct.command}: "${text.slice(0, 60)}" = ${chosen.length} lotes (${chosen.map((p) => p.name).join(', ')}) → una acción por lote`);
   pendingActStore.clear(ctx.phone);
-  const base: Record<string, unknown> = Object.fromEntries(Object.entries(data).filter(([k]) => !k.startsWith('_')));
-  if (opts.inSentence) {
-    // Lo que el re-enunciado agrega y el pending no tenía: cultivo y fecha.
-    const textCrop = extractCropFromText(text);
-    if (textCrop && !base.crop) base.crop = textCrop;
-    const { resolveRelativeDate } = await import('../utils/relative-dates.js');
-    const date = resolveRelativeDate(text);
-    if (date && !base.eventDate) base.eventDate = date;
-  }
+  const base = Object.fromEntries(Object.entries(data).filter(([k]) => !k.startsWith('_')));
   const results: ParseResult[] = chosen.map((p) => ({
     intent: { type: 'command', data: { ...base, command: pendingAct.command, plot: p.name, plotName: p.name, field: p.field_name, fieldName: p.field_name } as ParsedCommand },
     confidence: 1, aiUsed: false, source: 'regex', missingFields: [],

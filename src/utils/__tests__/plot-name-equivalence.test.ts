@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { entityNameKey, findEquivalentName, resolvePlotList, mentionsEntityName } from '../entity-matcher.js';
-import { collectivePlotAnswer, collectivePlotMention, isReferentialAnswer, mentionsRegistrationOf } from '../lexicon.js';
+import { collectivePlotAnswer, mentionsRegistrationOf } from '../lexicon.js';
 import { validateToolCall } from '../../ai/agent-output-validator.js';
 import { looksLikeNonCity } from '../../middleware/pending-field-city-handler.js';
 import { hasActionVerb, isReadOnlyQuery } from '../../middleware/conversation-guards.js';
@@ -108,29 +108,5 @@ describe('pending de una actividad agro no absorbe plata', () => {
     });
     expect(r.finalData.amount).toBeUndefined();
     expect(r.finalData.category).toBeUndefined();
-  });
-});
-
-describe('collectivePlotMention (dentro de una frase, prod 13 oct 2026)', () => {
-  it('reconoce "todos los lotes" / "todo el campo" con verbo alrededor', () => {
-    expect(collectivePlotMention('Coseche todo de campo 2')).toBe('all');
-    expect(collectivePlotMention('Todos los lotes coseche')).toBe('all');
-    expect(collectivePlotMention('ayer fumigué todo el campo')).toBe('all');
-    expect(collectivePlotMention('sembré soja en los tres lotes')).toBe(3);
-    expect(collectivePlotMention('fumigué en todos')).toBe('all');
-  });
-  it('no confunde hacienda ni un lote concreto', () => {
-    expect(collectivePlotMention('vacuné todos los terneros')).toBeNull();
-    expect(collectivePlotMention('coseché el lote 3')).toBeNull();
-    expect(collectivePlotMention('en todos los casos sembré soja en el Norte')).toBeNull();
-  });
-});
-
-describe('isReferentialAnswer', () => {
-  it('"lo que había" remite, "soja de segunda" nombra', () => {
-    expect(isReferentialAnswer('Y lo que había en esos lotes')).toBe(true);
-    expect(isReferentialAnswer('lo mismo')).toBe(true);
-    expect(isReferentialAnswer('soja de segunda')).toBe(false);
-    expect(isReferentialAnswer('maíz')).toBe(false);
   });
 });

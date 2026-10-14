@@ -10,6 +10,7 @@ import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants/agro-terms.j
 // Reusable field/plot properties
 const FIELD_PROP = { type: 'string' as const, description: 'Nombre del campo, si mencionado.' };
 const PLOT_PROP = { type: 'string' as const, description: 'Nombre del lote, si mencionado.' };
+const ALL_PLOTS_PROP = { type: 'boolean' as const, description: 'true si fue en TODOS los lotes del campo ("todo el campo 2", "todos los lotes", "en los tres"): mandá field y omití plot; el sistema registra uno por lote.' };
 const CROP_PROP = { type: 'string' as const, description: 'Cultivo, si mencionado.' };
 const QUANTITY_PROP = { type: 'number' as const, description: 'Cantidad.' };
 const UNIT_PROP = { type: 'string' as const, description: 'Unidad (kg, lt, cc, tn, qq, bolsas, kg/ha, lt/ha). qq=quintal=100 kg. tn=tonelada=1000 kg. Mantener la unidad como la dijo el usuario; el sistema convierte a kg cuando hace falta.' };
@@ -214,6 +215,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         seed_density: { type: 'string', description: 'Densidad tal cual ("350 mil semillas/ha", "80 kg/ha"), si la dijo.' },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        all_plots: ALL_PLOTS_PROP,
         event_date: DATE_PROP,
       },
       required: [],
@@ -257,6 +259,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
         },
         field: FIELD_PROP,
         plot: PLOT_PROP,
+        all_plots: ALL_PLOTS_PROP,
         event_date: DATE_PROP,
       },
       required: [],

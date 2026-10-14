@@ -1510,12 +1510,27 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await sowings()).toEqual(['El Dos', 'El Tres', 'El Uno']);
     };
 
-    it('"Coseché todo de campo 2" cosecha los lotes de ese campo sin preguntar', async () => {
+    it('all_plots del agente ("Coseché todo de campo 2") cosecha los lotes de ese campo sin preguntar', async () => {
       await sowCampo2();
-      h.fakeAgent.enqueueTool('harvest_crop', { field: 'campo 2' });
+      h.fakeAgent.enqueueTool('harvest_crop', { field: 'campo 2', all_plots: true });
       const r = h.allText(await h.send('Coseche todo de campo 2'));
       expect(r).not.toMatch(/¿En qué lote/);
       expect(await harvested()).toEqual(['El Dos', 'El Tres', 'El Uno']);
+    });
+
+    it('all_plots sin ninguna palabra de totalidad ("Coseché en el campo 1") se descarta y pregunta el lote', async () => {
+      await sowCampo2();
+      h.fakeAgent.enqueueTool('harvest_crop', { field: 'campo 2', all_plots: true });
+      const r = h.allText(await h.send('Coseché en el campo 2'));
+      expect(r).toMatch(/¿En qué lote/);
+      expect(await harvested()).toEqual([]);
+    });
+
+    it('all_plots en siembra con un total de hectáreas no se reparte (pregunta el lote)', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', field: 'campo 2', all_plots: true, hectares: 300 });
+      const r = h.allText(await h.send('sembré 300 ha de soja en todo el campo 2'));
+      expect(r).toMatch(/¿En qué lote/);
+      expect(await sowings()).toEqual([]);
     });
 
     it('"Todos" contesta el "¿En qué lote?" de una cosecha', async () => {
@@ -1529,14 +1544,22 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await harvested()).toEqual(['El Dos', 'El Tres', 'El Uno']);
     });
 
-    it('"Todos los lotes coseché" re-enunciado usa el campo de la pregunta, no todos los campos', async () => {
+    it('re-enunciar la cosecha le pasa al agente el campo de la pregunta', async () => {
       await sowCampo2();
       h.fakeAgent.enqueueTool('harvest_crop', { field: 'campo 2' });
       await h.send('Coseché en el campo 2');
-      const calls = h.fakeAgent.calls.length;
+      h.fakeAgent.enqueueTool('harvest_crop', { field: 'campo 2', all_plots: true });
       await h.send('Todos los lotes coseche');
-      expect(h.fakeAgent.calls.length).toBe(calls);
+      const last = h.fakeAgent.calls[h.fakeAgent.calls.length - 1];
+      expect(last.text).toMatch(/\[contexto: .*campo 2/);
+      expect(last.pendingHint).toMatch(/^CONTEXTO DE LA ACTIVIDAD/);
       expect(await harvested()).toEqual(['El Dos', 'El Tres', 'El Uno']);
+      // El hint no queda colgado para el próximo mensaje.
+      const before = h.fakeAgent.calls.length;
+      h.fakeAgent.enqueue([], '¿Qué querés registrar?');
+      await h.send('quiero registrar algo');
+      expect(h.fakeAgent.calls.length).toBe(before + 1);
+      expect(h.fakeAgent.calls[before].pendingHint ?? '').not.toMatch(/CONTEXTO DE LA ACTIVIDAD/);
     });
 
     it('un lote que no existe en el campo nombrado re-pregunta solo con los lotes de ese campo', async () => {

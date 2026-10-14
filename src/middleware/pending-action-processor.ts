@@ -26,7 +26,7 @@
 
 import type { PendingActivity } from './pending-activities.js';
 import { extractSlots, type ExtractedSlots, type SlotName } from './slot-extractor.js';
-import { stripAnswerPrefix, isReferentialAnswer } from '../utils/lexicon.js';
+import { stripAnswerPrefix } from '../utils/lexicon.js';
 import { normalizarMonto } from '../utils/parser.js';
 import { looksLikeAnimalId } from '../utils/animal-id.js';
 
@@ -221,13 +221,13 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
         // reemplazó la caravana 0000010 por LA10ESMACHOCAMBIALO. Se deja vacío
         // → el handler re-pregunta y la escalera de escalamiento sigue.
         console.log(`[INTERCEPT] single-slot id-slot rejected: slot=${slot} "${cleaned.slice(0, 60)}" no parece una caravana (command=${pending.command})`);
-      } else if ((slot === 'crop' || slot === 'product') && isReferentialAnswer(cleaned)) {
-        // Solo cultivo/producto: "Lo de Pérez" es un nombre de campo legítimo
-        // y "pagar lo de la luz" una descripción de recordatorio.
-        // "lo que había en esos lotes" / "lo mismo" remite a otra cosa, no es
-        // el valor: se deja vacío → re-pregunta (prod 13 oct 2026: quedó como
-        // cultivo de una cosecha y el bot buscó una siembra de esa frase).
-        console.log(`[INTERCEPT] single-slot text-slot rechazado: slot=${slot} "${cleaned.slice(0, 40)}" remite a otra cosa (command=${pending.command})`);
+      } else if (slot === 'crop' && cleaned.split(/\s+/).length > 3) {
+        // Un cultivo que el extractor no reconoció tiene que tener forma de
+        // nombre ("colza", "soja de segunda"); una frase larga no lo es. Prod
+        // 13 oct 2026: "Y lo que había en esos lotes" quedó como cultivo de una
+        // cosecha. Se deja vacío → re-pregunta y, a la segunda, el rescate por
+        // agente entiende la frase con el pending entero.
+        console.log(`[INTERCEPT] single-slot text-slot rechazado: slot=crop "${cleaned.slice(0, 40)}" no tiene forma de cultivo (command=${pending.command})`);
       } else if (/^[\d\s.,-]+$/.test(cleaned)) {
         // Un slot de TEXTO (cultivo, producto, categoría…) no es un número suelto:
         // "12345" quedaba como cultivo (CONV-11). Se deja vacío → re-pregunta.

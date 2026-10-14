@@ -1226,6 +1226,9 @@ export class AgentResponseMapper {
     if (input.grupo != null) cmd.grupo = input.grupo;
     // list_plots: solo lo que está sin sembrar
     if (input.unsown === true || input.unsown === 'true') cmd.unsown = true;
+    // sow_crop / harvest_crop en todos los lotes del campo: el pipeline lo
+    // reparte (expandAllPlots en message-pipeline).
+    if (input.all_plots === true || input.all_plots === 'true') cmd.allPlots = true;
 
     // Feedlot
     if (input.capacity != null) cmd.capacity = input.capacity;
