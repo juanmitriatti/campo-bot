@@ -3,6 +3,7 @@ import { sendMessageWithRetry } from "./whatsapp.js";
 import { sendTelegramMessage } from "./telegram.ts";
 import { logError } from "./error-logger.js";
 import { getProactiveBlockReason, isOutsideWhatsAppWindow, deferMessage } from "./proactive-delivery.js";
+import { notifyOutsideWindow } from "./out-of-window-channels.js";
 import { getAppName } from '../utils/brand.js';
 
 /**
@@ -21,7 +22,7 @@ async function blockedProactive(userId, alertType) {
  * Meta lo rechazaba (#131009/#131047) y quedaba como enviado o se perdía.
  * @returns {Promise<null|{sent:false, deferred:boolean, alertId:number}>}
  */
-async function deferIfOutsideWindow(userId, alertType, message, alertId) {
+async function deferIfOutsideWindow(userId, alertType, message, alertId, phone) {
   if (!(await isOutsideWhatsAppWindow(userId).catch(() => false))) return null;
   const deferred = await deferMessage(userId, alertType, message, alertId);
   await pool.query(
@@ -31,7 +32,10 @@ async function deferIfOutsideWindow(userId, alertType, message, alertId) {
     [alertId, deferred ? 'deferred' : 'skipped']
   );
   console.log(`[alert.service] [INTERCEPT] '${alertType}' fuera de la ventana de 24 h para user ${userId}: ${deferred ? 'diferido hasta que escriba' : 'descartado (no se difiere)'}`);
-  return { sent: false, deferred, alertId };
+  // Mail con el contenido + plantilla de WhatsApp que invita a contestar.
+  const channels = await notifyOutsideWindow({ userId, phone, alertType, message, alertId, deferred })
+    .catch(() => ({ email: 'skipped:error', template: 'skipped:error' }));
+  return { sent: false, deferred, alertId, email: channels.email, template: channels.template };
 }
 
 // Tipos de alerta que el usuario puede apagar con "no más alertas".
@@ -109,7 +113,7 @@ export async function sendAlertWithRetry(userId, phone, message, alertType, meta
       result = { success: false, attempts: 1, error: err.message };
     }
   } else if (phone) {
-    const deferredRes = await deferIfOutsideWindow(userId, alertType, message, alertId);
+    const deferredRes = await deferIfOutsideWindow(userId, alertType, message, alertId, phone);
     if (deferredRes) return deferredRes;
     result = await sendMessageWithRetry(phone, message);
   } else {
@@ -246,7 +250,7 @@ export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId
   }
   if (!sent && realPhone) {
     channel = 'whatsapp';
-    const deferredRes = await deferIfOutsideWindow(userId, alertType, message, alertId);
+    const deferredRes = await deferIfOutsideWindow(userId, alertType, message, alertId, realPhone);
     if (deferredRes) return deferredRes;
     const result = await sendMessageWithRetry(realPhone, message);
     if (result.success) {

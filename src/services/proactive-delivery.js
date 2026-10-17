@@ -35,7 +35,9 @@ const TYPE_FEATURE = {
  * Tipos que pierden sentido si llegan tarde: fuera de la ventana no se
  * difieren, se descartan con log (una alerta de helada de ayer confunde).
  */
-const NOT_DEFERRABLE = new Set(['weather', 'flow_reminder']);
+// Los avisos de flujo se llaman flow_timeout / flow_halflife (scheduler.js);
+// 'flow_reminder' no lo emite nadie y dejaba pasar el "¿Seguís ahí?" días tarde.
+export const NOT_DEFERRABLE = new Set(['weather', 'flow_reminder', 'flow_timeout', 'flow_halflife']);
 
 /** Cuánto vive un mensaje diferido esperando que el usuario escriba. */
 const DEFER_TTL_DAYS = 7;

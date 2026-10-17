@@ -292,6 +292,40 @@ function isPermanentWhatsAppError(err) {
   return /\b(400|401|403)\b/.test(msg) && !/\b(429|5\d\d)\b/.test(msg);
 }
 
+/**
+ * Mensaje de PLANTILLA aprobada por Meta: lo único que llega fuera de la
+ * ventana de 24 h. `bodyParams` son los {{1}}, {{2}}… del cuerpo, en orden
+ * (Meta rechaza el envío si la cantidad no coincide con la plantilla).
+ */
+export async function sendTemplate(to, name, languageCode, bodyParams = []) {
+  to = formatArgNumber(to);
+  whatsappBreakerCheck();
+  const components = bodyParams.length > 0
+    ? [{ type: 'body', parameters: bodyParams.map(t => ({ type: 'text', text: String(t) })) }]
+    : [];
+  try {
+    await axios.post(
+      `${API_BASE}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to,
+        type: "template",
+        template: { name, language: { code: languageCode }, components },
+      },
+      { headers: authHeaders }
+    );
+    consecutiveAuthFails = 0;
+  } catch (err) {
+    whatsappTrackResult(err);
+    const compact = compactWhatsappError(err, 'sendTemplate');
+    logError('whatsapp', 'SEND_TEMPLATE_ERROR', compact, {
+      phone: to,
+      context: { action: 'sendTemplate', template: name, status: err.response?.status },
+    });
+    throw compact;
+  }
+}
+
 export async function sendMessageWithRetry(to, text, maxRetries = 3) {
   const delays = [1000, 5000, 15000];
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

@@ -53,7 +53,14 @@ export async function sendEmail({ to, subject, html, text }: SendArgs): Promise<
  * Wraps a body in a minimal HTML template so emails render decently
  * across clients without needing per-template duplication.
  */
-export function wrapHtml(title: string, bodyHtml: string, ctaUrl?: string, ctaLabel?: string, appName: string = DEFAULT_APP_NAME): string {
+export function wrapHtml(
+  title: string,
+  bodyHtml: string,
+  ctaUrl?: string,
+  ctaLabel?: string,
+  appName: string = DEFAULT_APP_NAME,
+  footer: string = 'Si no fuiste vos, ignorá este email.',
+): string {
   const cta = ctaUrl && ctaLabel
     ? `<p style="margin:32px 0;text-align:center;">
          <a href="${ctaUrl}" style="background:#16a34a;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">${ctaLabel}</a>
@@ -71,7 +78,7 @@ export function wrapHtml(title: string, bodyHtml: string, ctaUrl?: string, ctaLa
     ${bodyHtml}
     ${cta}
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0 16px;" />
-    <p style="font-size:12px;color:#6b7280;margin:0;">Si no fuiste vos, ignorá este email.</p>
+    <p style="font-size:12px;color:#6b7280;margin:0;">${footer}</p>
   </div>
 </body></html>`;
 }
