@@ -19,7 +19,7 @@
     {
       "send": "dónde está la caravana 0000000077",
       "expect": {
-        "responseContains": ["No tengo"]
+        "responseContains": ["ya no está vigente", "0000000078"]
       }
     }
   ]
