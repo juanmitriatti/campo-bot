@@ -805,12 +805,31 @@ async function trialExpiredReply(
   return [{ type: 'text', text: await trialExpiredCopy() }];
 }
 
+/**
+ * Cuenta bloqueada desde /admin (suspended/disabled) o dada de baja: el bot no
+ * la atiende. Antes el bloqueo cortaba el login web y los proactivos, pero el
+ * bot le seguía contestando y guardando (oct 2026). Se lee de la base, no de
+ * ctx.user, para que bloquear valga desde el mensaje siguiente.
+ */
+export async function blockedAccountReply(userId: ChannelContext['userId'], logDetail: string): Promise<BotResponseItem[] | null> {
+  const { rows } = await pool.query(`SELECT status FROM users WHERE id = $1`, [userId]);
+  const { isAccountBlocked } = await import('../domain/auth/auth.types.js');
+  if (!isAccountBlocked(rows[0]?.status)) return null;
+  console.log(`[INTERCEPT] [BLOCKED] user=${userId} (${rows[0]?.status}) no se atiende ${logDetail}`);
+  return [{ type: 'text', text: '🔒 Tu cuenta está bloqueada. Si creés que es un error, escribinos a soporte.' }];
+}
+
 async function processTextMessageInner(
   text: string,
   ctx: ChannelContext,
 ): Promise<BotResponseItem[]> {
   const { userId, user, settings, phone, startTime } = ctx;
   console.log(`[${ctx.channel}] TEXT:`, text);
+
+  {
+    const blocked = await blockedAccountReply(userId, `text="${text.slice(0, 80)}"`);
+    if (blocked) return blocked;
+  }
 
   // Contentless message (empty / only emojis or punctuation) → gentle hint
   // instead of a blank reply or a full greeting.
@@ -2648,6 +2667,11 @@ async function handleInteractiveReplyInner(
   console.log(`[${ctx.channel}] INTERACTIVE:`, callbackId);
 
   conversationObserver.logMessageReceived(userId, { phone, messageType: 'interactive', messageLength: callbackId.length });
+
+  {
+    const blocked = await blockedAccountReply(userId, `tap=${callbackId}`);
+    if (blocked) return blocked;
+  }
 
   // Prueba vencida: los botones no pasaban por ningún control de acceso (un
   // `cat_pick_` guardaba el gasto igual). Solo pasan los que llevan a un

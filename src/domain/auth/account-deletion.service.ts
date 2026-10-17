@@ -61,6 +61,28 @@ export class AccountDeletionService {
       throw new AccountDeletionError(401, 'WRONG_PASSWORD', 'Contraseña incorrecta.');
     }
 
+    await this.softDelete(userId);
+  }
+
+  /**
+   * Baja desde el panel /admin: el MISMO borrado que pide el usuario, sin la
+   * contraseña. Antes el admin hacía un DELETE físico tabla por tabla, con una
+   * lista a mano desactualizada y sin transacción: chocaba con livestock_groups
+   * (FK a plots) después de haber borrado ya los eventos y conversaciones del
+   * usuario (prod, 17 oct 2026).
+   */
+  async deleteByAdmin(userId: UserId): Promise<void> {
+    const { rows } = await pool.query(`SELECT id, deleted_at FROM users WHERE id = $1`, [userId]);
+    if (rows.length === 0) {
+      throw new AccountDeletionError(404, 'USER_NOT_FOUND', 'Usuario no encontrado.');
+    }
+    if (rows[0].deleted_at) {
+      throw new AccountDeletionError(410, 'ALREADY_DELETED', 'La cuenta ya fue eliminada.');
+    }
+    await this.softDelete(userId);
+  }
+
+  private async softDelete(userId: UserId): Promise<void> {
     // Atomic: mark deleted + revoke tokens together.
     await withTransaction(async () => {
       await pool.query(

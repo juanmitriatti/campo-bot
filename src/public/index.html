@@ -2714,7 +2714,7 @@
 
     function statusBadge(status) {
       var map = { active: 'badge-green', suspended: 'badge-yellow', disabled: 'badge-red' };
-      var labels = { active: 'Activo', suspended: 'Suspendido', disabled: 'Deshabilitado' };
+      var labels = { active: 'Activo', suspended: 'Bloqueado', disabled: 'Deshabilitado' };
       return '<span class="badge ' + (map[status] || 'badge-gray') + '">' + (labels[status] || status || 'Activo') + '</span>';
     }
 
@@ -2744,7 +2744,7 @@
           + '<td>' + formatDateTime(u.lastActivity) + '</td>'
           + '<td style="white-space:nowrap;">'
           + '  <button class="btn btn-sm" style="background:var(--bg);color:var(--text);padding:4px 8px;font-size:12px;margin-right:4px;" onclick="event.stopPropagation();showEditUserModal(' + u.id + ')" title="Editar">&#9998;</button>'
-          + '  <button class="btn btn-sm" style="background:var(--bg);color:var(--text);padding:4px 8px;font-size:12px;margin-right:4px;" onclick="event.stopPropagation();changeUserStatus(' + u.id + ', \'' + escapeHtml(u.name || '') + '\', \'' + (u.status || 'active') + '\')" title="Cambiar estado">&#9881;</button>'
+          + '  <button class="btn btn-sm" style="background:var(--bg);color:var(--text);padding:4px 8px;font-size:12px;margin-right:4px;" onclick="event.stopPropagation();changeUserStatus(' + u.id + ', \'' + escapeHtml(u.name || '') + '\', \'' + (u.status || 'active') + '\')" title="' + ((u.status || 'active') === 'active' ? 'Bloquear: no puede usar el bot ni entrar al dashboard' : 'Desbloquear') + '">' + ((u.status || 'active') === 'active' ? 'Bloquear' : 'Desbloquear') + '</button>'
           + '  <button class="btn btn-sm" style="background:#fef2f2;color:var(--danger);padding:4px 8px;font-size:12px;" onclick="event.stopPropagation();showDeleteUserModal(' + u.id + ', \'' + escapeHtml(u.name || 'Sin nombre') + '\')" title="Eliminar">&#10005;</button>'
           + '</td>'
           + '</tr>';
@@ -2913,7 +2913,7 @@
       deletingUserId = userId;
       deletingUserName = userName;
       document.getElementById('delete-user-msg').textContent =
-        'Se eliminará permanentemente al usuario "' + userName + '" y todos sus datos asociados. Esta acción no se puede deshacer.';
+        'Se dará de baja la cuenta de "' + userName + '": pierde el acceso al bot y al dashboard, y se borran su nombre, teléfono y mail (el número puede volver a registrarse). Sus registros quedan guardados sin datos personales. No se puede deshacer desde el panel.';
       document.getElementById('delete-user-overlay').style.display = 'flex';
     }
 
@@ -2935,9 +2935,13 @@
 
     // ========== CHANGE USER STATUS ==========
     function changeUserStatus(userId, userName, currentStatus) {
-      var nextStatus = currentStatus === 'active' ? 'suspended' : currentStatus === 'suspended' ? 'disabled' : 'active';
-      var labels = { active: 'Activo', suspended: 'Suspendido', disabled: 'Deshabilitado' };
-      if (!confirm('Cambiar estado de "' + userName + '" a ' + labels[nextStatus] + '?')) return;
+      // Activo ↔ bloqueado (suspended). Un "disabled" viejo también se desbloquea.
+      var nextStatus = currentStatus === 'active' ? 'suspended' : 'active';
+      var labels = { active: 'Activo', suspended: 'Bloqueado', disabled: 'Deshabilitado' };
+      var question = nextStatus === 'suspended'
+        ? '¿Bloquear a "' + userName + '"? No va a poder usar el bot ni entrar al dashboard.'
+        : '¿Desbloquear a "' + userName + '"?';
+      if (!confirm(question)) return;
 
       apiFetch('/admin/api/users/' + userId + '/status', {
         method: 'PUT',

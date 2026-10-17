@@ -57,6 +57,11 @@ export async function processDocumentWithIntent(
   filename: string | undefined, caption: string, docIntent: DocumentUploadIntent | undefined,
 ): Promise<BotResponseItem[]> {
   const { userId, phone, startTime } = ctx;
+  {
+    const { blockedAccountReply } = await import('./message-pipeline.js');
+    const blocked = await blockedAccountReply(userId, `document source=${ctx.channel}`);
+    if (blocked) return blocked;
+  }
   // Phase 3 — block OCR for trial-expired users (Vision API costs real money).
   const { getUserAccessMode, trialExpiredCopy } = await import('./access-gate.service.js');
   if (await getUserAccessMode(Number(userId)) === 'trial_expired_readonly') {

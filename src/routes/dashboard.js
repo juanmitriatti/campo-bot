@@ -151,6 +151,9 @@ router.get("/api/users", async (req, res) => {
          FROM field_members fm
          WHERE fm.user_id = u.id AND fm.role = 'member'
        ) shared ON true
+       -- Las cuentas borradas (soft delete) no son usuarios: inflaban la lista
+       -- (376 con ~11 activos) y un borrado parecía no hacer nada.
+       WHERE u.deleted_at IS NULL
        ORDER BY last_activity DESC NULLS LAST`
     );
 
@@ -2192,35 +2195,19 @@ router.delete("/api/users/:id", async (req, res) => {
 
     const userR = await pool.query("SELECT id, phone_number, name FROM users WHERE id = $1", [id]);
     if (userR.rows.length === 0) return res.status(404).json({ error: "User not found" });
-
-    // Hard delete (cascade will handle related rows if FK has ON DELETE CASCADE,
-    // otherwise we clean up manually)
     const u = userR.rows[0];
 
-    // Delete related data in correct order
-    await pool.query("DELETE FROM conversation_events WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM conversation_state WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM conversation_logs WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM ai_usage WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM ai_fallback_logs WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM audio_transcription_logs WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM unparsed_messages WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM parser_errors WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM domain_events WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM message_patterns WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM farmer_vocabulary WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM deletion_log WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM rainfall WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM budgets WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM expenses WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM incomes WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM agro_observations WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM agronomic_reports WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM user_settings WHERE user_id = $1", [id]);
-    // Delete plots under fields, then fields
-    await pool.query("DELETE FROM plots WHERE field_id IN (SELECT id FROM fields WHERE user_id = $1)", [id]);
-    await pool.query("DELETE FROM fields WHERE user_id = $1", [id]);
-    await pool.query("DELETE FROM users WHERE id = $1", [id]);
+    // La misma baja que pide el usuario (soft delete + datos personales en
+    // NULL + tokens revocados + suscripción cerrada, en una transacción). El
+    // DELETE físico tabla por tabla de antes no tenía transacción y chocaba con
+    // la hacienda después de haber borrado medio usuario (prod, 17 oct 2026).
+    const { AccountDeletionService, AccountDeletionError } = await import("../domain/auth/account-deletion.service.js");
+    try {
+      await new AccountDeletionService().deleteByAdmin(Number(id));
+    } catch (err) {
+      if (err instanceof AccountDeletionError) return res.status(err.status).json({ error: err.message, code: err.code });
+      throw err;
+    }
 
     // Audit log
     await pool.query(
