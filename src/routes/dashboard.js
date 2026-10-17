@@ -120,7 +120,12 @@ router.get("/api/users", async (req, res) => {
          COALESCE(ai_month.cache_write_month, 0) AS cache_write_month,
          COALESCE(u.last_message_at, ai_all.last_ai) AS last_activity,
          COALESCE(fields.field_count, 0) AS field_count,
-         COALESCE(shared.shared_field_count, 0) AS shared_field_count
+         COALESCE(shared.shared_field_count, 0) AS shared_field_count,
+         EXISTS (
+           SELECT 1 FROM subscriptions s
+            WHERE s.user_id = u.id AND s.status IN ('active', 'past_due')
+              AND s.provider_subscription_id IS NOT NULL
+         ) AS paid_subscription
        FROM users u
        LEFT JOIN plans p ON u.plan_id = p.id
        LEFT JOIN LATERAL (
@@ -201,6 +206,8 @@ router.get("/api/users", async (req, res) => {
         ),
         lastActivity: u.last_activity,
         lastMessageAt: u.last_message_at,
+        // Cobro recurrente vivo en MercadoPago: bloquear NO lo corta solo.
+        paidSubscription: u.paid_subscription === true,
       };
     }));
   } catch (error) {
@@ -2074,7 +2081,7 @@ router.get("/api/deletion-log", async (req, res) => {
 router.put("/api/users/:id/status", async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, cancelSubscription } = req.body;
     if (!['active', 'suspended', 'disabled'].includes(status)) {
       return res.status(400).json({ error: "Invalid status. Must be: active, suspended, disabled" });
     }
@@ -2088,14 +2095,31 @@ router.put("/api/users/:id/status", async (req, res) => {
     const { invalidateAccountState } = await import("../middleware/auth.middleware.js");
     invalidateAccountState(Number(id));
 
+    // Bloquear no corta el cobro de MercadoPago: el admin elige cancelarlo
+    // (el panel pregunta cuando la cuenta tiene una suscripción paga viva).
+    let subscriptionCancelled = false;
+    if (status !== 'active' && cancelSubscription === true) {
+      try {
+        const { SubscriptionService } = await import("../domain/billing/subscription.service.js");
+        await new SubscriptionService().cancel(Number(id));
+        subscriptionCancelled = true;
+        console.log(`[BILLING] user=${id} bloqueado por el admin: suscripción cancelada`);
+      } catch (err) {
+        if (err?.code !== 'NO_SUBSCRIPTION') {
+          logError('admin-api', 'USER_BLOCK_SUBSCRIPTION_CANCEL', err);
+          return res.status(502).json({ error: "La cuenta quedó bloqueada pero no pude cancelar la suscripción. Probá de nuevo o cancelala en MercadoPago.", status });
+        }
+      }
+    }
+
     // Audit log
     await pool.query(
       `INSERT INTO admin_audit_log (admin_ip, action, entity_type, entity_id, details)
        VALUES ($1, 'user_status_change', 'user', $2, $3)`,
-      [req.ip, id, JSON.stringify({ newStatus: status })]
+      [req.ip, id, JSON.stringify({ newStatus: status, subscriptionCancelled })]
     ).catch(() => {});
 
-    res.json({ ok: true, status: result.rows[0].status });
+    res.json({ ok: true, status: result.rows[0].status, subscriptionCancelled });
   } catch (error) {
     console.error("Error updating user status:", error);
     logError('admin-api', 'USER_STATUS_UPDATE', error);

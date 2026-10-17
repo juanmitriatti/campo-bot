@@ -44,7 +44,7 @@ import { PendingActivityStore, PENDING_ALL_PLOTS_ID } from '../middleware/pendin
 import { TypedPendingStore, clearAllTypedStores } from '../middleware/typed-pending-store.js';
 import { compactEntityName, findEquivalentName } from '../utils/entity-matcher.js';
 import { isOneShotCallback, consumeOnce, repeatedTapMessage } from '../middleware/one-shot-callbacks.js';
-import { runWithCallbackOwner } from '../middleware/callback-payload-store.js';
+import { runWithCallbackOwner, callbackPayloadStore } from '../middleware/callback-payload-store.js';
 import { isFieldOwner } from '../domain/shared/field-access.js';
 import { tipEngine } from './tip-engine.js';
 import { PendingFieldCityStore } from '../middleware/pending-field-city.js';
@@ -2673,6 +2673,23 @@ async function handleInteractiveReplyInner(
     if (blocked) return blocked;
   }
 
+  // Baja de la cuenta por chat (delete_my_account). Antes del corte por prueba
+  // vencida: darse de baja no depende de estar al día. El token está atado a
+  // este usuario (callbackPayloadStore) y vence a los 10 min.
+  if (callbackId.startsWith('acct_del_ok_')) {
+    const raw = callbackPayloadStore.get(callbackId.slice('acct_del_ok_'.length));
+    let payload: { kind?: string; userId?: number } | null = null;
+    try { payload = raw ? JSON.parse(raw) : null; } catch { payload = null; }
+    if (payload?.kind !== 'delete_my_account' || Number(payload.userId) !== Number(userId)) {
+      console.log(`[INTERCEPT] acct_del_ok vencido o ajeno user=${userId}`);
+      return [{ type: 'text', text: '⏰ Ese botón ya venció — *no borré nada*. Si querés dar de baja tu cuenta, escribí *borrar mi cuenta*.' }];
+    }
+    const { AccountDeletionService } = await import('../domain/auth/account-deletion.service.js');
+    await new AccountDeletionService().deleteFromChat(userId);
+    console.log(`[ACCOUNT] user=${userId} dio de baja su cuenta por chat (${ctx.channel})`);
+    return [{ type: 'text', text: '✅ Listo, tu cuenta fue dada de baja. Gracias por usar el bot.\n\nSi algún día querés volver, escribime y arrancamos de cero.' }];
+  }
+
   // Prueba vencida: los botones no pasaban por ningún control de acceso (un
   // `cat_pick_` guardaba el gasto igual). Solo pasan los que llevan a un
   // comando permitido con la prueba vencida (menú, plan, invitación…).
@@ -2860,6 +2877,13 @@ async function handleInteractiveReplyInner(
   // --- Destructive command confirmation ---
   if (callbackId.startsWith('confirm_destructive_')) {
     const pendingAction = pendingStore.get(phone) as any;
+    // El botón lleva el comando que confirma: un "Confirmar" viejo de OTRO
+    // borrado no ejecuta el que quedó pendiente ahora.
+    const tappedCommand = callbackId.slice('confirm_destructive_'.length);
+    if (pendingAction?._destructiveCommand && pendingAction._destructiveCommand.command !== tappedCommand) {
+      console.log(`[INTERCEPT] confirm_destructive_${tappedCommand} viejo con otro borrado pendiente (${pendingAction._destructiveCommand.command}) — se re-muestra`);
+      return askDestructiveConfirmation(pendingAction._destructiveCommand, userId, phone);
+    }
     pendingStore.clear(phone);
     if (pendingAction?._destructiveCommand) {
       const response = await domainRouter.routeCommand(pendingAction._destructiveCommand, userId, user, settings);

@@ -353,6 +353,13 @@ export const INVITE_ACCEPT_RE = /^(?:unirme|unirme\s+al?\s+campo|aceptar(?:\s+in
  */
 export const WHATSAPP_VERIFY_RE = /^(?:verificar|vincular|c[oó]digo)\s*:?\s*(\d{6})\s*\.?$/i;
 
+/**
+ * "borrar mi cuenta" / "darme de baja": baja de la cuenta por chat. Anclado a
+ * la frase entera — "borrar mi cuenta de gastos" no es esto. Lo usa el parser
+ * (comando delete_my_account); la baja SIEMPRE pasa por un botón de un uso.
+ */
+export const DELETE_MY_ACCOUNT_RE = /^(?:quiero\s+|quisiera\s+)?(?:borrar|eliminar|cerrar|dar\s+de\s+baja)\s+(?:mi\s+|la\s+)?cuenta(?:\s+de\s+miagro)?\s*\.?$|^(?:quiero\s+)?darme\s+de\s+baja(?:\s+de\s+miagro)?\s*\.?$|^baja\s+de\s+(?:mi\s+)?cuenta\s*\.?$/i;
+
 export function whatsappVerifyText(code: string): string {
   return `verificar ${code}`;
 }

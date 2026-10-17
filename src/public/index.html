@@ -2943,12 +2943,19 @@
         : '¿Desbloquear a "' + userName + '"?';
       if (!confirm(question)) return;
 
+      // Bloquear no frena el cobro: con una suscripción paga viva se pregunta.
+      var u = usersCache.find(function(x) { return x.id === userId; });
+      var cancelSubscription = false;
+      if (nextStatus !== 'active' && u && u.paidSubscription) {
+        cancelSubscription = confirm('"' + userName + '" tiene una suscripción paga activa en MercadoPago y bloquearlo NO frena el cobro.\n\nAceptar = bloquear y cancelar la suscripción.\nCancelar = bloquear y seguir cobrando.');
+      }
+
       apiFetch('/admin/api/users/' + userId + '/status', {
         method: 'PUT',
-        body: JSON.stringify({ status: nextStatus })
+        body: JSON.stringify({ status: nextStatus, cancelSubscription: cancelSubscription })
       }).then(function(result) {
         if (result) {
-          showToast('Estado cambiado a ' + labels[nextStatus]);
+          showToast('Estado cambiado a ' + labels[nextStatus] + (result.subscriptionCancelled ? ' — suscripción cancelada' : ''));
           loadUsers();
         }
       });

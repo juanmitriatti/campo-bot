@@ -8,6 +8,11 @@ vi.mock('../../../config/db.js', () => ({
   withTransaction: async (fn: () => Promise<unknown>) => fn(),
 }));
 
+const mockClearPending = vi.fn();
+vi.mock('../../../services/message-pipeline.js', () => ({
+  clearAllUserPendingState: (...args: any[]) => mockClearPending(...args),
+}));
+
 const mockBcryptCompare = vi.fn();
 vi.mock('bcrypt', () => ({
   default: {
@@ -23,6 +28,7 @@ describe('AccountDeletionService', () => {
   beforeEach(() => {
     mockQuery.mockReset();
     mockBcryptCompare.mockReset();
+    mockClearPending.mockReset();
   });
 
   it('rejects empty password', async () => {
@@ -58,21 +64,22 @@ describe('AccountDeletionService', () => {
       rows: [{ id: 1, email: 'a@b.c', password_hash: '$hash', deleted_at: null }],
     });
     mockBcryptCompare.mockResolvedValueOnce(true);
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE users
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE refresh_tokens
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE subscriptions (CTA-6)
+    mockQuery.mockResolvedValueOnce({ rows: [{ phone_number: '5491100000000', telegram_id: null }] }); // canales
+    mockQuery.mockResolvedValue({ rows: [] }); // UPDATE users / refresh_tokens / subscriptions
 
     const svc = new AccountDeletionService();
     await expect(svc.deleteAccount(userId, 'correct')).resolves.toBeUndefined();
 
-    // verify queries: lookup, UPDATE users (with deleted_at), UPDATE refresh_tokens,
-    // y se cierran las suscripciones (CTA-6: MP seguía cobrando una cuenta borrada).
-    expect(mockQuery).toHaveBeenCalledTimes(4);
-    expect(mockQuery.mock.calls[3][0]).toMatch(/UPDATE subscriptions/);
-    expect(mockQuery.mock.calls[1][0]).toMatch(/UPDATE users/);
-    expect(mockQuery.mock.calls[1][0]).toMatch(/deleted_at = NOW\(\)/);
-    expect(mockQuery.mock.calls[1][0]).toMatch(/email = NULL/);
-    expect(mockQuery.mock.calls[2][0]).toMatch(/UPDATE refresh_tokens/);
+    const sqls = mockQuery.mock.calls.map(c => String(c[0]));
+    const usersUpdate = sqls.find(q => /UPDATE users/.test(q)) ?? '';
+    expect(usersUpdate).toMatch(/deleted_at = NOW\(\)/);
+    expect(usersUpdate).toMatch(/email = NULL/);
+    expect(sqls.some(q => /UPDATE refresh_tokens/.test(q))).toBe(true);
+    // CTA-6: MP seguía cobrando una cuenta borrada.
+    expect(sqls.some(q => /UPDATE subscriptions/.test(q))).toBe(true);
+    // Invariante 15: el estado pendiente de cada canal se limpia.
+    expect(mockClearPending).toHaveBeenCalledWith('5491100000000');
+    expect(mockClearPending).toHaveBeenCalledWith('testbot_1');
   });
 
   it('AccountDeletionError carries status and code', () => {

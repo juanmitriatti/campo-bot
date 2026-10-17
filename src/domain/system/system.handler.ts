@@ -459,6 +459,34 @@ export class SystemHandler {
         }
       }
 
+      case 'delete_my_account': {
+        // La baja nunca se ejecuta por texto: un botón con token atado a este
+        // usuario y de 10 min (callbackPayloadStore). Lo atiende el pipeline.
+        const { callbackPayloadStore } = await import('../../middleware/callback-payload-store.js');
+        const token = callbackPayloadStore.set(JSON.stringify({ kind: 'delete_my_account', userId: Number(userId) }));
+        const { getSettingBool } = await import('../../services/settings.service.js');
+        const purgeOn = (await getSettingBool('ACCOUNT_PURGE_ENABLED')) === true;
+        return {
+          messages: [],
+          interactive: {
+            type: 'buttons',
+            body:
+              '⚠️ *¿Querés dar de baja tu cuenta?*\n\n'
+              + '• Dejás de poder usar el bot y el panel web.\n'
+              + '• Se borran tu nombre, teléfono y mail.\n'
+              + '• Si tenés una suscripción paga, se cancela.\n'
+              + (purgeOn ? '• A los 30 días se borran también tus registros (gastos, lotes, hacienda…).\n' : '')
+              + '\n'
+              + 'Si querés llevarte tus datos, antes descargalos desde *Mi cuenta* en el panel web.\n\n'
+              + 'Esto no se puede deshacer.',
+            buttons: [
+              { id: `acct_del_ok_${token}`, title: 'Sí, borrar mi cuenta' },
+              { id: 'cancel_destructive', title: 'No, cancelar' },
+            ],
+          },
+        };
+      }
+
       case 'disable_tips': {
         await pool.query(`UPDATE user_settings SET tips_enabled = FALSE WHERE user_id = $1`, [userId]);
         return { messages: ['👍 Listo, no te muestro más consejos.\n\n_Si los querés de vuelta: "dame tips de nuevo"._'] };

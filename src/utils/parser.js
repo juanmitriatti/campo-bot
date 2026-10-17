@@ -14,7 +14,7 @@ import {
 } from '../constants/agro-terms.js';
 import { canonicalProvince } from '../services/localidad-lookup.service.js';
 import {
-  stripNameLeadIn, RESUME_FORM_RE, formActionFromWord, INVITE_ACCEPT_RE,
+  stripNameLeadIn, RESUME_FORM_RE, formActionFromWord, INVITE_ACCEPT_RE, DELETE_MY_ACCOUNT_RE,
   UNSOWN_PLOTS_QUERY_RES, SOWN_PLOTS_QUERY_RES, detectCurrencyTerm,
 } from './lexicon.js';
 
@@ -896,6 +896,12 @@ const COMMAND_PATTERNS = [
       /^(?:dolar|dólar)\s+(?:hoy|blue|oficial|mep|ccl|tarjeta)\b/i,
       /^(?:ver|mostrar?(?:me)?)\s+(?:el\s+)?(?:dolar|dólar|cotizaci[óo]n)/i,
     ],
+  },
+
+  // --- Baja de la cuenta (pide confirmación con botón) ---
+  {
+    command: "delete_my_account",
+    patterns: [DELETE_MY_ACCOUNT_RE],
   },
 
   // --- Tips: opt-out / opt-in por usuario ---

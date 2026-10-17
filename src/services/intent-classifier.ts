@@ -62,6 +62,8 @@ export const EXPIRED_ALLOWED_COMMANDS = new Set([
   // al campo que le compartieron — y el que paga la función es el dueño, no él.
   // Una vez adentro, `getUserAccessMode` le hereda el acceso del dueño.
   'accept_invite',
+  // Darse de baja no puede depender de estar al día con el pago.
+  'delete_my_account',
 ]);
 
 // Comandos triviales de SOLO LECTURA: en medio de un pending con missing[]
@@ -82,6 +84,8 @@ const TRIVIAL_COMMANDS = new Set([
   'accept_invite',
   'menu', 'help', 'dollar', 'grain_prices', 'list_reminders', 'show_plan',
   'disable_tips', 'enable_tips',
+  // Baja de la cuenta: sin IA (solo el regex anclado) y siempre con botón.
+  'delete_my_account',
   'list_fields', 'list_plots',
   'show_expense_menu', 'show_income_menu', 'show_agro_menu',
   'show_fields_menu', 'show_rain_menu', 'show_reports_menu',
@@ -408,7 +412,10 @@ export class IntentClassifier {
     // cuesta una llamada y la desvía (QA prod, 7 sep 2026: "cómo vamos?" bajo
     // lock terminó en campaign_stats). Esas pasan por el bypass igual.
     const trivialName = (trivialCmd?.intent as { data?: { command?: string } } | undefined)?.data?.command;
-    const forceAgentByLock = !!opts?.clarificationHint && !(trivialName && READ_ONLY_TRIVIAL_COMMANDS.has(trivialName));
+    // La baja de la cuenta también: su regex está anclado a la frase entera y el
+    // agente no tiene tool para eso (con lock terminaba en una charla).
+    const forceAgentByLock = !!opts?.clarificationHint
+      && !(trivialName && (READ_ONLY_TRIVIAL_COMMANDS.has(trivialName) || trivialName === 'delete_my_account'));
     if (trivialCmd && forceAgentByLock) {
       console.log(`[CONV-LOCK] skip trivial bypass (lock) cmd=${trivialName ?? '?'} text="${text.slice(0, 60)}"`);
     }

@@ -52,7 +52,7 @@ export class AccountDeletionService {
       throw new AccountDeletionError(
         400,
         'NO_PASSWORD',
-        'Esta cuenta no tiene contraseña configurada. Contactá soporte.',
+        'Esta cuenta no tiene contraseña. Para darla de baja, escribile «borrar mi cuenta» al bot.',
       );
     }
 
@@ -72,6 +72,20 @@ export class AccountDeletionService {
    * usuario (prod, 17 oct 2026).
    */
   async deleteByAdmin(userId: UserId): Promise<void> {
+    await this.deleteWithoutPassword(userId);
+  }
+
+  /**
+   * Baja pedida por chat ("borrar mi cuenta" + botón de un uso). Sin
+   * contraseña: quien escribe desde el canal verificado ES el dueño de la
+   * cuenta, y las cuentas que solo usan el bot no tienen contraseña (Mi cuenta
+   * les decía "Contactá soporte").
+   */
+  async deleteFromChat(userId: UserId): Promise<void> {
+    await this.deleteWithoutPassword(userId);
+  }
+
+  private async deleteWithoutPassword(userId: UserId): Promise<void> {
     const { rows } = await pool.query(`SELECT id, deleted_at FROM users WHERE id = $1`, [userId]);
     if (rows.length === 0) {
       throw new AccountDeletionError(404, 'USER_NOT_FOUND', 'Usuario no encontrado.');
@@ -83,6 +97,12 @@ export class AccountDeletionService {
   }
 
   private async softDelete(userId: UserId): Promise<void> {
+    // Las claves de canal se leen ANTES de poner el teléfono en NULL.
+    const ch = await pool.query(`SELECT phone_number, telegram_id FROM users WHERE id = $1`, [userId]);
+    const channelKeys = new Set<string>([`testbot_${userId}`]);
+    if (ch.rows[0]?.phone_number) channelKeys.add(String(ch.rows[0].phone_number));
+    if (ch.rows[0]?.telegram_id) channelKeys.add(`tg_${ch.rows[0].telegram_id}`);
+
     // Atomic: mark deleted + revoke tokens together.
     await withTransaction(async () => {
       await pool.query(
@@ -113,6 +133,15 @@ export class AccountDeletionService {
     // CTA-16: la sesión de la cuenta borrada se corta ya.
     const { invalidateAccountState } = await import('../../middleware/auth.middleware.js');
     invalidateAccountState(Number(userId));
+
+    // Invariante 15: lo que tenía abierto (tarjetas, preguntas, colas) no
+    // sobrevive a la baja — si el número se vuelve a registrar, arranca limpio.
+    try {
+      const { clearAllUserPendingState } = await import('../../services/message-pipeline.js');
+      for (const key of channelKeys) await clearAllUserPendingState(key);
+    } catch (err) {
+      logError('account', 'DELETE_PENDING_CLEAR_FAILED', err as Error, { userId: Number(userId) });
+    }
 
     // CTA-6: la cuenta borrada seguía con la suscripción viva y MercadoPago
     // seguía cobrando. Después del commit (el borrado no depende del proveedor).

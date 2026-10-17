@@ -974,6 +974,7 @@ async function dailyCleanupTick() {
     }
     await authTokensCleanupTick();
     await formSessionsCleanupTick();
+    await accountPurgeTick();
   } catch (err) {
     console.error('[cleanup] Unexpected error:', err);
     logError('scheduler', 'DAILY_CLEANUP_ERROR', err);
@@ -994,6 +995,21 @@ async function authTokensCleanupTick() {
   } catch (err) {
     console.error('[cleanup] auth tokens cleanup failed:', err);
     logError('scheduler', 'AUTH_TOKENS_CLEANUP_ERROR', err);
+  }
+}
+
+// Cuentas dadas de baja hace más de 30 días: se borran sus registros (CTA-12).
+// Gateado por ACCOUNT_PURGE_ENABLED; apagado solo loguea cuántas esperan.
+async function accountPurgeTick() {
+  try {
+    const { purgeDeletedAccounts } = await import('../domain/auth/account-purge.service.js');
+    const r = await purgeDeletedAccounts();
+    if (r.purged + r.skipped + r.failed > 0) {
+      console.log(`[cleanup] purga de cuentas: ${r.purged} purgadas, ${r.skipped} salteadas, ${r.failed} fallidas`);
+    }
+  } catch (err) {
+    console.error('[cleanup] account purge failed:', err);
+    logError('scheduler', 'ACCOUNT_PURGE_ERROR', err);
   }
 }
 
