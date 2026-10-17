@@ -44,7 +44,7 @@ function num(v: unknown): number | null {
 }
 import { validateStageCode } from './stage-code-validator.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult, DomainEventRow } from '../../types/index.js';
-import type { PendingActivity } from '../../middleware/pending-activities.js';
+import { PENDING_ALL_PLOTS_ID, type PendingActivity } from '../../middleware/pending-activities.js';
 import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
 
 // --- AI intent → DB event_type normalization ---
@@ -2540,6 +2540,52 @@ export class AgronomyHandler {
             };
           }
           // 0 harvests today → fall through to ask_user (existing behavior)
+        }
+
+        // Rinde sin lote después de cosechar hoy ("Rindió 500 tn" tras "Coseché
+        // los tres lotes", justo lo que invita el "¿Ya sabés cuánto rindió?"):
+        // se pregunta si es de ESAS cosechas, con [Repartir en los N] que lo
+        // reparte por superficie (answerPendingWithSeveralPlots). Antes se
+        // preguntaba "¿En qué lote?" con todos los lotes del usuario y "en
+        // todos los del campo 2" no se podía repartir (prod 14 oct 2026).
+        const hasYield = Number(cmd.yieldKg) > 0 || Number(cmd.yieldKgPerHa) > 0;
+        if (plotResult.type === 'ask_user' && !hasLoads && hasYield && !cmd.plotName) {
+          const today = await this.repo.findHarvestsToday(userId);
+          const fieldName = cmd.fieldName as string | null;
+          const harvested = fieldName ? today.filter(h => compactEntityName(h.field_name) === compactEntityName(fieldName)) : today;
+          if (harvested.length >= 1) {
+            const yieldLabel = Number(cmd.yieldKg) > 0
+              ? `${(Number(cmd.yieldKg) / 1000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} tn`
+              : `${(Number(cmd.yieldKgPerHa) / 100).toLocaleString('es-AR', { maximumFractionDigits: 1 })} qq/ha`;
+            const names = harvested.map(h => `*${h.plot_name}*`).join(', ').replace(/, ([^,]*)$/, ' y $1');
+            const several = harvested.length >= 2;
+            const ask = several
+              ? `📊 Hoy cosechaste ${names}. ¿Las ${yieldLabel} son de todos? Si es así, ${Number(cmd.yieldKg) > 0 ? 'las reparto según la superficie de cada lote' : 'les pongo ese rinde a cada uno'}; si no, decime de qué lote.`
+              : `📊 ¿Las ${yieldLabel} son de la cosecha de hoy en ${names}?`;
+            const plotButtons = harvested.slice(0, several ? 2 : 1).map(h => ({
+              id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, plotName: h.plot_name, fieldName: h.field_name }))}`,
+              title: several ? String(h.plot_name).slice(0, 20) : 'Sí',
+            }));
+            console.log(`[INTERCEPT] harvest_crop rinde sin lote: ${harvested.length} cosecha(s) de hoy (${harvested.map(h => h.plot_name).join(', ')}) → pregunto si es de esas`);
+            return {
+              messages: [],
+              interactive: {
+                type: 'buttons' as const,
+                body: ask,
+                buttons: several
+                  ? [{ id: PENDING_ALL_PLOTS_ID, title: `Repartir en los ${harvested.length}`.slice(0, 20) }, ...plotButtons]
+                  : [...plotButtons, { id: 'cancel_action', title: 'No' }],
+              },
+              sideEffects: {
+                setPendingActivity: {
+                  command: 'harvest_crop',
+                  data: { ...cmd, __candidatePlots: harvested.map(h => ({ id: h.plot_id, name: h.plot_name })) },
+                  missing: ['plot'],
+                  askPrompt: ask,
+                },
+              },
+            };
+          }
         }
 
         if (plotResult.type === 'no_plots') {

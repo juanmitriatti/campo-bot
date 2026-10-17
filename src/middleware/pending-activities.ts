@@ -1,3 +1,10 @@
+/**
+ * Botón [Repartir en los N] de una pregunta de lote con candidatos
+ * (`data.__candidatePlots`): equivale a contestar "todos". Lo atiende
+ * handleInteractiveReply en message-pipeline.
+ */
+export const PENDING_ALL_PLOTS_ID = 'pending_all_plots';
+
 export interface PendingActivity {
   command: string;               // 'log_spraying' | 'log_fertilization' | ... | 'sow_crop' | 'harvest_crop'
   data: Record<string, unknown>; // Full cmd object from handler (already-filled slots)

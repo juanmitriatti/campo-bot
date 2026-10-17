@@ -40,7 +40,7 @@ import { extractFieldRestatement } from '../middleware/flows/field-step-helpers.
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
 import { PendingTransactionStore, resolveReplacedPending, isCompletePending } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
-import { PendingActivityStore } from '../middleware/pending-activities.js';
+import { PendingActivityStore, PENDING_ALL_PLOTS_ID } from '../middleware/pending-activities.js';
 import { TypedPendingStore, clearAllTypedStores } from '../middleware/typed-pending-store.js';
 import { compactEntityName, findEquivalentName } from '../utils/entity-matcher.js';
 import { isOneShotCallback, consumeOnce, repeatedTapMessage } from '../middleware/one-shot-callbacks.js';
@@ -1702,7 +1702,7 @@ ${ask}` }];
   // --- Handle compound actions from Agent (multiple tool calls) ---
   let compoundResults = (parseResult as any)._compoundResults as ParseResult[] | undefined;
   const expandedAll = await expandAllPlots(compoundResults && compoundResults.length > 1 ? compoundResults : [parseResult], userId);
-  if (expandedAll) compoundResults = expandedAll;
+  if (expandedAll) compoundResults = expandedAll.results;
   const truncatedFlag = (parseResult as any)._truncated === true;
   if (compoundResults && compoundResults.length > 1) {
     const executor = new CompoundExecutor(domainRouter, financialHandler);
@@ -1719,6 +1719,8 @@ ${ask}` }];
         result.messages.push('⚠️ El mensaje era largo y se cortó. Si te quedaron acciones sin registrar, repetilas en un mensaje aparte.');
       }
       const items = await compoundResultItems(result, userId, phone);
+      // Cómo se repartió un rinde total entre los lotes (expandAllPlots).
+      for (const note of [...(expandedAll?.notes ?? [])].reverse()) items.unshift({ type: 'text', text: note });
       // Observability: when a compound ends with ONLY an interactive (buttons/list)
       // and no text messages, fall back to the interactive body so the row isn't
       // logged with an empty response_text — otherwise it's indistinguishable from
@@ -2152,74 +2154,151 @@ const MULTI_PLOT_COMMANDS = new Set(['sow_crop', 'harvest_crop', 'log_spraying',
 /** Tools con `all_plots` ("todo el campo 2"): las reparte expandAllPlots. */
 const ALL_PLOTS_COMMANDS = new Set(['sow_crop', 'harvest_crop']);
 /**
- * Datos que son un TOTAL del registro, no de cada lote: repartir "sacamos 300 tn"
- * o "sembré 100 ha" en cada lote los multiplicaría. Con alguno de estos, una
- * respuesta colectiva no se reparte (sigue el camino normal).
+ * Datos que son un TOTAL del registro y no se pueden partir por lote: los
+ * camiones son de un lote cada uno, y "sembré 100 ha" en varios lotes no dice
+ * cuántas en cada uno. Con alguno de estos no se reparte (se pregunta el lote).
+ * El rinde total SÍ se reparte, por superficie (splitYieldByArea).
  */
-const WHOLE_RECORD_KEYS = ['loads', 'yield_kg', 'yieldKg', 'hectares', 'quantity_kg'];
+const WHOLE_RECORD_KEYS = ['loads', 'hectares', 'quantity_kg'];
+
+type PlotRef = { id: number; name: string; field_name: string };
+
+function wholeRecordKey(data: Record<string, unknown>): string | undefined {
+  return WHOLE_RECORD_KEYS.find((k) => {
+    const v = data[k];
+    return Array.isArray(v) ? v.length > 0 : v != null && v !== '' && Number(v) !== 0;
+  });
+}
+
+const fmtTn = (kg: number) => (kg / 1000).toLocaleString('es-AR', { maximumFractionDigits: 1 });
 
 /**
- * "¿En qué lote?" contestado con VARIOS lotes — "todos", "los tres", "todo el
- * campo", "Lote Uno, lote dos y lote tres" — en una actividad agro: una acción
- * por lote por el camino del compuesto (todo-o-nada, invariante 7). Devuelve
- * null si la respuesta no es eso o es ambigua (sin campo y con varios campos,
- * "los tres" en un campo de cuatro lotes): sigue el camino normal.
- * Prod 12 oct 2026: "En todos" y "En los tres lotes" se buscaron como lotes.
+ * Un rinde TOTAL ("rindió 500 tn") de una cosecha de varios lotes se reparte
+ * por superficie: la sembrada de la campaña si fue parcial, si no la del lote.
+ * El último lote se lleva el redondeo, así la suma da exacta. Si a algún lote
+ * le falta la superficie no se reparte (no se inventa una proporción).
+ * Prod 14 oct 2026: tras cosechar 3 lotes, "Rindo 500 tn" + "en todos los del
+ * campo 2" quedaba en loop.
  */
+async function splitYieldByArea(plots: PlotRef[], totalKg: number): Promise<{ kg: Map<number, number>; note: string } | { missingArea: string[] }> {
+  const { rows } = await pool.query(
+    `SELECT p.id, COALESCE(pc.sowed_hectares, p.area_hectares)::float AS ha
+       FROM plots p
+       LEFT JOIN LATERAL (
+         SELECT sowed_hectares FROM plot_crops WHERE plot_id = p.id
+          ORDER BY start_date DESC NULLS LAST, id DESC LIMIT 1
+       ) pc ON true
+      WHERE p.id = ANY($1)`,
+    [plots.map((p) => p.id)],
+  );
+  const ha = new Map<number, number>(rows.map((r: { id: number; ha: number | null }) => [Number(r.id), Number(r.ha) || 0]));
+  const missingArea = plots.filter((p) => !((ha.get(p.id) ?? 0) > 0)).map((p) => p.name);
+  if (missingArea.length > 0) return { missingArea };
+  const totalHa = plots.reduce((s, p) => s + ha.get(p.id)!, 0);
+  const kg = new Map<number, number>();
+  let assigned = 0;
+  plots.forEach((p, i) => {
+    const share = i === plots.length - 1 ? totalKg - assigned : Math.round(totalKg * ha.get(p.id)! / totalHa);
+    assigned += share;
+    kg.set(p.id, share);
+  });
+  const lines = plots.map((p) => `• ${p.name}: ${fmtTn(kg.get(p.id)!)} tn (${ha.get(p.id)!.toLocaleString('es-AR')} ha)`).join('\n');
+  return { kg, note: `📊 Repartí las *${fmtTn(totalKg)} tn* entre los ${plots.length} lotes según su superficie:\n${lines}` };
+}
+
+/**
+ * Una acción por lote a partir de los datos comunes. Con rinde total, cada lote
+ * lleva su parte; el rinde por hectárea vale igual para todos. Devuelve la nota
+ * del reparto o los lotes sin superficie.
+ */
+async function perPlotResults(
+  command: string,
+  base: Record<string, unknown>,
+  plots: PlotRef[],
+): Promise<{ results: ParseResult[]; note: string | null } | { missingArea: string[] }> {
+  const totalKg = Number(base.yieldKg);
+  let split: { kg: Map<number, number>; note: string } | null = null;
+  if (command === 'harvest_crop' && totalKg > 0) {
+    const s = await splitYieldByArea(plots, totalKg);
+    if ('missingArea' in s) return s;
+    split = s;
+  }
+  const results = plots.map((p) => {
+    const data: Record<string, unknown> = { ...base, command, plot: p.name, plotName: p.name, field: p.field_name, fieldName: p.field_name };
+    if (split) { data.yieldKg = split.kg.get(p.id); delete data.quantity; delete data.unit; }
+    return {
+      intent: { type: 'command', data: data as unknown as ParsedCommand },
+      confidence: 1, aiUsed: false, source: 'regex', missingFields: [],
+    } as ParseResult;
+  });
+  return { results, note: split?.note ?? null };
+}
+
 /**
  * sow_crop / harvest_crop con `all_plots` (el agente entendió "todo el campo 2",
  * "todos los lotes", "en los tres"): una acción por lote del campo, por el
  * camino del compuesto. La decisión es del agente (semántica, cualquier forma
  * de decirlo); acá solo se reparte. No se reparte —y el handler pregunta el
- * lote como siempre— sin campo claro, con un lote ya nombrado o con un total
- * del registro (WHOLE_RECORD_KEYS). Devuelve null si no hubo nada que repartir.
+ * lote como siempre— sin campo claro, con un lote ya nombrado, con un total que
+ * no se parte (WHOLE_RECORD_KEYS) o con un rinde total y lotes sin superficie.
+ * Devuelve null si no hubo nada que repartir.
  * Prod 13 oct 2026: "Coseché todo de campo 2" llegaba como harvest_crop(field)
  * sin lote y el bot preguntaba "¿En qué lote?".
  */
-async function expandAllPlots(results: ParseResult[], userId: ChannelContext['userId']): Promise<ParseResult[] | null> {
+async function expandAllPlots(results: ParseResult[], userId: ChannelContext['userId']): Promise<{ results: ParseResult[]; notes: string[] } | null> {
   const isAll = (r: ParseResult) => r.intent.type === 'command'
     && ALL_PLOTS_COMMANDS.has(String(r.intent.data.command)) && (r.intent.data as Record<string, unknown>).allPlots === true;
   if (!results.some(isAll)) return null;
-  const all = (await agronomyRepository.findAllUserPlots(userId)) as Array<{ name: string; field_name: string }>;
+  const all = (await agronomyRepository.findAllUserPlots(userId)) as PlotRef[];
   const fields = [...new Set(all.map((p) => p.field_name))];
   let changed = false;
   const out: ParseResult[] = [];
+  const notes: string[] = [];
   for (const r of results) {
     if (!isAll(r)) { out.push(r); continue; }
     const data = { ...(r.intent as { data: Record<string, unknown> }).data };
     delete data.allPlots;
+    const command = String(data.command);
     const named = (typeof data.fieldName === 'string' && data.fieldName) || (typeof data.field === 'string' && data.field) || null;
     const field = named
       ? (fields.find((f) => compactEntityName(f) === compactEntityName(named)) ?? findEquivalentName(named, fields) ?? undefined)
       : (fields.length === 1 ? fields[0] : undefined);
     const plots = field ? all.filter((p) => p.field_name === field) : [];
-    const wholeKey = WHOLE_RECORD_KEYS.find((k) => {
-      const v = data[k];
-      return Array.isArray(v) ? v.length > 0 : v != null && v !== '' && Number(v) !== 0;
-    });
-    const why = data.plotName ? `ya nombra el lote ${data.plotName}`
+    const wholeKey = wholeRecordKey(data);
+    let why: string | null = data.plotName ? `ya nombra el lote ${data.plotName}`
       : !field ? `sin campo claro (${named ?? 'no lo nombró'})`
       : plots.length < 2 ? `${field} tiene ${plots.length} lote(s)`
       : wholeKey ? `${wholeKey} es un total del registro` : null;
-    if (why) {
-      console.log(`[INTERCEPT] ${data.command} all_plots: no reparto — ${why}`);
+    const built = why ? null : await perPlotResults(command, data, plots);
+    if (built && 'missingArea' in built) why = `rinde total y sin superficie en ${built.missingArea.join(', ')}`;
+    if (why || !built || 'missingArea' in built) {
+      console.log(`[INTERCEPT] ${command} all_plots: no reparto — ${why}`);
       out.push({ ...r, intent: { ...r.intent, data } as ParseResult['intent'] });
       continue;
     }
-    console.log(`[INTERCEPT] ${data.command} all_plots: ${plots.length} lotes de ${field} (${plots.map((p) => p.name).join(', ')}) → una acción por lote`);
+    console.log(`[INTERCEPT] ${command} all_plots: ${plots.length} lotes de ${field} (${plots.map((p) => p.name).join(', ')}) → una acción por lote${built.note ? ' (rinde repartido por superficie)' : ''}`);
     changed = true;
-    for (const p of plots) {
-      out.push({ ...r, intent: { type: 'command', data: { ...data, plot: p.name, plotName: p.name, field, fieldName: field } as unknown as ParsedCommand } });
-    }
+    out.push(...built.results.map((b) => ({ ...r, intent: b.intent })));
+    if (built.note) notes.push(built.note);
   }
   if (!changed) {
     // Sin reparto: el flag se saca igual para que el handler no lo vea.
     for (let i = 0; i < results.length; i++) if (isAll(results[i])) results[i].intent = out[i].intent;
     return null;
   }
-  return out;
+  return { results: out, notes };
 }
 
+/**
+ * "¿En qué lote?" contestado con VARIOS lotes — "todos", "los tres", "todo el
+ * campo", "Lote Uno, lote dos y lote tres" — en una actividad agro: una acción
+ * por lote por el camino del compuesto (todo-o-nada, invariante 7). Si la
+ * pregunta trae candidatos (`__candidatePlots`: "hoy cosechaste El Dos, El Tres
+ * y El Uno"), "todos" son esos. Devuelve null si la respuesta no es eso o es
+ * ambigua (sin campo y con varios campos, "los tres" en un campo de cuatro
+ * lotes): sigue el camino normal.
+ * Prod 12 oct 2026: "En todos" y "En los tres lotes" se buscaron como lotes.
+ */
 async function answerPendingWithSeveralPlots(
   text: string,
   ctx: ChannelContext,
@@ -2230,28 +2309,24 @@ async function answerPendingWithSeveralPlots(
   if (!missing.includes('plot') || missing.some((s) => s !== 'plot' && s !== 'field')) return null;
   const data = (pendingAct.data ?? {}) as Record<string, unknown>;
   const { collectivePlotAnswer } = await import('../utils/lexicon.js');
-  const { resolvePlotList, compactEntityName, mentionsEntityName } = await import('../utils/entity-matcher.js');
+  const { resolvePlotList, mentionsEntityName } = await import('../utils/entity-matcher.js');
   // Solo respuestas peladas ("todos", "los tres", una lista de lotes). Una
   // frase con verbo ("Todos los lotes coseché") la interpreta el agente.
   const collective = collectivePlotAnswer(text);
-  const all = (await agronomyRepository.findAllUserPlots(ctx.userId)) as Array<{ name: string; field_name: string }>;
+  const all = (await agronomyRepository.findAllUserPlots(ctx.userId)) as PlotRef[];
   // El campo que nombra la respuesta ("todos los del campo 2") manda sobre el del pending.
   const fieldNames = [...new Set(all.map((p) => p.field_name))];
   const textFields = fieldNames.filter((f) => mentionsEntityName(text, f, 'campo'));
   const fieldName = (textFields.length === 1 ? textFields[0] : null)
     || (typeof data.fieldName === 'string' && data.fieldName) || (typeof data.field === 'string' && data.field) || null;
-  const wholeKey = WHOLE_RECORD_KEYS.find((k) => {
-    const v = data[k];
-    return Array.isArray(v) ? v.length > 0 : v != null && v !== '' && Number(v) !== 0;
-  });
-  if (wholeKey && (collective != null || resolvePlotList(text, all.map((p) => p.name)))) {
-    console.log(`[INTERCEPT] pending ${pendingAct.command}: "${text.slice(0, 40)}" nombra varios lotes pero ${wholeKey} es un total — no lo reparto`);
-    return null;
-  }
   const inField = fieldName ? all.filter((p) => compactEntityName(p.field_name) === compactEntityName(fieldName)) : [];
-  let chosen: Array<{ name: string; field_name: string }> | null = null;
+  const candidates = Array.isArray(data.__candidatePlots)
+    ? all.filter((p) => (data.__candidatePlots as Array<{ id: number }>).some((c) => Number(c.id) === p.id))
+    : [];
+  let chosen: PlotRef[] | null = null;
   if (collective != null) {
-    const scope = fieldName ? inField : (new Set(all.map((p) => p.field_name)).size === 1 ? all : []);
+    const scope = candidates.length >= 2 && (!fieldName || candidates.every((p) => inField.includes(p))) ? candidates
+      : fieldName ? inField : (new Set(all.map((p) => p.field_name)).size === 1 ? all : []);
     if (scope.length < 2) return null;
     if (collective !== 'all' && collective !== scope.length) {
       console.log(`[INTERCEPT] pending ${pendingAct.command}: "${text.slice(0, 40)}" nombra ${collective} lotes y ${fieldName ?? 'el campo'} tiene ${scope.length} — no adivino`);
@@ -2259,21 +2334,29 @@ async function answerPendingWithSeveralPlots(
     }
     chosen = scope;
   } else {
-    const pool = inField.length > 0 ? inField : all;
+    const pool = candidates.length >= 2 ? candidates : inField.length > 0 ? inField : all;
     const names = resolvePlotList(text, pool.map((p) => p.name));
     if (!names) return null;
     chosen = names.map((n) => pool.find((p) => p.name === n)!);
   }
-  console.log(`[INTERCEPT] pending ${pendingAct.command}: "${text.slice(0, 60)}" = ${chosen.length} lotes (${chosen.map((p) => p.name).join(', ')}) → una acción por lote`);
-  pendingActStore.clear(ctx.phone);
+  const wholeKey = wholeRecordKey(data);
   const base = Object.fromEntries(Object.entries(data).filter(([k]) => !k.startsWith('_')));
-  const results: ParseResult[] = chosen.map((p) => ({
-    intent: { type: 'command', data: { ...base, command: pendingAct.command, plot: p.name, plotName: p.name, field: p.field_name, fieldName: p.field_name } as ParsedCommand },
-    confidence: 1, aiUsed: false, source: 'regex', missingFields: [],
-  } as ParseResult));
+  const built = wholeKey ? null : await perPlotResults(pendingAct.command, base, chosen);
+  if (!built || 'missingArea' in built) {
+    // Respuesta entendida pero no repartible: se explica y la pregunta sigue
+    // abierta (no se re-pregunta como si "todos" fuera un lote inexistente).
+    const reason = !built
+      ? `🤔 No puedo repartir ${wholeKey === 'loads' ? 'los camiones' : 'ese total'} entre ${chosen.length} lotes: decime en cuál fue.`
+      : `🤔 Para repartir el rinde por superficie me falta la superficie de ${built.missingArea.map((n) => `*${n}*`).join(', ')}. Decime el rinde de cada lote, o cargá la superficie ("${built.missingArea[0]} tiene 50 ha").`;
+    console.log(`[INTERCEPT] pending ${pendingAct.command}: "${text.slice(0, 40)}" = ${chosen.length} lotes pero no reparto (${wholeKey ?? 'sin superficie'})`);
+    return [{ type: 'text', text: reason }];
+  }
+  console.log(`[INTERCEPT] pending ${pendingAct.command}: "${text.slice(0, 60)}" = ${chosen.length} lotes (${chosen.map((p) => p.name).join(', ')}) → una acción por lote${built.note ? ' (rinde repartido por superficie)' : ''}`);
+  pendingActStore.clear(ctx.phone);
   const executor = new CompoundExecutor(domainRouter, financialHandler);
-  const result = await executor.execute(results, ctx.userId, ctx.user, ctx.settings, text);
-  const items = result ? await compoundResultItems(result, ctx.userId, ctx.phone) : [{ type: 'text' as const, text: 'No pude registrarlo en esos lotes. Probá de nuevo.' }];
+  const result = await executor.execute(built.results, ctx.userId, ctx.user, ctx.settings, text);
+  const items: BotResponseItem[] = result ? await compoundResultItems(result, ctx.userId, ctx.phone) : [{ type: 'text', text: 'No pude registrarlo en esos lotes. Probá de nuevo.' }];
+  if (result && built.note) items.unshift({ type: 'text', text: built.note });
   await carryQueueForward(ctx, pendingAct.nextInQueue, items, 'respuesta con varios lotes');
   return items;
 }
@@ -3087,6 +3170,17 @@ async function handleInteractiveReplyInner(
     }
     pendingCampaignCloseStore.delete(phone);
     return [{ type: 'text', text: '👌 La campaña sigue abierta.' }];
+  }
+
+  // [Repartir en los N] de un "¿De qué lote es?" con candidatos: equivale a
+  // contestar "todos" a la pregunta abierta. Sin pregunta abierta (doble tap,
+  // teclado viejo) no hace nada y lo dice.
+  if (callbackId === PENDING_ALL_PLOTS_ID) {
+    const open = pendingActStore.get(phone);
+    const answered = open ? await answerPendingWithSeveralPlots('todos', ctx, open) : null;
+    if (answered) return answered;
+    console.log(`[INTERCEPT] ${PENDING_ALL_PLOTS_ID} sin pregunta de lote abierta (pending=${open?.command ?? 'ninguno'})`);
+    return [{ type: 'text', text: 'Eso ya no está pendiente. Si te faltó registrar algo, decímelo de nuevo.' }];
   }
 
   // --- Generic interactive routing ---

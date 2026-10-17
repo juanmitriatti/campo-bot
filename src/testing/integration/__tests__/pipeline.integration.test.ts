@@ -1518,6 +1518,66 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await harvested()).toEqual(['El Dos', 'El Tres', 'El Uno']);
     });
 
+    // Prod 14 oct 2026: tras "Coseche los tres lotes", "Rindo 500 tn" preguntó
+    // el lote con TODOS los lotes del usuario y "En todos los del campo 2" no
+    // se podía repartir (era un total) → loop.
+    const yields = async () => (await h.q(
+      `SELECT p.name, pc.yield_kg::float AS kg FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id JOIN fields f ON f.id = p.field_id
+       WHERE f.user_id = $1 AND pc.harvested_at IS NOT NULL ORDER BY p.name`, [h.userId])).map((r) => `${r.name}:${r.kg ?? '-'}`);
+    const harvestEvents = async () => Number((await h.q(
+      `SELECT COUNT(*)::int AS n FROM domain_events WHERE user_id = $1 AND event_type = 'harvest' AND deleted_at IS NULL`, [h.userId]))[0].n);
+    const harvestCampo2 = async () => {
+      await sowCampo2();
+      await h.q(`UPDATE plots SET area_hectares = 20 WHERE name = 'El Uno' AND field_id IN (SELECT id FROM fields WHERE user_id = $1)`, [h.userId]);
+      h.fakeAgent.enqueueTool('harvest_crop', { field: 'campo 2', all_plots: true });
+      await h.send('Coseche los tres lotes del campo 2');
+      expect(await harvested()).toEqual(['El Dos', 'El Tres', 'El Uno']);
+    };
+
+    it('"Rindió 500 tn" después de cosechar 3 lotes pregunta si es de esas y "todos" lo reparte por superficie', async () => {
+      await harvestCampo2();
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', yield_kg: 500000 });
+      const ask = h.allText(await h.send('Rindo 500 tn'));
+      expect(ask).toMatch(/Hoy cosechaste/);
+      expect(ask).not.toMatch(/La Esperanza|Los Teros/);
+      const calls = h.fakeAgent.calls.length;
+      const r = h.allText(await h.send('En todos los del campo 2'));
+      expect(h.fakeAgent.calls.length).toBe(calls);
+      expect(r).toMatch(/Repartí las \*500 tn\*/);
+      // El Uno tiene 20 ha y los otros 10: 250 / 125 / 125.
+      expect(await yields()).toEqual(['El Dos:125000', 'El Tres:125000', 'El Uno:250000']);
+      expect(await harvestEvents()).toBe(3);
+    });
+
+    it('[Repartir en los 3] hace lo mismo, y un segundo toque no repite', async () => {
+      await harvestCampo2();
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', yield_kg: 500000 });
+      await h.send('Rindo 500 tn');
+      await h.tap('pending_all_plots');
+      expect(await yields()).toEqual(['El Dos:125000', 'El Tres:125000', 'El Uno:250000']);
+      expect(h.allText(await h.tap('pending_all_plots'))).toMatch(/ya no está pendiente/);
+      expect(await yields()).toEqual(['El Dos:125000', 'El Tres:125000', 'El Uno:250000']);
+    });
+
+    it('all_plots con rinde total en el mismo mensaje lo reparte por superficie', async () => {
+      await sowCampo2();
+      h.fakeAgent.enqueueTool('harvest_crop', { field: 'campo 2', all_plots: true, yield_kg: 300000 });
+      const r = h.allText(await h.send('coseché todo el campo 2, rindió 300 tn'));
+      expect(r).toMatch(/Repartí las \*300 tn\*/);
+      expect(await yields()).toEqual(['El Dos:100000', 'El Tres:100000', 'El Uno:100000']);
+    });
+
+    it('sin superficie en un lote no inventa la proporción: lo explica', async () => {
+      await harvestCampo2();
+      await h.q(`UPDATE plots SET area_hectares = NULL WHERE name = 'El Tres' AND field_id IN (SELECT id FROM fields WHERE user_id = $1)`, [h.userId]);
+      await h.q(`UPDATE plot_crops SET sowed_hectares = NULL WHERE plot_id IN (SELECT p.id FROM plots p JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1 AND p.name = 'El Tres')`, [h.userId]);
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', yield_kg: 500000 });
+      await h.send('Rindo 500 tn');
+      const r = h.allText(await h.send('todos'));
+      expect(r).toMatch(/me falta la superficie de \*El Tres\*/);
+      expect(await yields()).toEqual(['El Dos:-', 'El Tres:-', 'El Uno:-']);
+    });
+
     it('all_plots sin ninguna palabra de totalidad ("Coseché en el campo 1") se descarta y pregunta el lote', async () => {
       await sowCampo2();
       h.fakeAgent.enqueueTool('harvest_crop', { field: 'campo 2', all_plots: true });
