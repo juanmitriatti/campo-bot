@@ -16,6 +16,7 @@ import {
 import { PATHS } from '../paths';
 import { useBrand } from '../hooks/useBrand';
 import BotContactLink from './BotContactLink';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface VerificationStatus {
   whatsapp_verified: boolean;
@@ -158,9 +159,12 @@ export default function ChannelLinking() {
   };
 
   // ---------- WhatsApp ----------
-  const startWhatsApp = async () => {
+  // Sin número (el default): el servidor da un código que vincula el WhatsApp
+  // desde el que se mande. Si no hay número de bot configurado contesta
+  // PHONE_REQUIRED y se pide el número (camino del código saliente).
+  const startWhatsApp = async (withPhone: boolean) => {
     setWaError(null);
-    if (!waPhone.trim()) {
+    if (withPhone && !waPhone.trim()) {
       setWaError('Ingresá tu número de WhatsApp.');
       return;
     }
@@ -168,7 +172,7 @@ export default function ChannelLinking() {
     try {
       const r = await apiRequest<StartWhatsAppResponse>(
         '/verify/whatsapp/start',
-        { method: 'POST', body: { phone: waPhone.trim() } },
+        { method: 'POST', body: withPhone ? { phone: waPhone.trim() } : {} },
       );
       setWaExpiresAt(r.expires_at);
       if (r.mode === 'inbound' && r.wa_link && r.wa_text && r.code) {
@@ -179,6 +183,10 @@ export default function ChannelLinking() {
         setWaStep('enter-code');
       }
     } catch (err) {
+      if (!withPhone && err instanceof ApiError && err.code === 'PHONE_REQUIRED') {
+        setWaStep('enter-phone');
+        return;
+      }
       setWaError(err instanceof ApiError ? err.message : 'No pude iniciar la verificación.');
     } finally {
       setWaBusy(false);
@@ -647,10 +655,11 @@ export default function ChannelLinking() {
 
         {!status?.whatsapp_verified && waStep === 'idle' && (
           <button
-            onClick={() => setWaStep('enter-phone')}
-            className="mt-4 px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700"
+            onClick={() => startWhatsApp(false)}
+            disabled={waBusy}
+            className="mt-4 px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50"
           >
-            Vincular WhatsApp
+            {waBusy ? 'Generando…' : 'Vincular WhatsApp'}
           </button>
         )}
 
@@ -673,7 +682,7 @@ export default function ChannelLinking() {
             {waError && <p className="text-xs text-red-600">{waError}</p>}
             <div className="flex gap-2">
               <button
-                onClick={startWhatsApp}
+                onClick={() => startWhatsApp(true)}
                 disabled={waBusy}
                 className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50"
               >
@@ -733,7 +742,10 @@ export default function ChannelLinking() {
         {waStep === 'send-to-bot' && waInbound && (
           <div className="mt-4 space-y-3">
             <p className="text-sm text-gray-700 dark:text-gray-200">
-              Mandale este mensaje al bot <span className="font-semibold">desde el WhatsApp {waPhone.trim()}</span>:
+              Mandale este mensaje al bot{' '}
+              {waPhone.trim()
+                ? <span className="font-semibold">desde el WhatsApp {waPhone.trim()}</span>
+                : <>desde el WhatsApp que querés vincular</>}:
             </p>
             <p className="inline-block px-3 py-2 rounded-md bg-gray-100 dark:bg-gray-700 font-mono text-lg tracking-wide text-gray-900 dark:text-gray-100">
               {waInbound.text}
@@ -749,10 +761,13 @@ export default function ChannelLinking() {
               </a>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-300">
-              Se abre el chat con el bot con el mensaje ya escrito: solo tocá enviar. Si estás en la compu,
-              escribile <span className="font-mono">{waInbound.text}</span> desde el celular al
-              {' '}<span className="font-mono">+{new URL(waInbound.link).pathname.replace(/\D/g, '')}</span>.
+              Se abre el chat con el bot con el mensaje ya escrito: solo tocá enviar.
             </p>
+            <div className="inline-block p-3 bg-white rounded-md border border-gray-200">
+              {/* Desde la compu: se escanea con el celular y abre el chat con el mensaje escrito. */}
+              <QRCodeSVG value={waInbound.link} size={160} marginSize={1} />
+              <p className="mt-1 text-[11px] text-gray-500 text-center">¿Estás en la compu? Escaneálo con el celular</p>
+            </div>
             <p className="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5">
               <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
               Esperando tu mensaje… esta pantalla se actualiza sola.
@@ -761,10 +776,10 @@ export default function ChannelLinking() {
               )}
             </p>
             <button
-              onClick={() => { setWaStep('enter-phone'); setWaInbound(null); setWaError(null); }}
+              onClick={() => { setWaStep('idle'); setWaInbound(null); setWaError(null); }}
               className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
             >
-              Cambiar número
+              Cancelar
             </button>
           </div>
         )}

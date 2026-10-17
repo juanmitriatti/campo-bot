@@ -65,6 +65,25 @@ function generateOtp(): string {
   return n.toString().padStart(6, '0');
 }
 
+/**
+ * Código del modo SIN número (WhatsApp): lo canjea el número que lo mande,
+ * así que no puede ser adivinable como uno de 6 dígitos (cualquiera probaría
+ * "verificar 000000…" y colgaría su número de una cuenta ajena). 10
+ * caracteres sin ambiguos (0/O, 1/I/L) = ~8·10^14 combinaciones. Nadie lo
+ * tipea: lo trae el link wa.me o el QR.
+ */
+const WA_TOKEN_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const WA_TOKEN_LENGTH = 10;
+function generateWaToken(): string {
+  // Letras Y dígitos mezclados: así "verificar herbicidas" (10 letras) nunca es
+  // un código (WHATSAPP_VERIFY_RE exige las dos cosas).
+  for (;;) {
+    let out = '';
+    for (let i = 0; i < WA_TOKEN_LENGTH; i++) out += WA_TOKEN_ALPHABET[crypto.randomInt(0, WA_TOKEN_ALPHABET.length)];
+    if (/\d/.test(out) && /[A-Z]/.test(out)) return out;
+  }
+}
+
 function generateLinkToken(): string {
   return crypto.randomBytes(24).toString('base64url');
 }
@@ -146,8 +165,14 @@ export class ChannelVerificationService {
   /**
    * Start WhatsApp verification: generate OTP, persist row, send via WhatsApp API.
    */
-  async startWhatsApp(userId: UserId, rawPhone: string): Promise<StartWhatsAppResult> {
-    if (!rawPhone || rawPhone.trim().length < 6) {
+  async startWhatsApp(userId: UserId, rawPhone?: string | null): Promise<StartWhatsAppResult> {
+    // Sin número: se vincula el WhatsApp desde el que llegue el código (como el
+    // link de Telegram). Requiere número de bot; sin él, el camino saliente
+    // necesita saber a quién mandarle el código.
+    if (!rawPhone || !rawPhone.trim()) {
+      return this.startWhatsAppWithoutPhone(userId);
+    }
+    if (rawPhone.trim().length < 6) {
       throw new VerificationError(400, 'INVALID_PHONE', 'El número de teléfono es obligatorio.');
     }
     const phone = normalizePhone(rawPhone);
@@ -229,6 +254,31 @@ export class ChannelVerificationService {
     };
   }
 
+  private async startWhatsAppWithoutPhone(userId: UserId): Promise<StartWhatsAppResult> {
+    const code = generateWaToken();
+    const waText = whatsappVerifyText(code);
+    const waLink = await buildBotWaLink(waText);
+    if (!waLink) {
+      throw new VerificationError(400, 'PHONE_REQUIRED', 'Ingresá tu número de WhatsApp para recibir el código.');
+    }
+    const otpTtl = (await getSettingNumber('OTP_TTL_MINUTES')) ?? DEFAULT_OTP_TTL_MIN;
+    const ttlMin = Math.max(otpTtl, MIN_INBOUND_TTL_MIN);
+    const expiresAt = new Date(Date.now() + ttlMin * 60 * 1000);
+    await pool.query(
+      `UPDATE channel_verifications
+       SET verified_at = NOW(), attempts = attempts + 100
+       WHERE user_id = $1 AND channel = 'whatsapp' AND verified_at IS NULL`,
+      [userId]
+    );
+    await pool.query(
+      `INSERT INTO channel_verifications (user_id, channel, code, target, expires_at, direction)
+       VALUES ($1, 'whatsapp', $2, NULL, $3, 'inbound')`,
+      [userId, code, expiresAt]
+    );
+    console.log(`[VERIFY] whatsapp inbound user=${userId}: código sin número (se vincula el que lo mande)`);
+    return { expires_at: expiresAt.toISOString(), ttl_minutes: ttlMin, mode: 'inbound', wa_link: waLink, wa_text: waText, code };
+  }
+
   /**
    * Confirm WhatsApp OTP. On success, set phone + whatsapp_verified_at on the user.
    */
@@ -289,10 +339,12 @@ export class ChannelVerificationService {
     rawFromPhone: string,
     rawCode: string,
   ): Promise<{ user_id: number; already_linked: boolean }> {
-    const code = (rawCode || '').trim();
+    const raw = (rawCode || '').trim();
+    const isToken = raw.length === WA_TOKEN_LENGTH && /^[A-Za-z0-9]+$/.test(raw) && /\d/.test(raw) && /[A-Za-z]/.test(raw);
+    const code = isToken ? raw.toUpperCase() : raw;
     const phone = normalizePhone(rawFromPhone);
-    if (!/^\d{6}$/.test(code) || !phone) {
-      throw new VerificationError(400, 'INVALID_CODE', 'El código tiene que ser de 6 dígitos.');
+    if ((!isToken && !/^\d{6}$/.test(code)) || !phone) {
+      throw new VerificationError(400, 'INVALID_CODE', 'Ese código no es válido. Pedí uno nuevo desde la web.');
     }
 
     const { rows } = await pool.query(
@@ -302,7 +354,9 @@ export class ChannelVerificationService {
         ORDER BY id DESC`,
       [code],
     );
-    const row = rows.find((r) => r.target === phone);
+    // Código sin número (target NULL): vale desde cualquier WhatsApp, pero solo
+    // si es el código largo — uno de 6 dígitos siempre exige su número.
+    const row = rows.find((r) => r.target === phone) ?? (isToken ? rows.find((r) => r.target === null) : undefined);
     if (!row) {
       // El mismo mensaje mandado dos veces: el primero ya vinculó. Éxito idempotente.
       const done = await pool.query(
@@ -354,9 +408,11 @@ export class ChannelVerificationService {
     // Todo junto (CTA-7): si algo falla, el código NO queda consumido.
     await withTransaction(async () => {
       await releaseChannelFromChatAccount('phone_number', phone, userId);
+      // target queda con el número vinculado (en el modo sin número venía NULL):
+      // lo usan el canje idempotente y la regla de una prueba por número.
       await pool.query(
-        `UPDATE channel_verifications SET verified_at = NOW() WHERE id = $1`,
-        [verificationId]
+        `UPDATE channel_verifications SET verified_at = NOW(), target = $2 WHERE id = $1`,
+        [verificationId, phone]
       );
       await pool.query(
         `UPDATE users SET phone_number = $1, whatsapp_verified_at = NOW() WHERE id = $2`,

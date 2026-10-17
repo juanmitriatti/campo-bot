@@ -128,6 +128,42 @@ describe.skipIf(!dbAvailable)('WhatsApp — vinculación por mensaje entrante', 
     await expect(svc.redeemWhatsAppInbound(phone, r.code === '000000' ? '000001' : '000000')).rejects.toMatchObject({ code: 'NO_PENDING' });
   });
 
+  it('sin número: código largo que vincula el WhatsApp desde el que llega', async () => {
+    const userId = await newUser();
+    const r = await svc.startWhatsApp(userId as never, null);
+    expect(r.mode).toBe('inbound');
+    expect(r.code).toMatch(/^[A-Z2-9]{10}$/);
+    expect(r.code).toMatch(/\d/);
+    expect(WHATSAPP_VERIFY_RE.exec(r.wa_text!)?.[1]).toBe(r.code);
+    const phone = randomPhone();
+    // Tipeado en minúsculas también vale.
+    const first = await svc.redeemWhatsAppInbound(phone, r.code!.toLowerCase());
+    expect(first).toEqual({ user_id: userId, already_linked: false });
+    const status = await svc.getStatus(userId as never);
+    expect(status.whatsapp_verified).toBe(true);
+    expect(status.phone_number).toBe(phone);
+    expect(await svc.redeemWhatsAppInbound(phone, r.code!)).toEqual({ user_id: userId, already_linked: true });
+  });
+
+  it('sin número: un código de 6 dígitos adivinado no engancha un pedido sin número', async () => {
+    const userId = await newUser();
+    await svc.startWhatsApp(userId as never, null);
+    // Aunque coincidiera con algún otro pendiente, sin número solo vale el código largo.
+    await expect(svc.redeemWhatsAppInbound(randomPhone(), '123456')).rejects.toBeTruthy();
+    const { rows } = await pool.query('SELECT whatsapp_verified_at FROM users WHERE id = $1', [userId]);
+    expect(rows[0].whatsapp_verified_at).toBeNull();
+  });
+
+  it('sin número y sin número de bot: pide el número', async () => {
+    botNumber = null;
+    try {
+      const userId = await newUser();
+      await expect(svc.startWhatsApp(userId as never, null)).rejects.toMatchObject({ code: 'PHONE_REQUIRED' });
+    } finally {
+      botNumber = BOT_NUMBER;
+    }
+  });
+
   it('sin número de bot configurado sigue el camino viejo (código saliente)', async () => {
     botNumber = null;
     try {
@@ -155,5 +191,10 @@ describe('WHATSAPP_VERIFY_RE', () => {
     expect(WHATSAPP_VERIFY_RE.test('verificar el lote 123456')).toBe(false);
     expect(WHATSAPP_VERIFY_RE.test('123456')).toBe(false);
     expect(WHATSAPP_VERIFY_RE.test('verificar 12345')).toBe(false);
+    // Código largo del modo sin número: letras y dígitos mezclados.
+    expect(WHATSAPP_VERIFY_RE.exec('verificar K7MQ2XP9RT')?.[1]).toBe('K7MQ2XP9RT');
+    // Una palabra de 10 letras no es un código.
+    expect(WHATSAPP_VERIFY_RE.test('verificar herbicidas')).toBe(false);
+    expect(WHATSAPP_VERIFY_RE.test('verificar 1234567890')).toBe(false);
   });
 });

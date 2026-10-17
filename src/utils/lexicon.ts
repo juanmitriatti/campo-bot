@@ -351,7 +351,10 @@ export const INVITE_ACCEPT_RE = /^(?:unirme|unirme\s+al?\s+campo|aceptar(?:\s+in
  * 24 h de Meta). Grupo 1 = el código de 6 dígitos. Lo usa el webhook ANTES del
  * gate de canal no verificado, que es justo el estado de quien se vincula.
  */
-export const WHATSAPP_VERIFY_RE = /^(?:verificar|vincular|c[oó]digo)\s*:?\s*(\d{6})\s*\.?$/i;
+// Grupo 1: 6 dígitos (código atado a un número) o 10 caracteres con letras Y
+// dígitos (código sin número, ver generateWaToken en channel-verification
+// .service) — "verificar herbicidas" no es un código.
+export const WHATSAPP_VERIFY_RE = /^(?:verificar|vincular|c[oó]digo)\s*:?\s*(\d{6}|(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{10})\s*\.?$/i;
 
 /**
  * "borrar mi cuenta" / "darme de baja": baja de la cuenta por chat. Anclado a

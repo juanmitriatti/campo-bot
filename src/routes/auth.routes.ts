@@ -316,12 +316,9 @@ router.get('/verify/status', requireAuth, async (req: Request, res: Response) =>
 
 router.post('/verify/whatsapp/start', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { phone } = req.body as { phone?: string };
-    if (!phone) {
-      res.status(400).json({ error: 'El campo phone es obligatorio.' });
-      return;
-    }
-    const result = await verificationService.startWhatsApp(asUserId(req.auth!.userId), phone);
+    // Sin phone: código sin número (se vincula el WhatsApp que lo mande).
+    const { phone } = (req.body ?? {}) as { phone?: string };
+    const result = await verificationService.startWhatsApp(asUserId(req.auth!.userId), phone ?? null);
     res.json(result);
   } catch (err) {
     handleError(err, res);
