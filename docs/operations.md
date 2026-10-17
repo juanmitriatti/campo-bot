@@ -18,10 +18,12 @@ The smoke test relies on `/api/health` returning the running SHA. Resolution at 
 2. Fallback: `.deploy-sha` file written by CI before `railway up`. **Do NOT add `.deploy-sha` to `.gitignore`** — `railway up` respects gitignore and would exclude the file from upload.
 3. `null` otherwise
 
-Manual deploy fallback (e.g. CI bypassed):
-```bash
-railway up --detach
+Manual deploy (the usual path while CI can't fetch the landing submodule) — **with a prod backup first**, since the Hobby plan has no Railway backups:
+```powershell
+.\scripts\deploy-prod.ps1               # pg_dump prod -> dumps\, then railway up, then waits for /api/health to report the SHA
+.\scripts\deploy-prod.ps1 -BackupOnly   # just the dump
 ```
+If the dump fails or comes out unreadable, it doesn't deploy. Keeps the last 10 dumps. Restore one locally with `pg_restore -h localhost -p 5434 -U campo -d campo_bot_prod --no-owner --no-privileges -j 4 <file>`.
 
 The Dockerfile builds both the frontend (`frontend/dist/`) and the landing page (`landing/dist/`, git submodule). No separate build step needed.
 
