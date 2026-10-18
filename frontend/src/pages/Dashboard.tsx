@@ -19,6 +19,7 @@ import LivestockTab from '../components/LivestockTab';
 import DocumentsTable from '../components/DocumentsTable';
 import HarvestLoadsTable from '../components/HarvestLoadsTable';
 import ChannelLinking from '../components/ChannelLinking';
+import ChannelCards, { type VerificationStatus } from '../components/ChannelCards';
 import CategoriesTab from '../components/CategoriesTab';
 import FieldsTab from '../components/FieldsTab';
 import SharingTab from '../components/sharing/SharingTab';
@@ -84,6 +85,20 @@ export default function Dashboard() {
       setNeedsChannel(!s.whatsapp_verified && !s.telegram_verified);
       setWhatsappVerified(s.whatsapp_verified);
     } catch { /* sin señal: no mostramos el banner */ }
+  };
+
+  // La sección del Resumen sigue a la vista unos segundos después de vincular,
+  // para que se lea el "✅ ¡Listo!" de la tarjeta antes de que desaparezca.
+  const [showChannelSetup, setShowChannelSetup] = useState(false);
+  useEffect(() => {
+    if (needsChannel) { setShowChannelSetup(true); return; }
+    const t = setTimeout(() => setShowChannelSetup(false), 4000);
+    return () => clearTimeout(t);
+  }, [needsChannel]);
+
+  const handleChannelStatus = (s: VerificationStatus) => {
+    setNeedsChannel(!s.whatsapp_verified && !s.telegram_verified);
+    setWhatsappVerified(s.whatsapp_verified);
   };
 
   useEffect(() => {
@@ -175,6 +190,18 @@ export default function Dashboard() {
     switch (view) {
       case 'overview':
         return (
+          <>
+          {/* Sin ningún canal, el Resumen arranca por el paso que falta: vincular
+              acá mismo, sin mandar al usuario a buscarlo en Mi cuenta. */}
+          {showChannelSetup && (
+            <section className="mb-6">
+              <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Conectá tu WhatsApp o Telegram</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-300 mt-1 mb-4">
+                El asistente funciona por chat: vinculá al menos uno para empezar a cargar tus datos.
+              </p>
+              <ChannelCards onStatusChange={handleChannelStatus} />
+            </section>
+          )}
           <OverviewPage
             onGoToAccount={() => setView('account')}
             onRecentItemClick={handleRecentItemClick}
@@ -186,6 +213,7 @@ export default function Dashboard() {
             onGoToReminders={() => setView('reminders')}
             onOpenReviewRef={handleOpenReviewRef}
           />
+          </>
         );
       case 'analysis':
         return <DataAnalysisPage />;
@@ -326,7 +354,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {needsChannel && view !== 'account' && (
+      {needsChannel && view !== 'account' && view !== 'overview' && (
         <div className="bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-sm">
           <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
             <span>
