@@ -69,7 +69,7 @@ const SETTING_DEFINITIONS = {
   CONVERSATIONAL_FALLBACK_MAX_TOKENS: { default: '500', type: 'number', group: 'ai', label: 'Max tokens fallback conversacional', description: 'Tokens máximos para respuestas conversacionales. Default 500 evita respuestas truncadas a mitad de palabra. Si el bot suele cortarse, subir a 800.' },
   CONVERSATIONAL_FALLBACK_TIMEOUT_MS: { default: '5000', type: 'number', group: 'ai', label: 'Timeout fallback conversacional (ms)', description: 'Tiempo máximo de espera para la respuesta conversacional.' },
   CONVERSATIONAL_FALLBACK_TEMPERATURE: { default: '0.3', type: 'number', group: 'ai', label: 'Temperature fallback conversacional', description: 'Creatividad de las respuestas conversacionales. 0.0=determinista, 1.0=creativo. Recomendado: 0.2-0.4.' },
-  CONVERSATIONAL_FALLBACK_SYSTEM_PROMPT: { default: `Sos MIA, asistente de gestión agrícola por WhatsApp para productores argentinos. Respondé en español argentino (vos/tenés/podés), breve (máx 3-4 oraciones), tono amigable y práctico.
+  CONVERSATIONAL_FALLBACK_SYSTEM_PROMPT: { default: `Sos MIA, asistente de gestión agrícola por WhatsApp y Telegram para productores argentinos. Respondé en español argentino (vos/tenés/podés), breve (máx 3-4 oraciones), tono amigable y práctico.
 
 REGLAS:
 - NUNCA enumeres capacidades en lista. Si el usuario pregunta qué podés hacer / cómo funcionás / para qué servís, decile en una oración que escriba *ayuda* para ver categorías con ejemplos.
@@ -169,7 +169,7 @@ REGLAS:
   AGRO_REPORT_BRAND_NAME: { default: '', type: 'string', group: 'agro_report', label: 'Nombre de marca', description: 'Texto que aparece arriba del título cuando no hay logo cargado. Vacío = el nombre de la app (APP_NAME).' },
 
   // Mensajes del bot (customizable)
-  BOT_NAME: { default: 'MIA', type: 'string', group: 'mensajes', label: 'Nombre del bot', description: 'Nombre que usa el bot para presentarse. Aparece en saludos, ayuda y prompt del agente IA. Si cambiás esto, actualizá también el "System prompt del fallback conversacional" (sección IA) donde dice "Sos MIA".' },
+  BOT_NAME: { default: 'MIA', type: 'string', group: 'mensajes', label: 'Nombre del bot', description: 'Nombre que usa el bot para presentarse. Aparece en saludos, ayuda, prompt del agente IA y fallback conversacional (el "Sos MIA" de ese prompt se reemplaza solo).' },
   GREETING_NEW_USER_MESSAGE: { default: 'Hola{{nombre}} 👋 Soy *{{botName}}*, tu asistente de gestión agrícola.\n\nPara empezar, necesitás crear tu primer campo. Escribí algo como:\n📍 *agregar campo La Esperanza*', type: 'string', group: 'mensajes', label: 'Saludo: usuario sin campos', description: 'Mensaje cuando el usuario no tiene ningún campo creado. Variables: {{nombre}}, {{botName}}' },
   GREETING_NO_PLOTS_MESSAGE: { default: 'Hola{{nombre}} 👋 Ya tenés tu campo *{{fieldName}}*.\n\nAhora creá un lote para poder registrar gastos e ingresos. Escribí algo como:\n🌾 *agregar lote Norte en campo {{fieldName}}*', type: 'string', group: 'mensajes', label: 'Saludo: usuario sin lotes', description: 'Mensaje cuando el usuario tiene campo pero no tiene lotes. Variables: {{nombre}}, {{botName}}, {{fieldName}}' },
   GREETING_NORMAL_MESSAGE: { default: 'Hola{{nombre}} 👋 Soy *{{botName}}*, tu asistente de gestión agrícola.', type: 'string', group: 'mensajes', label: 'Saludo: usuario normal', description: 'Mensaje de saludo para usuarios con campos y lotes. Variables: {{nombre}}, {{botName}}' },

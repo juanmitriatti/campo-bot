@@ -93,6 +93,7 @@ import { extractCropFromText } from '../utils/crops.js';
 import { saveObservation, SAVE_REJECTED_DUPLICATE } from './observations.js';
 import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
 import { formatObservationResponse } from '../middleware/response-formatter.js';
+import { unknownFallbackItem } from '../middleware/unknown-fallback.js';
 import { pendingCampaignCloseStore } from '../middleware/pending-campaign-close.js';
 import {
   conversationLockStore,
@@ -479,7 +480,7 @@ export const DESTRUCTIVE_COMMANDS = new Set([
 ]);
 
 export const SAFE_INTERRUPTION_COMMANDS = new Set([
-  'list_fields', 'list_plots', 'field_info', 'help', 'menu',
+  'list_fields', 'list_plots', 'field_info', 'help', 'menu', 'support',
   'weather_full', 'financial_report', 'monthly_report', 'weekly_report', 'rainfall_report',
   'greeting', 'thanks', 'dollar',
 ]);
@@ -1711,7 +1712,11 @@ ${ask}` }];
     const { released } = await bumpConversationLock(phone);
     if (released) convResponse += `\n\n${LOCK_RELEASED_SUFFIX}`;
     conversationLogger.log(userId, phone, text, convResponse, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
-    return [{ type: 'text', text: convResponse }];
+    const convItems: BotResponseItem[] = [{ type: 'text', text: convResponse }];
+    // Salida "no entendí" (agente vacío, confirmación falsa) o lock agotado:
+    // nunca texto pelado que pide "escribí menú" — botones de derivación.
+    if ((parseResult as any)._fallbackUnknown || released) convItems.push(unknownFallbackItem(text));
+    return convItems;
   }
 
   // Llegamos acá → el turno NO fue conversacional: hubo una acción/comando real.
@@ -1832,7 +1837,9 @@ ${ask}` }];
       } catch { /* sin línea de soporte */ }
     }
     conversationLogger.log(userId, phone, text, reply, 'fallback_blocked', intent.attemptedCommand ?? null, null, null, aiUsed, Date.now() - startTime, false, 0, toolCallsData, agentMode, ctx.channel).catch(() => {});
-    return [{ type: 'text', text: reply }];
+    // Los flows y comandos triviales andan sin IA: ofrecerlos en vez de "probá
+    // de nuevo" a secas (oct 2026).
+    return [{ type: 'text', text: reply }, unknownFallbackItem(text, 'Mientras tanto, sin IA:')];
   }
 
   // --- Partial parse → slot-extractor pending ---
@@ -2057,13 +2064,15 @@ ${ask}` }];
   // --- Unknown → Conversational fallback ---
   if (intent.type === 'unknown' || confidence < unknownFallbackThreshold) {
     await financialService.saveUnparsedMessage(userId, text);
+    // Con el agente prendido, respond() devuelve el fallback determinístico
+    // (una sola voz: no hay segunda llamada a Claude). Con el agente apagado,
+    // la respuesta breve de IA. En ambos casos, botones de derivación en vez
+    // del menú entero (oct 2026).
     const fallbackResult = await conversationalFallback.respond(text, userId, settings);
-    const items: BotResponseItem[] = [{ type: 'text', text: fallbackResult.response }];
+    const items: BotResponseItem[] = [{ type: 'text', text: fallbackResult.response }, unknownFallbackItem(text)];
     if (fallbackResult.aiUsed) {
       conversationLogger.log(userId, phone, text, fallbackResult.response, 'conversational', null, null, null, true, Date.now() - startTime, false, confidence, null, null, ctx.channel).catch(() => {});
     } else {
-      const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
-      items.push(...collectResponse(menuResponse));
       conversationLogger.log(userId, phone, text, fallbackResult.response, 'unknown', null, null, null, false, Date.now() - startTime, true, confidence, null, null, ctx.channel).catch(() => {});
     }
     return items;

@@ -1999,7 +1999,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   // ========================
   {
     name: 'respond_text',
-    description: 'Responder con texto conversacional. SOLO para saludos, agradecimientos, preguntas generales sin datos del usuario. NUNCA usar si hay herramienta de registro o consulta aplicable.',
+    description: 'Responder con texto conversacional. SOLO para saludos, agradecimientos, preguntas generales sin datos del usuario, temas fuera del campo o pedidos que ninguna tool cubre (decir qué SÍ se puede). NUNCA usar si hay herramienta de registro o consulta aplicable.',
     input_schema: {
       type: 'object',
       properties: {

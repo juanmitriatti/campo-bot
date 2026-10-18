@@ -15,8 +15,10 @@ vi.mock('@anthropic-ai/sdk', () => {
 });
 
 // Mock settings
+// AGENT_ENABLED=false por default: con el agente prendido, respond() NO llama a
+// Claude (una sola voz, oct 2026) — ese caso tiene su propio test abajo.
 vi.mock('../../services/settings.service.js', () => ({
-  getSettingBool: vi.fn().mockResolvedValue(true),
+  getSettingBool: vi.fn(async (key: string) => key !== 'AGENT_ENABLED'),
   getSetting: vi.fn().mockResolvedValue(null),
   getSettingNumber: vi.fn().mockResolvedValue(null),
 }));
@@ -81,6 +83,38 @@ describe('ConversationalFallbackService', () => {
 
       expect(result.aiUsed).toBe(false);
       expect(result.response).toBe(ConversationalFallbackService.rateLimitResponse);
+    });
+
+    it('con el agente prendido NO llama a Claude: fallback determinístico (una sola voz, oct 2026)', async () => {
+      const { getSettingBool } = await import('../../services/settings.service.js');
+      (getSettingBool as ReturnType<typeof vi.fn>).mockImplementation(async () => true); // incl. AGENT_ENABLED
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const create = new Anthropic().messages.create as ReturnType<typeof vi.fn>;
+      const before = create.mock.calls.length;
+
+      const service = new ConversationalFallbackService();
+      const result = await service.respond('asdfgh qwerty', 1, mockSettings);
+
+      expect(result.aiUsed).toBe(false);
+      expect(result.rateLimited).toBe(false);
+      expect(result.response).toMatch(/No entendí del todo/);
+      expect(create.mock.calls.length).toBe(before); // cero llamadas a la API
+      (getSettingBool as ReturnType<typeof vi.fn>).mockImplementation(async (key: string) => key !== 'AGENT_ENABLED');
+    });
+
+    it('se presenta con el BOT_NAME configurado, no con "MIA" fijo', async () => {
+      const { getSetting } = await import('../../services/settings.service.js');
+      (getSetting as ReturnType<typeof vi.fn>).mockImplementation(async (key: string) => (key === 'BOT_NAME' ? 'Lola' : null));
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const create = new Anthropic().messages.create as ReturnType<typeof vi.fn>;
+
+      const service = new ConversationalFallbackService();
+      await service.respond('cuándo se cosecha el trigo?', 1, mockSettings);
+
+      const lastCall = create.mock.calls[create.mock.calls.length - 1][0] as { system: string };
+      expect(lastCall.system).toMatch(/^Sos Lola\b/);
+      expect(lastCall.system).not.toMatch(/Sos MIA/);
+      (getSetting as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     });
 
     it('returns rate limit response when daily limit reached', async () => {

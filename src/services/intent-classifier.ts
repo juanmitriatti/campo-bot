@@ -64,6 +64,8 @@ export const EXPIRED_ALLOWED_COMMANDS = new Set([
   'accept_invite',
   // Darse de baja no puede depender de estar al día con el pago.
   'delete_my_account',
+  // Pedir soporte tampoco: el que no puede pagar es el que más lo necesita.
+  'support',
 ]);
 
 // Comandos triviales de SOLO LECTURA: en medio de un pending con missing[]
@@ -71,7 +73,7 @@ export const EXPIRED_ALLOWED_COMMANDS = new Set([
 // al slot. QA prod (7 sep 2026): "mis recordatorios" durante "¿A qué hora te
 // lo recuerdo?" → "No pude usar «mis recordatorios» como la hora".
 export const READ_ONLY_TRIVIAL_COMMANDS = new Set([
-  'menu', 'help', 'dollar', 'grain_prices', 'show_plan',
+  'menu', 'help', 'support', 'dollar', 'grain_prices', 'show_plan',
   'list_fields', 'list_plots', 'field_info', 'list_reminders', 'list_livestock',
   'show_reports_menu', 'financial_report',
 ]);
@@ -82,7 +84,7 @@ const TRIVIAL_COMMANDS = new Set([
   // "unirme X" por regex, sin IA: con el agente caído o sin cuota el invitado
   // no entraba al campo (CAM-15). El regex es estricto (INVITE_ACCEPT_RE).
   'accept_invite',
-  'menu', 'help', 'dollar', 'grain_prices', 'list_reminders', 'show_plan',
+  'menu', 'help', 'support', 'dollar', 'grain_prices', 'list_reminders', 'show_plan',
   'disable_tips', 'enable_tips',
   // Baja de la cuenta: sin IA (solo el regex anclado) y siempre con botón.
   'delete_my_account',

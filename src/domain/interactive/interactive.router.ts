@@ -39,6 +39,9 @@ export const CALLBACK_MAP: Record<string, ParsedCommand> = {
   'cmd_ver_stock': { command: 'check_stock' },
   // Back to main menu
   'back_menu': { command: 'menu' },
+  // Salida de "no entendí" (unknown-fallback.ts): soporte y carga guiada
+  'cmd_soporte': { command: 'support' },
+  'cmd_formulario': { command: 'open_form' },
   // Help category sections
   'help_gastos': { command: 'help_section', helpSection: 'help_gastos' },
   'help_actividades': { command: 'help_section', helpSection: 'help_actividades' },

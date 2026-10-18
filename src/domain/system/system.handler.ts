@@ -82,6 +82,55 @@ export class SystemHandler {
         };
       }
 
+      case 'support': {
+        // "quiero hablar con una persona" / "no me entendés nada" / botón
+        // [Soporte] de la salida "no entendí" (oct 2026). Antes caía en el
+        // agente o en el fallback conversacional, que sugería escribir *menú*.
+        // Siempre: canal de soporte (si está cargado) + el mensaje anotado en
+        // parser_errors para que el equipo lo vea en /admin (filtro por reason).
+        const frustrated = cmd.frustrated === true;
+        const rawText = typeof cmd.rawText === 'string' ? cmd.rawText : null;
+        const reason = frustrated ? 'user_frustrated' : 'support_request';
+        console.log(`[SUPPORT] user=${userId} reason=${reason} raw="${(rawText ?? '').slice(0, 80)}"`);
+        if (rawText) {
+          try {
+            await pool.query(
+              `INSERT INTO parser_errors (user_id, message, normalized_message, parser_output, error_reason, confidence, resolved_intent)
+               VALUES ($1, $2, $3, $4, $5, 0, 'support')`,
+              [userId, rawText, rawText.toLowerCase(), JSON.stringify({ command: 'support', frustrated }), reason],
+            );
+          } catch (err) {
+            logError('system.handler', 'SUPPORT_LOG_FAILED', err as Error, { userId });
+          }
+        }
+        const { getSupportLine } = await import('../../services/support-contact.js');
+        const supportLine = await getSupportLine();
+        const lines: string[] = [];
+        if (frustrated) {
+          lines.push('Perdoná, no te estoy entendiendo bien. Dejé anotado tu mensaje para que el equipo lo revise.');
+        } else {
+          lines.push('Dejé anotado tu pedido para que el equipo lo vea.');
+        }
+        if (supportLine) {
+          lines.push(`${supportLine}\nEscribiles y te responde una persona.`);
+        } else {
+          lines.push('Una persona del equipo lo va a revisar.');
+        }
+        lines.push('Mientras tanto, contame con tus palabras qué querés hacer (ej: *"gasté 50 mil en gasoil"*, *"llovieron 20 mm"*) o elegí una opción:');
+        return {
+          messages: [lines.join('\n\n')],
+          interactive: {
+            type: 'buttons',
+            body: '¿Qué querés hacer?',
+            buttons: [
+              { id: 'cmd_formulario', title: 'Cargar paso a paso' },
+              { id: 'menu_ayuda', title: 'Ejemplos' },
+              { id: 'back_menu', title: 'Ver menú' },
+            ],
+          },
+        };
+      }
+
       case 'help': {
         const helpBotName = (await getSetting('BOT_NAME')) || 'MIA';
         // Direct shortcut: "ayuda gastos" / "ayuda lluvia" / etc → jump

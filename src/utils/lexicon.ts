@@ -584,3 +584,26 @@ export function isOwnStorageDestination(destinatario: string | null | undefined)
   if (!t) return false;
   return /^(al\s+|el\s+|en\s+(el\s+)?|a\s+la\s+)?(silo(\s*bolsa)?s?|silobolsas?|bolsas?|silo\s+propio|propio|galpon(\s+propio)?|planta\s+propia|campo|casa)(\s+propi[oa])?$/.test(t);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pedido de SOPORTE y FRUSTRACIÓN con el bot (oct 2026). Antes "quiero hablar
+// con una persona" o "no me entendés nada" caían en el agente o en el fallback
+// conversacional, que sugería... escribir *menú*. Es la ventana de abandono:
+// ahí hay que mostrar el canal de soporte y dejar el mensaje anotado.
+// Ambos anclados y cortos: "hablar con alguien de Cargill" NO es soporte.
+// Se matchean sobre texto normalizado (sin tildes) pero toleran tildes igual.
+// ─────────────────────────────────────────────────────────────────────────────
+export const SUPPORT_REQUEST_RE =
+  /^(?:(?:hola|che|buenas)[\s,]+)?(?:quiero|quisiera|necesito|me\s+gustar[ií]a|(?:me\s+)?pod(?:[eé]s|r[ií]as?|r[ií]an)|pueden|puedo|c[oó]mo\s+(?:hago\s+para|puedo))?\s*(?:hablar|contactar(?:me)?|comunicar(?:me)?|escribir(?:le|les)?|chatear)\s+(?:con\s+)?(?:una?\s+|el\s+|la\s+|los\s+)?(?:persona|humano|humana|alguien|operador[a]?|soporte|equipo|gente|desarrollador(?:es)?|due[ñn]o|responsable)(?:\s+(?:real|de\s+verdad|del\s+equipo|de\s+soporte|de\s+miagro|del\s+bot|que\s+me\s+ayude|humana?))?\s*[.!?]*$|^(?:(?:hola|che|buenas)[\s,]+)?(?:quiero\s+|necesito\s+|pedir\s+|tengo\s+(?:una?\s+)?|quiero\s+hacer\s+(?:una?\s+)?)?(?:soporte(?:\s+t[eé]cnico)?|ayuda\s+humana|atenci[oó]n\s+al\s+cliente|servicio\s+al\s+cliente|contacto(?:\s+de\s+soporte)?|reclamo|queja|hablar\s+con\s+soporte|tel[eé]fono\s+de\s+contacto|mail\s+de\s+contacto)\s*[.!?]*$/i;
+
+export const FRUSTRATION_RE =
+  /^(?:(?:che|pero|uf+|bueno|ay|dale|otra\s+vez|de\s+nuevo)[\s,]+)*(?:no\s+(?:me\s+)?(?:entend[eé]s|entiendes|entendiste|entend[ií]s|est[aá]s\s+entendiendo)(?:\s+(?:nada|un\s+carajo|una\s+mierda|ni\s+ahi|ni\s+ah[ií]|nada\s+de\s+nada|lo\s+que\s+te\s+digo|lo\s+que\s+digo))?|no\s+(?:me\s+)?(?:sirve[s]?|serv[ií]s)(?:\s+(?:para|de)\s+nada)?|(?:esto|este\s+bot|el\s+bot|la\s+app|vos)\s+no\s+(?:sirve|funciona|anda|va|me\s+sirve|me\s+entiende|entiende\s+nada|entiende)(?:\s+(?:nada|bien|m[aá]s|para\s+nada))?|no\s+(?:funciona|anda)(?:\s+(?:nada|bien|esto|este\s+bot|el\s+bot|la\s+app))?|(?:sos|eres|es|son)\s+(?:un\s+|una\s+|re\s+|muy\s+)?(?:in[uú]til|desastre|mal[ií]simo|p[eé]simo|porquer[ií]a|mierda|cagada|bot\s+in[uú]til|bot\s+de\s+mierda|una\s+cagada|una\s+porquer[ií]a)|qu[eé]\s+(?:bot\s+)?(?:in[uú]til|malo|desastre|porquer[ií]a|cagada|mierda)(?:\s+(?:que\s+)?(?:sos|es|eres))?|no\s+(?:te\s+)?entiendo\s+(?:nada\s+)?(?:de\s+)?(?:lo\s+que\s+(?:dec[ií]s|hac[eé]s|me\s+dec[ií]s)|c[oó]mo\s+(?:funciona|funcion[aá]s|se\s+usa|te\s+uso)|esto|este\s+bot|nada)|me\s+(?:ten[eé]s|tiene|tienen|tengo)\s+(?:re\s+)?(?:podrido|harto|harta|cansado|cansada)|dej[aá]\s+de\s+(?:preguntar(?:me)?|repetir|decir\s+lo\s+mismo)(?:\s+lo\s+mismo)?|siempre\s+(?:me\s+)?(?:dec[ií]s|respond[eé]s)\s+lo\s+mismo|no\s+me\s+ayud[aá]s(?:\s+en\s+nada)?|no\s+hac[eé]s\s+nada|no\s+pod[eé]s\s+(?:hacer\s+)?nada)\s*[.!?]*$/i;
+
+/** true si el texto es un pedido de soporte o una queja contra el bot (ambos
+ *  anclados: un mensaje largo con contenido propio NO matchea). */
+export function isSupportOrFrustration(text: string): { support: boolean; frustrated: boolean } {
+  const t = normLex(text).replace(/[¡!¿]/g, '').replace(/\s{2,}/g, ' ').trim();
+  const frustrated = FRUSTRATION_RE.test(t);
+  const support = frustrated || SUPPORT_REQUEST_RE.test(t);
+  return { support, frustrated };
+}

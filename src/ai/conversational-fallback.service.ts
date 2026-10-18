@@ -6,14 +6,17 @@ import { PlanRepository } from '../domain/billing/plan.repository.js';
 import { getAiDailyLimit } from '../services/ai-quota.service.js';
 import { ConversationHistoryService } from './conversation-history.service.js';
 import { logError } from '../services/error-logger.js';
+import { buildFallbackMessage } from '../utils/fuzzy-suggest.js';
 import type { UserId, UserSettings, AiUsage } from '../types/index.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// "Sos MIA" se reemplaza en runtime por el BOT_NAME configurado (ver respond()):
+// antes el agente y este fallback se presentaban con nombres distintos.
 const SYSTEM_PROMPT =
-  'Sos MIA, asistente de gestión agrícola por WhatsApp para productores argentinos. ' +
+  'Sos MIA, asistente de gestión agrícola por WhatsApp y Telegram para productores argentinos. ' +
   'Respondé en español argentino (vos/tenés/podés), breve (máx 3-4 oraciones), tono amigable y práctico.\n\n' +
   'REGLAS:\n' +
   '- NUNCA enumeres capacidades en lista. Si el usuario pregunta qué podés hacer / cómo funcionás / para qué servís, decile en una oración que escriba *ayuda* para ver categorías con ejemplos.\n' +
@@ -90,6 +93,17 @@ export class ConversationalFallbackService {
       return { response: RATE_LIMIT_RESPONSE, aiUsed: false, rateLimited: false };
     }
 
+    // Una sola voz (oct 2026): con el agente prendido, lo que llega acá es lo
+    // que el agente YA vio y no supo rutear (o el validador descartó). Una
+    // segunda llamada a Claude con otro prompt, sin tools ni contexto del
+    // usuario, era otra personalidad que tampoco podía ayudar. Se responde
+    // con el fallback determinístico (ejemplos cercanos + botones en el pipeline).
+    const agentEnabled = await getSettingBool('AGENT_ENABLED');
+    if (agentEnabled) {
+      console.log(`[CONV-FALLBACK] skip: agente activo — fallback determinístico user=${userId} raw="${text.slice(0, 60)}"`);
+      return { response: buildFallbackMessage(text), aiUsed: false, rateLimited: false };
+    }
+
     // Load rate limit settings from DB (cached 5 min)
     const rateLimitMax = (await getSettingNumber('CONVERSATIONAL_FALLBACK_RATE_LIMIT_MAX')) ?? DEFAULT_RATE_LIMIT_MAX;
     const rateLimitWindow = (await getSettingNumber('CONVERSATIONAL_FALLBACK_RATE_LIMIT_WINDOW_MS')) ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
@@ -108,19 +122,22 @@ export class ConversationalFallbackService {
 
     try {
       // Load model settings from DB (cached 5 min)
-      const [model, maxTokens, timeoutMs, temperature, systemPrompt] = await Promise.all([
+      const [model, maxTokens, timeoutMs, temperature, systemPrompt, botName] = await Promise.all([
         getSetting('CONVERSATIONAL_FALLBACK_MODEL'),
         getSettingNumber('CONVERSATIONAL_FALLBACK_MAX_TOKENS'),
         getSettingNumber('CONVERSATIONAL_FALLBACK_TIMEOUT_MS'),
         getSettingNumber('CONVERSATIONAL_FALLBACK_TEMPERATURE'),
         getSetting('CONVERSATIONAL_FALLBACK_SYSTEM_PROMPT'),
+        getSetting('BOT_NAME'),
       ]);
 
       const resolvedModel = model || DEFAULT_MODEL;
       const resolvedMaxTokens = maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
       const resolvedTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const resolvedTemperature = temperature ?? DEFAULT_TEMPERATURE;
-      const resolvedSystemPrompt = systemPrompt || SYSTEM_PROMPT;
+      // Misma identidad que el agente: el nombre viene de BOT_NAME, no del prompt.
+      const resolvedSystemPrompt = (systemPrompt || SYSTEM_PROMPT)
+        .replace(/^Sos MIA\b/, `Sos ${botName || 'MIA'}`);
 
       // Historia reciente (budget chico: 1500 chars) — sin esto el fallback era
       // single-turn y las repreguntas ("¿y para la roya qué uso?") perdían todo

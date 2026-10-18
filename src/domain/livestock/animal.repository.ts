@@ -130,6 +130,16 @@ export class AnimalRepository {
     const normalized = normalizeAnimalId(ref);
     if (!normalized) return null;
     const bare = /^\d+$/.test(normalized) ? normalized.replace(/^0+/, '') : null;
+    // Mismas formas que el lookup vigente (resolveIdentifiers): el NII de 10
+    // dígitos tiene que encontrar la CII de 15 retirada ("dónde está la
+    // 0000000077" cuando se guardó 032010000000077). Eval oct 2026: el agente
+    // pasó el NII pelado y la retirada no aparecía.
+    const parsed = parseAnimalId(ref);
+    const forms = new Set<string>([normalized]);
+    if (parsed.nii) {
+      forms.add(parsed.nii);
+      forms.add(`032${parsed.speciesCode ?? '01'}${parsed.nii}`);
+    }
     const { rows } = await pool.query(
       `SELECT ai.animal_id::text AS animal_id, ai.value,
               ai.removed_date::text AS removed_date, ai.removal_reason,
@@ -140,10 +150,10 @@ export class AnimalRepository {
          JOIN animals a ON a.id = ai.animal_id AND a.deleted_at IS NULL
         WHERE ai.user_id = $1
           AND NOT ai.is_current
-          AND (ai.value_normalized = $2 OR ($3::text IS NOT NULL AND ltrim(ai.value_normalized, '0') = $3))
+          AND (ai.value_normalized = ANY($2::text[]) OR ($3::text IS NOT NULL AND ltrim(ai.value_normalized, '0') = $3))
         ORDER BY ai.removed_date DESC NULLS LAST, ai.created_at DESC
         LIMIT 2`,
-      [userId, normalized, bare || null],
+      [userId, [...forms], bare || null],
     );
     return rows.length === 1 ? rows[0] : null;
   }

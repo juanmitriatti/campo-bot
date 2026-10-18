@@ -126,7 +126,7 @@ const FEEDLOT_COMMANDS = new Set([
 ]);
 
 export const SYSTEM_COMMANDS = new Set([
-  'greeting', 'help', 'help_section', 'thanks', 'ack', 'dollar', 'grain_prices',
+  'greeting', 'help', 'help_section', 'support', 'thanks', 'ack', 'dollar', 'grain_prices',
   'show_plan',
   'create_reminder', 'list_reminders', 'complete_reminder', 'noop_reminder_cancel',
   'disable_tips', 'enable_tips',

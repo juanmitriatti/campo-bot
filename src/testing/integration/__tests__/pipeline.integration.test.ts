@@ -4109,6 +4109,31 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         expect(text).not.toMatch(/ya no está vigente/);
       });
 
+      it('una CII retirada (15 dígitos) se encuentra por su NII de 10 (eval oct 2026: el agente pasa el NII pelado)', async () => {
+        const g = await h.q(`SELECT id FROM livestock_groups WHERE user_id = $1 LIMIT 1`, [h.userId]);
+        const a = await h.q(
+          `INSERT INTO animals (user_id, field_id, plot_id, group_id, category, sex, status)
+           VALUES ($1, $2, $3, $4, 'vaca', 'H', 'activo') RETURNING id`,
+          [h.userId, fieldId, norteId, g[0]?.id ?? null],
+        );
+        const vacaId = String(a[0].id);
+        const old = await h.q(
+          `INSERT INTO animal_identifications (user_id, animal_id, id_type, value, value_normalized, is_current, assigned_date, removed_date, removal_reason)
+           VALUES ($1, $2, 'rfid', '032010000000077', '032010000000077', false, '2026-09-01', '2026-10-01', 'perdida') RETURNING id`,
+          [h.userId, vacaId],
+        );
+        await h.q(
+          `INSERT INTO animal_identifications (user_id, animal_id, id_type, value, value_normalized, is_current, assigned_date, replaces_identification_id)
+           VALUES ($1, $2, 'rfid', '032010000000078', '032010000000078', true, '2026-10-01', $3)`,
+          [h.userId, vacaId, old[0].id],
+        );
+        h.fakeAgent.enqueueTool('query_animal', { animal_ref: '0000000077' });
+        const text = h.allText(await h.send('dónde está la caravana 0000000077'));
+        expect(text).toMatch(/ya no está vigente/);
+        expect(text).toMatch(/0000000078/);
+        expect(text).not.toMatch(/No tengo ningún animal/);
+      });
+
       it('una baja por caravana reescrita por el agente NO mata a otro animal', async () => {
         h.fakeAgent.enqueueTool('record_livestock_death', { category: 'toro', count: 1, animal_ref: '0000000013' });
         const text = h.allText(await h.send('se murió la 12'));
@@ -5370,6 +5395,93 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         [h.userId, await plotId('Oeste')],
       );
       expect((again[0] as { n: number }).n).toBe(2);
+    });
+  });
+
+  describe('derivación cuando el bot no entiende (oct 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('unknown-derivacion');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Loma') RETURNING id`, [h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Norte')`, [(f[0] as { id: number }).id]);
+    });
+    afterAll(async () => h?.cleanup());
+
+    it('agente vacío (0 tools, 0 texto) → "no entendí" CON botones: menú, soporte y carga guiada', async () => {
+      h.fakeAgent.enqueue([], null);
+      const items = await h.send('asdfgh qwerty zxcv');
+      expect(h.allText(items)).toMatch(/No entendí del todo/);
+      const ids = h.allButtons(items).map(b => b.id);
+      expect(ids).toEqual(['cmd_formulario', 'back_menu', 'cmd_soporte']);
+    });
+
+    it('si el texto huele a gasto, el botón de carga guiada es el flow de gasto', async () => {
+      h.fakeAgent.enqueue([], null);
+      const items = await h.send('la camioneta gastó un montón hoy no sé');
+      const ids = h.allButtons(items).map(b => b.id);
+      expect(ids).toContain('flow_new_expense');
+      expect(ids).toContain('cmd_soporte');
+    });
+
+    it('"quiero hablar con una persona" → soporte sin IA, anotado en parser_errors, con botones', async () => {
+      const calls = h.fakeAgent.calls.length;
+      const items = await h.send('quiero hablar con una persona');
+      expect(h.fakeAgent.calls.length).toBe(calls); // sin agente
+      const text = h.allText(items);
+      expect(text).toMatch(/Soporte: soporte@test\.local/);
+      expect(text).not.toMatch(/no te estoy entendiendo/i);
+      expect(h.allButtons(items).map(b => b.id)).toEqual(['cmd_formulario', 'menu_ayuda', 'back_menu']);
+      const rows = await h.q(`SELECT error_reason, message FROM parser_errors WHERE user_id = $1 ORDER BY id DESC LIMIT 1`, [h.userId]);
+      expect(rows[0]?.error_reason).toBe('support_request');
+      expect(rows[0]?.message).toBe('quiero hablar con una persona');
+    });
+
+    it('"no me entendés nada" → se reconoce la frustración y queda marcada user_frustrated', async () => {
+      const calls = h.fakeAgent.calls.length;
+      const items = await h.send('no me entendés nada!!');
+      expect(h.fakeAgent.calls.length).toBe(calls);
+      expect(h.allText(items)).toMatch(/no te estoy entendiendo bien/i);
+      expect(h.allText(items)).toMatch(/Soporte: soporte@test\.local/);
+      const rows = await h.q(`SELECT error_reason FROM parser_errors WHERE user_id = $1 ORDER BY id DESC LIMIT 1`, [h.userId]);
+      expect(rows[0]?.error_reason).toBe('user_frustrated');
+    });
+
+    it('el tap [Soporte] de la botonera llega al mismo comando', async () => {
+      const items = await h.tap('cmd_soporte');
+      expect(h.allText(items)).toMatch(/Soporte: soporte@test\.local/);
+    });
+
+    it('pedir soporte en medio de un pending responde Y re-pregunta (el pending no se pierde)', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { plot: 'Norte', field: 'La Loma' }); // sin crop
+      expect(h.allText(await h.send('sembré en el lote Norte'))).toMatch(/qué cultivo/i);
+      const calls = h.fakeAgent.calls.length;
+      const items = await h.send('soporte');
+      expect(h.fakeAgent.calls.length).toBe(calls);
+      const text = h.allText(items);
+      expect(text).toMatch(/Soporte: soporte@test\.local/);
+      expect(text).toMatch(/cultivo/i); // re-pregunta
+      // y la respuesta siguiente sigue completando la siembra
+      expect(h.allText(await h.send('soja'))).toMatch(/soja/i);
+      const crops = await h.q(`SELECT pc.crop FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1`, [h.userId]);
+      expect(crops.length).toBe(1);
+    });
+
+    it('IA caída → el copy honesto viene con botones (los flows andan sin IA)', async () => {
+      h.fakeAgent.enqueueError('fake anthropic 529 overloaded');
+      const items = await h.send('gasté 50 mil en gasoil');
+      expect(h.allText(items)).toMatch(/problema técnico/i);
+      const ids = h.allButtons(items).map(b => b.id);
+      expect(ids).toEqual(['flow_new_expense', 'back_menu', 'cmd_soporte']);
+    });
+
+    it('lock conversacional agotado → además del texto, botones de derivación', async () => {
+      for (let i = 0; i < 5; i++) h.fakeAgent.enqueue([], '¿Qué querés registrar?');
+      let items: Awaited<ReturnType<typeof h.send>> = [];
+      for (let i = 0; i < 5; i++) items = await h.send('mmm');
+      expect(h.allText(items)).toContain('menú');
+      expect(h.allButtons(items).map(b => b.id)).toContain('cmd_soporte');
+      expect(conversationLockStore.has(h.phone)).toBe(false);
     });
   });
 

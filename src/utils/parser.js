@@ -16,6 +16,7 @@ import { canonicalProvince } from '../services/localidad-lookup.service.js';
 import {
   stripNameLeadIn, RESUME_FORM_RE, formActionFromWord, INVITE_ACCEPT_RE, DELETE_MY_ACCOUNT_RE,
   UNSOWN_PLOTS_QUERY_RES, SOWN_PLOTS_QUERY_RES, detectCurrencyTerm,
+  SUPPORT_REQUEST_RE, FRUSTRATION_RE,
 } from './lexicon.js';
 
 // --- Normalización central ---
@@ -747,6 +748,13 @@ const COMMAND_PATTERNS = [
   // --- Confirmación ---
   { command: "confirm", patterns: [/^(si|confirmar|confirmo|dale|va)$/] },
   { command: "cancel", patterns: [/^(no|cancelar|cancelo|nah)$/] },
+
+  // --- Soporte y frustración (oct 2026) ---
+  // "quiero hablar con una persona" / "no me entendés nada" ANTES del saludo y
+  // de help: muestran el canal de soporte y dejan el mensaje anotado para el
+  // equipo (parser_errors). Regex anclados en lexicon.ts (fuente única).
+  { command: "support", patterns: [FRUSTRATION_RE, SUPPORT_REQUEST_RE],
+    extract: (m, normalized, raw) => ({ frustrated: FRUSTRATION_RE.test(normalized), rawText: raw }) },
 
   // --- Saludos y ayuda ---
   { command: "greeting", patterns: [

@@ -294,7 +294,9 @@ export class AgentResponseMapper {
             source: 'ai',
             missingFields: [],
             _conversationalResponse: '🤔 No alcancé a procesar tu pedido. ¿Podés reescribirlo más explícito? Ej: *"llovieron 2 mm en X"*, *"compré 50 lt de glifosato"*.',
-          } as ParseResult & { _conversationalResponse: string }];
+            // Salida "no entendí": el pipeline le pega los botones de derivación.
+            _fallbackUnknown: true,
+          } as ParseResult & { _conversationalResponse: string; _fallbackUnknown: boolean }];
         }
         return [{
           intent: { type: 'unknown', raw: originalText },
@@ -320,7 +322,8 @@ export class AgentResponseMapper {
         source: 'ai',
         missingFields: [],
         _conversationalResponse: buildFallbackMessage(originalText),
-      } as ParseResult & { _conversationalResponse: string }];
+        _fallbackUnknown: true,
+      } as ParseResult & { _conversationalResponse: string; _fallbackUnknown: boolean }];
     }
 
     // Filter: if agent returned log_expense alongside an agro activity, drop the expense
