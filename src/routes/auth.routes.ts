@@ -6,6 +6,7 @@ import { ChannelVerificationService, VerificationError } from '../domain/auth/ch
 import { AccountDeletionService, AccountDeletionError } from '../domain/auth/account-deletion.service.js';
 import { PasswordRecoveryService, PasswordRecoveryError } from '../domain/auth/password-recovery.service.js';
 import { TokenRepository } from '../domain/auth/token.repository.js';
+import { recordWebSignup } from '../services/acquisition.service.js';
 import {
   sendVerificationEmail,
   confirmVerificationToken,
@@ -90,6 +91,7 @@ router.get('/public-config', async (_req: Request, res: Response) => {
 router.post('/register', async (req: Request, res: Response) => {
   try {
     const result = await authService.register(req.body);
+    await recordWebSignup(req, res, result.user.id);
     res.status(201).json(result);
   } catch (err) {
     handleError(err, res);

@@ -42,6 +42,7 @@ import {
   makeDocCallbackHandler,
 } from '../services/document-pipeline.js';
 import { getAppName } from '../utils/brand.js';
+import { recordWhatsAppReferral } from '../services/acquisition.service.js';
 
 const dedup = new MessageDedup();
 const transcriptionService = new TranscriptionService();
@@ -222,6 +223,11 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
     const phone: string = message.from;
     notifyPhone = phone;
     let text: string | undefined = message.text?.body;
+
+    // Llegó desde un anuncio Click-to-WhatsApp (o publicación con botón de WA):
+    // se guarda el origen ANTES del gate de verificación, que es justo donde
+    // frena a quien todavía no tiene cuenta. Telemetría: nunca rompe el mensaje.
+    if (message.referral) await recordWhatsAppReferral(phone, message.referral);
 
     // --- Vinculación por mensaje entrante ("verificar 123456") ---
     // Llega por el link wa.me de Mi cuenta. Va ANTES del gate: quien se vincula

@@ -24,6 +24,7 @@ import dataAnalysisRoutes from './routes/data-analysis.routes.js';
 import sharingRoutes from './routes/sharing.routes.js';
 import { startScheduler } from './services/scheduler.js';
 import { runMigrations } from './scripts/run-migrations.js';
+import { captureWebSource } from './services/acquisition.service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -108,6 +109,10 @@ app.use('/api/brand', brandRoutes);
 // Admin dashboard: protect API, then serve legacy dashboard
 app.use('/admin/api', requireAuth, requireRole('admin'));
 app.use('/admin', dashboard);
+
+// Origen de la primera visita (utm_* / fbclid / gclid) → cookie que el registro
+// ata al usuario. Va antes de la landing y de las páginas de cuenta.
+app.use(captureWebSource);
 
 // React frontend app (dashboard) — served on explicit routes only
 const frontendDist = path.resolve(__dirname, '../frontend/dist');
