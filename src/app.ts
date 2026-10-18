@@ -25,6 +25,7 @@ import sharingRoutes from './routes/sharing.routes.js';
 import { startScheduler } from './services/scheduler.js';
 import { runMigrations } from './scripts/run-migrations.js';
 import { captureWebSource } from './services/acquisition.service.js';
+import { pool } from './config/db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -72,10 +73,23 @@ app.use('/webhook', verifyWhatsAppSignature, webhook);
 // Telegram webhook
 app.use('/telegram', verifyTelegramWebhook, telegramWebhook);
 
-// Health check — used by CI smoke test post-deploy.
-app.get('/api/health', (_req: express.Request, res: express.Response) => {
-  res.json({
-    status: 'ok',
+// Health check — used by CI smoke test post-deploy and by the external uptime
+// monitor. Pings the DB (2 s): a process that answers but can't reach Postgres
+// is down for the user, so it returns 503 and the monitor alerts. `sha` goes in
+// both cases (the deploy wait only compares it).
+app.get('/api/health', async (_req: express.Request, res: express.Response) => {
+  let db = true;
+  try {
+    await Promise.race([
+      pool.query('SELECT 1'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000).unref()),
+    ]);
+  } catch {
+    db = false;
+  }
+  res.status(db ? 200 : 503).json({
+    status: db ? 'ok' : 'degraded',
+    db,
     timestamp: new Date().toISOString(),
     sha: DEPLOY_SHA,
   });

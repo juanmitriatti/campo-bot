@@ -1,4 +1,5 @@
 import { pool } from "../config/db.js";
+import { captureException } from "./sentry.js";
 
 // Deduplication: track recent errors to avoid flooding the DB
 const recentErrors = new Map(); // key -> timestamp
@@ -93,6 +94,18 @@ export async function logError(service, errorType, error, options = {}) {
       if (contextStr.length > 2000) {
         contextStr = contextStr.slice(0, 2000) + '... [truncated]';
       }
+    }
+
+    // Los errores manejados (la mayoría de los del bot) solo quedaban en
+    // error_logs y nadie se enteraba. Severidad error → Sentry, ya deduplicado,
+    // antes del INSERT (con la base caída es cuando más importa avisar)
+    // y SANITIZADO (sin teléfonos ni tokens): se arma un Error nuevo con el
+    // mensaje limpio en vez de mandar el original.
+    if (severity === 'error') {
+      const forwarded = new Error(message);
+      forwarded.name = `${service}:${errorType}`;
+      if (error instanceof Error && error.stack) forwarded.stack = sanitize(error.stack);
+      captureException(forwarded, { service, errorType, userId: options.userId || null });
     }
 
     // Sanitize phone

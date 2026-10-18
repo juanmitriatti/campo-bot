@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import * as Sentry from '@sentry/node';
 
 let initialized = false;
@@ -23,7 +25,12 @@ export function initSentry(): void {
 
   const environment = process.env.SENTRY_ENVIRONMENT || 'production';
   const sampleRate = Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? '0.1');
-  const release = process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7);
+  // Con `railway up` no hay RAILWAY_GIT_COMMIT_SHA: el commit viaja en .deploy-sha
+  // (lo escribe scripts/deploy-prod.ps1 y el workflow de deploy), igual que en /api/health.
+  let release = process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7);
+  if (!release) {
+    try { release = fs.readFileSync(path.join(process.cwd(), '.deploy-sha'), 'utf8').trim().slice(0, 7) || undefined; } catch { /* sin release */ }
+  }
 
   Sentry.init({
     dsn,
