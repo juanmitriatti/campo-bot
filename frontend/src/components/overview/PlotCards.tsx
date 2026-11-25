@@ -39,7 +39,7 @@ export default function PlotCards({ plots, currency, flagged, onOpenPlot }: Prop
         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Lotes</h2>
         <span className="text-xs text-gray-400 dark:text-gray-500">
           {plots.length} {plots.length === 1 ? 'lote' : 'lotes'}
-          {totalHa > 0 && ` · ${number(totalHa)} ha declaradas`}
+          {totalHa > 0 && ` · ${hectares(totalHa)} declaradas`}
           {avgPerHa != null && ` · ${money(avgPerHa, currency)}/ha promedio`}
         </span>
       </div>

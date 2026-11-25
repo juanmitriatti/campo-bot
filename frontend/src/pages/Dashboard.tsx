@@ -27,6 +27,7 @@ import RemindersTab from '../components/RemindersTab';
 import PaywallModal from '../components/billing/PaywallModal';
 import { fetchSubscription, type SubscriptionStatus } from '../api/subscription';
 import { usePendingInvite } from '../hooks/usePendingInvite';
+import { ChannelSetupProvider } from '../context/ChannelSetupContext';
 import type { DashboardView } from '../components/layout/nav-model';
 
 const viewFeatureMap: Record<DashboardView, string | null> = {
@@ -378,7 +379,9 @@ export default function Dashboard() {
         <Sidebar active={view} onChange={setView} features={features} />
 
         <main className="flex-1 min-w-0 px-4 md:px-8 py-6 pb-20 md:pb-6">
-          {renderContent()}
+          <ChannelSetupProvider value={{ needsChannel, goToAccount: () => setView('account') }}>
+            {renderContent()}
+          </ChannelSetupProvider>
         </main>
       </div>
 

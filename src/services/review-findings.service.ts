@@ -338,12 +338,17 @@ const hollowFields: Rule = async ({ userId, fieldIds, range }) => {
   const noRecords: string[] = [];
   let refField: number | null = null;
 
+  // "Sin actividad" solo es sospechoso al lado de un campo que SÍ tiene: en una
+  // cuenta nueva (o una campaña vacía) ningún campo tiene registros y avisarlo
+  // bajo "lo que el bot pudo haber entendido mal" era ruido (QA nov 2026).
+  const anyCampaignRecords = rows.some(r => Number(r.campaign_records) > 0);
+
   for (const r of rows) {
     const records = Number(r.rain) + Number(r.expenses) + Number(r.incomes) + Number(r.events);
     if (Number(r.plots) === 0 && records > 0) {
       noPlots.push(String(r.name));
       refField = refField ?? Number(r.id);
-    } else if (Number(r.plots) > 0 && Number(r.campaign_records) === 0) {
+    } else if (anyCampaignRecords && Number(r.plots) > 0 && Number(r.campaign_records) === 0) {
       noRecords.push(String(r.name));
       refField = refField ?? Number(r.id);
     }

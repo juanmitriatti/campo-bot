@@ -31,15 +31,17 @@ export default function SubscriptionBanner({ onGoToAccount }: { onGoToAccount: (
         <div className="flex items-center gap-2">
           <span>⏳</span>
           <span>
-            <strong>Trial gratis</strong> — quedan <strong>{days} día{days === 1 ? '' : 's'}</strong>.
-            {sub.plan ? ` Después pasás a ${sub.plan.display_name}.` : ''}
+            {/* La prueba NO se convierte en un plan sola: "Después pasás a Pro+"
+                se leía como un pase automático (QA nov 2026). */}
+            <strong>Prueba gratis{sub.plan ? ` de ${sub.plan.display_name}` : ''}</strong> — quedan <strong>{days} día{days === 1 ? '' : 's'}</strong>.
+            {' '}Para seguir cargando después, elegí un plan.
           </span>
         </div>
         <button
           onClick={onGoToAccount}
           className="text-sm font-medium underline hover:no-underline"
         >
-          Activar pago
+          Elegir plan
         </button>
       </div>
     );

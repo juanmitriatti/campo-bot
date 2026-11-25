@@ -1,3 +1,4 @@
+import { hectares } from '../../utils/format';
 import type { TreePlot } from '../../hooks/useFieldsTree';
 
 interface Props {
@@ -59,7 +60,7 @@ export default function PlotChips({ plots, value, onChange, disabled }: Props) {
             title={p.activeCrop ? `${p.name} · ${p.activeCrop}` : p.name}
           >
             {p.name}
-            {p.hectares != null && <span className={`text-xs ${selected ? 'text-white/80' : 'text-gray-400'}`}>{p.hectares} ha</span>}
+            {p.hectares != null && <span className={`text-xs ${selected ? 'text-white/80' : 'text-gray-400'}`}>{hectares(Number(p.hectares))}</span>}
           </button>
         );
       })}

@@ -158,7 +158,7 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Categoria</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Categoría</label>
                 <select value={category} onChange={e => {
                   setCategory(e.target.value);
                   if (INSUMO_CATEGORIES.has(e.target.value)) setExpenseTypeVal('insumo');

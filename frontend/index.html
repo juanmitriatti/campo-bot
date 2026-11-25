@@ -4,9 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MiAgro</title>
-    <!-- Telegram Mini App SDK — sin side effects fuera de Telegram; global evita
-         carreras con el ready() del form (/form/:token). -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Telegram Mini App SDK: SOLO en /form/:token (el único que lo usa).
+         Síncrono ahí, para que window.Telegram exista antes del ready() del
+         form. En el resto de las páginas era un script externo que bloqueaba
+         el render de login/registro/dashboard (QA nov 2026: ~2,5 s desde AR y
+         una carga de >45 s al entrar desde la landing). -->
+    <script>
+      if (location.pathname.indexOf('/form/') === 0) {
+        document.write('<script src="https://telegram.org/js/telegram-web-app.js"><\/script>');
+      }
+    </script>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌾</text></svg>" />
     <!-- IBM Plex (ver fontFamily en tailwind.config.js). `display=swap` + el
          stack de fallback del config: si Google Fonts no responde, la app

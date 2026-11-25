@@ -20,7 +20,7 @@ interface Income {
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
-  soja: 'Soja', maiz: 'Maiz', trigo: 'Trigo', girasol: 'Girasol',
+  soja: 'Soja', maiz: 'Maíz', trigo: 'Trigo', girasol: 'Girasol',
   sorgo: 'Sorgo', cebada: 'Cebada', hacienda: 'Hacienda',
   arrendamiento: 'Arrendamiento', otros: 'Otros',
 };

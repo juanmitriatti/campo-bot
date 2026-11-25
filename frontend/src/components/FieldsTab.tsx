@@ -3,6 +3,7 @@ import { apiRequest } from '../api/client';
 import { Pencil, Plus, MapPin } from 'lucide-react';
 import LocalidadInput from './LocalidadInput';
 import TabHeader from './TabHeader';
+import { hectares as formatHectares } from '../utils/format';
 import SenasaFields from './SenasaFields';
 
 interface Plot {
@@ -394,7 +395,7 @@ export default function FieldsTab() {
                     >
                       {f.city ? 'editar' : 'agregar localidad'}
                     </button>
-                    {totalHa > 0 && <span className="text-gray-400">· {totalHa} ha totales</span>}
+                    {totalHa > 0 && <span className="text-gray-400">· {formatHectares(totalHa)} totales</span>}
                   </p>
                 )}
 
@@ -450,7 +451,7 @@ export default function FieldsTab() {
                       <div className="flex items-center gap-2 text-sm">
                         <span className="font-medium text-gray-800 dark:text-gray-100">{p.name}</span>
                         {p.hectares != null && (
-                          <span className="text-xs text-gray-500 dark:text-gray-400">{p.hectares} ha</span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">{formatHectares(Number(p.hectares))}</span>
                         )}
                         {p.activeCrop && (
                           <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 px-1.5 py-0.5 rounded">

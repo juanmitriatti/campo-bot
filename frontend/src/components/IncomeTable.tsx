@@ -66,7 +66,7 @@ const INCOME_CATEGORIES = [
 
 const CATEGORY_LABELS: Record<string, string> = {
   soja: 'Soja',
-  maiz: 'Maiz',
+  maiz: 'Maíz',
   trigo: 'Trigo',
   girasol: 'Girasol',
   sorgo: 'Sorgo',
@@ -132,7 +132,8 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
     apiRequest<FiltersResponse>('/observations/filters')
       .then(r => {
         setFields(r.fields);
-        if (r.fields.length === 1) setFieldId(String(r.fields[0].id));
+        // Sin autoselección del único campo: "Todos" incluye lo cargado sin campo,
+        // que con el campo elegido quedaba escondido (y Actividades ya abría en "Todos").
       })
       .catch(() => {});
   }, []);
@@ -170,7 +171,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
   };
 
   const clearFilters = () => {
-    setFieldId(fields.length === 1 ? String(fields[0].id) : '');
+    setFieldId('');
     setPlotId('');
     setDateFrom('');
     setDateTo('');
@@ -259,8 +260,8 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
       <div className="px-4 pt-4 md:px-6">
         <TabHeader
           title="Ingresos"
-          description="Tus ventas y cobros."
-          botHint="vendí 200 quintales de soja a 290 mil el quintal"
+          description="Tus ventas y cobros. Se cargan hablándole al bot por WhatsApp o Telegram; acá los ves, corregís o borrás."
+          botHint="vendí 30 toneladas de soja a 300 dólares la tonelada"
         />
       </div>
       {/* Filter bar */}
@@ -307,7 +308,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Categoria</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Categoría</label>
           <select
             value={category}
             onChange={e => { setCategory(e.target.value); setPage(1); }}
@@ -395,7 +396,7 @@ export default function IncomeTable({ highlightId }: IncomeTableProps = {}) {
                 <thead>
                   <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                     <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Fecha{arrow('date')}</th>
-                    <th onClick={() => toggleSort('category')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Categoria{arrow('category')}</th>
+                    <th onClick={() => toggleSort('category')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Categoría{arrow('category')}</th>
                     <th onClick={() => toggleSort('description')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Descripcion{arrow('description')}</th>
                     <th onClick={() => toggleSort('field')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Campo{arrow('field')}</th>
                     <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Lote{arrow('plot')}</th>

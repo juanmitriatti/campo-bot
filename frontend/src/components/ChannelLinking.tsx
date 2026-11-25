@@ -260,7 +260,7 @@ export default function ChannelLinking() {
             </div>
             <div className="flex gap-2">
               <dt className="w-20 text-gray-500 dark:text-gray-400 shrink-0">Ciudad</dt>
-              <dd className="text-gray-800 dark:text-gray-100">{localUser?.city || <span className="italic text-gray-400">—</span>}</dd>
+              <dd className="text-gray-800 dark:text-gray-100">{localUser?.city || <span className="italic text-gray-400">Sin cargar (se usa para el clima)</span>}</dd>
             </div>
             <div className="flex gap-2">
               <dt className="w-20 text-gray-500 dark:text-gray-400 shrink-0">Email</dt>

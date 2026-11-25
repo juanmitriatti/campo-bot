@@ -255,7 +255,7 @@ export default function StockTable({ initialLowStockOnly = false }: StockTablePr
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                   <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Producto</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden md:table-cell">Categoria</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden md:table-cell">Categoría</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Cantidad</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden sm:table-cell">Unidad</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden md:table-cell">Deposito</th>

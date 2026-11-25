@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, LayersControl, Marker, Popup, Polygon } from '
 import type { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useMapData } from '../../hooks/useMapData';
+import { hectares } from '../../utils/format';
 
 // Fix default marker icons in leaflet + webpack/vite
 import L from 'leaflet';
@@ -96,7 +97,7 @@ export default function FieldMap() {
                               <span style={{ color: STATUS_COLORS[p.cropStatus] }}>&#x25CF;</span>{' '}
                               {p.name}
                               {p.activeCrop && ` (${p.activeCrop})`}
-                              {p.areaHectares && ` — ${p.areaHectares} ha`}
+                              {p.areaHectares && ` — ${hectares(Number(p.areaHectares))}`}
                             </li>
                           ))}
                         </ul>

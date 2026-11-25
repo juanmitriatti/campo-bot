@@ -137,8 +137,8 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
     apiRequest<FiltersResponse>('/observations/filters')
       .then(r => {
         setFields(r.fields);
-        // If user has a single field, auto-pick it (no point in "Todos")
-        if (r.fields.length === 1) setFieldId(String(r.fields[0].id));
+        // Sin autoselección del único campo: "Todos" incluye lo cargado sin campo,
+        // que con el campo elegido quedaba escondido (y Actividades ya abría en "Todos").
       })
       .catch(() => {});
   }, []);
@@ -177,7 +177,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
   };
 
   const clearFilters = () => {
-    setFieldId(fields.length === 1 ? String(fields[0].id) : '');
+    setFieldId('');
     setPlotId('');
     setDateFrom('');
     setDateTo('');
@@ -271,7 +271,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
       <div className="px-4 pt-4 md:px-6">
         <TabHeader
           title="Gastos"
-          description="Todos tus gastos registrados. Podés editar o eliminar cualquiera."
+          description="Los gastos se cargan hablándole al bot por WhatsApp o Telegram (también con foto de la factura). Acá los ves, corregís o borrás."
           botHint="gasté 80 mil en gasoil"
         />
       </div>
@@ -319,7 +319,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Categoria</label>
+          <label className="text-xs text-gray-500 dark:text-gray-300 mb-1">Categoría</label>
           <select
             value={category}
             onChange={e => { setCategory(e.target.value); setPage(1); }}
@@ -420,7 +420,7 @@ export default function ExpenseTable({ highlightId }: ExpenseTableProps = {}) {
                   <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                     <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Fecha{arrow('date')}</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Tipo</th>
-                    <th onClick={() => toggleSort('category')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Categoria{arrow('category')}</th>
+                    <th onClick={() => toggleSort('category')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Categoría{arrow('category')}</th>
                     <th onClick={() => toggleSort('description')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Descripcion{arrow('description')}</th>
                     <th onClick={() => toggleSort('product')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden lg:table-cell cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Producto{arrow('product')}</th>
                     <th onClick={() => toggleSort('field')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Campo{arrow('field')}</th>

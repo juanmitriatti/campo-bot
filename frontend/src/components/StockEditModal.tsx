@@ -68,7 +68,7 @@ export default function StockEditModal({ item, onClose, onSaved }: Props) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Categoria</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Categoría</label>
                 <select value={category} onChange={e => setCategory(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none">
                   {STOCK_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>)}

@@ -147,7 +147,7 @@ export default function ActivityTable({ highlightId }: ActivityTableProps = {}) 
   };
 
   const clearFilters = () => {
-    setFieldId(fields.length === 1 ? String(fields[0].id) : '');
+    setFieldId('');
     setPlotId('');
     setDateFrom('');
     setDateTo('');

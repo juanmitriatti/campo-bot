@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { savePendingInviteFromUrl } from '../hooks/usePendingInvite';
@@ -32,11 +32,19 @@ export default function Register() {
   const [showConfirmError, setShowConfirmError] = useState(false);
   const confirmMismatch = confirmPassword !== password &&
     (showConfirmError || confirmPassword.length >= password.length) && confirmPassword.length > 0;
-  const { register, error, clearError } = useAuth();
+  const { user, loading: authLoading, register, error, clearError } = useAuth();
   const navigate = useNavigate();
   // Link de invitación a un campo (/crear-cuenta?invite=CODIGO): el código queda
   // guardado y el dashboard lo canjea cuando la cuenta vincule WhatsApp.
   const [inviteCode] = useState(() => savePendingInviteFromUrl(window.location.search));
+
+  // Sesión viva → el formulario de registro no tiene sentido (igual que Login).
+  // Mientras se envía el alta no: ese camino navega solo, con el toast.
+  useEffect(() => {
+    if (authLoading || !user || loading) return;
+    if (user.role === 'admin') window.location.href = '/admin';
+    else navigate('/dashboard', { replace: true });
+  }, [authLoading, user, loading, navigate]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

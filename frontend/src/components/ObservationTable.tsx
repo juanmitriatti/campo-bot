@@ -271,7 +271,7 @@ export default function ObservationTable() {
                     <th onClick={() => toggleSort('observation')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Observacion{arrow('observation')}</th>
                     <th onClick={() => toggleSort('field')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Campo{arrow('field')}</th>
                     <th onClick={() => toggleSort('plot')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Lote{arrow('plot')}</th>
-                    <th onClick={() => toggleSort('category')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Categoria{arrow('category')}</th>
+                    <th onClick={() => toggleSort('category')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Categoría{arrow('category')}</th>
                     <th onClick={() => toggleSort('date')} className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">Creada{arrow('date')}</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300 hidden lg:table-cell">Registrado por</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Editada</th>
