@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { createPipelineHarness, type PipelineHarness } from '../pipeline-harness.js';
+import { setSetting } from '../../../services/settings.service.js';
 import { conversationLockStore } from '../../../middleware/conversation-lock-store.js';
 import { formConversationStore } from '../../../forms/conversation/form-conversation.service.js';
 
@@ -5483,6 +5484,62 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(h.allText(items)).toContain('menú');
       expect(h.allButtons(items).map(b => b.id)).toContain('cmd_soporte');
       expect(conversationLockStore.has(h.phone)).toBe(false);
+    });
+  });
+
+  describe('siembra y cosecha: la pregunta ofrece el Flow precargado (nov 2026)', () => {
+    let h: PipelineHarness;
+    let norte: number;
+    const KEYS = ['WHATSAPP_FORM_PROVIDER', 'WHATSAPP_FLOW_ID_SOW', 'WHATSAPP_FLOW_ID_HARVEST'];
+    type Flow = { body: string; fallbackText?: string; flow: { data: Record<string, unknown> } };
+    const flows = (items: unknown[]) => (items as Array<{ interactive?: Flow & { type: string } }>)
+      .filter(i => i.interactive?.type === 'flow').map(i => i.interactive!);
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('flow-offer', { channel: 'whatsapp' });
+      await setSetting('WHATSAPP_FORM_PROVIDER', 'meta_flow');
+      await setSetting('WHATSAPP_FLOW_ID_SOW', 'flow_sow_test');
+      await setSetting('WHATSAPP_FLOW_ID_HARVEST', 'flow_harvest_test');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'los talas') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      const p = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 100) RETURNING id`, [fid]);
+      norte = (p[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Sur', 80)`, [fid]);
+    });
+    afterAll(async () => {
+      for (const k of KEYS) await setSetting(k, k === 'WHATSAPP_FORM_PROVIDER' ? 'conversation' : '');
+      await h?.cleanup();
+    });
+    beforeEach(async () => { await h.send('cancelar'); });
+
+    it('falta el lote: un solo mensaje, con el cultivo precargado y el lote vacío', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja' });
+      const items = await h.send('sembré soja');
+      const [flow] = flows(items);
+      expect(flow, h.allText(items)).toBeTruthy();
+      expect(flow.body).toMatch(/¿En qué lote?/);
+      expect(flow.fallbackText).toMatch(/¿En qué lote?/);
+      expect(flow.flow.data.crop_init).toBe('soja');
+      expect(flow.flow.data.plot_id_init).toBe('');
+      expect((items as Array<{ type: string; text?: string }>).some(i => i.type === 'text' && /¿En qué lote/.test(i.text ?? ''))).toBe(false);
+    });
+
+    it('cosecha sin lote: rinde precargado; con camiones no se ofrece (se perderían)', async () => {
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date) VALUES ($1, 'soja', 2026, 'gruesa', CURRENT_DATE - 100)`, [norte]);
+      h.fakeAgent.enqueueTool('harvest_crop', { yield_kg_per_ha: 4200 });
+      const [flow] = flows(await h.send('coseché, rindió 42 qq/ha'));
+      expect(flow?.flow.data.yield_kg_per_ha_init).toBe('4200');
+
+      await h.send('cancelar');
+      h.fakeAgent.enqueueTool('harvest_crop', { loads: [{ driver_name: 'Pedro', weight_kg: 30000 }] });
+      expect(flows(await h.send('coseché, cargas: Pedro 30000'))).toHaveLength(0);
+    });
+
+    it('lote nombrado con otro cultivo activo: solo los botones de reemplazo', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'maíz', plot: 'Norte' });
+      const items = await h.send('sembré maíz en Norte');
+      expect(h.allButtons(items).some(b => b.id.startsWith('sow_replace_'))).toBe(true);
+      expect(flows(items)).toHaveLength(0);
     });
   });
 

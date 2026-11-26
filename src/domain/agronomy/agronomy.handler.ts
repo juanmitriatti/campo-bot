@@ -1,5 +1,7 @@
 import type { ScoutingRow, ScoutingRenderCtx } from './scouting-renderers.js';
 import type { HarvestRow, HarvestRenderCtx } from './harvest-renderers.js';
+import { sowFormOffer, harvestFormOffer } from '../../forms/activity-form-offer.js';
+import { computeFormOptions } from '../../forms/form-options.js';
 import { resolvePeriodRange, resolveDaysRange } from '../../utils/query-period.js';
 import fs from 'fs';
 import { AgronomyRepository, RAINFALL_REJECTED_DUPLICATE } from './agronomy.repository.js';
@@ -505,6 +507,14 @@ export class AgronomyHandler {
         buttons: [{ id: 'cmd_agregar_lote', title: '🌾 Crear lote' }],
       },
     };
+  }
+
+  /** Suma la oferta de formulario a una pregunta (no-op si no corresponde). */
+  private withFormOffer(
+    response: HandlerResponse,
+    offerForm: NonNullable<HandlerResponse['sideEffects']>['offerForm'],
+  ): HandlerResponse {
+    return offerForm ? { ...response, sideEffects: { ...response.sideEffects, offerForm } } : response;
   }
 
   /**
@@ -2290,15 +2300,7 @@ export class AgronomyHandler {
                 missing: ['crop'],
                 askPrompt: '🌱 ¿Qué cultivo sembraste? (ej: soja, maíz, trigo, girasol)',
               },
-              offerForm: {
-                action: 'sow_crop',
-                prefill: {
-                  plotName: (cmd.plotName as string) ?? null,
-                  fieldName: (cmd.fieldName as string) ?? null,
-                  eventDate: (cmd.eventDate as string) ?? null,
-                  hectares: (cmd.hectares as number) ?? null,
-                },
-              },
+              offerForm: sowFormOffer({ ...cmd, crop: null } as ParsedCommand, { keepPlot: true }),
             },
           };
         }
@@ -2314,7 +2316,7 @@ export class AgronomyHandler {
         }
 
         if (plotResult.type === 'ask_user') {
-          return this.buildAskPlotResponse('siembra', plotResult.plots, cmd);
+          return this.withFormOffer(this.buildAskPlotResponse('siembra', plotResult.plots, cmd), sowFormOffer(cmd));
         }
 
         // "soja de segunda" puede llegar dentro del nombre del cultivo: el orden
@@ -2367,7 +2369,13 @@ export class AgronomyHandler {
         // nada de preguntas sueltas). En bulkMode no se puede bloquear → se
         // mantiene el auto-close con nota, como siempre.
         const replaceGuard = await this.buildSowReplaceGuard(cmd, plotResult.plotId, plotResult.fieldName, plotResult.plotName, crop);
-        if (replaceGuard) return replaceGuard;
+        // Solo si el usuario NO nombró el lote y tiene otro para elegir: el
+        // formulario no puede reemplazar una campaña (con un único lote lo
+        // precargaría y lo rechazaría).
+        if (replaceGuard) {
+          const otherPlots = !cmd.plotName && (await computeFormOptions('sow_crop', Number(userId))).plots.length > 1;
+          return otherPlots ? this.withFormOffer(replaceGuard, sowFormOffer(cmd)) : replaceGuard;
+        }
 
         const variety = (cmd.variety as string | null | undefined) ?? null;
 
@@ -2636,7 +2644,7 @@ export class AgronomyHandler {
         }
 
         if (plotResult.type === 'ask_user') {
-          return this.buildAskPlotResponse('cosecha', plotResult.plots, cmd);
+          return this.withFormOffer(this.buildAskPlotResponse('cosecha', plotResult.plots, cmd), harvestFormOffer(cmd));
         }
 
         // Crop inference: when the agent didn't pass a crop, try active first,
@@ -2668,14 +2676,7 @@ export class AgronomyHandler {
                 missing: ['crop'],
                 askPrompt: '🌾 ¿Qué cultivo cosechaste? (ej: soja, maíz, trigo, girasol)',
               },
-              offerForm: {
-                action: 'harvest_crop',
-                prefill: {
-                  plotName: (cmd.plotName as string) ?? null,
-                  fieldName: (cmd.fieldName as string) ?? null,
-                  eventDate: (cmd.eventDate as string) ?? null,
-                },
-              },
+              offerForm: harvestFormOffer(cmd, { keepPlot: true }),
             },
           };
         }

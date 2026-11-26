@@ -13,6 +13,41 @@ function rawChannelId(ctx: ChannelContext): string {
   return ctx.phone;
 }
 
+/** Tope de Meta para el cuerpo de un mensaje interactivo. */
+const FLOW_BODY_MAX = 1024;
+
+/**
+ * Pregunta abierta + Flow en UN solo mensaje (nov 2026): dos mensajes seguidos
+ * confundían ("¿por qué me da 2 opciones?"). Solo cuando la pregunta es texto
+ * plano; con botones o listas propias van separados. `fallbackText` lleva la
+ * pregunta para que el canal la mande igual si Meta rechaza el Flow.
+ */
+async function appendFlowOffer(
+  items: BotResponseItem[],
+  response: HandlerResponse,
+  ctx: ChannelContext,
+  offer: NonNullable<NonNullable<HandlerResponse['sideEffects']>['offerForm']>,
+  def: (typeof FORM_DEFINITIONS)[keyof typeof FORM_DEFINITIONS],
+  flowId: string,
+  body: string,
+  unavailable: () => void,
+): Promise<void> {
+  const question = !offer.explicit && !response.interactive && response.sideEffects?.setPendingActivity
+    && response.messages.length === 1 ? response.messages[0] : null;
+  const merged = question ? `${question}
+
+👇 Contestame acá o completá el formulario.` : null;
+  const at = question ? items.findIndex(i => i.type === 'text' && i.text === question) : -1;
+  const join = merged !== null && at >= 0 && merged.length <= FLOW_BODY_MAX;
+  const before = items.length;
+  await appendMetaFlowOffer(items, response, ctx, offer, def, flowId, join ? merged! : body, unavailable);
+  const added = items.length > before ? items[items.length - 1] : null;
+  if (join && added?.interactive?.type === 'flow') {
+    added.interactive.fallbackText = question!;
+    items.splice(at, 1);
+  }
+}
+
 /**
  * Presentación del formulario que un handler ofreció (sideEffects.offerForm)
  * o del que el usuario pidió retomar (sideEffects.resumeForm), según el canal:
@@ -57,7 +92,7 @@ export async function appendFormOffer(
     const provider = await resolveWhatsAppFormProvider(def);
     if (provider.kind === 'meta_flow') {
       // TODO / FUTURE: Meta Flow implementation retained for future activation.
-      await appendMetaFlowOffer(items, response, ctx, offer, def, provider.flowId, body, unavailable);
+      await appendFlowOffer(items, response, ctx, offer, def, provider.flowId, body, unavailable);
       return;
     }
     // Colector conversacional. Solo cuando el usuario PIDIÓ el formulario: una

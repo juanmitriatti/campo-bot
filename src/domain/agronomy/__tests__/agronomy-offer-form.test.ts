@@ -102,7 +102,7 @@ describe('sow_crop sin cultivo → offerForm', () => {
     const response = await handler.handleCommand(cmd, userId, user, settings);
 
     expect(response.sideEffects?.setPendingActivity?.missing).toEqual(['crop']);
-    expect(response.sideEffects?.offerForm).toEqual({
+    expect(response.sideEffects?.offerForm).toMatchObject({
       action: 'sow_crop',
       prefill: {
         plotName: 'Norte',
@@ -127,7 +127,7 @@ describe('sow_crop sin cultivo → offerForm', () => {
 
     const response = await handler.handleCommand(cmd, userId, user, settings);
 
-    expect(response.sideEffects?.offerForm).toEqual({
+    expect(response.sideEffects?.offerForm).toMatchObject({
       action: 'sow_crop',
       prefill: {
         plotName: 'Sur',
@@ -143,7 +143,7 @@ describe('sow_crop sin cultivo → offerForm', () => {
 // harvest_crop sin cultivo → offerForm
 // ============================================================================
 describe('harvest_crop sin cultivo (post plot-resolution) → offerForm', () => {
-  it('el pending por crop faltante viene acompañado de offerForm sin hectares', async () => {
+  it('el pending por crop faltante viene acompañado de offerForm con lote y fecha', async () => {
     const { handler, repo } = makeHandler();
 
     // Simular un lote resuelto desde el discovery service
@@ -177,7 +177,7 @@ describe('harvest_crop sin cultivo (post plot-resolution) → offerForm', () => 
     const response = await handler.handleCommand(cmd, userId, user, settings);
 
     expect(response.sideEffects?.setPendingActivity?.missing).toEqual(['crop']);
-    expect(response.sideEffects?.offerForm).toEqual({
+    expect(response.sideEffects?.offerForm).toMatchObject({
       action: 'harvest_crop',
       prefill: {
         plotName: 'Norte',

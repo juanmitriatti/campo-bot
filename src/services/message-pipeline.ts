@@ -255,6 +255,8 @@ export interface BotResponseItem {
       mode?: 'draft';
       data: Record<string, unknown>;
     };
+    /** Flow que reemplazó a una pregunta: texto a mandar si el canal no puede enviarlo. */
+    fallbackText?: string;
   };
 }
 

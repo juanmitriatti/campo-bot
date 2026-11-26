@@ -88,7 +88,12 @@ export async function sendBotResponse(phone: string, items: BotResponseItem[]): 
         const meta = (err as any)?.response?.data?.error;
         const detail = meta ? `${meta.code} ${meta.message}${meta.error_data?.details ? ` — ${meta.error_data.details}` : ''}` : errMsg;
         // sendFlow ya registró SEND_FLOW_ERROR en error_logger; acá solo el detalle legible.
-        console.error(`[FORM] flow no enviado (whatsapp) flowId=${item.interactive.flow?.flowId}: ${detail} — sin fallback en texto`);
+        console.error(`[FORM] flow no enviado (whatsapp) flowId=${item.interactive.flow?.flowId}: ${detail}`);
+        // El Flow llevaba la pregunta adentro: sin esto se perdía entera.
+        if (item.interactive.fallbackText) {
+          console.log('[FORM] mando la pregunta como texto (el Flow no salió)');
+          await sendMessage(phone, item.interactive.fallbackText).catch(e => console.error('[FORM] tampoco salió el texto:', (e as Error).message));
+        }
         continue;
       }
       // Mismo contrato que telegram: un fallo de envío NUNCA es silencioso —
