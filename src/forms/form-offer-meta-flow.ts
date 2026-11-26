@@ -12,6 +12,7 @@
 import { formSessionService } from '../services/form-session.service.js';
 import { getSetting } from '../services/settings.service.js';
 import { computeFormOptions } from './form-options.js';
+import { flowMarkerFor } from './form-flow-link.js';
 import type { FormDefinition } from './form-definitions.js';
 import { resolveFormInitialValues } from './form-prefill.js';
 import { initKey, optionsKey, isoToFlowDate, FIXED_GROUP_SLOTS, validateFlowData, fitFlowOptions, OTHER_OPTION, flowStateData } from './whatsapp-flow-generator.js';
@@ -48,7 +49,7 @@ export async function appendMetaFlowOffer(
   const token = await formSessionService.create({
     userId: Number(ctx.userId),
     action: offer.action,
-    prefill: offer.prefill ?? {},
+    prefill: { ...(offer.prefill ?? {}), ...(await flowMarkerFor(Number(ctx.userId), response, offer.action)) },
     channel: ctx.channel,
     channelId: ctx.phone,
     phone: ctx.phone,

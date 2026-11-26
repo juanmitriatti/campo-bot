@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { createPipelineHarness, type PipelineHarness } from '../pipeline-harness.js';
+import { submitForm } from '../../../forms/form-submit.service.js';
 import { setSetting } from '../../../services/settings.service.js';
 import { conversationLockStore } from '../../../middleware/conversation-lock-store.js';
 import { formConversationStore } from '../../../forms/conversation/form-conversation.service.js';
@@ -5517,7 +5518,9 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const items = await h.send('sembré soja');
       const [flow] = flows(items);
       expect(flow, h.allText(items)).toBeTruthy();
-      expect(flow.body).toMatch(/¿En qué lote?/);
+      expect(flow.body).toMatch(/Completá el formulario/);
+      expect(flow.body).not.toMatch(/¿En qué lote/);
+      expect(items).toHaveLength(1);
       expect(flow.fallbackText).toMatch(/¿En qué lote?/);
       expect(flow.flow.data.crop_init).toBe('soja');
       expect(flow.flow.data.plot_id_init).toBe('');
@@ -5540,6 +5543,67 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const items = await h.send('sembré maíz en Norte');
       expect(h.allButtons(items).some(b => b.id.startsWith('sow_replace_'))).toBe(true);
       expect(flows(items)).toHaveLength(0);
+    });
+  });
+
+  describe('gasto: solo el Flow, y sin duplicados (nov 2026)', () => {
+    let h: PipelineHarness;
+    let norte: number;
+    type Flow = { type: string; body: string; flow: { flowToken: string } };
+    const flows = (items: unknown[]) => (items as Array<{ interactive?: Flow }>).filter(i => i.interactive?.type === 'flow').map(i => i.interactive!);
+    const payload = () => ({ amount: '100000', currency: 'ARS', category: '__other__', category_other: 'Agroquímicos', location: `p:${norte}`, event_date: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }) });
+    const expenses = () => h.q(`SELECT id FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+    const flowState = async () => (await h.q(`SELECT flow_state FROM conversation_state WHERE user_id = $1`, [h.userId]))[0]?.flow_state ?? 'idle';
+    const ask = async () => {
+      h.fakeAgent.enqueueTool('log_expense', { amount: 100000, category: 'Agroquímicos' });
+      return h.send('gasté 100 mil en agroquímicos');
+    };
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('flow-gasto', { channel: 'whatsapp' });
+      await setSetting('WHATSAPP_FORM_PROVIDER', 'meta_flow');
+      await setSetting('WHATSAPP_FLOW_ID_EXPENSE', 'flow_expense_test');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'los tilos') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      norte = ((await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 100) RETURNING id`, [fid]))[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Sur', 80)`, [fid]);
+    });
+    afterAll(async () => {
+      await setSetting('WHATSAPP_FORM_PROVIDER', 'conversation');
+      await setSetting('WHATSAPP_FLOW_ID_EXPENSE', '');
+      await setSetting('WHATSAPP_FLOW_ON_MISSING', 'true');
+      await h?.cleanup();
+    });
+    beforeEach(async () => {
+      await h.send('cancelar');
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+    });
+
+    it('un solo mensaje; enviar el formulario cierra la pregunta y guarda UNA vez', async () => {
+      const items = await ask();
+      expect(items).toHaveLength(1);
+      const [flow] = flows(items);
+      expect(flow.body).toMatch(/Agroquímicos/);
+      expect(await flowState()).not.toBe('idle');
+      const res = await submitForm(flow.flow.flowToken, payload(), { flowResponse: true, deliver: 'return' });
+      expect(res.ok, JSON.stringify(res)).toBe(true);
+      expect(await flowState()).toBe('idle');
+      expect(await expenses()).toHaveLength(1);
+    });
+
+    it('si ya se resolvió por chat, el formulario viejo no guarda de nuevo', async () => {
+      const [flow] = flows(await ask());
+      await h.send('cancelar');
+      const res = await submitForm(flow.flow.flowToken, payload(), { flowResponse: true, deliver: 'return' });
+      expect(res).toMatchObject({ ok: false, status: 409 });
+      expect(await expenses()).toHaveLength(0);
+    });
+
+    it('WHATSAPP_FLOW_ON_MISSING=false: solo la pregunta de chat', async () => {
+      await setSetting('WHATSAPP_FLOW_ON_MISSING', 'false');
+      const items = await ask();
+      expect(flows(items)).toHaveLength(0);
+      expect(h.allText(items)).toMatch(/lote/i);
     });
   });
 

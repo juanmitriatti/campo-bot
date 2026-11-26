@@ -15,6 +15,7 @@
 import { pool, withTransaction } from '../config/db.js';
 import { formSessionService, type FormSessionRow } from '../services/form-session.service.js';
 import { FORM_DEFINITIONS, validateFormPayload, type FormAction, type FormDefinition } from './form-definitions.js';
+import { isSameFlowOpen, closeLinkedFlow, type FlowMarker } from './form-flow-link.js';
 import { buildFormCommand, FORM_PERSISTS_TO, type ResolvedRefs } from './form-commands.js';
 import { parseLocationId, computeFormOptions, NO_LOCATION_ID } from './form-options.js';
 import { unflattenFlowPayload } from './whatsapp-flow-generator.js';
@@ -402,6 +403,15 @@ export async function submitForm(
       return { ok: false, status: 409, error: '⚠️ Esto ya se registró por el chat. No lo dupliqué.' };
     }
 
+    // El formulario acompañaba una pregunta de flujo (gasto / ingreso): si ese
+    // flujo ya se cerró, el registro se resolvió por chat. No duplicar.
+    const linked = (session.prefill as { _flow?: FlowMarker } | null | undefined)?._flow;
+    if (linked && !(await isSameFlowOpen(Number(session.user_id), linked))) {
+      console.log('[FORM] rejected: el flujo de chat ya se cerró');
+      await formSessionService.claim(token);
+      return { ok: false, status: 409, error: '⚠️ Esa carga ya se cerró por el chat. No la dupliqué. Si te falta, pedime «formulario».' };
+    }
+
     // Validación completa DENTRO del lock: el estado (lotes, cultivo activo)
     // no cambia entre validar y escribir.
     const prepared = await prepareSubmission(session.user_id, action, payload);
@@ -454,6 +464,10 @@ export async function submitForm(
           console.log('[FORM] rejected: handler no guardó', { blocking, written, field, msg: error.slice(0, 80) });
           // Rollback: el token vuelve a quedar libre para corregir y reintentar.
           throw new CommitAborted({ ok: false, status: 422, error, ...(field ? { field } : {}) });
+        }
+        if (linked) {
+          await closeLinkedFlow(Number(session.user_id));
+          console.log('[FORM] flujo de chat cerrado por el submit');
         }
         return r;
       }) as HandlerResponse;

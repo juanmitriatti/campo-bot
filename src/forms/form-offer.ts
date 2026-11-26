@@ -2,6 +2,7 @@ import { formSessionService } from '../services/form-session.service.js';
 import { getSetting } from '../services/settings.service.js';
 import { FORM_DEFINITIONS } from './form-definitions.js';
 import { resolveWhatsAppFormProvider } from './form-provider.js';
+import { flowMarkerFor } from './form-flow-link.js';
 import { appendMetaFlowOffer } from './form-offer-meta-flow.js';
 import { startConversationForm, resumeConversationForm } from './conversation/form-conversation.service.js';
 import type { BotResponseItem, ChannelContext } from '../services/message-pipeline.js';
@@ -16,36 +17,49 @@ function rawChannelId(ctx: ChannelContext): string {
 /** Tope de Meta para el cuerpo de un mensaje interactivo. */
 const FLOW_BODY_MAX = 1024;
 
+type OfferForm = NonNullable<NonNullable<HandlerResponse['sideEffects']>['offerForm']>;
+type Definition = (typeof FORM_DEFINITIONS)[keyof typeof FORM_DEFINITIONS];
+
+/** Resumen de lo que ya se entendió, más los avisos (⚠️) del handler. */
+function offerSummary(def: Definition, prefill: Record<string, unknown>, messages: string[]): string {
+  const warnings = messages.flatMap(m => m.split('\n')).filter(l => l.startsWith('⚠️'));
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const amount = typeof prefill.amount === 'number'
+    ? `${prefill.currency === 'USD' ? 'US$' : '$'}${prefill.amount.toLocaleString('es-AR')}` : null;
+  const details = [text(prefill.category) ?? text(prefill.crop) ?? text(prefill.product), amount,
+    text(prefill.plotName) ? `lote ${text(prefill.plotName)}` : null].filter(Boolean).join(' — ');
+  return [...warnings, def.title, details, 'Completá el formulario 👇'].filter(Boolean).join('\n').slice(0, FLOW_BODY_MAX);
+}
+
 /**
- * Pregunta abierta + Flow en UN solo mensaje (nov 2026): dos mensajes seguidos
- * confundían ("¿por qué me da 2 opciones?"). Solo cuando la pregunta es texto
- * plano; con botones o listas propias van separados. `fallbackText` lleva la
- * pregunta para que el canal la mande igual si Meta rechaza el Flow.
+ * Falta un dato y hay Flow (nov 2026): se manda SOLO el Flow, sin la pregunta
+ * ni las listas de chat — tres mensajes seguidos confundían. El pending / flujo
+ * queda abierto: contestar por chat sigue funcionando. Con botones de DECISIÓN
+ * del handler (reemplazar una campaña…) esos botones se respetan. `fallbackText`
+ * lleva la pregunta original por si Meta rechaza el Flow.
  */
 async function appendFlowOffer(
   items: BotResponseItem[],
   response: HandlerResponse,
   ctx: ChannelContext,
-  offer: NonNullable<NonNullable<HandlerResponse['sideEffects']>['offerForm']>,
-  def: (typeof FORM_DEFINITIONS)[keyof typeof FORM_DEFINITIONS],
+  offer: OfferForm,
+  def: Definition,
   flowId: string,
   body: string,
   unavailable: () => void,
 ): Promise<void> {
-  const question = !offer.explicit && !response.interactive && response.sideEffects?.setPendingActivity
-    && response.messages.length === 1 ? response.messages[0] : null;
-  const merged = question ? `${question}
-
-👇 Contestame acá o completá el formulario.` : null;
-  const at = question ? items.findIndex(i => i.type === 'text' && i.text === question) : -1;
-  const join = merged !== null && at >= 0 && merged.length <= FLOW_BODY_MAX;
+  const asking = !offer.explicit && !response.interactive
+    && !!(response.sideEffects?.setPendingActivity || response.sideEffects?.startFlow);
   const before = items.length;
-  await appendMetaFlowOffer(items, response, ctx, offer, def, flowId, join ? merged! : body, unavailable);
+  const flowBody = asking ? offerSummary(def, offer.prefill ?? {}, response.messages) : body;
+  await appendMetaFlowOffer(items, response, ctx, offer, def, flowId, flowBody, unavailable);
   const added = items.length > before ? items[items.length - 1] : null;
-  if (join && added?.interactive?.type === 'flow') {
-    added.interactive.fallbackText = question!;
-    items.splice(at, 1);
-  }
+  if (!asking || added?.interactive?.type !== 'flow') return;
+  const replaced = items.slice(0, before);
+  const question = replaced.map(i => i.text ?? i.interactive?.body ?? '').filter(Boolean);
+  added.interactive.fallbackText = [...new Set(question)].join('\n\n');
+  items.splice(0, before);
+  console.log(`[FORM] pregunta de chat reemplazada por el Flow action=${offer.action} items=${before}`);
 }
 
 /**
@@ -91,6 +105,12 @@ export async function appendFormOffer(
   if (ctx.channel === 'whatsapp') {
     const provider = await resolveWhatsAppFormProvider(def);
     if (provider.kind === 'meta_flow') {
+      // WHATSAPP_FLOW_ON_MISSING=false: cuando falta un dato se pregunta solo
+      // por chat; el Flow queda para quien escribe "formulario".
+      if (!offer.explicit && String((await getSetting('WHATSAPP_FLOW_ON_MISSING')) ?? '') === 'false') {
+        console.log(`[FORM] offer implícita omitida (WHATSAPP_FLOW_ON_MISSING=false) action=${offer.action}`);
+        return;
+      }
       // TODO / FUTURE: Meta Flow implementation retained for future activation.
       await appendFlowOffer(items, response, ctx, offer, def, provider.flowId, body, unavailable);
       return;
@@ -117,7 +137,7 @@ export async function appendFormOffer(
   const token = await formSessionService.create({
     userId: Number(ctx.userId),
     action: offer.action,
-    prefill: offer.prefill ?? {},
+    prefill: { ...(offer.prefill ?? {}), ...(await flowMarkerFor(Number(ctx.userId), response, offer.action)) },
     channel: ctx.channel,
     channelId: rawChannelId(ctx),
     phone: ctx.phone,
