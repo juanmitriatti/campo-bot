@@ -105,6 +105,7 @@ import {
 } from '../middleware/conversation-lock-store.js';
 import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveButton, InteractiveListSection, UserId, PendingTransaction, ParsedCommand } from '../types/index.js';
 import { appendFormOffer } from '../forms/form-offer.js';
+import { partialMoneyFormOffer } from '../forms/activity-form-offer.js';
 import { formSessionService } from './form-session.service.js';
 import {
   formConversationStore, handleFormText, handleFormTap, type FormConversationDeps,
@@ -572,6 +573,26 @@ export function applySideEffects(
   out.plotAreaPrompt = storePlotAreaSideEffects(phone, pendingPlotAreaStore, sideEffects) ?? null;
 
   return out;
+}
+
+/**
+ * Pregunta de monto / categoría faltante, con el formulario si corresponde: el
+ * usuario no tiene que pedirlo (antes este camino nunca lo ofrecía).
+ */
+async function partialMoneyReply(
+  ctx: ChannelContext,
+  plan: { command: string; data: Record<string, unknown>; missing: string[]; askPrompt: string },
+  action: 'log_expense' | 'log_income',
+): Promise<BotResponseItem[]> {
+  const items: BotResponseItem[] = [{ type: 'text', text: plan.askPrompt }];
+  const offerForm = partialMoneyFormOffer(action, plan.data);
+  if (offerForm) {
+    await appendFormOffer(items, {
+      messages: [plan.askPrompt],
+      sideEffects: { setPendingActivity: { command: plan.command, data: plan.data, missing: plan.missing, askPrompt: plan.askPrompt }, offerForm },
+    } as HandlerResponse, ctx);
+  }
+  return items;
 }
 
 // ============================================================
@@ -1861,7 +1882,7 @@ ${ask}` }];
       askPrompt: planExp.askPrompt,
     });
     conversationLogger.log(userId, phone, text, planExp.askPrompt, 'pending', 'expense_partial', null, 0, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
-    return [{ type: 'text', text: planExp.askPrompt }];
+    return partialMoneyReply(ctx, planExp, 'log_expense');
   }
 
   if (intent.type === 'income_partial') {
@@ -1880,7 +1901,7 @@ ${ask}` }];
       askPrompt: planInc.askPrompt,
     });
     conversationLogger.log(userId, phone, text, planInc.askPrompt, 'pending', 'income_partial', null, 0, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
-    return [{ type: 'text', text: planInc.askPrompt }];
+    return partialMoneyReply(ctx, planInc, 'log_income');
   }
 
   // --- Ambiguous → disambiguation buttons ---

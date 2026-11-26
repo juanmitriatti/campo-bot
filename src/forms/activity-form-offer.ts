@@ -9,6 +9,7 @@
 //     (cargas por camión, densidad, "de segunda", notas de rinde), no se ofrece,
 //     porque enviarlo reemplazaría la pregunta y ese dato se caería.
 import { extractCropOrderCue } from '../utils/lexicon.js';
+import { canonicalMassUnit, normalizeToKg } from '../utils/mass-units.js';
 import type { HandlerResponse, ParsedCommand } from '../types/index.js';
 
 type OfferForm = NonNullable<NonNullable<HandlerResponse['sideEffects']>['offerForm']>;
@@ -51,6 +52,36 @@ export function harvestFormOffer(cmd: ParsedCommand, opts: { keepPlot?: boolean 
       yield_kg: num(cmd.yieldKg),
       hectares: num(cmd.hectares),
       humidity_pct: num(cmd.humidity_pct),
+    },
+  };
+}
+
+/**
+ * Gasto / ingreso al que le falta el monto o la categoría. No se ofrece si el
+ * mensaje trae algo que el formulario no tiene (precio unitario; cantidad o
+ * producto en un gasto; una cantidad que no es de peso en un ingreso).
+ */
+export function partialMoneyFormOffer(action: 'log_expense' | 'log_income', data: Record<string, unknown>): OfferForm | undefined {
+  const quantity = num(data.quantity);
+  const isMass = quantity !== null && canonicalMassUnit(str(data.unit)) !== null;
+  const lost = num(data.unit_price) !== null
+    || (action === 'log_expense' ? quantity !== null || !!data.product : quantity !== null && !isMass);
+  if (lost) {
+    console.log(`[FORM] skip offer ${action}: el mensaje trae datos que el formulario no tiene`);
+    return undefined;
+  }
+  const kg = isMass ? normalizeToKg(quantity, str(data.unit)) : null;
+  return {
+    action,
+    prefill: {
+      currency: data.currency === 'USD' ? 'USD' : 'ARS',
+      category: str(data.category),
+      description: str(data.description),
+      eventDate: str(action === 'log_expense' ? data.expenseDate : data.incomeDate),
+      plotName: str(data.plot) ?? str(data.plotName),
+      fieldName: str(data.field) ?? str(data.fieldName),
+      buyer: str(data.buyer),
+      quantity_tn: kg !== null ? kg / 1000 : null,
     },
   };
 }

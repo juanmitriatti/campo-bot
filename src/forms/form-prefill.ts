@@ -106,14 +106,14 @@ export function resolveFormInitialValues(input: PrefillInput): Record<string, un
   }
 
   // Numéricos que el usuario ya dijo.
-  for (const k of ['hectares', 'yield_kg_per_ha', 'yield_kg', 'humidity_pct', 'amount', 'quantity', 'count', 'unit_price'] as const) {
+  for (const k of ['hectares', 'yield_kg_per_ha', 'yield_kg', 'humidity_pct', 'amount', 'quantity', 'count', 'unit_price', 'quantity_tn'] as const) {
     if (!keys.has(k)) continue;
     const v = prefill[k];
     if (typeof v === 'number' && Number.isFinite(v) && v > 0) out[k] = v;
   }
 
   // Textos que el usuario ya dijo.
-  for (const k of ['variety', 'product', 'description', 'notes'] as const) {
+  for (const k of ['variety', 'product', 'description', 'notes', 'buyer'] as const) {
     if (!keys.has(k)) continue;
     const v = prefill[k];
     if (typeof v === 'string' && v.trim()) out[k] = v.trim();

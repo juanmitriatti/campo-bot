@@ -5599,6 +5599,20 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await expenses()).toHaveLength(0);
     });
 
+    it('venta sin monto: sale el formulario solo, con las toneladas cargadas', async () => {
+      await setSetting('WHATSAPP_FLOW_ID_INCOME', 'flow_income_test');
+      h.fakeAgent.enqueueTool('log_income', { category: 'Soja', quantity: 20, unit: 'tn', description: 'venta soja' });
+      const items = await h.send('vendí 20 tn de soja');
+      expect(items, h.allText(items)).toHaveLength(1);
+      const [flow] = flows(items) as unknown as Array<{ body: string; flow: { flowToken: string; data: Record<string, unknown> } }>;
+      expect(flow.body).toMatch(/Soja — 20 tn/);
+      expect(flow.flow.data.quantity_tn_init).toBe('20');
+      const res = await submitForm(flow.flow.flowToken, { ...payload(), amount: '40000000', category: 'Soja', category_other: '', quantity_tn: '20' }, { flowResponse: true, deliver: 'return' });
+      expect(res.ok, JSON.stringify(res)).toBe(true);
+      expect(await h.q(`SELECT id FROM incomes WHERE user_id = $1`, [h.userId])).toHaveLength(1);
+      await setSetting('WHATSAPP_FLOW_ID_INCOME', '');
+    });
+
     it('WHATSAPP_FLOW_ON_MISSING=false: solo la pregunta de chat', async () => {
       await setSetting('WHATSAPP_FLOW_ON_MISSING', 'false');
       const items = await ask();
