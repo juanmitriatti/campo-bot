@@ -194,4 +194,62 @@ describe.skipIf(!dbAvailable)('consistencia de datos en el dashboard', () => {
       await pool.query(`DELETE FROM expenses WHERE id = $1`, [exp]);
     }
   });
+
+  describe('#13 edición de un camión desde el dashboard', () => {
+    let loadId: number;
+    let pcId: number;
+    let truckPlotId: number;
+    const loadRow = async () => (await pool.query(`SELECT weight_kg, net_weight_kg, gross_weight_kg, tare_kg FROM harvest_loads WHERE id = $1`, [loadId])).rows[0];
+
+    beforeAll(async () => {
+      // Lote propio: el de los otros tests tiene una campaña reabierta (índice de una activa por lote).
+      truckPlotId = (await pool.query(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Lote camión', 100) RETURNING id`, [fieldId])).rows[0].id;
+      pcId = (await pool.query(
+        `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, harvested_at)
+         VALUES ($1, 'trigo', 2098, 'fina', '2098-06-01', '2098-12-20') RETURNING id`, [truckPlotId],
+      )).rows[0].id;
+      const ev = (await pool.query(
+        `INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop) VALUES ($1, $2, $3, 'harvest', '2098-12-20', 'trigo') RETURNING id`,
+        [userId, truckPlotId, pcId],
+      )).rows[0].id;
+      loadId = (await pool.query(
+        `INSERT INTO harvest_loads (domain_event_id, plot_crop_id, driver_name, weight_kg, net_weight_kg, created_by)
+         VALUES ($1, $2, 'Ruiz', 30000, 30000, $3) RETURNING id`, [ev, pcId, userId],
+      )).rows[0].id;
+    });
+    afterAll(async () => {
+      await pool.query(`DELETE FROM harvest_loads WHERE id = $1`, [loadId]);
+      await pool.query(`DELETE FROM domain_events WHERE plot_crop_id = $1`, [pcId]);
+      await pool.query(`DELETE FROM plot_crops WHERE id = $1`, [pcId]);
+      await pool.query(`DELETE FROM plots WHERE id = $1`, [truckPlotId]);
+    });
+
+    it('un número ilegible da 400 y no cambia nada (antes se descartaba en silencio)', async () => {
+      const res = await call(`/harvest-loads/${loadId}`, { method: 'PATCH', body: JSON.stringify({ weightKg: 'abc', driverName: 'Otro' }) });
+      expect(res.status).toBe(400);
+      expect(Number((await loadRow()).weight_kg)).toBe(30000);
+    });
+
+    it('bruto o tara negativos dan 400', async () => {
+      const res = await call(`/harvest-loads/${loadId}`, { method: 'PATCH', body: JSON.stringify({ tareKg: -500 }) });
+      expect(res.status).toBe(400);
+      expect((await loadRow()).tare_kg).toBeNull();
+    });
+
+    it('bruto menor o igual a la tara da 400', async () => {
+      const res = await call(`/harvest-loads/${loadId}`, { method: 'PATCH', body: JSON.stringify({ grossWeightKg: 10000, tareKg: 12000 }) });
+      expect(res.status).toBe(400);
+    });
+
+    it('cambiar bruto y tara recalcula los kilos y el rinde de la campaña', async () => {
+      const res = await call(`/harvest-loads/${loadId}`, { method: 'PATCH', body: JSON.stringify({ grossWeightKg: 32000, tareKg: 12000 }) });
+      expect(res.status).toBe(200);
+      const row = await loadRow();
+      expect(Number(row.weight_kg)).toBe(20000); // bruto − tara; antes quedaba en 30.000
+      expect(Number(row.net_weight_kg)).toBeGreaterThan(0);
+      expect(Number(row.net_weight_kg)).toBeLessThanOrEqual(20000);
+      const pc = (await pool.query(`SELECT yield_kg FROM plot_crops WHERE id = $1`, [pcId])).rows[0];
+      expect(Number(pc.yield_kg)).toBeLessThanOrEqual(20000);
+    });
+  });
 });

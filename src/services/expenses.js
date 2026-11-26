@@ -3137,19 +3137,34 @@ export async function deleteDomainEvent(eventId) {
       await pool.query(`DELETE FROM harvest_loads WHERE domain_event_id = $1`, [eventId]);
       // El grano que esa cosecha metió al silo propio sale del stock con ella
       // (STK-20 / AGR-14): antes quedaba en el stock un grano que ya no existía.
+      // Lo que sale es el NETO que esa cosecha dejó en el silo: las entradas menos
+      // las salidas de "Camión corregido" (adjustSiloStockForLoad). Restar solo las
+      // entradas descontaba de más ("30.000 kg" cuando ya se había corregido a
+      // 28.000) y dejaba el stock en negativo. Tampoco se descuenta más de lo que
+      // hay: si el grano ya se vendió, sale lo que queda (auditoría de datos, nov 2026).
       const { rows: grainIn } = await pool.query(
-        `SELECT stock_item_id, SUM(quantity) AS qty FROM stock_movements
-          WHERE domain_event_id = $1 AND movement_type = 'entrada' GROUP BY stock_item_id`,
+        `SELECT sm.stock_item_id, si.current_quantity AS on_hand,
+                SUM(CASE WHEN sm.movement_type = 'entrada' THEN sm.quantity
+                         WHEN sm.movement_type = 'salida' AND sm.reason = 'Camión corregido' THEN -sm.quantity
+                         ELSE 0 END) AS qty
+           FROM stock_movements sm JOIN stock_items si ON si.id = sm.stock_item_id
+          WHERE sm.domain_event_id = $1 GROUP BY sm.stock_item_id, si.current_quantity`,
         [eventId]
       );
       for (const g of grainIn) {
-        await pool.query(`UPDATE stock_items SET current_quantity = current_quantity - $2, updated_at = NOW() WHERE id = $1`, [g.stock_item_id, g.qty]);
+        const net = Number(g.qty);
+        const take = Math.min(net, Math.max(Number(g.on_hand), 0));
+        if (!(take > 0)) {
+          console.log(`[HARVEST] cosecha ${eventId} borrada: nada para sacar del ítem de stock ${g.stock_item_id} (neto ${net}, hay ${g.on_hand})`);
+          continue;
+        }
+        await pool.query(`UPDATE stock_items SET current_quantity = current_quantity - $2, updated_at = NOW() WHERE id = $1`, [g.stock_item_id, take]);
         await pool.query(
           `INSERT INTO stock_movements (stock_item_id, user_id, movement_type, quantity, reason, domain_event_id)
            VALUES ($1, $2, 'salida', $3, 'Cosecha borrada', $4)`,
-          [g.stock_item_id, event.user_id, g.qty, eventId]
+          [g.stock_item_id, event.user_id, take, eventId]
         );
-        console.log(`[HARVEST] cosecha ${eventId} borrada: -${g.qty} del ítem de stock ${g.stock_item_id}`);
+        console.log(`[HARVEST] cosecha ${eventId} borrada: -${take} del ítem de stock ${g.stock_item_id}${take < net ? ` (el neto era ${net}: parte ya salió del silo)` : ''}`);
       }
       if (event.plot_crop_id) {
         await reopenOrRecomputeHarvest(event);
@@ -3871,6 +3886,13 @@ async function adjustSiloStockForLoad(before, after, userId) {
 }
 
 export async function updateHarvestLoad(userId, loadId, patch) {
+  // Todo o nada: actualizar el camión, recalcular el rinde de la campaña y ajustar
+  // el stock del silo eran tres escrituras sueltas; un fallo en la última dejaba
+  // el camión editado con el rinde y el stock viejos (auditoría de datos, nov 2026).
+  return withTransaction(() => updateHarvestLoadInner(userId, loadId, patch));
+}
+
+async function updateHarvestLoadInner(userId, loadId, patch) {
   const before = await getHarvestLoadById(userId, loadId);
   const allowed = ['driver_name', 'weight_kg', 'destination', 'destinatario', 'truck_plate', 'humidity_pct',
     'quality_metrics', 'net_weight_kg', 'merma_pct', 'gross_weight_kg', 'tare_kg', 'acopio_weight_kg', 'carta_porte', 'ctg', 'notes'];

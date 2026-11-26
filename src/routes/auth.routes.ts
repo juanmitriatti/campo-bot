@@ -1308,11 +1308,16 @@ router.patch('/harvest-loads/:id', requireAuth, requireFeature('agronomy'), asyn
 
     const b = req.body ?? {};
     const patch: Record<string, unknown> = {};
-    const numOrNull = (v: unknown): number | null | undefined => {
+    // Un número ilegible ("abc") se rechaza con 400 en vez de descartarse en
+    // silencio (antes el campo quedaba sin cambiar y el usuario creía haberlo
+    // corregido; auditoría de datos, nov 2026).
+    const unreadable: string[] = [];
+    const numOrNull = (v: unknown, name = 'valor'): number | null | undefined => {
       if (v === undefined) return undefined;
       if (v === null || v === '') return null;
       const n = Number(v);
-      return Number.isFinite(n) ? n : undefined;
+      if (!Number.isFinite(n)) { unreadable.push(name); return undefined; }
+      return n;
     };
     const strOrNull = (v: unknown): string | null | undefined => {
       if (v === undefined) return undefined;
@@ -1325,12 +1330,12 @@ router.patch('/harvest-loads/:id', requireAuth, requireFeature('agronomy'), asyn
       if (!driver) { res.status(400).json({ error: 'El chofer no puede quedar vacío.' }); return; }
       patch.driver_name = driver;
     }
-    const weight = numOrNull(b.weightKg);
+    const weight = numOrNull(b.weightKg, 'kilos');
     if (weight !== undefined) {
       if (weight == null || weight <= 0) { res.status(400).json({ error: 'Los kilos tienen que ser mayores a 0.' }); return; }
       patch.weight_kg = weight;
     }
-    const hum = numOrNull(b.humidityPct);
+    const hum = numOrNull(b.humidityPct, 'humedad');
     if (hum !== undefined) {
       if (hum != null && (hum < 0 || hum > 50)) { res.status(400).json({ error: 'La humedad va de 0 a 50 %.' }); return; }
       patch.humidity_pct = hum;
@@ -1340,10 +1345,34 @@ router.patch('/harvest-loads/:id', requireAuth, requireFeature('agronomy'), asyn
       if (v !== undefined) patch[col] = v;
     }
     for (const [k, col] of [['acopioWeightKg', 'acopio_weight_kg'], ['grossWeightKg', 'gross_weight_kg'], ['tareKg', 'tare_kg']] as const) {
-      const v = numOrNull(b[k]);
-      if (v !== undefined) patch[col] = v;
+      const v = numOrNull(b[k], k);
+      if (v !== undefined) {
+        if (v != null && v < 0) { res.status(400).json({ error: 'Los pesos no pueden ser negativos.' }); return; }
+        patch[col] = v;
+      }
+    }
+    if (unreadable.length > 0) {
+      res.status(400).json({ error: `No pude leer como número: ${unreadable.join(', ')}. Escribí solo dígitos (ej: 28500).` });
+      return;
     }
     if (Object.keys(patch).length === 0) { res.status(400).json({ error: 'Nada para actualizar.' }); return; }
+
+    // Bruto y tara de balanza: el peso de la carga es la diferencia. Si cambia
+    // alguno, los kilos (y el neto) se recalculan; antes quedaban con el valor
+    // viejo y el rinde, el stock del silo y el saldo del acopio no se movían.
+    if ('gross_weight_kg' in patch || 'tare_kg' in patch) {
+      const gross = ('gross_weight_kg' in patch ? patch.gross_weight_kg : current.gross_weight_kg) as number | null;
+      const tare = ('tare_kg' in patch ? patch.tare_kg : current.tare_kg) as number | null;
+      if (gross != null && tare != null && gross <= tare) {
+        res.status(400).json({ error: 'El bruto tiene que ser mayor que la tara.' });
+        return;
+      }
+      if (gross != null && tare != null && patch.weight_kg == null) {
+        const { resolveDeclaredWeight } = await import('../utils/grain-merma.js');
+        const declared = resolveDeclaredWeight({ weight_kg: null, gross_weight_kg: gross, tare_kg: tare });
+        if (declared != null && declared > 0) patch.weight_kg = declared;
+      }
+    }
 
     if (patch.weight_kg != null || 'humidity_pct' in patch) {
       const { computeNetWeight, loadMermaConfig } = await import('../utils/grain-merma.js');
