@@ -3794,7 +3794,7 @@ export async function getCampaignProductionKg(userId, { plotId = null, fieldId =
        FROM plot_crops pc
        JOIN plots p ON p.id = pc.plot_id AND p.deleted_at IS NULL
        JOIN fields f ON f.id = p.field_id AND f.deleted_at IS NULL
-      WHERE f.user_id = $1
+      WHERE f.id IN (${accessibleFieldsSql(1)})
         AND pc.harvested_at IS NOT NULL
         AND ($2::int IS NULL OR p.id = $2)
         AND ($3::int IS NULL OR f.id = $3)
@@ -3817,7 +3817,7 @@ export async function findPlotsWithCrop(userId, crop, fieldId = null) {
        FROM plot_crops pc
        JOIN plots p ON p.id = pc.plot_id AND p.deleted_at IS NULL
        JOIN fields f ON f.id = p.field_id AND f.deleted_at IS NULL
-      WHERE f.user_id = $1
+      WHERE f.id IN (${accessibleFieldsSql(1)})
         AND LOWER(pc.crop) = LOWER($2)
         AND ($3::int IS NULL OR f.id = $3)
         AND pc.start_date >= CURRENT_DATE - INTERVAL '18 months'
