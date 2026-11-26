@@ -12,6 +12,8 @@ import { logError } from '../services/error-logger.js';
 import { limitNotifier } from '../services/limit-notifier.service.js';
 import { FewShotService } from './few-shot.service.js';
 import type { UserId, UserSettings, ParseResult, AiUsage } from '../types/index.js';
+import { requestParams, responseText as textOf } from './model-params.js';
+import { estimateCostUsd } from './model-pricing.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -112,8 +114,7 @@ export class IntentExtractor {
         response = await anthropic.messages.create(
           {
             model: resolvedModel,
-            max_tokens: resolvedMaxTokens,
-            temperature: 0,
+            ...requestParams(resolvedModel, resolvedMaxTokens, { temperature: 0 }),
             system: systemPrompt,
             messages,
           },
@@ -130,7 +131,7 @@ export class IntentExtractor {
       };
 
       await repo.saveAiUsage(userId, usage);
-      saveAiFallbackLog(userId, text, { type: 'ai_intent' }, usage).catch(() => {});
+      saveAiFallbackLog(userId, text, { type: 'ai_intent' }, usage, estimateCostUsd(resolvedModel, usage)).catch(() => {});
 
       // Phase 1 — fire the 80% warning when this call crosses the threshold.
       const newCount = dailyCount + 1;
@@ -145,7 +146,7 @@ export class IntentExtractor {
         });
       }
 
-      const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+      const responseText = textOf(response);
       console.log(
         `AI_INTENT (${dailyCount + 1}/${claudeLimit}):`,
         ('{"intent":"' + responseText).slice(0, 300),
@@ -154,7 +155,7 @@ export class IntentExtractor {
 
       // Validate and map response — prepend the assistant prefill to reconstruct full JSON
       const PREFILL = '{"intent":"';
-      const rawText = response.content[0].type === 'text' ? response.content[0].text : '';
+      const rawText = textOf(response);
       const fullJson = PREFILL + rawText;
       const result = this.intentValidator.validate(fullJson, text);
 

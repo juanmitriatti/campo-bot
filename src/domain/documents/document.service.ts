@@ -7,6 +7,7 @@ import { getSetting, getSettingNumber } from '../../services/settings.service.js
 import { logError } from '../../services/error-logger.js';
 import { getTodayISO } from '../../utils/date.js';
 import type { DocumentExtraction, DocumentRow, ParsedExpense, Currency } from '../../types/index.js';
+import { requestParams } from '../../ai/model-params.js';
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'application/pdf',
@@ -190,8 +191,7 @@ export class DocumentService {
 
     const response = await anthropic.messages.create({
       model,
-      max_tokens: maxTokens,
-      temperature: 0,
+      ...requestParams(model, maxTokens, { temperature: 0 }),
       messages: [{
         role: 'user',
         content: [

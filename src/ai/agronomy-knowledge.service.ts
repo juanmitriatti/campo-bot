@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getSetting, getSettingNumber, getSettingBool } from '../services/settings.service.js';
 import { saveAiUsage } from '../services/expenses.js';
 import { logError } from '../services/error-logger.js';
+import { requestParams } from './model-params.js';
 
 /**
  * AgronomyKnowledgeService — respuestas educativas de agronomía/ganadería.
@@ -64,7 +65,7 @@ export class AgronomyKnowledgeService {
       const response = await getClient().messages.create(
         {
           model,
-          max_tokens: maxTokens,
+          ...requestParams(model, maxTokens),
           system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
           messages: [{ role: 'user', content: q }],
         },

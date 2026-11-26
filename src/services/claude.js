@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
 import { getSetting, getSettingNumber, getSettingBool } from "./settings.service.js";
 import { logError } from "./error-logger.js";
+import { requestParams, responseText } from "../ai/model-params.js";
 
 dotenv.config();
 
@@ -24,8 +25,7 @@ export async function analyzeMessage(text) {
   try {
     response = await anthropic.messages.create({
       model: model || "claude-haiku-4-5-20251001",
-      max_tokens: maxTokens || 250,
-    temperature: 0,
+      ...requestParams(model || "claude-haiku-4-5-20251001", maxTokens || 250, { temperature: 0 }),
     system: `Sos un asistente de gestión agrícola argentina. Extraé datos financieros o de actividades del mensaje. Respondé SOLO JSON, sin texto adicional.
 
 GASTO: {"type":"expense","category":"X","amount":N,"description":"X","field":null}
@@ -64,7 +64,7 @@ No entendido: {"type":"unknown"}`,
   let data = null;
   try {
     // Extract JSON even if Claude adds extra text
-    const rawText = response.content[0].text;
+    const rawText = responseText(response);
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       data = JSON.parse(jsonMatch[0]);
@@ -72,9 +72,9 @@ No entendido: {"type":"unknown"}`,
       data = { type: "unknown" };
     }
   } catch (e) {
-    console.error("PARSE ERROR:", response.content[0].text);
+    console.error("PARSE ERROR:", responseText(response));
     logError('claude', 'PARSE_ERROR', e, {
-      context: { rawResponse: response.content[0].text.slice(0, 200) },
+      context: { rawResponse: responseText(response).slice(0, 200) },
     });
     data = { type: "unknown" };
   }

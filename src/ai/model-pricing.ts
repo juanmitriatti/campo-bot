@@ -22,11 +22,15 @@ type Price = readonly [input: number, output: number, cacheRead: number, cacheWr
 
 const HAIKU_4_5: Price = [1.0, 5.0, 0.1, 1.25];
 
+// Haiku 5.5: tarifa para prompts de hasta 100K tokens (los del bot entran).
+const HAIKU_5_5: Price = [0.1, 0.5, 0.01, 0.125];
+
 const PRICES: Array<{ match: RegExp; price: Price }> = [
   { match: /^claude-opus-5/, price: [5.0, 25.0, 0.5, 6.25] },
   { match: /^claude-sonnet-5/, price: [2.0, 10.0, 0.2, 2.5] },
   { match: /^claude-fable-5/, price: [5.0, 25.0, 0.5, 6.25] },
   { match: /^claude-haiku-4-5/, price: HAIKU_4_5 },
+  { match: /^claude-haiku-5-5/, price: HAIKU_5_5 },
 ];
 
 const warned = new Set<string>();

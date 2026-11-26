@@ -13,6 +13,8 @@ import { getActivityDictionary } from '../services/activity-dictionary.service.j
 import { limitNotifier } from '../services/limit-notifier.service.js';
 import { getAiDailyLimit } from '../services/ai-quota.service.js';
 import type { UserId, UserSettings, AiUsage } from '../types/index.js';
+import { requestParams } from './model-params.js';
+import { estimateCostUsd } from './model-pricing.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -225,8 +227,7 @@ export class AgentService {
         response = await anthropic.messages.create(
           {
             model: resolvedModel,
-            max_tokens: resolvedMaxTokens,
-            temperature: resolvedTemperature,
+            ...requestParams(resolvedModel, resolvedMaxTokens, { temperature: resolvedTemperature, forcedTool: true }),
             system: [{ type: 'text', text: systemPrompt, cache_control: cacheControl }],
             tools: cachedTools,
             tool_choice: { type: 'any' },
@@ -249,7 +250,7 @@ export class AgentService {
       };
 
       await repo.saveAiUsage(userId, usage);
-      saveAiFallbackLog(userId, text, { type: 'agent_tool_use' }, usage).catch(() => {});
+      saveAiFallbackLog(userId, text, { type: 'agent_tool_use' }, usage, estimateCostUsd(resolvedModel, usage)).catch(() => {});
 
       // Phase 1 — fire the 80%-warning when this call brings the user across
       // the threshold. Deduped to once-per-day inside the notifier. We use

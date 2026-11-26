@@ -8,6 +8,8 @@ import { ConversationHistoryService } from './conversation-history.service.js';
 import { logError } from '../services/error-logger.js';
 import { buildFallbackMessage } from '../utils/fuzzy-suggest.js';
 import type { UserId, UserSettings, AiUsage } from '../types/index.js';
+import { requestParams, responseText as textOf } from './model-params.js';
+import { estimateCostUsd } from './model-pricing.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -157,8 +159,7 @@ export class ConversationalFallbackService {
         apiResponse = await anthropic.messages.create(
           {
             model: resolvedModel,
-            max_tokens: resolvedMaxTokens,
-            temperature: resolvedTemperature,
+            ...requestParams(resolvedModel, resolvedMaxTokens, { temperature: resolvedTemperature }),
             system: resolvedSystemPrompt,
             messages: [
               ...historyTurns.map(t => ({ role: t.role, content: t.content })),
@@ -178,12 +179,10 @@ export class ConversationalFallbackService {
 
       // Track usage
       await this.userRepo.saveAiUsage(userId, usage);
-      saveAiFallbackLog(userId, text, { type: 'conversational_fallback' }, usage).catch(() => {});
+      saveAiFallbackLog(userId, text, { type: 'conversational_fallback' }, usage, estimateCostUsd(resolvedModel, usage)).catch(() => {});
       recordUsage(userId, rateLimitWindow);
 
-      const responseText = apiResponse.content[0].type === 'text'
-        ? apiResponse.content[0].text
-        : RATE_LIMIT_RESPONSE;
+      const responseText = textOf(apiResponse) || RATE_LIMIT_RESPONSE;
 
       console.log(
         `CONV_FALLBACK (${dailyCount + 1}/${claudeLimit}):`,
