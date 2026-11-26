@@ -195,4 +195,38 @@ describe.skipIf(!dbAvailable)('rinde de una cosecha de varios días', () => {
     await h.send('cosechamos soja en Techo5c, rindió 42 qq/ha');
     expect(Number((await campaign(pcId)).yield_kg)).toBe(420000);
   });
+
+  it('auditoría de datos #16: un rinde negativo no se guarda (había una cosecha de -500 kg en la base)', async () => {
+    const { pcId } = await newPlot('Neg16');
+    h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Neg16', yield_kg: -500 });
+    const replies = await h.send('cosechamos soja en Neg16, rindió -500 kg');
+    const c = await campaign(pcId);
+    expect(c.yield_kg).toBeNull();
+    expect(c.harvested_at).toBeNull();
+    expect(JSON.stringify(replies)).toContain('mayor a 0');
+  });
+
+  it('auditoría de datos #17: un evento viejo con unidad "qq/ha" no se suma como kilos', async () => {
+    const { plotId } = await newPlot('Unid17');
+    const add = (qty: number, unit: string) => h.q(
+      `INSERT INTO domain_events (user_id, plot_id, event_type, event_date, crop, quantity, unit) VALUES ($1, $2, 'harvest', $3, 'soja', $4, $5)`,
+      [h.userId, plotId, isoDaysAgo(2), qty, unit],
+    );
+    await add(10, 'tn');
+    await add(42, 'qq/ha');
+    const rows = await h.q(
+      `WITH ${harvestCampaignsCte({ user: '$1', from: '$2', to: '$3', fieldIds: '$4' })}
+       SELECT COALESCE(SUM(kg), 0) AS kg FROM harvest_campaigns WHERE plot_id = $5`,
+      [h.userId, isoDaysAgo(30), isoDaysAgo(-1), [fieldId], plotId],
+    );
+    expect(Number((rows[0] as { kg: string }).kg)).toBe(10000); // antes 10.042
+  });
+
+  it('auditoría de datos #20: una fecha "05/11" del agente se guarda como 5 de noviembre, no 11 de mayo', async () => {
+    const { plotId } = await newPlot('Fecha20');
+    h.fakeAgent.enqueueTool('log_expense', { amount: 1000, category: 'Combustible', plot: 'Fecha20', event_date: '05/11/2025' });
+    await h.send('gasté 1000 en gasoil en Fecha20 el 5 de noviembre del año pasado');
+    const rows = await h.q(`SELECT to_char(expense_date, 'YYYY-MM-DD') AS d FROM expenses WHERE plot_id = $1`, [plotId]);
+    expect((rows[0] as { d: string } | undefined)?.d).toBe('2025-11-05');
+  });
 });

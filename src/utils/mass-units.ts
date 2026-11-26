@@ -46,3 +46,12 @@ export function normalizeToKg(quantity: number | null | undefined, unit: string 
   }
   return q * KG_PER[canon];
 }
+
+/**
+ * Unidad de una cantidad de GRANO que llegó sin unidad. Antes se asumía siempre
+ * toneladas: "cosechamos 3000" quedaba como 3.000 tn. Mil o más solo puede ser
+ * kilos; menos, toneladas (auditoría de datos, nov 2026).
+ */
+export function inferGrainUnit(quantity: number): 'kg' | 'tn' {
+  return Math.abs(quantity) >= 1000 ? 'kg' : 'tn';
+}

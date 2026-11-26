@@ -259,6 +259,15 @@ Ver [docs/features/sharing.md](docs/features/sharing.md). Compartir existía sol
 - **`requireAuth` mira la base en cada request** (caché 15 s, `invalidateAccountState` al suspender/borrar): una cuenta borrada o suspendida, o un admin degradado, no sigue entrando 15 minutos con su JWT; el rol que vale es el de la base. Test seam `setAccountLookupForTests`.
 - **Vincular WhatsApp/Telegram** de un número que ya tiene una cuenta creada por el chat: si esa cuenta está vacía se le saca el canal; si tiene datos, 409 `CHANNEL_HAS_CHAT_DATA` y el código sigue sirviendo (antes 23505 → 500 con el código consumido). La prueba gratis es una por número: si el número ya se verificó en otra cuenta con suscripción, la prueba de la cuenta nueva termina (`[TRIAL]`). Cambiar el email pide la contraseña actual e invalida resets/verificaciones pendientes. Borrar la cuenta borra también nombre, apellido y localidad. Mi cuenta tiene "Descargar mis datos" y "Borrar mi cuenta". Express confía en el proxy de Railway (`trust proxy`), así el rate limit por IP es por cliente. Regresiones en `src/routes/__tests__/dashboard-account.routes.test.ts`.
 
+### Consistencia de datos — reglas de la auditoría nov 2026
+- Borrar una actividad (chat o dashboard) pasa SIEMPRE por `deleteDomainEvent`; del silo sale el neto (entradas − "Camión corregido") y nunca más de lo que hay.
+- Precio "la tonelada/el kilo/el quintal" sobre una cantidad en otra unidad se convierte (`extractPriceMassUnit`). Cantidad de grano sin unidad: `inferGrainUnit` (≥1000 = kg).
+- Lluvia en Resumen y analytics: una cifra por campo y día (MAX) y PROMEDIO entre campos.
+- Hectáreas cosechadas y sembradas se topean al lote antes de calcular. Rinde sobre `yield-ceiling.ts` pregunta con botones (bulk: se descarta con aviso); rinde ≤ 0 se rechaza.
+- Repetir una siembra sin "otras" no duplica el evento: igual → avisa, distinta → actualiza las ha.
+- Dashboard: siembra/cosecha no cambian de tipo, la cosecha no cambia de cultivo, las fechas respetan siembra ≤ cosecha y no pisan la campaña anterior; editar camión es transaccional y valida números.
+- Toda fecha del agente pasa por `normalizeAgentDate`. Rangos en la base: migración 137 (`NOT VALID`).
+
 ### Respuestas y preguntas — reglas de la auditoría oct 2026 (tanda 4)
 - **Una acción o consulta nueva NUNCA es la respuesta** a lo que el bot espera. `ACTION_VERB` incluye verbos de hacienda (murió, perdí, llegaron, encerré, metí, faené, parió). Aplicado a: nombre de categoría nueva tras "+ Otra" (además vence a los 30 min; un nombre >60 re-pregunta sin perder el registro), paso lote de un flow (`isPlotAnswerToFlow` descarta textos con verbo), fallback de slot único (acuses "dale/ok" no son valor; un slot de texto no acepta solo dígitos; `count` toma el primer número sin unidad).
 - **Saludo/gracias con pending** (`isSmallTalk`): se re-pregunta sin gastar la escalera. "cancelar" dice qué canceló y cuántas en cola, y descarta la acción diferida.

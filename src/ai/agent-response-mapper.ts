@@ -1,4 +1,5 @@
 import { normalizeToKg } from '../utils/mass-units.js';
+import { normalizeAgentDate } from '../utils/date.js';
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
 import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES, EXPENSE_KEYWORD_MAP, type IncomeCategory } from '../constants/agro-terms.js';
 import { resolveRelativeDate, resolveAllRelativeDates, TOOLS_WITH_DATE_PARAM, dateKeyForTool } from '../utils/relative-dates.js';
@@ -515,6 +516,23 @@ export class AgentResponseMapper {
       // skipDateOverride: a per-entry date was already assigned (multi-day msg).
       const resolved = resolveRelativeDate(originalText);
       if (resolved) inputAsRec[dateKey] = resolved;
+    }
+
+    // La fecha que manda el agente se valida acá, antes de llegar a la base: los
+    // schemas piden YYYY-MM-DD pero un "05/11" se leía como 11 de mayo.
+    // (due_date de los recordatorios no entra: lo resuelve reminder.service.)
+    for (const key of ['event_date', 'new_date', 'filter_date', 'birth_date']) {
+      const rec = input as Record<string, unknown>;
+      const raw = rec[key];
+      if (raw == null || raw === '') continue;
+      const iso = normalizeAgentDate(raw);
+      if (iso === null) {
+        console.warn(`AI_MAPPER DROP: ${toolName}.${key}="${String(raw)}" no es una fecha válida`);
+        delete rec[key];
+      } else if (iso !== raw) {
+        console.log(`AI_MAPPER OVERRIDE: ${toolName}.${key} "${String(raw)}" → ${iso}`);
+        rec[key] = iso;
+      }
     }
 
     if (toolName === 'log_expense') {

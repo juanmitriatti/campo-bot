@@ -24,10 +24,13 @@ import { accessibleFieldsSql } from '../domain/shared/accessible-fields.js';
  * distinto.
  */
 export function harvestCampaignsCte(p: { user: string; from: string; to: string; fieldIds: string }): string {
-  const kgFactor = (unitExpr: string) => `CASE LOWER(COALESCE(${unitExpr}, 'kg'))
-      WHEN 'tn' THEN 1000 WHEN 'tonelada' THEN 1000 WHEN 'toneladas' THEN 1000 WHEN 't' THEN 1000
+  // Una unidad que no es de masa ("qq/ha", "kg/ha", "bolsas") NO cuenta: antes
+  // caía en ELSE 1 y un rinde por hectárea se sumaba como kilos (auditoría de datos, nov 2026).
+  const kgFactor = (unitExpr: string) => `CASE LOWER(TRIM(COALESCE(${unitExpr}, 'kg')))
+      WHEN '' THEN 1 WHEN 'kg' THEN 1 WHEN 'kgs' THEN 1 WHEN 'kilo' THEN 1 WHEN 'kilos' THEN 1 WHEN 'k' THEN 1
+      WHEN 'tn' THEN 1000 WHEN 'ton' THEN 1000 WHEN 'tons' THEN 1000 WHEN 'tonelada' THEN 1000 WHEN 'toneladas' THEN 1000 WHEN 't' THEN 1000
       WHEN 'qq' THEN 100 WHEN 'quintal' THEN 100 WHEN 'quintales' THEN 100
-      ELSE 1 END`;
+      ELSE NULL END`;
   // Acceso por CAMPO, no por autor: en un campo compartido la cosecha que cargó
   // el socio cuenta igual (DSH-4). Antes `d.user_id = $1` la dejaba afuera.
   const accessible = accessibleFieldsSql(Number(p.user.replace('$', '')));

@@ -25,6 +25,7 @@ import { logError } from '../../services/error-logger.js';
 import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.service.js';
 import { formatHistoryResponse } from './plot-query.service.js';
 import { formatDateAR, toISODateAR } from '../../utils/date.js';
+import { inferGrainUnit } from '../../utils/mass-units.js';
 import { formatQuantityHuman, formatTn } from '../../utils/format-quantity.js';
 import { exceedsYieldCeiling, yieldCeilingKgPerHa } from '../../utils/yield-ceiling.js';
 import { localidadLookup, type Localidad } from '../../services/localidad-lookup.service.js';
@@ -2680,6 +2681,12 @@ export class AgronomyHandler {
         }
         const yieldKgRaw = cmd.yieldKg != null ? Number(cmd.yieldKg) : null;
         const yieldKgPerHa = cmd.yieldKgPerHa != null ? Number(cmd.yieldKgPerHa) : null;
+        // Un rinde negativo o en cero no es un rinde: en la base había una cosecha de
+        // -500 kg (auditoría de datos, nov 2026). Se pide de nuevo, nunca se guarda.
+        if ((yieldKgRaw != null && !(yieldKgRaw > 0)) || (yieldKgPerHa != null && !(yieldKgPerHa > 0))) {
+          console.warn(`[INTERCEPT] harvest_crop: rinde no positivo descartado (kg=${yieldKgRaw}, kg/ha=${yieldKgPerHa})`);
+          return { messages: ['⚠️ El rinde tiene que ser mayor a 0. Mandame la cosecha de nuevo con el rinde correcto (ej: "rindió 42 qq/ha" o "sacamos 130 tn").'] };
+        }
         let yieldNotes = (cmd.yieldNotes as string) || null;
         const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
 
@@ -2926,7 +2933,7 @@ export class AgronomyHandler {
           // either `quantity` (older path) or `yieldKg` (the typical harvest schema);
           // fall back to the resolved yieldKg so the silo prompt still surfaces.
           const harvestQuantity = cmd.quantity ? Number(cmd.quantity) : (yieldKg ?? null);
-          const harvestUnit = cmd.quantity ? ((cmd.unit as string) || 'tn') : 'kg';
+          const harvestUnit = cmd.quantity ? ((cmd.unit as string) || inferGrainUnit(Number(cmd.quantity))) : 'kg';
           savedEvent = await this.repo.saveDomainEvent(userId, {
             plotId: plotResult.plotId,
             plotCropId: harvestedResult.id,
@@ -3129,7 +3136,7 @@ export class AgronomyHandler {
         // If quantity provided, suggest loading grain to stock/silo. Same
         // fallback as the saveDomainEvent block above.
         const harvestQuantity = cmd.quantity ? Number(cmd.quantity) : (yieldKg ?? null);
-        const harvestUnit = cmd.quantity ? ((cmd.unit as string) || 'tn') : 'kg';
+        const harvestUnit = cmd.quantity ? ((cmd.unit as string) || inferGrainUnit(Number(cmd.quantity))) : 'kg';
         if (harvestQuantity && harvestQuantity > 0) {
           try {
             const { FeatureGate } = await import('../billing/feature-gate.js');
@@ -3824,10 +3831,10 @@ export class AgronomyHandler {
         if (!crop || isPlaceholder(crop)) return { messages: ['¿Qué grano retiraste? (soja, maíz, trigo…)'] };
         if (qty == null || qty <= 0) return { messages: [`¿Cuántas toneladas de ${crop} retiraste?`] };
         const { normalizeToKg } = await import('../../ai/agent-response-mapper.js');
-        const kg = normalizeToKg(qty, (cmd.unit as string) || 'tn') ?? qty * 1000;
+        const kg = normalizeToKg(qty, (cmd.unit as string) || inferGrainUnit(qty)) ?? qty * 1000;
         const from = (cmd.destinatario as string) ?? (cmd.product as string) ?? null;
         if (!from) {
-          const prompt = `📦 ¿De dónde retiraste ${qty} ${(cmd.unit as string) || 'tn'} de ${crop}? (acopio o silo)`;
+          const prompt = `📦 ¿De dónde retiraste ${qty} ${(cmd.unit as string) || inferGrainUnit(qty)} de ${crop}? (acopio o silo)`;
           return {
             messages: [prompt],
             sideEffects: { setPendingActivity: { command: 'log_grain_withdrawal', data: { ...cmd, command: 'log_grain_withdrawal' }, missing: ['product'], askPrompt: prompt } },

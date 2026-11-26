@@ -345,4 +345,43 @@ describe.skipIf(!dbAvailable)('consistencia de datos en el dashboard', () => {
       expect((await patch(sow2, { event_date: '2090-01-20' })).status).toBe(200);
     });
   });
+
+  describe('#16 restricciones de rango en la base (migración 137)', () => {
+    const rejects = async (sql: string, params: unknown[]) => {
+      let err: Error | null = null;
+      try { await pool.query(sql, params); } catch (e) { err = e as Error; }
+      return err;
+    };
+
+    it('una lluvia negativa o de más de 1000 mm no entra', async () => {
+      const neg = await rejects(`INSERT INTO rainfall (user_id, field_id, rainfall_date, millimeters) VALUES ($1, $2, '2099-01-01', -50)`, [userId, fieldId]);
+      expect(neg?.message).toMatch(/chk_rainfall_mm_range/);
+      const big = await rejects(`INSERT INTO rainfall (user_id, field_id, rainfall_date, millimeters) VALUES ($1, $2, '2099-01-02', 5000)`, [userId, fieldId]);
+      expect(big?.message).toMatch(/chk_rainfall_mm_range/);
+    });
+
+    it('una superficie en cero o negativa no entra en un lote', async () => {
+      const err = await rejects(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Lote neg', -10)`, [fieldId]);
+      expect(err?.message).toMatch(/chk_plots_area_positive/);
+    });
+
+    it('un camión con peso negativo no entra', async () => {
+      const ev = (await pool.query(
+        `INSERT INTO domain_events (user_id, plot_id, event_type, event_date, crop) VALUES ($1, $2, 'harvest', '2099-03-01', 'soja') RETURNING id`, [userId, plotId],
+      )).rows[0].id;
+      try {
+        const err = await rejects(`INSERT INTO harvest_loads (domain_event_id, driver_name, weight_kg, tare_kg, created_by) VALUES ($1, 'Neg', 1000, -5, $2)`, [ev, userId]);
+        expect(err?.message).toMatch(/chk_harvest_loads_weights_nonneg/);
+      } finally {
+        await pool.query(`DELETE FROM domain_events WHERE id = $1`, [ev]);
+      }
+    });
+
+    it('lo válido sigue entrando (superficie NULL, 0 mm de lluvia)', async () => {
+      const ok = (await pool.query(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Lote sin ha', NULL) RETURNING id`, [fieldId])).rows[0].id;
+      await pool.query(`DELETE FROM plots WHERE id = $1`, [ok]);
+      const r = (await pool.query(`INSERT INTO rainfall (user_id, field_id, rainfall_date, millimeters) VALUES ($1, $2, '2099-01-03', 0) RETURNING id`, [userId, fieldId])).rows[0].id;
+      await pool.query(`DELETE FROM rainfall WHERE id = $1`, [r]);
+    });
+  });
 });
