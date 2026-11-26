@@ -5635,4 +5635,64 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('respuesta a ¿en qué lote? en una cola de altas (nov 2026)', () => {
+    let h: PipelineHarness;
+    const groups = async () => (await h.q(`SELECT category::text AS c, count::int AS n FROM livestock_groups WHERE user_id = $1 AND count > 0 ORDER BY category::text`, [h.userId])).map(r => `${r.c}:${r.n}`);
+    const buy = async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'add_livestock', toolInput: { category: 'vaca', count: 7 } },
+        { toolName: 'add_livestock', toolInput: { category: 'ternero', count: 7 } },
+      ]);
+      await h.send('compre 7 vacas y 7 terneros');
+    };
+    beforeAll(async () => {
+      h = await createPipelineHarness('plot-answer');
+      const mk = async (field: string, plots: string[]) => {
+        const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, $2) RETURNING id`, [h.userId, field]);
+        for (const p of plots) await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, $2, 50)`, [(f[0] as { id: number }).id, p]);
+      };
+      await mk('la barrida', ['Norte', 'Sur']);
+      await mk('tres bonetes', ['5g']);
+    });
+    afterAll(async () => h?.cleanup());
+    beforeEach(async () => {
+      await h.send('cancelar');
+      await h.q(`DELETE FROM livestock_movements WHERE user_id = $1`, [h.userId]);
+      await h.q(`DELETE FROM livestock_groups WHERE user_id = $1`, [h.userId]);
+    });
+
+    it('un campo de un solo lote vale como respuesta: no se pierde ninguna alta', async () => {
+      await buy();
+      await h.send('tres bonetes');
+      expect(await groups()).toEqual(['vaca:7']);
+      await h.send('350 mil'); // precio de las vacas
+      await h.send('5g');
+      expect(await groups()).toEqual(['ternero:7', 'vaca:7']);
+    });
+
+    it('un campo de varios lotes pregunta cuál, sin soltar el alta', async () => {
+      await buy();
+      expect(h.allText(await h.send('la barrida'))).toMatch(/Qué lote de \*la barrida\*/i);
+      await h.send('Sur');
+      expect(await groups()).toEqual(['vaca:7']);
+    });
+
+    it('un campo no se acepta como cultivo', async () => {
+      h.fakeAgent.enqueueTool('sow_crop', {});
+      await h.send('sembré');
+      expect(h.allText(await h.send('tres bonetes'))).toMatch(/es uno de tus campos o lotes/);
+      const rows = await h.q(`SELECT pc.id FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1`, [h.userId]);
+      expect(rows).toHaveLength(0);
+    });
+
+    it('un lote que no existe re-pregunta por el MISMO alta, sin pasar al siguiente', async () => {
+      await buy();
+      const text = h.allText(await h.send('en el fondo'));
+      expect(text).toMatch(/No encontré el lote/);
+      expect(text).not.toMatch(/7 ternero/);
+      await h.send('5g');
+      expect(await groups()).toEqual(['vaca:7']);
+    });
+  });
+
 });

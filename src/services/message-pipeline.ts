@@ -20,6 +20,7 @@
  *    los suyos.
  */
 
+import type { PendingActivity } from '../middleware/pending-activities.js';
 import { IntentClassifier, READ_ONLY_TRIVIAL_COMMANDS, EXPIRED_ALLOWED_COMMANDS } from './intent-classifier.js';
 import { DomainRouter } from '../domain/router.js';
 import { CompoundExecutor } from '../domain/compound-executor.js';
@@ -593,6 +594,55 @@ async function partialMoneyReply(
     } as HandlerResponse, ctx);
   }
   return items;
+}
+
+/** Registros que valen a nivel campo: ahí un nombre de campo es respuesta. */
+const PLOT_OPTIONAL_COMMANDS = new Set(['log_expense', 'log_income', 'log_rainfall', 'log_observation']);
+
+/**
+ * Revisa la respuesta a "¿en qué lote?". Un campo de UN lote se traduce a ese
+ * lote (muta `data`). Devuelve el texto de re-pregunta, 'escalate' o null
+ * (seguir). Un lote inexistente solo se frena acá si hay cola detrás: con una
+ * sola acción, el handler ofrece crearlo.
+ */
+async function checkPlotAnswer(
+  userId: UserId,
+  phone: string,
+  pending: PendingActivity,
+  data: Record<string, unknown>,
+): Promise<string | null> {
+  const { slotToCmdKeys } = await import('../middleware/pending-action-processor.js');
+  const { classifyPlotAnswer } = await import('../middleware/pending-plot-answer.js');
+  const keys = slotToCmdKeys('plot' as never) as string[];
+  const before = (pending.data ?? {}) as Record<string, unknown>;
+  const key = [...keys, 'fieldName'].find(k => typeof data[k] === 'string' && data[k] && data[k] !== before[k]);
+  if (!key) return null;
+  const value = String(data[key]);
+  const answer = await classifyPlotAnswer(Number(userId), value);
+  if (answer.kind === 'plot') return null;
+
+  if (answer.kind === 'field' && answer.plots.length === 1) {
+    console.log(`[INTERCEPT] «${value}» es un campo de un lote → ${answer.plots[0]}`);
+    for (const k of keys) data[k] = answer.plots[0];
+    data.fieldName = answer.field;
+    return null;
+  }
+  const queued = (pending.nextInQueue?.length ?? 0) > 0 || before._fromQueue === true;
+  if (answer.kind === 'unknown' && !queued) return null;
+
+  const attempts = (pending.attempts ?? 0) + 1;
+  console.log(`[INTERCEPT] respuesta de lote «${value}» (${answer.kind}) para ${pending.command} — re-pregunto, attempts=${attempts}`);
+  if (attempts >= 3) return 'escalate';
+  const ask = answer.kind === 'field'
+    ? `📍 ¿Qué lote de *${answer.field}*? ${answer.plots.join(', ')}`
+    : `🤔 No encontré el lote «${value}». Si es nuevo, escribí *cancelar*, crealo y cargalo de nuevo.\n\n${pending.askPrompt ?? '¿En qué lote?'}`;
+  pendingActStore.set(phone, {
+    ...pending,
+    attempts,
+    timestamp: Date.now(),
+    data: answer.kind === 'field' ? { ...before, fieldName: answer.field } : before,
+  });
+  return ask;
 }
 
 // ============================================================
@@ -1479,6 +1529,27 @@ ${ask}` }];
         pendingActStore.clear(phone);
         return [{ type: 'text', text: 'No pude interpretar tu respuesta. Probá de nuevo o escribí *cancelar*.' }];
       }
+      // "¿En qué lote?" contestado con un CAMPO o con algo que no existe: se
+      // resuelve antes de re-rutear, sin soltar la pregunta ni la cola.
+      if (result.next === null && pendingAct.missing?.includes('plot')
+          && !PLOT_OPTIONAL_COMMANDS.has(pendingAct.command)) {
+        const reask = await checkPlotAnswer(userId, phone, pendingAct, result.finalData as Record<string, unknown>);
+        if (reask === 'escalate') return escalatePendingToAgent(text, ctx, pendingAct);
+        if (reask) return [{ type: 'text', text: reask }];
+      }
+      // Un campo o un lote no es un cultivo: "tres bonetes" se registraba como
+      // siembra del cultivo «Tres bonetes».
+      if (result.next === null && pendingAct.missing?.includes('crop')) {
+        const crop = (result.finalData as Record<string, unknown>).crop;
+        const { isOwnPlaceName } = await import('../middleware/pending-plot-answer.js');
+        if (typeof crop === 'string' && await isOwnPlaceName(Number(userId), crop)) {
+          const attempts = (pendingAct.attempts ?? 0) + 1;
+          console.log(`[INTERCEPT] «${crop}» es un campo/lote, no un cultivo (${pendingAct.command}) attempts=${attempts}`);
+          if (attempts >= 3) return escalatePendingToAgent(text, ctx, pendingAct);
+          pendingActStore.set(phone, { ...pendingAct, attempts, timestamp: Date.now() });
+          return [{ type: 'text', text: `🤔 «${crop}» es uno de tus campos o lotes. ¿Qué *cultivo*? (ej: soja, maíz, trigo)` }];
+        }
+      }
       if (result.next === null) {
         // All required slots filled → re-route the command. Use the
         // processor's finalData (already merged + overwrites applied like
@@ -1508,6 +1579,21 @@ ${ask}` }];
               || (pendingAct.data as Record<string, unknown>)?._fromQueue === true);
         const routed = await domainRouter.routeCommand(merged, userId, user, settings, queueBulk);
         const cmdResult = routed ?? { messages: ['No pude completar el registro. Probá de nuevo.'] };
+
+        // El registro FALLÓ (❌) y el handler no dejó otra pregunta: antes se
+        // pasaba al siguiente de la cola y este se perdía en silencio.
+        const fx = cmdResult.sideEffects as Record<string, unknown> | undefined;
+        if (String(cmdResult.messages?.[0] ?? '').startsWith('❌') && !fx?.setPendingActivity && !fx?.startFlow
+            && !('interactive' in cmdResult && cmdResult.interactive)) {
+          const attempts = (pendingAct.attempts ?? 0) + 1;
+          console.log(`[INTERCEPT] pending fallido: ${pendingAct.command} attempts=${attempts} — se conserva la pregunta`);
+          if (attempts >= 2) return escalatePendingToAgent(text, ctx, pendingAct);
+          pendingActStore.set(phone, { ...pendingAct, attempts, timestamp: Date.now() });
+          return [
+            ...collectResponse(cmdResult),
+            { type: 'text', text: `${pendingAct.askPrompt ?? 'Decime el dato que falta.'}\n\n_O escribí *cancelar*._` },
+          ];
+        }
 
         // ─── ESCALERA DE ESCALAMIENTO: no-progreso tras re-ruteo (Jul 2026) ───
         // El handler consumió la respuesta pero re-pidió slots del MISMO comando
