@@ -1,3 +1,5 @@
+import { parseNumberAR } from '../utils/parse-number';
+import { buildExpensePatch } from '../utils/expense-patch';
 import { useState } from 'react';
 import { apiRequest } from '../api/client';
 import { useFieldsTree } from '../hooks/useFieldsTree';
@@ -67,9 +69,13 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
   const isInsumo = expenseTypeVal === 'insumo';
 
   const handleSave = async () => {
-    const parsedAmount = parseFloat(amount);
+    const parsedAmount = parseNumberAR(amount) ?? NaN;
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       setError('El monto debe ser mayor a 0');
+      return;
+    }
+    if ((quantity.trim() && parseNumberAR(quantity) === null) || (unitPrice.trim() && parseNumberAR(unitPrice) === null)) {
+      setError('Cantidad o precio por unidad inválidos: escribí solo números (ej: 28.500 o 30,5)');
       return;
     }
 
@@ -78,19 +84,10 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
     try {
       await apiRequest(`/expenses/${expense.id}`, {
         method: 'PATCH',
-        body: {
-          description: description.trim() || null,
-          amount: parsedAmount,
-          currency,
-          category,
-          expense_date: expenseDate,
-          expense_type: expenseTypeVal,
-          product: isInsumo ? (product.trim() || null) : null,
-          quantity: isInsumo && quantity ? parseFloat(quantity) : null,
-          unit: isInsumo ? (unit.trim() || null) : null,
-          unit_price: isInsumo && unitPrice ? parseFloat(unitPrice) : null,
-          ...(plotId !== initialPlotId ? { plot_id: plotId ? Number(plotId) : null } : {}),
-        },
+        body: buildExpensePatch({
+          description, amount: parsedAmount, currency, category, expenseDate,
+          expenseType: expenseTypeVal, product, quantity, unit, unitPrice, plotId, initialPlotId,
+        }),
       });
       onSaved();
     } catch (err: unknown) {
@@ -133,7 +130,7 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Monto</label>
-                <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)}
+                <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
               </div>
               <div>
@@ -187,12 +184,12 @@ export default function ExpenseEditModal({ expense, onClose, onSaved }: Props) {
                 </div>
                 <div>
                   <label className="block text-xs text-purple-600 dark:text-purple-400 mb-1">Cantidad</label>
-                  <input type="number" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="Ej: 20"
+                  <input type="text" inputMode="decimal" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="Ej: 20"
                     className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs text-purple-600 dark:text-purple-400 mb-1">Precio unitario</label>
-                  <input type="number" step="0.01" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} placeholder="Ej: 8000"
+                  <input type="text" inputMode="decimal" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} placeholder="Ej: 8000"
                     className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
                 </div>
               </div>

@@ -1,3 +1,4 @@
+import { parseNumberAR } from '../utils/parse-number';
 import { useState } from 'react';
 import { apiRequest } from '../api/client';
 
@@ -48,14 +49,18 @@ export default function IncomeEditModal({ income, onClose, onSaved }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const handleSave = async () => {
-    const parsedAmount = parseFloat(amount);
+    const parsedAmount = parseNumberAR(amount) ?? NaN;
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       setError('El monto debe ser mayor a 0');
       return;
     }
 
-    const parsedQty = quantity.trim() ? parseFloat(quantity) : null;
-    const parsedUnitPrice = unitPrice.trim() ? parseFloat(unitPrice) : null;
+    const parsedQty = parseNumberAR(quantity);
+    const parsedUnitPrice = parseNumberAR(unitPrice);
+    if ((quantity.trim() && parsedQty === null) || (unitPrice.trim() && parsedUnitPrice === null)) {
+      setError('Cantidad o precio por unidad inválidos: escribí solo números (ej: 28.500 o 30,5)');
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -102,7 +107,7 @@ export default function IncomeEditModal({ income, onClose, onSaved }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Monto</label>
-                <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)}
+                <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none" />
               </div>
               <div>
@@ -131,7 +136,7 @@ export default function IncomeEditModal({ income, onClose, onSaved }: Props) {
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Cantidad</label>
-                <input type="number" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)}
+                <input type="text" inputMode="decimal" value={quantity} onChange={e => setQuantity(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
                   placeholder="Ej: 30" />
               </div>
@@ -143,7 +148,7 @@ export default function IncomeEditModal({ income, onClose, onSaved }: Props) {
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-300 mb-1">Precio unitario</label>
-                <input type="number" step="0.01" value={unitPrice} onChange={e => setUnitPrice(e.target.value)}
+                <input type="text" inputMode="decimal" value={unitPrice} onChange={e => setUnitPrice(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-campo-500 focus:border-campo-500 outline-none"
                   placeholder="Ej: 250000" />
               </div>

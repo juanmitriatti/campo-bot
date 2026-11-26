@@ -4,6 +4,7 @@ import { Pencil, Plus, MapPin } from 'lucide-react';
 import LocalidadInput from './LocalidadInput';
 import TabHeader from './TabHeader';
 import { hectares as formatHectares } from '../utils/format';
+import { parseNumberAR } from '../utils/parse-number';
 import SenasaFields from './SenasaFields';
 
 interface Plot {
@@ -229,9 +230,9 @@ export default function FieldsTab() {
     const name = newPlotName.trim();
     if (!name) { setNewPlotError('El nombre no puede estar vacío'); return; }
     const haRaw = newPlotHa.trim();
-    const hectares = haRaw ? Number(haRaw) : undefined;
-    if (hectares !== undefined && (!isFinite(hectares) || hectares <= 0)) {
-      setNewPlotError('Hectáreas inválidas'); return;
+    const hectares = haRaw ? (parseNumberAR(haRaw) ?? NaN) : undefined;
+    if (hectares !== undefined && (!isFinite(hectares) || hectares <= 0 || hectares >= 100000)) {
+      setNewPlotError('Hectáreas inválidas: escribí un número mayor a 0 (ej: 80,5 o 1.500)'); return;
     }
     setSaving(true);
     setNewPlotError(null);
@@ -251,8 +252,11 @@ export default function FieldsTab() {
   const savePlot = async (id: number) => {
     const name = plotNameDraft.trim() || undefined;
     const hectaresRaw = plotHaDraft.trim();
-    const hectares = hectaresRaw ? Number(hectaresRaw) : undefined;
+    const hectares = hectaresRaw ? (parseNumberAR(hectaresRaw) ?? NaN) : undefined;
     if (name === '') { setPlotError('El nombre no puede estar vacío'); return; }
+    if (hectares !== undefined && (!isFinite(hectares) || hectares <= 0 || hectares >= 100000)) {
+      setPlotError('Hectáreas inválidas: escribí un número mayor a 0 (ej: 80,5 o 1.500)'); return;
+    }
     setSaving(true);
     setPlotError(null);
     try {
@@ -424,7 +428,8 @@ export default function FieldsTab() {
                           <div>
                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Hectáreas</label>
                             <input
-                              type="number"
+                              type="text"
+                              inputMode="decimal"
                               value={plotHaDraft}
                               onChange={e => setPlotHaDraft(e.target.value)}
                               placeholder="Ej: 50"
@@ -493,7 +498,8 @@ export default function FieldsTab() {
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Hectáreas (opcional)</label>
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         value={newPlotHa}
                         onChange={e => setNewPlotHa(e.target.value)}
                         placeholder="Ej: 50"

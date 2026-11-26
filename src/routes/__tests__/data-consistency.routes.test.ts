@@ -128,4 +128,41 @@ describe.skipIf(!dbAvailable)('consistencia de datos en el dashboard', () => {
       await pool.query(`DELETE FROM users WHERE id = $1`, [other]);
     }
   });
+
+  it('#9: corregir la cantidad de una venta recalcula los kilos del saldo por acopio', async () => {
+    const inc = (await pool.query(
+      `INSERT INTO incomes (user_id, field_id, category, description, amount, currency, quantity, unit, quantity_kg, buyer, income_date)
+       VALUES ($1, $2, 'Soja', 'venta', 9000, 'USD', 30, 'tn', 30000, 'Cargill', '2026-11-10') RETURNING id`,
+      [userId, fieldId],
+    )).rows[0].id;
+    try {
+      const res = await call(`/incomes/${inc}`, { method: 'PATCH', body: JSON.stringify({ quantity: 25 }) });
+      expect(res.status).toBe(200);
+      let row = (await pool.query(`SELECT quantity, quantity_kg FROM incomes WHERE id = $1`, [inc])).rows[0];
+      expect(Number(row.quantity)).toBe(25);
+      expect(Number(row.quantity_kg)).toBe(25000);
+
+      // y si cambia la unidad (25 tn → 25 qq)
+      await call(`/incomes/${inc}`, { method: 'PATCH', body: JSON.stringify({ unit: 'qq' }) });
+      row = (await pool.query(`SELECT quantity_kg FROM incomes WHERE id = $1`, [inc])).rows[0];
+      expect(Number(row.quantity_kg)).toBe(2500);
+    } finally {
+      await pool.query(`DELETE FROM incomes WHERE id = $1`, [inc]);
+    }
+  });
+
+  it('#9: editar solo la fecha de la venta no toca los kilos', async () => {
+    const inc = (await pool.query(
+      `INSERT INTO incomes (user_id, field_id, category, description, amount, currency, quantity, unit, quantity_kg, income_date)
+       VALUES ($1, $2, 'Soja', 'venta', 9000, 'USD', 30, 'tn', 30000, '2026-11-10') RETURNING id`,
+      [userId, fieldId],
+    )).rows[0].id;
+    try {
+      await call(`/incomes/${inc}`, { method: 'PATCH', body: JSON.stringify({ income_date: '2026-11-11' }) });
+      const row = (await pool.query(`SELECT quantity_kg FROM incomes WHERE id = $1`, [inc])).rows[0];
+      expect(Number(row.quantity_kg)).toBe(30000);
+    } finally {
+      await pool.query(`DELETE FROM incomes WHERE id = $1`, [inc]);
+    }
+  });
 });

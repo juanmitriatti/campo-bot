@@ -4,6 +4,7 @@ import { canAccessField } from '../shared/field-access.js';
 import { sqlNormalizedName } from '../../utils/entity-matcher.js';
 import { normalizeObservationText, detectObservationCategory } from '../../services/observations.js';
 import { validMoney, validCurrency, validDate, validQuantityOrNull, validName, validIdOrNull } from './edit-validation.js';
+import { toKgOrNull } from '../../services/expenses.js';
 
 interface ObservationRow {
   id: number;
@@ -628,6 +629,15 @@ export class ObservationService {
     if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(validQuantityOrNull(data.quantity)); }
     if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit); }
     if (data.unit_price !== undefined) { idx++; sets.push(`unit_price = $${idx}`); params.push(validQuantityOrNull(data.unit_price, 'El precio por unidad')); }
+    // Los kilos normalizados (quantity_kg) alimentan el saldo por acopio: se
+    // recalculan cuando cambia la cantidad o la unidad. Antes quedaban con el valor
+    // viejo y "corregí la venta de 30 a 25 tn" seguía descontando 30.000 kg del
+    // acopio (auditoría de datos, nov 2026).
+    if (data.quantity !== undefined || data.unit !== undefined) {
+      const newQty = data.quantity !== undefined ? validQuantityOrNull(data.quantity) : (inc.quantity != null ? Number(inc.quantity) : null);
+      const newUnit = data.unit !== undefined ? data.unit : inc.unit;
+      idx++; sets.push(`quantity_kg = $${idx}`); params.push(toKgOrNull(newQty, newUnit));
+    }
     if (data.plot_id !== undefined) {
       const loc = await this._moneyLocation(userId, data.plot_id);
       idx++; sets.push(`plot_id = $${idx}`); params.push(loc.plotId);

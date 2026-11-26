@@ -2423,6 +2423,30 @@ export class AgronomyHandler {
               return { messages: [addMsg] };
             }
           }
+          // Mismo cultivo, misma campaña y SIN señal de superficie adicional: es el
+          // mismo registro repetido o una corrección ("sembré soja en el Norte" y
+          // después "sembré 60 ha de soja en el Norte"). startCrop devuelve la
+          // campaña existente sin tocarla, así que antes el bot confirmaba "60 ha
+          // sembradas" con las ha viejas en la base y guardaba un segundo evento
+          // duplicado (auditoría de datos, nov 2026). Ahora: igual → no duplica;
+          // distinta → actualiza la superficie y lo dice.
+          if (sameActive && !startsNewCampaign(sameActive, toISODateAR(cmd.eventDate as Date | string | null)) && sameActive.crop.toLowerCase() === crop.toLowerCase()) {
+            const { getPlotById } = await import('../../services/expenses.js');
+            const plotInfo = await getPlotById(plotResult.plotId, userId);
+            const areaHa = plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : null;
+            const newHa = areaHa ? Math.min(sowedHa, areaHa) : sowedHa;
+            const prevHa = sameActive.sowed_hectares != null ? Number(sameActive.sowed_hectares) : null;
+            const plotLabelRep = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
+            if (prevHa === newHa) {
+              console.log(`[INTERCEPT] sow_crop repetida sin cambios: campaña ${sameActive.id} ya tenía ${newHa} ha — no duplico el evento`);
+              return { messages: [`🌱 Esa siembra ya estaba registrada: *${cap(crop)}* en ${plotLabelRep}, 📐 ${newHa.toLocaleString('es-AR')} ha. No la dupliqué.`] };
+            }
+            await this.repo.updateCampaignSowing(sameActive.id, { sowedHectares: newHa, variety });
+            console.log(`[INTERCEPT] sow_crop corrige superficie: campaña ${sameActive.id} ${prevHa ?? 'lote entero'} → ${newHa} ha`);
+            let repMsg = `🌱 *Siembra actualizada*\n*${cap(crop)}* en ${plotLabelRep}\n📐 ${prevHa != null ? `${prevHa.toLocaleString('es-AR')} → ` : 'lote entero → '}*${newHa.toLocaleString('es-AR')} ha*\n\n_Si eran ${sowedHa.toLocaleString('es-AR')} ha MÁS, decime "otras ${sowedHa.toLocaleString('es-AR')} ha" y las sumo._`;
+            if (areaHa && sowedHa > areaHa) repMsg += `\n\n⚠️ El lote tiene *${areaHa.toLocaleString('es-AR')} ha*: lo dejé en ese total.`;
+            return { messages: [repMsg] };
+          }
         }
 
         const forcedOrder = (cmd.__cropOrder as 1 | 2 | undefined) ?? cropOrderCue;
