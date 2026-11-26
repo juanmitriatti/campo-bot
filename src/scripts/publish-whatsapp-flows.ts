@@ -12,6 +12,8 @@
  *   npx tsx src/scripts/publish-whatsapp-flows.ts --publish        # ...y publica los que validan
  *   npx tsx src/scripts/publish-whatsapp-flows.ts --publish --save-settings   # ...y guarda WHATSAPP_FLOW_ID_*
  *   --waba-id <id>   WABA a usar (si no: env WHATSAPP_WABA_ID → auto-detección por el token)
+ *   --suffix <v2>    sufijo del nombre (obligatorio al recrear un publicado)
+ *   --only <action>  procesar un solo formulario (ej. harvest_crop)
  *   --recreate       si el Flow ya está PUBLISHED (inmutable), crea uno nuevo con el mismo nombre
  *
  * Requiere WHATSAPP_TOKEN con permisos whatsapp_business_management (+ messaging).
@@ -138,7 +140,10 @@ async function uploadAsset(token: string, flowId: string, json: Record<string, u
 
 async function main(): Promise<void> {
   const dumpDir = arg('--dump');
-  const defs = Object.values(FORM_DEFINITIONS);
+  // --only <action>: un solo formulario (con --recreate no clona los otros cinco).
+  const only = arg('--only');
+  const defs = Object.values(FORM_DEFINITIONS).filter(d => !only || d.action === only);
+  if (defs.length === 0) throw new Error(`--only ${only}: no existe ese formulario`);
 
   if (dumpDir) {
     await mkdir(dumpDir, { recursive: true });
@@ -167,7 +172,9 @@ async function main(): Promise<void> {
   let anyError = false;
 
   for (const def of defs) {
-    const name = flowName(def);
+    // Meta no admite dos Flows con el mismo nombre: la versión nueva de uno
+    // publicado necesita sufijo (--suffix v2).
+    const name = [flowName(def), arg('--suffix')].filter(Boolean).join(' ');
     const json = buildWhatsAppFlowJson(def);
     console.log(`\n> ${def.action} — "${name}" (${JSON.stringify(json).length} bytes de Flow JSON)`);
 

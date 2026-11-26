@@ -97,6 +97,62 @@ function groupSlots(f: FormField): number {
   return Math.min(f.maxItems ?? FIXED_GROUP_SLOTS, FIXED_GROUP_SLOTS);
 }
 
+// REVELADO PROGRESIVO (nov 2026): Flows no puede crear campos, pero sí mostrar
+// bloques ya declarados. Cada slot de un grupo aparece al marcar su casilla
+// (`update_data`, sin endpoint) y de los campos excluyentes se ve el elegido.
+const CHECKED = 'si';
+const addKey = (group: string, i: number): string => `${group}_add_${i}`;
+const showSlotKey = (group: string, i: number): string => `show_${group}_${i}`;
+const showFieldKey = (field: string): string => `show_${field}`;
+
+function slotToggle(f: FormField, i: number, slots: number): Record<string, unknown> {
+  // Al desmarcar se ocultan también los siguientes.
+  const hide: Record<string, boolean> = {};
+  for (let n = i; n <= slots; n++) hide[showSlotKey(f.key, n)] = false;
+  return {
+    type: 'CheckboxGroup', name: addKey(f.key, i), required: false,
+    label: i === 1 ? 'Camiones' : `Camión ${i}`,
+    'data-source': [{
+      id: CHECKED,
+      title: i === 1 ? 'Cargar camiones' : '➕ Agregar otro camión',
+      'on-select-action': { name: 'update_data', payload: { [showSlotKey(f.key, i)]: true } },
+      'on-unselect-action': { name: 'update_data', payload: hide },
+    }],
+    ...(i > 1 ? { visible: `\${data.${showSlotKey(f.key, i - 1)}}` } : {}),
+  };
+}
+
+function choiceSelector(def: FormDefinition): Record<string, unknown> {
+  const c = def.flowChoice!;
+  return {
+    type: 'RadioButtonsGroup', name: c.key, label: c.label, required: false,
+    'init-value': `\${data.${initKey(c.key)}}`,
+    'data-source': c.options.map(o => ({
+      id: o.field,
+      title: o.title,
+      'on-select-action': {
+        name: 'update_data',
+        payload: Object.fromEntries(c.options.map(x => [showFieldKey(x.field), x.field === o.field])),
+      },
+    })),
+  };
+}
+
+/** Valores de `data` que gobiernan qué se ve al abrir (los hornea form-offer). */
+export function flowStateData(def: FormDefinition, initial: Record<string, unknown>): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  for (const f of def.fields) {
+    if (f.type !== 'group') continue;
+    for (let i = 1; i <= groupSlots(f); i++) data[showSlotKey(f.key, i)] = false;
+  }
+  if (def.flowChoice) {
+    const chosen = def.flowChoice.options.find(o => initial[o.field] !== undefined && initial[o.field] !== '')?.field ?? '';
+    data[initKey(def.flowChoice.key)] = chosen;
+    for (const o of def.flowChoice.options) data[showFieldKey(o.field)] = o.field === chosen;
+  }
+  return data;
+}
+
 function componentFor(f: FormField, name: string, labelPrefix = ''): Record<string, unknown> | null {
   const label = `${labelPrefix}${f.flowLabel ?? f.label}`;
   const init = `\${data.${initKey(name)}}`;
@@ -141,6 +197,12 @@ function dataSchemaFor(def: FormDefinition): Record<string, unknown> {
     addScalar(name);
   };
 
+  for (const [key, value] of Object.entries(flowStateData(def, {}))) {
+    schema[key] = typeof value === 'boolean'
+      ? { type: 'boolean', __example__: false }
+      : { type: 'string', __example__: '' };
+  }
+
   for (const f of def.fields) {
     if (f.type === 'group') {
       for (let i = 1; i <= groupSlots(f); i++) {
@@ -169,15 +231,21 @@ export function buildWhatsAppFlowJson(def: FormDefinition): Record<string, unkno
   };
   for (const f of def.fields) {
     if (f.type === 'group') {
-      for (let i = 1; i <= groupSlots(f); i++) {
+      const slots = groupSlots(f);
+      for (let i = 1; i <= slots; i++) {
+        push(slotToggle(f, i, slots));
         for (const sub of f.fields ?? []) {
           // Prefijo corto: "Cargas por camión 1: …" pasaba los 20 caracteres.
-          push(componentFor({ ...sub, required: false }, `${f.key}_${i}_${sub.key}`, `${i}. `));
+          const c = componentFor({ ...sub, required: false }, `${f.key}_${i}_${sub.key}`, `${i}. `);
+          push(c && { ...c, visible: `\${data.${showSlotKey(f.key, i)}}` });
         }
       }
       continue;
     }
-    push(componentFor(f, f.key));
+    const choice = def.flowChoice?.options.findIndex(o => o.field === f.key) ?? -1;
+    if (choice === 0) push(choiceSelector(def));
+    const component = componentFor(f, f.key);
+    push(component && choice >= 0 ? { ...component, visible: `\${data.${showFieldKey(f.key)}}` } : component);
     // El Dropdown de Flows no admite "otro": va un TextInput acompañante.
     if (f.allowOther) {
       push({
@@ -240,7 +308,9 @@ export function validateFlowData(
   for (const k of expectedFlowDataKeys(def)) {
     if (!(k in data)) { errors.push(`falta la clave "${k}"`); continue; }
     const v = data[k];
-    if (k.endsWith('_options')) {
+    if (k.startsWith('show_')) {
+      if (typeof v !== 'boolean') errors.push(`"${k}" debe ser booleano`);
+    } else if (k.endsWith('_options')) {
       if (!isOptionArray(v)) errors.push(`"${k}" debe ser array de {id,title} string`);
     } else if (typeof v !== 'string') {
       errors.push(`"${k}" debe ser string (llegó ${v === null ? 'null' : typeof v})`);
@@ -262,14 +332,26 @@ export function unflattenFlowPayload(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const isEmpty = (v: unknown) => v === undefined || v === null || String(v).trim() === '';
+  // Lo que quedó OCULTO no se guarda: el usuario cambió de idea y ya no lo ve.
+  // Solo se descarta ante una señal positiva (casilla presente y desmarcada,
+  // selector con valor); si la clave no viene, el dato se respeta.
+  const choice = def.flowChoice;
+  const chosen = choice?.options.find(o => o.field === payload[choice.key])?.field;
   for (const f of def.fields) {
     if (f.type !== 'group') {
+      if (chosen && f.key !== chosen && choice!.options.some(o => o.field === f.key)) {
+        if (!isEmpty(payload[f.key])) console.log(`[FORM] flow: se descarta ${f.key} (oculto, se eligió ${chosen})`);
+        continue;
+      }
       if (f.key in payload) out[f.key] = payload[f.key];
       if (f.allowOther && otherKey(f.key) in payload) out[otherKey(f.key)] = payload[otherKey(f.key)];
       continue;
     }
     const items: Record<string, unknown>[] = [];
+    let hidden = false;
     for (let i = 1; i <= groupSlots(f); i++) {
+      const toggle = payload[addKey(f.key, i)];
+      if (Array.isArray(toggle) && !toggle.includes(CHECKED)) hidden = true;
       const item: Record<string, unknown> = {};
       let any = false;
       for (const sub of f.fields ?? []) {
@@ -278,7 +360,8 @@ export function unflattenFlowPayload(
         item[sub.key] = v;
         any = true;
       }
-      if (any) items.push(item);
+      if (any && hidden) console.log(`[FORM] flow: se descarta ${f.key} ${i} (casilla desmarcada)`);
+      else if (any) items.push(item);
     }
     if (items.length > 0) out[f.key] = items;
   }

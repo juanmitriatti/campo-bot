@@ -1,7 +1,7 @@
 // src/forms/__tests__/whatsapp-flow-generator.test.ts
 import { describe, it, expect } from 'vitest';
 import { FORM_DEFINITIONS } from '../form-definitions.js';
-import { buildWhatsAppFlowJson, unflattenFlowPayload, isoToFlowDate, expectedFlowDataKeys, validateFlowData, fitFlowOptions, FLOW_LIMITS, OTHER_OPTION } from '../whatsapp-flow-generator.js';
+import { buildWhatsAppFlowJson, unflattenFlowPayload, isoToFlowDate, expectedFlowDataKeys, validateFlowData, fitFlowOptions, FLOW_LIMITS, OTHER_OPTION, flowStateData } from '../whatsapp-flow-generator.js';
 
 describe('límites de Meta para Flows', () => {
   type Child = { type: string; label: string; 'data-source'?: string | Array<{ title: string }> };
@@ -165,5 +165,39 @@ describe('validateFlowData — red de seguridad de las claves del data (Fase 2)'
   it('un *_options VACÍO pasa el tipado (el guard de requerido-vacío es de form-offer)', () => {
     const empty = { ...validLivestockData(), location_options: [] };
     expect(validateFlowData(FORM_DEFINITIONS.add_livestock, empty).ok).toBe(true);
+  });
+});
+
+describe('cosecha: revelado progresivo de camiones y rinde', () => {
+  type C = { type: string; name?: string; label?: string; visible?: string };
+  const children = (buildWhatsAppFlowJson(FORM_DEFINITIONS.harvest_crop) as { screens: Array<{ layout: { children: C[] } }> })
+    .screens[0].layout.children;
+  const by = (name: string) => children.find(c => c.name === name)!;
+
+  it('cada camión está oculto hasta su casilla, y la casilla N+1 aparece con el camión N', () => {
+    expect(by('loads_add_1').visible).toBeUndefined();
+    expect(by('loads_1_driver_name').visible).toBe('${data.show_loads_1}');
+    expect(by('loads_add_2').visible).toBe('${data.show_loads_1}');
+    expect(by('loads_5_weight_kg').visible).toBe('${data.show_loads_5}');
+    expect(children.length).toBeLessThanOrEqual(FLOW_LIMITS.componentsPerScreen);
+  });
+
+  it('del rinde se ve solo el elegido; la precarga lo deja abierto', () => {
+    expect(by('yield_kg').visible).toBe('${data.show_yield_kg}');
+    expect(children.indexOf(by('yield_mode'))).toBeLessThan(children.indexOf(by('yield_kg_per_ha')));
+    const state = flowStateData(FORM_DEFINITIONS.harvest_crop, { yield_kg_per_ha: 4200 });
+    expect(state).toMatchObject({ yield_mode_init: 'yield_kg_per_ha', show_yield_kg_per_ha: true, show_yield_kg: false, show_loads_1: false });
+  });
+
+  it('lo oculto no se guarda: casilla desmarcada y rinde no elegido', () => {
+    const out = unflattenFlowPayload(FORM_DEFINITIONS.harvest_crop, {
+      plot_id: '1', yield_mode: 'yield_kg', yield_kg_per_ha: '4200', yield_kg: '130000',
+      loads_add_1: ['si'], loads_1_driver_name: 'Juan', loads_1_weight_kg: '28000',
+      loads_add_2: [], loads_2_driver_name: 'Pedro', loads_2_weight_kg: '30000',
+      loads_add_3: ['si'], loads_3_driver_name: 'Ana', loads_3_weight_kg: '29000',
+    });
+    expect(out.yield_kg).toBe('130000');
+    expect(out.yield_kg_per_ha).toBeUndefined();
+    expect(out.loads).toEqual([{ driver_name: 'Juan', weight_kg: '28000' }]);
   });
 });

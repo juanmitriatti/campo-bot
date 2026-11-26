@@ -62,6 +62,8 @@ export interface FormDefinition {
    * y el Flow lo muestran como texto, el colector conversacional lo pregunta.
    */
   crossCheck?: (data: Record<string, unknown>) => Array<string | FormIssue>;
+  /** WhatsApp Flows: campos excluyentes; un selector muestra solo el elegido. */
+  flowChoice?: { key: string; label: string; options: Array<{ field: string; title: string }> };
 }
 
 /** Problema de validación atribuible (o no) a un campo. */
@@ -104,6 +106,11 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
     label: 'la cosecha',
     settingKey: 'WHATSAPP_FLOW_ID_HARVEST',
     plotFilter: 'withActiveCrop',
+    flowChoice: {
+      key: 'yield_mode',
+      label: 'Tipo de rinde',
+      options: [{ field: 'yield_kg_per_ha', title: 'Por hectárea (kg/ha)' }, { field: 'yield_kg', title: 'Total (kg)' }],
+    },
     fields: [
       { key: 'plot_id', label: 'Lote', type: 'select', required: true, optionsSource: 'plots' },
       DATE_FIELD,

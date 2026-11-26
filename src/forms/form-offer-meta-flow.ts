@@ -14,7 +14,7 @@ import { getSetting } from '../services/settings.service.js';
 import { computeFormOptions } from './form-options.js';
 import type { FormDefinition } from './form-definitions.js';
 import { resolveFormInitialValues } from './form-prefill.js';
-import { initKey, optionsKey, isoToFlowDate, FIXED_GROUP_SLOTS, validateFlowData, fitFlowOptions, OTHER_OPTION } from './whatsapp-flow-generator.js';
+import { initKey, optionsKey, isoToFlowDate, FIXED_GROUP_SLOTS, validateFlowData, fitFlowOptions, OTHER_OPTION, flowStateData } from './whatsapp-flow-generator.js';
 import { getTodayISO } from '../utils/date.js';
 import type { BotResponseItem, ChannelContext } from '../services/message-pipeline.js';
 import type { HandlerResponse } from '../types/index.js';
@@ -100,6 +100,8 @@ export async function appendMetaFlowOffer(
     if (encoded) prefilled.push(f.key);
   }
   console.log(`[FORM] prefill (whatsapp) action=${offer.action} campos=[${prefilled.join(', ')}]`);
+
+  Object.assign(data, flowStateData(def, initial));
 
   // Gap C — antes de enviar, verificar que estén TODAS las claves de data y que
   // ningún valor sea null/numérico (un solo faltante y el Flow no abre en el
