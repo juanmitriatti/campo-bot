@@ -252,4 +252,97 @@ describe.skipIf(!dbAvailable)('consistencia de datos en el dashboard', () => {
       expect(Number(pc.yield_kg)).toBeLessThanOrEqual(20000);
     });
   });
+
+  describe('#10 edición de actividades en el dashboard', () => {
+    const plotIds: number[] = [];
+    const mkCampaign = async (crop: string, seasonType: string, seasonYear: number, start: string, harvestedAt: string | null = null) => {
+      const pl = (await pool.query(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, $2, 100) RETURNING id`, [fieldId, `Lote act ${plotIds.length}`])).rows[0].id as number;
+      plotIds.push(pl);
+      const pc = (await pool.query(
+        `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, harvested_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [pl, crop, seasonYear, seasonType, start, harvestedAt],
+      )).rows[0].id as number;
+      return { pl, pc };
+    };
+    const mkEvent = async (pl: number, pc: number | null, type: string, date: string, crop: string, qty: number | null = null, unit: string | null = null) =>
+      (await pool.query(
+        `INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, event_date, crop, quantity, unit) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+        [userId, pl, pc, type, date, crop, qty, unit],
+      )).rows[0].id as number;
+    const patch = (id: number, body: unknown) => call(`/activities/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+
+    afterAll(async () => {
+      await pool.query(`DELETE FROM domain_events WHERE plot_id = ANY($1::int[])`, [plotIds]);
+      await pool.query(`DELETE FROM plot_crops WHERE plot_id = ANY($1::int[])`, [plotIds]);
+      await pool.query(`DELETE FROM plots WHERE id = ANY($1::int[])`, [plotIds]);
+    });
+
+    it('un tipo de actividad inventado se rechaza (400)', async () => {
+      const { pl } = await mkCampaign('soja', 'gruesa', 2097, '2097-10-01');
+      const ev = await mkEvent(pl, null, 'spraying', '2097-11-01', 'soja');
+      expect((await patch(ev, { event_type: 'xx' })).status).toBe(400);
+      expect((await patch(ev, { event_type: 'tillage' })).status).toBe(200);
+    });
+
+    it('una cosecha no se puede pasar a "fumigación" (conservaba camiones y rinde)', async () => {
+      const { pl, pc } = await mkCampaign('soja', 'gruesa', 2096, '2096-10-01', '2097-04-01');
+      const ev = await mkEvent(pl, pc, 'harvest', '2097-04-01', 'soja', 30000, 'kg');
+      const res = await patch(ev, { event_type: 'spraying' });
+      expect(res.status).toBe(400);
+      expect((await pool.query(`SELECT event_type FROM domain_events WHERE id = $1`, [ev])).rows[0].event_type).toBe('harvest');
+    });
+
+    it('cambiar el cultivo de una siembra recalcula tipo de campaña y año (trigo → soja) y canoniza "maiz"', async () => {
+      const { pl, pc } = await mkCampaign('trigo', 'fina', 2095, '2095-06-15');
+      const ev = await mkEvent(pl, pc, 'planting', '2095-06-15', 'trigo');
+      expect((await patch(ev, { crop: 'Soja' })).status).toBe(200);
+      let c = (await pool.query(`SELECT crop, season_type, season_year FROM plot_crops WHERE id = $1`, [pc])).rows[0];
+      expect(c.crop).toBe('soja');
+      expect(c.season_type).toBe('gruesa'); // antes quedaba 'fina'
+      expect(Number(c.season_year)).toBe(2094); // sembrada en junio: la gruesa es de la campaña anterior
+
+      expect((await patch(ev, { crop: 'maiz' })).status).toBe(200);
+      c = (await pool.query(`SELECT crop FROM plot_crops WHERE id = $1`, [pc])).rows[0];
+      expect(c.crop).toBe('maíz'); // antes quedaba "maiz" sin tilde
+    });
+
+    it('el cultivo de una cosecha no se cambia (es el de su campaña)', async () => {
+      const { pl, pc } = await mkCampaign('soja', 'gruesa', 2093, '2093-10-01', '2094-04-01');
+      const ev = await mkEvent(pl, pc, 'harvest', '2094-04-01', 'soja', 10000, 'kg');
+      expect((await patch(ev, { crop: 'trigo' })).status).toBe(400);
+    });
+
+    it('editar la cantidad de una cosecha recalcula el rinde de la campaña', async () => {
+      const { pl, pc } = await mkCampaign('soja', 'gruesa', 2092, '2092-10-01', '2093-04-01');
+      const ev = await mkEvent(pl, pc, 'harvest', '2093-04-01', 'soja', 30000, 'kg');
+      await pool.query(`UPDATE domain_events SET harvest_yield_kg = 30000, harvest_yield_mode = 'total' WHERE id = $1`, [ev]);
+      await pool.query(`UPDATE plot_crops SET yield_kg = 30000, declared_yield_kg = 30000 WHERE id = $1`, [pc]);
+      expect((await patch(ev, { quantity: 25 , unit: 'tn' })).status).toBe(200);
+      const c = (await pool.query(`SELECT yield_kg FROM plot_crops WHERE id = $1`, [pc])).rows[0];
+      expect(Number(c.yield_kg)).toBe(25000); // antes quedaba 30.000
+    });
+
+    it('#11: la siembra no se mueve después de su cosecha ni la cosecha antes de su siembra', async () => {
+      const { pl, pc } = await mkCampaign('soja', 'gruesa', 2091, '2091-10-01', '2092-04-01');
+      const sow = await mkEvent(pl, pc, 'planting', '2091-10-01', 'soja');
+      const harv = await mkEvent(pl, pc, 'harvest', '2092-04-01', 'soja', 10000, 'kg');
+      expect((await patch(sow, { event_date: '2092-05-01' })).status).toBe(400); // después de la cosecha
+      expect((await patch(harv, { event_date: '2091-09-01' })).status).toBe(400); // antes de la siembra
+      expect((await patch(sow, { event_date: '2091-10-10' })).status).toBe(200); // un movimiento razonable sí
+      expect((await patch(harv, { event_date: '2092-04-20' })).status).toBe(200);
+    });
+
+    it('#11: una siembra no puede caer dentro de la campaña anterior del lote', async () => {
+      const first = await mkCampaign('trigo', 'fina', 2089, '2089-06-10', '2089-12-20');
+      const pl = first.pl;
+      // segunda campaña (soja de 2da) en el mismo lote, sembrada después de la cosecha
+      await pool.query(`UPDATE plot_crops SET end_date = '2089-12-20' WHERE id = $1`, [first.pc]);
+      const pc2 = (await pool.query(
+        `INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date) VALUES ($1, 'soja', 2089, 'gruesa', '2090-01-05') RETURNING id`, [pl],
+      )).rows[0].id;
+      const sow2 = await mkEvent(pl, pc2, 'planting', '2090-01-05', 'soja');
+      expect((await patch(sow2, { event_date: '2089-11-01' })).status).toBe(400); // antes de que termine la cosecha del trigo
+      expect((await patch(sow2, { event_date: '2090-01-20' })).status).toBe(200);
+    });
+  });
 });

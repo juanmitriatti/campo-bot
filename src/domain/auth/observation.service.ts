@@ -5,6 +5,12 @@ import { sqlNormalizedName } from '../../utils/entity-matcher.js';
 import { normalizeObservationText, detectObservationCategory } from '../../services/observations.js';
 import { validMoney, validCurrency, validDate, validQuantityOrNull, validName, validIdOrNull, EditValidationError } from './edit-validation.js';
 import { toKgOrNull } from '../../services/expenses.js';
+import { extractCropFromText } from '../../utils/crops.js';
+import { normalizeToKg } from '../../utils/mass-units.js';
+
+/** Tipos de actividad que el dashboard deja elegir (mismos que el select del modal). */
+const EDITABLE_ACTIVITY_TYPES = new Set(['spraying', 'fertilization', 'planting', 'tillage', 'harvest', 'irrigation', 'tacto']);
+const CAMPAIGN_EVENT_TYPES = new Set(['planting', 'harvest']);
 
 interface ObservationRow {
   id: number;
@@ -695,9 +701,53 @@ export class ObservationService {
     let idx = 0;
 
     idx++; sets.push(`edited_by = $${idx}`); params.push(userId);
-    if (data.event_type !== undefined) { idx++; sets.push(`event_type = $${idx}`); params.push(data.event_type); }
-    if (data.event_date !== undefined) { idx++; sets.push(`event_date = $${idx}`); params.push(validDate(data.event_date)); }
-    if (data.crop !== undefined) { idx++; sets.push(`crop = $${idx}`); params.push(data.crop); }
+    // Tipo de evento: lista cerrada. Una siembra o una cosecha son parte de una campaña
+    // (camiones, rinde, fechas): cambiarles el tipo, o convertir otra actividad en una,
+    // dejaba la campaña colgada de un evento que ya no es lo que era (auditoría de datos, nov 2026).
+    if (data.event_type !== undefined && data.event_type !== act.event_type) {
+      if (!EDITABLE_ACTIVITY_TYPES.has(String(data.event_type))) {
+        throw new ObservationError(400, 'Ese tipo de actividad no es válido.');
+      }
+      if (CAMPAIGN_EVENT_TYPES.has(act.event_type) || CAMPAIGN_EVENT_TYPES.has(String(data.event_type))) {
+        throw new ObservationError(400, 'Una siembra o una cosecha pertenece a una campaña: no se les puede cambiar el tipo. Borrala y cargala de nuevo (por el chat o el formulario).');
+      }
+      idx++; sets.push(`event_type = $${idx}`); params.push(data.event_type);
+    }
+    if (data.event_date !== undefined) {
+      const newDate = validDate(data.event_date);
+      // Siembra y cosecha tienen un orden lógico dentro de su campaña, y la campaña
+      // no puede pisar a la anterior del lote. Antes cualquier fecha pasaba y la
+      // campaña quedaba con la cosecha antes de la siembra (auditoría de datos, nov 2026).
+      if (act.plot_crop_id && CAMPAIGN_EVENT_TYPES.has(act.event_type)) {
+        if (act.event_type === 'planting') {
+          const laterHarvest = await pool.query(
+            `SELECT 1 FROM domain_events WHERE plot_crop_id = $1 AND event_type = 'harvest' AND deleted_at IS NULL AND event_date < $2::date LIMIT 1`,
+            [act.plot_crop_id, newDate],
+          );
+          if (laterHarvest.rows.length > 0) throw new ObservationError(400, 'La siembra no puede ser posterior a la cosecha de su campaña.');
+          const overlap = await pool.query(
+            `SELECT to_char(COALESCE(o.harvest_ended_at, o.harvested_at), 'DD/MM/YYYY') AS d
+               FROM plot_crops o
+              WHERE o.plot_id = $1 AND o.id <> $2 AND o.harvested_at IS NOT NULL
+                AND COALESCE(o.harvest_ended_at, o.harvested_at)::date >= $3::date
+                AND o.start_date < (SELECT start_date FROM plot_crops WHERE id = $2)
+              ORDER BY COALESCE(o.harvest_ended_at, o.harvested_at) DESC LIMIT 1`,
+            [act.plot_id, act.plot_crop_id, newDate],
+          );
+          if (overlap.rows.length > 0) throw new ObservationError(400, `Esa fecha se superpone con la campaña anterior del lote (cosechada el ${overlap.rows[0].d}).`);
+        } else {
+          const beforeSowing = await pool.query(`SELECT 1 FROM plot_crops WHERE id = $1 AND start_date > $2::date`, [act.plot_crop_id, newDate]);
+          if (beforeSowing.rows.length > 0) throw new ObservationError(400, 'La cosecha no puede ser anterior a la siembra de su campaña.');
+        }
+      }
+      idx++; sets.push(`event_date = $${idx}`); params.push(newDate);
+    }
+    // Cultivo canónico ("maiz" → "maíz"): sin esto dejaba de matchear con la campaña y las consultas.
+    const canonCrop = data.crop === undefined ? undefined : (data.crop === null || String(data.crop).trim() === '' ? null : (extractCropFromText(String(data.crop)) ?? String(data.crop).trim().toLowerCase()));
+    if (canonCrop !== undefined && act.event_type === 'harvest' && canonCrop !== null && act.crop && canonCrop !== String(act.crop).toLowerCase()) {
+      throw new ObservationError(400, 'El cultivo de una cosecha es el de su campaña: para cambiarlo, borrá la cosecha y cargala con el cultivo correcto.');
+    }
+    if (canonCrop !== undefined) { idx++; sets.push(`crop = $${idx}`); params.push(canonCrop); }
     if (data.product !== undefined) { idx++; sets.push(`product = $${idx}`); params.push(data.product); }
     if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(validQuantityOrNull(data.quantity)); }
     if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit); }
@@ -750,11 +800,21 @@ export class ObservationService {
     // La campaña acompaña a su siembra/cosecha: lote, cultivo y fechas (DSH-6, AGR-15).
     if (act.plot_crop_id && (act.event_type === 'planting' || act.event_type === 'harvest')) {
       const { syncPlotCropFromEdit } = await import('../../services/expenses.js');
-      if (act.event_type === 'planting' && (plotChanged || (data.crop && data.crop !== act.crop))) {
+      const cropChanged = canonCrop != null && canonCrop !== (act.crop ? String(act.crop).toLowerCase() : null);
+      if (act.event_type === 'planting' && (plotChanged || cropChanged)) {
         await syncPlotCropFromEdit(act.plot_crop_id, {
-          crop: data.crop && data.crop !== act.crop ? data.crop : null,
+          crop: cropChanged ? canonCrop : null,
           plotId: plotChanged ? data.plot_id ?? null : null,
         });
+        if (cropChanged) {
+          // Otro cultivo puede ser de otra campaña (trigo = fina, soja = gruesa): se
+          // recalculan el tipo y el año agrícola, no solo el nombre.
+          const { getSeasonTypeForCrop, getSeasonYear } = await import('../plots/crop.service.js');
+          const seasonType = getSeasonTypeForCrop(String(canonCrop));
+          const { rows: pcRows } = await pool.query(`SELECT start_date FROM plot_crops WHERE id = $1`, [act.plot_crop_id]);
+          const start = pcRows[0]?.start_date ? new Date(pcRows[0].start_date) : new Date(act.event_date);
+          await pool.query(`UPDATE plot_crops SET season_type = $2, season_year = $3 WHERE id = $1`, [act.plot_crop_id, seasonType, getSeasonYear(start, seasonType)]);
+        }
         if (plotChanged) {
           await pool.query(
             `UPDATE domain_events SET plot_id = $2 WHERE plot_crop_id = $1 AND deleted_at IS NULL`,
@@ -765,6 +825,15 @@ export class ObservationService {
       if (data.event_date !== undefined) {
         const { syncCampaignDatesFromEvents } = await import('../plots/campaign-sync.js');
         await syncCampaignDatesFromEvents(act.plot_crop_id);
+      }
+    }
+    // La cantidad de una cosecha es el aporte de ESE día al rinde de la campaña:
+    // si cambia, el rinde se recalcula (antes quedaba el valor viejo).
+    if (act.event_type === 'harvest' && act.plot_crop_id && (data.quantity !== undefined || data.unit !== undefined)) {
+      const kg = normalizeToKg(updated.quantity != null ? Number(updated.quantity) : null, updated.unit);
+      if (kg != null && kg > 0) {
+        const { recordHarvestYield } = await import('../../services/expenses.js');
+        await recordHarvestYield(activityId, kg, 'total', { replace: true });
       }
     }
     return updated;
