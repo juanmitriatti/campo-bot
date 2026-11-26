@@ -1,3 +1,4 @@
+import { moneyPrefill } from '../../forms/activity-form-offer.js';
 import { resolvePeriodRange, resolveDaysRange } from '../../utils/query-period.js';
 import { randomBytes, createHash } from 'crypto';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
@@ -3772,20 +3773,15 @@ export class FinancialHandler {
     fieldName?: string | null,
     plotName?: string | null,
   ): { action: 'log_expense' | 'log_income'; prefill: Record<string, unknown> } {
-    const date = action === 'log_expense'
-      ? (data as ParsedExpense).expenseDate
-      : (data as ParsedIncome).incomeDate;
     return {
       action,
-      prefill: {
-        amount: data.amount > 0 ? data.amount : null,
-        currency: data.currency === 'USD' ? 'USD' : 'ARS',
-        category: data.category || null,
-        description: data.description || null,
-        eventDate: date ?? null,
+      prefill: moneyPrefill(action, {
+        ...(data as unknown as Record<string, unknown>),
+        plot: plotName ?? null,
+        field: fieldName ?? null,
         plotName: plotName ?? null,
         fieldName: fieldName ?? null,
-      },
+      }),
     };
   }
 

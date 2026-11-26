@@ -16,6 +16,7 @@ import { pool, withTransaction } from '../config/db.js';
 import { formSessionService, type FormSessionRow } from '../services/form-session.service.js';
 import { FORM_DEFINITIONS, validateFormPayload, type FormAction, type FormDefinition } from './form-definitions.js';
 import { isSameFlowOpen, closeLinkedFlow, type FlowMarker } from './form-flow-link.js';
+import { applyCarry } from './activity-form-offer.js';
 import { buildFormCommand, FORM_PERSISTS_TO, type ResolvedRefs } from './form-commands.js';
 import { parseLocationId, computeFormOptions, NO_LOCATION_ID } from './form-options.js';
 import { unflattenFlowPayload } from './whatsapp-flow-generator.js';
@@ -425,6 +426,7 @@ export async function submitForm(
       };
     }
     const cmd = buildFormCommand(action, prepared.data, prepared.refs);
+    applyCarry(cmd, session.prefill as Record<string, unknown> | null | undefined);
 
     // El formulario YA es la confirmación: no volver a preguntar "¿confirmás?"
     // (el submit trataría los botones como éxito y quemaría el token sin guardar).

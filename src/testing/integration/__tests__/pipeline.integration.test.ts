@@ -5613,6 +5613,20 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       await setSetting('WHATSAPP_FLOW_ID_INCOME', '');
     });
 
+    it('lo que el formulario no muestra (cantidad y producto) se ve en el resumen y se guarda', async () => {
+      h.fakeAgent.enqueueTool('log_expense', { category: 'Combustible', quantity: 200, unit: 'lt', product: 'gasoil' });
+      const items = await h.send('compré 200 lt de gasoil');
+      const [flow] = flows(items);
+      expect(flow, h.allText(items)).toBeTruthy();
+      expect(flow.body).toMatch(/200 (lt|l)\b.*gasoil/i);
+      const res = await submitForm(flow.flow.flowToken, { ...payload(), category: 'Combustible', category_other: '' }, { flowResponse: true, deliver: 'return' });
+      expect(res.ok, JSON.stringify(res)).toBe(true);
+      const rows = await h.q(`SELECT quantity, product FROM expenses WHERE user_id = $1`, [h.userId]);
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0].quantity)).toBe(200);
+      expect(String(rows[0].product)).toMatch(/gasoil/i);
+    });
+
     it('WHATSAPP_FLOW_ON_MISSING=false: solo la pregunta de chat', async () => {
       await setSetting('WHATSAPP_FLOW_ON_MISSING', 'false');
       const items = await ask();

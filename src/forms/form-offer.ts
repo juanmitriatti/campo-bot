@@ -26,7 +26,13 @@ function offerSummary(def: Definition, prefill: Record<string, unknown>, message
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
   const amount = typeof prefill.amount === 'number'
     ? `${prefill.currency === 'USD' ? 'US$' : '$'}${prefill.amount.toLocaleString('es-AR')}` : null;
-  const details = [text(prefill.category) ?? text(prefill.crop) ?? text(prefill.product), amount,
+  const carry = (prefill._carry ?? {}) as Record<string, unknown>;
+  const extra = [
+    typeof carry.quantity === 'number' && typeof prefill.quantity_tn !== 'number' ? `${carry.quantity.toLocaleString('es-AR')} ${text(carry.unit) ?? ''}`.trim() : null,
+    text(carry.product),
+    typeof carry.unit_price === 'number' ? `a ${carry.unit_price.toLocaleString('es-AR')} c/u` : null,
+  ];
+  const details = [text(prefill.category) ?? text(prefill.crop) ?? text(prefill.product), amount, ...extra,
     typeof prefill.quantity_tn === 'number' ? `${prefill.quantity_tn.toLocaleString('es-AR')} tn` : null,
     text(prefill.plotName) ? `lote ${text(prefill.plotName)}` : null].filter(Boolean).join(' — ');
   return [...warnings, def.title, details, 'Completá el formulario 👇'].filter(Boolean).join('\n').slice(0, FLOW_BODY_MAX);
