@@ -435,24 +435,36 @@ export async function getOverview(
   // Every month of a campaign window, so a month with no rain reads as a
   // visible gap instead of vanishing from the axis. Shared-field members see
   // the same rain the owner sees (same rule as expenses).
+  // Una sola cifra por campo y día (MAX): el índice único de lluvias es por
+  // USUARIO, así que en un campo compartido el dueño y el socio que cargan la
+  // misma lluvia dejaban dos filas y el mes mostraba el doble. Con varios campos
+  // se promedia por campo (30 mm en cada uno de 3 campos = 30 mm, no 90): la
+  // lluvia no se suma entre campos (auditoría de datos, nov 2026).
+  // Una sola cifra por campo y día (MAX): el índice único de lluvias es por
+  // USUARIO, así que en un campo compartido el dueño y el socio que cargan la
+  // misma lluvia dejaban dos filas y el mes mostraba el doble. Con varios campos
+  // se promedia por campo (30 mm en cada uno de 3 campos = 30 mm, no 90): la
+  // lluvia no se suma entre campos (auditoría de datos, nov 2026).
   const rainSql = `WITH months AS (
        SELECT generate_series($2::date, $3::date, '1 month')::date AS m
+     ),
+     day_mm AS (
+       SELECT r.field_id, r.rainfall_date, MAX(r.millimeters) AS mm
+         FROM rainfall r
+        WHERE (r.user_id = $1 OR r.field_id IN (${accessible}))
+          AND r.field_id = ANY($4::int[])
+          AND r.rainfall_date >= $2::date
+          AND r.rainfall_date < ($3::date + 1)
+        GROUP BY r.field_id, r.rainfall_date
+     ),
+     field_month AS (
+       SELECT d.field_id, date_trunc('month', d.rainfall_date)::date AS m, SUM(d.mm) AS mm, COUNT(*) AS n
+         FROM day_mm d
+        GROUP BY d.field_id, date_trunc('month', d.rainfall_date)
      )
      SELECT to_char(months.m, 'YYYY-MM') AS month,
-            COALESCE((
-              SELECT SUM(r.millimeters) FROM rainfall r
-               WHERE (r.user_id = $1 OR r.field_id IN (${accessible}))
-                 AND r.field_id = ANY($4::int[])
-                 AND r.rainfall_date >= months.m
-                 AND r.rainfall_date < months.m + interval '1 month'
-            ), 0)::numeric AS mm,
-            COALESCE((
-              SELECT COUNT(*) FROM rainfall r
-               WHERE (r.user_id = $1 OR r.field_id IN (${accessible}))
-                 AND r.field_id = ANY($4::int[])
-                 AND r.rainfall_date >= months.m
-                 AND r.rainfall_date < months.m + interval '1 month'
-            ), 0)::int AS n
+            COALESCE((SELECT AVG(f.mm) FROM field_month f WHERE f.m = months.m), 0)::numeric AS mm,
+            COALESCE((SELECT SUM(f.n) FROM field_month f WHERE f.m = months.m), 0)::int AS n
        FROM months
       ORDER BY months.m`;
   const rainQ = pool.query(rainSql, [userId, range.from, range.to, fieldIds]);

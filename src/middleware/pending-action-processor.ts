@@ -25,7 +25,8 @@
  */
 
 import type { PendingActivity } from './pending-activities.js';
-import { extractSlots, type ExtractedSlots, type SlotName } from './slot-extractor.js';
+import { extractSlots, extractPriceMassUnit, type ExtractedSlots, type SlotName } from './slot-extractor.js';
+import { convertMass } from '../utils/mass-units.js';
 import { stripAnswerPrefix } from '../utils/lexicon.js';
 import { normalizarMonto } from '../utils/parser.js';
 import { looksLikeAnimalId } from '../utils/animal-id.js';
@@ -319,7 +320,16 @@ export function processPendingAction(text: string, pending: PendingActivity): Pe
   if (stillMissing.includes('amount' as SlotName)
       && typeof data.quantity === 'number' && data.quantity > 0
       && typeof data.unit_price === 'number' && data.unit_price > 0) {
-    data.amount = Math.round(data.quantity * data.unit_price * 100) / 100;
+    // El precio puede venir en OTRA unidad que la cantidad ("30.000 kg" a
+    // "300 dólares la tonelada"): se lleva la cantidad a la unidad del precio.
+    // Si no se pueden convertir (la cantidad no es de masa), se multiplica como antes.
+    const priceUnit = extractPriceMassUnit(text);
+    const qtyUnit = (data as Record<string, unknown>).unit as string | undefined;
+    const converted = priceUnit && qtyUnit ? convertMass(data.quantity, qtyUnit, priceUnit) : null;
+    if (converted != null && converted !== data.quantity) {
+      console.log(`[INTERCEPT] pending ${pending.command}: precio por ${priceUnit} y cantidad en ${qtyUnit} → ${data.quantity} ${qtyUnit} = ${converted} ${priceUnit}`);
+    }
+    data.amount = Math.round((converted ?? data.quantity) * data.unit_price * 100) / 100;
     stillMissing.splice(stillMissing.indexOf('amount' as SlotName), 1);
   }
 

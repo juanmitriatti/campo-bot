@@ -105,7 +105,7 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
     fields: [
       { key: 'plot_id', label: 'Lote', type: 'select', required: true, optionsSource: 'plots' },
       DATE_FIELD,
-      { key: 'yield_kg_per_ha', label: 'Rinde (kg/ha)', type: 'number', required: false, min: 1 },
+      { key: 'yield_kg_per_ha', label: 'Rinde (kg/ha)', type: 'number', required: false, min: 1, max: 30000, help: 'En kg por hectárea (1 qq = 100 kg). Ej: 42 qq/ha = 4200' },
       { key: 'yield_kg', label: 'Rinde total (kg)', type: 'number', required: false, min: 1 },
       // Avance parcial: sin esto "42 qq/ha" se multiplicaba por TODO el lote
       // aunque se hubieran cosechado 40 de 100 ha, y una segunda cosecha pisaba

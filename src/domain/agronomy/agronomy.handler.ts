@@ -26,6 +26,7 @@ import { isDuplicate, recordAlert, recordDeduped } from '../../services/alert.se
 import { formatHistoryResponse } from './plot-query.service.js';
 import { formatDateAR, toISODateAR } from '../../utils/date.js';
 import { formatQuantityHuman, formatTn } from '../../utils/format-quantity.js';
+import { exceedsYieldCeiling, yieldCeilingKgPerHa } from '../../utils/yield-ceiling.js';
 import { localidadLookup, type Localidad } from '../../services/localidad-lookup.service.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import { isPlaceholder } from '../../utils/guards.js';
@@ -2641,6 +2642,28 @@ export class AgronomyHandler {
         let yieldNotes = (cmd.yieldNotes as string) || null;
         const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
 
+        // Las hectáreas cosechadas nunca pasan de lo que falta cosechar (sembradas
+        // o, si no hay, las del lote): `addHarvestedHectares` ya las topeaba pero el
+        // rinde se calculaba con el número crudo — "cosechamos 150 ha, 40 qq/ha" en
+        // un lote de 100 ha guardaba 600 tn y 6.000 kg/ha (auditoría de datos, nov 2026).
+        if (cmd.hectares != null && Number(cmd.hectares) > 0) {
+          const asked = Number(cmd.hectares);
+          const activeCap = await this.cropService.getActive(plotResult.plotId);
+          const { getPlotById: getPlotCap } = await import('../../services/expenses.js');
+          const plotCap = await getPlotCap(plotResult.plotId, userId);
+          const capHa = activeCap?.sowed_hectares ? Number(activeCap.sowed_hectares)
+            : (plotCap?.area_hectares ? Number(plotCap.area_hectares) : null);
+          const alreadyHa = activeCap?.harvested_hectares ? Number(activeCap.harvested_hectares) : 0;
+          if (capHa && asked + alreadyHa > capHa) {
+            const remaining = capHa - alreadyHa;
+            const allowed = remaining > 0 ? Math.min(asked, remaining) : Math.min(asked, capHa);
+            const note = `ha ajustadas: dijiste ${asked}, ${remaining > 0 ? `faltaban ${remaining}` : `el lote tiene ${capHa}`}`;
+            console.warn(`[INTERCEPT] harvest_crop: hectáreas ${asked} → ${allowed} (tope ${capHa}, ya cosechadas ${alreadyHa}) plot=${plotResult.plotId}`);
+            (cmd as Record<string, unknown>).hectares = allowed;
+            yieldNotes = yieldNotes ? `${yieldNotes} · ${note}` : note;
+          }
+        }
+
         // Resolve effective yield: if user gave rate (kg/ha), compute total; if total, use as-is.
         // When BOTH come, validate they agree (within 5% tolerance). Disagreement is almost
         // always a hallucination from the agent — bail and ask the user which one is right
@@ -2687,6 +2710,34 @@ export class AgronomyHandler {
             }
           } else if (yieldKgRaw != null && areaHa) {
             computedKgPerHa = Math.round(yieldKgRaw / areaHa);
+          }
+        }
+        // Rinde por encima del techo del cultivo ("42 tn/ha" de soja, un kg/ha
+        // tipeado como qq/ha): casi seguro un error de unidades. No se guarda sin
+        // preguntar (auditoría de datos, nov 2026). Botones: confirmar o corregir.
+        // En bulkMode los handlers no bloquean (invariante 7): el rinde se descarta
+        // con aviso y el resto de la cosecha se guarda.
+        if (computedKgPerHa != null && exceedsYieldCeiling(computedKgPerHa, crop) && cmd.__yieldConfirmed !== true) {
+          const kgHa = Math.round(computedKgPerHa);
+          const maxQq = Math.round(yieldCeilingKgPerHa(crop) / 100);
+          console.warn(`[INTERCEPT] harvest_crop: rinde ${kgHa} kg/ha de ${crop} supera el techo (${maxQq * 100}) plot=${plotResult.plotId}`);
+          if ((cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true) {
+            const note = `rinde no cargado: ${kgHa.toLocaleString('es-AR')} kg/ha parece un error`;
+            yieldNotes = yieldNotes ? `${yieldNotes} · ${note}` : note;
+            yieldKg = null;
+            computedKgPerHa = null;
+          } else {
+            return {
+              messages: [],
+              interactive: {
+                type: 'buttons' as const,
+                body: `⚠️ *${kgHa.toLocaleString('es-AR')} kg/ha* (${Math.round(kgHa / 100)} qq/ha) de ${crop} en *${plotLabel}* es mucho más de lo habitual (más de ${maxQq} qq/ha).\n\n¿Está bien? Si fue un error de unidades, tocá Corregir y mandame de nuevo la cosecha con el rinde correcto.`,
+                buttons: [
+                  { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, __yieldConfirmed: true }))}`, title: 'Sí, es correcto' },
+                  { id: 'cancel_action', title: 'Corregir' },
+                ],
+              },
+            };
           }
         }
         // Con hectáreas parciales, el rinde de ESTE mensaje se SUMA al de los

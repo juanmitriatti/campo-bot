@@ -1251,11 +1251,13 @@ router.get("/api/agro/fields/:id", async (req, res) => {
       ),
       // Rainfall current month
       pool.query(
-        `SELECT COALESCE(SUM(millimeters), 0) AS total_mm, COUNT(*) AS count
-         FROM rainfall
-         WHERE field_id = $1
-           AND EXTRACT(MONTH FROM rainfall_date) = EXTRACT(MONTH FROM NOW())
-           AND EXTRACT(YEAR FROM rainfall_date) = EXTRACT(YEAR FROM NOW())`, [fieldId]
+        `SELECT COALESCE(SUM(mm), 0) AS total_mm, COUNT(*) AS count
+         FROM (SELECT rainfall_date, MAX(millimeters) AS mm
+                 FROM rainfall
+                WHERE field_id = $1
+                  AND EXTRACT(MONTH FROM rainfall_date) = EXTRACT(MONTH FROM NOW())
+                  AND EXTRACT(YEAR FROM rainfall_date) = EXTRACT(YEAR FROM NOW())
+                GROUP BY rainfall_date) d`, [fieldId]
       ),
       // Members
       pool.query(

@@ -146,4 +146,53 @@ describe.skipIf(!dbAvailable)('rinde de una cosecha de varios días', () => {
     );
     expect((viejo[0] as { d: string }).d).toBe(isoDaysAgo(1));
   });
+
+  it('auditoría de datos #4: las hectáreas cosechadas se topean al lote ANTES de calcular el rinde', async () => {
+    const { pcId } = await newPlot('Cien'); // lote de 100 ha
+    h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Cien', hectares: 150, yield_kg_per_ha: 4000 });
+    await h.send('cosechamos 150 ha de soja en Cien, rindió 40 qq/ha');
+    const c = await campaign(pcId);
+    expect(Number(c.harvested_hectares)).toBe(100);
+    expect(Number(c.yield_kg)).toBe(400000); // 100 ha × 4.000 kg/ha, no 150 × 4.000 = 600.000
+  });
+
+  it('auditoría de datos #4: dos días que suman más que el lote: el segundo solo cuenta lo que faltaba', async () => {
+    const { pcId } = await newPlot('Cien2Dias');
+    h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Cien2Dias', hectares: 60, yield_kg_per_ha: 4000, event_date: isoDaysAgo(1) });
+    await h.send('ayer cosechamos 60 ha de soja en Cien2Dias, rindió 40 qq/ha');
+    h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Cien2Dias', hectares: 60, yield_kg_per_ha: 4000 });
+    await h.send('hoy cosechamos 60 ha de soja en Cien2Dias, rindió 40 qq/ha');
+    const c = await campaign(pcId);
+    expect(Number(c.harvested_hectares)).toBe(100);
+    expect(Number(c.yield_kg)).toBe(400000); // 240.000 + 40 ha × 4.000, no 480.000
+  });
+
+  it('auditoría de datos #5: un rinde fuera de techo (42 tn/ha de soja) no se guarda: pregunta con botones', async () => {
+    const { pcId } = await newPlot('Techo5');
+    h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Techo5', yield_kg_per_ha: 42000 });
+    const replies = await h.send('cosechamos soja en Techo5, rindió 42 tn/ha');
+    const c = await campaign(pcId);
+    expect(c.yield_kg).toBeNull();
+    expect(c.harvested_at).toBeNull();
+    const text = JSON.stringify(replies);
+    expect(text).toContain('mucho más de lo habitual');
+    expect(text).toContain('cmdtok_');
+  });
+
+  it('auditoría de datos #5: tocar "Sí, es correcto" guarda el rinde', async () => {
+    const { pcId } = await newPlot('Techo5b');
+    h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Techo5b', yield_kg_per_ha: 42000 });
+    const replies = await h.send('cosechamos soja en Techo5b, rindió 42 tn/ha');
+    const id = JSON.stringify(replies).match(/cmdtok_[A-Za-z0-9_-]{8}/)?.[0];
+    expect(id).toBeTruthy();
+    await h.tap(id as string);
+    expect(Number((await campaign(pcId)).yield_kg)).toBe(4_200_000);
+  });
+
+  it('auditoría de datos #5: un rinde normal (42 qq/ha) sigue guardándose sin preguntar', async () => {
+    const { pcId } = await newPlot('Techo5c');
+    h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', plot: 'Techo5c', yield_kg_per_ha: 4200 });
+    await h.send('cosechamos soja en Techo5c, rindió 42 qq/ha');
+    expect(Number((await campaign(pcId)).yield_kg)).toBe(420000);
+  });
 });

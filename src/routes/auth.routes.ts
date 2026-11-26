@@ -855,11 +855,18 @@ router.delete('/activities/:id', requireAuth, requireFeature('agronomy'), async 
   try {
     const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'ID inválido' }); return; }
-    const r = await pool.query(
-      `UPDATE domain_events d SET deleted_at = NOW() WHERE d.id = $1 AND ${deletableEventSql('d', 2)} AND d.deleted_at IS NULL RETURNING d.id`,
+    // Permiso primero (autor + acceso actual al campo) y el borrado por la MISMA
+    // función que usa el chat: un UPDATE directo dejaba la campaña viva (siembra
+    // borrada = lote que sigue "con soja"), el rinde y los camiones de una cosecha
+    // borrada, y el grano en el stock del silo (auditoría de datos, nov 2026).
+    const allowed = await pool.query(
+      `SELECT d.id FROM domain_events d WHERE d.id = $1 AND ${deletableEventSql('d', 2)} AND d.deleted_at IS NULL`,
       [id, req.auth!.userId],
     );
-    if (r.rows.length === 0) { res.status(404).json({ error: 'Actividad no encontrada' }); return; }
+    if (allowed.rows.length === 0) { res.status(404).json({ error: 'Actividad no encontrada' }); return; }
+    const { deleteDomainEvent } = await import('../services/expenses.js');
+    const removed = await deleteDomainEvent(id);
+    if (!removed) { res.status(404).json({ error: 'Actividad no encontrada' }); return; }
     // Invalidar caché de contexto: el validador anti-alucinación trabaja con la lista vieja hasta 60s
     invalidateUserContext(asUserId(req.auth!.userId));
     res.json({ deleted: true });
@@ -2382,25 +2389,33 @@ router.get('/analytics/agronomic', requireAuth, requireFeature('agronomy'), asyn
     const range = resolveCampaign(req.query.season);
     const win = [userId, targetFieldIds, range.from, range.to];
 
-    // Rainfall per month of the campaign, in mm
+    // Rainfall per month of the campaign, in mm. Una cifra por campo y día (MAX:
+    // dueño y socio pueden haber cargado la misma lluvia) y promedio entre campos
+    // — misma regla que el Resumen (overview.service).
     const { rows: rainfallMonthly } = await pool.query(
       `WITH months AS (
          SELECT generate_series($3::date, $4::date, '1 month')::date AS month_start
-       )
-       SELECT
-         to_char(m.month_start, 'YYYY-MM') AS month,
-         COALESCE((
-           SELECT SUM(r.millimeters)::numeric
+       ),
+       day_mm AS (
+         SELECT r.field_id, r.rainfall_date, MAX(r.millimeters) AS mm
            FROM rainfall r
            JOIN fields f ON f.id = r.field_id
-           WHERE f.id IN (${accessibleFieldsSql(1)})
-             AND f.deleted_at IS NULL
-             AND r.rainfall_date >= m.month_start
-             AND r.rainfall_date < m.month_start + interval '1 month'
-             AND r.field_id = ANY($2::int[])
-         ), 0) AS mm
-       FROM months m
-       ORDER BY m.month_start`,
+          WHERE f.id IN (${accessibleFieldsSql(1)})
+            AND f.deleted_at IS NULL
+            AND r.field_id = ANY($2::int[])
+            AND r.rainfall_date >= $3::date
+            AND r.rainfall_date < ($4::date + 1)
+          GROUP BY r.field_id, r.rainfall_date
+       ),
+       field_month AS (
+         SELECT d.field_id, date_trunc('month', d.rainfall_date)::date AS m, SUM(d.mm) AS mm
+           FROM day_mm d
+          GROUP BY d.field_id, date_trunc('month', d.rainfall_date)
+       )
+       SELECT to_char(m.month_start, 'YYYY-MM') AS month,
+              COALESCE((SELECT AVG(fm.mm) FROM field_month fm WHERE fm.m = m.month_start), 0) AS mm
+         FROM months m
+        ORDER BY m.month_start`,
       win
     );
 

@@ -19,6 +19,7 @@ import { extractCropFromText } from '../utils/crops.js';
 import { stripPlotCorrectionPrefix } from './flows/field-step-helpers.js';
 import { resolveFutureTime } from '../services/reminder.service.js';
 import { normalizePhone, looksLikePhone } from '../utils/phone.js';
+import { canonicalMassUnit } from '../utils/mass-units.js';
 
 /** Canonical slot names. Add here when a new shared slot type is introduced. */
 export type SlotName =
@@ -370,4 +371,19 @@ export function extractPhone(text: string): string | null {
     if (looksLikePhone(candidate)) return normalizePhone(candidate);
   }
   return null;
+}
+
+/**
+ * Unidad de masa a la que se refiere un precio por unidad: "a 300 dólares la
+ * tonelada" → 'tn', "2800 el kilo" → 'kg', "a 30 mil el quintal" → 'qq'. null si
+ * el texto no ata el precio a una unidad de masa ("a 900 c/u").
+ *
+ * `extractUnitPrice` devuelve solo el número: sin esto, "vendí 30.000 kg" y
+ * después "a 300 dólares la tonelada" multiplicaba 30.000 × 300 = USD 9.000.000
+ * en vez de 30 × 300 = USD 9.000 (auditoría de datos, nov 2026).
+ */
+export function extractPriceMassUnit(text: string): 'tn' | 'kg' | 'qq' | null {
+  const m = text.match(/\b(?:por|la|el|cada|x)\s+(tonelada|toneladas|tn|tns|ton|kilos?|kgs?|quintal(?:es)?|qq)\b/i);
+  if (!m) return null;
+  return canonicalMassUnit(m[1]);
 }
