@@ -14,7 +14,7 @@ import { getSetting } from '../services/settings.service.js';
 import { computeFormOptions } from './form-options.js';
 import type { FormDefinition } from './form-definitions.js';
 import { resolveFormInitialValues } from './form-prefill.js';
-import { initKey, optionsKey, isoToFlowDate, FIXED_GROUP_SLOTS, validateFlowData } from './whatsapp-flow-generator.js';
+import { initKey, optionsKey, isoToFlowDate, FIXED_GROUP_SLOTS, validateFlowData, fitFlowOptions, OTHER_OPTION } from './whatsapp-flow-generator.js';
 import { getTodayISO } from '../utils/date.js';
 import type { BotResponseItem, ChannelContext } from '../services/message-pipeline.js';
 import type { HandlerResponse } from '../types/index.js';
@@ -57,7 +57,12 @@ export async function appendMetaFlowOffer(
   });
   const data: Record<string, unknown> = {};
   for (const f of def.fields) {
-    if (f.optionsSource) data[optionsKey(f.key)] = opts.lists[f.optionsSource] ?? [];
+    if (!f.optionsSource) continue;
+    const fit = fitFlowOptions(opts.lists[f.optionsSource] ?? [], !!f.allowOther);
+    if (fit.truncated || fit.dropped) {
+      console.log(`[FORM] opciones ajustadas a los límites de Flows field=${f.key} recortadas=${fit.truncated} fuera=${fit.dropped}`);
+    }
+    data[optionsKey(f.key)] = fit.options;
   }
 
   // Prellenado: lo que el usuario YA dijo en el chat no se le vuelve a pedir.
@@ -81,7 +86,11 @@ export async function appendMetaFlowOffer(
     if (f.allowOther) {
       const other = initial[`${f.key}_other`];
       data[initKey(`${f.key}_other`)] = typeof other === 'string' ? other : '';
-      if (typeof other === 'string' && other) prefilled.push(`${f.key}_other`);
+      if (typeof other === 'string' && other) {
+        prefilled.push(`${f.key}_other`);
+        data[initKey(f.key)] = OTHER_OPTION.id;
+        continue;
+      }
     }
     const v = initial[f.key];
     if (v === undefined || v === null || v === '') { data[initKey(f.key)] = ''; continue; }

@@ -98,7 +98,10 @@ describe('appendFormOffer', () => {
     // WHATSAPP_FLOW_MODE no seteado → default draft → la clave `mode` viaja.
     expect(item.interactive.flow.mode).toBe('draft');
     expect(item.interactive.flow.data.plot_id_options).toEqual([{ id: '7', title: 'Norte (La Barrida)' }]);
-    expect(item.interactive.flow.data.crop_options).toEqual([{ id: 'soja', title: 'soja' }, { id: 'maíz', title: 'maíz' }]);
+    // El cultivo admite "otro": la lista suma esa opción al final.
+    expect(item.interactive.flow.data.crop_options).toEqual([
+      { id: 'soja', title: 'soja' }, { id: 'maíz', title: 'maíz' }, { id: '__other__', title: '✏️ Escribir otro…' },
+    ]);
     // Todo lo declarado en el esquema del screen viaja, incluso vacío (Flows lo exige).
     expect(item.interactive.flow.data.crop_other_init).toBe('');
     expect(item.interactive.flow.data.plot_id_init).toBe('7'); // único lote → prellenado

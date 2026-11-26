@@ -27,6 +27,8 @@ export interface FormOption { id: string; title: string }
 export interface FormField {
   key: string;
   label: string;
+  /** Etiqueta para WhatsApp Flows cuando `label` pasa los 20 caracteres de Meta. */
+  flowLabel?: string;
   type: 'select' | 'date' | 'number' | 'text' | 'group';
   required: boolean;
   /** Opciones por usuario (lotes, categorías…). Excluyente con `options`. */
@@ -166,7 +168,7 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
     fields: [
       { key: 'activity_type', label: 'Labor', type: 'select', required: true, options: ACTIVITY_TYPE_OPTIONS },
       { key: 'plot_id', label: 'Lote', type: 'select', required: true, optionsSource: 'plots' },
-      { key: 'product', label: 'Producto o implemento', type: 'text', required: false, help: 'Obligatorio salvo en riego. Ej: glifosato, urea, rastra' },
+      { key: 'product', label: 'Producto o implemento', flowLabel: 'Producto/implemento', type: 'text',required: false, help: 'Obligatorio salvo en riego. Ej: glifosato, urea, rastra' },
       { key: 'quantity', label: 'Dosis o cantidad', type: 'number', required: false, min: 0.001 },
       { key: 'unit', label: 'Unidad', type: 'select', required: false, options: DOSE_UNIT_OPTIONS },
       DATE_FIELD,

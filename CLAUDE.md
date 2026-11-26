@@ -497,6 +497,8 @@ Gated by admin settings (ship dark, flip when ready):
     - **Ingreso**: `buyer` y `quantity_tn`, ofrecidos solo si la categoría es grano (`offerIf` en presentation; `GRAIN_SALE_CATEGORIES` vive en `utils/crops.ts`). Con comprador no se pregunta el lote: lo deduce el handler.
     - Observaciones de labor y de hacienda se guardan; `formatActivityConfirmation` usa `formatDateAR`; "editar" / "editar el monto" escritos abren la edición; precio de hacienda sin moneda = pesos, visible en el resumen; el corral viaja con su campo; tras un submit web los botones del paso siguiente se mandan al chat.
 
+- **Límites de Meta en los WhatsApp Flows (nov 2026)**: `FLOW_LIMITS` en `whatsapp-flow-generator.ts` (etiqueta 20, opción 30, 200 opciones). Etiqueta larga → `flowLabel` en la FormDefinition; las opciones dinámicas pasan por `fitFlowOptions`, que agrega `__other__` en los campos con `allowOther`.
+
 ## Feature Gates
 
 14 features toggleable per plan via admin UI. Bot commands, dashboard API (`requireFeature()`) and frontend all enforce gating.

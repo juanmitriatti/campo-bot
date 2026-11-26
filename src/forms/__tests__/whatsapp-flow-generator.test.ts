@@ -1,7 +1,38 @@
 // src/forms/__tests__/whatsapp-flow-generator.test.ts
 import { describe, it, expect } from 'vitest';
 import { FORM_DEFINITIONS } from '../form-definitions.js';
-import { buildWhatsAppFlowJson, unflattenFlowPayload, isoToFlowDate, expectedFlowDataKeys, validateFlowData } from '../whatsapp-flow-generator.js';
+import { buildWhatsAppFlowJson, unflattenFlowPayload, isoToFlowDate, expectedFlowDataKeys, validateFlowData, fitFlowOptions, FLOW_LIMITS, OTHER_OPTION } from '../whatsapp-flow-generator.js';
+
+describe('límites de Meta para Flows', () => {
+  type Child = { type: string; label: string; 'data-source'?: string | Array<{ title: string }> };
+
+  it('los 6 formularios respetan etiquetas, opciones fijas y cantidad de componentes', () => {
+    for (const def of Object.values(FORM_DEFINITIONS)) {
+      const flow = buildWhatsAppFlowJson(def) as { screens: Array<{ layout: { children: Child[] } }> };
+      const children = flow.screens[0].layout.children;
+      expect(children.length, def.action).toBeLessThanOrEqual(FLOW_LIMITS.componentsPerScreen);
+      for (const c of children.filter(x => x.type !== 'Footer')) {
+        const max = c.type === 'DatePicker' ? FLOW_LIMITS.dateLabel : FLOW_LIMITS.textLabel;
+        expect(c.label.length, `${def.action}: "${c.label}"`).toBeLessThanOrEqual(max);
+        if (Array.isArray(c['data-source'])) {
+          for (const o of c['data-source']) expect(o.title.length, o.title).toBeLessThanOrEqual(FLOW_LIMITS.optionTitle);
+        }
+      }
+    }
+  });
+
+  it('fitFlowOptions recorta títulos, respeta el tope y suma "otro"', () => {
+    const long = Array.from({ length: 250 }, (_, i) => ({ id: String(i), title: `Lote del bajo grande (La Barrida) · soja ${i}` }));
+    const r = fitFlowOptions(long, true);
+    expect(r.options).toHaveLength(FLOW_LIMITS.maxOptions);
+    expect(r.options.at(-1)).toEqual(OTHER_OPTION);
+    expect(r.options.every(o => o.title.length <= FLOW_LIMITS.optionTitle)).toBe(true);
+    expect(r.options[0].id).toBe('0');
+    expect(r.dropped).toBe(51);
+    expect(r.truncated).toBe(199);
+    expect(fitFlowOptions([{ id: 'a', title: 'Norte' }], false)).toEqual({ options: [{ id: 'a', title: 'Norte' }], truncated: 0, dropped: 0 });
+  });
+});
 
 describe('buildWhatsAppFlowJson', () => {
   it('siembra: un screen con los 5 campos mapeados a componentes de Flow', () => {

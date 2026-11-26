@@ -13,9 +13,58 @@
 // RESPUESTA: la action `complete` del Footer DEBE llevar en su payload
 // `${form.<campo>}` por cada componente. Sin eso el nfm_reply trae solo el
 // flow_token y el submit recibe un formulario vacío (bug de la v1 dark).
-import type { FormDefinition, FormField } from './form-definitions.js';
+import type { FormDefinition, FormField, FormOption } from './form-definitions.js';
 
 export const FIXED_GROUP_SLOTS = 5;
+
+/**
+ * Límites de Meta (developers.facebook.com/docs/whatsapp/flows/reference/components,
+ * consultado nov 2026). Pasarse deja el Flow con errores de validación.
+ */
+export const FLOW_LIMITS = {
+  textLabel: 20,
+  dropdownLabel: 20,
+  dateLabel: 40,
+  optionTitle: 30,
+  maxOptions: 200,
+  componentsPerScreen: 50,
+} as const;
+
+/** Opción "otro" de un select con `allowOther`; el server ya la entiende. */
+export const OTHER_OPTION: FormOption = { id: '__other__', title: '✏️ Escribir otro…' };
+const OTHER_TEXT_LABEL = '¿Cuál otro?';
+
+/** Recorta a `max` unidades UTF-16 sin partir un emoji. */
+function clip(text: string, max: number): string {
+  if (text.length <= max) return text;
+  let out = '';
+  for (const ch of text) {
+    if (out.length + ch.length > max - 1) break;
+    out += ch;
+  }
+  return `${out.trimEnd()}…`;
+}
+
+/**
+ * Opciones dinámicas listas para un Dropdown de Flows: títulos recortados, tope
+ * de cantidad y la opción "otro" si el campo la admite (sin ella el Dropdown
+ * obligatorio forzaba a elegir una opción cualquiera para poder escribir otra).
+ * Devuelve cuántas se recortaron o quedaron afuera para que el llamador loguee.
+ */
+export function fitFlowOptions(
+  options: FormOption[],
+  withOther: boolean,
+): { options: FormOption[]; truncated: number; dropped: number } {
+  const room = FLOW_LIMITS.maxOptions - (withOther ? 1 : 0);
+  let truncated = 0;
+  const fitted = options.slice(0, room).map(o => {
+    const title = clip(o.title, FLOW_LIMITS.optionTitle);
+    if (title !== o.title) truncated++;
+    return { id: o.id, title };
+  });
+  if (withOther) fitted.push(OTHER_OPTION);
+  return { options: fitted, truncated, dropped: Math.max(0, options.length - room) };
+}
 
 /** Sufijo de la clave de data con el valor inicial de un campo. */
 export function initKey(name: string): string {
@@ -49,7 +98,7 @@ function groupSlots(f: FormField): number {
 }
 
 function componentFor(f: FormField, name: string, labelPrefix = ''): Record<string, unknown> | null {
-  const label = `${labelPrefix}${f.label}`;
+  const label = `${labelPrefix}${f.flowLabel ?? f.label}`;
   const init = `\${data.${initKey(name)}}`;
   switch (f.type) {
     case 'select':
@@ -122,7 +171,8 @@ export function buildWhatsAppFlowJson(def: FormDefinition): Record<string, unkno
     if (f.type === 'group') {
       for (let i = 1; i <= groupSlots(f); i++) {
         for (const sub of f.fields ?? []) {
-          push(componentFor({ ...sub, required: false }, `${f.key}_${i}_${sub.key}`, `${f.label} ${i}: `));
+          // Prefijo corto: "Cargas por camión 1: …" pasaba los 20 caracteres.
+          push(componentFor({ ...sub, required: false }, `${f.key}_${i}_${sub.key}`, `${i}. `));
         }
       }
       continue;
@@ -132,7 +182,7 @@ export function buildWhatsAppFlowJson(def: FormDefinition): Record<string, unkno
     if (f.allowOther) {
       push({
         type: 'TextInput', name: otherKey(f.key), required: false,
-        label: `${f.label} (otro, si no está en la lista)`,
+        label: OTHER_TEXT_LABEL,
         'init-value': `\${data.${initKey(otherKey(f.key))}}`,
       });
     }
