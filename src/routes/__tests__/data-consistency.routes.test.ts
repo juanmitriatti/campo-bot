@@ -165,4 +165,33 @@ describe.skipIf(!dbAvailable)('consistencia de datos en el dashboard', () => {
       await pool.query(`DELETE FROM incomes WHERE id = $1`, [inc]);
     }
   });
+
+  it('#18: dejar el monto de una venta en 0 da 400 (no 500) salvo que esté "a fijar"', async () => {
+    const inc = (await pool.query(
+      `INSERT INTO incomes (user_id, field_id, category, description, amount, currency, income_date) VALUES ($1, $2, 'Soja', 'venta', 9000, 'USD', '2026-11-10') RETURNING id`,
+      [userId, fieldId],
+    )).rows[0].id;
+    try {
+      const res = await call(`/incomes/${inc}`, { method: 'PATCH', body: JSON.stringify({ amount: 0 }) });
+      expect(res.status).toBe(400);
+      expect(Number((await pool.query(`SELECT amount FROM incomes WHERE id = $1`, [inc])).rows[0].amount)).toBe(9000);
+    } finally {
+      await pool.query(`DELETE FROM incomes WHERE id = $1`, [inc]);
+    }
+  });
+
+  it('#19: un tipo de gasto inventado se rechaza (400) y un tipo válido se acepta', async () => {
+    const exp = (await pool.query(
+      `INSERT INTO expenses (user_id, field_id, category, description, amount, currency, expense_date) VALUES ($1, $2, 'Otros', 'flete', 1000, 'ARS', '2026-11-10') RETURNING id`,
+      [userId, fieldId],
+    )).rows[0].id;
+    try {
+      const bad = await call(`/expenses/${exp}`, { method: 'PATCH', body: JSON.stringify({ expense_type: 'xx' }) });
+      expect(bad.status).toBe(400);
+      const ok = await call(`/expenses/${exp}`, { method: 'PATCH', body: JSON.stringify({ expense_type: 'insumo' }) });
+      expect(ok.status).toBe(200);
+    } finally {
+      await pool.query(`DELETE FROM expenses WHERE id = $1`, [exp]);
+    }
+  });
 });

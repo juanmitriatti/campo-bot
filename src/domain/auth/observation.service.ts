@@ -3,7 +3,7 @@ import { accessibleRowSql, accessibleEventSql } from '../shared/accessible-field
 import { canAccessField } from '../shared/field-access.js';
 import { sqlNormalizedName } from '../../utils/entity-matcher.js';
 import { normalizeObservationText, detectObservationCategory } from '../../services/observations.js';
-import { validMoney, validCurrency, validDate, validQuantityOrNull, validName, validIdOrNull } from './edit-validation.js';
+import { validMoney, validCurrency, validDate, validQuantityOrNull, validName, validIdOrNull, EditValidationError } from './edit-validation.js';
 import { toKgOrNull } from '../../services/expenses.js';
 
 interface ObservationRow {
@@ -541,10 +541,15 @@ export class ObservationService {
     if (data.currency !== undefined) { idx++; sets.push(`currency = $${idx}`); params.push(validCurrency(data.currency)); }
     if (data.category !== undefined) { idx++; sets.push(`category = $${idx}`); params.push(validName(data.category, 'La categoría', 60)); }
     if (data.expense_date !== undefined) { idx++; sets.push(`expense_date = $${idx}`); params.push(validDate(data.expense_date)); }
-    if (data.expense_type !== undefined) { idx++; sets.push(`expense_type = $${idx}`); params.push(data.expense_type); }
-    if (data.product !== undefined) { idx++; sets.push(`product = $${idx}`); params.push(data.product as string); }
+    // Tipo, producto y unidad se validan igual que el resto (antes un tipo libre como "xx"
+    // quedaba grabado y rompía los filtros por tipo; auditoría de datos, nov 2026).
+    if (data.expense_type !== undefined) {
+      if (data.expense_type !== 'insumo' && data.expense_type !== 'varios') throw new EditValidationError('El tipo de gasto debe ser "insumo" o "varios".');
+      idx++; sets.push(`expense_type = $${idx}`); params.push(data.expense_type);
+    }
+    if (data.product !== undefined) { idx++; sets.push(`product = $${idx}`); params.push(data.product === null || String(data.product).trim() === '' ? (null as unknown as string) : validName(data.product, 'El producto', 120)); }
     if (data.quantity !== undefined) { idx++; sets.push(`quantity = $${idx}`); params.push(validQuantityOrNull(data.quantity) as number); }
-    if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit as string); }
+    if (data.unit !== undefined) { idx++; sets.push(`unit = $${idx}`); params.push(data.unit === null || String(data.unit).trim() === '' ? (null as unknown as string) : validName(data.unit, 'La unidad', 20)); }
     if (data.unit_price !== undefined) { idx++; sets.push(`unit_price = $${idx}`); params.push(validQuantityOrNull(data.unit_price, 'El precio por unidad') as number); }
     if (data.plot_id !== undefined) {
       const loc = await this._moneyLocation(userId, data.plot_id);
@@ -622,7 +627,12 @@ export class ObservationService {
     idx++; sets.push(`edited_by = $${idx}`); params.push(userId);
     if (data.description !== undefined) { idx++; sets.push(`description = $${idx}`); params.push(String(data.description ?? '').trim()); }
     // Monto 0 vale: una venta "a fijar" (DSH-9 valida el resto).
-    if (data.amount !== undefined) { idx++; sets.push(`amount = $${idx}`); params.push(validMoney(data.amount, 'El monto', { allowZero: true })); }
+    if (data.amount !== undefined) {
+      const newAmount = validMoney(data.amount, 'El monto', { allowZero: true });
+      // Solo una venta "a fijar" puede quedar en 0 (CHECK de la migración 121): sin esto era un 500.
+      if (newAmount === 0 && inc.price_status !== 'a_fijar') throw new EditValidationError('El monto debe ser mayor a 0 (solo una venta "a fijar" puede quedar sin monto).');
+      idx++; sets.push(`amount = $${idx}`); params.push(newAmount);
+    }
     if (data.currency !== undefined) { idx++; sets.push(`currency = $${idx}`); params.push(validCurrency(data.currency)); }
     if (data.category !== undefined) { idx++; sets.push(`category = $${idx}`); params.push(validName(data.category, 'La categoría', 60)); }
     if (data.income_date !== undefined) { idx++; sets.push(`income_date = $${idx}`); params.push(validDate(data.income_date)); }

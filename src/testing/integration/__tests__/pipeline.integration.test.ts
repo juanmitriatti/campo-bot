@@ -1534,29 +1534,30 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await harvested()).toEqual(['El Dos', 'El Tres', 'El Uno']);
     };
 
-    it('"Rindió 500 tn" después de cosechar 3 lotes pregunta si es de esas y "todos" lo reparte por superficie', async () => {
+    it('"Rindió 100 tn" después de cosechar 3 lotes pregunta si es de esas y "todos" lo reparte por superficie', async () => {
       await harvestCampo2();
-      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', yield_kg: 500000 });
-      const ask = h.allText(await h.send('Rindo 500 tn'));
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', yield_kg: 100000 });
+      const ask = h.allText(await h.send('Rindo 100 tn'));
       expect(ask).toMatch(/Hoy cosechaste/);
       expect(ask).not.toMatch(/La Esperanza|Los Teros/);
       const calls = h.fakeAgent.calls.length;
       const r = h.allText(await h.send('En todos los del campo 2'));
       expect(h.fakeAgent.calls.length).toBe(calls);
-      expect(r).toMatch(/Repartí las \*500 tn\*/);
-      // El Uno tiene 20 ha y los otros 10: 250 / 125 / 125.
-      expect(await yields()).toEqual(['El Dos:125000', 'El Tres:125000', 'El Uno:250000']);
+      // (100 tn: con un techo de rinde por cultivo, 500 tn en 40 ha ya serían 12.500 kg/ha)
+      expect(r).toMatch(/Repartí las \*100 tn\*/);
+      // El Uno tiene 20 ha y los otros 10: 50 / 25 / 25.
+      expect(await yields()).toEqual(['El Dos:25000', 'El Tres:25000', 'El Uno:50000']);
       expect(await harvestEvents()).toBe(3);
     });
 
     it('[Repartir en los 3] hace lo mismo, y un segundo toque no repite', async () => {
       await harvestCampo2();
-      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', yield_kg: 500000 });
-      await h.send('Rindo 500 tn');
+      h.fakeAgent.enqueueTool('harvest_crop', { crop: 'soja', yield_kg: 100000 });
+      await h.send('Rindo 100 tn');
       await h.tap('pending_all_plots');
-      expect(await yields()).toEqual(['El Dos:125000', 'El Tres:125000', 'El Uno:250000']);
+      expect(await yields()).toEqual(['El Dos:25000', 'El Tres:25000', 'El Uno:50000']);
       expect(h.allText(await h.tap('pending_all_plots'))).toMatch(/ya no está pendiente/);
-      expect(await yields()).toEqual(['El Dos:125000', 'El Tres:125000', 'El Uno:250000']);
+      expect(await yields()).toEqual(['El Dos:25000', 'El Tres:25000', 'El Uno:50000']);
     });
 
     it('all_plots con rinde total en el mismo mensaje lo reparte por superficie', async () => {

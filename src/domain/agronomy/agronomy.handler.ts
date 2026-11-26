@@ -2342,6 +2342,23 @@ export class AgronomyHandler {
             } catch { /* non-blocking — sow without partial area */ }
           }
         }
+        // Superficie sembrada mayor que la del lote: se topea al lote (con aviso en
+        // la confirmación). Antes solo avisaba y guardaba 150 ha en un lote de 100,
+        // y el rinde total se calculaba después sobre esas 150 (auditoría de datos,
+        // nov 2026). Las tandas adicionales ya se topeaban.
+        let sowCappedFrom: number | null = null;
+        if (sowedHa != null && cmd.__fromForm !== true) {
+          try {
+            const { getPlotById: getPlotForSowCap } = await import('../../services/expenses.js');
+            const plotForSowCap = await getPlotForSowCap(plotResult.plotId, userId);
+            const lotHa = plotForSowCap?.area_hectares ? Number(plotForSowCap.area_hectares) : null;
+            if (lotHa && sowedHa > lotHa) {
+              console.warn(`[INTERCEPT] sow_crop: ${sowedHa} ha > lote de ${lotHa} ha → topeo al lote plot=${plotResult.plotId}`);
+              sowCappedFrom = sowedHa;
+              sowedHa = lotHa;
+            }
+          } catch { /* non-blocking */ }
+        }
         // GUARD anti-pisada (Jul 2026): sembrar un cultivo DISTINTO en un lote
         // con campaña activa cerraba la anterior EN SILENCIO — en vivo, "y
         // sembré 130ha de maíz" heredó el lote del contexto y pisó la soja de
@@ -2478,8 +2495,8 @@ export class AgronomyHandler {
             const { getPlotById } = await import('../../services/expenses.js');
             const plotInfo = await getPlotById(plotResult.plotId, userId);
             const areaHa = plotInfo?.area_hectares ? Number(plotInfo.area_hectares) : null;
-            if (areaHa && sowedHa > areaHa) {
-              sowMsg += `\n\n⚠️ El lote tiene *${areaHa} ha* registradas pero la siembra indica *${sowedHa} ha*. Verificá la superficie.`;
+            if (sowCappedFrom != null) {
+              sowMsg += `\n\n⚠️ Dijiste *${sowCappedFrom.toLocaleString('es-AR')} ha* pero el lote tiene *${(areaHa ?? sowedHa).toLocaleString('es-AR')} ha*: lo dejé en el total del lote. Si la superficie del lote está mal, corregila y volvé a cargar la siembra.`;
             }
           } catch { /* non-critical */ }
         }

@@ -68,4 +68,12 @@ describe.skipIf(!dbAvailable)('siembra repetida el mismo día', () => {
     await h.send('sembré otras 60 ha de soja en Rep3');
     expect(Number((await campaigns(plotId))[0].sowed_hectares)).toBe(100);
   });
+
+  it('#14: una siembra con más ha que el lote se topea al lote y avisa', async () => {
+    const plotId = await newPlot('Rep14'); // 100 ha
+    h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: 'Rep14', hectares: 150 });
+    const replies = await h.send('sembré 150 ha de soja en Rep14');
+    expect(Number((await campaigns(plotId))[0].sowed_hectares)).toBe(100);
+    expect(JSON.stringify(replies)).toContain('lo dejé en el total del lote');
+  });
 });
