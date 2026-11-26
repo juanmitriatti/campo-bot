@@ -17,7 +17,7 @@ interface Props {
 
 const STOCK_CATEGORIES = ['agroquimicos', 'fertilizantes', 'semillas', 'combustible', 'otros'];
 const CATEGORY_LABELS: Record<string, string> = {
-  agroquimicos: 'Agroquimicos', fertilizantes: 'Fertilizantes', semillas: 'Semillas',
+  agroquimicos: 'Agroquímicos', fertilizantes: 'Fertilizantes', semillas: 'Semillas',
   combustible: 'Combustible', otros: 'Otros',
 };
 

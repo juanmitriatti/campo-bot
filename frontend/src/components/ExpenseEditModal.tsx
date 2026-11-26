@@ -38,7 +38,7 @@ const EXPENSE_CATEGORIES = [
 
 const CATEGORY_LABELS: Record<string, string> = {
   combustible: 'Combustible', fertilizantes: 'Fertilizantes', semillas: 'Semillas',
-  agroquimicos: 'Agroquimicos', labranzas: 'Labranzas', sueldos: 'Sueldos', maquinaria: 'Maquinaria',
+  agroquimicos: 'Agroquímicos', labranzas: 'Labranzas', sueldos: 'Sueldos', maquinaria: 'Maquinaria',
   arrendamiento: 'Arrendamiento', impuestos: 'Impuestos', hacienda: 'Hacienda', otros: 'Otros',
 };
 

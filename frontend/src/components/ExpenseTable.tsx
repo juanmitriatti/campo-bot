@@ -72,7 +72,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   combustible: 'Combustible',
   fertilizantes: 'Fertilizantes',
   semillas: 'Semillas',
-  agroquimicos: 'Agroquimicos',
+  agroquimicos: 'Agroquímicos',
   labranzas: 'Labranzas',
   sueldos: 'Sueldos',
   maquinaria: 'Maquinaria',
