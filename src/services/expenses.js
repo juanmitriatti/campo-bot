@@ -3922,6 +3922,31 @@ async function updateHarvestLoadInner(userId, loadId, patch) {
   return row;
 }
 
+/**
+ * Camiones que borraría "borrá las cargas del lote X". Sin fecha, SOLO los de la
+ * campaña de la última cosecha: antes se borraban los de todas las campañas.
+ */
+export async function findHarvestLoadsToDelete(userId, plotId, { eventDate, driverNames, onlyWithoutDestination } = {}) {
+  const params = [userId, plotId];
+  const conditions = ["de.user_id = $1", "de.plot_id = $2", "de.event_type = 'harvest'", 'de.deleted_at IS NULL'];
+  if (eventDate) { params.push(eventDate); conditions.push(`de.event_date = $${params.length}::date`); }
+  if (driverNames && driverNames.length > 0) {
+    params.push(driverNames.map(d => d.toLowerCase()));
+    conditions.push(`LOWER(hl.driver_name) = ANY($${params.length}::text[])`);
+  }
+  if (onlyWithoutDestination) conditions.push('(hl.destination IS NULL AND hl.destinatario IS NULL)');
+  const { rows } = await pool.query(
+    `SELECT hl.*, de.event_date, de.crop AS event_crop
+       FROM harvest_loads hl JOIN domain_events de ON de.id = hl.domain_event_id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY de.event_date DESC, de.id DESC, hl.id`,
+    params,
+  );
+  if (eventDate || rows.length === 0) return rows;
+  const campaign = rows[0].plot_crop_id;
+  return rows.filter(r => r.plot_crop_id === campaign);
+}
+
 export async function deleteHarvestLoadById(userId, loadId) {
   const result = await pool.query(
     `DELETE FROM harvest_loads hl

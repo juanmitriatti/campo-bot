@@ -1,4 +1,5 @@
 import { DomainRouter } from './router.js';
+import { DESTRUCTIVE_COMMANDS } from './destructive-commands.js';
 import { callbackPayloadStore } from '../middleware/callback-payload-store.js';
 import { logError } from '../services/error-logger.js';
 import { withTransaction, pool } from '../config/db.js';
@@ -275,6 +276,15 @@ export class CompoundExecutor {
 
     for (const step of ordered) {
       let response: HandlerResponse | null = null;
+
+      // Un borrado pide confirmación mostrando qué: acá no se puede frenar el
+      // resto (invariante 7), así que no se ejecuta y se avisa. Antes se borraba
+      // sin preguntar.
+      if (step.intent.type === 'command' && DESTRUCTIVE_COMMANDS.has((step.intent.data as ParsedCommand).command)) {
+        console.log(`[INTERCEPT] compound: ${(step.intent.data as ParsedCommand).command} no se ejecuta (borrado sin confirmar)`);
+        messages.push('🗑️ El borrado no lo hice: pedímelo en un mensaje aparte así te muestro qué se borra.');
+        continue;
+      }
 
       if (step.intent.type === 'command') {
         const data = step.intent.data as ParsedCommand;

@@ -235,6 +235,7 @@ export interface HarvestLoadInput {
 }
 export function getHarvestLoadById(userId: number, loadId: number): Promise<any>;
 export function updateHarvestLoad(userId: number, loadId: number, patch: Record<string, unknown>): Promise<any>;
+export function findHarvestLoadsToDelete(userId: number, plotId: number, opts?: { eventDate?: string; driverNames?: string[]; onlyWithoutDestination?: boolean }): Promise<any[]>;
 export function deleteHarvestLoadById(userId: number, loadId: number): Promise<any>;
 export function findRecentLoadByDriver(userId: number, driverName: string, opts?: { plotId?: number | null; days?: number }): Promise<any[]>;
 export function getGrainBalance(userId: number, opts?: { crop?: string | null; destinatario?: string | null }): Promise<Array<{

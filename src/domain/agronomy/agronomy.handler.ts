@@ -3874,12 +3874,24 @@ export class AgronomyHandler {
           return { messages: [`No encontré el lote *${cmd.plotName}*.`] };
         }
 
-        const delOpts: { eventDate?: string; driverNames?: string[]; onlyWithoutDestination?: boolean } = {};
-        if (cmd.eventDate) delOpts.eventDate = cmd.eventDate as string;
-        if (cmd.driverNames && Array.isArray(cmd.driverNames)) delOpts.driverNames = cmd.driverNames as string[];
-        if (cmd.onlyWithoutDestination) delOpts.onlyWithoutDestination = true;
-
-        const deleted = await this.repo.deleteHarvestLoads(userId, delResolved.plotId, delOpts);
+        // Exactamente los camiones que se mostraron en la confirmación; cada
+        // borrado recalcula el rinde y saca del silo propio lo que había metido.
+        const { findHarvestLoadsToDelete, deleteHarvestLoadById } = await import('../../services/expenses.js');
+        const { harvestDeleteOptions } = await import('../../services/delete-target.js');
+        const shownIds = (cmd as Record<string, unknown>)._loadIds as number[] | undefined;
+        const ids = shownIds
+          ?? (await findHarvestLoadsToDelete(userId as number, delResolved.plotId, harvestDeleteOptions(cmd))).map(r => r.id as number);
+        const plotId = delResolved.plotId;
+        const { withTransaction } = await import('../../config/db.js');
+        const deleted: Array<Record<string, any>> = await withTransaction(async () => {
+          const rows: Array<Record<string, unknown>> = [];
+          for (const id of ids) {
+            const row = await deleteHarvestLoadById(userId as number, id);
+            if (row) rows.push(row);
+          }
+          console.log(`[HARVEST] ${rows.length} camión(es) borrado(s) del lote ${plotId}`);
+          return rows;
+        });
 
         if (deleted.length === 0) {
           return { messages: ['No se encontraron cargas que coincidan con los criterios para eliminar.'] };

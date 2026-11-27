@@ -90,6 +90,41 @@ describe.skipIf(!dbAvailable)('borrados con vista previa', () => {
     expect(await heads()).toEqual({ n: 0 });
   });
 
+  it('borrar camiones: confirma, y solo toca la campaña de la última cosecha', async () => {
+    const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Silo') RETURNING id`, [h.userId]);
+    const p = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Camiones', 100) RETURNING id`, [(f[0] as { id: number }).id]);
+    const plotId = (p[0] as { id: number }).id;
+    for (const [crop, season, date, driver] of [['soja', 2025, '2026-04-01', 'Viejo'], ['maiz', 2026, '2026-11-01', 'Nuevo']] as const) {
+      const pc = await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date, end_date, harvested_at)
+        VALUES ($1, $2, $3, 'gruesa', $4, $4, $4) RETURNING id`, [plotId, crop, season, date]);
+      const pcId = (pc[0] as { id: number }).id;
+      const ev = await h.q(`INSERT INTO domain_events (user_id, plot_id, plot_crop_id, event_type, crop, event_date)
+        VALUES ($1, $2, $3, 'harvest', $4, $5) RETURNING id`, [h.userId, plotId, pcId, crop, date]);
+      await h.q(`INSERT INTO harvest_loads (domain_event_id, plot_crop_id, driver_name, weight_kg) VALUES ($1, $2, $3, 28000)`,
+        [(ev[0] as { id: number }).id, pcId, driver]);
+    }
+    const drivers = async () => (await h.q(
+      `SELECT hl.driver_name AS d FROM harvest_loads hl JOIN domain_events de ON de.id = hl.domain_event_id WHERE de.plot_id = $1 ORDER BY 1`, [plotId]))
+      .map(r => (r as { d: string }).d);
+    h.fakeAgent.enqueueTool('delete_harvest_loads', { plot: 'Camiones' });
+    const items = await h.send('esos camiones del lote Camiones están de más');
+    expect(h.allText(items)).toMatch(/1 camión de Camiones/);
+    expect(await drivers()).toEqual(['Nuevo', 'Viejo']);
+    await h.tap(h.allButtons(items)[0].id);
+    expect(await drivers()).toEqual(['Viejo']);
+  });
+
+  it('un borrado dentro de un mensaje con varias acciones no se ejecuta sin confirmar', async () => {
+    await expense(400, 'Otros');
+    h.fakeAgent.enqueue([
+      { toolName: 'delete_last_expense', toolInput: {} },
+      { toolName: 'log_expense', toolInput: { amount: 500, category: 'Otros' } },
+    ]);
+    const items = await h.send('borrá el último gasto y gasté 500 en varios');
+    expect(await live('expenses')).toEqual([400, 500]);
+    expect(h.allText(items)).toMatch(/en un mensaje aparte/);
+  });
+
   it('sin nada que coincida no pide confirmación', async () => {
     h.fakeAgent.enqueueTool('delete_specific_expense', { filter_amount: 7 });
     const items = await h.send('borrá el gasto de 7 pesos');

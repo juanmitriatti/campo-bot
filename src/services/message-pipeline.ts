@@ -20,6 +20,7 @@
  *    los suyos.
  */
 
+import { DESTRUCTIVE_COMMANDS } from '../domain/destructive-commands.js';
 import { resolveDeleteTarget } from './delete-target.js';
 import { logError } from './error-logger.js';
 import type { PendingActivity } from '../middleware/pending-activities.js';
@@ -412,6 +413,7 @@ async function askDestructiveConfirmation(cmd: ParsedCommand, userId: UserId, ph
     delete_last_rainfall: 'eliminar la ultima lluvia',
     delete_last_scouting: 'eliminar el ultimo monitoreo',
     revert_livestock_movement: 'revertir este movimiento de hacienda',
+    delete_harvest_loads: 'eliminar estas cargas',
   };
   const label = actionLabels[cmd.command] || 'realizar esta accion';
   // Preview del objetivo: QUÉ se va a borrar. El registro "de recién" puede
@@ -527,18 +529,7 @@ export async function hasNoPrerequisites(userId: UserId): Promise<{ blocked: boo
   return { blocked: false };
 }
 
-export const DESTRUCTIVE_COMMANDS = new Set([
-  'delete_last', 'delete_last_income', 'delete_specific',
-  // Deletes del path del AGENTE (Jul 2026): borraban AL TOQUE sin confirmar
-  // ni cota temporal — "borrá la última actividad" podía eliminar una siembra
-  // de hace 5 días creyendo que era la de recién. Ahora TODOS confirman, y el
-  // prompt muestra QUÉ va a borrar (preview + fecha) para que el usuario vea
-  // si es el registro que cree.
-  'delete_last_expense', 'delete_last_activity', 'delete_last_observation',
-  'delete_last_rainfall', 'delete_last_scouting',
-  'delete_specific_expense', 'delete_specific_income',
-  'revert_livestock_movement',
-]);
+export { DESTRUCTIVE_COMMANDS };
 
 export const SAFE_INTERRUPTION_COMMANDS = new Set([
   'list_fields', 'list_plots', 'field_info', 'help', 'menu', 'support',

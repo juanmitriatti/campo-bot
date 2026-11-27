@@ -9,6 +9,8 @@ import {
 } from './expenses.js';
 import { FinancialRepository } from '../domain/financial/financial.repository.js';
 import { LivestockRepository } from '../domain/livestock/livestock.repository.js';
+import { findHarvestLoadsToDelete } from './expenses.js';
+import { PlotDiscoveryService } from '../domain/plots/plot-discovery.service.js';
 import { formatDateAR } from '../utils/date.js';
 import type { ParsedCommand, UserId } from '../types/index.js';
 
@@ -42,6 +44,16 @@ const NOT_A_REFERENT = /^(hoy|ayer|anteayer|la|el|los|las|recien|recién|eso|est
 export function incomeReferent(text: string | null | undefined): string | null {
   const m = /\b(?:venta|ingreso|cobro)\s+de\s+(?:la\s+|el\s+|los\s+|las\s+)?([\p{L}]{3,})/iu.exec(text ?? '');
   return m && !NOT_A_REFERENT.test(m[1]) ? m[1] : null;
+}
+
+/** Filtros del comando de borrar camiones: la vista previa y el borrado usan los mismos. */
+export function harvestDeleteOptions(cmd: ParsedCommand) {
+  const c = cmd as Record<string, unknown>;
+  return {
+    ...(c.eventDate ? { eventDate: c.eventDate as string } : {}),
+    ...(Array.isArray(c.driverNames) ? { driverNames: c.driverNames as string[] } : {}),
+    ...(c.onlyWithoutDestination ? { onlyWithoutDestination: true } : {}),
+  };
 }
 
 export async function resolveDeleteTarget(cmd: ParsedCommand, userId: UserId): Promise<DeleteTarget> {
@@ -128,6 +140,23 @@ export async function resolveDeleteTarget(cmd: ParsedCommand, userId: UserId): P
         status: 'found',
         key: `movement:${m.id}`,
         line: `↩️ ${labels[m.movement_type] ?? m.movement_type} de ${m.count}${what}${day(rows[0]?.movement_date)}`,
+      };
+    }
+    case 'delete_harvest_loads': {
+      if (!cmd.plotName) return { status: 'unknown' }; // el handler pregunta el lote
+      const r = await new PlotDiscoveryService().resolveFromNames(userId, c.fieldName as string | null, c.plotName as string);
+      if (!r.plotId) return none(`No encontré el lote *${String(c.plotName)}*.`);
+      const loads = await findHarvestLoadsToDelete(Number(userId), r.plotId, harvestDeleteOptions(cmd));
+      if (loads.length === 0) return none('No se encontraron cargas que coincidan. No borré nada.');
+      c._loadIds = loads.map(l => l.id);
+      const kg = (n: unknown) => Number(n).toLocaleString('es-AR');
+      const lines = loads.slice(0, 8).map(l => `• ${l.driver_name} — ${kg(l.weight_kg)} kg${day(l.event_date)}`);
+      if (loads.length > 8) lines.push(`• …y ${loads.length - 8} más`);
+      const total = loads.reduce((sum, l) => sum + Number(l.weight_kg), 0);
+      return {
+        status: 'found',
+        key: `loads:${c._loadIds}`,
+        line: `🚛 ${loads.length} camión${loads.length > 1 ? 'es' : ''} de ${r.plotName}${loads[0].event_crop ? ` (${loads[0].event_crop})` : ''}, ${kg(total)} kg:\n${lines.join('\n')}`,
       };
     }
     default:
