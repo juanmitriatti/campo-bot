@@ -140,9 +140,9 @@ export async function submitLivestockRows(
   if (asks.length > 0) {
     const [first, ...rest] = asks;
     applySideEffects({ setPendingActivity: { ...first, ...(rest.length ? { nextInQueue: rest } : {}) } } as never, session.phone);
-    // "Sin precio" cancela todo lo pendiente: solo si no hay otra cosa en cola.
+    // "Sin precio" saltea esta pregunta: solo si no hay otra cosa en cola.
     if (leftover.length === 0) {
-      response.interactive = { type: 'buttons', body: String(first.askPrompt), buttons: [{ id: 'cancel_action', title: 'Sin precio' }] };
+      response.interactive = { type: 'buttons', body: String(first.askPrompt), buttons: [{ id: 'lv_price_skip', title: 'Sin precio' }] };
     } else {
       response.messages = [...bodies, String(first.askPrompt)];
     }

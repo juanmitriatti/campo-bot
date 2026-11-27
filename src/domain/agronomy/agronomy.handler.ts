@@ -4350,9 +4350,17 @@ export class AgronomyHandler {
         const typeLabel = typeLabels[lastActivity.event_type as string] || lastActivity.event_type;
         const cropPart = lastActivity.crop ? ` de ${lastActivity.crop}` : '';
         const plotPart = lastActivity.plot_name ? ` en ${lastActivity.plot_name}` : '';
+        // Si era una tanda, decir con cuánto queda la campaña: así se ve si hay
+        // que corregirlo (las tandas viejas no guardaban lo que sumaron).
+        let leftNote = '';
+        if (lastActivity.event_type === 'planting' && lastActivity.plot_crop_id) {
+          const { pool } = await import('../../config/db.js');
+          const { rows } = await pool.query(`SELECT sowed_hectares FROM plot_crops WHERE id = $1`, [lastActivity.plot_crop_id]);
+          if (rows[0]?.sowed_hectares != null) leftNote = `\nLa campaña queda con *${Number(rows[0].sowed_hectares).toLocaleString('es-AR')} ha* sembradas.`;
+        }
         // Use neutral wording — "eliminada/eliminado" depends on gender which
         // varies across types (Siembra feminine, Pesaje masculine, etc.).
-        return { messages: [`🗑️ Borré: ${typeLabel}${cropPart}${plotPart}.`] };
+        return { messages: [`🗑️ Borré: ${typeLabel}${cropPart}${plotPart}.${leftNote}`] };
       }
 
       case 'edit_last_activity': {

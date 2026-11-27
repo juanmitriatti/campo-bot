@@ -141,7 +141,7 @@ export class FinancialRepository {
     let where = `i.user_id = $1 AND i.deleted_at IS NULL`;
     if (categoryFilter) {
       params.push(`%${categoryFilter}%`);
-      where += ` AND (i.category ILIKE $${params.length} OR i.description ILIKE $${params.length} OR i.product ILIKE $${params.length})`;
+      where += ` AND (i.category ILIKE $${params.length} OR i.description ILIKE $${params.length} OR i.product ILIKE $${params.length} OR i.buyer ILIKE $${params.length})`;
     }
     const result = await pool.query(
       `SELECT i.* FROM incomes i WHERE ${where} ORDER BY i.id DESC LIMIT 1`,

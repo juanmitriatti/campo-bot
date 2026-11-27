@@ -400,7 +400,10 @@ async function attachSuggestion(
  * borrar. La usan el camino de texto Y el de botones: "↩️ Borrar último" en
  * una sugerencia de ayer borraba el gasto de hoy sin preguntar (6 sep 2026).
  */
-async function askDestructiveConfirmation(cmd: ParsedCommand, userId: UserId, phone: string): Promise<BotResponseItem[]> {
+async function askDestructiveConfirmation(original: ParsedCommand, userId: UserId, phone: string): Promise<BotResponseItem[]> {
+  // Copia: los botones devuelven SIEMPRE el mismo objeto y acá se le fija el
+  // objetivo — un tap de otro usuario pisaba el de éste.
+  const cmd = { ...original } as ParsedCommand;
   const actionLabels: Record<string, string> = {
     delete_last: 'eliminar el ultimo gasto',
     delete_last_expense: 'eliminar el ultimo gasto',
@@ -3008,6 +3011,25 @@ async function handleInteractiveReplyInner(
 
   if (callbackId.startsWith('undo_del_')) return undoDelete(callbackId.slice('undo_del_'.length), userId);
 
+  // «Sin precio»: ESA pregunta se cierra de verdad (antes seguía 30 minutos y el
+  // número siguiente se guardaba como precio); lo que está en cola se pregunta.
+  if (callbackId === 'lv_price_skip') {
+    const asking = pendingActStore.get(phone) as PendingActivity | undefined;
+    if (asking?.command !== 'set_livestock_price') return [STALE_BUTTON_ITEM];
+    pendingActStore.clear(phone);
+    const [next, ...rest] = asking.nextInQueue ?? [];
+    console.log(`[INTERCEPT] «Sin precio»: pregunta de precio cerrada (en cola: ${rest.length + (next ? 1 : 0)})`);
+    const done = '👍 Quedó sin precio. Cuando lo sepas, mandalo así: «las vacas salieron 900 mil cada una».';
+    if (!next) return [{ type: 'text', text: done }];
+    pendingActStore.set(phone, { ...next, timestamp: Date.now(), ...(rest.length ? { nextInQueue: rest } : {}) } as PendingActivity);
+    return [
+      { type: 'text', text: done },
+      next.command === 'set_livestock_price'
+        ? interactiveButtons(String(next.askPrompt), [{ id: 'lv_price_skip', title: 'Sin precio' }])
+        : { type: 'text', text: String(next.askPrompt) },
+    ];
+  }
+
   // --- Destructive command confirmation ---
   if (callbackId.startsWith('confirm_destructive_')) {
     const pendingAction = pendingStore.get(phone) as any;
@@ -3030,13 +3052,6 @@ async function handleInteractiveReplyInner(
   if (callbackId === 'cancel_destructive' || callbackId === 'cancel_action' || callbackId === 'cancel_pending') {
     pendingStore.clear(phone);
     pendingDeleteConfirmStore.clear(phone);
-    // «Sin precio»: la pregunta se cierra de verdad (antes seguía 30 minutos y
-    // el número siguiente se guardaba como precio).
-    if (callbackId === 'cancel_action' && pendingActStore.get(phone)?.command === 'set_livestock_price') {
-      pendingActStore.clear(phone);
-      console.log('[INTERCEPT] «Sin precio»: se cierra la pregunta de precio de hacienda');
-      return [{ type: 'text', text: '👍 Quedó sin precio. Cuando lo sepas, mandalo así: «las vacas salieron 900 mil cada una».' }];
-    }
     conversationLogger.log(userId, phone, `[${callbackId}]`, 'Operacion cancelada.', 'command', 'cancel', null, null, false, null, false, null, null, null, ctx.channel).catch(() => {});
     return [{ type: 'text', text: '❌ Operacion cancelada.' }];
   }

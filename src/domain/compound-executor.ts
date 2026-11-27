@@ -81,6 +81,13 @@ export class CompoundExecutor {
     //  controller's standard intent path. Mixed = the user's "vendí X y vendí Y [no price]" case.)
     if (actionable.length + partials.length <= 1) return null;
     if (actionable.length === 0 && partials.length === 0) return null;
+    // "borrá los dos últimos gastos" = el mismo borrado repetido: va por el
+    // camino de una acción, que lo confirma (de a uno).
+    const commands = actionable.map(r => r.intent.type === 'command' ? (r.intent.data as ParsedCommand).command : null);
+    if (partials.length === 0 && commands[0] && DESTRUCTIVE_COMMANDS.has(commands[0]) && commands.every(c => c === commands[0])) {
+      console.log(`[INTERCEPT] compound: ${commands.length} × ${commands[0]} → se confirma de a uno`);
+      return null;
+    }
 
     try {
       return await withTransaction(async () =>

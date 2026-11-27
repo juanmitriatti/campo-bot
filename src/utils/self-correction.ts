@@ -10,7 +10,7 @@ const PRICE_MARKER_RE = /[$]|\busd\b|d[oó]lar|peso|\bmil\b|\bpalos?\b|\blucas?\
 // Con marca de corrección ("no, eran 8"), o la cópula con el animal nombrado
 // ("eran 8 vacas"). "fueron 1800" a secas es la respuesta a "¿a cuánto fue?":
 // tomarlo como cantidad cambiaba el rodeo a 1800 cabezas.
-const COUNT_CORRECTION_RE = new RegExp(`\\b(?:${CORRECTION_ALT})(?![\\p{L}])[^\\d]{0,20}?(\\d{1,5})\\b`, 'iu');
+const COUNT_CORRECTION_RE = new RegExp(`\\b(?:${CORRECTION_ALT})(?![\\p{L}])[^\\d]{0,20}?(\\d{1,5})\\b(?![.,]\\d)`, 'iu');
 const COUNT_NOUN_CORRECTION_RE = /\b(?:eran|son|fueron|fue|era)\b[^\d]{0,15}?(\d{1,5})\s+(?:cabezas?|animales?|vacas?|novill\w*|terner\w*|toros?|torit\w*|vaquillonas?|bueyes?)\b/iu;
 
 /**

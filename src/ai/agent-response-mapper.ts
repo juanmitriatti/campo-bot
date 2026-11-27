@@ -1237,7 +1237,9 @@ export class AgentResponseMapper {
     // decide el tipo, no el nombre del parámetro.
     for (const [visual, electronic] of [['visualTag', 'rfid'], ['newVisualTag', 'newRfid']] as const) {
       const value = cmd[visual];
-      if (typeof value === 'string' && !cmd[electronic] && parseAnimalId(value).idType === 'rfid') {
+      // Si el usuario dijo «visual» se respeta: la cinta visual trae el mismo número.
+      if (typeof value === 'string' && !cmd[electronic] && parseAnimalId(value).idType === 'rfid'
+          && !/\bvisual\b/i.test(String(cmd.originalText ?? originalText ?? ''))) {
         console.log(`AI_MAPPER OVERRIDE ${visual} → ${electronic}: «${value}» es una caravana electrónica`);
         cmd[electronic] = value;
         delete cmd[visual];

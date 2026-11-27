@@ -38,7 +38,7 @@ function moneyLine(kind: 'Gasto' | 'Ingreso', row: Record<string, unknown>): Del
   };
 }
 
-const NOT_A_REFERENT = /^(hoy|ayer|anteayer|la|el|los|las|recien|recién|eso|este|esta|mas|más)$/i;
+const NOT_A_REFERENT = /^(hoy|ayer|anteayer|antes|la|el|los|las|recien|recién|eso|este|esta|esa|ese|mas|más|semana|mes|año|quincena|campaña|pasad[oa]|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)$/i;
 
 /** "borrá la última venta de soja" → soja (el agente no siempre manda el filtro). */
 export function incomeReferent(text: string | null | undefined): string | null {

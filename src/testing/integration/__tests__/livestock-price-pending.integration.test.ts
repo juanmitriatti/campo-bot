@@ -64,9 +64,14 @@ describe.skipIf(!dbAvailable)('pregunta de precio de hacienda abierta', () => {
     expect(pendingActStore.get(h.phone)?.command).toBe('set_livestock_price');
   });
 
+  it('otro botón de cancelar no cierra la pregunta de precio como «sin precio»', async () => {
+    await buy();
+    expect(h.allText(await h.tap('cancel_action'))).not.toMatch(/sin precio/);
+  });
+
   it('H3: «Sin precio» cierra la pregunta y un número posterior no es un precio', async () => {
     await buy();
-    await h.tap('cancel_action');
+    await h.tap('lv_price_skip');
     expect(pendingActStore.get(h.phone)).toBeFalsy();
     await h.send('1800');
     expect(await expenses()).toEqual([]);

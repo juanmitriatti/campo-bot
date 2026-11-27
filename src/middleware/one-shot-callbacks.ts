@@ -41,6 +41,8 @@ const ONE_SHOT_PREFIXES = [
   'sowharv_',
   // Repetir un comando guardado (cargas al lote, AGR-11): un doble tap las sumaría dos veces.
   'cmdtok_',
+  // «Deshacer» un borrado: el botón viejo no puede revivir lo que se volvió a borrar.
+  'undo_del_',
 ];
 
 /**

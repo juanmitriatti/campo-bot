@@ -73,7 +73,10 @@ describe.skipIf(!dbAvailable)('borrados con vista previa', () => {
     const undo = h.allButtons(done).find(b => b.title === 'Deshacer')!;
     expect(h.allText(await h.tap(undo.id))).toMatch(/recuperé/);
     expect(await live('expenses')).toEqual([300]);
-    expect(h.allText(await h.tap(undo.id))).toMatch(/ya estaba/);
+    // Se vuelve a borrar: el «Deshacer» viejo no lo revive.
+    await h.q(`UPDATE expenses SET deleted_at = NOW() WHERE user_id = $1`, [h.userId]);
+    await h.tap(undo.id);
+    expect(await live('expenses')).toEqual([]);
   });
 
   it('«deshacé eso» de hacienda muestra el movimiento y no toca nada sin confirmar', async () => {
@@ -123,6 +126,15 @@ describe.skipIf(!dbAvailable)('borrados con vista previa', () => {
     const items = await h.send('borrá el último gasto y gasté 500 en varios');
     expect(await live('expenses')).toEqual([400, 500]);
     expect(h.allText(items)).toMatch(/en un mensaje aparte/);
+  });
+
+  it('el mismo borrado repetido en un mensaje se confirma (no queda en un bucle)', async () => {
+    await expense(10, 'Otros', 5);
+    await expense(20, 'Otros');
+    h.fakeAgent.enqueue([{ toolName: 'delete_last_expense', toolInput: {} }, { toolName: 'delete_last_expense', toolInput: {} }]);
+    const items = await h.send('borrá los dos últimos gastos');
+    expect(h.allButtons(items).some(b => b.id.startsWith('confirm_destructive'))).toBe(true);
+    expect(await live('expenses')).toEqual([10, 20]);
   });
 
   it('sin nada que coincida no pide confirmación', async () => {
