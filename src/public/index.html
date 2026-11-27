@@ -866,6 +866,11 @@
           <div class="value" id="stat-users">-</div>
         </div>
         <div class="stat-card">
+          <div class="label">Usuarios nuevos (semana)</div>
+          <div class="value" id="stat-new-users">-</div>
+          <div class="subtitle" id="stat-new-users-prev">Desde el lunes</div>
+        </div>
+        <div class="stat-card">
           <div class="label">Costo IA del Mes</div>
           <div class="value cost" id="stat-ai-cost">-</div>
           <div class="subtitle">USD</div>
@@ -2293,6 +2298,10 @@
         if (!data) return;
         document.getElementById('stat-users').textContent =
           Number(data.totalUsers || 0).toLocaleString('es-AR');
+        document.getElementById('stat-new-users').textContent =
+          Number(data.newUsersWeek || 0).toLocaleString('es-AR');
+        document.getElementById('stat-new-users-prev').textContent =
+          'Desde el lunes · semana anterior: ' + Number(data.newUsersLastWeek || 0).toLocaleString('es-AR');
         document.getElementById('stat-ai-cost').textContent =
           formatUSD(data.monthlyAiCost || 0);
         document.getElementById('stat-active-users').textContent =

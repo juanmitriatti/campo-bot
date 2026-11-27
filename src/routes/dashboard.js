@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import multer from "multer";
 import { pool } from "../config/db.js";
+import { getWeeklySignups } from "../services/signup-stats.js";
 import { normalizePhone } from "../utils/phone.js";
 import { getObservationsByField, getWeekObservationCount } from "../services/observations.js";
 import { generateWeeklyReport, getReportsByField, getAllReports, getReportById } from "../services/agro-report.js";
@@ -60,7 +61,7 @@ router.get(/^\/(?!api\/).*/, (req, res) => {
 
 router.get("/api/stats", async (req, res) => {
   try {
-    const [usersR, aiCostR, activeR] = await Promise.all([
+    const [usersR, aiCostR, activeR, signups] = await Promise.all([
       pool.query("SELECT COUNT(*) AS total FROM users"),
       // Haiku 4.5: input 1.00/M, cache read 0.10/M (10%), cache write 1.25/M (125%), output 5.00/M
       pool.query(
@@ -77,12 +78,15 @@ router.get("/api/stats", async (req, res) => {
         `SELECT COUNT(DISTINCT user_id) AS total FROM ai_usage
          WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'`
       ),
+      getWeeklySignups(),
     ]);
 
     res.json({
       totalUsers: parseInt(usersR.rows[0].total),
       monthlyAiCost: parseFloat(aiCostR.rows[0].total),
       activeUsersWeek: parseInt(activeR.rows[0].total),
+      newUsersWeek: signups.thisWeek,
+      newUsersLastWeek: signups.lastWeek,
     });
   } catch (error) {
     console.error("Error fetching stats:", error);
