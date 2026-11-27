@@ -19,6 +19,7 @@ import { isSameFlowOpen, closeLinkedFlow, type FlowMarker } from './form-flow-li
 import { applyCarry } from './activity-form-offer.js';
 import { isLivestockFlowPayload, splitLivestockRows } from './livestock-rows.js';
 import { submitLivestockRows } from './livestock-submit.js';
+import { findRecordSinceForm, alreadyLoadedMessage } from './form-duplicate.js';
 import { buildFormCommand, FORM_PERSISTS_TO, type ResolvedRefs } from './form-commands.js';
 import { parseLocationId, computeFormOptions, NO_LOCATION_ID } from './form-options.js';
 import { unflattenFlowPayload } from './whatsapp-flow-generator.js';
@@ -414,23 +415,11 @@ export async function submitForm(
       return done;
     }
 
-    // Caso borde del spec: había un pending al ofrecer el form y ya no está →
-    // se resolvió por chat. No duplicar; cerrar el token.
     const pending = pendingActStore.get(session.phone);
-    if (session.had_pending && !pending) {
-      console.log('[FORM] rejected: pending ya resuelto por chat');
-      await formSessionService.claim(token);
-      return { ok: false, status: 409, error: '⚠️ Esto ya se registró por el chat. No lo dupliqué.' };
-    }
-
-    // El formulario acompañaba una pregunta de flujo (gasto / ingreso): si ese
-    // flujo ya se cerró, el registro se resolvió por chat. No duplicar.
-    const linked = (session.prefill as { _flow?: FlowMarker } | null | undefined)?._flow;
-    if (linked && !(await isSameFlowOpen(Number(session.user_id), linked))) {
-      console.log('[FORM] rejected: el flujo de chat ya se cerró');
-      await formSessionService.claim(token);
-      return { ok: false, status: 409, error: '⚠️ Esa carga ya se cerró por el chat. No la dupliqué. Si te falta, pedime «formulario».' };
-    }
+    // El formulario acompañaba una pregunta de flujo (gasto / ingreso / labor):
+    // solo se cierra ESE flujo, no uno abierto después.
+    const marker = (session.prefill as { _flow?: FlowMarker } | null | undefined)?._flow;
+    const linked = marker && await isSameFlowOpen(Number(session.user_id), marker) ? marker : undefined;
 
     // Validación completa DENTRO del lock: el estado (lotes, cultivo activo)
     // no cambia entre validar y escribir.
@@ -443,6 +432,15 @@ export async function submitForm(
         ok: false, status: 422, field: 'plot_id',
         error: `El lote ${prepared.refs.plot?.name ?? ''} ya tiene ${prepared.refs.activeOther} activo. Elegí otro lote, o cargá la siembra por el chat para reemplazar esa campaña.`,
       };
+    }
+    // Llega tarde (la pregunta ya se contestó, venció o cambió): se guarda,
+    // salvo que desde que se abrió ya haya un registro igual.
+    const loaded = await findRecordSinceForm(token, Number(session.user_id), action, prepared.data, prepared.refs,
+      session.prefill as Record<string, unknown> | undefined);
+    if (loaded) {
+      console.log(`[FORM] rejected: ya se cargó por chat (${action})`);
+      await formSessionService.claim(token);
+      return { ok: false, status: 409, error: alreadyLoadedMessage(loaded) };
     }
     const cmd = buildFormCommand(action, prepared.data, prepared.refs);
     applyCarry(cmd, session.prefill as Record<string, unknown> | null | undefined);

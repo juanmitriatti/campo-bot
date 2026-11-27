@@ -64,6 +64,12 @@ vi.mock('../form-options.js', async () => {
   return { ...actual, computeFormOptions: (...a: unknown[]) => computeOptsMock(...a) };
 });
 
+const findSinceMock = vi.fn();
+vi.mock('../form-duplicate.js', () => ({
+  findRecordSinceForm: (...a: unknown[]) => findSinceMock(...a),
+  alreadyLoadedMessage: (what: string) => `ya cargaste ${what}`,
+}));
+
 const { submitForm, lockKeyForSession, DUPLICATE_SUBMIT_MESSAGE } = await import('../form-submit.service.js');
 
 const SESSION = {
@@ -169,14 +175,14 @@ describe('submitForm', () => {
     expect(routeCommand).not.toHaveBeenCalled();
   });
 
-  it('409 si había pending y ya no está (se resolvió por chat)', async () => {
+  it('llega tarde y ya hay un registro igual → 409 que dice cuál, token cerrado, sin escribir', async () => {
     sessionValidate.mockResolvedValue({ ...SESSION, had_pending: true });
     pendingGet.mockReturnValue(undefined);
-    queryMock.mockResolvedValueOnce({ rows: [{ id: 9, name: 'Juan' }] });
+    mockUserRow();
+    findSinceMock.mockResolvedValueOnce('una siembra en Norte');
     const r = await submitForm('tok', { plot_id: 7, crop: 'soja', event_date: '2026-08-01' });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.status).toBe(409);
-    expect(sessionClaim).toHaveBeenCalledWith('tok'); // se cierra el token
+    expect(r).toEqual({ ok: false, status: 409, error: 'ya cargaste una siembra en Norte' });
+    expect(sessionClaim).toHaveBeenCalledWith('tok');
     expect(routeCommand).not.toHaveBeenCalled();
   });
 

@@ -20,6 +20,7 @@
  *    los suyos.
  */
 
+import { logError } from './error-logger.js';
 import type { PendingActivity } from '../middleware/pending-activities.js';
 import { IntentClassifier, READ_ONLY_TRIVIAL_COMMANDS, EXPIRED_ALLOWED_COMMANDS } from './intent-classifier.js';
 import { DomainRouter } from '../domain/router.js';
@@ -679,6 +680,9 @@ export async function commitFinancialFlowFieldLevel(
   const result = await conversationEngine.executeConfirm(userId, flowCtx);
   applySideEffects(result.response.sideEffects, phone);
   const kind = origin === 'income_flow' ? 'ingreso' : 'gasto';
+  if (result.response.saveFailed) {
+    return [{ type: 'text', text: `⚠️ No pude guardar el ${kind} que estaba cargando. Mandámelo de nuevo.` }];
+  }
   const note = flowCtx.data?.plotName
     ? `💡 Guardé el ${kind} antes de seguir.`
     : `💡 Guardé el ${kind} a nivel campo (sin lote).`;
@@ -1780,10 +1784,26 @@ ${ask}` }];
       && ((looksLikeNewActionOrQuery(text) && !intentClassifier.detectsFinancialIntent(text))
           || isOtherItemCorrectionOrDelete(text))) {
     pendingStore.clear(phone);
-    try { await financialHandler.handleConfirm(userId, pending, settings, user); } catch { /* best-effort */ }
     const kind = (pending as any).type === 'income' ? 'ingreso' : 'gasto';
+    // "Guardé" SOLO si se guardó: antes el error se tragaba y el aviso salía igual.
+    let failure: string | null = null;
+    try {
+      const done = await financialHandler.handleConfirm(userId, pending, settings, user);
+      const first = done?.messages?.[0] ?? '';
+      if (/^(?:⚠️|❌)/.test(first)) failure = first;
+    } catch (err) {
+      console.error('[INTERCEPT] guardado previo al cambio de tema FALLÓ:', (err as Error).message);
+      logError('message-pipeline', 'PIVOT_COMMIT_FAILED', err as Error, { userId });
+      failure = `⚠️ No pude guardar el ${kind} que estaba esperando confirmación.`;
+    }
     const rest = await processTextMessageInner(text, ctx);
-    return [{ type: 'text', text: `💡 Guardé el ${kind} antes de seguir.` }, ...rest];
+    if (!failure) return [{ type: 'text', text: `💡 Guardé el ${kind} antes de seguir.` }, ...rest];
+    // Sin acceso al lugar no tiene arreglo; un error al guardar se puede reintentar.
+    const retry = !failure.includes('no guardé') && !pendingStore.get(phone);
+    if (!retry) return [{ type: 'text', text: failure }, ...rest];
+    pendingStore.set(phone, pending);
+    const { renderPendingCard } = await import('../domain/financial/financial.handler.js');
+    return [...rest, { type: 'text', text: failure }, ...collectResponse(renderPendingCard(pending as any))];
   }
 
   const lowConfidenceThreshold = (await getSettingNumber('CONFIDENCE_LOW_CONFIRM')) ?? 0.70;

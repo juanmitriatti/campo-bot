@@ -939,7 +939,7 @@ export class ConversationEngine {
       const msg = (err as Error).message;
       console.error(`[FLOW_CONFIRM] execute() failed for ${flowState}, user ${userId}:`, msg);
       logError('flow-engine', 'FLOW_EXECUTE_FAILED', err as Error, { userId, context: { flowState } });
-      return { response: { messages: ['Hubo un error al guardar. Intentá de nuevo.'] }, nextContext: null };
+      return { response: { messages: ['Hubo un error al guardar. Intentá de nuevo.'], saveFailed: true }, nextContext: null };
     }
   }
 

@@ -975,6 +975,8 @@ async function dailyCleanupTick() {
     await authTokensCleanupTick();
     await formSessionsCleanupTick();
     await accountPurgeTick();
+    const { purgeInboundMessages } = await import('./wa-inbound-claim.js');
+    await purgeInboundMessages();
   } catch (err) {
     console.error('[cleanup] Unexpected error:', err);
     logError('scheduler', 'DAILY_CLEANUP_ERROR', err);
@@ -1045,13 +1047,44 @@ let reminderTickRunning = false;
 // de un minuto (avisos duplicados — CRN-4).
 let flowReminderTickRunning = false;
 
-async function flowReminderTick() {
+/**
+ * Flujo vencido sin respuesta con el gasto/ingreso ya completo (monto y
+ * categoría): se guarda a nivel campo antes de cerrarlo, igual que cuando el
+ * usuario vuelve con otro mensaje. El cron lo descartaba y solo avisaba que
+ * había cerrado el formulario. Todo (releer, guardar, cerrar) pasa dentro del
+ * lock del usuario: un mensaje que entra en ese momento no puede guardarlo dos
+ * veces, ni el cron cerrar el flujo nuevo que ese mensaje abrió.
+ * Devuelve { expired: false } si ya no hay nada vencido, o { text } (null si
+ * no había nada completo para guardar).
+ */
+async function closeExpiredFlow(flow, startedAtMs) {
+  const { withUserLock } = await import("../middleware/user-lock.js");
+  const { conversationEngine, commitFinancialFlowFieldLevel } = await import("./message-pipeline.js");
+  const key = flow.phone ? `wa:${flow.phone}` : `tg:${flow.telegramId}`;
+  const phone = flow.phone || `tg_${flow.telegramId}`;
+  let result = { expired: false, text: null };
+  await withUserLock(key, async () => {
+    const ctx = await conversationEngine.getFlowContext(flow.userId);
+    if (ctx.state === "idle" || !conversationEngine.isExpired(ctx)) return;
+    const items = await commitFinancialFlowFieldLevel(flow.userId, ctx, phone);
+    await conversationEngine.clearFlow(flow.userId);
+    result = { expired: true, text: null };
+    if (items.length === 0) return;
+    console.log(`[flow-reminder] [INTERCEPT] flujo vencido de user ${flow.userId} (${startedAtMs}): cierre con registro completo`);
+    // El aviso sale como texto: se saca la oferta de stock, que sin botones
+    // sería una pregunta que no se puede contestar.
+    const body = items.map(i => i.text || i.interactive?.body || "").join("\n\n").replace(/\n\s*📦[\s\S]*$/, "").trim();
+    const failed = body.startsWith("⚠️ No pude guardar");
+    result.text = failed ? body : `⏱️ No contestaste a tiempo, así que lo guardé con lo que tenía.\n\n${body}`;
+  });
+  return result;
+}
+
+export async function flowReminderTick() {
   try {
     const timeoutNotifyEnabled = (await getSettingBool('FLOW_TIMEOUT_NOTIFICATION_ENABLED')) ?? true;
     const halflifeEnabled = (await getSettingBool('FLOW_HALFLIFE_WARNING_ENABLED')) ?? true;
     const halflifeMs = (await getSettingNumber('FLOW_HALFLIFE_WARNING_MS')) ?? 300000;
-
-    if (!timeoutNotifyEnabled && !halflifeEnabled) return;
 
     const activeFlows = await conversationStateRepoForReminder.findActiveFlowsForReminder();
     if (activeFlows.length === 0) return;
@@ -1065,15 +1098,22 @@ async function flowReminderTick() {
 
       // 1. Expired flow → send timeout notification and clear
       if (expiresAtMs && now >= expiresAtMs) {
-        if (!timeoutNotifyEnabled) {
-          await conversationStateRepoForReminder.clearFlow(flow.userId);
+        let closed;
+        try {
+          closed = await closeExpiredFlow(flow, startedAtMs);
+        } catch (err) {
+          // Sin guardar no se cierra: el próximo tick reintenta.
+          console.error(`[flow-reminder] no pude guardar el flujo vencido de user ${flow.userId}:`, err.message);
+          logError("scheduler", "FLOW_EXPIRY_SAVE_ERROR", err, { userId: flow.userId });
           continue;
         }
+        // Un registro guardado se avisa siempre, aunque el aviso de vencimiento esté apagado.
+        if (!closed.expired || (!closed.text && !timeoutNotifyEnabled)) continue;
         try {
           await sendAlertWithRetryMultiChannel(
             flow.userId,
             { phone: flow.phone, telegramId: flow.telegramId },
-            buildTimeoutMessage(flow.flowState),
+            closed.text ?? buildTimeoutMessage(flow.flowState),
             'flow_timeout',
             { dedupKey: `flow_timeout_${flow.userId}_${startedAtMs}` }
           );
@@ -1081,7 +1121,6 @@ async function flowReminderTick() {
         } catch (err) {
           console.error(`[flow-reminder] Failed to send timeout notice to user ${flow.userId}:`, err.message);
         }
-        await conversationStateRepoForReminder.clearFlow(flow.userId);
         continue;
       }
 

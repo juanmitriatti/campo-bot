@@ -6,7 +6,7 @@
  *
  * Requiere DB (Docker local :5433 o CI). Si no hay DB, se saltea entera.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { createPipelineHarness, type PipelineHarness } from '../pipeline-harness.js';
 import { submitForm } from '../../../forms/form-submit.service.js';
 import { setSetting } from '../../../services/settings.service.js';
@@ -2963,23 +2963,36 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       await h.q(`DELETE FROM plot_crops WHERE plot_id = $1`, [plotId]);
     });
 
-    it('submit con pending ya resuelto por chat → 409, sin duplicar, token consumido', async () => {
+    it('formulario que llega tarde: se guarda si no hay un registro igual; si lo hay, dice cuál', async () => {
       const { formSessionService } = await import('../../../services/form-session.service.js');
       const { submitForm } = await import('../../../forms/form-submit.service.js');
       const { pendingActStore } = await import('../../../services/message-pipeline.js');
-
-      const token = await formSessionService.create({
-        userId: h.userId, action: 'sow_crop', prefill: {},
+      const { getTodayISO } = await import('../../../utils/date.js');
+      const open = () => formSessionService.create({
+        userId: h.userId, action: 'log_expense', prefill: {},
         channel: 'testbot', channelId: 'x', phone: h.phone, hadPending: true,
       });
-      pendingActStore.clear(h.phone); // el pending se resolvió por chat: ya no está
+      const payload = { amount: '7.500', currency: 'ARS', category: 'Sueldos', location: 'none', event_date: getTodayISO() };
+      const count = async () => (await h.q(`SELECT id FROM expenses WHERE user_id = $1`, [h.userId])).length;
+      pendingActStore.clear(h.phone); // la pregunta venció sin guardar nada
 
-      const result = await submitForm(token, { plot_id: plotId, crop: 'soja', event_date: '2026-08-01' });
-      expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.status).toBe(409);
+      const late = await submitForm(await open(), payload, { deliver: 'return' });
+      expect(late.ok, JSON.stringify(late)).toBe(true);
+      expect(await count()).toBe(1);
 
+      // Segundo formulario abierto ANTES de que el mismo gasto entre por chat.
+      const token = await open();
+      await h.q(`INSERT INTO expenses (user_id, amount, currency, category, expense_date) VALUES ($1, 7500, 'ARS', 'Sueldos', CURRENT_DATE)`, [h.userId]);
+      const dup = await submitForm(token, payload, { deliver: 'return' });
+      expect(dup.ok).toBe(false);
+      if (!dup.ok) {
+        expect(dup.status).toBe(409);
+        expect(dup.error).toContain('$7.500');
+      }
+      expect(await count()).toBe(2);
       const row = await h.q(`SELECT used_at FROM form_sessions WHERE token = $1`, [token]);
       expect((row[0] as { used_at: string | null }).used_at).not.toBeNull();
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
     });
   });
 
@@ -5546,6 +5559,54 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('cambio de tema con la tarjeta "¿Confirmo?" abierta y el guardado falla (nov 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('pivot-falla');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Ceibo') RETURNING id`, [h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Uno')`, [(f[0] as { id: number }).id]);
+    });
+    afterAll(async () => { await h?.cleanup(); });
+
+    it('no dice "Guardé" y la tarjeta sigue pendiente', async () => {
+      const { FinancialHandler } = await import('../../../domain/financial/financial.handler.js');
+      h.fakeAgent.enqueueTool('log_expense', { amount: 5000, category: 'Otros', description: 'varios' });
+      await h.send('gasté 5000 en varios');
+      const { pendingStore } = await import('../../../services/message-pipeline.js');
+      expect(pendingStore.get(h.phone)).toBeTruthy();
+      const spy = vi.spyOn(FinancialHandler.prototype, 'handleConfirm').mockRejectedValueOnce(new Error('db caída'));
+      h.fakeAgent.enqueueTool('log_rainfall', { quantity: 20, field: 'El Ceibo' });
+      const text = h.allText(await h.send('llovieron 20 mm en El Ceibo'));
+      spy.mockRestore();
+      expect(text).not.toContain('Guardé el gasto');
+      expect(text).toContain('No pude guardar el gasto');
+      expect(pendingStore.get(h.phone)).toBeTruthy();
+    });
+  });
+
+  describe('compuesto con gastos sin categoría clara (nov 2026)', () => {
+    let h: PipelineHarness;
+
+    beforeAll(async () => {
+      h = await createPipelineHarness('compound-categoria');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Álamo') RETURNING id`, [h.userId]);
+      await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Uno')`, [(f[0] as { id: number }).id]);
+    });
+    afterAll(async () => { await h?.cleanup(); });
+
+    it('los dos se guardan (en Otros, avisando) en vez de perderse detrás de un solo selector', async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'log_expense', toolInput: { amount: 1000, description: 'cosa uno' } },
+        { toolName: 'log_expense', toolInput: { amount: 2000, description: 'cosa dos' } },
+      ]);
+      const text = h.allText(await h.send('gasté 1000 en cosa uno y 2000 en cosa dos'));
+      const rows = await h.q(`SELECT amount::float AS amount, category FROM expenses WHERE user_id = $1 ORDER BY amount`, [h.userId]);
+      expect(rows, text).toEqual([{ amount: 1000, category: 'Otros' }, { amount: 2000, category: 'Otros' }]);
+      expect(text).toContain('lo guardé en *Otros*');
+    });
+  });
+
   describe('gasto: solo el Flow, y sin duplicados (nov 2026)', () => {
     let h: PipelineHarness;
     let norte: number;
@@ -5591,12 +5652,33 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await expenses()).toHaveLength(1);
     });
 
-    it('si ya se resolvió por chat, el formulario viejo no guarda de nuevo', async () => {
+    it('si ya se resolvió por chat, el formulario viejo no guarda de nuevo (ni corrigiendo el monto)', async () => {
+      const [flow] = flows(await ask());
+      await h.send('Norte');
+      await h.send('sí'); // confirma la tarjeta
+      expect(await expenses()).toHaveLength(1);
+      const res = await submitForm(flow.flow.flowToken, { ...payload(), amount: '120000' }, { flowResponse: true, deliver: 'return' });
+      expect(res).toMatchObject({ ok: false, status: 409 });
+      expect(await expenses()).toHaveLength(1);
+    });
+
+    it('flujo vencido por el cron con el gasto completo: se guarda a nivel campo, una sola vez', async () => {
+      const { flowReminderTick } = await import('../../../services/scheduler.js');
+      await ask();
+      expect(await expenses()).toHaveLength(0);
+      await h.q(`UPDATE conversation_state SET flow_expires_at = NOW() - INTERVAL '1 minute' WHERE user_id = $1`, [h.userId]);
+      await flowReminderTick();
+      await flowReminderTick();
+      expect(await expenses()).toHaveLength(1);
+      expect(await flowState()).toBe('idle');
+    });
+
+    it('si la pregunta se canceló sin guardar nada, el formulario que llega tarde sí guarda', async () => {
       const [flow] = flows(await ask());
       await h.send('cancelar');
       const res = await submitForm(flow.flow.flowToken, payload(), { flowResponse: true, deliver: 'return' });
-      expect(res).toMatchObject({ ok: false, status: 409 });
-      expect(await expenses()).toHaveLength(0);
+      expect(res.ok, JSON.stringify(res)).toBe(true);
+      expect(await expenses()).toHaveLength(1);
     });
 
     it('venta sin monto: sale el formulario solo, con las toneladas cargadas', async () => {
@@ -5758,12 +5840,14 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await expenses()).toHaveLength(2);
     });
 
-    it('si ya se contestó por chat, el formulario no vuelve a cargar', async () => {
+    it('si una fila ya se contestó por chat, el formulario no la repite y guarda el resto', async () => {
       const flow = flowOf(await buy())!;
       await h.send('Norte');
-      const res = await submitForm(flow.flow.flowToken, answer(), { flowResponse: true, deliver: 'return' });
-      expect(res).toMatchObject({ ok: false, status: 409 });
       expect(await groups()).toEqual(['vaca:3']);
+      const res = await submitForm(flow.flow.flowToken, answer(), { flowResponse: true, deliver: 'return' });
+      expect(res.ok, JSON.stringify(res)).toBe(true);
+      expect(res.ok && res.message).toMatch(/No repetí un ingreso de 3 vaca/);
+      expect(await groups()).toEqual(['ternero:5', 'vaca:3']);
     });
 
     it('una sola categoría: enviar el formulario cierra la pregunta del chat (prod 26 nov)', async () => {

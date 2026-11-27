@@ -15,6 +15,7 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { sendMessage, uploadMedia, sendDocument, sendInteractiveButtons, sendInteractiveList, sendFlow, downloadMedia } from '../services/whatsapp.js';
 import { MessageDedup } from '../middleware/dedup.js';
+import { claimInboundMessage, markInboundDone } from '../services/wa-inbound-claim.js';
 import { TranscriptionService, AudioTooLongError } from '../services/audio/transcription.service.js';
 import { getAudioConfig } from '../services/audio/audio.types.js';
 import { saveAudioTranscriptionLog } from '../services/expenses.js';
@@ -200,6 +201,9 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
   const startTime = Date.now();
   // Para el catch final: si ya sabemos a quién responder, avisamos del fallo.
   let notifyPhone: string | null = null;
+  // Id tomado en la base: se marca como atendido al terminar, salga como salga
+  // (si algo falló, el usuario ya recibió el aviso).
+  let claimedId: string | null = null;
   try {
     const entry = req.body?.entry;
     const message = entry?.[0]?.changes?.[0]?.value?.messages?.[0];
@@ -223,6 +227,14 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
     if (dedup.isDuplicate(message.id)) {
       res.sendStatus(200);
       return;
+    }
+    if (message.id) {
+      if (!(await claimInboundMessage(message.id))) {
+        console.log(`[whatsapp] [INTERCEPT] mensaje repetido descartado (id ya atendido): ${message.id}`);
+        res.sendStatus(200);
+        return;
+      }
+      claimedId = message.id;
     }
 
     const phone: string = message.from;
@@ -539,6 +551,8 @@ async function handleWhatsAppWebhook(req: Request, res: Response): Promise<void>
       } catch { /* el canal también falló — nada más que hacer */ }
     }
     if (!res.headersSent) res.sendStatus(200);
+  } finally {
+    if (claimedId) await markInboundDone(claimedId);
   }
 }
 

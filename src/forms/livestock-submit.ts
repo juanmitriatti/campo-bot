@@ -5,6 +5,7 @@ import { pool, withTransaction } from '../config/db.js';
 import { formSessionService, type FormSessionRow } from '../services/form-session.service.js';
 import { domainRouter, userRepository, pendingActStore, applySideEffects } from '../services/message-pipeline.js';
 import { buildFormCommand } from './form-commands.js';
+import { findRecordSinceForm, alreadyLoadedMessage } from './form-duplicate.js';
 import { FORM_DEFINITIONS, validateFieldValue } from './form-definitions.js';
 import { getTodayISO } from '../utils/date.js';
 import { applyLivestockExtra, type LivestockRow } from './livestock-rows.js';
@@ -20,7 +21,6 @@ class Aborted extends Error {
   constructor(readonly result: LivestockSubmitResult) { super('alta abortada'); }
 }
 
-const DUPLICATE = '⚠️ Parte de esto ya se cargó por el chat. No lo dupliqué: seguí contestando por acá o escribí *cancelar*.';
 const PRICE_LINE = /\n\n(¿A cuánto fue la compra\?[^\n]*|⚖️ [^\n]*)/;
 
 type Queued = NonNullable<PendingActivity['nextInQueue']>[number];
@@ -44,17 +44,9 @@ export async function submitLivestockRows(
   const userId = Number(session.user_id);
   const pending = pendingActStore.get(session.phone) as PendingActivity | undefined;
   const prefill = (session.prefill ?? {}) as { _batch?: string; _batchSize?: number };
-  // Flow ofrecido en lugar de la cola: tiene que seguir la cola ENTERA.
-  const batchIntact = !prefill._batch || (
-    (pending?.data as Record<string, unknown> | undefined)?.__batch === prefill._batch
-    && 1 + (pending?.nextInQueue?.length ?? 0) === prefill._batchSize);
-  if (!batchIntact || (session.had_pending && !pending)) {
-    console.log('[FORM] rejected: el alta ya avanzó por chat');
-    await formSessionService.claim(token);
-    return { ok: false, status: 409, error: DUPLICATE };
-  }
 
   const commands: Array<{ cmd: Record<string, unknown>; expectsExpense: boolean }> = [];
+  const skipped: string[] = [];
   const weightField = FORM_DEFINITIONS.add_livestock.flowFields!.find(f => f.key === 'avg_weight_kg')!;
   for (const [i, row] of rows.entries()) {
     const weight = validateFieldValue(weightField, row.extra.avgWeightRaw, getTodayISO());
@@ -66,8 +58,21 @@ export async function submitLivestockRows(
     if (!prepared.ok) {
       return rows.length > 1 ? { ...prepared, error: `Categoría ${i + 1}: ${prepared.error}` } : prepared;
     }
+    const loaded = await findRecordSinceForm(token, userId, 'add_livestock', prepared.data, prepared.refs,
+      i === 0 ? session.prefill as Record<string, unknown> | undefined : undefined);
+    if (loaded) {
+      // Se saltea esa fila y se guardan las demás.
+      console.log(`[FORM] [INTERCEPT] fila ${i + 1} de hacienda ya se cargó por chat: se saltea`);
+      skipped.push(loaded);
+      continue;
+    }
     const cmd = buildFormCommand('add_livestock', prepared.data, prepared.refs) as Record<string, unknown>;
     commands.push({ cmd, ...applyLivestockExtra(cmd, row.extra) });
+  }
+
+  if (commands.length === 0) {
+    await formSessionService.claim(token);
+    return { ok: false, status: 409, error: alreadyLoadedMessage(skipped.join(' y ')) };
   }
 
   const settings = await userRepository.getSettings(session.user_id as never);
@@ -104,7 +109,8 @@ export async function submitLivestockRows(
 
   // La pregunta que este formulario contesta se cierra; lo que estaba en cola
   // detrás sigue. El batch es la cola entera, así que no deja nada.
-  const answered = !!pending && (!!prefill._batch
+  const sameBatch = !!prefill._batch && (pending?.data as Record<string, unknown> | undefined)?.__batch === prefill._batch;
+  const answered = !!pending && (sameBatch
     || (pending.command === 'add_livestock' && (!!session.had_pending || !pending.nextInQueue?.length)));
   const leftover: Queued[] = answered && !prefill._batch ? pending!.nextInQueue ?? [] : [];
   if (answered) {
@@ -128,6 +134,7 @@ export async function submitLivestockRows(
   });
 
   const bodies = responses.map(r => (r.interactive?.body ?? r.messages.join('\n')).replace(PRICE_LINE, ''));
+  if (skipped.length > 0) bodies.push(`⚠️ No repetí ${skipped.join(' y ')}: ya estaba cargado desde que abriste el formulario.`);
   const response: HandlerResponse = { messages: bodies };
   const asks = [...leftover, ...priceAsks];
   if (asks.length > 0) {

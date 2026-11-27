@@ -516,6 +516,8 @@ export interface HandlerResponse {
   alreadyRecorded?: boolean;
   /** No se guardó nada: el valor es improbable y los botones preguntan. */
   needsConfirmation?: boolean;
+  /** El guardado de un flujo falló: nadie puede anunciar «guardé». */
+  saveFailed?: boolean;
   attachment?: AttachmentPayload;
   interactive?: InteractiveMessage;
   suggestionKey?: string;

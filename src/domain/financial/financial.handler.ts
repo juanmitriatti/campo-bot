@@ -1077,6 +1077,7 @@ export class FinancialHandler {
     }
 
     // --- Category resolution ---
+    let categoryNote: string | null = null;
     let rawExpenseCategory = (data as ParsedExpense & { category_match?: string }).category_match === 'new'
       ? data.category
       : data.category ?? null;
@@ -1105,6 +1106,14 @@ export class FinancialHandler {
         && !(data as ParsedExpense & { categoryConfirmedNew?: boolean }).categoryConfirmedNew) {
       const similar = await this.categoryService.findSimilar(userId as number, 'expense', rawExpenseCategory);
       if (similar) {
+        // En un compuesto no se pregunta (invariante 7): el botón de este paso
+        // lo pisaba el siguiente y el registro se perdía sin aviso.
+        if (bulkMode) {
+          console.log(`[INTERCEPT] compound: categoría "${rawExpenseCategory}" → parecida "${similar.name}" (gasto)`);
+          categoryNote = `📂 «${rawExpenseCategory.trim()}»: usé tu categoría parecida *${similar.name}*.`;
+          rawExpenseCategory = similar.name;
+          expenseCategoryIntent = 'exact';
+        } else {
         // Token, nunca el payload inline (64 bytes de Telegram, y el token queda
         // atado a este usuario — AIS-1).
         const payload = callbackPayloadStore.set(encodePendingExpensePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null }));
@@ -1120,12 +1129,19 @@ export class FinancialHandler {
             ],
           },
         };
+        }
       }
     }
 
-    const expenseCatMatch = await this.categoryService.match(
+    let expenseCatMatch = await this.categoryService.match(
       userId as number, 'expense', rawExpenseCategory, expenseCategoryIntent,
     );
+
+    if (expenseCatMatch.kind === 'needs-confirmation' && bulkMode) {
+      console.log(`[INTERCEPT] compound: gasto sin categoría clara (${rawExpenseCategory ?? '-'}) → Otros`);
+      expenseCatMatch = await this.categoryService.match(userId as number, 'expense', 'Otros', 'new');
+      categoryNote = `📂 El gasto de ${formatMoney(Number(data.amount), data.currency)} lo guardé en *Otros*. Si era otra categoría, cambiala desde el panel.`;
+    }
 
     if (expenseCatMatch.kind === 'needs-confirmation') {
       const payload = encodePendingExpensePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
@@ -1194,6 +1210,7 @@ export class FinancialHandler {
     const saved = await this.service.saveExpense(userId, data, fieldId, plotId);
     this.categoryService.bump(matchedExpenseCategoryId).catch(() => {});
     const messages = [await buildExpenseConfirmation(data, resFieldName, resPlotName)];
+    if (categoryNote) messages.push(categoryNote);
 
     if (settings.budget_alerts) {
       const alert = await this.service.checkBudgetAlert(userId, data.category, user.name);
@@ -1449,10 +1466,11 @@ export class FinancialHandler {
     }
 
     // --- Category resolution ---
-    const rawIncomeCategory = (data as ParsedIncome & { category_match?: string }).category_match === 'new'
+    let categoryNote: string | null = null;
+    let rawIncomeCategory = (data as ParsedIncome & { category_match?: string }).category_match === 'new'
       ? data.category
       : data.category ?? null;
-    const incomeCategoryIntent = (data as ParsedIncome & { category_match?: string }).category_match === 'new'
+    let incomeCategoryIntent = (data as ParsedIncome & { category_match?: string }).category_match === 'new'
       ? 'new' as const
       : (data as ParsedIncome & { category_match?: string }).category_match === 'exact'
         ? 'exact' as const
@@ -1463,6 +1481,14 @@ export class FinancialHandler {
         && !(data as ParsedIncome & { categoryConfirmedNew?: boolean }).categoryConfirmedNew) {
       const similar = await this.categoryService.findSimilar(userId as number, 'income', rawIncomeCategory);
       if (similar) {
+        // En un compuesto no se pregunta (invariante 7): el botón de este paso
+        // lo pisaba el siguiente y el registro se perdía sin aviso.
+        if (bulkMode) {
+          console.log(`[INTERCEPT] compound: categoría "${rawIncomeCategory}" → parecida "${similar.name}" (ingreso)`);
+          categoryNote = `📂 «${rawIncomeCategory.trim()}»: usé tu categoría parecida *${similar.name}*.`;
+          rawIncomeCategory = similar.name;
+          incomeCategoryIntent = 'exact';
+        } else {
         // Token, nunca el payload inline (64 bytes de Telegram, y el token queda
         // atado a este usuario — AIS-1).
         const payload = callbackPayloadStore.set(encodePendingIncomePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null }));
@@ -1478,12 +1504,19 @@ export class FinancialHandler {
             ],
           },
         };
+        }
       }
     }
 
-    const incomeCatMatch = await this.categoryService.match(
+    let incomeCatMatch = await this.categoryService.match(
       userId as number, 'income', rawIncomeCategory, incomeCategoryIntent,
     );
+
+    if (incomeCatMatch.kind === 'needs-confirmation' && bulkMode) {
+      console.log(`[INTERCEPT] compound: ingreso sin categoría clara (${rawIncomeCategory ?? '-'}) → Otros`);
+      incomeCatMatch = await this.categoryService.match(userId as number, 'income', 'Otros', 'new');
+      categoryNote = `📂 El ingreso de ${formatMoney(Number(data.amount), data.currency)} lo guardé en *Otros*. Si era otra categoría, cambiala desde el panel.`;
+    }
 
     if (incomeCatMatch.kind === 'needs-confirmation') {
       const payload = encodePendingIncomePayload({ data, fieldId: fieldId ?? null, plotId: plotId ?? null });
@@ -1546,6 +1579,7 @@ export class FinancialHandler {
     const savedIncome = await this.service.saveIncome(userId, data, fieldId, plotId);
     this.categoryService.bump(matchedIncomeCategoryId).catch(() => {});
     const messages = [await buildIncomeConfirmation(data, resFieldName, resPlotName)];
+    if (categoryNote) messages.push(categoryNote);
     if (grainSaleNoPlot) messages.push('💡 Sin lote asignado (hay más de una campaña de ese cultivo). Si es de un lote, nombralo: _"vendí … del Norte"_.');
     const byCur = await this.service.getMonthlyResultByCurrency(userId);
     if (Object.values(byCur).some(v => v.gastos > 0)) {
@@ -1633,10 +1667,14 @@ export class FinancialHandler {
       const incomeData = pending.data as ParsedIncome;
       const savedIncome = await this.service.saveIncome(userId, incomeData, pending.fieldId, pending.plotId);
       const messages = [await buildIncomeConfirmation(incomeData, pending.fieldName, pending.plotName)];
-      const byCur = await this.service.getMonthlyResultByCurrency(userId);
-      if (Object.values(byCur).some(v => v.gastos > 0)) {
-        messages.push(formatResultByCurrency(byCur, 'Resultado del mes hasta ahora'));
-      }
+      // El ingreso YA está guardado: un error en el resumen no puede propagarse
+      // (el llamador lo daría por no guardado y se cargaría dos veces).
+      try {
+        const byCur = await this.service.getMonthlyResultByCurrency(userId);
+        if (Object.values(byCur).some(v => v.gastos > 0)) {
+          messages.push(formatResultByCurrency(byCur, 'Resultado del mes hasta ahora'));
+        }
+      } catch (err) { logError('financial', 'POST_SAVE_RESULT', err as Error, { userId }); }
 
       // Grain sale → suggest stock deduction (mirror of the handleIncome path so the
       // prompt also surfaces when the income goes through pending→confirm).
@@ -1644,7 +1682,10 @@ export class FinancialHandler {
       const category = (incomeData.category || '').toLowerCase();
       // Con comprador, la venta descuenta del saldo del acopio (migración 120).
       if (GRAIN_CATEGORIES.has(category) && incomeData.buyer) {
-        const line = await grainBalanceLine(userId, incomeData);
+        const line = await grainBalanceLine(userId, incomeData).catch((err: unknown) => {
+          logError('financial', 'POST_SAVE_BALANCE', err as Error, { userId });
+          return null;
+        });
         if (line) messages.push(line);
         return { messages, suggestionKey: 'income_saved' };
       }
@@ -1695,7 +1736,10 @@ export class FinancialHandler {
       const saved = await this.service.saveExpense(userId, expenseData, pending.fieldId, pending.plotId);
       const messages = [await buildExpenseConfirmation(expenseData, pending.fieldName, pending.plotName)];
       if (settings.budget_alerts) {
-        const alert = await this.service.checkBudgetAlert(userId, expenseData.category, user.name);
+        const alert = await this.service.checkBudgetAlert(userId, expenseData.category, user.name).catch((err: unknown) => {
+          logError('financial', 'POST_SAVE_BUDGET', err as Error, { userId });
+          return null;
+        });
         if (alert) {
           messages.push(alert);
           const now = new Date();
