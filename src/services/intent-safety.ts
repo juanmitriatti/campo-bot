@@ -105,7 +105,7 @@ export function fallbackBlockedCopy(reason: FallbackBlockReason, attemptedComman
       return (
         '🤖 Estoy con un problema técnico para procesar mensajes en este momento. ' +
         'No es tu mensaje — es un problema mío.\n\n' +
-        'Probá de nuevo en unos minutos. Tus datos están guardados y no se pierde nada.'
+        '*Este mensaje no quedó registrado*: mandámelo de nuevo en unos minutos. Lo que ya tenías cargado sigue intacto.'
       );
     case 'ai_rate_limited':
       return (

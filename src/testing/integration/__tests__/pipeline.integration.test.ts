@@ -5609,6 +5609,40 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('hallazgos de marketing antes de pautar (26 nov 2026)', () => {
+    let h: PipelineHarness;
+    beforeAll(async () => {
+      h = await createPipelineHarness('marketing-nov');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      const p = await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, '1', 50) RETURNING id`, [fid]);
+      await h.q(`INSERT INTO plot_crops (plot_id, crop, season_year, season_type, start_date) VALUES ($1, 'trigo', 2026, 'fina', '2026-06-10')`, [(p[0] as { id: number }).id]);
+    });
+    afterAll(async () => { await h?.cleanup(); });
+
+    it('alta de lote con la superficie en la misma frase', async () => {
+      const text = h.allText(await h.send('Agregar lote 2 de 100 hectáreas al campo La Esperanza'));
+      const rows = await h.q(
+        `SELECT p.name, p.area_hectares::float AS ha FROM plots p JOIN fields f ON f.id = p.field_id WHERE f.user_id = $1 AND p.name = '2'`, [h.userId]);
+      expect(rows, text).toEqual([{ name: '2', ha: 100 }]);
+    });
+
+    it('si el agente falla, un registro que nombra un lote NO se contesta con la ficha del lote', async () => {
+      h.fakeAgent.enqueueError();
+      const text = h.allText(await h.send('Coseché el trigo del lote 1, rindió 40 qq/ha'));
+      expect(text).not.toMatch(/Cultivo activo|Actividades|Superficie/i);
+      expect(text).toMatch(/no quedó registrado/i);
+      const ev = await h.q(`SELECT id FROM domain_events WHERE user_id = $1 AND event_type = 'harvest'`, [h.userId]);
+      expect(ev).toEqual([]);
+    });
+
+    it('con el agente caído, "lote 1" pelado sigue mostrando la ficha', async () => {
+      h.fakeAgent.enqueueError();
+      const text = h.allText(await h.send('lote 1'));
+      expect(text).toMatch(/trigo/i);
+    });
+  });
+
   describe('gasto: solo el Flow, y sin duplicados (nov 2026)', () => {
     let h: PipelineHarness;
     let norte: number;

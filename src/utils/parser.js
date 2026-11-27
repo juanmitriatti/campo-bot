@@ -1120,10 +1120,18 @@ const COMMAND_PATTERNS = [
       // For the "lote X para campo Y" pattern
       const re2 = /^lote\s+(\S+)\s+(?:para|en|al?|del?)\s+(?:(?:el|mi)\s+)?(?:campo|parcela)\s+(.+)/i;
       const cm2 = original ? original.match(re2) : null;
-      return {
-        plotName: (cm2 ? cm2[1] : cm ? cm[1] : m[1]).trim(),
-        fieldName: (cm2 ? cm2[2] : cm ? cm[2] : m[2]).trim(),
-      };
+      const plotName = (cm2 ? cm2[1] : cm ? cm[1] : m[1]).trim();
+      let fieldName = (cm2 ? cm2[2] : cm ? cm[2] : m[2]).trim();
+      // "lote 2 de 100 hectáreas al campo X": la superficie quedaba como parte
+      // del nombre del campo ("No encontré el campo «100 hectáreas al campo X»").
+      const area = fieldName.match(/^(\d{1,3}(?:\.\d{3})+|\d+(?:[.,]\d+)?)\s*(?:has?\.?|hect[aá]reas?)\s+(?:en|al?|del?)\s+(?:(?:el|la|mi)\s+)?(?:campo\s+|parcela\s+)?(.+)$/i);
+      if (area) {
+        const raw = area[1];
+        const hectares = /^\d{1,3}(\.\d{3})+$/.test(raw) ? Number(raw.replace(/\./g, '')) : parseFloat(raw.replace(',', '.'));
+        fieldName = area[2].trim();
+        return { plotName, fieldName, hectares };
+      }
+      return { plotName, fieldName };
     },
   },
   {

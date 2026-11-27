@@ -1,4 +1,5 @@
 import { ParserService } from './parser.service.js';
+import { hasActionVerb } from '../middleware/conversation-guards.js';
 import { UserRepository } from '../domain/users/user.repository.js';
 import { stripFillerPhrases } from '../utils/text-normalizer.js';
 import { looksLikeNewActionOrQuery } from '../middleware/conversation-guards.js';
@@ -953,6 +954,21 @@ export class IntentClassifier {
           },
         },
         confidence: obsConfidence,
+        aiUsed: false,
+        source: 'command',
+        missingFields: [],
+      };
+    }
+
+    // Un mensaje que REGISTRA algo ("Coseché el trigo del lote 2, rindió 40
+    // qq/ha") no es una consulta del lote: con el agente caído se contestaba con
+    // la ficha del lote y el usuario creía que había quedado guardado.
+    if (hasActionVerb(text)) {
+      const reason = aiUnavailableCause ?? 'ai_required';
+      console.log(`[FALLBACK_BLOCKED] user=${userId} command=none reason=${reason} (acción sin IA, no se muestra la ficha) raw="${text.slice(0, 80)}"`);
+      return {
+        intent: { type: 'fallback_blocked', reason, raw: text },
+        confidence: 0,
         aiUsed: false,
         source: 'command',
         missingFields: [],
