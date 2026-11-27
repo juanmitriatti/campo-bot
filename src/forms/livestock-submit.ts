@@ -94,9 +94,17 @@ export async function submitLivestockRows(
     throw err;
   }
 
-  if (prefill._batch) pendingActStore.clear(session.phone);
+  // La pregunta que este formulario contesta se cierra; lo que estaba en cola
+  // detrás sigue. El batch es la cola entera, así que no deja nada.
+  const answered = !!pending && (!!prefill._batch
+    || (pending.command === 'add_livestock' && (!!session.had_pending || !pending.nextInQueue?.length)));
+  const leftover: Queued[] = answered && !prefill._batch ? pending!.nextInQueue ?? [] : [];
+  if (answered) {
+    pendingActStore.clear(session.phone);
+    console.log(`[FORM] pending consumido por submit (en cola: ${leftover.length})`);
+  }
 
-  const asks: Queued[] = responses.flatMap((r, i) => {
+  const priceAsks: Queued[] = responses.flatMap((r, i) => {
     const p = r.sideEffects?.setPendingActivity;
     if (!p) return [];
     const perKg = !!p.missing?.includes('quantity');
@@ -113,14 +121,20 @@ export async function submitLivestockRows(
 
   const bodies = responses.map(r => (r.interactive?.body ?? r.messages.join('\n')).replace(PRICE_LINE, ''));
   const response: HandlerResponse = { messages: bodies };
+  const asks = [...leftover, ...priceAsks];
   if (asks.length > 0) {
     const [first, ...rest] = asks;
     applySideEffects({ setPendingActivity: { ...first, ...(rest.length ? { nextInQueue: rest } : {}) } } as never, session.phone);
-    response.interactive = { type: 'buttons', body: String(first.askPrompt), buttons: [{ id: 'cancel_action', title: 'Sin precio' }] };
+    // "Sin precio" cancela todo lo pendiente: solo si no hay otra cosa en cola.
+    if (leftover.length === 0) {
+      response.interactive = { type: 'buttons', body: String(first.askPrompt), buttons: [{ id: 'cancel_action', title: 'Sin precio' }] };
+    } else {
+      response.messages = [...bodies, String(first.askPrompt)];
+    }
   } else if (responses.length === 1 && responses[0].interactive) {
     response.messages = [];
     response.interactive = { ...responses[0].interactive, body: bodies[0] } as HandlerResponse['interactive'];
   }
-  console.log(`[FORM] submitted action=add_livestock filas=${commands.length} user=${userId} precios_pendientes=${asks.length}`);
+  console.log(`[FORM] submitted action=add_livestock filas=${commands.length} user=${userId} precios_pendientes=${priceAsks.length}`);
   return { ok: true, message: bodies.join('\n\n'), response };
 }

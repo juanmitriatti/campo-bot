@@ -5766,6 +5766,19 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await groups()).toEqual(['vaca:3']);
     });
 
+    it('una sola categoría: enviar el formulario cierra la pregunta del chat (prod 26 nov)', async () => {
+      h.fakeAgent.enqueueTool('add_livestock', { category: 'vaca', count: 20 });
+      const flow = flowOf(await h.send('compra 20 vacas'))!;
+      const res = await submitForm(flow.flow.flowToken,
+        { origin: 'compra', location: `p:${norte}`, event_date: today(), currency: 'ARS', category: 'vaca', count: '20', price_mode: 'head', unit_price: '900000' },
+        { flowResponse: true, deliver: 'return' });
+      expect(res.ok, JSON.stringify(res)).toBe(true);
+      h.fakeAgent.enqueueTool('list_livestock', { category: 'vaca' });
+      expect(h.allText(await h.send('cuantas vacas tengo'))).not.toMatch(/En qué lote/);
+      await h.send('Norte');
+      expect(await groups()).toEqual(['vaca:20']);
+    });
+
     it('una fila inválida no guarda ninguna', async () => {
       const flow = flowOf(await buy())!;
       const res = await submitForm(flow.flow.flowToken, answer({ animals_1_count: '' }), { flowResponse: true, deliver: 'return' });
