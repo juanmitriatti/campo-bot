@@ -398,6 +398,15 @@ export async function getAiFallbackSummary() {
 
 // --- Expenses ---
 
+/** Solo pesos o dólares: otra moneda se sumaba como pesos. */
+function storedCurrency(currency) {
+  const c = String(currency || 'ARS').trim().toUpperCase();
+  if (c === 'ARS' || c === 'USD') return c;
+  if (c === 'U$S' || c === 'US$' || c === 'U$D') return 'USD';
+  if (c === '$' || c === 'PESOS') return 'ARS';
+  throw new Error(`Moneda no admitida: ${c}. Solo pesos o dólares.`);
+}
+
 export async function saveExpense(userId, data, fieldId = null, plotId = null) {
   const result = await pool.query(
     `INSERT INTO expenses
@@ -409,7 +418,7 @@ export async function saveExpense(userId, data, fieldId = null, plotId = null) {
       data.category,
       data.description || "",
       data.amount,
-      data.currency || "ARS",
+      storedCurrency(data.currency),
       fieldId,
       plotId,
       data.expenseDate || null,
@@ -440,7 +449,7 @@ export async function saveIncome(userId, data, fieldId = null, plotId = null) {
       data.category,
       data.description || "",
       data.amount,
-      data.currency || "ARS",
+      storedCurrency(data.currency),
       data.quantity || null,
       data.unit || null,
       data.unit_price || null,
