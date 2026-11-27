@@ -2437,7 +2437,8 @@ export class AgronomyHandler {
               await this.repo.saveDomainEvent(userId, {
                 plotId: plotResult.plotId, plotCropId: sameActive.id, eventType: 'planting',
                 eventDate: cmd.eventDate as Date | null, crop, product: variety,
-                quantity: sowedHa, unit: 'ha',
+                // Lo que SUMÓ (topeado al lote): borrar la tanda resta esto.
+                quantity: total - prevHa, unit: 'ha',
                 notes: seedDensity ? `densidad: ${seedDensity}` : null,
               });
               console.log(`[INTERCEPT] sow_crop tanda adicional: campaña ${sameActive.id} ${prevHa} + ${sowedHa} → ${total} ha`);

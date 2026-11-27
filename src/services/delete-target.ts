@@ -171,6 +171,16 @@ async function activityLine(ev: Record<string, unknown>): Promise<string> {
     repro_event: 'Evento reproductivo', weighing: 'Pesaje', tacto: 'Tacto',
   };
   let line = `🗑️ ${labels[String(ev.event_type)] ?? ev.event_type}${ev.crop ? ` de ${ev.crop}` : ''}${ev.plot_name ? ` en ${ev.plot_name}` : ''}${day(ev.event_date ?? ev.created_at)}`;
+  if (ev.event_type === 'planting' && ev.plot_crop_id) {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM domain_events
+        WHERE plot_crop_id = $1 AND event_type = 'planting' AND deleted_at IS NULL AND id <> $2`,
+      [ev.plot_crop_id, ev.id]);
+    if (rows[0]?.n > 0) {
+      const ha = ev.unit === 'ha' && ev.quantity != null ? ` (${Number(ev.quantity).toLocaleString('es-AR')} ha)` : '';
+      line += `\n_Se borra solo esa tanda${ha}; la campaña sigue con las otras._`;
+    }
+  }
   if (ev.event_type !== 'harvest') return line;
   // Una cosecha arrastra sus camiones y su parte del rinde: decirlo antes de borrar.
   const { rows } = await pool.query(

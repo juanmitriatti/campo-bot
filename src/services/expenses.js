@@ -3172,12 +3172,34 @@ export async function deleteDomainEvent(eventId) {
         await reopenOrRecomputeHarvest(event);
       }
     } else if (event.event_type === 'planting' && event.plot_crop_id) {
-      // Una siembra borrada libera el lote SOLO si todavía no se cosechó; si ya
-      // hay cosecha encima, dejamos la campaña intacta y solo borramos el evento.
-      await pool.query(
-        `DELETE FROM plot_crops WHERE id = $1 AND harvested_at IS NULL`,
-        [event.plot_crop_id]
+      const { rows: others } = await pool.query(
+        `SELECT COUNT(*)::int AS n, COALESCE(SUM(quantity) FILTER (WHERE unit = 'ha'), 0)::numeric AS extra
+           FROM domain_events
+          WHERE plot_crop_id = $1 AND event_type = 'planting' AND deleted_at IS NULL AND id <> $2`,
+        [event.plot_crop_id, eventId]
       );
+      if (others[0].n > 0) {
+        // Siembra en tandas: se borra SOLO esa tanda. Una tanda adicional trae
+        // sus hectáreas; la primera es lo que queda al sacar las demás.
+        const batch = event.unit === 'ha' && Number(event.quantity) >= 0 ? Number(event.quantity) : null;
+        await pool.query(
+          batch != null
+            ? `UPDATE plot_crops SET sowed_hectares = sowed_hectares - $2 WHERE id = $1 AND sowed_hectares > $2`
+            : `UPDATE plot_crops SET sowed_hectares = $2 WHERE id = $1 AND $2 > 0`,
+          [event.plot_crop_id, batch ?? Number(others[0].extra)]
+        );
+        await pool.query(`UPDATE domain_events SET deleted_at = NOW() WHERE id = $1`, [eventId]);
+        const { syncCampaignDatesFromEvents } = await import('../domain/plots/campaign-sync.js');
+        await syncCampaignDatesFromEvents(event.plot_crop_id);
+        console.log(`[SOW] tanda ${eventId} borrada: la campaña ${event.plot_crop_id} sigue con ${others[0].n} siembra(s)`);
+      } else {
+        // Una siembra borrada libera el lote SOLO si todavía no se cosechó; si ya
+        // hay cosecha encima, dejamos la campaña intacta y solo borramos el evento.
+        await pool.query(
+          `DELETE FROM plot_crops WHERE id = $1 AND harvested_at IS NULL`,
+          [event.plot_crop_id]
+        );
+      }
     }
 
     // Los animales enlazados a este evento (sanidad por caravana) dejan de
