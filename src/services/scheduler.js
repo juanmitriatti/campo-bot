@@ -1073,7 +1073,9 @@ export async function closeExpiredFlow(flow, startedAtMs) {
     const items = await commitFinancialFlowFieldLevel(flow.userId, ctx, phone);
     // La fila nueva CON el monto del flujo: una carga simultánea por el panel o
     // por otro canal no puede quedar apuntada por el botón.
-    const amount = Number((ctx.data ?? {}).amount);
+    // En el flujo el monto viaja como {amount, currency} o como número.
+    const raw = (ctx.data ?? {}).amount;
+    const amount = Number(raw && typeof raw === "object" ? raw.amount : raw);
     const { rows: mine } = await pool.query(
       `SELECT id FROM ${table} WHERE user_id = $1 AND id > $2 AND amount = $3 ORDER BY id LIMIT 1`,
       [flow.userId, before, Number.isFinite(amount) ? amount : -1],
