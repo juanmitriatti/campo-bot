@@ -35,8 +35,18 @@ describe('requestParams', () => {
   });
 
   it('el costo de Haiku 5.5 usa su tarifa', () => {
-    const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000 };
-    expect(estimateCostUsd('claude-haiku-5-5', usage)).toBeCloseTo(0.6);
-    expect(estimateCostUsd('claude-haiku-4-5-20251001', usage)).toBeCloseTo(6);
+    const usage = { input_tokens: 50_000, output_tokens: 50_000 };
+    expect(estimateCostUsd('claude-haiku-5-5', usage)).toBeCloseTo(0.03);
+    expect(estimateCostUsd('claude-haiku-4-5-20251001', usage)).toBeCloseTo(0.3);
+  });
+});
+
+describe('costo de Haiku 5.5 por largo de prompt', () => {
+  it('hasta 100K usa la tarifa baja; la caché cuenta para el límite', () => {
+    const short = { input_tokens: 500, output_tokens: 100, cache_read_tokens: 90_000 };
+    expect(estimateCostUsd('claude-haiku-5-5', short)).toBeCloseTo((500 * 0.1 + 100 * 0.5 + 90_000 * 0.01) / 1e6, 8);
+    // El caso real de producción: 114.591 tokens de caché → tarifa alta.
+    const long = { input_tokens: 451, output_tokens: 186, cache_read_tokens: 114_591 };
+    expect(estimateCostUsd('claude-haiku-5-5', long)).toBeCloseTo((451 * 0.5 + 186 * 2.5 + 114_591 * 0.05) / 1e6, 8);
   });
 });

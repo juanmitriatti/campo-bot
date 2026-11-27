@@ -359,6 +359,8 @@ export interface AiUsage {
   cache_read_tokens?: number;
   /** Input tokens written to the prompt cache (billed at 125% of input rate for 5-min TTL, 200% for 1h). */
   cache_write_tokens?: number;
+  /** Modelo de la llamada: con él se guarda el costo real en ai_usage. */
+  model?: string;
 }
 
 // --- Claude analysis result ---

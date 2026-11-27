@@ -178,7 +178,7 @@ export class ConversationalFallbackService {
       };
 
       // Track usage
-      await this.userRepo.saveAiUsage(userId, usage);
+      await this.userRepo.saveAiUsage(userId, { ...usage, model: resolvedModel });
       saveAiFallbackLog(userId, text, { type: 'conversational_fallback' }, usage, estimateCostUsd(resolvedModel, usage)).catch(() => {});
       recordUsage(userId, rateLimitWindow);
 

@@ -184,7 +184,7 @@ export class DataAnalysisService {
       const costUsd = estimateCostUsd(model, usage);
 
       try {
-        await saveAiUsage(userId, usage, costUsd);
+        await saveAiUsage(userId, { ...usage, model }, costUsd);
         await saveAiFallbackLog(
           userId,
           JSON.stringify({ type: 'data_analysis', question: question.slice(0, 500), scope: args.scopeLabel ?? null, turns: history.length / 2 }),

@@ -1,4 +1,5 @@
 import { pool, withTransaction } from "../config/db.js";
+import { estimateCostUsd } from "../ai/model-pricing.js";
 import { getTodayISO } from "../utils/date.js";
 import { sqlNormalizedName, normalizeEntityName, stripLeadingArticle, companyNameKey } from "../utils/entity-matcher.js";
 import { normalizePhone } from "../utils/phone.js";
@@ -273,16 +274,15 @@ export async function getMonthlyReportForMonth(userId, month, year) {
 export async function saveAiUsage(userId, usage, costUsd = null) {
   const cacheRead = usage.cache_read_tokens || 0;
   const cacheWrite = usage.cache_write_tokens || 0;
-  // Haiku 4.5 pricing — input 1x, cache read 0.1x, cache write 1.25x (5min TTL)
-  const cost = costUsd != null ? costUsd :
-               (usage.input_tokens / 1_000_000 * 0.80) +
-               (cacheRead / 1_000_000 * 0.08) +
-               (cacheWrite / 1_000_000 * 1.00) +
-               (usage.output_tokens / 1_000_000 * 4);
+  // El costo sale del modelo de la llamada (model-pricing.ts). Sin modelo se
+  // asume Haiku 4.5. Se guarda en ai_usage para que el panel no lo recalcule
+  // con una tarifa fija.
+  const model = usage.model || null;
+  const cost = costUsd != null ? costUsd : estimateCostUsd(model || "claude-haiku-4-5", usage);
 
   await pool.query(
-    `INSERT INTO ai_usage (user_id, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+    `INSERT INTO ai_usage (user_id, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, model, cost_usd)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       userId,
       usage.input_tokens,
@@ -290,6 +290,8 @@ export async function saveAiUsage(userId, usage, costUsd = null) {
       usage.input_tokens + usage.output_tokens + cacheRead + cacheWrite,
       cacheRead,
       cacheWrite,
+      model,
+      cost,
     ]
   );
 

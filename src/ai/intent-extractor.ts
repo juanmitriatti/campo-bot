@@ -130,7 +130,7 @@ export class IntentExtractor {
         output_tokens: response.usage.output_tokens,
       };
 
-      await repo.saveAiUsage(userId, usage);
+      await repo.saveAiUsage(userId, { ...usage, model: resolvedModel });
       saveAiFallbackLog(userId, text, { type: 'ai_intent' }, usage, estimateCostUsd(resolvedModel, usage)).catch(() => {});
 
       // Phase 1 — fire the 80% warning when this call crosses the threshold.

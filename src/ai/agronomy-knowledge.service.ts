@@ -87,6 +87,7 @@ export class AgronomyKnowledgeService {
           output_tokens: response.usage.output_tokens,
           cache_read_tokens: response.usage.cache_read_input_tokens || 0,
           cache_write_tokens: response.usage.cache_creation_input_tokens || 0,
+          model,
         });
       } catch { /* best-effort: el log de uso jamás bloquea la respuesta */ }
 

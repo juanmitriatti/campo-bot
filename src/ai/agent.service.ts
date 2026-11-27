@@ -249,7 +249,7 @@ export class AgentService {
         cache_write_tokens: cacheWrite,
       };
 
-      await repo.saveAiUsage(userId, usage);
+      await repo.saveAiUsage(userId, { ...usage, model: resolvedModel });
       saveAiFallbackLog(userId, text, { type: 'agent_tool_use' }, usage, estimateCostUsd(resolvedModel, usage)).catch(() => {});
 
       // Phase 1 — fire the 80%-warning when this call brings the user across

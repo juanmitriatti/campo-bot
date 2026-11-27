@@ -3,7 +3,7 @@
  * sin administradores, bajas ni test-bot.
  */
 import { describe, it, expect, afterAll } from 'vitest';
-import { pool } from '../../config/db.js';
+import { pool, withTransaction } from '../../config/db.js';
 import { getWeeklySignups } from '../signup-stats.js';
 
 let dbAvailable = true;
@@ -33,6 +33,10 @@ describe.skipIf(!dbAvailable)('altas de la semana', () => {
   });
 
   it('cuenta las de esta semana y la anterior, y deja afuera admin, bajas y test-bot', async () => {
+    // REPEATABLE READ + rollback: otros tests crean usuarios en paralelo y ensuciaban la diferencia.
+    const rollback = new Error('rollback');
+    await expect(withTransaction(async () => {
+    await pool.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
     const before = await getWeeklySignups();
     await add(1, 'DEFAULT'); // alta nueva: la columna se completa sola
     await add(2, `${WEEK_START}`); // lunes 00:00: entra en esta semana
@@ -45,5 +49,7 @@ describe.skipIf(!dbAvailable)('altas de la semana', () => {
     const after = await getWeeklySignups();
     expect(after.thisWeek - before.thisWeek).toBe(2);
     expect(after.lastWeek - before.lastWeek).toBe(1);
+    throw rollback;
+    })).rejects.toBe(rollback);
   });
 });

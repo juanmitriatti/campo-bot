@@ -22,8 +22,12 @@ type Price = readonly [input: number, output: number, cacheRead: number, cacheWr
 
 const HAIKU_4_5: Price = [1.0, 5.0, 0.1, 1.25];
 
-// Haiku 5.5: tarifa para prompts de hasta 100K tokens (los del bot entran).
+// Haiku 5.5 tiene DOS tarifas según el largo del prompt, contando también la
+// caché leída y escrita (doc de precios, nov 2026). El prompt del agente supera
+// los 100K, así que paga la alta.
 const HAIKU_5_5: Price = [0.1, 0.5, 0.01, 0.125];
+const HAIKU_5_5_LONG: Price = [0.5, 2.5, 0.05, 0.625];
+const HAIKU_5_5_LONG_THRESHOLD = 100_000;
 
 const PRICES: Array<{ match: RegExp; price: Price }> = [
   { match: /^claude-opus-5/, price: [5.0, 25.0, 0.5, 6.25] },
@@ -47,7 +51,11 @@ export function priceFor(model: string | null | undefined): Price {
 }
 
 export function estimateCostUsd(model: string | null | undefined, usage: UsageLike): number {
-  const [pin, pout, pread, pwrite] = priceFor(model);
+  const promptTokens = (usage.input_tokens ?? 0) + (usage.cache_read_tokens ?? 0) + (usage.cache_write_tokens ?? 0);
+  const price = /^claude-haiku-5-5/.test(String(model ?? '')) && promptTokens > HAIKU_5_5_LONG_THRESHOLD
+    ? HAIKU_5_5_LONG
+    : priceFor(model);
+  const [pin, pout, pread, pwrite] = price;
   const n = (v: number | null | undefined) => (v && v > 0 ? v : 0) / 1_000_000;
   return n(usage.input_tokens) * pin
     + n(usage.output_tokens) * pout
