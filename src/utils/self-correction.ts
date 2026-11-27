@@ -7,7 +7,11 @@ import { CORRECTION_ALT } from './lexicon.js';
 // answer while a livestock price-pending is open (bug: "vendí 5 → ¿precio? →
 // no, eran 8" silently kept 5 instead of correcting to 8).
 const PRICE_MARKER_RE = /[$]|\busd\b|d[oó]lar|peso|\bmil\b|\bpalos?\b|\blucas?\b|c\/u|cabeza|\bcada\b|\bkg\b|\blt\b|por\s+(?:cabeza|cero|tonelada|kilo)/iu;
-const COUNT_CORRECTION_RE = new RegExp(`\\b(?:${CORRECTION_ALT}|eran|son|fueron|fue)\\b[^\\d]{0,15}?(\\d{1,5})\\b`, 'iu');
+// Con marca de corrección ("no, eran 8"), o la cópula con el animal nombrado
+// ("eran 8 vacas"). "fueron 1800" a secas es la respuesta a "¿a cuánto fue?":
+// tomarlo como cantidad cambiaba el rodeo a 1800 cabezas.
+const COUNT_CORRECTION_RE = new RegExp(`\\b(?:${CORRECTION_ALT})(?![\\p{L}])[^\\d]{0,20}?(\\d{1,5})\\b`, 'iu');
+const COUNT_NOUN_CORRECTION_RE = /\b(?:eran|son|fueron|fue|era)\b[^\d]{0,15}?(\d{1,5})\s+(?:cabezas?|animales?|vacas?|novill\w*|terner\w*|toros?|torit\w*|vaquillonas?|bueyes?)\b/iu;
 
 /**
  * Extracts the corrected COUNT from a quantity-correction message, or null when
@@ -17,7 +21,7 @@ const COUNT_CORRECTION_RE = new RegExp(`\\b(?:${CORRECTION_ALT}|eran|son|fueron|
 export function extractCountCorrection(text: string): number | null {
   if (!text) return null;
   if (PRICE_MARKER_RE.test(text)) return null; // it's a price, not a count
-  const m = COUNT_CORRECTION_RE.exec(text);
+  const m = COUNT_CORRECTION_RE.exec(text) ?? COUNT_NOUN_CORRECTION_RE.exec(text);
   if (!m) return null;
   const n = parseInt(m[1], 10);
   return Number.isFinite(n) && n > 0 && n < 100000 ? n : null;

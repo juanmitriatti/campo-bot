@@ -20,6 +20,7 @@
  *    los suyos.
  */
 
+import { resolveDeleteTarget } from './delete-target.js';
 import { logError } from './error-logger.js';
 import type { PendingActivity } from '../middleware/pending-activities.js';
 import { IntentClassifier, READ_ONLY_TRIVIAL_COMMANDS, EXPIRED_ALLOWED_COMMANDS } from './intent-classifier.js';
@@ -410,12 +411,24 @@ async function askDestructiveConfirmation(cmd: ParsedCommand, userId: UserId, ph
     delete_last_observation: 'eliminar la ultima observacion',
     delete_last_rainfall: 'eliminar la ultima lluvia',
     delete_last_scouting: 'eliminar el ultimo monitoreo',
+    revert_livestock_movement: 'revertir este movimiento de hacienda',
   };
   const label = actionLabels[cmd.command] || 'realizar esta accion';
-  // Preview del objetivo: mostrar QUÉ se va a borrar (con fecha) — el
-  // registro "de recién" puede haber fallado en silencio y el último real
-  // ser uno de hace días.
-  const preview = await buildDeletePreview(cmd.command, userId, cmd);
+  // Preview del objetivo: QUÉ se va a borrar. El registro "de recién" puede
+  // haber fallado en silencio y el último real ser uno de hace días.
+  const target = await resolveDeleteTarget(cmd, userId).catch((err: unknown) => {
+    console.warn('[delete-preview] no pude armar la vista previa:', (err as Error).message);
+    return { status: 'unknown' as const };
+  });
+  if (target.status === 'none') {
+    console.log(`[INTERCEPT] ${cmd.command}: nada que borrar — no se pide confirmación`);
+    pendingStore.clear(phone);
+    return [{ type: 'text', text: target.message }];
+  }
+  const preview = target.status === 'found' ? target.line : '';
+  // Gasto e ingreso se borran en forma lógica: se ofrece «Deshacer» después.
+  const undoable = target.status === 'found' && /^(Gasto|Ingreso):/.test(target.key);
+  (cmd as Record<string, unknown>)._targetKey = target.status === 'found' ? target.key : null;
   pendingStore.set(phone, {
     type: 'expense',
     data: { type: 'expense', amount: 0, category: '', description: '', currency: 'ARS' },
@@ -424,12 +437,53 @@ async function askDestructiveConfirmation(cmd: ParsedCommand, userId: UserId, ph
     _destructiveCommand: cmd,
   } as any);
   return [interactiveButtons(
-    `¿Seguro que queres ${label}?${preview ? `\n\n${preview}` : ''}\nEsto no se puede deshacer.`,
+    `¿Seguro que queres ${label}?${preview ? `\n\n${preview}` : ''}${undoable || cmd.command === 'revert_livestock_movement' ? '' : '\nEsto no se puede deshacer.'}`,
     [
       { id: `confirm_destructive_${cmd.command}`, title: 'Confirmar' },
       { id: 'cancel_destructive', title: 'Cancelar' },
     ],
   )];
+}
+
+/**
+ * Ejecuta un borrado confirmado (botón o "sí"). Si lo que ahora se borraría ya
+ * no es lo que se mostró, se vuelve a preguntar.
+ */
+async function executeDestructive(
+  cmd: ParsedCommand, userId: UserId, phone: string, user: ChannelContext['user'], settings: ChannelContext['settings'],
+): Promise<BotResponseItem[] | null> {
+  const shown = (cmd as Record<string, unknown>)._targetKey as string | null | undefined;
+  if (shown) {
+    const now = await resolveDeleteTarget(cmd, userId);
+    if (now.status !== 'found' || now.key !== shown) {
+      console.log(`[INTERCEPT] ${cmd.command}: el objetivo cambió desde la confirmación (${shown} → ${now.status === 'found' ? now.key : now.status}) — se vuelve a preguntar`);
+      return [{ type: 'text', text: '⚠️ Eso cambió desde que te pregunté: no borré nada.' }, ...(await askDestructiveConfirmation(cmd, userId, phone))];
+    }
+  }
+  const response = await domainRouter.routeCommand(cmd, userId, user, settings);
+  if (!response) return null;
+  const items = collectResponse(response);
+  const money = /^(Gasto|Ingreso):(\d+)$/.exec(shown ?? '');
+  if (money && response.messages?.[0]?.startsWith('🗑️')) {
+    const token = callbackPayloadStore.set(JSON.stringify({ kind: money[1], id: Number(money[2]) }));
+    items.push(interactiveButtons('¿Te equivocaste?', [{ id: `undo_del_${token}`, title: 'Deshacer' }]));
+  }
+  return items;
+}
+
+/** «Deshacer» de un gasto o ingreso borrado: solo del autor y una sola vez. */
+async function undoDelete(token: string, userId: UserId): Promise<BotResponseItem[]> {
+  const raw = callbackPayloadStore.get(token);
+  const payload = raw ? JSON.parse(raw) as { kind?: string; id?: number } : null;
+  if (!payload?.id) return [STALE_BUTTON_ITEM];
+  const table = payload.kind === 'Ingreso' ? 'incomes' : 'expenses';
+  const { rowCount } = await pool.query(
+    `UPDATE ${table} SET deleted_at = NULL WHERE id = $1 AND user_id = $2 AND deleted_at IS NOT NULL`,
+    [payload.id, userId],
+  );
+  const noun = table === 'incomes' ? 'ingreso' : 'gasto';
+  console.log(`[INTERCEPT] deshacer borrado de ${noun} ${payload.id}: ${rowCount ? 'restaurado' : 'ya estaba'}`);
+  return [{ type: 'text', text: rowCount ? `↩️ Listo, recuperé el ${noun}.` : `Ese ${noun} ya estaba recuperado.` }];
 }
 
 export function isCancelIntent(text: string): boolean {
@@ -483,6 +537,7 @@ export const DESTRUCTIVE_COMMANDS = new Set([
   'delete_last_expense', 'delete_last_activity', 'delete_last_observation',
   'delete_last_rainfall', 'delete_last_scouting',
   'delete_specific_expense', 'delete_specific_income',
+  'revert_livestock_movement',
 ]);
 
 export const SAFE_INTERRUPTION_COMMANDS = new Set([
@@ -1420,7 +1475,12 @@ async function processTextMessageInner(
     // vaquillonas se perdían (QA ganadería 9 sep 2026). En un slot financiero
     // NO aplica: "500000 por cabeza" es un precio, y la heurística lo excluye
     // igual — ver looksLikeLivestockCount.
-    const livestockPivot = !expectsFinancialSlot && looksLikeLivestockCount(text);
+    // "tengo 7 vacas en el 5g" con "¿a cuánto fue?" abierta es un alta nueva,
+    // no un precio de 7 (nov 2026).
+    const newHerd = pendingAct.command === 'set_livestock_price' && looksLikeLivestockCount(text)
+      && /^\s*(?:y\s+|tambi[eé]n\s+|adem[aá]s\s+)?(?:tengo|tenemos|hay|quedan|me\s+quedan)\b/i.test(text);
+    if (newHerd) console.log('[INTERCEPT] alta nueva con la pregunta de precio abierta: no se toma como precio');
+    const livestockPivot = newHerd || (!expectsFinancialSlot && looksLikeLivestockCount(text));
     const escapePending = (strictEscape ? (hasActionVerbOrQuery(text) || livestockPivot) : looksLikeNewActionOrQuery(text))
       || isOtherItemCorrectionOrDelete(text)
       || isNewActionInterrupt(actInterruptCmd)
@@ -1925,10 +1985,10 @@ ${ask}` }];
     const destructive = (pending as unknown as Record<string, unknown>)._destructiveCommand;
     if (destructive) {
       pendingStore.clear(phone);
-      const delResponse = await domainRouter.routeCommand(destructive as never, userId, user, settings);
-      if (delResponse) {
-        conversationLogger.log(userId, phone, text, delResponse.messages[0] ?? null, 'command', 'confirm_destructive', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
-        return collectResponse(delResponse);
+      const deleted = await executeDestructive(destructive as ParsedCommand, userId, phone, user, settings);
+      if (deleted) {
+        conversationLogger.log(userId, phone, text, deleted[0]?.text ?? null, 'command', 'confirm_destructive', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
+        return deleted;
       }
       return [{ type: 'text', text: '⚠️ Esa confirmación ya venció — *no borré nada*. Si querés borrarlo, pedímelo de nuevo.' }];
     }
@@ -2066,7 +2126,7 @@ ${ask}` }];
     }
 
     if (DESTRUCTIVE_COMMANDS.has(intent.data.command)) {
-      return askDestructiveConfirmation(intent.data, userId, phone);
+      return askDestructiveConfirmation({ ...intent.data, originalText: (intent.data.originalText as string | undefined) ?? text }, userId, phone);
     }
 
     // Attach original text so handlers can check if fields were explicitly mentioned
@@ -2614,73 +2674,6 @@ async function resolvePendingCorrection(
   return {};
 }
 
-/**
- * Preview del registro que un delete_last_* va a borrar: "🗑️ Gasto: Combustible
- * $80.000 — 05/07". Devuelve '' si no se puede determinar (el confirm sale
- * igual, solo sin detalle). Best-effort: jamás rompe el flujo.
- */
-async function buildDeletePreview(command: string, userId: UserId, cmd?: ParsedCommand): Promise<string> {
-  try {
-    const fmt = (d: unknown) => {
-      const dt = d instanceof Date ? d : new Date(String(d));
-      return isNaN(dt.getTime()) ? '' : ` — ${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}`;
-    };
-    // Con filtro ("borrá el último gasto de gasoil"): el MISMO registro que va a
-    // borrar el handler, y su id viaja en el comando para borrar justo ese.
-    // Antes la vista previa mostraba el último gasto a secas y se borraba otro (FIN-10).
-    if (command === 'delete_last_expense' && cmd?.categoryFilter) {
-      const row = await financialService.findLastExpenseByCategory(userId, cmd.categoryFilter as string) as
-        { id: number; category: string; amount: number; currency: string; expense_date?: unknown; created_at: unknown } | null;
-      if (!row) return '';
-      (cmd as Record<string, unknown>)._targetExpenseId = row.id;
-      return `🗑️ Gasto: ${row.category || 's/cat'} ${row.currency === 'USD' ? `${Number(row.amount).toLocaleString('es-AR')} USD` : `$${Number(row.amount).toLocaleString('es-AR')}`}${fmt(row.expense_date ?? row.created_at)}`;
-    }
-    if (command === 'delete_last' || command === 'delete_last_expense') {
-      const { rows } = await pool.query(
-        `SELECT category, amount, currency, created_at FROM expenses WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`, [userId]);
-      if (rows[0]) return `🗑️ Gasto: ${rows[0].category || 's/cat'} ${rows[0].currency === 'USD' ? `${Number(rows[0].amount).toLocaleString('es-AR')} USD` : `$${Number(rows[0].amount).toLocaleString('es-AR')}`}${fmt(rows[0].created_at)}`;
-    } else if (command === 'delete_last_income') {
-      const { rows } = await pool.query(
-        `SELECT category, amount, currency, created_at FROM incomes WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`, [userId]);
-      if (rows[0]) return `🗑️ Ingreso: ${rows[0].category || 's/cat'} ${rows[0].currency === 'USD' ? `${Number(rows[0].amount).toLocaleString('es-AR')} USD` : `$${Number(rows[0].amount).toLocaleString('es-AR')}`}${fmt(rows[0].created_at)}`;
-    } else if (command === 'delete_last_activity') {
-      // El MISMO objetivo que borra el handler (tipo/cultivo/lote nombrados).
-      const { findActivityDeleteTarget } = await import('../domain/agronomy/agronomy.handler.js');
-      const ev = cmd ? await findActivityDeleteTarget(userId, cmd) : null;
-      if (ev) {
-        const labels: Record<string, string> = {
-          planting: 'Siembra', spraying: 'Fumigación', fertilization: 'Fertilización', harvest: 'Cosecha',
-          tillage: 'Labranza', irrigation: 'Riego', health_event: 'Evento sanitario',
-          repro_event: 'Evento reproductivo', weighing: 'Pesaje', tacto: 'Tacto',
-        };
-        let line = `🗑️ ${labels[ev.event_type] ?? ev.event_type}${ev.crop ? ` de ${ev.crop}` : ''}${ev.plot_name ? ` en ${ev.plot_name}` : ''}${fmt(ev.event_date ?? ev.created_at)}`;
-        // Una cosecha arrastra sus camiones y su parte del rinde: decirlo antes de borrar.
-        if (ev.event_type === 'harvest') {
-          const { rows } = await pool.query(
-            `SELECT (SELECT COUNT(*)::int FROM harvest_loads WHERE domain_event_id = $1) AS loads,
-                    (SELECT COALESCE(SUM(COALESCE(net_weight_kg, weight_kg)), 0) FROM harvest_loads WHERE domain_event_id = $1) AS kg,
-                    (SELECT COUNT(*)::int FROM domain_events WHERE plot_crop_id = $2 AND event_type = 'harvest'
-                        AND deleted_at IS NULL AND id <> $1) AS other_days`,
-            [ev.id, ev.plot_crop_id ?? null]);
-          const r = rows[0];
-          if (r?.loads > 0) line += `\n🚛 Borra también ${r.loads} camión${r.loads > 1 ? 'es' : ''} (${(Number(r.kg) / 1000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} tn)`;
-          const dayYield = (ev as { harvest_yield_kg?: number | null }).harvest_yield_kg;
-          if (dayYield) line += `\n🌾 Rinde cargado ese día: ${(Number(dayYield) / 1000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} tn`;
-          line += r?.other_days > 0
-            ? `\n_La campaña sigue cosechada con los otros ${r.other_days} día(s)._`
-            : `\n_Era el único día de cosecha: la campaña vuelve a "sin cosechar"._`;
-        }
-        return line;
-      }
-    } else if (command === 'delete_last_rainfall') {
-      const { rows } = await pool.query(
-        `SELECT millimeters AS mm, rainfall_date AS rain_date, created_at FROM rainfall WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, [userId]);
-      if (rows[0]) return `🗑️ Lluvia: ${rows[0].mm}mm${fmt(rows[0].rain_date ?? rows[0].created_at)}`;
-    }
-  } catch { /* best-effort */ }
-  return '';
-}
-
 /** Tips tras confirmar un gasto/ingreso (la confirmación bypasea el router). */
 async function appendTipAfterConfirm(
   pending: { type?: string } | null | undefined,
@@ -3022,6 +3015,8 @@ async function handleInteractiveReplyInner(
     return staleButtonWithRescue(phone);
   }
 
+  if (callbackId.startsWith('undo_del_')) return undoDelete(callbackId.slice('undo_del_'.length), userId);
+
   // --- Destructive command confirmation ---
   if (callbackId.startsWith('confirm_destructive_')) {
     const pendingAction = pendingStore.get(phone) as any;
@@ -3034,8 +3029,8 @@ async function handleInteractiveReplyInner(
     }
     pendingStore.clear(phone);
     if (pendingAction?._destructiveCommand) {
-      const response = await domainRouter.routeCommand(pendingAction._destructiveCommand, userId, user, settings);
-      if (response) return collectResponse(response);
+      const deleted = await executeDestructive(pendingAction._destructiveCommand, userId, phone, user, settings);
+      if (deleted) return deleted;
     }
     console.warn(`[INTERCEPT] confirm_destructive sin pending (phone=${phone})`);
     return [{ type: 'text', text: '⚠️ Esa confirmación ya venció — *no borré nada*. Si querés borrarlo, pedímelo de nuevo.' }];
@@ -3044,6 +3039,13 @@ async function handleInteractiveReplyInner(
   if (callbackId === 'cancel_destructive' || callbackId === 'cancel_action' || callbackId === 'cancel_pending') {
     pendingStore.clear(phone);
     pendingDeleteConfirmStore.clear(phone);
+    // «Sin precio»: la pregunta se cierra de verdad (antes seguía 30 minutos y
+    // el número siguiente se guardaba como precio).
+    if (callbackId === 'cancel_action' && pendingActStore.get(phone)?.command === 'set_livestock_price') {
+      pendingActStore.clear(phone);
+      console.log('[INTERCEPT] «Sin precio»: se cierra la pregunta de precio de hacienda');
+      return [{ type: 'text', text: '👍 Quedó sin precio. Cuando lo sepas, mandalo así: «las vacas salieron 900 mil cada una».' }];
+    }
     conversationLogger.log(userId, phone, `[${callbackId}]`, 'Operacion cancelada.', 'command', 'cancel', null, null, false, null, false, null, null, null, ctx.channel).catch(() => {});
     return [{ type: 'text', text: '❌ Operacion cancelada.' }];
   }

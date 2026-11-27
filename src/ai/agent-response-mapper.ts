@@ -1,4 +1,5 @@
 import { normalizeToKg } from '../utils/mass-units.js';
+import { parseAnimalId } from '../utils/animal-id.js';
 import { normalizeAgentDate } from '../utils/date.js';
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
 import { EXPENSE_CATEGORY_SET, EXPENSE_CATEGORIES, INCOME_CATEGORY_SET, INCOME_CATEGORIES, INSUMO_CATEGORIES, EXPENSE_KEYWORD_MAP, type IncomeCategory } from '../constants/agro-terms.js';
@@ -1231,6 +1232,17 @@ export class AgentResponseMapper {
     if (input.animal_ref != null) cmd.animalRef = String(input.animal_ref);
     if (input.new_rfid != null) cmd.newRfid = String(input.new_rfid);
     if (input.new_visual_tag != null) cmd.newVisualTag = String(input.new_visual_tag);
+    // Haiku 5.5 manda la caravana ELECTRÓNICA (10 o 15 dígitos) como "visual":
+    // el reemplazo se guardaba como visual y la vieja quedaba vigente. El número
+    // decide el tipo, no el nombre del parámetro.
+    for (const [visual, electronic] of [['visualTag', 'rfid'], ['newVisualTag', 'newRfid']] as const) {
+      const value = cmd[visual];
+      if (typeof value === 'string' && !cmd[electronic] && parseAnimalId(value).idType === 'rfid') {
+        console.log(`AI_MAPPER OVERRIDE ${visual} → ${electronic}: «${value}» es una caravana electrónica`);
+        cmd[electronic] = value;
+        delete cmd[visual];
+      }
+    }
     if (input.birth_date != null) cmd.birthDate = String(input.birth_date);
     if (input.sex != null) cmd.sex = String(input.sex);
     if (input.origin != null) cmd.origin = String(input.origin);

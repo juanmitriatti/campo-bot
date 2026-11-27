@@ -2497,9 +2497,12 @@ export class FinancialHandler {
       }
 
       case 'delete_last_income': {
-        const deleted = await this.service.deleteLastIncome(userId);
+        const referent = (cmd.categoryFilter as string | null) || null;
+        const deleted = referent
+          ? await this.service.deleteLastIncomeMatching(userId, referent)
+          : await this.service.deleteLastIncome(userId);
         if (!deleted) {
-          return { messages: ['No hay ingresos para borrar.'] };
+          return { messages: [referent ? `No encontré un ingreso de *${referent}* para borrar.` : 'No hay ingresos para borrar.'] };
         }
         return { messages: [`\ud83d\uddd1\ufe0f Ingreso eliminado: ${deleted.category} ${formatMoney(deleted.amount, deleted.currency)}`] };
       }

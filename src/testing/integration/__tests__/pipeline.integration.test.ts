@@ -793,7 +793,9 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
         fieldId: null, fieldName: null, plotId: null, plotName: null, timestamp: Date.now(),
         _destructiveCommand: { command: 'delete_last_expense' },
       } as never);
+      await b.q(`INSERT INTO expenses (user_id, amount, currency, category, expense_date) VALUES ($1, 10, 'ARS', 'Otros', CURRENT_DATE)`, [b.userId]);
       const items = await b.tap('confirm_pending');
+      await b.q('DELETE FROM expenses WHERE user_id = $1 AND amount = 10', [b.userId]);
       expect(b.allText(items)).toMatch(/Seguro que queres eliminar/i);
       expect(b.allButtons(items).map(x => x.id)).toContain('confirm_destructive_delete_last_expense');
       pendingStore.clear(b.phone);

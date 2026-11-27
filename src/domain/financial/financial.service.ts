@@ -122,6 +122,14 @@ export class FinancialService {
     return { category: last.category, amount: Number(last.amount), currency: last.currency };
   }
 
+  /** Último ingreso que coincide con lo que el usuario nombró ("la venta de soja"). */
+  async deleteLastIncomeMatching(userId: UserId, referent: string): Promise<{ category: string; amount: number; currency: string } | null> {
+    const row = await this.repo.findLastIncomeByCategory(userId, referent);
+    if (!row) return null;
+    await this.repo.deleteIncome(row.id);
+    return { category: row.category, amount: Number(row.amount), currency: row.currency };
+  }
+
   // --- Structured edit / delete (handle the new agent tools) ---
 
   async deleteSpecificExpenseByCriteria(userId: UserId, criteria: { amount?: number | null; category?: string | null; date?: string | null }): Promise<{ category: string; amount: number; currency: string } | null> {

@@ -2,6 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { isFuturePlanOnly } from '../lexicon.js';
 
 // AGR-16 (auditoría oct 2026): red del servidor para invariante 12 (plan futuro ≠ registro).
+describe('«esta mañana» es un momento del día, no el futuro', () => {
+  it.each([
+    'Esta mañana fumigamos el Sur con glifosato',
+    'hoy a la mañana sembramos soja en el Norte',
+    'por la mañana vacunamos los terneros',
+  ])('%s', t => { expect(isFuturePlanOnly(t)).toBe(false); });
+
+  it.each(['mañana fumigamos el Sur', 'mañana a la mañana vamos a sembrar'])('%s sigue siendo un plan', t => {
+    expect(isFuturePlanOnly(t)).toBe(true);
+  });
+});
+
 describe('isFuturePlanOnly', () => {
   it.each([
     'el sábado fumigo el Norte',

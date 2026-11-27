@@ -563,6 +563,9 @@ const WEEKDAY_RE = /\b(el|este|el\s+proximo)\s+(lunes|martes|miercoles|jueves|vi
 const PRESENT_AGRO_VERB_RE = /\b(fumigo|siembro|cosecho|aplico|fertilizo|vacuno|pago|vendo|compro|cargo)\b/;
 const PAST_MARKER_RE = /\b(ayer|anteayer|anoche|hace\s+\d+|la\s+semana\s+pasada|el\s+mes\s+pasado|pasado\s+(lunes|martes|miercoles|jueves|viernes|sabado|domingo)|(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s+pasado)\b/;
 
+// "esta mañana fumigamos", "hoy a la mañana": un momento del día, no "mañana".
+const MORNING_RE = /\b(?:esta|a\s+la|por\s+la|de\s+la|en\s+la)\s+manana\b/g;
+
 export function isFuturePlanOnly(text: string): boolean {
   const raw = text.toLowerCase();
   // Pretérito con tilde ("fumigué", "sembró", "pagué") o plural ("cosecharon", "vinieron").
@@ -570,7 +573,7 @@ export function isFuturePlanOnly(text: string): boolean {
   const t = normLex(text);
   if (/\b[a-zñ]{3,}(aron|ieron)\b/.test(t)) return false;
   if (PAST_MARKER_RE.test(t)) return false;
-  if (FUTURE_PLAN_MARKER_RE.test(t)) return true;
+  if (FUTURE_PLAN_MARKER_RE.test(t.replace(MORNING_RE, ' '))) return true;
   return WEEKDAY_RE.test(t) && PRESENT_AGRO_VERB_RE.test(t);
 }
 
